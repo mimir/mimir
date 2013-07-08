@@ -21,6 +21,12 @@ Now install
 
 `sudo python setup.py install`
 
-Now you can clone this repo and test it out with
+Now you can clone this repo and then change some settings.
+At present we are using SQLite so you should edit Mimir/settings.py to have the correct db info, most crucially the filename.
+Once that is correct we need to sort out the new database bits so run
+
+`python manage.py syncdb`
+
+Finally test it out with
 
 `python manage.py runserver`
