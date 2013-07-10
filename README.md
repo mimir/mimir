@@ -11,7 +11,7 @@ So to begin setting up Mimir first install Python.
 
 Now we install Django, first grab the Django source
 
-`wget -O django.tar.gz http://www.djangoproject.com/download/1.5.1/tarball/`
+`wget -O django.tar.gz https://www.djangoproject.com/download/1.5.1/tarball/`
 
 `tar xzvf django.tar.gz`
 
