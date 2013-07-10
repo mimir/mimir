@@ -27,6 +27,8 @@ Once that is correct we need to sort out the new database bits so run
 
 `python manage.py syncdb`
 
+Now edit the settings file to have the correct template directories listed under TEMPLATE_DIRS.
+
 Finally test it out with
 
 `python manage.py runserver`
