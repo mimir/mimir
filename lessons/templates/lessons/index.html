@@ -2,7 +2,7 @@
     <h2>Lessons</h2>
     <ul>
     {% for lesson in latest_lesson_list %}
-        <li><a href="/lessons/{{ lesson.id }}/">{{ lesson.name }}</a></li>
+        <li><a href="{% url 'lessons:read' lesson.id %}">{{ lesson.name }}</a></li>
     {% endfor %}
     </ul>
 {% else %}
