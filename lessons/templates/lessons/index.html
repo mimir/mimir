@@ -1,3 +1,7 @@
+{% extends "base.html" %}
+
+{% block content %}
+
 {% if latest_lesson_list %}
     <h2>Lessons</h2>
     <ul>
@@ -8,3 +12,5 @@
 {% else %}
     <p>No lessons atm soz bbz</p>
 {% endif %}
+
+{% endblock %}

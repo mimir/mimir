@@ -1,6 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+
 {% if lesson %}
     <h2>{{ lesson.name }}</h2>
     <p>{{ lesson.tutorial }}</p>
 {% else %}
     <p>Lesson not working...</p>
 {% endif %}
+
+{% endblock %}
