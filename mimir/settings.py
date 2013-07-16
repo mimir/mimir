@@ -14,7 +14,7 @@ MANAGERS = ADMINS
 
 LOGIN_URL = '/users/login/'
 
-LOGIN_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/home/'
 
 DATABASES = {
     'default': {
