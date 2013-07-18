@@ -11,3 +11,5 @@ class UserProfile(models.Model):
     about = models.TextField()
     created = models.DateField(auto_now_add = True) #Creation date set on adding
     logged_in = models.DateField(auto_now_add = True) # TODO make update on all logins
+    def __unicode__(self):
+        return self.screen_name

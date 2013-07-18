@@ -6,7 +6,7 @@ class Lesson(models.Model):
     tutorial = models.TextField()
     created = models.DateField(auto_now_add = True) #Creation date set on adding
     modified = models.DateField(auto_now = True) #Modification date set on changing
-    times_taken = models.IntegerField() #TODO make this a cache for query on usertakeslessons
+    times_taken = models.IntegerField(default = 0) #TODO make this a cache for query on usertakeslessons
     def __unicode__(self):
         return self.name
 
@@ -35,6 +35,6 @@ class Question(models.Model):
     calculation = models.TextField() #TODO work out how on earth this will work
     created = models.DateField(auto_now_add = True) #Creation date set on adding
     modified = models.DateField(auto_now = True) #Modification date set on changing
-    times_answered = models.IntegerField() #TODO make this cache of query as above
+    times_answered = models.IntegerField(default = 0) #TODO make this cache of query as above
     def __unicode__(self):
         return self.question
