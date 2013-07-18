@@ -1,12 +1,14 @@
 from django.db import models
+from django.contrib.auth.models import User
 
 # Create your models here.
 class Lesson(models.Model):
     name = models.CharField(max_length = 100)
     tutorial = models.TextField()
-    created = models.DateField(auto_now_add = True) #Creation date set on adding
-    modified = models.DateField(auto_now = True) #Modification date set on changing
+    created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
+    modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     times_taken = models.IntegerField(default = 0) #TODO make this a cache for query on usertakeslessons
+    description = models.CharField(max_length = 400)
     def __unicode__(self):
         return self.name
 
@@ -14,8 +16,8 @@ class Example(models.Model):
     lesson = models.ForeignKey(Lesson)
     problem = models.TextField()
     solution = models.TextField()
-    created = models.DateField(auto_now_add = True) #Creation date set on adding
-    modified = models.DateField(auto_now = True) #Modification date set on changing
+    created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
+    modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     def __unicode__(self):
         return self.problem
 
@@ -33,8 +35,8 @@ class Question(models.Model):
     answer = models.CharField(max_length = 200)
     answer_format = models.ForeignKey(AnswerFormat)
     calculation = models.TextField() #TODO work out how on earth this will work
-    created = models.DateField(auto_now_add = True) #Creation date set on adding
-    modified = models.DateField(auto_now = True) #Modification date set on changing
+    created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
+    modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     times_answered = models.IntegerField(default = 0) #TODO make this cache of query as above
     def __unicode__(self):
         return self.question
