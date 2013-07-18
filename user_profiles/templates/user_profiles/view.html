@@ -5,6 +5,7 @@
 {% if user %}
     <h2>{{ user.screen_name }}</h2>
     <p>{{ user.about }}</p>
+    <img src="http://www.gravatar.com/avatar/{{ user.gravatar_hash }}?s=128&d=identicon" /> {# TODO maybe https?! #}
 {% else %}
     <p>User profile not working.</p>
 {% endif %}
