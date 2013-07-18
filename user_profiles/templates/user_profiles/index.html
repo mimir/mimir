@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if user_list %}
+    <h2>Users</h2>
+    <ul>
+    {% for user in user_list %}
+        <li><a href="{% url 'user_profiles:view' user.user_id %}">{{ user.screen_name }}</a></li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p>No users/broken.</p>
+{% endif %}
+
+{% endblock %}
