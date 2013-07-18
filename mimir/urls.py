@@ -19,5 +19,5 @@ urlpatterns = patterns('',
     url(r'^users/logout/$', 'django.contrib.auth.views.logout', {'next_page': '/'}, name = 'logout'),
     url(r'^users/signup/$', 'mimir.views.register', name = 'signup'),
     url(r'^$', 'mimir.views.splash'),
-    url(r'^home/$', 'mimir.views.index'),
+    url(r'^home/$', 'mimir.views.index', name = 'home'),
 )
