@@ -5,8 +5,17 @@
 {% if lesson %}
     <h2>{{ lesson.name }}</h2>
     <p>{{ lesson.tutorial }}</p>
+    {% if example_list %}
+        <h3>Worked examples</h3>
+        {% for example in example_list %}
+            <p>Problem: {{ example.problem }} <br />
+            Solution: {{ example.solution }}</p>
+        {% endfor %}
+    {% else %}
+        <p>No worked examples are available for this lesson.</p>
+    {% endif %}
 {% else %}
-    <p>Lesson not working...</p>
+    <p>Lesson not working.</p>
 {% endif %}
 
 {% endblock %}
