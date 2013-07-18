@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if question %}
+    <h2>{{ question.lesson.name }}</h2>
+    <p>{{ question.question }}</p>
+{% else %}
+    <p>Question not working.</p>
+{% endif %}
+
+{% endblock %}

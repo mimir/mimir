@@ -14,6 +14,11 @@
     {% else %}
         <p>No worked examples are available for this lesson.</p>
     {% endif %}
+    {% if first_question %}
+        <a href="{% url 'lessons:question' lesson_id=lesson.id question_id=first_question.id %}">Test me</a>
+    {% else %}
+        <p>No questions for this lesson.</p>
+    {% endif %}
 {% else %}
     <p>Lesson not working.</p>
 {% endif %}
