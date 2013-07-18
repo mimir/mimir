@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if user %}
+    <h2>{{ user.screen_name }}</h2>
+    <p>{{ user.about }}</p>
+{% else %}
+    <p>User profile not working.</p>
+{% endif %}
+
+{% endblock %}
