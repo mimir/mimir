@@ -6,7 +6,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User)
     #TODO implement picture stuff properly
     gravatar_hash = models.CharField(max_length = 32)
-    screen_name = models.CharField(max_length = 50)
+    #screen_name = models.CharField(max_length = 50)
     email = models.EmailField(max_length = 254)
     website = models.URLField(blank = True)
     about = models.TextField(blank = True)
@@ -31,8 +31,10 @@ class UserTakesLesson(models.Model):
         (9, 9),
         (10, 10),
     )
-    rating = models.PositiveSmallIntegerField(choices = RATING_CHOICES)
-    comment = models.CharField(max_length = 250)
+    rating = models.PositiveSmallIntegerField(choices = RATING_CHOICES, blank=True)
+    comment = models.CharField(max_length = 250, blank=True)
+    def __unicode__(self):
+        return self.user + " " + self.lesson
 
 class UserAnswersQuestion(models.Model):
     user = models.ForeignKey(User)
