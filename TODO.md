@@ -10,3 +10,4 @@ TODO List
 - Docstrings!!!!! Documentation everywhere
 - Write blog posts
 - Sexify everything
+- Move some settings over to a separate file (secret key, db settings, templates location) and make default file
