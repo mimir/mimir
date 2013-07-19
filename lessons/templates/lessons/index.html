@@ -2,8 +2,8 @@
 
 {% block content %}
 
+<h2>Lessons</h2>
 {% if latest_lesson_list %}
-    <h2>Lessons</h2>
     <ul>
     {% for lesson in latest_lesson_list %}
         <li><a href="{% url 'lessons:read' lesson.id %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
