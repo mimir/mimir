@@ -10,4 +10,3 @@ TODO List
 - Docstrings!!!!! Documentation everywhere
 - Write blog posts
 - Sexify everything
-- 
