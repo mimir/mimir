@@ -34,7 +34,7 @@ class UserTakesLesson(models.Model):
     rating = models.PositiveSmallIntegerField(choices = RATING_CHOICES, blank=True)
     comment = models.CharField(max_length = 250, blank=True)
     def __unicode__(self):
-        return self.user + " " + self.lesson
+        return self.user.username + " " + self.lesson.name
 
 class UserAnswersQuestion(models.Model):
     user = models.ForeignKey(User)
