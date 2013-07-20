@@ -8,8 +8,6 @@ class UserProfile(models.Model):
     gravatar_hash = models.CharField(max_length = 32)
     website = models.URLField(blank = True)
     about = models.TextField(blank = True)
-    created = models.DateField(auto_now_add = True) #Creation date set on adding
-    logged_in = models.DateField(auto_now_add = True) # TODO make update on all logins
     def __unicode__(self):
         return self.screen_name
 
