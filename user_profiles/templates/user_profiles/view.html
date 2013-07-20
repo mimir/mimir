@@ -2,10 +2,12 @@
 
 {% block content %}
 
-{% if user %}
-    <h2>{{ user.screen_name }}</h2>
-    <p>{{ user.about }}</p>
-    <img src="http://www.gravatar.com/avatar/{{ user.gravatar_hash }}?s=128&d=identicon" /> {# TODO maybe https?! #}
+{% if cur_user %}
+    <h2><img src="http://www.gravatar.com/avatar/{{ cur_user_p.gravatar_hash }}?s=64&d=identicon" /> {# TODO maybe https?! #}
+    {{ cur_user.first_name }} {{ cur_user.last_name}} ({{ cur_user.username }})</h2>
+    <p>Website: <a href="{{ cur_user_p.website }}">{{ cur_user_p.website }}</a></p>
+    <p>Joined: {{ cur_user.date_joined }}</p>
+    <p>About: {{ cur_user_p.about }}</p>
 {% else %}
     <p>User profile not working.</p>
 {% endif %}
