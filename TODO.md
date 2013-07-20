@@ -6,6 +6,7 @@ This list is in a rough soonness order:
 - Update lessons/models.py to include links between lessons.
 - Make basic skill tree
 - Fix user registration
+- Write tests!! Lots of them.
 - Add possibility for references in lessons.
 - Make homepage with stats on
 - Make questions answerable
