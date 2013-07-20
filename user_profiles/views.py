@@ -1,8 +1,10 @@
 from django.shortcuts import render
-from django.http import HttpResponse, Http404
+from django.http import HttpResponse, Http404, HttpResponseRedirect
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import authenticate, login
 
 from user_profiles.models import UserProfile
-from user_profiles.forms import UserProfileForm
+from user_profiles.forms import UserCreationForm
 from django.contrib.auth.models import User
 
 def index(request):
@@ -23,16 +25,20 @@ def view(request, user_id):
 
 def register(request):
     if request.method == 'POST':
-        form = UserProfileForm(request.POST)
+        form = UserCreationForm(request.POST)
         if form.is_valid():
             new_user = form.save()
             username = request.POST['username']
             password = request.POST['password1']
             user = authenticate(username=username, password=password)
             login(request, user)
+            import hashlib
+            hash = hashlib.md5(request.POST['email'].strip().lower()).hexdigest()
+            userp = UserProfile(user_id = user.id, gravatar_hash = hash, about = request.POST['about'], website = request.POST['website'])
+            userp.save()
             return HttpResponseRedirect("/home/")
     else:
-        form = UserProfileForm()
+        form = UserCreationForm()
     return render(request, "user_profiles/register.html", {
         'form': form,
     })
