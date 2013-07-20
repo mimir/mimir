@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from lessons.models import Lesson, Question
 
 class UserProfile(models.Model):
-    user = models.OneToOneField(User)
+    user = models.OneToOneField(User, related_name='profile')
     #TODO implement picture stuff properly
     gravatar_hash = models.CharField(max_length = 32)
     #screen_name = models.CharField(max_length = 50)
