@@ -6,8 +6,6 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, related_name='profile')
     #TODO implement picture stuff properly
     gravatar_hash = models.CharField(max_length = 32)
-    #screen_name = models.CharField(max_length = 50)
-    email = models.EmailField(max_length = 254)
     website = models.URLField(blank = True)
     about = models.TextField(blank = True)
     created = models.DateField(auto_now_add = True) #Creation date set on adding
