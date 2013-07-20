@@ -15,18 +15,7 @@ class UserTakesLesson(models.Model):
     user = models.ForeignKey(User)
     lesson = models.ForeignKey(Lesson)
     date = models.DateTimeField(auto_now_add = True) #Creation date set on adding
-    RATING_CHOICES = (
-        (1, 1),
-        (2, 2),
-        (3, 3),
-        (4, 4),
-        (5, 5),
-        (6, 6),
-        (7, 7),
-        (8, 8),
-        (9, 9),
-        (10, 10),
-    )
+    RATING_CHOICES = [(i+1,i+1) for i in range(10)]
     rating = models.PositiveSmallIntegerField(choices = RATING_CHOICES, blank=True)
     comment = models.CharField(max_length = 250, blank=True)
     def __unicode__(self):
