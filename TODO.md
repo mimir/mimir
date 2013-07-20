@@ -1,5 +1,7 @@
 TODO List
 =========
+There are a lot of things marked in the source with a TODO comment, these vary in difficulty, but some of them are probably doable.
+
 This list is in a rough soonness order:
 - Update lessons/models.py to include links between lessons.
 - Make basic skill tree
