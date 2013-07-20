@@ -40,3 +40,9 @@ class Question(models.Model):
     times_answered = models.IntegerField(default = 0) #TODO make this cache of query as above
     def __unicode__(self):
         return self.question
+
+class LessonFollowsFromLesson(models.Model):
+    leads_from = models.ForeignKey(Lesson)
+    leads_to = models.ForeignKey(Lesson)
+    CHOICES = [(i,i) for i in range(11)] #0-10
+    strength = models.PositiveSmallIntegerField(choices = CHOICES) #Not sure exactly how this will work yet TODO work it out. Roughly 10 should correspond to, you really need to know A to do B, and 0 should mean that they're sort of linked?
