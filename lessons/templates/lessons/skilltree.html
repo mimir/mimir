@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>My skill tree</h2>
+{% if skill_tree %}
+    <ul>
+    {% for lesson in skill_tree %}
+        <li><a href="{% url 'lessons:read' lesson.id %}">{{ lesson.name }}</a></li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p>Skill tree unavailable.</p>
+{% endif %}
+
+{% endblock %}

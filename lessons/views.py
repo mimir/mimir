@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.http import HttpResponse, Http404
 
 from lessons.models import Lesson, Example, Question
+from user_profiles.models import UserTakesLesson
 
 def index(request):
     latest_lesson_list = Lesson.objects.all()[:5]
@@ -27,3 +28,11 @@ def question(request, lesson_id, question_id):
     except Question.DoesNotExist:
         raise Http404
     return render(request, 'lessons/question.html', context)
+
+def skill_tree(request):
+    curuser = request.user
+    skill_tree = Lesson.objects.filter(usertakeslesson__user=curuser)
+    context = ({
+        'skill_tree':skill_tree,
+    })
+    return render(request, 'lessons/skilltree.html', context)
