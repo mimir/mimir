@@ -9,7 +9,7 @@ class UserProfile(models.Model):
     website = models.URLField(blank = True)
     about = models.TextField(blank = True)
     def __unicode__(self):
-        return self.screen_name
+        return self.user.username
 
 class UserTakesLesson(models.Model):
     user = models.ForeignKey(User)
