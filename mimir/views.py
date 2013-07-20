@@ -3,9 +3,19 @@ from django.shortcuts import render
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import authenticate, login
+from lessons.models import Lesson
 
 def index(request):
-    return render(request, 'home.html')
+    if request.user.is_authenticated():
+        curuser = request.user
+        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser)[:5] #Gets five lessons that have been taken by the user
+        #TODO make the above line get the most recent five.
+    else:
+        user_lessons = []
+    context = ({
+        'user_lessons':user_lessons,
+    })
+    return render(request, 'home.html', context)
 
 def register(request):
     if request.method == 'POST':

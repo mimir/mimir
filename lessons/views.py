@@ -30,8 +30,10 @@ def question(request, lesson_id, question_id):
     return render(request, 'lessons/question.html', context)
 
 def skill_tree(request):
-    curuser = request.user
-    skill_tree = Lesson.objects.filter(usertakeslesson__user=curuser)
+    if request.user.is_authenticated():
+        curuser = request.user
+        skill_tree = Lesson.objects.filter(usertakeslesson__user = curuser) #Gets all lessons that have been taken by the user
+        #TODO make the above line have each lesson appear only once, also make the skill tree a tree...
     context = ({
         'skill_tree':skill_tree,
     })

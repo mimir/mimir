@@ -2,4 +2,11 @@
 
 {% block content %}
 <p>Welcome to Mimir, a new way to learn online. The site is still undergoing heavy development at the moment, this is really just a test page.</p>
+{% if user_lessons %}
+    <ul>
+    {% for lesson in user_lessons %}
+        <li><a href="{% url 'lessons:read' lesson.id %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
+    {% endfor %}
+    </ul>
+{% endif %}
 {% endblock %}
