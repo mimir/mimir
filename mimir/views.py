@@ -34,4 +34,6 @@ def register(request):
     })
 
 def splash(request):
+    if request.user.is_authenticated():
+        return HttpResponseRedirect("/home/")
     return render(request, 'splash.html')
