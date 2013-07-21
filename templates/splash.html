@@ -1,17 +1,13 @@
-<!DOCTYPE html>
-<head lang="en">
-	<link rel="stylesheet" type="text/css" href="/static/default.css">
-</head>
+{% extends "base.html" %}
 
-<body>
-	<h1>Welcome to Mimir</h1>
-	<h3>A new way to learn online</h3>
-	
-	<div id="nav">
-		<ul>
-			<li><a href="{% url 'user_profiles:register' %}">Join now</a></li>
-			<li><a href="{% url 'login' %}">Sign in</a></li>
-			<li><a href="{% url 'home' %}">Just learn</a></li>
-		</ul>
-	</div>
-</body>
+{% block content %}
+<p>Welcome to Mimir, a new way to learn online. At Mimir, we teach you maths and shit to make you cleverer and bollocks. We don't require you to sign up to use our service but you do gain additional features such as progress tracking and what not for free. If you have an account already, just click sign in below or if you want to join us here at Mimir, just click join now. If you want nothing to do with us and you hate the prospect of being friendly then click just learn.
+
+<div id="nav">
+	<ul>
+		<li><a href="{% url 'user_profiles:register' %}">Join now</a></li>
+		<li><a href="{% url 'login' %}">Sign in</a></li>
+		<li><a href="{% url 'home' %}">Just learn</a></li>
+	</ul>
+</div>
+{% endblock %}
