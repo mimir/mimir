@@ -1,5 +1,17 @@
-<h1>Welcome to Mimir</h1>
-<h3>A new way to learn online</h3>
-<a href="{% url 'user_profiles:register' %}">Join now</a>
-<a href="{% url 'login' %}">Sign in</a>
-<a href="{% url 'home' %}">Just learn</a>
+<!DOCTYPE html>
+<head lang="en">
+	<link rel="stylesheet" type="text/css" href="/static/default.css">
+</head>
+
+<body>
+	<h1>Welcome to Mimir</h1>
+	<h3>A new way to learn online</h3>
+	
+	<div id="nav">
+		<ul>
+			<li><a href="{% url 'user_profiles:register' %}">Join now</a></li>
+			<li><a href="{% url 'login' %}">Sign in</a></li>
+			<li><a href="{% url 'home' %}">Just learn</a></li>
+		</ul>
+	</div>
+</body>
