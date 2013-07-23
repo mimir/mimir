@@ -6,7 +6,7 @@
 {% if latest_lesson_list %}
     <ul>
     {% for lesson in latest_lesson_list %}
-        <li><a href="{% url 'lessons:read' lesson.id %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
+        <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
     {% endfor %}
     </ul>
 {% else %}
