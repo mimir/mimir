@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 
 # Create your models here.
 class Lesson(models.Model):
-    name = models.CharField(max_length = 100)
+    name = models.CharField(max_length = 100, unique = True)
     tutorial = models.TextField()
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
