@@ -138,4 +138,4 @@ LOGGING = {
     }
 }
 
-from settings_local import *
+from mimir.settings_local import *
