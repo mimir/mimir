@@ -65,7 +65,14 @@ div#nav a:hover,div#nav a:active
 {
 	background-color:#378A14;
 }
-	
+
+div#question
+{
+	border:2px solid;
+	border-radius:25px;
+	text-indent:20px;
+}	
+
 p	
 {    
 	text-indent:20px;        
