@@ -18,19 +18,6 @@ LOGIN_REDIRECT_URL = '/home/'
 
 LOGOUT_REDIRECT_URL = '/'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
-        # TODO: Possibly change to use mysql
-        'NAME': '/home/ec2-user/mimir.db',                      # Or path to database file if using sqlite3.
-        # The following settings are not used with sqlite3:
-        'USER': '',
-        'PASSWORD': '',
-        'HOST': '',                      # Empty for localhost through domain sockets or '127.0.0.1' for localhost through TCP.
-        'PORT': '',                      # Set to empty string for default.
-    }
-}
-
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = []
@@ -77,13 +64,6 @@ STATIC_ROOT = ''
 # Example: "http://example.com/static/", "http://static.example.com/"
 STATIC_URL = '/static/'
 
-# Additional locations of static files
-STATICFILES_DIRS = (
-    # Put strings here, like "/home/html/static" or "C:/www/django/static".
-    # Always use forward slashes, even on Windows.
-    # Don't forget to use absolute paths, not relative paths.
-)
-
 # List of finder classes that know how to find static files in
 # various locations.
 STATICFILES_FINDERS = (
@@ -91,9 +71,6 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 #    'django.contrib.staticfiles.finders.DefaultStorageFinder',
 )
-
-# Make this unique, and don't share it with anybody.
-SECRET_KEY = 'j24!gh6m1+)!*dh*!t+b$##ftuukbx3i3iy0i+^^qt0^1xivyb'
 
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
@@ -116,13 +93,6 @@ ROOT_URLCONF = 'mimir.urls'
 
 # Python dotted path to the WSGI application used by Django's runserver.
 WSGI_APPLICATION = 'mimir.wsgi.application'
-
-TEMPLATE_DIRS = (
-    # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
-    # Always use forward slashes, even on Windows.
-    # Don't forget to use absolute paths, not relative paths.
-    '/home/ec2-user/mimir/templates',
-)
 
 INSTALLED_APPS = (
     'django.contrib.auth',
@@ -167,3 +137,5 @@ LOGGING = {
         },
     }
 }
+
+from settings_local import *
