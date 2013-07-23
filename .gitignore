@@ -2,4 +2,4 @@
 *.pot
 *.pyc
 *.swp
-local_settings.py
+settings_local.py
