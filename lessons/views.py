@@ -4,6 +4,9 @@ from django.http import HttpResponse, Http404
 from lessons.models import Lesson, Example, Question
 from user_profiles.models import UserTakesLesson
 
+from lessons.generate import generateQuestion
+from random import random
+
 def index(request):
     latest_lesson_list = Lesson.objects.all()[:5]
     context = ({
@@ -23,8 +26,11 @@ def read(request, lesson_id):
 
 def question(request, lesson_id, question_id):
     try:
-        question = Question.objects.get(pk = question_id)
-        context = ({'question': question,})
+		question = Question.objects.get(pk = question_id)
+		pair = generateQuestion(random(), question.question, question.calculation)
+		question.question = pair[0]
+		question.answer = pair[1]
+		context = ({'question': question,})
     except Question.DoesNotExist:
         raise Http404
     return render(request, 'lessons/question.html', context)
