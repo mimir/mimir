@@ -13,10 +13,10 @@ def index(request):
     })
     return render(request, 'user_profiles/index.html', context)
 
-def view(request, user_id):
+def view(request, user_name):
     try:
-        cur_user = User.objects.get(id = user_id)
-        cur_user_p = UserProfile.objects.get(user__id = user_id)
+        cur_user = User.objects.get(username = user_name)
+        cur_user_p = UserProfile.objects.get(user__id = cur_user.pk)
         context = ({'cur_user': cur_user, 'cur_user_p': cur_user_p,})
     except UserProfile.DoesNotExist:
         raise Http404

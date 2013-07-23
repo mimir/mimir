@@ -6,7 +6,7 @@
     <h2>Users</h2>
     <ul>
     {% for user in user_list %}
-        <li><a href="{% url 'user_profiles:view' user.id %}">{{ user.username }}</a></li>
+        <li><a href="{% url 'user_profiles:view' user.username %}">{{ user.username }}</a></li>
     {% endfor %}
     </ul>
 {% else %}
