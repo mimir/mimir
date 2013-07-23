@@ -8,9 +8,9 @@ variable_regex = r"\$\[\w+,\d+,\d+\]"
 def rand(seed, type, lower, upper): #Generates random values from a seed
     random.seed(seed)
     if type == "INT":
-        return random.randint(lower, upper)
+        return float(random.randint(lower, upper))
     elif type == "DEC":
-        return lower + (random.random()*(upper-lower))
+        return float(lower + (random.random()*(upper-lower)))
     else:
         return 0
 
