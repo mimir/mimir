@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.http import HttpResponse, Http404, HttpResponseRedirect
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout
 
 from user_profiles.models import UserProfile
 from user_profiles.forms import UserCreationForm
@@ -23,6 +23,7 @@ def view(request, user_id):
     return render(request, 'user_profiles/view.html', context)
 
 def register(request):
+    logout(request)
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
         if form.is_valid():
