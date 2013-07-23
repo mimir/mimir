@@ -19,9 +19,9 @@
     {% else %}
         <p>No questions for this lesson.</p>
     {% endif %}
-	<h4>Next Lessons</h4>
+    <h4>Next Lessons</h4>
     {% if next_lessons %}
-		<ul>
+        <ul>
         {% for lesson in next_lessons %}
             <li><a href="{% url 'lessons:read' lesson.leads_to.id %}">{{ lesson.leads_to.name }}</a></li>
         {% endfor %}
@@ -29,7 +29,6 @@
     {% else %}
         <p>No Follow up lessons, I am really sorry and hope that you can find it in your hearts of hearts to forgive me. :( (a)</p>
     {% endif %}
-	
 {% else %}
     <p>Lesson not working.</p>
 {% endif %}

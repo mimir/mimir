@@ -27,11 +27,11 @@ def read(request, lesson_id):
 
 def question(request, lesson_id, question_id):
     try:
-		question = Question.objects.get(pk = question_id)
-		pair = generateQuestion(random(), question.question, question.calculation)
-		question.question = pair[0]
-		question.answer = pair[1]
-		context = ({'question': question,})
+        question = Question.objects.get(pk = question_id)
+        pair = generateQuestion(random(), question.question, question.calculation)
+        question.question = pair[0]
+        question.answer = pair[1]
+        context = ({'question': question,})
     except Question.DoesNotExist:
         raise Http404
     return render(request, 'lessons/question.html', context)

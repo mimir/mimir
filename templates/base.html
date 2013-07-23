@@ -10,27 +10,27 @@
 </head>
 
 <body>
-	<div id="header">
-		<h1>Mimir: A new way to learn online</h1>
-		{% if user.is_authenticated %}
-			<p>Welcome, <a href="{% url 'user_profiles:view' user.id %}">{{ user.username }}</a> <a href="{%url 'logout' %}">(log out)</a>.</p>
-		{% else %}
-			<p>Please <a href="{% url 'login' %}">log in</a>, or <a href="{% url 'user_profiles:register' %}">sign up</a>.
-		{% endif %}
+    <div id="header">
+    <h1>Mimir: A new way to learn online</h1>
+        {% if user.is_authenticated %}
+            <p>Welcome, <a href="{% url 'user_profiles:view' user.id %}">{{ user.username }}</a> <a href="{%url 'logout' %}">(log out)</a>.</p>
+        {% else %}
+            <p>Please <a href="{% url 'login' %}">log in</a>, or <a href="{% url 'user_profiles:register' %}">sign up</a>.
+        {% endif %}
 
-		<div id="nav">
-			<ul>
-				<li><a href="/home/">Home</a></li>
-				<li><a href="http://mimirteam.wordpress.com">Blog</a></li>
-				<li><a href="/lessons/">Lessons</a></li>
-				{% if user.is_authenticated %}
-					<li><a href="{% url 'user_profiles:view' user.id %}">My Profile</a></li>
-					<li><a href="/skills/">My skill tree</a></li>
-					<li><a href="/users/">Users</a></li>
-				{% endif %}
-			</ul>
-		</div>
-	</div>
+        <div id="nav">
+            <ul>
+                <li><a href="/home/">Home</a></li>
+                <li><a href="http://mimirteam.wordpress.com">Blog</a></li>
+                <li><a href="/lessons/">Lessons</a></li>
+                {% if user.is_authenticated %}
+                    <li><a href="{% url 'user_profiles:view' user.id %}">My Profile</a></li>
+                    <li><a href="/skills/">My skill tree</a></li>
+                    <li><a href="/users/">Users</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
 
     <div id="content">
         {% block content %}
