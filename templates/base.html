@@ -13,7 +13,7 @@
     <div id="header">
     <h1>Mimir: A new way to learn online</h1>
         {% if user.is_authenticated %}
-            <p>Welcome, <a href="{% url 'user_profiles:view' user.id %}">{{ user.username }}</a> <a href="{%url 'logout' %}">(log out)</a>.</p>
+            <p>Welcome, <a href="{% url 'user_profiles:view' user.username %}">{{ user.username }}</a> <a href="{%url 'logout' %}">(log out)</a>.</p>
         {% else %}
             <p>Please <a href="{% url 'login' %}">log in</a>, or <a href="{% url 'user_profiles:register' %}">sign up</a>.
         {% endif %}
