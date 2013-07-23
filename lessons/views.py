@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse, Http404
 
-from lessons.models import Lesson, Example, Question
+from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
 from user_profiles.models import UserTakesLesson
 
 from lessons.generate import generateQuestion
@@ -19,7 +19,8 @@ def read(request, lesson_id):
         lesson = Lesson.objects.get(pk = lesson_id)
         example_list = Example.objects.filter(lesson__id = lesson_id)
         first_question = Question.objects.filter(lesson__id = lesson_id)[0]
-        context = ({'lesson': lesson,'example_list':example_list,'first_question':first_question,})
+        next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
+        context = ({'lesson': lesson,'example_list':example_list,'first_question':first_question,'next_lessons':next_lessons,})
     except Lesson.DoesNotExist:
         raise Http404
     return render(request, 'lessons/read.html', context)
