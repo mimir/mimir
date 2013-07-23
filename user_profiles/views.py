@@ -18,7 +18,7 @@ def view(request, user_name):
         cur_user = User.objects.get(username = user_name)
         cur_user_p = UserProfile.objects.get(user__id = cur_user.pk)
         context = ({'cur_user': cur_user, 'cur_user_p': cur_user_p,})
-    except UserProfile.DoesNotExist:
+    except User.DoesNotExist, UserProfile.DoesNotExist:
         raise Http404
     return render(request, 'user_profiles/view.html', context)
 
