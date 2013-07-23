@@ -2,11 +2,11 @@
 
 {% block content %}
 
-<div id=question>
-	<h2>{{ question.lesson.name }}</h2>
+<div id="question">
 {% if question %}
-	<p>{{ question.question }}</p>
-	<p>Answer: \({{question.answer}}\)</p>
+    <h2>{{ question.lesson.name }}</h2>
+    <p>{{ question.question }}</p>
+    <p>Answer: \({{ question.answer }}\)</p>
 {% else %}
     <p>Question not working.</p>
 {% endif %}
