@@ -38,7 +38,7 @@ def profile(request): #Users own profile page
             percentage = "- "
         else:
             num_correct = len(questions.filter(correct = True))
-            percentage = num_correct/num_answered * 100
+            percentage = float(num_correct)/float(num_answered) * 100
         context = ({'cur_user': request.user, 'cur_user_p': cur_user_p, 'num_lessons': num_lessons, 'unique_lessons': unique_lessons, 'num_answered': num_answered, 'percent_correct': percentage})
     except User.DoesNotExist, UserProfile.DoesNotExist:
         raise Http404
