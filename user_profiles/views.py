@@ -16,6 +16,8 @@ def index(request):
 def view(request, user_name):
     try:
         cur_user = User.objects.get(username = user_name)
+        if request.user == cur_user: #If the user they look at is themselves, redirect to their profile page
+			return HttpResponseRedirect("/profile/")
         cur_user_p = UserProfile.objects.get(user__id = cur_user.pk)
         context = ({'cur_user': cur_user, 'cur_user_p': cur_user_p,})
     except User.DoesNotExist, UserProfile.DoesNotExist:

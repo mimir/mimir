@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if cur_user %}
+	<div id=profile>
+		<h2>Personal Details</h2>
+		<p><img src="http://www.gravatar.com/avatar/{{ cur_user_p.gravatar_hash }}?s=64&d=identicon" /> {# TODO maybe https?! #}
+		{{ cur_user.first_name }} {{ cur_user.last_name}} ({{ cur_user.username }})</p>
+		<p>Website: <a href="{{ cur_user_p.website }}">{{ cur_user_p.website }}</a></p>
+		<p>Joined: {{ cur_user.date_joined }}</p>
+		<p>About: {{ cur_user_p.about }}</p>
+	</div>
+	<div id=full_stats>
+		<h2>Statistics</h2>
+		<p>Lessons Taken: {{num_lessons}}</p>
+		<p>Unique Lessons Taken: {{unique_lessons}}</p>
+		<p>Questions Answered: {{num_answered}}</p>
+		<p>Percent Correct: {{percent_correct}}%</p>
+		<p>Most Common Mistakes</p>
+	</div>
+	<div id=activity>
+		<h2>Activity Graph</h2>
+	</div>
+{% else %}
+    <p>User profile not working.</p>
+{% endif %}
+
+{% endblock %}

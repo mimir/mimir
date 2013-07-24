@@ -24,8 +24,8 @@
                 <li><a href="http://mimirteam.wordpress.com">Blog</a></li>
                 <li><a href="/lessons/">Lessons</a></li>
                 {% if user.is_authenticated %}
-                    <li><a href="{% url 'user_profiles:view' user.username %}">My Profile</a></li>
-                    <li><a href="/skills/">My skill tree</a></li>
+                    <li><a href="/profile/">Profile</a></li>
+                    <li><a href="/skills/">Skill Tree</a></li>
                     <li><a href="/users/">Users</a></li>
                 {% endif %}
             </ul>

@@ -16,6 +16,16 @@ h2
 	text-align:left;    
 }
 
+p	
+{    
+	text-indent:20px;        
+}
+
+a:link,a:visited
+{
+	color:#FFFFFF
+}
+
 div#header p
 {
 	text-align:right;
@@ -71,14 +81,26 @@ div#question
 	border:2px solid;
 	border-radius:25px;
 	text-indent:20px;
-}	
-
-p	
-{    
-	text-indent:20px;        
 }
 
-a:link,a:visited
+div#profile
 {
-	color:#FFFFFF
+	border:2px solid;
+	border-radius:25px;
+	text-indent:20px;
 }
+
+div#full_stats
+{
+	border:2px solid;
+	border-radius:25px;
+	text-indent:20px;
+}
+
+div#activity
+{
+	border:2px solid;
+	border-radius:25px;
+	text-indent:20px;
+}
+

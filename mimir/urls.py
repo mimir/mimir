@@ -21,4 +21,5 @@ urlpatterns = patterns('',
     url(r'^$', 'mimir.views.splash'),
     url(r'^skills/$', 'lessons.views.skill_tree'),
     url(r'^home/$', 'mimir.views.index', name = 'home'),
+	url(r'^profile/$', 'mimir.views.profile'),
 )
