@@ -17,12 +17,15 @@ def index(request):
 def read(request, lesson_name):
     try:
         lesson = Lesson.objects.get(name__iexact = lesson_name.replace("_", " "))
-        example_list = Example.objects.filter(lesson__id = lesson.pk)
-        first_question = Question.objects.filter(lesson__id = lesson.pk)[0]
-        next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
-        context = ({'lesson': lesson,'example_list':example_list,'first_question':first_question,'next_lessons':next_lessons,})
     except Lesson.DoesNotExist:
         raise Http404
+    example_list = Example.objects.filter(lesson__id = lesson.pk)
+    try:
+        first_question = Question.objects.filter(lesson__id = lesson.pk)[0]
+    except IndexError:
+        first_question = []
+    next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
+    context = ({'lesson': lesson,'example_list':example_list,'first_question':first_question,'next_lessons':next_lessons,})
     return render(request, 'lessons/read.html', context)
 
 def question(request, lesson_name, question_id):
