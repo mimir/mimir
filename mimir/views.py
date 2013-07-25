@@ -9,12 +9,21 @@ from django.contrib.auth.models import User
 def index(request):
     if request.user.is_authenticated():
         curuser = request.user
-        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser)[:5] #Gets five lessons that have been taken by the user
+        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser).distinct() #Gets five lessons that have been taken by the user
         #TODO make the above line get the most recent five.
+        #temp_1 = []
+        #for lesson in user_lessons
+        #    temp_2 = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson)
+        #    for follow in temp_2
+        #        if follow.leads_to not in user_lessons
+        #            if follow.leads_to in temp_1[]            
+        whats_next = []
+        user_lessons = user_lessons[5:]
     else:
         user_lessons = []
+        whats_next = []
     context = ({
-        'user_lessons':user_lessons,
+        'user_lessons':user_lessons, 'whats_next':whats_next,
     })
     return render(request, 'home.html', context)
 
