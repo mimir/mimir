@@ -8,7 +8,7 @@ from lessons.generate import generateQuestion
 from random import random
 
 def index(request):
-    latest_lesson_list = Lesson.objects.all()[:5]
+    latest_lesson_list = Lesson.objects.all()
     context = ({
         'latest_lesson_list':latest_lesson_list,
     })
@@ -39,8 +39,7 @@ def question(request, lesson_name, question_id):
 def skill_tree(request):
     if request.user.is_authenticated():
         curuser = request.user
-        skill_tree = Lesson.objects.filter(usertakeslesson__user = curuser) #Gets all lessons that have been taken by the user
-        #TODO make the above line have each lesson appear only once, also make the skill tree a tree...
+        skill_tree = Lesson.objects.all()
     context = ({
         'skill_tree':skill_tree,
     })
