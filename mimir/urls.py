@@ -23,7 +23,7 @@ urlpatterns = patterns('',
     url(r'^$', 'mimir.views.splash'),
     url(r'^skills/$', 'lessons.views.skill_tree'),
     url(r'^home/$', 'mimir.views.index', name = 'home'),
-	url(r'^profile/$', 'mimir.views.profile'),
+    url(r'^profile/$', 'user_profiles.views.profile', name = 'profile'),
     url(r'^myskills/$', 'mimir.views.myskills', name = 'myskills'),
     url(r'^whatsnext/$', 'mimir.views.whatsnext', name = 'whatsnext'),
 )
