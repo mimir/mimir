@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.contrib.auth import authenticate, login, logout
+from django.core.urlresolvers import reverse
 
 from user_profiles.models import UserProfile
 from user_profiles.forms import UserCreationForm, UserProfileForm

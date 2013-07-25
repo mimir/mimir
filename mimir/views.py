@@ -5,6 +5,7 @@ from django.http import HttpResponse, Http404, HttpResponseRedirect
 from lessons.models import Lesson, LessonFollowsFromLesson
 from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
 from django.contrib.auth.models import User
+from django.core.urlresolvers import reverse
 from django.db.models import Count
 import json
 import string
@@ -84,8 +85,9 @@ def profile(request): #Users own profile page
 
 def whatsnext(request):
     if request.user.is_authenticated():
-        return HttpResponseRedirect("/home/")
-    return render(request, 'splash.html')
+        return render(request, 'next.html', context)
+    else :
+        return HttpResponseRedirect(reverse('lessons:index'))
     
 def myskills(request):
     if request.user.is_authenticated():
