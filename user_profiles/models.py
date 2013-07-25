@@ -21,6 +21,8 @@ class UserTakesLesson(models.Model):
     RATING_CHOICES = [(i+1,i+1) for i in range(10)]
     rating = models.PositiveSmallIntegerField(choices = RATING_CHOICES, default = 0)
     comment = models.CharField(max_length = 250, blank=True)
+    class Meta:
+        ordering = ['date']
     def __unicode__(self):
         return self.user.username + " " + self.lesson.name
 
