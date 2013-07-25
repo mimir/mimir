@@ -27,7 +27,7 @@ def splash(request):
     if request.user.is_authenticated():
         return HttpResponseRedirect("/home/")
     return render(request, 'splash.html')
-
+    
 def profile(request): #Users own profile page
     try: #Should really add checks to ensure none authenticated users cannot access the page or are redirected to a register/sign in page
         cur_user_p = UserProfile.objects.get(user__id = request.user.pk) #Get their profile
@@ -81,3 +81,19 @@ def profile(request): #Users own profile page
     except User.DoesNotExist, UserProfile.DoesNotExist:
         raise Http404
     return render(request, 'profile.html', context)
+
+def whatsnext(request):
+    if request.user.is_authenticated():
+        return HttpResponseRedirect("/home/")
+    return render(request, 'splash.html')
+    
+def myskills(request):
+    if request.user.is_authenticated():
+        curuser = request.user
+        user_lessons = UserTakesLesson.objects.filter(user = curuser).order_by('-date')
+        context = ({
+            'user_lessons':user_lessons, 
+        })
+        return render(request, 'skills.html', context)
+    else :
+        return HttpResponseRedirect("/home/")

@@ -55,6 +55,7 @@ class LessonFollowsFromLesson(models.Model):
 
     class Meta:
         unique_together = ("leads_to", "leads_from")
+        ordering = ['-strength']
 
     def __unicode__(self):
         return self.leads_from.name + " leads to " + self.leads_to.name
