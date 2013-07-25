@@ -2,23 +2,15 @@ from django import forms
 from django.shortcuts import render
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 
-from lessons.models import Lesson
+from lessons.models import Lesson, LessonFollowsFromLesson
 from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
 from django.contrib.auth.models import User
 
 def index(request):
     if request.user.is_authenticated():
         curuser = request.user
-        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser).distinct() #Gets five lessons that have been taken by the user
-        #TODO make the above line get the most recent five.
-        #temp_1 = []
-        #for lesson in user_lessons
-        #    temp_2 = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson)
-        #    for follow in temp_2
-        #        if follow.leads_to not in user_lessons
-        #            if follow.leads_to in temp_1[]            
-        whats_next = []
-        user_lessons = user_lessons[5:]
+        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser).distinct()[:5] #Gets five lessons that have been taken by the user
+        whats_next = Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = request.user).exclude(usertakeslesson__user = request.user).distinct().order_by('?')[:5]
     else:
         user_lessons = []
         whats_next = []
