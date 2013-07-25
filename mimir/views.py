@@ -85,6 +85,12 @@ def profile(request): #Users own profile page
 
 def whatsnext(request):
     if request.user.is_authenticated():
+        curuser = request.user
+        whats_next = Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = request.user).exclude(usertakeslesson__user = request.user).distinct().order_by('?')[:5]
+        lessons_left = Lesson.objects.all().exclude(usertakeslesson__user = curuser).exclude(preparation__leads_from__usertakeslesson__user = request.user)
+        context = ({
+            'whats_next':whats_next, 'lessons_left':lessons_left
+        })
         return render(request, 'next.html', context)
     else:
         return HttpResponseRedirect(reverse('lessons:index'))
