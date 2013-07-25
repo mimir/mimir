@@ -15,8 +15,9 @@ urlpatterns = patterns('',
 
     # Uncomment the next line to enable the admin:
     url(r'^admin/', include(admin.site.urls)),
-    url(r'^users/login/$', 'django.contrib.auth.views.login', name = 'login'),
-    url(r'^users/logout/$', 'django.contrib.auth.views.logout', {'next_page': '/'}, name = 'logout'),
+    url(r'^login/$', 'django.contrib.auth.views.login', name = 'login'),
+    url(r'^logout/$', 'django.contrib.auth.views.logout', {'next_page': '/'}, name = 'logout'),
+    url(r'^register/$', 'user_profiles.views.register', name = 'register'),
     url(r'^users/', include('user_profiles.urls', namespace = 'user_profiles')),
     url(r'^$', 'mimir.views.splash'),
     url(r'^skills/$', 'lessons.views.skill_tree'),
