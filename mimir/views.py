@@ -86,7 +86,7 @@ def profile(request): #Users own profile page
 def whatsnext(request):
     if request.user.is_authenticated():
         return render(request, 'next.html', context)
-    else :
+    else:
         return HttpResponseRedirect(reverse('lessons:index'))
     
 def myskills(request):
