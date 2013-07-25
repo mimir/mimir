@@ -12,8 +12,10 @@
     {% endfor %}
     </ul>
     <h4>Whats Next</h4>
+    <ul>
     {% for lesson in whats_next %}
         <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
     {% endfor %}
+    </ul>
 {% endif %}
 {% endblock %}
