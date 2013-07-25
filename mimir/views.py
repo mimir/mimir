@@ -2,10 +2,8 @@ from django import forms
 from django.shortcuts import render
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 
-from lessons.models import Lesson
-from user_profiles.models import UserProfile
-from user_profiles.models import UserTakesLesson
-from user_profiles.models import UserAnswersQuestion
+from lessons.models import Lesson, LessonFollowsFromLesson
+from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
 from django.contrib.auth.models import User
 from django.db.models import Count
 import json
@@ -15,12 +13,13 @@ import datetime, time, calendar
 def index(request):
     if request.user.is_authenticated():
         curuser = request.user
-        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser)[:5] #Gets five lessons that have been taken by the user
-        #TODO make the above line get the most recent five.
+        user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser).distinct()[:5] #Gets five lessons that have been taken by the user
+        whats_next = Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = request.user).exclude(usertakeslesson__user = request.user).distinct().order_by('?')[:5]
     else:
         user_lessons = []
+        whats_next = []
     context = ({
-        'user_lessons':user_lessons,
+        'user_lessons':user_lessons, 'whats_next':whats_next,
     })
     return render(request, 'home.html', context)
 
@@ -37,15 +36,16 @@ def profile(request): #Users own profile page
         
         #Calculate question stuff
         num_answered = len(questions)
+        num_lessons = lessons.count()
+        unique_lessons = lessons.values("lesson").distinct().count() #This may or may not work
+        num_answered = questions.count()
+        
         percentage = None #Percent correct
         if num_answered == 0: #Prevent division by 0
             percentage = " - "
         else:
-            num_correct = len(questions.filter(correct = True))
+            num_correct = questions.filter(correct = True).count()
             percentage = float(num_correct)/float(num_answered) * 100
-        
-        num_lessons = len(lessons)
-        unique_lessons = len(lessons.values("lesson").distinct())
 
         #Convert the queries to lists so that they can be manipulated for graphing
         lessons = list(lessons.values("date").order_by().annotate(Count('date'))) #The count is essentially useless, should really remove

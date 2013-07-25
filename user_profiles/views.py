@@ -3,7 +3,7 @@ from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.contrib.auth import authenticate, login, logout
 
 from user_profiles.models import UserProfile
-from user_profiles.forms import UserCreationForm
+from user_profiles.forms import UserCreationForm, UserProfileForm
 from django.contrib.auth.models import User
 
 def index(request):
@@ -34,13 +34,28 @@ def register(request):
             password = request.POST['password1']
             user = authenticate(username=username, password=password)
             login(request, user)
-            import hashlib
-            hash = hashlib.md5(request.POST['email'].strip().lower()).hexdigest()
-            userp = UserProfile(user_id = user.id, gravatar_hash = hash, about = request.POST['about'], website = request.POST['website'])
+            userp = UserProfile.objects.get(user_id = user.id)
+            userp.about = request.POST['about']
+            userp.website = request.POST['website']
             userp.save()
             return HttpResponseRedirect("/home/")
     else:
         form = UserCreationForm()
     return render(request, "user_profiles/register.html", {
+        'form': form,
+    })
+
+def edit(request):
+    if not request.user.is_authenticated():
+        return HttpResponseRedirect(reverse('login'))
+    user_profile = UserProfile.objects.get(user__id = request.user.pk)
+    if request.method == 'POST':
+        form = UserProfileForm(request.POST, instance=user_profile)
+        if form.is_valid():
+            form.save()
+            return HttpResponseRedirect("/home/")
+    else:
+        form = UserProfileForm(instance = user_profile)
+    return render(request, "user_profiles/edit.html", {
         'form': form,
     })
