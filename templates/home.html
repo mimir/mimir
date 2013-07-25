@@ -5,13 +5,13 @@
 <p>Inline math test: \( \left( \frac{a}{b} \right) ^{2} \)</p>
 
 {% if user_lessons %}
-    <h4>My Skills</h4>
+    <h4><a href="{% url 'myskills' %}">My Skills</a></h4>
     <ul>
     {% for lesson in user_lessons %}
         <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
     {% endfor %}
     </ul>
-    <h4>Whats Next</h4>
+    <h4><a href="{% url 'whatsnext' %}">What's Next</a></h4>
     <ul>
     {% for lesson in whats_next %}
         <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
