@@ -1,6 +1,6 @@
-from django.shortcuts import render
-from django.http import HttpResponse, Http404
-
+from django.shortcuts import render, get_object_or_404
+from django.http import HttpResponse, Http404, HttpResponseRedirect
+from django.core.urlresolvers import reverse
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
 from user_profiles.models import UserTakesLesson
 
@@ -15,28 +15,29 @@ def index(request):
     return render(request, 'lessons/index.html', context)
 
 def read(request, lesson_name):
-    try:
-        lesson = Lesson.objects.get(name__iexact = lesson_name.replace("_", " "))
-    except Lesson.DoesNotExist:
-        raise Http404
-    try:
-        first_question = Question.objects.filter(lesson__id = lesson.pk)[0]
-    except IndexError:
-        first_question = []
+    lesson = get_object_or_404(Lesson, name__iexact = lesson_name.replace("_", " "))
     next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
-    context = ({'lesson': lesson,'first_question':first_question,'next_lessons':next_lessons,})
+    questions_exist = Question.objects.filter(lesson = lesson).exists()
+    context = ({'lesson': lesson,'next_lessons':next_lessons,'questions_exist':questions_exist,})
     return render(request, 'lessons/read.html', context)
 
 def question(request, lesson_name, question_id):
-    try:
-        question = Question.objects.get(pk = question_id)
+    question = get_object_or_404(Question, pk = question_id)
+    pair = generateQuestion(random(), question.question, question.calculation)
+    question.question = pair[0]
+    question.answer = pair[1]
+    return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),})
+
+def rand_question(request, lesson_name):
+    lesson = get_object_or_404(Lesson, name__iexact = lesson_name.replace("_", " "))
+    question_l = list(Question.objects.filter(lesson = lesson).order_by('?')[:1])
+    if question_l:
+        question = question_l[0]
         pair = generateQuestion(random(), question.question, question.calculation)
         question.question = pair[0]
         question.answer = pair[1]
-        context = ({'question': question,})
-    except Question.DoesNotExist:
-        raise Http404
-    return render(request, 'lessons/question.html', context)
+        return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),})
+    return HttpResponseRedirect(reverse('lessons:read', args=[lesson_name]))
 
 def skill_tree(request):
     if request.user.is_authenticated():

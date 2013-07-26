@@ -19,8 +19,8 @@
     {% else %}
         <p>No worked examples are available for this lesson.</p>
     {% endif %}
-    {% if first_question %}
-        <a href="{% url 'lessons:question' lesson_name=lesson.name.split|join:'_' question_id=first_question.id %}">Test me</a>
+    {% if questions_exist %}
+        <a href="{% url 'lessons:rand_question' lesson_name=lesson.name.split|join:'_' %}">Test me</a>
     {% else %}
         <p>No questions for this lesson.</p>
     {% endif %}
