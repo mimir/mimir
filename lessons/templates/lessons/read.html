@@ -52,14 +52,16 @@ $(function() {
         <p>No worked examples are available for this lesson.</p>
     {% endif %}
 
-    <p>Enjoyed the lesson? Anything you would change? Let us know by rating it. {# TODO extend all this to include comments and lay it out nicely #}
-    <input type="radio" onclick="rating=this.value" value="1" name="rate">1
-    <input type="radio" onclick="rating=this.value" value="2" name="rate">2
-    <input type="radio" onclick="rating=this.value" value="3" name="rate">3
-    <input type="radio" onclick="rating=this.value" value="4" name="rate">4
-    <input type="radio" onclick="rating=this.value" value="5" name="rate">5
-    <input type="button" value="Rate" id="rate">
-    </p>
+    {% if user.is_authenticated %}
+        <p>Enjoyed the lesson? Anything you would change? Let us know by rating it. {# TODO extend all this to include comments and lay it out nicely #}
+        <input type="radio" onclick="rating=this.value" value="1" name="rate">1
+        <input type="radio" onclick="rating=this.value" value="2" name="rate">2
+        <input type="radio" onclick="rating=this.value" value="3" name="rate">3
+        <input type="radio" onclick="rating=this.value" value="4" name="rate">4
+        <input type="radio" onclick="rating=this.value" value="5" name="rate">5
+        <input type="button" value="Rate" id="rate">
+        </p>
+    {% endif %}
 
     {% if questions_exist %}
         <a href="{% url 'lessons:rand_question' lesson_name=lesson.name.split|join:'_' %}">Test me</a>
