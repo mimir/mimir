@@ -1,5 +1,37 @@
 {% extends "base.html" %}
 
+{% block head %}
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.3.1/jquery.cookie.min.js"></script> {# TODO look into other CDNs #}
+<script type="text/javascript" charset="utf-8">
+var rating = 0;
+function csrfSafeMethod(method) {
+    // these HTTP methods do not require CSRF protection
+    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+}
+$(function() {
+    var csrftoken = $.cookie('csrftoken');
+    $.ajaxSetup({
+        crossDomain: false, // obviates need for sameOrigin test
+        beforeSend: function(xhr, settings) {
+            if (!csrfSafeMethod(settings.type)) {
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+            }
+        }
+    });
+    
+    $('#rate').click(function() {
+    if (rating != 0)
+    {
+        $.ajax({
+            type: "POST",
+            url: "{% url 'lessons:rate_lesson' lesson.id %}",
+            data: ({rating: rating, comment: "",}),
+        })
+    }
+});})
+</script>
+{% endblock %}
+
 {% block content %}
 
 {% if lesson %}
@@ -19,11 +51,22 @@
     {% else %}
         <p>No worked examples are available for this lesson.</p>
     {% endif %}
+
+    <p>Enjoyed the lesson? Anything you would change? Let us know by rating it. {# TODO extend all this to include comments and lay it out nicely #}
+    <input type="radio" onclick="rating=this.value" value="1" name="rate">1
+    <input type="radio" onclick="rating=this.value" value="2" name="rate">2
+    <input type="radio" onclick="rating=this.value" value="3" name="rate">3
+    <input type="radio" onclick="rating=this.value" value="4" name="rate">4
+    <input type="radio" onclick="rating=this.value" value="5" name="rate">5
+    <input type="button" value="Rate" id="rate">
+    </p>
+
     {% if questions_exist %}
         <a href="{% url 'lessons:rand_question' lesson_name=lesson.name.split|join:'_' %}">Test me</a>
     {% else %}
         <p>No questions for this lesson.</p>
     {% endif %}
+
     <h4>Next Lessons</h4>
     {% if next_lessons %}
         <ul>

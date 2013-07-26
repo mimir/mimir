@@ -6,6 +6,7 @@ from user_profiles.models import UserTakesLesson
 
 from lessons.generate import generateQuestion
 from random import random
+import datetime
 
 def index(request):
     latest_lesson_list = Lesson.objects.all()
@@ -19,7 +20,22 @@ def read(request, lesson_name):
     next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
     questions_exist = Question.objects.filter(lesson = lesson).exists()
     context = ({'lesson': lesson,'next_lessons':next_lessons,'questions_exist':questions_exist,})
+    if request.user.is_authenticated():
+        if not UserTakesLesson.objects.filter(user = request.user).filter(lesson = lesson).filter(date__gt = datetime.datetime.now() - datetime.timedelta(hours=1)).exists():
+            user_takes = UserTakesLesson(user=request.user,lesson=lesson)
+            user_takes.save()
     return render(request, 'lessons/read.html', context)
+
+def rate_lesson(request, lesson_id):
+    if request.user.is_authenticated():
+        p = request.POST
+        if "rating" in p or "comment" in p:
+            user_takes_lesson = list(UserTakesLesson.objects.filter(lesson__id = lesson_id, user = request.user).order_by('-date')[:1])
+            if user_takes_lesson:
+                user_takes_lesson[0].rating = int(p["rating"]) #TODO make this properly handle non-integer ratings so that people can't break the site by submitting funny POST requests to it.
+                user_takes_lesson[0].comment = p["comment"] #TODO implement this in the template and as above make sure no nasties can be placed in comments
+                user_takes_lesson[0].save()
+    return HttpResponse('')
 
 def question(request, lesson_name, question_id):
     question = get_object_or_404(Question, pk = question_id)

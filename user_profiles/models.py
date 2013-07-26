@@ -18,7 +18,7 @@ class UserTakesLesson(models.Model):
     user = models.ForeignKey(User)
     lesson = models.ForeignKey(Lesson)
     date = models.DateTimeField(auto_now_add = True) #Creation date set on adding
-    RATING_CHOICES = [(i+1,i+1) for i in range(10)]
+    RATING_CHOICES = [(i,i) for i in range(10)]
     rating = models.PositiveSmallIntegerField(choices = RATING_CHOICES, default = 0)
     comment = models.CharField(max_length = 250, blank=True)
     class Meta:
