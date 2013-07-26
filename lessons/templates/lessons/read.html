@@ -10,9 +10,9 @@
         <i>Material taken from <a href="{{ ref.reference.url}}">{{ ref.reference.name}}</a> by {{ ref.reference.author}}</i><br />
     {% endfor %}
 	
-    {% if example_list %}
+    {% if lesson.example_set.all %}
         <h3>Worked examples</h3>
-        {% for example in example_list %}
+        {% for example in lesson.example_set.all %}
             <p>Problem: {{ example.problem }}</p>
             <p>Solution: {{ example.solution }}</p>
         {% endfor %}

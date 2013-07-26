@@ -19,13 +19,12 @@ def read(request, lesson_name):
         lesson = Lesson.objects.get(name__iexact = lesson_name.replace("_", " "))
     except Lesson.DoesNotExist:
         raise Http404
-    example_list = Example.objects.filter(lesson__id = lesson.pk)
     try:
         first_question = Question.objects.filter(lesson__id = lesson.pk)[0]
     except IndexError:
         first_question = []
     next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
-    context = ({'lesson': lesson,'example_list':example_list,'first_question':first_question,'next_lessons':next_lessons,})
+    context = ({'lesson': lesson,'first_question':first_question,'next_lessons':next_lessons,})
     return render(request, 'lessons/read.html', context)
 
 def question(request, lesson_name, question_id):
@@ -42,8 +41,9 @@ def question(request, lesson_name, question_id):
 def skill_tree(request):
     if request.user.is_authenticated():
         curuser = request.user
-        skill_tree = Lesson.objects.all()
+    lessons = Lesson.objects.all()
+    links = LessonFollowsFromLesson.objects.all()
     context = ({
-        'skill_tree':skill_tree,
+        'skill_tree':lessons, 'links':links,
     })
     return render(request, 'lessons/skilltree.html', context)
