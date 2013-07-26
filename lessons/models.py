@@ -2,12 +2,21 @@ from django.db import models
 from django.contrib.auth.models import User
 
 # Create your models here.
+
+class LessonReference(models.Model):
+    name = models.CharField(max_length = 200, unique = True) #Name of original tutorial
+    author = models.CharField(max_length = 100)
+    url = models.CharField(max_length = 300)
+    def __unicode__(self):
+        return self.name
+
 class Lesson(models.Model):
     name = models.CharField(max_length = 100, unique = True)
     tutorial = models.TextField()
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     description = models.CharField(max_length = 400)
+    reference = models.ForeignKey(LessonReference, blank=True, null=True)
     @property
     def times_taken(self):
         return self.usertakeslesson_set.count() #TODO ensure this is efficient
@@ -46,7 +55,7 @@ class Question(models.Model):
     #TODO add other useful queries here e.g. times answered correctly
     def __unicode__(self):
         return self.question
-
+		
 class LessonFollowsFromLesson(models.Model):
     leads_from = models.ForeignKey(Lesson, related_name='supplement')
     leads_to = models.ForeignKey(Lesson, related_name='preparation') #TODO think about these two related names, do they make sense?
