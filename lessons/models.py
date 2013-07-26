@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 
 # Create your models here.
 
-class LessonReference(models.Model):
+class Reference(models.Model):
     name = models.CharField(max_length = 200, unique = True) #Name of original tutorial
     author = models.CharField(max_length = 100)
     url = models.CharField(max_length = 300)
@@ -16,13 +16,18 @@ class Lesson(models.Model):
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     description = models.CharField(max_length = 400)
-    reference = models.ForeignKey(LessonReference, blank=True, null=True)
     @property
     def times_taken(self):
         return self.usertakeslesson_set.count() #TODO ensure this is efficient
 
     def __unicode__(self):
         return self.name
+
+class LessonReferencesReference(models.Model):
+    lesson = models.ForeignKey(Lesson)
+    reference = models.ForeignKey(Reference)
+    def __unicode__(self):
+        return self.lesson.name + " references " + self.reference.name
 
 class Example(models.Model):
     lesson = models.ForeignKey(Lesson)

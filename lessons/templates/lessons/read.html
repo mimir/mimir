@@ -6,9 +6,9 @@
     <h2>{{ lesson.name }}</h2>
     <p>{{ lesson.tutorial }}</p>
 	
-	{% if lesson.reference %}
-	    <i>Material taken from <a href="{{lesson.reference.url}}">{{lesson.reference.name}}</a> by {{lesson.reference.author}}</i>
-	{% endif %}
+    {% for ref in lesson.lessonreferencesreference_set.all %}
+        <i>Material taken from <a href="{{ ref.reference.url}}">{{ ref.reference.name}}</a> by {{ ref.reference.author}}</i><br />
+    {% endfor %}
 	
     {% if example_list %}
         <h3>Worked examples</h3>
