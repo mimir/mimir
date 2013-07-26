@@ -5,6 +5,11 @@
 {% if lesson %}
     <h2>{{ lesson.name }}</h2>
     <p>{{ lesson.tutorial }}</p>
+	
+	{% if lesson.reference %}
+	    <i>Material taken from <a href="{{lesson.reference.url}}">{{lesson.reference.name}}</a> by {{lesson.reference.author}}</i>
+	{% endif %}
+	
     {% if example_list %}
         <h3>Worked examples</h3>
         {% for example in example_list %}
@@ -29,6 +34,7 @@
     {% else %}
         <p>No Follow up lessons, I am really sorry and hope that you can find it in your hearts of hearts to forgive me. :( (a)</p>
     {% endif %}
+	
 {% else %}
     <p>Lesson not working.</p>
 {% endif %}
