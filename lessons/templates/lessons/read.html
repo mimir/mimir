@@ -26,7 +26,8 @@ $(function() {
             type: "POST",
             url: "{% url 'lessons:rate_lesson' lesson.id %}",
             data: ({rating: rating, comment: "",}),
-        })
+        });
+        $('#rate').prop('value', 'Thanks!');
     }
 });})
 </script>
