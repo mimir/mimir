@@ -8,6 +8,11 @@ from lessons.generate import generateQuestion
 from random import random
 import datetime
 
+'''
+Notes:
+next_link may seem completely pointless atm, and in truth it is, but when we get good (not completely random) question order sorted it will be used.
+'''
+
 def index(request):
     latest_lesson_list = Lesson.objects.all()
     context = ({
@@ -26,7 +31,7 @@ def read(request, lesson_name):
             user_takes.save()
     return render(request, 'lessons/read.html', context)
 
-def rate_lesson(request, lesson_id):
+def rate_lesson(request, lesson_id): #TODO change this so lesson_id is passed via post maybe?
     if request.user.is_authenticated():
         p = request.POST
         if "rating" in p or "comment" in p:
@@ -39,22 +44,42 @@ def rate_lesson(request, lesson_id):
                 user_takes_lesson[0].save()
     return HttpResponse('')
 
+def check_answer(request):
+    p = request.POST
+    if "question_id" in p and "answer" in p and "rand_seed" in p:
+        #TODO if user is logged in add a useranswersquestion here
+        #if request.user.is_authenticated():
+        question = get_object_or_404(Question, pk = int(p["question_id"])) #TODO make sure this makes sense, this should never go wrong in practice but who knows, possibly expand to return something more meaningful to ajax?
+        pair = generateQuestion(p["rand_seed"], question.question, question.calculation)
+        #TODO check for formatting correctness here using question.answer_format etc.
+        if int(p["answer"]) == int(pair[1]): #TODO make this work properly with formatting so non integer answers will work.
+            return HttpResponse('{"correct":true}', mimetype="application/json")
+        else:
+            #TODO mistake analysis system, no biggie
+            message = "Oops, looks like you made a mistake."
+            #TODO something like this: message = analyse_mistake(question, rand_seed, answer)
+            return HttpResponse('{"correct":false, "message":"' + message + '"}', mimetype="application/json")
+    return HttpResponse('')
+
+
 def question(request, lesson_name, question_id):
     question = get_object_or_404(Question, pk = question_id)
-    pair = generateQuestion(random(), question.question, question.calculation)
+    rand_seed = random()
+    pair = generateQuestion(rand_seed, question.question, question.calculation)
     question.question = pair[0]
     question.answer = pair[1]
-    return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),})
+    return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),'rand_seed':rand_seed,})
 
 def rand_question(request, lesson_name):
     lesson = get_object_or_404(Lesson, name__iexact = lesson_name.replace("_", " "))
     question_l = list(Question.objects.filter(lesson = lesson).order_by('?')[:1])
     if question_l:
         question = question_l[0]
-        pair = generateQuestion(random(), question.question, question.calculation)
+        rand_seed = random()
+        pair = generateQuestion(rand_seed, question.question, question.calculation)
         question.question = pair[0]
         question.answer = pair[1]
-        return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),})
+        return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),'rand_seed':rand_seed,})
     return HttpResponseRedirect(reverse('lessons:read', args=[lesson_name]))
 
 def skill_tree(request):

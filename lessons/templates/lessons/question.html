@@ -1,18 +1,81 @@
 {% extends "base.html" %}
 
-{% block content %}
+{% block head %}
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.3.1/jquery.cookie.min.js"></script> {# TODO look into other CDNs #}
+<script type="text/javascript" charset="utf-8">
+function csrfSafeMethod(method) {
+    // these HTTP methods do not require CSRF protection
+    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+}
+$(function() {
+    var csrftoken = $.cookie('csrftoken');
+    $.ajaxSetup({
+        crossDomain: false, // obviates need for sameOrigin test
+        beforeSend: function(xhr, settings) {
+            if (!csrfSafeMethod(settings.type)) {
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+            }
+        }
+    });
 
+    var correct = false;
+    
+    $('#check').click(function() {
+        if (correct)
+        {
+            document.location.href = "{{ next_link }}";
+        }
+        if ($('#answer').val())
+        {
+            $.ajax({
+                type: "POST",
+                url: "{% url 'lessons:check_answer' %}",
+                data: {question_id: {{ question.id }}, rand_seed: {{ rand_seed }}, answer: $('#answer').val(),},
+                dataType: 'json',
+            }).done(function(response) {
+                if (response.correct)
+                {
+                    $('#message').html("Correct, please click next to move to another question");
+                    $('#check').prop('value', 'Next');
+                    correct = true;
+                }
+                else
+                {
+                    $('#message').html(response.message);
+                }
+            }).fail(function(xhr, ajaxOptions, thrownError) {
+                console.log(xhr.responseText); //TODO probably remove these lines when testing done
+                console.log(thrownError);
+            });
+        }
+        else
+        {
+            $('#message').html("Please enter your answer in the box provided");
+            //TODO make the box vibrate or something
+        }
+    });
+})
+</script>
+{% endblock %}
+
+{% block content %}
 <div id="question">
 {% if question %}
     <h2>{{ question.lesson.name }}</h2>
     <p>{{ question.question }}</p>
-    <p>Answer: \({{ question.answer }}\)</p>
+    <p>Answer:
+    <input type="text" id="answer">
+    <input type="button" value="Check" id="check">
+    </p>
+    <p id="message">
+    </p>
+    <br />
+    <p>Answer: \({{ question.answer }}\)</p> {# TODO remove this before we go live lol #}
 {% else %}
     <p>Question not working.</p>
 {% endif %}
-{% if next_link %}
-    <p><a href="{{ next_link }}">Another question</a></p>
-{% endif %}
+{# {% if next_link %} #}
+    <p><a href="{{ next_link }}">Skip</a></p>
+{# {% endif %} #}
 </div>
-
 {% endblock %}
