@@ -5,7 +5,7 @@
 <h2>My Skills</h2>
 
 {% for userlesson in user_lessons %}
-    <li>{{ userlesson.date }} - <a href="{% url 'lessons:read' userlesson.lesson.name.split|join:'_' %}">{{ userlesson.lesson.name }}</a> {# - TODO add next lesson #} - <a href="{% url 'lessons:question' lesson_name=userlesson.lesson.lesson.name.split|join:'_' question_id=userlesson.lesson.first_question.id %}">Test me</a> </li> 
+    <ol>{{ userlesson.date }} - <a href="{% url 'lessons:read' userlesson.lesson.name.split|join:'_' %}">{{ userlesson.lesson.name }}</a> {# - TODO add next lesson #} {# - TODO add test function #} </ol> 
 {% endfor %}
 
 
