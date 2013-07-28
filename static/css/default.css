@@ -1,8 +1,8 @@
 body
 {    
 	font-family:arial;
-	background-color:#41A317;
-	color:#FFFFFF
+	background-color:#D7FECF;
+	color:#000000;
 }
 
 h1
@@ -23,58 +23,84 @@ p
 
 a:link,a:visited
 {
-	color:#FFFFFF
+	color:#FF9900;
 }
 
-div#header p
-{
-	text-align:right;
-	position:relative;
-	top:-100px;
-}
-
-div#header div
-{
-	position:relative;
-	top:-40px;
-}
-	
-div#nav
-{
+div#header {
 	background-color:#FFFFFF;
-	padding:6px;
-	display: inline-block;
-}
-	
-div#nav ul
-{
-	list-style-type:none;
-	margin:0;
-	padding:0;
-	padding-top:6px;
-	padding-bottom:6px;
+	font-weight:bold;
+	color:#333333;
+	padding-top:5px;
+	padding-bottom:5px;
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 999;
+	width: 100%;
+	height: 23px;
+	border-bottom:1px solid;
+	border-bottom-color:#999999;
+	box-shadow:0px -6px 20px #000000;
 }
 
-div#nav li
-{
+.mimirtitle {
+	float:left;
+	position: absolute;
+    top: 50%;
+    /* adjust top up half the height of a single line */
+    margin-top: -0.5em;
+    /* force content to always be a single line */
+	padding-left:10px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.barnav {
+	z-index:9999;
+	float:right;
+	padding-right:10px;
+	font-size:13px;
+	padding-top:5px;
+}
+
+.barnav ul{
+	margin:0px;
+	padding:0px;
+	border:thin #333333
+}
+.barnav li {
 	display:inline;
 }
 
-div#nav a:link,div#nav a:visited
+.barnav a:link,a:visited
 {
+	color:#333333;
 	font-weight:bold;
-	color:#FFFFFF;
-	background-color:#41A317;
 	text-align:center;
 	padding:6px;
-	text-decoration:none;
+	margin:1px;
 	text-transform:uppercase;
+	text-decoration:none;
+}
+.barnav a:hover, a:active {
+	/* Gradient on hover, used http://gradients.glrzad.com/ to do it */
+	background-image: linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
+	background-image: -o-linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
+	background-image: -moz-linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
+	background-image: -webkit-linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
+	background-image: -ms-linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
+	
+	background-image: -webkit-gradient(
+		linear,
+		left bottom,
+		left top,
+		color-stop(0.09, rgb(242,242,242)),
+		color-stop(0.51, rgb(255,255,255)),
+		color-stop(1, rgb(255,255,255))
+	);
 }
 
-div#nav a:hover,div#nav a:active
-{
-	background-color:#378A14;
-}
 
 div#question
 {
@@ -103,4 +129,29 @@ div#activity
 	border-radius:25px;
 	text-indent:20px;
 }
+
+div#content {
+	background-color:#FFFFFF;
+	margin-top:70px;
+	margin-left:auto;
+	margin-right:auto;
+	width:50em;
+	padding:30px;
+	
+	border:thick #666666;
+	border-radius: 15px;
+	
+	box-shadow:0px 0px 10px #000000;
+}
+
+
+
+
+
+
+
+
+
+
+
 
