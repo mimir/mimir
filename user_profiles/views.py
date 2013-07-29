@@ -19,8 +19,6 @@ def index(request):
 
 def view(request, user_name):
     cur_user = get_object_or_404(User, username = user_name)
-    if request.user == cur_user: #If the user they look at is themselves, redirect to their profile page
-        return HttpResponseRedirect("/profile/")
     cur_user_p = get_object_or_404(UserProfile, user__id = cur_user.pk)
     context = ({'cur_user': cur_user, 'cur_user_p': cur_user_p,})
     return render(request, 'user_profiles/view.html', context)

@@ -20,14 +20,13 @@
                 <li><a href="http://mimirteam.wordpress.com">Blog</a></li>
                 <li><a href="/lessons/">Lessons</a></li>
                 {% if user.is_authenticated %}
-                    <li><a href="/profile/">Profile</a></li>
                     <li><a href="/skills/">Skill Tree</a></li>
                     <li><a href="/users/">Users</a></li>
                 {% endif %}
                 <li> | </li>
                 
                 {% if user.is_authenticated %}
-                    <li> <a href="{% url 'user_profiles:view' user.username %}">{{ user.username }}</a> </li>
+                    <li> <a href="{% url 'profile' %}">{{ user.username }}</a> </li>
                     <li> <a href="{%url 'logout' %}">log out</a> </li>
                 {% else %}
                 	<li> <a href="{% url 'login' %}">log in</a> </li>
