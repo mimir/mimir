@@ -161,3 +161,13 @@ div#content ul {
 	margin-right:auto;
 	padding: 0px;
 }
+
+li.even {
+    background-color:#72FA5F;
+    border-radius:5px;
+}
+
+li.odd {
+    background-color:#EAFEE0;
+    border-radius:5px;
+}
