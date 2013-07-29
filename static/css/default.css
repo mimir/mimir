@@ -3,17 +3,21 @@ body
 	font-family:arial;
 	background-color:#D7FECF;
 	color:#000000;
+<<<<<<< HEAD
+=======
+	background-image:url(stripes.jpg);
+>>>>>>> More design changes
 }
 
 h1
 {
-	text-align:left;
 	font-size:50px;
+	margin-bottom:10px;
 }
 	
 h2	
 {     
-	text-align:left;    
+
 }
 
 p	
@@ -21,7 +25,7 @@ p
 	text-indent:20px;        
 }
 
-a:link,a:visited
+body a:link,a:visited
 {
 	color:#FF9900;
 }
@@ -38,9 +42,15 @@ div#header {
 	z-index: 999;
 	width: 100%;
 	height: 23px;
+<<<<<<< HEAD
 	border-bottom:1px solid;
 	border-bottom-color:#999999;
 	box-shadow:0px -6px 20px #000000;
+=======
+	border-bottom:2px solid;
+	border-bottom-color:#999999;
+	box-shadow:0px -3px 20px #000000;
+>>>>>>> More design changes
 }
 
 .mimirtitle {
@@ -54,6 +64,11 @@ div#header {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+<<<<<<< HEAD
+=======
+	font-family:"Open Sans", sans-serif;
+	font-size:15px;
+>>>>>>> More design changes
 }
 
 .barnav {
@@ -67,7 +82,11 @@ div#header {
 .barnav ul{
 	margin:0px;
 	padding:0px;
+<<<<<<< HEAD
 	border:thin #333333
+=======
+	border:thin #333333;
+>>>>>>> More design changes
 }
 .barnav li {
 	display:inline;
@@ -128,8 +147,42 @@ div#activity
 	border:2px solid;
 	border-radius:25px;
 	text-indent:20px;
+	padding-bottom:20px;
 }
 
+div#content {
+	font-family:'Open Sans', sans-serif;
+	text-align:center;
+	background-color:#FFFFFF;
+	margin-top:70px;
+	margin-left:auto;
+	margin-right:auto;
+	width:50em;
+	padding:30px;
+	padding-top:10px;
+	border:thick #666666;
+	border-radius: 15px;
+	
+	box-shadow:0px 0px 10px #000000;
+}
+
+div#content ul {
+	list-style-type: none;
+	background-color:#EAFEE0;
+	border:medium #CCCCCC;
+	box-shadow:0px 0px 5px #000000;
+	border-radius:5px;
+	width:300px;
+	margin-left:auto;
+	margin-right:auto;
+	padding: 0px;
+}
+div#content li:nth-child(even) { 
+	background-color:#72FA5F;
+	border-radius:5px;
+}
+
+<<<<<<< HEAD
 div#content {
 	background-color:#FFFFFF;
 	margin-top:70px;
@@ -142,6 +195,12 @@ div#content {
 	border-radius: 15px;
 	
 	box-shadow:0px 0px 10px #000000;
+=======
+div#content li:nth-child(odd)
+{
+	background-color:#EAFEE0;
+	border-radius:5px;
+>>>>>>> More design changes
 }
 
 
@@ -152,6 +211,9 @@ div#content {
 
 
 
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> More design changes
