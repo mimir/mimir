@@ -2,11 +2,12 @@ from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
-from user_profiles.models import UserTakesLesson
+from user_profiles.models import UserTakesLesson, UserAnswersQuestion
 
 from lessons.generate import generateQuestion
 from random import random
 import datetime
+import re
 
 '''
 Notes:
@@ -47,17 +48,23 @@ def rate_lesson(request, lesson_id): #TODO change this so lesson_id is passed vi
 def check_answer(request):
     p = request.POST
     if "question_id" in p and "answer" in p and "rand_seed" in p:
-        #TODO if user is logged in add a useranswersquestion here
-        #if request.user.is_authenticated():
         question = get_object_or_404(Question, pk = int(p["question_id"])) #TODO make sure this makes sense, this should never go wrong in practice but who knows, possibly expand to return something more meaningful to ajax?
+        if not re.match(question.answer_format.regex, p["answer"]):
+            return HttpResponse('{"correct":false, "message":"Answer was not in the correct format, please correct this and try again."}', mimetype="application/json") #TODO make this message contain specifics about the format
+        #TODO if user is logged in add a useranswersquestion here
         pair = generateQuestion(p["rand_seed"], question.question, question.calculation)
-        #TODO check for formatting correctness here using question.answer_format etc.
         if int(p["answer"]) == int(pair[1]): #TODO make this work properly with formatting so non integer answers will work.
+            if request.user.is_authenticated():
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = pair[1])
+                user_answers.save()
             return HttpResponse('{"correct":true}', mimetype="application/json")
         else:
             #TODO mistake analysis system, no biggie
             message = "Oops, looks like you made a mistake."
             #TODO something like this: message = analyse_mistake(question, rand_seed, answer)
+            if request.user.is_authenticated():
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = pair[1])
+                user_answers.save()
             return HttpResponse('{"correct":false, "message":"' + message + '"}', mimetype="application/json")
     return HttpResponse('')
 
