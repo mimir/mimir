@@ -1,0 +1,7 @@
+/home/
+/lessons/
+/profile/
+/skills/
+/users/
+/myskills/
+/whatsnext/
