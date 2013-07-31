@@ -8,6 +8,7 @@ from lessons.generate import generateQuestion
 from random import random
 import datetime
 import re
+from decimal import *
 
 '''
 Notes:
@@ -52,8 +53,9 @@ def check_answer(request):
         if not re.match(question.answer_format.regex, p["answer"]):
             return HttpResponse('{"correct":false, "message":"Answer was not in the correct format, please correct this and try again."}', mimetype="application/json") #TODO make this message contain specifics about the format
         #TODO if user is logged in add a useranswersquestion here
-        pair = generateQuestion(p["rand_seed"], question.question, question.calculation)
-        if int(p["answer"]) == int(pair[1]): #TODO make this work properly with formatting so non integer answers will work.
+        getcontext().prec = 12 #TODO make prec a global setting?
+        pair = generateQuestion(Decimal(p["rand_seed"]), question.question, question.calculation)
+        if (type(pair[1]))(p["answer"]) == pair[1]: #TODO make this work properly with formatting so non integer answers will work.
             if request.user.is_authenticated():
                 user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = pair[1])
                 user_answers.save()
@@ -71,7 +73,8 @@ def check_answer(request):
 
 def question(request, lesson_name, question_id):
     question = get_object_or_404(Question, pk = question_id)
-    rand_seed = random()
+    getcontext().prec = 12
+    rand_seed = Decimal(str(random()))
     pair = generateQuestion(rand_seed, question.question, question.calculation)
     question.question = pair[0]
     question.answer = pair[1]
@@ -81,8 +84,9 @@ def rand_question(request, lesson_name):
     lesson = get_object_or_404(Lesson, name__iexact = lesson_name.replace("_", " "))
     question_l = list(Question.objects.filter(lesson = lesson).order_by('?')[:1])
     if question_l:
+        getcontext().prec = 12
         question = question_l[0]
-        rand_seed = random()
+        rand_seed = Decimal(str(random()))
         pair = generateQuestion(rand_seed, question.question, question.calculation)
         question.question = pair[0]
         question.answer = pair[1]
