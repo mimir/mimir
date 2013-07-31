@@ -37,7 +37,7 @@ Testing
 =======
 
 Set-up
-======
+------
 
 If you would like to run the tests on Mimir some set up is required.
 I will assume you have followed the guide above already.
@@ -65,7 +65,7 @@ of this. If you're a windows guy, you need to put the chromedriver.exe in
 if not, I am sorry bud your own your own, lots of advice about this on stack over flow.
 
 Using
-=====
+-----
 
 So you now should be good to go on testing. There is a couple of test commands (from the Mimir directory),
 most basic is
