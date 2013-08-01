@@ -81,6 +81,6 @@ with `TESTNAME` replace by
 
 `test_views` - to test that all the pages accessible load
 `test_user` - to test your able to register log out and in.
-'test_lessons' - to test lessons work (under development)
+`test_lessons` - to test lessons work (under development)
 
 more to follow. Feel free to add to this list if you wish to.
