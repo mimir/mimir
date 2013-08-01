@@ -46,7 +46,7 @@ class MySeleniumTests(LiveServerTestCase):
         self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
         
     def test_views(self):
-        f = open('D:/Users/Alexander Wendland/Documents/GitHub/mimir/lessons/Test_pages_1.txt', 'r')
+        f = open('lessons/Test_pages_1.txt', 'r')
         urls = list(f)
         
         print 'Checking pages as unregistered user ...'
@@ -62,18 +62,26 @@ class MySeleniumTests(LiveServerTestCase):
         f.close()
         
         print 'Done' 
-        print 'Registering user ...'
+        print 'Trying to registering user ...'
         
-        self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
-        username_input = self.selenium.find_element_by_name("username")
-        username_input.send_keys('TestUser')
-        password_1_input = self.selenium.find_element_by_name("password1")
-        password_1_input.send_keys('BlaTestUserBla123')
-        password_2_input = self.selenium.find_element_by_name("password2")
-        password_2_input.send_keys('BlaTestUserBla123')
-        self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
+        try:
         
-        f = open('D:/Users/Alexander Wendland/Documents/GitHub/mimir/lessons/Test_pages_2.txt', 'r')
+            self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
+            username_input = self.selenium.find_element_by_name("username")
+            username_input.send_keys('TestUser')
+            password_1_input = self.selenium.find_element_by_name("password1")
+            password_1_input.send_keys('BlaTestUserBla123')
+            password_2_input = self.selenium.find_element_by_name("password2")
+            password_2_input.send_keys('BlaTestUserBla123')
+            self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
+            print 'SUCESS'
+            
+        except:
+        
+            print 'FAILURE, ending test...'
+            return
+        
+        f = open('lessons/Test_pages_2.txt', 'r')
         
         urls = list(f)
         
