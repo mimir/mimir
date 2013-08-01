@@ -6,15 +6,20 @@ from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.common.exceptions import NoSuchWindowException, WebDriverException, ErrorInResponseException
 
 from lessons.models import Lesson, LessonFollowsFromLesson
+from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
+from django.contrib.auth.models import User
+
+
+def create_lesson(nam, tut, des):
+    return Lesson.objects.create(name = nam, tutorial = tut, description = des)
+    
+def create_follows(nam1, nam2, str):
+    return LessonFollowsFromLesson.objects.create(leads_from = nam1, leads_to = nam2, strength = str)
 
 class SimpleTest(TestCase):
     def test_basic_views(self):
         response = client.get('/')
         response.status_code
-        
-    def create_lesson(nam, tut, des):
-        Lesson.object.create(name = nam, tutorial = tut, description = des)
-
         
 class MySeleniumTests(LiveServerTestCase):
     fixtures = ['user-data.json']
@@ -65,7 +70,13 @@ class MySeleniumTests(LiveServerTestCase):
         print 'Testing complete.'
         
     def test_views(self):
-        f = open('lessons/Test_pages_1.txt', 'r')
+    
+        try:
+            f = open('lessons/Test_pages_1.txt', 'r')
+        except:
+            print 'Test Failed to load urls file, ending tests.'
+            return
+            
         urls = list(f)
         
         print 'Checking pages as unregistered user ...'
@@ -100,7 +111,11 @@ class MySeleniumTests(LiveServerTestCase):
             print 'FAILURE, ending test...'
             return
         
-        f = open('lessons/Test_pages_2.txt', 'r')
+        try:
+            f = open('lessons/Test_pages_2.txt', 'r')
+        except:
+            print 'Test Failed to load urls file, ending tests.'
+            return
         
         urls = list(f)
         
@@ -118,20 +133,61 @@ class MySeleniumTests(LiveServerTestCase):
         print 'Testing complete.'
     
     def test_lessons(self):
-        self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
-        username_input = self.selenium.find_element_by_name("username")
-        username_input.send_keys('TestUser')
-        password_1_input = self.selenium.find_element_by_name("password1")
-        password_1_input.send_keys('BlaTestUserBla123')
-        password_2_input = self.selenium.find_element_by_name("password2")
-        password_2_input.send_keys('BlaTestUserBla123')
-        self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
-        self.selenium.get('%s%s' % (self.live_server_url, '/logout/'))
-        self.selenium.get('%s%s' % (self.live_server_url, '/login/'))
-        username_input = self.selenium.find_element_by_name("username")
-        username_input.send_keys('TestUser')
-        password_input = self.selenium.find_element_by_name("password")
-        password_input.send_keys('BlaTestUserBla123')
-        self.selenium.find_element_by_xpath('//input[@value="login"]').click()
-        Lesson.object.create(name = 'bla', tutorial = 'bla', description = 'bla')
+        print 'Trying to register...'
+        try:
+            self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
+            username_input = self.selenium.find_element_by_name("username")
+            username_input.send_keys('TestUser')
+            password_1_input = self.selenium.find_element_by_name("password1")
+            password_1_input.send_keys('BlaTestUserBla123')
+            password_2_input = self.selenium.find_element_by_name("password2")
+            password_2_input.send_keys('BlaTestUserBla123')
+            self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+            return
         
+        print 'Testing lesson creation....'
+        try:
+            bla1 = create_lesson('bla1', 'bla1', 'bla1')
+            bla2 = create_lesson('bla2', 'bla2', 'bla2')
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+            return
+            
+        print 'Testing Lesson relation creation....'
+        try:
+            create_follows(bla1,bla2,10)
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+            return
+            
+        print 'Testing Lesson view creation....'
+        try:
+            self.selenium.get('%s%s' % (self.live_server_url, '/lessons/bla1/'))
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+            return
+            
+        print 'Testing Lesson database update...'
+        
+        print 'View is registered...'
+        
+        TestUser = User.objects.filter(username = 'TestUser')
+        
+        if Lesson.objects.filter(usertakeslesson__user = TestUser) == bla1:
+            print 'TRUE'
+        else:
+            print 'FALSE'
+        
+        print 'Suggested follow up updated...'
+        
+        if (Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = TestUser).exclude(usertakeslesson__user = TestUser).distinct()[0] == bla2) && :
+            print 'TRUE'
+        else:
+            print 'FALSE'
+            
