@@ -5,6 +5,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.common.exceptions import NoSuchWindowException, WebDriverException, ErrorInResponseException
 
+from lessons.models import Lesson, LessonFollowsFromLesson
+
 class SimpleTest(TestCase):
     def test_basic_views(self):
         response = client.get('/')
@@ -27,23 +29,40 @@ class MySeleniumTests(LiveServerTestCase):
         cls.selenium.quit()
         super(MySeleniumTests, cls).tearDownClass()
 
-    def test_login(self):
-        self.selenium.get('%s%s' % (self.live_server_url, '/login/'))
-        username_input = self.selenium.find_element_by_name("username")
-        username_input.send_keys('TestUser')
-        password_input = self.selenium.find_element_by_name("password")
-        password_input.send_keys('BlaTestUserBla123')
-        self.selenium.find_element_by_xpath('//input[@value="login"]').click()
-        
-    def test_register(self):
-        self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
-        username_input = self.selenium.find_element_by_name("username")
-        username_input.send_keys('TestUser')
-        password_1_input = self.selenium.find_element_by_name("password1")
-        password_1_input.send_keys('BlaTestUserBla123')
-        password_2_input = self.selenium.find_element_by_name("password2")
-        password_2_input.send_keys('BlaTestUserBla123')
-        self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
+    def test_user(self):
+        print 'Testing user register...'
+        try:
+            self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
+            username_input = self.selenium.find_element_by_name("username")
+            username_input.send_keys('TestUser')
+            password_1_input = self.selenium.find_element_by_name("password1")
+            password_1_input.send_keys('BlaTestUserBla123')
+            password_2_input = self.selenium.find_element_by_name("password2")
+            password_2_input.send_keys('BlaTestUserBla123')
+            self.selenium.find_element_by_xpath('//input[@value="Create the account"]').click()
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+            return
+        print 'Testing log out...'
+        try:
+            self.selenium.get('%s%s' % (self.live_server_url, '/logout/'))
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+            return
+        print 'Testing log in...'
+        try:
+            self.selenium.get('%s%s' % (self.live_server_url, '/login/'))
+            username_input = self.selenium.find_element_by_name("username")
+            username_input.send_keys('TestUser')
+            password_input = self.selenium.find_element_by_name("password")
+            password_input.send_keys('BlaTestUserBla123')
+            self.selenium.find_element_by_xpath('//input[@value="login"]').click()
+            print 'SUCESS'
+        except:
+            print 'FAILURE, testing stoping...'
+        print 'Testing complete.'
         
     def test_views(self):
         f = open('lessons/Test_pages_1.txt', 'r')
@@ -96,6 +115,7 @@ class MySeleniumTests(LiveServerTestCase):
                 print 'ERROR: Could not load ' + url + ' page as registered user'
         
         f.close()
+        print 'Testing complete.'
     
     def test_lessons(self):
         self.selenium.get('%s%s' % (self.live_server_url, '/register/'))
@@ -113,5 +133,5 @@ class MySeleniumTests(LiveServerTestCase):
         password_input = self.selenium.find_element_by_name("password")
         password_input.send_keys('BlaTestUserBla123')
         self.selenium.find_element_by_xpath('//input[@value="login"]').click()
-        create_lesson('bla','bla','bla')
+        Lesson.object.create(name = 'bla', tutorial = 'bla', description = 'bla')
         
