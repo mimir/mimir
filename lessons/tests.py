@@ -15,11 +15,6 @@ def create_lesson(nam, tut, des):
     
 def create_follows(nam1, nam2, str):
     return LessonFollowsFromLesson.objects.create(leads_from = nam1, leads_to = nam2, strength = str)
-
-class SimpleTest(TestCase):
-    def test_basic_views(self):
-        response = client.get('/')
-        response.status_code
         
 class MySeleniumTests(LiveServerTestCase):
     fixtures = ['user-data.json']
@@ -186,7 +181,7 @@ class MySeleniumTests(LiveServerTestCase):
         
         print 'Suggested follow up updated...'
         
-        if (Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = TestUser).exclude(usertakeslesson__user = TestUser).distinct()[0] == bla2) && :
+        if (Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = TestUser).exclude(usertakeslesson__user = TestUser).distinct()[0] == bla2):
             print 'TRUE'
         else:
             print 'FALSE'
