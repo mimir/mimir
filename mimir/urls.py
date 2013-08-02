@@ -26,4 +26,5 @@ urlpatterns = patterns('',
     url(r'^profile/$', 'user_profiles.views.profile', name = 'profile'),
     url(r'^myskills/$', 'mimir.views.myskills', name = 'myskills'),
     url(r'^whatsnext/$', 'mimir.views.whatsnext', name = 'whatsnext'),
+	url(r'^community/', include('community.urls', namespace = 'community')),
 )

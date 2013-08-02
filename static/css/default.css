@@ -170,3 +170,29 @@ li.odd {
     background-color:#EAFEE0;
     border-radius:5px;
 }
+
+#user_question
+{
+	border:2px solid;
+    border-color:blue;
+	border-radius:25px;
+	text-indent:20px;
+	padding-bottom:20px;
+}
+
+.user_answer
+{
+	border:2px solid;
+    border-color:green;
+	border-radius:25px;
+	text-indent:20px;
+	padding-bottom:20px;
+}
+
+.user_comment
+{
+	border:2px solid;
+	border-radius:25px;
+	text-indent:20px;
+	padding-bottom:20px;
+}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block head %}
+{% load staticfiles %}
+<script type="text/javascript" src="{% static "community/javascript/forum.js" %}"></script>
+<script type="text/javascript">
+$(function() 
+{
+	var question = {{ question|safe }};
+	var answers = {{ answers|safe }};
+	var question_comments = {{ q_comments|safe }};
+    var answer_comments = {{ a_comments|safe }};
+	
+	initQuestionPage(question, answers, question_comments, answer_comments) //In forum.js
+    
+});
+
+</script>
+{% endblock %}
+
+{% block content %}
+
+<h2>Community</h2>
+
+<div id=user_question></div>
+
+<div id=user_answers></div>
+
+<div id=user_comments></div>
+
+{% endblock %}
