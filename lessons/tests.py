@@ -67,7 +67,7 @@ class MySeleniumTests(LiveServerTestCase):
     def test_views(self):
     
         try:
-            f = open('lessons/Test_pages_1.txt', 'r')
+            f = open('lessons/test_unregistered.txt', 'r')
         except:
             print 'Test Failed to load urls file, ending tests.'
             return
@@ -107,7 +107,7 @@ class MySeleniumTests(LiveServerTestCase):
             return
         
         try:
-            f = open('lessons/Test_pages_2.txt', 'r')
+            f = open('lessons/test_unregistered.txt', 'r')
         except:
             print 'Test Failed to load urls file, ending tests.'
             return

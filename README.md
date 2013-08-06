@@ -64,6 +64,13 @@ of this. If you're a windows guy, you need to put the chromedriver.exe in
 
 if not, I am sorry bud your own your own, lots of advice about this on stack over flow.
 
+To add urls to test whether they view or not as a registered or a unregistered user add the url extension
+as a new line to the file:
+
+lessons/tests_unregistered - for unregistered user views
+lessons/tests_registered - for registered user views
+
+
 Using
 -----
 
