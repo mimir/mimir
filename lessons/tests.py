@@ -9,7 +9,6 @@ from lessons.models import Lesson, LessonFollowsFromLesson
 from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
 from django.contrib.auth.models import User
 
-
 def create_lesson(nam, tut, des):
     return Lesson.objects.create(name = nam, tutorial = tut, description = des)
     
@@ -145,8 +144,9 @@ class MySeleniumTests(LiveServerTestCase):
         
         print 'Testing lesson creation....'
         try:
-            bla1 = create_lesson('bla1', 'bla1', 'bla1')
-            bla2 = create_lesson('bla2', 'bla2', 'bla2')
+            bla1 = create_lesson('bla1', 'bla1bla1', 'bla1')
+            bla2 = create_lesson('bla2', 'bla2bla2', 'bla2')
+            bla3 = create_lesson('bla3', 'bla3bla3', 'bla3')
             print 'SUCESS'
         except:
             print 'FAILURE, testing stoping...'
@@ -155,6 +155,7 @@ class MySeleniumTests(LiveServerTestCase):
         print 'Testing Lesson relation creation....'
         try:
             create_follows(bla1,bla2,10)
+            create_follows(bla2,bla3,9)
             print 'SUCESS'
         except:
             print 'FAILURE, testing stoping...'
@@ -174,15 +175,17 @@ class MySeleniumTests(LiveServerTestCase):
         
         TestUser = User.objects.filter(username = 'TestUser')
         
-        if Lesson.objects.filter(usertakeslesson__user = TestUser) == bla1:
+        if Lesson.objects.filter(usertakeslesson__user = TestUser)[0] == bla1 and Lesson.objects.filter(usertakeslesson__user = TestUser).count() == 1 :
             print 'TRUE'
         else:
             print 'FALSE'
         
         print 'Suggested follow up updated...'
         
-        if (Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = TestUser).exclude(usertakeslesson__user = TestUser).distinct()[0] == bla2):
+        if (Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = TestUser).exclude(usertakeslesson__user = TestUser).distinct()[0] == bla2 and Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = TestUser).exclude(usertakeslesson__user = TestUser).distinct().count() == 1):
             print 'TRUE'
         else:
             print 'FALSE'
+        
+        
             
