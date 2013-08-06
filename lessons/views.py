@@ -46,6 +46,9 @@ def rate_lesson(request, lesson_id): #TODO change this so lesson_id is passed vi
                 user_takes_lesson[0].save()
     return HttpResponse('')
 
+'''
+This view handles the POST request that the client side Javascript (using JQuery) sends to the server to check the user's answer to a question.
+'''
 def check_answer(request):
     p = request.POST
     if "question_id" in p and "answer" in p and "rand_seed" in p:
