@@ -14,16 +14,33 @@ def index(request):
     #Send list of all questions to page.
     #TODO: Send most recent, most popular, highest rated, etc via AJAX
     question_list = UserQuestion.objects.all()
-    json_question_list = []
-    for question in question_list:
-        json_question = JSONUserQuestion(question)
-        json_question_list.append(json_question.toJSON())
     context = ({
-        'question_list':listToJSON(json_question_list),
+        'question_list': question_list,
     })
     return render(request, 'community/index.html', context)
+    
 
 def question(request, question_id):
+    #Revamp of question to use templates over Javascript
+    question = get_object_or_404(UserQuestion, pk = question_id)
+    
+    #Generates question-answer pair
+    displayQuestion = []
+    if question.question != None:
+        displayQuestion = generateQuestion(question.question_seed, question.question.question, question.question.calculation)
+    
+    q_comments = UserComment.objects.filter(user_question = question_id)
+    answers = UserAnswer.objects.filter(user_question = question_id)
+    a_comments = []
+    for answer in answers:
+        a_comments.append(UserComment.objects.filter(user_answer = answer.pk))
+    
+    context = ({'question': question, 'displayQuestion': displayQuestion, 'answers': answers, 'q_comments': q_comments, 'a_comments': a_comments, })
+    return render(request, 'community/question.html', context)
+    
+    
+#Old version of JS DOM built questions
+def jsQuestion(request, question_id):
     #Get question and convert to JSON
     question = get_object_or_404(UserQuestion, pk = question_id)
     json_question = JSONUserQuestion(question)
@@ -34,7 +51,6 @@ def question(request, question_id):
     for comment in q_comments:
         json_comment = JSONUserComment(comment)
         json_q_comments.append(json_comment.toJSON())
-    
     
     #Get answers and comments and convert to JSON
     answers = UserAnswer.objects.filter(user_question = question_id)

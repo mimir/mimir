@@ -1,17 +1,4 @@
 {% extends "base.html" %}
-{% block head %}
-<script type="text/javascript">
-$(function()
-{
-    var question_list = {{ question_list|safe }};
-    
-    for(var i=0; i < question_list.length; i++)
-    {
-        $('#user_question_list').append('<div class=question_listed><h4><a href="questions/' + question_list[i].pk + '">' + question_list[i].title + '</a>  -  ' + question_list[i].user_tag + '</h4></div>');
-    }
-});
-</script>
-{% endblock %}
 
 {% block content %}
 
@@ -19,6 +6,12 @@ $(function()
 
 <p>This is the place where, if you are stuggling even after the tutorials, you can come to request additional help.</p>
 
-<div id=user_question_list></div>
+<div id=user_question_list>
+{% for question in question_list %}
+    <div class="question_listed">
+    <h4><a href="questions/{{ question.pk }}">{{ question.title }}</a> - {{ question.user.username }} (potential usertag)</h4>
+    </div>
+{% endfor %}
+</div>
 
 {% endblock %}

@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 
 {% block head %}
+{# JS file not used anymore but commented out to see functionality in case of reuse #}
+{% comment %}
 {% load staticfiles %}
 <script type="text/javascript" src="{% static "community/javascript/forum.js" %}"></script>
 <script type="text/javascript">
+
 $(function() 
 {
 	var question = {{ question|safe }};
@@ -16,16 +19,64 @@ $(function()
 });
 
 </script>
+{% endcomment %}
 {% endblock %}
 
 {% block content %}
 
 <h2>Community</h2>
 
-<div id=user_question></div>
+<div id=user_question>
+<h2>{{ question.title }}</h2>
 
-<div id=user_answers></div>
+{% if question.lesson %}
+    <h4>Lesson: <a href={% url 'lessons:read' lesson_name=question.lesson.name.split|join:'_' %}>{{ question.lesson.name }}</a></h4>
+{% endif %}
 
-<div id=user_comments></div>
+{% if question.question %}
+    <h4>Question: {{ displayQuestion.0 }}</h4>
+    <h4>Answer: {{ displayQuestion.1 }}</h4>
+{% endif %}
+
+<p>{{ question.user_question|linebreaks }}</p>
+<p>User: {{ question.user.username }} (to replace with usertag system)</p>
+<p>Created: {{ question.created|date:"H:i D d M Y" }}</p>
+<p>Last Modified: {{ question.modified|date:"H:i D d M Y" }}</p>
+
+{% for comment in q_comments %}
+    <div id="question_comment{{ forloop.counter }}" class="user_comment">
+    <p>{{ comment.user_comment|linebreaks }}</p>
+    <p>User: {{ comment.user.username }} (to be replaced with usertag system)</p>
+    <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
+    <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
+    </div>
+{% endfor %}
+</div>
+
+<div id="user_answers">
+{% for answer in answers %}
+    <div id="answer{{ forloop.counter }}" class="user_answer">
+    <p>{{ answer.user_answer|linebreaks }}</p>
+    <p>User: {{ answer.user.username }} (to be replaced with usertag system)</p>
+    <p>Created: {{ answer.created|date:"H:i D d M Y" }}</p>
+    <p>Last Modified: {{ answer.modified|date:"H:i D d M Y" }}</p>
+    
+    {# Need to find a better way to get data from 2D array or dict or whatever #}
+    {% for c_list in a_comments %}
+        {% if forloop.counter == forloop.parentloop.counter %}
+            {% for comment in c_list %}
+                <div id="answer_comment{{ forloop.counter }}" class="user_comment">
+                <p>{{ comment.user_comment|linebreaks }}</p>
+                <p>User: {{ comment.user.username }} (to be replaced with usertag system)</p>
+                <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
+                <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+    
+    </div>
+{% endfor %}
+</div>
 
 {% endblock %}
