@@ -52,3 +52,6 @@ class UserRating(models.Model): #When topics implemented make so that topic is m
 
     def __unicode__(self):
         return self.user.name + " - " + self.user_question.title + " - " + self.rating
+        
+    class Meta:
+        unique_together = ("user_question", "user_answer", "user_comment", "user")

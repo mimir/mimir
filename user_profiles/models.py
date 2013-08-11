@@ -10,7 +10,9 @@ class UserProfile(models.Model):
     #TODO implement picture stuff properly
     gravatar_hash = models.CharField(max_length = 32)
     website = models.URLField(blank = True)
+    caption = models.CharField(max_length = 60, blank = True)
     about = models.TextField(blank = True)
+    reputation = models.IntegerField(default = 0)
     def __unicode__(self):
         return self.user.username
 

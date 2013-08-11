@@ -39,6 +39,58 @@ def question(request, question_id):
     return render(request, 'community/question.html', context)
     
     
+def rate_user_item(request):
+    if request.user.is_authenticated():
+        p = request.POST
+        if "rating" in p and "type" in p and "id" in p:
+            user_item = None
+            user_profile = None
+            
+            if p['type'] == 'Q':
+                user_item = UserQuestion.objects.get(pk=p['id'])
+            elif p['type'] == 'A':
+                user_item = UserAnswer.objects.get(pk=p['id'])
+            elif p['type'] == 'C':
+                user_item = UserComment.objects.get(pk=p['id'])
+            else:
+                return HttpResponseServerError("A type error occurred.")
+                
+            if p['rating'] == True:
+                user_item.rating += 1
+                user_profile = UserProfile.objects.get(user=user_item.user)
+                user_profile.reputation += 1
+            elif p['rating'] == False:
+                user_item.rating -= 1
+                user_profile = UserProfile.objects.get(user=user_item.user)
+                user_profile.reputation -= 1
+            else:
+                return HttpResponseServerError("An invalid rating value error occurred.")
+            
+            user_rating = None
+            
+            if p['type'] == 'Q':
+                user_rating = UserRating(user=request.user, user_question=user_item, rating=p['rating'])
+            elif p['type'] == 'A':
+                user_rating = UserRating(user=request.user, user_answer=user_item, rating=p['rating'])
+            elif p['type'] == 'C':
+                user_rating = UserRating(user=request.user, user_comment=user_item, rating=p['rating'])
+            
+            try:
+                user_rating.full_clean()
+            except ValidationError as e:
+                return HttpResponseServerError("You can't rate something more than once.")
+            
+            user_item.save()
+            user_profile.save()
+            
+        else:
+            return HttpResponseServerError("A POST request error occurred.")
+    return HttpResponse('')
+    
+    
+    
+    
+    
 #Old version of JS DOM built questions
 def jsQuestion(request, question_id):
     #Get question and convert to JSON

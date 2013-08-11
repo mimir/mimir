@@ -3,8 +3,57 @@
 {% load user_inclusions %}
 
 {% block head %}
-{# JS file not used anymore but commented out to see functionality in case of reuse #}
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.3.1/jquery.cookie.min.js"></script> {# TODO look into other CDNs #}
+<script type="text/javascript" charset="utf-8">
+var rating = null;
+var type = null;
+var id = null;
+function csrfSafeMethod(method) {
+    // these HTTP methods do not require CSRF protection
+    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+}
+$(function() {
+    var csrftoken = $.cookie('csrftoken');
+    $.ajaxSetup({
+        crossDomain: false, // obviates need for sameOrigin test
+        beforeSend: function(xhr, settings) {
+            if (!csrfSafeMethod(settings.type)) {
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+            }
+        }
+    });
+    
+    $('.upvote').click(function() {
+        if (rating != null)
+        {
+            $.ajax({
+                type: "POST",
+                url: "{% url 'community:rate_user_item' %}",
+                data: ({rating: true, type: type, id: id}),
+            });
+            $('.rate').prop('value', 'Thanks!');
+        }
+    });
+    
+    $('.downvote').click(function() {
+        if (rating != null)
+        {
+            $.ajax({
+                type: "POST",
+                url: "{% url 'community:rate_user_item' %}",
+                data: ({rating: false, type: type, id: id}),
+            });
+            $('.rate').prop('value', 'Thanks!');
+        }
+    });
+})
+</script>
+{% endblock %}
+
 {% comment %}
+{% block head %}
+{# JS file not used anymore but commented out to see functionality in case of reuse #}
+
 {% load staticfiles %}
 <script type="text/javascript" src="{% static "community/javascript/forum.js" %}"></script>
 <script type="text/javascript">
@@ -21,8 +70,10 @@ $(function()
 });
 
 </script>
-{% endcomment %}
+
 {% endblock %}
+{% endcomment %}
+
 
 {% block content %}
 
