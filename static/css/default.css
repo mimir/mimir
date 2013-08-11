@@ -213,9 +213,10 @@ li.odd {
     border:2px solid;
     border-radius:25px;
     position:absolute;
-    bottom:3%;
-    right:3%;
+    bottom:1%;
+    right:1%;
     overflow:hidden;
+    width:350px;
 }
 
 #usertag #user_avatar
