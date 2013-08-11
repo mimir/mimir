@@ -22,7 +22,8 @@ def listToJSON(list=[]):
 def unix_time(dt):
     epoch = datetime.datetime.utcfromtimestamp(0)
     delta = dt - epoch
-    return delta.total_seconds()
+    return (delta.microseconds + (delta.seconds + delta.days * 24 * 3600) * 10**6) / 10**6
+    #return delta.total_seconds()
 
 #Creates a Javascript timestamp (milliseconds from epoch)
 def unix_time_millis(dt):
