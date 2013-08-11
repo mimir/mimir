@@ -180,6 +180,11 @@ li.odd {
 	padding-bottom:20px;
 }
 
+#user_question #inner_question
+{
+    position:relative;
+}
+
 .user_answer
 {
 	border:2px solid;
@@ -189,10 +194,58 @@ li.odd {
 	padding-bottom:20px;
 }
 
+.user_answer #inner_answer
+{
+    position:relative;
+}
+
 .user_comment
 {
 	border:2px solid;
 	border-radius:25px;
 	text-indent:20px;
 	padding-bottom:20px;
+    position:relative;
+}
+
+#usertag
+{
+    border:2px solid;
+    border-radius:25px;
+    position:absolute;
+    bottom:3%;
+    right:3%;
+    overflow:hidden;
+}
+
+#usertag #user_avatar
+{
+    float:left;
+    width:64px;
+    margin-top:6%;
+}
+
+#usertag #user_details
+{
+    float:left;
+    margin-left:10px;
+    margin-top:0px;
+}
+
+#usertag #user_rating
+{
+    float:left;
+    margin-top:6%;
+    margin-left:10px;
+    padding-right:6%;
+}
+
+.question_listed
+{
+    position:relative;
+    width:100%;
+    height:100px;
+    clear:both;
+    overflow:hidden;
+    margin:0 auto;
 }

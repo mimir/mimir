@@ -1,16 +1,23 @@
 {% extends "base.html" %}
 
+{% load user_inclusions %}
+
 {% block content %}
 
 <h2>Community</h2>
 
 <p>This is the place where, if you are stuggling even after the tutorials, you can come to request additional help.</p>
 
-<div id=user_question_list>
+<div id="user_question_list">
 {% for question in question_list %}
-    <div class="question_listed">
-    <h4><a href="questions/{{ question.pk }}">{{ question.title }}</a> - {{ question.user.username }} (potential usertag)</h4>
-    </div>
+    <a href="questions/{{ question.pk }}">
+        <div class="question_listed">
+            <div class="question_title">
+                <h4>{{ question.title }}</h4>
+            </div>
+            {% usertag question.user %}
+        </div>
+    </a>
 {% endfor %}
 </div>
 

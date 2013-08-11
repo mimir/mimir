@@ -111,3 +111,4 @@ def profile(request): #Users own profile page
     context = ({'cur_user': request.user, 'cur_user_p': cur_user_p, 'num_lessons': num_lessons, 'unique_lessons': unique_lessons, 'num_answered': num_answered, 'percent_correct': percentage, 'lessons': json.dumps(lesson_graph), 'questions': json.dumps(question_graph), })
 
     return render(request, 'user_profiles/profile.html', context)
+    

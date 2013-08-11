@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% load user_inclusions %}
+
 {% block head %}
 {# JS file not used anymore but commented out to see functionality in case of reuse #}
 {% comment %}
@@ -26,7 +28,8 @@ $(function()
 
 <h2>Community</h2>
 
-<div id=user_question>
+<div id="user_question">
+<div id="inner_question">
 <h2>{{ question.title }}</h2>
 
 {% if question.lesson %}
@@ -39,16 +42,17 @@ $(function()
 {% endif %}
 
 <p>{{ question.user_question|linebreaks }}</p>
-<p>User: {{ question.user.username }} (to replace with usertag system)</p>
 <p>Created: {{ question.created|date:"H:i D d M Y" }}</p>
 <p>Last Modified: {{ question.modified|date:"H:i D d M Y" }}</p>
+{% usertag question.user %}
+</div>
 
 {% for comment in q_comments %}
     <div id="question_comment{{ forloop.counter }}" class="user_comment">
     <p>{{ comment.user_comment|linebreaks }}</p>
-    <p>User: {{ comment.user.username }} (to be replaced with usertag system)</p>
     <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
     <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
+    {% usertag comment.user %}
     </div>
 {% endfor %}
 </div>
@@ -56,10 +60,12 @@ $(function()
 <div id="user_answers">
 {% for answer in answers %}
     <div id="answer{{ forloop.counter }}" class="user_answer">
+    <div id="inner_answer">
     <p>{{ answer.user_answer|linebreaks }}</p>
-    <p>User: {{ answer.user.username }} (to be replaced with usertag system)</p>
     <p>Created: {{ answer.created|date:"H:i D d M Y" }}</p>
     <p>Last Modified: {{ answer.modified|date:"H:i D d M Y" }}</p>
+    {% usertag answer.user %}
+    </div>
     
     {# Need to find a better way to get data from 2D array or dict or whatever #}
     {% for c_list in a_comments %}
@@ -67,9 +73,9 @@ $(function()
             {% for comment in c_list %}
                 <div id="answer_comment{{ forloop.counter }}" class="user_comment">
                 <p>{{ comment.user_comment|linebreaks }}</p>
-                <p>User: {{ comment.user.username }} (to be replaced with usertag system)</p>
                 <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
                 <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
+                {% usertag comment.user %}
                 </div>
             {% endfor %}
         {% endif %}
