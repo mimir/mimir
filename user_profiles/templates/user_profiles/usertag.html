@@ -3,12 +3,11 @@
         <div id="user_avatar">
             <img src="http://www.gravatar.com/avatar/{{ profile.gravatar_hash }}?s=64&d=identicon" /> {# TODO maybe https?! #}
         </div>
-        <div id="user_details">
-            <p>{{ profile.user.username|upper }}</p>
-            <p>Perhaps a caption?</p>
-        </div>
-        <div id="user_rating">
-            <p>506</p>
-        </div>
+        <span id="user_details">
+            <b>{{ profile.user.username|upper }}</b> | <i>Perhaps a caption?</i>
+        </span>
+        <span id="user_rating">
+            506
+        </span>
     </a>
 </div>

@@ -30,7 +30,11 @@ $(function()
 
 <div id="user_question">
 <div id="inner_question">
-<h2>{{ question.title }}</h2>
+
+{% usertag question.user %}
+
+<div class="community_question_title_bar">
+ <div class="arrows"><img src="../../static/img/arrowup.png" /> 10 <img src="../../static/img/arrowdown.png" /></div>{{ question.title }}</div>
 
 {% if question.lesson %}
     <h4>Lesson: <a href={% url 'lessons:read' lesson_name=question.lesson.name.split|join:'_' %}>{{ question.lesson.name }}</a></h4>
@@ -42,17 +46,18 @@ $(function()
 {% endif %}
 
 <p>{{ question.user_question|linebreaks }}</p>
-<p>Created: {{ question.created|date:"H:i D d M Y" }}</p>
-<p>Last Modified: {{ question.modified|date:"H:i D d M Y" }}</p>
-{% usertag question.user %}
+<div class="timestamps">
+<p>Created: {{ question.created|date:"H:i D d M Y" }} | Last Modified: {{ question.modified|date:"H:i D d M Y" }}</p>
+</div>
 </div>
 
 {% for comment in q_comments %}
     <div id="question_comment{{ forloop.counter }}" class="user_comment">
-    <p>{{ comment.user_comment|linebreaks }}</p>
-    <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
-    <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
-    {% usertag comment.user %}
+     {% usertag comment.user %}
+     <div class="arrows"><img src="../../static/img/bl_arrowup.png" /> 10 <img src="../../static/img/bl_arrowdown.png" /></div>
+     <p>{{ comment.user_comment|linebreaks }}</p>
+    <div class="timestamps"><p>Created: {{ comment.created|date:"H:i D d M Y" }} | Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p></div>
+   
     </div>
 {% endfor %}
 </div>
@@ -61,10 +66,10 @@ $(function()
 {% for answer in answers %}
     <div id="answer{{ forloop.counter }}" class="user_answer">
     <div id="inner_answer">
-    <p>{{ answer.user_answer|linebreaks }}</p>
-    <p>Created: {{ answer.created|date:"H:i D d M Y" }}</p>
-    <p>Last Modified: {{ answer.modified|date:"H:i D d M Y" }}</p>
     {% usertag answer.user %}
+    <div class="arrows"><img src="../../static/img/bl_arrowup.png" /> 10 <img src="../../static/img/bl_arrowdown.png" /></div>
+    <p>{{ answer.user_answer|linebreaks }}</p>
+    <div class="timestamps"><p>Created: {{ answer.created|date:"H:i D d M Y" }} | Last Modified: {{ answer.modified|date:"H:i D d M Y" }}</p></div>
     </div>
     
     {# Need to find a better way to get data from 2D array or dict or whatever #}
@@ -72,10 +77,11 @@ $(function()
         {% if forloop.counter == forloop.parentloop.counter %}
             {% for comment in c_list %}
                 <div id="answer_comment{{ forloop.counter }}" class="user_comment">
-                <p>{{ comment.user_comment|linebreaks }}</p>
-                <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
-                <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
                 {% usertag comment.user %}
+                <div class="arrows"><img src="../../static/img/bl_arrowup.png" /> 10 <img src="../../static/img/bl_arrowdown.png" /></div>
+                <p>{{ comment.user_comment|linebreaks }}</p>
+                <div class="timestamps"><p>Created: {{ comment.created|date:"H:i D d M Y" }} | Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p></div>
+                
                 </div>
             {% endfor %}
         {% endif %}
