@@ -1,0 +1,48 @@
+- model: lessons.answerformat
+  pk: 1
+  fields: {
+        name: Integer,
+        hint: "Format your answer as a whole number, without decimal places.",
+        example: -234596,
+        regex: "^(-)?\\d+$", }
+- model: lessons.answerformat
+  pk: 2
+  fields: {
+        name: Decimal,
+        hint: "Format your answer as a decimal number, with decimal places if necessary.",
+        example: 34.0960,
+        regex: "^(-)?\\d+(.\\d+)?$", }
+- model: lessons.answerformat
+  pk: 3
+  fields: {
+        name: Polynomial in x,
+        hint: "Format your answer as a polynomial in the variable x, placing a * between the coefficients and powers.",
+        example: "2*x^2-1",
+        regex: "^(((-)?\\d+\\*)?x\\^\\d+)*(-)?\\d+$", }
+
+- model: lessons.lesson
+  pk: 1
+  fields: {
+        name: "Introduction to Determinants",
+        tutorial: "The determinant is a value associated with a square matrix. It can be computed from the entries of the matrix by a specific arithmetic expression, but there are also other ways to work it out. The determinant provides important information about a matrix of coefficients of a system of linear equations, or about a matrix that corresponds to a linear transformation of a vector space. In the first case the system has a unique solution exactly when the determinant is nonzero; when the determinant is zero there are either no solutions or many solutions. In the second case the transformation has an inverse operation exactly when the determinant is nonzero. A geometric interpretation can be given to the value of the determinant of a square matrix with real entries: the absolute value of the determinant gives the scale factor by which area or volume (or a higher dimensional analogue) is multiplied under the associated linear transformation, while its sign indicates whether the transformation preserves orientation. Thus a $2\\times 2$ matrix with determinant -2, when applied to a region of the plane with finite area, will transform that region into one with twice the area, while reversing its orientation.
+Determinants occur throughout mathematics. The use of determinants in calculus includes the Jacobian determinant in the substitution rule for integrals of functions of several variables. They are used to define the characteristic polynomial of a matrix that is an essential tool in eigenvalue problems in linear algebra. In some cases they are used just as a compact notation for expressions that would otherwise be unwieldy to write down.
+The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the case where the matrix entries are written out in full, the determinant is denoted by surrounding the matrix entries by vertical bars instead of the brackets or parentheses of the matrix. For instance, the determinant of the matrix",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "The basics of determinants of matrices: what they mean, and how to compute them in small cases",}
+
+- model: lessons.lesson
+  pk: 2
+  fields: {
+        name: "Further Determinants",
+        tutorial: "Calculating the determinant of a $3\\times 3$ matrix (or larger) can be very unweildy to do by hand, fortunately there are a number of tricks that can help us do so. Row expansion blah blah.",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        description: "More on the determinants of matrices, some tips for larger calculations",}
+
+- model: lessons.lessonfollowsfromlesson
+  pk: 1
+  fields: {
+        leads_from: 1,
+        leads_to: 2,
+        strength: 9, }
