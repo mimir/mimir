@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from django.http import HttpResponse, Http404, HttpResponseRedirect
+from django.http import HttpResponse, Http404, HttpResponseRedirect, HttpResponseServerError
 from django.core.urlresolvers import reverse
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
 from lessons.generate import generateQuestion
@@ -9,6 +9,7 @@ import json
 from django.core import serializers
 from django.contrib.auth.models import User
 from community.forum import JSONUserQuestion, JSONUserAnswer, JSONUserComment, listToJSON
+from django.core.exceptions import ValidationError
 
 def index(request):
     #Send list of all questions to page.
@@ -45,6 +46,7 @@ def rate_user_item(request):
         if "rating" in p and "type" in p and "id" in p:
             user_item = None
             user_profile = None
+            user_vote = None
             
             if p['type'] == 'Q':
                 user_item = UserQuestion.objects.get(pk=p['id'])
@@ -53,37 +55,65 @@ def rate_user_item(request):
             elif p['type'] == 'C':
                 user_item = UserComment.objects.get(pk=p['id'])
             else:
+                print "A type error occured."
                 return HttpResponseServerError("A type error occurred.")
                 
-            if p['rating'] == True:
+            if p['rating'] == 'up':
                 user_item.rating += 1
                 user_profile = UserProfile.objects.get(user=user_item.user)
                 user_profile.reputation += 1
-            elif p['rating'] == False:
+                user_vote = True
+            elif p['rating'] == 'down':
                 user_item.rating -= 1
                 user_profile = UserProfile.objects.get(user=user_item.user)
                 user_profile.reputation -= 1
+                user_vote = False
             else:
+                print "An invalid rating value error occurred."
                 return HttpResponseServerError("An invalid rating value error occurred.")
             
             user_rating = None
             
+            
+            
             if p['type'] == 'Q':
-                user_rating = UserRating(user=request.user, user_question=user_item, rating=p['rating'])
+                try:
+                    user_rating = UserRating.objects.get(user=request.user, user_question=user_item)
+                    return HttpResponse(content="You cannot rate something twice.", content_type="text/plaintext", status=500, reason="You cannot rate something twice.")    
+                except:
+                    pass
+            
+                user_rating = UserRating(user=request.user, user_question=user_item, rating=user_vote)
             elif p['type'] == 'A':
-                user_rating = UserRating(user=request.user, user_answer=user_item, rating=p['rating'])
+                try:
+                    user_rating = UserRating.objects.get(user=request.user, user_answer=user_item)
+                    return HttpResponse(content="You cannot rate something twice.", content_type="text/plaintext", status=500, reason="You cannot rate something twice.")   
+                except:
+                    pass
+                    
+                user_rating = UserRating(user=request.user, user_answer=user_item, rating=user_vote)
             elif p['type'] == 'C':
-                user_rating = UserRating(user=request.user, user_comment=user_item, rating=p['rating'])
+                try:
+                    user_rating = UserRating.objects.get(user=request.user, user_comment=user_item)
+                    return HttpResponse(content="You cannot rate something twice.", content_type="text/plaintext", status=500, reason="You cannot rate something twice.")  
+                except:
+                    pass
+                    
+                user_rating = UserRating(user=request.user, user_comment=user_item, rating=user_vote)
             
             try:
                 user_rating.full_clean()
             except ValidationError as e:
-                return HttpResponseServerError("You can't rate something more than once.")
+                print "You can't rate something more than once."
+                print e.message_dict
+                return HttpResponse(content="You cannot rate something twice.", status=500)
             
+            user_rating.save()
             user_item.save()
             user_profile.save()
             
         else:
+            print "A POST request error occurred."
             return HttpResponseServerError("A POST request error occurred.")
     return HttpResponse('')
     

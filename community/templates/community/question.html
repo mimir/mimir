@@ -5,13 +5,60 @@
 {% block head %}
 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.3.1/jquery.cookie.min.js"></script> {# TODO look into other CDNs #}
 <script type="text/javascript" charset="utf-8">
-var rating = null;
-var type = null;
-var id = null;
+
 function csrfSafeMethod(method) {
     // these HTTP methods do not require CSRF protection
     return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
 }
+
+var current_element = null;
+
+function upvote(element, type, id)
+{
+    current_element = element;
+    $.ajax({
+        type: "POST",
+        url: "{% url 'community:rate_user_item' %}",
+        data: ({rating: 'up', type: type, id: id}),
+        error: function(response, textStatus){alert(response.responseText);},
+        success: function(element){vote_success('up');},
+    });
+}
+    
+function downvote(element, type, id)
+{
+    current_element = element;
+    $.ajax({
+        type: "POST",
+        url: "{% url 'community:rate_user_item' %}",
+        data: ({rating: 'down', type: type, id: id}),
+        error: function(response, textStatus){alert(response.responseText);},
+        success: function(element){vote_success('down');},
+    });
+}
+
+function vote_success(vote)
+{
+    element = current_element;
+    rating_element = $("#" + element).parent().children(".rating");
+    new_rating = parseInt($(rating_element).text());
+    
+    alert($(rating_element).text())
+    
+    if(vote == 'up')
+    {
+        new_rating++;
+    }
+    else if(vote == 'down')
+    {
+        new_rating--;
+    }
+    else return false;
+    
+    $(rating_element).text(new_rating);
+    return true;
+}
+
 $(function() {
     var csrftoken = $.cookie('csrftoken');
     $.ajaxSetup({
@@ -21,58 +68,11 @@ $(function() {
                 xhr.setRequestHeader("X-CSRFToken", csrftoken);
             }
         }
-    });
+    }); 
     
-    $('.upvote').click(function() {
-        if (rating != null)
-        {
-            $.ajax({
-                type: "POST",
-                url: "{% url 'community:rate_user_item' %}",
-                data: ({rating: true, type: type, id: id}),
-            });
-            $('.rate').prop('value', 'Thanks!');
-        }
-    });
-    
-    $('.downvote').click(function() {
-        if (rating != null)
-        {
-            $.ajax({
-                type: "POST",
-                url: "{% url 'community:rate_user_item' %}",
-                data: ({rating: false, type: type, id: id}),
-            });
-            $('.rate').prop('value', 'Thanks!');
-        }
-    });
 })
 </script>
 {% endblock %}
-
-{% comment %}
-{% block head %}
-{# JS file not used anymore but commented out to see functionality in case of reuse #}
-
-{% load staticfiles %}
-<script type="text/javascript" src="{% static "community/javascript/forum.js" %}"></script>
-<script type="text/javascript">
-
-$(function() 
-{
-	var question = {{ question|safe }};
-	var answers = {{ answers|safe }};
-	var question_comments = {{ q_comments|safe }};
-    var answer_comments = {{ a_comments|safe }};
-	
-	initQuestionPage(question, answers, question_comments, answer_comments) //In forum.js
-    
-});
-
-</script>
-
-{% endblock %}
-{% endcomment %}
 
 
 {% block content %}
@@ -81,7 +81,19 @@ $(function()
 
 <div id="user_question">
 <div id="inner_question">
-<h2>{{ question.title }}</h2>
+
+{% usertag question.user %}
+
+<div class="community_question_title_bar">
+ <div class="arrows">
+    <a id="questionup" class="upvote" onclick="upvote(this.id, 'Q', {{ question.pk }})">
+        <img src="../../../static/img/arrowup.png" />
+    </a> 
+    <span class="rating">{{ question.rating }}</span> 
+    <a id="questiondown" class="downvote" onclick="downvote(this.id, 'Q', {{ question.pk }})">
+        <img src="../../../static/img/arrowdown.png" />
+    </a>
+</div>{{ question.title }}</div>
 
 {% if question.lesson %}
     <h4>Lesson: <a href={% url 'lessons:read' lesson_name=question.lesson.name.split|join:'_' %}>{{ question.lesson.name }}</a></h4>
@@ -93,17 +105,26 @@ $(function()
 {% endif %}
 
 <p>{{ question.user_question|linebreaks }}</p>
-<p>Created: {{ question.created|date:"H:i D d M Y" }}</p>
-<p>Last Modified: {{ question.modified|date:"H:i D d M Y" }}</p>
-{% usertag question.user %}
+<div class="timestamps">
+<p>Created: {{ question.created|date:"H:i D d M Y" }} | Last Modified: {{ question.modified|date:"H:i D d M Y" }}</p>
+</div>
 </div>
 
 {% for comment in q_comments %}
     <div id="question_comment{{ forloop.counter }}" class="user_comment">
-    <p>{{ comment.user_comment|linebreaks }}</p>
-    <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
-    <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
     {% usertag comment.user %}
+    <div class="arrows">
+        <a id="comment{{ forloop.counter }}up" class="upvote" onclick="upvote(this.id, 'C', {{ comment.pk }})">
+            <img src="../../../static/img/bl_arrowup.png" /> 
+        </a>
+        <span class="rating">{{ comment.rating }}</span>
+        <a id="comment{{ forloop.counter }}down" class="downvote" onclick="downvote(this.id, 'C', {{ comment.pk }})">
+            <img src="../../../static/img/bl_arrowdown.png" />
+        </a>
+    </div>
+     <p>{{ comment.user_comment|linebreaks }}</p>
+    <div class="timestamps"><p>Created: {{ comment.created|date:"H:i D d M Y" }} | Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p></div>
+   
     </div>
 {% endfor %}
 </div>
@@ -112,10 +133,18 @@ $(function()
 {% for answer in answers %}
     <div id="answer{{ forloop.counter }}" class="user_answer">
     <div id="inner_answer">
-    <p>{{ answer.user_answer|linebreaks }}</p>
-    <p>Created: {{ answer.created|date:"H:i D d M Y" }}</p>
-    <p>Last Modified: {{ answer.modified|date:"H:i D d M Y" }}</p>
     {% usertag answer.user %}
+    <div class="arrows">
+        <a id="answer{{ forloop.counter }}up" class="upvote" onclick="upvote(this.id, 'A', {{ answer.pk }})">
+            <img src="../../../static/img/bl_arrowup.png" />
+        </a>
+        <span class="rating">{{ answer.rating }}</span>
+        <a id="answer{{ forloop.counter }}down" class="downvote" onclick="downvote(this.id, 'A', {{ answer.pk }})">
+            <img src="../../../static/img/bl_arrowdown.png" />
+        </a>
+    </div>
+    <p>{{ answer.user_answer|linebreaks }}</p>
+    <div class="timestamps"><p>Created: {{ answer.created|date:"H:i D d M Y" }} | Last Modified: {{ answer.modified|date:"H:i D d M Y" }}</p></div>
     </div>
     
     {# Need to find a better way to get data from 2D array or dict or whatever #}
@@ -123,10 +152,19 @@ $(function()
         {% if forloop.counter == forloop.parentloop.counter %}
             {% for comment in c_list %}
                 <div id="answer_comment{{ forloop.counter }}" class="user_comment">
-                <p>{{ comment.user_comment|linebreaks }}</p>
-                <p>Created: {{ comment.created|date:"H:i D d M Y" }}</p>
-                <p>Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p>
                 {% usertag comment.user %}
+                <div class="arrows">
+                    <a id="comment{{ forloop.counter }}up" class="upvote" onclick="upvote(this.id, 'C', {{ comment.pk }})">
+                        <img src="../../../static/img/bl_arrowup.png" />
+                    </a>
+                    <span class="rating">{{ comment.rating }}</span>
+                    <a id="comment{{ forloop.counter }}down" class="downvote" onclick="downvote(this.id, 'C', {{ comment.pk }})">
+                        <img src="../../../static/img/bl_arrowdown.png" />
+                    </a>
+                </div>
+                <p>{{ comment.user_comment|linebreaks }}</p>
+                <div class="timestamps"><p>Created: {{ comment.created|date:"H:i D d M Y" }} | Last Modified: {{ comment.modified|date:"H:i D d M Y" }}</p></div>
+                
                 </div>
             {% endfor %}
         {% endif %}

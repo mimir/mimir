@@ -10,14 +10,17 @@
 
 <div id="user_question_list">
 {% for question in question_list %}
-    <a href="questions/{{ question.pk }}">
+    
         <div class="question_listed">
-            <div class="question_title">
-                <h4>{{ question.title }}</h4>
-            </div>
             {% usertag question.user %}
+             <div class="question_title">
+             <a href="questions/{{ question.pk }}">
+                <h4>{{ question.title }}</h4>
+             </a>
+            </div>
+            
         </div>
-    </a>
+    
 {% endfor %}
 </div>
 

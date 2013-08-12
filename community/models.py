@@ -51,7 +51,7 @@ class UserRating(models.Model): #When topics implemented make so that topic is m
     #modified = models.DateTimeField(auto_now = True) #Modification date set on changing
 
     def __unicode__(self):
-        return self.user.name + " - " + self.user_question.title + " - " + self.rating
+        return self.user.username + " - " + str(self.rating)
         
     class Meta:
-        unique_together = ("user_question", "user_answer", "user_comment", "user")
+        unique_together = (("user_question", "user"), ("user_answer", "user"), ("user_comment", "user"), )

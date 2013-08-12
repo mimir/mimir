@@ -19,5 +19,12 @@
         <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
     {% endfor %}
     </ul>
+    {% if test_me_active %}
+        {% for lesson in test_me %}
+            <a href="{% url 'lessons:rand_question' lesson_name=lesson.name.split|join:'_' %}">Test me</a>
+        {% endfor %}
+    {% else %}
+        <p>No test me function atm soz babz :(</p>
+    {% endif %}
 {% endif %}
 {% endblock %}
