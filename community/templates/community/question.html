@@ -43,8 +43,6 @@ function vote_success(vote)
     rating_element = $("#" + element).parent().children(".rating");
     new_rating = parseInt($(rating_element).text());
     
-    alert($(rating_element).text())
-    
     if(vote == 'up')
     {
         new_rating++;
