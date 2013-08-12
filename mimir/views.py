@@ -17,14 +17,13 @@ def index(request):
         user_lessons = Lesson.objects.filter(usertakeslesson__user = curuser).distinct()[:5] #Gets five lessons that have been taken by the user
         whats_next = Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = request.user).exclude(usertakeslesson__user = request.user).distinct().order_by('?')[:5]
         test_me = Lesson.objects.filter(usertakeslesson__user = curuser).order_by('?')[:1]
-        test_me_active = Question.objects.filter(lesson = test_me[0]).exists()
     else:
         user_lessons = []
         whats_next = []
         test_me = []
         test_me_active = False
     context = ({
-        'user_lessons':user_lessons, 'whats_next':whats_next, 'test_me':test_me, 'test_me_active':test_me_active, 
+        'user_lessons':user_lessons, 'whats_next':whats_next, 'test_me':test_me,
     })
     return render(request, 'home.html', context)
 
