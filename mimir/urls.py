@@ -27,4 +27,5 @@ urlpatterns = patterns('',
     url(r'^myskills/$', 'mimir.views.myskills', name = 'myskills'),
     url(r'^whatsnext/$', 'mimir.views.whatsnext', name = 'whatsnext'),
 	url(r'^community/', include('community.urls', namespace = 'community')),
+    url(r'^search/(?P<item>\w+)/$', 'mimir.views.search', name = 'search'),
 )
