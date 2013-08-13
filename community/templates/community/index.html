@@ -14,7 +14,7 @@
         <div class="question_listed">
             {% usertag question.user %}
              <div class="question_title">
-             <a href="questions/{{ question.pk }}">
+             <a href="{% url 'community:question' question.pk %}">
                 <h4>{{ question.title }}</h4>
              </a>
             </div>

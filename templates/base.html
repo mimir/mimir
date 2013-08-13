@@ -4,6 +4,19 @@
     <link rel="stylesheet" type="text/css" href="/static/css/default.css">
     <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script> {# TODO look into other CDNs #}
     <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    
+    <script>
+        $(function()
+        {            
+            $('#search_form').submit(function(e) 
+            {
+                e.preventDefault();
+                if ($('#search').val() == "") return false;
+                window.location.href = "/search/" + $('#search').val().split(" ").join("_") + "/";
+                return false;
+            });
+        });    
+    </script>
     {% block head %}
     {% endblock %}
     <title>Mimir - A new way to learn online</title>
@@ -37,7 +50,12 @@
                 {% endif %}
             </ul>
     </span>
-    <span class="mimirtitle"> MIMIR: A new way to learn online</span>
+    
+    <span class="mimirtitle"> MIMIR: A new way to learn online 
+    <form id="search_form">
+        <input id="search" type="search" placeholder="Search Mimir">
+    </form></span>
+    
     
     </div>
     

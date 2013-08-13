@@ -10,6 +10,8 @@ from django.db.models import Count
 import json
 import string
 import datetime, time, calendar
+from community.models import UserQuestion
+from search import get_query
 
 def index(request):
     if request.user.is_authenticated():
@@ -55,3 +57,16 @@ def myskills(request):
         return render(request, 'skills.html', context)
     else:
         return HttpResponseRedirect("/home/")
+        
+def search(request, item):
+    item = item.replace("_", " ")
+    lessons = Lesson.objects.filter(get_query(item, ["name",]))
+    questions = UserQuestion.objects.filter(get_query(item, ["title",]))
+    users = User.objects.filter(get_query(item, ["username",]))
+    context = ({
+        'search_term': item,
+        'lessons': lessons,
+        'questions': questions,
+        'users': users,
+    })
+    return render(request, 'search.html', context)
