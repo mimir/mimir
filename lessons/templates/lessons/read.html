@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% load markup %}
+
 {% block head %}
 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.3.1/jquery.cookie.min.js"></script> {# TODO look into other CDNs #}
 <script type="text/javascript" charset="utf-8">
@@ -37,10 +39,10 @@ $(function() {
 
 {% if lesson %}
     <h2>{{ lesson.name }}</h2>
-    <p>{{ lesson.tutorial }}</p>
+    <p>{{ lesson.tutorial|markdown:"safe" }}</p>
 	
     {% for ref in lesson.lessonreferencesreference_set.all %}
-        <i>Material taken from <a href="{{ ref.reference.url}}">{{ ref.reference.name}}</a> by {{ ref.reference.author}}</i><br />
+        <i>Material taken from <a href="{{ ref.reference.url }}">{{ ref.reference.name }}</a> by {{ ref.reference.author }}</i><br />
     {% endfor %}
 	
     {% if lesson.example_set.all %}

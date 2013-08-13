@@ -29,6 +29,8 @@ Once that is correct we need to populate your database with mimirs tables, so ru
 
 `python manage.py syncdb`
 
+We also need to install [markdown](https://pypi.python.org/pypi/Markdown) for python, see the instructions there to do so, make sure you install the latest version!
+
 Finally test it out with
 
 `python manage.py runserver`
