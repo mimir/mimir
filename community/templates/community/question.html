@@ -4,7 +4,7 @@
 
 {% block head %}
 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.3.1/jquery.cookie.min.js"></script> {# TODO look into other CDNs #}
-<script type="text/javascript" charset="utf-8">
+<script type="text/javascript">
 
 function csrfSafeMethod(method) {
     // these HTTP methods do not require CSRF protection
@@ -85,11 +85,11 @@ $(function() {
 <div class="community_question_title_bar">
  <div class="arrows">
     <a id="questionup" class="upvote" onclick="upvote(this.id, 'Q', {{ question.pk }})">
-        <img src="../../../static/img/arrowup.png" />
+        <img src="/static/img/arrowup.png" />
     </a> 
     <span class="rating">{{ question.rating }}</span> 
     <a id="questiondown" class="downvote" onclick="downvote(this.id, 'Q', {{ question.pk }})">
-        <img src="../../../static/img/arrowdown.png" />
+        <img src="/static/img/arrowdown.png" />
     </a>
 </div>{{ question.title }}</div>
 
@@ -113,11 +113,11 @@ $(function() {
     {% usertag comment.user %}
     <div class="arrows">
         <a id="comment{{ forloop.counter }}up" class="upvote" onclick="upvote(this.id, 'C', {{ comment.pk }})">
-            <img src="../../../static/img/bl_arrowup.png" /> 
+            <img src="/static/img/bl_arrowup.png" /> 
         </a>
         <span class="rating">{{ comment.rating }}</span>
         <a id="comment{{ forloop.counter }}down" class="downvote" onclick="downvote(this.id, 'C', {{ comment.pk }})">
-            <img src="../../../static/img/bl_arrowdown.png" />
+            <img src="/static/img/bl_arrowdown.png" />
         </a>
     </div>
      <p>{{ comment.user_comment|linebreaks }}</p>
@@ -134,11 +134,11 @@ $(function() {
     {% usertag answer.user %}
     <div class="arrows">
         <a id="answer{{ forloop.counter }}up" class="upvote" onclick="upvote(this.id, 'A', {{ answer.pk }})">
-            <img src="../../../static/img/bl_arrowup.png" />
+            <img src="/static/img/bl_arrowup.png" />
         </a>
         <span class="rating">{{ answer.rating }}</span>
         <a id="answer{{ forloop.counter }}down" class="downvote" onclick="downvote(this.id, 'A', {{ answer.pk }})">
-            <img src="../../../static/img/bl_arrowdown.png" />
+            <img src="/static/img/bl_arrowdown.png" />
         </a>
     </div>
     <p>{{ answer.user_answer|linebreaks }}</p>
@@ -153,11 +153,11 @@ $(function() {
                 {% usertag comment.user %}
                 <div class="arrows">
                     <a id="comment{{ forloop.counter }}up" class="upvote" onclick="upvote(this.id, 'C', {{ comment.pk }})">
-                        <img src="../../../static/img/bl_arrowup.png" />
+                        <img src="/static/img/bl_arrowup.png" />
                     </a>
                     <span class="rating">{{ comment.rating }}</span>
                     <a id="comment{{ forloop.counter }}down" class="downvote" onclick="downvote(this.id, 'C', {{ comment.pk }})">
-                        <img src="../../../static/img/bl_arrowdown.png" />
+                        <img src="/static/img/bl_arrowdown.png" />
                     </a>
                 </div>
                 <p>{{ comment.user_comment|linebreaks }}</p>
