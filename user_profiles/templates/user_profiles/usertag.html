@@ -1,7 +1,7 @@
 <div id="usertag">
     <a href="{% url 'user_profiles:view' profile.user.username %}">
         <div id="user_avatar">
-            <img src="http://www.gravatar.com/avatar/{{ profile.gravatar_hash }}?s=64&d=identicon" /> {# TODO maybe https?! #}
+            <img src="http://www.gravatar.com/avatar/{{ profile.gravatar_hash }}?s=64&amp;d=identicon" /> {# TODO maybe https?! #}
         </div>
         <span id="user_details">
             <b>{{ profile.user.username|upper }}</b> | <i>{{ profile.caption }}</i>
