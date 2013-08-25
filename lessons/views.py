@@ -1,7 +1,7 @@
 from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
-from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
+from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
 from user_profiles.models import UserTakesLesson, UserAnswersQuestion
 
 from lessons.generate import generateQuestion
@@ -16,9 +16,9 @@ next_link may seem completely pointless atm, and in truth it is, but when we get
 '''
 
 def index(request):
-    latest_lesson_list = Lesson.objects.all()
+    course_list = Course.objects.all()
     context = ({
-        'latest_lesson_list':latest_lesson_list,
+        'course_list':course_list,
     })
     return render(request, 'lessons/index.html', context)
 

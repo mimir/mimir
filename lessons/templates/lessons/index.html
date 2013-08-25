@@ -3,10 +3,17 @@
 {% block content %}
 
 <h2>Lessons</h2>
-{% if latest_lesson_list %}
+{% if course_list %}
     <ul>
-    {% for lesson in latest_lesson_list %}
-        <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
+    {% for course in course_list %}
+        <li>
+            {{ course.name }} 
+            <ul>
+                {% for lesson in course.lesson_set.all %}
+                    <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
+                {% endfor %}
+            </ul>
+        </li>
     {% endfor %}
     </ul>
 {% else %}
