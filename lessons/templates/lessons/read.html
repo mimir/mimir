@@ -39,6 +39,7 @@ $(function() {
 
 {% if lesson %}
     <h2>{{ lesson.name }}</h2>
+    Part of the course on {{ lesson.course.name }}.
     {{ lesson.tutorial|markdown:"safe" }}
 	
     {% for ref in lesson.lessonreferencesreference_set.all %}
