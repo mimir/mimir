@@ -155,8 +155,7 @@ div#content ul {
 	border:medium #CCCCCC;
 	box-shadow:0px 0px 5px #000000;
 	border-radius:5px;
-	width:300px;
-	margin-left:auto;
+	margin-left:10px;
 	margin-right:auto;
 	padding: 0px;
 }
