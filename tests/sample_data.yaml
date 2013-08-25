@@ -18,19 +18,47 @@
         name: Polynomial in x,
         hint: "Format your answer as a polynomial in the variable x, placing a * between the coefficients and powers.",
         example: "2*x^2-1",
-        regex: "^(((-)?\\d+\\*)?x\\^\\d+)*(-)?\\d+$", }
+        regex: "^(((-)?\\d+\\*)?x\\^\\d+)*(-)?(\\d+)?$", }
+
+- model: lessons.topic
+  pk: 1
+  fields: {
+        name: "Linear Algebra",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Linear algebra is the study of solutions to systems of linear equations, vectors and matrices, along with more abstract vector spaces and linear maps form the basis for this area.", }
+
+- model: lessons.course
+  pk: 1
+  fields: {
+        name: "Matrix Determinants",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "The fundamentals of the theory of matrix determinants, their calculation, uses, and the underlying theory.", }
+- model: lessons.course
+  pk: 2
+  fields: {
+        name: "Integration",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Integration is one of the fundamental tools in calculus, with applications in a huge variety of areas, this course will teach you about ", }
+
+- model: lessons.courseisontopic
+  pk: 1
+  fields: {
+        topic: 1,
+        course: 1, }
 
 - model: lessons.lesson
   pk: 1
   fields: {
         name: "Introduction to Determinants",
-        tutorial: "The determinant is a value associated with a square matrix. It can be computed from the entries of the matrix by a specific arithmetic expression, but there are also other ways to work it out. The determinant provides important information about a matrix of coefficients of a system of linear equations, or about a matrix that corresponds to a linear transformation of a vector space. In the first case the system has a unique solution exactly when the determinant is nonzero; when the determinant is zero there are either no solutions or many solutions. In the second case the transformation has an inverse operation exactly when the determinant is nonzero. A geometric interpretation can be given to the value of the determinant of a square matrix with real entries: the absolute value of the determinant gives the scale factor by which area or volume (or a higher dimensional analogue) is multiplied under the associated linear transformation, while its sign indicates whether the transformation preserves orientation. Thus a $2\\times 2$ matrix with determinant -2, when applied to a region of the plane with finite area, will transform that region into one with twice the area, while reversing its orientation.
-Determinants occur throughout mathematics. The use of determinants in calculus includes the Jacobian determinant in the substitution rule for integrals of functions of several variables. They are used to define the characteristic polynomial of a matrix that is an essential tool in eigenvalue problems in linear algebra. In some cases they are used just as a compact notation for expressions that would otherwise be unwieldy to write down.
+        tutorial: "Introduction\n------------\nThe determinant is a value associated with a square matrix. It can be computed from the entries of the matrix by a specific arithmetic expression, but there are also other ways to work it out. The determinant provides important information about a matrix of coefficients of a system of linear equations, or about a matrix that corresponds to a linear transformation of a vector space. In the first case the system has a unique solution exactly when the determinant is nonzero; when the determinant is zero there are either no solutions or many solutions. In the second case the transformation has an inverse operation exactly when the determinant is nonzero. A geometric interpretation can be given to the value of the determinant of a square matrix with real entries: the absolute value of the determinant gives the scale factor by which area or volume (or a higher dimensional analogue) is multiplied under the associated linear transformation, while its sign indicates whether the transformation preserves orientation. Thus a $2\\times 2$ matrix with determinant -2, when applied to a region of the plane with finite area, will transform that region into one with twice the area, while reversing its orientation.\nApplications\n------------\nDeterminants occur throughout mathematics. The use of determinants in calculus includes the Jacobian determinant in the substitution rule for integrals of functions of several variables. They are used to define the characteristic polynomial of a matrix that is an essential tool in eigenvalue problems in linear algebra. In some cases they are used just as a compact notation for expressions that would otherwise be unwieldy to write down.
 The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the case where the matrix entries are written out in full, the determinant is denoted by surrounding the matrix entries by vertical bars instead of the brackets or parentheses of the matrix. For instance, the determinant of the matrix",
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
-        description: "The basics of determinants of matrices: what they mean, and how to compute them in small cases",}
-
+        course: 1,
+        description: "The basics of determinants of matrices: what they mean, and how to compute them in small cases", }
 - model: lessons.lesson
   pk: 2
   fields: {
@@ -38,7 +66,26 @@ The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the cas
         tutorial: "Calculating the determinant of a $3\\times 3$ matrix (or larger) can be very unweildy to do by hand, fortunately there are a number of tricks that can help us do so. Row expansion blah blah.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
-        description: "More on the determinants of matrices, some tips for larger calculations",}
+        course: 1,
+        description: "More on the determinants of matrices, some tips for larger calculations", }
+- model: lessons.lesson
+  pk: 3
+  fields: {
+        name: "Motivation for integration",
+        tutorial: "Suppose you have a function of one variable, such as $f(x) = x$ and you draw its graph, how might you calculate the area between this line and the axis within a certain range? Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. ",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 2,
+        description: "What is the integral, and why is it useful to calculate?", }
+- model: lessons.lesson
+  pk: 4
+  fields: {
+        name: "Integration by inspection",
+        tutorial: "One of the fundamental theorems of calculus is that the integral of a function can be found by taking the antiderivative of the function at each of the endpoints.",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 2,
+        description: "Calculating integrals by inpecting the function to be integrated.", }
 
 - model: lessons.lessonfollowsfromlesson
   pk: 1
@@ -46,3 +93,20 @@ The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the cas
         leads_from: 1,
         leads_to: 2,
         strength: 9, }
+- model: lessons.lessonfollowsfromlesson
+  pk: 2
+  fields: {
+        leads_from: 3,
+        leads_to: 4,
+        strength: 9, }
+
+- model: lessons.question
+  pk: 1
+  fields: {
+        lesson: 1,
+        question: "What is the derivative of \\(x^{$[INT,3,8]a}\\)?",
+        answer: "answer = x^(variables[\"a\"]-1)",
+        calculation: "answer = \"x^\" + str((int)(variables[\"a\"] - 1))",
+        answer_format: 3,
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z", }
