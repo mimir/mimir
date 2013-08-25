@@ -10,12 +10,21 @@ class Reference(models.Model):
     def __unicode__(self):
         return self.name
 
+class Course(models.Model):
+    name = models.CharField(max_length = 100, unique = True)
+    description = models.TextField()
+    created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
+    modified = models.DateTimeField(auto_now = True) #Modification date set on changing
+    def __unicode__(self):
+        return self.name
+        
 class Lesson(models.Model):
     name = models.CharField(max_length = 100, unique = True)
     tutorial = models.TextField()
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     description = models.CharField(max_length = 400)
+    course = models.ForeignKey(Course)
     @property
     def times_taken(self):
         return self.usertakeslesson_set.count() #TODO ensure this is efficient
@@ -73,3 +82,17 @@ class LessonFollowsFromLesson(models.Model):
 
     def __unicode__(self):
         return self.leads_from.name + " leads to " + self.leads_to.name
+
+class Topic(models.Model):
+    name = models.CharField(max_length = 100, unique = True)
+    description = models.TextField()
+    created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
+    modified = models.DateTimeField(auto_now = True) #Modification date set on changing
+    def __unicode__(self):
+        return self.name
+
+class CourseIsOnTopic(models.Model):
+    course = models.ForeignKey(Course)
+    topic = models.ForeignKey(Topic)
+    def __unicode__(self):
+        return self.course.name + " is on " + self.topic.name
