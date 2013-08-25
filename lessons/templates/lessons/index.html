@@ -13,6 +13,7 @@
                     <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
                 {% endfor %}
             </ul>
+            <br />
         </li>
     {% endfor %}
     </ul>
