@@ -294,17 +294,7 @@ An independence system is a gound set $\\mathcal{X}$ together with a collection 
   pk: 2
   fields: {
         lesson: 1,
-        question: "What is the derivative of \\(x^{$[INT,6,9]a + x^{$[INT,3,5]b}}\\)?",
-        answer: "answer = x^(variables[\"a\"]-1)",
-        calculation: "answer = str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1)) + \"+\"+ str(int(variables[\"b\"])) +\"*x^\"+str(int(variables[\"b\"]-1))",
-        answer_format: 3,
-        created: "2013-08-04T16:42:26.539Z",
-        modified: "2013-08-05T16:42:26.539Z", }
-- model: lessons.question
-  pk: 2
-  fields: {
-        lesson: 1,
-        question: "What is the derivative of \\(x^{$[INT,6,9]a + x^{$[INT,3,5]b}}\\)?",
+        question: "What is the derivative of \\(x^{$[INT,6,9]a} + x^{$[INT,3,5]b}\\)?",
         answer: "answer = x^(variables[\"a\"]-1)",
         calculation: "answer = str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1)) + \"+\"+ str(int(variables[\"b\"])) +\"*x^\"+str(int(variables[\"b\"]-1))",
         answer_format: 3,
