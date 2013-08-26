@@ -93,8 +93,8 @@ def rand_question(request, lesson_url):
         pair = generateQuestion(rand_seed, question.question, question.calculation)
         question.question = pair[0]
         question.answer = pair[1]
-        return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),'rand_seed':rand_seed,})
-    return HttpResponseRedirect(reverse('lessons:read', args=[lesson_name])) #TODO this looks broken to me, fix?
+        return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
+    return HttpResponseRedirect(reverse('lessons:read', args=[lesson_url]))
 
 def skill_tree(request):
     if request.user.is_authenticated():
