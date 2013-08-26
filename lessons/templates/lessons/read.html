@@ -68,7 +68,7 @@ $(function() {
     {% endif %}
 
     {% if questions_exist %}
-        <a href="{% url 'lessons:rand_question' lesson_name=lesson.name.split|join:'_' %}">Test me</a>
+        <a href="{% url 'lessons:rand_question' lesson.url %}">Test me</a>
     {% else %}
         <p>No questions for this lesson.</p>
     {% endif %}
@@ -77,7 +77,7 @@ $(function() {
     {% if next_lessons %}
         <ul>
         {% for lesson in next_lessons %}
-            <li><a href="{% url 'lessons:read' lesson.leads_to.name.split|join:'_' %}">{{ lesson.leads_to.name }}</a></li>
+            <li><a href="{% url 'lessons:read' lesson.leads_to.url %}">{{ lesson.leads_to.name }}</a></li>
         {% endfor %}
         </ul>
     {% else %}

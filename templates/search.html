@@ -8,7 +8,7 @@
 <div id="lesson_search">
     <h3>Lessons</h3>
     {% for lesson in lessons %}
-        <p><a href="{% url 'lessons:read' lesson_name=lesson.name.split|join:'_' %}">{{ lesson.name }}</a> - {{ lesson.description }}</p>
+        <p><a href="{% url 'lessons:read' lesson_name=lesson.url %}">{{ lesson.name }}</a> - {{ lesson.description }}</p>
     {% endfor %}
 </div>
 

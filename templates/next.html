@@ -7,14 +7,14 @@
 <h4>What we advise</h4>
 <ul>
 {% for lesson in whats_next %}
-    <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> 
+    <li><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a></li> 
 {% endfor %}
 </ul>
 
 <h4>Everything else</h4>
 <ul>
 {% for lesson in lessons_left %}
-    <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> 
+    <li><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a></li> 
 {% endfor %}
 </ul>
 

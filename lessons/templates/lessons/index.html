@@ -10,7 +10,7 @@
             {{ course.name }} 
             <ul>
                 {% for lesson in course.lesson_set.all %}
-                    <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
+                    <li><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
                 {% endfor %}
             </ul>
             <br />

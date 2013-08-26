@@ -20,6 +20,7 @@ class Course(models.Model):
         
 class Lesson(models.Model):
     name = models.CharField(max_length = 100, unique = True)
+    url = models.CharField(max_length = 100, unique = True)
     tutorial = models.TextField()
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing

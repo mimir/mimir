@@ -94,7 +94,7 @@ $(function() {
 </div>{{ question.title }}</div>
 
 {% if question.lesson %}
-    <h4>Lesson: <a href={% url 'lessons:read' lesson_name=question.lesson.name.split|join:'_' %}>{{ question.lesson.name }}</a></h4>
+    <h4>Lesson: <a href={% url 'lessons:read' lesson_name=question.lesson.url %}>{{ question.lesson.name }}</a></h4>
 {% endif %}
 
 {% if question.question %}

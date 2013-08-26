@@ -10,18 +10,18 @@
     <h4><a href="{% url 'myskills' %}">My Skills</a></h4>
     <ul>
     {% for lesson in user_lessons %}
-        <li class="{% cycle 'even' 'odd' %}"><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
+        <li class="{% cycle 'even' 'odd' %}"><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
     {% endfor %}
     </ul>
     <h4><a href="{% url 'whatsnext' %}">What's Next</a></h4>
     <ul>
     {% for lesson in whats_next %}
-        <li><a href="{% url 'lessons:read' lesson.name.split|join:'_' %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
+        <li><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
     {% endfor %}
     </ul>
     {% if test_me %}
         {% for lesson in test_me %}
-            <a href="{% url 'lessons:rand_question' lesson_name=lesson.name.split|join:'_' %}">Test me</a>
+            <a href="{% url 'lessons:rand_question' lesson_name=lesson.url %}">Test me</a>
         {% endfor %}
     {% else %}
         <p>No test me function atm soz babz :(</p>

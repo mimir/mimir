@@ -23,7 +23,7 @@ def index(request):
     return render(request, 'lessons/index.html', context)
 
 def read(request, lesson_name):
-    lesson = get_object_or_404(Lesson, name__iexact = lesson_name.replace("_", " "))
+    lesson = get_object_or_404(Lesson, url__iexact = lesson_url)
     next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
     questions_exist = Question.objects.filter(lesson = lesson).exists()
     context = ({'lesson': lesson,'next_lessons':next_lessons,'questions_exist':questions_exist,})
@@ -83,8 +83,8 @@ def question(request, lesson_name, question_id):
     question.answer = pair[1]
     return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),'rand_seed':rand_seed,})
 
-def rand_question(request, lesson_name):
-    lesson = get_object_or_404(Lesson, name__iexact = lesson_name.replace("_", " "))
+def rand_question(request, lesson_url):
+    lesson = get_object_or_404(Lesson, url__iexact = lesson_url)
     question_l = list(Question.objects.filter(lesson = lesson).order_by('?')[:1])
     if question_l:
         getcontext().prec = 12
