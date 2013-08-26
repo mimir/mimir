@@ -10,7 +10,7 @@
     <h4><a href="{% url 'myskills' %}">My Skills</a></h4>
     <ul>
     {% for lesson in user_lessons %}
-        <li class="{% cycle 'even' 'odd' %}"><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
+        <li class="{% cycle 'even' 'odd' %}"><a href="{% url 'lessons:read' lesson_url=lesson.url %}">{{ lesson.name }}</a></li> {# TODO get taken date / other info to appear here #}
     {% endfor %}
     </ul>
     <h4><a href="{% url 'whatsnext' %}">What's Next</a></h4>
@@ -21,7 +21,7 @@
     </ul>
     {% if test_me %}
         {% for lesson in test_me %}
-            <a href="{% url 'lessons:rand_question' lesson_name=lesson.url %}">Test me</a>
+            <a href="{% url 'lessons:rand_question' lesson_url=lesson.url %}">Test me</a>
         {% endfor %}
     {% else %}
         <p>No test me function atm soz babz :(</p>

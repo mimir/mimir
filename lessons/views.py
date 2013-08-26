@@ -22,7 +22,7 @@ def index(request):
     })
     return render(request, 'lessons/index.html', context)
 
-def read(request, lesson_name):
+def read(request, lesson_url):
     lesson = get_object_or_404(Lesson, url__iexact = lesson_url)
     next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
     questions_exist = Question.objects.filter(lesson = lesson).exists()
@@ -94,7 +94,7 @@ def rand_question(request, lesson_url):
         question.question = pair[0]
         question.answer = pair[1]
         return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),'rand_seed':rand_seed,})
-    return HttpResponseRedirect(reverse('lessons:read', args=[lesson_name]))
+    return HttpResponseRedirect(reverse('lessons:read', args=[lesson_name])) #TODO this looks broken to me, fix?
 
 def skill_tree(request):
     if request.user.is_authenticated():
