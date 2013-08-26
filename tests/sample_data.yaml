@@ -27,6 +27,41 @@
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
         description: "Linear algebra is the study of solutions to systems of linear equations, vectors and matrices, along with more abstract vector spaces and linear maps form the basis for this area.", }
+- model: lessons.topic
+  pk: 2
+  fields: {
+        name: "Calculus",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Calculus a a very broad topic with a huge number of applications outside of mathematics.", }
+- model: lessons.topic
+  pk: 3
+  fields: {
+        name: "Differential Equations",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Differential equations concerns itself with the solution of equations whose terms contain the derivative of an unknown function", }
+- model: lessons.topic
+  pk: 4
+  fields: {
+        name: "Multilinear Algebra",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Multilinear algebra is the extention of techniques used in linear algebra to non-linear systems.", }
+- model: lessons.topic
+  pk: 5
+  fields: {
+        name: "Abstract Algebra",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Abstract algebra is the study of a variety of algebraic structures such as groups, rings, fields and modules.", }
+- model: lessons.topic
+  pk: 6
+  fields: {
+        name: "Number Theory",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Number theory is one of the oldest branches of mathematics, and is initially concerned with the structure of the natural numbers, though a wide variety of techniques have been used to study them.", }
 
 - model: lessons.course
   pk: 1
@@ -42,19 +77,61 @@
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
         description: "Integration is one of the fundamental tools in calculus, with applications in a huge variety of areas, this course will teach you about ", }
+- model: lessons.course
+  pk: 3
+  fields: {
+        name: "Elementary number theory",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Elementary number theory studies the properties of primes, congruences and the solutions to linear equations.", }
+- model: lessons.course
+  pk: 4
+  fields: {
+        name: "Algebraic number theory",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Algebraic number theory is the study of numnber fields and their rings of integers.", }
+- model: lessons.course
+  pk: 5
+  fields: {
+        name: "Differentiation",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "The differential is a vital mathematical tool that is used not only in mathematics but also in engineering physics and a wide range of other areas.", }
+- model: lessons.course
+  pk: 6
+  fields: {
+        name: "Matroid theory",
+        created: "2013-08-02T16:42:26.539Z",
+        modified: "2013-08-03T16:42:26.539Z",
+        description: "Matroid theory is a new but well developed topic that lies in the intersection of computer science and mathematics.", }
 
 - model: lessons.courseisontopic
   pk: 1
   fields: {
         topic: 1,
         course: 1, }
+- model: lessons.courseisontopic
+  pk: 2
+  fields: {
+        topic: 2,
+        course: 2, }
+- model: lessons.courseisontopic
+  pk: 3
+  fields: {
+        topic: 6,
+        course: 3, }
+- model: lessons.courseisontopic
+  pk: 4
+  fields: {
+        topic: 6,
+        course: 4, }
 
 - model: lessons.lesson
   pk: 1
   fields: {
         name: "Introduction to Determinants",
-        tutorial: "Introduction\n------------\nThe determinant is a value associated with a square matrix. It can be computed from the entries of the matrix by a specific arithmetic expression, but there are also other ways to work it out. The determinant provides important information about a matrix of coefficients of a system of linear equations, or about a matrix that corresponds to a linear transformation of a vector space. In the first case the system has a unique solution exactly when the determinant is nonzero; when the determinant is zero there are either no solutions or many solutions. In the second case the transformation has an inverse operation exactly when the determinant is nonzero. A geometric interpretation can be given to the value of the determinant of a square matrix with real entries: the absolute value of the determinant gives the scale factor by which area or volume (or a higher dimensional analogue) is multiplied under the associated linear transformation, while its sign indicates whether the transformation preserves orientation. Thus a $2\\times 2$ matrix with determinant -2, when applied to a region of the plane with finite area, will transform that region into one with twice the area, while reversing its orientation.\nApplications\n------------\nDeterminants occur throughout mathematics. The use of determinants in calculus includes the Jacobian determinant in the substitution rule for integrals of functions of several variables. They are used to define the characteristic polynomial of a matrix that is an essential tool in eigenvalue problems in linear algebra. In some cases they are used just as a compact notation for expressions that would otherwise be unwieldy to write down.
-The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the case where the matrix entries are written out in full, the determinant is denoted by surrounding the matrix entries by vertical bars instead of the brackets or parentheses of the matrix. For instance, the determinant of the matrix",
+        tutorial: "Introduction\n------------\nThe determinant is a value associated with a square matrix. It can be computed from the entries of the matrix by a specific arithmetic expression, but there are also other ways to work it out. The determinant provides important information about a matrix of coefficients of a system of linear equations, or about a matrix that corresponds to a linear transformation of a vector space. In the first case the system has a unique solution exactly when the determinant is nonzero; when the determinant is zero there are either no solutions or many solutions. In the second case the transformation has an inverse operation exactly when the determinant is nonzero. A geometric interpretation can be given to the value of the determinant of a square matrix with real entries: the absolute value of the determinant gives the scale factor by which area or volume (or a higher dimensional analogue) is multiplied under the associated linear transformation, while its sign indicates whether the transformation preserves orientation. Thus a $2\\times 2$ matrix with determinant -2, when applied to a region of the plane with finite area, will transform that region into one with twice the area, while reversing its orientation.\n\nApplications\n------------\nDeterminants occur throughout mathematics. The use of determinants in calculus includes the Jacobian determinant in the substitution rule for integrals of functions of several variables. They are used to define the characteristic polynomial of a matrix that is an essential tool in eigenvalue problems in linear algebra. In some cases they are used just as a compact notation for expressions that would otherwise be unwieldy to write down.\nThe determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the case where the matrix entries are written out in full, the determinant is denoted by surrounding the matrix entries by vertical bars instead of the brackets or parentheses of the matrix. For instance, the determinant of the matrix",
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
         course: 1,
@@ -86,6 +163,74 @@ The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the cas
         modified: "2013-08-05T16:42:26.539Z",
         course: 2,
         description: "Calculating integrals by inpecting the function to be integrated.", }
+- model: lessons.lesson
+  pk: 5
+  fields: {
+        name: "Congruences",
+        tutorial: "Consider the equation $2x = 3$, is there an integer $x$ that we can substitute in to solve this equation?\n
+It turns out you can't and we can use congruences to solve problems of this type in a more general setting.",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 3,
+        description: "", }
+- model: lessons.lesson
+  pk: 6
+  fields: {
+        name: "Pell's equation",
+        tutorial: "",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 3,
+        description: "", }
+- model: lessons.lesson
+  pk: 7
+  fields: {
+        name: "Number fields",
+        tutorial: "
+Definition\n
+----------\n
+A number field is a finite  degree field extension of $\\mathbb{Q}$.",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 4,
+        description: "", }
+- model: lessons.lesson
+  pk: 8
+  fields: {
+        name: "Introduction to matroid theory",
+        tutorial: "To introduce matroids we must first define the notion of an independance system.\n
+An independence system is a gound set $\\mathcal{X}$ together with a collection of subsets of $\\mathcal{X}$ denoted $\\mathcal{I}$ such that if $A\\in \\mathcal{I}$ and $B\\subset A$ then $B\\in \\mathcal{I}$ also. ",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 6,
+        description: "", }
+- model: lessons.lesson
+  pk: 9
+  fields: {
+        name: "Circuits",
+        tutorial: "Circuits are another bit of matroid theory.",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 6,
+        description: "", }
+- model: lessons.lesson
+  pk: 10
+  fields: {
+        name: "Vector spaces",
+        tutorial: "",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 2,
+        description: "", }
+- model: lessons.lesson
+  pk: 11
+  fields: {
+        name: "Linear maps",
+        tutorial: "",
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z",
+        course: 2,
+        description: "", }
 
 - model: lessons.lessonfollowsfromlesson
   pk: 1
@@ -99,6 +244,30 @@ The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the cas
         leads_from: 3,
         leads_to: 4,
         strength: 9, }
+- model: lessons.lessonfollowsfromlesson
+  pk: 3
+  fields: {
+        leads_from: 8,
+        leads_to: 9,
+        strength: 9, }
+- model: lessons.lessonfollowsfromlesson
+  pk: 4
+  fields: {
+        leads_from: 5,
+        leads_to: 6,
+        strength: 7, }
+- model: lessons.lessonfollowsfromlesson
+  pk: 5
+  fields: {
+        leads_from: 5,
+        leads_to: 7,
+        strength: 4, }
+- model: lessons.lessonfollowsfromlesson
+  pk: 6
+  fields: {
+        leads_from: 6,
+        leads_to: 7,
+        strength: 3, }
 
 - model: lessons.question
   pk: 1
@@ -106,7 +275,27 @@ The determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the cas
         lesson: 1,
         question: "What is the derivative of \\(x^{$[INT,3,8]a}\\)?",
         answer: "answer = x^(variables[\"a\"]-1)",
-        calculation: "answer = \"x^\" + str((int)(variables[\"a\"] - 1))",
+        calculation: "answer =  str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1))",
+        answer_format: 3,
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z", }
+- model: lessons.question
+  pk: 2
+  fields: {
+        lesson: 1,
+        question: "What is the derivative of \\(x^{$[INT,6,9]a + x^{$[INT,3,5]b}}\\)?",
+        answer: "answer = x^(variables[\"a\"]-1)",
+        calculation: "answer = str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1)) + \"+\"+ str(int(variables[\"b\"])) +\"*x^\"+str(int(variables[\"b\"]-1))",
+        answer_format: 3,
+        created: "2013-08-04T16:42:26.539Z",
+        modified: "2013-08-05T16:42:26.539Z", }
+- model: lessons.question
+  pk: 2
+  fields: {
+        lesson: 1,
+        question: "What is the derivative of \\(x^{$[INT,6,9]a + x^{$[INT,3,5]b}}\\)?",
+        answer: "answer = x^(variables[\"a\"]-1)",
+        calculation: "answer = str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1)) + \"+\"+ str(int(variables[\"b\"])) +\"*x^\"+str(int(variables[\"b\"]-1))",
         answer_format: 3,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
