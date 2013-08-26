@@ -131,6 +131,7 @@
   pk: 1
   fields: {
         name: "Introduction to Determinants",
+        url: "introduction-to-determinants",
         tutorial: "Introduction\n------------\nThe determinant is a value associated with a square matrix. It can be computed from the entries of the matrix by a specific arithmetic expression, but there are also other ways to work it out. The determinant provides important information about a matrix of coefficients of a system of linear equations, or about a matrix that corresponds to a linear transformation of a vector space. In the first case the system has a unique solution exactly when the determinant is nonzero; when the determinant is zero there are either no solutions or many solutions. In the second case the transformation has an inverse operation exactly when the determinant is nonzero. A geometric interpretation can be given to the value of the determinant of a square matrix with real entries: the absolute value of the determinant gives the scale factor by which area or volume (or a higher dimensional analogue) is multiplied under the associated linear transformation, while its sign indicates whether the transformation preserves orientation. Thus a $2\\times 2$ matrix with determinant -2, when applied to a region of the plane with finite area, will transform that region into one with twice the area, while reversing its orientation.\n\nApplications\n------------\nDeterminants occur throughout mathematics. The use of determinants in calculus includes the Jacobian determinant in the substitution rule for integrals of functions of several variables. They are used to define the characteristic polynomial of a matrix that is an essential tool in eigenvalue problems in linear algebra. In some cases they are used just as a compact notation for expressions that would otherwise be unwieldy to write down.\nThe determinant of a matrix A is denoted det$(A)$, det $A$, or $|A|$. In the case where the matrix entries are written out in full, the determinant is denoted by surrounding the matrix entries by vertical bars instead of the brackets or parentheses of the matrix. For instance, the determinant of the matrix",
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
@@ -140,6 +141,7 @@
   pk: 2
   fields: {
         name: "Further Determinants",
+        url: "further-determinants",
         tutorial: "Calculating the determinant of a $3\\times 3$ matrix (or larger) can be very unweildy to do by hand, fortunately there are a number of tricks that can help us do so. Row expansion blah blah.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
@@ -149,6 +151,7 @@
   pk: 3
   fields: {
         name: "Motivation for integration",
+        url: "motivation-for-integration",
         tutorial: "Suppose you have a function of one variable, such as $f(x) = x$ and you draw its graph, how might you calculate the area between this line and the axis within a certain range? Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. Lorem ipsum dolor met sur ipsum intrum litus on solem instis. ",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
@@ -158,6 +161,7 @@
   pk: 4
   fields: {
         name: "Integration by inspection",
+        url: "integration-by-inspection",
         tutorial: "One of the fundamental theorems of calculus is that the integral of a function can be found by taking the antiderivative of the function at each of the endpoints.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
@@ -167,6 +171,7 @@
   pk: 5
   fields: {
         name: "Congruences",
+        url: "congruences",
         tutorial: "Consider the equation $2x = 3$, is there an integer $x$ that we can substitute in to solve this equation?\n
 It turns out you can't and we can use congruences to solve problems of this type in a more general setting.",
         created: "2013-08-04T16:42:26.539Z",
@@ -177,6 +182,7 @@ It turns out you can't and we can use congruences to solve problems of this type
   pk: 6
   fields: {
         name: "Pell's equation",
+        url: "pells-equation",
         tutorial: "",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
@@ -186,6 +192,7 @@ It turns out you can't and we can use congruences to solve problems of this type
   pk: 7
   fields: {
         name: "Number fields",
+        url: "number-fields",
         tutorial: "
 Definition\n
 ----------\n
@@ -198,6 +205,7 @@ A number field is a finite  degree field extension of $\\mathbb{Q}$.",
   pk: 8
   fields: {
         name: "Introduction to matroid theory",
+        url: "introduction-to-matroid-theory",
         tutorial: "To introduce matroids we must first define the notion of an independance system.\n
 An independence system is a gound set $\\mathcal{X}$ together with a collection of subsets of $\\mathcal{X}$ denoted $\\mathcal{I}$ such that if $A\\in \\mathcal{I}$ and $B\\subset A$ then $B\\in \\mathcal{I}$ also. ",
         created: "2013-08-04T16:42:26.539Z",
@@ -208,6 +216,7 @@ An independence system is a gound set $\\mathcal{X}$ together with a collection 
   pk: 9
   fields: {
         name: "Circuits",
+        url: "circuits",
         tutorial: "Circuits are another bit of matroid theory.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
@@ -217,6 +226,7 @@ An independence system is a gound set $\\mathcal{X}$ together with a collection 
   pk: 10
   fields: {
         name: "Vector spaces",
+        url: "vector-spaces",
         tutorial: "",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
@@ -226,6 +236,7 @@ An independence system is a gound set $\\mathcal{X}$ together with a collection 
   pk: 11
   fields: {
         name: "Linear maps",
+        url: "linear-maps",
         tutorial: "",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
