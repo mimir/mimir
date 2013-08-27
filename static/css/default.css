@@ -1,9 +1,13 @@
 body
 {    
 	font-family:arial;
-	background-color:#D7FECF;
+	background-color:#9496ff;
 	color:#000000;
-	background-image:url(../img/stripes.jpg);
+	/*background-image:url(../img/stripes.jpg);*/
+	background-image:url(../img/mimirbg.png);
+	background-position:center;
+	background-repeat:no-repeat;
+	background-attachment:fixed;
 }
 
 h1
@@ -29,9 +33,9 @@ body a:link, body a:visited, body a:hover, body a:active
 }
 
 div#header {
-	background-color:#FFFFFF;
+	background-color:#ffffff;
 	font-weight:bold;
-	color:#333333;
+	color:#000000;
 	padding-top:5px;
 	padding-bottom:5px;
 	position: fixed;
@@ -39,8 +43,7 @@ div#header {
 	left: 0;
 	z-index: 999;
 	width: 100%;
-	height: 23px;
-    border-bottom:2px solid;
+	height: 18px;
     border-bottom-color:#999999;
     box-shadow:0px -3px 20px #000000;
 }
@@ -48,24 +51,25 @@ div#header {
 .mimirtitle {
 	float:left;
 	position: absolute;
-    top: 50%;
+    /*top: 50%;
     /* adjust top up half the height of a single line */
-    margin-top: -0.5em;
+    /*margin-top: -0.5em;
     /* force content to always be a single line */
 	padding-left:10px;
-    overflow: hidden;
+	padding-top:2px;
+    overflow:visible;
     white-space: nowrap;
     text-overflow: ellipsis;
     font-family:"Open Sans", sans-serif;
-    font-size:15px;
+    font-size:12px;
 }
 
 .barnav {
 	z-index:9999;
 	float:right;
 	padding-right:10px;
-	font-size:13px;
-	padding-top:5px;
+	font-size:12px;
+	padding-top:2px;
 }
 
 .barnav ul{
@@ -75,6 +79,13 @@ div#header {
 }
 .barnav li {
 	display:inline;
+}
+
+#search_form {
+	float : right;
+	width : auto;
+	margin-top:-20px;
+	margin-left:10px;
 }
 
 .barnav a:link,a:visited
@@ -141,12 +152,12 @@ div#content {
 	margin-top:70px;
 	margin-left:auto;
 	margin-right:auto;
+	margin-bottom:20px;
 	width:50em;
 	padding:30px;
-	padding-top:10px;
+	padding-top:1px;
 	border:thick #666666;
-	border-radius: 15px;	
-	box-shadow:0px 0px 10px #000000;
+	box-shadow:0px 0px 40px rgba(0,0,0,0.6);
 }
 
 div#content ul {
@@ -177,6 +188,10 @@ The following is just for community stuff:
 #TODO migrate the community css over to a seperate .css file??
 
 */
+
+#search {
+	margin:0px;
+}
 
 
 #user_question
@@ -223,7 +238,7 @@ The following is just for community stuff:
 	background-color:#FCFFCE;
 }
  
-#usertag
+.usertag
 {
 	/*light green original: #C5FBB5 */
 	background-color:#FFB7AE;
@@ -236,26 +251,63 @@ The following is just for community stuff:
 	box-shadow:         0px 5px 9px rgba(50, 50, 50, 0.1);
 	border-radius-top-right:inherit;
 	border-radius-top-left:inherit;
-	
 	z-index:100;
 	overflow:visible;
 	position:relative;
 }
 
-#usertag img {
+.usertag img {
 	padding:2px;
-	background-color:#B4CF54;
+	background-color:#ffffff;
 	border:10px solid #FFB7AE;
 	z-index:101;
 	overflow:visible;
 }
 
-#usertag #user_avatar
+.usertag#white {
+	background-color:#FAF9EB;
+}
+.usertag#white img {
+	border:10px solid #FAF9EB;
+}
+
+.usertag#blue {
+	background-color:#5F80D8;
+}
+.usertag#blue img {
+	border:10px solid #5F80D8;
+}
+
+.usertag#green {
+	background-color:#87F163;
+}
+.usertag#green img {
+	border:10px solid #87F163;
+}
+
+.usertag#red {
+	background-color:#FF6A6A;
+}
+.usertag#red img {
+	border:10px solid #FF6A6A;
+}
+
+.usertag#black {
+	background-color:#666666;
+}
+.usertag#black a:link, .usertag#black a:visited, .usertag#black a:hover, .usertag#black a:active{
+	color:#F8F8F8;
+}
+.usertag#black img {
+	border:10px solid #666666;
+}
+
+.usertag #user_avatar
 {
     float:right;
     width:64px;
 	margin-right:44px;
-	border-bottom:30px #33FF00;
+	border-bottom:30px #ffffff;
 }
 
 .question_listed
@@ -305,15 +357,43 @@ The following is just for community stuff:
 
 .arrows {
 	/*background:#FF0000;
-	border:thick #FF0000;*/
+	border:thick #FF0000;
+	vertical-align:middle;
+	*/
+	text-indent:0px;
 	margin-left:10px;
 	margin-right:10px;
-	margin-top:10px;
+	margin-top:-10px;
 	padding:0px;
-	position:
+	float:left;
 	position:relative;
-	vertical-align:middle;
+	width:80px;
+	height:50px;
+}
+
+.user_comment .arrows {
+	margin-top:10px;
+}
+.user_answer .arrows{
+	margin-top:10px;
+}
+
+.rating {
+	position:absolute;
+	margin-top:10px;
+	
+	text-align:center;
+	width:40px;
+}
+
+.upvote {
+	margin-left:0px;
 	float:left;
 	width:90px;
 	height:80px;
+}
+
+.downvote{
+	margin-right:0px;
+	float:right;
 }

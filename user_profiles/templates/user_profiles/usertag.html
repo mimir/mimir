@@ -1,4 +1,14 @@
-<div id="usertag">
+{% if profile.reputation < 2 %}
+<div id="white" class="usertag">
+{% elif profile.reputation >= 2 and profile.reputation < 6 %}
+<div id="blue" class="usertag">
+{% elif profile.reputation >= 6 and profile.reputation < 8 %}
+<div id="green" class="usertag">
+{% elif profile.reputation >= 8 and profile.reputation < 10 %}
+<div id="red" class="usertag">
+{% elif profile.reputation >= 10 %}
+<div id="black" class="usertag">
+{% endif %}
     <a href="{% url 'user_profiles:view' profile.user.username %}">
         <div id="user_avatar">
             <img src="http://www.gravatar.com/avatar/{{ profile.gravatar_hash }}?s=64&amp;d=identicon" /> {# TODO maybe https?! #}
@@ -8,6 +18,7 @@
         </span>
         <span id="user_rating">
             {{ profile.reputation }}
+            
         </span>
     </a>
 </div>
