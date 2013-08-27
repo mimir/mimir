@@ -170,7 +170,7 @@
   fields: {
         name: "Matrix Minors",
         url: "matrix-minors",
-        tutorial: "Definition\n------------\n The $i^{th} j^{th}$ minor, $m_{i,j}$, of a matrix $A$ is, this is where you remove the $i^{th}$ row and the $j^{th}$ column. An example is \n $A = \\begin{pmatrix} 3 & 6 & 4\\\\ 1 & 9 & 2\\\\ 2 & 1 & 7 \\end{pmatrix}$ then the $1^{st}$ $2^{nd}$ minor, $m_{1,2} = \\begin{pmatrix} 1 & 2\\\\ 2 & 7 \\end{pmatrix}$ but the $2^{nd}$ $1^{st}$ minor would be $m_{2,1} = \\begin{pmatrix} 6 & 4\\\\ 1 & 7 \\end{pmatrix}$ as your deleting the second row and first column in the last example whereas in the first example you delete the first row and second column a big difference as you can see.",
+        tutorial: "Definition\n------------\n The $i^{th} j^{th}$ minor, $m_{i,j}$, of a matrix $A$ is, this is where you remove the $i^{th}$ row and the $j^{th}$ column. An example is \n $A = \\begin{pmatrix} 3 & 6 & 4\\\\\\\\ 1 & 9 & 2\\\\\\\\ 2 & 1 & 7 \\end{pmatrix}$ then the $1^{st}$ $2^{nd}$ minor, $m_{1,2} = \\begin{pmatrix} 1 & 2\\\\\\\\ 2 & 7 \\end{pmatrix}$ but the $2^{nd}$ $1^{st}$ minor would be $m_{2,1} = \\begin{pmatrix} 6 & 4\\\\\\\\ 1 & 7 \\end{pmatrix}$ as your deleting the second row and first column in the last example whereas in the first example you delete the first row and second column a big difference as you can see.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 1,
