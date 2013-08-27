@@ -12,7 +12,7 @@ ADMINS = (
 
 MANAGERS = ADMINS
 
-LOGIN_URL = '/users/login/'
+LOGIN_URL = '/login/'
 
 LOGIN_REDIRECT_URL = '/home/'
 
