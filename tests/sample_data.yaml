@@ -65,10 +65,11 @@
 - model: lessons.topic
   pk: 7
   fields: {
-        name: "Combinatroics",
+        name: "Combinatorics",
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
-        description: "Combinatorics is the study of discrete structures and counting it also entails graph theorey and alot of discrete maths.", }
+        description: "Combinatorics is the study of discrete structures and counting, it also entails graph theory and alot of discrete maths.", }
+
 - model: lessons.course
   pk: 1
   fields: {
@@ -114,10 +115,10 @@
 - model: lessons.course
   pk: 7
   fields: {
-        name: "Linear spaces",
+        name: "Vector spaces",
         created: "2013-08-02T16:42:26.539Z",
         modified: "2013-08-03T16:42:26.539Z",
-        description: "This corse describes Linear spaces and maps on them.", }
+        description: "This course describes vector spaces and maps on them.", }
 
 - model: lessons.courseisontopic
   pk: 1
@@ -237,19 +238,19 @@
 - model: lessons.lesson
   pk: 9
   fields: {
-        name: "Integration of Geomtric Functions",
-        url: "integration-of-geomtric-functions",
-        tutorial: "This is a very basic introduction into integrations of geometric functions this can be done by inspection but I will show a summerised form $\\sin(x) \\rightarrow -\\cos(x) \\rightarrow -\\sin(x) \\rightarrow \\cos(x) \\rightarrow \\sin(x)$ this means that $\\int \\sin(x) = -\\cos(x)$ and so on, you notice that it is a loop with just $\\sin(x)$ and $\\cos(x)$.",
+        name: "Integration of Geometric Functions",
+        url: "integration-of-geometric-functions",
+        tutorial: "This is a very basic introduction into the integration of geometric functions, this can be done by inspection but I will show a summerised form $\\sin(x) \\rightarrow -\\cos(x) \\rightarrow -\\sin(x) \\rightarrow \\cos(x) \\rightarrow \\sin(x)$ this means that $\\int \\sin(x) = -\\cos(x)$ and so on, you notice that it is a loop with just $\\sin(x)$ and $\\cos(x)$.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 2,
-        description: "Calculating integrals of geomtric functions.", }
+        description: "Calculating integrals of geometric functions.", }
 - model: lessons.lesson
   pk: 10
   fields: {
         name: "Modulus",
         url: "modulus",
-        tutorial: "Definition\n---------------\n We define this using remainders so $a (mod b) = c$ where $a = db + c$ with $0 \\leq c < b$ like how you would define the remainder.\n The best way to get you head round this is to jump into some examples.",
+        tutorial: "Definition\n---------------\n We define this using remainders so $a (mod b) = c$ where $a = db + c$ with $0 \\leq c < b$ like how you would define the remainder.\n The best way to get your head round this is to jump into some examples.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 3,
@@ -289,7 +290,7 @@
   fields: {
         name: "Pell's equation",
         url: "pells-equation",
-        tutorial: "Definition\n-----------\nPells equation is any equation of the sory $a^2x^2 + x = y^2$ where we want to solve for x$ and $y$, it is important equation in number theory. We won't learn how to solve it yet.",
+        tutorial: "Definition\n-----------\nPell's equation is the name given to $x^2 -dy^2 = 1$ where we want to solve for $x$ and $y$, it is important equation in number theory.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 3,
@@ -309,7 +310,7 @@
   fields: {
         name: "Introduction to differentiation",
         url: "introduction-to-differentiation",
-        tutorial: "We are looking at a curve $y = 3x$ and $y = 2x^2$ and we want to know which one is steaper at the point 1, but how do we work this out? Now there is a horrible pencil and paper method of trying to find out which line is steaper by drawing a perpendicular line at the point and looking at that gradient but this isn't very effective, so we have invented differentiation to help us solve this problem.",
+        tutorial: "We are looking at a curve $y = 3x$ and $y = 2x^2$ and we want to know which one is steeper at the point 1, but how do we work this out? Now there is a horrible pencil and paper method of trying to find out which line is steeper by drawing a perpendicular line at the point and looking at that gradient but this isn't very effective, so we have invented differentiation to help us solve this problem.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 5,
@@ -329,7 +330,7 @@
   fields: {
         name: "Differentiating Geometric Functions",
         url: "differentiating-geometric-functions",
-        tutorial: "To differentiate a geomtric function you can see by inspection that it follows a pattern that is $\\sin(x) \\rightarrow \\cos(x) \\rightarrow -\\sin(x) \\rightarrow -\\cos(x) \\rightarrow \\sin(x)$ where this means that $dx \\sin(x) = \\cos(x)$, hopefuly you see that pattern or cycle it goes through.",
+        tutorial: "To differentiate a geometric function you can see by inspection that it follows a pattern that is $\\sin(x) \\rightarrow \\cos(x) \\rightarrow -\\sin(x) \\rightarrow -\\cos(x) \\rightarrow \\sin(x)$ where this means that $dx \\sin(x) = \\cos(x)$, hopefuly you see that pattern or cycle it goes through.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 5,
@@ -369,7 +370,7 @@
   fields: {
         name: "Vector spaces",
         url: "vector-spaces",
-        tutorial: "A vector space is a set of vectors $V$ over a field, $F$, like the real numbers. Such that it obays some rules\n \\begin{itemization}\n \\item \n $u + (v + w) = (u + v) + w$ with $u,v,w \\in V$ \n \\item \n $u + v = v + u$ with $u,v \\in V$ \n \\item \n There exists an element $0 \\in V$, called the zero vector, such that $v + 0 = v$ for all $v \\in V$ \n \\item \n For every $v \\in V$, there exists an element $-v \\in V$, called the additive inverse of $v$, such that $v + (-v) = 0$ \n \\item \n $a(u + v) = au + av$ with $v,u \\in V$ and $a \\in F$\n \\item \n $(a + b)v = av + bv$ with $a,b \\in F$ and $v \\in V$\n \\item \n $a(bv) = (ab)v$ with $a,b \\in F$ and $v \\in V$\n \end{itemization}\n with these rules it forms a vector space.",
+        tutorial: "A vector space is a set of vectors $V$ over a field, $F$, like the real numbers. Such that it obeys some rules\n \\begin{itemize}\n \\item \n $u + (v + w) = (u + v) + w$ with $u,v,w \\in V$ \n \\item \n $u + v = v + u$ with $u,v \\in V$ \n \\item \n There exists an element $0 \\in V$, called the zero vector, such that $v + 0 = v$ for all $v \\in V$ \n \\item \n For every $v \\in V$, there exists an element $-v \\in V$, called the additive inverse of $v$, such that $v + (-v) = 0$ \n \\item \n $a(u + v) = au + av$ with $v,u \\in V$ and $a \\in F$\n \\item \n $(a + b)v = av + bv$ with $a,b \\in F$ and $v \\in V$\n \\item \n $a(bv) = (ab)v$ with $a,b \\in F$ and $v \\in V$\n \end{itemization}\n with these rules it forms a vector space.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 2,
@@ -541,6 +542,7 @@
         leads_from: 22,
         leads_to: 23,
         strength: 7, }
+
 - model: lessons.question
   pk: 1
   fields: {
@@ -645,7 +647,7 @@
   pk: 11
   fields: {
         lesson: 11,
-        question: "Does $[INT,0,10]b x (mod 11) = $[INT,0,10]a have a solution? (0 for no, 1 for yes)",
+        question: "Does $[INT,1,10]b x (mod 11) = $[INT,0,10]a have a solution? (0 for no, 1 for yes)",
         answer: "a",
         calculation: "answer = 1",
         answer_format: 1,
@@ -765,7 +767,7 @@
   pk: 23
   fields: {
         lesson: 23,
-        question: "If we set $V$ to be the set of vectors in $\\mathbb{R}^{2}$ over $F = \\mathbb{R}$ does this form a vector space?(1 for yes, 0 for no)",
+        question: "If we set $V$ to be the set of vectors in $\\mathbb{R}^{2}$ over $F = \\mathbb{R}$ does this form a vector space? (1 for yes, 0 for no)",
         answer: "a",
         calculation: "answer = 1",
         answer_format: 1,
