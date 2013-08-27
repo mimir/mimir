@@ -1,18 +1,21 @@
+<link href="../../../static/css/default.css" rel="stylesheet" type="text/css" />
 {% extends "base.html" %}
 
 {% block content %}
 
 <h2>Lessons</h2>
 {% if course_list %}
-    <ul>
+    
     {% for course in course_list %}
-        <li>
+        <div class="coursetitle">
             {{ course.name }} 
-            <ul>
-                {% for lesson in course.lesson_set.all %}
-                    <li><a href="{% url 'lessons:read' lesson.url %}">{{ lesson.name }}</a> {{ lesson.description }}</li>
-                {% endfor %}
-            </ul>
+            </div>
+              {% for lesson in course.lesson_set.all %}
+                <div class="lessondescbox">
+                    <a href="{% url 'lessons:read' lesson.url %}"><div class="lessontitle"><span>{{ lesson.name }}</span></div></a>
+              	      <div class="lessondesc"> {{ lesson.description }}</div>
+               	   </div>
+               {% endfor %}
             <br />
         </li>
     {% endfor %}

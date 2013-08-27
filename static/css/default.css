@@ -181,6 +181,41 @@ li.odd {
     border-radius:5px;
 }
 
+.coursetitle{
+	text-align:center;
+	background-color:#333333;
+	color:#FFFFFF;
+	size:17;
+	padding:20px;
+}
+
+.lessondescbox{
+	border:thin solid #333333;
+	min-height:90px;
+	position:relative;
+}
+
+.lessontitle {
+	float:left;
+	width:200px;
+	background-color:#F85C5C;
+	padding:20px;
+	top:0px;
+	bottom:0px;
+	position:absolute;
+}
+.lessontitle span {
+	width:100%;
+	display:inline-block;
+    text-align:center;
+	vertical-align:middle;
+	top:0px;
+	bottom:0px;
+	padding:auto;
+}
+.lessondesc {
+	padding-left:250px;
+}
 
 /*
 
