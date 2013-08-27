@@ -136,8 +136,8 @@ $(function() {
    
     </div>
 {% endfor %}
-<input type="text" id="question_comment"></input>
-<button type="button" onclick="comment('question', {{ question.id }}, document.getElementById('question_comment').value)">Comment</button>
+<input type="text" id="question_comment_inp"></input>
+<button type="button" onclick="comment('question', {{ question.id }}, document.getElementById('question_comment_inp').value)">Comment</button>
 </div>
 
 <div id="user_answers">

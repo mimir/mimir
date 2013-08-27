@@ -402,8 +402,8 @@ The following is just for community stuff:
 	padding:0px;
 	float:left;
 	position:relative;
-	width:80px;
 	height:50px;
+	width:80px;
 }
 
 .user_comment .arrows {
@@ -416,16 +416,14 @@ The following is just for community stuff:
 .rating {
 	position:absolute;
 	margin-top:10px;
-	
 	text-align:center;
 	width:40px;
+	float:left;
 }
 
 .upvote {
 	margin-left:0px;
 	float:left;
-	width:90px;
-	height:80px;
 }
 
 .downvote{
