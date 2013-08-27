@@ -5,6 +5,7 @@ from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
 from lessons.generate import generateQuestion
 from user_profiles.models import UserProfile
 from community.models import UserQuestion, UserAnswer, UserComment, UserRating
+from community.forms import QuestionForm
 import json
 from django.core import serializers
 from django.contrib.auth.models import User
@@ -19,7 +20,18 @@ def index(request):
         'question_list': question_list,
     })
     return render(request, 'community/index.html', context)
-    
+
+def ask_question(request):
+    if request.method == "POST":
+        form = QuestionForm(request.POST)
+        if form.is_valid():
+            
+            new_question = UserQuestion(lesson=form.cleaned_data['lesson'],question=form.cleaned_data['question'],question_seed=form.cleaned_data['question_seed'],title=form.cleaned_data['title'],user_question=form.cleaned_data['user_question'],rating = 0, user = request.user,)
+            new_question.save()
+            return HttpResponseRedirect(reverse('community:question', args=[new_question.id])) #TODO finish
+    else:
+        form = QuestionForm()
+    return render(request, 'community/ask.html', {'form': form, })
 
 def question(request, question_id):
     #Revamp of question to use templates over Javascript
@@ -38,8 +50,22 @@ def question(request, question_id):
     
     context = ({'question': question, 'displayQuestion': displayQuestion, 'answers': answers, 'q_comments': q_comments, 'a_comments': a_comments, })
     return render(request, 'community/question.html', context)
-    
-    
+
+def add_comment(request):
+    if request.user.is_authenticated():
+        p = request.POST
+        if "comment" in p and "id" in p and "type" in p:
+            id = int(p["id"])
+            if p["type"] == "question":
+                question = get_object_or_404(UserQuestion, pk=id)
+                comment = UserComment(user=request.user, user_question = question, user_comment = p["comment"])
+                comment.save()
+            if p["type"] == "answer":
+                answer = get_object_or_404(UserAnswer, pk=id)
+                comment = UserComment(user=request.user, user_answer = answer, user_comment = p["comment"])
+                comment.save()
+    return HttpResponse('')
+
 def rate_user_item(request):
     if request.user.is_authenticated():
         p = request.POST
@@ -116,11 +142,11 @@ def rate_user_item(request):
             print "A POST request error occurred."
             return HttpResponseServerError("A POST request error occurred.")
     return HttpResponse('')
-    
-    
-    
-    
-    
+
+   
+
+
+
 #Old version of JS DOM built questions
 def jsQuestion(request, question_id):
     #Get question and convert to JSON

@@ -8,6 +8,8 @@
 
 <p>This is the place where, if you are stuggling even after the tutorials, you can come to request additional help.</p>
 
+<a class="button" href="{% url 'community:ask' %}">Ask a question</a> {# TODO style this http://stackoverflow.com/questions/8357058/how-to-make-a-href-link-look-like-a-button #}
+
 <div id="user_question_list">
 {% for question in question_list %}
     

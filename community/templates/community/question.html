@@ -37,6 +37,17 @@ function downvote(element, type, id)
     });
 }
 
+function comment(type, id, comment)
+{
+    $.ajax({
+        type: "POST",
+        url: "{% url 'community:comment' %}",
+        data: ({comment: comment, type: type, id: id}),
+        error: function(response, textStatus){alert(response.responseText);},
+        success: function(element){},
+    });
+}
+
 function vote_success(vote)
 {
     element = current_element;
@@ -94,7 +105,7 @@ $(function() {
 </div>{{ question.title }}</div>
 
 {% if question.lesson %}
-    <h4>Lesson: <a href={% url 'lessons:read' lesson_name=question.lesson.url %}>{{ question.lesson.name }}</a></h4>
+    <h4>Lesson: <a href={% url 'lessons:read' question.lesson.url %}>{{ question.lesson.name }}</a></h4>
 {% endif %}
 
 {% if question.question %}
@@ -125,6 +136,8 @@ $(function() {
    
     </div>
 {% endfor %}
+<input type="text" id="question_comment"></input>
+<button type="button" onclick="comment('question', {{ question.id }}, document.getElementById('question_comment').value)">Comment</button>
 </div>
 
 <div id="user_answers">
