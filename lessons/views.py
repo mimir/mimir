@@ -96,6 +96,7 @@ def rand_question(request, lesson_url):
         return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
     return HttpResponseRedirect(reverse('lessons:read', args=[lesson_url]))
 
+@login_required
 def skill_tree(request):
     if request.user.is_authenticated():
         curuser = request.user

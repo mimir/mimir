@@ -34,29 +34,25 @@ def splash(request):
         return HttpResponseRedirect("/home/")
     return render(request, 'splash.html')
 
+@login_required
 def whatsnext(request):
-    if request.user.is_authenticated():
-        curuser = request.user
-        whats_next = Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = request.user).exclude(usertakeslesson__user = request.user).distinct().order_by('?')[:5]
-        lessons_left = Lesson.objects.all().exclude(usertakeslesson__user = curuser).exclude(preparation__leads_from__usertakeslesson__user = request.user)
-        context = ({
-            'whats_next':whats_next, 'lessons_left':lessons_left
-        })
-        return render(request, 'next.html', context)
-    else:
-        return HttpResponseRedirect(reverse('lessons:index'))
-    
+    curuser = request.user
+    whats_next = Lesson.objects.filter(preparation__leads_from__usertakeslesson__user = request.user).exclude(usertakeslesson__user = request.user).distinct().order_by('?')[:5]
+    lessons_left = Lesson.objects.all().exclude(usertakeslesson__user = curuser).exclude(preparation__leads_from__usertakeslesson__user = request.user)
+    context = ({
+        'whats_next':whats_next, 'lessons_left':lessons_left
+    })
+    return render(request, 'next.html', context)
+
+@login_required
 def myskills(request):
-    if request.user.is_authenticated():
-        curuser = request.user
-        user_lessons = UserTakesLesson.objects.filter(user = curuser).order_by('-date')
-        context = ({
-            'user_lessons':user_lessons, 
-        })
-        return render(request, 'skills.html', context)
-    else:
-        return HttpResponseRedirect("/home/")
-        
+    curuser = request.user
+    user_lessons = UserTakesLesson.objects.filter(user = curuser).order_by('-date')
+    context = ({
+        'user_lessons':user_lessons, 
+    })
+    return render(request, 'skills.html', context)
+
 def search(request, item):
     item = item.replace("_", " ")
     lessons = Lesson.objects.filter(get_query(item, ["name",]))

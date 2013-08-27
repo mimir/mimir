@@ -44,9 +44,8 @@ def register(request):
         'form': form,
     })
 
+@login_required
 def edit(request):
-    if not request.user.is_authenticated():
-        return HttpResponseRedirect(reverse('login'))
     user_profile = UserProfile.objects.get(user__id = request.user.pk)
     if request.method == 'POST':
         form = UserProfileForm(request.POST, instance=user_profile)
@@ -59,8 +58,8 @@ def edit(request):
         'form': form,
     })
 
+@login_required
 def profile(request): #Users own profile page
-    #Should really add checks to ensure none authenticated users cannot access the page or are redirected to a register/sign in page
     cur_user_p = get_object_or_404(UserProfile, user__id = request.user.pk) #Get their profile
     lessons = UserTakesLesson.objects.filter(user = request.user.pk).order_by("date") #Get the lessons they have taken
     questions = UserAnswersQuestion.objects.filter(user = request.user.pk) #Get the questions they have answered
@@ -111,4 +110,3 @@ def profile(request): #Users own profile page
     context = ({'cur_user': request.user, 'cur_user_p': cur_user_p, 'num_lessons': num_lessons, 'unique_lessons': unique_lessons, 'num_answered': num_answered, 'percent_correct': percentage, 'lessons': json.dumps(lesson_graph), 'questions': json.dumps(question_graph), })
 
     return render(request, 'user_profiles/profile.html', context)
-    

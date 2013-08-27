@@ -21,6 +21,7 @@ def index(request):
     })
     return render(request, 'community/index.html', context)
 
+@login_required
 def ask_question(request):
     if request.method == "POST":
         form = QuestionForm(request.POST)
