@@ -33,7 +33,7 @@ class UserComment(models.Model):
     user_question = models.ForeignKey(UserQuestion, blank=True, null=True)
     user_answer = models.ForeignKey(UserAnswer, blank=True, null=True)
     user = models.ForeignKey(User)
-    user_comment = models.TextField()
+    user_comment = models.TextField() #TODO change
     rating = models.IntegerField(default = 0)
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
