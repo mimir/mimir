@@ -9,6 +9,7 @@ from community.forms import QuestionForm
 import json
 from django.core import serializers
 from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
 from community.forum import JSONUserQuestion, JSONUserAnswer, JSONUserComment, listToJSON
 from django.core.exceptions import ValidationError
 

@@ -1,6 +1,7 @@
 from django import forms
 from django.shortcuts import render
 from django.http import HttpResponse, Http404, HttpResponseRedirect
+from django.contrib.auth.decorators import login_required
 
 from lessons.models import Lesson, LessonFollowsFromLesson, Question
 from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
