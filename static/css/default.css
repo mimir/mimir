@@ -155,7 +155,8 @@ div#content {
 	margin-bottom:20px;
 	width:50em;
 	padding:30px;
-	padding-top:1px;
+	padding-top:20px;
+	padding-bottom:20px;
 	border:thick #666666;
 	box-shadow:0px 0px 40px rgba(0,0,0,0.6);
 }
@@ -190,12 +191,14 @@ li.odd {
 }
 
 .lessondescbox{
-	border:thin solid #333333;
+	border-top:thin solid #333333;
 	min-height:90px;
 	position:relative;
+	overflow:hidden;
 }
 
 .lessontitle {
+	display:table;
 	float:left;
 	width:200px;
 	background-color:#F85C5C;
@@ -205,16 +208,22 @@ li.odd {
 	position:absolute;
 }
 .lessontitle span {
-	width:100%;
-	display:inline-block;
-    text-align:center;
-	vertical-align:middle;
-	top:0px;
+	font-size:20px;
+	width:260px;
+	height:50px;
+	display: table-cell; 
+	vertical-align: middle; 
+	text-align: center; 
 	bottom:0px;
-	padding:auto;
 }
 .lessondesc {
 	padding-left:250px;
+	display:table;
+}
+.lessondesc span {
+	height:90px;
+	display:table-cell;
+	vertical-align:middle;
 }
 
 /*

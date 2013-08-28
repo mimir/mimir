@@ -12,7 +12,7 @@
               {% for lesson in course.lesson_set.all %}
                 <div class="lessondescbox">
                     <a href="{% url 'lessons:read' lesson.url %}"><div class="lessontitle"><span>{{ lesson.name }}</span></div></a>
-              	      <div class="lessondesc"> {{ lesson.description }}</div>
+              	      <div class="lessondesc"><span> {{ lesson.description }}</span></div>
                	   </div>
                {% endfor %}
             <br />
