@@ -83,9 +83,12 @@ def rate_user_item(request):
             elif p['type'] == 'C':
                 user_item = UserComment.objects.get(pk=p['id'])
             else:
-                print "A type error occured."
+                print "A type error occurred."
                 return HttpResponseServerError("A type error occurred.")
-                
+            
+            if user_item.user == request.user:
+                return HttpResponseServerError("Can't rate own item.")
+
             if p['rating'] == 'up':
                 user_item.rating += 1
                 user_profile = UserProfile.objects.get(user=user_item.user)
