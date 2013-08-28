@@ -170,7 +170,7 @@
   fields: {
         name: "Matrix Minors",
         url: "matrix-minors",
-        tutorial: "Definition\n------------\n The $i^{th} j^{th}$ minor, $m_{i,j}$, of a matrix $A$ is, this is where you remove the $i^{th}$ row and the $j^{th}$ column. An example is \n $A = \\left( \\begin{array}(ccc) 3 & 6 & 4\\\\ 1 & 9 & 2\\\\ 2 & 1 & 7 \\end{array} \\right)$ then the $1^{st}$ $2^{nd}$ minor, $m_{1,2} = \\left( \\begin{array}(cc) 1 & 2\\\\ 2 & 7 \\end{array} \\right)$ but the $2^{nd}$ $1^{st}$ minor would be $m_{2,1} = \\left( \\begin{array}(ccc) 6 & 4\\\\ 1 & 7 \\end{array} \\right)$ as your deleting the second row and first column in the last example whereas in the first example you delete the first row and second column a big difference as you can see.",
+        tutorial: "Definition\n------------\n The $i^{th} j^{th}$ minor, $m_{i,j}$, of a matrix $A$ is, this is where you remove the $i^{th}$ row and the $j^{th}$ column. An example is \n $A = \\begin{pmatrix} 3 & 6 & 4\\\\\\\\ 1 & 9 & 2\\\\\\\\ 2 & 1 & 7 \\end{pmatrix}$ then the $1^{st}$ $2^{nd}$ minor, $m_{1,2} = \\begin{pmatrix} 1 & 2\\\\\\\\ 2 & 7 \\end{pmatrix}$ but the $2^{nd}$ $1^{st}$ minor would be $m_{2,1} = \\begin{pmatrix} 6 & 4\\\\\\\\ 1 & 7 \\end{pmatrix}$ as your deleting the second row and first column in the last example whereas in the first example you delete the first row and second column a big difference as you can see.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 1,
@@ -180,7 +180,7 @@
   fields: {
         name: "Further Determinants",
         url: "further-determinants",
-        tutorial: "Calculating the determinant of a $3\\times 3$ matrix (or larger) can be very unweildy to do by hand, fortunately there are a number of tricks that can help us do so. Row expansion is a itterative method that involves breaking down a big determinant into smaller ones. The first thing you do is pick a row or column with the most zero's or one's in to make your life easlier. Lets assume you have picked the $i^{th}$ row, then determinant of a $n \\times n$ matrix $A$, det($A$), with the $i^{th}$ $j^{th}$ entry of $A$ being $\\alpha_{i,j}$, would be $\\sum_{j=1}^{n} (-1)^{i+j} \\alpha_{i,j} det(m_{i,j}) = (-1)^{i+1} \\alpha_{i,1} det(m_{i,1}) + (-1)^{i+2} \\alpha_{i,2} det(m_{i,2}) + \\ldots + (-1)^{i+n} \\alpha_{i,n} det(m_{i,n})$. This looks like a scary formula but it is actually quite nice when you apply it as you break a $3 \\times 3$ determinant into claculating $3$ $2 \\times 2$ determinants and a $4 \\times 4$ determinant into calculating $12$ $2 \\times 2$ determinants by then applying the formula again to the $3 \\times 3$ minors you get.\n For justification of this formula look at the original formula for the determinant and you will see by reducing it down to the $1 \\times 1$ case you get the same formula.",
+        tutorial: "Calculating the determinant of a $3\\times 3$ matrix (or larger) can be very unweildy to do by hand, fortunately there are a number of tricks that can help us do so. Row expansion is a itterative method that involves breaking down a big determinant into smaller ones. The first thing you do is pick a row or column with the most zero's or one's in to make your life easlier. Lets assume you have picked the $i^{th}$ row, then determinant of a $n \\times n$ matrix $A$, det($A$), with the $i^{th}$ $j^{th}$ entry of $A$ being $\\alpha_{i,j}$, would be $\\sum_{j=1}^{n} (-1)^{i+j} \\alpha_{i,j} det(m_{i,j})$ = $(-1)^{i+1} \\alpha_{i,1} det(m_{i,1}) + (-1)^{i+2} \\alpha_{i,2} det(m_{i,2}) + \\ldots + (-1)^{i+n} \\alpha_{i,n} det(m_{i,n})$. This looks like a scary formula but it is actually quite nice when you apply it as you break a $3 \\times 3$ determinant into claculating $3$ $2 \\times 2$ determinants and a $4 \\times 4$ determinant into calculating $12$ $2 \\times 2$ determinants by then applying the formula again to the $3 \\times 3$ minors you get.\n For justification of this formula look at the original formula for the determinant and you will see by reducing it down to the $1 \\times 1$ case you get the same formula.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 1,
@@ -547,7 +547,7 @@
   pk: 1
   fields: {
         lesson: 1,
-        question: "What is the determinant of $\\left( \\begin{array}{cc} $[INT,1,9]a & $[INT,1,9]b\\\\ $[INT,1,9]c & $[INT,1,9]d \\end{array} \\right)$?",
+        question: "What is the determinant of $\\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b\\\\ $[INT,1,9]c & $[INT,1,9]d \\end{pmatrix}$?",
         answer: "a",
         calculation: "answer = variables[\"a\"]*variables[\"d\"]-variables[\"b\"]*variables[\"c\"]",
         answer_format: 1,
@@ -557,7 +557,7 @@
   pk: 2
   fields: {
         lesson: 2,
-        question: "If the matrix $A = \\left( \\begin{array}{ccc} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{array} \\right)$ then what is $det(m_{3,2})$?",
+        question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(m_{3,2})$?",
         answer: "a",
         calculation: "answer = variables[\"a\"]*variables[\"f\"]-variables[\"c\"]*variables[\"d\"]",
         answer_format: 1,
@@ -567,7 +567,7 @@
   pk: 3
   fields: {
         lesson: 3,
-        question: "If the matrix $A = \\left( \\begin{array}{ccc} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{array} \\right)$ then what is $det(A)$?",
+        question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(A)$?",
         answer: "a",
         calculation: "answer = variables[\"a\"]*(variables[\"e\"]*variables[\"i\"]-variables[\"h\"]*variables[\"f\"]) - variables[\"d\"]*(variables[\"b\"]*variables[\"i\"]-variables[\"c\"]*variables[\"h\"]) + variables[\"g\"]*(variables[\"b\"]*variables[\"f\"]-variables[\"c\"]*variables[\"e\"]) ",
         answer_format: 1,
@@ -577,7 +577,7 @@
   pk: 4
   fields: {
         lesson: 4,
-        question: "If the matrix $A = \\left( \\begin{array}{ccc} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{array} \\right)$ then what is $det(m_{3,2})$?",
+        question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(m_{3,2})$?",
         answer: "a",
         calculation: "answer = variables[\"a\"]*variables[\"f\"]-variables[\"c\"]*variables[\"d\"]",
         answer_format: 1,
@@ -587,7 +587,7 @@
   pk: 5
   fields: {
         lesson: 5,
-        question: "If the matrix $A = \\left( \\begin{array}{ccc} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{array} \\right)$ then what is $det(A)$?",
+        question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(A)$?",
         answer: "a",
         calculation: "answer = variables[\"a\"]*(variables[\"e\"]*variables[\"i\"]-variables[\"h\"]*variables[\"f\"]) - variables[\"d\"]*(variables[\"b\"]*variables[\"i\"]-variables[\"c\"]*variables[\"h\"]) + variables[\"g\"]*(variables[\"b\"]*variables[\"f\"]-variables[\"c\"]*variables[\"e\"]) ",
         answer_format: 1,
