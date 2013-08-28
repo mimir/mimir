@@ -48,6 +48,17 @@ function comment(type, id, comment)
     });
 }
 
+function answer(answer)
+{
+    $.ajax({
+        type: "POST",
+        url: "{% url 'community:answer' %}",
+        data: ({answer: answer, id: {{ question.id }}}),
+        error: function(response, textStatus){alert(response.responseText);},
+        success: function(element){},
+    });
+}
+
 function vote_success(vote)
 {
     element = current_element;
@@ -180,9 +191,14 @@ $(function() {
             {% endfor %}
         {% endif %}
     {% endfor %}
+    <input type="text" id="answer_comment_inp_{{ answer.id }}"></input>
+    <button type="button" onclick="comment('answer', {{ answer.id }}, document.getElementById('answer_comment_inp_{{ answer.id }}').value)">Comment</button>
     
     </div>
 {% endfor %}
 </div>
+<input type="text" id="answer_inp"></input>
+<button type="button" onclick="answer(document.getElementById('answer_inp').value)">Answer question</button>
+
 
 {% endblock %}

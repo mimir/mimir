@@ -68,6 +68,16 @@ def add_comment(request):
                 comment.save()
     return HttpResponse('')
 
+def add_answer(request):
+    if request.user.is_authenticated():
+        p = request.POST
+        if "answer" in p and "id" in p:
+            id = int(p["id"])
+            question = get_object_or_404(UserQuestion, pk=id)
+            answer = UserAnswer(user = request.user, user_question = question, user_answer = p["answer"])
+            answer.save()
+    return HttpResponse('')
+
 def rate_user_item(request):
     if request.user.is_authenticated():
         p = request.POST
