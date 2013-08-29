@@ -8,17 +8,15 @@
     {% for course in course_list %}
         <div class="coursetitle">
             {{ course.name }} 
-            </div>
-              {% for lesson in course.lesson_set.all %}
-                <div class="lessondescbox">
-                    <a href="{% url 'lessons:read' lesson.url %}"><div class="lessontitle"><span>{{ lesson.name }}</span></div></a>
-              	      <div class="lessondesc"><span> {{ lesson.description }}</span></div>
-               	   </div>
-               {% endfor %}
-            <br />
-        </li>
+        </div>
+        {% for lesson in course.lesson_set.all %}
+            <div class="lessondescbox">
+                <a href="{% url 'lessons:read' lesson.url %}"><div class="lessontitle"><span>{{ lesson.name }}</span></div></a>
+                <div class="lessondesc"><span> {{ lesson.description }}</span></div>
+           </div>
+        {% endfor %}
+        <br />
     {% endfor %}
-    </ul>
 {% else %}
     <p>No lessons atm soz bbz</p>
 {% endif %}
