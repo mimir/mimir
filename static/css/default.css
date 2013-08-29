@@ -30,6 +30,8 @@ p
 body a:link, body a:visited, body a:hover, body a:active
 {
 	color:#000000;
+	font-weight:bold;
+	text-decoration:none;
 }
 
 div#header {
@@ -98,7 +100,7 @@ div#header {
 	text-transform:uppercase;
 	text-decoration:none;
 }
-.barnav a:hover, a:active {
+.barnav a:hover, .barnav a:active {
 	/* Gradient on hover, used http://gradients.glrzad.com/ to do it */
 	background-image: linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
 	background-image: -o-linear-gradient(bottom, rgb(242,242,242) 9%, rgb(255,255,255) 51%, rgb(255,255,255) 100%);
@@ -170,10 +172,11 @@ div#content ul {
 	margin-left:10px;
 	margin-right:auto;
 	padding: 0px;
+	text-align:center;
 }
 
 li.even {
-    background-color:#72FA5F;
+    background-color:#8793E2;
     border-radius:5px;
 }
 
@@ -232,6 +235,51 @@ The following is just for community stuff:
 #TODO migrate the community css over to a seperate .css file??
 
 */
+
+.button {
+	padding:20px;
+	background-color:#2DD9E1;
+	border-bottom:groove #3399FF;
+	border-radius:4px;
+	display:block;
+	width:200px;
+	text-align:center;
+	margin-top:40px;
+	margin-bottom:20px;
+	margin-left:250px;
+	margin-right:200px;
+	color:#FFFFFF;
+	
+	background-image: linear-gradient(bottom, rgb(128,217,213) 7%, rgb(67,204,204) 54%);
+	background-image: -o-linear-gradient(bottom, rgb(128,217,213) 7%, rgb(67,204,204) 54%);
+	background-image: -moz-linear-gradient(bottom, rgb(128,217,213) 7%, rgb(67,204,204) 54%);
+	background-image: -webkit-linear-gradient(bottom, rgb(128,217,213) 7%, rgb(67,204,204) 54%);
+	background-image: -ms-linear-gradient(bottom, rgb(128,217,213) 7%, rgb(67,204,204) 54%);
+	
+	background-image: -webkit-gradient(
+		linear,
+		left bottom,
+		left top,
+		color-stop(0.07, rgb(128,217,213)),
+		color-stop(0.54, rgb(67,204,204))
+	);
+}
+
+.button a:active { 
+	background-image: linear-gradient(bottom, rgb(103,181,177) 7%, rgb(73,237,237) 54%);
+	background-image: -o-linear-gradient(bottom, rgb(103,181,177) 7%, rgb(73,237,237) 54%);
+	background-image: -moz-linear-gradient(bottom, rgb(103,181,177) 7%, rgb(73,237,237) 54%);
+	background-image: -webkit-linear-gradient(bottom, rgb(103,181,177) 7%, rgb(73,237,237) 54%);
+	background-image: -ms-linear-gradient(bottom, rgb(103,181,177) 7%, rgb(73,237,237) 54%);
+	
+	background-image: -webkit-gradient(
+		linear,
+		left bottom,
+		left top,
+		color-stop(0.07, rgb(103,181,177)),
+		color-stop(0.54, rgb(73,237,237))
+	);
+}
 
 #search {
 	margin:0px;
