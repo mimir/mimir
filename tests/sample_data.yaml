@@ -230,7 +230,7 @@
   fields: {
         name: "Integration of polynomials",
         url: "integration-of-polynomials",
-        tutorial: "This follows strongly from the inspection, what is the integral of some polynomial $ax^b$ well if we inspect it, it is easy to see that $\\frac{a}{b+1}x^{b+1} + c$ would differentiate to give the original polynomial, with $c$ begin any number. So we have a formula $\\int ax^b = \\frac{a}{b+1}x^{b+1} + c$. Then next thing I will show you is how to do a integration between limits, like on the graph the area between two numbers. So the integral of some function $f(x)$ between $a$ and $b$ is denoted $\\int_a^b f(x)$, if we let $F(x) = \\int f(x)$ the formula for $\\int_a^b f(x) = F(b) - F(a)$ so as a example for our polynomials we have $\\int_a^b cx^d = \\frac{c}{d+1}a^{d+1} - \\frac{c}{d+1}b^{d+1}.",
+        tutorial: "This follows strongly from the inspection, what is the integral of some polynomial $ax^b$ well if we inspect it, it is easy to see that $\\frac{a}{b+1}x^{b+1} + c$ would differentiate to give the original polynomial, with $c$ begin any number. So we have a formula $\\int ax^b = \\frac{a}{b+1}x^{b+1} + c$. Then next thing I will show you is how to do a integration between limits, like on the graph the area between two numbers. So the integral of some function $f(x)$ between $a$ and $b$ is denoted $\\int_a^b f(x)$, if we let $F(x) = \\int f(x)$ the formula for $\\int_a^b f(x) = F(b) - F(a)$ so as a example for our polynomials we have $\\int_a^b cx^d = \\frac{c}{d+1}a^{d+1} - \\frac{c}{d+1}b^{d+1}$.",
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z",
         course: 2,
