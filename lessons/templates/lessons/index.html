@@ -3,22 +3,20 @@
 {% block content %}
 
 <h2>Lessons</h2>
-{% if course_list %}
-    
-    {% for course in course_list %}
-        <div class="coursetitle">
-            {{ course.name }} 
+
+{% for course in course_list %}
+    <div class="coursetitle">
+        {{ course.name }} 
+    </div>
+    {% for lesson in course.lesson_set.all %}
+        <div class="lessondescbox">
+            <a href="{% url 'lessons:read' lesson.url %}"><div class="lessontitle"><span>{{ lesson.name }}</span></div></a>
+            <div class="lessondesc"><span> {{ lesson.description }}</span></div>
         </div>
-        {% for lesson in course.lesson_set.all %}
-            <div class="lessondescbox">
-                <a href="{% url 'lessons:read' lesson.url %}"><div class="lessontitle"><span>{{ lesson.name }}</span></div></a>
-                <div class="lessondesc"><span> {{ lesson.description }}</span></div>
-           </div>
-        {% endfor %}
-        <br />
     {% endfor %}
-{% else %}
-    <p>No lessons atm soz bbz</p>
-{% endif %}
+    <br />
+{% empty %}
+    <p>No lessons are available currently.</p>
+{% endfor %}
 
 {% endblock %}
