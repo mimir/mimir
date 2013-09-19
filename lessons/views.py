@@ -41,7 +41,12 @@ def rate_lesson(request, lesson_id): #TODO change this so lesson_id is passed vi
             user_takes_lesson = list(UserTakesLesson.objects.filter(lesson__id = lesson_id, user = request.user).order_by('-date')[:1])
             if user_takes_lesson:
                 if "rating" in p:
-                    user_takes_lesson[0].rating = int(p["rating"]) #TODO make this properly handle non-integer ratings so that people can't break the site by submitting funny POST requests to it.
+                    try:
+                        user_takes_lesson[0].rating = int(p["rating"])
+                        if int(p["rating"]) > 5 or int(p["rating"]) < 1:
+                            return HttpResponse(status='400')
+                    except ValueError:
+                         return HttpResponse(status='400') #If rating is not an integer, return a Bad Request to the client
                 if "comment" in p:
                     user_takes_lesson[0].comment = p["comment"] #TODO implement this in the template and as above make sure no nasties can be placed in comments
                 user_takes_lesson[0].save()
