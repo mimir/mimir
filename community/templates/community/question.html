@@ -21,7 +21,7 @@ function upvote(element, type, id)
         url: "{% url 'community:rate_user_item' %}",
         data: ({rating: 'up', type: type, id: id}),
         error: function(response, textStatus){alert(response.responseText);},
-        success: function(element){vote_success('up');},
+        success: function(element){location.reload();},
     });
 }
     
@@ -33,7 +33,7 @@ function downvote(element, type, id)
         url: "{% url 'community:rate_user_item' %}",
         data: ({rating: 'down', type: type, id: id}),
         error: function(response, textStatus){alert(response.responseText);},
-        success: function(element){vote_success('down');},
+        success: function(element){location.reload();},
     });
 }
 
@@ -44,8 +44,9 @@ function comment(type, id, comment)
         url: "{% url 'community:comment' %}",
         data: ({comment: comment, type: type, id: id}),
         error: function(response, textStatus){alert(response.responseText);},
-        success: function(element){},
+        success: function(element){location.reload();},
     });
+
 }
 
 function answer(answer)
@@ -55,7 +56,7 @@ function answer(answer)
         url: "{% url 'community:answer' %}",
         data: ({answer: answer, id: {{ question.id }}}),
         error: function(response, textStatus){alert(response.responseText);},
-        success: function(element){},
+        success: function(element){location.reload();},
     });
 }
 
