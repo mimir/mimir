@@ -52,7 +52,7 @@ def edit(request):
         form = UserProfileForm(request.POST, instance=user_profile)
         if form.is_valid():
             form.save()
-            return HttpResponseRedirect("/home/")
+            return HttpResponseRedirect(reverse("profile"))
     else:
         form = UserProfileForm(instance = user_profile)
     return render(request, "user_profiles/edit.html", {
