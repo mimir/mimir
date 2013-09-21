@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from user_profiles.forms import UserCreationForm, UserProfileForm
 from user_profiles.models import UserProfile, UserTakesLesson, UserAnswersQuestion
+from community.models import UserAnswer, UserQuestion, UserComment
 from django.db.models import Count
 import json
 import string
@@ -69,6 +70,11 @@ def profile(request): #Users own profile page
     num_lessons = lessons.count()
     unique_lessons = lessons.values("lesson").distinct().count() #This may or may not work
     num_answered = questions.count()
+    community_answers = UserAnswer.objects.filter(user = request.user).count() 
+    community_questions = UserQuestion.objects.filter(user = request.user).count() 
+
+    community_comments = UserComment.objects.filter(user = request.user).count() 
+
     
     percentage = None #Percent correct
     if num_answered == 0: #Prevent division by 0
@@ -107,6 +113,16 @@ def profile(request): #Users own profile page
             previous_index += 1
             previous_date = date_millis
 
-    context = ({'cur_user': request.user, 'cur_user_p': cur_user_p, 'num_lessons': num_lessons, 'unique_lessons': unique_lessons, 'num_answered': num_answered, 'percent_correct': percentage, 'lessons': json.dumps(lesson_graph), 'questions': json.dumps(question_graph), })
+    context = ({'cur_user': request.user,
+                'cur_user_p': cur_user_p,
+                'num_lessons': num_lessons,
+                'unique_lessons': unique_lessons,
+                'num_answered': num_answered,
+                'percent_correct': percentage,
+                'lessons': json.dumps(lesson_graph),
+                'questions': json.dumps(question_graph), 
+                'community_questions': community_questions, 
+                'community_answers': community_answers, 
+                'community_comments': community_comments, })
 
     return render(request, 'user_profiles/profile.html', context)
