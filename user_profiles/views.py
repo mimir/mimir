@@ -66,7 +66,6 @@ def profile(request): #Users own profile page
     questions = UserAnswersQuestion.objects.filter(user = request.user.pk) #Get the questions they have answered
     
     #Calculate question stuff
-    num_answered = len(questions)
     num_lessons = lessons.count()
     unique_lessons = lessons.values("lesson").distinct().count() #This may or may not work
     num_answered = questions.count()
