@@ -76,7 +76,7 @@ $(function() {
     {% endif %}
 
     {% if questions_exist %}
-        <a href="{% url 'lessons:rand_question' lesson.url %}">Test me</a>
+        <a class="button" href="{% url 'lessons:rand_question' lesson.url %}">Test me</a>
     {% else %}
         <p>No questions for this lesson.</p>
     {% endif %}
@@ -89,7 +89,7 @@ $(function() {
         {% endfor %}
         </ul>
     {% else %}
-        <p>No Follow up lessons, I am really sorry and hope that you can find it in your hearts of hearts to forgive me. :( (a)</p>
+        <p>No follow up lessons are available at the moment.</p>
     {% endif %}
 	
 {% else %}
