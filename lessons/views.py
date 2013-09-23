@@ -2,10 +2,13 @@ from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
+
+from lessons.generate import generateQuestion, findVariables, generateVariables
+from lessons.mas_main import parseToAST
+from lessons.mas2 import wrong_answer_dict
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
 from user_profiles.models import UserTakesLesson, UserAnswersQuestion
 
-from lessons.generate import generateQuestion
 from random import random
 import datetime
 import re
@@ -64,7 +67,8 @@ def check_answer(request):
         #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
         pair = generateQuestion(Decimal(p["rand_seed"]), question.question, question.calculation)
-        if (type(pair[1]))(p["answer"]) == pair[1]: #TODO make this work properly with formatting so non integer answers will work.
+        answer = (type(pair[1]))(p["answer"])
+        if answer == pair[1]:
             if request.user.is_authenticated():
                 user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = pair[1])
                 user_answers.save()
@@ -72,7 +76,12 @@ def check_answer(request):
         else:
             #TODO mistake analysis system, no biggie
             message = "Oops, looks like you made a mistake."
-            #TODO something like this: message = analyse_mistake(question, rand_seed, answer)
+            vars = generateVariables(Decimal(p["rand_seed"]), findVariables(question.question))
+            calc = question.calculation
+            for var in vars:
+                calc = calc.replace('variables["'+var+'"]', str(vars[var]))
+            calc = calc[9:] #TODO change when all this answer = is removed
+            message = wrong_answer_dict(parseToAST(calc))[str(answer)]
             if request.user.is_authenticated():
                 user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = pair[1])
                 user_answers.save()
