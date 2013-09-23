@@ -81,7 +81,10 @@ def check_answer(request):
             for var in vars:
                 calc = calc.replace('variables["'+var+'"]', str(vars[var]))
             calc = calc[9:] #TODO change when all this answer = is removed
-            message = wrong_answer_dict(parseToAST(calc))[str(answer)]
+            if str(answer) in wrong_answer_dict(parseToAST(calc)):
+                message = wrong_answer_dict(parseToAST(calc))[str(answer)]
+            else:
+                message = "You've made a mistake, but we aren't sure where exactly."
             if request.user.is_authenticated():
                 user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = pair[1])
                 user_answers.save()
