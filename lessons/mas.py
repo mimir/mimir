@@ -10,7 +10,7 @@ exprStack = []
 argCount = 0
 
 #TODO: Rename and structure functions appropriately
-#TODO: Seperate all paring from evaluating and create a wrapper API for using MAS
+#TODO: Separate all paring from evaluating and create a wrapper API for using MAS
 #TODO: Add error checking and useful exceptions
 
 #TODO: Clean up pushFirst function
