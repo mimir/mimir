@@ -80,26 +80,20 @@ def check_answer(request):
     return HttpResponse('')
 
 
-def question(request, lesson_name, question_id):
+def question(request, lesson_url, question_id):
     question = get_object_or_404(Question, pk = question_id)
     getcontext().prec = 12
     rand_seed = Decimal(str(random()))
     pair = generateQuestion(rand_seed, question.question, question.calculation)
     question.question = pair[0]
     question.answer = pair[1]
-    return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_name]),'rand_seed':rand_seed,})
+    return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
 
 def rand_question(request, lesson_url):
     lesson = get_object_or_404(Lesson, url__iexact = lesson_url)
     question_l = list(Question.objects.filter(lesson = lesson).order_by('?')[:1])
     if question_l:
-        getcontext().prec = 12
-        question = question_l[0]
-        rand_seed = Decimal(str(random()))
-        pair = generateQuestion(rand_seed, question.question, question.calculation)
-        question.question = pair[0]
-        question.answer = pair[1]
-        return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
+        return HttpResponseRedirect(reverse('lessons:question', args=[lesson_url, question_l[0].id]))
     return HttpResponseRedirect(reverse('lessons:read', args=[lesson_url]))
 
 @login_required
