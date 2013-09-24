@@ -5,8 +5,10 @@ import operator
 
 '''Given a root node of an expression tree for an answer this code will traverse the tree and output a list of possible wrong answers with one mistake.'''
 def wrong_answer_dict(root):
-    wrong_ops = { "+": [operator.sub], 
-                "-": [operator.add], } #TODO: Make more of these, eventually in a db??
+    wrong_ops = { "+": [operator.sub, operator.add],
+                "-": [operator.add],
+                "*": [operator.add, operator.truediv],
+                "/": [operator.mul], } #TODO: Make more of these, eventually in a db??
     wrong_ans = dict()
     not_looked_at = LifoQueue()
     not_looked_at.put(root)
@@ -16,7 +18,7 @@ def wrong_answer_dict(root):
         if node_val in wrong_ops:
             for wrong_op in wrong_ops[str(node_val)]:
                 node.value = wrong_op
-                wrong_ans[str(evaluateNode(root))] = "Oops, did you do %s on %s, when you meant to do %s" % (op_to_str(wrong_op), str([evaluateNode(c) for c in node.children])[1:-1], node_val)
+                wrong_ans[str(evaluateNode(root))] = "Oops, did you do %s on %s, when you meant to do %s?" % (op_to_str(wrong_op), ", ".join([str(evaluateNode(c)) for c in node.children[:-1]]) + " and " + str(evaluateNode(node.children[-1])), node_val)
             node.value = node_val
         for child in node.children:
             not_looked_at.put(child)
@@ -29,10 +31,10 @@ def wrong_answer_dict(root):
 '''
 
 def op_to_str(op):
-    ops = { operator.add : "+",
-            operator.sub : "-",
-            operator.mul : "*",
-            operator.truediv : "/",
+    ops = { operator.add : "$+$",
+            operator.sub : "$-$",
+            operator.mul : "$\\times$",
+            operator.truediv : "$\\div$",
             operator.pow : "^" }
     if op in ops:
         return ops[op]

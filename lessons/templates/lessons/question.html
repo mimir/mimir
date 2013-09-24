@@ -42,6 +42,7 @@ $(function() {
                 else
                 {
                     $('#message').html(response.message);
+                    MathJax.Hub.Queue(["Typeset",MathJax.Hub,"message"]);
                 }
             }).fail(function(xhr, ajaxOptions, thrownError) {
                 console.log(xhr.responseText); //TODO probably remove these lines when testing done
