@@ -75,4 +75,4 @@ class UserCreationForm(forms.ModelForm):
 class UserProfileForm(forms.ModelForm):
     class Meta:
         model = UserProfile
-        exclude = ['gravatar_hash', 'user', 'reputation',]
+        fields = ['website', 'caption', 'about', ]
