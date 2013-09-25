@@ -2,10 +2,10 @@
 #Calls to the mas system from outside should use these functions to do so.
 
 from mas_parser import parse
-from mas_evaluator import evaluateNode
+from mas_evaluator import evaluateAST
 
 def parseToAST(question):
     return parse(question)
 
 def evaluateAST(root):
-    return evaluateNode(root)
+    return evaluateAST(root)

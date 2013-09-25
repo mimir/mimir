@@ -1,4 +1,4 @@
-from mas_evaluator import evaluateNode
+from mas_evaluator import evaluateAST
 from Queue import *
 import math
 import operator
@@ -18,7 +18,7 @@ def wrong_answer_dict(root):
         if node_val in wrong_ops:
             for wrong_op in wrong_ops[str(node_val)]:
                 node.value = wrong_op
-                wrong_ans[str(evaluateNode(root))] = "Oops, did you do %s on %s, when you meant to do %s?" % (op_to_str(wrong_op), ", ".join([str(evaluateNode(c)) for c in node.children[:-1]]) + " and " + str(evaluateNode(node.children[-1])), node_val)
+                wrong_ans[str(evaluateAST(root).answer)] = "Oops, did you do %s on %s, when you meant to do %s?" % (op_to_str(wrong_op), ", ".join([str(evaluateAST(c).answer) for c in node.children[:-1]]) + " and " + str(evaluateAST(node.children[-1]).answer), node_val)
             node.value = node_val
         for child in node.children:
             not_looked_at.put(child)

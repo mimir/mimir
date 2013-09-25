@@ -15,6 +15,8 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
         return str(astToLatex(ast.children[1])) + "^" + str(astToLatex(ast.children[0]))
     elif ast.value == "/":
         return r"\frac{" + str(astToLatex(ast.children[1])) + "}{" + str(astToLatex(ast.children[0])) + "}"
+    elif ast.value == "unary -":
+        return "- " + str(astToLatex(ast.children[0]))
         
 
     else: #Else, if it is an unknown thing, use a function style
