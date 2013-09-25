@@ -59,9 +59,9 @@ class AnswerFormat(models.Model):
 class Question(models.Model):
     lesson = models.ForeignKey(Lesson)
     question = models.CharField(max_length = 300)
-    answer = models.CharField(max_length = 200)
+    variables = models.TextField() #TODO: Move variable declarations from the template to this field
+    answer = models.CharField(max_length = 200) #Use this field as the input to the MAS
     answer_format = models.ForeignKey(AnswerFormat)
-    calculation = models.TextField() #TODO work out how on earth this will work
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     @property
@@ -74,7 +74,7 @@ class Question(models.Model):
 class LessonFollowsFromLesson(models.Model):
     leads_from = models.ForeignKey(Lesson, related_name='supplement')
     leads_to = models.ForeignKey(Lesson, related_name='preparation') #TODO think about these two related names, do they make sense?
-    CHOICES = [(i,i) for i in range(11)] #0-10
+    CHOICES = [(i,i) for i in range(11)] #0-10 #TODO potentially remove the link strength now that lessons strictly follow on from each other
     strength = models.PositiveSmallIntegerField(choices = CHOICES) #Not sure exactly how this will work yet TODO work it out. Roughly 10 should correspond to, you really need to know A to do B, and 0 should mean that they're sort of linked?
 
     class Meta:
