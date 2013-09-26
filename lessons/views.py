@@ -4,7 +4,7 @@ from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 
 from lessons.generate import generateQuestion, findVariables, generateVariables
-from lessons.mas_main import parseToAST
+from lessons.mas_main import createQuestion, createSolution
 from lessons.mas2 import wrong_answer_dict
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
 from user_profiles.models import UserTakesLesson, UserAnswersQuestion
@@ -58,35 +58,34 @@ def rate_lesson(request, lesson_id): #TODO change this so lesson_id is passed vi
 '''
 This view handles the POST request that the client side Javascript (using JQuery) sends to the server to check the user's answer to a question.
 '''
+#TODO: Move pretty much all answer checks over to the MAS itself, including checking the format and whatnot
 def check_answer(request):
     p = request.POST
     if "question_id" in p and "answer" in p and "rand_seed" in p:
         question = get_object_or_404(Question, pk = int(p["question_id"])) #TODO make sure this makes sense, this should never go wrong in practice but who knows, possibly expand to return something more meaningful to ajax?
+
         if not re.match(question.answer_format.regex, p["answer"]):
             return HttpResponse('{"correct":false, "message":"Answer was not in the correct format, please correct this and try again."}', mimetype="application/json") #TODO make this message contain specifics about the format
+
         #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
-        pair = generateQuestion(Decimal(p["rand_seed"]), question.question, question.calculation)
-        answer = (type(pair[1]))(p["answer"])
-        if answer == pair[1]:
+        correctAns = generateAnswer(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
+        userAns = (type(correctAns))(p["answer"])
+        if userAns == correctAns.answer:
             if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = pair[1])
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = correctAnswer.answer)
                 user_answers.save()
             return HttpResponse('{"correct":true}', mimetype="application/json")
         else:
             #TODO mistake analysis system, no biggie
             message = "Oops, looks like you made a mistake."
-            vars = generateVariables(Decimal(p["rand_seed"]), findVariables(question.question))
-            calc = question.calculation
-            for var in vars:
-                calc = calc.replace('variables["'+var+'"]', str(vars[var]))
-            calc = calc[9:] #TODO change when all this answer = is removed
-            if str(answer) in wrong_answer_dict(parseToAST(calc)):
-                message = wrong_answer_dict(parseToAST(calc))[str(answer)]
+            
+            if str(userAns) in correctAns.wrongAnswers:
+                message = correctAns.wrongAnswers[str(userAns)]
             else:
                 message = "You've made a mistake, but we aren't sure where exactly."
             if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = pair[1])
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = correctAns.answer)
                 user_answers.save()
             return HttpResponse('{"correct":false, "message":"' + message + '"}', mimetype="application/json")
     return HttpResponse('')
@@ -96,10 +95,8 @@ def question(request, lesson_url, question_id):
     question = get_object_or_404(Question, pk = question_id)
     getcontext().prec = 12
     rand_seed = Decimal(str(random()))
-    pair = generateQuestion(rand_seed, question.question, question.calculation)
-    question.question = pair[0]
-    question.answer = pair[1]
-    return render(request, 'lessons/question.html', {'question': question,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
+    template = createQuestion(rand_seed, question.question)
+    return render(request, 'lessons/question.html', {'question': template,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
 
 def rand_question(request, lesson_url):
     lesson = get_object_or_404(Lesson, url__iexact = lesson_url)
