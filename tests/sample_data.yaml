@@ -548,8 +548,8 @@
   fields: {
         lesson: 1,
         question: "What is the determinant of $\\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b\\\\ $[INT,1,9]c & $[INT,1,9]d \\end{pmatrix}$?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]*variables[\"d\"]-variables[\"b\"]*variables[\"c\"]",
+        variables: "",
+        answer: "$a * $d - $b * $c",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -558,8 +558,8 @@
   fields: {
         lesson: 2,
         question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(m_{3,2})$?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]*variables[\"f\"]-variables[\"c\"]*variables[\"d\"]",
+        variables: "",
+        answer: "$a * $f - $c * $d",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -568,8 +568,8 @@
   fields: {
         lesson: 3,
         question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(A)$?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]*(variables[\"e\"]*variables[\"i\"]-variables[\"h\"]*variables[\"f\"]) - variables[\"d\"]*(variables[\"b\"]*variables[\"i\"]-variables[\"c\"]*variables[\"h\"]) + variables[\"g\"]*(variables[\"b\"]*variables[\"f\"]-variables[\"c\"]*variables[\"e\"]) ",
+        variables: "",
+        answer: "$a * $e * $i - $h * $f - $d * ($b * $i - $c * $h) + $g * ($b * $f - $c * $e)",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -578,8 +578,8 @@
   fields: {
         lesson: 4,
         question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(m_{3,2})$?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]*variables[\"f\"]-variables[\"c\"]*variables[\"d\"]",
+        variables : "",
+        answer: "$a * $f - $c * $d",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -588,8 +588,8 @@
   fields: {
         lesson: 5,
         question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(A)$?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]*(variables[\"e\"]*variables[\"i\"]-variables[\"h\"]*variables[\"f\"]) - variables[\"d\"]*(variables[\"b\"]*variables[\"i\"]-variables[\"c\"]*variables[\"h\"]) + variables[\"g\"]*(variables[\"b\"]*variables[\"f\"]-variables[\"c\"]*variables[\"e\"]) ",
+        variables: "",
+        answer: "$a * $e * $i - $h * $f - $d * ($b * $i - $c * $h) + $g * ($b * $f - $c * $e)",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -598,8 +598,8 @@
   fields: {
         lesson: 6,
         question: "What is the area enclosed by the lines $y=0$, $x=y$, $x=$[INT,1,5]a$ and $x=$[INT,6,10]b$?",
-        answer: "a",
-        calculation: "answer = (variables[\"a\"]^2-variables[\"b\"]^2)/2",
+        variables: "",
+        answer: "($a^2 - $b^2)/2",
         answer_format: 2,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -608,8 +608,8 @@
   fields: {
         lesson: 7,
         question: "What is the area enclosed by the lines $y=0$, $x=y$, $x=$[INT,1,5]a$ and $x=$[INT,6,10]b$?",
-        answer: "a",
-        calculation: "answer = (variables[\"a\"]^2-variables[\"b\"]^2)/2",
+        variables: "",
+        answer: "($a^2 - $b^2)/2",
         answer_format: 2,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -618,8 +618,8 @@
   fields: {
         lesson: 8,
         question: "What is the area enclosed by the lines $y=0$, $y=x^2$, $x=$[INT,1,5]a$ and $x=$[INT,6,10]b$?",
-        answer: "a",
-        calculation: "answer = (variables[\"a\"]^3-variables[\"b\"]^3)/3",
+        variables: "",
+        answer: "($a^3 - $b^3)/3",
         answer_format: 2,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -628,8 +628,8 @@
   fields: {
         lesson: 9,
         question: "What is the area enclosed by the lines $y=0$, $y=3x^2$, $x=$[INT,1,5]a$ and $x=$[INT,6,10]b$?",
-        answer: "a",
-        calculation: "answer = (variables[\"a\"]^3-variables[\"b\"]^3)",
+        variables: "",
+        answer: "($a^3 - $b^3)",
         answer_format: 2,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -638,8 +638,8 @@
   fields: {
         lesson: 10,
         question: "What is $[INT,11,20]a (mod 11)?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]^3-11",
+        variables: "",
+        answer: "$a^3 -11",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -648,8 +648,8 @@
   fields: {
         lesson: 11,
         question: "Does $[INT,1,10]b x (mod 11) = $[INT,0,10]a have a solution? (0 for no, 1 for yes)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -658,8 +658,8 @@
   fields: {
         lesson: 12,
         question: "What is the greatest common divisor of 36 and 60?",
-        answer: "a",
-        calculation: "answer = 12",
+        variables: "",
+        answer: "12",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -668,8 +668,8 @@
   fields: {
         lesson: 13,
         question: "Does $[INT,0,10]b x (mod 11) = $[INT,0,10]a have a solution? (0 for no, 1 for yes)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -678,8 +678,8 @@
   fields: {
         lesson: 14,
         question: "Does $[INT,1,10]b x (mod 11) = $[INT,0,10]a have a solution? (0 for no, 1 for yes)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -688,8 +688,8 @@
   fields: {
         lesson: 15,
         question: "I like numbers, do you? (0 for no, 1 for yes) ",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -698,8 +698,8 @@
   fields: {
         lesson: 16,
         question: "What is the gradient of $y=$[INT,1,8]a x$?",
-        answer: "a",
-        calculation: "answer = variables[\"a\"]",
+        variables: "",
+        answer: "$a",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -708,8 +708,8 @@
   fields: {
         lesson: 17,
         question: "What is the derivative of $x^{$[INT,3,8]a}\\)?",
-        answer: "a",
-        calculation: "answer = str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1))",
+        variables: "",
+        answer: "diff(x^$a, x)",
         answer_format: 3,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -718,8 +718,8 @@
   fields: {
         lesson: 18,
         question: "What is the derivative of $x^{$[INT,3,8]a}\\)?",
-        answer: "a",
-        calculation: "answer = str(int(variables[\"a\"]))+\"*x^\" + str((int)(variables[\"a\"] - 1))",
+        variables: "",
+        answer: "diff(x^$a, x)",
         answer_format: 3,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -728,8 +728,8 @@
   fields: {
         lesson: 19,
         question: "Do the set of subgraphs which are forests of a connected graph G form a matriod?(1 for yes, 0 for no)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -738,8 +738,8 @@
   fields: {
         lesson: 20,
         question: "Do the set of subgraphs which are forests of a connected graph G form a matriod?(1 for yes, 0 for no)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -748,8 +748,8 @@
   fields: {
         lesson: 21,
         question: "Do the set of subgraphs which are forests of a connected graph G form a matriod?(1 for yes, 0 for no)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -758,8 +758,8 @@
   fields: {
         lesson: 22,
         question: "If we set $V$ to be the set of vectors in $\\mathbb{R}^{2}$ over $F = \\mathbb{R}$ does this form a vector space?(1 for yes, 0 for no)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
@@ -768,8 +768,8 @@
   fields: {
         lesson: 23,
         question: "If we set $V$ to be the set of vectors in $\\mathbb{R}^{2}$ over $F = \\mathbb{R}$ does this form a vector space? (1 for yes, 0 for no)",
-        answer: "a",
-        calculation: "answer = 1",
+        variables: "",
+        answer: "1",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
