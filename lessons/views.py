@@ -87,7 +87,13 @@ def check_answer(request):
             if request.user.is_authenticated():
                 user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = correctAns.answer)
                 user_answers.save()
-            return HttpResponse('{"correct":false, "message":"' + message + '"}', mimetype="application/json")
+
+            jsonSteps = "["
+            for step in correctAns.steps:
+                jsonSteps += '"' + str(step) + '", '
+            jsonSteps = jsonSteps[:-2] + "]"
+            print '{"correct":false, "message":"' + message + '", "steps":' + jsonSteps + '}'
+            return HttpResponse('{"correct":false, "message":"' + message + '", "steps":' + jsonSteps + '}', mimetype="application/json")
     return HttpResponse('')
 
 

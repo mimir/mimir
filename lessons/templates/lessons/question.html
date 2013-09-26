@@ -8,6 +8,9 @@ function csrfSafeMethod(method) {
     return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
 }
 $(function() {
+    $('#steps').hide();
+    $('#steps_wrapper').hide();
+
     var csrftoken = $.cookie('csrftoken');
     $.ajaxSetup({
         crossDomain: false, // obviates need for sameOrigin test
@@ -15,6 +18,22 @@ $(function() {
             if (!csrfSafeMethod(settings.type)) {
                 xhr.setRequestHeader("X-CSRFToken", csrftoken);
             }
+        }
+    });
+
+    var solution_shown = false;
+    $('#solution_button').click(function() {
+        if (solution_shown)
+        {
+            $('#solution_button').text("Show Solution");
+            $('#steps').slideToggle();
+            solution_shown = false;
+        }
+        else
+        {
+            $('#solution_button').text("Hide Solution");
+            $('#steps').slideToggle();
+            solution_shown = true;
         }
     });
 
@@ -42,7 +61,17 @@ $(function() {
                 else
                 {
                     $('#message').html(response.message);
+                    
+                    var i = 0;
+                    $('#steps').append("<ol>");
+                    for(i = 0; i < response.steps.length; i++) //Display the solution steps
+                    {
+                        $('#steps').append("<li>\\(" + response.steps[i] + "\\)</li>");
+                    }
+                    $('#steps').append("</ol>");
                     MathJax.Hub.Queue(["Typeset",MathJax.Hub,"message"]);
+                    MathJax.Hub.Queue(["Typeset",MathJax.Hub,"steps"]);
+                    $('#steps_wrapper').show(); //Show the solution button
                 }
             }).fail(function(xhr, ajaxOptions, thrownError) {
                 console.log(xhr.responseText); //TODO probably remove these lines when testing done
@@ -70,6 +99,10 @@ $(function() {
     </p>
     <p id="message">
     </p>
+    <div id="steps_wrapper">
+        <p id="solution_button">Show Solution</p>
+        <div id="steps"></div>
+    </div>
     <br />
     <p>Answer: \({{ question.answer }}\)</p> {# TODO remove this before we go live lol #}
 {% else %}

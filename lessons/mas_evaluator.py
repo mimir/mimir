@@ -9,6 +9,7 @@ from mas_latex import astToLatex
 
 def evaluateAST( ast ):
     solution = Solution()
+    solution.addStep(ast)
     solution.answer = evaluateNode( ast, ast, solution )
     return solution
 

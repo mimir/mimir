@@ -29,12 +29,18 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
 
 
 def valueToBestForm(val): #Converts a leaf node to a non-stupid form, i.e. no 48.0 jazz
-    try:
-        return int(val)
-    except ValueError:
-        pass
-    try:
-        return float(val)
-    except TypeError:
-        pass
-    return str(val)
+    if isinstance(val, basestring):
+        try:
+            return int(val)
+        except ValueError:
+            pass
+        try:
+            return float(val)
+        except TypeError:
+            pass
+        return str(val)
+    else:
+        if abs(int(val) - float(val)) <= 0.000000000000001: #Try to stop the rounding errors
+            return int(val)
+        else:
+            return float(val)
