@@ -25,7 +25,7 @@ def generateQuestion(seed, template):
     readableQuestion = templateToReadable(template, variables)
     return readableQuestion
 
-def generateAnswerTemplate(seed, answer):
+def generateAnswerTemplate(seed, template, answer):
     variables = findVariables(template)
     variables = generateVariables(seed, variables)
     machineQuestion = generateAnswerCode(answer, variables)

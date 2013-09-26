@@ -3,9 +3,9 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 
-from lessons.generate import generateQuestion, findVariables, generateVariables
+#from lessons.generate import generateQuestion, findVariables, generateVariables
 from lessons.mas_main import createQuestion, createSolution
-from lessons.mas2 import wrong_answer_dict
+#from lessons.mas2 import wrong_answer_dict
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
 from user_profiles.models import UserTakesLesson, UserAnswersQuestion
 
@@ -69,11 +69,11 @@ def check_answer(request):
 
         #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
-        correctAns = generateAnswer(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
-        userAns = (type(correctAns))(p["answer"])
+        correctAns = createSolution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
+        userAns = (type(correctAns.answer))(p["answer"])
         if userAns == correctAns.answer:
             if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = correctAnswer.answer)
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = correctAns.answer)
                 user_answers.save()
             return HttpResponse('{"correct":true}', mimetype="application/json")
         else:
@@ -96,7 +96,7 @@ def question(request, lesson_url, question_id):
     getcontext().prec = 12
     rand_seed = Decimal(str(random()))
     template = createQuestion(rand_seed, question.question)
-    return render(request, 'lessons/question.html', {'question': template,'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
+    return render(request, 'lessons/question.html', {'question': question, 'template': template, 'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
 
 def rand_question(request, lesson_url):
     lesson = get_object_or_404(Lesson, url__iexact = lesson_url)

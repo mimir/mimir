@@ -5,6 +5,7 @@ from mas_parser import parse
 from mas_evaluator import evaluateAST
 from mas_generator import generateQuestion, generateAnswerTemplate
 from mas_mistakes import wrong_answer_dict
+import copy
 
 def createQuestion(seed, template):
     template = generateQuestion(seed, template)
