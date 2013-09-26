@@ -59,7 +59,7 @@ class AnswerFormat(models.Model):
 class Question(models.Model):
     lesson = models.ForeignKey(Lesson)
     question = models.CharField(max_length = 300)
-    variables = models.TextField() #TODO: Move variable declarations from the template to this field
+    variables = models.TextField(blank = True) #TODO: Move variable declarations from the template to this field
     answer = models.CharField(max_length = 200) #Use this field as the input to the MAS
     answer_format = models.ForeignKey(AnswerFormat)
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
