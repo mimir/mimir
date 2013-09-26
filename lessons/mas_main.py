@@ -3,9 +3,18 @@
 
 from mas_parser import parse
 from mas_evaluator import evaluateAST
+from mas_generator import generateQuestion, generateAnswerTemplate
+from mas_mistakes import wrong_answer_dict
 
-def parseToAST(question):
-    return parse(question)
+def createQuestion(seed, template):
+    template = generateQuestion(seed, template)
+    return template
 
-def evaluateAST(root):
-    return evaluateAST(root)
+def createSolution(seed, template, answer):
+    answerToParse = generateAnswerTemplate(seed, template, answer)
+    ast = parse(answerToParse)
+    solution = evaluateAST(copy.deepcopy(ast))
+    solution.setWrongAnswers(wrong_answer_dict(ast))
+    return solution
+
+
