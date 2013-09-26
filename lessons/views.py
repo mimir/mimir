@@ -102,6 +102,7 @@ def question(request, lesson_url, question_id):
     getcontext().prec = 12
     rand_seed = Decimal(str(random()))
     template = createQuestion(rand_seed, question.question)
+    question.answer = createSolution(rand_seed, question.question, question.answer).answer #TODO So have to remove this when Alex Best is less of a bitch about having the answer displayed under the question.
     return render(request, 'lessons/question.html', {'question': question, 'template': template, 'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
 
 def rand_question(request, lesson_url):
