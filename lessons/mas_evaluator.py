@@ -55,6 +55,7 @@ class Solution:
     answer = None #The final correct answer to the question
     steps = None #Shows the full question at each step with one calculation done per step
     subSteps = None #Shows the specific part that has changed i.e Step - 6+12, Substep - 6*2=12
+    wrongAnswers = None
     
     def __init__(self):
         self.answer = None
@@ -66,3 +67,6 @@ class Solution:
 
     def addSubStep(self, step):
         self.subSteps.append(step)
+
+    def setWrongAnswers(self, wrongAnsDict):
+        self.wrongAnswers = wrongAnsDict
