@@ -70,7 +70,13 @@ def check_answer(request):
         #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
         correctAns = createSolution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
-        userAns = (type(correctAns.answer))(p["answer"])
+        userAns = None
+        
+        try:
+            userAns = (type(correctAns.answer))(p["answer"])
+        except:
+            userAns = createSolution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
+        
         if userAns == correctAns.answer:
             if request.user.is_authenticated():
                 user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = correctAns.answer)
