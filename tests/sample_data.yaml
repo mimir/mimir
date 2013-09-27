@@ -707,7 +707,7 @@
   pk: 17
   fields: {
         lesson: 17,
-        question: "What is the derivative of $x^{$[INT,3,8]a}\\)?",
+        question: "What is the derivative of \\(x^{$[INT,3,8]a}\\)?",
         variables: "",
         answer: "diff(x^$a, x)",
         answer_format: 3,
@@ -717,7 +717,7 @@
   pk: 18
   fields: {
         lesson: 18,
-        question: "What is the derivative of $x^{$[INT,3,8]a}\\)?",
+        question: "What is the derivative of \\(x^{$[INT,3,8]a}\\)?",
         variables: "",
         answer: "diff(x^$a, x)",
         answer_format: 3,
