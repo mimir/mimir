@@ -70,6 +70,30 @@ class Question(models.Model):
     #TODO add other useful queries here e.g. times answered correctly
     def __unicode__(self):
         return self.question
+
+class Operator(models.Model):
+    name = models.CharField(max_length = 50) #The function identifier
+    args = models.PositiveSmallIntegerField() #The number of arguments the function takes
+    name_verb = models.CharField(max_length = 50) #The name as a verb, i.e. integrate
+    name_noun = models.CharField(max_length = 50) #The name as a noun for the process, i.e integration
+    name_product = models.CharField(max_length = 50) #The name as a noun for the product of the process, i.e integral
+    latex = models.CharField(max_length = 50) #The LaTeX template to correctly format the process on the site
+    calculation = models.CharField(max_length = 200) #The calculation the operation performs, using the MAS style
+    @property
+    def __unicode__(self):
+        return self.name_verb
+
+class Mistake(models.Model):
+    operator = models.ForeignKey(Operator) #Operator the mistake corresponds to
+    description = models.CharField(max_length = 200) #The human readable description of the mistake to be displayed on the site when the mistake is made
+    calculation = models.CharField(max_length = 200) #The calculation of the mistake
+    class Meta:
+        ordering = ['operator']
+    @property
+    def times_made(self):
+        return self.useranswersquestion_set.count()
+    def __unicode__(self):
+        return self.operator.name_verb + self.description
 		
 class LessonFollowsFromLesson(models.Model):
     leads_from = models.ForeignKey(Lesson, related_name='supplement')

@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from lessons.models import Lesson, Question
+from lessons.models import Lesson, Question, Mistake
 import hashlib
 
 class UserProfile(models.Model):
@@ -35,6 +35,7 @@ class UserAnswersQuestion(models.Model):
     date = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     correct = models.BooleanField()
     answer = models.CharField(max_length = 250)
+    mistake = models.ForeignKey(Mistake, blank=True, null=True)
 
 
 @receiver(post_save, sender=User)
