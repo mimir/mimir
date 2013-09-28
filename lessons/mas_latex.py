@@ -22,18 +22,19 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
     #All of these should be dealt with from the database (operators)
     elif ast.value == diff: #If the function is differentiate
         return r"\\frac{d}{d" + str(astToLatex(ast.children[1])) + r"} = " + str(astToLatex(ast.children[0]))
-    elif ast.value == definite_integral: #If the function is a definite integral
-        return r"\\int^" + str(astToLatex(ast.children[2])) + "_" + str(astToLatex(ast.children[3])) + " " + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
-    elif ast.value == indefinite_integral:
-        return r"\\int" + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
 
-    
     else: #If all else fails, use the operatorname notation (amsmath)
         args = ""
         for child in ast.children:
             args += str(astToLatex(child)) + ", "
         args = args[:-2]
         return r"\\operatorname{%s}\\left(%s\\right)" % (str(ast.value), args)
+    '''
+    elif ast.value == definite_integral: #If the function is a definite integral
+        return r"\\int^" + str(astToLatex(ast.children[2])) + "_" + str(astToLatex(ast.children[3])) + " " + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
+    elif ast.value == indefinite_integral:
+        return r"\\int" + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
+    '''
     
 
 
