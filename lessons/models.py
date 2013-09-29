@@ -78,7 +78,7 @@ class Operator(models.Model):
     name_noun = models.CharField(max_length = 50) #The name as a noun for the process, i.e integration
     name_product = models.CharField(max_length = 50) #The name as a noun for the product of the process, i.e integral
     latex = models.CharField(max_length = 50) #The LaTeX template to correctly format the process on the site
-    calculation = models.CharField(max_length = 200) #The calculation the operation performs, using the MAS style
+    calculation = models.TextField() #The calculation the operation performs, using the MAS style
     @property
     def __unicode__(self):
         return self.name_verb
@@ -86,7 +86,7 @@ class Operator(models.Model):
 class Mistake(models.Model):
     operator = models.ForeignKey(Operator) #Operator the mistake corresponds to
     description = models.CharField(max_length = 200) #The human readable description of the mistake to be displayed on the site when the mistake is made
-    calculation = models.CharField(max_length = 200) #The calculation of the mistake
+    calculation = models.TextField(max_length = 200) #The calculation of the mistake
     class Meta:
         ordering = ['operator']
     @property
