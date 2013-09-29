@@ -7,17 +7,17 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
 
     #Deal with all of the standard operator formats
     elif ast.value == "+":
-        return str(astToLatex(ast.children[1])) + "+" + str(astToLatex(ast.children[0]))
+        return r"\\left( " + str(astToLatex(ast.children[1])) + "+" + str(astToLatex(ast.children[0])) + r" \\right)"
     elif ast.value == "-":
-        return str(astToLatex(ast.children[1])) + "-" + str(astToLatex(ast.children[0]))
+        return r"\\left( " + str(astToLatex(ast.children[1])) + "-" + str(astToLatex(ast.children[0])) + r" \\right)"
     elif ast.value == "*":
-        return str(astToLatex(ast.children[1])) + "*" + str(astToLatex(ast.children[0]))
+        return r"\\left( " + str(astToLatex(ast.children[1])) + r"\\times " + str(astToLatex(ast.children[0])) + r" \\right)"
     elif ast.value == "^":
         return str(astToLatex(ast.children[1])) + "^" + str(astToLatex(ast.children[0]))
     elif ast.value == "/":
         return r"\\frac{" + str(astToLatex(ast.children[1])) + "}{" + str(astToLatex(ast.children[0])) + "}"
     elif ast.value == "unary -":
-        return "- " + str(astToLatex(ast.children[0]))
+        return r"- \\left(" + str(astToLatex(ast.children[0])) + r" \\right)"
 
     #All of these should be dealt with from the database (operators)
     elif ast.value == diff: #If the function is differentiate
