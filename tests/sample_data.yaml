@@ -589,7 +589,7 @@
         lesson: 5,
         question: "If the matrix $A = \\begin{pmatrix} $[INT,1,9]a & $[INT,1,9]b & $[INT,1,9]c \\\\ $[INT,1,9]d & $[INT,1,9]e & $[INT,1,9]f\\\\ $[INT,1,9]g & $[INT,1,9]h & $[INT,1,9]i \\end{pmatrix}$ then what is $det(A)$?",
         variables: "",
-        answer: "$a * $e * $i - $h * $f - $d * ($b * $i - $c * $h) + $g * ($b * $f - $c * $e)",
+        answer: "$a * ($e * $i - $h * $f) - $d * ($b * $i - $c * $h) + $g * ($b * $f - $c * $e)",
         answer_format: 1,
         created: "2013-08-04T16:42:26.539Z",
         modified: "2013-08-05T16:42:26.539Z", }
