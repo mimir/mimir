@@ -6,7 +6,22 @@ from pyparsing import Literal,CaselessLiteral,Word,Group,Optional,\
 from inspect import getargspec
 from re import match
 
+'''
+Token Types
+-----------
+INT
+FLOAT
+VAR
+CONST
+OP
+FUNC
+'''
 
+
+#TODO Change to use Sympy
+#TODO Don't convert tokens to functions here, that is evaluation
+#TODO Add more meta data to Node, i.e. what is the type (easier in the long run, less fucking about with regex
+#TODO Reverse all children so that everything is in the correct order (change orders of evaluator and LaTeX)
 def parse(question):
     global exprStack
     exprStack = []
@@ -21,10 +36,12 @@ def parse(question):
     return exprStack.pop()
     
 class Node:
+    token = None
     value = None
     children = None
     
-    def __init__(self, value):
+    def __init__(self, token, value):
+        self.token = token
         self.value = value
         self.children = []
         
@@ -37,26 +54,26 @@ argCount = 0
 def pushFirst( strg, loc, toks ):
     print toks[0]
     if toks[0] in opn: #If the token is a basic operator
-        node = Node(toks[0])
+        node = Node("OP", toks[0])
         node.addChild(exprStack.pop())
         node.addChild(exprStack.pop())
         exprStack.append(node)
 
     elif toks[0] == "INFINITY": #Recognise constants
-        node = Node(infinity)
+        node = Node("CONST", infinity)
         exprStack.append(node)
 
     elif toks[0] == "PI":
-        node = Node(pi)
+        node = Node("CONST", pi)
         exprStack.append(node)
 
     elif toks[0] == "E":
-        node = Node(sage_eval("e"))
+        node = Node("CONST", sage_eval("e"))
         exprStack.append(node)
 
     elif match(r"[a-mo-zA-Z]$", str(toks[0])): #If token is a variable
         print "Found variable " + str(toks[0])
-        node = Node(var(toks[0]))
+        node = Node("VAR", var(toks[0]))
         exprStack.append(node)
     
     #Need a check to ensure a function is a function, that the function has 
@@ -70,7 +87,7 @@ def pushFirst( strg, loc, toks ):
             pass
         if fn == None:        
             raise Exception("Identifier not recognised")
-        fnnode = Node(fn)
+        fnnode = Node("FUNC", fn)
         print "The function has been nodified."
         global argCount
         while argCount != 0:
@@ -85,11 +102,11 @@ def pushFirst( strg, loc, toks ):
         print "Function tree pushed to stack."
 
     elif match(r"[+-]?\d+$", str(toks[0])): #If token is an integer
-        node = Node(int(toks[0]))
+        node = Node("INT", int(toks[0]))
         exprStack.append(node)
 
     elif match(r"[+-]?\d+(\.\d+)?$", str(toks[0])): #If token is a float
-        node = Node(float(toks[0]))
+        node = Node("FLOAT", float(toks[0]))
         exprStack.append(node)
 
     else:
@@ -99,7 +116,7 @@ def pushFirst( strg, loc, toks ):
 def pushUMinus( strg, loc, toks ):
     for t in toks:
       if t == '-':
-        node = Node('unary -')
+        node = Node("OP", "unary -")
         node.addChild(exprStack.pop())
         exprStack.append(node)
       else:
