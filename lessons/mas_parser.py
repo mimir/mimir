@@ -1,10 +1,11 @@
 import math
 import operator
-from sage.all import *
+#from sage.all import *
 from pyparsing import Literal,CaselessLiteral,Word,Group,Optional,\
     ZeroOrMore,Forward,nums,alphas,Regex,ParseException
 from inspect import getargspec
 from re import match
+from sympy import *
 
 '''
 Token Types
@@ -64,43 +65,27 @@ def pushFirst( strg, loc, toks ):
         node = Node("CONST", infinity)
         exprStack.append(node)
 
-    elif toks[0] == "PI":
+    elif toks[0] == "PI": #TODO Add e back as a constant
         node = Node("CONST", pi)
-        exprStack.append(node)
-
-    elif toks[0] == "E":
-        node = Node("CONST", sage_eval("e"))
         exprStack.append(node)
 
     elif match(r"[a-mo-zA-Z]$", str(toks[0])): #If token is a variable
         print "Found variable " + str(toks[0])
-        node = Node("VAR", var(toks[0]))
+        node = Node("VAR", Symbol(str(toks[0])))
         exprStack.append(node)
     
-    #Need a check to ensure a function is a function, that the function has 
+    #Need a check to ensure a function is a function, that the function has
 
-    elif match(r"[a-zA-Z]([a-zA-Z_$]+)?$", str(toks[0])): #If the token is an ident
-        print "Matches as an ident."
-        fn = None
-        try:
-            fn = sage_eval(toks[0])
-        except NameError as e:
-            pass
-        if fn == None:        
-            raise Exception("Identifier not recognised")
-        fnnode = Node("FUNC", fn)
-        print "The function has been nodified."
+    elif match(r"[a-zA-Z]([a-zA-Z_$]+)?$", str(toks[0])): #New function test, leave as string
+        node = Node("FUNC", str(toks[0]))
         global argCount
         while argCount != 0:
             print "Iteration: " + str(argCount)
             op = exprStack.pop()
-            fnnode.addChild(op)
+            node.addChild(op)
             argCount -= 1
-            #if len(exprStack) == 0:
-            #    break
-        fnnode.children.reverse()
-        exprStack.append(fnnode)
-        print "Function tree pushed to stack."
+        node.children.reverse()
+        exprStack.append(node)
 
     elif match(r"[+-]?\d+$", str(toks[0])): #If token is an integer
         node = Node("INT", int(toks[0]))

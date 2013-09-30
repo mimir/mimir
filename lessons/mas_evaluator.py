@@ -1,11 +1,12 @@
 import math
 import operator
-from sage.all import *
+#from sage.all import *
 from pyparsing import Literal,CaselessLiteral,Word,Group,Optional,\
     ZeroOrMore,Forward,nums,alphas,Regex,ParseException
 from inspect import getargspec
 from re import match
 from mas_latex import astToLatex
+from sympy import *
 
 #TODO Change checks for functions as a string
 #TODO Calculate the tree breadth first (or in a less retarded way)
@@ -16,6 +17,7 @@ def evaluateAST( ast ):
     return solution
 
 def evaluateNode( op, ast, solution ):
+    '''
     if op.token == "FUNC": #If the node is a function
         eval_children = [] 
         for node in op.children:
@@ -28,6 +30,24 @@ def evaluateNode( op, ast, solution ):
             debug += str(arg) + ", "
         print "Calling: " + str(op.value) + " with (" + debug + "\b\b)"
         op.value = op.value( *eval_children )
+        op.children = []
+        solution.addStep(ast)
+        return op.value
+    '''
+    
+    if op.token == "FUNC":
+        fn = eval(op.value) #Get sympy function
+        eval_children = [] 
+        for node in op.children:
+            node.value = evaluateNode(node, ast, solution)
+            node.children = []
+            solution.addStep(ast)
+            eval_children.append(node.value)
+        debug = "" #Debug argument print
+        for arg in eval_children:
+            debug += str(arg) + ", "
+        print "Calling: " + str(op.value) + " with (" + debug + "\b\b)"
+        op.value = fn( *eval_children )
         op.children = []
         solution.addStep(ast)
         return op.value

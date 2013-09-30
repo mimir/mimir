@@ -1,10 +1,10 @@
 import operator
-from sage.all import *
+#from sage.all import *
 
 #TODO Make this output in a far nicer way
 def astToLatex(ast): #Converts an AST to a lovely LaTeX form
     if not ast.children: #If it is a value, return it
-        return valueToBestForm(ast.value)
+        return ast.value
 
     #Deal with all of the standard operator formats
     elif ast.value == "/":
@@ -18,9 +18,6 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
     
     
 
-    #All of these should be dealt with from the database (operators)
-    elif ast.value == diff: #If the function is differentiate
-        return r"\\frac{d}{d" + str(astToLatex(ast.children[0])) + r"} = " + str(astToLatex(ast.children[1]))
 
     else: #If all else fails, use the operatorname notation (amsmath)
         args = ""
