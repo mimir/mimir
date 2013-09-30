@@ -7,16 +7,20 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
         return valueToBestForm(ast.value)
 
     #Deal with all of the standard operator formats
-    elif ast.value in "+-*^":
-        return r"\\left( " + str(astToLatex(ast.children[0])) + ast.value + str(astToLatex(ast.children[0])) + r" \\right)"
     elif ast.value == "/":
         return r"\\frac{" + str(astToLatex(ast.children[0])) + "}{" + str(astToLatex(ast.children[1])) + "}"
+    elif ast.value == "*":
+        return r"\\left( " + str(astToLatex(ast.children[0])) + r"\\times" + str(astToLatex(ast.children[1])) + r" \\right)"
     elif ast.value == "unary -":
         return r"- \\left(" + str(astToLatex(ast.children[0])) + r" \\right)"
+    elif ast.token == "OP":
+        return r"\\left( " + str(astToLatex(ast.children[0])) + str(ast.value) + str(astToLatex(ast.children[1])) + r" \\right)"
+    
+    
 
     #All of these should be dealt with from the database (operators)
     elif ast.value == diff: #If the function is differentiate
-        return r"\\frac{d}{d" + str(astToLatex(ast.children[1])) + r"} = " + str(astToLatex(ast.children[0]))
+        return r"\\frac{d}{d" + str(astToLatex(ast.children[0])) + r"} = " + str(astToLatex(ast.children[1]))
 
     else: #If all else fails, use the operatorname notation (amsmath)
         args = ""

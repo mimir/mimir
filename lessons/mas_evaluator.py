@@ -16,7 +16,7 @@ def evaluateAST( ast ):
     return solution
 
 def evaluateNode( op, ast, solution ):
-    if hasattr(op.value, "__call__"): #If the node is a function
+    if op.token == "FUNC": #If the node is a function
         eval_children = [] 
         for node in op.children:
             node.value = evaluateNode(node, ast, solution)
@@ -37,7 +37,7 @@ def evaluateNode( op, ast, solution ):
         op.children = []
         return op.value
 
-    elif str(op.value) in '+-*/^': #If the node is a simple operator
+    elif op.token == "OP": #If the node is a simple operator
         op1 = evaluateNode( op.children[0], ast, solution )
         op2 = evaluateNode( op.children[1], ast, solution )
         op.value = opn[op.value]( op1, op2 ) #Change the nodes value
