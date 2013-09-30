@@ -1,21 +1,16 @@
 import operator
 from sage.all import *
 
+#TODO Make this output in a far nicer way
 def astToLatex(ast): #Converts an AST to a lovely LaTeX form
     if not ast.children: #If it is a value, return it
         return valueToBestForm(ast.value)
 
     #Deal with all of the standard operator formats
-    elif ast.value == "+":
-        return r"\\left( " + str(astToLatex(ast.children[1])) + "+" + str(astToLatex(ast.children[0])) + r" \\right)"
-    elif ast.value == "-":
-        return r"\\left( " + str(astToLatex(ast.children[1])) + "-" + str(astToLatex(ast.children[0])) + r" \\right)"
-    elif ast.value == "*":
-        return r"\\left( " + str(astToLatex(ast.children[1])) + r"\\times " + str(astToLatex(ast.children[0])) + r" \\right)"
-    elif ast.value == "^":
-        return str(astToLatex(ast.children[1])) + "^" + str(astToLatex(ast.children[0]))
+    elif ast.value in "+-*^":
+        return r"\\left( " + str(astToLatex(ast.children[0])) + ast.value + str(astToLatex(ast.children[0])) + r" \\right)"
     elif ast.value == "/":
-        return r"\\frac{" + str(astToLatex(ast.children[1])) + "}{" + str(astToLatex(ast.children[0])) + "}"
+        return r"\\frac{" + str(astToLatex(ast.children[0])) + "}{" + str(astToLatex(ast.children[1])) + "}"
     elif ast.value == "unary -":
         return r"- \\left(" + str(astToLatex(ast.children[0])) + r" \\right)"
 
@@ -37,7 +32,7 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
     '''
     
 
-
+#TODO Make this better in pretty much every way
 def valueToBestForm(val): #Converts a leaf node to a non-stupid form, i.e. no 48.0 jazz
     if isinstance(val, basestring): #If the value is a string, convert to a nice form
         try:

@@ -7,6 +7,8 @@ from inspect import getargspec
 from re import match
 from mas_latex import astToLatex
 
+#TODO Change checks for functions as a string
+#TODO Calculate the tree breadth first (or in a less retarded way)
 def evaluateAST( ast ):
     solution = Solution()
     solution.addStep(ast)
@@ -15,7 +17,7 @@ def evaluateAST( ast ):
 
 def evaluateNode( op, ast, solution ):
     if hasattr(op.value, "__call__"): #If the node is a function
-        eval_children = []
+        eval_children = [] 
         for node in op.children:
             node.value = evaluateNode(node, ast, solution)
             node.children = []
@@ -36,8 +38,8 @@ def evaluateNode( op, ast, solution ):
         return op.value
 
     elif str(op.value) in '+-*/^': #If the node is a simple operator
-        op2 = evaluateNode( op.children[0], ast, solution )
-        op1 = evaluateNode( op.children[1], ast, solution )
+        op1 = evaluateNode( op.children[0], ast, solution )
+        op2 = evaluateNode( op.children[1], ast, solution )
         op.value = opn[op.value]( op1, op2 ) #Change the nodes value
         op.children = []
         solution.addStep(ast) #Add a solution step

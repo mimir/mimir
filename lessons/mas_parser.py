@@ -57,6 +57,7 @@ def pushFirst( strg, loc, toks ):
         node = Node("OP", toks[0])
         node.addChild(exprStack.pop())
         node.addChild(exprStack.pop())
+        node.children.reverse()
         exprStack.append(node)
 
     elif toks[0] == "INFINITY": #Recognise constants
