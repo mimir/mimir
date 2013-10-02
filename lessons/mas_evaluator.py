@@ -8,8 +8,10 @@ from re import match
 from mas_latex import astToLatex
 from sympy import *
 
-#TODO Change checks for functions as a string
+#TODO Convert functions to be checks for operators in the db
 #TODO Calculate the tree breadth first (or in a less retarded way)
+#TODO Make division use Rational() when appropriate
+#TODO Check diff question heavily, seems to be not evaluating in a sensible way
 def evaluateAST( ast ):
     solution = Solution()
     solution.addStep(ast)

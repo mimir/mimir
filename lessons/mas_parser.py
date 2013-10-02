@@ -21,7 +21,7 @@ FUNC
 
 #TODO Change to use Sympy
 #TODO Don't convert tokens to functions here, that is evaluation
-#TODO Add more meta data to Node, i.e. what is the type (easier in the long run, less fucking about with regex
+#TODO Add more meta data to Node, i.e. what is the type (easier in the long run, less fucking about with regex)
 #TODO Reverse all children so that everything is in the correct order (change orders of evaluator and LaTeX)
 def parse(question):
     global exprStack

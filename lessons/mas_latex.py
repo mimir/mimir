@@ -1,16 +1,26 @@
 import operator
 #from sage.all import *
+from sympy.printing.latex import latex
 
 #TODO Make this output in a far nicer way
 def astToLatex(ast): #Converts an AST to a lovely LaTeX form
+    #TODO Make ** output as ^, or make MathJAX output ** as ^
+
     if not ast.children: #If it is a value, return it
-        return ast.value
+        try:
+            pretty = latex(ast.value, mode="plain")
+            pretty = str(pretty).replace("\\",r"\\")
+            return pretty
+        except:
+            return str(ast.value)
 
     #Deal with all of the standard operator formats
     elif ast.value == "/":
         return r"\\frac{" + str(astToLatex(ast.children[0])) + "}{" + str(astToLatex(ast.children[1])) + "}"
     elif ast.value == "*":
         return r"\\left( " + str(astToLatex(ast.children[0])) + r"\\times" + str(astToLatex(ast.children[1])) + r" \\right)"
+    elif ast.value == "^":
+        return str(astToLatex(ast.children[0])) + r"^{" + str(astToLatex(ast.children[1])) + r"}"
     elif ast.value == "unary -":
         return r"- \\left(" + str(astToLatex(ast.children[0])) + r" \\right)"
     elif ast.token == "OP":

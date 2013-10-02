@@ -13,6 +13,9 @@ def createQuestion(seed, template):
 
 def createSolution(seed, template, answer):
     answerToParse = generateAnswerTemplate(seed, template, answer)
+    print "--------Answer to parse---------"
+    print answerToParse
+    print "--------------------------------"
     ast = parse(answerToParse)
     solution = evaluateAST(copy.deepcopy(ast))
     #solution.setWrongAnswers(wrong_answer_dict(ast))

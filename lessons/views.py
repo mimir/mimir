@@ -3,9 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 
-#from lessons.generate import generateQuestion, findVariables, generateVariables
 from lessons.mas_main import createQuestion, createSolution
-#from lessons.mas2 import wrong_answer_dict
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
 from user_profiles.models import UserTakesLesson, UserAnswersQuestion
 
