@@ -67,33 +67,34 @@ def check_answer(request):
 
         #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
-        correctAns = createSolution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
-        userAns = None
+        solution = createSolution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
+        print solution
+        user_ans = None
         
         try:
-            userAns = (type(correctAns.answer))(p["answer"])
+            user_ans = (type(solution.answer))(p["answer"])
         except:
-            userAns = createSolution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
+            user_ans = createSolution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
         
-        if userAns == correctAns.answer:
+        if user_ans == solution.answer:
             if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = correctAns.answer)
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = solution.answer)
                 user_answers.save()
             return HttpResponse('{"correct":true}', mimetype="application/json")
         else:
             #TODO mistake analysis system, no biggie
             message = "Oops, looks like you made a mistake."
             
-            if str(userAns) in correctAns.wrongAnswers:
-                message = correctAns.wrongAnswers[str(userAns)]
+            if str(user_ans) in solution.wrongAnswers:
+                message = solution.wrongAnswers[str(user_ans)]
             else:
                 message = "You've made a mistake, but we aren't sure where exactly."
             if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = correctAns.answer)
+                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = solution.answer)
                 user_answers.save()
 
             jsonSteps = "["
-            for step in correctAns.steps:
+            for step in solution.steps:
                 jsonSteps += '"' + str(step) + '", '
             jsonSteps = jsonSteps[:-2] + "]"
             print '{"correct":false, "message":"' + message + '", "steps":' + jsonSteps + '}'
