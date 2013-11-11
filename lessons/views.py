@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 
-from lessons.mas_main import createQuestion, createSolution
+from lessons.mas_main import create_question, create_solution
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
 from user_profiles.models import UserTakesLesson, UserAnswersQuestion
 
@@ -67,14 +67,14 @@ def check_answer(request):
 
         #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
-        solution = createSolution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
+        solution = create_solution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
         print solution
         user_ans = None
         
         try:
             user_ans = (type(solution.answer))(p["answer"])
         except:
-            user_ans = createSolution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
+            user_ans = create_solution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
         
         if user_ans == solution.answer:
             if request.user.is_authenticated():
@@ -106,8 +106,8 @@ def question(request, lesson_url, question_id):
     question = get_object_or_404(Question, pk = question_id)
     getcontext().prec = 12
     rand_seed = Decimal(str(random()))
-    template = createQuestion(rand_seed, question.question)
-    question.answer = createSolution(rand_seed, question.question, question.answer).answer #TODO So have to remove this when Alex Best is less of a bitch about having the answer displayed under the question.
+    template = create_question(rand_seed, question.question)
+    question.answer = create_solution(rand_seed, question.question, question.answer).answer #TODO So have to remove this when Alex Best is less of a bitch about having the answer displayed under the question.
     return render(request, 'lessons/question.html', {'question': question, 'template': template, 'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
 
 def rand_question(request, lesson_url):
