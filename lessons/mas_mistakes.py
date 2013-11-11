@@ -1,4 +1,4 @@
-from mas_evaluator import evaluateAST, value_from_ast
+from mas_evaluator import value_from_ast
 from Queue import *
 import math
 import operator

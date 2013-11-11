@@ -12,12 +12,6 @@ from sympy import *
 #TODO Calculate the tree breadth first (or in a less retarded way)
 #TODO Make division use Rational() when appropriate
 #TODO Check diff question heavily, seems to be not evaluating in a sensible way
-def evaluateAST( ast ):
-    solution = Solution()
-    solution.addStep(ast)
-    solution.answer = evaluateNode(ast, ast, solution)
-    return solution
-
 def solution_from_ast(ast):
     solution = Solution()
     solution.addStep(ast)
