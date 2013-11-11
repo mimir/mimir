@@ -311,14 +311,15 @@ The following is just for community stuff:
 
 .user_answer
 {
-	background-color:#FFECFF;
-	margin-top:10px;
-	margin-left:20px;
-	border:3px solid;
+    background-color:#FFECFF;
+    margin-top:10px;
+    margin-left:20px;
+    margin-bottom:10px;
+    border:3px solid;
     border-color:#D2E6D2
-	border-radius:5px;
-	text-indent:20px;
-	padding-bottom:0px;
+    border-radius:5px;
+    text-indent:20px;
+    padding-bottom:0px;
 }
 
 .user_answer #inner_answer
