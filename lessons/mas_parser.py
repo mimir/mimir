@@ -48,6 +48,9 @@ class Node:
         
     def addChild(self, node):
         self.children.append(node)
+    
+    def __str__(self):
+        return str.format("Token: {0}, value: {1}, children:\n[{2}\n]", str(self.token),  str(self.value), str(self.children))
 
 exprStack = []
 argCount = 0

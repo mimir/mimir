@@ -8,10 +8,10 @@ import copy
 #TODO Remove every trace of deepcopy from everywhere
 '''Given a root node of an expression tree for an answer this code will traverse the tree and output a list of possible wrong answers with one mistake.'''
 def wrong_answer_dict(root):
-    wrong_ops = { "+": [operator.sub, operator.add],
-                "-": [operator.add],
-                "*": [operator.add, operator.truediv],
-                "/": [operator.mul], } #TODO: Make more of these, eventually in a db??
+    wrong_ops = { "+": ["-"],
+                "-": ["+"],
+                "*": ["+", "/"],
+                "/": ["*"], } #TODO: Make more of these, eventually in a db??
     wrong_ans = dict()
     not_looked_at = LifoQueue()
     not_looked_at.put(root)
@@ -21,7 +21,12 @@ def wrong_answer_dict(root):
         if node_val in wrong_ops:
             for wrong_op in wrong_ops[str(node_val)]:
                 node.value = wrong_op
-                wrong_ans[str(evaluateAST(copy.deepcopy(root)).answer)] = "Oops, did you do %s on %s, when you meant to do %s?" % (op_to_str(wrong_op), ", ".join([str(evaluateAST(copy.deepcopy(c)).answer) for c in node.children[:-1]]) + " and " + str(evaluateAST(copy.deepcopy(node.children[-1])).answer), node_val)
+                current_wrong_answer = evaluateAST(copy.deepcopy(root)).answer
+                wrong_ans[str(current_wrong_answer)] = str.format("Oops, did you do {0} on {1}, when you meant to do {2}?",
+                    op_to_str(wrong_op),
+                    ", ".join([str(evaluateAST(copy.deepcopy(c)).answer) for c in node.children[:-1]]) + " and " + str(evaluateAST(copy.deepcopy(node.children[-1])).answer),
+                    node_val
+                )
             node.value = node_val
         for child in node.children:
             not_looked_at.put(child)

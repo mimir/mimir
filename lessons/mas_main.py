@@ -18,8 +18,8 @@ def createSolution(seed, template, answer):
     print "--------------------------------"
     ast = parse(answerToParse)
     solution = evaluateAST(copy.deepcopy(ast))
-    #solution.setWrongAnswers(wrong_answer_dict(ast))
-    solution.setWrongAnswers({})
+    solution.setWrongAnswers(wrong_answer_dict(ast))
+    #solution.setWrongAnswers({})
     return solution
 
 

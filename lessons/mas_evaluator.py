@@ -15,7 +15,7 @@ from sympy import *
 def evaluateAST( ast ):
     solution = Solution()
     solution.addStep(ast)
-    solution.answer = evaluateNode( ast, ast, solution )
+    solution.answer = evaluateNode(ast, ast, solution)
     return solution
 
 def evaluateNode( op, ast, solution ):
@@ -62,6 +62,7 @@ def evaluateNode( op, ast, solution ):
     elif op.token == "OP": #If the node is a simple operator
         op1 = evaluateNode( op.children[0], ast, solution )
         op2 = evaluateNode( op.children[1], ast, solution )
+        print op
         op.value = opn[op.value]( op1, op2 ) #Change the nodes value
         op.children = []
         solution.addStep(ast) #Add a solution step
