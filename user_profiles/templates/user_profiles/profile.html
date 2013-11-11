@@ -34,7 +34,7 @@
 		<p>Lessons Taken: {{ num_lessons }}</p>
 		<p>Unique Lessons Taken: {{ unique_lessons }}</p>
 		<p>Questions Answered: {{ num_answered }}</p>
-		<p>Percent Correct: {{ percent_correct }}%</p>
+		<p>Percent Correct: {{ percent_correct|floatformat }}%</p>
 		<p>Most Common Mistakes</p>
 		<p>Community questions asked: {{community_questions }}</p>
 		<p>Community questions answered: {{ community_answers }}</p>

@@ -3,8 +3,6 @@ from Queue import *
 import math
 import operator
 
-
-#TODO Remove every trace of deepcopy from everywhere
 '''Given a root node of an expression tree for an answer this code will traverse the tree and output a list of possible wrong answers with one mistake.'''
 def wrong_answer_dict(root):
     wrong_ops = { "+": ["-"],
