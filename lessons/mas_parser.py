@@ -50,7 +50,10 @@ class Node:
         self.children.append(node)
     
     def __str__(self):
-        return str.format("Token: {0}, value: {1}, children:\n[{2}\n]", str(self.token),  str(self.value), str(self.children))
+        children_str = ""
+        if self.children:
+            children_str = "\n\t" +",\n\t".join([str(c) for c in self.children])
+        return str.format("Token: {0}, value: {1}, children:[{2}]", str(self.token),  str(self.value), children_str)
 
 exprStack = []
 argCount = 0
