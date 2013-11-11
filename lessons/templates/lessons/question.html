@@ -105,12 +105,12 @@ $(function() {
         <div id="steps"></div>
     </div>
     <br />
-    <p>Answer: \({{ question.answer }}\)</p> {# TODO remove this before we go live lol #}
+{#    <p>Answer: \({{ question.answer }}\)</p> TODO remove this before we go live lol  #}
 {% else %}
     <p>Question not working.</p>
 {% endif %}
 {# {% if next_link %} #}
-    <p><a href="{{ next_link }}">Skip</a></p>
+<p><a href="{{ next_link }}">Skip</a></p>
 {# {% endif %} #}
 </div>
 {% endblock %}

@@ -175,6 +175,14 @@ div#content ul {
 	text-align:center;
 }
 
+div#lesson-feedback
+{
+    margin-top:30px;
+    padding: 10px;
+	border:2px solid;
+	border-radius:6px;
+}
+
 li.even {
     background-color:#8793E2;
     border-radius:5px;

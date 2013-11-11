@@ -60,18 +60,18 @@ $(function() {
     {% endif %}
 
     {% if user.is_authenticated %}
-        <div id=lesson-feedback>
-            <p>Enjoyed the lesson? Anything you would change? Let us know by rating it.</p> {# TODO extend all this to include comments and lay it out nicely #}
+        <div id="lesson-feedback">
+            Enjoyed the lesson? Anything you would change? Let us know by rating it.<br />
             <input type="radio" onclick="rating=this.value" value="1" name="rate">1
             <input type="radio" onclick="rating=this.value" value="2" name="rate">2
             <input type="radio" onclick="rating=this.value" value="3" name="rate">3
             <input type="radio" onclick="rating=this.value" value="4" name="rate">4
-            <input type="radio" onclick="rating=this.value" value="5" name="rate">5
-		    <p>Comment: <input type="text" id="comment"> </p>
+            <input type="radio" onclick="rating=this.value" value="5" name="rate">5<br />
+            Comment: <input type="text" id="comment"><br />
             <input type="button" value="Rate" id="rate">
-        </div>
-        <div id=rating-thanks>
-	    <p>Thank you for rating!</p>
+            <div id="rating-thanks">
+                <p>Thank you for rating!</p>
+            </div>
         </div>
     {% endif %}
 
