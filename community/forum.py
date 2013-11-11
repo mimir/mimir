@@ -44,6 +44,7 @@ class JSONUserQuestion:
     def __init__(self, question):
         gen_q = ["null", "null"]
         if question.question != None:
+            pass
             #gen_q = generateQuestion(question.question_seed, question.question.question, question.question.calculation)
         
         self.pk = question.pk
