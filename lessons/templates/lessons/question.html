@@ -92,19 +92,20 @@ $(function() {
 {% block content %}
 <div id="question">
 {% if question %}
-    <h2>{{ question.lesson.name }}</h2>
-    <p>{{ template }}</p>
-    <p>Answer:
-    <input type="text" id="answer">
-    <input type="button" value="Check" id="check">
-    </p>
-    <p id="message">
-    </p>
-    <div id="steps_wrapper">
-        <p id="solution_button">Show Solution</p>
-        <div id="steps"></div>
-    </div>
-    <br />
+    <form onsubmit="return false">
+        <h2>{{ question.lesson.name }}</h2>
+        <p>{{ template }}</p>
+        <p>Answer:
+        <input type="text" id="answer">
+        <input type="submit" value="Check" id="check">
+        </p>
+        <p id="message">
+        </p>
+        <div id="steps_wrapper">
+            <p id="solution_button">Show Solution</p>
+            <div id="steps"></div>
+        </div>
+    </form>
 {#    <p>Answer: \({{ question.answer }}\)</p> TODO remove this before we go live lol  #}
 {% else %}
     <p>Question not working.</p>
