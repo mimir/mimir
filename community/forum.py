@@ -1,5 +1,4 @@
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
-from lessons.generate import generateQuestion
 from user_profiles.models import UserProfile
 from community.models import UserQuestion, UserAnswer, UserComment, UserRating
 import json
@@ -45,7 +44,7 @@ class JSONUserQuestion:
     def __init__(self, question):
         gen_q = ["null", "null"]
         if question.question != None:
-            gen_q = generateQuestion(question.question_seed, question.question.question, question.question.calculation)
+            #gen_q = generateQuestion(question.question_seed, question.question.question, question.question.calculation)
         
         self.pk = question.pk
         if question.lesson != None:
