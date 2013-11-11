@@ -254,8 +254,8 @@ The following is just for community stuff:
 	text-align:center;
 	margin-top:40px;
 	margin-bottom:20px;
-	margin-left:250px;
-	margin-right:200px;
+	margin-left:auto;
+	margin-right:auto;
 	color:#FFFFFF;
 	
 	background-image: linear-gradient(bottom, rgb(128,217,213) 7%, rgb(67,204,204) 54%);
