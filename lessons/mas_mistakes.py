@@ -2,7 +2,6 @@ from mas_evaluator import value_from_ast
 from Queue import *
 import math
 import operator
-import copy
 
 
 #TODO Remove every trace of deepcopy from everywhere
@@ -20,13 +19,15 @@ def wrong_answer_dict(root):
         node_val = node.value
         if node_val in wrong_ops: # If we have any common incorrect operations for the current operation.
             for wrong_op in wrong_ops[str(node_val)]:
+                node.token = "OP"
                 node.value = wrong_op
-                current_wrong_answer = value_from_ast(copy.deepcopy(root))
+                current_wrong_answer = value_from_ast(root)
+                print current_wrong_answer
                 pretty_arguments = str.format("{0} and {1}",
-                    ", ".join([str(value_from_ast(copy.deepcopy(c))) for c in node.children[:-1]]),
-                    str(value_from_ast(copy.deepcopy(node.children[-1]))),
+                    ", ".join([str(value_from_ast(c)) for c in node.children[:-1]]),
+                    str(value_from_ast(node.children[-1])),
                 )
-                wrong_ans[str(current_wrong_answer)] = str.format("Oops, did you do {0} on {1}, when you meant to do {2}?",
+                wrong_ans[current_wrong_answer] = str.format("Oops, did you do {0} on {1}, when you meant to do {2}?",
                     op_to_str(wrong_op),
                     pretty_arguments,
                     node_val,

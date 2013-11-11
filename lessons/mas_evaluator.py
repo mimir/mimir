@@ -23,29 +23,29 @@ def value_from_ast(ast):
         fn = eval(ast.value) #Get sympy function
         eval_children = [] 
         for node in ast.children:
-            node.value = value_from_ast(node)
-            node.children = []
-            eval_children.append(node.value)
+            #node.value = value_from_ast(node)
+            #node.children = []
+            eval_children.append(value_from_ast(node)) #(node.value)
         debug = "" #Debug argument print
         for arg in eval_children:
             debug += str(arg) + ", "
         print "Calling: " + str(ast.value) + " with (" + debug + "\b\b)"
-        ast.value = fn( *eval_children )
-        ast.children = []
-        return ast.value
+        #ast.value = fn( *eval_children )
+        #ast.children = []
+        return fn( *eval_children ) #ast.value
     
     elif ast.value == 'unary -': #If the node is a minus with a single argument
-        ast.value = -value_from_ast(ast.children[0])
-        ast.children = []
-        return ast.value
+        #ast.value = -value_from_ast(ast.children[0])
+        #ast.children = []
+        return -value_from_ast(ast.children[0]) #ast.value
 
     elif ast.token == "OP": #If the node is a simple operator
         op1 = value_from_ast(ast.children[0])
         op2 = value_from_ast(ast.children[1])
         print ast
-        ast.value = opn[ast.value]( op1, op2 ) #Change the nodes value
-        ast.children = []
-        return ast.value
+        #ast.value = opn[ast.value]( op1, op2 ) #Change the nodes value
+        #ast.children = []
+        return opn[ast.value]( op1, op2 )#ast.value
     
     else:
         return ast.value

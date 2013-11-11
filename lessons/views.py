@@ -72,7 +72,7 @@ def check_answer(request):
         user_ans = None
         
         try:
-            user_ans = (type(soluron.answer))(p["answer"])
+            user_ans = (type(solution.answer))(p["answer"])
         except:
             user_ans = createSolution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
         
@@ -85,8 +85,8 @@ def check_answer(request):
             #TODO mistake analysis system, no biggie
             message = "Oops, looks like you made a mistake."
             
-            if str(user_ans) in solution.wrongAnswers:
-                message = solution.wrongAnswers[str(user_ans)]
+            if user_ans in solution.wrongAnswers:
+                message = solution.wrongAnswers[user_ans]
             else:
                 message = "You've made a mistake, but we aren't sure where exactly."
             if request.user.is_authenticated():
