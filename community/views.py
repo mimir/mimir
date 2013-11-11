@@ -2,7 +2,8 @@ from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, Http404, HttpResponseRedirect, HttpResponseServerError
 from django.core.urlresolvers import reverse
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
-from lessons.generate import generateQuestion
+#from lessons.generate import generateQuestion
+from lessons.mas_main import create_question, create_solution
 from user_profiles.models import UserProfile
 from community.models import UserQuestion, UserAnswer, UserComment, UserRating
 from community.forms import QuestionForm
@@ -42,7 +43,8 @@ def question(request, question_id):
     #Generates question-answer pair
     displayQuestion = []
     if question.question != None:
-        displayQuestion = generateQuestion(question.question_seed, question.question.question, question.question.calculation)
+        displayQuestion = create_question(question.question_seed, question.question.question)
+        displayAnswer = create_solution(question.question_seed, question.question.question, question.question.answer)
     
     q_comments = UserComment.objects.filter(user_question = question_id)
     answers = UserAnswer.objects.filter(user_question = question_id)
@@ -50,7 +52,7 @@ def question(request, question_id):
     for answer in answers:
         a_comments.append(UserComment.objects.filter(user_answer = answer.pk))
     
-    context = ({'question': question, 'displayQuestion': displayQuestion, 'answers': answers, 'q_comments': q_comments, 'a_comments': a_comments, })
+    context = ({'question': question, 'displayQuestion': displayQuestion, 'displayAnswer': displayAnswer, 'answers': answers, 'q_comments': q_comments, 'a_comments': a_comments, })
     return render(request, 'community/question.html', context)
 
 def add_comment(request):
