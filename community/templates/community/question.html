@@ -121,8 +121,8 @@ $(function() {
 {% endif %}
 
 {% if question.question %}
-    <h4>Question: {{ displayQuestion.0 }}</h4>
-    <h4>Answer: {{ displayQuestion.1 }}</h4>
+    <h4>Question: {{ displayQuestion }}</h4>
+    <h4>Answer: {{ displayAnswer.answer }}</h4>
 {% endif %}
 
 <p>{{ question.user_question|linebreaks }}</p>
