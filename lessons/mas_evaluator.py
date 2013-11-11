@@ -18,6 +18,44 @@ def evaluateAST( ast ):
     solution.answer = evaluateNode(ast, ast, solution)
     return solution
 
+def solution_from_ast(ast):
+    solution = Solution()
+    solution.addStep(ast)
+    solution.answer = evaluateNode(ast, ast, solution)
+    return solution
+
+def value_from_ast(ast):
+    if ast.token == "FUNC":
+        fn = eval(ast.value) #Get sympy function
+        eval_children = [] 
+        for node in ast.children:
+            node.value = value_from_ast(node)
+            node.children = []
+            eval_children.append(node.value)
+        debug = "" #Debug argument print
+        for arg in eval_children:
+            debug += str(arg) + ", "
+        print "Calling: " + str(ast.value) + " with (" + debug + "\b\b)"
+        ast.value = fn( *eval_children )
+        ast.children = []
+        return ast.value
+    
+    elif ast.value == 'unary -': #If the node is a minus with a single argument
+        ast.value = -value_from_ast(ast.children[0])
+        ast.children = []
+        return ast.value
+
+    elif ast.token == "OP": #If the node is a simple operator
+        op1 = value_from_ast(ast.children[0])
+        op2 = value_from_ast(ast.children[1])
+        print ast
+        ast.value = opn[ast.value]( op1, op2 ) #Change the nodes value
+        ast.children = []
+        return ast.value
+    
+    else:
+        return ast.value
+
 def evaluateNode( op, ast, solution ):
     '''
     if op.token == "FUNC": #If the node is a function

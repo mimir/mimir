@@ -1,4 +1,4 @@
-from mas_evaluator import evaluateAST
+from mas_evaluator import evaluateAST, value_from_ast
 from Queue import *
 import math
 import operator
@@ -18,14 +18,18 @@ def wrong_answer_dict(root):
     while not not_looked_at.empty():
         node = not_looked_at.get()
         node_val = node.value
-        if node_val in wrong_ops:
+        if node_val in wrong_ops: # If we have any common incorrect operations for the current operation.
             for wrong_op in wrong_ops[str(node_val)]:
                 node.value = wrong_op
-                current_wrong_answer = evaluateAST(copy.deepcopy(root)).answer
+                current_wrong_answer = value_from_ast(copy.deepcopy(root))
+                pretty_arguments = str.format("{0} and {1}",
+                    ", ".join([str(value_from_ast(copy.deepcopy(c))) for c in node.children[:-1]]),
+                    str(value_from_ast(copy.deepcopy(node.children[-1]))),
+                )
                 wrong_ans[str(current_wrong_answer)] = str.format("Oops, did you do {0} on {1}, when you meant to do {2}?",
                     op_to_str(wrong_op),
-                    ", ".join([str(evaluateAST(copy.deepcopy(c)).answer) for c in node.children[:-1]]) + " and " + str(evaluateAST(copy.deepcopy(node.children[-1])).answer),
-                    node_val
+                    pretty_arguments,
+                    node_val,
                 )
             node.value = node_val
         for child in node.children:
