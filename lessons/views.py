@@ -2,6 +2,8 @@ from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
+from django.db.models import Count
+import json
 
 from lessons.mas_main import create_question, create_solution
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson, Course
@@ -101,7 +103,6 @@ def check_answer(request):
             return HttpResponse('{"correct":false, "message":"' + message + '", "steps":' + jsonSteps + '}', mimetype="application/json")
     return HttpResponse('')
 
-
 def question(request, lesson_url, question_id):
     question = get_object_or_404(Question, pk = question_id)
     getcontext().prec = 12
@@ -121,9 +122,27 @@ def rand_question(request, lesson_url):
 def skill_tree(request):
     if request.user.is_authenticated():
         curuser = request.user
-    lessons = Lesson.objects.all()
-    links = LessonFollowsFromLesson.objects.all()
+    #lessons = Lesson.objects.all()
+    #links = LessonFollowsFromLesson.objects.all()
     context = ({
-        'skill_tree':lessons, 'links':links,
+        #'skill_tree':lessons, 'links':links,
     })
     return render(request, 'lessons/skilltree.html', context)
+
+def skill_tree_data(request):
+    lessons = Lesson.objects.all().annotate(num_parents=Count('preparation')).filter(num_parents = 0)
+    data = {"name": "MIMIR",}
+        #"children": [{"name":"derek"},{"name":"derek2"},] }
+    data["children"] = []
+    for l in lessons:
+        data["children"].append(ancestors(l))
+    return HttpResponse(json.dumps(data), mimetype="application/json")
+
+def ancestors(lesson):
+    print lesson.name
+    if lesson.supplement:
+        children_objs = []
+        for c in lesson.supplement.all():
+            children_objs.append(ancestors(c.leads_to))
+        return {"name": lesson.name, "children": children_objs}
+    return {"name": lesson.name}
