@@ -2,7 +2,6 @@ from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, Http404, HttpResponseRedirect, HttpResponseServerError
 from django.core.urlresolvers import reverse
 from lessons.models import Lesson, Example, Question, LessonFollowsFromLesson
-#from lessons.generate import generateQuestion
 from lessons.mas_main import create_question, create_solution
 from user_profiles.models import UserProfile
 from community.models import UserQuestion, UserAnswer, UserComment, UserRating
@@ -28,7 +27,6 @@ def ask_question(request):
     if request.method == "POST":
         form = QuestionForm(request.POST)
         if form.is_valid():
-            
             new_question = UserQuestion(lesson=form.cleaned_data['lesson'],question=form.cleaned_data['question'],question_seed=form.cleaned_data['question_seed'],title=form.cleaned_data['title'],user_question=form.cleaned_data['user_question'],rating = 0, user = request.user,)
             new_question.save()
             return HttpResponseRedirect(reverse('community:question', args=[new_question.id])) #TODO finish
@@ -36,12 +34,42 @@ def ask_question(request):
         form = QuestionForm()
     return render(request, 'community/ask.html', {'form': form, })
 
+@login_required
+def ask_simple_question_1(request, lesson_id):
+    if request.method == "POST":
+        form = QuestionForm(request.POST)
+        if form.is_valid():
+            new_question = UserQuestion(lesson=get_object_or_404(Lesson, pk = lesson_id),question=None,question_seed=None,title=form.cleaned_data['title'],user_question=form.cleaned_data['user_question'],rating = 0, user = request.user,)
+            new_question.save()
+            return HttpResponseRedirect(reverse('community:question', args=[new_question.id])) #TODO finish
+    else:
+        lesson = get_object_or_404(Lesson, pk = lesson_id)
+        form = QuestionForm()
+    return render(request, 'community/simpleask.html', {'form': form, 'lesson': lesson, 'question': None, 'answer': None, })
+
+@login_required
+def ask_simple_question_2(request, lesson_id, question_id, seed):
+    if request.method == "POST":
+        form = QuestionForm(request.POST)
+        if form.is_valid():
+            new_question = UserQuestion(lesson = get_object_or_404(Lesson, pk = lesson_id),question = get_object_or_404(Question, pk = question_id),question_seed=float("0." + str(seed)),title=form.cleaned_data['title'],user_question=form.cleaned_data['user_question'],rating = 0, user = request.user,)
+            new_question.save()
+            return HttpResponseRedirect(reverse('community:question', args=[new_question.id])) #TODO finish
+    else:
+        lesson = get_object_or_404(Lesson, pk = lesson_id)
+        question = get_object_or_404(Question, pk = question_id)
+        answer = create_solution(float("0." + str(seed)), question.question, question.answer).answer
+        display_question = create_question(float("0." + str(seed)), question.question)
+        form = QuestionForm()
+    return render(request, 'community/simpleask.html', {'form': form, 'lesson': lesson, 'question': display_question, 'answer': answer, })
+
 def question(request, question_id):
     #Revamp of question to use templates over Javascript
     question = get_object_or_404(UserQuestion, pk = question_id)
     
     #Generates question-answer pair
-    displayQuestion = []
+    displayQuestion = None
+    displayAnswer = None
     if question.question != None:
         displayQuestion = create_question(question.question_seed, question.question.question)
         displayAnswer = create_solution(question.question_seed, question.question.question, question.question.answer)

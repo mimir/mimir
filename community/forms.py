@@ -8,3 +8,4 @@ class QuestionForm(ModelForm):
         labels = {
             'user_question': 'Your question',
         }
+
