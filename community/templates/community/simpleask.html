@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Ask a question</h2>
+
+  <form action="" method="post">{% csrf_token %}
+    <div class="fieldWrapper">
+        <p>Lesson: {{lesson.name}}</p>
+    </div>
+    <div class="fieldWrapper">
+        <p>Question: {{question}}</p>
+    </div>
+    <div class="fieldWrapper">
+        <p>Answer: {{answer}}</p>
+    </div>
+
+    {{ form.non_field_errors }}
+    <div class="fieldWrapper">
+        {{ form.title.errors }}
+        <label for="id_title">Title:</label>
+        {{ form.title }}
+    </div>
+    <div class="fieldWrapper">
+        {{ form.user_question.errors }}
+        <label for="id_userquestion">Question:</label>
+        {{ form.user_question }}
+    </div>
+    <p><input type="submit" value="Submit" /></p>
+</form>
+{% endblock %}
