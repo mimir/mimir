@@ -30,7 +30,7 @@ def read(request, lesson_url):
     lesson = get_object_or_404(Lesson, url__iexact = lesson_url)
     next_lessons = LessonFollowsFromLesson.objects.filter(leads_from__name = lesson.name).order_by('-strength')
     questions_exist = Question.objects.filter(lesson = lesson).exists()
-    context = ({'lesson': lesson,'next_lessons':next_lessons,'questions_exist':questions_exist,})
+    context = ({'lesson': lesson,'next_lessons':next_lessons,'questions_exist':questions_exist, })
     if request.user.is_authenticated():
         if not UserTakesLesson.objects.filter(user = request.user).filter(lesson = lesson).filter(date__gt = datetime.datetime.now() - datetime.timedelta(hours=1)).exists():
             user_takes = UserTakesLesson(user=request.user,lesson=lesson)
@@ -109,7 +109,8 @@ def question(request, lesson_url, question_id):
     rand_seed = Decimal(str(random()))
     template = create_question(rand_seed, question.question)
     question.answer = create_solution(rand_seed, question.question, question.answer).answer #TODO So have to remove this when Alex Best is less of a bitch about having the answer displayed under the question.
-    return render(request, 'lessons/question.html', {'question': question, 'template': template, 'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed,})
+    seed = str(rand_seed).replace("0.", "");
+    return render(request, 'lessons/question.html', {'question': question, 'template': template, 'next_link': reverse('lessons:rand_question', args=[lesson_url]),'rand_seed':rand_seed, 'seed':seed, })
 
 def rand_question(request, lesson_url):
     lesson = get_object_or_404(Lesson, url__iexact = lesson_url)

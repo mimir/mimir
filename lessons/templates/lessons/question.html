@@ -113,5 +113,9 @@ $(function() {
 {# {% if next_link %} #}
 <p><a href="{{ next_link }}">Skip</a></p>
 {# {% endif %} #}
+
+<p>Still stuck? Ask about this question in the community section!</p>
+<a class="button" href="{% url 'community:simple_ask_2' question.lesson.pk question.pk seed %}">Ask a Question</a>
+
 </div>
 {% endblock %}

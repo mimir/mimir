@@ -81,6 +81,9 @@ $(function() {
         <p>No questions for this lesson.</p>
     {% endif %}
 
+    <p>Confused? Ask about this lesson in the community section!</p>
+    <a class="button" href="{% url 'community:simple_ask_1' lesson.pk %}">Ask a Question</a>
+
     <h4>Next Lessons</h4>
     {% if next_lessons %}
         <ul>
