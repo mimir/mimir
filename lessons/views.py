@@ -119,28 +119,19 @@ def rand_question(request, lesson_url):
         return HttpResponseRedirect(reverse('lessons:question', args=[lesson_url, question_l[0].id]))
     return HttpResponseRedirect(reverse('lessons:read', args=[lesson_url]))
 
-@login_required
 def skill_tree(request):
-    if request.user.is_authenticated():
+    if request.user.is_authenticated(): # TODO use this to inform the skilltree layout or something?
         curuser = request.user
-    #lessons = Lesson.objects.all()
-    #links = LessonFollowsFromLesson.objects.all()
-    context = ({
-        #'skill_tree':lessons, 'links':links,
-    })
-    return render(request, 'lessons/skilltree.html', context)
+    return render(request, 'lessons/skilltree.html', {})
 
 def skill_tree_data(request):
     lessons = Lesson.objects.all().annotate(num_parents=Count('preparation')).filter(num_parents = 0)
-    data = {"name": "MIMIR",}
-        #"children": [{"name":"derek"},{"name":"derek2"},] }
-    data["children"] = []
+    data = {"name": "MIMIR","children": []}
     for l in lessons:
         data["children"].append(ancestors(l))
     return HttpResponse(json.dumps(data), mimetype="application/json")
 
 def ancestors(lesson):
-    print lesson.name
     if lesson.supplement:
         children_objs = []
         for c in lesson.supplement.all():
