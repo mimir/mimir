@@ -7,12 +7,16 @@
     <div class="fieldWrapper">
         <p>Lesson: {{lesson.name}}</p>
     </div>
+    {% if question %}
     <div class="fieldWrapper">
         <p>Question: {{question}}</p>
     </div>
+    {% endif %}
+    {% if question %}
     <div class="fieldWrapper">
         <p>Answer: {{answer}}</p>
     </div>
+    {% endif %}
 
     {{ form.non_field_errors }}
     <div class="fieldWrapper">

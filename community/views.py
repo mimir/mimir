@@ -45,7 +45,7 @@ def ask_simple_question_1(request, lesson_id):
     else:
         lesson = get_object_or_404(Lesson, pk = lesson_id)
         form = QuestionForm()
-    return render(request, 'community/simpleask.html', {'form': form, 'lesson': lesson, 'question': None, 'answer': None, })
+    return render(request, 'community/simpleask.html', {'form': form, 'lesson': lesson, 'question': "", 'answer': "", })
 
 @login_required
 def ask_simple_question_2(request, lesson_id, question_id, seed):
