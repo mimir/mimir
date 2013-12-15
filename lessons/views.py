@@ -84,19 +84,13 @@ def check_answer(request):
         if user_ans == solution.answer:
             return HttpResponse('{"correct":true}', mimetype="application/json")
         else:
-            message = "Oops, looks like you made a mistake."
-            
+            response = {"correct": False}
             if user_ans in solution.wrongAnswers:
-                message = solution.wrongAnswers[user_ans]
+                response["message"] = solution.wrongAnswers[user_ans]
             else:
-                message = "You've made a mistake, but we aren't sure where exactly."
-
-            jsonSteps = "["
-            for step in solution.steps:
-                jsonSteps += '"' + str(step) + '", '
-            jsonSteps = jsonSteps[:-2] + "]"
-            print '{"correct":false, "message":"' + message + '", "steps":' + jsonSteps + '}'
-            return HttpResponse('{"correct":false, "message":"' + message + '", "steps":' + jsonSteps + '}', mimetype="application/json")
+                response["message"] = "You've made a mistake, but we aren't sure where exactly."
+            response["steps"] = solution.steps
+            return HttpResponse(json.dumps(response), mimetype="application/json")
     return HttpResponse('')
 
 def question(request, lesson_url, question_id):

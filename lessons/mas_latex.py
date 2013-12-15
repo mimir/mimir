@@ -8,23 +8,21 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
 
     if not ast.children: #If it is a value, return it
         try:
-            pretty = latex(ast.value, mode="plain")
-            pretty = str(pretty).replace("\\",r"\\")
-            return pretty
+            return latex(ast.value, mode="plain")
         except:
             return str(ast.value)
 
     #Deal with all of the standard operator formats
     elif ast.value == "/":
-        return r"\\frac{" + str(astToLatex(ast.children[0])) + "}{" + str(astToLatex(ast.children[1])) + "}"
+        return r"\frac{" + str(astToLatex(ast.children[0])) + "}{" + str(astToLatex(ast.children[1])) + "}"
     elif ast.value == "*":
-        return r"\\left( " + str(astToLatex(ast.children[0])) + r"\\times" + str(astToLatex(ast.children[1])) + r" \\right)"
+        return r"\left( " + str(astToLatex(ast.children[0])) + r"\times" + str(astToLatex(ast.children[1])) + r" \right)"
     elif ast.value == "^":
         return str(astToLatex(ast.children[0])) + r"^{" + str(astToLatex(ast.children[1])) + r"}"
     elif ast.value == "unary -":
-        return r"- \\left(" + str(astToLatex(ast.children[0])) + r" \\right)"
+        return r"- \left(" + str(astToLatex(ast.children[0])) + r" \right)"
     elif ast.token == "OP":
-        return r"\\left( " + str(astToLatex(ast.children[0])) + str(ast.value) + str(astToLatex(ast.children[1])) + r" \\right)"
+        return r"\left( " + str(astToLatex(ast.children[0])) + str(ast.value) + str(astToLatex(ast.children[1])) + r" \right)"
     
     
 
@@ -34,12 +32,12 @@ def astToLatex(ast): #Converts an AST to a lovely LaTeX form
         for child in ast.children:
             args += str(astToLatex(child)) + ", "
         args = args[:-2]
-        return r"\\operatorname{%s}\\left(%s\\right)" % (str(ast.value), args)
+        return r"\operatorname{%s}\left(%s\right)" % (str(ast.value), args)
     '''
     elif ast.value == definite_integral: #If the function is a definite integral
-        return r"\\int^" + str(astToLatex(ast.children[2])) + "_" + str(astToLatex(ast.children[3])) + " " + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
+        return r"\int^" + str(astToLatex(ast.children[2])) + "_" + str(astToLatex(ast.children[3])) + " " + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
     elif ast.value == indefinite_integral:
-        return r"\\int" + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
+        return r"\int" + str(astToLatex(ast.children[0])) + " d" + str(astToLatex(ast.children[1]))
     '''
     
 
