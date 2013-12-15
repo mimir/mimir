@@ -107,6 +107,7 @@ $(function() {
         </div>
     </form>
 {#    <p>Answer: \({{ question.answer }}\)</p> TODO remove this before we go live lol  #}
+    <p>Times answered: {{ question.answers }}, times answered correctly: {{ question.correct_answers }}</p> {# TODO probably remove too, good for testing #}
 {% else %}
     <p>Question not working.</p>
 {% endif %}

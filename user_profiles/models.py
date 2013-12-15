@@ -7,7 +7,6 @@ import hashlib
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, related_name='profile')
-    #TODO implement picture stuff properly
     gravatar_hash = models.CharField(max_length = 32)
     website = models.URLField(blank = True)
     caption = models.CharField(max_length = 60, blank = True)

@@ -28,7 +28,7 @@ class Lesson(models.Model):
     course = models.ForeignKey(Course)
     @property
     def times_taken(self):
-        return self.usertakeslesson_set.count() #TODO ensure this is efficient
+        return self.usertakeslesson_set.count()
 
     def __unicode__(self):
         return self.name
@@ -65,8 +65,11 @@ class Question(models.Model):
     created = models.DateTimeField(auto_now_add = True) #Creation date set on adding
     modified = models.DateTimeField(auto_now = True) #Modification date set on changing
     @property
-    def times_answered(self):
-        return self.useranswersquestion_set.count() #TODO ensure this is efficient
+    def answers(self):
+        return self.useranswersquestion_set.count()
+    @property
+    def correct_answers(self):
+        return self.useranswersquestion_set.filter(correct = True).count()
     #TODO add other useful queries here e.g. times answered correctly
     def __unicode__(self):
         return self.question

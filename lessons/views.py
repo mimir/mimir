@@ -67,7 +67,6 @@ def check_answer(request):
         if not re.match(question.answer_format.regex, p["answer"]):
             return HttpResponse('{"correct":false, "message":"Answer was not in the correct format, please correct this and try again."}', mimetype="application/json") #TODO make this message contain specifics about the format
 
-        #TODO if user is logged in add a useranswersquestion here
         getcontext().prec = 12 #TODO make prec a global setting?
         solution = create_solution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
         print solution
@@ -78,22 +77,19 @@ def check_answer(request):
         except:
             user_ans = create_solution(0, question.question, p["answer"]).answer #TODO Write an actual parser for user answers
         
+        if request.user.is_authenticated():
+            user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = user_ans == solution.answer, answer = solution.answer)
+            user_answers.save()
+        
         if user_ans == solution.answer:
-            if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = True, answer = solution.answer)
-                user_answers.save()
             return HttpResponse('{"correct":true}', mimetype="application/json")
         else:
-            #TODO mistake analysis system, no biggie
             message = "Oops, looks like you made a mistake."
             
             if user_ans in solution.wrongAnswers:
                 message = solution.wrongAnswers[user_ans]
             else:
                 message = "You've made a mistake, but we aren't sure where exactly."
-            if request.user.is_authenticated():
-                user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = False, answer = solution.answer)
-                user_answers.save()
 
             jsonSteps = "["
             for step in solution.steps:
