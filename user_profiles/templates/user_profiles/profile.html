@@ -7,11 +7,10 @@
 	<script type="text/javascript">
 	$(function() 
 	{
-	
 		var lessons = {{ lessons|safe }};
 		var questions = {{ questions|safe }};
 		
-		$.plot($("#placeholder"), [{label: 'Lessons', data: lessons}, {label: 'Questions', data: questions }], {yaxis: { minTickSize: 1 }, xaxis: { mode: "time", timeformat: "%d/%m/%Y"}, legend: {show: true}});
+		$.plot($("#activity-graph"), [{label: 'Lessons', data: lessons}, {label: 'Questions', data: questions }], {yaxis: { minTickSize: 1 }, xaxis: { mode: "time", timeformat: "%d/%m/%Y"}, legend: {show: true}});
 	});
 	</script>
 {% endblock %}
@@ -19,7 +18,7 @@
 {% block content %}
 
 {% if cur_user %}
-	<div id=profile>
+	<div id="profile">
 		<h2>Personal Details <a href="{% url 'editprofile' %}">(edit)</a></h2>
 		<p><img src="http://www.gravatar.com/avatar/{{ cur_user_p.gravatar_hash }}?s=64&amp;d=identicon" /> {# TODO maybe https?! #}
 		{{ cur_user.first_name }} {{ cur_user.last_name}} ({{ cur_user.username }})</p>
@@ -29,7 +28,7 @@
 		<p>Joined: {{ cur_user.date_joined }}</p>
 		<p>About: {{ cur_user_p.about }}</p>
 	</div>
-	<div id=full_stats>
+	<div id="full-stats">
 		<h2>Statistics</h2>
 		<p>Lessons Taken: {{ num_lessons }}</p>
 		<p>Unique Lessons Taken: {{ unique_lessons }}</p>
@@ -40,10 +39,10 @@
 		<p>Community questions answered: {{ community_answers }}</p>
 		<p>Community comments posted: {{ community_comments }}</p>
 	</div>
-	<div id=activity>
+	<div id="activity">
 		<h2>Activity Graph</h2>
 		<div class="demo-container">
-			<div id="placeholder" class="demo-placeholder" style="height:300px"></div>
+			<div id="activity-graph"></div>
 		</div>
 	</div>
 {% else %}

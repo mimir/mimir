@@ -8,24 +8,21 @@
 
 <p>This is the place where, if you are stuggling even after the tutorials, you can come to request additional help.</p>
 
-<div style="text-align:center"><a class="button" href="{% url 'community:ask' %}">Ask a question</a> </div>{# TODO style this http://stackoverflow.com/questions/8357058/how-to-make-a-href-link-look-like-a-button #}
+<a class="button" href="{% url 'community:ask' %}">Ask a question</a> 
 
 <br />
 
 <div id="user_question_list">
-{% for question in question_list %}
-    
-        <div class="question_listed">
-            {% usertag question.user %}
-             <div class="question_title">
-             <a href="{% url 'community:question' question.pk %}">
+    {% for question in question_list %}
+    <div class="question_listed">
+        {% usertag question.user %}
+        <div class="question_title">
+            <a href="{% url 'community:question' question.pk %}">
                 <h4>{{ question.title }}</h4>
-             </a>
-            </div>
-            
+            </a>
         </div>
-    
-{% endfor %}
+    </div>
+    {% endfor %}
 </div>
 
 {% endblock %}
