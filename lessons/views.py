@@ -69,7 +69,6 @@ def check_answer(request):
 
         getcontext().prec = 12 #TODO make prec a global setting?
         solution = create_solution(Decimal(p["rand_seed"]), question.question, question.answer) #Get the question solution
-        print solution
         user_ans = None
         
         try:
@@ -81,16 +80,11 @@ def check_answer(request):
             user_answers = UserAnswersQuestion(question = question, user = request.user, question_seed = p["rand_seed"], correct = user_ans == solution.answer, answer = solution.answer)
             user_answers.save()
         
-        if user_ans == solution.answer:
-            return HttpResponse('{"correct":true}', mimetype="application/json")
-        else:
-            response = {"correct": False}
-            if user_ans in solution.wrongAnswers:
-                response["message"] = solution.wrongAnswers[user_ans]
-            else:
-                response["message"] = "You've made a mistake, but we aren't sure where exactly."
+        response = {"correct": user_ans == solution.answer}
+        if not user_ans == solution.answer:
+            response["message"] = solution.wrongAnswers.get(user_ans, "You've made a mistake, but we aren't sure where exactly.")
             response["steps"] = solution.steps
-            return HttpResponse(json.dumps(response), mimetype="application/json")
+        return HttpResponse(json.dumps(response), mimetype="application/json")
     return HttpResponse('')
 
 def question(request, lesson_url, question_id):
