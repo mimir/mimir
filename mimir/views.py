@@ -24,7 +24,6 @@ def index(request):
         user_lessons = []
         whats_next = []
         test_me = []
-        test_me_active = False
     context = ({
         'user_lessons':user_lessons, 'whats_next':whats_next, 'test_me':test_me,
     })
