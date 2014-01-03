@@ -22,7 +22,7 @@
             {
                 e.preventDefault();
                 if ($('#search').val() == "") return false;
-                window.location.href = "/search/" + $('#search').val().split(" ").join("_") + "/";
+                window.location.href = "/search/" + $('#search').val().replace(" ","_") + "/";
                 return false;
             });
         });    
@@ -53,7 +53,7 @@
                     <li> <a href="{% url 'profile' %}">{{ user.username }}</a> </li>
                     <li> <a href="{%url 'logout' %}">log out</a> </li>
                 {% else %}
-                	<li> <a href="{% url 'login' %}">log in</a> </li>
+                    <li> <a href="{% url 'login' %}">log in</a> </li>
                     <li> <a href="{% url 'register' %}">sign up</a> </li>
                 {% endif %}
             </ul>
