@@ -92,7 +92,7 @@ $(function() {
 {% block content %}
 <div id="question">
 {% if question %}
-    <form onsubmit="return false">
+    <form onsubmit="return false">{% csrf_token %}
         <h2>{{ question.lesson.name }}</h2>
         <p>{{ template }}</p>
         <p>Answer:

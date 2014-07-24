@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 from django.db.models import Count
+from django.core.context_processors import csrf
 import json
 
 from lessons.mas_main import create_question, create_solution
@@ -88,6 +89,8 @@ def check_answer(request):
     return HttpResponse('')
 
 def question(request, lesson_url, question_id):
+    c = {}
+    c.update(csrf(request))
     question = get_object_or_404(Question, pk = question_id)
     getcontext().prec = 12
     rand_seed = Decimal(str(random()))
