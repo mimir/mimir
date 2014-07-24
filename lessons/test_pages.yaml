@@ -1,0 +1,21 @@
+---
+logged-in:
+    - /home/
+    - /lessons/
+    - /profile/
+    - /skills/
+    - /users/
+    - /myskills/
+    - /whatsnext/
+
+logged-out:
+    - /home/
+    - /login/
+    - /lessons/
+    - /profile/
+    - /skills/
+    - /users/
+    - /register/
+    - /myskills/
+    - /whatsnext/
+---

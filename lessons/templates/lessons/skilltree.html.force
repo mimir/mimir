@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/2.7.4/d3.min.js"></script>
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/2.7.4/d3.layout.min.js"></script>
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/2.7.4/d3.geom.min.js"></script>
+<script type="text/javascript">
+{% comment %}
+{% if skill_tree %}
+var skills = [
+{% for lesson in skill_tree %}
+{"name":"{{ lesson.name }}",
+"id":{{lesson.id}}},
+{% endfor %}
+{% endif %}]
+{% endcomment %}
+
+$(function() {
+    var width = $('#skilltree').width()-75;
+    var height = $('#skilltree').height()-10;
+    $('.skill').each(function() {
+        var sktop = Math.floor(Math.random() * height);
+        var skleft = Math.floor(Math.random() * width);
+        $(this).css({top: sktop, left: skleft});
+    });
+});
+</script>
+{% endblock %}
+
+{% block content %}
+
+<h2>My skill tree</h2>
+{% if skill_tree %}
+    <div id="skilltree" style="height: 400px; position: relative;">
+            {% comment %}
+    {% for lesson in skill_tree %}
+    <div class="skill" style="position: relative; width: 100px; height: 10px">
+        {{ lesson.name }}
+    </div>
+    {% endfor %}
+{% endcomment %}
+    </div>
+
+<script type="text/javascript">
+            var w = 960, h = 500;
+            var labelDistance = 0;
+
+            var vis = d3.select("#skilltree").append("svg:svg").attr("width", w).attr("height", h).attr("style", "background-color: #D8F6CE;");
+
+			var nodes = [
+            {% for lesson in skill_tree %}
+                { label : "{{ lesson.name }}" },
+            {% endfor %}
+            ];
+			var labelAnchors = [];
+			var labelAnchorLinks = [];
+			var links = [];
+			for(var i = 0; i < nodes.length; i++) {
+            {% comment %}
+				var node = {
+					label : "node " + i
+				};
+				nodes.push(node);
+{% endcomment %}
+                var node = nodes[i];
+				labelAnchors.push({
+					node : node
+				});
+				labelAnchors.push({
+					node : node
+				});
+				labelAnchorLinks.push({
+					source : i * 2,
+					target : i * 2 + 1,
+					weight : 1
+				});
+			};
+
+			for(var i = 0; i < nodes.length; i++) {
+				for(var j = 0; j < i; j++) {
+					if(Math.random() > .95)
+						links.push({
+							source : i,
+							target : j,
+							weight : Math.random()
+						});
+				}
+			};
+
+			var force = d3.layout.force().size([w, h]).nodes(nodes).links(links).gravity(1).linkDistance(50).charge(-3000).linkStrength(function(x) {
+				return x.weight * 10
+			});
+
+
+			force.start();
+
+			var force2 = d3.layout.force().nodes(labelAnchors).links(labelAnchorLinks).gravity(0).linkDistance(0).linkStrength(8).charge(-100).size([w, h]);
+			force2.start();
+
+			var link = vis.selectAll("line.link").data(links).enter().append("svg:line").attr("class", "link").style("stroke", "#CCC");
+
+			var node = vis.selectAll("g.node").data(force.nodes()).enter().append("svg:g").attr("class", "node");
+			node.append("svg:circle").attr("r", 5).style("fill", "#555").style("stroke", "#FFF").style("stroke-width", 3);
+			node.call(force.drag);
+
+
+			var anchorLink = vis.selectAll("line.anchorLink").data(labelAnchorLinks)//.enter().append("svg:line").attr("class", "anchorLink").style("stroke", "#999");
+
+			var anchorNode = vis.selectAll("g.anchorNode").data(force2.nodes()).enter().append("svg:g").attr("class", "anchorNode");
+			anchorNode.append("svg:circle").attr("r", 0).style("fill", "#FFF");
+				anchorNode.append("svg:text").text(function(d, i) {
+				return i % 2 == 0 ? "" : d.node.label
+			}).style("fill", "#555").style("font-family", "Arial").style("font-size", 12);
+
+			var updateLink = function() {
+				this.attr("x1", function(d) {
+					return d.source.x;
+				}).attr("y1", function(d) {
+					return d.source.y;
+				}).attr("x2", function(d) {
+					return d.target.x;
+				}).attr("y2", function(d) {
+					return d.target.y;
+				});
+
+			}
+
+			var updateNode = function() {
+				this.attr("transform", function(d) {
+					return "translate(" + d.x + "," + d.y + ")";
+				});
+
+			}
+
+
+			force.on("tick", function() {
+
+				force2.start();
+
+				node.call(updateNode);
+
+				anchorNode.each(function(d, i) {
+					if(i % 2 == 0) {
+						d.x = d.node.x;
+						d.y = d.node.y;
+					} else {
+						var b = this.childNodes[1].getBBox();
+
+						var diffX = d.x - d.node.x;
+						var diffY = d.y - d.node.y;
+
+						var dist = Math.sqrt(diffX * diffX + diffY * diffY);
+
+						var shiftX = b.width * (diffX - dist) / (dist * 2);
+						shiftX = Math.max(-b.width, Math.min(0, shiftX));
+						var shiftY = 5;
+						this.childNodes[1].setAttribute("transform", "translate(" + shiftX + "," + shiftY + ")");
+					}
+				});
+
+
+				anchorNode.call(updateNode);
+
+				link.call(updateLink);
+				anchorLink.call(updateLink);
+
+			});
+
+		</script>
+{% else %}
+    <p>Skill tree unavailable.</p>
+{% endif %}
+
+{% endblock %}
+
