@@ -133,17 +133,26 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         }
         if (mem_passed) {
             DLOG("a mem is passed");
-            // We'll assume that the function only modifies values when we give it the slot
-            // as a parameter. Those are set to top, the others stay the same.
-            //
+            for (auto arg : abstr_args) {
+                if (auto continuation = arg->isa_mut<Lam>(); isa_optimizable(continuation)) {
+                    // The unknown function may call this as a continuation. In that case, the slot
+                    // values are the same as for the current function.
+                    for (auto [slot, current_value] : current_slot_values_[mut_stack_.back()])
+                        current_slot_values_[continuation][slot] = current_value;
 
-        // TODO: no wait this is wrong, we get the continuation as an argument here, and we'll have to initialize that function's current_slot_values_ with the current ones
-            // for (auto arg : abstr_args)
-            //     if (auto i = current_slot_values_[mut_stack_.back()].find(arg);
-            //         i != current_slot_values_[mut_stack_.back()].end()) {
-            //         DLOG("slot {} escapes, setting to top", arg);
-            //         i->second = arg;
-            //     }
+                    // Except for those slots that are also passed to the unknown function. We don't
+                    // know what it does to those, so we set them to top.
+                    for (auto arg : abstr_args) {
+                        if (auto i = current_slot_values_[mut_stack_.back()].find(arg);
+                            i != current_slot_values_[mut_stack_.back()].end()) {
+                            DLOG("{} passed as continuation, and {} escapes, setting to top", continuation, arg);
+                            current_slot_values_[continuation][arg] = arg;
+                        }
+                    }
+
+                    // TODO: do we need to set todo_ or call rewrite again or something?
+                }
+            }
         }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
         auto n          = app->num_targs();
