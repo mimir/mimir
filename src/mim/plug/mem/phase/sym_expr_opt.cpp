@@ -27,7 +27,7 @@ const Def* isa_slot_proxy(const Def* def) {
 
 Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
     mut_stack_.push_back(mut);
-    DLOG("entering {}", mut);
+    // DLOG("entering {}", mut);
     map(mut, mut);
 
     if (auto var = mut->has_var()) {
@@ -44,7 +44,7 @@ Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
         rewrite(d);
 
     mut_stack_.pop_back();
-    DLOG("leaving {}", mut);
+    // DLOG("leaving {}", mut);
     return mut;
 }
 
@@ -68,6 +68,7 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 static nat_t get_index(const Def* def) { return Lit::as(def->as<Extract>()->index()); }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
+    DLOG("imm_app of {}, currently in {}", app->callee(), mut_stack_.empty() ? nullptr : mut_stack_.back());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val]                               = store->args<3>();
         auto abstr_mem                                     = rewrite(mem);
@@ -92,9 +93,58 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto [_, ptr]                      = slot->projs<2>();
         auto abstr_mem                     = rewrite(mem);
         auto abstr_id                      = rewrite(id);
-        all_slots_[ptr] = pointee_type;
+        all_slots_[ptr]                    = pointee_type;
         DLOG("in {}, found declaration for slot {}", mut_stack_.back(), ptr);
         return slot; // TODO: not sure if we don't need to rewrite something here
+    } else if (auto branch = Branch(app)) {
+        auto abstr = branch.cond(); // TODO: probably need to do something with this?
+        auto l     = Lit::isa<bool>(abstr);
+
+        if (!l || *l)
+            if (auto lam = branch.tt()->isa_mut<Lam>(); isa_optimizable(lam)) {
+                DLOG("branch, writing local values to {}", lam);
+                for (auto [slot, value] : current_slot_values_[mut_stack_.back()]) {
+                    DLOG("{}", slot);
+                    current_slot_values_[lam][slot] = value;
+                }
+            }
+        if (!l || !*l)
+            if (auto lam = branch.ff()->isa_mut<Lam>(); isa_optimizable(lam)) {
+                DLOG("branch, writing local values to {}", lam);
+                for (auto [slot, value] : current_slot_values_[mut_stack_.back()]) {
+                    DLOG("{}", slot);
+                    current_slot_values_[lam][slot] = value;
+                }
+            }
+    } else if (auto lam = app->callee()->isa_mut<Lam>(); !isa_optimizable(lam)) {
+        DLOG("{} not optimizable", app->callee());
+
+        auto n          = app->num_targs();
+        auto abstr_args = absl::FixedArray<const Def*>(n);
+        for (size_t i = 0; i != n; ++i)
+            abstr_args[i] = rewrite(app->targ(i));
+
+        DLOG("done analyzing args of {}", lam);
+
+        bool mem_passed = false;
+        for (auto arg : abstr_args) {
+            DLOG("arg: {}", arg);
+            if (Axm::isa<mem::M>(arg->type())) mem_passed = true;
+        }
+        if (mem_passed) {
+            DLOG("a mem is passed");
+            // We'll assume that the function only modifies values when we give it the slot
+            // as a parameter. Those are set to top, the others stay the same.
+            //
+
+        // TODO: no wait this is wrong, we get the continuation as an argument here, and we'll have to initialize that function's current_slot_values_ with the current ones
+            // for (auto arg : abstr_args)
+            //     if (auto i = current_slot_values_[mut_stack_.back()].find(arg);
+            //         i != current_slot_values_[mut_stack_.back()].end()) {
+            //         DLOG("slot {} escapes, setting to top", arg);
+            //         i->second = arg;
+            //     }
+        }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
@@ -119,12 +169,14 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 propagate(proxy, local_value);
             } else {
                 DLOG("propagating value from parameters");
+                auto lam_proxy    = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
                 auto lookup_proxy = world().proxy(slot_type, {mut_stack_.back(), slot}, 0, Proxy_Slot);
                 if (auto i = lattice_.find(lookup_proxy); i != lattice_.end()) {
-                    auto lam_proxy = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
                     propagate(lam_proxy, i->second);
                 } else {
                     DLOG("no value found for {}", slot);
+                    // TODO find the value
+                    propagate(lam_proxy, lam_proxy);
                 }
             }
         }
@@ -209,11 +261,11 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         lattice_[lam->var()] = abstr_var;
 
         if (!lookup(lam)) {
-            DLOG("entering {}", lam);
+            // DLOG("entering {}", lam);
             mut_stack_.push_back(lam);
             for (auto d : lam->deps())
                 rewrite(d);
-            DLOG("leaving {}", lam);
+            // DLOG("leaving {}", lam);
             mut_stack_.pop_back();
         }
 
