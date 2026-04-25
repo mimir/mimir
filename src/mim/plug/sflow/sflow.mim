@@ -6,7 +6,8 @@
 ///
 /// ## Dependencies
 ///
-import compile;
+plugin compile;
+plugin core;
 ///
 /// A plugin with axioms to model explicit structured
 /// control flow and passes to transform arbitrary code
@@ -28,7 +29,7 @@ import compile;
 axm %sflow.Struct: {H C B: ★} → [header: Cn H] → [continue: Cn C] → [break: Cn B] → ★;
 axm %sflow.exit(continue): {H C B: ★, header: Cn H, continue: Cn C, break: Cn B}
   → [%sflow.Struct header continue break] → Cn C;
-axm %sflow.exit(break): {H C B: ★, header: Cn H, continue: Cn C, break: Cn B}
+axm %sflow.exit(break): {H C B: ★, header: Cn H, continue: Cn C, break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]}
   → [%sflow.Struct header continue break] → Cn B;
 
 /// ## Branching
@@ -39,22 +40,28 @@ axm %sflow.exit(break): {H C B: ★, header: Cn H, continue: Cn C, break: Cn B}
 ///
 axm %sflow.if: {n: Nat} → {T B H: ★}
   → [header: Cn H]
-  → [break: Cn B]
+  → [break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]]
   → [tuple: «2; Cn [T, %sflow.Struct header (⊥: Cn ⊥) break]»]
   → [index: Idx 2]
   → Cn T, normalize_branch;
 
+// TODO: Make type params implicit again once that is figured out
 /// Computes the type of a switch target list.
-/// Normalizes to a sigma of tuples when n is known:
 ///   Targets 0 next = []
-///   Targets n next = [[Nat, Cn [T, Struct header next break]],
-///                     [Nat, Cn [T, Struct header case₀ break]],
-///                     ...]
+///   Targets n next = [Nat, Cn [T, Struct header next break],
+///                    [Nat, Cn [T, Struct header case_0 break],
+///                    ...]...]]
 /// where each case's continue target is the previous case (fallthrough).
-axm %sflow.Targets: {T B H: ★, header: Cn H, continue: Cn T, break: Cn B}
-  → [n: Nat]
-  → [next: Cn [T, %sflow.Struct header continue break]]
-  → ★, normalize_targets;
+///
+lam %sflow.Targets
+  (T: ★, C: ★, B: ★, H: ★,
+   header: Cn H,
+   continue: Cn C,
+   break: Cn B,
+   count: Nat,
+   next: Cn [T, %sflow.Struct header continue break])@(%core.pe.is_closed count)
+  : ★
+  = ([Nat, case: Cn [T, %sflow.Struct header next break], %sflow.Targets (T, [T, %sflow.Struct header continue break], B, H, header, next, break, %core.nat.sub (count, 1), case)], [])#(%core.ncmp.e (count, 0));
 
 /// Represents a structured switch.
 ///
@@ -62,24 +69,25 @@ axm %sflow.Targets: {T B H: ★, header: Cn H, continue: Cn T, break: Cn B}
 /// have their fall-through (continue) target in their signature.
 axm %sflow.switch: {n: Nat} → {T B H: ★}
   → [header: Cn H]
-  → [break: Cn B]
-  → [default: Cn [T, %sflow.Struct header (⊥: Cn T) break]]
-  → [targets: %sflow.Targets n default]
+  → [break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [default: Cn [T, %sflow.Struct header (⊥: Cn ⊥) break]]
+  → [targets: %sflow.Targets (T, ⊥, [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)], H, header, (⊥: Cn ⊥), break, n, default)]
   → [index: Nat]
   → Cn T, normalize_switch;
 
 /// ## Loops
 ///
-/// Represents a structured loop (for or while)
-axm %sflow.loop: {C B T H: ★}
+/// Represents a structured loop
+axm %sflow.loop: {B T H: ★}
   → [header: Cn H]
-  → [continue: Cn C]
-  → [break: Cn B]
-  → [body: Cn [T, %sflow.Struct header continue break]]
-  → [condition: Bool]
+  → [break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [tuple: «2; Cn [T, %sflow.Struct header header break]»]
+  → [index: Bool]
   → Cn T, normalize_loop;
 
 /// ## Phases
+///
+axm %sflow.check_headers: %compile.Phase;
 ///
 /// Inserts additional lams if multiple structures share the same merge lam.
 axm %sflow.seperate_merge: %compile.Phase;
