@@ -25,12 +25,26 @@ plugin core;
 ///
 /// Each header block must strictly structurally dominate its
 /// merge block.
+axm %sflow.Token: ★;
+axm %sflow.Key: ★;
+axm %sflow.gen: %sflow.Token → [%sflow.Token, %sflow.Key];
 ///
-axm %sflow.Struct: {H C B: ★} → [header: Cn H] → [continue: Cn C] → [break: Cn B] → ★;
-axm %sflow.exit(continue): {H C B: ★, header: Cn H, continue: Cn C, break: Cn B}
-  → [%sflow.Struct header continue break] → Cn C;
-axm %sflow.exit(break): {H C B: ★, header: Cn H, continue: Cn C, break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]}
-  → [%sflow.Struct header continue break] → Cn B;
+axm %sflow.Targets: {C B: ★} → [key: %sflow.Key] → [continue: Cn C] → [break: Cn B] → ★;
+lam %sflow.Struct {C B: ★} [key: %sflow.Key] [continue: Cn C] [break: Cn B]: ★
+  = rec type = [%sflow.Token, %sflow.Targets key continue break];
+    type;
+axm %sflow.root: [token: %sflow.Token]
+  → let (token, key) = %sflow.gen token;
+    %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥);
+
+axm %sflow.continue: {
+  C B N: ★, key: %sflow.Key, next: Cn N,
+  break: Cn B, continue: Cn [C, %sflow.Struct key next break]
+} → [%sflow.Struct key continue break] → Cn C;
+axm %sflow.break: {
+  C B: ★, key: %sflow.Key,
+  continue: Cn C, break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]
+} → [%sflow.Struct key continue break] → Cn B;
 
 /// ## Branching
 /// Represents a structured branch (if-else or switch-case)
@@ -39,9 +53,10 @@ axm %sflow.exit(break): {H C B: ★, header: Cn H, continue: Cn C, break: Cn [B,
 /// the normalizer will throw an error.
 ///
 axm %sflow.if: {n: Nat} → {T B H: ★}
-  → [header: Cn H]
-  → [break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [tuple: «2; Cn [T, %sflow.Struct header (⊥: Cn ⊥) break]»]
+  → [token: %sflow.Token]
+  → let (token, key) = %sflow.gen token;
+    [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [tuple: «2; Cn [T, %sflow.Struct key (⊥: Cn ⊥) break]»]
   → [index: Idx 2]
   → Cn T, normalize_branch;
 
@@ -53,37 +68,46 @@ axm %sflow.if: {n: Nat} → {T B H: ★}
 ///                    ...]...]]
 /// where each case's continue target is the previous case (fallthrough).
 ///
-lam %sflow.Targets
+lam %sflow.Cases
   (T: ★, C: ★, B: ★, H: ★,
-   header: Cn H,
+   key: %sflow.Key,
    continue: Cn C,
    break: Cn B,
    count: Nat,
-   next: Cn [T, %sflow.Struct header continue break])@(%core.pe.is_closed count)
+   next: Cn [T, %sflow.Struct key continue break])@(%core.pe.is_closed count)
   : ★
-  = ([Nat, case: Cn [T, %sflow.Struct header next break], %sflow.Targets (T, [T, %sflow.Struct header continue break], B, H, header, next, break, %core.nat.sub (count, 1), case)], [])#(%core.ncmp.e (count, 0));
+  = ([Nat, case: Cn [T, %sflow.Struct key next break], %sflow.Cases (T, [T, %sflow.Struct key continue break], B, H, key, next, break, %core.nat.sub (count, 1), case)], [])#(%core.ncmp.e (count, 0));
 
 /// Represents a structured switch.
 ///
 /// Notice that the case functions are given in reverse order, as they
 /// have their fall-through (continue) target in their signature.
 axm %sflow.switch: {n: Nat} → {T B H: ★}
-  → [header: Cn H]
-  → [break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [default: Cn [T, %sflow.Struct header (⊥: Cn ⊥) break]]
-  → [targets: %sflow.Targets (T, ⊥, [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)], H, header, (⊥: Cn ⊥), break, n, default)]
+  → [token: %sflow.Token]
+  → let (token, key) = %sflow.gen token;
+    [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [default: Cn [T, %sflow.Struct key (⊥: Cn ⊥) break]]
+  → [targets: %sflow.Cases (T, ⊥, [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)], H, key, (⊥: Cn ⊥), break, n, default)]
   → [index: Nat]
   → Cn T, normalize_switch;
 
 /// ## Loops
 ///
-/// Represents a structured loop
-axm %sflow.loop: {B T H: ★}
-  → [header: Cn H]
-  → [break: Cn [B, %sflow.Struct header (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [tuple: «2; Cn [T, %sflow.Struct header header break]»]
-  → [index: Bool]
-  → Cn T, normalize_loop;
+/// Represents the loop header corresponding to a given key in an opaque way,
+/// because functions cannot contain each other recursively in their signatures as their types
+/// would recurse infinitely, which is currently not possible to represent.
+axm %sflow.Header: [H: ★] → %sflow.Key → Cn H;
+///
+/// Represents a structured loop. As the loop construct has to know its header
+/// to be able to call back into it, the function containing the loop declaration cannot
+/// be the header itself.
+axm %sflow.loop: {B C T H: ★}
+  → [token: %sflow.Token]
+  → let (token, key) = %sflow.gen token;
+    [break: Cn [B, [%sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥ Cn ⊥)]]]
+  → [continue: Cn [C, [%sflow.Token, %sflow.Struct key (%sflow.Header H key) break]]]
+  → [header: Cn [H, [%sflow.Token, %sflow.Struct key continue break]]]
+  → Cn H, normalize_loop;
 
 /// ## Phases
 ///

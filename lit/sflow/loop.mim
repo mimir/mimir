@@ -1,0 +1,10 @@
+plugin sflow;
+
+fun extern foo (token: %sflow.Token) = loop (5, 0, %sflow.root token) where
+    con loop (i: Nat, a: Nat, struct) = %sflow.loop token break continue (left, right) (%core.ncmp.e (i, 0)) () where
+        con left (_, struct) = %sflow.continue struct i;
+        con right (_, struct) = %sflow.break struct ();
+        con break (_, struct) = return (struct#token a);
+        con continue (_, struct) = %sflow.continue struct (%core.nat.sub (i, 1));
+    end;
+end;

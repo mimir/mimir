@@ -2,13 +2,15 @@
 
 #include "mim/plug/sflow/autogen.h"
 #include "mim/plug/spirv/be/emit.h"
+
+#include "fe/assert.h"
 namespace mim::plug::spirv {
 
-void Emitter::emit_branch(Lam* lam, Lam* callee, const Def* arg) {
+void Emitter::link_phi(Lam* lam, Lam* callee, const Def* arg) {
     DLOG("ordinary jump: {} -> {}", lam, callee);
     auto phi = callee->var();
     bb(callee).phis[phi].emplace_back(emit_term(arg));
-    lam2bb_[callee].phis[phi].emplace_back(id(lam));
+    bb(callee).phis[phi].emplace_back(id(lam));
     locals_[phi] = id(phi);
     bb(lam).end  = Op{OpKind::Branch, {id(callee)}, {}, {}};
 }
@@ -49,28 +51,61 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         }
 
     } else if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
-        // ordinary jump
+        // === Ordinary jump ===
         // => OpBranch
-        emit_branch(lam, callee, app->arg());
 
-    } else if (auto cf_select = Axm::isa<sflow::_if>(app->callee())) {
+        link_phi(lam, callee, app->arg());
+        bb.end = Op{OpKind::Branch, {id(callee)}, {}, {}};
+    } else if (auto cf_if = Axm::isa<sflow::_if>(app->callee())) {
+        // === Structured if-else ===
+        // => OpSelectionMerge + OpBranchConditional
+        auto [header, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
+
+        bb.merge = Op{OpKind::SelectionMerge, {id(cf_break)}, {}, {}};
+        std::vector<Word> branches{emit_term(index)};
+        for (auto branch : tuple->ops()) {
+            link_phi(lam, branch->as_mut<Lam>(), arg);
+            branches.push_back(id(branch));
+        }
+        bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
     } else if (auto cf_switch = Axm::isa<sflow::_switch>(app->callee())) {
+        // === Structured switch-case ===
+        // => OpSelectionMerge + OpSwitch
+        auto [header, cf_break, cf_default, targets, index, arg] = cf_switch->uncurry_args<6>();
+
+        bb.merge = Op{OpKind::SelectionMerge, {id(cf_break)}, {}, {}};
+        std::vector<Word> cases{emit_term(index)};
+        for (auto cf_case : targets->ops()) {
+            auto [index, body] = cf_case->ops<2>();
+            link_phi(lam, body->as_mut<Lam>(), arg);
+            auto literal = int_to_words(Lit::as(index), 32);
+            cases.insert(cases.end(), literal.begin(), literal.end());
+            cases.push_back(id(cf_case));
+        }
+        bb.end = Op{OpKind::BranchConditional, cases, {}, {}};
     } else if (auto cf_loop = Axm::isa<sflow::loop>(app->callee())) {
-    } else if (auto cf_exit = Axm::isa<sflow::exit>(app->callee())) {
-        auto cf_struct        = cf_exit->arg();
-        auto [header, _c, _b] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        auto cf_header        = header->as_mut<Lam>()->body()->as<App>()->callee();
-        const Def* cf_break_target;
-        if (auto cf_select = Axm::isa<sflow::_if>(app->callee())) {
-            auto [cfbt, _b, _t, _i] = cf_select->uncurry_args<4>();
-            cf_break_target         = cfbt;
-        } else if (auto cf_switch = Axm::isa<sflow::_switch>(app->callee())) {
-            auto [cfbt, _b, _t, _d, _i] = cf_switch->uncurry_args<5>();
-            cf_break_target             = cfbt;
+        // === Structured loop ===
+        // => OpLoopMerge + OpBranch/OpBranchConditional
+        auto [header, cf_break, tuple, index, arg] = cf_loop->uncurry_args<5>();
+
+        bb.merge = Op{OpKind::LoopMerge, {id(cf_break)}, {}, {}};
+        if (index == world().lit_tt()) {
+            bb.end = Op{OpKind::Branch, {id(world().extract(tuple, 1))}, {}, {}};
         } else {
-            auto cf_loop                = Axm::as<sflow::loop>(app->callee());
-            auto [cfbt, _c, _b, _t, _i] = cf_loop->uncurry_args<5>();
-            cf_break_target             = cfbt;
+            std::vector<Word> branches{emit_term(index)};
+            for (auto branch : tuple->ops()) {
+                link_phi(lam, branch->as_mut<Lam>(), arg);
+                branches.push_back(id(branch));
+            }
+            bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
+        }
+    } else if (auto cf_exit = Axm::isa<sflow::exit>(app->callee())) {
+        auto cf_struct                               = cf_exit->arg();
+        auto [header, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
+        switch (cf_exit.id()) {
+            case sflow::exit::_continue: link_phi(lam, continue_target->as_mut<Lam>(), app->arg()); break;
+            case sflow::exit::_break: link_phi(lam, continue_target->as_mut<Lam>(), app->arg()); break;
+            default: fe::unreachable();
         }
 
     } else if (auto dispatch = sflow::Dispatch(app)) {

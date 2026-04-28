@@ -97,7 +97,7 @@ public:
 private:
     /// Emit a term into a given basic block
     Word emit_term_into(const Def* def, BB& bb);
-    void emit_branch(Lam* lam, Lam* callee, const Def* arg);
+    void link_phi(Lam* lam, Lam* callee, const Def* arg);
 
     BB& bb(Lam* lam) {
         if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_lam_);
