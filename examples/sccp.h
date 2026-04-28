@@ -22,14 +22,9 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "SCCP::Analyzer") {}
 
-        auto& lattice() { return lattice_; }
-
     private:
-        Def* rewrite_mut(Def*) final;
         const Def* propagate(const Def* var, const Def* def);
         const Def* rewrite_imm_App(const App* app) final;
-
-        Def2Def lattice_;
     };
 
 public:
@@ -38,7 +33,6 @@ public:
         , analysis_(world) {}
 
 private:
-    const Def* lattice(const Def* def) { return analysis_.lattice()[def]; }
     const Def* rewrite_imm_App(const App* old_app) final;
 
     Analysis analysis_;

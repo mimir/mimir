@@ -357,8 +357,8 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
 }
 
 Ptr<Expr> Parser::parse_seq_expr() {
-    auto track  = tracker();
-    bool is_arr = accept(Tag::D_quote_l) ? true : (eat(Tag::D_angle_l), false);
+    auto track   = tracker();
+    bool is_pack = accept(Tag::D_angle_l) ? true : (eat(Tag::D_quote_l), false);
 
     std::deque<std::pair<Ptr<IdPtrn>, Ptr<Expr>>> arities;
 
@@ -369,18 +369,18 @@ Ptr<Expr> Parser::parse_seq_expr() {
             eat(Tag::T_colon);
         }
 
-        auto expr = parse_expr(is_arr ? "shape of an array" : "shape of a pack");
+        auto expr = parse_expr(is_pack ? "shape of pack" : "shape of a array");
         auto ptrn = IdPtrn::make_id(ast(), dbg, std::move(expr));
         arities.emplace_back(std::move(ptrn), std::move(expr));
     } while (accept(Tag::T_comma));
 
-    expect(Tag::T_semicolon, is_arr ? "array" : "pack");
-    auto body = parse_expr(is_arr ? "body of an array" : "body of a pack");
-    expect(is_arr ? Tag::D_quote_r : Tag::D_angle_r,
-           is_arr ? "closing delimiter of an array" : "closing delimiter of a pack");
+    expect(Tag::T_semicolon, is_pack ? "pack" : "array");
+    auto body = parse_expr(is_pack ? "body of a pack" : "body of an array");
+    expect(is_pack ? Tag::D_angle_r : Tag::D_quote_r,
+           is_pack ? "closing delimiter of a pack" : "closing delimiter of an array");
 
     for (auto& [ptrn, expr] : arities | std::ranges::views::reverse)
-        body = ptr<SeqExpr>(track, is_arr, std::move(ptrn), std::move(body));
+        body = ptr<SeqExpr>(track, is_pack, std::move(ptrn), std::move(body));
 
     return body;
 }

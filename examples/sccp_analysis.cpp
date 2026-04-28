@@ -2,29 +2,10 @@
 
 namespace mim {
 
-Def* SCCP::Analysis::rewrite_mut(Def* mut) {
-    map(mut, mut);
-
-    if (auto var = mut->has_var()) {
-        map(var, var);
-
-        if (mut->isa<Lam>())
-            for (auto var : mut->tvars()) {
-                map(var, var);
-                lattice_[var] = var;
-            }
-    }
-
-    for (auto d : mut->deps())
-        rewrite(d);
-
-    return mut;
-}
-
 const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
     auto [i, ins] = lattice_.emplace(var, def);
     if (ins) {
-        todo_ = true;
+        invalidate();
         DLOG("propagate: {} → {}", var, def);
         return def;
     }
@@ -32,7 +13,7 @@ const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
     auto cur = i->second;
     if (!cur || def->isa<Bot>() || cur == def || cur == var) return cur;
 
-    todo_ = true;
+    invalidate();
     if (cur->isa<Bot>()) return i->second = def;
     return i->second = var; // top
 }

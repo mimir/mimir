@@ -144,7 +144,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
         return map(seq, new_seq);
     }
 
-    auto new_arity = rewrite(seq->arity());
+    auto new_arity = rewrite(seq->arity())->zonk();
     auto l         = Lit::isa(new_arity);
     if (l && *l == 0) return world().prod(seq->is_intro());
 

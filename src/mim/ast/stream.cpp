@@ -162,7 +162,7 @@ std::ostream& SigmaExpr::stream(Tab& tab, std::ostream& os) const { return ptrn(
 std::ostream& TupleExpr::stream(Tab& tab, std::ostream& os) const { return print(os, "({, })", R(tab, elems())); }
 
 std::ostream& SeqExpr::stream(Tab& tab, std::ostream& os) const {
-    return print(os, "{}{}; {}{}", is_arr() ? "«" : "‹", S(tab, arity()), S(tab, body()), is_arr() ? "»" : "›");
+    return print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
 std::ostream& ExtractExpr::stream(Tab& tab, std::ostream& os) const {

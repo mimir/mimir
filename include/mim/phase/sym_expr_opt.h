@@ -35,10 +35,7 @@ private:
 
     private:
         const Def* propagate(const Def*, const Def*);
-        Def* rewrite_mut(Def*) final;
         const Def* rewrite_imm_App(const App*) final;
-
-        Def2Def lattice_;
     };
 
 public:
@@ -47,7 +44,6 @@ public:
         , analysis_(world) {}
 
 private:
-    const Def* lattice(const Def* def) { return analysis_.lattice()[def]; }
     const Def* rewrite_imm_App(const App*) final;
 
     Analysis analysis_;

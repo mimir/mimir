@@ -16,6 +16,9 @@
 
 namespace mim {
 
+template<class T>
+concept Enum = std::is_enum_v<std::remove_reference_t<T>>;
+
 class Driver;
 struct Flags;
 
@@ -394,23 +397,13 @@ public:
     const Sigma* sigma() { return data_.sigma; } ///< The unit type within Type 0.
     ///@}
 
-    /// @name Arr
+    /// @name Arr & Pack
     ///@{
     // clang-format off
-    const Def* unit(bool term) { return term ? (const Def*)tuple() : sigma(); }
-
-    Seq* mut_seq(bool term, const Def* type) { return term ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
-    const Def* seq(bool term, const Def* arity, const Def* body);
-    const Def* seq(bool term, Defs shape, const Def* body);
-    const Def* seq(bool term, u64 n, const Def* body) { return seq(term, lit_nat(n), body); }
-    const Def* seq(bool term, View<u64> shape, const Def* body) { return seq(term, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body); }
-    const Def* seq_unsafe(bool term, const Def* body) { return seq(term, top_nat(), body); }
-
     template<level_t level = 0>
     Arr* mut_arr() {
         return mut_arr(type<level>());
     }
-
     Arr * mut_arr (const Def* type) { return mut_seq(false, type)->as<Arr >(); }
     Pack* mut_pack(const Def* type) { return mut_seq(true , type)->as<Pack>(); }
     const Def* arr (const Def* arity, const Def* body) { return seq(false, arity, body); }
@@ -427,6 +420,21 @@ public:
     const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
     const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); }
     // clang-format on
+    ///@}
+
+    /// @name Seq
+    /// These either build a Pack or an Arr depending on the first argument.
+    /// Oftentimes, the logic for Pack%s and Arr%ays can be quite similar; these methods help factoring such code.
+    ///@{
+    const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
+    Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
+    const Def* seq(bool is_pack, const Def* arity, const Def* body);
+    const Def* seq(bool is_pack, Defs shape, const Def* body);
+    const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
+    const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
+        return seq(is_pack, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body);
+    }
+    const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
     ///@}
 
     /// @name Tuple
@@ -558,10 +566,9 @@ public:
     // clang-format on
     ///@}
 
-    /// @name Cope with implicit Arguments
-    ///@{
-
+    /// @name implicit_app - Cope with implicit Arguments
     /// Places Hole%s as demanded by Pi::is_implicit() and then apps @p arg.
+    ///@{
     template<bool Normalize = true>
     const Def* implicit_app(const Def* callee, const Def* arg);
     template<bool Normalize = true>
@@ -578,12 +585,34 @@ public:
     {
         return implicit_app<Normalize>(callee, lit_nat((nat_t)arg));
     }
+    ///@}
 
-    /// Complete curried call of annexes obeying implicits.
-    // clang-format off
-    template<class Id, bool Normalize = true, class... Args> const Def* call(Id id, Args&&... args) { return call_<Normalize>(annex(id),   std::forward<Args>(args)...); }
-    template<class Id, bool Normalize = true, class... Args> const Def* call(       Args&&... args) { return call_<Normalize>(annex<Id>(), std::forward<Args>(args)...); }
-    // clang-format on
+    /// @name call
+    /// Complete curried call of @p callee obeying implicits.
+    ///@{
+    template<bool Normalize = true, class T, class... Args>
+    const Def* call(const Def* callee, T&& arg, Args&&... args) {
+        return call<Normalize>(implicit_app<Normalize>(callee, std::forward<T>(arg)), std::forward<Args>(args)...);
+    }
+
+    /// Base case.
+    template<bool Normalize = true, class T>
+    const Def* call(const Def* callee, T&& arg) {
+        return implicit_app<Normalize>(callee, std::forward<T>(arg));
+    }
+
+    /// Annex overload with enum instance as first argument.
+    template<Enum Id, bool Normalize = true, class... Args>
+    const Def* call(Id id, Args&&... args) {
+        return call<Normalize>(annex(id), std::forward<Args>(args)...);
+    }
+
+    /// Annex overload with enum tempalte argument @p Id for annexes w/o subtag.
+    template<class Id, bool Normalize = true, class... Args>
+    requires std::is_enum_v<Id>
+    const Def* call(Args&&... args) {
+        return call<Normalize>(annex<Id>(), std::forward<Args>(args)...);
+    }
     ///@}
 
     /// @name Vars & Muts
@@ -637,19 +666,6 @@ public:
     ///@}
 
 private:
-    /// @name call_
-    /// Helpers to unwind World::call with variadic templates.
-    ///@{
-    template<bool Normalize = true, class T, class... Args>
-    const Def* call_(const Def* callee, T arg, Args&&... args) {
-        return call_<Normalize>(implicit_app(callee, arg), std::forward<Args>(args)...);
-    }
-    template<bool Normalize = true, class T>
-    const Def* call_(const Def* callee, T arg) {
-        return implicit_app<Normalize>(callee, arg);
-    }
-    ///@}
-
     /// @name Put into Sea of Nodes
     ///@{
     template<class T, class... Args>

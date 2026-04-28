@@ -14,20 +14,17 @@ using namespace mim::plug;
 int main(int, char**) {
     try {
         Driver driver;
-        auto& w  = driver.world();
-        auto ast = ast::AST(w);
+        auto& w = driver.world();
         driver.log().set(&std::cerr).set(Log::Level::Debug);
-
-        auto parser = ast::Parser(ast);
-        for (auto plugin : {"compile", "core"})
-            parser.plugin(plugin);
+        ast::load_plugins(w, View<std::string>{"compile", "core", "opt"});
 
         // Cn [%mem.M 0, I32, %mem.Ptr (I32, 0) Cn [%mem.M 0, I32]]
         auto mem_t  = w.call<mem::M>(0);
         auto argv_t = w.call<mem::Ptr0>(w.call<mem::Ptr0>(w.type_i32()));
         auto main   = w.mut_fun({mem_t, w.type_i32(), argv_t}, {mem_t, w.type_i32()})->set("main");
 
-        auto [mem, argc, argv, ret] = main->vars<4>();
+        auto [mem, argc, argv] = main->var(2, 0)->projs<3>();
+        auto ret               = main->var(2, 1);
         main->app(false, ret, {mem, argc});
         main->externalize();
 

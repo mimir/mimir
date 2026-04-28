@@ -11,7 +11,7 @@ const Def* EtaRedPhase::rewrite(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>()) {
         if (auto callee = lam->eta_reduce()) {
             DLOG("eta-reduce: `{}` -> `{}`", lam, callee);
-            todo_ = true;
+            invalidate();
             return rewrite(callee);
         }
     }

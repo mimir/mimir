@@ -739,13 +739,13 @@ private:
 /// `«dbg: arity; body»` or `‹dbg: arity; body›`
 class SeqExpr : public Expr {
 public:
-    SeqExpr(Loc loc, bool is_arr, Ptr<IdPtrn>&& arity, Ptr<Expr>&& body)
+    SeqExpr(Loc loc, bool is_pack, Ptr<IdPtrn>&& arity, Ptr<Expr>&& body)
         : Expr(loc)
-        , is_arr_(is_arr)
+        , is_pack_(is_pack)
         , arity_(std::move(arity))
         , body_(std::move(body)) {}
 
-    bool is_arr() const { return is_arr_; }
+    bool is_pack() const { return is_pack_; }
     const IdPtrn* arity() const { return arity_.get(); }
     const Expr* body() const { return body_.get(); }
 
@@ -755,7 +755,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    bool is_arr_;
+    bool is_pack_;
     Ptr<IdPtrn> arity_;
     Ptr<Expr> body_;
 };

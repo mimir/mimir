@@ -5,7 +5,7 @@ namespace mim {
 const Def* SCCP::rewrite_imm_App(const App* old_app) {
     if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) {
-            todo_ = true;
+            invalidate();
 
             size_t num_old = old_lam->num_tvars();
             Lam* new_lam;

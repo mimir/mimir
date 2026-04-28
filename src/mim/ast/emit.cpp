@@ -324,22 +324,18 @@ const Def* TupleExpr::emit_(Emitter& e) const {
 
 const Def* SeqExpr::emit_(Emitter& e) const {
     auto s = arity()->emit_type(e);
+    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().unit(is_pack());
+
     if (arity()->dbg().is_anon()) { // immutable
         auto b = body()->emit(e);
-        return is_arr() ? e.world().arr(s, b) : e.world().pack(s, b);
+        return e.world().seq(is_pack(), s, b);
     }
 
     auto t = e.world().type_infer_univ();
     auto a = e.world().mut_arr(t);
     a->set_arity(s);
 
-    if (is_arr()) {
-        auto var = a->var();
-        arity()->emit_value(e, var);
-        a->set_body(body()->emit(e));
-        if (auto imm = a->immutabilize()) return imm;
-        return a;
-    } else {
+    if (is_pack()) {
         auto p   = e.world().mut_pack(a);
         auto var = p->var();
         arity()->emit_value(e, var);
@@ -348,6 +344,12 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         p->set(b);
         if (auto imm = p->immutabilize()) return imm;
         return p;
+    } else {
+        auto var = a->var();
+        arity()->emit_value(e, var);
+        a->set_body(body()->emit(e));
+        if (auto imm = a->immutabilize()) return imm;
+        return a;
     }
 }
 
