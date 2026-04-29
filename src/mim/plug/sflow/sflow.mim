@@ -31,11 +31,8 @@ axm %sflow.gen: %sflow.Token → [%sflow.Token, %sflow.Key];
 ///
 axm %sflow.Targets: {C B: ★} → [key: %sflow.Key] → [continue: Cn C] → [break: Cn B] → ★;
 lam %sflow.Struct {C B: ★} [key: %sflow.Key] [continue: Cn C] [break: Cn B]: ★
-  = rec type = [%sflow.Token, %sflow.Targets key continue break];
-    type;
-axm %sflow.root: [token: %sflow.Token]
-  → let (token, key) = %sflow.gen token;
-    %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥);
+  = [%sflow.Token, %sflow.Targets key continue break];
+let %sflow.Root: ★ = %sflow.Struct (⊥: %sflow.Key) (⊥: Cn ⊥) (⊥: Cn ⊥);
 
 axm %sflow.continue: {
   C B N: ★, key: %sflow.Key, next: Cn N,
@@ -52,8 +49,8 @@ axm %sflow.break: {
 /// The header argument to any structure must always point to the lam containing it, otherwise
 /// the normalizer will throw an error.
 ///
-axm %sflow.if: {n: Nat} → {T B H: ★}
-  → [token: %sflow.Token]
+axm %sflow.if: {n: Nat} → {T B H S: ★}
+  → [token: %sflow.Token, _: S]
   → let (token, key) = %sflow.gen token;
     [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
   → [tuple: «2; Cn [T, %sflow.Struct key (⊥: Cn ⊥) break]»]
@@ -82,8 +79,8 @@ lam %sflow.Cases
 ///
 /// Notice that the case functions are given in reverse order, as they
 /// have their fall-through (continue) target in their signature.
-axm %sflow.switch: {n: Nat} → {T B H: ★}
-  → [token: %sflow.Token]
+axm %sflow.switch: {n: Nat} → {T B H S: ★}
+  → [token: %sflow.Token, _: S]
   → let (token, key) = %sflow.gen token;
     [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
   → [default: Cn [T, %sflow.Struct key (⊥: Cn ⊥) break]]
@@ -96,18 +93,19 @@ axm %sflow.switch: {n: Nat} → {T B H: ★}
 /// Represents the loop header corresponding to a given key in an opaque way,
 /// because functions cannot contain each other recursively in their signatures as their types
 /// would recurse infinitely, which is currently not possible to represent.
-axm %sflow.Header: [H: ★] → %sflow.Key → Cn H;
+axm %sflow.Header: [H: ★] → [key: %sflow.Key] → Cn [H, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)];
 ///
 /// Represents a structured loop. As the loop construct has to know its header
 /// to be able to call back into it, the function containing the loop declaration cannot
 /// be the header itself.
-axm %sflow.loop: {B C T H: ★}
-  → [token: %sflow.Token]
+axm %sflow.loop: {B C T H S: ★}
+  → [token: %sflow.Token, _: S]
   → let (token, key) = %sflow.gen token;
-    [break: Cn [B, [%sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥ Cn ⊥)]]]
-  → [continue: Cn [C, [%sflow.Token, %sflow.Struct key (%sflow.Header H key) break]]]
-  → [header: Cn [H, [%sflow.Token, %sflow.Struct key continue break]]]
-  → Cn H, normalize_loop;
+    [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [continue: Cn [C, %sflow.Struct key (%sflow.Header H key) break]]
+  → [tuple: «2; Cn [T, %sflow.Struct key continue break]»]
+  → [index: Bool]
+  → Cn T, normalize_loop;
 
 /// ## Phases
 ///

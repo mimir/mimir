@@ -194,12 +194,28 @@ const Def* LitExpr::emit_(Emitter& e) const {
 }
 
 const Def* DeclExpr::emit_(Emitter& e) const {
-    if (is_where())
-        for (const auto& decl : decls() | std::ranges::views::reverse)
-            decl->emit(e);
-    else
-        for (const auto& decl : decls())
-            decl->emit(e);
+    if (is_where()) {
+        // Two-phase elaboration: emit_decl all RecDecls (creating shells with hole types) before
+        // emitting the body expression, so that constraints from the body's applications can flow
+        // back into the still-open lam pis. Then emit_body the RecDecls. Non-RecDecls have no
+        // separate phases, so they fully emit in the first pass.
+        for (const auto& decl : decls() | std::ranges::views::reverse) {
+            if (auto rec = decl->isa<RecDecl>())
+                for (auto curr = rec; curr; curr = curr->next())
+                    curr->emit_decl(e);
+            else
+                decl->emit(e);
+        }
+        auto res = expr()->emit(e);
+        for (const auto& decl : decls() | std::ranges::views::reverse) {
+            if (auto rec = decl->isa<RecDecl>())
+                for (auto curr = rec; curr; curr = curr->next())
+                    curr->emit_body(e);
+        }
+        return res;
+    }
+    for (const auto& decl : decls())
+        decl->emit(e);
     return expr()->emit(e);
 }
 
