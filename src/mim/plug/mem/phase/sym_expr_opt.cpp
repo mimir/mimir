@@ -49,6 +49,7 @@ Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
 }
 
 const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
+    DLOG("propagate called with {} and {}", var, def);
     auto [i, ins] = lattice_.emplace(var, def);
     if (ins) {
         todo_ = true;
@@ -122,7 +123,13 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
         for (size_t i = 0; i != n; ++i)
-            abstr_args[i] = rewrite(app->targ(i));
+            if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
+                // need to rewrite this later, after local slot values are updated
+                // TODO: think about this more
+                abstr_args[i] = continuation;
+            } else {
+                abstr_args[i] = rewrite(app->targ(i));
+            }
 
         DLOG("done analyzing args of {}", lam);
 
@@ -154,10 +161,19 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 }
             }
         }
+
+        // TODO: think about this more
+        for (size_t i = 0; i != n; ++i)
+            if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation))
+                abstr_args[i] = rewrite(app->targ(i));
+
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
         auto abstr_vars = absl::FixedArray<const Def*>(n);
+
+        DefVec lattice_update_keys;
+        DefVec lattice_update_values;
 
         // propagate
         for (size_t i = 0; i != n; ++i) {
@@ -177,6 +193,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 auto proxy = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
                 propagate(proxy, local_value);
             } else {
+                // TODO: something is wrong here i think? maybe only one of the branches can happen
+                // because of eta expansion?
                 DLOG("propagating value from parameters");
                 auto lam_proxy    = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
                 auto lookup_proxy = world().proxy(slot_type, {mut_stack_.back(), slot}, 0, Proxy_Slot);
@@ -184,8 +202,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     propagate(lam_proxy, i->second);
                 } else {
                     DLOG("no value found for {}", slot);
-                    // TODO find the value
-                    propagate(lam_proxy, lam_proxy);
+                    // TODO find the value, but how? Can this ever happen?
+                    // propagate(lam_proxy, lam_proxy);
                 }
             }
         }
@@ -195,20 +213,21 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         for (size_t i = 0; i != n; ++i) {
             if (abstr_vars[i]) continue;
 
+            // vars: vars that have the same arg at this app
             auto vars = DefVec();
             auto vi   = lam->tvar(i);
-            auto ai   = abstr_args[i];
             vars.emplace_back(vi);
 
             for (size_t j = i + 1; j != n; ++j) {
                 auto vj = lam->tvar(j);
-                if (!abstr_vars[j] && abstr_args[j] == ai) vars.emplace_back(vj);
+                if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) vars.emplace_back(vj);
             }
 
             if (vars.size() == 1) {
+                // We didn't find any other vars with the same arg.
                 lattice_[vi] = abstr_vars[i] = vi; // top
             } else {
-                auto proxy = world().proxy(vi->type(), vars, 0, 0);
+                auto proxy = world().proxy(vi->type(), vars, 0, Proxy_GVN);
 
                 for (auto p : proxy->ops()) {
                     auto j       = get_index(p);
@@ -233,13 +252,12 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             if (auto proxy = isa_gvn_proxy(abstr_vars[i])) {
                 auto num  = proxy->num_ops();
                 auto vars = DefVec();
-                auto ai   = abstr_args[i];
 
                 for (auto p : proxy->ops()) {
                     auto j  = get_index(p);
                     auto vj = lam->tvar(j);
                     if (p == vj) {
-                        if (ai == abstr_args[j]) vars.emplace_back(vj);
+                        if (abstr_args[i] == abstr_args[j]) vars.emplace_back(vj);
                     }
                 }
 
@@ -251,7 +269,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     DLOG("single: {}", vi);
                 } else if (new_num != num) {
                     todo_          = true;
-                    auto new_proxy = world().proxy(ai->type(), vars, 0, 0);
+                    auto new_proxy = world().proxy(abstr_args[i]->type(), vars, 0, Proxy_GVN);
                     DLOG("split: {}", new_proxy);
 
                     for (auto p : new_proxy->ops()) {
@@ -286,8 +304,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
 static bool keep(const Def* old_var, const Def* abstr) {
     if (old_var == abstr) return true; // top
-    auto proxy = isa_gvn_proxy(abstr);
-    return proxy && proxy->op(0) == old_var; // first in GVN bundle?
+    if (auto proxy = isa_gvn_proxy(abstr)) return proxy->op(0) == old_var; // first in GVN bundle
+    else return false;
 }
 
 const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {

@@ -33,6 +33,15 @@ private:
 
         auto& lattice() { return lattice_; }
 
+void run() override {
+    mim::Analysis::run();
+    DLOG("lattice:");
+    for (auto [k, v] : lattice_) {
+        DLOG("{} -> {}", k, v);
+    }
+
+    DLOG("done running");
+}
     private:
         const Def* propagate(const Def*, const Def*);
         Def* rewrite_mut(Def*) final;

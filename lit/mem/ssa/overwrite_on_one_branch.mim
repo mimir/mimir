@@ -19,7 +19,7 @@ fun extern test1(mem0: %mem.M 0): [%mem.M 0, I64] =
                     join mem;
 
                 con b(mem: %mem.M 0) =
-                    let mem = %mem.store (mem, ptr2, 32I64);
+                    let mem = %mem.store (mem, ptr2, 0I64);
                     join mem;
 
                 con join(mem: %mem.M 0) =
