@@ -259,7 +259,9 @@ const Def* World::app(const Def* callee, const Def* arg) {
 
     throw Error()
         .error(callee->loc(), "called expression not of function type")
-        .error(callee->loc(), "'{}' <--- callee type", callee->type());
+        .note(callee->loc(), "callee: '{}'", callee)
+        .note(callee->loc(), "callee type: '{}'", callee->type())
+        .note(arg->loc(), "argument: '{}'", arg);
 }
 
 const Def* World::raw_app(const Def* type, const Def* callee, const Def* arg) {
@@ -394,7 +396,9 @@ const Def* World::extract(const Def* d, const Def* index) {
     if (auto pack = d->isa_imm<Pack>()) return pack->body();
 
     if (size && !Checker::alpha<Checker::Check>(type->arity(), size))
-        error(index->loc(), "index '{}' does not fit within arity '{}'", index, type->arity());
+        throw Error()
+            .error(index->loc(), "index '{}' does not fit within arity '{}'", index, type->arity())
+            .note(d->loc(), "tuple: {}", d);
     // TODO if we have indices we need to check as well that this is compatible with `d`
 
     // extract(insert(x, index, val), index) -> val
@@ -508,7 +512,6 @@ const Def* World::seq(bool term, const Def* arity, const Def* body) {
             DefVec inner_arity(*lit_arity_arity - 1, [&](u64 i) { return arity->proj(*lit_arity_arity, i + 1); });
             return seq(term, arity->proj(*lit_arity_arity, 0), seq(term, tuple(inner_arity), body));
         }
-
 
     if (term) {
         auto type = arr(arity, body->type());
