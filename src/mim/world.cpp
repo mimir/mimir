@@ -380,7 +380,7 @@ const Def* World::extract(const Def* d, const Def* index) {
     }
 
     auto size = Idx::isa(index->type());
-    auto type = d->unfold_type();
+    auto type = d->unfold_type()->zonk();
 
     if (size) {
         if (auto l = Lit::isa(size); l && *l == 1) {
