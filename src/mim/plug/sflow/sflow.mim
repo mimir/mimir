@@ -35,8 +35,11 @@ lam %sflow.Struct {C B: ★} [key: %sflow.Key] [continue: Cn C] [break: Cn B]: �
 let %sflow.Root: ★ = %sflow.Struct (⊥: %sflow.Key) (⊥: Cn ⊥) (⊥: Cn ⊥);
 
 axm %sflow.continue: {
-  C B N: ★, key: %sflow.Key, next: Cn N,
-  break: Cn B, continue: Cn [C, %sflow.Struct key next break]
+  C B_inner B N: ★,
+  key ikey: %sflow.Key,
+  next: Cn N,
+  break: Cn B, ibreak: Cn B_inner,
+  continue: Cn [C, %sflow.Struct ikey next ibreak]
 } → [%sflow.Struct key continue break] → Cn C;
 axm %sflow.break: {
   C B: ★, key: %sflow.Key,
@@ -93,19 +96,27 @@ axm %sflow.switch: {n: Nat} → {T B H S: ★}
 /// Represents the loop header corresponding to a given key in an opaque way,
 /// because functions cannot contain each other recursively in their signatures as their types
 /// would recurse infinitely, which is currently not possible to represent.
-axm %sflow.Header: [H: ★] → [key: %sflow.Key] → Cn [H, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)];
+axm %sflow.Header: {C B: ★} → [H: ★] → [key: %sflow.Key] → Cn [H, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)];
 ///
 /// Represents a structured loop. As the loop construct has to know its header
 /// to be able to call back into it, the function containing the loop declaration cannot
 /// be the header itself.
-axm %sflow.loop: {B C T H S: ★}
+axm %sflow.loop: {C B H S: ★}
   → [token: %sflow.Token, _: S]
   → let (token, key) = %sflow.gen token;
-    [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+    {break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]}
+  → {continue: Cn [C, %sflow.Struct key (%sflow.Header H key) break]}
+  → [header: Cn [H, %sflow.Struct key continue break]]
+  → Cn H;
+///
+/// This is used by to loop header to call into its body
+axm %sflow.header: {C B T H S: ★}
+  → {key: %sflow.Key}
+  → [break: Cn [B, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
   → [continue: Cn [C, %sflow.Struct key (%sflow.Header H key) break]]
   → [tuple: «2; Cn [T, %sflow.Struct key continue break]»]
   → [index: Bool]
-  → Cn T, normalize_loop;
+  → Cn T;
 
 /// ## Phases
 ///

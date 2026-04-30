@@ -1,10 +1,10 @@
 plugin sflow;
 
-fun extern foo (struct: %sflow.Root) = loop (5, 0, struct) where
-    con loop (i: Nat, a: Nat, struct) = %sflow.loop struct break continue (left, right) (%core.ncmp.e (i, 0)) () where
+fun extern foo (struct: %sflow.Root) = %sflow.loop struct loop 5 where
+    con loop (i: Nat, struct) = %sflow.header break continue (left, right) (%core.ncmp.e (i, 0)) () where
         con left (_: [], struct) = %sflow.continue struct ();
         con right (_: [], struct) = %sflow.break struct ();
-        con break (_: [], struct) = return (a, struct);
+        con break (_: [], struct) = return (5, struct);
         con continue (_: [], struct) = %sflow.continue struct (%core.nat.sub (i, 1));
     end;
 end;
