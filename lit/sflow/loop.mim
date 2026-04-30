@@ -1,10 +1,11 @@
 plugin sflow;
 
-fun extern foo (struct: %sflow.Root) = %sflow.loop struct loop 5 where
-    con loop (i: Nat, struct) = %sflow.header break continue (left, right) (%core.ncmp.e (i, 0)) () where
-        con left (_: [], struct) = %sflow.continue struct ();
-        con right (_: [], struct) = %sflow.break struct ();
-        con break (_: [], struct) = return (5, struct);
-        con continue (_: [], struct) = %sflow.continue struct (%core.nat.sub (i, 1));
+fun extern foo (token: %sflow.Token) = %sflow.loop token break continue loop 5 where
+    con loop (i: Nat, token, struct) =
+        %sflow.header token struct (left, right) (%core.ncmp.e (i, 0)) () where
+        con left (_: [], _, struct) = %sflow.continue struct i;
+        con right (_: [], _, struct) = %sflow.break struct ();
     end;
+    con break (_: [], _, struct) = return (5, struct);
+    con continue (i: Nat, _, _, header) = %sflow.loopback header (%core.nat.sub (i, 1));
 end;
