@@ -7,5 +7,5 @@ fun extern foo (token: %sflow.Token) = %sflow.loop token break continue loop 5 w
         con right (_: [], _, struct) = %sflow.break struct ();
     end;
     con break (_: [], _, struct) = return (5, struct);
-    con continue (i: Nat, _, _, header) = %sflow.loopback header (%core.nat.sub (i, 1));
+    con continue (i: Nat, token, _, header) = %sflow.loopback token header (%core.nat.sub (i, 1));
 end;
