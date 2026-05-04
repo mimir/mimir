@@ -143,6 +143,20 @@ axm %sflow.header: {C B T H: ★}
   → [index: Bool]
   → Cn T;
 
+/// Function call to a returning function in continuation passing style.
+axm %sflow.call: {T R: ★, path: %sflow.Path}
+  → [%sflow.Token path]
+  → [Fn [T, %sflow.Token %sflow.ROOT] → R]
+  → [Fn T → [R, %sflow.Token (%sflow.next path)]];
+
+/// Regular unconditional forward call. The path in the token type is used to
+/// ensure the target cannot be called from anywhere else as long as all control flow
+/// is structured.
+axm %sflow.branch: {T: ★, path: %sflow.Path}
+  → [%sflow.Token path]
+  → [Cn [T, %sflow.Token (%sflow.next path)]]
+  → Cn T;
+
 /// ## Phases
 ///
 axm %sflow.check_headers: %compile.Phase;
