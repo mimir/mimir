@@ -25,21 +25,28 @@ plugin core;
 ///
 /// Each header block must strictly structurally dominate its
 /// merge block.
-axm %sflow.Token: ★;
-axm %sflow.Key: ★;
-axm %sflow.gen: %sflow.Token → [%sflow.Token, %sflow.Key];
-///
-axm %sflow.Struct: {C B: ★} → [key: %sflow.Key] → [continue: Cn C] → [break: Cn B] → ★;
-let %sflow.Root: ★ = %sflow.Struct (⊥: %sflow.Key) (⊥: Cn ⊥) (⊥: Cn ⊥);
 
-axm %sflow.Header: {B: ★} → [H: ★] → [key: %sflow.Key] → [cert: %sflow.Key] → [break: Cn B] → ★;
+axm %sflow.Path: ★;
+axm %sflow.ROOT: %sflow.Path;
+axm %sflow.left: %sflow.Path → %sflow.Path;
+axm %sflow.right: %sflow.Path → %sflow.Path;
+axm %sflow.case: Nat → %sflow.Path → %sflow.Path;
+axm %sflow.default: %sflow.Path → %sflow.Path;
+
+axm %sflow.Token: %sflow.Path → ★;
+axm %sflow.Key: ★;
+axm %sflow.gen: {path: %sflow.Path} → [%sflow.Token path] → [%sflow.Token path, %sflow.Key];
+
+axm %sflow.Struct: {C B: ★} → [key: %sflow.Key] → [continue: Cn C] → [break: Cn B] → ★;
+axm %sflow.Header: {B: ★} → [H: ★] → [key: %sflow.Key] → [path: %sflow.Path] → [break: Cn B] → ★;
 
 /// Branch to the continue target of a given control flow structure.
 axm %sflow.continue: {
   C B H: ★,
-  key cert: %sflow.Key,
+  path: %sflow.Path,
+  key: %sflow.Key,
   break: Cn B,
-  continue: Cn [C, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) break, %sflow.Header H key cert break]
+  continue: Cn [C, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) break, %sflow.Header H key path break]
 } → [%sflow.Struct key continue break] → Cn C;
 ///
 /// Branch to the next case of a given switch structure.
@@ -57,10 +64,9 @@ axm %sflow.break: {
 } → [%sflow.Struct key continue break] → Cn B;
 ///
 /// Branch to the loop header from inside a continue target.
-axm %sflow.loopback: {H B: ★, key: %sflow.Key, break: Cn B}
-  → [token: %sflow.Token]
-  → let (token, cert) = %sflow.gen token;
-    [%sflow.Header H key cert break] → Cn H;
+axm %sflow.loopback: {H B: ★, path: %sflow.Path, key: %sflow.Key, break: Cn B}
+  → [token: %sflow.Token path]
+  → [%sflow.Header H key path break] → Cn H;
 
 /// ## Branching
 /// Represents a structured branch (if-else or switch-case)
@@ -68,11 +74,11 @@ axm %sflow.loopback: {H B: ★, key: %sflow.Key, break: Cn B}
 /// The header argument to any structure must always point to the lam containing it, otherwise
 /// the normalizer will throw an error.
 ///
-axm %sflow.if: {n: Nat} → {T B: ★}
-  → [token: %sflow.Token]
+axm %sflow.if: {n: Nat} → {T B: ★} → {path: %sflow.Path}
+  → [token: %sflow.Token path]
   → let (token, key) = %sflow.gen token;
-    [break: Cn [B, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [tuple: «2; Cn [T, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) break]»]
+    [break: Cn [B, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [tuple: «i: 2; Cn [T, %sflow.Token ((%sflow.left, %sflow.right)#i path), %sflow.Struct key (⊥: Cn ⊥) break]»]
   → [index: Idx 2]
   → Cn T, normalize_branch;
 
@@ -86,24 +92,32 @@ axm %sflow.if: {n: Nat} → {T B: ★}
 ///
 lam %sflow.Cases
   (T: ★, C: ★, B: ★, H: ★,
+   next_index: Nat,
+   path: %sflow.Path,
    key: %sflow.Key,
    continue: Cn C,
    break: Cn B,
    count: Nat,
-   next: Cn [T, %sflow.Token, %sflow.Struct key continue break])@(%core.pe.is_closed count)
+   next: Cn [T, %sflow.Token (%sflow.case next_index path), %sflow.Struct key continue break])@(%core.pe.is_closed count)
   : ★
-  = ([Nat, case: Cn [T, %sflow.Token, %sflow.Struct key next break], %sflow.Cases (T, [T, %sflow.Token, %sflow.Struct key continue break], B, H, key, next, break, %core.nat.sub (count, 1), case)], [])#(%core.ncmp.e (count, 0));
+  = ([
+      index: Nat,
+      case: Cn [T, %sflow.Token (%sflow.case index path), %sflow.Struct key next break],
+      %sflow.Cases (T, [T, %sflow.Token, %sflow.Struct key continue break],
+      B, H, index, path, key, next, break,
+      %core.nat.sub (count, 1), case)
+    ], [])#(%core.ncmp.e (count, 0));
 
 /// Represents a structured switch.
 ///
 /// Notice that the case functions are given in reverse order, as they
 /// have their fall-through (continue) target in their signature.
-axm %sflow.switch: {n: Nat} → {T B H: ★}
-  → [token: %sflow.Token]
+axm %sflow.switch: {n: Nat} → {T B H: ★} → {path: %sflow.Path}
+  → [token: %sflow.Token path]
   → let (token, key) = %sflow.gen token;
-    [break: Cn [B, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [default: Cn [T, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) break]]
-  → [targets: %sflow.Cases (T, ⊥, [B, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)], H, key, (⊥: Cn ⊥), break, n, default)]
+    [break: Cn [B, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [default: Cn [T, %sflow.Token (%sflow.default path), %sflow.Struct key (⊥: Cn ⊥) break]]
+  → [targets: %sflow.Cases (T, ⊥, [B, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)], H, path, key, (⊥: Cn ⊥), break, n, default)]
   → [index: Nat]
   → Cn T, normalize_switch;
 
@@ -114,24 +128,25 @@ axm %sflow.switch: {n: Nat} → {T B H: ★}
 /// so that the structural type of `%sflow.Struct` does not need to recursively
 /// mention the Header. This keeps the per-axiom type signatures shallow enough
 /// for bottom-up inference of unannotated block parameters.
-axm %sflow.loop: {C B H: ★, cert: %sflow.Key}
-  → [token: %sflow.Token]
+axm %sflow.loop: {C B H: ★} → {path loopback_path: %sflow.Path}
+  → [token: %sflow.Token path]
   → let (token, key) = %sflow.gen token;
-    [break: Cn [B, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [continue: Cn [C, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) break, %sflow.Header H key cert break]]
-  → [header: Cn [H, %sflow.Token, %sflow.Struct key continue break]]
+    [break: Cn [B, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [continue: Cn [C, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) break, %sflow.Header H key loopback_path break]]
+  → [header: Cn [H, %sflow.Token path, %sflow.Struct key continue break]]
   → Cn H;
 ///
 /// This is used by the loop header to call into its body. The body branches
 /// receive the Header as their fourth parameter so they can `%sflow.continue`
 /// (which constructs the tuple required by the continue block).
 axm %sflow.header: {C B T H: ★}
-  → {key cert: %sflow.Key}
-  → {break: Cn [B, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]}
-  → {continue: Cn [C, %sflow.Token, %sflow.Struct key (⊥: Cn ⊥) break, %sflow.Header H key cert break]}
-  → [token: %sflow.Token]
+  → {path loopback_path: %sflow.Path}
+  → {key: %sflow.Key}
+  → {break: Cn [B, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) (⊥: Cn ⊥)]}
+  → {continue: Cn [C, %sflow.Token path, %sflow.Struct key (⊥: Cn ⊥) break, %sflow.Header H key loopback_path break]}
+  → [token: %sflow.Token path]
   → [%sflow.Struct key continue break]
-  → [tuple: «2; Cn [T, %sflow.Token, %sflow.Struct key continue break]»]
+  → [tuple: «i: 2; Cn [T, %sflow.Token ((%sflow.left, %sflow.right)#i path), %sflow.Struct key continue break]»]
   → [index: Bool]
   → Cn T;
 
