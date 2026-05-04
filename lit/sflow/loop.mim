@@ -1,6 +1,6 @@
 plugin sflow;
 
-fun extern foo (token: %sflow.Token) = %sflow.loop token break continue loop 5 where
+fun extern foo (token: %sflow.Token %sflow.ROOT) = %sflow.loop token break continue loop 5 where
     con loop (i: Nat, token, struct) =
         %sflow.header token struct (left, right) (%core.ncmp.e (i, 0)) () where
         con left (_: [], _, struct) = %sflow.continue struct i;

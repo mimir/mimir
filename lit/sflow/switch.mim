@@ -1,9 +1,9 @@
 plugin sflow;
 
-fun extern foo () = %sflow.switch @3 foo exit default (0, case0, (1, case1, (2, case2, ()))) 1 () where
-  con case2 (_, struct) = %sflow.break struct 2;
-  con case1 (_, struct) = %sflow.break struct 1;
-  con case0 (_, struct) = %sflow.break struct 0;
-  con default (_, struct) = %sflow.break struct 4;
-  con exit (x: Nat, struct) = return x;
+fun extern foo (token: %sflow.Token %sflow.ROOT) = %sflow.switch @3 token exit default (0, case0, (1, case1, (2, case2, ()))) 1 () where
+  con case2 (_, _, struct) = %sflow.break struct 2;
+  con case1 (_, _, struct) = %sflow.break struct 1;
+  con case0 (_, _, struct) = %sflow.break struct 0;
+  con default (_, _, struct) = %sflow.break struct 4;
+  con exit (x: Nat, _, struct) = return x;
 end;
