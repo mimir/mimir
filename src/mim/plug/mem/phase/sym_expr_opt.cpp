@@ -265,6 +265,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         lattice_[lam->var()] = abstr_var;
 
         if (!lookup(lam)) {
+            auto _ = enter(lam);
             // DLOG("entering {}", lam);
             for (auto d : lam->deps())
                 rewrite(d);

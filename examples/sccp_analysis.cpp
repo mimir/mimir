@@ -36,9 +36,11 @@ const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
         map(lam->var(), abstr_var);
         lattice_[lam->var()] = abstr_var;
 
-        if (!lookup(lam))
+        if (!lookup(lam)) {
+            auto _ = enter(lam);
             for (auto d : lam->deps())
                 rewrite(d);
+        }
 
         return world().app(lam, abstr_args);
     }

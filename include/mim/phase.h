@@ -116,13 +116,37 @@ public:
     ///@}
 
 protected:
+    /// Helps to keep track of curr_mut():
+    /// ```
+    /// {
+    ///     auto _ = enter(new_mut);
+    ///     // rewrite new_mut
+    /// }
+    /// ```
+    class Enter {
+    public:
+        Enter(Analysis* analysis, Def* new_mut)
+            : analysis_(analysis)
+            , prev_mut_(analysis->curr_mut()) {
+            analysis->curr_mut_ = new_mut;
+        }
+        ~Enter() { analysis_->curr_mut_ = prev_mut_; }
+
+    private:
+        Analysis* analysis_;
+        Def* prev_mut_;
+    };
+
     void start() override;
+    Enter enter(Def* new_mut) { return {this, new_mut}; }
 
     Def2Def lattice_;
-    Def* curr_mut_ = nullptr;
 
 private:
+    Def* curr_mut_      = nullptr;
     bool bootstrapping_ = true;
+
+    friend class Enter;
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
