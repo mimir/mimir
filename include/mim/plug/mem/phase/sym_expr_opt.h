@@ -45,7 +45,6 @@ private:
         const Def* rewrite_imm_App(const App*) final;
         Def* rewrite_mut(Def*) final;
 
-        DefVec mut_stack_;
         DefMap<Def2Def> current_slot_values_;
         Def2Def all_slots_;
     };

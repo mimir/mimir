@@ -25,29 +25,6 @@ const Def* isa_slot_proxy(const Def* def) {
     return nullptr;
 }
 
-Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
-    mut_stack_.push_back(mut);
-    // DLOG("entering {}", mut);
-    map(mut, mut);
-
-    if (auto var = mut->has_var()) {
-        map(var, var);
-
-        if (mut->isa<Lam>())
-            for (auto var : mut->tvars()) {
-                map(var, var);
-                lattice_[var] = var;
-            }
-    }
-
-    for (auto d : mut->deps())
-        rewrite(d);
-
-    mut_stack_.pop_back();
-    // DLOG("leaving {}", mut);
-    return mut;
-}
-
 const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
     auto [i, ins] = lattice_.emplace(var, def);
@@ -69,21 +46,21 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 static nat_t get_index(const Def* def) { return Lit::as(def->as<Extract>()->index()); }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
-    DLOG("imm_app of {}, currently in {}", app->callee(), mut_stack_.empty() ? nullptr : mut_stack_.back());
+    DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
     if (auto store = Axm::isa<mem::store>(app)) {
-        auto [mem, ptr, val]                               = store->args<3>();
-        auto abstr_mem                                     = rewrite(mem);
-        auto abstr_ptr                                     = rewrite(ptr);
-        auto abstr_val                                     = rewrite(val);
-        current_slot_values_[mut_stack_.back()][abstr_ptr] = abstr_val;
-        DLOG("in {}, found a store: {} <- {}", mut_stack_.back(), ptr, val);
+        auto [mem, ptr, val]                        = store->args<3>();
+        auto abstr_mem                              = rewrite(mem);
+        auto abstr_ptr                              = rewrite(ptr);
+        auto abstr_val                              = rewrite(val);
+        current_slot_values_[curr_mut()][abstr_ptr] = abstr_val;
+        DLOG("in {}, found a store: {} <- {}", curr_mut(), ptr, val);
         return store; // TODO: not sure if we don't need to rewrite something here
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [mem, ptr] = load->args<2>();
         auto abstr_mem  = rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
-        DLOG("in {}, found a load from {}", mut_stack_.back(), abstr_ptr);
-        if (auto known_value = current_slot_values_[mut_stack_.back()][abstr_ptr]) {
+        DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
+        if (auto known_value = current_slot_values_[curr_mut()][abstr_ptr]) {
             DLOG("we know that it's {}", known_value);
             return load; // TODO: not sure if we don't need to rewrite something here
         }
@@ -95,7 +72,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem                     = rewrite(mem);
         auto abstr_id                      = rewrite(id);
         all_slots_[ptr]                    = pointee_type;
-        DLOG("in {}, found declaration for slot {}", mut_stack_.back(), ptr);
+        DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
         return slot; // TODO: not sure if we don't need to rewrite something here
     } else if (auto branch = Branch(app)) {
         auto abstr = branch.cond(); // TODO: probably need to do something with this?
@@ -104,7 +81,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         if (!l || *l)
             if (auto lam = branch.tt()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
-                for (auto [slot, value] : current_slot_values_[mut_stack_.back()]) {
+                for (auto [slot, value] : current_slot_values_[curr_mut()]) {
                     DLOG("{}", slot);
                     current_slot_values_[lam][slot] = value;
                 }
@@ -112,7 +89,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         if (!l || !*l)
             if (auto lam = branch.ff()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
-                for (auto [slot, value] : current_slot_values_[mut_stack_.back()]) {
+                for (auto [slot, value] : current_slot_values_[curr_mut()]) {
                     DLOG("{}", slot);
                     current_slot_values_[lam][slot] = value;
                 }
@@ -144,14 +121,14 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 if (auto continuation = arg->isa_mut<Lam>(); isa_optimizable(continuation)) {
                     // The unknown function may call this as a continuation. In that case, the slot
                     // values are the same as for the current function.
-                    for (auto [slot, current_value] : current_slot_values_[mut_stack_.back()])
+                    for (auto [slot, current_value] : current_slot_values_[curr_mut()])
                         current_slot_values_[continuation][slot] = current_value;
 
                     // Except for those slots that are also passed to the unknown function. We don't
                     // know what it does to those, so we set them to top.
                     for (auto arg : abstr_args) {
-                        if (auto i = current_slot_values_[mut_stack_.back()].find(arg);
-                            i != current_slot_values_[mut_stack_.back()].end()) {
+                        if (auto i = current_slot_values_[curr_mut()].find(arg);
+                            i != current_slot_values_[curr_mut()].end()) {
                             DLOG("{} passed as continuation, and {} escapes, setting to top", continuation, arg);
                             current_slot_values_[continuation][arg] = arg;
                         }
@@ -188,7 +165,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             DLOG("{}", slot);
 
         for (auto [slot, slot_type] : all_slots_) {
-            if (auto local_value = current_slot_values_[mut_stack_.back()][slot]) {
+            if (auto local_value = current_slot_values_[curr_mut()][slot]) {
                 DLOG("propagating local value: {} -> {}", slot, local_value);
                 auto proxy = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
                 propagate(proxy, local_value);
@@ -197,7 +174,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 // because of eta expansion?
                 DLOG("propagating value from parameters");
                 auto lam_proxy    = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
-                auto lookup_proxy = world().proxy(slot_type, {mut_stack_.back(), slot}, 0, Proxy_Slot);
+                auto lookup_proxy = world().proxy(slot_type, {curr_mut(), slot}, 0, Proxy_Slot);
                 if (auto i = lattice_.find(lookup_proxy); i != lattice_.end()) {
                     propagate(lam_proxy, i->second);
                 } else {
@@ -289,11 +266,9 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
         if (!lookup(lam)) {
             // DLOG("entering {}", lam);
-            mut_stack_.push_back(lam);
             for (auto d : lam->deps())
                 rewrite(d);
             // DLOG("leaving {}", lam);
-            mut_stack_.pop_back();
         }
 
         return world().app(lam, abstr_args);

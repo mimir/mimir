@@ -40,6 +40,8 @@ void Analysis::rewrite_annex(flags_t, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
 Def* Analysis::rewrite_mut(Def* mut) {
+    auto prev_mut = curr_mut_;
+    curr_mut_     = mut;
     map(mut, mut);
 
     if (auto var = mut->has_var()) {
@@ -55,6 +57,7 @@ Def* Analysis::rewrite_mut(Def* mut) {
     for (auto d : mut->deps())
         rewrite(d);
 
+    curr_mut_ = prev_mut;
     return mut;
 }
 

@@ -99,6 +99,7 @@ public:
     ///@{
     auto& lattice() { return lattice_; }
     const auto& lattice() const { return lattice_; }
+    Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -118,6 +119,7 @@ protected:
     void start() override;
 
     Def2Def lattice_;
+    Def* curr_mut_ = nullptr;
 
 private:
     bool bootstrapping_ = true;
