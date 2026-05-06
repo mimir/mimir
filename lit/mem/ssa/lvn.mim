@@ -20,4 +20,8 @@ lam extern _compile(): %compile.Phase =
         ),
         %compile.eta_exp_phase,
         %mem.sym_expr_opt,
+        %compile.repl2phase %mem.remem_repl,
+        %compile.repl2phase %mem.alloc2malloc_repl,
     );
+
+// CHECK: test1
