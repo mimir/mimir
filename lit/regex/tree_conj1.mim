@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - -P %S | FileCheck %s
+// RUN: %mim %s -o - -P %S | %FileCheck %s
 
 import mem;
 plugin regex;
@@ -7,7 +7,7 @@ import dont_compile.mim;
 
 let Top = ⊤:Nat;
 
-con extern normalize_conj(mem: %mem.M 0, string: %mem.Ptr (<<Top; I8>>, 0), return: Cn [mem: %mem.M 0, matched: Bool, pos: I32]) =
+con extern normalize_conj(mem: %mem.M 0, string: %mem.Ptr («Top; I8», 0), return: Cn [mem: %mem.M 0, matched: Bool, pos: I32]) =
     let pattern = %regex.conj ‹4; %regex.cls.d›;
     return (pattern (mem, string, 0I32));
     // CHECK: %regex.conj 2 (%regex.conj 2 (%regex.conj 2 ‹2; %regex.range (48I8, 57I8)›, %regex.range (48I8, 57I8)), %regex.range (48I8, 57I8))

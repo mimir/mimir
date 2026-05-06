@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o - | FileCheck %s
+// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
 // RUN: clang -c %t.ll -o %t -Wno-override-module
 
 plugin core;
@@ -7,4 +7,4 @@ plugin core;
 con extern bitcast_bitcast(i : %mem.Ptr (I8, 0), return: Cn I32) =
     return (%core.bitcast I32 (%core.bitcast Nat i));
 
-// CHECK-DAG: %core.bitcast %mem.Ptr (I8, 0) I32 i
+// CHECK-DAG: %core.bitcast (%mem.Ptr (I8, 0)) I32 i

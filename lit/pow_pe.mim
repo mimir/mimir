@@ -4,5 +4,5 @@ plugin core;
 lam pow(a b: Nat)@(%core.pe.is_closed b): Nat =
     (%core.nat.mul (a, pow(a, %core.nat.sub (b, 1))), 1)#(%core.ncmp.e (b, 0));
 
-lam f(n: Nat, x: <<%core.nat.mul (n, %core.nat.mul (n, n)); Nat>>): [] = ();
-lam g(m: Nat, y: <<pow (m, 3); Nat>>): [] = f (m, y);
+lam f(n: Nat, x: «%core.nat.mul (n, %core.nat.mul (n, n)); Nat»): [] = ();
+lam g(m: Nat, y: «pow (m, 3); Nat»): [] = f (m, y);

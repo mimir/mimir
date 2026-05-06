@@ -1,29 +1,28 @@
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim %s -o - | %FileCheck %s
 
 plugin math;
 
-// CHECK-DAG: extern foo {{.*}}, return_[[FOO_RET:[0-9_]+]]
+// CHECK-DAG: fun extern foo (f_{{[0-9]+}}: %math.F (23, 8)): %math.F (23, 8) =
 // CHECK-DAG: let _[[FOO_VAL:[0-9]+]]: {{.*}} = %math.arith.sub (23, 8) 127 (0:(%math.F (23, 8)), f_{{[0-9]+}})
-// CHECK-DAG: return_[[FOO_RET]] _[[FOO_VAL]]
+// CHECK-DAG: return_{{[0-9_]+}} _[[FOO_VAL]]
 con extern foo(f: %math.F32, return: Cn %math.F32) = return (%math.minus 127 f);
 
-// CHECK-DAG: extern sub0 {{.*}}, return_[[SUB0_RET:[0-9_]+]]
-// CHECK-DAG: return_[[SUB0_RET]] f_{{[0-9]+}}
+// CHECK-DAG: fun extern sub0 (f_{{[0-9]+}}: %math.F (23, 8)): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} f_{{[0-9]+}}
 con extern sub0(f: %math.F32, return: Cn %math.F32) = return (%math.arith.sub 127 (f, 0:(%math.F32)));
 
-// CHECK-DAG: extern add0 {{.*}}, return_[[ADD0_RET:[0-9_]+]]
-// CHECK-DAG: return_[[ADD0_RET]] f_{{[0-9]+}}
+// CHECK-DAG: fun extern add0 (f_{{[0-9]+}}: %math.F (23, 8)): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} f_{{[0-9]+}}
 con extern add0(f: %math.F32, return: Cn %math.F32) = return (%math.arith.add 127 (f, 0:(%math.F32)));
 
-// CHECK-DAG: extern add0f {{.*}}, return_[[ADD0F_RET:[0-9_]+]]
-// CHECK-DAG: return_[[ADD0F_RET]] f_{{[0-9]+}}
+// CHECK-DAG: fun extern add0f (f_{{[0-9]+}}: %math.F (23, 8)): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} f_{{[0-9]+}}
 con extern add0f(f: %math.F32, return: Cn %math.F32) = return (%math.arith.add 127 (0:(%math.F32), f));
 
-// CHECK-DAG: extern mul0 {{.*}}, return_[[MUL0_RET:[0-9_]+]]
-// CHECK-DAG: return_[[MUL0_RET]] 0:(%math.F (23, 8))
+// CHECK-DAG: fun extern mul0 (_: %math.F (23, 8)): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} 0:(%math.F (23, 8))
 con extern mul0(f: %math.F32, return: Cn %math.F32) = return (%math.arith.mul 127 (f, 0:(%math.F32)));
 
-// CHECK-DAG: extern mul0f {{.*}}, return_[[MUL0F_RET:[0-9_]+]]
-// CHECK-DAG: return_[[MUL0F_RET]] 0:(%math.F (23, 8))
+// CHECK-DAG: fun extern mul0f (_: %math.F (23, 8)): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} 0:(%math.F (23, 8))
 con extern mul0f(f: %math.F32, return: Cn %math.F32) = return (%math.arith.mul 127 (0:(%math.F32), f));
-

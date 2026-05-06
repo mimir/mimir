@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim %s -o - | %FileCheck %s
 plugin core;
 
 lam f (x1 x2 x3: Nat)@ff: Nat = %core.nat.add (x1, %core.nat.add (x2, x3));
@@ -15,6 +15,6 @@ lam extern _compile(): %compile.Phase =
         %mem.sym_expr_opt,
     );
 
-// CHECK: lam extern lf [[A:[[:alnum:]_]+]]:
-// CHECK: lam f_{{[0-9]+}} [[X:[[:alnum:]_]+]]
-// CHECK: %core.nat.add ([[A]], [[X]])
+// CHECK: lam extern lf ({{[[:alnum:]_]+}}: Nat): Nat =
+// CHECK: lam f_{{[0-9]+}} ({{[[:alnum:]_]+}}: Nat): Nat =
+// CHECK: %core.nat.add ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}})

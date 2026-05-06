@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll %t.ll -o - | FileCheck %s
+// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
 plugin core;
 
 lam is_even(i: Nat): Bool = (is_odd (%core.nat.sub (i, 1)), tt)#(%core.ncmp.e (i, 0))

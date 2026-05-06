@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - -P %S | FileCheck %s
+// RUN: %mim %s -o - -P %S | %FileCheck %s
 
 import mem;
 plugin regex;
@@ -7,7 +7,7 @@ import dont_compile.mim;
 
 let Top = ⊤:Nat;
 
-con extern disj(mem: %mem.M 0, string: %mem.Ptr (<<Top; I8>>, 0), return: Cn [%mem.M 0, Bool, I32]) =
+con extern disj(mem: %mem.M 0, string: %mem.Ptr («Top; I8», 0), return: Cn [%mem.M 0, Bool, I32]) =
     let pattern = %regex.disj (%regex.lit 49I8, %regex.lit 48I8, %regex.lit 50I8, %regex.lit 51I8, %regex.lit 52I8, %regex.lit 53I8, %regex.lit 54I8, %regex.lit 55I8, %regex.lit 56I8, %regex.lit 57I8,
                     %regex.lit 65I8, %regex.lit 66I8, %regex.lit 67I8, %regex.lit 68I8, %regex.lit 69I8, %regex.lit 70I8, %regex.lit 71I8, %regex.lit 72I8, %regex.lit 73I8, %regex.lit 74I8, %regex.lit 75I8, %regex.lit 76I8, %regex.lit 77I8, %regex.lit 78I8, %regex.lit 79I8, %regex.lit 80I8, %regex.lit 81I8, %regex.lit 82I8, %regex.lit 83I8, %regex.lit 84I8, %regex.lit 85I8, %regex.lit 86I8, %regex.lit 87I8, %regex.lit 88I8, %regex.lit 89I8, %regex.lit 90I8,
                     %regex.lit 95I8,

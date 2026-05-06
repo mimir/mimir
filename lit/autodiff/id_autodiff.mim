@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim -p direct %s --output-ll %t.ll -o - | FileCheck %s
+// RUN: %mim -p direct %s --output-ll %t.ll -o - | %FileCheck %s
 
 plugin autodiff;
 

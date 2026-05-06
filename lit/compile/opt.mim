@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o - | FileCheck %s
+// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
 
 import mem;
 import core;

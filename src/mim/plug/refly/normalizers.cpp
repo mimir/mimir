@@ -1,4 +1,4 @@
-#include <rang.hpp>
+#include <fe/term.h>
 
 #include <mim/tuple.h>
 #include <mim/world.h>
@@ -25,9 +25,12 @@ const Def* do_reflect(const Def* def) { return reinterpret_cast<const Def*>(def-
 void debug_print(const Def* lvl, const Def* def) {
     auto& world = def->world();
     auto level  = Log::Level::Debug;
-    if (auto l = Lit::isa(lvl))
-        level = (nat_t)Log::Level::Error <= *l && *l <= (nat_t)Log::Level::Debug ? (Log::Level)*l : Log::Level::Debug;
-    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", rang::fg::yellow, def, rang::fg::reset);
+    if (auto l = Lit::isa(lvl)) {
+        level = std::to_underlying(Log::Level::Error) <= int(*l) && int(*l) <= std::to_underlying(Log::Level::Debug)
+                  ? static_cast<Log::Level>(*l)
+                  : Log::Level::Debug;
+    }
+    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
     world.log().log(level, def->loc(), "def : {}", def);
     world.log().log(level, def->loc(), "id  : {}", def->unique_name());
     world.log().log(level, def->type()->loc(), "type: {}", def->type());

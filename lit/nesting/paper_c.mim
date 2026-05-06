@@ -1,5 +1,5 @@
 // RUN: %mim %s --output-nest %t.dot
-// RUN: FileCheck %s < %t.dot
+// RUN: %FileCheck %s < %t.dot
 
 import core;
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <optional>
 #include <span>
 
@@ -15,47 +16,47 @@
 #include "mim/util/vector.h"
 
 // clang-format off
-#define MIM_NODE(m)                                                                                                \
-    m(Lit,    Judge::Intro) /* keep this first - causes Lit to appear left in Def::less/Def::greater*/             \
-    m(Axm,    Judge::Intro)                                                                                        \
-    m(Var,    Judge::Intro)                                                                                        \
-    m(Global, Judge::Intro)                                                                                        \
-    m(Proxy,  Judge::Intro)                                                                                        \
-    m(Hole,   Judge::Hole )                                                                                        \
-    m(Type,   Judge::Meta ) m(Univ,  Judge::Meta ) m(UMax,    Judge::Meta) m(UInc,   (Judge::Meta               )) \
-    m(Pi,     Judge::Form ) m(Lam,   Judge::Intro) m(App,     Judge::Elim)                                         \
-    m(Sigma,  Judge::Form ) m(Tuple, Judge::Intro) m(Extract, Judge::Elim) m(Insert, (Judge::Intro | Judge::Elim)) \
-    m(Arr,    Judge::Form ) m(Pack,  Judge::Intro)                                                                 \
-    m(Join,   Judge::Form ) m(Inj,   Judge::Intro) m(Match,   Judge::Elim) m(Top,    (Judge::Intro              )) \
-    m(Meet,   Judge::Form ) m(Merge, Judge::Intro) m(Split,   Judge::Elim) m(Bot,    (Judge::Intro              )) \
-    m(Reform, Judge::Form ) m(Rule,  Judge::Intro)                                                                 \
-    m(Uniq,   Judge::Form )                                                                                        \
-    m(Nat,    Judge::Form )                                                                                        \
-    m(Idx,    Judge::Intro)
+#define MIM_NODE(X)                                                                                                \
+    X(Lit,    Judge::Intro) /* keep this first - causes Lit to appear left in Def::less/Def::greater*/             \
+    X(Axm,    Judge::Intro)                                                                                        \
+    X(Var,    Judge::Intro)                                                                                        \
+    X(Global, Judge::Intro)                                                                                        \
+    X(Proxy,  Judge::Intro)                                                                                        \
+    X(Hole,   Judge::Hole )                                                                                        \
+    X(Type,   Judge::Meta ) X(Univ,  Judge::Meta ) X(UMax,    Judge::Meta) X(UInc,   (Judge::Meta               )) \
+    X(Pi,     Judge::Form ) X(Lam,   Judge::Intro) X(App,     Judge::Elim)                                         \
+    X(Sigma,  Judge::Form ) X(Tuple, Judge::Intro) X(Extract, Judge::Elim) X(Insert, (Judge::Intro | Judge::Elim)) \
+    X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
+    X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim) X(Top,    (Judge::Intro              )) \
+    X(Meet,   Judge::Form ) X(Merge, Judge::Intro) X(Split,   Judge::Elim) X(Bot,    (Judge::Intro              )) \
+    X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
+    X(Uniq,   Judge::Form )                                                                                        \
+    X(Nat,    Judge::Form )                                                                                        \
+    X(Idx,    Judge::Intro)
 
-#define MIM_IMM_NODE(m)                                                                                            \
-    m(Lit)                                                                                                         \
-    m(Axm)                                                                                                         \
-    m(Var)                                                                                                         \
-    m(Proxy)                                                                                                       \
-    m(Type)  m(Univ)  m(UMax)    m(UInc)                                                                           \
-    m(Pi)    m(Lam)   m(App)                                                                                       \
-    m(Sigma) m(Tuple) m(Extract) m(Insert)                                                                         \
-    m(Arr)   m(Pack)                                                                                               \
-    m(Join)  m(Inj)   m(Match)   m(Top)                                                                            \
-    m(Meet)  m(Merge) m(Split)   m(Bot)                                                                            \
-    m(Rule)                                                                                                        \
-    m(Uniq)                                                                                                        \
-    m(Nat)                                                                                                         \
-    m(Idx)
+#define MIM_IMM_NODE(X)                                                                                            \
+    X(Lit)                                                                                                         \
+    X(Axm)                                                                                                         \
+    X(Var)                                                                                                         \
+    X(Proxy)                                                                                                       \
+    X(Type)   X(Univ)  X(UMax)    X(UInc)                                                                          \
+    X(Pi)     X(Lam)   X(App)                                                                                      \
+    X(Sigma)  X(Tuple) X(Extract) X(Insert)                                                                        \
+    X(Arr)    X(Pack)                                                                                              \
+    X(Join)   X(Inj)   X(Match)   X(Top)                                                                           \
+    X(Meet)   X(Merge) X(Split)   X(Bot)                                                                           \
+    X(Reform) X(Rule)                                                                                              \
+    X(Uniq)                                                                                                        \
+    X(Nat)                                                                                                         \
+    X(Idx)
 
-#define MIM_MUT_NODE(m)                                                                                            \
-    m(Global)                                                                                                      \
-    m(Hole)                                                                                                        \
-    m(Pi)    m(Lam)                                                                                                \
-    m(Sigma)                                                                                                       \
-    m(Arr)   m(Pack)                                                                                               \
-    m(Rule)
+#define MIM_MUT_NODE(X)                                                                                            \
+    X(Global)                                                                                                      \
+    X(Hole)                                                                                                        \
+    X(Pi)    X(Lam)                                                                                                \
+    X(Sigma)                                                                                                       \
+    X(Arr)   X(Pack)                                                                                               \
+    X(Rule)
 // clang-format on
 
 namespace mim {
@@ -427,18 +428,25 @@ public:
     /// @see @ref proj
     ///@{
     MIM_PROJ(var, )
-    /// Not necessarily a Var: E.g., if the return type is `[]`, this will yield `()`.
-    const Def* var();
-    /// Only returns not `nullptr`, if Var of this mutable has ever been created.
-    const Var* has_var() { return var_; }
+    const Def* var();      ///< Not necessarily a Var: E.g., if the return type is `[]`, this will yield `()`.
+    const Def* var_type(); ///< If `this` is a binder, compute the type of its Var%iable.
+
+    const Var* has_var() { return var_; } ///< Only returns not `nullptr`, if Var of this mutable has ever been created.
     /// As above if `this` is a *mutable*.
     const Var* has_var() const {
         if (auto mut = isa_mut()) return mut->has_var();
         return nullptr;
     }
 
-    /// If `this` is a binder, compute the type of its Var%iable.
-    const Def* var_type();
+    /// Is `this` a mutable that introduces a Var?
+    /// @returns `{nullptr, nullptr}` otherwise.
+    template<class D = Def>
+    std::pair<D*, const Var*> isa_binder() const {
+        if (auto mut = isa_mut<D>()) {
+            if (auto var = mut->has_var()) return {mut, var};
+        }
+        return {nullptr, nullptr};
+    }
     ///@}
 
     /// @name Free Vars and Muts
@@ -460,6 +468,10 @@ public:
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
     bool is_open() const;          ///< Has free_vars()?
     bool is_closed() const;        ///< Has no free_vars()?
+
+    /// Transitively walks up free_vars() till the outermoust binder has been found.
+    /// @returns `nullptr`, if is_closed() and not a mutable.
+    Def* outermost_binder() const;
     ///@}
 
     /// @name external
@@ -578,7 +590,7 @@ public:
     /// This is the actual `def` that will be set as the `i`th operand.
     virtual const Def* check([[maybe_unused]] size_t i, const Def* def) { return def; }
 
-    /// After all Def::ops have ben Def::set, this method will be invoked to check the type of this mutable.
+    /// After all Def::ops have been Def::set, this method will be invoked to check the type of this mutable.
     /// The method returns a possibly updated version of its type (e.g. where Hole%s have been resolved).
     /// If different from Def::type, it will update its Def::type to a Def::zonk%ed version of that.
     virtual const Def* check() { return type(); }
@@ -592,14 +604,16 @@ public:
     /// @see https://stackoverflow.com/questions/31889048/what-does-the-ghc-source-mean-by-zonk
     const Def* zonk() const;
 
-    /// If *mutable, zonk%s all ops and tries to immutabilize it; otherwise just zonk.
+    /// If *mutable*, zonk()%s all ops and tries to immutabilize it; otherwise just zonk.
     const Def* zonk_mut() const;
     ///@}
 
-    /// zonk%s all @p defs and retuns a new DefVec.
+    /// zonk%s all @p defs and returns a new DefVec.
     static DefVec zonk(Defs defs);
 
     /// @name dump
+    /// @note While this output uses Mim syntax, it does usually **not** produce programs that can be read back.
+    /// It uses an unscheduled visiting algorithm, and is only meant for debugging purposes.
     ///@{
     void dump() const;
     void dump(int max) const;
@@ -616,18 +630,21 @@ public:
         E, ///< Equal
         U, ///< Unknown
     };
+    /// @name Syntactic Comparison
+    ///@{
     [[nodiscard]] static Cmp cmp(const Def* a, const Def* b);
     [[nodiscard]] static bool less(const Def* a, const Def* b);
     [[nodiscard]] static bool greater(const Def* a, const Def* b);
+    ///@}
 
     /// @name dot
-    /// Dumps DOT to @p os while obeying maximum recursion depth of @p max.
-    /// If @p types is `true`, Def::type() dependencies will be followed as well.
+    /// Streams dot to @p os while obeying maximum recursion depth of @p max.
+    /// if @p types is `true`, Def::type() dependencies will be followed as well.
     ///@{
-    void dot(std::ostream& os, uint32_t max = 0xFFFFFF, bool types = false) const;
+    void dot(std::ostream& os, int max = std::numeric_limits<int>::max(), bool types = false) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, uint32_t max = 0xFFFFFF, bool types = false) const;
-    void dot(const std::string& file, uint32_t max = 0xFFFFFF, bool types = false) const {
+    void dot(const char* file = nullptr, int max = std::numeric_limits<int>::max(), bool types = false) const;
+    void dot(const std::string& file, int max = std::numeric_limits<int>::max(), bool types = false) const {
         return dot(file.c_str(), max, types);
     }
     ///@}

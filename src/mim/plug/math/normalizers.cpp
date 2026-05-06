@@ -30,7 +30,7 @@ Res fold(u64 a) {
         if constexpr (false) {}
         else if constexpr (id == rt::sq) return std::sqrt(x);
         else if constexpr (id == rt::cb) return std::cbrt(x);
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else if constexpr (std::is_same_v<Id, exp>) {
         if constexpr (false) {}
         else if constexpr (id == exp::exp  ) return std::exp  (x);
@@ -44,21 +44,21 @@ Res fold(u64 a) {
         if constexpr (false) {}
         else if constexpr (id == er::f ) return std::erf (x);
         else if constexpr (id == er::fc) return std::erfc(x);
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else if constexpr (std::is_same_v<Id, gamma>) {
         if constexpr (false) {}
         else if constexpr (id == gamma::t) return std::tgamma(x);
         else if constexpr (id == gamma::l) return std::lgamma(x);
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else if constexpr (std::is_same_v<Id, round>) {
         if constexpr (false) {}
         else if constexpr (id == round::f) return  std::floor (x);
         else if constexpr (id == round::c) return  std::ceil (x);
         else if constexpr (id == round::r) return  std::round (x);
         else if constexpr (id == round::t) return  std::trunc (x);
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else {
-        []<bool flag = false>() { static_assert(flag, "missing tag"); }();
+        static_assert(false, "missing tag");
     }
 }
 
@@ -66,11 +66,10 @@ template<class Id, nat_t w>
 Res fold(u64 a) {
     using T = w2f<w>;
     auto x = bitcast<T>(a);
-    if constexpr (std::is_same_v<Id, abs>) {
+    if constexpr (std::is_same_v<Id, abs>)
         return std::abs(x);
-    } else {
-        []<bool flag = false>() { static_assert(flag, "missing tag"); }();
-    }
+    else
+        static_assert(false, "missing tag");
 }
 
 template<class Id>
@@ -84,12 +83,12 @@ const Def* fold(World& world, const Def* type, const Def* a) {
         switch (width) {
 #define CODE(i) \
     case i: res = fold<Id, i>(la->get()); break;
-            MIM_16_32_64(CODE)
+            MIM_F16_32_64(CODE)
 #undef CODE
-            default: fe::unreachable();
+            default: return nullptr;
         }
 
-        return world.lit(type, *res);
+        return res ? world.lit(type, *res) : nullptr;
     }
 
     return nullptr;
@@ -106,7 +105,7 @@ Res fold(u64 a, u64 b) {
         else if constexpr (id == arith::mul) return     x * y;
         else if constexpr (id == arith::div) return     x / y;
         else if constexpr (id == arith::rem) return rem(x,  y);
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else if constexpr (std::is_same_v<Id, math::extrema>) {
         if (x == T(-0.0) && y == T(+0.0)) return (id == extrema::fmin || id == extrema::ieee754min) ? x : y;
         if (x == T(+0.0) && y == T(-0.0)) return (id == extrema::fmin || id == extrema::ieee754min) ? y : x;
@@ -118,7 +117,7 @@ Res fold(u64 a, u64 b) {
             if (std::isnan(y)) return y;
             return id == extrema::ieee754min ? std::fmin(x, y) : std::fmax(x, y);
         } else {
-            []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+            static_assert(false, "missing sub tag");
         }
     } else if constexpr (std::is_same_v<Id, pow>) {
         return std::pow(a, b);
@@ -131,7 +130,7 @@ Res fold(u64 a, u64 b) {
         res |= ((id & cmp::e) != cmp::f) && x == y;
         return res;
     } else {
-        []<bool flag = false>() { static_assert(flag, "missing tag"); }();
+        static_assert(false, "missing tag");
     }
 }
 // clang-format on
@@ -146,12 +145,12 @@ const Def* fold(World& world, const Def* type, const Def* a) {
         switch (width) {
 #define CODE(i) \
     case i: res = fold<Id, id, i>(*la); break;
-            MIM_16_32_64(CODE)
+            MIM_F16_32_64(CODE)
 #undef CODE
-            default: fe::unreachable();
+            default: return nullptr;
         }
 
-        return world.lit(type, *res);
+        return res ? world.lit(type, *res) : nullptr;
     }
 
     return nullptr;
@@ -169,12 +168,12 @@ const Def* fold(World& world, const Def* type, const Def*& a, const Def*& b) {
             switch (width) {
 #define CODE(i) \
     case i: res = fold<Id, id, i>(*la, *lb); break;
-                MIM_16_32_64(CODE)
+                MIM_F16_32_64(CODE)
 #undef CODE
-                default: fe::unreachable();
+                default: return nullptr;
             }
 
-            return world.lit(type, *res);
+            return res ? world.lit(type, *res) : nullptr;
         }
     }
 
@@ -206,7 +205,7 @@ const Def* reassociate(Id id, World& world, [[maybe_unused]] const App* ab, cons
     auto lz     = Lit::isa(z);
 
     // build mode for all new ops by using the least upper bound of all involved apps
-    auto mode       = (nat_t)Mode::bot;
+    auto mode       = std::to_underlying(Mode::bot);
     auto check_mode = [&](const App* app) {
         auto app_m = Lit::isa(app->arg(0));
         if (!app_m || !(*app_m & Mode::reassoc)) return false;
@@ -231,7 +230,10 @@ template<class Id, Id id, nat_t sw, nat_t dw>
 Res fold(u64 a) {
     using S = std::conditional_t<id == conv::s2f, w2s<sw>, std::conditional_t<id == conv::u2f, w2u<sw>, w2f<sw>>>;
     using D = std::conditional_t<id == conv::f2s, w2s<dw>, std::conditional_t<id == conv::f2u, w2u<dw>, w2f<dw>>>;
-    return D(bitcast<S>(a));
+    if constexpr (std::is_void_v<S> || std::is_void_v<D>)
+        return {};
+    else
+        return D(bitcast<S>(a));
 }
 
 } // namespace
@@ -250,8 +252,12 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
     // clang-format off
     // TODO check mode properly
     if (w && lm && *lm == Mode::fast) {
+        auto zero = lit_f(world, *w, 0.0);
+        auto one  = lit_f(world, *w, 1.0);
+        auto two  = lit_f(world, *w, 2.0);
+
         if (auto la = a->isa<Lit>()) {
-            if (la == lit_f(world, *w, 0.0)) {
+            if (zero && la == zero) {
                 switch (id) {
                     case arith::add: return b;  // 0 + b -> b
                     case arith::sub: break;
@@ -261,7 +267,7 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
                 }
             }
 
-            if (la == lit_f(world, *w, 1.0)) {
+            if (one && la == one) {
                 switch (id) {
                     case arith::add: break;
                     case arith::sub: break;
@@ -273,7 +279,7 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
         }
 
         if (auto lb = b->isa<Lit>()) {
-            if (lb == lit_f(world, *w, 0.0)) {
+            if (zero && lb == zero) {
                 switch (id) {
                     case arith::sub: return a;  // a - 0 -> a
                     case arith::div: break;
@@ -286,10 +292,10 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
 
         if (a == b) {
             switch (id) {
-                case arith::add: return world.call(arith::mul, mode, Defs{lit_f(world, *w, 2.0), a}); // a + a -> 2 * a
-                case arith::sub: return lit_f(world, *w, 0.0);                                        // a - a -> 0
+                case arith::add: if (two ) return world.call(arith::mul, mode, Defs{two , a}); break; // a + a -> 2 * a
+                case arith::sub: if (zero) return zero; break;                                          // a - a -> 0
                 case arith::mul: break;
-                case arith::div: return lit_f(world, *w, 1.0);                                        // a / a -> 1
+                case arith::div: if (one ) return one ; break;                                          // a / a -> 1
                 case arith::rem: break;
             }
         }

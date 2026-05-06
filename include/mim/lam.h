@@ -303,7 +303,7 @@ public:
     /// auto [d, e]    = de->projs<2>();
     ///
     /// // 2. Variant:
-    /// auto [callee , args] = App::uncurry(def);
+    /// auto [callee, args] = App::uncurry(def);
     ///
     /// ```
     /// @returns

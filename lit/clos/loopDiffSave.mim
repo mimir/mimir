@@ -7,7 +7,7 @@ ccon printInteger [mem: %mem.M 0, val: I32, return : Cn [%mem.M 0]];
 
 let arr_size = ⊤:Nat;
 
-con init [mem: %mem.M 0, arr : %mem.Ptr (<<4; I32>>, 0), return : Cn [%mem.M 0]] =
+con init [mem: %mem.M 0, arr : %mem.Ptr («4; I32», 0), return : Cn [%mem.M 0]] =
     con loop_body [mem: %mem.M 0, i : I32, continue : Cn %mem.M 0] =
         let lea = %mem.lea (arr, %core.bitcast (Idx arr_size) i);
         let store_mem = %mem.store (mem, lea, i);
@@ -24,13 +24,13 @@ con init [mem: %mem.M 0, arr : %mem.Ptr (<<4; I32>>, 0), return : Cn [%mem.M 0]]
     loop_head ( mem, 0I32 );
 
 con outer [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] =
-    let (alloc_mem_a, a_arr) = %mem.alloc (<<4; I32>>, 0) (mem);
-    let (alloc_mem_b, b_arr) = %mem.alloc (<<4; I32>>, 0) (alloc_mem_a);
-    let (alloc_mem_c, c_arr) = %mem.alloc (<<4; I32>>, 0) (alloc_mem_b);
+    let (alloc_mem_a, a_arr) = %mem.alloc («4; I32», 0) (mem);
+    let (alloc_mem_b, b_arr) = %mem.alloc («4; I32», 0) (alloc_mem_a);
+    let (alloc_mem_c, c_arr) = %mem.alloc («4; I32», 0) (alloc_mem_b);
 
-    let (alloc_mem_ad, ad_arr) = %mem.alloc (<<4; I32>>, 0) (alloc_mem_c);
-    let (alloc_mem_bd, bd_arr) = %mem.alloc (<<4; I32>>, 0) (alloc_mem_ad);
-    let (alloc_mem_cd, cd_arr) = %mem.alloc (<<4; I32>>, 0) (alloc_mem_bd);
+    let (alloc_mem_ad, ad_arr) = %mem.alloc («4; I32», 0) (alloc_mem_c);
+    let (alloc_mem_bd, bd_arr) = %mem.alloc («4; I32», 0) (alloc_mem_ad);
+    let (alloc_mem_cd, cd_arr) = %mem.alloc («4; I32», 0) (alloc_mem_bd);
 
     // TODO: check if fix is correct
     con finish_pb_trace [mem: %mem.M 0, return : Cn %mem.M 0] = return mem;

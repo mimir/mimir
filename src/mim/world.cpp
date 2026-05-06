@@ -348,10 +348,20 @@ const Def* World::tuple(Sym sym) {
     return tuple(defs);
 }
 
+bool isa_indicies(const Def* def) {
+    if (Idx::isa(def)) return true;
+    if (auto sigma = def->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), [](auto op) { return Idx::isa(op); });
+    if (auto arr = def->isa<Arr>()) return Idx::isa(arr->body());
+    return false;
+}
+
 const Def* World::extract(const Def* d, const Def* index) {
     if (!d || !index) return nullptr; // can happen if frozen
     d     = d->zonk();
     index = index->zonk();
+
+    if (!isa_indicies(index->type()))
+        error(index->loc(), "index '{}' is not of Idx type but of type '{}'", index, index->type());
 
     if (auto tuple = index->isa<Tuple>()) {
         for (auto op : tuple->ops())
@@ -385,6 +395,7 @@ const Def* World::extract(const Def* d, const Def* index) {
 
     if (size && !Checker::alpha<Checker::Check>(type->arity(), size))
         error(index->loc(), "index '{}' does not fit within arity '{}'", index, type->arity());
+    // TODO if we have indices we need to check as well that this is compatible with `d`
 
     // extract(insert(x, index, val), index) -> val
     if (auto insert = d->isa<Insert>()) {
@@ -491,13 +502,13 @@ const Def* World::seq(bool term, const Def* arity, const Def* body) {
     }
 
     // «(a, b, c); body» -> «a; «(b, c); body»»
-    if (auto tuple = arity->isa<Tuple>())
-        return seq(term, tuple->ops().front(), seq(term, tuple->ops().subspan(1), body));
+    // e.g. when var, but still has array type
+    if (auto arr_arity = arity->type()->isa<Seq>())
+        if (auto lit_arity_arity = Lit::isa(arr_arity->arity())) {
+            DefVec inner_arity(*lit_arity_arity - 1, [&](u64 i) { return arity->proj(*lit_arity_arity, i + 1); });
+            return seq(term, arity->proj(*lit_arity_arity, 0), seq(term, tuple(inner_arity), body));
+        }
 
-    // «‹n; x›; body» -> «x; «<n-1, x>; body»»
-    if (auto p = arity->isa<Pack>()) {
-        if (auto s = Lit::isa(p->arity())) return seq(term, p->body(), seq(term, pack(*s - 1, p->body()), body));
-    }
 
     if (term) {
         auto type = arr(arity, body->type());
@@ -513,6 +524,7 @@ const Def* World::seq(bool term, Defs shape, const Def* body) {
 }
 
 const Lit* World::lit(const Def* type, u64 val) {
+    if (!type) return nullptr;
     type = type->zonk();
 
     if (auto size = Idx::isa(type)) {

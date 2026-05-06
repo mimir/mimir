@@ -9,7 +9,7 @@ fun kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
          : [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM] =
     let (m3, shared_ptr) = %mem.slot («4; I32», 3) (m3, 0);
     let (m1, m3) = %gpu.synced_scope (m1, m3, scope)
-    where 
+    where
         lam scope (m1: %gpu.GlobalM, m3: %gpu.SharedM) =
             let store_loc = %mem.lea (shared_ptr, item_id);
             let val = %core.bitcast I32 item_id;
@@ -17,7 +17,7 @@ fun kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
             (m1, m3);
     end;
     let (m1, m3) = %gpu.synced_scope (m1, m3, scope)
-    where 
+    where
         lam scope (m1: %gpu.GlobalM, m3: %gpu.SharedM) =
             let load_idx = %core.wrap.sub %core.mode.nusw (3_4, item_id);
             let load_loc = %mem.lea (shared_ptr, load_idx);

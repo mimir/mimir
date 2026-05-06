@@ -47,7 +47,7 @@ std::unique_ptr<DFA> nfa2dfa(const NFA& nfa) {
             nfaState->for_transitions([&](auto c, auto to) {
                 if (c == NFA::SpecialTransitons::EPSILON) return;
                 if (nextStates.find(c) == nextStates.end())
-                    nextStates.emplace(c, std::set<const NFANode*>{to});
+                    nextStates.try_emplace(c, std::set<const NFANode*>{to});
                 else
                     nextStates[c].insert(to);
             });

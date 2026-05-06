@@ -320,8 +320,8 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam, Def2Def& sub
     }
     DLOG("STUB {} ~~> ({}, {})", old_lam, env, new_lam);
     auto closure = Stub{old_lam, num_fvs, env, new_lam};
-    closures_.emplace(old_lam, closure);
-    closures_.emplace(closure.fn, closure);
+    closures_.try_emplace(old_lam, closure);
+    closures_.try_emplace(closure.fn, closure);
     return closure;
 }
 

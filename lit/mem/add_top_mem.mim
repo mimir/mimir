@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim %s -o - | %FileCheck %s
 
 plugin core;
 
@@ -8,7 +8,7 @@ con extern f [mem: %mem.M 0, a: I32, return: Cn [%mem.M 0, I32]] = return (mem, 
 con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
     f (⊤:(%mem.M 0), argc, return);
 
-lam extern _compile []: %compile.Phase =
+lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %compile.internal_cleanup_phase,
         %mem.add_mem_phase, /* optimization_phase */

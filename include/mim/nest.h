@@ -8,7 +8,13 @@
 
 namespace mim {
 
-/// Builds a nesting tree of all *mutables*/binders.
+/// Builds a nesting tree for all mutables/binders.
+///
+/// @note This type should typically be constructed as `const`,
+/// because some member functions used during lookup have private non-`const` overloads.
+/// ```
+/// const auto nest = Nest(lam);
+/// ```
 class Nest {
 public:
     class Node {
@@ -18,9 +24,9 @@ public:
         std::string name() const { return mut() ? mut()->unique_name() : std::string("<virtual>"); }
         const Nest& nest() const { return nest_; }
         const Node* inest() const { return inest_; } ///< Immediate nester/parent of this Node.
-        /// [Immediate Dominator](https://en.wikipedia.org/wiki/Dominator_(graph_theory)) for children in connected components.
-        /// This is used to transform first order programs into structured form in the [sflow](mim::plug::sflow)
-        /// plugin and for late code placement in [Nest::lca].
+        /// [Immediate Dominator](https://en.wikipedia.org/wiki/Dominator_(graph_theory)) for children in connected
+        /// components. This is used to transform first order programs into structured form in the
+        /// [sflow](mim::plug::sflow) plugin and for late code placement in [Nest::lca].
         auto idom() const { return calc_dominance()->idom_; }
         bool is_root() const { return inest_ == nullptr; }
         /// The *mutable* capsulated in this Node or `nullptr`, if it's a *virtual root* comprising several Node%s.
@@ -212,7 +218,11 @@ public:
     auto muts()  const { return mut2node_ | std::views::keys; }
     auto nodes() const { return mut2node_ | std::views::transform([](const auto& p) { return (const Node*)p.second.get(); }); }
     // clang-format on
-    const Node* operator[](Def* mut) const { return const_cast<Nest*>(this)->operator[](mut); }
+
+    const Node* operator[](Def* mut) const {
+        if (auto i = mut2node_.find(mut); i != mut2node_.end()) return i->second.get();
+        return nullptr;
+    }
     ///@}
 
     /// @name Iterators
@@ -241,11 +251,7 @@ private:
     void calc_sibl_deps(Node*) const;
     void calc_SCCs(Node*) const;
     void assign_postorder_numbers() const;
-
-    Node* operator[](Def* mut) {
-        if (auto i = mut2node_.find(mut); i != mut2node_.end()) return i->second.get();
-        return nullptr;
-    }
+    Node* operator[](Def* mut) { return const_cast<Node*>(std::as_const(*this)[mut]); }
 
     void calc_sibl_deps() const {
         if (!siblings_) {

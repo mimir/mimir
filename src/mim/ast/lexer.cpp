@@ -34,7 +34,7 @@ Tok Lexer::lex() {
 
         if (accept(utf8::EoF)) return tok(Tag::EoF);
         if (accept(utf8::isspace)) continue;
-        if (accept(utf8::Null)) {
+        if (accept(utf8::Invalid)) {
             ast().error(loc_, "invalid UTF-8 character");
             continue;
         }

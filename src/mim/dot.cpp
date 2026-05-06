@@ -1,4 +1,5 @@
 #include <fstream>
+#include <limits>
 #include <ostream>
 #include <sstream>
 
@@ -34,42 +35,47 @@ public:
     void prologue() {
         (tab_++).println(os_, "digraph {{");
         tab_.println(os_, "ordering=out;");
-        tab_.println(os_, "splines=false;");
-        tab_.println(os_, "node [shape=box,style=filled];");
+        tab_.println(os_, "splines=ortho;");
+        tab_.println(os_, "newrank=true;");
+        tab_.println(os_, "nodesep=0.6;");
+        tab_.println(os_, "ranksep=1.2;");
+        tab_.println(os_, "node [shape=box,style=filled,fontname=\"monospace\"];");
     }
 
     void epilogue() { (--tab_).println(os_, "}}"); }
 
-    void run(const Def* root, uint32_t max) {
+    void run(const Def* root, int max) {
         prologue();
         recurse(root, max);
         epilogue();
     }
 
-    void recurse(const Def* def, uint32_t max) {
+    void recurse(const Def* def, int max) {
         if (max == 0 || !done_.emplace(def).second) return;
+
         tab_.print(os_, "_{}[", def->gid());
+
         if (def->isa_mut())
             if (def == root_)
                 os_ << "style=\"filled,diagonals,bold\"";
             else
-                os_ << "style=\"filled,diagonals\"";
+                os_ << "style=\"filled,diagonals\",penwidth=2";
         else if (def == root_)
             os_ << "style=\"filled,bold\"";
+
         label(def) << ',';
         color(def) << ',';
-        if (def->free_vars().empty()) os_ << "rank=min,";
+        if (def->is_closed()) os_ << "rank=min,";
         tooltip(def) << "];\n";
 
         if (def->is_set()) {
             for (size_t i = 0, e = def->num_ops(); i != e; ++i) {
                 auto op = def->op(i);
                 recurse(op, max - 1);
-                tab_.print(os_, "_{} -> _{}[taillabel=\"{}\",", def->gid(), op->gid(), i);
                 if (op->isa<Lit>() || op->isa<Axm>() || def->isa<Var>() || def->isa<Nat>() || def->isa<Idx>())
-                    print(os_, "fontcolor=\"#00000000\",color=\"#00000000\",constraint=false];\n");
+                    tab_.println(os_, "_{}:{} -> _{}[color=\"#00000000\",constraint=false];", def->gid(), i, op->gid());
                 else
-                    print(os_, "];\n");
+                    tab_.println(os_, "_{}:{} -> _{};", def->gid(), i, op->gid());
             }
         }
 
@@ -80,24 +86,47 @@ public:
     }
 
     std::ostream& label(const Def* def) {
-        print(os_, "label=<{}<br/>", def->unique_name());
+        auto n = def->is_set() ? def->num_ops() : size_t(0);
+        if (n > 0) {
+            print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">", n);
+            emit_name(def);
+            os_ << "</td></tr><tr>";
+            for (size_t i = 0; i < n; ++i)
+                print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
+            os_ << "</tr></table>>";
+        } else {
+            os_ << "label=<";
+            emit_name(def);
+            os_ << ">";
+        }
+        return os_;
+    }
+
+    void emit_name(const Def* def) {
         if (auto lit = def->isa<Lit>())
-            lit->stream(os_, 0);
+            os_ << lit;
         else
             os_ << def->node_name();
-        return os_ << '>';
+        print(os_, "<br/><font point-size=\"9\">{}</font>", escape(def->unique_name()));
     }
 
     std::ostream& color(const Def* def) {
-        return print(os_, "fillcolor=\"{} 0.5 0.75\"", float(def->node()) / float(Num_Nodes));
+        float hue;
+        // clang-format off
+        if      (def->is_form())  hue = 0.60f; // blue   - type formation
+        else if (def->is_intro()) hue = 0.35f; // green  - introduction
+        else if (def->is_elim())  hue = 0.00f; // red    - elimination
+        else if (def->is_meta())  hue = 0.15f; // yellow - universe/meta
+        else                      hue = 0.80f; // purple - Hole
+        // clang-format on
+        return print(os_, "fillcolor=\"{} 0.5 0.75\"", hue);
     }
 
     std::ostream& tooltip(const Def* def) {
-        static constexpr auto NL = "&#13;&#10;";
+        static constexpr auto NL = "&#13;&#10;"; // newline
 
         auto loc  = escape(def->loc());
         auto type = escape(def->type());
-        escape(loc);
         print(os_, "tooltip=\"");
         print(os_, "<b>expr:</b> {}{}", def, NL);
         print(os_, "<b>type:</b> {}{}", type, NL);
@@ -123,9 +152,9 @@ private:
 
 } // namespace
 
-void Def::dot(std::ostream& ostream, uint32_t max, bool types) const { Dot(ostream, types, this).run(this, max); }
+void Def::dot(std::ostream& ostream, int max, bool types) const { Dot(ostream, types, this).run(this, max); }
 
-void Def::dot(const char* file, uint32_t max, bool types) const {
+void Def::dot(const char* file, int max, bool types) const {
     if (!file) {
         dot(std::cout, max, types);
     } else {
@@ -147,10 +176,10 @@ void World::dot(std::ostream& os, bool anx, bool types) const {
     Dot dot(os, types);
     dot.prologue();
     for (auto external : externals().muts())
-        dot.recurse(external, uint32_t(-1));
+        dot.recurse(external, std::numeric_limits<int>::max());
     if (anx)
         for (auto annex : annexes())
-            dot.recurse(annex, uint32_t(-1));
+            dot.recurse(annex, std::numeric_limits<int>::max());
     dot.epilogue();
 }
 
@@ -190,8 +219,11 @@ void Nest::Node::dot(Tab tab, std::ostream& os) const {
     for (auto sibl : sibl_deps())
         tab.println(os, "\"{}\":s -> \"{}\":s [style=dashed,constraint=false,splines=true]", name(), sibl->name());
 
-    auto rec = is_mutually_recursive() ? "rec*" : (is_directly_recursive() ? "rec" : "");
-    tab.println(os, "\"{}\" [label=\"{} {} {}\",tooltip=\"{}\"]", name(), rec, name(), loop_depth(), s);
+    auto rec  = is_mutually_recursive() ? "rec*" : (is_directly_recursive() ? "rec" : "");
+    auto html = "<b>" + name() + "</b>";
+    if (*rec) html += "<br/><i>"s + rec + "</i>";
+    html += "<br/><font point-size=\"8\">depth " + std::to_string(loop_depth()) + "</font>";
+    tab.println(os, "\"{}\" [label=<{}>,tooltip=\"{}\"]", name(), html, s);
     for (auto child : children().nodes()) {
         tab.println(os, "\"{}\" -> \"{}\" [splines=false]", name(), child->name());
         child->dot(tab, os);

@@ -25,7 +25,7 @@ void CPS2DSPhase::start() {
 
     world().for_each(true, [this](Def* mut) {
         if (auto lam = mut->isa_mut<Lam>(); lam && !lam->codom()->isa<Type>())
-            nests_.emplace(lam, std::make_unique<Nest>(lam));
+            nests_.try_emplace(lam, std::make_unique<Nest>(lam));
     });
 
     for (auto external : world().externals().muts())

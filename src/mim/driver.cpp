@@ -1,5 +1,9 @@
 #include "mim/driver.h"
 
+#include <iostream>
+#include <sstream>
+#include <stdexcept>
+
 #include "mim/plugin.h"
 
 #include "mim/util/dl.h"
@@ -7,20 +11,42 @@
 
 namespace mim {
 
-const fs::path* Driver::Imports::add(fs::path path, Sym sym) {
+std::pair<const fs::path*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
     if (!fs::exists(path)) {
         driver_.WLOG("import path '{}' does not exist", path.string());
-        return nullptr;
+        return {nullptr, false};
     }
-    for (auto p : paths())
-        if (fs::equivalent(p, path)) return nullptr;
 
-    path2sym_.emplace_back(std::pair(std::move(path), sym));
-    return &path2sym_.back().first;
+    const fs::path* imported_path = nullptr;
+    bool fresh                    = true;
+    for (const auto& parsed_path : parsed_paths_) {
+        if (fs::equivalent(parsed_path, path)) {
+            imported_path = &parsed_path;
+            fresh         = false;
+            break;
+        }
+    }
+
+    if (!imported_path) {
+        parsed_paths_.emplace_back(std::move(path));
+        imported_path = &parsed_paths_.back();
+    }
+
+    bool seen_entry = false;
+    for (const auto& entry : entries_) {
+        if (entry.sym == sym && entry.tag == tag && fs::equivalent(entry.path, *imported_path)) {
+            seen_entry = true;
+            break;
+        }
+    }
+
+    if (!seen_entry) entries_.emplace_back(Entry{*imported_path, sym, tag});
+    return {imported_path, fresh};
 }
 
 Driver::Driver()
-    : log_(flags_)
+    : version_(MIM_VERSION)
+    , log_(flags_)
     , world_(this)
     , imports_(*this) {
     // prepend empty path
@@ -73,12 +99,20 @@ void Driver::load(Sym name) {
     if (!handle) error("cannot open plugin '{}'", name);
 
     if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(dl::get(handle.get(), "mim_get_plugin"))) {
+        auto plugin = get_info();
+        if (version() != plugin.version) {
+            std::ostringstream oss;
+            print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version, version());
+            if (flags().force_load)
+                std::cerr << "warning: " << oss.str() << '\n';
+            else
+                throw std::logic_error(oss.str());
+        }
         assert_emplace(plugins_, name, std::move(handle));
-        auto info = get_info();
         // clang-format off
-        if (auto reg = info.register_normalizers) reg(normalizers_);
-        if (auto reg = info.register_stages)      reg(stages_);
-        if (auto reg = info.register_backends)    reg(backends_);
+        if (auto reg = plugin.register_normalizers) reg(normalizers_);
+        if (auto reg = plugin.register_stages)      reg(stages_);
+        if (auto reg = plugin.register_backends)    reg(backends_);
         // clang-format on
     } else {
         error("mim/plugin has no 'mim_get_plugin()'");

@@ -77,8 +77,7 @@ const Def* Hole::tuplefy(nat_t n) {
 
     auto& w    = world();
     auto holes = absl::FixedArray<const Def*>(n);
-    if (auto sigma = type()->isa_mut<Sigma>(); sigma && n >= 1 && sigma->has_var()) {
-        auto var = sigma->has_var();
+    if (auto [sigma, var] = type()->isa_binder<Sigma>(); sigma && n >= 1) {
         auto rw  = VarRewriter(var, this);
         holes[0] = w.mut_hole(sigma->op(0));
         for (size_t i = 1; i != n; ++i) {
@@ -121,7 +120,7 @@ const Def* Checker::is_uniform(Defs defs) {
 }
 
 const Def* Checker::assignable_(const Def* type, const Def* val) {
-    auto val_ty = val->type()->zonk();
+    auto val_ty = val->unfold_type()->zonk();
     if (type == val_ty) return val;
 
     auto& w = world();
@@ -139,7 +138,7 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
                 return fail();
         }
         return w.tuple(new_ops);
-    } else if (auto uniq = val->type()->isa<Uniq>()) {
+    } else if (auto uniq = val_ty->isa<Uniq>()) {
         if (auto new_val = assignable(type, uniq->op())) return new_val;
         return fail();
     }
@@ -334,25 +333,24 @@ const Def* Lam::check(size_t i, const Def* def) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
         throw Error().error(filter()->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'",
                             filter(), filter()->type());
-    } else if (i == 1) {
-        if (auto body = Checker::assignable(codom(), def)) return body;
-        throw Error()
-            .error(def->loc(), "body of function is not assignable to declared codomain")
-            .note(def->loc(), "body: '{}'", def)
-            .note(def->loc(), "type: '{}'", def->type())
-            .note(codom()->loc(), "codomain: '{}'", codom());
     }
-    fe::unreachable();
+    assert(i == 1);
+    if (auto body = Checker::assignable(codom(), def)) return body;
+    throw Error()
+        .error(def->loc(), "body of function is not assignable to declared codomain")
+        .note(def->loc(), "body: '{}'", def)
+        .note(def->loc(), "type: '{}'", def->type())
+        .note(codom()->loc(), "codomain: '{}'", codom());
 }
 
 const Def* Reform::check() {
-    auto t = infer(meta_type());
+    auto t = infer(dom());
     if (!Checker::alpha<Checker::Check>(t, type()))
         error(type()->loc(), "declared sort '{}' of rule type does not match inferred one '{}'", type(), t);
     return t;
 }
 
-const Def* Reform::infer(const Def* meta_type) { return meta_type->unfold_type(); }
+const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
 
 const Def* Rule::check() {
     auto t1 = lhs()->type();

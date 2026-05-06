@@ -5,6 +5,6 @@ plugin core;
 
 rec %foo.Shape = [n: Nat, S: «n; Nat», T: *];
 axm  %foo.len: %foo.Shape → Nat, normalize_len;
-lam %foo.Ptr s: %foo.Shape: * = %mem.Ptr0 «%foo.len s; s#T»;
-lam %fooIdx s: %foo.Shape: * = Idx (%foo.len s);
+lam %foo.Ptr (s: %foo.Shape): * = %mem.Ptr0 «%foo.len s; s#T»;
+lam %fooIdx (s: %foo.Shape): * = Idx (%foo.len s);
 lam get(s: %foo.Shape) (mem: %mem.M 0, p: %foo.Ptr s, i: %fooIdx s): [%mem.M 0, s#T] = (mem, bot:(s#T) /* dummy impl */);

@@ -34,7 +34,7 @@ const Def* BetaRedPhase::rewrite_imm_App(const App* app) {
             map(var, new_arg);
             // if we want to reduce more than once, we need to push/pop
         }
-        todo_ = true;
+        invalidate();
         return rewrite(old_lam->body());
     }
 

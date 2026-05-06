@@ -1,9 +1,9 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o - | FileCheck %s
+// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
 
 plugin core;
 
-con g(n: Nat, i: Idx n, t: << n; [I32,I32]>>, return: Cn I32)@tt = return (t#i#(tt));
+con g(n: Nat, i: Idx n, t: « n; [I32,I32]», return: Cn I32)@tt = return (t#i#(tt));
 con extern f(return: Cn I32) = g (1, 0_1, ((42I32, 43I32)), return);
 
 // CHECK-DAG: {{[0-9_]+}} 43I32

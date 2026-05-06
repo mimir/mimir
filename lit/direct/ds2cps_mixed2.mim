@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o - | FileCheck %s
+// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
 
 // a chain of cps calls followed by a direct call
 
@@ -7,7 +7,7 @@ plugin core;
 plugin direct;
 
 
-lam f [a:I32]: I32 = %core.wrap.add 0 (2I32, a);
+lam f (a:I32): I32 = %core.wrap.add 0 (2I32, a);
 
 con h [mem : %mem.M 0, a : I32, return : Cn [%mem.M 0, I32]] =
     let c = f a;

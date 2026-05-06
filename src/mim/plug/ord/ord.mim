@@ -10,6 +10,7 @@
 /// ## Dependencies
 ///
 plugin core;
+plugin option;
 ///
 /// ## Types
 ///
@@ -65,9 +66,9 @@ lam %ord.is_empty_map {K: %ord.Key} {V: *} (map: %ord.Map K V): Bool = %core.ncm
 /// ### %%ord.get
 ///
 /// Get value from key in map.
-/// @todo Use Option as return type once we have proper union types.
+/// Return option of V 
 ///
-axm %ord.get: {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → V, normalize_get;
+axm %ord.get: {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → %option.Opt V, normalize_get;
 ///
 /// ### %%ord.contains
 ///

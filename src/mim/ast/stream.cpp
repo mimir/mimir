@@ -109,6 +109,7 @@ std::ostream& DeclExpr::stream(Tab& tab, std::ostream& os) const {
 }
 
 std::ostream& TypeExpr::stream(Tab& tab, std::ostream& os) const { return print(os, "(Type {})", S(tab, level())); }
+std::ostream& RuleExpr::stream(Tab& tab, std::ostream& os) const { return print(os, "(Rule {})", S(tab, dom())); }
 
 std::ostream& ArrowExpr::stream(Tab& tab, std::ostream& os) const {
     return print(os, "{} -> {}", S(tab, dom()), S(tab, codom()));
@@ -161,7 +162,7 @@ std::ostream& SigmaExpr::stream(Tab& tab, std::ostream& os) const { return ptrn(
 std::ostream& TupleExpr::stream(Tab& tab, std::ostream& os) const { return print(os, "({, })", R(tab, elems())); }
 
 std::ostream& SeqExpr::stream(Tab& tab, std::ostream& os) const {
-    return print(os, "{}{}; {}{}", is_arr() ? "«" : "‹", S(tab, arity()), S(tab, body()), is_arr() ? "»" : "›");
+    return print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
 std::ostream& ExtractExpr::stream(Tab& tab, std::ostream& os) const {

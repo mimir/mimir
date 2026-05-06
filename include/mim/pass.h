@@ -206,7 +206,7 @@ public:
 
     void add(std::unique_ptr<Pass>&& pass) {
         fixed_point_ |= pass->fixed_point();
-        auto p = pass.get();
+        auto p        = pass.get();
         auto type_idx = std::type_index(typeid(*p));
         if (auto pass = find(type_idx)) error("already added `{}`", pass);
         registry_.emplace(type_idx, p);
@@ -288,7 +288,7 @@ private:
 
 /// Inherit from this class using [CRTP](https://en.wikipedia.org/wiki/Curiously_recurring_template_pattern),
 /// if your Pass does **not** need state and a fixed-point iteration.
-/// If you a are only interested in specific mutables, you can pass this to @p M.
+/// If you are only interested in specific mutables, you can pass this to @p M.
 template<class P, class M = Def>
 class RWPass : public Pass {
 public:

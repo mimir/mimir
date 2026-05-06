@@ -15,31 +15,17 @@ class World;
 
 /// Recurseivly rebuilds part of a program **into** the provided World w.r.t.\ Rewriter::map.
 /// This World may be different than the World we started with.
+/// @see @ref rewriter
 class Rewriter {
 public:
     /// @name Construction & Destruction
     ///@{
-    Rewriter(std::unique_ptr<World>&& ptr)
-        : ptr_(std::move(ptr))
-        , world_(ptr_.get()) {
-        push(); // create root map
-    }
-    Rewriter(World& world)
-        : world_(&world) {
-        push(); // create root map
-    }
-    virtual ~Rewriter() = default;
+    Rewriter(std::unique_ptr<World>&& ptr);
+    Rewriter(World& world);
+    virtual ~Rewriter();
 
-    void reset(std::unique_ptr<World>&& ptr) {
-        ptr_   = std::move(ptr);
-        world_ = ptr_.get();
-        reset();
-    }
-    void reset() {
-        pop();
-        assert(old2news_.empty());
-        push();
-    }
+    void reset(std::unique_ptr<World>&& ptr);
+    void reset();
     ///@}
 
     /// @name Getters
@@ -107,6 +93,8 @@ protected:
     std::deque<Def2Def> old2news_;
 };
 
+/// Extends Rewriter for variable substitution.
+/// @see @ref rewriter
 class VarRewriter : public Rewriter {
 public:
     /// @name Construction

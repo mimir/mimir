@@ -1,0 +1,7 @@
+// RUN: %mim %s -O0
+
+plugin core;
+
+rule foo (a: Nat) : (%core.nat.add (a, a)) => (%core.nat.mul (a, 2));
+
+lam extern rules(): Rule Nat = foo;

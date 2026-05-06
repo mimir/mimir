@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - -P %S | FileCheck %s
+// RUN: %mim %s -o - -P %S | %FileCheck %s
 
 import mem;
 plugin regex;
@@ -7,7 +7,7 @@ import dont_compile.mim;
 
 let Top = ⊤:Nat;
 
-con extern flatten_conj(mem: %mem.M 0, string: %mem.Ptr (<<Top; I8>>, 0), return: Cn [%mem.M 0, Bool, I32]) =
+con extern flatten_conj(mem: %mem.M 0, string: %mem.Ptr («Top; I8», 0), return: Cn [%mem.M 0, Bool, I32]) =
     let pattern = %regex.conj (%regex.cls.w, %regex.cls.d, %regex.cls.w, %regex.cls.d);
     return (pattern (mem, string, 0I32));
 // CHECK: %regex.conj 2 (%regex.conj 2 (%regex.conj 2 (%regex.disj 2 (%regex.disj 2 (%regex.disj 2 (%regex.range (48I8, 57I8), %regex.range (65I8, 90I8)), %regex.range ‹2; 95I8›), %regex.range (97I8, 122I8)), %regex.range (48I8, 57I8)), %regex.disj 2 (%regex.disj 2 (%regex.disj 2 (%regex.range (48I8, 57I8), %regex.range (65I8, 90I8)), %regex.range ‹2; 95I8›), %regex.range (97I8, 122I8))), %regex.range (48I8, 57I8))

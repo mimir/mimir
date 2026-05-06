@@ -1,7 +1,7 @@
 // RUN: rm -f %t.ll
 // RUN: %mim --output-ll %t.ll %s
 // RUN: clang %S/lib.c %t.ll -o %t -Wno-override-module
-// RUN: %t | FileCheck %s
+// RUN: %t | %FileCheck %s
 plugin core;
 
 cfun println_char[%mem.M 0, I8]: %mem.M 0;

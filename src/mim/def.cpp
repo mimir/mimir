@@ -192,7 +192,8 @@ const Pi* Pi::immutabilize() {
     return nullptr;
 }
 
-const Rule* Rule::immutabilize() { return world().rule(type(), lhs(), rhs(), guard()); }
+// TODO should we ever immutabilize Rules?
+const Rule* Rule::immutabilize() { return nullptr; }
 
 const Def* Sigma::immutabilize() {
     if (is_immutabilizable()) return static_cast<const Sigma*>(world().sigma(ops()));
@@ -320,7 +321,7 @@ const Def* Def::var_type() {
     if (auto sig  = isa<Sigma>()) return sig;
     if (auto arr  = isa<Arr  >()) return w.type_idx(arr ->arity()); // TODO shapes like (2, 3)
     if (auto pack = isa<Pack >()) return w.type_idx(pack->arity()); // TODO shapes like (2, 3)
-    if (auto rule = isa<Rule >()) return rule->type()->meta_type();
+    if (auto rule = isa<Rule >()) return rule->type()->dom();
     if (isa<Bound >()) return this;
     if (isa<Hole  >()) return nullptr;
     if (isa<Global>()) return nullptr;
@@ -425,6 +426,11 @@ bool Def::is_closed() const {
 bool Def::is_open() const {
     if (!local_vars().empty()) return true;
     return !free_vars().empty();
+}
+
+Def* Def::outermost_binder() const {
+    if (is_closed()) return isa_mut();
+    return (*free_vars().begin())->outermost_binder();
 }
 
 /*

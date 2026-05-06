@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mim/def.h"
 #include "mim/phase.h"
 #include "mim/schedule.h"
 #include "mim/world.h"
@@ -57,7 +58,7 @@ protected:
 
         // make sure that we don't need to rehash later on
         for (auto mut : muts)
-            if (auto lam = mut->isa<Lam>()) lam2bb_.emplace(lam, BB());
+            if (auto lam = mut->isa<Lam>()) lam2bb_.try_emplace(lam, BB());
         auto old_size = lam2bb_.size();
 
         assert(root()->ret_var());

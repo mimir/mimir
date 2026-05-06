@@ -41,7 +41,7 @@ const Def* normalize_read(const Def* type, const Def*, const Def* arg) {
 const Def* normalize_insert(const Def*, const Def*, const Def*) { return {}; }
 
 /// Normalizer for transpose operations
-/// - transpose (constMat v) -> cosntMat v (TODO: implement)
+/// - transpose (constMat v) -> constMat v (TODO: implement)
 /// - transpose (insert m v (i,j)) -> insert (transpose m) v (j,i) (TODO: implement, maybe other way around?)
 /// - transpose (tranpose m) -> m (TODO: implement)
 

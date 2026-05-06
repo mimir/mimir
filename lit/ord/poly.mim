@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll - | FileCheck %s
+// RUN: %mim %s --output-ll - | %FileCheck %s
 
 /*
  * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
@@ -23,6 +23,7 @@ int f(uint64_t x) { return poly<std::map>(x); }
 
 plugin mem;
 plugin ord;
+plugin option;
 
 cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
 
@@ -31,13 +32,13 @@ let Key = (I32, %core.icmp.ul @i32);
 let Ord = [
     Map:      %ord.Key → * → *,
     init:     [K: %ord.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
-    get:      {K: %ord.Key} → {V: *} → [Map K V, K#T     ] → V,
+    get:      {K: %ord.Key} → {V: *} → [Map K V, K#T     ] → %option.Opt V,
     insert_:  {K: %ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
     contains: {K: %ord.Key} → {V: *} → [Map K V, K#T     ] → Bool,
 ];
 
 fun poly (ord: Ord) (mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
-    // stack-alloc dictionary and init with: 0 -> 23, 1 -> x
+    // stack-alloc dictionary and init with: 0 → 23, 1 → x
     let (mem, ptr) = %mem.slot (ord#Map Key I64, 0) (mem, 0);
     let  mem       = %mem.store (mem, ptr, ord#init Key ((0I32, 23I64), (1I32, x)));
     head mem where
@@ -46,14 +47,14 @@ fun poly (ord: Ord) (mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
             (exit, body)#cond mem where
                 con body(mem: %mem.M 0) =
                     let (mem, map) = %mem.load (mem, ptr);
-                    let map        = ord#insert_ (map, (1I32, 42I64)); // 1 -> 42
+                    let map        = ord#insert_ (map, (1I32, 42I64)); // 1 → 42
                     let mem        = %mem.store (mem, ptr, map);
                     let cond       = ord#contains (map, 1I32);
                     (false, true)#cond mem
                     where
                         con true (mem: %mem.M 0) =
                             let (mem, map) = %mem.load (mem, ptr);
-                            let map        = ord#insert_ (map, (1I32, x)); // 1 -> x
+                            let map        = ord#insert_ (map, (1I32, x)); // 1 → x
                             let mem        = %mem.store (mem, ptr, map);
                             next mem;
 
@@ -63,7 +64,8 @@ fun poly (ord: Ord) (mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
 
                 con exit(mem: %mem.M 0) =
                     let (mem, map) = %mem.load (mem, ptr);
-                    let val            = ord#get (map, 1I32);
+                    let opt_v      = ord#get (map, 1I32);
+                    let val        = %option.unwrap_unsafe opt_v;
                     return (mem, val);
             end
     end;

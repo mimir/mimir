@@ -14,7 +14,8 @@ namespace automaton {
 class DFANode;
 class NFANode;
 
-template<class NodeType> class AutomatonBase {
+template<class NodeType>
+class AutomatonBase {
 public:
     AutomatonBase()                                = default;
     AutomatonBase(const AutomatonBase&)            = delete;
@@ -53,7 +54,8 @@ public:
             os << "digraph automaton {\n";
         os << "  start -> \"" << automaton.start_ << "\";\n";
 
-        for (auto& node : automaton.nodes_) os << node;
+        for (auto& node : automaton.nodes_)
+            os << node;
         os << "}\n";
         return os;
     }
@@ -72,8 +74,8 @@ std::ostream& print_node(std::ostream& os, const NodeType& node, PrintCharF&& pr
     absl::flat_hash_map<const NodeType*, std::vector<Range>> node2transitions;
     node.for_transitions([&](auto c, auto to) {
         if (!node2transitions.contains(to))
-            node2transitions.emplace(to, std::vector<Range>{
-                                             Range{c, c}
+            node2transitions.try_emplace(to, std::vector<Range>{
+                                                 Range{c, c}
             });
         else
             node2transitions[to].push_back({c, c});

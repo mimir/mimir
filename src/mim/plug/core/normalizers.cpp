@@ -44,14 +44,14 @@ Res fold(u64 a, u64 b, [[maybe_unused]] bool nsw, [[maybe_unused]] bool nuw) {
             if (nsw && get_sign(u) != get_sign(res)) return {};
             return res;
         } else {
-            []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+             static_assert(false, "missing sub tag");
         }
     } else if constexpr (std::is_same_v<Id, shr>) {
         if (b >= w) return {};
         if constexpr (false) {}
         else if constexpr (id == shr::a) return s >> t;
         else if constexpr (id == shr::l) return u >> v;
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else if constexpr (std::is_same_v<Id, div>) {
         if (b == 0) return {};
         if constexpr (false) {}
@@ -59,7 +59,7 @@ Res fold(u64 a, u64 b, [[maybe_unused]] bool nsw, [[maybe_unused]] bool nuw) {
         else if constexpr (id == div::udiv) return u / v;
         else if constexpr (id == div::srem) return s % t;
         else if constexpr (id == div::urem) return u % v;
-        else []<bool flag = false>() { static_assert(flag, "missing sub tag"); }();
+        else static_assert(false, "missing sub tag");
     } else if constexpr (std::is_same_v<Id, icmp>) {
         bool res = false;
         auto pm  = !(u >> UT(w - 1)) &&  (v >> UT(w - 1));
@@ -77,7 +77,7 @@ Res fold(u64 a, u64 b, [[maybe_unused]] bool nsw, [[maybe_unused]] bool nuw) {
         else if(id == extrema::sM) return std::max(u, v);
         else if(id == extrema::SM) return std::max(s, t);
     } else {
-        []<bool flag = false>() { static_assert(flag, "missing tag"); }();
+        static_assert(false, "missing tag");
     }
 }
 // clang-format on
@@ -126,7 +126,7 @@ Res fold(u64 a, [[maybe_unused]] bool nsw, [[maybe_unused]] bool nuw) {
     if constexpr (std::is_same_v<Id, abs>)
         return std::abs(s);
     else
-        []<bool flag = false>() { static_assert(flag, "missing tag"); }();
+        static_assert(false, "missing tag");
 }
 
 template<class Id>

@@ -39,6 +39,25 @@ void Analysis::start() {
 void Analysis::rewrite_annex(flags_t, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
+Def* Analysis::rewrite_mut(Def* mut) {
+    map(mut, mut);
+
+    if (auto var = mut->has_var()) {
+        map(var, var);
+
+        if (mut->isa<Lam>())
+            for (auto var : mut->tvars()) {
+                map(var, var);
+                lattice_[var] = var;
+            }
+    }
+
+    for (auto d : mut->deps())
+        rewrite(d);
+
+    return mut;
+}
+
 /*
  * RWPhase
  */
@@ -191,7 +210,7 @@ void PhaseMan::start() {
             }
         }
 
-        todo_ |= todo;
+        invalidate(todo);
     }
 }
 

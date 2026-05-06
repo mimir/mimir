@@ -21,9 +21,8 @@ inline const Def* op_cps2ds_dep(const Def* k) {
     auto l    = w.mut_lam(T, w.type())->set("Uf");
     auto body = U;
 
-    if (auto dom = K->dom()->isa_mut<Sigma>())
-        if (auto var = dom->has_var())
-            body = VarRewriter(var, l->var()).rewrite(U); // TODO typeof(dom->var()) != typeof(l->var())
+    if (auto [dom, var] = K->dom()->isa_binder<Sigma>(); dom)
+        body = VarRewriter(var, l->var()).rewrite(U); // TODO typeof(dom->var()) != typeof(l->var())
     l->set(true, body);
 
     return w.app(w.app(w.annex<direct::cps2ds_dep>(), {T, l}), k);

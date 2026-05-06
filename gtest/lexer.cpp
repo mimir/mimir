@@ -82,7 +82,8 @@ TEST(Lexer, Eof) {
     std::istringstream is("");
 
     Lexer lexer(ast, is);
-    for (int i = 0; i < 10; i++) EXPECT_TRUE(lexer.lex().isa(Tok::Tag::EoF));
+    for (int i = 0; i < 10; i++)
+        EXPECT_TRUE(lexer.lex().isa(Tok::Tag::EoF));
 }
 
 class Real : public testing::TestWithParam<int> {};

@@ -1,0 +1,37 @@
+// RUN: %mim %s --output-ll - | %FileCheck %s
+
+plugin core;
+plugin vec;
+
+fun smpl_op{n:Nat} (A B:«n; Nat»):  «n; Nat» =
+    let C = %vec.zip %core.nat.add (A, B);
+    let D = %vec.zip %core.nat.sub (C, ‹n; 1›);
+    return D;
+
+fun arth_op{n:Nat} (A B: «n; %math.F32»): «n; %math.F32» =
+    let C = %vec.zip (%math.arith.add 1) (A, B);
+    let D = %vec.zip (%math.arith.mul 1) (C, B);
+    return D;
+
+fun cmp{n:Nat} (A B: «n; Nat»): «n; Bool» =
+    let C = %vec.zip %core.ncmp.l (A, B);
+    return C;
+
+
+fun extern foo(A B: «4; Nat»): «4; Nat» =
+    ret C = smpl_op @4 $ (A, B);
+    ret D = smpl_op @4 $ (A, B);
+    return D;
+
+
+
+fun extern bar(A B: «2; %math.F32»): «2; %math.F32» =
+    ret C = arth_op @2 $ (A, B);
+    ret D = arth_op @2 $ (A, C);
+    return D;
+
+fun extern war(A B: «2; Nat»): «2; Bool» =
+    ret C = cmp @2 $ (A, B);
+    return C;
+
+// CHECK: define

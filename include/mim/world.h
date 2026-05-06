@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
@@ -15,6 +16,9 @@
 #include "mim/util/log.h"
 
 namespace mim {
+
+template<class T>
+concept Enum = std::is_enum_v<std::remove_reference_t<T>>;
 
 class Driver;
 struct Flags;
@@ -139,23 +143,32 @@ public:
     ///@{
     bool is_frozen() const { return state_.pod.frozen; }
 
+    /// Use to World::freeze and automatically unfreeze at the end of scope.
+    struct Freezer {
+        Freezer(const World& world)
+            : world(world)
+            , old(world.do_freeze(true)) {}
+        ~Freezer() { world.do_freeze(old); }
+
+        const World& world;
+        bool old;
+    };
+
     /// Yields old frozen state.
-    bool freeze(bool on = true) const {
+    bool do_freeze(bool on = true) const {
         bool old          = state_.pod.frozen;
         state_.pod.frozen = on;
         return old;
     }
 
-    /// Use to World::freeze and automatically unfreeze at the end of scope.
-    struct Freezer {
-        Freezer(const World& world)
-            : world(world)
-            , old(world.freeze(true)) {}
-        ~Freezer() { world.freeze(old); }
-
-        const World& world;
-        bool old;
-    };
+    /// Use like this to freeze and automatically unfreeze:
+    /// ```
+    /// {
+    ///     auto _ = world.freeze();
+    ///     // do stuff
+    /// }
+    /// ```
+    Freezer freeze() { return Freezer(*this); }
     ///@}
 
     /// @name Debugging Features
@@ -210,7 +223,7 @@ public:
         const auto& sym2mut() const { return sym2mut_; }
         auto syms() const { return sym2mut_ | std::views::keys; }
         auto muts() const { return sym2mut_ | std::views::values; }
-        /// Returns a copy of @p muts() in a Vector; this allows you modify the Externals while iterating.
+        /// Returns a copy of @p muts() in a Vector; this allows you to modify the Externals while iterating.
         /// @note The iteration will see all old externals, of course.
         Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
         Def* operator[](Sym name) const { return mim::lookup(sym2mut_, name); } ///< Lookup by @p name.
@@ -350,13 +363,10 @@ public:
 
     /// @name Rewrite Rules
     ///@{
-    const Reform* reform(const Def* meta_type) { return unify<Reform>(Reform::infer(meta_type), meta_type); }
+    const Reform* reform(const Def* dom) { return unify<Reform>(Reform::infer(dom), dom); }
     Rule* mut_rule(const Reform* type) { return insert<Rule>(type); }
     const Rule* rule(const Reform* type, const Def* lhs, const Def* rhs, const Def* guard) {
-        return mut_rule(type)->set(lhs, rhs, guard);
-    }
-    const Rule* rule(const Def* meta_type, const Def* lhs, const Def* rhs, const Def* guard) {
-        return rule(reform(meta_type), lhs, rhs, guard);
+        return unify<Rule>(type, lhs, rhs, guard);
     }
     ///@}
 
@@ -385,23 +395,13 @@ public:
     const Sigma* sigma() { return data_.sigma; } ///< The unit type within Type 0.
     ///@}
 
-    /// @name Arr
+    /// @name Arr & Pack
     ///@{
     // clang-format off
-    const Def* unit(bool term) { return term ? (const Def*)tuple() : sigma(); }
-
-    Seq* mut_seq(bool term, const Def* type) { return term ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
-    const Def* seq(bool term, const Def* arity, const Def* body);
-    const Def* seq(bool term, Defs shape, const Def* body);
-    const Def* seq(bool term, u64 n, const Def* body) { return seq(term, lit_nat(n), body); }
-    const Def* seq(bool term, View<u64> shape, const Def* body) { return seq(term, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body); }
-    const Def* seq_unsafe(bool term, const Def* body) { return seq(term, top_nat(), body); }
-
     template<level_t level = 0>
     Arr* mut_arr() {
         return mut_arr(type<level>());
     }
-
     Arr * mut_arr (const Def* type) { return mut_seq(false, type)->as<Arr >(); }
     Pack* mut_pack(const Def* type) { return mut_seq(true , type)->as<Pack>(); }
     const Def* arr (const Def* arity, const Def* body) { return seq(false, arity, body); }
@@ -418,6 +418,21 @@ public:
     const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
     const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); }
     // clang-format on
+    ///@}
+
+    /// @name Seq
+    /// These either build a Pack or an Arr depending on the first argument.
+    /// Oftentimes, the logic for Pack%s and Arr%ays can be quite similar; these methods help factoring such code.
+    ///@{
+    const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
+    Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
+    const Def* seq(bool is_pack, const Def* arity, const Def* body);
+    const Def* seq(bool is_pack, Defs shape, const Def* body);
+    const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
+    const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
+        return seq(is_pack, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body);
+    }
+    const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
     ///@}
 
     /// @name Tuple
@@ -549,10 +564,9 @@ public:
     // clang-format on
     ///@}
 
-    /// @name Cope with implicit Arguments
-    ///@{
-
+    /// @name implicit_app - Cope with implicit Arguments
     /// Places Hole%s as demanded by Pi::is_implicit() and then apps @p arg.
+    ///@{
     template<bool Normalize = true>
     const Def* implicit_app(const Def* callee, const Def* arg);
     template<bool Normalize = true>
@@ -567,14 +581,36 @@ public:
     const Def* implicit_app(const Def* callee, E arg)
         requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t>
     {
-        return implicit_app<Normalize>(callee, lit_nat((nat_t)arg));
+        return implicit_app<Normalize>(callee, lit_nat(std::to_underlying(arg)));
+    }
+    ///@}
+
+    /// @name call
+    /// Complete curried call of @p callee obeying implicits.
+    ///@{
+    template<bool Normalize = true, class T, class... Args>
+    const Def* call(const Def* callee, T&& arg, Args&&... args) {
+        return call<Normalize>(implicit_app<Normalize>(callee, std::forward<T>(arg)), std::forward<Args>(args)...);
     }
 
-    /// Complete curried call of annexes obeying implicits.
-    // clang-format off
-    template<class Id, bool Normalize = true, class... Args> const Def* call(Id id, Args&&... args) { return call_<Normalize>(annex(id),   std::forward<Args>(args)...); }
-    template<class Id, bool Normalize = true, class... Args> const Def* call(       Args&&... args) { return call_<Normalize>(annex<Id>(), std::forward<Args>(args)...); }
-    // clang-format on
+    /// Base case.
+    template<bool Normalize = true, class T>
+    const Def* call(const Def* callee, T&& arg) {
+        return implicit_app<Normalize>(callee, std::forward<T>(arg));
+    }
+
+    /// Annex overload with enum instance as first argument.
+    template<Enum Id, bool Normalize = true, class... Args>
+    const Def* call(Id id, Args&&... args) {
+        return call<Normalize>(annex(id), std::forward<Args>(args)...);
+    }
+
+    /// Annex overload with enum tempalte argument @p Id for annexes w/o subtag.
+    template<class Id, bool Normalize = true, class... Args>
+    requires std::is_enum_v<Id>
+    const Def* call(Args&&... args) {
+        return call<Normalize>(annex<Id>(), std::forward<Args>(args)...);
+    }
     ///@}
 
     /// @name Vars & Muts
@@ -628,19 +664,6 @@ public:
     ///@}
 
 private:
-    /// @name call_
-    /// Helpers to unwind World::call with variadic templates.
-    ///@{
-    template<bool Normalize = true, class T, class... Args>
-    const Def* call_(const Def* callee, T arg, Args&&... args) {
-        return call_<Normalize>(implicit_app(callee, arg), std::forward<Args>(args)...);
-    }
-    template<bool Normalize = true, class T>
-    const Def* call_(const Def* callee, T arg) {
-        return implicit_app<Normalize>(callee, arg);
-    }
-    ///@}
-
     /// @name Put into Sea of Nodes
     ///@{
     template<class T, class... Args>
@@ -652,7 +675,7 @@ private:
         }
 
         auto state = move_.arena.defs.state();
-        auto def   = allocate<T>(num_ops, std::forward<Args&&>(args)...);
+        auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
 
         if (auto loc = get_loc()) def->set(loc);

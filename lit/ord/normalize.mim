@@ -2,6 +2,7 @@
 plugin core;
 plugin ord;
 plugin refly;
+plugin option;
 
 let Key = (Nat, %core.ncmp.l);
 
@@ -9,7 +10,7 @@ let s = %ord.init.set Key (1, 3, 6, 9);
 let m = %ord.init.map Key ((1, tt), (3, ff), (6, tt), (9, ff));
 let _  = %refly.equiv.struc_eq (4, %ord.size.set s);
 let _  = %refly.equiv.struc_eq (4, %ord.size.map m);
-let _  = %refly.equiv.struc_eq (ff, %ord.get (m, 3));
+let _  = %refly.equiv.struc_eq (%option.some ff, %ord.get (m, 3));
 let _  = %refly.equiv.struc_eq (tt, %ord.contains.set (s, 3));
 let _  = %refly.equiv.struc_eq (tt, %ord.contains.map (m, 3));
 let _  = %refly.equiv.struc_eq (ff, %ord.contains.set (s, 4));

@@ -5,7 +5,6 @@
 #include <string>
 
 #include <lyra/lyra.hpp>
-#include <rang.hpp>
 
 #include "mim/config.h"
 #include "mim/driver.h"
@@ -19,11 +18,9 @@ using namespace mim;
 using namespace std::literals;
 
 int main(int argc, char** argv) {
-    enum Backends { AST, Dot, H, LL, Md, Mim, Nest, Num_Backends };
+    enum Backends { AST, Dot, H, LL, Md, Mim, Nest, SExpr, SlottedSExpr, Num_Backends };
 
     try {
-        static const auto version = "mim command-line utility version " MIM_VER "\n";
-
         Driver driver;
         bool show_help         = false;
         bool show_version      = false;
@@ -60,11 +57,13 @@ int main(int argc, char** argv) {
             | lyra::opt(output[Md ],  "file"               )      ["--output-md"            ]("Emits the input formatted as Markdown.")
             | lyra::opt(output[Mim],  "file"               )["-o"]["--output-mim"           ]("Emits the Mim program again.")
             | lyra::opt(output[Nest], "file"               )      ["--output-nest"          ]("Emits program nesting tree as Dot.")
+            | lyra::opt(output[SExpr],"file"               )      ["--output-sexpr"         ]("Emits the program as symbolic expression.")
+            | lyra::opt(output[SlottedSExpr],"file"        )      ["--output-sexpr-slotted" ]("Emits the program as symbolic expression that follows the format required by slotted-egraphs.")
+            | lyra::opt(flags.force_load                   )      ["--force-load"           ]("Load plugins even on version mismatch.")
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(dot_follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
             | lyra::opt(dot_all_annexes                    )      ["--dot-all-annexes"      ]("Output all annexes - even if unused - in DOT output.")
-            | lyra::opt(flags.dump_gid, "level"            )      ["--dump-gid"             ]("Dumps gid of inline expressions as a comment in output if <level> > 0. Use a <level> of 2 to also emit the gid of trivial defs.")
             | lyra::opt(flags.dump_recursive               )      ["--dump-recursive"       ]("Dumps Mim program with a simple recursive algorithm that is not readable again from Mim but is less fragile and also works for broken Mim programs.")
             | lyra::opt(flags.aggressive_lam_spec          )      ["--aggr-lam-spec"        ]("Overrides LamSpec behavior to follow recursive calls.")
             | lyra::opt(flags.scalarize_threshold, "threshold")   ["--scalarize-threshold"  ]("MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
@@ -93,7 +92,7 @@ int main(int argc, char** argv) {
         }
 
         if (show_version) {
-            std::cerr << version;
+            std::cout << "mim " << driver.version() << std::endl;
             std::exit(EXIT_SUCCESS);
         }
 
@@ -187,6 +186,18 @@ int main(int argc, char** argv) {
                         backend(world, *s);
                     else
                         error("'ll' emitter not loaded; try loading 'core' plugin");
+                }
+                if (auto s = os[SExpr]) {
+                    if (auto backend = driver.backend("sexpr"))
+                        backend(world, *s);
+                    else
+                        error("'sexpr' emitter not loaded; try loading 'core' plugin");
+                }
+                if (auto s = os[SlottedSExpr]) {
+                    if (auto backend = driver.backend("sexpr-slotted"))
+                        backend(world, *s);
+                    else
+                        error("'sexpr-slotted' emitter not loaded; try loading 'core' plugin");
                 }
             } else {
                 error("couldn't read file '{}'", input);

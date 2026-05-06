@@ -6,5 +6,5 @@
 using namespace mim;
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"tensor", plug::tensor::register_normalizers, nullptr, nullptr};
+    return {"tensor", MIM_VERSION, plug::tensor::register_normalizers, nullptr, nullptr};
 }

@@ -1,112 +1,171 @@
-# Introduction
+# MimIR
+
+[![Stars](https://img.shields.io/github/stars/mimir/mimir)](https://github.com/mimir/mimir/stargazers)
+[![Forks](https://img.shields.io/github/forks/mimir/mimir)](https://github.com/mimir/mimir/fork)
+[![Discord](https://img.shields.io/discord/960975142459179068?style=social&logo=discord&logoColor=black)](https://discord.gg/FPp7hdj3fQ)
+
+[![GitHub Release](https://img.shields.io/github/v/release/mimir/mimir?style=flat-square&logo=starship)](https://github.com/mimir/mimir/releases)
+[![Linux](https://img.shields.io/github/actions/workflow/status/mimir/mimir/linux.yml?style=flat-square&logo=linux&label=linux&logoColor=white&branch=master)](https://github.com/mimir/mimir/actions/workflows/linux.yml)
+[![Windows](https://img.shields.io/github/actions/workflow/status/mimir/mimir/windows.yml?style=flat-square&label=⊞%20windows&branch=master)](https://github.com/mimir/mimir/actions/workflows/windows.yml)
+[![macOS](https://img.shields.io/github/actions/workflow/status/mimir/mimir/macos.yml?style=flat-square&logo=apple&label=macos&branch=master)](https://github.com/mimir/mimir/actions/workflows/macos.yml)
+[![Doxygen](https://img.shields.io/github/actions/workflow/status/mimir/mimir/doxygen.yml?style=flat-square&logo=gitbook&logoColor=white&label=doxygen&branch=master)](https://github.com/mimir/mimir/actions/workflows/doxygen.yml)
+[![Documentation](https://img.shields.io/badge/docs-master-green?style=flat-square&logo=gitbook&logoColor=white)](https://mimir.github.io)
+
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=cplusplus)](https://en.wikipedia.org/wiki/C%2B%2B#Standardization)
+[![License](https://img.shields.io/github/license/mimir/mimir?style=flat-square&color=yellowgreen&logo=opensourceinitiative&logoColor=white)](https://github.com/mimir/mimir/blob/master/LICENSE.TXT)
 
 [TOC]
 
-<table  class="markdownTable">
-    <tr class="markdownTableRowOdd">
-        <td>Support</td>
-        <td>
-            <a href=https://anydsl.github.io/MimIR><img src="https://img.shields.io/badge/docs-master-green?logo=gitbook&logoColor=white" alt="Documentation"></a>
-            <a href=https://discord.gg/FPp7hdj3fQ><img src="https://img.shields.io/discord/960975142459179068?color=green&logo=discord&logoColor=white" alt="Discord"></a>
-        </td>
-    </tr>
-    <tr class="markdownTableRowEven">
-        <td class="markdownTableBodyNone">
-            License
-        </td>
-        <td class="markdownTableBodyNone">
-            <a href="https://github.com/AnyDSL/MimIR/blob/master/LICENSE.TXT"><img src="https://img.shields.io/github/license/anydsl/MimIR?&color=yellowgreen&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5gQFFyMP+ejbyAAAAVRJREFUOMuNkk0rhGEUhq+jETaajSxEKdvJShayRUlZWbCYjZr/4N+oyVjLwkdWkoWl2ShSllKmZKGZuiwcenuHyV2nzsd9n+e5ex4YAHVb3R7EqfwhnAM6wFbWZ0A1Iu7L3CiIloEVYAG4BWaBpRxfAY9ADbgBziLisnyDSaAHbEREV60CTznbjYiOOgzsJbfPwhvwEhHdrN+BtUJOLn5Jbp/vQ/W8UFfV54xqoX+uHn7XQ9mcALrAtbqYp3WAC+Aic3J2DXRT87UA2AEOgH2gPuDV6sk5SM3PghXgNCIegCl17BeLY8BUck5Tw5C6CbwCNXUeaAMNdaQgHgEaQDs5NeBV3UQ9sh9ttaK2MirZK+MIdVxtqh9qTz1Rp/PkltrKfDpnveQ21fGix2F1tOT7Z0GhN5ofajDUdbWTsc5/oc6oq+pdwetd9mb+s+DYv3Fc5n8Cd+5Qbrzh2X0AAAAASUVORK5CYII=" alt="License"></a>
-        </td>
-    </tr>
-    <tr class="markdownTableRowEven">
-        <td class="markdownTableBodyNone">
-            Tests
-        </td>
-        <td class="markdownTableBodyNone">
-            <a href="https://github.com/AnyDSL/MimIR/actions/workflows/linux.yml"><img src="https://img.shields.io/github/actions/workflow/status/anydsl/MimIR/linux.yml?logo=linux&label=linux&logoColor=white&branch=master" alt="Linux"></a>
-            <a href="https://github.com/AnyDSL/MimIR/actions/workflows/windows.yml"><img src="https://img.shields.io/github/actions/workflow/status/anydsl/MimIR/windows.yml?logo=windows&label=windows&branch=master" alt="Windows"></a>
-            <a href="https://github.com/AnyDSL/MimIR/actions/workflows/macos.yml"><img src="https://img.shields.io/github/actions/workflow/status/anydsl/MimIR/macos.yml?logo=apple&label=macos&branch=master" alt="MacOS"></a>
-            <a href="https://github.com/AnyDSL/MimIR/actions/workflows/doxygen.yml"><img src="https://img.shields.io/github/actions/workflow/status/anydsl/MimIR/doxygen.yml?logo=github&label=doxygen&branch=master" alt="Doxygen"></a>
-        </td>
-    </tr>
-</table>
+**MimIR** is a pure, graph-based, higher-order intermediate representation rooted in the **Calculus of Constructions**.
+MimIR provides:
 
-**MimIR** is an extensible compiler intermediate representation that is based upon the [Calculus of Constructions (CoC)](https://en.wikipedia.org/wiki/Calculus_of_constructions).
-This means:
+- **Dependent types**, **parametric polymorphism**, and **higher-order functions** out of the box
+- **Extensible plugins** for domain-specific axioms, types, normalizers, and code generation
+- **SSA without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
+- A **sea-of-nodes** style IR with on-the-fly normalization, type checking, and partial evaluation
 
-- [pure type system (PTS)](https://en.wikipedia.org/wiki/Pure_type_system)
-- [higher-order functions](https://en.wikipedia.org/wiki/Higher-order_function)
-- [dependent types](https://en.wikipedia.org/wiki/Dependent_type)
+MimIR is well suited for DSL compilers, tensor compilers, automatic differentiation, regex engines, and other systems that need high-performance code from high-level abstractions.
 
-In contrast to other CoC-based program representations such as [Coq](https://coq.inria.fr/) or [Lean](https://leanprover.github.io/), MimIR is _not_ a theorem prover but focuses on generating efficient code.
-For this reason, MimIR explicitly features mutable state and models imperative control flow with [continuation-passing style (CPS)](https://en.wikipedia.org/wiki/Continuation-passing_style).
+## 💡 Why MimIR?
 
-You can use MimIR either via it's C++-API or through its frontend language [Mim](langref.md).
+| Feature                                                                             | LLVM                         | MLIR                                   | MimIR                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------- | ---------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Higher-order functions](https://en.wikipedia.org/wiki/Higher-order_function)       | ❌                           | ⚠️ (regions only)                      | ✅ (first-class functions)                                                                                                                                                           |
+| [Type operators](https://en.wikipedia.org/wiki/Type_constructor)                    | ❌                           | ❌                                     | ✅                                                                                                                                                                                   |
+| [Parametric polymorphism](https://en.wikipedia.org/wiki/System_F)                   | ❌                           | ❌                                     | ✅                                                                                                                                                                                   |
+| [Higher-kinded polymorphism](https://en.wikipedia.org/wiki/System_F#System_F%CF%89) | ❌                           | ❌                                     | ✅                                                                                                                                                                                   |
+| [Dependent types](https://en.wikipedia.org/wiki/Calculus_of_constructions)          | ❌                           | ❌                                     | ✅                                                                                                                                                                                   |
+| Semantic extensibility                                                              | ❌                           | 🔧 (dialect-specific C++ semantics)    | ✅ (typed axioms)                                                                                                                                                                    |
+| Program representation                                                              | CFG + <br> instruction lists | CFG / regions + <br> instruction lists | Arbitrary expressions <br> (direct style + [CPS](https://en.wikipedia.org/wiki/Continuation-passing_style))                                                                          |
+| Structural foundation                                                               | CFG + <br> dominance         | CFG / regions + <br> dominance         | Free variables + nesting                                                                                                                                                             |
+| DSL embedding / <br> semantics retention                                            | ⬇️ Low                       | ➡️ Medium <br> (dialects, lowering)    | ⬆️ High ([CC](https://en.wikipedia.org/wiki/Calculus_of_constructions), [partial evaluation](https://en.wikipedia.org/wiki/Partial_evaluation), typed axioms, normalizers, lowering) |
 
-## Building
+@note The table compares native IR-level support and representation, not what can be emulated via custom IR extensions, closure conversion, lowering, or external analyses.
 
-If you have a [GitHub account setup with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh), just do this:
-
-```
-git clone --recurse-submodules git@github.com:AnyDSL/MimIR.git
-```
-
-Otherwise, clone via HTTPS:
-
-```
-git clone --recurse-submodules https://github.com/AnyDSL/MimIR.git
-```
-
-Then, build with:
-
-```
-cd mim
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j $(nproc)
-```
-
-For a `Release` build simply use `-DCMAKE_BUILD_TYPE=Release`.
-
-### Install
-
-If you want to install MimIR, specify an install prefix and build the target `install`:
+## 🚀 Quick Start
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/my/local/install/prefix
-cmake --build build -j $(nproc) -t install
+git clone --recursive git@github.com:mimir/mimir.git
+cd mimir
+cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
+cmake --build build -j$(nproc)
 ```
 
-### Build Switches
+### 📦 Install (Optional)
 
-| CMake Switch            | Options                                  | Default      | Comment                                                                                               |
-| ----------------------- | ---------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
-| `CMAKE_BUILD_TYPE`      | `Debug` \| `Release` \| `RelWithDebInfo` | `Debug`      | Build type.                                                                                           |
-| `CMAKE_INSTALL_PREFIX`  |                                          | `/usr/local` | Install prefix.                                                                                       |
-| `MIM_BUILD_DOCS`        | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the documentation <br> (requires Doxygen).                                             |
-| `MIM_BUILD_EXAMPLES`    | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the examples.                                                                          |
-| `MIM_ENABLE_CHECKS`     | `ON` \| `OFF`                            | `ON`         | If `ON`, enables expensive runtime checks <br> (requires `CMAKE_BUILD_TYPE=Debug`).                   |
-| `BUILD_TESTING`         | `ON` \| `OFF`                            | `OFF`        | If `ON`, build all unit and lit tests.                                                                |
-| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `20`         | Timeout for lit tests. <br> (requires `BUILD_TESTING=ON`).                                            |
-| `MIM_LIT_WITH_VALGRIND` | `ON` \| `OFF`                            | `OFF`        | If `ON`, the Mim CLI in the lit tests will be run under valgrind. <br> (requires `BUILD_TESTING=ON`). |
+```sh
+cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DCMAKE_INSTALL_PREFIX=/my/local/install/prefix
+cmake --build build -j$(nproc) --target install
+```
 
-## Dependencies
+See the full [build options](@ref building) in the docs.
+For the rest of the documentation, start with the [Command-Line Reference](@ref cli), [Developer Guide](@ref dev), [Language Reference](@ref langref), [Plugin Guide](@ref plugins), [Phase Guide](@ref phases), and [Rewriting Guide](@ref rewriting).
 
-In addition to the provided [submodules](https://github.com/AnyDSL/MimIR/tree/master/external):
+## 🔥 Key Innovations
 
-- Recent version of [CMake](https://cmake.org/)
-- A C++20-compatible C++ compiler.
-- While Mim emits [LLVM](https://llvm.org/), it does _not_ link against LLVM.
+### 🧩 Plugins
 
-  Simply toss the emitted `*.ll` file to your system's LLVM toolchain.
-  But technically, you don't need LLVM.
+Declare new types, operations, and normalizers in a single `.mim` file.
+C++ provides the heavy lifting: optimization, lowering, and code generation.
 
-## MimIR vs Mim
+Explore the [Plugin Registry](https://github.com/mimir/plugins) to discover and share community-developed plugins.
 
-MimIR is a recursive acronym for _MimIR is my intermediate Representation_.
-[Mímir or Mim](https://en.wikipedia.org/wiki/M%C3%ADmir) is also a figure in Norse mythology, renowned for his knowledge and wisdom, who is beheaded during the &AElig;sir–Vanir War.
-Afterward, the god Odin carries around Mímir's head and it recites secret knowledge and counsel to him.
-Now, you have Mímir's head at your fingertips.
+### 🌊 Sea of Nodes
 
-We use the term **MimIR**, if we speak of the internal graph-based representation and its C++-API, and the term **Mim**, if we mean MimIR's frontend language.
-To keep things short and simple, all code consistently uses `mim` or `MIM` for namespaces, macro prefixes, etc.
-And if in doubt, just use **Mim**.
+MimIR uses a [sea-of-nodes-style](https://github.com/SeaOfNodes) program graph and extends it to the Calculus of Constructions with higher-order functions, polymorphism, and dependent types.
+MimIR hits the [**sweet spot**](@ref mut) between a fully mutable IR, which is easy to construct, and a fully immutable IR:
+
+- **Non-binder expressions are immutable**:
+
+  [Hash-consing](https://en.wikipedia.org/wiki/Hash_consing), normalization, type checking, and partial evaluation happen **automatically** during graph construction.
+
+- **Binders are mutable where needed**:
+
+  They support variables and recursion by “tying the knot” through in-place mutation.
+
+- **Terms and types share one graph**:
+
+  Terms, types, and type-level computations all live in the same program graph as ordinary expressions.
+
+### 🪾 SSA without Dominance
+
+Forget CFG dominance.
+MimIR uses free-variable nesting:
+
+- **Free variables** replace dominance; the **nesting tree** replaces the dominator tree
+- Free-variable queries “just work”:
+
+  ```c++
+  if (expr->free_vars().contains(x)) /*x free in expr*/
+  if (expr->free_vars().has_intersection(xyz)) /*x, y, or z free in expr*/
+  ```
+
+  This is always correct.
+  MimIR maintains free-variable information **lazily**, **locally**, and **transparently**: results are computed on demand, memoized, and invalidated only where needed.
+
+- Data dependencies remain precise, even for higher-order code
+- Loop peeling and unrolling reduce to simple β-reduction
+- Mutual recursion and higher-order functions are handled naturally
+
+## 🐉 Naming: MimIR vs. Mim
+
+**MimIR** is a recursive acronym for _MimIR is my Intermediate Representation_.
+
+In Norse mythology, [Mímir](https://en.wikipedia.org/wiki/M%C3%ADmir) was a being of immense wisdom.
+After being beheaded in the Æsir–Vanir War, Odin preserved his head, which continued to speak secret knowledge and offer counsel.
+
+Today, **you** have Mímir's head at your fingertips.
+
+- **MimIR** refers to the core graph-based intermediate representation and its C++ API.
+- **Mim** is a lightweight textual representation of MimIR.
+  It is not a full-featured programming language, but provides enough syntactic sugar to concisely express polymorphic and dependent types (including type-level dependencies introduced by many type variables).
+  Mim is mainly intended for defining plugin interfaces and writing small test cases.
+
+Throughout the codebase, we consistently use `mim` / `MIM` for namespaces, macros, CMake variables, and related identifiers.
+
+**Acknowledgments**:
+We gratefully acknowledge [Alex Wendland](https://github.com/AlexWendland) and the other maintainers of the former `MimIR` GitHub organization for kindly making the organization name available for this project.
+The previous organization has been renamed to [`mimir-depricated`](https://github.com/mimir-depricated).
+
+## 💬 Community
+
+- 💬 **Discord** → [Join the chat](https://discord.gg/FPp7hdj3fQ)
+- 📚 **Documentation** → <https://mimir.github.io>
+- 💻 **Examples** → [`examples/`](https://github.com/mimir/mimir/tree/master/examples) and [`lit/`](https://github.com/mimir/mimir/tree/master/lit)
+
+**Ready to build the next generation of DSL compilers?**
+
+[⭐ Star MimIR on GitHub](https://github.com/mimir/mimir), join Discord, and let's make high-performance DSLs easy.
+
+## ⚖️ License
+
+MimIR is licensed under the [MIT License](https://github.com/mimir/mimir/blob/master/LICENSE.TXT).
+
+## 📖 Publications
+
+- **SSA without Dominance for Higher-Order Programs** <br>
+  Roland Leißa, Johannes Griebler <br>
+  [![PLDI 2026](https://img.shields.io/badge/PLDI-2026-blue?style=flat-square)](https://pldi26.sigplan.org)
+  [![ACM](https://img.shields.io/badge/ACM-10.1145/3808286-blue?style=flat-square&logo=acm)](https://doi.org/10.1145/3808286)
+  [![arXiv](https://img.shields.io/badge/arXiv-10.48550/arXiv.2604.09961-blue?style=flat-square&logo=arxiv)](https://doi.org/10.48550/arXiv.2604.09961)
+  [![zenodo](https://img.shields.io/badge/-10.5281%2Fzenodo.19069678-blue?style=flat-square&logo=zenodo&logoColor=white&labelColor=555&logoSize=auto)](https://doi.org/10.5281/zenodo.19069678)
+  <br><br>
+
+- **MimIrADe: Automatic Differentiation in MimIR** <br>
+  Marcel Ullrich, Sebastian Hack, Roland Leißa <br>
+  [![CC 2025](https://img.shields.io/badge/CC-2025-blue?style=flat-square)](https://conf.researchr.org/home/CC-2025)
+  [![PDF](https://img.shields.io/badge/PDF-grey?style=flat-square&logo=readthedocs)](https://raw.githubusercontent.com/leissa/leissa/main/uhl25.pdf)
+  [![ACM](https://img.shields.io/badge/ACM-10.1145/3708493.3712685-blue?style=flat-square&logo=acm)](https://dl.acm.org/doi/abs/10.1145/3708493.3712685)
+  [![zenodo](https://img.shields.io/badge/-10.5281/zenodo.14681109-blue?style=flat-square&logo=zenodo&logoColor=white&labelColor=555&logoSize=auto)](https://doi.org/10.5281/zenodo.14681109)
+  [![dblp](https://img.shields.io/badge/dblp-grey?style=flat-square&logo=dblp)](https://dblp.uni-trier.de/rec/conf/cc/UllrichHL25.html?view=bibtex)
+  <br><br>
+
+- **MimIR: An Extensible and Type-Safe Intermediate Representation for the DSL Age** <br>
+  Roland Leißa, Marcel Ullrich, Joachim Meyer, Sebastian Hack <br>
+  [![POPL 2025](https://img.shields.io/badge/POPL-2025-blue?style=flat-square)](https://conf.researchr.org/home/POPL-2025)
+  [![PDF](https://img.shields.io/badge/PDF-grey?style=flat-square&logo=readthedocs)](https://raw.githubusercontent.com/leissa/leissa/main/lumh25.pdf)
+  [![ACM](https://img.shields.io/badge/ACM-10.1145/3704840-blue?style=flat-square&logo=acm)](https://doi.org/10.1145/3704840)
+  [![arXiv](https://img.shields.io/badge/arXiv-10.48550/arXiv.2411.07443-blue?style=flat-square&logo=arxiv)](https://doi.org/10.48550/arXiv.2411.07443)
+  [![zenodo](https://img.shields.io/badge/-10.5281/zenodo.19069678-blue?style=flat-square&logo=zenodo&logoColor=white&labelColor=555&logoSize=auto)](https://doi.org/10.5281/zenodo.19069678)
+  [![YouTube](https://img.shields.io/badge/YouTube-grey?style=flat-square&logo=youtube)](https://youtu.be/2zKUa6b9XYc?si=3ZX68gEHarsCsO-R)
+  [![dblp](https://img.shields.io/badge/dblp-grey?style=flat-square&logo=dblp)](https://dblp.uni-trier.de/rec/journals/pacmpl/LeissaUMH25.html?view=bibtex)

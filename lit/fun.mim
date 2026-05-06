@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim %s -o - | %FileCheck %s
 plugin core;
 
 lam Ptr(T: *): * = %mem.Ptr (T, 0);
@@ -17,7 +17,7 @@ lam f1(T: *) ((x y: T), return: T → ⊥): ⊥ = return x;
 con f2(T: *) ((x y: T), return: Cn T)     = return x;
 fun f3(T: *)  (x y: T)                    = return x;
 
-let g1 = lm (T: *) ((x y: T), return: T → ⊥): ⊥ = return x;
+let g1 = λ (T: *) ((x y: T), return: T → ⊥): ⊥ = return x;
 let g2 = cn (T: *) ((x y: T), return: Cn T)     = return x;
 let g3 = fn (T: *)  (x y: T)                    = return x;
 

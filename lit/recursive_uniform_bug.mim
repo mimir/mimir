@@ -3,4 +3,4 @@ let Triple = [T: *, U: *, V: *];
 
 axm %bug.Box: Triple → *;
 axm %bug.test: [n: Nat] → [Ss: «n; Triple», X: Triple] → %bug.Box X;
-lam l3 [S: Triple]: %bug.Box S = %bug.test 3 ((S, S, S), S);
+lam l3 (S: Triple): %bug.Box S = %bug.test 3 ((S, S, S), S);

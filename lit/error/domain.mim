@@ -1,4 +1,4 @@
-// RUN: (! %mim %s 2>&1) | FileCheck %s
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
 plugin core;
 plugin math;
 

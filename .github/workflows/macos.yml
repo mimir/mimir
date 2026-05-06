@@ -29,7 +29,9 @@ jobs:
       - name: Install LLVM and add to PATH
         run: |
           brew install llvm
-          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+          LLVM_PREFIX=$(brew --prefix llvm)
+          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> $GITHUB_ENV
+          echo "${LLVM_PREFIX}/bin" >> $GITHUB_PATH
 
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
@@ -39,9 +41,11 @@ jobs:
 
       - name: Configure
         run: |
+          CC="${LLVM_PREFIX}/bin/clang" CXX="${LLVM_PREFIX}/bin/clang++"     \
           cmake -B ${{github.workspace}}/build                               \
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                    \
                 -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON                   \
+                -DMIM_FILECHECK=${LLVM_PREFIX}/bin/FileCheck                 \
                 -DMIM_LIT_TIMEOUT=300                                        \
                 -DPython3_EXECUTABLE=${{github.workspace}}/.venv/bin/python3
 

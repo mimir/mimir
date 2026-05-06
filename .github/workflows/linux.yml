@@ -26,9 +26,8 @@ jobs:
       - name: Install valgrind, lit, llvm, and psutil
         run: |
           sudo apt-get update
-          sudo apt-get install g++-14 valgrind llvm-20-tools clang-20
+          sudo apt-get install -y gcc-14 g++-14 valgrind llvm-20-tools clang-20
           sudo pip install lit psutil
-          sudo ln -s /usr/bin/FileCheck-20 /usr/local/bin/FileCheck
 
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
@@ -40,11 +39,12 @@ jobs:
       - name: Configure Debug
         if: matrix.build-type == 'Debug'
         run: |
-          CC=clang-20 CXX=clang++-20 cmake -B ${{github.workspace}}/build                                                                                  \
-            -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                                                                                                      \
+          CC=clang-20 CXX=clang++-20 cmake -B ${{github.workspace}}/build                                                                              \
+            -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                                                                                                  \
             -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr" \
-            -DBUILD_TESTING=ON                                                                                                                           \
-            -DMIM_BUILD_EXAMPLES=ON                                                                                                                        \
+            -DBUILD_TESTING=ON                                                                                                                         \
+            -DMIM_BUILD_EXAMPLES=ON                                                                                                                    \
+            -DMIM_FILECHECK=/usr/bin/FileCheck-20                                                                                                      \
             -DMIM_LIT_TIMEOUT=300
 
       - name: Configure Release
@@ -54,6 +54,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{matrix.build-type}}               \
             -DBUILD_TESTING=ON                                      \
             -DMIM_BUILD_EXAMPLES=ON                                 \
+            -DMIM_FILECHECK=/usr/bin/FileCheck-20                   \
             -DMIM_LIT_WITH_VALGRIND=ON                              \
             -DMIM_LIT_TIMEOUT=300
 

@@ -24,7 +24,7 @@ using VMode = std::variant<Mode, nat_t, const Def*>;
 inline const Def* mode(World& w, VMode m) {
     if (auto def = std::get_if<const Def*>(&m)) return *def;
     if (auto nat = std::get_if<nat_t>(&m)) return w.lit_nat(*nat);
-    return w.lit_nat((nat_t)std::get<Mode>(m));
+    return w.lit_nat(std::to_underlying(std::get<Mode>(m)));
 }
 ///@}
 
@@ -82,7 +82,8 @@ inline const Def* insert_unsafe(const Def* d, u64 i, const Def* val) {
 /// @name Convert TBound to Sigma
 /// This is WIP.
 ///@{
-template<bool up> const Sigma* convert(const TBound<up>* b);
+template<bool up>
+const Sigma* convert(const TBound<up>* b);
 inline const Sigma* convert(const Bound* b) { return b->isa<Join>() ? convert(b->as<Join>()) : convert(b->as<Meet>()); }
 ///@}
 
@@ -129,5 +130,6 @@ constexpr bool is_associative(plug::core::wrap id) { return is_commutative(id); 
 } // namespace mim
 
 #ifndef DOXYGEN
-template<> struct fe::is_bit_enum<mim::plug::core::Mode> : std::true_type {};
+template<>
+struct fe::is_bit_enum<mim::plug::core::Mode> : std::true_type {};
 #endif

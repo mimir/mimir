@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fe/assert.h>
+
 #include "mim/util/dbg.h"
 
 namespace mim {
@@ -8,6 +10,53 @@ class Def;
 class Lit;
 
 namespace ast {
+
+/// @name Precedence Table
+/// X-macro listing all expression precedences from lowest to highest.
+/// Each entry is `m(name, assoc)` where @p assoc is `L`, `R`, or `N`.
+///@{
+// clang-format off
+#define MIM_PREC(m)     \
+    m(Err,     N)       \
+    m(Bot,     N)       \
+    m(Where,   L)       \
+    m(Arrow,   R)       \
+    m(Pi,      N)       \
+    m(Inj,     R)       \
+    m(App,     L)       \
+    m(Union,   L)       \
+    m(Extract, L)       \
+    m(Lit,     N)
+// clang-format on
+///@}
+
+/// Associativity of an infix expression.
+enum class Assoc { N, L, R };
+
+/// Expression precedences used by the parser and the dumper; ordered low to high.
+enum class Prec {
+#define CODE(name, ...) name,
+    MIM_PREC(CODE)
+#undef CODE
+};
+
+/// Associativity of precedence level @p p.
+constexpr Assoc prec_assoc(Prec p) {
+    switch (p) {
+#define CODE(name, assoc) \
+    case Prec::name: return Assoc::assoc;
+        MIM_PREC(CODE)
+#undef CODE
+    }
+    fe::unreachable();
+}
+
+constexpr bool is_rassoc(Prec p) { return prec_assoc(p) == Assoc::R; }
+constexpr bool is_lassoc(Prec p) { return prec_assoc(p) == Assoc::L; }
+
+/// Should a Pratt parser reduce when the current binding power is @p curr
+/// and the infix operator has precedence @p op?
+constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr > op : curr >= op; }
 
 // clang-format off
 #define MIM_KEY(m)                    \
@@ -52,6 +101,7 @@ namespace ast {
     m(K_rec,    "rec"   )             \
     m(K_ret,    "ret"   )             \
     m(K_rule,   "rule"  )             \
+    m(K_Rule,   "Rule"  )             \
     m(K_tt,     "tt"    )             \
     m(K_when,   "when"  )             \
     m(K_where,  "where" )             \

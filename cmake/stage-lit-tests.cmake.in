@@ -1,0 +1,16 @@
+set(MIM_LIT_STAGE_ROOT "@CMAKE_CURRENT_BINARY_DIR@/tests")
+set(MIM_LIT_STAGE_FILES
+@MIM_LIT_STAGE_FILES_SCRIPT@)
+
+file(REMOVE_RECURSE "${MIM_LIT_STAGE_ROOT}")
+file(MAKE_DIRECTORY "${MIM_LIT_STAGE_ROOT}")
+
+foreach(entry IN LISTS MIM_LIT_STAGE_FILES)
+    string(REPLACE "|" ";" pair "${entry}")
+    list(GET pair 0 src)
+    list(GET pair 1 dst_rel)
+    set(dst "${MIM_LIT_STAGE_ROOT}/${dst_rel}")
+    get_filename_component(dst_dir "${dst}" DIRECTORY)
+    file(MAKE_DIRECTORY "${dst_dir}")
+    file(COPY_FILE "${src}" "${dst}" ONLY_IF_DIFFERENT)
+endforeach()

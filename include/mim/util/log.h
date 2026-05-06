@@ -2,7 +2,7 @@
 
 #include <ostream>
 
-#include <rang.hpp>
+#include <fe/term.h>
 
 #include "mim/flags.h"
 
@@ -52,8 +52,8 @@ public:
     void log(Level level, Loc loc, const char* fmt, Args&&... args) const {
         if (ostream_ && level <= max_level_) {
             std::ostringstream oss;
-            print(ostream(), "{}{}:{}{}:{} ", level2color(level), level2acro(level), rang::fg::gray, loc,
-                  rang::fg::reset);
+            print(ostream(), "{}{}:{}{}:{} ", level2color(level), level2acro(level), fe::term::FG::Gray, loc,
+                  fe::term::FG::Reset);
             print(ostream(), fmt, std::forward<Args>(args)...) << std::endl;
 #ifdef MIM_ENABLE_CHECKS
             if ((level == Level::Error && flags().break_on_error) || (level == Level::Warn && flags().break_on_warn))
@@ -71,7 +71,7 @@ public:
     /// @name Conversions
     ///@{
     static char level2acro(Level);
-    static rang::fg level2color(Level level);
+    static fe::term::FG level2color(Level level);
     ///@}
 
 private:

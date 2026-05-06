@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll ; \
-// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | FileCheck %s
+// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | %FileCheck %s
 // RUN: clang %t.ll -o %t -Wno-override-module
 // RUN: %t; test $? -eq 1
 
@@ -13,11 +13,11 @@ let pattern = %regex.conj (%regex.quant.plus  %regex.cls.w, %regex.lit '@');
 let len     = 10;
 
 con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit : Cn [%mem.M 0, I32]] =
-    let (mem, string) = %mem.alloc (<<len; Char>>, 0) mem;
+    let (mem, string) = %mem.alloc («len; Char», 0) mem;
     let mem           = %mem.store (mem, string, "testasdf@\0");
     match_regex len ((mem, string), exiting)
     where
-        fun match_regex(len: Nat)(mem: %mem.M 0, str: %mem.Ptr0 <<len; Char>>): [%mem.M 0, Bool] =
+        fun match_regex(len: Nat) (mem: %mem.M 0, str: %mem.Ptr0 «len; Char»): [%mem.M 0, Bool] =
             let (mem, matched, pos) = pattern (mem, str, 0:(Idx len));
             let end_ = %core.idx len 0 (%core.nat.sub (len, 1));
             return (mem, %core.bit2.and_ 0 (%core.icmp.e (pos, end_), matched));

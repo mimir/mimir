@@ -1,6 +1,6 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - | FileCheck %s
-// see https://github.com/AnyDSL/MimIR/issues/253
+// RUN: %mim %s -o - | %FileCheck %s
+// see https://github.com/mimir/mimir/issues/253
 
 plugin core;
 

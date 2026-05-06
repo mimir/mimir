@@ -20,8 +20,8 @@ con extern main [mem: %mem.M 0, argc: I32, argv : %mem.Ptr («⊤:Nat; %mem.Ptr 
     let real_arr_type = (I32, 0);
     let arr_size = ⊤:Nat;
 
-    let (mem, pb_arr) = %mem.alloc (<<4; pb_type>>, 0) mem;
-    let (mem, a_arr)  = %mem.alloc (<<4; I32>>, 0) mem;
+    let (mem, pb_arr) = %mem.alloc («4; pb_type», 0) mem;
+    let (mem, a_arr)  = %mem.alloc («4; I32», 0) mem;
 
     let lea_0 = %mem.lea (pb_arr, 0_4);
     let mem   = %mem.store (mem, lea_0, f);

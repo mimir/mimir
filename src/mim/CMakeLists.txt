@@ -46,7 +46,7 @@ target_sources(libmim
 )
 
 set_target_properties(libmim PROPERTIES PREFIX "")
-target_compile_features(libmim PUBLIC cxx_std_20)
+target_compile_features(libmim PUBLIC cxx_std_23)
 
 if(MSVC)
     target_compile_options(libmim PUBLIC /utf-8 /wd4146 /wd4245)
@@ -61,7 +61,6 @@ configure_file(
 )
 target_include_directories(libmim
     PUBLIC
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/half/include>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include> # for config.h
         $<INSTALL_INTERFACE:include>
@@ -74,7 +73,6 @@ target_link_libraries(libmim
         absl::flat_hash_map absl::flat_hash_set
         absl::node_hash_map absl::node_hash_set
         fe
-        rang
         ${CMAKE_DL_LIBS}
 )
 
@@ -88,6 +86,12 @@ install(
 )
 
 add_subdirectory(cli)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/cmake/mim-build-config.cmake.in"
+    "${CMAKE_BINARY_DIR}/mim-config.cmake"
+    @ONLY
+)
+set(mim_DIR "${CMAKE_BINARY_DIR}")
 add_subdirectory(plug)
 
 add_dependencies(mim_all libmim)

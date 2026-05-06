@@ -1,7 +1,7 @@
 // RUN: rm -f %t.ll
 // RUN: %mim -p clos -p math -o - --output-ll %t.ll %s
 // RUN: clang %S/../lib.c %t.ll -o %t -Wno-override-module
-// RUN: %t 2 3 | FileCheck %s
+// RUN: %t 2 3 | %FileCheck %s
 
 plugin core;
 plugin matrix;
@@ -29,7 +29,7 @@ con print_double_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, 
 //     = {
 //     let R = %math.F (p,e);
 
-//     con const_comb [[mem:%mem.M 0, acc:R, []], return: Cn[%mem.M 0,R]] = {
+//     con const_comb ([mem:%mem.M 0, acc:R, []], return: Cn[%mem.M 0,R]) = {
 //         // let v = %math.arith.mul (p,e) 0 (a,b);
 
 //         // reduce op = addition

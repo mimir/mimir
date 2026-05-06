@@ -1,0 +1,82 @@
+#projectnumber.version-switcher {
+    position: relative;
+    display: inline-block;
+    margin-left: var(--spacing-small);
+    z-index: 10000;
+}
+
+#projectnumber.version-switcher .version-switcher__button {
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-medium);
+    background: var(--primary-color);
+    color: var(--page-background-color);
+    cursor: pointer;
+    font: inherit;
+    font-size: 1em;
+    line-height: 1.2;
+    padding: 0.25em 0.75em;
+}
+
+#projectnumber.version-switcher .version-switcher__button::after {
+    content: "";
+    display: inline-block;
+    margin-left: 0.6em;
+    border-left: 0.35em solid transparent;
+    border-right: 0.35em solid transparent;
+    border-top: 0.45em solid currentColor;
+    vertical-align: middle;
+}
+
+#projectnumber.version-switcher.version-switcher--open .version-switcher__button,
+#projectnumber.version-switcher .version-switcher__button:hover {
+    background: var(--primary-light-color);
+    color: var(--page-foreground-color);
+}
+
+#projectnumber.version-switcher.version-switcher--disabled .version-switcher__button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: default;
+    padding: 0;
+}
+
+#projectnumber.version-switcher.version-switcher--disabled .version-switcher__button::after {
+    display: none;
+}
+
+#projectnumber.version-switcher .version-switcher__menu {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 0.3rem);
+    min-width: 100%;
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-medium);
+    background: var(--page-background-color);
+    box-shadow: var(--box-shadow);
+    overflow: hidden;
+    white-space: nowrap;
+    z-index: 10001;
+}
+
+#projectnumber.version-switcher .version-switcher__link,
+#projectnumber.version-switcher .version-switcher__label {
+    display: block;
+    padding: 0.45em 0.75em;
+    color: var(--page-foreground-color);
+    text-decoration: none;
+}
+
+#projectnumber.version-switcher .version-switcher__link:hover {
+    background: var(--primary-lightest-color);
+}
+
+#projectnumber.version-switcher .version-switcher__label--current {
+    background: var(--primary-lightest-color);
+    font-weight: 600;
+}
+
+#projectnumber.version-switcher .version-switcher__label--missing {
+    color: var(--page-secondary-foreground-color);
+    text-decoration: line-through;
+}

@@ -30,7 +30,9 @@ set(DOXY_EXTRA_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/coding.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/dev.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/langref.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/passes.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rewriting.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/phases.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
 )
 

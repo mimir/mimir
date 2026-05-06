@@ -11,7 +11,7 @@ void Error::clear() {
     msgs_.clear();
 }
 
-/// If errors occured, claim them and throw; if warnings occured, claim them and report to @p os.
+/// If errors occurred, claim them and throw; if warnings occurred, claim them and report to @p os.
 void Error::ack(std::ostream& os) {
     auto e = std::move(*this);
     if (e.num_errors() != 0) throw e;

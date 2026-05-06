@@ -1,10 +1,10 @@
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim %s -o - | %FileCheck %s
 plugin tensor;
 plugin core;
 
 
-lam extern foo {pe: Nat} {r:Nat} {s:<<r; Nat>>}(lhs : <<s; Idx pe>>, rhs: <<s; Idx pe >>) =
-  let app = lm [x y: Idx pe] = %core.wrap.add 0 (x, y);
+lam extern foo {pe: Nat} {r:Nat} {s:«r; Nat»} (lhs : «s; Idx pe», rhs: «s; Idx pe ») =
+  let app = λ (x y: Idx pe) = %core.wrap.add 0 (x, y);
   %tensor.map app (lhs, rhs);
 
 // CHECK: tensor.map

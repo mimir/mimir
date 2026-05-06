@@ -134,23 +134,7 @@ protected:
         : Node(loc) {}
 
 public:
-    /// @name Precedence
-    ///@{
-    enum class Prec {
-        Err,
-        Bot,
-        Where,
-        Arrow,
-        Pi,
-        Inj,
-        App,
-        Union,
-        Extract,
-        Lit,
-    };
-
-    static constexpr bool is_rassoc(Prec p) { return p == Prec::Arrow; }
-    ///@}
+    using Prec = ast::Prec; ///< Backward-compatible alias; prefer the free-standing ast::Prec.
 
     const Def* emit(Emitter&) const;
     virtual void bind(Scopes&) const = 0;
@@ -448,6 +432,24 @@ private:
     Ptr<Expr> level_;
 };
 
+/// Reform (type of a rule) `Rule type`.
+class RuleExpr : public Expr {
+public:
+    RuleExpr(Loc loc, Ptr<Expr>&& dom)
+        : Expr(loc)
+        , dom_(std::move(dom)) {}
+
+    const Expr* dom() const { return dom_.get(); }
+
+    void bind(Scopes&) const override;
+    std::ostream& stream(Tab&, std::ostream&) const override;
+
+private:
+    const Def* emit_(Emitter&) const override;
+
+    Ptr<Expr> dom_;
+};
+
 // union
 
 /// `t1 ∪ t2`
@@ -737,13 +739,13 @@ private:
 /// `«dbg: arity; body»` or `‹dbg: arity; body›`
 class SeqExpr : public Expr {
 public:
-    SeqExpr(Loc loc, bool is_arr, Ptr<IdPtrn>&& arity, Ptr<Expr>&& body)
+    SeqExpr(Loc loc, bool is_pack, Ptr<IdPtrn>&& arity, Ptr<Expr>&& body)
         : Expr(loc)
-        , is_arr_(is_arr)
+        , is_pack_(is_pack)
         , arity_(std::move(arity))
         , body_(std::move(body)) {}
 
-    bool is_arr() const { return is_arr_; }
+    bool is_pack() const { return is_pack_; }
     const IdPtrn* arity() const { return arity_.get(); }
     const Expr* body() const { return body_.get(); }
 
@@ -753,7 +755,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    bool is_arr_;
+    bool is_pack_;
     Ptr<IdPtrn> arity_;
     Ptr<Expr> body_;
 };
@@ -1037,7 +1039,6 @@ private:
 /// rewrite rules
 /// rule (x:T, y:T) : x+y => y+x (when );
 /// all meta variables have to be introduced
-
 class RuleDecl : public ValDecl {
 public:
     RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn>&& var, Ptr<Expr>&& lhs, Ptr<Expr>&& rhs, Ptr<Expr>&& guard, bool is_normalizer)
@@ -1049,6 +1050,7 @@ public:
         , guard_(std::move(guard))
         , is_normalizer_(is_normalizer) {}
 
+    Dbg dbg() const { return dbg_; }
     const Ptrn* var() const { return var_.get(); }
     const Expr* lhs() const { return lhs_.get(); }
     const Expr* rhs() const { return rhs_.get(); }
@@ -1075,11 +1077,8 @@ private:
 
 class Import : public Node {
 public:
-    Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module)
-        : Node(loc)
-        , dbg_(dbg)
-        , tag_(tag)
-        , module_(std::move(module)) {}
+    Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module);
+    ~Import();
 
     Dbg dbg() const { return dbg_; }
     Tok::Tag tag() const { return tag_; }

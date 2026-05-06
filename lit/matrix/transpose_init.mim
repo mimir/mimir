@@ -1,10 +1,10 @@
 // RUN: rm -f %t.ll
-// RUN: %mim -o - %s | FileCheck %s
+// RUN: %mim -o - %s | %FileCheck %s
 
 plugin core;
 plugin matrix;
 
-lam ex_internal_mapRed_matrix_transpose[[k l: Nat], T:*]@tt: Cn[[%mem.M 0, %matrix.Mat (2,(k, l),T)], Cn [%mem.M 0, %matrix.Mat (2,(l, k),T)] ] =
+lam ex_internal_mapRed_matrix_transpose([k l: Nat], T:*)@tt: Cn[[%mem.M 0, %matrix.Mat (2,(k, l),T)], Cn [%mem.M 0, %matrix.Mat (2,(l, k),T)] ] =
     // TODO: or use generalized addition function
     // ignore acc
     con transpose_comb [[mem:%mem.M 0, acc:T, [a:T]], return: Cn[%mem.M 0,T]] = return (mem, a);

@@ -8,7 +8,7 @@ namespace mim {
 /// A Def `u` which uses Def `d` as `i^th` operand is a Use with Use::index `i` of Def `d`.
 class Use {
 public:
-    static constexpr size_t Type = -1_s;
+    static constexpr size_t Type = -1uz;
 
     Use() {}
     Use(const Def* def, size_t index)

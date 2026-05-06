@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll - | FileCheck %s
+// RUN: %mim %s --output-ll - | %FileCheck %s
 
 /*
  * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
@@ -54,7 +54,8 @@ fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
 
                 con exit(mem: %mem.M 0) =
                     let (mem, map) = %mem.load (mem, ptr);
-                    let val        = %ord.get (map, 1I32);
+                    let opt_v        = %ord.get (map, 1I32);
+                    let val        = %option.unwrap_unsafe opt_v;
                     return (mem, val);
             end
     end;

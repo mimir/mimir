@@ -103,22 +103,23 @@ public:
     /// @name isa/as
     ///@{
     /// @see @ref cast_axm
-    template<class Id, bool DynCast = true>
+    template<class Id, u8 Curry = 0, bool DynCast = true>
     static auto isa(const Def* def) {
-        using D              = typename Axm::IsANode<Id>::type;
+        using D              = std::conditional_t<Curry == 0, typename Axm::IsANode<Id>::type, Def>;
         auto [axm, curry, _] = Axm::get(def);
-        bool cond            = axm && curry == 0 && axm->base() == Annex::base<Id>();
+        bool cond            = axm && curry == Curry && axm->base() == Annex::base<Id>();
 
         if constexpr (DynCast) return cond ? IsA<Id, D>(axm, def->as<D>()) : IsA<Id, D>();
         assert(cond && "assumed to be correct axm");
         return IsA<Id, D>(axm, def->as<D>());
     }
 
-    template<class Id, bool DynCast = true>
+    template<class Id, u8 Curry = 0, bool DynCast = true>
     static auto isa(Id id, const Def* def) {
-        using D              = typename Axm::IsANode<Id>::type;
+        // using D              = typename Axm::IsANode<Id>::type;
+        using D              = std::conditional_t<Curry == 0, typename Axm::IsANode<Id>::type, Def>;
         auto [axm, curry, _] = Axm::get(def);
-        bool cond            = axm && curry == 0 && axm->flags() == (flags_t)id;
+        bool cond            = axm && curry == Curry && axm->flags() == (flags_t)id;
 
         if constexpr (DynCast) return cond ? IsA<Id, D>(axm, def->as<D>()) : IsA<Id, D>();
         assert(cond && "assumed to be correct axm");
@@ -126,8 +127,8 @@ public:
     }
 
     // clang-format off
-    template<class Id> static auto as(       const Def* def) { return isa<Id, false>(    def); }
-    template<class Id> static auto as(Id id, const Def* def) { return isa<Id, false>(id, def); }
+    template<class Id, u8 Curry=0> static auto as(       const Def* def) { return isa<Id, Curry, false>(    def); }
+    template<class Id, u8 Curry=0> static auto as(Id id, const Def* def) { return isa<Id, Curry, false>(id, def); }
     // clang-format on
     ///@}
 

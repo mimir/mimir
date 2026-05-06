@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Clone recursively
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -37,18 +37,17 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
-          cmake -E copy ${{github.workspace}}/bin/FileCheck-x86_64-win.exe ${{github.workspace}}/bin/FileCheck
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           set CC=cl.exe
           set CXX=cl.exe
           python -c "import sys; import os; print(os.path.dirname(sys.executable))" > tmpPath
           set /p PYTHON_PATH= < tmpPath
-          cmake -B ${{github.workspace}}/build -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DPython3_ROOT_DIR=%PYTHON_PATH% -DMIM_LIT_TIMEOUT=300
+          cmake -B ${{github.workspace}}/build -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DPython3_ROOT_DIR=%PYTHON_PATH% -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe -DMIM_LIT_TIMEOUT=300
 
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1.6.0
+        uses: KyleMayes/install-llvm-action@v2.0.9
         with:
-          version: "14.0.0"
+          version: "21.1.8"
 
       - name: Build
         shell: cmd

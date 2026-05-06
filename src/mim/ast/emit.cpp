@@ -145,6 +145,11 @@ const Def* TypeExpr::emit_(Emitter& e) const {
     return e.world().type(l);
 }
 
+const Def* RuleExpr::emit_(Emitter& e) const {
+    auto m = dom()->emit(e);
+    return e.world().reform(m);
+}
+
 const Def* PrimaryExpr ::emit_(Emitter& e) const {
     // clang-format off
     switch (tag()) {
@@ -319,22 +324,18 @@ const Def* TupleExpr::emit_(Emitter& e) const {
 
 const Def* SeqExpr::emit_(Emitter& e) const {
     auto s = arity()->emit_type(e);
+    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().unit(is_pack());
+
     if (arity()->dbg().is_anon()) { // immutable
         auto b = body()->emit(e);
-        return is_arr() ? e.world().arr(s, b) : e.world().pack(s, b);
+        return e.world().seq(is_pack(), s, b);
     }
 
     auto t = e.world().type_infer_univ();
     auto a = e.world().mut_arr(t);
     a->set_arity(s);
 
-    if (is_arr()) {
-        auto var = a->var();
-        arity()->emit_value(e, var);
-        a->set_body(body()->emit(e));
-        if (auto imm = a->immutabilize()) return imm;
-        return a;
-    } else {
+    if (is_pack()) {
         auto p   = e.world().mut_pack(a);
         auto var = p->var();
         arity()->emit_value(e, var);
@@ -343,6 +344,12 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         p->set(b);
         if (auto imm = p->immutabilize()) return imm;
         return p;
+    } else {
+        auto var = a->var();
+        arity()->emit_value(e, var);
+        a->set_body(body()->emit(e));
+        if (auto imm = a->immutabilize()) return imm;
+        return a;
     }
 }
 
@@ -529,13 +536,13 @@ void CDecl::emit(Emitter& e) const {
 void RuleDecl::emit(Emitter& e) const {
     auto _      = e.world().push(loc());
     auto meta_t = e.world().reform(var()->emit_type(e));
-    auto rule_  = e.world().mut_rule(meta_t);
-    var()->emit_value(e, rule_->var());
+    auto rule   = e.world().mut_rule(meta_t)->set(dbg());
+    var()->emit_value(e, rule->var());
     auto l = lhs()->emit(e);
     auto r = rhs()->emit(e);
-    auto c = guard()->emit(e);
-    rule_->set(l, r, c);
-    // TODO register rule somewhere
+    auto g = guard()->emit(e);
+    rule->set(l, r, g);
+    def_ = rule;
 }
 
 } // namespace mim::ast

@@ -26,7 +26,7 @@ const Def* EtaExp::rewrite(const Def* def) {
     if (std::ranges::none_of(def->ops(), [](const Def* def) { return def->isa<Lam>(); })) return def;
     if (auto n = lookup(old2new(), def)) return n;
 
-    auto [i, ins] = def2new_ops_.emplace(def, DefVec{});
+    auto [i, ins] = def2new_ops_.try_emplace(def, DefVec{});
     auto& new_ops = i->second;
     if (ins) new_ops.assign(def->ops().begin(), def->ops().end());
 

@@ -9,7 +9,8 @@ std::ostream& print(std::ostream& os, const char* s) {
         switch (*s) {
             case '{':
                 if (detail::match2nd(os, next, s, '{')) continue;
-                while (*s && *s != '}') s++;
+                while (*s && *s != '}')
+                    s++;
                 assert(*s != '}' && "invalid format string for 'streamf': missing argument(s)");
                 fe::unreachable();
                 break;

@@ -8,7 +8,7 @@ void NFANode::add_transition(const NFANode* to, std::uint16_t c) {
     if (auto it = transitions_.find(c); it != transitions_.end())
         it->second.push_back(to);
     else
-        transitions_.emplace(c, std::vector<const NFANode*>{to});
+        transitions_.try_emplace(c, std::vector<const NFANode*>{to});
 }
 
 std::vector<const NFANode*> NFANode::get_transitions(std::uint16_t c) const {

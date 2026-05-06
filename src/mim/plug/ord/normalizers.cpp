@@ -1,5 +1,6 @@
 #include "mim/world.h"
 
+#include "mim/plug/option/option.h"
 #include "mim/plug/ord/ord.h"
 
 #include "fe/assert.h"
@@ -18,13 +19,24 @@ const Def* normalize_size(const Def*, const Def*, const Def* arg) {
     return nullptr;
 }
 
-const Def* normalize_get(const Def*, const Def*, const Def* arg) {
+const Def* normalize_get(const Def*, const Def* callee, const Def* arg) {
+    auto& w       = arg->world();
     auto [map, k] = arg->projs<2>();
+    auto V        = callee->as<App>()->arg();
 
     if (auto init = Axm::isa<ord::init>(map)) {
         if (auto tuple = init->arg()->isa<Tuple>()) {
-            for (auto kv : tuple->ops())
-                if (kv->proj(2, 0) == k) return kv->proj(2, 1);
+            for (auto kv : tuple->ops()) {
+                if (kv->proj(2, 0) == k) {
+                    auto val   = kv->proj(2, 1);
+                    auto opt_V = w.call<option::Opt>(V);
+                    return w.inj(opt_V, val);
+                }
+            }
+            if (tuple->is_closed()) {
+                auto opt_V = w.call<option::Opt>(V);
+                return w.inj(opt_V, w.tuple(Defs{}));
+            };
         }
     }
 

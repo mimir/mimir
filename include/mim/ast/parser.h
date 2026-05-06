@@ -36,8 +36,10 @@ public:
 
     AST& ast() { return ast_; }
     Driver& driver() { return ast().driver(); }
-    Ptr<Module> import(std::string_view sv) { return import({Loc(), driver().sym(sv)}); }
-    Ptr<Module> import(Dbg, std::ostream* md = nullptr);
+    Ptr<Module> import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
+        return import({Loc(), driver().sym(sv)}, nullptr, tag);
+    }
+    Ptr<Module> import(Dbg, std::ostream* md = nullptr, Tok::Tag tag = Tok::Tag::K_import);
     Ptr<Module> import(std::istream&, Loc = {}, const fs::path* = nullptr, std::ostream* md = nullptr);
     Ptr<Module> plugin(Dbg);
     Ptr<Module> plugin(const std::string& s) { return plugin({Loc(), driver().sym(s)}); }
@@ -78,9 +80,9 @@ private:
 
     /// @name parse exprs
     ///@{
-    Ptr<Expr> parse_expr(std::string_view ctxt, Expr::Prec = Expr::Prec::Bot);
+    Ptr<Expr> parse_expr(std::string_view ctxt, Prec = Prec::Bot);
     Ptr<Expr> parse_primary_expr(std::string_view ctxt);
-    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Expr::Prec = Expr::Prec::Bot);
+    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot);
     ///@}
 
     /// @name parse primary exprs
@@ -89,6 +91,7 @@ private:
     Ptr<Expr> parse_lit_expr();
     Ptr<Expr> parse_extremum_expr();
     Ptr<Expr> parse_type_expr();
+    Ptr<Expr> parse_rule_expr();
     Ptr<Expr> parse_ret_expr();
     Ptr<Expr> parse_pi_expr();
     Ptr<Expr> parse_pi_expr(Ptr<Ptrn>&&);
@@ -113,8 +116,8 @@ private:
     static bool is_paren_style(int style) { return (style & Style_Bit) == Paren_Style; }
     static bool is_brket_style(int style) { return (style & Style_Bit) == Brckt_Style; }
     static bool is_implicit(int style) { return (style & Implicit); }
-    Ptr<Ptrn> parse_ptrn(int style, std::string_view ctxt, Expr::Prec = Expr::Prec::Bot);
-    Ptr<Ptrn> parse_ptrn_(int style, std::string_view ctxt, Expr::Prec = Expr::Prec::Bot);
+    Ptr<Ptrn> parse_ptrn(int style, std::string_view ctxt, Prec = Prec::Bot);
+    Ptr<Ptrn> parse_ptrn_(int style, std::string_view ctxt, Prec = Prec::Bot);
     Ptr<TuplePtrn> parse_tuple_ptrn(int style);
     ///@}
 

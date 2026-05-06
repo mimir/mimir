@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim -o - %s  | FileCheck %s
+// RUN: %mim -o - %s  | %FileCheck %s
 
 plugin core;
 plugin matrix;

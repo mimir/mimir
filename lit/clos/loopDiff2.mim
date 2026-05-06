@@ -13,7 +13,7 @@ ccon print_time_diff [mem: %mem.M 0, t1: void_ptr, t2: void_ptr, return : Cn [%m
 let arr_size = ⊤:Nat;
 let size = 100000;
 
-con printArr [mem: %mem.M 0, arr : %mem.Ptr (<<size; I32>>, 0), return : Cn [%mem.M 0]] =
+con printArr [mem: %mem.M 0, arr : %mem.Ptr («size; I32», 0), return : Cn [%mem.M 0]] =
     con loop_body [mem: %mem.M 0, i : I32, continue : Cn %mem.M 0] =
         let lea = %mem.lea (arr, %core.bitcast (Idx arr_size) i);
         let (load_mem, val) = %mem.load (mem, lea);
@@ -30,7 +30,7 @@ con printArr [mem: %mem.M 0, arr : %mem.Ptr (<<size; I32>>, 0), return : Cn [%me
 
     loop_head ( mem, 0I32 );
 
-con init [mem: %mem.M 0, arr : %mem.Ptr (<<size; I32>>, 0), offset : I32, return : Cn [%mem.M 0]] =
+con init [mem: %mem.M 0, arr : %mem.Ptr («size; I32», 0), offset : I32, return : Cn [%mem.M 0]] =
     con loop_body [mem: %mem.M 0, i : I32, continue : Cn %mem.M 0] =
         let lea = %mem.lea (arr, %core.bitcast (Idx arr_size) i);
         let add = %core.wrap.add 0 (offset, i);
@@ -47,7 +47,7 @@ con init [mem: %mem.M 0, arr : %mem.Ptr (<<size; I32>>, 0), offset : I32, return
 
     loop_head ( mem, 0I32 );
 
-con const [mem: %mem.M 0, arr : %mem.Ptr (<<size; I32>>, 0), constValue : I32, return : Cn [%mem.M 0]] =
+con const [mem: %mem.M 0, arr : %mem.Ptr («size; I32», 0), constValue : I32, return : Cn [%mem.M 0]] =
     con loop_body [mem: %mem.M 0, i : I32, continue : Cn %mem.M 0] =
         let lea = %mem.lea (arr, %core.bitcast (Idx arr_size) i);
         let store_mem = %mem.store (mem, lea, constValue);
@@ -64,16 +64,16 @@ con const [mem: %mem.M 0, arr : %mem.Ptr (<<size; I32>>, 0), constValue : I32, r
     loop_head ( mem, 0I32 );
 
 con outer [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0]] =
-    let (alloc_mem_a, a_arr) = %mem.alloc (<<size; I32>>, 0) (mem);
-    let (alloc_mem_b, b_arr) = %mem.alloc (<<size; I32>>, 0) (alloc_mem_a);
-    let (alloc_mem_c, c_arr) = %mem.alloc (<<size; I32>>, 0) (alloc_mem_b);
+    let (alloc_mem_a, a_arr) = %mem.alloc («size; I32», 0) (mem);
+    let (alloc_mem_b, b_arr) = %mem.alloc («size; I32», 0) (alloc_mem_a);
+    let (alloc_mem_c, c_arr) = %mem.alloc («size; I32», 0) (alloc_mem_b);
 
-    let (alloc_mem_ad, ad_arr) = %mem.alloc (<<size; I32>>, 0) (alloc_mem_c);
-    let (alloc_mem_bd, bd_arr) = %mem.alloc (<<size; I32>>, 0) (alloc_mem_ad);
-    let (alloc_mem_cd, cd_arr) = %mem.alloc (<<size; I32>>, 0) (alloc_mem_bd);
+    let (alloc_mem_ad, ad_arr) = %mem.alloc («size; I32», 0) (alloc_mem_c);
+    let (alloc_mem_bd, bd_arr) = %mem.alloc («size; I32», 0) (alloc_mem_ad);
+    let (alloc_mem_cd, cd_arr) = %mem.alloc («size; I32», 0) (alloc_mem_bd);
 
     let pb_type = Cn [%mem.M 0, I32, Cn [%mem.M 0]];
-    let (alloc_pb_mem, pb_ptr) = %mem.alloc (<<size; pb_type>>, 0) (alloc_mem_cd);
+    let (alloc_pb_mem, pb_ptr) = %mem.alloc («size; pb_type», 0) (alloc_mem_cd);
     let pb_arr = %core.bitcast (%mem.Ptr («⊤:Nat; pb_type», 0)) pb_ptr;
     let finish_mem = alloc_pb_mem;
 

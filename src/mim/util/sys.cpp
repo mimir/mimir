@@ -54,12 +54,15 @@ std::optional<fs::path> path_to_curr_exe() {
 
 // see https://stackoverflow.com/a/478960
 std::string exec(std::string cmd) {
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe) error("popen() failed!");
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) result += buffer.data();
-    return result;
+    using PipeCloser = int (*)(FILE*); // spell out type explicitly to get rid of warning
+    if (auto pipe = std::unique_ptr<FILE, PipeCloser>(popen(cmd.c_str(), "r"), pclose)) {
+        std::array<char, 128> buffer;
+        std::string result;
+        while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+            result += buffer.data();
+        return result;
+    } else
+        error("popen() failed!");
 }
 
 std::string find_cmd(std::string cmd) {

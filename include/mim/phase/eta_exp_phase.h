@@ -11,6 +11,8 @@ namespace mim {
 /// this Phase will η-expand the Unknown occurance which makes the function Known: `g f -> g (λx.f x)`
 class EtaExpPhase : public RWPhase {
 public:
+    EtaExpPhase(World& world)
+        : RWPhase(world, "EtaExpPhase") {}
     EtaExpPhase(World& world, flags_t annex)
         : RWPhase(world, annex) {}
 

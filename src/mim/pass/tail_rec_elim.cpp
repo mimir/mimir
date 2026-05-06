@@ -27,7 +27,7 @@ const Def* TailRecElim::rewrite(const Def* def) {
 undo_t TailRecElim::analyze(const Def* def) {
     if (auto [app, old] = isa_apped_mut_lam(def); old) {
         if (auto ret_var = old->ret_var(); ret_var && app->args().back() == ret_var) {
-            if (auto [i, ins] = old2rec_loop_.emplace(old, std::pair<Lam*, Lam*>(nullptr, nullptr)); ins) {
+            if (auto [i, ins] = old2rec_loop_.try_emplace(old, std::pair<Lam*, Lam*>(nullptr, nullptr)); ins) {
                 auto& [rec, loop] = i->second;
                 rec               = old->stub(old->type());
                 auto doms         = rec->doms();

@@ -46,7 +46,7 @@ using VMode = std::variant<Mode, nat_t, const Def*>;
 inline const Def* mode(World& w, VMode m) {
     if (auto def = std::get_if<const Def*>(&m)) return *def;
     if (auto nat = std::get_if<nat_t>(&m)) return w.lit_nat(*nat);
-    return w.lit_nat((nat_t)std::get<Mode>(m));
+    return w.lit_nat(std::to_underlying(std::get<Mode>(m)));
 }
 ///@}
 
@@ -61,7 +61,8 @@ inline const Def* type_f(World& w, nat_t p, nat_t e) {
     auto le = w.lit_nat(e);
     return type_f(w.tuple({lp, le}));
 }
-template<nat_t P, nat_t E> inline auto match_f(const Def* def) {
+template<nat_t P, nat_t E>
+inline auto match_f(const Def* def) {
     if (auto f_ty = Axm::isa<F>(def)) {
         auto [p, e] = f_ty->arg()->projs<2>([](auto op) { return Lit::isa(op); });
         if (p && e && *p == P && *e == E) return f_ty;
@@ -87,8 +88,8 @@ inline std::optional<nat_t> isa_f(const Def* def) {
 // clang-format off
 template<class R>
 const Lit* lit_f(World& w, R val) {
-    static_assert(std::is_floating_point<R>() || std::is_same<R, mim::f16>());
-    if constexpr (false) {}
+    static_assert(std::is_floating_point_v<R>);
+    if (false) {}
     else if constexpr (sizeof(R) == 2) return w.lit(w.annex<F16>(), mim::bitcast<u16>(val));
     else if constexpr (sizeof(R) == 4) return w.lit(w.annex<F32>(), mim::bitcast<u32>(val));
     else if constexpr (sizeof(R) == 8) return w.lit(w.annex<F64>(), mim::bitcast<u64>(val));
@@ -97,10 +98,12 @@ const Lit* lit_f(World& w, R val) {
 
 inline const Lit* lit_f(World& w, nat_t width, mim::f64 val) {
     switch (width) {
-        case 16: assert(mim::f64(mim::f16(mim::f32(val))) == val && "loosing precision"); return lit_f(w, mim::f16(mim::f32(val)));
-        case 32: assert(mim::f64(mim::f32(           (val))) == val && "loosing precision"); return lit_f(w, mim::f32(   (val)));
-        case 64: assert(mim::f64(mim::f64(           (val))) == val && "loosing precision"); return lit_f(w, mim::f64(   (val)));
-        default: fe::unreachable();
+#if defined(__STDCPP_FLOAT16_T__)
+        case 16: assert(mim::f64(mim::f16(val)) == val && "loosing precision"); return lit_f(w, mim::f16(val));
+#endif
+        case 32: assert(mim::f64(mim::f32(val)) == val && "loosing precision"); return lit_f(w, mim::f32(val));
+        case 64: assert(mim::f64(mim::f64(val)) == val && "loosing precision"); return lit_f(w, mim::f64(val));
+        default: return nullptr;
     }
 }
 // clang-format on
@@ -111,7 +114,9 @@ inline const Lit* lit_f(World& w, nat_t width, mim::f64 val) {
 inline const Def* op_rminus(VMode m, const Def* a) {
     World& w = a->world();
     auto s   = isa_f(a->type());
-    return w.call(arith::sub, mode(w, m), Defs{lit_f(w, *s, -0.0), a});
+    if (!s) return nullptr;
+    if (auto zero = lit_f(w, *s, -0.0)) return w.call(arith::sub, mode(w, m), Defs{zero, a});
+    return nullptr;
 }
 ///@}
 

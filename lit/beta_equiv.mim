@@ -9,9 +9,9 @@ lam my_add {pe: «2; Nat»} (a b: %math.F pe): %math.F pe = %math.arith.add 0 (a
 let F64 = (%math.F64, my_add @%math.f64);
 axm %bug.Arr: Num → *;
 
-fun test [N: Num] [A: %bug.Arr N]: Nat = return 0;
+fun test (N: Num) (A: %bug.Arr N): Nat = return 0;
 
-fun extern stuff [mem: %mem.M 0, A: %bug.Arr F64]: %mem.M 0 =
+fun extern stuff (mem: %mem.M 0, A: %bug.Arr F64): %mem.M 0 =
     ret _ = test F64 $ A;
     return mem;
 

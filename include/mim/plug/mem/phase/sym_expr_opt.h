@@ -31,23 +31,20 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "SEO::Analyzer") {}
 
-        auto& lattice() { return lattice_; }
+        void run() override {
+            mim::Analysis::run();
+            DLOG("lattice:");
+            for (auto [k, v] : lattice_)
+                DLOG("{} -> {}", k, v);
 
-void run() override {
-    mim::Analysis::run();
-    DLOG("lattice:");
-    for (auto [k, v] : lattice_) {
-        DLOG("{} -> {}", k, v);
-    }
+            DLOG("done running");
+        }
 
-    DLOG("done running");
-}
     private:
         const Def* propagate(const Def*, const Def*);
-        Def* rewrite_mut(Def*) final;
         const Def* rewrite_imm_App(const App*) final;
+        Def* rewrite_mut(Def*) final;
 
-        Def2Def lattice_;
         DefVec mut_stack_;
         DefMap<Def2Def> current_slot_values_;
         Def2Def all_slots_;
@@ -59,11 +56,10 @@ public:
         , analysis_(world) {}
 
 private:
-    const Def* lattice(const Def* def) { return analysis_.lattice()[def]; }
     const Def* rewrite_imm_App(const App*) final;
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
 };
 
-} // namespace mim
+} // namespace mim::plug::mem::phase

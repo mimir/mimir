@@ -1,0 +1,5 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+lam extern g (a: [Nat, Bool]) = a#1;
+
+// CHECK: error: index '1' is not of Idx type
