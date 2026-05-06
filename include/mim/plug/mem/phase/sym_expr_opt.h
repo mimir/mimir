@@ -43,7 +43,6 @@ private:
     private:
         const Def* propagate(const Def*, const Def*);
         const Def* rewrite_imm_App(const App*) final;
-        Def* rewrite_mut(Def*) final;
 
         DefMap<Def2Def> current_slot_values_;
         Def2Def all_slots_;
