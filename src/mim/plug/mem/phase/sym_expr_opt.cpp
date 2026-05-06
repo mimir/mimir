@@ -122,7 +122,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     // The unknown function may call this as a continuation. In that case, the slot
                     // values are the same as for the current function.
                     for (auto [slot, current_value] : current_slot_values_[curr_mut()])
-                        current_slot_values_[continuation][slot] = current_value;
+                        current_slot_values_[continuation][slot]
+                            = current_value; // TODO modfying a container while iterating over it is UB!
 
                     // Except for those slots that are also passed to the unknown function. We don't
                     // know what it does to those, so we set them to top.
