@@ -86,13 +86,18 @@ Typical usage:
 ### Handling of Mutables
 
 Unlike [`RWPhase`](@ref mim::RWPhase), an [`Analysis`](@ref mim::Analysis) must traverse the entire reachable program without rebuilding it.
-For this reason, [`Analysis`](@ref mim::Analysis) overrides [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) to *preserve mutables and their binders* instead of rewriting them.
+For this reason, [`Analysis`](@ref mim::Analysis) overrides [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) to keep mutables in place and use the rewriter machinery as a graph-aware traversal over the existing world.
 
-When a mutable is visited, the analysis immediately maps it to itself (`mut -> mut`), and likewise maps its associated variable(s) to themselves (`var -> var`).
-This keeps the mutable structure intact as a stable "skeleton program" and prevents the analysis from accidentally introducing new mutables or fresh variables.
+The default [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) behavior is split into two parts:
 
-After establishing these identity mappings, the analysis recursively traverses the mutable’s [dependencies](@ref mim::Def::deps) via [`rewrite()`](@ref mim::Rewriter::rewrite).
-This uses the [`Rewriter`](@ref mim::Rewriter) machinery purely as a structured, graph-aware traversal, while all computed information is stored separately in [`Analysis::lattice()`](@ref mim::Analysis::lattice).
+1. it records the mutable itself as visited via `mut -> mut` and initializes the default binder state for Lam binders in the analysis lattice, and then
+2. it traverses the mutable's [dependencies](@ref mim::Def::deps) through [`rewrite_deps()`](@ref mim::Analysis::rewrite_deps).
+
+[`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) is the stripped-down traversal helper:
+it enters the mutable for [`curr_mut()`](@ref mim::Analysis::curr_mut) tracking and recursively calls [`rewrite()`](@ref mim::Rewriter::rewrite) on the mutable's dependencies, but does not mark the mutable itself as visited and does not seed binder facts on its own.
+
+This split is useful for analyses that sometimes want to inspect a mutable under a custom binder environment while still reusing the standard dependency traversal.
+In that case, the analysis can set up its own lattice state first and then call [`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) directly.
 
 A common convention is to encode **top** as `def -> def` in the lattice:
 mapping a definition to itself means "no useful information, keep as-is", while mapping it to a different [`Def`](@ref mim::Def) represents a discovered abstract value.
