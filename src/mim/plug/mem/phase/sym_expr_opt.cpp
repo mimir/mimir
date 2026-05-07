@@ -1,5 +1,7 @@
 #include "mim/plug/mem/phase/sym_expr_opt.h"
 
+#include <utility>
+
 #include <absl/container/fixed_array.h>
 
 #include "mim/def.h"
@@ -146,30 +148,22 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 abstr_args[i] = rewrite(app->targ(i));
 
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-        auto n          = app->num_targs();
-        auto abstr_args = absl::FixedArray<const Def*>(n);
-        auto abstr_vars = absl::FixedArray<const Def*>(n);
-
-        DefVec lattice_update_keys;
-        DefVec lattice_update_values;
+        // mapping from vars / slots to their current abstract values and the value at the current app
+        DefMap<std::pair<const Def*, const Def*>> vars;
 
         // propagate
-        for (size_t i = 0; i != n; ++i) {
-            auto abstr    = rewrite(app->targ(i));
-            abstr_vars[i] = propagate(lam->tvar(i), abstr);
-            abstr_args[i] = abstr;
+        for (size_t i = 0; i != app->num_targs(); ++i) {
+            auto abstr         = rewrite(app->targ(i));
+            vars[lam->tvar(i)] = {propagate(lam->tvar(i), abstr), abstr};
         }
 
+        // propagate current values of slots
         DLOG("propagating slot values for call of {}", lam);
-        DLOG("existing slots: ");
-        for (auto [slot, slot_type] : all_slots_)
-            DLOG("{}", slot);
-
         for (auto [slot, slot_type] : all_slots_) {
             if (auto local_value = current_slot_values_[curr_mut()][slot]) {
                 DLOG("propagating local value: {} -> {}", slot, local_value);
-                auto proxy = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
-                propagate(proxy, local_value);
+                auto proxy  = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
+                vars[proxy] = {propagate(proxy, local_value), local_value};
             } else {
                 // TODO: something is wrong here i think? maybe only one of the branches can happen
                 // because of eta expansion?
@@ -177,7 +171,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 auto lam_proxy    = world().proxy(slot_type, {lam, slot}, 0, Proxy_Slot);
                 auto lookup_proxy = world().proxy(slot_type, {curr_mut(), slot}, 0, Proxy_Slot);
                 if (auto i = lattice_.find(lookup_proxy); i != lattice_.end()) {
-                    propagate(lam_proxy, i->second);
+                    vars[lam_proxy] = {propagate(lam_proxy, i->second), i->second};
                 } else {
                     DLOG("no value found for {}", slot);
                     // TODO find the value, but how? Can this ever happen?
@@ -188,30 +182,34 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
         // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling them
         // into one proxy
-        for (size_t i = 0; i != n; ++i) {
-            if (abstr_vars[i]) continue;
+        for (auto it = vars.begin(); it != vars.end(); it++) {
+            auto [var, abstrs]          = *it;
+            auto [abstr_var, abstr_arg] = abstrs;
+            if (abstr_var) continue; // skip vars where we already found a constant
+
+            DLOG("we did not find a constant for {}, trying gvn", var);
 
             // vars: vars that have the same arg at this app
-            auto vars = DefVec();
-            auto vi   = lam->tvar(i);
-            vars.emplace_back(vi);
+            DefVec bundled_vars;
+            bundled_vars.emplace_back(var);
 
-            for (size_t j = i + 1; j != n; ++j) {
-                auto vj = lam->tvar(j);
-                if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) vars.emplace_back(vj);
+            for (auto jt = it; jt != vars.end(); jt++) {
+                // we start at i + 1, because everything up to j that can be bundled was already bundled in a previous
+                // iteration
+                //
+                auto [var_j, abstrs]            = *it;
+                auto [abstr_var_j, abstr_arg_j] = abstrs;
+                if (!abstr_var_j && abstr_arg_j == abstr_arg) bundled_vars.emplace_back(var_j);
             }
 
-            if (vars.size() == 1) {
+            if (bundled_vars.size() == 1) {
                 // We didn't find any other vars with the same arg.
-                lattice_[vi] = abstr_vars[i] = vi; // top
+                lattice_[var] = vars[var].first = var;
             } else {
-                auto proxy = world().proxy(vi->type(), vars, 0, Proxy_GVN);
+                auto proxy = world().proxy(var->type(), bundled_vars, 0, Proxy_GVN);
 
-                for (auto p : proxy->ops()) {
-                    auto j       = get_index(p);
-                    auto vj      = lam->tvar(j);
-                    lattice_[vj] = abstr_vars[j] = proxy;
-                }
+                for (auto var_j : bundled_vars)
+                    lattice_[var_j] = vars[var_j].first = proxy;
 
                 DLOG("bundle: {}", proxy);
             }
@@ -226,41 +224,69 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         // c -> {a, c}
         // d -> {b, d}
         // e -> e      (top)
-        for (size_t i = 0; i != n; ++i) {
-            if (auto proxy = isa_gvn_proxy(abstr_vars[i])) {
-                auto num  = proxy->num_ops();
-                auto vars = DefVec();
+        for (auto it = vars.begin(); it != vars.end(); it++) {
+            auto [var, abstrs]          = *it;
+            auto [abstr_var, abstr_arg] = abstrs;
+            // this is for all existing gvn proxies, too. they might be from a previous iteration.
+            if (auto proxy = isa_gvn_proxy(abstr_var)) {
+                DLOG("checking gvn bundle for {}", var);
+                auto num = proxy->num_ops();
+                DefVec new_bundled_vars;
 
                 for (auto p : proxy->ops()) {
-                    auto j  = get_index(p);
-                    auto vj = lam->tvar(j);
+                    auto j                          = get_index(p);
+                    auto vj                         = lam->tvar(j);
+                    auto [abstr_var_j, abstr_arg_j] = vars[vj];
                     if (p == vj) {
-                        if (abstr_args[i] == abstr_args[j]) vars.emplace_back(vj);
+                        if (abstr_arg == abstr_arg_j) new_bundled_vars.emplace_back(vj);
                     }
                 }
 
-                auto new_num = vars.size();
+                auto new_num = new_bundled_vars.size();
                 if (new_num == 1) {
                     invalidate();
-                    auto vi      = lam->tvar(i);
-                    lattice_[vi] = abstr_vars[i] = vi;
-                    DLOG("single: {}", vi);
+                    lattice_[var] = var;
+                    DLOG("single: {}", var);
                 } else if (new_num != num) {
                     invalidate();
-                    auto new_proxy = world().proxy(abstr_args[i]->type(), vars, 0, Proxy_GVN);
+                    auto new_proxy = world().proxy(abstr_arg->type(), new_bundled_vars, 0, Proxy_GVN);
                     DLOG("split: {}", new_proxy);
 
                     for (auto p : new_proxy->ops()) {
                         auto j  = get_index(p);
                         auto vj = lam->tvar(j);
-                        if (p == vj) lattice_[vj] = abstr_vars[j] = new_proxy;
+                        if (p == vj) lattice_[vj] = new_proxy;
                     }
                 }
                 // if new_num == num: do nothing
             }
         }
 
-        set(lam->var(), world().tuple(abstr_vars)); // set new abstract var
+        DLOG("VARS:");
+        for (auto [var, abstrs] : vars) {
+            auto [abstr_var, abstr_arg] = abstrs;
+            DLOG("absr_var: {}, abstr_arg: {}", abstr_var, abstr_arg);
+        }
+
+        // set new abstract var
+        DefVec abstr_vars;
+        DefVec abstr_args;
+        for (size_t i = 0; i != app->num_targs(); ++i) {
+            auto v = lam->tvar(i);
+            auto [_, abstr_arg] = vars[v];
+            auto abstr_var = lattice_[v];
+            DLOG("have thingy: {}", v);
+            DLOG("abstr_var: {}, abstr_arg: {}", abstr_var, abstr_arg);
+            abstr_vars.push_back(abstr_var);
+            abstr_args.push_back(abstr_arg);
+        }
+
+        DLOG("the ops: {}", lam->var()->ops());
+        DLOG("abstr vars: {}", abstr_vars);
+        DLOG("abstr args: {}", abstr_args);
+
+        set(lam->var(), world().tuple(abstr_vars));
+
         return world().app(rewrite_deps(lam), abstr_args);
     }
 
