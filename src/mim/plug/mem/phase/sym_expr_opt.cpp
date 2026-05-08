@@ -48,6 +48,7 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 static nat_t get_index(const Def* def) { return Lit::as(def->as<Extract>()->index()); }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
+    auto closed_before = app->is_closed();
     DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val]                        = store->args<3>();
@@ -193,11 +194,11 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             DefVec bundled_vars;
             bundled_vars.emplace_back(var);
 
-            for (auto jt = it; jt != vars.end(); jt++) {
+            for (auto jt = std::next(it); jt != vars.end(); jt++) {
                 // we start at i + 1, because everything up to j that can be bundled was already bundled in a previous
                 // iteration
                 //
-                auto [var_j, abstrs]            = *it;
+                auto [var_j, abstrs]            = *jt;
                 auto [abstr_var_j, abstr_arg_j] = abstrs;
                 if (!abstr_var_j && abstr_arg_j == abstr_arg) bundled_vars.emplace_back(var_j);
             }
@@ -208,8 +209,10 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             } else {
                 auto proxy = world().proxy(var->type(), bundled_vars, 0, Proxy_GVN);
 
-                for (auto var_j : bundled_vars)
-                    lattice_[var_j] = vars[var_j].first = proxy;
+                for (auto p : proxy->ops()) {
+                    auto key = p->isa<Var>() ? (lam->tvar(get_index(p))) : p;
+                    lattice_[key] = vars[key].first = proxy;
+                }
 
                 DLOG("bundle: {}", proxy);
             }
@@ -234,18 +237,17 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 DefVec new_bundled_vars;
 
                 for (auto p : proxy->ops()) {
-                    auto j                          = get_index(p);
-                    auto vj                         = lam->tvar(j);
-                    auto [abstr_var_j, abstr_arg_j] = vars[vj];
-                    if (p == vj) {
-                        if (abstr_arg == abstr_arg_j) new_bundled_vars.emplace_back(vj);
+                    auto key = p->isa<Var>() ? (lam->tvar(get_index(p))) : p;
+                    auto [abstr_var_j, abstr_arg_j] = vars[key];
+                    if (p == key) {
+                        if (abstr_arg == abstr_arg_j) new_bundled_vars.emplace_back(key);
                     }
                 }
 
                 auto new_num = new_bundled_vars.size();
                 if (new_num == 1) {
                     invalidate();
-                    lattice_[var] = var;
+                    lattice_[var] = vars[var].first = var;
                     DLOG("single: {}", var);
                 } else if (new_num != num) {
                     invalidate();
@@ -253,9 +255,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     DLOG("split: {}", new_proxy);
 
                     for (auto p : new_proxy->ops()) {
-                        auto j  = get_index(p);
-                        auto vj = lam->tvar(j);
-                        if (p == vj) lattice_[vj] = new_proxy;
+                        auto key = p->isa<Var>() ? (lam->tvar(get_index(p))) : p;
+                        if (p == key) lattice_[key] = vars[key].first = new_proxy;
                     }
                 }
                 // if new_num == num: do nothing
@@ -265,7 +266,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         DLOG("VARS:");
         for (auto [var, abstrs] : vars) {
             auto [abstr_var, abstr_arg] = abstrs;
-            DLOG("absr_var: {}, abstr_arg: {}", abstr_var, abstr_arg);
+            DLOG("var: {}, absr_var: {}, abstr_arg: {}", var, abstr_var, abstr_arg);
         }
 
         // set new abstract var
@@ -273,23 +274,18 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         DefVec abstr_args;
         for (size_t i = 0; i != app->num_targs(); ++i) {
             auto v = lam->tvar(i);
-            auto [_, abstr_arg] = vars[v];
-            auto abstr_var = lattice_[v];
-            DLOG("have thingy: {}", v);
-            DLOG("abstr_var: {}, abstr_arg: {}", abstr_var, abstr_arg);
+            auto [abstr_var, abstr_arg] = vars[v];
             abstr_vars.push_back(abstr_var);
             abstr_args.push_back(abstr_arg);
         }
 
-        DLOG("the ops: {}", lam->var()->ops());
-        DLOG("abstr vars: {}", abstr_vars);
-        DLOG("abstr args: {}", abstr_args);
-
         set(lam->var(), world().tuple(abstr_vars));
 
+        if (closed_before) assert(app->is_closed());
         return world().app(rewrite_deps(lam), abstr_args);
     }
 
+    if (closed_before) assert(app->is_closed());
     return mim::Analysis::rewrite_imm_App(app);
 }
 
@@ -302,6 +298,7 @@ static bool keep(const Def* old_var, const Def* abstr) {
 }
 
 const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
+    auto closed_before = old_app->is_closed();
     if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) {
             invalidate();
@@ -352,11 +349,15 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                 if (keep(old_var, abstr)) new_args[j++] = rewrite(old_app->targ(i));
             }
 
-            return map(old_app, new_world().app(new_lam, new_args));
+            auto result =  map(old_app, new_world().app(new_lam, new_args));
+            if (closed_before) assert(result->is_closed());
+            return result;
         }
     }
 
-    return Rewriter::rewrite_imm_App(old_app);
+    auto result =  Rewriter::rewrite_imm_App(old_app);
+    if (closed_before) assert(result->is_closed());
+    return result;
 }
 
 } // namespace mim::plug::mem::phase
