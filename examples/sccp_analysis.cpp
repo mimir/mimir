@@ -31,11 +31,7 @@ const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
             abstr_args[i] = abstr;
         }
 
-        // set new abstract var
-        auto abstr_var = world().tuple(abstr_vars);
-        map(lam->var(), abstr_var);
-        lattice_[lam->var()] = abstr_var;
-
+        set(lam->var(), world().tuple(abstr_vars)); // set new abstract var
         return world().app(rewrite_deps(lam), abstr_args);
     }
 

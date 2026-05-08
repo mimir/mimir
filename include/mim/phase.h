@@ -90,7 +90,9 @@ public:
         : Phase(world, annex)
         , Rewriter(world) {}
 
-    /// Clears rewriter state, analysis state, and resets Phase::todo() for the next fixed-point iteration.
+    /// Clears the rewriter map and resets Phase::todo() for the next fixed-point iteration.
+    /// lattice() is **preserved** across iterations so that abstract values accumulated in earlier
+    /// rounds remain available - this is what makes fixed-point convergence possible.
     /// @see RWPhase::analyze
     virtual void reset();
     ///@}
@@ -98,10 +100,21 @@ public:
     /// @name Getters
     ///@{
     World& world() { return Phase::world(); }
-    auto& lattice() { return lattice_; }
-    const auto& lattice() const { return lattice_; }
     Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
+    ///@}
+
+    /// @name lattice
+    ///@{
+    auto& lattice() { return lattice_; }
+    const auto& lattice() const { return lattice_; }
+
+    /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
+    /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
+    void set(const Def* concr, const Def* abstr) {
+        lattice_[concr] = abstr;
+        map(concr, abstr);
+    }
     ///@}
 
 protected:
@@ -128,21 +141,24 @@ protected:
     virtual void rewrite_annex(flags_t, const Def*);
     virtual void rewrite_external(Def*);
 
-    /// Traverses the mutable's dependencies under the current curr_mut() scope
-    /// without recording the mutable itself as visited and without initializing
+    /// Walks @p mut's dependencies under its curr_mut() scope.
+    /// Unlike rewrite_mut(), does **not** record `mut -> mut` and does **not** seed
     /// any binder-related lattice state.
     ///
-    /// This is useful for analyses that want to inspect a mutable under a
-    /// custom binder environment while still reusing Analysis' structured
-    /// dependency traversal.
+    /// Use this when you have already populated custom lattice entries for @p mut's
+    /// binder (typically inside a `rewrite_imm_App` override that propagates abstract
+    /// values from call arguments into the callee's tvars) and need to traverse the
+    /// body without rewrite_mut() clobbering that state.
     virtual Def* rewrite_deps(Def*);
 
-    /// Keeps the mutable itself in place by mapping `mut -> mut`, initializes
-    /// the default binder state for Lam binders in the analysis lattice, and
-    /// then traverses the mutable's dependencies via rewrite_deps().
+    /// Default "visit a mutable" entry point: maps `mut -> mut`, seeds Lam binder
+    /// vars to **top** (`v -> v`) in the lattice, and delegates to rewrite_deps()
+    /// for the recursive traversal.
     ///
-    /// In other words, this is the normal "visit a mutable" entry point for
-    /// Analysis, whereas rewrite_deps() only performs the recursive traversal.
+    /// If a binder var already carried a non-top lattice value, it is reset to top
+    /// and invalidate() is called: reaching a Lam through this default path means
+    /// it has been used as a value (not as an `App` callee) and has therefore
+    /// escaped, so any prior propagation for it is unsound and must be retracted.
     Def* rewrite_mut(Def*) override;
     ///@}
 

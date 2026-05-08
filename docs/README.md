@@ -68,7 +68,7 @@ For the rest of the documentation, start with the [Command-Line Reference](@ref 
 Declare new types, operations, and normalizers in a single `.mim` file.
 C++ provides the heavy lifting: optimization, lowering, and code generation.
 
-Explore the [Plugin Registry](https://github.com/mimir/plugins) to discover and share community-developed plugins.
+Explore the [Plugin Registry](https://mimir.github.io/plugins) to discover and share community-developed plugins.
 
 ### 🌊 Sea of Nodes
 
