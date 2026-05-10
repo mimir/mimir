@@ -3,28 +3,12 @@
 
 namespace mim::plug::spirv {
 
-std::optional<spirv::model> isa_builtin(const Def* type) {
-    if (auto global = Axm::isa<spirv::Ptr>(type)) {
-        auto [storage_class, n, decorations, wrapped_type] = global->uncurry_args<4>();
-        for (auto decoration : decorations->ops()) {
-            if (auto builtin = Axm::isa<spirv::decor>(decoration)) {
-                if (builtin.id() == spirv::decor::builtin) {
-                    auto model = Axm::as<spirv::model>(builtin->arg(0));
-                    return std::optional<spirv::model>{model.id()};
-                }
-            }
-        }
-    }
-
-    return std::nullopt;
-}
-
 void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
     auto decoration = Axm::as<spirv::decor>(decoration_);
     switch (decoration.id()) {
         case spirv::decor::builtin: {
-            auto [_model, magic] = decoration->uncurry_args<2>();
-            module.annotations.emplace_back(Op{
+            auto magic = decoration->arg();
+            module_.annotations.emplace_back(Op{
                 OpKind::Decorate,
                 {var_id, decoration::BuiltIn, static_cast<Word>(Lit::as(magic))},
                 {},
@@ -34,7 +18,7 @@ void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
         }
         case spirv::decor::location:
             auto location = decoration->arg();
-            module.annotations.emplace_back(Op{
+            module_.annotations.emplace_back(Op{
                 OpKind::Decorate,
                 {var_id, decoration::Location, static_cast<Word>(Lit::as(location))},
                 {},
@@ -44,7 +28,7 @@ void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
     }
 }
 
-Word Emitter::emit_function(const Lam* function) {
+Word Emitter::emit_function(Lam* function) {
     Word id            = next_id();
     globals_[function] = id;
 
@@ -52,21 +36,21 @@ Word Emitter::emit_function(const Lam* function) {
     const Pi* type      = strip(root()->type())->as<Pi>();
     Word type_id        = emit_type(type);
     Word return_type_id = emit_type(type->codom());
-    module.funDefinitions.emplace_back(Op{
+    module_.funDefinitions.emplace_back(Op{
         OpKind::Function,
         {0, type_id},
         id,
         return_type_id
     });
-    module.id_names[id] = root()->unique_name();
+    module_.id_names[id] = root()->unique_name();
 
     // Handle function parameter
     auto var      = root()->var();
     auto var_type = type->dom();
     Word var_id   = next_id();
     if (var_type != world().sigma())
-        module.funDefinitions.emplace_back(Op{OpKind::FunctionParameter, {}, var_id, emit_type(var_type)});
-    module.id_names[var_id]                  = var->unique_name();
+        module_.funDefinitions.emplace_back(Op{OpKind::FunctionParameter, {}, var_id, emit_type(var_type)});
+    module_.id_names[var_id]                 = var->unique_name();
     locals_[world().extract(var, (size_t)0)] = var_id;
 
     // Handle entry point markers and interface variables
@@ -112,13 +96,6 @@ Word Emitter::emit_function(const Lam* function) {
             auto ivar_id = emit_interface(interface_name, global);
             interfaces.push_back(ivar_id);
 
-            // Validate that builtins align with the specified model
-            auto builtin_model = isa_builtin(param);
-            if (model.has_value() && builtin_model.has_value()) {
-                if (*model != *builtin_model)
-                    error("invalid builtin for specified execution model encountered in entry point");
-            }
-
             // Add interface_var to locals_
             locals_[world().extract(world().extract(var, (size_t)0), idx)] = ivar_id;
             continue;
@@ -152,7 +129,7 @@ Word Emitter::emit_function(const Lam* function) {
         for (Word word : interfaces)
             entry.operands.push_back(word);
 
-        module.entryPoints.push_back(entry);
+        module_.entryPoints.push_back(entry);
 
         // Emit execution modes
         for (auto mode_def : exec_modes) {
@@ -173,7 +150,7 @@ Word Emitter::emit_function(const Lam* function) {
                     case spirv::mode::early_fragment_tests: mode_magic = execution_mode::EarlyFragmentTests; break;
                     default: continue;
                 }
-                module.executionModes.push_back(Op{
+                module_.executionModes.push_back(Op{
                     OpKind::ExecutionMode,
                     {id, mode_magic},
                     {},
@@ -184,6 +161,29 @@ Word Emitter::emit_function(const Lam* function) {
     }
 
     return id;
+}
+
+void Emitter::finalize_function(Lam* fun) {
+    for (auto mut : Scheduler::schedule(nest())) {
+        if (auto lam = mut->isa_mut<Lam>()) {
+            assert(lam2bb_.contains(lam));
+            auto& bb = lam2bb_[lam];
+
+            // reserve space for ops
+            module_.funDefinitions.reserve(1 + bb.merge.has_value() + bb.phis.size() + bb.ops.size() + bb.tail.size()
+                                           + 1);
+
+            module_.funDefinitions.push_back(bb.label);
+            for (auto [phi, var_parents] : bb.phis)
+                module_.funDefinitions.emplace_back(Op{OpKind::Phi, var_parents, id(phi), emit_type(phi->type())});
+            module_.funDefinitions.insert(module_.funDefinitions.end(), bb.ops.begin(), bb.ops.end());
+            module_.funDefinitions.insert(module_.funDefinitions.end(), bb.tail.begin(), bb.tail.end());
+            if (bb.merge) module_.funDefinitions.push_back(*bb.merge);
+            module_.funDefinitions.push_back(bb.end);
+        }
+    }
+
+    module_.funDefinitions.emplace_back(Op{OpKind::FunctionEnd, {}, {}, {}});
 }
 
 } // namespace mim::plug::spirv

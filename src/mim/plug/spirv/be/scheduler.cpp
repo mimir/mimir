@@ -1,8 +1,7 @@
 #include "mim/plug/spirv/be/scheduler.h"
 
+#include "mim/cfg.h"
 #include "mim/lam.h"
-
-#include "mim/plug/sflow/cfg.h"
 
 namespace mim::plug::spirv {
 

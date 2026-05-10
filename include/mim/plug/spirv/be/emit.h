@@ -99,6 +99,8 @@ private:
     Word emit_term_into(const Def* def, BB& bb);
     void link_phi(Lam* lam, Lam* callee, const Def* arg);
 
+    void finalize_function(Lam* fun);
+
     BB& bb(Lam* lam) {
         if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_lam_);
         return lam2bb_[lam];
@@ -124,16 +126,22 @@ private:
     Lam* curr_lam_ = nullptr;
     LamMap<BB> lam2bb_;
 
+    DefMap<Word> interface_vars_;
+
     DefMap<Word> locals_;
     DefMap<Word> globals_;
+
+    DefMap<Lam*> loop_headers_;
 
     DefMap<Word> types_;
     std::optional<Word> bool_type_id_{}; // Shared Bool type (OpTypeBool)
     std::optional<Word> i32_type_id_{};  // Shared 32-bit signed integer type for all Idx
 };
 
-void emit_asm(World&, std::ostream&);
+bool is_scalar_type(const Def* type);
+bool is_const(const Def* def);
 
-void emit_bin(World&, std::ostream&);
+void emit_asm(World& world, std::ostream& out);
+void emit_bin(World& world, std::ostream& out);
 
 } // namespace mim::plug::spirv

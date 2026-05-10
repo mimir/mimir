@@ -1,3 +1,5 @@
+#pragma once
+
 #include "mim/plug/spirv/be/emit.h"
 namespace mim::plug::spirv {
 

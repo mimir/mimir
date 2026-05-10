@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "mim/plug/spirv/autogen.h"
+
 #include "fe/assert.h"
 
 // Enums
@@ -133,6 +135,7 @@ enum StorageClass {
 };
 
 std::string name(int storage_class);
+StorageClass from_mim(::mim::plug::spirv::storage s);
 } // namespace storage_class
 
 namespace decoration {
@@ -180,6 +183,7 @@ enum class OpKind {
     Function,
     FunctionParameter,
     FunctionEnd,
+    FunctionCall,
     FunDef,
     Type,
     TypeVoid,
@@ -284,6 +288,7 @@ struct Op {
             case OpKind::Function: return "OpFunction";
             case OpKind::FunctionParameter: return "OpFunctionParameter";
             case OpKind::FunctionEnd: return "OpFunctionEnd";
+            case OpKind::FunctionCall: return "OpFunctionCall";
             case OpKind::Type: return "OpType";
             case OpKind::TypeVoid: return "OpTypeVoid";
             case OpKind::TypeFunction: return "OpTypeFunction";
@@ -364,6 +369,7 @@ struct Op {
             case OpKind::Function: return 54;
             case OpKind::FunctionParameter: return 55;
             case OpKind::FunctionEnd: return 56;
+            case OpKind::FunctionCall: return 57;
             case OpKind::Label: return 248;
             case OpKind::Phi: return 245;
             case OpKind::SelectionMerge: return 247;

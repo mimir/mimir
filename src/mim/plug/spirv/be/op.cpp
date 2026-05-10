@@ -182,6 +182,17 @@ std::string name(int storage_class) {
         default: fe::unreachable();
     }
 }
+
+StorageClass from_mim(spirv::storage s) {
+    switch (s) {
+        case spirv::storage::INPUT: return Input;
+        case spirv::storage::UNIFORM: return Uniform;
+        case spirv::storage::OUTPUT: return Output;
+        case spirv::storage::PRIVATE: return Private;
+        case spirv::storage::FUNCTION: return Function;
+        default: fe::unreachable();
+    }
+}
 } // namespace storage_class
 
 namespace decoration {

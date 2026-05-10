@@ -2,8 +2,15 @@ add_mim_plugin(spirv
     SOURCES
         spirv.cpp
         normalizers.cpp
+        be/bb.cpp
         be/emit.cpp
+        be/expression.cpp
+        be/function.cpp
+        be/interface.cpp
         be/op.cpp
         be/scheduler.cpp
+        be/serialize.cpp
+        be/type.cpp
+        be/utils.cpp
     INSTALL
 )

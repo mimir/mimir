@@ -1,3 +1,5 @@
+// RUN: %mim %s -o -
+
 plugin sflow;
 
 fun extern foo (token: %sflow.Token %sflow.ROOT) = %sflow.loop token break continue loop 5 where
@@ -6,6 +8,6 @@ fun extern foo (token: %sflow.Token %sflow.ROOT) = %sflow.loop token break conti
         con left (_: [], _, struct) = %sflow.continue struct i;
         con right (_: [], _, struct) = %sflow.break struct ();
     end;
-    con break (_: [], _, struct) = return (5, struct);
+    con break (_: [], _, struct) = return (5);
     con continue (i: Nat, token, _, header) = %sflow.loopback token header (%core.nat.sub (i, 1));
 end;

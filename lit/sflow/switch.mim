@@ -1,3 +1,5 @@
+// RUN: %mim %s -o -
+
 plugin sflow;
 
 fun extern foo (token: %sflow.Token %sflow.ROOT) = %sflow.switch @3 token exit default (0, case0, (1, case1, (2, case2, ()))) 1 () where

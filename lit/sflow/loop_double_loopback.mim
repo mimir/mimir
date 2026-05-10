@@ -1,0 +1,24 @@
+// RUN: (! %mim %s -o - 2>&1) | FileCheck %s
+
+// Negative test: two loopbacks targeting the same header must fail
+// type checking. The header's `loopback_path` slot can only unify
+// with one token path, so the second loopback should produce a
+// unification error.
+
+// CHECK: error
+
+plugin sflow;
+
+fun extern foo (token: %sflow.Token %sflow.ROOT) = %sflow.loop token break continue loop 5 where
+    con loop (i: Nat, token, struct) =
+        %sflow.header token struct (left, right) (%core.ncmp.e (i, 0)) () where
+        con left (_: [], _, struct) = %sflow.continue struct i;
+        con right (_: [], _, struct) = %sflow.break struct ();
+    end;
+    con break (_: [], _, struct) = return (5);
+    con continue (i: Nat, token, _, header) = %sflow.if token if_break (a, b) ff where
+        con if_break (_: [], _, _) = return (5);
+        con a (_: [], token, _) = %sflow.loopback token header (%core.nat.sub (i, 1));
+        con b (_: [], token, _) = %sflow.loopback token header (%core.nat.sub (i, 1));
+    end;
+end;

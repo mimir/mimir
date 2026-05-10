@@ -155,4 +155,18 @@ int Serializer::max_name_length() {
     return max;
 }
 
+void emit_asm(World& world, std::ostream& out) {
+    Emitter emitter{world};
+    auto module = emitter.emit();
+    Serializer serializer{module};
+    serializer.assembly(out);
+}
+
+void emit_bin(World& world, std::ostream& out) {
+    Emitter emitter{world};
+    auto module = emitter.emit();
+    Serializer serializer{module};
+    serializer.binary(out);
+}
+
 } // namespace mim::plug::spirv
