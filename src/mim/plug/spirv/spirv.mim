@@ -13,6 +13,9 @@ import vec;
 
 let M = %mem.M 0;
 
+/// ## Primitive Types
+axm %spirv.Bool: ★;
+
 /// ## Execution Models
 ///
 axm %spirv.Model: ★;
@@ -41,53 +44,70 @@ axm %spirv.Decoration: ★;
 let Decoration = %spirv.Decoration;
 
 axm %spirv.decorc(block): %spirv.Decoration;
-axm %spirv.decor(builtin): %spirv.Model → Nat → %spirv.Decoration;
+axm %spirv.decor(builtin): Nat → %spirv.Decoration;
 axm %spirv.decor(location): Nat → %spirv.Decoration;
 
 /// ## Storage Classes
 ///
-axm %spirv.StorageClass: [local: Bool] → [write: Bool] → ★;
+axm %spirv.StorageClass: [write: Bool] → ★;
 ///
-axm %spirv.storage(INPUT):          %spirv.StorageClass ff ff;
-axm %spirv.storage(OUTPUT):         %spirv.StorageClass ff tt;
-axm %spirv.storage(UNIFORM):        %spirv.StorageClass ff ff;
-axm %spirv.storage(WORKGROUP):      %spirv.StorageClass tt tt;
-axm %spirv.storage(PRIVATE):        %spirv.StorageClass tt tt;
-axm %spirv.storage(FUNCTION):       %spirv.StorageClass tt tt;
-axm %spirv.storage(PUSH_CONSTANT):  %spirv.StorageClass ff ff;
-axm %spirv.storage(STORAGE_BUFFER): %spirv.StorageClass ff tt;
-axm %spirv.storage(IMAGE):          %spirv.StorageClass ff tt;
+axm %spirv.storage(INPUT):          %spirv.StorageClass ff;
+axm %spirv.storage(OUTPUT):         %spirv.StorageClass tt;
+axm %spirv.storage(UNIFORM):        %spirv.StorageClass ff;
+axm %spirv.storage(WORKGROUP):      %spirv.StorageClass tt;
+axm %spirv.storage(PRIVATE):        %spirv.StorageClass tt;
+axm %spirv.storage(FUNCTION):       %spirv.StorageClass tt;
+axm %spirv.storage(PUSH_CONSTANT):  %spirv.StorageClass ff;
+axm %spirv.storage(STORAGE_BUFFER): %spirv.StorageClass tt;
+axm %spirv.storage(IMAGE):          %spirv.StorageClass tt;
 
 /// ## Variables and Pointers
 ///
-axm %spirv.Ptr: {local write: Bool} → (%spirv.StorageClass local write) → {n: Nat} → «n; Decoration» → ★ → ★;
+axm %spirv.Ptr: {write: Bool} → (%spirv.StorageClass write) → ★ → ★;
 let Ptr = %spirv.Ptr;
-axm %spirv.variable: M → {write: Bool} → [class: %spirv.StorageClass tt write] → [T: ★] → [M, %spirv.Ptr class () T];
+axm %spirv.variable: Nat
+    → {write: Bool}
+    → [class: %spirv.StorageClass write]
+    → {n: Nat} → «n; Decoration»
+    → [T: ★]
+    → [M, %spirv.Ptr class T];
 
-axm %spirv.load: {local write: Bool, class: %spirv.StorageClass local write}
-    → {n: Nat, decs: «n; Decoration»}
+axm %spirv.input: %spirv.variable 0 %spirv.storage.INPUT;
+axm %spirv.output: %spirv.variable 0 %spirv.storage.OUTPUT;
+axm %spirv.uniform: %spirv.variable 0 %spirv.storage.UNIFORM;
+
+axm %spirv.load: {write: Bool, class: %spirv.StorageClass write}
     → {T: ★}
-    → [M, Ptr class decs T]
+    → [M, Ptr class T]
     → [M, T];
 
-axm %spirv.store: {local write: Bool, class: %spirv.StorageClass local write}
-    → {n: Nat, decs: «n; Decoration»}
+axm %spirv.store: {class: %spirv.StorageClass tt}
     → {T: ★}
-    → [M, Ptr class decs T, T]
+    → [M, Ptr class T, T]
     → [M];
 
 /// ## Builtins
 ///
-let %spirv.builtin.frag_coord
-    = Ptr %spirv.storage.INPUT (%spirv.decor.builtin %spirv.model.fragment 15) «2; %math.F32»;
+axm %spirv.builtin(frag_coord): {n: Nat, modes: «n; %spirv.Mode»}
+    → [%spirv.entry %spirv.model.fragment modes]
+    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 15) «2; %math.F32»;
 
-let %spirv.builtin.vertex_index
-    = Ptr %spirv.storage.INPUT  (%spirv.decor.builtin %spirv.model.vertex 42) (Idx 3);
-let %spirv.builtin.instance_index
-    = Ptr %spirv.storage.INPUT  (%spirv.decor.builtin %spirv.model.vertex 43) Nat;
-let %spirv.builtin.vertex_id
-    = Ptr %spirv.storage.INPUT  (%spirv.decor.builtin %spirv.model.vertex  5) Nat;
-let %spirv.builtin.instance_id
-    = Ptr %spirv.storage.INPUT  (%spirv.decor.builtin %spirv.model.vertex  6) Nat;
-let %spirv.builtin.position
-    = Ptr %spirv.storage.OUTPUT (%spirv.decor.builtin %spirv.model.vertex  0) «4; %math.F32»;
+axm %spirv.builtin(vertex_index): {n: Nat, modes: «n; %spirv.Mode»}
+    → [%spirv.entry %spirv.model.vertex modes]
+    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 42) Nat;
+
+axm %spirv.builtin(instance_index): {n: Nat, modes: «n; %spirv.Mode»}
+    → [%spirv.entry %spirv.model.vertex modes]
+    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 43) Nat;
+
+axm %spirv.builtin(vertex_id): {n: Nat, modes: «n; %spirv.Mode»}
+    → [%spirv.entry %spirv.model.vertex modes]
+    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 5) Nat;
+
+axm %spirv.builtin(instance_id): {n: Nat, modes: «n; %spirv.Mode»}
+    → [%spirv.entry %spirv.model.vertex modes]
+    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 6) Nat;
+
+axm %spirv.builtin(position): {n: Nat, modes: «n; %spirv.Mode»}
+    → [%spirv.entry %spirv.model.vertex modes]
+    → %spirv.variable %spirv.storage.OUTPUT (%spirv.decor.builtin 0) «4; %math.F32»;
