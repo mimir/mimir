@@ -6,10 +6,12 @@
 ///
 /// A plugin providing a spir-v backend for MimIR.
 ///
-import core;
-import math;
-import mem;
-import vec;
+plugin core;
+plugin math;
+plugin mem;
+plugin vec;
+plugin tuple;
+plugin compile;
 
 let M = %mem.M 0;
 
