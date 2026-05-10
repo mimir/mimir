@@ -22,21 +22,21 @@ lam vertex_body (vert_id: Idx 3): [«4; F32», «3; F32»]
 lam fragment_body [color: «3; F32»]: «4; F32»
     = (%vec.cat (color, 1.0:F32));
 
+let v_color = %spirv.output (%spirv.decor.location 0) «3; F32»;
+
+let i_color = %spirv.input (%spirv.decor.location 0) «3; F32»;
+let f_color = %spirv.output (%spirv.decor.location 0) «4; F32»;
+
 fun extern vertex [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.vertex (),
-    i_vertex_id: %spirv.builtin.vertex_id,
-    o_position: %spirv.builtin.position,
-    o_color: %spirv.Output (%spirv.decor.location 0) «3; F32»,
-] = let (mem_, vertex_id) = %spirv.load (mem, i_vertex_id);
+] = let (mem_, vertex_id) = %spirv.load (mem, %spirv.vertex_id model);
     let (position, color) = vertex_body (%core.bitcast (Idx 3) vertex_id);
-    let mem__ = %spirv.store (mem_, o_position, position);
-    return (%spirv.store (mem__, o_color, color));
+    let mem__ = %spirv.store (mem_, %spirv.position model, position);
+    return (%spirv.store (mem__, v_color, color));
 
 fun extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
-    i_color: %spirv.Input (%spirv.decor.location 0) «3; F32»,
-    o_color: %spirv.Output (%spirv.decor.location 0) «4; F32»,
 ] = let (mem_, color) = %spirv.load (mem, i_color);
-    return (%spirv.store (mem_, o_color, fragment_body color));
+    return (%spirv.store (mem_, f_color, fragment_body color));

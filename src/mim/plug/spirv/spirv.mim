@@ -66,50 +66,95 @@ axm %spirv.storage(IMAGE):          %spirv.StorageClass tt;
 /// ## Variables and Pointers
 ///
 axm %spirv.Ptr: {write: Bool} → (%spirv.StorageClass write) → ★ → ★;
-let Ptr = %spirv.Ptr;
-axm %spirv.variable: Nat
-    → {write: Bool}
+
+lam idx {n: Nat} (v: Nat): Idx n = %core.idx n %core.mode.US v;
+
+/// Create nested array type of types matching shape given by indices.
+/// For example, indices (0_3, 1_3, 1_2) would produce the following type:
+/// ```mim
+/// [[★, [★, [★, ★]], ★], ★]
+/// ```
+lam make_Ts {levels: Nat}@(%core.pe.is_closed levels) (ns: «levels; Nat») (indices: «i: levels; Idx (ns#i)»)
+    = let fst = idx 0;
+      let Ts = make_Ts (%tuple.pop ns)#1_2 (%tuple.pop indices)#1_2;
+      «i: ns#fst; (★, (Ts, «ns#fst; ★»)#(%core.ncmp.e (levels, 1)))#(%core.icmp.e (i, indices#fst))»;
+
+/// Takes nested array of types and creates nested array type out of that.
+///
+/// Example:
+/// ```mim
+/// (Nat, Nat, ((Bool, Nat), Nat), ‹2; Nat›)) => [Nat, Nat, [[Bool, Nat], Nat, «2; Nat»]]
+/// ```
+lam make_Compound {levels: Nat}@(%core.pe.is_closed levels) (ns: «levels; Nat») (indices: «i: levels; Idx (ns#i)») [Ts: make_Ts ns indices]
+    = let fst = idx 0;
+      let Compound = make_Compound (%tuple.pop ns)#1_2 (%tuple.pop indices)#1_2;
+      «i: ns#fst; ((Ts#(indices#fst), Compound)#(%core.icmp.e (i, indices#fst)), Ts#i)#(%core.ncmp.e (levels, 1))»;
+
+/// Performs multiple extracts on a nested array/tuple
+///
+/// Example:
+/// ```mim
+/// chain_extract (1_3, 0_2, 1_2, i) (Nat, Nat, ((Bool, ‹3; Nat›), Nat), ‹2; Nat›) => Nat
+/// ```
+lam chain_extract {levels: Nat}@(%core.pe.is_closed levels) {ns: «levels; Nat»} (indices: «i: levels; Idx (ns#i)») [Ts: make_Ts ns indices]: ★
+    = let fst = idx 0;
+      let deeper = chain_extract (%tuple.pop ns)#1_2 (%tuple.pop indices)#1_2 (Ts#(indices#fst));
+      (Ts#(indices#fst), deeper)#(%core.ncmp.e (levels, 1));
+
+axm %spirv.access_chain: {levels: Nat, ns: «levels; Nat», write: Bool, class: %spirv.StorageClass write}
+    → [indices: «i: levels; Idx (ns#i)»]
+    → {Ts: make_Ts ns indices}
+    → let C = make_Compound indices Ts;
+      [%spirv.Ptr class C]
+    → %spirv.Ptr class (chain_extract indices Ts);
+
+axm %spirv.variable: {write: Bool}
     → [class: %spirv.StorageClass write]
     → {n: Nat} → «n; Decoration»
     → [T: ★]
-    → [M, %spirv.Ptr class T];
+    → %spirv.Ptr class T;
 
-axm %spirv.input: %spirv.variable 0 %spirv.storage.INPUT;
-axm %spirv.output: %spirv.variable 0 %spirv.storage.OUTPUT;
-axm %spirv.uniform: %spirv.variable 0 %spirv.storage.UNIFORM;
+let %spirv.input = %spirv.variable %spirv.storage.INPUT;
+let %spirv.output = %spirv.variable %spirv.storage.OUTPUT;
+let %spirv.uniform = %spirv.variable %spirv.storage.UNIFORM;
 
 axm %spirv.load: {write: Bool, class: %spirv.StorageClass write}
     → {T: ★}
-    → [M, Ptr class T]
+    → [M, %spirv.Ptr class T]
     → [M, T];
 
 axm %spirv.store: {class: %spirv.StorageClass tt}
     → {T: ★}
-    → [M, Ptr class T, T]
+    → [M, %spirv.Ptr class T, T]
     → [M];
 
 /// ## Builtins
 ///
-axm %spirv.builtin(frag_coord): {n: Nat, modes: «n; %spirv.Mode»}
-    → [%spirv.entry %spirv.model.fragment modes]
-    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 15) «2; %math.F32»;
+axm %spirv.builtin(frag_coord): %spirv.Decoration;
+lam %spirv.frag_coord {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.fragment modes]
+    = %spirv.variable %spirv.storage.INPUT (%spirv.builtin.frag_coord) «2; %math.F32»;
 
-axm %spirv.builtin(vertex_index): {n: Nat, modes: «n; %spirv.Mode»}
-    → [%spirv.entry %spirv.model.vertex modes]
-    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 42) Nat;
+axm %spirv.builtin(vertex_index): %spirv.Decoration;
+lam %spirv.vertex_index {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.vertex modes]
+    = %spirv.variable %spirv.storage.INPUT (%spirv.builtin.vertex_index) Nat;
 
-axm %spirv.builtin(instance_index): {n: Nat, modes: «n; %spirv.Mode»}
-    → [%spirv.entry %spirv.model.vertex modes]
-    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 43) Nat;
+axm %spirv.builtin(instance_index): %spirv.Decoration;
+lam %spirv.instance_index {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.vertex modes]
+    = %spirv.variable %spirv.storage.INPUT (%spirv.builtin.instance_index) Nat;
 
-axm %spirv.builtin(vertex_id): {n: Nat, modes: «n; %spirv.Mode»}
-    → [%spirv.entry %spirv.model.vertex modes]
-    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 5) Nat;
+axm %spirv.builtin(vertex_id): %spirv.Decoration;
+lam %spirv.vertex_id {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.vertex modes]
+    = %spirv.variable %spirv.storage.INPUT (%spirv.builtin.vertex_id) Nat;
 
-axm %spirv.builtin(instance_id): {n: Nat, modes: «n; %spirv.Mode»}
-    → [%spirv.entry %spirv.model.vertex modes]
-    → %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 6) Nat;
+axm %spirv.builtin(instance_id): %spirv.Decoration;
+lam %spirv.instance_id {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.vertex modes]
+    = %spirv.variable %spirv.storage.INPUT (%spirv.decor.builtin 6) Nat;
 
-axm %spirv.builtin(position): {n: Nat, modes: «n; %spirv.Mode»}
-    → [%spirv.entry %spirv.model.vertex modes]
-    → %spirv.variable %spirv.storage.OUTPUT (%spirv.decor.builtin 0) «4; %math.F32»;
+axm %spirv.builtin(position): %spirv.Decoration;
+lam %spirv.position {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.vertex modes]
+    = %spirv.variable %spirv.storage.OUTPUT (%spirv.decor.builtin 0) «4; %math.F32»;
+
+/// ## Phases
+///
+/// Rewrites array extracts with dynamic indices into variable + store + access_chain + load
+axm %spirv.lower_dyn_extract: %compile.Phase;
