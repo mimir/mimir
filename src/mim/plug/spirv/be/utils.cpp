@@ -49,17 +49,20 @@ const Def* Emitter::strip_rec(const Def* def) {
     }
 
     if (auto pi = def->isa<Pi>()) {
-        DefVec fields{};
+        // Pi stays Pi. CPS pi: drop return cont, lift its dom to codom.
+        // Direct-style pi (no ret_pi): strip dom/codom in place.
+        if (auto ret_pi = pi->ret_pi()) {
+            DefVec fields{};
+            for (auto field : pi->dom()->as<Sigma>()->projs().view().rsubspan(1))
+                if (auto stripped = strip_rec(field)) fields.push_back(stripped);
 
-        // Strip return continuation from types, other lam values are not
-        // supported anyway
-        if (!pi->ret_pi()) return nullptr;
+            auto dom   = world.sigma(fields);
+            auto codom = strip(ret_pi->dom());
+            return world.pi(dom, codom, pi->is_implicit());
+        }
 
-        for (auto field : pi->dom()->as<Sigma>()->projs().view().rsubspan(1))
-            if (auto stripped = strip_rec(field)) fields.push_back(stripped);
-
-        auto dom   = world.sigma(fields);
-        auto codom = strip(pi->ret_pi()->dom());
+        auto dom   = strip(pi->dom());
+        auto codom = strip(pi->codom());
         return world.pi(dom, codom, pi->is_implicit());
     }
 
