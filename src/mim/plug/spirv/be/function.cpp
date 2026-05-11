@@ -188,7 +188,7 @@ void Emitter::finalize_function(Lam* fun) {
             module_.funDefinitions.push_back(bb.label);
             for (auto [phi, var_parents] : bb.phis)
                 module_.funDefinitions.emplace_back(
-                    Op{OpKind::Phi, var_parents, emit_term(phi), emit_type(phi->type())});
+                    Op{OpKind::Phi, var_parents, emit_term(phi), emit_type(strip(phi->type()))});
             module_.funDefinitions.insert(module_.funDefinitions.end(), bb.ops.begin(), bb.ops.end());
             module_.funDefinitions.insert(module_.funDefinitions.end(), bb.tail.begin(), bb.tail.end());
             if (bb.merge) module_.funDefinitions.push_back(*bb.merge);
