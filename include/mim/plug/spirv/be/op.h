@@ -136,6 +136,7 @@ enum StorageClass {
 
 std::string name(int storage_class);
 StorageClass from_mim(::mim::plug::spirv::storage s);
+bool is_local(StorageClass s);
 } // namespace storage_class
 
 namespace decoration {
@@ -160,6 +161,7 @@ enum BuiltIn {
 };
 
 std::string name(int builtin);
+BuiltIn from_mim(::mim::plug::spirv::builtin b);
 } // namespace spv_builtin
 
 namespace ext_inst {

@@ -17,15 +17,15 @@ void Emitter::visit(const Nest& nest) {
 
     assert(root()->ret_var());
 
-    auto f = nest.root()->mut()->as<Lam>();
-    emit_function(f);
-
     Scheduler new_scheduler(nest);
     swap(scheduler_, new_scheduler);
 
+    auto f = nest.root()->mut()->as<Lam>();
+    emit_function(f);
+
     for (auto mut : muts) {
         if (auto lam = mut->isa<Lam>()) {
-            curr_lam_ = lam;
+            curr_function_ = lam;
             assert(lam == root() || Lam::isa_basicblock(lam));
             emit_bb(lam, lam2bb_[lam]);
         }

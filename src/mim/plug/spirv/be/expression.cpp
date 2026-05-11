@@ -29,10 +29,9 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
 
     Word id = next_id();
 
-    // Cache the stripped def if it's different from the original
-    // This ensures that when the same underlying value is accessed via different paths,
-    // we don't emit it multiple times
-    if (def != original_def) locals_[def] = id;
+    // Cache emitted result so subsequent emit_term calls reuse the same id.
+    locals_[def] = id;
+    if (def != original_def) locals_[original_def] = id;
     module_.id_names[id] = def->unique_name();
 
     if (auto tuple = def->isa<Tuple>()) {
@@ -53,11 +52,10 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
         if (constituents.size() == 1) return constituents[0];
 
         if (is_const(tuple)) {
-            // OpConstantComposite: result type is implicit, constituents are operands
+            // OpConstantComposite: result type implicit, constituents are operands
             module_.declarations.emplace_back(Op{OpKind::ConstantComposite, constituents, id, type_id});
         } else {
-            // OpCompositeConstruct: result type ID first, then constituents
-            constituents.insert(constituents.begin(), type_id);
+            // OpCompositeConstruct: serializer prints result_type already
             bb.ops.emplace_back(Op{OpKind::CompositeConstruct, constituents, id, type_id});
         }
 
@@ -83,8 +81,7 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
             // OpConstantComposite: result type is implicit, constituents are operands
             module_.declarations.emplace_back(Op{OpKind::ConstantComposite, constituents, id, type_id});
         } else {
-            // OpCompositeConstruct: result type ID first, then constituents
-            constituents.insert(constituents.begin(), type_id);
+            // OpCompositeConstruct: serializer prints result_type already
             bb.ops.emplace_back(Op{OpKind::CompositeConstruct, constituents, id, type_id});
         }
 
@@ -238,6 +235,27 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
 
             return id;
         }
+    }
+
+    if (auto var = Axm::isa<spirv::variable>(def)) {
+        auto [storage_class, decs, type] = var->uncurry_args<3>();
+        auto storage_class_              = storage_class::from_mim(Axm::as<spirv::storage>(storage_class).id());
+        auto place                       = module_.declarations;
+        if (storage_class_ == spirv::storage::FUNCTION) {
+            // Place function var in function
+            place = function_vars_;
+        } else {
+            // Add all other vars to globals
+            globals_[def] = id;
+        }
+        place.push_back(Op{OpKind::Variable, {}, id, storage_class_});
+
+        if (decs->isa<Sigma>() || decs->isa<Tuple>())
+            for (auto dec : decs->ops())
+                emit_decoration(id, dec);
+        else
+            emit_decoration(id, decs);
+        return id;
     }
 
     if (auto store = Axm::isa<spirv::store>(def)) {

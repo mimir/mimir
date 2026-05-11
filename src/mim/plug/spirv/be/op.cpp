@@ -193,6 +193,8 @@ StorageClass from_mim(spirv::storage s) {
         default: fe::unreachable();
     }
 }
+
+bool is_local(StorageClass s) { return s == Private || s == Function; }
 } // namespace storage_class
 
 namespace decoration {
@@ -217,6 +219,18 @@ std::string name(int builtin) {
         case InstanceIndex: return "InstanceIndex"s;
         case FragCoord: return "FragCoord"s;
         default: return std::to_string(builtin);
+    }
+}
+
+BuiltIn from_mim(spirv::builtin b) {
+    switch (b) {
+        case spirv::builtin::position: return Position;
+        case spirv::builtin::vertex_id: return VertexId;
+        case spirv::builtin::instance_id: return InstanceId;
+        case spirv::builtin::vertex_index: return VertexIndex;
+        case spirv::builtin::instance_index: return InstanceIndex;
+        case spirv::builtin::frag_coord: return FragCoord;
+        default: fe::unreachable();
     }
 }
 } // namespace spv_builtin

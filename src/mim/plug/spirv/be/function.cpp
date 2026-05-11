@@ -1,21 +1,52 @@
-#include "mim/plug/spirv/autogen.h"
+#include "mim/phase.h"
+
 #include "mim/plug/spirv/be/emit.h"
+#include "mim/plug/spirv/spirv.h"
 
 namespace mim::plug::spirv {
 
+namespace {
+
+/// Collects all `spirv::variable` defs reachable from a function root.
+class InterfaceCollector : public Analysis {
+public:
+    InterfaceCollector(World& world)
+        : Analysis(world, "spirv_interface_collector") {}
+
+    DefVec collect(Lam* root) {
+        rewrite(root);
+        return std::move(vars_);
+    }
+
+    const Def* rewrite_imm_App(const App* app) override {
+        if (auto var = Axm::isa<spirv::variable>(app)) {
+            auto [storage_class, decs, type] = var->uncurry_args<3>();
+            auto sc                          = storage_class::from_mim(Axm::as<spirv::storage>(storage_class).id());
+            if (!storage_class::is_local(sc)) vars_.push_back(app);
+        }
+        return Rewriter::rewrite_imm_App(app);
+    }
+
+private:
+    DefVec vars_;
+};
+
+} // namespace
+
 void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
+    if (auto builtin = Axm::isa<spirv::builtin>(decoration_)) {
+        auto magic = spv_builtin::from_mim(builtin.id());
+        module_.annotations.emplace_back(Op{
+            OpKind::Decorate,
+            {var_id, decoration::BuiltIn, static_cast<Word>(magic)},
+            {},
+            {},
+        });
+        module_.id_names[var_id] = std::format("{}_{}", spv_builtin::name(magic), var_id);
+        return;
+    }
     auto decoration = Axm::as<spirv::decor>(decoration_);
     switch (decoration.id()) {
-        case spirv::decor::builtin: {
-            auto magic = decoration->arg();
-            module_.annotations.emplace_back(Op{
-                OpKind::Decorate,
-                {var_id, decoration::BuiltIn, static_cast<Word>(Lit::as(magic))},
-                {},
-                {},
-            });
-            break;
-        }
         case spirv::decor::location:
             auto location = decoration->arg();
             module_.annotations.emplace_back(Op{
@@ -29,11 +60,13 @@ void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
 }
 
 Word Emitter::emit_function(Lam* function) {
-    Word id            = next_id();
-    globals_[function] = id;
+    curr_function_ = function;
+
+    Word id                 = next_id();
+    function_ids_[function] = id;
 
     // Convert Pi type to direct style and strip
-    const Pi* type      = strip(root()->type())->as<Pi>();
+    const Pi* type      = strip(function->type())->as<Pi>();
     Word type_id        = emit_type(type);
     Word return_type_id = emit_type(type->codom());
     module_.funDefinitions.emplace_back(Op{
@@ -42,7 +75,7 @@ Word Emitter::emit_function(Lam* function) {
         id,
         return_type_id
     });
-    module_.id_names[id] = root()->unique_name();
+    module_.id_names[id] = function->unique_name();
 
     // Handle function parameter
     auto var      = root()->var();
@@ -53,59 +86,39 @@ Word Emitter::emit_function(Lam* function) {
     module_.id_names[var_id]                 = var->unique_name();
     locals_[world().extract(var, (size_t)0)] = var_id;
 
-    // Handle entry point markers and interface variables
-    std::optional<spirv::model> model{};
-    std::vector<Word> interfaces{};
-    std::vector<const Def*> exec_modes{};
-
-    // TODO: Check whether the lam has an argument besides the return con
-    std::cerr << "dom: " << root()->dom() << " - " << root()->dom()->op(0)->node_name() << "\n";
-    auto sigma = root()->dom()->op(0)->as<Sigma>();
-    std::cerr << sigma << "\n";
-    for (size_t idx = 0; idx < sigma->num_ops(); ++idx) {
-        auto param = sigma->op(idx);
-
-        // Check if this is an execution model marker
-        if (auto entry_marker = Axm::isa<spirv::entry>(param)) {
-            if (model.has_value()) error("multiple execution model markers found in entry point");
-
-            // Extract model and modes: entry: Model → {n: Nat} → «n; Mode» → ★
-            auto [_model, n, modes] = entry_marker->uncurry_args<3>();
-            model                   = Axm::as<spirv::model>(_model).id();
-
-            // Collect execution modes
-            if (auto lit_n = Lit::isa(n)) {
-                if (*lit_n == 1) {
-                    // Single mode
-                    exec_modes.push_back(modes);
-                } else if (*lit_n > 1) {
-                    // Multiple modes in a tuple
-                    for (auto mode : modes->projs())
-                        exec_modes.push_back(mode);
-                }
-                // n == 0: no modes
-            }
-            continue;
-        }
-
-        // Get interface name
-        std::string interface_name = var->proj(0)->proj(idx)->unique_name();
-
-        // Process global interface variables
-        if (auto global = Axm::isa<spirv::Ptr>(param)) {
-            auto ivar_id = emit_interface(interface_name, global);
-            interfaces.push_back(ivar_id);
-
-            // Add interface_var to locals_
-            locals_[world().extract(world().extract(var, (size_t)0), idx)] = ivar_id;
-            continue;
-        }
-    }
-
-    // external lams are emit_typeed to entry points
+    // external lams are emitted as entry points
     if (root()->is_external()) {
+        // Handle entry point markers and interface variables
+        std::optional<spirv::model> model{};
+        DefVec exec_modes{};
+
+        // TODO: Check whether the lam has an argument besides the return con
+        std::cerr << "dom: " << root()->dom() << " - " << root()->dom()->op(0)->node_name() << "\n";
+        auto sigma = root()->dom()->op(0)->as<Sigma>();
+        std::cerr << sigma << "\n";
+        for (size_t idx = 0; idx < sigma->num_ops(); ++idx) {
+            auto param = sigma->op(idx);
+
+            // Check if this is an entry point marker
+            if (auto entry_marker = Axm::isa<spirv::entry>(param)) {
+                if (model.has_value()) error("multiple execution model markers found in entry point");
+
+                // Extract model and modes: entry: Model → {n: Nat} → «n; Mode» → ★
+                auto [model_, modes] = entry_marker->uncurry_args<2>();
+                model                = Axm::as<spirv::model>(model_).id();
+
+                // Collect execution modes
+                if (auto mode = Axm::isa<spirv::mode>(modes))
+                    exec_modes.push_back(mode);
+                else
+                    for (auto mode : modes->ops())
+                        exec_modes.push_back(mode);
+                continue;
+            }
+        }
+
         // assume compute shader if no builtins were used
-        if (!model.has_value()) model = spirv::model::compute;
+        if (!model.has_value()) error(root()->loc(), "external lam without entry param");
 
         Word model_magic;
         switch (*model) {
@@ -125,9 +138,9 @@ Word Emitter::emit_function(Lam* function) {
         for (Word word : string_to_words(root()->sym().str()))
             entry.operands.push_back(word);
 
-        // append interfacing globals
-        for (Word word : interfaces)
-            entry.operands.push_back(word);
+        InterfaceCollector collector{world()};
+        for (auto var : collector.collect(function))
+            entry.operands.push_back(emit_term(var));
 
         module_.entryPoints.push_back(entry);
 

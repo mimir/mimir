@@ -60,6 +60,11 @@ public:
 
     /// Emit the entire world and return the resulting SPIR-V module.
     Module emit() {
+        module_.capabilities.push_back(Op{OpKind::Capability, {capability::Shader}});
+        module_.memoryModel = Op{
+            OpKind::MemoryModel,
+            {addressing_model::Logical, memory_model::Vulkan}
+        };
         Super::start();
         module_.id_bound = next_id();
         return take_module();
@@ -85,7 +90,7 @@ public:
         if (auto i = globals_.find(def); i != globals_.end()) return i->second;
         if (auto i = locals_.find(def); i != locals_.end()) return i->second;
 
-        auto place = scheduler_.smart(curr_lam_, def);
+        auto place = scheduler_.smart(curr_function_, def);
         auto& bb   = lam2bb_[place->mut()->template as<Lam>()];
         return emit_term_into(def, bb);
     }
@@ -102,7 +107,7 @@ private:
     void finalize_function(Lam* fun);
 
     BB& bb(Lam* lam) {
-        if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_lam_);
+        if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_function_);
         return lam2bb_[lam];
     }
 
@@ -123,13 +128,15 @@ private:
     Word glsl_ext_inst_id_{0};
 
     Scheduler scheduler_;
-    Lam* curr_lam_ = nullptr;
+    Lam* curr_function_ = nullptr;
     LamMap<BB> lam2bb_;
 
     DefMap<Word> interface_vars_;
 
+    OpVec function_vars_{};
     DefMap<Word> locals_;
     DefMap<Word> globals_;
+    LamMap<Word> function_ids_;
 
     DefMap<Lam*> loop_headers_;
 

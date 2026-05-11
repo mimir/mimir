@@ -85,8 +85,7 @@ const Def* Emitter::strip_rec(const Def* def) {
     }
 
     if (Axm::isa<mem::M>(def)) return nullptr;
-    // if (Axm::isa<spirv::Global>(def)) return nullptr;
-    // if (Axm::isa<spirv::entry>(def)) return nullptr;
+    if (Axm::isa<spirv::entry>(def)) return nullptr;
 
     return def;
 }

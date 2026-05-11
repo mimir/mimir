@@ -10,17 +10,18 @@ set(MIM_PLUGINS
     math
     matrix
     mem
+    mint
     opt
     option
     ord
     refly
     regex
     sflow
-    # spirv
+    spirv
     tensor
     tuple
     vec
-    # vulkan
+    #vulkan
 )
 
 foreach(PLUGIN IN LISTS MIM_PLUGINS)

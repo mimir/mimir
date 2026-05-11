@@ -180,7 +180,9 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         Word result_id      = next_id();
         Word result_type_id = emit_type(ret_type);
 
-        std::vector<Word> operands{id(fn), emit_term(t_val)};
+        auto fn_it = function_ids_.find(fn->as_mut<Lam>());
+        if (fn_it == function_ids_.end()) error("call to non-emitted function: {}", fn);
+        std::vector<Word> operands{fn_it->second, emit_term(t_val)};
         bb.tail.emplace_back(Op{OpKind::FunctionCall, operands, result_id, result_type_id});
 
         auto phi     = ret_lam->var();

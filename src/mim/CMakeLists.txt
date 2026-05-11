@@ -3,6 +3,7 @@ target_sources(libmim
     PRIVATE
         axm.cpp
         check.cpp
+        cfg.cpp
         def.cpp
         dot.cpp
         driver.cpp
