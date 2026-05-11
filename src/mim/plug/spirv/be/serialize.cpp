@@ -138,6 +138,15 @@ void Serializer::assembly(Op& op, std::ostream& out) {
         case OpKind::TypeVoid:
             // No operands
             break;
+        case OpKind::SelectionMerge:
+            out << " %" << id_name(op.operands[0]); // merge block
+            out << " " << op.operands[1];           // selection control mask (literal)
+            break;
+        case OpKind::LoopMerge:
+            out << " %" << id_name(op.operands[0]); // merge block
+            out << " %" << id_name(op.operands[1]); // continue target
+            out << " " << op.operands[2];           // loop control mask (literal)
+            break;
         default:
             for (Word operand : op.operands)
                 out << " %" << id_name(operand);
