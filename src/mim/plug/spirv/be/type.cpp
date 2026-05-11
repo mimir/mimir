@@ -8,6 +8,7 @@
 namespace mim::plug::spirv {
 
 Word Emitter::emit_type(const Def* type) {
+    type = strip(type);
     // check if already converted
     if (auto i = types_.find(type); i != types_.end()) return i->second;
 

@@ -17,7 +17,7 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
     std::cerr << "emit_bb: " << def->unique_name() << " (node: " << def->node_name() << "): " << def->type()
               << std::endl;
 
-    auto type    = strip(def->type());
+    auto type    = def->type();
     Word type_id = emit_type(type);
 
     Word id = next_id();

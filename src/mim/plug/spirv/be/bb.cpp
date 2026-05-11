@@ -162,7 +162,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto [token, fn, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
         auto ret_lam                         = ret_lam_def->as_mut<Lam>();
 
-        auto ret_type       = strip(fn->type()->as<Pi>()->ret_pi()->dom());
+        auto ret_type       = fn->type()->as<Pi>()->ret_pi()->dom();
         Word result_id      = next_id();
         Word result_type_id = emit_type(ret_type);
 
