@@ -72,7 +72,7 @@ axm %sflow.loopback: {H B: ★, path: %sflow.Path, break: Cn B}
 /// The header argument to any structure must always point to the lam containing it, otherwise
 /// the normalizer will throw an error.
 ///
-axm %sflow.if: {n: Nat} → {T B: ★} → {path: %sflow.Path}
+axm %sflow.if: {T B: ★} → {path: %sflow.Path}
   → [token: %sflow.Token path]
   → [break: Cn [B, %sflow.Token (%sflow.next path), %sflow.Struct path (⊥: Cn ⊥) (⊥: Cn ⊥)]]
   → [tuple: «i: 2; Cn [T, %sflow.Token ((%sflow.left, %sflow.right)#i path), %sflow.Struct path (⊥: Cn ⊥) break]»]
