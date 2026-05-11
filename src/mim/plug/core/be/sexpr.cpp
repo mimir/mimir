@@ -735,16 +735,16 @@ std::string Emitter::emit_bb(BB& bb, const Def* def) {
         if (!slotted() && ((Lit::isa(index) && tuple->isa<Var>()) || is_nested_proj))
             std::print(os, "\n{}{}", tab, id(extract));
         else
-            print(os, "{}", emit_node(bb, extract, "extract"));
+            std::print(os, "{}", emit_node(bb, extract, "extract"));
 
     } else if (auto insert = def->isa<Insert>()) {
-        print(os, "{}", emit_node(bb, insert, "insert"));
+        std::print(os, "{}", emit_node(bb, insert, "insert"));
 
     } else if (auto var = def->isa<Var>()) {
         std::print(os, "\n{}{}", tab, id(var, true));
 
     } else if (auto app = def->isa<App>()) {
-        print(os, "{}", emit_node(bb, app, "app"));
+        std::print(os, "{}", emit_node(bb, app, "app"));
 
     } else if (auto axm = def->isa<Axm>()) {
         std::print(os, "\n{}{}", tab, id(axm));

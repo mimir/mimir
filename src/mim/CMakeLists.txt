@@ -35,6 +35,7 @@ target_sources(libmim
         phase/beta_red_phase.cpp
         phase/eta_red_phase.cpp
         phase/eta_exp_phase.cpp
+        phase/foobar.cpp
         phase/branch_normalize.cpp
         phase/prefix_cleanup.cpp
         phase/ret_wrap.cpp

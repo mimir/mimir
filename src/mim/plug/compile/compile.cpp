@@ -17,6 +17,7 @@
 #include <mim/phase/branch_normalize.h>
 #include <mim/phase/eta_exp_phase.h>
 #include <mim/phase/eta_red_phase.h>
+#include <mim/phase/foobar.h>
 #include <mim/phase/prefix_cleanup.h>
 #include <mim/phase/ret_wrap.h>
 #include <mim/phase/sym_expr_opt.h>
@@ -37,6 +38,7 @@ void reg_stages(Flags2Stages& stages) {
     Stage::hook<compile::cleanup_phase,          Cleanup             >(stages);
     Stage::hook<compile::eta_exp_phase,          EtaExpPhase         >(stages);
     Stage::hook<compile::eta_red_phase,          EtaRedPhase         >(stages);
+    Stage::hook<compile::foobar,                 Foobar              >(stages);
     Stage::hook<compile::pass2phase,             PassManPhase        >(stages);
     Stage::hook<compile::repl2phase,             ReplManPhase        >(stages);
     Stage::hook<compile::sym_expr_opt,           SymExprOpt          >(stages);

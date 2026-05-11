@@ -29,6 +29,7 @@ lam cond_pass  {n: Nat} (name: «n; I8») (pass:  %compile.Pass ): %compile.Pass
 
 lam extern _default_compile (): %compile.Phase =
     %compile.phases ff (
+        %compile.foobar,
         %compile.pass2phase %compile.scalarize_pass,
         %compile.pass2phase (%compile.eta_red_pass ff),
         %compile.pass2phase %compile.tail_rec_elim_pass,

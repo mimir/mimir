@@ -49,6 +49,7 @@ axm %compile.sym_expr_opt:                              %compile.Phase;
 axm %compile.pass2phase:                %compile.Pass → %compile.Phase;
 axm %compile.repl2phase:                %compile.Repl → %compile.Phase;
 axm %compile.prefix_cleanup_phase: {n: Nat} → «n; I8» → %compile.Phase;
+axm %compile.foobar:                                    %compile.Phase;
 
 let %compile.internal_cleanup_phase = %compile.prefix_cleanup_phase "internal_";
 ///
