@@ -32,27 +32,11 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // return lam called
         // => OpReturn | OpReturnValue
 
-        std::vector<Word> values;
-        std::vector<const Def*> types;
-
-        for (auto arg : app->args()) {
-            auto value    = emit_term(arg);
-            auto arg_type = strip(arg->type());
-            if (arg_type != world().sigma()) {
-                values.emplace_back(value);
-                types.emplace_back(arg_type);
-            }
-        }
-
-        switch (values.size()) {
-            case 0: bb.end = Op{OpKind::Return, {}, {}, {}}; break;
-            case 1: bb.end = Op{OpKind::ReturnValue, {values[0]}, {}, {}}; break;
-            default:
-                Word val_id = next_id();
-                Word type   = emit_type(world().sigma(types));
-                bb.tail.emplace_back(Op{OpKind::CompositeConstruct, {values}, val_id, type});
-        }
-
+        auto arg = emit_term(app->arg());
+        if (arg == emit_term(world().tuple()))
+            bb.end = Op{OpKind::Return, {}, {}, {}};
+        else
+            bb.end = Op{OpKind::ReturnValue, {arg}, {}, {}};
     } else if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
         // === Ordinary jump ===
         // => OpBranch
