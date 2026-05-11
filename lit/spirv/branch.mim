@@ -6,45 +6,45 @@ import math;
 
 let F32 = %math.F32;
 
-// let positions = (
-//     (0.0:F32, -0.5:F32),
-//     (0.5:F32, 0.5:F32),
-//     (-0.5:F32, 0.5:F32),
-// );
+let positions = (
+    (0.0:F32, -0.5:F32),
+    (0.5:F32, 0.5:F32),
+    (-0.5:F32, 0.5:F32),
+);
 
-let red  = (1.0:F32, 0.0:F32, 0.0:F32, 1.0:F32);
-let green  = (0.0:F32, 1.0:F32, 0.0:F32, 1.0:F32);
-let blue = (0.0:F32, 0.0:F32, 1.0:F32, 1.0:F32);
+let red   = (1.0:F32, 0.0:F32, 0.0:F32, 1.0:F32);
+let green = (0.0:F32, 1.0:F32, 0.0:F32, 1.0:F32);
+let blue  = (0.0:F32, 0.0:F32, 1.0:F32, 1.0:F32);
 
-// lam vertex_body (vert_id: Idx 3): [«4; F32», F32]
-//     = (%vec.cat (positions#vert_id, (0.0:F32, 1.0:F32)), (positions#vert_id)#(0:(Idx 2)));
+lam vertex_body (vert_id: Idx 3): [«4; F32», F32]
+    = (%vec.cat (positions#vert_id, (0.0:F32, 1.0:F32)), (positions#vert_id)#(0:(Idx 2)));
 
-// fun extern vertex [
-//     mem: %mem.M 0,
-//     model: %spirv.entry %spirv.model.vertex (),
-//     i_vertex_id: %spirv.builtin.vertex_id,
-//     o_position: %spirv.builtin.position,
-//     o_x: %spirv.Output (%spirv.decor.location 0) F32,
-// ] = let (mem_, vertex_id) = %spirv.load (mem, i_vertex_id);
-//     let (position, x) = vertex_body (%core.bitcast (Idx 3) vertex_id);
-//     let mem__ = %spirv.store (mem_, o_position, position);
-//     return (%spirv.store (mem__, o_x, x));
+let o_x     = %spirv.output (%spirv.decor.location 0) F32;
+let i_x     = %spirv.input  (%spirv.decor.location 0) F32;
+let o_color = %spirv.output (%spirv.decor.location 0) «4; F32»;
+
+fun extern vertex [
+    mem: %mem.M 0,
+    model: %spirv.entry %spirv.model.vertex (),
+] = let (mem_, vertex_id) = %spirv.load (mem, %spirv.vertex_id model);
+    let (position, x) = vertex_body (%core.bitcast (Idx 3) vertex_id);
+    let mem__ = %spirv.store (mem_, %spirv.position model, position);
+    return (%spirv.store (mem__, o_x, x));
 
 fun extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
-    i_x: %spirv.Input (%spirv.decor.location 0) F32,
-    o_color: %spirv.Output (%spirv.decor.location 0) «4; F32»,
+    token: %sflow.Token %sflow.ROOT,
 ] = let (mem_, x) = %spirv.load (mem, i_x);
-    let cond = %math.cmp.l 0 (x, -0.25:F32);
-    con merge (color: «4; F32») = return (%spirv.store (mem_, o_color, color));
-    %sflow.branch merge (then_case, else_case) cond ()
-    where
-        con then_case (_: [], branch: %sflow.Branch merge) = %sflow.merge branch red;
-        con else_case (_: [], branch: %sflow.Branch merge) = %sflow.branch merge (then_case, else_case) cond () where
-            let cond = %math.cmp.l 0 (x, 0.25:F32);
-            con then_case (_: [], branch: %sflow.Branch merge) = %sflow.merge branch green;
-            con else_case (_: [], branch: %sflow.Branch merge) = %sflow.merge branch blue;
-            con merge (color: «4; F32») = %sflow.merge branch color;
-        end;;
+    let cond_outer = %math.cmp.l 0 (x, -0.25:F32);
+    %sflow.if token merge (else_outer, then_outer) cond_outer () where
+        con then_outer (_: [], _, struct) = %sflow.break struct red;
+        con else_outer (_: [], token, struct) =
+            let cond_inner = %math.cmp.l 0 (x, 0.25:F32);
+            %sflow.if token break_inner (else_inner, then_inner) cond_inner () where
+                con then_inner (_: [], _, s) = %sflow.break s green;
+                con else_inner (_: [], _, s) = %sflow.break s blue;
+                con break_inner (color: «4; F32», _, _) = %sflow.break struct color;
+            end;
+        con merge (color: «4; F32», _, _) = return (%spirv.store (mem_, o_color, color));
     end;

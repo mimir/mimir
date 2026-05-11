@@ -3,7 +3,8 @@
 #include "mim/tuple.h"
 
 #include "mim/plug/math/math.h"
-#include "mim/plug/mem/mem.h" // IWYU pragma: keep
+#include "mim/plug/mem/mem.h"     // IWYU pragma: keep
+#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
 #include "mim/plug/spirv/be/emit.h"
 
 namespace mim::plug::spirv {
@@ -86,6 +87,8 @@ const Def* Emitter::strip_rec(const Def* def) {
 
     if (Axm::isa<mem::M>(def)) return nullptr;
     if (Axm::isa<spirv::entry>(def)) return nullptr;
+    if (Axm::isa<sflow::Token>(def)) return nullptr;
+    if (Axm::isa<sflow::Struct>(def)) return nullptr;
 
     return def;
 }

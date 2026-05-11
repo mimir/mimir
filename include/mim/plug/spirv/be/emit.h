@@ -112,11 +112,21 @@ private:
     }
 
     Word next_id() { return next_id_++; }
-    Word id(const Def* def) {
-        if (auto i = globals_.find(def); i != globals_.end()) return i->second;
-        if (auto i = locals_.find(def); i != locals_.end()) return i->second;
 
-        error("Invalid access to id of Def not previously emitted: {}", def);
+    Word bb_id(Lam* function) {
+        if (auto i = locals_.find(function); i != locals_.end()) return i->second;
+
+        locals_[function] = next_id();
+
+        return locals_[function];
+    }
+
+    Word function_id(Lam* function) {
+        if (auto i = globals_.find(function); i != globals_.end()) return i->second;
+
+        globals_[function] = next_id();
+
+        return globals_[function];
     }
 
     /// Takes ownership of the current module, resetting it to a fresh one.
@@ -136,7 +146,6 @@ private:
     OpVec function_vars_{};
     DefMap<Word> locals_;
     DefMap<Word> globals_;
-    LamMap<Word> function_ids_;
 
     DefMap<Lam*> loop_headers_;
 

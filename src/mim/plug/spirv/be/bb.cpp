@@ -9,18 +9,21 @@ void Emitter::link_phi(Lam* lam, Lam* callee, const Def* arg) {
     DLOG("ordinary jump: {} -> {}", lam, callee);
     auto phi = callee->var();
     bb(callee).phis[phi].emplace_back(emit_term(arg));
-    bb(callee).phis[phi].emplace_back(id(lam));
-    locals_[phi] = id(phi);
-    bb(lam).end  = Op{OpKind::Branch, {id(callee)}, {}, {}};
+    bb(callee).phis[phi].emplace_back(bb_id(lam));
+    locals_[phi] = emit_term(phi);
+    bb(lam).end  = Op{OpKind::Branch, {bb_id(callee)}, {}, {}};
 }
 
 Word Emitter::emit_bb(Lam* lam, BB& bb) {
-    std::cerr << "hello from lam " << lam << "!\n";
+    // std::cerr << "hello from lam " << lam << "!\n";
     auto app = lam->body()->as<App>();
 
-    Word lam_id              = next_id();
-    locals_[lam]             = lam_id;
-    module_.id_names[lam_id] = lam->unique_name();
+    Word lam_id  = next_id();
+    locals_[lam] = lam_id;
+    if (Lam::isa_returning(lam))
+        module_.id_names[lam_id] = std::format("entry_{}", lam->unique_name());
+    else
+        module_.id_names[lam_id] = lam->unique_name();
 
     bb.label = Op{OpKind::Label, {}, lam_id, {}};
 
@@ -55,22 +58,22 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // => OpBranch
 
         link_phi(lam, callee, app->arg());
-        bb.end = Op{OpKind::Branch, {id(callee)}, {}, {}};
-    } else if (auto cf_if = Axm::isa<sflow::_if>(app->callee())) {
+        bb.end = Op{OpKind::Branch, {bb_id(callee)}, {}, {}};
+    } else if (auto cf_if = Axm::isa<sflow::_if>(app)) {
         // === Structured if-else ===
         // => OpSelectionMerge + OpBranchConditional
-        auto [token, cf_break, tuple, index] = cf_if->uncurry_args<4>();
+        auto [token, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
 
         bb.merge = Op{
             OpKind::SelectionMerge,
-            {id(cf_break), 0},
+            {bb_id(cf_break->as_mut<Lam>()), 0},
             {},
             {}
         };
         std::vector<Word> branches{emit_term(index)};
         for (auto branch : tuple->ops()) {
-            link_phi(lam, branch->as_mut<Lam>(), app->arg());
-            branches.push_back(id(branch));
+            link_phi(lam, branch->as_mut<Lam>(), arg);
+            branches.push_back(bb_id(branch->as_mut<Lam>()));
         }
         bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
     } else if (auto cf_switch = Axm::isa<sflow::_switch>(app->callee())) {
@@ -80,13 +83,13 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
         bb.merge = Op{
             OpKind::SelectionMerge,
-            {id(cf_break), 0},
+            {bb_id(cf_break->as_mut<Lam>()), 0},
             {},
             {}
         };
 
         link_phi(lam, cf_default->as_mut<Lam>(), app->arg());
-        std::vector<Word> cases{emit_term(index), id(cf_default)};
+        std::vector<Word> cases{emit_term(index), bb_id(cf_default->as_mut<Lam>())};
 
         // targets is a right-nested tuple: [idx0, case0, [idx1, case1, [..., []]]].
         // Walk the spine, peeling one case per level.
@@ -96,19 +99,19 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             link_phi(lam, case_lam->as_mut<Lam>(), app->arg());
             auto literal = int_to_words(Lit::as(idx_def), 32);
             cases.insert(cases.end(), literal.begin(), literal.end());
-            cases.push_back(id(case_lam));
+            cases.push_back(bb_id(case_lam->as_mut<Lam>()));
         }
         bb.end = Op{OpKind::Switch, cases, {}, {}};
-    } else if (auto cf_loop = Axm::isa<sflow::loop>(app->callee())) {
+    } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
         // === Structured loop pre-header ===
         // The lam ending in `loop` is just the predecessor of the SPIR-V loop
         // header. OpLoopMerge belongs in the header lam itself (see `header`
         // case below), so all we do here is unconditionally branch into it.
-        auto [token, cf_break, cf_continue, cf_header] = cf_loop->uncurry_args<4>();
-        auto header_lam                                = cf_header->as_mut<Lam>();
+        auto [token, cf_break, cf_continue, cf_header, arg] = cf_loop->uncurry_args<5>();
+        auto header_lam                                     = cf_header->as_mut<Lam>();
 
-        link_phi(lam, header_lam, app->arg());
-        bb.end = Op{OpKind::Branch, {id(header_lam)}, {}, {}};
+        link_phi(lam, header_lam, arg);
+        bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
     } else if (auto cf_header = Axm::isa<sflow::header>(app->callee())) {
         // === Loop header ===
         // => OpLoopMerge + OpBranch/OpBranchConditional
@@ -125,76 +128,77 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
         bb.merge = Op{
             OpKind::LoopMerge,
-            {id(break_lam), id(continue_lam), 0},
+            {bb_id(break_lam), bb_id(continue_lam), 0},
             {},
             {}
         };
         std::vector<Word> branches{emit_term(index)};
         for (auto branch : tuple->ops()) {
             link_phi(lam, branch->as_mut<Lam>(), app->arg());
-            branches.push_back(id(branch));
+            branches.push_back(bb_id(branch->as_mut<Lam>()));
         }
         bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::_continue>(app->callee())) {
-        auto cf_struct                             = cf_exit->arg();
+    } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
+        auto [cf_struct, value]                    = cf_exit->uncurry_args<2>();
         auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        link_phi(lam, continue_target->as_mut<Lam>(), app->arg());
-    } else if (auto cf_exit = Axm::isa<sflow::fallthrough>(app->callee())) {
-        auto cf_struct                             = cf_exit->arg();
+        link_phi(lam, continue_target->as_mut<Lam>(), value);
+    } else if (auto cf_exit = Axm::isa<sflow::fallthrough>(app)) {
+        auto [cf_struct, value]                    = cf_exit->uncurry_args<2>();
         auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        link_phi(lam, continue_target->as_mut<Lam>(), app->arg());
-    } else if (auto cf_exit = Axm::isa<sflow::_break>(app->callee())) {
-        auto cf_struct                             = cf_exit->arg();
+        link_phi(lam, continue_target->as_mut<Lam>(), value);
+    } else if (auto cf_exit = Axm::isa<sflow::_break>(app)) {
+        auto [cf_struct, value]                    = cf_exit->uncurry_args<2>();
         auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        link_phi(lam, break_target->as_mut<Lam>(), app->arg());
-    } else if (auto cf_exit = Axm::isa<sflow::loopback>(app->callee())) {
+        link_phi(lam, break_target->as_mut<Lam>(), value);
+    } else if (auto cf_exit = Axm::isa<sflow::loopback>(app)) {
         // === Loopback to header ===
         // The arg has type `Header H path break`; `path` is the unique key of
         // the enclosing loop, registered by the header lam in `loop_headers_`.
-        auto cf_header_val      = cf_exit->arg();
-        auto [_H, path, _break] = Axm::as<sflow::Header>(cf_header_val->type())->uncurry_args<3>();
-        auto it                 = loop_headers_.find(path);
+        auto [cf_header_val, value] = cf_exit->uncurry_args<2>();
+        auto [_H, path, _break]     = Axm::as<sflow::Header>(cf_header_val->type())->uncurry_args<3>();
+        auto it                     = loop_headers_.find(path);
         if (it == loop_headers_.end()) error("loopback target not registered: {}", lam);
         auto header_lam = it->second;
 
-        link_phi(lam, header_lam, app->arg());
-        bb.end = Op{OpKind::Branch, {id(header_lam)}, {}, {}};
-    } else if (auto cf_branch = Axm::isa<sflow::branch>(app->callee())) {
+        link_phi(lam, header_lam, value);
+        bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
+    } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {
         // === Unconditional forward branch ===
         // => OpBranch
-        auto [token, callee] = cf_branch->uncurry_args<2>();
-        auto callee_lam      = callee->as_mut<Lam>();
-        link_phi(lam, callee_lam, app->arg());
-        bb.end = Op{OpKind::Branch, {id(callee_lam)}, {}, {}};
-    } else if (auto cf_call = Axm::isa<sflow::call>(app->callee())) {
+        auto [token, callee, value] = cf_branch->uncurry_args<3>();
+        auto callee_lam             = callee->as_mut<Lam>();
+        link_phi(lam, callee_lam, value);
+        bb.end = Op{OpKind::Branch, {bb_id(callee_lam)}, {}, {}};
+    } else if (auto cf_call = Axm::isa<sflow::call>(app)) {
         // === Function call ===
         // The lam ends with `call(token, fn)(t_val, ret_lam)`, where ret_lam
         // is the CPS continuation that receives the call's result. Lower to
         // OpFunctionCall followed by OpBranch into ret_lam, phi-ing the
         // returned value in.
-        auto [token, fn] = cf_call->uncurry_args<2>();
-        auto t_val       = app->arg(0);
-        auto ret_lam     = app->arg(1)->as_mut<Lam>();
+        auto [token, fn, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
+        auto ret_lam                         = ret_lam_def->as_mut<Lam>();
 
         auto ret_type       = strip(fn->type()->as<Pi>()->ret_pi()->dom());
         Word result_id      = next_id();
         Word result_type_id = emit_type(ret_type);
 
-        auto fn_it = function_ids_.find(fn->as_mut<Lam>());
-        if (fn_it == function_ids_.end()) error("call to non-emitted function: {}", fn);
-        std::vector<Word> operands{fn_it->second, emit_term(t_val)};
+        auto fn_it = function_id(fn->as_mut<Lam>());
+        std::vector<Word> operands{fn_it, emit_term(t_val)};
         bb.tail.emplace_back(Op{OpKind::FunctionCall, operands, result_id, result_type_id});
 
         auto phi     = ret_lam->var();
         auto& ret_bb = this->bb(ret_lam);
         ret_bb.phis[phi].emplace_back(result_id);
-        ret_bb.phis[phi].emplace_back(id(lam));
-        locals_[phi] = id(phi);
-        bb.end       = Op{OpKind::Branch, {id(ret_lam)}, {}, {}};
+        ret_bb.phis[phi].emplace_back(bb_id(lam));
+        locals_[phi] = emit_term(phi);
+        bb.end       = Op{OpKind::Branch, {bb_id(ret_lam)}, {}, {}};
     } else if (app->callee()->isa<Bot>()) {
         // unreachable
         // => OpUnreachable
         bb.end = Op{OpKind::Unreachable, {}, {}, {}};
+    } else {
+        error("unsupported control flow terminator in lam '{}' ({}): callee '{}' ({}) is not a known sflow primitive",
+              lam, lam->gid(), app->callee(), app->callee()->gid());
     }
 
     return lam_id;

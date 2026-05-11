@@ -62,8 +62,7 @@ void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
 Word Emitter::emit_function(Lam* function) {
     curr_function_ = function;
 
-    Word id                 = next_id();
-    function_ids_[function] = id;
+    Word id = function_id(function);
 
     // Convert Pi type to direct style and strip
     const Pi* type      = strip(function->type())->as<Pi>();
@@ -188,7 +187,8 @@ void Emitter::finalize_function(Lam* fun) {
 
             module_.funDefinitions.push_back(bb.label);
             for (auto [phi, var_parents] : bb.phis)
-                module_.funDefinitions.emplace_back(Op{OpKind::Phi, var_parents, id(phi), emit_type(phi->type())});
+                module_.funDefinitions.emplace_back(
+                    Op{OpKind::Phi, var_parents, emit_term(phi), emit_type(phi->type())});
             module_.funDefinitions.insert(module_.funDefinitions.end(), bb.ops.begin(), bb.ops.end());
             module_.funDefinitions.insert(module_.funDefinitions.end(), bb.tail.begin(), bb.tail.end());
             if (bb.merge) module_.funDefinitions.push_back(*bb.merge);

@@ -52,6 +52,7 @@ Word Emitter::emit_type(const Def* type) {
         module_.id_names[id] = std::format("f{}", bitwidth);
     } else if (auto b = Axm::isa<spirv::Bool>(type)) {
         module_.declarations.emplace_back(Op{OpKind::TypeBool, {}, id, {}});
+        module_.id_names[id] = "bool";
     } else if (auto arr = type->isa<Arr>()) {
         // Convert the element type
         Word elem_id = emit_type(arr->body());
