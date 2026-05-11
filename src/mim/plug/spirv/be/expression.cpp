@@ -17,21 +17,13 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
     std::cerr << "emit_bb: " << def->unique_name() << " (node: " << def->node_name() << "): " << def->type()
               << std::endl;
 
-    auto original_def = def;
-    def               = strip(def);
-    if (!def) return -1;
-
-    // Check if the stripped def was already emitted (e.g., via emit_term()) in strip_rec)
-    if (auto it = locals_.find(def); it != locals_.end()) return it->second;
-
     auto type    = strip(def->type());
     Word type_id = emit_type(type);
 
     Word id = next_id();
 
     // Cache emitted result so subsequent emit_term calls reuse the same id.
-    locals_[def] = id;
-    if (def != original_def) locals_[original_def] = id;
+    locals_[def]         = id;
     module_.id_names[id] = def->unique_name();
 
     if (auto tuple = def->isa<Tuple>()) {
