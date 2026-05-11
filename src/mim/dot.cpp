@@ -92,11 +92,12 @@ public:
     std::ostream& label(const Def* def) {
         auto n = def->is_set() ? def->num_ops() : size_t(0);
         if (n > 0) {
-            print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">", n);
+            std::print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">",
+                       n);
             emit_name(def);
             os_ << "</td></tr><tr>";
             for (size_t i = 0; i < n; ++i)
-                print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
+                std::print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
             os_ << "</tr></table>>";
         } else {
             os_ << "label=<";
@@ -111,7 +112,7 @@ public:
             os_ << lit;
         else
             os_ << def->node_name();
-        print(os_, "<br/><font point-size=\"9\">{}</font>", escape(def->unique_name()));
+        std::print(os_, "<br/><font point-size=\"9\">{}</font>", escape(def->unique_name()));
     }
 
     std::ostream& color(const Def* def) {
@@ -131,18 +132,18 @@ public:
 
         auto loc  = escape(def->loc());
         auto type = escape(def->type());
-        print(os_, "tooltip=\"");
-        print(os_, "<b>expr:</b> {}{}", def, NL);
-        print(os_, "<b>type:</b> {}{}", type, NL);
-        print(os_, "<b>name:</b> {}{}", def->sym(), NL);
-        print(os_, "<b>gid:</b> {}{}", def->gid(), NL);
-        print(os_, "<b>flags:</b> 0x{:x}{}", def->flags(), NL);
-        print(os_, "<b>mark:</b> 0x{:x}{}", def->mark(), NL);
-        print(os_, "<b>local_muts:</b> {}{}", fe::Join(def->local_muts()), NL);
-        print(os_, "<b>local_vars:</b> {}{}", fe::Join(def->local_vars()), NL);
-        print(os_, "<b>free_vars:</b> {}{}", fe::Join(def->free_vars()), NL);
-        if (auto mut = def->isa_mut()) print(os_, "<b>users:</b> {{{}}}{}", fe::Join(mut->users()), NL);
-        print(os_, "<b>loc:</b> {}", loc);
+        std::print(os_, "tooltip=\"");
+        std::print(os_, "<b>expr:</b> {}{}", def, NL);
+        std::print(os_, "<b>type:</b> {}{}", type, NL);
+        std::print(os_, "<b>name:</b> {}{}", def->sym(), NL);
+        std::print(os_, "<b>gid:</b> {}{}", def->gid(), NL);
+        std::print(os_, "<b>flags:</b> 0x{:x}{}", def->flags(), NL);
+        std::print(os_, "<b>mark:</b> 0x{:x}{}", def->mark(), NL);
+        std::print(os_, "<b>local_muts:</b> {}{}", fe::Join(def->local_muts()), NL);
+        std::print(os_, "<b>local_vars:</b> {}{}", fe::Join(def->local_vars()), NL);
+        std::print(os_, "<b>free_vars:</b> {}{}", fe::Join(def->free_vars()), NL);
+        if (auto mut = def->isa_mut()) std::print(os_, "<b>users:</b> {{{}}}{}", fe::Join(mut->users()), NL);
+        std::print(os_, "<b>loc:</b> {}", loc);
         return os_ << std::format("\"");
     }
 

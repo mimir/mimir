@@ -102,7 +102,8 @@ void Driver::load(Sym name) {
         auto plugin = get_info();
         if (version() != plugin.version) {
             std::ostringstream oss;
-            print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version, version());
+            std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version,
+                       version());
             if (flags().force_load)
                 std::cerr << "warning: " << oss.str() << '\n';
             else

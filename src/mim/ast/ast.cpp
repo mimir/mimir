@@ -86,7 +86,7 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
         flags_t ax_id = plugin_id | (annex.id.tag << 8u);
 
         auto& os = outer_namespace.emplace_back();
-        print(os, "template<> constexpr flags_t Annex::Base<plug::{}::{}> = 0x{:x};\n", plugin, sym.tag, ax_id);
+        std::print(os, "template<> constexpr flags_t Annex::Base<plug::{}::{}> = 0x{:x};\n", plugin, sym.tag, ax_id);
 
         if (auto& subs = annex.subs; !subs.empty()) {
             for (const auto& aliases : subs) {

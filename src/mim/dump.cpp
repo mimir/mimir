@@ -343,7 +343,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         return os << std::format(".proxy#{}#{} {}", proxy->pass(), proxy->tag(), Op::map(proxy->ops()));
     } else if (auto bound = d->isa<Bound>()) {
         auto op = bound->isa<Join>() ? "∪" : "∩"; // TODO ascii
-        if (auto mut = d->isa_mut()) print(os, "{}{}: {}", op, mut->unique_name(), Op(mut->type()));
+        if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, mut->unique_name(), Op(mut->type()));
         return os << std::format("{}({})", op, Op::map(bound->ops()));
     }
 
@@ -424,7 +424,7 @@ void Dumper::dump(Def* mut) {
                 sep = ", ";
             }
         } else {
-            print(os, ", @{}", mut->var()->unique_name());
+            std::print(os, ", @{}", mut->var()->unique_name());
         }
     }
     std::println(os, "{} = {{", tab);
@@ -458,15 +458,15 @@ void Dumper::dump_lam(Lam* lam) {
         auto num_doms = c->var() ? c->var()->num_tprojs() : c->type()->dom()->num_tprojs();
         auto limit    = is_fun && c == last ? num_doms - 1 : num_doms;
         curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), !is_con, limit, !is_fun || c != last);
-        if (is_con && c == last) print(os, "@({})", c->filter());
+        if (is_con && c == last) std::print(os, "@({})", c->filter());
     }
 
     if (is_fun)
-        print(os, ": {} =", last->ret_dom());
+        std::print(os, ": {} =", last->ret_dom());
     else if (!is_con)
-        print(os, ": {} =", last->type()->codom());
+        std::print(os, ": {} =", last->type()->codom());
     else
-        print(os, " =");
+        std::print(os, " =");
     os << '\n';
 
     ++tab;
@@ -578,7 +578,7 @@ void World::dump(std::ostream& os) {
         auto dumper = Dumper(os, &nest);
 
         for (const auto& import : driver().imports())
-            print(os, "{} {};\n", import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import", import.sym);
+            std::print(os, "{} {};\n", import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import", import.sym);
         dumper.recurse(nest.root());
     }
 

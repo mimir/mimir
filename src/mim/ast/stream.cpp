@@ -108,7 +108,7 @@ void LitExpr::stream(fe::Tab& tab, std::ostream& os) const {
         case Tag::L_s:
         case Tag::L_u:
             os << tok().lit_u();
-            if (type()) print(os, ": {}", S(tab, type()));
+            if (type()) std::print(os, ": {}", S(tab, type()));
             return;
         default: os << "TODO";
     }
@@ -155,14 +155,14 @@ void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void PiExpr::Dom::stream(fe::Tab& tab, std::ostream& os) const {
-    print(os, "{}{}", is_implicit() ? "." : "", S(tab, ptrn()));
-    if (ret()) print(os, " -> {}", S(tab, ret()->type()));
+    std::print(os, "{}{}", is_implicit() ? "." : "", S(tab, ptrn()));
+    if (ret()) std::print(os, " -> {}", S(tab, ret()->type()));
 }
 
 void PiExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    if (tag() != Tag::Nil) print(os, "{} ", tag());
-    print(os, "{}", S(tab, dom()));
-    if (codom()) print(os, " -> {}", S(tab, codom()));
+    if (tag() != Tag::Nil) std::print(os, "{} ", tag());
+    std::print(os, "{}", S(tab, dom()));
+    if (codom()) std::print(os, " -> {}", S(tab, codom()));
 }
 
 void LamExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "{};", S(tab, lam())); }
@@ -172,7 +172,7 @@ void AppExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RetExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    println(os, "ret {} = {} $ {};", S(tab, ptrn()), S(tab, callee()), S(tab, arg()));
+    std::println(os, "ret {} = {} $ {};", S(tab, ptrn()), S(tab, callee()), S(tab, arg()));
     std::print(os, "{}{}", tab, S(tab, body()));
 }
 
@@ -203,19 +203,19 @@ void UniqExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "â¦
 void AxmDecl::Alias::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
 
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    print(os, "axm {}", dbg());
+    std::print(os, "axm {}", dbg());
     if (num_subs() != 0) {
         os << '(';
         for (auto sep = ""; const auto& aliases : subs()) {
-            print(os, "{}{}", sep, R(tab, aliases, " = "));
+            std::print(os, "{}{}", sep, R(tab, aliases, " = "));
             sep = ", ";
         }
         os << ')';
     }
-    print(os, ": {}", S(tab, type()));
-    if (normalizer()) print(os, ", {}", normalizer());
-    if (curry()) print(os, ", {}", curry());
-    if (trip()) print(os, ", {}", trip());
+    std::print(os, ": {}", S(tab, type()));
+    if (normalizer()) std::print(os, ", {}", normalizer());
+    if (curry()) std::print(os, ", {}", curry());
+    if (trip()) std::print(os, ", {}", trip());
     os << ";";
 }
 
@@ -224,22 +224,22 @@ void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    print(os, ".rec {}", dbg());
-    if (!type()->isa<HoleExpr>()) print(os, ": {}", S(tab, type()));
+    std::print(os, ".rec {}", dbg());
+    if (!type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, type()));
     std::print(os, " = {};", S(tab, body()));
 }
 
 void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
-    print(os, "{}{}", is_implicit() ? "." : "", S(tab, ptrn()));
-    if (filter()) print(os, "@({})", S(tab, filter()));
-    if (ret()) print(os, ": {}", S(tab, ret()->type()));
+    std::print(os, "{}{}", is_implicit() ? "." : "", S(tab, ptrn()));
+    if (filter()) std::print(os, "@({})", S(tab, filter()));
+    if (ret()) std::print(os, ": {}", S(tab, ret()->type()));
 }
 
 void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    print(os, "{} {}", tag(), dbg());
+    std::print(os, "{} {}", tag(), dbg());
     if (!doms().front()->ptrn()->isa<TuplePtrn>()) os << ' ';
-    print(os, "{}", R(tab, doms()));
-    if (codom()) print(os, ": {}", S(tab, codom()));
+    std::print(os, "{}", R(tab, doms()));
+    if (codom()) std::print(os, ": {}", S(tab, codom()));
     if (body()) {
         if (body()->isa<DeclExpr>()) {
             os << " =" << std::endl;
@@ -247,15 +247,15 @@ void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
             std::print(os, "{}{}", tab, S(tab, body()));
             --tab;
         } else {
-            print(os, " = {}", S(tab, body()));
+            std::print(os, " = {}", S(tab, body()));
         }
     }
     os << ';';
 }
 
 void CDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    print(os, "{} {} {}", dbg(), tag(), S(tab, dom()), S(tab, codom()));
-    if (tag() == Tag::K_cfun) print(os, ": {}", S(tab, codom()));
+    std::print(os, "{} {} {}", dbg(), tag(), S(tab, dom()), S(tab, codom()));
+    if (tag() == Tag::K_cfun) std::print(os, ": {}", S(tab, codom()));
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {
