@@ -5,21 +5,25 @@
 
 namespace mim::plug::spirv {
 
-void Emitter::link_phi(Lam* lam, Lam* callee, const Def* arg) {
-    DLOG("ordinary jump: {} -> {}", lam, callee);
+void Emitter::link_phi(Lam* from, Lam* callee, const Def* arg) {
+    DLOG("ordinary jump: {} -> {}", from, callee);
+    if (strip(callee->var()->type()) == world().sigma()) return;
+    link_phi(from, callee, emit_term(arg));
+}
+
+void Emitter::link_phi(Lam* from, Lam* callee, Word value_id) {
     auto phi = callee->var();
-    bb(callee).phis[phi].emplace_back(emit_term(arg));
-    bb(callee).phis[phi].emplace_back(bb_id(lam));
+    if (strip(phi->type()) == world().sigma()) return;
+    bb(callee).phis[phi].emplace_back(value_id);
+    bb(callee).phis[phi].emplace_back(bb_id(from));
     locals_[phi] = emit_term(phi);
-    bb(lam).end  = Op{OpKind::Branch, {bb_id(callee)}, {}, {}};
 }
 
 Word Emitter::emit_bb(Lam* lam, BB& bb) {
     // std::cerr << "hello from lam " << lam << "!\n";
     auto app = lam->body()->as<App>();
 
-    Word lam_id  = next_id();
-    locals_[lam] = lam_id;
+    Word lam_id = bb_id(lam);
     if (Lam::isa_returning(lam))
         module_.id_names[lam_id] = std::format("entry_{}", lam->unique_name());
     else
@@ -32,8 +36,9 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // return lam called
         // => OpReturn | OpReturnValue
 
+        // always materialize arg first so side-effects (stores, etc.) emit
         auto arg = emit_term(app->arg());
-        if (arg == emit_term(world().tuple()))
+        if (strip(app->arg()->type()) == world().sigma())
             bb.end = Op{OpKind::Return, {}, {}, {}};
         else
             bb.end = Op{OpKind::ReturnValue, {arg}, {}, {}};
@@ -125,15 +130,21 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
         auto [cf_struct, value]                    = cf_exit->uncurry_args<2>();
         auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        link_phi(lam, continue_target->as_mut<Lam>(), value);
+        auto target_lam                            = continue_target->as_mut<Lam>();
+        link_phi(lam, target_lam, value);
+        bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::fallthrough>(app)) {
         auto [cf_struct, value]                    = cf_exit->uncurry_args<2>();
         auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        link_phi(lam, continue_target->as_mut<Lam>(), value);
+        auto target_lam                            = continue_target->as_mut<Lam>();
+        link_phi(lam, target_lam, value);
+        bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::_break>(app)) {
         auto [cf_struct, value]                    = cf_exit->uncurry_args<2>();
         auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
-        link_phi(lam, break_target->as_mut<Lam>(), value);
+        auto target_lam                            = break_target->as_mut<Lam>();
+        link_phi(lam, target_lam, value);
+        bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::loopback>(app)) {
         // === Loopback to header ===
         // The arg has type `Header H path break`; `path` is the unique key of
@@ -170,12 +181,8 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         std::vector<Word> operands{fn_it, emit_term(t_val)};
         bb.tail.emplace_back(Op{OpKind::FunctionCall, operands, result_id, result_type_id});
 
-        auto phi     = ret_lam->var();
-        auto& ret_bb = this->bb(ret_lam);
-        ret_bb.phis[phi].emplace_back(result_id);
-        ret_bb.phis[phi].emplace_back(bb_id(lam));
-        locals_[phi] = emit_term(phi);
-        bb.end       = Op{OpKind::Branch, {bb_id(ret_lam)}, {}, {}};
+        link_phi(lam, ret_lam, result_id);
+        bb.end = Op{OpKind::Branch, {bb_id(ret_lam)}, {}, {}};
     } else if (app->callee()->isa<Bot>()) {
         // unreachable
         // => OpUnreachable
