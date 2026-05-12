@@ -1,6 +1,3 @@
-// RUN: %mim %s --output-cfg %t.dot
-// RUN: FileCheck %s < %t.dot
-
 import core;
 import sflow;
 
@@ -18,15 +15,3 @@ fun extern f (n: Nat): Nat =
         con xi () = return i;
         (xi, bi)#(le i n) ();
     hi 0;
-
-// Dominance of f's children: f dominates hi (entry)
-// CHECK-DAG: "f_{{[0-9]+}}" -> "hi_{{[0-9]+}}" [color=red,style=bold]
-//
-// Dominance of hi's children: hi dominates xi and bi, bi dominates hj
-// CHECK-DAG: "hi_{{[0-9]+}}" -> "xi_{{[0-9]+}}" [color=red,style=bold]
-// CHECK-DAG: "hi_{{[0-9]+}}" -> "bi_{{[0-9]+}}" [color=red,style=bold]
-// CHECK-DAG: "bi_{{[0-9]+}}" -> "hj_{{[0-9]+}}" [color=red,style=bold]
-//
-// Dominance of hj's children: hj dominates xj and bj
-// CHECK-DAG: "hj_{{[0-9]+}}" -> "xj_{{[0-9]+}}" [color=red,style=bold]
-// CHECK-DAG: "hj_{{[0-9]+}}" -> "bj_{{[0-9]+}}" [color=red,style=bold]

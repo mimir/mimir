@@ -10,7 +10,7 @@ using namespace mim;
 using namespace mim::plug;
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"core", core::register_normalizers, nullptr, [](Backends& backends) {
+    return {"core", MIM_VERSION, core::register_normalizers, nullptr, [](Backends& backends) {
                 backends["ll"]            = &ll::emit;
                 backends["sexpr"]         = &sexpr::emit;
                 backends["sexpr-slotted"] = &sexpr::emit_slotted;

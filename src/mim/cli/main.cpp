@@ -5,7 +5,6 @@
 #include <string>
 
 #include <lyra/lyra.hpp>
-#include <rang.hpp>
 
 #include "mim/config.h"
 #include "mim/driver.h"
@@ -23,8 +22,6 @@ int main(int argc, char** argv) {
     enum Backends { AST, CFG, Dot, H, LL, SpirV, Md, Mim, Nest, SExpr, SlottedSExpr, Num_Backends };
 
     try {
-        static const auto version = "mim command-line utility version " MIM_VER "\n";
-
         Driver driver;
         bool show_help         = false;
         bool show_version      = false;
@@ -64,7 +61,8 @@ int main(int argc, char** argv) {
             | lyra::opt(output[Mim],  "file"               )["-o"]["--output-mim"           ]("Emits the Mim program again.")
             | lyra::opt(output[Nest], "file"               )      ["--output-nest"          ]("Emits program nesting tree as Dot.")
             | lyra::opt(output[SExpr],"file"               )      ["--output-sexpr"         ]("Emits the program as symbolic expression.")
-            | lyra::opt(output[SlottedSExpr],"file"               )      ["--output-sexpr-slotted"         ]("Emits the program as symbolic expression that follows the format required by slotted-egg.")
+            | lyra::opt(output[SlottedSExpr],"file"        )      ["--output-sexpr-slotted" ]("Emits the program as symbolic expression that follows the format required by slotted-egraphs.")
+            | lyra::opt(flags.force_load                   )      ["--force-load"           ]("Load plugins even on version mismatch.")
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(dot_follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
@@ -97,7 +95,7 @@ int main(int argc, char** argv) {
         }
 
         if (show_version) {
-            std::cerr << version;
+            std::cout << "mim " << driver.version() << std::endl;
             std::exit(EXIT_SUCCESS);
         }
 
@@ -162,7 +160,7 @@ int main(int argc, char** argv) {
                 mod->add_implicit_imports(std::move(imports));
 
                 if (auto s = os[AST]) {
-                    Tab tab;
+                    auto tab = fe::Tab::spaces();
                     mod->stream(tab, *s);
                 }
 
@@ -226,10 +224,10 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     } catch (const std::exception& e) {
-        errln("{}", e.what());
+        std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;
     } catch (...) {
-        errln("error: unknown exception");
+        std::println(std::cerr, "error: unknown exception");
         return EXIT_FAILURE;
     }
 

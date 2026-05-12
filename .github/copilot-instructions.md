@@ -5,6 +5,7 @@
 - Configure a normal local dev build with tests and examples enabled: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON`.
 - Build everything from that tree with `cmake --build build -j$(nproc)`.
 - Build a specific target when you only need part of the tree: `cmake --build build --target mim`, `cmake --build build --target libmim`, or `cmake --build build --target mim_all_plugins`.
+- Run all in-tree tests with `cmake --build build --target test-all`.
 - Run the staged `lit` regression suite with `cmake --build build --target lit`.
 - Run a single `lit` test with `cd lit && ./lit ../build/lit -a --filter type_infer.mim`.
 - If the build directory is literally named `build`, `cd lit && ../scripts/probe.sh type_infer.mim` is the shortest way to repro one `lit` test.

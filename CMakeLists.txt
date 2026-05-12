@@ -1,11 +1,24 @@
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
 
-project(MimIR VERSION 0.1)
+project(MimIR VERSION 0.2)
+set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev', '' for release)")
 
 include(CMakeDependentOption)
 include(CMakePackageConfigHelpers)
 include(CMakePrintHelpers)
 include(GNUInstallDirs)
+
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE MIM_GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+if(NOT MIM_GIT_HASH)
+    set(MIM_GIT_HASH "unknown")
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 set(MIM_PLUGIN_LIST "" CACHE INTERNAL "MIM_PLUGIN_LIST" FORCE)
@@ -18,7 +31,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 20) # global standard for abseil
+set(CMAKE_CXX_STANDARD 23) # global standard for abseil
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -56,7 +69,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     if(BUILD_TESTING)
         include(GoogleTest)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-        add_subdirectory(external/googletest EXCLUDE_FROM_ALL)
+        add_subdirectory(submodules/googletest EXCLUDE_FROM_ALL)
         add_subdirectory(gtest)
         add_subdirectory(lit)
     endif()
@@ -67,10 +80,9 @@ set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 set(ABSL_ENABLE_INSTALL ON)
 set(FE_ABSL ON)
 
-add_subdirectory(external/abseil-cpp)
-add_subdirectory(external/fe)
-add_subdirectory(external/lyra)
-add_subdirectory(external/rang)
+add_subdirectory(submodules/abseil-cpp)
+add_subdirectory(submodules/fe)
+add_subdirectory(submodules/lyra)
 add_subdirectory(src)
 
 if(MIM_BUILD_EXAMPLES)
@@ -101,10 +113,6 @@ install(
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-install(
-    FILES "${PROJECT_SOURCE_DIR}/external/half/include/half.hpp"
-    DESTINATION include
 )
 install(
     FILES

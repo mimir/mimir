@@ -30,7 +30,9 @@ void reg_stages(Flags2Stages& stages) {
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"clos", clos::register_normalizers, reg_stages, nullptr}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+    return {"clos", MIM_VERSION, clos::register_normalizers, reg_stages, nullptr};
+}
 
 namespace mim::plug::clos {
 

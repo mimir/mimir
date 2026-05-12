@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll - | FileCheck %s
+// RUN: %mim %s --output-ll - | %FileCheck %s
 
 
 plugin core;

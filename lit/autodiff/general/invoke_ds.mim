@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - --output-ll %t.ll | FileCheck %s
+// RUN: %mim %s -o - --output-ll %t.ll | %FileCheck %s
 
 plugin core;
 plugin direct;

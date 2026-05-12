@@ -8,12 +8,18 @@ A plugin generally consists of two halves with the same name: a `<plugin>.mim` f
 
 Plugin names may only contain letters, digits, and underscores, and are limited to 8 characters.
 
+## Plugin Registry
+
+The [MimIR Plugin Registry](https:/mimir.github.io/plugins) is the central hub for discovering, sharing, and maintaining third-party MimIR plugins.
+The registry lists available plugins and provides guidance on how to find and use them.
+If you've created a plugin you'd like to share with the community, please consider submitting it to the registry.
+
 ## Create a New In-Tree Plugin
 
 Create a new in-tree plugin `foobar` based on the [demo](@ref demo) plugin:
 
 ```sh
-./scripts/new_plugin.sh foobar
+./scripts/new_plugin.py foobar
 ```
 
 The script also supports `-h`/`--help` and prints the same usage text when called incorrectly.
@@ -33,7 +39,7 @@ The generated files are:
 To create a self-contained third-party plugin repository in `extra/`, use:
 
 ```sh
-./scripts/new_plugin.sh foobar --extra
+./scripts/new_plugin.py foobar --extra
 ```
 
 This creates `extra/<plugin>/` with:
@@ -44,8 +50,12 @@ This creates `extra/<plugin>/` with:
 - `src/normalizers.cpp`
 - `include/mim/plug/<plugin>/<plugin>.h`
 - `lit/const.mim`
+- `.github/workflows/{linux,macos,windows}.yml` — GitHub Actions CI/CD workflows
 
-In `--extra` mode, the script also initializes a new Git repository for the plugin.
+In `--extra` mode, the script also:
+- Initializes a new Git repository for the plugin
+- Generates GitHub Actions workflows that automatically build and test the plugin against the main MimIR repository
+- Patches workflow configurations to clone the main repository as the parent and the plugin as a submodule in `extra/<plugin>`
 
 ### Third-Party Plugin Discovery
 
@@ -58,7 +68,7 @@ If the plugin repository also contains `lit/*.mim` tests, they are picked up aut
 To move an existing in-tree plugin into `extra/foobar`, use:
 
 ```sh
-./scripts/extract_plugin.sh foobar
+./scripts/extract_plugin.py foobar
 ```
 
 This moves:
@@ -67,7 +77,13 @@ This moves:
 - `include/mim/plug/<plugin>/` into `extra/<plugin>/include/...`
 - `lit/<plugin>/` into `extra/<plugin>/lit/`
 
-It also rewrites the extracted `CMakeLists.txt` for out-of-tree use and removes the plugin from the in-tree plugin list so it is picked up through `extra/` instead.
+It also:
+
+- Rewrites the extracted `CMakeLists.txt` for out-of-tree use
+- Removes the plugin from the in-tree plugin list so it is picked up through `extra/` instead
+- Generates GitHub Actions workflows that automatically build and test the extracted plugin against the main MimIR repository
+
+The extracted plugin is staged with `git add` but not committed, allowing you to review the changes before committing.
 
 ## Standalone Third-Party Builds
 

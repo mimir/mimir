@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
@@ -196,7 +197,7 @@ public:
     const Def* annex(Id id) {
         auto flags = static_cast<flags_t>(id);
         if (auto i = move_.flags2annex.find(flags); i != move_.flags2annex.end()) return i->second;
-        error("Axm with ID '{x}' not found; demangled plugin name is '{}'", flags, Annex::demangle(driver(), flags));
+        error("Axm with ID '{:x}' not found; demangled plugin name is '{}'", flags, Annex::demangle(driver(), flags));
     }
 
     /// Get Axm from a plugin.
@@ -362,13 +363,10 @@ public:
 
     /// @name Rewrite Rules
     ///@{
-    const Reform* reform(const Def* meta_type) { return unify<Reform>(Reform::infer(meta_type), meta_type); }
+    const Reform* reform(const Def* dom) { return unify<Reform>(Reform::infer(dom), dom); }
     Rule* mut_rule(const Reform* type) { return insert<Rule>(type); }
     const Rule* rule(const Reform* type, const Def* lhs, const Def* rhs, const Def* guard) {
-        return mut_rule(type)->set(lhs, rhs, guard);
-    }
-    const Rule* rule(const Def* meta_type, const Def* lhs, const Def* rhs, const Def* guard) {
-        return rule(reform(meta_type), lhs, rhs, guard);
+        return unify<Rule>(type, lhs, rhs, guard);
     }
     ///@}
 
@@ -583,7 +581,7 @@ public:
     const Def* implicit_app(const Def* callee, E arg)
         requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t>
     {
-        return implicit_app<Normalize>(callee, lit_nat((nat_t)arg));
+        return implicit_app<Normalize>(callee, lit_nat(std::to_underlying(arg)));
     }
     ///@}
 
@@ -683,7 +681,7 @@ private:
         if (auto loc = get_loc()) def->set(loc);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) outln("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
 
@@ -724,7 +722,7 @@ private:
         if (auto loc = get_loc()) def->set(loc);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) outln("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         assert_emplace(move_.defs, def);

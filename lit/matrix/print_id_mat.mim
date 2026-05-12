@@ -1,7 +1,7 @@
 // RUN: rm -f %t.ll
 // RUN: %mim -p clos -p math -o - --output-ll %t.ll %s
 // RUN: clang %S/../lib.c %t.ll -o %t -Wno-override-module
-// RUN: %t 2 3 | FileCheck %s
+// RUN: %t 2 3 | %FileCheck %s
 
 plugin core;
 plugin matrix;

@@ -6,10 +6,10 @@
 #include <absl/container/node_hash_map.h>
 
 #include "mim/flags.h"
-#include "mim/ast/tok.h"
 #include "mim/plugin.h"
 #include "mim/world.h"
 
+#include "mim/ast/tok.h"
 #include "mim/util/log.h"
 
 namespace mim {
@@ -26,6 +26,7 @@ public:
     const Flags& flags() const { return flags_; }
     Log& log() const { return log_; }
     World& world() { return world_; }
+    const Version& version() const { return version_; } ///< MimIR Version.
     ///@}
 
     /// @name Manage Search Paths
@@ -117,6 +118,7 @@ public:
 private:
     // This must go *first* so plugins will be unloaded *last* in the d'tor; otherwise funny things might happen ...
     absl::node_hash_map<Sym, Plugin::Handle> plugins_;
+    Version version_;
     Flags flags_;
     mutable Log log_;
     World world_;

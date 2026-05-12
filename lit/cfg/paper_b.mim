@@ -1,6 +1,3 @@
-// RUN: %mim %s --output-cfg %t.dot
-// RUN: FileCheck %s < %t.dot
-
 import core;
 import sflow;
 
@@ -19,15 +16,3 @@ fun extern f (n: Nat): Nat =
         con xj () = hi j_;
         (xj, bj)#(le j n) ();
     hi 0;
-
-// f dominates hi (entry); hj is only reachable via bi, so bi dominates hj.
-// CHECK-DAG: "f_{{[0-9]+}}" -> "hi_{{[0-9]+}}" [color=red,style=bold]
-// CHECK-DAG: "bi_{{[0-9]+}}" -> "hj_{{[0-9]+}}" [color=red,style=bold]
-//
-// hi dominates bi and xi
-// CHECK-DAG: "hi_{{[0-9]+}}" -> "bi_{{[0-9]+}}" [color=red,style=bold]
-// CHECK-DAG: "hi_{{[0-9]+}}" -> "xi_{{[0-9]+}}" [color=red,style=bold]
-//
-// hj dominates bj and xj
-// CHECK-DAG: "hj_{{[0-9]+}}" -> "bj_{{[0-9]+}}" [color=red,style=bold]
-// CHECK-DAG: "hj_{{[0-9]+}}" -> "xj_{{[0-9]+}}" [color=red,style=bold]

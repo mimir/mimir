@@ -2,18 +2,20 @@
 
 #cmakedefine MIM_ENABLE_CHECKS
 
-#define MIM_VER  "@PROJECT_VERSION@"
-#define MIM_VER_MAJOR "@PROJECT_VERSION_MAJOR@"
-#define MIM_VER_MINOR "@PROJECT_VERSION_MINOR@"
-#define MIM_VER_PATCH "@PROJECT_VERSION_PATCH@"
+#define MIM_VER        "@PROJECT_VERSION@@MIM_VER_SUFFIX@"
+#define MIM_VER_MAJOR  @PROJECT_VERSION_MAJOR@
+#define MIM_VER_MINOR  @PROJECT_VERSION_MINOR@
+#define MIM_VER_PATCH  @PROJECT_VERSION_PATCH@
+#define MIM_VER_SUFFIX "@MIM_VER_SUFFIX@"
+#define MIM_GIT_HASH   "@MIM_GIT_HASH@"
 
 #define MIM_INSTALL_PREFIX "@CMAKE_INSTALL_PREFIX@"
-#define MIM_LIBDIR "@CMAKE_INSTALL_LIBDIR@"
+#define MIM_LIBDIR         "@CMAKE_INSTALL_LIBDIR@"
 
 #ifdef _MSC_VER
-#define MIM_EXPORT __declspec(dllexport)
-#define MIM_IMPORT __declspec(dllimport)
+#    define MIM_EXPORT __declspec(dllexport)
+#    define MIM_IMPORT __declspec(dllimport)
 #else
-#define MIM_EXPORT __attribute__((visibility("default")))
-#define MIM_IMPORT
+#    define MIM_EXPORT __attribute__((visibility("default")))
+#    define MIM_IMPORT
 #endif

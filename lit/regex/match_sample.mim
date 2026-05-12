@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll ; \
-// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | FileCheck %s
+// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | %FileCheck %s
 // RUN: clang %t.ll -o %t -Wno-override-module
 // RUN: %t "asdf@"; test $? -eq 1
 // RUN: %t "asdf"; test $? -eq 0

@@ -1,4 +1,4 @@
-#include <rang.hpp>
+#include <fe/term.h>
 
 #include <mim/tuple.h>
 #include <mim/world.h>
@@ -25,9 +25,12 @@ const Def* do_reflect(const Def* def) { return reinterpret_cast<const Def*>(def-
 void debug_print(const Def* lvl, const Def* def) {
     auto& world = def->world();
     auto level  = Log::Level::Debug;
-    if (auto l = Lit::isa(lvl))
-        level = (nat_t)Log::Level::Error <= *l && *l <= (nat_t)Log::Level::Debug ? (Log::Level)*l : Log::Level::Debug;
-    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", rang::fg::yellow, def, rang::fg::reset);
+    if (auto l = Lit::isa(lvl)) {
+        level = std::to_underlying(Log::Level::Error) <= int(*l) && int(*l) <= std::to_underlying(Log::Level::Debug)
+                  ? static_cast<Log::Level>(*l)
+                  : Log::Level::Debug;
+    }
+    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
     world.log().log(level, def->loc(), "def : {}", def);
     world.log().log(level, def->loc(), "id  : {}", def->unique_name());
     world.log().log(level, def->type()->loc(), "type: {}", def->type());
@@ -65,10 +68,10 @@ const Def* normalize_gid(const Def*, const Def*, const Def* arg) { return arg->w
 
 template<equiv id>
 const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
-    auto [a, b] = arg->projs<2>();
-    bool eq     = id & (equiv::aE & 0xff);
+    auto [a, b]       = arg->projs<2>();
+    constexpr bool eq = id == equiv::aE || id == equiv::AE;
 
-    if (id & (equiv::Ae & 0xff)) {
+    if constexpr (id == equiv::Ae || id == equiv::AE) {
         auto res = Checker::alpha<Checker::Test>(a, b);
         if (res ^ eq) mim::error(arg->loc(), "'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "");
     } else {
@@ -86,7 +89,7 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     if (cond == w.lit_ff()) {
         auto s = tuple2str(msg);
         if (s.empty()) s = "unknown error"s;
-        w.ELOG(s.c_str());
+        w.ELOG("{}", s);
     }
 
     return nullptr;

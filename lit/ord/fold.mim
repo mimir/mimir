@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll - | FileCheck %s
+// RUN: %mim %s --output-ll - | %FileCheck %s
 
 /*
  * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:

@@ -8,11 +8,16 @@ namespace mim {
 /// Currently opaque.
 class Reform : public Def, public Setters<Reform> {
 protected:
-    Reform(const Def* type, const Def* meta_type)
-        : Def(Node, type, {meta_type}, 0) {}
+    Reform(const Def* type, const Def* dom)
+        : Def(Node, type, {dom}, 0) {}
 
 public:
-    const Def* meta_type() const { return op(0); }
+    /// @name dom
+    /// @see @ref proj
+    ///@{
+    const Def* dom() const { return op(0); }
+    MIM_PROJ(dom, const)
+    ///@}
 
     /// @name Setters
     ///@{
@@ -22,7 +27,7 @@ public:
     Reform* unset() { return Def::unset()->as<Reform>(); }
     ///@}
 
-    static const Def* infer(const Def* meta_type);
+    static const Def* infer(const Def* dom);
     const Def* check() override;
 
     static constexpr auto Node      = mim::Node::Reform;
@@ -43,10 +48,17 @@ private:
         : Def(Node, type, 3, 0) {}
 
 public:
-    /// @name lhs & rhs
+    /// @name type
     /// @see @ref proj
     ///@{
     const Reform* type() const { return Def::type()->as<Reform>(); }
+    const Def* dom() const { return type()->dom(); }
+    MIM_PROJ(dom, const)
+    ///@}
+
+    /// @name ops
+    /// @see @ref proj
+    ///@{
     const Def* lhs() const { return op(0); }
     const Def* rhs() const { return op(1); }
     const Def* guard() const { return op(2); }
@@ -59,8 +71,7 @@ public:
     /// @see @ref set_ops "Setting Ops"
     ///@{
     using Setters<Rule>::set;
-    Rule* set(const Def* lhs, const Def* rhs) { return set_lhs(lhs)->set_rhs(rhs); }
-    Rule* set(const Def* lhs, const Def* rhs, const Def* guard) { return set_lhs(lhs)->set_rhs(rhs)->set_guard(guard); }
+    Rule* set(const Def* lhs, const Def* rhs, const Def* guard) { return Def::set({lhs, rhs, guard})->as<Rule>(); }
     Rule* set_lhs(const Def* lhs) { return Def::set(0, lhs)->as<Rule>(); }
     Rule* set_rhs(const Def* rhs) { return Def::set(1, rhs)->as<Rule>(); }
     Rule* set_guard(const Def* guard) { return Def::set(2, guard)->as<Rule>(); }

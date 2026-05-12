@@ -15,7 +15,7 @@ void Error::clear() {
 void Error::ack(std::ostream& os) {
     auto e = std::move(*this);
     if (e.num_errors() != 0) throw e;
-    if (e.num_warnings() != 0) print(os, "{} warning(s) encountered\n{}", e.num_warnings(), e);
+    if (e.num_warnings() != 0) std::print(os, "{} warning(s) encountered\n{}", e.num_warnings(), e);
 }
 
 } // namespace mim

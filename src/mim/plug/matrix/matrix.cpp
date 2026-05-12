@@ -20,4 +20,6 @@ void reg_stages(Flags2Stages& stages) {
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"matrix", matrix::register_normalizers, reg_stages, nullptr}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+    return {"matrix", MIM_VERSION, matrix::register_normalizers, reg_stages, nullptr};
+}

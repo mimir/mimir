@@ -7,7 +7,13 @@
 
 namespace mim {
 
-/// Builds a nesting tree of all *mutables*/binders.
+/// Builds a nesting tree for all mutables/binders.
+///
+/// @note This type should typically be constructed as `const`,
+/// because some member functions used during lookup have private non-`const` overloads.
+/// ```
+/// const auto nest = Nest(lam);
+/// ```
 class Nest {
 public:
     class Node {
@@ -152,7 +158,7 @@ public:
         const Node& sccs() const { return nest().calc_SCCs(), *this; }
 
         void link(Node* other) { this->sibl_deps_.nodes_.emplace(other), other->sibl_rev_deps_.nodes_.emplace(this); }
-        void dot(Tab, std::ostream&) const;
+        void dot(fe::Tab, std::ostream&) const;
 
         /// SCCs
         using Stack = std::stack<Node*>;
@@ -207,7 +213,11 @@ public:
     auto muts()  const { return mut2node_ | std::views::keys; }
     auto nodes() const { return mut2node_ | std::views::transform([](const auto& p) { return (const Node*)p.second.get(); }); }
     // clang-format on
-    const Node* operator[](Def* mut) const { return const_cast<Nest*>(this)->operator[](mut); }
+
+    const Node* operator[](Def* mut) const {
+        if (auto i = mut2node_.find(mut); i != mut2node_.end()) return i->second.get();
+        return nullptr;
+    }
     ///@}
 
     /// @name Iterators
@@ -234,11 +244,7 @@ private:
     Node* make_node(Def*, Node* inest = nullptr);
     void calc_sibl_deps(Node*) const;
     void calc_SCCs(Node*) const;
-
-    Node* operator[](Def* mut) {
-        if (auto i = mut2node_.find(mut); i != mut2node_.end()) return i->second.get();
-        return nullptr;
-    }
+    Node* operator[](Def* mut) { return const_cast<Node*>(std::as_const(*this)[mut]); }
 
     void calc_sibl_deps() const {
         if (!siblings_) {

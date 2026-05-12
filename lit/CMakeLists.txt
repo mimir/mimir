@@ -1,6 +1,29 @@
 find_package(Python3 COMPONENTS Interpreter)
 set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
 
+find_program(MIM_FILECHECK_DEFAULT
+    NAMES
+        FileCheck
+        FileCheck-24
+        FileCheck-23
+        FileCheck-22
+        FileCheck-21
+        FileCheck-20
+        FileCheck-19
+        FileCheck-18
+        FileCheck-17
+        FileCheck-16
+        FileCheck-15
+        FileCheck-14
+    DOC "FileCheck executable used by lit tests"
+)
+set(MIM_FILECHECK "${MIM_FILECHECK_DEFAULT}" CACHE STRING "FileCheck command used by lit tests.")
+mark_as_advanced(MIM_FILECHECK_DEFAULT)
+
+if(NOT MIM_FILECHECK)
+    message(FATAL_ERROR "Could not find FileCheck. Set MIM_FILECHECK to the FileCheck executable used by lit tests.")
+endif()
+
 if(MIM_LIT_WITH_VALGRIND)
     set(LIT_VALGRIND_COMMANDLINE "${MEMORYCHECK_COMMAND} ${VALGRIND_COMMAND_OPTIONS} ")
 else()
@@ -63,7 +86,34 @@ add_custom_command(
 )
 add_custom_target(mim_lit_tests DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tests/.stamp")
 
+set(MIM_CTEST_CONFIG_ARGS "")
+if(CMAKE_CONFIGURATION_TYPES)
+    list(APPEND MIM_CTEST_CONFIG_ARGS -C $<CONFIG>)
+endif()
+
+set(MIM_LIT_COMMAND
+    ${PYTHON_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/lit"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    -v
+)
+
 add_custom_target(lit
-    COMMAND ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/lit" "${CMAKE_CURRENT_BINARY_DIR}" -v --timeout=${MIM_LIT_TIMEOUT}
+    COMMAND ${MIM_LIT_COMMAND}
     DEPENDS mim mim_all_plugins mim_lit_tests
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
+)
+
+add_custom_target(test-all
+    COMMAND ${CMAKE_CTEST_COMMAND} --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure ${MIM_CTEST_CONFIG_ARGS}
+    COMMAND ${MIM_LIT_COMMAND}
+    DEPENDS
+        mim-gtest
+        mim-regex-gtest
+        mim
+        mim_all_plugins
+        mim_lit_tests
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
 )

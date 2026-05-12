@@ -146,7 +146,7 @@ const Def* TypeExpr::emit_(Emitter& e) const {
 }
 
 const Def* RuleExpr::emit_(Emitter& e) const {
-    auto m = meta_type()->emit(e);
+    auto m = dom()->emit(e);
     return e.world().reform(m);
 }
 
@@ -552,12 +552,12 @@ void CDecl::emit(Emitter& e) const {
 void RuleDecl::emit(Emitter& e) const {
     auto _      = e.world().push(loc());
     auto meta_t = e.world().reform(var()->emit_type(e));
-    auto rule   = e.world().mut_rule(meta_t);
+    auto rule   = e.world().mut_rule(meta_t)->set(dbg());
     var()->emit_value(e, rule->var());
     auto l = lhs()->emit(e);
     auto r = rhs()->emit(e);
-    auto c = guard()->emit(e);
-    rule->set(l, r, c);
+    auto g = guard()->emit(e);
+    rule->set(l, r, g);
     def_ = rule;
 }
 

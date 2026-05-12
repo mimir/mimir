@@ -31,8 +31,6 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "SEO::Analyzer") {}
 
-        auto& lattice() { return lattice_; }
-
     private:
         const Def* propagate(const Def*, const Def*);
         const Def* rewrite_imm_App(const App*) final;

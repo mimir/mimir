@@ -100,7 +100,7 @@ const Def* AddMem::rewrite_pi(const Pi* pi) {
 
     auto dom     = pi->dom();
     auto new_dom = DefVec(dom->num_projs(), [&](size_t i) { return rewrite_type(dom->proj(i)); });
-    if (pi->num_doms() == 0 || !Axm::isa<mem::M>(pi->dom(0_s))) {
+    if (pi->num_doms() == 0 || !Axm::isa<mem::M>(pi->dom(0uz))) {
         new_dom
             = DefVec(dom->num_projs() + 1, [&](size_t i) { return i == 0 ? world().call<mem::M>(0) : new_dom[i - 1]; });
     }
@@ -138,7 +138,7 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
         if (auto it = mem_rewritten_.find(lam); it != mem_rewritten_.end()) {
             if (curr_lam == lam) // i.e. we've stubbed this, but now we rewrite it
                 new_lam = it->second->as_mut<Lam>();
-            else if (auto pi = it->second->type()->as<Pi>(); pi->num_doms() > 0 && Axm::isa<mem::M>(pi->dom(0_s)))
+            else if (auto pi = it->second->type()->as<Pi>(); pi->num_doms() > 0 && Axm::isa<mem::M>(pi->dom(0uz)))
                 return it->second;
         }
 

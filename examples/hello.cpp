@@ -34,12 +34,12 @@ int main(int, char**) {
         ofs.close(); // make sure everything is written before clang is invoked
 
         sys::system("clang hello.ll -o hello -Wno-override-module");
-        outln("exit code: {}", sys::system("./hello a b c"));
+        std::println("exit code: {}", sys::system("./hello a b c"));
     } catch (const std::exception& e) {
-        errln("{}", e.what());
+        std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;
     } catch (...) {
-        errln("error: unknown exception");
+        std::println(std::cerr, "error: unknown exception");
         return EXIT_FAILURE;
     }
 

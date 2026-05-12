@@ -340,25 +340,24 @@ const Def* Lam::check(size_t i, const Def* def) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
         throw Error().error(filter()->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'",
                             filter(), filter()->type());
-    } else if (i == 1) {
-        if (auto body = Checker::assignable(codom(), def)) return body;
-        throw Error()
-            .error(def->loc(), "body of function is not assignable to declared codomain")
-            .note(def->loc(), "body: '{}'", def)
-            .note(def->loc(), "type: '{}'", def->type())
-            .note(codom()->loc(), "codomain: '{}'", codom());
     }
-    fe::unreachable();
+    assert(i == 1);
+    if (auto body = Checker::assignable(codom(), def)) return body;
+    throw Error()
+        .error(def->loc(), "body of function is not assignable to declared codomain")
+        .note(def->loc(), "body: '{}'", def)
+        .note(def->loc(), "type: '{}'", def->type())
+        .note(codom()->loc(), "codomain: '{}'", codom());
 }
 
 const Def* Reform::check() {
-    auto t = infer(meta_type());
+    auto t = infer(dom());
     if (!Checker::alpha<Checker::Check>(t, type()))
         error(type()->loc(), "declared sort '{}' of rule type does not match inferred one '{}'", type(), t);
     return t;
 }
 
-const Def* Reform::infer(const Def* meta_type) { return meta_type->unfold_type(); }
+const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
 
 const Def* Rule::check() {
     auto t1 = lhs()->type();

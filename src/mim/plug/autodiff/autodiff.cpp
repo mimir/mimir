@@ -23,7 +23,7 @@ void reg_stages(Flags2Stages& stages) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"autodiff", [](Normalizers& n) { autodiff::register_normalizers(n); }, reg_stages, nullptr};
+    return {"autodiff", MIM_VERSION, [](Normalizers& n) { autodiff::register_normalizers(n); }, reg_stages, nullptr};
 }
 
 namespace mim::plug::autodiff {
@@ -31,7 +31,7 @@ const Def* id_pullback(const Def* A) {
     auto& world       = A->world();
     auto arg_pb_ty    = pullback_type(A, A);
     auto id_pb        = world.mut_lam(arg_pb_ty)->set("id_pb");
-    auto id_pb_scalar = id_pb->var(0_s)->set("s");
+    auto id_pb_scalar = id_pb->var(0uz)->set("s");
     id_pb->app(true,
                id_pb->var(1), // can not use ret_var as the result might be higher order
                id_pb_scalar);
@@ -126,7 +126,7 @@ const Def* autodiff_type_fun(const Def* ty) {
     if (auto sig = ty->isa<Sigma>()) {
         // TODO: mut sigma
         auto ops = DefVec(sig->ops(), [&](const Def* op) { return autodiff_type_fun(op); });
-        world.DLOG("ops: {,}", ops);
+        world.DLOG("ops: {}", fe::Join(ops));
         return world.sigma(ops);
     }
     // mem

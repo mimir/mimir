@@ -25,7 +25,7 @@ const Def* CopyProp::rewrite(const Def* def) {
     auto n = app->num_targs();
     if (n == 0) return app;
 
-    auto [it, _]                        = lam2info_.try_emplace(var_lam, std::tuple(Lattices(n), (Lam*)nullptr, DefVec(n)));
+    auto [it, _] = lam2info_.try_emplace(var_lam, std::tuple(Lattices(n), (Lam*)nullptr, DefVec(n)));
     auto& [lattice, prop_lam, old_args] = it->second;
 
     if (mem::mem_var(var_lam)) lattice[0] = Lattice::Keep;
@@ -54,17 +54,17 @@ const Def* CopyProp::rewrite(const Def* def) {
                 new_doms.emplace_back(var_lam->var(n, i)->type());
                 new_args.emplace_back(app->arg(n, i));
                 break;
-            default: fe::unreachable();
+            default: std::unreachable();
         }
     }
 
-    DLOG("app->args(): {, }", app->args());
-    DLOG("args: {, }", args);
-    DLOG("new_args: {, }", new_args);
+    DLOG("app->args(): {}", fe::Join(app->args()));
+    DLOG("args: {}", fe::Join(args));
+    DLOG("new_args: {}", fe::Join(new_args));
 
     if (appxy_ops.size() > 1) {
         auto appxy = proxy(app->type(), appxy_ops, Appxy);
-        DLOG("appxy: '{}': {, }", appxy, appxy_ops);
+        DLOG("appxy: '{}': {}", appxy, fe::Join(appxy_ops));
         return appxy;
     }
 
@@ -85,7 +85,7 @@ const Def* CopyProp::rewrite(const Def* def) {
                 case Lattice::Dead: return proxy(var_lam->var(n, i)->type(), {var_lam, world().lit_nat(i)}, Varxy);
                 case Lattice::Prop: return args[i];
                 case Lattice::Keep: return prop_lam->var(j++);
-                default: fe::unreachable();
+                default: std::unreachable();
             }
         });
 

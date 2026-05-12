@@ -34,8 +34,7 @@ const Def* Eval::augment_lam(Lam* lam, Lam* f, Lam* f_diff) {
     }
     // TODO: better fix (another pass as analysis?)
     // TODO: handle open functions
-    if (Lam::isa_basicblock(lam) || lam->sym().view().find("ret") != std::string::npos
-        || lam->sym().view().find("_cont") != std::string::npos) {
+    if (Lam::isa_basicblock(lam) || lam->sym().view().contains("ret") || lam->sym().view().contains("_cont")) {
         // A open continuation behaves the same as return:
         // ```
         // cont: Cn[X]
@@ -103,7 +102,7 @@ const Def* Eval::augment_extract(const Extract* ext, Lam* f, Lam* f_diff) {
         auto pb_ty    = pullback_type(ext->type(), f->dom(2, 0));
         auto pb_fun   = world().mut_lam(pb_ty)->set("extract_pb");
         DLOG("Pullback: {} : {}", pb_fun, pb_fun->type());
-        auto pb_tangent = pb_fun->var(0_s)->set("s");
+        auto pb_tangent = pb_fun->var(0uz)->set("s");
         auto tuple_tan  = world().insert(world().call<zero>(aug_tuple->type()), aug_index, pb_tangent)->set("tup_s");
         pb_fun->app(true, tuple_pb, {tuple_tan, pb_fun->var(1) /* ret_var but make sure to select correct one */});
         pb = pb_fun;
@@ -121,7 +120,7 @@ const Def* Eval::augment_tuple(const Tuple* tup, Lam* f, Lam* f_diff) {
     auto aug_tup = world().tuple(aug_ops);
 
     auto pbs = DefVec(Defs(aug_ops), [&](const Def* op) { return partial_pullback[op]; });
-    DLOG("tuple pbs {,}", pbs);
+    DLOG("tuple pbs {}", fe::Join(pbs));
     // shadow pb = tuple of pbs
     auto shadow_pb           = world().tuple(pbs);
     shadow_pullback[aug_tup] = shadow_pb;
@@ -137,7 +136,7 @@ const Def* Eval::augment_tuple(const Tuple* tup, Lam* f, Lam* f_diff) {
     DLOG("Tuple Pullback: {} : {}", pb, pb->type());
     DLOG("shadow pb: {} : {}", shadow_pb, shadow_pb->type());
 
-    auto pb_tangent = pb->var(0_s)->set("tup_s");
+    auto pb_tangent = pb->var(0uz)->set("tup_s");
 
     auto tangents = DefVec(pbs.size(), [&](nat_t i) {
         return world().app(direct::op_cps2ds_dep(pbs[i]), world().extract(pb_tangent, i));

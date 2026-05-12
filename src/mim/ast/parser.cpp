@@ -146,7 +146,7 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
 Ptr<Module> Parser::import(std::istream& is, Loc loc, const fs::path* path, std::ostream* md) {
     driver().VLOG("📄 reading: {}", path ? path->string() : "<unknown file>"s);
     if (!is) {
-        ast().error(loc, "cannot read file {}", *path);
+        ast().error(loc, "cannot read file {}", path->string());
         return {};
     }
 
@@ -431,8 +431,7 @@ Ptr<Expr> Parser::parse_type_expr() {
 Ptr<Expr> Parser::parse_rule_expr() {
     auto track = tracker();
     eat(Tag::K_Rule);
-    auto meta_type = parse_expr("meta type of rule", Prec::App);
-    return ptr<RuleExpr>(track, std::move(meta_type));
+    return ptr<RuleExpr>(track, parse_expr("domain of rule", Prec::App));
 }
 
 Ptr<Expr> Parser::parse_pi_expr() {

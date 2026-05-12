@@ -12,7 +12,7 @@ using namespace automaton;
 
 namespace {
 #if 0
-void printSet(const std::set<const DFANode*>& set) {
+void print_set(const std::set<const DFANode*>& set) {
     std::cout << "{";
     for (auto state : set) std::cout << state << ", ";
     std::cout << "}\n";
@@ -35,7 +35,8 @@ std::set<const DFANode*> get_erroring_states(const std::set<const DFANode*>& rea
 
 std::set<std::uint16_t> get_alphabet(const std::set<const DFANode*>& reachableStates) {
     std::set<std::uint16_t> alphabet;
-    for (auto state : reachableStates) state->for_transitions([&](auto c, auto) { alphabet.insert(c); });
+    for (auto state : reachableStates)
+        state->for_transitions([&](auto c, auto) { alphabet.insert(c); });
     return alphabet;
 }
 
@@ -67,9 +68,9 @@ std::vector<std::set<const DFANode*>> hopcroft(const std::set<const DFANode*>& r
     while (!W.empty()) {
 #if 0
         std::cout << "P: ";
-        for (const auto& S : P) printSet(S);
+        for (const auto& S : P) print_set(S);
         std::cout << "W: ";
-        for (const auto& S : W) printSet(S);
+        for (const auto& S : W) print_set(S);
 #endif
         auto A = W.back();
         W.pop_back();
@@ -130,7 +131,8 @@ std::unique_ptr<DFA> minimize_dfa(const DFA& dfa) {
     for (auto& X : P) {
         if (!X.empty()) {
             auto state = dfaStates[*X.begin()];
-            for (auto x : X) x->for_transitions([&](auto c, auto to) { state->add_transition(dfaStates[to], c); });
+            for (auto x : X)
+                x->for_transitions([&](auto c, auto to) { state->add_transition(dfaStates[to], c); });
         }
     }
     return minDfa;

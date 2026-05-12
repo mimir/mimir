@@ -14,4 +14,5 @@ When reviewing C++ changes in this repository, treat the following as coding-sty
 - In particular, prefer `app->args<N>()` over `app->arg()->projs<N>()` when unpacking the fixed arguments of an `App`.
 - Flag repeated `proj(arity, index)` calls that can be replaced by a single `projs<N>()` call, including typed `projs<N>(...)` overloads when a conversion lambda is needed.
 - Flag cases where a `MIM_PROJ`-generated helper would express the same unpacking more directly than raw `proj(...)` or `...()->projs<N>()` chains.
+- In Doxygen comments (`///` or `/** ... */`), prefer one sentence per line where reasonable, instead of wrapping prose to fill a column width. Hard line breaks per sentence make diffs and reviews easier to read; do not flag deliberate exceptions where a sentence would become awkwardly fragmented.
 - Call out violations of these rules in review comments even when the code is otherwise correct.

@@ -1,5 +1,5 @@
 // Combining analyses, combining optimizations, Fig. 10
-// RUN: %mim %s --output-ll - | FileCheck %s
+// RUN: %mim %s --output-ll - | %FileCheck %s
 plugin core;
 
 cfun dont_know[]: Bool;

@@ -155,10 +155,8 @@ private:
 
     using Super::expect;
     template<class... Args>
-    Tok expect(Tok::Tag tag, const char* f, Args&&... args) {
-        std::ostringstream oss;
-        print(oss, f, std::forward<Args>(args)...);
-        return Super::expect(tag, oss.str());
+    Tok expect(Tok::Tag tag, std::format_string<Args...> f, Args&&... args) {
+        return Super::expect(tag, std::format(f, std::forward<Args>(args)...));
     }
     ///@}
 

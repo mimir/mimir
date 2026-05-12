@@ -5,4 +5,6 @@
 
 using namespace mim;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ord", plug::ord::register_normalizers, nullptr, nullptr}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+    return {"ord", MIM_VERSION, plug::ord::register_normalizers, nullptr, nullptr};
+}

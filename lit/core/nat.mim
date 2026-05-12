@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim %s -o - | %FileCheck %s
 plugin core;
 
 fun extern f(a b:Nat): Nat = return (%core.nat.add (b, 0));

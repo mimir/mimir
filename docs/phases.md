@@ -80,19 +80,28 @@ Typical usage:
 
 - override [`rewrite()`](@ref mim::Rewriter::rewrite), [`rewrite_imm()`](@ref mim::Rewriter::rewrite_imm), [`rewrite_mut()`](@ref mim::Rewriter::rewrite_mut), or node-specific rewrite hooks,
 - compute abstract information while traversing reachable IR,
-- store that information in [`lattice()`](@ref mim::Analysis::lattice) and/or in side tables,
+- store that information in [`lattice()`](@ref mim::Analysis::lattice) and/or in side tables; use [`set()`](@ref mim::Analysis::set) to record an abstract value in both [`lattice()`](@ref mim::Analysis::lattice) and the rewriter map at once,
 - call [`invalidate()`](@ref mim::Phase::invalidate) if new information was discovered and another iteration is required.
 
 ### Handling of Mutables
 
 Unlike [`RWPhase`](@ref mim::RWPhase), an [`Analysis`](@ref mim::Analysis) must traverse the entire reachable program without rebuilding it.
-For this reason, [`Analysis`](@ref mim::Analysis) overrides [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) to *preserve mutables and their binders* instead of rewriting them.
+For this reason, [`Analysis`](@ref mim::Analysis) overrides [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) to keep mutables in place and use the rewriter machinery as a graph-aware traversal over the existing world.
 
-When a mutable is visited, the analysis immediately maps it to itself (`mut -> mut`), and likewise maps its associated variable(s) to themselves (`var -> var`).
-This keeps the mutable structure intact as a stable "skeleton program" and prevents the analysis from accidentally introducing new mutables or fresh variables.
+The default [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut):
 
-After establishing these identity mappings, the analysis recursively traverses the mutable’s [dependencies](@ref mim::Def::deps) via [`rewrite()`](@ref mim::Rewriter::rewrite).
-This uses the [`Rewriter`](@ref mim::Rewriter) machinery purely as a structured, graph-aware traversal, while all computed information is stored separately in [`Analysis::lattice()`](@ref mim::Analysis::lattice).
+1. records the mutable as visited via `mut -> mut`,
+2. seeds Lam binder vars to **top** (`v -> v`) in the lattice, and
+3. delegates to [`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) for the recursive traversal of the mutable's [dependencies](@ref mim::Def::deps).
+
+Step 2 is destructive: if a binder var already carried a non-top lattice value, it is reset to top and [`invalidate()`](@ref mim::Phase::invalidate) is called.
+This is the correct behavior, since reaching a Lam through the default `rewrite_mut()` path means it has been used as a value (not as an `App` callee) and has therefore escaped — any prior propagation for it is unsound and must be retracted.
+
+[`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) is the stripped-down helper:
+it enters the mutable for [`curr_mut()`](@ref mim::Analysis::curr_mut) tracking and recursively rewrites the mutable's [dependencies](@ref mim::Def::deps), but does **not** mark the mutable as visited and does **not** seed binder facts.
+
+Use [`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) (rather than [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) or [`rewrite()`](@ref mim::Rewriter::rewrite)) when you have already populated custom lattice entries for the mutable's binder — typically inside a `rewrite_imm_App` override that propagates abstract values from call arguments into the callee's tvars — so the body traversal does not clobber that state.
+The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (`lattice_[concr] = abstr` and `map(concr, abstr)`) that arise in this pattern.
 
 A common convention is to encode **top** as `def -> def` in the lattice:
 mapping a definition to itself means "no useful information, keep as-is", while mapping it to a different [`Def`](@ref mim::Def) represents a discovered abstract value.
@@ -100,7 +109,7 @@ mapping a definition to itself means "no useful information, keep as-is", while 
 ### Reset Between Iterations
 
 If an analysis participates in a fixed-point loop, it should be ready to run multiple times.
-The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter state and resets the internal fixed-point state for the next round.
+The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter map and resets [`Phase::todo()`](@ref mim::Phase::todo) for the next round, but **preserves** [`lattice()`](@ref mim::Analysis::lattice) so that abstract values accumulated in earlier iterations remain available — this is what makes fixed-point convergence possible.
 
 ## RWPhase {#phases_rwphase}
 

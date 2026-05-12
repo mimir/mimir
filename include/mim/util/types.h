@@ -1,22 +1,15 @@
 #pragma once
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 #include <limits>
 #include <ostream>
 #include <type_traits>
 
-#ifdef __clang__
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wmismatched-tags"
-#    pragma clang diagnostic ignored "-Wdeprecated-literal-operator"
-#endif
-#define HALF_ROUND_STYLE        1
-#define HALF_ROUND_TIES_TO_EVEN 1
-#include <half.hpp>
-#ifdef __clang__
-#    pragma clang diagnostic pop
+#if defined(__STDCPP_FLOAT16_T__)
+#    include <stdfloat>
 #endif
 
 namespace mim {
@@ -25,6 +18,11 @@ namespace mim {
 #define MIM_1_8_16_32_64(X) X(1) X(8) X(16) X(32) X(64)
 #define MIM_8_16_32_64(X)        X(8) X(16) X(32) X(64)
 #define MIM_16_32_64(X)               X(16) X(32) X(64)
+#if defined(__STDCPP_FLOAT16_T__)
+#    define MIM_F16_32_64(X)          X(16) X(32) X(64)
+#else
+#    define MIM_F16_32_64(X)                X(32) X(64)
+#endif
 
 /// @name Aliases for some Base Types
 // using CODE1, CODE2, ... here as a workaround for Doxygen
@@ -35,18 +33,19 @@ namespace mim {
 MIM_8_16_32_64(CODE1)
 #undef CODE1
 
-using half_float::half;
-using u1       = bool;
-using f16      = half;
-using f32      = float;
-using f64      = double;
-using level_t  = u64;
-using nat_t    = u64;
-using node_t   = u8;
-using flags_t  = u64;
-using plugin_t = u64;
-using tag_t    = u8;
-using sub_t    = u8;
+using u1 = bool;
+#if defined(__STDCPP_FLOAT16_T__)
+using f16                           = std::float16_t;
+#endif
+using f32                           = float;
+using f64                           = double;
+using level_t                       = u64;
+using nat_t                         = u64;
+using node_t                        = u8;
+using flags_t                       = u64;
+using plugin_t                      = u64;
+using tag_t                         = u8;
+using sub_t                         = u8;
 ///@}
 
 namespace detail {
@@ -64,7 +63,7 @@ MIM_8_16_32_64(CODE2)
 
 #define CODE3(i)                                        \
     template<> struct w2f_<i> { using type = f ## i; };
-MIM_16_32_64(CODE3)
+MIM_F16_32_64(CODE3)
 #undef CODE3
 } // namespace detail
 
@@ -83,17 +82,14 @@ template<int w> using w2f = typename detail::w2f_<w>::type;
 MIM_8_16_32_64(CODE4)
 #undef CODE4
 
-/// A `size_t` literal. Use `0_s` to disambiguate `0` from `nullptr`.
-constexpr size_t operator""_s(unsigned long long int i) { return size_t(i); }
 constexpr nat_t operator""_n(unsigned long long int i) { return nat_t(i); }
-inline /*constexpr*/ f16 operator""_f16(long double d) { return f16(float(d)); } // wait till fixed upstream
-constexpr f32 operator""_f32(long double d) { return f32(d); }
-constexpr f64 operator""_f64(long double d) { return f64(d); }
 ///@}
 
 /// @name rem
 ///@{
-inline half        rem(half        a, half        b) { return      fmod(a, b); }
+#if defined(__STDCPP_FLOAT16_T__)
+inline f16         rem(f16         a, f16         b) { return std::fmod(a, b); }
+#endif
 inline float       rem(float       a, float       b) { return std::fmod(a, b); }
 inline double      rem(double      a, double      b) { return std::fmod(a, b); }
 inline long double rem(long double a, long double b) { return std::fmod(a, b); }

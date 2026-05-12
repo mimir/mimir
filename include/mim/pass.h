@@ -206,9 +206,9 @@ public:
 
     void add(std::unique_ptr<Pass>&& pass) {
         fixed_point_ |= pass->fixed_point();
-        auto p = pass.get();
+        auto p        = pass.get();
         auto type_idx = std::type_index(typeid(*p));
-        if (auto pass = find(type_idx)) error("already added `{}`", pass);
+        if (auto pass = find(type_idx)) error("already added `{}`", pass->name());
         registry_.emplace(type_idx, p);
         passes_.emplace_back(std::move(pass));
     }

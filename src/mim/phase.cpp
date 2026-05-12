@@ -39,23 +39,29 @@ void Analysis::start() {
 void Analysis::rewrite_annex(flags_t, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
-Def* Analysis::rewrite_mut(Def* mut) {
-    map(mut, mut);
-
-    if (auto var = mut->has_var()) {
-        map(var, var);
-
-        if (mut->isa<Lam>())
-            for (auto var : mut->tvars()) {
-                map(var, var);
-                lattice_[var] = var;
-            }
-    }
+Def* Analysis::rewrite_deps(Def* mut) {
+    auto _ = enter(mut);
 
     for (auto d : mut->deps())
         rewrite(d);
 
     return mut;
+}
+
+Def* Analysis::rewrite_mut(Def* mut) {
+    map(mut, mut);
+
+    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
+        for (auto v : var->tprojs()) {
+            map(v, v);
+            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
+                // var was mapped to sth else beforehand so we need another fixed-point round
+                invalidate();
+                i->second = v;
+            }
+        }
+
+    return rewrite_deps(mut);
 }
 
 /*

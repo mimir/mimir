@@ -72,7 +72,7 @@ const Def* Scalarize::rewrite(const Def* def) {
                 })) {
                 auto new_tuple = w.tuple(DefVec(tuple->num_ops(), [&](auto i) { return make_scalar(tuple->op(i)); }));
                 sca_callee     = w.extract(new_tuple, proj->index());
-                DLOG("Expand tuple: {, } ~> {, }", tuple->ops(), new_tuple->ops());
+                DLOG("Expand tuple: {} ~> {}", fe::Join(tuple->ops()), fe::Join(new_tuple->ops()));
             }
         }
 

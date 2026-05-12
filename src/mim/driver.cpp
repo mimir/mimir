@@ -1,5 +1,9 @@
 #include "mim/driver.h"
 
+#include <iostream>
+#include <sstream>
+#include <stdexcept>
+
 #include "mim/plugin.h"
 
 #include "mim/util/dl.h"
@@ -41,7 +45,8 @@ std::pair<const fs::path*, bool> Driver::Imports::add(fs::path path, Sym sym, as
 }
 
 Driver::Driver()
-    : log_(flags_)
+    : version_(MIM_VERSION)
+    , log_(flags_)
     , world_(this)
     , imports_(*this) {
     // prepend empty path
@@ -81,7 +86,7 @@ void Driver::load(Sym name) {
         handle.reset(dl::open(name.c_str()));
     if (!handle) {
         for (const auto& path : search_paths()) {
-            auto full_path = path / fmt("libmim_{}.{}", name, dl::extension);
+            auto full_path = path / std::format("libmim_{}.{}", name, dl::extension);
             std::error_code ignore;
             if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
                 auto path_str = full_path.string();
@@ -94,12 +99,21 @@ void Driver::load(Sym name) {
     if (!handle) error("cannot open plugin '{}'", name);
 
     if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(dl::get(handle.get(), "mim_get_plugin"))) {
+        auto plugin = get_info();
+        if (version() != plugin.version) {
+            std::ostringstream oss;
+            std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version,
+                       version());
+            if (flags().force_load)
+                std::cerr << "warning: " << oss.str() << '\n';
+            else
+                throw std::logic_error(oss.str());
+        }
         assert_emplace(plugins_, name, std::move(handle));
-        auto info = get_info();
         // clang-format off
-        if (auto reg = info.register_normalizers) reg(normalizers_);
-        if (auto reg = info.register_stages)      reg(stages_);
-        if (auto reg = info.register_backends)    reg(backends_);
+        if (auto reg = plugin.register_normalizers) reg(normalizers_);
+        if (auto reg = plugin.register_stages)      reg(stages_);
+        if (auto reg = plugin.register_backends)    reg(backends_);
         // clang-format on
     } else {
         error("mim/plugin has no 'mim_get_plugin()'");

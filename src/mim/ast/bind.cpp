@@ -11,7 +11,7 @@ public:
     DummyDecl()
         : Decl(Loc()) {}
 
-    std::ostream& stream(Tab&, std::ostream& os) const final { return os << "<dummy>"; }
+    void stream(fe::Tab&, std::ostream& os) const final { os << "<dummy>"; }
 };
 
 class Scopes {
@@ -119,7 +119,7 @@ void TuplePtrn::bind(Scopes& s, bool rebind, bool quiet) const {
 // clang-format off
 void IdExpr     ::bind(Scopes& s) const { decl_ = s.find(dbg()); }
 void TypeExpr   ::bind(Scopes& s) const { level()->bind(s); }
-void RuleExpr   ::bind(Scopes& s) const { meta_type()->bind(s); }
+void RuleExpr   ::bind(Scopes& s) const { dom()->bind(s); }
 void ErrorExpr  ::bind(Scopes&) const {}
 void HoleExpr   ::bind(Scopes&) const {}
 void PrimaryExpr::bind(Scopes&) const {}
@@ -328,7 +328,6 @@ void RecDecl::bind_decl(Scopes& s) const {
 
     s.bind(dbg(), this);
     annex_ = s.ast().name2annex(dbg(), &sub_);
-
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }

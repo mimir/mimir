@@ -1,7 +1,12 @@
 #pragma once
 
+#include <compare>
+
+#include <functional>
+#include <iosfwd>
 #include <memory>
 #include <string>
+#include <tuple>
 
 #include <absl/container/btree_map.h>
 #include <absl/container/flat_hash_map.h>
@@ -24,13 +29,42 @@ using Flags2Stages = absl::flat_hash_map<flags_t, std::function<std::unique_ptr<
 using Backends = absl::btree_map<std::string, void (*)(World&, std::ostream&)>;
 ///@}
 
+struct Version {
+    int major;
+    int minor;
+    const char* suffix;
+    const char* hash;
+
+    /// Compares major/minor/suffix, ignores hash.
+    constexpr auto operator<=>(const Version& other) const noexcept {
+        auto cmp = std::tie(major, minor) <=> std::tie(other.major, other.minor);
+        if (cmp != 0) return cmp;
+
+        return std::strcmp(suffix, other.suffix) <=> 0;
+    }
+
+    /// Compares major/minor/suffix, ignores hash.
+    constexpr bool operator==(const Version& other) const noexcept {
+        return major == other.major && minor == other.minor && std::strcmp(suffix, other.suffix) == 0;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const Version& v) {
+        return os << v.major << '.' << v.minor << v.suffix << " (" << v.hash << ")";
+    }
+};
+
 extern "C" {
+
+#define MIM_VERSION \
+    Version { MIM_VER_MAJOR, MIM_VER_MINOR, MIM_VER_SUFFIX, MIM_GIT_HASH }
+
 /// Basic info and registration function pointer to be returned from a specific plugin.
 /// Use Driver to load such a plugin.
 struct Plugin {
     using Handle = std::unique_ptr<void, void (*)(void*)>;
 
-    const char* plugin_name; ///< Name of the Plugin.
+    const char* name; ///< Name of the Plugin.
+    Version version;  ///< Version of the Plugin.
 
     /// Callback for registering the mapping from axm ids to normalizer functions in the given @p normalizers map.
     void (*register_normalizers)(Normalizers&);
@@ -122,3 +156,7 @@ struct Annex {
 };
 
 } // namespace mim
+
+#ifndef DOXYGEN
+template<> struct std::formatter<mim::Version> : fe::ostream_formatter {};
+#endif

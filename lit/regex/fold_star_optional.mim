@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - -P %S | FileCheck %s
+// RUN: %mim %s -o - -P %S | %FileCheck %s
 
 import mem;
 plugin regex;
