@@ -87,12 +87,14 @@ public:
 
     /// Translate a MimIR expression to SPIR-V
     Word emit_term(const Def* def) {
-        if (auto i = globals_.find(def); i != globals_.end()) return i->second;
-        if (auto i = locals_.find(def); i != locals_.end()) return i->second;
+        auto stripped = strip(def);
+
+        if (auto i = globals_.find(stripped); i != globals_.end()) return i->second;
+        if (auto i = locals_.find(stripped); i != locals_.end()) return i->second;
 
         auto place = scheduler_.smart(curr_function_, def);
         auto& bb   = lam2bb_[place->mut()->template as<Lam>()];
-        return emit_term_into(def, bb);
+        return emit_term_into(stripped, bb);
     }
 
     /// Returns an optional name for an identifier to make
@@ -102,7 +104,8 @@ public:
 private:
     /// Emit a term into a given basic block
     Word emit_term_into(const Def* def, BB& bb);
-    void link_phi(Lam* lam, Lam* callee, const Def* arg);
+    void link_phi(Lam* from, Lam* callee, const Def* arg);
+    void link_phi(Lam* from, Lam* callee, Word value_id);
 
     void finalize_function(Lam* fun);
 
