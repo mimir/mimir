@@ -1,0 +1,75 @@
+// RUN: %mim %s --output-ll - | %FileCheck %s
+
+/*
+ * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
+bool dont_know();
+
+uint64_t f(uint64_t x) {
+    auto map = std::map<uint32_t, uint64_t>{{0, 23}, {1, x}};
+
+    while (dont_know()) {
+        map[1] = 42;
+
+        if (map.contains(1)) {
+            map[1] = x;
+        }
+    }
+
+    return map[1];
+}
+*/
+
+plugin mem;
+plugin ord;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+
+let Key = (I32, %core.icmp.ul @i32);
+let Map = %ord.Map Key I64;
+
+fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
+    // stack-alloc dictionary and init with: 0 -> 23, 1 -> x
+    let (mem, ptr) = %mem.slot  (Map, 0) (mem, 0);
+    let  mem       = %mem.store (mem, ptr, %ord.init.map Key ((0I32, 23I64), (1I32, x))); // 0 → 23, 1 → x
+    head mem where
+        con head(mem: %mem.M 0) =
+            ret (mem, cond) = dont_know $ mem;
+            (exit, body)#cond mem where
+                con body(mem: %mem.M 0) =
+                    let (mem, map) = %mem.load (mem, ptr);
+                    let map        = %ord.insert.map (map, (1I32, 42I64)); // 1 -> 42
+                    let mem        = %mem.store (mem, ptr, map);
+                    let cond       = %ord.contains.map (map, 1I32);
+                    (false, true)#cond mem
+                    where
+                        con true (mem: %mem.M 0) =
+                            let (mem, map) = %mem.load (mem, ptr);
+                            let map        = %ord.insert.map (map, (1I32, x)); // 1 -> x
+                            let mem        = %mem.store (mem, ptr, map);
+                            next mem;
+
+                        con false(mem: %mem.M 0) = next mem;
+                        con next (mem: %mem.M 0) = head mem;
+                    end;
+
+                con exit(mem: %mem.M 0) =
+                    let (mem, map) = %mem.load (mem, ptr);
+                    let opt_v        = %ord.get (map, 1I32);
+                    let val        = %option.unwrap_unsafe opt_v;
+                    return (mem, val);
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup_phase,
+        %compile.phases tt (
+            %compile.beta_red_phase,
+            %compile.eta_red_phase,
+        ),
+        %compile.eta_exp_phase,
+        %mem.sym_expr_opt,
+    );
+
+// CHECK: define i64 @f(i64 [[X:%[[:alnum:]_]+]])
+// CHECK: ret i64 [[X]]
