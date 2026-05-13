@@ -1,0 +1,14 @@
+// RUN: %mim %s
+plugin tuple;
+plugin refly;
+
+let tup = (1, tt, ff, 23, 42);
+let popped = %tuple.pop tup;
+let head = popped#(0₂);
+let tail = popped#(1₂);
+
+let _ = %refly.equiv.struc_eq (1, head);
+let _ = %refly.equiv.struc_eq ((tt, ff, 23, 42), tail);
+
+lam f (a: [Nat, Bool, Nat]): [Nat, [Bool, Nat]] = %tuple.pop a;
+lam g (a: «3; Nat»): [Nat, «2; Nat»] = %tuple.pop a;

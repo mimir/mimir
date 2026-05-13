@@ -1,0 +1,9 @@
+// RUN: %mim %s -o -
+
+plugin sflow;
+
+fun extern foo (token: %sflow.Token %sflow.ROOT, cond: Bool) = %sflow.if token exit (else, then) cond () where
+  con then (_, token, struct) = %sflow.merge token struct 1;
+  con else (_, token, struct) = %sflow.merge token struct 0;
+  con exit (x: Nat, _, struct) = return x;
+end;
