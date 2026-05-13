@@ -34,17 +34,17 @@ fun extern vertex [
 fun extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
-    token: %sflow.Token %sflow.ROOT,
+    token: %sflow.Root,
 ] = let (mem_, x) = %spirv.load (mem, i_x);
     let cond_outer = %math.cmp.l 0 (x, -0.25:F32);
-    %sflow.if token merge (else_outer, then_outer) cond_outer () where
-        con then_outer (_: [], _, struct) = %sflow.break struct red;
-        con else_outer (_: [], token, struct) =
+    %sflow.if merge (else_outer, then_outer) cond_outer token () where
+        con then_outer (_: [], struct, token) = %sflow.merge struct token red;
+        con else_outer (_: [], struct, token) =
             let cond_inner = %math.cmp.l 0 (x, 0.25:F32);
-            %sflow.if token break_inner (else_inner, then_inner) cond_inner () where
-                con then_inner (_: [], _, s) = %sflow.break s green;
-                con else_inner (_: [], _, s) = %sflow.break s blue;
-                con break_inner (color: «4; F32», _, _) = %sflow.break struct color;
+            %sflow.if break_inner (else_inner, then_inner) cond_inner token () where
+                con then_inner (_: [], s, token) = %sflow.merge s token green;
+                con else_inner (_: [], s, token) = %sflow.merge s token blue;
+                con break_inner (color: «4; F32», _, token) = %sflow.merge struct token color;
             end;
         con merge (color: «4; F32», _, _) = return (%spirv.store (mem_, o_color, color));
     end;

@@ -51,7 +51,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     } else if (auto cf_if = Axm::isa<sflow::_if>(app)) {
         // === Structured if-else ===
         // => OpSelectionMerge + OpBranchConditional
-        auto [token, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
+        auto [cf_break, tuple, index, token, arg] = cf_if->uncurry_args<5>();
 
         bb.merge = Op{
             OpKind::SelectionMerge,
@@ -68,7 +68,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     } else if (auto cf_switch = Axm::isa<sflow::_switch>(app->callee())) {
         // === Structured switch-case ===
         // => OpSelectionMerge + OpSwitch
-        auto [token, cf_break, cf_default, targets, index] = cf_switch->uncurry_args<5>();
+        auto [cf_break, cf_default, targets, index, token] = cf_switch->uncurry_args<5>();
 
         bb.merge = Op{
             OpKind::SelectionMerge,
@@ -96,7 +96,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // The lam ending in `loop` is just the predecessor of the SPIR-V loop
         // header. OpLoopMerge belongs in the header lam itself (see `header`
         // case below), so all we do here is unconditionally branch into it.
-        auto [token, cf_break, cf_continue, cf_header, arg] = cf_loop->uncurry_args<5>();
+        auto [cf_break, cf_continue, cf_header, token, arg] = cf_loop->uncurry_args<5>();
         auto header_lam                                     = cf_header->as_mut<Lam>();
 
         link_phi(lam, header_lam, arg);
@@ -108,7 +108,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // lam as merge block and the continue lam as continue target. Then
         // branch into the body via the tuple/index pair (mirrors `if`).
         // Register `lam` so loopbacks reaching this loop can find it.
-        auto [token, cf_struct, tuple, index] = cf_header->uncurry_args<4>();
+        auto [cf_struct, tuple, index, token] = cf_header->uncurry_args<4>();
         auto [path, cf_continue, cf_break]    = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
         auto continue_lam                     = cf_continue->as_mut<Lam>();
         auto break_lam                        = cf_break->as_mut<Lam>();
@@ -160,7 +160,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {
         // === Unconditional forward branch ===
         // => OpBranch
-        auto [token, callee, value] = cf_branch->uncurry_args<3>();
+        auto [callee, token, value] = cf_branch->uncurry_args<3>();
         auto callee_lam             = callee->as_mut<Lam>();
         link_phi(lam, callee_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(callee_lam)}, {}, {}};
@@ -170,7 +170,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // is the CPS continuation that receives the call's result. Lower to
         // OpFunctionCall followed by OpBranch into ret_lam, phi-ing the
         // returned value in.
-        auto [token, fn, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
+        auto [fn, token, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
         auto ret_lam                         = ret_lam_def->as_mut<Lam>();
 
         auto ret_type       = fn->type()->as<Pi>()->ret_pi()->dom();

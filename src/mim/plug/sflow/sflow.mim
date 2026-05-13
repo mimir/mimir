@@ -70,20 +70,20 @@ axm %sflow.break: {
 axm %sflow.merge: {
   C B: ★, path: Path, step inner_step: Nat, arm: Bool,
   continue: Cn C, break: Cn [B, Struct ff (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]
-} → [token: Token (%sflow.arm arm path) inner_step] → [Struct ff (path, step) continue break] → Cn B;
+} → [Struct ff (path, step) continue break] → [token: Token (%sflow.arm arm path) inner_step] → Cn B;
 ///
 /// Branch to the loop header from inside a continue target.
 axm %sflow.loopback: {H B: ★, path: Path, step: Nat, break: Cn B}
-  → [token: Token path 0]
-  → [Header H (path, step) break] → Cn H;
+  → [Header H (path, step) break]
+  → [token: Token path 0] → Cn H;
 
 /// ## Branching
 /// Represents a structured branch (if-else or switch-case)
 axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
-  → [token: Token path step]
   → [break: Cn [B, Struct ff (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]]
   → [tuple: «i: 2; Cn [T, Struct ff (path, step) (⊥: Cn ⊥) break, Token (%sflow.arm i path) 0]»]
   → [index: Bool]
+  → [token: Token path step]
   → Cn T;
 
 // TODO: Make type params implicit again once that is figured out
@@ -116,11 +116,11 @@ lam %sflow.Cases
 /// Notice that the case functions are given in reverse order, as they
 /// have their fall-through (continue) target in their signature.
 axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
-  → [token: Token path step]
   → [break: Cn [B, Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]]
   → [default: Cn [T, Struct tt (path, step) (⊥: Cn ⊥) break, Token (%sflow.default path) 0]]
   → [targets: %sflow.Cases (T, ⊥, [B, Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))], %sflow.default path, path, step, (⊥: Cn ⊥), break, count, default)]
   → [index: Nat]
+  → [token: Token path step]
   → Cn T;
 
 /// ## Loops
@@ -131,10 +131,10 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 /// mention the Header. This keeps the per-axiom type signatures shallow enough
 /// for bottom-up inference of unannotated block parameters.
 axm %sflow.loop: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
-  → [token: Token path step]
   → [break: Cn [B, Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]]
   → [continue: Cn [C, Struct tt (path, step) (⊥: Cn ⊥) break, Token path 0, Header H (loopback_path, loopback_step) break]]
   → [header: Cn [H, Struct tt (path, step) continue break, Token path 0]]
+  → [token: Token path step]
   → Cn H;
 ///
 /// This is used by the loop header to call into its body. The body branches
@@ -144,24 +144,24 @@ axm %sflow.header: {C B T H: ★}
   → {path loopback_path: Path, step loopback_step: Nat}
   → {break: Cn [B, Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]}
   → {continue: Cn [C, Struct tt (path, step) (⊥: Cn ⊥) break, Token path 0, Header H (loopback_path, loopback_step) break]}
-  → [token: Token path 0]
   → [Struct tt (path, step) continue break]
   → [tuple: «i: 2; Cn [T, Struct tt (path, step) continue break, Token (%sflow.arm i path) 0]»]
   → [index: Bool]
+  → [token: Token path 0]
   → Cn T;
 
 /// Function call to a returning function in continuation passing style.
 axm %sflow.call: {T R: ★, path: Path, step: Nat}
-  → [Token path step]
   → [Fn [T, Token %sflow.ROOT 0] → R]
+  → [Token path step]
   → [Fn T → [R, Token path (%core.nat.add (step, 1))]];
 
 /// Regular unconditional forward call. The path in the token type is used to
 /// ensure the target cannot be called from anywhere else as long as all control flow
 /// is structured.
 axm %sflow.branch: {T: ★, path: Path, step: Nat}
-  → [Token path step]
   → [Cn [T, Token path (%core.nat.add (step, 1))]]
+  → [Token path step]
   → Cn T;
 
 /// ## Phases

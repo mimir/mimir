@@ -2,7 +2,7 @@
 
 plugin sflow;
 
-fun extern foo (token: %sflow.Root) = %sflow.switch @3 token exit default (0, case0, (1, case1, (2, case2, ()))) 1 () where
+fun extern foo (token: %sflow.Root) = %sflow.switch @3 exit default (0, case0, (1, case1, (2, case2, ()))) 1 token () where
   con case2 (_, struct, _) = %sflow.break struct 2;
   con case1 (_, struct, _) = %sflow.break struct 1;
   con case0 (_, struct, _) = %sflow.break struct 0;
