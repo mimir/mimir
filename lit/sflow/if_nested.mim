@@ -2,14 +2,14 @@
 
 plugin sflow;
 
-fun extern foo (token: %sflow.Token %sflow.ROOT, cond_outer: Bool, cond_inner: Bool) =
+fun extern foo (token: %sflow.Root, cond_outer: Bool, cond_inner: Bool) =
     %sflow.if token merge (else_outer, then_outer) cond_outer () where
-        con then_outer (_, token, struct) = %sflow.merge token struct 1;
-        con else_outer (_, token, struct) =
+        con then_outer (_, struct, token) = %sflow.merge token struct 1;
+        con else_outer (_, struct, token) =
             %sflow.if token break_inner (else_inner, then_inner) cond_inner () where
-                con then_inner (_, token, s) = %sflow.merge token s 2;
-                con else_inner (_, token, s) = %sflow.merge token s 3;
-                con break_inner (x: Nat, token, _) = %sflow.merge token struct x;
+                con then_inner (_, s, token) = %sflow.merge token s 2;
+                con else_inner (_, s, token) = %sflow.merge token s 3;
+                con break_inner (x: Nat, _, token) = %sflow.merge token struct x;
             end;
         con merge (x: Nat, _, _) = return x;
     end;
