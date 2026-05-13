@@ -51,14 +51,8 @@ jobs:
       - name: Build
         run: cmake --build ${{github.workspace}}/build -v
 
-      - name: Run lit test suite
-        working-directory: ${{github.workspace}}/build
-        run: |
-          export PATH=${{github.workspace}}/bin:$PATH
-          cmake --build ${{github.workspace}}/build -v --target lit
-
       - name: Test
         working-directory: ${{github.workspace}}/build
         run: |
           export PATH=${{github.workspace}}/bin:$PATH
-          ctest --verbose -C ${{matrix.build-type}} --output-on-failure
+          cmake --build ${{github.workspace}}/build -v --target test-all

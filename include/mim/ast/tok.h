@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fe/assert.h>
+#include <fe/format.h>
 
 #include "mim/util/dbg.h"
 
@@ -238,3 +239,8 @@ private:
 
 } // namespace ast
 } // namespace mim
+
+#ifndef DOXYGEN // clang-format off
+template<> struct std::formatter<mim::ast::Tok     > : fe::ostream_formatter {};
+template<> struct std::formatter<mim::ast::Tok::Tag> : fe::ostream_formatter {};
+#endif // clang-format on

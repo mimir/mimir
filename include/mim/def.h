@@ -1,5 +1,6 @@
 #pragma once
 
+#include <format>
 #include <limits>
 #include <optional>
 #include <span>
@@ -99,13 +100,6 @@ using Vars    = Sets<const Var>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
-
-using fe::operator&;
-using fe::operator|;
-using fe::operator^;
-using fe::operator<=>;
-using fe::operator==;
-using fe::operator!=;
 
 /// @name Enums that classify certain aspects of Def%s.
 ///@{
@@ -279,12 +273,12 @@ public:
     /// @name Judgement
     /// What kind of Judge%ment represents this Def?
     ///@{
-    u32 judge() const noexcept;
+    Judge judge() const noexcept;
     // clang-format off
-    bool is_form()  const noexcept { return judge() & Judge::Form;  }
-    bool is_intro() const noexcept { return judge() & Judge::Intro; }
-    bool is_elim()  const noexcept { return judge() & Judge::Elim;  }
-    bool is_meta()  const noexcept { return judge() & Judge::Meta;  }
+    bool is_form()  const noexcept { return fe::has_flag(judge(), Judge::Form);  }
+    bool is_intro() const noexcept { return fe::has_flag(judge(), Judge::Intro); }
+    bool is_elim()  const noexcept { return fe::has_flag(judge(), Judge::Elim);  }
+    bool is_meta()  const noexcept { return fe::has_flag(judge(), Judge::Meta);  }
     // clang-format on
     ///@}
 
@@ -355,9 +349,9 @@ public:
     /// bool has_var  = tup->has_dep(Dep::Var);  // false - y is contained in another mutable
     /// ```
     ///@{
-    bool has_dep() const { return dep_ != 0; }
-    bool has_dep(Dep d) const { return has_dep(unsigned(d)); }
-    bool has_dep(unsigned u) const { return dep_ & u; }
+    Dep dep() const noexcept { return Dep(dep_); }
+    bool has_dep() const noexcept { return dep_ != 0; }
+    bool has_dep(Dep d) const noexcept { return fe::has_flag(dep(), d); }
     ///@}
 
     /// @name proj
@@ -988,3 +982,11 @@ private:
 };
 
 } // namespace mim
+
+#ifndef DOXYGEN // clang-format off
+/// Format any pointer to a `mim::Def` (or subclass) via its `operator<<`.
+template<class T> requires std::derived_from<T, mim::Def> struct std::formatter<      T*> : fe::ostream_formatter {};
+template<class T> requires std::derived_from<T, mim::Def> struct std::formatter<const T*> : fe::ostream_formatter {};
+template<> struct std::formatter<mim::Muts> : fe::ostream_formatter {};
+template<> struct std::formatter<mim::Vars> : fe::ostream_formatter {};
+#endif // clang-format on

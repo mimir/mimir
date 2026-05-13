@@ -25,6 +25,7 @@ cmake --build build -j$(nproc)
 Useful follow-up commands are:
 
 ```sh
+cmake --build build --target test-all
 cmake --build build --target lit
 ctest --test-dir build --output-on-failure
 pre-commit run --all-files
@@ -56,6 +57,12 @@ So you can simply hand the emitted `*.ll` file to your system's LLVM toolchain.
 Strictly speaking, LLVM is not required unless you want to continue from emitted LLVM IR.
 
 ## Testing {#testing}
+
+Run every in-tree test suite with:
+
+```sh
+cmake --build build --target test-all
+```
 
 ### lit Tests
 

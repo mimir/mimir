@@ -208,7 +208,7 @@ const Def* reassociate(Id id, World& world, [[maybe_unused]] const App* ab, cons
     auto mode       = std::to_underlying(Mode::bot);
     auto check_mode = [&](const App* app) {
         auto app_m = Lit::isa(app->arg(0));
-        if (!app_m || !(*app_m & Mode::reassoc)) return false;
+        if (!app_m || !fe::has_flag(static_cast<Mode>(*app_m), Mode::reassoc)) return false;
         mode &= *app_m; // least upper bound
         return true;
     };
@@ -251,7 +251,7 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
 
     // clang-format off
     // TODO check mode properly
-    if (w && lm && *lm == Mode::fast) {
+    if (w && lm && static_cast<Mode>(*lm) == Mode::fast) {
         auto zero = lit_f(world, *w, 0.0);
         auto one  = lit_f(world, *w, 1.0);
         auto two  = lit_f(world, *w, 2.0);
@@ -318,7 +318,7 @@ const Def* normalize_extrema(const Def* type, const Def* c, const Def* arg) {
 
     if (auto lit = fold<extrema, id>(world, type, a, b)) return lit;
 
-    if (lm && *lm & (Mode::nnan | Mode::nsz)) { // if ignore NaNs and signed zero, then *imum -> *num
+    if (lm && (fe::has_flag(static_cast<Mode>(*lm), Mode::nnan) || fe::has_flag(static_cast<Mode>(*lm), Mode::nsz))) {
         switch (id) {
             case extrema::ieee754min: return world.call(extrema::fmin, m, Defs{a, b});
             case extrema::ieee754max: return world.call(extrema::fmax, m, Defs{a, b});

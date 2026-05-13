@@ -156,7 +156,7 @@ public:
         const Node& sccs() const { return nest().calc_SCCs(), *this; }
 
         void link(Node* other) { this->sibl_deps_.nodes_.emplace(other), other->sibl_rev_deps_.nodes_.emplace(this); }
-        void dot(Tab, std::ostream&) const;
+        void dot(fe::Tab, std::ostream&) const;
 
         /// SCCs
         using Stack = std::stack<Node*>;

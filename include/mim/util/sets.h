@@ -45,18 +45,18 @@ private:
                 return "n_"s + (n->def ? std::to_string(n->def->tid()) : "root"s) + "_"s + std::to_string(n->id);
             };
 
-            println(os, "{} [tooltip=\"gid: {}, min: {}\"];", node2str(this), def ? def->gid() : 0, min);
+            std::println(os, "{} [tooltip=\"gid: {}, min: {}\"];", node2str(this), def ? def->gid() : 0, min);
 
             for (const auto& [def, child] : children)
-                println(os, "{} -> {}", node2str(this), node2str(child.get()));
+                std::println(os, "{} -> {}", node2str(this), node2str(child.get()));
             for (const auto& [_, child] : children)
                 child->dot(os);
 
 #if 0
             // clang-format off
-            if (auto par = LCT::path_parent()) println(os, "{} -> {} [constraint=false,color=\"#0000ff\",style=dashed];", node2str(this), node2str(par));
-            if (auto top = aux.top      ) println(os, "{} -> {} [constraint=false,color=\"#ff0000\"];", node2str(this), node2str(top));
-            if (auto bot = aux.bot      ) println(os, "{} -> {} [constraint=false,color=\"#00ff00\"];", node2str(this), node2str(bot));
+            if (auto par = LCT::path_parent()) std::println(os, "{} -> {} [constraint=false,color=\"#0000ff\",style=dashed];", node2str(this), node2str(par));
+            if (auto top = aux.top      ) std::println(os, "{} -> {} [constraint=false,color=\"#ff0000\"];", node2str(this), node2str(top));
+            if (auto bot = aux.bot      ) std::println(os, "{} -> {} [constraint=false,color=\"#00ff00\"];", node2str(this), node2str(bot));
             // clang-format on
 #endif
         }

@@ -1,14 +1,20 @@
 #pragma once
 
+#include <stdexcept>
+
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
 #include <fe/loc.h>
 #include <fe/sym.h>
 #include <fe/term.h>
 
-#include "mim/util/print.h"
-
 namespace mim {
+
+/// Wraps `std::format` to throw `T` with a formatted message.
+template<class T = std::logic_error, class... Args>
+[[noreturn]] void error(std::format_string<Args...> fmt, Args&&... args) {
+    throw T("error: " + std::format(fmt, std::forward<Args>(args)...));
+}
 
 using fe::Loc;
 using fe::Pos;
@@ -27,9 +33,7 @@ public:
         Tag tag;
         std::string str;
 
-        friend std::ostream& operator<<(std::ostream& os, const Msg& msg) {
-            return print(os, "{}{}: {}: {}{}", fe::term::FG::Yellow, msg.loc, msg.tag, fe::term::FG::Reset, msg.str);
-        }
+        friend std::ostream& operator<<(std::ostream&, const Msg&);
     };
 
     /// @name Constructors
@@ -62,16 +66,16 @@ public:
     /// @name Add formatted message
     ///@{
     template<class... Args>
-    Error& msg(Loc loc, Tag tag, const char* s, Args&&... args) {
-        msgs_.emplace_back(loc, tag, fmt(s, std::forward<Args>(args)...));
+    Error& msg(Loc loc, Tag tag, std::format_string<Args...> s, Args&&... args) {
+        msgs_.emplace_back(loc, tag, std::format(s, std::forward<Args>(args)...));
         return *this;
     }
 
     // clang-format off
-    template<class... Args> Error& error(Loc loc, const char* s, Args&&... args) { ++num_errors_;   return msg(loc, Tag::Error, s, std::forward<Args>(args)...); }
-    template<class... Args> Error& warn (Loc loc, const char* s, Args&&... args) { ++num_warnings_; return msg(loc, Tag::Warn,  s, std::forward<Args>(args)...); }
-    template<class... Args> Error& note (Loc loc, const char* s, Args&&... args) {
-        assert(num_errors() > 0 || num_warnings() > 0); /*                      */ ++num_notes_;    return msg(loc, Tag::Note,  s, std::forward<Args>(args)...);
+    template<class... Args> Error& error(Loc loc, std::format_string<Args...> s, Args&&... args) { ++num_errors_;   return msg(loc, Tag::Error, s, std::forward<Args>(args)...); }
+    template<class... Args> Error& warn (Loc loc, std::format_string<Args...> s, Args&&... args) { ++num_warnings_; return msg(loc, Tag::Warn,  s, std::forward<Args>(args)...); }
+    template<class... Args> Error& note (Loc loc, std::format_string<Args...> s, Args&&... args) {
+        assert(num_errors() > 0 || num_warnings() > 0); /*                                     */ ++num_notes_;    return msg(loc, Tag::Note,  s, std::forward<Args>(args)...);
     }
     // clang-format on
     ///@}
@@ -121,8 +125,8 @@ private:
 ///@{
 /// Single Error that `throw`s immediately.
 template<class... Args>
-[[noreturn]] void error(Loc loc, const char* f, Args&&... args) {
-    throw Error(loc, fmt(f, std::forward<Args>(args)...));
+[[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) {
+    throw Error(loc, std::format(f, std::forward<Args>(args)...));
 }
 ///@}
 
@@ -162,5 +166,20 @@ private:
 
     friend std::ostream& operator<<(std::ostream& os, const Dbg& dbg) { return os << dbg.sym(); }
 };
+
+} // namespace mim
+
+#ifndef DOXYGEN // clang-format off
+template<> struct std::formatter<mim::Dbg       > : fe::ostream_formatter {};
+template<> struct std::formatter<mim::Error     > : fe::ostream_formatter {};
+template<> struct std::formatter<mim::Error::Tag> : fe::ostream_formatter {};
+template<> struct std::formatter<mim::Error::Msg> : fe::ostream_formatter {};
+#endif // clang-format on
+
+namespace mim {
+
+inline std::ostream& operator<<(std::ostream& os, const Error::Msg& msg) {
+    return os << std::format("{}{}: {}: {}{}", fe::term::FG::Yellow, msg.loc, msg.tag, fe::term::FG::Reset, msg.str);
+}
 
 } // namespace mim

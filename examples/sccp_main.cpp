@@ -1,10 +1,10 @@
 #include <mim/ast/parser.h>
+#include <mim/phase/beta_red_phase.h>
+#include <mim/phase/eta_exp_phase.h>
+#include <mim/phase/eta_red_phase.h>
 #include <mim/util/sys.h>
 
 #include <mim/plug/mem/mem.h>
-#include <mim/phase/eta_exp_phase.h>
-#include <mim/phase/beta_red_phase.h>
-#include <mim/phase/eta_red_phase.h>
 
 #include "sccp.h"
 
@@ -58,13 +58,12 @@ int main(int, char**) {
             world.dump();
         }
     } catch (const std::exception& e) {
-        mim::errln("{}", e.what());
+        std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;
     } catch (...) {
-        mim::errln("error: unknown exception");
+        std::println(std::cerr, "error: unknown exception");
         return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
 }
-

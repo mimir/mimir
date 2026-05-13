@@ -21,7 +21,7 @@ private:
     }
 
 public:
-    Tab tab;
+    fe::Tab tab = fe::Tab::spaces();
 
 protected:
     Emitter(World& world, std::string name, std::ostream& ostream)

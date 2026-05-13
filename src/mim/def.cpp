@@ -28,9 +28,9 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , mut_(false)
     , external_(false)
     , annex_(false)
-    , dep_(node == Node::Hole    ? unsigned(Dep::Hole)
-           : node == Node::Proxy ? unsigned(Dep::Proxy)
-           : node == Node::Var   ? (Dep::Var | Dep::Mut)
+    , dep_(node == Node::Hole    ? fe::to_underlying(Dep::Hole)
+           : node == Node::Proxy ? fe::to_underlying(Dep::Proxy)
+           : node == Node::Var   ? fe::to_underlying(Dep::Var | Dep::Mut)
                                  : 0)
     , num_ops_(ops.size())
     , type_(type) {
@@ -85,7 +85,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , mut_(true)
     , external_(false)
     , annex_(false)
-    , dep_(Dep::Mut | (node == Node::Hole ? Dep::Hole : Dep::None))
+    , dep_(fe::to_underlying(Dep::Mut | (node == Node::Hole ? Dep::Hole : Dep::None)))
     , num_ops_(num_ops)
     , type_(type) {
     gid_  = world().next_gid();
@@ -479,10 +479,10 @@ Defs Def::deps() const noexcept {
     return Defs(ops_ptr() - 1, (is_set() ? num_ops_ : 0) + 1);
 }
 
-u32 Def::judge() const noexcept {
+Judge Def::judge() const noexcept {
     switch (node()) {
 #define CODE(n, j) \
-    case Node::n: return u32(j);
+    case Node::n: return j;
         MIM_NODE(CODE)
 #undef CODE
         default: fe::unreachable();

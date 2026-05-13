@@ -126,7 +126,7 @@ const Def* autodiff_type_fun(const Def* ty) {
     if (auto sig = ty->isa<Sigma>()) {
         // TODO: mut sigma
         auto ops = DefVec(sig->ops(), [&](const Def* op) { return autodiff_type_fun(op); });
-        world.DLOG("ops: {,}", ops);
+        world.DLOG("ops: {}", fe::Join(ops));
         return world.sigma(ops);
     }
     // mem

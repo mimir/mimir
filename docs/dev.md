@@ -57,7 +57,7 @@ It is also important to mark `main` as [external](@ref mim::Def::externalize).
 Otherwise, MimIR may remove it as dead code.
 
 Finally, we [optimize](@ref mim::optimize) the program, emit an [LLVM assembly file](https://llvm.org/docs/LangRef.html), compile it [via](@ref mim::sys::system) `clang`, and [execute](@ref mim::sys::system) the generated binary with `./hello a b c`.
-We then [print](@ref fmt) its exit code, which should be `4`.
+We then print its exit code, which should be `4`.
 
 ## Immutables vs. Mutables {#mut}
 

@@ -68,10 +68,10 @@ const Def* normalize_gid(const Def*, const Def*, const Def* arg) { return arg->w
 
 template<equiv id>
 const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
-    auto [a, b] = arg->projs<2>();
-    bool eq     = id & (equiv::aE & 0xff);
+    auto [a, b]       = arg->projs<2>();
+    constexpr bool eq = id == equiv::aE || id == equiv::AE;
 
-    if (id & (equiv::Ae & 0xff)) {
+    if constexpr (id == equiv::Ae || id == equiv::AE) {
         auto res = Checker::alpha<Checker::Test>(a, b);
         if (res ^ eq) mim::error(arg->loc(), "'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "");
     } else {
@@ -89,7 +89,7 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     if (cond == w.lit_ff()) {
         auto s = tuple2str(msg);
         if (s.empty()) s = "unknown error"s;
-        w.ELOG(s.c_str());
+        w.ELOG("{}", s);
     }
 
     return nullptr;

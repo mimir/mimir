@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
                 mod->add_implicit_imports(std::move(imports));
 
                 if (auto s = os[AST]) {
-                    Tab tab;
+                    auto tab = fe::Tab::spaces();
                     mod->stream(tab, *s);
                 }
 
@@ -207,10 +207,10 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     } catch (const std::exception& e) {
-        errln("{}", e.what());
+        std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;
     } catch (...) {
-        errln("error: unknown exception");
+        std::println(std::cerr, "error: unknown exception");
         return EXIT_FAILURE;
     }
 

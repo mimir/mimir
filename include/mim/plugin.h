@@ -156,3 +156,7 @@ struct Annex {
 };
 
 } // namespace mim
+
+#ifndef DOXYGEN
+template<> struct std::formatter<mim::Version> : fe::ostream_formatter {};
+#endif

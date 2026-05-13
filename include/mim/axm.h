@@ -162,3 +162,8 @@ constexpr bool is_associative(Id id) {
 ///@}
 
 } // namespace mim
+
+#ifndef DOXYGEN
+template<class Id, class D>
+struct std::formatter<mim::Axm::IsA<Id, D>> : fe::ostream_formatter {};
+#endif

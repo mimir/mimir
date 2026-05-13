@@ -86,7 +86,34 @@ add_custom_command(
 )
 add_custom_target(mim_lit_tests DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tests/.stamp")
 
+set(MIM_CTEST_CONFIG_ARGS "")
+if(CMAKE_CONFIGURATION_TYPES)
+    list(APPEND MIM_CTEST_CONFIG_ARGS -C $<CONFIG>)
+endif()
+
+set(MIM_LIT_COMMAND
+    ${PYTHON_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/lit"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    -v
+)
+
 add_custom_target(lit
-    COMMAND ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/lit" "${CMAKE_CURRENT_BINARY_DIR}" -v --timeout=${MIM_LIT_TIMEOUT}
+    COMMAND ${MIM_LIT_COMMAND}
     DEPENDS mim mim_all_plugins mim_lit_tests
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
+)
+
+add_custom_target(test-all
+    COMMAND ${CMAKE_CTEST_COMMAND} --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure ${MIM_CTEST_CONFIG_ARGS}
+    COMMAND ${MIM_LIT_COMMAND}
+    DEPENDS
+        mim-gtest
+        mim-regex-gtest
+        mim
+        mim_all_plugins
+        mim_lit_tests
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
 )

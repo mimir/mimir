@@ -21,10 +21,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install build dependencies (gdb, graphviz, ghostscript, texlive)
+      - name: Install build dependencies (gcc-14, gdb, graphviz, ghostscript, texlive)
         run: |
           sudo apt-get update
-          sudo apt-get install -y gdb graphviz ghostscript texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
+          sudo apt-get install -y gcc-14 g++-14 gdb graphviz ghostscript texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
 
       - name: Restore Doxygen cache
         id: cache-doxygen
@@ -45,7 +45,11 @@ jobs:
           tar -C "${{ github.workspace }}/.cache" -xf "${RUNNER_TEMP}/${archive}"
 
       - name: Configure
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DMIM_BUILD_DOCS=ON -DDOXYGEN_EXECUTABLE=${{ env.DOXYGEN_CACHE_DIR }}/bin/doxygen
+        run: |
+          CC=gcc-14 CXX=g++-14 cmake -B ${{github.workspace}}/build \
+            -DCMAKE_BUILD_TYPE=Debug                                \
+            -DMIM_BUILD_DOCS=ON                                     \
+            -DDOXYGEN_EXECUTABLE=${{ env.DOXYGEN_CACHE_DIR }}/bin/doxygen
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build -v --target docs

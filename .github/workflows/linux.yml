@@ -60,14 +60,15 @@ jobs:
       - name: Build
         run: cmake --build ${{github.workspace}}/build -v
 
-      - name: Run lit test suite
-        working-directory: ${{github.workspace}}/build
-        run: cmake --build ${{github.workspace}}/build -v --target lit
-
-      - name: Test w/o Valgrind
+      - name: Test
         if: matrix.build-type == 'Debug'
         working-directory: ${{github.workspace}}/build
-        run: ctest --verbose -C ${{matrix.build-type}} --output-on-failure
+        run: cmake --build ${{github.workspace}}/build -v --target test-all
+
+      - name: Run lit test suite
+        if: matrix.build-type == 'Release'
+        working-directory: ${{github.workspace}}/build
+        run: cmake --build ${{github.workspace}}/build -v --target lit
 
       - name: Test w/ Valgrind
         if: matrix.build-type == 'Release'

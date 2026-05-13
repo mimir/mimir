@@ -14,6 +14,11 @@
 #include "mim/plug/regex/dfa2matcher.h"
 #include "mim/plug/regex/regex2nfa.h"
 
+// clang-format off
+template<> struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
+template<> struct std::formatter<automaton::NFA> : fe::ostream_formatter {};
+// clang-format on
+
 namespace mim::plug::regex {
 
 namespace {

@@ -122,7 +122,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
                 return def;
             }
             u64 ni_nat = *ni_lit;
-            DLOG("  dims({i}) = {}", i, ni_nat);
+            DLOG("  dims({}) = {}", i, ni_nat);
             auto SI_i = SI->proj(m_nat, i);
             DefVec input_dims_i;
             for (u64 j = 0; j < ni_nat; ++j) {
@@ -248,7 +248,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
 
         // Now the inner loops for the inputs:
         // Each of the inner loops contains the element accumulator and memory as accumulator (in an inner monad).
-        DLOG("acc at inner: {;}", acc);
+        DLOG("acc at inner: {}", fe::Join(acc, ";"));
 
         // First create the accumulator.
         auto element_acc = zero;
@@ -332,7 +332,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
             input_elements[i]         = element_i;
         }
 
-        DLOG("  read elements {,}", input_elements);
+        DLOG("  read elements {}", fe::Join(input_elements));
         DLOG("  fun {} : {}", fun, fun->type());
 
         // TODO: make non-scalar or completely scalar?

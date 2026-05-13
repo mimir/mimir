@@ -1,0 +1,4 @@
+// RUN: %mim %s
+let Test = (lm (a) (b) = Nat);
+let path = 0;
+axm %test.foo: {Test path 0} → [];

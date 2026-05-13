@@ -93,9 +93,9 @@ const Def* fold(World& world, const Def* type, const Def*& a, const Def*& b, con
             auto width = Idx::size2bitwidth(size);
             bool nsw = false, nuw = false;
             if constexpr (std::is_same_v<Id, wrap>) {
-                auto m = mode ? Lit::as(mode) : 0_n;
-                nsw    = m & Mode::nsw;
-                nuw    = m & Mode::nuw;
+                auto m = mode ? static_cast<Mode>(Lit::as(mode)) : Mode::none;
+                nsw    = fe::has_flag(m, Mode::nsw);
+                nuw    = fe::has_flag(m, Mode::nuw);
             }
 
             Res res;
@@ -267,7 +267,8 @@ const Def* normalize_ncmp(const Def* type, const Def* callee, const Def* arg) {
     if (is_commutative(id) && Def::greater(a, b)) std::swap(a, b);
 
     if (a == b) {
-        if (id & (icmp::e & 0xff)) return world.lit_tt();
+        constexpr auto eq_mask = fe::to_underlying(ncmp::e) & 0xff;
+        if ((fe::to_underlying(id) & eq_mask) != 0) return world.lit_tt();
         if (id == ncmp::ne) return world.lit_ff();
     }
 
@@ -300,7 +301,8 @@ const Def* normalize_icmp(const Def* type, const Def* c, const Def* arg) {
     if (id == icmp::f) return world.lit_ff();
     if (id == icmp::t) return world.lit_tt();
     if (a == b) {
-        if (id & (icmp::e & 0xff)) return world.lit_tt();
+        constexpr auto eq_mask = fe::to_underlying(icmp::e) & 0xff;
+        if ((fe::to_underlying(id) & eq_mask) != 0) return world.lit_tt();
         if (id == icmp::ne) return world.lit_ff();
     }
 

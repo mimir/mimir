@@ -197,7 +197,7 @@ public:
     const Def* annex(Id id) {
         auto flags = static_cast<flags_t>(id);
         if (auto i = move_.flags2annex.find(flags); i != move_.flags2annex.end()) return i->second;
-        error("Axm with ID '{x}' not found; demangled plugin name is '{}'", flags, Annex::demangle(driver(), flags));
+        error("Axm with ID '{:x}' not found; demangled plugin name is '{}'", flags, Annex::demangle(driver(), flags));
     }
 
     /// Get Axm from a plugin.
@@ -681,7 +681,7 @@ private:
         if (auto loc = get_loc()) def->set(loc);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) outln("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
 
@@ -722,7 +722,7 @@ private:
         if (auto loc = get_loc()) def->set(loc);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) outln("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         assert_emplace(move_.defs, def);

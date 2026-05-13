@@ -120,7 +120,7 @@ const Def* Eval::augment_tuple(const Tuple* tup, Lam* f, Lam* f_diff) {
     auto aug_tup = world().tuple(aug_ops);
 
     auto pbs = DefVec(Defs(aug_ops), [&](const Def* op) { return partial_pullback[op]; });
-    DLOG("tuple pbs {,}", pbs);
+    DLOG("tuple pbs {}", fe::Join(pbs));
     // shadow pb = tuple of pbs
     auto shadow_pb           = world().tuple(pbs);
     shadow_pullback[aug_tup] = shadow_pb;

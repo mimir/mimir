@@ -7,8 +7,6 @@
 #include "mim/nest.h"
 #include "mim/world.h"
 
-#include "mim/util/print.h"
-
 using namespace std::string_literals;
 
 namespace mim {
@@ -33,16 +31,20 @@ public:
         , root_(root) {}
 
     void prologue() {
-        (tab_++).println(os_, "digraph {{");
-        tab_.println(os_, "ordering=out;");
-        tab_.println(os_, "splines=ortho;");
-        tab_.println(os_, "newrank=true;");
-        tab_.println(os_, "nodesep=0.6;");
-        tab_.println(os_, "ranksep=1.2;");
-        tab_.println(os_, "node [shape=box,style=filled,fontname=\"monospace\"];");
+        std::println(os_, "{}digraph {{", tab_);
+        ++tab_;
+        std::println(os_, "{}ordering=out;", tab_);
+        std::println(os_, "{}splines=ortho;", tab_);
+        std::println(os_, "{}newrank=true;", tab_);
+        std::println(os_, "{}nodesep=0.6;", tab_);
+        std::println(os_, "{}ranksep=1.2;", tab_);
+        std::println(os_, "{}node [shape=box,style=filled,fontname=\"monospace\"];", tab_);
     }
 
-    void epilogue() { (--tab_).println(os_, "}}"); }
+    void epilogue() {
+        --tab_;
+        std::println(os_, "{}}}", tab_);
+    }
 
     void run(const Def* root, int max) {
         prologue();
@@ -53,7 +55,7 @@ public:
     void recurse(const Def* def, int max) {
         if (max == 0 || !done_.emplace(def).second) return;
 
-        tab_.print(os_, "_{}[", def->gid());
+        std::print(os_, "{}_{}[", tab_, def->gid());
 
         if (def->isa_mut())
             if (def == root_)
@@ -73,26 +75,29 @@ public:
                 auto op = def->op(i);
                 recurse(op, max - 1);
                 if (op->isa<Lit>() || op->isa<Axm>() || def->isa<Var>() || def->isa<Nat>() || def->isa<Idx>())
-                    tab_.println(os_, "_{}:{} -> _{}[color=\"#00000000\",constraint=false];", def->gid(), i, op->gid());
+                    std::println(os_, "{}_{}:{} -> _{}[color=\"#00000000\",constraint=false];", tab_, def->gid(), i,
+                                 op->gid());
                 else
-                    tab_.println(os_, "_{}:{} -> _{};", def->gid(), i, op->gid());
+                    std::println(os_, "{}_{}:{} -> _{};", tab_, def->gid(), i, op->gid());
             }
         }
 
         if (auto t = def->type(); t && types_) {
             recurse(t, max - 1);
-            tab_.println(os_, "_{} -> _{}[color=\"#00000000\",constraint=false,style=dashed];", def->gid(), t->gid());
+            std::println(os_, "{}_{} -> _{}[color=\"#00000000\",constraint=false,style=dashed];", tab_, def->gid(),
+                         t->gid());
         }
     }
 
     std::ostream& label(const Def* def) {
         auto n = def->is_set() ? def->num_ops() : size_t(0);
         if (n > 0) {
-            print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">", n);
+            std::print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">",
+                       n);
             emit_name(def);
             os_ << "</td></tr><tr>";
             for (size_t i = 0; i < n; ++i)
-                print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
+                std::print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
             os_ << "</tr></table>>";
         } else {
             os_ << "label=<";
@@ -107,7 +112,7 @@ public:
             os_ << lit;
         else
             os_ << def->node_name();
-        print(os_, "<br/><font point-size=\"9\">{}</font>", escape(def->unique_name()));
+        std::print(os_, "<br/><font point-size=\"9\">{}</font>", escape(def->unique_name()));
     }
 
     std::ostream& color(const Def* def) {
@@ -119,7 +124,7 @@ public:
         else if (def->is_meta())  hue = 0.15f; // yellow - universe/meta
         else                      hue = 0.80f; // purple - Hole
         // clang-format on
-        return print(os_, "fillcolor=\"{} 0.5 0.75\"", hue);
+        return os_ << std::format("fillcolor=\"{} 0.5 0.75\"", hue);
     }
 
     std::ostream& tooltip(const Def* def) {
@@ -127,26 +132,26 @@ public:
 
         auto loc  = escape(def->loc());
         auto type = escape(def->type());
-        print(os_, "tooltip=\"");
-        print(os_, "<b>expr:</b> {}{}", def, NL);
-        print(os_, "<b>type:</b> {}{}", type, NL);
-        print(os_, "<b>name:</b> {}{}", def->sym(), NL);
-        print(os_, "<b>gid:</b> {}{}", def->gid(), NL);
-        print(os_, "<b>flags:</b> 0x{x}{}", def->flags(), NL);
-        print(os_, "<b>mark:</b> 0x{x}{}", def->mark(), NL);
-        print(os_, "<b>local_muts:</b> {, }{}", def->local_muts(), NL);
-        print(os_, "<b>local_vars:</b> {, }{}", def->local_vars(), NL);
-        print(os_, "<b>free_vars:</b> {, }{}", def->free_vars(), NL);
-        if (auto mut = def->isa_mut()) print(os_, "<b>users:</b> {{{, }}}{}", mut->users(), NL);
-        print(os_, "<b>loc:</b> {}", loc);
-        return print(os_, "\"");
+        std::print(os_, "tooltip=\"");
+        std::print(os_, "<b>expr:</b> {}{}", def, NL);
+        std::print(os_, "<b>type:</b> {}{}", type, NL);
+        std::print(os_, "<b>name:</b> {}{}", def->sym(), NL);
+        std::print(os_, "<b>gid:</b> {}{}", def->gid(), NL);
+        std::print(os_, "<b>flags:</b> 0x{:x}{}", def->flags(), NL);
+        std::print(os_, "<b>mark:</b> 0x{:x}{}", def->mark(), NL);
+        std::print(os_, "<b>local_muts:</b> {}{}", fe::Join(def->local_muts()), NL);
+        std::print(os_, "<b>local_vars:</b> {}{}", fe::Join(def->local_vars()), NL);
+        std::print(os_, "<b>free_vars:</b> {}{}", fe::Join(def->free_vars()), NL);
+        if (auto mut = def->isa_mut()) std::print(os_, "<b>users:</b> {{{}}}{}", fe::Join(mut->users()), NL);
+        std::print(os_, "<b>loc:</b> {}", loc);
+        return os_ << std::format("\"");
     }
 
 private:
     std::ostream& os_;
     bool types_;
     const Def* root_;
-    Tab tab_;
+    fe::Tab tab_ = fe::Tab::spaces();
     DefSet done_;
 };
 
@@ -197,15 +202,17 @@ void Nest::dot(const char* file) const {
 }
 
 void Nest::dot(std::ostream& os) const {
-    Tab tab;
-    (tab++).println(os, "digraph {{");
-    tab.println(os, "ordering=out;");
-    tab.println(os, "node [shape=box,style=filled];");
+    auto tab = fe::Tab::spaces();
+    std::println(os, "{}digraph {{", tab);
+    ++tab;
+    std::println(os, "{}ordering=out;", tab);
+    std::println(os, "{}node [shape=box,style=filled];", tab);
     root()->dot(tab, os);
-    (--tab).println(os, "}}");
+    --tab;
+    std::println(os, "{}}}", tab);
 }
 
-void Nest::Node::dot(Tab tab, std::ostream& os) const {
+void Nest::Node::dot(fe::Tab tab, std::ostream& os) const {
     std::string s;
     for (const auto& scc : topo_) {
         s += '[';
@@ -217,20 +224,22 @@ void Nest::Node::dot(Tab tab, std::ostream& os) const {
     }
 
     for (auto sibl : sibl_deps())
-        tab.println(os, "\"{}\":s -> \"{}\":s [style=dashed,constraint=false,splines=true]", name(), sibl->name());
+        std::println(os, "{}\"{}\":s -> \"{}\":s [style=dashed,constraint=false,splines=true]", tab, name(),
+                     sibl->name());
 
     auto rec  = is_mutually_recursive() ? "rec*" : (is_directly_recursive() ? "rec" : "");
     auto html = "<b>" + name() + "</b>";
     if (*rec) html += "<br/><i>"s + rec + "</i>";
     html += "<br/><font point-size=\"8\">depth " + std::to_string(loop_depth()) + "</font>";
-    tab.println(os, "\"{}\" [label=<{}>,tooltip=\"{}\"]", name(), html, s);
+    std::println(os, "{}\"{}\" [label=<{}>,tooltip=\"{}\"]", tab, name(), html, s);
     for (auto child : children().nodes()) {
-        tab.println(os, "\"{}\" -> \"{}\" [splines=false]", name(), child->name());
+        std::println(os, "{}\"{}\" -> \"{}\" [splines=false]", tab, name(), child->name());
         child->dot(tab, os);
     }
 
     // Overlay domination between siblings and their parent
-    if (idom()) tab.println(os, "\"{}\" -> \"{}\" [color=red,style=bold,constraint=false]", idom()->name(), name());
+    if (idom())
+        std::println(os, "{}\"{}\" -> \"{}\" [color=red,style=bold,constraint=false]", tab, idom()->name(), name());
 }
 
 } // namespace mim

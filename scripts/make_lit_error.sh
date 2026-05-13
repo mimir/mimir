@@ -10,8 +10,9 @@ fi
 remote=$(git config --get remote.origin.url)
 commit=$(git rev-parse HEAD)
 
+printf '```sh\n'
 printf './scripts/checkout.sh %q %q && ./scripts/probe.sh' "$remote" "$commit"
 for arg in "$@"; do
     printf ' %q' "$arg"
 done
-printf '\n'
+printf '\n```\n'

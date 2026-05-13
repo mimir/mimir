@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ostream>
+#include <print>
 
 #include <fe/term.h>
 
@@ -13,7 +14,7 @@ namespace mim {
 namespace fs = std::filesystem;
 
 /// Facility to log what you are doing.
-/// @see @ref fmt "Formatted Output", @ref log "Logging Macros"
+/// @see @ref log "Logging Macros"
 class Log {
 public:
     Log(const Flags& flags)
@@ -46,15 +47,14 @@ public:
 
     /// @name Log
     /// Output @p fmt to Log::ostream; does nothing if Log::ostream is `nullptr`.
-    /// @see @ref fmt "Formatted Output", @ref log "Logging Macros"
+    /// @see @ref log "Logging Macros"
     ///@{
     template<class... Args>
-    void log(Level level, Loc loc, const char* fmt, Args&&... args) const {
+    void log(Level level, Loc loc, std::format_string<Args...> fmt, Args&&... args) const {
         if (ostream_ && level <= max_level_) {
-            std::ostringstream oss;
-            print(ostream(), "{}{}:{}{}:{} ", level2color(level), level2acro(level), fe::term::FG::Gray, loc,
-                  fe::term::FG::Reset);
-            print(ostream(), fmt, std::forward<Args>(args)...) << std::endl;
+            std::print(ostream(), "{}{}:{}{}:{} ", level2color(level), level2acro(level), fe::term::FG::Gray, loc,
+                       fe::term::FG::Reset);
+            std::println(ostream(), fmt, std::forward<Args>(args)...);
 #ifdef MIM_ENABLE_CHECKS
             if ((level == Level::Error && flags().break_on_error) || (level == Level::Warn && flags().break_on_warn))
                 fe::breakpoint();
@@ -62,7 +62,7 @@ public:
         }
     }
     template<class... Args>
-    void log(Level level, const char* file, uint16_t line, const char* fmt, Args&&... args) {
+    void log(Level level, const char* file, uint16_t line, std::format_string<Args...> fmt, Args&&... args) {
         auto path = fs::path(file);
         log(level, Loc(&path, line), fmt, std::forward<Args>(args)...);
     }
@@ -83,7 +83,6 @@ private:
 /// @name Logging Macros
 /// @anchor log
 /// Macros for different mim::Log::Level%s for ease of use.
-/// @see @ref fmt "Formatted Output"
 ///@{
 // clang-format off
 #define ELOG(...) log().log(mim::Log::Level::Error,   __FILE__, __LINE__, __VA_ARGS__)

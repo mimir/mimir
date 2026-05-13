@@ -10,6 +10,9 @@
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
+template<>
+struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
+
 using namespace mim;
 using namespace automaton;
 
@@ -58,7 +61,7 @@ DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
         }
 
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
-        ranges = merge_ranges(ranges, [&w](auto&&... args) { w.DLOG(std::forward<decltype(args)>(args)...); });
+        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.DLOG("{}", msg); });
     }
     return state2ranges;
 }

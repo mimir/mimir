@@ -41,7 +41,6 @@ target_sources(libmim
         util/dbg.cpp
         util/dl.cpp
         util/log.cpp
-        util/print.cpp
         util/sys.cpp
 )
 
