@@ -103,13 +103,20 @@ lam %sflow.Cases
    count: Nat,
    next: Cn [T, Struct tt (path, step) continue break, Token next_path 0])@(%core.pe.is_closed count)
   : ★
-  = ([
+  = lam Case (index) = Cn [T, Struct tt (path, step) next break, Token (%sflow.case index path) 0];
+    (([
       index: Nat,
-      case: Cn [T, Struct tt (path, step) next break, Token (%sflow.case index path) 0],
-      %sflow.Cases (T, [T, Struct tt (path, step) continue break, Token next_path 0],
-      B, %sflow.case index path, path, step, next, break,
-      %core.nat.sub (count, 1), case)
-    ], [])#(%core.ncmp.e (count, 0));
+      case: Case index,
+      %sflow.Cases (
+        T,
+        [T, Struct tt (path, step) continue break, Token next_path 0],
+        B, %sflow.case index path, path, step, next, break,
+        %core.nat.sub (count, 1), case
+      )
+    ], [
+      index: Nat,
+      case: Case index,
+    ])#(%core.ncmp.e (count, 1)),[])#(%core.ncmp.e (count, 0));
 
 /// Represents a structured switch.
 ///
