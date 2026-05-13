@@ -562,7 +562,7 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(int style) {
                 auto rhs = ptr<IdExpr>(dbg);
                 lhs      = ptr<AppExpr>(track, false, std::move(lhs), std::move(rhs));
             }
-            auto expr = parse_infix_expr(track, std::move(lhs), Prec::App);
+            auto expr = parse_infix_expr(track, std::move(lhs));
             ptrn      = IdPtrn::make_type(ast(), std::move(expr));
         } else {
             ptrn = parse_ptrn(style & Style_Bit, "element of a tuple pattern");

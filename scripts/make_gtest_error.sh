@@ -22,5 +22,7 @@ remote=$(git config --get remote.origin.url)
 commit=$(git rev-parse HEAD)
 filter=$1
 
+printf '```sh\n'
 printf './scripts/checkout.sh %q %q && ' "$remote" "$commit"
 printf '%q --gtest_filter=%q --gtest_break_on_failure\n' "$binary" "$filter"
+printf '```\n'

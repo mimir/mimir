@@ -10,7 +10,6 @@ set(MIM_PLUGINS
     math
     matrix
     mem
-    mint
     opt
     option
     ord

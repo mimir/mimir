@@ -11,5 +11,5 @@ using namespace mim::plug;
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
     // return {"spirv", plug::spirv::register_normalizers, nullptr,
     //     [](Backends& backends) { backends["spirv"] = &spirv::emit_asm; }};
-    return {"spirv", nullptr, nullptr, [](Backends& backends) { backends["spirv"] = &spirv::emit_asm; }};
+    return {"spirv", MIM_VERSION, nullptr, nullptr, [](Backends& backends) { backends["spirv"] = &spirv::emit_asm; }};
 }

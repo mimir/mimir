@@ -233,7 +233,7 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
         auto [storage_class, decs, type] = var->uncurry_args<3>();
         auto storage_class_              = storage_class::from_mim(Axm::as<spirv::storage>(storage_class).id());
         auto place                       = module_.declarations;
-        if (storage_class_ == spirv::storage::FUNCTION) {
+        if (storage_class_ == storage_class::Function) {
             // Place function var in function
             place = function_vars_;
         } else {

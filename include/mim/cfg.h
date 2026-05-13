@@ -147,17 +147,6 @@ public:
     const Node* operator[](const Def* def) const { return (def->isa<Lam>() ? (*this)[def->as<Lam>()] : nullptr); }
     ///@}
 
-    /// @name dot
-    /// GraphViz output.
-    ///@{
-    void dot(std::ostream& os) const;
-    void dot(const char* file = nullptr) const;
-    void dot(std::string s) const { dot(s.c_str()); }
-    /// Emits this CFG as a labelled `subgraph cluster_*` block plus its edges.
-    /// Shares @p cluster_id with the caller so sibling clusters don't collide.
-    void dot_cluster(std::ostream& os, mim::Tab& tab, size_t& cluster_id) const;
-    ///@}
-
 private:
     Node* visit(const Lam* mut);
 
