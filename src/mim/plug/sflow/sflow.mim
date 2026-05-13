@@ -29,8 +29,7 @@ plugin core;
 axm %sflow.Path: ★;
 let Path = %sflow.Path;
 axm %sflow.ROOT: Path;
-axm %sflow.left: Path → Path;
-axm %sflow.right: Path → Path;
+axm %sflow.arm: Bool → Path → Path;
 axm %sflow.case: Nat → Path → Path;
 axm %sflow.default: Path → Path;
 
@@ -38,7 +37,7 @@ axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
 let %sflow.Root = Token %sflow.ROOT 0;
 
-axm %sflow.Struct: {C B: ★} → [path: Path, step: Nat] → [continue: Cn C] → [break: Cn B] → ★;
+axm %sflow.Struct: {C B: ★} → [can_break: Bool] → [path: Path, step: Nat] → [continue: Cn C] → [break: Cn B] → ★;
 let Struct = %sflow.Struct;
 axm %sflow.Header: {B: ★} → [H: ★] → [path: Path, step: Nat] → [break: Cn B] → ★;
 let Header = %sflow.Header;
@@ -48,30 +47,30 @@ axm %sflow.continue: {
   C B H: ★,
   path loopback_path: Path, step loopback_step: Nat,
   break: Cn B,
-  continue: Cn [C, Token path 0, Struct (path, step) (⊥: Cn ⊥) break, Header H (loopback_path, loopback_step) break]
-} → [Struct (path, step) continue break] → Cn C;
+  continue: Cn [C, Token path 0, Struct tt (path, step) (⊥: Cn ⊥) break, Header H (loopback_path, loopback_step) break]
+} → [Struct tt (path, step) continue break] → Cn C;
 ///
 /// Branch to the next case of a given switch structure.
 axm %sflow.fallthrough: {
   C B: ★,
   path next_path: Path, step: Nat,
   break: Cn B,
-  continue: Cn [C, Token next_path 0, Struct (path, step) (⊥: Cn ⊥) break]
-} → [Struct (path, step) continue break] → Cn C;
+  continue: Cn [C, Token next_path 0, Struct tt (path, step) (⊥: Cn ⊥) break]
+} → [Struct tt (path, step) continue break] → Cn C;
 ///
 /// Branch to the break target of a given control flow structure.
 axm %sflow.break: {
   C B: ★, path: Path, step: Nat,
-  continue: Cn C, break: Cn [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]
-} → [Struct (path, step) continue break] → Cn B;
+  continue: Cn C, break: Cn [B, Token path (%core.nat.add (step, 1)), Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]
+} → [Struct tt (path, step) continue break] → Cn B;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
 /// Unlike break, merge requires a token from the same scope as the struct
 /// (path must match; step may differ as progress within the scope).
 axm %sflow.merge: {
-  C B: ★, path: Path, step inner_step: Nat,
-  continue: Cn C, break: Cn [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]
-} → [token: Token path inner_step] → [Struct (path, step) continue break] → Cn B;
+  C B: ★, path: Path, step inner_step: Nat, arm: Bool,
+  continue: Cn C, break: Cn [B, Token path (%core.nat.add (step, 1)), Struct ff (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]
+} → [token: Token (%sflow.arm arm path) inner_step] → [Struct ff (path, step) continue break] → Cn B;
 ///
 /// Branch to the loop header from inside a continue target.
 axm %sflow.loopback: {H B: ★, path: Path, step: Nat, break: Cn B}
@@ -82,9 +81,9 @@ axm %sflow.loopback: {H B: ★, path: Path, step: Nat, break: Cn B}
 /// Represents a structured branch (if-else or switch-case)
 axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
   → [token: Token path step]
-  → [break: Cn [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [tuple: «i: 2; Cn [T, Token ((%sflow.left, %sflow.right)#i path) 0, Struct (path, step) (⊥: Cn ⊥) break]»]
-  → [index: Idx 2]
+  → [break: Cn [B, Token path (%core.nat.add (step, 1)), Struct ff (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [tuple: «i: 2; Cn [T, Token (%sflow.arm i path) 0, Struct ff (path, step) (⊥: Cn ⊥) break]»]
+  → [index: Bool]
   → Cn T;
 
 // TODO: Make type params implicit again once that is figured out
@@ -102,12 +101,12 @@ lam %sflow.Cases
    continue: Cn C,
    break: Cn B,
    count: Nat,
-   next: Cn [T, Token next_path 0, Struct (path, step) continue break])@(%core.pe.is_closed count)
+   next: Cn [T, Token next_path 0, Struct tt (path, step) continue break])@(%core.pe.is_closed count)
   : ★
   = ([
       index: Nat,
-      case: Cn [T, Token (%sflow.case index path) 0, Struct (path, step) next break],
-      %sflow.Cases (T, [T, Token next_path 0, Struct (path, step) continue break],
+      case: Cn [T, Token (%sflow.case index path) 0, Struct tt (path, step) next break],
+      %sflow.Cases (T, [T, Token next_path 0, Struct tt (path, step) continue break],
       B, %sflow.case index path, path, step, next, break,
       %core.nat.sub (count, 1), case)
     ], [])#(%core.ncmp.e (count, 0));
@@ -118,9 +117,9 @@ lam %sflow.Cases
 /// have their fall-through (continue) target in their signature.
 axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
   → [token: Token path step]
-  → [break: Cn [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [default: Cn [T, Token (%sflow.default path) 0, Struct (path, step) (⊥: Cn ⊥) break]]
-  → [targets: %sflow.Cases (T, ⊥, [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)], %sflow.default path, path, step, (⊥: Cn ⊥), break, count, default)]
+  → [break: Cn [B, Token path (%core.nat.add (step, 1)), Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [default: Cn [T, Token (%sflow.default path) 0, Struct tt (path, step) (⊥: Cn ⊥) break]]
+  → [targets: %sflow.Cases (T, ⊥, [B, Token path (%core.nat.add (step, 1)), Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)], %sflow.default path, path, step, (⊥: Cn ⊥), break, count, default)]
   → [index: Nat]
   → Cn T;
 
@@ -133,9 +132,9 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 /// for bottom-up inference of unannotated block parameters.
 axm %sflow.loop: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
   → [token: Token path step]
-  → [break: Cn [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
-  → [continue: Cn [C, Token path 0, Struct (path, step) (⊥: Cn ⊥) break, Header H (loopback_path, loopback_step) break]]
-  → [header: Cn [H, Token path 0, Struct (path, step) continue break]]
+  → [break: Cn [B, Token path (%core.nat.add (step, 1)), Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
+  → [continue: Cn [C, Token path 0, Struct tt (path, step) (⊥: Cn ⊥) break, Header H (loopback_path, loopback_step) break]]
+  → [header: Cn [H, Token path 0, Struct tt (path, step) continue break]]
   → Cn H;
 ///
 /// This is used by the loop header to call into its body. The body branches
@@ -143,11 +142,11 @@ axm %sflow.loop: {C B H: ★} → {path loopback_path: Path, step loopback_step:
 /// (which constructs the tuple required by the continue block).
 axm %sflow.header: {C B T H: ★}
   → {path loopback_path: Path, step loopback_step: Nat}
-  → {break: Cn [B, Token path (%core.nat.add (step, 1)), Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]}
-  → {continue: Cn [C, Token path 0, Struct (path, step) (⊥: Cn ⊥) break, Header H (loopback_path, loopback_step) break]}
+  → {break: Cn [B, Token path (%core.nat.add (step, 1)), Struct tt (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]}
+  → {continue: Cn [C, Token path 0, Struct tt (path, step) (⊥: Cn ⊥) break, Header H (loopback_path, loopback_step) break]}
   → [token: Token path 0]
-  → [Struct (path, step) continue break]
-  → [tuple: «i: 2; Cn [T, Token ((%sflow.left, %sflow.right)#i path) 0, Struct (path, step) continue break]»]
+  → [Struct tt (path, step) continue break]
+  → [tuple: «i: 2; Cn [T, Token (%sflow.arm i path) 0, Struct tt (path, step) continue break]»]
   → [index: Bool]
   → Cn T;
 
