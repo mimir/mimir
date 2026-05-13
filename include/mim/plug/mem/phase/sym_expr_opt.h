@@ -42,18 +42,14 @@ private:
             DLOG("done running");
         }
 
-        const auto& slot2value() const {
-            auto i = mut2slot2value_.find(curr_mut());
-            assert(i != mut2slot2value_.end());
-            return i->second;
-        }
-
-        const Def* slot2value(const Def* slot) const {
-            if (auto i = slot2value().find(slot); i != slot2value().end()) return i->second;
+        const Def* slot2value(const Def* slot) {
+            auto& slot2value = mut2slot2value_[curr_mut()];
+            if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
             return nullptr;
         }
 
     private:
+        const Def* slot2value(const Def* slot, const Def* value) { return mut2slot2value_[curr_mut()][slot] = value; }
         const Def* propagate(const Def*, const Def*);
         const Def* rewrite_imm_App(const App*) final;
 

@@ -22,6 +22,7 @@ namespace mim::plug::mem::phase {
 
 enum {
     Proxy_GVN,
+    Proxy_Slot,
     Proxy_Phi,
 };
 
@@ -59,32 +60,36 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
     auto closed_before = app->is_closed();
     DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
     if (auto store = Axm::isa<mem::store>(app)) {
-        auto [mem, ptr, val]                   = store->args<3>();
-        auto abstr_mem                         = rewrite(mem);
-        auto abstr_ptr                         = rewrite(ptr);
-        auto abstr_val                         = rewrite(val);
-        mut2slot2value_[curr_mut()][abstr_ptr] = abstr_val;
+        auto [mem, ptr, val] = store->args<3>();
+        auto abstr_mem       = rewrite(mem);
+        auto abstr_ptr       = rewrite(ptr);
+        auto abstr_val       = rewrite(val);
+        slot2value(abstr_ptr, abstr_val);
         DLOG("in {}, found a store: {} <- {}", curr_mut(), ptr, val);
-        return store; // TODO: not sure if we don't need to rewrite something here
+        return abstr_mem;
     } else if (auto load = Axm::isa<mem::load>(app)) {
+        auto [T, as]    = load->decurry()->args<2>();
         auto [mem, ptr] = load->args<2>();
         auto abstr_mem  = rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
         DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
-        if (auto known_value = mut2slot2value_[curr_mut()][abstr_ptr]) {
+        if (auto known_value = slot2value(abstr_ptr)) {
             DLOG("we know that it's {}", known_value);
             return world().tuple({abstr_mem, known_value});
-        }
+        } else
+            return world().tuple({abstr_mem, world().bot(T)});
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
-        auto [Ta, mi]                      = slot->uncurry_args<2>();
-        auto [pointee_type, address_space] = Ta->projs<2>();
-        auto [mem, id]                     = mi->projs<2>();
-        auto [_, ptr]                      = slot->projs<2>();
-        auto abstr_mem                     = rewrite(mem);
-        auto abstr_id                      = rewrite(id);
-        all_slots_[ptr]                    = pointee_type;
+        auto [Ta, mi]   = slot->uncurry_args<2>();
+        auto [T, as]    = Ta->projs<2>();
+        auto [mem, id]  = mi->projs<2>();
+        auto [_, ptr]   = slot->projs<2>();
+        auto abstr_mem  = rewrite(mem);
+        auto abstr_id   = rewrite(id);
+        all_slots_[ptr] = T;
+        // TODO if top (address taken), don't do that
+        auto sloxy = world().proxy(T, {curr_mut(), abstr_id}, 0, Proxy_Slot);
         DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
-        return slot; // TODO: not sure if we don't need to rewrite something here
+        return world().tuple({abstr_mem, sloxy});
     } else if (auto branch = Branch(app)) {
         auto abstr = rewrite(branch.cond());
         auto l     = Lit::isa<bool>(abstr);
