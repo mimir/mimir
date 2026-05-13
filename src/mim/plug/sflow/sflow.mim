@@ -76,16 +76,12 @@ axm %sflow.loopback: {H B: ★, path: %sflow.Path, step: Nat, break: Cn B}
 
 /// ## Branching
 /// Represents a structured branch (if-else or switch-case)
-///
-/// The header argument to any structure must always point to the lam containing it, otherwise
-/// the normalizer will throw an error.
-///
 axm %sflow.if: {T B: ★} → {path: %sflow.Path, step: Nat}
   → [token: %sflow.Token path step]
   → [break: Cn [B, %sflow.Token path (%core.nat.add (step, 1)), %sflow.Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)]]
   → [tuple: «i: 2; Cn [T, %sflow.Token ((%sflow.left, %sflow.right)#i path) 0, %sflow.Struct (path, step) (⊥: Cn ⊥) break]»]
   → [index: Idx 2]
-  → Cn T, normalize_branch;
+  → Cn T;
 
 // TODO: Make type params implicit again once that is figured out
 /// Computes the type of a switch target list.
@@ -122,7 +118,7 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: %sflow.Path, step: Nat
   → [default: Cn [T, %sflow.Token (%sflow.default path) 0, %sflow.Struct (path, step) (⊥: Cn ⊥) break]]
   → [targets: %sflow.Cases (T, ⊥, [B, %sflow.Token path (%core.nat.add (step, 1)), %sflow.Struct (path, step) (⊥: Cn ⊥) (⊥: Cn ⊥)], %sflow.default path, path, step, (⊥: Cn ⊥), break, count, default)]
   → [index: Nat]
-  → Cn T, normalize_switch;
+  → Cn T;
 
 /// ## Loops
 ///
