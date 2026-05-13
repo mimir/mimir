@@ -34,6 +34,7 @@ axm %sflow.case: Nat → %sflow.Path → %sflow.Path;
 axm %sflow.default: %sflow.Path → %sflow.Path;
 
 axm %sflow.Token: %sflow.Path → Nat → ★;
+let %sflow.Root = %sflow.Token %sflow.ROOT 0;
 
 axm %sflow.Struct: {C B: ★} → [path: %sflow.Path, step: Nat] → [continue: Cn C] → [break: Cn B] → ★;
 axm %sflow.Header: {B: ★} → [H: ★] → [path: %sflow.Path, step: Nat] → [break: Cn B] → ★;
