@@ -1,10 +1,15 @@
 **/__pycache__
+**/cmake_install.cmake
+**/Makefile
 *.bc
 *.cl
 *.cu
 *.ll
+*.spv
+*.spvasm
 *.nvvm
 *.out
+*.dot
 *.s
 .DS_Store
 .cache
