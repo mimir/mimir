@@ -57,7 +57,6 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
-    auto closed_before = app->is_closed();
     // DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
@@ -65,7 +64,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
         slot2value(abstr_ptr, abstr_val);
-        DLOG("in {}, found a store: {} <- {}", curr_mut(), ptr, val);
+        DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
         return abstr_mem;
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]    = load->decurry()->args<2>();
@@ -76,8 +75,16 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         if (auto known_value = slot2value(abstr_ptr)) {
             DLOG("we know that it's {}", known_value);
             return world().tuple({abstr_mem, known_value});
-        } else
-            return world().tuple({abstr_mem, world().bot(T)});
+        } else {
+            DLOG("still resolving load, looking up {} in lattice", abstr_ptr);
+            auto phi = world().proxy(T, {curr_mut(), abstr_ptr}, 0, Proxy_Phi);
+            if (auto it = lattice_.find(phi); it != lattice_.end())
+                return world().tuple({abstr_mem, it->second});
+            else {
+                DLOG("couldn't resolve load of {}, returning bot", abstr_ptr);
+                return world().tuple({abstr_mem, world().bot(T)});
+            }
+        }
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
         auto [Ta, mi]   = slot->uncurry_args<2>();
         auto [T, as]    = Ta->projs<2>();
@@ -93,25 +100,46 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
     } else if (auto branch = Branch(app)) {
         auto abstr = rewrite(branch.cond());
         auto l     = Lit::isa<bool>(abstr);
-
+        DLOG("abstract value of branch cond {} in {}: {}", branch.cond(), curr_mut(), abstr);
         if (!l || *l)
             if (auto lam = branch.tt()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
-                for (auto [slot, value] : mut2slot2value_[curr_mut()]) {
-                    DLOG("{}", slot);
-                    mut2slot2value_[lam][slot] = value;
+                // DLOG("values of slot2value:");
+                // for (auto [k, v]:  mut2slot2value_[curr_mut()]) {
+                //     DLOG("{} -> {}", k, v);
+                // }
+                // DLOG("values of lattice:");
+                // for (auto [k, v]:  lattice_) {
+                //     DLOG("{} -> {}", k, v);
+                // }
+                for (auto [slot, slot_type] : all_slots_) {
+                    auto abstr_slot = rewrite(slot);
+                    if (auto value = slot2value(abstr_slot)) {
+                        mut2slot2value_[lam][abstr_slot] = value;
+                    } else {
+                        auto phi = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
+                        DLOG("looking up {}", phi);
+                        if (auto it = lattice_.find(phi); it != lattice_.end())
+                            mut2slot2value_[lam][abstr_slot] = it->second;
+                    }
                 }
             }
         if (!l || !*l)
             if (auto lam = branch.ff()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
-                for (auto [slot, value] : mut2slot2value_[curr_mut()]) {
-                    DLOG("{}", slot);
-                    mut2slot2value_[lam][slot] = value;
+                for (auto [slot, slot_type] : all_slots_) {
+                    auto abstr_slot = rewrite(slot);
+                    if (auto value = slot2value(abstr_slot)) {
+                        mut2slot2value_[lam][abstr_slot] = value;
+                    } else {
+                        auto phi = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
+                        if (auto it = lattice_.find(phi); it != lattice_.end())
+                            mut2slot2value_[lam][abstr_slot] = it->second;
+                    }
                 }
             }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
-        // DLOG("{} not optimizable", app->callee());
+        DLOG("{} not optimizable", app->callee());
 
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
@@ -121,6 +149,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 // TODO: think about this more
                 abstr_args[i] = continuation;
             } else {
+                DLOG("in app of non-optimizable function, rewriting arg {}", app->targ(i));
                 abstr_args[i] = rewrite(app->targ(i));
             }
 
@@ -132,21 +161,30 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             if (Axm::isa<mem::M>(arg->type())) mem_passed = true;
         }
         if (mem_passed) {
-            // DLOG("a mem is passed");
+            DLOG("a mem is passed");
             for (auto arg : abstr_args) {
                 if (auto continuation = arg->isa_mut<Lam>(); isa_optimizable(continuation)) {
                     // The unknown function may call this as a continuation. In that case, the slot
                     // values are the same as for the current function.
-                    for (auto [slot, current_value] : mut2slot2value_[curr_mut()])
-                        mut2slot2value_[continuation][slot]
-                            = current_value; // TODO modfying a container while iterating over it is UB!
+                    for (auto [slot, slot_type] : all_slots_) {
+                        auto abstr_slot = rewrite(slot);
+                        if (auto value = slot2value(abstr_slot)) {
+                            mut2slot2value_[continuation][abstr_slot] = value;
+                        } else {
+                            auto phi = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
+                            DLOG("looking up {}", phi);
+                            if (auto it = lattice_.find(phi); it != lattice_.end())
+                                mut2slot2value_[continuation][abstr_slot] = it->second;
+                        }
+                    }
 
                     // Except for those slots that are also passed to the unknown function. We don't
                     // know what it does to those, so we set them to top.
-                    for (auto arg : abstr_args) {
-                        if (auto i = mut2slot2value_[curr_mut()].find(arg); i != mut2slot2value_[curr_mut()].end()) {
+                    for (auto [slot, slot_type] : all_slots_) {
+                        auto abstr_slot = rewrite(slot);
+                        if (auto i = std::find(abstr_args.begin(), abstr_args.end(), abstr_slot); i != abstr_args.end()) {
                             DLOG("{} passed as continuation, and {} escapes, setting to top", continuation, arg);
-                            mut2slot2value_[continuation][arg] = arg;
+                            mut2slot2value_[continuation][abstr_slot] = mut2slot2value_[continuation][abstr_slot];
                         }
                     }
 
@@ -160,6 +198,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation))
                 abstr_args[i] = rewrite(app->targ(i));
 
+        return world().app(rewrite_deps(lam), abstr_args);
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
@@ -178,14 +217,34 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         Vector<const Def*> abstr_phis;
         Vector<const Def*> phi_args;
         for (auto [slot, slot_type] : all_slots_) {
-            if (auto value = slot2value(slot)) {
-                auto phi   = world().proxy(slot_type, {lam, slot}, 0, Proxy_Phi);
+            DLOG("for slot {}", slot);
+            auto abstr_slot = rewrite(slot);
+            auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
+            if (auto value = slot2value(abstr_slot)) {
                 auto abstr = propagate(phi, value);
                 phi_args.emplace_back(value);
                 concr_phis.emplace_back(phi);
                 abstr_phis.emplace_back(abstr);
                 DLOG("propagating local value: {} -> {}", slot, value);
                 set(phi, abstr);
+            } else {
+                // TODO: something is wrong here i think? maybe only one of the branches can happen
+                // because of eta expansion?
+                DLOG("not found in slot2value, propagating value from parameters");
+                auto lookup_proxy = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
+                if (auto i = lattice_.find(lookup_proxy); i != lattice_.end()) {
+                    auto value = i->second;
+                    auto abstr = propagate(phi, value);
+                    phi_args.emplace_back(value);
+                    concr_phis.emplace_back(phi);
+                    abstr_phis.emplace_back(abstr);
+                    DLOG("propagating value from phi: {} -> {}", slot, value);
+                    set(phi, abstr);
+                } else {
+                    DLOG("no value found for {}", slot);
+                    // TODO Can this ever happen?
+                    // propagate(lam_proxy, lam_proxy);
+                }
             }
         }
 
@@ -199,8 +258,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         for (size_t i = 0; auto var : all_concr_vars)
             var2index[var] = i++;
 
-        // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling them
-        // into one proxy
+        // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling
+        // them into one proxy
         for (size_t i = 0; i != n_all; ++i) {
             if (all_abstr_vars[i]) continue;
 
@@ -277,7 +336,6 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         return world().app(rewrite_deps(lam), abstr_args);
     }
 
-    if (closed_before) assert(app->is_closed());
     return mim::Analysis::rewrite_imm_App(app);
 }
 
