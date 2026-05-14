@@ -58,7 +58,7 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
     auto closed_before = app->is_closed();
-    DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
+    // DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
         auto abstr_mem       = rewrite(mem);
@@ -111,7 +111,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 }
             }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); !isa_optimizable(lam)) {
-        DLOG("{} not optimizable", app->callee());
+        // DLOG("{} not optimizable", app->callee());
 
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
@@ -124,15 +124,15 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 abstr_args[i] = rewrite(app->targ(i));
             }
 
-        DLOG("done analyzing args of {}", lam);
+        // DLOG("done analyzing args of {}", lam);
 
         bool mem_passed = false;
         for (auto arg : abstr_args) {
-            DLOG("arg: {}", arg);
+            // DLOG("arg: {}", arg);
             if (Axm::isa<mem::M>(arg->type())) mem_passed = true;
         }
         if (mem_passed) {
-            DLOG("a mem is passed");
+            // DLOG("a mem is passed");
             for (auto arg : abstr_args) {
                 if (auto continuation = arg->isa_mut<Lam>(); isa_optimizable(continuation)) {
                     // The unknown function may call this as a continuation. In that case, the slot
