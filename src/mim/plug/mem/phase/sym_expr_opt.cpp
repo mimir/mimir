@@ -110,7 +110,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     mut2slot2value_[lam][slot] = value;
                 }
             }
-    } else if (auto lam = app->callee()->isa_mut<Lam>(); !isa_optimizable(lam)) {
+    } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
         // DLOG("{} not optimizable", app->callee());
 
         auto n          = app->num_targs();
