@@ -147,22 +147,6 @@ If you need a feature that exists in C++ but not in Python yet, the binding file
 The file `mim.plug.regex` provides a higher-level wrapper around the regex plugin in form of an embedded domain-specific language.
 It builds MimIR through overloaded operators, runs optimization, emits LLVM IR, invokes `clang`, and loads the resulting shared object via `ctypes`.
 
-```python
-import mim
-import mim.plug.regex as regex
-
-driver = mim.Driver()
-driver.add_search_path("build/lib/mim")
-
-builder = regex.RegBuilder(driver, "regex_demo", mim.Level.Error)
-pattern = (builder.lit("a") + builder.lit("b") + builder.lit("c"))['+']
-
-library = pattern.jit()
-matcher = library["match_func"]
-
-assert matcher(b"abc") is True
-assert matcher(b"abcabc") is True
-assert matcher(b"xyz") is False
-```
+\include "examples/regex.py"
 
 `RegBuilder` loads the required plugins by default, and `pattern.jit()` returns Python callables that wrap the exported compiled functions.
