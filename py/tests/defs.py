@@ -3,9 +3,15 @@ from __future__ import annotations
 
 import mim
 import pytest
+import platform
 
 
 def test_world(world):
+    # the nanobind has some weird ordering problem issue
+    # discovered by https://github.com/mimir/mimir/pull/417
+    if platform.system().lower() == "windows":
+        pass
+    
     m1 = world.mut_con([world.type_bool()])
     m2 = world.mut_con([world.type_bool(), world.type_i8()])
     m3 = world.mut_con([world.type_bool(), world.type_i8(), world.type_i32()])
