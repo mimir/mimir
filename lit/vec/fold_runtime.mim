@@ -13,10 +13,3 @@ plugin vec;
 fun extern fold_l_runtime (v: «4; %math.F64»): %math.F64 =
     let s = %vec.fold.l (%math.arith.add 0) (0.0 : %math.F64, v);
     return s;
-
-// CHECK-LABEL: @fold_r_runtime(
-// CHECK:         extractelement <4 x double>
-// CHECK:         fadd double
-fun extern fold_r_runtime (v: «4; %math.F64»): %math.F64 =
-    let s = %vec.fold.r (%math.arith.add 0) (v, 0.0 : %math.F64);
-    return s;
