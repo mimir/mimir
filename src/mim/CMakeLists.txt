@@ -46,6 +46,9 @@ target_sources(libmim
 )
 
 set_target_properties(libmim PROPERTIES PREFIX "")
+if(DEFINED MIM_INSTALL_LIBMIM_RPATH)
+    set_target_properties(libmim PROPERTIES INSTALL_RPATH "${MIM_INSTALL_LIBMIM_RPATH}")
+endif()
 target_compile_features(libmim PUBLIC cxx_std_23)
 
 if(MSVC)

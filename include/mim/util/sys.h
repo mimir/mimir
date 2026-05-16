@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 namespace sys {
 
 /// Yields `std::nullopt` if an error occurred.
-/// The returned path is adjusted so `<parent>/mim` resolves to the default in-tree plugin directory when possible.
+/// The returned path points to the loaded libmim shared library.
 std::optional<fs::path> path_to_libmim();
 
 /// Executes command @p cmd.

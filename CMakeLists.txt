@@ -8,6 +8,29 @@ include(CMakePackageConfigHelpers)
 include(CMakePrintHelpers)
 include(GNUInstallDirs)
 
+if(APPLE)
+    set(MIM_INSTALL_RPATH_EXEC_ORIGIN "@executable_path")
+    set(MIM_INSTALL_RPATH_DSO_ORIGIN "@loader_path")
+elseif(UNIX)
+    set(MIM_INSTALL_RPATH_EXEC_ORIGIN "\$ORIGIN")
+    set(MIM_INSTALL_RPATH_DSO_ORIGIN "\$ORIGIN")
+endif()
+
+if(DEFINED MIM_INSTALL_RPATH_EXEC_ORIGIN)
+    if(IS_ABSOLUTE "${CMAKE_INSTALL_BINDIR}" OR IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+        set(MIM_INSTALL_MIM_RPATH "${CMAKE_INSTALL_FULL_LIBDIR}")
+    else()
+        file(RELATIVE_PATH MIM_BINDIR_TO_LIBDIR "/${CMAKE_INSTALL_BINDIR}" "/${CMAKE_INSTALL_LIBDIR}")
+        if(MIM_BINDIR_TO_LIBDIR STREQUAL ".")
+            set(MIM_INSTALL_MIM_RPATH "${MIM_INSTALL_RPATH_EXEC_ORIGIN}")
+        else()
+            set(MIM_INSTALL_MIM_RPATH "${MIM_INSTALL_RPATH_EXEC_ORIGIN}/${MIM_BINDIR_TO_LIBDIR}")
+        endif()
+    endif()
+    set(MIM_INSTALL_LIBMIM_RPATH "${MIM_INSTALL_RPATH_DSO_ORIGIN}")
+    set(MIM_INSTALL_PLUGIN_RPATH "${MIM_INSTALL_RPATH_DSO_ORIGIN}/..")
+endif()
+
 execute_process(
     COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

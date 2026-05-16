@@ -22,33 +22,6 @@ extern "C" MIM_EXPORT void mim_lib_anchor() {}
 
 namespace mim::sys {
 
-namespace {
-
-bool has_plugin_dir(const fs::path& libmim_path) {
-    std::error_code ignore;
-    return fs::is_directory(libmim_path.parent_path() / "mim", ignore) && !ignore;
-}
-
-fs::path adjust_libmim_path(const fs::path& libmim_path) {
-    if (has_plugin_dir(libmim_path)) return libmim_path;
-
-    auto dir      = libmim_path.parent_path();
-    auto lib_name = libmim_path.filename();
-    while (!dir.empty()) {
-        if (dir == dir.root_path()) break;
-
-        std::error_code ignore;
-        auto candidate = dir / MIM_LIBDIR / "mim";
-        if (fs::is_directory(candidate, ignore) && !ignore) return candidate.parent_path() / lib_name;
-
-        dir = dir.parent_path();
-    }
-
-    return libmim_path;
-}
-
-} // namespace
-
 std::optional<fs::path> path_to_libmim() {
 #if defined(_WIN32)
     HMODULE mod = nullptr;
@@ -69,11 +42,11 @@ std::optional<fs::path> path_to_libmim() {
         buf.resize(buf.size() * 2); // buffer too small
     }
 
-    return adjust_libmim_path(fs::weakly_canonical(fs::path(buf)));
+    return fs::weakly_canonical(fs::path(buf));
 #elif defined(__APPLE__) || defined(__linux__)
     Dl_info info;
     if (dladdr((void*)&mim_lib_anchor, &info) == 0) return {};
-    return adjust_libmim_path(fs::weakly_canonical(info.dli_fname));
+    return fs::weakly_canonical(info.dli_fname);
 #else
     return {};
 #endif

@@ -159,6 +159,7 @@ function(add_mim_plugin)
     set_target_properties(mim_${PLUGIN}
         PROPERTIES
             CXX_VISIBILITY_PRESET hidden
+            INSTALL_RPATH "${MIM_INSTALL_PLUGIN_RPATH}"
             VISIBILITY_INLINES_HIDDEN 1
             WINDOWS_EXPORT_ALL_SYMBOLS OFF
             PREFIX "lib" # always use "lib" as prefix regardless of OS/compiler

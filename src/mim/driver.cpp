@@ -63,12 +63,6 @@ Driver::Driver()
     // add <path/to/libmim>/mim
     if (auto path = sys::path_to_libmim()) add_search_path(path->parent_path() / "mim");
 
-    // add install path if different from above
-    if (auto install_path = fs::path{MIM_INSTALL_PREFIX} / MIM_LIBDIR / "mim"; fs::exists(install_path)) {
-        if (search_paths().size() < 2 || !fs::equivalent(install_path, search_paths().back()))
-            add_search_path(std::move(install_path));
-    }
-
     // all other user paths are placed just behind the first path (the empty path)
     insert_ = ++search_paths_.begin();
 }
