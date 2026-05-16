@@ -30,6 +30,19 @@ const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
         return acc;
     }
 
+    // Runtime vector with compile-time-known width: scalarize via element extraction.
+    if (auto arr = vec->type()->isa<Arr>()) {
+        if (auto n = Lit::isa(arr->arity()); n && *n < w.flags().scalarize_threshold) {
+            if constexpr (id == fold::l)
+                for (size_t j = 0; j != *n; ++j)
+                    acc = w.app(f, {acc, vec->proj(*n, j)});
+            else
+                for (size_t j = *n; j-- != 0;)
+                    acc = w.app(f, {vec->proj(*n, j), acc});
+            return acc;
+        }
+    }
+
     if (auto pack = vec->isa_imm<Pack>()) w.WLOG("packs not yet implemented: {}", pack);
 
     if (auto l = vec->isa<Lit>()) {
