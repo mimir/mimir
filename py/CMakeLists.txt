@@ -71,6 +71,7 @@ add_custom_target(mim_py_stubs DEPENDS "${MIM_PY_STUB_FILE}")
 # Stage the package (sources + generated artifacts) and install it editable.
 # Editable install lets later builds refresh staged files without re-running pip.
 set(_mim_py_plugin_stage "${MIM_PY_STAGE}/src/mim/_plugins")
+set(_mim_py_native_plugin_stage "${MIM_PY_STAGE}/src/mim/mim")
 set(_mim_py_main_runtime_commands)
 if(WIN32)
     set(_mim_py_main_runtime_commands
@@ -82,12 +83,19 @@ endif()
 set(_mim_py_stage_plugin_commands
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_mim_py_plugin_stage}"
     COMMAND "${CMAKE_COMMAND}" -E touch "${_mim_py_plugin_stage}/__init__.py"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_mim_py_native_plugin_stage}"
 )
 foreach(_plugin ${MIM_PLUGIN_LIST})
     list(APPEND _mim_py_stage_plugin_commands
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${_plugin}.py"
                 "${_mim_py_plugin_stage}/${_plugin}.py"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_FILE:mim_${_plugin}>"
+                "${_mim_py_native_plugin_stage}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${_plugin}.mim"
+                "${_mim_py_native_plugin_stage}/${_plugin}.mim"
     )
 endforeach()
 add_custom_target(mim_py_main

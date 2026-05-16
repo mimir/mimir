@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mim = ["*.so", "*.pyd", "*.dll", "*.pyi", "py.typed"]
+mim = ["*.so", "*.pyd", "*.dll", "*.pyi", "py.typed", "mim/*.so", "mim/*.dylib", "mim/*.dll", "mim/*.mim"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -56,7 +56,12 @@ Driver::Driver()
     if (auto env_path = std::getenv("MIM_PLUGIN_PATH")) {
         std::stringstream env_path_stream{env_path};
         std::string sub_path;
-        while (std::getline(env_path_stream, sub_path, ':'))
+#ifdef _WIN32
+        constexpr char search_path_sep = ';';
+#else
+        constexpr char search_path_sep = ':';
+#endif
+        while (std::getline(env_path_stream, sub_path, search_path_sep))
             add_search_path(sub_path);
     }
 
