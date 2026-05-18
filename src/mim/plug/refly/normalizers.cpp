@@ -95,6 +95,25 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     return nullptr;
 }
 
+template<vars id>
+const Def* normalize_vars(const Def* type, const Def* callee, const Def* arg) {
+    auto& world = type->world();
+
+    if constexpr (id == vars::is_closed) return arg->is_closed() ? world.lit_tt() : world.lit_ff();
+
+    if constexpr (id == vars::await_closed) {
+        // Curried: (await_closed T U) t u — fires on inner app where `callee` is the outer app applied to `t`.
+        if (auto outer = callee->isa<App>()) {
+            if (Axm::isa(vars::await_closed, outer->callee())) {
+                auto t = outer->arg();
+                if (t->is_closed()) return arg;
+            }
+        }
+    }
+
+    return {};
+}
+
 MIM_refly_NORMALIZER_IMPL
 
 } // namespace mim::plug::refly
