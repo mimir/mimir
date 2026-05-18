@@ -366,7 +366,25 @@ def _compute_overloaded_names(classes: dict) -> set:
     return overloaded
 
 
-def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = "") -> str:
+def _load_extra_body(header_path: str, extra_dir: str | None) -> str:
+    """Load a companion .nbextra file from *extra_dir*, keyed by header stem."""
+    if not extra_dir:
+        return ""
+    header_stem = os.path.splitext(os.path.basename(header_path))[0]
+    extra_path = os.path.join(extra_dir, header_stem + ".nbextra")
+    try:
+        with open(extra_path) as f:
+            extra = f.read()
+        if extra.strip():
+            return extra
+    except OSError:
+        pass
+    return ""
+
+
+def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = "", extra_dir: str | None = None) -> str:
+    extra_body = _load_extra_body(header_path, extra_dir)
+
     lines = []
     lines.append(INCLUDES_TEMPLATE)
     lines.append(f'#include "{os.path.relpath(header_path, os.getcwd())}"')
@@ -392,13 +410,15 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
     for class_name, info in classes.items():
         bases = info["bases"]
         base_spec = _base_spec(bases)
-        suffix = ", nb::never_destruct()" if "Def" in bases else ""
+        # Def and everything deriving from it is never_destruct —
+        # the World owns all Def lifetimes.
+        suffix = ", nb::never_destruct()" if (class_name == "Def" or "Def" in bases) else ""
 
         lines.append("")
         cls_start = f'    nb::class_<{class_name}{base_spec}>(m, "{class_name}"{suffix})'
         methods = info["methods"]
 
-        if not methods:
+        if not methods and not extra_body:
             lines.append(cls_start + ";")
             continue
 
@@ -410,6 +430,15 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
                 lines[-1] = lines[-1] + " " + binding.strip()
             else:
                 lines.append(binding)
+
+        # Insert hand-written extra bindings before the closing semicolon
+        if extra_body:
+            extra = extra_body.strip()
+            if extra:
+                # Strip leading ';' from the last auto line if present
+                if lines[-1].rstrip().endswith(";"):
+                    lines[-1] = lines[-1].rstrip()[:-1].rstrip()
+                lines.append(extra)
 
         if not lines[-1].rstrip().endswith(";"):
             lines[-1] = lines[-1] + ";"
@@ -438,6 +467,7 @@ def parse_args(argv=None):
     p.add_argument("-o", "--output", default=None, help="Output file (default: stdout)")
     p.add_argument("--namespace", default="", help="C++ namespace for the init function (e.g. mim)")
     p.add_argument("--extra-args", default="-std=c++23", help="Extra Clang arguments (default: -std=c++23)")
+    p.add_argument("--extra-dir", default=None, help="Directory containing .nbextra hand-written binding snippets")
     p.add_argument("-I", action="append", dest="includes", default=[], help="Include paths")
     return p.parse_args(argv)
 
@@ -492,6 +522,11 @@ def main(argv=None):
             clang_args.append(f"-isystem{res_incl}")
             break
 
+    # Resolve extras directory
+    extra_dir = args.extra_dir
+    if extra_dir is not None:
+        extra_dir = str(Path(extra_dir).resolve())
+
     idx = clang.Index.create()
     outputs = []
 
@@ -508,7 +543,7 @@ def main(argv=None):
         if not classes and not enums:
             continue
 
-        code = generate_bindings(hdr, classes, enums, ns=args.namespace)
+        code = generate_bindings(hdr, classes, enums, ns=args.namespace, extra_dir=extra_dir)
         outputs.append(code)
 
     if not outputs:
