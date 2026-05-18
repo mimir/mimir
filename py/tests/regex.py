@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import shutil
-
 import pytest
-
 import mim
 import mim.plug.regex as regex
 
@@ -16,7 +14,7 @@ def test_regex_plugin_loads(regex_world):
 
 @pytest.mark.slow
 @pytest.mark.needs_clang
-def test_regbuilder_jit_match(plugin_dir, tmp_path, monkeypatch):
+def test_regbuilder_jit_match(tmp_path, monkeypatch):
     """End-to-end: build a tiny regex, JIT, run the matcher.
 
     Uses the public mim.plug.regex API.
@@ -28,8 +26,6 @@ def test_regbuilder_jit_match(plugin_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     driver = mim.Driver()
-    driver.add_search_path(plugin_dir)
-
     b = regex.RegBuilder(driver, "regex_test", mim.Level.Error)
     pattern = b.lit("a") + b.lit("b") + b.lit("c")
     library = pattern.jit()

@@ -7,6 +7,8 @@ nanobind_add_module(pymim
     lam.cpp
     log.cpp
     parser.cpp
+    cast.cpp
+    ndarray.cpp
     py.cpp
     sym.cpp
     tuple.cpp

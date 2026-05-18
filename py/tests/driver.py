@@ -1,8 +1,8 @@
 """Tests for py/bindings/driver.cpp bindings."""
+
 from __future__ import annotations
 
 import pytest
-
 import mim
 
 
@@ -19,8 +19,7 @@ def test_add_search_path_accepts_pathlib(driver, tmp_path):
     driver.add_search_path(tmp_path)
 
 
-def test_load_plugins_core_succeeds(driver, plugin_dir):
-    driver.add_search_path(plugin_dir)
+def test_load_plugins_core_succeeds(driver):
     driver.load_plugins(["core"])
 
 

@@ -17,6 +17,8 @@ void init_def(nb::module_&);
 void init_lam(nb::module_&);
 void init_tuple(nb::module_&);
 void register_error(nb::module_&);
+void init_cast(nb::module_&);
+void init_ndarray(nb::module_&);
 } // namespace mim
 
 namespace mim::ast {
@@ -30,12 +32,13 @@ NB_MODULE(_mim, m) {
     // Please consider The ordering for future added Types.
     fe::init_sym(m);
     fe::init_sym_pool(m);
-
     mim::init_def(m);
     mim::init_lam(m);
     mim::init_tuple(m);
     mim::init_world(m);
     mim::init_flags(m);
+    mim::init_cast(m);
+    mim::init_ndarray(m);
     mim::init_log(m);
     mim::init_driver(m);
     mim::ast::init_ast(m);

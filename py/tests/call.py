@@ -1,15 +1,14 @@
 """Tests for the World.call(...) helper monkey-patched in mim/__init__.py."""
+
 from __future__ import annotations
 
 import pytest
-
 import mim
 import mim.plug.core as core
 
 
 @pytest.fixture
-def core_world(driver, plugin_dir):
-    driver.add_search_path(plugin_dir)
+def core_world(driver):
     driver.load_plugins(["core"])
     return driver.world()
 
