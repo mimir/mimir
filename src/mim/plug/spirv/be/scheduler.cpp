@@ -5,7 +5,6 @@
 
 namespace mim::plug::spirv {
 
-using CFG  = plug::sflow::CFG;
 using Node = CFG::Node;
 using Loop = CFG::Loop;
 
@@ -44,10 +43,10 @@ static void emit_node(const Node* node, const CFG& cfg, Scheduler::Schedule& res
 }
 
 Scheduler::Schedule schedule(const Nest& nest) {
-    auto cfg = plug::sflow::nest_cfg(nest);
+    auto cfg = mim::nest_cfg(nest);
     Scheduler::Schedule res;
     MutSet done;
-    emit_node(cfg->entry(), *cfg, res, done);
+    emit_node(cfg.entry(), cfg, res, done);
     return res;
 }
 

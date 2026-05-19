@@ -67,7 +67,10 @@ const Nest::Node* Scheduler::late(Def* curr_mut, const Def* def) {
     } else {
         for (auto use : uses(def)) {
             auto mut = late(curr_mut, use);
-            result   = result ? Nest::lca(result, mut) : mut;
+            // TODO: Nest produces unoptimal late placement in many cases,
+            // this should probably use dominance. Currently unimplemented
+            // as dominance is not implemented for higher order code yet.
+            result = result ? Nest::lca(result, mut) : mut;
         }
     }
 

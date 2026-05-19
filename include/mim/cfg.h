@@ -8,9 +8,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-namespace mim::plug::sflow {
 
+namespace fe {
 class Tab;
+}
+
+namespace mim {
 
 class CFG {
 public:
@@ -147,6 +150,14 @@ public:
     const Node* operator[](const Def* def) const { return (def->isa<Lam>() ? (*this)[def->as<Lam>()] : nullptr); }
     ///@}
 
+    /// @name dot
+    /// GraphViz output.
+    ///@{
+    void dot(std::ostream& os) const;
+    void dot(const char* file = nullptr) const;
+    void dot(std::string s) const { dot(s.c_str()); }
+    void dot_cluster(std::ostream& os, fe::Tab& tab, size_t& cluster_id) const;
+    ///@}
 private:
     Node* visit(const Lam* mut);
 
@@ -176,10 +187,10 @@ private:
 
 /// @name Nest CFG helpers
 ///@{
-std::unique_ptr<CFG> nest_cfg(const Nest::Node* node);
-std::unique_ptr<CFG> nest_cfg(const Nest& nest);
+CFG nest_cfg(const Nest::Node* node);
+CFG nest_cfg(const Nest& nest);
 void nest_cfg_dot(const Nest& nest, std::ostream& os);
 void nest_cfg_dot(const Nest& nest, const char* file = nullptr);
 ///@}
 
-} // namespace mim::plug::sflow
+} // namespace mim

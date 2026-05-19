@@ -1,7 +1,6 @@
 #include "mim/cfg.h"
 
 #include <algorithm>
-#include <fstream>
 #include <functional>
 #include <stack>
 #include <vector>
@@ -9,15 +8,15 @@
 #include "mim/nest.h"
 #include "mim/tuple.h"
 
-namespace mim::plug::sflow {
+namespace mim {
 
 /*
  * Nest helpers
  */
 
-std::unique_ptr<CFG> nest_cfg(const Nest::Node* node) { return std::make_unique<CFG>(node); }
+CFG nest_cfg(const Nest::Node* node) { return CFG{node}; }
 
-std::unique_ptr<CFG> nest_cfg(const Nest& nest) {
+CFG nest_cfg(const Nest& nest) {
     assert(nest.root()->mut() && "nest_cfg() requires a non-virtual root");
     return nest_cfg(nest.root());
 }
@@ -276,4 +275,4 @@ void CFG::Loop::find_nested_loops() const {
     }
 }
 
-} // namespace mim::plug::sflow
+} // namespace mim

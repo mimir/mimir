@@ -1,0 +1,15 @@
+import core;
+
+lam add (a: Nat) (b: Nat) = %core.nat.add (a, b);
+lam sub (a: Nat) (b: Nat) = %core.nat.sub (a, b);
+lam mul (a: Nat) (b: Nat) = %core.nat.mul (a, b);
+lam le (a: Nat) (b: Nat) = %core.ncmp.le (a, b);
+
+fun extern main (a b: Nat, cond: Bool) = loop (a, 1) where
+    con loop (i acc: Nat) = (body, exit)#(le i 0) () where
+        con body () = loop (sub i 1, add acc i);
+        con exit () = (left, right)#cond (acc);
+    end;
+    con left (acc: Nat) = return (add (mul a b) acc);
+    con right (acc: Nat) = return (mul (mul a b) acc);
+end;
