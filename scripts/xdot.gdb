@@ -21,7 +21,7 @@ define xdot
     shell echo set \$tmp=\"$(mktemp)\" >/tmp/tmp.gdb
     source /tmp/tmp.gdb
     call $def->dot($tmp, $max, $types)
-    eval "shell xdot %s 2&> /dev/null &", $tmp
+    eval "shell xdot %s >/dev/null 2>&1 &", $tmp
 end
 
 document xdot
