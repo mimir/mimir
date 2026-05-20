@@ -8,7 +8,7 @@ plugin core;
 con seq {A: *} (n: Nat) (body: [Cn A] → Cn A) (exit: Cn A) (acc: A)@tt =
     head(0, acc)
     where
-        con head (i: Nat, acc: A)@%core.pe.is_closed n =
+        con head (i: Nat, acc: A)@(%core.pe.is_closed n) =
             let cond = %core.ncmp.l (i, n);
             (f, t)#cond ()
             where
