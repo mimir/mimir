@@ -1,11 +1,10 @@
 #include "mim/plug/mem/phase/sym_expr_opt.h"
 
-#include <utility>
-
 #include <absl/container/fixed_array.h>
 
 #include "mim/def.h"
 
+#include "mim/plug/math/autogen.h"
 #include "mim/plug/mem/mem.h"
 
 template<std::ranges::input_range... Rs>
@@ -32,9 +31,15 @@ const Def* isa_gvn_proxy(const Def* def) {
     return nullptr;
 }
 
-const Def* isa_slot_proxy(const Def* def) {
+const Def* isa_phi_proxy(const Def* def) {
     if (auto mem = def->isa<Proxy>())
         if (mem->tag() == Proxy_Phi) return mem;
+    return nullptr;
+}
+
+const Def* isa_slot_proxy(const Def* def) {
+    if (auto mem = def->isa<Proxy>())
+        if (mem->tag() == Proxy_Slot) return mem;
     return nullptr;
 }
 
@@ -68,21 +73,25 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         return abstr_mem;
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]    = load->decurry()->args<2>();
+        auto [result_mem, result_load] = load->projs<2>();
         auto [mem, ptr] = load->args<2>();
-        auto abstr_mem  = rewrite(mem);
+        rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
         DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
         if (auto known_value = slot2value(abstr_ptr)) {
             DLOG("we know that it's {}", known_value);
-            return world().tuple({abstr_mem, known_value});
+            set(result_load, known_value);
+            return world().tuple({result_mem, known_value});
         } else {
             DLOG("still resolving load, looking up {} in lattice", abstr_ptr);
             auto phi = world().proxy(T, {curr_mut(), abstr_ptr}, 0, Proxy_Phi);
-            if (auto it = lattice_.find(phi); it != lattice_.end())
-                return world().tuple({abstr_mem, it->second});
+            if (auto it = lattice_.find(phi); it != lattice_.end()) {
+                set(result_load,it->second);
+                return world().tuple({result_mem, it->second});
+            }
             else {
                 DLOG("couldn't resolve load of {}, returning bot", abstr_ptr);
-                return world().tuple({abstr_mem, world().bot(T)});
+                return world().tuple({result_mem, world().bot(T)});
             }
         }
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
@@ -96,6 +105,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         // TODO if top (address taken), don't do that
         auto sloxy = world().proxy(T, {curr_mut(), abstr_id}, 0, Proxy_Slot);
         DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
+        set(ptr, sloxy);
         return world().tuple({abstr_mem, sloxy});
     } else if (auto branch = Branch(app)) {
         auto abstr = rewrite(branch.cond());
@@ -228,8 +238,6 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 DLOG("propagating local value: {} -> {}", slot, value);
                 set(phi, abstr);
             } else {
-                // TODO: something is wrong here i think? maybe only one of the branches can happen
-                // because of eta expansion?
                 DLOG("not found in slot2value, propagating value from parameters");
                 auto lookup_proxy = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
                 if (auto i = lattice_.find(lookup_proxy); i != lattice_.end()) {
@@ -348,7 +356,29 @@ static bool keep(const Def* old_var, const Def* abstr) {
 }
 
 const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
-    if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
+    if (auto slot = Axm::isa<mem::slot>(old_app)) {
+        auto [Ta, mi]   = slot->uncurry_args<2>();
+        auto [T, as]    = Ta->projs<2>();
+        auto [mem, id]  = mi->projs<2>();
+        auto [_, ptr]   = slot->projs<2>();
+        if (auto sloxy = lattice(ptr)) {
+            auto rewritten_mem = rewrite(mem);
+            return new_world().tuple({rewritten_mem, new_world().bot(rewrite(T))}); // return bot for the pointer, we hopefully proved that noone uses it
+        }
+    } else if (auto store = Axm::isa<mem::store>(old_app)) {
+        auto [mem, ptr, val] = store->args<3>();
+        if (auto sloxy = lattice(ptr)) {
+            return rewrite(mem);
+        }
+    } else if (auto load = Axm::isa<mem::load>(old_app)) {
+        auto [result_mem, result_load] = load->projs<2>();
+        auto [mem, ptr] = load->args<2>();
+        if (auto known_load = lattice(result_load)) {
+            auto rewritten_mem = rewrite(mem);
+            return new_world().tuple({rewritten_mem, rewrite(known_load)});
+        }
+    } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
+        // TODO: this also needs to check if we need to add any phis
         if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) {
             invalidate();
 
@@ -357,6 +387,17 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end())
                 new_lam = i->second;
             else {
+                // find phis
+                // Vector<std::pair<const Def *, const Def *>> potential_phis;
+                // for (auto [k, v] : analysis_.lattice())
+                //     if (auto proxy = isa_phi_proxy(k)) {
+                //         DLOG("looking for phis for {}, found a proxi for {}", old_app->callee(), proxy->op(0));
+                //         if (proxy->op(0) == old_app->callee()) {
+                //             potential_phis.push_back({k, v});
+                //             DLOG("potential phi for {}: {} -> {}", old_app->callee(), k, v);
+                //         }
+                //     }
+
                 // build new dom
                 auto new_doms = DefVec();
                 for (size_t i = 0; i != num_old; ++i) {
@@ -364,26 +405,44 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto abstr   = lattice(old_var);
                     if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
                 }
+                // for (auto [proxy, abstr] : potential_phis)
+                //     if (keep(proxy, abstr))
+                //         new_doms.emplace_back(proxy->type());
+
+                size_t num_new_vars    = new_doms.size();
 
                 // build new lam
-                size_t num_new    = new_doms.size();
-                auto new_vars     = absl::FixedArray<const Def*>(num_old);
+                auto new_vars     = absl::FixedArray<const Def*>(num_new_vars);
                 new_lam           = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
                 lam2lam_[old_lam] = new_lam;
 
                 // build new var
-                for (size_t i = 0, j = 0; i != num_old; ++i) {
+                size_t j = 0;
+
+                for (size_t i = 0; i != num_old; ++i) {
                     auto old_var = old_lam->var(num_old, i);
                     auto abstr   = lattice(old_var);
 
                     if (keep(old_var, abstr)) {
-                        auto v      = new_lam->var(num_new, j++);
+                        auto v      = new_lam->var(num_new_vars, j++);
                         new_vars[i] = v;
                         if (abstr != old_var) map(abstr, v); // GVN bundle
                     } else {
                         new_vars[i] = rewrite(abstr); // SCCP propagate
                     }
                 }
+
+                // for (size_t i = 0; i < potential_phis.size(); i++) {
+                //     auto [proxy, abstr] = potential_phis[i];
+                //     if (keep(proxy, abstr)) {
+                //         auto v = new_lam->var(num_new_vars, j++);
+                //         if (abstr != proxy) {
+                //             // TODO: map all loads from the slot to v somehow
+                //         }
+                //     } else {
+                //         // TODO: map all loads from the slot to abstr somehow
+                //     }
+                // }
 
                 map(old_lam->var(), new_vars);
                 new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
