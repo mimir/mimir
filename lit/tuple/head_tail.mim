@@ -1,0 +1,25 @@
+// RUN: %mim %s
+plugin tuple;
+plugin refly;
+
+let tup = (1, tt, ff, 23, 42);
+
+let h = %tuple.head tup;
+let t = %tuple.tail tup;
+
+let _ = %refly.equiv.struc_eq (h, (1,));
+let _ = %refly.equiv.struc_eq (t, (tt, ff, 23, 42));
+
+/// uniform array
+let arr = ‹3; 7›;
+let ha  = %tuple.head arr;
+let ta  = %tuple.tail arr;
+
+let _ = %refly.equiv.struc_eq (ha, (7,));
+let _ = %refly.equiv.struc_eq (ta, ‹2; 7›);
+
+/// type-level
+lam f (a: [Nat, Bool, Nat]): [Nat]         = %tuple.head a;
+lam g (a: [Nat, Bool, Nat]): [Bool, Nat]   = %tuple.tail a;
+lam h_arr (a: «3; Nat»): [Nat]             = %tuple.head a;
+lam t_arr (a: «3; Nat»): «2; Nat»          = %tuple.tail a;
