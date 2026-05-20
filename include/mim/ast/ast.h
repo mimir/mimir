@@ -47,7 +47,8 @@ struct AnnexInfo {
 
 class AST {
 public:
-    AST() = default;
+    AST()           = default;
+    AST(const AST&) = delete;
     AST(World& world)
         : world_(&world) {}
     AST(AST&& other)
@@ -94,7 +95,11 @@ public:
     const auto& plugin2annexes(Sym plugin) { return plugin2sym2annex_[plugin]; }
     ///@}
 
+    /// @name bootstrap
+    ///@{
     void bootstrap(Sym plugin, std::ostream& h);
+    void bootstrap_py(Sym plugin, std::ostream& h);
+    ///@}
 
     friend void swap(AST& a1, AST& a2) noexcept {
         using std::swap;

@@ -16,7 +16,9 @@ namespace fs = std::filesystem;
 
 namespace sys {
 
-std::optional<fs::path> path_to_curr_exe(); ///< Yields `std::nullopt` if an error occurred.
+/// Yields `std::nullopt` if an error occurred.
+/// The returned path is adjusted so `<parent>/mim` resolves to the default in-tree plugin directory when possible.
+std::optional<fs::path> path_to_libmim();
 
 /// Executes command @p cmd.
 /// @returns the output as string.

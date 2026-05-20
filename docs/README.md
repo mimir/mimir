@@ -6,8 +6,9 @@
 
 [![Release](https://img.shields.io/github/v/release/mimir/mimir?style=flat-square&logo=starship&color=blue&label=Release)](https://github.com/mimir/mimir/releases)
 [![Docs](https://img.shields.io/badge/Docs-master/v0.1-blue?style=flat-square&logo=gitbook&logoColor=white)](https://mimir.github.io)
-[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=cplusplus)](https://en.wikipedia.org/wiki/C%2B%2B#Standardization)
 [![License](https://img.shields.io/github/license/mimir/mimir?style=flat-square&color=blue&logo=opensourceinitiative&logoColor=white&label=License)](https://github.com/mimir/mimir/blob/master/LICENSE.TXT)
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=cplusplus)](https://en.wikipedia.org/wiki/C%2B%2B#Standardization)
+[![Python](https://img.shields.io/badge/Python-3.10-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 
 [![Doxygen](https://img.shields.io/github/actions/workflow/status/mimir/mimir/doxygen.yml?style=flat-square&logo=doxygen&logoSize=auto&label=&labelColor=555&branch=master)](https://github.com/mimir/mimir/actions/workflows/doxygen.yml?query=branch%3Amaster)
 [![Linux](https://img.shields.io/github/actions/workflow/status/mimir/mimir/linux.yml?style=flat-square&logo=linux&label=Linux&logoColor=white&branch=master)](https://github.com/mimir/mimir/actions/workflows/linux.yml?query=branch%3Amaster)
@@ -59,7 +60,7 @@ cmake --build build -j$(nproc) --target install
 ```
 
 See the full [build options](@ref building) in the docs.
-For the rest of the documentation, start with the [Command-Line Reference](@ref cli), [Developer Guide](@ref dev), [Language Reference](@ref langref), [Plugin Guide](@ref plugins), [Phase Guide](@ref phases), and [Rewriting Guide](@ref rewriting).
+You can find the rest of the documentation [here](file:///home/roland/mimir/mimir/build/html/usergroup0.html)
 
 ## 🔥 Key Innovations
 

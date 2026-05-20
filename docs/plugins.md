@@ -10,7 +10,7 @@ Plugin names may only contain letters, digits, and underscores, and are limited 
 
 ## Plugin Registry
 
-The [MimIR Plugin Registry](https:/mimir.github.io/plugins) is the central hub for discovering, sharing, and maintaining third-party MimIR plugins.
+The [MimIR Plugin Registry](https://mimir.github.io/plugins) is the central hub for discovering, sharing, and maintaining third-party MimIR plugins.
 The registry lists available plugins and provides guidance on how to find and use them.
 If you've created a plugin you'd like to share with the community, please consider submitting it to the registry.
 

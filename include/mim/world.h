@@ -14,6 +14,7 @@
 
 #include "mim/util/dbg.h"
 #include "mim/util/log.h"
+#include "mim/util/span.h"
 
 namespace mim {
 
@@ -610,6 +611,12 @@ public:
     requires std::is_enum_v<Id>
     const Def* call(Args&&... args) {
         return call<Normalize>(annex<Id>(), std::forward<Args>(args)...);
+    }
+
+    /// Annex overload with `flags_t` as first argument.
+    template<bool Normalize = true, class... Args>
+    const Def* call(flags_t id, Args&&... args) {
+        return call<Normalize>(annex(id), std::forward<Args>(args)...);
     }
     ///@}
 

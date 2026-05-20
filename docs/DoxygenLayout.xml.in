@@ -13,6 +13,7 @@
         <tab type="user" url="@ref dev" title="Developer Guide"/>
         <tab type="user" url="@ref rewriting" title="Rewriting"/>
         <tab type="user" url="@ref phases" title="Phases"/>
+        <tab type="user" url="@ref python" title="Python Bindings"/>
     </tab>
     <tab type="usergroup" title="🧩 Plugins">
         @MIM_PLUGIN_LAYOUT@

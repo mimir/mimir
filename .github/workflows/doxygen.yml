@@ -46,10 +46,11 @@ jobs:
 
       - name: Configure
         run: |
-          CC=gcc-14 CXX=g++-14 cmake -B ${{github.workspace}}/build \
-            -DCMAKE_BUILD_TYPE=Debug                                \
-            -DMIM_BUILD_DOCS=ON                                     \
-            -DDOXYGEN_EXECUTABLE=${{ env.DOXYGEN_CACHE_DIR }}/bin/doxygen
+          CC=gcc-14 CXX=g++-14                  \
+          cmake -B ${{github.workspace}}/build  \
+                -DCMAKE_BUILD_TYPE=Debug        \
+                -DMIM_BUILD_DOCS=ON             \
+                -DDOXYGEN_EXECUTABLE=${{ env.DOXYGEN_CACHE_DIR }}/bin/doxygen
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build -v --target docs

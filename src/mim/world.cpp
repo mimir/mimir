@@ -4,7 +4,6 @@
 #include "mim/def.h"
 #include "mim/driver.h"
 #include "mim/rewrite.h"
-#include "mim/rule.h"
 #include "mim/tuple.h"
 
 #include "mim/util/util.h"
@@ -91,7 +90,7 @@ Sym World::sym(std::string_view s) { return driver().sym(s); }
 Sym World::sym(const std::string& s) { return driver().sym(s); }
 
 const Def* World::register_annex(flags_t f, const Def* def) {
-    TLOG("register: 0x{:x} -> {}", f, def);
+    TLOG("register: 0x{:x} -> {} ({})", f, def, def->sym());
     auto plugin = Annex::demangle(driver(), f);
     if (driver().is_loaded(plugin)) {
         assert_emplace(move_.flags2annex, f, def);

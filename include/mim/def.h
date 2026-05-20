@@ -247,6 +247,7 @@ class Def : public fe::RuntimeCast<Def> {
 private:
     Def& operator=(const Def&) = delete;
     Def(const Def&)            = delete;
+    Def(Def&&)                 = delete;
 
 protected:
     /// @name C'tors and D'tors

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sstream>
 #include <stdexcept>
 
 #include <absl/container/flat_hash_map.h>
@@ -20,7 +21,7 @@ using fe::Loc;
 using fe::Pos;
 using fe::Sym;
 
-class Error : std::exception {
+class Error : public std::exception {
 public:
     enum class Tag {
         Error,
@@ -75,8 +76,7 @@ public:
     template<class... Args> Error& error(Loc loc, std::format_string<Args...> s, Args&&... args) { ++num_errors_;   return msg(loc, Tag::Error, s, std::forward<Args>(args)...); }
     template<class... Args> Error& warn (Loc loc, std::format_string<Args...> s, Args&&... args) { ++num_warnings_; return msg(loc, Tag::Warn,  s, std::forward<Args>(args)...); }
     template<class... Args> Error& note (Loc loc, std::format_string<Args...> s, Args&&... args) {
-        assert(num_errors() > 0 || num_warnings() > 0); /*                                     */ ++num_notes_;    return msg(loc, Tag::Note,  s, std::forward<Args>(args)...);
-    }
+        assert(num_errors() > 0 || num_warnings() > 0); /*                                    */   ++num_notes_;    return msg(loc, Tag::Note,  s, std::forward<Args>(args)...); }
     // clang-format on
     ///@}
 
@@ -86,6 +86,15 @@ public:
     /// If errors occurred, claim them and throw; if warnings occurred, claim them and report to @p os.
     void ack(std::ostream& os = std::cerr);
     ///@}
+
+    const char* what() const noexcept override {
+        if (what_.empty()) {
+            std::ostringstream oss;
+            oss << *this;
+            what_ = oss.str();
+        }
+        return what_.c_str();
+    }
 
     friend std::ostream& operator<<(std::ostream& o, Tag tag) {
         // clang-format off
@@ -119,6 +128,7 @@ private:
     size_t num_errors_   = 0;
     size_t num_warnings_ = 0;
     size_t num_notes_    = 0;
+    mutable std::string what_;
 };
 
 /// @name Formatted Output

@@ -18,7 +18,14 @@ namespace mim {
 /// Well, there are not really global - that's the point of this class.
 class Driver : public fe::SymPool {
 public:
+    /// @name Construction
+    ///@{
     Driver();
+
+    Driver(const Driver&)     = delete;
+    Driver(Driver&&)          = delete;
+    Driver& operator=(Driver) = delete;
+    ///@}
 
     /// @name Getters
     ///@{
@@ -34,7 +41,7 @@ public:
     /// 1. The empty path. Used as prefix to look into current working directory without resorting to an absolute path.
     /// 2. All further user-specified paths via Driver::add_search_path; paths added first will also be searched first.
     /// 3. All paths specified in the environment variable `MIM_PLUGIN_PATH`.
-    /// 4. `path/to/mim.exe/../../lib/mim`
+    /// 4. The path derived from the location of `libmim` (`<libmim>/mim`)
     /// 5. `CMAKE_INSTALL_PREFIX/lib/mim`
     ///@{
     const auto& search_paths() const { return search_paths_; }
