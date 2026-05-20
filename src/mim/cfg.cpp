@@ -5,6 +5,7 @@
 #include <stack>
 #include <vector>
 
+#include "mim/axm.h"
 #include "mim/nest.h"
 #include "mim/tuple.h"
 
@@ -55,9 +56,102 @@ void CFG::Node::init() {
         for (auto branch : dispatch.tuple()->ops())
             if (!add_edge(branch->as<Lam>())) follow = true;
         if (follow) follow_escaping(app);
+    } else if (handle_sflow(app)) {
+        // edges added by handle_sflow
     } else {
         follow_escaping(app);
     }
+}
+
+bool CFG::Node::handle_sflow(const App* app) {
+    auto [axm, _curry, _trip] = Axm::get(app);
+    if (!axm) return false;
+
+    auto& world = cfg_.world_;
+    auto name   = axm->sym();
+
+    // Build per-world Sym handles lazily once. Static is fine: Syms are
+    // interned per World, but the sflow plugin Syms come from the driver and
+    // remain stable across CFG instances within the same process. We compare
+    // by string content via name.view() for robustness.
+    auto sv = name.view();
+
+    auto add_lam = [&](const Def* def) {
+        if (auto lam = def->isa_mut<Lam>()) add_edge(lam);
+    };
+
+    // For axm positions / uncurry arities, mirror mim::plug::spirv::Emitter::emit_bb in
+    // src/mim/plug/spirv/be/bb.cpp.
+    if (sv == "%sflow.if") {
+        auto [_cf_break, tuple, _index, _token, _arg] = app->uncurry_args<5>();
+        for (auto branch : tuple->ops()) add_lam(branch);
+        return true;
+    }
+    if (sv == "%sflow.switch") {
+        auto callee = app->callee()->as<App>();
+        auto [_cf_break, cf_default, targets, _index, _token] = callee->uncurry_args<5>();
+        add_lam(cf_default);
+        // targets: right-nested tuple [idx, case, [idx, case, [..., []]]]
+        for (auto cur = targets; cur->num_ops() == 3; cur = cur->op(2)) add_lam(cur->op(1));
+        return true;
+    }
+    if (sv == "%sflow.loop") {
+        auto [_cf_break, _cf_continue, cf_header, _token, _arg] = app->uncurry_args<5>();
+        add_lam(cf_header);
+        return true;
+    }
+    if (sv == "%sflow.header") {
+        auto callee = app->callee()->as<App>();
+        auto [cf_struct, tuple, _index, _token] = callee->uncurry_args<4>();
+        // Register this lam under the loop's path so loopbacks can find it.
+        // Struct type: ... → [path: Path, step: Nat] → [continue] → [break] → ★;
+        // uncurry_args<3> on the type yields ((path,step), continue, break).
+        auto [path, _continue, _break] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        cfg_.sflow_path_to_header_[path] = this;
+        for (auto branch : tuple->ops()) add_lam(branch);
+        return true;
+    }
+    if (sv == "%sflow.continue" || sv == "%sflow.fallthrough") {
+        auto [cf_struct, _val]                       = app->uncurry_args<2>();
+        auto [_path, continue_target, _break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        add_lam(continue_target);
+        return true;
+    }
+    if (sv == "%sflow.break") {
+        auto [cf_struct, _val]                       = app->uncurry_args<2>();
+        auto [_path, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        add_lam(break_target);
+        return true;
+    }
+    if (sv == "%sflow.merge") {
+        // sig: [Struct ff ...] → [token] → Cn B
+        auto [cf_struct, _token, _val]               = app->uncurry_args<3>();
+        auto [_path, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        add_lam(break_target);
+        return true;
+    }
+    if (sv == "%sflow.loopback") {
+        auto [cf_header_val, _value] = app->uncurry_args<2>();
+        // Header type: [H] [path,step] [break] → ★
+        auto [_H, path, _break]      = cf_header_val->type()->as<App>()->uncurry_args<3>();
+        if (auto it = cfg_.sflow_path_to_header_.find(path); it != cfg_.sflow_path_to_header_.end()) {
+            succs_.insert(it->second);
+            it->second->preds_.insert(this);
+        }
+        return true;
+    }
+    if (sv == "%sflow.branch") {
+        auto [callee, _token, _val] = app->uncurry_args<3>();
+        add_lam(callee);
+        return true;
+    }
+    if (sv == "%sflow.call") {
+        // Returning function call; target (ret lam) lives outside the nest,
+        // reached via escaping muts in the arg.
+        follow_escaping(app);
+        return true;
+    }
+    return false;
 }
 
 const CFG::Loop* CFG::Node::loop() const {

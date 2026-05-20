@@ -46,6 +46,9 @@ public:
         void follow_escaping(const App* app);
         bool add_edge(const Lam* succ);
         void init();
+        /// Recognize sflow control-flow axioms and add appropriate successor
+        /// edges. Returns `true` if @p app was handled as an sflow primitive.
+        bool handle_sflow(const App* app);
 
         CFG& cfg_;
         const Lam* mut_;
@@ -183,6 +186,13 @@ private:
     Node* entry_;
     mutable std::vector<std::unique_ptr<Loop>> loops_;
     mutable bool loops_computed_ = false;
+
+    /// Maps the `path` value of an sflow loop's `Struct` to the Lam carrying
+    /// the `%sflow.header` application. Always populated before any loopback
+    /// targeting that header is processed (enforced by sflow axiom typing).
+    absl::flat_hash_map<const Def*, Node*> sflow_path_to_header_;
+
+    friend class Node;
 };
 
 /// @name Nest CFG helpers
