@@ -356,7 +356,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple(
                 {rewritten_mem,
-                 new_world().bot(rewrite(T))}); // return bot for the pointer, we hopefully proved that noone uses it
+                 new_world().bot(rewrite(ptr->type()))}); // return bot for the pointer, we hopefully proved that noone uses it
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
