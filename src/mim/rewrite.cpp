@@ -192,6 +192,7 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     map(old_mut, new_mut);
 
     if (old_mut->is_set()) {
+        auto _ = enter(old_mut);
         for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
             new_mut->set(i, rewrite(old_mut->op(i)));
         if (auto new_imm = new_mut->immutabilize()) return map(old_mut, new_imm);

@@ -100,7 +100,6 @@ public:
     /// @name Getters
     ///@{
     World& world() { return Phase::world(); }
-    Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -118,26 +117,9 @@ public:
     ///@}
 
 protected:
-    /// Helps to keep track of curr_mut().
-    /// @see enter()
-    class Enter {
-    public:
-        Enter(Analysis* analysis, Def* new_mut)
-            : analysis_(analysis)
-            , prev_mut_(analysis->curr_mut()) {
-            analysis->curr_mut_ = new_mut;
-        }
-        ~Enter() { analysis_->curr_mut_ = prev_mut_; }
-
-    private:
-        Analysis* analysis_;
-        Def* prev_mut_;
-    };
-
     /// @name Rewrite
     ///@{
     void start() override;
-    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
     virtual void rewrite_annex(flags_t, const Def*);
     virtual void rewrite_external(Def*);
 
@@ -165,7 +147,6 @@ protected:
     Def2Def lattice_;
 
 private:
-    Def* curr_mut_      = nullptr;
     bool bootstrapping_ = true;
 
     friend class Enter;
