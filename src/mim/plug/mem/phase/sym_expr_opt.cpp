@@ -371,13 +371,15 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         // TODO: this also needs to check if we need to add any phis
+        DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
         bool phis_needed = false;
         for (auto [slot, slot_type] : analysis_.all_slots()) {
             if (auto sloxy = lattice(slot)) {
                 auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
-                if (auto def = lattice(phi); def == phi) phis_needed = true;
+                if (auto def = lattice(phi); def && keep(phi, def)) phis_needed = true;
             }
         }
+        DLOG("phis_needed: {}", phis_needed);
         if (auto l = lattice(old_lam->var()); (l && l != old_lam->var()) || phis_needed) {
             DLOG("building a new lam for {}", old_app->callee());
             invalidate();
@@ -440,11 +442,11 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                         map(proxy, v);
                         if (abstr != proxy) {
                             DLOG("need to map a phi to gvn bundle");
-                            // TODO: map all loads from the slot to v somehow
+                            map(abstr, v);
                         }
                     } else {
-                        DLOG("need to map a phi to constant value bundle");
-                        // TODO: map all loads from the slot to abstr somehow
+                        DLOG("need to map a phi to constant value");
+                        map(proxy, rewrite(abstr));
                     }
                 }
 
@@ -462,6 +464,15 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                 auto abstr   = lattice(old_var);
                 if (keep(old_var, abstr)) new_args[j++] = rewrite(old_app->targ(i));
             }
+
+            DLOG("wiring up phi arguments");
+            for (auto [mut, slot2value] : analysis_.mut2slot2value()) {
+                DLOG("known values  for mut {}:", mut);
+                for (auto [slot, value] : slot2value) {
+                    DLOG("  {} -> {}", slot, value);
+                }
+            }
+
             for (auto [slot, slot_type] : analysis_.all_slots()) {
                 if (auto sloxy = lattice(slot)) {
                     auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
@@ -469,11 +480,13 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                         if (keep(phi, def)) {
                             if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut()); slot2value_it != analysis_.mut2slot2value().end()) {
                                 auto slot2value = slot2value_it->second;
-                                if (auto found_value_it = slot2value.find(slot); found_value_it != slot2value.end()) {
+                                if (auto found_value_it = slot2value.find(sloxy); found_value_it != slot2value.end()) {
                                     auto found_value = found_value_it->second;
                                     new_args[j++] = rewrite(found_value);
                                 } else {
+                                    // TODO: the value is probably one of the vars of current_mut now, so rewrite the proxy
                                     auto phi = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
+                                    new_args[j++] = rewrite(phi);
                                 }
                             }
                         }
