@@ -4,7 +4,6 @@
 
 #include "mim/def.h"
 
-#include "mim/plug/math/autogen.h"
 #include "mim/plug/mem/mem.h"
 
 template<std::ranges::input_range... Rs>
@@ -72,11 +71,11 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
         return abstr_mem;
     } else if (auto load = Axm::isa<mem::load>(app)) {
-        auto [T, as]    = load->decurry()->args<2>();
+        auto [T, as]                   = load->decurry()->args<2>();
         auto [result_mem, result_load] = load->projs<2>();
-        auto [mem, ptr] = load->args<2>();
+        auto [mem, ptr]                = load->args<2>();
         rewrite(mem);
-        auto abstr_ptr  = rewrite(ptr);
+        auto abstr_ptr = rewrite(ptr);
         DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
         if (auto known_value = slot2value(abstr_ptr)) {
             DLOG("we know that it's {}", known_value);
@@ -86,10 +85,9 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             DLOG("still resolving load, looking up {} in lattice", abstr_ptr);
             auto phi = world().proxy(T, {curr_mut(), abstr_ptr}, 0, Proxy_Phi);
             if (auto it = lattice_.find(phi); it != lattice_.end()) {
-                set(result_load,it->second);
+                set(result_load, it->second);
                 return world().tuple({result_mem, it->second});
-            }
-            else {
+            } else {
                 DLOG("couldn't resolve load of {}, returning bot", abstr_ptr);
                 return world().tuple({result_mem, world().bot(T)});
             }
@@ -114,14 +112,6 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         if (!l || *l)
             if (auto lam = branch.tt()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
-                // DLOG("values of slot2value:");
-                // for (auto [k, v]:  mut2slot2value_[curr_mut()]) {
-                //     DLOG("{} -> {}", k, v);
-                // }
-                // DLOG("values of lattice:");
-                // for (auto [k, v]:  lattice_) {
-                //     DLOG("{} -> {}", k, v);
-                // }
                 for (auto [slot, slot_type] : all_slots_) {
                     auto abstr_slot = rewrite(slot);
                     if (auto value = slot2value(abstr_slot)) {
@@ -192,7 +182,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     // know what it does to those, so we set them to top.
                     for (auto [slot, slot_type] : all_slots_) {
                         auto abstr_slot = rewrite(slot);
-                        if (auto i = std::find(abstr_args.begin(), abstr_args.end(), abstr_slot); i != abstr_args.end()) {
+                        if (auto i = std::find(abstr_args.begin(), abstr_args.end(), abstr_slot);
+                            i != abstr_args.end()) {
                             DLOG("{} passed as continuation, and {} escapes, setting to top", continuation, arg);
                             mut2slot2value_[continuation][abstr_slot] = mut2slot2value_[continuation][abstr_slot];
                         }
@@ -357,47 +348,54 @@ static bool keep(const Def* old_var, const Def* abstr) {
 
 const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
-        auto [Ta, mi]   = slot->uncurry_args<2>();
-        auto [T, as]    = Ta->projs<2>();
-        auto [mem, id]  = mi->projs<2>();
-        auto [_, ptr]   = slot->projs<2>();
+        auto [Ta, mi]  = slot->uncurry_args<2>();
+        auto [T, as]   = Ta->projs<2>();
+        auto [mem, id] = mi->projs<2>();
+        auto [_, ptr]  = slot->projs<2>();
         if (auto sloxy = lattice(ptr)) {
             auto rewritten_mem = rewrite(mem);
-            return new_world().tuple({rewritten_mem, new_world().bot(rewrite(T))}); // return bot for the pointer, we hopefully proved that noone uses it
+            return new_world().tuple(
+                {rewritten_mem,
+                 new_world().bot(rewrite(T))}); // return bot for the pointer, we hopefully proved that noone uses it
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
-        if (auto sloxy = lattice(ptr)) {
-            return rewrite(mem);
-        }
+        if (auto sloxy = lattice(ptr)) return rewrite(mem);
     } else if (auto load = Axm::isa<mem::load>(old_app)) {
         auto [result_mem, result_load] = load->projs<2>();
-        auto [mem, ptr] = load->args<2>();
+        auto [mem, ptr]                = load->args<2>();
         if (auto known_load = lattice(result_load)) {
+            if (isa_phi_proxy(known_load)) DLOG("rewriting a phi proxy");
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple({rewritten_mem, rewrite(known_load)});
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         // TODO: this also needs to check if we need to add any phis
-        if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) {
+        bool phis_needed = false;
+        for (auto [slot, slot_type] : analysis_.all_slots()) {
+            if (auto sloxy = lattice(slot)) {
+                auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
+                if (auto def = lattice(phi); def == phi) phis_needed = true;
+            }
+        }
+        if (auto l = lattice(old_lam->var()); (l && l != old_lam->var()) || phis_needed) {
+            DLOG("building a new lam for {}", old_app->callee());
             invalidate();
+
+            // find phis
+            Vector<std::pair<const Def*, const Def*>> potential_phis;
+            for (auto [slot, slot_type] : analysis_.all_slots()) {
+                if (auto sloxy = lattice(slot)) {
+                    auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
+                    if (auto def = lattice(phi)) potential_phis.push_back({phi, def});
+                }
+            }
 
             size_t num_old = old_lam->num_tvars();
             Lam* new_lam;
             if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end())
                 new_lam = i->second;
             else {
-                // find phis
-                // Vector<std::pair<const Def *, const Def *>> potential_phis;
-                // for (auto [k, v] : analysis_.lattice())
-                //     if (auto proxy = isa_phi_proxy(k)) {
-                //         DLOG("looking for phis for {}, found a proxi for {}", old_app->callee(), proxy->op(0));
-                //         if (proxy->op(0) == old_app->callee()) {
-                //             potential_phis.push_back({k, v});
-                //             DLOG("potential phi for {}: {} -> {}", old_app->callee(), k, v);
-                //         }
-                //     }
-
                 // build new dom
                 auto new_doms = DefVec();
                 for (size_t i = 0; i != num_old; ++i) {
@@ -405,14 +403,15 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto abstr   = lattice(old_var);
                     if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
                 }
-                // for (auto [proxy, abstr] : potential_phis)
-                //     if (keep(proxy, abstr))
-                //         new_doms.emplace_back(proxy->type());
+                size_t num_kept_vars = new_doms.size();
 
-                size_t num_new_vars    = new_doms.size();
+                for (auto [proxy, abstr] : potential_phis)
+                    if (keep(proxy, abstr)) new_doms.emplace_back(rewrite(proxy->type()));
+
+                size_t num_new_vars = new_doms.size();
 
                 // build new lam
-                auto new_vars     = absl::FixedArray<const Def*>(num_new_vars);
+                auto mapped_vars  = absl::FixedArray<const Def*>(num_kept_vars);
                 new_lam           = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
                 lam2lam_[old_lam] = new_lam;
 
@@ -424,37 +423,62 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto abstr   = lattice(old_var);
 
                     if (keep(old_var, abstr)) {
-                        auto v      = new_lam->var(num_new_vars, j++);
-                        new_vars[i] = v;
+                        auto v         = new_lam->var(num_new_vars, j++);
+                        mapped_vars[i] = v;
                         if (abstr != old_var) map(abstr, v); // GVN bundle
                     } else {
-                        new_vars[i] = rewrite(abstr); // SCCP propagate
+                        mapped_vars[i] = rewrite(abstr); // SCCP propagate
                     }
                 }
 
-                // for (size_t i = 0; i < potential_phis.size(); i++) {
-                //     auto [proxy, abstr] = potential_phis[i];
-                //     if (keep(proxy, abstr)) {
-                //         auto v = new_lam->var(num_new_vars, j++);
-                //         if (abstr != proxy) {
-                //             // TODO: map all loads from the slot to v somehow
-                //         }
-                //     } else {
-                //         // TODO: map all loads from the slot to abstr somehow
-                //     }
-                // }
+                for (size_t i = 0; i < potential_phis.size(); i++) {
+                    auto [proxy, abstr] = potential_phis[i];
+                    DLOG("deciding if we keep the phi: {}, {}", proxy, abstr);
+                    if (keep(proxy, abstr)) {
+                        auto v = new_lam->var(num_new_vars, j++);
+                        DLOG("mapping phi {} to {}", proxy, v);
+                        map(proxy, v);
+                        if (abstr != proxy) {
+                            DLOG("need to map a phi to gvn bundle");
+                            // TODO: map all loads from the slot to v somehow
+                        }
+                    } else {
+                        DLOG("need to map a phi to constant value bundle");
+                        // TODO: map all loads from the slot to abstr somehow
+                    }
+                }
 
-                map(old_lam->var(), new_vars);
+                map(old_lam->var(), mapped_vars);
                 new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
             }
 
             // build new app
             size_t num_new = new_lam->num_vars();
             auto new_args  = absl::FixedArray<const Def*>(num_new);
-            for (size_t i = 0, j = 0; i != num_old; ++i) {
+
+            size_t j = 0;
+            for (size_t i = 0; i != num_old; ++i) {
                 auto old_var = old_lam->var(num_old, i);
                 auto abstr   = lattice(old_var);
                 if (keep(old_var, abstr)) new_args[j++] = rewrite(old_app->targ(i));
+            }
+            for (auto [slot, slot_type] : analysis_.all_slots()) {
+                if (auto sloxy = lattice(slot)) {
+                    auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
+                    if (auto def = lattice(phi)) {
+                        if (keep(phi, def)) {
+                            if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut()); slot2value_it != analysis_.mut2slot2value().end()) {
+                                auto slot2value = slot2value_it->second;
+                                if (auto found_value_it = slot2value.find(slot); found_value_it != slot2value.end()) {
+                                    auto found_value = found_value_it->second;
+                                    new_args[j++] = rewrite(found_value);
+                                } else {
+                                    auto phi = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             auto result = map(old_app, new_world().app(new_lam, new_args));

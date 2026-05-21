@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mim/def.h"
 #include "mim/phase.h"
 
 #include "fe/assert.h"
@@ -46,6 +47,13 @@ private:
             auto& slot2value = mut2slot2value_[curr_mut()];
             if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
             return nullptr;
+        }
+
+        const Def2Def &all_slots() const {
+            return all_slots_;
+        }
+        const DefMap<Def2Def> &mut2slot2value() const {
+            return mut2slot2value_;
         }
 
     private:
