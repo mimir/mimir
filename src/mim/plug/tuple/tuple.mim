@@ -9,7 +9,6 @@
 /// ## Dependencies
 ///
 plugin core;
-plugin refly;
 ///
 /// ## Operations
 ///
@@ -47,13 +46,13 @@ lam %tuple.prepend  {m: Nat}
                   = %tuple.cat (a, b);
 
 lam %tuple.head {n: Nat}
-    {Ts: «n; ★»}
+    {Ts: «n; *»}
     [values: «i: n; Ts#i»]
   : [Ts#(%core.idx n %core.mode.US 0)]
   = values#(%core.idx n %core.mode.US 0);
 
 lam %tuple.tail {n: Nat}
-    {Ts: «n; ★»}
+    {Ts: «n; *»}
     [values: «i: n; Ts#i»]
   : «i: %core.nat.sub (n, 1); Ts#(%core.bitcast (Idx n) (%core.nat.add (%core.bitcast Nat i, 1)))»
   = ‹i: %core.nat.sub (n, 1); values#(%core.bitcast (Idx n) (%core.nat.add (%core.bitcast Nat i, 1)))›;

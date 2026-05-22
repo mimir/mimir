@@ -21,19 +21,31 @@ if(NOT EXISTS "${MIM_PY_BOOTSTRAP_PYTHON}")
     )
 endif()
 
+
 # venv: created once, kept between builds. Stamp gates downstream targets.
 set(MIM_PY_VENV_STAMP "${MIM_PY_VENV}/.mim-stamp")
-add_custom_command(
-    OUTPUT "${MIM_PY_VENV_STAMP}"
-    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIM_PY_VENV}"
-    COMMAND $<$<PLATFORM_ID:Windows>:${MIM_PY_BOOTSTRAP_PYTHON}> -m ensurepip --upgrade
+set(_venv_commands COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIM_PY_VENV}")
+
+if(WIN32)
+    list(APPEND _venv_commands
+        COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m ensurepip --upgrade
+    )
+endif()
+
+list(APPEND _venv_commands
     COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m venv "${MIM_PY_VENV}"
     COMMAND "${MIM_PY_PYTHON}" -m pip install --upgrade pip setuptools wheel
     COMMAND "${MIM_PY_PYTHON}" -m pip install pytest
     COMMAND "${CMAKE_COMMAND}" -E touch "${MIM_PY_VENV_STAMP}"
+)
+
+add_custom_command(
+    OUTPUT "${MIM_PY_VENV_STAMP}"
+    ${_venv_commands}
     COMMENT "mim_py: creating venv at ${MIM_PY_VENV}"
     VERBATIM
 )
+
 add_custom_target(mim_py_venv DEPENDS "${MIM_PY_VENV_STAMP}")
 
 # Generate a stub for the internal nanobind module.
