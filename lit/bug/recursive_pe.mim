@@ -1,0 +1,45 @@
+// RUN: %mim %s -o - | FileCheck %s
+plugin core;
+plugin tuple;
+plugin refly;
+
+lam idx {n: Nat} (v: Nat): Idx n = %core.idx n %core.mode.US v;
+
+/// copy of internal `make_Ts` from src/mim/plug/spirv/spirv.mim
+lam make_Ts
+    (levels: Nat,
+     ns: «levels; Nat»,
+     indices: «i: levels; Idx (ns#i)»)@(%core.bit2.and_ 0 (%core.pe.is_closed ns, %core.ncmp.ne (levels, 0)))
+  : □
+  = let fst = idx 0;
+    let done = (%core.ncmp.le (levels, 1));
+    let Ts = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices);
+    // let Ts = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail indices);
+    let dependent = «i: ns#fst; (★, Ts)#(%core.icmp.e (i, indices#fst))»;
+    let uniform = «ns#fst; Ts»;
+    let final = «ns#fst; ★»;
+    ((uniform, dependent)#((%refly.vars.await_closed levels %refly.vars.is_closed) indices#fst), final)#done;
+
+/// 1 level: indices (1_3) over ns (3,)
+/// expected: «3; ★»
+lam extern t1 () = make_Ts (1, (3,), (1_3,));
+// CHECK: t1 {{.*}}= «3; ★»
+
+/// 2 levels: indices (1_3, 0_2) over ns (3, 2)
+/// expected: «i: 3; (★, «2; ★»)#(i == 1_3)»
+lam extern t2 () = make_Ts (2, (3, 2), (1_3, 0_2));
+// CHECK: t2 {{.*}}= «i: 3; [★, «2; ★»]»
+
+/// 3 levels: indices (0_3, 1_3, 1_2) over ns (3, 3, 2) (matches doc example)
+lam extern t3 () = make_Ts (3, (3, 3, 2), (0_3, 1_3, 1_2));
+// CHECK: t3 {{.*}}= [[★, [★, «2, ★»], ★], ★, ★]
+
+/// uniform case: index not closed → uniform branch
+lam extern t1_var (i: Idx 3) = make_Ts (1, (3,), (i,));
+// CHECK: t1_var {{.*}}= «3; ★»
+
+lam extern t2_var (i: Idx 3, j: Idx 2) = make_Ts (2, (3, 2), (i, j));
+// CHECK: t2_var {{.*}}= «3; «2; ★»»
+
+/// levels=3 with middle index open: L2 call still has open `i`, L3 call becomes fully closed → expected to get stuck on L3
+lam extern t3_mid (i: Idx 3) = make_Ts (3, (3, 3, 2), (0_3, i, 1_2));
