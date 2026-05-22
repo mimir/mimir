@@ -92,6 +92,7 @@ const Def* Emitter::strip_rec(const Def* def) {
     if (Axm::isa<spirv::entry>(def)) return nullptr;
     if (Axm::isa<sflow::Token>(def)) return nullptr;
     if (Axm::isa<sflow::Struct>(def)) return nullptr;
+    if (Axm::isa<sflow::Header>(def)) return nullptr;
 
     return def;
 }
