@@ -68,7 +68,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     } else if (auto cf_switch = Axm::isa<sflow::_switch>(app->callee())) {
         // === Structured switch-case ===
         // => OpSelectionMerge + OpSwitch
-        auto [cf_break, cf_default, targets, index, token] = cf_switch->uncurry_args<5>();
+        auto [cf_break, cf_default, targets, index, token, arg] = cf_switch->uncurry_args<6>();
 
         bb.merge = Op{
             OpKind::SelectionMerge,
@@ -85,7 +85,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         for (auto cur = targets; cur->num_ops() == 3; cur = cur->op(2)) {
             auto idx_def  = cur->op(0);
             auto case_lam = cur->op(1);
-            link_phi(lam, case_lam->as_mut<Lam>(), app->arg());
+            link_phi(lam, case_lam->as_mut<Lam>(), arg);
             auto literal = int_to_words(Lit::as(idx_def), 32);
             cases.insert(cases.end(), literal.begin(), literal.end());
             cases.push_back(bb_id(case_lam->as_mut<Lam>()));
@@ -101,14 +101,14 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
         link_phi(lam, header_lam, arg);
         bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
-    } else if (auto cf_header = Axm::isa<sflow::header>(app->callee())) {
+    } else if (auto cf_header = Axm::isa<sflow::header>(app)) {
         // === Loop header ===
         // => OpLoopMerge + OpBranch/OpBranchConditional
         // This lam is the SPIR-V loop header. Emit OpLoopMerge naming the break
         // lam as merge block and the continue lam as continue target. Then
         // branch into the body via the tuple/index pair (mirrors `if`).
         // Register `lam` so loopbacks reaching this loop can find it.
-        auto [cf_struct, tuple, index, token] = cf_header->uncurry_args<4>();
+        auto [cf_struct, tuple, index, token, arg] = cf_header->uncurry_args<5>();
         auto [path, cf_continue, cf_break]    = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
         auto continue_lam                     = cf_continue->as_mut<Lam>();
         auto break_lam                        = cf_break->as_mut<Lam>();
@@ -123,7 +123,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         };
         std::vector<Word> branches{emit_term(index)};
         for (auto branch : tuple->ops()) {
-            link_phi(lam, branch->as_mut<Lam>(), app->arg());
+            link_phi(lam, branch->as_mut<Lam>(), arg);
             branches.push_back(bb_id(branch->as_mut<Lam>()));
         }
         bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
@@ -149,13 +149,13 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // === Loopback to header ===
         // The arg has type `Header H path break`; `path` is the unique key of
         // the enclosing loop, registered by the header lam in `loop_headers_`.
-        auto [cf_header_val, value] = cf_exit->uncurry_args<2>();
+        auto [cf_header_val, token, arg] = cf_exit->uncurry_args<3>();
         auto [_H, path, _break]     = Axm::as<sflow::Header>(cf_header_val->type())->uncurry_args<3>();
         auto it                     = loop_headers_.find(path);
         if (it == loop_headers_.end()) error("loopback target not registered: {}", lam);
         auto header_lam = it->second;
 
-        link_phi(lam, header_lam, value);
+        link_phi(lam, header_lam, arg);
         bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
     } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {
         // === Unconditional forward branch ===
