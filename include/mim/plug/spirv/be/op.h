@@ -217,6 +217,10 @@ enum class OpKind {
     Switch,
     Return,
     ReturnValue,
+    // Int arithmetic
+    IAdd,
+    ISub,
+    IMul,
     // Int comparisons
     IEqual,
     INotEqual,
@@ -328,6 +332,9 @@ struct Op {
             case OpKind::Switch: return "OpSwitch";
             case OpKind::Return: return "OpReturn";
             case OpKind::ReturnValue: return "OpReturnValue";
+            case OpKind::IAdd: return "OpIAdd";
+            case OpKind::ISub: return "OpISub";
+            case OpKind::IMul: return "OpIMul";
             case OpKind::IEqual: return "OpIEqual";
             case OpKind::INotEqual: return "OpINotEqual";
             case OpKind::UGreaterThan: return "OpUGreaterThan";
@@ -394,6 +401,9 @@ struct Op {
             case OpKind::Switch: return 251;
             case OpKind::Return: return 253;
             case OpKind::ReturnValue: return 254;
+            case OpKind::IAdd: return 128;
+            case OpKind::ISub: return 130;
+            case OpKind::IMul: return 132;
             case OpKind::IEqual: return 170;
             case OpKind::INotEqual: return 171;
             case OpKind::UGreaterThan: return 172;

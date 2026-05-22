@@ -301,6 +301,28 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
         return id;
     }
 
+    // Handle Nat arithmetic - Nat is emitted as 32-bit unsigned int
+    if (auto nat = Axm::isa<core::nat>(def)) {
+        auto [lhs, rhs] = nat->arg()->projs<2>();
+        Word lhs_id     = emit_term(lhs);
+        Word rhs_id     = emit_term(rhs);
+
+        OpKind op_kind;
+        switch (nat.id()) {
+            case core::nat::add: op_kind = OpKind::IAdd; break;
+            // TODO: %core.nat.sub saturates at 0; plain OpISub underflows on a<b.
+            case core::nat::sub: op_kind = OpKind::ISub; break;
+            case core::nat::mul: op_kind = OpKind::IMul; break;
+            default:
+                std::cerr << "unknown core.nat variant\n";
+                bb.ops.emplace_back(Op{OpKind::Undefined, {}, id, type_id});
+                return id;
+        }
+
+        bb.ops.emplace_back(Op{op_kind, {lhs_id, rhs_id}, id, type_id});
+        return id;
+    }
+
     // Handle Nat comparisons - Nat is emitted as 32-bit unsigned int
     if (auto ncmp = Axm::isa<core::ncmp>(def)) {
         auto [lhs, rhs]   = ncmp->arg()->projs<2>();
