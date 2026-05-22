@@ -113,8 +113,6 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto continue_lam                     = cf_continue->as_mut<Lam>();
         auto break_lam                        = cf_break->as_mut<Lam>();
 
-        loop_headers_[path] = lam;
-
         bb.merge = Op{
             OpKind::LoopMerge,
             {bb_id(break_lam), bb_id(continue_lam), 0},

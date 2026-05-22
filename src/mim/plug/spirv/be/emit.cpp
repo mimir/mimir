@@ -1,5 +1,6 @@
 #include "mim/plug/spirv/be/emit.h"
 
+#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
 #include "mim/plug/spirv/spirv.h" // IWYU pragma: keep
 
 namespace mim::plug::spirv {
@@ -22,6 +23,24 @@ void Emitter::visit(const Nest& nest) {
 
     auto f = nest.root()->mut()->as<Lam>();
     emit_function(f);
+
+    // Pre-pass: register loop headers by loopback-path so loopback can find them
+    // regardless of traversal order over `muts`. The loopback path differs from
+    // the header struct's path: it comes from the Header field in the continue
+    // lam's signature.
+    for (auto mut : muts) {
+        auto lam = mut->isa<Lam>();
+        if (!lam || !lam->is_set()) continue;
+        auto app = lam->body()->isa<App>();
+        if (!app) continue;
+        if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
+            auto [cf_break, cf_continue, cf_header, token, arg] = cf_loop->uncurry_args<5>();
+            auto continue_dom = cf_continue->type()->as<Pi>()->dom();
+            auto header_field = continue_dom->op(3);
+            auto path         = Axm::as<sflow::Header>(header_field)->uncurry_args<3>()[1];
+            loop_headers_[path] = cf_header->as_mut<Lam>();
+        }
+    }
 
     for (auto mut : muts) {
         if (auto lam = mut->isa<Lam>()) {
