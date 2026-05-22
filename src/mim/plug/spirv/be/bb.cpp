@@ -143,6 +143,12 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto target_lam                            = break_target->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
+    } else if (auto cf_exit = Axm::isa<sflow::merge>(app)) {
+        auto [cf_struct, token, value]             = cf_exit->uncurry_args<3>();
+        auto [path, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
+        auto target_lam                            = break_target->as_mut<Lam>();
+        link_phi(lam, target_lam, value);
+        bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::loopback>(app)) {
         // === Loopback to header ===
         // The arg has type `Header H path break`; `path` is the unique key of
