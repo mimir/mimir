@@ -1,0 +1,54 @@
+import mem;
+import sflow;
+import spirv;
+import vec;
+
+let F32 = %math.F32;
+
+let positions = (
+    (0.0:F32, -0.5:F32),
+    (0.5:F32, 0.5:F32),
+    (-0.5:F32, 0.5:F32),
+);
+
+let colors = (
+    (1.0:F32, 0.0:F32, 0.0:F32),
+    (0.0:F32, 1.0:F32, 0.0:F32),
+    (0.0:F32, 0.0:F32, 1.0:F32),
+);
+
+lam vertex_body (vert_id: Idx 3): [«4; F32», «3; F32»]
+    = (%vec.cat (positions#vert_id, (0.0:F32, 1.0:F32)), colors#vert_id);
+
+lam fragment_body [color: «3; F32»]: «4; F32»
+    = (%vec.cat (color, 1.0:F32));
+
+let v_color = %spirv.output (%spirv.decor.location 0) «3; F32»;
+
+let i_color = %spirv.input (%spirv.decor.location 0) «3; F32»;
+let f_color = %spirv.output (%spirv.decor.location 0) «4; F32»;
+
+fun extern vertex [
+    mem: %mem.M 0,
+    model: %spirv.entry %spirv.model.vertex (),
+] = let (mem_, vertex_id) = %spirv.load (mem, %spirv.vertex_id model);
+    let (position, color) = vertex_body (%core.bitcast (Idx 3) vertex_id);
+    let mem__ = %spirv.store (mem_, %spirv.position model, position);
+    return (%spirv.store (mem__, v_color, color));
+
+fun extern fragment [
+    mem: %mem.M 0,
+    model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
+    token: %sflow.Root,
+] = let (mem_, color) = %spirv.load (mem, i_color);
+    %sflow.loop break continue loop token 5 where
+        con loop (i: Nat, struct, token) =
+            %sflow.header struct (left, right) (%core.ncmp.e (i, 0)) token () where
+            con left  (_: [], struct, _) = %sflow.continue struct i;
+            con right (_: [], struct, _) = %sflow.break struct ();
+        end;
+        con continue (i: Nat, _, token, header) =
+            %sflow.loopback header token (%core.nat.sub (i, 1));
+        con break (_: [], _, _) =
+            return (%spirv.store (mem_, f_color, fragment_body color));
+    end;
