@@ -217,6 +217,13 @@ enum class OpKind {
     Switch,
     Return,
     ReturnValue,
+    // Int comparisons
+    IEqual,
+    INotEqual,
+    UGreaterThan,
+    UGreaterThanEqual,
+    ULessThan,
+    ULessThanEqual,
     // Float comparisons
     FOrdEqual,
     FOrdNotEqual,
@@ -321,6 +328,12 @@ struct Op {
             case OpKind::Switch: return "OpSwitch";
             case OpKind::Return: return "OpReturn";
             case OpKind::ReturnValue: return "OpReturnValue";
+            case OpKind::IEqual: return "OpIEqual";
+            case OpKind::INotEqual: return "OpINotEqual";
+            case OpKind::UGreaterThan: return "OpUGreaterThan";
+            case OpKind::UGreaterThanEqual: return "OpUGreaterThanEqual";
+            case OpKind::ULessThan: return "OpULessThan";
+            case OpKind::ULessThanEqual: return "OpULessThanEqual";
             case OpKind::FOrdEqual: return "OpFOrdEqual";
             case OpKind::FOrdNotEqual: return "OpFOrdNotEqual";
             case OpKind::FOrdLessThan: return "OpFOrdLessThan";
@@ -381,6 +394,12 @@ struct Op {
             case OpKind::Switch: return 251;
             case OpKind::Return: return 253;
             case OpKind::ReturnValue: return 254;
+            case OpKind::IEqual: return 170;
+            case OpKind::INotEqual: return 171;
+            case OpKind::UGreaterThan: return 172;
+            case OpKind::UGreaterThanEqual: return 174;
+            case OpKind::ULessThan: return 176;
+            case OpKind::ULessThanEqual: return 178;
             case OpKind::FOrdEqual: return 180;
             case OpKind::FOrdNotEqual: return 182;
             case OpKind::FOrdLessThan: return 184;

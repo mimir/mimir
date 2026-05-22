@@ -1,5 +1,5 @@
 
-#include "mim/plug/core/autogen.h"
+#include "mim/plug/core/core.h"
 #include "mim/plug/math/math.h"
 #include "mim/plug/spirv/autogen.h"
 #include "mim/plug/spirv/be/emit.h"
@@ -298,6 +298,37 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
             // Narrowing: use OpUConvert (truncate)
             bb.ops.push_back(Op{OpKind::UConvert, {src_id}, id, type_id});
         }
+        return id;
+    }
+
+    // Handle Nat comparisons - Nat is emitted as 32-bit unsigned int
+    if (auto ncmp = Axm::isa<core::ncmp>(def)) {
+        auto [lhs, rhs]   = ncmp->arg()->projs<2>();
+        Word lhs_id       = emit_term(lhs);
+        Word rhs_id       = emit_term(rhs);
+        Word bool_type_id = emit_type(world().annex<spirv::Bool>());
+
+        OpKind op_kind;
+        switch (ncmp.id()) {
+            case core::ncmp::e:  op_kind = OpKind::IEqual; break;
+            case core::ncmp::ne: op_kind = OpKind::INotEqual; break;
+            case core::ncmp::l:  op_kind = OpKind::ULessThan; break;
+            case core::ncmp::le: op_kind = OpKind::ULessThanEqual; break;
+            case core::ncmp::g:  op_kind = OpKind::UGreaterThan; break;
+            case core::ncmp::ge: op_kind = OpKind::UGreaterThanEqual; break;
+            case core::ncmp::f:
+                module_.declarations.emplace_back(Op{OpKind::ConstantFalse, {}, id, bool_type_id});
+                return id;
+            case core::ncmp::t:
+                module_.declarations.emplace_back(Op{OpKind::ConstantTrue, {}, id, bool_type_id});
+                return id;
+            default:
+                std::cerr << "unknown core.ncmp variant\n";
+                bb.ops.emplace_back(Op{OpKind::Undefined, {}, id, bool_type_id});
+                return id;
+        }
+
+        bb.ops.emplace_back(Op{op_kind, {lhs_id, rhs_id}, id, bool_type_id});
         return id;
     }
 
