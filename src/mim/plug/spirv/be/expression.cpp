@@ -289,7 +289,10 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
 
         if (src_width == dst_width) {
             // Same size: use OpBitcast or just return source
-            if (emit_type(src->type()) == type_id) return src_id;
+            if (emit_type(src->type()) == type_id) {
+                locals_[def] = src_id;
+                return src_id;
+            }
             bb.ops.push_back(Op{OpKind::Bitcast, {src_id}, id, type_id});
         } else if (src_width < dst_width) {
             // Widening: use OpUConvert (zero extend)
