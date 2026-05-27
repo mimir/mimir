@@ -10,7 +10,6 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;
 
     const Def* fuse_map_reduce(const App*);
