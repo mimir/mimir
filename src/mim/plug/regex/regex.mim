@@ -11,7 +11,7 @@
 import compile;
 plugin core;
 plugin mem;
-plugin direct;
+plugin cps;
 ///
 /// ## Types
 ///

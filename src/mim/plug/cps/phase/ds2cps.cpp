@@ -1,11 +1,11 @@
-#include "mim/plug/direct/phase/ds2cps.h"
+#include "mim/plug/cps/phase/ds2cps.h"
 
 #include <mim/lam.h>
 #include <mim/world.h>
 
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 
-namespace mim::plug::direct {
+namespace mim::plug::cps {
 
 const Def* DS2CPS::rewrite_imm_App(const App* app) {
     if (auto lam = app->callee()->isa_mut<Lam>()) {
@@ -72,4 +72,4 @@ const Def* DS2CPS::rewrite_lam(Lam* lam) {
     return rewritten_[lam];
 }
 
-} // namespace mim::plug::direct
+} // namespace mim::plug::cps

@@ -6,7 +6,7 @@
 
 plugin mem;
 plugin regex;
-plugin direct;
+plugin cps;
 
 let Top = ⊤:Nat;
 let re = %regex.disj (%regex.lit '0', %regex.lit '5', %regex.lit '9');

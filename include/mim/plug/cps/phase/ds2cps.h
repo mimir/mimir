@@ -3,7 +3,7 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
-namespace mim::plug::direct {
+namespace mim::plug::cps {
 
 /// Converts direct style function to cps functions.
 /// To do so, for each (non-type-level) ds function a corresponding cps function is created:
@@ -30,4 +30,4 @@ private:
     Def2Def rewritten_;
 };
 
-} // namespace mim::plug::direct
+} // namespace mim::plug::cps

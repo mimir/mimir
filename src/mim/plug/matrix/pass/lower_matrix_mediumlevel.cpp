@@ -8,7 +8,7 @@
 
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/matrix/matrix.h"
 #include "mim/plug/mem/mem.h"
 
@@ -188,7 +188,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         auto fun      = world().mut_fun(mem_type, map_reduce_ax->type())->set("mapRed");
 
         // assert(0);
-        auto ds_fun = direct::op_cps2ds_dep(fun);
+        auto ds_fun = cps::op_cps2ds_dep(fun);
         DLOG("ds_fun {} : {}", ds_fun, ds_fun->type());
         auto call = world().app(ds_fun, mem);
         DLOG("call {} : {}", call, call->type());

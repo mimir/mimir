@@ -4,7 +4,7 @@
 // a chain of cps calls followed by a direct call
 
 plugin core;
-plugin direct;
+plugin cps;
 
 
 lam f (a:I32): I32 = %core.wrap.add 0 (2I32, a);

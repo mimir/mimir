@@ -13,7 +13,7 @@ import compile;
 import affine;
 import autodiff;
 import clos;
-import direct;
+import cps;
 import gpu;
 import matrix;
 import refly;
@@ -53,11 +53,11 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.repl2phase %autodiff.zero_repl,
             )
         ),
-        cond_phase "direct" direct_phases,
+        cond_phase "cps" cps_phases,
         cond_phase "matrix" (
             %compile.phases ff (
                 matrix_lower_phase,
-                cond_phase "direct" direct_phases,
+                cond_phase "cps" cps_phases,
             )
         ),
         cond_phase "affine" %affine.lower_for_phase,

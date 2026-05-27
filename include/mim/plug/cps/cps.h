@@ -3,14 +3,14 @@
 #include <mim/rewrite.h>
 #include <mim/world.h>
 
-#include "mim/plug/direct/autogen.h"
+#include "mim/plug/cps/autogen.h"
 
-namespace mim::plug::direct {
+namespace mim::plug::cps {
 
-/// @name %%direct.cps2ds_dep
+/// @name %%cps.cps2ds_dep
 /// ```
 /// let k: Cn [t: T, Cn U t] = ...;
-/// let f: [t: T] → U = %direct.cps2ds_dep (T, lm (t': T): * = [t → t']U) k;
+/// let f: [t: T] → U = %cps.cps2ds_dep (T, lm (t': T): * = [t → t']U) k;
 /// ```
 ///@{
 inline const Def* op_cps2ds_dep(const Def* k) {
@@ -25,8 +25,8 @@ inline const Def* op_cps2ds_dep(const Def* k) {
         body = VarRewriter(var, l->var()).rewrite(U); // TODO typeof(dom->var()) != typeof(l->var())
     l->set(true, body);
 
-    return w.app(w.app(w.annex<direct::cps2ds_dep>(), {T, l}), k);
+    return w.app(w.app(w.annex<cps::cps2ds_dep>(), {T, l}), k);
 }
 ///@}
 
-} // namespace mim::plug::direct
+} // namespace mim::plug::cps

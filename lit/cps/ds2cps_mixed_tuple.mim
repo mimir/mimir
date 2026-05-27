@@ -4,7 +4,7 @@
 // test a cps call to a function that contains a direct call
 
 plugin core;
-plugin direct;
+plugin cps;
 
 lam f (a:I32): [I32, I32] =
     (%core.wrap.add 0 (2I32, a), %core.wrap.add i32 (3I32, a));

@@ -2,7 +2,7 @@
 // RUN: %mim -p clos %s --output-ll %t.ll -o -
 
 plugin core;
-plugin direct;
+plugin cps;
 
 let pb_type = Cn [%mem.M 0, Cn [%mem.M 0]];
 

@@ -1,6 +1,6 @@
-/// # The direct style Plugin {#direct}
+/// # The CPS Plugin {#cps}
 ///
-/// @see mim::plug::direct
+/// @see mim::plug::cps
 ///
 /// [TOC]
 ///
@@ -15,22 +15,22 @@ import compile;
 ///
 /// ## Operations
 ///
-/// ### %%direct.cps2ds
+/// ### %%cps.cps2ds
 ///
 /// This axiom lets the user call a CPS function in direct style.
 /// The function is not converted. Only the call site is changed.
 ///
-axm %direct.cps2ds_dep: [T: *, U: T → *] → [   Fn [t: T] → U t] → [[t: T] → U t], 2;
-lam %direct.cps2ds      (T: *, U:     *)   (f: Fn     T  → U  ):  [    T  → U  ] = %direct.cps2ds_dep (T, λ [T]: * = U) f;
+axm %cps.cps2ds_dep: [T: *, U: T → *] → [   Fn [t: T] → U t] → [[t: T] → U t], 2;
+lam %cps.cps2ds      (T: *, U:     *)   (f: Fn     T  → U  ):  [    T  → U  ] = %cps.cps2ds_dep (T, λ [T]: * = U) f;
 ///
 /// ## Phases
 ///
-axm %direct.ds2cps_phase: %compile.Phase;
-axm %direct.cps2ds_phase: %compile.Phase;
+axm %cps.ds2cps_phase: %compile.Phase;
+axm %cps.cps2ds_phase: %compile.Phase;
 ///
-let direct_phases =
+let cps_phases =
     %compile.phases ff (
-        %direct.ds2cps_phase,
-        %direct.cps2ds_phase,
+        %cps.ds2cps_phase,
+        %cps.cps2ds_phase,
         optimization_phase,
     );

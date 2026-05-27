@@ -5,9 +5,9 @@
 #include "mim/rewrite.h"
 #include "mim/schedule.h"
 
-namespace mim::plug::direct {
+namespace mim::plug::cps {
 
-/// Rewrite direct.cps2ds to cps.
+/// Rewrite cps.cps2ds to cps.
 class CPS2DSPhase : public Phase {
 public:
     CPS2DSPhase(World& world, flags_t annex)
@@ -31,4 +31,4 @@ private:
     Lam* current_external_;
 };
 
-} // namespace mim::plug::direct
+} // namespace mim::plug::cps

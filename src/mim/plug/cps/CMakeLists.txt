@@ -1,6 +1,6 @@
-add_mim_plugin(direct
+add_mim_plugin(cps
     SOURCES
-        direct.cpp
+        cps.cpp
         phase/ds2cps.cpp
         phase/cps2ds.cpp
         normalizers.cpp

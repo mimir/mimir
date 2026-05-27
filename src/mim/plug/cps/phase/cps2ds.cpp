@@ -1,4 +1,4 @@
-#include "mim/plug/direct/phase/cps2ds.h"
+#include "mim/plug/cps/phase/cps2ds.h"
 
 #include <ranges>
 
@@ -7,11 +7,11 @@
 #include "mim/schedule.h"
 #include "mim/world.h"
 
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 
 #define DEBUG_CPS2DS 0
 
-namespace mim::plug::direct {
+namespace mim::plug::cps {
 
 void CPS2DSPhase::start() {
 #if DEBUG_CPS2DS
@@ -82,7 +82,7 @@ const Def* CPS2DSPhase::rewrite(const Def* def) {
     if (auto lam = def->isa_mut<Lam>()) return rewrite_lam(lam);
 
     if (auto app = def->isa<App>()) {
-        if (auto cps2ds = Axm::isa<direct::cps2ds_dep>(app->callee())) {
+        if (auto cps2ds = Axm::isa<cps::cps2ds_dep>(app->callee())) {
             auto cps_lam = rewrite(cps2ds->arg())->as<Lam>();
 
             auto call_arg = rewrite(app->arg());
@@ -190,4 +190,4 @@ const Nest& CPS2DSPhase::curr_external_nest() const {
     return *i->second;
 }
 
-} // namespace mim::plug::direct
+} // namespace mim::plug::cps
