@@ -14,10 +14,8 @@ void Printer::print_block(const MLIRBlock& b) {
             args += (args.empty() ? "" : ", ") + a.name + ": " + print_type(a.type);
         line("^{}({}):", b.label, args);
     }
-    indent();
     for (auto& op : b.ops)
         op->print(*this);
-    dedent();
 }
 
 } // namespace mim::mlir_be

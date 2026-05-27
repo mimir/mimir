@@ -48,19 +48,53 @@ public:
 private:
     static std::string_view mnemonic(Kind k) {
         switch (k) {
-            case Kind::Add:  return "addi";
-            case Kind::Sub:  return "subi";
-            case Kind::Mul:  return "muli";
+            case Kind::Add: return "addi";
+            case Kind::Sub: return "subi";
+            case Kind::Mul: return "muli";
             case Kind::DivS: return "divsi";
             case Kind::DivU: return "divui";
             case Kind::RemS: return "remsi";
             case Kind::RemU: return "remui";
-            case Kind::And:  return "andi";
-            case Kind::Or:   return "ori";
-            case Kind::Xor:  return "xori";
-            case Kind::Shl:  return "shli";
+            case Kind::And: return "andi";
+            case Kind::Or: return "ori";
+            case Kind::Xor: return "xori";
+            case Kind::Shl: return "shli";
             case Kind::ShrS: return "shrsi";
             case Kind::ShrU: return "shrui";
+        }
+        return "?";
+    }
+
+    Kind kind_;
+};
+
+class BinaryFloatOp : public MLIROp {
+public:
+    enum class Kind {
+        Add,
+        Sub,
+        Mul,
+        Div,
+        Rem,
+    };
+
+    BinaryFloatOp(MLIRValue result, Kind kind, MLIRValue lhs, MLIRValue rhs)
+        : MLIROp({std::move(result)}, {std::move(lhs), std::move(rhs)})
+        , kind_(kind) {}
+
+    void print(Printer& p) const override {
+        p.line("{} = arith.{} {}, {} : {}", results_[0].name, mnemonic(kind_), operands_[0].name, operands_[1].name,
+               print_type(results_[0].type));
+    }
+
+private:
+    static std::string_view mnemonic(Kind k) {
+        switch (k) {
+            case Kind::Add: return "addf";
+            case Kind::Sub: return "subf";
+            case Kind::Mul: return "mulf";
+            case Kind::Div: return "divf";
+            case Kind::Rem: return "remf";
         }
         return "?";
     }
@@ -96,8 +130,8 @@ public:
 private:
     static std::string_view mnemonic(Pred pred) {
         switch (pred) {
-            case Pred::Eq:  return "eq";
-            case Pred::Ne:  return "ne";
+            case Pred::Eq: return "eq";
+            case Pred::Ne: return "ne";
             case Pred::Slt: return "slt";
             case Pred::Sle: return "sle";
             case Pred::Sgt: return "sgt";

@@ -132,10 +132,9 @@ struct MLIRRegion {
     std::vector<MLIRBlock> blocks;
 
     MLIRBlock& entry() { return blocks.front(); }
+    const MLIRBlock& entry() const { return blocks.front(); }
 
-    MLIRBlock& add_block(std::string label = {}) {
-        return blocks.emplace_back(MLIRBlock{std::move(label), {}, {}});
-    }
+    MLIRBlock& add_block(std::string label = {}) { return blocks.emplace_back(MLIRBlock{std::move(label), {}, {}}); }
 
     MLIRRegion() { blocks.emplace_back(); }
 };
