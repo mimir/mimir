@@ -4,5 +4,8 @@ add_mim_plugin(core
         normalizers.cpp
         be/ll.cpp
         be/sexpr.cpp
+        be/mlir/region_tree.cpp
+        be/mlir/printer.cpp
+        be/mlir/type_converter.cpp
     INSTALL
 )
