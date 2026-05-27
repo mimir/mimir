@@ -9,3 +9,5 @@ add_dependencies(sccp  mim_all_plugins)
 
 add_dependencies(mim_all hello)
 add_dependencies(mim_all sccp)
+
+add_subdirectory(mlir_test)
