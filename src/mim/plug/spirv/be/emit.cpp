@@ -34,7 +34,8 @@ void Emitter::visit(const Nest& nest) {
         auto app = lam->body()->isa<App>();
         if (!app) continue;
         if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
-            auto [cf_break, cf_continue, cf_header, token, arg] = cf_loop->uncurry_args<5>();
+            auto [sigma, arg]                              = cf_loop->uncurry_args<2>();
+            auto [token, cf_break, cf_continue, cf_header] = sigma->projs<4>();
             auto continue_dom = cf_continue->type()->as<Pi>()->dom();
             auto header_field = continue_dom->op(3);
             auto path         = Axm::as<sflow::Header>(header_field)->uncurry_args<3>()[1];

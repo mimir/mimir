@@ -13,6 +13,8 @@ plugin vec;
 plugin tuple;
 plugin compile;
 
+axm %spirv.Target: {T: ★} → [Fn T → []] → ★; 
+
 let M = %mem.M 0;
 
 /// ## Primitive Types
@@ -71,13 +73,21 @@ lam idx {n: Nat} (v: Nat): Idx n = %core.idx n %core.mode.US v;
 /// Create nested array type of types matching shape given by indices.
 /// For example, indices (0_3, 1_3, 1_2) would produce the following type:
 /// ```mim
-/// [[★, [★, [★, ★]], ★], ★]
+/// [[★, [★, «2, ★»], ★], ★, ★]
 /// ```
-// lam make_Ts {levels: Nat}@(%core.pe.is_closed levels) (ns: «levels; Nat») (indices: «i: levels; Idx (ns#i)»)
-//     = let fst = idx 0;
-//       let Ts = make_Ts (%tuple.pop ns)#1_2 (%tuple.pop indices)#1_2;
-//       let done = (%core.ncmp.e (levels, 1));
-//       «i: ns#fst; (★, (Ts, «ns#fst; ★»)#done)#(%core.icmp.e (i, indices#fst))»;
+lam make_Ts
+    (levels: Nat,
+     ns: «levels; Nat»,
+     indices: «i: levels; Idx (ns#i)»)@(%core.bit2.and_ 0 (%core.pe.is_closed ns, %core.ncmp.ne (levels, 0)))
+  : □
+  = let fst = idx 0;
+    let done = (%core.ncmp.le (levels, 1));
+    let Ts = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices);
+    // let Ts = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail indices);
+    let dependent = «i: ns#fst; (★, Ts)#(%core.icmp.e (i, indices#fst))»;
+    let uniform = «ns#fst; Ts»;
+    let final = «ns#fst; ★»;
+    ((uniform, dependent)#((%refly.vars.await_closed levels %refly.vars.is_closed) indices#fst), final)#done;
 
 /// Takes nested array of types and creates nested array type out of that.
 ///
@@ -85,9 +95,16 @@ lam idx {n: Nat} (v: Nat): Idx n = %core.idx n %core.mode.US v;
 /// ```mim
 /// (Nat, Nat, ((Bool, Nat), Nat), ‹2; Nat›)) => [Nat, Nat, [[Bool, Nat], Nat, «2; Nat»]]
 /// ```
-// lam make_Compound {levels: Nat}@(%core.pe.is_closed levels) (ns: «levels; Nat») (indices: «i: levels; Idx (ns#i)») [Ts: make_Ts ns indices]
+// lam make_Compound
+//     (levels: Nat,
+//      ns: «levels; Nat»,
+//      indices: «i: levels; Idx (ns#i)»,
+//      Ts: make_Ts (levels, ns, indices))@(%core.pe.is_closed levels)
 //     = let fst = idx 0;
-//       let Compound = make_Compound (%tuple.pop ns)#1_2 (%tuple.pop indices)#1_2;
+//       let sub = %core.nat.sub (levels, 1);
+//       let tns = %tuple.tail ns;
+//       let tindices = %tuple.tail indices;
+//       let Compound = make_Compound (sub, tns, tindices, make_Ts (sub, tns, tindices));
 //       let done = (%core.ncmp.e (levels, 1));
 //       «i: ns#fst; ((Ts#(indices#fst), Compound)#(%core.icmp.e (i, indices#fst)), Ts#i)#done»;
 
@@ -97,17 +114,25 @@ lam idx {n: Nat} (v: Nat): Idx n = %core.idx n %core.mode.US v;
 /// ```mim
 /// chain_extract (1_3, 0_2, 1_2, i) (Nat, Nat, ((Bool, ‹3; Nat›), Nat), ‹2; Nat›) => Nat
 /// ```
-// lam chain_extract {levels: Nat}@(%core.pe.is_closed levels) {ns: «levels; Nat»} (indices: «i: levels; Idx (ns#i)») [Ts: make_Ts ns indices]: ★
+// lam chain_extract
+//     (levels: Nat,
+//      ns: «levels; Nat»,
+//      indices: «i: levels; Idx (ns#i)»,
+//      Ts: make_Ts (levels, ns, indices))@(%core.pe.is_closed levels)
+//   : ★
 //     = let fst = idx 0;
-//       let deeper = chain_extract (%tuple.pop ns)#1_2 (%tuple.pop indices)#1_2 (Ts#(indices#fst));
+//       let sub = %core.nat.sub (levels, 1);
+//       let tns = %tuple.tail ns;
+//       let tindices = %tuple.tail indices;
+//       let deeper = chain_extract (sub, tns, tindices, Ts#(indices#fst));
 //       (Ts#(indices#fst), deeper)#(%core.ncmp.e (levels, 1));
 
 // axm %spirv.access_chain: {levels: Nat, ns: «levels; Nat», write: Bool, class: %spirv.StorageClass write}
 //     → [indices: «i: levels; Idx (ns#i)»]
-//     → {Ts: make_Ts ns indices}
-//     → let C = make_Compound indices Ts;
+//     → {Ts: make_Ts (levels, ns, indices)}
+//     → let C = make_Compound (levels, ns, indices, Ts);
 //       [%spirv.Ptr class C]
-//     → %spirv.Ptr class (chain_extract indices Ts);
+//     → %spirv.Ptr class (chain_extract (levels, ns, indices, Ts));
 
 axm %spirv.variable: {n: Nat, write: Bool}
     → [class: %spirv.StorageClass write]

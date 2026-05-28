@@ -83,55 +83,59 @@ bool CFG::Node::handle_sflow(const App* app) {
     // For axm positions / uncurry arities, mirror mim::plug::spirv::Emitter::emit_bb in
     // src/mim/plug/spirv/be/bb.cpp.
     if (sv == "%sflow.if") {
-        auto [_cf_break, tuple, _index, _token, _arg] = app->uncurry_args<5>();
+        auto [sigma, _arg]                       = app->uncurry_args<2>();
+        auto [_token, _cf_break, tuple, _index]  = sigma->projs<4>();
         for (auto branch : tuple->ops()) add_lam(branch);
         return true;
     }
     if (sv == "%sflow.switch") {
-        auto callee = app->callee()->as<App>();
-        auto [_cf_break, cf_default, targets, _index, _token] = callee->uncurry_args<5>();
+        auto [sigma, _arg]                                          = app->uncurry_args<2>();
+        auto [_token, _cf_break, cf_default, targets, _index]       = sigma->projs<5>();
         add_lam(cf_default);
         // targets: right-nested tuple [idx, case, [idx, case, [..., []]]]
         for (auto cur = targets; cur->num_ops() == 3; cur = cur->op(2)) add_lam(cur->op(1));
         return true;
     }
     if (sv == "%sflow.loop") {
-        auto [_cf_break, _cf_continue, cf_header, _token, _arg] = app->uncurry_args<5>();
+        auto [sigma, _arg]                                       = app->uncurry_args<2>();
+        auto [_token, _cf_break, _cf_continue, cf_header]        = sigma->projs<4>();
         add_lam(cf_header);
         return true;
     }
     if (sv == "%sflow.header") {
-        auto callee = app->callee()->as<App>();
-        auto [cf_struct, tuple, _index, _token] = callee->uncurry_args<4>();
-        // Register this lam under the loop's path so loopbacks can find it.
-        // Struct type: ... → [path: Path, step: Nat] → [continue] → [break] → ★;
-        // uncurry_args<3> on the type yields ((path,step), continue, break).
-        auto [path, _continue, _break] = cf_struct->type()->as<App>()->uncurry_args<3>();
-        cfg_.sflow_path_to_header_[path] = this;
+        auto [sigma, _arg]                          = app->uncurry_args<2>();
+        auto [_header_token, cf_struct, tuple, _index] = sigma->projs<4>();
+        // Register this lam under the loop's token so loopbacks can find it.
+        // Struct type: ... → [token: Token path step] → [continue] → [break] → ★;
+        // uncurry_args<3> on the type yields (token, continue, break).
+        auto [token, _continue, _break]   = cf_struct->type()->as<App>()->uncurry_args<3>();
+        cfg_.sflow_path_to_header_[token] = this;
         for (auto branch : tuple->ops()) add_lam(branch);
         return true;
     }
     if (sv == "%sflow.continue" || sv == "%sflow.fallthrough") {
-        auto [cf_struct, _val]                       = app->uncurry_args<2>();
-        auto [_path, continue_target, _break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        auto [cf_struct, _val]                        = app->uncurry_args<2>();
+        auto [_token, continue_target, _break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
         add_lam(continue_target);
         return true;
     }
     if (sv == "%sflow.break") {
-        auto [cf_struct, _val]                       = app->uncurry_args<2>();
-        auto [_path, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        auto [cf_struct, _val]                        = app->uncurry_args<2>();
+        auto [_token, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
         add_lam(break_target);
         return true;
     }
     if (sv == "%sflow.merge") {
-        // sig: [Struct ff ...] → [token] → Cn B
-        auto [cf_struct, _token, _val]               = app->uncurry_args<3>();
-        auto [_path, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
+        // sig: [merge_token, Struct ff ...] → Cn B
+        auto [sigma, _val]                            = app->uncurry_args<2>();
+        auto [_merge_token, cf_struct]                = sigma->projs<2>();
+        auto [_token, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
         add_lam(break_target);
         return true;
     }
     if (sv == "%sflow.loopback") {
-        auto [cf_header_val, _value] = app->uncurry_args<2>();
+        auto [sigma, _value]         = app->uncurry_args<2>();
+        auto [cf_header_val, _tok]   = sigma->projs<2>();
         // Header type: [H] [path,step] [break] → ★
         auto [_H, path, _break]      = cf_header_val->type()->as<App>()->uncurry_args<3>();
         if (auto it = cfg_.sflow_path_to_header_.find(path); it != cfg_.sflow_path_to_header_.end()) {

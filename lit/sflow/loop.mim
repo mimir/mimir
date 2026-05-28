@@ -2,12 +2,12 @@
 
 plugin sflow;
 
-fun extern foo (token: %sflow.Root) = %sflow.loop break continue loop token 5 where
+fun extern foo (token: %sflow.Root) = %sflow.loop (token, break, continue, loop) 5 where
     con loop (i: Nat, struct, token) =
-        %sflow.header struct (left, right) (%core.ncmp.e (i, 0)) token () where
+        %sflow.header (token, struct, (left, right), %core.ncmp.e (i, 0)) () where
         con left (_: [], struct, _) = %sflow.continue struct i;
         con right (_: [], struct, _) = %sflow.break struct ();
     end;
     con break (_: [], struct, _) = return (5);
-    con continue (i: Nat, _, token, header) = %sflow.loopback header token (%core.nat.sub (i, 1));
+    con continue (i: Nat, _, token, header) = %sflow.loopback (token, header) (%core.nat.sub (i, 1));
 end;
