@@ -38,7 +38,7 @@ const Def* BetaRedPhase::rewrite_imm_App(const App* app) {
         return rewrite(old_lam->body());
     }
 
-    return Rewriter::rewrite_imm_App(app);
+    return RWPhase::rewrite_imm_App(app);
 }
 
 } // namespace mim

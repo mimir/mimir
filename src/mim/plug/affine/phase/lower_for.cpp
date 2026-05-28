@@ -32,7 +32,7 @@ const Def* merge_t(const Def* elem, const Def* tuple, const Def* mem) {
 } // namespace
 
 const Def* LowerFor::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return Rewriter::rewrite_imm_App(app);
+    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
 
     if (auto for_ax = Axm::isa<affine::For>(app)) {
         DLOG("rewriting for axm: `{}`", for_ax);
@@ -74,7 +74,7 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         return new_world().app(new_head_lam, merge_t(new_begin, new_init, new_mem));
     }
 
-    return Rewriter::rewrite_imm_App(app);
+    return RWPhase::rewrite_imm_App(app);
 }
 
 } // namespace mim::plug::affine::phase

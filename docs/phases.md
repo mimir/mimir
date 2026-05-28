@@ -186,7 +186,7 @@ public:
 private:
     const Def* rewrite_imm_App(const App* app) override {
         // customize rebuilding here
-        return Rewriter::rewrite_imm_App(app);
+        return RWPhase::rewrite_imm_App(app);
     }
 };
 ```
