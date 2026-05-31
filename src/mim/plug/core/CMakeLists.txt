@@ -7,5 +7,6 @@ add_mim_plugin(core
         be/mlir/region_tree.cpp
         be/mlir/printer.cpp
         be/mlir/type_converter.cpp
+        be/mlir/lam_classifier.cpp
     INSTALL
 )
