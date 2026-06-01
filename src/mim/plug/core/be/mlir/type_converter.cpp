@@ -12,7 +12,7 @@ MLIRType TypeConverter::convert(const Def* type) {
     if (auto it = cache_.find(type); it != cache_.end()) return it->second;
 
     MLIRType result = [&]() -> MLIRType {
-        if (type->isa<Nat>()) return MLIRIndexType{};
+        if (type->isa<Nat>()) return MLIRIntType{64};
 
         if (auto size = Idx::isa(type)) {
             auto bits = Idx::size2bitwidth(size);
@@ -101,6 +101,13 @@ bool TypeConverter::is_void_ret(const Pi* pi) const {
     if (!ret_pi) return true;
     auto dom = plug::mem::strip_mem_ty(ret_pi->dom());
     return dom == world_.sigma();
+}
+
+MLIRValue TypeConverter::to_index(MLIRValue v, MLIRBlock& into, std::string fresh_name) {
+    if (std::holds_alternative<MLIRIndexType>(v.type)) return v;
+    MLIRValue cast{fresh_name, MLIRType{MLIRIndexType{}}};
+    into.ops.emplace_back(std::make_unique<IndexCastOp>(cast, v));
+    return cast;
 }
 
 } // namespace mim::mlir_be
