@@ -54,8 +54,14 @@ public:
 
         // build return type string
         std::string ret;
-        for (auto& t : ret_types_)
-            ret += (ret.empty() ? "" : ", ") + print_type(t);
+        if (ret_types_.size() == 1) {
+            ret = print_type(ret_types_[0]);
+        } else if (!ret_types_.empty()) {
+            ret = "(";
+            for (auto& t : ret_types_)
+                ret += (ret.empty() ? "" : ", ") + print_type(t);
+            ret += ")";
+        }
 
         auto linkage = is_public_ ? "public" : "private";
 

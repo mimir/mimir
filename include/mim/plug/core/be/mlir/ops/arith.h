@@ -1,4 +1,7 @@
 #pragma once
+#include <cmath>
+
+#include <functional>
 #include <string_view>
 
 #include "mim/plug/core/be/mlir/printer.h"
@@ -146,5 +149,59 @@ private:
 
     Pred pred_;
 };
+
+class IndexCastOp : public MLIROp {
+public:
+    IndexCastOp(MLIRValue result, MLIRValue operand)
+        : MLIROp({std::move(result)}, {std::move(operand)}) {}
+
+    void print(Printer& p) const override {
+        p.line("{} = arith.index_cast {} : {} to {}", results_[0].name, operands_[0].name,
+               print_type(operands_[0].type), print_type(results_[0].type));
+    }
+};
+
+class DenseConstOp : public MLIROp {
+public:
+    DenseConstOp(MLIRValue result, std::string attr)
+        : MLIROp({std::move(result)}, {})
+        , attr_(std::move(attr)) {}
+
+    void print(Printer& p) const override {
+        p.line("{} = arith.constant {} : {}", results_[0].name, attr_, print_type(results_[0].type));
+    }
+
+private:
+    std::string attr_;
+};
+
+inline std::string make_dense_attr(const std::vector<double>& vals, const MLIRTensorType& tt) {
+    std::vector<size_t> dims;
+    for (auto& d : tt.shape)
+        dims.push_back(d ? static_cast<size_t>(*d) : 0);
+
+    std::function<std::string(size_t, size_t&)> emit_nested;
+    emit_nested = [&](size_t dim_idx, size_t& flat_idx) -> std::string {
+        if (dim_idx == dims.size() - 1) {
+            std::string s = "[";
+            for (size_t i = 0; i < dims[dim_idx]; ++i) {
+                if (i) s += ", ";
+                // print as integer if whole number, float otherwise
+                double v = vals[flat_idx++];
+                s += (v == std::floor(v)) ? std::format("{:.1f}", v) : std::format("{}", v);
+            }
+            return s + "]";
+        }
+        std::string s = "[";
+        for (size_t i = 0; i < dims[dim_idx]; ++i) {
+            if (i) s += ", ";
+            s += emit_nested(dim_idx + 1, flat_idx);
+        }
+        return s + "]";
+    };
+
+    size_t idx = 0;
+    return "dense<" + emit_nested(0, idx) + ">";
+}
 
 } // namespace mim::mlir_be
