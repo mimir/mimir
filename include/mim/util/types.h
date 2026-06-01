@@ -1,12 +1,7 @@
 #pragma once
 
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
-
-#include <limits>
-#include <ostream>
-#include <type_traits>
 
 #if defined(__STDCPP_FLOAT16_T__)
 #    include <stdfloat>
@@ -17,7 +12,6 @@ namespace mim {
 
 #define MIM_1_8_16_32_64(X) X(1) X(8) X(16) X(32) X(64)
 #define MIM_8_16_32_64(X)        X(8) X(16) X(32) X(64)
-#define MIM_16_32_64(X)               X(16) X(32) X(64)
 #if defined(__STDCPP_FLOAT16_T__)
 #    define MIM_F16_32_64(X)          X(16) X(32) X(64)
 #else

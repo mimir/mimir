@@ -103,6 +103,13 @@ const Nest::Node* Scheduler::smart(Def* curr_mut, const Def* def) {
 }
 
 static void post_order(const Nest& nest, const Nest::Node* node, Scheduler::Schedule& res, MutSet& done) {
+    // The mut of a virtual root is a nullptr
+    if (!node->mut()) {
+        for (auto child : node->children().nodes())
+            post_order(nest, child, res, done);
+        return;
+    }
+
     if (!node->mut()->isa<Lam>()) return;
     if (auto [_, ins] = done.emplace(node->mut()); !ins) return;
 

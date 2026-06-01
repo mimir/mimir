@@ -1,0 +1,5 @@
+// RUN: %mim %s -O 1
+
+lam extern test {n: Nat} {Ts: «n; ★»} [values: «i: n; Ts#i»]
+  : [Nat, «i: n; Ts#i»]
+  = (0, ‹i: n; values#i›);

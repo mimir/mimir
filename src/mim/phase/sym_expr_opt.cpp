@@ -178,7 +178,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
         }
     }
 
-    return Rewriter::rewrite_imm_App(old_app);
+    return RWPhase::rewrite_imm_App(old_app);
 }
 
 } // namespace mim

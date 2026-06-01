@@ -340,8 +340,12 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         auto var = p->var();
         arity()->emit_value(e, var);
         auto b = body()->emit(e);
-        a->set_body(b->type());
         p->set(b);
+        auto arr_b = b->type();
+        if (auto pvar = var->isa<Var>())
+            // Use array var in array body instead of pack var
+            arr_b = VarRewriter(pvar, a->var()).rewrite(arr_b);
+        a->set_body(arr_b);
         if (auto imm = p->immutabilize()) return imm;
         return p;
     } else {

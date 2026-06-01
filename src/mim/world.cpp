@@ -1,9 +1,12 @@
 #include "mim/world.h"
 
+#include <ranges>
+
 #include "mim/check.h"
 #include "mim/def.h"
 #include "mim/driver.h"
 #include "mim/rewrite.h"
+#include "mim/schedule.h"
 #include "mim/tuple.h"
 
 #include "mim/util/util.h"
@@ -390,11 +393,16 @@ const Def* World::extract(const Def* d, const Def* index) {
         }
     }
 
-    if (auto pack = d->isa_imm<Pack>()) return pack->body();
-
     if (size && !Checker::alpha<Checker::Check>(type->arity(), size))
         error(index->loc(), "index '{}' does not fit within arity '{}'", index, type->arity());
     // TODO if we have indices we need to check as well that this is compatible with `d`
+
+    if (auto pack = d->isa<Pack>()) {
+        if (pack->has_var())
+            return pack->reduce(index);
+        else
+            return pack->body();
+    }
 
     // extract(insert(x, index, val), index) -> val
     if (auto insert = d->isa<Insert>()) {
@@ -686,18 +694,33 @@ Defs World::reduce(const Var* var, const Def* arg) {
     return reduct->defs();
 }
 
-void World::for_each(bool elide_empty, std::function<void(Def*)> f) {
+void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
     unique_queue<MutSet> queue;
     for (auto mut : externals().muts())
         queue.push(mut);
 
+    std::vector<Def*> muts;
     while (!queue.empty()) {
         auto mut = queue.pop();
-        if (mut && mut->is_closed() && (!elide_empty || mut->is_set())) f(mut);
+        if (mut && mut->is_closed() && (!elide_empty || mut->is_set())) muts.push_back(mut);
 
         for (auto op : mut->deps())
             for (auto mut : op->local_muts())
                 queue.push(mut);
+    }
+
+    // Schedules the mutables in post-order to ensure that they
+    // are emitted in the correct order of dependencies.
+    if (schedule) {
+        const auto mut_nest = Nest(muts);
+        auto schedule       = Scheduler::schedule(mut_nest) | std::views::reverse | std::views::filter([&](Def* mut) {
+                            return mut->is_closed() && (!elide_empty || mut->is_set());
+                        });
+        for (auto* mut : schedule)
+            f(mut);
+    } else {
+        for (auto* mut : muts)
+            f(mut);
     }
 }
 

@@ -15,6 +15,8 @@
 /// A floating-point type with `p` many bits as precision and `e` many bits as exponent.
 /// The sign bit is neither included in `p` nor in `e`.
 /// Thus, the total number of bits occupied by a value of this type is `p + e + 1`.
+/// Current constant folding only supports IEEE binary16/binary32/binary64 literals,
+/// subject to host `f16` support.
 axm %math.F: «2; Nat» → *;
 
 let %math.f16     = (10,  5);

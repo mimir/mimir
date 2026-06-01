@@ -1,8 +1,17 @@
 #pragma once
 
+#include <cstdint>
+#include <cstring>
+
+#include <algorithm>
+#include <bit>
+#include <iterator>
 #include <queue>
 #include <stack>
+#include <string>
+#include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
@@ -11,42 +20,32 @@
 #include <fe/assert.h>
 
 #include "mim/util/hash.h"
-#include "mim/util/types.h"
 
 namespace mim {
 
 /// @name Utility Functions
 ///@{
 
-/// A bitcast from @p src of type @p S to @p D.
+/// A bitcast from @p src of type @p S to @p D, supporting different sizes.
 template<class D, class S>
-inline D bitcast(const S& src) {
-    D dst;
-    auto s = reinterpret_cast<const void*>(&src);
-    auto d = reinterpret_cast<void*>(&dst);
-
-    if constexpr (sizeof(D) == sizeof(S)) std::memcpy(d, s, sizeof(D));
-    if constexpr (sizeof(D) < sizeof(S)) std::memcpy(d, s, sizeof(D));
-    if constexpr (sizeof(D) > sizeof(S)) {
-        std::memset(d, 0, sizeof(D));
-        std::memcpy(d, s, sizeof(S));
+constexpr D bitcast_resize(const S& src) noexcept
+    requires(std::is_trivially_copyable_v<S> && std::is_trivially_copyable_v<D>)
+{
+    if constexpr (sizeof(D) == sizeof(S)) {
+        return std::bit_cast<D>(src);
+    } else {
+        D dst{}; // zero-fill
+        constexpr std::size_t n = (sizeof(D) < sizeof(S)) ? sizeof(D) : sizeof(S);
+        std::memcpy(&dst, &src, n);
+        return dst;
     }
-    return dst;
 }
 
-template<class T>
-bool get_sign(T val) {
-    static_assert(std::is_integral<T>(), "get_sign only supported for signed and unsigned integer types");
-    if constexpr (std::is_signed<T>())
-        return val < 0;
-    else
-        return val >> (T(sizeof(val)) * T(8) - T(1));
-}
+constexpr std::uint64_t pad(std::uint64_t offset, std::uint64_t align) noexcept {
+    assert(align != 0);
 
-// TODO I guess we can do that with C++20 <bit>
-inline u64 pad(u64 offset, u64 align) {
     auto mod = offset % align;
-    if (mod != 0) offset += align - mod;
+    if (mod) offset += align - mod;
     return offset;
 }
 ///@}
@@ -54,7 +53,7 @@ inline u64 pad(u64 offset, u64 align) {
 /// @name Algorithms
 ///@{
 template<class I, class T, class L>
-I binary_find(I begin, I end, T val, L lt) {
+constexpr I binary_find(I begin, I end, T val, L lt) noexcept {
     static_assert(std::random_access_iterator<I>);
     I i;
     if (std::distance(begin, end) < 16)
@@ -65,7 +64,7 @@ I binary_find(I begin, I end, T val, L lt) {
 }
 
 /// Like `std::string::substr`, but works on `std::string_view` instead.
-inline std::string_view subview(std::string_view s, size_t i, size_t n = std::string_view::npos) {
+constexpr std::string_view subview(std::string_view s, size_t i, size_t n = std::string_view::npos) noexcept {
     n = std::min(n, s.size());
     return {s.data() + i, n - i};
 }
@@ -121,32 +120,6 @@ auto assert_emplace(C& container, Args&&... args) {
     return i;
 }
 ///@}
-
-template<class Set>
-class unique_stack {
-public:
-    using T = typename std::remove_reference_t<Set>::value_type;
-
-    bool push(T val) {
-        if (done_.emplace(val).second) {
-            stack_.emplace(val);
-            return true;
-        }
-        return false;
-    }
-
-    bool empty() const { return stack_.empty(); }
-    const T& top() { return stack_.top(); }
-    T pop() { return mim::pop(stack_); }
-    void clear() {
-        done_.clear();
-        stack_ = {};
-    }
-
-private:
-    Set done_;
-    std::stack<T> stack_;
-};
 
 template<class Set>
 class unique_queue {
