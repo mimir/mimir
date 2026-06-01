@@ -120,4 +120,28 @@ private:
     MLIRRegion body_;
 };
 
+class LinalgBroadcastOp : public MLIROp {
+public:
+    LinalgBroadcastOp(MLIRValue result, MLIRValue input, MLIRValue out_buf, std::vector<int64_t> broadcast_dims)
+        : MLIROp({std::move(result)}, {std::move(input), std::move(out_buf)})
+        , broadcast_dims_(std::move(broadcast_dims)) {}
+
+    void print(Printer& p) const override {
+        // dimensions string: [0] or [0, 2] etc.
+        std::string dims;
+        for (size_t i = 0; i < broadcast_dims_.size(); ++i)
+            dims += (i ? ", " : "") + std::to_string(broadcast_dims_[i]);
+
+        p.line("{} = linalg.broadcast ins({} : {})", results_[0].name, operands_[0].name,
+               print_type(operands_[0].type));
+        p.indent();
+        p.line("outs({} : {})", operands_[1].name, print_type(operands_[1].type));
+        p.line("dimensions = [{}]", dims);
+        p.dedent();
+    }
+
+private:
+    std::vector<int64_t> broadcast_dims_;
+};
+
 } // namespace mim::mlir_be
