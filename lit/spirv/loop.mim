@@ -44,8 +44,8 @@ fun extern fragment [
     %sflow.loop (token, break, continue, loop) 5 where
         con loop (i: Nat, struct, token) =
             %sflow.header (token, struct, (left, right), %core.ncmp.e (i, 0)) () where
-            con left  (_: [], struct, _) = %sflow.continue struct i;
-            con right (_: [], struct, _) = %sflow.break struct ();
+            con left  (_: [], struct, tok) = %sflow.continue (tok, struct) i;
+            con right (_: [], struct, tok) = %sflow.break (tok, struct) ();
         end;
         con continue (i: Nat, _, token, header) =
             %sflow.loopback (header, token) (%core.nat.sub (i, 1));

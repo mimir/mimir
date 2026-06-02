@@ -46,27 +46,36 @@ let Header = %sflow.Header;
 /// Branch to the continue target of a given control flow structure.
 axm %sflow.continue: {
   C B H: ★,
-  path loopback_path: Path, step loopback_step: Nat,
+  path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
   token: Token path step,
   break: Cn B,
   continue: Cn [C, Struct tt token (⊥: Cn ⊥) break, Token path 0, Header H (loopback_path, loopback_step) break]
-} → [Struct tt token continue break] → Cn C;
+} → [
+    inner_token: Token inner_path inner_step,
+    Struct tt token continue break
+    ] → Cn C;
 ///
 /// Branch to the next case of a given switch structure.
 axm %sflow.fallthrough: {
   C B: ★,
-  path next_path: Path, step: Nat,
+  path next_path inner_path: Path, step inner_step: Nat,
   token: Token path step,
   break: Cn B,
   continue: Cn [C, Struct tt token (⊥: Cn ⊥) break, Token next_path 0]
-} → [Struct tt token continue break] → Cn C;
+} → [
+    inner_token: Token inner_path inner_step,
+    Struct tt token continue break
+    ] → Cn C;
 ///
 /// Branch to the break target of a given control flow structure.
 axm %sflow.break: {
-  C B: ★, path: Path, step: Nat,
+  C B: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
   continue: Cn C, break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]
-} → [Struct tt token continue break] → Cn B;
+} → [
+    inner_token: Token inner_path inner_step,
+    Struct tt token continue break
+    ] → Cn B;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
 /// Unlike break, merge requires a token from the same scope as the struct

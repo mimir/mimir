@@ -114,13 +114,15 @@ bool CFG::Node::handle_sflow(const App* app) {
         return true;
     }
     if (sv == "%sflow.continue" || sv == "%sflow.fallthrough") {
-        auto [cf_struct, _val]                        = app->uncurry_args<2>();
+        auto [sigma, _val]                            = app->uncurry_args<2>();
+        auto [_inner_token, cf_struct]                = sigma->projs<2>();
         auto [_token, continue_target, _break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
         add_lam(continue_target);
         return true;
     }
     if (sv == "%sflow.break") {
-        auto [cf_struct, _val]                        = app->uncurry_args<2>();
+        auto [sigma, _val]                            = app->uncurry_args<2>();
+        auto [_inner_token, cf_struct]                = sigma->projs<2>();
         auto [_token, _continue_target, break_target] = cf_struct->type()->as<App>()->uncurry_args<3>();
         add_lam(break_target);
         return true;

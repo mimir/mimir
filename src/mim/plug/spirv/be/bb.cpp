@@ -130,19 +130,22 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         }
         bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
-        auto [cf_struct, value]                     = cf_exit->uncurry_args<2>();
+        auto [sigma, value]                         = cf_exit->uncurry_args<2>();
+        auto [inner_token, cf_struct]               = sigma->projs<2>();
         auto [token, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
         auto target_lam                             = continue_target->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::fallthrough>(app)) {
-        auto [cf_struct, value]                     = cf_exit->uncurry_args<2>();
+        auto [sigma, value]                         = cf_exit->uncurry_args<2>();
+        auto [inner_token, cf_struct]               = sigma->projs<2>();
         auto [token, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
         auto target_lam                             = continue_target->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::_break>(app)) {
-        auto [cf_struct, value]                     = cf_exit->uncurry_args<2>();
+        auto [sigma, value]                         = cf_exit->uncurry_args<2>();
+        auto [inner_token, cf_struct]               = sigma->projs<2>();
         auto [token, continue_target, break_target] = Axm::as<sflow::Struct>(cf_struct->type())->uncurry_args<3>();
         auto target_lam                             = break_target->as_mut<Lam>();
         link_phi(lam, target_lam, value);
