@@ -149,13 +149,13 @@ bool equals_any(const Def* lhs, const Def* rhs) {
 }
 
 bool equals_any(Defs lhs, Defs negated_rhs) {
-    Ranges lhs_ranges, rhs_ranges;
-    auto only_ranges = std::ranges::views::filter([](auto d) { return Axm::isa<range>(d); });
-    std::ranges::transform(lhs | only_ranges, std::back_inserter(lhs_ranges), get_range);
-    std::ranges::transform(negated_rhs | only_ranges, std::back_inserter(rhs_ranges), get_range);
-    if (rhs_ranges.size() != negated_rhs.size()) return false;
-    // this only holds, if the rhs only contains ranges and the ranges in lhs fully cover the ranges on rhs
-    return std::ranges::includes(lhs_ranges, rhs_ranges);
+    auto is_range = [](const Def* d) { return Axm::isa<range>(d); };
+    auto to_range = std::views::filter(is_range) | std::views::transform(get_range);
+    auto rhs_view = negated_rhs | to_range;
+
+    if (std::ranges::distance(rhs_view) != std::ranges::distance(negated_rhs)) return false;
+
+    return std::ranges::includes(lhs | to_range, rhs_view);
 }
 
 const Def* normalize_disj(const Def* type, const Def*, const Def* arg) {

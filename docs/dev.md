@@ -486,14 +486,10 @@ The last line assumes `mim::Flags::scalarize_threshold = 32`.
 There are several ways to iterate over a MimIR program.
 Which one is best depends on what you want to do and how much structure you need during the traversal.
 
-The simplest approach is to start from [World::externals](@ref mim::World::externals) and recursively visit [Def::deps](@ref mim::Def::deps):
+The simplest approach is to start from [World::annexes](@ref mim::World::annexes) and [World::externals](@ref mim::World::externals) and recursively visit [Def::deps](@ref mim::Def::deps).
+Oftentimes, you can use [World::roots](@ref mim::World::roots) if you don't need to distinguish between annexes and externals:
 
 ```cpp
-DefSet done;
-
-for (auto mut : world.externals())
-    visit(done, mut);
-
 void visit(DefSet& done, const Def* def) {
     if (!done.emplace(def).second) return;
 
@@ -501,6 +497,13 @@ void visit(DefSet& done, const Def* def) {
 
     for (auto op : def->deps())
         visit(done, op);
+}
+
+void visit() {
+    DefSet done;
+
+    for (auto mut : world.roots())
+        visit(done, mut);
 }
 ```
 

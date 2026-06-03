@@ -226,7 +226,7 @@ const Nest::Node* Nest::Node::calc_dominance() const {
     // Actual dominance algorithm
     for (bool todo = true; todo;) {
         todo = false;
-        for (auto node : nodes | std::ranges::views::reverse) {
+        for (auto node : nodes | std::views::reverse) {
             // skip entry nodes
             if (node->idom_ == inest()) continue;
 

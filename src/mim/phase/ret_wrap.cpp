@@ -3,11 +3,8 @@
 namespace mim {
 
 bool RetWrap::analyze() {
-    for (auto def : old_world().annexes())
+    for (auto def : old_world().roots())
         visit(def);
-    for (auto def : old_world().externals().muts())
-        visit(def);
-
     return false; // no fixed-point neccessary
 }
 

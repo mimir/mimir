@@ -3,11 +3,8 @@
 namespace mim {
 
 bool BetaRedPhase::analyze() {
-    for (auto def : old_world().annexes())
+    for (auto def : old_world().roots())
         visit(def, false);
-    for (auto def : old_world().externals().muts())
-        visit(def, false);
-
     return false; // no fixed-point neccessary
 }
 

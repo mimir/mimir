@@ -258,7 +258,7 @@ private:
     }
 
     std::optional<const Def*> lookup(const Def* old_def) {
-        for (auto& state : states_ | std::ranges::views::reverse)
+        for (auto& state : states_ | std::views::reverse)
             if (auto i = state.old2new.find(old_def); i != state.old2new.end()) return i->second;
         return {};
     }
@@ -268,7 +268,7 @@ private:
     ///@{
     undo_t analyze(const Def*);
     bool analyzed(const Def* def) {
-        for (auto& state : states_ | std::ranges::views::reverse)
+        for (auto& state : states_ | std::views::reverse)
             if (state.analyzed.contains(def)) return true;
         curr_state().analyzed.emplace(def);
         return false;

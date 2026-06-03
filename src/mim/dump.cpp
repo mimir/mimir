@@ -265,10 +265,10 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
 
                         if (ascii) {
                             os << '_';
-                            for (auto d : digits | std::ranges::views::reverse)
+                            for (auto d : digits | std::views::reverse)
                                 os << char('0' + d);
                         } else {
-                            for (auto d : digits | std::ranges::views::reverse)
+                            for (auto d : digits | std::views::reverse)
                                 os << uint8_t(0xE2) << uint8_t(0x82) << (uint8_t(0x80 + d));
                         }
                         return os;

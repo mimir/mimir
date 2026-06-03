@@ -253,6 +253,15 @@ public:
 
     const Externals& externals() const { return move_.externals; }
     Externals& externals() { return move_.externals; }
+
+    /// annexes() + externals().muts() in this order.
+    auto roots() const {
+        // TODO use std::views::concat - once we have C++26
+        auto res = Vector<const Def*>(annexes().begin(), annexes().end());
+        for (auto mut : externals().muts())
+            res.emplace_back(mut);
+        return res;
+    }
     ///@}
 
     /// @name Univ, Type, Var, Proxy, Hole
