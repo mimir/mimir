@@ -105,15 +105,19 @@ add_custom_target(lit
     USES_TERMINAL
 )
 
+set(MIM_TEST_ALL_DEPS
+    mim-gtest
+    mim-regex-gtest
+    mim
+    mim_all_plugins
+    mim_lit_tests
+)
+
 add_custom_target(test-all
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure ${MIM_CTEST_CONFIG_ARGS}
     COMMAND ${MIM_LIT_COMMAND}
     DEPENDS
-        mim-gtest
-        mim-regex-gtest
-        mim
-        mim_all_plugins
-        mim_lit_tests
+        ${MIM_TEST_ALL_DEPS}
     COMMAND_EXPAND_LISTS
     USES_TERMINAL
 )

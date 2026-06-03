@@ -13,3 +13,6 @@
 [submodule "lyra"]
 	path = submodules/lyra
 	url = ../../bfgroup/lyra.git
+[submodule "submodules/nanobind"]
+	path = submodules/nanobind
+	url = ../../wjakob/nanobind.git

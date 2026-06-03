@@ -44,7 +44,7 @@ private:
     const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_imm_Var(const Var*) final;
-    const Def* rewrite_no_eta(const Def* old_def) { return Rewriter::rewrite(old_def); }
+    const Def* rewrite_no_eta(const Def* old_def) { return RWPhase::rewrite(old_def); }
 
     DefSet analyzed_;
     GIDMap<const Lam*, Lattice> lam2lattice_;

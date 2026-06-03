@@ -356,7 +356,8 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple(
                 {rewritten_mem,
-                 new_world().bot(rewrite(ptr->type()))}); // return bot for the pointer, we hopefully proved that noone uses it
+                 new_world().bot(
+                     rewrite(ptr->type()))}); // return bot for the pointer, we hopefully proved that noone uses it
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
@@ -468,9 +469,8 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             DLOG("wiring up phi arguments");
             for (auto [mut, slot2value] : analysis_.mut2slot2value()) {
                 DLOG("known values  for mut {}:", mut);
-                for (auto [slot, value] : slot2value) {
+                for (auto [slot, value] : slot2value)
                     DLOG("  {} -> {}", slot, value);
-                }
             }
 
             for (auto [slot, slot_type] : analysis_.all_slots()) {
@@ -478,14 +478,16 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
                     if (auto def = lattice(phi)) {
                         if (keep(phi, def)) {
-                            if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut()); slot2value_it != analysis_.mut2slot2value().end()) {
+                            if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut());
+                                slot2value_it != analysis_.mut2slot2value().end()) {
                                 auto slot2value = slot2value_it->second;
                                 if (auto found_value_it = slot2value.find(sloxy); found_value_it != slot2value.end()) {
                                     auto found_value = found_value_it->second;
-                                    new_args[j++] = rewrite(found_value);
+                                    new_args[j++]    = rewrite(found_value);
                                 } else {
-                                    // TODO: the value is probably one of the vars of current_mut now, so rewrite the proxy
-                                    auto phi = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
+                                    // TODO: the value is probably one of the vars of current_mut now, so rewrite the
+                                    // proxy
+                                    auto phi      = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
                                     new_args[j++] = rewrite(phi);
                                 }
                             }
@@ -499,7 +501,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
         }
     }
 
-    return Rewriter::rewrite_imm_App(old_app);
+    return RWPhase::rewrite_imm_App(old_app);
 }
 
 } // namespace mim::plug::mem::phase

@@ -42,6 +42,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}"
 option(BUILD_SHARED_LIBS    "Build shared libraries." ON)
 option(MIM_BUILD_DOCS       "If ON, build the documentation (requires Doxygen)." OFF)
 option(MIM_BUILD_EXAMPLES   "If ON, build examples." OFF)
+option(MIM_BUILD_PYTHON     "If ON, build the mim Python package from py/ into ${CMAKE_BINARY_DIR}/.venv." ON)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}; shared libs: ${BUILD_SHARED_LIBS}")
 
@@ -65,7 +66,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     option(BUILD_TESTING "Build lit and unit tests." OFF) # needs to be BEFORE "include(CTest)"
     include(CTest)
     cmake_dependent_option(MIM_LIT_WITH_VALGRIND "If ON, the Mim CLI in the lit tests will be run under valgrind." OFF "BUILD_TESTING" OFF)
-    set(MIM_LIT_TIMEOUT 20 CACHE STRING "Timout for lit tests.")
+    set(MIM_LIT_TIMEOUT 30 CACHE STRING "Timeout for lit tests.")
     if(BUILD_TESTING)
         include(GoogleTest)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -94,6 +95,11 @@ if(MIM_BUILD_DOCS)
     if(DOXYGEN_FOUND)
         add_subdirectory(docs)
     endif()
+endif()
+
+if(MIM_BUILD_PYTHON)
+    add_subdirectory(submodules/nanobind)
+    add_subdirectory(py)
 endif()
 
 write_basic_package_version_file(

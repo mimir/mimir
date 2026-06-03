@@ -1,0 +1,30 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// The inner map_reduce performs a reduction (sums along an axis), so its value at any
+// position requires a loop. The fuse phase must NOT fuse it into the outer pure map.
+plugin tensor;
+plugin core;
+plugin opt;
+
+lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
+
+fun sum_reduce [acc: Nat, x: Nat]@tt: [Nat] = return (%core.nat.add (acc, x));
+
+con extern f [v: «2; «3; Nat»», return: Cn «2; Nat»] =
+    // inner[i] = sum_j v[i, j]   (has reduction on axis j = index 1)
+    let inner = %tensor.map_reduce @1 @(Nat, 1) 2 @(Nat, 2, (2, 3)) (sum_reduce, 0) (0, 1) v;
+    // outer[i] = inner[i] + 1    (pure map)
+    let outer = %tensor.unary @(Nat, Nat) add1 @(1, 2) inner;
+    return outer;
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup_phase,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %compile.internal_cleanup_phase,
+    );
+
+// Two %tensor.map_reduce operations must remain, since the inner has a reduction.
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.map_reduce

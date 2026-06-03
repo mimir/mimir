@@ -14,6 +14,7 @@
 
 #include "mim/util/dbg.h"
 #include "mim/util/log.h"
+#include "mim/util/span.h"
 
 namespace mim {
 
@@ -611,6 +612,12 @@ public:
     const Def* call(Args&&... args) {
         return call<Normalize>(annex<Id>(), std::forward<Args>(args)...);
     }
+
+    /// Annex overload with `flags_t` as first argument.
+    template<bool Normalize = true, class... Args>
+    const Def* call(flags_t id, Args&&... args) {
+        return call<Normalize>(annex(id), std::forward<Args>(args)...);
+    }
     ///@}
 
     /// @name Vars & Muts
@@ -630,13 +637,16 @@ public:
     /// @name for_each
     /// Visits all closed mutables in this World.
     ///@{
-    void for_each(bool elide_empty, std::function<void(Def*)>);
+    void for_each(bool elide_empty, std::function<void(Def*)>, bool schedule = false);
 
     template<class M>
-    void for_each(bool elide_empty, std::function<void(M*)> f) {
-        for_each(elide_empty, [f](Def* m) {
-            if (auto mut = m->template isa<M>()) f(mut);
-        });
+    void for_each(bool elide_empty, std::function<void(M*)> f, bool schedule = false) {
+        for_each(
+            elide_empty,
+            [f](Def* m) {
+                if (auto mut = m->template isa<M>()) f(mut);
+            },
+            schedule);
     }
     ///@}
 
@@ -683,6 +693,9 @@ private:
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
+        for (auto op : def->ops())
+            assert(&op->world() == this && "op of new Def belongs to a different World");
+        assert((!def->type() || &def->type()->world() == this) && "type of new Def belongs to a different World");
 #endif
 
         if (is_frozen()) {

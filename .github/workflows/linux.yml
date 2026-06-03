@@ -42,6 +42,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                                                                                                  \
             -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr" \
             -DBUILD_TESTING=ON                                                                                                                         \
+            -DMIM_BUILD_PYTHON=OFF                                                                                                                     \
             -DMIM_BUILD_EXAMPLES=ON                                                                                                                    \
             -DMIM_FILECHECK=/usr/bin/FileCheck-20                                                                                                      \
             -DMIM_LIT_TIMEOUT=300
@@ -49,13 +50,14 @@ jobs:
       - name: Configure Release
         if: matrix.build-type == 'Release'
         run: |
-          CC=gcc-14 CXX=g++-14 cmake -B ${{github.workspace}}/build \
-            -DCMAKE_BUILD_TYPE=${{matrix.build-type}}               \
-            -DBUILD_TESTING=ON                                      \
-            -DMIM_BUILD_EXAMPLES=ON                                 \
-            -DMIM_FILECHECK=/usr/bin/FileCheck-20                   \
-            -DMIM_LIT_WITH_VALGRIND=ON                              \
-            -DMIM_LIT_TIMEOUT=300
+          CC=gcc-14 CXX=g++-14                            \
+          cmake -B ${{github.workspace}}/build            \
+                -DCMAKE_BUILD_TYPE=${{matrix.build-type}} \
+                -DBUILD_TESTING=ON                        \
+                -DMIM_BUILD_EXAMPLES=ON                   \
+                -DMIM_FILECHECK=/usr/bin/FileCheck-20     \
+                -DMIM_LIT_WITH_VALGRIND=ON                \
+                -DMIM_LIT_TIMEOUT=300
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build -v

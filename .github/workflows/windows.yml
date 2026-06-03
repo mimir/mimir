@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-2022
     strategy:
       matrix:
-        build-type: [Release] # Debug disabled: link.exe hangs :(
+        build-type: [Debug, Release]
 
     steps:
       - name: Clone recursively
@@ -39,9 +39,17 @@ jobs:
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           set CC=cl.exe
           set CXX=cl.exe
-          python -c "import sys; import os; print(os.path.dirname(sys.executable))" > tmpPath
-          set /p PYTHON_PATH= < tmpPath
-          cmake -B ${{github.workspace}}/build -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DPython3_ROOT_DIR=%PYTHON_PATH% -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe -DMIM_LIT_TIMEOUT=300
+          python -c "import sys; print(sys.executable)" > tmpPath
+          set /p PYTHON_EXE= < tmpPath
+          cmake -B ${{github.workspace}}/build -G Ninja   ^
+                -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ^
+                -DBUILD_TESTING=ON                        ^
+                -DMIM_BUILD_EXAMPLES=ON                   ^
+                -DPython3_EXECUTABLE=%PYTHON_EXE%         ^
+                -DPython_EXECUTABLE=%PYTHON_EXE%          ^
+                -DPYTHON_EXECUTABLE=%PYTHON_EXE%          ^
+                -DMIM_LIT_TIMEOUT=300                     ^
+                -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v2.0.9

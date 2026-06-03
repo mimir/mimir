@@ -18,15 +18,16 @@ using namespace mim;
 using namespace std::literals;
 
 int main(int argc, char** argv) {
-    enum Backends { AST, Dot, H, LL, Md, Mim, Nest, SExpr, SlottedSExpr, Num_Backends };
+    enum Backends { AST, Dot, H, PY, LL, Md, Mim, Nest, SExpr, SlottedSExpr, Num_Backends };
 
     try {
         Driver driver;
-        bool show_help         = false;
-        bool show_version      = false;
-        bool list_search_paths = false;
-        bool dot_follow_types  = false;
-        bool dot_all_annexes   = false;
+        bool show_help           = false;
+        bool show_version        = false;
+        bool list_search_paths   = false;
+        bool dot_follow_types    = false;
+        bool dot_all_annexes     = false;
+        bool sexpr_include_types = false;
         std::string input, prefix;
         std::string clang = sys::find_cmd("clang");
         std::vector<std::string> plugins, search_paths;
@@ -53,6 +54,7 @@ int main(int argc, char** argv) {
             | lyra::opt(output[AST],  "file"               )      ["--output-ast"           ]("Directly emits AST representation of input.")
             | lyra::opt(output[Dot],  "file"               )      ["--output-dot"           ]("Emits the Mim program as a MimIR graph using Graphviz' DOT language.")
             | lyra::opt(output[H  ],  "file"               )      ["--output-h"             ]("Emits a header file to be used to interface with a plugin in C++.")
+            | lyra::opt(output[PY ],  "file"               )      ["--output-py"             ]("Emits a Python enum to be used to interface with a plugin in Python.")
             | lyra::opt(output[LL ],  "file"               )      ["--output-ll"            ]("Compiles the Mim program to LLVM.")
             | lyra::opt(output[Md ],  "file"               )      ["--output-md"            ]("Emits the input formatted as Markdown.")
             | lyra::opt(output[Mim],  "file"               )["-o"]["--output-mim"           ]("Emits the Mim program again.")
@@ -62,6 +64,7 @@ int main(int argc, char** argv) {
             | lyra::opt(flags.force_load                   )      ["--force-load"           ]("Load plugins even on version mismatch.")
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
+            | lyra::opt(sexpr_include_types                )      ["--sexpr-include-types"  ]("Wraps symbolic expression terms in a type annotation. Types will not be wrapped in type annotations.")
             | lyra::opt(dot_follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
             | lyra::opt(dot_all_annexes                    )      ["--dot-all-annexes"      ]("Output all annexes - even if unused - in DOT output.")
             | lyra::opt(flags.dump_recursive               )      ["--dump-recursive"       ]("Dumps Mim program with a simple recursive algorithm that is not readable again from Mim but is less fragile and also works for broken Mim programs.")
@@ -160,11 +163,14 @@ int main(int argc, char** argv) {
                     mod->stream(tab, *s);
                 }
 
-                if (auto h = os[H]) {
+                auto h  = os[H];
+                auto py = os[PY];
+                if (h || py) {
                     mod->bind(ast);
                     ast.error().ack();
                     auto plugin = world.sym(fs::path{path}.filename().replace_extension().string());
-                    ast.bootstrap(plugin, *h);
+                    if (h) ast.bootstrap(plugin, *h);
+                    if (py) ast.bootstrap_py(plugin, *py);
                     return EXIT_SUCCESS;
                 }
 
@@ -188,13 +194,23 @@ int main(int argc, char** argv) {
                         error("'ll' emitter not loaded; try loading 'core' plugin");
                 }
                 if (auto s = os[SExpr]) {
-                    if (auto backend = driver.backend("sexpr"))
+                    if (sexpr_include_types)
+                        if (auto backend = driver.backend("sexpr-typed"))
+                            backend(world, *s);
+                        else
+                            error("'sexpr-typed' emitter not loaded; try loading 'core' plugin");
+                    else if (auto backend = driver.backend("sexpr"))
                         backend(world, *s);
                     else
                         error("'sexpr' emitter not loaded; try loading 'core' plugin");
                 }
                 if (auto s = os[SlottedSExpr]) {
-                    if (auto backend = driver.backend("sexpr-slotted"))
+                    if (sexpr_include_types)
+                        if (auto backend = driver.backend("sexpr-slotted-typed"))
+                            backend(world, *s);
+                        else
+                            error("'sexpr-slotted-typed' emitter not loaded; try loading 'core' plugin");
+                    else if (auto backend = driver.backend("sexpr-slotted"))
                         backend(world, *s);
                     else
                         error("'sexpr-slotted' emitter not loaded; try loading 'core' plugin");

@@ -247,6 +247,7 @@ class Def : public fe::RuntimeCast<Def> {
 private:
     Def& operator=(const Def&) = delete;
     Def(const Def&)            = delete;
+    Def(Def&&)                 = delete;
 
 protected:
     /// @name C'tors and D'tors
@@ -823,7 +824,7 @@ public:
     template<class T = flags_t>
     T get() const {
         static_assert(sizeof(T) <= 8);
-        return bitcast<T>(flags_);
+        return bitcast_resize<T>(flags_);
     }
     ///@}
 

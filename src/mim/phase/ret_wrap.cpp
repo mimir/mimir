@@ -57,7 +57,7 @@ const Def* RetWrap::rewrite(const Def* old_def) {
         DLOG("eta-expand: `{}` → `{}`", old_def, i->second);
         return i->second;
     }
-    return Rewriter::rewrite(old_def);
+    return RWPhase::rewrite(old_def);
 }
 
 const Def* RetWrap::rewrite_mut_Lam(Lam* old_lam) {
@@ -75,7 +75,7 @@ const Def* RetWrap::rewrite_mut_Lam(Lam* old_lam) {
         return rewrite_stub(old_lam, new_lam);
     }
 
-    return Rewriter::rewrite_mut_Lam(old_lam);
+    return RWPhase::rewrite_mut_Lam(old_lam);
 }
 
 } // namespace mim

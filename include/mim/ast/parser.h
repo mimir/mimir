@@ -42,7 +42,7 @@ public:
     Ptr<Module> import(Dbg, std::ostream* md = nullptr, Tok::Tag tag = Tok::Tag::K_import);
     Ptr<Module> import(std::istream&, Loc = {}, const fs::path* = nullptr, std::ostream* md = nullptr);
     Ptr<Module> plugin(Dbg);
-    Ptr<Module> plugin(const std::string& s) { return plugin({Loc(), driver().sym(s)}); }
+    Ptr<Module> plugin(std::string_view sv) { return plugin({Loc(), driver().sym(sv)}); }
     Ptr<Module> plugin(const char* name) { return plugin({Loc(), driver().sym(name)}); }
 
 private:

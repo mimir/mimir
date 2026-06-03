@@ -77,11 +77,26 @@ axm %refly.equiv(ae = struc_ne, aE = struc_eq,
                  Ae = alpha_ne, AE = alpha_eq):
     {T: *} → [T, T] → T, normalize_equiv;
 ///
+/// ### %%refly.check_bot
+///
+/// Checks whether argument is bottom.
+///
+axm %refly.check_bot: {T: *} → T → T, normalize_check_bot;
+///
 /// ### %%refly.check
 ///
 /// Checks the given condition and emits the error message, if false.
 ///
 axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
+///
+/// ### %%refly.vars
+///
+/// Inspect free-variable closedness of a Mim expression.
+/// * `is_closed`: Normalizes immediately to `tt` if the argument has no free vars, otherwise `ff`.
+/// * `await_closed`: Waits until the first argument is closed; then normalizes to the second argument.
+///
+axm %refly.vars(is_closed): {T: *} → T → Bool, normalize_vars;
+axm %refly.vars(await_closed): {T U: *} → T → U → U, normalize_vars;
 ///
 /// ## Manipulate
 ///

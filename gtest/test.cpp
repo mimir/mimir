@@ -11,6 +11,8 @@
 
 #include <mim/plug/core/core.h>
 
+#include "helpers.h"
+
 using namespace mim;
 using namespace mim::plug;
 
