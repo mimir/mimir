@@ -3,6 +3,7 @@
 #include <absl/container/fixed_array.h>
 
 #include "mim/def.h"
+#include "mim/phase.h"
 
 #include "mim/plug/mem/mem.h"
 
@@ -24,22 +25,50 @@ enum {
     Proxy_Phi,
 };
 
-const Def* isa_gvn_proxy(const Def* def) {
+static const Def* isa_gvn_proxy(const Def* def) {
     if (auto mem = def->isa<Proxy>())
         if (mem->tag() == Proxy_GVN) return mem;
     return nullptr;
 }
 
-const Def* isa_phi_proxy(const Def* def) {
+static const Def* isa_phi_proxy(const Def* def) {
     if (auto mem = def->isa<Proxy>())
         if (mem->tag() == Proxy_Phi) return mem;
     return nullptr;
 }
 
-const Def* isa_slot_proxy(const Def* def) {
+static const Def* isa_slot_proxy(const Def* def) {
     if (auto mem = def->isa<Proxy>())
         if (mem->tag() == Proxy_Slot) return mem;
     return nullptr;
+}
+
+void SymExprOpt::Analysis::reset() {
+    mim::Analysis::reset();
+    visited_.clear();
+}
+
+void SymExprOpt::Analysis::start() {
+    mim::Analysis::start();
+
+    for (auto def : world().annexes())
+        analyze(def);
+    for (auto def : world().externals().muts())
+        analyze(def);
+}
+
+void SymExprOpt::Analysis::analyze(const Def* def) {
+    if (auto l = lookup(def)) def = l;
+
+    if (auto sloxy = isa_slot_proxy(def)) {
+        auto slot = sloxy2slot_[sloxy];
+        set(slot, slot);
+        invalidate();
+    }
+
+    if (auto [_, ins] = visited_.emplace(def); ins)
+        for (auto d : def->deps())
+            analyze(d);
 }
 
 const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
@@ -101,7 +130,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_id   = rewrite(id);
         all_slots_[ptr] = T;
         // TODO if top (address taken), don't do that
-        auto sloxy = world().proxy(T, {curr_mut(), abstr_id}, 0, Proxy_Slot);
+        auto sloxy         = world().proxy(T, {curr_mut(), abstr_id}, 0, Proxy_Slot);
+        sloxy2slot_[sloxy] = slot;
         DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
         set(ptr, sloxy);
         return world().tuple({abstr_mem, sloxy});
