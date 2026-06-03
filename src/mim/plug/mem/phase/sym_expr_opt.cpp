@@ -63,6 +63,7 @@ void SymExprOpt::Analysis::analyze(const Def* def) {
     if (auto sloxy = isa_slot_proxy(def)) {
         auto slot = sloxy2slot_[sloxy];
         set(slot, slot);
+        DLOG("setting slot to top: {}", slot);
         invalidate();
     }
 
