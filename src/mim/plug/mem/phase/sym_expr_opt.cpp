@@ -50,10 +50,7 @@ void SymExprOpt::Analysis::reset() {
 
 void SymExprOpt::Analysis::start() {
     mim::Analysis::start();
-
-    for (auto def : world().annexes())
-        analyze(def);
-    for (auto def : world().externals().muts())
+    for (auto def : world().roots())
         analyze(def);
 }
 
