@@ -9,7 +9,7 @@ fun extern test1(mem: %mem.M 0): [%mem.M 0, Nat] =
     let mem        = %mem.store (mem, ptr, 2);
     let (mem, b)   = %mem.load (mem, ptr);
     let (mem, c)   = %mem.load (mem, ptr);
-    return (mem, %core.nat.add (b, c));
+    return (mem, %core.nat.add (a, c));
 
 lam extern _compile(): %compile.Phase =
     %compile.phases tt (
