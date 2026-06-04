@@ -26,12 +26,14 @@ plugin core;
 /// Each header block must strictly structurally dominate its
 /// merge block.
 
+lam inc (step: Nat) = %core.nat.add (step, 1);
+
 axm %sflow.Path: ★;
 let Path = %sflow.Path;
 axm %sflow.ROOT: Path;
-axm %sflow.arm: Bool → Path → Path;
-axm %sflow.case: Nat → Path → Path;
-axm %sflow.default: Path → Path;
+axm %sflow.arm: Bool → [Path, Nat] → Path;
+axm %sflow.case: Nat → [Path, Nat] → Path;
+axm %sflow.default: [Path, Nat] → Path;
 
 axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
@@ -71,7 +73,7 @@ axm %sflow.fallthrough: {
 axm %sflow.break: {
   C B: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
-  continue: Cn C, break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]
+  continue: Cn C, break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (inc step)]
 } → [
     inner_token: Token inner_path inner_step,
     Struct tt token continue break
@@ -82,9 +84,9 @@ axm %sflow.break: {
 /// (path must match; step may differ as progress within the scope).
 axm %sflow.merge: {
   C B: ★, path: Path, step inner_step: Nat, arm: Bool, token: Token path step,
-  continue: Cn C, break: Cn [B, Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))]
+  continue: Cn C, break: Cn [B, Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (inc step)]
 } → [
-    merge_token: Token (%sflow.arm arm path) inner_step,
+    merge_token: Token (%sflow.arm arm (path, step)) inner_step,
     Struct ff token continue break
     ] → Cn B;
 ///
@@ -100,8 +102,8 @@ axm %sflow.loopback: {H B: ★, path: Path, step: Nat, break: Cn B}
 axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))],
-    tuple: «arm: 2; Cn [T, Struct ff token (⊥: Cn ⊥) break, Token (%sflow.arm arm path) 0]»,
+    break: Cn [B, Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (inc step)],
+    tuple: «arm: 2; Cn [T, Struct ff token (⊥: Cn ⊥) break, Token (%sflow.arm arm (path, step)) 0]»,
     index: Bool
     ]
   → Cn T;
@@ -124,14 +126,14 @@ lam %sflow.Cases
    count: Nat,
    next: Cn [T, Struct tt token continue break, Token next_path 0])@(%core.pe.is_closed count)
   : ★
-  = lam Case (index) = Cn [T, Struct tt token next break, Token (%sflow.case index path) 0];
+  = lam Case (index) = Cn [T, Struct tt token next break, Token (%sflow.case index (path, step)) 0];
     (([
       index: Nat,
       case: Case index,
       %sflow.Cases (
         T,
         [T, Struct tt token continue break, Token next_path 0],
-        B, %sflow.case index path, path, step, token, next, break,
+        B, %sflow.case index (path, step), path, step, token, next, break,
         %core.nat.sub (count, 1), case
       )
     ], [
@@ -147,8 +149,8 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
   → [
     token: Token path step,
     break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))],
-    default: Cn [T, Struct tt token (⊥: Cn ⊥) break, Token (%sflow.default path) 0],
-    targets: %sflow.Cases (T, ⊥, [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))], %sflow.default path, path, step, token, (⊥: Cn ⊥), break, count, default),
+    default: Cn [T, Struct tt token (⊥: Cn ⊥) break, Token (%sflow.default (path, step)) 0],
+    targets: %sflow.Cases (T, ⊥, [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))], %sflow.default (path, step), path, step, token, (⊥: Cn ⊥), break, count, default),
     index: Nat]
   → Cn T;
 
@@ -180,7 +182,7 @@ axm %sflow.header: {
 } → [
   header_token: Token path 0,
   Struct tt token continue break,
-  tuple: «i: 2; Cn [T, Struct tt token continue break, Token (%sflow.arm i path) 0]»,
+  tuple: «i: 2; Cn [T, Struct tt token continue break, Token (%sflow.arm i (path, step)) 0]»,
   index: Bool
   ] → Cn T;
 
