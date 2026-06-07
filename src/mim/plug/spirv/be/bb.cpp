@@ -176,14 +176,14 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         }
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::break_switch>(app)) {
+    } else if (auto cf_exit = Axm::isa(sflow::_break::s, app)) {
         // Break out of the switch (switch constructor arg 1).
         auto [sigma, value]           = cf_exit->uncurry_args<2>();
         auto [inner_token, cf_struct] = sigma->projs<2>();
         auto target_lam               = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::break_loop>(app)) {
+    } else if (auto cf_exit = Axm::isa(sflow::_break::l, app)) {
         // Break out of the loop (loop constructor arg 1).
         auto [sigma, value]           = cf_exit->uncurry_args<2>();
         auto [inner_token, cf_struct] = sigma->projs<2>();

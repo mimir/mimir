@@ -79,7 +79,7 @@ axm %sflow.fallthrough: {
     ] → Cn C;
 ///
 /// Branch to the break target of a `switch`.
-axm %sflow.break_switch: {
+axm %sflow.break(s): {
   C B: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
   break: Cn [B, Switch token ⊥ ⊥, Token path (inc step)]
@@ -89,7 +89,7 @@ axm %sflow.break_switch: {
     ] → Cn B;
 ///
 /// Branch to the break target of a `loop`.
-axm %sflow.break_loop: {
+axm %sflow.break(l): {
   C B H: ★, path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
   token: Token path step,
   break: Cn [B, Loop token (loopback_path, loopback_step) ⊥ ⊥ ⊥, Token path (inc step)]

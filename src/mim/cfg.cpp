@@ -148,7 +148,7 @@ bool CFG::Node::handle_sflow(const App* app) {
         }
         return true;
     }
-    if (sv == "%sflow.break_switch" || sv == "%sflow.break_loop") {
+    if (sv == "%sflow.break.s" || sv == "%sflow.break.l") {
         auto [sigma, _val]             = app->uncurry_args<2>();
         auto [_inner_token, cf_struct] = sigma->projs<2>();
         if (auto a = cf_args(cf_struct)) add_lam(a->op(1)); // break target
