@@ -39,8 +39,8 @@ axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
 let %sflow.Root = Token %sflow.ROOT 0;
 
-axm %sflow.Struct: {C B: ★} → [can_break: Bool] → {path: Path, step: Nat}
-  → [token: %sflow.Token path step] → [continue: Cn C] → [break: Cn B] → ★;
+axm %sflow.Struct: [can_break: Bool] → {path: Path, step: Nat}
+  → [token: %sflow.Token path step] → [C B: ★] → ★;
 let Struct = %sflow.Struct;
 axm %sflow.Header: {B: ★} → [H: ★] → [path: Path, step: Nat] → [break: Cn B] → ★;
 let Header = %sflow.Header;
@@ -51,10 +51,10 @@ axm %sflow.continue: {
   path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
   token: Token path step,
   break: Cn B,
-  continue: Cn [C, Struct tt token (⊥: Cn ⊥) break, Token path 0, Header H (loopback_path, loopback_step) break]
+  continue: Cn [C, Struct tt token ⊥ B, Token path 0, Header H (loopback_path, loopback_step) break]
 } → [
     inner_token: Token inner_path inner_step,
-    Struct tt token continue break
+    Struct tt token C B
     ] → Cn C;
 ///
 /// Branch to the next case of a given switch structure.
@@ -63,20 +63,20 @@ axm %sflow.fallthrough: {
   path next_path inner_path: Path, step inner_step: Nat,
   token: Token path step,
   break: Cn B,
-  continue: Cn [C, Struct tt token (⊥: Cn ⊥) break, Token next_path 0]
+  continue: Cn [C, Struct tt token ⊥ B, Token next_path 0]
 } → [
     inner_token: Token inner_path inner_step,
-    Struct tt token continue break
+    Struct tt token C B
     ] → Cn C;
 ///
 /// Branch to the break target of a given control flow structure.
 axm %sflow.break: {
   C B: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
-  continue: Cn C, break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (inc step)]
+  continue: Cn C, break: Cn [B, Struct tt token ⊥ ⊥, Token path (inc step)]
 } → [
     inner_token: Token inner_path inner_step,
-    Struct tt token continue break
+    Struct tt token C B
     ] → Cn B;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
@@ -84,10 +84,10 @@ axm %sflow.break: {
 /// (path must match; step may differ as progress within the scope).
 axm %sflow.merge: {
   C B: ★, path: Path, step inner_step: Nat, arm: Bool, token: Token path step,
-  continue: Cn C, break: Cn [B, Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (inc step)]
+  continue: Cn C, break: Cn [B, Struct ff token ⊥ ⊥, Token path (inc step)]
 } → [
     merge_token: Token (%sflow.arm arm (path, step)) inner_step,
-    Struct ff token continue break
+    Struct ff token C B
     ] → Cn B;
 ///
 /// Branch to the loop header from inside a continue target.
@@ -102,8 +102,8 @@ axm %sflow.loopback: {H B: ★, path: Path, step: Nat, break: Cn B}
 axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (inc step)],
-    tuple: «arm: 2; Cn [T, Struct ff token (⊥: Cn ⊥) break, Token (%sflow.arm arm (path, step)) 0]»,
+    break: Cn [B, Struct ff token ⊥ ⊥, Token path (inc step)],
+    tuple: «arm: 2; Cn [T, Struct ff token ⊥ B, Token (%sflow.arm arm (path, step)) 0]»,
     index: Bool
     ]
   → Cn T;
@@ -135,8 +135,8 @@ lam %sflow.nice_if
     (cond: Bool)
     (arg: T)
     (token: Token path step)
-  = let merge = (cn (arg: B, struct: Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), token: Token path (inc step)) = merge arg token);
-    let tuple = ‹arm: 2; cn (arg: T, struct: Struct ff token (⊥: Cn ⊥) merge, token: Token (%sflow.arm arm (path, step)) 0) =
+  = let merge = (cn (arg: B, struct: Struct ff token ⊥ ⊥, token: Token path (inc step)) = merge arg token);
+    let tuple = ‹arm: 2; cn (arg: T, struct: Struct ff token ⊥ B, token: Token (%sflow.arm arm (path, step)) 0) =
       let merge = (cn (v: B) {inner: Nat} (token: Token (%sflow.arm arm (path, step)) inner) = %sflow.merge (token, struct) v);
       tuple#arm merge arg token›;
     %sflow.if (token, merge, tuple, cond) arg;
@@ -161,15 +161,15 @@ lam %sflow.Cases
    continue: Cn C,
    break: Cn B,
    count: Nat,
-   next: Cn [T, Struct tt token continue break, Token next_path 0])@(%core.pe.is_closed count)
+   next: Cn [T, Struct tt token C B, Token next_path 0])@(%core.pe.is_closed count)
   : ★
-  = lam Case (index) = Cn [T, Struct tt token next break, Token (%sflow.case index (path, step)) 0];
+  = lam Case (index) = Cn [T, Struct tt token T B, Token (%sflow.case index (path, step)) 0];
     (([
       index: Nat,
       case: Case index,
       %sflow.Cases (
         T,
-        [T, Struct tt token continue break, Token next_path 0],
+        [T, Struct tt token C B, Token next_path 0],
         B, %sflow.case index (path, step), path, step, token, next, break,
         %core.nat.sub (count, 1), case
       )
@@ -185,9 +185,9 @@ lam %sflow.Cases
 axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))],
-    default: Cn [T, Struct tt token (⊥: Cn ⊥) break, Token (%sflow.default (path, step)) 0],
-    targets: %sflow.Cases (T, ⊥, [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))], %sflow.default (path, step), path, step, token, (⊥: Cn ⊥), break, count, default),
+    break: Cn [B, Struct tt token ⊥ ⊥, Token path (%core.nat.add (step, 1))],
+    default: Cn [T, Struct tt token ⊥ B, Token (%sflow.default (path, step)) 0],
+    targets: %sflow.Cases (T, ⊥, [B, Struct tt token ⊥ ⊥, Token path (%core.nat.add (step, 1))], %sflow.default (path, step), path, step, token, (⊥: Cn ⊥), break, count, default),
     index: Nat]
   → Cn T;
 
@@ -198,12 +198,14 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 /// so that the structural type of `Struct` does not need to recursively
 /// mention the Header. This keeps the per-axiom type signatures shallow enough
 /// for bottom-up inference of unannotated block parameters.
+// TODO: check whether this can be refactored sligthly to allow passing the header as continue target also, which
+// would allow to model single block loops
 axm %sflow.loop: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))],
-    continue: Cn [C, Struct tt token (⊥: Cn ⊥) break, Token path 0, Header H (loopback_path, loopback_step) break],
-    header: Cn [H, Struct tt token continue break, Token path 0]
+    break: Cn [B, Struct tt token ⊥ ⊥, Token path (%core.nat.add (step, 1))],
+    continue: Cn [C, Struct tt token ⊥ B, Token path 0, Header H (loopback_path, loopback_step) break],
+    header: Cn [H, Struct tt token C B, Token path 0]
     ]
   → Cn H;
 ///
@@ -214,12 +216,12 @@ axm %sflow.header: {
   C B T H: ★,
   path loopback_path: Path, step loopback_step: Nat,
   token: Token path step,
-  break: Cn [B, Struct tt token (⊥: Cn ⊥) (⊥: Cn ⊥), Token path (%core.nat.add (step, 1))],
-  continue: Cn [C, Struct tt token (⊥: Cn ⊥) break, Token path 0, Header H (loopback_path, loopback_step) break]
+  break: Cn [B, Struct tt token ⊥ ⊥, Token path (%core.nat.add (step, 1))],
+  continue: Cn [C, Struct tt token ⊥ B, Token path 0, Header H (loopback_path, loopback_step) break]
 } → [
   header_token: Token path 0,
-  Struct tt token continue break,
-  tuple: «i: 2; Cn [T, Struct tt token continue break, Token (%sflow.arm i (path, step)) 0]»,
+  Struct tt token C B,
+  tuple: «i: 2; Cn [T, Struct tt token C B, Token (%sflow.arm i (path, step)) 0]»,
   index: Bool
   ] → Cn T;
 
@@ -229,20 +231,14 @@ axm %sflow.call: {T R: ★, path: Path, step: Nat}
   → [Token path step]
   → [Fn T → [R, Token path (%core.nat.add (step, 1))]];
 
-/// Regular unconditional forward call. The path in the token type is used to
-/// ensure the target cannot be called from anywhere else as long as all control flow
-/// is structured.
+/// Regular unconditional forward call.
 axm %sflow.branch: {T: ★, path: Path, step: Nat}
   → [Cn [T, Token path (%core.nat.add (step, 1))]]
   → [Token path step]
   → Cn T;
 
 /// ## Phases
-///
-axm %sflow.check_headers: %compile.Phase;
-///
-/// Inserts additional lams if multiple structures share the same merge lam.
-axm %sflow.seperate_merge: %compile.Phase;
+// TODO: the phases are all unimplemented at the moment
 ///
 /// Performs controlled node splitting to ensure the control flow graph is reducible.
 axm %sflow.reduciblify: %compile.Phase;
