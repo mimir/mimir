@@ -187,10 +187,11 @@ private:
     mutable std::vector<std::unique_ptr<Loop>> loops_;
     mutable bool loops_computed_ = false;
 
-    /// Maps the `path` value of an sflow loop's `Struct` to the Lam carrying
-    /// the `%sflow.header` application. Always populated before any loopback
-    /// targeting that header is processed (enforced by sflow axiom typing).
-    absl::flat_hash_map<const Def*, Node*> sflow_path_to_header_;
+    /// Maps an sflow scope token to the argument tuple of the `if`/`switch`/`loop`
+    /// constructor that introduced it, so exits can recover their target lams.
+    /// A constructor is always processed before its exits (it dominates them in
+    /// the CFG), so the entry exists by the time an exit looks it up.
+    absl::flat_hash_map<const Def*, const Def*> sflow_token_to_args_;
 
     friend class Node;
 };

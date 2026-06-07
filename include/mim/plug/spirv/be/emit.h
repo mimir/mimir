@@ -109,6 +109,9 @@ private:
 
     void finalize_function(Lam* fun);
 
+    /// Recover the constructor argument tuple owning an `If`/`Switch`/`Loop` capability.
+    const Def* cf_args(const Def* cf_struct);
+
     BB& bb(Lam* lam) {
         if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_function_);
         return lam2bb_[lam];
@@ -150,7 +153,10 @@ private:
     DefMap<Word> locals_;
     DefMap<Word> globals_;
 
-    DefMap<Lam*> loop_headers_;
+    /// Maps an sflow scope token to the argument tuple of the `if`/`switch`/`loop`
+    /// constructor that introduced it, so exits can recover their target lams.
+    /// Populated by a pre-pass in `visit`.
+    DefMap<const Def*> cf_constructs_;
 
     DefMap<Word> types_;
     std::optional<Word> bool_type_id_{}; // Shared Bool type (OpTypeBool)

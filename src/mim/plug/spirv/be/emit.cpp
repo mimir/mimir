@@ -24,22 +24,18 @@ void Emitter::visit(const Nest& nest) {
     auto f = nest.root()->mut()->as<Lam>();
     emit_function(f);
 
-    // Pre-pass: register loop headers by loopback-path so loopback can find them
-    // regardless of traversal order over `muts`. The loopback path differs from
-    // the header struct's path: it comes from the Header field in the continue
-    // lam's signature.
+    // Pre-pass: register every if/switch/loop constructor by its scope token
+    // (op(0) of its argument tuple), so that exits can recover their target lams
+    // regardless of traversal order over `muts`.
     for (auto mut : muts) {
         auto lam = mut->isa<Lam>();
         if (!lam || !lam->is_set()) continue;
         auto app = lam->body()->isa<App>();
         if (!app) continue;
-        if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
-            auto [sigma, arg]                              = cf_loop->uncurry_args<2>();
-            auto [token, cf_break, cf_continue, cf_header] = sigma->projs<4>();
-            auto continue_dom = cf_continue->type()->as<Pi>()->dom();
-            auto header_field = continue_dom->op(3);
-            auto path         = Axm::as<sflow::Header>(header_field)->uncurry_args<3>()[1];
-            loop_headers_[path] = cf_header->as_mut<Lam>();
+        if (Axm::isa<sflow::_if>(app) || Axm::isa<sflow::loop>(app)
+            || Axm::isa<sflow::_switch>(app->callee())) {
+            auto sigma                = std::get<0>(app->uncurry_args<2>());
+            cf_constructs_[sigma->op(0)] = sigma;
         }
     }
 
