@@ -108,6 +108,43 @@ axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
     ]
   → Cn T;
 
+/// Convenience thing that automatically threads tokens and structures through an interface that looks clean and uses higher order
+/// abstractions.
+///
+/// Examples of what this allows to do:
+/// ```mim
+/// fun extern foo (cond: Bool, token: %sflow.Root) =
+///   // make return also consume tokens
+///   let return = %sflow.lift return;
+///
+///   // the actual function body
+///   let body = %sflow.nice_if merge (else, then) cond () where
+///     lam then (merge) () = merge 1;
+///     lam else (merge) () = merge 0;
+///     lam merge (x: Nat) = return x;
+///   end;
+///
+///   // pass the root token in so token threading can be wired
+///   body token;
+/// ```
+lam %sflow.nice_if
+    {T B: ★}
+    {path: Path, step: Nat}
+    (merge: B → {path: Path, step: Nat} → Cn Token path step)
+    (tuple: «arm: 2; [B → {inner: Nat} → Cn Token (%sflow.arm arm (path, step)) inner] → T → Cn Token (%sflow.arm arm (path, step)) 0»)
+    (cond: Bool)
+    (arg: T)
+    (token: Token path step)
+  = let merge = (cn (arg: B, struct: Struct ff token (⊥: Cn ⊥) (⊥: Cn ⊥), token: Token path (inc step)) = merge arg token);
+    let tuple = ‹arm: 2; cn (arg: T, struct: Struct ff token (⊥: Cn ⊥) merge, token: Token (%sflow.arm arm (path, step)) 0) =
+      let merge = (cn (v: B) {inner: Nat} (token: Token (%sflow.arm arm (path, step)) inner) = %sflow.merge (token, struct) v);
+      tuple#arm merge arg token›;
+    %sflow.if (token, merge, tuple, cond) arg;
+
+/// Lift a continuation to also consume a token
+lam %sflow.lift {T: ★} (f: Cn T) = (cn (v: T) {path: Path, step: Nat} (token: Token path step) = f v);
+
+
 // TODO: Make type params implicit again once that is figured out
 /// Computes the type of a switch target list.
 ///   Cases 0 next = []
