@@ -114,17 +114,23 @@ bool CFG::Node::handle_sflow(const App* app) {
         for (auto c : cases->ops()) add_lam(c->op(1));
         return true;
     }
-    if (sv == "%sflow.loop") {
-        auto [sigma, _arg]                               = app->uncurry_args<2>();
-        register_cf(sigma);
-        auto [_token, _cf_break, _cf_continue, cf_header] = sigma->projs<4>();
+    if (sv == "%sflow.header") {
+        // Loop pre-header / anchor: branches unconditionally into the loop header.
+        auto [sigma, _arg]      = app->uncurry_args<2>();
+        auto [_token, cf_header] = sigma->projs<2>();
         add_lam(cf_header);
         return true;
     }
-    if (sv == "%sflow.header") {
-        auto [sigma, _arg]                              = app->uncurry_args<2>();
-        auto [_header_token, _cf_struct, tuple, _index] = sigma->projs<4>();
-        for (auto branch : tuple->ops()) add_lam(branch);
+    if (sv == "%sflow.loop") {
+        // Loop header dispatch: op(0) is the `Loop` capability, so register by its
+        // scope token. Record this lam as the loop header for loopbacks, and add
+        // edges to the body (cond false) and break (cond true, immediate break).
+        auto [sigma, _arg]                                    = app->uncurry_args<2>();
+        auto [cf_struct, cf_break, _cf_continue, cf_body, _c] = sigma->projs<5>();
+        cfg_.sflow_token_to_args_[sflow_scope_token(cf_struct)] = sigma;
+        cfg_.sflow_loop_header_[sflow_scope_token(cf_struct)]   = mut_;
+        add_lam(cf_body);
+        add_lam(cf_break);
         return true;
     }
     if (sv == "%sflow.continue") {
@@ -163,7 +169,8 @@ bool CFG::Node::handle_sflow(const App* app) {
     if (sv == "%sflow.loopback") {
         auto [sigma, _value]              = app->uncurry_args<2>();
         auto [_loopback_token, cf_struct] = sigma->projs<2>();
-        if (auto a = cf_args(cf_struct)) add_lam(a->op(3)); // loop header
+        auto it = cfg_.sflow_loop_header_.find(sflow_scope_token(cf_struct));
+        if (it != cfg_.sflow_loop_header_.end()) add_lam(it->second); // loop header
         return true;
     }
     if (sv == "%sflow.branch") {

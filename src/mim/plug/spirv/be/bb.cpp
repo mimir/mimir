@@ -8,7 +8,7 @@ namespace mim::plug::spirv {
 /// The scope token identifying the control-flow construct that owns this
 /// capability.
 /// It is the first explicit argument of the `If`/`Switch`/`Loop` type.
-static const Def* scope_token_of(const Def* cf_struct) {
+const Def* scope_token_of(const Def* cf_struct) {
     auto type = cf_struct->type();
     if (Axm::isa<sflow::If>(type)) return Axm::as<sflow::If>(type)->uncurry_args<2>()[0];
     if (Axm::isa<sflow::Switch>(type)) return Axm::as<sflow::Switch>(type)->uncurry_args<3>()[0];
@@ -25,6 +25,13 @@ const Def* Emitter::cf_args(const Def* cf_struct) {
     auto token = scope_token_of(cf_struct);
     auto it    = cf_constructs_.find(token);
     if (it == cf_constructs_.end()) error("no sflow constructor registered for token {}", token);
+    return it->second;
+}
+
+Lam* Emitter::cf_loop_header(const Def* cf_struct) {
+    auto token = scope_token_of(cf_struct);
+    auto it    = cf_loop_headers_.find(token);
+    if (it == cf_loop_headers_.end()) error("no sflow loop header registered for token {}", token);
     return it->second;
 }
 
@@ -115,30 +122,30 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             case_ops.push_back(bb_id(case_lam));
         }
         bb.end = Op{OpKind::Switch, case_ops, {}, {}};
-    } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
-        // === Structured loop pre-header ===
-        // The lam ending in `loop` is just the predecessor of the SPIR-V loop
-        // header. OpLoopMerge belongs in the header lam itself (see `header`
+    } else if (auto cf_anchor = Axm::isa<sflow::header>(app)) {
+        // === Structured loop pre-header / anchor ===
+        // The lam ending in `header` is just the predecessor of the SPIR-V loop
+        // header. OpLoopMerge belongs in the header lam itself (see `loop`
         // case below), so all we do here is unconditionally branch into it.
-        auto [sigma, arg]                                   = cf_loop->uncurry_args<2>();
-        auto [token, cf_break, cf_continue, cf_header]      = sigma->projs<4>();
-        auto header_lam                                     = cf_header->as_mut<Lam>();
+        auto [sigma, arg]          = cf_anchor->uncurry_args<2>();
+        auto [token, cf_header]    = sigma->projs<2>();
+        auto header_lam            = cf_header->as_mut<Lam>();
 
         link_phi(lam, header_lam, arg);
         bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
-    } else if (auto cf_header = Axm::isa<sflow::header>(app)) {
-        // === Loop header ===
-        // => OpLoopMerge + OpBranch/OpBranchConditional
+    } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
+        // === Loop header dispatch ===
+        // => OpLoopMerge + OpBranchConditional
         // This lam is the SPIR-V loop header. Emit OpLoopMerge naming the break
         // lam as merge block and the continue lam as continue target. Then
-        // branch into the body via the tuple/index pair (mirrors `if`).
-        // Register `lam` so loopbacks reaching this loop can find it.
-        auto [sigma, arg]                     = cf_header->uncurry_args<2>();
-        auto [token, cf_struct, tuple, index] = sigma->projs<4>();
-        // Recover break/continue targets from the enclosing loop constructor.
-        auto loop_args    = cf_args(cf_struct);
-        auto break_lam    = loop_args->op(1)->as_mut<Lam>();
-        auto continue_lam = loop_args->op(2)->as_mut<Lam>();
+        // branch on `cond`: true breaks out of the loop (merge), false enters the
+        // body. The break lam is both the merge block and the true target, which
+        // is the canonical structured `while` exit.
+        auto [sigma, arg]                                     = cf_loop->uncurry_args<2>();
+        auto [cf_struct, cf_break, cf_continue, cf_body, cond] = sigma->projs<5>();
+        auto break_lam    = cf_break->as_mut<Lam>();
+        auto continue_lam = cf_continue->as_mut<Lam>();
+        auto body_lam     = cf_body->as_mut<Lam>();
 
         bb.merge = Op{
             OpKind::LoopMerge,
@@ -146,12 +153,15 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             {},
             {}
         };
-        std::vector<Word> branches{emit_term(index)};
-        for (auto branch : tuple->ops()) {
-            link_phi(lam, branch->as_mut<Lam>(), arg);
-            branches.push_back(bb_id(branch->as_mut<Lam>()));
-        }
-        bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
+        // Result type is `(T, B)#cond`: cond false => body (T), cond true => break (B).
+        link_phi(lam, body_lam, arg);
+        link_phi(lam, break_lam, arg);
+        bb.end = Op{
+            OpKind::BranchConditional,
+            {emit_term(cond), bb_id(break_lam), bb_id(body_lam)},
+            {},
+            {}
+        };
     } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
         // Continue to the loop's continue block (loop constructor arg 2).
         auto [sigma, value]           = cf_exit->uncurry_args<2>();
@@ -199,10 +209,11 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::loopback>(app)) {
         // === Loopback to header ===
-        // Branch back to the loop header (loop constructor arg 3).
-        auto [sigma, arg]            = cf_exit->uncurry_args<2>();
+        // Branch back to the loop header (the lam holding the `%sflow.loop`
+        // dispatch), recovered via the pre-pass loop-header map.
+        auto [sigma, arg]                = cf_exit->uncurry_args<2>();
         auto [loopback_token, cf_struct] = sigma->projs<2>();
-        auto header_lam              = cf_args(cf_struct)->op(3)->as_mut<Lam>();
+        auto header_lam                  = cf_loop_header(cf_struct);
         link_phi(lam, header_lam, arg);
         bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
     } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {

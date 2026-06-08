@@ -193,6 +193,10 @@ private:
     /// the CFG), so the entry exists by the time an exit looks it up.
     absl::flat_hash_map<const Def*, const Def*> sflow_token_to_args_;
 
+    /// Maps a loop's scope token to its header lam (the back-edge target holding
+    /// the `%sflow.loop` dispatch), so `%sflow.loopback` can recover its target.
+    absl::flat_hash_map<const Def*, const Lam*> sflow_loop_header_;
+
     friend class Node;
 };
 

@@ -124,6 +124,10 @@ private:
     /// Recover the constructor argument tuple owning an `If`/`Switch`/`Loop` capability.
     const Def* cf_args(const Def* cf_struct);
 
+    /// Recover the loop header lam (the back-edge target, i.e. the lam holding the
+    /// `%sflow.loop` dispatch) owning a `Loop` capability.
+    Lam* cf_loop_header(const Def* cf_struct);
+
     BB& bb(Lam* lam) {
         if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_function_);
         return lam2bb_[lam];
@@ -170,6 +174,11 @@ private:
     /// Populated by a pre-pass in `visit`.
     DefMap<const Def*> cf_constructs_;
 
+    /// Maps a loop's scope token to its header lam (the back-edge target holding
+    /// the `%sflow.loop` dispatch), so `%sflow.loopback` can branch back to it.
+    /// Populated by the same pre-pass in `visit`.
+    DefMap<Lam*> cf_loop_headers_;
+
     DefMap<Word> types_;
     std::optional<Word> bool_type_id_{}; // Shared Bool type (OpTypeBool)
     std::optional<Word> i32_type_id_{};  // Shared 32-bit signed integer type for all Idx
@@ -177,6 +186,10 @@ private:
 
 bool is_scalar_type(const Def* type);
 bool is_const(const Def* def);
+
+/// The scope token identifying the `If`/`Switch`/`Loop` construct that owns a
+/// capability value (the first explicit argument of its type).
+const Def* scope_token_of(const Def* cf_struct);
 
 void emit_asm(World& world, std::ostream& out);
 void emit_bin(World& world, std::ostream& out);

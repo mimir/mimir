@@ -238,15 +238,12 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
     if (auto var = Axm::isa<spirv::variable>(def)) {
         auto [storage_class, decs, type] = var->uncurry_args<3>();
         auto storage_class_              = storage_class::from_mim(Axm::as<spirv::storage>(storage_class).id());
-        auto place                       = module_.declarations;
-        if (storage_class_ == storage_class::Function) {
-            // Place function var in function
-            place = function_vars_;
-        } else {
-            // Add all other vars to globals
-            globals_[def] = id;
-        }
-        place.push_back(Op{OpKind::Variable, {}, id, storage_class_});
+        Word ptr_type_id                 = emit_type(def->type());
+        bool is_function                 = storage_class_ == storage_class::Function;
+        // Function vars live in the function; everything else is a global.
+        if (!is_function) globals_[def] = id;
+        auto& place = is_function ? function_vars_ : module_.declarations;
+        place.push_back(Op{OpKind::Variable, {storage_class_}, id, ptr_type_id});
 
         if (decs->isa<Sigma>() || decs->isa<Tuple>())
             for (auto dec : decs->ops())

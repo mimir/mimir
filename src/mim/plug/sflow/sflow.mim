@@ -34,6 +34,7 @@ axm %sflow.ROOT: Path;
 axm %sflow.arm: Bool → [Path, Nat] → Path;
 axm %sflow.case: Nat → [Path, Nat] → Path;
 axm %sflow.default: [Path, Nat] → Path;
+axm %sflow.body: [Path, Nat] → Path;
 
 axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
@@ -191,30 +192,27 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 /// directly without a separate `Header` value.
 // TODO: check whether this can be refactored sligthly to allow passing the header as continue target also, which
 // would allow to model single block loops
-axm %sflow.loop: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
+axm %sflow.header: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Token path (%core.nat.add (step, 1))],
-    continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token path 0],
-    header: Cn [H, Loop token (loopback_path, loopback_step) C B ⊥, Token path 0]
+    header: Cn [H, Loop token (loopback_path, loopback_step) ⊥ ⊥ H] // 1× Loop
     ]
   → Cn H;
 ///
 /// This is used by the loop header to call into its body. The body branches
 /// receive the `Loop` capability so they can `%sflow.continue` (which
 /// constructs the tuple required by the continue block).
-axm %sflow.header: {
+axm %sflow.loop: {
   C B T H: ★,
   path loopback_path: Path, step loopback_step: Nat,
   token: Token path step,
-  break: Cn [B, Token path (%core.nat.add (step, 1))],
-  continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token path 0]
 } → [
-  header_token: Token path 0,
-  Loop token (loopback_path, loopback_step) C B ⊥,
-  tuple: «i: 2; Cn [T, Loop token (loopback_path, loopback_step) C B H, Token (%sflow.arm i (path, step)) 0]»,
-  index: Bool
-  ] → Cn T;
+  Loop token (loopback_path, loopback_step) ⊥ ⊥ H, // 1× Loop
+  break: Cn [B, Token path (inc step)],
+  continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token (%sflow.body (path, step)) 0], // 1× Loop
+  body: Cn [T, Loop token (loopback_path, loopback_step) C B ⊥, Token (%sflow.body (path, step)) 0], // ω× Loop
+  cond: Bool
+  ] → Cn (T, B)#cond;
 
 /// Function call to a returning function in continuation passing style.
 axm %sflow.call: {T R: ★, path: Path, step: Nat}
