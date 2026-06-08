@@ -81,6 +81,12 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
     }
 
     if (auto lit = def->isa<Lit>()) {
+        // Literals are hash-consed, so `unique_name()` may hand back a borrowed annex
+        // symbol from some `let` sharing the value (e.g. `0:Nat` aliases
+        // `%core.mode.us`). Override with the gid-based name to avoid the misleading
+        // (though sanitized) symbol.
+        set_id_name(id, std::format("_{}", def->gid()));
+
         if (lit->type()->isa<Nat>()) {
             // Nat: assume 32-bit for now
             // hints = {type=0 (int), width}
