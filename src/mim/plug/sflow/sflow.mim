@@ -62,7 +62,6 @@ axm %sflow.continue: {
   C B H: ★,
   path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
   token: Token path step,
-  continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token path 0]
 } → [
     inner_token: Token inner_path inner_step,
     Loop token (loopback_path, loopback_step) C B H
@@ -73,7 +72,6 @@ axm %sflow.fallthrough: {
   C B: ★,
   path next_path inner_path: Path, step inner_step: Nat,
   token: Token path step,
-  continue: Cn [C, Switch token ⊥ B, Token next_path 0]
 } → [
     inner_token: Token inner_path inner_step,
     Switch token C B
@@ -83,7 +81,6 @@ axm %sflow.fallthrough: {
 axm %sflow.break(s): {
   C B: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
-  break: Cn [B, Token path (inc step)]
 } → [
     inner_token: Token inner_path inner_step,
     Switch token C B
@@ -93,7 +90,6 @@ axm %sflow.break(s): {
 axm %sflow.break(l): {
   C B H: ★, path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
   token: Token path step,
-  break: Cn [B, Token path (inc step)]
 } → [
     inner_token: Token inner_path inner_step,
     Loop token (loopback_path, loopback_step) C B H
@@ -104,7 +100,6 @@ axm %sflow.break(l): {
 /// (path must match; step may differ as progress within the scope).
 axm %sflow.merge: {
   B: ★, path: Path, step inner_step: Nat, arm: Bool, token: Token path step,
-  break: Cn [B, Token path (inc step)]
 } → [
     merge_token: Token (%sflow.arm arm (path, step)) inner_step,
     If token B
@@ -192,7 +187,7 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 /// directly without a separate `Header` value.
 // TODO: check whether this can be refactored sligthly to allow passing the header as continue target also, which
 // would allow to model single block loops
-axm %sflow.header: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
+axm %sflow.header: {H: ★} → {path loopback_path: Path, step loopback_step: Nat}
   → [
     token: Token path step,
     header: Cn [H, Loop token (loopback_path, loopback_step) ⊥ ⊥ H] // 1× Loop
