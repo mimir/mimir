@@ -1,0 +1,35 @@
+// RUN: %mim %s
+
+// Minimal repro for an `externalize`/`is_closed` assertion failure.
+//
+// Reducing a multi-param-group mutable lam via pack projection drops the
+// substitution of the first param group: the literal-tuple extract
+// `tuple#arm` resolves as the pack index becomes concrete, `%X.k` is
+// substituted for the arm's `merge` param, but the substitution into the body
+// is lost, leaving `merge` free. The result flows into the opaque axiom
+// `%X.if`, so the checker does not reject it, and `foo` reaches `externalize`
+// while still referencing `else`/`then`'s `merge` params -> `is_closed()` fails.
+//
+// Note: with a single param group (`else (merge) = merge 0`) this closes fine;
+// the trailing `()` group is required to trigger the bug. Uniform types are
+// enough (no dependent tokens needed), and it is independent of pack
+// scalarization.
+
+plugin core;
+
+axm %X.Token: ★;
+axm %X.k: Nat → Cn %X.Token;
+axm %X.if: [token: %X.Token, tuple: «arm: 2; Cn [[], %X.Token]»] → Cn [];
+
+lam nice_if
+    (tuple: «arm: 2; [Nat → Cn %X.Token] → [] → Cn %X.Token»)
+    (token: %X.Token)
+  = let tuple = ‹arm: 2; cn (arg: [], token: %X.Token) = tuple#arm %X.k arg token›;
+    %X.if (token, tuple) ();
+
+fun extern foo (token: %X.Token) =
+  let body = nice_if (else, then) where
+    lam then (merge) () = merge 1;
+    lam else (merge) () = merge 0;
+  end;
+  body token;
