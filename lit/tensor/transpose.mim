@@ -1,0 +1,15 @@
+// RUN: %mim %s
+plugin tensor;
+plugin refly;
+plugin core;
+plugin direct;
+plugin affine;
+
+let m0 = ((1, 2), (3, 4));
+
+let m1 = %tensor.transpose @(Nat, 2, (2, 2)) (m0, (tt, ff));
+let m2 = %tensor.transpose @(Nat, 4, (1, 1, 2, 2)) (m0, (2_4, 1_4, 0_4, 3_4));
+let m21 = %tensor.transpose @(Nat, 4, (2, 2, 1, 1)) (m0, (0_4, 3_4, 1_4, 2_4));
+let m4 = %tensor.broadcast_in_dim ((2, 1, 2), (2, 50, 2), m0, (2_3, 1_3, 0_3));
+
+fun extern main() = return (m1, m2, m21, m4);

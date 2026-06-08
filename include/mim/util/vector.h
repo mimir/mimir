@@ -44,6 +44,19 @@ public:
     }
     ///@}
 
+    /// @name insert_range / append_range
+    /// Available in C++23 but not absl.
+    ///@{
+    template<std::ranges::forward_range R>
+    constexpr void insert_range(Base::const_iterator pos, R&& r) {
+        Base::insert(pos, r.begin(), r.end());
+    }
+    template<std::ranges::forward_range R>
+    constexpr void append_range(R&& r) {
+        insert_range(Base::end(), r);
+    }
+    ///@}
+
     /// @name Span
     ///@{
     constexpr auto span() noexcept { return Span{Base::data(), Base::size()}; }

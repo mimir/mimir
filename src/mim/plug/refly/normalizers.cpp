@@ -81,6 +81,11 @@ const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
     return a;
 }
 
+const Def* normalize_check_bot(const Def*, const Def* c, const Def* arg) {
+    if (!arg->isa<Bot>()) mim::error(c->loc(), "'{}' is not bottom", arg);
+    return arg;
+}
+
 const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     auto& w               = type->world();
     auto [cond, val, msg] = arg->projs<3>();

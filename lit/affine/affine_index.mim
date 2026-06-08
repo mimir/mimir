@@ -1,0 +1,37 @@
+// RUN: rm -f %t.ll
+// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t       ; test $? -eq 9
+// RUN: %t 1 2 3 ; test $? -eq 21
+
+plugin core;
+plugin affine;
+plugin mem;
+
+// f exercises the affine index algebra over two input indices `a`, `b`:
+//   out0 = (a + b) - b = a   (op.add + op.sub)
+//   out1 = a * 3             (semiop.mul)
+//   out2 = 5                 (constant)
+lam f (idx: «2; %affine.index»): «3; %affine.index» =
+    ( %affine.op.sub (%affine.op.add (idx#0_2, idx#1_2), idx#1_2)
+    , %affine.semiop.mul (idx#0_2, 3)
+    , %affine.constant 5
+    );
+
+// The moduli `sin`/`sout` cannot be inferred from `f` (which is %affine.index-valued),
+// so they are passed explicitly: here both inputs and all outputs are `I32` (modulus 2^32).
+con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I32, 0), 0), return : Cn [%mem.M 0, I32]] =
+    let a = argc;
+    let b = 4I32;
+    let r = %affine.map @(3, 2) @((i32, i32), (i32, i32, i32)) f (a, b);
+    // sum = a + 3*a + 5 = 4*a + 5
+    let s0 = %core.wrap.add 0 (r#0_3, r#1_3);
+    let s  = %core.wrap.add 0 (s0, r#2_3);
+    return (mem, s);
+
+// The whole affine index algebra must be gone after %affine.lower_index_phase.
+// CHECK-NOT: %affine.index
+// CHECK-NOT: %affine.constant
+// CHECK-NOT: %affine.op
+// CHECK-NOT: %affine.semiop
+// CHECK-NOT: %affine.map

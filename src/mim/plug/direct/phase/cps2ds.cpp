@@ -80,6 +80,7 @@ const Def* CPS2DSPhase::rewrite(const Def* def) {
     if (auto i = rewritten_.find(def); i != rewritten_.end()) return i->second;
 
     if (auto lam = def->isa_mut<Lam>()) return rewrite_lam(lam);
+    if (auto mut = def->isa_mut()) rewritten_[def] = mut->stub(world(), mut->type())->set(mut->dbg());
 
     if (auto app = def->isa<App>()) {
         if (auto cps2ds = Axm::isa<direct::cps2ds_dep>(app->callee())) {
@@ -133,6 +134,8 @@ const Def* CPS2DSPhase::rewrite(const Def* def) {
     }
 
     DefVec new_ops{def->ops(), [this](const Def* d) { return rewrite(d); }};
+    if (def->isa_mut()) return rewritten_[def]->as_mut()->set(new_ops);
+
     auto new_def    = def->rebuild(def->type(), new_ops);
     rewritten_[def] = new_def;
     return new_def;

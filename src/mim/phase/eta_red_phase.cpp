@@ -16,7 +16,7 @@ const Def* EtaRedPhase::rewrite(const Def* old_def) {
         }
     }
 
-    return Rewriter::rewrite(old_def);
+    return RWPhase::rewrite(old_def);
 }
 
 const Def* EtaRedPhase::rewrite_imm_Var(const Var* var) {

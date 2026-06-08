@@ -1,0 +1,26 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=affine.
+
+// The input/output bounds are only symbolically known (the `Nat` parameters `m` and `n`), so the lowering must thread the
+// symbolic moduli through `%core.conv.u` rather than baking in a concrete `Idx` size. `g` stays polymorphic (hence this is a
+// pipeline/FileCheck test, not an executable one) so the symbolic bound survives to `%affine.lower_index_phase`.
+
+plugin core;
+plugin affine;
+plugin mem;
+
+lam f (idx: «2; %affine.index»): «2; %affine.index» =
+    ( %affine.op.add (idx#0_2, idx#1_2)
+    , %affine.semiop.mul (idx#1_2, 2)
+    );
+
+// `a` and `b` carry distinct, symbolically-known bounds `m` and `n`; the outputs are `Idx m` and `Idx n` respectively.
+fun extern g {m n: Nat} (a: Idx m, b: Idx n): «i: 2; Idx ((m, n)#i)» =
+    return (%affine.map f (a, b));
+
+// CHECK: fun extern g {m{{.*}}: Nat, n{{.*}}: Nat}
+// Inputs are widened from their symbolic moduli `Idx m` / `Idx n` to the `Idx 0` carrier ...
+// CHECK-DAG: %core.conv.u m{{[0-9_]*}} 0
+// CHECK-DAG: %core.conv.u n{{[0-9_]*}} 0
+// ... and the results are narrowed back to the symbolic `Idx m` / `Idx n`.
+// CHECK-DAG: %core.conv.u 0 m{{[0-9_]*}}
+// CHECK-DAG: %core.conv.u 0 n{{[0-9_]*}}

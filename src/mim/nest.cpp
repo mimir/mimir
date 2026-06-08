@@ -1,5 +1,4 @@
 #include "mim/nest.h"
-
 #include "mim/world.h"
 
 namespace mim {

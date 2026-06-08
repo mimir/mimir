@@ -228,6 +228,7 @@ public:
         /// @note The iteration will see all old externals, of course.
         Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
         Def* operator[](Sym name) const { return mim::lookup(sym2mut_, name); } ///< Lookup by @p name.
+        size_t size() const { return sym2mut_.size(); }
         ///@}
 
         ///@name externalize/internalize
@@ -253,6 +254,15 @@ public:
 
     const Externals& externals() const { return move_.externals; }
     Externals& externals() { return move_.externals; }
+
+    /// annexes() + externals().muts() in this order.
+    auto roots() const {
+        auto res = Vector<const Def*>(); // TODO use std::views::concat - once we have C++26
+        res.reserve(annexes().size() + externals().size());
+        res.append_range(annexes());
+        res.append_range(externals().muts());
+        return res;
+    }
     ///@}
 
     /// @name Univ, Type, Var, Proxy, Hole
@@ -637,13 +647,16 @@ public:
     /// @name for_each
     /// Visits all closed mutables in this World.
     ///@{
-    void for_each(bool elide_empty, std::function<void(Def*)>);
+    void for_each(bool elide_empty, std::function<void(Def*)>, bool schedule = false);
 
     template<class M>
-    void for_each(bool elide_empty, std::function<void(M*)> f) {
-        for_each(elide_empty, [f](Def* m) {
-            if (auto mut = m->template isa<M>()) f(mut);
-        });
+    void for_each(bool elide_empty, std::function<void(M*)> f, bool schedule = false) {
+        for_each(
+            elide_empty,
+            [f](Def* m) {
+                if (auto mut = m->template isa<M>()) f(mut);
+            },
+            schedule);
     }
     ///@}
 
@@ -690,6 +703,9 @@ private:
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
+        for (auto op : def->ops())
+            assert(&op->world() == this && "op of new Def belongs to a different World");
+        assert((!def->type() || &def->type()->world() == this) && "type of new Def belongs to a different World");
 #endif
 
         if (is_frozen()) {

@@ -946,7 +946,6 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
     } else if (auto mslot = Axm::isa<mem::mslot>(def)) {
         auto [Ta, msi]             = mslot->uncurry_args<2>();
         auto [pointee, addr_space] = Ta->projs<2>();
-        auto [mem, _, __]          = msi->projs<3>();
         emit_unsafe(mslot->arg(0));
         // TODO array with size
         // auto v_size = emit(mslot->arg(1));
@@ -1117,6 +1116,17 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         }
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
+    } else if (auto is_finite = Axm::isa<math::is_finite>(def)) {
+        // https://llvm.org/docs/LangRef.html#llvm-is-fpclass-intrinsic
+        // declare i1 @llvm.is.fpclass(<fptype> <op>, i32 <test>)
+        auto a  = emit(is_finite->arg());
+        auto at = convert(is_finite->arg()->type());
+        auto t  = convert(is_finite->type());
+
+        auto s = llvm_suffix(is_finite->arg()->type());
+        auto f = "llvm.is.fpclass";
+        declare("{} @{}{}({}, i32)", t, f, s, at);
+        return bb.assign(name, "tail call {} @{}{}({} {}, i32 504)", t, f, s, at, a);
     } else if (auto conv = Axm::isa<math::conv>(def)) {
         auto v_src = emit(conv->arg());
         auto t_src = convert(conv->arg()->type());

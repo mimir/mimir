@@ -25,8 +25,10 @@ let _  = %refly.equiv.struc_eq (d2, (23, 23, 23, 23));
 
 let g1 = %vec.first %core.ncmp.e ((8, 1, 3, 6, 9, 0), 1);
 let g2 = %vec.last %core.ncmp.e ((8, 1, 3, 6, 9, 0), 2);
+let g3 = %vec.first (%core.icmp.e @10) ((8_10, 1_10, 3_10, 6_10, 9_10, 0_10), 1_10 );
 let _  = %refly.equiv.struc_eq (g1, (tt, 1_6));
 let _  = %refly.equiv.struc_eq (g2, (ff, 0_6));
+let _  = %refly.equiv.struc_eq (g3, (tt, 1_6));
 
 let r1 = ‹i: 3; i›;
 let r2 = ‹i: 3; %core.wrap.add 0 (i, 1_3)›;

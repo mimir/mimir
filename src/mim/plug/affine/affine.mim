@@ -7,6 +7,8 @@
 /// ## Dependencies
 ///
 import mem;
+import core;
+import refly;
 ///
 /// ## Operations
 ///
@@ -25,6 +27,54 @@ axm %affine.For: {m n: Nat, Ts: «n; *»}
                → [Cn «i: n; Ts#i»]                                             // exit
                → Cn [begin _end step: Idx m, init: «i: n; Ts#i»];
 ///
+/// ## Affine Index Operations
+///
+/// ### %%affine.index
+/// The affine index type is an opaque type that can only be manipulated through the following operations.
+///
+axm %affine.index: *;
+///
+/// ### %%affine.constant
+/// Constructs an affine index from a constant natural number.
+///
+axm %affine.constant: Nat → %affine.index;
+///
+/// ### %%affine.op(add,sub)
+/// Performs addition and subtraction on affine indices.
+///
+axm %affine.op(add,sub): [%affine.index, %affine.index] → %affine.index;
+///
+/// ### %%affine.op(neg)
+/// Negates an affine index.
+///
+axm %affine.op(neg): %affine.index → %affine.index;
+///
+/// ### %%affine.semiop(mul,ceildiv,floordiv,mod)
+/// Performs semi-linear operations on affine indices.
+/// The second argument must be a constant natural number with regards to the indices.
+///
+axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.index, Nat] → %affine.index;
+///
+/// ### %%affine.op(mul)
+/// Performs multiplication of an affine index with a constant natural number.
+/// The second argument must be a constant natural number (which is a stronger argument than the semiop).
+///
+lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index = 
+    %affine.semiop.mul(d, %refly.check (%core.pe.is_closed(c), c, "The second argument of %affine.op.mul must be a constant."));
+
+///
+/// ### %%affine.map
+/// Maps a function over a list of affine indices.
+/// Any captured variables of the function must be closed over the entire list of indices, i.e. they must not depend on the iteration index.
+/// The moduli are per-element: each input index `i` carries its own modulus `sin#i` and each output index `j` its own `sout#j`.
+///
+axm %affine.map: {m n: Nat}
+               → {sin: «n; Nat», sout: «m; Nat»}
+               → ([«n; %affine.index»] → «m; %affine.index»)
+               → «i: n; Idx (sin#i)»
+               → «i: m; Idx (sout#i)»;
+
+///
 /// ## Passes and Phases
 ///
 /// ### %%affine.lower_for_pass
@@ -32,3 +82,9 @@ axm %affine.For: {m n: Nat, Ts: «n; *»}
 /// Loweres the %%%affine.For operation to recursive function calls.
 ///
 axm %affine.lower_for_phase: %compile.Phase;
+///
+/// ### %%affine.lower_index_phase
+///
+/// Lowers the affine index algebra (%%%affine.index, %%%affine.constant, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
+///
+axm %affine.lower_index_phase: %compile.Phase;

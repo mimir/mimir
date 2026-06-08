@@ -379,7 +379,7 @@ Ptr<Expr> Parser::parse_seq_expr() {
     expect(is_pack ? Tag::D_angle_r : Tag::D_quote_r,
            is_pack ? "closing delimiter of a pack" : "closing delimiter of an array");
 
-    for (auto& [ptrn, expr] : arities | std::ranges::views::reverse)
+    for (auto& [ptrn, expr] : arities | std::views::reverse)
         body = ptr<SeqExpr>(track, is_pack, std::move(ptrn), std::move(body));
 
     return body;

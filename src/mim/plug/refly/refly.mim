@@ -77,6 +77,12 @@ axm %refly.equiv(ae = struc_ne, aE = struc_eq,
                  Ae = alpha_ne, AE = alpha_eq):
     {T: *} → [T, T] → T, normalize_equiv;
 ///
+/// ### %%refly.check_bot
+///
+/// Checks whether argument is bottom.
+///
+axm %refly.check_bot: {T: *} → T → T, normalize_check_bot;
+///
 /// ### %%refly.check
 ///
 /// Checks the given condition and emits the error message, if false.

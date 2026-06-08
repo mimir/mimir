@@ -3,11 +3,8 @@
 namespace mim {
 
 bool EtaExpPhase::analyze() {
-    for (auto def : old_world().annexes())
+    for (auto def : old_world().roots())
         visit(def, Lattice::Known);
-    for (auto def : old_world().externals().muts())
-        visit(def, Lattice::Known);
-
     return false; // no fixed-point neccessary
 }
 
@@ -45,7 +42,7 @@ const Def* EtaExpPhase::rewrite(const Def* old_def) {
         return i->second;
     }
 
-    return Rewriter::rewrite(old_def);
+    return RWPhase::rewrite(old_def);
 }
 
 const Def* EtaExpPhase::rewrite_imm_App(const App* app) {

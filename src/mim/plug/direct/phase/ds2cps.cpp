@@ -19,7 +19,7 @@ const Def* DS2CPS::rewrite_imm_App(const App* app) {
         }
     }
 
-    return Rewriter::rewrite_imm_App(app);
+    return RWPhase::rewrite_imm_App(app);
 }
 
 /// This function generates the cps function `f_cps : Cn [a: A, Cn B]` for a ds function `f: [a : A] -> B`.

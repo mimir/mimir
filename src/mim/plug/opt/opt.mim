@@ -18,6 +18,7 @@ import gpu;
 import matrix;
 import refly;
 import regex;
+import tensor;
 ///
 /// ## Passes, Phases, and Pipelines
 ///
@@ -40,6 +41,14 @@ lam extern _default_compile (): %compile.Phase =
         ),
         %compile.eta_exp_phase,
         %compile.sym_expr_opt,
+        cond_phase "tensor" (
+            %compile.phases ff (
+                %tensor.lower_tensor,
+                %tensor.fuse_tensor,
+                %tensor.lower_map_reduce,
+            )
+        ),
+        cond_phase "affine" %affine.lower_index_phase,
         cond_phase "affine" %affine.lower_for_phase,
         %compile.pass2phase (
             %compile.passes (

@@ -20,7 +20,7 @@ public:
     public:
         /// @name Getters
         ///@{
-        std::string name() const { return mut() ? mut()->unique_name() : std::string("<virtual>"); }
+        std::string name() const { return mut() ? mut()->unique_name() : std::string("virtual"); }
         const Nest& nest() const { return nest_; }
         const Node* inest() const { return inest_; } ///< Immediate nester/parent of this Node.
         bool is_root() const { return inest_ == nullptr; }

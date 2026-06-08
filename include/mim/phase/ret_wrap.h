@@ -33,7 +33,7 @@ private:
 
     const Def* rewrite(const Def*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
-    const Def* rewrite_no_eta(const Def* old_def) { return Rewriter::rewrite(old_def); }
+    const Def* rewrite_no_eta(const Def* old_def) { return RWPhase::rewrite(old_def); }
 
     DefSet analyzed_;
     DefMap<Lattice> def2lattice_;
