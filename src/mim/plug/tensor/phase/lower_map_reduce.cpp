@@ -8,6 +8,7 @@
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
 #include "mim/plug/direct/direct.h"
+#include "mim/plug/mem/mem.h"
 #include "mim/plug/tensor/tensor.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -566,13 +567,16 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         ris_nat[i] = *l;
     }
 
-    // Builds `%affine.map @(m, n) @(sin, sout) f idxs`. The emitted `%affine.map` is lowered to %core arithmetic by the
-    // subsequent %affine.lower_index_phase.
+    // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned mem).
+    // The emitted `%affine.map` is lowered to %core arithmetic by the subsequent %affine.lower_index_phase. We invent a
+    // fresh `⊥ : %mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
+    auto mem0 = w.app(w.annex<mem::M>(), w.lit_nat(0));
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
         auto a = w.app(w.annex<affine::map>(), w.tuple({m, n}));
         a      = w.app(a, w.tuple({sin, sout}));
         a      = w.app(a, f);
-        return w.app(a, idxs);
+        a      = w.app(a, idxs);
+        return w.app(a, w.bot(mem0))->proj(2, 1); // drop the returned mem at proj 0
     };
     auto nested_extract = [&](const Def* matrix, const Def* coords, u64 r) {
         auto cur = matrix;

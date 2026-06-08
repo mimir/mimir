@@ -72,8 +72,14 @@ axm %affine.map: {m n: Nat}
                → {sin: «n; Nat», sout: «m; Nat»}
                → ([«n; %affine.index»] → «m; %affine.index»)
                → «i: n; Idx (sin#i)»
-               → «i: m; Idx (sout#i)»;
+               → (%mem.M 0)
+               → [(%mem.M 0), «i: m; Idx (sout#i)»];
 
+///
+/// ### %%affine.id
+/// The identity map on affine indices.
+/// 
+lam %affine.id {r: Nat} (o: «r; %affine.index»): «r; %affine.index» = o;
 ///
 /// ## Passes and Phases
 ///

@@ -182,6 +182,13 @@ const Def* normalize_map_reduce_aff(const Def*, const Def*, const Def*) {
     return nullptr;
 }
 
+const Def* normalize_repeat(const Def*, const Def* c, const Def* arg) {
+    // Identity repeat: if the input and output shapes agree, the repeat is a no-op.
+    auto [Tr, s_in, s_out] = c->as<App>()->uncurry_args<3>();
+    if (s_in == s_out) return arg;
+    return nullptr;
+}
+
 MIM_tensor_NORMALIZER_IMPL
 
 } // namespace mim::plug::tensor
