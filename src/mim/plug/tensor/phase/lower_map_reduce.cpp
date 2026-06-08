@@ -578,21 +578,29 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         a      = w.app(a, idxs);
         return w.app(a, w.bot(mem0))->proj(2, 1); // drop the returned mem at proj 0
     };
-    auto nested_extract = [&](const Def* matrix, const Def* coords, u64 r) {
+    // Collects the `r` per-axis `coords`, dropping axes whose `shape` dim is the literal 1 — those array levels are
+    // collapsed away by the IR (`«…, 1, …; T»` ≡ `«…, …; T»`), so they must not be indexed.
+    auto live_coords = [&](const Def* coords, const Def* shape, u64 r) {
+        DefVec idx;
+        for (u64 k = 0; k < r; ++k) {
+            if (auto d = Lit::isa<u64>(shape->proj(r, k)); d && *d == 1) continue;
+            idx.push_back(coords->proj(r, k));
+        }
+        return idx;
+    };
+    auto nested_extract = [&](const Def* matrix, const Def* coords, const Def* shape, u64 r) {
         auto cur = matrix;
-        for (u64 k = 0; k < r; ++k)
-            cur = w.extract(cur, coords->proj(r, k));
+        for (auto idx : live_coords(coords, shape, r)) cur = w.extract(cur, idx);
         return cur;
     };
-    auto nested_insert = [&](const Def* matrix, const Def* coords, u64 r, const Def* elem) -> const Def* {
-        if (r == 0) return elem;
-        DefVec subs(r);
+    auto nested_insert = [&](const Def* matrix, const Def* coords, const Def* shape, u64 r, const Def* elem) -> const Def* {
+        auto idx = live_coords(coords, shape, r);
+        if (idx.empty()) return elem;
+        DefVec subs(idx.size());
         subs[0] = matrix;
-        for (u64 k = 0; k + 1 < r; ++k)
-            subs[k + 1] = w.extract(subs[k], coords->proj(r, k));
+        for (u64 k = 0; k + 1 < idx.size(); ++k) subs[k + 1] = w.extract(subs[k], idx[k]);
         auto cur = elem;
-        for (auto k = static_cast<s64>(r) - 1; k >= 0; --k)
-            cur = w.insert(subs[k], coords->proj(r, k), cur);
+        for (auto k = static_cast<s64>(idx.size()) - 1; k >= 0; --k) cur = w.insert(subs[k], idx[k], cur);
         return cur;
     };
 
@@ -632,7 +640,7 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         for (u64 j = 0; j < rr; ++j)
             wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
         auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters)); // «Ro; Idx (So#k)»
-        write_back->app(true, cont, nested_insert(wb_matrix, write_coords, ro, element_final));
+        write_back->app(true, cont, nested_insert(wb_matrix, write_coords, So, ro, element_final));
 
         // Inner (reduction) loops over the trailing Rr bounds of `Sr`, collecting the reduction iteration indices.
         acc  = init;
@@ -661,9 +669,9 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         DefVec input_elements(nis_nat);
         for (u64 i = 0; i < nis_nat; ++i) {
             auto input_matrix = new_inputs->proj(nis_nat, i);
-            auto coords
-                = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters);
-            input_elements[i] = nested_extract(input_matrix, coords, ris_nat[i]);
+            auto sis_i = Sis->proj(nis_nat, i);
+            auto coords = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
+            input_elements[i] = nested_extract(input_matrix, coords, sis_i, ris_nat[i]);
         }
 
         comb->set("comb");

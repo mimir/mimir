@@ -118,7 +118,7 @@ axm %tensor.map_reduce_aff: {nis: Nat}
 /// Tiles `input` to the larger shape `s_out` (each `s_out#d` must be a multiple of `s_in#d`): `out[…d…] = input[… d mod s_in#d …]`.
 ///
 axm %tensor.repeat: {T: *, r: Nat}
-                  → {s_in: «r; Nat»}
+                  → [s_in: «r; Nat»]
                   → [s_out: «r; Nat»]
                   → [input: «s_in; T»]
                   → «s_out; T», normalize_repeat;
@@ -128,10 +128,34 @@ fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
 lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
     ‹d: r; %affine.semiop.mod (o#d, s_in#d)›;
 
-lam %tensor.repeat_impl {T: *, r: Nat} {s_in: «r; Nat»} (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+lam %tensor.repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     %tensor.map_reduce_aff @1 @(T, r, 0) (s_out, s_out)
         @(T, r, s_in) (tensor_copy @T, ⊥: T)
         (%affine.id @r) (repeat_map @r s_in,) input;
+///
+/// ### %%tensor.reshape
+///
+/// Row-major reshape: `prod(s_in)` must equal `prod(s_out)`. Loops over the result and reads the input at the
+/// delinearized linear index, so it works for arbitrary rank changes (e.g. flatten/unflatten).
+///
+/// `s_in` is explicit because `s_out` has a different rank and so cannot pin the input's
+/// rank/element-type during inference.
+axm %tensor.reshape: {T: *, r_in r_out: Nat}
+                   → [s_in: «r_in; Nat»]
+                   → [s_out: «r_out; Nat»]
+                   → [input: «s_in; T»]
+                   → «s_out; T», normalize_reshape;
+
+/// `o ↦ delinearize(linearize(o, s_out), s_in)`: the row-major output→input index map.
+lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat»)
+                (o: «r_out; %affine.index»): «r_in; %affine.index» =
+    %affine.delinearize (%affine.linearize (o, s_out), s_in);
+
+lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
+                         (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
+    %tensor.map_reduce_aff @1 @(T, r_out, 0) (s_out, s_out)
+        @(T, r_in, s_in) (tensor_copy @T, ⊥: T)
+        (%affine.id @r_out) (reshape_map (s_in, s_out),) input;
 ///
 /// ### %%tensor.dot_product
 ///

@@ -80,6 +80,39 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         }
     }
 
+    // Row-major suffix-product strides of a shape `s` («n; Nat»): `strides#k = ∏_{j>k} s#j` (on `Idx 0`, via `%core.nat`).
+    auto strides = [&](const Def* s, size_t n) {
+        DefVec str(n);
+        if (n) str[n - 1] = w.lit_nat(1);
+        for (size_t k = n - 1; k-- != 0;) str[k] = w.call(core::nat::mul, Defs{str[k + 1], s->proj(n, k + 1)});
+        for (size_t k = 0; k != n; ++k) str[k] = w.call<core::bitcast>(w.type_i64(), str[k]);
+        return str;
+    };
+
+    // %affine.linearize (idxs, s) ↦ Σ_k idxs#k · strides#k  (on the `Idx 0` carrier).
+    if (Axm::isa<affine::linearize>(app)) {
+        auto [idxs, s] = rewrite(app->arg())->projs<2>();
+        auto xs        = idxs->projs();
+        auto str       = strides(s, xs.size());
+        const Def* lin = w.lit(w.type_i64(), 0);
+        for (size_t k = 0; k != xs.size(); ++k) {
+            auto term = w.call(core::wrap::mul, core::Mode::none, Defs{xs[k], str[k]});
+            lin       = w.call(core::wrap::add, core::Mode::none, Defs{lin, term});
+        }
+        return lin;
+    }
+
+    // %affine.delinearize (lin, s) ↦ (lin floordiv strides#d) mod s#d for each d  (on the `Idx 0` carrier).
+    if (Axm::isa<affine::delinearize>(app)) {
+        auto [lin, s] = rewrite(app->arg())->projs<2>();
+        auto m        = s->num_projs();
+        auto str      = strides(s, m);
+        return w.tuple(DefVec(m, [&](size_t d) {
+            auto q = div(core::div::udiv, lin, str[d]);
+            return div(core::div::urem, q, w.call<core::bitcast>(w.type_i64(), s->proj(m, d)));
+        }));
+    }
+
     // %affine.map f idxs mem ↦ widen idxs to `Idx 0`, inline f (advancing the threaded mem through any div), and narrow each
     // result back to its target `Idx (sout#j)`; returns `(mem', narrowed)`.
     if (Axm::isa<affine::map>(app)) {

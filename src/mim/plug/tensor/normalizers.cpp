@@ -189,6 +189,13 @@ const Def* normalize_repeat(const Def*, const Def* c, const Def* arg) {
     return nullptr;
 }
 
+const Def* normalize_reshape(const Def*, const Def* c, const Def* arg) {
+    // Identity reshape: if the input and output shapes agree, the reshape is a no-op.
+    auto [Trr, s_in, s_out] = c->as<App>()->uncurry_args<3>();
+    if (s_in == s_out) return arg;
+    return nullptr;
+}
+
 MIM_tensor_NORMALIZER_IMPL
 
 } // namespace mim::plug::tensor

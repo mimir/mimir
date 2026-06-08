@@ -16,9 +16,9 @@ plugin mem;
 // CHECK-DAG: fun extern tile1d
 // CHECK-DAG: %core.div.urem
 fun extern tile1d (input: «3; I32»): «6; I32» =
-    return (%tensor.repeat 6 input);
+    return (%tensor.repeat 3 6 input);
 
 // Tile a 2x3 matrix along both axes to 4x6: out[i][j] = input[i mod 2][j mod 3].
 // CHECK-DAG: fun extern tile2d
 fun extern tile2d (input: «2, 3; I32»): «4, 6; I32» =
-    return (%tensor.repeat (4, 6) input);
+    return (%tensor.repeat (2, 3) (4, 6) input);
