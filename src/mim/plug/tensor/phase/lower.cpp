@@ -127,6 +127,8 @@ const Def* Lower::rewrite_imm_App(const App* app) {
         return lower_via_impl(app, w.annex<tensor::binary_impl>());
     } else if (Axm::isa<tensor::select>(app)) {
         return lower_via_impl(app, w.annex<tensor::select_impl>());
+    } else if (Axm::isa<tensor::repeat>(app)) {
+        return lower_via_impl(app, w.annex<tensor::repeat_impl>());
     }
     return RWPhase::rewrite_imm_App(app);
 }

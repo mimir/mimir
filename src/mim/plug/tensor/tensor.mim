@@ -93,13 +93,13 @@ lam %tensor.map_reduce_ds_impl {nis: Nat}
 ///
 /// The iteration domain and the result shape are stated explicitly:
 /// * `Sr`: the bounds of the full loop nest of length `Ro + Rr`. Its leading `Ro` dimensions are the parallel output loops; the trailing `Rr` dimensions are the reduction loops that are folded away.
-/// * `So`: the shape of the result tensor (rank `Ro`). It may differ from the leading `Ro` bounds of `Sr`, which is what lets `acc_out` write to a re-shaped output (e.g. a transpose).
+/// * `So`: the shape of the result tensor (rank `Ro`). It may differ from the leading `Ro` bounds of `Sr`, which is what lets `map_out` write to a re-shaped output (e.g. a transpose).
 ///
 /// The full loop iteration vector `(o…, r…)` has length `Ro + Rr`.
-/// * `acc_out` maps the full loop vector to the `Ro` write coordinates in the result `«So»`. As the reduction is folded away before the write, it must depend only on the leading `Ro` output indices.
-/// * `accs#i` maps the full loop vector to the `Ris#i` read coordinates of input `i`. Transposes, slices and broadcasts are expressed here, by reading the inputs accordingly.
+/// * `map_out` maps the full loop vector to the `Ro` write coordinates in the result `«So»`. As the reduction is folded away before the write, it must depend only on the leading `Ro` output indices.
+/// * `maps#i` maps the full loop vector to the `Ris#i` read coordinates of input `i`. Transposes, slices and broadcasts are expressed here, by reading the inputs accordingly.
 ///
-/// The literal subscript `subs#i#j = k` of %tensor.map_reduce corresponds to the projection access map `λ iters. iters#k`, with `acc_out` the identity and the leading `Ro` bounds of `Sr` equal to `So`.
+/// The literal subscript `subs#i#j = k` of %tensor.map_reduce corresponds to the projection access map `λ iters. iters#k`, with `map_out` the identity and the leading `Ro` bounds of `Sr` equal to `So`.
 ///
 /// `nis`, `Ro`, `Rr` and the `Ris` must be literals before entering the `tensor::Lower` phase for the lowering to succeed; the bounds `So` and `Sr` may be symbolic.
 ///
@@ -108,10 +108,30 @@ axm %tensor.map_reduce_aff: {nis: Nat}
                           → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
                           → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                           → [f: Fn [To, «i: nis; Tis#i»] → To, init: To]
-                          → [acc_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
-                          → [accs: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
+                          → [map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
+                          → [maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
                           → [is: «i: nis; «Sis#i; Tis#i»»]
                           → «So; To», normalize_map_reduce_aff;
+///
+/// ### %%tensor.repeat
+///
+/// Tiles `input` to the larger shape `s_out` (each `s_out#d` must be a multiple of `s_in#d`): `out[…d…] = input[… d mod s_in#d …]`.
+///
+axm %tensor.repeat: {T: *, r: Nat}
+                  → {s_in: «r; Nat»}
+                  → [s_out: «r; Nat»]
+                  → [input: «s_in; T»]
+                  → «s_out; T», normalize_repeat;
+
+fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
+/// `o ↦ (o#d mod s_in#d)_d`: the wrap-around (tiling) read map.
+lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+    ‹d: r; %affine.semiop.mod (o#d, s_in#d)›;
+
+lam %tensor.repeat_impl {T: *, r: Nat} {s_in: «r; Nat»} (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+    %tensor.map_reduce_aff @1 @(T, r, 0) (s_out, s_out)
+        @(T, r, s_in) (tensor_copy @T, ⊥: T)
+        (%affine.id @r) (repeat_map @r s_in,) input;
 ///
 /// ### %%tensor.dot_product
 ///
