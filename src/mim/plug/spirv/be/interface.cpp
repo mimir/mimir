@@ -33,7 +33,7 @@ Word Emitter::emit_interface(std::string name, const Def* def) {
 
     // emit var
     module_.declarations.emplace_back(Op{OpKind::Variable, {__storage_class}, interface_id, ptr_type_id});
-    module_.id_names[interface_id] = std::format("{}", name);
+    set_id_name(interface_id, std::format("{}", name));
 
     if (decorations->isa<Sigma>())
         for (auto decoration : decorations->ops())

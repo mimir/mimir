@@ -23,8 +23,8 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
     Word id = next_id();
 
     // Cache emitted result so subsequent emit_term calls reuse the same id.
-    locals_[def]         = id;
-    module_.id_names[id] = def->unique_name();
+    locals_[def] = id;
+    set_id_name(id, def->unique_name());
 
     if (auto tuple = def->isa<Tuple>()) {
         std::vector<Word> constituents;

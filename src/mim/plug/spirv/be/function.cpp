@@ -42,7 +42,7 @@ void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
             {},
             {},
         });
-        module_.id_names[var_id] = std::format("{}_{}", spv_builtin::name(magic), var_id);
+        set_id_name(var_id, std::format("{}_{}", spv_builtin::name(magic), var_id));
         return;
     }
     auto decoration = Axm::as<spirv::decor>(decoration_);
@@ -74,7 +74,7 @@ Word Emitter::emit_function(Lam* function) {
         id,
         return_type_id
     });
-    module_.id_names[id] = function->unique_name();
+    set_id_name(id, function->unique_name());
 
     // Handle function parameter
     auto var      = root()->var();
@@ -82,7 +82,7 @@ Word Emitter::emit_function(Lam* function) {
     Word var_id   = next_id();
     if (var_type != world().sigma())
         module_.funDefinitions.emplace_back(Op{OpKind::FunctionParameter, {}, var_id, emit_type(var_type)});
-    module_.id_names[var_id]                 = var->unique_name();
+    set_id_name(var_id, var->unique_name());
     locals_[world().extract(var, (size_t)0)] = var_id;
 
     // external lams are emitted as entry points

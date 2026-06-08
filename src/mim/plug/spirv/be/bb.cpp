@@ -48,9 +48,9 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
     Word lam_id = bb_id(lam);
     if (Lam::isa_returning(lam))
-        module_.id_names[lam_id] = std::format("entry_{}", lam->unique_name());
+        set_id_name(lam_id, std::format("entry_{}", lam->unique_name()));
     else
-        module_.id_names[lam_id] = lam->unique_name();
+        set_id_name(lam_id, lam->unique_name());
 
     bb.label = Op{OpKind::Label, {}, lam_id, {}};
 

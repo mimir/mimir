@@ -13,12 +13,12 @@ Word Emitter::emit_type(const Def* type) {
     if (auto i = types_.find(type); i != types_.end()) return i->second;
 
     // create new id
-    Word id              = next_id();
-    module_.id_names[id] = "ERROR";
+    Word id = next_id();
+    set_id_name(id, "ERROR");
 
     if (type == world().sigma()) {
         module_.declarations.emplace_back(Op{OpKind::TypeVoid, {}, id, {}});
-        module_.id_names[id] = "void";
+        set_id_name(id, "void");
     } else if (Idx::isa(type)) {
         // All index types map to a single shared 32-bit unsigned integer type
         if (i32_type_id_.has_value()) {
@@ -31,8 +31,8 @@ Word Emitter::emit_type(const Def* type) {
             id,
             {}
         });
-        module_.id_names[id] = "u32";
-        i32_type_id_         = id;
+        set_id_name(id, "u32");
+        i32_type_id_ = id;
     } else if (type->isa<Nat>() || Idx::isa(type)) {
         module_.declarations.emplace_back(Op{
             OpKind::TypeInt,
@@ -40,8 +40,8 @@ Word Emitter::emit_type(const Def* type) {
             id,
             {}
         });
-        module_.id_names[id] = "i32";
-        i32_type_id_         = id;
+        set_id_name(id, "i32");
+        i32_type_id_ = id;
     } else if (auto w = math::isa_f(type)) {
         Word bitwidth = static_cast<Word>(*w);
         module_.declarations.emplace_back(Op{
@@ -50,10 +50,10 @@ Word Emitter::emit_type(const Def* type) {
             id,
             {}
         });
-        module_.id_names[id] = std::format("f{}", bitwidth);
+        set_id_name(id, std::format("f{}", bitwidth));
     } else if (auto b = Axm::isa<spirv::Bool>(type)) {
         module_.declarations.emplace_back(Op{OpKind::TypeBool, {}, id, {}});
-        module_.id_names[id] = "bool";
+        set_id_name(id, "bool");
     } else if (auto arr = type->isa<Arr>()) {
         // Convert the element type
         Word elem_id = emit_type(arr->body());
@@ -71,7 +71,7 @@ Word Emitter::emit_type(const Def* type) {
                     id,
                     {}
                 });
-                module_.id_names[id] = std::format("vec{}_{}", size, id_name(elem_id));
+                set_id_name(id, std::format("vec{}_{}", size, id_name(elem_id)));
             } else {
                 // always use i32 for arity
                 Word length_id = emit_term(world().lit_idx(1ull << 32, size));
@@ -82,7 +82,7 @@ Word Emitter::emit_type(const Def* type) {
                     id,
                     {}
                 });
-                module_.id_names[id] = std::format("arr{}_{}", size, id_name(elem_id));
+                set_id_name(id, std::format("arr{}_{}", size, id_name(elem_id)));
             }
         } else {
             // TODO: runtime-sized arrays
@@ -99,7 +99,7 @@ Word Emitter::emit_type(const Def* type) {
 
         Op op{OpKind::TypeFunction, ops, id, {}};
         module_.declarations.push_back(op);
-        module_.id_names[id] = std::format("pi{}", type->unique_name());
+        set_id_name(id, std::format("pi{}", type->unique_name()));
     } else if (auto sigma = type->isa<Sigma>()) {
         if (sigma->isa_mut()) std::cerr << "mutable sigmas not yet supported\n";
 
@@ -108,7 +108,7 @@ Word Emitter::emit_type(const Def* type) {
             fields.emplace_back(emit_type(t));
 
         module_.declarations.emplace_back(Op{OpKind::TypeStruct, fields, id, {}});
-        module_.id_names[id] = std::format("sigma{}", type->unique_name());
+        set_id_name(id, std::format("sigma{}", type->unique_name()));
     } else if (auto ptr = Axm::isa<spirv::Ptr>(type)) {
         auto [storage_class_, pointee] = ptr->uncurry_args<2>();
         auto storage_class             = storage_class::from_mim(Axm::as<spirv::storage>(storage_class_).id());
@@ -118,8 +118,7 @@ Word Emitter::emit_type(const Def* type) {
             id
         };
         module_.declarations.push_back(op);
-        module_.id_names[id]
-            = std::format("ptr_{}_{}", storage_class::name(storage_class), id_name(emit_type(pointee)));
+        set_id_name(id, std::format("ptr_{}_{}", storage_class::name(storage_class), id_name(emit_type(pointee))));
     }
 
     if (module_.id_names[id] == "ERROR") std::cerr << "unsupported type: " << type << "\n";

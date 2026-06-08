@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <ostream>
 
 #include "mim/phase.h"
@@ -63,7 +64,7 @@ public:
         module_.capabilities.push_back(Op{OpKind::Capability, {capability::Shader}});
         module_.memoryModel = Op{
             OpKind::MemoryModel,
-            {addressing_model::Logical, memory_model::Vulkan}
+            {addressing_model::Logical, memory_model::GLSL450}
         };
         Super::start();
         module_.id_bound = next_id();
@@ -100,6 +101,17 @@ public:
     /// Returns an optional name for an identifier to make
     /// assembly more readable.
     std::string id_name(Word id) { return module_.id_name(id); }
+
+    /// Registers a human-readable name for `id`, sanitized to a valid SPIR-V
+    /// assembly identifier.
+    /// SPIR-V only permits `[a-zA-Z0-9_]` in `%`-names, but Mim symbols may
+    /// contain `%`, `.`, and others (e.g. `%core.mode.us`), so replace every
+    /// disallowed character with `_`.
+    void set_id_name(Word id, std::string name) {
+        for (auto& c : name)
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') c = '_';
+        module_.id_names[id] = std::move(name);
+    }
 
 private:
     /// Emit a term into a given basic block
