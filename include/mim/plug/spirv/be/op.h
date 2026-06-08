@@ -125,6 +125,26 @@ enum FunctionControl {
 std::string name(int control);
 } // namespace function_control
 
+namespace selection_control {
+enum SelectionControl {
+    None        = 0,
+    Flatten     = 1,
+    DontFlatten = 2,
+};
+
+std::string name(int control);
+} // namespace selection_control
+
+namespace loop_control {
+enum LoopControl {
+    None       = 0,
+    Unroll     = 1,
+    DontUnroll = 2,
+};
+
+std::string name(int control);
+} // namespace loop_control
+
 namespace storage_class {
 enum StorageClass {
     Input    = 1,

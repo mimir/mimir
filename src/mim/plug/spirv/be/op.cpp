@@ -153,6 +153,28 @@ std::string name(int control) {
 }
 } // namespace function_control
 
+namespace selection_control {
+std::string name(int control) {
+    switch (control) {
+        case None: return "None"s;
+        case Flatten: return "Flatten"s;
+        case DontFlatten: return "DontFlatten"s;
+        default: fe::unreachable();
+    }
+}
+} // namespace selection_control
+
+namespace loop_control {
+std::string name(int control) {
+    switch (control) {
+        case None: return "None"s;
+        case Unroll: return "Unroll"s;
+        case DontUnroll: return "DontUnroll"s;
+        default: fe::unreachable();
+    }
+}
+} // namespace loop_control
+
 namespace execution_mode {
 std::string name(int mode) {
     switch (mode) {
