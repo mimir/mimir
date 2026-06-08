@@ -15,9 +15,9 @@ fun extern foo (token: %sflow.Root) = %sflow.loop (token, break, continue, loop)
         con left (_: [], struct, tok) = %sflow.continue (tok, struct) i;
         con right (_: [], struct, tok) = %sflow.break (tok, struct) ();
     end;
-    con break (_: [], struct, _) = return (5);
+    con break (_: [], _) = return (5);
     con continue (i: Nat, _, token, header) = %sflow.if (token, if_break, a, b, ff) where
-        con if_break (_: [], _, _) = return (5);
+        con if_break (_: [], _) = return (5);
         con a (_: [], _, token) = %sflow.loopback (header, token) (%core.nat.sub (i, 1));
         con b (_: [], _, token) = %sflow.loopback (header, token) (%core.nat.sub (i, 1));
     end;

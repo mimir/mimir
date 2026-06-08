@@ -82,7 +82,7 @@ axm %sflow.fallthrough: {
 axm %sflow.break(s): {
   C B: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
-  break: Cn [B, Switch token ⊥ ⊥, Token path (inc step)]
+  break: Cn [B, Token path (inc step)]
 } → [
     inner_token: Token inner_path inner_step,
     Switch token C B
@@ -92,7 +92,7 @@ axm %sflow.break(s): {
 axm %sflow.break(l): {
   C B H: ★, path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
   token: Token path step,
-  break: Cn [B, Loop token (loopback_path, loopback_step) ⊥ ⊥ ⊥, Token path (inc step)]
+  break: Cn [B, Token path (inc step)]
 } → [
     inner_token: Token inner_path inner_step,
     Loop token (loopback_path, loopback_step) C B H
@@ -103,7 +103,7 @@ axm %sflow.break(l): {
 /// (path must match; step may differ as progress within the scope).
 axm %sflow.merge: {
   B: ★, path: Path, step inner_step: Nat, arm: Bool, token: Token path step,
-  break: Cn [B, If token ⊥, Token path (inc step)]
+  break: Cn [B, Token path (inc step)]
 } → [
     merge_token: Token (%sflow.arm arm (path, step)) inner_step,
     If token B
@@ -123,7 +123,7 @@ axm %sflow.loopback: {
 axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, If token ⊥, Token path (inc step)],
+    break: Cn [B, Token path (inc step)],
     tuple: «arm: 2; Cn [T, If token B, Token (%sflow.arm arm (path, step)) 0]»,
     index: Bool
     ]
@@ -156,7 +156,7 @@ lam %sflow.nice_if
     (cond: Bool)
     (arg: T)
     (token: Token path step)
-  = let merge = (cn (arg: B, struct: If token ⊥, token: Token path (inc step)) = merge arg token);
+  = let merge = (cn (arg: B, token: Token path (inc step)) = merge arg token);
     let tuple = ‹arm: 2; cn (arg: T, struct: If token B, token: Token (%sflow.arm arm (path, step)) 0) =
       let merge = (cn (v: B) {inner: Nat} (token: Token (%sflow.arm arm (path, step)) inner) = %sflow.merge (token, struct) v);
       tuple#arm merge arg token›;
@@ -177,7 +177,7 @@ lam %sflow.lift {T: ★} (f: Cn T) = (cn (v: T) {path: Path, step: Nat} (token: 
 axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Switch token ⊥ ⊥, Token path (%core.nat.add (step, 1))],
+    break: Cn [B, Token path (%core.nat.add (step, 1))],
     default: Cn [T, Switch token ⊥ B, Token (%sflow.default (path, step)) 0],
     cases: «i: count; [index: Nat, Cn [T, Switch token T B, Token (%sflow.case (%core.bitcast Nat i) (path, step)) 0]]»,
     index: Nat]
@@ -194,7 +194,7 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 axm %sflow.loop: {C B H: ★} → {path loopback_path: Path, step loopback_step: Nat}
   → [
     token: Token path step,
-    break: Cn [B, Loop token (loopback_path, loopback_step) ⊥ ⊥ ⊥, Token path (%core.nat.add (step, 1))],
+    break: Cn [B, Token path (%core.nat.add (step, 1))],
     continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token path 0],
     header: Cn [H, Loop token (loopback_path, loopback_step) C B ⊥, Token path 0]
     ]
@@ -207,7 +207,7 @@ axm %sflow.header: {
   C B T H: ★,
   path loopback_path: Path, step loopback_step: Nat,
   token: Token path step,
-  break: Cn [B, Loop token (loopback_path, loopback_step) ⊥ ⊥ ⊥, Token path (%core.nat.add (step, 1))],
+  break: Cn [B, Token path (%core.nat.add (step, 1))],
   continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token path 0]
 } → [
   header_token: Token path 0,

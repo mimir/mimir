@@ -49,6 +49,6 @@ fun extern fragment [
         end;
         con continue (i: Nat, struct, token) =
             %sflow.loopback (token, struct) (%core.nat.sub (i, 1));
-        con break (_: [], _, _) =
+        con break (_: [], _) =
             return (%spirv.store (mem_, f_color, fragment_body color));
     end;

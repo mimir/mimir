@@ -44,7 +44,7 @@ fun extern fragment [
             %sflow.if (token, break_inner, (else_inner, then_inner), cond_inner) () where
                 con then_inner (_: [], s, token) = %sflow.merge (token, s) green;
                 con else_inner (_: [], s, token) = %sflow.merge (token, s) blue;
-                con break_inner (color: «4; F32», _, token) = %sflow.merge (token, struct) color;
+                con break_inner (color: «4; F32», token) = %sflow.merge (token, struct) color;
             end;
-        con merge (color: «4; F32», _, _) = return (%spirv.store (mem_, o_color, color));
+        con merge (color: «4; F32», _) = return (%spirv.store (mem_, o_color, color));
     end;

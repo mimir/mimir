@@ -7,5 +7,5 @@ fun extern foo (token: %sflow.Root) = %sflow.switch @3 (token, exit, default, ((
   con case1 (_: [], struct, tok) = %sflow.break.s (tok, struct) 1;
   con case0 (_: [], struct, tok) = %sflow.break.s (tok, struct) 0;
   con default (_: [], struct, tok) = %sflow.break.s (tok, struct) 4;
-  con exit (x: Nat, struct, _) = return x;
+  con exit (x: Nat, _) = return x;
 end;
