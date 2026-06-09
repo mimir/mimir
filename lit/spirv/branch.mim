@@ -37,14 +37,14 @@ fun extern fragment [
     token: %sflow.Root,
 ] = let (mem_, x) = %spirv.load (mem, i_x);
     let cond_outer = %math.cmp.l 0 (x, -0.25:F32);
-    %sflow.if (token, merge, (else_outer, then_outer), cond_outer) () where
-        con then_outer (_: [], struct, token) = %sflow.merge (token, struct) red;
+    %sflow.if token merge (else_outer, then_outer) cond_outer () where
+        con then_outer (_: [], struct, token) = %sflow.merge token struct red;
         con else_outer (_: [], struct, token) =
             let cond_inner = %math.cmp.l 0 (x, 0.25:F32);
-            %sflow.if (token, break_inner, (else_inner, then_inner), cond_inner) () where
-                con then_inner (_: [], s, token) = %sflow.merge (token, s) green;
-                con else_inner (_: [], s, token) = %sflow.merge (token, s) blue;
-                con break_inner (color: «4; F32», token) = %sflow.merge (token, struct) color;
+            %sflow.if token break_inner (else_inner, then_inner) cond_inner () where
+                con then_inner (_: [], s, token) = %sflow.merge token s green;
+                con else_inner (_: [], s, token) = %sflow.merge token s blue;
+                con break_inner (color: «4; F32», token) = %sflow.merge token struct color;
             end;
         con merge (color: «4; F32», _) = return (%spirv.store (mem_, o_color, color));
     end;

@@ -1,0 +1,27 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// Sharing one arm between two distinct inner if/else structures is a type
+// error: an arm's token carries the path of the structure it belongs to.
+// The inner if in then_outer lives on path `arm tt ROOT`, the one in
+// else_outer on `arm ff ROOT`, so the single `shared` arm cannot have a
+// token type valid for both.
+
+plugin sflow;
+
+fun extern foo (token: %sflow.Root, cond_outer cond_inner: Bool) =
+    %sflow.if token merge (else_outer, then_outer) cond_outer () where
+        con then_outer (_, struct, token) =
+            %sflow.if token merge_t (else_t, shared) cond_inner () where
+                con else_t (_, s, token) = %sflow.merge token s 2;
+                con merge_t (x: Nat, token) = %sflow.merge token struct x;
+            end;
+        con else_outer (_, struct, token) =
+            %sflow.if token merge_e (else_e, shared) cond_inner () where
+                con else_e (_, s, token) = %sflow.merge token s 3;
+                con merge_e (x: Nat, token) = %sflow.merge token struct x;
+            end;
+        // shared between both inner ifs -> incompatible token paths
+        con shared (_, s, token) = %sflow.merge token s 1;
+        con merge (x: Nat, _) = return x;
+    end;
+
+// CHECK: error

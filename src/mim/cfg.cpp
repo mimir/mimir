@@ -8,6 +8,7 @@
 #include "mim/axm.h"
 #include "mim/nest.h"
 #include "mim/tuple.h"
+#include "mim/world.h"
 
 namespace mim {
 
@@ -88,8 +89,9 @@ bool CFG::Node::handle_sflow(const App* app) {
     };
 
     // Register an if/switch/loop constructor's argument tuple under its scope
-    // token (op(0)) so that exits can recover their targets later.
-    auto register_cf = [&](const Def* sigma) { cfg_.sflow_token_to_args_[sigma->op(0)] = sigma; };
+    // token so that exits can recover their targets later. The constructors are
+    // curried, so reconstruct an ordered tuple from the curried args.
+    auto register_cf = [&](const Def* token, Defs args) { cfg_.sflow_token_to_args_[token] = cfg_.world_.tuple(args); };
     // Recover the constructor argument tuple owning a capability value.
     auto cf_args = [&](const Def* cf_struct) -> const Def* {
         auto it = cfg_.sflow_token_to_args_.find(sflow_scope_token(cf_struct));
@@ -99,16 +101,14 @@ bool CFG::Node::handle_sflow(const App* app) {
     // For axm positions / uncurry arities, mirror mim::plug::spirv::Emitter::emit_bb in
     // src/mim/plug/spirv/be/bb.cpp.
     if (sv == "%sflow.if") {
-        auto [sigma, _arg]                      = app->uncurry_args<2>();
-        register_cf(sigma);
-        auto [_token, _cf_break, tuple, _index] = sigma->projs<4>();
+        auto [token, cf_break, tuple, index, _arg] = app->uncurry_args<5>();
+        register_cf(token, {token, cf_break, tuple, index});
         for (auto branch : tuple->ops()) add_lam(branch);
         return true;
     }
     if (sv == "%sflow.switch") {
-        auto [sigma, _arg]                                  = app->uncurry_args<2>();
-        register_cf(sigma);
-        auto [_token, _cf_break, cf_default, cases, _index] = sigma->projs<5>();
+        auto [token, cf_break, cf_default, cases, index, _arg] = app->uncurry_args<6>();
+        register_cf(token, {token, cf_break, cf_default, cases, index});
         add_lam(cf_default);
         // cases: array of dependent tuples (index, continuation)
         for (auto c : cases->ops()) add_lam(c->op(1));
@@ -116,32 +116,30 @@ bool CFG::Node::handle_sflow(const App* app) {
     }
     if (sv == "%sflow.header") {
         // Loop pre-header / anchor: branches unconditionally into the loop header.
-        auto [sigma, _arg]      = app->uncurry_args<2>();
-        auto [_token, cf_header] = sigma->projs<2>();
+        auto [_token, cf_header, _arg] = app->uncurry_args<3>();
         add_lam(cf_header);
         return true;
     }
     if (sv == "%sflow.loop") {
-        // Loop header dispatch: op(0) is the `Loop` capability, so register by its
-        // scope token. Record this lam as the loop header for loopbacks, and add
-        // edges to the body (cond false) and break (cond true, immediate break).
-        auto [sigma, _arg]                                    = app->uncurry_args<2>();
-        auto [cf_struct, cf_break, _cf_continue, cf_body, _c] = sigma->projs<5>();
-        cfg_.sflow_token_to_args_[sflow_scope_token(cf_struct)] = sigma;
-        cfg_.sflow_loop_header_[sflow_scope_token(cf_struct)]   = mut_;
+        // Loop header dispatch: the first curried arg is the `Loop` capability, so
+        // register by its scope token. Record this lam as the loop header for
+        // loopbacks, and add edges to the body (cond false) and break (cond true,
+        // immediate break).
+        auto [cf_struct, cf_break, cf_continue, cf_body, cond, _arg] = app->uncurry_args<6>();
+        auto token = sflow_scope_token(cf_struct);
+        cfg_.sflow_token_to_args_[token] = cfg_.world_.tuple({cf_struct, cf_break, cf_continue, cf_body, cond});
+        cfg_.sflow_loop_header_[token]   = mut_;
         add_lam(cf_body);
         add_lam(cf_break);
         return true;
     }
     if (sv == "%sflow.continue") {
-        auto [sigma, _val]             = app->uncurry_args<2>();
-        auto [_inner_token, cf_struct] = sigma->projs<2>();
+        auto [_inner_token, cf_struct, _val] = app->uncurry_args<3>();
         if (auto a = cf_args(cf_struct)) add_lam(a->op(2)); // loop continue
         return true;
     }
     if (sv == "%sflow.fallthrough") {
-        auto [sigma, _val]             = app->uncurry_args<2>();
-        auto [_inner_token, cf_struct] = sigma->projs<2>();
+        auto [_inner_token, cf_struct, _val] = app->uncurry_args<3>();
         if (auto a = cf_args(cf_struct)) {
             auto cases        = a->op(3);
             const Def* target = a->op(2); // default
@@ -155,20 +153,17 @@ bool CFG::Node::handle_sflow(const App* app) {
         return true;
     }
     if (sv == "%sflow.break.s" || sv == "%sflow.break.l") {
-        auto [sigma, _val]             = app->uncurry_args<2>();
-        auto [_inner_token, cf_struct] = sigma->projs<2>();
+        auto [_inner_token, cf_struct, _val] = app->uncurry_args<3>();
         if (auto a = cf_args(cf_struct)) add_lam(a->op(1)); // break target
         return true;
     }
     if (sv == "%sflow.merge") {
-        auto [sigma, _val]             = app->uncurry_args<2>();
-        auto [_merge_token, cf_struct] = sigma->projs<2>();
+        auto [_merge_token, cf_struct, _val] = app->uncurry_args<3>();
         if (auto a = cf_args(cf_struct)) add_lam(a->op(1)); // if merge target
         return true;
     }
     if (sv == "%sflow.loopback") {
-        auto [sigma, _value]              = app->uncurry_args<2>();
-        auto [_loopback_token, cf_struct] = sigma->projs<2>();
+        auto [_loopback_token, cf_struct, _value] = app->uncurry_args<3>();
         auto it = cfg_.sflow_loop_header_.find(sflow_scope_token(cf_struct));
         if (it != cfg_.sflow_loop_header_.end()) add_lam(it->second); // loop header
         return true;

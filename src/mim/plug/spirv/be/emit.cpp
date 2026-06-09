@@ -30,19 +30,26 @@ void Emitter::visit(const Nest& nest) {
     // for the `loop` dispatch op(0) is the `Loop` capability, so we key by its
     // scope token. We also record the loop header lam (the lam holding the
     // dispatch) so loopbacks can branch back to it.
+    //
+    // The constructors are curried, so reconstruct an ordered argument tuple from
+    // the curried args and store it under the scope token. Exits index into that
+    // tuple by position (see `cf_args`).
     for (auto mut : muts) {
         auto lam = mut->isa<Lam>();
         if (!lam || !lam->is_set()) continue;
         auto app = lam->body()->isa<App>();
         if (!app) continue;
-        if (Axm::isa<sflow::_if>(app) || Axm::isa<sflow::_switch>(app->callee())) {
-            auto sigma                   = std::get<0>(app->uncurry_args<2>());
-            cf_constructs_[sigma->op(0)] = sigma;
+        if (Axm::isa<sflow::_if>(app)) {
+            auto [token, cf_break, tuple, index, _arg] = app->uncurry_args<5>();
+            cf_constructs_[token]                      = world().tuple({token, cf_break, tuple, index});
+        } else if (Axm::isa<sflow::_switch>(app)) {
+            auto [token, cf_break, cf_default, cases, index, _arg] = app->uncurry_args<6>();
+            cf_constructs_[token] = world().tuple({token, cf_break, cf_default, cases, index});
         } else if (Axm::isa<sflow::loop>(app)) {
-            auto sigma               = std::get<0>(app->uncurry_args<2>());
-            auto token               = scope_token_of(sigma->op(0));
-            cf_constructs_[token]    = sigma;
-            cf_loop_headers_[token]  = lam;
+            auto [cf_struct, cf_break, cf_continue, cf_body, cond, _arg] = app->uncurry_args<6>();
+            auto token              = scope_token_of(cf_struct);
+            cf_constructs_[token]   = world().tuple({cf_struct, cf_break, cf_continue, cf_body, cond});
+            cf_loop_headers_[token] = lam;
         }
     }
 
