@@ -13,8 +13,10 @@ Requires: the project venv at REPO_ROOT/.venv/ with `clang` (libclang Python bin
 """
 
 import argparse
+import json
 import os
 import re
+import shlex
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -456,6 +458,101 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
 
 
 # ---------------------------------------------------------------------------
+#  CMake integration: derive the real per-target compile flags
+# ---------------------------------------------------------------------------
+
+_CC_SEPARATE_FLAGS = ("-I", "-isystem", "-iquote", "-D", "-U", "-include")
+_CC_GLUED_PREFIXES = ("-I", "-isystem", "-iquote", "-D", "-U", "-std=", "-include")
+
+
+def _load_compile_commands(build_dir: Path) -> Optional[list]:
+    """Load `<build_dir>/compile_commands.json`, or return None if unavailable."""
+    cc = Path(build_dir) / "compile_commands.json"
+    if not cc.is_file():
+        return None
+    try:
+        with open(cc) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"warning: could not read {cc}: {e}", file=sys.stderr)
+        return None
+
+
+def _rel_under(path, anchor: str) -> Optional[Path]:
+    """Path relative to `<repo>/<anchor>`, or None if it does not live there."""
+    base = (_REPO_ROOT / anchor).resolve()
+    try:
+        return Path(path).resolve().relative_to(base)
+    except ValueError:
+        return None
+
+
+def _match_cc_entry(header_path: str, entries: list) -> Optional[dict]:
+    """Pick the compile-command entry whose target best matches *header_path*.
+
+    Headers under `include/<sub>` are mapped to sources under `src/<sub>`; the
+    entry sharing the longest directory prefix (plus a bonus for a matching
+    file stem) wins. This routes a plugin header to its plugin module's flags
+    rather than to libmim's, picking up any target-specific defines.
+    """
+    if not entries:
+        return None
+    hrel = _rel_under(header_path, "include")
+    best, best_score = entries[0], -1
+    for e in entries:
+        srel = _rel_under(e.get("file", ""), "src")
+        score = 0
+        if hrel is not None and srel is not None:
+            for x, y in zip(hrel.parts[:-1], srel.parts[:-1]):
+                if x == y:
+                    score += 1
+                else:
+                    break
+            if hrel.stem == srel.stem:
+                score += 1
+        if score > best_score:
+            best_score, best = score, e
+    return best
+
+
+def _flags_from_cc_entry(entry: dict) -> list:
+    """Extract the preprocessor-relevant flags (`-std`, `-D`/`-U`, includes)."""
+    if "arguments" in entry:
+        raw = list(entry["arguments"])
+    else:
+        raw = shlex.split(entry.get("command", ""))
+
+    out, i = [], 0
+    while i < len(raw):
+        a = raw[i]
+        if a in _CC_SEPARATE_FLAGS and i + 1 < len(raw):
+            out.append(a)
+            out.append(raw[i + 1])
+            i += 2
+            continue
+        if a.startswith(_CC_GLUED_PREFIXES):
+            out.append(a)
+        i += 1
+    return out
+
+
+def _clang_resource_include() -> Optional[str]:
+    """Locate libclang's builtin headers (stddef.h et al.) as an `-isystem` flag.
+
+    compile_commands.json never lists the compiler resource dir, so libclang
+    would otherwise fail to find its own builtin headers.
+    """
+    base = Path("/usr/lib/clang")
+    if not base.is_dir():
+        return None
+    for ver_dir in sorted(base.iterdir(), reverse=True):
+        res_incl = ver_dir / "include"
+        if res_incl.is_dir() and (res_incl / "stddef.h").exists():
+            return f"-isystem{res_incl}"
+    return None
+
+
+# ---------------------------------------------------------------------------
 #  CLI
 # ---------------------------------------------------------------------------
 
@@ -469,6 +566,17 @@ def parse_args(argv=None):
     p.add_argument("--extra-args", default="-std=c++23", help="Extra Clang arguments (default: -std=c++23)")
     p.add_argument("--extra-dir", default=None, help="Directory containing .nbextra hand-written binding snippets")
     p.add_argument("-I", action="append", dest="includes", default=[], help="Include paths")
+    p.add_argument(
+        "--build-dir",
+        default=str(_REPO_ROOT / "build"),
+        help="CMake build directory to source compile flags from (default: <repo>/build). "
+        "Point at a Release vs Debug tree to flip build-type guards such as NDEBUG.",
+    )
+    p.add_argument(
+        "--no-cmake",
+        action="store_true",
+        help="Do not read compile_commands.json; fall back to built-in include detection.",
+    )
     return p.parse_args(argv)
 
 
@@ -496,31 +604,49 @@ def main(argv=None):
         print("No headers specified.", file=sys.stderr)
         sys.exit(1)
 
-    # Clang arguments
-    clang_args = ["-x", "c++-header"]
+    # Base clang arguments shared by every header.
+    base_args = ["-x", "c++-header"]
     if args.extra_args:
-        clang_args.extend(args.extra_args.split())
+        base_args.extend(args.extra_args.split())
     for inc in args.includes or []:
-        clang_args.append(f"-I{inc}")
+        base_args.append(f"-I{inc}")
+    # libclang's own builtin headers (stddef.h, ...) are never in the compile DB.
+    res_flag = _clang_resource_include()
+    if res_flag:
+        base_args.append(res_flag)
 
-    # Auto-detect repository include paths
-    for d in [
-        _REPO_ROOT / "include",
-        _REPO_ROOT / "submodules" / "fe" / "include",
-        _REPO_ROOT / "submodules" / "abseil-cpp",
-        _REPO_ROOT / "build" / "include",
-        _REPO_ROOT / "build",
-    ]:
-        p = str(d)
-        if p not in clang_args:
-            clang_args.append(f"-I{p}")
+    # CMake-derived flags: defines (incl. build-type NDEBUG), std level, includes.
+    cc_entries = None
+    if not args.no_cmake:
+        cc_entries = _load_compile_commands(Path(args.build_dir))
+        if cc_entries is None:
+            print(
+                f"warning: no compile_commands.json under {args.build_dir}; "
+                "falling back to built-in include detection — build-type guards "
+                "such as NDEBUG may not match your build "
+                "(configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)",
+                file=sys.stderr,
+            )
 
-    # Clang builtin headers (e.g. /usr/lib/clang/22/include)
-    for clang_ver_dir in sorted(Path("/usr/lib/clang").iterdir(), reverse=True):
-        res_incl = clang_ver_dir / "include"
-        if res_incl.is_dir() and (res_incl / "stddef.h").exists():
-            clang_args.append(f"-isystem{res_incl}")
-            break
+    # Fallback repository include paths (only when no compile DB is available).
+    fallback_includes = [
+        f"-I{_REPO_ROOT / 'include'}",
+        f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'include'}",
+        f"-I{_REPO_ROOT / 'submodules' / 'abseil-cpp'}",
+        f"-I{_REPO_ROOT / 'build' / 'include'}",
+        f"-I{_REPO_ROOT / 'build'}",
+    ]
+
+    def _args_for_header(hdr: str) -> list:
+        clang_args = list(base_args)
+        if cc_entries:
+            entry = _match_cc_entry(hdr, cc_entries)
+            if entry:
+                # Appended last so a compile-DB `-std=` wins over the default.
+                clang_args.extend(_flags_from_cc_entry(entry))
+                return clang_args
+        clang_args.extend(fallback_includes)
+        return clang_args
 
     # Resolve extras directory
     extra_dir = args.extra_dir
@@ -534,6 +660,7 @@ def main(argv=None):
         if not _header_has_decls(hdr):
             continue
 
+        clang_args = _args_for_header(hdr)
         tu = idx.parse(hdr, clang_args)
         if not tu:
             print(f"ERROR: failed to parse {hdr}", file=sys.stderr)
