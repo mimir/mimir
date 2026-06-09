@@ -35,6 +35,7 @@ axm %sflow.arm: Bool → [Path, Nat] → Path;
 axm %sflow.case: Nat → [Path, Nat] → Path;
 axm %sflow.default: [Path, Nat] → Path;
 axm %sflow.body: [Path, Nat] → Path;
+axm %sflow.tail: [Path, Nat] → Path;
 
 axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
@@ -192,7 +193,7 @@ axm %sflow.loop: {
   token: Token path step,
 } → [Loop token (loopback_path, loopback_step) ⊥ ⊥ H] // 1× Loop
   → [break: Cn [B, Token path (inc step)]]
-  → [continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token (%sflow.body (path, step)) 0]] // 1× Loop
+  → [continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token (%sflow.tail (path, step)) 0]] // 1× Loop
   → [body: Cn [T, Loop token (loopback_path, loopback_step) C B ⊥, Token (%sflow.body (path, step)) 0]] // ω× Loop
   → [cond: Bool]
   → Cn (T, B)#cond;
