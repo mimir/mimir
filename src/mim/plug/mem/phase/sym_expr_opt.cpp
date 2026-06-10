@@ -88,7 +88,9 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
-    // DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
+    DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
+    DLOG("callee {} is a mut? {}", app->callee(), app->callee()->isa_mut());
+    DLOG("callee {} is a var? {}", app->callee(), app->callee()->isa<Var>());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
         auto abstr_mem       = rewrite(mem);
@@ -167,10 +169,18 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 }
             }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
+        // TODO: this works differently now, check what needs updating
         DLOG("{} not optimizable", app->callee());
 
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
+
+        for (auto arg : app->targs()) {
+            DLOG("arg {} of {}, free vars:", arg, app->callee());
+            for (auto v : arg->free_vars())
+                DLOG("{}", v);
+        }
+
         for (size_t i = 0; i != n; ++i)
             if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
                 // need to rewrite this later, after local slot values are updated
@@ -184,14 +194,12 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         // DLOG("done analyzing args of {}", lam);
 
         bool mem_passed = false;
-        for (auto arg : abstr_args) {
-            // DLOG("arg: {}", arg);
-            if (Axm::isa<mem::M>(arg->type())) mem_passed = true;
-        }
+        // TODO: this all doesn't work if the arguments are "hidden" in some way, like if you pass a slot inside a tuple or a map.
         if (mem_passed) {
-            DLOG("a mem is passed");
+            DLOG("a mem is passed to {}", lam);
             for (auto arg : abstr_args) {
                 if (auto continuation = arg->isa_mut<Lam>(); isa_optimizable(continuation)) {
+                    DLOG("a continuation is passed to {}", lam);
                     // The unknown function may call this as a continuation. In that case, the slot
                     // values are the same as for the current function.
                     for (auto [slot, slot_type] : all_slots_) {
@@ -380,26 +388,26 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
         auto [T, as]   = Ta->projs<2>();
         auto [mem, id] = mi->projs<2>();
         auto [_, ptr]  = slot->projs<2>();
-        if (auto sloxy = lattice(ptr)) {
+        if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) {
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple(
                 {rewritten_mem,
                  new_world().bot(
-                     rewrite(ptr->type()))}); // return bot for the pointer, we hopefully proved that noone uses it
+                     rewrite(ptr->type()))}); // return bot for the pointer, we hopefully proved that no one uses it
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
-        if (auto sloxy = lattice(ptr)) return rewrite(mem);
+        if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) return rewrite(mem);
     } else if (auto load = Axm::isa<mem::load>(old_app)) {
         auto [result_mem, result_load] = load->projs<2>();
         auto [mem, ptr]                = load->args<2>();
+        DLOG("rewriting a load from {} ({})", ptr, old_app);
         if (auto known_load = lattice(result_load)) {
-            if (isa_phi_proxy(known_load)) DLOG("rewriting a phi proxy");
+            DLOG("rewriting a load from {}, we know that it's {}", ptr, known_load);
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple({rewritten_mem, rewrite(known_load)});
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
-        // TODO: this also needs to check if we need to add any phis
         DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
         bool phis_needed = false;
         for (auto [slot, slot_type] : analysis_.all_slots()) {
@@ -513,8 +521,6 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                                     auto found_value = found_value_it->second;
                                     new_args[j++]    = rewrite(found_value);
                                 } else {
-                                    // TODO: the value is probably one of the vars of current_mut now, so rewrite the
-                                    // proxy
                                     auto phi      = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
                                     new_args[j++] = rewrite(phi);
                                 }
