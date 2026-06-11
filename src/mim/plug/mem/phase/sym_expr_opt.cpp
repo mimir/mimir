@@ -65,8 +65,9 @@ void SymExprOpt::Analysis::analyze(const Def* def) {
     }
 
     if (auto [_, ins] = visited_.emplace(def); ins)
-        for (auto d : def->deps())
-            analyze(d);
+        if (!def->isa<Proxy>())
+            for (auto d : def->deps())
+                analyze(d);
 }
 
 const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
