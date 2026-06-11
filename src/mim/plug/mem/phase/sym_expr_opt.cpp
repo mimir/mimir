@@ -98,6 +98,89 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
 
+void SymExprOpt::Analysis::gvn(DefVec &all_concr_vars, DefVec &all_abstr_vars, DefVec &all_abstr_args) {
+        auto n_all          = all_abstr_vars.size();
+        assert(all_concr_vars.size() == all_abstr_vars.size() && all_abstr_vars.size() == all_abstr_args.size());
+
+        DefMap<size_t> var2index;
+        for (size_t i = 0; auto var : all_concr_vars)
+            var2index[var] = i++;
+
+        // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling
+        // them into one proxy
+        for (size_t i = 0; i != n_all; ++i) {
+            if (all_abstr_vars[i]) continue;
+
+            auto bundle_vars = DefVec();
+            auto vi          = all_concr_vars[i];
+            auto ai          = all_abstr_args[i];
+            bundle_vars.emplace_back(vi);
+
+            for (size_t j = i + 1; j != n_all; ++j) {
+                auto vj = all_concr_vars[j];
+                if (!all_abstr_vars[j] && all_abstr_args[j] == ai) bundle_vars.emplace_back(vj);
+            }
+
+            if (bundle_vars.size() == 1) {
+                lattice_[vi] = all_abstr_vars[i] = vi; // top
+            } else {
+                auto proxy = world().proxy(vi->type(), bundle_vars, 0, Proxy_GVN);
+
+                for (auto p : proxy->ops()) {
+                    auto j       = var2index[p];
+                    auto vj      = all_concr_vars[j];
+                    lattice_[vj] = all_abstr_vars[j] = proxy;
+                }
+
+                DLOG("bundle: {}", proxy);
+            }
+        }
+
+        // GVN split: We have to prove that all incoming args for all vars in a bundle are the same value.
+        // Otherwise we have to refine the bundle by splitting off contradictions.
+        // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
+        // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
+        // a -> {a, c}
+        // b -> {b, d}
+        // c -> {a, c}
+        // d -> {b, d}
+        // e -> e      (top)
+        for (size_t i = 0; i != n_all; ++i) {
+            if (auto proxy = isa_gvn_proxy(all_abstr_vars[i])) {
+                auto num        = proxy->num_ops();
+                auto split_vars = DefVec();
+                auto ai         = all_abstr_args[i];
+
+                for (auto p : proxy->ops()) {
+                    auto j  = var2index[p];
+                    auto vj = all_concr_vars[j];
+                    if (p == vj) {
+                        if (ai == all_abstr_args[j]) split_vars.emplace_back(vj);
+                    }
+                }
+
+                auto new_num = split_vars.size();
+                if (new_num == 1) {
+                    invalidate();
+                    auto vi      = all_concr_vars[i];
+                    lattice_[vi] = all_abstr_vars[i] = vi;
+                    DLOG("single: {}", vi);
+                } else if (new_num != num) {
+                    invalidate();
+                    auto new_proxy = world().proxy(ai->type(), split_vars, 0, Proxy_GVN);
+                    DLOG("split: {}", new_proxy);
+
+                    for (auto p : new_proxy->ops()) {
+                        auto j  = var2index[p];
+                        auto vj = all_concr_vars[j];
+                        if (p == vj) lattice_[vj] = all_abstr_vars[j] = new_proxy;
+                    }
+                }
+                // if new_num == num: do nothing
+            }
+        }
+}
+
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
     // DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
     // DLOG("callee {} is a mut? {}", app->callee(), app->callee()->isa_mut());
@@ -234,86 +317,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto all_concr_vars = concat_to_vector(lam->tvars(), concr_phis);
         auto all_abstr_vars = concat_to_vector(abstr_vars, abstr_phis);
         auto all_abstr_args = concat_to_vector(abstr_args, phi_args);
-        auto n_all          = all_abstr_vars.size();
-        assert(all_concr_vars.size() == all_abstr_vars.size() && all_abstr_vars.size() == all_abstr_args.size());
-
-        DefMap<size_t> var2index;
-        for (size_t i = 0; auto var : all_concr_vars)
-            var2index[var] = i++;
-
-        // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling
-        // them into one proxy
-        for (size_t i = 0; i != n_all; ++i) {
-            if (all_abstr_vars[i]) continue;
-
-            auto bundle_vars = DefVec();
-            auto vi          = all_concr_vars[i];
-            auto ai          = all_abstr_args[i];
-            bundle_vars.emplace_back(vi);
-
-            for (size_t j = i + 1; j != n_all; ++j) {
-                auto vj = all_concr_vars[j];
-                if (!all_abstr_vars[j] && all_abstr_args[j] == ai) bundle_vars.emplace_back(vj);
-            }
-
-            if (bundle_vars.size() == 1) {
-                lattice_[vi] = all_abstr_vars[i] = vi; // top
-            } else {
-                auto proxy = world().proxy(vi->type(), bundle_vars, 0, Proxy_GVN);
-
-                for (auto p : proxy->ops()) {
-                    auto j       = var2index[p];
-                    auto vj      = all_concr_vars[j];
-                    lattice_[vj] = all_abstr_vars[j] = proxy;
-                }
-
-                DLOG("bundle: {}", proxy);
-            }
-        }
-
-        // GVN split: We have to prove that all incoming args for all vars in a bundle are the same value.
-        // Otherwise we have to refine the bundle by splitting off contradictions.
-        // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
-        // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
-        // a -> {a, c}
-        // b -> {b, d}
-        // c -> {a, c}
-        // d -> {b, d}
-        // e -> e      (top)
-        for (size_t i = 0; i != n_all; ++i) {
-            if (auto proxy = isa_gvn_proxy(all_abstr_vars[i])) {
-                auto num        = proxy->num_ops();
-                auto split_vars = DefVec();
-                auto ai         = all_abstr_args[i];
-
-                for (auto p : proxy->ops()) {
-                    auto j  = var2index[p];
-                    auto vj = all_concr_vars[j];
-                    if (p == vj) {
-                        if (ai == all_abstr_args[j]) split_vars.emplace_back(vj);
-                    }
-                }
-
-                auto new_num = split_vars.size();
-                if (new_num == 1) {
-                    invalidate();
-                    auto vi      = all_concr_vars[i];
-                    lattice_[vi] = all_abstr_vars[i] = vi;
-                    DLOG("single: {}", vi);
-                } else if (new_num != num) {
-                    invalidate();
-                    auto new_proxy = world().proxy(ai->type(), split_vars, 0, Proxy_GVN);
-                    DLOG("split: {}", new_proxy);
-
-                    for (auto p : new_proxy->ops()) {
-                        auto j  = var2index[p];
-                        auto vj = all_concr_vars[j];
-                        if (p == vj) lattice_[vj] = all_abstr_vars[j] = new_proxy;
-                    }
-                }
-                // if new_num == num: do nothing
-            }
-        }
+        gvn(all_concr_vars, all_abstr_vars, all_abstr_args);
 
         set(lam->var(), world().tuple(all_abstr_vars.span().subspan(0, n)));
         return world().app(rewrite_deps(lam), abstr_args);

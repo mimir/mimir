@@ -54,6 +54,7 @@ private:
     private:
         const Def* slot2value(const Def* slot, const Def* value) { return mut2slot2value_[curr_mut()][slot] = value; }
         const Def* propagate(const Def*, const Def*);
+        void gvn(DefVec &, DefVec &, DefVec &);
         const Def* rewrite_imm_App(const App*) final;
 
         // post-processing analysis to find sloxies that must be set to top
