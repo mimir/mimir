@@ -69,6 +69,17 @@ void SymExprOpt::Analysis::analyze(const Def* def) {
             analyze(d);
 }
 
+const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
+    // look up the slot in the local map
+    auto& slot2value = mut2slot2value_[curr_mut()];
+    if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
+    // if we didn't write to the slot, and so it's not in the local map, check if we have a phi for this slot in the lattice
+    auto slot_type = slot->type(); // getting the type here only works like this because slot2value is only ever called with slot proxies
+    auto phi = world().proxy(slot_type, {curr_mut(), slot}, 0, Proxy_Phi);
+    if (auto it = lattice_.find(phi); it != lattice_.end()) return it->second;
+    return nullptr;
+}
+
 const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
     auto [i, ins] = lattice_.emplace(var, def);
@@ -88,9 +99,9 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
 }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
-    DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
-    DLOG("callee {} is a mut? {}", app->callee(), app->callee()->isa_mut());
-    DLOG("callee {} is a var? {}", app->callee(), app->callee()->isa<Var>());
+    // DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
+    // DLOG("callee {} is a mut? {}", app->callee(), app->callee()->isa_mut());
+    // DLOG("callee {} is a var? {}", app->callee(), app->callee()->isa<Var>());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
         auto abstr_mem       = rewrite(mem);
@@ -111,15 +122,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             set(result_load, known_value);
             return world().tuple({result_mem, known_value});
         } else {
-            DLOG("still resolving load, looking up {} in lattice", abstr_ptr);
-            auto phi = world().proxy(T, {curr_mut(), abstr_ptr}, 0, Proxy_Phi);
-            if (auto it = lattice_.find(phi); it != lattice_.end()) {
-                set(result_load, it->second);
-                return world().tuple({result_mem, it->second});
-            } else {
-                DLOG("couldn't resolve load of {}, returning bot", abstr_ptr);
-                return world().tuple({result_mem, world().bot(T)});
-            }
+            DLOG("couldn't resolve load of {}, returning bot", abstr_ptr);
+            return world().tuple({result_mem, world().bot(T)});
         }
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
         auto [Ta, mi]   = slot->uncurry_args<2>();
@@ -136,6 +140,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         set(ptr, sloxy);
         return world().tuple({abstr_mem, sloxy});
     } else if (auto branch = Branch(app)) {
+        // TODO: this doesn't work, see critical edge example. we need to propagate through the lattice instead
         auto abstr = rewrite(branch.cond());
         auto l     = Lit::isa<bool>(abstr);
         DLOG("abstract value of branch cond {} in {}: {}", branch.cond(), curr_mut(), abstr);
@@ -144,14 +149,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 DLOG("branch, writing local values to {}", lam);
                 for (auto [slot, slot_type] : all_slots_) {
                     auto abstr_slot = rewrite(slot);
-                    if (auto value = slot2value(abstr_slot)) {
+                    if (auto value = slot2value(abstr_slot))
                         mut2slot2value_[lam][abstr_slot] = value;
-                    } else {
-                        auto phi = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
-                        DLOG("looking up {}", phi);
-                        if (auto it = lattice_.find(phi); it != lattice_.end())
-                            mut2slot2value_[lam][abstr_slot] = it->second;
-                    }
                 }
             }
         if (!l || !*l)
@@ -159,13 +158,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 DLOG("branch, writing local values to {}", lam);
                 for (auto [slot, slot_type] : all_slots_) {
                     auto abstr_slot = rewrite(slot);
-                    if (auto value = slot2value(abstr_slot)) {
+                    if (auto value = slot2value(abstr_slot))
                         mut2slot2value_[lam][abstr_slot] = value;
-                    } else {
-                        auto phi = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
-                        if (auto it = lattice_.find(phi); it != lattice_.end())
-                            mut2slot2value_[lam][abstr_slot] = it->second;
-                    }
                 }
             }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
@@ -175,65 +169,31 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto n          = app->num_targs();
         auto abstr_args = absl::FixedArray<const Def*>(n);
 
-        for (auto arg : app->targs()) {
-            DLOG("arg {} of {}, free vars:", arg, app->callee());
-            for (auto v : arg->free_vars())
-                DLOG("{}", v);
-        }
-
-        for (size_t i = 0; i != n; ++i)
+        for (size_t i = 0; i != n; ++i) {
             if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
-                // need to rewrite this later, after local slot values are updated
-                // TODO: think about this more
+                // need to rewrite this later, after slot values in the lattice are updated
                 abstr_args[i] = continuation;
             } else {
                 DLOG("in app of non-optimizable function, rewriting arg {}", app->targ(i));
                 abstr_args[i] = rewrite(app->targ(i));
             }
-
-        // DLOG("done analyzing args of {}", lam);
-
-        bool mem_passed = false;
-        // TODO: this all doesn't work if the arguments are "hidden" in some way, like if you pass a slot inside a tuple or a map.
-        if (mem_passed) {
-            DLOG("a mem is passed to {}", lam);
-            for (auto arg : abstr_args) {
-                if (auto continuation = arg->isa_mut<Lam>(); isa_optimizable(continuation)) {
-                    DLOG("a continuation is passed to {}", lam);
-                    // The unknown function may call this as a continuation. In that case, the slot
-                    // values are the same as for the current function.
-                    for (auto [slot, slot_type] : all_slots_) {
-                        auto abstr_slot = rewrite(slot);
-                        if (auto value = slot2value(abstr_slot)) {
-                            mut2slot2value_[continuation][abstr_slot] = value;
-                        } else {
-                            auto phi = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
-                            DLOG("looking up {}", phi);
-                            if (auto it = lattice_.find(phi); it != lattice_.end())
-                                mut2slot2value_[continuation][abstr_slot] = it->second;
-                        }
-                    }
-
-                    // Except for those slots that are also passed to the unknown function. We don't
-                    // know what it does to those, so we set them to top.
-                    for (auto [slot, slot_type] : all_slots_) {
-                        auto abstr_slot = rewrite(slot);
-                        if (auto i = std::find(abstr_args.begin(), abstr_args.end(), abstr_slot);
-                            i != abstr_args.end()) {
-                            DLOG("{} passed as continuation, and {} escapes, setting to top", continuation, arg);
-                            mut2slot2value_[continuation][abstr_slot] = mut2slot2value_[continuation][abstr_slot];
-                        }
-                    }
-
-                    // TODO: do we need to set todo_ or call rewrite again or something?
-                }
-            }
         }
 
-        // TODO: think about this more
-        for (size_t i = 0; i != n; ++i)
-            if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation))
+        for (size_t i = 0; i != n; ++i) {
+            if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
+                // now propagate known slot values and rewrite the continuation
+
+                // TODO: remove this, its temporary just to get something to work so i can refactor stuff below
+                // instead, the same propagation as below for direct calls has to happen
+                    for (auto [slot, slot_type] : all_slots_) {
+                        auto abstr_slot = rewrite(slot);
+                        if (auto value = slot2value(abstr_slot))
+                            mut2slot2value_[continuation][abstr_slot] = value;
+                    }
+
                 abstr_args[i] = rewrite(app->targ(i));
+            }
+        }
 
         return world().app(rewrite_deps(lam), abstr_args);
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
@@ -265,21 +225,9 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 DLOG("propagating local value: {} -> {}", slot, value);
                 set(phi, abstr);
             } else {
-                DLOG("not found in slot2value, propagating value from parameters");
-                auto lookup_proxy = world().proxy(slot_type, {curr_mut(), abstr_slot}, 0, Proxy_Phi);
-                if (auto i = lattice_.find(lookup_proxy); i != lattice_.end()) {
-                    auto value = i->second;
-                    auto abstr = propagate(phi, value);
-                    phi_args.emplace_back(value);
-                    concr_phis.emplace_back(phi);
-                    abstr_phis.emplace_back(abstr);
-                    DLOG("propagating value from phi: {} -> {}", slot, value);
-                    set(phi, abstr);
-                } else {
-                    DLOG("no value found for {}", slot);
-                    // TODO Can this ever happen?
-                    // propagate(lam_proxy, lam_proxy);
-                }
+                DLOG("no value found for {}", slot);
+                // TODO Can this ever happen?
+                // propagate(lam_proxy, lam_proxy);
             }
         }
 

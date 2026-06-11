@@ -46,11 +46,7 @@ private:
         void start() final;
         void reset() final;
 
-        const Def* slot2value(const Def* slot) {
-            auto& slot2value = mut2slot2value_[curr_mut()];
-            if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
-            return nullptr;
-        }
+        const Def* slot2value(const Def* slot);
 
         const Def2Def& all_slots() const { return all_slots_; }
         const DefMap<Def2Def>& mut2slot2value() const { return mut2slot2value_; }
