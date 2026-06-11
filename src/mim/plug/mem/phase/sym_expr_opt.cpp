@@ -403,7 +403,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                 size_t num_new_vars = new_doms.size();
 
                 // build new lam
-                auto mapped_vars  = absl::FixedArray<const Def*>(num_kept_vars);
+                auto var_map      = absl::FixedArray<const Def*>(num_old);
                 new_lam           = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
                 lam2lam_[old_lam] = new_lam;
 
@@ -415,11 +415,11 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto abstr   = lattice(old_var);
 
                     if (keep(old_var, abstr)) {
-                        auto v         = new_lam->var(num_new_vars, j++);
-                        mapped_vars[i] = v;
+                        auto v     = new_lam->var(num_new_vars, j++);
+                        var_map[i] = v;
                         if (abstr != old_var) map(abstr, v); // GVN bundle
                     } else {
-                        mapped_vars[i] = rewrite(abstr); // SCCP propagate
+                        var_map[i] = rewrite(abstr); // SCCP propagate
                     }
                 }
 
@@ -440,7 +440,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     }
                 }
 
-                map(old_lam->var(), mapped_vars);
+                map(old_lam->var(), var_map);
                 new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
             }
 
