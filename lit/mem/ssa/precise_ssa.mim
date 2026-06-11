@@ -14,7 +14,7 @@ fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
 
     // int y = 42;
     let (mem, py) = %mem.slot (Nat, 0) (mem, 1);
-    let mem       = %mem.store (mem, py, 41);
+    let mem       = %mem.store (mem, py, 42);
 
     head mem where
         con head(mem: %mem.M 0) =
