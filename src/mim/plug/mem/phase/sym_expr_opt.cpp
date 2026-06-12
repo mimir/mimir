@@ -81,7 +81,7 @@ const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
     return nullptr;
 }
 
-const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
+const Def* SymExprOpt::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
     auto [i, ins] = lattice_.emplace(var, def);
     if (ins) {
@@ -99,13 +99,13 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
 
-DefVec SymExprOpt::Analysis::gvn(DefVec &all_concr_vars, DefVec &all_abstr_args) {
+DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec &all_concr_vars, DefVec &all_abstr_args) {
         auto n_all          = all_concr_vars.size();
         assert(all_concr_vars.size() == all_abstr_args.size());
 
         DefVec all_abstr_vars;
         for (size_t i = 0; i < all_concr_vars.size(); i++)
-            all_abstr_vars.emplace_back(propagate(all_concr_vars[i], all_abstr_args[i]));
+            all_abstr_vars.emplace_back(sccp_join(all_concr_vars[i], all_abstr_args[i]));
 
         DefMap<size_t> var2index;
         for (size_t i = 0; auto var : all_concr_vars)
@@ -309,7 +309,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             }
         }
 
-        auto all_abstr_vars = gvn(all_concr_vars, all_abstr_args);
+        auto all_abstr_vars = sccp_gvn_propagate(all_concr_vars, all_abstr_args);
 
         set(lam->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
         for (size_t i = app->num_targs(); i < all_concr_vars.size(); i++)
