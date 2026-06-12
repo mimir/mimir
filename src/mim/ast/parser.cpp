@@ -75,6 +75,8 @@
     case Tag::K_Rule:    /*RuleExpr*/   \
     case Tag::K_ins:     /*InsertExpr*/ \
     case Tag::K_ret:     /*RetExpr*/    \
+    case Tag::T_hole:    /*HoleExpr*/   \
+    case Tag::T_hole_val:/*HoleExpr*/   \
     case Tag::D_angle_l: /*PackExpr*/   \
     case Tag::D_brckt_l: /*SigmaExpr*/  \
     case Tag::D_curly_l: /*UniqExpr*/   \
@@ -333,6 +335,8 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
     // clang-format off
     switch (ahead().tag()) {
         case Tag::C_PRIMARY: return ptr<PrimaryExpr>(lex());
+        case Tag::T_hole:    return ptr<HoleExpr>(lex().loc());
+        case Tag::T_hole_val:return ptr<HoleExpr>(lex().loc(), true);
         case Tag::C_ID:      return ptr<IdExpr>(lex().dbg());
         case Tag::C_LIT:     return parse_lit_expr();
         case Tag::C_DECL:    return parse_decl_expr();

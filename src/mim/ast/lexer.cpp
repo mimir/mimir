@@ -81,6 +81,8 @@ Tok Lexer::lex() {
         if (accept( ',')) return tok(Tag::T_comma);
         if (accept( '$')) return tok(Tag::T_dollar);
         if (accept( '#')) return tok(Tag::T_extract);
+        if (accept( '?')) return tok(Tag::T_hole);
+        if (accept(U'¿')) return tok(Tag::T_hole_val);
         if (accept(U'λ')) return tok(Tag::T_lm);
         if (accept( '|')) {
             if (accept('}')) return tok(Tag::D_curly_r);

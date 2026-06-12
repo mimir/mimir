@@ -133,7 +133,10 @@ const Def* Expr::emit(Emitter& e) const {
 }
 
 const Def* ErrorExpr::emit_(Emitter&) const { fe::unreachable(); }
-const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type(); }
+const Def* HoleExpr::emit_(Emitter& e) const {
+    // `¿` fixes the type level to `0` (`?:?:★`) to avoid univ holes under UInc during inference.
+    return is_value() ? e.world().mut_hole(e.world().mut_hole(e.world().type())) : e.world().mut_hole_type();
+}
 
 const Def* IdExpr::emit_(Emitter&) const {
     assert(decl());

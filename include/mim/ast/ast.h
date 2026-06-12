@@ -321,16 +321,22 @@ private:
     const Def* emit_(Emitter&) const override;
 };
 
+/// `?` (type hole) or `¿` (value hole).
 class HoleExpr : public Expr {
 public:
-    HoleExpr(Loc loc)
-        : Expr(loc) {}
+    HoleExpr(Loc loc, bool is_value = false)
+        : Expr(loc)
+        , is_value_(is_value) {}
+
+    bool is_value() const { return is_value_; }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     const Def* emit_(Emitter&) const override;
+
+    bool is_value_;
 };
 
 /// `sym`

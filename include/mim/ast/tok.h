@@ -151,6 +151,8 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_dollar,     "$")               \
     m(T_dot,        ".")               \
     m(T_extract,    "#")               \
+    m(T_hole,       "?")               \
+    m(T_hole_val,   "¿")               \
     m(T_lm,         "λ")               \
     m(T_semicolon,  ";")               \
     m(T_star,       "*")               \

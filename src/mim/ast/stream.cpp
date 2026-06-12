@@ -98,7 +98,7 @@ void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
 
 void IdExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", dbg()); }
 void ErrorExpr::stream(fe::Tab&, std::ostream& os) const { os << "<error expression>"; }
-void HoleExpr::stream(fe::Tab&, std::ostream& os) const { os << "?"; }
+void HoleExpr::stream(fe::Tab&, std::ostream& os) const { os << (is_value() ? "¿" : "?"); }
 void PrimaryExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", tag()); }
 
 void LitExpr::stream(fe::Tab& tab, std::ostream& os) const {
