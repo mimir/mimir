@@ -40,6 +40,13 @@ private:
             for (auto [k, v] : lattice_)
                 DLOG("{} -> {}", k, v);
 
+            for (auto [mut, slot2value] : mut2slot2value()) {
+                DLOG("known values  for mut {}:", mut);
+                for (auto [slot, value] : slot2value)
+                    DLOG("  {} -> {}", slot, value);
+            }
+
+
             DLOG("done running");
         }
 

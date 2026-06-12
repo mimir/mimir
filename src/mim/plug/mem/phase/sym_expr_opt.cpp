@@ -218,28 +218,67 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         set(ptr, sloxy);
         return world().tuple({abstr_mem, sloxy});
     } else if (auto branch = Branch(app)) {
-        // TODO: this doesn't work, see critical edge example. we need to propagate through the lattice instead
-        auto abstr = rewrite(branch.cond());
-        auto l     = Lit::isa<bool>(abstr);
-        DLOG("abstract value of branch cond {} in {}: {}", branch.cond(), curr_mut(), abstr);
+        DefVec abstr_args;
+        for (auto arg : app->targs())
+            abstr_args.emplace_back(rewrite(arg));
+
+        auto abstr_cond = rewrite(branch.cond());
+        auto l          = Lit::isa<bool>(abstr_cond);
+        DLOG("abstract value of branch cond {} in {}: {}", branch.cond(), curr_mut(), abstr_cond);
+
+        for (auto [slot, slot_type] : all_slots_) {
+            auto abstr_slot = rewrite(slot);
+            if (auto value = slot2value(abstr_slot)) {
+                abstr_args.emplace_back(value);
+            }
+        }
+
         if (!l || *l)
             if (auto lam = branch.tt()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
+
+                DefVec concr_vars;
+                for (auto var : lam->tvars())
+                    concr_vars.emplace_back(var);
+
                 for (auto [slot, slot_type] : all_slots_) {
                     auto abstr_slot = rewrite(slot);
-                    if (auto value = slot2value(abstr_slot)) mut2slot2value_[lam][abstr_slot] = value;
+                    auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
+                    if (slot2value(abstr_slot)) {
+                        concr_vars.emplace_back(phi);
+                    } else {
+                        DLOG("no value found for {}", slot);
+                        // TODO Can this ever happen?
+                    }
                 }
+
+                sccp_gvn_propagate(concr_vars, abstr_args);
             }
         if (!l || !*l)
             if (auto lam = branch.ff()->isa_mut<Lam>(); isa_optimizable(lam)) {
                 DLOG("branch, writing local values to {}", lam);
+
+                DefVec concr_vars;
+                for (auto var : lam->tvars())
+                    concr_vars.emplace_back(var);
+
                 for (auto [slot, slot_type] : all_slots_) {
                     auto abstr_slot = rewrite(slot);
-                    if (auto value = slot2value(abstr_slot)) mut2slot2value_[lam][abstr_slot] = value;
+                    auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
+                    if (slot2value(abstr_slot)) {
+                        concr_vars.emplace_back(phi);
+                    } else {
+                        DLOG("no value found for {}", slot);
+                        // TODO Can this ever happen?
+                    }
                 }
+
+                sccp_gvn_propagate(concr_vars, abstr_args);
             }
+
+        auto abstr_callee = rewrite(app->callee());
+        return world().app(abstr_callee, abstr_args.span().subspan(0, app->num_targs()));
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
-        // TODO: this works differently now, check what needs updating
         DLOG("{} not optimizable", app->callee());
 
         auto n          = app->num_targs();
@@ -331,6 +370,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 static bool keep(const Def* old_var, const Def* abstr) {
     if (old_var == abstr) return true; // top
     if (auto proxy = isa_gvn_proxy(abstr))
+        // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first non-phi
         return proxy->op(0) == old_var; // first in GVN bundle
     else
         return false;
