@@ -101,42 +101,37 @@ const Def* SymExprOpt::Analysis::sccp_join(const Def* var, const Def* def) {
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
 
-DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& all_concr_vars, DefVec& all_abstr_args) {
-    auto n_all = all_concr_vars.size();
-    assert(all_concr_vars.size() == all_abstr_args.size());
+DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& concr_vars, DefVec& abstr_args) {
+    auto n_all = concr_vars.size();
+    assert(concr_vars.size() == abstr_args.size());
 
-    DefVec all_abstr_vars;
-    for (size_t i = 0; i < all_concr_vars.size(); i++)
-        all_abstr_vars.emplace_back(sccp_join(all_concr_vars[i], all_abstr_args[i]));
+    DefVec abstr_vars;
+    for (size_t i = 0; i < concr_vars.size(); i++)
+        abstr_vars.emplace_back(sccp_join(concr_vars[i], abstr_args[i]));
 
     DefMap<size_t> var2index;
-    for (size_t i = 0; auto var : all_concr_vars)
+    for (size_t i = 0; auto var : concr_vars)
         var2index[var] = i++;
 
     // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling
     // them into one proxy
     for (size_t i = 0; i != n_all; ++i) {
-        if (all_abstr_vars[i]) continue;
+        if (abstr_vars[i]) continue;
 
         auto bundle_vars = DefVec();
-        auto vi          = all_concr_vars[i];
-        auto ai          = all_abstr_args[i];
-        bundle_vars.emplace_back(vi);
+        bundle_vars.emplace_back(concr_vars[i]);
 
-        for (size_t j = i + 1; j != n_all; ++j) {
-            auto vj = all_concr_vars[j];
-            if (!all_abstr_vars[j] && all_abstr_args[j] == ai) bundle_vars.emplace_back(vj);
-        }
+        for (size_t j = i + 1; j != n_all; ++j)
+            if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) bundle_vars.emplace_back(concr_vars[j]);
 
         if (bundle_vars.size() == 1) {
-            lattice_[vi] = all_abstr_vars[i] = vi; // top
+            lattice_[concr_vars[i]] = abstr_vars[i] = concr_vars[i]; // top
         } else {
-            auto proxy = world().proxy(vi->type(), bundle_vars, 0, Proxy_GVN);
+            auto proxy = world().proxy(concr_vars[i]->type(), bundle_vars, 0, Proxy_GVN);
 
             for (auto p : proxy->ops()) {
-                auto j       = var2index[p];
-                auto vj      = all_concr_vars[j];
-                lattice_[vj] = all_abstr_vars[j] = proxy;
+                auto j                  = var2index[p];
+                lattice_[concr_vars[j]] = abstr_vars[j] = proxy;
             }
 
             DLOG("bundle: {}", proxy);
@@ -153,41 +148,35 @@ DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& all_concr_vars, DefVec& 
     // d -> {b, d}
     // e -> e      (top)
     for (size_t i = 0; i != n_all; ++i) {
-        if (auto proxy = isa_gvn_proxy(all_abstr_vars[i])) {
+        if (auto proxy = isa_gvn_proxy(abstr_vars[i])) {
             auto num        = proxy->num_ops();
             auto split_vars = DefVec();
-            auto ai         = all_abstr_args[i];
 
             for (auto p : proxy->ops()) {
-                auto j  = var2index[p];
-                auto vj = all_concr_vars[j];
-                if (p == vj) {
-                    if (ai == all_abstr_args[j]) split_vars.emplace_back(vj);
-                }
+                auto j = var2index[p];
+                if (p == concr_vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(concr_vars[j]);
             }
 
             auto new_num = split_vars.size();
             if (new_num == 1) {
                 invalidate();
-                auto vi      = all_concr_vars[i];
-                lattice_[vi] = all_abstr_vars[i] = vi;
-                DLOG("single: {}", vi);
+                lattice_[concr_vars[i]] = abstr_vars[i] = concr_vars[i];
+                DLOG("single: {}", concr_vars[i]);
             } else if (new_num != num) {
                 invalidate();
-                auto new_proxy = world().proxy(ai->type(), split_vars, 0, Proxy_GVN);
+                auto new_proxy = world().proxy(abstr_args[i]->type(), split_vars, 0, Proxy_GVN);
                 DLOG("split: {}", new_proxy);
 
                 for (auto p : new_proxy->ops()) {
-                    auto j  = var2index[p];
-                    auto vj = all_concr_vars[j];
-                    if (p == vj) lattice_[vj] = all_abstr_vars[j] = new_proxy;
+                    auto j = var2index[p];
+                    if (p == concr_vars[j]) lattice_[concr_vars[j]] = abstr_vars[j] = new_proxy;
                 }
             }
             // if new_num == num: do nothing
         }
     }
 
-    return all_abstr_vars;
+    return abstr_vars;
 }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
