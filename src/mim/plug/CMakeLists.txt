@@ -1,4 +1,5 @@
 set(MIM_PLUGINS
+    admit
     affine
     autodiff
     clos
