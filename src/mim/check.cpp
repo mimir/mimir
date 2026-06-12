@@ -120,10 +120,18 @@ const Def* Checker::is_uniform(Defs defs) {
 }
 
 const Def* Checker::assignable_(const Def* type, const Def* val) {
+    type        = type->zonk();
     auto val_ty = val->unfold_type()->zonk();
     if (type == val_ty) return val;
 
     auto& w = world();
+    // The value still expects trailing implicit arguments but the target type does not.
+    // Insert a fresh Hole for the implicit and let unification specialize it against the target.
+    if (auto pi = Pi::isa_implicit(val_ty); pi && !Pi::isa_implicit(type) && !type->isa_mut<Hole>()) {
+        if (auto new_val = assignable_(type, w.app(val, w.mut_hole(pi->dom())))) return new_val->zonk();
+        return fail();
+    }
+
     if (auto sigma = type->isa<Sigma>()) {
         if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
 
