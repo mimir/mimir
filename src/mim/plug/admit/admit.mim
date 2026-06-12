@@ -2,7 +2,7 @@
 ///
 /// @see mim::plug::admit
 ///
-/// A minimal admit plugin
+/// A plugin to delay type checking until types are concrete.
 ///
 /// [TOC]
 ///
