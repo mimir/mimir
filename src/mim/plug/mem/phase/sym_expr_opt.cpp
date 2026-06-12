@@ -258,14 +258,33 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         for (size_t i = 0; i != n; ++i) {
             if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
                 // now propagate known slot values and rewrite the continuation
+                DefVec concr_vars_inside_unknown_function;
+                DefVec abstr_args_inside_unknown_function;
 
-                // TODO: remove this, its temporary just to get something to work so i can refactor stuff below
-                // instead, the same propagation as below for direct calls has to happen
-                for (auto [slot, slot_type] : all_slots_) {
-                    auto abstr_slot = rewrite(slot);
-                    if (auto value = slot2value(abstr_slot)) mut2slot2value_[continuation][abstr_slot] = value;
+                // set the continuations arguments to top, as we don't know what the unknown function will pass
+                for (auto var : continuation->tvars()) {
+                    concr_vars_inside_unknown_function.emplace_back(var);
+                    abstr_args_inside_unknown_function.emplace_back(var);
                 }
 
+                // propagate known slot contents
+                // some of these might escape, but we'll catch that in the postprocessing later
+                for (auto [slot, slot_type] : all_slots_) {
+                    auto abstr_slot = rewrite(slot);
+                    auto phi        = world().proxy(slot_type, {continuation, abstr_slot}, 0, Proxy_Phi);
+                    if (auto value = slot2value(abstr_slot)) {
+                        concr_vars_inside_unknown_function.emplace_back(phi);
+                        abstr_args_inside_unknown_function.emplace_back(value);
+                    } else {
+                        DLOG("no value found for {}", slot);
+                        // TODO Can this ever happen?
+                        // propagate(lam_proxy, lam_proxy);
+                    }
+                }
+
+                sccp_gvn_propagate(concr_vars_inside_unknown_function, abstr_args_inside_unknown_function);
+
+                // now rewrite the continuation
                 abstr_args[i] = rewrite(app->targ(i));
             }
         }
@@ -288,8 +307,8 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             auto abstr_slot = rewrite(slot);
             auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
             if (auto value = slot2value(abstr_slot)) {
-                all_abstr_args.emplace_back(value);
                 all_concr_vars.emplace_back(phi);
+                all_abstr_args.emplace_back(value);
             } else {
                 DLOG("no value found for {}", slot);
                 // TODO Can this ever happen?
