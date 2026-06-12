@@ -1,0 +1,13 @@
+// RUN: %mim %s -o -
+
+plugin sflow;
+
+fun extern foo () = %sflow.nice_loop break continue loop 5 where
+    lam loop (i: Nat) = %sflow.nice_header (left, right) (%core.ncmp.e (i, 0)) () where
+        lam left (continue, break) () = continue i;
+        lam right (continue, break) () = break ();
+    end;
+    lam break () = return 5;
+    lam continue (loopback, break) (i: Nat) = loopback (%core.nat.sub (i, 1));
+end;
+

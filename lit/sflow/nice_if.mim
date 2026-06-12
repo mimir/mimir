@@ -1,0 +1,14 @@
+plugin sflow;
+
+fun extern foo (cond: Bool, token: %sflow.Root) =
+  // make return also consume tokens
+  let return = %sflow.lift return;
+  // the actual function body
+  let body = %sflow.nice_if merge (else, then) cond () where
+    lam then (merge) () = merge 1;
+    lam else (merge) () = merge 0;
+    lam merge (x: Nat) = return x;
+  end;
+  // pass the root token in so token threading can be wired
+  body token;
+
