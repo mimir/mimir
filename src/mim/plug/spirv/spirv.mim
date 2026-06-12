@@ -12,6 +12,7 @@ plugin mem;
 plugin vec;
 plugin tuple;
 plugin compile;
+plugin admit;
 
 axm %spirv.Target: {T: ★} → [Fn T → []] → ★; 
 
@@ -71,23 +72,24 @@ axm %spirv.Ptr: {write: Bool} → (%spirv.StorageClass write) → ★ → ★;
 lam idx {n: Nat} (v: Nat): Idx n = %core.idx n %core.mode.US v;
 
 /// Create nested array type of types matching shape given by indices.
-/// For example, indices (0_3, 1_3, 1_2) would produce the following type:
+/// `uni#i = tt` makes level `i` uniform (all slots share the deep type); `ff` makes it dependent on `indices#i`.
+/// For example, indices (0_3, 1_3, 1_2) with uni ‹3; ff› would produce the following type:
 /// ```mim
 /// [[★, [★, «2, ★»], ★], ★, ★]
 /// ```
 lam make_Ts
     (levels: Nat,
      ns: «levels; Nat»,
-     indices: «i: levels; Idx (ns#i)»)@(%core.bit2.and_ 0 (%core.pe.is_closed ns, %core.ncmp.ne (levels, 0)))
+     uni: «levels; Bool»,
+     indices: «i: levels; Idx (ns#i)»)@(%core.ncmp.g (levels, 0))
   : □
   = let fst = idx 0;
     let done = (%core.ncmp.le (levels, 1));
-    let Ts = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices);
-    // let Ts = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail indices);
-    let dependent = «i: ns#fst; (★, Ts)#(%core.icmp.e (i, indices#fst))»;
-    let uniform = «ns#fst; Ts»;
-    let final = «ns#fst; ★»;
-    ((uniform, dependent)#((%refly.vars.await_closed levels %refly.vars.is_closed) indices#fst), final)#done;
+    let Rec = make_Ts (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail uni, %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices);
+    lam dependent (i: Idx (ns#fst)): □ = (★, Rec)#(%core.icmp.e (i, indices#fst));
+    lam uniform   (i: Idx (ns#fst)): □ = Rec;
+    lam final     (i: Idx (ns#fst)): □ = ★;
+    «i: ns#fst; (((dependent, uniform)#(uni#fst), final)#done) i»;
 
 /// Takes nested array of types and creates nested array type out of that.
 ///
@@ -95,18 +97,24 @@ lam make_Ts
 /// ```mim
 /// (Nat, Nat, ((Bool, Nat), Nat), ‹2; Nat›)) => [Nat, Nat, [[Bool, Nat], Nat, «2; Nat»]]
 /// ```
-// lam make_Compound
-//     (levels: Nat,
-//      ns: «levels; Nat»,
-//      indices: «i: levels; Idx (ns#i)»,
-//      Ts: make_Ts (levels, ns, indices))@(%core.pe.is_closed levels)
-//     = let fst = idx 0;
-//       let sub = %core.nat.sub (levels, 1);
-//       let tns = %tuple.tail ns;
-//       let tindices = %tuple.tail indices;
-//       let Compound = make_Compound (sub, tns, tindices, make_Ts (sub, tns, tindices));
-//       let done = (%core.ncmp.e (levels, 1));
-//       «i: ns#fst; ((Ts#(indices#fst), Compound)#(%core.icmp.e (i, indices#fst)), Ts#i)#done»;
+lam make_Compound
+    (levels: Nat,
+     ns: «levels; Nat»,
+     uni: «levels; Bool»,
+     indices: «i: levels; Idx (ns#i)»,
+     Ts: make_Ts (levels, ns, uni, indices))@(%core.ncmp.g (levels, 0))
+  : ★
+  = let fst = idx 0;
+    let done = (%core.ncmp.e (levels, 1));
+    let sub = %core.nat.sub (levels, 1);
+    let tns = %tuple.tail ns;
+    let tuni = %tuple.tail uni;
+    let tindices = %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices;
+    let Compound = make_Compound (sub, tns, tuni, tindices, %admit.extract.k Ts (indices#fst));
+    let final = «i: ns#fst; %admit.extract.k @(?, ★, ¿) Ts i»;
+    let dependent = «i: ns#fst; (%admit.extract.k @(?, ★, ¿) Ts i, Compound)#(%core.icmp.e (i, indices#fst))»;
+    let uniform = «ns#fst; Compound»;
+    ((dependent, uniform)#(uni#fst), final)#done;
 
 /// Performs multiple extracts on a nested array/tuple
 ///
@@ -114,25 +122,28 @@ lam make_Ts
 /// ```mim
 /// chain_extract (1_3, 0_2, 1_2, i) (Nat, Nat, ((Bool, ‹3; Nat›), Nat), ‹2; Nat›) => Nat
 /// ```
-// lam chain_extract
-//     (levels: Nat,
-//      ns: «levels; Nat»,
-//      indices: «i: levels; Idx (ns#i)»,
-//      Ts: make_Ts (levels, ns, indices))@(%core.pe.is_closed levels)
-//   : ★
-//     = let fst = idx 0;
-//       let sub = %core.nat.sub (levels, 1);
-//       let tns = %tuple.tail ns;
-//       let tindices = %tuple.tail indices;
-//       let deeper = chain_extract (sub, tns, tindices, Ts#(indices#fst));
-//       (Ts#(indices#fst), deeper)#(%core.ncmp.e (levels, 1));
+lam chain_extract
+    (levels: Nat,
+     ns: «levels; Nat»,
+     uni: «levels; Bool»,
+     indices: «i: levels; Idx (ns#i)»,
+     Ts: make_Ts (levels, ns, uni, indices))@(%core.bit2.and_ 0 (%core.pe.is_closed levels, %core.ncmp.ne (levels, 0)))
+  : ★
+    = let fst = idx 0;
+      let sub = %core.nat.sub (levels, 1);
+      let tns = %tuple.tail ns;
+      let tuni = %tuple.tail uni;
+      let tindices = %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices;
+      let deeper = chain_extract (sub, tns, tuni, tindices, %admit.extract.k Ts (indices#fst));
+      (deeper, %admit.extract.k @(?, ★, ¿) Ts (indices#fst))#(%core.ncmp.e (levels, 1));
 
-// axm %spirv.access_chain: {levels: Nat, ns: «levels; Nat», write: Bool, class: %spirv.StorageClass write}
-//     → [indices: «i: levels; Idx (ns#i)»]
-//     → {Ts: make_Ts (levels, ns, indices)}
-//     → let C = make_Compound (levels, ns, indices, Ts);
-//       [%spirv.Ptr class C]
-//     → %spirv.Ptr class (chain_extract (levels, ns, indices, Ts));
+axm %spirv.access_chain: {levels: Nat, ns: «levels; Nat», write: Bool, class: %spirv.StorageClass write}
+    → [uni: «levels; Bool»]
+    → [indices: «i: levels; Idx (ns#i)»]
+    → {Ts: make_Ts (levels, ns, uni, indices)}
+    → let C = make_Compound (levels, ns, uni, indices, Ts);
+      [%spirv.Ptr class C]
+    → %spirv.Ptr class (chain_extract (levels, ns, uni, indices, Ts));
 
 axm %spirv.variable: {n: Nat, write: Bool}
     → [class: %spirv.StorageClass write]

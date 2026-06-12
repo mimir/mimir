@@ -1,7 +1,7 @@
 #include "mim/axm.h"
 #include "mim/world.h"
 
-#include "mim/plug/spirv/autogen.h"
+#include "mim/plug/spirv/spirv.h" // IWYU pragma: keep
 
 namespace mim::plug::spirv {
 

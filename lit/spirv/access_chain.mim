@@ -3,4 +3,4 @@ plugin spirv;
 
 let var = %spirv.variable %spirv.storage.PRIVATE () [Nat, «5; «3; Nat»»];
 
-fun extern main (mem: %mem.M) = return (%spirv.load (mem, %spirv.access_chain (1_2, 2_5, 1_3) var))#1_2;
+fun extern main (mem: %mem.M 0) = return (%spirv.load (mem, %spirv.access_chain (ff, ff, ff) (1_2, 2_5, 1_3) var))#1_2;
