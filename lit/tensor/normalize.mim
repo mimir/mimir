@@ -109,4 +109,12 @@ let _ = %refly.equiv.struc_eq (ein_2, (2, 1));
 
 let dot = %tensor.map_reduce @2 @(Nat, 2) s_out @(‹2; Nat›, ‹2; 2›, ((m, k), (k, l))) (f, 0) (ein_1, ein_2) (t1, t2);
 
+// Identity shape ops normalize away to their input (m1 : «2, 3; Nat»).
+// A reshape to the same shape is the identity.
+let _ = %refly.equiv.struc_eq (%tensor.reshape (2, 3) (2, 3) m1, m1);
+// A repeat to the same shape is the identity.
+let _ = %refly.equiv.struc_eq (%tensor.repeat (2, 3) (2, 3) m1, m1);
+// A slice that starts at 0 with unit step and keeps the full extent is the identity.
+let _ = %refly.equiv.struc_eq (%tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1, m1);
+
 fun extern main() = return dot;

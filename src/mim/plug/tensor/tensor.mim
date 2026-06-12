@@ -157,6 +157,45 @@ lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
         @(T, r_in, s_in) (tensor_copy @T, ⊥: T)
         (%affine.id @r_out) (reshape_map (s_in, s_out),) input;
 ///
+/// ### %%tensor.slice
+///
+/// Strided slice / narrow: `out[…d…] = input[… start#d + step#d · d …]`. Same rank in/out; `s_out` gives the sliced
+/// extents (the caller must ensure `start#d + step#d · (s_out#d − 1) < s_in#d`).
+///
+axm %tensor.slice: {T: *, r: Nat}
+                 → [s_in: «r; Nat»]
+                 → [start: «r; Nat», step: «r; Nat», s_out: «r; Nat»]
+                 → [input: «s_in; T»]
+                 → «s_out; T», normalize_slice;
+
+/// `o ↦ (start#d + step#d · o#d)_d`: the strided read map.
+lam slice_map {r: Nat} (start: «r; Nat», step: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+    ‹d: r; %affine.op.add (%affine.semiop.mul (o#d, step#d), %affine.constant (start#d))›;
+
+lam %tensor.slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
+                       (start: «r; Nat», step: «r; Nat», s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+    %tensor.map_reduce_aff @1 @(T, r, 0) (s_out, s_out)
+        @(T, r, s_in) (tensor_copy @T, ⊥: T)
+        (%affine.id @r) (slice_map (start, step),) input;
+///
+/// ### %%tensor.flip
+///
+/// Reverses every axis: `out[…d…] = input[… (s_in#d − 1) − d …]`.
+///
+axm %tensor.flip: {T: *, r: Nat}
+                → [s_in: «r; Nat»]
+                → [input: «s_in; T»]
+                → «s_in; T», normalize_flip;
+
+/// `o ↦ ((s_in#d − 1) − o#d)_d`: the reverse read map.
+lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+    ‹d: r; %affine.op.sub (%affine.constant (%core.nat.sub (s_in#d, 1)), o#d)›;
+
+lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
+    %tensor.map_reduce_aff @1 @(T, r, 0) (s_in, s_in)
+        @(T, r, s_in) (tensor_copy @T, ⊥: T)
+        (%affine.id @r) (flip_map @r s_in,) input;
+///
 /// ### %%tensor.dot_product
 ///
 /// * `R`: the ring in which the dot product is performed

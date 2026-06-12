@@ -131,6 +131,10 @@ const Def* Lower::rewrite_imm_App(const App* app) {
         return lower_via_impl(app, w.annex<tensor::repeat_impl>());
     } else if (Axm::isa<tensor::reshape>(app)) {
         return lower_via_impl(app, w.annex<tensor::reshape_impl>());
+    } else if (Axm::isa<tensor::slice>(app)) {
+        return lower_via_impl(app, w.annex<tensor::slice_impl>());
+    } else if (Axm::isa<tensor::flip>(app)) {
+        return lower_via_impl(app, w.annex<tensor::flip_impl>());
     }
     return RWPhase::rewrite_imm_App(app);
 }

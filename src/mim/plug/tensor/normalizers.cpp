@@ -196,6 +196,23 @@ const Def* normalize_reshape(const Def*, const Def* c, const Def* arg) {
     return nullptr;
 }
 
+const Def* normalize_slice(const Def*, const Def* c, const Def* arg) {
+    // Identity slice: every axis starts at 0 with step 1 and keeps its full extent (s_out == s_in) -> the input itself.
+    auto [Tr, s_in, params]   = c->as<App>()->uncurry_args<3>();
+    auto [start, step, s_out] = params->projs<3>();
+    if (s_out != s_in) return nullptr;
+    auto r = Lit::isa<u64>(Tr->proj(2, 1));
+    if (!r) return nullptr;
+    for (u64 d = 0; d != *r; ++d) {
+        auto st = Lit::isa<u64>(start->proj(*r, d));
+        auto sp = Lit::isa<u64>(step->proj(*r, d));
+        if (!st || *st != 0 || !sp || *sp != 1) return nullptr;
+    }
+    return arg;
+}
+
+const Def* normalize_flip(const Def*, const Def*, const Def*) { return nullptr; }
+
 MIM_tensor_NORMALIZER_IMPL
 
 } // namespace mim::plug::tensor
