@@ -1,0 +1,27 @@
+// RUN: %mim -O2 %s -o - | FileCheck %s
+
+// BetaRed wraps the second-encountered application of an already-inlined mut
+// lam into a pass-internal `.proxy` (beta_red.cpp: `proxy(app->type(),
+// {lam, app->arg()}, 0)`). Inside G's body the two solved implicits of %X.k
+// are two distinct stuck applications of the filtered type-level lam F:
+// BetaRed unfolds one (filter `@(ff)` ignored) and proxy-wraps the other.
+// The enclosing app is rebuilt and re-typechecked before PassMan::analyze
+// gets the chance to undo the proxy: the rebuilt callee carries the
+// pass-internal `.proxy` embedded in its *type* and the recheck fails with
+// "cannot apply argument to callee" (unfolded dom vs stuck `F n` argument
+// type), with the proxy leaked into the type term / error.
+//
+// Mirrors the corrupted implicits `T = «…» (unfolded), U = .proxy#0#0
+// make_Ts …` of %admit.extract.k in the spirv access_chain axm type.
+
+plugin core;
+
+lam F (n: Nat)@(ff): □ = «n; ★»;
+
+axm %X.k: {T U: □} → T → U;
+
+lam G (n: Nat, Ts: F n)@(ff): F (%core.nat.sub (n, 1)) = %X.k @(F n, F (%core.nat.sub (n, 1))) Ts;
+
+lam extern keep () = G;
+
+// CHECK-NOT: .proxy
