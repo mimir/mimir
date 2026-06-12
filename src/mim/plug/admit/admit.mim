@@ -1,0 +1,25 @@
+/// # The admit Plugin {#admit}
+///
+/// @see mim::plug::admit
+///
+/// A minimal admit plugin
+///
+/// [TOC]
+///
+/// ## Operations
+///
+/// ### %admit.unify
+/// This axiom asserts to the compiler that the type T and U will always unify
+/// once all variables receive concrete values. It normalizes itself away once T
+/// is closed, producing a type error if they don't actually unify.
+axm %admit.unify(t): {T U: ★} → T → U, normalize_unify;
+axm %admit.unify(k): {T U: □} → T → U, normalize_unify;
+///
+/// ### %admit.extract
+///
+/// This axiom asserts to the compiler that an extraction with the given index from a T
+/// will always result in a U once all variables receive concrete values.
+/// It normalizes itself away once T is closed, producing a type error if
+/// they don't actually unify.
+axm %admit.extract(t): {T U: ★, n: Nat} → T → [Idx n] → U, normalize_extract;
+axm %admit.extract(k): {T U: □, n: Nat} → T → [Idx n] → U, normalize_extract;
