@@ -106,14 +106,10 @@ lam make_Compound
   : ★
   = let fst = idx 0;
     let done = (%core.ncmp.e (levels, 1));
-    let sub = %core.nat.sub (levels, 1);
-    let tns = %tuple.tail ns;
-    let tuni = %tuple.tail uni;
-    let tindices = %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices;
-    let Compound = make_Compound (sub, tns, tuni, tindices, %admit.extract.k Ts (indices#fst));
+    let Rec = make_Compound (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail uni, %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices, %admit.extract.k Ts (indices#fst));
     let final = «i: ns#fst; %admit.extract.k @(?, ★, ¿) Ts i»;
-    let dependent = «i: ns#fst; (%admit.extract.k @(?, ★, ¿) Ts i, Compound)#(%core.icmp.e (i, indices#fst))»;
-    let uniform = «ns#fst; Compound»;
+    let dependent = «i: ns#fst; (%admit.extract.k @(?, ★, ¿) Ts i, Rec)#(%core.icmp.e (i, indices#fst))»;
+    let uniform = «ns#fst; Rec»;
     ((dependent, uniform)#(uni#fst), final)#done;
 
 /// Performs multiple extracts on a nested array/tuple
@@ -129,13 +125,9 @@ lam chain_extract
      indices: «i: levels; Idx (ns#i)»,
      Ts: make_Ts (levels, ns, uni, indices))@(%core.bit2.and_ 0 (%core.pe.is_closed levels, %core.ncmp.ne (levels, 0)))
   : ★
-    = let fst = idx 0;
-      let sub = %core.nat.sub (levels, 1);
-      let tns = %tuple.tail ns;
-      let tuni = %tuple.tail uni;
-      let tindices = %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices;
-      let deeper = chain_extract (sub, tns, tuni, tindices, %admit.extract.k Ts (indices#fst));
-      (deeper, %admit.extract.k @(?, ★, ¿) Ts (indices#fst))#(%core.ncmp.e (levels, 1));
+  = let fst = idx 0;
+    let Rec = chain_extract (%core.nat.sub (levels, 1), %tuple.tail ns, %tuple.tail uni, %tuple.tail @ levels @ ‹i: levels; Idx (ns#i)› indices, %admit.extract.k Ts (indices#fst));
+    (Rec, %admit.extract.k @(?, ★, ¿) Ts (indices#fst))#(%core.ncmp.e (levels, 1));
 
 axm %spirv.access_chain: {levels: Nat, ns: «levels; Nat», write: Bool, class: %spirv.StorageClass write}
     → [uni: «levels; Bool»]
