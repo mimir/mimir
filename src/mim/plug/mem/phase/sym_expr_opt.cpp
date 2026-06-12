@@ -99,9 +99,13 @@ const Def* SymExprOpt::Analysis::propagate(const Def* var, const Def* def) {
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
 
-void SymExprOpt::Analysis::gvn(DefVec &all_concr_vars, DefVec &all_abstr_vars, DefVec &all_abstr_args) {
-        auto n_all          = all_abstr_vars.size();
-        assert(all_concr_vars.size() == all_abstr_vars.size() && all_abstr_vars.size() == all_abstr_args.size());
+DefVec SymExprOpt::Analysis::gvn(DefVec &all_concr_vars, DefVec &all_abstr_args) {
+        auto n_all          = all_concr_vars.size();
+        assert(all_concr_vars.size() == all_abstr_args.size());
+
+        DefVec all_abstr_vars;
+        for (size_t i = 0; i < all_concr_vars.size(); i++)
+            all_abstr_vars.emplace_back(propagate(all_concr_vars[i], all_abstr_args[i]));
 
         DefMap<size_t> var2index;
         for (size_t i = 0; auto var : all_concr_vars)
@@ -180,12 +184,11 @@ void SymExprOpt::Analysis::gvn(DefVec &all_concr_vars, DefVec &all_abstr_vars, D
                 // if new_num == num: do nothing
             }
         }
+
+    return all_abstr_vars;
 }
 
 const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
-    // DLOG("imm_app of {}, currently in {}", app->callee(), curr_mut());
-    // DLOG("callee {} is a mut? {}", app->callee(), app->callee()->isa_mut());
-    // DLOG("callee {} is a var? {}", app->callee(), app->callee()->isa<Var>());
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
         auto abstr_mem       = rewrite(mem);
@@ -281,33 +284,24 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
         return world().app(rewrite_deps(lam), abstr_args);
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-        auto n          = app->num_targs();
-        auto abstr_args = absl::FixedArray<const Def*>(n);
-        auto abstr_vars = absl::FixedArray<const Def*>(n);
+        DefVec all_concr_vars;
+        DefVec all_abstr_args;
 
         // propagate vars
-        for (size_t i = 0; i != n; ++i) {
-            auto abstr    = rewrite(app->targ(i));
-            abstr_vars[i] = propagate(lam->tvar(i), abstr);
-            abstr_args[i] = abstr;
+        for (size_t i = 0; i != app->num_targs(); ++i) {
+            all_concr_vars.emplace_back(lam->tvar(i));
+            all_abstr_args.emplace_back(rewrite(app->targ(i)));
         }
 
         // propagate phis
         DLOG("propagating slot values for call of {}", lam);
-        Vector<const Def*> concr_phis;
-        Vector<const Def*> abstr_phis;
-        Vector<const Def*> phi_args;
         for (auto [slot, slot_type] : all_slots_) {
             DLOG("for slot {}", slot);
             auto abstr_slot = rewrite(slot);
             auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
             if (auto value = slot2value(abstr_slot)) {
-                auto abstr = propagate(phi, value);
-                phi_args.emplace_back(value);
-                concr_phis.emplace_back(phi);
-                abstr_phis.emplace_back(abstr);
-                DLOG("propagating local value: {} -> {}", slot, value);
-                set(phi, abstr);
+                all_abstr_args.emplace_back(value);
+                all_concr_vars.emplace_back(phi);
             } else {
                 DLOG("no value found for {}", slot);
                 // TODO Can this ever happen?
@@ -315,13 +309,13 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             }
         }
 
-        auto all_concr_vars = concat_to_vector(lam->tvars(), concr_phis);
-        auto all_abstr_vars = concat_to_vector(abstr_vars, abstr_phis);
-        auto all_abstr_args = concat_to_vector(abstr_args, phi_args);
-        gvn(all_concr_vars, all_abstr_vars, all_abstr_args);
+        auto all_abstr_vars = gvn(all_concr_vars, all_abstr_args);
 
-        set(lam->var(), world().tuple(all_abstr_vars.span().subspan(0, n)));
-        return world().app(rewrite_deps(lam), abstr_args);
+        set(lam->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
+        for (size_t i = app->num_targs(); i < all_concr_vars.size(); i++)
+            set(all_concr_vars[i], all_abstr_vars[i]);
+
+        return world().app(rewrite_deps(lam), all_abstr_args.span().subspan(0, app->num_targs()));
     }
 
     return mim::Analysis::rewrite_imm_App(app);
@@ -395,7 +389,6 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto abstr   = lattice(old_var);
                     if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
                 }
-                size_t num_kept_vars = new_doms.size();
 
                 for (auto [proxy, abstr] : potential_phis)
                     if (keep(proxy, abstr)) new_doms.emplace_back(rewrite(proxy->type()));
