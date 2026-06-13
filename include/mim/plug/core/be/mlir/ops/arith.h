@@ -79,6 +79,10 @@ public:
         Mul,
         Div,
         Rem,
+        MaxNum,  // arith.maxnumf
+        Maximum, // arith.maximumf  (IEEE 754)
+        MinNum,  // arith.minnumf
+        Minimum, // arith.minimumf  (IEEE 754)
     };
 
     BinaryFloatOp(MLIRValue result, Kind kind, MLIRValue lhs, MLIRValue rhs)
@@ -98,6 +102,10 @@ private:
             case Kind::Mul: return "mulf";
             case Kind::Div: return "divf";
             case Kind::Rem: return "remf";
+            case Kind::MaxNum: return "maxnumf";
+            case Kind::Maximum: return "maximumf";
+            case Kind::MinNum: return "minnumf";
+            case Kind::Minimum: return "minimumf";
         }
         return "?";
     }

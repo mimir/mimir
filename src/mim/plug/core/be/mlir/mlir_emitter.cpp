@@ -2,6 +2,7 @@
 
 #include <format>
 #include <functional>
+#include <map>
 #include <set>
 
 #include <mim/lam.h>
@@ -38,11 +39,7 @@ MLIRValue MLIREmitter::get_or_emit(const Def* def, MLIRBlock& into) {
     return val;
 }
 
-// Recursively unpacks op into individual MLIR args, seeding values_.
-//   Sigma            → expand each non-mem, non-Pi field
-//   Arr of scalars   → expand each element
-//   Arr of Arr       → keep as single tensor arg
-//   leaf scalar      → single arg
+// Recursively unpack op into individual MLIR argsv
 void MLIREmitter::seed_dom_op(const Def* op, std::vector<MLIRValue>& args) {
     if (Axm::isa<plug::mem::M>(op->type())) return;
     if (op->type()->isa<Pi>()) return;
@@ -52,17 +49,7 @@ void MLIREmitter::seed_dom_op(const Def* op, std::vector<MLIRValue>& args) {
             seed_dom_op(op->proj(sigma->num_ops(), i), args);
         return;
     }
-    if (auto arr = op->type()->isa<Arr>()) {
-        if (auto n = Lit::isa(arr->arity())) {
-            if (!arr->body()->isa<Arr>()) {
-                for (size_t i = 0; i < *n; ++i)
-                    seed_dom_op(op->proj(*n, i), args);
-                return;
-            }
-        }
-    }
 
-    // leaf scalar or real tensor
     MLIRValue v{fresh_name(op), types_.convert(op->type())};
     args.push_back(v);
     values_[op] = v;
@@ -162,19 +149,9 @@ void MLIREmitter::emit_body(Lam* lam, MLIRBlock& into) {
                 auto v = get_or_emit(arg->proj(sigma->num_ops(), i), into);
                 if (!v.empty()) ret_vals.push_back(v);
             }
-        } else if (auto arr = arg->type()->isa<Arr>()) {
-            if (auto n = Lit::isa(arr->arity())) {
-                // nested Arr → tensor, return whole value
-                if (arr->body()->isa<Arr>()) {
-                    auto v = get_or_emit(arg, into);
-                    if (!v.empty()) ret_vals.push_back(v);
-                } else {
-                    for (size_t i = 0; i < *n; ++i) {
-                        auto v = get_or_emit(arg->proj(*n, i), into);
-                        if (!v.empty()) ret_vals.push_back(v);
-                    }
-                }
-            }
+        } else if (arg->type()->isa<Arr>()) {
+            auto v = get_or_emit(arg, into);
+            if (!v.empty()) ret_vals.push_back(v);
         } else if (!Axm::isa<plug::mem::M>(arg->type())) {
             auto v = get_or_emit(arg, into);
             if (!v.empty()) ret_vals.push_back(v);
@@ -316,12 +293,22 @@ void MLIREmitter::emit_linalg_generic(const App* app, MLIRBlock& into) {
     auto* app2 = app1->callee()->as<App>();
     auto* app4 = app2->callee()->as<App>()->callee()->as<App>(); // skip app3
     auto* app5 = app4->callee()->as<App>();
+    auto* app6 = app5->callee()->as<App>();
 
     auto* inputs_pack = app0->arg();
     auto* subs        = app1->arg();
     auto [comb, zero] = app2->arg()->projs<2>();
     auto* S           = app4->arg();
     auto [T, rank]    = app5->arg()->projs<2>();
+    auto* nis         = app6->arg();
+
+    auto n_inputs_opt = Lit::isa(nis);
+    assert(n_inputs_opt && "nis must be a literal");
+    size_t n_inputs = *n_inputs_opt;
+
+    auto proj_input
+        = [&](size_t i) -> const Def* { return n_inputs == 1 ? inputs_pack : inputs_pack->proj(n_inputs, i); };
+    auto proj_sub = [&](size_t i) -> const Def* { return n_inputs == 1 ? subs : subs->proj(n_inputs, i); };
 
     auto* body_lam = comb->isa_mut<Lam>();
     assert(body_lam && "comb must be a mutable Lam");
@@ -344,13 +331,9 @@ void MLIREmitter::emit_linalg_generic(const App* app, MLIRBlock& into) {
     res_tensor.elem  = std::make_shared<MLIRTypeNode>(res_elem_type);
     MLIRType res_type{std::move(res_tensor)};
 
-    auto n_inputs_opt = Lit::isa(inputs_pack->type()->isa<Arr>()->arity());
-    assert(n_inputs_opt);
-    size_t n_inputs = *n_inputs_opt;
-
     std::vector<MLIRValue> ins;
     for (size_t i = 0; i < n_inputs; ++i)
-        ins.push_back(get_or_emit(inputs_pack->proj(n_inputs, i), into));
+        ins.push_back(get_or_emit(proj_input(i), into));
 
     // Output buffer
     std::string buf_name = fresh_name(app) + ".buf";
@@ -362,7 +345,7 @@ void MLIREmitter::emit_linalg_generic(const App* app, MLIRBlock& into) {
     // Affine maps
     size_t total_dims = res_rank;
     for (size_t i = 0; i < n_inputs; ++i) {
-        auto sub_i        = subs->proj(n_inputs, i);
+        auto sub_i        = proj_sub(i);
         auto sub_rank_opt = Lit::isa(sub_i->type()->isa<Arr>()->arity());
         assert(sub_rank_opt);
         for (size_t j = 0; j < *sub_rank_opt; ++j) {
@@ -382,7 +365,7 @@ void MLIREmitter::emit_linalg_generic(const App* app, MLIRBlock& into) {
 
     std::vector<std::string> indexing_maps;
     for (size_t i = 0; i < n_inputs; ++i) {
-        auto sub_i        = subs->proj(n_inputs, i);
+        auto sub_i        = proj_sub(i);
         auto sub_rank_opt = Lit::isa(sub_i->type()->isa<Arr>()->arity());
         std::vector<size_t> dims;
         for (size_t j = 0; j < *sub_rank_opt; ++j)
@@ -402,74 +385,149 @@ void MLIREmitter::emit_linalg_generic(const App* app, MLIRBlock& into) {
 
     std::vector<MLIRValue> body_args;
 
-    const Def* data_arg = body_lam->var();
-    {
-        auto body_dom = body_lam->type()->dom();
+    auto* body_var     = body_lam->var();
+    auto body_var_type = body_var->type();
 
-        if (auto sigma = body_dom->isa<Sigma>()) {
-            // find first non-Pi, non-mem op
-            for (size_t i = 0; i < sigma->num_ops(); ++i) {
-                auto proj = body_lam->var()->proj(sigma->num_ops(), i);
-                if (!proj->type()->isa<Pi>() && !Axm::isa<plug::mem::M>(proj->type())) {
-                    data_arg = proj;
-                    break;
-                }
+    std::vector<size_t> arg_path;
+    const Def* arg_type = body_var_type;
+    if (auto sigma = body_var_type->isa<Sigma>()) {
+        for (size_t i = 0; i < sigma->num_ops(); ++i) {
+            if (!sigma->op(i)->isa<Pi>() && !Axm::isa<plug::mem::M>(sigma->op(i))) {
+                arg_path.push_back(i);
+                arg_type = sigma->op(i);
+                break;
             }
         }
     }
 
-    auto seed_body = [&](const Def* da) {
-        const Def* acc_var = nullptr;
-        const Def* ins_var = nullptr;
+    std::map<std::vector<size_t>, MLIRValue> path_to_val;
+    MLIRValue acc_val;
+    bool have_acc = false;
 
-        if (auto s = da->type()->isa<Sigma>()) {
-            acc_var = da->proj(s->num_ops(), 0);
-            ins_var = da->proj(s->num_ops(), 1);
-        } else {
-            // fallback: treat whole arg as acc
-            acc_var = da;
-        }
+    auto put = [&](std::vector<size_t> p, MLIRValue v) { path_to_val[std::move(p)] = std::move(v); };
 
-        // seed inputs first
-        if (ins_var) {
-            if (auto is = ins_var->type()->isa<Sigma>()) {
-                for (size_t i = 0; i < is->num_ops(); ++i) {
-                    auto e = ins_var->proj(is->num_ops(), i);
-                    MLIRValue v{fresh_name(e), types_.convert(is->op(i))};
-                    values_[e] = v;
-                    body_args.push_back(v);
-                }
-            } else if (auto ia = ins_var->type()->isa<Arr>()) {
-                if (auto n = Lit::isa(ia->arity())) {
-                    for (size_t i = 0; i < *n; ++i) {
-                        auto e = ins_var->proj(*n, i);
-                        MLIRValue v{fresh_name(e), types_.convert(ia->body())};
-                        values_[e] = v;
-                        body_args.push_back(v);
-                    }
-                }
-            } else if (!ins_var->type()->isa<Pi>()) {
-                MLIRValue v{fresh_name(ins_var), types_.convert(ins_var->type())};
-                values_[ins_var] = v;
+    auto plan_ins = [&](const Def* ins_t, std::vector<size_t> ins_path) {
+        if (auto s = ins_t->isa<Sigma>()) {
+            for (size_t i = 0; i < s->num_ops(); ++i) {
+                auto p = ins_path;
+                p.push_back(i);
+                MLIRValue v{fresh_name("%in_"), types_.convert(s->op(i))};
                 body_args.push_back(v);
+                put(std::move(p), v);
             }
+        } else if (auto a = ins_t->isa<Arr>()) {
+            if (auto n = Lit::isa(a->arity())) {
+                for (size_t i = 0; i < *n; ++i) {
+                    auto p = ins_path;
+                    p.push_back(i);
+                    MLIRValue v{fresh_name("%in_"), types_.convert(a->body())};
+                    body_args.push_back(v);
+                    put(std::move(p), v);
+                }
+            }
+        } else if (!ins_t->isa<Pi>()) {
+            MLIRValue v{fresh_name("%in_"), types_.convert(ins_t)};
+            body_args.push_back(v);
+            put(std::move(ins_path), v);
         }
-
-        // seed acc last
-        MLIRValue acc_v{fresh_name(acc_var), res_elem_type};
-        values_[acc_var] = acc_v;
-        body_args.push_back(acc_v);
-
-        // seed all intermediate nodes for #tt/#ff resolution
-        seed_var_tree(da);
     };
 
-    seed_body(data_arg);
+    if (auto s = arg_type->isa<Sigma>()) {
+        // [acc, ins]
+        auto acc_p = arg_path;
+        acc_p.push_back(0);
+        auto ins_p = arg_path;
+        ins_p.push_back(1);
+        plan_ins(s->op(1), std::move(ins_p));
+        acc_val  = MLIRValue{fresh_name("%acc_"), res_elem_type};
+        have_acc = true;
+        put(std::move(acc_p), acc_val);
+    } else if (auto a = arg_type->isa<Arr>()) {
+        // «2; T» from a [T, «1; T»] singleton collapse: [acc, single_input]
+        if (auto n = Lit::isa(a->arity()); n && *n == 2) {
+            auto acc_p = arg_path;
+            acc_p.push_back(0);
+            auto ins_p = arg_path;
+            ins_p.push_back(1);
+            MLIRValue v{fresh_name("%in_"), types_.convert(a->body())};
+            body_args.push_back(v);
+            put(std::move(ins_p), v);
+            acc_val  = MLIRValue{fresh_name("%acc_"), res_elem_type};
+            have_acc = true;
+            put(std::move(acc_p), acc_val);
+        } else {
+            acc_val  = MLIRValue{fresh_name("%acc_"), res_elem_type};
+            have_acc = true;
+            put(arg_path, acc_val);
+        }
+    } else {
+        acc_val  = MLIRValue{fresh_name("%acc_"), res_elem_type};
+        have_acc = true;
+        put(arg_path, acc_val);
+    }
 
-    // Build LinalgGenericOp
+    if (have_acc) body_args.push_back(acc_val);
+
+    auto type_arity = [](const Def* t) -> size_t {
+        if (auto s = t->isa<Sigma>()) return s->num_ops();
+        if (auto a = t->isa<Arr>())
+            if (auto n = Lit::isa(a->arity())) return *n;
+        return 0;
+    };
+    auto nav_path = [&](const Def* root, const std::vector<size_t>& path) -> const Def* {
+        const Def* cur = root;
+        for (size_t i : path) {
+            size_t arity = type_arity(cur->type());
+            if (arity == 0) return nullptr;
+            cur = cur->proj(arity, i);
+        }
+        return cur;
+    };
+
+    for (auto& [path, val] : path_to_val)
+        if (auto d = nav_path(body_var, path)) values_[d] = val;
+
+    DefSet body_visited;
+    std::function<void(const Def*)> walk_body = [&](const Def* d) {
+        if (!body_visited.insert(d).second) return;
+        if (d->isa<Var>()) return;
+        if (d->isa_mut<Lam>()) return;
+
+        if (d->isa<Extract>()) {
+            std::vector<size_t> path;
+            const Def* cur = d;
+            bool ok        = true;
+            while (auto exi = cur->isa<Extract>()) {
+                auto lit = Lit::isa(exi->index());
+                if (!lit) {
+                    ok = false;
+                    break;
+                }
+                path.insert(path.begin(), static_cast<size_t>(*lit));
+                cur = exi->tuple();
+            }
+            if (ok && cur == body_var) {
+                if (auto it = path_to_val.find(path); it != path_to_val.end()) values_[d] = it->second;
+            }
+        }
+        for (auto op : d->ops())
+            walk_body(op);
+    };
+    walk_body(body_lam->body());
+
+    DefSet pre_body_keys;
+    for (auto& [d, _] : values_)
+        pre_body_keys.insert(d);
 
     auto* op = new LinalgGenericOp(ins, outs, indexing_maps, iterator_types, body_args);
     emit_linalg_body(body_lam, op->body().entry());
+
+    std::vector<const Def*> body_added;
+    for (auto& [d, _] : values_)
+        if (!pre_body_keys.contains(d)) body_added.push_back(d);
+    for (auto* d : body_added)
+        values_.erase(d);
+
     values_[app] = op->result();
     into.ops.emplace_back(op);
 }
@@ -594,6 +652,38 @@ MLIRValue MLIREmitter::emit_def(const Def* def, MLIRBlock& into) {
             into.ops.emplace_back(std::make_unique<CmpiOp>(result, pred, a, b));
             return result;
         }
+        // math::tri → MathUnaryOp
+        if (auto tri = Axm::isa<plug::math::tri>(def)) {
+            auto a = get_or_emit(app->arg(), into);
+            auto t = types_.convert(def->type());
+            MathUnaryOp::Kind kind;
+            switch (tri.id()) {
+                case plug::math::tri::tanh: kind = MathUnaryOp::Kind::Tanh; break;
+                case plug::math::tri::sin: kind = MathUnaryOp::Kind::Sin; break;
+                case plug::math::tri::cos: kind = MathUnaryOp::Kind::Cos; break;
+                default: assert(false && "unhandled math.tri");
+            }
+            MLIRValue result{fresh_name(def), t};
+            into.ops.emplace_back(std::make_unique<MathUnaryOp>(result, kind, a));
+            return result;
+        }
+
+        // math::extrema → BinaryFloatOp
+        if (auto extr = Axm::isa<plug::math::extrema>(def)) {
+            auto [a, b] = extr->args<2>([this, &into](auto d) { return get_or_emit(d, into); });
+            auto t      = types_.convert(extr->type());
+            BinaryFloatOp::Kind kind;
+            switch (extr.id()) {
+                case plug::math::extrema::fmax: kind = BinaryFloatOp::Kind::MaxNum; break;
+                case plug::math::extrema::ieee754max: kind = BinaryFloatOp::Kind::Maximum; break;
+                case plug::math::extrema::fmin: kind = BinaryFloatOp::Kind::MinNum; break;
+                case plug::math::extrema::ieee754min: kind = BinaryFloatOp::Kind::Minimum; break;
+                default: assert(false && "unhandled math.extrema");
+            }
+            MLIRValue result{fresh_name(def), t};
+            into.ops.emplace_back(std::make_unique<BinaryFloatOp>(result, kind, a, b));
+            return result;
+        }
 
         if (auto nat_op = Axm::isa<core::nat>(app)) {
             auto* arg        = app->arg();
@@ -617,6 +707,36 @@ MLIRValue MLIREmitter::emit_def(const Def* def, MLIRBlock& into) {
         if (Axm::isa<plug::tensor::map_reduce>(app)) {
             emit_linalg_generic(app, into);
             return values_[def];
+        }
+
+        if (auto bc = Axm::isa<plug::tensor::broadcast>(app)) {
+            // mirrors lower_broadcast extraction exactly
+            auto [s_in, s_out, input] = bc->arg()->projs<3>();
+            auto callee               = bc->callee()->as<App>();
+            auto [T, r]               = callee->args<2>();
+
+            auto r_lit = Lit::isa(r);
+            assert(r_lit && "broadcast rank must be literal");
+            auto r_nat = *r_lit;
+
+            // derive broadcast dimensions: where s_in dim == 1
+            std::vector<int64_t> bcast_dims;
+            for (size_t i = 0; i < r_nat; ++i) {
+                auto dim_in = s_in->proj(r_nat, i);
+                if (auto lit = Lit::isa(dim_in); lit && *lit == 1) bcast_dims.push_back(static_cast<int64_t>(i));
+            }
+
+            auto in_val   = get_or_emit(input, into);
+            auto out_type = types_.convert(def->type());
+
+            // tensor.empty for output buffer
+            std::string buf_name = fresh_name(def) + ".buf";
+            MLIRValue out_buf{buf_name, out_type};
+            into.ops.emplace_back(std::make_unique<TensorEmptyOp>(out_buf));
+
+            MLIRValue result{fresh_name(def), out_type};
+            into.ops.emplace_back(std::make_unique<LinalgBroadcastOp>(result, in_val, out_buf, std::move(bcast_dims)));
+            return result;
         }
     }
 
@@ -647,7 +767,6 @@ MLIRValue MLIREmitter::emit_def(const Def* def, MLIRBlock& into) {
                 }
             }
         }
-
         assert(false && "Extract not seeded");
         return {};
     }

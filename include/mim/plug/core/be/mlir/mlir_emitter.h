@@ -11,6 +11,7 @@
 #include "mim/plug/core/be/mlir/ops/arith.h"
 #include "mim/plug/core/be/mlir/ops/func.h"
 #include "mim/plug/core/be/mlir/ops/linalg.h"
+#include "mim/plug/core/be/mlir/ops/math.h"
 #include "mim/plug/core/be/mlir/ops/memref.h"
 #include "mim/plug/core/be/mlir/ops/scf.h"
 #include "mim/plug/core/be/mlir/printer.h"
