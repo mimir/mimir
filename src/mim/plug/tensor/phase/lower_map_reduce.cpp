@@ -176,6 +176,35 @@ static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc
     return {body, for_loop};
 }
 
+// Collects the `r` per-axis `coords`, dropping axes whose `shape` dim is the literal 1 — those array levels are
+// collapsed away by the IR (`«…, 1, …; T»` ≡ `«…, …; T»`), so they must not be indexed.
+static DefVec live_coords(const Def* coords, const Def* shape, u64 r) {
+    DefVec idx;
+    for (u64 k = 0; k < r; ++k) {
+        if (auto d = Lit::isa<u64>(shape->proj(r, k)); d && *d == 1) continue;
+        idx.push_back(coords->proj(r, k));
+    }
+    return idx;
+}
+
+static const Def* nested_extract(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r) {
+    auto cur = matrix;
+    for (auto idx : live_coords(coords, shape, r)) cur = w.extract(cur, idx);
+    return cur;
+}
+
+static const Def* nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r,
+                                const Def* elem) {
+    auto idx = live_coords(coords, shape, r);
+    if (idx.empty()) return elem;
+    DefVec subs(idx.size());
+    subs[0] = matrix;
+    for (u64 k = 0; k + 1 < idx.size(); ++k) subs[k + 1] = w.extract(subs[k], idx[k]);
+    auto cur = elem;
+    for (auto k = static_cast<s64>(idx.size()) - 1; k >= 0; --k) cur = w.insert(subs[k], idx[k], cur);
+    return cur;
+}
+
 static std::tuple<Vector<u64>, Vector<u64>, absl::flat_hash_map<u64, const Def*>, Vector<u64>>
 extract_indices(const u64 n_nat, const u64 nis_nat, const Def* S, const Def* Ris, const Def* Sis, const Def* subs) {
     auto& w = S->world();
@@ -578,31 +607,6 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         a      = w.app(a, idxs);
         return w.app(a, w.bot(mem0))->proj(2, 1); // drop the returned mem at proj 0
     };
-    // Collects the `r` per-axis `coords`, dropping axes whose `shape` dim is the literal 1 — those array levels are
-    // collapsed away by the IR (`«…, 1, …; T»` ≡ `«…, …; T»`), so they must not be indexed.
-    auto live_coords = [&](const Def* coords, const Def* shape, u64 r) {
-        DefVec idx;
-        for (u64 k = 0; k < r; ++k) {
-            if (auto d = Lit::isa<u64>(shape->proj(r, k)); d && *d == 1) continue;
-            idx.push_back(coords->proj(r, k));
-        }
-        return idx;
-    };
-    auto nested_extract = [&](const Def* matrix, const Def* coords, const Def* shape, u64 r) {
-        auto cur = matrix;
-        for (auto idx : live_coords(coords, shape, r)) cur = w.extract(cur, idx);
-        return cur;
-    };
-    auto nested_insert = [&](const Def* matrix, const Def* coords, const Def* shape, u64 r, const Def* elem) -> const Def* {
-        auto idx = live_coords(coords, shape, r);
-        if (idx.empty()) return elem;
-        DefVec subs(idx.size());
-        subs[0] = matrix;
-        for (u64 k = 0; k + 1 < idx.size(); ++k) subs[k + 1] = w.extract(subs[k], idx[k]);
-        auto cur = elem;
-        for (auto k = static_cast<s64>(idx.size()) - 1; k >= 0; --k) cur = w.insert(subs[k], idx[k], cur);
-        return cur;
-    };
 
     try {
         auto fun    = w.mut_fun(inputs->type(), type)->set("mapRedAff");
@@ -640,7 +644,7 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         for (u64 j = 0; j < rr; ++j)
             wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
         auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters)); // «Ro; Idx (So#k)»
-        write_back->app(true, cont, nested_insert(wb_matrix, write_coords, So, ro, element_final));
+        write_back->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, element_final));
 
         // Inner (reduction) loops over the trailing Rr bounds of `Sr`, collecting the reduction iteration indices.
         acc  = init;
@@ -671,7 +675,7 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
             auto input_matrix = new_inputs->proj(nis_nat, i);
             auto sis_i = Sis->proj(nis_nat, i);
             auto coords = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
-            input_elements[i] = nested_extract(input_matrix, coords, sis_i, ris_nat[i]);
+            input_elements[i] = nested_extract(w, input_matrix, coords, sis_i, ris_nat[i]);
         }
 
         comb->set("comb");
@@ -680,6 +684,168 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
     } catch (const std::exception& e) {
         error("error during lowering map_reduce_aff: {}", e.what());
     }
+}
+
+const Def* LowerMapReduce::build_pointwise(const Def* inputs, const Def* type, const Def* So, u64 ro,
+                                           std::function<const Def*(const DefVec&, const Def*)> compute) {
+    auto& w = new_world();
+
+    // CPS scaffold (mirrors `lower_map_reduce_aff`): a `mut_fun` turned direct-style so the result is an ordinary value.
+    auto fun    = w.mut_fun(inputs->type(), type)->set("pointwise");
+    auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+    auto call   = w.app(ds_fun, inputs)->set("call");
+
+    auto new_inputs = fun->var(0)->set("is");
+
+    // Output loops over `So`, collecting the raw i64 iteration indices for `compute`.
+    auto cont        = fun->var(1);
+    auto acc         = w.bot(cont->type()->as<Pi>()->dom());
+    auto current_mut = fun;
+    DefVec out_iters; // raw i64 loop counters
+    out_iters.reserve(ro);
+    for (u64 i = 0; i < ro; ++i) {
+        auto dim                    = So->proj(ro, i);
+        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
+        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forOut_" + std::to_string(i)));
+        auto [iter, new_acc, yield] = body->vars<3>();
+        cont                        = yield;
+        out_iters.push_back(iter);
+        acc = new_acc;
+        current_mut->set(true, for_call);
+        current_mut = body;
+    }
+    auto wb_matrix = acc;
+
+    // Write the computed element at the (identity) output coordinates; convert the i64 counters to `Idx (So#k)`.
+    DefVec write_coords(ro);
+    for (u64 i = 0; i < ro; ++i) write_coords[i] = w.call(core::conv::u, So->proj(ro, i), out_iters[i]);
+    auto element = compute(out_iters, new_inputs);
+    current_mut->app(true, cont, nested_insert(w, wb_matrix, w.tuple(write_coords), So, ro, element));
+    return call;
+}
+
+const Def* LowerMapReduce::lower_pad(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg()); // (input, value)
+    auto type = rewrite(app->type());
+
+    // callee: pad {T, r} [s_in] [mode, lo, hi, s_out]
+    auto [Tr, s_in, params]    = c->uncurry_args<3>();
+    auto [T, r]                = Tr->projs<2>();
+    auto [mode, lo, hi, s_out] = params->projs<4>();
+
+    auto r_l    = Lit::isa<u64>(r);
+    auto mode_l = Lit::isa<u64>(mode);
+    if (!r_l || !mode_l) {
+        WLOG("{} doesn't have a lowering-time known rank/mode", app);
+        return nullptr;
+    }
+    auto rn   = *r_l;
+    auto mode_nat = *mode_l;
+    auto i64  = w.type_i64();
+
+    // select(cond, t, f) == `(f, t)#cond` (cf. %core.select); cond : Bool.
+    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
+
+    auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
+        auto [input, value] = new_inputs->projs<2>();
+        DefVec clamped(rn);  // per-axis read index, kept in range, as `Idx (s_in#d)`
+        DefVec valid;        // per-axis in-bounds flag (constant mode only)
+        for (u64 d = 0; d < rn; ++d) {
+            auto lo_d  = w.call<core::bitcast>(i64, lo->proj(rn, d));
+            auto sin_d = w.call<core::bitcast>(i64, s_in->proj(rn, d));
+            auto in_d  = w.call(core::wrap::sub, core::Mode::none, Defs{out_iters[d], lo_d}); // o#d − lo#d
+            const Def* idx_i64;
+            if (mode_nat == 0) { // constant: a single unsigned `<` covers both bounds (underflow wraps high)
+                auto v_d = w.call(core::icmp::ul, w.tuple({in_d, sin_d}));
+                valid.push_back(v_d);
+                idx_i64 = sel(v_d, in_d, w.lit_i64(0));
+            } else { // replicate: clamp the read to the nearest edge [0, s_in#d − 1]
+                auto sin_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{sin_d, w.lit_i64(1)});
+                idx_i64     = w.call(core::extrema::smax, w.tuple({w.lit_i64(0),
+                                     w.call(core::extrema::smin, w.tuple({in_d, sin_m1}))}));
+            }
+            clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
+        }
+        auto elem = nested_extract(w, input, w.tuple(clamped), s_in, rn);
+        if (mode_nat != 0) return elem; // replicate: always a (clamped) read
+        auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
+        for (u64 d = 1; d < valid.size(); ++d)
+            all_valid = w.call(core::bit2::and_, w.lit_nat(2), w.tuple({all_valid, valid[d]}));
+        return sel(all_valid, elem, value); // constant: fill out-of-region cells with `value`
+    };
+
+    return build_pointwise(args, type, s_out, rn, compute);
+}
+
+const Def* LowerMapReduce::lower_concat(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg()); // the `is` input tuple
+    auto type = rewrite(app->type());
+
+    // callee: concat {T, nis, r} [ax] {Sis}
+    auto [TnisR, ax, Sis] = c->uncurry_args<3>();
+    auto [T, nis, r]      = TnisR->projs<3>();
+
+    auto nis_l = Lit::isa<u64>(nis);
+    auto r_l   = Lit::isa<u64>(r);
+    auto ax_l  = Lit::isa<u64>(ax);
+    if (!nis_l || !r_l || !ax_l) {
+        WLOG("{} doesn't have lowering-time known nis/r/ax", app);
+        return nullptr;
+    }
+    auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
+    auto i64  = w.type_i64();
+
+    // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#j#ax (literal extents required).
+    DefVec off(nisn);
+    u64 acc_off = 0;
+    for (u64 i = 0; i < nisn; ++i) {
+        off[i]  = w.lit_i64(acc_off);
+        auto ei = Lit::isa<u64>(Sis->proj(nisn, i)->proj(rn, axn));
+        if (!ei) {
+            WLOG("{} input {} has a non-literal extent along the concat axis", app, i);
+            return nullptr;
+        }
+        acc_off += *ei;
+    }
+
+    // Deduce the output shape: the summed extent along `ax`, the shared extents elsewhere.
+    DefVec so(rn);
+    for (u64 d = 0; d < rn; ++d) so[d] = (d == axn) ? w.lit_nat(acc_off) : Sis->proj(nisn, 0)->proj(rn, d);
+    auto s_out = w.tuple(so);
+
+    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
+
+    auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
+        auto o_ax = out_iters[axn];
+        // Read input `i` at `out_iters`, but with the `ax` coordinate shifted by off#i and clamped into input `i`.
+        auto read_i = [&](u64 i) -> const Def* {
+            auto Sis_i  = Sis->proj(nisn, i);
+            auto e_i    = w.call<core::bitcast>(i64, Sis_i->proj(rn, axn));
+            auto e_i_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{e_i, w.lit_i64(1)});
+            auto loc    = w.call(core::wrap::sub, core::Mode::none, Defs{o_ax, off[i]});
+            auto clamp  = w.call(core::extrema::smax, w.tuple({w.lit_i64(0),
+                                 w.call(core::extrema::smin, w.tuple({loc, e_i_m1}))}));
+            DefVec coords(rn);
+            for (u64 d = 0; d < rn; ++d) {
+                auto idx_i64 = (d == axn) ? clamp : out_iters[d];
+                coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
+            }
+            return nested_extract(w, new_inputs->proj(nisn, i), w.tuple(coords), Sis_i, rn);
+        };
+        // Select chain: the highest `i` with off#i ≤ o_ax owns the cell (offsets increase, later wins).
+        auto result = read_i(0);
+        for (u64 i = 1; i < nisn; ++i) {
+            auto cond = w.call(core::icmp::uge, w.tuple({o_ax, off[i]}));
+            result    = sel(cond, read_i(i), result);
+        }
+        return result;
+    };
+
+    return build_pointwise(args, type, s_out, rn, compute);
 }
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
@@ -693,6 +859,10 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
         if (auto res = lower_map_reduce(mr)) return res;
     } else if (auto mra = Axm::isa<tensor::map_reduce_aff>(app)) {
         if (auto res = lower_map_reduce_aff(mra)) return res;
+    } else if (auto pad = Axm::isa<tensor::pad>(app)) {
+        if (auto res = lower_pad(pad)) return res;
+    } else if (auto cat = Axm::isa<tensor::concat>(app)) {
+        if (auto res = lower_concat(cat)) return res;
     }
     return RWPhase::rewrite_imm_App(app);
 }

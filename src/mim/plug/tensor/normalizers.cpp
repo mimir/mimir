@@ -213,6 +213,24 @@ const Def* normalize_slice(const Def*, const Def* c, const Def* arg) {
 
 const Def* normalize_flip(const Def*, const Def*, const Def*) { return nullptr; }
 
+const Def* normalize_pad(const Def*, const Def* c, const Def* arg) {
+    // Identity pad: every axis has lo == hi == 0 (so s_out == s_in) -> the input itself (the fill value is irrelevant).
+    auto [Tr, s_in, params]    = c->as<App>()->uncurry_args<3>();
+    auto [mode, lo, hi, s_out] = params->projs<4>();
+    auto r                     = Lit::isa<u64>(Tr->proj(2, 1));
+    if (!r) return nullptr;
+    for (u64 d = 0; d != *r; ++d) {
+        auto l = Lit::isa<u64>(lo->proj(*r, d));
+        auto h = Lit::isa<u64>(hi->proj(*r, d));
+        if (!l || *l != 0 || !h || *h != 0) return nullptr;
+    }
+    return arg->proj(2, 0); // input (arg = (input, value))
+}
+
+const Def* normalize_concat(const Def*, const Def*, const Def*) {
+    return nullptr;
+}
+
 MIM_tensor_NORMALIZER_IMPL
 
 } // namespace mim::plug::tensor

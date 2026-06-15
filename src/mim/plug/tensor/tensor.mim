@@ -196,6 +196,46 @@ lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «
         @(T, r, s_in) (tensor_copy @T, ⊥: T)
         (%affine.id @r) (flip_map @r s_in,) input;
 ///
+/// ### %%tensor.pad
+///
+/// Pads each axis: `s_out#d = lo#d + s_in#d + hi#d`, rank preserved.
+/// `out[…d…] = input[… o#d − lo#d …]` whenever every axis lands inside the input region;
+/// otherwise the value depends on `mode`:
+///
+/// * `mode = 0` (constant): out-of-region cells take the scalar `value`.
+/// * `mode = 1` (replicate): out-of-region cells take the nearest edge element (the read index is
+///   clamped to `[0, s_in#d − 1]` per axis); `value` is ignored.
+axm %tensor.pad: {T: *, r: Nat}
+               → [s_in: «r; Nat»]
+               → [mode: Nat, lo: «r; Nat», hi: «r; Nat», s_out: «r; Nat»]
+               → [input: «s_in; T», value: T]
+               → «s_out; T», normalize_pad;
+///
+/// ### %%tensor.concat
+///
+/// Joins `nis` inputs along axis `ax`. All inputs share rank `r` and agree on every axis except `ax`;
+/// the output extent along `ax` is the sum of the inputs' extents there (`s_out#ax = Σ_i Sis#i#ax`).
+/// `out[…o…] = is#k[… o with o#ax ↦ o#ax − off#k …]`, where `k` is the input whose range `o#ax` lands
+/// in (`off` are the prefix sums of the per-input extents along `ax`).
+///
+/// The output shape is deduced from `ax` and the per-input shapes `Sis` (see `concat_shape`), so it is
+/// not passed explicitly.
+
+/// Accumulator for the axis-sum: adds `row#ax` to the running total.
+lam concat_acc {r: Nat} (ax: Idx r) (acc: Nat, row: «r; Nat»): Nat = %core.nat.add (acc, row#ax);
+
+/// `(ax, Sis) ↦ s_out`: sums the inputs' extents along `ax`, keeps the shared extents on every other axis.
+lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» =
+    let sum_ax = %vec.fold.l (concat_acc ax) (0, Sis);
+    let row_0  = Sis#(%core.idx nis 0 0);
+    ‹d: r; %core.select (%core.icmp.e @r (d, ax), sum_ax, row_0#d)›;
+
+axm %tensor.concat: {T: *, nis r: Nat}
+                  → [ax: Idx r]
+                  → {Sis: «i: nis; «r; Nat»»}
+                  → [is: «i: nis; «Sis#i; T»»]
+                  → «concat_shape (ax, Sis); T», normalize_concat;
+///
 /// ### %%tensor.dot_product
 ///
 /// * `R`: the ring in which the dot product is performed
