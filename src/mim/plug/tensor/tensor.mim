@@ -205,11 +205,18 @@ lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «
 /// * `mode = 0` (constant): out-of-region cells take the scalar `value`.
 /// * `mode = 1` (replicate): out-of-region cells take the nearest edge element (the read index is
 ///   clamped to `[0, s_in#d − 1]` per axis); `value` is ignored.
+///
+/// The output shape is deduced from `lo`, `s_in` and `hi` (see `pad_shape`), so it is not passed explicitly.
+
+// `(lo, s_in, hi) ↦ ‹d; lo#d + s_in#d + hi#d›`: the padded shape.
+lam pad_shape {r: Nat} (lo: «r; Nat», s_in: «r; Nat», hi: «r; Nat»): «r; Nat» =
+    ‹d: r; %core.nat.add (%core.nat.add (lo#d, s_in#d), hi#d)›;
+
 axm %tensor.pad: {T: *, r: Nat}
                → [s_in: «r; Nat»]
-               → [mode: Nat, lo: «r; Nat», hi: «r; Nat», s_out: «r; Nat»]
+               → [mode: Nat, lo: «r; Nat», hi: «r; Nat»]
                → [input: «s_in; T», value: T]
-               → «s_out; T», normalize_pad;
+               → «pad_shape (lo, s_in, hi); T», normalize_pad;
 ///
 /// ### %%tensor.concat
 ///
@@ -221,10 +228,10 @@ axm %tensor.pad: {T: *, r: Nat}
 /// The output shape is deduced from `ax` and the per-input shapes `Sis` (see `concat_shape`), so it is
 /// not passed explicitly.
 
-/// Accumulator for the axis-sum: adds `row#ax` to the running total.
+// Accumulator for the axis-sum: adds `row#ax` to the running total.
 lam concat_acc {r: Nat} (ax: Idx r) (acc: Nat, row: «r; Nat»): Nat = %core.nat.add (acc, row#ax);
 
-/// `(ax, Sis) ↦ s_out`: sums the inputs' extents along `ax`, keeps the shared extents on every other axis.
+// `(ax, Sis) ↦ s_out`: sums the inputs' extents along `ax`, keeps the shared extents on every other axis.
 lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» =
     let sum_ax = %vec.fold.l (concat_acc ax) (0, Sis);
     let row_0  = Sis#(%core.idx nis 0 0);

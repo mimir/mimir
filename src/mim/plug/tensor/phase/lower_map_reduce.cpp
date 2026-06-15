@@ -730,10 +730,10 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto args = rewrite(app->arg()); // (input, value)
     auto type = rewrite(app->type());
 
-    // callee: pad {T, r} [s_in] [mode, lo, hi, s_out]
-    auto [Tr, s_in, params]    = c->uncurry_args<3>();
-    auto [T, r]                = Tr->projs<2>();
-    auto [mode, lo, hi, s_out] = params->projs<4>();
+    // callee: pad {T, r} [s_in] [mode, lo, hi]
+    auto [Tr, s_in, params] = c->uncurry_args<3>();
+    auto [T, r]             = Tr->projs<2>();
+    auto [mode, lo, hi]     = params->projs<3>();
 
     auto r_l    = Lit::isa<u64>(r);
     auto mode_l = Lit::isa<u64>(mode);
@@ -741,9 +741,19 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         WLOG("{} doesn't have a lowering-time known rank/mode", app);
         return nullptr;
     }
-    auto rn   = *r_l;
+    auto rn       = *r_l;
     auto mode_nat = *mode_l;
-    auto i64  = w.type_i64();
+    auto i64      = w.type_i64();
+
+    // Deduce the output shape: s_out#d = lo#d + s_in#d + hi#d.
+    DefVec so(rn);
+    auto inner_type = type;
+    for(u64 d = 0; d < rn; ++d) {
+        auto inner_type_seq = inner_type->as<Seq>();
+        so[d] = inner_type_seq->arity();
+        inner_type = inner_type_seq->body();
+    }
+    auto s_out = w.tuple(so);
 
     // select(cond, t, f) == `(f, t)#cond` (cf. %core.select); cond : Bool.
     auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };

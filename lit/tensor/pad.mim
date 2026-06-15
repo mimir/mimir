@@ -19,13 +19,13 @@ plugin mem;
 // CHECK-DAG: fun extern pad1d_const
 // CHECK-DAG: %core.icmp
 fun extern pad1d_const (input: «3; I32»): «6; I32» =
-    return (%tensor.pad 3 (0, 1, 2, 6) (input, 0I32));
+    return (%tensor.pad 3 (0, 1, 2) (input, 0I32));
 
 // 2-D constant pad: out[i][j] = in_region ? input[i−1][j−2] : 0. The two per-axis bounds checks are AND-combined.
 // CHECK-DAG: fun extern pad2d_const
 // CHECK-DAG: %core.bit2.and_
 fun extern pad2d_const (input: «2, 3; I32»): «4, 7; I32» =
-    return (%tensor.pad (2, 3) (0, (1, 2), (1, 2), (4, 7)) (input, 0I32));
+    return (%tensor.pad (2, 3) (0, (1, 2), (1, 2)) (input, 0I32));
 
 // 1-D replicate pad: out-of-region cells take the nearest edge element; the read index is clamped to [0, 2]
 // via signed min/max (%core.extrema.Sm = smin, .SM = smax).
@@ -33,4 +33,4 @@ fun extern pad2d_const (input: «2, 3; I32»): «4, 7; I32» =
 // CHECK-DAG: %core.extrema.Sm
 // CHECK-DAG: %core.extrema.SM
 fun extern pad1d_repl (input: «3; I32»): «6; I32» =
-    return (%tensor.pad 3 (1, 1, 2, 6) (input, ⊥:I32));
+    return (%tensor.pad 3 (1, 1, 2) (input, ⊥:I32));
