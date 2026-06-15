@@ -35,7 +35,7 @@ namespace mim {
 
 class World;
 
-namespace ll {
+namespace plug::ll {
 
 namespace clos = mim::plug::clos;
 namespace core = mim::plug::core;
@@ -73,12 +73,6 @@ inline const Def* isa_mem_sigma_2(const Def* type) {
     return {};
 }
 } // namespace
-
-void emit(World&, std::ostream&);
-
-int compile(World&, std::string name);
-int compile(World&, std::string ll, std::string out);
-int compile_and_run(World&, std::string name, std::string args = {});
 
 struct BB {
     BB()                    = default;
@@ -1261,5 +1255,5 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
     error("unhandled def in LLVM backend: {} : {}", def, def->type());
 }
 
-} // namespace ll
+} // namespace plug::ll
 } // namespace mim

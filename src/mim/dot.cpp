@@ -183,7 +183,7 @@ void World::dot(std::ostream& os, bool anx, bool types) const {
     for (auto external : externals().muts())
         dot.recurse(external, std::numeric_limits<int>::max());
     if (anx)
-        for (auto annex : annexes())
+        for (auto annex : annexes().defs())
             dot.recurse(annex, std::numeric_limits<int>::max());
     dot.epilogue();
 }

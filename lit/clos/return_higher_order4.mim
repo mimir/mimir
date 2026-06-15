@@ -1,5 +1,5 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p clos %s --output-ll %t.ll -o -
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll -o -
 
 /*
 TODO: investigate and open error

@@ -21,24 +21,29 @@ class Emitter;
 template<class T>
 using Ptr = fe::Arena::Ptr<const T>;
 template<class T>
-using Ptrs                   = std::deque<Ptr<T>>;
-/*             */ using Dbgs = std::deque<Dbg>;
+using Ptrs = std::deque<Ptr<T>>;
+using Dbgs = std::deque<Dbg>;
 
 struct AnnexInfo {
-    AnnexInfo(Sym sym_plugin, Sym sym_tag, plugin_t id_plugin, tag_t id_tag)
+    AnnexInfo(Sym sym_plugin, Sym sym_tag, tag_t id_tag)
         : sym{sym_plugin, sym_tag}
-        , id{id_plugin, id_tag, 0, 0} {
-        assert(Annex::mangle(sym_plugin) == id_plugin);
-    }
+        , id{id_tag, 0, 0} {}
+
+    /// The mangled `plugin` part of the flags.
+    /// Derived from sym.plugin which is guaranteed mangleable by the time an AnnexInfo exists.
+    plugin_t plugin_id() const { return *Annex::mangle(sym.plugin); }
+    /// The base flags (`plugin` + `tag`, no `sub`).
+    flags_t base() const { return Annex::flags(plugin_id(), id.tag); }
 
     struct {
         Sym plugin, tag;
     } sym;
+
     struct {
-        plugin_t plugin;
         tag_t tag;
-        uint8_t curry, trip;
+        u8 curry, trip;
     } id;
+
     std::deque<std::deque<Sym>> subs; ///< List of subs which is a list of aliases.
     Dbg normalizer;
     std::optional<bool> pi;
@@ -114,6 +119,8 @@ private:
     World* world_ = nullptr;
     fe::Arena arena_;
     mutable Error err_;
+    // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
+    // so the elements must not be relocated when further annexes are inserted into the same plugin.
     absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
 };
 
@@ -1136,7 +1143,7 @@ AST load_plugins(World&, View<Sym>);
 inline AST load_plugins(World& w, View<std::string> plugins) {
     return load_plugins(w, Vector<Sym>(plugins.size(), [&](size_t i) { return w.sym(plugins[i]); }));
 }
-inline AST load_plugins(World& w, Sym sym) { return load_plugins(w, View<Sym>({sym})); }
-inline AST load_plugins(World& w, const std::string& plugin) { return load_plugins(w, w.sym(plugin)); }
+inline AST load_plugin(World& w, Sym sym) { return load_plugins(w, View<Sym>({sym})); }
+inline AST load_plugin(World& w, const std::string& plugin) { return load_plugin(w, w.sym(plugin)); }
 
 } // namespace mim::ast

@@ -40,32 +40,3 @@ axm %clos.clos2sjlj_pass:             %compile.Pass;
 ///
 axm %clos.clos_conv_phase:        %compile.Phase;
 axm %clos.lower_typed_clos_phase: %compile.Phase;
-
-let clos_opt1_passes =
-    %compile.passes (
-        %compile.eta_red_pass tt,
-        %compile.eta_exp_pass,
-        %compile.scalarize_pass,
-    );
-
-let clos_opt2_passes =
-    %compile.passes (
-        %compile.scalarize_pass,
-        %clos.branch_clos_pass,
-        %mem.copy_prop_pass tt,
-        %clos.lower_typed_clos_prep_pass,
-        %clos.clos2sjlj_pass,
-    );
-
-let clos_phases =
-    %compile.phases ff (
-        optimization_phase,
-        %compile.pass2phase (%mem.reshape_pass %mem.reshape_flat),
-        %mem.add_mem_phase,
-        %compile.pass2phase %clos.clos_conv_prep_pass,
-        %compile.pass2phase %compile.eta_exp_pass,
-        %clos.clos_conv_phase,
-        %compile.pass2phase clos_opt1_passes,
-        %compile.pass2phase clos_opt2_passes,
-        %clos.lower_typed_clos_phase,
-    );

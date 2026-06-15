@@ -138,7 +138,7 @@ protected:
     ///@{
     void start() override;
     Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
-    virtual void rewrite_annex(flags_t, const Def*);
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
     /// Walks @p mut's dependencies under its curr_mut() scope.
@@ -223,7 +223,7 @@ public:
 
     /// @name Rewrite
     ///@{
-    virtual void rewrite_annex(flags_t, const Def*);
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).

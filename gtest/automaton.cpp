@@ -46,7 +46,8 @@ TEST(Automaton, NFA) {
 TEST(Automaton, NFAAorBplusA) {
     auto nfa = std::make_unique<NFA>();
     std::vector<NFANode*> states;
-    for (int i = 0; i < 14; ++i) states.push_back(nfa->add_state());
+    for (int i = 0; i < 14; ++i)
+        states.push_back(nfa->add_state());
     nfa->set_start(states[0]);
     states[0]->add_transition(states[1], NFA::SpecialTransitons::EPSILON);
     states[1]->add_transition(states[2], 'a');
@@ -77,7 +78,8 @@ TEST(Automaton, NFAAorBplusA) {
     EXPECT_EQ(nfa->get_start(), states[0]);
 
     // Test non-accepting states
-    for (int i = 0; i < 13; ++i) EXPECT_FALSE(states[i]->is_accepting());
+    for (int i = 0; i < 13; ++i)
+        EXPECT_FALSE(states[i]->is_accepting());
 
     // Test accepting state
     EXPECT_TRUE(states[13]->is_accepting());
@@ -156,7 +158,7 @@ TEST(Automaton, NFAAorBplusA) {
 TEST(Automaton, Regex2NFA) {
     Driver driver;
     World& w = driver.world();
-    ast::load_plugins(w, {"compile", "mem", "core", "math", "regex"});
+    ast::load_plugin(w, "regex");
 
     auto pattern
         = w.call<regex::conj>(Defs{w.call<regex::lit>(w.lit_i8('a')), w.call<regex::lit>(w.lit_i8('b'))}); // (a & b)
@@ -168,7 +170,7 @@ TEST(Automaton, Regex2NFA) {
 TEST(Automaton, Regex2NFAAorBplusA) {
     Driver driver;
     World& w = driver.world();
-    ast::load_plugins(w, {"compile", "mem", "core", "math", "regex"});
+    ast::load_plugin(w, "regex");
 
     auto pattern = w.call<regex::conj>(
         Defs{w.call(regex::quant::plus,
@@ -187,7 +189,7 @@ TEST(Automaton, Regex2NFA1or5or9) {
     Driver driver;
     World& w = driver.world();
     auto ast = ast::AST(w);
-    ast::load_plugins(w, {"compile", "mem", "core", "math", "regex"});
+    ast::load_plugin(w, "regex");
 
     // %regex.disj 2 (%regex.disj (%regex.range ‹2; 49I8›, %regex.range ‹2; 53I8›), %regex.range ‹2;
     // 57I8›)
@@ -206,7 +208,7 @@ TEST(Automaton, Regex2NFA1or5or9) {
 TEST(Automaton, Regex2NFANot1or5or9) {
     Driver driver;
     World& w = driver.world();
-    ast::load_plugins(w, {"compile", "mem", "core", "math", "regex"});
+    ast::load_plugin(w, "regex");
 
     // %regex.not_ (%regex.disj (%regex.disj (%regex.range ‹2; 49I8›, %regex.range ‹2; 53I8›),
     // %regex.range ‹2; 57I8›))
@@ -225,7 +227,7 @@ TEST(Automaton, Regex2NFANot1or5or9) {
 TEST(Automaton, Regex2NFANotwds) {
     Driver driver;
     World& w = driver.world();
-    ast::load_plugins(w, {"compile", "mem", "core", "math", "regex"});
+    ast::load_plugin(w, "regex");
 
     // %regex.neg_lookahead (%regex.conj (%regex.cls.w, %regex.cls.d, %regex.cls.s))
     auto pattern = w.call<regex::neg_lookahead>(

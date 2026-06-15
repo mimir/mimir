@@ -1,4 +1,4 @@
-// RUN: %mim %s -p direct -o -
+// RUN: %mim -p opt %s -p direct -o -
 plugin core;
 
 lam ForBody (n: Nat) = [%mem.M 0, Idx n] → [%mem.M 0];

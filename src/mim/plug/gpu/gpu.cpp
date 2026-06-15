@@ -32,4 +32,4 @@ void reg_stages(Flags2Stages& stages) {
     });
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, nullptr, reg_stages, nullptr}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, nullptr, reg_stages}; }

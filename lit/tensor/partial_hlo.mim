@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 plugin tensor;
 plugin refly;
 plugin core;
@@ -24,7 +24,7 @@ lam F32_abs {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary
 lam F32_GE {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; Bool» = %tensor.binary (%math.cmp.ge @f32 0) is;
 lam F32_minus {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.minus @f32 0) i;
 
-con extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»», return: Cn [«128; F32»]]  = 
+con extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»», return: Cn [«128; F32»]]  =
     // let v_0 = %tensor.product_2d R (arg6, arg0);
     // /// let v_1 : «1, 1024; F32» = arg1;
     // let v_2 = %tensor.broadcast ((1, 1024), (128, 1024), arg1);

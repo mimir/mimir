@@ -27,8 +27,8 @@ void Analysis::reset() {
 }
 
 void Analysis::start() {
-    for (const auto& [f, def] : world().flags2annex())
-        rewrite_annex(f, def);
+    for (const auto& [flags, e] : world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
 
     bootstrapping_ = false;
 
@@ -36,7 +36,7 @@ void Analysis::start() {
         rewrite_external(mut);
 }
 
-void Analysis::rewrite_annex(flags_t, const Def* def) { rewrite(def); }
+void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
 Def* Analysis::rewrite_deps(Def* mut) {
@@ -76,8 +76,8 @@ void RWPhase::start() {
         todo |= analyze();
     }
 
-    for (const auto& [f, def] : old_world().flags2annex())
-        rewrite_annex(f, def);
+    for (const auto& [flags, e] : old_world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
 
     bootstrapping_ = false;
 
@@ -97,7 +97,7 @@ bool RWPhase::analyze() {
     return false;
 }
 
-void RWPhase::rewrite_annex(flags_t f, const Def* def) { new_world().register_annex(f, rewrite(def)); }
+void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) { new_world().annexes().attach(f, sym, rewrite(def)); }
 
 void RWPhase::rewrite_external(Def* old_mut) {
     auto new_mut = rewrite(old_mut)->as_mut();

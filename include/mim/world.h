@@ -39,12 +39,14 @@ public:
     ///@{
     struct State {
         State() = default;
+        State(Sym name)
+            : pod{.name = name} {}
 
         /// [Plain Old Data](https://en.cppreference.com/w/cpp/named_req/PODType)
         struct POD {
             u32 curr_gid = 0;
             u32 curr_sub = 0;
-            Loc loc;
+            Loc loc      = {};
             Sym name;
             mutable bool frozen = false;
         } pod;
@@ -68,7 +70,7 @@ public:
     ///@{
     World& operator=(World) = delete;
 
-    explicit World(Driver*);
+    explicit World(Driver*, Sym name);
     World(Driver*, const State&);
     World(World&& other) noexcept
         : World(&other.driver(), other.state()) {
@@ -188,35 +190,6 @@ public:
 #endif
     ///@}
 
-    /// @name Annexes
-    ///@{
-    const auto& flags2annex() const { return move_.flags2annex; }
-    auto annexes() const { return move_.flags2annex | std::views::values; }
-
-    /// Lookup annex by Axm::id.
-    template<class Id>
-    const Def* annex(Id id) {
-        auto flags = static_cast<flags_t>(id);
-        if (auto i = move_.flags2annex.find(flags); i != move_.flags2annex.end()) return i->second;
-        error("Axm with ID '{:x}' not found; demangled plugin name is '{}'", flags, Annex::demangle(driver(), flags));
-    }
-
-    /// Get Axm from a plugin.
-    /// Can be used to get an Axm without sub-tags.
-    /// E.g. use `w.annex<mem::M>();` to get the `%mem.M` Axm.
-    template<annex_without_subs id>
-    const Def* annex() {
-        return annex(Annex::base<id>());
-    }
-
-    const Def* register_annex(flags_t f, const Def*);
-    const Def* register_annex(plugin_t p, tag_t t, sub_t s, const Def* def) {
-        return register_annex(p | (flags_t(t) << 8_u64) | flags_t(s), def);
-    }
-    ///@}
-
-    /// @name Externals
-    ///@{
     class Externals {
     public:
         ///@name Get syms/muts
@@ -252,16 +225,99 @@ public:
         fe::SymMap<Def*> sym2mut_;
     };
 
+    class Annexes {
+    public:
+        struct Entry {
+            Sym sym;
+            const Def* def;
+        };
+
+        Annexes(Driver* driver)
+            : driver_(driver) {}
+
+        /// @name Getters
+        ///@{
+        Driver& driver() { return *driver_; }
+        /// An annex's flags map to its full name and its Def.
+        const auto& flags2entry() const { return flags2entry_; }
+        auto entries() const { return flags2entry_ | std::views::values; }
+        auto defs() const {
+            return entries() | std::views::transform([](Entry e) { return e.def; });
+        }
+        const auto& sym2flags() const { return sym2flags_; }
+        size_t size() const { return flags2entry_.size(); }
+        ///@}
+
+        /// @name attach
+        ///@{
+        const Def* attach(flags_t, Sym, const Def*);
+        const Def* attach(plugin_t p, tag_t t, sub_t s, Sym sym, const Def* def) {
+            return attach(Annex::flags(p, t, s), sym, def);
+        }
+        ///@}
+
+        /// @name Iterators
+        ///@{
+        auto begin() const { return flags2entry_.cbegin(); }
+        auto end() const { return flags2entry_.cend(); }
+        ///@}
+
+        friend void swap(Annexes& a1, Annexes& a2) noexcept {
+            using std::swap;
+            // clang-format off
+            swap(a1.driver_,      a2.driver_);
+            swap(a1.flags2entry_, a2.flags2entry_);
+            swap(a1.sym2flags_,   a2.sym2flags_);
+            // clang-format on
+        }
+
+    private:
+        Driver* driver_;
+        absl::btree_map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
+        fe::SymMap<flags_t> sym2flags_;               ///< Reverse index: an annex's full name to its flags.
+    };
+
+    /// @name Externals & Annexes
+    ///@{
     const Externals& externals() const { return move_.externals; }
     Externals& externals() { return move_.externals; }
+
+    Annexes& annexes() { return move_.annexes; }
+    const Annexes& annexes() const { return move_.annexes; }
 
     /// annexes() + externals().muts() in this order.
     auto roots() const {
         auto res = Vector<const Def*>(); // TODO use std::views::concat - once we have C++26
         res.reserve(annexes().size() + externals().size());
-        res.append_range(annexes());
+        res.append_range(annexes().defs());
         res.append_range(externals().muts());
         return res;
+    }
+
+    /// Lookup annex by Sym.
+    const Def* annex(Sym sym) {
+        if (auto flags = lookup(annexes().sym2flags(), sym)) return annex(*flags);
+        return nullptr;
+    }
+
+    /// Lookup annex by flags.
+    const Def* annex(flags_t flags) {
+        if (auto e = lookup(annexes().flags2entry(), flags)) return e->def;
+        ELOG("Axm with ID `{}` not found; demangled plugin name is `{}`", flags, Annex::demangle(driver(), flags));
+        return nullptr;
+    }
+    /// Lookup annex by Axm::id
+    template<class Id>
+    const Def* annex(Id id) {
+        return annex(static_cast<flags_t>(id));
+    }
+
+    /// Get Axm from a plugin.
+    /// Can be used to get an Axm without sub-tags.
+    /// E.g. use `w.annex<mem::M>();` to get the `%mem.M` Axm.
+    template<annex_without_subs id>
+    const Def* annex() {
+        return annex(Annex::base<id>());
     }
     ///@}
 
@@ -807,12 +863,15 @@ private:
     };
 
     struct Move {
+        Move(Driver* driver)
+            : annexes(driver) {}
+
         struct {
             fe::Arena defs, substs;
         } arena;
 
         Externals externals;
-        absl::btree_map<flags_t, const Def*> flags2annex;
+        Annexes annexes;
         absl::flat_hash_set<const Def*, SeaHash, SeaEq> defs;
         Sets<Def> muts;
         Sets<const Var> vars;
@@ -827,8 +886,8 @@ private:
             swap(m1.substs,       m2.substs);
             swap(m1.vars,         m2.vars);
             swap(m1.muts,         m2.muts);
-            swap(m1.flags2annex,  m2.flags2annex);
             swap(m1.externals,    m2.externals);
+            swap(m1.annexes,      m2.annexes);
             // clang-format on
         }
     } move_;

@@ -23,7 +23,7 @@ void reg_stages(Flags2Stages& stages) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"autodiff", MIM_VERSION, [](Normalizers& n) { autodiff::register_normalizers(n); }, reg_stages, nullptr};
+    return {"autodiff", MIM_VERSION, [](Normalizers& n) { autodiff::register_normalizers(n); }, reg_stages};
 }
 
 namespace mim::plug::autodiff {

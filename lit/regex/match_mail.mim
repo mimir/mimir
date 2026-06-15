@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll ; \
-// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | %FileCheck %s
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll ; \
+// RUN: %mim -p opt %s -o - -p ll --aggr-lam-spec | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t "test@cs.uni-saarland.de"; test $? -eq 0
 // RUN: %t "tester@test.de"; test $? -eq 0
 // RUN: %t "a@a.de"; test $? -eq 0

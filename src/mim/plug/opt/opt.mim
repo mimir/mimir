@@ -8,32 +8,80 @@
 ///
 /// ## Dependencies
 ///
-plugin core;
-import compile;
-import affine;
-import autodiff;
-import clos;
-import direct;
-import gpu;
-import matrix;
-import refly;
-import regex;
-import tensor;
+/// `opt` only depends on `compile`.
+/// Every other plugin is referenced *by name* through `%compile.named_phase` / `%compile.named_pass` /
+/// `%compile.named_repl` (which resolve to the plugin's annexes iff it is loaded) and `%compile.cond_phase`
+/// (which gates a whole sub-pipeline on a plugin being loaded).
+/// This way the default pipeline does not have to import any of the optional plugins.
 ///
-/// ## Passes, Phases, and Pipelines
+plugin compile;
 ///
-/// ### Pipelines
+/// ## Inlined partial pipelines
 ///
-lam cond_phase {n: Nat} (name: «n; I8») (phase: %compile.Phase): %compile.Phase = %core.select (%compile.is_loaded name, phase, %compile.null_phase);
-lam cond_repl  {n: Nat} (name: «n; I8») (repl:  %compile.Repl ): %compile.Repl  = %core.select (%compile.is_loaded name, repl , %compile.null_repl );
-lam cond_pass  {n: Nat} (name: «n; I8») (pass:  %compile.Pass ): %compile.Pass  = %core.select (%compile.is_loaded name, pass , %compile.null_pass );
+/// These used to live in the respective plugins; they are inlined here so that `opt` does not depend on them.
+/// All foreign passes/phases are referenced by name.
+///
+let mem_opt_passes =
+    %compile.passes (
+        %compile.named_pass "%mem.ssa_pass",
+        %compile.named_pass "%mem.copy_prop_ff_pass",
+    );
 
+let direct_phases =
+    %compile.phases ff (
+        %compile.named_phase "%direct.ds2cps_phase",
+        %compile.named_phase "%direct.cps2ds_phase",
+        optimization_phase,
+    );
+
+let matrix_lower_phase =
+    %compile.phases ff (
+        %compile.pass2phase (
+            %compile.passes (
+                %compile.named_pass "%matrix.lower_matrix_high_level_map_reduce",
+                %compile.named_pass "%matrix.lower_matrix_medium_level",
+            )
+        ),
+        %compile.named_phase "%matrix.lower_matrix_low_level",
+    );
+
+let clos_opt1_passes =
+    %compile.passes (
+        %compile.eta_red_pass tt,
+        %compile.eta_exp_pass,
+        %compile.scalarize_pass,
+    );
+
+let clos_opt2_passes =
+    %compile.passes (
+        %compile.scalarize_pass,
+        %compile.named_pass "%clos.branch_clos_pass",
+        %compile.named_pass "%mem.copy_prop_tt_pass",
+        %compile.named_pass "%clos.lower_typed_clos_prep_pass",
+        %compile.named_pass "%clos.clos2sjlj_pass",
+    );
+
+let clos_phases =
+    %compile.phases ff (
+        optimization_phase,
+        %compile.pass2phase (%compile.named_pass "%mem.reshape_flat_pass"),
+        %compile.named_phase "%mem.add_mem_phase",
+        %compile.pass2phase (%compile.named_pass "%clos.clos_conv_prep_pass"),
+        %compile.pass2phase %compile.eta_exp_pass,
+        %compile.named_phase "%clos.clos_conv_phase",
+        %compile.pass2phase clos_opt1_passes,
+        %compile.pass2phase clos_opt2_passes,
+        %compile.named_phase "%clos.lower_typed_clos_phase",
+    );
+///
+/// ## The default pipeline
+///
 lam extern _default_compile (): %compile.Phase =
     %compile.phases ff (
         %compile.pass2phase %compile.scalarize_pass,
         %compile.pass2phase (%compile.eta_red_pass ff),
         %compile.pass2phase %compile.tail_rec_elim_pass,
-        %compile.pass2phase (cond_pass "regex" %regex.lower_regex),
+        %compile.pass2phase (%compile.named_pass "%regex.lower_regex"),
         // optimize
         %compile.phases tt (
             %compile.beta_red_phase,
@@ -41,47 +89,49 @@ lam extern _default_compile (): %compile.Phase =
         ),
         %compile.eta_exp_phase,
         %compile.sym_expr_opt,
-        cond_phase "tensor" (
+        %compile.cond_phase "tensor" (
             %compile.phases ff (
-                %tensor.lower_tensor,
-                %tensor.fuse_tensor,
-                %tensor.lower_map_reduce,
+                %compile.named_phase "%tensor.lower_tensor",
+                %compile.named_phase "%tensor.fuse_tensor",
+                %compile.named_phase "%tensor.lower_map_reduce",
             )
         ),
-        cond_phase "affine" %affine.lower_index_phase,
-        cond_phase "affine" %affine.lower_for_phase,
+        %compile.named_phase "%affine.lower_index_phase",
+        %compile.named_phase "%affine.lower_for_phase",
         %compile.pass2phase (
             %compile.passes (
                 optimization_passes,
                 mem_opt_passes,
             )
         ),
-        cond_phase "autodiff" (
+        %compile.cond_phase "autodiff" (
             %compile.phases ff (
-                %compile.pass2phase %autodiff.eval_pass,
-                %compile.repl2phase %autodiff.zero_repl,
+                %compile.pass2phase (%compile.named_pass "%autodiff.eval_pass"),
+                %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
             )
         ),
-        cond_phase "direct" direct_phases,
-        cond_phase "matrix" (
+        %compile.cond_phase "direct" direct_phases,
+        %compile.cond_phase "matrix" (
             %compile.phases ff (
                 matrix_lower_phase,
-                cond_phase "direct" direct_phases,
+                %compile.cond_phase "direct" direct_phases,
             )
         ),
-        cond_phase "affine" %affine.lower_for_phase,
+        %compile.named_phase "%affine.lower_for_phase",
         %compile.internal_cleanup_phase,
-        cond_phase "clos" clos_phases,
+        %compile.cond_phase "clos" clos_phases,
         %compile.pass2phase %compile.lam_spec_pass,
         // CodeGenPrep
         %compile.branch_normalize_phase,
         %compile.ret_wrap_phase,
         %compile.repl2phase (
             %compile.repls (
-                %mem.remem_repl,
-                %mem.alloc2malloc_repl,
-                cond_repl "refly" %refly.remove_dbg_repl,
-                cond_repl "gpu" %gpu.malloc2gpualloc_repl,
+                %compile.named_repl "%mem.remem_repl",
+                %compile.named_repl "%mem.alloc2malloc_repl",
+                %compile.named_repl "%refly.remove_dbg_repl",
+                %compile.named_repl "%gpu.malloc2gpualloc_repl",
             )
         ),
+        // emit LLVM IR to <world>.ll iff the `ll` plugin is loaded (`-p ll`)
+        %compile.named_phase "%ll.emit",
     );

@@ -27,10 +27,3 @@ lam %direct.cps2ds      (T: *, U:     *)   (f: Fn     T  → U  ):  [    T  → 
 ///
 axm %direct.ds2cps_phase: %compile.Phase;
 axm %direct.cps2ds_phase: %compile.Phase;
-///
-let direct_phases =
-    %compile.phases ff (
-        %direct.ds2cps_phase,
-        %direct.cps2ds_phase,
-        optimization_phase,
-    );

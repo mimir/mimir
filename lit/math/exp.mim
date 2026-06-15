@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll
-// RUN: clang++ %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang++ %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t foo bar; test $? -eq 64
 
 plugin math;

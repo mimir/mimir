@@ -1,26 +1,27 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 1 2 ; test $? -eq 3
 // RUN: %t 4 5 ; test $? -eq 9
 
 plugin core;
+plugin direct;
 
 ccon atoi[%mem.M 0, %mem.Ptr («⊤:Nat; I8», 0), Cn [%mem.M 0, I32]];
 
 con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
     let argv_ptr_a = %mem.lea (argv, 1I32);
     let (mem, val) = %mem.load (mem, argv_ptr_a);
-    
-    con wrapped_atoi [mem_1: %mem.M 0, yield: Cn [%mem.M 0, I32]] = 
+
+    con wrapped_atoi [mem_1: %mem.M 0, yield: Cn [%mem.M 0, I32]] =
             atoi (mem_1, val, yield);
     let (mem, a) = %direct.cps2ds (%mem.M 0, [%mem.M 0, I32]) wrapped_atoi (mem);
-    
+
     let argv_ptr_b = %mem.lea (argv, 2I32);
     let (mem, val) = %mem.load (mem, argv_ptr_b);
 
-    con wrapped_atoi2 [mem_2: %mem.M 0, yield: Cn [%mem.M 0, I32]] = 
+    con wrapped_atoi2 [mem_2: %mem.M 0, yield: Cn [%mem.M 0, I32]] =
         atoi (mem_2, val, yield);
     let (mem, b) = %direct.cps2ds (%mem.M 0, [%mem.M 0, I32]) wrapped_atoi2 (mem);
-    
+
     return (mem, %core.wrap.add 0 (a, b));

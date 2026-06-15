@@ -1,4 +1,4 @@
-// RUN: %mim %s -O0
+// RUN: %mim %s
 
 plugin core;
 

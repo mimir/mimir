@@ -104,12 +104,11 @@ axm %mem.reshape_arg:  %mem.reshape_mode;
 ///
 axm %mem.reshape_pass: %mem.reshape_mode → %compile.Pass;
 ///
-/// ### Pipelines
+/// ##### Pre-applied pass annexes
 ///
-let mem_opt_passes = %compile.passes (
-    //%compile.beta_red_pass,
-    //%compile.eta_red_pass ff,
-    //%compile.eta_exp_pass,
-    %mem.ssa_pass,
-    %mem.copy_prop_pass ff,
-);
+/// Argument-free aliases so these passes can be referenced by name (e.g. via `%compile.named_pass`) from
+/// pipelines that do not import the `mem` plugin.
+///
+let %mem.copy_prop_tt_pass  = %mem.copy_prop_pass tt;
+let %mem.copy_prop_ff_pass  = %mem.copy_prop_pass ff;
+let %mem.reshape_flat_pass  = %mem.reshape_pass %mem.reshape_flat;

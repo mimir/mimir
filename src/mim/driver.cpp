@@ -44,10 +44,10 @@ std::pair<const fs::path*, bool> Driver::Imports::add(fs::path path, Sym sym, as
     return {imported_path, fresh};
 }
 
-Driver::Driver()
+Driver::Driver(std::string name)
     : version_(MIM_VERSION)
     , log_(flags_)
-    , world_(this)
+    , world_(this, sym(name))
     , imports_(*this) {
     // prepend empty path
     search_paths_.emplace_front(fs::path{});
@@ -113,7 +113,6 @@ void Driver::load(Sym name) {
         // clang-format off
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
         if (auto reg = plugin.register_stages)      reg(stages_);
-        if (auto reg = plugin.register_backends)    reg(backends_);
         // clang-format on
     } else {
         error("mim/plugin has no 'mim_get_plugin()'");

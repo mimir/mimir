@@ -1,5 +1,5 @@
-// RUN: %mim %s -o - | %FileCheck %s
-// RUN: %mim %s -o - | %FileCheck %s --check-prefix=GONE
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
 // Exercises %tensor.map_reduce_aff, the affine-indexed generalisation of %tensor.map_reduce.
 // The inputs are taken as extern array arguments (as in hlo.mim) so the lowering is realistic; the
@@ -11,6 +11,7 @@ plugin core;
 plugin tensor;
 plugin affine;
 plugin mem;
+plugin direct;
 
 fun add  (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
 fun copy (x: I32, y: «1; I32»)@tt = return (y#0_1);

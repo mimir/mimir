@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -O 0
+// RUN: %mim %s
 
 plugin core;
 plugin gpu;

@@ -1,0 +1,21 @@
+/// # The ll Plugin {#ll}
+///
+/// @see mim::ll
+///
+/// [TOC]
+///
+/// The LLVM backend.
+/// Loading this plugin (`mim foo.mim -p ll`) appends an emission phase to the compilation pipeline that writes the LLVM IR of the fully lowered program to `<world>.ll`.
+///
+/// ## Dependencies
+///
+plugin opt;
+///
+/// ## Phases
+///
+/// ### %%ll.emit
+///
+/// Emits the LLVM IR of the current world to `<world>.ll`.
+/// This phase is spliced into the default pipeline (see `opt`) whenever the `ll` plugin is loaded.
+///
+axm %ll.emit: %compile.Phase;

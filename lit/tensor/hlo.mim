@@ -1,4 +1,4 @@
-// RUN: %mim %s -p direct -p affine -o - | %FileCheck %s
+// RUN: %mim -p opt %s -p direct -p affine -o - | %FileCheck %s
 plugin tensor;
 plugin refly;
 plugin core;

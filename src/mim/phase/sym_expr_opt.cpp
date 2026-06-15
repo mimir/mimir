@@ -162,7 +162,9 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                 }
 
                 map(old_lam->var(), new_vars);
-                new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+                auto new_filter = rewrite(old_lam->filter());
+                auto new_body   = rewrite(old_lam->body());
+                new_lam->set(new_filter, new_body);
             }
 
             // build new app

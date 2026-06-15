@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=affine.
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not=affine.
 
 // The input/output bounds are only symbolically known (the `Nat` parameters `m` and `n`), so the lowering must thread the
 // symbolic moduli through `%core.conv.u` rather than baking in a concrete `Idx` size. `g` stays polymorphic (hence this is a

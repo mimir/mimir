@@ -1,8 +1,9 @@
-import lit.formats
-import os
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from mim_sh_test import MimShTest
 
 config.name = 'mim regression'
-config.test_format = lit.formats.ShTest(True)
+config.test_format = MimShTest(True)
 
 config.suffixes = ['.mim']
 
@@ -13,7 +14,7 @@ config.test_exec_root = os.path.join(config.my_obj_root, 'test')
 config.substitutions.append(('%mim', config.mim))
 config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
 
-# inhert env vars
+# inherit env vars
 config.environment = os.environ
 
 config.available_features.add("always")

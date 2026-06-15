@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll - | %FileCheck %s
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 plugin core;
 
 cfun dont_know[]: Bool;
@@ -38,6 +38,7 @@ lam extern _compile(): %compile.Phase =
         ),
         %compile.eta_exp_phase,
         %compile.sym_expr_opt,
+        %compile.named_phase "%ll.emit",
     );
 
 // CHECK: define i64 @f(i64 [[X:%x_[0-9]+]])

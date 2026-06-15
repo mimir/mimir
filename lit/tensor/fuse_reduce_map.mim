@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // An outer %tensor.map_reduce with a reduction reads from an inner pure map.
 // The fuse phase should collapse them: out[i] = sum_j (v[i, j] + 1).

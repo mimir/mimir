@@ -87,7 +87,7 @@ TEST(trait, idx) {
     Driver driver;
     driver.log().set(Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
-    ast::load_plugins(w, "core");
+    ast::load_plugin(w, "core");
 
     EXPECT_EQ(Lit::as(op(core::trait::size, w.type_idx(0x0000'0000'0000'00FF_n))), 1);
     EXPECT_EQ(Lit::as(op(core::trait::size, w.type_idx(0x0000'0000'0000'0100_n))), 1);
@@ -358,7 +358,7 @@ TEST(FV, algos) {
     Driver driver;
     driver.log().set(Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
-    ast::load_plugins(w, "core");
+    ast::load_plugin(w, "core");
 
     auto nat = w.type_nat();
     auto run = w.curr_run();
