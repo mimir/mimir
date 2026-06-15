@@ -8,7 +8,7 @@
 ///
 import mem;
 import core;
-import refly;
+plugin refly;
 ///
 /// ## Operations
 ///

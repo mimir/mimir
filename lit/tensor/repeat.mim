@@ -1,5 +1,5 @@
-// RUN: %mim %s -o - | %FileCheck %s
-// RUN: %mim %s -o - | %FileCheck %s --check-prefix=GONE
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// RUN: %mim %s -p opt -o - | %FileCheck %s --check-prefix=GONE
 
 // %tensor.repeat tiles an input to a larger shape: out[…d…] = input[… d mod s_in#d …]. The wrap-around read lowers via
 // the affine `mod` semiop to %core.div.urem. Checked on the lowered Mim IR (no codegen), as for hlo.mim / map_reduce_aff.

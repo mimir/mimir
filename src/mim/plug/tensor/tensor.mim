@@ -9,7 +9,8 @@
 plugin tuple;
 plugin refly;
 plugin vec;
-import affine;
+plugin direct;
+plugin affine;
 ///
 /// A tensor plugin
 ///
