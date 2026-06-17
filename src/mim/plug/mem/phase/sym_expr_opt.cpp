@@ -253,7 +253,10 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     }
                 }
 
-                sccp_gvn_propagate(concr_vars, abstr_args);
+                auto abstr_vars = sccp_gvn_propagate(concr_vars, abstr_args);
+                set(lam->var(), world().tuple(abstr_vars.span().subspan(0, app->num_targs())));
+                for (size_t i = 0; i < concr_vars.size(); i++)
+                    set(concr_vars[i], abstr_vars[i]);
             }
         if (!l || !*l)
             if (auto lam = branch.ff()->isa_mut<Lam>(); isa_optimizable(lam)) {
@@ -274,7 +277,10 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     }
                 }
 
-                sccp_gvn_propagate(concr_vars, abstr_args);
+                auto abstr_vars = sccp_gvn_propagate(concr_vars, abstr_args);
+                set(lam->var(), world().tuple(abstr_vars.span().subspan(0, app->num_targs())));
+                for (size_t i = 0; i < concr_vars.size(); i++)
+                    set(concr_vars[i], abstr_vars[i]);
             }
 
         auto abstr_callee = rewrite(app->callee());
@@ -322,7 +328,12 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     }
                 }
 
-                sccp_gvn_propagate(concr_vars_inside_unknown_function, abstr_args_inside_unknown_function);
+                auto abstr_vars_inside_unknown_function
+                    = sccp_gvn_propagate(concr_vars_inside_unknown_function, abstr_args_inside_unknown_function);
+                set(continuation->var(),
+                    world().tuple(abstr_vars_inside_unknown_function.span().subspan(0, continuation->num_tvars())));
+                for (size_t i = 0; i < concr_vars_inside_unknown_function.size(); i++)
+                    set(concr_vars_inside_unknown_function[i], abstr_vars_inside_unknown_function[i]);
 
                 // now rewrite the continuation
                 abstr_args[i] = rewrite(app->targ(i));
