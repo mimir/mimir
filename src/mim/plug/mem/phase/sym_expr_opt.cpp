@@ -283,8 +283,18 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                     set(concr_vars[i], abstr_vars[i]);
             }
 
-        auto abstr_callee = rewrite(app->callee());
-        return world().app(abstr_callee, abstr_args.span().subspan(0, app->num_targs()));
+        if (l && !*l) {
+            auto abstr_ff = rewrite_deps(branch.ff()->as_mut());
+            return world().app(abstr_ff, abstr_args.span().subspan(0, app->num_targs()));
+        } else if (l && *l) {
+            auto abstr_tt = rewrite_deps(branch.tt()->as_mut());
+            return world().app(abstr_tt, abstr_args.span().subspan(0, app->num_targs()));
+        } else {
+            auto abstr_ff = rewrite_deps(branch.ff()->as_mut());
+            auto abstr_tt = rewrite_deps(branch.tt()->as_mut());
+            return world().app(world().extract(world().tuple({abstr_ff, abstr_tt}), abstr_cond),
+                               abstr_args.span().subspan(0, app->num_targs()));
+        }
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
         DLOG("{} not optimizable", app->callee());
 
