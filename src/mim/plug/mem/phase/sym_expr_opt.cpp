@@ -46,6 +46,7 @@ static const Def* isa_slot_proxy(const Def* def) {
 void SymExprOpt::Analysis::reset() {
     mim::Analysis::reset();
     visited_.clear();
+    mut2slot2value_.clear();
 }
 
 void SymExprOpt::Analysis::start() {
