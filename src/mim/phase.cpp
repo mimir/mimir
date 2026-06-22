@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "mim/driver.h"
+#include "mim/flags.h"
 
 namespace mim {
 
@@ -11,9 +12,12 @@ namespace mim {
  */
 
 void Phase::run() {
+    auto profiling = driver().flags().profile != Flags::Profile::None;
+    if (profiling) driver().profiler().start(name());
     world().verify().ILOG("🚀 Phase launch: `{}`", name());
     start();
     world().verify().ILOG("🏁 Phase finish: `{}`", name());
+    if (profiling) driver().profiler().stop();
 }
 
 /*
@@ -224,6 +228,15 @@ void PhaseMan::start() {
  * PassManPhase
  */
 
+std::string PassManPhase::build_name(const std::string& base, PassMan& pm) const {
+    std::string join;
+    for (const auto& pass : pm.passes()) {
+        if (!join.empty()) join += ",";
+        join += pass->name();
+    }
+    return base + "(" + join + ")";
+}
+
 void PassManPhase::apply(const App* app) {
     man_        = std::make_unique<PassMan>(world(), annex());
     auto passes = Passes();
@@ -232,11 +245,15 @@ void PassManPhase::apply(const App* app) {
             passes.emplace_back(std::unique_ptr<Pass>(static_cast<Pass*>(stage.release())));
 
     man_->apply(std::move(passes));
+
+    name_ = build_name(base_name_, *man_);
 }
 
 void PassManPhase::apply(Stage& stage) {
     auto& pmp = static_cast<PassManPhase&>(stage);
     swap(man_, pmp.man_);
+
+    name_ = build_name(base_name_, *man_);
 }
 
 } // namespace mim
