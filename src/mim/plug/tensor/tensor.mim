@@ -244,6 +244,67 @@ axm %tensor.concat: {T: *, nis r: Nat}
                   → [is: «i: nis; «Sis#i; T»»]
                   → «concat_shape (ax, Sis); T», normalize_concat;
 ///
+/// ### %%tensor.conv
+///
+/// 2-D convolution (cross-correlation), `groups = 1`, no bias. Layout: `input: «N, Cin, H, W; R#T»`,
+/// `weight: «Cout, Cin, KH, KW; R#T»`, `output: «N, Cout, OH, OW; R#T»`. The multiply-accumulate runs in the ring `R`.
+///
+/// `out[n,co,oh,ow] = Σ_{ci,kh,kw} padded[n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw] · weight[co,ci,kh,kw]`
+///
+/// `padding` zero-pads the spatial axes (composed via %tensor.pad) so the windowed read is a pure affine map.
+/// The output spatial size `s_out = (OH, OW)` is passed explicitly (MimIR has no `Nat` division to compute it).
+
+/// Fused multiply-add over the ring `R`; `ab#0` is the padded-input element, `ab#1` the weight.
+fun conv_fun [R: %tensor.Ring] (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
+
+/// The three affine maps take the `(stride, dilation)` group up front and the whole `«7; %affine.index»` loop vector
+/// `o = (n, co, oh, ow, ci, kh, kw)` as a single argument. Indices into `o`: 0 n, 1 co, 2 oh, 3 ow, 4 ci, 5 kh, 6 kw.
+///
+/// Each body references `stride`/`dilation` so that partial application produces a *fresh* lam. A pure-projection
+/// map that ignored its arguments would beta-reduce back to the (input-independent) shared lam, and such a lam used
+/// as a `%tensor.map_reduce_aff` access map lowers to an open term. The weight/output maps thread `stride#0` through
+/// an additive zero (`+ 0·stride#0`), which `%affine.lower_index_phase` folds away.
+lam conv2d_keep (i: %affine.index, s: Nat): %affine.index =
+    %affine.op.add (i, %affine.op.sub (%affine.semiop.mul (i, s), %affine.semiop.mul (i, s)));
+
+/// Padded-input read map: `(n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
+lam conv2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
+    (o#0_7, o#4_7,
+     %affine.op.add (%affine.semiop.mul (o#2_7, stride#0_2), %affine.semiop.mul (o#5_7, dilation#0_2)),
+     %affine.op.add (%affine.semiop.mul (o#3_7, stride#1_2), %affine.semiop.mul (o#6_7, dilation#1_2)));
+
+/// Weight read map: `(co, ci, kh, kw)`.
+lam conv2d_w_map (stride: «2; Nat», dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
+    (conv2d_keep (o#1_7, stride#0_2), o#4_7, o#5_7, o#6_7);
+
+/// Output write map: the leading 4 output coords `(n, co, oh, ow)` (drops the reduction vars).
+lam conv2d_out_map (stride: «2; Nat», dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
+    (conv2d_keep (o#0_7, stride#0_2), o#1_7, o#2_7, o#3_7);
+
+axm %tensor.conv: [R: %tensor.Ring]
+                → {n cin cout h w kh kw: Nat}
+                → [stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»]
+                → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
+                → «n, cout, s_out#0_2, s_out#1_2; R#T»;
+
+lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
+                      (stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»)
+                      (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
+                    : «n, cout, s_out#0_2, s_out#1_2; R#T» =
+    // Zero-pad only the spatial axes (lo = hi = (0, 0, pad_h, pad_w)); the pad value is the ring zero.
+    let s_in     = (n, cin, h, w);
+    let pad_lohi = (0, 0, padding#0_2, padding#1_2);
+    let padded   = %tensor.pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
+    // The padded shape, computed exactly as %tensor.pad deduces it (so the types match structurally).
+    let s_padded = pad_shape (pad_lohi, s_in, pad_lohi);
+    %tensor.map_reduce_aff @2 @(R#T, 4, 3)
+        ((n, cout, s_out#0_2, s_out#1_2), (n, cout, s_out#0_2, s_out#1_2, cin, kh, kw))
+        @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
+        (conv_fun R, R#_0)
+        (conv2d_out_map (stride, dilation))
+        (conv2d_in_map (stride, dilation), conv2d_w_map (stride, dilation))
+        (padded, weight);
+///
 /// ### %%tensor.dot_product
 ///
 /// * `R`: the ring in which the dot product is performed

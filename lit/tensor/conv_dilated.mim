@@ -1,0 +1,27 @@
+// RUN: %mim %s -p opt -o %t
+// RUN: cat %t | %FileCheck %s
+// RUN: cat %t | %FileCheck %s --check-prefix=GONE
+
+// %tensor.conv: 2-D convolution (groups 1, no bias). A windowed reduction expressed as a %tensor.map_reduce_aff
+// over the kernel, reading the input at stride·o + dilation·k after zero-padding via %tensor.pad. The fused
+// multiply-add runs in the ring R. Checked on the lowered Mim IR (no codegen), as for slice / pad.
+//
+// Inputs use N >= 2 and Cin >= 2 so the NCHW layout does not collapse its leading size-1 dims (which would
+// defeat rank inference); for N = 1 / Cin = 1 the importer pins the implicit dims with `@`.
+// GONE-NOT: %tensor.conv
+// GONE-NOT: %tensor.pad
+// GONE-NOT: map_reduce
+// GONE-NOT: %affine
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+// A ring over Nat so the multiply-accumulate lowers to %core.nat.mul / %core.nat.add.
+lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+// dilated, no padding: 7x7 input, 3x3 kernel, dilation 2 (effective kernel 5x5), stride 1 -> 3x3 output.
+// CHECK-DAG: fun extern conv_dilate
+fun extern conv_dilate (input: «2, 2, 7, 7; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 3, 3; Nat» =
+    return (%tensor.conv (nat_ring ()) ((1, 1), (2, 2), (0, 0), (3, 3)) (input, weight));
