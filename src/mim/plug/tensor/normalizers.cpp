@@ -6,6 +6,7 @@
 
 #include "mim/def.h"
 #include "mim/plugin.h"
+#include "mim/tuple.h"
 #include "mim/world.h"
 
 #include "mim/util/sets.h"
@@ -227,8 +228,23 @@ const Def* normalize_pad(const Def*, const Def* c, const Def* arg) {
     return arg->proj(2, 0); // input (arg = (input, value))
 }
 
-const Def* normalize_concat(const Def*, const Def*, const Def*) {
-    return nullptr;
+const Def* normalize_concat(const Def*, const Def*, const Def*) { return nullptr; }
+
+const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
+    // `%tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
+    auto& w = c->world();
+    auto r  = Lit::isa<u64>(c->as<App>()->arg()); // the explicit rank `r`
+    if (!r) return nullptr;
+
+    DefVec dims;
+    auto ty = arg->type();
+    for (u64 i = 0; i != *r; ++i)
+        if (auto a = ty->isa<Seq>()) {
+            dims.emplace_back(a->arity());
+            ty = a->body();
+        } else
+            return nullptr; // `arr` is not (statically) a rank-`r` array
+    return w.tuple(dims);   // the per-axis sizes; for a rectangular tensor each `arity()` is a plain Nat
 }
 
 MIM_tensor_NORMALIZER_IMPL

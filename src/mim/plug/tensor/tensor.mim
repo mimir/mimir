@@ -42,6 +42,17 @@ axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r
 ///
 axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)», x: T] → «s; T», normalize_set;
 ///
+/// ### %tensor.shape
+///
+/// Returns the shape of `arr` as a rank-`r` array of Nats: `(s#0, …, s#(r-1))`.
+///
+/// The rank `r` is given explicitly. A tensor's shape vector lives in its (nested array) type, which `normalize_shape`
+/// reads off by peeling `r` levels — it cannot be recovered by inference, since `«s; T»` with a vector `s` expands to a
+/// nested array and does not reverse-unify. (Size-1 axes collapse out of the type, so `arr` must have no literal-1 dims
+/// among the first `r`.)
+///
+axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_shape;
+///
 /// ### %%tensor.map_reduce
 ///
 /// * `nis`: number of inputs
@@ -295,8 +306,8 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
     let s_in     = (n, cin, h, w);
     let pad_lohi = (0, 0, padding#0_2, padding#1_2);
     let padded   = %tensor.pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
-    // The padded shape, computed exactly as %tensor.pad deduces it (so the types match structurally).
-    let s_padded = pad_shape (pad_lohi, s_in, pad_lohi);
+    let s_padded = %tensor.shape 4 padded;
+
     %tensor.map_reduce_aff @2 @(R#T, 4, 3)
         ((n, cout, s_out#0_2, s_out#1_2), (n, cout, s_out#0_2, s_out#1_2, cin, kh, kw))
         @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
