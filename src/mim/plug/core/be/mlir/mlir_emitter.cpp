@@ -49,6 +49,27 @@ void MLIREmitter::seed_dom_op(const Def* op, std::vector<MLIRValue>& args) {
             seed_dom_op(op->proj(sigma->num_ops(), i), args);
         return;
     }
+    if (auto arr = op->type()->isa<Arr>()) {
+        if (auto n = Lit::isa(arr->arity())) {
+            // Check if any projection has a user-visible sym (named function arg).
+            // If so, this is a function argument tuple (e.g. fun f(a b: I32) → Arr 2 I32
+            // with -O0), not tensor data (e.g. «1024; F32» bias vector).
+            bool is_arg_tuple  = false;
+            size_t check_limit = std::min(*n, (uint64_t)4);
+            for (size_t i = 0; i < check_limit; ++i) {
+                auto sym = op->proj(*n, i)->sym().str();
+                if (!sym.empty() && sym[0] != '_') {
+                    is_arg_tuple = true;
+                    break;
+                }
+            }
+            if (is_arg_tuple) {
+                for (size_t i = 0; i < *n; ++i)
+                    seed_dom_op(op->proj(*n, i), args);
+                return;
+            }
+        }
+    }
 
     MLIRValue v{fresh_name(op), types_.convert(op->type())};
     args.push_back(v);
@@ -767,6 +788,20 @@ MLIRValue MLIREmitter::emit_def(const Def* def, MLIRBlock& into) {
                 }
             }
         }
+        // debug before the assert
+        std::cerr << "Extract not seeded:\n";
+        std::cerr << "  ex sym: '" << sym << "'\n";
+        std::cerr << "  ex index: " << (Lit::isa(ex->index()) ? std::to_string(*Lit::isa(ex->index())) : "?") << "\n";
+        std::cerr << "  tuple: " << ex->tuple()->node_name() << " sym='" << ex->tuple()->sym().str() << "'\n";
+        std::cerr << "  tuple type arity: ";
+        if (auto s = ex->tuple()->type()->isa<Sigma>())
+            std::cerr << s->num_ops() << " (Sigma)\n";
+        else if (auto a = ex->tuple()->type()->isa<Arr>())
+            std::cerr << "Arr\n";
+        std::cerr << "  seeded values:\n";
+        for (auto& [d, v] : values_)
+            std::cerr << "    " << d->node_name() << " sym='" << d->sym().str() << "' → " << v.name << "\n";
+
         assert(false && "Extract not seeded");
         return {};
     }
