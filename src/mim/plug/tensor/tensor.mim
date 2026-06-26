@@ -393,6 +393,19 @@ lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t
         = %tensor.dot_product_impl R @(2, 2) (1_2, 0_2, (), ()) @((m, k), (k, l)) (t1, t2);
 
 ///
+/// ### %%tensor.bmm
+///
+/// Computes the Batch Matrix Multiplication (BMM) of two 3-dimensional tensors.
+///
+axm %tensor.bmm: [R: %tensor.Ring]
+              → {B M K N: Nat}
+              → [t1: «B, M, K; R#T», t2: «B, K, N; R#T»]
+              → «B, M, N; R#T»;
+
+lam %tensor.bmm_impl (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
+        = %tensor.dot_product_impl R @(3, 3) (2_3, 1_3, 0_3, 0_3) @((B, M, K), (B, K, N)) (t1, t2);
+
+///
 /// ### %%tensor.transpose
 ///
 /// Permutes the dimensions of `input` according to `permutation`.

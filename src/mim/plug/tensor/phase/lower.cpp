@@ -111,6 +111,8 @@ const Def* Lower::rewrite_imm_App(const App* app) {
         if (auto res = lower_broadcast_in_dim(bid)) return res;
     } else if (Axm::isa<tensor::product_2d>(app)) {
         return lower_via_impl(app, w.annex<tensor::product_2d_impl>());
+    } else if (Axm::isa<tensor::bmm>(app)) {
+        return lower_via_impl(app, w.annex<tensor::bmm_impl>());
     } else if (Axm::isa<tensor::dot_product>(app)) {
         return lower_via_impl(app, w.annex<tensor::dot_product_impl>());
     } else if (Axm::isa<tensor::transpose>(app)) {
