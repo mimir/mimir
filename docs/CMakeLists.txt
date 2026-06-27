@@ -1,12 +1,21 @@
 set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.sh")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
+set(ITER_DOT   "${CMAKE_CURRENT_BINARY_DIR}/iter.dot")
 
 add_custom_command(
     OUTPUT ${CLI_HELP}
     COMMAND mim --help > ${CLI_HELP}
     DEPENDS mim
     COMMENT "Generating help text of Mim's CLI"
+)
+
+add_custom_command(
+    OUTPUT ${ITER_DOT}
+    COMMAND mim docs/iter.mim --dot-inline --dot-hide-default-filter --output-dot ${ITER_DOT}
+    DEPENDS mim "${CMAKE_CURRENT_SOURCE_DIR}/iter.mim"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Generating MimIR DOT graph for the iter example in docs/README.md"
 )
 
 add_custom_command(
@@ -46,7 +55,7 @@ add_custom_command(
     OUTPUT ${DOXY_INDEX_HTML}
     COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
     MAIN_DEPENDENCY ${DOXYFILE}
-    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
+    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${ITER_DOT} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
     COMMENT "Generating Doxygen HTML documentation"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )

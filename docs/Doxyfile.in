@@ -2962,7 +2962,7 @@ DOT_PATH               =
 # command).
 # This tag requires that the tag HAVE_DOT is set to YES.
 
-DOTFILE_DIRS           =
+DOTFILE_DIRS           = @CMAKE_CURRENT_BINARY_DIR@
 
 # You can include diagrams made with dia in Doxygen documentation. Doxygen will
 # then run dia to produce the diagram and insert it in the documentation. The

@@ -3,7 +3,7 @@ set confirm off
 set pagination off
 
 define xdot
-    if $argc == 0 || $argc >= 4
+    if $argc == 0 || $argc >= 6
         help xdot
     end
     set $def = $arg0
@@ -17,10 +17,21 @@ define xdot
     else
         set $types = 0
     end
+    if $argc > 3
+        set $inline = $arg3
+    else
+        set $inline = 0
+    end
+    if $argc > 4
+        set $hide = $arg4
+    else
+        set $hide = 0
+    end
     # see https://stackoverflow.com/a/6889615
     shell echo set \$tmp=\"$(mktemp)\" >/tmp/tmp.gdb
     source /tmp/tmp.gdb
-    call $def->dot($tmp, $max, $types)
+    # mim::DotConfig is {max, annexes, types, inline_consts, hide_default_filter}; annexes is ignored by Def::dot.
+    call $def->dot($tmp, (mim::DotConfig){$max, 0, $types, $inline, $hide})
     eval "shell xdot %s 2&> /dev/null &", $tmp
 end
 
@@ -28,8 +39,8 @@ document xdot
 xdot
 Generates DOT output for the given EXP and invokes xdot.
 
-Usage: xdot EXP [MAX] [TYPES]
-    EXP     Must provide $EXP->dot(file, $MAX, $TYPES).
+Usage: xdot EXP [MAX] [TYPES] [INLINE] [HIDE]
+    EXP     Must provide $EXP->dot(file, mim::DotConfig).
 
     MAX     Maximum recursion depth while following a Def's ops.
             Default: 0xFFFFFFFF.
@@ -37,12 +48,19 @@ Usage: xdot EXP [MAX] [TYPES]
     TYPES   Follow type dependencies?
             Default: 0 (no)
 
+    INLINE  Wire up literals, axioms, etc. instead of detaching them into a separate row?
+            Default: 0 (no)
+
+    HIDE    Hide a lambda's filter if it still carries its kind's default (ff for cn, tt for direct-style)?
+            Default: 0 (no)
+
 Examples:
 
-xdot def      - Show full DOT graph of 'def' but ignore type dependencies.
-xdot ref.def_ - As above but on a Ref.
-xdot def 3    - As above but use recursion depth of 3.
-xdot def 3 1  - As above but follow type dependencies.
+xdot def        - Show full DOT graph of 'def' but ignore type dependencies.
+xdot ref.def_   - As above but on a Ref.
+xdot def 3      - As above but use recursion depth of 3.
+xdot def 3 1    - As above but follow type dependencies.
+xdot def 3 0 1 1 - Compact view: inline shared nodes and hide default filters.
 end
 
 define xdott
@@ -68,7 +86,7 @@ Same as: xdot EXP $MAX 1
 end
 
 define xdotw
-    if $argc == 0 || $argc >= 4
+    if $argc == 0 || $argc >= 6
         help xdotw
     end
     set $world = $arg0
@@ -82,10 +100,21 @@ define xdotw
     else
         set $types = 0
     end
+    if $argc > 3
+        set $inline = $arg3
+    else
+        set $inline = 0
+    end
+    if $argc > 4
+        set $hide = $arg4
+    else
+        set $hide = 0
+    end
     # see https://stackoverflow.com/a/6889615
     shell echo set \$tmp=\"$(mktemp)\" >/tmp/tmp.gdb
     source /tmp/tmp.gdb
-    call $world->dot($tmp, $annexes, $types)
+    # mim::DotConfig is {max, annexes, types, inline_consts, hide_default_filter}; max is the recursion depth.
+    call $world->dot($tmp, (mim::DotConfig){0xFFFFFFFF, $annexes, $types, $inline, $hide})
     eval "shell xdot %s 2&> /dev/null &", $tmp
 end
 
@@ -93,13 +122,19 @@ document xdotw
 xdotw
 Generates DOT output for the given World and invokes xdot.
 
-Usage: xdotw WORLD [ANNEXES] [TYPES]
-    WORLD   Must provide $WORLD.dot(file, $ANNEXES, $TYPES).
+Usage: xdotw WORLD [ANNEXES] [TYPES] [INLINE] [HIDE]
+    WORLD   Must provide $WORLD.dot(file, mim::DotConfig).
 
     ANNEXES Include all annexes - even if unused?
             Default: 0 (no)
 
     TYPES   Follow type dependencies?
+            Default: 0 (no)
+
+    INLINE  Wire up literals, axioms, etc. instead of detaching them into a separate row?
+            Default: 0 (no)
+
+    HIDE    Hide a lambda's filter if it still carries its kind's default (ff for cn, tt for direct-style)?
             Default: 0 (no)
 
 Note:

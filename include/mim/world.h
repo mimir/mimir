@@ -730,13 +730,10 @@ public:
     /// GraphViz output.
     ///@{
 
-    /// Dumps DOT to @p os.
-    /// @param os Output stream
-    /// @param annexes If `true`, include all annexes - even if unused.
-    /// @param types Follow type dependencies?
-    void dot(std::ostream& os, bool annexes = false, bool types = false) const;
+    /// Dumps DOT to @p os, configured via @p cfg (see DotConfig).
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, bool annexes = false, bool types = false) const;
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
     ///@}
 
 private:

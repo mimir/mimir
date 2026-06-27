@@ -27,6 +27,40 @@ MimIR provides:
 
 MimIR is well suited for DSL compilers, tensor compilers, automatic differentiation, regex engines, and other systems that need high-performance code from high-level abstractions.
 
+## ✨ A Taste of Mim
+
+`iter f (n, x)` applies `f` to `x` exactly `n` times.
+It is **polymorphic** — the element type `T` is just another argument, passed implicitly in `{}` — and recursive.
+The `@(%core.pe.is_closed n)` filter is a **partial-evaluation** directive: whenever `n` is a constant, MimIR unrolls the recursion away at compile time:
+
+```mim
+plugin core;
+
+lam extern iter {T: *} (f: T → T) (n: Nat, x: T)@(%core.pe.is_closed n): T =
+    let cond = %core.ncmp.le (n, 0);
+    (alt, cons)#cond () where
+        lam alt (): T =
+            let m = %core.nat.sub (n, 1);
+            let y = f x;
+            iter f (m, y);
+        lam cons(): T = x;
+    end;
+```
+
+Under the hood, MimIR is not a list of instructions but a **graph**.
+This is exactly the graph MimIR builds for `iter` above — generated automatically from the source via `mim --output-dot`:
+
+@dotfile iter.dot "The MimIR graph of `iter`."
+
+Notice that the two branches `alt` and `cons` are **floating functions**: MimIR references them as ordinary nodes selected by `cond` instead of nesting them inside `iter`, and the recursive call simply points back at the `iter` node itself.
+This is MimIR's sea-of-nodes representation in action.
+
+The `let` bindings above are pure surface sugar — they only name subexpressions.
+Inlining them or adding more yields the **exact same graph**, because in MimIR the graph *is* the program.
+
+@note `extern` marks `iter` as a root of the program graph.
+Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
+
 ## 💡 Why MimIR?
 
 | Feature                                                                             | LLVM                         | MLIR                                   | MimIR                                                                                                                                                                                |
