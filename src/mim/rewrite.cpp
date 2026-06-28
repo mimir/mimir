@@ -355,8 +355,6 @@ const Def* Zonker::rewire_mut(Def* mut) {
     for (size_t i = 0, e = mut->num_ops(); i != e; ++i)
         mut->set(i, rewrite(old_ops[i]));
 
-    if (auto new_imm = mut->immutabilize()) return map(mut, new_imm);
-
     return mut;
 }
 

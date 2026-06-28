@@ -27,6 +27,7 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , node_(node)
     , mut_(false)
     , external_(false)
+    , zonk_(false)
     , annex_(false)
     , dep_(node == Node::Hole    ? fe::to_underlying(Dep::Hole)
            : node == Node::Proxy ? fe::to_underlying(Dep::Proxy)
@@ -84,6 +85,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , node_(node)
     , mut_(true)
     , external_(false)
+    , zonk_(false)
     , annex_(false)
     , dep_(fe::to_underlying(Dep::Mut | (node == Node::Hole ? Dep::Hole : Dep::None)))
     , num_ops_(num_ops)
@@ -246,6 +248,7 @@ Def* Def::set(Defs ops) {
 #endif
     invalidate();
 
+    zonk_ |= node() == Node::Hole;
     size_t n = ops.size();
     assert(n == num_ops() && "num ops don't match");
 
@@ -269,6 +272,8 @@ Def* Def::set(size_t i, const Def* def) {
 #endif
 
     invalidate();
+
+    zonk_ |= node() == Node::Hole;
     def = check(i, def);
     assert(def && !op(i) && curr_op_++ == i);
     ops_ptr()[i] = def;
@@ -334,6 +339,8 @@ Muts Def::local_muts() const {
     return muts_;
 }
 
+Vars Def::local_vars() const { return mut_ ? Vars() : vars_; }
+
 Vars Def::free_vars() const {
     if (auto mut = isa_mut()) return mut->free_vars();
 
@@ -344,8 +351,6 @@ Vars Def::free_vars() const {
 
     return fvs;
 }
-
-Vars Def::local_vars() const { return mut_ ? Vars() : vars_; }
 
 Vars Def::free_vars() {
     if (mark_ == 0) {
@@ -382,6 +387,7 @@ Vars Def::free_vars(bool& todo, uint32_t run) {
 
     mark_ = run;
 
+    bool zonk0 = zonk_;
     auto fvs0  = vars_;
     auto fvs   = fvs0;
     auto& w    = world();
@@ -394,14 +400,30 @@ Vars Def::free_vars(bool& todo, uint32_t run) {
         for (auto mut : op->local_muts()) {
             if constexpr (init) mut->muts_ = muts.insert(mut->muts_, this); // register "this" as user of local_mut
             fvs = vars.merge(fvs, mut->free_vars<init>(todo, run));
+            zonk_ |= mut->zonk_;
         }
     }
 
     if (auto var = has_var()) fvs = vars.erase(fvs, var); // FV(λx.e) = FV(e) \ {x}
 
-    if constexpr (!init) todo |= fvs0 != fvs;
+    if constexpr (!init) todo |= (fvs0 != fvs) | (zonk0 != zonk_);
 
     return vars_ = fvs;
+}
+
+bool Def::needs_zonk() const {
+    if (auto mut = isa_mut()) return mut->needs_zonk();
+
+    bool res = zonk_;
+    for (auto mut : local_muts())
+        res |= mut->needs_zonk();
+
+    return res;
+}
+
+bool Def::needs_zonk() {
+    if (mark_ == 0) free_vars(); // trigger fixed-point solver
+    return zonk_;
 }
 
 void Def::invalidate() {
@@ -412,6 +434,7 @@ void Def::invalidate() {
             mut->invalidate();
         vars_ = Vars();
         muts_ = Muts();
+        zonk_ = false;
     }
 }
 

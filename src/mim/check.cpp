@@ -9,15 +9,6 @@
 
 namespace mim {
 
-bool Def::needs_zonk() const {
-    if (has_dep(Dep::Hole)) {
-        for (auto mut : local_muts())
-            if (Hole::isa_set(mut)) return true;
-    }
-
-    return false;
-}
-
 const Def* Def::zonk() const { return needs_zonk() ? world().zonker().rewrite(this) : this; }
 
 const Def* Def::zonk_mut() const {

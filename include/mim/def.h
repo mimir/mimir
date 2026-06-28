@@ -592,6 +592,7 @@ public:
 
     /// Yields `true`, if Def::local_muts() contain a Hole that is set.
     /// Rewriting (Def::zonk%ing) will resolve the Hole to its operand.
+    bool needs_zonk();
     bool needs_zonk() const;
 
     /// If Hole%s have been filled, reconstruct the program without them.
@@ -685,8 +686,9 @@ private:
     Node node_; // 8
     bool mut_           : 1;
     bool external_      : 1;
+    bool zonk_          : 1;
     mutable bool annex_ : 1;
-    unsigned dep_       : 5;
+    unsigned dep_       : 4;
     u32 mark_ = 0;
 #ifndef NDEBUG
     size_t curr_op_ = 0;
