@@ -220,7 +220,11 @@ const Def* World::app(const Def* callee, const Def* arg) {
             .note(arg->loc(), "argument: '{}'", arg)
             .note(callee->loc(), "vvv domain type vvv\n'{}'\n'{}'", pi->dom(), arg->type())
             .note(arg->loc(), "^^^ argument type ^^^");
-    arg = new_arg->zonk();
+
+    // re-zonk after assignable check above - we might have inferred new stuff
+    arg    = new_arg->zonk();
+    callee = callee->zonk();
+    pi     = callee->type()->isa<Pi>();
 
     // always β-reduce non-recursive, non-parametric lambdas
     if (auto imm = callee->isa_imm<Lam>()) return imm->body();
