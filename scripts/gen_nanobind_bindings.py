@@ -22,13 +22,14 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
+# TODO: change this, this is way too convoluted
 # ---------------------------------------------------------------------------
 #  Bootstrap: use the project venv so we get the bundled libclang.so
 # ---------------------------------------------------------------------------
 
 _SCRIPT_DIR = Path(__file__).resolve().parent          # scripts/
 _REPO_ROOT  = _SCRIPT_DIR.parent                       # repo root
-_VENV       = _REPO_ROOT / ".venv"
+_VENV       = _REPO_ROOT / ".venv" 
 
 # Determine the `site-packages` inside the venv
 _py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
@@ -43,7 +44,6 @@ if _venv_site.is_dir() and str(_venv_site) not in sys.path:
         if _lib.exists():
             os.environ.setdefault("LIBCLANG_LIBRARY_FILE", str(_lib))
 
-# Now try to import – the bundled libclang.so is found automatically.
 try:
     import clang.cindex
 except ImportError:
@@ -458,7 +458,7 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
 
 
 # ---------------------------------------------------------------------------
-#  CMake integration: derive the real per-target compile flags
+#  CMake integration: derive the real per-target compile flags from build/compile_commands.json
 # ---------------------------------------------------------------------------
 
 _CC_SEPARATE_FLAGS = ("-I", "-isystem", "-iquote", "-D", "-U", "-include")
@@ -516,7 +516,7 @@ def _match_cc_entry(header_path: str, entries: list) -> Optional[dict]:
 
 
 def _flags_from_cc_entry(entry: dict) -> list:
-    """Extract the preprocessor-relevant flags (`-std`, `-D`/`-U`, includes)."""
+    """Extract the preprocessor-relevant flags ."""
     if "arguments" in entry:
         raw = list(entry["arguments"])
     else:
@@ -610,12 +610,12 @@ def main(argv=None):
         base_args.extend(args.extra_args.split())
     for inc in args.includes or []:
         base_args.append(f"-I{inc}")
-    # libclang's own builtin headers (stddef.h, ...) are never in the compile DB.
+    # libclang's own builtin headers need to be included as well.
     res_flag = _clang_resource_include()
     if res_flag:
         base_args.append(res_flag)
 
-    # CMake-derived flags: defines (incl. build-type NDEBUG), std level, includes.
+    # Get all Cmake relevant includes and flags
     cc_entries = None
     if not args.no_cmake:
         cc_entries = _load_compile_commands(Path(args.build_dir))
@@ -628,7 +628,8 @@ def main(argv=None):
                 file=sys.stderr,
             )
 
-    # Fallback repository include paths (only when no compile DB is available).
+    # Hardcoded Fallbacks should you not use the cmake flag.
+    # TODO: Maybe change this to an argument in the future?
     fallback_includes = [
         f"-I{_REPO_ROOT / 'include'}",
         f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'include'}",
@@ -642,7 +643,6 @@ def main(argv=None):
         if cc_entries:
             entry = _match_cc_entry(hdr, cc_entries)
             if entry:
-                # Appended last so a compile-DB `-std=` wins over the default.
                 clang_args.extend(_flags_from_cc_entry(entry))
                 return clang_args
         clang_args.extend(fallback_includes)
