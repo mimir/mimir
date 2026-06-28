@@ -9,14 +9,11 @@
 
 namespace mim {
 
-// const Def* Def::zonk() const { return needs_zonk() ? world().zonker().rewrite(this) : this; }
-
 const Def* Def::zonk() const {
-    if (needs_zonk()) {
-        auto zonker = Zonker(world());
-        return zonker.rewrite(this);
-    }
-    return this;
+    if (!needs_zonk()) return this;
+    auto& z = world().zonker();
+    z.refresh();
+    return z.rewrite(this);
 }
 
 const Def* Def::zonk_mut() const {

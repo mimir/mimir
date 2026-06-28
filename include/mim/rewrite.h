@@ -161,14 +161,20 @@ public:
     const Def* rewrite(const Def*) final;
     const Def* rewrite_mut(Def* mut) final { return map(mut, mut); }
     const Def* rewire_mut(Def*);
+    /// Drops the persistent cache iff a Hole has been resolved since it was last known valid.
+    /// Call only at the top-level entry of a zonk - never within the recursion.
+    void refresh();
     ///@}
 
     friend void swap(Zonker& z1, Zonker& z2) noexcept {
         using std::swap;
         swap(static_cast<Rewriter&>(z1), static_cast<Rewriter&>(z2));
+        swap(z1.valid_at_, z2.valid_at_);
     }
 
 private:
+    u32 valid_at_ = 0; ///< World::num_set_holes value at which old2news_ is still valid.
+
     const Def* get(const Def* old_def) {
         auto& old2new = old2news_.back();
         if (auto i = old2new.find(old_def); i != old2new.end()) return i->second;

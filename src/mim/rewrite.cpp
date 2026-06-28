@@ -335,6 +335,13 @@ const Def* Zonker::lookup(const Def* old_def) {
     return nullptr;
 }
 
+void Zonker::refresh() {
+    if (valid_at_ != world().num_set_holes()) {
+        reset();
+        valid_at_ = world().num_set_holes();
+    }
+}
+
 const Def* Zonker::rewrite(const Def* def) {
     if (auto hole = def->isa_mut<Hole>()) {
         auto [last, op] = hole->find();
