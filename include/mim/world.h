@@ -637,13 +637,16 @@ public:
     /// @name for_each
     /// Visits all closed mutables in this World.
     ///@{
-    void for_each(bool elide_empty, std::function<void(Def*)>);
+    void for_each(bool elide_empty, std::function<void(Def*)>, bool schedule = false);
 
     template<class M>
-    void for_each(bool elide_empty, std::function<void(M*)> f) {
-        for_each(elide_empty, [f](Def* m) {
-            if (auto mut = m->template isa<M>()) f(mut);
-        });
+    void for_each(bool elide_empty, std::function<void(M*)> f, bool schedule = false) {
+        for_each(
+            elide_empty,
+            [f](Def* m) {
+                if (auto mut = m->template isa<M>()) f(mut);
+            },
+            schedule);
     }
     ///@}
 

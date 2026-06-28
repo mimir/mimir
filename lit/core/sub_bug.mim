@@ -8,7 +8,7 @@ fun extern f(a: I8): «4; I8» =
     return (%core.wrap.sub 0               (a, 1I8),
             %core.wrap.sub %core.mode.nsw  (a, 1I8),
             %core.wrap.sub %core.mode.nuw  (a, 1I8),
-            %core.wrap.sub %core.mode.nusw (a, 1I8));
+            %core.wrap.sub %core.mode.nsuw (a, 1I8));
 
 // CHECK-DAG: %core.wrap.add i8 0 (255I8, a_{{[0-9]+}});
 // CHECK-DAG: %core.wrap.sub i8 1 (a_{{[0-9]+}}, 1I8);

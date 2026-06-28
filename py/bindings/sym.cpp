@@ -1,9 +1,11 @@
-#include <fe/sym.h>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 
+#include <fe/sym.h>
+
 #include <mim/def.h>
+
 namespace nb = nanobind;
 
 namespace fe {

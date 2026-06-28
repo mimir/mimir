@@ -81,6 +81,11 @@ const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
     return a;
 }
 
+const Def* normalize_check_bot(const Def*, const Def* c, const Def* arg) {
+    if (!arg->isa<Bot>()) mim::error(c->loc(), "'{}' is not bottom", arg);
+    return arg;
+}
+
 const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     auto& w               = type->world();
     auto [cond, val, msg] = arg->projs<3>();
@@ -93,6 +98,19 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     }
 
     return nullptr;
+}
+
+template<vars id>
+const Def* normalize_vars(const Def* type, const Def* callee, const Def* arg) {
+    auto& world = type->world();
+
+    if constexpr (id == vars::is_closed) return arg->is_closed() ? world.lit_tt() : world.lit_ff();
+
+    if constexpr (id == vars::await_closed) {
+        if (callee->as<App>()->is_closed()) return arg;
+    }
+
+    return {};
 }
 
 MIM_refly_NORMALIZER_IMPL

@@ -12,7 +12,7 @@ fun kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
     let val = %core.bitcast I32 item_id;
     let m3 = %mem.store (m3, store_loc, val);
     let (m1, m3) = %gpu.sync_work_items (m1, m3);
-    let load_idx = %core.wrap.sub %core.mode.nusw (3_4, item_id);
+    let load_idx = %core.wrap.sub %core.mode.nsuw (3_4, item_id);
     let load_loc = %mem.lea (shared_ptr, load_idx);
     let (m3, load_val) = %mem.load (m3, load_loc);
     let m1 = %mem.store (m1, data, load_val);

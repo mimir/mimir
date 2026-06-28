@@ -153,7 +153,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
         auto not_end = mem::mut_con(w.type_idx(n));
         not_end->debug_prefix("not_end_" + state_to_name(state));
 
-        auto new_i = w.call(core::wrap::add, core::Mode::nusw, w.tuple({i, w.call(core::conv::u, n, w.lit_i64(1))}));
+        auto new_i = w.call(core::wrap::add, core::Mode::nsuw, w.tuple({i, w.call(core::conv::u, n, w.lit_i64(1))}));
         lam->app(false, w.select(is_end, exiting(state), not_end), {mem2, i});
 
         auto transitions = create_check_match_transitions_from(c, state);

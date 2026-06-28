@@ -8,6 +8,7 @@ else()
     set(MIM_PY_PYTHON "${MIM_PY_VENV}/bin/python")
 endif()
 set(MIM_PY_STAGE "${CMAKE_BINARY_DIR}/mim_py_stage/main")
+set(_mim_py_python_command "${CMAKE_COMMAND}" -E env "${MIM_PY_PYTHON}")
 
 execute_process(
     COMMAND "${Python_EXECUTABLE}" -c
@@ -23,16 +24,28 @@ endif()
 
 # venv: created once, kept between builds. Stamp gates downstream targets.
 set(MIM_PY_VENV_STAMP "${MIM_PY_VENV}/.mim-stamp")
+set(_venv_commands COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIM_PY_VENV}")
+
+if(WIN32)
+    list(APPEND _venv_commands
+        COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m ensurepip --upgrade
+    )
+endif()
+
+list(APPEND _venv_commands
+    COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m venv "${MIM_PY_VENV}"
+    COMMAND ${_mim_py_python_command} -m pip install --upgrade pip setuptools wheel
+    COMMAND ${_mim_py_python_command} -m pip install pytest
+    COMMAND "${CMAKE_COMMAND}" -E touch "${MIM_PY_VENV_STAMP}"
+)
+
 add_custom_command(
     OUTPUT "${MIM_PY_VENV_STAMP}"
-    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIM_PY_VENV}"
-    COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m venv "${MIM_PY_VENV}"
-    COMMAND "${MIM_PY_PYTHON}" -m pip install --quiet --upgrade pip setuptools wheel
-    COMMAND "${MIM_PY_PYTHON}" -m pip install --quiet pytest
-    COMMAND "${CMAKE_COMMAND}" -E touch "${MIM_PY_VENV_STAMP}"
+    ${_venv_commands}
     COMMENT "mim_py: creating venv at ${MIM_PY_VENV}"
     VERBATIM
 )
+
 add_custom_target(mim_py_venv DEPENDS "${MIM_PY_VENV_STAMP}")
 
 # Generate a stub for the internal nanobind module.
@@ -104,7 +117,7 @@ add_custom_target(mim_py_main
             "${MIM_PY_STUB_FILE}"
             "${MIM_PY_STAGE}/src/mim/_mim.pyi"
     ${_mim_py_stage_plugin_commands}
-    COMMAND "${MIM_PY_PYTHON}" -m pip install --quiet --no-deps -e "${MIM_PY_STAGE}"
+    COMMAND ${_mim_py_python_command} -m pip install --quiet --no-deps -e "${MIM_PY_STAGE}"
     COMMENT "mim_py: staging & installing mim (editable)"
     COMMAND_EXPAND_LISTS
     VERBATIM
@@ -122,7 +135,7 @@ foreach(_toml ${_mim_py_plugin_tomls})
     set(_stage "${CMAKE_BINARY_DIR}/mim_py_stage/plugins/${_plugin_name}")
     add_custom_target(${_target}
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_plugin_dir}" "${_stage}"
-        COMMAND "${MIM_PY_PYTHON}" -m pip install --quiet --no-deps -e "${_stage}"
+        COMMAND ${_mim_py_python_command} -m pip install --quiet --no-deps -e "${_stage}"
         COMMENT "mim_py: staging & installing ${_target} (editable)"
         VERBATIM
     )
@@ -137,7 +150,7 @@ if(WIN32)
     add_custom_target(test-py
         COMMAND "${CMAKE_COMMAND}" -E env
                 "PATH=${CMAKE_RUNTIME_OUTPUT_DIRECTORY};${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim;$ENV{PATH}"
-                "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+                ${_mim_py_python_command} -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
         DEPENDS mim_py_main
         COMMENT "mim_py: running Python tests"
         USES_TERMINAL
@@ -145,7 +158,7 @@ if(WIN32)
     )
 else()
     add_custom_target(test-py
-        COMMAND "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        COMMAND ${_mim_py_python_command} -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
         DEPENDS mim_py_main
         COMMENT "mim_py: running Python tests"
         USES_TERMINAL

@@ -1,0 +1,303 @@
+// RUN: %mim %s
+plugin core;
+plugin refly;
+
+ // word-domain wrap.add
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (250I8, 10I8), 4I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (0I8, 0I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (255I8, 1I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (127I8, 1I8), 128I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (128I8, 128I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (1I8, 2I8), 3I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (255I8, 255I8), 254I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (0I1, 0I1), 0I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (0I1, 1I1), 1I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (1I1, 1I1), 0I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (18446744073709551615I64, 1I64), 0I64);
+
+// word-domain wrap.add with overflow modes
+let _ = %refly.equiv.struc_eq (%core.wrap.add %core.mode.nuw (1I8, 2I8), 3I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add %core.mode.nsw (1I8, 2I8), 3I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add %core.mode.nsuw (1I8, 2I8), 3I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add %core.mode.nsw (127I8, 0I8), 127I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.add %core.mode.nsw (255I8, 0I8), 255I8);
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nuw (255I8, 1I8));
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nsw (127I8, 1I8));
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nsuw (255I8, 1I8));
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nsuw (127I8, 1I8));
+
+// word-domain wrap.sub
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (7I8, 3I8), 4I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0I8, 1I8), 255I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0I8, 0I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (128I8, 1I8), 127I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (1I1, 1I1), 0I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0I1, 1I1), 1I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0I64, 1I64), 18446744073709551615I64);
+
+// word-domain wrap.sub with overflow modes
+let _ = %refly.equiv.struc_eq (%core.wrap.sub %core.mode.nuw (7I8, 3I8), 4I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub %core.mode.nsw (7I8, 3I8), 4I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub %core.mode.nsw (255I8, 1I8), 254I8);
+let _ = %refly.check_bot (%core.wrap.sub %core.mode.nuw (0I8, 1I8));
+let _ = %refly.check_bot (%core.wrap.sub %core.mode.nsw (128I8, 1I8));
+
+// word-domain wrap.mul
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (0I8, 123I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (1I8, 123I8), 123I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (16I8, 16I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (255I8, 255I8), 1I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (128I8, 2I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (1I1, 1I1), 1I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (0I1, 1I1), 0I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (18446744073709551615I64, 2I64), 18446744073709551614I64);
+
+// word-domain wrap.mul with overflow modes
+let _ = %refly.equiv.struc_eq (%core.wrap.mul %core.mode.nuw (3I8, 5I8), 15I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul %core.mode.nsw (3I8, 5I8), 15I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul %core.mode.nsw (255I8, 255I8), 1I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul %core.mode.nsw (128I8, 1I8), 128I8);
+let _ = %refly.check_bot (%core.wrap.mul %core.mode.nuw (16I8, 16I8));
+let _ = %refly.check_bot (%core.wrap.mul %core.mode.nsw (20I8, 20I8));
+let _ = %refly.check_bot (%core.wrap.mul %core.mode.nsw (128I8, 255I8));
+
+// word-domain wrap.shl
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (1I8, 0I8), 1I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (1I8, 1I8), 2I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (1I8, 7I8), 128I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (128I8, 1I8), 0I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (255I8, 1I8), 254I8);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (1I1, 0I1), 1I1);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl %core.mode.nsw (255I8, 1I8), 254I8);
+let _ = %refly.check_bot (%core.wrap.shl 0 (1I8, 8I8));
+let _ = %refly.check_bot (%core.wrap.shl %core.mode.nuw (128I8, 1I8));
+let _ = %refly.check_bot (%core.wrap.shl %core.mode.nsw (64I8, 1I8));
+let _ = %refly.check_bot (%core.wrap.shl %core.mode.nsw (64I8, 1I8));   // 64 -> 128 overflows signed
+let _ = %refly.check_bot (%core.wrap.shl %core.mode.nsw (128I8, 1I8));  // -128 * 2 overflows
+
+/// word-domain shr.l
+let _ = %refly.equiv.struc_eq (%core.shr.l (255I8, 0I8), 255I8);
+let _ = %refly.equiv.struc_eq (%core.shr.l (255I8, 1I8), 127I8);
+let _ = %refly.equiv.struc_eq (%core.shr.l (128I8, 7I8), 1I8);
+let _ = %refly.equiv.struc_eq (%core.shr.l (1I8, 1I8), 0I8);
+let _ = %refly.check_bot (%core.shr.l (1I8, 8I8));
+
+/// word-domain shr.a
+let _ = %refly.equiv.struc_eq (%core.shr.a (255I8, 1I8), 255I8);
+let _ = %refly.equiv.struc_eq (%core.shr.a (254I8, 1I8), 255I8);
+let _ = %refly.equiv.struc_eq (%core.shr.a (128I8, 1I8), 192I8);
+let _ = %refly.equiv.struc_eq (%core.shr.a (127I8, 1I8), 63I8);
+let _ = %refly.equiv.struc_eq (%core.shr.a (1I8, 1I8), 0I8);
+let _ = %refly.check_bot (%core.shr.a (1I8, 8I8));
+
+/// conv
+let _ = %refly.equiv.struc_eq (%core.conv.u i16 255I8, 255I16);
+let _ = %refly.equiv.struc_eq (%core.conv.s i16 255I8, 65535I16);
+let _ = %refly.equiv.struc_eq (%core.conv.u i8 65535I16, 255I8);
+let _ = %refly.equiv.struc_eq (%core.conv.s i8 65535I16, 255I8);
+let _ = %refly.equiv.struc_eq (%core.conv.u 10 4_5, 4_10);
+let _ = %refly.equiv.struc_eq (%core.conv.s 10 4_5, 9_10);
+let _ = %refly.equiv.struc_eq (%core.conv.s 10 3_5, 8_10);
+let _ = %refly.equiv.struc_eq (%core.conv.u 3 4_5, 1_3);
+let _ = %refly.equiv.struc_eq (%core.conv.s 3 4_5, 2_3);
+let _ = %refly.equiv.struc_eq (%core.conv.s 3 3_5, 1_3);
+
+/// word-domain icmp basic
+let _ = %refly.equiv.struc_eq (%core.icmp.e  (42I8, 42I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ne (42I8, 43I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.e  (42I8, 43I8), ff);
+let _ = %refly.equiv.struc_eq (%core.icmp.t  (42I8, 43I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.f  (42I8, 43I8), ff);
+
+/// word-domain icmp signed vs unsigned
+let _ = %refly.equiv.struc_eq (%core.icmp.sg  (1I8, 255I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ul  (1I8, 255I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl  (255I8, 1I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ug  (255I8, 1I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sge (255I8, 255I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ule (255I8, 255I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sle (128I8, 127I8), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.uge (128I8, 127I8), tt);
+
+/// non-power-of-two icmp on Idx 5
+let _ = %refly.equiv.struc_eq (%core.icmp.e  (0_5, 0_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ne (0_5, 1_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ul (1_5, 4_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ug (4_5, 1_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sg (1_5, 4_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl (4_5, 1_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl (3_5, 4_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sg (4_5, 3_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sge (2_5, 3_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ule (2_5, 3_5), tt);
+
+/// non-power-of-two icmp on Idx 9
+let _ = %refly.equiv.struc_eq (%core.icmp.sg (4_9, 8_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl (8_9, 4_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl (5_9, 8_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sg (8_9, 5_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ul (4_9, 8_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ug (8_9, 4_9), tt);
+
+/// non-power-of-two icmp on Idx 10
+let _ = %refly.equiv.struc_eq (%core.icmp.sg (4_10, 5_10), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl (5_10, 4_10), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sl (5_10, 9_10), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sg (9_10, 5_10), tt);
+
+/// extrema unsigned
+let _ = %refly.equiv.struc_eq (%core.extrema.umin (3I8, 250I8), 3I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.umax (3I8, 250I8), 250I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.umin (1_5, 4_5), 1_5);
+let _ = %refly.equiv.struc_eq (%core.extrema.umax (1_5, 4_5), 4_5);
+let _ = %refly.equiv.struc_eq (%core.extrema.umin (8_9, 5_9), 5_9);
+let _ = %refly.equiv.struc_eq (%core.extrema.umax (8_9, 5_9), 8_9);
+
+/// extrema signed on word domains
+let _ = %refly.equiv.struc_eq (%core.extrema.smin (1I8, 255I8), 255I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.smax (1I8, 255I8), 1I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.smin (128I8, 127I8), 128I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.smax (128I8, 127I8), 127I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.smin (254I8, 255I8), 254I8);
+let _ = %refly.equiv.struc_eq (%core.extrema.smax (254I8, 255I8), 255I8);
+
+/// singleton Idx 1
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.shr.l (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.shr.a (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.extrema.umin (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.extrema.umax (0_1, 0_1), 0_1);
+let _ = %refly.equiv.struc_eq (%core.icmp.e  (0_1, 0_1), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ne (0_1, 0_1), ff);
+let _ = %refly.equiv.struc_eq (%core.icmp.t  (0_1, 0_1), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.f  (0_1, 0_1), ff);
+
+/// 64-bit signed overflow corner cases
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (9223372036854775807I64, 1I64), 9223372036854775808I64);
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nsw (9223372036854775807I64, 1I64));
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0I64, 1I64), 18446744073709551615I64);
+let _ = %refly.check_bot (%core.wrap.sub %core.mode.nsw (9223372036854775808I64, 1I64));
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (18446744073709551615I64, 18446744073709551615I64), 1I64);
+let _ = %refly.check_bot (%core.wrap.mul %core.mode.nsw (9223372036854775808I64, 18446744073709551615I64));
+
+/// non-power-of-two wrap arithmetic on Idx 5
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (4_5, 1_5), 0_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (3_5, 4_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0_5, 1_5), 4_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (2_5, 4_5), 3_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (3_5, 4_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (1_5, 1_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (4_5, 1_5), 3_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (3_5, 2_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.add %core.mode.nuw (1_5, 2_5), 3_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub %core.mode.nuw (4_5, 2_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul %core.mode.nuw (2_5, 2_5), 4_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl %core.mode.nuw (1_5, 1_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl %core.mode.nsw (1_5, 1_5), 2_5);
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nuw (4_5, 1_5));
+let _ = %refly.check_bot (%core.wrap.sub %core.mode.nuw (0_5, 1_5));
+let _ = %refly.check_bot (%core.wrap.mul %core.mode.nuw (3_5, 4_5));
+let _ = %refly.check_bot (%core.wrap.add %core.mode.nsw (1_5, 2_5));
+let _ = %refly.equiv.struc_eq (%core.shr.l (4_5, 1_5), 2_5);
+let _ = %refly.equiv.struc_eq (%core.shr.a (4_5, 1_5), 4_5);
+let _ = %refly.equiv.struc_eq (%core.shr.a (3_5, 1_5), 4_5);
+let _ = %refly.check_bot (%core.wrap.shl %core.mode.nuw (4_5, 1_5));
+let _ = %refly.check_bot (%core.wrap.shl %core.mode.nsw (2_5, 1_5));
+let _ = %refly.check_bot (%core.wrap.shl 0 (1_5, 3_5));
+let _ = %refly.check_bot (%core.shr.l (4_5, 3_5));
+let _ = %refly.check_bot (%core.shr.a (4_5, 3_5));
+
+/// non-power-of-two arithmetic on Idx 10
+let _ = %refly.equiv.struc_eq (%core.wrap.add 0 (9_10, 1_10), 0_10);
+let _ = %refly.equiv.struc_eq (%core.wrap.sub 0 (0_10, 1_10), 9_10);
+let _ = %refly.equiv.struc_eq (%core.wrap.mul 0 (7_10, 8_10), 6_10);
+let _ = %refly.equiv.struc_eq (%core.wrap.shl 0 (7_10, 2_10), 8_10);
+let _ = %refly.equiv.struc_eq (%core.shr.l (9_10, 3_10), 1_10);
+let _ = %refly.equiv.struc_eq (%core.shr.a (9_10, 3_10), 9_10);
+
+/// extra edge checks for arbitrary icmp partitions
+let _ = %refly.equiv.struc_eq (%core.icmp.e   (4_5, 4_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ne  (4_5, 4_5), ff);
+let _ = %refly.equiv.struc_eq (%core.icmp.sle (3_5, 4_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sge (4_5, 3_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ule (3_5, 4_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.uge (4_5, 3_5), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.e   (8_9, 8_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ne  (8_9, 8_9), ff);
+let _ = %refly.equiv.struc_eq (%core.icmp.sle (5_9, 8_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.sge (8_9, 5_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.ule (5_9, 8_9), tt);
+let _ = %refly.equiv.struc_eq (%core.icmp.uge (8_9, 5_9), tt);
+
+/// non-power-of-two unsupported signed division cases should bottom
+
+lam div_rem (m: %mem.M 0): %mem.M 0 =
+    /// word-domain div.udiv
+    let (m, _) = %refly.equiv.struc_eq (%core.div.udiv (m, (7I8, 2I8)), (m, 3I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.udiv (m, (255I8, 2I8)), (m, 127I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.udiv (m, (0I8, 7I8)), (m, 0I8));
+    let (m, r) = %core.div.udiv (m, (7I8, 0I8));
+    let _= %refly.check_bot r;
+
+    /// word-domain div.urem
+    let (m, _) = %refly.equiv.struc_eq (%core.div.urem (m, (7I8, 2I8)), (m, 1I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.urem (m, (255I8, 2I8)), (m, 1I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.urem (m, (8I8, 2I8)), (m, 0I8));
+    let (m, r) = %core.div.urem (m, (7I8, 0I8));
+    let _ = %refly.check_bot r;
+
+    /// word-domain div.sdiv
+    let (m, _) = %refly.equiv.struc_eq (%core.div.sdiv (m, (254I8, 2I8)), (m, 255I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.sdiv (m, (255I8, 2I8)), (m, 0I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.sdiv (m, (127I8, 255I8)), (m, 129I8));
+    let (m, r) = %core.div.sdiv (m, (7I8, 0I8));
+    let (m, s) = %core.div.sdiv (m, (128I8, 255I8));
+    let _ = %refly.check_bot r;
+    let _ = %refly.check_bot s;
+
+    /// word-domain div.srem
+    let (m, _) = %refly.equiv.struc_eq (%core.div.srem (m, (254I8, 2I8)), (m, 0I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.srem (m, (255I8, 2I8)), (m, 255I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.srem (m, (127I8, 255I8)), (m, 0I8));
+    let (m, r) = %core.div.srem (m, (7I8, 0I8));
+    let (m, s) = %core.div.srem (m, (128I8, 255I8));
+    let _ = %refly.check_bot r;
+    let _ = %refly.check_bot s;
+
+    // non-power-of-two indices
+    let (m, _) = %refly.equiv.struc_eq (%core.div.udiv (m, (9_10, 2_10)), (m, 4_10));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.urem (m, (9_10, 2_10)), (m, 1_10));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.udiv (m, (4_5, 2_5)), (m, 2_5));
+    let (m, _) = %refly.equiv.struc_eq (%core.div.urem (m, (4_5, 3_5)), (m, 1_5));
+
+    // Idx 1
+    let (m, r) = %core.div.udiv (m, (0_1, 0_1));
+    let (m, s) = %core.div.urem (m, (0_1, 0_1));
+    let (m, t) = %core.div.sdiv (m, (0_1, 0_1));
+    let (m, u) = %core.div.srem (m, (0_1, 0_1));
+    let _ = %refly.check_bot r;
+    let _ = %refly.check_bot s;
+    let _ = %refly.check_bot t;
+    let _ = %refly.check_bot u;
+
+    // I64 edge case
+    let (m, r) = %core.div.sdiv (m, (9223372036854775808I64, 18446744073709551615I64));
+    let (m, s) = %core.div.srem (m, (9223372036854775808I64, 18446744073709551615I64));
+    let _ = %refly.check_bot r;
+    let _ = %refly.check_bot s;
+
+    /// abs
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 0I8), (m, 0I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 255I8), (m, 1I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 128I8), (m, 128I8));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 0_1), (m, 0_1));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 4_5), (m, 1_5));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 3_5), (m, 2_5));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 9_10), (m, 1_10));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 5_10), (m, 5_10));
+    let (m, _) = %refly.equiv.struc_eq (%core.abs (m, 9223372036854775808I64), (m, 9223372036854775808I64));
+
+    m;
