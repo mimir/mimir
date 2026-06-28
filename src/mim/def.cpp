@@ -248,7 +248,10 @@ Def* Def::set(Defs ops) {
 #endif
     invalidate();
 
-    zonk_ |= node() == Node::Hole;
+    if (node() == Node::Hole) {
+        zonk_ = true;
+        world().inc_set_holes();
+    }
     size_t n = ops.size();
     assert(n == num_ops() && "num ops don't match");
 
@@ -273,7 +276,10 @@ Def* Def::set(size_t i, const Def* def) {
 
     invalidate();
 
-    zonk_ |= node() == Node::Hole;
+    if (node() == Node::Hole) {
+        zonk_ = true;
+        world().inc_set_holes();
+    }
     def = check(i, def);
     assert(def && !op(i) && curr_op_++ == i);
     ops_ptr()[i] = def;
@@ -412,6 +418,7 @@ Vars Def::free_vars(bool& todo, uint32_t run) {
 }
 
 bool Def::needs_zonk() const {
+    if (world().num_set_holes() == 0) return false; // no resolved Hole anywhere - nothing to zonk
     if (auto mut = isa_mut()) return mut->needs_zonk();
 
     bool res = zonk_;
@@ -422,7 +429,8 @@ bool Def::needs_zonk() const {
 }
 
 bool Def::needs_zonk() {
-    if (mark_ == 0) free_vars(); // trigger fixed-point solver
+    if (world().num_set_holes() == 0) return false; // no resolved Hole anywhere - nothing to zonk
+    if (mark_ == 0) free_vars();                    // trigger fixed-point solver
     return zonk_;
 }
 

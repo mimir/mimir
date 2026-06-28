@@ -102,6 +102,11 @@ public:
     u32 curr_gid() const { return state_.pod.curr_gid; }
     u32 next_gid() { return ++state_.pod.curr_gid; }
 
+    /// Tracks resolved Hole%s: if `0`, no Def in this World needs a Def::zonk and the fixed-point solver can be
+    /// skipped.
+    u32 num_set_holes() const { return data_.num_set_holes; }
+    void inc_set_holes() { ++data_.num_set_holes; }
+
     /// Manage run - used to track fixed-point iterations to compute Def::free_vars
     u32 curr_run() const { return data_.curr_run; }
     u32 next_run() { return ++data_.curr_run; }
@@ -913,7 +918,8 @@ private:
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
-        u32 curr_run = 0;
+        u32 curr_run      = 0;
+        u32 num_set_holes = 0; ///< Number of Hole%s ever resolved; if `0`, nothing in this World needs a Def::zonk.
     } data_;
 
     friend void swap(World& w1, World& w2) noexcept {

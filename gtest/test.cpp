@@ -358,10 +358,14 @@ TEST(FV, algos) {
     Driver driver;
     driver.log().set(Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
-    ast::load_plugin(w, "core");
 
     auto nat = w.type_nat();
     auto run = w.curr_run();
+
+    // opaque, closed axms standing in for `%core.nat.add` and `%core.ncmp.l`;
+    // we only need their types so the FV flow matches - and no plugin means no resolved Hole%s to perturb the marks.
+    auto add = w.axm(w.pi({nat, nat}, nat))->set("add");
+    auto lt  = w.axm(w.pi({nat, nat}, w.type_bool()))->set("lt");
 
     // continuations
     auto f_ = w.mut_con({nat, w.cn(nat)})->set("f");
@@ -378,8 +382,8 @@ TEST(FV, algos) {
     auto vf  = f_->var()->as<Var>()->set("vf");
     auto i1  = hi->var()->set("i1")->as<Var>();
     auto j1  = hj->var()->set("j1")->as<Var>();
-    auto j2  = w.call(core::nat::add, Defs{j1, w.lit_nat_1()});
-    auto i2  = w.call(core::nat::add, Defs{i1, j1});
+    auto j2  = w.call(add, Defs{j1, w.lit_nat_1()});
+    auto i2  = w.call(add, Defs{i1, j1});
 
     // var sets
     auto vf_i1    = w.vars().create(Vector<const Var*>{vf, i1});
@@ -388,8 +392,8 @@ TEST(FV, algos) {
 
     // connect
     f_->app(false, hi, w.lit_nat_0());
-    hi->branch(false, w.call(core::ncmp::l, Defs{i1, n}), bi, xi);
-    hj->branch(false, w.call(core::ncmp::l, Defs{j1, n}), bj, xj);
+    hi->branch(false, w.call(lt, Defs{i1, n}), bi, xi);
+    hj->branch(false, w.call(lt, Defs{j1, n}), bj, xj);
     bi->app(false, hj, i1);
     bj->app(false, hj, j2);
     xi->app(false, ret, i1);
