@@ -9,6 +9,8 @@
 
 namespace mim {
 
+// const Def* Def::zonk() const { return needs_zonk() ? world().zonker().rewrite(this) : this; }
+
 const Def* Def::zonk() const {
     if (needs_zonk()) {
         auto zonker = Zonker(world());
