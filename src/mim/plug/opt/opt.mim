@@ -42,7 +42,7 @@ let matrix_lower_phase =
                 %compile.named_pass "%matrix.lower_matrix_medium_level",
             )
         ),
-        %compile.named_phase "%matrix.lower_matrix_low_level",
+        %compile.named_phase "%buffer.lower_ptr",
     );
 
 let clos_opt1_passes =

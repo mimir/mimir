@@ -10,6 +10,7 @@ plugin tuple;
 plugin refly;
 plugin vec;
 import affine;
+import buffer;
 ///
 /// A tensor plugin
 ///
@@ -303,3 +304,11 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 axm %tensor.lower_tensor: %compile.Phase;
 axm %tensor.lower_map_reduce: %compile.Phase;
 axm %tensor.fuse_tensor: %compile.Phase;
+///
+/// ### %%tensor.lower_to_mem
+///
+/// Bufferizes the low-level tensor axioms (`get`, `set`, `map_reduce_aff`) onto the `buffer` layer:
+/// tensor array values become `%%buffer.Buf` handles and the operations become `%%buffer.read` / `%%buffer.write` / `%%buffer.alloc` (threading `%%mem.M`).
+/// Run `%%mem.add_mem_phase` afterwards to thread memory, then `%%buffer.lower_ptr` to reach `%%mem.Ptr`.
+///
+axm %tensor.lower_to_mem: %compile.Phase;

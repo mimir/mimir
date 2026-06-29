@@ -11,82 +11,27 @@ plugin math;
 // needed to access cps2ds
 plugin direct;
 plugin affine;
+plugin buffer;
 ///
 /// ## Types
 ///
-/// ### %%matrix.Mat
+/// Matrices are n-dimensional dependent arrays, represented by the shared `%%buffer.Buf` type.
+/// The element operations (`%%buffer.alloc` / `%%buffer.read` / `%%buffer.write` / `%%buffer.constant` /
+/// `%%buffer.shape`) and their lowering to `%%mem.Ptr` (`%%buffer.lower_ptr`) live in the `buffer` plugin.
 ///
-/// Matrices are n-dimensional tensors with elements of type T.
-/// They can be seen as a generalization of Coq's vector type (a container with a fixed number of elements specified on type level).
-/// ```
-/// matrix = [n: Nat, S: «n; Nat», T: *] → *
-/// matrix n S T = «S_0; «S_1; ... «S_{n-1}; T» ... »»
-/// ```
-/// => a matrix is a dependend array
-///
-axm %matrix.Mat: [n: Nat, S: «n; Nat», T: *] → *;
-///
-/// ## Operations
-///
-/// ### %%matrix.shape
-///
-/// Extracts the size along the i-th dimension from the type.
-/// For a dependent matrix this is a simple projection to S(i).
-///
-/// #### Normalization
-/// * resolve shape calls at construction by replacing them with the size argument
-///
-axm %matrix.shape: [n: Nat, S: «n; Nat», T: *] as nST → [%matrix.Mat nST, i: Idx n] → Nat, normalize_shape;
-///
-/// ### %%matrix.const
-///
-/// a constant matrix
-axm %matrix.constMat: [n: Nat, S: «n; Nat», T: *] as nST → [%mem.M 0, T] → [%mem.M 0, %matrix.Mat nST];
-///
-/// ### %%matrix.read
-///
-/// read _ (mat, idx) : body_type
-///
-/// Accesses an element of the matrix.
-/// (currently: arithmetic pointer access)
-///
-/// #### Normalization:
-/// * read(insert)
-/// * read(const)
-///
-axm %matrix.read: [n: Nat, S: «n; Nat», T: *] as nST → [%mem.M 0, %matrix.Mat nST, idx: «i: n; Idx S#i»] → [%mem.M 0, T], normalize_read;
-///
-/// ### %%matrix.insert
-///
-/// insert (dims, sizes, type) (mat, idx, val) : mat
-///
-/// Depending on the matrix implementation, this operations needs the mem monad
-/// The implementation can be either as write or array insertion.
-///
-/// #### Normalization:
-/// * with other inserts
-/// * with initialization
-///
-axm %matrix.insert: [n: Nat, S: «n; Nat», T: *] as nST → [%mem.M 0, %matrix.Mat nST, idx: «i: n; Idx S#i», val: T] → [%mem.M 0, %matrix.Mat nST], normalize_insert;
-///
-/// ### %%matrix.init
-///
-/// A fresh matrix with uninitialized values.
-axm %matrix.init: [n: Nat, S: «n; Nat», T: *, %mem.M 0] → [%mem.M 0, %matrix.Mat (n, S, T)];
-///
-/// ### High-level matrix operations
+/// ## High-level matrix operations
 ///
 // TODO: define alias: * fst, snd, split * zip = zipWith id
 axm %matrix.prod: [m: Nat, k: Nat, l: Nat, [p: Nat, e:Nat]]
-                → [%mem.M 0, %matrix.Mat (2, (m, k), %math.F (p, e)), %matrix.Mat (2, (k, l), %math.F (p, e))]
-                → [%mem.M 0, %matrix.Mat (2, (m, l), %math.F (p, e))], normalize_prod;
+                → [%mem.M 0, %buffer.Buf (2, (m, k), %math.F (p, e)), %buffer.Buf (2, (k, l), %math.F (p, e))]
+                → [%mem.M 0, %buffer.Buf (2, (m, l), %math.F (p, e))], normalize_prod;
 
 axm %matrix.transpose: [[k:Nat, l:Nat], T: *]
-                     → [%mem.M 0, %matrix.Mat (2, (k, l), T)]
-                     → [%mem.M 0, %matrix.Mat (2, (l, k), T)], normalize_transpose;
+                     → [%mem.M 0, %buffer.Buf (2, (k, l), T)]
+                     → [%mem.M 0, %buffer.Buf (2, (l, k), T)], normalize_transpose;
 
 axm %matrix.sum: [n: Nat, S: «n; Nat», [p:Nat, e:Nat]]
-               → [%mem.M 0, %matrix.Mat (n, S, %math.F (p, e))]
+               → [%mem.M 0, %buffer.Buf (n, S, %math.F (p, e))]
                → [%mem.M 0, %math.F (p, e)];
 ///
 // TODO: handle reduction case: n=0, S=[] => not empty but scalar
@@ -134,8 +79,8 @@ axm %matrix.map_reduce:
         // TODO: propagate change: no addition but instead take acc as argument (like mlir.linarith.generic)
         comb:   Fn [%mem.M 0, T, «i: m; TI#i»] → [%mem.M 0, T], // inner combination
         // out_index not needed => always ij (0 ... n) for n dimensions
-        input:  «i: m; [«NI#i; Nat», %matrix.Mat (NI#i, SI#i, TI#i)]»
-    ] → [%mem.M 0, %matrix.Mat (n, S, T)],
+        input:  «i: m; [«NI#i; Nat», %buffer.Buf (NI#i, SI#i, TI#i)]»
+    ] → [%mem.M 0, %buffer.Buf (n, S, T)],
     normalize_map_reduce;
 ///
 /// ## Unfolding functions
@@ -144,9 +89,9 @@ axm %matrix.map_reduce:
 ///
 /// Follow the principle `ij <- ik, kj` (`out[i, j] = sum_k in1[i, k] * in2[k, j]`) by using mulplication as combination function and addition as reduction function.
 fun %matrix.mapRed_prod(m k l: Nat, pe: «2; Nat»)
-                                      (mem: %mem.M 0, M: %matrix.Mat (2, (m, k), %math.F pe),
-                                                    N: %matrix.Mat (2, (k, l), %math.F pe))@tt
-                                    : [     %mem.M 0,    %matrix.Mat (2, (m, l), %math.F pe)] =
+                                      (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe),
+                                                    N: %buffer.Buf (2, (k, l), %math.F pe))@tt
+                                    : [     %mem.M 0,    %buffer.Buf (2, (m, l), %math.F pe)] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     return (
@@ -175,8 +120,8 @@ fun %matrix.mapRed_prod(m k l: Nat, pe: «2; Nat»)
 // TODO: check code for 1-matrix edge case
 // TODO: would this automatically be handled by read(transpose) ?
 fun %matrix.mapRed_transpose((k l: Nat), T: *)
-                                           (mem: %mem.M 0, M: %matrix.Mat (2, (k, l), T))@tt
-                                         : [     %mem.M 0,    %matrix.Mat (2, (l, k), T)] =
+                                           (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt
+                                         : [     %mem.M 0,    %buffer.Buf (2, (l, k), T)] =
     let zero = ⊥:T; // TODO: use generalized zero
     return (
         %matrix.map_reduce
@@ -200,7 +145,7 @@ fun %matrix.mapRed_transpose((k l: Nat), T: *)
 /// Sums up all elements of a matrix and returns a scalar.
 //  TODO: test 0d matrix (edge cases in code)
 fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
-                                     (mem: %mem.M 0, M: %matrix.Mat (n, S, %math.F pe))@tt
+                                     (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt
                                    : [%mem.M 0, %math.F pe] =
     let R = %math.F pe;
     // TODO: use generalized zero
@@ -232,8 +177,3 @@ fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
 ///
 axm %matrix.lower_matrix_high_level_map_reduce: %compile.Pass;
 axm %matrix.lower_matrix_medium_level:          %compile.Pass;
-
-///
-/// ### Phases
-///
-axm %matrix.lower_matrix_low_level: %compile.Phase;

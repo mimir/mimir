@@ -5,6 +5,7 @@
 #include "mim/plug/tensor/phase/fuse.h"
 #include "mim/plug/tensor/phase/lower.h"
 #include "mim/plug/tensor/phase/lower_map_reduce.h"
+#include "mim/plug/tensor/phase/lower_to_mem.h"
 
 using namespace mim;
 using namespace mim::plug;
@@ -14,6 +15,7 @@ void reg_stages(Flags2Stages& stages) {
     Stage::hook<lower_tensor, phase::Lower>(stages);
     Stage::hook<lower_map_reduce, phase::LowerMapReduce>(stages);
     Stage::hook<fuse_tensor, phase::Fuse>(stages);
+    Stage::hook<lower_to_mem, phase::LowerToMem>(stages);
 }
 } // namespace mim::plug::tensor
 

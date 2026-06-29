@@ -1,0 +1,33 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
+
+// Bufferization of %tensor.broadcast. Exercises size-1 dimension folding: the input «3,1;I32» is
+// stored as «3;I32», so the input read uses a single (folded) index while the output is rank 2.
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
+// GONE-NOT: %affine.
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+plugin direct;
+plugin buffer;
+plugin opt;
+
+// out[i][j] = input[i][0]
+// CHECK-DAG: fun extern bc
+fun extern bc (input: «3, 1; I32»): «3, 4; I32» =
+    return (%tensor.broadcast @(I32, 2) ((3, 1), (3, 4), input));
+
+// CHECK-DAG: %mem.alloc
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_to_mem,
+        %buffer.lower_ptr,
+        %affine.lower_index_phase,
+        %affine.lower_for_phase,
+        %compile.internal_cleanup_phase,
+    );

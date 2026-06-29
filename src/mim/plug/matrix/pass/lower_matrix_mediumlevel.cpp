@@ -7,6 +7,7 @@
 #include "mim/def.h"
 
 #include "mim/plug/affine/affine.h"
+#include "mim/plug/buffer/buffer.h"
 #include "mim/plug/core/core.h"
 #include "mim/plug/direct/direct.h"
 #include "mim/plug/matrix/matrix.h"
@@ -182,7 +183,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         std::sort(out_indices.begin(), out_indices.end());
         std::sort(in_indices.begin(), in_indices.end());
 
-        // create function `%mem.M 0 -> [%mem.M 0, %matrix.Mat (n,S,T)]` to replace axm call
+        // create function `%mem.M 0 -> [%mem.M 0, %buffer.Buf (n,S,T)]` to replace axm call
 
         auto mem_type = world().call<mem::M>(0);
         auto fun      = world().mut_fun(mem_type, map_reduce_ax->type())->set("mapRed");
@@ -220,7 +221,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
 
         // First create the output matrix.
         auto current_mem      = mem;
-        auto [mem2, init_mat] = world().app(world().annex<matrix::init>(), {n, S, T, current_mem})->projs<2>();
+        auto [mem2, init_mat] = buffer::op_alloc(n, S, T, current_mem)->projs<2>();
         current_mem           = mem2;
 
         // The function on where to continue -- return after all output loops.
@@ -273,10 +274,8 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         auto output_it_tuple  = world().tuple(output_iterators);
         DLOG("output tuple: {} : {}", output_it_tuple, output_it_tuple->type());
 
-        auto [wb_mem2, written_matrix] = world()
-                                             .app(world().app(world().annex<matrix::insert>(), {n, S, T}),
-                                                  {wb_mem, wb_matrix, output_it_tuple, element_final})
-                                             ->projs<2>();
+        auto [wb_mem2, written_matrix]
+            = buffer::op_write(n, S, T, wb_mem, wb_matrix, output_it_tuple, element_final)->projs<2>();
 
         write_back->app(true, cont, {wb_mem2, written_matrix});
 
