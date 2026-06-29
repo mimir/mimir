@@ -659,8 +659,9 @@ private:
     virtual Def* stub_(World&, const Def*) { fe::unreachable(); }
     virtual const Def* rebuild_(World& w, const Def* type, Defs ops) const = 0;
 
+    void solve();
     template<bool init>
-    Vars free_vars(bool&, uint32_t);
+    Vars solve(bool&, uint32_t);
     void invalidate();
     const Def** ops_ptr() const {
         return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));

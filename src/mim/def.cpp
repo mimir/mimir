@@ -359,25 +359,28 @@ Vars Def::free_vars() const {
 }
 
 Vars Def::free_vars() {
+    solve();
+    return vars_;
+}
+
+void Def::solve() {
     if (mark_ == 0) {
         // fixed-point iteration to recompute free vars:
         // (run - 1) identifies the previous iteration; so make sure to offset run by 2 for the first iteration
         auto& w     = world();
         bool cyclic = false;
         w.next_run();
-        free_vars<true>(cyclic, w.next_run());
+        solve<true>(cyclic, w.next_run());
 
         for (bool todo = cyclic; todo;) {
             todo = false;
-            free_vars<false>(todo, w.next_run());
+            solve<false>(todo, w.next_run());
         }
     }
-
-    return vars_;
 }
 
 template<bool init>
-Vars Def::free_vars(bool& todo, uint32_t run) {
+Vars Def::solve(bool& todo, uint32_t run) {
     // If init == true : todo flag detects cycle.
     // If init == false: todo flag keeps track whether sth changed.
     //
@@ -405,7 +408,7 @@ Vars Def::free_vars(bool& todo, uint32_t run) {
 
         for (auto mut : op->local_muts()) {
             if constexpr (init) mut->muts_ = muts.insert(mut->muts_, this); // register "this" as user of local_mut
-            fvs = vars.merge(fvs, mut->free_vars<init>(todo, run));
+            fvs = vars.merge(fvs, mut->solve<init>(todo, run));
             zonk_ |= mut->zonk_;
         }
     }
@@ -430,7 +433,7 @@ bool Def::needs_zonk() const {
 
 bool Def::needs_zonk() {
     if (world().num_set_holes() == 0) return false; // no resolved Hole anywhere - nothing to zonk
-    if (mark_ == 0) free_vars();                    // trigger fixed-point solver
+    solve();
     return zonk_;
 }
 
