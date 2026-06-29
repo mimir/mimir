@@ -316,6 +316,54 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
         (conv2d_in_map (stride, dilation), conv2d_w_map (stride, dilation))
         (padded, weight);
 ///
+/// ### %%tensor.pool
+///
+/// 2-D pooling. Reduces each `(kernel#0, kernel#1)` window of `input: «N, C, H, W; T»` with the fold `g` (seeded by
+/// `init`) to `output: «N, C, OH, OW; T»`, pooling each channel independently. `padding` pads the spatial axes with
+/// `init` (composed via %tensor.pad), so padded cells are inert. So max-pooling is `g = max, init = −∞`, and
+/// sum-/average-pooling is `g = +, init = 0` (divide by the window size afterwards for the average).
+///
+/// Unlike %tensor.conv there is no weight, so the window size `kernel` is an explicit operand. The output spatial
+/// size `s_out = (OH, OW)` is passed explicitly (no `Nat` division to compute it).
+
+/// Wraps a binary fold `g` as a %tensor.map_reduce_aff reduction `Fn [T, «1; T»] → T`.
+fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (acc, y#0_1));
+
+/// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
+/// `(n, c, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
+lam pool2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
+    (o#0_6, o#1_6,
+     %affine.op.add (%affine.semiop.mul (o#2_6, stride#0_2), %affine.semiop.mul (o#4_6, dilation#0_2)),
+     %affine.op.add (%affine.semiop.mul (o#3_6, stride#1_2), %affine.semiop.mul (o#5_6, dilation#1_2)));
+
+/// Output write map: the leading 4 output coords `(n, c, oh, ow)` (drops the kernel vars). `conv2d_keep` threads
+/// `stride` so the otherwise input-independent lam lowers fresh (see its note).
+lam pool2d_out_map (stride: «2; Nat», dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
+    (conv2d_keep (o#0_6, stride#0_2), o#1_6, o#2_6, o#3_6);
+
+axm %tensor.pool: {T: *}
+                → [g: [T, T] → T, init: T]
+                → {n c h w: Nat}
+                → [kernel: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»]
+                → [input: «n, c, h, w; T»]
+                → «n, c, s_out#0_2, s_out#1_2; T»;
+
+lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
+                      (kernel: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»)
+                      (input: «n, c, h, w; T»)
+                    : «n, c, s_out#0_2, s_out#1_2; T» =
+    let s_in     = (n, c, h, w);
+    let pad_lohi = (0, 0, padding#0_2, padding#1_2);
+    let padded   = %tensor.pad s_in (0, pad_lohi, pad_lohi) (input, init);
+    let s_padded = %tensor.shape 4 padded;
+
+    %tensor.map_reduce_aff @1 @(T, 4, 2)
+        ((n, c, s_out#0_2, s_out#1_2), (n, c, s_out#0_2, s_out#1_2, kernel#0_2, kernel#1_2))
+        @(T, 4, s_padded) (pool_fun g, init)
+        (pool2d_out_map (stride, dilation))
+        (pool2d_in_map (stride, dilation),)
+        padded;
+///
 /// ### %%tensor.dot_product
 ///
 /// * `R`: the ring in which the dot product is performed

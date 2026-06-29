@@ -137,6 +137,8 @@ const Def* Lower::rewrite_imm_App(const App* app) {
         return lower_via_impl(app, w.annex<tensor::flip_impl>());
     } else if (Axm::isa<tensor::conv>(app)) {
         return lower_via_impl(app, w.annex<tensor::conv_impl>());
+    } else if (Axm::isa<tensor::pool>(app)) {
+        return lower_via_impl(app, w.annex<tensor::pool_impl>());
     }
     return RWPhase::rewrite_imm_App(app);
 }
