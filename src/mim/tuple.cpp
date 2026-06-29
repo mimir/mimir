@@ -8,25 +8,41 @@
 namespace mim {
 
 namespace {
+bool should_flatten(const Def* def);
+
+u64 flattened_size(const Seq* type) {
+    if (auto a = Lit::isa(type->arity())) {
+        auto n = 0;
+        for (size_t i = 0; i != *a; ++i)
+            if (auto inner_arr = type->proj(*a, i)->isa<Arr>())
+                n += flattened_size(inner_arr);
+            else
+                n += 1;
+        return n;
+    } else {
+        return 1;
+    }
+}
+
 bool should_flatten(const Def* def) {
     auto type = (def->is_term() ? def->type() : def);
     if (type->isa<Sigma>()) return true;
     if (auto arr = type->isa<Arr>()) {
-        if (auto a = Lit::isa(arr->arity()); a && *a > def->world().flags().scalarize_threshold) return false;
+        if (flattened_size(arr) > type->world().flags().scalarize_threshold) return false;
         return true;
     }
     return false;
 }
 
-bool mut_val_or_typ(const Def* def) {
-    auto typ = def->is_term() ? def->type() : def;
-    return typ->isa_mut();
+bool mut_val_or_type(const Def* def) {
+    auto type = def->is_term() ? def->type() : def;
+    return type->isa_mut();
 }
 
 const Def* unflatten(Defs defs, const Def* type, size_t& j, bool flatten_muts) {
     if (!defs.empty() && defs[0]->type() == type) return defs[j++];
     if (auto a = Lit::isa(type->arity());
-        flatten_muts == mut_val_or_typ(type) && a && *a != 1 && a <= type->world().flags().scalarize_threshold) {
+        flatten_muts == mut_val_or_type(type) && a && *a != 1 && a <= type->world().flags().scalarize_threshold) {
         auto& world = type->world();
         auto ops    = DefVec(*a, [&](size_t i) { return unflatten(defs, type->proj(*a, i), j, flatten_muts); });
         return world.tuple(type, ops);
@@ -103,7 +119,7 @@ std::string tuple2str(const Def* def) {
 // TODO flatten/unflatten needs to be rewritten
 
 size_t flatten(DefVec& ops, const Def* def, bool flatten_muts) {
-    if (auto a = Lit::isa(def->arity()); a && *a != 1 && should_flatten(def) && flatten_muts == mut_val_or_typ(def)) {
+    if (auto a = Lit::isa(def->arity()); a && *a != 1 && should_flatten(def) && flatten_muts == mut_val_or_type(def)) {
         auto n = 0;
         for (size_t i = 0; i != *a; ++i)
             n += flatten(ops, def->proj(*a, i), flatten_muts);
