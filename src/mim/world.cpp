@@ -510,7 +510,7 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
 }
 
 const Def* World::seq(bool term, const Def* arity, const Def* body) {
-    arity = arity->zonk(); // TODO use zonk_mut all over the place and rmeove zonk from is_shape?
+    arity = arity->zonk();
     body  = body->zonk();
 
     auto arity_ty = arity->unfold_type();

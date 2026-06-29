@@ -596,12 +596,9 @@ public:
     bool needs_zonk() const;
 
     /// If Hole%s have been filled, reconstruct the program without them.
-    /// Only goes up to but excluding other mutables.
+    /// Only goes up to but excluding other mutables; never mutates, so it is safe to call during world construction.
     /// @see https://stackoverflow.com/questions/31889048/what-does-the-ghc-source-mean-by-zonk
     const Def* zonk() const;
-
-    /// If *mutable*, zonk()%s all ops and tries to immutabilize it; otherwise just zonk.
-    const Def* zonk_mut() const;
     ///@}
 
     /// zonk%s all @p defs and returns a new DefVec.

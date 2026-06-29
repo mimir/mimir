@@ -16,27 +16,25 @@ const Def* Def::zonk() const {
     return z.rewrite(this);
 }
 
-const Def* Def::zonk_mut() const {
-    if (!is_set()) return this;
-
-    if (auto mut = isa_mut()) {
-        if (auto hole = mut->isa<Hole>()) {
-            auto [last, op] = hole->find();
-            return op ? op->zonk() : last;
-        }
-
-        for (auto def : deps())
-            if (def->needs_zonk()) return world().zonker().rewire_mut(mut);
-
-        if (auto imm = mut->immutabilize()) return imm;
-        return this;
-    }
-
-    return zonk();
-}
-
 DefVec Def::zonk(Defs defs) {
     return DefVec(defs.size(), [defs](size_t i) { return defs[i]->zonk(); });
+}
+
+/// Checker-only counterpart of Def::zonk that additionally rewires a *mutable* in place to resolve its Hole%s.
+/// If `def` is a set, non-Hole mutable, rewire it in place (or immutabilize it); otherwise fall back to the
+/// construction-safe Def::zonk.
+/// @warning Don't call this during world construction - only while checking - as the in-place rewire is not safe to
+/// observe.
+static const Def* zonk_mut(const Def* def) {
+    if (!def->is_set()) return def;
+
+    if (auto mut = def->isa_mut(); mut && !mut->isa<Hole>()) {
+        if (def->needs_zonk()) return def->world().zonker().rewire_mut(mut);
+        if (auto imm = mut->immutabilize()) return imm;
+        return mut;
+    }
+
+    return def->zonk(); // immutable and Hole are both handled here
 }
 
 /*
@@ -147,8 +145,8 @@ bool Checker::alpha_(const Def* d1, const Def* d2) {
     for (bool todo = true; todo;) {
         // below we check type and arity which may in turn open up more opportunities for zonking
         todo = false;
-        d1   = d1->zonk_mut();
-        d2   = d2->zonk_mut();
+        d1   = zonk_mut(d1);
+        d2   = zonk_mut(d2);
 
         // It is only safe to check for pointer equality if there are no Vars involved.
         // Otherwise, we have to look more thoroughly.
@@ -188,8 +186,8 @@ bool Checker::alpha_(const Def* d1, const Def* d2) {
 
         if (!alpha_<mode>(d1->arity(), d2->arity())) return fail<mode>();
 
-        auto new_d1 = d1->zonk_mut();
-        auto new_d2 = d2->zonk_mut();
+        auto new_d1 = zonk_mut(d1);
+        auto new_d2 = zonk_mut(d2);
         if (new_d1 != d1 || new_d2 != d2) {
             todo = true;
             d1   = new_d1;
