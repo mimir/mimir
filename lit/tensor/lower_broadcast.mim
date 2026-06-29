@@ -6,16 +6,19 @@ plugin core;
 plugin direct;
 plugin affine;
 
-let m0 = ((1, 2), (3, 4));
-let m1 = ((1, 2, 3), (4, 5, 6));
+let m0 = ((1, 2), (3, 4));       // «2, 2; Nat»
+let m1 = ((1, 2, 3), (4, 5, 6)); // «2, 3; Nat»
 
 let b0 = %tensor.broadcast ((2, 1, 2), (2, 50, 2), m0);
 let b1 = %tensor.broadcast ((2, 1, 3), (2, 50, 3), m1);
 
 let bid0 = %tensor.broadcast_in_dim ((2, 1, 2), (2, 50, 2), m0, (2_3, 1_3, 0_3));
 
+// %tensor.broadcast lowers directly to %packs (a size-1 axis broadcast to 50 becomes a ‹50; …› pack — compact, no
+// materialisation). %tensor.broadcast_in_dim lowers via %tensor.map_reduce_aff, so it expands to loops (its result
+// here is `(_, _)`). Neither leaves any %tensor / %affine / map_reduce residue.
+// CHECK-NOT: %tensor.broadcast
+// CHECK-NOT: map_reduce
+// CHECK-NOT: %affine
+// CHECK: return_{{[0-9]+}} ((‹50; (1, 2)›, ‹50; (3, 4)›), (‹50; (1, 2, 3)›, ‹50; (4, 5, 6)›), (_{{[0-9]+}}, _{{[0-9]+}}))
 fun extern e1() = return (b0, b1, bid0);
-
-// CHECK-NOT: tensor.broadcast
-// CHECK-NOT: tensor.broadcast_in_dim
-// CHECK: return_{{[0-9]+}} ((‹50; (1, 2)›, ‹50; (3, 4)›), (‹50; (1, 2, 3)›, ‹50; (4, 5, 6)›), (‹50; (_{{[0-9]+}}, _{{[0-9]+}})›, ‹50; (_{{[0-9]+}}, _{{[0-9]+}})›))

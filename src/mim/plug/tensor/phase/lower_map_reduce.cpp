@@ -98,76 +98,6 @@ const Def* LowerMapReduce::lower_set(const App* app) {
     return new_arr;
 }
 
-const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i) {
-    auto& w = new_world();
-    // Base case: all dimensions have been processed; `input` is the final scalar.
-    if (i == r) return input;
-
-    auto s_in_ri = s_in->proj(r, i), s_out_ri = s_out->proj(r, i);
-    DLOG("rec_broadcast");
-    DLOG("    r = {}", r);
-    DLOG("    i = {}", i);
-    DLOG("    s_in_ri = {} : {}", s_in_ri, s_in_ri->type());
-    DLOG("    s_out_ri = {} : {}", s_out_ri, s_out_ri->type());
-    DLOG("    input = {} : {}", input, input->type());
-
-    if (s_in_ri == s_out_ri) {
-        if (auto s_in_lit = Lit::isa<u64>(s_in_ri)) {
-            DefVec inputs(*s_in_lit, [&](size_t j) { return rec_broadcast(s_in, s_out, input->proj(j), r, i + 1); });
-            return w.tuple(inputs);
-        } else {
-            // TODO: we could probably support non-literal sizes as well, but we would need to generate loops to copy
-            // the data instead of just packing it.
-            WLOG("dimension {} of the input and output are equal but not literal: {} : {}", i, s_in_ri,
-                 s_in_ri->type());
-            return nullptr;
-        }
-    }
-
-    if (auto s_in_lit = Lit::isa<u64>(s_in_ri); s_in_lit && *s_in_lit == 1) {
-        DLOG("dimension {} of the input is 1, can be broadcasted to dimension {} of the output", i, s_out_ri);
-        return w.pack(s_out_ri, rec_broadcast(s_in, s_out, input, r, i + 1));
-    }
-
-    WLOG("cannot broadcast dimension {} of size {} to size {}", i, s_in_ri, s_out_ri);
-    return nullptr;
-}
-
-const Def* LowerMapReduce::lower_broadcast(const App* app) {
-    auto& w  = new_world();
-    auto c   = rewrite(app->callee());
-    auto arg = rewrite(app->arg());
-
-    auto [s_in, s_out, input] = arg->projs<3>();
-    auto callee               = c->as<App>();
-    auto [T, r]               = callee->args<2>();
-    DLOG("lower_broadcast");
-    DLOG("    s_out = {} : {}", s_out, s_out->type());
-    DLOG("    input = {} : {}", input, input->type());
-    DLOG("    T = {} : {}", T, T->type());
-    DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s_in = {} : {}", s_in, s_in->type());
-
-    auto r_nat = Lit::isa<u64>(r);
-    if (!r_nat) {
-        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
-        return nullptr;
-    }
-    // r_nat will never be 0, as we would have normalized this case away already
-    if (s_in == s_out) return input;
-
-    if (*r_nat == 1) {
-        if (auto s_in_lit = Lit::isa<u64>(s_in)) {
-            assert(*s_in_lit == 1 && "input dimensions must be 1 or equal to the output dimension");
-            return w.pack(s_out, input);
-        }
-    }
-
-    auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
-    DLOG("result of rec_broadcast = {} : {}", result, result->type());
-    return result;
-}
-
 static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
     auto& w       = bound->world();
     auto acc_ty   = acc->type();
@@ -856,6 +786,76 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     };
 
     return build_pointwise(args, type, s_out, rn, compute);
+}
+
+const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i) {
+    auto& w = new_world();
+    // Base case: all dimensions have been processed; `input` is the final scalar.
+    if (i == r) return input;
+
+    auto s_in_ri = s_in->proj(r, i), s_out_ri = s_out->proj(r, i);
+    DLOG("rec_broadcast");
+    DLOG("    r = {}", r);
+    DLOG("    i = {}", i);
+    DLOG("    s_in_ri = {} : {}", s_in_ri, s_in_ri->type());
+    DLOG("    s_out_ri = {} : {}", s_out_ri, s_out_ri->type());
+    DLOG("    input = {} : {}", input, input->type());
+
+    if (s_in_ri == s_out_ri) {
+        if (auto s_in_lit = Lit::isa<u64>(s_in_ri)) {
+            DefVec inputs(*s_in_lit, [&](size_t j) { return rec_broadcast(s_in, s_out, input->proj(j), r, i + 1); });
+            return w.tuple(inputs);
+        } else {
+            // TODO: we could probably support non-literal sizes as well, but we would need to generate loops to copy
+            // the data instead of just packing it.
+            WLOG("dimension {} of the input and output are equal but not literal: {} : {}", i, s_in_ri,
+                 s_in_ri->type());
+            return nullptr;
+        }
+    }
+
+    if (auto s_in_lit = Lit::isa<u64>(s_in_ri); s_in_lit && *s_in_lit == 1) {
+        DLOG("dimension {} of the input is 1, can be broadcasted to dimension {} of the output", i, s_out_ri);
+        return w.pack(s_out_ri, rec_broadcast(s_in, s_out, input, r, i + 1));
+    }
+
+    WLOG("cannot broadcast dimension {} of size {} to size {}", i, s_in_ri, s_out_ri);
+    return nullptr;
+}
+
+const Def* LowerMapReduce::lower_broadcast(const App* app) {
+    auto& w  = new_world();
+    auto c   = rewrite(app->callee());
+    auto arg = rewrite(app->arg());
+
+    auto [s_in, s_out, input] = arg->projs<3>();
+    auto callee               = c->as<App>();
+    auto [T, r]               = callee->args<2>();
+    DLOG("lower_broadcast");
+    DLOG("    s_out = {} : {}", s_out, s_out->type());
+    DLOG("    input = {} : {}", input, input->type());
+    DLOG("    T = {} : {}", T, T->type());
+    DLOG("    r = {} : {}", r, r->type());
+    DLOG("    s_in = {} : {}", s_in, s_in->type());
+
+    auto r_nat = Lit::isa<u64>(r);
+    if (!r_nat) {
+        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
+        return nullptr;
+    }
+    // r_nat will never be 0, as we would have normalized this case away already
+    if (s_in == s_out) return input;
+
+    if (*r_nat == 1) {
+        if (auto s_in_lit = Lit::isa<u64>(s_in)) {
+            assert(*s_in_lit == 1 && "input dimensions must be 1 or equal to the output dimension");
+            return w.pack(s_out, input);
+        }
+    }
+
+    auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
+    DLOG("result of rec_broadcast = {} : {}", result, result->type());
+    return result;
 }
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {

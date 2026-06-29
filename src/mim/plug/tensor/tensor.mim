@@ -445,7 +445,6 @@ lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t
 ///
 /// Permutes the dimensions of `input` according to `permutation`.
 ///
-fun transpose_fun {T:*} [x: T, y: T]@tt: T = return y;
 lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
   let shape_permutation = ‹i: r; (%vec.first (%core.icmp.e @r) (permutation, i))#tt›;
   ‹i: r; s#(shape_permutation#i)›;
@@ -453,12 +452,16 @@ axm %tensor.transpose: {T: *, r: Nat, s: «r; Nat»}
                      → [input: «s; T», permutation: «r; Idx r»]
                      → «transpose_shape (s, permutation); T»;
 
+/// `o ↦ (o#(perm#0), …, o#(perm#(r−1)))`: input axis `j` reads output-loop var `o#(perm#j)`.
+lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; %affine.index»): «r; %affine.index» = ‹j: r; o#(perm#j)›;
+
 lam %tensor.transpose_impl {T: *, r: Nat, s: «r; Nat»}
                            (input: «s;T», permutation: «r; Idx r»)
                          : «transpose_shape (s, permutation); T»
-                         = let permutation_nat   = <i: r; %core.bitcast Nat permutation#i>;
-                           let out_s             = transpose_shape (s, permutation);
-                           %tensor.map_reduce @1 @(T, r) out_s @(T, r, s) (transpose_fun @T, ⊥: T) permutation_nat input;
+                         = let out_s = transpose_shape (s, permutation);
+                           %tensor.map_reduce_aff @1 @(T, r, 0) (out_s, out_s)
+                               @(T, r, s) (tensor_copy @T, ⊥: T)
+                               (%affine.id @r) (transpose_map permutation,) input;
 ///
 /// ### %%tensor.transpose_2d
 ///
@@ -478,6 +481,8 @@ lam %tensor.transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, 
 /// For all i, `s_in#i` = `s_out#i` or 1
 /// The dimensions of size 1 are expanded to fit `s_out`.
 ///
+/// Lowered directly to `%pack`s by the `LowerMapReduce` phase (`lower_broadcast`): a size-1 axis broadcast to `n`
+/// becomes a `‹n; …›` pack rather than a materialised/looped copy, which `%tensor.map_reduce_aff` cannot express.
 axm %tensor.broadcast:  {T: *, r: Nat}
                       → [s_in: «r; Nat», s_out: «r; Nat», input: «s_in; T»]
                       → «s_out; T», normalize_broadcast;
@@ -492,6 +497,18 @@ axm %tensor.broadcast:  {T: *, r: Nat}
 axm %tensor.broadcast_in_dim: {T: *, r_in r_out: Nat}
                             → [s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»]
                             → «s_out; T», normalize_broadcast_in_dim;
+
+/// `o ↦ (o#(index#i) · [s_in#i ≠ 1])_i`: input axis `i` reads output-loop var `o#(index#i)` (the transpose), unless
+/// it is a broadcast axis (`s_in#i = 1`), which reads index 0.
+lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
+            (o: «r_out; %affine.index»): «r_in; %affine.index» =
+    ‹i: r_in; %affine.semiop.mul (o#(index#i), %core.select (%core.ncmp.e (s_in#i, 1), 0, 1))›;
+
+lam %tensor.broadcast_in_dim_impl {T: *, r_in r_out: Nat}
+    (s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»): «s_out; T» =
+    %tensor.map_reduce_aff @1 @(T, r_out, 0) (s_out, s_out)
+        @(T, r_in, s_in) (tensor_copy @T, ⊥: T)
+        (%affine.id @r_out) (bid_map (s_in, index),) input;
 ///
 /// ### %%tensor.map
 ///

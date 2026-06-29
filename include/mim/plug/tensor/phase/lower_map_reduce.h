@@ -6,10 +6,10 @@
 
 namespace mim::plug::tensor::phase {
 
-/// Lowers the low-level tensor axioms (`map_reduce`, `get`, `set`, `broadcast`)
+/// Lowers the low-level tensor axioms (`map_reduce`, `map_reduce_aff`, `get`, `set`, `pad`, `concat`, `broadcast`)
 /// directly to their underlying primitives (loops, `extract`, `insert`, `pack`, …).
-/// High-level axioms like `broadcast_in_dim` or `product_2d` are expected to have
-/// been desugared to these low-level axioms by an earlier `Lower` phase.
+/// High-level axioms (`transpose`, `conv`, `broadcast_in_dim`, …) are expected to have been desugared to
+/// these low-level axioms by an earlier `Lower` phase.
 class LowerMapReduce : public RWPhase {
 public:
     LowerMapReduce(World& world, flags_t annex)
