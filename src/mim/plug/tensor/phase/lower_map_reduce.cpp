@@ -15,87 +15,74 @@
 
 namespace mim::plug::tensor::phase {
 
-const Def* LowerMapReduce::lower_get(const App* app) {
-    auto& w  = new_world();
-    auto c   = rewrite(app->callee());
-    auto arg = rewrite(app->arg());
+const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i) {
+    auto& w = new_world();
+    // Base case: all dimensions have been processed; `input` is the final scalar.
+    if (i == r) return input;
 
-    auto [arr, index] = arg->projs<2>();
-    auto callee       = c->as<App>();
-    auto [T, r, s]    = callee->args<3>();
+    auto s_in_ri = s_in->proj(r, i), s_out_ri = s_out->proj(r, i);
+    DLOG("rec_broadcast");
+    DLOG("    r = {}", r);
+    DLOG("    i = {}", i);
+    DLOG("    s_in_ri = {} : {}", s_in_ri, s_in_ri->type());
+    DLOG("    s_out_ri = {} : {}", s_out_ri, s_out_ri->type());
+    DLOG("    input = {} : {}", input, input->type());
 
-    DLOG("lower_get");
-    DLOG("    arr = {} : {}", arr, arr->type());
-    if (auto arr_seq = arr->type()->isa<Seq>()) DLOG("    arr shape = {}", arr_seq->arity());
-    DLOG("    index = {} : {}", index, index->type());
-    DLOG("    T = {} : {}", T, T->type());
-    DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s = {} : {}", s, s->type());
+    if (s_in_ri == s_out_ri) {
+        if (auto s_in_lit = Lit::isa<u64>(s_in_ri)) {
+            DefVec inputs(*s_in_lit, [&](size_t j) { return rec_broadcast(s_in, s_out, input->proj(j), r, i + 1); });
+            return w.tuple(inputs);
+        } else {
+            // TODO: we could probably support non-literal sizes as well, but we would need to generate loops to copy
+            // the data instead of just packing it.
+            WLOG("dimension {} of the input and output are equal but not literal: {} : {}", i, s_in_ri,
+                 s_in_ri->type());
+            return nullptr;
+        }
+    }
 
-    auto r_nat = Lit::isa<u64>(r);
-    if (!r_nat) {
-        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
-        return nullptr;
+    if (auto s_in_lit = Lit::isa<u64>(s_in_ri); s_in_lit && *s_in_lit == 1) {
+        DLOG("dimension {} of the input is 1, can be broadcasted to dimension {} of the output", i, s_out_ri);
+        return w.pack(s_out_ri, rec_broadcast(s_in, s_out, input, r, i + 1));
     }
-    if (r_nat == 1) {
-        DLOG("index of size 1, extract");
-        return w.extract(arr, index);
-    }
-    auto curr_arr = arr;
-    for (auto ri = 0_u64; ri < *r_nat; ++ri) {
-        auto idx = index->proj(*r_nat, ri);
-        DLOG("    idx = {} : {}", idx, idx->type());
-        curr_arr = w.extract(curr_arr, idx);
-    }
-    return curr_arr;
+
+    WLOG("cannot broadcast dimension {} of size {} to size {}", i, s_in_ri, s_out_ri);
+    return nullptr;
 }
 
-const Def* LowerMapReduce::lower_set(const App* app) {
+const Def* LowerMapReduce::lower_broadcast(const App* app) {
     auto& w  = new_world();
     auto c   = rewrite(app->callee());
     auto arg = rewrite(app->arg());
 
-    auto [arr, index, x] = arg->projs<3>();
-
-    DLOG("lower_set");
-    DLOG("    arr = {} : {}", arr, arr->type());
-    DLOG("    index = {} : {}", index, index->type());
-    DLOG("    x = {} : {}", x, x->type());
-
-    auto callee    = c->as<App>();
-    auto [T, r, s] = callee->args<3>();
+    auto [s_in, s_out, input] = arg->projs<3>();
+    auto callee               = c->as<App>();
+    auto [T, r]               = callee->args<2>();
+    DLOG("lower_broadcast");
+    DLOG("    s_out = {} : {}", s_out, s_out->type());
+    DLOG("    input = {} : {}", input, input->type());
     DLOG("    T = {} : {}", T, T->type());
     DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s = {} : {}", s, s->type());
+    DLOG("    s_in = {} : {}", s_in, s_in->type());
 
     auto r_nat = Lit::isa<u64>(r);
     if (!r_nat) {
         WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
         return nullptr;
     }
-    if (r_nat == 1) {
-        DLOG("index of size 1, insert");
-        return w.insert(arr, index, x);
-    }
-
     // r_nat will never be 0, as we would have normalized this case away already
-    DefVec arrs_to_insert_into(*r_nat);
-    arrs_to_insert_into[0] = arr;
-    for (auto ri = 0_u64; ri < *r_nat - 1; ++ri) {
-        auto idx = index->proj(*r_nat, ri);
-        DLOG("    extract idx = {} : {}", idx, idx->type());
-        arrs_to_insert_into[ri + 1] = w.extract(arrs_to_insert_into[ri], idx);
+    if (s_in == s_out) return input;
+
+    if (*r_nat == 1) {
+        if (auto s_in_lit = Lit::isa<u64>(s_in)) {
+            assert(*s_in_lit == 1 && "input dimensions must be 1 or equal to the output dimension");
+            return w.pack(s_out, input);
+        }
     }
 
-    auto new_arr = x;
-    for (auto ri = static_cast<s64>(*r_nat - 1); ri >= 0; --ri) {
-        auto idx = index->proj(*r_nat, ri);
-        DLOG("    idx = {} : {}", idx, idx->type());
-        DLOG("    arr_to_insert_into = {} : {}", arrs_to_insert_into[ri], arrs_to_insert_into[ri]->type());
-
-        new_arr = w.insert(arrs_to_insert_into[ri], idx, new_arr);
-    }
-    return new_arr;
+    auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
+    DLOG("result of rec_broadcast = {} : {}", result, result->type());
+    return result;
 }
 
 static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
@@ -106,33 +93,25 @@ static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc
     return {body, for_loop};
 }
 
-// Collects the `r` per-axis `coords`, dropping axes whose `shape` dim is the literal 1 — those array levels are
-// collapsed away by the IR (`«…, 1, …; T»` ≡ `«…, …; T»`), so they must not be indexed.
-static DefVec live_coords(const Def* coords, const Def* shape, u64 r) {
-    DefVec idx;
-    for (u64 k = 0; k < r; ++k) {
-        if (auto d = Lit::isa<u64>(shape->proj(r, k)); d && *d == 1) continue;
-        idx.push_back(coords->proj(r, k));
-    }
-    return idx;
+static const Def* get_element_type(const Def* type, u64 r) {
+    auto cur = type;
+    for (u64 i = 0; i < r; ++i)
+        if (auto seq = cur->isa<Seq>())
+            cur = seq->body();
+        else
+            break;
+    return cur;
 }
 
 static const Def* nested_extract(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r) {
-    auto cur = matrix;
-    for (auto idx : live_coords(coords, shape, r)) cur = w.extract(cur, idx);
-    return cur;
+    auto T = get_element_type(matrix->type(), r);
+    return op_get(T, w.lit_nat(r), shape, matrix, coords);
 }
 
-static const Def* nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r,
-                                const Def* elem) {
-    auto idx = live_coords(coords, shape, r);
-    if (idx.empty()) return elem;
-    DefVec subs(idx.size());
-    subs[0] = matrix;
-    for (u64 k = 0; k + 1 < idx.size(); ++k) subs[k + 1] = w.extract(subs[k], idx[k]);
-    auto cur = elem;
-    for (auto k = static_cast<s64>(idx.size()) - 1; k >= 0; --k) cur = w.insert(subs[k], idx[k], cur);
-    return cur;
+static const Def*
+nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r, const Def* elem) {
+    auto T = get_element_type(matrix->type(), r);
+    return op_set(T, w.lit_nat(r), shape, matrix, coords, elem);
 }
 
 static std::tuple<Vector<u64>, Vector<u64>, absl::flat_hash_map<u64, const Def*>, Vector<u64>>
@@ -526,10 +505,10 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         ris_nat[i] = *l;
     }
 
-    // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned mem).
-    // The emitted `%affine.map` is lowered to %core arithmetic by the subsequent %affine.lower_index_phase. We invent a
-    // fresh `⊥ : %mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
-    auto mem0 = w.app(w.annex<mem::M>(), w.lit_nat(0));
+    // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
+    // mem). The emitted `%affine.map` is lowered to %core arithmetic by the subsequent %affine.lower_index_phase. We
+    // invent a fresh `⊥ : %mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
+    auto mem0       = w.app(w.annex<mem::M>(), w.lit_nat(0));
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
         auto a = w.app(w.annex<affine::map>(), w.tuple({m, n}));
         a      = w.app(a, w.tuple({sin, sout}));
@@ -603,24 +582,26 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
         DefVec input_elements(nis_nat);
         for (u64 i = 0; i < nis_nat; ++i) {
             auto input_matrix = new_inputs->proj(nis_nat, i);
-            auto sis_i = Sis->proj(nis_nat, i);
-            auto coords = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
+            auto sis_i        = Sis->proj(nis_nat, i);
+            auto coords       = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
             input_elements[i] = nested_extract(w, input_matrix, coords, sis_i, ris_nat[i]);
         }
 
         comb->set("comb");
         current_mut->app(true, comb, {w.tuple({element_acc, w.tuple(input_elements)}), cont});
         return call;
-    } catch (const std::exception& e) {
-        error("error during lowering map_reduce_aff: {}", e.what());
-    }
+    } catch (const std::exception& e) { error("error during lowering map_reduce_aff: {}", e.what()); }
 }
 
-const Def* LowerMapReduce::build_pointwise(const Def* inputs, const Def* type, const Def* So, u64 ro,
+const Def* LowerMapReduce::build_pointwise(const Def* inputs,
+                                           const Def* type,
+                                           const Def* So,
+                                           u64 ro,
                                            std::function<const Def*(const DefVec&, const Def*)> compute) {
     auto& w = new_world();
 
-    // CPS scaffold (mirrors `lower_map_reduce_aff`): a `mut_fun` turned direct-style so the result is an ordinary value.
+    // CPS scaffold (mirrors `lower_map_reduce_aff`): a `mut_fun` turned direct-style so the result is an ordinary
+    // value.
     auto fun    = w.mut_fun(inputs->type(), type)->set("pointwise");
     auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
     auto call   = w.app(ds_fun, inputs)->set("call");
@@ -648,7 +629,8 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs, const Def* type, c
 
     // Write the computed element at the (identity) output coordinates; convert the i64 counters to `Idx (So#k)`.
     DefVec write_coords(ro);
-    for (u64 i = 0; i < ro; ++i) write_coords[i] = w.call(core::conv::u, So->proj(ro, i), out_iters[i]);
+    for (u64 i = 0; i < ro; ++i)
+        write_coords[i] = w.call(core::conv::u, So->proj(ro, i), out_iters[i]);
     auto element = compute(out_iters, new_inputs);
     current_mut->app(true, cont, nested_insert(w, wb_matrix, w.tuple(write_coords), So, ro, element));
     return call;
@@ -678,10 +660,10 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     // Deduce the output shape: s_out#d = lo#d + s_in#d + hi#d.
     DefVec so(rn);
     auto inner_type = type;
-    for(u64 d = 0; d < rn; ++d) {
+    for (u64 d = 0; d < rn; ++d) {
         auto inner_type_seq = inner_type->as<Seq>();
-        so[d] = inner_type_seq->arity();
-        inner_type = inner_type_seq->body();
+        so[d]               = inner_type_seq->arity();
+        inner_type          = inner_type_seq->body();
     }
     auto s_out = w.tuple(so);
 
@@ -690,8 +672,8 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
 
     auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value] = new_inputs->projs<2>();
-        DefVec clamped(rn);  // per-axis read index, kept in range, as `Idx (s_in#d)`
-        DefVec valid;        // per-axis in-bounds flag (constant mode only)
+        DefVec clamped(rn); // per-axis read index, kept in range, as `Idx (s_in#d)`
+        DefVec valid;       // per-axis in-bounds flag (constant mode only)
         for (u64 d = 0; d < rn; ++d) {
             auto lo_d  = w.call<core::bitcast>(i64, lo->proj(rn, d));
             auto sin_d = w.call<core::bitcast>(i64, s_in->proj(rn, d));
@@ -703,8 +685,8 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
                 idx_i64 = sel(v_d, in_d, w.lit_i64(0));
             } else { // replicate: clamp the read to the nearest edge [0, s_in#d − 1]
                 auto sin_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{sin_d, w.lit_i64(1)});
-                idx_i64     = w.call(core::extrema::smax, w.tuple({w.lit_i64(0),
-                                     w.call(core::extrema::smin, w.tuple({in_d, sin_m1}))}));
+                idx_i64     = w.call(core::extrema::smax,
+                                     w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({in_d, sin_m1}))}));
             }
             clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
         }
@@ -737,7 +719,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         return nullptr;
     }
     auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
-    auto i64  = w.type_i64();
+    auto i64 = w.type_i64();
 
     // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#j#ax (literal extents required).
     DefVec off(nisn);
@@ -754,7 +736,8 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
 
     // Deduce the output shape: the summed extent along `ax`, the shared extents elsewhere.
     DefVec so(rn);
-    for (u64 d = 0; d < rn; ++d) so[d] = (d == axn) ? w.lit_nat(acc_off) : Sis->proj(nisn, 0)->proj(rn, d);
+    for (u64 d = 0; d < rn; ++d)
+        so[d] = (d == axn) ? w.lit_nat(acc_off) : Sis->proj(nisn, 0)->proj(rn, d);
     auto s_out = w.tuple(so);
 
     auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
@@ -767,8 +750,8 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
             auto e_i    = w.call<core::bitcast>(i64, Sis_i->proj(rn, axn));
             auto e_i_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{e_i, w.lit_i64(1)});
             auto loc    = w.call(core::wrap::sub, core::Mode::none, Defs{o_ax, off[i]});
-            auto clamp  = w.call(core::extrema::smax, w.tuple({w.lit_i64(0),
-                                 w.call(core::extrema::smin, w.tuple({loc, e_i_m1}))}));
+            auto clamp  = w.call(core::extrema::smax,
+                                 w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({loc, e_i_m1}))}));
             DefVec coords(rn);
             for (u64 d = 0; d < rn; ++d) {
                 auto idx_i64 = (d == axn) ? clamp : out_iters[d];
@@ -788,82 +771,8 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     return build_pointwise(args, type, s_out, rn, compute);
 }
 
-const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i) {
-    auto& w = new_world();
-    // Base case: all dimensions have been processed; `input` is the final scalar.
-    if (i == r) return input;
-
-    auto s_in_ri = s_in->proj(r, i), s_out_ri = s_out->proj(r, i);
-    DLOG("rec_broadcast");
-    DLOG("    r = {}", r);
-    DLOG("    i = {}", i);
-    DLOG("    s_in_ri = {} : {}", s_in_ri, s_in_ri->type());
-    DLOG("    s_out_ri = {} : {}", s_out_ri, s_out_ri->type());
-    DLOG("    input = {} : {}", input, input->type());
-
-    if (s_in_ri == s_out_ri) {
-        if (auto s_in_lit = Lit::isa<u64>(s_in_ri)) {
-            DefVec inputs(*s_in_lit, [&](size_t j) { return rec_broadcast(s_in, s_out, input->proj(j), r, i + 1); });
-            return w.tuple(inputs);
-        } else {
-            // TODO: we could probably support non-literal sizes as well, but we would need to generate loops to copy
-            // the data instead of just packing it.
-            WLOG("dimension {} of the input and output are equal but not literal: {} : {}", i, s_in_ri,
-                 s_in_ri->type());
-            return nullptr;
-        }
-    }
-
-    if (auto s_in_lit = Lit::isa<u64>(s_in_ri); s_in_lit && *s_in_lit == 1) {
-        DLOG("dimension {} of the input is 1, can be broadcasted to dimension {} of the output", i, s_out_ri);
-        return w.pack(s_out_ri, rec_broadcast(s_in, s_out, input, r, i + 1));
-    }
-
-    WLOG("cannot broadcast dimension {} of size {} to size {}", i, s_in_ri, s_out_ri);
-    return nullptr;
-}
-
-const Def* LowerMapReduce::lower_broadcast(const App* app) {
-    auto& w  = new_world();
-    auto c   = rewrite(app->callee());
-    auto arg = rewrite(app->arg());
-
-    auto [s_in, s_out, input] = arg->projs<3>();
-    auto callee               = c->as<App>();
-    auto [T, r]               = callee->args<2>();
-    DLOG("lower_broadcast");
-    DLOG("    s_out = {} : {}", s_out, s_out->type());
-    DLOG("    input = {} : {}", input, input->type());
-    DLOG("    T = {} : {}", T, T->type());
-    DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s_in = {} : {}", s_in, s_in->type());
-
-    auto r_nat = Lit::isa<u64>(r);
-    if (!r_nat) {
-        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
-        return nullptr;
-    }
-    // r_nat will never be 0, as we would have normalized this case away already
-    if (s_in == s_out) return input;
-
-    if (*r_nat == 1) {
-        if (auto s_in_lit = Lit::isa<u64>(s_in)) {
-            assert(*s_in_lit == 1 && "input dimensions must be 1 or equal to the output dimension");
-            return w.pack(s_out, input);
-        }
-    }
-
-    auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
-    DLOG("result of rec_broadcast = {} : {}", result, result->type());
-    return result;
-}
-
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
-    if (auto get = Axm::isa<tensor::get>(app)) {
-        if (auto res = lower_get(get)) return res;
-    } else if (auto set = Axm::isa<tensor::set>(app)) {
-        if (auto res = lower_set(set)) return res;
-    } else if (auto bc = Axm::isa<tensor::broadcast>(app)) {
+    if (auto bc = Axm::isa<tensor::broadcast>(app)) {
         if (auto res = lower_broadcast(bc)) return res;
     } else if (auto mr = Axm::isa<tensor::map_reduce>(app)) {
         if (auto res = lower_map_reduce(mr)) return res;

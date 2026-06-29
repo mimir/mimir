@@ -570,4 +570,5 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 ///
 axm %tensor.lower_tensor: %compile.Phase;
 axm %tensor.lower_map_reduce: %compile.Phase;
+axm %tensor.lower_get_set: %compile.Phase;
 axm %tensor.fuse_tensor: %compile.Phase;
