@@ -48,7 +48,7 @@ jobs:
                 -DPython3_EXECUTABLE=%PYTHON_EXE%         ^
                 -DPython_EXECUTABLE=%PYTHON_EXE%          ^
                 -DPYTHON_EXECUTABLE=%PYTHON_EXE%          ^
-                -DMIM_LIT_TIMEOUT=600                     ^
+                -DMIM_LIT_TIMEOUT=300                     ^
                 -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe
 
       - name: Install LLVM and Clang
