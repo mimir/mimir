@@ -237,14 +237,24 @@ const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
     if (!r) return nullptr;
 
     DefVec dims;
-    auto ty = arg->type();
-    for (u64 i = 0; i != *r; ++i)
-        if (auto a = ty->isa<Seq>()) {
-            dims.emplace_back(a->arity());
-            ty = a->body();
-        } else
-            return nullptr; // `arr` is not (statically) a rank-`r` array
-    return w.tuple(dims);   // the per-axis sizes; for a rectangular tensor each `arity()` is a plain Nat
+    auto ty = arg->type()->zonk();
+    while (dims.size() < *r) {
+        auto seq = ty->isa<Seq>();
+        if (!seq) return nullptr; // `arr` is not (statically) a rank-`r` array
+        auto ax = seq->arity();
+        // A flat multi-dim `Seq` keeps its whole rank-`k` shape vector as its arity: split it into its
+        // `k` scalar axes. A scalar axis has a plain `Nat` type, so this branch leaves it untouched.
+        if (auto ax_seq = ax->type()->isa<Seq>())
+            if (auto k = Lit::isa<u64>(ax_seq->arity())) {
+                for (u64 i = 0; i != *k; ++i) dims.emplace_back(ax->proj(*k, i));
+                ty = seq->body();
+                continue;
+            }
+        dims.emplace_back(ax);
+        ty = seq->body();
+    }
+    if (dims.size() != *r) return nullptr; // a flat axis overshot the requested rank
+    return w.tuple(dims);                  // the per-axis sizes; for a rectangular tensor each is a plain Nat
 }
 
 MIM_tensor_NORMALIZER_IMPL
