@@ -146,7 +146,7 @@ After being beheaded in the Æsir–Vanir War, Odin preserved his head, which co
 
 Today, **you** have Mímir's head at your fingertips.
 
-- **MimIR** refers to the core graph-based intermediate representation and its C++ API.
+- **MimIR** refers to the graph-based intermediate representation and its C++ API.
 - **Mim** is a lightweight textual representation of MimIR.
   It is not a full-featured programming language, but provides enough syntactic sugar to concisely express polymorphic and dependent types (including type-level dependencies introduced by many type variables).
   Mim is mainly intended for defining plugin interfaces and writing small test cases.
