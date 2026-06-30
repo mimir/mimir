@@ -84,7 +84,7 @@ cmake --build build -j$(nproc) --target install
 ```
 
 See the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
-From there, take the [Tour of MimIR](@ref mimir), then continue with the [Command-Line Reference](@ref cli), the [Language Reference](@ref langref), the [Developer Guide](@ref dev), [Plugins](@ref plugins), [Rewriting](@ref rewriting), [Phases](@ref phases), and the [Python Bindings](@ref python).
+New here? Start with the [Tour of MimIR](@ref mimir).
 
 ## 🔥 Key Innovations
 

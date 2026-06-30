@@ -215,9 +215,3 @@ With type edges followed, the graph makes it literal:
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.
 This is precisely what LLVM and MLIR cannot express, and what makes MimIR a natural target for typed DSLs, dependently-typed front-ends, and type-directed optimization.
-
-## Where to Go Next
-
-- The [Language Reference](@ref langref) specifies Mim's surface syntax in full.
-- The [Developer Guide](@ref dev) shows how to build and manipulate these graphs from C++.
-- [Plugins](@ref plugins) explains how axioms such as `%%core.icmp.ul` and `%%core.pe.is_closed` are defined and made executable.
