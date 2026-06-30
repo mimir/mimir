@@ -38,8 +38,8 @@ public:
         std::println(os_, "{}newrank=true;", tab_);
         std::println(os_, "{}margin=0;", tab_);
         // inline mode is meant for small graphs, so we tighten the spacing.
-        std::println(os_, "{}nodesep={};", tab_, cfg_.inline_consts ? "0.4" : "0.6");
-        std::println(os_, "{}ranksep={};", tab_, cfg_.inline_consts ? "0.8" : "1.2");
+        std::println(os_, "{}nodesep={};", tab_, cfg_.inline_consts ? "0.25" : "0.6");
+        std::println(os_, "{}ranksep={};", tab_, cfg_.inline_consts ? "0.4" : "1.2");
         std::println(os_, "{}node [shape=box,style=filled,fontname=\"monospace\"];", tab_);
     }
 
