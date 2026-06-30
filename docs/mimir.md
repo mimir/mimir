@@ -145,10 +145,27 @@ The Mim source nests `body` and `exit` inside `loop` with `where`, but that nest
 in the graph there is no containment — `body` and `exit` are ordinary nodes the branch indexes into, and `loop`'s back-edge is just an edge from `loop` to itself.
 That cycle is well-formed because binders like `loop` are **mutable** nodes (drawn with the diagonal corner); everything else stays an acyclic, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) DAG — the [sweet spot](@ref mut) MimIR hits between a fully mutable and a fully immutable IR.
 
-There is **no control-flow graph and no dominator tree**.
+This is where MimIR diverges from other functional IRs.
+In a scoped IR a binder lives at a specific point in the nesting, and transformations must keep every variable properly scoped — so the compiler spends real effort moving binders around.
+MimIR has no scopes: nothing has to move, and there is no lexical scoping to preserve.
+Two classic chores simply vanish:
+
+- **Substitution.**
+
+  A scoped IR typically *block-floats* functions outward before substitution (such as β-reduction) to avoid duplicating them.
+  MimIR just β-reduces on the spot.
+
+- **Specialization.**
+
+  A scoped IR *block-sinks* a function inward, nesting it deep enough that the variables it uses stay in scope.
+  MimIR never needs to: a binder simply refers to whatever it refers to, wherever it sits.
+
+And this is not limited to continuations: in MimIR **every** binder is scopeless — direct-style functions, dependent tuple types, and the rest.
+
+What is more, there is **no control-flow graph and no dominator tree**.
 The natural worry is *then how do you run any analysis?* — SSA leans on dominance for φ-placement, GVN, code motion, and the rest.
-MimIR replaces the dominator tree with the **nesting tree** induced by free variables, and answers liveness/scoping questions by querying a `Def`'s free-variable set directly (computed lazily and memoized).
-These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction and its metatheory are spelled out in [*SSA without Dominance for Higher-Order Programs*](https://doi.org/10.48550/arXiv.2604.09961).
+MimIR replaces the dominator tree with the **nesting tree** induced by free variables, and answers liveness/scoping questions by querying a `Def`'s free-variable set directly — computed lazily and memoized.
+These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction, its complexity bounds, and its metatheory are spelled out in [*SSA without Dominance for Higher-Order Programs*](https://doi.org/10.48550/arXiv.2604.09961).
 
 ## Polymorphic Iteration {#mimir_iter}
 
@@ -215,4 +232,4 @@ With type edges followed, the graph makes it literal:
 
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.
-This is precisely what LLVM and MLIR cannot express, and what makes MimIR a natural target for typed DSLs, dependently-typed front-ends, and type-directed optimization.
+This is the foundation the [`%tensor`](@ref tensor) plugin builds on: array shapes live in the types and are checked — and optimized — by the very same normalization you have already seen.

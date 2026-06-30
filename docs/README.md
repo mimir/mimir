@@ -27,6 +27,10 @@ MimIR provides:
 
 MimIR is well suited for [DSL](https://en.wikipedia.org/wiki/Domain-specific_language) compilers, tensor compilers, [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation), [regex](https://en.wikipedia.org/wiki/Regular_expression) engines, and other systems that need high-performance code from high-level abstractions.
 
+MimIR brings two worlds together: typed functional IRs supply the abstractions — polymorphism, dependent types — while sea-of-nodes graphs supply the performance.
+MimIR has both at once, by extending sea-of-nodes to the Calculus of Constructions.
+And it pays off in practice: the [regex](@ref regex) plugin is the fastest engine in our evaluation (see the [POPL'25 paper](https://doi.org/10.1145/3704840)).
+
 ## ✨ A Taste of Mim
 
 The following function `sq` squares `x` — for **any** type `T`, as long as `T` comes packaged with its own multiplication.
@@ -127,6 +131,7 @@ MimIR uses free-variable nesting:
 
   This is always correct.
   MimIR maintains free-variable information **lazily**, **locally**, and **transparently**: results are computed on demand, memoized, and invalidated only where needed.
+  For realistic programs a query costs **O(n log n)** in the size of the subgraph, and **O(1)** once memoized (see the [PLDI'26 paper](https://doi.org/10.48550/arXiv.2604.09961)).
 
 - Data dependencies remain precise, even for higher-order code
 - Loop peeling and unrolling reduce to simple β-reduction
