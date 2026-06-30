@@ -36,6 +36,7 @@ public:
         std::println(os_, "{}ordering=out;", tab_);
         std::println(os_, "{}splines=ortho;", tab_);
         std::println(os_, "{}newrank=true;", tab_);
+        std::println(os_, "{}margin=0;", tab_);
         // inline mode is meant for small graphs, so we tighten the spacing.
         std::println(os_, "{}nodesep={};", tab_, cfg_.inline_consts ? "0.4" : "0.6");
         std::println(os_, "{}ranksep={};", tab_, cfg_.inline_consts ? "0.8" : "1.2");
@@ -102,10 +103,13 @@ public:
                     bool detach = def->isa<Var>()
                                || (!cfg_.inline_consts
                                    && (op->isa<Lit>() || op->isa<Axm>() || def->isa<Nat>() || def->isa<Idx>()));
-                    if (detach)
-                        std::println(os_, "{}_{}:{} -> _{}[color=\"#00000000\",constraint=false];", tab_, def->gid(), i,
-                                     op->gid());
-                    else
+                    if (detach) {
+                        // Detached edges are transparent by default to keep the layout readable (xdot still
+                        // highlights them on hover). With show_detached we render them statically in a subtle gray.
+                        auto edge_color = cfg_.show_detached ? "gray" : "#00000000";
+                        std::println(os_, "{}_{}:{} -> _{}[color=\"{}\",constraint=false];", tab_, def->gid(), i,
+                                     op->gid(), edge_color);
+                    } else
                         std::println(os_, "{}_{}:{} -> _{};", tab_, def->gid(), i, op->gid());
                 }
             }
@@ -113,8 +117,9 @@ public:
 
         if (auto t = def->type(); t && cfg_.types) {
             recurse(t, max - 1);
-            std::println(os_, "{}_{} -> _{}[color=\"#00000000\",constraint=false,style=dashed];", tab_, def->gid(),
-                         t->gid());
+            auto edge_color = cfg_.show_detached ? "gray" : "#00000000";
+            std::println(os_, "{}_{} -> _{}[color=\"{}\",constraint=false,style=dashed];", tab_, def->gid(), t->gid(),
+                         edge_color);
         }
     }
 

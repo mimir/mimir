@@ -51,7 +51,7 @@ This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam
 What remains is the bare `x * x`, with **no trace** of `sq` or the existential abstraction.
 The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
 
-@dotfile sq.dot "The MimIR graph of `f` — the abstraction has evaporated."
+@image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated."
 
 For the full picture, with more examples and the graphs MimIR builds for them, read the [Tour of MimIR](@ref mimir).
 
@@ -98,8 +98,6 @@ Declare new types, operations, and normalizers in a single `.mim` file.
 For example, the [`demo`](@ref demo) plugin declares one axiom and wires it to a C++ normalizer:
 
 ```mim
-plugin demo;
-
 /// the 42 constant, folded by the `normalize_const` C++ normalizer
 axm %demo.const_idx: [n: Nat] → Idx n, normalize_const;
 ```

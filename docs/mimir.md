@@ -132,7 +132,7 @@ Each box is a [`Def`](@ref mim::Def) — one node of the program graph — label
 Boxes drawn with a clipped, **diagonal corner** are *mutable* binders (functions and other recursive nodes); plain boxes are *immutable*, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) expressions.
 Edges run from a node to its operands.
 
-@dotfile count.dot "The MimIR graph of `count`."
+@image html count.svg "The MimIR graph of `count`."
 
 @note `extern` marks `count` as a root of the program graph.
 Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
@@ -202,7 +202,7 @@ Only `iter` is `extern`, hence the sole [root](@ref mim::World::roots).
 `succ`, `add`, `mul`, `pow`, and the assertion are all unreachable from the roots once partial evaluation has run, so [`Cleanup`](@ref mim::Cleanup) prunes them.
 The graph MimIR keeps is therefore just `iter` itself:
 
-@dotfile iter.dot "The MimIR graph of `iter` — only the `extern` root survives."
+@image html iter.svg "The MimIR graph of `iter` — only the `extern` root survives."
 
 The two branches `alt` and `cons` are **floating functions**: MimIR references them as ordinary nodes selected by `cond` instead of nesting them inside `iter`, and the recursive call simply points straight back at the `iter` node.
 This is MimIR's sea-of-nodes representation in action — the same machinery that expressed the counting loop above, now carrying a higher-order, polymorphic, direct-style function.
@@ -229,7 +229,7 @@ Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat
 
 With type edges followed, the graph makes it literal:
 
-@dotfile dep.dot "The MimIR graph of `Vec` and `zeros` with type edges shown."
+@image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown."
 
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.

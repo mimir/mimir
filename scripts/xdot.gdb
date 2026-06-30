@@ -30,8 +30,9 @@ define xdot
     # see https://stackoverflow.com/a/6889615
     shell echo set \$tmp=\"$(mktemp)\" >/tmp/tmp.gdb
     source /tmp/tmp.gdb
-    # mim::DotConfig is {max, annexes, types, inline_consts, hide_default_filter}; annexes is ignored by Def::dot.
-    call $def->dot($tmp, (mim::DotConfig){$max, 0, $types, $inline, $hide})
+    # mim::DotConfig is {max, annexes, types, inline_consts, hide_default_filter, show_detached};
+    # annexes is ignored by Def::dot. show_detached=0 keeps edges transparent (xdot highlights them on hover).
+    call $def->dot($tmp, (mim::DotConfig){$max, 0, $types, $inline, $hide, 0})
     eval "shell xdot %s 2&> /dev/null &", $tmp
 end
 
@@ -113,8 +114,9 @@ define xdotw
     # see https://stackoverflow.com/a/6889615
     shell echo set \$tmp=\"$(mktemp)\" >/tmp/tmp.gdb
     source /tmp/tmp.gdb
-    # mim::DotConfig is {max, annexes, types, inline_consts, hide_default_filter}; max is the recursion depth.
-    call $world->dot($tmp, (mim::DotConfig){0xFFFFFFFF, $annexes, $types, $inline, $hide})
+    # mim::DotConfig is {max, annexes, types, inline_consts, hide_default_filter, show_detached};
+    # max is the recursion depth. show_detached=0 keeps edges transparent.
+    call $world->dot($tmp, (mim::DotConfig){0xFFFFFFFF, $annexes, $types, $inline, $hide, 0})
     eval "shell xdot %s 2&> /dev/null &", $tmp
 end
 

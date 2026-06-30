@@ -1189,7 +1189,8 @@ EXAMPLE_RECURSIVE      = YES
 # that contain images that are to be included in the documentation (see the
 # \image command).
 
-IMAGE_PATH             = @PROJECT_SOURCE_DIR@/docs
+IMAGE_PATH             = @PROJECT_SOURCE_DIR@/docs \
+                         @CMAKE_CURRENT_BINARY_DIR@
 
 # The INPUT_FILTER tag can be used to specify a program that Doxygen should
 # invoke to filter for each input file. Doxygen will invoke the filter program
@@ -1504,7 +1505,8 @@ HTML_EXTRA_STYLESHEET  = submodules/doxygen-awesome-css/doxygen-awesome.css \
                          submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css \
                          submodules/doxygen-awesome-css/doxygen-awesome-interactive-toc.js \
                          submodules/doxygen-awesome-css/doxygen-custom/custom.css \
-                         docs/version-switcher.css
+                         docs/version-switcher.css \
+                         docs/dotgraph.css
 
 # The HTML_EXTRA_FILES tag can be used to specify one or more extra images or
 # other source files which should be copied to the HTML output directory. Note
