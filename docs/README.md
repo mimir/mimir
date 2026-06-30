@@ -17,15 +17,15 @@
 
 [TOC]
 
-**MimIR** is a pure, graph-based, higher-order intermediate representation rooted in the **Calculus of Constructions**.
+**MimIR** is a pure, graph-based, [higher-order](https://en.wikipedia.org/wiki/Higher-order_function) intermediate representation rooted in the [**Calculus of Constructions**](https://en.wikipedia.org/wiki/Calculus_of_constructions).
 MimIR provides:
 
-- **Dependent types**, **parametric polymorphism**, and **higher-order functions** out of the box
+- [**Dependent types**](https://en.wikipedia.org/wiki/Dependent_type), [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism), and [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) out of the box
 - **Extensible plugins** for domain-specific axioms, types, normalizers, and code generation
-- **SSA without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
-- A **sea-of-nodes** style IR with on-the-fly normalization, type checking, and partial evaluation
+- [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) **without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
+- A [**sea-of-nodes**](https://en.wikipedia.org/wiki/Sea_of_nodes) style IR with on-the-fly normalization, type checking, and [partial evaluation](https://en.wikipedia.org/wiki/Partial_evaluation)
 
-MimIR is well suited for DSL compilers, tensor compilers, automatic differentiation, regex engines, and other systems that need high-performance code from high-level abstractions.
+MimIR is well suited for [DSL](https://en.wikipedia.org/wiki/Domain-specific_language) compilers, tensor compilers, [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation), [regex](https://en.wikipedia.org/wiki/Regular_expression) engines, and other systems that need high-performance code from high-level abstractions.
 
 ## ✨ A Taste of Mim
 
@@ -34,15 +34,15 @@ Then, `f` instantiates `sq` for `Nat`:
 
 \include "sq.mim"
 
-That first argument `(T: *, mul: [T, T] → T)` is a **dependent pair** — an existential bundling a type together with an operation on it.
-In MimIR, types are ordinary **first-class values**: `T` and `mul` are just arguments, so polymorphism, type operators, and dependent types all fall out of the same mechanism.
+That first argument `(T: *, mul: [T, T] → T)` is a [**dependent pair**](https://en.wikipedia.org/wiki/Dependent_type#%CE%A3_type) — an [existential](https://en.wikipedia.org/wiki/Type_system#Existential_types) bundling a type together with an operation on it.
+In MimIR, types are ordinary [**first-class values**](https://en.wikipedia.org/wiki/First-class_citizen): `T` and `mul` are just arguments, so polymorphism, [type operators](https://en.wikipedia.org/wiki/Type_constructor), and dependent types all fall out of the same mechanism.
 
 And under the hood, MimIR is not a list of instructions but a **graph** — and that graph *is* the program.
 The graph is also **complete**: it holds everything needed to make sense of the program, with no auxiliary side structure.
 Contrast a traditional instruction list, which is meaningless on its own and only becomes intelligible once you pair it with a separately maintained [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph).
 
 Watch what happens to `sq`.
-When `f` applies `sq (Nat, %core.nat.mul)`, that application is β-reduced **on the fly, during graph construction** — not in any later pass.
+When `f` applies `sq (Nat, %core.nat.mul)`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
 This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam::filter) that every direct-style function gets, which greenlights inlining.
 What remains is the bare `x * x`, with **no trace** of `sq` or the existential abstraction.
 The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
