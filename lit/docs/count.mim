@@ -1,4 +1,4 @@
-// RUN: %mim -p ll %s -o -
+// RUN: %mim -p ll %s
 plugin core;
 
 fun extern count(n: I32): I32 =
@@ -6,7 +6,7 @@ fun extern count(n: I32): I32 =
     where
         con loop (i acc: I32) =
             let cond = %core.icmp.ul (i, n);
-            (exit, body)#cond ()
+            %core.select (cond, body, exit) ()
             where
                 con body() =
                     let next = %core.wrap.add 0 (i, 1I32);
