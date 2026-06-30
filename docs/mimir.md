@@ -150,10 +150,11 @@ In a scoped IR a binder lives at a specific point in the nesting, and transforma
 MimIR has no scopes: nothing has to move, and there is no lexical scoping to preserve.
 Two classic chores simply vanish:
 
-- **Substitution.**
+- **β-reduction.**
 
-  A scoped IR typically *block-floats* functions outward before substitution (such as β-reduction) to avoid duplicating them.
+  A scoped IR typically *block-floats* functions outward before β-reduction to avoid duplicating them.
   MimIR just β-reduces on the spot.
+  And this is not special to β-reduction: substitution in MimIR is a graph traversal that automatically skips any subgraph not depending on the substituted variables — unrelated functions are left untouched and shared — with no scopes to keep consistent.
 
 - **Specialization.**
 

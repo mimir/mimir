@@ -23,12 +23,12 @@ MimIR provides:
 - [**Dependent types**](https://en.wikipedia.org/wiki/Dependent_type), [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism), and [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) out of the box
 - **Extensible plugins** for domain-specific axioms, types, normalizers, and code generation
 - [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) **without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
-- A [**sea-of-nodes**](https://en.wikipedia.org/wiki/Sea_of_nodes) style IR with on-the-fly normalization, type checking, and [partial evaluation](https://en.wikipedia.org/wiki/Partial_evaluation)
+- A [**sea-of-nodes**](https://github.com/SeaOfNodes) style IR with on-the-fly normalization, type checking, and [partial evaluation](https://en.wikipedia.org/wiki/Partial_evaluation)
 
 MimIR is well suited for [DSL](https://en.wikipedia.org/wiki/Domain-specific_language) compilers, tensor compilers, [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation), [regex](https://en.wikipedia.org/wiki/Regular_expression) engines, and other systems that need high-performance code from high-level abstractions.
 
 MimIR brings two worlds together: typed functional IRs supply the abstractions — polymorphism, dependent types — while sea-of-nodes graphs supply the performance.
-MimIR has both at once, by extending sea-of-nodes to the Calculus of Constructions.
+It has both at once, by extending sea-of-nodes to the Calculus of Constructions.
 And it pays off in practice: the [regex](@ref regex) plugin is the fastest engine in our evaluation (see the [POPL'25 paper](https://doi.org/10.1145/3704840)).
 
 ## ✨ A Taste of Mim
@@ -95,7 +95,16 @@ New here? Start with the [Tour of MimIR](@ref mimir).
 ### 🧩 Plugins
 
 Declare new types, operations, and normalizers in a single `.mim` file.
-C++ provides the heavy lifting: optimization, lowering, and code generation.
+For example, the [`demo`](@ref demo) plugin declares one axiom and wires it to a C++ normalizer:
+
+```mim
+plugin demo;
+
+/// the 42 constant, folded by the `normalize_const` C++ normalizer
+axm %demo.const_idx: [n: Nat] → Idx n, normalize_const;
+```
+
+The matching shared library implements `normalize_const` and any lowering or [phases](@ref phases); C++ does the heavy lifting of optimization, lowering, and code generation.
 
 Explore the [Plugin Registry](https://mimir.github.io/plugins) to discover and share community-developed plugins.
 
