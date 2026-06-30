@@ -29,37 +29,20 @@ MimIR is well suited for DSL compilers, tensor compilers, automatic differentiat
 
 ## ✨ A Taste of Mim
 
-`iter f (n, x)` applies `f` to `x` exactly `n` times.
-It is **polymorphic** — the element type `T` is just another argument, passed implicitly in `{}` — and recursive.
-The `@(%core.pe.is_closed n)` filter is a **partial-evaluation** directive: whenever `n` is a constant, MimIR unrolls the recursion away at compile time:
+The following function `sq` squares `x` — for **any** type `T`, as long as `T` comes packaged with its own multiplication.
+Then, `f` instantiates `sq` for `Nat`:
 
-```mim
-plugin core;
+\include "sq.mim"
 
-lam extern iter {T: *} (f: T → T) (n: Nat, x: T)@(%core.pe.is_closed n): T =
-    let cond = %core.ncmp.le (n, 0);
-    (alt, cons)#cond () where
-        lam alt (): T =
-            let m = %core.nat.sub (n, 1);
-            let y = f x;
-            iter f (m, y);
-        lam cons(): T = x;
-    end;
-```
+That first argument `(T: *, mul: [T, T] → T)` is a **dependent pair** — an existential bundling a type together with an operation on it.
+In MimIR, types are ordinary **first-class values**: `T` and `mul` are just arguments, so polymorphism, type operators, and dependent types all fall out of the same mechanism.
 
-Under the hood, MimIR is not a list of instructions but a **graph**.
-This is exactly the graph MimIR builds for `iter` above — generated automatically from the source via `mim --output-dot`:
+And under the hood, MimIR is not a list of instructions but a **graph** and that graph *is* the program.
+Because `sq` is not `extern`, MimIR inlines it away during cleanup: the graph of `f` keeps **no trace** of `sq` or the existential abstraction, just the bare `x * x`:
 
-@dotfile iter.dot "The MimIR graph of `iter`."
+@dotfile sq.dot "The MimIR graph of `f` — the abstraction has evaporated."
 
-Notice that the two branches `alt` and `cons` are **floating functions**: MimIR references them as ordinary nodes selected by `cond` instead of nesting them inside `iter`, and the recursive call simply points back at the `iter` node itself.
-This is MimIR's sea-of-nodes representation in action.
-
-The `let` bindings above are pure surface sugar — they only name subexpressions.
-Inlining them or adding more yields the **exact same graph**, because in MimIR the graph *is* the program.
-
-@note `extern` marks `iter` as a root of the program graph.
-Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
+For the full picture, including the graphs MimIR builds for a CPS counting loop and a higher-order, polymorphic `iter`, read the [Tour of MimIR](@ref mimir).
 
 ## 💡 Why MimIR?
 
@@ -94,7 +77,7 @@ cmake --build build -j$(nproc) --target install
 ```
 
 See the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
-From there, the documentation continues with the [Command-Line Reference](@ref cli), the [Language Reference](@ref langref), the [Developer Guide](@ref dev), [Plugins](@ref plugins), [Rewriting](@ref rewriting), [Phases](@ref phases), and the [Python Bindings](@ref python).
+From there, take the [Tour of MimIR](@ref mimir), then continue with the [Command-Line Reference](@ref cli), the [Language Reference](@ref langref), the [Developer Guide](@ref dev), [Plugins](@ref plugins), [Rewriting](@ref rewriting), [Phases](@ref phases), and the [Python Bindings](@ref python).
 
 ## 🔥 Key Innovations
 

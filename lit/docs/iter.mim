@@ -1,0 +1,20 @@
+// RUN: %mim %s
+plugin core;
+plugin refly;
+
+lam extern iter {T: *} (f: T → T) (n: Nat, x: T)@(%core.pe.is_closed n): T =
+    let cond = %core.ncmp.le (n, 0);
+    (%core.select (cond, cons, alt)) () where
+        lam cons(): T =
+            x;
+        lam alt (): T =
+            let m = %core.nat.sub (n, 1);
+            let y = f x;
+            iter @T f (m, y);
+    end;
+
+lam succ (x: Nat): Nat = %core.nat.add (x, 1);
+lam add  (x: Nat) (y: Nat): Nat = iter succ (x, y);
+lam mul  (x: Nat) (y: Nat): Nat = iter (add x) (y, 0);
+lam pow  (x: Nat) (y: Nat): Nat = iter (mul x) (y, 1);
+let _ = %refly.equiv.struc_eq (pow 3 5, 243);

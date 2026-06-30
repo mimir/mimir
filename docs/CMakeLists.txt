@@ -2,6 +2,12 @@ set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.sh")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
 set(ITER_DOT   "${CMAKE_CURRENT_BINARY_DIR}/iter.dot")
+set(COUNT_DOT  "${CMAKE_CURRENT_BINARY_DIR}/count.dot")
+set(SQ_DOT     "${CMAKE_CURRENT_BINARY_DIR}/sq.dot")
+
+# Single source of truth: the .mim examples live in lit/docs so they double as
+# regularly-run lit regression tests; the docs include them and render their graphs.
+set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs")
 
 add_custom_command(
     OUTPUT ${CLI_HELP}
@@ -12,10 +18,26 @@ add_custom_command(
 
 add_custom_command(
     OUTPUT ${ITER_DOT}
-    COMMAND mim docs/iter.mim --dot-inline --dot-hide-default-filter --output-dot ${ITER_DOT}
-    DEPENDS mim "${CMAKE_CURRENT_SOURCE_DIR}/iter.mim"
+    COMMAND mim lit/docs/iter.mim --dot-inline --dot-hide-default-filter --output-dot ${ITER_DOT}
+    DEPENDS mim "${LIT_DOCS}/iter.mim"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Generating MimIR DOT graph for the iter example in docs/README.md"
+    COMMENT "Generating MimIR DOT graph for the iter example in docs/mimir.md"
+)
+
+add_custom_command(
+    OUTPUT ${COUNT_DOT}
+    COMMAND mim lit/docs/count.mim --dot-inline --dot-hide-default-filter --output-dot ${COUNT_DOT}
+    DEPENDS mim "${LIT_DOCS}/count.mim"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Generating MimIR DOT graph for the count example in docs/mimir.md"
+)
+
+add_custom_command(
+    OUTPUT ${SQ_DOT}
+    COMMAND mim lit/docs/sq.mim --dot-inline --dot-hide-default-filter --output-dot ${SQ_DOT}
+    DEPENDS mim "${LIT_DOCS}/sq.mim"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Generating MimIR DOT graph for the sq example in docs/README.md"
 )
 
 add_custom_command(
@@ -35,6 +57,7 @@ set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 set(DOXY_LAYOUT     "${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml")
 set(DOXY_INDEX_HTML "${CMAKE_CURRENT_BINARY_DIR}/html/index.html")
 set(DOXY_EXTRA_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/mimir.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/cli.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/coding.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/dev.md"
@@ -55,7 +78,7 @@ add_custom_command(
     OUTPUT ${DOXY_INDEX_HTML}
     COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
     MAIN_DEPENDENCY ${DOXYFILE}
-    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${ITER_DOT} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
+    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${ITER_DOT} ${COUNT_DOT} ${SQ_DOT} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
     COMMENT "Generating Doxygen HTML documentation"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )

@@ -58,7 +58,7 @@ void init_world(nb::module_& m) {
         .def("arr",     [](World& w, Def* arity, Def* body) { return w.arr(arity, body); }, nb::rv_policy::reference_internal)
         .def("optimize", [](World& w) { optimize(w); })
         .def("set", [](World& w, std::string name) { w.set(name); })
-        .def("dot", static_cast<void (World::*)(const char*, bool, bool) const>(&World::dot))
+        .def("dot", [](const World& w, const char* file, bool annexes, bool types) { w.dot(file, {.annexes = annexes, .types = types}); }, nb::arg("file") = nullptr, nb::arg("annexes") = false, nb::arg("types") = false)
         .def("annex", [](World& w, uint64_t id) { return w.annex(id); }, nb::rv_policy::reference_internal);
     // clang-format on
 }

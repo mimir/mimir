@@ -1,0 +1,17 @@
+// RUN: %mim -p ll %s -o -
+plugin core;
+
+fun extern count(n: I32): I32 =
+    loop (0I32, 0I32)
+    where
+        con loop (i acc: I32) =
+            let cond = %core.icmp.ul (i, n);
+            (exit, body)#cond ()
+            where
+                con body() =
+                    let next = %core.wrap.add 0 (i, 1I32);
+                    let sum  = %core.wrap.add 0 (acc, i);
+                    loop (next, sum);
+                con exit() = return acc;
+            end;
+    end;
