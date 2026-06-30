@@ -134,6 +134,9 @@ Edges run from a node to its operands.
 
 @dotfile count.dot "The MimIR graph of `count`."
 
+@note `extern` marks `count` as a root of the program graph.
+Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
+
 ### Scopeless Binders {#mimir_scopeless}
 
 And here is MimIR's twist.
@@ -147,15 +150,13 @@ The natural worry is *then how do you run any analysis?* — SSA leans on domina
 MimIR replaces the dominator tree with the **nesting tree** induced by free variables, and answers liveness/scoping questions by querying a `Def`'s free-variable set directly (computed lazily and memoized).
 These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction and its metatheory are spelled out in [*SSA without Dominance for Higher-Order Programs*](https://doi.org/10.48550/arXiv.2604.09961).
 
-@note `extern` marks `count` as a root of the program graph.
-Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
-
-## Direct Style, Higher-Order, Polymorphic {#mimir_iter}
+## Polymorphic Iteration {#mimir_iter}
 
 CPS is not the only option.
 MimIR equally supports **direct-style** functions that simply return a value, and these compose with higher-order functions and polymorphism.
+The two styles even mix within one curried function: the outer arguments can be direct-style while the final one is a continuation, as in `con {T: *} (x: T) = …`.
 
-`iter f (n, x)` applies `f` to `x` exactly `n` times.
+The function `iter f (n, x)` applies `f` to `x` exactly `n` times.
 It is [**polymorphic**](https://en.wikipedia.org/wiki/Parametric_polymorphism) — the element type `T` is just another argument, passed implicitly in `{}` — and recursive.
 The `@(%%core.pe.is_closed n)` filter is a [**partial-evaluation**](https://en.wikipedia.org/wiki/Partial_evaluation) directive: whenever `n` is a constant, MimIR unrolls the recursion away at compile time:
 
