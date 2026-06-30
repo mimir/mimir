@@ -4,6 +4,7 @@ set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
 set(ITER_DOT   "${CMAKE_CURRENT_BINARY_DIR}/iter.dot")
 set(COUNT_DOT  "${CMAKE_CURRENT_BINARY_DIR}/count.dot")
 set(SQ_DOT     "${CMAKE_CURRENT_BINARY_DIR}/sq.dot")
+set(DEP_DOT    "${CMAKE_CURRENT_BINARY_DIR}/dep.dot")
 
 # Single source of truth: the .mim examples live in lit/docs so they double as
 # regularly-run lit regression tests; the docs include them and render their graphs.
@@ -38,6 +39,14 @@ add_custom_command(
     DEPENDS mim "${LIT_DOCS}/sq.mim"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generating MimIR DOT graph for the sq example in docs/README.md"
+)
+
+add_custom_command(
+    OUTPUT ${DEP_DOT}
+    COMMAND mim lit/docs/dep.mim --dot-inline --dot-hide-default-filter --dot-follow-types --output-dot ${DEP_DOT}
+    DEPENDS mim "${LIT_DOCS}/dep.mim"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Generating MimIR DOT graph for the dependent-types example in docs/mimir.md"
 )
 
 add_custom_command(
@@ -78,7 +87,7 @@ add_custom_command(
     OUTPUT ${DOXY_INDEX_HTML}
     COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
     MAIN_DEPENDENCY ${DOXYFILE}
-    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${ITER_DOT} ${COUNT_DOT} ${SQ_DOT} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
+    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${ITER_DOT} ${COUNT_DOT} ${SQ_DOT} ${DEP_DOT} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
     COMMENT "Generating Doxygen HTML documentation"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )

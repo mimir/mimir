@@ -2,12 +2,12 @@
 
 [TOC]
 
-This tour walks through two small but complete MimIR programs.
-Both are compiled by the `mim` CLI and the graphs shown are generated automatically from the source via `mim --output-dot`.
+This tour walks through three small but complete MimIR programs.
+All are compiled by the `mim` CLI and the graphs shown are generated automatically from the source via `mim --output-dot`.
 
-The first example shows how you write a classic [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) computation — a counting loop — using [**continuation-passing style (CPS)**](https://en.wikipedia.org/wiki/Continuation-passing_style).
-The second example switches to **direct style** and adds [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) and [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism).
-Together they cover the two complementary ways of expressing control and data flow in MimIR.
+The first shows how you write a classic [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) computation — a counting loop — using [**continuation-passing style (CPS)**](https://en.wikipedia.org/wiki/Continuation-passing_style).
+The second switches to **direct style** and adds [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) and [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism).
+The third shows MimIR's defining trait: **types are ordinary values**, computed in the same graph as terms — the basis for [**dependent types**](https://en.wikipedia.org/wiki/Dependent_type).
 
 Under the hood, MimIR is not a list of instructions but a **graph**.
 The `let` bindings in the examples below are pure surface sugar — they only name subexpressions.
@@ -17,6 +17,7 @@ Inlining them or adding more yields the **exact same graph**, because in MimIR t
 
 MimIR's built-in language is deliberately tiny — functions, applications, tuples, and the like.
 Everything domain-specific — arithmetic, comparisons, memory, control-flow helpers, even entire [DSLs](https://en.wikipedia.org/wiki/Domain-specific_language) — lives in **plugins**.
+Plugins can sit at any level you like: from low-level bit-fiddling all the way up to full-blown domain-specific operations such as [regular expressions](@ref regex).
 A plugin has two halves that share one name:
 
 - a **`.mim` file** that declares the plugin's **annexes**, and
@@ -30,6 +31,10 @@ Annexes come in two flavors:
   `%core.wrap.add` (machine addition) and `%core.pe.is_closed` (a partial-evaluation query) are axioms.
 - **Definitions** — ordinary Mim values, written as plain Mim.
   `%core.select`, for instance, is just `lam %core.select {T: *} (cond, t, f): T = (f, t)#cond`, and behaves like any other function.
+
+Axioms get their behavior from **normalizers**: small C++ functions that live *inside* the plugin's shared library, each attached to an axiom.
+Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, on the fly** — so the simplified node is the only one that ever exists.
+[Constant folding](https://en.wikipedia.org/wiki/Constant_folding) and [peephole](https://en.wikipedia.org/wiki/Peephole_optimization) rewrites such as `x + 0 → x` are implemented exactly this way: you never build `%core.wrap.add (x, 0)` and optimize it away later — it collapses to `x` at construction time.
 
 Both examples below use the [`core`](@ref core) plugin throughout — hence the `plugin core;` at the top of each.
 See [Plugins](@ref plugins) for the full story, including how to write your own.
@@ -71,7 +76,10 @@ exit:
 }
 ```
 
-MimIR expresses the **same** program in CPS — every basic block becomes a **continuation** (`con`: a function that never returns):
+MimIR expresses the **same** program through the well-established correspondence between SSA form and CPS (see [Kelsey'95](https://dl.acm.org/doi/10.1145/202530.202532) and [Appel'98](https://dl.acm.org/doi/10.1145/278283.278285)):
+every basic block becomes a **continuation** (`con`: a function that never returns).
+However, in contrast to other CPS representations, functions and other binders in MimIR are **scopeless**: they are **not** explicitly nested inside one another.
+This makes MimIR's take on CPS much more faithful to the original SSA formulation (see @ref mimir_scopeless):
 
 \include "count.mim"
 
@@ -91,25 +99,43 @@ The *annex* `%core.select` is not built in — it is an ordinary lambda defined 
 Like every direct-style function it carries the default `tt` [`filter`](@ref mim::Lam::filter), so the call `%core.select (cond, body, exit)` is **β-reduced away during graph construction**, leaving just the indexed read `(exit, body)#cond` — no `select` node survives.
 That is what the graph below actually shows.
 
-CPS makes two pieces of SSA folklore explicit:
+CPS makes three pieces of SSA folklore explicit:
 
 - **φ-uses live at the *end* of a block, not its head.**
+
   An SSA φ pretends to read its inputs at the top of its block, but each input is actually produced by a *predecessor's* terminator — φs "happen on the edge".
   In CPS the incoming values are simply the arguments passed by the tail call that *ends* each predecessor — exactly where they are computed.
-  And a whole group of φs at a block head is really a [**parallel copy**](https://en.wikipedia.org/wiki/Static_single-assignment_form#Converting_out_of_SSA_form); with block arguments that is plainly one argument tuple per edge, not a pile of pseudo-instructions to sequentialize.
+
+- **A whole group of φs at a block head is really a [*parallel copy*](https://en.wikipedia.org/wiki/Static_single-assignment_form#Converting_out_of_SSA_form).**
+
+  With block arguments that is plainly one argument tuple per edge, not a pile of pseudo-instructions to sequentialize.
+
 - **Blocks have honest types.**
+
   `loop : Cn [I32, I32]`, `body, exit : Cn []`, and the return continuation `: Cn I32`, where `Cn A` is a function from `A` that never returns.
   A traditional basic block carries no type at all.
 
 This is the graph MimIR builds for `count`:
 
+@note **Reading the graphs.**
+Each box is a [`Def`](@ref mim::Def) — one node of the program graph — labelled with its kind.
+Boxes drawn with a clipped, **diagonal corner** are *mutable* binders (functions and other recursive nodes); plain boxes are *immutable*, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) expressions.
+Edges run from a node to its operands.
+
 @dotfile count.dot "The MimIR graph of `count`."
+
+### Scopeless Binders {#mimir_scopeless}
 
 And here is MimIR's twist.
 Like traditional basic blocks — which float in the CFG, reached by label rather than by lexical position — **every** MimIR binder is *floating* and *scopeless*.
 The Mim source nests `body` and `exit` inside `loop` with `where`, but that nesting exists **only in the surface syntax**:
 in the graph there is no containment — `body` and `exit` are ordinary nodes the branch indexes into, and `loop`'s back-edge is just an edge from `loop` to itself.
-There is **no control-flow graph and no dominator tree**; free-variable nesting replaces both.
+That cycle is well-formed because binders like `loop` are **mutable** nodes (drawn with the diagonal corner); everything else stays an acyclic, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) DAG — the [sweet spot](@ref mut) MimIR hits between a fully mutable and a fully immutable IR.
+
+There is **no control-flow graph and no dominator tree**.
+The natural worry is *then how do you run any analysis?* — SSA leans on dominance for φ-placement, GVN, code motion, and the rest.
+MimIR replaces the dominator tree with the **nesting tree** induced by free variables, and answers liveness/scoping questions by querying a `Def`'s free-variable set directly (computed lazily and memoized).
+These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction and its metatheory are spelled out in [*SSA without Dominance for Higher-Order Programs*](https://doi.org/10.48550/arXiv.2604.09961).
 
 @note `extern` marks `count` as a root of the program graph.
 Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
@@ -158,6 +184,27 @@ MimIR represents — and here even partially evaluates — it as written.
 
 @note Unlike `count`, `iter` is a `lam` in **direct style**: it returns a `T` directly instead of threading a return continuation.
 The same graph substrate represents both styles uniformly.
+
+## Types Are Values {#mimir_dep}
+
+So far you have seen higher-order, polymorphic, partially evaluated code in both CPS and direct style.
+MimIR's defining feature ties all of that together: **types live in the same graph as terms**, built and normalized by the same machinery.
+So a type can be computed by an ordinary function, depend on a runtime value, and be partially evaluated — all for free.
+Watch a *type* come out of an ordinary function:
+
+\include "dep.mim"
+
+`Vec` is just a `lam` — but it returns `*`, the type of types, so it is a function `Nat → *`: a [type constructor](https://en.wikipedia.org/wiki/Type_constructor).
+`zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the *value* `n` of its argument.
+Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `%core.select` above, even though the result is a *type* — and `%refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
+
+With type edges followed, the graph makes it literal:
+
+@dotfile dep.dot "The MimIR graph of `Vec` and `zeros` with type edges shown."
+
+The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
+Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.
+This is precisely what LLVM and MLIR cannot express, and what makes MimIR a natural target for typed DSLs, dependently-typed front-ends, and type-directed optimization.
 
 ## Where to Go Next
 
