@@ -2,6 +2,8 @@
 
 [TOC]
 
+This page is the reference for Mim surface syntax.
+
 ## Notation
 
 This document uses a lightweight [EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)-style notation.
@@ -165,7 +167,7 @@ A module consists of zero or more imports or plugins followed by zero or more de
 
 ### Declarations {#decl}
 
-Mim accepts the following declaration families.
+Mim supports the following declaration families.
 
 ```text
 let p = e

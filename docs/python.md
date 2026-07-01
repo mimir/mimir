@@ -128,7 +128,7 @@ These are ordinary Python wrappers around the `MIM_Error` exception type exporte
 
 ## Current Scope
 
-The Python bindings are still intentionally selective.
+The Python bindings are intentionally selective.
 They already support useful workflows for:
 
 - constructing small IR fragments directly from Python,

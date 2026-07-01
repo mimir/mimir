@@ -5,7 +5,6 @@
 Start here if you want to work on MimIR itself.
 This page is the contributor entry point for build, test, style, and debugging workflow.
 For API and IR usage patterns, continue with the [Developer Guide](@ref dev).
-For subsystem-specific material, see [Plugins](@ref plugins), [Rewriting](@ref rewriting), and [Phases](@ref phases).
 
 ## Contributor Quick Start {#building}
 

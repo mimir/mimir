@@ -3,6 +3,7 @@
 [TOC]
 
 This guide summarizes the typical idioms and patterns you will want to use when working with MimIR as a developer.
+It focuses on the C++ API and IR-building workflow.
 
 ## Basics
 
@@ -10,13 +11,13 @@ Let's jump straight into an example.
 
 \include "examples/hello.cpp"
 
-[`Driver`](@ref mim::Driver) is usually the first class you create.
+[`Driver`](@ref mim::Driver) is usually the first object you create.
 It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](@ref mim::Log), and the current [`World`](@ref mim::World).
 In this example, the log is configured to write debug output to `std::cerr`; see also @ref clidebug.
 
 Next, we load the [`core`](@ref core) and [`ll`](@ref ll) plugins.
 A plugin has two halves — a `.mim` file declaring its annexes and a shared library providing their runtime behavior; see [Plugins & Annexes](@ref mimir_plugins) for the overview and [Plugins](@ref plugins) for the details.
-Calling mim::ast::load_plugins parses the `.mim` file and also loads the shared object, while the [`Driver`](@ref mim::Driver) keeps track of the resulting plugin state.
+Calling `mim::ast::load_plugins` parses the `.mim` file and also loads the shared object, while the [`Driver`](@ref mim::Driver) keeps track of the resulting plugin state.
 
 Now we can build actual code.
 

@@ -15,7 +15,7 @@ Inlining them or adding more yields the **exact same graph**, because in MimIR t
 
 ## Plugins {#mimir_plugins}
 
-MimIR's built-in language is deliberately tiny — functions, applications, tuples, and the like.
+MimIR's built-in language is deliberately tiny: functions, applications, tuples, and the like.
 Everything domain-specific — arithmetic, comparisons, memory, control-flow helpers, even entire [DSLs](https://en.wikipedia.org/wiki/Domain-specific_language) — lives in **plugins**.
 Plugins can sit at any level you like: from low-level bit-fiddling all the way up to full-blown domain-specific operations such as [regular expressions](@ref regex).
 A plugin has two halves that share one name:
@@ -23,7 +23,7 @@ A plugin has two halves that share one name:
 - a **`.mim` file** that declares the plugin's **annexes**, and
 - a shared library that registers their runtime behavior: normalizers and plugin-specific compiler [phases](@ref phases).
 
-The examples below use the [`%core`](@ref core) plugin throughout — hence the `plugin core;` at the top of each.
+The examples below use the [`%core`](@ref core) plugin throughout, hence the `plugin core;` at the top of each file.
 
 ### Annexes
 
@@ -34,7 +34,7 @@ Annexes come in two flavors: Axioms and other definitions.
 
 These are opaque primitives with *no* Mim definition.
 Their meaning comes from the plugin's C++ side (see below), not from any Mim code.
-`%%core.wrap.add` (machine addition) and `%%core.pe.is_closed` (a partial-evaluation query) are axioms.
+`%%core.wrap.add` (machine addition) and `%%core.pe.is_closed` (which checks whether an expression contains no free variables) are treated as axioms.
 
 Axioms get their behavior from **normalizers**: small C++ functions that live *inside* the plugin's shared library, each attached to an axiom.
 Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, on the fly** — so the simplified node is the only one that ever exists.

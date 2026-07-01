@@ -14,15 +14,14 @@ A [`Phase`](@ref mim::Phase) is a [`Stage`](@ref mim::Stage) with a single entry
 
 [`Phase`](@ref mim::Phase) is the minimal base class.
 
-A phase has:
+A phase provides:
 
 - a name or annex,
 - access to the current [`World`](@ref mim::World),
 - a [`run()`](@ref mim::Phase::run) wrapper for logging and verification,
 - a [`todo()`](@ref mim::Phase::todo) accessor backed by the internal `todo_` flag for fixed-point iteration.
 
-@note
-A phase sets this flag via [`invalidate()`](@ref mim::Phase::invalidate) when it discovers that another round is required.
+@note A phase requests another round by calling [`invalidate()`](@ref mim::Phase::invalidate).
 - [`PhaseMan`](@ref mim::PhaseMan) uses this to drive fixed-point pipelines.
 - [`RWPhase`](@ref mim::RWPhase) uses this to drive its optional pre-analysis to a fixed point.
 
