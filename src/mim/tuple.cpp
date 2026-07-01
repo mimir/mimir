@@ -7,6 +7,9 @@
 
 namespace mim {
 
+Prod::~Prod() = default;
+Seq::~Seq()   = default;
+
 namespace {
 bool should_flatten(const Def* def);
 

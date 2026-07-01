@@ -12,6 +12,8 @@ protected:
     using Def::Def;
 
 public:
+    ~Prod() override;
+
     static constexpr size_t Num_Ops = std::dynamic_extent;
 };
 
@@ -86,6 +88,8 @@ protected:
     using Def::Def;
 
 public:
+    ~Seq() override;
+
     /// @name ops
     ///@{
     const Def* body() const { return ops().back(); }
