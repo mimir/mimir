@@ -209,6 +209,20 @@ public:
     // clang-format on
 };
 
+/// Options for Def::dot and World::dot.
+/// @note Def::dot honors DotConfig::max; World::dot honors DotConfig::annexes.
+struct DotConfig {
+    int max      = std::numeric_limits<int>::max(); ///< Maximum recursion depth (Def::dot only).
+    bool annexes = false;                           ///< Include all annexes - even if unused (World::dot only).
+    bool types   = false;                           ///< Follow Def::type() dependencies.
+    bool inline_consts
+        = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them into a separate row.
+    bool hide_default_filter = false; ///< Omit a Lam::filter() that still carries its kind's default (ff for
+                                      ///< continuations, tt for direct-style functions).
+    bool show_detached = false;       ///< Render otherwise-transparent detached edges (Var→binder back-edges,
+                                      ///< shared literals/axioms, type edges) with a visible color.
+};
+
 /// Base class for all Def%s.
 ///
 /// These are the most important subclasses:
@@ -241,20 +255,6 @@ public:
 ///    |------|                           if type() != nullptr && !is_set()
 ///    ||                                 if type() == nullptr && !is_set()
 /// ```
-/// Options for Def::dot and World::dot.
-/// @note Def::dot honors DotConfig::max; World::dot honors DotConfig::annexes.
-struct DotConfig {
-    int max      = std::numeric_limits<int>::max(); ///< Maximum recursion depth (Def::dot only).
-    bool annexes = false;                           ///< Include all annexes - even if unused (World::dot only).
-    bool types   = false;                           ///< Follow Def::type() dependencies.
-    bool inline_consts
-        = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them into a separate row.
-    bool hide_default_filter = false; ///< Omit a Lam::filter() that still carries its kind's default (ff for
-                                      ///< continuations, tt for direct-style functions).
-    bool show_detached = false;       ///< Render otherwise-transparent detached edges (Var→binder back-edges,
-                                      ///< shared literals/axioms, type edges) with a visible color.
-};
-
 /// @attention This means that any subclass of Def **must not** introduce additional members.
 /// @see @ref mut
 class Def : public fe::RuntimeCast<Def> {
