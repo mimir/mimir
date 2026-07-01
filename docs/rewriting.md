@@ -52,25 +52,25 @@ When a transformation may encounter recursion, cycles, or binder-introduced vari
 3. push a temporary scope if the rewrite introduces binder-local substitutions,
 4. rewrite operands, filters, codomains, or bodies,
 5. pop the temporary scope again,
-6. finally fill the mutable via [mim::Def::set](@ref mim::Def::set).
+6. finally fill the mutable via [`mim::Def::set`](@ref mim::Def::set).
 
-The base [Rewriter](@ref mim::Rewriter) follows this pattern through [mim::Rewriter::rewrite_stub](@ref mim::Rewriter::rewrite_stub), and custom phases often mirror it manually when they need more control over how a mutable is rebuilt.
+The base [`Rewriter`](@ref mim::Rewriter) follows this pattern through [`mim::Rewriter::rewrite_stub`](@ref mim::Rewriter::rewrite_stub), and custom phases often mirror it manually when they need more control over how a mutable is rebuilt.
 The crucial point is that recursive self-references must see the already-created replacement mutable instead of triggering another rebuild of the same node.
 
 The same stack discipline is used for binder-sensitive substitutions.
-Temporary mappings introduced while rewriting under a binder should stay local to that binder, typically via [mim::Rewriter::push](@ref mim::Rewriter::push) / [mim::Rewriter::pop](@ref mim::Rewriter::pop).
+Temporary mappings introduced while rewriting under a binder should stay local to that binder, typically via [`mim::Rewriter::push`](@ref mim::Rewriter::push) / [`mim::Rewriter::pop`](@ref mim::Rewriter::pop).
 This is the common pattern when rewriting dependent codomains under fresh variables, substituting a variable with a temporary representative, or rebuilding a body under newly introduced binder variables.
 
 So the practical rule of thumb is:
 
 @note map early for recursive mutables, and scope narrowly for binder-local substitutions.
 
-If a rewrite replaces an external mutable with a fresh one, preserve the root explicitly by calling [mim::Def::transfer_external](@ref mim::Def::transfer_external) or re-externalizing the replacement node.
+If a rewrite replaces an external mutable with a fresh one, preserve the root explicitly by calling [`mim::Def::transfer_external`](@ref mim::Def::transfer_external) or re-externalizing the replacement node.
 
 ### Preserving Metadata
 
 Most rebuilds preserve debug metadata explicitly.
-The default [Rewriter](@ref mim::Rewriter) restores the old debug info with `new_def->set(old_def->dbg())`, and hand-written transformations commonly propagate names or add derived names with helpers such as [mim::Def::debug_suffix](@ref mim::Def::debug_suffix).
+The default [`Rewriter`](@ref mim::Rewriter) restores the old debug info with `new_def->set(old_def->dbg())`, and hand-written transformations commonly propagate names or add derived names with helpers such as [`mim::Def::debug_suffix`](@ref mim::Def::debug_suffix).
 
 If you create a replacement node that should still be recognizable in dumps, diagnostics, or generated code, preserve or adapt its debug payload immediately instead of treating naming as an afterthought.
 

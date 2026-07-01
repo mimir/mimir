@@ -59,8 +59,8 @@ cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DCMAKE_INSTALL_P
 cmake --build build -j$(nproc) --target install
 ```
 
-See the full [build options](@ref building) in the docs.
-You can find the rest of the documentation [here](file:///home/roland/mimir/mimir/build/html/usergroup0.html)
+See the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
+From there, the documentation continues with the [Command-Line Reference](@ref cli), the [Language Reference](@ref langref), the [Developer Guide](@ref dev), [Plugins](@ref plugins), [Rewriting](@ref rewriting), [Phases](@ref phases), and the [Python Bindings](@ref python).
 
 ## 🔥 Key Innovations
 
@@ -96,9 +96,9 @@ MimIR uses free-variable nesting:
 - **Free variables** replace dominance; the **nesting tree** replaces the dominator tree
 - Free-variable queries “just work”:
 
-  ```c++
-  if (expr->free_vars().contains(x)) /*x free in expr*/
-  if (expr->free_vars().has_intersection(xyz)) /*x, y, or z free in expr*/
+  ```cpp
+  if (expr->free_vars().contains(x))           // x free in expr
+  if (expr->free_vars().has_intersection(xyz)) // x, y, or z free in expr
   ```
 
   This is always correct.

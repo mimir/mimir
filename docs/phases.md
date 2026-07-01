@@ -158,8 +158,7 @@ If no analysis is needed, [`analyze()`](@ref mim::RWPhase::analyze) can simply r
 
 ### Analysis Results
 
-An [`RWPhase`](@ref mim::RWPhase) may be associated with an [`Analysis`](@ref mim::Analysis).
-If so, the rewrite can query the analysis result through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+Once [`analyze()`](@ref mim::RWPhase::analyze) has run, the rewrite can query the analysis result through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
 
 This provides read access to the analysis lattice **for old-world [`Def`s](@ref mim::Def)**:
 given an old definition, [`RWPhase::lattice()`](@ref mim::RWPhase::lattice) returns the abstract value computed by the associated [`Analysis`](@ref mim::Analysis), or `nullptr` if no value is available.

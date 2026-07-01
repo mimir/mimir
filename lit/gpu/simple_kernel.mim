@@ -1,28 +1,33 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s
+// RUN: %mim %s -p opt
 
 plugin core;
 plugin gpu;
 
-fun kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, data: %gpu.GlobalPtr I32) =
+con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
+            group_id: Idx 4, item_id: Idx 4, (), data: %gpu.GlobalPtr I32,
+            return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let m1 = %mem.store (m1, data, 42I32);
     return (m1, m3, m4, m5);
 
-fun extern main (m0: %mem.M 0, m1: %gpu.GlobalM, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, %gpu.GlobalM, I32] =
+fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
+              : [%mem.M 0, I32] =
     let (m0, ptr) = %mem.alloc (I32, 0) m0;
     let m0 = %mem.store (m0, ptr, argc);
 
+    let (m0, m1, m4) = %gpu.init m0;
+
     let (m1, d_ptr) = %mem.alloc (I32, 1) m1;
-    let (m0, m1) = %gpu.copy_to_device (m0, m1, ptr, d_ptr);
+    let (m0, m1) = %gpu.copy_to_device.block (m0, m1, ptr, d_ptr);
 
-    ret m0 = %gpu.launch (m0, 4, 4, %gpu.DefaultStream) kernel $ d_ptr;
+    ret (m0, m1, m4) = %gpu.launch (4, 4, %gpu.default_stream, ff, ()) kernel d_ptr $ (m0, m1, m4);
 
-    let (m0, m1) = %gpu.copy_to_host (m0, m1, d_ptr, ptr);
+    let (m0, m1) = %gpu.copy_to_host.block (m0, m1, d_ptr, ptr);
     let m1 = %mem.free (m1, d_ptr);
+
+    let m0 = %gpu.deinit (m0, m1, m4);
 
     let (m0, val) = %mem.load (m0, ptr);
     let m0 = %mem.free (m0, ptr);
 
-    return (m0, m1, val);
+    return (m0, val);

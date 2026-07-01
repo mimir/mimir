@@ -39,7 +39,7 @@ The package also ships `.pyi` stubs, so editors and type checkers can see the ex
 
 ## First Steps
 
-The usual entry point is [Driver](@ref mim::Driver), just like in C++:
+The usual entry point is [`Driver`](@ref mim::Driver), just like in C++:
 
 ```python
 import mim
@@ -54,7 +54,7 @@ assert isinstance(lit, mim.Def)
 assert lit.world() is world
 ```
 
-`Def` objects are lightweight handles into the current [World](@ref mim::World).
+`Def` objects are lightweight handles into the current [`World`](@ref mim::World).
 The bindings currently expose a few frequently used helpers:
 
 ```python
@@ -133,7 +133,7 @@ They already support useful workflows for:
 
 - constructing small IR fragments directly from Python,
 - loading plugins and calling generated annex enums,
-- driving optimization and backend emission through [Driver](@ref mim::Driver), and
+- driving optimization and backend emission through [`Driver`](@ref mim::Driver), and
 - end-to-end regex/JIT experiments.
 
 But the Python API is not yet a one-to-one mirror of the full C++ surface.

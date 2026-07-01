@@ -1,0 +1,12 @@
+// RUN: %mim -p opt %s
+plugin core;
+plugin refly;
+
+lam extern iter {T: *} (f: T → T) (n: Nat, x: T)@(%core.pe.is_closed n): T =
+    let cond = %core.ncmp.le (n, 0);
+    (alt, cons)#cond () where
+        lam alt(): T = iter @T f (%core.nat.sub (n, 1), f x); // TODO test case fails if type inference is involved
+        lam cons(): T = x;
+    end;
+
+let _ = %refly.equiv.struc_eq (iter (λ (x: Nat): Nat = %core.nat.add (x, 1)) (5, 0), 5);

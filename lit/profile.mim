@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s --profile summary                 | %FileCheck %s --check-prefix=FLAT
+// RUN: %mim -p opt %s --output-profile - --profile tree | %FileCheck %s --check-prefix=TREE
+// RUN: %mim -p opt %s --output-profile %t.json
+// RUN: %FileCheck %s --check-prefix=TRACE < %t.json
+plugin core;
+
+lam extern f(): «3; Nat» = ‹i: 3; %core.nat.add (1, %core.bitcast Nat i)›;
+
+// FLAT:      Phase profile (flat):
+// FLAT-NEXT: {{.*}}total{{.*}}self{{.*}}phase
+// FLAT:      {{.*}}cleanup
+// FLAT:      {{.*}}TOTAL
+
+// TREE:      Phase profile (tree):
+// TREE-NEXT: {{.*}}total{{.*}}self{{.*}}phase
+// TREE:      {{.*}}cleanup
+// TREE:      {{.*}}TOTAL
+
+// TRACE:      {{.*}}"traceEvents"
+// TRACE:      {{.*}}"ph":"X"{{.*}}"dur":
