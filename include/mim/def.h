@@ -210,13 +210,13 @@ public:
 };
 
 /// Options for Def::dot and World::dot.
-/// @note Def::dot honors DotConfig::max; World::dot honors DotConfig::all_annexes.
+/// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
 struct DotConfig {
-    int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth (Def::dot only).
+    int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
     bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
     bool follow_types   = false;                           ///< Follow Def::type() dependencies.
     bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
-    bool default_filter = false; ///< Show Lam::filter() even its default choice.
+    bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
     bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
                                  ///< shared literals/axioms, type edges) with a visible color.
 };
