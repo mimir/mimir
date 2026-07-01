@@ -7,7 +7,7 @@ lam extern iter {T: *} (f: T → T) (n: Nat, x: T)@(%core.pe.is_closed n): T =
     (%core.select (cond, cons, alt)) () where
         lam cons(): T =
             x;
-        lam alt (): T =
+        lam alt(): T =
             let m = %core.nat.sub (n, 1);
             let y = f x;
             iter @T f (m, y);
