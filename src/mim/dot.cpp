@@ -99,6 +99,7 @@ public:
                     auto dup = std::format("_{}_{}", def->gid(), i);
                     emit_node(dup, op);
                     std::println(os_, "{}_{}:{} -> {};", tab_, def->gid(), i, dup);
+                    type_edge(dup, op, max - 1);
                 } else {
                     recurse(op, max - 1);
                     bool detach = def->isa<Var>()
@@ -116,10 +117,16 @@ public:
             }
         }
 
+        type_edge(std::format("_{}", def->gid()), def, max - 1);
+    }
+
+    /// Recurses into @p def's Def::type() and wires a type edge from node @p nid to it if DotConfig::follow_types.
+    /// Shared by the normal and the inline_consts duplication path so both honor follow_types uniformly.
+    void type_edge(std::string_view nid, const Def* def, int max) {
         if (auto t = def->type(); t && cfg_.follow_types) {
-            recurse(t, max - 1);
+            recurse(t, max);
             auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
-            std::println(os_, "{}_{} -> _{}[color=\"{}\",constraint=false,style=dashed];", tab_, def->gid(), t->gid(),
+            std::println(os_, "{}{} -> _{}[color=\"{}\",constraint=false,style=dashed];", tab_, nid, t->gid(),
                          edge_color);
         }
     }
