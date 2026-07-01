@@ -1,9 +1,9 @@
 #include <fstream>
-#include <limits>
 #include <ostream>
 #include <sstream>
 
 #include "mim/def.h"
+#include "mim/lam.h"
 #include "mim/nest.h"
 #include "mim/world.h"
 
@@ -25,9 +25,9 @@ std::string escape(const T& val) {
 
 class Dot {
 public:
-    Dot(std::ostream& ostream, bool types, const Def* root = nullptr)
+    Dot(std::ostream& ostream, DotConfig cfg, const Def* root = nullptr)
         : os_(ostream)
-        , types_(types)
+        , cfg_(cfg)
         , root_(root) {}
 
     void prologue() {
@@ -36,8 +36,10 @@ public:
         std::println(os_, "{}ordering=out;", tab_);
         std::println(os_, "{}splines=ortho;", tab_);
         std::println(os_, "{}newrank=true;", tab_);
-        std::println(os_, "{}nodesep=0.6;", tab_);
-        std::println(os_, "{}ranksep=1.2;", tab_);
+        std::println(os_, "{}margin=0;", tab_);
+        // inline mode is meant for small graphs, so we tighten the spacing.
+        std::println(os_, "{}nodesep={};", tab_, cfg_.inline_consts ? "0.25" : "0.6");
+        std::println(os_, "{}ranksep={};", tab_, cfg_.inline_consts ? "0.4" : "1.2");
         std::println(os_, "{}node [shape=box,style=filled,fontname=\"monospace\"];", tab_);
     }
 
@@ -52,40 +54,80 @@ public:
         epilogue();
     }
 
-    void recurse(const Def* def, int max) {
-        if (max == 0 || !done_.emplace(def).second) return;
-
-        std::print(os_, "{}_{}[", tab_, def->gid());
+    /// Emits a single node with id @p nid for @p def.
+    /// The same @p def may be emitted under several ids when inline_ duplicates shared leaves.
+    void emit_node(std::string_view nid, const Def* def) {
+        std::print(os_, "{}{}[", tab_, nid);
 
         if (def->isa_mut())
             if (def == root_)
-                os_ << "style=\"filled,diagonals,bold\"";
+                os_ << "style=\"filled,diagonals,bold\",";
             else
-                os_ << "style=\"filled,diagonals\",penwidth=2";
+                os_ << "style=\"filled,diagonals\",penwidth=2,";
         else if (def == root_)
-            os_ << "style=\"filled,bold\"";
+            os_ << "style=\"filled,bold\",";
 
         label(def) << ',';
         color(def) << ',';
-        if (def->is_closed()) os_ << "rank=min,";
+        // Pin closed defs to the top row.
+        // In inline mode only mutables are pinned, so shared leaves flow next to their users instead of piling up in a
+        // detached row.
+        if (def->is_closed() && (!cfg_.inline_consts || def->isa_mut())) os_ << "rank=min,";
         tooltip(def) << "];\n";
+    }
+
+    void recurse(const Def* def, int max) {
+        if (max == 0 || !done_.emplace(def).second) return;
+
+        emit_node(std::format("_{}", def->gid()), def);
 
         if (def->is_set()) {
             for (size_t i = 0, e = def->num_ops(); i != e; ++i) {
                 auto op = def->op(i);
-                recurse(op, max - 1);
-                if (op->isa<Lit>() || op->isa<Axm>() || def->isa<Var>() || def->isa<Nat>() || def->isa<Idx>())
-                    std::println(os_, "{}_{}:{} -> _{}[color=\"#00000000\",constraint=false];", tab_, def->gid(), i,
-                                 op->gid());
-                else
-                    std::println(os_, "{}_{}:{} -> _{};", tab_, def->gid(), i, op->gid());
+                // By default hide a Lam::filter() that still carries its kind's default: continuations default to ff,
+                // direct-style functions to tt.
+                if (!cfg_.default_filter && i == 0)
+                    if (auto lam = def->isa<Lam>();
+                        lam && lam->filter() == (Lam::isa_cn(lam) ? lam->world().lit_ff() : lam->world().lit_tt()))
+                        continue;
+
+                // Literals and axioms are heavily shared, so by default we detach their edges (invisible and
+                // non-constraining) to keep the layout readable. With inline_ we instead duplicate such a leaf per use:
+                // each reference gets its own local node, which avoids a star of long shared edges - handy for small
+                // graphs. A Var points back at its binder, so its edge is always detached to avoid long back-edges.
+                if (cfg_.inline_consts && (op->isa<Lit>() || op->isa<Axm>())) {
+                    auto dup = std::format("_{}_{}", def->gid(), i);
+                    emit_node(dup, op);
+                    std::println(os_, "{}_{}:{} -> {};", tab_, def->gid(), i, dup);
+                    type_edge(dup, op, max - 1);
+                } else {
+                    recurse(op, max - 1);
+                    bool detach = def->isa<Var>()
+                               || (!cfg_.inline_consts
+                                   && (op->isa<Lit>() || op->isa<Axm>() || def->isa<Nat>() || def->isa<Idx>()));
+                    if (detach) {
+                        // Detached edges are transparent by default to keep the layout readable (xdot still
+                        // highlights them on hover). With show_hidden we render them statically in a subtle gray.
+                        auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
+                        std::println(os_, "{}_{}:{} -> _{}[color=\"{}\",constraint=false];", tab_, def->gid(), i,
+                                     op->gid(), edge_color);
+                    } else
+                        std::println(os_, "{}_{}:{} -> _{};", tab_, def->gid(), i, op->gid());
+                }
             }
         }
 
-        if (auto t = def->type(); t && types_) {
-            recurse(t, max - 1);
-            std::println(os_, "{}_{} -> _{}[color=\"#00000000\",constraint=false,style=dashed];", tab_, def->gid(),
-                         t->gid());
+        type_edge(std::format("_{}", def->gid()), def, max - 1);
+    }
+
+    /// Recurses into @p def's Def::type() and wires a type edge from node @p nid to it if DotConfig::follow_types.
+    /// Shared by the normal and the inline_consts duplication path so both honor follow_types uniformly.
+    void type_edge(std::string_view nid, const Def* def, int max) {
+        if (auto t = def->type(); t && cfg_.follow_types) {
+            recurse(t, max);
+            auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
+            std::println(os_, "{}{} -> _{}[color=\"{}\",constraint=false,style=dashed];", tab_, nid, t->gid(),
+                         edge_color);
         }
     }
 
@@ -149,7 +191,7 @@ public:
 
 private:
     std::ostream& os_;
-    bool types_;
+    DotConfig cfg_;
     const Def* root_;
     fe::Tab tab_ = fe::Tab::spaces();
     DefSet done_;
@@ -157,34 +199,34 @@ private:
 
 } // namespace
 
-void Def::dot(std::ostream& ostream, int max, bool types) const { Dot(ostream, types, this).run(this, max); }
+void Def::dot(std::ostream& ostream, DotConfig cfg) const { Dot(ostream, cfg, this).run(this, cfg.max); }
 
-void Def::dot(const char* file, int max, bool types) const {
+void Def::dot(const char* file, DotConfig cfg) const {
     if (!file) {
-        dot(std::cout, max, types);
+        dot(std::cout, cfg);
     } else {
         auto of = std::ofstream(file);
-        dot(of, max, types);
+        dot(of, cfg);
     }
 }
 
-void World::dot(const char* file, bool annexes, bool types) const {
+void World::dot(const char* file, DotConfig cfg) const {
     if (!file) {
-        dot(std::cout, annexes, types);
+        dot(std::cout, cfg);
     } else {
         auto of = std::ofstream(file);
-        dot(of, annexes, types);
+        dot(of, cfg);
     }
 }
 
-void World::dot(std::ostream& os, bool anx, bool types) const {
-    Dot dot(os, types);
+void World::dot(std::ostream& os, DotConfig cfg) const {
+    Dot dot(os, cfg);
     dot.prologue();
     for (auto external : externals().muts())
-        dot.recurse(external, std::numeric_limits<int>::max());
-    if (anx)
+        dot.recurse(external, cfg.max);
+    if (cfg.all_annexes)
         for (auto annex : annexes().defs())
-            dot.recurse(annex, std::numeric_limits<int>::max());
+            dot.recurse(annex, cfg.max);
     dot.epilogue();
 }
 
