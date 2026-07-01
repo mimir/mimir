@@ -29,7 +29,7 @@ add_custom_command(
     OUTPUT ${ITER_SVG}
     COMMAND mim lit/docs/iter.mim --dot-inline --dot-hide-default-filter --dot-show-detached --output-dot ${ITER_DOT}
     COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${ITER_DOT} -o ${ITER_SVG}
-    DEPENDS mim "${LIT_DOCS}/iter.mim"
+    DEPENDS mim mim_all_plugins "${LIT_DOCS}/iter.mim"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generating MimIR graph for the iter example in docs/mimir.md"
 )
@@ -38,7 +38,7 @@ add_custom_command(
     OUTPUT ${COUNT_SVG}
     COMMAND mim lit/docs/count.mim --dot-inline --dot-hide-default-filter --dot-show-detached --output-dot ${COUNT_DOT}
     COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${COUNT_DOT} -o ${COUNT_SVG}
-    DEPENDS mim "${LIT_DOCS}/count.mim"
+    DEPENDS mim mim_all_plugins "${LIT_DOCS}/count.mim"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generating MimIR graph for the count example in docs/mimir.md"
 )
@@ -47,7 +47,7 @@ add_custom_command(
     OUTPUT ${SQ_SVG}
     COMMAND mim lit/docs/sq.mim --dot-inline --dot-hide-default-filter --dot-show-detached --output-dot ${SQ_DOT}
     COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${SQ_DOT} -o ${SQ_SVG}
-    DEPENDS mim "${LIT_DOCS}/sq.mim"
+    DEPENDS mim mim_all_plugins "${LIT_DOCS}/sq.mim"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generating MimIR graph for the sq example in docs/README.md"
 )
@@ -56,7 +56,7 @@ add_custom_command(
     OUTPUT ${DEP_SVG}
     COMMAND mim lit/docs/dep.mim --dot-inline --dot-hide-default-filter --dot-show-detached --dot-follow-types --output-dot ${DEP_DOT}
     COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${DEP_DOT} -o ${DEP_SVG}
-    DEPENDS mim "${LIT_DOCS}/dep.mim"
+    DEPENDS mim mim_all_plugins "${LIT_DOCS}/dep.mim"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generating MimIR graph for the dependent-types example in docs/mimir.md"
 )
