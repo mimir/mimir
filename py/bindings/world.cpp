@@ -70,9 +70,13 @@ void init_world(nb::module_& m) {
                               .default_filter = default_filter,
                               .show_hidden    = show_hidden});
              },
-             nb::arg("file") = nullptr, nb::arg("max") = std::numeric_limits<int>::max(),
-             nb::arg("all_annexes") = false, nb::arg("follow_types") = false, nb::arg("inline_consts") = false,
-             nb::arg("default_filter") = false, nb::arg("show_hidden") = false)
+             nb::arg("file") = nullptr,
+             nb::arg("max") = std::numeric_limits<int>::max(),
+             nb::arg("all_annexes") = false,
+             nb::arg("follow_types") = false,
+             nb::arg("inline_consts") = false,
+             nb::arg("default_filter") = false,
+             nb::arg("show_hidden") = false)
         .def("annex", [](World& w, uint64_t id) { return w.annex(id); }, nb::rv_policy::reference_internal);
     // clang-format on
 }
