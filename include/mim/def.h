@@ -210,17 +210,15 @@ public:
 };
 
 /// Options for Def::dot and World::dot.
-/// @note Def::dot honors DotConfig::max; World::dot honors DotConfig::annexes.
+/// @note Def::dot honors DotConfig::max; World::dot honors DotConfig::all_annexes.
 struct DotConfig {
-    int max      = std::numeric_limits<int>::max(); ///< Maximum recursion depth (Def::dot only).
-    bool annexes = false;                           ///< Include all annexes - even if unused (World::dot only).
-    bool types   = false;                           ///< Follow Def::type() dependencies.
-    bool inline_consts
-        = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them into a separate row.
-    bool hide_default_filter = false; ///< Omit a Lam::filter() that still carries its kind's default (ff for
-                                      ///< continuations, tt for direct-style functions).
-    bool show_detached = false;       ///< Render otherwise-transparent detached edges (Var→binder back-edges,
-                                      ///< shared literals/axioms, type edges) with a visible color.
+    int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth (Def::dot only).
+    bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
+    bool follow_types   = false;                           ///< Follow Def::type() dependencies.
+    bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
+    bool default_filter = false; ///< Show Lam::filter() even its default choice.
+    bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
+                                 ///< shared literals/axioms, type edges) with a visible color.
 };
 
 /// Base class for all Def%s.

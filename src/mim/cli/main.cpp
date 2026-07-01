@@ -27,12 +27,8 @@ int main(int argc, char** argv) {
         bool show_help           = false;
         bool show_version        = false;
         bool list_search_paths   = false;
-        bool dot_follow_types    = false;
-        bool dot_all_annexes     = false;
-        bool dot_inline          = false;
-        bool dot_hide_filter     = false;
-        bool dot_show_detached   = false;
         bool sexpr_include_types = false;
+        DotConfig dot;
         std::string input, prefix;
         std::string clang = sys::find_cmd("clang");
         std::vector<std::string> plugins, search_paths;
@@ -86,11 +82,11 @@ int main(int argc, char** argv) {
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(sexpr_include_types                )      ["--sexpr-include-types"  ]("Wraps symbolic expression terms in a type annotation. Types will not be wrapped in type annotations.")
-            | lyra::opt(dot_follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
-            | lyra::opt(dot_all_annexes                    )      ["--dot-all-annexes"      ]("Output all annexes - even if unused - in DOT output.")
-            | lyra::opt(dot_inline                         )      ["--dot-inline"           ]("Wire up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
-            | lyra::opt(dot_hide_filter                    )      ["--dot-hide-default-filter"]("Hide a lambda's filter in DOT output if it still carries the default (ff for continuations, tt for direct-style functions).")
-            | lyra::opt(dot_show_detached                  )      ["--dot-show-detached"    ]("Render otherwise-transparent detached edges in DOT output (Var->binder back-edges, shared literals/axioms, and type edges) in a subtle gray instead of fully transparent.")
+            | lyra::opt(dot.follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
+            | lyra::opt(dot.all_annexes                    )      ["--dot-all-annexes"      ]("Output all annexes - even if unused - in DOT output.")
+            | lyra::opt(dot.inline_consts                  )      ["--dot-inline-consts"    ]("Wire up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
+            | lyra::opt(dot.default_filter                 )      ["--dot-default-filter"   ]("Always show a lambda's filter in DOT output - even if it is the default one (ff for continuations, tt for direct-style functions).")
+            | lyra::opt(dot.show_hidden                    )      ["--dot-show-hidden"      ]("Render otherwise-transparent detached edges in DOT output (Var->binder back-edges, shared literals/axioms, and type edges) in a subtle gray instead of fully transparent.")
             | lyra::opt(flags.dump_recursive               )      ["--dump-recursive"       ]("Dumps Mim program with a simple recursive algorithm that is not readable again from Mim but is less fragile and also works for broken Mim programs.")
             | lyra::opt(flags.aggressive_lam_spec          )      ["--aggr-lam-spec"        ]("Overrides LamSpec behavior to follow recursive calls.")
             | lyra::opt(flags.scalarize_threshold, "threshold")   ["--scalarize-threshold"  ]("MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
@@ -186,12 +182,7 @@ int main(int argc, char** argv) {
                 mod->compile(ast);
                 optimize(world);
 
-                if (auto s = os[Dot])
-                    world.dot(*s, {.annexes             = dot_all_annexes,
-                                   .types               = dot_follow_types,
-                                   .inline_consts       = dot_inline,
-                                   .hide_default_filter = dot_hide_filter,
-                                   .show_detached       = dot_show_detached});
+                if (auto s = os[Dot]) world.dot(*s, dot);
                 if (auto s = os[Mim]) world.dump(*s);
                 if (auto s = os[Nest]) mim::Nest(world).dot(*s);
 

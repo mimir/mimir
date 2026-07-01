@@ -1,9 +1,7 @@
 set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.sh")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
-# Single source of truth: the .mim examples live in lit/docs so they double as
-# regularly-run lit regression tests; the docs include them and render their graphs.
-set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs")
+set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
 
 add_custom_command(
     OUTPUT ${CLI_HELP}
@@ -13,10 +11,8 @@ add_custom_command(
 )
 
 # The tour graphs are small and fit on the page, so we render them to *static* SVGs
-# (embedded via @image html) for tight margins. INTERACTIVE_SVG stays on for the larger
-# auto-generated API graphs, which benefit from doxygen's pan/zoom viewer.
-# Each example lives in lit/docs/<name>.mim; dep additionally follows type edges.
-set(DOC_GRAPH_FLAGS --dot-inline --dot-hide-default-filter --dot-show-detached)
+# (embedded via @image html) for tight margins.
+set(DOC_GRAPH_FLAGS --dot-inline-consts --dot-show-hidden)
 set(dep_EXTRA_FLAGS --dot-follow-types)
 
 set(DOC_GRAPH_SVGS "")

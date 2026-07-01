@@ -1,6 +1,4 @@
-/* doxygen-awesome already caps graph width (.contents div.image object { max-width: 100% }), so the
- * static tour graphs never overflow. This only *centers* them — both the static <object> graphs and the
- * interactive API <iframe> graphs — so a small graph isn't stranded against the left with a big gutter. */
+/* shrink margins for embedded dot graphs */
 .contents .image object,
 .contents .image img,
 .dotgraph img,

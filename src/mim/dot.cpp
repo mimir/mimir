@@ -84,12 +84,13 @@ public:
         if (def->is_set()) {
             for (size_t i = 0, e = def->num_ops(); i != e; ++i) {
                 auto op = def->op(i);
-                // Optionally hide a Lam::filter() that still carries its default: continuations default to ff,
+                // By default hide a Lam::filter() that still carries its kind's default: continuations default to ff,
                 // direct-style functions to tt.
-                if (cfg_.hide_default_filter && i == 0)
+                if (!cfg_.default_filter && i == 0)
                     if (auto lam = def->isa<Lam>();
                         lam && lam->filter() == (Lam::isa_cn(lam) ? lam->world().lit_ff() : lam->world().lit_tt()))
                         continue;
+
                 // Literals and axioms are heavily shared, so by default we detach their edges (invisible and
                 // non-constraining) to keep the layout readable. With inline_ we instead duplicate such a leaf per use:
                 // each reference gets its own local node, which avoids a star of long shared edges - handy for small
@@ -105,8 +106,8 @@ public:
                                    && (op->isa<Lit>() || op->isa<Axm>() || def->isa<Nat>() || def->isa<Idx>()));
                     if (detach) {
                         // Detached edges are transparent by default to keep the layout readable (xdot still
-                        // highlights them on hover). With show_detached we render them statically in a subtle gray.
-                        auto edge_color = cfg_.show_detached ? "gray" : "#00000000";
+                        // highlights them on hover). With show_hidden we render them statically in a subtle gray.
+                        auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
                         std::println(os_, "{}_{}:{} -> _{}[color=\"{}\",constraint=false];", tab_, def->gid(), i,
                                      op->gid(), edge_color);
                     } else
@@ -115,9 +116,9 @@ public:
             }
         }
 
-        if (auto t = def->type(); t && cfg_.types) {
+        if (auto t = def->type(); t && cfg_.follow_types) {
             recurse(t, max - 1);
-            auto edge_color = cfg_.show_detached ? "gray" : "#00000000";
+            auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
             std::println(os_, "{}_{} -> _{}[color=\"{}\",constraint=false,style=dashed];", tab_, def->gid(), t->gid(),
                          edge_color);
         }
@@ -216,7 +217,7 @@ void World::dot(std::ostream& os, DotConfig cfg) const {
     dot.prologue();
     for (auto external : externals().muts())
         dot.recurse(external, cfg.max);
-    if (cfg.annexes)
+    if (cfg.all_annexes)
         for (auto annex : annexes().defs())
             dot.recurse(annex, cfg.max);
     dot.epilogue();
