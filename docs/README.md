@@ -51,7 +51,7 @@ This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam
 What remains is the bare `x * x`, with **no trace** of `sq` or the existential abstraction.
 The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
 
-@image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated."
+@image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
 
 For the full picture, with more examples and the graphs MimIR builds for them, read the [Tour of MimIR](@ref mimir).
 

@@ -131,7 +131,7 @@ CPS makes three pieces of SSA folklore explicit:
 
 This is the graph MimIR builds for `count`:
 
-@image html count.svg "The MimIR graph of `count`."
+@image html count.svg "The MimIR graph of `count` (type edges elided)"
 
 @note **Reading the graphs.**
 Each box is a [`Def`](@ref mim::Def) — one node of the program graph — labelled with its kind.
@@ -206,7 +206,7 @@ Only `iter` is `extern`, hence the sole [root](@ref mim::World::roots).
 `succ`, `add`, `mul`, `pow`, and the assertion are all unreachable from the roots, so [`Cleanup`](@ref mim::Cleanup) prunes them.
 The graph MimIR keeps is therefore just `iter` itself:
 
-@image html iter.svg "The MimIR graph of `iter` — only the `extern` root survives."
+@image html iter.svg "The MimIR graph of `iter` — only the `extern` root survives (type edges elided)"
 
 The two branches `alt` and `cons` are **floating functions**: MimIR references them as ordinary nodes selected by `cond` instead of nesting them inside `iter`, and the recursive call simply points straight back at the `iter` node.
 This is MimIR's sea-of-nodes representation in action — the same machinery that expressed the counting loop above, now carrying a higher-order, polymorphic, direct-style function.
@@ -231,9 +231,7 @@ Watch a *type* come out of an ordinary function:
 `zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the *value* `n` of its argument.
 Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `%%core.select` above, even though the result is a *type* — and `%%refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
 
-With type edges followed, the graph makes it literal:
-
-@image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown."
+@image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown (type edges are dashed)"
 
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.
