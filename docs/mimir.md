@@ -94,7 +94,7 @@ This makes MimIR's take on CPS much more faithful to the original SSA formulatio
 
 \include "count.mim"
 
-### Correspondence between SSA form and CPS in MimIR
+Correspondence between SSA form and CPS in MimIR:
 
 | SSA                                  | MimIR / CPS                                                              |
 | ------------------------------------ | ------------------------------------------------------------------------ |
