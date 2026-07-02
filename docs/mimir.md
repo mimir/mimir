@@ -2,12 +2,12 @@
 
 [TOC]
 
-This tour walks through three small but complete MimIR programs.
-All are compiled by the `mim` CLI and the graphs shown are generated automatically from the source via `mim --output-dot`.
+This tour walks through MimIR's plugin architecture, then three MimIR programs.
+These are compiled by the `mim` [CLI](@ref cli) and the graphs shown are generated automatically from the source via `mim --output-dot`.
 
-The first shows how you write a classic [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) computation — a counting loop — using [**continuation-passing style (CPS)**](https://en.wikipedia.org/wiki/Continuation-passing_style).
-The second switches to **direct style** and adds [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) and [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism).
-The third shows MimIR's defining trait: **types are ordinary values**, computed in the same graph as terms — the basis for [**dependent types**](https://en.wikipedia.org/wiki/Dependent_type).
+1. A classic [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) computation — a counting loop — written in [**continuation-passing style (CPS)**](https://en.wikipedia.org/wiki/Continuation-passing_style).
+2. A switch to **direct style** that adds [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) and [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism).
+3. A demonstration of MimIR's defining trait: **types are ordinary values**, computed in the same graph as terms — the basis for [**dependent types**](https://en.wikipedia.org/wiki/Dependent_type).
 
 Under the hood, MimIR is not a list of instructions but a **graph**.
 The `let` bindings in the examples below are pure surface sugar — they only name subexpressions.
@@ -88,13 +88,13 @@ exit:
 ```
 
 MimIR expresses the **same** program through the well-established correspondence between SSA form and CPS (see [Kelsey'95](https://dl.acm.org/doi/10.1145/202530.202532) and [Appel'98](https://dl.acm.org/doi/10.1145/278283.278285)):
-every basic block becomes a **continuation** (`con`: a function that never returns).
+every basic block becomes a **continuation** (`con` is a function that never returns).
 However, in contrast to other CPS representations, functions and other binders in MimIR are **scopeless**: they are **not** explicitly nested inside one another.
 This makes MimIR's take on CPS much more faithful to the original SSA formulation (see @ref mimir_scopeless):
 
 \include "count.mim"
 
-The correspondence is exact:
+### Correspondence between SSA form and CPS in MimIR
 
 | SSA                                  | MimIR / CPS                                                              |
 | ------------------------------------ | ------------------------------------------------------------------------ |
@@ -122,17 +122,21 @@ CPS makes three pieces of SSA folklore explicit:
 
 - **Blocks have honest types.**
 
-  `loop : Cn [I32, I32]`, `body, exit : Cn []`, and the return continuation `: Cn I32`, where `Cn A` is a function from `A` that never returns.
-  A traditional basic block carries no type at all.
+  `Cn A` is a function from `A` that never returns and is syntactic sugar for `A → ⊥`.
+  All basic blocks and even the return point are continuations:
+  - `loop : Cn [I32, I32]`
+  - `body, exit : Cn []`
+  - `return : Cn I32`
+  In contrast, a traditional basic block carries no type at all.
 
 This is the graph MimIR builds for `count`:
+
+@image html count.svg "The MimIR graph of `count`."
 
 @note **Reading the graphs.**
 Each box is a [`Def`](@ref mim::Def) — one node of the program graph — labelled with its kind.
 Boxes drawn with a clipped, **diagonal corner** are *mutable* binders (functions and other recursive nodes); plain boxes are *immutable*, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) expressions.
 Edges run from a node to its operands.
-
-@image html count.svg "The MimIR graph of `count`."
 
 @note `extern` marks `count` as a root of the program graph.
 Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
@@ -152,19 +156,19 @@ Two classic chores simply vanish:
 
 - **β-reduction.**
 
-  A scoped IR typically *block-floats* functions outward before β-reduction to avoid duplicating them.
+  A scoped IR typically *block-floats* functions independent from the substitution outward before β-reduction to avoid duplicating them.
   MimIR just β-reduces on the spot.
   And this is not special to β-reduction: substitution in MimIR is a graph traversal that automatically skips any subgraph not depending on the substituted variables — unrelated functions are left untouched and shared — with no scopes to keep consistent.
 
 - **Specialization.**
 
-  A scoped IR *block-sinks* a function inward, nesting it deep enough that the variables it uses stay in scope.
+  When specializing a function, a scoped IR needs to *block-sink* it inward, nesting it deep enough that all new free variables are correctly scoped.
   MimIR never needs to: a binder simply refers to whatever it refers to, wherever it sits.
 
 And this is not limited to continuations: in MimIR **every** binder is scopeless — direct-style functions, dependent tuple types, and the rest.
 
 What is more, there is **no control-flow graph and no dominator tree**.
-The natural worry is *then how do you run any analysis?* — SSA leans on dominance for φ-placement, GVN, code motion, and the rest.
+The natural worry is *then how do you run any analysis?* — SSA leans on dominance for φ-placement, GVN, code motion, etc.
 MimIR replaces the dominator tree with the **nesting tree** induced by free variables, and answers liveness/scoping questions by querying a `Def`'s free-variable set directly — computed lazily and memoized.
 These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction, its complexity bounds, and its metatheory are spelled out in [*SSA without Dominance for Higher-Order Programs*](https://doi.org/10.48550/arXiv.2604.09961).
 
@@ -199,7 +203,7 @@ A mismatch would fail the build.
 
 Now notice what *survives*.
 Only `iter` is `extern`, hence the sole [root](@ref mim::World::roots).
-`succ`, `add`, `mul`, `pow`, and the assertion are all unreachable from the roots once partial evaluation has run, so [`Cleanup`](@ref mim::Cleanup) prunes them.
+`succ`, `add`, `mul`, `pow`, and the assertion are all unreachable from the roots, so [`Cleanup`](@ref mim::Cleanup) prunes them.
 The graph MimIR keeps is therefore just `iter` itself:
 
 @image html iter.svg "The MimIR graph of `iter` — only the `extern` root survives."
