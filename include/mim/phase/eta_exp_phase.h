@@ -53,7 +53,7 @@ private:
     }
 
     bool analyze() final;
-    void analyze(const Def*);
+    void analyze(const Def*, Lattice);
     void visit(const Def*, Lattice);
 
     void rewrite_annex(flags_t, Sym, const Def*) final;
@@ -63,7 +63,7 @@ private:
     const Def* rewrite_imm_Var(const Var*) final;
     const Def* rewrite_no_eta(const Def* old_def) { return RWPhase::rewrite(old_def); }
 
-    DefSet analyzed_;
+    DefMap<Lattice> analyzed_;
     GIDMap<const Lam*, Lattice> lam2lattice_;
 };
 

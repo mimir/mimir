@@ -7,16 +7,6 @@
 
 #include "mim/plug/mem/mem.h"
 
-template<std::ranges::input_range... Rs>
-auto concat_to_vector(Rs&&... rs) {
-    using T = std::common_type_t<std::ranges::range_value_t<Rs>...>;
-    mim::Vector<T> out;
-
-    (std::ranges::copy(rs, std::back_inserter(out)), ...);
-
-    return out;
-}
-
 namespace mim::plug::mem::phase {
 
 enum {
@@ -31,12 +21,6 @@ static const Def* isa_gvn_proxy(const Def* def) {
     return nullptr;
 }
 
-static const Def* isa_phi_proxy(const Def* def) {
-    if (auto mem = def->isa<Proxy>())
-        if (mem->tag() == Proxy_Phi) return mem;
-    return nullptr;
-}
-
 static const Def* isa_slot_proxy(const Def* def) {
     if (auto mem = def->isa<Proxy>())
         if (mem->tag() == Proxy_Slot) return mem;
@@ -47,6 +31,12 @@ void SymExprOpt::Analysis::reset() {
     mim::Analysis::reset();
     visited_.clear();
     mut2slot2value_.clear();
+    deps_done_.clear();
+}
+
+Def* SymExprOpt::Analysis::rewrite_deps(Def* mut) {
+    if (auto [_, ins] = deps_done_.emplace(mut); !ins) return mut;
+    return mim::Analysis::rewrite_deps(mut);
 }
 
 void SymExprOpt::Analysis::start() {
@@ -56,11 +46,14 @@ void SymExprOpt::Analysis::start() {
 }
 
 void SymExprOpt::Analysis::analyze(const Def* def) {
+    if (def->isa<Var>()) return; // ignore Var's mut; muts are reached from the roots anyway
     if (auto l = lookup(def)) def = l;
 
     if (auto sloxy = isa_slot_proxy(def)) {
-        auto slot = sloxy2slot_[sloxy];
+        auto slot     = sloxy2slot_[sloxy];
+        auto [_, ptr] = slot->projs<2>();
         set(slot, slot);
+        set(ptr, ptr);
         DLOG("setting slot to top: {}", slot);
         invalidate();
     }
@@ -77,9 +70,9 @@ const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
     if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
     // if we didn't write to the slot, and so it's not in the local map, check if we have a phi for this slot in the
     // lattice
-    auto slot_type = slot->type(); // getting the type here only works like this because slot2value is only ever called
-                                   // with slot proxies
-    auto phi = world().proxy(slot_type, {curr_mut(), slot}, 0, Proxy_Phi);
+    auto [T, as] = Axm::as<mem::Ptr>(slot->type())
+                       ->args<2>(); // works because slot2value is only ever called with Ptr-typed slot proxies
+    auto phi = world().proxy(T, {curr_mut(), slot}, 0, Proxy_Phi);
     if (auto it = lattice_.find(phi); it != lattice_.end()) return it->second;
     return nullptr;
 }
@@ -186,8 +179,12 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem       = rewrite(mem);
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
-        slot2value(abstr_ptr, abstr_val);
-        DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
+        // Only track values stored through slot proxies; arbitrary pointers may alias each other.
+        if (isa_slot_proxy(abstr_ptr)) {
+            slot2value(abstr_ptr, abstr_val);
+            DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
+        }
+        analyze(abstr_val); // a slot stored *as value* escapes
         return abstr_mem;
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]                   = load->decurry()->args<2>();
@@ -196,15 +193,26 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         rewrite(mem);
         auto abstr_ptr = rewrite(ptr);
         DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
-        if (auto known_value = slot2value(abstr_ptr)) {
-            DLOG("we know that it's {}", known_value);
-            set(result_load, known_value);
-            return world().tuple({result_mem, known_value});
-        } else {
-            DLOG("couldn't resolve load of {}, returning bot", abstr_ptr);
+        if (isa_slot_proxy(abstr_ptr)) {
+            if (auto known_value = slot2value(abstr_ptr)) {
+                DLOG("we know that it's {}", known_value);
+                set(result_load, known_value);
+                return world().tuple({result_mem, known_value});
+            }
+            DLOG("couldn't resolve load of {} yet, returning bot", abstr_ptr);
             return world().tuple({result_mem, world().bot(T)});
         }
+        // A load through an arbitrary pointer never resolves; its result is top - not bot -
+        // as bot would be propagated as a concrete value.
+        // set() overwrites a possibly stale value from an earlier round in which the pointer was still a slot proxy.
+        DLOG("load from unknown pointer {}, treating result as top", abstr_ptr);
+        set(result_load, result_load);
+        return world().tuple({result_mem, result_load});
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
+        // if the slot is top (address taken), it escapes and must be kept as is
+        if (auto i = lattice_.find(slot); i != lattice_.end() && i->second == slot)
+            return mim::Analysis::rewrite_imm_App(app);
+
         auto [Ta, mi]   = slot->uncurry_args<2>();
         auto [T, as]    = Ta->projs<2>();
         auto [mem, id]  = mi->projs<2>();
@@ -212,8 +220,9 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem  = rewrite(mem);
         auto abstr_id   = rewrite(id);
         all_slots_[ptr] = T;
-        // TODO if top (address taken), don't do that
-        auto sloxy         = world().proxy(T, {curr_mut(), abstr_id}, 0, Proxy_Slot);
+        // The sloxy is Ptr-typed so that any use outside of load/store still type-checks;
+        // analyze() catches such leaked sloxies afterwards and sets the slot to top.
+        auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, 0, Proxy_Slot);
         sloxy2slot_[sloxy] = slot;
         DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
         set(ptr, sloxy);
@@ -232,8 +241,16 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             if (auto value = slot2value(abstr_slot)) abstr_args.emplace_back(value);
         }
 
-        if (!l || *l)
-            if (auto lam = branch.tt()->isa_mut<Lam>(); isa_optimizable(lam)) {
+        auto tt = branch.tt()->isa_mut<Lam>();
+        auto ff = branch.ff()->isa_mut<Lam>();
+
+        // Propagate into both sides - even if the condition is abstractly known:
+        // a side skipped in one fixed-point round would accumulate a lattice - and hence a signature -
+        // that differs from its sibling's, but SymExprOpt::rewrite_imm_App relies on both sides agreeing.
+        // For the same reason propagate either into both sides or into none.
+        bool propagated = isa_optimizable(tt) && isa_optimizable(ff);
+        if (propagated) {
+            for (auto lam : {tt, ff}) {
                 DLOG("branch, writing local values to {}", lam);
 
                 DefVec concr_vars;
@@ -256,40 +273,24 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 for (size_t i = 0; i < concr_vars.size(); i++)
                     set(concr_vars[i], abstr_vars[i]);
             }
-        if (!l || !*l)
-            if (auto lam = branch.ff()->isa_mut<Lam>(); isa_optimizable(lam)) {
-                DLOG("branch, writing local values to {}", lam);
+        }
 
-                DefVec concr_vars;
-                for (auto var : lam->tvars())
-                    concr_vars.emplace_back(var);
-
-                for (auto [slot, slot_type] : all_slots_) {
-                    auto abstr_slot = rewrite(slot);
-                    auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
-                    if (slot2value(abstr_slot)) {
-                        concr_vars.emplace_back(phi);
-                    } else {
-                        DLOG("no value found for {}", slot);
-                        // TODO Can this ever happen?
-                    }
-                }
-
-                auto abstr_vars = sccp_gvn_propagate(concr_vars, abstr_args);
-                set(lam->var(), world().tuple(abstr_vars.span().subspan(0, app->num_targs())));
-                for (size_t i = 0; i < concr_vars.size(); i++)
-                    set(concr_vars[i], abstr_vars[i]);
-            }
+        // Propagated sides must be traversed via rewrite_deps() to keep their lattice state;
+        // everything else (Var%s, externals, ...) escapes normally.
+        auto rewrite_side = [&](const Def* side) -> const Def* {
+            if (propagated) return rewrite_deps(side->as_mut());
+            return rewrite(side);
+        };
 
         if (l && !*l) {
-            auto abstr_ff = rewrite_deps(branch.ff()->as_mut());
+            auto abstr_ff = rewrite_side(branch.ff());
             return world().app(abstr_ff, abstr_args.span().subspan(0, app->num_targs()));
         } else if (l && *l) {
-            auto abstr_tt = rewrite_deps(branch.tt()->as_mut());
+            auto abstr_tt = rewrite_side(branch.tt());
             return world().app(abstr_tt, abstr_args.span().subspan(0, app->num_targs()));
         } else {
-            auto abstr_ff = rewrite_deps(branch.ff()->as_mut());
-            auto abstr_tt = rewrite_deps(branch.tt()->as_mut());
+            auto abstr_ff = rewrite_side(branch.ff());
+            auto abstr_tt = rewrite_side(branch.tt());
             return world().app(world().extract(world().tuple({abstr_ff, abstr_tt}), abstr_cond),
                                abstr_args.span().subspan(0, app->num_targs()));
         }
@@ -400,9 +401,7 @@ static bool keep(const Def* old_var, const Def* abstr) {
 
 const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
-        auto [Ta, mi]  = slot->uncurry_args<2>();
-        auto [T, as]   = Ta->projs<2>();
-        auto [mem, id] = mi->projs<2>();
+        auto [mem, id] = slot->args<2>();
         auto [_, ptr]  = slot->projs<2>();
         if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) {
             auto rewritten_mem = rewrite(mem);
@@ -418,7 +417,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
         auto [result_mem, result_load] = load->projs<2>();
         auto [mem, ptr]                = load->args<2>();
         DLOG("rewriting a load from {} ({})", ptr, old_app);
-        if (auto known_load = lattice(result_load)) {
+        if (auto known_load = lattice(result_load); known_load && known_load != result_load) {
             DLOG("rewriting a load from {}, we know that it's {}", ptr, known_load);
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple({rewritten_mem, rewrite(known_load)});
@@ -446,44 +445,11 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             auto new_tt  = needs_seo(old_tt) ? build_lam(old_tt) : rewrite(old_tt);
             auto new_ff  = needs_seo(old_ff) ? build_lam(old_ff) : rewrite(old_ff);
 
-            if (tt_args == ff_args && new_tt->type() == new_ff->type()) {
-                auto new_callee = new_world().extract(new_world().tuple({new_ff, new_tt}), new_cond);
-                return map(old_app, new_world().app(new_callee, tt_args));
-            }
-
-            // the sides disagree on propagated vars/phis; eta-wrap each side with the original signature
-            auto wrap = [&](Lam* old_side, const Def* new_side) -> const Def* {
-                if (!needs_seo(old_side)) return new_side;
-
-                size_t num_old = old_side->num_tvars();
-                auto doms      = DefVec();
-                for (size_t i = 0; i != num_old; ++i)
-                    doms.emplace_back(rewrite(old_side->dom(num_old, i)));
-
-                auto wrapper = new_world().mut_lam(doms, rewrite(old_side->codom()))->set(old_side->dbg());
-                auto args    = DefVec();
-                for (size_t i = 0; i != num_old; ++i) {
-                    auto old_var = old_side->var(num_old, i);
-                    if (keep(old_var, lattice(old_var))) args.emplace_back(wrapper->var(num_old, i));
-                }
-                for (auto [slot, slot_type] : analysis_.all_slots()) {
-                    if (auto sloxy = lattice(slot)) {
-                        auto phi = old_world().proxy(slot_type, {old_side, sloxy}, 0, Proxy_Phi);
-                        if (auto def = lattice(phi); def && keep(phi, def))
-                            args.emplace_back(rewrite_site_value(sloxy, slot_type));
-                    }
-                }
-                wrapper->set(new_world().lit_tt(), new_world().app(new_side, args));
-                return wrapper;
-            };
-
-            auto orig_args = DefVec();
-            for (auto targ : old_app->targs())
-                orig_args.emplace_back(rewrite(targ));
-
-            auto new_callee
-                = new_world().extract(new_world().tuple({wrap(old_ff, new_ff), wrap(old_tt, new_tt)}), new_cond);
-            return map(old_app, new_world().app(new_callee, orig_args));
+            // EtaExpPhase runs beforehand, so both sides are fresh single-use Lams that received the same
+            // propagation; hence their rebuilt signatures and arguments agree.
+            assert(tt_args == ff_args && new_tt->type() == new_ff->type());
+            auto new_callee = new_world().extract(new_world().tuple({new_ff, new_tt}), new_cond);
+            return map(old_app, new_world().app(new_callee, tt_args));
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !isa_optimizable(old_lam)) {
         // Continuations passed to an unknown callee cannot receive extra args for their phis;

@@ -8,23 +8,32 @@ bool EtaExpPhase::analyze() {
     return false; // no fixed-point neccessary
 }
 
-void EtaExpPhase::analyze(const Def* def) {
-    if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
+void EtaExpPhase::analyze(const Def* def, Lattice l) {
+    auto acc = l;
+    if (auto [i, ins] = analyzed_.emplace(def, l); !ins) {
+        acc = join(i->second, l);
+        if (acc == i->second) return; // no new information - already analyzed with this multiplicity
+        i->second = acc;              // re-descend so that deps see the strengthened multiplicity
+    }
     if (def->isa<Var>()) return; // ignore Var's mut
 
+    // An immutable def used more than once in unknown position shares each of its unknown-position deps
+    // just as often; muts reset this multiplicity - using a mut twice doesn't duplicate its body.
+    auto down = !def->isa_mut() && (acc == Unknown_N || acc == Both) ? Unknown_N : Unknown_1;
+
     if (auto app = def->isa<App>()) {
-        visit(app->type(), Lattice::Unknown_1);
+        visit(app->type(), down);
         visit(app->callee(), Lattice::Known);
-        visit(app->arg(), Lattice::Unknown_1);
+        visit(app->arg(), down);
     } else {
         for (auto d : def->deps())
-            visit(d, Lattice::Unknown_1);
+            visit(d, down);
     }
 }
 
 void EtaExpPhase::visit(const Def* def, Lattice l) {
     if (auto lam = def->isa_mut<Lam>()) join(lam, l);
-    analyze(def);
+    analyze(def, l);
 }
 
 void EtaExpPhase::rewrite_annex(flags_t flags, Sym sym, const Def* def) {
@@ -37,7 +46,8 @@ void EtaExpPhase::rewrite_external(Def* old_mut) {
 }
 
 const Def* EtaExpPhase::rewrite(const Def* old_def) {
-    if (auto lam = old_def->isa<Lam>(); lam && eta_expand(lam)) {
+    // Don't wrap a Lam that is itself an η-redex - wrapping a wrapper adds nothing and never converges.
+    if (auto lam = old_def->isa<Lam>(); lam && eta_expand(lam) && !lam->eta_reduce()) {
         auto eta = Lam::eta_expand(rewrite_no_eta(lam));
         DLOG("eta-expand: `{}` → `{}`", lam, eta);
         return eta;

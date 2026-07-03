@@ -62,6 +62,8 @@ private:
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp_gvn_propagate(DefVec&, DefVec&);
         const Def* rewrite_imm_App(const App*) final;
+        /// Traverses each mut only once per fixed-point round; otherwise cyclic CFGs recurse forever.
+        Def* rewrite_deps(Def*) final;
 
         // post-processing analysis to find sloxies that must be set to top
         void analyze(const Def*);
@@ -70,6 +72,7 @@ private:
         Def2Def sloxy2slot_;
         Def2Def all_slots_;
         DefSet visited_;
+        MutSet deps_done_;
     };
 
 public:

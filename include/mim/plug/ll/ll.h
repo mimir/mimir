@@ -174,15 +174,20 @@ inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(cons
 
 inline static const Def* find_common_simd_src(const App* app) {
     const Def* common_src = nullptr;
+    size_t lane           = 0;
     for (auto arg : app->args()) {
         if (Axm::isa<mem::M>(arg->type())) continue;
         auto extract = arg->isa<Extract>();
         if (!extract || !is_simd(extract->tuple()->type())) return nullptr;
+        // Only devectorized args - lane i in position i - may forward the whole vector;
+        // anything else (e.g. a Select with a non-literal index) must stay scalar.
+        if (auto index = Lit::isa(extract->index()); !index || *index != lane++) return nullptr;
         if (!common_src)
             common_src = extract->tuple();
         else if (common_src != extract->tuple())
             return nullptr;
     }
+    if (common_src && is_simd(common_src->type())->first != lane) return nullptr;
     return common_src;
 }
 

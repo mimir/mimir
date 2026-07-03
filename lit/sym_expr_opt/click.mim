@@ -34,7 +34,7 @@ fun extern foo(x: Nat): Nat =
     end;
 
 lam extern _compile(): %compile.Phase =
-    %compile.phases tt (
+    %compile.phases ff (
         %compile.internal_cleanup_phase,
         %compile.phases tt (
             %compile.beta_red_phase,
