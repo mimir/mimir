@@ -25,6 +25,4 @@ lam %cps.cps2ds      (T: *, U:     *)   (f: Fn     T  → U  ):  [    T  → U  
 ///
 /// ## Phases
 ///
-axm %cps.ds2cps_phase: %compile.Phase;
-axm %cps.cps2ds_phase: %compile.Phase;
-axm %cps.conv:         %compile.Phase;
+axm %cps.conv: %compile.Phase;

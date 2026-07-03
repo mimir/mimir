@@ -7,7 +7,7 @@
 
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/tensor/tensor.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -380,7 +380,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto fun = w.mut_fun(inputs->type(), type)->set("mapRed");
         DLOG("fun {} : {}", fun, fun->type());
 
-        auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+        auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         DLOG("ds_fun {} : {}", ds_fun, ds_fun->type());
         auto call = w.app(ds_fun, inputs)->set("call");
         DLOG("call {} : {}", call, call->type());
@@ -594,7 +594,7 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
 
     try {
         auto fun    = w.mut_fun(inputs->type(), type)->set("mapRedAff");
-        auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+        auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         auto call   = w.app(ds_fun, inputs)->set("call");
 
         auto new_inputs = fun->var(0)->set("is");

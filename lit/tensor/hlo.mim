@@ -1,8 +1,8 @@
-// RUN: %mim -p opt %s -p direct -p affine -o - | %FileCheck %s
+// RUN: %mim -p opt %s -p cps -p affine -o - | %FileCheck %s
 plugin tensor;
 plugin refly;
 plugin core;
-plugin direct;
+plugin cps;
 plugin affine;
 plugin math;
 

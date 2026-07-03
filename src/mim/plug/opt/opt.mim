@@ -29,8 +29,7 @@ let mem_opt_passes =
 
 let cps_phases =
     %compile.phases ff (
-        %compile.named_phase "%cps.ds2cps_phase",
-        %compile.named_phase "%cps.cps2ds_phase",
+        %compile.named_phase "%cps.conv",
         optimization_phase,
     );
 
