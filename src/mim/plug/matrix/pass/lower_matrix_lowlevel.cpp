@@ -10,7 +10,7 @@
 
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/matrix/matrix.h"
 #include "mim/plug/mem/mem.h"
 

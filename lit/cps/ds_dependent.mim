@@ -2,7 +2,7 @@
 // RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
 
 plugin core;
-plugin direct;
+plugin cps;
 
 lam U (n: Nat): * = Idx n;
 lam f (n: Nat): Idx n = %core.idx n 0 42;

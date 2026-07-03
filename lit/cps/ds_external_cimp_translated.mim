@@ -14,7 +14,7 @@ con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
 
     con wrapped_atoi [mem_1: %mem.M 0, yield: Cn [%mem.M 0, I32]] =
             atoi (mem_1, val, yield);
-    // let (mem, a) = %direct.cps2ds (%mem.M 0, [%mem.M 0, I32]) wrapped_atoi (mem);
+    // let (mem, a) = %cps.cps2ds (%mem.M 0, [%mem.M 0, I32]) wrapped_atoi (mem);
     wrapped_atoi (mem, atoi_cont_a)
     where
         con atoi_cont_a [mem: %mem.M 0, a: I32] =
@@ -23,7 +23,7 @@ con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
 
             con wrapped_atoi2 [mem_2: %mem.M 0, yield: Cn [%mem.M 0, I32]] =
                 atoi (mem_2, val, yield);
-            // let (mem, b) = %direct.cps2ds (%mem.M 0, [%mem.M 0, I32]) wrapped_atoi2 (mem);
+            // let (mem, b) = %cps.cps2ds (%mem.M 0, [%mem.M 0, I32]) wrapped_atoi2 (mem);
             wrapped_atoi2 (mem, atoi_cont_b)
             where
                 con atoi_cont_b [mem: %mem.M 0, b: I32] =

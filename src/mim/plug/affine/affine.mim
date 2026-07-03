@@ -59,7 +59,7 @@ axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.index, Nat] → %affine.i
 /// Performs multiplication of an affine index with a constant natural number.
 /// The second argument must be a constant natural number (which is a stronger argument than the semiop).
 ///
-lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index = 
+lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index =
     %affine.semiop.mul(d, %refly.check (%core.pe.is_closed(c), c, "The second argument of %affine.op.mul must be a constant."));
 
 ///

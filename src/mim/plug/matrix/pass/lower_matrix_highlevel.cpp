@@ -2,7 +2,7 @@
 
 #include <mim/lam.h>
 
-#include <mim/plug/direct/direct.h>
+#include <mim/plug/cps/cps.h>
 
 #include "mim/plug/matrix/matrix.h"
 
@@ -22,7 +22,7 @@ std::optional<const Def*> internal_function_of_axm(const Axm* axm, const Def* me
     auto& world = axm->world();
     if (auto it = axm_to_impl_map.find(axm->flags()); it != axm_to_impl_map.end()) {
         const Def* spec_fun = world.implicit_app(world.annexes().flags2entry().at(it->second).def, meta_args);
-        auto ds_fun         = direct::op_cps2ds_dep(spec_fun);
+        auto ds_fun         = cps::op_cps2ds_dep(spec_fun);
         return world.app(ds_fun, args);
     }
     return std::nullopt;
@@ -45,7 +45,7 @@ const Def* LowerMatrixHighLevelMapRed::rewrite_(const Def* def) {
 
         auto ext_fun = world().externals()[world().sym("extern_matrix_prod")];
         if (ext_fun && (w_lit && *w_lit == 64)) {
-            auto ds_fun  = direct::op_cps2ds_dep(ext_fun);
+            auto ds_fun  = cps::op_cps2ds_dep(ext_fun);
             auto fun_app = world().app(ds_fun, {mem, m, k, l, M, N});
             return fun_app;
         }

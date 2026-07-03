@@ -2,7 +2,7 @@
 // RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
 
 plugin core;
-plugin direct;
+plugin cps;
 
 
 lam f(a: I32): I32 = %core.wrap.add 0 (2I32, a);

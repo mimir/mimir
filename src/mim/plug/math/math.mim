@@ -226,11 +226,11 @@ axm %math.cmp(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
               Ugle =   u, UglE =  ue, UgLe =  ul, UgLE = ule,
               UGle =  ug, UGlE = uge, UGLe = une, UGLE =   t):
     {pe: «2; Nat»} → Nat → «2; %math.F pe» → Bool, normalize_cmp;
-/// 
+///
 /// ### %%math.is_finite
-/// 
+///
 /// Returns True if the float is finite, and false if not (i.e. if it is +Inf/-Inf/NAN)
-/// 
+///
 axm %math.is_finite: {pe: «2; Nat»} → Nat → %math.F pe → Bool;
 ///
 /// ### %%math.conv

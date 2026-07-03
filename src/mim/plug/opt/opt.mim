@@ -27,10 +27,9 @@ let mem_opt_passes =
         %compile.named_pass "%mem.copy_prop_ff_pass",
     );
 
-let direct_phases =
+let cps_phases =
     %compile.phases ff (
-        %compile.named_phase "%direct.ds2cps_phase",
-        %compile.named_phase "%direct.cps2ds_phase",
+        %compile.named_phase "%cps.conv",
         optimization_phase,
     );
 
@@ -111,11 +110,11 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
             )
         ),
-        %compile.cond_phase "direct" direct_phases,
+        %compile.cond_phase "cps" cps_phases,
         %compile.cond_phase "matrix" (
             %compile.phases ff (
                 matrix_lower_phase,
-                %compile.cond_phase "direct" direct_phases,
+                %compile.cond_phase "cps" cps_phases,
             )
         ),
         %compile.named_phase "%affine.lower_for_phase",

@@ -6,7 +6,7 @@
 #include "mim/util/types.h"
 
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -80,7 +80,8 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto inner   = Axm::isa<tensor::map_reduce>(input_k);
         if (!inner) continue;
 
-        auto [inner_nis, inner_ToRo, inner_So, inner_TisRisSis, inner_comb_init, inner_subs, inner_is] = inner->uncurry_args<7>();
+        auto [inner_nis, inner_ToRo, inner_So, inner_TisRisSis, inner_comb_init, inner_subs, inner_is]
+            = inner->uncurry_args<7>();
         auto [inner_comb, inner_init]          = inner_comb_init->projs<2>();
         auto [inner_Tis, inner_Ris, inner_Sis] = inner_TisRisSis->projs<3>();
         auto [inner_To, inner_Ro]              = inner_ToRo->projs<2>();

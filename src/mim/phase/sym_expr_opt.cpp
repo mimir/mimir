@@ -168,7 +168,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             }
 
             // build new app
-            auto new_args  = DefVec{};
+            auto new_args = DefVec{};
             for (size_t i = 0; i != num_old; ++i) {
                 auto old_var = old_lam->var(num_old, i);
                 auto abstr   = lattice(old_var);

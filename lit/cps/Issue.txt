@@ -1,8 +1,8 @@
 ds2cps_ax_cps2ds_dependent.mim
-./build/bin/mim -d direct ./lit/direct/ds2cps_ax_cps2ds_dependent.mim -o - -VVVV
+./build/bin/mim -d cps ./lit/cps/ds2cps_ax_cps2ds_dependent.mim -o - -VVVV
 
-./lit/direct/ds2cps_ax_cps2ds_dependent.mim:32:14-32:47: error: cannot pass argument 'f_258568' of type
-'Cn [n_258456: Nat, _258468: Cn (Idx n_258456)]' to '%direct.cps2ds_dep (Nat, U_259700)' of domain
+./lit/cps/ds2cps_ax_cps2ds_dependent.mim:32:14-32:47: error: cannot pass argument 'f_258568' of type
+'Cn [n_258456: Nat, _258468: Cn (Idx n_258456)]' to '%cps.cps2ds_dep (Nat, U_259700)' of domain
 'Cn [t_262937: Nat, _262957: Cn (Idx t_262937)]'
 
 

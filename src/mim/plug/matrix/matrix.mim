@@ -9,7 +9,7 @@
 plugin core;
 plugin math;
 // needed to access cps2ds
-plugin direct;
+plugin cps;
 plugin affine;
 ///
 /// ## Types

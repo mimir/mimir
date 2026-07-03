@@ -21,8 +21,9 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
 
     auto& w = new_world();
 
-    // The affine index algebra is computed on the wide `Idx 0` carrier with wrap-around (`Mode::none`) arithmetic, so that
-    // negation/subtraction are correct via two's complement; the boundary `%affine.map` casts in/out with `%core.conv.u`.
+    // The affine index algebra is computed on the wide `Idx 0` carrier with wrap-around (`Mode::none`) arithmetic, so
+    // that negation/subtraction are correct via two's complement; the boundary `%affine.map` casts in/out with
+    // `%core.conv.u`.
 
     // %affine.constant n ↦ the `Nat` n reinterpreted as an `Idx 0`.
     if (Axm::isa<affine::constant>(app)) return w.call<core::bitcast>(w.type_i64(), rewrite(app->arg()));
@@ -69,8 +70,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto res_ty = rewrite(app->type());                     // «m; Idx (sout#j)»
 
         auto ins    = idxs->projs();
-        auto lifted = w.tuple(
-            DefVec(ins.size(), [&](size_t i) { return w.call(core::conv::u, w.lit_i64(), ins[i]); }));
+        auto lifted = w.tuple(DefVec(ins.size(), [&](size_t i) { return w.call(core::conv::u, w.lit_i64(), ins[i]); }));
 
         auto outs = w.app(f, lifted)->projs(); // «m; Idx 0»
         return w.tuple(DefVec(outs.size(), [&](size_t j) {

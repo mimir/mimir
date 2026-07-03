@@ -97,8 +97,9 @@ void Profiler::chrome_trace(std::ostream& os) const {
     std::println(os, "{{\"displayTimeUnit\":\"ms\",\"traceEvents\":[");
     for (size_t i = 0, e = spans_.size(); i != e; ++i) {
         const auto& span = spans_[i];
-        std::println(os, "{{\"name\":\"{}\",\"cat\":\"phase\",\"ph\":\"X\",\"pid\":1,\"tid\":1,\"ts\":{:.3f},\"dur\":{:.3f}}}{}",
-                     json_escape(span.name), us(span.start - origin), us(span.elapsed()), i + 1 == e ? "" : ",");
+        std::println(
+            os, "{{\"name\":\"{}\",\"cat\":\"phase\",\"ph\":\"X\",\"pid\":1,\"tid\":1,\"ts\":{:.3f},\"dur\":{:.3f}}}{}",
+            json_escape(span.name), us(span.start - origin), us(span.elapsed()), i + 1 == e ? "" : ",");
     }
     std::println(os, "]}}");
 }
