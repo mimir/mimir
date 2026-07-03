@@ -1,0 +1,19 @@
+// RUN: %mim %s -o -
+
+// Two continue sites targeting the same header are permitted: %sflow.continue
+// is the back-edge itself. Backends that require a unique back-edge block
+// (SPIR-V) funnel all continue sites through one synthesized latch block.
+
+plugin sflow;
+
+fun extern foo (token: %sflow.Root) = %sflow.header token loop 5 where
+    con loop (i: Nat, struct) =
+        %sflow.loop struct break body (%core.ncmp.e (i, 0)) () where
+        con body (_: [], struct, tok) = %sflow.if tok if_break (a, b) ff () where
+            con if_break (_: [], _) = return 5;
+            con a (_: [], _, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
+            con b (_: [], _, tok) = %sflow.continue tok struct (%core.nat.sub (i, 2));
+        end;
+        con break (_: [], _) = return 5;
+    end;
+end;

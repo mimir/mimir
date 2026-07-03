@@ -12,7 +12,7 @@ const Def* scope_token_of(const Def* cf_struct) {
     auto type = cf_struct->type();
     if (Axm::isa<sflow::If>(type)) return Axm::as<sflow::If>(type)->uncurry_args<2>()[0];
     if (Axm::isa<sflow::Switch>(type)) return Axm::as<sflow::Switch>(type)->uncurry_args<3>()[0];
-    if (Axm::isa<sflow::Loop>(type)) return Axm::as<sflow::Loop>(type)->uncurry_args<5>()[0];
+    if (Axm::isa<sflow::Loop>(type)) return Axm::as<sflow::Loop>(type)->uncurry_args<3>()[0];
     error("not an sflow control-flow capability: {}", cf_struct);
 }
 
@@ -28,10 +28,10 @@ const Def* Emitter::cf_args(const Def* cf_struct) {
     return it->second;
 }
 
-Lam* Emitter::cf_loop_header(const Def* cf_struct) {
+Lam* Emitter::cf_latch(const Def* cf_struct) {
     auto token = scope_token_of(cf_struct);
-    auto it    = cf_loop_headers_.find(token);
-    if (it == cf_loop_headers_.end()) error("no sflow loop header registered for token {}", token);
+    auto it    = cf_latches_.find(token);
+    if (it == cf_latches_.end()) error("no latch registered for loop token {}", token);
     return it->second;
 }
 
@@ -134,18 +134,17 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // === Loop header dispatch ===
         // => OpLoopMerge + OpBranchConditional
         // This lam is the SPIR-V loop header. Emit OpLoopMerge naming the break
-        // lam as merge block and the continue lam as continue target. Then
+        // lam as merge block and the synthesized latch as continue target. Then
         // branch on `cond`: true breaks out of the loop (merge), false enters the
         // body. The break lam is both the merge block and the true target, which
         // is the canonical structured `while` exit.
-        auto [cf_struct, cf_break, cf_continue, cf_body, cond, arg] = cf_loop->uncurry_args<6>();
-        auto break_lam    = cf_break->as_mut<Lam>();
-        auto continue_lam = cf_continue->as_mut<Lam>();
-        auto body_lam     = cf_body->as_mut<Lam>();
+        auto [cf_struct, cf_break, cf_body, cond, arg] = cf_loop->uncurry_args<5>();
+        auto break_lam = cf_break->as_mut<Lam>();
+        auto body_lam  = cf_body->as_mut<Lam>();
 
         bb.merge = Op{
             OpKind::LoopMerge,
-            {bb_id(break_lam), bb_id(continue_lam), 0},
+            {bb_id(break_lam), bb_id(cf_latch(cf_struct)), 0},
             {},
             {}
         };
@@ -159,11 +158,14 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             {}
         };
     } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
-        // Continue to the loop's continue block (loop constructor arg 2).
+        // === Back-edge ===
+        // Branch to the loop's synthesized latch block, which carries the
+        // unique back-edge to the header (SPIR-V permits exactly one back-edge
+        // block per loop).
         auto [inner_token, cf_struct, value] = cf_exit->uncurry_args<3>();
-        auto target_lam                      = cf_args(cf_struct)->op(2)->as_mut<Lam>();
-        link_phi(lam, target_lam, value);
-        bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
+        auto latch                           = cf_latch(cf_struct);
+        link_phi(lam, latch, value);
+        bb.end = Op{OpKind::Branch, {bb_id(latch)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::fallthrough>(app)) {
         // Fall through to the next case in execution order. The case array is in
         // reverse order, so the next case is the previous array entry; the last
@@ -198,14 +200,6 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto target_lam                      = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::loopback>(app)) {
-        // === Loopback to header ===
-        // Branch back to the loop header (the lam holding the `%sflow.loop`
-        // dispatch), recovered via the pre-pass loop-header map.
-        auto [loopback_token, cf_struct, arg] = cf_exit->uncurry_args<3>();
-        auto header_lam                       = cf_loop_header(cf_struct);
-        link_phi(lam, header_lam, arg);
-        bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
     } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {
         // === Unconditional forward branch ===
         // => OpBranch

@@ -175,24 +175,29 @@ Word Emitter::emit_function(Lam* function) {
     return id;
 }
 
+void Emitter::append_bb(BB& bb) {
+    // reserve space for ops
+    module_.funDefinitions.reserve(1 + bb.merge.has_value() + bb.phis.size() + bb.ops.size() + bb.tail.size() + 1);
+
+    module_.funDefinitions.push_back(bb.label);
+    for (auto [phi, var_parents] : bb.phis)
+        module_.funDefinitions.emplace_back(Op{OpKind::Phi, var_parents, emit_term(phi), emit_type(phi->type())});
+    module_.funDefinitions.insert(module_.funDefinitions.end(), bb.ops.begin(), bb.ops.end());
+    module_.funDefinitions.insert(module_.funDefinitions.end(), bb.tail.begin(), bb.tail.end());
+    if (bb.merge) module_.funDefinitions.push_back(*bb.merge);
+    module_.funDefinitions.push_back(bb.end);
+}
+
 void Emitter::finalize_function(Lam* fun) {
     for (auto mut : Scheduler::schedule(nest())) {
         if (auto lam = mut->isa_mut<Lam>()) {
             assert(lam2bb_.contains(lam));
-            auto& bb = lam2bb_[lam];
+            append_bb(lam2bb_[lam]);
 
-            // reserve space for ops
-            module_.funDefinitions.reserve(1 + bb.merge.has_value() + bb.phis.size() + bb.ops.size() + bb.tail.size()
-                                           + 1);
-
-            module_.funDefinitions.push_back(bb.label);
-            for (auto [phi, var_parents] : bb.phis)
-                module_.funDefinitions.emplace_back(
-                    Op{OpKind::Phi, var_parents, emit_term(phi), emit_type(phi->type())});
-            module_.funDefinitions.insert(module_.funDefinitions.end(), bb.ops.begin(), bb.ops.end());
-            module_.funDefinitions.insert(module_.funDefinitions.end(), bb.tail.begin(), bb.tail.end());
-            if (bb.merge) module_.funDefinitions.push_back(*bb.merge);
-            module_.funDefinitions.push_back(bb.end);
+            // Place a loop's synthesized latch right after its header so it
+            // stays within the loop construct's block range.
+            if (auto it = latch_of_header_.find(lam); it != latch_of_header_.end())
+                append_bb(lam2bb_[it->second]);
         }
     }
 

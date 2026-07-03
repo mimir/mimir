@@ -4,9 +4,8 @@ plugin sflow;
 
 fun extern foo (token: %sflow.Root) = %sflow.header token loop 5 where
     con loop (i: Nat, struct) =
-        %sflow.loop struct break continue body (%core.ncmp.e (i, 0)) () where
-        con body (_: [], struct, tok) = %sflow.continue tok struct ();
+        %sflow.loop struct break body (%core.ncmp.e (i, 0)) () where
+        con body (_: [], struct, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
         con break (_: [], tok) = return 5;
-        con continue (_, struct, token) = %sflow.loopback token struct (%core.nat.sub (i, 1));
     end;
 end;

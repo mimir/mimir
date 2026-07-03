@@ -20,8 +20,8 @@ plugin core;
 /// is a header block. In structured control flow, all
 /// branching has to conform to one of those structures.
 ///
-/// Branching to a header is only allowed in loop constructs
-/// from the continue block.
+/// Branching back to a header is only allowed in loop
+/// constructs via `continue`, which is the loop's back-edge.
 ///
 /// Each header block must strictly structurally dominate its
 /// merge block.
@@ -35,7 +35,6 @@ axm %sflow.arm: Bool → [Path, Nat] → Path;
 axm %sflow.case: Nat → [Path, Nat] → Path;
 axm %sflow.default: [Path, Nat] → Path;
 axm %sflow.body: [Path, Nat] → Path;
-axm %sflow.tail: [Path, Nat] → Path;
 
 axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
@@ -50,22 +49,24 @@ let If = %sflow.If;
 axm %sflow.Switch: {path: Path, step: Nat} → [token: %sflow.Token path step]
   → [T: ★] → [B: ★] → ★;
 let Switch = %sflow.Switch;
-/// Capability flowing through a `loop`. `C` is the continue payload, `B` the
-/// break payload, `H` the loop-header (loopback) payload. The loopback target
-/// coordinates `(loopback_path, loopback_step)` are carried directly, folding in
-/// what used to be the separate `Header` type.
+/// Capability flowing through a `loop`. `B` is the break payload, `H` the
+/// header payload, received once on entry and again on every `continue`.
+/// There is no separate continue construct: `continue` is the back-edge.
 axm %sflow.Loop: {path: Path, step: Nat} → [token: %sflow.Token path step]
-  → [loopback: [Path, Nat]] → [C: ★] → [B: ★] → [H: ★] → ★;
+  → [B: ★] → [H: ★] → ★;
 let Loop = %sflow.Loop;
 
-/// Branch to the continue target of a given control flow structure.
+/// Branch back to the header of the given loop: the loop's back-edge.
+/// Any number of continue sites may target the same header; backends that
+/// require a unique back-edge block (SPIR-V) synthesize a shared latch block
+/// that all continue sites branch through.
 axm %sflow.continue: {
-  C B H: ★,
-  path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
+  B H: ★,
+  path inner_path: Path, step inner_step: Nat,
   token: Token path step,
 } → [inner_token: Token inner_path inner_step]
-  → [Loop token (loopback_path, loopback_step) C B H]
-  → Cn C;
+  → [Loop token B H]
+  → Cn H;
 ///
 /// Branch to the next case of a given switch structure.
 axm %sflow.fallthrough: {
@@ -86,10 +87,10 @@ axm %sflow.break(s): {
 ///
 /// Branch to the break target of a `loop`.
 axm %sflow.break(l): {
-  C B H: ★, path loopback_path inner_path: Path, step loopback_step inner_step: Nat,
+  B H: ★, path inner_path: Path, step inner_step: Nat,
   token: Token path step,
 } → [inner_token: Token inner_path inner_step]
-  → [Loop token (loopback_path, loopback_step) C B H]
+  → [Loop token B H]
   → Cn B;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
@@ -100,14 +101,6 @@ axm %sflow.merge: {
 } → [merge_token: Token (%sflow.arm arm (path, step)) inner_step]
   → [If token B]
   → Cn B;
-///
-/// Branch to the loop header from inside a continue target.
-axm %sflow.loopback: {
-  C B H: ★, path loopback_path: Path, step loopback_step: Nat,
-  token: Token path step
-} → [loopback_token: Token loopback_path loopback_step]
-  → [Loop token (loopback_path, loopback_step) C B H]
-  → Cn H;
 
 /// ## Branching
 /// Represents a structured branch (if-else or switch-case)
@@ -173,28 +166,27 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 
 /// ## Loops
 ///
-/// Represents a structured loop. The loopback target is carried inside the
-/// `Loop` capability itself (the `H` payload plus the loopback coordinates),
-/// so the continue block receives a single `Loop` and can `%sflow.loopback`
-/// directly without a separate `Header` value.
-// TODO: check whether this can be refactored sligthly to allow passing the header as continue target also, which
-// would allow to model single block loops
-axm %sflow.header: {H: ★} → {path loopback_path: Path, step loopback_step: Nat}
+/// Represents a structured loop. There is no continue construct:
+/// `%sflow.continue` is the back-edge and branches straight to the header,
+/// which receives a fresh `H` payload on entry and on every iteration.
+/// This keeps single-block loop bodies expressible and leaves SPIR-V's
+/// continue-construct peculiarities (no exits besides the back-edge) to the
+/// backend, which synthesizes an empty latch block as the continue target.
+axm %sflow.header: {H: ★} → {path: Path, step: Nat}
   → [token: Token path step]
-  → [header: Cn [H, Loop token (loopback_path, loopback_step) ⊥ ⊥ H]] // 1× Loop
+  → [header: Cn [H, Loop token ⊥ H]] // 1× Loop
   → Cn H;
 ///
 /// This is used by the loop header to call into its body. The body branches
-/// receive the `Loop` capability so they can `%sflow.continue` (which
-/// constructs the tuple required by the continue block).
+/// receive the `Loop` capability so they can `%sflow.continue` (the
+/// back-edge) or `%sflow.break(l)`.
 axm %sflow.loop: {
-  C B T H: ★,
-  path loopback_path: Path, step loopback_step: Nat,
+  B T H: ★,
+  path: Path, step: Nat,
   token: Token path step,
-} → [Loop token (loopback_path, loopback_step) ⊥ ⊥ H] // 1× Loop
+} → [Loop token ⊥ H] // 1× Loop
   → [break: Cn [B, Token path (inc step)]]
-  → [continue: Cn [C, Loop token (loopback_path, loopback_step) ⊥ B H, Token (%sflow.tail (path, step)) 0]] // 1× Loop
-  → [body: Cn [T, Loop token (loopback_path, loopback_step) C B ⊥, Token (%sflow.body (path, step)) 0]] // ω× Loop
+  → [body: Cn [T, Loop token B H, Token (%sflow.body (path, step)) 0]] // ω× Loop
   → [cond: Bool]
   → Cn (T, B)#cond;
 

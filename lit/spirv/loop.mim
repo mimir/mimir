@@ -43,11 +43,9 @@ fun extern fragment [
 ] = let (mem_, color) = %spirv.load (mem, i_color);
     %sflow.header token loop 5 where
         con loop (i: Nat, struct) =
-            %sflow.loop struct break continue body (%core.ncmp.e (i, 0)) () where
-            con body (_: [], struct, tok) = %sflow.continue tok struct i;
+            %sflow.loop struct break body (%core.ncmp.e (i, 0)) () where
+            con body (_: [], struct, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
         end;
-        con continue (i: Nat, struct, token) =
-            %sflow.loopback token struct (%core.nat.sub (i, 1));
         con break (_: [], _) =
             return (%spirv.store (mem_, f_color, fragment_body color));
     end;

@@ -124,9 +124,11 @@ private:
     /// Recover the constructor argument tuple owning an `If`/`Switch`/`Loop` capability.
     const Def* cf_args(const Def* cf_struct);
 
-    /// Recover the loop header lam (the back-edge target, i.e. the lam holding the
-    /// `%sflow.loop` dispatch) owning a `Loop` capability.
-    Lam* cf_loop_header(const Def* cf_struct);
+    /// Recover the synthesized latch lam of the loop owning a `Loop` capability.
+    Lam* cf_latch(const Def* cf_struct);
+
+    /// Append a finished basic block to the function definition stream.
+    void append_bb(BB& bb);
 
     BB& bb(Lam* lam) {
         if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_function_);
@@ -174,10 +176,14 @@ private:
     /// Populated by a pre-pass in `visit`.
     DefMap<const Def*> cf_constructs_;
 
-    /// Maps a loop's scope token to its header lam (the back-edge target holding
-    /// the `%sflow.loop` dispatch), so `%sflow.loopback` can branch back to it.
+    /// Maps a loop's scope token to its synthesized latch lam: the unique
+    /// back-edge block that every `%sflow.continue` site branches through.
     /// Populated by the same pre-pass in `visit`.
-    DefMap<Lam*> cf_loop_headers_;
+    DefMap<Lam*> cf_latches_;
+
+    /// Maps a loop header lam to its synthesized latch lam, so `finalize_function`
+    /// can place the latch right after its header inside the loop's block range.
+    LamMap<Lam*> latch_of_header_;
 
     DefMap<Word> types_;
     std::optional<Word> bool_type_id_{}; // Shared Bool type (OpTypeBool)
