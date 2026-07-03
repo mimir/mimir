@@ -4,17 +4,13 @@
 
 namespace mim::plug::cps {
 
-namespace {
-
 /// A term-level, direct-style function that we can and want to convert.
 /// Type-level and higher-order functions stay in direct style.
-bool convertible(Lam* lam) {
+static bool convertible(Lam* lam) {
     if (!lam->is_set() || lam->is_external() || lam->is_annex() || Lam::isa_cn(lam)) return false;
     auto codom = lam->codom();
     return !codom->isa<Type>() && !codom->isa<Pi>();
 }
-
-} // namespace
 
 const Def* Conv::map(const Def* old_def, const Def* new_def) {
     auto& old2new           = new_def->free_vars().has_intersection(scoped_) ? old2news_.back() : old2news_.front();

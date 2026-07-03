@@ -15,7 +15,7 @@ namespace mim::plug::cps {
 /// ```
 /// f_cps: Cn [a: A, Cn B]
 /// ```
-/// and every value use of `f` is replaced by `%cps.cps2ds_dep (A, λ a: B) f_cps` to remain type-correct.
+/// and every use of `f` is replaced by `%cps.cps2ds_dep (A, λ a: B) f_cps` to remain type-correct.
 ///
 /// Call sites are lifted on the fly:
 /// When the recursive rewrite encounters `App (%cps.cps2ds_dep (T, U) k) arg` inside a continuation,
