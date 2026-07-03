@@ -71,7 +71,7 @@ const Def* Conv::rewrite_imm_App(const App* old_app) {
     auto new_arg    = rewrite(old_app->arg());
     auto new_callee = rewrite(old_app->callee());
 
-    if (can_lift_)
+    if (liftable_)
         if (auto wrapped = Axm::isa<cps2ds_dep>(new_callee)) return lift(wrapped->arg(), new_arg, old_app);
 
     return new_world().app(new_callee, new_arg);

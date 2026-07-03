@@ -49,17 +49,17 @@ private:
     /// fences pending_, pushes a map scope for contaminated rewrites, and tracks whether lifting is legal here.
     class Scope {
     public:
-        Scope(Conv& conv, bool can_lift)
+        Scope(Conv& conv, bool liftable)
             : conv_(conv)
             , base_(conv.pending_.size())
-            , old_can_lift_(conv.can_lift_) {
+            , old_liftable_(conv.liftable_) {
             conv_.push();
-            conv_.can_lift_ = can_lift;
+            conv_.liftable_ = liftable;
         }
         ~Scope() {
             assert(conv_.pending_.size() == base_ && "pending calls must have been wire()d");
             conv_.pop();
-            conv_.can_lift_ = old_can_lift_;
+            conv_.liftable_ = old_liftable_;
         }
 
         size_t base() const { return base_; }
@@ -67,7 +67,7 @@ private:
     private:
         Conv& conv_;
         size_t base_;
-        bool old_can_lift_;
+        bool old_liftable_;
     };
 
     const Def* rewrite_mut_Lam(Lam*) final;
@@ -87,7 +87,7 @@ private:
 
     Vector<Pending> pending_;
     Vars scoped_;
-    bool can_lift_ = false;
+    bool liftable_ = false;
 };
 
 } // namespace mim::plug::cps
