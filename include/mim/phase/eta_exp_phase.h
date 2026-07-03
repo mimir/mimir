@@ -33,7 +33,6 @@ private:
         if (l1 == None) return l2;
         if (l2 == None) return l1;
         if (l1 == Both || l2 == Both) return Both;
-        if (l2 == None) return l1;
         if (l1 == Known && (l2 == Unknown_1 || l2 == Unknown_N)) return Both;
         if (l2 == Known && (l1 == Unknown_1 || l1 == Unknown_N)) return Both;
         if (l1 == Unknown_1 && l2 == Unknown_N) return Unknown_N;
