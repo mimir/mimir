@@ -2,7 +2,7 @@
 
 [TOC]
 
-This tour walks through MimIR's plugin architecture, then three MimIR programs.
+This tour walks through Mim's syntax, MimIR's plugin architecture, then three MimIR programs.
 These are compiled by the `mim` [CLI](@ref cli) and the graphs shown are generated automatically from the source via `mim --output-dot`.
 
 1. A classic [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) computation — a counting loop — written in [**continuation-passing style (CPS)**](https://en.wikipedia.org/wiki/Continuation-passing_style).
@@ -12,6 +12,20 @@ These are compiled by the `mim` [CLI](@ref cli) and the graphs shown are generat
 Under the hood, MimIR is not a list of instructions but a **graph**.
 The `let` bindings in the examples below are pure surface sugar — they only name subexpressions.
 Inlining them or adding more yields the **exact same graph**, because in MimIR the graph *is* the program.
+
+## Syntax
+
+Before we dive in, here is just enough Mim syntax to read the examples.
+Much of it is merely **syntactic sugar** over that graph: `let` names a subexpression, `where` groups binders for readability, and `fun` / `return` is sugar for threading an explicit return continuation.
+`lam` is a direct-style function that returns a value; `con` is just sugar for a `lam` whose return type is `⊥`.
+Equivalently, `Cn A` is sugar for `A → ⊥`; this matters in the [CPS section](@ref mimir_cps) below.
+`{}` carries implicit arguments, usually types.
+Tuples are written `(a, b, c)`, and tuple types are written `[A, B, C]`; more generally `[x: A, B x]` is a dependent pair type.
+Arrays are written `«i: n; T»` or just `«n; T»` when the element type does not mention the index, while packs are written `‹i: n; v›` or `‹n; v›` and represent homogeneous tuple terms.
+So `«n; Nat»` is the type of length-`n` arrays of naturals, and `‹n; 0›` is the pack of `n` zeros.
+Finally, `Idx n` is the finite type of `n` indices.
+So `Idx 3` is inhabited by `0₃`, `1₃`, `2₃`.
+In particular, `Idx 2` is just `Bool`, with `0₂` = `ff` and `1₂` = `tt`, so `(f, t)#cond` simply indexes the two-element tuple `(f, t)` with the boolean `cond`.
 
 ## Plugins {#mimir_plugins}
 
@@ -127,6 +141,7 @@ CPS makes three pieces of SSA folklore explicit:
   - `loop : Cn [I32, I32]`
   - `body, exit : Cn []`
   - `return : Cn I32`
+
   In contrast, a traditional basic block carries no type at all.
 
 This is the graph MimIR builds for `count`:
@@ -156,14 +171,33 @@ Two classic chores simply vanish:
 
 - **β-reduction.**
 
-  A scoped IR typically *block-floats* functions independent from the substitution outward before β-reduction to avoid duplicating them.
-  MimIR just β-reduces on the spot.
-  And this is not special to β-reduction: substitution in MimIR is a graph traversal that automatically skips any subgraph not depending on the substituted variables — unrelated functions are left untouched and shared — with no scopes to keep consistent.
+  In the following example `g` does not depend on `x`.
+  Yet, `g` is nested inside `f`.
+  For this reason, a naive β-reduction would superfluously duplicate `g` as well.
+  ```ocaml
+  let f x =
+      let g y = y + 1 in
+      g (x + 2)
+  ```
+  Scoped IRs therefore typically *block-float* functions independent from the substitution outward before β-reduction to avoid this problem.
+
+  MimIR, on the other hand, just β-reduces on the spot.
+  And this is not special to β-reduction: substitution in MimIR is a graph traversal that automatically skips any subgraph not depending on the substituted variables — unrelated binders are left untouched and shared — with no scopes to keep consistent.
 
 - **Specialization.**
 
-  When specializing a function, a scoped IR needs to *block-sink* it inward, nesting it deep enough that all new free variables are correctly scoped.
-  MimIR never needs to: a binder simply refers to whatever it refers to, wherever it sits.
+  In the following example, we want to specialize `f` for `z`.
+  ```ocaml
+  let f x y = x + y in
+  let g z = (f z 1) + (f z 2)
+  ```
+  However, we need to *block-sink* the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:
+  ```ocaml
+  let g z =
+    let fz y = z + y in
+    (fz 1) + (fz 2)
+  ```
+  MimIR, on the other hand, does not need block-sinking: a binder simply refers to whatever it refers to, wherever it sits.
 
 And this is not limited to continuations: in MimIR **every** binder is scopeless — direct-style functions, dependent tuple types, and the rest.
 
