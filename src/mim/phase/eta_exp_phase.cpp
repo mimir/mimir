@@ -13,12 +13,12 @@ void EtaExpPhase::analyze(const Def* def) {
     if (def->isa<Var>()) return; // ignore Var's mut
 
     if (auto app = def->isa<App>()) {
-        visit(app->type(), Lattice::Unknown);
+        visit(app->type(), Lattice::Unknown_1);
         visit(app->callee(), Lattice::Known);
-        visit(app->arg(), Lattice::Unknown);
+        visit(app->arg(), Lattice::Unknown_1);
     } else {
         for (auto d : def->deps())
-            visit(d, Lattice::Unknown);
+            visit(d, Lattice::Unknown_1);
     }
 }
 
@@ -37,11 +37,10 @@ void EtaExpPhase::rewrite_external(Def* old_mut) {
 }
 
 const Def* EtaExpPhase::rewrite(const Def* old_def) {
-    if (auto lam = old_def->isa<Lam>(); lam && lattice(lam) == Both) {
-        auto [i, ins] = lam2eta_.emplace(lam, nullptr);
-        if (ins) i->second = Lam::eta_expand(rewrite_no_eta(lam));
-        DLOG("eta-expand: `{}` → `{}`", lam, i->second);
-        return i->second;
+    if (auto lam = old_def->isa<Lam>(); lam && eta_expand(lam)) {
+        auto eta = Lam::eta_expand(rewrite_no_eta(lam));
+        DLOG("eta-expand: `{}` → `{}`", lam, eta);
+        return eta;
     }
 
     return RWPhase::rewrite(old_def);

@@ -4,6 +4,8 @@
 
 #include "mim/util/util.h"
 
+#include "fe/assert.h"
+
 namespace mim {
 
 /// This phase takes care that Lam%das appear either **only** in callee position (Known) or not (Unknown).
@@ -18,13 +20,29 @@ public:
 
 private:
     enum Lattice : u8 {
-        None    = 0,
-        Known   = 1 << 0,
-        Unknown = 1 << 1,
-        Both    = Known | Unknown,
+        None      = 0,
+        Known     = 1,
+        Unknown_1 = 2,
+        Unknown_N = 3,
+        Both      = 4,
     };
 
-    static Lattice join(Lattice l1, Lattice l2) { return Lattice((u8)l1 | (u8)l2); }
+    static Lattice join(Lattice l1, Lattice l2) {
+        if (l1 == Unknown_1 && l2 == Unknown_1) return Unknown_N;
+        if (l1 == l2) return l1;
+        if (l1 == None) return l2;
+        if (l2 == None) return l1;
+        if (l1 == Both || l2 == Both) return Both;
+        if (l2 == None) return l1;
+        if (l1 == Known && (l2 == Unknown_1 || l2 == Unknown_N)) return Both;
+        if (l2 == Known && (l1 == Unknown_1 || l1 == Unknown_N)) return Both;
+        if (l1 == Unknown_1 && l2 == Unknown_N) return Unknown_N;
+        if (l2 == Unknown_1 && l1 == Unknown_N) return Unknown_N;
+        fe::unreachable();
+    }
+
+    static bool eta_expand(Lattice l) { return l != Known && l != Unknown_1; }
+    bool eta_expand(const Lam* lam) { return eta_expand(lattice(lam)); }
 
     void join(const Lam* lam, Lattice l) {
         if (auto [i, ins] = lam2lattice_.emplace(lam, l); !ins) i->second = join(i->second, l);
