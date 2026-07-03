@@ -18,6 +18,8 @@ protected:
     constexpr size_t reduction_offset() const noexcept final { return 0; }
 
 public:
+    ~Bound() override;
+
     /// @name Get Element by Type
     ///@{
     size_t find(const Def* type) const;
@@ -145,6 +147,9 @@ class Ext : public Def {
 protected:
     Ext(Node node, const Def* type)
         : Def(node, type, Defs{}, 0) {}
+
+public:
+    ~Ext() override;
 };
 
 /// Ext%remum. Either Top (@p Up) or Bot%tom.

@@ -4,6 +4,9 @@
 
 namespace mim {
 
+Bound::~Bound() = default;
+Ext::~Ext()     = default;
+
 size_t Bound::find(const Def* type) const {
     auto i = isa_mut() ? std::find(ops().begin(), ops().end(), type)
                        : binary_find(ops().begin(), ops().end(), type, GIDLt<const Def*>());
