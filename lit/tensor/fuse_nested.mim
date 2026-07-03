@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // A chain of three %tensor.map_reduce calls (outer reduction over a pure map over a pure map).
 // The fuse phase should collapse all three into a single %tensor.map_reduce:

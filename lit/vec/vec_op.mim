@@ -1,7 +1,8 @@
-// RUN: %mim %s --output-ll - | %FileCheck %s
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 
 plugin core;
 plugin vec;
+plugin math;
 
 fun smpl_op{n:Nat} (A B:«n; Nat»):  «n; Nat» =
     let C = %vec.zip %core.nat.add (A, B);

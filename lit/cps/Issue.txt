@@ -1,0 +1,19 @@
+ds2cps_ax_cps2ds_dependent.mim
+./build/bin/mim -d cps ./lit/cps/ds2cps_ax_cps2ds_dependent.mim -o - -VVVV
+
+./lit/cps/ds2cps_ax_cps2ds_dependent.mim:32:14-32:47: error: cannot pass argument 'f_258568' of type
+'Cn [n_258456: Nat, _258468: Cn (Idx n_258456)]' to '%cps.cps2ds_dep (Nat, U_259700)' of domain
+'Cn [t_262937: Nat, _262957: Cn (Idx t_262937)]'
+
+
+
+ds_dependent.mim
+
+same as ds2cps_ax_cps2ds_dependent.mim but only after optimization
+
+
+
+
+ds2cps_ax_cps2ds_dependent_short.mim
+
+:4294967295: error: 'Π n_173817: Nat → .infer (<nullptr>)' used as a type but is in fact a term

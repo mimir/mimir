@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
-// RUN: clang -c %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
+// RUN: clang -c %{s:stem}.ll -o %t -Wno-override-module
 plugin core;
 
 fun extern test(cond: Bool, a: «3; I32», b: «3; I32», i: Idx 3): «3; I32» =

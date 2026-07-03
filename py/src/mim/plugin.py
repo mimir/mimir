@@ -23,8 +23,11 @@ class MimPlugin(ABC):
     def jit(self) -> dict[str, MimCallable]:
         self.build()
 
-        self.driver.world().optimize()
-        self.driver.backend("ll", self.libname + ".ll", self.driver.world())
+        # The `ll` plugin (loaded during initialization) appends an emission phase to the
+        # pipeline; naming the world after the library makes that phase write `<libname>.ll`.
+        world = self.driver.world()
+        world.set(self.libname)
+        world.optimize()
 
         jit = JIT(self.libname, self._registered_functions.keys())
         lib = jit.compile_and_load()

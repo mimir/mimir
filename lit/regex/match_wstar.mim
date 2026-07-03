@@ -1,12 +1,12 @@
-// RUN: rm -f %t.ll ; \
-// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | %FileCheck %s
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll ; \
+// RUN: %mim -p opt %s -o - -p ll --aggr-lam-spec | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t "g1 "; test $? -eq 1
 
 plugin mem;
 plugin core;
 plugin regex;
-plugin direct;
+plugin cps;
 
 let Top = ⊤:Nat;
 let re  = %regex.quant.star %regex.cls.w;

@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // Two chained pure tensor maps (no reductions): the fuse phase should collapse
 // them into a single %tensor.map_reduce.

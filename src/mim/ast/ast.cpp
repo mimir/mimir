@@ -31,16 +31,13 @@ AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
     if (tag_id > std::numeric_limits<tag_t>::max())
         error(dbg.loc(), "exceeded maxinum number of annexes in current plugin");
 
-    plugin_t plugin_id;
-    if (auto p = Annex::mangle(plugin_s))
-        plugin_id = *p;
-    else {
+    if (!Annex::mangle(plugin_s)) {
         error(dbg.loc(), "invalid annex name '{}'", dbg);
-        plugin_s  = sym_error();
-        plugin_id = *Annex::mangle(plugin_s);
+        plugin_s = sym_error();
     }
 
-    auto [i, fresh] = sym2annex.try_emplace(plugin_tag, AnnexInfo{plugin_s, tag_s, plugin_id, (tag_t)sym2annex.size()});
+    auto sub        = (tag_t)sym2annex.size();
+    auto [i, fresh] = sym2annex.try_emplace(plugin_tag, AnnexInfo{plugin_s, tag_s, sub});
     auto annex      = &i->second;
 
     if (sub_s) {
@@ -83,7 +80,7 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
         std::println(h, "{}/// @name %%{}.{}\n///@{{", tab, plugin, sym.tag);
         std::println(h, "{}enum class {} : flags_t {{", tab, sym.tag);
         ++tab;
-        flags_t ax_id = plugin_id | (annex.id.tag << 8u);
+        flags_t ax_id = annex.base();
 
         auto& os = outer_namespace.emplace_back();
         std::print(os, "template<> constexpr flags_t Annex::Base<plug::{}::{}> = 0x{:x};\n", plugin, sym.tag, ax_id);
@@ -181,7 +178,7 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
         const auto& sym = annex.sym;
         if (sym.plugin != plugin) continue;
 
-        flags_t ax_id = plugin_id | (annex.id.tag << 8u);
+        flags_t ax_id = annex.base();
 
         if (auto& subs = annex.subs; subs.empty())
             std::println(h, "{}{} = 0x{:x}", tab, sym.tag, ax_id);
@@ -191,9 +188,8 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
     std::print(h, "\n");
 
     if (!annexes_with_subs.empty()) {
-        plugin_t plugin_id = *Annex::mangle(plugin);
         for (const auto& annex : annexes_with_subs) {
-            flags_t ax_id = plugin_id | (annex.id.tag << 8u);
+            flags_t ax_id = annex.base();
             std::println(h, "class _{}_{}(IntEnum):", plugin, annex.sym.tag);
             ++tab;
 
@@ -245,13 +241,7 @@ void Module::compile(AST& ast) const {
 }
 
 AST load_plugins(World& world, View<Sym> plugins) {
-    auto tag = Tok::Tag::K_import;
-    if (!world.driver().flags().bootstrap) {
-        for (auto plugin : plugins)
-            world.driver().load(plugin);
-        tag = Tok::Tag::K_plugin;
-    }
-
+    auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
     auto ast     = AST(world);
     auto parser  = Parser(ast);
     auto imports = Ptrs<Import>();

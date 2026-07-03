@@ -8,7 +8,9 @@
 
 #include "mim/config.h"
 #include "mim/driver.h"
+#include "mim/flags.h"
 #include "mim/phase.h"
+#include "mim/sexpr.h"
 
 #include "mim/ast/parser.h"
 #include "mim/pass/optimize.h"
@@ -18,16 +20,15 @@ using namespace mim;
 using namespace std::literals;
 
 int main(int argc, char** argv) {
-    enum Backends { AST, Dot, H, PY, LL, Md, Mim, Nest, SExpr, SlottedSExpr, Num_Backends };
+    enum Backends { AST, Dot, H, PY, Md, Mim, Nest, SExpr, SlottedSExpr, ProfileTrace, Num_Backends };
 
     try {
         Driver driver;
         bool show_help           = false;
         bool show_version        = false;
         bool list_search_paths   = false;
-        bool dot_follow_types    = false;
-        bool dot_all_annexes     = false;
         bool sexpr_include_types = false;
+        DotConfig dot;
         std::string input, prefix;
         std::string clang = sys::find_cmd("clang");
         std::vector<std::string> plugins, search_paths;
@@ -37,9 +38,25 @@ int main(int argc, char** argv) {
 #endif
         std::array<std::string, Num_Backends> output;
         int verbose      = 0;
-        int opt          = 2;
         auto inc_verbose = [&](bool) { ++verbose; };
         auto& flags      = driver.flags();
+
+        auto profile = [&](const std::string& t) {
+            if (t == "tree")
+                flags.profile = Flags::Profile::Tree;
+            else if (t == "trace")
+                flags.profile = Flags::Profile::Trace;
+            else
+                flags.profile = Flags::Profile::Summary;
+            if (output[ProfileTrace].empty()) output[ProfileTrace] = "-";
+        };
+        auto profile_path = [&](const std::string& t) {
+            if (t == "-" && flags.profile == mim::Flags::Profile::None)
+                flags.profile = Flags::Profile::Summary;
+            else
+                flags.profile = Flags::Profile::Trace;
+            output[ProfileTrace] = t;
+        };
 
         // clang-format off
         auto cli = lyra::cli()
@@ -50,23 +67,26 @@ int main(int argc, char** argv) {
             | lyra::opt(plugins,      "plugin"             )["-p"]["--plugin"               ]("Dynamically load plugin.")
             | lyra::opt(search_paths, "path"               )["-P"]["--plugin-path"          ]("Path to search for plugins.")
             | lyra::opt(inc_verbose                        )["-V"]["--verbose"              ]("Verbose mode. Multiple -V options increase the verbosity. The maximum is 4.").cardinality(0, 5)
-            | lyra::opt(opt,          "level"              )["-O"]["--optimize"             ]("Optimization level (default: 2).")
             | lyra::opt(output[AST],  "file"               )      ["--output-ast"           ]("Directly emits AST representation of input.")
             | lyra::opt(output[Dot],  "file"               )      ["--output-dot"           ]("Emits the Mim program as a MimIR graph using Graphviz' DOT language.")
             | lyra::opt(output[H  ],  "file"               )      ["--output-h"             ]("Emits a header file to be used to interface with a plugin in C++.")
-            | lyra::opt(output[PY ],  "file"               )      ["--output-py"             ]("Emits a Python enum to be used to interface with a plugin in Python.")
-            | lyra::opt(output[LL ],  "file"               )      ["--output-ll"            ]("Compiles the Mim program to LLVM.")
+            | lyra::opt(output[PY ],  "file"               )      ["--output-py"            ]("Emits a Python enum to be used to interface with a plugin in Python.")
             | lyra::opt(output[Md ],  "file"               )      ["--output-md"            ]("Emits the input formatted as Markdown.")
             | lyra::opt(output[Mim],  "file"               )["-o"]["--output-mim"           ]("Emits the Mim program again.")
             | lyra::opt(output[Nest], "file"               )      ["--output-nest"          ]("Emits program nesting tree as Dot.")
             | lyra::opt(output[SExpr],"file"               )      ["--output-sexpr"         ]("Emits the program as symbolic expression.")
             | lyra::opt(output[SlottedSExpr],"file"        )      ["--output-sexpr-slotted" ]("Emits the program as symbolic expression that follows the format required by slotted-egraphs.")
             | lyra::opt(flags.force_load                   )      ["--force-load"           ]("Load plugins even on version mismatch.")
+            | lyra::opt(profile, "|summary|tree|trace"     )      ["--profile"              ]("Measure how long each phase takes and write a summary, tree or chrome://tracing compatible output to the output-profile provided destination.")
+            | lyra::opt(profile_path, "file"               )      ["--output-profile"       ]("The output path (or '-' for stdout) for the profiling information.")
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(sexpr_include_types                )      ["--sexpr-include-types"  ]("Wraps symbolic expression terms in a type annotation. Types will not be wrapped in type annotations.")
-            | lyra::opt(dot_follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
-            | lyra::opt(dot_all_annexes                    )      ["--dot-all-annexes"      ]("Output all annexes - even if unused - in DOT output.")
+            | lyra::opt(dot.follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
+            | lyra::opt(dot.all_annexes                    )      ["--dot-all-annexes"      ]("Output all annexes - even if unused - in DOT output.")
+            | lyra::opt(dot.inline_consts                  )      ["--dot-inline-consts"    ]("Wire up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
+            | lyra::opt(dot.default_filter                 )      ["--dot-default-filter"   ]("Always show a lambda's filter in DOT output - even if it is the default one (ff for continuations, tt for direct-style functions).")
+            | lyra::opt(dot.show_hidden                    )      ["--dot-show-hidden"      ]("Render otherwise-transparent detached edges in DOT output (Var->binder back-edges, shared literals/axioms, and type edges) in a subtle gray instead of fully transparent.")
             | lyra::opt(flags.dump_recursive               )      ["--dump-recursive"       ]("Dumps Mim program with a simple recursive algorithm that is not readable again from Mim but is less fragile and also works for broken Mim programs.")
             | lyra::opt(flags.aggressive_lam_spec          )      ["--aggr-lam-spec"        ]("Overrides LamSpec behavior to follow recursive calls.")
             | lyra::opt(flags.scalarize_threshold, "threshold")   ["--scalarize-threshold"  ]("MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
@@ -141,23 +161,8 @@ int main(int argc, char** argv) {
 
             auto ast    = ast::AST(world);
             auto parser = ast::Parser(ast);
-            ast::Ptrs<ast::Import> imports;
 
-            if (!flags.bootstrap) {
-                plugins.insert(plugins.begin(), "compile"s);
-                if (opt >= 2) plugins.emplace_back("opt"s);
-            }
-
-            for (const auto& plugin : plugins) {
-                auto mod = parser.plugin(plugin);
-                auto import
-                    = ast.ptr<ast::Import>(Loc(), ast::Tok::Tag::K_plugin, Dbg(driver.sym(plugin)), std::move(mod));
-                imports.emplace_back(std::move(import));
-            }
-
-            if (auto mod = parser.import(driver.sym(input), os[Md])) {
-                mod->add_implicit_imports(std::move(imports));
-
+            if (auto mod = parser.import_main(input, plugins, os[Md])) {
                 if (auto s = os[AST]) {
                     auto tab = fe::Tab::spaces();
                     mod->stream(tab, *s);
@@ -175,45 +180,31 @@ int main(int argc, char** argv) {
                 }
 
                 mod->compile(ast);
+                optimize(world);
 
-                switch (opt) {
-                    case 0: break;
-                    case 1: Phase::run<Cleanup>(world); break;
-                    case 2: optimize(world); break;
-                    default: error("illegal optimization level '{}'", opt);
-                }
-
-                if (auto s = os[Dot]) world.dot(*s, dot_all_annexes, dot_follow_types);
+                if (auto s = os[Dot]) world.dot(*s, dot);
                 if (auto s = os[Mim]) world.dump(*s);
                 if (auto s = os[Nest]) mim::Nest(world).dot(*s);
 
-                if (auto s = os[LL]) {
-                    if (auto backend = driver.backend("ll"))
-                        backend(world, *s);
-                    else
-                        error("'ll' emitter not loaded; try loading 'core' plugin");
-                }
                 if (auto s = os[SExpr]) {
                     if (sexpr_include_types)
-                        if (auto backend = driver.backend("sexpr-typed"))
-                            backend(world, *s);
-                        else
-                            error("'sexpr-typed' emitter not loaded; try loading 'core' plugin");
-                    else if (auto backend = driver.backend("sexpr"))
-                        backend(world, *s);
+                        sexpr::emit_typed(world, *s);
                     else
-                        error("'sexpr' emitter not loaded; try loading 'core' plugin");
+                        sexpr::emit(world, *s);
                 }
                 if (auto s = os[SlottedSExpr]) {
                     if (sexpr_include_types)
-                        if (auto backend = driver.backend("sexpr-slotted-typed"))
-                            backend(world, *s);
-                        else
-                            error("'sexpr-slotted-typed' emitter not loaded; try loading 'core' plugin");
-                    else if (auto backend = driver.backend("sexpr-slotted"))
-                        backend(world, *s);
+                        sexpr::emit_slotted_typed(world, *s);
                     else
-                        error("'sexpr-slotted' emitter not loaded; try loading 'core' plugin");
+                        sexpr::emit_slotted(world, *s);
+                }
+                if (auto s = os[ProfileTrace]) {
+                    switch (flags.profile) {
+                        case Flags::Profile::Summary: driver.profiler().summary(*s); break;
+                        case Flags::Profile::Tree: driver.profiler().tree(*s); break;
+                        case Flags::Profile::Trace: driver.profiler().chrome_trace(*s); break;
+                        case Flags::Profile::None: break;
+                    }
                 }
             } else {
                 error("couldn't read file '{}'", input);

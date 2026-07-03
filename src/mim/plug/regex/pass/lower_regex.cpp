@@ -7,7 +7,7 @@
 #include <mim/def.h>
 
 #include <mim/plug/core/core.h>
-#include <mim/plug/direct/direct.h>
+#include <mim/plug/cps/cps.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/regex/autogen.h"
@@ -22,7 +22,7 @@ template<> struct std::formatter<automaton::NFA> : fe::ostream_formatter {};
 namespace mim::plug::regex {
 
 namespace {
-const Def* wrap_in_cps2ds(const Def* callee) { return direct::op_cps2ds_dep(callee); }
+const Def* wrap_in_cps2ds(const Def* callee) { return cps::op_cps2ds_dep(callee); }
 } // namespace
 
 const Def* LowerRegex::rewrite(const Def* def) {

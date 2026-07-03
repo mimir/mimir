@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim --output-ll %t.ll %s
-// RUN: clang %S/lib.c %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p ll %s
+// RUN: clang %S/lib.c %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t | %FileCheck %s
 plugin core;
 

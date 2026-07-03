@@ -19,5 +19,5 @@ void reg_stages(Flags2Stages& stages) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"refly", MIM_VERSION, refly::register_normalizers, reg_stages, nullptr};
+    return {"refly", MIM_VERSION, refly::register_normalizers, reg_stages};
 }

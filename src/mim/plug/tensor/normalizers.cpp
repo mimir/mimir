@@ -1,6 +1,6 @@
 #include <mim/plug/affine/affine.h>
 #include <mim/plug/core/core.h>
-#include <mim/plug/direct/direct.h>
+#include <mim/plug/cps/cps.h>
 #include <mim/plug/tuple/tuple.h>
 #include <mim/plug/vec/vec.h>
 
@@ -174,6 +174,11 @@ const Def* normalize_broadcast_in_dim(const Def*, const Def*, const Def*) { retu
 
 const Def* normalize_map_reduce(const Def*, const Def*, const Def*) {
     // TODO: is there anything we can normalize here?
+    return nullptr;
+}
+
+const Def* normalize_map_reduce_aff(const Def*, const Def*, const Def*) {
+    // TODO: fold size-1 loop dimensions / identity access maps.
     return nullptr;
 }
 

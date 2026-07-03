@@ -18,5 +18,5 @@ void reg_stages(Flags2Stages& stages) {
 } // namespace mim::plug::tensor
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"tensor", MIM_VERSION, tensor::register_normalizers, tensor::reg_stages, nullptr};
+    return {"tensor", MIM_VERSION, tensor::register_normalizers, tensor::reg_stages};
 }

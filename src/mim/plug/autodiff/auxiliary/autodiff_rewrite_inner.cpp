@@ -1,4 +1,4 @@
-#include <mim/plug/direct/direct.h>
+#include <mim/plug/cps/cps.h>
 
 #include "mim/plug/autodiff/autodiff.h"
 #include "mim/plug/autodiff/pass/eval.h"
@@ -138,9 +138,8 @@ const Def* Eval::augment_tuple(const Tuple* tup, Lam* f, Lam* f_diff) {
 
     auto pb_tangent = pb->var(0uz)->set("tup_s");
 
-    auto tangents = DefVec(pbs.size(), [&](nat_t i) {
-        return world().app(direct::op_cps2ds_dep(pbs[i]), world().extract(pb_tangent, i));
-    });
+    auto tangents = DefVec(
+        pbs.size(), [&](nat_t i) { return world().app(cps::op_cps2ds_dep(pbs[i]), world().extract(pb_tangent, i)); });
     pb->app(true, pb->var(1),
             // summed up tangents
             op_sum(tangent_type_fun(f->dom(2, 0)), tangents));
@@ -177,7 +176,7 @@ const Def* Eval::augment_pack(const Pack* pack, Lam* f, Lam* f_diff) {
     // TODO: special case for const width (special tuple)
 
     // <i:n, cps2ds body_pb (s#i)>
-    app_pb->set(world().app(direct::op_cps2ds_dep(body_pb), world().extract(pb->var((nat_t)0), app_pb->var())));
+    app_pb->set(world().app(cps::op_cps2ds_dep(body_pb), world().extract(pb->var((nat_t)0), app_pb->var())));
 
     DLOG("app pb of pack: {} : {}", app_pb, app_pb->type());
 
@@ -202,7 +201,7 @@ const Def* Eval::augment_app(const App* app, Lam* f, Lam* f_diff) {
     DLOG("augmented callee  <{}> {} : {}", aug_callee->unique_name(), aug_callee, aug_callee->type());
     // TODO: move down to if(!is_cont(callee))
     if (!Pi::isa_cn(callee->type()) && Pi::isa_cn(aug_callee->type())) {
-        aug_callee = direct::op_cps2ds_dep(aug_callee);
+        aug_callee = cps::op_cps2ds_dep(aug_callee);
         DLOG("wrapped augmented callee: <{}> {} : {}", aug_callee->unique_name(), aug_callee, aug_callee->type());
     }
 

@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // The inner map_reduce performs a reduction (sums along an axis), so its value at any
 // position requires a loop. The fuse phase must NOT fuse it into the outer pure map.

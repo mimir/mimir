@@ -1,11 +1,11 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll
-// RUN: clang %t.ll -c -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -c -o %t -Wno-override-module
 
 plugin core;
 plugin vec;
 
-fun foo{n:Nat} (A: «n; Nat», B:«n; Nat»):  «n; Nat» = 
+fun foo{n:Nat} (A: «n; Nat», B:«n; Nat»):  «n; Nat» =
     let C = %vec.zip %core.nat.sub (A, B);
     let D = %vec.zip %core.nat.sub (C, ‹n; 1›);
     return D;
@@ -16,4 +16,3 @@ fun extern bar(): «4; Nat» =
     ret C = foo @4 $ (A, B);
     ret D = foo @4 $ (A, B);
     return D;
-

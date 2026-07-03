@@ -5,8 +5,9 @@ set(MIM_PLUGINS
     compile
     core
     demo
-    direct
+    cps
     gpu
+    ll
     math
     matrix
     mem

@@ -1,5 +1,5 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o -
+// RUN: %mim -p opt %s -o -
 
 plugin core;
 

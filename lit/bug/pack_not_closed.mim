@@ -1,4 +1,4 @@
-// RUN: %mim %s -O 1
+// RUN: %mim %s
 
 lam extern test {n: Nat} {Ts: «n; ★»} [values: «i: n; Ts#i»]
   : [Nat, «i: n; Ts#i»]

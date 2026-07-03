@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // An outer pure binary tensor map reads from two distinct inner pure tensor maps.
 // The fuse phase should collapse all three %tensor.map_reduce calls into a single one:

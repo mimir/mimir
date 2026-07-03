@@ -100,6 +100,7 @@ public:
     /// @name Getters
     ///@{
     World& world() { return Phase::world(); }
+    Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -117,10 +118,27 @@ public:
     ///@}
 
 protected:
+    /// Helps to keep track of curr_mut().
+    /// @see enter()
+    class Enter {
+    public:
+        Enter(Analysis* analysis, Def* new_mut)
+            : analysis_(analysis)
+            , prev_mut_(analysis->curr_mut()) {
+            analysis->curr_mut_ = new_mut;
+        }
+        ~Enter() { analysis_->curr_mut_ = prev_mut_; }
+
+    private:
+        Analysis* analysis_;
+        Def* prev_mut_;
+    };
+
     /// @name Rewrite
     ///@{
     void start() override;
-    virtual void rewrite_annex(flags_t, const Def*);
+    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
     /// Walks @p mut's dependencies under its curr_mut() scope.
@@ -147,6 +165,7 @@ protected:
     Def2Def lattice_;
 
 private:
+    Def* curr_mut_      = nullptr;
     bool bootstrapping_ = true;
 
     friend class Enter;
@@ -204,7 +223,7 @@ public:
 
     /// @name Rewrite
     ///@{
-    virtual void rewrite_annex(flags_t, const Def*);
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).
@@ -315,10 +334,12 @@ public:
     /// @name Construction
     ///@{
     PassManPhase(World& world, std::unique_ptr<PassMan>&& man)
-        : Phase(world, "pass_man_phase")
+        : Phase(world, build_name("pass_man_phase", *man))
+        , base_name_("pass_man_phase")
         , man_(std::move(man)) {}
     PassManPhase(World& world, flags_t annex)
-        : Phase(world, annex) {}
+        : Phase(world, annex)
+        , base_name_(world.annex(annex)->sym()) {}
 
     void apply(const App*) final;
     void apply(Stage&) final;
@@ -329,6 +350,8 @@ public:
 private:
     void start() final { man_->run(); }
 
+    std::string build_name(const std::string& base, PassMan& pm) const;
+    std::string base_name_;
     std::unique_ptr<PassMan> man_;
 };
 

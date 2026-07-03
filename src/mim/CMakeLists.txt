@@ -16,6 +16,7 @@ target_sources(libmim
         rewrite.cpp
         rule.cpp
         schedule.cpp
+        sexpr.cpp
         tuple.cpp
         world.cpp
         ast/ast.cpp
@@ -41,6 +42,7 @@ target_sources(libmim
         util/dbg.cpp
         util/dl.cpp
         util/log.cpp
+        util/profile.cpp
         util/sys.cpp
 )
 

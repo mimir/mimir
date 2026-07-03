@@ -121,7 +121,9 @@ Ptr<Module> Parser::parse_module() {
 }
 
 Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
-    auto name     = dbg.sym();
+    auto name = dbg.sym();
+    if (tag == Tag::K_plugin && !driver().is_loaded(name) && !driver().flags().bootstrap) driver().load(name);
+
     auto filename = fs::path(name.view());
     driver().VLOG("📥 import: {}", name);
 
@@ -159,9 +161,16 @@ Ptr<Module> Parser::import(std::istream& is, Loc loc, const fs::path* path, std:
     return mod;
 }
 
-Ptr<Module> Parser::plugin(Dbg dbg) {
-    if (!driver().is_loaded(dbg.sym()) && !driver().flags().bootstrap) driver().load(dbg.sym());
-    return import(dbg, nullptr, Tag::K_plugin);
+Ptr<Module> Parser::import_main(std::string_view input, View<std::string> plugins, std::ostream* md) {
+    Ptrs<Import> imports;
+    for (const auto& name : plugins) {
+        auto dbg = Dbg(Loc(), driver().sym(name));
+        if (auto mod = import(dbg, nullptr, Tag::K_plugin))
+            imports.emplace_back(ast().ptr<Import>(Loc(), Tag::K_plugin, dbg, std::move(mod)));
+    }
+    auto mod = import({Loc(), driver().sym(input)}, md);
+    if (mod) mod->add_implicit_imports(std::move(imports));
+    return mod;
 }
 
 /*
@@ -174,8 +183,7 @@ Ptr<Import> Parser::parse_import_or_plugin() {
     auto name  = expect(Tag::M_id, "{} name", tag == Tag::K_import ? "import" : "plugin");
     auto dbg   = name.dbg();
     expect(Tag::T_semicolon, "end of {}", tag == Tag::K_import ? "import" : "plugin");
-    if (auto module = tag == Tag::K_import ? import(dbg) : plugin(dbg))
-        return ptr<Import>(track, tag, name.dbg(), std::move(module));
+    if (auto module = import(dbg, nullptr, tag)) return ptr<Import>(track, tag, name.dbg(), std::move(module));
     return {};
 }
 

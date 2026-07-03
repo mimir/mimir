@@ -26,6 +26,26 @@ axm %compile.Repl:  *;
 ///
 axm %compile.is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
+/// ### %%compile.named_phase / %%compile.named_pass / %%compile.named_repl
+///
+/// Resolve to the `%compile.Phase` / `%compile.Pass` / `%compile.Repl` annex with the given fully-qualified name
+/// (e.g. `"clos.clos_conv_phase"`).
+/// Resolution is deferred until the stage pipeline is built so that the referenced plugin's `.mim` file does not
+/// have to be imported by users of this axm.
+/// If the named annex is missing at stage build time (its plugin is not loaded), it is silently elided, i.e. the
+/// enclosing `%compile.phases` / `%compile.passes` / `%compile.repls` simply skips it.
+///
+axm %compile.named_phase: {n: Nat} → «n; I8» → %compile.Phase;
+axm %compile.named_pass:  {n: Nat} → «n; I8» → %compile.Pass;
+axm %compile.named_repl:  {n: Nat} → «n; I8» → %compile.Repl;
+///
+/// ### %%compile.cond_phase
+///
+/// Yields `phase` if the named plugin is loaded, otherwise `%compile.null_phase`.
+/// Used to gate whole sub-pipelines on a plugin without importing it.
+///
+axm %compile.cond_phase: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond_phase;
+///
 /// ## Constructors
 ///
 /// ### %%compile.phases / %%compile.passes

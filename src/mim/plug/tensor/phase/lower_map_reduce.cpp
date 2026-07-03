@@ -7,7 +7,7 @@
 
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/tensor/tensor.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -170,8 +170,8 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
 static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
     auto& w       = bound->world();
     auto acc_ty   = acc->type();
-    auto body     = w.mut_con({/* iter */ w.type_i32(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
-    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i32(0), bound, w.lit_i32(1), acc});
+    auto body     = w.mut_con({/* iter */ w.type_i64(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
+    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i64(0), bound, w.lit_i64(1), acc});
     return {body, for_loop};
 }
 
@@ -287,7 +287,7 @@ create_outer_loop(Lam* fun, const Vector<u64>& out_indices, const absl::flat_has
     for (auto idx : out_indices) {
         auto for_name    = w.sym("forIn_" + std::to_string(idx));
         auto dim_nat_def = dims.at(idx);
-        auto dim         = w.call<core::bitcast>(w.type_i32(), dim_nat_def);
+        auto dim         = w.call<core::bitcast>(w.type_i64(), dim_nat_def);
         w.DLOG("out_cont {} : {}", cont, cont->type());
 
         auto [body, for_call]       = counting_for(dim, acc, cont, for_name);
@@ -380,7 +380,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto fun = w.mut_fun(inputs->type(), type)->set("mapRed");
         DLOG("fun {} : {}", fun, fun->type());
 
-        auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+        auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         DLOG("ds_fun {} : {}", ds_fun, ds_fun->type());
         auto call = w.app(ds_fun, inputs)->set("call");
         DLOG("call {} : {}", call, call->type());
@@ -465,7 +465,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         for (auto idx : in_indices) {
             auto for_name    = w.sym("forIn_" + std::to_string(idx));
             auto dim_nat_def = dims[idx];
-            auto dim         = w.call<core::bitcast>(w.type_i32(), dim_nat_def);
+            auto dim         = w.call<core::bitcast>(w.type_i64(), dim_nat_def);
             DLOG("in_cont {} : {}", cont, cont->type());
 
             auto [body, for_call]       = counting_for(dim, acc, cont, for_name);
@@ -519,6 +519,155 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     }
 }
 
+const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
+    // meta arguments:
+    // * nis = in-count (nat)
+    // * To = out-type (*), Ro = #output loops = result rank, Rr = #reduction loops
+    // * So = result shape (Ro*nat)
+    // * Sr = the full loop bounds (Ro+Rr)*nat: the leading Ro are the output-loop bounds, the trailing Rr the
+    // reductions
+    // * Tis/Ris/Sis = input types/ranks/shapes
+    // arguments:
+    // * f = combination function (CPS), init = accumulator init
+    // * acc_out = affine map from the (Ro+Rr) loop vector to the Ro write coordinates in the result «So» (the reduction
+    //             part is not in scope at write-back, so acc_out must depend only on the leading Ro output indices)
+    // * accs = per-input affine map from the (Ro+Rr) loop vector to the input's read coordinates
+    // * is = input tensors
+    auto& w     = new_world();
+    auto c      = rewrite(app->callee())->as<App>();
+    auto inputs = rewrite(app->arg());
+    auto type   = rewrite(app->type());
+
+    auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
+    auto [To, Ro, Rr]                                             = meta->projs<3>();
+    auto [So, Sr]                                                 = shapes->projs<2>();
+    auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
+    auto [comb, init]                                             = comb_init->projs<2>();
+
+    auto nis_l = Lit::isa<u64>(nis);
+    auto ro_l = Lit::isa<u64>(Ro), rr_l = Lit::isa<u64>(Rr);
+    if (!nis_l || !ro_l || !rr_l) {
+        WLOG("{} doesn't have lowering-time known rank counts (nis/Ro/Rr)", app);
+        return nullptr;
+    }
+    auto nis_nat = *nis_l;
+    auto ro = *ro_l, rr = *rr_l;
+    auto nloops = ro + rr;           // length of the full loop vector (= length of Sr)
+    auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
+
+    // ranks of each input must be literal so that we know how many `extract`s to emit
+    Vector<u64> ris_nat(nis_nat);
+    for (u64 i = 0; i < nis_nat; ++i) {
+        auto l = Lit::isa<u64>(Ris->proj(nis_nat, i));
+        if (!l) {
+            WLOG("input {} of {} has a non-literal rank", i, app);
+            return nullptr;
+        }
+        ris_nat[i] = *l;
+    }
+
+    // Builds `%affine.map @(m, n) @(sin, sout) f idxs`. The emitted `%affine.map` is lowered to %core arithmetic by the
+    // subsequent %affine.lower_index_phase.
+    auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
+        auto a = w.app(w.annex<affine::map>(), w.tuple({m, n}));
+        a      = w.app(a, w.tuple({sin, sout}));
+        a      = w.app(a, f);
+        return w.app(a, idxs);
+    };
+    auto nested_extract = [&](const Def* matrix, const Def* coords, u64 r) {
+        auto cur = matrix;
+        for (u64 k = 0; k < r; ++k)
+            cur = w.extract(cur, coords->proj(r, k));
+        return cur;
+    };
+    auto nested_insert = [&](const Def* matrix, const Def* coords, u64 r, const Def* elem) -> const Def* {
+        if (r == 0) return elem;
+        DefVec subs(r);
+        subs[0] = matrix;
+        for (u64 k = 0; k + 1 < r; ++k)
+            subs[k + 1] = w.extract(subs[k], coords->proj(r, k));
+        auto cur = elem;
+        for (auto k = static_cast<s64>(r) - 1; k >= 0; --k)
+            cur = w.insert(subs[k], coords->proj(r, k), cur);
+        return cur;
+    };
+
+    try {
+        auto fun    = w.mut_fun(inputs->type(), type)->set("mapRedAff");
+        auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
+        auto call   = w.app(ds_fun, inputs)->set("call");
+
+        auto new_inputs = fun->var(0)->set("is");
+
+        // Outer (parallel) loops over the leading Ro bounds of `Sr`, collecting the output iteration indices.
+        auto cont        = fun->var(1);
+        auto init_mat    = w.bot(cont->type()->as<Pi>()->dom());
+        auto acc         = init_mat;
+        auto current_mut = fun;
+        DefVec out_iters;
+        out_iters.reserve(ro);
+        for (u64 i = 0; i < ro; ++i) {
+            auto dim                    = Sr->proj(nloops, i);
+            auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
+            auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forOut_" + std::to_string(i)));
+            auto [iter, new_acc, yield] = body->vars<3>();
+            cont                        = yield;
+            out_iters.push_back(w.call(core::conv::u, dim, iter));
+            acc = new_acc;
+            current_mut->set(true, for_call);
+            current_mut = body;
+        }
+        auto wb_matrix = acc;
+
+        // Write-back: narrow the accumulated element into the result at the affine write coordinates `acc_out`.
+        // acc_out takes the full (Ro+Rr) loop vector, but the reduction loops have already been folded away here, so we
+        // pass 0 for those slots; acc_out must depend only on the leading Ro output indices.
+        auto write_back    = w.mut_con(To)->set("writeBack");
+        auto element_final = write_back->var(0);
+        DefVec wb_iters    = out_iters;
+        for (u64 j = 0; j < rr; ++j)
+            wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
+        auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters)); // «Ro; Idx (So#k)»
+        write_back->app(true, cont, nested_insert(wb_matrix, write_coords, ro, element_final));
+
+        // Inner (reduction) loops over the trailing Rr bounds of `Sr`, collecting the reduction iteration indices.
+        acc  = init;
+        cont = write_back;
+        DefVec red_iters;
+        red_iters.reserve(rr);
+        for (u64 j = 0; j < rr; ++j) {
+            auto dim                    = Sr->proj(nloops, ro + j);
+            auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
+            auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forIn_" + std::to_string(j)));
+            auto [iter, new_acc, yield] = body->vars<3>();
+            cont                        = yield;
+            red_iters.push_back(w.call(core::conv::u, dim, iter));
+            acc = new_acc;
+            current_mut->set(true, for_call);
+            current_mut = body;
+        }
+        auto element_acc = acc;
+
+        // The full loop iteration vector `(o…, r…)`; its moduli are exactly `Sr`.
+        DefVec iters_v = out_iters;
+        iters_v.insert(iters_v.end(), red_iters.begin(), red_iters.end());
+        auto iters = w.tuple(iters_v);
+
+        // Read one element from each input at its affine read coordinates.
+        DefVec input_elements(nis_nat);
+        for (u64 i = 0; i < nis_nat; ++i) {
+            auto input_matrix = new_inputs->proj(nis_nat, i);
+            auto coords
+                = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters);
+            input_elements[i] = nested_extract(input_matrix, coords, ris_nat[i]);
+        }
+
+        comb->set("comb");
+        current_mut->app(true, comb, {w.tuple({element_acc, w.tuple(input_elements)}), cont});
+        return call;
+    } catch (const std::exception& e) { error("error during lowering map_reduce_aff: {}", e.what()); }
+}
+
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (auto get = Axm::isa<tensor::get>(app)) {
         if (auto res = lower_get(get)) return res;
@@ -528,6 +677,8 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
         if (auto res = lower_broadcast(bc)) return res;
     } else if (auto mr = Axm::isa<tensor::map_reduce>(app)) {
         if (auto res = lower_map_reduce(mr)) return res;
+    } else if (auto mra = Axm::isa<tensor::map_reduce_aff>(app)) {
+        if (auto res = lower_map_reduce_aff(mra)) return res;
     }
     return RWPhase::rewrite_imm_App(app);
 }

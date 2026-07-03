@@ -27,7 +27,9 @@ void EtaExpPhase::visit(const Def* def, Lattice l) {
     analyze(def);
 }
 
-void EtaExpPhase::rewrite_annex(flags_t f, const Def* def) { new_world().register_annex(f, rewrite_no_eta(def)); }
+void EtaExpPhase::rewrite_annex(flags_t flags, Sym sym, const Def* def) {
+    new_world().annexes().attach(flags, sym, rewrite_no_eta(def));
+}
 
 void EtaExpPhase::rewrite_external(Def* old_mut) {
     auto new_mut = rewrite_no_eta(old_mut)->as_mut();
