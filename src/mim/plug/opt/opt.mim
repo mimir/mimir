@@ -96,6 +96,7 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.named_phase "%tensor.lower_map_reduce",
             )
         ),
+        %compile.named_phase "%gpu.mem_checks_phase",
         %compile.named_phase "%affine.lower_index_phase",
         %compile.named_phase "%affine.lower_for_phase",
         %compile.pass2phase (
@@ -129,7 +130,7 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.named_repl "%mem.remem_repl",
                 %compile.named_repl "%mem.alloc2malloc_repl",
                 %compile.named_repl "%refly.remove_dbg_repl",
-                %compile.named_repl "%gpu.malloc2gpualloc_repl",
+                %compile.named_repl "%gpu.check_addr_spaces_repl",
             )
         ),
         // emit LLVM IR to <world>.ll iff the `ll` plugin is loaded (`-p ll`)
