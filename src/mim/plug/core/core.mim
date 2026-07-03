@@ -13,9 +13,12 @@ plugin mem;
 /// ### %%core.nat
 ///
 /// Standard arithmetic operations on `Nat`s. <br>
-/// `%%core.nat.sub (a, b)` yields `0`, if `a` < `b`.
+/// `%%core.nat.sub (a, b)` yields `0`, if `a` < `b`. <br>
+/// `%%core.nat.div (a, b)` yields `0`, if `b` is `0`. <br>
+/// `%%core.nat.mod (a, b)` yields `a`, if `b` is `0`. <br>
+/// This holds both statically (literal folding) and dynamically (runtime lowering).
 ///
-axm %core.nat(add, sub, mul): «2; Nat» → Nat, normalize_nat;
+axm %core.nat(add, sub, mul, div, mod): «2; Nat» → Nat, normalize_nat;
 ///
 /// ### %%core.ncmp
 ///
