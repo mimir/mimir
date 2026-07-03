@@ -63,12 +63,16 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
 
         push();
         map(old_body_lam->var(), {new_iter, new_acc, new_yield});
-        new_body->set({rewrite(old_body_lam->filter()), rewrite(old_body_lam->body())});
+        auto new_body_filter = rewrite(old_body_lam->filter());
+        auto new_body_value  = rewrite(old_body_lam->body());
+        new_body->set({new_body_filter, new_body_value});
         pop();
 
         push();
         map(old_exit_lam->var(), new_acc);
-        new_exit->set({rewrite(old_exit_lam->filter()), rewrite(old_exit_lam->body())});
+        auto new_exit_filter = rewrite(old_exit_lam->filter());
+        auto new_exit_value  = rewrite(old_exit_lam->body());
+        new_exit->set({new_exit_filter, new_exit_value});
         pop();
 
         return new_world().app(new_head_lam, merge_t(new_begin, new_init, new_mem));

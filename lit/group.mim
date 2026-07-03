@@ -1,4 +1,4 @@
-// RUN: %mim %s -o -
+// RUN: %mim -p opt %s -o -
 lam f(a b: Nat, x: «a; Nat»): Bool = ff;
 axm %foo.F: [p e: Nat] → *;
 axm %foo.bar: {p e: Nat} as pe → Nat → [a b: %foo.F pe] → %foo.F (p, e);

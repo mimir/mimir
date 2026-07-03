@@ -5,7 +5,7 @@
 namespace mim {
 
 Axm::Axm(NormalizeFn normalizer, u8 curry, u8 trip, const Def* type, plugin_t plugin, tag_t tag, sub_t sub)
-    : Def(Node, type, Defs{}, plugin | (flags_t(tag) << 8_u64) | flags_t(sub)) {
+    : Def(Node, type, Defs{}, Annex::flags(plugin, tag, sub)) {
     normalizer_ = normalizer;
     curry_      = curry;
     trip_       = trip;

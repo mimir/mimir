@@ -1,0 +1,21 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+plugin tensor;
+plugin refly;
+plugin core;
+plugin direct;
+plugin affine;
+
+let m0 = ((1, 2), (3, 4));
+let m1 = ((1, 2, 3), (4, 5, 6));
+
+let b0 = %tensor.broadcast ((2, 1, 2), (2, 50, 2), m0);
+let b1 = %tensor.broadcast ((2, 1, 3), (2, 50, 3), m1);
+
+let bid0 = %tensor.broadcast_in_dim ((2, 1, 2), (2, 50, 2), m0, (2_3, 1_3, 0_3));
+
+fun extern e1() = return (b0, b1, bid0);
+
+// CHECK-NOT: tensor.broadcast
+// CHECK-NOT: tensor.broadcast_in_dim
+// CHECK: return_{{[0-9]+}} ((‹50; (1, 2)›, ‹50; (3, 4)›), (‹50; (1, 2, 3)›, ‹50; (4, 5, 6)›), (‹50; (_{{[0-9]+}}, _{{[0-9]+}})›, ‹50; (_{{[0-9]+}}, _{{[0-9]+}})›))

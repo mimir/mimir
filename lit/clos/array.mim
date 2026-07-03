@@ -1,5 +1,5 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
 
 plugin core;
 plugin clos;

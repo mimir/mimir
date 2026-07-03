@@ -26,6 +26,36 @@
 using namespace mim;
 using namespace mim::plug;
 
+/// Stage hook for `%compile.named_phase`, `%compile.named_pass`, and `%compile.named_repl`.
+/// Reads the fully-qualified annex name (e.g. `"clos.clos_conv_phase"`) from the driving App at stage-build time,
+/// looks up the matching annex `Def` in the current `World`, and *redirects* Stage::create to that annex's own
+/// Stage. If the plugin part of the name is not loaded or the annex is missing, it elides (resolves to nothing),
+/// so the enclosing `%compile.phases`/`passes`/`repls` simply skips it.
+class Named : public Stage {
+public:
+    Named(World& w, flags_t a)
+        : Stage(w, a) {}
+
+    void apply(const App* app) final {
+        if (!app) return;
+        auto str = tuple2str(app->arg());
+        if (str.empty()) return;
+
+        auto dot = str.find('.');
+        if (dot == std::string::npos) return;
+        auto begin = str[0] == '%' ? 1uz : 0uz; // skip the leading '%' of the annex name
+        if (!driver().is_loaded(driver().sym(str.substr(begin, dot - begin)))) return;
+
+        if (auto def = world().annex(driver().sym(str))) resolved_ = Stage::create(driver().stages(), def);
+    }
+
+    bool redirects() const override { return true; }
+    std::unique_ptr<Stage> take_resolved() override { return std::move(resolved_); }
+
+private:
+    std::unique_ptr<Stage> resolved_;
+};
+
 void reg_stages(Flags2Stages& stages) {
     // clang-format off
     assert_emplace(stages, Annex::base<compile::null_phase>(), [](World&) { return std::unique_ptr<Phase>{}; });
@@ -37,6 +67,9 @@ void reg_stages(Flags2Stages& stages) {
     Stage::hook<compile::cleanup_phase,          Cleanup             >(stages);
     Stage::hook<compile::eta_exp_phase,          EtaExpPhase         >(stages);
     Stage::hook<compile::eta_red_phase,          EtaRedPhase         >(stages);
+    Stage::hook<compile::named_phase,            Named               >(stages);
+    Stage::hook<compile::named_pass,             Named               >(stages);
+    Stage::hook<compile::named_repl,             Named               >(stages);
     Stage::hook<compile::pass2phase,             PassManPhase        >(stages);
     Stage::hook<compile::repl2phase,             ReplManPhase        >(stages);
     Stage::hook<compile::sym_expr_opt,           SymExprOpt          >(stages);
@@ -57,5 +90,5 @@ void reg_stages(Flags2Stages& stages) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"compile", MIM_VERSION, compile::register_normalizers, reg_stages, nullptr};
+    return {"compile", MIM_VERSION, compile::register_normalizers, reg_stages};
 }

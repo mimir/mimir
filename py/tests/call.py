@@ -9,7 +9,7 @@ import mim.plug.core as core
 
 @pytest.fixture
 def core_world(driver):
-    driver.load_plugins(["core"])
+    driver.load_plugin("core")
     return driver.world()
 
 

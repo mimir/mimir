@@ -20,7 +20,7 @@ def test_add_search_path_accepts_pathlib(driver, tmp_path):
 
 
 def test_load_plugins_core_succeeds(driver):
-    driver.load_plugins(["core"])
+    driver.load_plugin("core")
 
 
 def test_load_plugins_unknown_raises(driver, tmp_path):

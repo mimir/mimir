@@ -1,5 +1,3 @@
-#include <fstream>
-
 #include <mim/driver.h>
 
 #include <mim/ast/parser.h>
@@ -13,10 +11,10 @@ using namespace mim::plug;
 
 int main(int, char**) {
     try {
-        Driver driver;
-        auto& w = driver.world();
+        auto driver = Driver("hello");
+        auto& w     = driver.world();
         driver.log().set(&std::cerr).set(Log::Level::Debug);
-        ast::load_plugins(w, View<std::string>{"compile", "core", "opt"});
+        ast::load_plugins(w, View<std::string>{"core", "ll"});
 
         // Cn [%mem.M 0, I32, %mem.Ptr (I32, 0) Cn [%mem.M 0, I32]]
         auto mem_t  = w.call<mem::M>(0);
@@ -28,10 +26,8 @@ int main(int, char**) {
         main->app(false, ret, {mem, argc});
         main->externalize();
 
+        // the `ll` plugin's emit phase writes `hello.ll` as part of `optimize`
         optimize(w);
-        std::ofstream ofs("hello.ll");
-        driver.backend("ll")(w, ofs);
-        ofs.close(); // make sure everything is written before clang is invoked
 
         sys::system("clang hello.ll -o hello -Wno-override-module");
         std::println("exit code: {}", sys::system("./hello a b c"));

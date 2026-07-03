@@ -1,0 +1,29 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// An outer pure binary tensor map reads from two distinct inner pure tensor maps.
+// The fuse phase should collapse all three %tensor.map_reduce calls into a single one:
+// out[i, j] = (v1[i, j] + 1) + (v2[i, j] * 2)
+plugin tensor;
+plugin core;
+plugin opt;
+
+lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
+lam mul2 (x: Nat): Nat = %core.nat.mul (x, 2);
+lam add  (xs: [Nat, Nat]): Nat = %core.nat.add xs;
+
+con extern f [v1: «2; «3; Nat»», v2: «2; «3; Nat»», return: Cn «2; «3; Nat»»] =
+    let inner1 = %tensor.unary @(Nat, Nat) add1 @(2, (2, 3)) v1;
+    let inner2 = %tensor.unary @(Nat, Nat) mul2 @(2, (2, 3)) v2;
+    let outer  = %tensor.binary @(Nat, Nat, Nat) add @(2, (2, 3)) (inner1, inner2);
+    return outer;
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup_phase,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %compile.internal_cleanup_phase,
+    );
+
+// CHECK: %tensor.map_reduce
+// CHECK-NOT: %tensor.map_reduce

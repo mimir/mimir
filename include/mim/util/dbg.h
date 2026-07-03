@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
 
@@ -39,12 +40,7 @@ public:
 
     /// @name Constructors
     ///@{
-    Error()             = default;
-    Error(const Error&) = default;
-    Error(Error&& other)
-        : Error() {
-        swap(*this, other);
-    }
+    Error() = default;
     /// Creates a single Tag::Error message.
     Error(Loc loc, const std::string& str)
         : msgs_{
@@ -55,13 +51,10 @@ public:
     /// @name Getters
     ///@{
     const auto& msgs() const { return msgs_; }
-    size_t num_msgs() const {
-        assert(num_errors() + num_warnings() + num_notes() == msgs_.size());
-        return msgs_.size();
-    }
-    size_t num_errors() const { return num_errors_; }
-    size_t num_warnings() const { return num_warnings_; }
-    size_t num_notes() const { return num_notes_; }
+    size_t num_msgs() const { return msgs_.size(); }
+    size_t num_errors() const { return std::ranges::count(msgs_, Tag::Error, &Msg::tag); }
+    size_t num_warnings() const { return std::ranges::count(msgs_, Tag::Warn, &Msg::tag); }
+    size_t num_notes() const { return std::ranges::count(msgs_, Tag::Note, &Msg::tag); }
     ///@}
 
     /// @name Add formatted message
@@ -73,10 +66,12 @@ public:
     }
 
     // clang-format off
-    template<class... Args> Error& error(Loc loc, std::format_string<Args...> s, Args&&... args) { ++num_errors_;   return msg(loc, Tag::Error, s, std::forward<Args>(args)...); }
-    template<class... Args> Error& warn (Loc loc, std::format_string<Args...> s, Args&&... args) { ++num_warnings_; return msg(loc, Tag::Warn,  s, std::forward<Args>(args)...); }
+    template<class... Args> Error& error(Loc loc, std::format_string<Args...> s, Args&&... args) { return msg(loc, Tag::Error, s, std::forward<Args>(args)...); }
+    template<class... Args> Error& warn (Loc loc, std::format_string<Args...> s, Args&&... args) { return msg(loc, Tag::Warn,  s, std::forward<Args>(args)...); }
     template<class... Args> Error& note (Loc loc, std::format_string<Args...> s, Args&&... args) {
-        assert(num_errors() > 0 || num_warnings() > 0); /*                                    */   ++num_notes_;    return msg(loc, Tag::Note,  s, std::forward<Args>(args)...); }
+        assert(num_errors() > 0 || num_warnings() > 0);
+        return msg(loc, Tag::Note, s, std::forward<Args>(args)...);
+    }
     // clang-format on
     ///@}
 
@@ -113,21 +108,8 @@ public:
         return os;
     }
 
-    friend void swap(Error& e1, Error& e2) noexcept {
-        using std::swap;
-        // clang-format off
-        swap(e1.msgs_,         e2.msgs_);
-        swap(e1.num_errors_,   e2.num_errors_);
-        swap(e1.num_warnings_, e2.num_warnings_);
-        swap(e1.num_notes_,    e2.num_notes_);
-        // clang-format on
-    }
-
 private:
     std::vector<Msg> msgs_;
-    size_t num_errors_   = 0;
-    size_t num_warnings_ = 0;
-    size_t num_notes_    = 0;
     mutable std::string what_;
 };
 

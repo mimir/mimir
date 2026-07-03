@@ -14,15 +14,14 @@ A [`Phase`](@ref mim::Phase) is a [`Stage`](@ref mim::Stage) with a single entry
 
 [`Phase`](@ref mim::Phase) is the minimal base class.
 
-A phase has:
+A phase provides:
 
 - a name or annex,
 - access to the current [`World`](@ref mim::World),
 - a [`run()`](@ref mim::Phase::run) wrapper for logging and verification,
 - a [`todo()`](@ref mim::Phase::todo) accessor backed by the internal `todo_` flag for fixed-point iteration.
 
-@note
-A phase sets this flag via [`invalidate()`](@ref mim::Phase::invalidate) when it discovers that another round is required.
+@note A phase requests another round by calling [`invalidate()`](@ref mim::Phase::invalidate).
 - [`PhaseMan`](@ref mim::PhaseMan) uses this to drive fixed-point pipelines.
 - [`RWPhase`](@ref mim::RWPhase) uses this to drive its optional pre-analysis to a fixed point.
 
@@ -158,8 +157,7 @@ If no analysis is needed, [`analyze()`](@ref mim::RWPhase::analyze) can simply r
 
 ### Analysis Results
 
-An [`RWPhase`](@ref mim::RWPhase) may be associated with an [`Analysis`](@ref mim::Analysis).
-If so, the rewrite can query the analysis result through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+Once [`analyze()`](@ref mim::RWPhase::analyze) has run, the rewrite can query the analysis result through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
 
 This provides read access to the analysis lattice **for old-world [`Def`s](@ref mim::Def)**:
 given an old definition, [`RWPhase::lattice()`](@ref mim::RWPhase::lattice) returns the abstract value computed by the associated [`Analysis`](@ref mim::Analysis), or `nullptr` if no value is available.

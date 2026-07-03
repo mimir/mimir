@@ -138,7 +138,7 @@ protected:
     ///@{
     void start() override;
     Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
-    virtual void rewrite_annex(flags_t, const Def*);
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
     /// Walks @p mut's dependencies under its curr_mut() scope.
@@ -223,7 +223,7 @@ public:
 
     /// @name Rewrite
     ///@{
-    virtual void rewrite_annex(flags_t, const Def*);
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).
@@ -334,10 +334,12 @@ public:
     /// @name Construction
     ///@{
     PassManPhase(World& world, std::unique_ptr<PassMan>&& man)
-        : Phase(world, "pass_man_phase")
+        : Phase(world, build_name("pass_man_phase", *man))
+        , base_name_("pass_man_phase")
         , man_(std::move(man)) {}
     PassManPhase(World& world, flags_t annex)
-        : Phase(world, annex) {}
+        : Phase(world, annex)
+        , base_name_(world.annex(annex)->sym()) {}
 
     void apply(const App*) final;
     void apply(Stage&) final;
@@ -347,6 +349,9 @@ public:
 
 private:
     void start() final { man_->run(); }
+
+    std::string build_name(const std::string& base, PassMan& pm) const;
+    std::string base_name_;
 
     std::unique_ptr<PassMan> man_;
 };

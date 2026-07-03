@@ -1,4 +1,4 @@
-// RUN: %mim %s
+// RUN: %mim -p opt %s
 plugin core;
 plugin refly;
 
@@ -101,6 +101,14 @@ let _ = %refly.equiv.struc_eq (%core.conv.s 10 3_5, 8_10);
 let _ = %refly.equiv.struc_eq (%core.conv.u 3 4_5, 1_3);
 let _ = %refly.equiv.struc_eq (%core.conv.s 3 4_5, 2_3);
 let _ = %refly.equiv.struc_eq (%core.conv.s 3 3_5, 1_3);
+
+/// conv(conv(x)) -> x: widening then narrowing back to the original size is the identity.
+/// Symbolic operands are required here since literal chains already fold via the literal path above.
+lam conv_uu_widen   (x: I8):    I8    = %refly.equiv.struc_eq (%core.conv.u i8 (%core.conv.u i16 x), x);
+lam conv_ss_widen   (x: I8):    I8    = %refly.equiv.struc_eq (%core.conv.s i8 (%core.conv.s i16 x), x);
+lam conv_uu_to_i64  (x: I8):    I8    = %refly.equiv.struc_eq (%core.conv.u i8 (%core.conv.u i64 x), x);
+lam conv_uu_idx5    (x: Idx 5): Idx 5 = %refly.equiv.struc_eq (%core.conv.u 5 (%core.conv.u i16 x), x);
+lam conv_ss_idx5    (x: Idx 5): Idx 5 = %refly.equiv.struc_eq (%core.conv.s 5 (%core.conv.s i16 x), x);
 
 /// word-domain icmp basic
 let _ = %refly.equiv.struc_eq (%core.icmp.e  (42I8, 42I8), tt);

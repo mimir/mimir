@@ -209,6 +209,18 @@ public:
     // clang-format on
 };
 
+/// Options for Def::dot and World::dot.
+/// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+struct DotConfig {
+    int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
+    bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
+    bool follow_types   = false;                           ///< Follow Def::type() dependencies.
+    bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
+    bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
+    bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
+                                 ///< shared literals/axioms, type edges) with a visible color.
+};
+
 /// Base class for all Def%s.
 ///
 /// These are the most important subclasses:
@@ -633,15 +645,12 @@ public:
     ///@}
 
     /// @name dot
-    /// Streams dot to @p os while obeying maximum recursion depth of @p max.
-    /// if @p types is `true`, Def::type() dependencies will be followed as well.
+    /// Streams dot to @p os, configured via @p cfg (see DotConfig).
     ///@{
-    void dot(std::ostream& os, int max = std::numeric_limits<int>::max(), bool types = false) const;
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, int max = std::numeric_limits<int>::max(), bool types = false) const;
-    void dot(const std::string& file, int max = std::numeric_limits<int>::max(), bool types = false) const {
-        return dot(file.c_str(), max, types);
-    }
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
+    void dot(const std::string& file, DotConfig cfg = {}) const { return dot(file.c_str(), cfg); }
     ///@}
 
 protected:

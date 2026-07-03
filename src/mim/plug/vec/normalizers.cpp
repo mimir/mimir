@@ -25,7 +25,7 @@ const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
             for (auto op : tuple->ops())
                 acc = w.app(f, {acc, op});
         else // fold::r
-            for (auto op : tuple->ops() | std::ranges::views::reverse)
+            for (auto op : tuple->ops() | std::views::reverse)
                 acc = w.app(f, {op, acc});
         return acc;
     }

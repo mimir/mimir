@@ -1,0 +1,147 @@
+// RUN: %mim -p opt %s -p direct -p affine -o - | %FileCheck %s
+plugin tensor;
+plugin refly;
+plugin core;
+plugin direct;
+plugin affine;
+plugin math;
+
+let f32 = %math.f32;
+let F32 = %math.F32;
+
+let R: %tensor.Ring = (F32, 0: F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+
+lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.add @f32 0) is;
+lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.sub @f32 0) is;
+lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.mul @f32 0) is;
+lam F32_div {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.div @f32 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.tri.tanh @f32 0) i;
+lam F32_maximum {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.extrema.fmax @f32 0) is;
+lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; Bool» = %tensor.unary (%math.is_finite @f32 0) i;
+lam F32_exp {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.exp.exp @f32 0) i;
+lam F32_abs {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.abs @f32 0) i;
+lam F32_GE {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; Bool» = %tensor.binary (%math.cmp.ge @f32 0) is;
+lam F32_minus {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.minus @f32 0) i;
+
+fun extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»»]
+  : [«784; «1024; F32»», «1024; F32», «1024; «1024; F32»», «1024; F32», «1024; «10; F32»», «10; F32»]
+  = let v_0 = %tensor.product_2d R (arg6, arg0);
+    /// let v_1 : «1, 1024; F32» = arg1;
+    let v_2 = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
+    let v_3 = F32_add @(2, (128, 1024)) (v_0, v_2);
+    let v_4 = F32_tanh @(2, (128, 1024)) v_3;
+    let v_cst = 1: F32;
+    let v_5 = ‹128, 1024; v_cst›;
+    let v_6 = F32_sub @(2, (128, 1024)) (v_5, v_4);
+    let v_7 = %tensor.product_2d R (v_4, arg2);
+    /// let v_8 : «1, 1024; F32» = arg3;
+    let v_9 = %tensor.broadcast ((1, 1024), (128, 1024), arg3);
+    let v_10 = F32_add @(2, (128, 1024)) (v_7, v_9);
+    let v_11 = F32_tanh @(2, (128, 1024)) v_10;
+    let v_12 = ‹128; ‹1024; v_cst››;
+    let v_13 = F32_sub @(2, (128, 1024)) (v_12, v_11);
+    let v_14 = %tensor.product_2d R (v_11, arg4);
+    /// let v_15 : «1, 10; F32» = arg5;
+    let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
+    let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
+    let v_cst_0 = 0xFF800000 : F32;
+    let v_18 = %tensor.map_reduce_ds @1 (128) @(F32, 2, (128, 10)) ((%math.extrema.fmax @f32 0), v_cst_0) (0, 1) v_17;
+    let v_cst_1 = 0xFF800000 : F32;
+    let v_19 = ‹128; v_cst_1›;
+    let v_20 = F32_maximum (v_19, v_18);
+    /// let v_21 : «128, 1; F32» = v_20;
+    let v_22 = F32_is_finite v_20;
+    let v_cst_2 = 0: F32;
+    let v_23 = ‹128; v_cst_2›;
+    let v_24 = %tensor.select (v_22, v_20, v_23);
+    let v_25 = %tensor.broadcast ((128, 1), (128, 10), v_24);
+    let v_26 = F32_sub @(2, (128, 10)) (v_17, v_25);
+    let v_27 = F32_exp @(2, (128, 10)) v_26;
+    let v_cst_3 = 0: F32;
+    let v_28 = %tensor.map_reduce_ds @1 (128) @(F32, 2, (128, 10)) ((%math.arith.add @f32 0), v_cst_3) (0, 1) v_27;
+    /// let v_29 : «128, 1; F32» = v_28;
+    let v_30 = F32_abs v_28;
+    let v_31 = ‹128, 1; v_cst_2›;
+    let v_32 = F32_GE (v_28, v_31);
+    let v_33 = %math.minus 0 v_cst;
+    let v_cst_4 = 1.280000e+02: F32;
+    let v_34 = %math.arith.div 0 (v_33, v_cst_4);
+    /// let v_35 = ‹128; v_34›;
+    let v_36 = %tensor.broadcast ((1, 1), (128, 10), v_34);
+    let v_37 = F32_mul @(2, (128, 10)) (v_36, arg7);
+    let v_38 = F32_minus @(2, (128, 10)) v_37;
+    let v_cst_5 = 0: F32;
+    let v_39 = %tensor.map_reduce_ds @1 (128) @(F32, 2, (128, 10)) ((%math.arith.add @f32 0), v_cst_5) (0, 1) v_38;
+    /// let v_40 : «128, 1; F32» = v_39;
+    let v_41 = F32_div (v_39, v_30);
+    let v_42 = ‹128, 1; v_cst_2›;
+    let v_43 = %tensor.select (v_32, v_42, v_41);
+    let v_44 = %tensor.select (v_32, v_41, v_42);
+    let v_45 = F32_minus v_43;
+    let v_46 = F32_add (v_44, v_45);
+    let v_cst_6 = 0: F32;
+    /// let v_47 = %tensor.map_reduce_ds @1 (128) @(F32, 2, (128, 1)) ((%math.arith.add @f32 0), v_cst_6) (0, 1) v_46;
+    let v_48 = %tensor.broadcast ((128, 1), (128, 10), v_46);
+    let v_49 = F32_mul @(2, (128, 10)) (v_48, v_27);
+    let v_50 = F32_add @(2, (128, 10)) (v_37, v_49);
+    let v_cst_7 = 0: F32;
+    let v_51 = %tensor.map_reduce_ds @1 (10) @(F32, 2, (128, 10)) ((%math.arith.add @f32 0), v_cst_7) (1, 0) v_50;
+    /// let v_52 : «1, 10; F32» = v_51;
+    let v_cst_8 = 0: F32;
+    /// let v_53 = %tensor.map_reduce_ds @1 (10) @(F32, 2, (1, 10)) ((%math.arith.add @f32 0), v_cst_8) (1, 0) v_52;
+    let v_54 = %tensor.dot_product R @(2, 2) (0_2, 0_2, (), ()) (v_50, v_11);
+    let v_55 = %tensor.transpose_2d v_54;
+    let v_56 = %tensor.dot_product R @(2, 2) (1_2, 1_2, (), ()) (v_50, arg4);
+    let v_57 = F32_mul @(2, (128, 1024)) (v_56, v_13);
+    let v_58 = F32_mul @(2, (128, 1024)) (v_56, v_11);
+    let v_59 = F32_add @(2, (128, 1024)) (v_57, v_58);
+    let v_cst_9 = 0: F32;
+    let v_60 = %tensor.map_reduce_ds @1 (1024) @(F32, 2, (128, 1024)) ((%math.arith.add @f32 0), v_cst_9) (1, 0) v_59;
+    /// let v_61 : «1, 1024; F32» = v_60;
+    let v_cst_10 = 0: F32;
+    /// let v_62 = %tensor.map_reduce_ds @1 (1024) @(F32, 2, (1, 1024)) ((%math.arith.add @f32 0), v_cst_10) (1, 0) v_61;
+    let v_63 = %tensor.dot_product R @(2, 2) (0_2, 0_2, (), ()) (v_59, v_4);
+    let v_64 = %tensor.transpose_2d v_63;
+    let v_65 = %tensor.dot_product R @(2, 2) (1_2, 1_2, (), ()) (v_59, arg2);
+    let v_66 = F32_mul @(2, (128, 1024)) (v_65, v_6);
+    let v_67 = F32_mul @(2, (128, 1024)) (v_66, v_4);
+    let v_68 = F32_add @(2, (128, 1024)) (v_66, v_67);
+    let v_cst_11 = 0: F32;
+    let v_69 = %tensor.map_reduce_ds @1 (1024) @(F32, 2, (128, 1024)) ((%math.arith.add @f32 0), v_cst_11) (1, 0) v_68;
+    /// let v_70 : «1, 1024; F32» = v_69;
+    let v_cst_12 = 0: F32;
+    /// let v_71 = %tensor.map_reduce_ds @1 (1024) @(F32, 2, (1, 1024)) ((%math.arith.add @f32 0), v_cst_12) (1, 0) v_70;
+    let v_72 = %tensor.dot_product R @(2, 2) (0_2, 0_2, (), ()) (v_68, arg6);
+    let v_73 = %tensor.transpose_2d v_72;
+    let v_cst_13 = 1.000000e-03: F32;
+    let v_74 = ‹784, 1024; v_cst_13›;
+    let v_75 = F32_mul @(2, (784, 1024)) (v_74, v_73);
+    let v_76 = F32_sub @(2, (784, 1024)) (arg0, v_75);
+    let v_77 = ‹1024; v_cst_13›;
+    let v_78 = F32_mul (v_77, v_69);
+    let v_79 = F32_sub (arg1, v_78);
+    let v_80 = ‹1024, 1024; v_cst_13›;
+    let v_81 = F32_mul @(2, (1024, 1024)) (v_80, v_64);
+    let v_82 = F32_sub @(2, (1024, 1024)) (arg2, v_81);
+    let v_83 = ‹1024; v_cst_13›;
+    let v_84 = F32_mul (v_83, v_60);
+    let v_85 = F32_sub (arg3, v_84);
+    let v_86 = ‹1024, 10; v_cst_13›;
+    let v_87 = F32_mul @(2, (1024, 10)) (v_86, v_55);
+    let v_88 = F32_sub @(2, (1024, 10)) (arg4, v_87);
+    let v_89 = ‹10; v_cst_13›;
+    let v_90 = F32_mul (v_89, v_51);
+    let v_91 = F32_sub (arg5, v_90);
+    return (v_76, v_79, v_82, v_85, v_88, v_91);
+    /// return (v_76, arg1, arg2, arg3, arg4, arg5);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup_phase,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %tensor.lower_map_reduce,
+        %compile.internal_cleanup_phase,
+    );
+
+// CHECK-NOT: %tensor.map_reduce

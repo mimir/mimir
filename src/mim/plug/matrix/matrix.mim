@@ -237,14 +237,3 @@ axm %matrix.lower_matrix_medium_level:          %compile.Pass;
 /// ### Phases
 ///
 axm %matrix.lower_matrix_low_level: %compile.Phase;
-
-let matrix_lower_phase =
-    %compile.phases ff (
-        %compile.pass2phase (
-            %compile.passes (
-                %matrix.lower_matrix_high_level_map_reduce,
-                %matrix.lower_matrix_medium_level,
-            )
-        ),
-        %matrix.lower_matrix_low_level
-    );

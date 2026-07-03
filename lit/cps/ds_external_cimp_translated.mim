@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 1 2 ; test $? -eq 3
 // RUN: %t 4 5 ; test $? -eq 9
 

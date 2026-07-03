@@ -3,11 +3,8 @@
 namespace mim {
 
 bool EtaExpPhase::analyze() {
-    for (auto def : old_world().annexes())
+    for (auto def : old_world().roots())
         visit(def, Lattice::Known);
-    for (auto def : old_world().externals().muts())
-        visit(def, Lattice::Known);
-
     return false; // no fixed-point neccessary
 }
 
@@ -30,7 +27,9 @@ void EtaExpPhase::visit(const Def* def, Lattice l) {
     analyze(def);
 }
 
-void EtaExpPhase::rewrite_annex(flags_t f, const Def* def) { new_world().register_annex(f, rewrite_no_eta(def)); }
+void EtaExpPhase::rewrite_annex(flags_t flags, Sym sym, const Def* def) {
+    new_world().annexes().attach(flags, sym, rewrite_no_eta(def));
+}
 
 void EtaExpPhase::rewrite_external(Def* old_mut) {
     auto new_mut = rewrite_no_eta(old_mut)->as_mut();

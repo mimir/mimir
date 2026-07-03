@@ -1,4 +1,4 @@
-// RUN: %mim %s -o -
+// RUN: %mim -p opt %s -o -
 plugin core;
 
 lam pow(a b: Nat)@(%core.pe.is_closed b): Nat =

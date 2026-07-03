@@ -41,9 +41,7 @@ public:
     }
     Ptr<Module> import(Dbg, std::ostream* md = nullptr, Tok::Tag tag = Tok::Tag::K_import);
     Ptr<Module> import(std::istream&, Loc = {}, const fs::path* = nullptr, std::ostream* md = nullptr);
-    Ptr<Module> plugin(Dbg);
-    Ptr<Module> plugin(std::string_view sv) { return plugin({Loc(), driver().sym(sv)}); }
-    Ptr<Module> plugin(const char* name) { return plugin({Loc(), driver().sym(name)}); }
+    Ptr<Module> import_main(std::string_view input, View<std::string> plugins, std::ostream* md = nullptr);
 
 private:
     template<class T, class... Args>

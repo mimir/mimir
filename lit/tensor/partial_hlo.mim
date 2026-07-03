@@ -1,0 +1,75 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin tensor;
+plugin refly;
+plugin core;
+plugin direct;
+plugin affine;
+plugin math;
+// plugin buffrize;
+
+let f32 = %math.f32;
+let F32 = %math.F32;
+
+let R: %tensor.Ring = (F32, 0: F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+
+lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.add @f32 0) is;
+lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.sub @f32 0) is;
+lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.mul @f32 0) is;
+lam F32_div {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.div @f32 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.tri.tanh @f32 0) i;
+lam F32_maximum {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.extrema.fmax @f32 0) is;
+lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; Bool» = %tensor.unary (%math.is_finite @f32 0) i;
+lam F32_exp {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.exp.exp @f32 0) i;
+lam F32_abs {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.abs @f32 0) i;
+lam F32_GE {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; Bool» = %tensor.binary (%math.cmp.ge @f32 0) is;
+lam F32_minus {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.minus @f32 0) i;
+
+con extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»», return: Cn [«128; F32»]]  =
+    // let v_0 = %tensor.product_2d R (arg6, arg0);
+    // /// let v_1 : «1, 1024; F32» = arg1;
+    // let v_2 = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
+    // let v_3 = F32_add @(2, (128, 1024)) (v_0, v_2);
+    // let v_4 = F32_tanh @(2, (128, 1024)) v_3;
+    // //let v_cst = 1: F32;
+    // //let v_5 = ‹128, 1024; v_cst›;
+    // //let v_6 = F32_sub @(2, (128, 1024)) (v_5, v_4);
+    // let v_7 = %tensor.product_2d R (v_4, arg2);
+    // /// let v_8 : «1, 1024; F32» = arg3;
+    // // let v_9 = %tensor.broadcast ((1, 1024), (128, 1024), arg3);
+    // // let v_10 = F32_add @(2, (128, 1024)) (v_7, v_9);
+    // // let v_11 = F32_tanh @(2, (128, 1024)) v_10;
+    // // let v_12 = ‹128; ‹1024; v_cst››;
+    // //let v_13 = F32_sub @(2, (128, 1024)) (v_12, v_11);
+    // let v_14 = %tensor.product_2d R (v_7, arg4);
+    // /// let v_15 : «1, 10; F32» = arg5;
+    // // let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
+    // // let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
+    // let v_cst_0 = 0xFF800000 : F32;
+    // let v_18 = %tensor.map_reduce_ds @1 (128) @(F32, 2, (128, 10)) ((%math.extrema.fmax @f32 0), v_cst_0) (0, 1) v_14;
+    // // let v_cst_1 = 0xFF800000 : F32;
+    // // let v_19 = ‹128; v_cst_1›;
+    // // let v_20 = F32_maximum (v_19, v_18);
+    // return (v_18);
+    // //return (v_76, v_79, arg2, arg3, arg4, arg5);
+
+    let v_0 = %tensor.product_2d R (arg6, arg0);
+    let v_2 = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
+    let v_3 = F32_add @(2, (128, 1024)) (v_0, v_2);
+    let v_4 = F32_tanh @(2, (128, 1024)) v_3;
+    // let v_7 = %tensor.product_2d R (v_4, arg2);
+    let v_7 = %tensor.product_2d R (v_0, arg2);
+    let v_9 = %tensor.broadcast ((1, 1024), (128, 1024), arg3);
+    let v_10 = F32_add @(2, (128, 1024)) (v_7, v_9);
+    let v_11 = F32_tanh @(2, (128, 1024)) v_10;
+    // let v_14 = %tensor.product_2d R (v_11, arg4);
+    let v_14 = %tensor.product_2d R (v_11, arg4);
+    let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
+    let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
+    let v_cst_0 = 0xFEC00000 : F32;
+    let v_18 = %tensor.map_reduce_ds @1 (128) @(F32, 2, (128, 10)) ((%math.extrema.ieee754max @f32 0), v_cst_0) (0, 1) v_17;
+    // let v_cst_1 = 0xFF800000 : F32;
+    // let v_19 = ‹128; v_cst_1›;
+    // let v_20 = F32_maximum (v_19, v_18);
+    return (v_18);
+
+// CHECK-NOT: %tensor.

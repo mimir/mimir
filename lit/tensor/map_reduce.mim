@@ -1,0 +1,21 @@
+// RUN: %mim -p opt %s
+plugin tensor;
+plugin refly;
+plugin core;
+plugin direct;
+plugin affine;
+
+let m0 = ((1, 2), (3, 4));
+
+let R: %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+let f = dot_general_fun R;
+
+let dot = %tensor.map_reduce ‹2; 2› @(‹2; Nat›, ‹2; 2›, ‹2; ‹2; 2››) (f, 0) ((0, 2), (2, 1)) (m0, m0);
+let dotd = %tensor.dot_product_impl R @(2, 2) (1_2, 0_2, (), ()) (m0, m0);
+let dot2d = %tensor.product_2d_impl R (m0, m0);
+
+let _ = %refly.equiv.struc_eq (dot, dotd);
+let _ = %refly.equiv.struc_eq (dot2d, dotd);
+
+fun extern main() = return (dot, dotd, dot2d);

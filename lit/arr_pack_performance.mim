@@ -1,4 +1,4 @@
-// RUN: %mim %s -o -
+// RUN: %mim -p opt %s -o -
 
 // If compiling this takes forever, there is some loophole that Mim does sth 100000000 times.
 plugin core;

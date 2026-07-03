@@ -7,6 +7,7 @@ set(MIM_PLUGINS
     demo
     cps
     gpu
+    ll
     math
     matrix
     mem

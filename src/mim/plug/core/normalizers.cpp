@@ -873,6 +873,14 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
         return world.lit(d_t, idx_from_signed_mod(*ld, idx_sext(*ls, *l)));
     }
 
+    if (ls && ld)
+        if (auto c1 = Axm::isa(id, x)) {
+            auto x1 = c1->arg();
+            if (auto ls1 = Lit::isa(x1->type()->as<App>()->arg()))
+                if (*ls > *ls1 || *ls == 0)     // the intermediate conv is widening
+                    if (*ld == *ls1) return x1; // conv(conv(x)) -> x
+        }
+
     return {};
 }
 

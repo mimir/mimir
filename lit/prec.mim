@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 lam extern f (x: Nat): Nat = x;
 lam extern higher(f: (Nat → Nat) → Nat, x: Nat): Nat = f (λ y: Nat = y);

@@ -162,16 +162,17 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                 }
 
                 map(old_lam->var(), new_vars);
-                new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+                auto new_filter = rewrite(old_lam->filter());
+                auto new_body   = rewrite(old_lam->body());
+                new_lam->set(new_filter, new_body);
             }
 
             // build new app
-            size_t num_new = new_lam->num_vars();
-            auto new_args  = absl::FixedArray<const Def*>(num_new);
-            for (size_t i = 0, j = 0; i != num_old; ++i) {
+            auto new_args = DefVec{};
+            for (size_t i = 0; i != num_old; ++i) {
                 auto old_var = old_lam->var(num_old, i);
                 auto abstr   = lattice(old_var);
-                if (keep(old_var, abstr)) new_args[j++] = rewrite(old_app->targ(i));
+                if (keep(old_var, abstr)) new_args.emplace_back(rewrite(old_app->targ(i)));
             }
 
             return map(old_app, new_world().app(new_lam, new_args));

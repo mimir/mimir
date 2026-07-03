@@ -1,4 +1,4 @@
-// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 rec F = Nat → Nat;
 rec F = Nat → Nat;
 // CHECK: error: redeclaration

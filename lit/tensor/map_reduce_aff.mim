@@ -1,0 +1,43 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
+
+// Exercises %tensor.map_reduce_aff, the affine-indexed generalisation of %tensor.map_reduce.
+// The inputs are taken as extern array arguments (as in hlo.mim) so the lowering is realistic; the
+// test checks the lowered Mim IR (no codegen). The GONE prefix asserts the axiom is fully lowered
+// away in every function.
+// GONE-NOT: %tensor.map_reduce_aff
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+plugin direct;
+
+fun add  (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
+fun copy (x: I32, y: «1; I32»)@tt = return (y#0_1);
+lam id1 (i  : %affine.index): «1; %affine.index» = i;
+lam id1i(i,j: %affine.index): «1; %affine.index» = i;
+lam id2 (i,j: %affine.index): «2; %affine.index» = (i, j);
+lam tr  (i,j: %affine.index): «2; %affine.index» = (j, i);
+lam sl  (i  : %affine.index): «1; %affine.index» = (%affine.op.add (%affine.semiop.mul (i, 3), %affine.constant 2),);
+
+// A reduction (`Ro = Rr = 1`): out[i] = sum_j input[i][j], with a projection input access and the identity output map.
+// CHECK-DAG: fun extern row_sum
+fun extern row_sum (input: «3, 4; I32»): «3; I32» =
+    return (%tensor.map_reduce_aff @1 @(I32, 1, 1) (3, (3, 4))
+                @(I32, 2, (3, 4)) (add, 0I32) id1i id2 input);
+
+// Transpose via the output map `acc_out` (`Rr = 0`): out[j][i] = input[i][j].
+// CHECK-DAG: fun extern transpose
+fun extern transpose (input: «2, 3; I32»): «3, 2; I32» =
+    return (%tensor.map_reduce_aff @1 @(I32, 2, 0) ((3,2), (2, 3))
+                @(‹1; I32›, ‹1; 2›, ‹1; (2, 3)›) (copy, ⊥:I32) tr id2 input);
+
+// A strided slice via the affine input map: out[i] = input[3*i + 2].
+// CHECK-DAG: fun extern strided
+// The affine read index `3*i + 2` lowers to %core arithmetic:
+// CHECK-DAG: %core.wrap.mul {{.*}}(3I64
+// CHECK-DAG: %core.wrap.add {{.*}}(2I64
+fun extern strided (input: «8; I32»): «2; I32» =
+    return (%tensor.map_reduce_aff @1 @(I32, 1, 0) (‹1; 2›, ‹1; 2›)
+                @(‹1; I32›, ‹1; 1›, ‹1; ‹1; 8››) (copy, ⊥:I32) id1 sl input);

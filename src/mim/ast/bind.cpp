@@ -39,7 +39,7 @@ public:
     const Decl* find(Dbg dbg, bool quiet = false) {
         if (dbg.is_anon()) return nullptr;
 
-        for (auto& scope : scopes_ | std::ranges::views::reverse)
+        for (auto& scope : scopes_ | std::views::reverse)
             if (auto i = scope.find(dbg.sym()); i != scope.end()) return i->second.second;
 
         if (!quiet) {
@@ -137,7 +137,7 @@ void LitExpr::bind(Scopes& s) const {
 
 void DeclExpr::bind(Scopes& s) const {
     if (is_where())
-        for (const auto& decl : decls() | std::ranges::views::reverse)
+        for (const auto& decl : decls() | std::views::reverse)
             decl->bind(s);
     else
         for (const auto& decl : decls())

@@ -37,7 +37,17 @@ public:
     virtual void apply(const App*) {}          ///< Invoked if your Stage has additional args.
     virtual void apply(Stage&) {}              ///< Dito, but invoked by Stage::recreate.
 
-    static auto create(const Flags2Stages& stages, const Def* def) {
+    /// @name Redirection
+    /// A Stage may resolve to a *different* Stage (or to nothing) after Stage::apply.
+    /// This is used by the `%%compile.named_*` stages that resolve a string to another plugin's annex.
+    ///@{
+    virtual bool redirects() const { return false; } ///< If `true`, Stage::create uses take_resolved().
+    virtual std::unique_ptr<Stage> take_resolved() {
+        return {};
+    } ///< The Stage to use instead; `nullptr` means *elide*.
+    ///@}
+
+    static std::unique_ptr<Stage> create(const Flags2Stages& stages, const Def* def) {
         auto& world = def->world();
         auto p_def  = App::uncurry_callee(def);
         world.DLOG("apply stage: `{}`", p_def);
@@ -45,7 +55,10 @@ public:
         if (auto axm = p_def->isa<Axm>())
             if (auto i = stages.find(axm->flags()); i != stages.end()) {
                 auto stage = i->second(world);
-                if (stage) stage->apply(def->isa<App>());
+                if (stage) {
+                    stage->apply(def->isa<App>());
+                    if (stage->redirects()) return stage->take_resolved();
+                }
                 return stage;
             } else
                 error("stage `{}` not found", axm->sym());
@@ -258,7 +271,7 @@ private:
     }
 
     std::optional<const Def*> lookup(const Def* old_def) {
-        for (auto& state : states_ | std::ranges::views::reverse)
+        for (auto& state : states_ | std::views::reverse)
             if (auto i = state.old2new.find(old_def); i != state.old2new.end()) return i->second;
         return {};
     }
@@ -268,7 +281,7 @@ private:
     ///@{
     undo_t analyze(const Def*);
     bool analyzed(const Def* def) {
-        for (auto& state : states_ | std::ranges::views::reverse)
+        for (auto& state : states_ | std::views::reverse)
             if (state.analyzed.contains(def)) return true;
         curr_state().analyzed.emplace(def);
         return false;

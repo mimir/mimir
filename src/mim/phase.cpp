@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "mim/driver.h"
+#include "mim/flags.h"
 
 namespace mim {
 
@@ -11,9 +12,12 @@ namespace mim {
  */
 
 void Phase::run() {
+    auto profiling = driver().flags().profile != Flags::Profile::None;
+    if (profiling) driver().profiler().start(name());
     world().verify().ILOG("🚀 Phase launch: `{}`", name());
     start();
     world().verify().ILOG("🏁 Phase finish: `{}`", name());
+    if (profiling) driver().profiler().stop();
 }
 
 /*
@@ -27,8 +31,8 @@ void Analysis::reset() {
 }
 
 void Analysis::start() {
-    for (const auto& [f, def] : world().flags2annex())
-        rewrite_annex(f, def);
+    for (const auto& [flags, e] : world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
 
     bootstrapping_ = false;
 
@@ -36,7 +40,7 @@ void Analysis::start() {
         rewrite_external(mut);
 }
 
-void Analysis::rewrite_annex(flags_t, const Def* def) { rewrite(def); }
+void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
 Def* Analysis::rewrite_deps(Def* mut) {
@@ -76,8 +80,8 @@ void RWPhase::start() {
         todo |= analyze();
     }
 
-    for (const auto& [f, def] : old_world().flags2annex())
-        rewrite_annex(f, def);
+    for (const auto& [flags, e] : old_world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
 
     bootstrapping_ = false;
 
@@ -97,7 +101,7 @@ bool RWPhase::analyze() {
     return false;
 }
 
-void RWPhase::rewrite_annex(flags_t f, const Def* def) { new_world().register_annex(f, rewrite(def)); }
+void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) { new_world().annexes().attach(f, sym, rewrite(def)); }
 
 void RWPhase::rewrite_external(Def* old_mut) {
     auto new_mut = rewrite(old_mut)->as_mut();
@@ -224,6 +228,15 @@ void PhaseMan::start() {
  * PassManPhase
  */
 
+std::string PassManPhase::build_name(const std::string& base, PassMan& pm) const {
+    std::string join;
+    for (const auto& pass : pm.passes()) {
+        if (!join.empty()) join += ",";
+        join += pass->name();
+    }
+    return base + "(" + join + ")";
+}
+
 void PassManPhase::apply(const App* app) {
     man_        = std::make_unique<PassMan>(world(), annex());
     auto passes = Passes();
@@ -232,11 +245,15 @@ void PassManPhase::apply(const App* app) {
             passes.emplace_back(std::unique_ptr<Pass>(static_cast<Pass*>(stage.release())));
 
     man_->apply(std::move(passes));
+
+    name_ = build_name(base_name_, *man_);
 }
 
 void PassManPhase::apply(Stage& stage) {
     auto& pmp = static_cast<PassManPhase&>(stage);
     swap(man_, pmp.man_);
+
+    name_ = build_name(base_name_, *man_);
 }
 
 } // namespace mim
