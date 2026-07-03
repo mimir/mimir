@@ -1,4 +1,4 @@
-// RUN: %mim %s --output-ll - | FileCheck %s
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 
 plugin core;
 plugin mem;
@@ -68,5 +68,12 @@ lam extern _compile(): %compile.Phase =
         ),
         %compile.eta_exp_phase,
         %mem.sym_expr_opt,
+        %compile.named_phase "%ll.emit",
     );
 
+// x and y are provably always equal, so the else-branch taking their addresses is dead:
+// both slots are promoted and GVN merges x and y into a single phi.
+// CHECK: define i64 @test()
+// CHECK-NOT: alloca
+// CHECK-NOT: use_address
+// CHECK: ret i64

@@ -46,7 +46,6 @@ private:
                     DLOG("  {} -> {}", slot, value);
             }
 
-
             DLOG("done running");
         }
 
@@ -61,7 +60,7 @@ private:
     private:
         const Def* slot2value(const Def* slot, const Def* value) { return mut2slot2value_[curr_mut()][slot] = value; }
         const Def* sccp_join(const Def*, const Def*);
-        DefVec sccp_gvn_propagate(DefVec &, DefVec &);
+        DefVec sccp_gvn_propagate(DefVec&, DefVec&);
         const Def* rewrite_imm_App(const App*) final;
 
         // post-processing analysis to find sloxies that must be set to top
@@ -80,6 +79,16 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
+
+    /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?
+    bool needs_seo(Lam* old_lam);
+    /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
+    Lam* build_lam(Lam* old_lam);
+    /// Builds the argument list for an App of @p old_lam matching the signature built by build_lam().
+    DefVec build_args(Lam* old_lam, const App* old_app);
+    /// Rewrites the value of @p sloxy as known at the current call site:
+    /// either the value curr_mut() wrote to the slot or curr_mut()'s own phi for it.
+    const Def* rewrite_site_value(const Def* sloxy, const Def* slot_type);
 
     Analysis analysis_;
     Lam2Lam lam2lam_;

@@ -229,9 +229,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
         for (auto [slot, slot_type] : all_slots_) {
             auto abstr_slot = rewrite(slot);
-            if (auto value = slot2value(abstr_slot)) {
-                abstr_args.emplace_back(value);
-            }
+            if (auto value = slot2value(abstr_slot)) abstr_args.emplace_back(value);
         }
 
         if (!l || *l)
@@ -390,9 +388,11 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 }
 
 static bool keep(const Def* old_var, const Def* abstr) {
+    if (!abstr) return true;           // no info -> keep
     if (old_var == abstr) return true; // top
     if (auto proxy = isa_gvn_proxy(abstr))
-        // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first non-phi
+        // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
+        // non-phi
         return proxy->op(0) == old_var; // first in GVN bundle
     else
         return false;
@@ -423,134 +423,221 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple({rewritten_mem, rewrite(known_load)});
         }
-    } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
-        DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
-        bool phis_needed = false;
-        for (auto [slot, slot_type] : analysis_.all_slots()) {
-            if (auto sloxy = lattice(slot)) {
-                auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
-                if (auto def = lattice(phi); def && keep(phi, def)) phis_needed = true;
+    } else if (auto branch = Branch(old_app)) {
+        auto old_tt = branch.tt()->isa_mut<Lam>();
+        auto old_ff = branch.ff()->isa_mut<Lam>();
+        if (old_tt && old_ff && (needs_seo(old_tt) || needs_seo(old_ff))) {
+            auto new_cond = rewrite(branch.cond());
+            DLOG("in {}, found branch on {} ({}) with {} / {}", curr_mut(), branch.cond(), new_cond, old_ff, old_tt);
+
+            if (auto l = Lit::isa<bool>(new_cond)) {
+                // the branch folds in the new world; only rebuild the taken side
+                auto old_taken = *l ? old_tt : old_ff;
+                if (needs_seo(old_taken)) {
+                    invalidate();
+                    return map(old_app, new_world().app(build_lam(old_taken), build_args(old_taken, old_app)));
+                }
+                return RWPhase::rewrite_imm_App(old_app);
+            }
+
+            invalidate();
+            auto tt_args = build_args(old_tt, old_app);
+            auto ff_args = build_args(old_ff, old_app);
+            auto new_tt  = needs_seo(old_tt) ? build_lam(old_tt) : rewrite(old_tt);
+            auto new_ff  = needs_seo(old_ff) ? build_lam(old_ff) : rewrite(old_ff);
+
+            if (tt_args == ff_args && new_tt->type() == new_ff->type()) {
+                auto new_callee = new_world().extract(new_world().tuple({new_ff, new_tt}), new_cond);
+                return map(old_app, new_world().app(new_callee, tt_args));
+            }
+
+            // the sides disagree on propagated vars/phis; eta-wrap each side with the original signature
+            auto wrap = [&](Lam* old_side, const Def* new_side) -> const Def* {
+                if (!needs_seo(old_side)) return new_side;
+
+                size_t num_old = old_side->num_tvars();
+                auto doms      = DefVec();
+                for (size_t i = 0; i != num_old; ++i)
+                    doms.emplace_back(rewrite(old_side->dom(num_old, i)));
+
+                auto wrapper = new_world().mut_lam(doms, rewrite(old_side->codom()))->set(old_side->dbg());
+                auto args    = DefVec();
+                for (size_t i = 0; i != num_old; ++i) {
+                    auto old_var = old_side->var(num_old, i);
+                    if (keep(old_var, lattice(old_var))) args.emplace_back(wrapper->var(num_old, i));
+                }
+                for (auto [slot, slot_type] : analysis_.all_slots()) {
+                    if (auto sloxy = lattice(slot)) {
+                        auto phi = old_world().proxy(slot_type, {old_side, sloxy}, 0, Proxy_Phi);
+                        if (auto def = lattice(phi); def && keep(phi, def))
+                            args.emplace_back(rewrite_site_value(sloxy, slot_type));
+                    }
+                }
+                wrapper->set(new_world().lit_tt(), new_world().app(new_side, args));
+                return wrapper;
+            };
+
+            auto orig_args = DefVec();
+            for (auto targ : old_app->targs())
+                orig_args.emplace_back(rewrite(targ));
+
+            auto new_callee
+                = new_world().extract(new_world().tuple({wrap(old_ff, new_ff), wrap(old_tt, new_tt)}), new_cond);
+            return map(old_app, new_world().app(new_callee, orig_args));
+        }
+    } else if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !isa_optimizable(old_lam)) {
+        // Continuations passed to an unknown callee cannot receive extra args for their phis;
+        // resolve each phi to the value known at this call site instead.
+        for (auto old_arg : old_app->targs()) {
+            auto cont = old_arg->isa_mut<Lam>();
+            if (!cont) continue;
+
+            for (auto [slot, slot_type] : analysis_.all_slots()) {
+                if (auto sloxy = lattice(slot)) {
+                    auto phi = old_world().proxy(slot_type, {cont, sloxy}, 0, Proxy_Phi);
+                    if (auto def = lattice(phi)) {
+                        auto new_val = rewrite_site_value(sloxy, slot_type);
+                        DLOG("in {}, resolving phi {} of continuation {} to {}", curr_mut(), phi, cont, new_val);
+                        map(phi, new_val);
+                        if (def != phi && isa_gvn_proxy(def)) map(def, new_val);
+                    }
+                }
             }
         }
-        DLOG("phis_needed: {}", phis_needed);
-        if (auto l = lattice(old_lam->var()); (l && l != old_lam->var()) || phis_needed) {
-            DLOG("building a new lam for {}", old_app->callee());
+    } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
+        DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
+        if (needs_seo(old_lam)) {
             invalidate();
-
-            // find phis
-            Vector<std::pair<const Def*, const Def*>> potential_phis;
-            for (auto [slot, slot_type] : analysis_.all_slots()) {
-                if (auto sloxy = lattice(slot)) {
-                    auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
-                    if (auto def = lattice(phi)) potential_phis.push_back({phi, def});
-                }
-            }
-
-            size_t num_old = old_lam->num_tvars();
-            Lam* new_lam;
-            if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end())
-                new_lam = i->second;
-            else {
-                // build new dom
-                auto new_doms = DefVec();
-                for (size_t i = 0; i != num_old; ++i) {
-                    auto old_var = old_lam->var(num_old, i);
-                    auto abstr   = lattice(old_var);
-                    if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
-                }
-
-                for (auto [proxy, abstr] : potential_phis)
-                    if (keep(proxy, abstr)) new_doms.emplace_back(rewrite(proxy->type()));
-
-                size_t num_new_vars = new_doms.size();
-
-                // build new lam
-                auto var_map      = absl::FixedArray<const Def*>(num_old);
-                new_lam           = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
-                lam2lam_[old_lam] = new_lam;
-
-                // build new var
-                size_t j = 0;
-
-                for (size_t i = 0; i != num_old; ++i) {
-                    auto old_var = old_lam->var(num_old, i);
-                    auto abstr   = lattice(old_var);
-
-                    if (keep(old_var, abstr)) {
-                        auto v     = new_lam->var(num_new_vars, j++);
-                        var_map[i] = v;
-                        if (abstr != old_var) map(abstr, v); // GVN bundle
-                    } else {
-                        var_map[i] = rewrite(abstr); // SCCP propagate
-                    }
-                }
-
-                for (size_t i = 0; i < potential_phis.size(); i++) {
-                    auto [proxy, abstr] = potential_phis[i];
-                    DLOG("deciding if we keep the phi: {}, {}", proxy, abstr);
-                    if (keep(proxy, abstr)) {
-                        auto v = new_lam->var(num_new_vars, j++);
-                        DLOG("mapping phi {} to {}", proxy, v);
-                        map(proxy, v);
-                        if (abstr != proxy) {
-                            DLOG("need to map a phi to gvn bundle");
-                            map(abstr, v);
-                        }
-                    } else {
-                        DLOG("need to map a phi to constant value");
-                        map(proxy, rewrite(abstr));
-                    }
-                }
-
-                map(old_lam->var(), var_map);
-                new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
-            }
-
-            // build new app
-            size_t num_new = new_lam->num_vars();
-            auto new_args  = absl::FixedArray<const Def*>(num_new);
-
-            size_t j = 0;
-            for (size_t i = 0; i != num_old; ++i) {
-                auto old_var = old_lam->var(num_old, i);
-                auto abstr   = lattice(old_var);
-                if (keep(old_var, abstr)) new_args[j++] = rewrite(old_app->targ(i));
-            }
-
-            DLOG("wiring up phi arguments");
-            for (auto [mut, slot2value] : analysis_.mut2slot2value()) {
-                DLOG("known values  for mut {}:", mut);
-                for (auto [slot, value] : slot2value)
-                    DLOG("  {} -> {}", slot, value);
-            }
-
-            for (auto [slot, slot_type] : analysis_.all_slots()) {
-                if (auto sloxy = lattice(slot)) {
-                    auto phi = old_world().proxy(slot_type, {old_app->callee(), sloxy}, 0, Proxy_Phi);
-                    if (auto def = lattice(phi)) {
-                        if (keep(phi, def)) {
-                            if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut());
-                                slot2value_it != analysis_.mut2slot2value().end()) {
-                                auto slot2value = slot2value_it->second;
-                                if (auto found_value_it = slot2value.find(sloxy); found_value_it != slot2value.end()) {
-                                    auto found_value = found_value_it->second;
-                                    new_args[j++]    = rewrite(found_value);
-                                } else {
-                                    auto phi      = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
-                                    new_args[j++] = rewrite(phi);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            auto result = map(old_app, new_world().app(new_lam, new_args));
-            return result;
+            auto new_lam  = build_lam(old_lam);
+            auto new_args = build_args(old_lam, old_app);
+            return map(old_app, new_world().app(new_lam, new_args));
         }
     }
 
     return RWPhase::rewrite_imm_App(old_app);
+}
+
+bool SymExprOpt::needs_seo(Lam* old_lam) {
+    if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) return true;
+
+    for (auto [slot, slot_type] : analysis_.all_slots()) {
+        if (auto sloxy = lattice(slot)) {
+            auto phi = old_world().proxy(slot_type, {old_lam, sloxy}, 0, Proxy_Phi);
+            if (auto def = lattice(phi); def && keep(phi, def)) return true;
+        }
+    }
+
+    return false;
+}
+
+Lam* SymExprOpt::build_lam(Lam* old_lam) {
+    if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end()) return i->second;
+
+    DLOG("building a new lam for {}", old_lam);
+
+    // find phis
+    Vector<std::pair<const Def*, const Def*>> potential_phis;
+    for (auto [slot, slot_type] : analysis_.all_slots()) {
+        if (auto sloxy = lattice(slot)) {
+            auto phi = old_world().proxy(slot_type, {old_lam, sloxy}, 0, Proxy_Phi);
+            if (auto def = lattice(phi)) potential_phis.push_back({phi, def});
+        }
+    }
+
+    size_t num_old = old_lam->num_tvars();
+
+    // build new dom
+    auto new_doms = DefVec();
+    for (size_t i = 0; i != num_old; ++i) {
+        auto old_var = old_lam->var(num_old, i);
+        auto abstr   = lattice(old_var);
+        if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
+    }
+
+    for (auto [proxy, abstr] : potential_phis)
+        if (keep(proxy, abstr)) new_doms.emplace_back(rewrite(proxy->type()));
+
+    size_t num_new_vars = new_doms.size();
+
+    // build new lam
+    auto var_map      = absl::FixedArray<const Def*>(num_old);
+    auto new_lam      = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+    lam2lam_[old_lam] = new_lam;
+
+    // build new var
+    size_t j = 0;
+
+    for (size_t i = 0; i != num_old; ++i) {
+        auto old_var = old_lam->var(num_old, i);
+        auto abstr   = lattice(old_var);
+
+        if (keep(old_var, abstr)) {
+            auto v     = new_lam->var(num_new_vars, j++);
+            var_map[i] = v;
+            if (abstr && abstr != old_var) map(abstr, v); // GVN bundle
+        } else {
+            var_map[i] = rewrite(abstr); // SCCP propagate
+        }
+    }
+
+    for (size_t i = 0; i < potential_phis.size(); i++) {
+        auto [proxy, abstr] = potential_phis[i];
+        DLOG("deciding if we keep the phi: {}, {}", proxy, abstr);
+        if (keep(proxy, abstr)) {
+            auto v = new_lam->var(num_new_vars, j++);
+            DLOG("mapping phi {} to {}", proxy, v);
+            map(proxy, v);
+            if (abstr != proxy) {
+                DLOG("need to map a phi to gvn bundle");
+                map(abstr, v);
+            }
+        } else {
+            DLOG("need to map a phi to constant value");
+            map(proxy, rewrite(abstr));
+        }
+    }
+
+    map(old_lam->var(), var_map);
+    {
+        auto _ = enter(old_lam);
+        new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    }
+
+    return new_lam;
+}
+
+DefVec SymExprOpt::build_args(Lam* old_lam, const App* old_app) {
+    size_t num_old = old_lam->num_tvars();
+    auto new_args  = DefVec();
+
+    for (size_t i = 0; i != num_old; ++i) {
+        auto old_var = old_lam->var(num_old, i);
+        auto abstr   = lattice(old_var);
+        if (keep(old_var, abstr)) new_args.emplace_back(rewrite(old_app->targ(i)));
+    }
+
+    DLOG("wiring up phi arguments");
+    for (auto [slot, slot_type] : analysis_.all_slots()) {
+        if (auto sloxy = lattice(slot)) {
+            auto phi = old_world().proxy(slot_type, {old_lam, sloxy}, 0, Proxy_Phi);
+            if (auto def = lattice(phi); def && keep(phi, def))
+                new_args.emplace_back(rewrite_site_value(sloxy, slot_type));
+        }
+    }
+
+    return new_args;
+}
+
+const Def* SymExprOpt::rewrite_site_value(const Def* sloxy, const Def* slot_type) {
+    if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut());
+        slot2value_it != analysis_.mut2slot2value().end()) {
+        auto& slot2value = slot2value_it->second;
+        if (auto found_value_it = slot2value.find(sloxy); found_value_it != slot2value.end())
+            return rewrite(found_value_it->second);
+    }
+    // curr_mut() didn't write to the slot; forward our own phi for it
+    auto curr_phi = old_world().proxy(slot_type, {curr_mut(), sloxy}, 0, Proxy_Phi);
+    return rewrite(curr_phi);
 }
 
 } // namespace mim::plug::mem::phase

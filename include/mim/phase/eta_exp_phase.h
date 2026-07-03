@@ -48,7 +48,6 @@ private:
 
     DefSet analyzed_;
     GIDMap<const Lam*, Lattice> lam2lattice_;
-    GIDMap<const Lam*, const Def*> lam2eta_;
 };
 
 } // namespace mim
