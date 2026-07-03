@@ -233,6 +233,12 @@ axm %math.cmp(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
 ///
 axm %math.is_finite: {pe: «2; Nat»} → Nat → %math.F pe → Bool;
 ///
+/// ### %%math.is_finite
+///
+/// Returns True if the float is finite, and false if not (i.e. if it is +Inf/-Inf/NAN)
+///
+axm %math.is_finite: {pe: «2; Nat»} → Nat → %math.F pe → Bool;
+///
 /// ### %%math.conv
 ///
 /// Conversion between floating point and index types - both signed and unsigned - of different sizes.

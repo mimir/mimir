@@ -352,7 +352,6 @@ private:
 
     std::string build_name(const std::string& base, PassMan& pm) const;
     std::string base_name_;
-
     std::unique_ptr<PassMan> man_;
 };
 
