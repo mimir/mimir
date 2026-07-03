@@ -722,7 +722,12 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
 
         switch (nat.id()) {
             case core::nat::add: return bb.assign(name, "add nsw nuw i64 {}, {}", a, b);
-            case core::nat::sub: return bb.assign(name, "sub nsw nuw i64 {}, {}", a, b);
+            case core::nat::sub: {
+                // nat subtraction saturates at 0: cap result when b > a
+                auto ugt = bb.assign(name + ".ugt", "icmp ugt i64 {}, {}", b, a);
+                auto raw = bb.assign(name + ".raw", "sub i64 {}, {}", a, b);
+                return bb.assign(name, "select i1 {}, i64 0, i64 {}", ugt, raw);
+            }
             case core::nat::mul: return bb.assign(name, "mul nsw nuw i64 {}, {}", a, b);
             // %core.nat.div/mod define division/modulo by zero as `a / 0 = 0` and `a % 0 = a`.
             // replace a zero divisor by 1 to keep udiv/urem well-defined, then select the
@@ -1185,7 +1190,15 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         if (auto nat_op = Axm::isa<core::nat, 1>(f)) {
             switch (nat_op.id()) {
                 case core::nat::add: op = "add nuw nsw"; break;
-                case core::nat::sub: op = "sub nuw nsw"; break;
+                case core::nat::sub: {
+                    // nat subtraction saturates at 0: cap per-lane when v2 > v1
+                    auto v1     = emit(inputs->proj(nat_ni, 0));
+                    auto v2     = emit(inputs->proj(nat_ni, 1));
+                    auto ugt    = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
+                    auto raw    = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
+                    return prev = bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_ni, ugt, t_out,
+                                            t_out, raw);
+                }
                 case core::nat::mul: op = "mul nuw nsw"; break;
                 case core::nat::div: op = "udiv"; break;
                 case core::nat::mod: op = "urem"; break;
