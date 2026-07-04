@@ -36,6 +36,17 @@ axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
 let %sflow.Root = Token %sflow.ROOT 0;
 
+/// Type of a structured function's return continuation: consumes the payload
+/// plus a token at ANY coordinates — return may exit from any depth, paying
+/// whatever token it holds. The coordinate polymorphism is a type-level
+/// return address: parametric for the callee (which can only supply tokens
+/// from its own thread), instantiated exactly once by `%sflow.call` with the
+/// caller's continuation — an ordinary monomorphic block in the caller's own
+/// chain. It doubles as the merge interface of the nice_* wrappers, so a
+/// return continuation passes directly as a merge target.
+lam %sflow.Ret (R: ★) = R → {path: Path, step: Nat} → Cn Token path step;
+let Ret = %sflow.Ret;
+
 /// Region paths are anchored on the parent token VALUE: each constructor takes
 /// the token consumed by the construct introducing the region. Tokens are only
 /// ever received as parameters, so every region path mentions that variable:
@@ -130,22 +141,19 @@ axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
 ///
 /// Examples of what this allows to do:
 /// ```mim
-/// fun extern foo (cond: Bool, token: %sflow.Root) =
-///   // make return also consume tokens
-///   let return = %sflow.lift return;
-///
-///   // the actual function body; the root token is passed before the arms
-///   // so token threading can be wired
-///   %sflow.nice_if merge cond () token (else, then) where
+/// con extern foo (cond: Bool, token: %sflow.Root, return: %sflow.Ret Nat) =
+///   // return has the merge interface (%sflow.Ret), so it passes directly as
+///   // the merge target; the root token is passed before the arms so token
+///   // threading can be wired
+///   %sflow.nice_if return cond () token (else, then) where
 ///     lam then (merge) () = merge 1;
 ///     lam else (merge) () = merge 0;
-///     lam merge (x: Nat) = return x;
 ///   end;
 /// ```
 lam %sflow.nice_if
     {T B: ★}
     {path: Path, step: Nat}
-    (merge: B → {path: Path, step: Nat} → Cn Token path step)
+    (merge: Ret B)
     (cond: Bool)
     (arg: T)
     (token: Token path step)
@@ -155,10 +163,6 @@ lam %sflow.nice_if
       let merge = (cn (v: B) {inner: Nat} (t: Token (%sflow.arm arm token) inner)@tt = %sflow.merge t struct v);
       tuple#arm merge arg arm_token›;
     %sflow.if token merge tuple cond arg;
-
-/// Lift a continuation to also consume a token
-lam %sflow.lift {T: ★} (f: Cn T) = (cn (v: T) {path: Path, step: Nat} (token: Token path step) = f v);
-
 
 /// Represents a structured switch.
 ///
@@ -202,9 +206,18 @@ axm %sflow.loop: {
   → [cond: Bool]
   → Cn (T, B)#cond;
 
-/// Function call to a returning function in continuation passing style.
+/// Type of a structured function: payload, a fresh root token (the
+/// function-local token thread starts here), and the polymorphic return
+/// continuation (the thread's other, equally axiom-fabricated end).
+lam %sflow.Fn (T R: ★) = Cn [T, Token %sflow.ROOT 0, Ret R];
+
+/// Function call to a returning structured function in continuation passing
+/// style. The call is one atomic step in the caller's chain: the caller-side
+/// wrapper hands the callee a fresh root token and instantiates the callee's
+/// return continuation with the caller's own — monomorphic — continuation at
+/// step + 1, discarding the callee-side coordinates.
 axm %sflow.call: {T R: ★, path: Path, step: Nat}
-  → [Fn [T, Token %sflow.ROOT 0] → R]
+  → [%sflow.Fn T R]
   → [Token path step]
   → [Fn T → [R, Token path (%core.nat.add (step, 1))]];
 

@@ -1,13 +1,11 @@
 plugin sflow;
 
-fun extern foo (cond: Bool, token: %sflow.Root) =
-  // make return also consume tokens
-  let return = %sflow.lift return;
-  // the actual function body; the root token is passed before the arms (their
-  // token types are anchored on it) so token threading can be wired
-  %sflow.nice_if merge cond () token (else, then) where
+// return is a genuine %sflow.Ret continuation: it consumes the payload plus a
+// token at any coordinates, so returning from any depth pays a token and no
+// lifting of a raw continuation is needed. %sflow.Ret is also the merge
+// interface, so return passes directly as the merge target.
+con extern foo (cond: Bool, token: %sflow.Root, return: %sflow.Ret Nat) =
+  %sflow.nice_if return cond () token (else, then) where
     lam then (merge) () = merge 1;
     lam else (merge) () = merge 0;
-    lam merge (x: Nat) = return x;
   end;
-
