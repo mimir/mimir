@@ -14,19 +14,19 @@ bool TailRecElim::is_tail_rec(Lam* lam) {
     auto nest = Nest(lam);
     DefSet done;
     auto found = false;
-    auto visit = [&](this auto&& visit, const Def* def) -> void {
+    auto visit = [&](auto&& visit, const Def* def) -> void {
         if (found || def->isa_mut() || !done.emplace(def).second) return;
         if (auto app = def->isa<App>(); app && app->callee() == lam && app->args().back() == ret_var) {
             found = true;
             return;
         }
         for (auto op : def->deps())
-            visit(op);
+            visit(visit, op);
     };
     for (auto mut : nest.muts())
         if (mut->is_set())
             for (auto op : mut->deps())
-                visit(op);
+                visit(visit, op);
 
     return tail_rec_[lam] = found;
 }

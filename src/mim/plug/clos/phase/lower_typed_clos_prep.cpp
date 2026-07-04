@@ -65,7 +65,7 @@ bool LowerTypedClosPrep::analyze() {
     auto changed = false;
     DefSet done;
 
-    auto visit = [&](this auto&& visit, const Def* def) -> void {
+    auto visit = [&](auto&& visit, const Def* def) -> void {
         if (!done.emplace(def).second) return;
 
         if (auto c = isa_clos_lit(def, false)) {
@@ -90,15 +90,15 @@ bool LowerTypedClosPrep::analyze() {
         if (auto mut = def->isa_mut()) {
             if (mut->is_set())
                 for (auto op : mut->deps())
-                    visit(op);
+                    visit(visit, op);
         } else {
             for (auto op : def->deps())
-                visit(op);
+                visit(visit, op);
         }
     };
 
     for (auto def : old_world().roots())
-        visit(def);
+        visit(visit, def);
 
     return changed;
 }

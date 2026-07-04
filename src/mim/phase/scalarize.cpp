@@ -38,7 +38,7 @@ void Scalarize::analyze_uses() {
     };
 
     DefSet done;
-    auto visit = [&](this auto&& visit, const Def* def) -> void {
+    auto visit = [&](auto&& visit, const Def* def) -> void {
         if (!done.emplace(def).second) return;
         if (def->isa<Var>()) return; // a Var references its mut as op; that is not a use of the Lam
 
@@ -62,16 +62,16 @@ void Scalarize::analyze_uses() {
                 if (!callee_pos) escape_all(proj->tuple());
             }
 
-            visit(op);
+            visit(visit, op);
         }
 
         if (auto mut = def->isa_mut(); mut && mut->is_set())
             for (auto op : mut->deps())
-                visit(op);
+                visit(visit, op);
     };
 
     for (auto def : old_world().roots())
-        visit(def);
+        visit(visit, def);
 }
 
 bool Scalarize::should_expand(Lam* lam) {
