@@ -34,6 +34,20 @@ void SymExprOpt::Analysis::reset() {
     deps_done_.clear();
 }
 
+Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
+    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
+        for (auto v : var->tprojs()) {
+            map(v, v);
+            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
+                // var was mapped to sth else beforehand so we need another fixed-point round
+                invalidate();
+                i->second = v;
+            }
+        }
+
+    return mim::Analysis::rewrite_mut(mut);
+}
+
 Def* SymExprOpt::Analysis::rewrite_deps(Def* mut) {
     if (auto [_, ins] = deps_done_.emplace(mut); !ins) return mut;
     return mim::Analysis::rewrite_deps(mut);
@@ -240,31 +254,32 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
         set(ptr, sloxy);
         return world().tuple({abstr_mem, sloxy});
-    } else if (auto branch = Branch(app)) {
+    } else if (auto dispatch = Dispatch(app)) {
         DefVec abstr_args;
         for (auto arg : app->targs())
             abstr_args.emplace_back(rewrite(arg));
 
-        auto abstr_cond = rewrite(branch.cond());
-        auto l          = Lit::isa<bool>(abstr_cond);
-        DLOG("abstract value of branch cond {} in {}: {}", branch.cond(), curr_mut(), abstr_cond);
+        auto abstr_index = rewrite(dispatch.index());
+        auto l           = Lit::isa(abstr_index);
+        DLOG("abstract value of dispatch index {} in {}: {}", dispatch.index(), curr_mut(), abstr_index);
 
         for (auto [slot, slot_type] : all_slots_) {
             auto abstr_slot = rewrite(slot);
             if (auto value = slot2value(abstr_slot)) abstr_args.emplace_back(value);
         }
 
-        auto tt = branch.tt()->isa_mut<Lam>();
-        auto ff = branch.ff()->isa_mut<Lam>();
+        auto arms = Vector<Lam*>(dispatch.num_targets());
+        for (size_t i = 0, e = arms.size(); i != e; ++i)
+            arms[i] = dispatch.target(i)->isa_mut<Lam>();
 
-        // Propagate into both sides - even if the condition is abstractly known:
-        // a side skipped in one fixed-point round would accumulate a lattice - and hence a signature -
-        // that differs from its sibling's, but SymExprOpt::rewrite_imm_App relies on both sides agreeing.
-        // For the same reason propagate either into both sides or into none.
-        bool propagated = isa_optimizable(tt) && isa_optimizable(ff);
+        // Propagate into all arms - even if the index is abstractly known:
+        // an arm skipped in one fixed-point round would accumulate a lattice - and hence a signature -
+        // that differs from its siblings', but SymExprOpt::rewrite_imm_App relies on all arms agreeing.
+        // For the same reason propagate either into all arms or into none.
+        bool propagated = std::ranges::all_of(arms, [](Lam* lam) { return isa_optimizable(lam); });
         if (propagated) {
-            for (auto lam : {tt, ff}) {
-                DLOG("branch, writing local values to {}", lam);
+            for (auto lam : arms) {
+                DLOG("dispatch, writing local values to {}", lam);
 
                 DefVec concr_vars;
                 for (auto var : lam->tvars())
@@ -288,25 +303,23 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
             }
         }
 
-        // Propagated sides must be traversed via rewrite_deps() to keep their lattice state;
+        // Propagated arms must be traversed via rewrite_deps() to keep their lattice state;
         // everything else (Var%s, externals, ...) escapes normally.
-        auto rewrite_side = [&](const Def* side) -> const Def* {
-            if (propagated) return rewrite_deps(side->as_mut());
-            return rewrite(side);
+        auto rewrite_arm = [&](const Def* arm) -> const Def* {
+            if (propagated) return rewrite_deps(arm->as_mut());
+            return rewrite(arm);
         };
 
-        if (l && !*l) {
-            auto abstr_ff = rewrite_side(branch.ff());
-            return world().app(abstr_ff, abstr_args.span().subspan(0, app->num_targs()));
-        } else if (l && *l) {
-            auto abstr_tt = rewrite_side(branch.tt());
-            return world().app(abstr_tt, abstr_args.span().subspan(0, app->num_targs()));
-        } else {
-            auto abstr_ff = rewrite_side(branch.ff());
-            auto abstr_tt = rewrite_side(branch.tt());
-            return world().app(world().extract(world().tuple({abstr_ff, abstr_tt}), abstr_cond),
-                               abstr_args.span().subspan(0, app->num_targs()));
+        if (l) {
+            auto abstr_taken = rewrite_arm(dispatch.target(*l));
+            return world().app(abstr_taken, abstr_args.span().subspan(0, app->num_targs()));
         }
+
+        DefVec abstr_arms;
+        for (size_t i = 0, e = arms.size(); i != e; ++i)
+            abstr_arms.emplace_back(rewrite_arm(dispatch.target(i)));
+        return world().app(world().extract(world().tuple(abstr_arms), abstr_index),
+                           abstr_args.span().subspan(0, app->num_targs()));
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
         DLOG("{} not optimizable", app->callee());
 
@@ -435,16 +448,20 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             auto rewritten_mem = rewrite(mem);
             return new_world().tuple({rewritten_mem, rewrite(known_load)});
         }
-    } else if (auto branch = Branch(old_app)) {
-        auto old_tt = branch.tt()->isa_mut<Lam>();
-        auto old_ff = branch.ff()->isa_mut<Lam>();
-        if (old_tt && old_ff && (needs_seo(old_tt) || needs_seo(old_ff))) {
-            auto new_cond = rewrite(branch.cond());
-            DLOG("in {}, found branch on {} ({}) with {} / {}", curr_mut(), branch.cond(), new_cond, old_ff, old_tt);
+    } else if (auto dispatch = Dispatch(old_app)) {
+        auto old_arms = Vector<Lam*>(dispatch.num_targets());
+        for (size_t i = 0, e = old_arms.size(); i != e; ++i)
+            old_arms[i] = dispatch.target(i)->isa_mut<Lam>();
 
-            if (auto l = Lit::isa<bool>(new_cond)) {
-                // the branch folds in the new world; only rebuild the taken side
-                auto old_taken = *l ? old_tt : old_ff;
+        bool all_muts = std::ranges::all_of(old_arms, [](Lam* lam) { return lam != nullptr; });
+        if (all_muts && std::ranges::any_of(old_arms, [this](Lam* lam) { return needs_seo(lam); })) {
+            auto new_index = rewrite(dispatch.index());
+            DLOG("in {}, found dispatch on {} ({}) with {}", curr_mut(), dispatch.index(), new_index,
+                 fe::Join(old_arms, " / "));
+
+            if (auto l = Lit::isa(new_index)) {
+                // the dispatch folds in the new world; only rebuild the taken arm
+                auto old_taken = old_arms[*l];
                 if (needs_seo(old_taken)) {
                     invalidate();
                     return map(old_app, new_world().app(build_lam(old_taken), build_args(old_taken, old_app)));
@@ -453,16 +470,18 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             }
 
             invalidate();
-            auto tt_args = build_args(old_tt, old_app);
-            auto ff_args = build_args(old_ff, old_app);
-            auto new_tt  = needs_seo(old_tt) ? build_lam(old_tt) : rewrite(old_tt);
-            auto new_ff  = needs_seo(old_ff) ? build_lam(old_ff) : rewrite(old_ff);
+            auto new_args = build_args(old_arms.front(), old_app);
+            auto new_arms = DefVec();
+            for (auto old_arm : old_arms) {
+                // EtaExp runs beforehand, so all arms are fresh single-use Lams that received the same
+                // propagation; hence their rebuilt signatures and arguments agree.
+                assert(build_args(old_arm, old_app) == new_args);
+                new_arms.emplace_back(needs_seo(old_arm) ? build_lam(old_arm) : rewrite(old_arm));
+                assert(new_arms.back()->type() == new_arms.front()->type());
+            }
 
-            // EtaExp runs beforehand, so both sides are fresh single-use Lams that received the same
-            // propagation; hence their rebuilt signatures and arguments agree.
-            assert(tt_args == ff_args && new_tt->type() == new_ff->type());
-            auto new_callee = new_world().extract(new_world().tuple({new_ff, new_tt}), new_cond);
-            return map(old_app, new_world().app(new_callee, tt_args));
+            auto new_callee = new_world().extract(new_world().tuple(new_arms), new_index);
+            return map(old_app, new_world().app(new_callee, new_args));
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !isa_optimizable(old_lam)) {
         // Continuations passed to an unknown callee cannot receive extra args for their phis;

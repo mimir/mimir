@@ -69,6 +69,11 @@ private:
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp_gvn_propagate(DefVec&, DefVec&);
         const Def* rewrite_imm_App(const App*) final;
+        /// Reaching a Lam through this default path means it has been used as a value (not as an `App` callee)
+        /// and has therefore escaped: seeds its vars to **top** (`v -> v`) in the lattice.
+        /// If a var already carried a non-top lattice value, that propagation is unsound and is retracted;
+        /// invalidate() then triggers another fixed-point round.
+        Def* rewrite_mut(Def*) final;
         /// Traverses each mut only once per fixed-point round; otherwise cyclic CFGs recurse forever.
         Def* rewrite_deps(Def*) final;
 

@@ -66,17 +66,6 @@ Def* Analysis::rewrite_deps(Def* mut) {
 
 Def* Analysis::rewrite_mut(Def* mut) {
     map(mut, mut);
-
-    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
-        for (auto v : var->tprojs()) {
-            map(v, v);
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                // var was mapped to sth else beforehand so we need another fixed-point round
-                invalidate();
-                i->second = v;
-            }
-        }
-
     return rewrite_deps(mut);
 }
 

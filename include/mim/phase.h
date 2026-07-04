@@ -198,8 +198,7 @@ protected:
     virtual void rewrite_external(Def*);
 
     /// Walks @p mut's dependencies under its curr_mut() scope.
-    /// Unlike rewrite_mut(), does **not** record `mut -> mut` and does **not** seed
-    /// any binder-related lattice state.
+    /// Unlike rewrite_mut(), does **not** record `mut -> mut`.
     ///
     /// Use this when you have already populated custom lattice entries for @p mut's
     /// binder (typically inside a `rewrite_imm_App` override that propagates abstract
@@ -207,14 +206,13 @@ protected:
     /// body without rewrite_mut() clobbering that state.
     virtual Def* rewrite_deps(Def*);
 
-    /// Default "visit a mutable" entry point: maps `mut -> mut`, seeds Lam binder
-    /// vars to **top** (`v -> v`) in the lattice, and delegates to rewrite_deps()
-    /// for the recursive traversal.
+    /// Default "visit a mutable" entry point: maps `mut -> mut` and delegates to
+    /// rewrite_deps() for the recursive traversal.
     ///
-    /// If a binder var already carried a non-top lattice value, it is reset to top
-    /// and invalidate() is called: reaching a Lam through this default path means
-    /// it has been used as a value (not as an `App` callee) and has therefore
-    /// escaped, so any prior propagation for it is unsound and must be retracted.
+    /// Subclasses that propagate abstract values into binders should override this:
+    /// reaching a mutable through this default path means it has been used as a value
+    /// (not as an `App` callee) and has therefore escaped, so any prior propagation
+    /// for it must be retracted (see SymExprOpt).
     Def* rewrite_mut(Def*) override;
     ///@}
 
