@@ -90,7 +90,7 @@ public:
 private:
     std::unique_ptr<World> ptr_;
     World* world_;
-    Def* curr_mut_      = nullptr;
+    Def* curr_mut_ = nullptr;
 
 protected:
     std::deque<Def2Def> old2news_;

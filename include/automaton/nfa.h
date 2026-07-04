@@ -19,17 +19,21 @@ public:
     std::vector<const NFANode*> get_transitions(std::uint16_t c) const;
 
     // F: void(const NFANode*)
-    template<class F> void for_transitions(F&& f, std::uint16_t c) const {
+    template<class F>
+    void for_transitions(F&& f, std::uint16_t c) const {
         if (erroring_) return;
         if (auto it = transitions_.find(c); it != transitions_.end())
-            for (const auto& to : it->second) std::forward<F>(f)(to);
+            for (const auto& to : it->second)
+                std::forward<F>(f)(to);
     }
 
     // F: void(std::uint16_t, const NFANode*)
-    template<class F> void for_transitions(F&& f) const {
+    template<class F>
+    void for_transitions(F&& f) const {
         if (erroring_) return;
         for (auto& [c, tos] : transitions_)
-            for (const auto& to : tos) std::forward<F>(f)(c, to);
+            for (const auto& to : tos)
+                std::forward<F>(f)(c, to);
     }
 
     bool is_accepting() const { return accepting_; }

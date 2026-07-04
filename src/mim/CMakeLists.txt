@@ -26,10 +26,10 @@ target_sources(libmim
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp
-        pass/lam_spec.cpp
+        phase/lam_spec.cpp
         pass/optimize.cpp
-        pass/scalarize.cpp
-        pass/tail_rec_elim.cpp
+        phase/scalarize.cpp
+        phase/tail_rec_elim.cpp
         phase/beta_red_phase.cpp
         phase/eta_red_phase.cpp
         phase/eta_exp_phase.cpp

@@ -11,7 +11,8 @@ namespace automaton {
 std::set<const NFANode*> epsilonClosure(const std::set<const NFANode*>& states) {
     std::set<const NFANode*> closure;
     std::queue<const NFANode*> stateQueue;
-    for (const auto& state : states) stateQueue.push(state);
+    for (const auto& state : states)
+        stateQueue.push(state);
     while (!stateQueue.empty()) {
         auto currentState = stateQueue.front();
         stateQueue.pop();

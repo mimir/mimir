@@ -79,6 +79,18 @@ const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
 
 const Def* SymExprOpt::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
+
+    // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
+    // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
+    if (Axm::isa<mem::M>(var->type())) {
+        auto [i, ins] = lattice_.emplace(var, var);
+        if (ins || i->second != var) {
+            i->second = var;
+            invalidate();
+        }
+        return var;
+    }
+
     auto [i, ins] = lattice_.emplace(var, def);
     if (ins) {
         invalidate();

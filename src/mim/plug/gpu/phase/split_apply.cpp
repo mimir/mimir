@@ -1,7 +1,7 @@
 
-#include <mim/driver.h>
-
 #include "mim/plug/gpu/phase/split_apply.h"
+
+#include <mim/driver.h>
 
 namespace mim::plug::gpu::phase {
 

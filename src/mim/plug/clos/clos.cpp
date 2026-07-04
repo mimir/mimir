@@ -3,7 +3,7 @@
 #include <mim/config.h>
 #include <mim/pass.h>
 
-#include <mim/pass/scalarize.h>
+#include <mim/phase/scalarize.h>
 
 #include "mim/plug/clos/pass/branch_clos_elim.h"
 #include "mim/plug/clos/pass/clos2sjlj.h"

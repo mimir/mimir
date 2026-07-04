@@ -7,15 +7,15 @@
 #include <mim/pass.h>
 #include <mim/phase.h>
 
-#include <mim/pass/lam_spec.h>
-#include <mim/pass/scalarize.h>
-#include <mim/pass/tail_rec_elim.h>
 #include <mim/phase/beta_red_phase.h>
 #include <mim/phase/branch_normalize.h>
 #include <mim/phase/eta_exp_phase.h>
 #include <mim/phase/eta_red_phase.h>
+#include <mim/phase/lam_spec.h>
 #include <mim/phase/prefix_cleanup.h>
 #include <mim/phase/ret_wrap.h>
+#include <mim/phase/scalarize.h>
+#include <mim/phase/tail_rec_elim.h>
 
 #include "mim/plug/compile/autogen.h"
 
@@ -63,6 +63,9 @@ void reg_stages(Flags2Stages& stages) {
     Stage::hook<compile::cleanup_phase,          Cleanup             >(stages);
     Stage::hook<compile::eta_exp_phase,          EtaExpPhase         >(stages);
     Stage::hook<compile::eta_red_phase,          EtaRedPhase         >(stages);
+    Stage::hook<compile::lam_spec_phase,         LamSpec             >(stages);
+    Stage::hook<compile::scalarize_phase,        Scalarize           >(stages);
+    Stage::hook<compile::tail_rec_elim_phase,    TailRecElim         >(stages);
     Stage::hook<compile::named_phase,            Named               >(stages);
     Stage::hook<compile::named_pass,             Named               >(stages);
     Stage::hook<compile::named_repl,             Named               >(stages);
@@ -74,10 +77,7 @@ void reg_stages(Flags2Stages& stages) {
     // repls
     Stage::hook<compile::repls,                  ReplMan             >(stages);
     // passes
-    Stage::hook<compile::lam_spec_pass,          LamSpec             >(stages);
     Stage::hook<compile::passes,                 PassMan             >(stages);
-    Stage::hook<compile::scalarize_pass,         Scalarize           >(stages);
-    Stage::hook<compile::tail_rec_elim_pass,     TailRecElim         >(stages);
     // clang-format on
 }
 

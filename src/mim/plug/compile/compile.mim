@@ -63,8 +63,11 @@ axm %compile.branch_normalize_phase:                    %compile.Phase;
 axm %compile.cleanup_phase:                             %compile.Phase;
 axm %compile.eta_exp_phase:                             %compile.Phase;
 axm %compile.eta_red_phase:                             %compile.Phase;
+axm %compile.lam_spec_phase:                            %compile.Phase;
 axm %compile.null_phase:                                %compile.Phase;
 axm %compile.ret_wrap_phase:                            %compile.Phase;
+axm %compile.scalarize_phase:                           %compile.Phase;
+axm %compile.tail_rec_elim_phase:                       %compile.Phase;
 axm %compile.pass2phase:                %compile.Pass → %compile.Phase;
 axm %compile.repl2phase:                %compile.Repl → %compile.Phase;
 axm %compile.prefix_cleanup_phase: {n: Nat} → «n; I8» → %compile.Phase;
@@ -77,7 +80,4 @@ axm %compile.null_repl: %compile.Repl;
 ///
 /// ### Passes
 ///
-axm %compile.lam_spec_pass:                             %compile.Pass;
 axm %compile.null_pass:                                 %compile.Pass;
-axm %compile.scalarize_pass:                            %compile.Pass;
-axm %compile.tail_rec_elim_pass:                        %compile.Pass;

@@ -22,15 +22,18 @@ public:
     const DFANode* get_transition(std::uint16_t c) const;
 
     // F: void(const DFANode*)
-    template<class F> void for_transitions(F&& f, std::uint16_t c) const {
+    template<class F>
+    void for_transitions(F&& f, std::uint16_t c) const {
         if (erroring_) return;
         if (auto it = transitions_.find(c); it != transitions_.end()) f(it->second);
     }
 
     // F: void(std::uint16_t, const DFANode*)
-    template<class F> void for_transitions(F&& f) const {
+    template<class F>
+    void for_transitions(F&& f) const {
         if (erroring_) return;
-        for (auto& [c, to] : transitions_) f(c, to);
+        for (auto& [c, to] : transitions_)
+            f(c, to);
     }
 
     bool is_accepting() const noexcept { return accepting_; }
@@ -65,6 +68,7 @@ public:
     enum SpecialTransitons : std::uint16_t {};
 };
 
-template<class To> using DFAMap = absl::btree_map<const DFANode*, To, DFANode::Lt>;
+template<class To>
+using DFAMap = absl::btree_map<const DFANode*, To, DFANode::Lt>;
 
 } // namespace automaton
