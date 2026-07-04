@@ -2,25 +2,32 @@
 // A block shared as a common tail between two construct instances at equal
 // coordinates is a type error: region paths are anchored on the consumed
 // token value, and left/right bind distinct tokens, so `tail` cannot have a
-// token type valid for both ifs. Before token anchoring this type-checked —
+// token type valid for both ifs. Before token anchoring, the closed type
+// `Token (arm tt (ROOT, 0)) 1` was valid for both and this type-checked —
 // the tail always returns and never touches a capability, so nothing pinned
 // it to one instance and only emission could have caught the sharing.
+// After anchoring that type is not even expressible (arm needs a token
+// VALUE); the only nameable closed token type is the root, pinned below.
+// Leaving `tok` unannotated fails too: inference gives `tail` a type
+// mentioning `left`'s token variable, making the program unscopable
+// (currently reported as a closedness assertion rather than an error).
 
 plugin sflow;
 
 fun extern foo (token: %sflow.Root, sel cond: Bool) = (left, right)#sel token where
   con left (token: %sflow.Root) = %sflow.if token exit_l (else_l, then_l) cond () where
-    con then_l (_: [], _, tok) = %sflow.branch tail tok 1;
+    con then_l (_: [], _, tok) = %sflow.branch tok tail 1;
     con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
     con exit_l (x: Nat, _) = return x;
   end;
   con right (token: %sflow.Root) = %sflow.if token exit_r (else_r, then_r) cond () where
-    con then_r (_: [], _, tok) = %sflow.branch tail tok 2;
+    con then_r (_: [], _, tok) = %sflow.branch tok tail 2;
     con else_r (_: [], struct, tok) = %sflow.merge tok struct 0;
     con exit_r (x: Nat, _) = return x;
   end;
-  // shared always-return tail between the two ifs' then-arms
-  con tail (x: Nat, tok) = return x;
+  // shared always-return tail between the two ifs' then-arms; %sflow.Root is
+  // the only closed token type left to try — and it matches neither if
+  con tail (x: Nat, tok: %sflow.Root) = return x;
 end;
 
 // CHECK: error

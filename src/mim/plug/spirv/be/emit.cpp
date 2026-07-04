@@ -61,7 +61,16 @@ void Emitter::visit(const Nest& nest) {
     }
     auto old_size = lam2bb_.size();
 
-    assert(root()->ret_var());
+    // Identify the return continuation: a plain CPS ret var (fun-style) or a
+    // parameter of polymorphic sflow return type (`%sflow.Ret`, con-style).
+    ret_var_ = root()->ret_var();
+    if (!ret_var_)
+        for (size_t i = 0, e = root()->num_vars(); i != e; ++i)
+            if (isa_ret(root()->var(i)->type())) {
+                ret_var_ = root()->var(i);
+                break;
+            }
+    assert(ret_var_ && "function has neither a CPS ret var nor an %sflow.Ret parameter");
 
     Scheduler new_scheduler(nest);
     swap(scheduler_, new_scheduler);

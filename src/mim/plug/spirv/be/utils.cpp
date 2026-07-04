@@ -9,6 +9,18 @@
 
 namespace mim::plug::spirv {
 
+/// Matches the expansion of `%sflow.Ret R`: `{path, step} → [Token path step] → Cn R`
+/// (the polymorphic return continuation type; `%sflow.Ret` is a mim-level lam,
+/// so only its beta-reduced shape survives into the world). Yields the
+/// innermost `Cn R` on a match, whose dom is the return payload type.
+const Pi* isa_ret(const Def* def) {
+    auto pi = def->isa<Pi>();
+    if (!pi) return nullptr;
+    auto tok_pi = pi->codom()->isa<Pi>();
+    if (!tok_pi || !Axm::isa<sflow::Token>(tok_pi->dom())) return nullptr;
+    return Pi::isa_cn(tok_pi->codom());
+}
+
 const Def* Emitter::strip(const Def* def) {
     auto stripped = strip_rec(def);
     return stripped ? stripped : (def->type()->isa<Type>() ? (const Def*)def->world().sigma() : def->world().tuple());
@@ -51,6 +63,23 @@ const Def* Emitter::strip_rec(const Def* def) {
     if (auto pi = def->isa<Pi>()) {
         // Pi stays Pi. CPS pi: drop return cont, lift its dom to codom.
         // Direct-style pi (no ret_pi): strip dom/codom in place.
+
+        // CPS pi with a polymorphic sflow return (`%sflow.Ret` param): drop
+        // the ret con (tokens drop on their own below), lift the ret payload
+        // to codom.
+        if (auto sigma = pi->dom()->isa<Sigma>()) {
+            const Pi* ret = nullptr;
+            for (auto field : sigma->projs())
+                if (auto r = isa_ret(field)) ret = r;
+            if (ret) {
+                DefVec fields{};
+                for (auto field : sigma->projs())
+                    if (!isa_ret(field))
+                        if (auto stripped = strip_rec(field)) fields.push_back(stripped);
+                return world.pi(world.sigma(fields), strip(ret->dom()), pi->is_implicit());
+            }
+        }
+
         if (auto ret_pi = pi->ret_pi()) {
             DefVec fields{};
             for (auto field : pi->dom()->as<Sigma>()->projs().view().rsubspan(1))
@@ -94,6 +123,10 @@ const Def* Emitter::strip_rec(const Def* def) {
     if (Axm::isa<sflow::If>(def)) return nullptr;
     if (Axm::isa<sflow::Switch>(def)) return nullptr;
     if (Axm::isa<sflow::Loop>(def)) return nullptr;
+    // The polymorphic return continuation type is 0-erased machinery like the
+    // tokens it consumes (its payload only matters at the function boundary,
+    // handled by the function-type branch above).
+    if (isa_ret(def)) return nullptr;
 
     return def;
 }

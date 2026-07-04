@@ -165,6 +165,11 @@ private:
     Lam* curr_function_ = nullptr;
     LamMap<BB> lam2bb_;
 
+    /// The current function's return continuation: either a plain CPS ret var
+    /// or a parameter of polymorphic sflow return type (`%sflow.Ret`).
+    /// Computed per nest in `visit`.
+    const Def* ret_var_ = nullptr;
+
     DefMap<Word> interface_vars_;
 
     OpVec function_vars_{};
@@ -196,6 +201,10 @@ bool is_const(const Def* def);
 /// The scope token identifying the `If`/`Switch`/`Loop` construct that owns a
 /// capability value (the first explicit argument of its type).
 const Def* scope_token_of(const Def* cf_struct);
+
+/// Matches the expansion of `%sflow.Ret R` (the polymorphic return
+/// continuation type); yields the innermost `Cn R` on a match.
+const Pi* isa_ret(const Def* def);
 
 void emit_asm(World& world, std::ostream& out);
 void emit_bin(World& world, std::ostream& out);

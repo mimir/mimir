@@ -54,15 +54,21 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     auto app = lam->body()->as<App>();
 
     Word lam_id = bb_id(lam);
-    if (Lam::isa_returning(lam))
+    if (lam == root())
         set_id_name(lam_id, std::format("entry_{}", lam->unique_name()));
     else
         set_id_name(lam_id, lam->unique_name());
 
     bb.label = Op{OpKind::Label, {}, lam_id, {}};
 
+    // Peel curried applications off the callee: a polymorphic sflow return is
+    // called as `return {path, step} token payload`, so the ret var sits at
+    // the bottom of an app chain (a plain CPS return is the callee directly).
+    auto callee_base = app->callee();
+    while (auto curried = callee_base->isa<App>()) callee_base = curried->callee();
+
     // emit bb end instruction
-    if (app->callee() == root()->ret_var()) {
+    if (callee_base == ret_var_) {
         // return lam called
         // => OpReturn | OpReturnValue
 
@@ -203,20 +209,22 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
     } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {
         // === Unconditional forward branch ===
         // => OpBranch
-        auto [callee, token, value] = cf_branch->uncurry_args<3>();
+        auto [token, callee, value] = cf_branch->uncurry_args<3>();
         auto callee_lam             = callee->as_mut<Lam>();
         link_phi(lam, callee_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(callee_lam)}, {}, {}};
     } else if (auto cf_call = Axm::isa<sflow::call>(app)) {
         // === Function call ===
-        // The lam ends with `call(token, fn)(t_val, ret_lam)`, where ret_lam
+        // The lam ends with `call token fn (t_val, ret_lam)`, where ret_lam
         // is the CPS continuation that receives the call's result. Lower to
         // OpFunctionCall followed by OpBranch into ret_lam, phi-ing the
         // returned value in.
-        auto [fn, token, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
+        auto [token, fn, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
         auto ret_lam                         = ret_lam_def->as_mut<Lam>();
 
-        auto ret_type       = fn->type()->as<Pi>()->ret_pi()->dom();
+        // The callee is a `%sflow.Fn` (polymorphic return, no CPS ret_pi);
+        // recover the result type from the caller-side continuation instead.
+        auto ret_type       = strip(ret_lam->type()->as<Pi>()->dom());
         Word result_id      = next_id();
         Word result_type_id = emit_type(ret_type);
 

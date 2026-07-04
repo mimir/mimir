@@ -2,8 +2,9 @@
 
 plugin sflow;
 
-fun extern foo (token: %sflow.Root, cond: Bool) = %sflow.if token exit (else, then) cond () where
-  con then (_, struct, token) = %sflow.merge token struct 1;
-  con else (_, struct, token) = %sflow.merge token struct 0;
-  con exit (x: Nat, _) = return x;
+con extern foo (token: %sflow.Root, cond: Bool, return: %sflow.Ret Nat) =
+  %sflow.if token exit (else, then) cond () where
+    con then (_, struct, token) = %sflow.merge token struct 1;
+    con else (_, struct, token) = %sflow.merge token struct 0;
+    con exit (x: Nat, token) = return token x;
 end;

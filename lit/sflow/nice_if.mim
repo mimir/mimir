@@ -1,9 +1,21 @@
+// RUN: %mim %s -o -
+// XFAIL: *
+// The nice_if wrapper has never elaborated (this test had no RUN line before
+// 2026-07-04): applying the user tuple at the variable pack index —
+// `tuple#arm merge arg arm_token` — yields a union of the two arms' dependent
+// con types, which mim cannot apply; via the where-block the same failure
+// surfaces as a closedness assertion instead. Pre-existing wrapper/mimir
+// limitation, independent of token anchoring and the polymorphic return:
+// extracts from heterogeneous tuples are a known rough edge in mimir with
+// ongoing upstream discussion.
+
 plugin sflow;
 
-// return is a genuine %sflow.Ret continuation: it consumes the payload plus a
-// token at any coordinates, so returning from any depth pays a token and no
-// lifting of a raw continuation is needed. %sflow.Ret is also the merge
-// interface, so return passes directly as the merge target.
+// return is a genuine %sflow.Ret continuation: it consumes a token at any
+// coordinates (token-first, like every axiom) plus the payload, so returning
+// from any depth pays a token and no lifting of a raw continuation is needed.
+// %sflow.Ret is also the merge interface, so return passes directly as the
+// merge target.
 con extern foo (cond: Bool, token: %sflow.Root, return: %sflow.Ret Nat) =
   %sflow.nice_if return cond () token (else, then) where
     lam then (merge) () = merge 1;

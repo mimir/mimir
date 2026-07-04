@@ -84,6 +84,11 @@ Word Emitter::emit_function(Lam* function) {
         module_.funDefinitions.emplace_back(Op{OpKind::FunctionParameter, {}, var_id, emit_type(var_type)});
     set_id_name(var_id, var->unique_name());
     locals_[world().extract(var, (size_t)0)] = var_id;
+    // Also map the whole var: con-style functions project params directly off
+    // it, so the mem-materialization path in strip_rec reaches the raw var via
+    // `emit_term(extract->tuple())` — without this entry that would fall into
+    // emit_term_into and emit the var's unstripped (token/ret) type.
+    locals_[var] = var_id;
 
     // external lams are emitted as entry points
     if (root()->is_external()) {
@@ -91,10 +96,10 @@ Word Emitter::emit_function(Lam* function) {
         std::optional<spirv::model> model{};
         DefVec exec_modes{};
 
-        // TODO: Check whether the lam has an argument besides the return con
-        std::cerr << "dom: " << root()->dom() << " - " << root()->dom()->op(0)->node_name() << "\n";
-        auto sigma = root()->dom()->op(0)->as<Sigma>();
-        std::cerr << sigma << "\n";
+        // fun-style CPS lams nest their params: dom = [[params...], Cn R];
+        // con-style structured functions (polymorphic `%sflow.Ret` param)
+        // list their params directly.
+        auto sigma = root()->ret_pi() ? root()->dom()->op(0)->as<Sigma>() : root()->dom()->as<Sigma>();
         for (size_t idx = 0; idx < sigma->num_ops(); ++idx) {
             auto param = sigma->op(idx);
 

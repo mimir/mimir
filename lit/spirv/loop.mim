@@ -36,16 +36,20 @@ fun extern vertex [
     let mem__ = %spirv.store (mem_, %spirv.position model, position);
     return (%spirv.store (mem__, v_color, color));
 
-fun extern fragment [
+// fragment uses the structured (con-style) function shape: the return
+// continuation is a %sflow.Ret parameter consuming a token, while vertex
+// above deliberately keeps the raw fun-style CPS return.
+con extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
     token: %sflow.Root,
+    return: %sflow.Ret (%mem.M 0),
 ] = let (mem_, color) = %spirv.load (mem, i_color);
     %sflow.header token loop 5 where
         con loop (i: Nat, struct) =
             %sflow.loop struct break body (%core.ncmp.e (i, 0)) () where
             con body (_: [], struct, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
         end;
-        con break (_: [], _) =
-            return (%spirv.store (mem_, f_color, fragment_body color));
+        con break (_: [], tok) =
+            return tok (%spirv.store (mem_, f_color, fragment_body color));
     end;

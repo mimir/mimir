@@ -31,10 +31,14 @@ fun extern vertex [
     let mem__ = %spirv.store (mem_, %spirv.position model, position);
     return (%spirv.store (mem__, o_x, x));
 
-fun extern fragment [
+// fragment uses the structured (con-style) function shape: the return
+// continuation is a %sflow.Ret parameter consuming a token, while vertex
+// above deliberately keeps the raw fun-style CPS return.
+con extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
     token: %sflow.Root,
+    return: %sflow.Ret (%mem.M 0),
 ] = let (mem_, x) = %spirv.load (mem, i_x);
     let cond_outer = %math.cmp.l 0 (x, -0.25:F32);
     %sflow.if token merge (else_outer, then_outer) cond_outer () where
@@ -46,5 +50,5 @@ fun extern fragment [
                 con else_inner (_: [], s, token) = %sflow.merge token s blue;
                 con break_inner (color: «4; F32», token) = %sflow.merge token struct color;
             end;
-        con merge (color: «4; F32», _) = return (%spirv.store (mem_, o_color, color));
+        con merge (color: «4; F32», token) = return token (%spirv.store (mem_, o_color, color));
     end;
