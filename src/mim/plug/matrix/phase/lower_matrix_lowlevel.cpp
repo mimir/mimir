@@ -1,4 +1,4 @@
-#include "mim/plug/matrix/pass/lower_matrix_lowlevel.h"
+#include "mim/plug/matrix/phase/lower_matrix_lowlevel.h"
 
 #include <cassert>
 

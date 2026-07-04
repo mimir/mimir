@@ -3,7 +3,7 @@
 #include <mim/pass.h>
 #include <mim/plugin.h>
 
-#include "mim/plug/regex/pass/lower_regex.h"
+#include "mim/plug/regex/phase/lower_regex.h"
 
 using namespace mim;
 using namespace mim::plug;

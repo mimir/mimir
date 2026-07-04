@@ -63,7 +63,7 @@ let clos_phases =
 lam extern _default_compile (): %compile.Phase =
     %compile.phases ff (
         optimize,
-        %compile.pass2phase (%compile.named_pass "%regex.lower_regex"),
+        %compile.named_phase "%regex.lower_regex",
         %compile.cond_phase "tensor" (
             %compile.phases ff (
                 %compile.named_phase "%tensor.lower_tensor",
@@ -81,12 +81,8 @@ lam extern _default_compile (): %compile.Phase =
             )
         ),
         %compile.named_phase "%cps.conv",
-        %compile.pass2phase (
-            %compile.passes (
-                %compile.named_pass "%matrix.lower_matrix_high_level_map_reduce",
-                %compile.named_pass "%matrix.lower_matrix_medium_level",
-            )
-        ),
+        %compile.named_phase "%matrix.lower_matrix_high_level_map_reduce",
+        %compile.named_phase "%matrix.lower_matrix_medium_level",
         %compile.named_phase "%matrix.lower_matrix_low_level",
         %compile.named_phase "%cps.conv",
         %compile.named_phase "%affine.lower_for_phase",

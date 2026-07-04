@@ -1,4 +1,4 @@
-#include "mim/plug/matrix/pass/lower_matrix_mediumlevel.h"
+#include "mim/plug/matrix/phase/lower_matrix_mediumlevel.h"
 
 #include <iostream>
 
@@ -16,13 +16,6 @@ using namespace std::string_literals;
 
 namespace mim::plug::matrix {
 
-const Def* LowerMatrixMediumLevel::rewrite(const Def* def) {
-    if (auto i = rewritten.find(def); i != rewritten.end()) return i->second;
-    auto new_def   = rewrite_(def);
-    rewritten[def] = new_def;
-    return rewritten[def];
-}
-
 std::pair<Lam*, const Def*> counting_for(const Def* bound, DefVec acc, const Def* exit, Sym name) {
     auto& world = bound->world();
     auto acc_ty = world.tuple(acc)->type();
@@ -36,8 +29,10 @@ std::pair<Lam*, const Def*> counting_for(const Def* bound, DefVec acc, const Def
 // TODO: compare with other impala version (why is one easier than the other?)
 // TODO: replace sum_ptr by using sum as accumulator
 // TODO: extract inner loop into function (for read normalizer)
-const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
-    if (auto map_reduce_ax = Axm::isa<matrix::map_reduce>(def); map_reduce_ax) {
+const Def* LowerMatrixMediumLevel::rewrite_imm_App(const App* app) {
+    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
+
+    if (auto map_reduce_ax = Axm::isa<matrix::map_reduce>(app); map_reduce_ax) {
         // meta arguments:
         // * n = out-count, (nat)
         // * S = out-dim, (n*nat)
@@ -96,7 +91,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         auto m_lit = m->isa<Lit>();
         if (!n_lit || !m_lit) {
             DLOG("n or m is not a literal");
-            return def;
+            return RWPhase::rewrite_imm_App(app);
         }
 
         auto n_nat = n_lit->get<u64>(); // number of output dimensions (in S)
@@ -119,7 +114,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
             auto ni_lit = Lit::isa(ni);
             if (!ni_lit) {
                 DLOG("matrix {} has non-constant dimension count", i);
-                return def;
+                return RWPhase::rewrite_imm_App(app);
             }
             u64 ni_nat = *ni_lit;
             DLOG("  dims({}) = {}", i, ni_nat);
@@ -147,7 +142,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
                 auto idx_lit = Lit::isa(idx);
                 if (!idx_lit) {
                     DLOG("    index {} {} is not a literal", i, j);
-                    return def;
+                    return RWPhase::rewrite_imm_App(app);
                 }
                 u64 idx_nat = *idx_lit;
                 auto dim    = input_dims[i][j];
@@ -182,15 +177,27 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         std::sort(out_indices.begin(), out_indices.end());
         std::sort(in_indices.begin(), in_indices.end());
 
+        // The analysis above inspected old-world defs; everything taken along into the replacement
+        // must be rewritten into the new world first.
+        auto& w = new_world();
+        mem     = rewrite(mem);
+        zero    = rewrite(zero);
+        comb    = rewrite(comb);
+        n       = rewrite(n);
+        S       = rewrite(S);
+        T       = rewrite(T);
+        for (auto& [_, dim] : dims)
+            dim = rewrite(dim);
+
         // create function `%mem.M 0 -> [%mem.M 0, %matrix.Mat (n,S,T)]` to replace axm call
 
-        auto mem_type = world().call<mem::M>(0);
-        auto fun      = world().mut_fun(mem_type, map_reduce_ax->type())->set("mapRed");
+        auto mem_type = w.call<mem::M>(0);
+        auto fun      = w.mut_fun(mem_type, rewrite(map_reduce_ax->type()))->set("mapRed");
 
         // assert(0);
         auto ds_fun = cps::op_cps2ds_dep(fun);
         DLOG("ds_fun {} : {}", ds_fun, ds_fun->type());
-        auto call = world().app(ds_fun, mem);
+        auto call = w.app(ds_fun, mem);
         DLOG("call {} : {}", call, call->type());
 
         // flowchart:
@@ -220,7 +227,7 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
 
         // First create the output matrix.
         auto current_mem      = mem;
-        auto [mem2, init_mat] = world().app(world().annex<matrix::init>(), {n, S, T, current_mem})->projs<2>();
+        auto [mem2, init_mat] = w.app(w.annex<matrix::init>(), {n, S, T, current_mem})->projs<2>();
         current_mem           = mem2;
 
         // The function on where to continue -- return after all output loops.
@@ -231,15 +238,15 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         DefVec acc = {current_mem, init_mat};
 
         for (auto idx : out_indices) {
-            auto for_name    = world().sym("forIn_"s + std::to_string(idx));
+            auto for_name    = w.sym("forIn_"s + std::to_string(idx));
             auto dim_nat_def = dims[idx];
-            auto dim         = world().call<core::bitcast>(world().type_i32(), dim_nat_def);
+            auto dim         = w.call<core::bitcast>(w.type_i32(), dim_nat_def);
 
             auto [body, for_call]       = counting_for(dim, acc, cont, for_name);
             auto [iter, new_acc, yield] = body->vars<3>();
             cont                        = yield;
             raw_iterator[idx]           = iter;
-            iterator[idx]               = world().call<core::bitcast>(world().type_idx(dim_nat_def), iter);
+            iterator[idx]               = w.call<core::bitcast>(w.type_idx(dim_nat_def), iter);
             auto [new_mem, new_mat]     = new_acc->projs<2>();
             acc                         = {new_mem, new_mat};
             current_mut->set(true, for_call);
@@ -270,13 +277,12 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
             auto iter_idx_def = iterator[idx];
             return iter_idx_def;
         });
-        auto output_it_tuple  = world().tuple(output_iterators);
+        auto output_it_tuple  = w.tuple(output_iterators);
         DLOG("output tuple: {} : {}", output_it_tuple, output_it_tuple->type());
 
-        auto [wb_mem2, written_matrix] = world()
-                                             .app(world().app(world().annex<matrix::insert>(), {n, S, T}),
-                                                  {wb_mem, wb_matrix, output_it_tuple, element_final})
-                                             ->projs<2>();
+        auto [wb_mem2, written_matrix]
+            = w.app(w.app(w.annex<matrix::insert>(), {n, S, T}), {wb_mem, wb_matrix, output_it_tuple, element_final})
+                  ->projs<2>();
 
         write_back->app(true, cont, {wb_mem2, written_matrix});
 
@@ -286,15 +292,15 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
 
         // TODO this is copy&paste code from above
         for (auto idx : in_indices) {
-            auto for_name    = world().sym("forIn_"s + std::to_string(idx));
+            auto for_name    = w.sym("forIn_"s + std::to_string(idx));
             auto dim_nat_def = dims[idx];
-            auto dim         = world().call<core::bitcast>(world().type_i32(), dim_nat_def);
+            auto dim         = w.call<core::bitcast>(w.type_i32(), dim_nat_def);
 
             auto [body, for_call]       = counting_for(dim, acc, cont, for_name);
             auto [iter, new_acc, yield] = body->vars<3>();
             cont                        = yield;
             raw_iterator[idx]           = iter;
-            iterator[idx]               = world().call<core::bitcast>(world().type_idx(dim_nat_def), iter);
+            iterator[idx]               = w.call<core::bitcast>(w.type_idx(dim_nat_def), iter);
             auto [new_mem, new_element] = new_acc->projs<2>();
             acc                         = {new_mem, new_element};
             current_mut->set(true, for_call);
@@ -323,9 +329,9 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
                 DLOG("  idx {} {} = {}", i, j, idx_lit);
                 return iterator[idx_lit];
             });
-            auto input_it_tuple  = world().tuple(input_iterators);
+            auto input_it_tuple  = w.tuple(input_iterators);
 
-            auto read_entry = op_read(current_mem, input_matrix, input_it_tuple);
+            auto read_entry = op_read(current_mem, rewrite(input_matrix), input_it_tuple);
             DLOG("read_entry {} : {}", read_entry, read_entry->type());
             auto [new_mem, element_i] = read_entry->projs<2>();
             current_mem               = new_mem;
@@ -336,12 +342,12 @@ const Def* LowerMatrixMediumLevel::rewrite_(const Def* def) {
         DLOG("  fun {} : {}", fun, fun->type());
 
         // TODO: make non-scalar or completely scalar?
-        current_mut->app(true, comb, {world().tuple({current_mem, element_acc, world().tuple(input_elements)}), cont});
+        current_mut->app(true, comb, {w.tuple({current_mem, element_acc, w.tuple(input_elements)}), cont});
 
         return call;
     }
 
-    return def;
+    return RWPhase::rewrite_imm_App(app);
 }
 
 } // namespace mim::plug::matrix
