@@ -1,0 +1,34 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin compile;
+
+lam f_known     (x: Nat)@ff: Nat = x;
+lam f_unknown_1 (x: Nat)@ff: Nat = x;
+lam f_unknown_2 (x: Nat)@ff: Nat = x;
+lam f_both      (x: Nat)@ff: Nat = x;
+
+lam take1 (f: Nat → Nat)@ff: Nat = f 23;
+lam take2 (f: Nat → Nat)@ff: Nat = f 23;
+
+lam extern foo(): «6; Nat» =
+    let a = f_known 42;
+    let b = take1 f_unknown_1;
+    let c = take1 f_unknown_2;
+    let d = take2 f_unknown_2;
+    let e = f_both 42;
+    let f = take1 f_both;
+    (a, b, c, d, e, f);
+
+lam extern _compile(): %compile.Phase =
+    %compile.eta_exp_phase;
+
+// CHECK-NOT:  eta_f_known
+// CHECK-NOT:  eta_f_unknown_1
+// CHECK-DAG:  (f_known_{{[0-9]+}} 42, take1_{{[0-9]+}} f_unknown_1_{{[0-9]+}}, take1_{{[0-9]+}} {{(eta_)?}}f_unknown_2_[[ETA1:[0-9]+]], take2_{{[0-9]+}} {{(eta_)?}}f_unknown_2_[[ETA2:[0-9]+]], f_both_[[FBOTH:[0-9]+]] 42, take1_{{[0-9]+}} {{(eta_)?}}f_both_[[ETAB:[0-9]+]]);
+// CHECK-DAG:  lam {{(eta_)?}}f_unknown_2_[[ETA1]] ([[V1:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG:  f_unknown_2_{{[0-9]+}} [[V1]];
+// CHECK-DAG:  lam {{(eta_)?}}f_unknown_2_[[ETA2]] ([[V2:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG:  f_unknown_2_{{[0-9]+}} [[V2]];
+// CHECK-DAG:  lam {{(eta_)?}}f_both_[[ETAB]] ([[V3:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG:  f_both_[[FBOTH]] [[V3]];
+// CHECK-NOT:  eta_f_known
+// CHECK-NOT:  eta_f_unknown_1
