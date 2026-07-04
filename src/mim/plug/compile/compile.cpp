@@ -4,8 +4,8 @@
 
 #include <mim/config.h>
 #include <mim/driver.h>
-#include <mim/pass.h>
 #include <mim/phase.h>
+#include <mim/stage.h>
 
 #include <mim/phase/beta_red_phase.h>
 #include <mim/phase/branch_normalize.h>
@@ -22,11 +22,11 @@
 using namespace mim;
 using namespace mim::plug;
 
-/// Stage hook for `%compile.named_phase`, `%compile.named_pass`, and `%compile.named_repl`.
+/// Stage hook for `%compile.named_phase` and `%compile.named_repl`.
 /// Reads the fully-qualified annex name (e.g. `"clos.clos_conv_phase"`) from the driving App at stage-build time,
 /// looks up the matching annex `Def` in the current `World`, and *redirects* Stage::create to that annex's own
 /// Stage. If the plugin part of the name is not loaded or the annex is missing, it elides (resolves to nothing),
-/// so the enclosing `%compile.phases`/`passes`/`repls` simply skips it.
+/// so the enclosing `%compile.phases`/`repls` simply skips it.
 class Named : public Stage {
 public:
     Named(World& w, flags_t a)
@@ -56,7 +56,6 @@ void reg_stages(Flags2Stages& stages) {
     // clang-format off
     assert_emplace(stages, Annex::base<compile::null_phase>(), [](World&) { return std::unique_ptr<Phase>{}; });
     assert_emplace(stages, Annex::base<compile::null_repl >(), [](World&) { return std::unique_ptr<Repl >{}; });
-    assert_emplace(stages, Annex::base<compile::null_pass >(), [](World&) { return std::unique_ptr<Pass >{}; });
     // phases
     Stage::hook<compile::beta_red_phase,         BetaRedPhase        >(stages);
     Stage::hook<compile::branch_normalize_phase, BranchNormalizePhase>(stages);
@@ -67,17 +66,13 @@ void reg_stages(Flags2Stages& stages) {
     Stage::hook<compile::scalarize_phase,        Scalarize           >(stages);
     Stage::hook<compile::tail_rec_elim_phase,    TailRecElim         >(stages);
     Stage::hook<compile::named_phase,            Named               >(stages);
-    Stage::hook<compile::named_pass,             Named               >(stages);
     Stage::hook<compile::named_repl,             Named               >(stages);
-    Stage::hook<compile::pass2phase,             PassManPhase        >(stages);
     Stage::hook<compile::repl2phase,             ReplManPhase        >(stages);
     Stage::hook<compile::phases,                 PhaseMan            >(stages);
     Stage::hook<compile::prefix_cleanup_phase,   PrefixCleanup       >(stages);
     Stage::hook<compile::ret_wrap_phase,         RetWrap             >(stages);
     // repls
     Stage::hook<compile::repls,                  ReplMan             >(stages);
-    // passes
-    Stage::hook<compile::passes,                 PassMan             >(stages);
     // clang-format on
 }
 

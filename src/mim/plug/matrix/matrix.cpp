@@ -1,7 +1,7 @@
 #include "mim/plug/matrix/matrix.h"
 
-#include <mim/pass.h>
 #include <mim/plugin.h>
+#include <mim/stage.h>
 
 #include "mim/plug/matrix/phase/lower_matrix_highlevel.h"
 #include "mim/plug/matrix/phase/lower_matrix_lowlevel.h"

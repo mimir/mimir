@@ -10,7 +10,7 @@ target_sources(libmim
         lam.cpp
         lattice.cpp
         nest.cpp
-        pass.cpp
+        stage.cpp
         phase.cpp
         plugin.cpp
         rewrite.cpp
@@ -27,7 +27,7 @@ target_sources(libmim
         ast/stream.cpp
         ast/tok.cpp
         phase/lam_spec.cpp
-        pass/optimize.cpp
+        phase/optimize.cpp
         phase/scalarize.cpp
         phase/tail_rec_elim.cpp
         phase/beta_red_phase.cpp

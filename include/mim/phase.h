@@ -7,8 +7,8 @@
 
 #include "mim/def.h"
 #include "mim/nest.h"
-#include "mim/pass.h"
 #include "mim/rewrite.h"
+#include "mim/stage.h"
 
 namespace mim {
 
@@ -21,8 +21,8 @@ class World;
 using Repls  = std::deque<std::unique_ptr<Repl>>;
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
-/// Unlike a Pass, a Phase performs one self-contained task and does not
-/// interleave with other phases. Phases are intended to run in a classical sequence, one after another.
+/// A Phase performs one self-contained task over the whole World.
+/// Phases are intended to run in a classical sequence, one after another.
 /// @see @ref phases_phase
 class Phase : public Stage {
 public:
@@ -326,33 +326,6 @@ public:
         : RWPhase(world, "cleanup") {}
     Cleanup(World& world, flags_t annex)
         : RWPhase(world, annex) {}
-};
-
-/// Wraps a PassMan pipeline as a Phase.
-class PassManPhase : public Phase {
-public:
-    /// @name Construction
-    ///@{
-    PassManPhase(World& world, std::unique_ptr<PassMan>&& man)
-        : Phase(world, build_name("pass_man_phase", *man))
-        , base_name_("pass_man_phase")
-        , man_(std::move(man)) {}
-    PassManPhase(World& world, flags_t annex)
-        : Phase(world, annex)
-        , base_name_(world.annex(annex)->sym()) {}
-
-    void apply(const App*) final;
-    void apply(Stage&) final;
-    ///@}
-
-    const PassMan& man() const { return *man_; }
-
-private:
-    void start() final { man_->run(); }
-
-    std::string build_name(const std::string& base, PassMan& pm) const;
-    std::string base_name_;
-    std::unique_ptr<PassMan> man_;
 };
 
 /// Organizes several Phase%s into a pipeline.

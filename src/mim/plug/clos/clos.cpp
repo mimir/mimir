@@ -1,16 +1,16 @@
 #include "mim/plug/clos/clos.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
+#include <mim/stage.h>
 
 #include <mim/phase/scalarize.h>
 
-#include "mim/plug/clos/pass/branch_clos_elim.h"
-#include "mim/plug/clos/pass/clos2sjlj.h"
-#include "mim/plug/clos/pass/clos_conv_prep.h"
-#include "mim/plug/clos/pass/lower_typed_clos_prep.h"
+#include "mim/plug/clos/phase/branch_clos_elim.h"
+#include "mim/plug/clos/phase/clos2sjlj.h"
 #include "mim/plug/clos/phase/clos_conv.h"
+#include "mim/plug/clos/phase/clos_conv_prep.h"
 #include "mim/plug/clos/phase/lower_typed_clos.h"
+#include "mim/plug/clos/phase/lower_typed_clos_prep.h"
 
 using namespace mim;
 using namespace mim::plug;
@@ -20,11 +20,10 @@ void reg_stages(Flags2Stages& stages) {
     // phases
     Stage::hook<clos::clos_conv_phase,            clos::ClosConv          >(stages);
     Stage::hook<clos::lower_typed_clos_phase,     clos::LowerTypedClos    >(stages);
-    // passes
-    Stage::hook<clos::clos_conv_prep_pass,        clos::ClosConvPrep      >(stages);
-    Stage::hook<clos::branch_clos_pass,           clos::BranchClosElim    >(stages);
-    Stage::hook<clos::lower_typed_clos_prep_pass, clos::LowerTypedClosPrep>(stages);
-    Stage::hook<clos::clos2sjlj_pass,             clos::Clos2SJLJ         >(stages);
+    Stage::hook<clos::clos_conv_prep_phase,       clos::ClosConvPrep      >(stages);
+    Stage::hook<clos::branch_clos_phase,          clos::BranchClosElim    >(stages);
+    Stage::hook<clos::lower_typed_clos_prep_phase,clos::LowerTypedClosPrep>(stages);
+    Stage::hook<clos::clos2sjlj_phase,            clos::Clos2SJLJ         >(stages);
     // clang-format on
 }
 

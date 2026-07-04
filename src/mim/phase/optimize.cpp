@@ -1,4 +1,4 @@
-#include "mim/pass/optimize.h"
+#include "mim/phase/optimize.h"
 
 #include "mim/driver.h"
 #include "mim/phase.h"

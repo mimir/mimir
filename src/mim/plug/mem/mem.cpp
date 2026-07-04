@@ -1,11 +1,11 @@
 #include "mim/plug/mem/mem.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
+#include <mim/stage.h>
 
 #include "mim/plug/mem/mem.h"
-#include "mim/plug/mem/pass/reshape.h"
 #include "mim/plug/mem/phase/add_mem.h"
+#include "mim/plug/mem/phase/reshape.h"
 #include "mim/plug/mem/phase/sym_expr_opt.h"
 
 using namespace mim;
@@ -34,7 +34,7 @@ void reg_stages(Flags2Stages& stages) {
     // clang-format off
     Stage::hook<mem::add_mem_phase,  mem::phase::AddMem    >(stages);
     Stage::hook<mem::sym_expr_opt,   mem::phase::SymExprOpt>(stages);
-    Stage::hook<mem::reshape_pass,   mem::pass:: Reshape   >(stages);
+    Stage::hook<mem::reshape_phase,  mem::phase::Reshape   >(stages);
     // clang-format on
 }
 

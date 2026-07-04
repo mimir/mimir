@@ -98,11 +98,11 @@ axm %mem.reshape_mode: *;
 axm %mem.reshape_flat: %mem.reshape_mode;
 axm %mem.reshape_arg:  %mem.reshape_mode;
 ///
-axm %mem.reshape_pass: %mem.reshape_mode → %compile.Pass;
+axm %mem.reshape_phase: %mem.reshape_mode → %compile.Phase;
 ///
-/// ##### Pre-applied pass annexes
+/// ##### Pre-applied phase annexes
 ///
-/// Argument-free aliases so these passes can be referenced by name (e.g. via `%compile.named_pass`) from
+/// Argument-free aliases so these phases can be referenced by name (e.g. via `%compile.named_phase`) from
 /// pipelines that do not import the `mem` plugin.
 ///
-let %mem.reshape_flat_pass  = %mem.reshape_pass %mem.reshape_flat;
+let %mem.reshape_flat_phase = %mem.reshape_phase %mem.reshape_flat;

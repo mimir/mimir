@@ -2,9 +2,9 @@
 
 #include <mim/config.h>
 #include <mim/driver.h>
-#include <mim/pass.h>
 #include <mim/phase.h>
 #include <mim/plugin.h>
+#include <mim/stage.h>
 
 #include <mim/plug/gpu/phase/mem_checks.h>
 #include <mim/plug/gpu/phase/remove_double_syncs.h>

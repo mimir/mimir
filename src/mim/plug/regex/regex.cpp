@@ -1,7 +1,7 @@
 #include "mim/plug/regex/regex.h"
 
-#include <mim/pass.h>
 #include <mim/plugin.h>
+#include <mim/stage.h>
 
 #include "mim/plug/regex/phase/lower_regex.h"
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <mim/def.h>
-#include <mim/pass.h>
 #include <mim/phase.h>
+#include <mim/stage.h>
 
 namespace mim::plug::matrix {
 

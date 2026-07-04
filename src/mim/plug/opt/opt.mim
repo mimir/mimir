@@ -9,7 +9,7 @@
 /// ## Dependencies
 ///
 /// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `%compile.named_phase` / `%compile.named_pass` /
+/// Every other plugin is referenced *by name* through `%compile.named_phase` /
 /// `%compile.named_repl` (which resolve to the plugin's annexes iff it is loaded) and `%compile.cond_phase`
 /// (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
@@ -36,25 +36,20 @@ let optimize =
 let clos_opt_phases =
     %compile.phases ff (
         %compile.scalarize_phase,
-        %compile.pass2phase (%compile.named_pass "%clos.branch_clos_pass"),
+        %compile.named_phase "%clos.branch_clos_phase",
         %compile.named_phase "%mem.sym_expr_opt",
-    );
-
-let clos_opt2b_passes =
-    %compile.passes (
-        %compile.named_pass "%clos.lower_typed_clos_prep_pass",
-        %compile.named_pass "%clos.clos2sjlj_pass",
     );
 
 let clos_phases =
     %compile.phases ff (
-        %compile.pass2phase (%compile.named_pass "%mem.reshape_flat_pass"),
+        %compile.named_phase "%mem.reshape_flat_phase",
         %compile.named_phase "%mem.add_mem_phase",
-        %compile.pass2phase (%compile.named_pass "%clos.clos_conv_prep_pass"),
+        %compile.named_phase "%clos.clos_conv_prep_phase",
         %compile.named_phase "%clos.clos_conv_phase",
         %compile.scalarize_phase,
         clos_opt_phases,
-        %compile.pass2phase clos_opt2b_passes,
+        %compile.named_phase "%clos.lower_typed_clos_prep_phase",
+        %compile.named_phase "%clos.clos2sjlj_phase",
         // clos2sjlj introduces new branch closures; clean them up again
         clos_opt_phases,
         %compile.named_phase "%clos.lower_typed_clos_phase",

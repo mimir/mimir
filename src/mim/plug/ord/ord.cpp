@@ -1,7 +1,7 @@
 #include "mim/plug/ord/ord.h"
 
-#include <mim/pass.h>
 #include <mim/plugin.h>
+#include <mim/stage.h>
 
 using namespace mim;
 

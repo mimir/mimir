@@ -181,10 +181,7 @@ void PhaseMan::apply(const App* app) {
     auto phases = Phases();
     for (auto arg : args->projs())
         if (auto stage = create(driver().stages(), arg)) {
-            // clang-format off
-            if (auto pm = stage->isa<PassManPhase>(); pm && pm->  man().empty()) continue;
-            if (auto rp = stage->isa<ReplMan     >(); rp && rp->repls().empty()) continue;
-            // clang-format on
+            if (auto rp = stage->isa<ReplMan>(); rp && rp->repls().empty()) continue;
             phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(stage.release())));
         }
 
@@ -222,38 +219,6 @@ void PhaseMan::start() {
 
         invalidate(todo);
     }
-}
-
-/*
- * PassManPhase
- */
-
-std::string PassManPhase::build_name(const std::string& base, PassMan& pm) const {
-    std::string join;
-    for (const auto& pass : pm.passes()) {
-        if (!join.empty()) join += ",";
-        join += pass->name();
-    }
-    return base + "(" + join + ")";
-}
-
-void PassManPhase::apply(const App* app) {
-    man_        = std::make_unique<PassMan>(world(), annex());
-    auto passes = Passes();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            passes.emplace_back(std::unique_ptr<Pass>(static_cast<Pass*>(stage.release())));
-
-    man_->apply(std::move(passes));
-
-    name_ = build_name(base_name_, *man_);
-}
-
-void PassManPhase::apply(Stage& stage) {
-    auto& pmp = static_cast<PassManPhase&>(stage);
-    swap(man_, pmp.man_);
-
-    name_ = build_name(base_name_, *man_);
 }
 
 } // namespace mim

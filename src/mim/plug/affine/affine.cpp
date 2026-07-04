@@ -1,7 +1,7 @@
 #include "mim/plug/affine/affine.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
+#include <mim/stage.h>
 
 #include "mim/plug/affine/phase/lower_for.h"
 #include "mim/plug/affine/phase/lower_index.h"
