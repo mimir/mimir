@@ -19,7 +19,7 @@ lam extern foo(): «6; Nat» =
     (a, b, c, d, e, f);
 
 lam extern _compile(): %compile.Phase =
-    %compile.eta_exp_phase;
+    %compile.eta_exp;
 
 // CHECK-NOT:  eta_f_known
 // CHECK-NOT:  eta_f_unknown_1

@@ -24,22 +24,22 @@ axm %compile.Phase: *;
 ///
 axm %compile.is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
-/// ### %%compile.named_phase
+/// ### %%compile.named
 ///
-/// Resolves to the `%compile.Phase` annex with the given fully-qualified name (e.g. `"clos.clos_conv_phase"`).
+/// Resolves to the `%compile.Phase` annex with the given fully-qualified name (e.g. `"clos.clos_conv"`).
 /// Resolution is deferred until the phase pipeline is built so that the referenced plugin's `.mim` file does not
 /// have to be imported by users of this axm.
 /// If the named annex is missing at pipeline build time (its plugin is not loaded), it is silently elided, i.e. the
 /// enclosing `%compile.phases` simply skips it.
 ///
-axm %compile.named_phase: {n: Nat} → «n; I8» → %compile.Phase;
+axm %compile.named: {n: Nat} → «n; I8» → %compile.Phase;
 ///
-/// ### %%compile.cond_phase
+/// ### %%compile.cond
 ///
-/// Yields `phase` if the named plugin is loaded, otherwise `%compile.null_phase`.
+/// Yields `phase` if the named plugin is loaded, otherwise `%compile.null`.
 /// Used to gate whole sub-pipelines on a plugin without importing it.
 ///
-axm %compile.cond_phase: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond_phase;
+axm %compile.cond: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond;
 ///
 /// ## Constructors
 ///
@@ -51,16 +51,16 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 ///
 /// ### Phases
 ///
-axm %compile.beta_red_phase:                            %compile.Phase;
-axm %compile.branch_normalize_phase:                    %compile.Phase;
-axm %compile.cleanup_phase:                             %compile.Phase;
-axm %compile.eta_exp_phase:                             %compile.Phase;
-axm %compile.eta_red_phase:                             %compile.Phase;
-axm %compile.lam_spec_phase:                            %compile.Phase;
-axm %compile.null_phase:                                %compile.Phase;
-axm %compile.ret_wrap_phase:                            %compile.Phase;
-axm %compile.scalarize_phase:                           %compile.Phase;
-axm %compile.tail_rec_elim_phase:                       %compile.Phase;
-axm %compile.prefix_cleanup_phase: {n: Nat} → «n; I8» → %compile.Phase;
+axm %compile.beta_red:                            %compile.Phase;
+axm %compile.branch_normalize:                    %compile.Phase;
+axm %compile.cleanup:                             %compile.Phase;
+axm %compile.eta_exp:                             %compile.Phase;
+axm %compile.eta_red:                             %compile.Phase;
+axm %compile.lam_spec:                            %compile.Phase;
+axm %compile.null:                                %compile.Phase;
+axm %compile.ret_wrap:                            %compile.Phase;
+axm %compile.scalarize:                           %compile.Phase;
+axm %compile.tail_rec_elim:                       %compile.Phase;
+axm %compile.prefix_cleanup: {n: Nat} → «n; I8» → %compile.Phase;
 
-let %compile.internal_cleanup_phase = %compile.prefix_cleanup_phase "internal_";
+let %compile.internal_cleanup = %compile.prefix_cleanup "internal_";

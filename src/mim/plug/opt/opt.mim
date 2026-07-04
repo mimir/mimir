@@ -9,8 +9,8 @@
 /// ## Dependencies
 ///
 /// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `%compile.named_phase` (which resolves to the plugin's
-/// annex iff it is loaded) and `%compile.cond_phase` (which gates a whole sub-pipeline on a plugin being loaded).
+/// Every other plugin is referenced *by name* through `%compile.named` (which resolves to the plugin's
+/// annex iff it is loaded) and `%compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;
@@ -22,36 +22,36 @@ plugin compile;
 ///
 let optimize =
     %compile.phases ff (
-        %compile.scalarize_phase,
+        %compile.scalarize,
         %compile.phases tt (
-            %compile.beta_red_phase,
-            %compile.eta_red_phase,
+            %compile.beta_red,
+            %compile.eta_red,
         ),
-        %compile.eta_exp_phase,
-        %compile.named_phase "%mem.sym_expr_opt",
-        %compile.tail_rec_elim_phase,
+        %compile.eta_exp,
+        %compile.named "%mem.sym_expr_opt",
+        %compile.tail_rec_elim,
     );
 
 let clos_opt_phases =
     %compile.phases ff (
-        %compile.scalarize_phase,
-        %compile.named_phase "%clos.branch_clos_phase",
-        %compile.named_phase "%mem.sym_expr_opt",
+        %compile.scalarize,
+        %compile.named "%clos.branch_clos",
+        %compile.named "%mem.sym_expr_opt",
     );
 
 let clos_phases =
     %compile.phases ff (
-        %compile.named_phase "%mem.reshape_flat_phase",
-        %compile.named_phase "%mem.add_mem_phase",
-        %compile.named_phase "%clos.clos_conv_prep_phase",
-        %compile.named_phase "%clos.clos_conv_phase",
-        %compile.scalarize_phase,
+        %compile.named "%mem.flat_reshape",
+        %compile.named "%mem.add_mem",
+        %compile.named "%clos.clos_conv_prep",
+        %compile.named "%clos.clos_conv",
+        %compile.scalarize,
         clos_opt_phases,
-        %compile.named_phase "%clos.lower_typed_clos_prep_phase",
-        %compile.named_phase "%clos.clos2sjlj_phase",
+        %compile.named "%clos.lower_typed_clos_prep",
+        %compile.named "%clos.clos2sjlj",
         // clos2sjlj introduces new branch closures; clean them up again
         clos_opt_phases,
-        %compile.named_phase "%clos.lower_typed_clos_phase",
+        %compile.named "%clos.lower_typed_clos",
     );
 ///
 /// ## The default pipeline
@@ -59,33 +59,33 @@ let clos_phases =
 lam extern _default_compile (): %compile.Phase =
     %compile.phases ff (
         optimize,
-        %compile.named_phase "%regex.lower_regex",
-        %compile.named_phase "%tensor.lower_tensor",
-        %compile.named_phase "%tensor.fuse_tensor",
-        %compile.named_phase "%tensor.lower_map_reduce",
-        %compile.named_phase "%gpu.mem_checks_phase",
-        %compile.named_phase "%affine.lower_index_phase",
-        %compile.named_phase "%affine.lower_for_phase",
-        %compile.named_phase "%autodiff.eval_phase",
-        %compile.named_phase "%autodiff.zero_repl",
-        %compile.named_phase "%cps.conv",
-        %compile.named_phase "%matrix.lower_matrix_high_level_map_reduce",
-        %compile.named_phase "%matrix.lower_matrix_medium_level",
-        %compile.named_phase "%matrix.lower_matrix_low_level",
-        %compile.named_phase "%cps.conv",
-        %compile.named_phase "%affine.lower_for_phase",
-        %compile.internal_cleanup_phase,
-        %compile.cond_phase "clos" clos_phases,
-        %compile.lam_spec_phase,
-        %compile.named_phase "%cps.conv",
+        %compile.named "%regex.lower_regex",
+        %compile.named "%tensor.lower_tensor",
+        %compile.named "%tensor.fuse_tensor",
+        %compile.named "%tensor.lower_map_reduce",
+        %compile.named "%gpu.mem_checks",
+        %compile.named "%affine.lower_index",
+        %compile.named "%affine.lower_for",
+        %compile.named "%autodiff.eval",
+        %compile.named "%autodiff.zero_repl",
+        %compile.named "%cps.conv",
+        %compile.named "%matrix.lower_matrix_high_level_map_reduce",
+        %compile.named "%matrix.lower_matrix_medium_level",
+        %compile.named "%matrix.lower_matrix_low_level",
+        %compile.named "%cps.conv",
+        %compile.named "%affine.lower_for",
+        %compile.internal_cleanup,
+        %compile.cond "clos" clos_phases,
+        %compile.lam_spec,
+        %compile.named "%cps.conv",
         optimize,
         // CodeGenPrep
-        %compile.branch_normalize_phase,
-        %compile.ret_wrap_phase,
-        %compile.named_phase "%mem.remem_repl",
-        %compile.named_phase "%mem.alloc2malloc_repl",
-        %compile.named_phase "%refly.remove_dbg_repl",
-        %compile.named_phase "%gpu.check_addr_spaces_repl",
+        %compile.branch_normalize,
+        %compile.ret_wrap,
+        %compile.named "%mem.remem_repl",
+        %compile.named "%mem.alloc2malloc_repl",
+        %compile.named "%refly.remove_dbg_repl",
+        %compile.named "%gpu.check_addr_spaces_repl",
         // emit LLVM IR to <world>.ll iff the `ll` plugin is loaded (`-p ll`)
-        %compile.named_phase "%ll.emit",
+        %compile.named "%ll.emit",
     );

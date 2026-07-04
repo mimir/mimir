@@ -32,9 +32,9 @@ void reg_phases(Flags2Phases& phases) {
     });
 
     // clang-format off
-    Phase::hook<mem::add_mem_phase,  mem::phase::AddMem    >(phases);
+    Phase::hook<mem::add_mem,  mem::phase::AddMem    >(phases);
     Phase::hook<mem::sym_expr_opt,   mem::phase::SymExprOpt>(phases);
-    Phase::hook<mem::reshape_phase,  mem::phase::Reshape   >(phases);
+    Phase::hook<mem::reshape,  mem::phase::Reshape   >(phases);
     // clang-format on
 }
 

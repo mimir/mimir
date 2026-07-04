@@ -461,7 +461,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             auto new_tt  = needs_seo(old_tt) ? build_lam(old_tt) : rewrite(old_tt);
             auto new_ff  = needs_seo(old_ff) ? build_lam(old_ff) : rewrite(old_ff);
 
-            // EtaExpPhase runs beforehand, so both sides are fresh single-use Lams that received the same
+            // EtaExp runs beforehand, so both sides are fresh single-use Lams that received the same
             // propagation; hence their rebuilt signatures and arguments agree.
             assert(tt_args == ff_args && new_tt->type() == new_ff->type());
             auto new_callee = new_world().extract(new_world().tuple({new_ff, new_tt}), new_cond);

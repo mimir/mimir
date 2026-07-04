@@ -11,11 +11,11 @@ namespace mim {
 /// This phase takes care that Lam%das appear either **only** in callee position (Known) or not (Unknown).
 /// If a function `f` is both Known and Unknown,
 /// this Phase will η-expand the Unknown occurance which makes the function Known: `g f -> g (λx.f x)`
-class EtaExpPhase : public RWPhase {
+class EtaExp : public RWPhase {
 public:
-    EtaExpPhase(World& world)
-        : RWPhase(world, "EtaExpPhase") {}
-    EtaExpPhase(World& world, flags_t annex)
+    EtaExp(World& world)
+        : RWPhase(world, "EtaExp") {}
+    EtaExp(World& world, flags_t annex)
         : RWPhase(world, annex) {}
 
 private:

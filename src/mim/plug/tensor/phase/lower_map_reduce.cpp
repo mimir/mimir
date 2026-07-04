@@ -567,7 +567,7 @@ const Def* LowerMapReduce::lower_map_reduce_aff(const App* app) {
     }
 
     // Builds `%affine.map @(m, n) @(sin, sout) f idxs`. The emitted `%affine.map` is lowered to %core arithmetic by the
-    // subsequent %affine.lower_index_phase.
+    // subsequent %affine.lower_index.
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
         auto a = w.app(w.annex<affine::map>(), w.tuple({m, n}));
         a      = w.app(a, w.tuple({sin, sout}));

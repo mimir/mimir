@@ -1,7 +1,7 @@
 #include <mim/ast/parser.h>
-#include <mim/phase/beta_red_phase.h>
-#include <mim/phase/eta_exp_phase.h>
-#include <mim/phase/eta_red_phase.h>
+#include <mim/phase/beta_red.h>
+#include <mim/phase/eta_exp.h>
+#include <mim/phase/eta_red.h>
 #include <mim/util/sys.h>
 
 #include <mim/plug/mem/mem.h>
@@ -51,9 +51,9 @@ int main(int, char**) {
         auto path = std::filesystem::path("prog.mim");
         if (auto mod = parser.import(is, mim::Loc(&path, mim::Pos(1, 1), mim::Pos(1, 1)))) {
             mod->compile(ast);
-            mim::Phase::run<mim::BetaRedPhase>(world);
-            mim::Phase::run<mim::EtaRedPhase>(world);
-            mim::Phase::run<mim::EtaExpPhase>(world);
+            mim::Phase::run<mim::BetaRed>(world);
+            mim::Phase::run<mim::EtaRed>(world);
+            mim::Phase::run<mim::EtaExp>(world);
             mim::Phase::run<mim::SCCP>(world);
             world.dump();
         }

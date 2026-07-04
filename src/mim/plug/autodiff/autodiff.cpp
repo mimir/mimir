@@ -12,7 +12,7 @@ using namespace mim;
 using namespace mim::plug;
 
 void reg_phases(Flags2Phases& phases) {
-    Phase::hook<autodiff::eval_phase, autodiff::Eval>(phases);
+    Phase::hook<autodiff::eval, autodiff::Eval>(phases);
 
     MIM_REPL(phases, autodiff::zero_repl, {
         if (auto zero = Axm::isa<autodiff::zero>(def); zero) {

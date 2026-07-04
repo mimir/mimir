@@ -5,11 +5,11 @@
 namespace mim {
 
 /// Inlines in post-order all Lam%s that occur exactly *once* in the program.
-class EtaRedPhase : public RWPhase {
+class EtaRed : public RWPhase {
 public:
-    EtaRedPhase(World& world)
-        : RWPhase(world, "EtaRedPhase") {}
-    EtaRedPhase(World& world, flags_t annex)
+    EtaRed(World& world)
+        : RWPhase(world, "EtaRed") {}
+    EtaRed(World& world, flags_t annex)
         : RWPhase(world, annex) {}
 
 private:

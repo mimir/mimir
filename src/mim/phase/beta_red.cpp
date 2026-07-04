@@ -1,14 +1,14 @@
-#include "mim/phase/beta_red_phase.h"
+#include "mim/phase/beta_red.h"
 
 namespace mim {
 
-bool BetaRedPhase::analyze() {
+bool BetaRed::analyze() {
     for (auto def : old_world().roots())
         visit(def, false);
     return false; // no fixed-point neccessary
 }
 
-void BetaRedPhase::analyze(const Def* def) {
+void BetaRed::analyze(const Def* def) {
     if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
     if (def->isa<Var>()) return; // ignore Var's mut
 
@@ -16,14 +16,14 @@ void BetaRedPhase::analyze(const Def* def) {
         visit(d, true);
 }
 
-void BetaRedPhase::visit(const Def* def, bool candidate) {
+void BetaRed::visit(const Def* def, bool candidate) {
     if (auto lam = def->isa_mut<Lam>()) {
         if (auto [i, ins] = candidates_.emplace(lam, candidate); !ins) i->second = false;
     }
     analyze(def);
 }
 
-const Def* BetaRedPhase::rewrite_imm_App(const App* app) {
+const Def* BetaRed::rewrite_imm_App(const App* app) {
     if (auto old_lam = app->callee()->isa_mut<Lam>(); old_lam && old_lam->is_set() && is_candidate(old_lam)) {
         DLOG("beta-reduce: `{}`", old_lam);
         if (auto var = old_lam->has_var()) {

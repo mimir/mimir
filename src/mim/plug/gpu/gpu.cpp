@@ -59,7 +59,7 @@ void reg_phases(Flags2Phases& phases) {
     });
 
     // clang-format off
-    Phase::hook<gpu::mem_checks_phase,                 gpu::phase::MemChecks        >(phases);
+    Phase::hook<gpu::mem_checks,                 gpu::phase::MemChecks        >(phases);
     Phase::hook<gpu::remove_double_syncs,              gpu::phase::RemoveDoubleSyncs>(phases);
     // clang-format on
 }

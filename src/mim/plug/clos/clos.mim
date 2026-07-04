@@ -31,9 +31,9 @@ axm %clos.attr(returning, freeBB, fstclassBB, esc, bottom): {T: *} → T → T, 
 ///
 /// ### Phases
 ///
-axm %clos.clos_conv_prep_phase:        %compile.Phase;
-axm %clos.branch_clos_phase:           %compile.Phase;
-axm %clos.lower_typed_clos_prep_phase: %compile.Phase;
-axm %clos.clos2sjlj_phase:             %compile.Phase;
-axm %clos.clos_conv_phase:             %compile.Phase;
-axm %clos.lower_typed_clos_phase:      %compile.Phase;
+axm %clos.clos_conv_prep:        %compile.Phase;
+axm %clos.branch_clos:           %compile.Phase;
+axm %clos.lower_typed_clos_prep: %compile.Phase;
+axm %clos.clos2sjlj:             %compile.Phase;
+axm %clos.clos_conv:             %compile.Phase;
+axm %clos.lower_typed_clos:      %compile.Phase;

@@ -53,7 +53,7 @@ axm %autodiff.zero_repl: %compile.Phase;
 ///
 /// ### Phases
 ///
-axm %autodiff.eval_phase: %compile.Phase;
+axm %autodiff.eval: %compile.Phase;
 ///
 /// ## Registered translations
 ///

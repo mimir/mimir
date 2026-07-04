@@ -6,10 +6,10 @@
 #include <mim/driver.h>
 #include <mim/phase.h>
 
-#include <mim/phase/beta_red_phase.h>
+#include <mim/phase/beta_red.h>
 #include <mim/phase/branch_normalize.h>
-#include <mim/phase/eta_exp_phase.h>
-#include <mim/phase/eta_red_phase.h>
+#include <mim/phase/eta_exp.h>
+#include <mim/phase/eta_red.h>
 #include <mim/phase/lam_spec.h>
 #include <mim/phase/prefix_cleanup.h>
 #include <mim/phase/ret_wrap.h>
@@ -21,8 +21,8 @@
 using namespace mim;
 using namespace mim::plug;
 
-/// Phase hook for `%compile.named_phase`.
-/// Reads the fully-qualified annex name (e.g. `"clos.clos_conv_phase"`) from the driving App at phase-build time,
+/// Phase hook for `%compile.named`.
+/// Reads the fully-qualified annex name (e.g. `"clos.clos_conv"`) from the driving App at phase-build time,
 /// looks up the matching annex `Def` in the current `World`, and *redirects* Phase::create to that annex's own
 /// Phase. If the plugin part of the name is not loaded or the annex is missing, it elides (resolves to nothing),
 /// so the enclosing `%compile.phases` simply skips it.
@@ -55,19 +55,19 @@ private:
 
 void reg_phases(Flags2Phases& phases) {
     // clang-format off
-    assert_emplace(phases, Annex::base<compile::null_phase>(), [](World&) { return std::unique_ptr<Phase>{}; });
-    Phase::hook<compile::beta_red_phase,         BetaRedPhase        >(phases);
-    Phase::hook<compile::branch_normalize_phase, BranchNormalizePhase>(phases);
-    Phase::hook<compile::cleanup_phase,          Cleanup             >(phases);
-    Phase::hook<compile::eta_exp_phase,          EtaExpPhase         >(phases);
-    Phase::hook<compile::eta_red_phase,          EtaRedPhase         >(phases);
-    Phase::hook<compile::lam_spec_phase,         LamSpec             >(phases);
-    Phase::hook<compile::scalarize_phase,        Scalarize           >(phases);
-    Phase::hook<compile::tail_rec_elim_phase,    TailRecElim         >(phases);
-    Phase::hook<compile::named_phase,            Named               >(phases);
+    assert_emplace(phases, Annex::base<compile::null>(), [](World&) { return std::unique_ptr<Phase>{}; });
+    Phase::hook<compile::beta_red,         BetaRed        >(phases);
+    Phase::hook<compile::branch_normalize, BranchNormalize>(phases);
+    Phase::hook<compile::cleanup,          Cleanup             >(phases);
+    Phase::hook<compile::eta_exp,          EtaExp         >(phases);
+    Phase::hook<compile::eta_red,          EtaRed         >(phases);
+    Phase::hook<compile::lam_spec,         LamSpec             >(phases);
+    Phase::hook<compile::scalarize,        Scalarize           >(phases);
+    Phase::hook<compile::tail_rec_elim,    TailRecElim         >(phases);
+    Phase::hook<compile::named,            Named               >(phases);
     Phase::hook<compile::phases,                 PhaseMan            >(phases);
-    Phase::hook<compile::prefix_cleanup_phase,   PrefixCleanup       >(phases);
-    Phase::hook<compile::ret_wrap_phase,         RetWrap             >(phases);
+    Phase::hook<compile::prefix_cleanup,   PrefixCleanup       >(phases);
+    Phase::hook<compile::ret_wrap,         RetWrap             >(phases);
     // clang-format on
 }
 

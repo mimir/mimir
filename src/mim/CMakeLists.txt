@@ -29,9 +29,9 @@ target_sources(libmim
         phase/optimize.cpp
         phase/scalarize.cpp
         phase/tail_rec_elim.cpp
-        phase/beta_red_phase.cpp
-        phase/eta_red_phase.cpp
-        phase/eta_exp_phase.cpp
+        phase/beta_red.cpp
+        phase/eta_red.cpp
+        phase/eta_exp.cpp
         phase/branch_normalize.cpp
         phase/prefix_cleanup.cpp
         phase/ret_wrap.cpp

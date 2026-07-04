@@ -77,14 +77,14 @@ axm %affine.map: {m n: Nat}
 ///
 /// ## Passes and Phases
 ///
-/// ### %%affine.lower_for_phase
+/// ### %%affine.lower_for
 ///
 /// Lowers the %%%affine.For operation to recursive function calls.
 ///
-axm %affine.lower_for_phase: %compile.Phase;
+axm %affine.lower_for: %compile.Phase;
 ///
-/// ### %%affine.lower_index_phase
+/// ### %%affine.lower_index
 ///
 /// Lowers the affine index algebra (%%%affine.index, %%%affine.constant, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
 ///
-axm %affine.lower_index_phase: %compile.Phase;
+axm %affine.lower_index: %compile.Phase;

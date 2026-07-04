@@ -18,12 +18,12 @@ using namespace mim::plug;
 void reg_phases(Flags2Phases& phases) {
     // clang-format off
     // phases
-    Phase::hook<clos::clos_conv_phase,            clos::ClosConv          >(phases);
-    Phase::hook<clos::lower_typed_clos_phase,     clos::LowerTypedClos    >(phases);
-    Phase::hook<clos::clos_conv_prep_phase,       clos::ClosConvPrep      >(phases);
-    Phase::hook<clos::branch_clos_phase,          clos::BranchClosElim    >(phases);
-    Phase::hook<clos::lower_typed_clos_prep_phase,clos::LowerTypedClosPrep>(phases);
-    Phase::hook<clos::clos2sjlj_phase,            clos::Clos2SJLJ         >(phases);
+    Phase::hook<clos::clos_conv,            clos::ClosConv          >(phases);
+    Phase::hook<clos::lower_typed_clos,     clos::LowerTypedClos    >(phases);
+    Phase::hook<clos::clos_conv_prep,       clos::ClosConvPrep      >(phases);
+    Phase::hook<clos::branch_clos,          clos::BranchClosElim    >(phases);
+    Phase::hook<clos::lower_typed_clos_prep,clos::LowerTypedClosPrep>(phases);
+    Phase::hook<clos::clos2sjlj,            clos::Clos2SJLJ         >(phases);
     // clang-format on
 }
 

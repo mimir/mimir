@@ -7,6 +7,6 @@ import compile;
 con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
     return (mem, 42I32);
 
-lam extern _compile(): %compile.Phase = %compile.internal_cleanup_phase;
+lam extern _compile(): %compile.Phase = %compile.internal_cleanup;
 
 // CHECK-DAG: return{{.*}}42
