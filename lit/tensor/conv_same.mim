@@ -27,3 +27,16 @@ lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
 // CHECK-DAG: %core.nat.add
 fun extern conv_same (input: «2, 2, 5, 5; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 5, 5; Nat» =
     return (%tensor.conv (nat_ring ()) ((1, 1), (1, 1), (1, 1)) (input, weight));
+
+// Custom pipeline that stops before %tensor.lower_get_set: the get/set unrolling is expensive and the
+// remaining %tensor.get / %tensor.set are irrelevant to the checks below, so skipping it keeps the test fast.
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %tensor.lower_map_reduce,
+        %affine.lower_index,
+        %affine.lower_for,
+        %compile.internal_cleanup,
+    );
