@@ -77,9 +77,9 @@ axm %affine.map: {m n: Nat}
 ///
 /// ## Passes and Phases
 ///
-/// ### %%affine.lower_for_pass
+/// ### %%affine.lower_for_phase
 ///
-/// Loweres the %%%affine.For operation to recursive function calls.
+/// Lowers the %%%affine.For operation to recursive function calls.
 ///
 axm %affine.lower_for_phase: %compile.Phase;
 ///
