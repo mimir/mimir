@@ -1,0 +1,26 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// A block shared as a common tail between two construct instances at equal
+// coordinates is a type error: region paths are anchored on the consumed
+// token value, and left/right bind distinct tokens, so `tail` cannot have a
+// token type valid for both ifs. Before token anchoring this type-checked —
+// the tail always returns and never touches a capability, so nothing pinned
+// it to one instance and only emission could have caught the sharing.
+
+plugin sflow;
+
+fun extern foo (token: %sflow.Root, sel cond: Bool) = (left, right)#sel token where
+  con left (token: %sflow.Root) = %sflow.if token exit_l (else_l, then_l) cond () where
+    con then_l (_: [], _, tok) = %sflow.branch tail tok 1;
+    con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
+    con exit_l (x: Nat, _) = return x;
+  end;
+  con right (token: %sflow.Root) = %sflow.if token exit_r (else_r, then_r) cond () where
+    con then_r (_: [], _, tok) = %sflow.branch tail tok 2;
+    con else_r (_: [], struct, tok) = %sflow.merge tok struct 0;
+    con exit_r (x: Nat, _) = return x;
+  end;
+  // shared always-return tail between the two ifs' then-arms
+  con tail (x: Nat, tok) = return x;
+end;
+
+// CHECK: error

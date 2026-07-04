@@ -1,9 +1,9 @@
 // RUN: not %mim %s -o - 2>&1 | FileCheck %s
 // Sharing one arm between two distinct inner if/else structures is a type
-// error: an arm's token carries the path of the structure it belongs to.
-// The inner if in then_outer lives on path `arm tt ROOT`, the one in
-// else_outer on `arm ff ROOT`, so the single `shared` arm cannot have a
-// token type valid for both.
+// error: an arm's token type is anchored on the token value consumed by the
+// structure it belongs to. The two inner ifs consume distinct tokens (one per
+// outer arm), so the single `shared` arm cannot have a token type valid for
+// both.
 
 plugin sflow;
 
