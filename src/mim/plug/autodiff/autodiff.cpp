@@ -5,14 +5,14 @@
 
 #include <mim/plug/mem/mem.h>
 
-#include "mim/plug/autodiff/pass/eval.h"
+#include "mim/plug/autodiff/phase/eval.h"
 
 using namespace std::literals;
 using namespace mim;
 using namespace mim::plug;
 
 void reg_stages(Flags2Stages& stages) {
-    Stage::hook<autodiff::eval_pass, autodiff::Eval>(stages);
+    Stage::hook<autodiff::eval_phase, autodiff::Eval>(stages);
 
     MIM_REPL(stages, autodiff::zero_repl, {
         if (auto zero = Axm::isa<autodiff::zero>(def); zero) {

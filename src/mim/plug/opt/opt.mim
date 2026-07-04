@@ -76,7 +76,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named_phase "%affine.lower_for_phase",
         %compile.cond_phase "autodiff" (
             %compile.phases ff (
-                %compile.pass2phase (%compile.named_pass "%autodiff.eval_pass"),
+                %compile.named_phase "%autodiff.eval_phase",
                 %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
             )
         ),

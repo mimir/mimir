@@ -1,11 +1,117 @@
+#include "mim/plug/autodiff/phase/eval.h"
+
+#include <mim/lam.h>
+
 #include <mim/plug/cps/cps.h>
 
 #include "mim/plug/autodiff/autodiff.h"
-#include "mim/plug/autodiff/pass/eval.h"
 
 using namespace std::literals;
 
 namespace mim::plug::autodiff {
+
+// TODO: maybe use template (https://codereview.stackexchange.com/questions/141961/memoization-via-template) to memoize
+const Def* Eval::augment(const Def* def, Lam* f, Lam* f_diff) {
+    if (auto i = augmented.find(def); i != augmented.end()) return i->second;
+    augmented[def] = augment_(def, f, f_diff);
+    return augmented[def];
+}
+
+const Def* Eval::derive(const Def* def) {
+    if (auto i = derived.find(def); i != derived.end()) return i->second;
+    derived[def] = derive_(def);
+    return derived[def];
+}
+
+const Def* Eval::rewrite_imm_App(const App* app) {
+    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
+
+    if (auto ad_app = Axm::isa<ad>(app); ad_app) {
+        // callee = autodiff T
+        // arg = function of type T
+        //   (or operator)
+        // Rewrite the argument into the new world first; the whole derivation then works on that copy.
+        auto arg = rewrite(ad_app->arg());
+        DLOG("found a autodiff::autodiff of {}", arg);
+
+        if (arg->isa<Lam>()) return derive(arg);
+
+        // TODO: handle operators analogous
+
+        assert(0 && "not implemented");
+        return arg;
+    }
+
+    return RWPhase::rewrite_imm_App(app);
+}
+
+/*
+ * toplevel derivation
+ */
+
+/// Additionally to the derivation, the pullback is registered and the maps are initialized.
+const Def* Eval::derive_(const Def* def) {
+    auto lam = def->as_mut<Lam>(); // TODO check if mutable
+    DLOG("Derive lambda: {}", def);
+    auto deriv_ty = autodiff_type_fun_pi(lam->type());
+    auto deriv    = world().mut_lam(deriv_ty)->set(lam->sym().str() + "_deriv");
+
+    // We first pre-register the derivatives.
+    // This knowledge is needed for recursion.
+    // (Alternatively, we could also use projections out the variables instead of pre-partial-pullback
+    // initialization.)
+    derived[lam] = deriv;
+
+    auto [arg_ty, ret_pi] = lam->type()->doms<2>();
+    auto deriv_all_args   = deriv->var();
+    const Def* deriv_arg  = deriv->var(0uz)->set("arg");
+
+    // We generate the shadow pullbacks dynamically to save work and avoid code duplication.
+    // Only the toplevel pullback for arguments and return continuation is special cased.
+
+    // TODO: check identity: could use identity tangent(arg_ty) = tangent(augment(arg_ty)) with deriv_arg->type() =
+    // augment(arg_ty) We give the argument the identity pullback.
+    auto arg_id_pb              = id_pullback(arg_ty);
+    partial_pullback[deriv_arg] = arg_id_pb;
+    // The return continuation has to formally exist but should never be directly accessed.
+    auto ret_var              = deriv->var(1);
+    auto ret_pb               = zero_pullback(lam->var(1)->type(), arg_ty);
+    partial_pullback[ret_var] = ret_pb;
+
+    shadow_pullback[deriv_all_args] = world().tuple({arg_id_pb, ret_pb});
+    DLOG("pullback for argument {} : {} is {} : {}", deriv_arg, deriv_arg->type(), arg_id_pb, arg_id_pb->type());
+    DLOG("args shadow pb is {} : {}", shadow_pullback[deriv_all_args], shadow_pullback[deriv_all_args]->type());
+
+    // We pre-register the augment replacements.
+    // The function and its variables are replaced by their new derived versions.
+    // TODO: maybe leave out function call (duplication with derived)
+    augmented[def] = deriv;
+    DLOG("Associate {} with {}", def, deriv);
+    DLOG("  {} : {}", lam, lam->type());
+    DLOG("  {} : {}", deriv, deriv->type());
+    augmented[lam->var()] = deriv->var();
+    DLOG("Associate vars {} with {}", lam->var(), deriv->var());
+
+    // already contains the correct application of
+    // deriv->ret_var() by specification
+    // f : cn[R] has a partial derivative (exception to closed rule)
+    // f': cn[R, cn[R, cn[A]]]
+    //   this is needed for continuations (without closure conversion)
+    //   but also essentially for the return continuation
+
+    // Here a reminder of types:
+    // The expression `e: B` has the implicit function `e_fun: A -> B`
+    // The partial pullback is then `e*: B* -> A*`
+    // The derivatived version is `e': B' × (B* -> A*)` which is an application of `e'_fun: A' -> B' × (B* -> A*)`
+    auto new_body = augment(lam->body(), lam, deriv);
+    deriv->set(true, new_body);
+
+    return deriv;
+}
+
+/*
+ * augment
+ */
 
 const Def* Eval::augment_lit(const Lit* lit, Lam* f, Lam*) {
     auto pb               = zero_pullback(lit->type(), f->dom(2, 0));
@@ -71,7 +177,9 @@ const Def* Eval::augment_lam(Lam* lam, Lam* f, Lam* f_diff) {
     }
     DLOG("found a closed function call {} : {}", lam, lam->type());
     // Some general function in the program needs to be differentiated.
-    auto aug_lam = world().call<ad>(lam);
+    // The old pass emitted a new `%autodiff.ad` application here and relied on the PassMan to revisit it;
+    // as a Phase we derive eagerly instead (derive() pre-registers itself, so recursion terminates).
+    auto aug_lam = derive(lam);
     // TODO: directly more association here? => partly inline op_autodiff
     DLOG("augmented function is {} : {}", aug_lam, aug_lam->type());
     return aug_lam;
@@ -347,15 +455,17 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
         DLOG("axm name: {}", ax->sym());
         DLOG("axm function name: {}", diff_name);
 
-        auto diff_fun = world().externals()[world().sym(diff_name)];
-        if (!diff_fun) {
+        // Look the derivative up in the old world: the new world's externals are still being populated while this
+        // phase runs, so an internal_diff_* function may not have been carried over yet.
+        auto old_diff_fun = old_world().externals()[old_world().sym(diff_name)];
+        if (!old_diff_fun) {
             ELOG("derivation not found: {}", diff_name);
             auto expected_type = autodiff_type_fun(ax->type());
             ELOG("expected: {} : {}", diff_name, expected_type);
             assert(false && "unhandled axm");
         }
         // TODO: why does this cause a depth error?
-        return diff_fun;
+        return rewrite(old_diff_fun);
     }
 
     // TODO: handle Pi for axm app

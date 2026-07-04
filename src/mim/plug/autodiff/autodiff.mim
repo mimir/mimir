@@ -51,9 +51,9 @@ axm %autodiff.sum: [n:Nat, T: *] → «n; T» → T, normalize_sum;
 ///
 axm %autodiff.zero_repl: %compile.Repl;
 ///
-/// ### Passes
+/// ### Phases
 ///
-axm %autodiff.eval_pass: %compile.Pass;
+axm %autodiff.eval_phase: %compile.Phase;
 ///
 /// ## Registered translations
 ///

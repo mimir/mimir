@@ -1,19 +1,19 @@
 #pragma once
 
 #include <mim/def.h>
-#include <mim/pass.h>
+#include <mim/phase.h>
 
 namespace mim::plug::autodiff {
 
-/// This pass is the heart of AD.
+/// This phase is the heart of AD.
 /// We replace an `autodiff fun` call with the differentiated function.
-class Eval : public RWPass<Eval, Lam> {
+class Eval : public RWPhase {
 public:
     Eval(World& world, flags_t annex)
-        : RWPass(world, annex) {}
+        : RWPhase(world, annex) {}
 
     /// Detect autodiff calls.
-    const Def* rewrite(const Def*) override;
+    const Def* rewrite_imm_App(const App*) final;
 
     /// Acts on toplevel autodiff on closed terms:
     /// * Replaces lambdas, operators with the appropriate derivatives.
@@ -39,6 +39,10 @@ public:
     const Def* augment_pack(const Pack* pack, Lam* f, Lam* f_diff);
 
 private:
+    /// derive()/augment() run entirely in the new world: the `%autodiff.ad` argument is rewritten first, and the
+    /// derivative is built from that copy. This alias resolves the world() calls in the augment machinery accordingly.
+    World& world() { return new_world(); }
+
     /// Transforms closed terms (lambda, operator) to derived expressions.
     /// `f => f' = λ x. (f x, f*_x)`
     /// src Def -> dst Def
