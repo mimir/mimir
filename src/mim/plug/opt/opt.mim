@@ -64,22 +64,14 @@ lam extern _default_compile (): %compile.Phase =
     %compile.phases ff (
         optimize,
         %compile.named_phase "%regex.lower_regex",
-        %compile.cond_phase "tensor" (
-            %compile.phases ff (
-                %compile.named_phase "%tensor.lower_tensor",
-                %compile.named_phase "%tensor.fuse_tensor",
-                %compile.named_phase "%tensor.lower_map_reduce",
-            )
-        ),
+        %compile.named_phase "%tensor.lower_tensor",
+        %compile.named_phase "%tensor.fuse_tensor",
+        %compile.named_phase "%tensor.lower_map_reduce",
         %compile.named_phase "%gpu.mem_checks_phase",
         %compile.named_phase "%affine.lower_index_phase",
         %compile.named_phase "%affine.lower_for_phase",
-        %compile.cond_phase "autodiff" (
-            %compile.phases ff (
-                %compile.named_phase "%autodiff.eval_phase",
-                %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
-            )
-        ),
+        %compile.named_phase "%autodiff.eval_phase",
+        %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
         %compile.named_phase "%cps.conv",
         %compile.named_phase "%matrix.lower_matrix_high_level_map_reduce",
         %compile.named_phase "%matrix.lower_matrix_medium_level",
