@@ -1,0 +1,35 @@
+// RUN: %mim %s -o -
+// Counterpart to if_share_tail.mim: a chain block CAN be shared across two
+// separate construct instances, as long as it sits outside both constructs
+// rather than inside one of their arms. `exit` is the break/merge target of
+// TWO different %sflow.if applications, one running in `left` and one in
+// `right` -- mutually exclusive native branches of an unstructured tuple
+// selection. Both ifs are given a token of the same closed type
+// `%sflow.Root`, and an if's break-continuation type (`Cn [B, Token path
+// (inc step)]`) depends only on that path/step, not on the specific token
+// VALUE consuming it -- unlike the arm/case/body sub-paths, which are
+// anchored on the token value via %sflow.arm/case/body. So both ifs' break
+// types collapse to the identical closed type `Cn [Nat, Token %sflow.Root 1]`
+// and `exit` type-checks as either one's target.
+// This means anchoring's uniqueness guarantee is narrower than "a block can
+// only ever have one predecessor": it only forces per-instance identity on
+// blocks INSIDE a construct (arms/cases/body), not on a construct's own
+// exit, which stays an ordinary chain block nameable from wherever a
+// same-depth, same-token-type chain happens to run -- here, two unrelated
+// ifs reached via native (mixed) control flow.
+
+plugin sflow;
+
+fun extern foo (token: %sflow.Root, sel cond: Bool, cond2: Bool) = (left, right)#sel token where
+  con left (token: %sflow.Root) =
+    %sflow.if token exit (else_l, then_l) cond2 () where
+      con then_l (_: [], struct, tok) = %sflow.merge tok struct 1;
+      con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
+    end;
+  con right (token: %sflow.Root) =
+    %sflow.if token exit (else_r, then_r) cond2 () where
+      con then_r (_: [], struct, tok) = %sflow.merge tok struct 2;
+      con else_r (_: [], struct, tok) = %sflow.merge tok struct 3;
+    end;
+  con exit (x: Nat, tok) = return x;
+end;
