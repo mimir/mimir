@@ -94,6 +94,7 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.named_phase "%tensor.lower_tensor",
                 %compile.named_phase "%tensor.fuse_tensor",
                 %compile.named_phase "%tensor.lower_map_reduce",
+                %compile.named_phase "%tensor.lower_get_set",
             )
         ),
         %compile.named_phase "%affine.lower_index_phase",
