@@ -65,7 +65,7 @@ private:
 
         const Def* slot2value(const Def* slot);
 
-        const Def2Def& all_slots() const { return all_slots_; }
+        const Def2Def& all_slots() const { return slot2type_; }
         const DefMap<Def2Def>& mut2slot2value() const { return mut2slot2value_; }
 
     private:
@@ -86,7 +86,7 @@ private:
 
         DefMap<Def2Def> mut2slot2value_;
         Def2Def sloxy2slot_;
-        Def2Def all_slots_;
+        Def2Def slot2type_;
         DefSet visited_;
         MutSet deps_done_;
     };

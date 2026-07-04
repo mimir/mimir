@@ -232,21 +232,27 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         return set(load, load);
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
-            auto [T, as]    = slot->decurry()->args<2>();
-            auto [mem, id]  = slot->args<2>();
-            auto [_, ptr]   = slot->projs<2>();
-            auto abstr_mem  = rewrite(mem);
-            auto abstr_id   = rewrite(id);
-            all_slots_[ptr] = T;
-            // The sloxy is Ptr-typed so that any use outside of load/store still type-checks;
-            // analyze() catches such leaked sloxies afterwards and sets the slot to top.
+            auto [T, as]       = slot->decurry()->args<2>();
+            auto [mem, id]     = slot->args<2>();
+            auto [_, ptr]      = slot->projs<2>();
+            auto abstr_mem     = rewrite(mem);
+            auto abstr_id      = rewrite(id);
             auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, 0, Proxy_Slot);
+            slot2type_[ptr]    = T;
             sloxy2slot_[sloxy] = slot;
             DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
             set(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});
         }
     } else if (auto dispatch = Dispatch(app)) {
+        // working on this alternative
+        // for (size_t i = 0, e = dispatch.num_targets(); i != e; ++i)
+        //     if (auto lam = dispatch.target(i)->isa_mut<Lam>()) {
+        //         mut2slot2value_[curr_mut()]; // make sure no rehash happens
+        //         auto& dst = mut2slot2value_[lam];
+        //         dst       = mut2slot2value_[curr_mut()];
+        //     }
+
         DefVec abstr_args;
         for (auto arg : app->targs())
             abstr_args.emplace_back(rewrite(arg));
@@ -255,7 +261,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto l           = Lit::isa(abstr_index);
         DLOG("abstract value of dispatch index {} in {}: {}", dispatch.index(), curr_mut(), abstr_index);
 
-        for (auto [slot, slot_type] : all_slots_) {
+        for (auto [slot, _] : slot2type_) {
             auto abstr_slot = rewrite(slot);
             if (auto value = slot2value(abstr_slot)) abstr_args.emplace_back(value);
         }
@@ -277,7 +283,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 for (auto var : lam->tvars())
                     concr_vars.emplace_back(var);
 
-                for (auto [slot, slot_type] : all_slots_) {
+                for (auto [slot, slot_type] : slot2type_) {
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
                     if (slot2value(abstr_slot)) {
@@ -342,7 +348,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
                 // propagate known slot contents
                 // some of these might escape, but we'll catch that in the postprocessing later
-                for (auto [slot, slot_type] : all_slots_) {
+                for (auto [slot, slot_type] : slot2type_) {
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
                     if (auto value = slot2value(abstr_slot)) {
@@ -379,7 +385,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
         // propagate phis
         DLOG("propagating slot values for call of {}", lam);
-        for (auto [slot, slot_type] : all_slots_) {
+        for (auto [slot, slot_type] : slot2type_) {
             DLOG("for slot {}", slot);
             auto abstr_slot = rewrite(slot);
             auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
