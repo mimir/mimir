@@ -206,22 +206,18 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
 
-        // Only track values stored through slot proxies
         if (isa_slot_proxy(abstr_ptr)) {
             slot2value(abstr_ptr, abstr_val);
             DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
-            // The store will be resolved away, so its out-mem abstractly equals its in-mem.
             return abstr_mem;
         }
-
-        return Super::rewrite_imm_App(app);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]                   = load->decurry()->args<2>();
         auto [mem, ptr]                = load->args<2>();
         auto [result_mem, result_load] = load->projs<2>();
         auto abstr_mem                 = rewrite(mem);
         auto abstr_ptr                 = rewrite(ptr);
-        DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
+
         if (isa_slot_proxy(abstr_ptr)) {
             if (auto abstr_val = slot2value(abstr_ptr)) {
                 DLOG("abstr value: `{}`", abstr_val);
@@ -235,21 +231,21 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         DLOG("load from unknown pointer {}, treating result as top", abstr_ptr);
         return set(load, load);
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
-        if (is_top(slot)) return Super::rewrite_imm_App(app); // slot escapes: keep
-
-        auto [T, as]    = slot->decurry()->args<2>();
-        auto [mem, id]  = slot->args<2>();
-        auto [_, ptr]   = slot->projs<2>();
-        auto abstr_mem  = rewrite(mem);
-        auto abstr_id   = rewrite(id);
-        all_slots_[ptr] = T;
-        // The sloxy is Ptr-typed so that any use outside of load/store still type-checks;
-        // analyze() catches such leaked sloxies afterwards and sets the slot to top.
-        auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, 0, Proxy_Slot);
-        sloxy2slot_[sloxy] = slot;
-        DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
-        set(ptr, sloxy);
-        return world().tuple({abstr_mem, sloxy});
+        if (!is_top(slot)) {
+            auto [T, as]    = slot->decurry()->args<2>();
+            auto [mem, id]  = slot->args<2>();
+            auto [_, ptr]   = slot->projs<2>();
+            auto abstr_mem  = rewrite(mem);
+            auto abstr_id   = rewrite(id);
+            all_slots_[ptr] = T;
+            // The sloxy is Ptr-typed so that any use outside of load/store still type-checks;
+            // analyze() catches such leaked sloxies afterwards and sets the slot to top.
+            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, 0, Proxy_Slot);
+            sloxy2slot_[sloxy] = slot;
+            DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
+            set(ptr, sloxy);
+            return world().tuple({abstr_mem, sloxy});
+        }
     } else if (auto dispatch = Dispatch(app)) {
         DefVec abstr_args;
         for (auto arg : app->targs())
