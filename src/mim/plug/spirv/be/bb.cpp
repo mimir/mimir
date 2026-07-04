@@ -206,13 +206,6 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto target_lam                      = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_branch = Axm::isa<sflow::branch>(app)) {
-        // === Unconditional forward branch ===
-        // => OpBranch
-        auto [token, callee, value] = cf_branch->uncurry_args<3>();
-        auto callee_lam             = callee->as_mut<Lam>();
-        link_phi(lam, callee_lam, value);
-        bb.end = Op{OpKind::Branch, {bb_id(callee_lam)}, {}, {}};
     } else if (auto cf_call = Axm::isa<sflow::call>(app)) {
         // === Function call ===
         // The lam ends with `call token fn (t_val, ret_lam)`, where ret_lam

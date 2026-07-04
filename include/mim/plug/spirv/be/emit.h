@@ -130,6 +130,11 @@ private:
     /// Append a finished basic block to the function definition stream.
     void append_bb(BB& bb);
 
+    /// Append `lam` and, recursively, its successors in SPIR-V layout order,
+    /// derived purely from the sflow terminators: construct regions first,
+    /// exits (break/merge targets, loop latches) behind them.
+    void layout_append(Lam* lam, MutSet& done);
+
     BB& bb(Lam* lam) {
         if (!lam2bb_.contains(lam)) error("Called basic block not in function: {} not in {}", lam, curr_function_);
         return lam2bb_[lam];

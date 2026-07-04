@@ -8,7 +8,6 @@ add_mim_plugin(spirv
         be/function.cpp
         be/interface.cpp
         be/op.cpp
-        be/scheduler.cpp
         be/serialize.cpp
         be/type.cpp
         be/utils.cpp

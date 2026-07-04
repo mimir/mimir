@@ -222,12 +222,6 @@ axm %sflow.call: {T R: ★, path: Path, step: Nat}
   → [%sflow.Fn T R]
   → [Fn T → [R, Token path (%core.nat.add (step, 1))]];
 
-/// Regular unconditional forward call.
-axm %sflow.branch: {T: ★, path: Path, step: Nat}
-  → [Token path step]
-  → [Cn [T, Token path (%core.nat.add (step, 1))]]
-  → Cn T;
-
 /// ## Phases
 // TODO: the phases are all unimplemented at the moment
 ///

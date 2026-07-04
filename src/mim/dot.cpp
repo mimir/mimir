@@ -4,7 +4,6 @@
 #include <ostream>
 #include <sstream>
 
-#include "mim/cfg.h"
 #include "mim/def.h"
 #include "mim/nest.h"
 #include "mim/world.h"
@@ -238,94 +237,6 @@ void Nest::Node::dot(fe::Tab tab, std::ostream& os) const {
         std::println(os, "{}\"{}\" -> \"{}\" [splines=false]", tab, name(), child->name());
         child->dot(tab, os);
     }
-}
-
-void CFG::dot_cluster(std::ostream& os, fe::Tab& tab, size_t& cluster_id) const {
-    std::println(os, "{}subgraph cluster_{} {{", tab, cluster_id++);
-    ++tab;
-    std::println(os, "{}label=\"{}\";", tab, entry_->mut()->unique_name());
-    std::println(os, "{}style=solid;", tab);
-    std::println(os, "{}color=black;", tab);
-
-    auto emit_node = [&](const Node* n) {
-        std::println(os, "{}\"{}\" [label=\"{}\"]", tab, n->mut()->unique_name(), n->mut()->unique_name());
-    };
-
-    std::function<void(const Loop*)> emit_loop = [&](const Loop* loop) {
-        std::println(os, "{}subgraph cluster_{} {{", tab, cluster_id++);
-        ++tab;
-        std::println(os, "{}style=dashed;", tab);
-        std::println(os, "{}color=blue;", tab);
-        for (auto& child : loop->children())
-            emit_loop(child.get());
-        for (auto n : loop->nodes())
-            if (n->loop() == loop) emit_node(n);
-        --tab;
-        std::println(os, "{}}}", tab);
-    };
-
-    for (auto& loop : loops())
-        emit_loop(loop.get());
-
-    for (auto node : nodes())
-        if (!node->loop()) emit_node(node);
-
-    --tab;
-    std::println(os, "{}}}", tab);
-
-    for (auto node : nodes()) {
-        for (auto succ : node->succs())
-            std::println(os, "{}\"{}\" -> \"{}\" [constraint=false]", tab, node->mut()->unique_name(),
-                         succ->mut()->unique_name());
-        if (auto idom = node->idom(); idom && idom != node)
-            std::println(os, "{}\"{}\" -> \"{}\" [color=red,style=bold]", tab, idom->mut()->unique_name(),
-                         node->mut()->unique_name());
-    }
-}
-
-void CFG::dot(const char* file) const {
-    if (!file) {
-        dot(std::cout);
-    } else {
-        auto of = std::ofstream(file);
-        dot(of);
-    }
-}
-
-void CFG::dot(std::ostream& os) const {
-    auto tab = fe::Tab::spaces();
-    std::println(os, "{}digraph {{", tab);
-    ++tab;
-    std::println(os, "{}ordering=out;", tab);
-    std::println(os, "{}compound=true;", tab);
-    std::println(os, "{}node [shape=box,style=filled];", tab);
-    size_t cluster_id = 0;
-    dot_cluster(os, tab, cluster_id);
-    --tab;
-    std::println(os, "{}}}", tab);
-}
-
-void nest_cfg_dot(const Nest& nest, const char* file) {
-    if (!file) {
-        nest_cfg_dot(nest, std::cout);
-    } else {
-        auto of = std::ofstream(file);
-        nest_cfg_dot(nest, of);
-    }
-}
-
-void nest_cfg_dot(const Nest& nest, std::ostream& os) {
-    auto tab = fe::Tab::spaces();
-    std::println(os, "{}digraph {{", tab);
-    ++tab;
-    std::println(os, "{}ordering=out;", tab);
-    std::println(os, "{}compound=true;", tab);
-    std::println(os, "{}node [shape=box,style=filled];", tab);
-    size_t cluster_id = 0;
-    for (auto child : nest.root()->children().nodes())
-        if (child->mut()->isa<Lam>()) nest_cfg(child).dot_cluster(os, tab, cluster_id);
-    --tab;
-    std::println(os, "{}}}", tab);
 }
 
 } // namespace mim

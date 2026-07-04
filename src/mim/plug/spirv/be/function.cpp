@@ -1,5 +1,6 @@
 #include "mim/phase.h"
 
+#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
 #include "mim/plug/spirv/be/emit.h"
 #include "mim/plug/spirv/spirv.h"
 
@@ -193,15 +194,66 @@ void Emitter::append_bb(BB& bb) {
     module_.funDefinitions.push_back(bb.end);
 }
 
-void Emitter::finalize_function(Lam* fun) {
-    for (auto mut : Scheduler::schedule(nest())) {
-        if (auto lam = mut->isa_mut<Lam>()) {
-            assert(lam2bb_.contains(lam));
-            append_bb(lam2bb_[lam]);
+void Emitter::layout_append(Lam* lam, MutSet& done) {
+    if (!done.emplace(lam).second) return;
+    assert(lam2bb_.contains(lam));
+    append_bb(lam2bb_[lam]);
 
-            // Place a loop's synthesized latch right after its header so it
-            // stays within the loop construct's block range.
-            if (auto it = latch_of_header_.find(lam); it != latch_of_header_.end())
+    auto app = lam->body()->isa<App>();
+    if (!app) return;
+
+    // Peel curried applications to find a polymorphic return at the bottom of
+    // the app chain (see emit_bb).
+    auto callee_base = app->callee();
+    while (auto curried = callee_base->isa<App>()) callee_base = curried->callee();
+    if (callee_base == ret_var_) return;
+
+    if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
+        layout_append(callee, done);
+    } else if (auto cf_if = Axm::isa<sflow::_if>(app)) {
+        auto [token, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
+        for (auto branch : tuple->ops()) layout_append(branch->as_mut<Lam>(), done);
+        layout_append(cf_break->as_mut<Lam>(), done);
+    } else if (auto cf_switch = Axm::isa<sflow::_switch>(app)) {
+        auto [token, cf_break, cf_default, cases, index, arg] = cf_switch->uncurry_args<6>();
+        // The case array is in reverse execution order; walk the fall-through
+        // chain, which ends in the default, then the break target.
+        for (size_t i = cases->num_ops(); i-- != 0;) layout_append(cases->op(i)->op(1)->as_mut<Lam>(), done);
+        layout_append(cf_default->as_mut<Lam>(), done);
+        layout_append(cf_break->as_mut<Lam>(), done);
+    } else if (auto cf_anchor = Axm::isa<sflow::header>(app)) {
+        auto [token, cf_header, arg] = cf_anchor->uncurry_args<3>();
+        layout_append(cf_header->as_mut<Lam>(), done);
+    } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
+        auto [cf_struct, cf_break, cf_body, cond, arg] = cf_loop->uncurry_args<5>();
+        layout_append(cf_body->as_mut<Lam>(), done);
+        layout_append(cf_latch(cf_struct), done);
+        layout_append(cf_break->as_mut<Lam>(), done);
+    } else if (auto cf_call = Axm::isa<sflow::call>(app)) {
+        auto [token, fn, t_val, ret_lam] = cf_call->uncurry_args<4>();
+        layout_append(ret_lam->as_mut<Lam>(), done);
+    }
+    // continue/fallthrough/break/merge edges are not followed: their targets
+    // (latch, sibling case, break/merge lam) belong to the construct that
+    // introduced them and are laid out by that construct's case above.
+}
+
+void Emitter::finalize_function(Lam* fun) {
+    // Block layout is derived from the sflow terminators alone, no CFG: each
+    // construct site lays out its regions first and its exit (break/merge
+    // target, latch for loops) behind them. Exit targets are exactly the
+    // multi-predecessor blocks, every other block has a unique predecessor
+    // (its dominator) and is placed right in the walk — so blocks appear
+    // after their dominators and construct blocks stay contiguous.
+    MutSet done;
+    layout_append(fun, done);
+
+    // Blocks the structural walk did not reach (unreachable code) still own
+    // referenced ids; append them behind everything reachable.
+    for (auto mut : Scheduler::schedule(nest())) {
+        if (auto lam = mut->isa_mut<Lam>(); lam && !done.contains(lam)) {
+            append_bb(lam2bb_[lam]);
+            if (auto it = latch_of_header_.find(lam); it != latch_of_header_.end() && !done.contains(it->second))
                 append_bb(lam2bb_[it->second]);
         }
     }
