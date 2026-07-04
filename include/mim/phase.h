@@ -167,9 +167,9 @@ public:
 
     /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
     /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
-    void set(const Def* concr, const Def* abstr) {
+    const Def* set(const Def* concr, const Def* abstr) {
         lattice_[concr] = abstr;
-        map(concr, abstr);
+        return map(concr, abstr);
     }
     ///@}
 

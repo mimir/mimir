@@ -205,38 +205,35 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem       = rewrite(mem);
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
-        // Only track values stored through slot proxies; arbitrary pointers may alias each other.
+
+        // Only track values stored through slot proxies
         if (isa_slot_proxy(abstr_ptr)) {
             slot2value(abstr_ptr, abstr_val);
             DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
             // The store will be resolved away, so its out-mem abstractly equals its in-mem.
             return abstr_mem;
         }
-        // A store through an arbitrary pointer stays; its out-mem must remain distinct from its in-mem,
-        // otherwise the mem chain threading the store looks loop-invariant and the store becomes dead.
+
         return Super::rewrite_imm_App(app);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]                   = load->decurry()->args<2>();
-        auto [result_mem, result_load] = load->projs<2>();
         auto [mem, ptr]                = load->args<2>();
-        rewrite(mem);
-        auto abstr_ptr = rewrite(ptr);
+        auto [result_mem, result_load] = load->projs<2>();
+        auto abstr_mem                 = rewrite(mem);
+        auto abstr_ptr                 = rewrite(ptr);
         DLOG("in {}, found a load from {}", curr_mut(), abstr_ptr);
         if (isa_slot_proxy(abstr_ptr)) {
-            if (auto known_value = slot2value(abstr_ptr)) {
-                DLOG("we know that it's {}", known_value);
-                set(result_load, known_value);
-                return world().tuple({result_mem, known_value});
+            if (auto abstr_val = slot2value(abstr_ptr)) {
+                DLOG("abstr value: `{}`", abstr_val);
+                set(result_load, abstr_val);
+                return world().tuple({abstr_mem, abstr_val});
             }
             DLOG("couldn't resolve load of {} yet, returning bot", abstr_ptr);
-            return world().tuple({result_mem, world().bot(T)});
+            return world().tuple({abstr_mem, world().bot(T)});
         }
-        // A load through an arbitrary pointer never resolves; its result is top - not bot -
-        // as bot would be propagated as a concrete value.
-        // set() overwrites a possibly stale value from an earlier round in which the pointer was still a slot proxy.
+
         DLOG("load from unknown pointer {}, treating result as top", abstr_ptr);
-        set(result_load, result_load);
-        return world().tuple({result_mem, result_load});
+        return set(load, load);
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
         if (is_top(slot)) return Super::rewrite_imm_App(app); // slot escapes: keep
 
@@ -326,9 +323,9 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_args = absl::FixedArray<const Def*>(n);
 
         for (size_t i = 0; i != n; ++i) {
-            if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
+            if (auto lam = app->targ(i)->isa_mut<Lam>(); isa_optimizable(lam)) {
                 // need to rewrite this later, after slot values in the lattice are updated
-                abstr_args[i] = continuation;
+                abstr_args[i] = lam;
             } else {
                 DLOG("in app of non-optimizable function, rewriting arg {}", app->targ(i));
                 abstr_args[i] = rewrite(app->targ(i));
@@ -336,13 +333,13 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         }
 
         for (size_t i = 0; i != n; ++i) {
-            if (auto continuation = app->targ(i)->isa_mut<Lam>(); isa_optimizable(continuation)) {
-                // now propagate known slot values and rewrite the continuation
+            if (auto lam = app->targ(i)->isa_mut<Lam>(); isa_optimizable(lam)) {
+                // now propagate known slot values and rewrite the lam
                 DefVec concr_vars_inside_unknown_function;
                 DefVec abstr_args_inside_unknown_function;
 
-                // set the continuations arguments to top, as we don't know what the unknown function will pass
-                for (auto var : continuation->tvars()) {
+                // set the lams arguments to top, as we don't know what the unknown function will pass
+                for (auto var : lam->tvars()) {
                     concr_vars_inside_unknown_function.emplace_back(var);
                     abstr_args_inside_unknown_function.emplace_back(var);
                 }
@@ -351,7 +348,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
                 // some of these might escape, but we'll catch that in the postprocessing later
                 for (auto [slot, slot_type] : all_slots_) {
                     auto abstr_slot = rewrite(slot);
-                    auto phi        = world().proxy(slot_type, {continuation, abstr_slot}, 0, Proxy_Phi);
+                    auto phi        = world().proxy(slot_type, {lam, abstr_slot}, 0, Proxy_Phi);
                     if (auto value = slot2value(abstr_slot)) {
                         concr_vars_inside_unknown_function.emplace_back(phi);
                         abstr_args_inside_unknown_function.emplace_back(value);
@@ -364,12 +361,11 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
 
                 auto abstr_vars_inside_unknown_function
                     = sccp_gvn_propagate(concr_vars_inside_unknown_function, abstr_args_inside_unknown_function);
-                set(continuation->var(),
-                    world().tuple(abstr_vars_inside_unknown_function.span().subspan(0, continuation->num_tvars())));
+                set(lam->var(), world().tuple(abstr_vars_inside_unknown_function.span().subspan(0, lam->num_tvars())));
                 for (size_t i = 0; i < concr_vars_inside_unknown_function.size(); i++)
                     set(concr_vars_inside_unknown_function[i], abstr_vars_inside_unknown_function[i]);
 
-                // now rewrite the continuation
+                // now rewrite the lam
                 abstr_args[i] = rewrite(app->targ(i));
             }
         }
@@ -483,7 +479,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
             return map(old_app, new_world().app(new_callee, new_args));
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !isa_optimizable(old_lam)) {
-        // Continuations passed to an unknown callee cannot receive extra args for their phis;
+        // lams passed to an unknown callee cannot receive extra args for their phis;
         // resolve each phi to the value known at this call site instead.
         for (auto old_arg : old_app->targs()) {
             auto cont = old_arg->isa_mut<Lam>();
@@ -494,7 +490,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     auto phi = old_world().proxy(slot_type, {cont, sloxy}, 0, Proxy_Phi);
                     if (auto def = lattice(phi)) {
                         auto new_val = rewrite_site_value(sloxy, slot_type);
-                        DLOG("in {}, resolving phi {} of continuation {} to {}", curr_mut(), phi, cont, new_val);
+                        DLOG("in {}, resolving phi {} of lam {} to {}", curr_mut(), phi, cont, new_val);
                         map(phi, new_val);
                         if (def != phi && isa_gvn_proxy(def)) map(def, new_val);
                     }
