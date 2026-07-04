@@ -28,7 +28,7 @@ static const Def* isa_slot_proxy(const Def* def) {
 }
 
 void SymExprOpt::Analysis::reset() {
-    mim::Analysis::reset();
+    Super::reset();
     visited_.clear();
     mut2slot2value_.clear();
     deps_done_.clear();
@@ -45,16 +45,16 @@ Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
             }
         }
 
-    return mim::Analysis::rewrite_mut(mut);
+    return Super::rewrite_mut(mut);
 }
 
 Def* SymExprOpt::Analysis::rewrite_deps(Def* mut) {
     if (auto [_, ins] = deps_done_.emplace(mut); !ins) return mut;
-    return mim::Analysis::rewrite_deps(mut);
+    return Super::rewrite_deps(mut);
 }
 
 void SymExprOpt::Analysis::start() {
-    mim::Analysis::start();
+    Super::start();
     for (auto def : world().roots())
         analyze(def);
 }
@@ -205,7 +205,6 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem       = rewrite(mem);
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
-        analyze(abstr_val); // a slot stored *as value* escapes
         // Only track values stored through slot proxies; arbitrary pointers may alias each other.
         if (isa_slot_proxy(abstr_ptr)) {
             slot2value(abstr_ptr, abstr_val);
@@ -215,7 +214,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         }
         // A store through an arbitrary pointer stays; its out-mem must remain distinct from its in-mem,
         // otherwise the mem chain threading the store looks loop-invariant and the store becomes dead.
-        return mim::Analysis::rewrite_imm_App(app);
+        return Super::rewrite_imm_App(app);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]                   = load->decurry()->args<2>();
         auto [result_mem, result_load] = load->projs<2>();
@@ -239,7 +238,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         set(result_load, result_load);
         return world().tuple({result_mem, result_load});
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
-        if (is_top(slot)) return mim::Analysis::rewrite_imm_App(app); // slot escapes: keep
+        if (is_top(slot)) return Super::rewrite_imm_App(app); // slot escapes: keep
 
         auto [T, as]    = slot->decurry()->args<2>();
         auto [mem, id]  = slot->args<2>();
@@ -411,7 +410,7 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         return world().app(rewrite_deps(lam), all_abstr_args.span().subspan(0, app->num_targs()));
     }
 
-    return mim::Analysis::rewrite_imm_App(app);
+    return Super::rewrite_imm_App(app);
 }
 
 static bool keep(const Def* old_var, const Def* abstr) {
@@ -466,7 +465,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
                     invalidate();
                     return map(old_app, new_world().app(build_lam(old_taken), build_args(old_taken, old_app)));
                 }
-                return RWPhase::rewrite_imm_App(old_app);
+                return Super::rewrite_imm_App(old_app);
             }
 
             invalidate();
@@ -512,7 +511,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
         }
     }
 
-    return RWPhase::rewrite_imm_App(old_app);
+    return Super::rewrite_imm_App(old_app);
 }
 
 bool SymExprOpt::needs_seo(Lam* old_lam) {

@@ -36,8 +36,12 @@ namespace mim::plug::mem::phase {
 /// ```
 class SymExprOpt : public RWPhase {
 private:
+    using Super = mim::RWPhase;
+
     class Analysis : public mim::Analysis {
     public:
+        using Super = mim::Analysis;
+
         Analysis(World& world)
             : mim::Analysis(world, "SEO::Analyzer") {}
 
