@@ -2,14 +2,9 @@
 
 #include "mim/tuple.h"
 
-#include "mim/pass/eta_exp.h"
-
 namespace mim {
 
-void Scalarize::init(PassMan* man) {
-    Pass::init(man);
-    eta_exp_ = man->find<EtaExp>();
-}
+void Scalarize::init(PassMan* man) { Pass::init(man); }
 
 // TODO should also work for mutable non-dependent sigmas
 
@@ -43,8 +38,7 @@ Lam* Scalarize::make_scalar(const Def* def) {
 
     auto cn      = world().cn(types);
     auto sca_lam = tup_lam->stub(cn);
-    if (eta_exp_) eta_exp_->new2old(sca_lam, tup_lam);
-    size_t n = 0;
+    size_t n     = 0;
     DLOG("type {} ~> {}", tup_lam->type(), cn);
     auto new_vars = world().tuple(DefVec(tup_lam->num_doms(), [&](auto i) {
         auto tuple = DefVec(arg_sz.at(i), [&](auto) { return sca_lam->var(n++); });
@@ -77,8 +71,12 @@ const Def* Scalarize::rewrite(const Def* def) {
         }
 
         if (sca_callee != app->callee()) {
+            // Flatten per argument projection - mirroring make_scalar's per-dom flattening;
+            // flattening the whole arg at once bails out on large arrays (scalarize_threshold)
+            // although each element was scalarized.
             auto new_args = DefVec();
-            flatten(new_args, app->arg(), false);
+            for (size_t i = 0, e = app->num_args(); i != e; ++i)
+                flatten(new_args, app->arg(e, i), false);
             return world().app(sca_callee, new_args);
         }
     }

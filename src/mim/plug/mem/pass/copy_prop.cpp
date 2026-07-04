@@ -1,8 +1,5 @@
 #include "mim/plug/mem/pass/copy_prop.h"
 
-#include <mim/pass/beta_red.h>
-#include <mim/pass/eta_exp.h>
-
 #include "mim/plug/mem/mem.h"
 
 namespace mim::plug::mem::pass {
@@ -12,11 +9,7 @@ void CopyProp::apply(bool bb_only) {
     name_ += bb_only_ ? " tt" : " ff";
 }
 
-void CopyProp::init(PassMan* man) {
-    Pass::init(man);
-    beta_red_ = man->find<BetaRed>();
-    eta_exp_  = man->find<EtaExp>();
-}
+void CopyProp::init(PassMan* man) { Pass::init(man); }
 
 const Def* CopyProp::rewrite(const Def* def) {
     auto [app, var_lam] = isa_apped_mut_lam(def);
@@ -76,8 +69,6 @@ const Def* CopyProp::rewrite(const Def* def) {
         prop_lam      = var_lam->stub(new_pi);
 
         DLOG("new prop_lam: {}", prop_lam);
-        if (beta_red_) beta_red_->keep(prop_lam);
-        if (eta_exp_) eta_exp_->new2old(prop_lam, var_lam);
 
         size_t j      = 0;
         auto new_vars = DefVec(n, [&, prop_lam = prop_lam](size_t i) -> const Def* {

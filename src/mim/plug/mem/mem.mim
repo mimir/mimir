@@ -87,15 +87,14 @@ axm %mem.lea: {n: Nat, Ts: «n; *», a: Nat} → [%mem.Ptr («j: n; Ts#j», a), 
 axm %mem.add_mem_phase: %compile.Phase;
 axm %mem.sym_expr_opt: %compile.Phase;
 ///
+/// ### Passes
+///
+axm %mem.copy_prop_pass: Bool → %compile.Pass;
+///
 /// ### Repls
 ///
 axm %mem.remem_repl:        %compile.Repl;
 axm %mem.alloc2malloc_repl: %compile.Repl;
-///
-/// ### Passes
-///
-axm %mem.ssa_pass:              %compile.Pass;
-axm %mem.copy_prop_pass: Bool → %compile.Pass;
 ///
 /// ##### %mem.reshape
 ///
@@ -111,5 +110,4 @@ axm %mem.reshape_pass: %mem.reshape_mode → %compile.Pass;
 /// pipelines that do not import the `mem` plugin.
 ///
 let %mem.copy_prop_tt_pass  = %mem.copy_prop_pass tt;
-let %mem.copy_prop_ff_pass  = %mem.copy_prop_pass ff;
 let %mem.reshape_flat_pass  = %mem.reshape_pass %mem.reshape_flat;

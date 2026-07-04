@@ -2,8 +2,6 @@
 
 #include <mim/nest.h>
 
-#include <mim/pass/eta_exp.h>
-
 #include "mim/plug/clos/clos.h"
 
 namespace mim::plug::clos {
@@ -32,15 +30,9 @@ Lam* isa_retvar(const Def* def) {
 
 } // namespace
 
-void ClosConvPrep::init(PassMan* man) {
-    Pass::init(man);
-    eta_exp_ = man->find<EtaExp>();
-}
+void ClosConvPrep::init(PassMan* man) { Pass::init(man); }
 
-Lam* ClosConvPrep::scope(Lam* lam) {
-    if (eta_exp_) lam = eta_exp_->new2old(lam);
-    return lam2fscope_[lam];
-}
+Lam* ClosConvPrep::scope(Lam* lam) { return lam2fscope_[lam]; }
 
 void ClosConvPrep::enter() {
     if (Pi::isa_returning(curr_mut())) {

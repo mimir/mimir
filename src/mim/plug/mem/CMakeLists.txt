@@ -6,6 +6,5 @@ add_mim_plugin(mem
         phase/sym_expr_opt.cpp
         pass/copy_prop.cpp
         pass/reshape.cpp
-        pass/ssa.cpp
     INSTALL
 )

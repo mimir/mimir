@@ -2,8 +2,6 @@
 
 #include <mim/pass.h>
 
-#include <mim/pass/eta_exp.h>
-
 #include "mim/plug/clos/clos.h"
 
 namespace mim::plug::clos {

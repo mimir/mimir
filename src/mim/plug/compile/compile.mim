@@ -77,22 +77,7 @@ axm %compile.null_repl: %compile.Repl;
 ///
 /// ### Passes
 ///
-axm %compile.beta_red_pass:                             %compile.Pass;
-axm %compile.eta_exp_pass:                              %compile.Pass;
-axm %compile.eta_red_pass:                       Bool → %compile.Pass;
 axm %compile.lam_spec_pass:                             %compile.Pass;
 axm %compile.null_pass:                                 %compile.Pass;
 axm %compile.scalarize_pass:                            %compile.Pass;
 axm %compile.tail_rec_elim_pass:                        %compile.Pass;
-///
-/// ### Pipelines
-///
-let optimization_passes = %compile.passes (
-    %compile.beta_red_pass,
-    %compile.eta_red_pass ff,
-    %compile.eta_exp_pass,
-    %compile.scalarize_pass,
-    %compile.tail_rec_elim_pass,
-);
-
-let optimization_phase = %compile.pass2phase optimization_passes;

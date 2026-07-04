@@ -7,9 +7,6 @@
 #include <mim/pass.h>
 #include <mim/phase.h>
 
-#include <mim/pass/beta_red.h>
-#include <mim/pass/eta_exp.h>
-#include <mim/pass/eta_red.h>
 #include <mim/pass/lam_spec.h>
 #include <mim/pass/scalarize.h>
 #include <mim/pass/tail_rec_elim.h>
@@ -73,15 +70,12 @@ void reg_stages(Flags2Stages& stages) {
     Stage::hook<compile::repl2phase,             ReplManPhase        >(stages);
     Stage::hook<compile::phases,                 PhaseMan            >(stages);
     Stage::hook<compile::prefix_cleanup_phase,   PrefixCleanup       >(stages);
+    Stage::hook<compile::ret_wrap_phase,         RetWrap             >(stages);
     // repls
     Stage::hook<compile::repls,                  ReplMan             >(stages);
     // passes
-    Stage::hook<compile::beta_red_pass,          BetaRed             >(stages);
-    Stage::hook<compile::eta_exp_pass,           EtaExp              >(stages);
-    Stage::hook<compile::eta_red_pass,           EtaRed              >(stages);
     Stage::hook<compile::lam_spec_pass,          LamSpec             >(stages);
     Stage::hook<compile::passes,                 PassMan             >(stages);
-    Stage::hook<compile::ret_wrap_phase,         RetWrap             >(stages);
     Stage::hook<compile::scalarize_pass,         Scalarize           >(stages);
     Stage::hook<compile::tail_rec_elim_pass,     TailRecElim         >(stages);
     // clang-format on

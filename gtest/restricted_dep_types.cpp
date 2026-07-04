@@ -7,9 +7,6 @@
 #include <mim/pass.h>
 
 #include <mim/ast/parser.h>
-#include <mim/pass/beta_red.h>
-#include <mim/pass/eta_exp.h>
-#include <mim/pass/eta_red.h>
 #include <mim/pass/optimize.h>
 
 #include <mim/plug/compile/compile.h>

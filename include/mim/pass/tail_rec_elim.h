@@ -20,7 +20,6 @@ private:
     undo_t analyze(const Def*) override;
     ///@}
 
-    EtaRed* eta_red_;
     LamMap<std::pair<Lam*, Lam*>> old2rec_loop_;
     Lam2Lam rec2loop_;
 };

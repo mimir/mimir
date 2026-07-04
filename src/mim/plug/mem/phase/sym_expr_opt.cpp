@@ -179,13 +179,17 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem       = rewrite(mem);
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
+        analyze(abstr_val); // a slot stored *as value* escapes
         // Only track values stored through slot proxies; arbitrary pointers may alias each other.
         if (isa_slot_proxy(abstr_ptr)) {
             slot2value(abstr_ptr, abstr_val);
             DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
+            // The store will be resolved away, so its out-mem abstractly equals its in-mem.
+            return abstr_mem;
         }
-        analyze(abstr_val); // a slot stored *as value* escapes
-        return abstr_mem;
+        // A store through an arbitrary pointer stays; its out-mem must remain distinct from its in-mem,
+        // otherwise the mem chain threading the store looks loop-invariant and the store becomes dead.
+        return mim::Analysis::rewrite_imm_App(app);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]                   = load->decurry()->args<2>();
         auto [result_mem, result_load] = load->projs<2>();

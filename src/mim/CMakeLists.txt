@@ -26,9 +26,6 @@ target_sources(libmim
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp
-        pass/beta_red.cpp
-        pass/eta_exp.cpp
-        pass/eta_red.cpp
         pass/lam_spec.cpp
         pass/optimize.cpp
         pass/scalarize.cpp

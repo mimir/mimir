@@ -3,8 +3,6 @@
 #include <mim/config.h>
 #include <mim/pass.h>
 
-#include <mim/pass/eta_exp.h>
-#include <mim/pass/eta_red.h>
 #include <mim/pass/scalarize.h>
 
 #include "mim/plug/clos/pass/branch_clos_elim.h"

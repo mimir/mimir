@@ -1,13 +1,8 @@
 #include "mim/pass/tail_rec_elim.h"
 
-#include "mim/pass/eta_red.h"
-
 namespace mim {
 
-void TailRecElim::init(PassMan* man) {
-    Pass::init(man);
-    eta_red_ = man->find<EtaRed>();
-}
+void TailRecElim::init(PassMan* man) { Pass::init(man); }
 
 const Def* TailRecElim::rewrite(const Def* def) {
     if (auto [app, old] = isa_apped_mut_lam(def); old) {
@@ -46,7 +41,6 @@ undo_t TailRecElim::analyze(const Def* def) {
 
                 loop->set(old->reduce(world().tuple(loop_vars)));
                 rec->app(false, loop, loop_args);
-                if (eta_red_) eta_red_->mark_irreducible(loop);
 
                 return undo_visit(old);
             }

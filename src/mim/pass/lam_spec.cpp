@@ -29,18 +29,22 @@ const Def* LamSpec::rewrite(const Def* def) {
 
     auto new_lam = old_lam->stub(world().cn(new_doms));
 
+    // Project new_lam's var with the explicit arity new_doms.size():
+    // a single remaining sigma dom is flattened by cn(), so new_lam->var(i) would project into that sigma.
+    auto num_new = new_doms.size();
+
     for (size_t arg_i = 0, var_i = 0, n = app->num_args() - skip; arg_i != n; ++arg_i) {
         auto arg = app->arg(arg_i);
         if (old_lam->dom(arg_i)->isa<Pi>()) {
             new_vars.emplace_back(arg);
         } else {
-            new_vars.emplace_back(new_lam->var(var_i++));
+            new_vars.emplace_back(new_lam->var(num_new, var_i++));
             new_args.emplace_back(arg);
         }
     }
 
     if (skip) {
-        new_vars.emplace_back(new_lam->vars().back());
+        new_vars.emplace_back(new_lam->var(num_new, num_new - 1));
         new_args.emplace_back(app->args().back());
     }
 

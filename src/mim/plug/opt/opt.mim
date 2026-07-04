@@ -21,33 +21,20 @@ plugin compile;
 /// These used to live in the respective plugins; they are inlined here so that `opt` does not depend on them.
 /// All foreign passes/phases are referenced by name.
 ///
-let mem_opt_passes =
-    %compile.passes (
-        %compile.named_pass "%mem.ssa_pass",
-        %compile.named_pass "%mem.copy_prop_ff_pass",
-    );
-
-let cps_phases =
+let optimize =
     %compile.phases ff (
-        %compile.named_phase "%cps.conv",
-        optimization_phase,
-    );
-
-let matrix_lower_phase =
-    %compile.phases ff (
-        %compile.pass2phase (
-            %compile.passes (
-                %compile.named_pass "%matrix.lower_matrix_high_level_map_reduce",
-                %compile.named_pass "%matrix.lower_matrix_medium_level",
-            )
+        %compile.pass2phase %compile.scalarize_pass,
+        %compile.phases tt (
+            %compile.beta_red_phase,
+            %compile.eta_red_phase,
         ),
-        %compile.named_phase "%matrix.lower_matrix_low_level",
+        %compile.eta_exp_phase,
+        %compile.named_phase "%mem.sym_expr_opt",
+        %compile.pass2phase %compile.tail_rec_elim_pass,
     );
 
 let clos_opt1_passes =
     %compile.passes (
-        %compile.eta_red_pass tt,
-        %compile.eta_exp_pass,
         %compile.scalarize_pass,
     );
 
@@ -62,11 +49,9 @@ let clos_opt2_passes =
 
 let clos_phases =
     %compile.phases ff (
-        optimization_phase,
         %compile.pass2phase (%compile.named_pass "%mem.reshape_flat_pass"),
         %compile.named_phase "%mem.add_mem_phase",
         %compile.pass2phase (%compile.named_pass "%clos.clos_conv_prep_pass"),
-        %compile.pass2phase %compile.eta_exp_pass,
         %compile.named_phase "%clos.clos_conv_phase",
         %compile.pass2phase clos_opt1_passes,
         %compile.pass2phase clos_opt2_passes,
@@ -77,17 +62,8 @@ let clos_phases =
 ///
 lam extern _default_compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.pass2phase %compile.scalarize_pass,
-        %compile.pass2phase (%compile.eta_red_pass ff),
-        %compile.pass2phase %compile.tail_rec_elim_pass,
+        optimize,
         %compile.pass2phase (%compile.named_pass "%regex.lower_regex"),
-        // optimize
-        %compile.phases tt (
-            %compile.beta_red_phase,
-            %compile.eta_red_phase,
-        ),
-        %compile.eta_exp_phase,
-        %compile.named_phase "%mem.sym_expr_opt",
         %compile.cond_phase "tensor" (
             %compile.phases ff (
                 %compile.named_phase "%tensor.lower_tensor",
@@ -98,29 +74,31 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named_phase "%gpu.mem_checks_phase",
         %compile.named_phase "%affine.lower_index_phase",
         %compile.named_phase "%affine.lower_for_phase",
-        %compile.pass2phase (
-            %compile.passes (
-                optimization_passes,
-                mem_opt_passes,
-            )
-        ),
         %compile.cond_phase "autodiff" (
             %compile.phases ff (
                 %compile.pass2phase (%compile.named_pass "%autodiff.eval_pass"),
                 %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
             )
         ),
-        %compile.cond_phase "cps" cps_phases,
+        %compile.named_phase "%cps.conv",
         %compile.cond_phase "matrix" (
             %compile.phases ff (
-                matrix_lower_phase,
-                %compile.cond_phase "cps" cps_phases,
+                %compile.pass2phase (
+                    %compile.passes (
+                        %compile.named_pass "%matrix.lower_matrix_high_level_map_reduce",
+                        %compile.named_pass "%matrix.lower_matrix_medium_level",
+                    )
+                ),
+                %compile.named_phase "%matrix.lower_matrix_low_level",
             )
         ),
+        %compile.named_phase "%cps.conv",
         %compile.named_phase "%affine.lower_for_phase",
         %compile.internal_cleanup_phase,
         %compile.cond_phase "clos" clos_phases,
         %compile.pass2phase %compile.lam_spec_pass,
+        %compile.named_phase "%cps.conv",
+        optimize,
         // CodeGenPrep
         %compile.branch_normalize_phase,
         %compile.ret_wrap_phase,

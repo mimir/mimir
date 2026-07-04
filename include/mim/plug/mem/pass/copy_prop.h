@@ -4,9 +4,6 @@
 
 namespace mim {
 
-class BetaRed;
-class EtaExp;
-
 namespace plug::mem::pass {
 
 /// This FPPass is similar to sparse conditional constant propagation (SCCP).
@@ -46,8 +43,6 @@ private:
     undo_t analyze(const Proxy*) override;
     ///@}
 
-    BetaRed* beta_red_;
-    EtaExp* eta_exp_;
     LamMap<std::tuple<Lattices, Lam*, DefVec>> lam2info_;
     bool bb_only_;
 };
