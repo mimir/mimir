@@ -5,17 +5,16 @@
 /// [TOC]
 ///
 /// This plugin handles the optimization pipeline of the compilation of MimIR programs.
-/// This plugin's axioms can register mim::Phase%s and mim::Repl%s.
+/// This plugin's axioms can register mim::Phase%s.
 /// Invoke the optimization pipeline by defining a function `_compile: [] → %%compile.Phase`.
 ///
 /// ## Types
 ///
-/// ### %%compile.Phase / %%compile.Repl
+/// ### %%compile.Phase
 ///
-/// Types for compilation phases and repls.
+/// The type of compilation phases.
 ///
 axm %compile.Phase: *;
-axm %compile.Repl:  *;
 ///
 /// ## Utility
 ///
@@ -25,17 +24,15 @@ axm %compile.Repl:  *;
 ///
 axm %compile.is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
-/// ### %%compile.named_phase / %%compile.named_repl
+/// ### %%compile.named_phase
 ///
-/// Resolve to the `%compile.Phase` / `%compile.Repl` annex with the given fully-qualified name
-/// (e.g. `"clos.clos_conv_phase"`).
-/// Resolution is deferred until the stage pipeline is built so that the referenced plugin's `.mim` file does not
+/// Resolves to the `%compile.Phase` annex with the given fully-qualified name (e.g. `"clos.clos_conv_phase"`).
+/// Resolution is deferred until the phase pipeline is built so that the referenced plugin's `.mim` file does not
 /// have to be imported by users of this axm.
-/// If the named annex is missing at stage build time (its plugin is not loaded), it is silently elided, i.e. the
-/// enclosing `%compile.phases` / `%compile.repls` simply skips it.
+/// If the named annex is missing at pipeline build time (its plugin is not loaded), it is silently elided, i.e. the
+/// enclosing `%compile.phases` simply skips it.
 ///
 axm %compile.named_phase: {n: Nat} → «n; I8» → %compile.Phase;
-axm %compile.named_repl:  {n: Nat} → «n; I8» → %compile.Repl;
 ///
 /// ### %%compile.cond_phase
 ///
@@ -46,12 +43,11 @@ axm %compile.cond_phase: {n: Nat} → «n; I8» → %compile.Phase → %compile.
 ///
 /// ## Constructors
 ///
-/// ### %%compile.phases / %%compile.repls
+/// ### %%compile.phases
 ///
-/// Sets up `n` phases / repls and bundles them
+/// Sets up `n` phases and bundles them
 ///
 axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Phase;
-axm %compile.repls:  {n: Nat} →        «n; %compile.Repl » → %compile.Repl;
 ///
 /// ### Phases
 ///
@@ -65,11 +61,6 @@ axm %compile.null_phase:                                %compile.Phase;
 axm %compile.ret_wrap_phase:                            %compile.Phase;
 axm %compile.scalarize_phase:                           %compile.Phase;
 axm %compile.tail_rec_elim_phase:                       %compile.Phase;
-axm %compile.repl2phase:                %compile.Repl → %compile.Phase;
 axm %compile.prefix_cleanup_phase: {n: Nat} → «n; I8» → %compile.Phase;
 
 let %compile.internal_cleanup_phase = %compile.prefix_cleanup_phase "internal_";
-///
-/// ### Repls
-///
-axm %compile.null_repl: %compile.Repl;

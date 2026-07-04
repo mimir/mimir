@@ -935,7 +935,7 @@ public:
 
     /// @name Getters
     ///@{
-    u32 pass() const { return u32(flags() >> 32_u64); } ///< Discriminates the Stage that created this Proxy.
+    u32 pass() const { return u32(flags() >> 32_u64); } ///< Discriminates the Phase that created this Proxy.
     u32 tag() const { return u32(flags()); }
     ///@}
 

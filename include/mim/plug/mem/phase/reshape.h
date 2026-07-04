@@ -21,7 +21,7 @@ public:
 
     void apply(Mode);
     void apply(const App* app) final;
-    void apply(Stage& s) final { apply(static_cast<Reshape&>(s).mode()); }
+    void apply(Phase& p) final { apply(static_cast<Reshape&>(p).mode()); }
 
     Mode mode() const { return mode_; }
 

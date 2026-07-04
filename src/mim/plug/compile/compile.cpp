@@ -5,7 +5,6 @@
 #include <mim/config.h>
 #include <mim/driver.h>
 #include <mim/phase.h>
-#include <mim/stage.h>
 
 #include <mim/phase/beta_red_phase.h>
 #include <mim/phase/branch_normalize.h>
@@ -22,15 +21,17 @@
 using namespace mim;
 using namespace mim::plug;
 
-/// Stage hook for `%compile.named_phase` and `%compile.named_repl`.
-/// Reads the fully-qualified annex name (e.g. `"clos.clos_conv_phase"`) from the driving App at stage-build time,
-/// looks up the matching annex `Def` in the current `World`, and *redirects* Stage::create to that annex's own
-/// Stage. If the plugin part of the name is not loaded or the annex is missing, it elides (resolves to nothing),
-/// so the enclosing `%compile.phases`/`repls` simply skips it.
-class Named : public Stage {
+/// Phase hook for `%compile.named_phase`.
+/// Reads the fully-qualified annex name (e.g. `"clos.clos_conv_phase"`) from the driving App at phase-build time,
+/// looks up the matching annex `Def` in the current `World`, and *redirects* Phase::create to that annex's own
+/// Phase. If the plugin part of the name is not loaded or the annex is missing, it elides (resolves to nothing),
+/// so the enclosing `%compile.phases` simply skips it.
+class Named : public Phase {
 public:
     Named(World& w, flags_t a)
-        : Stage(w, a) {}
+        : Phase(w, a) {}
+
+    void start() final { fe::unreachable(); } // a Named always redirects and never runs itself
 
     void apply(const App* app) final {
         if (!app) return;
@@ -42,40 +43,34 @@ public:
         auto begin = str[0] == '%' ? 1uz : 0uz; // skip the leading '%' of the annex name
         if (!driver().is_loaded(driver().sym(str.substr(begin, dot - begin)))) return;
 
-        if (auto def = world().annex(driver().sym(str))) resolved_ = Stage::create(driver().stages(), def);
+        if (auto def = world().annex(driver().sym(str))) resolved_ = Phase::create(driver().phases(), def);
     }
 
     bool redirects() const override { return true; }
-    std::unique_ptr<Stage> take_resolved() override { return std::move(resolved_); }
+    std::unique_ptr<Phase> take_resolved() override { return std::move(resolved_); }
 
 private:
-    std::unique_ptr<Stage> resolved_;
+    std::unique_ptr<Phase> resolved_;
 };
 
-void reg_stages(Flags2Stages& stages) {
+void reg_phases(Flags2Phases& phases) {
     // clang-format off
-    assert_emplace(stages, Annex::base<compile::null_phase>(), [](World&) { return std::unique_ptr<Phase>{}; });
-    assert_emplace(stages, Annex::base<compile::null_repl >(), [](World&) { return std::unique_ptr<Repl >{}; });
-    // phases
-    Stage::hook<compile::beta_red_phase,         BetaRedPhase        >(stages);
-    Stage::hook<compile::branch_normalize_phase, BranchNormalizePhase>(stages);
-    Stage::hook<compile::cleanup_phase,          Cleanup             >(stages);
-    Stage::hook<compile::eta_exp_phase,          EtaExpPhase         >(stages);
-    Stage::hook<compile::eta_red_phase,          EtaRedPhase         >(stages);
-    Stage::hook<compile::lam_spec_phase,         LamSpec             >(stages);
-    Stage::hook<compile::scalarize_phase,        Scalarize           >(stages);
-    Stage::hook<compile::tail_rec_elim_phase,    TailRecElim         >(stages);
-    Stage::hook<compile::named_phase,            Named               >(stages);
-    Stage::hook<compile::named_repl,             Named               >(stages);
-    Stage::hook<compile::repl2phase,             ReplManPhase        >(stages);
-    Stage::hook<compile::phases,                 PhaseMan            >(stages);
-    Stage::hook<compile::prefix_cleanup_phase,   PrefixCleanup       >(stages);
-    Stage::hook<compile::ret_wrap_phase,         RetWrap             >(stages);
-    // repls
-    Stage::hook<compile::repls,                  ReplMan             >(stages);
+    assert_emplace(phases, Annex::base<compile::null_phase>(), [](World&) { return std::unique_ptr<Phase>{}; });
+    Phase::hook<compile::beta_red_phase,         BetaRedPhase        >(phases);
+    Phase::hook<compile::branch_normalize_phase, BranchNormalizePhase>(phases);
+    Phase::hook<compile::cleanup_phase,          Cleanup             >(phases);
+    Phase::hook<compile::eta_exp_phase,          EtaExpPhase         >(phases);
+    Phase::hook<compile::eta_red_phase,          EtaRedPhase         >(phases);
+    Phase::hook<compile::lam_spec_phase,         LamSpec             >(phases);
+    Phase::hook<compile::scalarize_phase,        Scalarize           >(phases);
+    Phase::hook<compile::tail_rec_elim_phase,    TailRecElim         >(phases);
+    Phase::hook<compile::named_phase,            Named               >(phases);
+    Phase::hook<compile::phases,                 PhaseMan            >(phases);
+    Phase::hook<compile::prefix_cleanup_phase,   PrefixCleanup       >(phases);
+    Phase::hook<compile::ret_wrap_phase,         RetWrap             >(phases);
     // clang-format on
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"compile", MIM_VERSION, compile::register_normalizers, reg_stages};
+    return {"compile", MIM_VERSION, compile::register_normalizers, reg_phases};
 }

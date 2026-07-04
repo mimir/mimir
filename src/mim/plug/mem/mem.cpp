@@ -1,7 +1,7 @@
 #include "mim/plug/mem/mem.h"
 
 #include <mim/config.h>
-#include <mim/stage.h>
+#include <mim/phase.h>
 
 #include "mim/plug/mem/mem.h"
 #include "mim/plug/mem/phase/add_mem.h"
@@ -11,13 +11,13 @@
 using namespace mim;
 using namespace mim::plug;
 
-void reg_stages(Flags2Stages& stages) {
-    MIM_REPL(stages, mem::remem_repl, {
+void reg_phases(Flags2Phases& phases) {
+    MIM_REPL(phases, mem::remem_repl, {
         if (auto remem = Axm::isa<mem::remem>(def)) return remem->arg();
         return {};
     });
 
-    MIM_REPL(stages, mem::alloc2malloc_repl, {
+    MIM_REPL(phases, mem::alloc2malloc_repl, {
         if (auto alloc = Axm::isa<mem::alloc>(def)) {
             auto [pointee, addr_space] = alloc->decurry()->args<2>();
             return mem::op_malloc(pointee, addr_space, alloc->arg());
@@ -32,10 +32,10 @@ void reg_stages(Flags2Stages& stages) {
     });
 
     // clang-format off
-    Stage::hook<mem::add_mem_phase,  mem::phase::AddMem    >(stages);
-    Stage::hook<mem::sym_expr_opt,   mem::phase::SymExprOpt>(stages);
-    Stage::hook<mem::reshape_phase,  mem::phase::Reshape   >(stages);
+    Phase::hook<mem::add_mem_phase,  mem::phase::AddMem    >(phases);
+    Phase::hook<mem::sym_expr_opt,   mem::phase::SymExprOpt>(phases);
+    Phase::hook<mem::reshape_phase,  mem::phase::Reshape   >(phases);
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"mem", MIM_VERSION, mem::register_normalizers, reg_stages}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"mem", MIM_VERSION, mem::register_normalizers, reg_phases}; }

@@ -1,7 +1,7 @@
 #include "mim/plug/option/option.h"
 
+#include <mim/phase.h>
 #include <mim/plugin.h>
-#include <mim/stage.h>
 
 using namespace mim;
 

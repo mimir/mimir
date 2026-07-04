@@ -231,8 +231,8 @@ lam %gpu.synced_scope (m1: %gpu.GlobalM, m3: %gpu.SharedM,
 ///
 /// ### Repls
 ///
-axm %gpu.check_addr_spaces_repl:    %compile.Repl;
-axm %gpu.host_malloc2gpualloc_repl: %compile.Repl;
+axm %gpu.check_addr_spaces_repl:    %compile.Phase;
+axm %gpu.host_malloc2gpualloc_repl: %compile.Phase;
 ///
 /// ### Phases
 ///
@@ -242,7 +242,7 @@ axm %gpu.remove_double_syncs:              %compile.Phase;
 /// ### Pipelines
 ///
 lam %gpu.host_specific_phases () = %compile.phases ff (
-    %compile.repl2phase %gpu.host_malloc2gpualloc_repl,
+    %gpu.host_malloc2gpualloc_repl,
 );
 lam %gpu.device_specific_phases () = %compile.phases ff (
     %gpu.remove_double_syncs,

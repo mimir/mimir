@@ -2,7 +2,6 @@
 
 #include <mim/def.h>
 #include <mim/phase.h>
-#include <mim/stage.h>
 
 namespace mim::plug::matrix {
 

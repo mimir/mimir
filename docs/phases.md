@@ -8,7 +8,7 @@ See also the [Rewriting Guide](@ref rewriting), since several phase families are
 
 ## Overview
 
-A [`Phase`](@ref mim::Phase) is a [`Stage`](@ref mim::Stage) with a single entry point, [`run()`](@ref mim::Phase::run), which wraps the actual implementation in [`start()`](@ref mim::Phase::start).
+A [`Phase`](@ref mim::Phase) has a single entry point, [`run()`](@ref mim::Phase::run), which wraps the actual implementation in [`start()`](@ref mim::Phase::start).
 
 ## Phase {#phases_phase}
 
@@ -117,7 +117,7 @@ This is the standard base class for optimization phases that structurally transf
 
 It inherits from both [`Phase`](@ref mim::Phase) and [`Rewriter`](@ref mim::Rewriter), but here the two worlds differ:
 
-- [`Phase::world`](@ref mim::Stage::world) is the **old** world,
+- [`Phase::world`](@ref mim::Phase::world) is the **old** world,
 - [`Rewriter::world`](@ref mim::Rewriter::world) is the **new** world.
 
 @note To avoid confusion, direct `world()` access is deleted.

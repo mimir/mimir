@@ -89,8 +89,8 @@ axm %mem.sym_expr_opt: %compile.Phase;
 ///
 /// ### Repls
 ///
-axm %mem.remem_repl:        %compile.Repl;
-axm %mem.alloc2malloc_repl: %compile.Repl;
+axm %mem.remem_repl:        %compile.Phase;
+axm %mem.alloc2malloc_repl: %compile.Phase;
 ///
 /// ##### %mem.reshape
 ///

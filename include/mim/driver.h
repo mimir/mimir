@@ -120,8 +120,8 @@ public:
     /// @name Manage Plugins
     /// All these lookups yield `nullptr` if the key has not been found.
     ///@{
-    auto stage(flags_t flags) { return lookup(stages_, flags); }
-    const auto& stages() const { return stages_; }
+    auto phase(flags_t flags) { return lookup(phases_, flags); }
+    const auto& phases() const { return phases_; }
     auto normalizer(flags_t flags) const { return lookup(normalizers_, flags); }
     auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(Annex::flags(d, t, s)); }
     ///@}
@@ -136,7 +136,7 @@ private:
     World world_;
     std::list<fs::path> search_paths_;
     std::list<fs::path>::iterator insert_ = search_paths_.end();
-    Flags2Stages stages_;
+    Flags2Phases phases_;
     Normalizers normalizers_;
     Imports imports_;
 };

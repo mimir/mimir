@@ -8,31 +8,76 @@
 #include "mim/def.h"
 #include "mim/nest.h"
 #include "mim/rewrite.h"
-#include "mim/stage.h"
+#include "mim/world.h"
 
 namespace mim {
 
 class Nest;
 class Phase;
 class PhaseMan;
-class Repl;
 class World;
 
-using Repls  = std::deque<std::unique_ptr<Repl>>;
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
 /// A Phase performs one self-contained task over the whole World.
 /// Phases are intended to run in a classical sequence, one after another.
 /// @see @ref phases_phase
-class Phase : public Stage {
+class Phase : public fe::RuntimeCast<Phase> {
 public:
     /// @name Construction & Destruction
     ///@{
     Phase(World& world, std::string name)
-        : Stage(world, name) {}
-    Phase(World& world, flags_t annex)
-        : Stage(world, annex) {}
+        : world_(world)
+        , name_(std::move(name)) {}
+    Phase(World& world, flags_t annex);
 
+    virtual ~Phase() = default;
+    virtual std::unique_ptr<Phase> recreate(); ///< Creates a new instance; needed by a fixed-point PhaseMan.
+    virtual void apply(const App*) {}          ///< Invoked if your Phase has additional args.
+    virtual void apply(Phase&) {}              ///< Dito, but invoked by Phase::recreate.
+
+    /// @name Redirection
+    /// A Phase may resolve to a *different* Phase (or to nothing) after Phase::apply.
+    /// This is used by the `%%compile.named_phase` stage that resolves a string to another plugin's annex.
+    ///@{
+    virtual bool redirects() const { return false; } ///< If `true`, Phase::create uses take_resolved().
+    virtual std::unique_ptr<Phase> take_resolved() {
+        return {};
+    } ///< The Phase to use instead; `nullptr` means *elide*.
+    ///@}
+
+    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def) {
+        auto& world = def->world();
+        auto p_def  = App::uncurry_callee(def);
+        world.DLOG("apply phase: `{}`", p_def);
+
+        if (auto axm = p_def->isa<Axm>())
+            if (auto i = phases.find(axm->flags()); i != phases.end()) {
+                auto phase = i->second(world);
+                if (phase) {
+                    phase->apply(def->isa<App>());
+                    if (phase->redirects()) return phase->take_resolved();
+                }
+                return phase;
+            } else
+                error("phase `{}` not found", axm->sym());
+        else
+            error("unsupported callee for a phase: `{}`", p_def);
+    }
+
+    template<class A, class P>
+    static void hook(Flags2Phases& phases) {
+        assert_emplace(phases, Annex::base<A>(), [](World& w) { return std::make_unique<P>(w, Annex::base<A>()); });
+    }
+    ///@}
+
+    /// @name Getters
+    ///@{
+    World& world() { return world_; }
+    Driver& driver() { return world().driver(); }
+    Log& log() const { return world_.log(); }
+    std::string_view name() const { return name_; }
+    flags_t annex() const { return annex_; }
     ///@}
 
     /// @name Fixed-Point Handling
@@ -62,8 +107,14 @@ public:
     ///@}
 
 private:
-    bool todo_ = false;
+    World& world_;
+    flags_t annex_ = 0;
+    bool todo_     = false;
 
+protected:
+    std::string name_;
+
+private:
     friend class Analysis;
 };
 
@@ -251,72 +302,45 @@ private:
     bool bootstrapping_ = true;
 };
 
-/// Simple Stage that searches for a pattern and replaces it.
-/// Combine them in a ReplPhase.
-class Repl : public Stage {
+/// An RWPhase that searches for a pattern and replaces it.
+/// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
+class Repl : public RWPhase {
 public:
     Repl(World& world, flags_t annex)
-        : Stage(world, annex) {}
+        : RWPhase(world, annex) {}
 
+    /// replace() inspects and builds Def%s of the **old** world; the RWPhase machinery carries the result over.
+    World& world() { return old_world(); }
+
+    /// @returns the replacement or `nullptr` if the pattern does not match.
     virtual const Def* replace(const Def* def) = 0;
-};
-
-class ReplMan : public Repl {
-public:
-    ReplMan(World& world, flags_t annex)
-        : Repl(world, annex) {}
-
-    void apply(Repls&&);
-    void apply(const App*) final;
-    void apply(Stage& stage) final { apply(std::move(static_cast<ReplMan&>(stage).repls_)); }
-
-    void add(std::unique_ptr<Repl>&& repl) { repls_.emplace_back(std::move(repl)); }
-    const auto& repls() const { return repls_; }
 
 private:
-    const Def* replace(const Def*) final { fe::unreachable(); }
+    const Def* rewrite(const Def* def) final {
+        for (bool todo = true; todo;) {
+            todo = false;
+            if (auto subst = replace(def)) todo = true, def = subst;
+        }
 
-    Repls repls_;
+        return Rewriter::rewrite(def);
+    }
 };
 
 #define MIM_CONCAT_INNER(a, b) a##b
 #define MIM_CONCAT(a, b)       MIM_CONCAT_INNER(a, b)
 
-#define MIM_REPL(__stages, __annex, ...) MIM_REPL_IMPL(__stages, __annex, __LINE__, __VA_ARGS__)
+#define MIM_REPL(__phases, __annex, ...) MIM_REPL_IMPL(__phases, __annex, __LINE__, __VA_ARGS__)
 
 // clang-format off
-#define MIM_REPL_IMPL(__stages, __annex, __id, ...)                         \
+#define MIM_REPL_IMPL(__phases, __annex, __id, ...)                         \
     struct MIM_CONCAT(Repl_, __id) : ::mim::Repl {                          \
         MIM_CONCAT(Repl_, __id)(::mim::World & world, ::mim::flags_t annex) \
             : Repl(world, annex) {}                                         \
                                                                             \
         const ::mim::Def* replace(const ::mim::Def* def) final __VA_ARGS__  \
     };                                                                      \
-    ::mim::Stage::hook<__annex, MIM_CONCAT(Repl_, __id)>(__stages)
+    ::mim::Phase::hook<__annex, MIM_CONCAT(Repl_, __id)>(__phases)
 // clang-format on
-
-class ReplManPhase : public RWPhase {
-public:
-    /// @name Construction
-    ///@{
-    ReplManPhase(World& world, std::unique_ptr<ReplMan>&& man)
-        : RWPhase(world, "pass_man_phase")
-        , man_(std::move(man)) {}
-    ReplManPhase(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
-
-    void apply(const App*) final;
-    void apply(Stage&) final;
-    ///@}
-
-    const ReplMan& man() const { return *man_; }
-
-private:
-    void start() final;
-    const Def* rewrite(const Def*) final;
-
-    std::unique_ptr<ReplMan> man_;
-};
 
 /// Removes unreachable and dead code by rebuilding the whole World into a new one and `swap`ping them afterwards.
 /// @see @ref phases_rwphase
@@ -340,7 +364,7 @@ public:
 
     void apply(bool, Phases&&);
     void apply(const App*) final;
-    void apply(Stage&) final;
+    void apply(Phase&) final;
     ///@}
 
     /// @name Getters

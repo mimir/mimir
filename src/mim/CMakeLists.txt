@@ -10,7 +10,6 @@ target_sources(libmim
         lam.cpp
         lattice.cpp
         nest.cpp
-        stage.cpp
         phase.cpp
         plugin.cpp
         rewrite.cpp

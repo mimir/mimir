@@ -1,7 +1,7 @@
 #include "mim/plug/math/math.h"
 
 #include <mim/config.h>
-#include <mim/stage.h>
+#include <mim/phase.h>
 
 using namespace mim;
 

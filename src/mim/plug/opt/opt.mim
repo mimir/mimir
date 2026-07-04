@@ -9,9 +9,8 @@
 /// ## Dependencies
 ///
 /// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `%compile.named_phase` /
-/// `%compile.named_repl` (which resolve to the plugin's annexes iff it is loaded) and `%compile.cond_phase`
-/// (which gates a whole sub-pipeline on a plugin being loaded).
+/// Every other plugin is referenced *by name* through `%compile.named_phase` (which resolves to the plugin's
+/// annex iff it is loaded) and `%compile.cond_phase` (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;
@@ -68,7 +67,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named_phase "%affine.lower_index_phase",
         %compile.named_phase "%affine.lower_for_phase",
         %compile.named_phase "%autodiff.eval_phase",
-        %compile.repl2phase (%compile.named_repl "%autodiff.zero_repl"),
+        %compile.named_phase "%autodiff.zero_repl",
         %compile.named_phase "%cps.conv",
         %compile.named_phase "%matrix.lower_matrix_high_level_map_reduce",
         %compile.named_phase "%matrix.lower_matrix_medium_level",
@@ -83,14 +82,10 @@ lam extern _default_compile (): %compile.Phase =
         // CodeGenPrep
         %compile.branch_normalize_phase,
         %compile.ret_wrap_phase,
-        %compile.repl2phase (
-            %compile.repls (
-                %compile.named_repl "%mem.remem_repl",
-                %compile.named_repl "%mem.alloc2malloc_repl",
-                %compile.named_repl "%refly.remove_dbg_repl",
-                %compile.named_repl "%gpu.check_addr_spaces_repl",
-            )
-        ),
+        %compile.named_phase "%mem.remem_repl",
+        %compile.named_phase "%mem.alloc2malloc_repl",
+        %compile.named_phase "%refly.remove_dbg_repl",
+        %compile.named_phase "%gpu.check_addr_spaces_repl",
         // emit LLVM IR to <world>.ll iff the `ll` plugin is loaded (`-p ll`)
         %compile.named_phase "%ll.emit",
     );

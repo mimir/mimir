@@ -4,7 +4,7 @@
 #include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
 
-#include <mim/stage.h>
+#include <mim/phase.h>
 
 #include <mim/ast/parser.h>
 #include <mim/phase/optimize.h>

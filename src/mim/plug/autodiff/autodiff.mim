@@ -49,7 +49,7 @@ axm %autodiff.sum: [n:Nat, T: *] → «n; T» → T, normalize_sum;
 ///
 /// ### Repls
 ///
-axm %autodiff.zero_repl: %compile.Repl;
+axm %autodiff.zero_repl: %compile.Phase;
 ///
 /// ### Phases
 ///

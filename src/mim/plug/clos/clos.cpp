@@ -1,7 +1,7 @@
 #include "mim/plug/clos/clos.h"
 
 #include <mim/config.h>
-#include <mim/stage.h>
+#include <mim/phase.h>
 
 #include <mim/phase/scalarize.h>
 
@@ -15,19 +15,19 @@
 using namespace mim;
 using namespace mim::plug;
 
-void reg_stages(Flags2Stages& stages) {
+void reg_phases(Flags2Phases& phases) {
     // clang-format off
     // phases
-    Stage::hook<clos::clos_conv_phase,            clos::ClosConv          >(stages);
-    Stage::hook<clos::lower_typed_clos_phase,     clos::LowerTypedClos    >(stages);
-    Stage::hook<clos::clos_conv_prep_phase,       clos::ClosConvPrep      >(stages);
-    Stage::hook<clos::branch_clos_phase,          clos::BranchClosElim    >(stages);
-    Stage::hook<clos::lower_typed_clos_prep_phase,clos::LowerTypedClosPrep>(stages);
-    Stage::hook<clos::clos2sjlj_phase,            clos::Clos2SJLJ         >(stages);
+    Phase::hook<clos::clos_conv_phase,            clos::ClosConv          >(phases);
+    Phase::hook<clos::lower_typed_clos_phase,     clos::LowerTypedClos    >(phases);
+    Phase::hook<clos::clos_conv_prep_phase,       clos::ClosConvPrep      >(phases);
+    Phase::hook<clos::branch_clos_phase,          clos::BranchClosElim    >(phases);
+    Phase::hook<clos::lower_typed_clos_prep_phase,clos::LowerTypedClosPrep>(phases);
+    Phase::hook<clos::clos2sjlj_phase,            clos::Clos2SJLJ         >(phases);
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"clos", MIM_VERSION, clos::register_normalizers, reg_stages}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"clos", MIM_VERSION, clos::register_normalizers, reg_phases}; }
 
 namespace mim::plug::clos {
 

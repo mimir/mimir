@@ -11,10 +11,10 @@ using namespace std::literals;
 using namespace mim;
 using namespace mim::plug;
 
-void reg_stages(Flags2Stages& stages) {
-    Stage::hook<autodiff::eval_phase, autodiff::Eval>(stages);
+void reg_phases(Flags2Phases& phases) {
+    Phase::hook<autodiff::eval_phase, autodiff::Eval>(phases);
 
-    MIM_REPL(stages, autodiff::zero_repl, {
+    MIM_REPL(phases, autodiff::zero_repl, {
         if (auto zero = Axm::isa<autodiff::zero>(def); zero) {
             if (auto z = autodiff::zero_def(zero->arg())) return z;
         }
@@ -23,7 +23,7 @@ void reg_stages(Flags2Stages& stages) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"autodiff", MIM_VERSION, [](Normalizers& n) { autodiff::register_normalizers(n); }, reg_stages};
+    return {"autodiff", MIM_VERSION, [](Normalizers& n) { autodiff::register_normalizers(n); }, reg_phases};
 }
 
 namespace mim::plug::autodiff {
