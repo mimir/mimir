@@ -225,13 +225,10 @@ const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
         set(result_load, result_load);
         return world().tuple({result_mem, result_load});
     } else if (auto slot = Axm::isa<mem::slot>(app)) {
-        // if the slot is top (address taken), it escapes and must be kept as is
-        if (auto i = lattice_.find(slot); i != lattice_.end() && i->second == slot)
-            return mim::Analysis::rewrite_imm_App(app);
+        if (is_top(slot)) return mim::Analysis::rewrite_imm_App(app); // slot escapes: keep
 
-        auto [Ta, mi]   = slot->uncurry_args<2>();
-        auto [T, as]    = Ta->projs<2>();
-        auto [mem, id]  = mi->projs<2>();
+        auto [T, as]    = slot->decurry()->args<2>();
+        auto [mem, id]  = slot->args<2>();
         auto [_, ptr]   = slot->projs<2>();
         auto abstr_mem  = rewrite(mem);
         auto abstr_id   = rewrite(id);

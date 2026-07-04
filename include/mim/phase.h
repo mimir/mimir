@@ -160,6 +160,11 @@ public:
     auto& lattice() { return lattice_; }
     const auto& lattice() const { return lattice_; }
 
+    bool is_top(const Def* def) const {
+        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second == def;
+        return false;
+    }
+
     /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
     /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
     void set(const Def* concr, const Def* abstr) {

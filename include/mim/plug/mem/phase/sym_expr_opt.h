@@ -7,12 +7,19 @@
 
 namespace mim::plug::mem::phase {
 
-/// Symbolic Expression Optimization. Combines:
-/// * *[Constant propagation with conditional branches](https://dl.acm.org/doi/pdf/10.1145/103135.103136)* but
-/// propagates arbitrary expressions
-/// * *[Detecting equality of variables in programs](https://dl.acm.org/doi/10.1145/73560.73561)*
-/// * Much in the spirit of *[Combining analyses, combining
-/// optimizations](https://dl.acm.org/doi/pdf/10.1145/201059.201061)*.
+/// Symbolic Expression Optimization.
+/// Based on [SSA Translation Is an Abstract Interpretation](https://dl.acm.org/doi/10.1145/3571258).
+/// In addition:
+/// * propagates whole expressions - not just constants
+/// * optimistically combines φs/Vars that are already present with those being constructed through SSA translation
+/// * since abstract domain is a MimIR expression, stack slots themselves can be propagated etc.
+///
+/// Additional papers worth reading:
+/// * [Constant propagation with conditional branches](https://dl.acm.org/doi/pdf/10.1145/103135.103136)
+/// * [Detecting equality of variables in programs](https://dl.acm.org/doi/10.1145/73560.73561)
+/// * [Combining analyses, combining optimizations](https://dl.acm.org/doi/pdf/10.1145/201059.201061)
+/// * [Simple and efficient construction of static single assignment
+/// form](https://dl.acm.org/doi/10.1007/978-3-642-37051-9_6)
 ///
 /// Due to MimIR's sea of node structure a number of other optimizations kick in such as arithmetic simplifications and
 /// code motion.
