@@ -81,17 +81,13 @@ lam extern _default_compile (): %compile.Phase =
             )
         ),
         %compile.named_phase "%cps.conv",
-        %compile.cond_phase "matrix" (
-            %compile.phases ff (
-                %compile.pass2phase (
-                    %compile.passes (
-                        %compile.named_pass "%matrix.lower_matrix_high_level_map_reduce",
-                        %compile.named_pass "%matrix.lower_matrix_medium_level",
-                    )
-                ),
-                %compile.named_phase "%matrix.lower_matrix_low_level",
+        %compile.pass2phase (
+            %compile.passes (
+                %compile.named_pass "%matrix.lower_matrix_high_level_map_reduce",
+                %compile.named_pass "%matrix.lower_matrix_medium_level",
             )
         ),
+        %compile.named_phase "%matrix.lower_matrix_low_level",
         %compile.named_phase "%cps.conv",
         %compile.named_phase "%affine.lower_for_phase",
         %compile.internal_cleanup_phase,
