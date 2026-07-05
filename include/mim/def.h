@@ -927,17 +927,22 @@ private:
 
 class Proxy : public Def, public Setters<Proxy> {
 private:
-    Proxy(const Def* type, u32 pass, u32 tag, Defs ops)
-        : Def(Node, type, ops, (u64(pass) << 32_u64) | u64(tag)) {}
+    Proxy(const Def* type, flags_t tag, Defs ops)
+        : Def(Node, type, ops, tag) {}
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    u32 pass() const { return u32(flags() >> 32_u64); } ///< Discriminates the Phase that created this Proxy.
-    u32 tag() const { return u32(flags()); }
+    flags_t tag() const { return flags_; }
     ///@}
+
+    template<flags_t Tag>
+    static const Proxy* isa(const Def* def) {
+        if (auto proxy = def->isa<Proxy>(); proxy && proxy->tag() == Tag) return proxy;
+        return nullptr;
+    }
 
     static constexpr auto Node      = mim::Node::Proxy;
     static constexpr size_t Num_Ops = std::dynamic_extent;
