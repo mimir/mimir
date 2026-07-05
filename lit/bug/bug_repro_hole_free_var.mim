@@ -1,0 +1,54 @@
+// `shared`'s parameter `z` is unannotated, so its type is inferred (a Hole).
+// It gets called from both `left` (where the in-scope size is `n`) and
+// `right` (where it's `m`) as `shared x`/`shared y`, with `x: Idx n` and
+// `y: Idx m`. Solving the Hole against `left`'s call site first sets it to
+// `Idx n`; checking it again against `right`'s call site then has to compare
+// `n` (free w.r.t. this second, independent check -- it's `left`'s bound
+// variable, out of scope inside `right`) against `m` (bound in `right`).
+// These are two DIFFERENT variables, so the check should fail -- but it
+// doesn't. mim then goes on to construct `foo`'s body referencing `n` (a
+// variable local to `left`) even though `foo` itself is `extern` and is
+// therefore required to be a CLOSED term. That invariant violation is only
+// ever noticed later, in World::Externals::externalize, as a raw
+// `assert(def->is_closed())` -- i.e. a crash with no source location, not a
+// diagnosed compile error.
+//
+// Root cause: Checker::alpha_'s free-variable case (src/mim/check.cpp,
+// around line 246):
+//
+//     // both var1 and var2 are free: OK, when they are the same or in Check mode
+//     return var1 == var2 || mode == Check;
+//
+// In `Check` mode (used while solving Holes during type inference), any two
+// Vars that are "free" from the perspective of the current comparison are
+// treated as compatible -- even when they are literally different variables
+// bound by different, unrelated binders (here: `left`'s `n` vs `right`'s
+// `m`). There is no occurs/scope check verifying that a Hole's solution only
+// mentions variables that are actually in scope where the Hole originated.
+// Confirmed live by instrumenting that line: the comparison that gets waved
+// through right before the crash is exactly
+//   var1 = <right's own bound var>, var2 = <left's own bound var>.
+//
+// This is not specific to this program shape -- the same permissive branch
+// fires constantly during ordinary elaboration (e.g. comparing an axiom's
+// own generic parameter name against an unrelated one at a use site), so it
+// is presumably relied upon elsewhere; a real fix likely needs an actual
+// scope/level check on Hole resolution rather than just tightening this
+// branch outright.
+//
+// NOT FIXED YET: this should be a clean type/scope error ("cannot unify n
+// and m"); it currently crashes instead. Pinned as a crash so the suite
+// notices if the failure mode ever changes -- promote to a plain `RUN:
+// not %mim ... | FileCheck` (clean error) once fixed.
+
+// RUN: not --crash %mim %s -o - 2>&1 | FileCheck %s
+
+plugin core;
+
+fun extern foo (b: Bool) = (left, right)#b (3, 0_3) where
+  con left (n: Nat, x: Idx n) = shared x;
+  con right (m: Nat, y: Idx m) = shared y;
+  con shared (z) = return 0;
+end;
+
+// CHECK: Assertion
