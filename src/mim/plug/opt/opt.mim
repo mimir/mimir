@@ -15,12 +15,6 @@
 ///
 plugin compile;
 ///
-/// ## Inlined partial pipelines
-///
-/// These used to live in the respective plugins; they are inlined here so that `opt` does not depend on them.
-/// All foreign passes/phases are referenced by name.
-///
-///
 /// ## The default pipeline
 ///
 lam extern _default_compile (): %compile.Phase =
