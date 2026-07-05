@@ -34,3 +34,5 @@ Mim looks for plugins in this order:
   ```
 
 - You can also trigger breakpoints at other specific events, for example when an alpha-equivalence check fails via `--break-on-alpha`.
+- You can measure per-[`mim::Phase`](@ref mim::Phase) wall-clock time with `--profile` and `--output-profile`.
+  See [Profiling](@ref profiling) for details, including how to view `--profile trace` output in `chrome://tracing`.
