@@ -85,7 +85,7 @@ axm %mem.lea: {n: Nat, Ts: «n; *», a: Nat} → [%mem.Ptr («j: n; Ts#j», a), 
 /// ### Phases
 ///
 axm %mem.add_mem: %compile.Phase;
-axm %mem.sym_expr_opt: %compile.Phase;
+axm %mem.seo:     %compile.Phase; // symbolic expression optimization
 ///
 /// ### Repls
 ///

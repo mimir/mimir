@@ -20,43 +20,22 @@ plugin compile;
 /// These used to live in the respective plugins; they are inlined here so that `opt` does not depend on them.
 /// All foreign passes/phases are referenced by name.
 ///
-let optimize =
-    %compile.phases ff (
-        %compile.scalarize,
-        %compile.phases tt (
-            %compile.beta_red,
-            %compile.eta_red,
-        ),
-        %compile.eta_exp,
-        %compile.named "%mem.sym_expr_opt",
-        %compile.tail_rec_elim,
-    );
-
-let clos_opt_phases =
-    %compile.phases ff (
-        %compile.scalarize,
-        %compile.named "%clos.branch_clos",
-        %compile.named "%mem.sym_expr_opt",
-    );
-
-let clos_phases =
-    %compile.phases ff (
-        %compile.named "%mem.flat_reshape",
-        %compile.named "%mem.add_mem",
-        %compile.named "%clos.clos_conv_prep",
-        %compile.named "%clos.clos_conv",
-        %compile.scalarize,
-        clos_opt_phases,
-        %compile.named "%clos.lower_typed_clos_prep",
-        %compile.named "%clos.clos2sjlj",
-        // clos2sjlj introduces new branch closures; clean them up again
-        clos_opt_phases,
-        %compile.named "%clos.lower_typed_clos",
-    );
 ///
 /// ## The default pipeline
 ///
 lam extern _default_compile (): %compile.Phase =
+    let optimize =
+        %compile.phases ff (
+            %compile.scalarize,
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_red,
+            ),
+            %compile.eta_exp,
+            %compile.named "%mem.seo",
+            %compile.tail_rec_elim,
+        );
+
     %compile.phases ff (
         optimize,
         %compile.named "%regex.lower_regex",
@@ -64,22 +43,43 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%tensor.fuse_tensor",
         %compile.named "%tensor.lower_map_reduce",
         %compile.named "%gpu.mem_checks",
-        %compile.named "%affine.lower_index",
-        %compile.named "%affine.lower_for",
         %compile.named "%autodiff.eval",
         %compile.named "%autodiff.zero_repl",
-        %compile.named "%cps.conv",
         %compile.named "%matrix.lower_matrix_high_level_map_reduce",
         %compile.named "%matrix.lower_matrix_medium_level",
         %compile.named "%matrix.lower_matrix_low_level",
         %compile.named "%cps.conv",
+        %compile.named "%affine.lower_index",
         %compile.named "%affine.lower_for",
         %compile.internal_cleanup,
-        %compile.cond "clos" clos_phases,
+
+        // clos conv
+        let clos_opt_phases =
+            %compile.phases ff (
+                %compile.scalarize,
+                %compile.named "%clos.branch_clos",
+                %compile.named "%mem.seo",
+            );
+        %compile.cond "clos" (
+            %compile.phases ff (
+                %compile.named "%mem.flat_reshape",
+                %compile.named "%mem.add_mem",
+                %compile.named "%clos.clos_conv_prep",
+                %compile.named "%clos.clos_conv",
+                clos_opt_phases,
+                %compile.named "%clos.lower_typed_clos_prep",
+                %compile.named "%clos.clos2sjlj",
+                // clos2sjlj introduces new branch closures; clean them up again
+                clos_opt_phases,
+                %compile.named "%clos.lower_typed_clos",
+            )
+        ),
+
         %compile.lam_spec,
         %compile.named "%cps.conv",
-        optimize,
+
         // CodeGenPrep
+        optimize,
         %compile.branch_normalize,
         %compile.ret_wrap,
         %compile.named "%mem.remem_repl",

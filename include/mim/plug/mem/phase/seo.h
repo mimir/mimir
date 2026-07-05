@@ -34,7 +34,7 @@ namespace mim::plug::mem::phase {
 ///  |
 ///  ⊥
 /// ```
-class SymExprOpt : public RWPhase {
+class SEO : public RWPhase {
 private:
     using Super = mim::RWPhase;
 
@@ -71,7 +71,10 @@ private:
     private:
         const Def* slot2value(const Def* slot, const Def* value) { return mut2slot2value_[curr_mut()][slot] = value; }
         const Def* sccp_join(const Def*, const Def*);
-        DefVec sccp_gvn_propagate(DefVec&, DefVec&);
+        DefVec sccp(Defs, Defs);
+        void gvn_bundle(Defs, Defs, Span<const Def*>, DefMap<size_t>&);
+        void gvn_split(Defs, Span<const Def*>, Span<const Def*>, DefMap<size_t>&);
+        DefVec sccp_gvn_propagate(Defs, Span<const Def*>);
         const Def* rewrite_imm_App(const App*) final;
         /// Reaching a Lam through this default path means it has been used as a value (not as an `App` callee)
         /// and has therefore escaped: seeds its vars to **top** (`v -> v`) in the lattice.
@@ -92,7 +95,7 @@ private:
     };
 
 public:
-    SymExprOpt(World& world, flags_t annex)
+    SEO(World& world, flags_t annex)
         : RWPhase(world, annex, &analysis_)
         , analysis_(world) {}
 

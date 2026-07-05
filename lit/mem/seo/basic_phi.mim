@@ -34,7 +34,7 @@ lam extern _compile(): %compile.Phase =
             %compile.eta_red,
         ),
         %compile.eta_exp,
-        %mem.sym_expr_opt,
+        %mem.seo,
     );
 
 // CHECK: test1

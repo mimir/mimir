@@ -1,4 +1,4 @@
-#include "mim/plug/mem/phase/sym_expr_opt.h"
+#include "mim/plug/mem/phase/seo.h"
 
 #include <absl/container/fixed_array.h>
 
@@ -27,14 +27,14 @@ static const Def* isa_slot_proxy(const Def* def) {
     return nullptr;
 }
 
-void SymExprOpt::Analysis::reset() {
+void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
     mut2slot2value_.clear();
     deps_done_.clear();
 }
 
-Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
+Def* SEO::Analysis::rewrite_mut(Def* mut) {
     if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
         for (auto v : var->tprojs()) {
             map(v, v);
@@ -48,18 +48,18 @@ Def* SymExprOpt::Analysis::rewrite_mut(Def* mut) {
     return Super::rewrite_mut(mut);
 }
 
-Def* SymExprOpt::Analysis::rewrite_deps(Def* mut) {
+Def* SEO::Analysis::rewrite_deps(Def* mut) {
     if (auto [_, ins] = deps_done_.emplace(mut); !ins) return mut;
     return Super::rewrite_deps(mut);
 }
 
-void SymExprOpt::Analysis::start() {
+void SEO::Analysis::start() {
     Super::start();
     for (auto def : world().roots())
         analyze(def);
 }
 
-void SymExprOpt::Analysis::analyze(const Def* def) {
+void SEO::Analysis::analyze(const Def* def) {
     if (def->isa<Var>()) return; // ignore Var's mut; muts are reached from the roots anyway
     if (auto l = lookup(def)) def = l;
 
@@ -78,7 +78,7 @@ void SymExprOpt::Analysis::analyze(const Def* def) {
                 analyze(d);
 }
 
-const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
+const Def* SEO::Analysis::slot2value(const Def* slot) {
     // look up the slot in the local map
     auto& slot2value = mut2slot2value_[curr_mut()];
     if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
@@ -91,7 +91,7 @@ const Def* SymExprOpt::Analysis::slot2value(const Def* slot) {
     return nullptr;
 }
 
-const Def* SymExprOpt::Analysis::sccp_join(const Def* var, const Def* def) {
+const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
 
     // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
@@ -121,20 +121,19 @@ const Def* SymExprOpt::Analysis::sccp_join(const Def* var, const Def* def) {
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
 
-DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& concr_vars, DefVec& abstr_args) {
-    auto n_all = concr_vars.size();
+DefVec SEO::Analysis::sccp(Defs concr_vars, Defs abstr_args) {
     assert(concr_vars.size() == abstr_args.size());
-
     DefVec abstr_vars;
     for (size_t i = 0; i < concr_vars.size(); i++)
         abstr_vars.emplace_back(sccp_join(concr_vars[i], abstr_args[i]));
+    return abstr_vars;
+}
 
-    DefMap<size_t> var2index;
-    for (size_t i = 0; auto var : concr_vars)
-        var2index[var] = i++;
-
-    // GVN bundle: All things marked as top (nullptr) by propagate are now treated as one entity by bundling
-    // them into one proxy
+void SEO::Analysis::gvn_bundle(Defs concr_vars,
+                               Defs abstr_args,
+                               Span<const Def*> abstr_vars,
+                               DefMap<size_t>& var2index) {
+    auto n_all = concr_vars.size();
     for (size_t i = 0; i != n_all; ++i) {
         if (abstr_vars[i]) continue;
 
@@ -157,9 +156,12 @@ DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& concr_vars, DefVec& abst
             DLOG("bundle: {}", proxy);
         }
     }
+}
 
-    // GVN split: We have to prove that all incoming args for all vars in a bundle are the same value.
-    // Otherwise we have to refine the bundle by splitting off contradictions.
+void SEO::Analysis::gvn_split(Defs concr_vars,
+                              Span<const Def*> abstr_args,
+                              Span<const Def*> abstr_vars,
+                              DefMap<size_t>& var2index) {
     // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
     // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
     // a -> {a, c}
@@ -167,6 +169,7 @@ DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& concr_vars, DefVec& abst
     // c -> {a, c}
     // d -> {b, d}
     // e -> e      (top)
+    auto n_all = concr_vars.size();
     for (size_t i = 0; i != n_all; ++i) {
         if (auto proxy = isa_gvn_proxy(abstr_vars[i])) {
             auto num        = proxy->num_ops();
@@ -195,11 +198,19 @@ DefVec SymExprOpt::Analysis::sccp_gvn_propagate(DefVec& concr_vars, DefVec& abst
             // if new_num == num: do nothing
         }
     }
+}
 
+DefVec SEO::Analysis::sccp_gvn_propagate(Defs concr_vars, Span<const Def*> abstr_args) {
+    auto abstr_vars = sccp(concr_vars, abstr_args);
+    DefMap<size_t> var2index;
+    for (size_t i = 0; auto var : concr_vars)
+        var2index[var] = i++;
+    gvn_bundle(concr_vars, abstr_args, abstr_vars, var2index);
+    gvn_split(concr_vars, abstr_args, abstr_vars, var2index);
     return abstr_vars;
 }
 
-const Def* SymExprOpt::Analysis::rewrite_imm_App(const App* app) {
+const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
         auto abstr_mem       = rewrite(mem);
@@ -422,7 +433,7 @@ static bool keep(const Def* old_var, const Def* abstr) {
         return false;
 }
 
-const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
+const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
         auto [mem, id] = slot->args<2>();
         auto [_, ptr]  = slot->projs<2>();
@@ -512,7 +523,7 @@ const Def* SymExprOpt::rewrite_imm_App(const App* old_app) {
     return Super::rewrite_imm_App(old_app);
 }
 
-bool SymExprOpt::needs_seo(Lam* old_lam) {
+bool SEO::needs_seo(Lam* old_lam) {
     if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) return true;
 
     for (auto [slot, slot_type] : analysis_.all_slots()) {
@@ -525,7 +536,7 @@ bool SymExprOpt::needs_seo(Lam* old_lam) {
     return false;
 }
 
-Lam* SymExprOpt::build_lam(Lam* old_lam) {
+Lam* SEO::build_lam(Lam* old_lam) {
     if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end()) return i->second;
 
     DLOG("building a new lam for {}", old_lam);
@@ -601,7 +612,7 @@ Lam* SymExprOpt::build_lam(Lam* old_lam) {
     return new_lam;
 }
 
-DefVec SymExprOpt::build_args(Lam* old_lam, const App* old_app) {
+DefVec SEO::build_args(Lam* old_lam, const App* old_app) {
     size_t num_old = old_lam->num_tvars();
     auto new_args  = DefVec();
 
@@ -623,7 +634,7 @@ DefVec SymExprOpt::build_args(Lam* old_lam, const App* old_app) {
     return new_args;
 }
 
-const Def* SymExprOpt::rewrite_site_value(const Def* sloxy, const Def* slot_type) {
+const Def* SEO::rewrite_site_value(const Def* sloxy, const Def* slot_type) {
     if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut());
         slot2value_it != analysis_.mut2slot2value().end()) {
         auto& slot2value = slot2value_it->second;
