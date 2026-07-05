@@ -75,8 +75,7 @@ lam extern _default_compile (): %compile.Phase =
             )
         ),
 
-        %compile.lam_spec,
-        %compile.named "%cps.conv",
+        %compile.lam_spec, // replace with lam-lifting
 
         // CodeGenPrep
         optimize,
