@@ -192,12 +192,12 @@ protected:
 
     /// @name Rewrite
     ///@{
-    virtual void prepare() {}
-    virtual void finalize() {}
+    virtual void prepare() {}  ///< Run **before** the main analysis.
+    virtual void finalize() {} ///< Run **after** the main analysis.
     void start() override;
-    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
+    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
 
     /// Walks @p mut's dependencies under its curr_mut() scope.
     /// Unlike rewrite_mut(), does **not** record `mut -> mut`.
