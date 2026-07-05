@@ -28,52 +28,6 @@ Def* SEO::Analysis::rewrite_deps(Def* mut) {
     return Super::rewrite_deps(mut);
 }
 
-void SEO::Analysis::start() {
-    Super::start();
-    for (auto def : world().roots())
-        analyze(def);
-}
-
-void SEO::Analysis::analyze(const Def* def) {
-    if (def->isa<Var>()) return;
-    if (auto [_, ins] = visited_.emplace(def); !ins) return;
-    if (auto l = lookup(def)) def = l;
-
-    if (auto proxy = def->isa<Proxy>()) {
-        if (proxy->tag() == Proxy_Slot) {
-            auto slot     = sloxy2slot_[proxy];
-            auto [_, ptr] = slot->projs<2>();
-            set(slot, slot);
-            set(ptr, ptr);
-            DLOG("setting slot to top: {}", slot);
-            invalidate();
-        }
-        return; // never walk a proxy's deps (would drag in meta info)
-    }
-
-    // A Lam escapes (and hence its vars must go to top) iff it is reached as a *value*.
-    if (auto app = def->isa<App>()) {
-        if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-            // lam is applied here, not escaped: traverse its body without seeding its vars to top
-            analyze(app->arg());
-            analyze(app->type());
-            for (auto d : lam->deps())
-                analyze(d);
-            return;
-        }
-    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
-        for (auto v : var->tprojs()) {
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
-                i->second = v;
-            }
-        }
-    }
-
-    for (auto d : def->deps())
-        analyze(d);
-}
-
 const Def* SEO::Analysis::slot2value(const Def* slot) {
     // look up the slot in the local map
     auto& slot2value = mut2slot2value_[curr_mut()];
@@ -85,6 +39,10 @@ const Def* SEO::Analysis::slot2value(const Def* slot) {
     if (auto it = lattice_.find(phi); it != lattice_.end()) return it->second;
     return nullptr;
 }
+
+/*
+ * Main Analysis
+ */
 
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
@@ -416,6 +374,61 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
     return Super::rewrite_imm_App(app);
 }
+
+/*
+ * Post-Analysis:
+ * Finds sloxies that are still present + escaping lambdas
+ */
+
+void SEO::Analysis::finalize() {
+    for (auto def : world().roots())
+        analyze(def);
+}
+
+void SEO::Analysis::analyze(const Def* def) {
+    if (def->isa<Var>()) return;
+    if (auto [_, ins] = visited_.emplace(def); !ins) return;
+    if (auto l = lookup(def)) def = l;
+
+    if (auto proxy = def->isa<Proxy>()) {
+        if (proxy->tag() == Proxy_Slot) {
+            auto slot     = sloxy2slot_[proxy];
+            auto [_, ptr] = slot->projs<2>();
+            set(slot, slot);
+            set(ptr, ptr);
+            DLOG("setting slot to top: {}", slot);
+            invalidate();
+        }
+        return; // never walk a proxy's deps (would drag in meta info)
+    }
+
+    // A Lam escapes (and hence its vars must go to top) iff it is reached as a *value*.
+    if (auto app = def->isa<App>()) {
+        if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
+            // lam is applied here, not escaped: traverse its body without seeding its vars to top
+            analyze(app->arg());
+            analyze(app->type());
+            for (auto d : lam->deps())
+                analyze(d);
+            return;
+        }
+    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
+        for (auto v : var->tprojs()) {
+            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
+                invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
+                i->second = v;
+            }
+        }
+    }
+
+    for (auto d : def->deps())
+        analyze(d);
+}
+
+/*
+ * Transformation:
+ * Apply analysis info to code
+ */
 
 static bool keep(const Def* old_var, const Def* abstr) {
     if (!abstr) return true;           // no info -> keep

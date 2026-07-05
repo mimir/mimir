@@ -45,22 +45,6 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "SEO::Analyzer") {}
 
-        void run() final {
-            mim::Analysis::run();
-            DLOG("lattice:");
-            for (auto [k, v] : lattice_)
-                DLOG("{} -> {}", k, v);
-
-            for (auto [mut, slot2value] : mut2slot2value()) {
-                DLOG("known values  for mut {}:", mut);
-                for (auto [slot, value] : slot2value)
-                    DLOG("  {} -> {}", slot, value);
-            }
-
-            DLOG("done running");
-        }
-
-        void start() final;
         void reset() final;
 
         const Def* slot2value(const Def* slot);
@@ -80,6 +64,7 @@ private:
         Def* rewrite_deps(Def*) final;
 
         // post-processing analysis to find sloxies that must be set to top
+        void finalize() final;
         void analyze(const Def*);
 
         DefMap<Def2Def> mut2slot2value_;

@@ -43,6 +43,8 @@ void Analysis::reset() {
 }
 
 void Analysis::start() {
+    prepare();
+
     for (const auto& [flags, e] : world().annexes())
         rewrite_annex(flags, e.sym, e.def);
 
@@ -50,6 +52,8 @@ void Analysis::start() {
 
     for (auto mut : world().externals().muts())
         rewrite_external(mut);
+
+    finalize();
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }

@@ -192,6 +192,8 @@ protected:
 
     /// @name Rewrite
     ///@{
+    virtual void prepare() {}
+    virtual void finalize() {}
     void start() override;
     Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
     virtual void rewrite_annex(flags_t, Sym, const Def*);
