@@ -4,7 +4,7 @@
 
 namespace mim {
 
-/// Inlines in post-order all Lam%s that occur exactly *once* in the program.
+/// η-reduces everything possible.
 class EtaRed : public RWPhase {
 public:
     EtaRed(World& world)
