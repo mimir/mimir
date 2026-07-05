@@ -3,6 +3,7 @@
 #include <absl/container/fixed_array.h>
 
 #include "mim/def.h"
+#include "mim/lam.h"
 #include "mim/phase.h"
 
 #include "mim/plug/mem/mem.h"
@@ -22,20 +23,6 @@ void SEO::Analysis::reset() {
     deps_done_.clear();
 }
 
-Def* SEO::Analysis::rewrite_mut(Def* mut) {
-    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
-        for (auto v : var->tprojs()) {
-            map(v, v);
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                // var was mapped to sth else beforehand so we need another fixed-point round
-                invalidate();
-                i->second = v;
-            }
-        }
-
-    return Super::rewrite_mut(mut);
-}
-
 Def* SEO::Analysis::rewrite_deps(Def* mut) {
     if (auto [_, ins] = deps_done_.emplace(mut); !ins) return mut;
     return Super::rewrite_deps(mut);
@@ -48,7 +35,8 @@ void SEO::Analysis::start() {
 }
 
 void SEO::Analysis::analyze(const Def* def) {
-    if (def->isa<Var>()) return; // ignore Var's mut; muts are reached from the roots anyway
+    if (def->isa<Var>()) return;
+    if (auto [_, ins] = visited_.emplace(def); !ins) return;
     if (auto l = lookup(def)) def = l;
 
     if (auto sloxy = Proxy::isa<Proxy_Slot>(def)) {
@@ -58,12 +46,29 @@ void SEO::Analysis::analyze(const Def* def) {
         set(ptr, ptr);
         DLOG("setting slot to top: {}", slot);
         invalidate();
+    } else if (auto app = def->isa<App>()) {
+        if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
+            // don't trigger lam case below
+            analyze(app->type());
+            analyze(lam->type());
+            analyze(lam->filter());
+            analyze(lam->body());
+            analyze(app->arg());
+            return;
+        }
+    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
+        for (auto v : var->tprojs()) {
+            map(v, v);
+            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
+                invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
+                i->second = v;
+            }
+        }
     }
 
-    if (auto [_, ins] = visited_.emplace(def); ins)
-        if (!def->isa<Proxy>())
-            for (auto d : def->deps())
-                analyze(d);
+    if (!def->isa<Proxy>()) // ignore other non-Proxy_Slot proxies
+        for (auto d : def->deps())
+            analyze(d);
 }
 
 const Def* SEO::Analysis::slot2value(const Def* slot) {
