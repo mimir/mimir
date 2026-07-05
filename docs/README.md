@@ -54,6 +54,7 @@ The original `sq` lambda is now simply unreachable from the world's [roots](@ref
 @image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
 
 For the full picture, with more examples and the graphs MimIR builds for them, read the [Tour of MimIR](@ref mimir).
+With MimIR's Python bindings, you can write full-blown DSL compilers embedded in Python; see the [embedded Python DSL](@ref python) for a complete end-to-end example.
 
 ## 💡 Why MimIR?
 
