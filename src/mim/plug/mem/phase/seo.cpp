@@ -39,26 +39,30 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto [_, ins] = visited_.emplace(def); !ins) return;
     if (auto l = lookup(def)) def = l;
 
-    if (auto sloxy = Proxy::isa<Proxy_Slot>(def)) {
-        auto slot     = sloxy2slot_[sloxy];
-        auto [_, ptr] = slot->projs<2>();
-        set(slot, slot);
-        set(ptr, ptr);
-        DLOG("setting slot to top: {}", slot);
-        invalidate();
-    } else if (auto app = def->isa<App>()) {
+    if (auto proxy = def->isa<Proxy>()) {
+        if (proxy->tag() == Proxy_Slot) {
+            auto slot     = sloxy2slot_[proxy];
+            auto [_, ptr] = slot->projs<2>();
+            set(slot, slot);
+            set(ptr, ptr);
+            DLOG("setting slot to top: {}", slot);
+            invalidate();
+        }
+        return; // never walk a proxy's deps (would drag in meta info)
+    }
+
+    // A Lam escapes (and hence its vars must go to top) iff it is reached as a *value*.
+    if (auto app = def->isa<App>()) {
         if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-            // don't trigger lam case below
-            analyze(app->type());
-            analyze(lam->type());
-            analyze(lam->filter());
-            analyze(lam->body());
+            // lam is applied here, not escaped: traverse its body without seeding its vars to top
             analyze(app->arg());
+            analyze(app->type());
+            for (auto d : lam->deps())
+                analyze(d);
             return;
         }
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
         for (auto v : var->tprojs()) {
-            map(v, v);
             if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
                 invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
                 i->second = v;
@@ -66,9 +70,8 @@ void SEO::Analysis::analyze(const Def* def) {
         }
     }
 
-    if (!def->isa<Proxy>()) // ignore other non-Proxy_Slot proxies
-        for (auto d : def->deps())
-            analyze(d);
+    for (auto d : def->deps())
+        analyze(d);
 }
 
 const Def* SEO::Analysis::slot2value(const Def* slot) {
