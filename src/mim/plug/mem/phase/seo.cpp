@@ -18,6 +18,12 @@ enum {
     Proxy_Phi,
 };
 
+static size_t idx_of(Defs vars, const Def* p) {
+    auto it = std::ranges::find(vars, p);
+    assert(it != vars.end());
+    return it - vars.begin();
+}
+
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
@@ -79,7 +85,7 @@ DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
     return abstr_vars;
 }
 
-void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars, const Var2Idx& var2idx) {
+void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
     for (size_t i = 0; i != n_all; ++i) {
         if (abstr_vars[i]) continue;
@@ -96,7 +102,7 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
             auto proxy = world().proxy(vars[i]->type(), bundle_vars, Proxy_GVN);
 
             for (auto p : proxy->ops()) {
-                auto j            = var2idx.find(p)->second;
+                auto j            = idx_of(vars, p);
                 lattice_[vars[j]] = abstr_vars[j] = proxy;
             }
 
@@ -105,10 +111,7 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
     }
 }
 
-void SEO::Analysis::gvn_split(Defs vars,
-                              Span<const Def*> abstr_args,
-                              Span<const Def*> abstr_vars,
-                              const Var2Idx& var2idx) {
+void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const Def*> abstr_vars) {
     // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
     // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
     // a -> {a, c}
@@ -122,7 +125,7 @@ void SEO::Analysis::gvn_split(Defs vars,
             auto split_vars = DefVec();
 
             for (auto p : proxy->ops()) {
-                auto j = var2idx.find(p)->second;
+                auto j = idx_of(vars, p);
                 if (p == vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(vars[j]);
             }
 
@@ -137,7 +140,7 @@ void SEO::Analysis::gvn_split(Defs vars,
                 DLOG("split: {}", new_proxy);
 
                 for (auto p : new_proxy->ops()) {
-                    auto j = var2idx.find(p)->second;
+                    auto j = idx_of(vars, p);
                     if (p == vars[j]) lattice_[vars[j]] = abstr_vars[j] = new_proxy;
                 }
             }
@@ -149,12 +152,8 @@ void SEO::Analysis::gvn_split(Defs vars,
 DefVec SEO::Analysis::sccp_gvn(Defs vars, Span<const Def*> abstr_args) {
     auto abstr_vars = sccp(vars, abstr_args);
 
-    Var2Idx var2idx;
-    for (size_t i = 0; auto var : vars)
-        var2idx[var] = i++;
-
-    gvn_bundle(vars, abstr_args, abstr_vars, var2idx);
-    gvn_split(vars, abstr_args, abstr_vars, var2idx);
+    gvn_bundle(vars, abstr_args, abstr_vars);
+    gvn_split(vars, abstr_args, abstr_vars);
 
     return abstr_vars;
 }

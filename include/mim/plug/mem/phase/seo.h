@@ -34,8 +34,7 @@ namespace mim::plug::mem::phase {
 /// ```
 class SEO : public RWPhase {
 private:
-    using Super   = mim::RWPhase;
-    using Var2Idx = DefMap<size_t>;
+    using Super = mim::RWPhase;
 
     class Analysis : public mim::Analysis {
     public:
@@ -55,8 +54,8 @@ private:
 
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs, Defs);
-        void gvn_bundle(Defs, Defs, Span<const Def*>, const Var2Idx&);
-        void gvn_split(Defs, Span<const Def*>, Span<const Def*>, const Var2Idx&);
+        void gvn_bundle(Defs, Defs, Span<const Def*>);
+        void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
         DefVec sccp_gvn(Defs, Span<const Def*>);
 
         const Def* rewrite_imm_App(const App*) final;
