@@ -2,9 +2,7 @@
 
 #include <absl/container/fixed_array.h>
 
-#include "mim/def.h"
-#include "mim/lam.h"
-#include "mim/phase.h"
+#include <mim/lam.h>
 
 #include "mim/plug/mem/mem.h"
 
@@ -29,14 +27,13 @@ Def* SEO::Analysis::rewrite_deps(Def* mut) {
 }
 
 const Def* SEO::Analysis::slot2value(const Def* slot) {
-    // look up the slot in the local map
-    auto& slot2value = mut2slot2value_[curr_mut()];
+    const auto& slot2value = mut2slot2value_[curr_mut()];
     if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
-    // if we didn't write to the slot, and so it's not in the local map, check if we have a phi for this slot in the
-    // lattice
-    auto [T, as] = Axm::as<mem::Ptr>(slot->type())->args<2>();
-    auto phi     = world().proxy(T, {curr_mut(), slot}, Proxy_Phi);
-    if (auto it = lattice_.find(phi); it != lattice_.end()) return it->second;
+
+    // not in the local map: check if we have a phi for this slot in the lattice
+    auto [T, _] = Axm::as<mem::Ptr>(slot->type())->args<2>();
+    auto phi    = world().proxy(T, {curr_mut(), slot}, Proxy_Phi);
+    if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
     return nullptr;
 }
 
@@ -76,16 +73,15 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
 
 DefVec SEO::Analysis::sccp(Defs concr_vars, Defs abstr_args) {
     assert(concr_vars.size() == abstr_args.size());
+
     DefVec abstr_vars;
     for (size_t i = 0; i < concr_vars.size(); i++)
         abstr_vars.emplace_back(sccp_join(concr_vars[i], abstr_args[i]));
+
     return abstr_vars;
 }
 
-void SEO::Analysis::gvn_bundle(Defs concr_vars,
-                               Defs abstr_args,
-                               Span<const Def*> abstr_vars,
-                               DefMap<size_t>& var2index) {
+void SEO::Analysis::gvn_bundle(Defs concr_vars, Defs abstr_args, Span<const Def*> abstr_vars, const Var2Idx& var2idx) {
     auto n_all = concr_vars.size();
     for (size_t i = 0; i != n_all; ++i) {
         if (abstr_vars[i]) continue;
@@ -102,7 +98,7 @@ void SEO::Analysis::gvn_bundle(Defs concr_vars,
             auto proxy = world().proxy(concr_vars[i]->type(), bundle_vars, Proxy_GVN);
 
             for (auto p : proxy->ops()) {
-                auto j                  = var2index[p];
+                auto j                  = var2idx.find(p)->second;
                 lattice_[concr_vars[j]] = abstr_vars[j] = proxy;
             }
 
@@ -114,7 +110,7 @@ void SEO::Analysis::gvn_bundle(Defs concr_vars,
 void SEO::Analysis::gvn_split(Defs concr_vars,
                               Span<const Def*> abstr_args,
                               Span<const Def*> abstr_vars,
-                              DefMap<size_t>& var2index) {
+                              const Var2Idx& var2idx) {
     // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
     // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
     // a -> {a, c}
@@ -129,7 +125,7 @@ void SEO::Analysis::gvn_split(Defs concr_vars,
             auto split_vars = DefVec();
 
             for (auto p : proxy->ops()) {
-                auto j = var2index[p];
+                auto j = var2idx.find(p)->second;
                 if (p == concr_vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(concr_vars[j]);
             }
 
@@ -144,7 +140,7 @@ void SEO::Analysis::gvn_split(Defs concr_vars,
                 DLOG("split: {}", new_proxy);
 
                 for (auto p : new_proxy->ops()) {
-                    auto j = var2index[p];
+                    auto j = var2idx.find(p)->second;
                     if (p == concr_vars[j]) lattice_[concr_vars[j]] = abstr_vars[j] = new_proxy;
                 }
             }
@@ -155,11 +151,11 @@ void SEO::Analysis::gvn_split(Defs concr_vars,
 
 DefVec SEO::Analysis::sccp_gvn_propagate(Defs concr_vars, Span<const Def*> abstr_args) {
     auto abstr_vars = sccp(concr_vars, abstr_args);
-    DefMap<size_t> var2index;
+    Var2Idx var2idx;
     for (size_t i = 0; auto var : concr_vars)
-        var2index[var] = i++;
-    gvn_bundle(concr_vars, abstr_args, abstr_vars, var2index);
-    gvn_split(concr_vars, abstr_args, abstr_vars, var2index);
+        var2idx[var] = i++;
+    gvn_bundle(concr_vars, abstr_args, abstr_vars, var2idx);
+    gvn_split(concr_vars, abstr_args, abstr_vars, var2idx);
     return abstr_vars;
 }
 
@@ -446,11 +442,9 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         auto [mem, id] = slot->args<2>();
         auto [_, ptr]  = slot->projs<2>();
         if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) {
-            auto rewritten_mem = rewrite(mem);
-            return new_world().tuple(
-                {rewritten_mem,
-                 new_world().bot(
-                     rewrite(ptr->type()))}); // return bot for the pointer, we hopefully proved that no one uses it
+            auto new_mem = rewrite(mem);
+            auto new_ptr = new_world().bot(rewrite(ptr->type())); // we hopefully proved that no one uses it
+            return new_world().tuple({new_mem, new_ptr});
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
@@ -461,8 +455,8 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         DLOG("rewriting a load from {} ({})", ptr, old_app);
         if (auto known_load = lattice(result_load); known_load && known_load != result_load) {
             DLOG("rewriting a load from {}, we know that it's {}", ptr, known_load);
-            auto rewritten_mem = rewrite(mem);
-            return new_world().tuple({rewritten_mem, rewrite(known_load)});
+            auto new_mem = rewrite(mem);
+            return new_world().tuple({new_mem, rewrite(known_load)});
         }
     } else if (auto dispatch = Dispatch(old_app)) {
         auto old_arms = Vector<Lam*>(dispatch.num_targets());
