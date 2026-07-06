@@ -15,11 +15,12 @@ void Emitter::visit(const Nest& nest) {
     for (auto mut : muts)
         if (auto lam = mut->isa<Lam>()) lam2bb_.try_emplace(lam, BB());
 
-    // Pre-pass: register every if/switch/loop constructor by its scope token, so
-    // that exits can recover their target lams regardless of traversal order over
-    // `muts`. For `if`/`switch` the scope token is op(0) of the argument tuple;
-    // for the `loop` dispatch op(0) is the `Loop` capability, so we key by its
-    // scope token.
+    // Pre-pass: register every if/switch/loop constructor by its scope key
+    // -- a `(path, step)` tuple, see `scope_key_of` -- so that exits can
+    // recover their target lams regardless of traversal order over `muts`.
+    // For `if`/`switch` the key is derived from the token operand (op(0) of
+    // the argument tuple); for the `loop` dispatch op(0) is the `Loop`
+    // capability, so we key by its scope key directly.
     //
     // For every loop we also synthesize a latch lam that just jumps to the
     // header. All `%sflow.continue` sites branch to the latch, so it carries
@@ -29,7 +30,7 @@ void Emitter::visit(const Nest& nest) {
     // target.
     //
     // The constructors are curried, so reconstruct an ordered argument tuple from
-    // the curried args and store it under the scope token. Exits index into that
+    // the curried args and store it under the scope key. Exits index into that
     // tuple by position (see `cf_args`).
     Vector<Lam*> latches;
     for (auto mut : muts) {
@@ -39,14 +40,14 @@ void Emitter::visit(const Nest& nest) {
         if (!app) continue;
         if (Axm::isa<sflow::_if>(app)) {
             auto [token, cf_break, tuple, index, _arg] = app->uncurry_args<5>();
-            cf_constructs_[token]                      = world().tuple({token, cf_break, tuple, index});
+            cf_constructs_[scope_key_of_token(token)]  = world().tuple({token, cf_break, tuple, index});
         } else if (Axm::isa<sflow::_switch>(app)) {
             auto [token, cf_break, cf_default, cases, index, _arg] = app->uncurry_args<6>();
-            cf_constructs_[token] = world().tuple({token, cf_break, cf_default, cases, index});
+            cf_constructs_[scope_key_of_token(token)] = world().tuple({token, cf_break, cf_default, cases, index});
         } else if (Axm::isa<sflow::loop>(app)) {
             auto [cf_struct, cf_break, cf_body, cond, _arg] = app->uncurry_args<5>();
-            auto token            = scope_token_of(cf_struct);
-            cf_constructs_[token] = world().tuple({cf_struct, cf_break, cf_body, cond});
+            auto key            = scope_key_of(cf_struct);
+            cf_constructs_[key] = world().tuple({cf_struct, cf_break, cf_body, cond});
 
             auto latch = world().mut_con(lam->dom())->set("latch");
             latch->app(false, lam, latch->var());
@@ -54,7 +55,7 @@ void Emitter::visit(const Nest& nest) {
             // the scheduler; pre-allocate its phi id instead.
             locals_[strip(latch->var())] = next_id();
             lam2bb_.try_emplace(latch, BB());
-            cf_latches_[token]    = latch;
+            cf_latches_[key]      = latch;
             latch_of_header_[lam] = latch;
             latches.push_back(latch);
         }

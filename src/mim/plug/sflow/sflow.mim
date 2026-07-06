@@ -30,11 +30,31 @@ lam inc (step: Nat) = %core.nat.add (step, 1);
 
 axm %sflow.Path: ★;
 let Path = %sflow.Path;
-axm %sflow.ROOT: Path;
+
+/// Abstract, opaque activation marker: has NO introduction rule of its own.
+/// The only way to obtain a value of this type is to receive it as a
+/// parameter -- a structured function's entry signature binds a fresh one
+/// (see %sflow.Fn), and %sflow.call instantiates the callee's -- so
+/// activation uniqueness is parametricity, not a checked property: nothing
+/// in the term language can forge or duplicate a root.
+axm %sflow.Root: ★;
+
+/// The base path of a function activation, derived from its root. Since
+/// `root` is always a bound variable (never a closed term, per %sflow.Root's
+/// lack of an introduction rule), `%sflow.ROOT root` is never closed either --
+/// every path in the system is a pure constructor application over it, which
+/// is what forces every token-typed block to nest inside its own function and
+/// nothing deeper.
+axm %sflow.ROOT: %sflow.Root → Path;
 
 axm %sflow.Token: Path → Nat → ★;
 let Token = %sflow.Token;
-let %sflow.Root = Token %sflow.ROOT 0;
+
+/// Initial token of a structured function's thread, derived from its root.
+/// `root` is consumed at 1x (asserted, not checked: QTT multiplicities are
+/// not implemented in mimir yet, so nothing currently stops a second
+/// %sflow.enter on the same root).
+axm %sflow.enter: [root: %sflow.Root] → Token (%sflow.ROOT root) 0;
 
 /// Type of a structured function's return continuation: consumes a token at
 /// ANY coordinates first (token-first, like every other axiom), then the
@@ -48,35 +68,32 @@ let %sflow.Root = Token %sflow.ROOT 0;
 lam %sflow.Ret (R: ★) = {path: Path, step: Nat} → [Token path step] → Cn R;
 let Ret = %sflow.Ret;
 
-/// Region paths are anchored on the parent token VALUE: each constructor takes
-/// the token consumed by the construct introducing the region. Tokens are only
-/// ever received as parameters, so every region path mentions that variable:
-/// - distinct construct applications yield distinct region paths even at equal
-///   coordinates (e.g. across a native selection `(left, right)#cond token`),
-///   so no block can be shared between construct instances, and
-/// - every block of a region is forced, via free variables, to nest inside the
-///   binder of the anchoring token — containment is lexically manifest.
-/// The anchor is a 0×-erased ownership witness; absolute position comes from
-/// the token chain, the constructors only discriminate sibling regions.
-axm %sflow.arm: Bool → {path: Path, step: Nat} → [Token path step] → Path;
-axm %sflow.case: Nat → {path: Path, step: Nat} → [Token path step] → Path;
-axm %sflow.default: {path: Path, step: Nat} → [Token path step] → Path;
-axm %sflow.body: {path: Path, step: Nat} → [Token path step] → Path;
+/// Region paths are PURE constructor applications over path/step: no token
+/// operand. Instance identity within a function is no longer a type-system
+/// job (that was the 2026-07-03 token-anchoring attempt); it follows from
+/// token linearity instead (one construct per coordinate, explicit theorem
+/// hypothesis -- see the thesis notes). What types still guarantee is
+/// cross-function/cross-activation separation: every path is built over
+/// `%sflow.ROOT root` for some bound `root`, so paths from different
+/// activations can never coincide by root parametricity alone.
+axm %sflow.arm: Bool → Path → Nat → Path;
+axm %sflow.case: Nat → Path → Nat → Path;
+axm %sflow.default: Path → Nat → Path;
+axm %sflow.body: Path → Nat → Path;
 
 /// Capability flowing through the arms/merge target of an `if`.
-/// `B` is the merge payload.
-axm %sflow.If: {path: Path, step: Nat} → [token: %sflow.Token path step] → [B: ★] → ★;
+/// `B` is the merge payload. Path-indexed, not token-indexed: path/step must
+/// now be given explicitly (nothing left to infer them from).
+axm %sflow.If: Path → Nat → [B: ★] → ★;
 let If = %sflow.If;
 /// Capability flowing through the cases/break target of a `switch`.
 /// `T` is the (fall-through) case payload, `B` the break payload.
-axm %sflow.Switch: {path: Path, step: Nat} → [token: %sflow.Token path step]
-  → [T: ★] → [B: ★] → ★;
+axm %sflow.Switch: Path → Nat → [T: ★] → [B: ★] → ★;
 let Switch = %sflow.Switch;
 /// Capability flowing through a `loop`. `B` is the break payload, `H` the
 /// header payload, received once on entry and again on every `continue`.
 /// There is no separate continue construct: `continue` is the back-edge.
-axm %sflow.Loop: {path: Path, step: Nat} → [token: %sflow.Token path step]
-  → [B: ★] → [H: ★] → ★;
+axm %sflow.Loop: Path → Nat → [B: ★] → [H: ★] → ★;
 let Loop = %sflow.Loop;
 
 /// Branch back to the header of the given loop: the loop's back-edge.
@@ -85,44 +102,46 @@ let Loop = %sflow.Loop;
 /// that all continue sites branch through.
 axm %sflow.continue: {
   B H: ★,
-  path inner_path: Path, step inner_step: Nat,
-  token: Token path step,
+  path: Path, step: Nat,
+  inner_path: Path, inner_step: Nat,
 } → [inner_token: Token inner_path inner_step]
-  → [Loop token B H]
+  → [Loop path step B H]
   → Cn H;
 ///
 /// Branch to the next case of a given switch structure.
 axm %sflow.fallthrough: {
   C B: ★,
-  path next_path inner_path: Path, step inner_step: Nat,
-  token: Token path step,
+  path: Path, step: Nat,
+  inner_path: Path, inner_step: Nat,
 } → [inner_token: Token inner_path inner_step]
-  → [Switch token C B]
+  → [Switch path step C B]
   → Cn C;
 ///
 /// Branch to the break target of a `switch`.
 axm %sflow.break(s): {
-  C B: ★, path inner_path: Path, step inner_step: Nat,
-  token: Token path step,
+  C B: ★,
+  path: Path, step: Nat,
+  inner_path: Path, inner_step: Nat,
 } → [inner_token: Token inner_path inner_step]
-  → [Switch token C B]
+  → [Switch path step C B]
   → Cn B;
 ///
 /// Branch to the break target of a `loop`.
 axm %sflow.break(l): {
-  B H: ★, path inner_path: Path, step inner_step: Nat,
-  token: Token path step,
+  B H: ★,
+  path: Path, step: Nat,
+  inner_path: Path, inner_step: Nat,
 } → [inner_token: Token inner_path inner_step]
-  → [Loop token B H]
+  → [Loop path step B H]
   → Cn B;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
 /// Unlike break, merge requires a token from the same scope as the struct
 /// (path must match; step may differ as progress within the scope).
 axm %sflow.merge: {
-  B: ★, path: Path, step inner_step: Nat, arm: Bool, token: Token path step,
-} → [merge_token: Token (%sflow.arm arm token) inner_step]
-  → [If token B]
+  B: ★, path: Path, step inner_step: Nat, arm: Bool,
+} → [merge_token: Token (%sflow.arm arm path step) inner_step]
+  → [If path step B]
   → Cn B;
 
 /// ## Branching
@@ -130,22 +149,25 @@ axm %sflow.merge: {
 axm %sflow.if: {T B: ★} → {path: Path, step: Nat}
   → [token: Token path step]
   → [break: Cn [B, Token path (inc step)]]
-  → [tuple: «arm: 2; Cn [T, If token B, Token (%sflow.arm arm token) 0]»]
+  → [tuple: «arm: 2; Cn [T, If path step B, Token (%sflow.arm arm path step) 0]»]
   → [index: Bool]
   → Cn T;
 
 /// Convenience thing that automatically threads tokens and structures through an interface that looks clean and uses higher order
 /// abstractions.
 ///
-/// The token binds before the arm tuple: the arms' token types are anchored on
-/// the token value, so it must be in scope for their types.
+/// The token binds before the arm tuple: the arms' token types (`Token
+/// (%sflow.arm arm path step) 0`) mention `path`/`step`, so those must be in
+/// scope for their types -- which %sflow.if's own implicit block supplies
+/// from `token`'s type, hence `token` binds first.
 ///
 /// Examples of what this allows to do:
 /// ```mim
-/// con extern foo (cond: Bool, token: %sflow.Root, return: %sflow.Ret Nat) =
+/// con extern foo (cond: Bool, root: %sflow.Root, return: %sflow.Ret Nat) =
 ///   // return has the merge interface (%sflow.Ret), so it passes directly as
-///   // the merge target; the root token is passed before the arms so token
+///   // the merge target; the root is entered before the arms so token
 ///   // threading can be wired
+///   let token = %sflow.enter root;
 ///   %sflow.nice_if return cond () token (else, then) where
 ///     lam then (merge) () = merge 1;
 ///     lam else (merge) () = merge 0;
@@ -158,10 +180,10 @@ lam %sflow.nice_if
     (cond: Bool)
     (arg: T)
     (token: Token path step)
-    (tuple: «arm: 2; [B → {inner: Nat} → Cn Token (%sflow.arm arm token) inner] → T → Cn Token (%sflow.arm arm token) 0»)
+    (tuple: «arm: 2; [B → {inner: Nat} → Cn Token (%sflow.arm arm path step) inner] → T → Cn Token (%sflow.arm arm path step) 0»)
   = let merge = (cn (arg: B, token: Token path (inc step)) = merge token arg);
-    let tuple = ‹arm: 2; cn (arg: T, struct: If token B, arm_token: Token (%sflow.arm arm token) 0) =
-      let merge = (cn (v: B) {inner: Nat} (t: Token (%sflow.arm arm token) inner)@tt = %sflow.merge t struct v);
+    let tuple = ‹arm: 2; cn (arg: T, struct: If path step B, arm_token: Token (%sflow.arm arm path step) 0) =
+      let merge = (cn (v: B) {inner: Nat} (t: Token (%sflow.arm arm path step) inner)@tt = %sflow.merge t struct v);
       tuple#arm merge arg arm_token›;
     %sflow.if token merge tuple cond arg;
 
@@ -176,8 +198,8 @@ lam %sflow.nice_if
 axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
   → [token: Token path step]
   → [break: Cn [B, Token path (%core.nat.add (step, 1))]]
-  → [default: Cn [T, Switch token ⊥ B, Token (%sflow.default token) 0]]
-  → [cases: «i: count; [index: Nat, Cn [T, Switch token T B, Token (%sflow.case (%core.bitcast Nat i) token) 0]]»]
+  → [default: Cn [T, Switch path step ⊥ B, Token (%sflow.default path step) 0]]
+  → [cases: «i: count; [index: Nat, Cn [T, Switch path step T B, Token (%sflow.case (%core.bitcast Nat i) path step) 0]]»]
   → [index: Nat]
   → Cn T;
 
@@ -191,7 +213,7 @@ axm %sflow.switch: {count: Nat} → {T B: ★} → {path: Path, step: Nat}
 /// backend, which synthesizes an empty latch block as the continue target.
 axm %sflow.header: {H: ★} → {path: Path, step: Nat}
   → [token: Token path step]
-  → [header: Cn [H, Loop token ⊥ H]] // 1× Loop
+  → [header: Cn [H, Loop path step ⊥ H]] // 1× Loop
   → Cn H;
 ///
 /// This is used by the loop header to call into its body. The body branches
@@ -200,21 +222,21 @@ axm %sflow.header: {H: ★} → {path: Path, step: Nat}
 axm %sflow.loop: {
   B T H: ★,
   path: Path, step: Nat,
-  token: Token path step,
-} → [Loop token ⊥ H] // 1× Loop
+} → [Loop path step ⊥ H] // 1× Loop
   → [break: Cn [B, Token path (inc step)]]
-  → [body: Cn [T, Loop token B H, Token (%sflow.body token) 0]] // ω× Loop
+  → [body: Cn [T, Loop path step B H, Token (%sflow.body path step) 0]] // ω× Loop
   → [cond: Bool]
   → Cn (T, B)#cond;
 
-/// Type of a structured function: payload, a fresh root token (the
-/// function-local token thread starts here), and the polymorphic return
-/// continuation (the thread's other, equally axiom-fabricated end).
-lam %sflow.Fn (T: ★) (R: ★) = Cn [T, Token %sflow.ROOT 0, Ret R];
+/// Type of a structured function: payload, a fresh root value (the
+/// function-local token thread starts once %sflow.enter is applied to it),
+/// and the polymorphic return continuation (the thread's other, equally
+/// axiom-fabricated end).
+lam %sflow.Fn (T: ★) (R: ★) = Cn [T, %sflow.Root, Ret R];
 
 /// Function call to a returning structured function in continuation passing
 /// style. The call is one atomic step in the caller's chain: the caller-side
-/// wrapper hands the callee a fresh root token and instantiates the callee's
+/// wrapper hands the callee a fresh root value and instantiates the callee's
 /// return continuation with the caller's own — monomorphic — continuation at
 /// step + 1, discarding the callee-side coordinates.
 axm %sflow.call: {T R: ★, path: Path, step: Nat}

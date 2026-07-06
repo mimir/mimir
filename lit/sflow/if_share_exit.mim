@@ -4,29 +4,46 @@
 // rather than inside one of their arms. `exit` is the break/merge target of
 // TWO different %sflow.if applications, one running in `left` and one in
 // `right` -- mutually exclusive native branches of an unstructured tuple
-// selection. Both ifs are given a token of the same closed type
-// `%sflow.Root`, and an if's break-continuation type (`Cn [B, Token path
-// (inc step)]`) depends only on that path/step, not on the specific token
-// VALUE consuming it -- unlike the arm/case/body sub-paths, which are
-// anchored on the token value via %sflow.arm/case/body. So both ifs' break
-// types collapse to the identical closed type `Cn [Nat, Token %sflow.Root 1]`
-// and `exit` type-checks as either one's target.
-// This means anchoring's uniqueness guarantee is narrower than "a block can
-// only ever have one predecessor": it only forces per-instance identity on
-// blocks INSIDE a construct (arms/cases/body), not on a construct's own
-// exit, which stays an ordinary chain block nameable from wherever a
-// same-depth, same-token-type chain happens to run -- here, two unrelated
-// ifs reached via native (mixed) control flow.
+// selection, both reached from `foo`'s SAME activation (native selection is
+// an ordinary conditional branch, not a call -- it does not cross an
+// activation boundary). `left`/`right` both use `foo`'s own already-entered
+// `token` (annotated against `foo`'s own `root`), so their if's break-
+// continuation types are the literal SAME closed-over-`root` type
+// `Cn [Nat, Token (%sflow.ROOT root) 1]`, and `exit` type-checks as either
+// one's target.
+// This means path-purity's uniqueness guarantee is narrower than "a block
+// can only ever have one predecessor": it only forces per-instance identity
+// on blocks INSIDE a construct (arms/cases/body, via their own tt/ff or
+// index discrimination), not on a construct's own exit, which stays an
+// ordinary chain block nameable from wherever a same-depth, same-token-type
+// chain happens to run -- here, two unrelated ifs reached via native (mixed)
+// control flow within one activation.
+// ROOT REDESIGN CORRECTION (2026-07-05): an earlier revision of this test
+// had `left`/`right` each bind their OWN fresh `root` parameter instead of
+// sharing `foo`'s. That was wrong -- native tuple selection is an ordinary
+// branch, not a call, so it does not introduce a new activation, and giving
+// `left`/`right` independent roots misrepresented them as if it did. That
+// mistake happened to crash mim (a real, separately-confirmed compiler bug,
+// see lit/bug/bug_repro_hole_free_var.mim), which was misread as the
+// ROOT-CONSTANT-LEAK fix "working as intended" -- it wasn't; the crash was
+// an artifact of the wrong test, not evidence of anything about the
+// redesign. With the shared root modeled correctly, this test passes clean,
+// exactly as it did before the redesign -- the ROOT-CONSTANT-LEAK fix is
+// about closing sharing ACROSS genuinely different activations (see
+// if_share_tail.mim's `callee`, reached via an actual %sflow.call), not
+// about native branches of the same one.
 
 plugin sflow;
 
-fun extern foo (token: %sflow.Root, sel cond: Bool, cond2: Bool) = (left, right)#sel token where
-  con left (token: %sflow.Root) =
+fun extern foo (root: %sflow.Root, sel cond: Bool, cond2: Bool) =
+  let token = %sflow.enter root;
+  (left, right)#sel token where
+  con left (token: %sflow.Token (%sflow.ROOT root) 0) =
     %sflow.if token exit (else_l, then_l) cond2 () where
       con then_l (_: [], struct, tok) = %sflow.merge tok struct 1;
       con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
     end;
-  con right (token: %sflow.Root) =
+  con right (token: %sflow.Token (%sflow.ROOT root) 0) =
     %sflow.if token exit (else_r, then_r) cond2 () where
       con then_r (_: [], struct, tok) = %sflow.merge tok struct 2;
       con else_r (_: [], struct, tok) = %sflow.merge tok struct 3;

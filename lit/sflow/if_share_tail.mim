@@ -1,37 +1,56 @@
-// RUN: not %mim %s -o - 2>&1 | FileCheck %s
-// A block shared as a common tail between two construct instances at equal
-// coordinates is a type error: region paths are anchored on the consumed
-// token value, and left/right bind distinct tokens, so `tail` cannot have a
-// token type valid for both ifs. The vehicle is %sflow.call — with
-// %sflow.branch removed, a call's return landing is the remaining
-// capability-free chain-block category that cannot be inlined away.
-// Before token anchoring, the closed type `Token (arm tt (ROOT, 0)) 1` was
-// valid for both and this type-checked — the tail always returns and never
-// touches a capability, so nothing pinned it to one instance. After
-// anchoring that type is not even expressible (arm needs a token VALUE);
-// the only nameable closed token type is the root, pinned below. Leaving
-// `tok` unannotated fails too: inference gives `tail` a type mentioning
-// `left`'s token variable, making the program unscopable (currently
-// reported as a closedness assertion rather than an error).
+// RUN: %mim %s -o -
+// ROOT REDESIGN CORRECTION (2026-07-05): an earlier revision of this test had
+// `left`/`right` each bind their OWN fresh `root` parameter and forwarded raw
+// `root` (not an already-entered token) into the native selection. That was
+// wrong for the same reason if_share_exit.mim's earlier revision was wrong:
+// native tuple selection is an ordinary branch within `foo`'s ONE activation,
+// not a call, so `left`/`right` should share `foo`'s root, not each mint
+// their own. With that fixed (`foo` enters first, forwards the token, and
+// `left`/`right`'s parameter types are pinned to `foo`'s own `root`), this
+// program ALSO type-checks clean -- it does NOT reject, contrary to what an
+// earlier version of this file (and the day-4 thesis notes) claimed.
+//
+// That is a real finding, not just a test-plumbing fix: the "shared always-
+// return tail" hole (`tail` is the return landing for %sflow.call from BOTH
+// `then_l` and `then_r`) is the one the original token-anchoring design
+// (2026-07-03) was invented to close, and it is NOT closed here. This is the
+// deliberate, accepted cost of the ROOT REDESIGN's rescoping ("stop
+// defending structured islands against unstructured code in the types" --
+// chapter-intro decision block): `left`/`right` are reached via native
+// (mixed) control flow, so nothing in the type system is meant to protect
+// this case anymore -- the theorem's hypotheses exclude mixed programs, full
+// stop. Whether the SPIR-V backend independently rejects it (the thesis
+// notes' "flips to backend-rejection test" prediction) is UNVERIFIED: mim
+// (this RUN line) never reaches the backend, and confirming actual SPIR-V
+// emission behavior would need a real shader entry point (mem/model
+// markers) wired around this shape, which hasn't been done. Don't cite
+// "backend-rejection test" as confirmed until that's actually checked.
+//
+// (Note also: mim eta-expands `tail` into a separate physical copy per call
+// site here -- `taileta_tail_...` -- rather than truly sharing one Lam
+// referenced from two places. Whether source-level "two cons of the same
+// name calling a shared target" is even the right vehicle to test physical
+// sharing in mim, given that duplication, is itself worth reconsidering.)
 
 plugin sflow;
 
-con callee (x: Nat, token: %sflow.Root, return: %sflow.Ret Nat) = return token x;
+con callee (x: Nat, root: %sflow.Root, return: %sflow.Ret Nat) = return (%sflow.enter root) x;
 
-fun extern foo (token: %sflow.Root, sel cond: Bool) = (left, right)#sel token where
-  con left (token: %sflow.Root) = %sflow.if token exit_l (else_l, then_l) cond () where
+fun extern foo (root: %sflow.Root, sel cond: Bool) =
+  let token = %sflow.enter root;
+  (left, right)#sel token where
+  con left (token: %sflow.Token (%sflow.ROOT root) 0) =
+    %sflow.if token exit_l (else_l, then_l) cond () where
     con then_l (_: [], _, tok) = %sflow.call tok callee (1, tail);
     con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
     con exit_l (x: Nat, _) = return x;
   end;
-  con right (token: %sflow.Root) = %sflow.if token exit_r (else_r, then_r) cond () where
+  con right (token: %sflow.Token (%sflow.ROOT root) 0) =
+    %sflow.if token exit_r (else_r, then_r) cond () where
     con then_r (_: [], _, tok) = %sflow.call tok callee (2, tail);
     con else_r (_: [], struct, tok) = %sflow.merge tok struct 0;
     con exit_r (x: Nat, _) = return x;
   end;
-  // shared always-return call landing between the two ifs' then-arms;
-  // %sflow.Root is the only closed token type left to try — matches neither
-  con tail (x: Nat, tok: %sflow.Root) = return x;
+  // shared always-return call landing between the two ifs' then-arms.
+  con tail (x: Nat, tok) = return x;
 end;
-
-// CHECK: error

@@ -5,33 +5,48 @@
 
 namespace mim::plug::spirv {
 
-/// The scope token identifying the control-flow construct that owns this
-/// capability.
-/// It is the first explicit argument of the `If`/`Switch`/`Loop` type.
-const Def* scope_token_of(const Def* cf_struct) {
+/// The scope key identifying the control-flow construct that owns this
+/// capability: the `(path, step)` pair, the first two explicit arguments of
+/// the `If`/`Switch`/`Loop` type (path-indexed post ROOT REDESIGN).
+const Def* scope_key_of(const Def* cf_struct) {
     auto type = cf_struct->type();
-    if (Axm::isa<sflow::If>(type)) return Axm::as<sflow::If>(type)->uncurry_args<2>()[0];
-    if (Axm::isa<sflow::Switch>(type)) return Axm::as<sflow::Switch>(type)->uncurry_args<3>()[0];
-    if (Axm::isa<sflow::Loop>(type)) return Axm::as<sflow::Loop>(type)->uncurry_args<3>()[0];
+    if (Axm::isa<sflow::If>(type)) {
+        auto [path, step, b]    = Axm::as<sflow::If>(type)->uncurry_args<3>();
+        return cf_struct->world().tuple({path, step});
+    }
+    if (Axm::isa<sflow::Switch>(type)) {
+        auto [path, step, t, b] = Axm::as<sflow::Switch>(type)->uncurry_args<4>();
+        return cf_struct->world().tuple({path, step});
+    }
+    if (Axm::isa<sflow::Loop>(type)) {
+        auto [path, step, b, h] = Axm::as<sflow::Loop>(type)->uncurry_args<4>();
+        return cf_struct->world().tuple({path, step});
+    }
     error("not an sflow control-flow capability: {}", cf_struct);
 }
 
+/// The same scope key, derived from a token value's type (`Token path step`).
+const Def* scope_key_of_token(const Def* token) {
+    auto [path, step] = Axm::as<sflow::Token>(token->type())->uncurry_args<2>();
+    return token->world().tuple({path, step});
+}
+
 /// Recovers the argument tuple `(token, ...targets...)` of the `if`/`switch`/`loop`
-/// constructor that owns `cf_struct`, by looking it up via its scope token.
+/// constructor that owns `cf_struct`, by looking it up via its scope key.
 /// The map is populated by a pre-pass in `visit`.
 /// This is how the actual target lams (continue/break/merge/header/cases) are
 /// found now that the capability types no longer embed them.
 const Def* Emitter::cf_args(const Def* cf_struct) {
-    auto token = scope_token_of(cf_struct);
-    auto it    = cf_constructs_.find(token);
-    if (it == cf_constructs_.end()) error("no sflow constructor registered for token {}", token);
+    auto key = scope_key_of(cf_struct);
+    auto it  = cf_constructs_.find(key);
+    if (it == cf_constructs_.end()) error("no sflow constructor registered for scope {}", key);
     return it->second;
 }
 
 Lam* Emitter::cf_latch(const Def* cf_struct) {
-    auto token = scope_token_of(cf_struct);
-    auto it    = cf_latches_.find(token);
-    if (it == cf_latches_.end()) error("no latch registered for loop token {}", token);
+    auto key = scope_key_of(cf_struct);
+    auto it  = cf_latches_.find(key);
+    if (it == cf_latches_.end()) error("no latch registered for loop scope {}", key);
     return it->second;
 }
 

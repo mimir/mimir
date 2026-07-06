@@ -181,12 +181,13 @@ private:
     DefMap<Word> locals_;
     DefMap<Word> globals_;
 
-    /// Maps an sflow scope token to the argument tuple of the `if`/`switch`/`loop`
-    /// constructor that introduced it, so exits can recover their target lams.
-    /// Populated by a pre-pass in `visit`.
+    /// Maps an sflow scope key (a `(path, step)` tuple, see `scope_key_of`) to
+    /// the argument tuple of the `if`/`switch`/`loop` constructor that
+    /// introduced it, so exits can recover their target lams. Populated by a
+    /// pre-pass in `visit`.
     DefMap<const Def*> cf_constructs_;
 
-    /// Maps a loop's scope token to its synthesized latch lam: the unique
+    /// Maps a loop's scope key to its synthesized latch lam: the unique
     /// back-edge block that every `%sflow.continue` site branches through.
     /// Populated by the same pre-pass in `visit`.
     DefMap<Lam*> cf_latches_;
@@ -203,9 +204,16 @@ private:
 bool is_scalar_type(const Def* type);
 bool is_const(const Def* def);
 
-/// The scope token identifying the `If`/`Switch`/`Loop` construct that owns a
-/// capability value (the first explicit argument of its type).
-const Def* scope_token_of(const Def* cf_struct);
+/// The scope key identifying the `If`/`Switch`/`Loop` construct that owns a
+/// capability value: a `(path, step)` tuple, the first two explicit
+/// arguments of its type (capabilities are path-indexed post ROOT REDESIGN,
+/// not token-indexed -- see sflow.mim).
+const Def* scope_key_of(const Def* cf_struct);
+
+/// The same scope key, derived from a token value's type (`Token path step`)
+/// instead of a capability's. Used to register `if`/`switch` constructors,
+/// which take the token directly rather than a capability.
+const Def* scope_key_of_token(const Def* token);
 
 /// Matches the expansion of `%sflow.Ret R` (the polymorphic return
 /// continuation type); yields the innermost `Cn R` on a match.

@@ -1,13 +1,14 @@
 // RUN: not %mim %s -o - 2>&1 | FileCheck %s
 // Sharing one arm between two distinct inner if/else structures is a type
-// error: an arm's token type is anchored on the token value consumed by the
-// structure it belongs to. The two inner ifs consume distinct tokens (one per
-// outer arm), so the single `shared` arm cannot have a token type valid for
-// both.
+// error: an arm's path is `%sflow.arm arm_bool path step`, and the two inner
+// ifs sit in the outer if's `tt`/`ff` arms respectively, so their own path
+// (hence their arms' path) differs by that arm_bool alone -- no token
+// anchoring needed for this one, position already discriminates it.
 
 plugin sflow;
 
-fun extern foo (token: %sflow.Root, cond_outer cond_inner: Bool) =
+fun extern foo (root: %sflow.Root, cond_outer cond_inner: Bool) =
+    let token = %sflow.enter root;
     %sflow.if token merge (else_outer, then_outer) cond_outer () where
         con then_outer (_, struct, token) =
             %sflow.if token merge_t (else_t, shared) cond_inner () where

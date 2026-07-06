@@ -42,9 +42,10 @@ fun extern vertex [
 con extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
-    token: %sflow.Root,
+    root: %sflow.Root,
     return: %sflow.Ret (%mem.M 0),
 ] = let (mem_, color) = %spirv.load (mem, i_color);
+    let token = %sflow.enter root;
     %sflow.header token loop 5 where
         con loop (i: Nat, struct) =
             %sflow.loop struct break body (%core.ncmp.e (i, 0)) () where
