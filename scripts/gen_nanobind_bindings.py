@@ -29,7 +29,14 @@ from typing import Optional
 
 _SCRIPT_DIR = Path(__file__).resolve().parent          # scripts/
 _REPO_ROOT  = _SCRIPT_DIR.parent                       # repo root
-_VENV       = _REPO_ROOT / ".venv" 
+
+# When run via CMake (using the build venv's Python), sys.prefix already
+# points at the venv root.  When invoked manually with the system Python,
+# fall back to the repo-root .venv/ for the libclang bootstrap.
+if sys.prefix != sys.base_prefix:
+    _VENV = Path(sys.prefix)
+else:
+    _VENV = _REPO_ROOT / ".venv"
 
 # Determine the `site-packages` inside the venv
 _py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
@@ -368,27 +375,69 @@ def _compute_overloaded_names(classes: dict) -> set:
     return overloaded
 
 
-def _load_extra_body(header_path: str, extra_dir: str | None) -> str:
-    """Load a companion .nbextra file from *extra_dir*, keyed by header stem."""
+def _parse_extra_file(content: str, stem: str) -> dict:
+    """Parse a structured .nbextra file into injection sections.
+
+    Section headers are bracketed tags on their own line:
+        [include]           — extra #include lines appended after the standard nanobind includes
+        [class:ClassName]   — method-chain fragment appended to the named class binding
+        [standalone]        — raw code injected inside init_* after all class/enum blocks
+
+    Content before the first section header is ignored.
+    Unrecognised tags emit a warning and their bodies are discarded.
+    """
+    result: dict = {"includes": "", "classes": {}, "standalone": ""}
+    current_key: str | None = None
+    current_lines: list[str] = []
+
+    def _flush() -> None:
+        body = "\n".join(current_lines).strip()
+        current_lines.clear()
+        if not body or current_key is None:
+            return
+        if current_key == "include":
+            result["includes"] = body
+        elif current_key == "standalone":
+            result["standalone"] = body
+        elif current_key.startswith("class:"):
+            cls = current_key[len("class:"):]
+            result["classes"][cls] = body
+        else:
+            print(f"warning: {stem}.nbextra: unrecognised section [{current_key}] — skipped", file=sys.stderr)
+
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            _flush()
+            current_key = stripped[1:-1].strip()
+        else:
+            current_lines.append(line)
+    _flush()
+    return result
+
+
+def _load_extra(header_path: str, extra_dir: str | None) -> dict:
+    """Load and parse the companion .nbextra file for *header_path*, if any."""
+    _empty: dict = {"includes": "", "classes": {}, "standalone": ""}
     if not extra_dir:
-        return ""
-    header_stem = os.path.splitext(os.path.basename(header_path))[0]
-    extra_path = os.path.join(extra_dir, header_stem + ".nbextra")
+        return _empty
+    stem = os.path.splitext(os.path.basename(header_path))[0]
+    extra_path = os.path.join(extra_dir, stem + ".nbextra")
     try:
         with open(extra_path) as f:
-            extra = f.read()
-        if extra.strip():
-            return extra
+            return _parse_extra_file(f.read(), stem)
     except OSError:
-        pass
-    return ""
+        return _empty
 
 
 def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = "", extra_dir: str | None = None) -> str:
-    extra_body = _load_extra_body(header_path, extra_dir)
+    extra = _load_extra(header_path, extra_dir)
 
     lines = []
     lines.append(INCLUDES_TEMPLATE)
+    if extra["includes"]:
+        lines.append(extra["includes"])
+        lines.append("")
     lines.append(f'#include "{os.path.relpath(header_path, os.getcwd())}"')
     lines.append("")
     lines.append("namespace nb = nanobind;")
@@ -409,6 +458,8 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
         lines.append("")
         lines.append(_gen_enum_binding(cursor))
 
+    used_class_extras: set[str] = set()
+
     for class_name, info in classes.items():
         bases = info["bases"]
         base_spec = _base_spec(bases)
@@ -416,11 +467,15 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
         # the World owns all Def lifetimes.
         suffix = ", nb::never_destruct()" if (class_name == "Def" or "Def" in bases) else ""
 
+        class_extra = extra["classes"].get(class_name, "")
+        if class_extra:
+            used_class_extras.add(class_name)
+
         lines.append("")
         cls_start = f'    nb::class_<{class_name}{base_spec}>(m, "{class_name}"{suffix})'
         methods = info["methods"]
 
-        if not methods and not extra_body:
+        if not methods and not class_extra:
             lines.append(cls_start + ";")
             continue
 
@@ -433,17 +488,25 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
             else:
                 lines.append(binding)
 
-        # Insert hand-written extra bindings before the closing semicolon
-        if extra_body:
-            extra = extra_body.strip()
-            if extra:
-                # Strip leading ';' from the last auto line if present
-                if lines[-1].rstrip().endswith(";"):
-                    lines[-1] = lines[-1].rstrip()[:-1].rstrip()
-                lines.append(extra)
+        if class_extra:
+            if lines[-1].rstrip().endswith(";"):
+                lines[-1] = lines[-1].rstrip()[:-1].rstrip()
+            lines.append(class_extra.strip())
 
         if not lines[-1].rstrip().endswith(";"):
             lines[-1] = lines[-1] + ";"
+
+    for cls_name in extra["classes"]:
+        if cls_name not in used_class_extras:
+            print(
+                f"warning: {header_stem}.nbextra: [class:{cls_name}] did not match "
+                f"any class parsed from {os.path.basename(header_path)}",
+                file=sys.stderr,
+            )
+
+    if extra["standalone"]:
+        lines.append("")
+        lines.append(extra["standalone"])
 
     lines.append("")
     lines.append("    // clang-format on")
@@ -564,7 +627,12 @@ def parse_args(argv=None):
     p.add_argument("-o", "--output", default=None, help="Output file (default: stdout)")
     p.add_argument("--namespace", default="", help="C++ namespace for the init function (e.g. mim)")
     p.add_argument("--extra-args", default="-std=c++23", help="Extra Clang arguments (default: -std=c++23)")
-    p.add_argument("--extra-dir", default=None, help="Directory containing .nbextra hand-written binding snippets")
+    p.add_argument(
+        "--extra-dir",
+        default=None,
+        help="Directory containing .nbextra patch files. Each file is named <header_stem>.nbextra "
+        "and may contain [include], [class:ClassName], and [standalone] sections.",
+    )
     p.add_argument("-I", action="append", dest="includes", default=[], help="Include paths")
     p.add_argument(
         "--build-dir",

@@ -1,5 +1,4 @@
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
-add_subdirectory(bindings)
 
 set(MIM_PY_VENV "${CMAKE_BINARY_DIR}/.venv")
 if(WIN32)
@@ -35,7 +34,7 @@ endif()
 list(APPEND _venv_commands
     COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m venv "${MIM_PY_VENV}"
     COMMAND ${_mim_py_python_command} -m pip install --upgrade pip setuptools wheel
-    COMMAND ${_mim_py_python_command} -m pip install pytest
+    COMMAND ${_mim_py_python_command} -m pip install pytest libclang
     COMMAND "${CMAKE_COMMAND}" -E touch "${MIM_PY_VENV_STAMP}"
 )
 
@@ -47,6 +46,60 @@ add_custom_command(
 )
 
 add_custom_target(mim_py_venv DEPENDS "${MIM_PY_VENV_STAMP}")
+
+# ---------------------------------------------------------------------------
+# Per-header binding generation → py/auto_bindings/
+# ---------------------------------------------------------------------------
+set(_auto_bindings_dir "${CMAKE_CURRENT_SOURCE_DIR}/auto_bindings")
+set(_binding_script    "${CMAKE_SOURCE_DIR}/scripts/gen_nanobind_bindings.py")
+set(_nbextra_dir       "${CMAKE_CURRENT_SOURCE_DIR}/nbextra")
+
+file(MAKE_DIRECTORY "${_auto_bindings_dir}")
+file(GLOB _mim_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/mim/*.cpp")
+
+set(_generated_sources)
+foreach(src IN LISTS _mim_sources)
+    get_filename_component(stem "${src}" NAME_WE)
+    set(header "${CMAKE_SOURCE_DIR}/include/mim/${stem}.h")
+    if(NOT EXISTS "${header}")
+        continue()
+    endif()
+
+    set(output "${_auto_bindings_dir}/${stem}.cpp")
+    list(APPEND _generated_sources "${output}")
+
+    set(_extra_args)
+    set(_extra_deps)
+    if(EXISTS "${_nbextra_dir}/${stem}.nbextra")
+        set(_extra_args --extra-dir "${_nbextra_dir}")
+        list(APPEND _extra_deps "${_nbextra_dir}/${stem}.nbextra")
+    endif()
+
+    add_custom_command(
+        OUTPUT "${output}"
+        COMMAND "${MIM_PY_PYTHON}" "${_binding_script}"
+                "${header}"
+                --namespace mim
+                --build-dir "${CMAKE_BINARY_DIR}"
+                ${_extra_args}
+                -o "${output}"
+        DEPENDS
+            "${MIM_PY_VENV_STAMP}"
+            "${header}"
+            "${_binding_script}"
+            ${_extra_deps}
+        COMMENT "Generating nanobind bindings for ${stem}.h"
+        VERBATIM
+    )
+endforeach()
+
+nanobind_add_module(pymim
+    "${CMAKE_CURRENT_SOURCE_DIR}/bindings/py.cpp"
+    ${_generated_sources}
+)
+
+set_target_properties(pymim PROPERTIES LIBRARY_OUTPUT_NAME _mim)
+target_link_libraries(pymim PRIVATE libmim)
 
 # Generate a stub for the internal nanobind module.
 set(MIM_PY_STUBS_DIR "${CMAKE_BINARY_DIR}/mim_py_stubs")
