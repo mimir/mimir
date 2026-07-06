@@ -8,6 +8,10 @@
 
 namespace mim::plug::mem::phase {
 
+/*
+ * Helpers
+ */
+
 enum {
     Proxy_GVN,
     Proxy_Slot,
@@ -150,16 +154,33 @@ void SEO::Analysis::gvn_split(Defs vars,
 
 DefVec SEO::Analysis::sccp_gvn(Defs vars, Span<const Def*> abstr_args) {
     auto abstr_vars = sccp(vars, abstr_args);
+
     Var2Idx var2idx;
     for (size_t i = 0; auto var : vars)
         var2idx[var] = i++;
+
     gvn_bundle(vars, abstr_args, abstr_vars, var2idx);
     gvn_split(vars, abstr_args, abstr_vars, var2idx);
+
     return abstr_vars;
 }
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
-    if (auto store = Axm::isa<mem::store>(app)) {
+    if (auto slot = Axm::isa<mem::slot>(app)) {
+        if (!is_top(slot)) {
+            auto [T, as]       = slot->decurry()->args<2>();
+            auto [mem, id]     = slot->args<2>();
+            auto [_, ptr]      = slot->projs<2>();
+            auto abstr_mem     = rewrite(mem);
+            auto abstr_id      = rewrite(id);
+            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
+            slot2type_[ptr]    = T;
+            sloxy2slot_[sloxy] = slot;
+            DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
+            set(ptr, sloxy);
+            return world().tuple({abstr_mem, sloxy});
+        }
+    } else if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
         auto abstr_mem       = rewrite(mem);
         auto abstr_ptr       = rewrite(ptr);
@@ -189,20 +210,6 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         DLOG("load from unknown pointer {}, treating result as top", abstr_ptr);
         return set(load, load);
-    } else if (auto slot = Axm::isa<mem::slot>(app)) {
-        if (!is_top(slot)) {
-            auto [T, as]       = slot->decurry()->args<2>();
-            auto [mem, id]     = slot->args<2>();
-            auto [_, ptr]      = slot->projs<2>();
-            auto abstr_mem     = rewrite(mem);
-            auto abstr_id      = rewrite(id);
-            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
-            slot2type_[ptr]    = T;
-            sloxy2slot_[sloxy] = slot;
-            DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
-            set(ptr, sloxy);
-            return world().tuple({abstr_mem, sloxy});
-        }
     } else if (auto dispatch = Dispatch(app)) {
         // working on this alternative
         // for (size_t i = 0, e = dispatch.num_targets(); i != e; ++i)
