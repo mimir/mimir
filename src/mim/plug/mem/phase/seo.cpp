@@ -71,35 +71,35 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
 
-DefVec SEO::Analysis::sccp(Defs concr_vars, Defs abstr_args) {
-    assert(concr_vars.size() == abstr_args.size());
+DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
+    assert(vars.size() == abstr_args.size());
 
     DefVec abstr_vars;
-    for (size_t i = 0; i < concr_vars.size(); i++)
-        abstr_vars.emplace_back(sccp_join(concr_vars[i], abstr_args[i]));
+    for (size_t i = 0; i < vars.size(); i++)
+        abstr_vars.emplace_back(sccp_join(vars[i], abstr_args[i]));
 
     return abstr_vars;
 }
 
-void SEO::Analysis::gvn_bundle(Defs concr_vars, Defs abstr_args, Span<const Def*> abstr_vars, const Var2Idx& var2idx) {
-    auto n_all = concr_vars.size();
+void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars, const Var2Idx& var2idx) {
+    auto n_all = vars.size();
     for (size_t i = 0; i != n_all; ++i) {
         if (abstr_vars[i]) continue;
 
         auto bundle_vars = DefVec();
-        bundle_vars.emplace_back(concr_vars[i]);
+        bundle_vars.emplace_back(vars[i]);
 
         for (size_t j = i + 1; j != n_all; ++j)
-            if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) bundle_vars.emplace_back(concr_vars[j]);
+            if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) bundle_vars.emplace_back(vars[j]);
 
         if (bundle_vars.size() == 1) {
-            lattice_[concr_vars[i]] = abstr_vars[i] = concr_vars[i]; // top
+            lattice_[vars[i]] = abstr_vars[i] = vars[i]; // top
         } else {
-            auto proxy = world().proxy(concr_vars[i]->type(), bundle_vars, Proxy_GVN);
+            auto proxy = world().proxy(vars[i]->type(), bundle_vars, Proxy_GVN);
 
             for (auto p : proxy->ops()) {
-                auto j                  = var2idx.find(p)->second;
-                lattice_[concr_vars[j]] = abstr_vars[j] = proxy;
+                auto j            = var2idx.find(p)->second;
+                lattice_[vars[j]] = abstr_vars[j] = proxy;
             }
 
             DLOG("bundle: {}", proxy);
@@ -107,7 +107,7 @@ void SEO::Analysis::gvn_bundle(Defs concr_vars, Defs abstr_args, Span<const Def*
     }
 }
 
-void SEO::Analysis::gvn_split(Defs concr_vars,
+void SEO::Analysis::gvn_split(Defs vars,
                               Span<const Def*> abstr_args,
                               Span<const Def*> abstr_vars,
                               const Var2Idx& var2idx) {
@@ -118,22 +118,21 @@ void SEO::Analysis::gvn_split(Defs concr_vars,
     // c -> {a, c}
     // d -> {b, d}
     // e -> e      (top)
-    auto n_all = concr_vars.size();
-    for (size_t i = 0; i != n_all; ++i) {
+    for (size_t i = 0, n = vars.size(); i != n; ++i) {
         if (auto proxy = Proxy::isa<Proxy_GVN>(abstr_vars[i])) {
             auto num        = proxy->num_ops();
             auto split_vars = DefVec();
 
             for (auto p : proxy->ops()) {
                 auto j = var2idx.find(p)->second;
-                if (p == concr_vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(concr_vars[j]);
+                if (p == vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(vars[j]);
             }
 
             auto new_num = split_vars.size();
             if (new_num == 1) {
                 invalidate();
-                lattice_[concr_vars[i]] = abstr_vars[i] = concr_vars[i];
-                DLOG("single: {}", concr_vars[i]);
+                lattice_[vars[i]] = abstr_vars[i] = vars[i];
+                DLOG("single: {}", vars[i]);
             } else if (new_num != num) {
                 invalidate();
                 auto new_proxy = world().proxy(abstr_args[i]->type(), split_vars, Proxy_GVN);
@@ -141,7 +140,7 @@ void SEO::Analysis::gvn_split(Defs concr_vars,
 
                 for (auto p : new_proxy->ops()) {
                     auto j = var2idx.find(p)->second;
-                    if (p == concr_vars[j]) lattice_[concr_vars[j]] = abstr_vars[j] = new_proxy;
+                    if (p == vars[j]) lattice_[vars[j]] = abstr_vars[j] = new_proxy;
                 }
             }
             // if new_num == num: do nothing
@@ -149,13 +148,13 @@ void SEO::Analysis::gvn_split(Defs concr_vars,
     }
 }
 
-DefVec SEO::Analysis::sccp_gvn_propagate(Defs concr_vars, Span<const Def*> abstr_args) {
-    auto abstr_vars = sccp(concr_vars, abstr_args);
+DefVec SEO::Analysis::sccp_gvn(Defs vars, Span<const Def*> abstr_args) {
+    auto abstr_vars = sccp(vars, abstr_args);
     Var2Idx var2idx;
-    for (size_t i = 0; auto var : concr_vars)
+    for (size_t i = 0; auto var : vars)
         var2idx[var] = i++;
-    gvn_bundle(concr_vars, abstr_args, abstr_vars, var2idx);
-    gvn_split(concr_vars, abstr_args, abstr_vars, var2idx);
+    gvn_bundle(vars, abstr_args, abstr_vars, var2idx);
+    gvn_split(vars, abstr_args, abstr_vars, var2idx);
     return abstr_vars;
 }
 
@@ -172,16 +171,16 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             return abstr_mem;
         }
     } else if (auto load = Axm::isa<mem::load>(app)) {
-        auto [T, as]                   = load->decurry()->args<2>();
-        auto [mem, ptr]                = load->args<2>();
-        auto [result_mem, result_load] = load->projs<2>();
-        auto abstr_mem                 = rewrite(mem);
-        auto abstr_ptr                 = rewrite(ptr);
+        auto [T, as]    = load->decurry()->args<2>();
+        auto [mem, ptr] = load->args<2>();
+        auto [_, val]   = load->projs<2>();
+        auto abstr_mem  = rewrite(mem);
+        auto abstr_ptr  = rewrite(ptr);
 
         if (Proxy::isa<Proxy_Slot>(abstr_ptr)) {
             if (auto abstr_val = slot2value(abstr_ptr)) {
                 DLOG("abstr value: `{}`", abstr_val);
-                set(result_load, abstr_val);
+                set(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
             DLOG("couldn't resolve load of {} yet, returning bot", abstr_ptr);
@@ -239,25 +238,25 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             for (auto lam : arms) {
                 DLOG("dispatch, writing local values to {}", lam);
 
-                DefVec concr_vars;
+                DefVec vars;
                 for (auto var : lam->tvars())
-                    concr_vars.emplace_back(var);
+                    vars.emplace_back(var);
 
                 for (auto [slot, slot_type] : slot2type_) {
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
                     if (slot2value(abstr_slot)) {
-                        concr_vars.emplace_back(phi);
+                        vars.emplace_back(phi);
                     } else {
                         DLOG("no value found for {}", slot);
                         // TODO Can this ever happen?
                     }
                 }
 
-                auto abstr_vars = sccp_gvn_propagate(concr_vars, abstr_args);
+                auto abstr_vars = sccp_gvn(vars, abstr_args);
                 set(lam->var(), world().tuple(abstr_vars.span().subspan(0, app->num_targs())));
-                for (size_t i = 0; i < concr_vars.size(); i++)
-                    set(concr_vars[i], abstr_vars[i]);
+                for (size_t i = 0; i < vars.size(); i++)
+                    set(vars[i], abstr_vars[i]);
             }
         }
 
@@ -297,12 +296,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         for (size_t i = 0; i != n; ++i) {
             if (auto lam = app->targ(i)->isa_mut<Lam>(); isa_optimizable(lam)) {
                 // now propagate known slot values and rewrite the lam
-                DefVec concr_vars_inside_unknown_function;
+                DefVec vars_inside_unknown_function;
                 DefVec abstr_args_inside_unknown_function;
 
                 // set the lams arguments to top, as we don't know what the unknown function will pass
                 for (auto var : lam->tvars()) {
-                    concr_vars_inside_unknown_function.emplace_back(var);
+                    vars_inside_unknown_function.emplace_back(var);
                     abstr_args_inside_unknown_function.emplace_back(var);
                 }
 
@@ -312,7 +311,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
                     if (auto value = slot2value(abstr_slot)) {
-                        concr_vars_inside_unknown_function.emplace_back(phi);
+                        vars_inside_unknown_function.emplace_back(phi);
                         abstr_args_inside_unknown_function.emplace_back(value);
                     } else {
                         DLOG("no value found for {}", slot);
@@ -322,10 +321,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 }
 
                 auto abstr_vars_inside_unknown_function
-                    = sccp_gvn_propagate(concr_vars_inside_unknown_function, abstr_args_inside_unknown_function);
+                    = sccp_gvn(vars_inside_unknown_function, abstr_args_inside_unknown_function);
                 set(lam->var(), world().tuple(abstr_vars_inside_unknown_function.span().subspan(0, lam->num_tvars())));
-                for (size_t i = 0; i < concr_vars_inside_unknown_function.size(); i++)
-                    set(concr_vars_inside_unknown_function[i], abstr_vars_inside_unknown_function[i]);
+                for (size_t i = 0; i < vars_inside_unknown_function.size(); i++)
+                    set(vars_inside_unknown_function[i], abstr_vars_inside_unknown_function[i]);
 
                 // now rewrite the lam
                 abstr_args[i] = rewrite(app->targ(i));
@@ -334,12 +333,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         return world().app(rewrite_deps(lam), abstr_args);
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-        DefVec all_concr_vars;
+        DefVec all_vars;
         DefVec all_abstr_args;
 
         // propagate vars
         for (size_t i = 0; i != app->num_targs(); ++i) {
-            all_concr_vars.emplace_back(lam->tvar(i));
+            all_vars.emplace_back(lam->tvar(i));
             all_abstr_args.emplace_back(rewrite(app->targ(i)));
         }
 
@@ -350,7 +349,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             auto abstr_slot = rewrite(slot);
             auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
             if (auto value = slot2value(abstr_slot)) {
-                all_concr_vars.emplace_back(phi);
+                all_vars.emplace_back(phi);
                 all_abstr_args.emplace_back(value);
             } else {
                 DLOG("no value found for {}", slot);
@@ -359,11 +358,11 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             }
         }
 
-        auto all_abstr_vars = sccp_gvn_propagate(all_concr_vars, all_abstr_args);
+        auto all_abstr_vars = sccp_gvn(all_vars, all_abstr_args);
 
         set(lam->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
-        for (size_t i = app->num_targs(); i < all_concr_vars.size(); i++)
-            set(all_concr_vars[i], all_abstr_vars[i]);
+        for (size_t i = app->num_targs(); i < all_vars.size(); i++)
+            set(all_vars[i], all_abstr_vars[i]);
 
         return world().app(rewrite_deps(lam), all_abstr_args.span().subspan(0, app->num_targs()));
     }

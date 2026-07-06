@@ -46,18 +46,19 @@ private:
 
         void reset() final;
 
-        const Def* slot2value(const Def* slot);
-
         const Def2Def& all_slots() const { return slot2type_; }
         const DefMap<Def2Def>& mut2slot2value() const { return mut2slot2value_; }
 
     private:
+        const Def* slot2value(const Def* slot);
         const Def* slot2value(const Def* slot, const Def* value) { return mut2slot2value_[curr_mut()][slot] = value; }
+
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs, Defs);
         void gvn_bundle(Defs, Defs, Span<const Def*>, const Var2Idx&);
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>, const Var2Idx&);
-        DefVec sccp_gvn_propagate(Defs, Span<const Def*>);
+        DefVec sccp_gvn(Defs, Span<const Def*>);
+
         const Def* rewrite_imm_App(const App*) final;
         /// Traverses each mut only once per fixed-point round; otherwise cyclic CFGs recurse forever.
         Def* rewrite_deps(Def*) final;
