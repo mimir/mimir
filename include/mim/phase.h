@@ -199,28 +199,20 @@ protected:
     virtual void rewrite_external(Def*);
     Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
 
-    /// Walks @p mut's dependencies under its curr_mut() scope.
-    /// Unlike rewrite_mut(), does **not** record `mut -> mut`.
-    ///
-    /// Use this when you have already populated custom lattice entries for @p mut's
-    /// binder (typically inside a `rewrite_imm_App` override that propagates abstract
-    /// values from call arguments into the callee's tvars) and need to traverse the
-    /// body without rewrite_mut() clobbering that state.
-    virtual Def* rewrite_deps(Def*);
-
-    /// Default "visit a mutable" entry point: maps `mut -> mut` and delegates to
-    /// rewrite_deps() for the recursive traversal.
-    ///
-    /// Subclasses that propagate abstract values into binders should override this:
-    /// reaching a mutable through this default path means it has been used as a value
-    /// (not as an `App` callee) and has therefore escaped, so any prior propagation
-    /// for it must be retracted (see SymExprOpt).
+    /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
+    /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
+    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
+    /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
     Def* rewrite_mut(Def*) override;
     ///@}
 
     Def2Def lattice_;
 
 private:
+    /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
+    void drain();
+
+    std::deque<Def*> worklist_;
     Def* curr_mut_      = nullptr;
     bool bootstrapping_ = true;
 

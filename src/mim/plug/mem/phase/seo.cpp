@@ -22,12 +22,6 @@ void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
     mut2slot2value_.clear();
-    deps_done_.clear();
-}
-
-Def* SEO::Analysis::rewrite_deps(Def* mut) {
-    if (auto [_, ins] = deps_done_.emplace(mut); !ins) return mut;
-    return Super::rewrite_deps(mut);
 }
 
 const Def* SEO::Analysis::slot2value(const Def* slot) {
@@ -267,21 +261,16 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             }
         }
 
-        // Propagated arms must be traversed via rewrite_deps() to keep their lattice state;
-        // everything else (Var%s, externals, ...) escapes normally.
-        auto rewrite_arm = [&](const Def* arm) -> const Def* {
-            if (propagated) return rewrite_deps(arm->as_mut());
-            return rewrite(arm);
-        };
-
+        // Whether propagated (lattice state seeded above) or escaping, an arm is scheduled the same way:
+        // rewrite() maps the mut to itself and enqueues its body for the BFS drain.
         if (l) {
-            auto abstr_taken = rewrite_arm(dispatch.target(*l));
+            auto abstr_taken = rewrite(dispatch.target(*l));
             return world().app(abstr_taken, abstr_args.span().subspan(0, app->num_targs()));
         }
 
         DefVec abstr_arms;
         for (size_t i = 0, e = arms.size(); i != e; ++i)
-            abstr_arms.emplace_back(rewrite_arm(dispatch.target(i)));
+            abstr_arms.emplace_back(rewrite(dispatch.target(i)));
         return world().app(world().extract(world().tuple(abstr_arms), abstr_index),
                            abstr_args.span().subspan(0, app->num_targs()));
     } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
@@ -338,7 +327,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             }
         }
 
-        return world().app(rewrite_deps(lam), abstr_args);
+        return world().app(rewrite(lam), abstr_args);
     } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
         DefVec all_vars;
         DefVec all_abstr_args;
@@ -371,7 +360,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         for (size_t i = app->num_targs(); i < all_vars.size(); i++)
             set(all_vars[i], all_abstr_vars[i]);
 
-        return world().app(rewrite_deps(lam), all_abstr_args.span().subspan(0, app->num_targs()));
+        return world().app(rewrite(lam), all_abstr_args.span().subspan(0, app->num_targs()));
     }
 
     return Super::rewrite_imm_App(app);

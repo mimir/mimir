@@ -87,20 +87,25 @@ Typical usage:
 Unlike [`RWPhase`](@ref mim::RWPhase), an [`Analysis`](@ref mim::Analysis) must traverse the entire reachable program without rebuilding it.
 For this reason, [`Analysis`](@ref mim::Analysis) overrides [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) to keep mutables in place and use the rewriter machinery as a graph-aware traversal over the existing world.
 
-The default [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut):
+Immutables are still visited **depth-first** through the inherited [`Rewriter`](@ref mim::Rewriter) recursion, but mutables are visited **breadth-first** via an internal worklist.
+This matters because abstract values typically flow *between* mutables — e.g. from an `App` call site into the callee's binder vars.
+A breadth-first order tends to seed a mutable from **all** of its predecessors *before* its body is walked, so information propagates further per fixed-point round and convergence needs fewer rounds.
+Breadth-first traversal is safe here precisely because an [`Analysis`](@ref mim::Analysis) never rebuilds a mutable: it maps every mutable to itself, so nothing depends on a mutable being fully rewritten before it is used (contrast the strict depth-first ordering an [`RWPhase`](@ref mim::RWPhase) needs, where a rebuilt binder's type/identity is consumed as it is constructed).
 
-1. records the mutable as visited via `mut -> mut`,
-2. seeds Lam binder vars to **top** (`v -> v`) in the lattice, and
-3. delegates to [`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) for the recursive traversal of the mutable's [dependencies](@ref mim::Def::deps).
+[`rewrite_mut()`](@ref mim::Analysis::rewrite_mut):
 
-Step 2 is destructive: if a binder var already carried a non-top lattice value, it is reset to top and [`invalidate()`](@ref mim::Phase::invalidate) is called.
-This is the correct behavior, since reaching a Lam through the default `rewrite_mut()` path means it has been used as a value (not as an `App` callee) and has therefore escaped — any prior propagation for it is unsound and must be retracted.
+1. returns immediately if the mutable was already scheduled this round (see below),
+2. records the mutable as visited via `mut -> mut`, and
+3. **enqueues** it on the worklist — it does *not* recurse into the body itself.
 
-[`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) is the stripped-down helper:
-it enters the mutable for [`curr_mut()`](@ref mim::Analysis::curr_mut) tracking and recursively rewrites the mutable's [dependencies](@ref mim::Def::deps), but does **not** mark the mutable as visited and does **not** seed binder facts.
+Once a batch of roots has been scheduled, [`Analysis::drain()`](@ref mim::Analysis) pops mutables from the worklist and, for each, enters it for [`curr_mut()`](@ref mim::Analysis::curr_mut) tracking and rewrites its [dependencies](@ref mim::Def::deps).
+Rewriting those dependencies schedules any further mutables it reaches, so the worklist drains in breadth-first order.
 
-Use [`rewrite_deps()`](@ref mim::Analysis::rewrite_deps) (rather than [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) or [`rewrite()`](@ref mim::Rewriter::rewrite)) when you have already populated custom lattice entries for the mutable's binder — typically inside a `rewrite_imm_App` override that propagates abstract values from call arguments into the callee's tvars — so the body traversal does not clobber that state.
-The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (`lattice_[concr] = abstr` and `map(concr, abstr)`) that arise in this pattern.
+The `mut -> mut` entry recorded in step 2 doubles as the per-round *"already scheduled"* marker: it lives in the rewriter map (see [`lookup()`](@ref mim::Rewriter::lookup)), which [`reset()`](@ref mim::Analysis::reset) clears at the start of every round.
+Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
+
+When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
+The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (`lattice_[concr] = abstr` and `map(concr, abstr)`) that arise in this seeding pattern.
 
 A common convention is to encode **top** as `def -> def` in the lattice:
 mapping a definition to itself means "no useful information, keep as-is", while mapping it to a different [`Def`](@ref mim::Def) represents a discovered abstract value.
@@ -108,7 +113,7 @@ mapping a definition to itself means "no useful information, keep as-is", while 
 ### Reset Between Iterations
 
 If an analysis participates in a fixed-point loop, it should be ready to run multiple times.
-The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter map and resets [`Phase::todo()`](@ref mim::Phase::todo) for the next round, but **preserves** [`lattice()`](@ref mim::Analysis::lattice) so that abstract values accumulated in earlier iterations remain available — this is what makes fixed-point convergence possible.
+The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter map (and hence the per-round *"already scheduled"* markers) and the worklist, and resets [`Phase::todo()`](@ref mim::Phase::todo) for the next round, but **preserves** [`lattice()`](@ref mim::Analysis::lattice) so that abstract values accumulated in earlier iterations remain available — this is what makes fixed-point convergence possible.
 
 ## RWPhase {#phases_rwphase}
 

@@ -38,6 +38,7 @@ void Phase::run() {
 
 void Analysis::reset() {
     old2news_.clear();
+    worklist_.clear();
     push();
     todo_ = false;
 }
@@ -47,11 +48,13 @@ void Analysis::start() {
 
     for (const auto& [flags, e] : world().annexes())
         rewrite_annex(flags, e.sym, e.def);
+    drain();
 
     bootstrapping_ = false;
 
     for (auto mut : world().externals().muts())
         rewrite_external(mut);
+    drain();
 
     finalize();
 }
@@ -59,18 +62,22 @@ void Analysis::start() {
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
-Def* Analysis::rewrite_deps(Def* mut) {
-    auto _ = enter(mut);
-
-    for (auto d : mut->deps())
-        rewrite(d);
-
+Def* Analysis::rewrite_mut(Def* mut) {
+    if (lookup(mut)) return mut; // already scheduled this round
+    map(mut, mut);
+    worklist_.emplace_back(mut);
     return mut;
 }
 
-Def* Analysis::rewrite_mut(Def* mut) {
-    map(mut, mut);
-    return rewrite_deps(mut);
+void Analysis::drain() {
+    while (!worklist_.empty()) {
+        auto mut = worklist_.front();
+        worklist_.pop_front();
+
+        auto _ = enter(mut);
+        for (auto d : mut->deps())
+            rewrite(d);
+    }
 }
 
 /*
