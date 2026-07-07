@@ -4,20 +4,20 @@
 
 #include "mim/plug/math/math.h"
 #include "mim/plug/mem/mem.h"     // IWYU pragma: keep
-#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
+#include "mim/plug/scf/scf.h" // IWYU pragma: keep
 #include "mim/plug/spirv/be/emit.h"
 
 namespace mim::plug::spirv {
 
-/// Matches the expansion of `%sflow.Ret R`: `{path, step} → [Token path step] → Cn R`
-/// (the polymorphic return continuation type; `%sflow.Ret` is a mim-level lam,
+/// Matches the expansion of `%scf.Ret R`: `{path, step} → [Token path step] → Cn R`
+/// (the polymorphic return continuation type; `%scf.Ret` is a mim-level lam,
 /// so only its beta-reduced shape survives into the world). Yields the
 /// innermost `Cn R` on a match, whose dom is the return payload type.
 const Pi* isa_ret(const Def* def) {
     auto pi = def->isa<Pi>();
     if (!pi) return nullptr;
     auto tok_pi = pi->codom()->isa<Pi>();
-    if (!tok_pi || !Axm::isa<sflow::Token>(tok_pi->dom())) return nullptr;
+    if (!tok_pi || !Axm::isa<scf::Token>(tok_pi->dom())) return nullptr;
     return Pi::isa_cn(tok_pi->codom());
 }
 
@@ -64,7 +64,7 @@ const Def* Emitter::strip_rec(const Def* def) {
         // Pi stays Pi. CPS pi: drop return cont, lift its dom to codom.
         // Direct-style pi (no ret_pi): strip dom/codom in place.
 
-        // CPS pi with a polymorphic sflow return (`%sflow.Ret` param): drop
+        // CPS pi with a polymorphic scf return (`%scf.Ret` param): drop
         // the ret con (tokens drop on their own below), lift the ret payload
         // to codom.
         if (auto sigma = pi->dom()->isa<Sigma>()) {
@@ -119,12 +119,12 @@ const Def* Emitter::strip_rec(const Def* def) {
 
     if (Axm::isa<mem::M>(def)) return nullptr;
     if (Axm::isa<spirv::entry>(def)) return nullptr;
-    if (Axm::isa<sflow::Token>(def)) return nullptr;
-    if (Axm::isa<sflow::Path>(def)) return nullptr;
-    if (Axm::isa<sflow::Step>(def)) return nullptr;
-    if (Axm::isa<sflow::If>(def)) return nullptr;
-    if (Axm::isa<sflow::Switch>(def)) return nullptr;
-    if (Axm::isa<sflow::Loop>(def)) return nullptr;
+    if (Axm::isa<scf::Token>(def)) return nullptr;
+    if (Axm::isa<scf::Path>(def)) return nullptr;
+    if (Axm::isa<scf::Step>(def)) return nullptr;
+    if (Axm::isa<scf::If>(def)) return nullptr;
+    if (Axm::isa<scf::Switch>(def)) return nullptr;
+    if (Axm::isa<scf::Loop>(def)) return nullptr;
     // The polymorphic return continuation type is 0-erased machinery like the
     // tokens it consumes (its payload only matters at the function boundary,
     // handled by the function-type branch above).

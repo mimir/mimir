@@ -2,7 +2,7 @@
 
 #include <mim/phase.h>
 
-namespace mim::plug::sflow::phase {
+namespace mim::plug::scf::phase {
 
 class Structurizer : public mim::NestPhase<Lam> {
 public:
@@ -16,4 +16,4 @@ private:
     ExitLabels visit_node(const Nest::Node* node);
 };
 
-} // namespace mim::plug::sflow::phase
+} // namespace mim::plug::scf::phase

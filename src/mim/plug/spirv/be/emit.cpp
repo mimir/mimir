@@ -1,6 +1,6 @@
 #include "mim/plug/spirv/be/emit.h"
 
-#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
+#include "mim/plug/scf/scf.h" // IWYU pragma: keep
 #include "mim/plug/spirv/spirv.h" // IWYU pragma: keep
 
 namespace mim::plug::spirv {
@@ -23,7 +23,7 @@ void Emitter::visit(const Nest& nest) {
     // capability, so we key by its scope key directly.
     //
     // For every loop we also synthesize a latch lam that just jumps to the
-    // header. All `%sflow.continue` sites branch to the latch, so it carries
+    // header. All `%scf.continue` sites branch to the latch, so it carries
     // the loop's only back-edge — SPIR-V permits exactly one back-edge block
     // per loop, and funneling every continue through the latch guarantees
     // that by construction. The latch doubles as the OpLoopMerge continue
@@ -38,13 +38,13 @@ void Emitter::visit(const Nest& nest) {
         if (!lam || !lam->is_set()) continue;
         auto app = lam->body()->isa<App>();
         if (!app) continue;
-        if (Axm::isa<sflow::_if>(app)) {
+        if (Axm::isa<scf::_if>(app)) {
             auto [token, cf_break, tuple, index, _arg] = app->uncurry_args<5>();
             cf_constructs_[scope_key_of_token(token)]  = world().tuple({token, cf_break, tuple, index});
-        } else if (Axm::isa<sflow::_switch>(app)) {
+        } else if (Axm::isa<scf::_switch>(app)) {
             auto [token, cf_break, cf_default, cases, index, _arg] = app->uncurry_args<6>();
             cf_constructs_[scope_key_of_token(token)] = world().tuple({token, cf_break, cf_default, cases, index});
-        } else if (Axm::isa<sflow::loop>(app)) {
+        } else if (Axm::isa<scf::loop>(app)) {
             auto [cf_struct, cf_break, cf_body, _arg] = app->uncurry_args<4>();
             auto key            = scope_key_of(cf_struct);
             cf_constructs_[key] = world().tuple({cf_struct, cf_break, cf_body});
@@ -63,7 +63,7 @@ void Emitter::visit(const Nest& nest) {
     auto old_size = lam2bb_.size();
 
     // Identify the return continuation: a plain CPS ret var (fun-style) or a
-    // parameter of polymorphic sflow return type (`%sflow.Ret`, con-style).
+    // parameter of polymorphic scf return type (`%scf.Ret`, con-style).
     ret_var_ = root()->ret_var();
     if (!ret_var_)
         for (size_t i = 0, e = root()->num_vars(); i != e; ++i)
@@ -71,7 +71,7 @@ void Emitter::visit(const Nest& nest) {
                 ret_var_ = root()->var(i);
                 break;
             }
-    assert(ret_var_ && "function has neither a CPS ret var nor an %sflow.Ret parameter");
+    assert(ret_var_ && "function has neither a CPS ret var nor an %scf.Ret parameter");
 
     Scheduler new_scheduler(nest);
     swap(scheduler_, new_scheduler);
@@ -91,7 +91,7 @@ void Emitter::visit(const Nest& nest) {
         auto& latch_bb  = lam2bb_[latch];
         emit_bb(latch, latch_bb);
 
-        // A loop that never calls `%sflow.continue` leaves its latch unreached:
+        // A loop that never calls `%scf.continue` leaves its latch unreached:
         // no site ever links a value into `latch->var()`, so it gets no OpPhi.
         // The header's own OpPhi still lists the latch as a source (the latch
         // unconditionally branches back to the header), so synthesize an

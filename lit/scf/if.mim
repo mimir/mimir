@@ -1,0 +1,10 @@
+// RUN: %mim %s -o -
+
+plugin scf;
+
+con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, cond: Bool, return: %scf.Ret Nat) =
+  %scf.if token exit (else, then) cond () where
+    con then (_, struct, token) = %scf.merge token struct 1;
+    con else (_, struct, token) = %scf.merge token struct 0;
+    con exit (x: Nat, token) = return token x;
+end;

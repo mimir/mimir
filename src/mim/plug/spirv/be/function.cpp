@@ -1,6 +1,6 @@
 #include "mim/phase.h"
 
-#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
+#include "mim/plug/scf/scf.h" // IWYU pragma: keep
 #include "mim/plug/spirv/be/emit.h"
 #include "mim/plug/spirv/spirv.h"
 
@@ -98,7 +98,7 @@ Word Emitter::emit_function(Lam* function) {
         DefVec exec_modes{};
 
         // fun-style CPS lams nest their params: dom = [[params...], Cn R];
-        // con-style structured functions (polymorphic `%sflow.Ret` param)
+        // con-style structured functions (polymorphic `%scf.Ret` param)
         // list their params directly.
         auto sigma = root()->ret_pi() ? root()->dom()->op(0)->as<Sigma>() : root()->dom()->as<Sigma>();
         for (size_t idx = 0; idx < sigma->num_ops(); ++idx) {
@@ -210,26 +210,26 @@ void Emitter::layout_append(Lam* lam, MutSet& done) {
 
     if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
         layout_append(callee, done);
-    } else if (auto cf_if = Axm::isa<sflow::_if>(app)) {
+    } else if (auto cf_if = Axm::isa<scf::_if>(app)) {
         auto [token, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
         for (auto branch : tuple->ops()) layout_append(branch->as_mut<Lam>(), done);
         layout_append(cf_break->as_mut<Lam>(), done);
-    } else if (auto cf_switch = Axm::isa<sflow::_switch>(app)) {
+    } else if (auto cf_switch = Axm::isa<scf::_switch>(app)) {
         auto [token, cf_break, cf_default, cases, index, arg] = cf_switch->uncurry_args<6>();
         // The case array is in reverse execution order; walk the fall-through
         // chain, which ends in the default, then the break target.
         for (size_t i = cases->num_ops(); i-- != 0;) layout_append(cases->op(i)->op(1)->as_mut<Lam>(), done);
         layout_append(cf_default->as_mut<Lam>(), done);
         layout_append(cf_break->as_mut<Lam>(), done);
-    } else if (auto cf_anchor = Axm::isa<sflow::header>(app)) {
+    } else if (auto cf_anchor = Axm::isa<scf::header>(app)) {
         auto [token, cf_header, arg] = cf_anchor->uncurry_args<3>();
         layout_append(cf_header->as_mut<Lam>(), done);
-    } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
+    } else if (auto cf_loop = Axm::isa<scf::loop>(app)) {
         auto [cf_struct, cf_break, cf_body, arg] = cf_loop->uncurry_args<4>();
         layout_append(cf_body->as_mut<Lam>(), done);
         layout_append(cf_latch(cf_struct), done);
         layout_append(cf_break->as_mut<Lam>(), done);
-    } else if (auto cf_call = Axm::isa<sflow::call>(app)) {
+    } else if (auto cf_call = Axm::isa<scf::call>(app)) {
         auto [token, fn, t_val, ret_lam] = cf_call->uncurry_args<4>();
         layout_append(ret_lam->as_mut<Lam>(), done);
     }
@@ -239,7 +239,7 @@ void Emitter::layout_append(Lam* lam, MutSet& done) {
 }
 
 void Emitter::finalize_function(Lam* fun) {
-    // Block layout is derived from the sflow terminators alone, no CFG: each
+    // Block layout is derived from the scf terminators alone, no CFG: each
     // construct site lays out its regions first and its exit (break/merge
     // target, latch for loops) behind them. Exit targets are exactly the
     // multi-predecessor blocks, every other block has a unique predecessor

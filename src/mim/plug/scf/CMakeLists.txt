@@ -1,6 +1,6 @@
-add_mim_plugin(sflow
+add_mim_plugin(scf
     SOURCES
-        sflow.cpp
+        scf.cpp
         normalizers.cpp
         phase/separate_merge.cpp
         phase/structurize.cpp

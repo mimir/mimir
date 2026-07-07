@@ -1,0 +1,16 @@
+// RUN: %mim %s -o -
+
+plugin scf;
+
+con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
+    %scf.header token loop 5 where
+    con loop (i: Nat, struct) =
+        %scf.loop struct break body () where
+        con body (_: [], struct, tok) = %scf.if tok exit (do_break, do_continue) (%core.ncmp.e (i, 0)) () where
+            con exit (_: [], tok) = %scf.break.l tok struct ();
+            con do_break (_: [], _, tok) = %scf.break.l tok struct ();
+            con do_continue (_: [], _, tok) = %scf.continue tok struct (%core.nat.sub (i, 1));
+        end;
+        con break (_: [], tok) = return tok 5;
+    end;
+end;

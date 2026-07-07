@@ -1,0 +1,27 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// Sharing one arm between two distinct inner if/else structures is a type
+// error: an arm's path is `%scf.arm arm_bool path step`, and the two inner
+// ifs sit in the outer if's `tt`/`ff` arms respectively, so their own path
+// (hence their arms' path) differs by that arm_bool alone -- no token
+// anchoring needed for this one, position already discriminates it.
+
+plugin scf;
+
+fun extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, cond_outer cond_inner: Bool) =
+    %scf.if token merge (else_outer, then_outer) cond_outer () where
+        con then_outer (_, struct, token) =
+            %scf.if token merge_t (else_t, shared) cond_inner () where
+                con else_t (_, s, token) = %scf.merge token s 2;
+                con merge_t (x: Nat, token) = %scf.merge token struct x;
+            end;
+        con else_outer (_, struct, token) =
+            %scf.if token merge_e (else_e, shared) cond_inner () where
+                con else_e (_, s, token) = %scf.merge token s 3;
+                con merge_e (x: Nat, token) = %scf.merge token struct x;
+            end;
+        // shared between both inner ifs -> incompatible token paths
+        con shared (_, s, token) = %scf.merge token s 1;
+        con merge (x: Nat, _) = return x;
+    end;
+
+// CHECK: error

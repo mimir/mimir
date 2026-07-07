@@ -4,10 +4,10 @@
 // wrappers are not implemented yet. `continue` branches straight back to the
 // loop header — there is no separate continue block.
 
-plugin sflow;
+plugin scf;
 
-fun extern foo () = %sflow.nice_loop break loop 5 where
-    lam loop (continue, break) (i: Nat) = %sflow.nice_header (left, right) (%core.ncmp.e (i, 0)) () where
+fun extern foo () = %scf.nice_loop break loop 5 where
+    lam loop (continue, break) (i: Nat) = %scf.nice_header (left, right) (%core.ncmp.e (i, 0)) () where
         lam left () = continue (%core.nat.sub (i, 1));
         lam right () = break ();
     end;

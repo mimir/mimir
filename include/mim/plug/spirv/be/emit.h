@@ -131,7 +131,7 @@ private:
     void append_bb(BB& bb);
 
     /// Append `lam` and, recursively, its successors in SPIR-V layout order,
-    /// derived purely from the sflow terminators: construct regions first,
+    /// derived purely from the scf terminators: construct regions first,
     /// exits (break/merge targets, loop latches) behind them.
     void layout_append(Lam* lam, MutSet& done);
 
@@ -171,7 +171,7 @@ private:
     LamMap<BB> lam2bb_;
 
     /// The current function's return continuation: either a plain CPS ret var
-    /// or a parameter of polymorphic sflow return type (`%sflow.Ret`).
+    /// or a parameter of polymorphic scf return type (`%scf.Ret`).
     /// Computed per nest in `visit`.
     const Def* ret_var_ = nullptr;
 
@@ -181,14 +181,14 @@ private:
     DefMap<Word> locals_;
     DefMap<Word> globals_;
 
-    /// Maps an sflow scope key (a `(path, step)` tuple, see `scope_key_of`) to
+    /// Maps an scf scope key (a `(path, step)` tuple, see `scope_key_of`) to
     /// the argument tuple of the `if`/`switch`/`loop` constructor that
     /// introduced it, so exits can recover their target lams. Populated by a
     /// pre-pass in `visit`.
     DefMap<const Def*> cf_constructs_;
 
     /// Maps a loop's scope key to its synthesized latch lam: the unique
-    /// back-edge block that every `%sflow.continue` site branches through.
+    /// back-edge block that every `%scf.continue` site branches through.
     /// Populated by the same pre-pass in `visit`.
     DefMap<Lam*> cf_latches_;
 
@@ -207,7 +207,7 @@ bool is_const(const Def* def);
 /// The scope key identifying the `If`/`Switch`/`Loop` construct that owns a
 /// capability value: a `(path, step)` tuple, the first two explicit
 /// arguments of its type (capabilities are path-indexed post ROOT REDESIGN,
-/// not token-indexed -- see sflow.mim).
+/// not token-indexed -- see scf.mim).
 const Def* scope_key_of(const Def* cf_struct);
 
 /// The same scope key, derived from a token value's type (`Token path step`)
@@ -215,7 +215,7 @@ const Def* scope_key_of(const Def* cf_struct);
 /// which take the token directly rather than a capability.
 const Def* scope_key_of_token(const Def* token);
 
-/// Matches the expansion of `%sflow.Ret R` (the polymorphic return
+/// Matches the expansion of `%scf.Ret R` (the polymorphic return
 /// continuation type); yields the innermost `Cn R` on a match.
 const Pi* isa_ret(const Def* def);
 

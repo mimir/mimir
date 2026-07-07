@@ -9,15 +9,15 @@
 // extracts from heterogeneous tuples are a known rough edge in mimir with
 // ongoing upstream discussion.
 
-plugin sflow;
+plugin scf;
 
-// return is a genuine %sflow.Ret continuation: it consumes a token at any
+// return is a genuine %scf.Ret continuation: it consumes a token at any
 // coordinates (token-first, like every axiom) plus the payload, so returning
 // from any depth pays a token and no lifting of a raw continuation is needed.
-// %sflow.Ret is also the merge interface, so return passes directly as the
+// %scf.Ret is also the merge interface, so return passes directly as the
 // merge target.
-con extern foo (cond: Bool, path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, return: %sflow.Ret Nat) =
-  %sflow.nice_if return cond () token (else, then) where
+con extern foo (cond: Bool, path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
+  %scf.nice_if return cond () token (else, then) where
     lam then (merge) () = merge 1;
     lam else (merge) () = merge 0;
   end;

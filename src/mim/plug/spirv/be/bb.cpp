@@ -1,6 +1,6 @@
 #include "mim/lam.h"
 
-#include "mim/plug/sflow/sflow.h" // IWYU pragma: keep
+#include "mim/plug/scf/scf.h" // IWYU pragma: keep
 #include "mim/plug/spirv/be/emit.h"
 
 namespace mim::plug::spirv {
@@ -10,24 +10,24 @@ namespace mim::plug::spirv {
 /// the `If`/`Switch`/`Loop` type (path-indexed post ROOT REDESIGN).
 const Def* scope_key_of(const Def* cf_struct) {
     auto type = cf_struct->type();
-    if (Axm::isa<sflow::If>(type)) {
-        auto [path, step, b]    = Axm::as<sflow::If>(type)->uncurry_args<3>();
+    if (Axm::isa<scf::If>(type)) {
+        auto [path, step, b]    = Axm::as<scf::If>(type)->uncurry_args<3>();
         return cf_struct->world().tuple({path, step});
     }
-    if (Axm::isa<sflow::Switch>(type)) {
-        auto [path, step, t, b] = Axm::as<sflow::Switch>(type)->uncurry_args<4>();
+    if (Axm::isa<scf::Switch>(type)) {
+        auto [path, step, t, b] = Axm::as<scf::Switch>(type)->uncurry_args<4>();
         return cf_struct->world().tuple({path, step});
     }
-    if (Axm::isa<sflow::Loop>(type)) {
-        auto [path, step, b, h] = Axm::as<sflow::Loop>(type)->uncurry_args<4>();
+    if (Axm::isa<scf::Loop>(type)) {
+        auto [path, step, b, h] = Axm::as<scf::Loop>(type)->uncurry_args<4>();
         return cf_struct->world().tuple({path, step});
     }
-    error("not an sflow control-flow capability: {}", cf_struct);
+    error("not an scf control-flow capability: {}", cf_struct);
 }
 
 /// The same scope key, derived from a token value's type (`Token path step`).
 const Def* scope_key_of_token(const Def* token) {
-    auto [path, step] = Axm::as<sflow::Token>(token->type())->uncurry_args<2>();
+    auto [path, step] = Axm::as<scf::Token>(token->type())->uncurry_args<2>();
     return token->world().tuple({path, step});
 }
 
@@ -39,7 +39,7 @@ const Def* scope_key_of_token(const Def* token) {
 const Def* Emitter::cf_args(const Def* cf_struct) {
     auto key = scope_key_of(cf_struct);
     auto it  = cf_constructs_.find(key);
-    if (it == cf_constructs_.end()) error("no sflow constructor registered for scope {}", key);
+    if (it == cf_constructs_.end()) error("no scf constructor registered for scope {}", key);
     return it->second;
 }
 
@@ -76,7 +76,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
     bb.label = Op{OpKind::Label, {}, lam_id, {}};
 
-    // Peel curried applications off the callee: a polymorphic sflow return is
+    // Peel curried applications off the callee: a polymorphic scf return is
     // called as `return {path, step} token payload`, so the ret var sits at
     // the bottom of an app chain (a plain CPS return is the callee directly).
     auto callee_base = app->callee();
@@ -99,7 +99,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
         link_phi(lam, callee, app->arg());
         bb.end = Op{OpKind::Branch, {bb_id(callee)}, {}, {}};
-    } else if (auto cf_if = Axm::isa<sflow::_if>(app)) {
+    } else if (auto cf_if = Axm::isa<scf::_if>(app)) {
         // === Structured if-else ===
         // => OpSelectionMerge + OpBranchConditional
         auto [token, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
@@ -116,7 +116,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             branches.push_back(bb_id(branch->as_mut<Lam>()));
         }
         bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
-    } else if (auto cf_switch = Axm::isa<sflow::_switch>(app)) {
+    } else if (auto cf_switch = Axm::isa<scf::_switch>(app)) {
         // === Structured switch-case ===
         // => OpSelectionMerge + OpSwitch
         auto [token, cf_break, cf_default, cases, index, arg] = cf_switch->uncurry_args<6>();
@@ -141,7 +141,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             case_ops.push_back(bb_id(case_lam));
         }
         bb.end = Op{OpKind::Switch, case_ops, {}, {}};
-    } else if (auto cf_anchor = Axm::isa<sflow::header>(app)) {
+    } else if (auto cf_anchor = Axm::isa<scf::header>(app)) {
         // === Structured loop pre-header / anchor ===
         // The lam ending in `header` is just the predecessor of the SPIR-V loop
         // header. OpLoopMerge belongs in the header lam itself (see `loop`
@@ -151,14 +151,14 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
         link_phi(lam, header_lam, arg);
         bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
-    } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
+    } else if (auto cf_loop = Axm::isa<scf::loop>(app)) {
         // === Loop header dispatch ===
         // => OpLoopMerge + OpBranch
         // This lam is the SPIR-V loop header. Emit OpLoopMerge naming the break
         // lam as merge block and the synthesized latch as continue target, then
         // unconditionally branch into the body. There is no direct edge to
         // break here: a `while`-style loop is written by placing a conditional
-        // `%sflow.break(l)` as the first thing in the body.
+        // `%scf.break(l)` as the first thing in the body.
         auto [cf_struct, cf_break, cf_body, arg] = cf_loop->uncurry_args<4>();
         auto break_lam = cf_break->as_mut<Lam>();
         auto body_lam  = cf_body->as_mut<Lam>();
@@ -171,7 +171,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         };
         link_phi(lam, body_lam, arg);
         bb.end = Op{OpKind::Branch, {bb_id(body_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
+    } else if (auto cf_exit = Axm::isa<scf::_continue>(app)) {
         // === Back-edge ===
         // Branch to the loop's synthesized latch block, which carries the
         // unique back-edge to the header (SPIR-V permits exactly one back-edge
@@ -180,7 +180,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto latch                           = cf_latch(cf_struct);
         link_phi(lam, latch, value);
         bb.end = Op{OpKind::Branch, {bb_id(latch)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::fallthrough>(app)) {
+    } else if (auto cf_exit = Axm::isa<scf::fallthrough>(app)) {
         // Fall through to the next case in execution order. The case array is in
         // reverse order, so the next case is the previous array entry; the last
         // one falls through to the switch's default (switch constructor arg 2).
@@ -196,25 +196,25 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         }
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa(sflow::_break::s, app)) {
+    } else if (auto cf_exit = Axm::isa(scf::_break::s, app)) {
         // Break out of the switch (switch constructor arg 1).
         auto [inner_token, cf_struct, value] = cf_exit->uncurry_args<3>();
         auto target_lam                      = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa(sflow::_break::l, app)) {
+    } else if (auto cf_exit = Axm::isa(scf::_break::l, app)) {
         // Break out of the loop (loop constructor arg 1).
         auto [inner_token, cf_struct, value] = cf_exit->uncurry_args<3>();
         auto target_lam                      = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_exit = Axm::isa<sflow::merge>(app)) {
+    } else if (auto cf_exit = Axm::isa<scf::merge>(app)) {
         // Merge the if (if constructor arg 1, the merge target).
         auto [merge_token, cf_struct, value] = cf_exit->uncurry_args<3>();
         auto target_lam                      = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
-    } else if (auto cf_call = Axm::isa<sflow::call>(app)) {
+    } else if (auto cf_call = Axm::isa<scf::call>(app)) {
         // === Function call ===
         // The lam ends with `call token fn (t_val, ret_lam)`, where ret_lam
         // is the CPS continuation that receives the call's result. Lower to
@@ -223,7 +223,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto [token, fn, t_val, ret_lam_def] = cf_call->uncurry_args<4>();
         auto ret_lam                         = ret_lam_def->as_mut<Lam>();
 
-        // The callee is a `%sflow.Fn` (polymorphic return, no CPS ret_pi);
+        // The callee is a `%scf.Fn` (polymorphic return, no CPS ret_pi);
         // recover the result type from the caller-side continuation instead.
         auto ret_type       = strip(ret_lam->type()->as<Pi>()->dom());
         Word result_id      = next_id();
@@ -240,7 +240,7 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // => OpUnreachable
         bb.end = Op{OpKind::Unreachable, {}, {}, {}};
     } else {
-        error("unsupported control flow terminator in lam '{}' ({}): callee '{}' ({}) is not a known sflow primitive",
+        error("unsupported control flow terminator in lam '{}' ({}): callee '{}' ({}) is not a known scf primitive",
               lam, lam->gid(), app->callee(), app->callee()->gid());
     }
 

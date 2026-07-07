@@ -1,0 +1,27 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// Like %scf.merge, %scf.fallthrough's inner_token path is pinned to
+// `%scf.case case path step` -- the case's OWN path -- so a token from one
+// level deeper is rejected. `then_` sits one arm inside case0 (path
+// `%scf.arm tt (%scf.case 0 path step) step'`), so handing its token to
+// %scf.fallthrough is a type error: there is no `case` for which
+// `%scf.case case path step` alpha-equals a term headed by the different
+// axiom `%scf.arm`.
+
+plugin scf;
+
+con extern foo (path: %scf.Path, step: %scf.Step,
+                 token: %scf.Token path step, cond: Bool,
+                 return: %scf.Ret Nat) =
+  %scf.switch @2 token exit default ((0, case0), (1, case1)) 0 1 where
+    con case1 (x: Nat, struct, tok) = %scf.break.s tok struct x;
+    con case0 (x: Nat, struct, tok) =
+      %scf.if tok merge (else_, then_) cond () where
+        con then_ (_: [], if_struct, inner_tok) = %scf.fallthrough inner_tok struct x;
+        con else_ (_: [], if_struct, inner_tok) = %scf.merge inner_tok if_struct 0;
+        con merge (x: Nat, tok2) = %scf.break.s tok2 struct x;
+      end;
+    con default (x: Nat, struct, tok) = %scf.break.s tok struct 4;
+    con exit (x: Nat, tok) = return tok x;
+end;
+
+// CHECK: error

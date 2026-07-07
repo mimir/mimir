@@ -1,5 +1,5 @@
 import mem;
-import sflow;
+import scf;
 import spirv;
 import vec;
 
@@ -37,23 +37,23 @@ fun extern vertex [
     return (%spirv.store (mem__, v_color, color));
 
 // fragment uses the structured (con-style) function shape: the return
-// continuation is a %sflow.Ret parameter consuming a token, while vertex
+// continuation is a %scf.Ret parameter consuming a token, while vertex
 // above deliberately keeps the raw fun-style CPS return.
 con extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
-    path: %sflow.Path,
-    step: %sflow.Step,
-    token: %sflow.Token path step,
-    return: %sflow.Ret (%mem.M 0),
+    path: %scf.Path,
+    step: %scf.Step,
+    token: %scf.Token path step,
+    return: %scf.Ret (%mem.M 0),
 ] = let (mem_, color) = %spirv.load (mem, i_color);
-    %sflow.header token loop 5 where
+    %scf.header token loop 5 where
         con loop (i: Nat, struct) =
-            %sflow.loop struct break body () where
-            con body (_: [], struct, tok) = %sflow.if tok exit (do_break, do_continue) (%core.ncmp.e (i, 0)) () where
-                con exit (_: [], tok) = %sflow.break.l tok struct ();
-                con do_break (_: [], _, tok) = %sflow.break.l tok struct ();
-                con do_continue (_: [], _, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
+            %scf.loop struct break body () where
+            con body (_: [], struct, tok) = %scf.if tok exit (do_break, do_continue) (%core.ncmp.e (i, 0)) () where
+                con exit (_: [], tok) = %scf.break.l tok struct ();
+                con do_break (_: [], _, tok) = %scf.break.l tok struct ();
+                con do_continue (_: [], _, tok) = %scf.continue tok struct (%core.nat.sub (i, 1));
             end;
         end;
         con break (_: [], tok) =

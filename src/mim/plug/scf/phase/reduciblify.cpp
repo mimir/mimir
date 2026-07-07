@@ -1,8 +1,8 @@
-#include "mim/plug/sflow/phase/reduciblify.h"
+#include "mim/plug/scf/phase/reduciblify.h"
 
 #include <ranges>
 
-namespace mim::plug::sflow::phase {
+namespace mim::plug::scf::phase {
 
 void Reduciblifier::visit(const Nest& nest) { visit_node(nest.root()); }
 
@@ -35,4 +35,4 @@ void Reduciblifier::visit_node(const Nest::Node* node) {
     }
 }
 
-} // namespace mim::plug::sflow::phase
+} // namespace mim::plug::scf::phase

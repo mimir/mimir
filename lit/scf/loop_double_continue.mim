@@ -1,0 +1,26 @@
+// RUN: %mim %s -o -
+
+// Two continue sites targeting the same header are permitted: %scf.continue
+// is the back-edge itself. Backends that require a unique back-edge block
+// (SPIR-V) funnel all continue sites through one synthesized latch block.
+// The two return sites exit from different depths (different token paths) —
+// exactly what the polymorphic %scf.Ret return permits.
+
+plugin scf;
+
+con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
+    %scf.header token loop 5 where
+    con loop (i: Nat, struct) =
+        %scf.loop struct break body () where
+        con body (_: [], struct, tok) = %scf.if tok exit (do_break, do_continue) (%core.ncmp.e (i, 0)) () where
+            con exit (_: [], tok) = %scf.break.l tok struct ();
+            con do_break (_: [], _, tok) = %scf.break.l tok struct ();
+            con do_continue (_: [], _, tok) = %scf.if tok if_break (a, b) ff () where
+                con if_break (_: [], tok) = return tok 5;
+                con a (_: [], _, tok) = %scf.continue tok struct (%core.nat.sub (i, 1));
+                con b (_: [], _, tok) = %scf.continue tok struct (%core.nat.sub (i, 2));
+            end;
+        end;
+        con break (_: [], tok) = return tok 5;
+    end;
+end;

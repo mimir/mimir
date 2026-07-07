@@ -2,7 +2,7 @@
 
 #include <mim/phase.h>
 
-namespace mim::plug::sflow::phase {
+namespace mim::plug::scf::phase {
 
 class MergeSeparator : public mim::NestPhase<Lam> {
 public:
@@ -12,4 +12,4 @@ public:
     void visit(const Nest& nest) override;
 };
 
-} // namespace mim::plug::sflow::phase
+} // namespace mim::plug::scf::phase

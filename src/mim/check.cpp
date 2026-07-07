@@ -167,7 +167,7 @@ bool Checker::alpha_(const Def* d1, const Def* d2) {
         // it refer to the same binders in the same way, and structural alpha-equivalence holds
         // trivially. For mutables, pointer-equal defs in different binding contexts can still
         // differ, hence the explicit binder bookkeeping below. Without this short-circuit, deeply
-        // shared Var-bearing immutables (e.g. recursive Sigma/Pi graphs from sflow's Struct chain)
+        // shared Var-bearing immutables (e.g. recursive Sigma/Pi graphs from scf's Struct chain)
         // cause `alpha_` to walk the same subterm exponentially.
         // Example where pointer equality alone would be wrong: λx.x vs λz.x — but those are
         // distinct mutable lams, not pointer-equal.
