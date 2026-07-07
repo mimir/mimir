@@ -37,11 +37,12 @@ lam extern _compile(): %compile.Phase =
     %compile.phases ff (
         %compile.internal_cleanup,
         %compile.phases tt (
-            %compile.beta_red,
-            %compile.eta_red,
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
         ),
-        %compile.eta_exp,
-        %mem.seo,
         %compile.named "%ll.emit",
     );
 

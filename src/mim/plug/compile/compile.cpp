@@ -8,8 +8,7 @@
 
 #include <mim/phase/beta_red.h>
 #include <mim/phase/branch_normalize.h>
-#include <mim/phase/eta_exp.h>
-#include <mim/phase/eta_red.h>
+#include <mim/phase/eta_conv.h>
 #include <mim/phase/lam_spec.h>
 #include <mim/phase/prefix_cleanup.h>
 #include <mim/phase/ret_wrap.h>
@@ -58,16 +57,15 @@ void reg_phases(Flags2Phases& phases) {
     assert_emplace(phases, Annex::base<compile::null>(), [](World&) { return std::unique_ptr<Phase>{}; });
     Phase::hook<compile::beta_red,         BetaRed        >(phases);
     Phase::hook<compile::branch_normalize, BranchNormalize>(phases);
-    Phase::hook<compile::cleanup,          Cleanup             >(phases);
-    Phase::hook<compile::eta_exp,          EtaExp         >(phases);
-    Phase::hook<compile::eta_red,          EtaRed         >(phases);
-    Phase::hook<compile::lam_spec,         LamSpec             >(phases);
-    Phase::hook<compile::scalarize,        Scalarize           >(phases);
-    Phase::hook<compile::tail_rec_elim,    TailRecElim         >(phases);
-    Phase::hook<compile::named,            Named               >(phases);
-    Phase::hook<compile::phases,                 PhaseMan            >(phases);
-    Phase::hook<compile::prefix_cleanup,   PrefixCleanup       >(phases);
-    Phase::hook<compile::ret_wrap,         RetWrap             >(phases);
+    Phase::hook<compile::cleanup,          Cleanup        >(phases);
+    Phase::hook<compile::eta_conv,         EtaConv        >(phases);
+    Phase::hook<compile::lam_spec,         LamSpec        >(phases);
+    Phase::hook<compile::named,            Named          >(phases);
+    Phase::hook<compile::phases,           PhaseMan       >(phases);
+    Phase::hook<compile::prefix_cleanup,   PrefixCleanup  >(phases);
+    Phase::hook<compile::ret_wrap,         RetWrap        >(phases);
+    Phase::hook<compile::scalarize,        Scalarize      >(phases);
+    Phase::hook<compile::tail_rec_elim,    TailRecElim    >(phases);
     // clang-format on
 }
 

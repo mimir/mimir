@@ -19,13 +19,12 @@ plugin compile;
 ///
 lam extern _default_compile (): %compile.Phase =
     let optimize =
-        %compile.phases ff (
+        %compile.phases tt (
             %compile.scalarize,
             %compile.phases tt (
                 %compile.beta_red,
-                %compile.eta_red,
+                %compile.eta_conv,
             ),
-            %compile.eta_exp,
             %compile.named "%mem.seo",
             %compile.tail_rec_elim,
         );

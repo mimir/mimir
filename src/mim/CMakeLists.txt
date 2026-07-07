@@ -30,8 +30,7 @@ target_sources(libmim
         phase/scalarize.cpp
         phase/tail_rec_elim.cpp
         phase/beta_red.cpp
-        phase/eta_red.cpp
-        phase/eta_exp.cpp
+        phase/eta_conv.cpp
         phase/branch_normalize.cpp
         phase/prefix_cleanup.cpp
         phase/ret_wrap.cpp

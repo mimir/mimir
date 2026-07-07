@@ -1,0 +1,22 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin compile;
+
+// `f` is used as a callee (`f 42`, Known) AND as a value (`take f`, Unknown), so it is `Both` and gets η-expanded.
+// The combined `%compile.eta_conv` runs inside a `tt` fixed-point here: without wrapper-transparent analysis it would
+// oscillate (expand → reduce → expand → …) and this test would time out. It must converge.
+lam f (x: Nat)@ff: Nat = x;
+lam take (g: Nat → Nat)@ff: Nat = g 23;
+
+lam extern foo(): «2; Nat» =
+    let a = f 42;   // Known
+    let b = take f; // Unknown → makes `f` Both → η-expand this occurrence
+    (a, b);
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases tt (%compile.eta_conv);
+
+// `f` still called directly with 42, and η-expanded for the `take` occurrence.
+// CHECK-DAG: f_[[FB:[0-9]+]] 42
+// CHECK-DAG: take_{{[0-9]+}} {{(eta_)?}}f_[[ETA:[0-9]+]]
+// CHECK-DAG: lam {{(eta_)?}}f_[[ETA]] ([[V:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG: f_{{[0-9]+}} [[V]]
