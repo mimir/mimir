@@ -1,0 +1,16 @@
+// RUN: %mim %s -o -
+// A case body may fall through to the next case as long as the token it
+// hands to %sflow.fallthrough is its OWN case token (path pinned to
+// `%sflow.case case path step`, same scope as the case itself, only
+// progress/step may differ). case0 falls straight through into case1 here.
+
+plugin sflow;
+
+con extern foo (path: %sflow.Path, step: %sflow.Step,
+                 token: %sflow.Token path step, return: %sflow.Ret Nat) =
+  %sflow.switch @2 token exit default ((0, case0), (1, case1)) 0 1 where
+    con case1 (x: Nat, struct, tok) = %sflow.break.s tok struct x;
+    con case0 (x: Nat, struct, tok) = %sflow.fallthrough tok struct x;
+    con default (x: Nat, struct, tok) = %sflow.break.s tok struct 4;
+    con exit (x: Nat, tok) = return tok x;
+end;

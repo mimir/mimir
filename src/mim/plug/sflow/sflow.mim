@@ -112,11 +112,12 @@ axm %sflow.continue: {
   → Cn H;
 ///
 /// Branch to the next case of a given switch structure.
+/// Like merge, fallthrough requires a token from the same scope as the
+/// current case (path must match; step may differ as progress within the
+/// scope).
 axm %sflow.fallthrough: {
-  C B: ★,
-  path: Path, step: Step,
-  inner_path: Path, inner_step: Step,
-} → [inner_token: Token inner_path inner_step]
+  C B: ★, path: Path, step inner_step: Step, case: Nat,
+} → [inner_token: Token (%sflow.case case path step) inner_step]
   → [Switch path step C B]
   → Cn C;
 ///
