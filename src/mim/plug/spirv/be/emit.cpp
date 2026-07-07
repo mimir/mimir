@@ -45,9 +45,9 @@ void Emitter::visit(const Nest& nest) {
             auto [token, cf_break, cf_default, cases, index, _arg] = app->uncurry_args<6>();
             cf_constructs_[scope_key_of_token(token)] = world().tuple({token, cf_break, cf_default, cases, index});
         } else if (Axm::isa<sflow::loop>(app)) {
-            auto [cf_struct, cf_break, cf_body, cond, _arg] = app->uncurry_args<5>();
+            auto [cf_struct, cf_break, cf_body, _arg] = app->uncurry_args<4>();
             auto key            = scope_key_of(cf_struct);
-            cf_constructs_[key] = world().tuple({cf_struct, cf_break, cf_body, cond});
+            cf_constructs_[key] = world().tuple({cf_struct, cf_break, cf_body});
 
             auto latch = world().mut_con(lam->dom())->set("latch");
             latch->app(false, lam, latch->var());
@@ -87,8 +87,18 @@ void Emitter::visit(const Nest& nest) {
         }
     }
     for (auto latch : latches) {
-        curr_function_ = latch;
-        emit_bb(latch, lam2bb_[latch]);
+        curr_function_  = latch;
+        auto& latch_bb  = lam2bb_[latch];
+        emit_bb(latch, latch_bb);
+
+        // A loop that never calls `%sflow.continue` leaves its latch unreached:
+        // no site ever links a value into `latch->var()`, so it gets no OpPhi.
+        // The header's own OpPhi still lists the latch as a source (the latch
+        // unconditionally branches back to the header), so synthesize an
+        // OpUndef for the id instead of leaving it referenced but never defined.
+        auto var = latch->var();
+        if (strip(var->type()) != world().sigma() && !latch_bb.phis.contains(var))
+            latch_bb.ops.emplace_back(Op{OpKind::Undefined, {}, locals_[strip(var)], emit_type(var->type())});
     }
 
     finalize_function(f);

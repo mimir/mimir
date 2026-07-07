@@ -6,11 +6,11 @@
 // `right` -- mutually exclusive native branches of an unstructured tuple
 // selection, both reached from `foo`'s SAME activation (native selection is
 // an ordinary conditional branch, not a call -- it does not cross an
-// activation boundary). `left`/`right` both use `foo`'s own already-entered
-// `token` (annotated against `foo`'s own `root`), so their if's break-
-// continuation types are the literal SAME closed-over-`root` type
-// `Cn [Nat, Token (%sflow.ROOT root) 1]`, and `exit` type-checks as either
-// one's target.
+// activation boundary). `left`/`right` both use `foo`'s own `token`
+// parameter (annotated against `foo`'s own `path`/`step` parameters), so
+// their if's break-continuation types are the literal SAME
+// closed-over-`path` type `Cn [Nat, Token path (%sflow.inc step)]`, and
+// `exit` type-checks as either one's target.
 // This means path-purity's uniqueness guarantee is narrower than "a block
 // can only ever have one predecessor": it only forces per-instance identity
 // on blocks INSIDE a construct (arms/cases/body, via their own tt/ff or
@@ -32,18 +32,22 @@
 // about closing sharing ACROSS genuinely different activations (see
 // if_share_tail.mim's `callee`, reached via an actual %sflow.call), not
 // about native branches of the same one.
+// V2 (2026-07-06): Root/ROOT/enter are gone; functions now bind
+// `path`/`step`/`token` as ordinary parameters and %sflow.call never
+// instantiates them. Same separation story (parametricity over the
+// function's own bound `path`), one activation still means one shared
+// token thread -- nothing about this test's semantics changes.
 
 plugin sflow;
 
-fun extern foo (root: %sflow.Root, sel cond: Bool, cond2: Bool) =
-  let token = %sflow.enter root;
+fun extern foo (path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, sel cond: Bool, cond2: Bool) =
   (left, right)#sel token where
-  con left (token: %sflow.Token (%sflow.ROOT root) 0) =
+  con left (token: %sflow.Token path step) =
     %sflow.if token exit (else_l, then_l) cond2 () where
       con then_l (_: [], struct, tok) = %sflow.merge tok struct 1;
       con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
     end;
-  con right (token: %sflow.Token (%sflow.ROOT root) 0) =
+  con right (token: %sflow.Token path step) =
     %sflow.if token exit (else_r, then_r) cond2 () where
       con then_r (_: [], struct, tok) = %sflow.merge tok struct 2;
       con else_r (_: [], struct, tok) = %sflow.merge tok struct 3;

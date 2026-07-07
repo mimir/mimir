@@ -37,10 +37,11 @@ fun extern vertex [
 con extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
-    root: %sflow.Root,
+    path: %sflow.Path,
+    step: %sflow.Step,
+    token: %sflow.Token path step,
     return: %sflow.Ret (%mem.M 0),
 ] = let (mem_, x) = %spirv.load (mem, i_x);
-    let token = %sflow.enter root;
     let cond_outer = %math.cmp.l 0 (x, -0.25:F32);
     %sflow.if token merge (else_outer, then_outer) cond_outer () where
         con then_outer (_: [], struct, token) = %sflow.merge token struct red;

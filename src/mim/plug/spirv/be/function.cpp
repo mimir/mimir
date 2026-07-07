@@ -225,7 +225,7 @@ void Emitter::layout_append(Lam* lam, MutSet& done) {
         auto [token, cf_header, arg] = cf_anchor->uncurry_args<3>();
         layout_append(cf_header->as_mut<Lam>(), done);
     } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
-        auto [cf_struct, cf_break, cf_body, cond, arg] = cf_loop->uncurry_args<5>();
+        auto [cf_struct, cf_break, cf_body, arg] = cf_loop->uncurry_args<4>();
         layout_append(cf_body->as_mut<Lam>(), done);
         layout_append(cf_latch(cf_struct), done);
         layout_append(cf_break->as_mut<Lam>(), done);

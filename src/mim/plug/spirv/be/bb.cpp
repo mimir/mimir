@@ -153,13 +153,13 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         bb.end = Op{OpKind::Branch, {bb_id(header_lam)}, {}, {}};
     } else if (auto cf_loop = Axm::isa<sflow::loop>(app)) {
         // === Loop header dispatch ===
-        // => OpLoopMerge + OpBranchConditional
+        // => OpLoopMerge + OpBranch
         // This lam is the SPIR-V loop header. Emit OpLoopMerge naming the break
-        // lam as merge block and the synthesized latch as continue target. Then
-        // branch on `cond`: true breaks out of the loop (merge), false enters the
-        // body. The break lam is both the merge block and the true target, which
-        // is the canonical structured `while` exit.
-        auto [cf_struct, cf_break, cf_body, cond, arg] = cf_loop->uncurry_args<5>();
+        // lam as merge block and the synthesized latch as continue target, then
+        // unconditionally branch into the body. There is no direct edge to
+        // break here: a `while`-style loop is written by placing a conditional
+        // `%sflow.break(l)` as the first thing in the body.
+        auto [cf_struct, cf_break, cf_body, arg] = cf_loop->uncurry_args<4>();
         auto break_lam = cf_break->as_mut<Lam>();
         auto body_lam  = cf_body->as_mut<Lam>();
 
@@ -169,15 +169,8 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             {},
             {}
         };
-        // Result type is `(T, B)#cond`: cond false => body (T), cond true => break (B).
         link_phi(lam, body_lam, arg);
-        link_phi(lam, break_lam, arg);
-        bb.end = Op{
-            OpKind::BranchConditional,
-            {emit_term(cond), bb_id(break_lam), bb_id(body_lam)},
-            {},
-            {}
-        };
+        bb.end = Op{OpKind::Branch, {bb_id(body_lam)}, {}, {}};
     } else if (auto cf_exit = Axm::isa<sflow::_continue>(app)) {
         // === Back-edge ===
         // Branch to the loop's synthesized latch block, which carries the

@@ -5,8 +5,9 @@
 // wrong for the same reason if_share_exit.mim's earlier revision was wrong:
 // native tuple selection is an ordinary branch within `foo`'s ONE activation,
 // not a call, so `left`/`right` should share `foo`'s root, not each mint
-// their own. With that fixed (`foo` enters first, forwards the token, and
-// `left`/`right`'s parameter types are pinned to `foo`'s own `root`), this
+// their own. With that fixed (`foo` forwards its token and `left`/`right`'s
+// parameter types are pinned to `foo`'s own coordinates -- since V2
+// 2026-07-06 those are plain `path`/`step` parameters, Root/enter are gone), this
 // program ALSO type-checks clean -- it does NOT reject, contrary to what an
 // earlier version of this file (and the day-4 thesis notes) claimed.
 //
@@ -34,20 +35,26 @@
 
 plugin sflow;
 
-con callee (x: Nat, root: %sflow.Root, return: %sflow.Ret Nat) = return (%sflow.enter root) x;
+// V2 NOTE (2026-07-06): one physical callee per call site. Semantically a
+// single shared callee is fine (and is what this test used to have), but a
+// dependently-parameterized con checked from TWO %sflow.call sites trips a
+// mim checker bug (false rejection, pinned as
+// lit/bug/dependent_con_double_call.mim). The shared block under test is
+// `tail`, not the callee, so the duplication doesn't change the finding.
+con callee_l (x: Nat, path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, return: %sflow.Ret Nat) = return token x;
+con callee_r (x: Nat, path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, return: %sflow.Ret Nat) = return token x;
 
-fun extern foo (root: %sflow.Root, sel cond: Bool) =
-  let token = %sflow.enter root;
+fun extern foo (path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, sel cond: Bool) =
   (left, right)#sel token where
-  con left (token: %sflow.Token (%sflow.ROOT root) 0) =
+  con left (token: %sflow.Token path step) =
     %sflow.if token exit_l (else_l, then_l) cond () where
-    con then_l (_: [], _, tok) = %sflow.call tok callee (1, tail);
+    con then_l (_: [], _, tok) = %sflow.call tok callee_l (1, tail);
     con else_l (_: [], struct, tok) = %sflow.merge tok struct 0;
     con exit_l (x: Nat, _) = return x;
   end;
-  con right (token: %sflow.Token (%sflow.ROOT root) 0) =
+  con right (token: %sflow.Token path step) =
     %sflow.if token exit_r (else_r, then_r) cond () where
-    con then_r (_: [], _, tok) = %sflow.call tok callee (2, tail);
+    con then_r (_: [], _, tok) = %sflow.call tok callee_r (2, tail);
     con else_r (_: [], struct, tok) = %sflow.merge tok struct 0;
     con exit_r (x: Nat, _) = return x;
   end;

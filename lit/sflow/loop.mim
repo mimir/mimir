@@ -2,12 +2,15 @@
 
 plugin sflow;
 
-con extern foo (root: %sflow.Root, return: %sflow.Ret Nat) =
-    let token = %sflow.enter root;
+con extern foo (path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, return: %sflow.Ret Nat) =
     %sflow.header token loop 5 where
     con loop (i: Nat, struct) =
-        %sflow.loop struct break body (%core.ncmp.e (i, 0)) () where
-        con body (_: [], struct, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
+        %sflow.loop struct break body () where
+        con body (_: [], struct, tok) = %sflow.if tok exit (do_break, do_continue) (%core.ncmp.e (i, 0)) () where
+            con exit (_: [], tok) = %sflow.break.l tok struct ();
+            con do_break (_: [], _, tok) = %sflow.break.l tok struct ();
+            con do_continue (_: [], _, tok) = %sflow.continue tok struct (%core.nat.sub (i, 1));
+        end;
         con break (_: [], tok) = return tok 5;
     end;
 end;

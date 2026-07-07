@@ -120,7 +120,8 @@ const Def* Emitter::strip_rec(const Def* def) {
     if (Axm::isa<mem::M>(def)) return nullptr;
     if (Axm::isa<spirv::entry>(def)) return nullptr;
     if (Axm::isa<sflow::Token>(def)) return nullptr;
-    if (Axm::isa<sflow::Root>(def)) return nullptr;
+    if (Axm::isa<sflow::Path>(def)) return nullptr;
+    if (Axm::isa<sflow::Step>(def)) return nullptr;
     if (Axm::isa<sflow::If>(def)) return nullptr;
     if (Axm::isa<sflow::Switch>(def)) return nullptr;
     if (Axm::isa<sflow::Loop>(def)) return nullptr;

@@ -16,8 +16,7 @@ plugin sflow;
 // from any depth pays a token and no lifting of a raw continuation is needed.
 // %sflow.Ret is also the merge interface, so return passes directly as the
 // merge target.
-con extern foo (cond: Bool, root: %sflow.Root, return: %sflow.Ret Nat) =
-  let token = %sflow.enter root;
+con extern foo (cond: Bool, path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, return: %sflow.Ret Nat) =
   %sflow.nice_if return cond () token (else, then) where
     lam then (merge) () = merge 1;
     lam else (merge) () = merge 0;

@@ -7,8 +7,7 @@
 
 plugin sflow;
 
-fun extern foo (root: %sflow.Root, cond_outer cond_inner: Bool) =
-    let token = %sflow.enter root;
+fun extern foo (path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, cond_outer cond_inner: Bool) =
     %sflow.if token merge (else_outer, then_outer) cond_outer () where
         con then_outer (_, struct, token) =
             %sflow.if token merge_t (else_t, shared) cond_inner () where

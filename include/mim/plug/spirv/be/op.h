@@ -309,7 +309,7 @@ struct Op {
 
     const char* name() const {
         switch (this->kind) {
-            case OpKind::Undefined: return "Undefined";
+            case OpKind::Undefined: return "OpUndef";
             case OpKind::Capability: return "OpCapability";
             case OpKind::Extension: return "OpExtension";
             case OpKind::ExtInstImport: return "OpExtInstImport";

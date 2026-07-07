@@ -2,8 +2,7 @@
 
 plugin sflow;
 
-con extern foo (root: %sflow.Root, return: %sflow.Ret Nat) =
-  let token = %sflow.enter root;
+con extern foo (path: %sflow.Path, step: %sflow.Step, token: %sflow.Token path step, return: %sflow.Ret Nat) =
   %sflow.switch @3 token exit default ((0, case0), (1, case1), (2, case2)) 1 () where
     con case2 (_: [], struct, tok) = %sflow.break.s tok struct 2;
     con case1 (_: [], struct, tok) = %sflow.break.s tok struct 1;
