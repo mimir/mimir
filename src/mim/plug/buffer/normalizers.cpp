@@ -6,6 +6,26 @@
 
 namespace mim::plug::buffer {
 
+/// `Buf (r, s, T)` with literal size-1 axes in `s` ↦ `Buf (r', s', T)` with those axes dropped.
+/// This mirrors the folding of the corresponding array types (`«3, 1; T»` ≡ `«3; T»`), so buffer types
+/// derived from logical shapes agree with the (folded) boundary types by construction.
+const Def* normalize_Buf(const Def*, const Def* callee, const Def* arg) {
+    auto& world    = arg->world();
+    auto [r, s, T] = arg->projs<3>();
+    auto r_l       = Lit::isa<u64>(r);
+    if (!r_l) return {};
+
+    DefVec dims;
+    dims.reserve(*r_l);
+    for (u64 i = 0; i < *r_l; ++i) {
+        auto d = s->proj(*r_l, i);
+        if (auto l = Lit::isa<u64>(d); l && *l == 1) continue;
+        dims.push_back(d);
+    }
+    if (dims.size() == *r_l) return {};
+    return world.app(callee, world.tuple({world.lit_nat(dims.size()), world.tuple(dims), T}));
+}
+
 /// `read (constant v) idx` ↦ `v`.
 const Def* normalize_read(const Def* type, const Def*, const Def* arg) {
     auto& world            = type->world();

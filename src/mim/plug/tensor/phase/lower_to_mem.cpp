@@ -5,6 +5,7 @@
 #include "mim/lam.h"
 
 #include "mim/plug/buffer/buffer.h"
+#include "mim/plug/core/core.h"
 #include "mim/plug/matrix/matrix.h"
 #include "mim/plug/mem/mem.h"
 #include "mim/plug/tensor/phase/add_mem_buf.h"
@@ -26,7 +27,7 @@ bool contains_pi(const Def* t) {
 /// Is `app` one of the tensor ops this phase bufferizes?
 bool is_tensor_op(const App* app) {
     return Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app)
-        || Axm::isa<tensor::map_reduce>(app);
+        || Axm::isa<tensor::map_reduce>(app) || Axm::isa<tensor::pad>(app) || Axm::isa<tensor::concat>(app);
 }
 
 } // namespace
@@ -65,22 +66,10 @@ void LowerToMem::collect_tensor_types() {
                 auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs]
                     = app->callee()->as<App>()->uncurry_args<7>();
                 if (meta->proj(3, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(3, 0));
-                // Array types fold literal size-1 axes but `%buffer.Buf` does not, so the buffer types the
-                // `%matrix.map_reduce_aff` axiom derives from these logical shapes would mismatch the folded
-                // boundary types.
-                auto has_size1 = [](const Def* s) {
-                    auto n = s->num_projs();
-                    for (size_t i = 0; i != n; ++i)
-                        if (auto l = Lit::isa<u64>(s->proj(n, i)); l && *l == 1) return true;
-                    return false;
-                };
-                if (has_size1(shapes->proj(2, 0))) gate("size-1 output axis of %tensor.map_reduce", app);
                 if (auto nis_l = Lit::isa<u64>(nis)) {
-                    auto [Tis, Ris, Sis] = TisRisSis->projs<3>();
+                    auto Tis = TisRisSis->proj(3, 0);
                     for (u64 i = 0; i < *nis_l; ++i) {
                         if (Tis->proj(*nis_l, i)->isa<Arr>()) gate("tensor with array element type", Tis);
-                        if (has_size1(Sis->proj(*nis_l, i)))
-                            gate("size-1 input axis of %tensor.map_reduce", app);
                         add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
                     }
                 }
@@ -90,11 +79,39 @@ void LowerToMem::collect_tensor_types() {
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(2)->type());
+            } else if (Axm::isa<tensor::pad>(app)) {
+                // callee: pad {T, r} [s_in] [mode, lo, hi]; result «s_out; T» and `input` are tensors.
+                auto [Tr, s_in, params] = app->callee()->as<App>()->uncurry_args<3>();
+                auto [T, r]             = Tr->projs<2>();
+                if (T->isa<Arr>()) gate("tensor with array element type", T);
+                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(params->proj(3, 0)))
+                    gate("non-literal rank/mode of %tensor.pad", app);
+                add_tensor_ty(app->type());
+                add_tensor_ty(app->arg()->proj(0)->type());
+            } else if (Axm::isa<tensor::concat>(app)) {
+                // callee: concat {T, nis, r} [ax] {Sis}; result «s_out; T» and each input are tensors.
+                auto [TnisR, ax, Sis] = app->callee()->as<App>()->uncurry_args<3>();
+                auto [T, nis, r]      = TnisR->projs<3>();
+                if (T->isa<Arr>()) gate("tensor with array element type", T);
+                auto nis_l = Lit::isa<u64>(nis);
+                auto r_l   = Lit::isa<u64>(r);
+                auto ax_l  = Lit::isa<u64>(ax);
+                if (!nis_l || !r_l || !ax_l) {
+                    gate("non-literal nis/rank/axis of %tensor.concat", app);
+                } else {
+                    add_tensor_ty(app->type());
+                    for (u64 i = 0; i < *nis_l; ++i) {
+                        // The loop generation needs literal extents along `ax` for the prefix offsets.
+                        if (!Lit::isa<u64>(Sis->proj(*nis_l, i)->proj(*r_l, *ax_l)))
+                            gate("non-literal extent along the concat axis", app);
+                        add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
+                    }
+                }
             } else if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0
                                                                 && axm->plugin() == tensor::Plugin_Id) {
-                // Any other tensor op (`pad`, `concat`, a symbolic `shape`, …) is only lowered by the
-                // value-semantics path, which runs after this phase — bufferizing around it would mix the
-                // two worlds on interlinked tensors and be ill-typed.
+                // Any other tensor op (a symbolic `shape`, …) is only lowered by the value-semantics path,
+                // which runs after this phase — bufferizing around it would mix the two worlds on
+                // interlinked tensors and be ill-typed.
                 gate("unbufferizable tensor op", app);
             }
             // Lams passed inside a tensor op's curry chain (combiners, affine index maps) are element-level.
@@ -273,6 +290,8 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<tensor::map_reduce>(app)) return lower_map_reduce(app);
+    if (Axm::isa<tensor::pad>(app)) return lower_pad(app);
+    if (Axm::isa<tensor::concat>(app)) return lower_concat(app);
 
     // Call of a bufferized function: adapt the call site.
     if (auto callee = app->callee()->isa_mut<Lam>(); callee && tensor_fns_.contains(callee))
@@ -434,6 +453,86 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     op            = w.app(op, w.tuple({memcomb, init}));
     op            = w.app(op, acc_out);
     op            = w.app(op, accs);
+    auto [m, out] = w.app(op, w.tuple({bot_mem(), inputs}))->projs<2>();
+    return out;
+}
+
+const Def* LowerToMem::lower_pad(const App* app) {
+    // Thin bufferization: map the SSA `tensor.pad` onto the buffer-world `matrix.pad`.
+    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    auto& w             = new_world();
+    auto c              = rewrite(app->callee())->as<App>();
+    auto [input, value] = rewrite(app->arg())->projs<2>();
+
+    auto [Tr, s_in, params] = c->uncurry_args<3>();
+    auto [T, r]             = Tr->projs<2>();
+    auto [mode, lo, hi]     = params->projs<3>();
+
+    // A pad of a value-world tensor (e.g. a literal): leave it to the value path.
+    if (!Axm::isa<buffer::Buf>(input->type())) return RWPhase::rewrite_imm_App(app);
+
+    auto r_l = Lit::isa<u64>(r);
+    if (!r_l) return RWPhase::rewrite_imm_App(app);
+
+    // The LOGICAL output shape `s_out#d = lo#d + s_in#d + hi#d` — the loop generation iterates it, so it
+    // must keep size-1 axes (the result type's `Buf` folds them away and cannot be used here).
+    DefVec so(*r_l);
+    for (u64 d = 0; d < *r_l; ++d)
+        so[d] = w.call(core::nat::add,
+                       DefVec{w.call(core::nat::add, DefVec{lo->proj(*r_l, d), s_in->proj(*r_l, d)}),
+                              hi->proj(*r_l, d)});
+    auto s_out = w.tuple(so);
+
+    auto op       = w.annex<matrix::pad>();
+    op            = w.app(op, w.tuple({T, r}));
+    op            = w.app(op, w.tuple({s_in, s_out, mode, lo, hi}));
+    auto [m, out] = w.app(op, w.tuple({bot_mem(), input, value}))->projs<2>();
+    return out;
+}
+
+const Def* LowerToMem::lower_concat(const App* app) {
+    // Thin bufferization: map the SSA `tensor.concat` onto the buffer-world `matrix.concat`.
+    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    auto& w  = new_world();
+    auto c   = rewrite(app->callee())->as<App>();
+    auto arg = rewrite(app->arg());
+
+    auto [TnisR, ax, Sis] = c->uncurry_args<3>();
+    auto [T, nis, r]      = TnisR->projs<3>();
+
+    auto nis_l = Lit::isa<u64>(nis);
+    auto r_l   = Lit::isa<u64>(r);
+    auto ax_l  = Lit::isa<u64>(ax);
+    if (!nis_l || !r_l || !ax_l) return RWPhase::rewrite_imm_App(app);
+
+    // Value-world tensor inputs (e.g. literals): leave them to the value path. Re-tuple the projected
+    // inputs so the tuple type is re-inferred from the converted elements (see `lower_map_reduce`).
+    DefVec ins(*nis_l);
+    for (u64 i = 0; i < *nis_l; ++i) {
+        ins[i] = arg->proj(*nis_l, i);
+        if (!Axm::isa<buffer::Buf>(ins[i]->type())) return RWPhase::rewrite_imm_App(app);
+    }
+    auto inputs = w.tuple(ins);
+
+    // The LOGICAL output shape: the summed extent along `ax` (literal, gated in `collect_tensor_types`),
+    // the shared extents elsewhere — the loop generation iterates it, so it must keep size-1 axes (the
+    // result type's `Buf` folds them away and cannot be used here).
+    u64 sum_ax = 0;
+    for (u64 i = 0; i < *nis_l; ++i) {
+        auto e = Lit::isa<u64>(Sis->proj(*nis_l, i)->proj(*r_l, *ax_l));
+        if (!e) return RWPhase::rewrite_imm_App(app);
+        sum_ax += *e;
+    }
+    DefVec so(*r_l);
+    for (u64 d = 0; d < *r_l; ++d)
+        so[d] = d == *ax_l ? w.lit_nat(sum_ax) : Sis->proj(*nis_l, 0)->proj(*r_l, d);
+    auto s_out = w.tuple(so);
+
+    auto op       = w.annex<matrix::concat>();
+    op            = w.app(op, w.tuple({T, nis, r}));
+    op            = w.app(op, ax);
+    op            = w.app(op, Sis);
+    op            = w.app(op, s_out);
     auto [m, out] = w.app(op, w.tuple({bot_mem(), inputs}))->projs<2>();
     return out;
 }

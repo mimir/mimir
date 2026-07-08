@@ -7,7 +7,8 @@
 namespace mim::plug::tensor::phase {
 
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
-/// `get` / `set` / `map_reduce` become `%buffer.read` / `%buffer.write` / `%buffer.alloc`,
+/// `get` / `set` become `%buffer.read` / `%buffer.write`, `map_reduce` / `broadcast` / `pad` / `concat`
+/// become their buffer-world `%matrix.*` counterparts,
 /// and tensor array values `«s; T»` become `%buffer.Buf (r, s, T)` handles.
 /// Afterwards `%buffer.lower_ptr` lowers the buffer layer to `%mem.Ptr` + `%mem.lea` / `%mem.load` / `%mem.store`.
 ///
@@ -35,6 +36,8 @@ private:
     const Def* lower_set(const App*);
     const Def* lower_broadcast(const App*);
     const Def* lower_map_reduce(const App*);
+    const Def* lower_pad(const App*);
+    const Def* lower_concat(const App*);
 
     /// Adapts a call to a bufferized function: materializes value-world tensor arguments into buffers;
     /// continuation arguments pass through (their domains are converted by `rewrite_mut_Lam`).

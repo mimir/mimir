@@ -113,6 +113,34 @@ axm %matrix.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat»
                      → [%mem.M 0, %buffer.Buf (ri, si, T)]
                      → [%mem.M 0, %buffer.Buf (ro, so, T)];
 ///
+/// ### %%matrix.pad
+///
+/// The buffer-world counterpart of `%%tensor.pad`: `out[…o…] = input[…o−lo…]` inside the interior,
+/// `value` (mode 0, constant) or the clamped edge element (mode ≠ 0, replicate) outside.
+/// `s_out#d = lo#d + s_in#d + hi#d` is passed explicitly.
+/// The buffer shapes are stated as the logical shapes; `%%buffer.Buf` normalizes literal size-1 axes
+/// away, so they agree with the folded buffer handles, and the loop generation folds its read/write
+/// indices accordingly.
+///
+axm %matrix.pad: {T: *, r: Nat}
+              → [s_in s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
+              → [%mem.M 0, input: %buffer.Buf (r, s_in, T), value: T]
+              → [%mem.M 0, %buffer.Buf (r, s_out, T)];
+///
+/// ### %%matrix.concat
+///
+/// The buffer-world counterpart of `%%tensor.concat`: joins `nis` buffers along axis `ax`.
+/// `out[…o…] = is#k[… o with o#ax ↦ o#ax − off#k …]`, where `k` is the input whose range `o#ax` lands in
+/// (`off` are the prefix sums of the per-input extents along `ax`).
+/// `s_out` (the summed extent along `ax`, the shared extents elsewhere) is passed explicitly.
+///
+axm %matrix.concat: {T: *, nis r: Nat}
+                  → [ax: Idx r]
+                  → {Sis: «i: nis; «r; Nat»»}
+                  → [s_out: «r; Nat»]
+                  → [%mem.M 0, is: «i: nis; %buffer.Buf (r, Sis#i, T)»]
+                  → [%mem.M 0, %buffer.Buf (r, s_out, T)];
+///
 /// ## Unfolding functions
 ///
 /// ### product
@@ -210,7 +238,7 @@ axm %matrix.lower_matrix_medium_level:          %compile.Pass;
 ///
 /// ### Phases
 ///
-/// Lowers the affine-indexed buffer-world ops (`%%matrix.map_reduce_aff`, `%%matrix.broadcast`) to `affine.For`
-/// loops over `%%buffer` element operations.
+/// Lowers the buffer-world ops (`%%matrix.map_reduce_aff`, `%%matrix.broadcast`, `%%matrix.pad`,
+/// `%%matrix.concat`) to `affine.For` loops over `%%buffer` element operations.
 ///
 axm %matrix.lower_aff: %compile.Phase;

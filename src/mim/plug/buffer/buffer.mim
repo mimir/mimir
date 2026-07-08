@@ -21,8 +21,11 @@ import core;
 ///
 /// A buffer of rank `r`, shape `s`, holding elements of type `T`.
 /// Equivalent to the dependent array `«s; T»` but backed by memory.
+/// Literal size-1 axes are normalized away (`%%buffer.Buf (2, (3, 1), T)` ≡ `%%buffer.Buf (1, 3, T)`),
+/// mirroring the folding of the corresponding array types (`«3, 1; T»` ≡ `«3; T»`), so buffer types
+/// derived from logical shapes agree with the (folded) boundary types.
 ///
-axm %buffer.Buf: [r: Nat, s: «r; Nat», T: *] → *;
+axm %buffer.Buf: [r: Nat, s: «r; Nat», T: *] → *, normalize_Buf;
 ///
 /// ## Operations
 ///

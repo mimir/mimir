@@ -1,0 +1,40 @@
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+
+// End-to-end bufferization of %tensor.pad and %tensor.concat through the DEFAULT pipeline: `main`
+// materializes the literals into buffers and calls the bufferized `pad_row` / `cat_two` (lowered via
+// %matrix.pad / %matrix.concat to loops over %buffer, then to %mem loops).
+// pad (10,20,30) lo=1 hi=2 fill=5 -> (5,10,20,30,5,5); concat (10,20,30)+(1,2) -> (10,20,30,1,2).
+// done reads p[3] + c[4] + c[0] = 30 + 2 + 10 = 42.
+// exec_pad_concat_run.mim compiles this to an executable and asserts the exit code.
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+plugin direct;
+
+fun extern pad_row (input: «3; I32»): «6; I32» =
+    return (%tensor.pad 3 (0, 1, 2) (input, 5I32));
+
+fun extern cat_two (a: «3; I32», b: «2; I32»): «5; I32» =
+    return (%tensor.concat @(I32, 2, 1) 0_1 @(3, 2) (a, b));
+
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]] =
+    let t = (10I32, 20I32, 30I32);
+    let u = (1I32, 2I32);
+    con done1 (p: «6; I32») =
+        con done2 (c: «5; I32») =
+            let v1 = %tensor.get @(I32, 1, (6,)) (p, (3_6,));
+            let v2 = %tensor.get @(I32, 1, (5,)) (c, (4_5,));
+            let v3 = %tensor.get @(I32, 1, (5,)) (c, (0_5,));
+            let s  = %core.wrap.add 0 (%core.wrap.add 0 (v1, v2), v3);
+            return (mem, s);
+        cat_two ((t, u), done2);
+    pad_row (t, done1);
+
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
+// GONE-NOT: %matrix.

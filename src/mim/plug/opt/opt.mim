@@ -94,9 +94,9 @@ lam extern _default_compile (): %compile.Phase =
             %compile.phases ff (
                 %compile.named_phase "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce (+ broadcast)
                 %compile.named_phase "%tensor.fuse_tensor",        // fuse map_reduce chains
-                %compile.named_phase "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast onto
-                                                                   // %buffer/%matrix (no-op if bufferization is disabled)
-                %compile.named_phase "%matrix.lower_aff",          // %matrix.map_reduce_aff/broadcast -> affine.For over %buffer
+                %compile.named_phase "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast/pad/concat
+                                                                   // onto %buffer/%matrix (no-op if bufferization is disabled)
+                %compile.named_phase "%matrix.lower_aff",          // %matrix.* -> affine.For over %buffer
                 %compile.named_phase "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
                 // residual value-semantics lowering (everything, when bufferization was disabled).
                 // Runs last so the buffer phases above operate on the small pre-loop IR.
