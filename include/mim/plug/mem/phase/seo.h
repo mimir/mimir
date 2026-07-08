@@ -104,6 +104,7 @@ private:
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
+    absl::node_hash_map<Lam*, Vector<Phi>> lam2phis_;
 };
 
 } // namespace mim::plug::mem::phase

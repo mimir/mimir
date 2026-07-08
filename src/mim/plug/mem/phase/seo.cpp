@@ -354,15 +354,19 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
-        auto phis = Vector<Phi>();
-        if (needs_seo(phis, old_lam)) {
-            invalidate();
 
+        auto [i, ins] = lam2phis_.emplace(old_lam, Vector<Phi>());
+        auto& phis    = i->second;
+        if (ins) {
             for (auto slot : analysis_.slots())
                 if (auto sloxy = lattice(slot)) {
                     auto phi = mk_phi(old_world(), old_lam, sloxy);
                     if (auto val = lattice(phi)) phis.emplace_back(sloxy, phi, val);
                 }
+        }
+
+        if (needs_seo(phis, old_lam)) {
+            invalidate();
 
             auto new_lam  = build_lam(phis, old_lam);
             auto new_args = build_args(phis, old_lam, old_app);
