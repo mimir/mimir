@@ -173,16 +173,6 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& vars, DefVec& abstr_args) {
     }
 }
 
-Vector<SEO::Phi> SEO::phis(Lam* old_lam) {
-    Vector<Phi> result;
-    for (auto slot : analysis_.slots())
-        if (auto sloxy = lattice(slot)) {
-            auto phi = mk_phi(old_world(), old_lam, sloxy);
-            if (auto val = lattice(phi)) result.emplace_back(sloxy, phi, val);
-        }
-    return result;
-}
-
 // Analysis - Rewrite
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
@@ -257,9 +247,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             return world().app(rewrite(known), all_abstr_args.span().subspan(0, app->num_targs()));
         }
 
-        DefVec phi_vars;
-        DefVec phi_abstr_args;
-        auto all_muts = world().muts().merge(abstr_callee->local_muts(), abstr_arg->local_muts());
+        auto phi_vars       = DefVec();
+        auto phi_abstr_args = DefVec();
+        auto all_muts       = world().muts().merge(abstr_callee->local_muts(), abstr_arg->local_muts());
         for (auto mut : all_muts) {
             if (auto lam = mut->isa<Lam>()) {
                 if (lam == known || lam->is_closed()) continue;
@@ -291,7 +281,8 @@ void SEO::Analysis::analyze(const Def* def) {
 
     if (auto proxy = def->isa<Proxy>()) {
         if (proxy->tag() == Proxy_Slot) {
-            auto slot     = sloxy2slot_[proxy];
+            auto slot = sloxy2slot_[proxy];
+            assert(slot);
             auto [_, ptr] = slot->projs<2>();
             set(slot, slot);
             set(ptr, ptr);
@@ -363,10 +354,18 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
-        if (needs_seo(old_lam)) {
+        auto phis = Vector<Phi>();
+        if (needs_seo(phis, old_lam)) {
             invalidate();
-            auto new_lam  = build_lam(old_lam);
-            auto new_args = build_args(old_lam, old_app);
+
+            for (auto slot : analysis_.slots())
+                if (auto sloxy = lattice(slot)) {
+                    auto phi = mk_phi(old_world(), old_lam, sloxy);
+                    if (auto val = lattice(phi)) phis.emplace_back(sloxy, phi, val);
+                }
+
+            auto new_lam  = build_lam(phis, old_lam);
+            auto new_args = build_args(phis, old_lam, old_app);
             return map(old_app, new_world().app(new_lam, new_args));
         }
     }
@@ -374,23 +373,19 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
     return Super::rewrite_imm_App(old_app);
 }
 
-bool SEO::needs_seo(Lam* old_lam) {
+bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
     if (abstracted(old_lam->var())) return true;
 
-    for (auto [sloxy, phi, val] : phis(old_lam))
+    for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) return true;
 
     return false;
 }
 
-Lam* SEO::build_lam(Lam* old_lam) {
+Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end()) return i->second;
 
     DLOG("building a new lam for {}", old_lam);
-
-    // find phis
-    auto potential_phis = phis(old_lam);
-
     size_t num_old = old_lam->num_tvars();
 
     // build new dom
@@ -401,7 +396,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
         if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
     }
 
-    for (auto [sloxy, phi, val] : potential_phis)
+    for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) new_doms.emplace_back(rewrite(phi->type()));
 
     size_t num_new_vars = new_doms.size();
@@ -427,7 +422,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
         }
     }
 
-    for (auto [sloxy, phi, val] : potential_phis) {
+    for (auto [sloxy, phi, val] : phis) {
         DLOG("deciding if we keep the phi: {}, {}", phi, val);
         if (keep(phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
@@ -452,7 +447,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
     return new_lam;
 }
 
-DefVec SEO::build_args(Lam* old_lam, const App* old_app) {
+DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
     size_t num_old = old_lam->num_tvars();
     auto new_args  = DefVec();
 
@@ -463,7 +458,7 @@ DefVec SEO::build_args(Lam* old_lam, const App* old_app) {
     }
 
     DLOG("wiring up phi arguments");
-    for (auto [sloxy, phi, val] : phis(old_lam))
+    for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) new_args.emplace_back(rewrite_site_value(sloxy));
 
     return new_args;

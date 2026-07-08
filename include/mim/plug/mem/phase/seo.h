@@ -92,14 +92,12 @@ private:
         const Def* val;
     };
 
-    /// Collects the live phis of @p old_lam (those slots that have an abstract value in lattice()).
-    Vector<Phi> phis(Lam* old_lam);
     /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?
-    bool needs_seo(Lam* old_lam);
+    bool needs_seo(View<Phi>, Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
-    Lam* build_lam(Lam* old_lam);
+    Lam* build_lam(View<Phi>, Lam* old_lam);
     /// Builds the argument list for an App of @p old_lam matching the signature built by build_lam().
-    DefVec build_args(Lam* old_lam, const App* old_app);
+    DefVec build_args(View<Phi>, Lam* old_lam, const App* old_app);
     /// Rewrites the value of @p sloxy as known at the current call site:
     /// either the value curr_mut() wrote to the slot or curr_mut()'s own phi for it.
     const Def* rewrite_site_value(const Def* sloxy);
