@@ -56,7 +56,6 @@ private:
         DefVec sccp(Defs, Defs);
         void gvn_bundle(Defs, Defs, Span<const Def*>);
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
-        DefVec sccp_gvn(Defs, Span<const Def*>);
 
         const Def* rewrite_imm_App(const App*) final;
 

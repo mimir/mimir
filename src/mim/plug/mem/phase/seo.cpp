@@ -9,11 +9,6 @@
 namespace mim::plug::mem::phase {
 
 /*
- * Terminology:
- * - slot: %mem.slot - but the pointer part, in the
- */
-
-/*
  * Helpers
  */
 
@@ -33,16 +28,6 @@ void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
     mut2sloxy2val_.clear();
-}
-
-const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
-    const auto& sloxy2val = mut2sloxy2val_[curr_mut()];
-    if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
-
-    // not in the local map: check if we have a phi for this slot in the lattice
-    auto phi = world().proxy(pointee(sloxy), {curr_mut(), sloxy}, Proxy_Phi);
-    if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
-    return nullptr;
 }
 
 /*
@@ -157,14 +142,19 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
     }
 }
 
-DefVec SEO::Analysis::sccp_gvn(Defs vars, Span<const Def*> abstr_args) {
-    auto abstr_vars = sccp(vars, abstr_args);
+// SSA
 
-    gvn_bundle(vars, abstr_args, abstr_vars);
-    gvn_split(vars, abstr_args, abstr_vars);
+const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
+    const auto& sloxy2val = mut2sloxy2val_[curr_mut()];
+    if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
-    return abstr_vars;
+    // not in the local map: check if we have a phi for this slot in the lattice
+    auto phi = world().proxy(pointee(sloxy), {curr_mut(), sloxy}, Proxy_Phi);
+    if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
+    return nullptr;
 }
+
+// Analysis - Rewrite
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
@@ -210,163 +200,71 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         DLOG("load from unknown pointer {}, treating result as top", abstr_ptr);
         return set(load, load);
-    } else if (auto dispatch = Dispatch(app)) {
-        // working on this alternative
-        // for (size_t i = 0, e = dispatch.num_targets(); i != e; ++i)
-        //     if (auto lam = dispatch.target(i)->isa_mut<Lam>()) {
-        //         mut2sloxy2val_[curr_mut()]; // make sure no rehash happens
-        //         auto& dst = mut2sloxy2val_[lam];
-        //         dst       = mut2sloxy2val_[curr_mut()];
-        //     }
+    } else {
+        auto abstr_callee = rewrite(app->callee());
+        auto abstr_arg    = rewrite(app->arg());
+        auto known        = abstr_callee->isa_mut<Lam>();
+        if (isa_optimizable(known)) {
+            DefVec all_vars;
+            DefVec all_abstr_args;
 
-        DefVec abstr_args;
-        for (auto arg : app->targs())
-            abstr_args.emplace_back(rewrite(arg));
-
-        auto abstr_index = rewrite(dispatch.index());
-        auto l           = Lit::isa(abstr_index);
-        DLOG("abstract value of dispatch index {} in {}: {}", dispatch.index(), curr_mut(), abstr_index);
-
-        for (auto slot : slots()) {
-            auto abstr_slot = rewrite(slot);
-            if (auto value = sloxy2val(abstr_slot)) abstr_args.emplace_back(value);
-        }
-
-        auto arms = Vector<Lam*>(dispatch.num_targets());
-        for (size_t i = 0, e = arms.size(); i != e; ++i)
-            arms[i] = dispatch.target(i)->isa_mut<Lam>();
-
-        // Propagate into all arms - even if the index is abstractly known:
-        // an arm skipped in one fixed-point round would accumulate a lattice - and hence a signature -
-        // that differs from its siblings', but SymExprOpt::rewrite_imm_App relies on all arms agreeing.
-        // For the same reason propagate either into all arms or into none.
-        bool propagated = std::ranges::all_of(arms, [](Lam* lam) { return isa_optimizable(lam); });
-        if (propagated) {
-            for (auto lam : arms) {
-                DLOG("dispatch, writing local values to {}", lam);
-
-                DefVec vars;
-                for (auto var : lam->tvars())
-                    vars.emplace_back(var);
-
-                for (auto slot : slots()) {
-                    auto abstr_slot = rewrite(slot);
-                    auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
-                    if (sloxy2val(abstr_slot)) {
-                        vars.emplace_back(phi);
-                    } else {
-                        DLOG("no value found for {}", slot);
-                        // TODO Can this ever happen?
-                    }
-                }
-
-                auto abstr_vars = sccp_gvn(vars, abstr_args);
-                set(lam->var(), world().tuple(abstr_vars.span().subspan(0, app->num_targs())));
-                for (size_t i = 0; i < vars.size(); i++)
-                    set(vars[i], abstr_vars[i]);
+            // propagate vars
+            for (size_t i = 0; i != app->num_targs(); ++i) {
+                all_vars.emplace_back(known->tvar(i));
+                all_abstr_args.emplace_back(abstr_arg->tproj(i));
             }
-        }
 
-        // Whether propagated (lattice state seeded above) or escaping, an arm is scheduled the same way:
-        // rewrite() maps the mut to itself and enqueues its body for the BFS drain.
-        if (l) {
-            auto abstr_taken = rewrite(dispatch.target(*l));
-            return world().app(abstr_taken, abstr_args.span().subspan(0, app->num_targs()));
-        }
-
-        DefVec abstr_arms;
-        for (size_t i = 0, e = arms.size(); i != e; ++i)
-            abstr_arms.emplace_back(rewrite(dispatch.target(i)));
-        return world().app(world().extract(world().tuple(abstr_arms), abstr_index),
-                           abstr_args.span().subspan(0, app->num_targs()));
-    } else if (auto lam = app->callee()->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
-        DLOG("{} not optimizable", app->callee());
-
-        auto n          = app->num_targs();
-        auto abstr_args = absl::FixedArray<const Def*>(n);
-
-        for (size_t i = 0; i != n; ++i) {
-            if (auto lam = app->targ(i)->isa_mut<Lam>(); isa_optimizable(lam)) {
-                // need to rewrite this later, after slot values in the lattice are updated
-                abstr_args[i] = lam;
-            } else {
-                DLOG("in app of non-optimizable function, rewriting arg {}", app->targ(i));
-                abstr_args[i] = rewrite(app->targ(i));
-            }
-        }
-
-        for (size_t i = 0; i != n; ++i) {
-            if (auto lam = app->targ(i)->isa_mut<Lam>(); isa_optimizable(lam)) {
-                // now propagate known slot values and rewrite the lam
-                DefVec vars_inside_unknown_function;
-                DefVec abstr_args_inside_unknown_function;
-
-                // set the lams arguments to top, as we don't know what the unknown function will pass
-                for (auto var : lam->tvars()) {
-                    vars_inside_unknown_function.emplace_back(var);
-                    abstr_args_inside_unknown_function.emplace_back(var);
+            // propagate phis
+            DLOG("propagating slot values for call of {}", known);
+            for (auto slot : slots()) {
+                DLOG("for slot {}", slot);
+                auto abstr_slot = rewrite(slot);
+                if (auto value = sloxy2val(abstr_slot)) {
+                    auto phi = world().proxy(pointee(slot), {known, abstr_slot}, Proxy_Phi);
+                    all_vars.emplace_back(phi);
+                    all_abstr_args.emplace_back(value);
+                } else {
+                    DLOG("no value found for {}", slot);
                 }
+            }
 
-                // propagate known slot contents
-                // some of these might escape, but we'll catch that in the postprocessing later
+            auto all_abstr_vars = sccp(all_vars, all_abstr_args);
+            gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
+            gvn_split(all_vars, all_abstr_args, all_abstr_vars);
+
+            set(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
+
+            for (size_t i = app->num_targs(), e = all_vars.size(); i != e; ++i)
+                set(all_vars[i], all_abstr_vars[i]);
+
+            return world().app(rewrite(known), all_abstr_args.span().subspan(0, app->num_targs()));
+        }
+
+        DefVec phi_vars;
+        DefVec phi_abstr_args;
+        auto all_muts = world().muts().merge(abstr_callee->local_muts(), abstr_arg->local_muts());
+        for (auto mut : all_muts) {
+            if (auto lam = mut->isa<Lam>()) {
+                if (lam == known || lam->is_closed()) continue;
+
+                // propagate phis
+                DLOG("propagating slot values for call of {}", lam);
                 for (auto slot : slots()) {
+                    DLOG("for slot {}", slot);
                     auto abstr_slot = rewrite(slot);
-                    auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
                     if (auto value = sloxy2val(abstr_slot)) {
-                        vars_inside_unknown_function.emplace_back(phi);
-                        abstr_args_inside_unknown_function.emplace_back(value);
+                        auto phi = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
+                        phi_vars.emplace_back(phi);
+                        phi_abstr_args.emplace_back(value);
                     } else {
                         DLOG("no value found for {}", slot);
-                        // TODO Can this ever happen?
-                        // propagate(lam_proxy, lam_proxy);
                     }
                 }
-
-                auto abstr_vars_inside_unknown_function
-                    = sccp_gvn(vars_inside_unknown_function, abstr_args_inside_unknown_function);
-                set(lam->var(), world().tuple(abstr_vars_inside_unknown_function.span().subspan(0, lam->num_tvars())));
-                for (size_t i = 0; i < vars_inside_unknown_function.size(); i++)
-                    set(vars_inside_unknown_function[i], abstr_vars_inside_unknown_function[i]);
-
-                // now rewrite the lam
-                abstr_args[i] = rewrite(app->targ(i));
             }
         }
 
-        return world().app(rewrite(lam), abstr_args);
-    } else if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-        DefVec all_vars;
-        DefVec all_abstr_args;
-
-        // propagate vars
-        for (size_t i = 0; i != app->num_targs(); ++i) {
-            all_vars.emplace_back(lam->tvar(i));
-            all_abstr_args.emplace_back(rewrite(app->targ(i)));
-        }
-
-        // propagate phis
-        DLOG("propagating slot values for call of {}", lam);
-        for (auto slot : slots()) {
-            DLOG("for slot {}", slot);
-            auto abstr_slot = rewrite(slot);
-            auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
-            if (auto value = sloxy2val(abstr_slot)) {
-                all_vars.emplace_back(phi);
-                all_abstr_args.emplace_back(value);
-            } else {
-                DLOG("no value found for {}", slot);
-                // TODO Can this ever happen?
-                // propagate(lam_proxy, lam_proxy);
-            }
-        }
-
-        auto all_abstr_vars = sccp_gvn(all_vars, all_abstr_args);
-
-        set(lam->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
-        for (size_t i = app->num_targs(); i < all_vars.size(); i++)
-            set(all_vars[i], all_abstr_vars[i]);
-
-        return world().app(rewrite(lam), all_abstr_args.span().subspan(0, app->num_targs()));
+        auto phi_abstr_vars = sccp(phi_vars, phi_abstr_args);
+        // TODO assert that everything gets propagated
     }
 
     return Super::rewrite_imm_App(app);
@@ -403,8 +301,8 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto app = def->isa<App>()) {
         if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
             // lam is applied here, not escaped: traverse its body without seeding its vars to top
-            analyze(app->arg());
             analyze(app->type());
+            analyze(app->arg());
             for (auto d : lam->deps())
                 analyze(d);
             return;
@@ -451,67 +349,13 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         auto [mem, ptr, val] = store->args<3>();
         if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) return rewrite(mem);
     } else if (auto load = Axm::isa<mem::load>(old_app)) {
-        auto [result_mem, result_load] = load->projs<2>();
-        auto [mem, ptr]                = load->args<2>();
+        auto [res_mem, res_val] = load->projs<2>();
+        auto [mem, ptr]         = load->args<2>();
         DLOG("rewriting a load from {} ({})", ptr, old_app);
-        if (auto known_load = lattice(result_load); known_load && known_load != result_load) {
-            DLOG("rewriting a load from {}, we know that it's {}", ptr, known_load);
+        if (auto abstr_val = lattice(res_val); abstr_val && abstr_val != res_val) {
+            DLOG("rewriting a load from {}, we know that it's {}", ptr, abstr_val);
             auto new_mem = rewrite(mem);
-            return new_world().tuple({new_mem, rewrite(known_load)});
-        }
-    } else if (auto dispatch = Dispatch(old_app)) {
-        auto old_arms = Vector<Lam*>(dispatch.num_targets());
-        for (size_t i = 0, e = old_arms.size(); i != e; ++i)
-            old_arms[i] = dispatch.target(i)->isa_mut<Lam>();
-
-        bool all_muts = std::ranges::all_of(old_arms, [](Lam* lam) { return lam != nullptr; });
-        if (all_muts && std::ranges::any_of(old_arms, [this](Lam* lam) { return needs_seo(lam); })) {
-            auto new_index = rewrite(dispatch.index());
-            DLOG("in {}, found dispatch on {} ({}) with {}", curr_mut(), dispatch.index(), new_index,
-                 fe::Join(old_arms, " / "));
-
-            if (auto l = Lit::isa(new_index)) {
-                // the dispatch folds in the new world; only rebuild the taken arm
-                auto old_taken = old_arms[*l];
-                if (needs_seo(old_taken)) {
-                    invalidate();
-                    return map(old_app, new_world().app(build_lam(old_taken), build_args(old_taken, old_app)));
-                }
-                return Super::rewrite_imm_App(old_app);
-            }
-
-            invalidate();
-            auto new_args = build_args(old_arms.front(), old_app);
-            auto new_arms = DefVec();
-            for (auto old_arm : old_arms) {
-                // EtaExp runs beforehand, so all arms are fresh single-use Lams that received the same
-                // propagation; hence their rebuilt signatures and arguments agree.
-                assert(build_args(old_arm, old_app) == new_args);
-                new_arms.emplace_back(needs_seo(old_arm) ? build_lam(old_arm) : rewrite(old_arm));
-                assert(new_arms.back()->type() == new_arms.front()->type());
-            }
-
-            auto new_callee = new_world().extract(new_world().tuple(new_arms), new_index);
-            return map(old_app, new_world().app(new_callee, new_args));
-        }
-    } else if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !isa_optimizable(old_lam)) {
-        // lams passed to an unknown callee cannot receive extra args for their phis;
-        // resolve each phi to the value known at this call site instead.
-        for (auto old_arg : old_app->targs()) {
-            auto cont = old_arg->isa_mut<Lam>();
-            if (!cont) continue;
-
-            for (auto slot : analysis_.slots()) {
-                if (auto sloxy = lattice(slot)) {
-                    auto phi = old_world().proxy(pointee(slot), {cont, sloxy}, Proxy_Phi);
-                    if (auto def = lattice(phi)) {
-                        auto new_val = rewrite_site_value(sloxy, pointee(slot));
-                        DLOG("in {}, resolving phi {} of lam {} to {}", curr_mut(), phi, cont, new_val);
-                        map(phi, new_val);
-                        if (def != phi && Proxy::isa<Proxy_GVN>(def)) map(def, new_val);
-                    }
-                }
-            }
+            return new_world().tuple({new_mem, rewrite(abstr_val)});
         }
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
