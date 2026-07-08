@@ -444,8 +444,10 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
 
     map(old_lam->var(), var_map);
     {
-        auto _ = enter(old_lam);
-        new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+        auto _          = enter(old_lam);
+        auto new_filter = rewrite(old_lam->filter());
+        auto new_body   = rewrite(old_lam->body());
+        new_lam->set(new_filter, new_body);
     }
 
     return new_lam;
