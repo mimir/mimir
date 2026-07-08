@@ -9,8 +9,11 @@
 plugin tuple;
 plugin refly;
 plugin vec;
-import affine;
-import buffer;
+// `plugin` (not `import`) so the affine/buffer/matrix runtime modules load whenever `tensor` is loaded —
+// the default `opt` bufferization chain needs their stages (%matrix.lower_aff, %buffer.lower_ptr, …) registered.
+plugin affine;
+plugin buffer;
+plugin matrix;
 ///
 /// A tensor plugin
 ///

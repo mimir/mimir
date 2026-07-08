@@ -32,10 +32,15 @@ op_write(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* bu
 }
 
 /// `%buffer.copy (r, s, T) (mem, dst, src)` ↦ `%mem.M 0` (copies the whole buffer `src` into `dst`).
-inline const Def*
-op_copy(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* dst, const Def* src) {
+inline const Def* op_copy(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* dst, const Def* src) {
     auto& w = mem->world();
     return w.app(w.app(w.annex<copy>(), {r, s, T}), {mem, dst, src});
+}
+
+/// `%buffer.init (r, s, T) (mem, val)` ↦ `[%mem.M 0, %buffer.Buf (r, s, T)]` (initialised with the array value `val`).
+inline const Def* op_init(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* val) {
+    auto& w = mem->world();
+    return w.app(w.app(w.annex<init>(), {r, s, T}), {mem, val});
 }
 
 /// `%buffer.constant (r, s, T) (mem, val)` ↦ `[%mem.M 0, %buffer.Buf (r, s, T)]` (every element initialised to `val`).

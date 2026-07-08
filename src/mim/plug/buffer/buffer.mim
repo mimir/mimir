@@ -46,6 +46,13 @@ axm %buffer.read: [r: Nat, s: «r; Nat», T: *] as rsT
 axm %buffer.write: [r: Nat, s: «r; Nat», T: *] as rsT
                  → [%mem.M 0, %buffer.Buf rsT, idx: «i: r; Idx s#i», val: T] → [%mem.M 0, %buffer.Buf rsT], normalize_write;
 ///
+/// ### %%buffer.init
+///
+/// A buffer initialised with the contents of the SSA array value `val`.
+/// This is the boundary conversion from the value world into the buffer world.
+///
+axm %buffer.init: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, val: «s; T»] → [%mem.M 0, %buffer.Buf rsT];
+///
 /// ### %%buffer.constant
 ///
 /// A buffer initialised with a constant value in every element.

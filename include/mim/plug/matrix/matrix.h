@@ -3,7 +3,6 @@
 #include <mim/world.h>
 
 #include "mim/plug/buffer/buffer.h"
-
 #include "mim/plug/matrix/autogen.h"
 
 namespace mim::plug::matrix {
