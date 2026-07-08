@@ -46,11 +46,11 @@ private:
         void reset() final;
 
         const DefSet& slots() const { return slots_; }
-        const DefMap<Def2Def>& mut2slot2value() const { return mut2slot2value_; }
+        const DefMap<Def2Def>& mut2sloxy2val() const { return mut2sloxy2val_; }
 
     private:
-        const Def* slot2value(const Def* slot);
-        const Def* slot2value(const Def* slot, const Def* value) { return mut2slot2value_[curr_mut()][slot] = value; }
+        const Def* sloxy2val(const Def* sloxy);
+        const Def* sloxy2val(const Def* sloxy, const Def* val) { return mut2sloxy2val_[curr_mut()][sloxy] = val; }
 
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs, Defs);
@@ -65,12 +65,12 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        DefMap<Def2Def> mut2slot2value_;
+        DefMap<Def2Def> mut2sloxy2val_;
         DefSet visited_;
 
         // global (kept between iterations)
         Def2Def sloxy2slot_;
-        DefSet slots_;
+        DefSet slots_; // actually slot ptrs
     };
 
 public:

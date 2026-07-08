@@ -9,6 +9,11 @@
 namespace mim::plug::mem::phase {
 
 /*
+ * Terminology:
+ * - slot: %mem.slot - but the pointer part, in the
+ */
+
+/*
  * Helpers
  */
 
@@ -27,16 +32,15 @@ static size_t idx_of(Defs vars, const Def* p) {
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
-    mut2slot2value_.clear();
+    mut2sloxy2val_.clear();
 }
 
-const Def* SEO::Analysis::slot2value(const Def* slot) {
-    const auto& slot2value = mut2slot2value_[curr_mut()];
-    if (auto i = slot2value.find(slot); i != slot2value.end()) return i->second;
+const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
+    const auto& sloxy2val = mut2sloxy2val_[curr_mut()];
+    if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
     // not in the local map: check if we have a phi for this slot in the lattice
-    auto [T, _] = Axm::as<mem::Ptr>(slot->type())->args<2>();
-    auto phi    = world().proxy(T, {curr_mut(), slot}, Proxy_Phi);
+    auto phi = world().proxy(pointee(sloxy), {curr_mut(), sloxy}, Proxy_Phi);
     if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
     return nullptr;
 }
@@ -182,9 +186,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
 
-        if (Proxy::isa<Proxy_Slot>(abstr_ptr)) {
-            slot2value(abstr_ptr, abstr_val);
-            DLOG("in {}, found a store: {} <- {}", curr_mut(), abstr_ptr, abstr_val);
+        if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
+            sloxy2val(sloxy, abstr_val);
+            DLOG("in {}, found a store: {} <- {}", curr_mut(), sloxy, abstr_val);
             return abstr_mem;
         }
     } else if (auto load = Axm::isa<mem::load>(app)) {
@@ -194,13 +198,13 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem  = rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
 
-        if (Proxy::isa<Proxy_Slot>(abstr_ptr)) {
-            if (auto abstr_val = slot2value(abstr_ptr)) {
+        if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
+            if (auto abstr_val = sloxy2val(sloxy)) {
                 DLOG("abstr value: `{}`", abstr_val);
                 set(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
-            DLOG("couldn't resolve load of {} yet, returning bot", abstr_ptr);
+            DLOG("couldn't resolve load of {} yet, returning bot", sloxy);
             return world().tuple({abstr_mem, world().bot(T)});
         }
 
@@ -210,9 +214,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         // working on this alternative
         // for (size_t i = 0, e = dispatch.num_targets(); i != e; ++i)
         //     if (auto lam = dispatch.target(i)->isa_mut<Lam>()) {
-        //         mut2slot2value_[curr_mut()]; // make sure no rehash happens
-        //         auto& dst = mut2slot2value_[lam];
-        //         dst       = mut2slot2value_[curr_mut()];
+        //         mut2sloxy2val_[curr_mut()]; // make sure no rehash happens
+        //         auto& dst = mut2sloxy2val_[lam];
+        //         dst       = mut2sloxy2val_[curr_mut()];
         //     }
 
         DefVec abstr_args;
@@ -225,7 +229,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         for (auto slot : slots()) {
             auto abstr_slot = rewrite(slot);
-            if (auto value = slot2value(abstr_slot)) abstr_args.emplace_back(value);
+            if (auto value = sloxy2val(abstr_slot)) abstr_args.emplace_back(value);
         }
 
         auto arms = Vector<Lam*>(dispatch.num_targets());
@@ -248,7 +252,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 for (auto slot : slots()) {
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
-                    if (slot2value(abstr_slot)) {
+                    if (sloxy2val(abstr_slot)) {
                         vars.emplace_back(phi);
                     } else {
                         DLOG("no value found for {}", slot);
@@ -308,7 +312,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 for (auto slot : slots()) {
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
-                    if (auto value = slot2value(abstr_slot)) {
+                    if (auto value = sloxy2val(abstr_slot)) {
                         vars_inside_unknown_function.emplace_back(phi);
                         abstr_args_inside_unknown_function.emplace_back(value);
                     } else {
@@ -346,7 +350,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             DLOG("for slot {}", slot);
             auto abstr_slot = rewrite(slot);
             auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
-            if (auto value = slot2value(abstr_slot)) {
+            if (auto value = sloxy2val(abstr_slot)) {
                 all_vars.emplace_back(phi);
                 all_abstr_args.emplace_back(value);
             } else {
@@ -634,10 +638,10 @@ DefVec SEO::build_args(Lam* old_lam, const App* old_app) {
 }
 
 const Def* SEO::rewrite_site_value(const Def* sloxy, const Def* slot_type) {
-    if (auto slot2value_it = analysis_.mut2slot2value().find(curr_mut());
-        slot2value_it != analysis_.mut2slot2value().end()) {
-        auto& slot2value = slot2value_it->second;
-        if (auto found_value_it = slot2value.find(sloxy); found_value_it != slot2value.end())
+    if (auto slot2value_it = analysis_.mut2sloxy2val().find(curr_mut());
+        slot2value_it != analysis_.mut2sloxy2val().end()) {
+        auto& sloxy2val = slot2value_it->second;
+        if (auto found_value_it = sloxy2val.find(sloxy); found_value_it != sloxy2val.end())
             return rewrite(found_value_it->second);
     }
     // curr_mut() didn't write to the slot; forward our own phi for it
