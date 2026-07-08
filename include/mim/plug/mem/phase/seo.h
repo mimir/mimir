@@ -46,7 +46,7 @@ private:
         void reset() final;
 
         const DefSet& slots() const { return slots_; }
-        const DefMap<Def2Def>& mut2sloxy2val() const { return mut2sloxy2val_; }
+        const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
 
     private:
         // SCCP
@@ -69,7 +69,7 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        DefMap<Def2Def> mut2sloxy2val_;
+        absl::node_hash_map<const Def*, Def2Def> mut2sloxy2val_;
         DefSet visited_;
 
         // global (kept between iterations)
