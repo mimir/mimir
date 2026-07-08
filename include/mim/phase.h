@@ -151,8 +151,11 @@ public:
     /// @name Getters
     ///@{
     World& world() { return Phase::world(); }
-    Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
+    template<class D = Def>
+    D* curr_mut() const {
+        return curr_mut_->template isa<D>();
+    }
     ///@}
 
     /// @name lattice
@@ -259,6 +262,12 @@ public:
     const Def* lattice(const Def* old_def) {
         if (auto i = analysis_->lattice().find(old_def); i != analysis_->lattice().end()) return i->second;
         return nullptr;
+    }
+
+    /// Returns lattice(@p old_def) if it differs from @p old_def (i.e. we learned something), otherwise `nullptr`.
+    const Def* abstracted(const Def* old_def) {
+        auto l = lattice(old_def);
+        return l && l != old_def ? l : nullptr;
     }
 
     /// Runs the optional pre-analysis on RWPhase::old_world(), typically to a fixed point,

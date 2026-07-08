@@ -85,7 +85,10 @@ public:
         // Do NOT swap ptr_ and world_: they are back pointers!
     }
 
-    Def* curr_mut() const { return curr_mut_; }
+    template<class D = Def>
+    D* curr_mut() const {
+        return curr_mut_->template isa<D>();
+    }
 
 private:
     std::unique_ptr<World> ptr_;

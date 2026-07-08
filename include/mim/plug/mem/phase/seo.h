@@ -58,7 +58,7 @@ private:
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
 
         // SSA
-        void propagate_phis(const Def* mut, DefVec& vars, DefVec& abstr_args);
+        void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy);
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return mut2sloxy2val_[curr_mut()][sloxy] = val; }
 
@@ -85,6 +85,15 @@ public:
 private:
     const Def* rewrite_imm_App(const App*) final;
 
+    /// A live phi for @p old_lam: the @p sloxy it stands for, the @p phi proxy, and its abstract @p val.
+    struct Phi {
+        const Def* sloxy;
+        const Def* phi;
+        const Def* val;
+    };
+
+    /// Collects the live phis of @p old_lam (those slots that have an abstract value in lattice()).
+    Vector<Phi> phis(Lam* old_lam);
     /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?
     bool needs_seo(Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
@@ -93,7 +102,7 @@ private:
     DefVec build_args(Lam* old_lam, const App* old_app);
     /// Rewrites the value of @p sloxy as known at the current call site:
     /// either the value curr_mut() wrote to the slot or curr_mut()'s own phi for it.
-    const Def* rewrite_site_value(const Def* sloxy, const Def* slot_type);
+    const Def* rewrite_site_value(const Def* sloxy);
 
     Analysis analysis_;
     Lam2Lam lam2lam_;

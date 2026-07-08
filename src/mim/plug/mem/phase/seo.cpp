@@ -144,23 +144,27 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
 
 // SSA
 
+static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
+    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi);
+}
+
 const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
     const auto& sloxy2val = mut2sloxy2val_[curr_mut()];
     if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
     // not in the local map: check if we have a phi for this slot in the lattice
-    auto phi = world().proxy(pointee(sloxy), {curr_mut(), sloxy}, Proxy_Phi);
+    auto phi = mk_phi(world(), curr_mut<Lam>(), sloxy);
     if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
     return nullptr;
 }
 
-void SEO::Analysis::propagate_phis(const Def* mut, DefVec& vars, DefVec& abstr_args) {
-    DLOG("propagating slot values for call of {}", mut);
+void SEO::Analysis::propagate_phis(Lam* lam, DefVec& vars, DefVec& abstr_args) {
+    DLOG("propagating slot values for call of {}", lam);
     for (auto slot : slots()) {
         DLOG("for slot {}", slot);
         auto abstr_slot = rewrite(slot);
         if (auto value = sloxy2val(abstr_slot)) {
-            auto phi = world().proxy(pointee(slot), {mut, abstr_slot}, Proxy_Phi);
+            auto phi = mk_phi(world(), lam, abstr_slot);
             vars.emplace_back(phi);
             abstr_args.emplace_back(value);
         } else {
@@ -330,19 +334,19 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
         auto [mem, id] = slot->args<2>();
         auto [_, ptr]  = slot->projs<2>();
-        if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) {
+        if (abstracted(ptr)) {
             auto new_mem = rewrite(mem);
             auto new_ptr = new_world().bot(rewrite(ptr->type())); // we hopefully proved that no one uses it
             return new_world().tuple({new_mem, new_ptr});
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
-        if (auto sloxy = lattice(ptr); sloxy && sloxy != ptr) return rewrite(mem);
+        if (abstracted(ptr)) return rewrite(mem);
     } else if (auto load = Axm::isa<mem::load>(old_app)) {
         auto [res_mem, res_val] = load->projs<2>();
         auto [mem, ptr]         = load->args<2>();
         DLOG("rewriting a load from {} ({})", ptr, old_app);
-        if (auto abstr_val = lattice(res_val); abstr_val && abstr_val != res_val) {
+        if (auto abstr_val = abstracted(res_val)) {
             DLOG("rewriting a load from {}, we know that it's {}", ptr, abstr_val);
             auto new_mem = rewrite(mem);
             return new_world().tuple({new_mem, rewrite(abstr_val)});
@@ -361,16 +365,22 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 }
 
 bool SEO::needs_seo(Lam* old_lam) {
-    if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) return true;
+    if (abstracted(old_lam->var())) return true;
 
-    for (auto slot : analysis_.slots()) {
-        if (auto sloxy = lattice(slot)) {
-            auto phi = old_world().proxy(pointee(slot), {old_lam, sloxy}, Proxy_Phi);
-            if (auto def = lattice(phi); def && keep(phi, def)) return true;
-        }
-    }
+    for (auto [sloxy, phi, val] : phis(old_lam))
+        if (keep(phi, val)) return true;
 
     return false;
+}
+
+Vector<SEO::Phi> SEO::phis(Lam* old_lam) {
+    Vector<Phi> result;
+    for (auto slot : analysis_.slots())
+        if (auto sloxy = lattice(slot)) {
+            auto phi = mk_phi(old_world(), old_lam, sloxy);
+            if (auto val = lattice(phi)) result.emplace_back(sloxy, phi, val);
+        }
+    return result;
 }
 
 Lam* SEO::build_lam(Lam* old_lam) {
@@ -379,13 +389,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
     DLOG("building a new lam for {}", old_lam);
 
     // find phis
-    Vector<std::pair<const Def*, const Def*>> potential_phis;
-    for (auto slot : analysis_.slots()) {
-        if (auto sloxy = lattice(slot)) {
-            auto phi = old_world().proxy(pointee(slot), {old_lam, sloxy}, Proxy_Phi);
-            if (auto def = lattice(phi)) potential_phis.push_back({phi, def});
-        }
-    }
+    auto potential_phis = phis(old_lam);
 
     size_t num_old = old_lam->num_tvars();
 
@@ -397,8 +401,8 @@ Lam* SEO::build_lam(Lam* old_lam) {
         if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
     }
 
-    for (auto [proxy, abstr] : potential_phis)
-        if (keep(proxy, abstr)) new_doms.emplace_back(rewrite(proxy->type()));
+    for (auto [sloxy, phi, val] : potential_phis)
+        if (keep(phi, val)) new_doms.emplace_back(rewrite(phi->type()));
 
     size_t num_new_vars = new_doms.size();
 
@@ -423,20 +427,19 @@ Lam* SEO::build_lam(Lam* old_lam) {
         }
     }
 
-    for (size_t i = 0; i < potential_phis.size(); i++) {
-        auto [proxy, abstr] = potential_phis[i];
-        DLOG("deciding if we keep the phi: {}, {}", proxy, abstr);
-        if (keep(proxy, abstr)) {
+    for (auto [sloxy, phi, val] : potential_phis) {
+        DLOG("deciding if we keep the phi: {}, {}", phi, val);
+        if (keep(phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
-            DLOG("mapping phi {} to {}", proxy, v);
-            map(proxy, v);
-            if (abstr != proxy) {
+            DLOG("mapping phi {} to {}", phi, v);
+            map(phi, v);
+            if (val != phi) {
                 DLOG("need to map a phi to gvn bundle");
-                map(abstr, v);
+                map(val, v);
             }
         } else {
             DLOG("need to map a phi to constant value");
-            map(proxy, rewrite(abstr));
+            map(phi, rewrite(val));
         }
     }
 
@@ -460,18 +463,13 @@ DefVec SEO::build_args(Lam* old_lam, const App* old_app) {
     }
 
     DLOG("wiring up phi arguments");
-    for (auto slot : analysis_.slots()) {
-        if (auto sloxy = lattice(slot)) {
-            auto phi = old_world().proxy(pointee(slot), {old_lam, sloxy}, Proxy_Phi);
-            if (auto def = lattice(phi); def && keep(phi, def))
-                new_args.emplace_back(rewrite_site_value(sloxy, pointee(slot)));
-        }
-    }
+    for (auto [sloxy, phi, val] : phis(old_lam))
+        if (keep(phi, val)) new_args.emplace_back(rewrite_site_value(sloxy));
 
     return new_args;
 }
 
-const Def* SEO::rewrite_site_value(const Def* sloxy, const Def* slot_type) {
+const Def* SEO::rewrite_site_value(const Def* sloxy) {
     if (auto slot2value_it = analysis_.mut2sloxy2val().find(curr_mut());
         slot2value_it != analysis_.mut2sloxy2val().end()) {
         auto& sloxy2val = slot2value_it->second;
@@ -479,8 +477,7 @@ const Def* SEO::rewrite_site_value(const Def* sloxy, const Def* slot_type) {
             return rewrite(found_value_it->second);
     }
     // curr_mut() didn't write to the slot; forward our own phi for it
-    auto curr_phi = old_world().proxy(slot_type, {curr_mut(), sloxy}, Proxy_Phi);
-    return rewrite(curr_phi);
+    return rewrite(mk_phi(old_world(), curr_mut<Lam>(), sloxy));
 }
 
 } // namespace mim::plug::mem::phase
