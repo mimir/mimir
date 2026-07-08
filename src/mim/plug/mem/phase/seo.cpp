@@ -161,13 +161,12 @@ DefVec SEO::Analysis::sccp_gvn(Defs vars, Span<const Def*> abstr_args) {
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
-            auto [T, as]       = slot->decurry()->args<2>();
-            auto [mem, id]     = slot->args<2>();
-            auto [_, ptr]      = slot->projs<2>();
-            auto abstr_mem     = rewrite(mem);
-            auto abstr_id      = rewrite(id);
-            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
-            slot2type_[ptr]    = T;
+            auto [mem, id] = slot->args<2>();
+            auto [_, ptr]  = slot->projs<2>();
+            auto abstr_mem = rewrite(mem);
+            auto abstr_id  = rewrite(id);
+            auto sloxy     = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
+            slots_.emplace(ptr);
             sloxy2slot_[sloxy] = slot;
             DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
             set(ptr, sloxy);
@@ -220,7 +219,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto l           = Lit::isa(abstr_index);
         DLOG("abstract value of dispatch index {} in {}: {}", dispatch.index(), curr_mut(), abstr_index);
 
-        for (auto [slot, _] : slot2type_) {
+        for (auto slot : slots()) {
             auto abstr_slot = rewrite(slot);
             if (auto value = slot2value(abstr_slot)) abstr_args.emplace_back(value);
         }
@@ -242,9 +241,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 for (auto var : lam->tvars())
                     vars.emplace_back(var);
 
-                for (auto [slot, slot_type] : slot2type_) {
+                for (auto slot : slots()) {
                     auto abstr_slot = rewrite(slot);
-                    auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
+                    auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
                     if (slot2value(abstr_slot)) {
                         vars.emplace_back(phi);
                     } else {
@@ -302,9 +301,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
                 // propagate known slot contents
                 // some of these might escape, but we'll catch that in the postprocessing later
-                for (auto [slot, slot_type] : slot2type_) {
+                for (auto slot : slots()) {
                     auto abstr_slot = rewrite(slot);
-                    auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
+                    auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
                     if (auto value = slot2value(abstr_slot)) {
                         vars_inside_unknown_function.emplace_back(phi);
                         abstr_args_inside_unknown_function.emplace_back(value);
@@ -339,10 +338,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         // propagate phis
         DLOG("propagating slot values for call of {}", lam);
-        for (auto [slot, slot_type] : slot2type_) {
+        for (auto slot : slots()) {
             DLOG("for slot {}", slot);
             auto abstr_slot = rewrite(slot);
-            auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
+            auto phi        = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
             if (auto value = slot2value(abstr_slot)) {
                 all_vars.emplace_back(phi);
                 all_abstr_args.emplace_back(value);
@@ -494,11 +493,11 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             auto cont = old_arg->isa_mut<Lam>();
             if (!cont) continue;
 
-            for (auto [slot, slot_type] : analysis_.all_slots()) {
+            for (auto slot : analysis_.slots()) {
                 if (auto sloxy = lattice(slot)) {
-                    auto phi = old_world().proxy(slot_type, {cont, sloxy}, Proxy_Phi);
+                    auto phi = old_world().proxy(pointee(slot), {cont, sloxy}, Proxy_Phi);
                     if (auto def = lattice(phi)) {
-                        auto new_val = rewrite_site_value(sloxy, slot_type);
+                        auto new_val = rewrite_site_value(sloxy, pointee(slot));
                         DLOG("in {}, resolving phi {} of lam {} to {}", curr_mut(), phi, cont, new_val);
                         map(phi, new_val);
                         if (def != phi && Proxy::isa<Proxy_GVN>(def)) map(def, new_val);
@@ -522,9 +521,9 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 bool SEO::needs_seo(Lam* old_lam) {
     if (auto l = lattice(old_lam->var()); l && l != old_lam->var()) return true;
 
-    for (auto [slot, slot_type] : analysis_.all_slots()) {
+    for (auto slot : analysis_.slots()) {
         if (auto sloxy = lattice(slot)) {
-            auto phi = old_world().proxy(slot_type, {old_lam, sloxy}, Proxy_Phi);
+            auto phi = old_world().proxy(pointee(slot), {old_lam, sloxy}, Proxy_Phi);
             if (auto def = lattice(phi); def && keep(phi, def)) return true;
         }
     }
@@ -539,9 +538,9 @@ Lam* SEO::build_lam(Lam* old_lam) {
 
     // find phis
     Vector<std::pair<const Def*, const Def*>> potential_phis;
-    for (auto [slot, slot_type] : analysis_.all_slots()) {
+    for (auto slot : analysis_.slots()) {
         if (auto sloxy = lattice(slot)) {
-            auto phi = old_world().proxy(slot_type, {old_lam, sloxy}, Proxy_Phi);
+            auto phi = old_world().proxy(pointee(slot), {old_lam, sloxy}, Proxy_Phi);
             if (auto def = lattice(phi)) potential_phis.push_back({phi, def});
         }
     }
@@ -619,11 +618,11 @@ DefVec SEO::build_args(Lam* old_lam, const App* old_app) {
     }
 
     DLOG("wiring up phi arguments");
-    for (auto [slot, slot_type] : analysis_.all_slots()) {
+    for (auto slot : analysis_.slots()) {
         if (auto sloxy = lattice(slot)) {
-            auto phi = old_world().proxy(slot_type, {old_lam, sloxy}, Proxy_Phi);
+            auto phi = old_world().proxy(pointee(slot), {old_lam, sloxy}, Proxy_Phi);
             if (auto def = lattice(phi); def && keep(phi, def))
-                new_args.emplace_back(rewrite_site_value(sloxy, slot_type));
+                new_args.emplace_back(rewrite_site_value(sloxy, pointee(slot)));
         }
     }
 

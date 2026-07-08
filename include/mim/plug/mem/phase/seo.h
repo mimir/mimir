@@ -45,7 +45,7 @@ private:
 
         void reset() final;
 
-        const Def2Def& all_slots() const { return slot2type_; }
+        const DefSet& slots() const { return slots_; }
         const DefMap<Def2Def>& mut2slot2value() const { return mut2slot2value_; }
 
     private:
@@ -64,10 +64,13 @@ private:
         void finalize() final;
         void analyze(const Def*);
 
+        // local (reset between iterations)
         DefMap<Def2Def> mut2slot2value_;
-        Def2Def sloxy2slot_;
-        Def2Def slot2type_;
         DefSet visited_;
+
+        // global (kept between iterations)
+        Def2Def sloxy2slot_;
+        DefSet slots_;
     };
 
 public:
