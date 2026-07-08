@@ -154,6 +154,21 @@ const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
     return nullptr;
 }
 
+void SEO::Analysis::propagate_phis(const Def* mut, DefVec& vars, DefVec& abstr_args) {
+    DLOG("propagating slot values for call of {}", mut);
+    for (auto slot : slots()) {
+        DLOG("for slot {}", slot);
+        auto abstr_slot = rewrite(slot);
+        if (auto value = sloxy2val(abstr_slot)) {
+            auto phi = world().proxy(pointee(slot), {mut, abstr_slot}, Proxy_Phi);
+            vars.emplace_back(phi);
+            abstr_args.emplace_back(value);
+        } else {
+            DLOG("no value found for {}", slot);
+        }
+    }
+}
+
 // Analysis - Rewrite
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
@@ -214,19 +229,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 all_abstr_args.emplace_back(abstr_arg->tproj(i));
             }
 
-            // propagate phis
-            DLOG("propagating slot values for call of {}", known);
-            for (auto slot : slots()) {
-                DLOG("for slot {}", slot);
-                auto abstr_slot = rewrite(slot);
-                if (auto value = sloxy2val(abstr_slot)) {
-                    auto phi = world().proxy(pointee(slot), {known, abstr_slot}, Proxy_Phi);
-                    all_vars.emplace_back(phi);
-                    all_abstr_args.emplace_back(value);
-                } else {
-                    DLOG("no value found for {}", slot);
-                }
-            }
+            propagate_phis(known, all_vars, all_abstr_args);
 
             auto all_abstr_vars = sccp(all_vars, all_abstr_args);
             gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
@@ -246,25 +249,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         for (auto mut : all_muts) {
             if (auto lam = mut->isa<Lam>()) {
                 if (lam == known || lam->is_closed()) continue;
-
-                // propagate phis
-                DLOG("propagating slot values for call of {}", lam);
-                for (auto slot : slots()) {
-                    DLOG("for slot {}", slot);
-                    auto abstr_slot = rewrite(slot);
-                    if (auto value = sloxy2val(abstr_slot)) {
-                        auto phi = world().proxy(pointee(slot), {lam, abstr_slot}, Proxy_Phi);
-                        phi_vars.emplace_back(phi);
-                        phi_abstr_args.emplace_back(value);
-                    } else {
-                        DLOG("no value found for {}", slot);
-                    }
-                }
+                propagate_phis(lam, phi_vars, phi_abstr_args);
             }
         }
 
-        auto phi_abstr_vars = sccp(phi_vars, phi_abstr_args);
-        // TODO assert that everything gets propagated
+        for (size_t i = 0, e = phi_vars.size(); i != e; ++i)
+            sccp_join(phi_vars[i], phi_abstr_args[i]);
     }
 
     return Super::rewrite_imm_App(app);

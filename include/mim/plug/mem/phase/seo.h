@@ -49,13 +49,18 @@ private:
         const DefMap<Def2Def>& mut2sloxy2val() const { return mut2sloxy2val_; }
 
     private:
-        const Def* sloxy2val(const Def* sloxy);
-        const Def* sloxy2val(const Def* sloxy, const Def* val) { return mut2sloxy2val_[curr_mut()][sloxy] = val; }
-
+        // SCCP
         const Def* sccp_join(const Def*, const Def*);
-        DefVec sccp(Defs, Defs);
+        DefVec sccp(Defs vars, Defs abstr_args);
+
+        // GVN
         void gvn_bundle(Defs, Defs, Span<const Def*>);
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
+
+        // SSA
+        void propagate_phis(const Def* mut, DefVec& vars, DefVec& abstr_args);
+        const Def* sloxy2val(const Def* sloxy);
+        const Def* sloxy2val(const Def* sloxy, const Def* val) { return mut2sloxy2val_[curr_mut()][sloxy] = val; }
 
         const Def* rewrite_imm_App(const App*) final;
 
