@@ -45,6 +45,8 @@ const Def* SEO::Analysis::slot2value(const Def* slot) {
  * Main Analysis
  */
 
+// SCCP
+
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("propagate called with {} and {}", var, def);
 
@@ -84,6 +86,8 @@ DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
 
     return abstr_vars;
 }
+
+// GVN
 
 void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
