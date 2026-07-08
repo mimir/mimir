@@ -173,6 +173,16 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& vars, DefVec& abstr_args) {
     }
 }
 
+Vector<SEO::Phi> SEO::phis(Lam* old_lam) {
+    Vector<Phi> result;
+    for (auto slot : analysis_.slots())
+        if (auto sloxy = lattice(slot)) {
+            auto phi = mk_phi(old_world(), old_lam, sloxy);
+            if (auto val = lattice(phi)) result.emplace_back(sloxy, phi, val);
+        }
+    return result;
+}
+
 // Analysis - Rewrite
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
@@ -371,16 +381,6 @@ bool SEO::needs_seo(Lam* old_lam) {
         if (keep(phi, val)) return true;
 
     return false;
-}
-
-Vector<SEO::Phi> SEO::phis(Lam* old_lam) {
-    Vector<Phi> result;
-    for (auto slot : analysis_.slots())
-        if (auto sloxy = lattice(slot)) {
-            auto phi = mk_phi(old_world(), old_lam, sloxy);
-            if (auto val = lattice(phi)) result.emplace_back(sloxy, phi, val);
-        }
-    return result;
 }
 
 Lam* SEO::build_lam(Lam* old_lam) {

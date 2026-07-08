@@ -87,7 +87,7 @@ public:
 
     template<class D = Def>
     D* curr_mut() const {
-        return curr_mut_->template isa<D>();
+        return curr_mut_ ? curr_mut_->template isa<D>() : nullptr;
     }
 
 private:
