@@ -206,64 +206,75 @@ const Def* World::app(const Def* callee, const Def* arg) {
     callee = callee->zonk();
     arg    = arg->zonk();
 
-    if (auto pi = callee->type()->isa<Pi>()) {
-        if (auto new_arg = Checker::assignable(pi->dom(), arg)) {
-            arg = new_arg->zonk();
-            if (auto imm = callee->isa_imm<Lam>()) return imm->body();
+    auto pi = callee->type()->isa<Pi>();
+    if (!pi)
+        throw Error()
+            .error(callee->loc(), "called expression not of function type")
+            .error(callee->loc(), "'{}' <--- callee type", callee->type());
 
-            if (auto lam = callee->isa_mut<Lam>(); lam && lam->is_set() && lam->filter() != lit_ff()) {
-                if (auto var = lam->has_var()) {
-                    if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) {
-                        // Is there a cached version?
-                        auto [filter, body] = i->second->defs<2>();
-                        if (filter == lit_tt()) return body;
-                    } else {
-                        // First check filter, If true, reduce body and cache reduct.
-                        auto rw     = VarRewriter(var, arg);
-                        auto filter = rw.rewrite(lam->filter());
-                        if (filter == lit_tt()) {
-                            DLOG("partial evaluate: {} ({})", lam, arg);
-                            auto body        = rw.rewrite(lam->body());
-                            auto num_bytes   = sizeof(Reduct) + 2 * sizeof(const Def*);
-                            auto buf         = move_.arena.substs.allocate(num_bytes, alignof(const Def*));
-                            auto reduct      = new (buf) Reduct(2);
-                            reduct->defs_[0] = filter;
-                            reduct->defs_[1] = body;
-                            assert_emplace(move_.substs, std::pair{var, arg}, reduct);
-                            return body;
-                        }
-                    }
-                } else if (lam->filter() == lit_tt()) {
-                    return lam->body();
-                }
-            }
-
-            auto type               = pi->reduce(arg)->zonk();
-            callee                  = callee->zonk();
-            auto [axm, curry, trip] = Axm::get(callee);
-            if (axm) {
-                curry = curry == 0 ? trip : curry;
-                curry = curry == Axm::Trip_End ? curry : curry - 1;
-
-                if (auto normalizer = axm->normalizer(); Normalize && normalizer && curry == 0) {
-                    if (auto norm = normalizer(type, callee, arg)) return norm;
-                }
-            }
-
-            return raw_app(axm, curry, trip, type, callee, arg);
-        }
-
+    auto new_arg = Checker::assignable(pi->dom(), arg);
+    if (!new_arg)
         throw Error()
             .error(arg->loc(), "cannot apply argument to callee")
             .note(callee->loc(), "callee: '{}'", callee)
             .note(arg->loc(), "argument: '{}'", arg)
             .note(callee->loc(), "vvv domain type vvv\n'{}'\n'{}'", pi->dom(), arg->type())
             .note(arg->loc(), "^^^ argument type ^^^");
+
+    // re-zonk after assignable check above - we might have inferred new stuff
+    arg    = new_arg->zonk();
+    callee = callee->zonk();
+    pi     = callee->type()->isa<Pi>();
+
+    // always β-reduce non-recursive, non-parametric lambdas
+    if (auto imm = callee->isa_imm<Lam>()) return imm->body();
+
+    if (auto lam = callee->isa_mut<Lam>(); lam && lam->is_set()) {
+        auto var = lam->has_var();
+
+        // Applying a Lam to its own Var is the identity substitution, so it resolves to the body.
+        // This unfolds a self-application / fixed-point reference.
+        if (var && arg == var) return lam->body();
+
+        // β-reduce or partially evaluate a set, mutable Lam.
+        if (lam->filter() != lit_ff()) {
+            if (!var) {
+                if (lam->filter() == lit_tt()) return lam->body();
+            } else if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) {
+                // Reuse the cached reduct if its filter held.
+                auto [filter, body] = i->second->defs<2>();
+                if (filter == lit_tt()) return body;
+            } else {
+                // Evaluate the filter; if it holds, reduce the body and cache the reduct.
+                auto rw     = VarRewriter(var, arg);
+                auto filter = rw.rewrite(lam->filter());
+                if (filter == lit_tt()) {
+                    DLOG("partial evaluate: {} ({})", lam, arg);
+                    auto body        = rw.rewrite(lam->body());
+                    auto size        = sizeof(Reduct) + 2 * sizeof(const Def*);
+                    auto buf         = move_.arena.substs.allocate(size, alignof(const Def*));
+                    auto reduct      = new (buf) Reduct(2);
+                    reduct->defs_[0] = filter;
+                    reduct->defs_[1] = body;
+                    assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+                    return body;
+                }
+            }
+        }
     }
 
-    throw Error()
-        .error(callee->loc(), "called expression not of function type")
-        .error(callee->loc(), "'{}' <--- callee type", callee->type());
+    auto type               = pi->reduce(arg)->zonk();
+    callee                  = callee->zonk();
+    auto [axm, curry, trip] = Axm::get(callee);
+    if (axm) {
+        curry = curry == 0 ? trip : curry;
+        curry = curry == Axm::Trip_End ? curry : curry - 1;
+
+        if (auto normalizer = axm->normalizer(); Normalize && normalizer && curry == 0)
+            if (auto norm = normalizer(type, callee, arg)) return norm;
+    }
+
+    return raw_app(axm, curry, trip, type, callee, arg);
 }
 
 const Def* World::raw_app(const Def* type, const Def* callee, const Def* arg) {
@@ -499,7 +510,7 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
 }
 
 const Def* World::seq(bool term, const Def* arity, const Def* body) {
-    arity = arity->zonk(); // TODO use zonk_mut all over the place and rmeove zonk from is_shape?
+    arity = arity->zonk();
     body  = body->zonk();
 
     auto arity_ty = arity->unfold_type();

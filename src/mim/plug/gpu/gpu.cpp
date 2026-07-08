@@ -18,14 +18,14 @@ void reg_stages(Flags2Stages& stages) {
             if (Axm::isa<gpu::addr_space_global>(addr_space)) {
                 auto [mem, _] = malloc->args<2>();
                 World& w      = type->world();
-                return w.app(w.app(w.annex<gpu::alloc>(), type), mem);
+                return w.app(w.app(w.annex<gpu::alloc>(gpu::alloc::block), type), mem);
             }
         } else if (auto free = Axm::isa<mem::free>(def)) {
             auto [type, addr_space] = free->decurry()->args<2>();
             if (Axm::isa<gpu::addr_space_global>(addr_space)) {
                 auto [mem, ptr] = free->args<2>();
                 World& w        = type->world();
-                return w.app(w.app(w.annex<gpu::free>(), type), {mem, ptr});
+                return w.app(w.app(w.annex<gpu::free>(gpu::free::block), type), {mem, ptr});
             }
         }
         return {};

@@ -116,7 +116,6 @@ public:
     void finalize();
 
     LamSet next_lams(Lam* lam);
-    bool isa_nested_proj(const Extract* extract);
 
     void emit_decl(BB& bb, const Def* def);
     void emit_lam(Lam* parent, Lam* curr, LamSet& rec_lams);
@@ -184,10 +183,10 @@ std::string Emitter::id(const Def* def, bool is_var_use) const {
     std::string prefix = slots_enabled() ? "$" : "";
     std::string id;
 
-    // In slotted-egraphs variable-uses need to be explicitly wrapped in a var node i.e. in λx.x (lam $x (var
-    // $x))
     auto var_wrap = [&](std::string id) {
-        return slots_enabled() && is_var_use && id.starts_with(prefix) ? "(var " + id + ")" : id;
+        auto cond_slotted = slots_enabled() && is_var_use && id.starts_with(prefix);
+        auto cond_regular = !slotted() && is_var_use;
+        return cond_slotted || cond_regular ? std::format("(var {})", id) : id;
     };
 
     // Axioms, rules, unset lambdas(imports) and externals need to be emitted without a uid
@@ -294,13 +293,14 @@ void Emitter::emit_imported(Lam* lam) {
         --tab;
 
     } else {
+        std::print(func_decls_, "(root {} {}", ext, id(lam));
+        ++tab;
         if (types_enabled()) std::print(func_decls_, "\n{}(@ {}", tab, emit_type(bb, lam->type()));
-        std::print(func_decls_, "({} {} {}", lam_kind, ext, id(lam));
+        std::print(func_decls_, "\n{}({}", tab, lam_kind);
         std::print(func_decls_, "{}", emit_var(bb, lam->var(), lam->type()->dom()));
-        std::print(func_decls_, "\n{}{}", tab, emit_type(bb, lam->dom()));
-        std::print(func_decls_, "\n{}{}", tab, emit_type(bb, lam->codom()));
         if (types_enabled()) std::print(func_decls_, ")");
-        std::print(func_decls_, ")\n\n");
+        std::print(func_decls_, "))\n\n");
+        --tab;
     }
 }
 
@@ -338,32 +338,6 @@ LamSet Emitter::next_lams(Lam* lam) {
     return next_lams;
 }
 
-bool Emitter::isa_nested_proj(const Extract* extract) {
-    // 'tuple' is another extract if we have for example two nested, sigma-typed variables
-    // and we are trying to print a named projection of the inner variable. ('baz' in the example below)
-    // ex.:  (var foo (sigma (var bar (sigma (var baz Nat)))))
-    // In this example, we have an extract where the tuple: 'bar' is another extract from 'foo'.
-    auto tuple           = extract->tuple();
-    auto index           = extract->index();
-    auto isa_nested_proj = false;
-    if (tuple->isa<Extract>() && Lit::isa(index)) {
-        auto curr_tuple = tuple;
-        auto curr_index = index;
-        while (curr_tuple && curr_index) {
-            if (curr_tuple->isa<Extract>() && Lit::isa(curr_index)) {
-                auto extract = curr_tuple->as<Extract>();
-                curr_tuple   = extract->tuple();
-                curr_index   = extract->index();
-                continue;
-            } else if (curr_tuple->isa<Var>() && Lit::isa(curr_index)) {
-                isa_nested_proj = true;
-            }
-            break;
-        }
-    }
-    return isa_nested_proj;
-}
-
 void Emitter::emit_decl(BB& bb, const Def* def) {
     if (auto axm = def->isa<Axm>()) {
         if (!world().annexes().flags2entry().contains(axm->flags()) && !is_declared(axm->sym().str())) {
@@ -374,10 +348,7 @@ void Emitter::emit_decl(BB& bb, const Def* def) {
 
             if (typed()) std::print(decls_, "(@ {}\n", emit_type(bb, axm->type()));
 
-            if (slotted())
-                std::print(decls_, "(axm {}", id(axm));
-            else
-                std::print(decls_, "(axm {} {}", id(axm), emit_type(bb, axm->type()));
+            std::print(decls_, "(axm {}", id(axm));
 
             if (typed()) std::print(decls_, ")");
             std::print(decls_, ")\n\n");
@@ -444,7 +415,6 @@ void Emitter::emit_lam(Lam* parent, Lam* curr, LamSet& rec_lams) {
     if (EMIT) {
         int unclosed_parens = 0;
 
-        ++tab;
         for (auto& term : bb.body()) {
             auto opened = std::ranges::count(term.str(), '(');
             auto closed = std::ranges::count(term.str(), ')');
@@ -454,7 +424,6 @@ void Emitter::emit_lam(Lam* parent, Lam* curr, LamSet& rec_lams) {
 
         for (auto& term : bb.tail())
             std::print(func_impls_, "{}", indent(tab.indent(), term.str()));
-        --tab;
 
         std::string closing_parens(unclosed_parens, ')');
         std::print(func_impls_, "{}", closing_parens);
@@ -462,8 +431,9 @@ void Emitter::emit_lam(Lam* parent, Lam* curr, LamSet& rec_lams) {
         // Close type annotation '@'
         if (types_enabled()) std::print(func_impls_, ")");
 
+        --tab;
+        --tab;
         if (slotted()) {
-            --tab;
             --tab;
             if (NESTED) {
                 --tab;
@@ -477,14 +447,13 @@ void Emitter::emit_lam(Lam* parent, Lam* curr, LamSet& rec_lams) {
             }
 
         } else if (NESTED) {
-            --tab;
             // Close 'lam'
             std::print(func_impls_, ")");
             // Close the 'let' at the end of the parent lambdas' definition.
             parent_bb.tail(")");
         } else {
-            // Close 'lam'
-            std::print(func_impls_, ")\n\n");
+            // Close 'root' and 'lam'
+            std::print(func_impls_, "))\n\n");
         }
     }
 }
@@ -500,20 +469,14 @@ std::string Emitter::emit_var(BB& bb, const Def* var, const Def* type, bool meta
             toggle_slots();
             auto projs = var->projs();
             if (projs.size() == 1 || std::ranges::all_of(projs, [](auto proj) { return proj->sym().empty(); }))
-                std::print(os, "\n{}(cons (metavar {} {}) nil)", tab, id(var), emit_type(bb, type));
+                std::print(os, "\n{}(cons (metavar {}) nil)", tab, id(var));
             else {
-                size_t i = 0;
                 std::vector<std::string> meta_vars;
                 for (auto proj : projs) {
-                    std::ostringstream meta_var;
                     ++tab;
-                    std::print(meta_var, "\n{}(metavar", tab);
-                    std::print(meta_var, "{}", emit_bb(bb, proj));
-                    ++tab;
-                    std::print(meta_var, "\n{}{})", tab, emit_type(bb, type->proj(i++)));
+                    auto meta_var = std::format("\n{}(metavar {})", tab, id(proj));
                     --tab;
-                    --tab;
-                    meta_vars.push_back(meta_var.str());
+                    meta_vars.push_back(meta_var);
                 }
                 std::print(os, "{}", emit_cons(meta_vars));
             }
@@ -523,17 +486,19 @@ std::string Emitter::emit_var(BB& bb, const Def* var, const Def* type, bool meta
         }
     }
 
-    else {
+    else if (meta_var) {
         auto projs = var->projs();
         if (projs.size() == 1 || std::ranges::all_of(projs, [](auto proj) { return proj->sym().empty(); }))
-            std::print(os, "\n{}(var {})", tab, id(var));
+            std::print(os, "\n{}(metavar {})", tab, id(var));
         else {
-            std::print(os, "\n{}(var {}", tab, id(var));
+            std::print(os, "\n{}(metavar {}", tab, id(var));
             size_t i = 0;
             for (auto proj : projs)
-                std::print(os, "{}", emit_var(bb, proj, type->proj(i++)));
+                std::print(os, "{}", emit_var(bb, proj, type->proj(i++), meta_var));
             std::print(os, ")");
         }
+    } else {
+        std::print(os, "\n{}{}", tab, id(var));
     }
     --tab;
 
@@ -570,18 +535,15 @@ std::string Emitter::emit_head(BB& bb, Lam* lam, bool nested) {
         ++tab;
         std::print(os, "\n{}{}", tab, id(lam));
         if (types_enabled()) std::print(os, "\n{}(@ {}", tab, emit_type(bb, lam->type()));
-        std::print(os, "\n{}({} {} {}", tab, lam_kind, ext, id(lam));
+        std::print(os, "\n{}({}", tab, lam_kind);
     } else {
-        if (types_enabled()) std::print(os, "\n{}(@ {}\n", tab, emit_type(bb, lam->type()));
-        std::print(os, "({} {} {}", lam_kind, ext, id(lam));
+        std::print(os, "(root {} {}", ext, id(lam));
+        ++tab;
+        if (types_enabled()) std::print(os, "\n{}(@ {}", tab, emit_type(bb, lam->type()));
+        std::print(os, "\n{}({}", tab, lam_kind);
     }
 
     std::print(os, "{}", emit_var(bb, lam->var(), lam->type()->dom()));
-
-    if (!slotted()) {
-        std::print(os, "\n{}{}", tab, emit_type(bb, lam->dom()));
-        std::print(os, "\n{}{}", tab, emit_type(bb, lam->codom()));
-    }
 
     if (slotted()) {
         ++tab;
@@ -596,6 +558,7 @@ std::string Emitter::emit_head(BB& bb, Lam* lam, bool nested) {
     } else {
         std::print(os, "{}", emit_bb(bb, lam->filter()));
     }
+    ++tab;
 
     return os.str();
 }
@@ -670,10 +633,10 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
         std::string arr_val = arity_val + " " + emit_type(bb, arr->body(), in_term);
 
         if (auto var = arr->has_var()) {
-            auto var_val = slotted() ? id(var) : "(var " + id(var) + " nil)";
+            auto var_val = id(var);
             std::print(os, "(arr {} {})", var_val, scope_wrap(arr_val));
         } else {
-            auto dummy_var = slotted() ? "$dummy" : "(var dummy)";
+            auto dummy_var = slotted() ? "$dummy" : "dummy";
             std::print(os, "(arr {} {})", dummy_var, scope_wrap(arr_val));
         }
 
@@ -682,10 +645,10 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
         std::string doms    = emit_type(bb, pi->dom(), in_term) + " " + emit_type(bb, pi->codom(), in_term);
 
         if (auto var = pi->has_var()) {
-            auto var_val = slotted() ? id(var) : "(var " + id(var) + " nil)";
+            auto var_val = id(var);
             std::print(os, "({} {} {})", pi_kind, var_val, scope_wrap(doms));
         } else {
-            auto dummy_var = slotted() ? "$dummy" : "(var dummy)";
+            auto dummy_var = slotted() ? "$dummy" : "dummy";
             std::print(os, "({} {} {})", pi_kind, dummy_var, scope_wrap(doms));
         }
 
@@ -696,10 +659,10 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
                         sigma->ops() | std::views::transform([&](auto op) { return emit_type(bb, op, in_term); }), " ");
 
         if (auto var = sigma->has_var()) {
-            auto var_val = slotted() ? id(var) : "(var " + id(var) + " nil)";
+            auto var_val = id(var);
             std::print(os, "(sigma {} {})", var_val, scope_wrap(op_vals.str()));
         } else {
-            auto dummy_var = slotted() ? "$dummy" : "(var dummy)";
+            auto dummy_var = slotted() ? "$dummy" : "dummy";
             std::print(os, "(sigma {} {})", dummy_var, scope_wrap(op_vals.str()));
         }
 
@@ -717,7 +680,10 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
         std::print(os, "{}", id(axm));
         emit_decl(bb, axm);
     } else if (auto var = type->isa<Var>()) {
-        std::print(os, "{}", id(var, true));
+        if (var->mut()->isa<Rule>())
+            std::print(os, "\n{}{}", tab, id(var));
+        else
+            std::print(os, "{}", id(var, true));
     } else if (auto hole = type->isa<Hole>()) {
         std::print(os, "(hole {})", emit_type(bb, hole->type(), in_term));
     } else if (auto extract = type->isa<Extract>()) {
@@ -807,10 +773,10 @@ std::string Emitter::emit_node(BB& bb, const Def* def, std::string node_name, bo
 
     if (auto pack = def->isa<Pack>()) {
         if (auto var = pack->has_var()) {
-            std::string var_val = " " + (slotted() ? id(var) + " (scope" : "(var " + id(var) + " nil)");
+            std::string var_val = " " + (slotted() ? id(var) + " (scope" : id(var));
             op_vals.push_back(var_val);
         } else {
-            std::string var_val = slotted() ? " $dummy (scope" : " (var dummy)";
+            std::string var_val = slotted() ? " $dummy (scope" : " dummy";
             op_vals.push_back(var_val);
         }
         if (auto arity_val = emit_bb(bb, pack->arity()); !arity_val.empty()) op_vals.push_back(arity_val);
@@ -903,15 +869,10 @@ std::string Emitter::emit_bb(BB& bb, const Def* def) {
                 --tab;
                 std::print(os, "))");
             } else {
-                auto ext = lam->is_external() ? "extern" : "intern";
-                std::print(os, "\n{}({} {} {}", tab, lam_kind, ext, id(lam));
-                ++tab;
+                std::print(os, "\n{}({}", tab, lam_kind);
                 std::print(os, "\n{}{}", tab, emit_var(bb, lam->var(), lam->var()->type()));
-                std::print(os, "\n{}{}", tab, emit_type(bb, lam->dom()));
-                std::print(os, "\n{}{}", tab, emit_type(bb, lam->codom()));
                 std::print(os, "{}", emit_bb(bb, lam->filter()));
                 std::print(os, "{}", emit_bb(bb, lam->body()));
-                --tab;
                 std::print(os, ")");
             }
         }
@@ -930,17 +891,18 @@ std::string Emitter::emit_bb(BB& bb, const Def* def) {
     } else if (auto pack = def->isa<Pack>()) {
         std::print(os, "{}", emit_node(bb, pack, "pack"));
     } else if (auto extract = def->isa<Extract>()) {
-        if (!slotted() && ((Lit::isa(extract->index()) && extract->tuple()->isa<Var>()) || isa_nested_proj(extract)))
-            std::print(os, "\n{}{}", tab, id(extract));
         // Projections of rule variables are meta vars and should just be printed by name
-        else if (auto var = extract->tuple()->isa<Var>(); var && var->mut()->isa<Rule>())
+        if (auto var = extract->tuple()->isa<Var>(); var && var->mut()->isa<Rule>())
             std::print(os, "\n{}{}", tab, id(extract));
         else
             std::print(os, "{}", emit_node(bb, extract, "extract"));
     } else if (auto insert = def->isa<Insert>()) {
         std::print(os, "{}", emit_node(bb, insert, "insert"));
     } else if (auto var = def->isa<Var>()) {
-        std::print(os, "\n{}{}", tab, id(var, true));
+        if (var->mut()->isa<Rule>())
+            std::print(os, "\n{}{}", tab, id(var));
+        else
+            std::print(os, "\n{}{}", tab, id(var, true));
     } else if (auto app = def->isa<App>()) {
         std::print(os, "{}", emit_node(bb, app, "app"));
     } else if (auto axm = def->isa<Axm>()) {

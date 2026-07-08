@@ -26,7 +26,7 @@ bool contains_pi(const Def* t) {
 /// Is `app` one of the tensor ops this phase bufferizes?
 bool is_tensor_op(const App* app) {
     return Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app)
-        || Axm::isa<tensor::map_reduce_aff>(app);
+        || Axm::isa<tensor::map_reduce>(app);
 }
 
 } // namespace
@@ -54,25 +54,33 @@ void LowerToMem::collect_tensor_types() {
         auto def = wl.pop();
 
         if (auto app = def->isa<App>()) {
-            if (Axm::isa<tensor::map_reduce>(app)) {
-                // einsum map_reduce is not bufferizable — the value-semantics path handles everything
-                // (mixing the two worlds on interlinked tensors would be ill-typed).
-                gate("einsum %tensor.map_reduce present", app);
-            } else if (Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app)) {
+            if (Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app)) {
                 // get/set: the first explicit argument is the tensor `arr`.
                 auto [T, r, s] = app->callee()->as<App>()->args<3>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->arg()->proj(0)->type());
-            } else if (Axm::isa<tensor::map_reduce_aff>(app)) {
+            } else if (Axm::isa<tensor::map_reduce>(app)) {
                 // result and each of the `nis` inputs are tensors.
                 add_tensor_ty(app->type());
                 auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs]
                     = app->callee()->as<App>()->uncurry_args<7>();
                 if (meta->proj(3, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(3, 0));
+                // Array types fold literal size-1 axes but `%buffer.Buf` does not, so the buffer types the
+                // `%matrix.map_reduce_aff` axiom derives from these logical shapes would mismatch the folded
+                // boundary types.
+                auto has_size1 = [](const Def* s) {
+                    auto n = s->num_projs();
+                    for (size_t i = 0; i != n; ++i)
+                        if (auto l = Lit::isa<u64>(s->proj(n, i)); l && *l == 1) return true;
+                    return false;
+                };
+                if (has_size1(shapes->proj(2, 0))) gate("size-1 output axis of %tensor.map_reduce", app);
                 if (auto nis_l = Lit::isa<u64>(nis)) {
-                    auto Tis = TisRisSis->proj(3, 0);
+                    auto [Tis, Ris, Sis] = TisRisSis->projs<3>();
                     for (u64 i = 0; i < *nis_l; ++i) {
                         if (Tis->proj(*nis_l, i)->isa<Arr>()) gate("tensor with array element type", Tis);
+                        if (has_size1(Sis->proj(*nis_l, i)))
+                            gate("size-1 input axis of %tensor.map_reduce", app);
                         add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
                     }
                 }
@@ -82,6 +90,12 @@ void LowerToMem::collect_tensor_types() {
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(2)->type());
+            } else if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0
+                                                                && axm->plugin() == tensor::Plugin_Id) {
+                // Any other tensor op (`pad`, `concat`, a symbolic `shape`, …) is only lowered by the
+                // value-semantics path, which runs after this phase — bufferizing around it would mix the
+                // two worlds on interlinked tensors and be ill-typed.
+                gate("unbufferizable tensor op", app);
             }
             // Lams passed inside a tensor op's curry chain (combiners, affine index maps) are element-level.
             if (is_tensor_op(app)) {
@@ -258,7 +272,7 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::get>(app)) return lower_get(app);
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);
-    if (Axm::isa<tensor::map_reduce_aff>(app)) return lower_map_reduce_aff(app);
+    if (Axm::isa<tensor::map_reduce>(app)) return lower_map_reduce(app);
 
     // Call of a bufferized function: adapt the call site.
     if (auto callee = app->callee()->isa_mut<Lam>(); callee && tensor_fns_.contains(callee))
@@ -377,8 +391,8 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
     return out;
 }
 
-const Def* LowerToMem::lower_map_reduce_aff(const App* app) {
-    // Thin bufferization: map the SSA `tensor.map_reduce_aff` onto the buffer-world `matrix.map_reduce_aff`,
+const Def* LowerToMem::lower_map_reduce(const App* app) {
+    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce_aff`,
     // reusing the (rewritten) meta. The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
     auto& w     = new_world();
     auto c      = rewrite(app->callee())->as<App>();
@@ -389,8 +403,15 @@ const Def* LowerToMem::lower_map_reduce_aff(const App* app) {
 
     // Value-world tensor inputs (e.g. literals): leave them to the value path.
     if (auto nis_l = Lit::isa<u64>(nis)) {
-        for (u64 i = 0; i < *nis_l; ++i)
-            if (!Axm::isa<buffer::Buf>(inputs->proj(*nis_l, i)->type())) return RWPhase::rewrite_imm_App(app);
+        DefVec ins(*nis_l);
+        for (u64 i = 0; i < *nis_l; ++i) {
+            ins[i] = inputs->proj(*nis_l, i);
+            if (!Axm::isa<buffer::Buf>(ins[i]->type())) return RWPhase::rewrite_imm_App(app);
+        }
+        // Re-tuple the inputs: the generic rewrite rebuilds the argument tuple with its stale value-array
+        // type even when its elements were converted to buffers, which would not be assignable to the op's
+        // `«nis; %buffer.Buf …»` domain.
+        inputs = w.tuple(ins);
     }
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner

@@ -115,7 +115,7 @@ The authoritative reference for `add_mim_plugin` itself lives in [`cmake/Mim.cma
 
 ## Normalizers
 
-Normalizers usually obtain the owning [World](@ref mim::World) from one of their arguments, often `type->world()`, and then build the replacement directly in that world.
+Normalizers usually obtain the owning [`World`](@ref mim::World) from one of their arguments, often `type->world()`, and then build the replacement directly in that world.
 Small normalizers are expected to be direct and side-effect free.
 
 That often leads to tiny functions of the form:

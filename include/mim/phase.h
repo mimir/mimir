@@ -334,10 +334,12 @@ public:
     /// @name Construction
     ///@{
     PassManPhase(World& world, std::unique_ptr<PassMan>&& man)
-        : Phase(world, "pass_man_phase")
+        : Phase(world, build_name("pass_man_phase", *man))
+        , base_name_("pass_man_phase")
         , man_(std::move(man)) {}
     PassManPhase(World& world, flags_t annex)
-        : Phase(world, annex) {}
+        : Phase(world, annex)
+        , base_name_(world.annex(annex)->sym()) {}
 
     void apply(const App*) final;
     void apply(Stage&) final;
@@ -348,6 +350,9 @@ public:
 private:
     void start() final { man_->run(); }
 
+    std::string build_name(const std::string& base, PassMan& pm) const;
+    std::string base_name_;
+    
     std::unique_ptr<PassMan> man_;
 };
 

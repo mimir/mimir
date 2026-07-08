@@ -7,7 +7,7 @@ namespace mim::plug::matrix {
 
 /// Lowers the affine-indexed buffer-world operations (`%matrix.map_reduce_aff`, `%matrix.broadcast`) into
 /// `affine.For` loop nests over `%buffer.read` / `%buffer.write` / `%buffer.alloc`, threading `%mem.M`.
-/// These are the buffer-world counterparts of `%tensor.map_reduce_aff` / `%tensor.broadcast`; the `tensor`
+/// These are the buffer-world counterparts of `%tensor.map_reduce` / `%tensor.broadcast`; the `tensor`
 /// plugin's bufferization (`%tensor.lower_to_mem`) maps the SSA tensor ops onto them.
 class LowerAff : public RWPhase {
 public:

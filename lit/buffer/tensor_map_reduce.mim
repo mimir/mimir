@@ -1,7 +1,7 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
-// Bufferization of %tensor.map_reduce_aff: reduction, transpose (Rr=0) and strided access.
+// Bufferization of %tensor.map_reduce: reduction, transpose (Rr=0) and strided access.
 // tensor.lower_to_mem maps it onto the buffer-world %matrix.map_reduce_aff, %matrix.lower_aff generates the
 // loops over %buffer ops, and %buffer.lower_ptr lowers to %mem. After the full pipeline, all tensor/matrix/
 // buffer/affine axioms are gone and only %mem.* + loops remain.
@@ -29,13 +29,13 @@ lam sl  (i  : %affine.index): «1; %affine.index» = (%affine.op.add (%affine.se
 // out[i] = sum_j input[i][j]
 // CHECK-DAG: fun extern row_sum
 fun extern row_sum (input: «3, 4; I32»): «3; I32» =
-    return (%tensor.map_reduce_aff @1 @(I32, 1, 1) (3, (3, 4))
+    return (%tensor.map_reduce @1 @(I32, 1, 1) (3, (3, 4))
                 @(I32, 2, (3, 4)) (add, 0I32) id1i id2 input);
 
 // out[j][i] = input[i][j]  (Rr = 0, no reduction loop)
 // CHECK-DAG: fun extern transpose
 fun extern transpose (input: «2, 3; I32»): «3, 2; I32» =
-    return (%tensor.map_reduce_aff @1 @(I32, 2, 0) ((3, 2), (2, 3))
+    return (%tensor.map_reduce @1 @(I32, 2, 0) ((3, 2), (2, 3))
                 @(‹1; I32›, ‹1; 2›, ‹1; (2, 3)›) (copy, ⊥:I32) tr id2 input);
 
 // out[i] = input[3*i + 2]; the affine read index lowers to %core arithmetic.
@@ -43,7 +43,7 @@ fun extern transpose (input: «2, 3; I32»): «3, 2; I32» =
 // CHECK-DAG: %core.wrap.mul {{.*}}(3I64
 // CHECK-DAG: %core.wrap.add {{.*}}(2I64
 fun extern strided (input: «8; I32»): «2; I32» =
-    return (%tensor.map_reduce_aff @1 @(I32, 1, 0) (‹1; 2›, ‹1; 2›)
+    return (%tensor.map_reduce @1 @(I32, 1, 0) (‹1; 2›, ‹1; 2›)
                 @(‹1; I32›, ‹1; 1›, ‹1; ‹1; 8››) (copy, ⊥:I32) id1 sl input);
 
 // Memory operations are emitted.
@@ -55,8 +55,8 @@ lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %compile.named_phase "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce (+ broadcast)
         %compile.named_phase "%tensor.fuse_tensor",        // fuse map_reduce chains
-        %compile.named_phase "%tensor.lower_to_mem",       // bufferize get/set/map_reduce_aff/broadcast onto
-                                                           // %buffer/%matrix (no-op if any %tensor.map_reduce remains)
+        %compile.named_phase "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast onto
+                                                           // %buffer/%matrix (no-op if bufferization is disabled)
         %compile.named_phase "%matrix.lower_aff",          // %matrix.map_reduce_aff/broadcast -> affine.For over %buffer
         %compile.named_phase "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
         %compile.named_phase "%affine.lower_index_phase",  // %affine.map -> %core arithmetic

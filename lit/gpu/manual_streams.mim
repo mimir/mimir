@@ -1,42 +1,49 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s
+// RUN: %mim %s -p opt
 
 plugin core;
 plugin gpu;
 
-fun kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, data: %gpu.GlobalPtr I32)
-         : [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM] =
+con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
+            group_id: Idx 4, item_id: Idx 4, (), data: %gpu.GlobalPtr I32,
+            return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let m1 = %mem.store (m1, data, 42I32);
     return (m1, m3, m4, m5);
 
-fun extern main (m0: %mem.M 0, m1: %gpu.GlobalM, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, %gpu.GlobalM, I32] =
+fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
+              : [%mem.M 0, I32] =
     let (m0, ptr1) = %mem.alloc (I32, 0) m0;
     let (m0, ptr2) = %mem.alloc (I32, 0) m0;
     let m0 = %mem.store (m0, ptr1, argc);
     let m0 = %mem.store (m0, ptr2, argc);
 
+    let (m0, m1, m4) = %gpu.init m0;
+
     let (m0, s1_ptr) = %mem.slot (%gpu.Stream, 0) (m0, 0);
     let (m0, s2_ptr) = %mem.slot (%gpu.Stream, 0) (m0, 1);
-    let m0 = %gpu.stream_init (m0, s1_ptr);
-    let m0 = %gpu.stream_init (m0, s2_ptr);
+    let (m0, m1) = %gpu.stream_init (m0, m1, s1_ptr);
+    let (m0, m1) = %gpu.stream_init (m0, m1, s2_ptr);
     let (m0, s1) = %mem.load (m0, s1_ptr);
     let (m0, s2) = %mem.load (m0, s2_ptr);
 
-    let (m0, m1, d_ptr1) = %gpu.alloc_copy_async (m0, m1, ptr1, s1);
-    let (m0, m1, d_ptr2) = %gpu.alloc_copy_async (m0, m1, ptr2, s2);
+    let (m0, m1, d_ptr1) = %gpu.alloc_copy.asyn (m0, m1, ptr1, s1);
+    let (m0, m1, d_ptr2) = %gpu.alloc_copy.asyn (m0, m1, ptr2, s2);
 
-    ret m0 = %gpu.launch (m0, 4, 4, s1) kernel $ d_ptr1;
-    ret m0 = %gpu.launch (m0, 4, 4, s2) kernel $ d_ptr2;
+    ret (m0, m1, m4) = %gpu.launch (4, 4, s1, ff, ()) kernel d_ptr1 $ (m0, m1, m4);
+    ret (m0, m1, m4) = %gpu.launch (4, 4, s2, ff, ()) kernel d_ptr2 $ (m0, m1, m4);
 
-    let (m0, m1) = %gpu.copy_to_host_async (m0, m1, d_ptr1, ptr1, s1);
-    let (m0, m1) = %gpu.copy_to_host_async (m0, m1, d_ptr2, ptr2, s2);
-    let m1 = %gpu.free_async (m1, d_ptr1, s1);
-    let m1 = %gpu.free_async (m1, d_ptr2, s2);
+    let (m0, m1) = %gpu.copy_to_host.asyn (m0, m1, d_ptr1, ptr1, s1);
+    let (m0, m1) = %gpu.copy_to_host.asyn (m0, m1, d_ptr2, ptr2, s2);
+    let m1 = %gpu.free.asyn (m1, d_ptr1, s1);
+    let m1 = %gpu.free.asyn (m1, d_ptr2, s2);
 
-    let m0 = %gpu.stream_sync (m0, s1);
-    let m0 = %gpu.stream_sync (m0, s2);
+    let (m0, m1) = %gpu.stream_sync (m0, m1, s1);
+    let (m0, m1) = %gpu.stream_sync (m0, m1, s2);
+
+    let (m0, m1) = %gpu.stream_deinit (m0, m1, s1);
+    let (m0, m1) = %gpu.stream_deinit (m0, m1, s2);
+
+    let m0 = %gpu.deinit (m0, m1, m4);
 
     let (m0, val1) = %mem.load (m0, ptr1);
     let (m0, val2) = %mem.load (m0, ptr2);
@@ -44,4 +51,4 @@ fun extern main (m0: %mem.M 0, m1: %gpu.GlobalM, argc: I32, argv: %mem.Ptr («�
     let m0 = %mem.free (m0, ptr1);
     let m0 = %mem.free (m0, ptr2);
 
-    return (m0, m1, val);
+    return (m0, val);

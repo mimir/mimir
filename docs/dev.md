@@ -10,8 +10,8 @@ Let's jump straight into an example.
 
 \include "examples/hello.cpp"
 
-[Driver](@ref mim::Driver) is usually the first class you create.
-It owns a few global facilities such as [Flags](@ref mim::Flags), the [Log](@ref mim::Log), and the current [World](@ref mim::World).
+[`Driver`](@ref mim::Driver) is usually the first class you create.
+It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](@ref mim::Log), and the current [`World`](@ref mim::World).
 In this example, the log is configured to write debug output to `std::cerr`; see also @ref clidebug.
 
 Next, we load the [core](@ref core), and [ll](@ref ll) plugins.
@@ -22,13 +22,13 @@ A plugin consists of two parts:
 
 The shared object contains [passes](@ref mim::Pass), [normalizers](@ref mim::Axm::normalizer), and similar runtime components.
 The `.mim` file contains [axiom](@ref mim::Axm) declarations and links normalizers to their corresponding [axioms](@ref mim::Axm).
-Calling mim::ast::load_plugins parses the `.mim` file and also loads the shared object, while the [Driver](@ref mim::Driver) keeps track of the resulting plugin state.
+Calling mim::ast::load_plugins parses the `.mim` file and also loads the shared object, while the [`Driver`](@ref mim::Driver) keeps track of the resulting plugin state.
 
 Now we can build actual code.
 
-[Def](@ref mim::Def) is the base class for **all** nodes/expressions in MimIR.
-Each [Def](@ref mim::Def) is a node in a graph managed by the [World](@ref mim::World).
-You can think of the [World](@ref mim::World) as a giant hash set that owns all [Defs](@ref mim::Def) and provides factory methods to create them.
+[`Def`](@ref mim::Def) is the base class for **all** nodes/expressions in MimIR.
+Each [`Def`](@ref mim::Def) is a node in a graph managed by the [`World`](@ref mim::World).
+You can think of the [`World`](@ref mim::World) as a giant hash set that owns all [`Def`s](@ref mim::Def) and provides factory methods to create them.
 
 In this example, we construct the `main` function.
 In direct style, its type looks like this:
@@ -55,39 +55,39 @@ ret (mem, argc)
 It is also important to mark `main` as [external](@ref mim::Def::externalize).
 Otherwise, MimIR may remove it as dead code.
 
-Finally, we [optimize](@ref mim::optimize) the program, emit an [LLVM assembly file](https://llvm.org/docs/LangRef.html), compile it [via](@ref mim::sys::system) `clang`, and [execute](@ref mim::sys::system) the generated binary with `./hello a b c`.
+Finally, we [`optimize`](@ref mim::optimize) the program, emit an [LLVM assembly file](https://llvm.org/docs/LangRef.html), compile it [via](@ref mim::sys::system) `clang`, and [execute](@ref mim::sys::system) the generated binary with `./hello a b c`.
 We then print its exit code, which should be `4`.
 
 ## Immutables vs. Mutables {#mut}
 
-MimIR distinguishes between two kinds of [Defs](@ref mim::Def): _immutables_ and _mutables_.
+MimIR distinguishes between two kinds of [`Def`s](@ref mim::Def): _immutables_ and _mutables_.
 
-| **Immutable**                                                          | **Mutable**                                                                                                                |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| _must be_ `const`                                                      | _may be_ non-`const`                                                                                                       |
-| ops form a [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph) | ops may be cyclic                                                                                                          |
-| no recursion                                                           | may be recursive                                                                                                           |
-| no [variables](@ref mim::Var)                                          | may have [variables](@ref mim::Var); use [mim::Def::var](@ref mim::Def::var) / [mim::Def::has_var](@ref mim::Def::has_var) |
-| build ops first, then the actual node                                  | build the actual node first, then [set](@ref mim::Def::set) the ops                                                        |
-| [hash-consed](https://en.wikipedia.org/wiki/Hash_consing)              | each new instance is fresh                                                                                                 |
-| [Def::rebuild](@ref mim::Def::rebuild)                                 | [Def::stub](@ref mim::Def::stub)                                                                                           |
+| **Immutable**                                                          | **Mutable**                                                                                                                    |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| _must be_ `const`                                                      | _may be_ non-`const`                                                                                                           |
+| ops form a [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph) | ops may be cyclic                                                                                                              |
+| no recursion                                                           | may be recursive                                                                                                               |
+| no [variables](@ref mim::Var)                                          | may have [variables](@ref mim::Var); use [`mim::Def::var`](@ref mim::Def::var) / [`mim::Def::has_var`](@ref mim::Def::has_var) |
+| build ops first, then the actual node                                  | build the actual node first, then [`set`](@ref mim::Def::set) the ops                                                          |
+| [hash-consed](https://en.wikipedia.org/wiki/Hash_consing)              | each new instance is fresh                                                                                                     |
+| [`Def::rebuild`](@ref mim::Def::rebuild)                               | [`Def::stub`](@ref mim::Def::stub)                                                                                             |
 
 ### Immutables
 
-Immutables are usually constructed in one step with [World](@ref mim::World) factory methods.
+Immutables are usually constructed in one step with [`World`](@ref mim::World) factory methods.
 The usual pattern is: build all operands first, then create the immutable node with `w.app`, `w.tuple`, `w.pi`, `w.sigma`, and similar helpers.
 
-For ordinary applications, [mim::World::app](@ref mim::World::app) is the direct building block:
+For ordinary applications, [`mim::World::app`](@ref mim::World::app) is the direct building block:
 
 ```cpp
 auto f   = w.annex<mem::alloc>();
 auto app = w.app(w.app(f, {type, as}), mem);
 ```
 
-Here, [mim::World::annex](@ref mim::World::annex) yields the raw axiom node itself.
+Here, [`mim::World::annex`](@ref mim::World::annex) yields the raw axiom node itself.
 That is useful when you want to partially apply a curried annex, store it, inspect it, or build the application tree step by step from C++.
 
-If you want the full curried call in one go, prefer [mim::World::call](@ref mim::World::call):
+If you want the full curried call in one go, prefer [`mim::World::call`](@ref mim::World::call):
 
 ```cpp
 auto app    = w.call<mem::alloc>(mem);
@@ -105,9 +105,9 @@ So the rule of thumb is:
 
 Mutables are built in three phases:
 
-1. Create the mutable node with a `mut_*` factory or a [stub](@ref mim::Def::stub).
+1. Create the mutable node with a `mut_*` factory or a [`stub`](@ref mim::Def::stub).
 2. Optionally, obtain its variable.
-3. Fill in the body via [mim::Def::set](@ref mim::Def::set):
+3. Fill in the body via [`mim::Def::set`](@ref mim::Def::set):
 
 ```cpp
 auto main = w.mut_fun({mem_t, w.type_i32(), argv_t}, {mem_t, w.type_i32()})->set("main");
@@ -116,7 +116,7 @@ main->app(false, ret, {mem, argc});
 main->externalize();
 ```
 
-Use [mim::Def::externalize](@ref mim::Def::externalize) for roots that must survive cleanup and whole-world rewrites.
+Use [`mim::Def::externalize`](@ref mim::Def::externalize) for roots that must survive cleanup and whole-world rewrites.
 Top-level entry points, generated wrapper functions, and replacement nodes for former externals all follow this pattern.
 
 ### Binders
@@ -184,8 +184,8 @@ auto mut = var->mut(); // get the mutable binder where var was introduced
 
 ## Matching IR
 
-MimIR provides several ways to scrutinize [Defs](@ref mim::Def).
-Matching built-ins, i.e. subclasses of [Def](@ref mim::Def), works a little differently from matching [axioms](@ref mim::Axm).
+MimIR provides several ways to scrutinize [`Def`s](@ref mim::Def).
+Matching built-ins, i.e. subclasses of [`Def`](@ref mim::Def), works a little differently from matching [axioms](@ref mim::Axm).
 
 ### Downcasts for Built-ins {#cast_builtin}
 
@@ -212,7 +212,7 @@ void foo(const Def* def) {
 
 #### Downcast to Immutables
 
-[mim::Def::isa_imm](@ref mim::Def::isa_imm) / [mim::Def::as_imm](@ref mim::Def::as_imm) only match _immutables_:
+[`mim::Def::isa_imm`](@ref mim::Def::isa_imm) / [`mim::Def::as_imm`](@ref mim::Def::as_imm) only match _immutables_:
 
 ```cpp
 void foo(const Def* def) {
@@ -232,7 +232,7 @@ void foo(const Def* def) {
 
 #### Downcast to Mutables
 
-[mim::Def::isa_mut](@ref mim::Def::isa_mut) / [mim::Def::as_mut](@ref mim::Def::as_mut) only match _mutables_.
+[`mim::Def::isa_mut`](@ref mim::Def::isa_mut) / [`mim::Def::as_mut`](@ref mim::Def::as_mut) only match _mutables_.
 They also remove the `const` qualifier, which gives you access to the non-`const` methods that only make sense for mutables:
 
 ```cpp
@@ -255,7 +255,7 @@ void foo(const Def* def) {
 }
 ```
 
-If the scrutinee is already a `Def*`, then `Def::isa` / `Def::as` behave the same as [mim::Def::isa_mut](@ref mim::Def::isa_mut) / [mim::Def::as_mut](@ref mim::Def::as_mut), because the missing `const` already implies mutability:
+If the scrutinee is already a `Def*`, then `Def::isa` / `Def::as` behave the same as [`mim::Def::isa_mut`](@ref mim::Def::isa_mut) / [`mim::Def::as_mut`](@ref mim::Def::as_mut), because the missing `const` already implies mutability:
 
 ```cpp
 void foo(Def* def) {
@@ -276,7 +276,7 @@ void foo(Def* def) {
 #### Matching Literals {#cast_lit}
 
 Often, you want to match a [literal](@ref mim::Lit) and extract its value.
-Use [Lit::isa](@ref mim::Lit::isa) / [Lit::as](@ref mim::Lit::as):
+Use [`Lit::isa`](@ref mim::Lit::isa) / [`Lit::as`](@ref mim::Lit::as):
 
 ```cpp
 void foo(const Def* def) {
@@ -300,13 +300,13 @@ void foo(const Def* def) {
 
 The following table summarizes the most important casts:
 
-| `dynamic_cast` <br> `static_cast`               | Returns                                                                                                                         | If `def` is a ...                  |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `def->isa<Lam>()` <br> `def->as<Lam>()`         | `const Lam*`                                                                                                                    | [Lam](@ref mim::Lam)               |
-| `def->isa_imm<Lam>()` <br> `def->as_imm<Lam>()` | `const Lam*`                                                                                                                    | **immutable** [Lam](@ref mim::Lam) |
-| `def->isa_mut<Lam>()` <br> `def->as_mut<Lam>()` | `Lam*`                                                                                                                          | **mutable** [Lam](@ref mim::Lam)   |
-| `Lit::isa(def)` <br> `Lit::as(def)`             | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[nat_t](@ref mim::nat_t)`>` <br> [nat_t](@ref mim::nat_t) | [Lit](@ref mim::Lit)               |
-| `Lit::isa<f32>(def)` <br> `Lit::as<f32>(def)`   | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[f32](@ref mim::f32)`>` <br> [f32](@ref mim::f32)         | [Lit](@ref mim::Lit)               |
+| `dynamic_cast` <br> `static_cast`               | Returns                                                                                                                             | If `def` is a ...                    |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `def->isa<Lam>()` <br> `def->as<Lam>()`         | `const Lam*`                                                                                                                        | [`Lam`](@ref mim::Lam)               |
+| `def->isa_imm<Lam>()` <br> `def->as_imm<Lam>()` | `const Lam*`                                                                                                                        | **immutable** [`Lam`](@ref mim::Lam) |
+| `def->isa_mut<Lam>()` <br> `def->as_mut<Lam>()` | `Lam*`                                                                                                                              | **mutable** [`Lam`](@ref mim::Lam)   |
+| `Lit::isa(def)` <br> `Lit::as(def)`             | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`nat_t`](@ref mim::nat_t)`>` <br> [`nat_t`](@ref mim::nat_t) | [`Lit`](@ref mim::Lit)               |
+| `Lit::isa<f32>(def)` <br> `Lit::as<f32>(def)`   | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`f32`](@ref mim::f32)`>` <br> [`f32`](@ref mim::f32)         | [`Lit`](@ref mim::Lit)               |
 
 #### Further Casts
 
@@ -335,15 +335,15 @@ void foo(const Def* def) {
 
 You can match [axioms](@ref mim::Axm) via
 
-- [mim::Axm::isa](@ref mim::Axm::isa), which behaves like a checked `dynamic_cast` and returns [a wrapped](@ref mim::Axm::isa) `nullptr`-like value on failure, or
-- [mim::Axm::as](@ref mim::Axm::as), which behaves like a checked `static_cast` and asserts in `Debug` builds if the match fails.
+- [`mim::Axm::isa`](@ref mim::Axm::isa), which behaves like a checked `dynamic_cast` and returns [a wrapped](@ref mim::Axm::isa) `nullptr`-like value on failure, or
+- [`mim::Axm::as`](@ref mim::Axm::as), which behaves like a checked `static_cast` and asserts in `Debug` builds if the match fails.
 
 The result is a `mim::Axm::isa<Id, D>`, which wraps a `const D*`.
-Here, `Id` is the enum corresponding to the [matched axiom tag](@ref anatomy), and `D` is usually an [App](@ref mim::App), because most [axioms](@ref mim::Axm) inhabit a [function type](@ref mim::Pi).
-In other cases, it may wrap a plain [Def](@ref mim::Def) or some other subclass.
+Here, `Id` is the enum corresponding to the [matched axiom tag](@ref anatomy), and `D` is usually an [`App`](@ref mim::App), because most [axioms](@ref mim::Axm) inhabit a [function type](@ref mim::Pi).
+In other cases, it may wrap a plain [`Def`](@ref mim::Def) or some other subclass.
 
 By default, MimIR assumes that an [axiom](@ref mim::Axm) becomes "active" when its final curried argument is applied.
-For example, [matching](@ref mim::Axm::isa) `%%mem.load` only succeeds on the final [App](@ref mim::App) of the curried call
+For example, [matching](@ref mim::Axm::isa) `%%mem.load` only succeeds on the final [`App`](@ref mim::App) of the curried call
 
 ```mim
 %mem.load (T, as) (mem, ptr)
@@ -357,15 +357,15 @@ whereas
 
 does **not** match.
 
-In this example, the wrapped [App](@ref mim::App) refers to the final application, so:
+In this example, the wrapped [`App`](@ref mim::App) refers to the final application, so:
 
-- [mim::App::arg](@ref mim::App::arg) is `(mem, ptr)`, and
-- [mim::App::callee](@ref mim::App::callee) is `%%mem.load (T, as)`.
+- [`mim::App::arg`](@ref mim::App::arg) is `(mem, ptr)`, and
+- [`mim::App::callee`](@ref mim::App::callee) is `%%mem.load (T, as)`.
 
-Use [mim::App::decurry](@ref mim::App::decurry) if you want direct access to the preceding application.
+Use [`mim::App::decurry`](@ref mim::App::decurry) if you want direct access to the preceding application.
 See the examples below.
 
-If you design an [axiom](@ref mim::Axm) that returns a function, you can [fine-tune the trigger point](@ref normalization) of [mim::Axm::isa](@ref mim::Axm::isa) / [mim::Axm::as](@ref mim::Axm::as).
+If you design an [axiom](@ref mim::Axm) that returns a function, you can [fine-tune the trigger point](@ref normalization) of [`mim::Axm::isa`](@ref mim::Axm::isa) / [`mim::Axm::as`](@ref mim::Axm::as).
 
 #### Without Subtags
 
@@ -434,7 +434,7 @@ This number may itself be dynamic, for example in `‹n; 0›`.
 
 ### Projs
 
-[mim::Def::num_projs](@ref mim::Def::num_projs) equals [mim::Def::arity](@ref mim::Def::arity) if the arity is a [mim::Lit](@ref mim::Lit).
+[`mim::Def::num_projs`](@ref mim::Def::num_projs) equals [`mim::Def::arity`](@ref mim::Def::arity) if the arity is a [`mim::Lit`](@ref mim::Lit).
 Otherwise, it yields `1`.
 
 This concept mainly exists in the C++ API to give you the illusion of n-ary structure, e.g.
@@ -448,10 +448,10 @@ Internally, however, all functions still have exactly one domain and one codomai
 
 #### Thresholded Variants
 
-There are also thresholded variants prefixed with `t`, which take [mim::Flags::scalarize_threshold](@ref mim::Flags::scalarize_threshold) (`--scalarize-threshold`) into account.
+There are also thresholded variants prefixed with `t`, which take [`mim::Flags::scalarize_threshold`](@ref mim::Flags::scalarize_threshold) (`--scalarize-threshold`) into account.
 
-[mim::Def::num_tprojs](@ref mim::Def::num_tprojs) behaves like [mim::Def::num_projs](@ref mim::Def::num_projs), but returns `1` if the arity exceeds the threshold.
-Similarly, [mim::Def::tproj](@ref mim::Def::tproj), [mim::Def::tprojs](@ref mim::Def::tprojs), [mim::Lam::tvars](@ref mim::Lam::tvars), and related methods follow the same rule.
+[`mim::Def::num_tprojs`](@ref mim::Def::num_tprojs) behaves like [`mim::Def::num_projs`](@ref mim::Def::num_projs), but returns `1` if the arity exceeds the threshold.
+Similarly, [`mim::Def::tproj`](@ref mim::Def::tproj), [`mim::Def::tprojs`](@ref mim::Def::tprojs), [`mim::Lam::tvars`](@ref mim::Lam::tvars), and related methods follow the same rule.
 
 **See also:**
 
@@ -467,16 +467,16 @@ TODO
 
 ### Summary
 
-| Expression         | Class                    | [arity](@ref mim::Def::arity) | [num_projs](@ref mim::Def::num_projs) | [num_tprojs](@ref mim::Def::num_tprojs) |
+| Expression         | Class                    | [arity](@ref mim::Def::arity) | [`num_projs`](@ref mim::Def::num_projs) | [`num_tprojs`](@ref mim::Def::num_tprojs) |
 | ------------------ | ------------------------ | ----------------------------- | ------------------------------------- | --------------------------------------- |
-| `(0, 1, 2)`        | [Tuple](@ref mim::Tuple) | `3`                           | `3`                                   | `3`                                     |
-| `‹3; 0›`           | [Pack](@ref mim::Pack)   | `3`                           | `3`                                   | `3`                                     |
-| `‹n; 0›`           | [Pack](@ref mim::Pack)   | `n`                           | `1`                                   | `1`                                     |
-| `[Nat, Bool, Nat]` | [Sigma](@ref mim::Sigma) | `3`                           | `3`                                   | `3`                                     |
-| `«3; Nat»`         | [Arr](@ref mim::Arr)     | `3`                           | `3`                                   | `3`                                     |
-| `«n; Nat»`         | [Arr](@ref mim::Arr)     | `n`                           | `1`                                   | `1`                                     |
-| `x: [Nat, Bool]`   | [Var](@ref mim::Var)     | `2`                           | `2`                                   | `2`                                     |
-| `‹32; 0›`          | [Pack](@ref mim::Pack)   | `32`                          | `32`                                  | `1`                                     |
+| `(0, 1, 2)`        | [`Tuple`](@ref mim::Tuple) | `3`                           | `3`                                   | `3`                                     |
+| `‹3; 0›`           | [`Pack`](@ref mim::Pack)   | `3`                           | `3`                                   | `3`                                     |
+| `‹n; 0›`           | [`Pack`](@ref mim::Pack)   | `n`                           | `1`                                   | `1`                                     |
+| `[Nat, Bool, Nat]` | [`Sigma`](@ref mim::Sigma) | `3`                           | `3`                                   | `3`                                     |
+| `«3; Nat»`         | [`Arr`](@ref mim::Arr)     | `3`                           | `3`                                   | `3`                                     |
+| `«n; Nat»`         | [`Arr`](@ref mim::Arr)     | `n`                           | `1`                                   | `1`                                     |
+| `x: [Nat, Bool]`   | [`Var`](@ref mim::Var)     | `2`                           | `2`                                   | `2`                                     |
+| `‹32; 0›`          | [`Pack`](@ref mim::Pack)   | `32`                          | `32`                                  | `1`                                     |
 
 The last line assumes `mim::Flags::scalarize_threshold = 32`.
 
@@ -485,8 +485,8 @@ The last line assumes `mim::Flags::scalarize_threshold = 32`.
 There are several ways to iterate over a MimIR program.
 Which one is best depends on what you want to do and how much structure you need during the traversal.
 
-The simplest approach is to start from [World::annexes](@ref mim::World::annexes) and [World::externals](@ref mim::World::externals) and recursively visit [Def::deps](@ref mim::Def::deps).
-Oftentimes, you can use [World::roots](@ref mim::World::roots) if you don't need to distinguish between annexes and externals:
+The simplest approach is to start from [`World::annexes`](@ref mim::World::annexes) and [`World::externals`](@ref mim::World::externals) and recursively visit [`Def::deps`](@ref mim::Def::deps).
+Oftentimes, you can use [`World::roots`](@ref mim::World::roots) if you don't need to distinguish between annexes and externals:
 
 ```cpp
 void visit(DefSet& done, const Def* def) {

@@ -7,7 +7,7 @@
 namespace mim::plug::tensor::phase {
 
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
-/// `get` / `set` / `map_reduce_aff` become `%buffer.read` / `%buffer.write` / `%buffer.alloc`,
+/// `get` / `set` / `map_reduce` become `%buffer.read` / `%buffer.write` / `%buffer.alloc`,
 /// and tensor array values `«s; T»` become `%buffer.Buf (r, s, T)` handles.
 /// Afterwards `%buffer.lower_ptr` lowers the buffer layer to `%mem.Ptr` + `%mem.lea` / `%mem.load` / `%mem.store`.
 ///
@@ -34,7 +34,7 @@ private:
     const Def* lower_get(const App*);
     const Def* lower_set(const App*);
     const Def* lower_broadcast(const App*);
-    const Def* lower_map_reduce_aff(const App*);
+    const Def* lower_map_reduce(const App*);
 
     /// Adapts a call to a bufferized function: materializes value-world tensor arguments into buffers;
     /// continuation arguments pass through (their domains are converted by `rewrite_mut_Lam`).
@@ -86,10 +86,8 @@ private:
     /// tensor type (pure type-based role tracking aliases, e.g. an `(x y: I32)` group *is* `«2; I32»`).
     LamSet op_args_;
 
-    /// Bufferization is only sound when the program contains no `%tensor.map_reduce` (einsum): that op is not
-    /// bufferizable, and mixing a value-world `map_reduce` with buffer-world ops on the same tensor is ill-typed.
-    /// If any `map_reduce` is present (or another gated shape occurs), this phase becomes a no-op and the
-    /// value-semantics `%tensor.lower_map_reduce` handles everything instead.
+    /// Disabled when the program contains a shape the conversion cannot handle (see `collect_tensor_types`).
+    /// This phase then becomes a no-op and the value-semantics `%tensor.lower_map_reduce` handles everything instead.
     bool bufferize_ = true;
 };
 

@@ -8,7 +8,7 @@
 ///
 import mem;
 import core;
-import refly;
+plugin refly;
 ///
 /// ## Operations
 ///
@@ -72,8 +72,26 @@ axm %affine.map: {m n: Nat}
                → {sin: «n; Nat», sout: «m; Nat»}
                → ([«n; %affine.index»] → «m; %affine.index»)
                → «i: n; Idx (sin#i)»
-               → «i: m; Idx (sout#i)»;
+               → (%mem.M 0)
+               → [(%mem.M 0), «i: m; Idx (sout#i)»];
 
+///
+/// ### %%affine.id
+/// The identity map on affine indices.
+///
+lam %affine.id {r: Nat} (o: «r; %affine.index»): «r; %affine.index» = o;
+///
+/// ### %%affine.linearize
+/// Row-major flattening of a multi-index: `linearize(idxs, s) = Σ_k idxs#k · (∏_{j>k} s#j)`.
+/// `s` is the (row-major) shape; only its rank `n` need be a literal.
+///
+axm %affine.linearize: {n: Nat} → [idxs: «n; %affine.index», s: «n; Nat»] → %affine.index;
+///
+/// ### %%affine.delinearize
+/// Row-major unflattening: `delinearize(lin, s)#d = (lin floordiv (∏_{j>d} s#j)) mod s#d`.
+/// The inverse of %affine.linearize; only the rank `m` of `s` need be a literal.
+///
+axm %affine.delinearize: {m: Nat} → [lin: %affine.index, s: «m; Nat»] → «m; %affine.index»;
 ///
 /// ## Passes and Phases
 ///

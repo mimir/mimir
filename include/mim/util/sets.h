@@ -270,8 +270,8 @@ public:
 
         /// Is @f$this \cap other \neq \emptyset@f$?.
         [[nodiscard]] bool has_intersection(Set other) const noexcept {
-            if (*this == other) return true;
             if (this->empty() || other.empty()) return false;
+            if (*this == other) return true;
 
             auto u1 = this->isa_uniq();
             auto u2 = other.isa_uniq();

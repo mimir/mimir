@@ -23,7 +23,7 @@ lam f (idx: «2; %affine.index»): «3; %affine.index» =
 con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I32, 0), 0), return : Cn [%mem.M 0, I32]] =
     let a = argc;
     let b = 4I32;
-    let r = %affine.map @(3, 2) @((i32, i32), (i32, i32, i32)) f (a, b);
+    let (mem, r) = %affine.map @(3, 2) @((i32, i32), (i32, i32, i32)) f (a, b) mem;
     // sum = a + 3*a + 5 = 4*a + 5
     let s0 = %core.wrap.add 0 (r#0_3, r#1_3);
     let s  = %core.wrap.add 0 (s0, r#2_3);

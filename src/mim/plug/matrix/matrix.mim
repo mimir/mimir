@@ -85,7 +85,7 @@ axm %matrix.map_reduce:
 ///
 /// ### %%matrix.map_reduce_aff
 ///
-/// The buffer-world counterpart of `%%tensor.map_reduce_aff`: the affine-indexed generalisation of
+/// The buffer-world counterpart of `%%tensor.map_reduce`: the affine-indexed generalisation of
 /// `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
 /// `So`/`Sr` are the (logical) output shape and full loop bounds; `acc_out`/`accs` are affine maps from the
 /// `Ro+Rr` loop vector to the output/input coordinates.

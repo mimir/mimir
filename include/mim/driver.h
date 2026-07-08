@@ -11,6 +11,7 @@
 
 #include "mim/ast/tok.h"
 #include "mim/util/log.h"
+#include "mim/util/profile.h"
 
 namespace mim {
 
@@ -34,6 +35,8 @@ public:
     Flags& flags() { return flags_; }
     const Flags& flags() const { return flags_; }
     Log& log() const { return log_; }
+    Profiler& profiler() { return profiler_; }
+    const Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
     const Version& version() const { return version_; } ///< MimIR Version.
     ///@}
@@ -129,6 +132,7 @@ private:
     Version version_;
     Flags flags_;
     mutable Log log_;
+    Profiler profiler_;
     World world_;
     std::list<fs::path> search_paths_;
     std::list<fs::path>::iterator insert_ = search_paths_.end();

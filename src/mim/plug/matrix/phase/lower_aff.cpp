@@ -67,11 +67,15 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     auto nloops = ro + rr;
     auto n      = w.lit_nat(nloops);
 
-    auto affine_map = [&](const Def* f, const Def* m, const Def* nn, const Def* sin, const Def* sout, const Def* idxs) {
+    // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem`. The map is mem-threaded (its divisions consume mem),
+    // and this phase threads real memory, so the caller passes the current mem and receives `(mem', coords)`.
+    auto affine_map = [&](const Def* f, const Def* m, const Def* nn, const Def* sin, const Def* sout, const Def* idxs,
+                          const Def* mem) {
         auto a = w.app(w.annex<affine::map>(), w.tuple({m, nn}));
         a      = w.app(a, w.tuple({sin, sout}));
         a      = w.app(a, f);
-        return w.app(a, idxs);
+        a      = w.app(a, idxs);
+        return w.app(a, mem)->projs<2>();
     };
 
     auto mem_ty = w.call<mem::M>(0);
@@ -109,8 +113,8 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     DefVec wb_iters                 = out_iters;
     for (u64 j = 0; j < rr; ++j)
         wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
-    auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters));
-    auto stored       = buffer::op_write(obr, obs, obT, wb_in_mem, wb_buf, fold_index(So, write_coords), element_final);
+    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wb_in_mem);
+    auto stored                 = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), element_final);
     write_back->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
 
     // Reduction loops; accumulator `{mem, element}`.
@@ -140,7 +144,9 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     DefVec input_elements(nis_nat);
     for (u64 i = 0; i < nis_nat; ++i) {
         auto in_buf = new_inputs->proj(nis_nat, i);
-        auto coords = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters);
+        auto [mc_mem, coords]
+            = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters, cur);
+        cur                = mc_mem;
         auto [ir, is_, iT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
         auto [rd_mem, rd_val]
             = buffer::op_read(ir, is_, iT, cur, in_buf, fold_index(Sis->proj(nis_nat, i), coords))->projs<2>();
