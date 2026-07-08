@@ -4,9 +4,9 @@
 
 // %tensor.reshape (row-major) loops over the result and reads the input at the delinearized linear index, via the
 // %affine.linearize / %affine.delinearize helpers (which lower to %core arithmetic + %core.div). Checked on the lowered
-// Mim IR (no codegen), as for hlo.mim / map_reduce_aff. `s_in` is explicit so inference can pin the element type.
+// Mim IR (no codegen), as for hlo.mim / map_reduce. `s_in` is explicit so inference can pin the element type.
 // GONE-NOT: %tensor.reshape
-// GONE-NOT: map_reduce_aff
+// GONE-NOT: map_reduce
 // GONE-NOT: %affine
 // GONE-NOT: linearize
 

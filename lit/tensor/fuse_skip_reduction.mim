@@ -8,11 +8,14 @@ plugin opt;
 
 lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
 
-fun sum_reduce [acc: Nat, x: Nat]@tt: [Nat] = return (%core.nat.add (acc, x));
+fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
 
 con extern f [v: «2; «3; Nat»», return: Cn «2; Nat»] =
-    // inner[i] = sum_j v[i, j]   (has reduction on axis j = index 1)
-    let inner = %tensor.map_reduce @1 @(Nat, 1) 2 @(Nat, 2, (2, 3)) (sum_reduce, 0) (0, 1) v;
+    // inner[i] = Σ_j v[i, j]: one output loop (bound 2), one reduction loop (bound 3)
+    let inner = %tensor.map_reduce @1 @(Nat, 1, 1) (2, (2, 3)) @(Nat, 2, (2, 3)) (sum_reduce, 0)
+        (%tensor.proj_map @(2, 1) 0)
+        (%tensor.proj_map @(2, 2) (0, 1),)
+        v;
     // outer[i] = inner[i] + 1    (pure map)
     let outer = %tensor.unary @(Nat, Nat) add1 @(1, 2) inner;
     return outer;

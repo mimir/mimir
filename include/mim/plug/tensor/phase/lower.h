@@ -4,8 +4,8 @@
 
 namespace mim::plug::tensor::phase {
 
-/// Lowers the high-level tensor axioms into the low-level tensor axioms (`map_reduce`,
-/// `map_reduce_aff`, …). Each high-level axiom comes with a matching `*_impl` annex (a
+/// Lowers the high-level tensor axioms into the low-level tensor axioms (`map_reduce`, …).
+/// Each high-level axiom comes with a matching `*_impl` annex (a
 /// `lam` with the same signature as the axiom); the lowering simply re-applies the args
 /// to the `_impl` annex. Each `_impl` body references the `_impl` variants of its
 /// dependencies, so the chain of beta-reductions bottoms out at the low-level axioms in

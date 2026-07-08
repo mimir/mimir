@@ -174,11 +174,6 @@ const Def* normalize_broadcast(const Def*, const Def* c, const Def* arg) {
 const Def* normalize_broadcast_in_dim(const Def*, const Def*, const Def*) { return nullptr; }
 
 const Def* normalize_map_reduce(const Def*, const Def*, const Def*) {
-    // TODO: is there anything we can normalize here?
-    return nullptr;
-}
-
-const Def* normalize_map_reduce_aff(const Def*, const Def*, const Def*) {
     // TODO: fold size-1 loop dimensions / identity access maps.
     return nullptr;
 }

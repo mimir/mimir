@@ -2,7 +2,7 @@
 // RUN: cat %t | %FileCheck %s
 // RUN: cat %t | %FileCheck %s --check-prefix=GONE
 
-// %tensor.conv: 2-D convolution (groups 1, no bias). A windowed reduction expressed as a %tensor.map_reduce_aff
+// %tensor.conv: 2-D convolution (groups 1, no bias). A windowed reduction expressed as a %tensor.map_reduce
 // over the kernel, reading the input at stride·o + dilation·k after zero-padding via %tensor.pad. The fused
 // multiply-add runs in the ring R. Checked on the lowered Mim IR (no codegen), as for slice / pad.
 //

@@ -2,7 +2,7 @@
 // RUN: cat %t | %FileCheck %s
 // RUN: cat %t | %FileCheck %s --check-prefix=GONE
 
-// %tensor.pool: 2-D pooling, a windowed reduction over %tensor.map_reduce_aff (Ro=4 output loops, Rr=2 kernel loops),
+// %tensor.pool: 2-D pooling, a windowed reduction over %tensor.map_reduce (Ro=4 output loops, Rr=2 kernel loops),
 // reading the input at stride·o + dilation·k after padding via %tensor.pad with the fold's identity `init`. The fold
 // `g` + `init` are operands, so max-pooling (g = max, init = -inf) and sum-/avg-pooling (g = +, init = 0) share one op.
 // Checked on the lowered Mim IR (no codegen), as for conv / slice. Inputs use N,C >= 2 so the NCHW layout does not
