@@ -99,9 +99,6 @@ private:
     Lam* build_lam(View<Phi>, Lam* old_lam);
     /// Builds the argument list for an App of @p old_lam matching the signature built by build_lam().
     DefVec build_args(View<Phi>, Lam* old_lam, const App* old_app);
-    /// Rewrites the value of @p sloxy as known at the current call site:
-    /// either the value curr_mut() wrote to the slot or curr_mut()'s own phi for it.
-    const Def* rewrite_site_value(const Def* sloxy);
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
