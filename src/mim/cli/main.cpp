@@ -106,6 +106,7 @@ int main(int argc, char** argv) {
 
     // TEMP DIAGNOSTIC: make crash/assert output visible on Windows CI (buffered/dialog-routed by default).
     std::setvbuf(stderr, nullptr, _IONBF, 0);
+    std::setvbuf(stdout, nullptr, _IONBF, 0); // so a teardown crash can't swallow already-produced output
 #ifdef _WIN32
     ULONG stack_guarantee = 64 * 1024; // reserve stack so the filter can run on a stack overflow
     SetThreadStackGuarantee(&stack_guarantee);
@@ -320,5 +321,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+#ifdef _WIN32
+    std::fprintf(stderr, "[mim] reached end of main; returning EXIT_SUCCESS\n"); // TEMP DIAGNOSTIC
+    std::fflush(stderr);
+#endif
     return EXIT_SUCCESS;
 }
