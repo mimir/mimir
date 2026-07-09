@@ -1,0 +1,14 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// Same idea as loop_continue_foreign.mim, for %scf.Switch/%scf.break.s: a
+// Switch capability received as an ordinary parameter has a `path` that is a
+// structurally distinct bound variable from this function's own `path`.
+
+plugin scf;
+
+con extern foo (p: %scf.Path, s: %scf.Step, id: %scf.Id,
+                switch_cap: %scf.Switch p s id [] Nat,
+                path: %scf.Path, step: %scf.Step, gen: %scf.Gen,
+                token: %scf.Token path step gen, return: %scf.Ret Nat) =
+    %scf.break.s token switch_cap 0; // ILLEGAL: path can never reach p
+
+// CHECK: error

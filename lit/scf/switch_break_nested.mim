@@ -1,0 +1,24 @@
+// RUN: %mim %s -o -
+// %scf.break.s must still be accepted from arbitrarily deep nesting inside a
+// case -- positive regression coverage for path_contains's peel-through path
+// (here: peeling through %scf.arm down to %scf.case's own path, then down to
+// the switch's own path). Mirrors switch_fallthrough_nested.mim's nesting
+// shape, but %scf.break.s -- unlike %scf.fallthrough -- is not pinned to a
+// single path, so this must keep compiling.
+
+plugin scf;
+
+con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen,
+                 token: %scf.Token path step gen, cond: Bool,
+                 return: %scf.Ret Nat) =
+  %scf.switch @2 token exit default ((0, case0), (1, case1)) 0 () where
+    con case1 (_: [], struct, tok) = %scf.break.s tok struct 1;
+    con case0 (_: [], struct, tok) =
+      %scf.if tok merge (else_, then_) cond () where
+        con then_ (_: [], if_struct, inner_tok) = %scf.break.s inner_tok struct 2;
+        con else_ (_: [], if_struct, inner_tok) = %scf.merge inner_tok if_struct 3;
+        con merge (x: Nat, tok2) = %scf.break.s tok2 struct x;
+      end;
+    con default (_: [], struct, tok) = %scf.break.s tok struct 4;
+    con exit (x: Nat, tok) = %scf.return tok return x;
+end;

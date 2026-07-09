@@ -174,14 +174,19 @@ let Loop = %scf.Loop;
 /// require a unique back-edge block (SPIR-V) synthesize a shared latch block
 /// that all continue sites branch through. `inner_gen` is fully free: this
 /// may fire from arbitrarily deep inside the body, long past whatever gen
-/// the body itself started at.
+/// the body itself started at. `inner_path`/`inner_step` are free in the type,
+/// but `normalize_continue` rejects a call whose `inner_path` is not actually
+/// reachable from `path` (an interim stand-in for real `Id`/`Gen` linearity,
+/// which isn't enforced pre-QTT): a stale `Loop` capability smuggled out of
+/// the loop as ordinary data and replayed from outside cannot forge a token
+/// at a path that structurally descends from `path`.
 axm %scf.continue: {
   B H: ★,
   path: Path, step: Step, id: Id, gen: Gen, // 0x: read from the Loop argument's type, not consumed
   inner_path: Path, inner_step: Step, inner_gen: Gen, // fully free -- reachable from any nested depth
 } → [inner_token: Token inner_path inner_step inner_gen]
   → [Loop path step id gen B H]
-  → Cn H;
+  → Cn H, normalize_continue, 3;
 ///
 /// Branch to the next case of a given switch structure.
 /// Like merge, fallthrough requires a token from the same scope as the
@@ -195,13 +200,15 @@ axm %scf.fallthrough: {
   → Cn C;
 ///
 /// Branch to the break target of a `switch`.
+/// `normalize_break` rejects a call whose `inner_path` does not structurally
+/// descend from `path`, same rationale as `%scf.continue` above.
 axm %scf.break(s): {
   C B: ★,
   path: Path, step: Step, id: Id,
   inner_path: Path, inner_step: Step, inner_gen: Gen,
 } → [inner_token: Token inner_path inner_step inner_gen]
   → [Switch path step id C B]
-  → Cn B;
+  → Cn B, normalize_break, 3;
 ///
 /// Branch to the break target of a `loop`.
 axm %scf.break(l): {
@@ -210,7 +217,7 @@ axm %scf.break(l): {
   inner_path: Path, inner_step: Step, inner_gen: Gen,
 } → [inner_token: Token inner_path inner_step inner_gen]
   → [Loop path step id gen B H]
-  → Cn B;
+  → Cn B, normalize_break, 3;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
 /// Unlike break, merge requires a token from the same scope as the struct

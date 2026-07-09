@@ -1,0 +1,21 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// A loop's own post-exit continuation (the `break` target) holds a token at
+// the SAME `path` as the loop's own capability -- structurally a sibling
+// point, not a nested one. `struct` (the Loop capability) is not actually
+// linear yet (no QTT), so it is still held here as ordinary data; replaying
+// it against %scf.continue from this point must be rejected: path_contains
+// requires STRICT nesting (at least one arm/case/default/body peel), and an
+// equal path is never legitimate here.
+
+plugin scf;
+
+con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, return: %scf.Ret Nat) =
+    %scf.header token loop 5 where
+    con loop (i: Nat, struct) =
+        %scf.loop struct break body () where
+        con body (_: [], struct, tok) = %scf.break.l tok struct ();
+        con break (_: [], tok) = %scf.continue tok struct 0; // ILLEGAL: tok's step != loop's own step
+        end;
+    end;
+
+// CHECK: error
