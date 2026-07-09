@@ -1,8 +1,73 @@
+#include <csignal>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 #include <fstream>
 #include <string>
+
+// TEMP DIAGNOSTIC: in-process crash backtrace on Windows CI (asserts/AVs otherwise die silently).
+#ifdef _WIN32
+#    include <windows.h>
+// clang-format off
+#    include <dbghelp.h>
+// clang-format on
+#    ifdef _DEBUG
+#        include <crtdbg.h>
+#    endif
+
+static void mim_backtrace(CONTEXT* ctx) {
+    auto proc   = GetCurrentProcess();
+    auto thread = GetCurrentThread();
+    SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+    SymInitialize(proc, nullptr, TRUE);
+
+    STACKFRAME64 f = {};
+    f.AddrPC.Mode = f.AddrFrame.Mode = f.AddrStack.Mode = AddrModeFlat;
+    f.AddrPC.Offset                                     = ctx->Rip;
+    f.AddrFrame.Offset                                  = ctx->Rbp;
+    f.AddrStack.Offset                                  = ctx->Rsp;
+
+    for (int i = 0; i < 64; ++i) {
+        if (!StackWalk64(IMAGE_FILE_MACHINE_AMD64, proc, thread, &f, ctx, nullptr, SymFunctionTableAccess64,
+                         SymGetModuleBase64, nullptr)
+            || f.AddrPC.Offset == 0)
+            break;
+
+        char buf[sizeof(SYMBOL_INFO) + 512] = {};
+        auto sym                            = reinterpret_cast<SYMBOL_INFO*>(buf);
+        sym->SizeOfStruct                   = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen                     = 512;
+        DWORD64 disp                        = 0;
+        std::fprintf(stderr, "  #%02d ", i);
+        if (SymFromAddr(proc, f.AddrPC.Offset, &disp, sym))
+            std::fprintf(stderr, "%s", sym->Name);
+        else
+            std::fprintf(stderr, "0x%llx", (unsigned long long)f.AddrPC.Offset);
+        IMAGEHLP_LINE64 line = {};
+        line.SizeOfStruct    = sizeof(line);
+        DWORD ldisp          = 0;
+        if (SymGetLineFromAddr64(proc, f.AddrPC.Offset, &ldisp, &line))
+            std::fprintf(stderr, "  (%s:%lu)", line.FileName, line.LineNumber);
+        std::fprintf(stderr, "\n");
+    }
+    std::fflush(stderr);
+}
+
+static LONG WINAPI mim_seh_filter(EXCEPTION_POINTERS* ep) {
+    std::fprintf(stderr, "\n*** unhandled exception 0x%08lx ***\n", ep->ExceptionRecord->ExceptionCode);
+    mim_backtrace(ep->ContextRecord);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static void mim_sigabrt(int) {
+    std::fprintf(stderr, "\n*** SIGABRT (assert/abort) ***\n");
+    CONTEXT ctx = {};
+    RtlCaptureContext(&ctx);
+    mim_backtrace(&ctx);
+    ExitProcess(134);
+}
+#endif
 
 #include <lyra/lyra.hpp>
 
@@ -21,6 +86,20 @@ using namespace std::literals;
 
 int main(int argc, char** argv) {
     enum Backends { AST, Dot, H, PY, Md, Mim, Nest, SExpr, SlottedSExpr, ProfileTrace, Num_Backends };
+
+    // TEMP DIAGNOSTIC: make crash/assert output visible on Windows CI (buffered/dialog-routed by default).
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(mim_seh_filter);
+    std::signal(SIGABRT, mim_sigabrt);
+#    ifdef _DEBUG
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT); // no WER dialog; let our handler run
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+#    endif
+#endif
 
     try {
         Driver driver;
