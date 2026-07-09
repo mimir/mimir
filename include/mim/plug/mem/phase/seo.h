@@ -1,5 +1,7 @@
 #pragma once
 
+#include <absl/container/btree_set.h>
+
 #include <mim/def.h>
 #include <mim/phase.h>
 
@@ -45,7 +47,7 @@ private:
 
         void reset() final;
 
-        const DefSet& slots() const { return slots_; }
+        const auto& slots() const { return slots_; }
         const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
 
     private:
@@ -75,7 +77,7 @@ private:
 
         // global (kept between iterations)
         Def2Def sloxy2slot_;
-        DefSet slots_; // actually slot ptrs
+        absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
     };
 
 public:
