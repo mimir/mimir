@@ -1,5 +1,6 @@
 #pragma once
 
+#include <absl/container/btree_map.h>
 #include <absl/container/btree_set.h>
 
 #include <mim/def.h>
@@ -72,11 +73,11 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        absl::node_hash_map<const Def*, Def2Def> mut2sloxy2val_;
+        absl::btree_map<const Def*, Def2Def, GIDLt<const Def*>> mut2sloxy2val_;
         DefSet visited_;
 
         // global (kept between iterations)
-        Def2Def sloxy2slot_;
+        absl::btree_map<const Def*, const Def*, GIDLt<const Def*>> sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
     };
 
@@ -107,7 +108,7 @@ private:
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
-    absl::node_hash_map<Lam*, Vector<Phi>> lam2phis_;
+    absl::btree_map<Lam*, Vector<Phi>> lam2phis_;
 };
 
 } // namespace mim::plug::mem::phase
