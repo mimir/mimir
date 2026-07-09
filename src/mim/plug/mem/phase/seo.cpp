@@ -473,16 +473,19 @@ DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
 
     DLOG("wiring up phi arguments");
     for (auto [sloxy, phi, val] : phis)
-        if (keep(phi, val)) {
-            auto i = analysis_.mut2sloxy2val().find(curr_mut());
-            assert(i != analysis_.mut2sloxy2val().end());
-            auto& sloxy2val = i->second;
-            auto j          = sloxy2val.find(sloxy);
-            assert(j != sloxy2val.end());
-            new_args.emplace_back(rewrite(j->second));
-        }
+        if (keep(phi, val)) new_args.emplace_back(rewrite(site_value(sloxy)));
 
     return new_args;
+}
+
+const Def* SEO::site_value(const Def* sloxy) {
+    // The value curr_mut() wrote to the slot, if any ...
+    if (auto i = analysis_.mut2sloxy2val().find(curr_mut()); i != analysis_.mut2sloxy2val().end()) {
+        const auto& sloxy2val = i->second;
+        if (auto j = sloxy2val.find(sloxy); j != sloxy2val.end()) return j->second;
+    }
+    // ... otherwise curr_mut() didn't write to the slot: forward our own phi for it.
+    return mk_phi(old_world(), curr_mut<Lam>(), sloxy);
 }
 
 } // namespace mim::plug::mem::phase
