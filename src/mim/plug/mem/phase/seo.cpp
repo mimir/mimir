@@ -188,7 +188,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             auto abstr_id      = rewrite(id);
             auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
             sloxy2slot_[sloxy] = slot;
-            slots_.emplace(ptr);
+            if (slots_seen_.emplace(ptr).second) slots_.emplace_back(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
             set(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});

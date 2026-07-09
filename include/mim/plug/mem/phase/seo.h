@@ -75,7 +75,11 @@ private:
 
         // global (kept between iterations)
         std::map<const Def*, const Def*, GIDLt<const Def*>> sloxy2slot_;
-        std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
+        // Slot ptrs in discovery order.
+        // The order determines the phi-parameter order of rebuilt Lams, so it must be independent of gids
+        // (which are not stable across runs): we keep insertion order via slots_ and dedup via slots_seen_.
+        DefVec slots_;
+        DefSet slots_seen_;
     };
 
 public:
