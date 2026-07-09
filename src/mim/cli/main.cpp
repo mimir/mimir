@@ -107,6 +107,8 @@ int main(int argc, char** argv) {
     // TEMP DIAGNOSTIC: make crash/assert output visible on Windows CI (buffered/dialog-routed by default).
     std::setvbuf(stderr, nullptr, _IONBF, 0);
 #ifdef _WIN32
+    ULONG stack_guarantee = 64 * 1024; // reserve stack so the filter can run on a stack overflow
+    SetThreadStackGuarantee(&stack_guarantee);
     SetUnhandledExceptionFilter(mim_seh_filter);
     std::signal(SIGABRT, mim_sigabrt);
     std::set_terminate(mim_terminate);
