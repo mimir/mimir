@@ -21,7 +21,7 @@ con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen,
         con merge (x: Nat, tok2) = %scf.break.s tok2 struct x;
       end;
     con default (x: Nat, struct, tok) = %scf.break.s tok struct 4;
-    con exit (x: Nat, tok) = return tok x;
+    con exit (x: Nat, tok) = %scf.return tok return x;
 end;
 
 // CHECK: error

@@ -9,7 +9,7 @@ con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Tok
     con case1 (_: [], struct, tok) = %scf.break.s tok struct 1;
     con case0 (_: [], struct, tok) = %scf.break.s tok struct 0;
     con default (_: [], struct, tok) = %scf.break.s tok struct 4;
-    con exit (x: Nat, tok) = return tok x;
+    con exit (x: Nat, tok) = %scf.return tok return x;
 end;
 
 // CHECK: error: duplicate case label '0' in switch

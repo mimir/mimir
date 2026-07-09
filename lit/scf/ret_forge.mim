@@ -1,0 +1,20 @@
+// RUN: not %mim %s -o - 2>&1 | FileCheck %s
+// %scf.Ret is an opaque wrapper with no introduction rule: nothing in the
+// term language can fabricate a `Ret R` value, so a structured function
+// cannot be applied directly -- %scf.call is the only way in. `fake` below
+// has exactly the pi shape %scf.Ret used to beta-reduce to (polymorphic
+// coordinates, token-first, then payload) and simply discards the token --
+// the forgery the bare pi type permitted -- but it is not of the opaque
+// type `%scf.Ret Nat`, so the direct application of `callee` rejects.
+
+plugin scf;
+
+con callee (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) =
+    %scf.return token return x;
+
+con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), exit: Cn Nat) =
+    callee (1, path, step, token, fake) where
+        lam fake {p: %scf.Path, s: %scf.Step, g: %scf.Gen} (t: %scf.Token p s g) = cn (r: Nat) = exit r;
+    end;
+
+// CHECK: error

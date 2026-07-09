@@ -58,5 +58,5 @@ con extern fragment [
             end;
         end;
         con break (_: [], tok) =
-            return tok (%spirv.store (mem_, f_color, fragment_body color));
+            %scf.return tok return (%spirv.store (mem_, f_color, fragment_body color));
     end;

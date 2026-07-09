@@ -3,22 +3,17 @@
 #include "mim/tuple.h"
 
 #include "mim/plug/math/math.h"
-#include "mim/plug/mem/mem.h"     // IWYU pragma: keep
+#include "mim/plug/mem/mem.h" // IWYU pragma: keep
 #include "mim/plug/scf/scf.h" // IWYU pragma: keep
 #include "mim/plug/spirv/be/emit.h"
 
 namespace mim::plug::spirv {
 
-/// Matches the expansion of `%scf.Ret R`: `{path, step} → [Token path step] → Cn R`
-/// (the polymorphic return continuation type; `%scf.Ret` is a mim-level lam,
-/// so only its beta-reduced shape survives into the world). Yields the
-/// innermost `Cn R` on a match, whose dom is the return payload type.
-const Pi* isa_ret(const Def* def) {
-    auto pi = def->isa<Pi>();
-    if (!pi) return nullptr;
-    auto tok_pi = pi->codom()->isa<Pi>();
-    if (!tok_pi || !Axm::isa<scf::Token>(tok_pi->dom())) return nullptr;
-    return Pi::isa_cn(tok_pi->codom());
+/// Matches `%scf.Ret R`, the opaque polymorphic return continuation wrapper.
+/// Yields the return payload type `R` on a match.
+const Def* isa_ret(const Def* def) {
+    if (auto ret = Axm::isa<scf::Ret>(def)) return ret->arg();
+    return nullptr;
 }
 
 const Def* Emitter::strip(const Def* def) {
@@ -68,7 +63,7 @@ const Def* Emitter::strip_rec(const Def* def) {
         // the ret con (tokens drop on their own below), lift the ret payload
         // to codom.
         if (auto sigma = pi->dom()->isa<Sigma>()) {
-            const Pi* ret = nullptr;
+            const Def* ret = nullptr;
             for (auto field : sigma->projs())
                 if (auto r = isa_ret(field)) ret = r;
             if (ret) {
@@ -76,7 +71,7 @@ const Def* Emitter::strip_rec(const Def* def) {
                 for (auto field : sigma->projs())
                     if (!isa_ret(field))
                         if (auto stripped = strip_rec(field)) fields.push_back(stripped);
-                return world.pi(world.sigma(fields), strip(ret->dom()), pi->is_implicit());
+                return world.pi(world.sigma(fields), strip(ret), pi->is_implicit());
             }
         }
 

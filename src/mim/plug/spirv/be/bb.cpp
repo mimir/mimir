@@ -14,11 +14,11 @@ namespace mim::plug::spirv {
 const Def* scope_key_of(const Def* cf_struct) {
     auto type = cf_struct->type();
     if (Axm::isa<scf::If>(type)) {
-        auto [path, step, id, b]      = Axm::as<scf::If>(type)->uncurry_args<4>();
+        auto [path, step, id, b] = Axm::as<scf::If>(type)->uncurry_args<4>();
         return cf_struct->world().tuple({path, step});
     }
     if (Axm::isa<scf::Switch>(type)) {
-        auto [path, step, id, t, b]   = Axm::as<scf::Switch>(type)->uncurry_args<5>();
+        auto [path, step, id, t, b] = Axm::as<scf::Switch>(type)->uncurry_args<5>();
         return cf_struct->world().tuple({path, step});
     }
     if (Axm::isa<scf::Loop>(type)) {
@@ -80,15 +80,10 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
 
     bb.label = Op{OpKind::Label, {}, lam_id, {}};
 
-    // Peel curried applications off the callee: a polymorphic scf return is
-    // called as `return {path, step} token payload`, so the ret var sits at
-    // the bottom of an app chain (a plain CPS return is the callee directly).
-    auto callee_base = app->callee();
-    while (auto curried = callee_base->isa<App>()) callee_base = curried->callee();
-
     // emit bb end instruction
-    if (callee_base == ret_var_) {
-        // return lam called
+    if (app->callee() == ret_var_) {
+        // plain CPS return lam called (fun-style; structured functions return
+        // through the %scf.return branch below instead)
         // => OpReturn | OpReturnValue
 
         // always materialize arg first so side-effects (stores, etc.) emit
@@ -164,8 +159,8 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // break here: a `while`-style loop is written by placing a conditional
         // `%scf.break(l)` as the first thing in the body.
         auto [cf_struct, cf_break, cf_body, arg] = cf_loop->uncurry_args<4>();
-        auto break_lam = cf_break->as_mut<Lam>();
-        auto body_lam  = cf_body->as_mut<Lam>();
+        auto break_lam                           = cf_break->as_mut<Lam>();
+        auto body_lam                            = cf_body->as_mut<Lam>();
 
         bb.merge = Op{
             OpKind::LoopMerge,
@@ -190,8 +185,8 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         // one falls through to the switch's default (switch constructor arg 2).
         auto [inner_token, cf_struct, value] = cf_exit->uncurry_args<3>();
         auto switch_args                     = cf_args(cf_struct);
-        auto cases                    = switch_args->op(3);
-        auto target_lam               = switch_args->op(2)->as_mut<Lam>(); // default
+        auto cases                           = switch_args->op(3);
+        auto target_lam                      = switch_args->op(2)->as_mut<Lam>(); // default
         for (size_t i = 0, e = cases->num_ops(); i != e; ++i) {
             if (cases->op(i)->op(1)->as_mut<Lam>() == lam) {
                 if (i > 0) target_lam = cases->op(i - 1)->op(1)->as_mut<Lam>();
@@ -218,6 +213,19 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
         auto target_lam                      = cf_args(cf_struct)->op(1)->as_mut<Lam>();
         link_phi(lam, target_lam, value);
         bb.end = Op{OpKind::Branch, {bb_id(target_lam)}, {}, {}};
+    } else if (auto cf_ret = Axm::isa<scf::_return>(app)) {
+        // === Structured function return ===
+        // `%scf.return token ret payload`, the only elimination of the opaque
+        // %scf.Ret wrapper.
+        // => OpReturn | OpReturnValue
+        auto [token, ret, value] = cf_ret->uncurry_args<3>();
+
+        // always materialize value first so side-effects (stores, etc.) emit
+        auto value_id = emit_term(value);
+        if (strip(value->type()) == world().sigma())
+            bb.end = Op{OpKind::Return, {}, {}, {}};
+        else
+            bb.end = Op{OpKind::ReturnValue, {value_id}, {}, {}};
     } else if (auto cf_call = Axm::isa<scf::call>(app)) {
         // === Function call ===
         // The lam ends with `call token fn (t_val, ret_lam)`, where ret_lam

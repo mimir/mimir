@@ -11,6 +11,6 @@ con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Tok
             con do_break (_: [], _, tok) = %scf.break.l tok struct ();
             con do_continue (_: [], _, tok) = %scf.continue tok struct (%core.nat.sub (i, 1));
         end;
-        con break (_: [], tok) = return tok 5;
+        con break (_: [], tok) = %scf.return tok return 5;
     end;
 end;

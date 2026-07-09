@@ -6,5 +6,5 @@ con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Tok
   %scf.if token exit (else, then) cond () where
     con then (_, struct, token) = %scf.merge token struct 1;
     con else (_, struct, token) = %scf.merge token struct 0;
-    con exit (x: Nat, token) = return token x;
+    con exit (x: Nat, token) = %scf.return token return x;
 end;

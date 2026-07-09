@@ -11,5 +11,5 @@ con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Tok
                 con else_inner (_, s, token) = %scf.merge token s 3;
                 con break_inner (x: Nat, token) = %scf.merge token struct x;
             end;
-        con merge (x: Nat, token) = return token x;
+        con merge (x: Nat, token) = %scf.return token return x;
     end;

@@ -12,5 +12,5 @@ con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen,
     con case1 (x: Nat, struct, tok) = %scf.break.s tok struct x;
     con case0 (x: Nat, struct, tok) = %scf.fallthrough tok struct x;
     con default (x: Nat, struct, tok) = %scf.break.s tok struct 4;
-    con exit (x: Nat, tok) = return tok x;
+    con exit (x: Nat, tok) = %scf.return tok return x;
 end;

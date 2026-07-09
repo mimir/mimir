@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cctype>
+
 #include <ostream>
 
 #include "mim/phase.h"
@@ -215,9 +216,9 @@ const Def* scope_key_of(const Def* cf_struct);
 /// which take the token directly rather than a capability.
 const Def* scope_key_of_token(const Def* token);
 
-/// Matches the expansion of `%scf.Ret R` (the polymorphic return
-/// continuation type); yields the innermost `Cn R` on a match.
-const Pi* isa_ret(const Def* def);
+/// Matches `%scf.Ret R` (the opaque polymorphic return continuation
+/// wrapper); yields the return payload type `R` on a match.
+const Def* isa_ret(const Def* def);
 
 void emit_asm(World& world, std::ostream& out);
 void emit_bin(World& world, std::ostream& out);

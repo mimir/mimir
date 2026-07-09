@@ -44,8 +44,8 @@ plugin scf;
 // callee_l/callee_r are invoked via %scf.call, so they must literally have
 // type %scf.Fn Nat Nat -- their token's gen is %scf.gen.root path (Fn's own
 // internal derivation), not a free parameter.
-con callee_l (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) = return token x;
-con callee_r (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) = return token x;
+con callee_l (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) = %scf.return token return x;
+con callee_r (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) = %scf.return token return x;
 
 fun extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, sel cond: Bool) =
   (left, right)#sel token where

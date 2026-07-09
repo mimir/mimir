@@ -79,21 +79,34 @@ let Gen = %scf.Gen;
 axm %scf.Token: Path → Step → Gen → ★; // path, step, gen: 0x, pure indices
 let Token = %scf.Token;
 
-/// Type of a structured function's return continuation: consumes a token at
-/// ANY coordinates first (token-first, like every other axiom), then the
-/// payload — return may exit from any depth, paying whatever token it holds.
-/// The coordinate polymorphism is a type-level return address: parametric for
-/// the callee (which can only supply tokens from its own thread), instantiated
-/// exactly once by `%scf.call` with the caller's continuation — an ordinary
-/// monomorphic block in the caller's own chain. This shape is also why
-/// %scf.call exists at all: a caller cannot assemble a Ret value around its
-/// own monomorphic continuation (it would have to fabricate the caller-side
-/// token), so a function returning through a path-polymorphic Ret is not
-/// callable in general position without the axiom. It doubles as the merge
-/// interface of the nice_* wrappers, so a return continuation passes directly
-/// as a merge target.
-lam %scf.Ret (R: ★) = {path: Path, step: Step, gen: Gen} → [Token path step gen] → Cn R;
+/// A structured function's return continuation: an OPAQUE wrapper around a
+/// continuation, with no introduction rule in the term language and %scf.return
+/// as its only elimination. Semantically it consumes a token at ANY coordinates
+/// first (token-first, like every other axiom), then the payload — return may
+/// exit from any depth, paying whatever token it holds; see %scf.return, which
+/// exposes exactly that interface. The coordinate polymorphism is a type-level
+/// return address: parametric for the callee (which can only supply tokens
+/// from its own thread), instantiated exactly once by `%scf.call` with the
+/// caller's continuation — an ordinary monomorphic block in the caller's own
+/// chain. Opacity is why %scf.call exists at all AND why it is unavoidable:
+/// a caller cannot assemble a Ret value around its own monomorphic
+/// continuation (as a bare pi type it could — by fabricating a wrapper that
+/// simply discards the polymorphic token — but there is no way to construct
+/// the opaque wrapper), so a function taking a Ret is not callable in general
+/// position without the axiom. It doubles as the merge interface of the
+/// nice_* wrappers, so a return continuation passes directly as a merge
+/// target.
+axm %scf.Ret: ★ → ★;
 let Ret = %scf.Ret;
+
+/// The only elimination of %scf.Ret: consumes a token at any coordinates
+/// (token-first, like every other axiom) plus the Ret, then the payload.
+/// Holding a `Ret R` grants exactly one ability — returning through it —
+/// mirroring how merge/break consume their capability.
+axm %scf.return: {R: ★, path: Path, step: Step, gen: Gen}
+  → [Token path step gen]
+  → [Ret R]
+  → Cn R;
 
 /// Flat, undifferentiated 1x witness that one fork/creation event happened.
 /// Not indexed by path/step/gen: the coordinate is already pinned wherever
@@ -253,7 +266,7 @@ lam %scf.nice_if
     (tuple: (let (next_gen, id) = %scf.gen.mint gen;
              «arm: 2; [B → {inner: Step, inner_gen: Gen} → Cn Token (%scf.arm arm path step) inner inner_gen] → T → Cn Token (%scf.arm arm path step) zero next_gen»))
   = let (next_gen, id) = %scf.gen.mint gen;
-    let merge = (cn (arg: B, token: Token path (inc step) gen) = merge token arg);
+    let merge = (cn (arg: B, token: Token path (inc step) gen) = %scf.return token merge arg);
     let tuple = ‹arm: 2; cn (arg: T, struct: If path step id B, arm_token: Token (%scf.arm arm path step) zero next_gen) =
       let merge = (cn (v: B) {inner: Step, inner_gen: Gen} (t: Token (%scf.arm arm path step) inner inner_gen)@tt = %scf.merge t struct v);
       tuple#arm merge arg arm_token›;

@@ -53,5 +53,5 @@ con extern fragment [
                 con else_inner (_: [], s, token) = %scf.merge token s blue;
                 con break_inner (color: «4; F32», token) = %scf.merge token struct color;
             end;
-        con merge (color: «4; F32», token) = return token (%spirv.store (mem_, o_color, color));
+        con merge (color: «4; F32», token) = %scf.return token return (%spirv.store (mem_, o_color, color));
     end;
