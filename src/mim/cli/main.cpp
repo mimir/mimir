@@ -1,4 +1,3 @@
-#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -8,13 +7,23 @@
 
 // TEMP DIAGNOSTIC: in-process crash backtrace on Windows CI (asserts/AVs otherwise die silently).
 #ifdef _WIN32
-#    include <windows.h>
+#    include <csignal>
+
+#    include <exception>
+
+#    define WIN32_LEAN_AND_MEAN
+#    define NOMINMAX
 // clang-format off
+#    include <windows.h>
 #    include <dbghelp.h>
 // clang-format on
 #    ifdef _DEBUG
 #        include <crtdbg.h>
 #    endif
+// <windows.h> leaks these macros into the mim/lyra headers below; drop them.
+#    undef ERROR
+#    undef min
+#    undef max
 
 static void mim_backtrace(CONTEXT* ctx) {
     auto proc   = GetCurrentProcess();
@@ -67,6 +76,14 @@ static void mim_sigabrt(int) {
     mim_backtrace(&ctx);
     ExitProcess(134);
 }
+
+static void mim_terminate() {
+    std::fprintf(stderr, "\n*** std::terminate ***\n");
+    CONTEXT ctx = {};
+    RtlCaptureContext(&ctx);
+    mim_backtrace(&ctx);
+    ExitProcess(134);
+}
 #endif
 
 #include <lyra/lyra.hpp>
@@ -92,6 +109,7 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     SetUnhandledExceptionFilter(mim_seh_filter);
     std::signal(SIGABRT, mim_sigabrt);
+    std::set_terminate(mim_terminate);
 #    ifdef _DEBUG
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT); // no WER dialog; let our handler run
     _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
