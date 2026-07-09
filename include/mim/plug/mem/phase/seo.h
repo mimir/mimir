@@ -54,6 +54,7 @@ private:
         DefVec sccp(Defs vars, Defs abstr_args);
 
         // GVN
+        const Proxy* mk_bundle(const Def* var, Defs bundle_vars);
         void gvn_bundle(Defs, Defs, Span<const Def*>);
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
 

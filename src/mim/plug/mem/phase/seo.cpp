@@ -78,6 +78,10 @@ DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
 
 // GVN
 
+const Proxy* SEO::Analysis::mk_bundle(const Def* var, Defs bundle_vars) {
+    return world().proxy(var->type(), bundle_vars, Proxy_GVN);
+}
+
 void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
     for (size_t i = 0; i != n_all; ++i) {
@@ -92,14 +96,14 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
         if (bundle_vars.size() == 1) {
             lattice_[vars[i]] = abstr_vars[i] = vars[i]; // top
         } else {
-            auto proxy = world().proxy(vars[i]->type(), bundle_vars, Proxy_GVN);
+            auto bundle = mk_bundle(vars[i], bundle_vars);
 
-            for (auto p : proxy->ops()) {
+            for (auto p : bundle->ops()) {
                 auto j            = idx_of(vars, p);
-                lattice_[vars[j]] = abstr_vars[j] = proxy;
+                lattice_[vars[j]] = abstr_vars[j] = bundle;
             }
 
-            DLOG("bundle: {}", proxy);
+            DLOG("bundle: {}", bundle);
         }
     }
 }
@@ -129,7 +133,7 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
                 DLOG("single: {}", vars[i]);
             } else if (new_num != num) {
                 invalidate();
-                auto new_proxy = world().proxy(abstr_args[i]->type(), split_vars, Proxy_GVN);
+                auto new_proxy = mk_bundle(abstr_args[i], split_vars);
                 DLOG("split: {}", new_proxy);
 
                 for (auto p : new_proxy->ops()) {
@@ -158,14 +162,14 @@ const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
     return nullptr;
 }
 
-void SEO::Analysis::propagate_phis(Lam* lam, DefVec& vars, DefVec& abstr_args) {
+void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     DLOG("propagating slot values for call of {}", lam);
     for (auto slot : slots()) {
         DLOG("for slot {}", slot);
         auto abstr_slot = rewrite(slot);
         if (auto value = sloxy2val(abstr_slot)) {
             auto phi = mk_phi(world(), lam, abstr_slot);
-            vars.emplace_back(phi);
+            phis.emplace_back(phi);
             abstr_args.emplace_back(value);
         } else {
             DLOG("no value found for {}", slot);
@@ -244,7 +248,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             for (size_t i = app->num_targs(), e = all_vars.size(); i != e; ++i)
                 set(all_vars[i], all_abstr_vars[i]);
 
-            return world().app(rewrite(known), all_abstr_args.span().subspan(0, app->num_targs()));
+            return world().app(known, all_abstr_args.span().subspan(0, app->num_targs()));
         }
 
         auto phi_vars       = DefVec();
