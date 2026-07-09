@@ -322,8 +322,11 @@ int main(int argc, char** argv) {
     }
 
 #ifdef _WIN32
-    std::fprintf(stderr, "[mim] reached end of main; returning EXIT_SUCCESS\n"); // TEMP DIAGNOSTIC
-    std::fflush(stderr);
+    // Windows-only shutdown crash: mim completes all work and returns cleanly, but the process aborts during
+    // static/DLL teardown (FreeLibrary unloads plugin DLLs; Linux dlclose usually doesn't -> POSIX unaffected).
+    // All outputs are already flushed/closed by RAII during processing, so skip the crashy teardown entirely.
+    std::fflush(nullptr);
+    std::quick_exit(EXIT_SUCCESS);
 #endif
     return EXIT_SUCCESS;
 }
