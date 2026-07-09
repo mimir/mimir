@@ -47,6 +47,8 @@ private:
 
         const auto& slots() const { return slots_; }
         const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
+        /// The pointee type of @p sloxy's slot, captured at slot declaration (see 507ed74: revert `pointee`).
+        const Def* slot_type(const Def* sloxy) const;
 
     private:
         // SCCP
@@ -75,6 +77,7 @@ private:
 
         // global (kept between iterations)
         std::map<const Def*, const Def*, GIDLt<const Def*>> sloxy2slot_;
+        std::map<const Def*, const Def*, GIDLt<const Def*>> sloxy2type_;
         // Slot ptrs in discovery order.
         // The order determines the phi-parameter order of rebuilt Lams, so it must be independent of gids
         // (which are not stable across runs): we keep insertion order via slots_ and dedup via slots_seen_.

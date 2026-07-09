@@ -148,8 +148,13 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
 
 // SSA
 
-static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi);
+static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy, const Def* type) {
+    return w.proxy(type, {lam, sloxy}, Proxy_Phi);
+}
+
+const Def* SEO::Analysis::slot_type(const Def* sloxy) const {
+    if (auto i = sloxy2type_.find(sloxy); i != sloxy2type_.end()) return i->second;
+    return pointee(sloxy);
 }
 
 const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
@@ -157,7 +162,7 @@ const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
     if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
     // not in the local map: check if we have a phi for this slot in the lattice
-    auto phi = mk_phi(world(), curr_mut<Lam>(), sloxy);
+    auto phi = mk_phi(world(), curr_mut<Lam>(), sloxy, slot_type(sloxy));
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
     if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
     return nullptr;
@@ -167,7 +172,7 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     for (auto slot : slots()) {
         auto abstr_slot = rewrite(slot);
         if (auto value = sloxy2val(abstr_slot)) {
-            auto phi = mk_phi(world(), lam, abstr_slot);
+            auto phi = mk_phi(world(), lam, abstr_slot, slot_type(abstr_slot));
             phis.emplace_back(phi);
             abstr_args.emplace_back(value);
             DLOG("propgate phi {} for slot {} w/ val {}", phi, abstr_slot, value);
@@ -182,12 +187,14 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
+            auto [T, as]       = slot->decurry()->args<2>();
             auto [mem, id]     = slot->args<2>();
             auto [_, ptr]      = slot->projs<2>();
             auto abstr_mem     = rewrite(mem);
             auto abstr_id      = rewrite(id);
             auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
             sloxy2slot_[sloxy] = slot;
+            sloxy2type_[sloxy] = T;
             if (slots_seen_.emplace(ptr).second) slots_.emplace_back(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
             set(ptr, sloxy);
@@ -368,7 +375,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         if (ins) {
             for (auto slot : analysis_.slots())
                 if (auto sloxy = lattice(slot)) {
-                    auto phi = mk_phi(old_world(), old_lam, sloxy);
+                    auto phi = mk_phi(old_world(), old_lam, sloxy, analysis_.slot_type(sloxy));
                     if (auto val = lattice(phi)) phis.emplace_back(sloxy, phi, val);
                 }
         }
@@ -496,7 +503,7 @@ const Def* SEO::site_value(const Def* sloxy) {
         if (auto j = sloxy2val.find(sloxy); j != sloxy2val.end()) return j->second;
     }
     // ... otherwise curr_mut() didn't write to the slot: forward our own phi for it.
-    return mk_phi(old_world(), curr_mut<Lam>(), sloxy);
+    return mk_phi(old_world(), curr_mut<Lam>(), sloxy, analysis_.slot_type(sloxy));
 }
 
 } // namespace mim::plug::mem::phase
