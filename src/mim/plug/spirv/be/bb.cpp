@@ -6,28 +6,32 @@
 namespace mim::plug::spirv {
 
 /// The scope key identifying the control-flow construct that owns this
-/// capability: the `(path, step)` pair, the first two explicit arguments of
-/// the `If`/`Switch`/`Loop` type (path-indexed post ROOT REDESIGN).
+/// capability: the `(path, step)` pair. `id`/`gen` (the fork-uniqueness
+/// witness/thread, see %scf.Gen/%scf.Id) are erased-machinery arguments the
+/// backend doesn't need for scoping -- path/step alone already uniquely
+/// identify a construct site within one activation, exactly as before their
+/// introduction.
 const Def* scope_key_of(const Def* cf_struct) {
     auto type = cf_struct->type();
     if (Axm::isa<scf::If>(type)) {
-        auto [path, step, b]    = Axm::as<scf::If>(type)->uncurry_args<3>();
+        auto [path, step, id, b]      = Axm::as<scf::If>(type)->uncurry_args<4>();
         return cf_struct->world().tuple({path, step});
     }
     if (Axm::isa<scf::Switch>(type)) {
-        auto [path, step, t, b] = Axm::as<scf::Switch>(type)->uncurry_args<4>();
+        auto [path, step, id, t, b]   = Axm::as<scf::Switch>(type)->uncurry_args<5>();
         return cf_struct->world().tuple({path, step});
     }
     if (Axm::isa<scf::Loop>(type)) {
-        auto [path, step, b, h] = Axm::as<scf::Loop>(type)->uncurry_args<4>();
+        auto [path, step, id, gen, b, h] = Axm::as<scf::Loop>(type)->uncurry_args<6>();
         return cf_struct->world().tuple({path, step});
     }
     error("not an scf control-flow capability: {}", cf_struct);
 }
 
-/// The same scope key, derived from a token value's type (`Token path step`).
+/// The same scope key, derived from a token value's type
+/// (`Token path step gen`).
 const Def* scope_key_of_token(const Def* token) {
-    auto [path, step] = Axm::as<scf::Token>(token->type())->uncurry_args<2>();
+    auto [path, step, gen] = Axm::as<scf::Token>(token->type())->uncurry_args<3>();
     return token->world().tuple({path, step});
 }
 

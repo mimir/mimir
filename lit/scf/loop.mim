@@ -2,7 +2,7 @@
 
 plugin scf;
 
-con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
+con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, return: %scf.Ret Nat) =
     %scf.header token loop 5 where
     con loop (i: Nat, struct) =
         %scf.loop struct break body () where

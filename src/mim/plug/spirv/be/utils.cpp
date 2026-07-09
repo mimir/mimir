@@ -122,6 +122,8 @@ const Def* Emitter::strip_rec(const Def* def) {
     if (Axm::isa<scf::Token>(def)) return nullptr;
     if (Axm::isa<scf::Path>(def)) return nullptr;
     if (Axm::isa<scf::Step>(def)) return nullptr;
+    if (Axm::isa<scf::Gen>(def)) return nullptr;
+    if (Axm::isa<scf::Id>(def)) return nullptr;
     if (Axm::isa<scf::If>(def)) return nullptr;
     if (Axm::isa<scf::Switch>(def)) return nullptr;
     if (Axm::isa<scf::Loop>(def)) return nullptr;

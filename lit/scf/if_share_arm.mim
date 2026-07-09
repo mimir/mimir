@@ -7,7 +7,7 @@
 
 plugin scf;
 
-fun extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, cond_outer cond_inner: Bool) =
+fun extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, cond_outer cond_inner: Bool) =
     %scf.if token merge (else_outer, then_outer) cond_outer () where
         con then_outer (_, struct, token) =
             %scf.if token merge_t (else_t, shared) cond_inner () where

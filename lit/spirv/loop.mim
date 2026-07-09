@@ -44,7 +44,8 @@ con extern fragment [
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
     path: %scf.Path,
     step: %scf.Step,
-    token: %scf.Token path step,
+    gen: %scf.Gen,
+    token: %scf.Token path step gen,
     return: %scf.Ret (%mem.M 0),
 ] = let (mem_, color) = %spirv.load (mem, i_color);
     %scf.header token loop 5 where
