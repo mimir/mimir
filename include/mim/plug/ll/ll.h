@@ -43,7 +43,7 @@ namespace math = mim::plug::math;
 namespace mem  = mim::plug::mem;
 namespace vec  = mim::plug::vec;
 
-namespace {
+namespace internals {
 inline const char* math_suffix(const Def* type) {
     if (auto w = math::isa_f(type)) {
         switch (*w) {
@@ -72,7 +72,7 @@ inline const Def* isa_mem_sigma_2(const Def* type) {
         if (sigma->num_ops() == 2 && Axm::isa<mem::M>(sigma->op(0))) return sigma->op(1);
     return {};
 }
-} // namespace
+} // namespace internals
 
 struct BB {
     BB()                    = default;
@@ -111,8 +111,8 @@ class Emitter : public mim::Emitter<std::string, std::string, BB, Emitter> {
 public:
     using Super = mim::Emitter<std::string, std::string, BB, Emitter>;
 
-    Emitter(World& world, std::ostream& ostream)
-        : Super(world, "llvm_emitter", ostream) {}
+    Emitter(World& world, std::string name, std::ostream& ostream)
+        : Super(world, name, ostream) {}
 
     bool is_valid(std::string_view s) { return !s.empty(); }
     void start() override;
@@ -136,9 +136,9 @@ public:
         decls_.emplace(decl.str());
     }
 
-private:
+protected:
     std::string id(const Def*, bool force_bb = false) const;
-    std::string convert(const Def*, bool simd = true);
+    virtual std::string convert(const Def*, bool simd = true);
     std::string convert_ret_pi(const Pi*);
 
     absl::btree_set<std::string> decls_;
@@ -243,7 +243,7 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
         assert(Pi::isa_returning(pi) && "should never have to convert type of BB");
         std::print(s, "{} (", convert_ret_pi(pi->ret_pi()));
 
-        if (auto t = isa_mem_sigma_2(pi->dom()))
+        if (auto t = internals::isa_mem_sigma_2(pi->dom()))
             s << convert(t);
         else {
             auto doms = pi->doms();
@@ -254,7 +254,7 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
             }
         }
         s << ")*";
-    } else if (auto t = isa_mem_sigma_2(type)) {
+    } else if (auto t = internals::isa_mem_sigma_2(type)) {
         return convert(t);
     } else if (auto sigma = type->isa<Sigma>()) {
         if (sigma->isa_mut()) {
@@ -569,7 +569,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
     std::string op;
 
     auto emit_tuple = [&](const Def* tuple) {
-        if (isa_mem_sigma_2(tuple->type())) {
+        if (internals::isa_mem_sigma_2(tuple->type())) {
             emit_unsafe(tuple->proj(2, 0));
             return emit(tuple->proj(2, 1));
         }
@@ -684,7 +684,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
 
         auto t_tup = convert(tuple->type());
         if (auto li = Lit::isa(index)) {
-            if (isa_mem_sigma_2(tuple->type())) return v_tup;
+            if (internals::isa_mem_sigma_2(tuple->type())) return v_tup;
             // Adjust index: convert() drops %mem.M elements from sigmas,
             // so subtract the number of mem elements preceding the index.
             auto v_i = *li;
@@ -1045,9 +1045,9 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         std::string f;
 
         if (tri.id() == math::tri::sin) {
-            f = std::string("llvm.sin") + llvm_suffix(tri->type());
+            f = std::string("llvm.sin") + internals::llvm_suffix(tri->type());
         } else if (tri.id() == math::tri::cos) {
-            f = std::string("llvm.cos") + llvm_suffix(tri->type());
+            f = std::string("llvm.cos") + internals::llvm_suffix(tri->type());
         } else {
             if (tri.sub() & sub_t(math::tri::a)) f += "a";
 
@@ -1060,7 +1060,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
             }
 
             if (tri.sub() & sub_t(math::tri::h)) f += "h";
-            f += math_suffix(tri->type());
+            f += internals::math_suffix(tri->type());
         }
 
         declare("{} @{}({})", t, f, t);
@@ -1075,7 +1075,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
             case math::extrema::ieee754min: f += "minimum"; break;
             case math::extrema::ieee754max: f += "maximum"; break;
         }
-        f += llvm_suffix(extrema->type());
+        f += internals::llvm_suffix(extrema->type());
 
         declare("{} @{}({}, {})", t, f, t, t);
         return bb.assign(name, "tail call {} @{}({} {}, {} {})", t, f, t, a, t, b);
@@ -1083,7 +1083,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto [a, b]   = pow->args<2>([this](auto def) { return emit(def); });
         auto t        = convert(pow->type());
         std::string f = "llvm.pow";
-        f += llvm_suffix(pow->type());
+        f += internals::llvm_suffix(pow->type());
         declare("{} @{}({}, {})", t, f, t, t);
         return bb.assign(name, "tail call {} @{}({} {}, {} {})", t, f, t, a, t, b);
     } else if (auto rt = Axm::isa<math::rt>(def)) {
@@ -1091,9 +1091,9 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto t = convert(rt->type());
         std::string f;
         if (rt.id() == math::rt::sq)
-            f = std::string("llvm.sqrt") + llvm_suffix(rt->type());
+            f = std::string("llvm.sqrt") + internals::llvm_suffix(rt->type());
         else
-            f = std::string("cbrt") += math_suffix(rt->type());
+            f = std::string("cbrt") += internals::math_suffix(rt->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto exp = Axm::isa<math::exp>(def)) {
@@ -1102,7 +1102,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         std::string f = "llvm.";
         f += (exp.sub() & sub_t(math::exp::log)) ? "log" : "exp";
         f += (exp.sub() & sub_t(math::exp::bin)) ? "2" : (exp.sub() & sub_t(math::exp::dec)) ? "10" : "";
-        f += llvm_suffix(exp->type());
+        f += internals::llvm_suffix(exp->type());
         // TODO doesn't work for exp10"
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
@@ -1110,14 +1110,14 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto a = emit(er->arg());
         auto t = convert(er->type());
         auto f = er.id() == math::er::f ? std::string("erf") : std::string("erfc");
-        f += math_suffix(er->type());
+        f += internals::math_suffix(er->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto gamma = Axm::isa<math::gamma>(def)) {
         auto a        = emit(gamma->arg());
         auto t        = convert(gamma->type());
         std::string f = gamma.id() == math::gamma::t ? "tgamma" : "lgamma";
-        f += math_suffix(gamma->type());
+        f += internals::math_suffix(gamma->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto cmp = Axm::isa<math::cmp>(def)) {
@@ -1153,7 +1153,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto at = convert(is_finite->arg()->type());
         auto t  = convert(is_finite->type());
 
-        auto s = llvm_suffix(is_finite->arg()->type());
+        auto s = internals::llvm_suffix(is_finite->arg()->type());
         auto f = "llvm.is.fpclass";
         declare("{} @{}{}({}, i32)", t, f, s, at);
         return bb.assign(name, "tail call {} @{}{}({} {}, i32 504)", t, f, s, at, a);
@@ -1178,7 +1178,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto a        = emit(abs->arg());
         auto t        = convert(abs->type());
         std::string f = "llvm.fabs";
-        f += llvm_suffix(abs->type());
+        f += internals::llvm_suffix(abs->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto round = Axm::isa<math::round>(def)) {
@@ -1191,7 +1191,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
             case math::round::r: f += "round"; break;
             case math::round::t: f += "trunc"; break;
         }
-        f += llvm_suffix(round->type());
+        f += internals::llvm_suffix(round->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto zip = Axm::isa<vec::zip>(def)) {

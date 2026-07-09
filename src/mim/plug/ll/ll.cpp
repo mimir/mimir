@@ -23,7 +23,7 @@ public:
     void start() override {
         auto name    = world().name() ? std::string(world().name().view()) : "a"s;
         auto ofs     = std::ofstream(name + ".ll"s);
-        auto emitter = Emitter(world(), ofs);
+        auto emitter = Emitter(world(), "llvm_emitter", ofs);
         emitter.run();
     }
 };

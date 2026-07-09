@@ -15,8 +15,8 @@ void SplitOffKernels::start() {
 }
 
 bool SplitOffKernels::analyze() {
-    for (auto& [f, entry] : old_world().annexes())
-        analyze(entry.def);
+    for (auto def : old_world().annexes().defs())
+        analyze(def);
     for (auto def : old_world().externals().muts())
         analyze(def);
 
