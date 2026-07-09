@@ -108,7 +108,7 @@ private:
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
-    absl::btree_map<Lam*, Vector<Phi>> lam2phis_;
+    std::map<Lam*, Vector<Phi>, GIDLt<const Def*>> lam2phis_;
 };
 
 } // namespace mim::plug::mem::phase
