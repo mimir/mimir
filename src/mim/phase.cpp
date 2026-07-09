@@ -75,6 +75,7 @@ void Analysis::drain() {
         worklist_.pop_front();
 
         auto _ = enter(mut);
+        DLOG("enter: {}", mut);
         for (auto d : mut->deps())
             rewrite(d);
     }

@@ -37,7 +37,7 @@ void SEO::Analysis::reset() {
 // SCCP
 
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
-    DLOG("propagate called with {} and {}", var, def);
+    DLOG("sccp_join({}, {})", var, def);
 
     // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
@@ -53,7 +53,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     auto [i, ins] = lattice_.emplace(var, def);
     if (ins) {
         invalidate();
-        DLOG("propagate: {} → {}", var, def);
+        DLOG("propagate: {} -> {}", var, def);
         return def;
     }
 
@@ -61,7 +61,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     if (!cur || def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur)) return cur;
 
     invalidate();
-    DLOG("cannot propagate {}, trying GVN", var);
+    DLOG("cannot propagate {} -> {}, trying GVN", var, def);
     if (cur->isa<Bot>()) return i->second = def;
     return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
 }
@@ -158,19 +158,19 @@ const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
 
     // not in the local map: check if we have a phi for this slot in the lattice
     auto phi = mk_phi(world(), curr_mut<Lam>(), sloxy);
+    DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
     if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
     return nullptr;
 }
 
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
-    DLOG("propagating slot values for call of {}", lam);
     for (auto slot : slots()) {
-        DLOG("for slot {}", slot);
         auto abstr_slot = rewrite(slot);
         if (auto value = sloxy2val(abstr_slot)) {
             auto phi = mk_phi(world(), lam, abstr_slot);
             phis.emplace_back(phi);
             abstr_args.emplace_back(value);
+            DLOG("propgate phi {} for slot {} w/ val {}", phi, abstr_slot, value);
         } else {
             DLOG("no value found for {}", slot);
         }
@@ -182,14 +182,14 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
-            auto [mem, id] = slot->args<2>();
-            auto [_, ptr]  = slot->projs<2>();
-            auto abstr_mem = rewrite(mem);
-            auto abstr_id  = rewrite(id);
-            auto sloxy     = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
-            slots_.emplace(ptr);
+            auto [mem, id]     = slot->args<2>();
+            auto [_, ptr]      = slot->projs<2>();
+            auto abstr_mem     = rewrite(mem);
+            auto abstr_id      = rewrite(id);
+            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
             sloxy2slot_[sloxy] = slot;
-            DLOG("in {}, found declaration for slot {}", curr_mut(), ptr);
+            slots_.emplace(ptr);
+            DLOG("slot {} -> sloxy {}", ptr, sloxy);
             set(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});
         }
@@ -201,9 +201,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
             sloxy2val(sloxy, abstr_val);
-            DLOG("in {}, found a store: {} <- {}", curr_mut(), sloxy, abstr_val);
+            DLOG("store: {} <- {}", sloxy, abstr_val);
             return abstr_mem;
         }
+        DLOG("store w/ unknown ptr: {} <- {}", abstr_ptr, abstr_val);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [T, as]    = load->decurry()->args<2>();
         auto [mem, ptr] = load->args<2>();
@@ -213,15 +214,15 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
             if (auto abstr_val = sloxy2val(sloxy)) {
-                DLOG("abstr value: `{}`", abstr_val);
+                DLOG("load: {} -> {}", sloxy, abstr_val);
                 set(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
-            DLOG("couldn't resolve load of {} yet, returning bot", sloxy);
+            DLOG("load w/ unknown value: {}", sloxy);
             return world().tuple({abstr_mem, world().bot(T)});
         }
 
-        DLOG("load from unknown pointer {}, treating result as top", abstr_ptr);
+        DLOG("load w/ unknown ptr: {}", abstr_ptr);
         return set(load, load);
     } else {
         auto abstr_callee = rewrite(app->callee());
@@ -257,6 +258,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         for (auto mut : all_muts) {
             if (auto lam = mut->isa<Lam>()) {
                 if (lam == known || lam->is_closed()) continue;
+                DLOG("unknown edge: {} -> {}", curr_mut(), lam);
                 propagate_phis(lam, phi_vars, phi_abstr_args);
             }
         }
@@ -290,7 +292,7 @@ void SEO::Analysis::analyze(const Def* def) {
             auto [_, ptr] = slot->projs<2>();
             set(slot, slot);
             set(ptr, ptr);
-            DLOG("setting slot to top: {}", slot);
+            DLOG("sloxy {} survived; setting slot to top: {}", def, slot);
             invalidate();
         }
         return; // never walk a proxy's deps (would drag in meta info)
@@ -307,10 +309,12 @@ void SEO::Analysis::analyze(const Def* def) {
             return;
         }
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
+        DLOG("lam {} escapes", lam);
         for (auto v : var->tprojs()) {
             if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
                 invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
                 i->second = v;
+                DLOG("top: {}", v);
             }
         }
     }
