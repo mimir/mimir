@@ -8,8 +8,8 @@
 
 plugin scf;
 
-con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen,
-                 token: %scf.Token path step gen, cond: Bool,
+con extern foo (path: %scf.Path, step: %scf.Step,
+                 token: %scf.Token path step, cond: Bool,
                  return: %scf.Ret Nat) =
   %scf.switch @2 token exit default ((0, case0), (1, case1)) 0 () where
     con case1 (_: [], struct, tok) = %scf.break.s tok struct 1;

@@ -25,17 +25,6 @@ plugin core;
 ///
 /// Each header block must strictly structurally dominate its
 /// merge block.
-///
-/// Fork-uniqueness (telling one legitimate construct instantiation apart
-/// from an illegitimately duplicated one, e.g. via a native/unstructured
-/// branch handing the same token to two functions that each independently
-/// try to instantiate a construct) lives entirely on %scf.Gen, a resource
-/// orthogonal to Path/Step. Path/Step stay exactly as they always were:
-/// pure, freely-recomputable coordinates that tell arm-from-arm/case-from-
-/// case apart structurally -- that job never needed linearity and keeping
-/// it linearity-free is what lets %scf.merge/%scf.fallthrough cheaply
-/// recompute "the expected arm/case coordinate" by direct application of
-/// %scf.arm/%scf.case, exactly as below.
 
 axm %scf.Path: ★;
 let Path = %scf.Path;
@@ -55,28 +44,16 @@ let zero = %scf.zero;
 axm %scf.inc: Step → Step;
 let inc = %scf.inc;
 
-/// A linear "generation" thread, orthogonal to Path/Step. Path/Step (0x,
-/// pure) tell arm-from-arm and case-from-case apart -- structural identity,
-/// unchanged from the original design. Gen (1x, once QTT lands) tells one
-/// legitimate fork event apart from an illegitimately duplicated one: two
-/// structurally-separate call sites that each try to instantiate a
-/// construct out of the same token must each spend the same Gen via
-/// %scf.gen.mint, which will be a use-after-move once QTT enforces it.
-axm %scf.Gen: ★;
-let Gen = %scf.Gen;
-
 /// Tokens have NO introduction rule: the only way to obtain one is to receive
 /// it as a parameter. Every structured function binds `path: Path, step: Step,
-/// token: Token path step gen` in its signature (see %scf.Fn), and %scf.call
+/// token: Token path step` in its signature (see %scf.Fn), and %scf.call
 /// never instantiates the callee's coordinates -- that is the whole trick --
 /// so a function's `path` remains a bound variable of that very function,
 /// forever. Cross-function/cross-activation separation is parametricity
 /// alone: every path in a function is a pure constructor application over its
 /// own bound `path`, and nothing in the term language can forge a token at
-/// foreign coordinates. `gen` rides along the same way path/step already do:
-/// an ordinary index inferred from whatever Token-typed value is already
-/// held, never separately threaded as an explicit lambda argument.
-axm %scf.Token: Path → Step → Gen → ★; // path, step, gen: 0x, pure indices
+/// foreign coordinates.
+axm %scf.Token: Path → Step → ★;
 let Token = %scf.Token;
 
 /// A structured function's return continuation: an OPAQUE wrapper around a
@@ -103,100 +80,63 @@ let Ret = %scf.Ret;
 /// (token-first, like every other axiom) plus the Ret, then the payload.
 /// Holding a `Ret R` grants exactly one ability — returning through it —
 /// mirroring how merge/break consume their capability.
-axm %scf.return: {R: ★, path: Path, step: Step, gen: Gen}
-  → [Token path step gen]
+axm %scf.return: {R: ★, path: Path, step: Step}
+  → [Token path step]
   → [Ret R]
   → Cn R;
 
-/// Flat, undifferentiated 1x witness that one fork/creation event happened.
-/// Not indexed by path/step/gen: the coordinate is already pinned wherever
-/// it matters by Path (unforgeable structural identity), so Id's own type
-/// mentioning path/step/gen too would duplicate that job for no benefit.
-axm %scf.Id: ★;
-let Id = %scf.Id;
-
-/// The ONE place a function's activation establishes its own gen thread:
-/// spends the function's own path (1x, once QTT lands) to produce that
-/// activation's root Gen. Called internally, exactly once, inside %scf.Fn's
-/// own type -- ordinary callers never see this call; they just receive a
-/// `token` whose type already carries the resulting gen.
-axm %scf.gen(root): Path → Gen;
-/// Consumes the CURRENT gen (1x) and produces a fresh gen for whatever's
-/// nested inside the fork -- shared identically by all of an if's arms / a
-/// switch's cases+default / a loop's body, since they're mutually exclusive
-/// at runtime, so sharing one gen among them is sound -- plus a fresh Id
-/// (the scarce witness embedded in If/Switch/Loop's own type). One mint call
-/// per fork event regardless of arity: unlike an earlier, abandoned attempt
-/// at this (per-shape "path updater" axioms bundling [Path,Step] together),
-/// gen.mint needs no path/step/count/arity information at all.
-axm %scf.gen(mint): Gen → [Gen, Id];
-
 /// Region paths are PURE constructor applications over path/step: no token
-/// operand. Instance identity within a function is not a type-system job in
-/// the sense of forbidding structural coincidence between arms/cases -- that
-/// is exactly what these being distinct constructor applications delivers by
-/// itself; illegitimate DUPLICATION of a single fork is instead %scf.Gen's
-/// job (see above). What types still guarantee here is cross-function/
-/// cross-activation separation: every path is built over the function's own
-/// bound `path` parameter, so paths from different activations can never
-/// coincide by parametricity alone.
+/// operand. Instance identity within a function is not a type-system job; it
+/// follows from token linearity (one construct per coordinate, explicit
+/// theorem hypothesis -- see the thesis notes). What types still guarantee is
+/// cross-function/cross-activation separation: every path is built over the
+/// function's own bound `path` parameter, so paths from different activations
+/// can never coincide by parametricity alone.
 axm %scf.arm: Bool → Path → Step → Path;
 axm %scf.case: Nat → Path → Step → Path;
 axm %scf.default: Path → Step → Path;
 axm %scf.body: Path → Step → Path;
 
 /// Capability flowing through the arms/merge target of an `if`.
-/// `B` is the merge payload. `id` is the fresh witness %scf.if's own
-/// %scf.gen.mint call produced for this fork -- 1x, that is the entire
-/// point: constructing an `If`-typed value genuinely spends it, so at most
-/// one such value can ever exist for a given fork. path/step stay 0x, pure
-/// indices, exactly as in the original design.
-axm %scf.If: Path → Step → Id → [B: ★] → ★; // path, step: 0x; id: 1x
+/// `B` is the merge payload. Path-indexed, not token-indexed: path/step must
+/// now be given explicitly (nothing left to infer them from).
+axm %scf.If: Path → Step → [B: ★] → ★;
 let If = %scf.If;
 /// Capability flowing through the cases/break target of a `switch`.
 /// `T` is the (fall-through) case payload, `B` the break payload.
-axm %scf.Switch: Path → Step → Id → [T: ★] → [B: ★] → ★; // path, step: 0x; id: 1x
+axm %scf.Switch: Path → Step → [T: ★] → [B: ★] → ★;
 let Switch = %scf.Switch;
 /// Capability flowing through a `loop`. `B` is the break payload, `H` the
 /// header payload, received once on entry and again on every `continue`.
 /// There is no separate continue construct: `continue` is the back-edge.
-/// Unlike If/Switch, Loop additionally carries `gen` (the PRE-mint gen
-/// %scf.header consumed): the mint happens in %scf.header, which builds
-/// this capability, but its consumer %scf.loop is a SEPARATE axiom that
-/// needs that same pre-mint gen back to independently re-derive its own
-/// `next_gen` for the body slot -- the same reason path/step are embedded
-/// here in the first place.
-axm %scf.Loop: Path → Step → Id → Gen → [B: ★] → [H: ★] → ★; // path, step, gen: 0x; id: 1x
+axm %scf.Loop: Path → Step → [B: ★] → [H: ★] → ★;
 let Loop = %scf.Loop;
 
 /// Branch back to the header of the given loop: the loop's back-edge.
 /// Any number of continue sites may target the same header; backends that
 /// require a unique back-edge block (SPIR-V) synthesize a shared latch block
-/// that all continue sites branch through. `inner_gen` is fully free: this
-/// may fire from arbitrarily deep inside the body, long past whatever gen
-/// the body itself started at. `inner_path`/`inner_step` are free in the type,
-/// but `normalize_continue` rejects a call whose `inner_path` is not actually
-/// reachable from `path` (an interim stand-in for real `Id`/`Gen` linearity,
-/// which isn't enforced pre-QTT): a stale `Loop` capability smuggled out of
-/// the loop as ordinary data and replayed from outside cannot forge a token
-/// at a path that structurally descends from `path`.
+/// that all continue sites branch through. `inner_path`/`inner_step` are free
+/// in the type, but `normalize_continue` rejects a call whose `inner_path` is
+/// not actually reachable from `path` (an interim stand-in for real linearity,
+/// not enforced pre-QTT): a stale `Loop` capability smuggled out of the loop
+/// as ordinary data and replayed from outside cannot forge a token at a path
+/// that structurally descends from `path`.
 axm %scf.continue: {
   B H: ★,
-  path: Path, step: Step, id: Id, gen: Gen, // 0x: read from the Loop argument's type, not consumed
-  inner_path: Path, inner_step: Step, inner_gen: Gen, // fully free -- reachable from any nested depth
-} → [inner_token: Token inner_path inner_step inner_gen]
-  → [Loop path step id gen B H]
+  path: Path, step: Step,
+  inner_path: Path, inner_step: Step,
+} → [inner_token: Token inner_path inner_step]
+  → [Loop path step B H]
   → Cn H, normalize_continue, 3;
 ///
 /// Branch to the next case of a given switch structure.
 /// Like merge, fallthrough requires a token from the same scope as the
-/// current case (path must match; step/gen may differ as progress within
-/// the scope).
+/// current case (path must match; step may differ as progress within the
+/// scope).
 axm %scf.fallthrough: {
-  C B: ★, path: Path, step inner_step: Step, case: Nat, id: Id,
-  inner_gen: Gen, // fully free, mirrors inner_step
-} → [inner_token: Token (%scf.case case path step) inner_step inner_gen]
-  → [Switch path step id C B]
+  C B: ★, path: Path, step inner_step: Step, case: Nat,
+} → [inner_token: Token (%scf.case case path step) inner_step]
+  → [Switch path step C B]
   → Cn C;
 ///
 /// Branch to the break target of a `switch`.
@@ -204,60 +144,54 @@ axm %scf.fallthrough: {
 /// descend from `path`, same rationale as `%scf.continue` above.
 axm %scf.break(s): {
   C B: ★,
-  path: Path, step: Step, id: Id,
-  inner_path: Path, inner_step: Step, inner_gen: Gen,
-} → [inner_token: Token inner_path inner_step inner_gen]
-  → [Switch path step id C B]
+  path: Path, step: Step,
+  inner_path: Path, inner_step: Step,
+} → [inner_token: Token inner_path inner_step]
+  → [Switch path step C B]
   → Cn B, normalize_break, 3;
 ///
 /// Branch to the break target of a `loop`.
 axm %scf.break(l): {
   B H: ★,
-  path: Path, step: Step, id: Id, gen: Gen,
-  inner_path: Path, inner_step: Step, inner_gen: Gen,
-} → [inner_token: Token inner_path inner_step inner_gen]
-  → [Loop path step id gen B H]
+  path: Path, step: Step,
+  inner_path: Path, inner_step: Step,
+} → [inner_token: Token inner_path inner_step]
+  → [Loop path step B H]
   → Cn B, normalize_break, 3;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
 /// Unlike break, merge requires a token from the same scope as the struct
-/// (path must match; step/gen may differ as progress within the scope).
+/// (path must match; step may differ as progress within the scope).
 axm %scf.merge: {
-  B: ★, path: Path, step inner_step: Step, arm: Bool, id: Id,
-  inner_gen: Gen, // fully free, mirrors inner_step
-} → [merge_token: Token (%scf.arm arm path step) inner_step inner_gen]
-  → [If path step id B]
+  B: ★, path: Path, step inner_step: Step, arm: Bool,
+} → [merge_token: Token (%scf.arm arm path step) inner_step]
+  → [If path step B]
   → Cn B;
 
 /// ## Branching
-/// Represents a structured branch (if-else or switch-case). `id`/`next_gen`
-/// are computed once, internally, via %scf.gen.mint -- ordinary type-level
-/// computation, not a reduction rule (that's what `normalizer`s are for).
-axm %scf.if: {T B: ★} → {path: Path, step: Step, gen: Gen}
-  → [token: Token path step gen]
-  → (let (next_gen, id) = %scf.gen.mint gen;
-     [break: Cn [B, Token path (inc step) gen]]
-       → [tuple: «arm: 2; Cn [T, If path step id B, Token (%scf.arm arm path step) zero next_gen]»]
-       → [index: Bool]
-       → Cn T);
+/// Represents a structured branch (if-else or switch-case)
+axm %scf.if: {T B: ★} → {path: Path, step: Step}
+  → [token: Token path step]
+  → [break: Cn [B, Token path (inc step)]]
+  → [tuple: «arm: 2; Cn [T, If path step B, Token (%scf.arm arm path step) zero]»]
+  → [index: Bool]
+  → Cn T;
 
 /// Convenience thing that automatically threads tokens and structures through an interface that looks clean and uses higher order
 /// abstractions.
 ///
-/// The token binds before the arm tuple: the arms' token types mention
-/// `next_gen`/`id`, so those must be in scope for their types -- which
-/// %scf.if's own implicit block supplies from `token`'s type, hence `token`
-/// binds first. `next_gen`/`id` are recomputed here from `%scf.gen.mint gen`
-/// -- the identical expression %scf.if's own type uses internally; mim
-/// hash-conses, so this is the same node both places, not two applications.
+/// The token binds before the arm tuple: the arms' token types (`Token
+/// (%scf.arm arm path step) zero`) mention `path`/`step`, so those must be
+/// in scope for their types -- which %scf.if's own implicit block supplies
+/// from `token`'s type, hence `token` binds first.
 ///
 /// Examples of what this allows to do:
 /// ```mim
-/// con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, cond: Bool,
-///                 token: %scf.Token path step gen, return: %scf.Ret Nat) =
+/// con extern foo (path: %scf.Path, step: %scf.Step, cond: Bool,
+///                 token: %scf.Token path step, return: %scf.Ret Nat) =
 ///   // return has the merge interface (%scf.Ret), so it passes directly as
-///   // the merge target; path/step/gen/token are ordinary parameters --
-///   // there is nothing to enter, the thread starts held
+///   // the merge target; path/step/token are ordinary parameters -- there is
+///   // nothing to enter, the thread starts held
 ///   %scf.nice_if return cond () token (else, then) where
 ///     lam then (merge) () = merge 1;
 ///     lam else (merge) () = merge 0;
@@ -265,17 +199,15 @@ axm %scf.if: {T B: ★} → {path: Path, step: Step, gen: Gen}
 /// ```
 lam %scf.nice_if
     {T B: ★}
-    {path: Path, step: Step, gen: Gen}
+    {path: Path, step: Step}
     (merge: Ret B)
     (cond: Bool)
     (arg: T)
-    (token: Token path step gen)
-    (tuple: (let (next_gen, id) = %scf.gen.mint gen;
-             «arm: 2; [B → {inner: Step, inner_gen: Gen} → Cn Token (%scf.arm arm path step) inner inner_gen] → T → Cn Token (%scf.arm arm path step) zero next_gen»))
-  = let (next_gen, id) = %scf.gen.mint gen;
-    let merge = (cn (arg: B, token: Token path (inc step) gen) = %scf.return token merge arg);
-    let tuple = ‹arm: 2; cn (arg: T, struct: If path step id B, arm_token: Token (%scf.arm arm path step) zero next_gen) =
-      let merge = (cn (v: B) {inner: Step, inner_gen: Gen} (t: Token (%scf.arm arm path step) inner inner_gen)@tt = %scf.merge t struct v);
+    (token: Token path step)
+    (tuple: «arm: 2; [B → {inner: Step} → Cn Token (%scf.arm arm path step) inner] → T → Cn Token (%scf.arm arm path step) zero»)
+  = let merge = (cn (arg: B, token: Token path (inc step)) = %scf.return token merge arg);
+    let tuple = ‹arm: 2; cn (arg: T, struct: If path step B, arm_token: Token (%scf.arm arm path step) zero) =
+      let merge = (cn (v: B) {inner: Step} (t: Token (%scf.arm arm path step) inner)@tt = %scf.merge t struct v);
       tuple#arm merge arg arm_token›;
     %scf.if token merge tuple cond arg;
 
@@ -286,16 +218,14 @@ lam %scf.nice_if
 /// the case payload `T`, the `Switch` capability, and a token on its own case
 /// path. The case path is keyed by the array position `i` (a unique
 /// discriminator), not by `index`, so cases stay independent and the array is
-/// an ordinary dependent array. `id`/`next_gen` are computed internally via
-/// %scf.gen.mint, same convention as %scf.if.
-axm %scf.switch: {count: Nat} → {T B: ★} → {path: Path, step: Step, gen: Gen}
-  → [token: Token path step gen]
-  → (let (next_gen, id) = %scf.gen.mint gen;
-     [break: Cn [B, Token path (inc step) gen]]
-       → [default: Cn [T, Switch path step id ⊥ B, Token (%scf.default path step) zero next_gen]]
-       → [cases: «i: count; [index: Nat, Cn [T, Switch path step id T B, Token (%scf.case (%core.bitcast Nat i) path step) zero next_gen]]»]
-       → [index: Nat]
-       → Cn T), normalize_switch, 7;
+/// an ordinary dependent array.
+axm %scf.switch: {count: Nat} → {T B: ★} → {path: Path, step: Step}
+  → [token: Token path step]
+  → [break: Cn [B, Token path (inc step)]]
+  → [default: Cn [T, Switch path step ⊥ B, Token (%scf.default path step) zero]]
+  → [cases: «i: count; [index: Nat, Cn [T, Switch path step T B, Token (%scf.case (%core.bitcast Nat i) path step) zero]]»]
+  → [index: Nat]
+  → Cn T, normalize_switch, 7;
 
 /// ## Loops
 ///
@@ -305,57 +235,42 @@ axm %scf.switch: {count: Nat} → {T B: ★} → {path: Path, step: Step, gen: G
 /// This keeps single-block loop bodies expressible and leaves SPIR-V's
 /// continue-construct peculiarities (no exits besides the back-edge) to the
 /// backend, which synthesizes an empty latch block as the continue target.
-/// `id` is computed internally via %scf.gen.mint; `next_gen` is not needed
-/// here (only %scf.header's own header continuation is entered) -- %scf.loop
-/// re-derives it from the same (hash-consed) mint call, see there.
-axm %scf.header: {H: ★} → {path: Path, step: Step, gen: Gen}
-  → [token: Token path step gen]
-  → (let (next_gen, id) = %scf.gen.mint gen;
-     [header: Cn [H, Loop path step id gen ⊥ H]] // 1× Loop
-       → Cn H);
+axm %scf.header: {H: ★} → {path: Path, step: Step}
+  → [token: Token path step]
+  → [header: Cn [H, Loop path step ⊥ H]] // 1× Loop
+  → Cn H;
 ///
 /// This is used by the loop header to call into its body. The header always
 /// enters the body unconditionally -- there is no direct edge to `break`
 /// here; a `while`-style loop is written by placing a conditional
 /// `%scf.break(l)` as the first thing in the body. The body branches
 /// receive the `Loop` capability so they can `%scf.continue` (the
-/// back-edge) or `%scf.break(l)`. `next_gen` here is recomputed from
-/// `%scf.gen.mint gen` -- the identical (hash-consed) node %scf.header's
-/// type already used to produce `id`. Consuming a `Loop path step id gen ⊥ H`
-/// value is what stops a duplicated Loop capability from installing the
-/// body/break structure twice over the same coordinate -- there being only
-/// one `id` in existence for this Loop makes only one such call legitimate.
+/// back-edge) or `%scf.break(l)`.
 axm %scf.loop: {
   B T H: ★,
-  path: Path, step: Step, id: Id, gen: Gen, // 0x: read from the Loop argument's type, not consumed
-} → [Loop path step id gen ⊥ H] // 1× Loop
-  → (let (next_gen, _id) = %scf.gen.mint gen;
-     [break: Cn [B, Token path (inc step) gen]]
-       → [body: Cn [T, Loop path step id gen B H, Token (%scf.body path step) zero next_gen]] // ω× Loop
-       → Cn T);
+  path: Path, step: Step,
+} → [Loop path step ⊥ H] // 1× Loop
+  → [break: Cn [B, Token path (inc step)]]
+  → [body: Cn [T, Loop path step B H, Token (%scf.body path step) zero]] // ω× Loop
+  → Cn T;
 
 /// Type of a structured function: payload, the function's own coordinates
 /// (`path`/`step` are ordinary parameters -- there is no introduction rule
 /// behind them and no way to enter a thread; the function starts holding its
 /// token), and the polymorphic return continuation (the thread's other,
-/// equally axiom-fabricated end). `gen` is established here, once, via
-/// %scf.gen.root applied to the function's own `path` -- the one and only
-/// place that axiom is called; ordinary callers never see it, they just
-/// receive a `token` whose type already carries the resulting gen.
-lam %scf.Fn (T: ★) (R: ★) = Cn [T, path: Path, step: Step, Token path step (%scf.gen.root path), Ret R];
+/// equally axiom-fabricated end).
+lam %scf.Fn (T: ★) (R: ★) = Cn [T, path: Path, step: Step, Token path step, Ret R];
 
 /// Function call to a returning structured function in continuation passing
 /// style. The call is one atomic step in the caller's chain: the callee's
 /// coordinates are never instantiated (they stay the callee's own bound
 /// variables), and the callee's polymorphic return continuation is
 /// instantiated with the caller's own — monomorphic — continuation at
-/// step + 1, discarding the callee-side coordinates. No fork happens here,
-/// so `gen` simply passes through unchanged to the successor token, exactly
-/// like `path` already does.
-axm %scf.call: {T R: ★, path: Path, step: Step, gen: Gen}
-  → [Token path step gen]
+/// step + 1, discarding the callee-side coordinates.
+axm %scf.call: {T R: ★, path: Path, step: Step}
+  → [Token path step]
   → [%scf.Fn T R]
-  → [Fn T → [R, Token path (inc step) gen]];
+  → [Fn T → [R, Token path (inc step)]];
 
 /// ## Phases
 // TODO: the phases are all unimplemented at the moment

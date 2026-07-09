@@ -9,12 +9,12 @@
 
 plugin scf;
 
-con callee (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) =
+con callee (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
     %scf.return token return x;
 
-con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), exit: Cn Nat) =
+con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, exit: Cn Nat) =
     callee (1, path, step, token, fake) where
-        lam fake {p: %scf.Path, s: %scf.Step, g: %scf.Gen} (t: %scf.Token p s g) = cn (r: Nat) = exit r;
+        lam fake {p: %scf.Path, s: %scf.Step} (t: %scf.Token p s) = cn (r: Nat) = exit r;
     end;
 
 // CHECK: error

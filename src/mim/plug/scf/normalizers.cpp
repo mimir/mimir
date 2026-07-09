@@ -23,8 +23,8 @@ const Def* peel_path(const Def* p) {
 
 /// Is `candidate_path` strictly nested inside `root_path`, the coordinate of
 /// the If/Switch/Loop capability a break/continue is being fired against?
-/// Interim stand-in for real `Id`/`Gen` linearity (not enforced pre-QTT):
-/// rejects a capability smuggled out of its construct as ordinary data and
+/// Interim stand-in for real linearity (not enforced pre-QTT): rejects a
+/// capability smuggled out of its construct as ordinary data and
 /// replayed from a point that never structurally descends from the
 /// construct's own path -- including that construct's own post-exit
 /// continuation, which sits AT `root_path` (zero peels), not inside it.
@@ -40,8 +40,8 @@ bool path_contains(const Def* root_path, const Def* candidate_path) {
 /// `callee` is the App one curry step short of the Loop/Switch capability argument,
 /// i.e. the step that applied `inner_token` -- read its path back out of its type.
 const Def* inner_path(const Def* callee) {
-    auto inner_token                            = callee->as<App>()->arg();
-    auto [inner_path_, inner_step_, inner_gen_] = App::uncurry_args<3>(inner_token->type());
+    auto inner_token                = callee->as<App>()->arg();
+    auto [inner_path_, inner_step_] = App::uncurry_args<2>(inner_token->type());
     return inner_path_;
 }
 
@@ -59,8 +59,8 @@ const Def* normalize_switch(const Def*, const Def*, const Def* cases) {
 }
 
 const Def* normalize_continue(const Def*, const Def* callee, const Def* arg) {
-    auto tok                             = inner_path(callee);
-    auto [path, step_, id_, gen_, B_, H_] = App::uncurry_args<6>(arg->type());
+    auto tok                   = inner_path(callee);
+    auto [path, step_, B_, H_] = App::uncurry_args<4>(arg->type());
 
     if (!path_contains(path, tok))
         mim::error(tok->loc(), "token passed to '%scf.continue' does not belong to the targeted loop");
@@ -68,16 +68,17 @@ const Def* normalize_continue(const Def*, const Def* callee, const Def* arg) {
     return {};
 }
 
-template<_break id> const Def* normalize_break(const Def*, const Def* callee, const Def* arg) {
+template<_break id>
+const Def* normalize_break(const Def*, const Def* callee, const Def* arg) {
     auto tok = inner_path(callee);
     const Def* path;
 
     if constexpr (id == _break::l) {
-        auto [p, step_, loop_id_, gen_, B_, H_] = App::uncurry_args<6>(arg->type());
-        path = p;
+        auto [p, step_, B_, H_] = App::uncurry_args<4>(arg->type());
+        path                    = p;
     } else {
-        auto [p, step_, switch_id_, T_, B_] = App::uncurry_args<5>(arg->type());
-        path = p;
+        auto [p, step_, T_, B_] = App::uncurry_args<4>(arg->type());
+        path                    = p;
     }
 
     if (!path_contains(path, tok))

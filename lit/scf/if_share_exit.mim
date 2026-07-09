@@ -40,14 +40,14 @@
 
 plugin scf;
 
-fun extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, sel cond: Bool, cond2: Bool) =
+fun extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, sel cond: Bool, cond2: Bool) =
   (left, right)#sel token where
-  con left (token: %scf.Token path step gen) =
+  con left (token: %scf.Token path step) =
     %scf.if token exit (else_l, then_l) cond2 () where
       con then_l (_: [], struct, tok) = %scf.merge tok struct 1;
       con else_l (_: [], struct, tok) = %scf.merge tok struct 0;
     end;
-  con right (token: %scf.Token path step gen) =
+  con right (token: %scf.Token path step) =
     %scf.if token exit (else_r, then_r) cond2 () where
       con then_r (_: [], struct, tok) = %scf.merge tok struct 2;
       con else_r (_: [], struct, tok) = %scf.merge tok struct 3;

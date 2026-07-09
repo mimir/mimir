@@ -39,8 +39,7 @@ con extern fragment [
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
     path: %scf.Path,
     step: %scf.Step,
-    gen: %scf.Gen,
-    token: %scf.Token path step gen,
+    token: %scf.Token path step,
     return: %scf.Ret (%mem.M 0),
 ] = let (mem_, x) = %spirv.load (mem, i_x);
     let cond_outer = %math.cmp.l 0 (x, -0.25:F32);

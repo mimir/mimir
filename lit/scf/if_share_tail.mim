@@ -42,20 +42,19 @@ plugin scf;
 // lit/bug/dependent_con_double_call.mim). The shared block under test is
 // `tail`, not the callee, so the duplication doesn't change the finding.
 // callee_l/callee_r are invoked via %scf.call, so they must literally have
-// type %scf.Fn Nat Nat -- their token's gen is %scf.gen.root path (Fn's own
-// internal derivation), not a free parameter.
-con callee_l (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) = %scf.return token return x;
-con callee_r (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step (%scf.gen.root path), return: %scf.Ret Nat) = %scf.return token return x;
+// type %scf.Fn Nat Nat.
+con callee_l (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) = %scf.return token return x;
+con callee_r (x: Nat, path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) = %scf.return token return x;
 
-fun extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, sel cond: Bool) =
+fun extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, sel cond: Bool) =
   (left, right)#sel token where
-  con left (token: %scf.Token path step gen) =
+  con left (token: %scf.Token path step) =
     %scf.if token exit_l (else_l, then_l) cond () where
     con then_l (_: [], _, tok) = %scf.call tok callee_l (1, tail);
     con else_l (_: [], struct, tok) = %scf.merge tok struct 0;
     con exit_l (x: Nat, _) = return x;
   end;
-  con right (token: %scf.Token path step gen) =
+  con right (token: %scf.Token path step) =
     %scf.if token exit_r (else_r, then_r) cond () where
     con then_r (_: [], _, tok) = %scf.call tok callee_r (2, tail);
     con else_r (_: [], struct, tok) = %scf.merge tok struct 0;

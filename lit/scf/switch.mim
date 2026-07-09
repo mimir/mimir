@@ -2,7 +2,7 @@
 
 plugin scf;
 
-con extern foo (path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, return: %scf.Ret Nat) =
+con extern foo (path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
   %scf.switch @3 token exit default ((0, case0), (1, case1), (2, case2)) 1 () where
     con case2 (_: [], struct, tok) = %scf.break.s tok struct 2;
     con case1 (_: [], struct, tok) = %scf.break.s tok struct 1;

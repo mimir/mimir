@@ -7,10 +7,10 @@
 
 plugin scf;
 
-con extern foo (p: %scf.Path, s: %scf.Step, id: %scf.Id, gen: %scf.Gen,
-                loop_cap: %scf.Loop p s id gen [] Nat,
-                path: %scf.Path, step: %scf.Step, gen2: %scf.Gen,
-                token: %scf.Token path step gen2, return: %scf.Ret Nat) =
+con extern foo (p: %scf.Path, s: %scf.Step,
+                loop_cap: %scf.Loop p s [] Nat,
+                path: %scf.Path, step: %scf.Step,
+                token: %scf.Token path step, return: %scf.Ret Nat) =
     %scf.continue token loop_cap 0; // ILLEGAL: path can never reach p
 
 // CHECK: error

@@ -16,7 +16,7 @@ plugin scf;
 // from any depth pays a token and no lifting of a raw continuation is needed.
 // %scf.Ret is also the merge interface, so return passes directly as the
 // merge target.
-con extern foo (cond: Bool, path: %scf.Path, step: %scf.Step, gen: %scf.Gen, token: %scf.Token path step gen, return: %scf.Ret Nat) =
+con extern foo (cond: Bool, path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
   %scf.nice_if return cond () token (else, then) where
     lam then (merge) () = merge 1;
     lam else (merge) () = merge 0;
