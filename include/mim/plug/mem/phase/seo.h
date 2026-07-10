@@ -48,10 +48,12 @@ private:
         void reset() final;
 
         const DefSet& slots() const { return slots_; }
+        const LamSet& escaped() const { return escaped_; }
         const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
 
     private:
         // SCCP
+        const Def* pin_top(const Def* var); ///< Monotonically forces @p var to ⊤ (keep as is).
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs vars, Defs abstr_args);
 
@@ -77,7 +79,8 @@ private:
 
         // global (kept between iterations)
         Def2Def sloxy2slot_;
-        DefSet slots_; // actually slot ptrs
+        DefSet slots_;   // actually slot ptrs
+        LamSet escaped_; // Lam%s reached as a *value*; their signature must stay untouched
     };
 
 public:
@@ -87,6 +90,7 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
+    const Def* rewrite_mut_Lam(Lam*) final;
 
     /// A live phi for @p old_lam: the @p sloxy it stands for, the @p phi proxy, and its abstract @p val.
     struct Phi {
@@ -95,6 +99,8 @@ private:
         const Def* val;
     };
 
+    /// The (memoized) live phis of @p old_lam.
+    const Vector<Phi>& phis_of(Lam* old_lam);
     /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?
     bool needs_seo(View<Phi>, Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.

@@ -24,6 +24,31 @@ static size_t idx_of(Defs vars, const Def* p) {
     return it - vars.begin();
 }
 
+/// The Lam the abstract @p var belongs to; @p var is a Var, a Var projection, or a phi Proxy.
+static Lam* lam_of(const Def* var) {
+    if (auto proxy = var->isa<Proxy>()) return proxy->op(0)->as_mut<Lam>();
+    if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->mut()->as_mut<Lam>();
+    return var->as<Var>()->mut()->as_mut<Lam>();
+}
+
+/// May @p def be substituted for a var of @p lam inside @p lam's body?
+/// A free var of @p def that is @p lam's own var or already free in @p lam is trivially fine.
+/// Any other free var effectively moves @p lam underneath its binder,
+/// so it must be visible at every use of @p lam;
+/// otherwise the substitution would introduce an unbound var there.
+/// A user that references @p lam's own var sits inside @p lam's scope and relocates with it - skip those.
+static bool visible(const Def* def, Lam* lam) {
+    auto lam_var = lam->has_var();
+    for (auto fv : def->free_vars()) {
+        if (fv == lam_var || lam->free_vars().contains(fv)) continue;
+        for (auto user : lam->users()) {
+            if (lam_var && user->free_vars().contains(lam_var)) continue;
+            if (fv != user->has_var() && !user->free_vars().contains(fv)) return false;
+        }
+    }
+    return true;
+}
+
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
@@ -36,18 +61,27 @@ void SEO::Analysis::reset() {
 
 // SCCP
 
+const Def* SEO::Analysis::pin_top(const Def* var) {
+    auto [i, ins] = lattice_.emplace(var, var);
+    if (ins || i->second != var) {
+        i->second = var;
+        invalidate();
+    }
+    return var;
+}
+
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
 
     // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
-    if (Axm::isa<mem::M>(var->type())) {
-        auto [i, ins] = lattice_.emplace(var, var);
-        if (ins || i->second != var) {
-            i->second = var;
-            invalidate();
-        }
-        return var;
+    if (Axm::isa<mem::M>(var->type())) return pin_top(var);
+
+    // A value can only be propagated if it is visible at all uses of the var's lam;
+    // e.g. `⊥ ⊔ x` is `x`, but unusable if some use of the lam sits outside `x`'s scope.
+    if (!def->isa<Proxy>() && !def->free_vars().empty() && !visible(def, lam_of(var))) {
+        DLOG("cannot propagate {} -> {}: out of scope", var, def);
+        return pin_top(var);
     }
 
     auto [i, ins] = lattice_.emplace(var, def);
@@ -310,6 +344,7 @@ void SEO::Analysis::analyze(const Def* def) {
         }
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
         DLOG("lam {} escapes", lam);
+        escaped_.emplace(lam);
         for (auto v : var->tprojs()) {
             if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
                 invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
@@ -363,19 +398,8 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
     } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
 
-        auto [i, ins] = lam2phis_.emplace(old_lam, Vector<Phi>());
-        auto& phis    = i->second;
-        if (ins) {
-            for (auto slot : analysis_.slots())
-                if (auto sloxy = lattice(slot)) {
-                    auto phi = mk_phi(old_world(), old_lam, sloxy);
-                    if (auto val = lattice(phi)) phis.emplace_back(sloxy, phi, val);
-                }
-        }
-
+        auto& phis = phis_of(old_lam);
         if (needs_seo(phis, old_lam)) {
-            invalidate();
-
             auto new_lam  = build_lam(phis, old_lam);
             auto new_args = build_args(phis, old_lam, old_app);
             return map(old_app, new_world().app(new_lam, new_args));
@@ -385,7 +409,31 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
     return Super::rewrite_imm_App(old_app);
 }
 
+const Def* SEO::rewrite_mut_Lam(Lam* old_lam) {
+    // A lam that gets a new signature must never be rebuilt generically:
+    // otherwise two new versions of old_lam exist and their (hash-consed, cached) body defs
+    // reference whichever version was rewritten first - leaving free vars in the other one.
+    if (auto& phis = phis_of(old_lam); needs_seo(phis, old_lam)) return build_lam(phis, old_lam);
+    return Super::rewrite_mut_Lam(old_lam);
+}
+
+const Vector<SEO::Phi>& SEO::phis_of(Lam* old_lam) {
+    auto [i, ins] = lam2phis_.emplace(old_lam, Vector<Phi>());
+    auto& phis    = i->second;
+    if (ins) {
+        for (auto slot : analysis_.slots())
+            if (auto sloxy = lattice(slot)) {
+                auto phi = mk_phi(old_world(), old_lam, sloxy);
+                if (auto val = lattice(phi)) phis.emplace_back(sloxy, phi, val);
+            }
+    }
+    return phis;
+}
+
 bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
+    // An escaped lam is used as a value somewhere; its signature must stay as is.
+    if (analysis_.escaped().contains(old_lam)) return false;
+
     if (abstracted(old_lam->var())) return true;
 
     for (auto [sloxy, phi, val] : phis)
@@ -398,14 +446,16 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end()) return i->second;
 
     DLOG("building a new lam for {}", old_lam);
+    invalidate();
     size_t num_old = old_lam->num_tvars();
 
     // build new dom
+    auto keeps    = absl::FixedArray<bool>(num_old);
     auto new_doms = DefVec();
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
-        auto abstr   = lattice(old_var);
-        if (keep(old_var, abstr)) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
+        keeps[i]     = keep(old_var, lattice(old_var));
+        if (keeps[i]) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
     }
 
     for (auto [sloxy, phi, val] : phis)
@@ -418,37 +468,39 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     auto new_lam      = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
     lam2lam_[old_lam] = new_lam;
 
-    // build new var
+    // Map all *kept* vars/phis before rewriting any propagated value below:
+    // that rewrite may recursively re-enter old_lam (via apps of it in other muts) and
+    // must be able to resolve the kept projections - otherwise the rewriter falls back
+    // to a second, generic stub of old_lam whose cached body defs poison ours.
     size_t j = 0;
 
     for (size_t i = 0; i != num_old; ++i) {
-        auto old_var = old_lam->var(num_old, i);
-        auto abstr   = lattice(old_var);
-
-        if (keep(old_var, abstr)) {
-            auto v     = new_lam->var(num_new_vars, j++);
-            var_map[i] = v;
-            if (abstr && abstr != old_var) map(abstr, v); // GVN bundle
-        } else {
-            var_map[i] = rewrite(abstr); // SCCP propagate
+        if (keeps[i]) {
+            auto old_var = old_lam->var(num_old, i);
+            auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg());
+            var_map[i]   = map(old_var, v);
+            if (auto abstr = lattice(old_var); abstr && abstr != old_var) map(abstr, v); // GVN bundle
         }
     }
 
     for (auto [sloxy, phi, val] : phis) {
-        DLOG("deciding if we keep the phi: {}, {}", phi, val);
         if (keep(phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
             DLOG("mapping phi {} to {}", phi, v);
             map(phi, v);
-            if (val != phi) {
-                DLOG("need to map a phi to gvn bundle");
-                map(val, v);
-            }
-        } else {
-            DLOG("need to map a phi to constant value");
-            map(phi, rewrite(val));
+            if (val != phi) map(val, v); // phi is part of a GVN bundle
         }
     }
+
+    // now resolve the dropped vars/phis to their propagated values
+    for (size_t i = 0; i != num_old; ++i)
+        if (!keeps[i]) var_map[i] = rewrite(lattice(old_lam->var(num_old, i))); // SCCP propagate
+
+    for (auto [sloxy, phi, val] : phis)
+        if (!keep(phi, val)) {
+            DLOG("mapping phi {} to its propagated value {}", phi, val);
+            map(phi, rewrite(val));
+        }
 
     map(old_lam->var(), var_map);
     {

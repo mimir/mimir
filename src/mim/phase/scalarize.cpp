@@ -50,8 +50,11 @@ void Scalarize::Analysis::inspect(const Def* def) {
     // A parameter that is Extract%ed / Insert%ed via a non-constant index must not be split.
     const Def* idx_tuple = nullptr;
     const Def* idx       = nullptr;
-    if (auto ex = def->isa<Extract>()) idx_tuple = ex->tuple(), idx = ex->index();
-    if (auto in = def->isa<Insert>()) idx_tuple = in->tuple(), idx = in->index();
+    if (auto ex = def->isa<Extract>())
+        idx_tuple = ex->tuple(), idx = ex->index();
+    else if (auto in = def->isa<Insert>())
+        idx_tuple = in->tuple(), idx = in->index();
+
     if (idx_tuple && !Lit::isa(idx)) {
         if (auto var = idx_tuple->isa<Var>()) {
             if (auto lam = var->mut()->isa_mut<Lam>()) demote(lam); // whole var indexed dynamically
@@ -127,17 +130,13 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     auto n  = old->num_tvars();
 
     // build the flattened (one level) domain
-    auto dtypes = DefVec(n);
-    auto counts = Vector<size_t>(n);
+    auto dtypes = DefVec(n, [&](size_t i) { return rewrite(old->tvar(i)->type()); });
     auto doms   = DefVec();
     for (size_t i = 0; i != n; ++i) {
-        dtypes[i] = rewrite(old->tvar(i)->type());
         if (mask[i]) {
             auto pieces = dtypes[i]->tprojs();
-            counts[i]   = pieces.size();
             doms.insert(doms.end(), pieces.begin(), pieces.end());
         } else {
-            counts[i] = 1;
             doms.emplace_back(dtypes[i]);
         }
     }
@@ -150,14 +149,11 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     auto params = DefVec();
     params.reserve(n);
     for (size_t i = 0, v = 0; i != n; ++i) {
-        if (counts[i] == 1) {
-            params.emplace_back(sca->var(v++));
-        } else {
-            auto pieces = DefVec();
-            pieces.reserve(counts[i]);
-            for (size_t j = 0; j != counts[i]; ++j)
-                pieces.emplace_back(sca->var(v++));
+        if (mask[i]) {
+            auto pieces = DefVec(dtypes[i]->num_tprojs(), [&](size_t) { return sca->var(v++); });
             params.emplace_back(w.tuple(dtypes[i], pieces));
+        } else {
+            params.emplace_back(sca->var(v++));
         }
     }
     map(old->var(), w.tuple(params));
@@ -167,17 +163,18 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     return sca;
 }
 
-void Scalarize::flatten_args(DefVec& ops, const App* app, const Vector<bool>& mask) {
-    auto n = app->num_targs();
-    for (size_t i = 0; i != n; ++i) {
+DefVec Scalarize::flatten_args(const App* app, const Vector<bool>& mask) {
+    auto args = DefVec();
+    for (size_t i = 0, n = app->num_targs(); i != n; ++i) {
         auto arg = rewrite(app->targ(i));
         if (i < mask.size() && mask[i]) {
             auto pieces = arg->tprojs();
-            ops.insert(ops.end(), pieces.begin(), pieces.end());
+            args.insert(args.end(), pieces.begin(), pieces.end());
         } else {
-            ops.emplace_back(arg);
+            args.emplace_back(arg);
         }
     }
+    return args;
 }
 
 const Def* Scalarize::rewrite_imm_App(const App* app) {
@@ -196,11 +193,7 @@ const Def* Scalarize::rewrite_imm_App(const App* app) {
             }
         }
 
-        if (new_callee) {
-            auto args = DefVec();
-            flatten_args(args, app, mask);
-            return w.app(new_callee, args);
-        }
+        if (new_callee) return w.app(new_callee, flatten_args(app, mask));
     }
 
     return RWPhase::rewrite_imm_App(app);

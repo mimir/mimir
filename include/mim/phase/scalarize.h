@@ -68,8 +68,8 @@ private:
     const Def* rewrite_mut_Lam(Lam*) final;
     const Def* rewrite_imm_App(const App*) final;
 
-    /// Flattens @p arg one level according to @p mask, appending the pieces to @p ops.
-    void flatten_args(DefVec& ops, const App* app, const Vector<bool>& mask);
+    /// Flattens @p app%'s arguments one level according to @p mask.
+    DefVec flatten_args(const App* app, const Vector<bool>& mask);
 
     Analysis analysis_;
 };
