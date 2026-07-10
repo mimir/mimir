@@ -403,12 +403,20 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
     if (!in_buf) {
         input  = materialize(app->arg()->proj(2)->type(), app->arg()->proj(2));
         in_buf = Axm::isa<buffer::Buf>(input->type());
-        if (!in_buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
     }
 
-    // Actual (size-1-folded) input/output buffer shapes — `matrix.broadcast` is parameterised by them.
-    auto [bri, bsi, biT] = in_buf->args<3>();
     auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(app->type()))->args<3>();
+
+    // Rank-0 source: an all-size-1 input shape folds to a plain scalar that is never recorded as a tensor
+    // type, so `materialize` leaves it as a value. Broadcasting a scalar to `s_out` is just a constant
+    // buffer with every element set to that scalar.
+    if (!in_buf) {
+        auto [m, out] = buffer::op_constant(bro, bso, boT, bot_mem(), input)->projs<2>();
+        return out;
+    }
+
+    // Actual (size-1-folded) input buffer shape — `matrix.broadcast` is parameterised by it.
+    auto [bri, bsi, biT] = in_buf->args<3>();
 
     auto op       = w.annex<matrix::broadcast>();
     op            = w.app(op, w.tuple({T, bri, bsi, bro, bso, r}));
