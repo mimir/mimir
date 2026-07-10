@@ -152,10 +152,6 @@ public:
     ///@{
     World& world() { return Phase::world(); }
     bool is_bootstrapping() const { return bootstrapping_; }
-    template<class D = Def>
-    D* curr_mut() const {
-        return curr_mut_ ? curr_mut_->template isa<D>() : nullptr;
-    }
     ///@}
 
     /// @name lattice
@@ -177,22 +173,6 @@ public:
     ///@}
 
 protected:
-    /// Helps to keep track of curr_mut().
-    /// @see enter()
-    class Enter {
-    public:
-        Enter(Analysis* analysis, Def* new_mut)
-            : analysis_(analysis)
-            , prev_mut_(analysis->curr_mut()) {
-            analysis->curr_mut_ = new_mut;
-        }
-        ~Enter() { analysis_->curr_mut_ = prev_mut_; }
-
-    private:
-        Analysis* analysis_;
-        Def* prev_mut_;
-    };
-
     /// @name Rewrite
     ///@{
     virtual void prepare() {}  ///< Run **before** the main analysis.
@@ -200,7 +180,6 @@ protected:
     void start() override;
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
-    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
 
     /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
@@ -216,10 +195,7 @@ private:
     void drain();
 
     std::deque<Def*> worklist_;
-    Def* curr_mut_      = nullptr;
     bool bootstrapping_ = true;
-
-    friend class Enter;
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
