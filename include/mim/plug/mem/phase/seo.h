@@ -64,10 +64,13 @@ private:
         void finalize() final;
         void analyze(const Def*);
 
+        // local (reset between iterations)
         DefMap<Def2Def> mut2slot2value_;
+        DefSet visited_;
+
+        // global (kept between iterations)
         Def2Def sloxy2slot_;
         Def2Def slot2type_;
-        DefSet visited_;
     };
 
 public:

@@ -242,7 +242,8 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 for (auto var : lam->tvars())
                     vars.emplace_back(var);
 
-                for (auto [slot, slot_type] : slot2type_) {
+                for (auto [slot, _] : slot2type_) {
+                    auto slot_type  = pointee(slot);
                     auto abstr_slot = rewrite(slot);
                     auto phi        = world().proxy(slot_type, {lam, abstr_slot}, Proxy_Phi);
                     if (slot2value(abstr_slot)) {
