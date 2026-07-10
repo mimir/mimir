@@ -190,7 +190,6 @@ const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
     const auto& sloxy2val = mut2sloxy2val_[curr_mut()];
     if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
-    // not in the local map: check if we have a phi for this slot in the lattice
     auto phi = mk_phi(world(), curr_mut<Lam>(), sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
     if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
