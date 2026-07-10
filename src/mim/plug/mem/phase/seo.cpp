@@ -419,47 +419,36 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     lam2lam_[old_lam] = new_lam;
 
     // build new var
-    //
-    // Two passes: first bind *all* kept vars/phis to their new Var (and map their GVN bundle to it),
-    // then rewrite the *not*-kept ones. A not-kept entry that belongs to a GVN bundle rewrites the bundle
-    // proxy, which only resolves once its representative (bundle->op(0)) has been mapped. Since the
-    // representative may come later in iteration order - or be a phi while the dependent is a var - a single
-    // interleaved pass would rewrite the bundle before it is mapped and leak a free var (non-closed Lam).
     size_t j = 0;
 
-    // pass 1: bind kept vars ...
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
         auto abstr   = lattice(old_var);
+
         if (keep(old_var, abstr)) {
             auto v     = new_lam->var(num_new_vars, j++);
             var_map[i] = v;
             if (abstr && abstr != old_var) map(abstr, v); // GVN bundle
+        } else {
+            var_map[i] = rewrite(abstr); // SCCP propagate
         }
     }
 
-    // ... and kept phis
-    for (auto [sloxy, phi, val] : phis)
+    for (auto [sloxy, phi, val] : phis) {
+        DLOG("deciding if we keep the phi: {}, {}", phi, val);
         if (keep(phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
             DLOG("mapping phi {} to {}", phi, v);
             map(phi, v);
-            if (val != phi) map(val, v); // GVN bundle
-        }
-
-    // pass 2: rewrite not-kept vars (SCCP propagate / GVN bundle - now all representatives are mapped) ...
-    for (size_t i = 0; i != num_old; ++i) {
-        auto old_var = old_lam->var(num_old, i);
-        auto abstr   = lattice(old_var);
-        if (!keep(old_var, abstr)) var_map[i] = rewrite(abstr);
-    }
-
-    // ... and not-kept phis
-    for (auto [sloxy, phi, val] : phis)
-        if (!keep(phi, val)) {
-            DLOG("mapping phi {} to constant value {}", phi, val);
+            if (val != phi) {
+                DLOG("need to map a phi to gvn bundle");
+                map(val, v);
+            }
+        } else {
+            DLOG("need to map a phi to constant value");
             map(phi, rewrite(val));
         }
+    }
 
     map(old_lam->var(), var_map);
     {
