@@ -1,5 +1,8 @@
 #pragma once
 
+#include <absl/container/btree_map.h>
+#include <absl/container/btree_set.h>
+
 #include <mim/def.h>
 #include <mim/phase.h>
 
@@ -70,12 +73,12 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        std::map<const Def*, Def2Def, GIDLt<const Def*>> mut2sloxy2val_;
+        absl::btree_map<const Def*, Def2Def, GIDLt<const Def*>> mut2sloxy2val_;
         DefSet visited_;
 
         // global (kept between iterations)
-        std::map<const Def*, const Def*, GIDLt<const Def*>> sloxy2slot_;
-        std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
+        absl::btree_map<const Def*, const Def*, GIDLt<const Def*>> sloxy2slot_;
+        absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
     };
 
 public:
