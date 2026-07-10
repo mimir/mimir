@@ -13,7 +13,7 @@ fun extern test1(mem0: %mem.M 0): [%mem.M 0, I64] =
             ret (mem, cond) = dont_know $ mem;
             (a, b)#cond mem where
 
-				// store different values on two branches
+                // store different values on two branches
                 con a(mem: %mem.M 0) =
                     let mem = %mem.store (mem, ptr, 1I64);
                     join mem;
