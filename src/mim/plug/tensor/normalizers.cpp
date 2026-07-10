@@ -86,6 +86,34 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
         return op_get(T, new_r, new_s, outer_arr, new_index);
     }
 
+    if (auto rep = Axm::isa<tensor::repeat>(arr)) {
+        // get after repeat: read the input directly at `idx mod s_in` per axis. Decidable when an axis
+        // passes through (`s_in#d == s_out#d`), is size-1 (read at 0), or has a literal extent and a
+        // literal index component (fold the mod); otherwise keep the repeat (the lowering paths emit the
+        // runtime mod).
+        w.DLOG("get after repeat, try to bypass");
+        auto input             = rep->arg();
+        auto [Tr, s_in, s_out] = rep->callee()->as<App>()->uncurry_args<3>();
+        if (auto r_l = Lit::isa<u64>(Tr->proj(2, 1))) {
+            DefVec new_index(*r_l);
+            for (u64 d = 0; d < *r_l; ++d) {
+                auto in_d  = s_in->proj(*r_l, d);
+                auto idx_d = index->proj(*r_l, d);
+                if (in_d == s_out->proj(*r_l, d)) {
+                    new_index[d] = idx_d;
+                } else if (auto l = Lit::isa<u64>(in_d); l && *l == 1) {
+                    new_index[d] = w.lit_idx(1, 0);
+                } else if (auto e = Lit::isa<u64>(in_d), i = Lit::isa<u64>(idx_d); e && i) {
+                    new_index[d] = w.lit_idx(*e, *i % *e);
+                } else {
+                    return nullptr;
+                }
+            }
+            w.DLOG("bypass successful");
+            return op_get(T, Tr->proj(2, 1), s_in, input, w.tuple(new_index));
+        }
+    }
+
     if (auto bc = Axm::isa<tensor::broadcast>(arr)) {
         // get after broadcast: read the input directly. Per axis, the broadcast either passes the index
         // through (`s_in#d == s_out#d`) or reads a size-1 input axis at 0; if some axis is neither

@@ -132,4 +132,10 @@ let b  = %tensor.broadcast ((2, 1), (2, 3), (1, 2));
 let bg = %tensor.get @(Nat, 2, (2, 3)) (b, (1_2, 2_3));
 let _ = %refly.equiv.struc_eq (bg, %tensor.get @(Nat, 1, 2) ((1, 2), 1_2));
 
+// A get after a repeat bypasses the repeat: the (literal) read index is reduced mod s_in per axis —
+// here rg reads rep[3][4] = m1[3 mod 2][4 mod 3] = m1[1][1].
+let rep = %tensor.repeat (2, 3) (4, 6) m1;
+let rg  = %tensor.get @(Nat, 2, (4, 6)) (rep, (3_4, 4_6));
+let _ = %refly.equiv.struc_eq (rg, %tensor.get @(Nat, 2, (2, 3)) (m1, (1_2, 1_3)));
+
 fun extern main() = return dot;
