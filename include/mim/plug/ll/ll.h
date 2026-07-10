@@ -187,7 +187,10 @@ inline static const Def* find_common_simd_src(const App* app) {
         else if (common_src != extract->tuple())
             return nullptr;
     }
-    if (common_src && is_simd(common_src->type())->first != lane) return nullptr;
+    if (common_src) {
+        auto simd = is_simd(common_src->type());
+        if (!simd || simd->first != lane) return nullptr;
+    }
     return common_src;
 }
 
