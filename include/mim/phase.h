@@ -164,6 +164,10 @@ public:
         return false;
     }
 
+    /// Monotonically forces @p var to ⊤ (keep as is).
+    /// Calls @Phase::invalidate(), if new fact.
+    const Def* pin_top(const Def*);
+
     /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
     /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
     const Def* set(const Def* concr, const Def* abstr) {
