@@ -222,7 +222,7 @@ public:
         }
 
     private:
-        absl::btree_map<Sym, Def*> sym2mut_;
+        fe::SymMap<Def*> sym2mut_;
     };
 
     class Annexes {
@@ -274,7 +274,7 @@ public:
     private:
         Driver* driver_;
         absl::btree_map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
-        absl::btree_map<Sym, flags_t> sym2flags_;               ///< Reverse index: an annex's full name to its flags.
+        fe::SymMap<flags_t> sym2flags_;               ///< Reverse index: an annex's full name to its flags.
     };
 
     /// @name Externals & Annexes
