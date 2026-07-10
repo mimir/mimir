@@ -111,7 +111,11 @@ Vector<bool> Scalarize::Analysis::plan(Lam* lam) {
         mask.assign(n, false);
         for (size_t i = 0; i != n; ++i) {
             auto locked = lck != locked_.end() && lck->second.contains(i);
-            if (!locked && lam->tvar(i)->type()->num_tprojs() > 1) mask[i] = any = true;
+            // Only split immutable types: a mutable Sigma's element types may reference
+            // the Sigma's own var (e.g. a typed closure `[T: *, Cn [.., T, ..], T]`),
+            // which splitting would leave unbound.
+            auto t = lam->tvar(i)->type();
+            if (!locked && t->isa_imm() && t->num_tprojs() > 1) mask[i] = any = true;
         }
         if (!any) mask.clear();
     }
