@@ -783,10 +783,8 @@ std::string Emitter::emit_node(BB& bb, const Def* def, std::string node_name, bo
     }
 
     if (auto proxy = def->isa<Proxy>()) {
-        std::ostringstream pass;
         std::ostringstream tag;
         std::print(tag, "\n{}", proxy->tag());
-        op_vals.push_back(pass.str());
         op_vals.push_back(tag.str());
     }
 
