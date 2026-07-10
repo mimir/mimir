@@ -1,0 +1,42 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+
+cfun dont_know[]: Bool;
+
+// Two chained loops: the outer accumulator `acc_a` starts as ⊥ and is
+// re-fed with the *inner* loop's accumulator `acc_b` on the back edge.
+// SCCP sees `⊥ ⊔ acc_b = acc_b` - but `acc_b` is not visible at `f`'s
+// initial call of `head_a`, so it must NOT be propagated into `head_a`:
+// doing so leaves `acc_b` unbound in `exit_a` and un-closes `f`.
+fun extern f(x: Nat): Nat =
+    head_a (0, ⊥:Nat) where
+        con head_a(i acc_a: Nat) =
+            ret ca = dont_know $ ();
+            (exit_a, body_a)#ca () where
+                con body_a() =
+                    head_b (0, x) where
+                        con head_b(j acc_b: Nat) =
+                            ret cb = dont_know $ ();
+                            (body_b, exit_b)#cb () where
+                                con body_b() = head_b (%core.nat.add (j, 1), 7);
+                                con exit_b() = head_a (%core.nat.add (i, 1), acc_b);
+                            end;
+                    end;
+
+                con exit_a() = return acc_a;
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+    );
+
+// CHECK: fun extern f
