@@ -59,14 +59,6 @@ void Analysis::start() {
     finalize();
 }
 
-const Def* Analysis::pin_top(const Def* def) {
-    if (auto [i, ins] = lattice_.emplace(def, def); ins || i->second != def) {
-        i->second = def;
-        invalidate();
-    }
-    return def;
-}
-
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 

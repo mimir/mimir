@@ -61,6 +61,15 @@ void SEO::Analysis::reset() {
 
 // SCCP
 
+const Def* SEO::Analysis::pin_top(const Def* var) {
+    auto [i, ins] = lattice_.emplace(var, var);
+    if (ins || i->second != var) {
+        i->second = var;
+        invalidate();
+    }
+    return var;
+}
+
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
 
@@ -119,7 +128,7 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
             if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) bundle_vars.emplace_back(vars[j]);
 
         if (bundle_vars.size() == 1) {
-            abstr_vars[i] = pin_top(vars[i]);
+            lattice_[vars[i]] = abstr_vars[i] = vars[i]; // top
         } else {
             auto bundle = mk_bundle(vars[i], bundle_vars);
 
@@ -153,8 +162,9 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
 
             auto new_num = split_vars.size();
             if (new_num == 1) {
-                abstr_vars[i] = pin_top(vars[i]);
-                DLOG("single: {}", abstr_vars[i]);
+                invalidate();
+                lattice_[vars[i]] = abstr_vars[i] = vars[i];
+                DLOG("single: {}", vars[i]);
             } else if (new_num != num) {
                 invalidate();
                 auto new_proxy = mk_bundle(abstr_args[i], split_vars);
@@ -314,9 +324,10 @@ void SEO::Analysis::analyze(const Def* def) {
             auto slot = sloxy2slot_[proxy];
             assert(slot);
             auto [_, ptr] = slot->projs<2>();
-            pin_top(slot);
-            pin_top(ptr);
+            set(slot, slot);
+            set(ptr, ptr);
             DLOG("sloxy {} survived; setting slot to top: {}", def, slot);
+            invalidate();
         }
         return; // never walk a proxy's deps (would drag in meta info)
     }
@@ -335,8 +346,11 @@ void SEO::Analysis::analyze(const Def* def) {
         DLOG("lam {} escapes", lam);
         escaped_.emplace(lam);
         for (auto v : var->tprojs()) {
-            pin_top(v);
-            DLOG("top: {}", v);
+            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
+                invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
+                i->second = v;
+                DLOG("top: {}", v);
+            }
         }
     }
 
