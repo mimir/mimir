@@ -33,10 +33,9 @@ bool is_tensor_op(const App* app) {
 } // namespace
 
 void LowerToMem::collect_tensor_types() {
-    auto gate = [this](const char* why, const Def* culprit) {
-        if (bufferize_) WLOG("bufferization disabled: {} ({})", why, culprit);
-        bufferize_ = false;
-    };
+    // The default pipeline lowers tensors exclusively through buffers — there is no value-semantics
+    // fallback. A program shape the conversion cannot handle is a hard error, not silent residue.
+    auto gate = [](const char* why, const Def* culprit) { error("cannot bufferize: {} ({})", why, culprit); };
     // Fully folded shapes (`«1; T»` ≡ `T`) denote plain scalars — recording them would poison every
     // function whose signature mentions the element type, so only genuine array types count as tensors.
     auto add_tensor_ty = [this](const Def* t) {
@@ -55,6 +54,8 @@ void LowerToMem::collect_tensor_types() {
         auto def = wl.pop();
 
         if (auto app = def->isa<App>()) {
+            if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0 && axm->plugin() == tensor::Plugin_Id)
+                ops_seen_ = true;
             if (Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app)) {
                 // get/set: the first explicit argument is the tensor `arr`.
                 auto [T, r, s] = app->callee()->as<App>()->args<3>();
@@ -109,9 +110,7 @@ void LowerToMem::collect_tensor_types() {
                 }
             } else if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0
                                                                 && axm->plugin() == tensor::Plugin_Id) {
-                // Any other tensor op (a symbolic `shape`, …) is only lowered by the value-semantics path,
-                // which runs after this phase — bufferizing around it would mix the two worlds on
-                // interlinked tensors and be ill-typed.
+                // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
             // Lams passed inside a tensor op's curry chain (combiners, affine index maps) are element-level.
@@ -129,11 +128,11 @@ void LowerToMem::collect_tensor_types() {
         push(def->type());
     }
 
-    if (!bufferize_) return;
-
     for (auto mut : old_world().externals().muts())
         if (auto lam = mut->isa_mut<Lam>(); lam && is_tensor_fn(lam)) tensor_fns_.emplace(lam);
-    if (tensor_fns_.empty()) return;
+    // No tensor boundaries AND no tensor ops: nothing for the sweeps below to check.
+    // (Ops without boundaries still bufferize: their value-world operands are materialized.)
+    if (tensor_fns_.empty() && !ops_seen_) return;
 
     // Higher-order bufferized functions: a continuation parameter whose domain itself contains a Pi would
     // need boundary conversion inside nested continuation types, which `conv_boundary` does not perform.
@@ -175,13 +174,9 @@ void LowerToMem::collect_tensor_types() {
 }
 
 void LowerToMem::start() {
-    collect_tensor_types();
-    if (!bufferize_) { // disable boundary conversion: `is_tensor_fn` is then false everywhere
-        tensor_ty_.clear();
-        tensor_fns_.clear();
-    }
-    // Nothing to bufferize (value-semantics program, or gate disabled): skip the whole-world rebuild entirely.
-    if (tensor_fns_.empty()) return;
+    collect_tensor_types(); // hard-errors on shapes the conversion cannot handle
+    // Nothing tensor-related in the program: skip the whole-world rebuild entirely.
+    if (tensor_fns_.empty() && !ops_seen_) return;
     RWPhase::start();
     // Thread the memory monad through the converted world (RWPhase::start swapped it into `old_world`):
     // mem-extend continuations and replace the `⊥` memory placeholders of the emitted buffer operations
@@ -270,7 +265,7 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     // A local continuation carrying tensor types (a return continuation of a bufferized call, a join point,
     // an error continuation): convert its domain the same way. This is context-independent, so the order in
     // which references reach it does not matter.
-    if (!tensor_fns_.empty() && !lam->is_external() && lam->is_set() && !op_args_.contains(lam)) {
+    if (!lam->is_external() && lam->is_set() && !op_args_.contains(lam)) {
         if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom())) {
             auto& w      = new_world();
             auto new_lam = w.mut_con(conv_boundary(pi->dom()))->set(lam->dbg());
@@ -285,7 +280,7 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
 }
 
 const Def* LowerToMem::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping() || !bufferize_) return RWPhase::rewrite_imm_App(app);
+    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
     if (Axm::isa<tensor::get>(app)) return lower_get(app);
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);
@@ -351,8 +346,12 @@ const Def* LowerToMem::lower_get(const App* app) {
     auto [arr, index] = arg->projs<2>();
     auto [T, r, s]    = c->args<3>();
     auto buf          = Axm::isa<buffer::Buf>(arr->type());
-    // A `get` on a value-world tensor (e.g. a literal): leave it to the value path.
-    if (!buf) return RWPhase::rewrite_imm_App(app);
+    // A `get` on a value-world tensor (e.g. a literal): materialize it into a buffer.
+    if (!buf) {
+        arr = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        buf = Axm::isa<buffer::Buf>(arr->type());
+        if (!buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+    }
     auto [br, bs, bT] = buf->args<3>(); // actual (folded) buffer metadata
 
     auto [m, v] = buffer::op_read(br, bs, bT, bot_mem(), arr, fold_index(s, index))->projs<2>();
@@ -365,8 +364,12 @@ const Def* LowerToMem::lower_set(const App* app) {
     auto [arr, index, x] = arg->projs<3>();
     auto [T, r, s]       = c->args<3>();
     auto buf             = Axm::isa<buffer::Buf>(arr->type());
-    // A `set` on a value-world tensor (e.g. a literal): leave it to the value path.
-    if (!buf) return RWPhase::rewrite_imm_App(app);
+    // A `set` on a value-world tensor (e.g. a literal): materialize it into a buffer.
+    if (!buf) {
+        arr = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        buf = Axm::isa<buffer::Buf>(arr->type());
+        if (!buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+    }
     auto [br, bs, bT] = buf->args<3>(); // actual (folded) buffer metadata
     auto fidx         = fold_index(s, index);
 
@@ -395,9 +398,13 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
     // No-op broadcast (already normalized away in most cases).
     if (s_in == s_out) return input;
 
-    // A broadcast of a value-world tensor (e.g. a literal): leave it to the value path.
+    // A broadcast of a value-world tensor (e.g. a literal): materialize it into a buffer.
     auto in_buf = Axm::isa<buffer::Buf>(input->type());
-    if (!in_buf) return RWPhase::rewrite_imm_App(app);
+    if (!in_buf) {
+        input  = materialize(app->arg()->proj(2)->type(), app->arg()->proj(2));
+        in_buf = Axm::isa<buffer::Buf>(input->type());
+        if (!in_buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+    }
 
     // Actual (size-1-folded) input/output buffer shapes — `matrix.broadcast` is parameterised by them.
     auto [bri, bsi, biT] = in_buf->args<3>();
@@ -420,12 +427,17 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
     auto [comb, init]                                             = comb_init->projs<2>();
 
-    // Value-world tensor inputs (e.g. literals): leave them to the value path.
+    // Value-world tensor inputs (e.g. literals): materialize them into buffers.
     if (auto nis_l = Lit::isa<u64>(nis)) {
         DefVec ins(*nis_l);
         for (u64 i = 0; i < *nis_l; ++i) {
             ins[i] = inputs->proj(*nis_l, i);
-            if (!Axm::isa<buffer::Buf>(ins[i]->type())) return RWPhase::rewrite_imm_App(app);
+            if (!Axm::isa<buffer::Buf>(ins[i]->type())) {
+                auto old_in = app->arg()->proj(*nis_l, i);
+                ins[i]      = materialize(old_in->type(), old_in);
+                if (!Axm::isa<buffer::Buf>(ins[i]->type()))
+                    return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+            }
         }
         // Re-tuple the inputs: the generic rewrite rebuilds the argument tuple with its stale value-array
         // type even when its elements were converted to buffers, which would not be assignable to the op's
@@ -468,8 +480,12 @@ const Def* LowerToMem::lower_pad(const App* app) {
     auto [T, r]             = Tr->projs<2>();
     auto [mode, lo, hi]     = params->projs<3>();
 
-    // A pad of a value-world tensor (e.g. a literal): leave it to the value path.
-    if (!Axm::isa<buffer::Buf>(input->type())) return RWPhase::rewrite_imm_App(app);
+    // A pad of a value-world tensor (e.g. a literal): materialize it into a buffer.
+    if (!Axm::isa<buffer::Buf>(input->type())) {
+        input = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        if (!Axm::isa<buffer::Buf>(input->type()))
+            return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+    }
 
     auto r_l = Lit::isa<u64>(r);
     if (!r_l) return RWPhase::rewrite_imm_App(app);
@@ -505,12 +521,17 @@ const Def* LowerToMem::lower_concat(const App* app) {
     auto ax_l  = Lit::isa<u64>(ax);
     if (!nis_l || !r_l || !ax_l) return RWPhase::rewrite_imm_App(app);
 
-    // Value-world tensor inputs (e.g. literals): leave them to the value path. Re-tuple the projected
+    // Value-world tensor inputs (e.g. literals): materialize them into buffers. Re-tuple the projected
     // inputs so the tuple type is re-inferred from the converted elements (see `lower_map_reduce`).
     DefVec ins(*nis_l);
     for (u64 i = 0; i < *nis_l; ++i) {
         ins[i] = arg->proj(*nis_l, i);
-        if (!Axm::isa<buffer::Buf>(ins[i]->type())) return RWPhase::rewrite_imm_App(app);
+        if (!Axm::isa<buffer::Buf>(ins[i]->type())) {
+            auto old_in = app->arg()->proj(*nis_l, i);
+            ins[i]      = materialize(old_in->type(), old_in);
+            if (!Axm::isa<buffer::Buf>(ins[i]->type()))
+                return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+        }
     }
     auto inputs = w.tuple(ins);
 

@@ -51,8 +51,9 @@ private:
     /// A future liveness-based policy may return `true` to write into the source buffer in place.
     bool reuse_in_place(const App*) const { return false; }
 
-    /// Pre-pass: records every array type used as a tensor operand/result, the set of bufferized functions,
-    /// and disables bufferization for program shapes the conversion cannot handle.
+    /// Pre-pass: records every array type used as a tensor operand/result and the set of bufferized
+    /// functions; hard-errors on program shapes the conversion cannot handle (there is no value-semantics
+    /// fallback in the default pipeline).
     void collect_tensor_types();
 
     /// Builds the `%buffer.Buf` type for an old tensor array type `«s; T»` (peeling the nested `Arr`s).
@@ -80,6 +81,11 @@ private:
 
     DefSet tensor_ty_;
 
+    /// Whether the program contains any (fully applied) tensor-plugin operation.
+    /// Ops without any bufferized function boundary still lower: their value-world operands are
+    /// materialized into buffers (see `materialize`).
+    bool ops_seen_ = false;
+
     /// Old-world functions that get bufferized (external, signature mentions a tensor).
     /// Call sites of these functions must be adapted (see `lower_call`).
     LamSet tensor_fns_;
@@ -89,9 +95,6 @@ private:
     /// tensor type (pure type-based role tracking aliases, e.g. an `(x y: I32)` group *is* `«2; I32»`).
     LamSet op_args_;
 
-    /// Disabled when the program contains a shape the conversion cannot handle (see `collect_tensor_types`).
-    /// This phase then becomes a no-op and the value-semantics `%tensor.lower_map_reduce` handles everything instead.
-    bool bufferize_ = true;
 };
 
 } // namespace mim::plug::tensor::phase
