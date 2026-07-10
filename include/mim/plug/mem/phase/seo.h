@@ -3,6 +3,8 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
+#include "mim/util/util.h"
+
 namespace mim::plug::mem::phase {
 
 /// Symbolic Expression Optimization.
@@ -70,7 +72,7 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        absl::node_hash_map<const Def*, Def2Def> mut2sloxy2val_;
+        absl::node_hash_map<const Def*, Def2Def, GIDHash<const Def*>> mut2sloxy2val_;
         DefSet visited_;
 
         // global (kept between iterations)
@@ -102,7 +104,7 @@ private:
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
-    absl::node_hash_map<Lam*, Vector<Phi>> lam2phis_;
+    absl::node_hash_map<Lam*, Vector<Phi>, GIDHash<Lam*>> lam2phis_;
 };
 
 } // namespace mim::plug::mem::phase
