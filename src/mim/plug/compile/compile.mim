@@ -54,9 +54,7 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 axm %compile.beta_red:                            %compile.Phase;
 axm %compile.branch_normalize:                    %compile.Phase;
 axm %compile.cleanup:                             %compile.Phase;
-axm %compile.eta_conv:                                 %compile.Phase;
-axm %compile.eta_exp:                             %compile.Phase;
-axm %compile.eta_red:                             %compile.Phase;
+axm %compile.eta_conv:                            %compile.Phase;
 axm %compile.lam_spec:                            %compile.Phase;
 axm %compile.null:                                %compile.Phase;
 axm %compile.ret_wrap:                            %compile.Phase;
