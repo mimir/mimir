@@ -126,4 +126,10 @@ let _ = %refly.equiv.struc_eq (%tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1,
 // A pad with lo == hi == 0 on every axis is the identity (the fill value is irrelevant).
 let _ = %refly.equiv.struc_eq (%tensor.pad (2, 3) (0, (0, 0), (0, 0)) (m1, 0), m1);
 
+// A get after a broadcast bypasses the broadcast: pass-through axes keep their index, broadcast
+// (size-1) axes read the input at 0 — here bg reads b[1][2] = input[1][0].
+let b  = %tensor.broadcast ((2, 1), (2, 3), (1, 2));
+let bg = %tensor.get @(Nat, 2, (2, 3)) (b, (1_2, 2_3));
+let _ = %refly.equiv.struc_eq (bg, %tensor.get @(Nat, 1, 2) ((1, 2), 1_2));
+
 fun extern main() = return dot;

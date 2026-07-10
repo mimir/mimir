@@ -86,6 +86,29 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
         return op_get(T, new_r, new_s, outer_arr, new_index);
     }
 
+    if (auto bc = Axm::isa<tensor::broadcast>(arr)) {
+        // get after broadcast: read the input directly. Per axis, the broadcast either passes the index
+        // through (`s_in#d == s_out#d`) or reads a size-1 input axis at 0; if some axis is neither
+        // decidably equal nor literal 1, keep the broadcast.
+        w.DLOG("get after broadcast, try to bypass");
+        auto [s_in, s_out, input] = bc->args<3>();
+        auto [b_T, b_r]           = bc->callee()->as<App>()->args<2>();
+        if (auto r_l = Lit::isa<u64>(b_r)) {
+            DefVec new_index(*r_l);
+            for (u64 d = 0; d < *r_l; ++d) {
+                auto in_d = s_in->proj(*r_l, d);
+                if (in_d == s_out->proj(*r_l, d))
+                    new_index[d] = index->proj(*r_l, d);
+                else if (auto l = Lit::isa<u64>(in_d); l && *l == 1)
+                    new_index[d] = w.lit_idx(1, 0);
+                else
+                    return nullptr;
+            }
+            w.DLOG("bypass successful");
+            return op_get(T, b_r, s_in, input, w.tuple(new_index));
+        }
+    }
+
     return nullptr;
 }
 
