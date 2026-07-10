@@ -49,6 +49,12 @@ static bool visible(const Def* def, Lam* lam) {
     return true;
 }
 
+void SEO::Analysis::prepare() {
+    // make sure def->users() are valid
+    for (auto def : world().roots())
+        def->free_vars();
+}
+
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();

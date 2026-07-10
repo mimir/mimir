@@ -2,9 +2,8 @@
 
 #include <algorithm>
 #include <memory>
-#include <set>
 
-#include <absl/container/flat_hash_map.h>
+#include <absl/container/btree_set.h>
 
 #include "automaton/dfa.h"
 
@@ -12,48 +11,48 @@ using namespace automaton;
 
 namespace {
 #if 0
-void print_set(const std::set<const DFANode*>& set) {
+void print_set(const DFASet& set) {
     std::cout << "{";
-    for (auto state : set) std::cout << state << ", ";
+    for (auto state : set) std::cout << state->id() << ", ";
     std::cout << "}\n";
 }
 #endif
 
-std::set<const DFANode*> get_accepting_states(const std::set<const DFANode*>& reachableStates) {
-    std::set<const DFANode*> acceptingStates;
+DFASet get_accepting_states(const DFASet& reachableStates) {
+    DFASet acceptingStates;
     for (auto state : reachableStates)
         if (state->is_accepting()) acceptingStates.insert(state);
     return acceptingStates;
 }
 
-std::set<const DFANode*> get_erroring_states(const std::set<const DFANode*>& reachableStates) {
-    std::set<const DFANode*> erroringStates;
+DFASet get_erroring_states(const DFASet& reachableStates) {
+    DFASet erroringStates;
     for (auto state : reachableStates)
         if (state->is_erroring()) erroringStates.insert(state);
     return erroringStates;
 }
 
-std::set<std::uint16_t> get_alphabet(const std::set<const DFANode*>& reachableStates) {
-    std::set<std::uint16_t> alphabet;
+absl::btree_set<std::uint16_t> get_alphabet(const DFASet& reachableStates) {
+    absl::btree_set<std::uint16_t> alphabet;
     for (auto state : reachableStates)
         state->for_transitions([&](auto c, auto) { alphabet.insert(c); });
     return alphabet;
 }
 
-std::set<const DFANode*> operator-(const std::set<const DFANode*>& lhs, const std::set<const DFANode*>& rhs) {
-    std::set<const DFANode*> result;
+DFASet operator-(const DFASet& lhs, const DFASet& rhs) {
+    DFASet result;
     for (auto state : lhs)
         if (!rhs.contains(state)) result.insert(state);
     return result;
 }
-std::set<const DFANode*> operator*(const std::set<const DFANode*>& lhs, const std::set<const DFANode*>& rhs) {
-    std::set<const DFANode*> result;
+DFASet operator*(const DFASet& lhs, const DFASet& rhs) {
+    DFASet result;
     for (auto state : lhs)
         if (rhs.contains(state)) result.insert(state);
     return result;
 }
 
-std::vector<std::set<const DFANode*>> hopcroft(const std::set<const DFANode*>& reachableStates) {
+std::vector<DFASet> hopcroft(const DFASet& reachableStates) {
     const auto alphabet = get_alphabet(reachableStates);
 
     const auto F = get_accepting_states(reachableStates);
@@ -61,10 +60,10 @@ std::vector<std::set<const DFANode*>> hopcroft(const std::set<const DFANode*>& r
 
     assert((F * E).empty() && "F and E must be disjoint");
 
-    std::vector<std::set<const DFANode*>> P = {F, E, reachableStates - F - E};
-    std::vector<std::set<const DFANode*>> W = {F, E, reachableStates - F - E};
+    std::vector<DFASet> P = {F, E, reachableStates - F - E};
+    std::vector<DFASet> W = {F, E, reachableStates - F - E};
 
-    std::vector<std::set<const DFANode*>> newP;
+    std::vector<DFASet> newP;
     while (!W.empty()) {
 #if 0
         std::cout << "P: ";
@@ -75,7 +74,7 @@ std::vector<std::set<const DFANode*>> hopcroft(const std::set<const DFANode*>& r
         auto A = W.back();
         W.pop_back();
         for (auto c : alphabet) {
-            std::set<const DFANode*> X{};
+            DFASet X{};
             for (const auto* state : reachableStates) {
                 state->for_transitions([&](auto c_, auto to) {
                     if (c_ == c && A.contains(to)) X.insert(state);
@@ -118,7 +117,7 @@ std::unique_ptr<DFA> minimize_dfa(const DFA& dfa) {
     const auto P = hopcroft(reachableStates);
 
     auto minDfa = std::make_unique<DFA>();
-    absl::flat_hash_map<const DFANode*, DFANode*> dfaStates;
+    DFAMap<DFANode*> dfaStates;
     for (auto& X : P) {
         auto state = minDfa->add_state();
         for (auto x : X) {

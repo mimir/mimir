@@ -2,10 +2,10 @@
 
 #include <iostream>
 #include <list>
-#include <set>
 #include <vector>
 
-#include <absl/container/flat_hash_map.h>
+#include <absl/container/btree_map.h>
+#include <absl/container/btree_set.h>
 
 #include "automaton/range_helper.h"
 
@@ -30,8 +30,9 @@ public:
 
     const NodeType* get_start() const { return start_; }
 
-    std::set<const NodeType*> get_reachable_states() const {
-        std::set<const NodeType*> reachableStates;
+    /// Ordered by NodeType::Lt (i.e. by id) so that iteration is deterministic.
+    absl::btree_set<const NodeType*, typename NodeType::Lt> get_reachable_states() const {
+        absl::btree_set<const NodeType*, typename NodeType::Lt> reachableStates;
         std::vector<const NodeType*> workList;
         workList.push_back(get_start());
         while (!workList.empty()) {
@@ -52,7 +53,7 @@ public:
             os << "digraph nfa {\n";
         else
             os << "digraph automaton {\n";
-        os << "  start -> \"" << automaton.start_ << "\";\n";
+        os << "  start -> \"" << automaton.start_->id() << "\";\n";
 
         for (auto& node : automaton.nodes_)
             os << node;
@@ -68,10 +69,10 @@ private:
 
 template<class NodeType, class PrintCharF>
 std::ostream& print_node(std::ostream& os, const NodeType& node, PrintCharF&& print_char) {
-    if (node.is_accepting()) os << "  \"" << &node << "\" [shape=doublecircle];\n";
-    if (node.is_erroring()) os << "  \"" << &node << "\" [shape=square];\n";
+    if (node.is_accepting()) os << "  \"" << node.id() << "\" [shape=doublecircle];\n";
+    if (node.is_erroring()) os << "  \"" << node.id() << "\" [shape=square];\n";
 
-    absl::flat_hash_map<const NodeType*, std::vector<Range>> node2transitions;
+    absl::btree_map<const NodeType*, std::vector<Range>, typename NodeType::Lt> node2transitions;
     node.for_transitions([&](auto c, auto to) {
         if (!node2transitions.contains(to))
             node2transitions.try_emplace(to, std::vector<Range>{
@@ -85,7 +86,8 @@ std::ostream& print_node(std::ostream& os, const NodeType& node, PrintCharF&& pr
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
         ranges = merge_ranges(ranges);
         for (auto& [lo, hi] : ranges) {
-            os << "  \"" << &node << "\" -> \"" << to << "\" [label=\"" << std::forward<PrintCharF>(print_char)(lo);
+            os << "  \"" << node.id() << "\" -> \"" << to->id() << "\" [label=\""
+               << std::forward<PrintCharF>(print_char)(lo);
             if (lo != hi) os << "-" << std::forward<PrintCharF>(print_char)(hi);
             os << " (" << lo;
             if (lo != hi) os << "-" << hi;

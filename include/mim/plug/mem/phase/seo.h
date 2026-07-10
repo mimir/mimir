@@ -1,5 +1,7 @@
 #pragma once
 
+#include <absl/container/btree_set.h>
+
 #include <mim/def.h>
 #include <mim/phase.h>
 
@@ -45,9 +47,10 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "SEO::Analyzer") {}
 
+        void prepare() final;
         void reset() final;
 
-        const DefSet& slots() const { return slots_; }
+        const auto& slots() const { return slots_; }
         const LamSet& escaped() const { return escaped_; }
         const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
 
@@ -79,7 +82,7 @@ private:
 
         // global (kept between iterations)
         Def2Def sloxy2slot_;
-        DefSet slots_;   // actually slot ptrs
+        absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet escaped_; // Lam%s reached as a *value*; their signature must stay untouched
     };
 

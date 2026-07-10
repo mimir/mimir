@@ -4,13 +4,18 @@
 
 #include <vector>
 
-#include <absl/container/flat_hash_map.h>
+#include <absl/container/btree_map.h>
+#include <absl/container/btree_set.h>
 
 #include "automaton/automaton.h"
 
 namespace automaton {
 class NFANode {
 public:
+    struct Lt {
+        constexpr bool operator()(const NFANode* n, const NFANode* m) const noexcept { return n->id() < m->id(); }
+    };
+
     NFANode(int id)
         : id_(id) {}
 
@@ -52,12 +57,15 @@ public:
 
 private:
     int id_;
-    absl::flat_hash_map<std::uint16_t, std::vector<const NFANode*>> transitions_;
+    // btree keeps for_transitions() iteration in char order - and hence deterministic
+    absl::btree_map<std::uint16_t, std::vector<const NFANode*>> transitions_;
     bool accepting_ = false;
     bool erroring_  = false;
 };
 
 extern template class AutomatonBase<NFANode>;
+
+using NFASet = absl::btree_set<const NFANode*, NFANode::Lt>;
 
 class NFA : public AutomatonBase<NFANode> {
 public:
