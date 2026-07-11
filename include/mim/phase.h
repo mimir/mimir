@@ -7,32 +7,77 @@
 
 #include "mim/def.h"
 #include "mim/nest.h"
-#include "mim/pass.h"
 #include "mim/rewrite.h"
+#include "mim/world.h"
 
 namespace mim {
 
 class Nest;
 class Phase;
 class PhaseMan;
-class Repl;
 class World;
 
-using Repls  = std::deque<std::unique_ptr<Repl>>;
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
-/// Unlike a Pass, a Phase performs one self-contained task and does not
-/// interleave with other phases. Phases are intended to run in a classical sequence, one after another.
+/// A Phase performs one self-contained task over the whole World.
+/// Phases are intended to run in a classical sequence, one after another.
 /// @see @ref phases_phase
-class Phase : public Stage {
+class Phase : public fe::RuntimeCast<Phase> {
 public:
     /// @name Construction & Destruction
     ///@{
     Phase(World& world, std::string name)
-        : Stage(world, name) {}
-    Phase(World& world, flags_t annex)
-        : Stage(world, annex) {}
+        : world_(world)
+        , name_(std::move(name)) {}
+    Phase(World& world, flags_t annex);
 
+    virtual ~Phase() = default;
+    virtual std::unique_ptr<Phase> recreate(); ///< Creates a new instance; needed by a fixed-point PhaseMan.
+    virtual void apply(const App*) {}          ///< Invoked if your Phase has additional args.
+    virtual void apply(Phase&) {}              ///< Dito, but invoked by Phase::recreate.
+
+    /// @name Redirection
+    /// A Phase may resolve to a *different* Phase (or to nothing) after Phase::apply.
+    /// This is used by the `%%compile.named` stage that resolves a string to another plugin's annex.
+    ///@{
+    virtual bool redirects() const { return false; } ///< If `true`, Phase::create uses take_resolved().
+    virtual std::unique_ptr<Phase> take_resolved() {
+        return {};
+    } ///< The Phase to use instead; `nullptr` means *elide*.
+    ///@}
+
+    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def) {
+        auto& world = def->world();
+        auto p_def  = App::uncurry_callee(def);
+        world.DLOG("apply phase: `{}`", p_def);
+
+        if (auto axm = p_def->isa<Axm>())
+            if (auto i = phases.find(axm->flags()); i != phases.end()) {
+                auto phase = i->second(world);
+                if (phase) {
+                    phase->apply(def->isa<App>());
+                    if (phase->redirects()) return phase->take_resolved();
+                }
+                return phase;
+            } else
+                error("phase `{}` not found", axm->sym());
+        else
+            error("unsupported callee for a phase: `{}`", p_def);
+    }
+
+    template<class A, class P>
+    static void hook(Flags2Phases& phases) {
+        assert_emplace(phases, Annex::base<A>(), [](World& w) { return std::make_unique<P>(w, Annex::base<A>()); });
+    }
+    ///@}
+
+    /// @name Getters
+    ///@{
+    World& world() { return world_; }
+    Driver& driver() { return world().driver(); }
+    Log& log() const { return world_.log(); }
+    std::string_view name() const { return name_; }
+    flags_t annex() const { return annex_; }
     ///@}
 
     /// @name Fixed-Point Handling
@@ -62,8 +107,14 @@ public:
     ///@}
 
 private:
-    bool todo_ = false;
+    World& world_;
+    flags_t annex_ = 0;
+    bool todo_     = false;
 
+protected:
+    std::string name_;
+
+private:
     friend class Analysis;
 };
 
@@ -100,7 +151,6 @@ public:
     /// @name Getters
     ///@{
     World& world() { return Phase::world(); }
-    Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -109,66 +159,43 @@ public:
     auto& lattice() { return lattice_; }
     const auto& lattice() const { return lattice_; }
 
+    bool is_top(const Def* def) const {
+        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second == def;
+        return false;
+    }
+
     /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
     /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
-    void set(const Def* concr, const Def* abstr) {
+    const Def* set(const Def* concr, const Def* abstr) {
         lattice_[concr] = abstr;
-        map(concr, abstr);
+        return map(concr, abstr);
     }
     ///@}
 
 protected:
-    /// Helps to keep track of curr_mut().
-    /// @see enter()
-    class Enter {
-    public:
-        Enter(Analysis* analysis, Def* new_mut)
-            : analysis_(analysis)
-            , prev_mut_(analysis->curr_mut()) {
-            analysis->curr_mut_ = new_mut;
-        }
-        ~Enter() { analysis_->curr_mut_ = prev_mut_; }
-
-    private:
-        Analysis* analysis_;
-        Def* prev_mut_;
-    };
-
     /// @name Rewrite
     ///@{
+    virtual void prepare() {}  ///< Run **before** the main analysis.
+    virtual void finalize() {} ///< Run **after** the main analysis.
     void start() override;
-    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
-    /// Walks @p mut's dependencies under its curr_mut() scope.
-    /// Unlike rewrite_mut(), does **not** record `mut -> mut` and does **not** seed
-    /// any binder-related lattice state.
-    ///
-    /// Use this when you have already populated custom lattice entries for @p mut's
-    /// binder (typically inside a `rewrite_imm_App` override that propagates abstract
-    /// values from call arguments into the callee's tvars) and need to traverse the
-    /// body without rewrite_mut() clobbering that state.
-    virtual Def* rewrite_deps(Def*);
-
-    /// Default "visit a mutable" entry point: maps `mut -> mut`, seeds Lam binder
-    /// vars to **top** (`v -> v`) in the lattice, and delegates to rewrite_deps()
-    /// for the recursive traversal.
-    ///
-    /// If a binder var already carried a non-top lattice value, it is reset to top
-    /// and invalidate() is called: reaching a Lam through this default path means
-    /// it has been used as a value (not as an `App` callee) and has therefore
-    /// escaped, so any prior propagation for it is unsound and must be retracted.
+    /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
+    /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
+    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
+    /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
     Def* rewrite_mut(Def*) override;
     ///@}
 
     Def2Def lattice_;
 
 private:
-    Def* curr_mut_      = nullptr;
-    bool bootstrapping_ = true;
+    /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
+    void drain();
 
-    friend class Enter;
+    std::deque<Def*> worklist_;
+    bool bootstrapping_ = true;
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
@@ -213,6 +240,12 @@ public:
         return nullptr;
     }
 
+    /// Returns lattice(@p old_def) if it differs from @p old_def (i.e. we learned something), otherwise `nullptr`.
+    const Def* abstracted(const Def* old_def) {
+        auto l = lattice(old_def);
+        return l && l != old_def ? l : nullptr;
+    }
+
     /// Runs the optional pre-analysis on RWPhase::old_world(), typically to a fixed point,
     /// before rewriting begins.
     ///
@@ -251,72 +284,45 @@ private:
     bool bootstrapping_ = true;
 };
 
-/// Simple Stage that searches for a pattern and replaces it.
-/// Combine them in a ReplPhase.
-class Repl : public Stage {
+/// An RWPhase that searches for a pattern and replaces it.
+/// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
+class Repl : public RWPhase {
 public:
     Repl(World& world, flags_t annex)
-        : Stage(world, annex) {}
+        : RWPhase(world, annex) {}
 
+    /// replace() inspects and builds Def%s of the **old** world; the RWPhase machinery carries the result over.
+    World& world() { return old_world(); }
+
+    /// @returns the replacement or `nullptr` if the pattern does not match.
     virtual const Def* replace(const Def* def) = 0;
-};
-
-class ReplMan : public Repl {
-public:
-    ReplMan(World& world, flags_t annex)
-        : Repl(world, annex) {}
-
-    void apply(Repls&&);
-    void apply(const App*) final;
-    void apply(Stage& stage) final { apply(std::move(static_cast<ReplMan&>(stage).repls_)); }
-
-    void add(std::unique_ptr<Repl>&& repl) { repls_.emplace_back(std::move(repl)); }
-    const auto& repls() const { return repls_; }
 
 private:
-    const Def* replace(const Def*) final { fe::unreachable(); }
+    const Def* rewrite(const Def* def) final {
+        for (bool todo = true; todo;) {
+            todo = false;
+            if (auto subst = replace(def)) todo = true, def = subst;
+        }
 
-    Repls repls_;
+        return Rewriter::rewrite(def);
+    }
 };
 
 #define MIM_CONCAT_INNER(a, b) a##b
 #define MIM_CONCAT(a, b)       MIM_CONCAT_INNER(a, b)
 
-#define MIM_REPL(__stages, __annex, ...) MIM_REPL_IMPL(__stages, __annex, __LINE__, __VA_ARGS__)
+#define MIM_REPL(__phases, __annex, ...) MIM_REPL_IMPL(__phases, __annex, __LINE__, __VA_ARGS__)
 
 // clang-format off
-#define MIM_REPL_IMPL(__stages, __annex, __id, ...)                         \
+#define MIM_REPL_IMPL(__phases, __annex, __id, ...)                         \
     struct MIM_CONCAT(Repl_, __id) : ::mim::Repl {                          \
         MIM_CONCAT(Repl_, __id)(::mim::World & world, ::mim::flags_t annex) \
             : Repl(world, annex) {}                                         \
                                                                             \
         const ::mim::Def* replace(const ::mim::Def* def) final __VA_ARGS__  \
     };                                                                      \
-    ::mim::Stage::hook<__annex, MIM_CONCAT(Repl_, __id)>(__stages)
+    ::mim::Phase::hook<__annex, MIM_CONCAT(Repl_, __id)>(__phases)
 // clang-format on
-
-class ReplManPhase : public RWPhase {
-public:
-    /// @name Construction
-    ///@{
-    ReplManPhase(World& world, std::unique_ptr<ReplMan>&& man)
-        : RWPhase(world, "pass_man_phase")
-        , man_(std::move(man)) {}
-    ReplManPhase(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
-
-    void apply(const App*) final;
-    void apply(Stage&) final;
-    ///@}
-
-    const ReplMan& man() const { return *man_; }
-
-private:
-    void start() final;
-    const Def* rewrite(const Def*) final;
-
-    std::unique_ptr<ReplMan> man_;
-};
 
 /// Removes unreachable and dead code by rebuilding the whole World into a new one and `swap`ping them afterwards.
 /// @see @ref phases_rwphase
@@ -326,33 +332,6 @@ public:
         : RWPhase(world, "cleanup") {}
     Cleanup(World& world, flags_t annex)
         : RWPhase(world, annex) {}
-};
-
-/// Wraps a PassMan pipeline as a Phase.
-class PassManPhase : public Phase {
-public:
-    /// @name Construction
-    ///@{
-    PassManPhase(World& world, std::unique_ptr<PassMan>&& man)
-        : Phase(world, build_name("pass_man_phase", *man))
-        , base_name_("pass_man_phase")
-        , man_(std::move(man)) {}
-    PassManPhase(World& world, flags_t annex)
-        : Phase(world, annex)
-        , base_name_(world.annex(annex)->sym()) {}
-
-    void apply(const App*) final;
-    void apply(Stage&) final;
-    ///@}
-
-    const PassMan& man() const { return *man_; }
-
-private:
-    void start() final { man_->run(); }
-
-    std::string build_name(const std::string& base, PassMan& pm) const;
-    std::string base_name_;
-    std::unique_ptr<PassMan> man_;
 };
 
 /// Organizes several Phase%s into a pipeline.
@@ -367,7 +346,7 @@ public:
 
     void apply(bool, Phases&&);
     void apply(const App*) final;
-    void apply(Stage&) final;
+    void apply(Phase&) final;
     ///@}
 
     /// @name Getters

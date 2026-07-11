@@ -13,7 +13,7 @@
 #include <mim/lam.h>
 #include <mim/world.h>
 
-#include <mim/pass/optimize.h>
+#include <mim/phase/optimize.h>
 
 namespace nb = nanobind;
 

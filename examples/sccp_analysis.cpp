@@ -32,7 +32,7 @@ const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
         }
 
         set(lam->var(), world().tuple(abstr_vars)); // set new abstract var
-        return world().app(rewrite_deps(lam), abstr_args);
+        return world().app(rewrite(lam), abstr_args);
     }
 
     return mim::Analysis::rewrite_imm_App(app);

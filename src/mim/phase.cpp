@@ -11,6 +11,18 @@ namespace mim {
  * Phase
  */
 
+Phase::Phase(World& world, flags_t annex)
+    : world_(world)
+    , annex_(annex)
+    , name_(world.annex(annex)->sym()) {}
+
+std::unique_ptr<Phase> Phase::recreate() {
+    auto ctor = driver().phase(annex());
+    auto ptr  = (*ctor)(world());
+    ptr->apply(*this);
+    return ptr;
+}
+
 void Phase::run() {
     auto profiling = driver().flags().profile != Flags::Profile::None;
     if (profiling) driver().profiler().start(name());
@@ -26,46 +38,47 @@ void Phase::run() {
 
 void Analysis::reset() {
     old2news_.clear();
+    worklist_.clear();
     push();
     todo_ = false;
 }
 
 void Analysis::start() {
+    prepare();
+
     for (const auto& [flags, e] : world().annexes())
         rewrite_annex(flags, e.sym, e.def);
+    drain();
 
     bootstrapping_ = false;
 
     for (auto mut : world().externals().muts())
         rewrite_external(mut);
+    drain();
+
+    finalize();
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
-Def* Analysis::rewrite_deps(Def* mut) {
-    auto _ = enter(mut);
-
-    for (auto d : mut->deps())
-        rewrite(d);
-
+Def* Analysis::rewrite_mut(Def* mut) {
+    if (lookup(mut)) return mut; // already scheduled this round
+    map(mut, mut);
+    worklist_.emplace_back(mut);
     return mut;
 }
 
-Def* Analysis::rewrite_mut(Def* mut) {
-    map(mut, mut);
+void Analysis::drain() {
+    while (!worklist_.empty()) {
+        auto mut = worklist_.front();
+        worklist_.pop_front();
 
-    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
-        for (auto v : var->tprojs()) {
-            map(v, v);
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                // var was mapped to sth else beforehand so we need another fixed-point round
-                invalidate();
-                i->second = v;
-            }
-        }
-
-    return rewrite_deps(mut);
+        auto _ = enter(mut);
+        DLOG("enter: {}", mut);
+        for (auto d : mut->deps())
+            rewrite(d);
+    }
 }
 
 /*
@@ -109,63 +122,6 @@ void RWPhase::rewrite_external(Def* old_mut) {
 }
 
 /*
- * ReplMan
- */
-
-void ReplMan::apply(Repls&& repls) {
-    for (auto&& repl : repls)
-        if (auto&& man = repl->isa<ReplMan>())
-            apply(std::move(man->repls_));
-        else
-            add(std::move(repl));
-}
-
-void ReplMan::apply(const App* app) {
-    auto repls = Repls();
-    for (auto arg : app->args())
-        if (auto stage = Stage::create(driver().stages(), arg))
-            repls.emplace_back(std::unique_ptr<Repl>(static_cast<Repl*>(stage.release())));
-
-    apply(std::move(repls));
-}
-
-/*
- * ReplManPhase
- */
-
-void ReplManPhase::apply(const App* app) {
-    man_       = std::make_unique<ReplMan>(old_world(), annex());
-    auto repls = Repls();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            repls.emplace_back(std::unique_ptr<Repl>(static_cast<Repl*>(stage.release())));
-    man_->apply(std::move(repls));
-}
-
-void ReplManPhase::apply(Stage& stage) {
-    auto& rmp = static_cast<ReplManPhase&>(stage);
-    swap(man_, rmp.man_);
-}
-
-void ReplManPhase::start() {
-    old_world().verify().ILOG("🔥 run");
-    for (auto&& repl : man().repls())
-        ILOG(" 🔹 `{}`", repl->name());
-    old_world().debug_dump();
-    RWPhase::start();
-}
-
-const Def* ReplManPhase::rewrite(const Def* def) {
-    for (bool todo = true; todo;) {
-        todo = false;
-        for (auto&& repl : man().repls())
-            if (auto subst = repl->replace(def)) todo = true, def = subst;
-    }
-
-    return Rewriter::rewrite(def);
-}
-
-/*
  * PhaseMan
  */
 
@@ -180,19 +136,13 @@ void PhaseMan::apply(const App* app) {
 
     auto phases = Phases();
     for (auto arg : args->projs())
-        if (auto stage = create(driver().stages(), arg)) {
-            // clang-format off
-            if (auto pm = stage->isa<PassManPhase>(); pm && pm->  man().empty()) continue;
-            if (auto rp = stage->isa<ReplMan     >(); rp && rp->repls().empty()) continue;
-            // clang-format on
-            phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(stage.release())));
-        }
+        if (auto phase = create(driver().phases(), arg)) phases.emplace_back(std::move(phase));
 
     apply(Lit::as<bool>(fp), std::move(phases));
 }
 
-void PhaseMan::apply(Stage& stage) {
-    auto& man = static_cast<PhaseMan&>(stage);
+void PhaseMan::apply(Phase& phase) {
+    auto& man = static_cast<PhaseMan&>(phase);
     Phases new_phases;
     for (auto& old_phase : man.phases())
         new_phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release())));
@@ -222,38 +172,6 @@ void PhaseMan::start() {
 
         invalidate(todo);
     }
-}
-
-/*
- * PassManPhase
- */
-
-std::string PassManPhase::build_name(const std::string& base, PassMan& pm) const {
-    std::string join;
-    for (const auto& pass : pm.passes()) {
-        if (!join.empty()) join += ",";
-        join += pass->name();
-    }
-    return base + "(" + join + ")";
-}
-
-void PassManPhase::apply(const App* app) {
-    man_        = std::make_unique<PassMan>(world(), annex());
-    auto passes = Passes();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            passes.emplace_back(std::unique_ptr<Pass>(static_cast<Pass*>(stage.release())));
-
-    man_->apply(std::move(passes));
-
-    name_ = build_name(base_name_, *man_);
-}
-
-void PassManPhase::apply(Stage& stage) {
-    auto& pmp = static_cast<PassManPhase&>(stage);
-    swap(man_, pmp.man_);
-
-    name_ = build_name(base_name_, *man_);
 }
 
 } // namespace mim

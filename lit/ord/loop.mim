@@ -3,15 +3,23 @@
 /*
  * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
 bool dont_know();
-
+void take_addr(std::map<uint32_t, uint64_t>& map);
 uint64_t f(uint64_t x) {
     auto map = std::map<uint32_t, uint64_t>{{0, 23}, {1, x}};
+    uint64_t i = x, j = x;
 
     while (dont_know()) {
         map[1] = 42;
 
         if (map.contains(1)) {
             map[1] = x;
+        }
+
+        if (i == j) {
+            i++;
+            j++;
+        } else {
+            take_addr(map);
         }
     }
 
@@ -22,17 +30,18 @@ uint64_t f(uint64_t x) {
 plugin mem;
 plugin ord;
 
-cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
-
 let Key = (I32, %core.icmp.ul @i32);
 let Map = %ord.Map Key I64;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Map]: [%mem.M 0];
 
 fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
     // stack-alloc dictionary and init with: 0 -> 23, 1 -> x
     let (mem, ptr) = %mem.slot  (Map, 0) (mem, 0);
     let  mem       = %mem.store (mem, ptr, %ord.init.map Key ((0I32, 23I64), (1I32, x))); // 0 → 23, 1 → x
-    head mem where
-        con head(mem: %mem.M 0) =
+    head (mem, x, x) where
+        con head(mem: %mem.M 0, i j: I64) =
             ret (mem, cond) = dont_know $ mem;
             (exit, body)#cond mem where
                 con body(mem: %mem.M 0) =
@@ -40,21 +49,32 @@ fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
                     let map        = %ord.insert.map (map, (1I32, 42I64)); // 1 -> 42
                     let mem        = %mem.store (mem, ptr, map);
                     let cond       = %ord.contains.map (map, 1I32);
-                    (false, true)#cond mem
+                    (ff1, tt1)#cond mem
                     where
-                        con true (mem: %mem.M 0) =
+                        con tt1 (mem: %mem.M 0) =
                             let (mem, map) = %mem.load (mem, ptr);
                             let map        = %ord.insert.map (map, (1I32, x)); // 1 -> x
                             let mem        = %mem.store (mem, ptr, map);
-                            next mem;
+                            n1 mem;
 
-                        con false(mem: %mem.M 0) = next mem;
-                        con next (mem: %mem.M 0) = head mem;
+                        con ff1 (mem: %mem.M 0) = n1 mem;
+                        con n1 (mem: %mem.M 0) =
+                            (ff2, tt2)#(%core.icmp.e (i, j)) mem where
+                                con tt2 (mem: %mem.M 0) =
+                                    let i = %core.wrap.add 0 (i, 1I64);
+                                    let j = %core.wrap.add 0 (j, 1I64);
+                                    n2 (mem, i, j);
+                                con ff2 (mem: %mem.M 0) =
+                                    ret mem = take_addr $ (mem, ptr);
+                                    n2 (mem, j, i); // swapped on purpose: i == j anyway - stresses GVN
+                                con n2 (mem: %mem.M 0, i j: I64) =
+                                    head (mem, i, j);
+                            end;
                     end;
 
                 con exit(mem: %mem.M 0) =
                     let (mem, map) = %mem.load (mem, ptr);
-                    let opt_v        = %ord.get (map, 1I32);
+                    let opt_v      = %ord.get (map, 1I32);
                     let val        = %option.unwrap_unsafe opt_v;
                     return (mem, val);
             end

@@ -1,6 +1,6 @@
 #include "mim/plug/option/option.h"
 
-#include <mim/pass.h>
+#include <mim/phase.h>
 #include <mim/plugin.h>
 
 using namespace mim;

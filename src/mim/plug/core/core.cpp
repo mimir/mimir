@@ -1,7 +1,7 @@
 #include "mim/plug/core/core.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
+#include <mim/phase.h>
 
 using namespace mim;
 using namespace mim::plug;

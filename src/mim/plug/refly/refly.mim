@@ -101,4 +101,4 @@ axm %refly.refine: {E X: *} → [e: %refly.Code E, i: Nat, x: %refly.Code X] →
 ///
 /// ### Repls
 ///
-axm %refly.remove_dbg_repl: %compile.Repl;
+axm %refly.remove_dbg_repl: %compile.Phase;
