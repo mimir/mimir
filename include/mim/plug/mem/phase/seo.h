@@ -60,12 +60,12 @@ private:
 
     private:
         // SCCP
+        const Proxy* mk_sccp_top(const Def* var);
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs vars, Defs abstr_args);
 
         // GVN
         const Proxy* mk_bundle(const Def* var, Defs bundle_vars);
-        const Proxy* mk_top(const Def* var);
         void gvn_bundle(Defs, Defs, Span<const Def*>);
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
 

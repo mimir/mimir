@@ -53,6 +53,8 @@ Def* SEO::Analysis::owner(const Def* key) {
 
 // SCCP
 
+const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
+
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
 
@@ -82,7 +84,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         update(var, def);
         return def;
     }
-    auto top = mk_top(var); // we reached top for propagate; the Proxy_Top marks this to bundle for GVN
+    auto top = mk_sccp_top(var); // we reached top for propagate; the Proxy_Top marks this to bundle for GVN
     update(var, top);
     return top;
 }
@@ -102,8 +104,6 @@ DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
 const Proxy* SEO::Analysis::mk_bundle(const Def* var, Defs bundle_vars) {
     return world().proxy(var->type(), bundle_vars, Proxy_GVN);
 }
-
-const Proxy* SEO::Analysis::mk_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
 void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
