@@ -297,9 +297,10 @@ private:
     bool bootstrapping_ = true;
 
     // sparse fixed-point iteration; Phase::dirty_ holds the muts to re-drain next round (filled by taint())
-    mutable DefMap<MutSet> readers_; ///< lattice key -> muts whose visit read it
-    Def2Def set_map_;                ///< all set() pairs; replayed into map() at sparse-round start
-    Dirty dirty_prev_;               ///< the muts being re-drained this round
+    /// lattice key -> muts whose visit read it
+    mutable absl::node_hash_map<const Def*, MutSet, GIDHash<const Def*>> readers_;
+    Def2Def set_map_;  ///< all set() pairs; replayed into map() at sparse-round start
+    Dirty dirty_prev_; ///< the muts being re-drained this round
     bool sparse_     = false;
     bool tracking_   = false; ///< record readers_ only while draining
     bool full_round_ = true;  ///< current round traverses the whole World
