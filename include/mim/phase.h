@@ -31,7 +31,14 @@ public:
         , name_(std::move(name)) {}
     Phase(World& world, flags_t annex);
 
-    virtual ~Phase() = default;
+    /// Clears the dirty bits of all muts still recorded in dirty(): otherwise a discarded Phase
+    /// (e.g. one recreated by a fixed-point PhaseMan) would strand set bits without a list entry,
+    /// causing later taint() calls to silently skip recording those muts.
+    virtual ~Phase() {
+        for (auto mut : dirty_)
+            mut->dirty(false);
+    }
+
     virtual std::unique_ptr<Phase> recreate(); ///< Creates a new instance; needed by a fixed-point PhaseMan.
     virtual void apply(const App*) {}          ///< Invoked if your Phase has additional args.
     virtual void apply(Phase&) {}              ///< Dito, but invoked by Phase::recreate.
@@ -94,7 +101,7 @@ public:
 
     /// The muts this Phase changed or wants re-examined - the unified "dirt" currency:
     /// a sparse Analysis seeds its next round from it, an RWPhase records its rewrite sites in it
-    /// (and translates them into the new world upon swap).
+    /// (and clears it again before its world swap - recorded Def%s must never outlive their World).
     /// Insertion-ordered and deduplicated via Def%'s *dirty bit*.
     const auto& dirty() const { return dirty_; }
 
