@@ -19,6 +19,8 @@ find_program(MIM_FILECHECK_DEFAULT
 )
 set(MIM_FILECHECK "${MIM_FILECHECK_DEFAULT}" CACHE STRING "FileCheck command used by lit tests.")
 mark_as_advanced(MIM_FILECHECK_DEFAULT)
+# Normalize to forward slashes; lit runs tests through bash, which chokes on backslash paths.
+file(TO_CMAKE_PATH "${MIM_FILECHECK}" MIM_FILECHECK)
 
 if(NOT MIM_FILECHECK)
     message(FATAL_ERROR "Could not find FileCheck. Set MIM_FILECHECK to the FileCheck executable used by lit tests.")
