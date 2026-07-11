@@ -4,6 +4,5 @@ add_mim_plugin(mem
         normalizers.cpp
         phase/add_mem.cpp
         phase/seo.cpp
-        phase/reshape.cpp
     INSTALL
 )

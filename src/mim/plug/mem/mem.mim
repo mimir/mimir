@@ -91,18 +91,3 @@ axm %mem.seo:     %compile.Phase; // symbolic expression optimization
 ///
 axm %mem.remem_repl:        %compile.Phase;
 axm %mem.alloc2malloc_repl: %compile.Phase;
-///
-/// ##### %mem.reshape
-///
-axm %mem.reshape_mode: *;
-axm %mem.reshape_flat: %mem.reshape_mode;
-axm %mem.reshape_arg:  %mem.reshape_mode;
-///
-axm %mem.reshape: %mem.reshape_mode → %compile.Phase;
-///
-/// ##### Pre-applied phase annexes
-///
-/// Argument-free aliases so these phases can be referenced by name (e.g. via `%compile.named`) from
-/// pipelines that do not import the `mem` plugin.
-///
-let %mem.flat_reshape = %mem.reshape %mem.reshape_flat;
