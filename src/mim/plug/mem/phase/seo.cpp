@@ -192,11 +192,11 @@ static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
     return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi);
 }
 
-const Def* SEO::Analysis::sloxy2val(const Def* sloxy) {
-    const auto& sloxy2val = mut2sloxy2val_[curr_mut()];
+const Def* SEO::Analysis::mut2sloxy2val(Lam* lam, const Def* sloxy) {
+    const auto& sloxy2val = mut2sloxy2val_[lam];
     if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
-    auto phi = mk_phi(world(), curr_mut<Lam>(), sloxy);
+    auto phi = mk_phi(world(), lam, sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
     if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
     return nullptr;
@@ -406,7 +406,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             // The callee may fold to a rebuilt lam in the new world only, e.g. a branch
             // `(f, t)#cond` whose cond becomes constant after GVN merged vars.
             if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
-                if (auto i = new2old_.find(new_lam); i != new2old_.end()) old_lam = i->second;
+                if (auto i = lam_new2old_.find(new_lam); i != lam_new2old_.end()) old_lam = i->second;
         }
 
         if (old_lam) {
@@ -458,7 +458,7 @@ bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
 }
 
 Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
-    if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end()) return i->second;
+    if (auto i = lam_old2new_.find(old_lam); i != lam_old2new_.end()) return i->second;
 
     DLOG("building a new lam for {}", old_lam);
     invalidate();
@@ -479,10 +479,10 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     size_t num_new_vars = new_doms.size();
 
     // build new lam
-    auto var_map      = absl::FixedArray<const Def*>(num_old);
-    auto new_lam      = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
-    lam2lam_[old_lam] = new_lam;
-    new2old_[new_lam] = old_lam;
+    auto var_map          = absl::FixedArray<const Def*>(num_old);
+    auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+    lam_old2new_[old_lam] = new_lam;
+    lam_new2old_[new_lam] = old_lam;
 
     // Map all *kept* vars/phis before rewriting any propagated value below:
     // that rewrite may recursively re-enter old_lam (via apps of it in other muts) and
@@ -542,11 +542,8 @@ DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
     DLOG("wiring up phi arguments");
     for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) {
-            // Mirrors Analysis::sloxy2val: if curr_mut holds no local value for the sloxy,
-            // the value at this call site is curr_mut's own phi - mapped by build_lam.
-            const Def* arg = mk_phi(old_world(), curr_mut<Lam>(), sloxy);
-            if (auto i = analysis_.mut2sloxy2val().find(curr_mut()); i != analysis_.mut2sloxy2val().end())
-                if (auto j = i->second.find(sloxy); j != i->second.end()) arg = j->second;
+            auto arg = analysis_.mut2sloxy2val(curr_mut<Lam>(), sloxy);
+            assert(arg);
             new_args.emplace_back(rewrite(arg));
         }
 

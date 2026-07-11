@@ -50,9 +50,12 @@ private:
         void prepare() final;
         void reset() final;
 
-        const auto& slots() const { return slots_; }
         const LamSet& escaped() const { return escaped_; }
+
+        // SSA
+        const auto& slots() const { return slots_; }
         const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
+        const Def* mut2sloxy2val(Lam* lam, const Def* sloxy);
 
     private:
         // SCCP
@@ -67,7 +70,7 @@ private:
 
         // SSA
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
-        const Def* sloxy2val(const Def* sloxy);
+        const Def* sloxy2val(const Def* sloxy) { return mut2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return mut2sloxy2val_[curr_mut()][sloxy] = val; }
 
         const Def* rewrite_imm_App(const App*) final;
@@ -112,8 +115,8 @@ private:
     DefVec build_args(View<Phi>, Lam* old_lam, const App* old_app);
 
     Analysis analysis_;
-    Lam2Lam lam2lam_;
-    Lam2Lam new2old_;
+    Lam2Lam lam_old2new_;
+    Lam2Lam lam_new2old_;
     absl::node_hash_map<Lam*, Vector<Phi>, GIDHash<Lam*>> lam2phis_;
 };
 
