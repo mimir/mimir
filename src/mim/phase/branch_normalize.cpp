@@ -4,7 +4,7 @@
 
 namespace mim {
 
-const Def* BranchNormalizePhase::rewrite_mut_Lam(Lam* lam) {
+const Def* BranchNormalize::rewrite_mut_Lam(Lam* lam) {
     if (lam->is_set()) {
         if (auto br = Branch(lam->body())) {
             auto tt = br.tt()->isa<Lam>() ? br.tt() : Lam::eta_expand(br.tt());

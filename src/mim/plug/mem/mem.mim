@@ -84,31 +84,10 @@ axm %mem.lea: {n: Nat, Ts: «n; *», a: Nat} → [%mem.Ptr («j: n; Ts#j», a), 
 ///
 /// ### Phases
 ///
-axm %mem.add_mem_phase: %compile.Phase;
+axm %mem.add_mem: %compile.Phase;
+axm %mem.seo:     %compile.Phase; // symbolic expression optimization
 ///
 /// ### Repls
 ///
-axm %mem.remem_repl:        %compile.Repl;
-axm %mem.alloc2malloc_repl: %compile.Repl;
-///
-/// ### Passes
-///
-axm %mem.ssa_pass:              %compile.Pass;
-axm %mem.copy_prop_pass: Bool → %compile.Pass;
-///
-/// ##### %mem.reshape
-///
-axm %mem.reshape_mode: *;
-axm %mem.reshape_flat: %mem.reshape_mode;
-axm %mem.reshape_arg:  %mem.reshape_mode;
-///
-axm %mem.reshape_pass: %mem.reshape_mode → %compile.Pass;
-///
-/// ##### Pre-applied pass annexes
-///
-/// Argument-free aliases so these passes can be referenced by name (e.g. via `%compile.named_pass`) from
-/// pipelines that do not import the `mem` plugin.
-///
-let %mem.copy_prop_tt_pass  = %mem.copy_prop_pass tt;
-let %mem.copy_prop_ff_pass  = %mem.copy_prop_pass ff;
-let %mem.reshape_flat_pass  = %mem.reshape_pass %mem.reshape_flat;
+axm %mem.remem_repl:        %compile.Phase;
+axm %mem.alloc2malloc_repl: %compile.Phase;

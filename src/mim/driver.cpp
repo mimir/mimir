@@ -112,7 +112,7 @@ void Driver::load(Sym name) {
         assert_emplace(plugins_, name, std::move(handle));
         // clang-format off
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
-        if (auto reg = plugin.register_stages)      reg(stages_);
+        if (auto reg = plugin.register_phases)      reg(phases_);
         // clang-format on
     } else {
         error("mim/plugin has no 'mim_get_plugin()'");

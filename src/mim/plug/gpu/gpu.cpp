@@ -2,7 +2,6 @@
 
 #include <mim/config.h>
 #include <mim/driver.h>
-#include <mim/pass.h>
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
@@ -13,8 +12,8 @@
 using namespace mim;
 using namespace mim::plug;
 
-void reg_stages(Flags2Stages& stages) {
-    MIM_REPL(stages, gpu::check_addr_spaces_repl, {
+void reg_phases(Flags2Phases& phases) {
+    MIM_REPL(phases, gpu::check_addr_spaces_repl, {
         auto global_as = Lit::as(world().annex<gpu::addr_space_global>());
         auto shared_as = Lit::as(world().annex<gpu::addr_space_shared>());
         auto const_as  = Lit::as(world().annex<gpu::addr_space_const>());
@@ -39,7 +38,7 @@ void reg_stages(Flags2Stages& stages) {
         return {};
     });
 
-    MIM_REPL(stages, gpu::host_malloc2gpualloc_repl, {
+    MIM_REPL(phases, gpu::host_malloc2gpualloc_repl, {
         auto global_as = Lit::as(world().annex<gpu::addr_space_global>());
         if (auto malloc = Axm::isa<mem::malloc>(def)) {
             auto [type, addr_space] = malloc->decurry()->args<2>();
@@ -60,9 +59,9 @@ void reg_stages(Flags2Stages& stages) {
     });
 
     // clang-format off
-    Stage::hook<gpu::mem_checks_phase,                 gpu::phase::MemChecks        >(stages);
-    Stage::hook<gpu::remove_double_syncs,              gpu::phase::RemoveDoubleSyncs>(stages);
+    Phase::hook<gpu::mem_checks,                 gpu::phase::MemChecks        >(phases);
+    Phase::hook<gpu::remove_double_syncs,              gpu::phase::RemoveDoubleSyncs>(phases);
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, nullptr, reg_stages}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, nullptr, reg_phases}; }

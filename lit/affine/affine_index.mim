@@ -29,7 +29,7 @@ con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I32, 0),
     let s  = %core.wrap.add 0 (s0, r#2_3);
     return (mem, s);
 
-// The whole affine index algebra must be gone after %affine.lower_index_phase.
+// The whole affine index algebra must be gone after %affine.lower_index.
 // CHECK-NOT: %affine.index
 // CHECK-NOT: %affine.constant
 // CHECK-NOT: %affine.op

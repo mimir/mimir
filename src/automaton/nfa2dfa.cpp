@@ -2,16 +2,24 @@
 
 #include <map>
 #include <queue>
-#include <set>
-#include <unordered_map>
 
 namespace automaton {
 
+namespace {
+/// Compares NFASet%s lexicographically by NFANode::id - never by pointer value.
+struct NFASetLt {
+    bool operator()(const NFASet& a, const NFASet& b) const {
+        return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), NFANode::Lt{});
+    }
+};
+} // namespace
+
 // calculate epsilon closure of a set of states
-std::set<const NFANode*> epsilonClosure(const std::set<const NFANode*>& states) {
-    std::set<const NFANode*> closure;
+NFASet epsilonClosure(const NFASet& states) {
+    NFASet closure;
     std::queue<const NFANode*> stateQueue;
-    for (const auto& state : states) stateQueue.push(state);
+    for (const auto& state : states)
+        stateQueue.push(state);
     while (!stateQueue.empty()) {
         auto currentState = stateQueue.front();
         stateQueue.pop();
@@ -25,29 +33,27 @@ std::set<const NFANode*> epsilonClosure(const std::set<const NFANode*>& states) 
     return closure;
 }
 
-std::set<const NFANode*> epsilonClosure(const NFANode* state) {
-    return epsilonClosure(std::set<const NFANode*>{state});
-}
+NFASet epsilonClosure(const NFANode* state) { return epsilonClosure(NFASet{state}); }
 
 // nfa2dfa implementation
 std::unique_ptr<DFA> nfa2dfa(const NFA& nfa) {
     auto dfa = std::make_unique<DFA>();
-    std::map<std::set<const NFANode*>, DFANode*> dfaStates;
-    std::queue<std::set<const NFANode*>> stateQueue;
-    std::set<const NFANode*> startState = epsilonClosure(nfa.get_start());
+    std::map<NFASet, DFANode*, NFASetLt> dfaStates;
+    std::queue<NFASet> stateQueue;
+    NFASet startState = epsilonClosure(nfa.get_start());
     dfaStates.emplace(startState, dfa->add_state());
     stateQueue.push(startState);
     while (!stateQueue.empty()) {
         auto currentState = stateQueue.front();
         stateQueue.pop();
         auto currentDfaState = dfaStates[currentState];
-        std::map<std::uint16_t, std::set<const NFANode*>> nextStates;
+        std::map<std::uint16_t, NFASet> nextStates;
         // calculate next states
         for (auto& nfaState : currentState) {
             nfaState->for_transitions([&](auto c, auto to) {
                 if (c == NFA::SpecialTransitons::EPSILON) return;
                 if (nextStates.find(c) == nextStates.end())
-                    nextStates.try_emplace(c, std::set<const NFANode*>{to});
+                    nextStates.try_emplace(c, NFASet{to});
                 else
                     nextStates[c].insert(to);
             });

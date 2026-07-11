@@ -103,6 +103,6 @@ axm %regex.quant(optional,star,plus): RE → RE, normalize_quant, 1;
 ///
 /// ## Passes and Phases
 ///
-/// ### Passes
+/// ### Phases
 ///
-axm %regex.lower_regex: %compile.Pass;
+axm %regex.lower_regex: %compile.Phase;

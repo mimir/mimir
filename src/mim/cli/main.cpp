@@ -13,7 +13,7 @@
 #include "mim/sexpr.h"
 
 #include "mim/ast/parser.h"
-#include "mim/pass/optimize.h"
+#include "mim/phase/optimize.h"
 #include "mim/util/sys.h"
 
 using namespace mim;

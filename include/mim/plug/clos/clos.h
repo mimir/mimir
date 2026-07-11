@@ -76,7 +76,8 @@ inline const Def* apply_closure(const Def* closure, Defs args) {
 
 // TODO: rename this
 /// Checks if def is the variable of a mut of type N.
-template<class N> std::tuple<const Extract*, N*> ca_isa_var(const Def* def) {
+template<class N>
+std::tuple<const Extract*, N*> ca_isa_var(const Def* def) {
     if (auto proj = def->isa<Extract>()) {
         if (auto var = proj->tuple()->isa<Var>(); var && var->mut()->isa<N>())
             return std::tuple(proj, var->mut()->as<N>());

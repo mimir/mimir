@@ -1,7 +1,7 @@
 
-#include <mim/driver.h>
-
 #include "mim/plug/gpu/phase/split_apply.h"
+
+#include <mim/driver.h>
 
 namespace mim::plug::gpu::phase {
 
@@ -11,13 +11,13 @@ static void run_stage(World& world, flags_t annex) {
     auto body         = stages->as<Lam>()->body();
     auto callee       = App::uncurry_callee(body);
 
-    auto create_stage = world.driver().stage(callee->flags());
-    if (!create_stage) error("Could not get stage");
+    auto create_phase = world.driver().phase(callee->flags());
+    if (!create_phase) error("Could not get phase");
 
-    auto stage = (*create_stage)(world);
+    auto stage = (*create_phase)(world);
     auto phase = stage.get()->as<Phase>();
     auto app   = body->isa<App>();
-    if (!app) error("Stage is unexpectedly not an App");
+    if (!app) error("Phase is unexpectedly not an App");
 
     phase->apply(app);
     phase->run();

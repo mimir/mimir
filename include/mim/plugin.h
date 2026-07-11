@@ -15,14 +15,14 @@
 namespace mim {
 
 class Driver;
-class Stage;
+class Phase;
 
 /// @name Plugin Interface
 ///@{
 using Normalizers = absl::flat_hash_map<flags_t, NormalizeFn>;
 
-/// Maps an an axiom of a Stage to a function that creates one.
-using Flags2Stages = absl::flat_hash_map<flags_t, std::function<std::unique_ptr<Stage>(World&)>>;
+/// Maps an axiom of a Phase to a function that creates one.
+using Flags2Phases = absl::flat_hash_map<flags_t, std::function<std::unique_ptr<Phase>(World&)>>;
 ///@}
 
 struct Version {
@@ -64,8 +64,8 @@ struct Plugin {
 
     /// Callback for registering the mapping from axm ids to normalizer functions in the given @p normalizers map.
     void (*register_normalizers)(Normalizers&);
-    /// Callback for registering the Plugin's callbacks for Pass%es and Phase%s.
-    void (*register_stages)(Flags2Stages&);
+    /// Callback for registering the Plugin's callbacks for Phase%s.
+    void (*register_phases)(Flags2Phases&);
 };
 
 /// @name Plugin Interface
