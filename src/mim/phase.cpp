@@ -1,6 +1,10 @@
 #include "mim/phase.h"
 
+#include <algorithm>
 #include <memory>
+#include <utility>
+
+#include <absl/container/fixed_array.h>
 
 #include "mim/driver.h"
 #include "mim/flags.h"
@@ -46,17 +50,43 @@ void Analysis::reset() {
 void Analysis::start() {
     prepare();
 
-    for (const auto& [flags, e] : world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
-    drain();
+    full_round_ = !sparse_ || round_ == 0 || need_full_ || dirty_.empty();
+    need_full_  = false;
+    std::swap(dirty_prev_, dirty_);
+    dirty_.clear();
+    tracking_ = sparse_; // only sparse analyses consume readers_ - don't pay for tracking otherwise
 
-    bootstrapping_ = false;
+    if (full_round_) {
+        for (const auto& [flags, e] : world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+        drain();
 
-    for (auto mut : world().externals().muts())
-        rewrite_external(mut);
-    drain();
+        bootstrapping_ = false;
 
-    finalize();
+        for (auto mut : world().externals().muts())
+            rewrite_external(mut);
+        drain();
+
+        tracking_ = false;
+        finalize(); // only full rounds finalize: post-passes must see the complete abstract World
+    } else {
+        VLOG("sparse round {}: re-draining {} tainted muts", round_, dirty_prev_.size());
+        for (auto [concr, abstr] : set_map_)
+            map(concr, abstr);
+        for (auto mut : dirty_prev_)
+            rewrite(mut);
+        drain();
+        tracking_ = false;
+    }
+
+    ++round_;
+
+    // Sparse rounds quiesced - but they only certify the muts they visited.
+    // Force one full round; the fixed point counts only if that one stays quiet, too.
+    if (sparse_ && !full_round_ && !todo()) {
+        need_full_ = true;
+        invalidate();
+    }
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
@@ -65,7 +95,8 @@ void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
-    worklist_.emplace_back(mut);
+    // In a sparse round only tainted muts are drained; all others just map to themselves.
+    if (full_round_ || mut->is_dirty()) worklist_.emplace_back(mut);
     return mut;
 }
 
@@ -73,6 +104,7 @@ void Analysis::drain() {
     while (!worklist_.empty()) {
         auto mut = worklist_.front();
         worklist_.pop_front();
+        mut->dirty(false); // this is the (re)visit the dirty bit asked for
 
         auto _ = enter(mut);
         DLOG("enter: {}", mut);
@@ -101,6 +133,13 @@ void RWPhase::start() {
 
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
+
+    // Nothing consumes cross-phase dirt yet, so clear the bits while the old defs are still alive and
+    // drop the records: carrying Def*s past this Phase's own run would dangle after later world swaps.
+    // (Once a consumer exists, translate via lookup() into the new world *and* hand the records over
+    // to an owner that provably outlives all subsequent swaps.)
+    for (auto old_mut : std::exchange(dirty_, {}))
+        old_mut->dirty(false);
 
     swap(old_world(), new_world());
 }
@@ -152,28 +191,45 @@ void PhaseMan::apply(Phase& phase) {
 
 void PhaseMan::start() {
     auto max_iters = driver().flags().max_fp_iters;
-    uint32_t iter  = 0;
-    for (bool todo = true; todo; ++iter) {
-        if (iter >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
-        todo = false;
+    auto n         = phases().size();
+    // A phase's run is a deterministic function of the World's content.
+    // So a phase only needs to run (again) if the World (may have) changed since its last quiet run.
+    auto stale = absl::FixedArray<bool>(n, true);
+    auto ran   = absl::FixedArray<bool>(n, false);
 
+    auto any_stale = [&stale]() { return std::ranges::any_of(stale, [](bool b) { return b; }); };
+
+    for (uint32_t iter = 0; any_stale(); ++iter) {
+        if (iter >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
         if (fixed_point()) VLOG("🔄 fixed-point iteration: {}", iter);
 
-        for (auto& phase : phases()) {
+        bool todo = false;
+        for (size_t i = 0; i != n; ++i) {
+            auto& phase = phases()[i];
+            if (!stale[i]) {
+                VLOG("skipping `{}`: World unchanged since its last quiet run", phase->name());
+                continue;
+            }
+
+            if (ran[i]) { // re-runs need a fresh instance
+                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(phase->recreate().release()));
+                swap(new_phase, phase);
+            }
+
             phase->run();
-            todo |= phase->todo();
-        }
+            ran[i]   = true;
+            stale[i] = false;
 
-        todo &= fixed_point();
-
-        if (todo) {
-            for (auto& old_phase : phases()) {
-                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release()));
-                swap(new_phase, old_phase);
+            if (phase->todo()) {
+                todo = true;
+                // The World changed: everyone - including this phase itself - gets another look.
+                std::ranges::fill(stale, true);
             }
         }
 
+        todo &= fixed_point();
         invalidate(todo);
+        if (!fixed_point()) break;
     }
 }
 

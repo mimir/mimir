@@ -46,10 +46,13 @@ private:
         using Super = mim::Analysis;
 
         Analysis(World& world)
-            : mim::Analysis(world, "SEO::Analyzer") {}
+            : mim::Analysis(world, "SEO::Analyzer") {
+            make_sparse();
+        }
 
         void prepare() final;
         void reset() final;
+        Def* owner(const Def*) final;
 
         const LamSet& escaped() const { return escaped_; }
 
