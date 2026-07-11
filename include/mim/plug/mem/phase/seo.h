@@ -46,9 +46,7 @@ private:
         using Super = mim::Analysis;
 
         Analysis(World& world)
-            : mim::Analysis(world, "SEO::Analyzer") {
-            make_sparse();
-        }
+            : mim::Analysis(world, "SEO::Analyzer") {}
 
         void prepare() final;
         void reset() final;

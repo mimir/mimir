@@ -182,16 +182,18 @@ public:
     ///@}
 
     /// @name Sparse Fixed-Point Iteration
-    /// By default, every fixed-point round re-traverses the whole World.
-    /// A *sparse* Analysis instead re-drains only the mutables *tainted* by lattice changes:
+    /// By default (*sparse*), a fixed-point round re-drains only the mutables *tainted* by lattice changes:
     /// whenever update()/set() changes an entry, the muts that read that entry (tracked automatically
     /// during draining) plus the entry's owner() are scheduled for the next round.
     /// Once sparse rounds quiesce, one **full** round certifies the fixed point
     /// (and is the only kind of round that runs finalize()) - so untracked flows through
     /// side tables or post-passes cannot be missed.
+    /// An Analysis that never taint()s falls back to full rounds automatically (empty dirt ⟹ full round),
+    /// so the sparse default is safe even for analyses that only ever invalidate().
+    /// Call make_dense() to force whole-World rounds unconditionally.
     ///@{
     bool sparse() const { return sparse_; }
-    void make_sparse() { sparse_ = true; }
+    void make_dense() { sparse_ = false; }
 
     /// Number of lattice changes that happened during *certification* rounds.
     /// Every such change is a flow the sparse taint-tracking missed: results stay correct
@@ -329,7 +331,7 @@ private:
     mutable absl::node_hash_map<const Def*, MutSet, GIDHash<const Def*>> readers_;
     Def2Def set_map_;         ///< all set() pairs; replayed into map() at sparse-round start
     Vector<Def*> dirty_prev_; ///< the muts being re-drained this round
-    bool sparse_             = false;
+    bool sparse_             = true;
     bool tracking_           = false; ///< record readers_ only while draining
     bool full_round_         = true;  ///< current round traverses the whole World
     bool need_full_          = false; ///< sparse rounds quiesced; certify with a full round

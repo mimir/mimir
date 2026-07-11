@@ -132,8 +132,7 @@ The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes 
 
 ### Sparse Fixed-Point Iteration
 
-By default, every fixed-point round re-traverses the whole [`World`](@ref mim::World).
-An [`Analysis`](@ref mim::Analysis) may opt in to *sparse* iteration via [`make_sparse()`](@ref mim::Analysis::make_sparse):
+By default, an [`Analysis`](@ref mim::Analysis) iterates **sparsely** - only the first round traverses the whole [`World`](@ref mim::World):
 
 - While draining, every [`lattice(def)`](@ref mim::Analysis::lattice) lookup records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as a *reader* of that entry.
 - Whenever [`update()`](@ref mim::Analysis::update) or [`set()`](@ref mim::Analysis::set) changes an entry, [`taint()`](@ref mim::Analysis::taint) schedules the entry's readers plus its [`owner()`](@ref mim::Analysis::owner) - by default the mut binding the key when it is a `Var` (projection); subclasses override `owner()` for their own key kinds (e.g. SEO's phi/slot proxies carry their `Lam` as `op(0)`).
@@ -144,6 +143,9 @@ An [`Analysis`](@ref mim::Analysis) may opt in to *sparse* iteration via [`make_
   If the certification round discovers new facts, iteration continues sparsely from its taints.
 
 The certification round makes the scheme robust against flows the reader-tracking cannot see (subclass side tables, `finalize()`-driven pinning): the fixed point only counts if a whole-world round confirms it.
+
+The sparse default is safe even for analyses that never [`taint()`](@ref mim::Analysis::taint): with no dirt recorded, every round is a full round - exactly the dense behavior, with no certification overhead.
+Use [`make_dense()`](@ref mim::Analysis::make_dense) to force whole-world rounds unconditionally.
 
 ### Reset Between Iterations
 
@@ -347,9 +349,8 @@ The join in `propagate()` is expressed entirely through the lattice API:
 No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`update()`](@ref mim::Analysis::update).
 
 The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
-Whenever this changes the lattice, the analysis reruns until stable.
-It also opts into [sparse iteration](@ref mim::Analysis::make_sparse) with a single call in its constructor:
-since all its lattice keys are plain `Var` projections, the default [`owner()`](@ref mim::Analysis::owner) already knows which mut to re-drain - no override needed.
+Whenever this changes the lattice, the analysis reruns until stable - sparsely, since that is the default:
+all its lattice keys are plain `Var` projections, so the default [`owner()`](@ref mim::Analysis::owner) already knows which mut to re-drain - no override, no opt-in, nothing to configure.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
 - walk the old IR,

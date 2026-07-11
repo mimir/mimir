@@ -633,7 +633,7 @@ class Prop : public Analysis {
 public:
     Prop(World& world, bool sparse)
         : Analysis(world, "prop") {
-        if (sparse) make_sparse();
+        if (!sparse) make_dense();
     }
 
     void run_fixed_point() {

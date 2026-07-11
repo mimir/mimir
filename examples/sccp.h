@@ -20,9 +20,7 @@ private:
     class Analysis : public mim::Analysis {
     public:
         Analysis(World& world)
-            : mim::Analysis(world, "SCCP::Analyzer") {
-            make_sparse();
-        }
+            : mim::Analysis(world, "SCCP::Analyzer") {}
 
     private:
         const Def* propagate(const Def* var, const Def* def);
