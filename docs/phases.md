@@ -130,6 +130,21 @@ Hence each mutable's dependencies are walked **at most once per fixed-point roun
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
 The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
 
+### Sparse Fixed-Point Iteration
+
+By default, every fixed-point round re-traverses the whole [`World`](@ref mim::World).
+An [`Analysis`](@ref mim::Analysis) may opt in to *sparse* iteration via [`make_sparse()`](@ref mim::Analysis::make_sparse):
+
+- While draining, every [`lattice(def)`](@ref mim::Analysis::lattice) lookup records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as a *reader* of that entry.
+- Whenever [`update()`](@ref mim::Analysis::update) or [`set()`](@ref mim::Analysis::set) changes an entry, [`taint()`](@ref mim::Analysis::taint) schedules the entry's readers plus its [`owner()`](@ref mim::Analysis::owner) - by default the mut binding the key when it is a `Var` (projection); subclasses override `owner()` for their own key kinds (e.g. SEO's phi/slot proxies carry their `Lam` as `op(0)`).
+- The next round re-drains only the tainted muts; all other muts merely map to themselves.
+  [`set()`](@ref mim::Analysis::set)-pairs are replayed into the rewriter map at sparse-round start, so a dirty mut's rewrite sees the substitutions its (possibly non-visited) producers would have re-installed.
+- Once sparse rounds quiesce, one **full** round certifies the fixed point.
+  Only full rounds run [`finalize()`](@ref mim::Analysis::finalize), so post-passes always see the complete abstract world.
+  If the certification round discovers new facts, iteration continues sparsely from its taints.
+
+The certification round makes the scheme robust against flows the reader-tracking cannot see (subclass side tables, `finalize()`-driven pinning): the fixed point only counts if a whole-world round confirms it.
+
 ### Reset Between Iterations
 
 If an analysis participates in a fixed-point loop, it should be ready to run multiple times.
@@ -229,10 +244,14 @@ It can run them:
 - once, in sequence, or
 - repeatedly to a fixed point.
 
-A fixed-point [`PhaseMan`](@ref mim::PhaseMan) reruns the whole pipeline as long as at least one phase [`invalidate`s](@ref mim::Phase::invalidate).
+A fixed-point [`PhaseMan`](@ref mim::PhaseMan) reruns the pipeline as long as at least one phase [`invalidate`s](@ref mim::Phase::invalidate).
+Since a phase's run is a deterministic function of the [`World`](@ref mim::World)'s content, [`PhaseMan`](@ref mim::PhaseMan) **skips** any phase whose last run was quiet and after which no other phase changed the world - so tail iterations only rerun the phases that are still making progress, and the pipeline terminates without a final everybody-reruns round.
 
-Between iterations, each phase is recreated from its original configuration.
+Before a rerun, the phase is recreated from its original configuration.
 This keeps phase-local state from leaking across rounds unless the phase explicitly recomputes it.
+
+Change locations are tracked uniformly via [`Phase::taint()`](@ref mim::Phase::taint) / [`Phase::dirty()`](@ref mim::Phase::dirty):
+a sparse [`Analysis`](@ref mim::Analysis) seeds its next round from this set, and an [`RWPhase`](@ref mim::RWPhase) records the mut it is currently rewriting whenever it [`invalidate`s](@ref mim::RWPhase::invalidate) - translating the set into the new world upon swap.
 
 @note [`PhaseMan`](@ref mim::PhaseMan) is the orchestration layer for classical phase pipelines.
 
