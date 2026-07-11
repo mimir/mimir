@@ -59,7 +59,7 @@ void SEO::Analysis::prepare() {
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
-    mut2sloxy2val_.clear();
+    lam2sloxy2val_.clear();
 }
 
 /*
@@ -190,8 +190,8 @@ static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
     return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi);
 }
 
-const Def* SEO::Analysis::mut2sloxy2val(Lam* lam, const Def* sloxy) {
-    const auto& sloxy2val = mut2sloxy2val_[lam];
+const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
+    const auto& sloxy2val = lam2sloxy2val_[lam];
     if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
     auto phi = mk_phi(world(), lam, sloxy);
@@ -537,7 +537,7 @@ DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
     DLOG("wiring up phi arguments");
     for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) {
-            auto arg = analysis_.mut2sloxy2val(curr_mut<Lam>(), sloxy);
+            auto arg = analysis_.lam2sloxy2val(curr_mut<Lam>(), sloxy);
             assert(arg);
             new_args.emplace_back(rewrite(arg));
         }
