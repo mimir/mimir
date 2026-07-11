@@ -59,7 +59,7 @@ void Analysis::start() {
     need_full_  = false;
     std::swap(dirty_prev_, dirty_);
     dirty_.clear();
-    tracking_ = true;
+    tracking_ = sparse_; // only sparse analyses consume readers_ - don't pay for tracking otherwise
 
     if (full_round_) {
         for (const auto& [flags, e] : world().annexes())
@@ -142,11 +142,12 @@ void RWPhase::start() {
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
 
-    // Translate the dirt - recorded in terms of old muts - into the new world so it survives the swap.
-    auto old_dirty = std::exchange(dirty_, {});
-    for (auto old_mut : old_dirty)
-        if (auto new_def = lookup(old_mut))
-            if (auto new_mut = new_def->isa_mut()) taint(new_mut);
+    // Nothing consumes cross-phase dirt yet, so clear the bits while the old defs are still alive and
+    // drop the records: carrying Def*s past this Phase's own run would dangle after later world swaps.
+    // (Once a consumer exists, translate via lookup() into the new world *and* hand the records over
+    // to an owner that provably outlives all subsequent swaps.)
+    for (auto old_mut : std::exchange(dirty_, {}))
+        old_mut->dirty(false);
 
     swap(old_world(), new_world());
 }

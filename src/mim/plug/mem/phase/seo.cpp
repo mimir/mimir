@@ -59,12 +59,15 @@ void SEO::Analysis::prepare() {
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
-    mut2sloxy2val_.clear();
+    lam2sloxy2val_.clear();
 }
 
 /// Phi and slot proxies carry their owning Lam as op(0); vars are handled by the base class.
 Def* SEO::Analysis::owner(const Def* key) {
-    if (auto proxy = key->isa<Proxy>()) return proxy->op(0)->isa_mut<Lam>();
+    if (auto proxy = key->isa<Proxy>()) {
+        if (proxy->tag() == Proxy_Phi || proxy->tag() == Proxy_Slot) return proxy->op(0)->isa_mut<Lam>();
+        return nullptr;
+    }
     return Super::owner(key);
 }
 
@@ -196,8 +199,8 @@ static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
     return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi);
 }
 
-const Def* SEO::Analysis::mut2sloxy2val(Lam* lam, const Def* sloxy) {
-    const auto& sloxy2val = mut2sloxy2val_[lam];
+const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
+    const auto& sloxy2val = lam2sloxy2val_[lam];
     if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
 
     auto phi = mk_phi(world(), lam, sloxy);
@@ -543,7 +546,7 @@ DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
     DLOG("wiring up phi arguments");
     for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) {
-            auto arg = analysis_.mut2sloxy2val(curr_mut<Lam>(), sloxy);
+            auto arg = analysis_.lam2sloxy2val(curr_mut<Lam>(), sloxy);
             assert(arg);
             new_args.emplace_back(rewrite(arg));
         }

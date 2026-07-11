@@ -58,8 +58,8 @@ private:
 
         // SSA
         const auto& slots() const { return slots_; }
-        const auto& mut2sloxy2val() const { return mut2sloxy2val_; }
-        const Def* mut2sloxy2val(Lam* lam, const Def* sloxy);
+        const auto& lam2sloxy2val() const { return lam2sloxy2val_; }
+        const Def* lam2sloxy2val(Lam* lam, const Def* sloxy);
 
     private:
         // SCCP
@@ -74,8 +74,8 @@ private:
 
         // SSA
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
-        const Def* sloxy2val(const Def* sloxy) { return mut2sloxy2val(curr_mut<Lam>(), sloxy); }
-        const Def* sloxy2val(const Def* sloxy, const Def* val) { return mut2sloxy2val_[curr_mut()][sloxy] = val; }
+        const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
+        const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
 
         const Def* rewrite_imm_App(const App*) final;
 
@@ -84,7 +84,7 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        absl::node_hash_map<const Def*, Def2Def, GIDHash<const Def*>> mut2sloxy2val_;
+        absl::node_hash_map<Lam*, Def2Def, GIDHash<const Def*>> lam2sloxy2val_;
         DefSet visited_;
 
         // global (kept between iterations)
