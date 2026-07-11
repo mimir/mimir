@@ -1,5 +1,7 @@
 #include "automaton/dfa.h"
 
+#include <string>
+
 #include "automaton/automaton.h"
 
 namespace automaton {
