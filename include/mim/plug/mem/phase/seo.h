@@ -48,7 +48,6 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "SEO::Analyzer") {}
 
-        void prepare() final;
         void reset() final;
         Def* owner(const Def*) final;
 

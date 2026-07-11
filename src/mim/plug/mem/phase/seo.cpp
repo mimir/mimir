@@ -16,13 +16,13 @@ enum {
     Proxy_GVN,
     Proxy_Slot,
     Proxy_Phi,
-    Proxy_Top, // var reached ⊤ for propagation but still awaits GVN bundling
+    Proxy_SCCP_Top, // var reached ⊤ for propagation but still awaits GVN bundling
 };
 
 static size_t idx_of(Defs vars, const Def* p) {
-    auto it = std::ranges::find(vars, p);
-    assert(it != vars.end());
-    return it - vars.begin();
+    auto i = std::ranges::find(vars, p);
+    assert(i != vars.end());
+    return i - vars.begin();
 }
 
 /// The Lam the abstract @p var belongs to; @p var is a Var, a Var projection, or a phi Proxy.
@@ -30,30 +30,6 @@ static Lam* lam_of(const Def* var) {
     if (auto proxy = var->isa<Proxy>()) return proxy->op(0)->as_mut<Lam>();
     if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->mut()->as_mut<Lam>();
     return var->as<Var>()->mut()->as_mut<Lam>();
-}
-
-/// May @p def be substituted for a var of @p lam inside @p lam's body?
-/// A free var of @p def that is @p lam's own var or already free in @p lam is trivially fine.
-/// Any other free var effectively moves @p lam underneath its binder,
-/// so it must be visible at every use of @p lam;
-/// otherwise the substitution would introduce an unbound var there.
-/// A user that references @p lam's own var sits inside @p lam's scope and relocates with it - skip those.
-static bool visible(const Def* def, Lam* lam) {
-    auto lam_var = lam->has_var();
-    for (auto fv : def->free_vars()) {
-        if (fv == lam_var || lam->free_vars().contains(fv)) continue;
-        for (auto user : lam->users()) {
-            if (lam_var && user->free_vars().contains(lam_var)) continue;
-            if (fv != user->has_var() && !user->free_vars().contains(fv)) return false;
-        }
-    }
-    return true;
-}
-
-void SEO::Analysis::prepare() {
-    // make sure def->users() are valid
-    for (auto def : world().roots())
-        def->free_vars();
 }
 
 void SEO::Analysis::reset() {
@@ -84,9 +60,8 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin_top(var);
 
-    // A value can only be propagated if it is visible at all uses of the var's lam;
-    // e.g. `⊥ ⊔ x` is `x`, but unusable if some use of the lam sits outside `x`'s scope.
-    if (!def->isa<Proxy>() && !def->free_vars().empty() && !visible(def, lam_of(var))) {
+    // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
+    if (!def->isa<Proxy>() && lam_of(var)->nests(def)) {
         DLOG("cannot propagate {} -> {}: out of scope", var, def);
         return pin_top(var);
     }
@@ -98,7 +73,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         return def;
     }
 
-    if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur) || Proxy::isa<Proxy_Top>(cur))
+    if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur) || Proxy::isa<Proxy_SCCP_Top>(cur))
         return cur;
 
     DLOG("cannot propagate {} -> {}, trying GVN", var, def);
@@ -128,18 +103,18 @@ const Proxy* SEO::Analysis::mk_bundle(const Def* var, Defs bundle_vars) {
     return world().proxy(var->type(), bundle_vars, Proxy_GVN);
 }
 
-const Proxy* SEO::Analysis::mk_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_Top); }
+const Proxy* SEO::Analysis::mk_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
 void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
     for (size_t i = 0; i != n_all; ++i) {
-        if (!Proxy::isa<Proxy_Top>(abstr_vars[i])) continue;
+        if (!Proxy::isa<Proxy_SCCP_Top>(abstr_vars[i])) continue;
 
         auto bundle_vars = DefVec();
         bundle_vars.emplace_back(vars[i]);
 
         for (size_t j = i + 1; j != n_all; ++j)
-            if (Proxy::isa<Proxy_Top>(abstr_vars[j]) && abstr_args[j] == abstr_args[i])
+            if (Proxy::isa<Proxy_SCCP_Top>(abstr_vars[j]) && abstr_args[j] == abstr_args[i])
                 bundle_vars.emplace_back(vars[j]);
 
         if (bundle_vars.size() == 1) {
@@ -205,7 +180,7 @@ const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
 
     auto phi = mk_phi(world(), lam, sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
-    if (auto val = lattice(phi); val && !Proxy::isa<Proxy_Top>(val)) return val;
+    if (auto val = lattice(phi); val && !Proxy::isa<Proxy_SCCP_Top>(val)) return val;
     return nullptr;
 }
 
@@ -371,9 +346,9 @@ void SEO::Analysis::analyze(const Def* def) {
  */
 
 static bool keep(const Def* old_var, const Def* abstr) {
-    if (!abstr) return true;                       // no info -> keep
-    if (old_var == abstr) return true;             // top
-    if (Proxy::isa<Proxy_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
+    if (!abstr) return true;                            // no info -> keep
+    if (old_var == abstr) return true;                  // top
+    if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
     if (auto proxy = Proxy::isa<Proxy_GVN>(abstr))
         // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
         // non-phi
@@ -442,7 +417,8 @@ const Vector<SEO::Phi>& SEO::phis_of(Lam* old_lam) {
         for (auto slot : analysis_.slots())
             if (auto sloxy = lattice(slot)) {
                 auto phi = mk_phi(old_world(), old_lam, sloxy);
-                if (auto val = lattice(phi); val && !Proxy::isa<Proxy_Top>(val)) phis.emplace_back(sloxy, phi, val);
+                if (auto val = lattice(phi); val && !Proxy::isa<Proxy_SCCP_Top>(val))
+                    phis.emplace_back(sloxy, phi, val);
             }
     }
     return phis;

@@ -435,6 +435,31 @@ Def* Def::outermost_binder() const {
     return (*free_vars().begin())->outermost_binder();
 }
 
+bool Def::nests(Def* mut, MutSet& checked) {
+    if (mut->free_vars().contains(this->has_var())) return true;
+    if (auto [_, ins] = checked.emplace(mut); !ins) return false;
+
+    for (auto fv : mut->free_vars())
+        if (this->nests(fv->mut(), checked)) return true;
+
+    return false;
+}
+
+bool Def::nests(Def* mut) {
+    auto checked = MutSet{};
+    if (this->has_var()) return this->nests(mut, checked);
+    return false;
+}
+
+bool Def::nests(const Def* def) {
+    if (has_var()) {
+        auto checked = MutSet();
+        for (auto fv : def->free_vars())
+            if (this->nests(fv->mut(), checked)) return true;
+    }
+    return false;
+}
+
 /*
  * Def - misc
  */

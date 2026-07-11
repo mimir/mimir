@@ -12,8 +12,6 @@
 
 #include <mim/plug/core/core.h>
 
-#include "helpers.h"
-
 using namespace mim;
 using namespace mim::plug;
 
@@ -460,6 +458,32 @@ TEST(FV, algos) {
     EXPECT_EQ(bj->free_vars(), vf_i1_j1);
     EXPECT_EQ(xi->free_vars(), vf_i1);
     EXPECT_EQ(xj->free_vars(), vf_i1_j1);
+}
+
+TEST(Def, nests) {
+    Driver driver;
+    driver.log().set(Log::Level::Debug).set(&std::cerr);
+    World& w = driver.world();
+
+    auto pi = w.pi(w.type_nat(), w.type_nat());
+    auto f  = w.mut_lam(pi);
+    auto g  = w.mut_lam(pi);
+    auto h  = w.mut_lam(pi);
+    auto z  = w.mut_lam(pi);
+    f->app(false, g, w.lit_nat(23));
+    g->app(false, h, f->var());
+    h->app(false, z, g->var());
+
+    EXPECT_TRUE(f->nests(g));
+    EXPECT_TRUE(g->nests(h));
+    EXPECT_TRUE(f->nests(h));
+
+    EXPECT_FALSE(f->nests(f));
+    EXPECT_FALSE(g->nests(g));
+    EXPECT_FALSE(h->nests(h));
+    EXPECT_FALSE(g->nests(f));
+    EXPECT_FALSE(h->nests(g));
+    EXPECT_FALSE(h->nests(f));
 }
 
 TEST(ADT, Span) {

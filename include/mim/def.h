@@ -479,6 +479,9 @@ public:
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
     Def* outermost_binder() const;
+
+    bool nests(Def* mut);       ///< Does @p this nest @p mut?
+    bool nests(const Def* def); ///< Does @p this nest @p def?
     ///@}
 
     /// @name external
@@ -682,6 +685,7 @@ private:
         return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
     }
     bool equal(const Def* other) const;
+    bool nests(Def*, MutSet&);
 
     template<Cmp>
     [[nodiscard]] static bool cmp_(const Def* a, const Def* b);
