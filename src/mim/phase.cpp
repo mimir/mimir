@@ -36,6 +36,10 @@ void Phase::run() {
     if (profiling) driver().profiler().stop();
 }
 
+void Phase::profile_count(std::string_view key, uint64_t n) {
+    if (driver().flags().profile != Flags::Profile::None) driver().profiler().count(key, n);
+}
+
 /*
  * Analyzer
  */
@@ -51,6 +55,7 @@ void Analysis::start() {
     prepare();
 
     full_round_ = !sparse_ || round_ == 0 || need_full_ || dirty_.empty();
+    certifying_ = need_full_;
     need_full_  = false;
     std::swap(dirty_prev_, dirty_);
     dirty_.clear();
@@ -80,6 +85,8 @@ void Analysis::start() {
     }
 
     ++round_;
+    profile_count(full_round_ ? "rounds.full" : "rounds.sparse");
+    profile_count("muts.drained", std::exchange(num_drained_, size_t(0)));
 
     // Sparse rounds quiesced - but they only certify the muts they visited.
     // Force one full round; the fixed point counts only if that one stays quiet, too.
@@ -105,6 +112,7 @@ void Analysis::drain() {
         auto mut = worklist_.front();
         worklist_.pop_front();
         mut->dirty(false); // this is the (re)visit the dirty bit asked for
+        ++num_drained_;
 
         auto _ = enter(mut);
         DLOG("enter: {}", mut);
@@ -208,6 +216,7 @@ void PhaseMan::start() {
             auto& phase = phases()[i];
             if (!stale[i]) {
                 VLOG("skipping `{}`: World unchanged since its last quiet run", phase->name());
+                profile_count("phases.skipped");
                 continue;
             }
 

@@ -348,6 +348,8 @@ No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: e
 
 The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
 Whenever this changes the lattice, the analysis reruns until stable.
+It also opts into [sparse iteration](@ref mim::Analysis::make_sparse) with a single call in its constructor:
+since all its lattice keys are plain `Var` projections, the default [`owner()`](@ref mim::Analysis::owner) already knows which mut to re-drain - no override needed.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
 - walk the old IR,

@@ -127,6 +127,9 @@ public:
         P p(std::forward<Args>(args)...);
         p.run();
     }
+
+    /// Adds @p n to the custom Profiler counter @p key of the current run; no-op unless profiling is enabled.
+    void profile_count(std::string_view key, uint64_t n = 1);
     ///@}
 
 private:
@@ -189,6 +192,11 @@ public:
     ///@{
     bool sparse() const { return sparse_; }
     void make_sparse() { sparse_ = true; }
+
+    /// Number of lattice changes that happened during *certification* rounds.
+    /// Every such change is a flow the sparse taint-tracking missed: results stay correct
+    /// (certification exists precisely to catch this), but each hole costs extra rounds.
+    uint32_t coverage_holes() const { return coverage_holes_; }
     ///@}
 
     /// @name lattice
@@ -245,10 +253,7 @@ protected:
     const Def* update(const Def* concr, const Def* abstr) {
         auto [i, ins] = lattice_.emplace(concr, abstr);
         if (ins) {
-            if (concr != abstr) {
-                invalidate();
-                taint(concr);
-            }
+            if (concr != abstr) changed(concr);
             return nullptr;
         }
 
@@ -256,10 +261,22 @@ protected:
         assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
         if (old != abstr) {
             i->second = abstr;
-            invalidate();
-            taint(concr);
+            changed(concr);
         }
         return old;
+    }
+
+    /// Bookkeeping for an observable lattice change to @p concr: another round + taint.
+    /// A change during a *certification* round means the sparse taint-tracking missed a flow - worth investigating,
+    /// as it costs extra rounds (the result stays correct: certification exists precisely to catch this).
+    void changed(const Def* concr) {
+        invalidate();
+        taint(concr);
+        if (certifying_) {
+            ++coverage_holes_;
+            profile_count("coverage.holes");
+            DLOG("sparse coverage hole: `{}` changed during certification (in `{}`)", concr, curr_mut());
+        }
     }
 
     using Phase::taint;
@@ -312,11 +329,14 @@ private:
     mutable absl::node_hash_map<const Def*, MutSet, GIDHash<const Def*>> readers_;
     Def2Def set_map_;         ///< all set() pairs; replayed into map() at sparse-round start
     Vector<Def*> dirty_prev_; ///< the muts being re-drained this round
-    bool sparse_     = false;
-    bool tracking_   = false; ///< record readers_ only while draining
-    bool full_round_ = true;  ///< current round traverses the whole World
-    bool need_full_  = false; ///< sparse rounds quiesced; certify with a full round
-    uint32_t round_  = 0;
+    bool sparse_             = false;
+    bool tracking_           = false; ///< record readers_ only while draining
+    bool full_round_         = true;  ///< current round traverses the whole World
+    bool need_full_          = false; ///< sparse rounds quiesced; certify with a full round
+    bool certifying_         = false; ///< current round is the certifying full round
+    uint32_t coverage_holes_ = 0;
+    size_t num_drained_      = 0; ///< muts drained this round; flushed into the Profiler
+    uint32_t round_          = 0;
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
