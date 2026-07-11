@@ -33,14 +33,18 @@ jobs:
           path: ${{github.workspace}}/bin
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # The prebuilt FileCheck is stamped with OSVersion/SubsystemVersion 5.2 (lld-link defaults).
-      # The msys runtime of Git >= 2.55 (runner image 20260706.237.1) refuses to exec such images,
-      # so every lit test piping into FileCheck dies with exit code 127. Restamp to 6.0.
-      - name: Fix FileCheck PE header
-        shell: cmd
+      # The prebuilt FileCheck is a MinGW build and needs libstdc++-6.dll & friends at runtime.
+      # Since the runner image 20260706.237.1 (Git for Windows 2.55), bash no longer has these
+      # DLLs in its PATH, so every lit test piping into FileCheck dies with exit code 127.
+      # Stage the DLLs next to the exe; the application directory always wins the DLL search.
+      - name: Stage MinGW runtime DLLs next to FileCheck
+        shell: pwsh
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          editbin /SUBSYSTEM:CONSOLE,6.00 /OSVERSION:6.00 "${{github.workspace}}\bin\FileCheck-x86_64-win.exe"
+          foreach ($dll in 'libstdc++-6.dll', 'libgcc_s_seh-1.dll', 'libwinpthread-1.dll') {
+              $src = (Get-Command $dll).Source
+              Write-Host "$dll -> $src"
+              Copy-Item $src "${{github.workspace}}\bin\"
+          }
 
       - name: Verify FileCheck runs from bash
         shell: bash
