@@ -38,7 +38,6 @@ NFASet epsilonClosure(const NFANode* state) { return epsilonClosure(NFASet{state
 // nfa2dfa implementation
 std::unique_ptr<DFA> nfa2dfa(const NFA& nfa) {
     auto dfa = std::make_unique<DFA>();
-    // std::map (not absl::btree_map): values/keys are containers; std::map's node stability is safer here
     std::map<NFASet, DFANode*, NFASetLt> dfaStates;
     std::queue<NFASet> stateQueue;
     NFASet startState = epsilonClosure(nfa.get_start());

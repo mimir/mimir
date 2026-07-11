@@ -2,8 +2,7 @@
 
 #include <algorithm>
 #include <memory>
-
-#include <absl/container/btree_set.h>
+#include <set>
 
 #include "automaton/dfa.h"
 
@@ -32,8 +31,8 @@ DFASet get_erroring_states(const DFASet& reachableStates) {
     return erroringStates;
 }
 
-absl::btree_set<std::uint16_t> get_alphabet(const DFASet& reachableStates) {
-    absl::btree_set<std::uint16_t> alphabet;
+std::set<std::uint16_t> get_alphabet(const DFASet& reachableStates) {
+    std::set<std::uint16_t> alphabet;
     for (auto state : reachableStates)
         state->for_transitions([&](auto c, auto) { alphabet.insert(c); });
     return alphabet;

@@ -2,10 +2,9 @@
 
 #include <iostream>
 #include <list>
+#include <map>
+#include <set>
 #include <vector>
-
-#include <absl/container/btree_map.h>
-#include <absl/container/btree_set.h>
 
 #include "automaton/range_helper.h"
 
@@ -31,8 +30,8 @@ public:
     const NodeType* get_start() const { return start_; }
 
     /// Ordered by NodeType::Lt (i.e. by id) so that iteration is deterministic.
-    absl::btree_set<const NodeType*, typename NodeType::Lt> get_reachable_states() const {
-        absl::btree_set<const NodeType*, typename NodeType::Lt> reachableStates;
+    std::set<const NodeType*, typename NodeType::Lt> get_reachable_states() const {
+        std::set<const NodeType*, typename NodeType::Lt> reachableStates;
         std::vector<const NodeType*> workList;
         workList.push_back(get_start());
         while (!workList.empty()) {
@@ -72,7 +71,7 @@ std::ostream& print_node(std::ostream& os, const NodeType& node, PrintCharF&& pr
     if (node.is_accepting()) os << "  \"" << node.id() << "\" [shape=doublecircle];\n";
     if (node.is_erroring()) os << "  \"" << node.id() << "\" [shape=square];\n";
 
-    absl::btree_map<const NodeType*, std::vector<Range>, typename NodeType::Lt> node2transitions;
+    std::map<const NodeType*, std::vector<Range>, typename NodeType::Lt> node2transitions;
     node.for_transitions([&](auto c, auto to) {
         if (!node2transitions.contains(to))
             node2transitions.try_emplace(to, std::vector<Range>{

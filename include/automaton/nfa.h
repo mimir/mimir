@@ -1,11 +1,11 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 
+#include <map>
+#include <set>
 #include <vector>
-
-#include <absl/container/btree_map.h>
-#include <absl/container/btree_set.h>
 
 #include "automaton/automaton.h"
 
@@ -57,15 +57,15 @@ public:
 
 private:
     int id_;
-    // btree keeps for_transitions() iteration in char order - and hence deterministic
-    absl::btree_map<std::uint16_t, std::vector<const NFANode*>> transitions_;
+    // ordered map keeps for_transitions() iteration in char order - and hence deterministic
+    std::map<std::uint16_t, std::vector<const NFANode*>> transitions_;
     bool accepting_ = false;
     bool erroring_  = false;
 };
 
 extern template class AutomatonBase<NFANode>;
 
-using NFASet = absl::btree_set<const NFANode*, NFANode::Lt>;
+using NFASet = std::set<const NFANode*, NFANode::Lt>;
 
 class NFA : public AutomatonBase<NFANode> {
 public:
