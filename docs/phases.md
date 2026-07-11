@@ -79,8 +79,30 @@ Typical usage:
 
 - override [`rewrite()`](@ref mim::Rewriter::rewrite), [`rewrite_imm()`](@ref mim::Rewriter::rewrite_imm), [`rewrite_mut()`](@ref mim::Rewriter::rewrite_mut), or node-specific rewrite hooks,
 - compute abstract information while traversing reachable IR,
-- store that information in [`lattice()`](@ref mim::Analysis::lattice) and/or in side tables; use [`set()`](@ref mim::Analysis::set) to record an abstract value in both [`lattice()`](@ref mim::Analysis::lattice) and the rewriter map at once,
-- call [`invalidate()`](@ref mim::Phase::invalidate) if new information was discovered and another iteration is required.
+- store that information in the lattice (see below) and/or in side tables,
+- rely on [`update()`](@ref mim::Analysis::update) to request another iteration automatically, or call [`invalidate()`](@ref mim::Phase::invalidate) manually where needed.
+
+### Lattice API
+
+The lattice follows these conventions:
+
+- An *absent* entry means ⊥ - nothing is known yet.
+- An entry mapping a definition **to itself** (`def ↦ def`) means ⊤ - "no useful information, keep as-is".
+- Anything else is a discovered abstract value; analyses may also introduce their own sentinels in between (e.g. SEO's `nullptr` and GVN-bundle proxies).
+
+[`Analysis`](@ref mim::Analysis) provides the following accessors and mutators:
+
+- [`lattice(def)`](@ref mim::Analysis::lattice) returns the recorded abstract value for `def`, or `nullptr` if nothing is known.
+- [`update(concr, abstr)`](@ref mim::Analysis::update) writes `concr ↦ abstr` and **automatically** [`invalidate`s](@ref mim::Phase::invalidate) iff this changes observable information: an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
+  Freshly inserting ⊤ (`def ↦ def`) stays silent, as it is indistinguishable from an *absent* entry for consumers.
+  It returns whether the entry was `Unchanged`, `Inserted`, or `Changed`, so the caller can still react - e.g. log.
+- [`set(concr, abstr)`](@ref mim::Analysis::set) records `concr ↦ abstr` in both the lattice and the rewriter map, so future rewrites of `concr` short-circuit to `abstr`.
+  It bypasses [`update()`](@ref mim::Analysis::update) and hence never invalidates.
+- [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
+  Being built on [`update()`](@ref mim::Analysis::update), it invalidates iff it overwrote previous information.
+- [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
+
+For bespoke lattice joins that do not fit these helpers, subclasses have mutable access to the underlying `Def2Def` map via the protected [`lattice()`](@ref mim::Analysis::lattice) accessor - but then invalidation is entirely the join's responsibility.
 
 ### Handling of Mutables
 
@@ -105,10 +127,7 @@ The `mut -> mut` entry recorded in step 2 doubles as the per-round *"already sch
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
-The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (`lattice_[concr] = abstr` and `map(concr, abstr)`) that arise in this seeding pattern.
-
-A common convention is to encode **top** as `def -> def` in the lattice:
-mapping a definition to itself means "no useful information, keep as-is", while mapping it to a different [`Def`](@ref mim::Def) represents a discovered abstract value.
+The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
 
 ### Reset Between Iterations
 
@@ -293,7 +312,7 @@ Its architecture is:
 
 The SCCP analysis associates each lambda variable with a lattice value:
 
-- bottom: no useful information yet,
+- bottom: no useful information yet (an *absent* entry),
 - a concrete expression: this value can be propagated,
 - top: keep the variable as-is (a `Def` maps to itself).
 
@@ -301,8 +320,14 @@ In the implementation, this lattice is stored in [`Analysis::lattice()`](@ref mi
 A nice aspect here is that the propagated value is itself a regular [`Def`](@ref mim::Def).
 This illustrates the benefit of building analysis on top of [`Rewriter`](@ref mim::Rewriter): the abstract domain can live directly inside MimIR, so canonicalization and normalization come for free.
 
+The join in `propagate()` is expressed entirely through the lattice API:
+[`lattice(var)`](@ref mim::Analysis::lattice) reads the current abstract value,
+[`update()`](@ref mim::Analysis::update) overwrites it, and
+[`pin_top()`](@ref mim::Analysis::pin_top) resolves conflicting values to ⊤.
+No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`update()`](@ref mim::Analysis::update).
+
 The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
-If new information is discovered, it [`invalidate`s](@ref mim::Phase::invalidate), causing the analysis to rerun until stable.
+Whenever this changes the lattice, the analysis reruns until stable.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
 - walk the old IR,

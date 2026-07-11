@@ -155,26 +155,60 @@ public:
     ///@}
 
     /// @name lattice
+    /// Conventions: *absent* = ⊥ (nothing known); `def ↦ def` = ⊤ (keep as is).
+    /// Subclasses may store their own sentinels in between (e.g. SEO's `nullptr` and GVN-bundle Proxy%s).
     ///@{
-    auto& lattice() { return lattice_; }
     const auto& lattice() const { return lattice_; }
 
-    bool is_top(const Def* def) const {
-        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second == def;
-        return false;
+    /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
+    const Def* lattice(const Def* def) const {
+        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
+        return nullptr;
     }
+
+    bool is_top(const Def* def) const { return lattice(def) == def; }
 
     /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
     /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
+    /// Bypasses update() and hence never invalidate()s.
     const Def* set(const Def* concr, const Def* abstr) {
         lattice_[concr] = abstr;
         return map(concr, abstr);
     }
 
-    const Def* pin_top(const Def* def); ///< Monotonically forces @p def to ⊤ (keep as is).
+    /// Monotonically forces @p def to ⊤ (keep as is).
+    const Def* pin_top(const Def* def) {
+        update(def, def);
+        return def;
+    }
     ///@}
 
 protected:
+    /// What an update() did to the lattice entry.
+    enum class Update { Unchanged, Inserted, Changed };
+
+    /// @name lattice
+    ///@{
+
+    /// Writes `concr ↦ abstr` into lattice(); does **not** map().
+    /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
+    /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
+    /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
+    Update update(const Def* concr, const Def* abstr) {
+        auto [i, ins] = lattice_.emplace(concr, abstr);
+        if (ins) {
+            invalidate(concr != abstr);
+            return Update::Inserted;
+        }
+        if (i->second == abstr) return Update::Unchanged;
+        i->second = abstr;
+        invalidate();
+        return Update::Changed;
+    }
+
+    auto& lattice() { return lattice_; } ///< Mutable access for bespoke joins (e.g. SEO's SCCP join).
+    ///@}
+
     /// @name Rewrite
     ///@{
     virtual void prepare() {}  ///< Run **before** the main analysis.
@@ -190,12 +224,11 @@ protected:
     Def* rewrite_mut(Def*) override;
     ///@}
 
-    Def2Def lattice_;
-
 private:
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
 
+    Def2Def lattice_;
     std::deque<Def*> worklist_;
     bool bootstrapping_ = true;
 };
@@ -237,10 +270,7 @@ public:
 
     /// Returns the abstract value computed by the associated Analysis for the given old-world Def, or `nullptr` if no
     /// value is available.
-    const Def* lattice(const Def* old_def) {
-        if (auto i = analysis_->lattice().find(old_def); i != analysis_->lattice().end()) return i->second;
-        return nullptr;
-    }
+    const Def* lattice(const Def* old_def) { return analysis_ ? analysis_->lattice(old_def) : nullptr; }
 
     /// Returns lattice(@p old_def) if it differs from @p old_def (i.e. we learned something), otherwise `nullptr`.
     const Def* abstracted(const Def* old_def) {

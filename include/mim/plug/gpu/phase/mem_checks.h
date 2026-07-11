@@ -16,9 +16,6 @@ public:
 private:
     const Def* rewrite_imm_App(const App*) final;
     void rewrite_external(Def*) final;
-
-    DefSet analyzed_;
-    LamSet kernels_;
 };
 
 } // namespace mim::plug::gpu::phase

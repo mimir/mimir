@@ -81,7 +81,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         return pin_top(var);
     }
 
-    auto [i, ins] = lattice_.emplace(var, def);
+    auto [i, ins] = lattice().emplace(var, def);
     if (ins) {
         invalidate();
         DLOG("propagate: {} -> {}", var, def);
@@ -125,13 +125,13 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
             if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) bundle_vars.emplace_back(vars[j]);
 
         if (bundle_vars.size() == 1) {
-            lattice_[vars[i]] = abstr_vars[i] = vars[i]; // top
+            abstr_vars[i] = pin_top(vars[i]);
         } else {
             auto bundle = mk_bundle(vars[i], bundle_vars);
 
             for (auto p : bundle->ops()) {
-                auto j            = idx_of(vars, p);
-                lattice_[vars[j]] = abstr_vars[j] = bundle;
+                auto j = idx_of(vars, p);
+                update(vars[j], abstr_vars[j] = bundle);
             }
 
             DLOG("bundle: {}", bundle);
@@ -159,17 +159,15 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
 
             auto new_num = split_vars.size();
             if (new_num == 1) {
-                invalidate();
-                lattice_[vars[i]] = abstr_vars[i] = vars[i];
+                abstr_vars[i] = pin_top(vars[i]);
                 DLOG("single: {}", vars[i]);
             } else if (new_num != num) {
-                invalidate();
                 auto new_proxy = mk_bundle(abstr_args[i], split_vars);
                 DLOG("split: {}", new_proxy);
 
                 for (auto p : new_proxy->ops()) {
                     auto j = idx_of(vars, p);
-                    if (p == vars[j]) lattice_[vars[j]] = abstr_vars[j] = new_proxy;
+                    if (p == vars[j]) update(vars[j], abstr_vars[j] = new_proxy);
                 }
             }
             // if new_num == num: do nothing
@@ -189,8 +187,7 @@ const Def* SEO::Analysis::mut2sloxy2val(Lam* lam, const Def* sloxy) {
 
     auto phi = mk_phi(world(), lam, sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
-    if (auto i = lattice_.find(phi); i != lattice_.end()) return i->second;
-    return nullptr;
+    return lattice(phi);
 }
 
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
@@ -341,13 +338,8 @@ void SEO::Analysis::analyze(const Def* def) {
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
         DLOG("lam {} escapes", lam);
         escaped_.emplace(lam);
-        for (auto v : var->tprojs()) {
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                invalidate(); // var was mapped to sth else beforehand so we need another fixed-point round
-                i->second = v;
-                DLOG("top: {}", v);
-            }
-        }
+        for (auto v : var->tprojs())
+            if (update(v, v) == Update::Changed) DLOG("top: {}", v);
     }
 
     for (auto d : def->deps())
