@@ -170,6 +170,8 @@ public:
         lattice_[concr] = abstr;
         return map(concr, abstr);
     }
+
+    const Def* pin_top(const Def* def); ///< Monotonically forces @p def to ⊤ (keep as is).
     ///@}
 
 protected:

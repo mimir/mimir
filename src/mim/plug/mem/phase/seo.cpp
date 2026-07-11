@@ -67,15 +67,6 @@ void SEO::Analysis::reset() {
 
 // SCCP
 
-const Def* SEO::Analysis::pin_top(const Def* var) {
-    auto [i, ins] = lattice_.emplace(var, var);
-    if (ins || i->second != var) {
-        i->second = var;
-        invalidate();
-    }
-    return var;
-}
-
 const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
 

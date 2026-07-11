@@ -59,7 +59,6 @@ private:
 
     private:
         // SCCP
-        const Def* pin_top(const Def* var); ///< Monotonically forces @p var to ⊤ (keep as is).
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs vars, Defs abstr_args);
 
