@@ -33,17 +33,18 @@ jobs:
           path: ${{github.workspace}}/bin
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Debug FileCheck (cmd)
+      # The prebuilt FileCheck is stamped with OSVersion/SubsystemVersion 5.2 (lld-link defaults).
+      # The msys runtime of Git >= 2.55 (runner image 20260706.237.1) refuses to exec such images,
+      # so every lit test piping into FileCheck dies with exit code 127. Restamp to 6.0.
+      - name: Fix FileCheck PE header
         shell: cmd
         run: |
-          dir "${{github.workspace}}\bin"
-          "${{github.workspace}}\bin\FileCheck-x86_64-win.exe" --version
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          editbin /SUBSYSTEM:CONSOLE,6.00 /OSVERSION:6.00 "${{github.workspace}}\bin\FileCheck-x86_64-win.exe"
 
-      - name: Debug FileCheck (bash)
+      - name: Verify FileCheck runs from bash
         shell: bash
         run: |
-          ls -la "$GITHUB_WORKSPACE/bin"
-          file "$GITHUB_WORKSPACE/bin/FileCheck-x86_64-win.exe" || true
           "$GITHUB_WORKSPACE/bin/FileCheck-x86_64-win.exe" --version
 
       - name: Configure
