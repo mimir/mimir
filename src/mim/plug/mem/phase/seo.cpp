@@ -400,14 +400,24 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             auto new_mem = rewrite(mem);
             return new_world().tuple({new_mem, rewrite(abstr_val)});
         }
-    } else if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
-        DLOG("in {}, found app of {}", curr_mut(), old_app->callee());
+    } else {
+        auto old_lam = old_app->callee()->isa_mut<Lam>();
+        if (!old_lam) {
+            // The callee may fold to a rebuilt lam in the new world only, e.g. a branch
+            // `(f, t)#cond` whose cond becomes constant after GVN merged vars.
+            if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
+                if (auto i = new2old_.find(new_lam); i != new2old_.end()) old_lam = i->second;
+        }
 
-        auto& phis = phis_of(old_lam);
-        if (needs_seo(phis, old_lam)) {
-            auto new_lam  = build_lam(phis, old_lam);
-            auto new_args = build_args(phis, old_lam, old_app);
-            return map(old_app, new_world().app(new_lam, new_args));
+        if (old_lam) {
+            DLOG("in {}, found app of {}", curr_mut(), old_lam);
+
+            auto& phis = phis_of(old_lam);
+            if (needs_seo(phis, old_lam)) {
+                auto new_lam  = build_lam(phis, old_lam);
+                auto new_args = build_args(phis, old_lam, old_app);
+                return map(old_app, new_world().app(new_lam, new_args));
+            }
         }
     }
 
@@ -472,6 +482,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     auto var_map      = absl::FixedArray<const Def*>(num_old);
     auto new_lam      = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
     lam2lam_[old_lam] = new_lam;
+    new2old_[new_lam] = old_lam;
 
     // Map all *kept* vars/phis before rewriting any propagated value below:
     // that rewrite may recursively re-enter old_lam (via apps of it in other muts) and
@@ -531,12 +542,12 @@ DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
     DLOG("wiring up phi arguments");
     for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) {
-            auto i = analysis_.mut2sloxy2val().find(curr_mut());
-            assert(i != analysis_.mut2sloxy2val().end());
-            auto& sloxy2val = i->second;
-            auto j          = sloxy2val.find(sloxy);
-            assert(j != sloxy2val.end());
-            new_args.emplace_back(rewrite(j->second));
+            // Mirrors Analysis::sloxy2val: if curr_mut holds no local value for the sloxy,
+            // the value at this call site is curr_mut's own phi - mapped by build_lam.
+            const Def* arg = mk_phi(old_world(), curr_mut<Lam>(), sloxy);
+            if (auto i = analysis_.mut2sloxy2val().find(curr_mut()); i != analysis_.mut2sloxy2val().end())
+                if (auto j = i->second.find(sloxy); j != i->second.end()) arg = j->second;
+            new_args.emplace_back(rewrite(arg));
         }
 
     return new_args;

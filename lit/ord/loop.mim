@@ -9,7 +9,7 @@ uint64_t f(uint64_t x) {
     uint64_t i = x, j = x;
 
     while (dont_know()) {
-        map[1] = 42;
+        map[1] = j;
 
         if (map.contains(1)) {
             map[1] = x;
@@ -46,7 +46,7 @@ fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
             (exit, body)#cond mem where
                 con body(mem: %mem.M 0) =
                     let (mem, map) = %mem.load (mem, ptr);
-                    let map        = %ord.insert.map (map, (1I32, 42I64)); // 1 -> 42
+                    let map        = %ord.insert.map (map, (1I32, i)); // 1 -> 42
                     let mem        = %mem.store (mem, ptr, map);
                     let cond       = %ord.contains.map (map, 1I32);
                     (ff1, tt1)#cond mem

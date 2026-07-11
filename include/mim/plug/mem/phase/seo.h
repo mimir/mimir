@@ -113,6 +113,7 @@ private:
 
     Analysis analysis_;
     Lam2Lam lam2lam_;
+    Lam2Lam new2old_;
     absl::node_hash_map<Lam*, Vector<Phi>, GIDHash<Lam*>> lam2phis_;
 };
 
