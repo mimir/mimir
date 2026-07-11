@@ -446,12 +446,16 @@ bool Def::nests(Def* mut, MutSet& checked) {
 }
 
 bool Def::nests(Def* mut) {
-    auto checked = MutSet{};
-    if (this->has_var()) return this->nests(mut, checked);
+    if (this->has_var()) {
+        auto checked = MutSet{};
+        return this->nests(mut, checked);
+    }
     return false;
 }
 
 bool Def::nests(const Def* def) {
+    if (auto mut = def->isa_mut()) return this->nests(mut);
+
     if (has_var()) {
         auto checked = MutSet();
         for (auto fv : def->free_vars())
