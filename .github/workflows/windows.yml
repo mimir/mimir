@@ -33,6 +33,19 @@ jobs:
           path: ${{github.workspace}}/bin
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug FileCheck (cmd)
+        shell: cmd
+        run: |
+          dir "${{github.workspace}}\bin"
+          "${{github.workspace}}\bin\FileCheck-x86_64-win.exe" --version
+
+      - name: Debug FileCheck (bash)
+        shell: bash
+        run: |
+          ls -la "$GITHUB_WORKSPACE/bin"
+          file "$GITHUB_WORKSPACE/bin/FileCheck-x86_64-win.exe" || true
+          "$GITHUB_WORKSPACE/bin/FileCheck-x86_64-win.exe" --version
+
       - name: Configure
         shell: cmd
         run: |
