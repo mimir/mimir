@@ -95,14 +95,15 @@ The lattice follows these conventions:
 - [`lattice(def)`](@ref mim::Analysis::lattice) returns the recorded abstract value for `def`, or `nullptr` if nothing is known.
 - [`update(concr, abstr)`](@ref mim::Analysis::update) writes `concr ↦ abstr` and **automatically** [`invalidate`s](@ref mim::Phase::invalidate) iff this changes observable information: an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
   Freshly inserting ⊤ (`def ↦ def`) stays silent, as it is indistinguishable from an *absent* entry for consumers.
-  It returns whether the entry was `Unchanged`, `Inserted`, or `Changed`, so the caller can still react - e.g. log.
+  It returns the **former** abstract value - `nullptr` for a fresh insert, `abstr` itself if nothing changed, anything else for an overwrite - so the caller can still react, e.g. log.
 - [`set(concr, abstr)`](@ref mim::Analysis::set) records `concr ↦ abstr` in both the lattice and the rewriter map, so future rewrites of `concr` short-circuit to `abstr`.
   It bypasses [`update()`](@ref mim::Analysis::update) and hence never invalidates.
 - [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
   Being built on [`update()`](@ref mim::Analysis::update), it invalidates iff it overwrote previous information.
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
 
-For bespoke lattice joins that do not fit these helpers, subclasses have mutable access to the underlying `Def2Def` map via the protected [`lattice()`](@ref mim::Analysis::lattice) accessor - but then invalidation is entirely the join's responsibility.
+All lattice writes go through [`update()`](@ref mim::Analysis::update), [`set()`](@ref mim::Analysis::set), or [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
+An analysis that stores a `nullptr` sentinel (like SEO) can distinguish it from an *absent* entry via `lattice().contains(def)`.
 
 ### Handling of Mutables
 

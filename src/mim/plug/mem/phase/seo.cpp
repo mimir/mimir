@@ -81,20 +81,25 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         return pin_top(var);
     }
 
-    auto [i, ins] = lattice().emplace(var, def);
-    if (ins) {
-        invalidate();
+    auto cur = lattice(var);
+    if (!cur) {
+        if (lattice().contains(var)) return nullptr; // nullptr sentinel: already marked to bundle for GVN
+
+        update(var, def); // ⊥ ⊔ def = def; update() invalidates, as it inserts a fresh fact
         DLOG("propagate: {} -> {}", var, def);
         return def;
     }
 
-    auto cur = i->second;
-    if (!cur || def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur)) return cur;
+    if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur)) return cur;
 
-    invalidate();
     DLOG("cannot propagate {} -> {}, trying GVN", var, def);
-    if (cur->isa<Bot>()) return i->second = def;
-    return i->second = nullptr; // we reached top for propagate; nullptr marks this to bundle for GVN
+    // update() invalidates, as it overwrites cur in both cases.
+    if (cur->isa<Bot>()) { // Bot ⊔ def = def
+        update(var, def);
+        return def;
+    }
+    update(var, nullptr); // we reached top for propagate; nullptr marks this to bundle for GVN
+    return nullptr;
 }
 
 DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
@@ -339,7 +344,7 @@ void SEO::Analysis::analyze(const Def* def) {
         DLOG("lam {} escapes", lam);
         escaped_.emplace(lam);
         for (auto v : var->tprojs())
-            if (update(v, v) == Update::Changed) DLOG("top: {}", v);
+            if (auto old = update(v, v); old && old != v) DLOG("top: {}", v);
     }
 
     for (auto d : def->deps())

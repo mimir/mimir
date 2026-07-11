@@ -184,9 +184,6 @@ public:
     ///@}
 
 protected:
-    /// What an update() did to the lattice entry.
-    enum class Update { Unchanged, Inserted, Changed };
-
     /// @name lattice
     ///@{
 
@@ -194,19 +191,24 @@ protected:
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
-    Update update(const Def* concr, const Def* abstr) {
+    /// @returns the former abstract value:
+    /// - `nullptr`: fresh insert (or the former value was a subclass' `nullptr` sentinel),
+    /// - `== abstr`: unchanged,
+    /// - anything else: overwritten.
+    const Def* update(const Def* concr, const Def* abstr) {
         auto [i, ins] = lattice_.emplace(concr, abstr);
         if (ins) {
             invalidate(concr != abstr);
-            return Update::Inserted;
+            return nullptr;
         }
-        if (i->second == abstr) return Update::Unchanged;
-        i->second = abstr;
-        invalidate();
-        return Update::Changed;
-    }
 
-    auto& lattice() { return lattice_; } ///< Mutable access for bespoke joins (e.g. SEO's SCCP join).
+        auto old = i->second;
+        if (old != abstr) {
+            i->second = abstr;
+            invalidate();
+        }
+        return old;
+    }
     ///@}
 
     /// @name Rewrite
