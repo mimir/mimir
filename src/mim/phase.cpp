@@ -86,11 +86,12 @@ void Analysis::drain() {
  */
 
 void RWPhase::start() {
-    int i = 0;
-    for (bool todo = true; todo;) {
-        VLOG("iteration: {}", i++);
-        todo = false;
-        todo |= analyze();
+    auto max_iters = driver().flags().max_fp_iters;
+    bool todo      = true;
+    for (uint32_t i = 0; todo; ++i) {
+        if (i >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        VLOG("iteration: {}", i);
+        todo = analyze();
     }
 
     for (const auto& [flags, e] : old_world().annexes())
@@ -150,8 +151,10 @@ void PhaseMan::apply(Phase& phase) {
 }
 
 void PhaseMan::start() {
-    int iter = 0;
+    auto max_iters = driver().flags().max_fp_iters;
+    uint32_t iter  = 0;
     for (bool todo = true; todo; ++iter) {
+        if (iter >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
         todo = false;
 
         if (fixed_point()) VLOG("🔄 fixed-point iteration: {}", iter);

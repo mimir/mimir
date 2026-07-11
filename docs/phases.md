@@ -88,7 +88,7 @@ The lattice follows these conventions:
 
 - An *absent* entry means ⊥ - nothing is known yet.
 - An entry mapping a definition **to itself** (`def ↦ def`) means ⊤ - "no useful information, keep as-is".
-- Anything else is a discovered abstract value; analyses may also introduce their own sentinels in between (e.g. SEO's `nullptr` and GVN-bundle proxies).
+- Anything else is a discovered abstract value; analyses may also introduce their own sentinels in between as ordinary `Def`s (e.g. SEO's GVN-bundle and pending-⊤ proxies).
 
 [`Analysis`](@ref mim::Analysis) provides the following accessors and mutators:
 
@@ -103,7 +103,7 @@ The lattice follows these conventions:
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
 
 All lattice writes go through [`update()`](@ref mim::Analysis::update), [`set()`](@ref mim::Analysis::set), or [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
-An analysis that stores a `nullptr` sentinel (like SEO) can distinguish it from an *absent* entry via `lattice().contains(def)`.
+Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy`](@ref mim::Proxy) tag, as SEO uses for its GVN and pending-⊤ markers - never `nullptr`, which is reserved for *absent*.
 
 ### Handling of Mutables
 

@@ -156,7 +156,7 @@ public:
 
     /// @name lattice
     /// Conventions: *absent* = ⊥ (nothing known); `def ↦ def` = ⊤ (keep as is).
-    /// Subclasses may store their own sentinels in between (e.g. SEO's `nullptr` and GVN-bundle Proxy%s).
+    /// Subclasses may store their own sentinels in between as ordinary Def%s (e.g. SEO's GVN-bundle Proxy%s).
     ///@{
     const auto& lattice() const { return lattice_; }
 
@@ -192,7 +192,7 @@ protected:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
     /// @returns the former abstract value:
-    /// - `nullptr`: fresh insert (or the former value was a subclass' `nullptr` sentinel),
+    /// - `nullptr`: fresh insert,
     /// - `== abstr`: unchanged,
     /// - anything else: overwritten.
     const Def* update(const Def* concr, const Def* abstr) {
@@ -203,6 +203,7 @@ protected:
         }
 
         auto old = i->second;
+        assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
         if (old != abstr) {
             i->second = abstr;
             invalidate();

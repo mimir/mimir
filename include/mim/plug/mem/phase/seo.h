@@ -36,6 +36,7 @@ namespace mim::plug::mem::phase {
 ///  |
 ///  ⊥
 /// ```
+/// A var that has reached ⊤ for propagation but still awaits GVN bundling is marked with a dedicated Proxy sentinel.
 class SEO : public RWPhase {
 private:
     using Super = mim::RWPhase;
@@ -64,6 +65,7 @@ private:
 
         // GVN
         const Proxy* mk_bundle(const Def* var, Defs bundle_vars);
+        const Proxy* mk_top(const Def* var);
         void gvn_bundle(Defs, Defs, Span<const Def*>);
         void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
 

@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <mim/driver.h>
+#include <mim/phase.h>
 #include <mim/rewrite.h>
 
 #include <mim/ast/parser.h>
@@ -593,4 +594,34 @@ TEST(Rewrite, Hole) {
         ASSERT_EQ(hole2->op(), hole3);
         ASSERT_EQ(hole3, res);
     }
+}
+
+namespace {
+
+// An Analysis that never converges: every round claims to have learned something new.
+class Oscillate : public Analysis {
+public:
+    Oscillate(World& world)
+        : Analysis(world, "oscillate") {}
+
+private:
+    void finalize() override { invalidate(); }
+};
+
+class OscPhase : public RWPhase {
+public:
+    OscPhase(World& world)
+        : RWPhase(world, "osc_phase", &analysis_)
+        , analysis_(world) {}
+
+private:
+    Oscillate analysis_;
+};
+
+} // namespace
+
+TEST(Phase, fp_iteration_cap) {
+    Driver driver;
+    driver.flags().max_fp_iters = 8;
+    EXPECT_THROW(Phase::run<OscPhase>(driver.world()), std::logic_error);
 }

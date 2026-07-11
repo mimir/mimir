@@ -16,6 +16,7 @@ enum {
     Proxy_GVN,
     Proxy_Slot,
     Proxy_Phi,
+    Proxy_Top, // var reached ⊤ for propagation but still awaits GVN bundling
 };
 
 static size_t idx_of(Defs vars, const Def* p) {
@@ -82,15 +83,14 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     }
 
     auto cur = lattice(var);
-    if (!cur) {
-        if (lattice().contains(var)) return nullptr; // nullptr sentinel: already marked to bundle for GVN
-
-        update(var, def); // ⊥ ⊔ def = def; update() invalidates, as it inserts a fresh fact
+    if (!cur) { // ⊥ ⊔ def = def; update() invalidates, as it inserts a fresh fact
+        update(var, def);
         DLOG("propagate: {} -> {}", var, def);
         return def;
     }
 
-    if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur)) return cur;
+    if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur) || Proxy::isa<Proxy_Top>(cur))
+        return cur;
 
     DLOG("cannot propagate {} -> {}, trying GVN", var, def);
     // update() invalidates, as it overwrites cur in both cases.
@@ -98,8 +98,9 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         update(var, def);
         return def;
     }
-    update(var, nullptr); // we reached top for propagate; nullptr marks this to bundle for GVN
-    return nullptr;
+    auto top = mk_top(var); // we reached top for propagate; the Proxy_Top marks this to bundle for GVN
+    update(var, top);
+    return top;
 }
 
 DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
@@ -118,16 +119,19 @@ const Proxy* SEO::Analysis::mk_bundle(const Def* var, Defs bundle_vars) {
     return world().proxy(var->type(), bundle_vars, Proxy_GVN);
 }
 
+const Proxy* SEO::Analysis::mk_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_Top); }
+
 void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
     for (size_t i = 0; i != n_all; ++i) {
-        if (abstr_vars[i]) continue;
+        if (!Proxy::isa<Proxy_Top>(abstr_vars[i])) continue;
 
         auto bundle_vars = DefVec();
         bundle_vars.emplace_back(vars[i]);
 
         for (size_t j = i + 1; j != n_all; ++j)
-            if (!abstr_vars[j] && abstr_args[j] == abstr_args[i]) bundle_vars.emplace_back(vars[j]);
+            if (Proxy::isa<Proxy_Top>(abstr_vars[j]) && abstr_args[j] == abstr_args[i])
+                bundle_vars.emplace_back(vars[j]);
 
         if (bundle_vars.size() == 1) {
             abstr_vars[i] = pin_top(vars[i]);
@@ -192,7 +196,8 @@ const Def* SEO::Analysis::mut2sloxy2val(Lam* lam, const Def* sloxy) {
 
     auto phi = mk_phi(world(), lam, sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
-    return lattice(phi);
+    if (auto val = lattice(phi); val && !Proxy::isa<Proxy_Top>(val)) return val;
+    return nullptr;
 }
 
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
@@ -357,8 +362,9 @@ void SEO::Analysis::analyze(const Def* def) {
  */
 
 static bool keep(const Def* old_var, const Def* abstr) {
-    if (!abstr) return true;           // no info -> keep
-    if (old_var == abstr) return true; // top
+    if (!abstr) return true;                       // no info -> keep
+    if (old_var == abstr) return true;             // top
+    if (Proxy::isa<Proxy_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
     if (auto proxy = Proxy::isa<Proxy_GVN>(abstr))
         // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
         // non-phi
@@ -427,7 +433,7 @@ const Vector<SEO::Phi>& SEO::phis_of(Lam* old_lam) {
         for (auto slot : analysis_.slots())
             if (auto sloxy = lattice(slot)) {
                 auto phi = mk_phi(old_world(), old_lam, sloxy);
-                if (auto val = lattice(phi)) phis.emplace_back(sloxy, phi, val);
+                if (auto val = lattice(phi); val && !Proxy::isa<Proxy_Top>(val)) phis.emplace_back(sloxy, phi, val);
             }
     }
     return phis;
@@ -483,7 +489,8 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
             auto old_var = old_lam->var(num_old, i);
             auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg());
             var_map[i]   = map(old_var, v);
-            if (auto abstr = lattice(old_var); abstr && abstr != old_var) map(abstr, v); // GVN bundle
+            if (auto abstr = lattice(old_var))
+                if (auto bundle = Proxy::isa<Proxy_GVN>(abstr)) map(bundle, v); // GVN bundle
         }
     }
 
