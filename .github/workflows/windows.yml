@@ -28,7 +28,7 @@ jobs:
         with:
           owner: fodinabor
           repo: FileCheckBuild
-          tag: latest
+          tag: llvmorg-22.1.8
           file: FileCheck-x86_64-win.exe
           path: ${{github.workspace}}/bin
           token: ${{ secrets.GITHUB_TOKEN }}
