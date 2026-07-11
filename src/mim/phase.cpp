@@ -96,7 +96,7 @@ Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
     // In a sparse round only tainted muts are drained; all others just map to themselves.
-    if (full_round_ || dirty_prev_.contains(mut)) worklist_.emplace_back(mut);
+    if (full_round_ || mut->is_dirty()) worklist_.emplace_back(mut);
     return mut;
 }
 
@@ -104,6 +104,7 @@ void Analysis::drain() {
     while (!worklist_.empty()) {
         auto mut = worklist_.front();
         worklist_.pop_front();
+        mut->dirty(false); // this is the (re)visit the dirty bit asked for
 
         auto _ = enter(mut);
         DLOG("enter: {}", mut);

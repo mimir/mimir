@@ -490,6 +490,14 @@ public:
     bool is_annex() const noexcept { return annex_; }
     ///@}
 
+    /// @name dirty
+    /// Scratch bit for Phase%s to mark muts that need re-examination.
+    /// @see Phase::taint
+    ///@{
+    bool is_dirty() const noexcept { return dirty_; }
+    void dirty(bool dirty = true) noexcept { dirty_ = dirty; }
+    ///@}
+
     /// @name Casts
     /// @see @ref cast_builtin
     ///@{
@@ -695,7 +703,8 @@ private:
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
-    unsigned dep_       : 5;
+    bool dirty_         : 1;
+    unsigned dep_       : 4;
     u32 mark_ = 0;
 #ifndef NDEBUG
     size_t curr_op_ = 0;

@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include <absl/container/btree_set.h>
 #include <fe/assert.h>
 #include <fe/cast.h>
 
@@ -93,15 +92,20 @@ public:
     /// Calling `invalidate(todo)` bitwise-ORs @p todo into the internal `todo_` flag.
     void invalidate(bool todo = true) { todo_ |= todo; }
 
-    /// Deterministically ordered (by gid) set of muts *where* changes happened.
-    using Dirty = absl::btree_set<Def*, GIDLt<Def*>>;
-
     /// The muts this Phase changed or wants re-examined - the unified "dirt" currency:
     /// a sparse Analysis seeds its next round from it, an RWPhase records its rewrite sites in it
     /// (and translates them into the new world upon swap).
-    const Dirty& dirty() const { return dirty_; }
+    /// Insertion-ordered and deduplicated via Def%'s *dirty bit*.
+    const auto& dirty() const { return dirty_; }
+
+    /// Marks @p mut as *needs a (re)visit*: sets Def::is_dirty() and records @p mut in dirty().
+    /// Whoever visits @p mut clears the bit again; a recorded mut whose bit is already clear is stale
+    /// (it got its visit in the meantime) and is simply skipped by consumers.
     void taint(Def* mut) {
-        if (mut) dirty_.emplace(mut);
+        if (mut && !mut->is_dirty()) {
+            mut->dirty();
+            dirty_.emplace_back(mut);
+        }
     }
     ///@}
 
@@ -125,7 +129,7 @@ private:
 
 protected:
     std::string name_;
-    Dirty dirty_;
+    Vector<Def*> dirty_;
 
 private:
     friend class Analysis;
@@ -299,8 +303,8 @@ private:
     // sparse fixed-point iteration; Phase::dirty_ holds the muts to re-drain next round (filled by taint())
     /// lattice key -> muts whose visit read it
     mutable absl::node_hash_map<const Def*, MutSet, GIDHash<const Def*>> readers_;
-    Def2Def set_map_;  ///< all set() pairs; replayed into map() at sparse-round start
-    Dirty dirty_prev_; ///< the muts being re-drained this round
+    Def2Def set_map_;         ///< all set() pairs; replayed into map() at sparse-round start
+    Vector<Def*> dirty_prev_; ///< the muts being re-drained this round
     bool sparse_     = false;
     bool tracking_   = false; ///< record readers_ only while draining
     bool full_round_ = true;  ///< current round traverses the whole World
