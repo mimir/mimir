@@ -465,14 +465,16 @@ TEST(Def, nests) {
     driver.log().set(Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
 
-    auto pi = w.pi(w.type_nat(), w.type_nat());
-    auto f  = w.mut_lam(pi);
-    auto g  = w.mut_lam(pi);
-    auto h  = w.mut_lam(pi);
-    auto z  = w.mut_lam(pi);
+    auto nat = w.type_nat();
+    auto pi  = w.pi(nat, nat);
+    auto f   = w.mut_lam(pi);
+    auto g   = w.mut_lam(pi);
+    auto h   = w.mut_lam(pi);
+    auto z   = w.mut_lam({nat, nat}, nat);
     f->app(false, g, w.lit_nat(23));
     g->app(false, h, f->var());
-    h->app(false, z, g->var());
+    h->app(false, z, {h->var(), g->var()});
+    z->app(false, z, z->var());
 
     EXPECT_TRUE(f->nests(g));
     EXPECT_TRUE(g->nests(h));
@@ -484,6 +486,16 @@ TEST(Def, nests) {
     EXPECT_FALSE(g->nests(f));
     EXPECT_FALSE(h->nests(g));
     EXPECT_FALSE(h->nests(f));
+
+    // nests(const Def*)
+    EXPECT_TRUE(f->nests(g->var()));  // g is nested in f
+    EXPECT_TRUE(g->nests(h->body())); // h's body hangs below h, which is nested in g
+    EXPECT_TRUE(f->nests(h->body())); // transitive via h's/g's free vars
+
+    EXPECT_FALSE(f->nests(f->var())); // f's var sits at f's level - like f->nests(f)
+    EXPECT_FALSE(f->nests(w.lit_nat(23)));
+    EXPECT_FALSE(g->nests(f->var()));
+    EXPECT_FALSE(h->nests(f->var()));
 }
 
 TEST(ADT, Span) {

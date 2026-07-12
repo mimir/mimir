@@ -480,8 +480,12 @@ public:
     /// @returns `nullptr`, if is_closed() and not a mutable.
     Def* outermost_binder() const;
 
-    bool nests(Def* mut);       ///< Does @p this nest @p mut?
-    bool nests(const Def* def); ///< Does @p this nest @p def?
+    /// Does @p this nest @p mut?
+    /// The relation is strict: `f->nests(f)` is `false`.
+    bool nests(Def* mut);
+    /// Does @p this nest @p def?
+    /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
+    bool nests(const Def* def);
     ///@}
 
     /// @name external

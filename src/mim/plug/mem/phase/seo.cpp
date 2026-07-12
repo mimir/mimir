@@ -84,7 +84,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         update(var, def);
         return def;
     }
-    auto top = mk_sccp_top(var); // we reached top for propagate; the Proxy_Top marks this to bundle for GVN
+    auto top = mk_sccp_top(var); // we reached top for propagate; the Proxy_SCCP_Top marks this to bundle for GVN
     update(var, top);
     return top;
 }
