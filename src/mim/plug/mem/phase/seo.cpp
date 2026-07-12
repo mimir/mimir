@@ -310,7 +310,7 @@ void SEO::Analysis::finalize() {
 }
 
 void SEO::Analysis::analyze(const Def* def) {
-    if (def->isa<Var>()) return;
+    if (def->isa<Var>()) return; // do not run escape analysis through a Var (would remap it via lookup)
     if (auto [_, ins] = visited_.emplace(def); !ins) return;
     if (auto l = lookup(def)) def = l;
 

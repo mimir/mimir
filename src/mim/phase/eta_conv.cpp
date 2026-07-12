@@ -10,7 +10,6 @@ bool EtaConv::analyze() {
 
 void EtaConv::analyze(const Def* def) {
     if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
-    if (def->isa<Var>()) return; // ignore Var's mut
 
     if (auto app = def->isa<App>()) {
         visit(app->type(), Lattice::Unknown_1);

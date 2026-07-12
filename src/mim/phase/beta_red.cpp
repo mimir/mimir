@@ -10,7 +10,6 @@ bool BetaRed::analyze() {
 
 void BetaRed::analyze(const Def* def) {
     if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
-    if (def->isa<Var>()) return; // ignore Var's mut
 
     for (auto d : def->deps())
         visit(d, true);

@@ -267,6 +267,7 @@ protected:
     Def(World*, Node, const Def* type, Defs ops, flags_t flags); ///< Constructor for an *immutable* Def.
     Def(Node, const Def* type, Defs ops, flags_t flags);         ///< As above but World retrieved from @p type.
     Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
+    Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
     virtual ~Def() = default;
     ///@}
 
@@ -700,6 +701,7 @@ protected:
         NormalizeFn normalizer_; ///< Axm only: Axm%s use this member to store their normalizer.
         const Axm* axm_;         ///< App only: Curried App%s of Axm%s use this member to propagate the Axm.
         const Var* var_;         ///< Mutable only: Var of a mutable.
+        Def* binder_;            ///< Var only: the binder this Var refers to (*not* an official op).
         mutable World* world_;
     };
     flags_t flags_;
@@ -740,20 +742,22 @@ private:
 class Var : public Def, public Setters<Var> {
 private:
     Var(Def* mut)
-        : Def(Node, nullptr, Defs{mut}, 0) {}
+        : Def(Node, mut) {}
 
 public:
     using Setters<Var>::set;
 
     const Def* type() const { return mut()->var_type(); }
 
-    /// @name ops
+    /// @name mut
+    /// The binder of this Var.
+    /// It is *not* an official Def::op but stored in Def::binder_, so it is out of the operand graph but still hashed.
     ///@{
-    Def* mut() const { return op(0)->as_mut(); }
+    Def* mut() const { return binder_->as_mut(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Var;
-    static constexpr size_t Num_Ops = 1;
+    static constexpr size_t Num_Ops = 0;
 
 private:
     const Def* rebuild_(World&, const Def*, Defs) const final;

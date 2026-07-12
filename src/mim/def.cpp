@@ -38,15 +38,6 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     if (node == Node::Univ) {
         gid_  = world->next_gid();
         hash_ = mim::hash_begin(node_t(Node::Univ));
-    } else if (auto var = isa<Var>()) {
-        assert(flags_ == 0); // if we ever need flags here, we need to hash that
-        auto mut     = ops[0];
-        auto& world  = mut->world();
-        gid_         = world.next_gid();
-        vars_        = Vars(var);
-        ops_ptr()[0] = mut;
-        hash_        = hash_begin(node_t(Node::Var));
-        hash_        = hash_combine(hash_, mut->gid());
     } else {
         hash_ = hash_begin(u8(node));
         hash_ = hash_combine(hash_, flags_);
@@ -96,6 +87,23 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     std::fill_n(ops_ptr(), num_ops, nullptr);
 }
 
+Def::Def(Node node, Def* binder)
+    : binder_(binder) // the binder is stored here instead of as an op, so a Var stays out of the operand graph
+    , flags_(0)
+    , node_(node)
+    , mut_(false)
+    , external_(false)
+    , annex_(false)
+    , dirty_(false)
+    , dep_(fe::to_underlying(Dep::Var | Dep::Mut))
+    , num_ops_(0)
+    , type_(nullptr) {
+    gid_  = binder->world().next_gid();
+    vars_ = Vars(as<Var>());
+    hash_ = hash_begin(node_t(Node::Var));
+    hash_ = hash_combine(hash_, binder->gid());
+}
+
 Nat::Nat(World& world)
     : Def(Node, world.type(), Defs{}, 0) {}
 
@@ -134,7 +142,7 @@ const Def* Type   ::rebuild_(World& w, const Def*  , Defs o) const { return w.ty
 const Def* UInc   ::rebuild_(World& w, const Def*  , Defs o) const { return w.uinc(o[0], offset()); }
 const Def* UMax   ::rebuild_(World& w, const Def*  , Defs o) const { return w.umax(o); }
 const Def* Uniq   ::rebuild_(World& w, const Def*  , Defs o) const { return w.uniq(o[0]); }
-const Def* Var    ::rebuild_(World& w, const Def*  , Defs o) const { return w.var(o[0]->as_mut()); }
+const Def* Var    ::rebuild_(World&,   const Def*,   Defs  ) const { fe::unreachable(); } // binder is in binder_, not an op; rewrite via Rewriter::rewrite_imm_Var
 
 const Def* Axm    ::rebuild_(World& w, const Def* t, Defs ) const {
     if (&w != &world()) return w.axm(normalizer(), curry(), trip(), t, plugin(), tag(), sub())->set(dbg());
@@ -505,7 +513,7 @@ std::string_view Def::node_name() const {
 
 Defs Def::deps() const noexcept {
     if (isa<Type>() || isa<Univ>()) return Defs();
-    if (isa<Var>()) return ops();
+    if (isa<Var>()) return Defs(); // the binder lives in binder_, not in an op
     assert(type_);
     return Defs(ops_ptr() - 1, (is_set() ? num_ops_ : 0) + 1);
 }
@@ -593,6 +601,9 @@ const Def* Def::arity() const {
 
 bool Def::equal(const Def* other) const {
     if (isa<Univ>() || this->isa_mut() || other->isa_mut()) return this == other;
+
+    // A Var carries no ops and flags == 0, so it is identified solely by its binder (stored in binder_).
+    if (auto var = isa<Var>()) return other->isa<Var>() && var->mut() == other->as<Var>()->mut();
 
     bool result = this->node() == other->node() && this->flags() == other->flags()
                && this->num_ops() == other->num_ops() && this->type() == other->type();

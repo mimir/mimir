@@ -70,8 +70,6 @@ void Scalarize::Analysis::inspect(const Def* def) {
         }
     }
 
-    if (def->isa<Var>()) return; // a Var references its mut as op; that is not a use of the Lam
-
     for (size_t i = 0, e = def->num_ops(); i != e; ++i) {
         auto op = def->op(i);
         if (!op) continue;

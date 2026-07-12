@@ -149,6 +149,8 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
         return new_mut;
     } else if (def->isa<Axm>()) {
         return def;
+    } else if (auto var = def->isa<Var>()) {
+        return map(def, w.var(rewrite(var->mut())->as_mut())); // binder is in binder_, not an op
     } else {
         auto new_ops = DefVec(def->num_ops(), [&](auto i) { return rewrite(def->op(i)); });
 
