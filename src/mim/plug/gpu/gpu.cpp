@@ -7,6 +7,7 @@
 
 #include <mim/plug/gpu/phase/mem_checks.h>
 #include <mim/plug/gpu/phase/remove_double_syncs.h>
+#include <mim/plug/gpu/phase/split_apply.h>
 #include <mim/plug/mem/mem.h>
 
 using namespace mim;
@@ -59,8 +60,9 @@ void reg_phases(Flags2Phases& phases) {
     });
 
     // clang-format off
-    Phase::hook<gpu::mem_checks,                 gpu::phase::MemChecks        >(phases);
-    Phase::hook<gpu::remove_double_syncs,              gpu::phase::RemoveDoubleSyncs>(phases);
+    Stage::hook<gpu::mem_checks_phase,                 gpu::phase::MemChecks        >(stages);
+    Stage::hook<gpu::remove_double_syncs,              gpu::phase::RemoveDoubleSyncs>(stages);
+    Stage::hook<gpu::split_apply,                      gpu::phase::SplitApply       >(stages);
     // clang-format on
 }
 
