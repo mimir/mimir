@@ -4,9 +4,9 @@ plugin mem;
 cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
 
 fun extern test1(mem0: %mem.M 0): [%mem.M 0, I64] =
-    let (mem1, ptr) = %mem.slot (I64, 0) (mem0, 0);
+    ret (mem1, ptr) = %mem.slot (I64, 0) $ mem0;
     let mem2        = %mem.store (mem1, ptr, 0I64);
-    let (mem3, ptr2) = %mem.slot (I64, 0) (mem2, 1);
+    ret (mem3, ptr2) = %mem.slot (I64, 0) $ mem2;
     let mem4        = %mem.store (mem3, ptr2, 0I64);
     head mem4 where
         con head(mem: %mem.M 0) =

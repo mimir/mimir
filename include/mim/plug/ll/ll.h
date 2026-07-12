@@ -506,6 +506,20 @@ inline void Emitter::emit_epilogue(Lam* lam) {
         auto v_tag = emit(tag);
         bb.tail("call void @longjmp(i8* {}, i32 {})", v_jb, v_tag);
         return bb.tail("unreachable");
+    } else if (auto mslot = Axm::isa<mem::mslot>(app)) {
+        // Continuation-based stack slot: allocate and jump to the passed continuation with the fresh pointer.
+        auto [Ta, rest]            = mslot->uncurry_args<2>();
+        auto [pointee, addr_space] = Ta->projs<2>();
+        auto [msize, ret]          = rest->projs<2>();
+        emit_unsafe(msize->proj(0)); // mem
+        // TODO array with size
+        auto ret_lam = ret->as_mut<Lam>();
+        auto ptr     = ret_lam->var(2, 1);
+        auto v_ptr   = "%" + app->unique_name() + ".slot";
+        std::print(bb.body().emplace_back(), "{} = alloca {}", v_ptr, convert(pointee, false));
+        lam2bb_[ret_lam].phis[ptr].emplace_back(v_ptr, id(lam, true));
+        locals_[ptr] = id(ptr);
+        return bb.tail("br label {}", id(ret_lam));
     } else if (Pi::isa_returning(app->callee_type())) { // function call
         auto v_callee = emit(app->callee());
 
@@ -963,14 +977,6 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         bb.assign(name + "i8", "bitcast {} {} to i8*", ptr_t, ptr);
         bb.tail("call void @free(i8* {})", name + "i8");
         return {};
-    } else if (auto mslot = Axm::isa<mem::mslot>(def)) {
-        auto [Ta, msi]             = mslot->uncurry_args<2>();
-        auto [pointee, addr_space] = Ta->projs<2>();
-        emit_unsafe(mslot->arg(0));
-        // TODO array with size
-        // auto v_size = emit(mslot->arg(1));
-        std::print(bb.body().emplace_back(), "{} = alloca {}", name, convert(pointee, false));
-        return name;
     } else if (auto load = Axm::isa<mem::load>(def)) {
         emit_unsafe(load->arg(0));
         auto v_ptr     = emit(load->arg(1));

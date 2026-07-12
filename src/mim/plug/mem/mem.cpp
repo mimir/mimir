@@ -21,10 +21,10 @@ void reg_phases(Flags2Phases& phases) {
             auto [pointee, addr_space] = alloc->decurry()->args<2>();
             return mem::op_malloc(pointee, addr_space, alloc->arg());
         } else if (auto slot = Axm::isa<mem::slot>(def)) {
-            auto [Ta, mi]              = slot->uncurry_args<2>();
+            auto [Ta, mr]              = slot->uncurry_args<2>();
             auto [pointee, addr_space] = Ta->projs<2>();
-            auto [mem, id]             = mi->projs<2>();
-            return mem::op_mslot(pointee, addr_space, mem, id);
+            auto [mem, ret]            = mr->projs<2>();
+            return mem::op_mslot(pointee, addr_space, mem, ret);
         }
         if (auto remem = Axm::isa<mem::remem>(def)) return remem->arg();
         return {};

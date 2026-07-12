@@ -126,7 +126,7 @@ void Clos2SJLJ::convert(Lam* lam) {
     {
         auto m0       = mem::mem_var(lam);
         auto [m1, jb] = w.call<clos::alloc_jmpbuf>(m0)->projs<2>();
-        auto [m2, rb] = mem::op_slot(void_ptr(), m1)->projs<2>();
+        auto [m2, rb] = mem::op_alloc(void_ptr(), m1)->projs<2>();
         auto new_args = lam->vars();
         new_args[0]   = m2;
         auto new_defs = lam->reduce(w.tuple(new_args));

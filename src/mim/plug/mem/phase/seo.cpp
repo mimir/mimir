@@ -200,19 +200,46 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
 
 // Analysis - Rewrite
 
+const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
+    auto n = abstr_targs.size();
+    assert(n == known->num_tvars());
+
+    DefVec all_vars(n, [&](size_t i) { return known->tvar(i); });
+    DefVec all_abstr_args(abstr_targs.begin(), abstr_targs.end());
+
+    propagate_phis(known, all_vars, all_abstr_args);
+
+    auto all_abstr_vars = sccp(all_vars, all_abstr_args);
+    gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
+    gvn_split(all_vars, all_abstr_args, all_abstr_vars);
+
+    set(known->var(), world().tuple(all_abstr_vars.span().subspan(0, n)));
+
+    for (size_t i = n, e = all_vars.size(); i != e; ++i)
+        set(all_vars[i], all_abstr_vars[i]);
+
+    return world().app(known, all_abstr_args.span().subspan(0, n));
+}
+
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
-            auto [mem, id]     = slot->args<2>();
-            auto [_, ptr]      = slot->projs<2>();
-            auto abstr_mem     = rewrite(mem);
-            auto abstr_id      = rewrite(id);
-            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
+            // The continuation `ret` receives the fresh slot as its 2nd var; its scope is the slot's lifetime.
+            auto [mem, ret] = slot->args<2>();
+            auto ret_lam    = ret->as_mut<Lam>();
+            auto ptr        = ret_lam->tvar(1);
+            auto abstr_mem  = rewrite(mem);
+            rewrite(ret); // enqueue the continuation so its loads/stores are drained this round
+            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Slot);
             sloxy2slot_[sloxy] = slot;
             slots_.emplace(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
             set(ptr, sloxy);
-            return world().tuple({abstr_mem, sloxy});
+            // Treat the slot jump like an app of `ret_lam` so mem and existing phis flow across the edge.
+            // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
+            // this keeps the sloxy out of the abstract body, so it only survives if an unresolved
+            // load/store actually references it - `set(ptr, sloxy)` above still drives that resolution.
+            return apply_known(ret_lam, {abstr_mem, world().bot(ptr->type())});
         }
     } else if (auto store = Axm::isa<mem::store>(app)) {
         auto [mem, ptr, val] = store->args<3>();
@@ -250,27 +277,8 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_arg    = rewrite(app->arg());
         auto known        = abstr_callee->isa_mut<Lam>();
         if (isa_optimizable(known)) {
-            DefVec all_vars;
-            DefVec all_abstr_args;
-
-            // propagate vars
-            for (size_t i = 0; i != app->num_targs(); ++i) {
-                all_vars.emplace_back(known->tvar(i));
-                all_abstr_args.emplace_back(abstr_arg->tproj(i));
-            }
-
-            propagate_phis(known, all_vars, all_abstr_args);
-
-            auto all_abstr_vars = sccp(all_vars, all_abstr_args);
-            gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
-            gvn_split(all_vars, all_abstr_args, all_abstr_vars);
-
-            set(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
-
-            for (size_t i = app->num_targs(), e = all_vars.size(); i != e; ++i)
-                set(all_vars[i], all_abstr_vars[i]);
-
-            return world().app(known, all_abstr_args.span().subspan(0, app->num_targs()));
+            DefVec abstr_targs(app->num_targs(), [&](size_t i) { return abstr_arg->tproj(i); });
+            return apply_known(known, abstr_targs);
         }
 
         auto phi_vars       = DefVec();
@@ -310,7 +318,7 @@ void SEO::Analysis::analyze(const Def* def) {
         if (proxy->tag() == Proxy_Slot) {
             auto slot = sloxy2slot_[proxy];
             assert(slot);
-            auto [_, ptr] = slot->projs<2>();
+            auto ptr = proxy->op(1); // the continuation's slot var; see rewrite_imm_App
             set(slot, slot);
             set(ptr, ptr);
             DLOG("sloxy {} survived; setting slot to top: {}", def, slot);
@@ -321,6 +329,16 @@ void SEO::Analysis::analyze(const Def* def) {
 
     // A Lam escapes (and hence its vars must go to top) iff it is reached as a *value*.
     if (auto app = def->isa<App>()) {
+        if (auto slot = Axm::isa<mem::slot>(app)) {
+            // The slot jump applies its continuation, so `ret_lam` does not escape.
+            auto [mem, ret] = slot->args<2>();
+            auto ret_lam    = ret->as_mut<Lam>();
+            analyze(app->type());
+            analyze(mem);
+            for (auto d : ret_lam->deps())
+                analyze(d);
+            return;
+        }
         if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
             // lam is applied here, not escaped: traverse its body without seeding its vars to top
             analyze(app->type());
@@ -359,13 +377,23 @@ static bool keep(const Def* old_var, const Def* abstr) {
 
 const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
-        auto [mem, id] = slot->args<2>();
-        auto [_, ptr]  = slot->projs<2>();
+        auto [mem, ret] = slot->args<2>();
+        auto ret_lam    = ret->as_mut<Lam>();
+        auto ptr        = ret_lam->tvar(1);
+        auto new_mem    = rewrite(mem);
+
         if (abstracted(ptr)) {
-            auto new_mem = rewrite(mem);
-            auto new_ptr = new_world().bot(rewrite(ptr->type())); // we hopefully proved that no one uses it
-            return new_world().tuple({new_mem, new_ptr});
+            // The slot was promoted away: jump straight to the (rebuilt) continuation, dropping the ptr var.
+            auto& phis    = phis_of(ret_lam);
+            auto new_lam  = build_lam(phis, ret_lam);
+            auto new_args = build_args(phis, ret_lam, {mem, ptr});
+            return map(old_app, new_world().app(new_lam, new_args));
         }
+
+        // The slot survives: keep the allocation, forwarding the continuation.
+        auto [T, a]      = slot->decurry()->args<2>();
+        auto new_ret_lam = rewrite(ret_lam)->as_mut<Lam>();
+        return map(old_app, mem::op_slot(rewrite(T), rewrite(a), new_mem, new_ret_lam));
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
         if (abstracted(ptr)) return rewrite(mem);
@@ -392,8 +420,9 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 
             auto& phis = phis_of(old_lam);
             if (needs_seo(phis, old_lam)) {
-                auto new_lam  = build_lam(phis, old_lam);
-                auto new_args = build_args(phis, old_lam, old_app);
+                auto new_lam = build_lam(phis, old_lam);
+                DefVec old_targs(old_lam->num_tvars(), [&](size_t i) { return old_app->targ(i); });
+                auto new_args = build_args(phis, old_lam, old_targs);
                 return map(old_app, new_world().app(new_lam, new_args));
             }
         }
@@ -428,8 +457,13 @@ bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
     // An escaped lam is used as a value somewhere; its signature must stay as is.
     if (analysis_.escaped().contains(old_lam)) return false;
 
-    if (abstracted(old_lam->var())) return true;
+    // A signature change is needed iff some var is dropped/propagated/merged (i.e. not kept as ⊤) ...
+    for (size_t i = 0, n = old_lam->num_tvars(); i != n; ++i) {
+        auto old_var = old_lam->var(n, i);
+        if (!keep(old_var, lattice(old_var))) return true;
+    }
 
+    // ... or some phi has to be threaded in.
     for (auto [sloxy, phi, val] : phis)
         if (keep(phi, val)) return true;
 
@@ -490,7 +524,13 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
 
     // now resolve the dropped vars/phis to their propagated values
     for (size_t i = 0; i != num_old; ++i)
-        if (!keeps[i]) var_map[i] = rewrite(lattice(old_lam->var(num_old, i))); // SCCP propagate
+        if (!keeps[i]) {
+            auto old_var = old_lam->var(num_old, i);
+            auto abstr   = lattice(old_var);
+            // A dropped slot ptr (a promoted stack slot) carries no value: map it to ⊥.
+            var_map[i] = Proxy::isa<Proxy_Slot>(abstr) ? new_world().bot(rewrite(old_lam->dom(num_old, i)))
+                                                       : rewrite(abstr); // SCCP propagate
+        }
 
     for (auto [sloxy, phi, val] : phis)
         if (!keep(phi, val)) {
@@ -509,14 +549,15 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     return new_lam;
 }
 
-DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
+DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, Defs old_targs) {
     size_t num_old = old_lam->num_tvars();
-    auto new_args  = DefVec();
+    assert(old_targs.size() == num_old);
+    auto new_args = DefVec();
 
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
         auto abstr   = lattice(old_var);
-        if (keep(old_var, abstr)) new_args.emplace_back(rewrite(old_app->targ(i)));
+        if (keep(old_var, abstr)) new_args.emplace_back(rewrite(old_targs[i]));
     }
 
     DLOG("wiring up phi arguments");

@@ -64,6 +64,9 @@ private:
         const Def* sccp_join(const Def*, const Def*);
         DefVec sccp(Defs vars, Defs abstr_args);
 
+        /// Applies @p known to @p abstr_targs (one per tvar): propagates phis, runs SCCP + GVN, and sets the vars.
+        const Def* apply_known(Lam* known, Defs abstr_targs);
+
         // GVN
         const Proxy* mk_bundle(const Def* var, Defs bundle_vars);
         void gvn_bundle(Defs, Defs, Span<const Def*>);
@@ -112,8 +115,9 @@ private:
     bool needs_seo(View<Phi>, Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
     Lam* build_lam(View<Phi>, Lam* old_lam);
-    /// Builds the argument list for an App of @p old_lam matching the signature built by build_lam().
-    DefVec build_args(View<Phi>, Lam* old_lam, const App* old_app);
+    /// Builds the argument list for a jump to @p old_lam (with the given @p old_targs, one per tvar)
+    /// matching the signature built by build_lam().
+    DefVec build_args(View<Phi>, Lam* old_lam, Defs old_targs);
 
     Analysis analysis_;
     Lam2Lam lam_old2new_;

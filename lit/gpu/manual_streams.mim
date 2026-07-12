@@ -19,8 +19,8 @@ fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
 
     let (m0, m1, m4) = %gpu.init m0;
 
-    let (m0, s1_ptr) = %mem.slot (%gpu.Stream, 0) (m0, 0);
-    let (m0, s2_ptr) = %mem.slot (%gpu.Stream, 0) (m0, 1);
+    ret (m0, s1_ptr) = %mem.slot (%gpu.Stream, 0) $ m0;
+    ret (m0, s2_ptr) = %mem.slot (%gpu.Stream, 0) $ m0;
     let (m0, m1) = %gpu.stream_init (m0, m1, s1_ptr);
     let (m0, m1) = %gpu.stream_init (m0, m1, s2_ptr);
     let (m0, s1) = %mem.load (m0, s1_ptr);
