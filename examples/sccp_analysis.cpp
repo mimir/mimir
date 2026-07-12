@@ -34,7 +34,7 @@ const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
             abstr_args[i] = abstr;
         }
 
-        set(lam->var(), world().tuple(abstr_vars)); // set new abstract var
+        update(lam->var(), world().tuple(abstr_vars)); // set new abstract var
         return world().app(rewrite(lam), abstr_args);
     }
 

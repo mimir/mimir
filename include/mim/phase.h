@@ -219,19 +219,19 @@ public:
 
     bool is_top(const Def* def) const { return lattice(def) == def; }
 
-    /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
-    /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
-    /// Bypasses update() and hence never invalidate()s - but still taint()s on change for sparse() mode.
-    const Def* set(const Def* concr, const Def* abstr) {
-        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins && i->second != abstr) {
-            i->second = abstr;
-            taint(concr);
-        }
-        // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
-        // its (possibly non-dirty) producers would have re-installed in a full round.
-        if (sparse_) set_map_[concr] = abstr;
-        return map(concr, abstr);
-    }
+    /// /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
+    /// /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
+    /// /// Bypasses update() and hence never invalidate()s - but still taint()s on change for sparse() mode.
+    /// const Def* set(const Def* concr, const Def* abstr) {
+    ///     if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins && i->second != abstr) {
+    ///         i->second = abstr;
+    ///         taint(concr);
+    ///     }
+    ///     // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
+    ///     // its (possibly non-dirty) producers would have re-installed in a full round.
+    ///     if (sparse_) set_map_[concr] = abstr;
+    ///     return map(concr, abstr);
+    /// }
 
     /// Monotonically forces @p def to ⊤ (keep as is).
     const Def* pin_top(const Def* def) {
@@ -244,7 +244,7 @@ protected:
     /// @name lattice
     ///@{
 
-    /// Writes `concr ↦ abstr` into lattice(); does **not** map().
+    /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
@@ -253,6 +253,11 @@ protected:
     /// - `== abstr`: unchanged,
     /// - anything else: overwritten.
     const Def* update(const Def* concr, const Def* abstr) {
+        map(concr, abstr);
+        // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
+        // its (possibly non-dirty) producers would have re-installed in a full round.
+        if (sparse_) set_map_[concr] = abstr;
+
         auto [i, ins] = lattice_.emplace(concr, abstr);
         if (ins) {
             if (concr != abstr) changed(concr);

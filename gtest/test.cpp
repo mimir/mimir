@@ -694,7 +694,7 @@ private:
             // Substitute the abstract value into the callee's body via the rewriter map (SEO-style seeding):
             // the callee consumes its var through map() - not through a lattice() read - so re-draining it
             // after a change relies on owner()-tainting, not on reader-tracking.
-            set(lam->var(), j);
+            update(lam->var(), j);
         }
         return Analysis::rewrite_imm_App(app);
     }

@@ -93,16 +93,14 @@ The lattice follows these conventions:
 [`Analysis`](@ref mim::Analysis) provides the following accessors and mutators:
 
 - [`lattice(def)`](@ref mim::Analysis::lattice) returns the recorded abstract value for `def`, or `nullptr` if nothing is known.
-- [`update(concr, abstr)`](@ref mim::Analysis::update) writes `concr ↦ abstr` and **automatically** [`invalidate`s](@ref mim::Phase::invalidate) iff this changes observable information: an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
+- [`update(concr, abstr)`](@ref mim::Analysis::update) writes `concr ↦ abstr` into both the lattice and the rewriter map (so future rewrites of `concr` short-circuit to `abstr`) and **automatically** [`invalidate`s](@ref mim::Phase::invalidate) iff this changes observable information: an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
   Freshly inserting ⊤ (`def ↦ def`) stays silent, as it is indistinguishable from an *absent* entry for consumers.
   It returns the **former** abstract value - `nullptr` for a fresh insert, `abstr` itself if nothing changed, anything else for an overwrite - so the caller can still react, e.g. log.
-- [`set(concr, abstr)`](@ref mim::Analysis::set) records `concr ↦ abstr` in both the lattice and the rewriter map, so future rewrites of `concr` short-circuit to `abstr`.
-  It bypasses [`update()`](@ref mim::Analysis::update) and hence never invalidates.
 - [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
   Being built on [`update()`](@ref mim::Analysis::update), it invalidates iff it overwrote previous information.
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
 
-All lattice writes go through [`update()`](@ref mim::Analysis::update), [`set()`](@ref mim::Analysis::set), or [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
+All lattice writes go through [`update()`](@ref mim::Analysis::update) or [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
 Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy`](@ref mim::Proxy) tag, as SEO uses for its GVN and pending-⊤ markers - never `nullptr`, which is reserved for *absent*.
 
 ### Handling of Mutables
@@ -128,16 +126,16 @@ The `mut -> mut` entry recorded in step 2 doubles as the per-round *"already sch
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
-The [`set()`](@ref mim::Analysis::set) helper conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
+[`update()`](@ref mim::Analysis::update) conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
 
 ### Sparse Fixed-Point Iteration
 
 By default, an [`Analysis`](@ref mim::Analysis) iterates **sparsely** - only the first round traverses the whole [`World`](@ref mim::World):
 
 - While draining, every [`lattice(def)`](@ref mim::Analysis::lattice) lookup records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as a *reader* of that entry.
-- Whenever [`update()`](@ref mim::Analysis::update) or [`set()`](@ref mim::Analysis::set) changes an entry, [`taint()`](@ref mim::Analysis::taint) schedules the entry's readers plus its [`owner()`](@ref mim::Analysis::owner) - by default the mut binding the key when it is a `Var` (projection); subclasses override `owner()` for their own key kinds (e.g. SEO's phi/slot proxies carry their `Lam` as `op(0)`).
+- Whenever [`update()`](@ref mim::Analysis::update) changes an entry, [`taint()`](@ref mim::Analysis::taint) schedules the entry's readers plus its [`owner()`](@ref mim::Analysis::owner) - by default the mut binding the key when it is a `Var` (projection); subclasses override `owner()` for their own key kinds (e.g. SEO's phi/slot proxies carry their `Lam` as `op(0)`).
 - The next round re-drains only the tainted muts; all other muts merely map to themselves.
-  [`set()`](@ref mim::Analysis::set)-pairs are replayed into the rewriter map at sparse-round start, so a dirty mut's rewrite sees the substitutions its (possibly non-visited) producers would have re-installed.
+  [`update()`](@ref mim::Analysis::update)-pairs are replayed into the rewriter map at sparse-round start, so a dirty mut's rewrite sees the substitutions its (possibly non-visited) producers would have re-installed.
 - Once sparse rounds quiesce, one **full** round certifies the fixed point.
   Only full rounds run [`finalize()`](@ref mim::Analysis::finalize), so post-passes always see the complete abstract world.
   If the certification round discovers new facts, iteration continues sparsely from its taints.
