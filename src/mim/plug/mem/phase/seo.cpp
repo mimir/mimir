@@ -244,7 +244,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
 
         DLOG("load w/ unknown ptr: {}", abstr_ptr);
-        return update(load, load), load;
+        return pin_top(load);
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
@@ -311,8 +311,8 @@ void SEO::Analysis::analyze(const Def* def) {
             auto slot = sloxy2slot_[proxy];
             assert(slot);
             auto [_, ptr] = slot->projs<2>();
-            update(slot, slot);
-            update(ptr, ptr);
+            pin_top(slot);
+            pin_top(ptr);
             DLOG("sloxy {} survived; setting slot to top: {}", def, slot);
         }
         return; // never walk a proxy's deps (would drag in meta info)
@@ -332,7 +332,7 @@ void SEO::Analysis::analyze(const Def* def) {
         DLOG("lam {} escapes", lam);
         escaped_.emplace(lam);
         for (auto v : var->tprojs())
-            if (auto old = update(v, v); old && old != v) DLOG("top: {}", v);
+            pin_top(v);
     }
 
     for (auto d : def->deps())

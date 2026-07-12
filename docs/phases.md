@@ -356,6 +356,78 @@ This is a textbook use of [`Analysis`](@ref mim::Analysis):
 - store them in [`Analysis::lattice()`](@ref mim::Analysis::lattice),
 - iterate to a fixed point.
 
+### SSA without Dominance {#ssa-without-dominance}
+
+The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra:
+
+```cpp
+if (lam_of(var)->nests(def)) return pin_top(var);
+```
+
+It is the MimIR analogue of the *dominance* side condition that a classical SSA-based SCCP has to enforce, so it is worth spelling out what it replaces.
+
+#### Why the guard exists at all
+
+Textbook SCCP only ever propagates **constants**.
+A constant is a literal: it has no operands and is available at *every* program point by construction.
+This is what makes classical SCCP so comfortable — specializing a call site to a constant is *always* valid, and there is simply no availability question to ask.
+
+MimIR's SCCP is more ambitious: it propagates **arbitrary expressions**, not just constants (this is essentially copy/expression propagation folded into the same fixed point).
+The moment you propagate a whole expression, you inherit an obligation constants let you ignore: the expression you substitute must actually be *available* at the point where it lands.
+The guard is exactly that availability check.
+
+#### The classical picture
+
+Textbook SCCP runs on a CFG in SSA form.
+Every value has exactly one definition, control flow is made explicit by basic blocks and edges, and φ-nodes reconcile the values that arrive along the different predecessor edges of a join block.
+SCCP assigns each SSA value a lattice cell (⊥ / a constant / ⊤) and, once the fixed point is reached, substitutes the discovered constant at *every* use of that value.
+
+That substitution is only sound because SSA comes with a **dominator tree**:
+
+- a definition dominates all of its uses, and
+- a φ-operand must be available along its associated predecessor edge, i.e. its definition dominates the end of that predecessor block.
+
+Dominance is exactly the structural guarantee *"the value already exists at the program point where I want to use it"*.
+Without it, folding a value into a use could move a computation to a place where its operands are not yet defined.
+
+#### The MimIR picture
+
+MimIR has no CFG, no basic blocks, and no separate φ instructions.
+Control flow is expressed in CPS: a [`Lam`](@ref mim::Lam) *is* a basic block, its parameters *are* the φ-nodes, and every [`App`](@ref mim::App) of that `Lam` is one *predecessor edge* supplying the corresponding operands.
+So the SCCP analysis joins, per parameter, all the arguments flowing in from the call sites — precisely the φ-semantics — and stores the result in the [`lattice()`](@ref mim::Analysis::lattice).
+
+What is missing is the dominator tree.
+Its role — deciding whether a candidate value is *available* at the point where it would be substituted — is taken over by the scope/nesting relation [`Def::nests`](@ref mim::Def::nests), computed structurally from free variables rather than from a precomputed CFG analysis.
+`L->nests(def)` holds iff `def` lives *strictly inside* `L`, i.e. it transitively depends on binders introduced below `L`; a `def` that only mentions things visible at `L`'s level or further out is **not** nested.
+
+Now the guard reads directly:
+
+- `var` is a parameter of `L = lam_of(var)`; its call sites live *outside* `L`.
+- If `L->nests(def)`, the joined value refers to binders that only come into existence *within* `L`'s own body.
+  Such a value simply does not exist at `L`'s call sites, so propagating it into `var` — and thus substituting it at `var`'s uses — would hoist a computation out of the region where its operands are defined.
+  This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin_top`](@ref mim::Analysis::pin_top)) instead.
+- If `L` does *not* nest `def`, the value is in scope at every call site — the analogue of *"the definition dominates all uses"* — and propagation is sound.
+
+In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks a single scope question: *is this value visible at the binder it would replace?*
+[`Def::nests`](@ref mim::Def::nests) is that availability oracle, and it falls straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.
+
+#### Why this is hard elsewhere
+
+The availability obligation is cheap to *state* but awkward to *discharge* in most IRs, and this is where MimIR's structural answer stands out.
+
+- **CFG + SSA** answers it with the dominator tree, as sketched above.
+  This works, but only because the CFG has already fixed *where* every value lives; the whole machinery presupposes a schedule.
+- **Sea-of-nodes** deliberately refuses that commitment: data nodes float, and only control, φ, and memory nodes are pinned.
+  That freedom is the entire point — it is what lets the optimizer move computations around without fighting a premature schedule.
+  But it makes availability ill-posed: a floating expression has no location, so *"is it available here?"* is not even a well-formed question until the node is anchored.
+  To answer it you must reason about where the expression's transitively control-pinned inputs would sit — that is, run (at least partial) global code motion and consult the CFG dominator relation.
+  So copy/expression propagation drags the schedule — precisely what sea-of-nodes set out to avoid — back into the picture.
+
+MimIR sidesteps the dilemma without ever introducing a syntactic scope: it is a *scopeless* IR.
+There are no lexical scoping brackets that a `Lam` opens over its body; instead, scope is *implicit*, emerging from how free variables nest.
+[`Def::nests`](@ref mim::Def::nests) reads availability straight off that implicit nesting — `L` nests `def` iff `def` transitively depends on a variable bound below `L` — so the containment a lexical language would spell out with explicit brackets is recovered purely from the free-variable structure MimIR maintains anyway.
+The query is structural and commits to no schedule, so MimIR gets a compelling, schedule-free answer to the availability question that dominance-based and sea-of-nodes IRs can only reconstruct by (partially) scheduling first.
+
 ### Transformation
 
 \include "examples/sccp_transform.cpp"

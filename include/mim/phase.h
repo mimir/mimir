@@ -157,6 +157,7 @@ private:
 /// - Rewriter::rewrite_imm(),
 /// - Rewriter::rewrite_mut(), etc.
 /// @see @ref phases_analysis
+/// @see @ref ssa-without-dominance for how an Analysis substitutes Def::nests for the classical SSA dominance check.
 class Analysis : public Phase, public Rewriter {
 public:
     /// @name Construction & Destruction
@@ -219,25 +220,8 @@ public:
 
     bool is_top(const Def* def) const { return lattice(def) == def; }
 
-    /// /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
-    /// /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
-    /// /// Bypasses update() and hence never invalidate()s - but still taint()s on change for sparse() mode.
-    /// const Def* set(const Def* concr, const Def* abstr) {
-    ///     if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins && i->second != abstr) {
-    ///         i->second = abstr;
-    ///         taint(concr);
-    ///     }
-    ///     // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
-    ///     // its (possibly non-dirty) producers would have re-installed in a full round.
-    ///     if (sparse_) set_map_[concr] = abstr;
-    ///     return map(concr, abstr);
-    /// }
-
     /// Monotonically forces @p def to ⊤ (keep as is).
-    const Def* pin_top(const Def* def) {
-        update(def, def);
-        return def;
-    }
+    const Def* pin_top(const Def* def) { return update(def, def), def; }
     ///@}
 
 protected:
