@@ -9,7 +9,7 @@
 plugin core;
 plugin math;
 // needed to access cps2ds
-plugin direct;
+plugin cps;
 plugin affine;
 plugin buffer;
 ///
@@ -231,14 +231,11 @@ fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
 ///
 /// ## Passes and Phases
 ///
-/// ### Passes
-///
-axm %matrix.lower_matrix_high_level_map_reduce: %compile.Pass;
-axm %matrix.lower_matrix_medium_level:          %compile.Pass;
-///
 /// ### Phases
 ///
 /// Lowers the buffer-world ops (`%%matrix.map_reduce_aff`, `%%matrix.broadcast`, `%%matrix.pad`,
 /// `%%matrix.concat`) to `affine.For` loops over `%%buffer` element operations.
 ///
-axm %matrix.lower_aff: %compile.Phase;
+axm %matrix.lower_matrix_high_level_map_reduce: %compile.Phase;
+axm %matrix.lower_matrix_medium_level:          %compile.Phase;
+axm %matrix.lower_aff:                          %compile.Phase;

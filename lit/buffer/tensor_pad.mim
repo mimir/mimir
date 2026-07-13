@@ -13,7 +13,7 @@ plugin core;
 plugin tensor;
 plugin affine;
 plugin mem;
-plugin direct;
+plugin cps;
 plugin buffer;
 plugin matrix;
 plugin opt;
@@ -50,11 +50,11 @@ fun extern pad_size1 (input: «1, 3; I32»): «1, 5; I32» =
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.named_phase "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce/pad/… (+ broadcast)
-        %compile.named_phase "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast/pad/concat onto
+        %compile.named "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce/pad/… (+ broadcast)
+        %compile.named "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast/pad/concat onto
                                                            // %buffer/%matrix (hard error if not bufferizable)
-        %compile.named_phase "%matrix.lower_aff",          // %matrix.* -> affine.For over %buffer
-        %compile.named_phase "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
-        %compile.named_phase "%affine.lower_index_phase",  // %affine.map -> %core arithmetic
-        %compile.named_phase "%affine.lower_for_phase",    // affine.For -> CPS loops
+        %compile.named "%matrix.lower_aff",          // %matrix.* -> affine.For over %buffer
+        %compile.named "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
+        %compile.named "%affine.lower_index",  // %affine.map -> %core arithmetic
+        %compile.named "%affine.lower_for",    // affine.For -> CPS loops
     );

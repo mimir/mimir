@@ -4,13 +4,10 @@
 #include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
 
-#include <mim/pass.h>
+#include <mim/phase.h>
 
 #include <mim/ast/parser.h>
-#include <mim/pass/beta_red.h>
-#include <mim/pass/eta_exp.h>
-#include <mim/pass/eta_red.h>
-#include <mim/pass/optimize.h>
+#include <mim/phase/optimize.h>
 
 #include <mim/plug/compile/compile.h>
 #include <mim/plug/core/core.h>

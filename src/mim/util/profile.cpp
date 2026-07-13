@@ -1,9 +1,13 @@
 #include "mim/util/profile.h"
 
 #include <algorithm>
+#include <format>
 #include <print>
 
+#include <absl/container/btree_map.h>
 #include <absl/container/flat_hash_map.h>
+
+using namespace std::literals;
 
 namespace mim {
 
@@ -71,6 +75,20 @@ void Profiler::summary(std::ostream& os) const {
                      name);
     }
     std::println(os, "{:>12.3f}  {:>12.3f}  {:>6.1f}%  {:>6}  {}", ms(total), ms(total), 100.0, spans_.size(), "TOTAL");
+
+    // aggregate custom counters by (phase, counter) - deterministically ordered
+    auto counters = absl::btree_map<std::pair<std::string_view, std::string_view>, uint64_t>();
+    for (const auto& span : spans_)
+        for (const auto& [key, val] : span.counters)
+            counters[{span.name, key}] += val;
+
+    if (!counters.empty()) {
+        std::println(os, "");
+        std::println(os, "Phase counters:");
+        std::println(os, "{:>12}  {}", "value", "phase: counter");
+        for (const auto& [name_key, val] : counters)
+            std::println(os, "{:>12}  {}: {}", val, name_key.first, name_key.second);
+    }
 }
 
 void Profiler::tree(std::ostream& os) const {
@@ -85,8 +103,12 @@ void Profiler::tree(std::ostream& os) const {
         const auto& span = spans_[i];
         auto self        = span.elapsed() - children[i];
         auto percent     = total > Duration::zero() ? 100.0 * ms(span.elapsed()) / ms(total) : 0.0;
-        std::println(os, "{:>12.3f}  {:>12.3f}  {:>6.1f}%  {:>{}}{}", ms(span.elapsed()), ms(self), percent, "",
-                     span.depth * 2, span.name);
+        auto counters    = std::string();
+        for (const auto& [key, val] : span.counters)
+            counters += std::format("{}{}={}", counters.empty() ? " [" : " ", key, val);
+        if (!counters.empty()) counters += "]";
+        std::println(os, "{:>12.3f}  {:>12.3f}  {:>6.1f}%  {:>{}}{}{}", ms(span.elapsed()), ms(self), percent, "",
+                     span.depth * 2, span.name, counters);
     }
     std::println(os, "{:>12.3f}  {:>12}  {:>6.1f}%  {}", ms(total), "", 100.0, "TOTAL");
 }
@@ -97,8 +119,14 @@ void Profiler::chrome_trace(std::ostream& os) const {
     std::println(os, "{{\"displayTimeUnit\":\"ms\",\"traceEvents\":[");
     for (size_t i = 0, e = spans_.size(); i != e; ++i) {
         const auto& span = spans_[i];
-        std::println(os, "{{\"name\":\"{}\",\"cat\":\"phase\",\"ph\":\"X\",\"pid\":1,\"tid\":1,\"ts\":{:.3f},\"dur\":{:.3f}}}{}",
-                     json_escape(span.name), us(span.start - origin), us(span.elapsed()), i + 1 == e ? "" : ",");
+        auto args        = std::string();
+        for (const auto& [key, val] : span.counters)
+            args += std::format("{}\"{}\":{}", args.empty() ? ",\"args\":{"sv : ","sv, json_escape(key), val);
+        if (!args.empty()) args += "}";
+        std::println(
+            os,
+            "{{\"name\":\"{}\",\"cat\":\"phase\",\"ph\":\"X\",\"pid\":1,\"tid\":1,\"ts\":{:.3f},\"dur\":{:.3f}{}}}{}",
+            json_escape(span.name), us(span.start - origin), us(span.elapsed()), args, i + 1 == e ? "" : ",");
     }
     std::println(os, "]}}");
 }

@@ -2,7 +2,7 @@
 
 // The input/output bounds are only symbolically known (the `Nat` parameters `m` and `n`), so the lowering must thread the
 // symbolic moduli through `%core.conv.u` rather than baking in a concrete `Idx` size. `g` stays polymorphic (hence this is a
-// pipeline/FileCheck test, not an executable one) so the symbolic bound survives to `%affine.lower_index_phase`.
+// pipeline/FileCheck test, not an executable one) so the symbolic bound survives to `%affine.lower_index`.
 
 plugin core;
 plugin affine;

@@ -84,6 +84,14 @@ inline const Def* strip_mem(const Def* def) {
 
 /// @name %%mem.lea
 ///@{
+inline const Def* pointee(const Def* ptr) {
+    auto [pointee, _] = Axm::as<Ptr>(ptr->type())->args<2>();
+    return pointee;
+}
+///@}
+
+/// @name %%mem.lea
+///@{
 inline const Def* op_lea(const Def* ptr, const Def* index) {
     World& w                   = ptr->world();
     auto [pointee, addr_space] = Axm::as<Ptr>(ptr->type())->args<2>();

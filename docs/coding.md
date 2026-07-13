@@ -5,7 +5,6 @@
 Start here if you want to work on MimIR itself.
 This page is the contributor entry point for build, test, style, and debugging workflow.
 For API and IR usage patterns, continue with the [Developer Guide](@ref dev).
-For subsystem-specific material, see [Plugins](@ref plugins), [Rewriting](@ref rewriting), and [Phases](@ref phases).
 
 ## Contributor Quick Start {#building}
 
@@ -340,3 +339,21 @@ mim test.mim --break-on-alpha   # Break if a check for alpha-equivalence fails.
 ```
 
 See the [Command-Line Reference](@ref cli) for the full list of flags.
+
+### Profiling {#profiling}
+
+If a compilation is taking longer than expected, use `--profile` to find out which [`mim::Phase`](@ref mim::Phase) is responsible.
+It measures wall-clock time spent in each phase and reports it via `--output-profile <file>` (or `-` for stdout) in one of three formats:
+
+```sh
+mim test.mim --profile summary --output-profile -   # Flat table aggregated by phase name, sorted by total time.
+mim test.mim --profile tree    --output-profile -   # Indented tree that preserves phase nesting/order.
+mim test.mim --profile trace   --output-profile trace.json
+```
+
+`--profile` on its own (with no value) defaults to `summary`.
+
+The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
+Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.
+
+See [`mim::Profiler`](@ref mim::Profiler) for implementation details.

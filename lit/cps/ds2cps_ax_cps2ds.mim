@@ -1,0 +1,16 @@
+// RUN: rm -f %{s:stem}.ll ; \
+// RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
+
+plugin core;
+plugin cps;
+
+fun f(a: I32): I32 =
+    let b = %core.wrap.add 0 (2I32, a);
+    return b;
+
+con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
+    let g = %cps.cps2ds (I32,I32) f;
+    let c = g 40I32;
+    return (mem, c);
+
+// CHECK-DAG: return{{.*}}42

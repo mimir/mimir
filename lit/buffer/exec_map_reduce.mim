@@ -12,7 +12,7 @@ plugin core;
 plugin tensor;
 plugin affine;
 plugin mem;
-plugin direct;
+plugin cps;
 
 fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
 lam id1i (i j: %affine.index): «1; %affine.index» = i;

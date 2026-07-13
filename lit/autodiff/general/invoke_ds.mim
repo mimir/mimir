@@ -2,7 +2,7 @@
 // RUN: %mim -p opt %s -o - -p ll | %FileCheck %s
 
 plugin core;
-plugin direct;
+plugin cps;
 plugin autodiff;
 
 con extract_pb_535733 [s_535741: %mem.M 0, _535737: Cn [%mem.M 0, «2; I32»]] =
@@ -14,8 +14,8 @@ con extract_pb_535776 [s_535787: I32, _535780: Cn [%mem.M 0, «2; I32»]] =
     _535777 (%autodiff.zero (%mem.M 0), (0I32, s_535787));
 
 con extern main [mem_535757: %mem.M 0, I32, %mem.Ptr (%mem.Ptr ((I8), 0), 0), return_535686: Cn [%mem.M 0, I32]] =
-    let _535758: [%mem.M 0, «2; I32»] = %direct.cps2ds (%mem.M 0, [%mem.M 0, «2; I32»]) extract_pb_535733 mem_535757;
-    let _535793: [%mem.M 0, «2; I32»] = %direct.cps2ds (I32, [%mem.M 0, «2; I32»]) extract_pb_535776 1I32;
+    let _535758: [%mem.M 0, «2; I32»] = %cps.cps2ds (%mem.M 0, [%mem.M 0, «2; I32»]) extract_pb_535733 mem_535757;
+    let _535793: [%mem.M 0, «2; I32»] = %cps.cps2ds (I32, [%mem.M 0, «2; I32»]) extract_pb_535776 1I32;
     let _535797: %mem.M 0 = %autodiff.add (_535758#ff, _535793#0_2);
     let _535843: «2; I32» = %autodiff.add (_535758#tt, _535793#1_2);
     let _535879: I32 = %core.wrap.mul 0 (100I32, _535843#0_2);

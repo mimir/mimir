@@ -174,14 +174,22 @@ inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(cons
 
 inline static const Def* find_common_simd_src(const App* app) {
     const Def* common_src = nullptr;
+    size_t lane           = 0;
     for (auto arg : app->args()) {
         if (Axm::isa<mem::M>(arg->type())) continue;
         auto extract = arg->isa<Extract>();
         if (!extract || !is_simd(extract->tuple()->type())) return nullptr;
+        // Only devectorized args - lane i in position i - may forward the whole vector;
+        // anything else (e.g. a Select with a non-literal index) must stay scalar.
+        if (auto index = Lit::isa(extract->index()); !index || *index != lane++) return nullptr;
         if (!common_src)
             common_src = extract->tuple();
         else if (common_src != extract->tuple())
             return nullptr;
+    }
+    if (common_src) {
+        auto simd = is_simd(common_src->type());
+        if (!simd || simd->first != lane) return nullptr;
     }
     return common_src;
 }
@@ -721,12 +729,30 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto [a, b] = nat->args<2>([this](auto def) { return emit(def); });
 
         switch (nat.id()) {
-            case core::nat::add: op = "add"; break;
-            case core::nat::sub: op = "sub"; break;
-            case core::nat::mul: op = "mul"; break;
+            case core::nat::add: return bb.assign(name, "add nsw nuw i64 {}, {}", a, b);
+            case core::nat::sub: {
+                // nat subtraction saturates at 0: cap result when b > a
+                auto ugt = bb.assign(name + ".ugt", "icmp ugt i64 {}, {}", b, a);
+                auto raw = bb.assign(name + ".raw", "sub i64 {}, {}", a, b);
+                return bb.assign(name, "select i1 {}, i64 0, i64 {}", ugt, raw);
+            }
+            case core::nat::mul: return bb.assign(name, "mul nsw nuw i64 {}, {}", a, b);
+            // %core.nat.div/mod define division/modulo by zero as `a / 0 = 0` and `a % 0 = a`.
+            // replace a zero divisor by 1 to keep udiv/urem well-defined, then select the
+            // defined result for the zero case (0 for div, a for mod).
+            case core::nat::div: {
+                auto bz   = bb.assign(name + ".bz", "icmp eq i64 {}, 0", b);
+                auto bsaf = bb.assign(name + ".bsafe", "select i1 {}, i64 1, i64 {}", bz, b);
+                auto q    = bb.assign(name + ".q", "udiv i64 {}, {}", a, bsaf);
+                return bb.assign(name, "select i1 {}, i64 0, i64 {}", bz, q);
+            }
+            case core::nat::mod: {
+                auto bz   = bb.assign(name + ".bz", "icmp eq i64 {}, 0", b);
+                auto bsaf = bb.assign(name + ".bsafe", "select i1 {}, i64 1, i64 {}", bz, b);
+                auto r    = bb.assign(name + ".r", "urem i64 {}, {}", a, bsaf);
+                return bb.assign(name, "select i1 {}, i64 {}, i64 {}", bz, a, r);
+            }
         }
-
-        return bb.assign(name, "{} nsw nuw i64 {}, {}", op, a, b);
     } else if (auto ncmp = Axm::isa<core::ncmp>(def)) {
         auto [a, b] = ncmp->args<2>([this](auto def) { return emit(def); });
         op          = "icmp ";
@@ -1172,8 +1198,18 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         if (auto nat_op = Axm::isa<core::nat, 1>(f)) {
             switch (nat_op.id()) {
                 case core::nat::add: op = "add nuw nsw"; break;
-                case core::nat::sub: op = "sub nuw nsw"; break;
+                case core::nat::sub: {
+                    // nat subtraction saturates at 0: cap per-lane when v2 > v1
+                    auto v1     = emit(inputs->proj(nat_ni, 0));
+                    auto v2     = emit(inputs->proj(nat_ni, 1));
+                    auto ugt    = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
+                    auto raw    = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
+                    return prev = bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_ni, ugt, t_out,
+                                            t_out, raw);
+                }
                 case core::nat::mul: op = "mul nuw nsw"; break;
+                case core::nat::div: op = "udiv"; break;
+                case core::nat::mod: op = "urem"; break;
             }
         } else if (auto arith_op = Axm::isa<math::arith, 1>(f)) {
             auto lmode = static_cast<math::Mode>(Lit::as(f->as<App>()->arg()));

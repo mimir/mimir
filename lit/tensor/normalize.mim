@@ -2,7 +2,7 @@
 plugin tensor;
 plugin refly;
 plugin core;
-plugin direct;
+plugin cps;
 plugin affine;
 
 let m0 = ((1, 2), (3, 4));

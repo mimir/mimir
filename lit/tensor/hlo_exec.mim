@@ -19,7 +19,7 @@ plugin tensor;
 plugin core;
 plugin affine;
 plugin mem;
-plugin direct;
+plugin cps;
 plugin math;
 
 let f32 = %math.f32;

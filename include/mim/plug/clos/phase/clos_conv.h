@@ -99,7 +99,10 @@ private:
     /// @{
     struct Stub {
         Lam* old_fn;
-        size_t num_fvs;
+        /// The free defs packed into env.
+        /// Do not recover them from env->ops(): World::tuple may normalize the env tuple
+        /// (η-reduction back to the underlying def, unary tuple, uniform Pack).
+        DefVec fvs;
         const Def* env;
         Lam* fn;
     };

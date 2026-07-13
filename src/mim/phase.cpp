@@ -1,6 +1,10 @@
 #include "mim/phase.h"
 
+#include <algorithm>
 #include <memory>
+#include <utility>
+
+#include <absl/container/fixed_array.h>
 
 #include "mim/driver.h"
 #include "mim/flags.h"
@@ -11,6 +15,18 @@ namespace mim {
  * Phase
  */
 
+Phase::Phase(World& world, flags_t annex)
+    : world_(world)
+    , annex_(annex)
+    , name_(world.annex(annex)->sym()) {}
+
+std::unique_ptr<Phase> Phase::recreate() {
+    auto ctor = driver().phase(annex());
+    auto ptr  = (*ctor)(world());
+    ptr->apply(*this);
+    return ptr;
+}
+
 void Phase::run() {
     auto profiling = driver().flags().profile != Flags::Profile::None;
     if (profiling) driver().profiler().start(name());
@@ -20,52 +36,89 @@ void Phase::run() {
     if (profiling) driver().profiler().stop();
 }
 
+void Phase::profile_count(std::string_view key, uint64_t n) {
+    if (driver().flags().profile != Flags::Profile::None) driver().profiler().count(key, n);
+}
+
 /*
  * Analyzer
  */
 
 void Analysis::reset() {
     old2news_.clear();
+    worklist_.clear();
     push();
     todo_ = false;
 }
 
 void Analysis::start() {
-    for (const auto& [flags, e] : world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
+    prepare();
 
-    bootstrapping_ = false;
+    full_round_ = !sparse_ || round_ == 0 || need_full_ || dirty_.empty();
+    certifying_ = need_full_;
+    need_full_  = false;
+    std::swap(dirty_prev_, dirty_);
+    dirty_.clear();
+    tracking_ = sparse_; // only sparse analyses consume readers_ - don't pay for tracking otherwise
 
-    for (auto mut : world().externals().muts())
-        rewrite_external(mut);
+    if (full_round_) {
+        for (const auto& [flags, e] : world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+        drain();
+
+        bootstrapping_ = false;
+
+        for (auto mut : world().externals().muts())
+            rewrite_external(mut);
+        drain();
+
+        tracking_ = false;
+        finalize(); // only full rounds finalize: post-passes must see the complete abstract World
+    } else {
+        VLOG("sparse round {}: re-draining {} tainted muts", round_, dirty_prev_.size());
+        for (auto [concr, abstr] : set_map_)
+            map(concr, abstr);
+        for (auto mut : dirty_prev_)
+            rewrite(mut);
+        drain();
+        tracking_ = false;
+    }
+
+    ++round_;
+    profile_count(full_round_ ? "rounds.full" : "rounds.sparse");
+    profile_count("muts.drained", std::exchange(num_drained_, size_t(0)));
+
+    // Sparse rounds quiesced - but they only certify the muts they visited.
+    // Force one full round; the fixed point counts only if that one stays quiet, too.
+    if (sparse_ && !full_round_ && !todo()) {
+        need_full_ = true;
+        invalidate();
+    }
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
-Def* Analysis::rewrite_deps(Def* mut) {
-    auto _ = enter(mut);
-
-    for (auto d : mut->deps())
-        rewrite(d);
-
+Def* Analysis::rewrite_mut(Def* mut) {
+    if (lookup(mut)) return mut; // already scheduled this round
+    map(mut, mut);
+    // In a sparse round only tainted muts are drained; all others just map to themselves.
+    if (full_round_ || mut->is_dirty()) worklist_.emplace_back(mut);
     return mut;
 }
 
-Def* Analysis::rewrite_mut(Def* mut) {
-    map(mut, mut);
+void Analysis::drain() {
+    while (!worklist_.empty()) {
+        auto mut = worklist_.front();
+        worklist_.pop_front();
+        mut->dirty(false); // this is the (re)visit the dirty bit asked for
+        ++num_drained_;
 
-    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
-        for (auto v : var->tprojs()) {
-            map(v, v);
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                // var was mapped to sth else beforehand so we need another fixed-point round
-                invalidate();
-                i->second = v;
-            }
-        }
-
-    return rewrite_deps(mut);
+        auto _ = enter(mut);
+        DLOG("enter: {}", mut);
+        for (auto d : mut->deps())
+            rewrite(d);
+    }
 }
 
 /*
@@ -73,11 +126,12 @@ Def* Analysis::rewrite_mut(Def* mut) {
  */
 
 void RWPhase::start() {
-    int i = 0;
-    for (bool todo = true; todo;) {
-        VLOG("iteration: {}", i++);
-        todo = false;
-        todo |= analyze();
+    auto max_iters = driver().flags().max_fp_iters;
+    bool todo      = true;
+    for (uint32_t i = 0; todo; ++i) {
+        if (i >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        VLOG("iteration: {}", i);
+        todo = analyze();
     }
 
     for (const auto& [flags, e] : old_world().annexes())
@@ -87,6 +141,13 @@ void RWPhase::start() {
 
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
+
+    // Nothing consumes cross-phase dirt yet, so clear the bits while the old defs are still alive and
+    // drop the records: carrying Def*s past this Phase's own run would dangle after later world swaps.
+    // (Once a consumer exists, translate via lookup() into the new world *and* hand the records over
+    // to an owner that provably outlives all subsequent swaps.)
+    for (auto old_mut : std::exchange(dirty_, {}))
+        old_mut->dirty(false);
 
     swap(old_world(), new_world());
 }
@@ -109,63 +170,6 @@ void RWPhase::rewrite_external(Def* old_mut) {
 }
 
 /*
- * ReplMan
- */
-
-void ReplMan::apply(Repls&& repls) {
-    for (auto&& repl : repls)
-        if (auto&& man = repl->isa<ReplMan>())
-            apply(std::move(man->repls_));
-        else
-            add(std::move(repl));
-}
-
-void ReplMan::apply(const App* app) {
-    auto repls = Repls();
-    for (auto arg : app->args())
-        if (auto stage = Stage::create(driver().stages(), arg))
-            repls.emplace_back(std::unique_ptr<Repl>(static_cast<Repl*>(stage.release())));
-
-    apply(std::move(repls));
-}
-
-/*
- * ReplManPhase
- */
-
-void ReplManPhase::apply(const App* app) {
-    man_       = std::make_unique<ReplMan>(old_world(), annex());
-    auto repls = Repls();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            repls.emplace_back(std::unique_ptr<Repl>(static_cast<Repl*>(stage.release())));
-    man_->apply(std::move(repls));
-}
-
-void ReplManPhase::apply(Stage& stage) {
-    auto& rmp = static_cast<ReplManPhase&>(stage);
-    swap(man_, rmp.man_);
-}
-
-void ReplManPhase::start() {
-    old_world().verify().ILOG("🔥 run");
-    for (auto&& repl : man().repls())
-        ILOG(" 🔹 `{}`", repl->name());
-    old_world().debug_dump();
-    RWPhase::start();
-}
-
-const Def* ReplManPhase::rewrite(const Def* def) {
-    for (bool todo = true; todo;) {
-        todo = false;
-        for (auto&& repl : man().repls())
-            if (auto subst = repl->replace(def)) todo = true, def = subst;
-    }
-
-    return Rewriter::rewrite(def);
-}
-
-/*
  * PhaseMan
  */
 
@@ -180,19 +184,13 @@ void PhaseMan::apply(const App* app) {
 
     auto phases = Phases();
     for (auto arg : args->projs())
-        if (auto stage = create(driver().stages(), arg)) {
-            // clang-format off
-            if (auto pm = stage->isa<PassManPhase>(); pm && pm->  man().empty()) continue;
-            if (auto rp = stage->isa<ReplMan     >(); rp && rp->repls().empty()) continue;
-            // clang-format on
-            phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(stage.release())));
-        }
+        if (auto phase = create(driver().phases(), arg)) phases.emplace_back(std::move(phase));
 
     apply(Lit::as<bool>(fp), std::move(phases));
 }
 
-void PhaseMan::apply(Stage& stage) {
-    auto& man = static_cast<PhaseMan&>(stage);
+void PhaseMan::apply(Phase& phase) {
+    auto& man = static_cast<PhaseMan&>(phase);
     Phases new_phases;
     for (auto& old_phase : man.phases())
         new_phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release())));
@@ -200,60 +198,48 @@ void PhaseMan::apply(Stage& stage) {
 }
 
 void PhaseMan::start() {
-    int iter = 0;
-    for (bool todo = true; todo; ++iter) {
-        todo = false;
+    auto max_iters = driver().flags().max_fp_iters;
+    auto n         = phases().size();
+    // A phase's run is a deterministic function of the World's content.
+    // So a phase only needs to run (again) if the World (may have) changed since its last quiet run.
+    auto stale = absl::FixedArray<bool>(n, true);
+    auto ran   = absl::FixedArray<bool>(n, false);
 
+    auto any_stale = [&stale]() { return std::ranges::any_of(stale, [](bool b) { return b; }); };
+
+    for (uint32_t iter = 0; any_stale(); ++iter) {
+        if (iter >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
         if (fixed_point()) VLOG("🔄 fixed-point iteration: {}", iter);
 
-        for (auto& phase : phases()) {
+        bool todo = false;
+        for (size_t i = 0; i != n; ++i) {
+            auto& phase = phases()[i];
+            if (!stale[i]) {
+                VLOG("skipping `{}`: World unchanged since its last quiet run", phase->name());
+                profile_count("phases.skipped");
+                continue;
+            }
+
+            if (ran[i]) { // re-runs need a fresh instance
+                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(phase->recreate().release()));
+                swap(new_phase, phase);
+            }
+
             phase->run();
-            todo |= phase->todo();
-        }
+            ran[i]   = true;
+            stale[i] = false;
 
-        todo &= fixed_point();
-
-        if (todo) {
-            for (auto& old_phase : phases()) {
-                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release()));
-                swap(new_phase, old_phase);
+            if (phase->todo()) {
+                todo = true;
+                // The World changed: everyone - including this phase itself - gets another look.
+                std::ranges::fill(stale, true);
             }
         }
 
+        todo &= fixed_point();
         invalidate(todo);
+        if (!fixed_point()) break;
     }
-}
-
-/*
- * PassManPhase
- */
-
-std::string PassManPhase::build_name(const std::string& base, PassMan& pm) const {
-    std::string join;
-    for (const auto& pass : pm.passes()) {
-        if (!join.empty()) join += ",";
-        join += pass->name();
-    }
-    return base + "(" + join + ")";
-}
-
-void PassManPhase::apply(const App* app) {
-    man_        = std::make_unique<PassMan>(world(), annex());
-    auto passes = Passes();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            passes.emplace_back(std::unique_ptr<Pass>(static_cast<Pass*>(stage.release())));
-
-    man_->apply(std::move(passes));
-
-    name_ = build_name(base_name_, *man_);
-}
-
-void PassManPhase::apply(Stage& stage) {
-    auto& pmp = static_cast<PassManPhase&>(stage);
-    swap(man_, pmp.man_);
-
-    name_ = build_name(base_name_, *man_);
 }
 
 } // namespace mim

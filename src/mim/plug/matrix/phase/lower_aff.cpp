@@ -7,7 +7,7 @@
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/buffer/buffer.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/matrix/matrix.h"
 #include "mim/plug/mem/mem.h"
 
@@ -36,7 +36,7 @@ std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const
 }
 
 /// Pointwise scaffold shared by `pad`/`concat`: a `[mem, ins] → [mem, Buf]` fun (spliced via
-/// `%direct.cps2ds`) that allocates the output buffer, loops over `s_out` carrying `{mem, buf}`, and writes
+/// `%cps.cps2ds`) that allocates the output buffer, loops over `s_out` carrying `{mem, buf}`, and writes
 /// `compute`'s element at the (identity) output coordinates.
 /// `compute(iters, ins, mem)` receives the raw i64 loop counters, the fun's inputs var, and the current
 /// mem; it returns `(mem', element)`.
@@ -51,7 +51,7 @@ const Def* build_pointwise(World& w,
                            Compute&& compute) {
     auto mem_ty         = w.call<mem::M>(0);
     auto fun            = w.mut_fun(w.sigma({mem_ty, op_ins->type()}), result_ty)->set(name);
-    auto call           = w.app(direct::op_cps2ds_dep(fun), w.tuple({op_mem, op_ins}));
+    auto call           = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_ins}));
     auto [fun_mem, ins] = fun->var(0_n)->projs<2>();
     auto cont           = fun->var(1);
 
@@ -155,9 +155,9 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
 
     auto mem_ty = w.call<mem::M>(0);
 
-    // `[mem, is] → [mem, Buf]`, spliced via %direct.cps2ds and applied to the op's (mem, is).
+    // `[mem, is] → [mem, Buf]`, spliced via %cps.cps2ds and applied to the op's (mem, is).
     auto fun                   = w.mut_fun(w.sigma({mem_ty, op_is->type()}), result_ty)->set("mapRedAff");
-    auto call                  = w.app(direct::op_cps2ds_dep(fun), w.tuple({op_mem, op_is}));
+    auto call                  = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_is}));
     auto [fun_mem, new_inputs] = fun->var(0_n)->projs<2>();
     auto cont                  = fun->var(1);
 
@@ -246,7 +246,7 @@ const Def* LowerAff::lower_broadcast(const App* app) {
 
     auto mem_ty            = w.call<mem::M>(0);
     auto fun               = w.mut_fun(w.sigma({mem_ty, input->type()}), result_ty)->set("broadcast");
-    auto call              = w.app(direct::op_cps2ds_dep(fun), w.tuple({op_mem, input}));
+    auto call              = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, input}));
     auto [fun_mem, in_buf] = fun->var(0_n)->projs<2>();
     auto cont              = fun->var(1);
 

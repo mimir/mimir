@@ -9,6 +9,7 @@
 plugin tuple;
 plugin refly;
 plugin vec;
+plugin cps;
 plugin affine;
 plugin buffer;
 plugin matrix;

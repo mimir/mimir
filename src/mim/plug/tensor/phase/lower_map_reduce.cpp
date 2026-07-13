@@ -7,8 +7,8 @@
 
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
 #include "mim/plug/mem/mem.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -160,7 +160,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     }
 
     // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
-    // mem). The emitted `%affine.map` is lowered to %core arithmetic by the subsequent %affine.lower_index_phase. We
+    // mem). The emitted `%affine.map` is lowered to %core arithmetic by the subsequent %affine.lower_index. We
     // invent a fresh `⊥ : %mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
     auto mem0       = w.app(w.annex<mem::M>(), w.lit_nat(0));
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
@@ -173,7 +173,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
 
     try {
         auto fun    = w.mut_fun(inputs->type(), type)->set("mapRed");
-        auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+        auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         auto call   = w.app(ds_fun, inputs)->set("call");
 
         auto new_inputs = fun->var(0)->set("is");
@@ -254,10 +254,8 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
                                            std::function<const Def*(const DefVec&, const Def*)> compute) {
     auto& w = new_world();
 
-    // CPS scaffold (mirrors `lower_map_reduce`): a `mut_fun` turned direct-style so the result is an ordinary
-    // value.
     auto fun    = w.mut_fun(inputs->type(), type)->set("pointwise");
-    auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+    auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
     auto call   = w.app(ds_fun, inputs)->set("call");
 
     auto new_inputs = fun->var(0)->set("is");

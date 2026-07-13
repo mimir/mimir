@@ -1,0 +1,31 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+plugin core;
+
+fun extern test1(mem: %mem.M 0): [%mem.M 0, Nat] =
+    let (mem, ptr) = %mem.slot (Nat, 0) (mem, 0);
+    let mem        = %mem.store (mem, ptr, 1);
+    let (mem, a)   = %mem.load (mem, ptr);
+    let mem        = %mem.store (mem, ptr, 2);
+    let (mem, b)   = %mem.load (mem, ptr);
+    let (mem, c)   = %mem.load (mem, ptr);
+    return (mem, %core.nat.add (a, c));
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases tt (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %mem.remem_repl,
+        %mem.alloc2malloc_repl,
+        %compile.named "%ll.emit",
+    );
+
+// CHECK: define i64 @test1()
+// CHECK-NOT: alloca
+// CHECK: ret i64 3

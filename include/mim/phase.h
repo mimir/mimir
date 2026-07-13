@@ -7,32 +7,84 @@
 
 #include "mim/def.h"
 #include "mim/nest.h"
-#include "mim/pass.h"
 #include "mim/rewrite.h"
+#include "mim/world.h"
 
 namespace mim {
 
 class Nest;
 class Phase;
 class PhaseMan;
-class Repl;
 class World;
 
-using Repls  = std::deque<std::unique_ptr<Repl>>;
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
-/// Unlike a Pass, a Phase performs one self-contained task and does not
-/// interleave with other phases. Phases are intended to run in a classical sequence, one after another.
+/// A Phase performs one self-contained task over the whole World.
+/// Phases are intended to run in a classical sequence, one after another.
 /// @see @ref phases_phase
-class Phase : public Stage {
+class Phase : public fe::RuntimeCast<Phase> {
 public:
     /// @name Construction & Destruction
     ///@{
     Phase(World& world, std::string name)
-        : Stage(world, name) {}
-    Phase(World& world, flags_t annex)
-        : Stage(world, annex) {}
+        : world_(world)
+        , name_(std::move(name)) {}
+    Phase(World& world, flags_t annex);
 
+    /// Clears the dirty bits of all muts still recorded in dirty(): otherwise a discarded Phase
+    /// (e.g. one recreated by a fixed-point PhaseMan) would strand set bits without a list entry,
+    /// causing later taint() calls to silently skip recording those muts.
+    virtual ~Phase() {
+        for (auto mut : dirty_)
+            mut->dirty(false);
+    }
+
+    virtual std::unique_ptr<Phase> recreate(); ///< Creates a new instance; needed by a fixed-point PhaseMan.
+    virtual void apply(const App*) {}          ///< Invoked if your Phase has additional args.
+    virtual void apply(Phase&) {}              ///< Dito, but invoked by Phase::recreate.
+
+    /// @name Redirection
+    /// A Phase may resolve to a *different* Phase (or to nothing) after Phase::apply.
+    /// This is used by the `%%compile.named` stage that resolves a string to another plugin's annex.
+    ///@{
+    virtual bool redirects() const { return false; } ///< If `true`, Phase::create uses take_resolved().
+    virtual std::unique_ptr<Phase> take_resolved() {
+        return {};
+    } ///< The Phase to use instead; `nullptr` means *elide*.
+    ///@}
+
+    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def) {
+        auto& world = def->world();
+        auto p_def  = App::uncurry_callee(def);
+        world.DLOG("apply phase: `{}`", p_def);
+
+        if (auto axm = p_def->isa<Axm>())
+            if (auto i = phases.find(axm->flags()); i != phases.end()) {
+                auto phase = i->second(world);
+                if (phase) {
+                    phase->apply(def->isa<App>());
+                    if (phase->redirects()) return phase->take_resolved();
+                }
+                return phase;
+            } else
+                error("phase `{}` not found", axm->sym());
+        else
+            error("unsupported callee for a phase: `{}`", p_def);
+    }
+
+    template<class A, class P>
+    static void hook(Flags2Phases& phases) {
+        assert_emplace(phases, Annex::base<A>(), [](World& w) { return std::make_unique<P>(w, Annex::base<A>()); });
+    }
+    ///@}
+
+    /// @name Getters
+    ///@{
+    World& world() { return world_; }
+    Driver& driver() { return world().driver(); }
+    Log& log() const { return world_.log(); }
+    std::string_view name() const { return name_; }
+    flags_t annex() const { return annex_; }
     ///@}
 
     /// @name Fixed-Point Handling
@@ -46,6 +98,22 @@ public:
     ///
     /// Calling `invalidate(todo)` bitwise-ORs @p todo into the internal `todo_` flag.
     void invalidate(bool todo = true) { todo_ |= todo; }
+
+    /// The muts this Phase changed or wants re-examined - the unified "dirt" currency:
+    /// a sparse Analysis seeds its next round from it, an RWPhase records its rewrite sites in it
+    /// (and clears it again before its world swap - recorded Def%s must never outlive their World).
+    /// Insertion-ordered and deduplicated via Def%'s *dirty bit*.
+    const auto& dirty() const { return dirty_; }
+
+    /// Marks @p mut as *needs a (re)visit*: sets Def::is_dirty() and records @p mut in dirty().
+    /// Whoever visits @p mut clears the bit again; a recorded mut whose bit is already clear is stale
+    /// (it got its visit in the meantime) and is simply skipped by consumers.
+    void taint(Def* mut) {
+        if (mut && !mut->is_dirty()) {
+            mut->dirty();
+            dirty_.emplace_back(mut);
+        }
+    }
     ///@}
 
     /// @name run
@@ -59,11 +127,21 @@ public:
         P p(std::forward<Args>(args)...);
         p.run();
     }
+
+    /// Adds @p n to the custom Profiler counter @p key of the current run; no-op unless profiling is enabled.
+    void profile_count(std::string_view key, uint64_t n = 1);
     ///@}
 
 private:
-    bool todo_ = false;
+    World& world_;
+    flags_t annex_ = 0;
+    bool todo_     = false;
 
+protected:
+    std::string name_;
+    Vector<Def*> dirty_;
+
+private:
     friend class Analysis;
 };
 
@@ -79,6 +157,7 @@ private:
 /// - Rewriter::rewrite_imm(),
 /// - Rewriter::rewrite_mut(), etc.
 /// @see @ref phases_analysis
+/// @see @ref ssa-without-dominance for how an Analysis substitutes Def::nests for the classical SSA dominance check.
 class Analysis : public Phase, public Rewriter {
 public:
     /// @name Construction & Destruction
@@ -100,75 +179,155 @@ public:
     /// @name Getters
     ///@{
     World& world() { return Phase::world(); }
-    Def* curr_mut() const { return curr_mut_; }
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
-    /// @name lattice
+    /// @name Sparse Fixed-Point Iteration
+    /// By default (*sparse*), a fixed-point round re-drains only the mutables *tainted* by lattice changes:
+    /// whenever update()/set() changes an entry, the muts that read that entry (tracked automatically
+    /// during draining) plus the entry's owner() are scheduled for the next round.
+    /// Once sparse rounds quiesce, one **full** round certifies the fixed point
+    /// (and is the only kind of round that runs finalize()) - so untracked flows through
+    /// side tables or post-passes cannot be missed.
+    /// An Analysis that never taint()s falls back to full rounds automatically (empty dirt ⟹ full round),
+    /// so the sparse default is safe even for analyses that only ever invalidate().
+    /// Call make_dense() to force whole-World rounds unconditionally.
     ///@{
-    auto& lattice() { return lattice_; }
+    bool sparse() const { return sparse_; }
+    void make_dense() { sparse_ = false; }
+
+    /// Number of lattice changes that happened during *certification* rounds.
+    /// Every such change is a flow the sparse taint-tracking missed: results stay correct
+    /// (certification exists precisely to catch this), but each hole costs extra rounds.
+    uint32_t coverage_holes() const { return coverage_holes_; }
+    ///@}
+
+    /// @name lattice
+    /// Conventions: *absent* = ⊥ (nothing known); `def ↦ def` = ⊤ (keep as is).
+    /// Subclasses may store their own sentinels in between as ordinary Def%s (e.g. SEO's GVN-bundle Proxy%s).
+    ///@{
     const auto& lattice() const { return lattice_; }
 
-    /// Records the abstract value @p abstr for @p concr in both lattice() (the analysis result)
-    /// and map() (so the rewriter short-circuits future rewrites of @p concr to @p abstr).
-    void set(const Def* concr, const Def* abstr) {
-        lattice_[concr] = abstr;
-        map(concr, abstr);
+    /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
+    /// While draining a sparse() Analysis, the lookup registers curr_mut() as a *reader* of @p def,
+    /// so a later change to this entry taint()s the mut for re-visiting.
+    const Def* lattice(const Def* def) const {
+        if (tracking_)
+            if (auto mut = curr_mut()) readers_[def].emplace(mut);
+        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
+        return nullptr;
     }
+
+    bool is_top(const Def* def) const { return lattice(def) == def; }
+
+    /// Monotonically forces @p def to ⊤ (keep as is).
+    const Def* pin_top(const Def* def) { return update(def, def), def; }
     ///@}
 
 protected:
-    /// Helps to keep track of curr_mut().
-    /// @see enter()
-    class Enter {
-    public:
-        Enter(Analysis* analysis, Def* new_mut)
-            : analysis_(analysis)
-            , prev_mut_(analysis->curr_mut()) {
-            analysis->curr_mut_ = new_mut;
-        }
-        ~Enter() { analysis_->curr_mut_ = prev_mut_; }
+    /// @name lattice
+    ///@{
 
-    private:
-        Analysis* analysis_;
-        Def* prev_mut_;
-    };
+    /// Writes `concr ↦ abstr` into lattice() and map().
+    /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
+    /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
+    /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
+    /// @returns the former abstract value:
+    /// - `nullptr`: fresh insert,
+    /// - `== abstr`: unchanged,
+    /// - anything else: overwritten.
+    const Def* update(const Def* concr, const Def* abstr) {
+        map(concr, abstr);
+        // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
+        // its (possibly non-dirty) producers would have re-installed in a full round.
+        if (sparse_) set_map_[concr] = abstr;
+
+        auto [i, ins] = lattice_.emplace(concr, abstr);
+        if (ins) {
+            if (concr != abstr) changed(concr);
+            return nullptr;
+        }
+
+        auto old = i->second;
+        assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
+        if (old != abstr) {
+            i->second = abstr;
+            changed(concr);
+        }
+        return old;
+    }
+
+    /// Bookkeeping for an observable lattice change to @p concr: another round + taint.
+    /// A change during a *certification* round means the sparse taint-tracking missed a flow - worth investigating,
+    /// as it costs extra rounds (the result stays correct: certification exists precisely to catch this).
+    void changed(const Def* concr) {
+        invalidate();
+        taint(concr);
+        if (certifying_) {
+            ++coverage_holes_;
+            profile_count("coverage.holes");
+            DLOG("sparse coverage hole: `{}` changed during certification (in `{}`)", concr, curr_mut());
+        }
+    }
+
+    using Phase::taint;
+
+    /// Schedules all muts affected by a change to @p key for the next sparse round:
+    /// its recorded readers plus its owner(). No-op for a dense Analysis.
+    void taint(const Def* key) {
+        if (!sparse_) return;
+        taint(owner(key));
+        if (auto i = readers_.find(key); i != readers_.end())
+            for (auto mut : i->second)
+                taint(mut);
+    }
+
+    /// The mut whose body consumes the abstract value of @p key - dirtied alongside the readers.
+    /// Default handles (projections of) a Var; override for subclass-specific keys (e.g. SEO's phi proxies).
+    virtual Def* owner(const Def* key) {
+        if (auto var = key->isa<Var>()) return var->mut();
+        if (auto ex = key->isa<Extract>())
+            if (auto var = ex->tuple()->isa<Var>()) return var->mut();
+        return nullptr;
+    }
+    ///@}
 
     /// @name Rewrite
     ///@{
+    virtual void prepare() {}  ///< Run **before** the main analysis.
+    virtual void finalize() {} ///< Run **after** the main analysis.
     void start() override;
-    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
-    /// Walks @p mut's dependencies under its curr_mut() scope.
-    /// Unlike rewrite_mut(), does **not** record `mut -> mut` and does **not** seed
-    /// any binder-related lattice state.
-    ///
-    /// Use this when you have already populated custom lattice entries for @p mut's
-    /// binder (typically inside a `rewrite_imm_App` override that propagates abstract
-    /// values from call arguments into the callee's tvars) and need to traverse the
-    /// body without rewrite_mut() clobbering that state.
-    virtual Def* rewrite_deps(Def*);
-
-    /// Default "visit a mutable" entry point: maps `mut -> mut`, seeds Lam binder
-    /// vars to **top** (`v -> v`) in the lattice, and delegates to rewrite_deps()
-    /// for the recursive traversal.
-    ///
-    /// If a binder var already carried a non-top lattice value, it is reset to top
-    /// and invalidate() is called: reaching a Lam through this default path means
-    /// it has been used as a value (not as an `App` callee) and has therefore
-    /// escaped, so any prior propagation for it is unsound and must be retracted.
+    /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
+    /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
+    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
+    /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
     Def* rewrite_mut(Def*) override;
     ///@}
 
-    Def2Def lattice_;
-
 private:
-    Def* curr_mut_      = nullptr;
+    /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
+    void drain();
+
+    Def2Def lattice_;
+    std::deque<Def*> worklist_;
     bool bootstrapping_ = true;
 
-    friend class Enter;
+    // sparse fixed-point iteration; Phase::dirty_ holds the muts to re-drain next round (filled by taint())
+    /// lattice key -> muts whose visit read it
+    mutable absl::node_hash_map<const Def*, MutSet, GIDHash<const Def*>> readers_;
+    Def2Def set_map_;         ///< all set() pairs; replayed into map() at sparse-round start
+    Vector<Def*> dirty_prev_; ///< the muts being re-drained this round
+    bool sparse_             = true;
+    bool tracking_           = false; ///< record readers_ only while draining
+    bool full_round_         = true;  ///< current round traverses the whole World
+    bool need_full_          = false; ///< sparse rounds quiesced; certify with a full round
+    bool certifying_         = false; ///< current round is the certifying full round
+    uint32_t coverage_holes_ = 0;
+    size_t num_drained_      = 0; ///< muts drained this round; flushed into the Profiler
+    uint32_t round_          = 0;
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
@@ -208,9 +367,12 @@ public:
 
     /// Returns the abstract value computed by the associated Analysis for the given old-world Def, or `nullptr` if no
     /// value is available.
-    const Def* lattice(const Def* old_def) {
-        if (auto i = analysis_->lattice().find(old_def); i != analysis_->lattice().end()) return i->second;
-        return nullptr;
+    const Def* lattice(const Def* old_def) { return analysis_ ? analysis_->lattice(old_def) : nullptr; }
+
+    /// Returns lattice(@p old_def) if it differs from @p old_def (i.e. we learned something), otherwise `nullptr`.
+    const Def* abstracted(const Def* old_def) {
+        auto l = lattice(old_def);
+        return l && l != old_def ? l : nullptr;
     }
 
     /// Runs the optional pre-analysis on RWPhase::old_world(), typically to a fixed point,
@@ -229,6 +391,20 @@ public:
     /// Returns whether we are currently bootstrapping (rewriting annexes).
     /// While bootstrapping, you have to skip rewrites that refer to other annexes, as they might not yet be available.
     bool is_bootstrapping() const { return bootstrapping_; }
+    ///@}
+
+    /// @name Fixed-Point Handling
+    ///@{
+
+    /// Like Phase::invalidate but additionally taint()s curr_mut(), recording *where* the change happened.
+    /// RWPhase::start translates the collected dirt into the new world upon swap.
+    /// @note This deliberately **hides** the non-virtual Phase::invalidate: rewrite hooks call it from RWPhase
+    /// context, so dispatch is static and inlinable - no virtual call in the hot rewrite path.
+    /// A call through a `Phase*` skips the tainting, which is harmless: dirt is best-effort metadata.
+    void invalidate(bool todo = true) {
+        if (todo) taint(curr_mut());
+        Phase::invalidate(todo);
+    }
     ///@}
 
     /// @name World
@@ -251,72 +427,45 @@ private:
     bool bootstrapping_ = true;
 };
 
-/// Simple Stage that searches for a pattern and replaces it.
-/// Combine them in a ReplPhase.
-class Repl : public Stage {
+/// An RWPhase that searches for a pattern and replaces it.
+/// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
+class Repl : public RWPhase {
 public:
     Repl(World& world, flags_t annex)
-        : Stage(world, annex) {}
+        : RWPhase(world, annex) {}
 
+    /// replace() inspects and builds Def%s of the **old** world; the RWPhase machinery carries the result over.
+    World& world() { return old_world(); }
+
+    /// @returns the replacement or `nullptr` if the pattern does not match.
     virtual const Def* replace(const Def* def) = 0;
-};
-
-class ReplMan : public Repl {
-public:
-    ReplMan(World& world, flags_t annex)
-        : Repl(world, annex) {}
-
-    void apply(Repls&&);
-    void apply(const App*) final;
-    void apply(Stage& stage) final { apply(std::move(static_cast<ReplMan&>(stage).repls_)); }
-
-    void add(std::unique_ptr<Repl>&& repl) { repls_.emplace_back(std::move(repl)); }
-    const auto& repls() const { return repls_; }
 
 private:
-    const Def* replace(const Def*) final { fe::unreachable(); }
+    const Def* rewrite(const Def* def) final {
+        for (bool todo = true; todo;) {
+            todo = false;
+            if (auto subst = replace(def)) todo = true, def = subst;
+        }
 
-    Repls repls_;
+        return Rewriter::rewrite(def);
+    }
 };
 
 #define MIM_CONCAT_INNER(a, b) a##b
 #define MIM_CONCAT(a, b)       MIM_CONCAT_INNER(a, b)
 
-#define MIM_REPL(__stages, __annex, ...) MIM_REPL_IMPL(__stages, __annex, __LINE__, __VA_ARGS__)
+#define MIM_REPL(__phases, __annex, ...) MIM_REPL_IMPL(__phases, __annex, __LINE__, __VA_ARGS__)
 
 // clang-format off
-#define MIM_REPL_IMPL(__stages, __annex, __id, ...)                         \
+#define MIM_REPL_IMPL(__phases, __annex, __id, ...)                         \
     struct MIM_CONCAT(Repl_, __id) : ::mim::Repl {                          \
         MIM_CONCAT(Repl_, __id)(::mim::World & world, ::mim::flags_t annex) \
             : Repl(world, annex) {}                                         \
                                                                             \
         const ::mim::Def* replace(const ::mim::Def* def) final __VA_ARGS__  \
     };                                                                      \
-    ::mim::Stage::hook<__annex, MIM_CONCAT(Repl_, __id)>(__stages)
+    ::mim::Phase::hook<__annex, MIM_CONCAT(Repl_, __id)>(__phases)
 // clang-format on
-
-class ReplManPhase : public RWPhase {
-public:
-    /// @name Construction
-    ///@{
-    ReplManPhase(World& world, std::unique_ptr<ReplMan>&& man)
-        : RWPhase(world, "pass_man_phase")
-        , man_(std::move(man)) {}
-    ReplManPhase(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
-
-    void apply(const App*) final;
-    void apply(Stage&) final;
-    ///@}
-
-    const ReplMan& man() const { return *man_; }
-
-private:
-    void start() final;
-    const Def* rewrite(const Def*) final;
-
-    std::unique_ptr<ReplMan> man_;
-};
 
 /// Removes unreachable and dead code by rebuilding the whole World into a new one and `swap`ping them afterwards.
 /// @see @ref phases_rwphase
@@ -326,34 +475,6 @@ public:
         : RWPhase(world, "cleanup") {}
     Cleanup(World& world, flags_t annex)
         : RWPhase(world, annex) {}
-};
-
-/// Wraps a PassMan pipeline as a Phase.
-class PassManPhase : public Phase {
-public:
-    /// @name Construction
-    ///@{
-    PassManPhase(World& world, std::unique_ptr<PassMan>&& man)
-        : Phase(world, build_name("pass_man_phase", *man))
-        , base_name_("pass_man_phase")
-        , man_(std::move(man)) {}
-    PassManPhase(World& world, flags_t annex)
-        : Phase(world, annex)
-        , base_name_(world.annex(annex)->sym()) {}
-
-    void apply(const App*) final;
-    void apply(Stage&) final;
-    ///@}
-
-    const PassMan& man() const { return *man_; }
-
-private:
-    void start() final { man_->run(); }
-
-    std::string build_name(const std::string& base, PassMan& pm) const;
-    std::string base_name_;
-    
-    std::unique_ptr<PassMan> man_;
 };
 
 /// Organizes several Phase%s into a pipeline.
@@ -368,7 +489,7 @@ public:
 
     void apply(bool, Phases&&);
     void apply(const App*) final;
-    void apply(Stage&) final;
+    void apply(Phase&) final;
     ///@}
 
     /// @name Getters

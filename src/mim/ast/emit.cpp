@@ -524,7 +524,16 @@ void LamDecl::emit_body(Emitter& e) const {
         }
     }
 
-    if (is_external()) doms().front()->lam_->externalize();
+    if (is_external()) {
+        auto lam = doms().front()->lam_;
+        if (!lam->is_closed())
+            error(loc(),
+                  "external function '{}' is not closed: its inferred type escapes into the scope of '{}'. This "
+                  "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
+                  "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
+                  dbg().sym(), (*lam->free_vars().begin())->mut()->sym());
+        lam->externalize();
+    }
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 

@@ -162,7 +162,7 @@ const Def* Rewriter::rewrite_imm_Pi(const Pi* d) {
 const Def* Rewriter::rewrite_imm_Proxy(const Proxy* d) {
     auto new_type = rewrite(d->type());
     auto new_ops  = rewrite(d->ops());
-    return world().proxy(new_type, new_ops, d->pass(), d->tag());
+    return world().proxy(new_type, new_ops, d->tag());
 }
 
 const Def* Rewriter::rewrite_imm_Rule(const Rule* d) {
@@ -267,9 +267,11 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
 const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     map(old_mut, new_mut);
 
-    if (old_mut->is_set())
+    if (old_mut->is_set()) {
+        auto _ = enter(old_mut);
         for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
             new_mut->set(i, rewrite(old_mut->op(i)));
+    }
 
     return new_mut;
 }

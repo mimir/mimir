@@ -12,7 +12,7 @@ plugin core;
 plugin tensor;
 plugin affine;
 plugin mem;
-plugin direct;
+plugin cps;
 
 fun extern pad_row (input: «3; I32»): «6; I32» =
     return (%tensor.pad 3 (0, 1, 2) (input, 5I32));

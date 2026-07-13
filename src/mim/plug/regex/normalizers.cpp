@@ -116,7 +116,6 @@ void merge_ranges(DefVec& args) {
         ranges_begin++;
     if (ranges_begin == args.end()) return;
 
-    std::set<const Def*> to_remove;
     Ranges old_ranges;
     auto& world = (*ranges_begin)->world();
 

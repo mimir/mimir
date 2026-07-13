@@ -2,7 +2,8 @@
 
 namespace mim::plug::clos {
 
-template<attr o> const Def* normalize_clos(const Def*, const Def*, const Def* arg) {
+template<attr o>
+const Def* normalize_clos(const Def*, const Def*, const Def* arg) {
     return o == attr::bottom ? arg : nullptr;
 }
 

@@ -17,17 +17,18 @@
 ## High-level architecture
 
 - `libmim` in `src/mim/` is the core library.
-  It contains the IR (`Def` and friends), `World`, the AST frontend (`ast/*`), rewriting, checks, passes, phases, dumping, and utility code.
+  It contains the IR (`Def` and friends), `World`, the AST frontend (`ast/*`), rewriting, checks, phases, dumping, and utility code.
 - `Driver` is the central runtime object.
   It owns `Flags`, `Log`, the current `World`, plugin search paths, loaded plugin handles, and the registries for normalizers, stages, and backends.
 - The `mim` CLI in `src/mim/cli/main.cpp` is thin glue around `Driver`.
-  It parses Mim source into an AST, compiles it into the `World`, loads `compile` and optionally `opt` by default, then runs cleanup or the optimization pipeline before emitting Mim, DOT, LLVM IR, or S-expressions.
+  It parses Mim source into an AST, compiles it into the `World`, runs `optimize(World&)`, and then emits whatever the `--output-*` flags request: AST, DOT, Markdown, Mim, the nesting tree, S-expressions, or profiling data.
+  Plugins are loaded via `plugin` directives in the source or explicit `-p`/`--plugin` flags rather than being preloaded, and `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation.
 - Plugins are split across two artifacts with the same name: a `<plugin>.mim` file and a `libmim_<plugin>` module.
   The `.mim` file declares annexes/axioms and is also used to autogenerate plugin headers and docs, while the shared module exports `mim_get_plugin` to register normalizers, stages, and backends.
 - In-tree plugins live under `src/mim/plug/*`.
   Third-party plugins dropped into `extra/*/CMakeLists.txt` are auto-discovered at configure time, and any `extra/<plugin>/lit/*.mim` tests are automatically staged into the main `lit` target.
-- Optimization is phase-driven rather than a loose pass list.
-  `optimize(World&)` looks for compilation entry points such as `_compile`, resolves the stage from the loaded plugin registry, and runs a `Phase`, `RWPhase`, or `PhaseMan` pipeline over the whole world.
+- Optimization is phase-driven.
+  `optimize(World&)` looks for compilation entry points (`_compile`, `_default_compile`, or any nullary external returning `%compile.Phase`), resolves the stage from the loaded plugin registry, and runs a `Phase`, `RWPhase`, or `PhaseMan` pipeline over the whole world; if no entry point exists, optimization is skipped.
 - `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end.
   `Analysis` and `PhaseMan` supply the fixed-point infrastructure used by optimization pipelines.
 - `src/automaton/` is a separate static library used by the regex subsystem and its tests.
@@ -43,10 +44,10 @@
 - Treat world roots carefully.
   Annexes and external mutables are the roots that analyses and `RWPhase`-based rewrites traverse, and `Cleanup` removes anything not reachable from those roots.
 - Prefer the phase infrastructure over adding new ad hoc whole-program traversals.
-  The current docs explicitly treat `Phase`/`RWPhase` as the active pipeline model and describe the old pass machinery as deprecated.
+  `Phase`/`RWPhase` is the only pipeline model; the old `Pass`/`PassMan` machinery has been removed.
 - Mim source in docs and tests should use the primary UTF-8 surface syntax and parenthesized domain groups, preferring group patterns, for example `lam foo (x: X, a b c: T) (y: Y): Z = ...`.
 - Plugin names are constrained by the runtime encoding and CMake helpers.
   They may use only letters, digits, and underscores, and must be at most 8 characters long.
 - When adding or changing plugins, keep both halves in sync.
   The `.mim` file defines the public annex surface, and the C++ module provides the runtime registrations that make those annexes executable.
-- If plugin loading behavior matters, remember that `Driver` searches explicit `--plugin-path` entries first, then `MIM_PLUGIN_PATH`, then the executable-relative and install-relative `lib/mim` directories.
+- If plugin loading behavior matters, remember that `Driver` searches the current directory first, then explicit `--plugin-path` entries, then `MIM_PLUGIN_PATH`, then the `mim` directory next to `libmim`, and finally the install-relative `<libdir>/mim` directory.
