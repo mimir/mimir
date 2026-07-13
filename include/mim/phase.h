@@ -278,6 +278,7 @@ protected:
     void start() override;
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
+    const Def* rewrite_imm_Proxy(const Proxy* proxy) override { return proxy; } ///< By default: ignore Proxy%s.
 
     /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
