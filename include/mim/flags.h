@@ -18,12 +18,14 @@ struct Flags {
     };
 
     uint64_t scalarize_threshold = 32;
-    bool ascii                   = false;
-    bool dump_recursive          = false;
-    bool bootstrap               = false;
-    bool force_load              = false;
-    Profile profile              = Profile::None; // how to report Phase runtimes
-    bool aggressive_lam_spec     = false;         // HACK makes LamSpec more agressive but potentially non-terminating
+    uint32_t max_fp_iters        = 1024; // max number of fixed-point iterations before a Phase errors out
+
+    bool ascii               = false;
+    bool dump_recursive      = false;
+    bool bootstrap           = false;
+    bool force_load          = false;
+    Profile profile          = Profile::None; // how to report Phase runtimes
+    bool aggressive_lam_spec = false;         // HACK makes LamSpec more agressive but potentially non-terminating
 #ifdef MIM_ENABLE_CHECKS
     bool reeval_breakpoints = false;
     bool trace_gids         = false;

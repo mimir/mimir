@@ -1,10 +1,13 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
+
 #include <limits>
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "mim/util/vector.h"
 
@@ -32,6 +35,7 @@ public:
         Clock::time_point stop;
         size_t depth;  ///< Nesting level; a root Phase has depth 0.
         size_t parent; ///< Index of the enclosing Span in Profiler::spans, or Profiler::No_Parent for a root.
+        Vector<std::pair<std::string, uint64_t>> counters; ///< Custom counters reported by the Phase (insertion order).
 
         Duration elapsed() const { return stop - start; }
     };
@@ -57,6 +61,19 @@ public:
         auto id = stack_.back();
         stack_.pop_back();
         spans_[id].stop = Clock::now();
+    }
+
+    /// Adds @p n to counter @p key of the currently running Span; no-op if no Span is running or @p n is `0`.
+    void count(std::string_view key, uint64_t n = 1) {
+        if (stack_.empty() || n == 0) return;
+        auto& counters = spans_[stack_.back()].counters;
+        for (auto& [k, v] : counters) {
+            if (k == key) {
+                v += n;
+                return;
+            }
+        }
+        counters.emplace_back(std::string(key), n);
     }
     ///@}
 

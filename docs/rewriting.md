@@ -15,8 +15,6 @@ While doing so, it maintains a mapping from old nodes to new nodes.
 This is what makes rewriting graph-aware rather than tree-only:
 if the same old node is referenced multiple times, the rewritten graph will reuse the same rebuilt node instead of duplicating it.
 
-A useful way to think about [`Rewriter`](@ref mim::Rewriter) is:
-
 @note [`Rewriter`](@ref mim::Rewriter) rebuilds a [`Def`](@ref mim::Def) graph into a target [`World`](@ref mim::World) while preserving sharing and handling recursive mutables safely.
 
 The mapping is also the basis for termination on cyclic or recursive structures.
@@ -61,9 +59,7 @@ The same stack discipline is used for binder-sensitive substitutions.
 Temporary mappings introduced while rewriting under a binder should stay local to that binder, typically via [`mim::Rewriter::push`](@ref mim::Rewriter::push) / [`mim::Rewriter::pop`](@ref mim::Rewriter::pop).
 This is the common pattern when rewriting dependent codomains under fresh variables, substituting a variable with a temporary representative, or rebuilding a body under newly introduced binder variables.
 
-So the practical rule of thumb is:
-
-@note map early for recursive mutables, and scope narrowly for binder-local substitutions.
+@note The practical rule of thumb is: map early for recursive mutables, and scope narrowly for binder-local substitutions.
 
 If a rewrite replaces an external mutable with a fresh one, preserve the root explicitly by calling [`mim::Def::transfer_external`](@ref mim::Def::transfer_external) or re-externalizing the replacement node.
 

@@ -161,7 +161,7 @@ cn zero_pb [[A:*, E:*],
 
 .rule (A:*) (n:Nat) (c:(Idx n)) :
     (%autodiff.inner_autodiff A c) ->
-    (c, %direct.cps2ds_dep (...) zero_pb (A, Idx n));
+    (c, %cps.cps2ds_dep (...) zero_pb (A, Idx n));
 
 /// application
 
@@ -216,7 +216,7 @@ cn compose [[A:*, B:*, C:*],
     let (y, g_pb)     = g_diff e_aug;
     (
         y,
-        %direct.cps2ds_dep ... (%direct.cps2ds_dep ... compose ...) (e_pb,g_pb)
+        %cps.cps2ds_dep ... (%cps.cps2ds_dep ... compose ...) (e_pb,g_pb)
     );
 
 /// closed function application
@@ -237,7 +237,7 @@ cn compose [[A:*, B:*, C:*],
     ] = {
         aug_cont (
             y,
-            %direct.cps2ds_dep ... (%direct.cps2ds_dep ... compose ...) (e_pb,g_pb)
+            %cps.cps2ds_dep ... (%cps.cps2ds_dep ... compose ...) (e_pb,g_pb)
         )
     };
     (
@@ -265,7 +265,7 @@ cn compose [[A:*, B:*, C:*],
         ret: Cn (%autodiff.tangent_type A)
     ] = {
         ret (%autodiff.sum (n, %autodiff.tangent_type A) (
-            ‹i:n; %direct.cps2ds_dep ... ((t_diff#i)#(tt)) (s#i) ›
+            ‹i:n; %cps.cps2ds_dep ... ((t_diff#i)#(tt)) (s#i) ›
         ))
     };
     (

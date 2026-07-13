@@ -59,7 +59,7 @@ axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.index, Nat] → %affine.i
 /// Performs multiplication of an affine index with a constant natural number.
 /// The second argument must be a constant natural number (which is a stronger argument than the semiop).
 ///
-lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index = 
+lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index =
     %affine.semiop.mul(d, %refly.check (%core.pe.is_closed(c), c, "The second argument of %affine.op.mul must be a constant."));
 
 ///
@@ -95,14 +95,14 @@ axm %affine.delinearize: {m: Nat} → [lin: %affine.index, s: «m; Nat»] → «
 ///
 /// ## Passes and Phases
 ///
-/// ### %%affine.lower_for_pass
+/// ### %%affine.lower_for
 ///
-/// Loweres the %%%affine.For operation to recursive function calls.
+/// Lowers the %%%affine.For operation to recursive function calls.
 ///
-axm %affine.lower_for_phase: %compile.Phase;
+axm %affine.lower_for: %compile.Phase;
 ///
-/// ### %%affine.lower_index_phase
+/// ### %%affine.lower_index
 ///
 /// Lowers the affine index algebra (%%%affine.index, %%%affine.constant, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
 ///
-axm %affine.lower_index_phase: %compile.Phase;
+axm %affine.lower_index: %compile.Phase;

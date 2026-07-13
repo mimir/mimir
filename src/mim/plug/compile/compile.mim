@@ -5,18 +5,16 @@
 /// [TOC]
 ///
 /// This plugin handles the optimization pipeline of the compilation of MimIR programs.
-/// This plugin's axioms can register mim::Pass%es and mim::Phase%s.
+/// This plugin's axioms can register mim::Phase%s.
 /// Invoke the optimization pipeline by defining a function `_compile: [] → %%compile.Phase`.
 ///
 /// ## Types
 ///
-/// ### %%compile.Pass / %%compile.Phase
+/// ### %%compile.Phase
 ///
-/// Types for compilation passes and phases.
+/// The type of compilation phases.
 ///
 axm %compile.Phase: *;
-axm %compile.Pass:  *;
-axm %compile.Repl:  *;
 ///
 /// ## Utility
 ///
@@ -26,74 +24,42 @@ axm %compile.Repl:  *;
 ///
 axm %compile.is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
-/// ### %%compile.named_phase / %%compile.named_pass / %%compile.named_repl
+/// ### %%compile.named
 ///
-/// Resolve to the `%compile.Phase` / `%compile.Pass` / `%compile.Repl` annex with the given fully-qualified name
-/// (e.g. `"clos.clos_conv_phase"`).
-/// Resolution is deferred until the stage pipeline is built so that the referenced plugin's `.mim` file does not
+/// Resolves to the `%compile.Phase` annex with the given fully-qualified name (e.g. `"clos.clos_conv"`).
+/// Resolution is deferred until the phase pipeline is built so that the referenced plugin's `.mim` file does not
 /// have to be imported by users of this axm.
-/// If the named annex is missing at stage build time (its plugin is not loaded), it is silently elided, i.e. the
-/// enclosing `%compile.phases` / `%compile.passes` / `%compile.repls` simply skips it.
+/// If the named annex is missing at pipeline build time (its plugin is not loaded), it is silently elided, i.e. the
+/// enclosing `%compile.phases` simply skips it.
 ///
-axm %compile.named_phase: {n: Nat} → «n; I8» → %compile.Phase;
-axm %compile.named_pass:  {n: Nat} → «n; I8» → %compile.Pass;
-axm %compile.named_repl:  {n: Nat} → «n; I8» → %compile.Repl;
+axm %compile.named: {n: Nat} → «n; I8» → %compile.Phase;
 ///
-/// ### %%compile.cond_phase
+/// ### %%compile.cond
 ///
-/// Yields `phase` if the named plugin is loaded, otherwise `%compile.null_phase`.
+/// Yields `phase` if the named plugin is loaded, otherwise `%compile.null`.
 /// Used to gate whole sub-pipelines on a plugin without importing it.
 ///
-axm %compile.cond_phase: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond_phase;
+axm %compile.cond: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond;
 ///
 /// ## Constructors
 ///
-/// ### %%compile.phases / %%compile.passes
+/// ### %%compile.phases
 ///
-/// Sets up `n` phases / passes anad bundles them
+/// Sets up `n` phases and bundles them
 ///
 axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Phase;
-axm %compile.passes: {n: Nat} →        «n; %compile.Pass » → %compile.Pass;
-axm %compile.repls:  {n: Nat} →        «n; %compile.Repl » → %compile.Repl;
 ///
 /// ### Phases
 ///
-axm %compile.beta_red_phase:                            %compile.Phase;
-axm %compile.branch_normalize_phase:                    %compile.Phase;
-axm %compile.cleanup_phase:                             %compile.Phase;
-axm %compile.eta_exp_phase:                             %compile.Phase;
-axm %compile.eta_red_phase:                             %compile.Phase;
-axm %compile.null_phase:                                %compile.Phase;
-axm %compile.ret_wrap_phase:                            %compile.Phase;
-axm %compile.sym_expr_opt:                              %compile.Phase;
-axm %compile.pass2phase:                %compile.Pass → %compile.Phase;
-axm %compile.repl2phase:                %compile.Repl → %compile.Phase;
-axm %compile.prefix_cleanup_phase: {n: Nat} → «n; I8» → %compile.Phase;
+axm %compile.beta_red:                            %compile.Phase;
+axm %compile.branch_normalize:                    %compile.Phase;
+axm %compile.cleanup:                             %compile.Phase;
+axm %compile.eta_conv:                            %compile.Phase;
+axm %compile.lam_spec:                            %compile.Phase;
+axm %compile.null:                                %compile.Phase;
+axm %compile.ret_wrap:                            %compile.Phase;
+axm %compile.scalarize:                           %compile.Phase;
+axm %compile.tail_rec_elim:                       %compile.Phase;
+axm %compile.prefix_cleanup: {n: Nat} → «n; I8» → %compile.Phase;
 
-let %compile.internal_cleanup_phase = %compile.prefix_cleanup_phase "internal_";
-///
-/// ### Repls
-///
-axm %compile.null_repl: %compile.Repl;
-///
-/// ### Passes
-///
-axm %compile.beta_red_pass:                             %compile.Pass;
-axm %compile.eta_exp_pass:                              %compile.Pass;
-axm %compile.eta_red_pass:                       Bool → %compile.Pass;
-axm %compile.lam_spec_pass:                             %compile.Pass;
-axm %compile.null_pass:                                 %compile.Pass;
-axm %compile.scalarize_pass:                            %compile.Pass;
-axm %compile.tail_rec_elim_pass:                        %compile.Pass;
-///
-/// ### Pipelines
-///
-let optimization_passes = %compile.passes (
-    %compile.beta_red_pass,
-    %compile.eta_red_pass ff,
-    %compile.eta_exp_pass,
-    %compile.scalarize_pass,
-    %compile.tail_rec_elim_pass,
-);
-
-let optimization_phase = %compile.pass2phase optimization_passes;
+let %compile.internal_cleanup = %compile.prefix_cleanup "internal_";

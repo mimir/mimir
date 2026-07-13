@@ -12,8 +12,8 @@ con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 
 
 lam extern _compile(): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup_phase,
-        %mem.add_mem_phase, /* optimization_phase */
+        %compile.internal_cleanup,
+        %mem.add_mem, /* optimization phase */
     );
 
 // CHECK: f (_{{[0-9]+}}, argc_{{[0-9]+}}, return_{{[0-9]+}})

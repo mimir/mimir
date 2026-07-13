@@ -209,6 +209,18 @@ public:
     // clang-format on
 };
 
+/// Options for Def::dot and World::dot.
+/// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+struct DotConfig {
+    int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
+    bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
+    bool follow_types   = false;                           ///< Follow Def::type() dependencies.
+    bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
+    bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
+    bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
+                                 ///< shared literals/axioms, type edges) with a visible color.
+};
+
 /// Base class for all Def%s.
 ///
 /// These are the most important subclasses:
@@ -467,6 +479,13 @@ public:
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
     Def* outermost_binder() const;
+
+    /// Does @p this nest @p mut?
+    /// The relation is strict: `f->nests(f)` is `false`.
+    bool nests(Def* mut);
+    /// Does @p this nest @p def?
+    /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
+    bool nests(const Def* def);
     ///@}
 
     /// @name external
@@ -476,6 +495,14 @@ public:
     void internalize();
     void transfer_external(Def* to);
     bool is_annex() const noexcept { return annex_; }
+    ///@}
+
+    /// @name dirty
+    /// Scratch bit for Phase%s to mark muts that need re-examination.
+    /// @see Phase::taint
+    ///@{
+    bool is_dirty() const noexcept { return dirty_; }
+    void dirty(bool dirty = true) noexcept { dirty_ = dirty; }
     ///@}
 
     /// @name Casts
@@ -633,15 +660,12 @@ public:
     ///@}
 
     /// @name dot
-    /// Streams dot to @p os while obeying maximum recursion depth of @p max.
-    /// if @p types is `true`, Def::type() dependencies will be followed as well.
+    /// Streams dot to @p os, configured via @p cfg (see DotConfig).
     ///@{
-    void dot(std::ostream& os, int max = std::numeric_limits<int>::max(), bool types = false) const;
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, int max = std::numeric_limits<int>::max(), bool types = false) const;
-    void dot(const std::string& file, int max = std::numeric_limits<int>::max(), bool types = false) const {
-        return dot(file.c_str(), max, types);
-    }
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
+    void dot(const std::string& file, DotConfig cfg = {}) const { return dot(file.c_str(), cfg); }
     ///@}
 
 protected:
@@ -665,6 +689,7 @@ private:
         return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
     }
     bool equal(const Def* other) const;
+    bool nests(Def*, MutSet&);
 
     template<Cmp>
     [[nodiscard]] static bool cmp_(const Def* a, const Def* b);
@@ -686,7 +711,8 @@ private:
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
-    unsigned dep_       : 5;
+    bool dirty_         : 1;
+    unsigned dep_       : 4;
     u32 mark_ = 0;
 #ifndef NDEBUG
     size_t curr_op_ = 0;
@@ -918,17 +944,22 @@ private:
 
 class Proxy : public Def, public Setters<Proxy> {
 private:
-    Proxy(const Def* type, u32 pass, u32 tag, Defs ops)
-        : Def(Node, type, ops, (u64(pass) << 32_u64) | u64(tag)) {}
+    Proxy(const Def* type, flags_t tag, Defs ops)
+        : Def(Node, type, ops, tag) {}
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    u32 pass() const { return u32(flags() >> 32_u64); } ///< IPass::index within PassMan.
-    u32 tag() const { return u32(flags()); }
+    flags_t tag() const { return flags_; }
     ///@}
+
+    template<flags_t Tag>
+    static const Proxy* isa(const Def* def) {
+        if (auto proxy = def->isa<Proxy>(); proxy && proxy->tag() == Tag) return proxy;
+        return nullptr;
+    }
 
     static constexpr auto Node      = mim::Node::Proxy;
     static constexpr size_t Num_Ops = std::dynamic_extent;

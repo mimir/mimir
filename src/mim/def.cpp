@@ -28,6 +28,7 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , mut_(false)
     , external_(false)
     , annex_(false)
+    , dirty_(false)
     , dep_(node == Node::Hole    ? fe::to_underlying(Dep::Hole)
            : node == Node::Proxy ? fe::to_underlying(Dep::Proxy)
            : node == Node::Var   ? fe::to_underlying(Dep::Var | Dep::Mut)
@@ -85,6 +86,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , mut_(true)
     , external_(false)
     , annex_(false)
+    , dirty_(false)
     , dep_(fe::to_underlying(Dep::Mut | (node == Node::Hole ? Dep::Hole : Dep::None)))
     , num_ops_(num_ops)
     , type_(type) {
@@ -121,7 +123,7 @@ const Def* Lit    ::rebuild_(World& w, const Def* t, Defs  ) const { return w.li
 const Def* Merge  ::rebuild_(World& w, const Def* t, Defs o) const { return w.merge(t, o); }
 const Def* Pack   ::rebuild_(World& w, const Def* t, Defs o) const { return w.pack(t->arity(), o[0]); }
 const Def* Pi     ::rebuild_(World& w, const Def*  , Defs o) const { return w.pi(o[0], o[1], is_implicit()); }
-const Def* Proxy  ::rebuild_(World& w, const Def* t, Defs o) const { return w.proxy(t, o, pass(), tag()); }
+const Def* Proxy  ::rebuild_(World& w, const Def* t, Defs o) const { return w.proxy(t, o, tag()); }
 const Def* Rule   ::rebuild_(World& w, const Def* t, Defs o) const { return w.rule(t->as<Reform>(), o[0], o[1], o[2]); }
 const Def* Reform ::rebuild_(World& w, const Def* ,  Defs o) const { return w.reform(o[0]); }
 const Def* Sigma  ::rebuild_(World& w, const Def*  , Defs o) const { return w.sigma(o); }
@@ -431,6 +433,35 @@ bool Def::is_open() const {
 Def* Def::outermost_binder() const {
     if (is_closed()) return isa_mut();
     return (*free_vars().begin())->outermost_binder();
+}
+
+bool Def::nests(Def* mut, MutSet& checked) {
+    if (mut->free_vars().contains(this->has_var())) return true;
+    if (auto [_, ins] = checked.emplace(mut); !ins) return false;
+
+    for (auto fv : mut->free_vars())
+        if (this->nests(fv->mut(), checked)) return true;
+
+    return false;
+}
+
+bool Def::nests(Def* mut) {
+    if (this->has_var()) {
+        auto checked = MutSet{};
+        return this->nests(mut, checked);
+    }
+    return false;
+}
+
+bool Def::nests(const Def* def) {
+    if (auto mut = def->isa_mut()) return this->nests(mut);
+
+    if (has_var()) {
+        auto checked = MutSet();
+        for (auto fv : def->free_vars())
+            if (this->nests(fv->mut(), checked)) return true;
+    }
+    return false;
 }
 
 /*

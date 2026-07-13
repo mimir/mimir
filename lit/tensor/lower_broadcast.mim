@@ -3,7 +3,7 @@
 plugin tensor;
 plugin refly;
 plugin core;
-plugin direct;
+plugin cps;
 plugin affine;
 
 let m0 = ((1, 2), (3, 4));       // «2, 2; Nat»
@@ -20,5 +20,5 @@ let bid0 = %tensor.broadcast_in_dim ((2, 1, 2), (2, 50, 2), m0, (2_3, 1_3, 0_3))
 // CHECK-NOT: %tensor.broadcast
 // CHECK-NOT: map_reduce
 // CHECK-NOT: %affine
-// CHECK: return_{{[0-9]+}} ((‹50; (1, 2)›, ‹50; (3, 4)›), (‹50; (1, 2, 3)›, ‹50; (4, 5, 6)›), _{{[0-9]+}})
+// CHECK: return_{{[0-9]+}} ((‹50; (1, 2)›, ‹50; (3, 4)›), (‹50; (1, 2, 3)›, ‹50; (4, 5, 6)›), (_{{[0-9]+}}, _{{[0-9]+}}))
 fun extern e1() = return (b0, b1, bid0);

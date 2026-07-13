@@ -9,7 +9,7 @@
 plugin mem;
 plugin core;
 plugin regex;
-plugin direct;
+plugin cps;
 
 let Top = ⊤:Nat;
 let re  = %regex.conj (%regex.lit 'a', %regex.disj (%regex.empty, %regex.any));

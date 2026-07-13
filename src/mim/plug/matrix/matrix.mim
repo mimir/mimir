@@ -9,7 +9,7 @@
 plugin core;
 plugin math;
 // needed to access cps2ds
-plugin direct;
+plugin cps;
 plugin affine;
 ///
 /// ## Types
@@ -228,12 +228,8 @@ fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
 ///
 /// ## Passes and Phases
 ///
-/// ### Passes
-///
-axm %matrix.lower_matrix_high_level_map_reduce: %compile.Pass;
-axm %matrix.lower_matrix_medium_level:          %compile.Pass;
-
-///
 /// ### Phases
 ///
-axm %matrix.lower_matrix_low_level: %compile.Phase;
+axm %matrix.lower_matrix_high_level_map_reduce: %compile.Phase;
+axm %matrix.lower_matrix_medium_level:          %compile.Phase;
+axm %matrix.lower_matrix_low_level:             %compile.Phase;

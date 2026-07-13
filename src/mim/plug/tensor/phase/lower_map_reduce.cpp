@@ -7,8 +7,8 @@
 
 #include "mim/plug/affine/affine.h"
 #include "mim/plug/core/core.h"
-#include "mim/plug/direct/direct.h"
 #include "mim/plug/mem/mem.h"
+#include "mim/plug/cps/cps.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -173,7 +173,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
 
     try {
         auto fun    = w.mut_fun(inputs->type(), type)->set("mapRed");
-        auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+        auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         auto call   = w.app(ds_fun, inputs)->set("call");
 
         auto new_inputs = fun->var(0)->set("is");
@@ -254,10 +254,8 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
                                            std::function<const Def*(const DefVec&, const Def*)> compute) {
     auto& w = new_world();
 
-    // CPS scaffold (mirrors `lower_map_reduce`): a `mut_fun` turned direct-style so the result is an ordinary
-    // value.
     auto fun    = w.mut_fun(inputs->type(), type)->set("pointwise");
-    auto ds_fun = direct::op_cps2ds_dep(fun)->set("dsFun");
+    auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
     auto call   = w.app(ds_fun, inputs)->set("call");
 
     auto new_inputs = fun->var(0)->set("is");

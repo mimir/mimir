@@ -32,6 +32,6 @@ public:
 
 using namespace mim;
 
-static void reg_stages(Flags2Stages& stages) { Stage::hook<plug::ll::emit, plug::ll::Emit>(stages); }
+static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll::emit, plug::ll::Emit>(phases); }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ll", MIM_VERSION, nullptr, reg_stages}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ll", MIM_VERSION, nullptr, reg_phases}; }

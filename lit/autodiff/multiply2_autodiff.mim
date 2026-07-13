@@ -1,5 +1,5 @@
 // RUN: rm -f %{s:stem}.ll
-// RUN: %mim -p opt -p direct %s -p ll -o - | %FileCheck %s
+// RUN: %mim -p opt -p cps %s -p ll -o - | %FileCheck %s
 
 plugin core;
 plugin autodiff;

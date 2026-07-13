@@ -1,36 +1,33 @@
 #include "mim/plug/clos/clos.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
+#include <mim/phase.h>
 
-#include <mim/pass/eta_exp.h>
-#include <mim/pass/eta_red.h>
-#include <mim/pass/scalarize.h>
+#include <mim/phase/scalarize.h>
 
-#include "mim/plug/clos/pass/branch_clos_elim.h"
-#include "mim/plug/clos/pass/clos2sjlj.h"
-#include "mim/plug/clos/pass/clos_conv_prep.h"
-#include "mim/plug/clos/pass/lower_typed_clos_prep.h"
+#include "mim/plug/clos/phase/branch_clos_elim.h"
+#include "mim/plug/clos/phase/clos2sjlj.h"
 #include "mim/plug/clos/phase/clos_conv.h"
+#include "mim/plug/clos/phase/clos_conv_prep.h"
 #include "mim/plug/clos/phase/lower_typed_clos.h"
+#include "mim/plug/clos/phase/lower_typed_clos_prep.h"
 
 using namespace mim;
 using namespace mim::plug;
 
-void reg_stages(Flags2Stages& stages) {
+void reg_phases(Flags2Phases& phases) {
     // clang-format off
     // phases
-    Stage::hook<clos::clos_conv_phase,            clos::ClosConv          >(stages);
-    Stage::hook<clos::lower_typed_clos_phase,     clos::LowerTypedClos    >(stages);
-    // passes
-    Stage::hook<clos::clos_conv_prep_pass,        clos::ClosConvPrep      >(stages);
-    Stage::hook<clos::branch_clos_pass,           clos::BranchClosElim    >(stages);
-    Stage::hook<clos::lower_typed_clos_prep_pass, clos::LowerTypedClosPrep>(stages);
-    Stage::hook<clos::clos2sjlj_pass,             clos::Clos2SJLJ         >(stages);
+    Phase::hook<clos::clos_conv,            clos::ClosConv          >(phases);
+    Phase::hook<clos::lower_typed_clos,     clos::LowerTypedClos    >(phases);
+    Phase::hook<clos::clos_conv_prep,       clos::ClosConvPrep      >(phases);
+    Phase::hook<clos::branch_clos,          clos::BranchClosElim    >(phases);
+    Phase::hook<clos::lower_typed_clos_prep,clos::LowerTypedClosPrep>(phases);
+    Phase::hook<clos::clos2sjlj,            clos::Clos2SJLJ         >(phases);
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"clos", MIM_VERSION, clos::register_normalizers, reg_stages}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"clos", MIM_VERSION, clos::register_normalizers, reg_phases}; }
 
 namespace mim::plug::clos {
 

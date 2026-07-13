@@ -12,8 +12,8 @@ con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 
 
 lam extern _compile(): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup_phase,
-        %compile.ret_wrap_phase,
+        %compile.internal_cleanup,
+        %compile.ret_wrap,
     );
 
 // CHECK-DAG: con {{.*}}return

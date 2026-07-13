@@ -222,7 +222,7 @@ public:
         }
 
     private:
-        fe::SymMap<Def*> sym2mut_;
+        absl::btree_map<Sym, Def*> sym2mut_;
     };
 
     class Annexes {
@@ -274,7 +274,7 @@ public:
     private:
         Driver* driver_;
         absl::btree_map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
-        fe::SymMap<flags_t> sym2flags_;               ///< Reverse index: an annex's full name to its flags.
+        absl::btree_map<Sym, flags_t> sym2flags_;     ///< Reverse index: an annex's full name to its flags.
     };
 
     /// @name Externals & Annexes
@@ -339,7 +339,7 @@ public:
             return type(lit_univ(level));
     }
     const Def* var(Def* mut);
-    const Proxy* proxy(const Def* type, Defs ops, u32 index, u32 tag) { return unify<Proxy>(type, index, tag, ops); }
+    const Proxy* proxy(const Def* type, Defs ops, flags_t tag) { return unify<Proxy>(type, tag, ops); }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
     Hole* mut_hole_univ() { return mut_hole(univ()); }
@@ -730,13 +730,10 @@ public:
     /// GraphViz output.
     ///@{
 
-    /// Dumps DOT to @p os.
-    /// @param os Output stream
-    /// @param annexes If `true`, include all annexes - even if unused.
-    /// @param types Follow type dependencies?
-    void dot(std::ostream& os, bool annexes = false, bool types = false) const;
+    /// Dumps DOT to @p os, configured via @p cfg (see DotConfig).
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, bool annexes = false, bool types = false) const;
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
     ///@}
 
 private:
