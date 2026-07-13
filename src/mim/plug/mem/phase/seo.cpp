@@ -191,7 +191,7 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
             auto phi = mk_phi(world(), lam, abstr_slot);
             phis.emplace_back(phi);
             abstr_args.emplace_back(value);
-            DLOG("propgate phi {} for slot {} w/ val {}", phi, abstr_slot, value);
+            DLOG("propagate phi {} for slot {} w/ val {}", phi, abstr_slot, value);
         } else {
             DLOG("no value found for {}", slot);
         }
