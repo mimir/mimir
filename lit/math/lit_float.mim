@@ -1,5 +1,5 @@
 // RUN: %mim %s -o - -p ll | %FileCheck %s
-// RUN: cat %{s:stem}.ll | %FileCheck %s --check-prefix=LLVM
+// RUN: %FileCheck %s --check-prefix=LLVM < %{s:stem}.ll
 plugin math;
 
 // Decimal float literals must be encoded with the bit width of their annotated type.
