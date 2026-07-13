@@ -13,20 +13,20 @@ const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
     if (lam_of(var)->nests(def)) return pin_top(var);
 
     auto cur = lattice(var);
-    if (!cur) { // ⊥ ⊔ def = def; update() invalidates, as it inserts a fresh non-⊤ fact
-        update(var, def);
+    if (!cur) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it inserts a fresh non-⊤ fact
+        lattice(var, def);
         DLOG("propagate: {} → {}", var, def);
         return def;
     }
 
     if (def->isa<Bot>() || cur == def || cur == var) return cur; // cur ⊔ ⊥ = cur ⊔ cur = cur; ⊤ stays ⊤
 
-    if (cur->isa<Bot>()) { // ⊥ ⊔ def = def; update() invalidates, as it overwrites cur
-        update(var, def);
+    if (cur->isa<Bot>()) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it overwrites cur
+        lattice(var, def);
         return def;
     }
 
-    return pin_top(var); // two different values join to ⊤; update() therein invalidates, as it overwrites cur
+    return pin_top(var); // two different values join to ⊤; lattice(var, var) therein invalidates, as it overwrites cur
 }
 
 const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
@@ -42,7 +42,7 @@ const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
             abstr_args[i] = abstr;
         }
 
-        update(lam->var(), world().tuple(abstr_vars)); // set new abstract var
+        lattice(lam->var(), world().tuple(abstr_vars)); // set new abstract var
         return world().app(rewrite(lam), abstr_args);
     }
 
