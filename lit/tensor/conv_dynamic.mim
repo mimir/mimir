@@ -1,0 +1,44 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// %tensor.conv with fully *dynamic* (symbolic) shapes: the input/weight extents are function parameters, so
+// `conv_shape` cannot fold to a literal output shape. Instead it stays as a %core.nat.div/sub/mul/add expression
+// in the result type, which the type checker accepts.
+//
+// The window formula per spatial axis is `O#d = (s#d + 2·padding#d − (dilation#d·(k#d − 1) + 1)) / stride#d + 1`.
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+// A ring over Nat so the multiply-accumulate stays in %core.nat.
+lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+// Fully symbolic conv, no padding, unit stride/dilation: OH = h − kh + 1, OW = w − kw + 1.
+// CHECK-DAG: fun extern conv_dyn_valid
+fun extern conv_dyn_valid {n cin cout h w kh kw: Nat}
+                          (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
+                        : «conv_shape (n, cout, (h, w), (kh, kw), (1, 1), (1, 1), (0, 0)); Nat» =
+    return (%tensor.conv (nat_ring ()) ((1, 1), (1, 1), (0, 0)) (input, weight));
+
+// Symbolic extents with stride 2: the output dim keeps a `%core.nat.div (_, 2)`, proving the shape is *computed*
+// (not passed in) and survives symbolically.
+// CHECK-DAG: fun extern conv_dyn_strided
+// CHECK-DAG: %core.nat.div ({{.*}}, 2)
+fun extern conv_dyn_strided {n cin cout h w kh kw: Nat}
+                            (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
+                          : «conv_shape (n, cout, (h, w), (kh, kw), (2, 2), (1, 1), (0, 0)); Nat» =
+    return (%tensor.conv (nat_ring ()) ((2, 2), (1, 1), (0, 0)) (input, weight));
+
+// Custom pipeline that stops before %tensor.lower_get_set: the get/set unrolling is expensive and the
+// remaining %tensor.get / %tensor.set are irrelevant to the checks below, so skipping it keeps the test fast.
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %tensor.lower_map_reduce,
+        %affine.lower_index,
+        %affine.lower_for,
+        %compile.internal_cleanup,
+    );
