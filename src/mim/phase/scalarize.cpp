@@ -39,24 +39,24 @@ void Scalarize::Analysis::keep(Lam* lam, size_t dom) {
     // split candidate anyway - nothing to record.
     if (dom >= lam->num_tvars()) return;
     auto var = lam->var();
-    auto i   = lattice().find(var);
-    if (i != lattice().end() && !Lit::isa<u64>(i->second)) return; // already ⊤ - monotone, do not downgrade
+    auto i   = lattice_mut().find(var);
+    if (i != lattice_mut().end() && !Lit::isa<u64>(i->second)) return; // already ⊤ - monotone, do not downgrade
     // Too wide for the u64 bitmask (only with an unusually large scalarize threshold): conservatively keep
     // the whole lam rather than risk splitting a dynamically-indexed parameter.
     if (dom >= 64) return demote(lam);
-    auto mask = i != lattice().end() ? Lit::as<u64>(i->second) : u64(0);
+    auto mask = i != lattice_mut().end() ? Lit::as<u64>(i->second) : u64(0);
     auto next = mask | (u64(1) << dom);
     if (next == mask) return;
-    lattice()[var] = world().lit_nat(next);
+    lattice_mut()[var] = world().lit_nat(next);
     DLOG("keep whole: {} #{}", lam, dom);
     invalidate();
 }
 
 void Scalarize::Analysis::demote(Lam* lam) {
     auto var = lam->var();
-    auto i   = lattice().find(var);
-    if (i != lattice().end() && !Lit::isa<u64>(i->second)) return; // already ⊤
-    lattice()[var] = var;                                          // ⊤ sentinel: keep the whole lam
+    auto i   = lattice_mut().find(var);
+    if (i != lattice_mut().end() && !Lit::isa<u64>(i->second)) return; // already ⊤
+    lattice_mut()[var] = var;                                          // ⊤ sentinel: keep the whole lam
     DLOG("demote: {}", lam);
     invalidate();
 }

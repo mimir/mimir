@@ -233,7 +233,7 @@ protected:
     ///@{
 
     /// Low-level, **mutable** access to the raw map.
-    auto& lattice() { return lattice_; }
+    auto& lattice_mut() { return lattice_; }
 
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:

@@ -106,7 +106,7 @@ Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy
 
 @note [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top) do double duty on purpose: besides recording the fact, they seed the rewriter map so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` short-circuits to `abstr`.
 That is exactly what a *propagating* analysis wants.
-An analysis whose facts must **not** drive substitution - e.g. a "keep this parameter as-is" marker that would corrupt a same-world traversal if it were installed as a rewrite - should bypass them and write straight into the **mutable** [`lattice()`](@ref mim::Analysis::lattice) escape hatch, taking responsibility for calling [`invalidate()`](@ref mim::Phase::invalidate) itself.
+An analysis whose facts must **not** drive substitution - e.g. a "keep this parameter as-is" marker that would corrupt a same-world traversal if it were installed as a rewrite - should bypass them and write straight into the **mutable** [`lattice_mut()`](@ref mim::Analysis::lattice_mut) escape hatch, taking responsibility for calling [`invalidate()`](@ref mim::Phase::invalidate) itself.
 (The in-tree `Scalarize` analysis does exactly this: it keys a per-parameter *keep-whole* bitmask on the stable `lam->var()` - deliberately **not** the per-parameter projection `lam->tvar(dom)`, which a dependent projection re-mints on every call and so cannot serve as a lattice key.)
 
 ### Handling of Mutables
