@@ -2,7 +2,7 @@
 
 namespace mim {
 
-/// The Lam the abstract @p var belongs to; @p var is a Var, a Var projection, or a phi Proxy.
+/// The Lam the abstract @p var belongs to; @p var is a Var or a Var projection.
 static Lam* lam_of(const Def* var) {
     if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->mut()->as_mut<Lam>();
     return var->as<Var>()->mut()->as_mut<Lam>();
