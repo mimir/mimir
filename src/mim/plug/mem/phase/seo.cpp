@@ -211,7 +211,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             sloxy2slot_[sloxy] = slot;
             slots_.emplace(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
-            set(ptr, sloxy);
+            update(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});
         }
     } else if (auto store = Axm::isa<mem::store>(app)) {
@@ -236,7 +236,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
             if (auto abstr_val = sloxy2val(sloxy)) {
                 DLOG("load: {} -> {}", sloxy, abstr_val);
-                set(val, abstr_val);
+                update(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
             DLOG("load w/ unknown value: {}", sloxy);
@@ -244,7 +244,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
 
         DLOG("load w/ unknown ptr: {}", abstr_ptr);
-        return set(load, load);
+        return pin_top(load);
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
@@ -265,10 +265,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
             gvn_split(all_vars, all_abstr_args, all_abstr_vars);
 
-            set(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
+            update(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
 
             for (size_t i = app->num_targs(), e = all_vars.size(); i != e; ++i)
-                set(all_vars[i], all_abstr_vars[i]);
+                update(all_vars[i], all_abstr_vars[i]);
 
             return world().app(known, all_abstr_args.span().subspan(0, app->num_targs()));
         }
@@ -311,10 +311,9 @@ void SEO::Analysis::analyze(const Def* def) {
             auto slot = sloxy2slot_[proxy];
             assert(slot);
             auto [_, ptr] = slot->projs<2>();
-            set(slot, slot);
-            set(ptr, ptr);
+            pin_top(slot);
+            pin_top(ptr);
             DLOG("sloxy {} survived; setting slot to top: {}", def, slot);
-            invalidate();
         }
         return; // never walk a proxy's deps (would drag in meta info)
     }
@@ -333,7 +332,7 @@ void SEO::Analysis::analyze(const Def* def) {
         DLOG("lam {} escapes", lam);
         escaped_.emplace(lam);
         for (auto v : var->tprojs())
-            if (auto old = update(v, v); old && old != v) DLOG("top: {}", v);
+            pin_top(v);
     }
 
     for (auto d : def->deps())
