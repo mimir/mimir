@@ -178,13 +178,13 @@ public:
 
     /// @name Getters
     ///@{
-    World& world() { return Phase::world(); }
+    using Phase::world; ///< Disambiguates the Phase/Rewriter double base; for an Analysis both denote the same World.
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
     /// @name Sparse Fixed-Point Iteration
     /// By default (*sparse*), a fixed-point round re-drains only the mutables *tainted* by lattice changes:
-    /// whenever update()/set() changes an entry, the muts that read that entry (tracked automatically
+    /// whenever update() changes an entry, the muts that read that entry (tracked automatically
     /// during draining) plus the entry's owner() are scheduled for the next round.
     /// Once sparse rounds quiesce, one **full** round certifies the fixed point
     /// (and is the only kind of round that runs finalize()) - so untracked flows through
@@ -193,7 +193,6 @@ public:
     /// so the sparse default is safe even for analyses that only ever invalidate().
     /// Call make_dense() to force whole-World rounds unconditionally.
     ///@{
-    bool sparse() const { return sparse_; }
     void make_dense() { sparse_ = false; }
 
     /// Number of lattice changes that happened during *certification* rounds.
@@ -206,10 +205,10 @@ public:
     /// Conventions: *absent* = ⊥ (nothing known); `def ↦ def` = ⊤ (keep as is).
     /// Subclasses may store their own sentinels in between as ordinary Def%s (e.g. SEO's GVN-bundle Proxy%s).
     ///@{
-    const auto& lattice() const { return lattice_; }
+    const auto& lattice() const { return lattice_; } ///< The whole map; used e.g. to diff two fixed-point runs.
 
     /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
-    /// While draining a sparse() Analysis, the lookup registers curr_mut() as a *reader* of @p def,
+    /// While draining a sparse Analysis, the lookup registers curr_mut() as a *reader* of @p def,
     /// so a later change to this entry taint()s the mut for re-visiting.
     const Def* lattice(const Def* def) const {
         if (tracking_)
@@ -218,7 +217,12 @@ public:
         return nullptr;
     }
 
-    bool is_top(const Def* def) const { return lattice(def) == def; }
+    /// @returns whether @p def is pinned to ⊤ (`def ↦ def`).
+    /// @note Side-effect-free: unlike lattice(), this never registers a reader, so it is safe in pure queries.
+    bool is_top(const Def* def) const {
+        auto i = lattice_.find(def);
+        return i != lattice_.end() && i->second == def;
+    }
 
     /// Monotonically forces @p def to ⊤ (keep as is).
     const Def* pin_top(const Def* def) { return update(def, def), def; }
@@ -228,15 +232,15 @@ protected:
     /// @name lattice
     ///@{
 
+    /// Low-level, **mutable** access to the raw map.
+    auto& lattice() { return lattice_; }
+
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
-    /// @returns the former abstract value:
-    /// - `nullptr`: fresh insert,
-    /// - `== abstr`: unchanged,
-    /// - anything else: overwritten.
-    const Def* update(const Def* concr, const Def* abstr) {
+    /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
+    bool update(const Def* concr, const Def* abstr) {
         map(concr, abstr);
         // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
         // its (possibly non-dirty) producers would have re-installed in a full round.
@@ -244,42 +248,17 @@ protected:
 
         auto [i, ins] = lattice_.emplace(concr, abstr);
         if (ins) {
-            if (concr != abstr) changed(concr);
-            return nullptr;
+            if (concr != abstr) return changed(concr), true;
+            return false;
         }
 
         auto old = i->second;
         assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
         if (old != abstr) {
             i->second = abstr;
-            changed(concr);
+            return changed(concr), true;
         }
-        return old;
-    }
-
-    /// Bookkeeping for an observable lattice change to @p concr: another round + taint.
-    /// A change during a *certification* round means the sparse taint-tracking missed a flow - worth investigating,
-    /// as it costs extra rounds (the result stays correct: certification exists precisely to catch this).
-    void changed(const Def* concr) {
-        invalidate();
-        taint(concr);
-        if (certifying_) {
-            ++coverage_holes_;
-            profile_count("coverage.holes");
-            DLOG("sparse coverage hole: `{}` changed during certification (in `{}`)", concr, curr_mut());
-        }
-    }
-
-    using Phase::taint;
-
-    /// Schedules all muts affected by a change to @p key for the next sparse round:
-    /// its recorded readers plus its owner(). No-op for a dense Analysis.
-    void taint(const Def* key) {
-        if (!sparse_) return;
-        taint(owner(key));
-        if (auto i = readers_.find(key); i != readers_.end())
-            for (auto mut : i->second)
-                taint(mut);
+        return false;
     }
 
     /// The mut whose body consumes the abstract value of @p key - dirtied alongside the readers.
@@ -308,6 +287,31 @@ protected:
     ///@}
 
 private:
+    /// Bookkeeping for an observable lattice change to @p concr: another round + taint.
+    /// A change during a *certification* round means the sparse taint-tracking missed a flow - worth investigating,
+    /// as it costs extra rounds (the result stays correct: certification exists precisely to catch this).
+    void changed(const Def* concr) {
+        invalidate();
+        taint(concr);
+        if (certifying_) {
+            ++coverage_holes_;
+            profile_count("coverage.holes");
+            DLOG("sparse coverage hole: `{}` changed during certification (in `{}`)", concr, curr_mut());
+        }
+    }
+
+    using Phase::taint;
+
+    /// Schedules all muts affected by a change to @p key for the next sparse round:
+    /// its recorded readers plus its owner(). No-op for a dense Analysis.
+    void taint(const Def* key) {
+        if (!sparse_) return;
+        taint(owner(key));
+        if (auto i = readers_.find(key); i != readers_.end())
+            for (auto mut : i->second)
+                taint(mut);
+    }
+
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
 

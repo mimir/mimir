@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include <sstream>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -727,11 +728,11 @@ TEST(Phase, sparse_differential) {
 
     Prop dense(w, false);
     dense.run_fixed_point();
-    auto dense_lattice = Def2Def(dense.lattice());
+    auto dense_lattice = Def2Def(std::as_const(dense).lattice());
 
     Prop sparse(w, true);
     sparse.run_fixed_point();
-    const auto& sparse_lattice = sparse.lattice();
+    const auto& sparse_lattice = std::as_const(sparse).lattice();
 
     // r's var joins 1 (self) and 2 (main) -> ⊤; sanity-check we computed something non-trivial
     EXPECT_TRUE(dense.is_top(r->var()));

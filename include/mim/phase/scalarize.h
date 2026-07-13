@@ -1,8 +1,5 @@
 #pragma once
 
-#include <absl/container/flat_hash_set.h>
-#include <absl/container/node_hash_map.h>
-
 #include "mim/phase.h"
 
 namespace mim {
@@ -37,26 +34,33 @@ private:
     class Analysis : public mim::Analysis {
     public:
         Analysis(World& world)
-            : mim::Analysis(world, "Scalarize::Analysis") {}
+            : mim::Analysis(world, "Scalarize::Analysis") {
+            // Facts flow from a parameter's *uses*, scattered across the World; re-scan the whole World each
+            // round. Also matches the phase's original (taint-free) behavior.
+            make_dense();
+        }
 
         /// Per-parameter expand mask for @p lam (length @p lam->num_tvars()); `true` marks
         /// a parameter to be flattened one level. An **empty** mask means "leave untouched".
-        /// Cheap; recomputed on demand from the (post-fixed-point) demote/lock state.
+        /// Cheap; recomputed on demand from the (post-fixed-point) lattice.
         Vector<bool> plan(Lam* lam);
 
     private:
         const Def* rewrite(const Def* old) final;
 
         void inspect(const Def* def);
-        void demote(Lam*); ///< Mark @p lam as not splittable (monotone).
+        /// Marks parameter @p dom of @p lam as *keep whole* by OR-ing bit @p dom into a per-lam bitmask stored
+        /// in lattice() under the (stable) `lam->var()` key.
+        /// We store the fact directly - **not** via update()/pin_top() - because those also seed the rewriter
+        /// map(), which this same-World Analysis would then rebuild dependent types under (and never converge).
+        /// The key must be stable: `lam->tvar(dom)` is *not* (a dependent projection re-mints on every call),
+        /// whereas `lam->var()` is; hence the bitmask-on-var encoding. A fresh bit invalidate()s.
+        void keep(Lam* lam, size_t dom);
+        void demote(Lam* lam); ///< Marks the whole @p lam *keep whole* via a ⊤ sentinel (`var ↦ var`).
         void demote_all(const Def* lam_tuple);
-        void lock(Lam*, size_t dom); ///< Mark parameter @p dom of @p lam as dynamically indexed.
-        bool eligible(Lam*) const;   ///< Cn with an immutable (non-dependent) Pi.
-        bool splittable(Lam*) const; ///< Optimistic: not demoted.
-
-        LamSet demoted_; ///< Persisted across fixed-point rounds.
-        // node_hash_map: values are not trivially relocatable, so keep them node-stable across rehashes.
-        absl::node_hash_map<Lam*, absl::flat_hash_set<size_t>, GIDHash<Lam*>> locked_; ///< Persisted across rounds.
+        bool kept(Lam* lam, size_t dom) const; ///< Is parameter @p dom of @p lam kept whole?
+        bool untouched(Lam* lam) const;        ///< No fact recorded for @p lam at all.
+        bool eligible(Lam*) const;             ///< Cn with an immutable (non-dependent) Pi.
     };
 
 public:

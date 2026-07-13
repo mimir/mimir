@@ -95,13 +95,19 @@ The lattice follows these conventions:
 - [`lattice(def)`](@ref mim::Analysis::lattice) returns the recorded abstract value for `def`, or `nullptr` if nothing is known.
 - [`update(concr, abstr)`](@ref mim::Analysis::update) writes `concr ↦ abstr` into both the lattice and the rewriter map (so future rewrites of `concr` short-circuit to `abstr`) and **automatically** [`invalidate`s](@ref mim::Phase::invalidate) iff this changes observable information: an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
   Freshly inserting ⊤ (`def ↦ def`) stays silent, as it is indistinguishable from an *absent* entry for consumers.
-  It returns the **former** abstract value - `nullptr` for a fresh insert, `abstr` itself if nothing changed, anything else for an overwrite - so the caller can still react, e.g. log.
+  It returns `true` iff it changed observable information - i.e. iff it invalidated - so the caller can still react, e.g. log.
 - [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
   Being built on [`update()`](@ref mim::Analysis::update), it invalidates iff it overwrote previous information.
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
+  It is deliberately side-effect-free - unlike [`lattice(def)`](@ref mim::Analysis::lattice) it never registers a *reader* (see below) - so it is safe in pure queries.
 
-All lattice writes go through [`update()`](@ref mim::Analysis::update) or [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
+The high-level writers are [`update()`](@ref mim::Analysis::update) and [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
 Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy`](@ref mim::Proxy) tag, as SEO uses for its GVN and pending-⊤ markers - never `nullptr`, which is reserved for *absent*.
+
+@note [`update()`](@ref mim::Analysis::update) and [`pin_top()`](@ref mim::Analysis::pin_top) do double duty on purpose: besides recording the fact, they seed the rewriter map so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` short-circuits to `abstr`.
+That is exactly what a *propagating* analysis wants.
+An analysis whose facts must **not** drive substitution - e.g. a "keep this parameter as-is" marker that would corrupt a same-world traversal if it were installed as a rewrite - should bypass them and write straight into the **mutable** [`lattice()`](@ref mim::Analysis::lattice) escape hatch, taking responsibility for calling [`invalidate()`](@ref mim::Phase::invalidate) itself.
+(The in-tree `Scalarize` analysis does exactly this: it keys a per-parameter *keep-whole* bitmask on the stable `lam->var()` - deliberately **not** the per-parameter projection `lam->tvar(dom)`, which a dependent projection re-mints on every call and so cannot serve as a lattice key.)
 
 ### Handling of Mutables
 
