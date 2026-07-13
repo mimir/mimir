@@ -10,6 +10,8 @@ namespace mim::plug::matrix {
 /// threading `%mem.M`.
 /// These are the buffer-world counterparts of the corresponding `%tensor.*` ops; the `tensor` plugin's
 /// bufferization (`%tensor.lower_to_mem`) maps the SSA tensor ops onto them.
+/// Also lowers `%buffer.constant` into a fill loop, so a large constant/splat tensor becomes a loop rather
+/// than a monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).
 class LowerAff : public RWPhase {
 public:
     LowerAff(World& world, flags_t annex)
@@ -21,6 +23,7 @@ private:
     const Def* lower_broadcast(const App*);
     const Def* lower_pad(const App*);
     const Def* lower_concat(const App*);
+    const Def* lower_buffer_constant(const App*);
 };
 
 } // namespace mim::plug::matrix

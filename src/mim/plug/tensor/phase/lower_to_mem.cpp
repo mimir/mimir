@@ -24,6 +24,16 @@ bool contains_pi(const Def* t) {
     return false;
 }
 
+/// Peels nested `Pack`s off `d`; returns the innermost body iff `d` is a constant splat — every axis a
+/// `Pack` (so `d` is uniform, not e.g. a `Tuple` of distinct rows), bottoming out in a closed scalar
+/// (index-independent, non-array). So `‹784, 1024; 1e-3›` yields the scalar `1e-3`, while an index-dependent
+/// pack `‹i; f i›` or a genuine literal `((1, 2), (3, 4))` yields `nullptr`.
+const Def* splat_scalar(const Def* d) {
+    if (!d->isa<Pack>()) return nullptr;
+    while (auto pack = d->isa<Pack>()) d = pack->body();
+    return (d->is_closed() && !d->type()->isa<Arr>()) ? d : nullptr;
+}
+
 /// Is `app` one of the tensor ops this phase bufferizes?
 bool is_tensor_op(const App* app) {
     return Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app)
@@ -321,9 +331,20 @@ const Def* LowerToMem::lower_call(const App* app, Lam* old_callee) {
     return w.app(new_callee, w.tuple(args));
 }
 
+const Def* LowerToMem::splat_buffer(const Def* arr_ty, const Def* scalar) {
+    // `%buffer.constant` sets every element to `scalar`; `%matrix.lower_aff` fills it with a loop rather
+    // than storing a monolithic literal array (which the LLVM backend cannot digest for large shapes).
+    auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(arr_ty))->args<3>();
+    auto [m, out]        = buffer::op_constant(bro, bso, boT, bot_mem(), scalar)->projs<2>();
+    return out;
+}
+
 const Def* LowerToMem::materialize(const Def* old_ty, const Def* old_arg) {
     auto& w = new_world();
     if (tensor_ty_.contains(old_ty)) {
+        // A constant splat `‹s; c›` (e.g. a learning-rate or bias literal): a `%buffer.init` would store the
+        // whole array as one giant LLVM constant. Emit `%buffer.constant` (lowered to a fill loop) instead.
+        if (auto c = splat_scalar(old_arg)) return splat_buffer(old_ty, rewrite(c));
         auto v = rewrite(old_arg);
         if (Axm::isa<buffer::Buf>(v->type())) return v; // already a buffer
         auto [br, bs, bT] = Axm::isa<buffer::Buf>(buf_of(old_ty))->args<3>();
@@ -405,18 +426,13 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
         in_buf = Axm::isa<buffer::Buf>(input->type());
     }
 
-    auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(app->type()))->args<3>();
-
     // Rank-0 source: an all-size-1 input shape folds to a plain scalar that is never recorded as a tensor
-    // type, so `materialize` leaves it as a value. Broadcasting a scalar to `s_out` is just a constant
-    // buffer with every element set to that scalar.
-    if (!in_buf) {
-        auto [m, out] = buffer::op_constant(bro, bso, boT, bot_mem(), input)->projs<2>();
-        return out;
-    }
+    // type, so `materialize` leaves it as a value. Broadcasting a scalar fills every element with it.
+    if (!in_buf) return splat_buffer(app->type(), input);
 
-    // Actual (size-1-folded) input buffer shape — `matrix.broadcast` is parameterised by it.
+    // Actual (size-1-folded) input/output buffer shapes — `matrix.broadcast` is parameterised by them.
     auto [bri, bsi, biT] = in_buf->args<3>();
+    auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(app->type()))->args<3>();
 
     auto op       = w.annex<matrix::broadcast>();
     op            = w.app(op, w.tuple({T, bri, bsi, bro, bso, r}));

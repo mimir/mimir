@@ -94,7 +94,27 @@ const Def* LowerAff::rewrite_imm_App(const App* app) {
     if (Axm::isa<matrix::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<matrix::pad>(app)) return lower_pad(app);
     if (Axm::isa<matrix::concat>(app)) return lower_concat(app);
+    if (Axm::isa<buffer::constant>(app)) return lower_buffer_constant(app);
     return RWPhase::rewrite_imm_App(app);
+}
+
+const Def* LowerAff::lower_buffer_constant(const App* app) {
+    // `%buffer.constant (r, s, T) (mem, val)` fills every element with `val`. Emit a fill loop (via the same
+    // pointwise scaffold as pad/concat) so the store never materializes as one giant literal array. A
+    // non-literal rank has no static loop nest, so leave it for `%buffer.lower_ptr`'s monolithic fallback.
+    auto [r, s, T]  = app->callee()->as<App>()->args<3>();
+    auto s_out      = rewrite(s);
+    auto rn         = Lit::isa<u64>(rewrite(r));
+    if (!rn) return RWPhase::rewrite_imm_App(app);
+
+    auto& w         = new_world();
+    auto [mem, val] = rewrite(app->arg())->projs<2>();
+    auto result_ty  = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (r, s, T)]
+    // `compute` ignores the loop counters and writes the (loop-invariant) scalar `ins` everywhere.
+    return build_pointwise(w, result_ty, mem, val, s_out, *rn, "constant_fill",
+                           [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> {
+                               return {m, ins};
+                           });
 }
 
 const Def* LowerAff::lower_map_reduce_aff(const App* app) {

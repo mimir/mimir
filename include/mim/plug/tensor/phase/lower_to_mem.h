@@ -47,6 +47,12 @@ private:
     /// on a `⊥` memory), recursing through sigmas; anything else is `rewrite`d.
     const Def* materialize(const Def* old_ty, const Def* old_arg);
 
+    /// Fills a fresh buffer of (old) array type `arr_ty` with the (already rewritten) scalar `scalar`, via
+    /// `%buffer.constant`. `%matrix.lower_aff` turns that into a fill loop, so it never materializes as a
+    /// monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).
+    /// Used for constant splats `‹s; c›` and scalar `%tensor.broadcast`s.
+    const Def* splat_buffer(const Def* arr_ty, const Def* scalar);
+
     /// Buffer-reuse policy. `false` (the initial *always-allocate-and-copy* policy) is always sound.
     /// A future liveness-based policy may return `true` to write into the source buffer in place.
     bool reuse_in_place(const App*) const { return false; }
