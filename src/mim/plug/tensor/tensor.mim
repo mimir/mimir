@@ -221,7 +221,21 @@ axm %tensor.concat: {T: *, nis r: Nat}
 /// `out[n,co,oh,ow] = Σ_{ci,kh,kw} padded[n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw] · weight[co,ci,kh,kw]`
 ///
 /// `padding` zero-pads the spatial axes (composed via %tensor.pad) so the windowed read is a pure affine map.
-/// The output spatial size `s_out = (OH, OW)` is passed explicitly (MimIR has no `Nat` division to compute it).
+/// The output shape is deduced from the input/weight extents and the window parameters (see `conv_shape`), so it
+/// is not passed explicitly.
+
+// `(n, cout, (H, W), (KH, KW), stride, dilation, padding) ↦ (n, cout, OH, OW)`, where
+// `O#d = (s#d + 2·padding#d − (dilation#d·(k#d − 1) + 1)) / stride#d + 1`: the NCHW output shape.
+lam conv_shape (n cout: Nat, s: «2; Nat», k: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»): «4; Nat» =
+    let hw = ‹d: 2;
+        %core.nat.add (
+            %core.nat.div (
+                %core.nat.sub (
+                    %core.nat.add (s#d, %core.nat.mul (2, padding#d)),
+                    %core.nat.add (%core.nat.mul (dilation#d, %core.nat.sub (k#d, 1)), 1)),
+                stride#d),
+            1)›;
+    (n, cout, hw#0_2, hw#1_2);
 
 /// Fused multiply-add over the ring `R`; `ab#0` is the padded-input element, `ab#1` the weight.
 fun conv_fun [R: %tensor.Ring] (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
@@ -238,22 +252,25 @@ lam conv2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «7; %affine.in
 
 axm %tensor.conv: [R: %tensor.Ring]
                 → {n cin cout h w kh kw: Nat}
-                → [stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»]
+                → [stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»]
                 → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
-                → «n, cout, s_out#0_2, s_out#1_2; R#T»;
+                → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
 
 lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
-                      (stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»)
+                      (stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»)
                       (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
-                    : «n, cout, s_out#0_2, s_out#1_2; R#T» =
+                    : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
     // Zero-pad only the spatial axes (lo = hi = (0, 0, pad_h, pad_w)); the pad value is the ring zero.
     let s_in     = (n, cin, h, w);
     let pad_lohi = (0, 0, padding#0_2, padding#1_2);
     let padded   = %tensor.pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
     let s_padded = %tensor.shape 4 padded;
+    let s_out    = conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding);
+    let oh       = s_out#2_4;
+    let ow       = s_out#3_4;
 
     %tensor.map_reduce @2 @(R#T, 4, 3)
-        ((n, cout, s_out#0_2, s_out#1_2), (n, cout, s_out#0_2, s_out#1_2, cin, kh, kw))
+        ((n, cout, oh, ow), (n, cout, oh, ow, cin, kh, kw))
         @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
         (conv_fun R, R#_0)
         (%tensor.proj_map @(7, 4) (0, 1, 2, 3))
