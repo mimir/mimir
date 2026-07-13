@@ -78,7 +78,7 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur) || Proxy::isa<Proxy_SCCP_Top>(cur))
         return cur;
 
-    DLOG("cannot propagate {} -> {}, trying GVN", var, def);
+    DLOG("cannot propagate {} -> {}; cur: {}, trying GVN", var, def, cur);
     // lattice(var, def) invalidates, as it overwrites cur in both cases.
     if (cur->isa<Bot>()) { // Bot ⊔ def = def
         lattice(var, def);
@@ -285,7 +285,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i)
-            sccp_join(phi_vars[i], phi_abstr_args[i]);
+            lattice_mut()[phi_vars[i]] = phi_abstr_args[i];
     }
 
     return Super::rewrite_imm_App(app);
@@ -295,6 +295,18 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
  * Post-Analysis:
  * Finds sloxies that are still present + escaping lambdas
  */
+
+static bool keep(const Def* old_var, const Def* abstr) {
+    if (!abstr) return true;                            // no info -> keep
+    if (old_var == abstr) return true;                  // top
+    if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
+    if (auto proxy = Proxy::isa<Proxy_GVN>(abstr))
+        // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
+        // non-phi
+        return proxy->op(0) == old_var; // first in GVN bundle
+    else
+        return false;
+}
 
 void SEO::Analysis::finalize() {
     for (auto def : world().roots())
@@ -323,9 +335,16 @@ void SEO::Analysis::analyze(const Def* def) {
         if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
             // lam is applied here, not escaped: traverse its body without seeding its vars to top
             analyze(app->type());
-            analyze(app->arg());
+
+            // only analyze args that we keep
+            for (size_t i = 0, e = lam->num_tdoms(); i != e; ++i) {
+                auto old_var = lam->var(e, i);
+                if (keep(old_var, lattice(old_var))) analyze(app->arg(e, i));
+            }
+
             for (auto d : lam->deps())
                 analyze(d);
+
             return;
         }
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
@@ -343,18 +362,6 @@ void SEO::Analysis::analyze(const Def* def) {
  * Transformation:
  * Apply analysis info to code
  */
-
-static bool keep(const Def* old_var, const Def* abstr) {
-    if (!abstr) return true;                            // no info -> keep
-    if (old_var == abstr) return true;                  // top
-    if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
-    if (auto proxy = Proxy::isa<Proxy_GVN>(abstr))
-        // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
-        // non-phi
-        return proxy->op(0) == old_var; // first in GVN bundle
-    else
-        return false;
-}
 
 const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
