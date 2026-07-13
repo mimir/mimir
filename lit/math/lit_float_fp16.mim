@@ -1,0 +1,17 @@
+// REQUIRES: fp16
+// RUN: %mim %s -o - -p ll | %FileCheck %s
+// RUN: cat %{s:stem}.ll | FileCheck %s --check-prefix=LLVM
+plugin math;
+
+// Companion to lit_float.mim for the 16-bit path; only run where std::float16_t is available.
+// A decimal literal must be encoded with the bit width of its annotated %math.F16 type.
+
+// CHECK-DAG: fun extern f16_one (): %math.F (10, 5) =
+// CHECK-DAG: return_{{[0-9_]+}} 15360:(%math.F (10, 5))
+// LLVM-DAG: ret half 0xH3c00
+con extern f16_one(return: Cn %math.F16) = return 1.0:(%math.F16);
+
+// CHECK-DAG: fun extern f16_half (): %math.F (10, 5) =
+// CHECK-DAG: return_{{[0-9_]+}} 14336:(%math.F (10, 5))
+// LLVM-DAG: ret half 0xH3800
+con extern f16_half(return: Cn %math.F16) = return 0.5:(%math.F16);

@@ -74,6 +74,23 @@ foreach(MIM_LIT_STAGE_FILE IN LISTS MIM_LIT_STAGE_FILES)
     string(APPEND MIM_LIT_STAGE_FILES_SCRIPT "    \"${MIM_LIT_STAGE_FILE}\"\n")
 endforeach()
 
+# Detect 16-bit floating-point support once at configure time; mim's fp16 path needs `std::float16_t`.
+# Exposed to lit as the `fp16` feature so tests emitting %math.F16 literals can gate via `// REQUIRES: fp16`.
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles(
+    "#include <stdfloat>
+     #if !defined(__STDCPP_FLOAT16_T__)
+     #    error no std::float16_t
+     #endif
+     int main() { std::float16_t f = 1.0f16; return int(f); }"
+    MIM_HAS_FLOAT16
+)
+if(MIM_HAS_FLOAT16)
+    set(MIM_FP16_SUPPORTED True)
+else()
+    set(MIM_FP16_SUPPORTED False)
+endif()
+
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/cmake/stage-lit-tests.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/stage-lit-tests.cmake" @ONLY)
 
