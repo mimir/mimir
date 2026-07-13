@@ -184,7 +184,7 @@ public:
 
     /// @name Sparse Fixed-Point Iteration
     /// By default (*sparse*), a fixed-point round re-drains only the mutables *tainted* by lattice changes:
-    /// whenever update() changes an entry, the muts that read that entry (tracked automatically
+    /// whenever lattice() changes an entry, the muts that read that entry (tracked automatically
     /// during draining) plus the entry's owner() are scheduled for the next round.
     /// Once sparse rounds quiesce, one **full** round certifies the fixed point
     /// (and is the only kind of round that runs finalize()) - so untracked flows through
@@ -225,7 +225,7 @@ public:
     }
 
     /// Monotonically forces @p def to ⊤ (keep as is).
-    const Def* pin_top(const Def* def) { return update(def, def), def; }
+    const Def* pin_top(const Def* def) { return lattice(def, def), def; }
     ///@}
 
 protected:
@@ -240,7 +240,7 @@ protected:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
-    bool update(const Def* concr, const Def* abstr) {
+    bool lattice(const Def* concr, const Def* abstr) {
         map(concr, abstr);
         // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
         // its (possibly non-dirty) producers would have re-installed in a full round.
