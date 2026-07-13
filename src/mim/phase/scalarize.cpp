@@ -7,15 +7,15 @@
 
 namespace mim {
 
-namespace {
+/// Number of params a single `u64` keep-bitmask can represent; wider doms fall back to the ⊤ sentinel.
+static constexpr auto BitmaskWidth = sizeof(u64) * 8;
+
 /// A `Tuple` all of whose ops are mutable `Lam`s - i.e. a branch / dispatch table.
-bool is_lam_tuple(const Def* def) {
+static bool is_lam_tuple(const Def* def) {
     auto tuple = def->isa<Tuple>();
     return tuple && tuple->num_ops() != 0
         && std::all_of(tuple->ops().begin(), tuple->ops().end(), [](const Def* op) { return op->isa_mut<Lam>(); });
 }
-
-} // namespace
 
 /*
  * Analysis - optimistic: every optimizable Lam is splittable until proven otherwise.
@@ -28,6 +28,9 @@ bool Scalarize::Analysis::eligible(Lam* lam) const {
 bool Scalarize::Analysis::kept(Lam* lam, size_t dom) const {
     auto i = lattice().find(lam->var());
     if (i == lattice().end()) return false;
+    // Too wide for the u64 bitmask: keep() demotes the whole lam to ⊤ for dom >= 64, so a param this wide
+    // can only survive as a u64 entry if it was never recorded - conservatively treat it as kept.
+    if (dom >= BitmaskWidth) return true;
     if (auto mask = Lit::isa<u64>(i->second)) return (*mask >> dom) & 1; // per-param bitmask
     return true;                                                         // ⊤ sentinel: whole lam kept
 }
@@ -43,7 +46,7 @@ void Scalarize::Analysis::keep(Lam* lam, size_t dom) {
     if (i != lattice_mut().end() && !Lit::isa<u64>(i->second)) return; // already ⊤ - monotone, do not downgrade
     // Too wide for the u64 bitmask (only with an unusually large scalarize threshold): conservatively keep
     // the whole lam rather than risk splitting a dynamically-indexed parameter.
-    if (dom >= 64) return demote(lam);
+    if (dom >= BitmaskWidth) return demote(lam);
     auto mask = i != lattice_mut().end() ? Lit::as<u64>(i->second) : u64(0);
     auto next = mask | (u64(1) << dom);
     if (next == mask) return;
