@@ -1,6 +1,6 @@
 // REQUIRES: fp16
 // RUN: %mim %s -o - -p ll | %FileCheck %s
-// RUN: cat %{s:stem}.ll | FileCheck %s --check-prefix=LLVM
+// RUN: cat %{s:stem}.ll | %FileCheck %s --check-prefix=LLVM
 plugin math;
 
 // Companion to lit_float.mim for the 16-bit path; only run where std::float16_t is available.
