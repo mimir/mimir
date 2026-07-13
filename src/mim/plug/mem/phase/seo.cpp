@@ -285,7 +285,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i)
-            lattice_mut()[phi_vars[i]] = phi_abstr_args[i];
+            sccp_join(phi_vars[i], phi_abstr_args[i]);
     }
 
     return Super::rewrite_imm_App(app);
