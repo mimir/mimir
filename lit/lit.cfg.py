@@ -18,3 +18,8 @@ config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
 config.environment = os.environ
 
 config.available_features.add("always")
+
+# 16-bit floating-point support (needs std::float16_t) is detected once by CMake and passed in via
+# lit.site.cfg.py. Tests emitting %math.F16 literals gate on this via `// REQUIRES: fp16`.
+if getattr(config, 'fp16', False):
+    config.available_features.add("fp16")
