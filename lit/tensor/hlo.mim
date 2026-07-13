@@ -1,4 +1,14 @@
-// RUN: %mim -p opt %s -p cps -p affine -o - | %FileCheck %s
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll -o - | %FileCheck %s
+// RUN: clang++ %S/hlo_step_aux.cpp %{s:stem}.ll -o %t -O1 -Wno-override-module
+// RUN: %t
+
+// Full-size two-layer MLP training step (batch 128, 784→1024→1024→10), an HLO dump lowered through the
+// DEFAULT pipeline all the way to LLVM and executed against a plain C++ reference in hlo_step_aux.cpp.
+// `main_hlo` computes the six SGD-updated results (two weight matrices per layer plus biases) and returns
+// the update delta (old − new = lr·grad) of one element of each, so every forward and backward chain stays
+// live and the driver can check the backward pass numerically. hlo_train.mim is the compact one-layer
+// variant of this test; hlo_exec.mim covers the forward pass only.
 plugin tensor;
 plugin refly;
 plugin core;
@@ -34,13 +44,16 @@ lam reduce_ax0 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32
         (%tensor.proj_map @(2, 1) 0) (%tensor.proj_map @(2, 2) (1, 0),) input;
 
 fun extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»»]
-  : [«784; «1024; F32»», «1024; F32», «1024; «1024; F32»», «1024; F32», «1024; «10; F32»», «10; F32»]
+  : F32
   = let v_0 = %tensor.product_2d R (arg6, arg0);
     /// let v_1 : «1, 1024; F32» = arg1;
     let v_2 = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
     let v_3 = F32_add @(2, (128, 1024)) (v_0, v_2);
     let v_4 = F32_tanh @(2, (128, 1024)) v_3;
-    let v_cst = 1: F32;
+    // NB: decimal (and small integer) F32 literals lower to garbage bit patterns — only F64 decimal
+    // literals parse correctly — so F32 constants are built by converting an F64 literal with
+    // %math.conv.f2f (see hlo_train.mim).
+    let v_cst = %math.conv.f2f (23, 8) (1.0: %math.F64);
     let v_5 = ‹128, 1024; v_cst›;
     let v_6 = F32_sub @(2, (128, 1024)) (v_5, v_4);
     let v_7 = %tensor.product_2d R (v_4, arg2);
@@ -74,7 +87,7 @@ fun extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_31 = ‹128, 1; v_cst_2›;
     let v_32 = F32_GE (v_28, v_31);
     let v_33 = %math.minus 0 v_cst;
-    let v_cst_4 = 1.280000e+02: F32;
+    let v_cst_4 = %math.conv.f2f (23, 8) (128.0: %math.F64);
     let v_34 = %math.arith.div 0 (v_33, v_cst_4);
     /// let v_35 = ‹128; v_34›;
     let v_36 = %tensor.broadcast ((1, 1), (128, 10), v_34);
@@ -123,7 +136,7 @@ fun extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     /// let v_71 = reduce_ax0 ((%math.arith.add @f32 0), v_cst_12) v_70;
     let v_72 = %tensor.dot_product R @(2, 2) (0_2, 0_2, (), ()) (v_68, arg6);
     let v_73 = %tensor.transpose_2d v_72;
-    let v_cst_13 = 1.000000e-03: F32;
+    let v_cst_13 = %math.conv.f2f (23, 8) (0.001: %math.F64);
     let v_74 = ‹784, 1024; v_cst_13›;
     let v_75 = F32_mul @(2, (784, 1024)) (v_74, v_73);
     let v_76 = F32_sub @(2, (784, 1024)) (arg0, v_75);
@@ -142,16 +155,21 @@ fun extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_89 = ‹10; v_cst_13›;
     let v_90 = F32_mul (v_89, v_51);
     let v_91 = F32_sub (arg5, v_90);
-    return (v_76, v_79, v_82, v_85, v_88, v_91);
-    /// return (v_76, arg1, arg2, arg3, arg4, arg5);
-
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.internal_cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %tensor.lower_map_reduce,
-        %compile.internal_cleanup,
-    );
+    // Return the SGD update delta (old − new = lr·grad) of one element of each of the six results,
+    // so every gradient chain stays live and the driver can check the backward pass numerically.
+    let g0 = %math.arith.sub 0 (%tensor.get @(F32, 2, (784, 1024))  (arg0, (3_784, 5_1024)),
+                                %tensor.get @(F32, 2, (784, 1024))  (v_76, (3_784, 5_1024)));
+    let g1 = %math.arith.sub 0 (%tensor.get @(F32, 1, (1024,))      (arg1, (7_1024,)),
+                                %tensor.get @(F32, 1, (1024,))      (v_79, (7_1024,)));
+    let g2 = %math.arith.sub 0 (%tensor.get @(F32, 2, (1024, 1024)) (arg2, (11_1024, 13_1024)),
+                                %tensor.get @(F32, 2, (1024, 1024)) (v_82, (11_1024, 13_1024)));
+    let g3 = %math.arith.sub 0 (%tensor.get @(F32, 1, (1024,))      (arg3, (17_1024,)),
+                                %tensor.get @(F32, 1, (1024,))      (v_85, (17_1024,)));
+    let g4 = %math.arith.sub 0 (%tensor.get @(F32, 2, (1024, 10))   (arg4, (19_1024, 2_10)),
+                                %tensor.get @(F32, 2, (1024, 10))   (v_88, (19_1024, 2_10)));
+    let g5 = %math.arith.sub 0 (%tensor.get @(F32, 1, (10,))        (arg5, (3_10,)),
+                                %tensor.get @(F32, 1, (10,))        (v_91, (3_10,)));
+    return (%math.arith.add 0 (g0, %math.arith.add 0 (g1, %math.arith.add 0 (g2,
+            %math.arith.add 0 (g3, %math.arith.add 0 (g4, g5))))));
 
 // CHECK-NOT: %tensor.map_reduce

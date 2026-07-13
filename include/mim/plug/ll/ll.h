@@ -671,8 +671,12 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto t_tup = convert(tuple->type());
         if (auto li = Lit::isa(index)) {
             if (isa_mem_sigma_2(tuple->type())) return v_tup;
-            // Adjust index, if mem is present.
-            auto v_i = Axm::isa<mem::M>(tuple->proj(0)->type()) ? std::to_string(*li - 1) : std::to_string(*li);
+            // Adjust index: convert() drops %mem.M elements from sigmas,
+            // so subtract the number of mem elements preceding the index.
+            auto v_i = *li;
+            if (auto sigma = tuple->type()->isa<Sigma>())
+                for (u64 i = 0; i < *li; ++i)
+                    if (Axm::isa<mem::M>(sigma->op(i))) --v_i;
 
             return bb.assign(name, "extractvalue {} {}, {}", t_tup, v_tup, v_i);
         }

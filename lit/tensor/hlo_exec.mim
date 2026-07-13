@@ -14,7 +14,7 @@
 //
 // This runs through the DEFAULT `-p opt` pipeline, so the tensor ops are bufferized via
 // %tensor.lower_to_mem (get/set/map_reduce/broadcast -> %buffer/%matrix -> %mem). See hlo.mim for the
-// full training step and its FileCheck-only lowering.
+// full training step (forward + backward), which is likewise executed and checked against a reference.
 plugin tensor;
 plugin core;
 plugin affine;
