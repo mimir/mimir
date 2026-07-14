@@ -26,3 +26,7 @@ if getattr(config, 'build_type', '').lower() in ('release', 'relwithdebinfo', 'm
 # lit.site.cfg.py. Tests emitting %math.F16 literals gate on this via `// REQUIRES: fp16`.
 if getattr(config, 'fp16', False):
     config.available_features.add("fp16")
+
+config.available_features.add(f"system-{sys.platform}")
+if getattr(config, 'cuda_found', False):
+    config.available_features.add('cuda')

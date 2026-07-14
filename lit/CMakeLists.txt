@@ -91,6 +91,13 @@ else()
     set(MIM_FP16_SUPPORTED False)
 endif()
 
+find_package(CUDAToolkit QUIET)
+if(CUDAToolkit_FOUND)
+    set(MIM_CUDA_FOUND True)
+else()
+    set(MIM_CUDA_FOUND False)
+endif()
+
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/cmake/stage-lit-tests.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/stage-lit-tests.cmake" @ONLY)
 
