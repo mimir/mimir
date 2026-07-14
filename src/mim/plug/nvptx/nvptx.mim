@@ -21,4 +21,4 @@ let %nvptx.Stream = %mem.Ptr0 I8;
 ///
 /// ### Repls
 ///
-axm %nvptx.stream_impl_repl: %compile.Repl;
+axm %nvptx.stream_impl_repl: %compile.Phase;

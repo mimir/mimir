@@ -1,7 +1,6 @@
 #include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
 
 #include <mim/driver.h>
-#include <mim/pass.h>
 #include <mim/plugin.h>
 
 #include <mim/util/sys.h>
@@ -16,9 +15,9 @@ namespace mim::plug::ll_nvptx {
 
 namespace {
 
-static auto get_setup_stage(World& world) {
+static auto get_setup_phase(World& world) {
     auto flags         = Annex::base<gpu::split_apply>();
-    auto stage_funcptr = world.driver().stage(flags);
+    auto stage_funcptr = world.driver().phase(flags);
     auto stage         = (*stage_funcptr)(world);
     auto phase         = stage->isa<RWPhase>();
     if (!phase) error("Found unexpected gpu::split_apply stage");
@@ -165,7 +164,7 @@ public:
 
         auto host_ofs = std::ofstream(host_ll_name);
 
-        auto [stage, setup_phase] = get_setup_stage(world());
+        auto [stage, setup_phase] = get_setup_phase(world());
         setup_phase->run();
 
         DeviceEmitFlags device_flags;
@@ -210,6 +209,6 @@ public:
 
 using namespace mim;
 
-static void reg_stages(Flags2Stages& stages) { Stage::hook<plug::ll_nvptx::emit, plug::ll_nvptx::Emit>(stages); }
+static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit, plug::ll_nvptx::Emit>(phases); }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ll_nvptx", MIM_VERSION, nullptr, reg_stages}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ll_nvptx", MIM_VERSION, nullptr, reg_phases}; }
