@@ -25,10 +25,7 @@ static size_t idx_of(Defs vars, const Def* p) {
     return i - vars.begin();
 }
 
-const Proxy* isa_bundle(const Def* def, Lam* lam) {
-    if (auto bundle = Proxy::isa<Proxy_Bundle>(def); bundle && bundle->op(0) == lam) return bundle;
-    return nullptr;
-}
+static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
 void SEO::Analysis::reset() {
     Super::reset();
@@ -60,18 +57,17 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     }
 
     auto cur = lattice(var);
-    if (!cur) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it inserts a fresh fact
-        lattice(var, def);
-        DLOG("propagate: {} -> {}", var, def);
-        return def;
-    }
 
-    if (Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
+    // Frozen: a ⊤ / this-lam's bundle wins and is kept across rounds (needs cur to exist).
+    if (cur && Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
+    if (cur && isa_bundle(cur, lam)) return cur;
 
-    if (isa_bundle(cur, lam)) return cur;
-
+    // First touch of `var` this round - including the very first ever (cur == ⊥): restart the join from
+    // this call site, discarding any value accumulated in an earlier round. The `⊥` case MUST also mark
+    // first_; otherwise the *second* site would take this branch, resetting away this first contribution
+    // and letting `var` settle on a later site's value instead of climbing to ⊤.
     if (auto [_, ins] = first_.emplace(var); ins) {
-        invalidate(cur != def);
+        invalidate(!cur || cur != def);
         DLOG("first; restart: {} -> {}", var, def);
         return lattice_mut()[var] = def;
     }
@@ -100,6 +96,11 @@ DefVec SEO::Analysis::sccp(Lam* lam, Defs vars, Defs abstr_args) {
 }
 
 // GVN
+
+static const Proxy* isa_bundle(const Def* def, Lam* lam) {
+    if (auto bundle = Proxy::isa<Proxy_Bundle>(def); bundle && bundle->op(0) == lam) return bundle;
+    return nullptr;
+}
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
     return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle);
@@ -300,23 +301,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         find_unkowns_callee(visisted, lams, abstr_callee);
         find_unkowns(visisted, lams, abstr_arg);
 
-#if 0
-        LamSet other;
-        for (auto mut : abstr_callee->local_muts())
-            if (auto lam = mut->isa<Lam>(); lam && lam != known) other.emplace(lam);
-        for (auto mut : abstr_arg->local_muts())
-            if (auto lam = mut->isa<Lam>(); lam && lam != known) other.emplace(lam);
-
-        if (lams != other) DLOG("lams and other don't agree: {} - {}", fe::Join(lams), fe::Join(other));
-#endif
-
         for (auto lam : lams) {
             assert(lam != known && lam->is_open());
             DLOG("unknown edge: {} -> {}", curr_mut(), lam);
             propagate_phis(lam, phi_vars, phi_abstr_args);
         }
 
-        // sccp_join(lam_of(phi_vars[i]), phi_vars[i], phi_abstr_args[i]); // correct?
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
             auto [_, ins] = first_.emplace(phi_vars[i]);
             assert(ins);
@@ -336,11 +326,15 @@ static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     if (!abstr) return true;                            // no info -> keep
     if (old_var == abstr) return true;                  // top
     if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
-    if (auto bundle = isa_bundle(abstr, lam))
-        // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
-        // non-phi
+    if (auto bundle = isa_bundle(abstr, lam)) {
+        if (Proxy::isa<Proxy_Phi>(old_var)) {
+            // if old_var is a phi, only keep it if all the entries in the bundle are phis.
+            if (std::ranges::all_of(bundle->ops().drop(1), [](auto op) -> bool { return Proxy::isa<Proxy_Phi>(op); }))
+                return true;
+        }
+        // if not, prefer the first
         return bundle->op(1) == old_var; // first in GVN bundle
-    else
+    } else
         return false;
 }
 
@@ -530,9 +524,15 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
         }
     }
 
-    // now resolve the dropped vars/phis to their propagated values
+    // now resolve the dropped vars to their propagated values
     for (size_t i = 0; i != num_old; ++i)
         if (!keeps[i]) var_map[i] = rewrite(lattice(old_lam->var(num_old, i))); // SCCP propagate
+
+    // Map the whole var *before* rewriting dropped-phi values below: such a value may itself project a
+    // *dropped* var of old_lam (e.g. its now-removed empty closure env), which is only reachable through
+    // var_map - not the individually-mapped kept projections. Without this the projection falls through to
+    // the freshly built (narrower) var and its index no longer fits.
+    map(old_lam->var(), var_map);
 
     for (auto [sloxy, phi, val] : phis)
         if (!keep(old_lam, phi, val)) {
@@ -540,7 +540,6 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
             map(phi, rewrite(val));
         }
 
-    map(old_lam->var(), var_map);
     {
         auto _          = enter(old_lam);
         auto new_filter = rewrite(old_lam->filter());
