@@ -228,8 +228,7 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [pointee, addr_space] = ptr->args<2>();
-        // TODO addr_space
-        std::print(s, "{}*", convert(pointee, false));
+        std::print(s, "{} addrspace({})*", convert(pointee, false), addr_space);
     } else if (auto arr = type->isa<Arr>()) {
         if (auto se = is_simd(arr); se && simd) {
             auto [size, elem] = *se;
@@ -397,7 +396,9 @@ inline void Emitter::emit_epilogue(Lam* lam) {
 
         switch (values.size()) {
             case 0: return bb.tail("ret void");
-            case 1: return bb.tail("ret {} {}", convert(types[0]), values[0]);
+            case 1:
+                return Axm::isa<mem::M>(types[0]) ? bb.tail("ret void")
+                                                  : bb.tail("ret {} {}", convert(types[0]), values[0]);
             default: {
                 std::string type;
                 std::string prev;
@@ -425,6 +426,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
                     prev = "undef";
                     type = convert(world().sigma(types));
                     for (size_t i = 0, n = values.size(); i != n; ++i) {
+                        if (auto mem = Axm::isa<mem::M>(types[i])) continue;
                         auto v_elem = values[i];
                         auto t_elem = convert(types[i]);
                         auto namei  = "%ret_val." + std::to_string(i);
@@ -448,7 +450,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
                 for (size_t i = 0; i != n; ++i) {
                     if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
                         auto phi = callee->var(n, i);
-                        assert(!Axm::isa<mem::M>(phi->type()));
+                        if (Axm::isa<mem::M>(phi->type())) continue;
                         lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
                         locals_[phi] = id(phi);
                     }
@@ -489,7 +491,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
             for (size_t i = 0; i != n; ++i) {
                 if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
                     auto phi = callee->var(n, i);
-                    assert(!Axm::isa<mem::M>(phi->type()));
+                    if (Axm::isa<mem::M>(phi->type())) continue;
                     lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
                     locals_[phi] = id(phi);
                 }
@@ -507,6 +509,9 @@ inline void Emitter::emit_epilogue(Lam* lam) {
         bb.tail("call void @longjmp(i8* {}, i32 {})", v_jb, v_tag);
         return bb.tail("unreachable");
     } else if (auto mslot = Axm::isa<mem::mslot>(app)) {
+        auto address_space = mslot->decurry()->arg(1);
+        if (Lit::as(address_space) != 0)
+            if (auto target_specific = isa_targetspecific_intrinsic(bb, app)) return;
         // Continuation-based stack slot: allocate and jump to the passed continuation with the fresh pointer.
         auto [Ta, rest]            = mslot->uncurry_args<2>();
         auto [pointee, addr_space] = Ta->projs<2>();
@@ -965,21 +970,36 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
+        auto address_space = malloc->decurry()->arg(1);
+        if (Lit::as(address_space) != 0)
+            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return target_specific.value();
+
         declare("i8* @malloc(i64)");
 
         emit_unsafe(malloc->arg(0));
-        auto size  = emit(malloc->arg(1));
-        auto ptr_t = convert(Axm::as<mem::Ptr>(def->proj(1)->type()));
-        bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
-        return bb.assign(name, "bitcast i8* {} to {}", name + "i8", ptr_t);
+        auto size           = emit(malloc->arg(1));
+        auto ptr_t          = convert(Axm::as<mem::Ptr>(def->proj(1)->type()));
+        auto i8ptr          = bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
+        std::string i8ptr_t = "i8*";
+        if (Lit::as(address_space) != 0) {
+            i8ptr_t = std::format("i8 addrspace({})*", address_space);
+            i8ptr   = bb.assign(name + "i8conv", "addrspacecast i8* {} to {}", i8ptr, i8ptr_t);
+        }
+        return bb.assign(name, "bitcast {} {} to {}", i8ptr_t, i8ptr, ptr_t);
     } else if (auto free = Axm::isa<mem::free>(def)) {
+        auto address_space = free->decurry()->arg(1);
+        if (Lit::as(address_space) != 0)
+            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return {};
+
         declare("void @free(i8*)");
         emit_unsafe(free->arg(0));
         auto ptr   = emit(free->arg(1));
         auto ptr_t = convert(Axm::as<mem::Ptr>(free->arg(1)->type()));
 
-        bb.assign(name + "i8", "bitcast {} {} to i8*", ptr_t, ptr);
-        bb.tail("call void @free(i8* {})", name + "i8");
+        auto i8ptr = bb.assign(name + "i8", "bitcast {} {} to i8 addrspace({})*", ptr_t, ptr, address_space);
+        if (Lit::as(address_space) != 0)
+            i8ptr = bb.assign(name + "i8conv", "addrspacecast i8 addrspace({})* {} to i8*", address_space, i8ptr);
+        bb.tail("call void @free(i8* {})", i8ptr);
         return {};
     } else if (auto load = Axm::isa<mem::load>(def)) {
         emit_unsafe(load->arg(0));
