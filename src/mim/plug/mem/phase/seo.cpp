@@ -13,10 +13,10 @@ namespace mim::plug::mem::phase {
  */
 
 enum {
-    Proxy_GVN,
-    Proxy_Slot,
-    Proxy_Phi,
-    Proxy_SCCP_Top, // var reached ⊤ for propagation but still awaits GVN bundling
+    Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
+    Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
+    Proxy_Slot,     // proxy(lam, id)
+    Proxy_Phi,      // proxy(lam, sloxy)
 };
 
 static size_t idx_of(Defs vars, const Def* p) {
@@ -25,17 +25,16 @@ static size_t idx_of(Defs vars, const Def* p) {
     return i - vars.begin();
 }
 
-/// The Lam the abstract @p var belongs to; @p var is a Var, a Var projection, or a phi Proxy.
-static Lam* lam_of(const Def* var) {
-    if (auto proxy = var->isa<Proxy>()) return proxy->op(0)->as_mut<Lam>();
-    if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->mut()->as_mut<Lam>();
-    return var->as<Var>()->mut()->as_mut<Lam>();
+const Proxy* isa_bundle(const Def* def, Lam* lam) {
+    if (auto bundle = Proxy::isa<Proxy_Bundle>(def); bundle && bundle->op(0) == lam) return bundle;
+    return nullptr;
 }
 
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
     lam2sloxy2val_.clear();
+    first_.clear();
 }
 
 /*
@@ -46,15 +45,16 @@ void SEO::Analysis::reset() {
 
 const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
-const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
+const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
+    if (is_top(var)) return var;
 
     // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin_top(var);
 
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
-    if (!def->isa<Proxy>() && lam_of(var)->nests(def)) {
+    if (!def->isa<Proxy>() && lam->nests(def)) {
         DLOG("cannot propagate {} -> {}: out of scope", var, def);
         return pin_top(var);
     }
@@ -66,8 +66,17 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         return def;
     }
 
-    if (def->isa<Bot>() || cur == def || cur == var || Proxy::isa<Proxy_GVN>(cur) || Proxy::isa<Proxy_SCCP_Top>(cur))
-        return cur;
+    if (Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
+
+    if (isa_bundle(cur, lam)) return cur;
+
+    if (auto [_, ins] = first_.emplace(var); ins) {
+        invalidate(cur != def);
+        DLOG("first; restart: {} -> {}", var, def);
+        return lattice_mut()[var] = def;
+    }
+
+    if (def->isa<Bot>() || cur == def || cur == var) return cur;
 
     DLOG("cannot propagate {} -> {}; cur: {}, trying GVN", var, def, cur);
     // lattice(var, def) invalidates, as it overwrites cur in both cases.
@@ -80,23 +89,23 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     return top;
 }
 
-DefVec SEO::Analysis::sccp(Defs vars, Defs abstr_args) {
+DefVec SEO::Analysis::sccp(Lam* lam, Defs vars, Defs abstr_args) {
     assert(vars.size() == abstr_args.size());
 
     DefVec abstr_vars;
     for (size_t i = 0; i < vars.size(); i++)
-        abstr_vars.emplace_back(sccp_join(vars[i], abstr_args[i]));
+        abstr_vars.emplace_back(sccp_join(lam, vars[i], abstr_args[i]));
 
     return abstr_vars;
 }
 
 // GVN
 
-const Proxy* SEO::Analysis::mk_bundle(const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), bundle_vars, Proxy_GVN);
+const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
+    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle);
 }
 
-void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
+void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
     auto n_all = vars.size();
     for (size_t i = 0; i != n_all; ++i) {
         if (!Proxy::isa<Proxy_SCCP_Top>(abstr_vars[i])) continue;
@@ -111,9 +120,9 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
         if (bundle_vars.size() == 1) {
             abstr_vars[i] = pin_top(vars[i]);
         } else {
-            auto bundle = mk_bundle(vars[i], bundle_vars);
+            auto bundle = mk_bundle(lam, vars[i], bundle_vars);
 
-            for (auto p : bundle->ops()) {
+            for (auto p : bundle->ops().drop(1)) {
                 auto j = idx_of(vars, p);
                 lattice(vars[j], abstr_vars[j] = bundle);
             }
@@ -123,7 +132,7 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
     }
 }
 
-void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const Def*> abstr_vars) {
+void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, Span<const Def*> abstr_vars) {
     // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
     // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
     // a -> {a, c}
@@ -132,11 +141,11 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
     // d -> {b, d}
     // e -> e      (top)
     for (size_t i = 0, n = vars.size(); i != n; ++i) {
-        if (auto proxy = Proxy::isa<Proxy_GVN>(abstr_vars[i])) {
-            auto num        = proxy->num_ops();
+        if (auto bundle = isa_bundle(abstr_vars[i], lam)) {
+            auto num        = bundle->num_ops() - 1;
             auto split_vars = DefVec();
 
-            for (auto p : proxy->ops()) {
+            for (auto p : bundle->ops().drop(1)) {
                 auto j = idx_of(vars, p);
                 if (p == vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(vars[j]);
             }
@@ -144,12 +153,12 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
             auto new_num = split_vars.size();
             if (new_num == 1) {
                 abstr_vars[i] = pin_top(vars[i]);
-                DLOG("single: {}", vars[i]);
+                DLOG("gvn single: {}", vars[i]);
             } else if (new_num != num) {
-                auto new_proxy = mk_bundle(abstr_args[i], split_vars);
-                DLOG("split: {}", new_proxy);
+                auto new_proxy = mk_bundle(lam, abstr_args[i], split_vars);
+                DLOG("gvn split: {}", new_proxy);
 
-                for (auto p : new_proxy->ops()) {
+                for (auto p : new_proxy->ops().drop(1)) {
                     auto j = idx_of(vars, p);
                     if (p == vars[j]) lattice(vars[j], abstr_vars[j] = new_proxy);
                 }
@@ -187,6 +196,26 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
             DLOG("no value found for {}", slot);
         }
     }
+}
+
+static void find_unkowns(DefSet& visited, LamSet& res, const Def* def) {
+    if (def->isa<Proxy>() || def->isa<Var>()) return;
+    if (auto [_, ins] = visited.emplace(def); !ins) return;
+
+    if (auto lam = def->isa_mut<Lam>()) {
+        if (lam->is_open()) res.emplace(lam);
+        return;
+    }
+
+    if (def->isa_mut()) return;
+
+    for (auto d : def->deps())
+        find_unkowns(visited, res, d);
+}
+
+static void find_unkowns_callee(DefSet& visited, LamSet& res, const Def* def) {
+    if (def->isa<Lam>()) return;
+    find_unkowns(visited, res, def);
 }
 
 // Analysis - Rewrite
@@ -252,9 +281,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
             propagate_phis(known, all_vars, all_abstr_args);
 
-            auto all_abstr_vars = sccp(all_vars, all_abstr_args);
-            gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
-            gvn_split(all_vars, all_abstr_args, all_abstr_vars);
+            auto all_abstr_vars = sccp(known, all_vars, all_abstr_args);
+            gvn_bundle(known, all_vars, all_abstr_args, all_abstr_vars);
+            gvn_split(known, all_vars, all_abstr_args, all_abstr_vars);
 
             lattice(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
 
@@ -266,17 +295,33 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
-        auto all_muts       = world().muts().merge(abstr_callee->local_muts(), abstr_arg->local_muts());
-        for (auto mut : all_muts) {
-            if (auto lam = mut->isa<Lam>()) {
-                if (lam == known || lam->is_closed()) continue;
-                DLOG("unknown edge: {} -> {}", curr_mut(), lam);
-                propagate_phis(lam, phi_vars, phi_abstr_args);
-            }
+        DefSet visisted;
+        LamSet lams;
+        find_unkowns_callee(visisted, lams, abstr_callee);
+        find_unkowns(visisted, lams, abstr_arg);
+
+#if 0
+        LamSet other;
+        for (auto mut : abstr_callee->local_muts())
+            if (auto lam = mut->isa<Lam>(); lam && lam != known) other.emplace(lam);
+        for (auto mut : abstr_arg->local_muts())
+            if (auto lam = mut->isa<Lam>(); lam && lam != known) other.emplace(lam);
+
+        if (lams != other) DLOG("lams and other don't agree: {} - {}", fe::Join(lams), fe::Join(other));
+#endif
+
+        for (auto lam : lams) {
+            assert(lam != known && lam->is_open());
+            DLOG("unknown edge: {} -> {}", curr_mut(), lam);
+            propagate_phis(lam, phi_vars, phi_abstr_args);
         }
 
-        for (size_t i = 0, e = phi_vars.size(); i != e; ++i)
-            sccp_join(phi_vars[i], phi_abstr_args[i]);
+        // sccp_join(lam_of(phi_vars[i]), phi_vars[i], phi_abstr_args[i]); // correct?
+        for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
+            auto [_, ins] = first_.emplace(phi_vars[i]);
+            assert(ins);
+            lattice_mut()[phi_vars[i]] = phi_abstr_args[i];
+        }
     }
 
     return Super::rewrite_imm_App(app);
@@ -287,14 +332,14 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
  * Finds sloxies that are still present + escaping lambdas
  */
 
-static bool keep(const Def* old_var, const Def* abstr) {
+static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     if (!abstr) return true;                            // no info -> keep
     if (old_var == abstr) return true;                  // top
     if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
-    if (auto proxy = Proxy::isa<Proxy_GVN>(abstr))
+    if (auto bundle = isa_bundle(abstr, lam))
         // TODO: if old_var is a phi, only keep it if all the entries in the bundle are phis. if not, prefer the first
         // non-phi
-        return proxy->op(0) == old_var; // first in GVN bundle
+        return bundle->op(1) == old_var; // first in GVN bundle
     else
         return false;
 }
@@ -330,7 +375,7 @@ void SEO::Analysis::analyze(const Def* def) {
             // only analyze args that we keep
             for (size_t i = 0, e = lam->num_tdoms(); i != e; ++i) {
                 auto old_var = lam->var(e, i);
-                if (keep(old_var, lattice(old_var))) analyze(app->arg(e, i));
+                if (keep(lam, old_var, lattice(old_var))) analyze(app->arg(e, i));
             }
 
             for (auto d : lam->deps())
@@ -428,7 +473,7 @@ bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
     if (abstracted(old_lam->var())) return true;
 
     for (auto [sloxy, phi, val] : phis)
-        if (keep(phi, val)) return true;
+        if (keep(old_lam, phi, val)) return true;
 
     return false;
 }
@@ -445,12 +490,12 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     auto new_doms = DefVec();
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
-        keeps[i]     = keep(old_var, lattice(old_var));
+        keeps[i]     = keep(old_lam, old_var, lattice(old_var));
         if (keeps[i]) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
     }
 
     for (auto [sloxy, phi, val] : phis)
-        if (keep(phi, val)) new_doms.emplace_back(rewrite(phi->type()));
+        if (keep(old_lam, phi, val)) new_doms.emplace_back(rewrite(phi->type()));
 
     size_t num_new_vars = new_doms.size();
 
@@ -472,12 +517,12 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
             auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg());
             var_map[i]   = map(old_var, v);
             if (auto abstr = lattice(old_var))
-                if (auto bundle = Proxy::isa<Proxy_GVN>(abstr)) map(bundle, v); // GVN bundle
+                if (auto bundle = isa_bundle(abstr, old_lam)) map(bundle, v); // GVN bundle
         }
     }
 
     for (auto [sloxy, phi, val] : phis) {
-        if (keep(phi, val)) {
+        if (keep(old_lam, phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
             DLOG("mapping phi {} to {}", phi, v);
             map(phi, v);
@@ -490,7 +535,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
         if (!keeps[i]) var_map[i] = rewrite(lattice(old_lam->var(num_old, i))); // SCCP propagate
 
     for (auto [sloxy, phi, val] : phis)
-        if (!keep(phi, val)) {
+        if (!keep(old_lam, phi, val)) {
             DLOG("mapping phi {} to its propagated value {}", phi, val);
             map(phi, rewrite(val));
         }
@@ -513,12 +558,12 @@ DefVec SEO::build_args(View<Phi> phis, Lam* old_lam, const App* old_app) {
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
         auto abstr   = lattice(old_var);
-        if (keep(old_var, abstr)) new_args.emplace_back(rewrite(old_app->targ(i)));
+        if (keep(old_lam, old_var, abstr)) new_args.emplace_back(rewrite(old_app->targ(i)));
     }
 
     DLOG("wiring up phi arguments");
     for (auto [sloxy, phi, val] : phis)
-        if (keep(phi, val)) {
+        if (keep(old_lam, phi, val)) {
             auto arg = analysis_.lam2sloxy2val(curr_mut<Lam>(), sloxy);
             assert(arg);
             new_args.emplace_back(rewrite(arg));

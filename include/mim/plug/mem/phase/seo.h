@@ -60,13 +60,13 @@ private:
     private:
         // SCCP
         const Proxy* mk_sccp_top(const Def* var);
-        const Def* sccp_join(const Def*, const Def*);
-        DefVec sccp(Defs vars, Defs abstr_args);
+        const Def* sccp_join(Lam*, const Def*, const Def*);
+        DefVec sccp(Lam*, Defs vars, Defs abstr_args);
 
         // GVN
-        const Proxy* mk_bundle(const Def* var, Defs bundle_vars);
-        void gvn_bundle(Defs, Defs, Span<const Def*>);
-        void gvn_split(Defs, Span<const Def*>, Span<const Def*>);
+        const Proxy* mk_bundle(Lam* lam, const Def* var, Defs bundle_vars);
+        void gvn_bundle(Lam*, Defs, Defs, Span<const Def*>);
+        void gvn_split(Lam*, Defs, Span<const Def*>, Span<const Def*>);
 
         // SSA
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
@@ -82,6 +82,7 @@ private:
         // local (reset between iterations)
         absl::node_hash_map<Lam*, Def2Def, GIDHash<const Def*>> lam2sloxy2val_;
         DefSet visited_;
+        DefSet first_;
 
         // global (kept between iterations)
         Def2Def sloxy2slot_;
