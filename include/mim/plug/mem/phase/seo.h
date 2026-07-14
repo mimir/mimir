@@ -49,7 +49,6 @@ private:
             : mim::Analysis(world, "SEO::Analyzer") {}
 
         void reset() final;
-        Def* owner(const Def*) final;
 
         const LamSet& escaped() const { return escaped_; }
 

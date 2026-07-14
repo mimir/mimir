@@ -38,15 +38,6 @@ void SEO::Analysis::reset() {
     lam2sloxy2val_.clear();
 }
 
-/// Phi and slot proxies carry their owning Lam as op(0); vars are handled by the base class.
-Def* SEO::Analysis::owner(const Def* key) {
-    if (auto proxy = key->isa<Proxy>()) {
-        if (proxy->tag() == Proxy_Phi || proxy->tag() == Proxy_Slot) return proxy->op(0)->isa_mut<Lam>();
-        return nullptr;
-    }
-    return Super::owner(key);
-}
-
 /*
  * Main Analysis
  */

@@ -31,13 +31,7 @@ public:
         , name_(std::move(name)) {}
     Phase(World& world, flags_t annex);
 
-    /// Clears the dirty bits of all muts still recorded in dirty(): otherwise a discarded Phase
-    /// (e.g. one recreated by a fixed-point PhaseMan) would strand set bits without a list entry,
-    /// causing later taint() calls to silently skip recording those muts.
-    virtual ~Phase() {
-        for (auto mut : dirty_)
-            mut->dirty(false);
-    }
+    virtual ~Phase() = default;
 
     virtual std::unique_ptr<Phase> recreate(); ///< Creates a new instance; needed by a fixed-point PhaseMan.
     virtual void apply(const App*) {}          ///< Invoked if your Phase has additional args.
@@ -98,22 +92,6 @@ public:
     ///
     /// Calling `invalidate(todo)` bitwise-ORs @p todo into the internal `todo_` flag.
     void invalidate(bool todo = true) { todo_ |= todo; }
-
-    /// The muts this Phase changed or wants re-examined - the unified "dirt" currency:
-    /// a sparse Analysis seeds its next round from it, an RWPhase records its rewrite sites in it
-    /// (and clears it again before its world swap - recorded Def%s must never outlive their World).
-    /// Insertion-ordered and deduplicated via Def%'s *dirty bit*.
-    const auto& dirty() const { return dirty_; }
-
-    /// Marks @p mut as *needs a (re)visit*: sets Def::is_dirty() and records @p mut in dirty().
-    /// Whoever visits @p mut clears the bit again; a recorded mut whose bit is already clear is stale
-    /// (it got its visit in the meantime) and is simply skipped by consumers.
-    void taint(Def* mut) {
-        if (mut && !mut->is_dirty()) {
-            mut->dirty();
-            dirty_.emplace_back(mut);
-        }
-    }
     ///@}
 
     /// @name run
@@ -139,9 +117,7 @@ private:
 
 protected:
     std::string name_;
-    Vector<Def*> dirty_;
 
-private:
     friend class Analysis;
 };
 
@@ -182,25 +158,6 @@ public:
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
-    /// @name Sparse Fixed-Point Iteration
-    /// By default (*sparse*), a fixed-point round re-drains only the mutables *tainted* by lattice changes:
-    /// whenever lattice() changes an entry, the muts that read that entry (tracked automatically
-    /// during draining) plus the entry's owner() are scheduled for the next round.
-    /// Once sparse rounds quiesce, one **full** round certifies the fixed point
-    /// (and is the only kind of round that runs finalize()) - so untracked flows through
-    /// side tables or post-passes cannot be missed.
-    /// An Analysis that never taint()s falls back to full rounds automatically (empty dirt ⟹ full round),
-    /// so the sparse default is safe even for analyses that only ever invalidate().
-    /// Call make_dense() to force whole-World rounds unconditionally.
-    ///@{
-    void make_dense() { sparse_ = false; }
-
-    /// Number of lattice changes that happened during *certification* rounds.
-    /// Every such change is a flow the sparse taint-tracking missed: results stay correct
-    /// (certification exists precisely to catch this), but each hole costs extra rounds.
-    uint32_t coverage_holes() const { return coverage_holes_; }
-    ///@}
-
     /// @name lattice
     /// Conventions: *absent* = ⊥ (nothing known); `def ↦ def` = ⊤ (keep as is).
     /// Subclasses may store their own sentinels in between as ordinary Def%s (e.g. SEO's GVN-bundle Proxy%s).
@@ -208,17 +165,12 @@ public:
     const auto& lattice() const { return lattice_; } ///< The whole map; used e.g. to diff two fixed-point runs.
 
     /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
-    /// While draining a sparse Analysis, the lookup registers curr_mut() as a *reader* of @p def,
-    /// so a later change to this entry taint()s the mut for re-visiting.
     const Def* lattice(const Def* def) const {
-        if (tracking_)
-            if (auto mut = curr_mut()) readers_[def].emplace(mut);
         if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
         return nullptr;
     }
 
     /// @returns whether @p def is pinned to ⊤ (`def ↦ def`).
-    /// @note Side-effect-free: unlike lattice(), this never registers a reader, so it is safe in pure queries.
     bool is_top(const Def* def) const {
         auto i = lattice_.find(def);
         return i != lattice_.end() && i->second == def;
@@ -242,13 +194,10 @@ protected:
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool lattice(const Def* concr, const Def* abstr) {
         map(concr, abstr);
-        // A sparse round replays these pairs: a dirty mut's rewrite must see the substitutions
-        // its (possibly non-dirty) producers would have re-installed in a full round.
-        if (sparse_) set_map_[concr] = abstr;
 
         auto [i, ins] = lattice_.emplace(concr, abstr);
         if (ins) {
-            if (concr != abstr) return changed(concr), true;
+            if (concr != abstr) return invalidate(), true;
             return false;
         }
 
@@ -256,18 +205,9 @@ protected:
         assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
         if (old != abstr) {
             i->second = abstr;
-            return changed(concr), true;
+            return invalidate(), true;
         }
         return false;
-    }
-
-    /// The mut whose body consumes the abstract value of @p key - dirtied alongside the readers.
-    /// Default handles (projections of) a Var; override for subclass-specific keys (e.g. SEO's phi proxies).
-    virtual Def* owner(const Def* key) {
-        if (auto var = key->isa<Var>()) return var->mut();
-        if (auto ex = key->isa<Extract>())
-            if (auto var = ex->tuple()->isa<Var>()) return var->mut();
-        return nullptr;
     }
     ///@}
 
@@ -288,51 +228,13 @@ protected:
     ///@}
 
 private:
-    /// Bookkeeping for an observable lattice change to @p concr: another round + taint.
-    /// A change during a *certification* round means the sparse taint-tracking missed a flow - worth investigating,
-    /// as it costs extra rounds (the result stays correct: certification exists precisely to catch this).
-    void changed(const Def* concr) {
-        invalidate();
-        taint(concr);
-        if (certifying_) {
-            ++coverage_holes_;
-            profile_count("coverage.holes");
-            DLOG("sparse coverage hole: `{}` changed during certification (in `{}`)", concr, curr_mut());
-        }
-    }
-
-    using Phase::taint;
-
-    /// Schedules all muts affected by a change to @p key for the next sparse round:
-    /// its recorded readers plus its owner(). No-op for a dense Analysis.
-    void taint(const Def* key) {
-        if (!sparse_) return;
-        taint(owner(key));
-        if (auto i = readers_.find(key); i != readers_.end())
-            for (auto mut : i->second)
-                taint(mut);
-    }
-
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
 
     Def2Def lattice_;
     std::deque<Def*> worklist_;
     bool bootstrapping_ = true;
-
-    // sparse fixed-point iteration; Phase::dirty_ holds the muts to re-drain next round (filled by taint())
-    /// lattice key -> muts whose visit read it
-    mutable absl::node_hash_map<const Def*, MutSet, GIDHash<const Def*>> readers_;
-    Def2Def set_map_;         ///< all set() pairs; replayed into map() at sparse-round start
-    Vector<Def*> dirty_prev_; ///< the muts being re-drained this round
-    bool sparse_             = true;
-    bool tracking_           = false; ///< record readers_ only while draining
-    bool full_round_         = true;  ///< current round traverses the whole World
-    bool need_full_          = false; ///< sparse rounds quiesced; certify with a full round
-    bool certifying_         = false; ///< current round is the certifying full round
-    uint32_t coverage_holes_ = 0;
-    size_t num_drained_      = 0; ///< muts drained this round; flushed into the Profiler
-    uint32_t round_          = 0;
+    size_t num_drained_ = 0; ///< muts drained this round; flushed into the Profiler
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
@@ -396,20 +298,6 @@ public:
     /// Returns whether we are currently bootstrapping (rewriting annexes).
     /// While bootstrapping, you have to skip rewrites that refer to other annexes, as they might not yet be available.
     bool is_bootstrapping() const { return bootstrapping_; }
-    ///@}
-
-    /// @name Fixed-Point Handling
-    ///@{
-
-    /// Like Phase::invalidate but additionally taint()s curr_mut(), recording *where* the change happened.
-    /// RWPhase::start translates the collected dirt into the new world upon swap.
-    /// @note This deliberately **hides** the non-virtual Phase::invalidate: rewrite hooks call it from RWPhase
-    /// context, so dispatch is static and inlinable - no virtual call in the hot rewrite path.
-    /// A call through a `Phase*` skips the tainting, which is harmless: dirt is best-effort metadata.
-    void invalidate(bool todo = true) {
-        if (todo) taint(curr_mut());
-        Phase::invalidate(todo);
-    }
     ///@}
 
     /// @name World

@@ -99,7 +99,6 @@ The lattice follows these conventions:
 - [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
   Being built on [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), it invalidates iff it overwrote previous information.
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
-  It is deliberately side-effect-free - unlike [`lattice(def)`](@ref mim::Analysis::lattice) it never registers a *reader* (see below) - so it is safe in pure queries.
 
 The high-level writers are [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
 Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy`](@ref mim::Proxy) tag, as SEO uses for its GVN and pending-⊤ markers - never `nullptr`, which is reserved for *absent*.
@@ -134,22 +133,10 @@ Hence each mutable's dependencies are walked **at most once per fixed-point roun
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
 [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
 
-### Sparse Fixed-Point Iteration
+### Fixed-Point Iteration
 
-By default, an [`Analysis`](@ref mim::Analysis) iterates **sparsely** - only the first round traverses the whole [`World`](@ref mim::World):
-
-- While draining, every [`lattice(def)`](@ref mim::Analysis::lattice) lookup records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as a *reader* of that entry.
-- Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry, `taint()` schedules the entry's readers plus its [`owner()`](@ref mim::Analysis::owner) - by default the mut binding the key when it is a `Var` (projection); subclasses override `owner()` for their own key kinds (e.g. SEO's phi/slot proxies carry their `Lam` as `op(0)`).
-- The next round re-drains only the tainted muts; all other muts merely map to themselves.
-  The `concr ↦ abstr` pairs written this way are replayed into the rewriter map at sparse-round start, so a dirty mut's rewrite sees the substitutions its (possibly non-visited) producers would have re-installed.
-- Once sparse rounds quiesce, one **full** round certifies the fixed point.
-  Only full rounds run [`finalize()`](@ref mim::Analysis::finalize), so post-passes always see the complete abstract world.
-  If the certification round discovers new facts, iteration continues sparsely from its taints.
-
-The certification round makes the scheme robust against flows the reader-tracking cannot see (subclass side tables, `finalize()`-driven pinning): the fixed point only counts if a whole-world round confirms it.
-
-The sparse default is safe even for analyses that never `taint()`: with no dirt recorded, every round is a full round - exactly the dense behavior, with no certification overhead.
-Use [`make_dense()`](@ref mim::Analysis::make_dense) to force whole-world rounds unconditionally.
+Every round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) rewrites all annex roots, drains the worklist, then does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
+Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry it [`invalidate`s](@ref mim::Phase::invalidate), requesting another round; the analysis reruns until a whole-world round leaves the lattice unchanged.
 
 ### Reset Between Iterations
 
@@ -256,9 +243,6 @@ Since a phase's run is a deterministic function of the [`World`](@ref mim::World
 Before a rerun, the phase is recreated from its original configuration.
 This keeps phase-local state from leaking across rounds unless the phase explicitly recomputes it.
 
-Change locations are tracked uniformly via [`Phase::taint()`](@ref mim::Phase::taint) / [`Phase::dirty()`](@ref mim::Phase::dirty):
-a sparse [`Analysis`](@ref mim::Analysis) seeds its next round from this set, and an [`RWPhase`](@ref mim::RWPhase) records the mut it is currently rewriting whenever it [`invalidate`s](@ref mim::RWPhase::invalidate) - translating the set into the new world upon swap.
-
 @note [`PhaseMan`](@ref mim::PhaseMan) is the orchestration layer for classical phase pipelines.
 
 ### Typical Shape
@@ -353,8 +337,7 @@ The join in `propagate()` is expressed entirely through the lattice API:
 No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`lattice(concr, abstr)`](@ref mim::Analysis::lattice).
 
 The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
-Whenever this changes the lattice, the analysis reruns until stable - sparsely, since that is the default:
-all its lattice keys are plain `Var` projections, so the default [`owner()`](@ref mim::Analysis::owner) already knows which mut to re-drain - no override, no opt-in, nothing to configure.
+Whenever this changes the lattice, the analysis reruns until stable.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
 - walk the old IR,
