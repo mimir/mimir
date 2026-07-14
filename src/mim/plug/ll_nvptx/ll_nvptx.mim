@@ -17,8 +17,7 @@ import compile;
 ///
 /// ### %%ll_nvptx.emit
 ///
-/// Emits the LLVM IR with PTX intrinsics for the host and device worlds split from the current world to the respective
-/// `<world>.ll` files.
+/// Emits the LLVM IR with PTX intrinsics for the host and device worlds split from the current world.
 /// This phase is spliced into the default pipeline (see `opt`) whenever the `ll_nvptx` plugin is loaded.
 ///
 axm %ll_nvptx.emit: %compile.Phase;
