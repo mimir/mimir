@@ -1,0 +1,24 @@
+/// # The ll_nvptx Plugin {#nvptx}
+///
+/// @see mim::plug::nvptx
+///
+/// A plugin to target LLVM IR with PTX intrinsics.
+///
+/// [TOC]
+///
+/// ## Dependencies
+///
+plugin gpu;
+plugin nvptx;
+plugin opt;
+import compile;
+///
+/// ## Phases
+///
+/// ### %%ll_nvptx.emit
+///
+/// Emits the LLVM IR with PTX intrinsics for the host and device worlds split from the current world to the respective
+/// `<world>.ll` files.
+/// This phase is spliced into the default pipeline (see `opt`) whenever the `ll_nvptx` plugin is loaded.
+///
+axm %ll_nvptx.emit: %compile.Phase;
