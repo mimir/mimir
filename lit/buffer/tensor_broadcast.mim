@@ -36,6 +36,7 @@ fun extern bc_scalar (x: I32): «3, 4; I32» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %tensor.lower_to_mem,
+        %mem.add_mem,
         %matrix.lower_aff,
         %buffer.lower_ptr,
         %affine.lower_index,

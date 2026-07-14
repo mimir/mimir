@@ -35,6 +35,8 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%tensor.lower_tensor",
         %compile.named "%tensor.fuse_tensor",
         %compile.named "%tensor.lower_to_mem",
+        // Only run add_mem, if there is bufferization going on -> we need the mems.
+        %compile.cond "tensor" (%compile.named "%mem.add_mem"),
         %compile.named "%matrix.lower_aff",
         %compile.named "%gpu.mem_checks",
         %compile.named "%autodiff.eval",

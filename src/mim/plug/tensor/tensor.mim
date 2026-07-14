@@ -558,6 +558,6 @@ axm %tensor.fuse_tensor: %compile.Phase;
 ///
 /// Bufferizes the low-level tensor axioms (`get`, `set`, `map_reduce`) onto the `buffer` layer:
 /// tensor array values become `%%buffer.Buf` handles and the operations become `%%buffer.read` / `%%buffer.write` / `%%buffer.alloc` (threading `%%mem.M`).
-/// Run `%%mem.add_mem_phase` afterwards to thread memory, then `%%buffer.lower_ptr` to reach `%%mem.Ptr`.
+/// Memory is threaded by `%%mem.add_mem` (scheduled next in the pipeline); run `%%buffer.lower_ptr` afterwards to reach `%%mem.Ptr`.
 ///
 axm %tensor.lower_to_mem: %compile.Phase;

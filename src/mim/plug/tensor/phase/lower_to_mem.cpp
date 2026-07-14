@@ -8,7 +8,6 @@
 #include "mim/plug/core/core.h"
 #include "mim/plug/matrix/matrix.h"
 #include "mim/plug/mem/mem.h"
-#include "mim/plug/tensor/phase/add_mem_buf.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -188,10 +187,6 @@ void LowerToMem::start() {
     // Nothing tensor-related in the program: skip the whole-world rebuild entirely.
     if (tensor_fns_.empty() && !ops_seen_) return;
     RWPhase::start();
-    // Thread the memory monad through the converted world (RWPhase::start swapped it into `old_world`):
-    // mem-extend continuations and replace the `⊥` memory placeholders of the emitted buffer operations
-    // with the scheduler-placed current memory.
-    AddMemBuf(old_world()).run();
 }
 
 const Def* LowerToMem::buf_of(const Def* arr_ty) {
@@ -250,7 +245,7 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     if (is_bootstrapping()) return RWPhase::rewrite_mut_Lam(lam);
 
     // A bufferized function: convert tensor-typed parameters to `%buffer.Buf`, including inside grouped
-    // sigma parameters and continuation domains. No memory is introduced here — AddMemBuf does that.
+    // sigma parameters and continuation domains. No memory is introduced here — AddMem does that.
     if (is_tensor_fn(lam)) {
         auto& w  = new_world();
         auto dom = lam->type()->dom();
@@ -400,7 +395,7 @@ const Def* LowerToMem::lower_set(const App* app) {
     }
 
     // AlwaysAllocate policy: allocate a fresh buffer, copy the source in, then write the element.
-    // This local chain is properly threaded; AddMemBuf splices its `⊥` root into the global chain.
+    // This local chain is properly threaded; AddMem splices its `⊥` root into the global chain.
     auto [m1, q]   = buffer::op_alloc(br, bs, bT, bot_mem())->projs<2>();
     auto m2        = buffer::op_copy(br, bs, bT, m1, q, arr);
     auto [m3, out] = buffer::op_write(br, bs, bT, m2, q, fidx, x)->projs<2>();

@@ -54,6 +54,7 @@ lam extern _compile (): %compile.Phase =
         %compile.named "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce/concat/… (+ broadcast)
         %compile.named "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast/pad/concat onto
                                                            // %buffer/%matrix (hard error if not bufferizable)
+        %mem.add_mem,
         %compile.named "%matrix.lower_aff",          // %matrix.* -> affine.For over %buffer
         %compile.named "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
         %compile.named "%affine.lower_index",  // %affine.map -> %core arithmetic

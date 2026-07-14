@@ -14,10 +14,11 @@ namespace mim::plug::tensor::phase {
 ///
 /// This phase is *conversion-only*: it rewrites types and operations but does not thread the `%mem.M`
 /// memory monad itself. Emitted buffer operations consume a `⊥: %mem.M 0` placeholder (or a short local
-/// chain), and the SSA value dependencies keep them anchored and ordered. The embedded AddMemBuf phase
-/// (a buffer-aware variant of `%mem.add_mem_phase`) then mem-extends all continuations and rewires every
-/// memory operand to the scheduler-placed current memory — handling returns, error continuations, join
-/// points, branch arms, and interleaving with a caller's own memory operations uniformly.
+/// chain), and the SSA value dependencies keep them anchored and ordered. The `%mem.add_mem` phase
+/// (mim::plug::mem::phase::AddMem), scheduled right after this one in the pipeline, then mem-extends all
+/// continuations and rewires every memory operand to the scheduler-placed current memory — handling returns,
+/// error continuations, join points, branch arms, and interleaving with a caller's own memory operations
+/// uniformly.
 ///
 /// Which array types denote tensors (as opposed to index/shape arrays that share the `Arr` structure) is
 /// determined by *role*: a pre-pass collects the array operand/result types of the tensor operations, and only
@@ -74,7 +75,7 @@ private:
     /// buffer must match the folded shape.
     const Def* fold_index(const Def* shape, const Def* idx);
 
-    /// A `⊥: %mem.M 0` placeholder consumed by emitted buffer operations; AddMemBuf replaces it with the
+    /// A `⊥: %mem.M 0` placeholder consumed by emitted buffer operations; AddMem replaces it with the
     /// scheduler-placed current memory.
     const Def* bot_mem();
 

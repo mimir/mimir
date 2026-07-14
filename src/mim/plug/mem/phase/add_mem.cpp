@@ -1,6 +1,6 @@
 #include "mim/plug/mem/phase/add_mem.h"
 
-#include <mim/schedule.h>
+#include <deque>
 
 #include "mim/plug/mem/mem.h"
 
@@ -62,12 +62,56 @@ const Def* rewrite_apped_mut_lam_in_tuple(const Def* def,
     return app->rebuild(app->type(), {callee, arg});
 }
 
+/// Does `pi` already thread memory — a leading `%mem.M`, either directly or grouped as the first
+/// component of the first parameter (e.g. the `Fn [%mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
+bool has_leading_mem(const Pi* pi) {
+    if (pi->num_doms() == 0) return false;
+    auto dom0 = pi->dom(0uz);
+    if (Axm::isa<mem::M>(dom0)) return true;
+    if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<mem::M>(sig->op(0))) return true;
+    return false;
+}
+
 } // namespace
 
-// Entry point of the phase.
+void AddMem::start() {
+    // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
+    // (combiners, affine index mappings, initial accumulators of `%matrix.map_reduce_aff`, …).
+    unique_queue<DefSet> wl;
+    for (auto mut : world().externals().muts())
+        if (mut) wl.push(mut);
+    DefVec seeds;
+    while (!wl.empty()) {
+        auto def = wl.pop();
+        if (auto app = def->isa<App>(); app && app->axm()) {
+            if (auto k = app->arg()->isa_mut<Lam>()) seeds.push_back(k);
+            for (auto op : app->arg()->ops())
+                if (op && op->isa_mut<Lam>()) seeds.push_back(op);
+        }
+        for (auto op : def->ops())
+            if (op) wl.push(op);
+    }
+    unique_queue<DefSet> sub;
+    for (auto seed : seeds)
+        sub.push(seed);
+    while (!sub.empty()) {
+        auto def = sub.pop();
+        if (auto lam = def->isa_mut<Lam>()) preserved_.emplace(lam);
+        for (auto op : def->ops())
+            if (op) sub.push(op);
+    }
+
+    NestPhase<Lam>::start();
+}
+
 void AddMem::visit(const Nest& nest) {
     sched_ = Scheduler{nest};
     add_mem_to_lams(root(), root());
+}
+
+void AddMem::set_mem(Lam* place, const Def* mem) {
+    val2mem_[place] = mem;
+    if (auto it = mem_rewritten_.find(place); it != mem_rewritten_.end()) val2mem_[it->second] = mem;
 }
 
 const Def* AddMem::mem_for_lam(Lam* lam) const {
@@ -100,7 +144,9 @@ const Def* AddMem::rewrite_pi(const Pi* pi) {
 
     auto dom     = pi->dom();
     auto new_dom = DefVec(dom->num_projs(), [&](size_t i) { return rewrite_type(dom->proj(i)); });
-    if (pi->num_doms() == 0 || !Axm::isa<mem::M>(pi->dom(0uz))) {
+    // Only continuations are mem-extended; direct-style functions keep their signature, and a pi that
+    // already threads memory (leading mem, possibly grouped) is left alone.
+    if (Pi::isa_cn(pi) && !has_leading_mem(pi)) {
         new_dom
             = DefVec(dom->num_projs() + 1, [&](size_t i) { return i == 0 ? world().call<mem::M>(0) : new_dom[i - 1]; });
     }
@@ -110,8 +156,6 @@ const Def* AddMem::rewrite_pi(const Pi* pi) {
 
 const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
     auto place = static_cast<Lam*>(sched_.smart(curr_lam, def)->mut());
-
-    // world().DLOG("rewriting {} : {} in {}", def, def->type(), place);
 
     if (auto global = def->isa<Global>()) return global;
     if (auto mut_lam = def->isa_mut<Lam>(); mut_lam && !mut_lam->is_set()) return def;
@@ -124,21 +168,23 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
             DLOG("new mem {} in {}", new_mem, curr_lam);
             return new_mem;
         }
-        if (curr_lam != def) {
-            // DLOG("rewritten def: {} : {} in {}", tmp, tmp->type(), curr_lam);
-            return tmp;
-        }
+        if (curr_lam != def) return tmp;
     }
     if (Axm::isa<mem::M>(def->type())) DLOG("new mem {} in {}", def, curr_lam);
 
     auto rewrite_lam = [&](Lam* lam) -> const Def* {
+        // The ABI of axm arguments (and everything within) is pinned by the axiom — leave them untouched.
+        if (preserved_.contains(lam)) return lam;
+        // Direct-style functions are not mem-threaded.
+        if (!Pi::isa_cn(lam->type())) return lam;
+
         auto pi      = lam->type()->as<Pi>();
         auto new_lam = lam;
 
         if (auto it = mem_rewritten_.find(lam); it != mem_rewritten_.end()) {
             if (curr_lam == lam) // i.e. we've stubbed this, but now we rewrite it
                 new_lam = it->second->as_mut<Lam>();
-            else if (auto pi = it->second->type()->as<Pi>(); pi->num_doms() > 0 && Axm::isa<mem::M>(pi->dom(0uz)))
+            else if (auto pi = it->second->type()->as<Pi>(); pi->num_doms() > 0 && has_leading_mem(pi))
                 return it->second;
         }
 
@@ -161,7 +207,8 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
         for (size_t i = 0; i < lam->num_vars() && new_lam->num_vars() > 1; ++i)
             mem_rewritten_[lam->var(i)] = new_lam->var(i + var_offset);
 
-        auto var                = new_lam->var(0_n);
+        // The current memory: the newly added leading mem var, or the (possibly grouped) existing one.
+        auto var                = mem::mem_var(new_lam) ? mem::mem_var(new_lam) : new_lam->var(0_n);
         mem_rewritten_[new_lam] = new_lam;
         mem_rewritten_[lam]     = new_lam;
         val2mem_[new_lam]       = var;
@@ -198,15 +245,30 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
 
     // call-site of a mutable lambda
     if (auto apped_mut = isa_apped_mut_lam_in_tuple(def); apped_mut.first) {
+        // Only mem-extend the argument if the callee actually gained a mem parameter.
+        auto callee_extended = [&]() {
+            for (auto lam : apped_mut.second)
+                if (!preserved_.contains(lam) && Pi::isa_cn(lam->type()) && !has_leading_mem(lam->type()->as<Pi>()))
+                    return true;
+            return false;
+        }();
+        auto arg_rewriter = [&](const Def* arg) -> const Def* {
+            if (callee_extended) return rewrite_arg(arg);
+            return add_mem_to_lams(place, arg);
+        };
         return mem_rewritten_[def]
-             = rewrite_apped_mut_lam_in_tuple(def, std::move(rewrite_lam), std::move(rewrite_arg),
+             = rewrite_apped_mut_lam_in_tuple(def, std::move(rewrite_lam), std::move(arg_rewriter),
                                               [&](const Def* def) { return add_mem_to_lams(place, def); });
     }
 
     // call-site of a continuation
     if (auto app = def->isa<App>(); app && (app->callee()->has_dep(Dep::Var))) {
-        return mem_rewritten_[def]
-             = app->rebuild(app->type(), {add_mem_to_lams(place, app->callee()), rewrite_arg(app->arg())});
+        auto new_callee = add_mem_to_lams(place, app->callee());
+        // Extend the argument only if the (rewritten) callee gained a leading mem parameter.
+        auto want                  = new_callee->type()->as<Pi>()->num_doms();
+        auto have                  = app->callee()->type()->as<Pi>()->num_doms();
+        auto arg                   = want == have + 1 ? rewrite_arg(app->arg()) : add_mem_to_lams(place, app->arg());
+        return mem_rewritten_[def] = app->rebuild(app->type(), {new_callee, arg});
     }
 
     // call-site of an axm (assuming mems are only in the final app..)
@@ -229,12 +291,12 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
                                                    ->set(app->dbg());
         if (Axm::isa<mem::M>(rewritten->type())) {
             DLOG("memory from axm {} : {}", rewritten, rewritten->type());
-            val2mem_[place] = rewritten;
+            set_mem(place, rewritten);
         }
         if (rewritten->num_projs() > 0 && Axm::isa<mem::M>(rewritten->proj(0)->type())) {
             DLOG("memory from axm 2 {} : {}", rewritten, rewritten->type());
             mem_rewritten_[rewritten->proj(0)] = rewritten->proj(0);
-            val2mem_[place]                    = rewritten->proj(0);
+            set_mem(place, rewritten->proj(0));
         }
         return rewritten;
     }
@@ -248,12 +310,12 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
         auto rewritten = mem_rewritten_[def] = app->rebuild(app->type(), {new_callee, new_arg})->set(app->dbg());
         if (Axm::isa<mem::M>(rewritten->type())) {
             DLOG("memory from other {} : {}", rewritten, rewritten->type());
-            val2mem_[place] = rewritten;
+            set_mem(place, rewritten);
         }
         if (rewritten->num_projs() > 0 && Axm::isa<mem::M>(rewritten->proj(0)->type())) {
             DLOG("memory from other 2 {} : {}", rewritten, rewritten->type());
             mem_rewritten_[rewritten->proj(0)] = rewritten->proj(0);
-            val2mem_[place]                    = rewritten->proj(0);
+            set_mem(place, rewritten->proj(0));
         }
         return rewritten;
     }
@@ -267,17 +329,7 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
         return add_mem_to_lams(place, op);
     });
 
-    auto tmp = mem_rewritten_[def] = def->rebuild(rewrite_type(def->type()), new_ops)->set(def->dbg());
-    // if (Axm::isa<mem::M>(tmp->type())) {
-    //     DLOG("memory from other op 1 {} : {}", tmp, tmp->type());
-    //     val2mem_[place] = tmp;
-    // }
-    // if (tmp->num_projs() > 0 && test<mem::M>(tmp->proj(0)->type())) {
-    //     DLOG("memory from other op 2 {} : {}", tmp, tmp->type());
-    //     mem_rewritten_[tmp->proj(0)] = tmp->proj(0);
-    //     val2mem_[place]              = tmp->proj(0);
-    // }
-    return tmp;
+    return mem_rewritten_[def] = def->rebuild(rewrite_type(def->type()), new_ops)->set(def->dbg());
 }
 
 } // namespace mim::plug::mem::phase
