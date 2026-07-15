@@ -1,3 +1,4 @@
+// REQUIRES: release
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt -p clos %s -p ll -o - | %FileCheck %s
 // RUN: clang++ %S/hlo_step_aux.cpp %{s:stem}.ll -o %t -O1 -Wno-override-module

@@ -18,3 +18,7 @@ config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
 config.environment = os.environ
 
 config.available_features.add("always")
+
+# Gate expensive tests on optimized builds via `// REQUIRES: release`.
+if getattr(config, 'build_type', '').lower() in ('release', 'relwithdebinfo', 'minsizerel'):
+    config.available_features.add("release")
