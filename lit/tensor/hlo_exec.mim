@@ -1,6 +1,6 @@
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt -p clos %s -p ll
-// RUN: clang++ %S/hlo_aux.cpp %{s:stem}.ll -o %t -Wno-override-module
+// RUN: clang++ -std=c++17 %S/hlo_aux.cpp %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t
 
 // Executable forward pass of the MLP in hlo.mim, lowered all the way to LLVM and driven by aux.cpp.
