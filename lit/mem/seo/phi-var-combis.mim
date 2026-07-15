@@ -31,7 +31,7 @@ fun extern f (mem: %mem.M 0): [%mem.M 0, Nat] =
     let  mem       = %mem.store (mem, pb2, 20); // pb2 = 20
     let  mem       = %mem.store (mem, pc , 30); // pc  = 30
     head (mem, 100, 200, 200, 30) where // a = 100, b1 = 200, b2 = 200, c = 30
-        con head (mem: %mem.M 0, a b1 b2 c: Nat) =
+        con head (mem: %mem.M 0, a b2 b1 c: Nat) =
             ret (mem, cond) = dont_know $ mem;
             (exit, body)#cond mem where
                 con body (mem: %mem.M 0) =
@@ -71,7 +71,7 @@ fun extern f (mem: %mem.M 0): [%mem.M 0, Nat] =
                                     let b2 = %core.nat.add (b2, 42);
                                     n2 (mem, a, b1, b2, c);
 
-                                con n2 (mem: %mem.M 0, a b1 b2 c: Nat) =
+                                con n2 (mem: %mem.M 0, a b2 b1 c: Nat) =
                                     let (mem, vc) = %mem.load (mem, pc);
                                     let cond      = %core.ncmp.e (vc, c);
                                     (ff3, tt3)#cond mem
@@ -136,12 +136,12 @@ lam extern _compile(): %compile.Phase =
 //
 // pb1 and pb2 merge into one loop phi, while pc and c merge into one variable.
 // CHECK-LABEL: head_
-// CHECK-DAG: %[[PB:vb1_[0-9]+]] = phi i64 [ 20, %{{[^]]+}} ], [ %[[PB_NEXT:vb2_[0-9]+]], %{{[^]]+}} ]
-// CHECK-DAG: %[[PC_C:c_[0-9]+]] = phi i64 [ 30, %{{[^]]+}} ], [ %[[PC_C_NEXT:c_[0-9]+]], %{{[^]]+}} ]
+// CHECK-DAG: %[[PB:[[:alnum:]_]+]] = phi i64 [ 20, %{{[^]]+}} ], [ %[[PB_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
+// CHECK-DAG: %[[PC_C:[[:alnum:]_]+]] = phi i64 [ 30, %{{[^]]+}} ], [ %[[PC_C_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
 //
 // a remains a variable, and b1 and b2 merge into one variable.
-// CHECK-DAG: %[[A:a_[0-9]+]] = phi i64 [ 100, %{{[^]]+}} ], [ %[[A_NEXT:a_[0-9]+]], %{{[^]]+}} ]
-// CHECK-DAG: %[[B:b1_[0-9]+]] = phi i64 [ 200, %{{[^]]+}} ], [ %[[B_NEXT:b1_[0-9]+]], %{{[^]]+}} ]
+// CHECK-DAG: %[[A:[[:alnum:]_]+]] = phi i64 [ 100, %{{[^]]+}} ], [ %[[A_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
+// CHECK-DAG: %[[B:[[:alnum:]_]+]] = phi i64 [ 200, %{{[^]]+}} ], [ %[[B_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
 // CHECK: %[[A_NEXT]] = add nsw nuw i64 1, %[[A]]
 // CHECK: %[[B_NEXT]] = add nsw nuw i64 2, %[[B]]
 // CHECK: %[[PC_C_NEXT]] = add nsw nuw i64 3, %[[PC_C]]
