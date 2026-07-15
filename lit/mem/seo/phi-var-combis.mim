@@ -1,0 +1,139 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+/*
+ * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
+bool dont_know();
+void take_addr(std::map<uint32_t, uint64_t>& map);
+uint64_t f(uint64_t x) {
+    auto map = std::map<uint32_t, uint64_t>{{0, 23}, {1, x}};
+    uint64_t i = x, j = x;
+
+    while (dont_know()) {
+        map[1] = j;
+
+        if (map.contains(1)) {
+            map[1] = x;
+        }
+
+        if (i == j) {
+            i++;
+            j++;
+        } else {
+            take_addr(map);
+        }
+    }
+
+    return map[1];
+}
+*/
+
+plugin mem;
+plugin core;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Nat]: [%mem.M 0];
+
+fun extern f(mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
+    let (mem, pa ) = %mem.slot  (Nat, 0) (mem, 0);
+    let (mem, pb1) = %mem.slot  (Nat, 0) (mem, 1);
+    let (mem, pb2) = %mem.slot  (Nat, 0) (mem, 2);
+    let (mem, pc ) = %mem.slot  (Nat, 0) (mem, 3);
+    let  mem       = %mem.store (mem, pa , 10); // pa  = 10
+    let  mem       = %mem.store (mem, pb1, 20); // pb1 = 20
+    let  mem       = %mem.store (mem, pb2, 20); // pb2 = 20
+    let  mem       = %mem.store (mem, pc , 30); // pc  = 30
+    head (mem, 10, 20, 20, 30) where // a = 10, b1 = 20, b2 = 20, c = 30
+        con head (mem: %mem.M 0, a b1 b2 c: Nat) =
+            ret (mem, cond) = dont_know $ mem;
+            (exit, body)#cond mem where
+                con body (mem: %mem.M 0) =
+                    //let (mem, va ) = %mem.load (mem, pa );
+                    let (mem, vb1) = %mem.load (mem, pb1);
+                    let (mem, vb2) = %mem.load (mem, pb2);
+                    let cond       = %core.ncmp.e (vb1, vb2);
+                    (ff1, tt1)#cond mem
+                    where
+                        con tt1 (mem: %mem.M 0) =
+                            //let va  = %core.nat.add (vb1, 1);
+                            let vb1 = %core.nat.add (vb1, 2);
+                            let vb2 = %core.nat.add (vb2, 2);
+                            //let mem = %mem.store (mem, pa , va );
+                            let mem = %mem.store (mem, pb1, vb2);
+                            let mem = %mem.store (mem, pb2, vb1);
+                            n1 (mem, a, b2, b1, c);
+
+                        con ff1 (mem: %mem.M 0) =
+                            ret mem = take_addr $ (mem, pb1);
+                            ret mem = take_addr $ (mem, pb2);
+                            n1 (mem, a, b1, b2, c);
+
+                        con n1 (mem: %mem.M 0, a b1 b2 c: Nat) =
+                            let cond = %core.ncmp.e (b1, b2);
+                            (ff2, tt2)#cond mem
+                            where
+                                con tt2 (mem: %mem.M 0) =
+                                    let a  = %core.nat.add (b1, 5);
+                                    let b1 = %core.nat.add (b1, 3);
+                                    let b2 = %core.nat.add (b2, 3);
+                                    n2 (mem, a, b2, b1, c);
+
+                                con ff2 (mem: %mem.M 0) =
+                                    let b1 = %core.nat.add (b1, 23);
+                                    let b2 = %core.nat.add (b2, 42);
+                                    n2 (mem, a, b1, b2, c);
+
+                                con n2 (mem: %mem.M 0, a b1 b2 c: Nat) =
+                                    let (mem, vc) = %mem.load (mem, pc);
+                                    let cond      = %core.ncmp.e (vc, c);
+                                    (ff3, tt3)#cond mem
+                                    where
+                                        con tt3 (mem: %mem.M 0) =
+                                            let vc = %core.nat.add (vc, 4);
+                                            let  c = %core.nat.add ( c, 4);
+                                            let mem = %mem.store (mem, pc, c);
+                                            n3 (mem, a, b2, b1, c);
+
+                                        con ff3 (mem: %mem.M 0) =
+                                            ret mem = take_addr $ (mem, pb1);
+                                            ret mem = take_addr $ (mem, pb2);
+                                            n3 (mem, a, b1, b2, c);
+
+                                        con n3 (mem: %mem.M 0, a b1 b2 c: Nat) =
+                                            exit mem;
+                                    end;
+                            end;
+                    end;
+
+                con exit(mem: %mem.M 0) =
+                    let (mem, va ) = %mem.load (mem, pa );
+                    let (mem, vb1) = %mem.load (mem, pb1);
+                    let (mem, vb2) = %mem.load (mem, pb1);
+                    let (mem, vc ) = %mem.load (mem, pc );
+                    let res        = va;
+                    let res        = %core.nat.add (res, vb1);
+                    let res        = %core.nat.add (res, vb2);
+                    let res        = %core.nat.add (res, vc );
+                    let res        = %core.nat.add (res,  a );
+                    let res        = %core.nat.add (res,  b1);
+                    let res        = %core.nat.add (res,  b2);
+                    let res        = %core.nat.add (res,  c );
+                    return (mem, res);
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %compile.ret_wrap,
+        %compile.named "%ll.emit",
+    );
+
+// CHECK: define i64 @f(i64 [[X:%[[:alnum:]_]+]])
+// CHECK: ret i64 [[X]]
