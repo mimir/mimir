@@ -103,7 +103,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle);
+    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
@@ -172,12 +172,12 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
 // SSA
 
 static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi);
+    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg());
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
     const auto& sloxy2val = lam2sloxy2val_[lam];
-    if (auto i = sloxy2val.find(sloxy); i != sloxy2val.end()) return i->second;
+    if (auto val = mim::lookup(sloxy2val, sloxy)) return val;
 
     auto phi = mk_phi(world(), lam, sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
@@ -228,7 +228,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             auto [_, ptr]      = slot->projs<2>();
             auto abstr_mem     = rewrite(mem);
             auto abstr_id      = rewrite(id);
-            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot);
+            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot)->set(slot->dbg());
             sloxy2slot_[sloxy] = slot;
             slots_.emplace(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
@@ -271,6 +271,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_arg    = rewrite(app->arg());
         auto known        = abstr_callee->isa_mut<Lam>();
         if (isa_optimizable(known)) {
+            DLOG("known edge: {} -> {}", curr_mut(), known);
             DefVec all_vars;
             DefVec all_abstr_args;
 
@@ -326,16 +327,8 @@ static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     if (!abstr) return true;                            // no info -> keep
     if (old_var == abstr) return true;                  // top
     if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
-    if (auto bundle = isa_bundle(abstr, lam)) {
-        if (Proxy::isa<Proxy_Phi>(old_var)) {
-            // if old_var is a phi, only keep it if all the entries in the bundle are phis.
-            if (std::ranges::all_of(bundle->ops().drop(1), [](auto op) -> bool { return Proxy::isa<Proxy_Phi>(op); }))
-                return true;
-        }
-        // if not, prefer the first
-        return bundle->op(1) == old_var; // first in GVN bundle
-    } else
-        return false;
+    if (auto bundle = isa_bundle(abstr, lam)) return bundle->op(1) == old_var; // use first in GVN bundle
+    return false;
 }
 
 void SEO::Analysis::finalize() {
@@ -346,7 +339,7 @@ void SEO::Analysis::finalize() {
 void SEO::Analysis::analyze(const Def* def) {
     if (def->isa<Var>()) return;
     if (auto [_, ins] = visited_.emplace(def); !ins) return;
-    if (auto l = lookup(def)) def = l;
+    if (auto l = lookup(def)) def = l; // get asbstracted value of def
 
     if (auto proxy = def->isa<Proxy>()) {
         if (proxy->tag() == Proxy_Slot) {
@@ -355,7 +348,7 @@ void SEO::Analysis::analyze(const Def* def) {
             auto [_, ptr] = slot->projs<2>();
             pin_top(slot);
             pin_top(ptr);
-            DLOG("sloxy {} survived; setting slot to top: {}", def, slot);
+            DLOG("sloxy {} survived; setting slot to top: {}", proxy, slot);
         }
         return; // never walk a proxy's deps (would drag in meta info)
     }
@@ -473,7 +466,7 @@ bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
 }
 
 Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
-    if (auto i = lam_old2new_.find(old_lam); i != lam_old2new_.end()) return i->second;
+    if (auto new_lam = mim::lookup(lam_old2new_, old_lam)) return new_lam;
 
     DLOG("building a new lam for {}", old_lam);
     invalidate();
