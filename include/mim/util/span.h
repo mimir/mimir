@@ -74,8 +74,6 @@ public:
     [[nodiscard]] constexpr Span<T, n> span() const noexcept {
         return Base::template subspan<0, n>();
     }
-
-    [[nodiscard]] constexpr Span<T, D> drop(size_t n) const noexcept { return subspan(n); }
     ///@}
 
     /// @name rsubspan

@@ -123,7 +123,7 @@ void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const 
         } else {
             auto bundle = mk_bundle(lam, vars[i], bundle_vars);
 
-            for (auto p : bundle->ops().drop(1)) {
+            for (auto p : bundle->ops().subspan(1)) {
                 auto j = idx_of(vars, p);
                 lattice(vars[j], abstr_vars[j] = bundle);
             }
@@ -146,7 +146,7 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
             auto num        = bundle->num_ops() - 1;
             auto split_vars = DefVec();
 
-            for (auto p : bundle->ops().drop(1)) {
+            for (auto p : bundle->ops().subspan(1)) {
                 auto j = idx_of(vars, p);
                 if (p == vars[j] && abstr_args[i] == abstr_args[j]) split_vars.emplace_back(vars[j]);
             }
@@ -159,7 +159,7 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
                 auto new_proxy = mk_bundle(lam, abstr_args[i], split_vars);
                 DLOG("gvn split: {}", new_proxy);
 
-                for (auto p : new_proxy->ops().drop(1)) {
+                for (auto p : new_proxy->ops().subspan(1)) {
                     auto j = idx_of(vars, p);
                     if (p == vars[j]) lattice(vars[j], abstr_vars[j] = new_proxy);
                 }
