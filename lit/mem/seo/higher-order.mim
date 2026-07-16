@@ -1,0 +1,60 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+plugin mem;
+plugin core;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Nat]: [%mem.M 0];
+
+let H = Cn [%mem.M 0, Nat, Cn [%mem.M 0, Nat]];
+
+con h (mem: %mem.M 0, n: Nat, return: Cn [%mem.M 0, Nat]) =
+    return (mem, %core.nat.mul (n, n));
+
+con g (mem: %mem.M 0, h: H, return: Cn [%mem.M 0, Nat]) =
+    h (mem, 23, cn (mem, res1) =
+        h (mem, 23, cn (mem, res2) =
+            return (mem, %core.nat.add (res1, res2))));
+
+fun extern f (mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
+    let (mem, ph) = %mem.slot (H,   0) (mem, 0);
+    let (mem, pr) = %mem.slot (Nat, 0) (mem, 1);
+    let  mem      = %mem.store (mem, ph, h);
+    let  mem      = %mem.store (mem, pr, x);
+    head mem where
+        con head (mem: %mem.M 0) =
+            ret (mem, cond) = dont_know $ mem;
+            (exit, body)#cond mem where
+                con body (mem: %mem.M 0) =
+                    let (mem, vh) = %mem.load (mem, ph);
+                    let (mem, vr) = %mem.load (mem, pr);
+                    g (mem, vh, cn (mem, res1) =
+                        g (mem, vh, cn (mem, res2) =
+                            let add = %core.nat.add (vr, res1);
+                            let add = %core.nat.add (add, res2);
+                            let mem = %mem.store (mem, pr, add);
+                            head mem));
+
+                con exit(mem: %mem.M 0) =
+                    let (mem, vr) = %mem.load (mem, pr);
+                    return (mem, vr);
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %compile.branch_normalize,
+        %compile.ret_wrap,
+        %compile.named "%mem.alloc2malloc_repl",
+        %compile.named "%ll.emit",
+    );
+
+// CHECK: ret i64 529

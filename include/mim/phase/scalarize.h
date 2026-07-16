@@ -34,11 +34,7 @@ private:
     class Analysis : public mim::Analysis {
     public:
         Analysis(World& world)
-            : mim::Analysis(world, "Scalarize::Analysis") {
-            // Facts flow from a parameter's *uses*, scattered across the World; re-scan the whole World each
-            // round. Also matches the phase's original (taint-free) behavior.
-            make_dense();
-        }
+            : mim::Analysis(world, "Scalarize::Analysis") {}
 
         /// Per-parameter expand mask for @p lam (length @p lam->num_tvars()); `true` marks
         /// a parameter to be flattened one level. An **empty** mask means "leave untouched".
