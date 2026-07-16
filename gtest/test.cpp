@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include <sstream>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -683,7 +684,7 @@ public:
 private:
     const Def* join(const Def* var, const Def* def) {
         auto cur = lattice(var);
-        if (!cur) return update(var, def), def;
+        if (!cur) return lattice(var, def), def;
         if (cur == def || cur == var) return cur;
         return pin_top(var);
     }
@@ -694,7 +695,7 @@ private:
             // Substitute the abstract value into the callee's body via the rewriter map (SEO-style seeding):
             // the callee consumes its var through map() - not through a lattice() read - so re-draining it
             // after a change relies on owner()-tainting, not on reader-tracking.
-            update(lam->var(), j);
+            lattice(lam->var(), j);
         }
         return Analysis::rewrite_imm_App(app);
     }

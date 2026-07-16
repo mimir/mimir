@@ -7,15 +7,15 @@
 
 namespace mim {
 
-namespace {
+/// Number of params a single `u64` keep-bitmask can represent; wider doms fall back to the ⊤ sentinel.
+static constexpr auto BitmaskWidth = sizeof(u64) * 8;
+
 /// A `Tuple` all of whose ops are mutable `Lam`s - i.e. a branch / dispatch table.
-bool is_lam_tuple(const Def* def) {
+static bool is_lam_tuple(const Def* def) {
     auto tuple = def->isa<Tuple>();
     return tuple && tuple->num_ops() != 0
         && std::all_of(tuple->ops().begin(), tuple->ops().end(), [](const Def* op) { return op->isa_mut<Lam>(); });
 }
-
-} // namespace
 
 /*
  * Analysis - optimistic: every optimizable Lam is splittable until proven otherwise.
@@ -25,25 +25,48 @@ bool Scalarize::Analysis::eligible(Lam* lam) const {
     return isa_optimizable(lam) && Pi::isa_cn(lam->type()) && lam->type()->isa_imm();
 }
 
-bool Scalarize::Analysis::splittable(Lam* lam) const { return !demoted_.contains(lam); }
+bool Scalarize::Analysis::kept(Lam* lam, size_t dom) const {
+    auto i = lattice().find(lam->var());
+    if (i == lattice().end()) return false;
+    // Too wide for the u64 bitmask: keep() demotes the whole lam to ⊤ for dom >= 64, so a param this wide
+    // can only survive as a u64 entry if it was never recorded - conservatively treat it as kept.
+    if (dom >= BitmaskWidth) return true;
+    if (auto mask = Lit::isa<u64>(i->second)) return (*mask >> dom) & 1; // per-param bitmask
+    return true;                                                         // ⊤ sentinel: whole lam kept
+}
+
+bool Scalarize::Analysis::untouched(Lam* lam) const { return !lattice().contains(lam->var()); }
+
+void Scalarize::Analysis::keep(Lam* lam, size_t dom) {
+    // Out of the thresholded var arity: plan() only iterates [0, num_tvars), so such a parameter is never a
+    // split candidate anyway - nothing to record.
+    if (dom >= lam->num_tvars()) return;
+    auto var = lam->var();
+    auto i   = lattice_mut().find(var);
+    if (i != lattice_mut().end() && !Lit::isa<u64>(i->second)) return; // already ⊤ - monotone, do not downgrade
+    // Too wide for the u64 bitmask (only with an unusually large scalarize threshold): conservatively keep
+    // the whole lam rather than risk splitting a dynamically-indexed parameter.
+    if (dom >= BitmaskWidth) return demote(lam);
+    auto mask = i != lattice_mut().end() ? Lit::as<u64>(i->second) : u64(0);
+    auto next = mask | (u64(1) << dom);
+    if (next == mask) return;
+    lattice_mut()[var] = world().lit_nat(next);
+    DLOG("keep whole: {} #{}", lam, dom);
+    invalidate();
+}
 
 void Scalarize::Analysis::demote(Lam* lam) {
-    if (demoted_.emplace(lam).second) {
-        DLOG("demote: {}", lam);
-        invalidate();
-    }
+    auto var = lam->var();
+    auto i   = lattice_mut().find(var);
+    if (i != lattice_mut().end() && !Lit::isa<u64>(i->second)) return; // already ⊤
+    lattice_mut()[var] = var;                                          // ⊤ sentinel: keep the whole lam
+    DLOG("demote: {}", lam);
+    invalidate();
 }
 
 void Scalarize::Analysis::demote_all(const Def* lam_tuple) {
     for (auto op : lam_tuple->ops())
         if (auto lam = op->isa_mut<Lam>()) demote(lam);
-}
-
-void Scalarize::Analysis::lock(Lam* lam, size_t dom) {
-    if (locked_[lam].emplace(dom).second) {
-        DLOG("lock: {} #{}", lam, dom);
-        invalidate();
-    }
 }
 
 void Scalarize::Analysis::inspect(const Def* def) {
@@ -62,7 +85,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
             if (auto var = proj->tuple()->isa<Var>()) {
                 if (auto lam = var->mut()->isa_mut<Lam>()) {
                     if (auto i = Lit::isa(proj->index()))
-                        lock(lam, *i);
+                        keep(lam, *i);
                     else
                         demote(lam);
                 }
@@ -86,9 +109,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
             auto extract_pos = def->isa<Extract>() && i == 0;
             auto consistent  = std::all_of(op->ops().begin(), op->ops().end(), [&](const Def* d) {
                 auto lam = d->as_mut<Lam>();
-                auto lck = locked_.find(lam);
-                return d->type() == op->op(0)->type() && eligible(lam) && splittable(lam)
-                    && (lck == locked_.end() || lck->second.empty());
+                return d->type() == op->op(0)->type() && eligible(lam) && untouched(lam);
             });
             if (!extract_pos || !consistent) demote_all(op);
         } else if (auto proj = op->isa<Extract>(); proj && is_lam_tuple(proj->tuple())) {
@@ -104,18 +125,16 @@ const Def* Scalarize::Analysis::rewrite(const Def* old) {
 
 Vector<bool> Scalarize::Analysis::plan(Lam* lam) {
     auto mask = Vector<bool>();
-    if (eligible(lam) && splittable(lam)) {
+    if (eligible(lam)) {
         auto n   = lam->num_tvars();
-        auto lck = locked_.find(lam);
         auto any = false;
         mask.assign(n, false);
         for (size_t i = 0; i != n; ++i) {
-            auto locked = lck != locked_.end() && lck->second.contains(i);
             // Only split immutable types: a mutable Sigma's element types may reference
             // the Sigma's own var (e.g. a typed closure `[T: *, Cn [.., T, ..], T]`),
             // which splitting would leave unbound.
             auto t = lam->tvar(i)->type();
-            if (!locked && t->isa_imm() && t->num_tprojs() > 1) mask[i] = any = true;
+            if (!kept(lam, i) && t->isa_imm() && t->num_tprojs() > 1) mask[i] = any = true;
         }
         if (!any) mask.clear();
     }

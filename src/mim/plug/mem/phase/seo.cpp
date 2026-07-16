@@ -69,8 +69,8 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
     }
 
     auto cur = lattice(var);
-    if (!cur) { // ⊥ ⊔ def = def; update() invalidates, as it inserts a fresh fact
-        update(var, def);
+    if (!cur) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it inserts a fresh fact
+        lattice(var, def);
         DLOG("propagate: {} -> {}", var, def);
         return def;
     }
@@ -79,13 +79,13 @@ const Def* SEO::Analysis::sccp_join(const Def* var, const Def* def) {
         return cur;
 
     DLOG("cannot propagate {} -> {}, trying GVN", var, def);
-    // update() invalidates, as it overwrites cur in both cases.
+    // lattice(var, def) invalidates, as it overwrites cur in both cases.
     if (cur->isa<Bot>()) { // Bot ⊔ def = def
-        update(var, def);
+        lattice(var, def);
         return def;
     }
     auto top = mk_sccp_top(var); // we reached top for propagate; the Proxy_SCCP_Top marks this to bundle for GVN
-    update(var, top);
+    lattice(var, top);
     return top;
 }
 
@@ -124,7 +124,7 @@ void SEO::Analysis::gvn_bundle(Defs vars, Defs abstr_args, Span<const Def*> abst
 
             for (auto p : bundle->ops()) {
                 auto j = idx_of(vars, p);
-                update(vars[j], abstr_vars[j] = bundle);
+                lattice(vars[j], abstr_vars[j] = bundle);
             }
 
             DLOG("bundle: {}", bundle);
@@ -160,7 +160,7 @@ void SEO::Analysis::gvn_split(Defs vars, Span<const Def*> abstr_args, Span<const
 
                 for (auto p : new_proxy->ops()) {
                     auto j = idx_of(vars, p);
-                    if (p == vars[j]) update(vars[j], abstr_vars[j] = new_proxy);
+                    if (p == vars[j]) lattice(vars[j], abstr_vars[j] = new_proxy);
                 }
             }
             // if new_num == num: do nothing
@@ -211,7 +211,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             sloxy2slot_[sloxy] = slot;
             slots_.emplace(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
-            update(ptr, sloxy);
+            lattice(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});
         }
     } else if (auto store = Axm::isa<mem::store>(app)) {
@@ -236,7 +236,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
             if (auto abstr_val = sloxy2val(sloxy)) {
                 DLOG("load: {} -> {}", sloxy, abstr_val);
-                update(val, abstr_val);
+                lattice(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
             DLOG("load w/ unknown value: {}", sloxy);
@@ -265,10 +265,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             gvn_bundle(all_vars, all_abstr_args, all_abstr_vars);
             gvn_split(all_vars, all_abstr_args, all_abstr_vars);
 
-            update(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
+            lattice(known->var(), world().tuple(all_abstr_vars.span().subspan(0, app->num_targs())));
 
             for (size_t i = app->num_targs(), e = all_vars.size(); i != e; ++i)
-                update(all_vars[i], all_abstr_vars[i]);
+                lattice(all_vars[i], all_abstr_vars[i]);
 
             return world().app(known, all_abstr_args.span().subspan(0, app->num_targs()));
         }
