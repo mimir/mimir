@@ -106,6 +106,7 @@ private:
         const Def* val;
     };
 
+    const Def* isa_optimized_sloxy(const Def*) const;
     /// The (memoized) live phis of @p old_lam.
     const Vector<Phi>& phis_of(Lam* old_lam);
     /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?

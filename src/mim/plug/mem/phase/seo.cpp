@@ -4,6 +4,8 @@
 
 #include <mim/lam.h>
 
+#include "mim/util/util.h"
+
 #include "mim/plug/mem/mem.h"
 
 namespace mim::plug::mem::phase {
@@ -15,7 +17,7 @@ namespace mim::plug::mem::phase {
 enum {
     Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
-    Proxy_Slot,     // proxy(lam, id)
+    Proxy_Sloxy,    // proxy(lam, id)
     Proxy_Phi,      // proxy(lam, sloxy)
 };
 
@@ -67,8 +69,9 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // first_; otherwise the *second* site would take this branch, resetting away this first contribution
     // and letting `var` settle on a later site's value instead of climbing to ⊤.
     if (auto [_, ins] = first_.emplace(var); ins) {
-        invalidate(!cur || cur != def);
+        invalidate(cur != def);
         DLOG("first; restart: {} -> {}", var, def);
+        map(var, def);
         return lattice_mut()[var] = def;
     }
 
@@ -228,11 +231,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             auto [_, ptr]      = slot->projs<2>();
             auto abstr_mem     = rewrite(mem);
             auto abstr_id      = rewrite(id);
-            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Slot)->set(slot->dbg());
+            auto sloxy         = world().proxy(ptr->type(), {curr_mut(), abstr_id}, Proxy_Sloxy)->set(slot->dbg());
             sloxy2slot_[sloxy] = slot;
             slots_.emplace(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
             lattice(ptr, sloxy);
+            map(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});
         }
     } else if (auto store = Axm::isa<mem::store>(app)) {
@@ -241,31 +245,28 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
 
-        if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
+        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
             sloxy2val(sloxy, abstr_val);
             DLOG("store: {} <- {}", sloxy, abstr_val);
             return abstr_mem;
         }
         DLOG("store w/ unknown ptr: {} <- {}", abstr_ptr, abstr_val);
     } else if (auto load = Axm::isa<mem::load>(app)) {
-        auto [T, as]    = load->decurry()->args<2>();
         auto [mem, ptr] = load->args<2>();
         auto [_, val]   = load->projs<2>();
         auto abstr_mem  = rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
 
-        if (auto sloxy = Proxy::isa<Proxy_Slot>(abstr_ptr)) {
+        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
             if (auto abstr_val = sloxy2val(sloxy)) {
                 DLOG("load: {} -> {}", sloxy, abstr_val);
                 lattice(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
             DLOG("load w/ unknown value: {}", sloxy);
-            return world().tuple({abstr_mem, world().bot(T)});
+        } else {
+            DLOG("load w/ unknown ptr: {}", abstr_ptr);
         }
-
-        DLOG("load w/ unknown ptr: {}", abstr_ptr);
-        return pin_top(load);
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
@@ -342,7 +343,7 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto l = lookup(def)) def = l; // get asbstracted value of def
 
     if (auto proxy = def->isa<Proxy>()) {
-        if (proxy->tag() == Proxy_Slot) {
+        if (proxy->tag() == Proxy_Sloxy) {
             auto slot = sloxy2slot_[proxy];
             assert(slot);
             auto [_, ptr] = slot->projs<2>();
@@ -355,8 +356,9 @@ void SEO::Analysis::analyze(const Def* def) {
 
     // A Lam escapes (and hence its vars must go to top) iff it is reached as a *value*.
     if (auto app = def->isa<App>()) {
+        if (app->callee()->gid() == 9576) app->dump(1);
         if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-            // lam is applied here, not escaped: traverse its body without seeding its vars to top
+            // lam is applied here, not escaped: traverse its body without pinning its vars to top
             analyze(app->type());
 
             // only analyze args that we keep
@@ -386,24 +388,30 @@ void SEO::Analysis::analyze(const Def* def) {
  * Apply analysis info to code
  */
 
+const Def* SEO::isa_optimized_sloxy(const Def* def) const {
+    if (auto l = analysis_.lattice(def))
+        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(l)) return sloxy;
+    return nullptr;
+}
+
 const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
         auto [mem, id] = slot->args<2>();
         auto [_, ptr]  = slot->projs<2>();
-        if (abstracted(ptr)) {
+        if (isa_optimized_sloxy(ptr)) {
             auto new_mem = rewrite(mem);
             auto new_ptr = new_world().bot(rewrite(ptr->type())); // we hopefully proved that no one uses it
             return new_world().tuple({new_mem, new_ptr});
         }
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
-        if (abstracted(ptr)) return rewrite(mem);
+        if (isa_optimized_sloxy(ptr)) return rewrite(mem);
     } else if (auto load = Axm::isa<mem::load>(old_app)) {
         auto [res_mem, res_val] = load->projs<2>();
         auto [mem, ptr]         = load->args<2>();
-        DLOG("rewriting a load from {} ({})", ptr, old_app);
-        if (auto abstr_val = abstracted(res_val)) {
-            DLOG("rewriting a load from {}, we know that it's {}", ptr, abstr_val);
+        if (auto sloxy = isa_optimized_sloxy(ptr)) {
+            auto abstr_val = abstracted(res_val);
+            DLOG("rewriting a load from {}, we know that it's {}", sloxy, abstr_val);
             auto new_mem = rewrite(mem);
             return new_world().tuple({new_mem, rewrite(abstr_val)});
         }
@@ -413,7 +421,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             // The callee may fold to a rebuilt lam in the new world only, e.g. a branch
             // `(f, t)#cond` whose cond becomes constant after GVN merged vars.
             if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
-                if (auto i = lam_new2old_.find(new_lam); i != lam_new2old_.end()) old_lam = i->second;
+                if (auto ol = mim::lookup(lam_new2old_, new_lam)) old_lam = ol;
         }
 
         if (old_lam) {
@@ -421,6 +429,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 
             auto& phis = phis_of(old_lam);
             if (needs_seo(phis, old_lam)) {
+                DLOG("needs seo: {}", old_lam);
                 auto new_lam  = build_lam(phis, old_lam);
                 auto new_args = build_args(phis, old_lam, old_app);
                 return map(old_app, new_world().app(new_lam, new_args));
@@ -519,7 +528,11 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
 
     // now resolve the dropped vars to their propagated values
     for (size_t i = 0; i != num_old; ++i)
-        if (!keeps[i]) var_map[i] = rewrite(lattice(old_lam->var(num_old, i))); // SCCP propagate
+        if (!keeps[i]) {
+            auto new_def = rewrite(lattice(old_lam->var(num_old, i)));
+            DLOG("propagate: old_lam {} - new_lam {}; var {} - with {}", old_lam, new_lam, i, new_def);
+            var_map[i] = new_def;
+        }
 
     // Map the whole var *before* rewriting dropped-phi values below: such a value may itself project a
     // *dropped* var of old_lam (e.g. its now-removed empty closure env), which is only reachable through
