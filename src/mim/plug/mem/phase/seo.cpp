@@ -64,28 +64,24 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     if (cur && Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
     if (cur && isa_bundle(cur, lam)) return cur;
 
-    // First touch of `var` this round - including the very first ever (cur == ⊥): restart the join from
-    // this call site, discarding any value accumulated in an earlier round. The `⊥` case MUST also mark
-    // first_; otherwise the *second* site would take this branch, resetting away this first contribution
-    // and letting `var` settle on a later site's value instead of climbing to ⊤.
+    // First touch of `var` this round - including the very first ever (cur == ⊥):
+    // restart the join from this call site, discarding any value accumulated in an earlier round.
+    // The `⊥` case MUST also mark first_;
+    // otherwise the *second* site would take this branch, resetting away this first contribution and
+    // letting `var` settle on a later site's value instead of climbing to ⊤.
     if (auto [_, ins] = first_.emplace(var); ins) {
-        invalidate(cur != def);
         DLOG("first; restart: {} -> {}", var, def);
+        invalidate(cur != def);
         map(var, def);
-        return lattice_mut()[var] = def;
+        return lattice_mut()[var] = def; // don't trigger assert when ⊤ -> def, so manage lattice magic manually
     }
 
-    if (def->isa<Bot>() || cur == def || cur == var) return cur;
+    if (def->isa<Bot>() || cur == def || cur == var) return cur; // def ⊔ ⊥ = def; cur ⊔ def = def; def ⊔ def = def
+    if (cur->isa<Bot>()) return lattice(var, def), def;          // ⊥ ⊔ def = def
 
     DLOG("cannot propagate {} -> {}; cur: {}, trying GVN", var, def, cur);
-    // lattice(var, def) invalidates, as it overwrites cur in both cases.
-    if (cur->isa<Bot>()) { // Bot ⊔ def = def
-        lattice(var, def);
-        return def;
-    }
-    auto top = mk_sccp_top(var); // we reached top for propagate; the Proxy_SCCP_Top marks this to bundle for GVN
-    lattice(var, top);
-    return top;
+    auto top = mk_sccp_top(var);
+    return lattice(var, top), top;
 }
 
 DefVec SEO::Analysis::sccp(Lam* lam, Defs vars, Defs abstr_args) {
@@ -320,7 +316,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
 /*
  * Post-Analysis:
- * Finds sloxies that are still present + escaping lambdas
+ * Finds sloxies that are still present + unknown lambdas
  */
 
 static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
@@ -353,11 +349,10 @@ void SEO::Analysis::analyze(const Def* def) {
         return; // never walk a proxy's deps (would drag in meta info)
     }
 
-    // A Lam escapes (and hence its vars must go to top) iff it is reached as a *value*.
+    // A Lam is unknown (and hence its vars must go to top) iff it is reached as a *value*.
     if (auto app = def->isa<App>()) {
-        if (app->callee()->gid() == 9576) app->dump(1);
         if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-            // lam is applied here, not escaped: traverse its body without pinning its vars to top
+            // lam is applied here, it's known: traverse its body without pinning its vars to top
             analyze(app->type());
 
             // only analyze args that we keep
@@ -372,8 +367,8 @@ void SEO::Analysis::analyze(const Def* def) {
             return;
         }
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
-        DLOG("lam {} escapes", lam);
-        escaped_.emplace(lam);
+        DLOG("lam {} unknown", lam);
+        unknowns_.emplace(lam);
         for (auto v : var->tprojs())
             pin_top(v);
     }
@@ -417,8 +412,8 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
     } else {
         auto old_lam = old_app->callee()->isa_mut<Lam>();
         if (!old_lam) {
-            // The callee may fold to a rebuilt lam in the new world only, e.g. a branch
-            // `(f, t)#cond` whose cond becomes constant after GVN merged vars.
+            // The callee may fold to a rebuilt lam in the new world only,
+            // e.g. a branch `(f, t)#cond` whose cond becomes constant after GVN merged vars.
             if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
                 if (auto ol = mim::lookup(lam_new2old_, new_lam)) old_lam = ol;
         }
@@ -462,8 +457,8 @@ const Vector<SEO::Phi>& SEO::phis_of(Lam* old_lam) {
 }
 
 bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
-    // An escaped lam is used as a value somewhere; its signature must stay as is.
-    if (analysis_.escaped().contains(old_lam)) return false;
+    // An unknown lam is used as a value somewhere; its signature must stay as is.
+    if (analysis_.unknowns().contains(old_lam)) return false;
 
     if (abstracted(old_lam->var())) return true;
 

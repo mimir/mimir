@@ -50,7 +50,7 @@ private:
 
         void reset() final;
 
-        const LamSet& escaped() const { return escaped_; }
+        const LamSet& unknowns() const { return unknowns_; }
 
         // SSA
         const auto& slots() const { return slots_; }
@@ -87,7 +87,7 @@ private:
         // global (kept between iterations)
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
-        LamSet escaped_; // Lam%s reached as a *value*; their signature must stay untouched
+        LamSet unknowns_; // Lam%s reached as a *value*; their signature must stay untouched
     };
 
 public:
