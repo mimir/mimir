@@ -198,7 +198,7 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-static void find_unkowns(DefSet& visited, LamSet& res, const Def* def) {
+static void find_unknowns(DefSet& visited, LamSet& res, const Def* def) {
     if (def->isa<Proxy>() || def->isa<Var>()) return;
     if (auto [_, ins] = visited.emplace(def); !ins) return;
 
@@ -210,12 +210,12 @@ static void find_unkowns(DefSet& visited, LamSet& res, const Def* def) {
     if (def->isa_mut()) return;
 
     for (auto d : def->deps())
-        find_unkowns(visited, res, d);
+        find_unknowns(visited, res, d);
 }
 
-static void find_unkowns_callee(DefSet& visited, LamSet& res, const Def* def) {
+static void find_unknowns_callee(DefSet& visited, LamSet& res, const Def* def) {
     if (def->isa<Lam>()) return;
-    find_unkowns(visited, res, def);
+    find_unknowns(visited, res, def);
 }
 
 // Analysis - Rewrite
@@ -294,10 +294,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
-        DefSet visisted;
+        DefSet visited;
         LamSet lams;
-        find_unkowns_callee(visisted, lams, abstr_callee);
-        find_unkowns(visisted, lams, abstr_arg);
+        find_unknowns_callee(visited, lams, abstr_callee);
+        find_unknowns(visited, lams, abstr_arg);
 
         for (auto lam : lams) {
             assert(lam != known && lam->is_open());
@@ -335,7 +335,7 @@ void SEO::Analysis::finalize() {
 void SEO::Analysis::analyze(const Def* def) {
     if (def->isa<Var>()) return;
     if (auto [_, ins] = visited_.emplace(def); !ins) return;
-    if (auto l = lookup(def)) def = l; // get asbstracted value of def
+    if (auto l = lookup(def)) def = l; // get abstracted value of def
 
     if (auto proxy = def->isa<Proxy>()) {
         if (proxy->tag() == Proxy_Sloxy) {

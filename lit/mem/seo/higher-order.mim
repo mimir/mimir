@@ -31,7 +31,7 @@ fun extern f (mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
                     g (mem, vh, cn (mem, res1) =
                         g (mem, vh, cn (mem, res2) =
                             let add = %core.nat.add (vr, res1);
-                            let add = %core.nat.add (vr, res2);
+                            let add = %core.nat.add (add, res2);
                             let mem = %mem.store (mem, pr, add);
                             head mem));
 

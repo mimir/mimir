@@ -11,7 +11,7 @@
 // - pa remains slot
 // -  a remains var
 // - pb1 + pb2: one merged phi
-// -  b2 +  b2: one merged var
+// -  b1 +  b2: one merged var
 // - pc  +  c : one merged var
 
 
@@ -96,7 +96,7 @@ fun extern f (mem: %mem.M 0): [%mem.M 0, Nat] =
                 con exit(mem: %mem.M 0) =
                     let (mem, va ) = %mem.load (mem, pa );
                     let (mem, vb1) = %mem.load (mem, pb1);
-                    let (mem, vb2) = %mem.load (mem, pb1);
+                    let (mem, vb2) = %mem.load (mem, pb2);
                     let (mem, vc ) = %mem.load (mem, pc );
                     let res        = va;
                     let res        = %core.nat.add (res, vb1);

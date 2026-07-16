@@ -94,8 +94,6 @@ public:
             return Span<T, D>(data(), size() - i);
     }
     ///@}
-
-    [[nodiscard]] constexpr operator bool() const noexcept { return !empty(); } ///< Is not empty?
 };
 
 static_assert(std::ranges::contiguous_range<Span<int>>);
