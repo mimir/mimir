@@ -30,21 +30,21 @@ let %tensor.Ring = [
 ///
 /// ## Operations
 ///
-/// ### %tensor.get
+/// ### %%tensor.get
 ///
 /// Extracts the element of `index` from `arr`.
 /// %tensor.get arr (a, b, c) = arr#a#b#c;
 ///
 axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)»] → T, normalize_get;
 ///
-/// ### %tensor.set
+/// ### %%tensor.set
 ///
 /// Inserts the element `x` in `arr` at `index`.
 /// %tensor.set arr (a, b, c) x = Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x));
 ///
 axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)», x: T] → «s; T», normalize_set;
 ///
-/// ### %tensor.shape
+/// ### %%tensor.shape
 ///
 /// Returns the shape of `arr` as a rank-`r` array of Nats: `(s#0, …, s#(r-1))`.
 ///
@@ -549,10 +549,10 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 ///
 /// ## Phases
 ///
-axm %tensor.lower_tensor: %compile.Phase;
+axm %tensor.lower_tensor:     %compile.Phase;
 axm %tensor.lower_map_reduce: %compile.Phase;
-axm %tensor.lower_get_set: %compile.Phase;
-axm %tensor.fuse_tensor: %compile.Phase;
+axm %tensor.lower_get_set:    %compile.Phase;
+axm %tensor.fuse_tensor:      %compile.Phase;
 ///
 /// ### %%tensor.lower_to_mem
 ///
