@@ -203,21 +203,11 @@ protected:
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool lattice(const Def* concr, const Def* abstr) {
-        map(concr, abstr);
-
-        auto [i, ins] = lattice_.emplace(concr, abstr);
-        if (ins) {
-            if (concr != abstr) return invalidate(), true;
-            return false;
-        }
-
-        auto old = i->second;
+#ifndef NDEBUG
+        auto old = lattice(concr);
         assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
-        if (old != abstr) {
-            i->second = abstr;
-            return invalidate(), true;
-        }
-        return false;
+#endif
+        return lattice_force(concr, abstr);
     }
 
     /// Monotonically forces @p def to ⊤ (keep as is).
