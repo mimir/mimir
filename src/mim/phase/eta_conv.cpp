@@ -10,7 +10,6 @@ bool EtaConv::analyze() {
 
 void EtaConv::analyze(const Def* def) {
     if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
-    if (def->isa<Var>()) return; // ignore Var's mut
 
     if (auto app = def->isa<App>()) {
         visit(app->type(), Lattice::Unknown_1);
@@ -80,6 +79,6 @@ const Def* EtaConv::rewrite_imm_App(const App* app) {
     return new_world().app(callee, rewrite(app->arg()));
 }
 
-const Def* EtaConv::rewrite_imm_Var(const Var* var) { return new_world().var(rewrite_no_eta(var->mut())->as_mut()); }
+const Def* EtaConv::rewrite_imm_Var(const Var* var) { return new_world().var(rewrite_no_eta(var->binder())->as_mut()); }
 
 } // namespace mim

@@ -4,8 +4,8 @@ namespace mim {
 
 /// The Lam the abstract @p var belongs to; @p var is a Var or a Var projection.
 static Lam* lam_of(const Def* var) {
-    if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->mut()->as_mut<Lam>();
-    return var->as<Var>()->mut()->as_mut<Lam>();
+    if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->binder()->as_mut<Lam>();
+    return var->as<Var>()->binder()->as_mut<Lam>();
 }
 
 const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {

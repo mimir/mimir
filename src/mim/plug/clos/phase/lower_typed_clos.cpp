@@ -94,7 +94,7 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
 
     if (auto i = old2new_.find(def); i != old2new_.end()) return i->second;
     if (auto var = def->isa<Var>();
-        var && var->mut()->isa_mut<Lam>()) // TODO put this conditions inside the assert below
+        var && var->binder()->isa_mut<Lam>()) // TODO put this conditions inside the assert below
         assert(false && "Lam vars should appear in a map!");
 
     auto new_type = rewrite(def->type());
@@ -113,7 +113,7 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
                 return map(def, env_type());
             else
                 return map(def, rewrite(tuple)->proj(*idx - 1));
-        } else if (auto var = tuple->isa<Var>(); var && isa_clos_type(var->mut())) {
+        } else if (auto var = tuple->isa<Var>(); var && isa_clos_type(var->binder())) {
             assert(false && "proj fst type form closure type");
         }
     }
@@ -149,6 +149,8 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
         return new_mut;
     } else if (def->isa<Axm>()) {
         return def;
+    } else if (auto var = def->isa<Var>()) {
+        return map(def, w.var(rewrite(var->binder())->as_mut())); // binder is in binder_, not an op
     } else {
         auto new_ops = DefVec(def->num_ops(), [&](auto i) { return rewrite(def->op(i)); });
 

@@ -170,6 +170,7 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
         }
         if (curr_lam != def) return tmp;
     }
+    if (def->isa<Var>()) return def; // binder is in binder_, not an op; remapped Vars are handled above
     if (Axm::isa<mem::M>(def->type())) DLOG("new mem {} in {}", def, curr_lam);
 
     auto rewrite_lam = [&](Lam* lam) -> const Def* {

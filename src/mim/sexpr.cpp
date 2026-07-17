@@ -680,7 +680,7 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
         std::print(os, "{}", id(axm));
         emit_decl(bb, axm);
     } else if (auto var = type->isa<Var>()) {
-        if (var->mut()->isa<Rule>())
+        if (var->binder()->isa<Rule>())
             std::print(os, "\n{}{}", tab, id(var));
         else
             std::print(os, "{}", id(var, true));
@@ -688,7 +688,7 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
         std::print(os, "(hole {})", emit_type(bb, hole->type(), in_term));
     } else if (auto extract = type->isa<Extract>()) {
         // Projections of rule variables are meta vars and should just be printed by name
-        if (auto var = extract->tuple()->isa<Var>(); var && var->mut()->isa<Rule>())
+        if (auto var = extract->tuple()->isa<Var>(); var && var->binder()->isa<Rule>())
             std::print(os, "{}", id(extract));
         else if (in_term && bb.is_assigned(id(extract)))
             std::print(os, "{}", id(extract));
@@ -889,14 +889,14 @@ std::string Emitter::emit_bb(BB& bb, const Def* def) {
         std::print(os, "{}", emit_node(bb, pack, "pack"));
     } else if (auto extract = def->isa<Extract>()) {
         // Projections of rule variables are meta vars and should just be printed by name
-        if (auto var = extract->tuple()->isa<Var>(); var && var->mut()->isa<Rule>())
+        if (auto var = extract->tuple()->isa<Var>(); var && var->binder()->isa<Rule>())
             std::print(os, "\n{}{}", tab, id(extract));
         else
             std::print(os, "{}", emit_node(bb, extract, "extract"));
     } else if (auto insert = def->isa<Insert>()) {
         std::print(os, "{}", emit_node(bb, insert, "insert"));
     } else if (auto var = def->isa<Var>()) {
-        if (var->mut()->isa<Rule>())
+        if (var->binder()->isa<Rule>())
             std::print(os, "\n{}{}", tab, id(var));
         else
             std::print(os, "\n{}{}", tab, id(var, true));

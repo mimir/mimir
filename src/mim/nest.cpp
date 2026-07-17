@@ -53,7 +53,7 @@ void Nest::populate() {
                     uint32_t max = 0;
                     auto inest   = root_;
                     for (auto var : local_mut->free_vars()) {
-                        if (auto node = (*this)[var->mut()]; node && node->level() > max) {
+                        if (auto node = (*this)[var->binder()]; node && node->level() > max) {
                             max   = node->level();
                             inest = node;
                         }

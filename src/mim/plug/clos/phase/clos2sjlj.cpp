@@ -182,6 +182,7 @@ const Def* Clos2SJLJ::subst_exn_closures(const Def* def, Def2Def& memo) {
         return memo[def] = clos_pack(w.tuple({cur_jbuf_, cur_rbuf_, w.lit_idx(i)}), tlam, c.type());
     }
     if (def->isa_mut() || !def->is_term()) return def;
+    if (def->isa<Var>()) return def; // atomic; binder is in binder_ and not descended into here
     auto new_ops     = DefVec(def->num_ops(), [&](size_t i) { return subst_exn_closures(def->op(i), memo); });
     return memo[def] = def->rebuild(def->type(), new_ops);
 }
