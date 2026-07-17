@@ -692,7 +692,7 @@ Sym World::append_suffix(Sym symbol, std::string suffix) {
 }
 
 Defs World::reduce(const Var* var, const Def* arg) {
-    auto mut    = var->mut();
+    auto mut    = var->binder();
     auto offset = mut->reduction_offset();
     auto size   = mut->num_ops() - offset;
 

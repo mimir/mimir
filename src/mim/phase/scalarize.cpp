@@ -155,10 +155,10 @@ void Scalarize::Analysis::inspect(const Def* def) {
     if (!idx_tuple || Lit::isa(idx)) return;
 
     if (auto var = idx_tuple->isa<Var>()) {
-        if (auto pi = isa_flattenable(var->mut()->type())) pin(pi); // whole var indexed dynamically
+        if (auto pi = isa_flattenable(var->binder()->type())) pin(pi); // whole var indexed dynamically
     } else if (auto proj = idx_tuple->isa<Extract>()) {
         if (auto var = proj->tuple()->isa<Var>()) {
-            if (auto pi = isa_flattenable(var->mut()->type())) {
+            if (auto pi = isa_flattenable(var->binder()->type())) {
                 if (auto i = Lit::isa(proj->index()))
                     keep(pi, *i);
                 else

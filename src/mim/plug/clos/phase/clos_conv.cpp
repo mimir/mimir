@@ -253,7 +253,7 @@ const Def* ClosConv::rewrite(const Def* def, Def2Def& subst) {
         if (auto imm = new_mut->immutabilize()) return map(imm);
         return map(new_mut);
     } else if (auto var = def->isa<Var>()) {
-        return map(w.var(rewrite(var->mut(), subst)->as_mut())); // binder is in binder_, not an op
+        return map(w.var(rewrite(var->binder(), subst)->as_mut())); // binder is in binder_, not an op
     } else {
         auto new_ops = DefVec(def->num_ops(), [&](auto i) { return rewrite(def->op(i), subst); });
         if (auto app = def->isa<App>(); app && new_ops[0]->type()->isa<Sigma>())

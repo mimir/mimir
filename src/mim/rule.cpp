@@ -38,7 +38,7 @@ std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
 bool Rule::is_in_rule(const Def* expr) {
     // are we inside a rule ?
     for (auto var : expr->free_vars()) {
-        if (var->mut()->isa<Rule>()) {
+        if (var->binder()->isa<Rule>()) {
             // var is introduced by a rule: this is inside of a body of a rule
             return true;
         }
@@ -57,7 +57,7 @@ bool Rule::its_a_match_(const Def* exp1, const Def* exp2, Def2Def& already_seen)
     if (exp1 == exp2) return true;
     if (exp2->isa<Var>()) {
         if (already_seen.contains(exp2)) return exp1 == already_seen[exp2];
-        if (exp2->as<Var>()->mut()->isa<Rule>()) {
+        if (exp2->as<Var>()->binder()->isa<Rule>()) {
             already_seen[exp2] = exp1;
             if (exp1->type() != nullptr && exp2->type() != nullptr)
                 if (!its_a_match_(exp1->type(), exp2->type(), already_seen)) return false;
@@ -70,7 +70,7 @@ bool Rule::its_a_match_(const Def* exp1, const Def* exp2, Def2Def& already_seen)
         if (auto v = e2->tuple()->isa<Var>()) {
             // we have a var in a tuple
             if (already_seen.contains(e2)) return exp1 == already_seen[e2];
-            if (v->mut()->isa<Rule>()) {
+            if (v->binder()->isa<Rule>()) {
                 already_seen[e2] = exp1;
                 if (exp1->type() != nullptr && exp2->type() != nullptr)
                     if (!its_a_match_(exp1->type(), exp2->type(), already_seen)) return false;

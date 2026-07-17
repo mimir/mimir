@@ -234,8 +234,8 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
 
     if (auto var1 = d1->isa<Var>()) {
         auto var2 = d2->as<Var>();
-        if (auto i = binders_.find(var1->mut()); i != binders_.end()) return i->second == var2->mut();
-        if (auto i = binders_.find(var2->mut()); i != binders_.end()) return fail<mode>(); // var2 is bound
+        if (auto i = binders_.find(var1->binder()); i != binders_.end()) return i->second == var2->binder();
+        if (auto i = binders_.find(var2->binder()); i != binders_.end()) return fail<mode>(); // var2 is bound
         // both var1 and var2 are free: OK, when they are the same or in Check mode
         return var1 == var2 || mode == Check;
     }

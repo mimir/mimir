@@ -16,7 +16,7 @@ const Def* RemoveDoubleSyncs::rewrite_imm_App(const App* app) {
         auto common_prev          = m1_extract->tuple();
         bool has_common_prev_sync = Axm::isa<gpu::sync_work_items>(common_prev);
         auto common_var           = common_prev->isa<Var>();
-        bool is_kernel_start      = common_var ? common_var->mut()->is_external() : false;
+        bool is_kernel_start      = common_var ? common_var->binder()->is_external() : false;
         if (has_common_prev_sync || is_kernel_start) {
             auto new_arg = rewrite(sync_work_items->arg());
             map(app, new_arg);

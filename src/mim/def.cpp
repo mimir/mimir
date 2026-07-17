@@ -448,7 +448,7 @@ bool Def::nests(Def* mut, MutSet& checked) {
     if (auto [_, ins] = checked.emplace(mut); !ins) return false;
 
     for (auto fv : mut->free_vars())
-        if (this->nests(fv->mut(), checked)) return true;
+        if (this->nests(fv->binder(), checked)) return true;
 
     return false;
 }
@@ -467,7 +467,7 @@ bool Def::nests(const Def* def) {
     if (has_var()) {
         auto checked = MutSet();
         for (auto fv : def->free_vars())
-            if (this->nests(fv->mut(), checked)) return true;
+            if (this->nests(fv->binder(), checked)) return true;
     }
     return false;
 }
@@ -481,7 +481,7 @@ Sym Def::sym(std::string_view s) const { return world().sym(s); }
 Sym Def::sym(std::string s) const { return world().sym(std::move(s)); }
 
 World& Def::world() const noexcept {
-    if (auto var = isa<Var>()) return var->mut()->world();
+    if (auto var = isa<Var>()) return var->binder()->world();
 
     for (auto def = this;; def = def->type()) {
         if (def->isa<Univ>()) return *def->world_;
@@ -489,7 +489,7 @@ World& Def::world() const noexcept {
     }
 }
 const Def* Def::type() const noexcept {
-    if (auto var = isa<Var>()) return var->mut()->var_type();
+    if (auto var = isa<Var>()) return var->binder()->var_type();
     return type_;
 }
 
@@ -565,8 +565,8 @@ Def::Cmp Def::cmp(const Def* a, const Def* b) {
 
     if (auto va = a->isa<Var>()) {
         auto vb = b->as<Var>();
-        auto ma = va->mut();
-        auto mb = vb->mut();
+        auto ma = va->binder();
+        auto mb = vb->binder();
         if (ma->is_set() && ma->free_vars().contains(vb)) return Cmp::L;
         if (mb->is_set() && mb->free_vars().contains(va)) return Cmp::G;
         return Cmp::U;
@@ -603,7 +603,7 @@ bool Def::equal(const Def* other) const {
     if (isa<Univ>() || this->isa_mut() || other->isa_mut()) return this == other;
 
     // A Var carries no ops and flags == 0, so it is identified solely by its binder (stored in binder_).
-    if (auto var = isa<Var>()) return other->isa<Var>() && var->mut() == other->as<Var>()->mut();
+    if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
 
     bool result = this->node() == other->node() && this->flags() == other->flags()
                && this->num_ops() == other->num_ops() && this->type() == other->type();
