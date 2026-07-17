@@ -8,6 +8,11 @@ let r = %vec.fold.r %core.nat.add ((1, 2, 3, 4, 5), 0);
 let _ = %refly.equiv.struc_eq (l, 15);
 let _ = %refly.equiv.struc_eq (r, 15);
 
+let l2 = %vec.fold.l %core.nat.mul (1, <<4; 2>>);
+let r2 = %vec.fold.r %core.nat.mul (<<4; 2>>, 1);
+let _ = %refly.equiv.struc_eq (l2, 16);
+let _ = %refly.equiv.struc_eq (r2, 16);
+
 let e1 = %vec.scan.exists (λ (n: Nat): Bool = %core.ncmp.e (n, 3)) (0, 1, 2, 3, 4);
 let e2 = %vec.scan.exists (λ (n: Nat): Bool = %core.ncmp.e (n, 5)) (0, 1, 2, 3, 4);
 let _  = %refly.equiv.struc_eq (e1, tt);

@@ -18,15 +18,18 @@ axm %autodiff.Tangent: * → *, normalize_Tangent;
 ///
 /// ## Operations
 ///
+/// ### %%autodiff.AD
+///
+/// Computes the augmented type of a function type: `(T → U) => (T → U × (U → T))`.
+///
+axm %autodiff.AD: * → *, normalize_AD;
+///
 /// ### %%autodiff.ad
 ///
-/// This axiom operates on functions and types.
-///
-/// For function types the augmented type is computed: `(T → U) => (T → U × (U → T))`
-axm %autodiff.AD: * → *, normalize_AD;
-/// On closed terms (functions, operators, ho arguments, registered axioms, etc.) the augmented term is returned.
-/// The augmented term `f'` returns the result together with the pullback.
+/// Yields the augmented term of a closed term (function, operator, higher-order argument, registered axiom, etc.).
+/// The augmented term `f'` returns the result together with the pullback:
 /// `autodiff f = f' = λ args. (f args, f*)`
+///
 axm %autodiff.ad: {T: *} → T → %autodiff.AD T, normalize_ad;
 ///
 /// ### %%autodiff.zero
@@ -38,31 +41,30 @@ axm %autodiff.zero: [T: *] → T, normalize_zero;
 /// ### %%autodiff.add
 ///
 /// A universal addition that consumes zeros and defaults to normal addition for scalar types.
-/// It lifts additions over types with structure and performs special casing for types with do not allow for addition.
-/// The sum construct performs addition over a list of terms.
+/// It lifts addition over structured types and special-cases types that do not allow addition.
 ///
 /// TODO: how do we handle summations that need memory? (grab current memory?)
 axm %autodiff.add: {T: *} → [T, T] → T, normalize_add;
-axm %autodiff.sum: [n:Nat, T: *] → «n; T» → T, normalize_sum;
 ///
-/// ## Stages
+/// ### %%autodiff.sum
 ///
-/// ### Repls
+/// Performs %%autodiff.add over a list of terms.
+///
+axm %autodiff.sum: [n: Nat, T: *] → «n; T» → T, normalize_sum;
+///
+/// ## Phases
 ///
 axm %autodiff.zero_repl: %compile.Phase;
-///
-/// ### Phases
-///
-axm %autodiff.eval: %compile.Phase;
+axm %autodiff.eval:      %compile.Phase;
 ///
 /// ## Registered translations
 ///
 /// In this section, we define translations for axioms of other plugins.
-/// This best would be done using a register mechanism in a third plugin or at least in a separate file.
+/// This would best be done using a register mechanism in a third plugin or at least in a separate file.
 ///
 /// The general concept is that a call to an axiom is replaced with a call to the augmented axiom.
-/// The augmented axiom needs a wrapper for meta arguments (HO-function).
-/// Appropiate cps2ds wrappers are introduced to handle that the augmented axioms are in cps where the original axioms were in ds.
+/// The augmented axiom needs a wrapper for meta arguments (a higher-order function).
+/// Appropriate cps2ds wrappers are introduced to handle that the augmented axioms are in CPS whereas the original axioms are in direct style.
 /// Example:
 /// ```
 /// mul' => args → result*pullback
@@ -82,12 +84,12 @@ axm %autodiff.eval: %compile.Phase;
 /// r,r* = (cps2ds (mul'_cps (m,w))) (a,b)
 /// ```
 ///
-/// The pullback is the derivative with respect to the input (weighted with the out tangent).
-/// For arithmetic operations, s is simply multiplied to each input tangent:
+/// The pullback is the derivative with respect to the input (weighted with the output tangent).
+/// For arithmetic operations, `s` is simply multiplied onto each input tangent:
 /// `∂_i f(x1,...,xn) * s`
-/// You will also come to the conclusion that the applied partial pullback needs to be:
-/// `sum x_i*(∂_i f(x1,...,xn) * s) = sum x_i*(•)` with • as the formula from above
-/// This is a direct result from the chain composition with the partial pullback of a tuple.
+/// It follows that the applied partial pullback needs to be:
+/// `sum x_i*(∂_i f(x1,...,xn) * s) = sum x_i*(•)` with `•` as the formula from above.
+/// This is a direct result of the chain-rule composition with the partial pullback of a tuple.
 /// The tuple pullback transports the partial pullbacks of the operands and handles the sums.
 /// By its nature the pullback of a tuple needs to be a sum.
 ///

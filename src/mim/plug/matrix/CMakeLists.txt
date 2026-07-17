@@ -4,6 +4,6 @@ add_mim_plugin(matrix
         normalizers.cpp
         phase/lower_matrix_highlevel.cpp
         phase/lower_matrix_mediumlevel.cpp
-        phase/lower_matrix_lowlevel.cpp
+        phase/lower_aff.cpp
     INSTALL
 )

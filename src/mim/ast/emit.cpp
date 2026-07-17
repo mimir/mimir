@@ -176,11 +176,42 @@ const Def* PrimaryExpr ::emit_(Emitter& e) const {
     // clang-format on
 }
 
+/// If @p type is a `%math.F` type of known precision/exponent, yields its bit width.
+/// Note that libmim must not depend on the generated math plugin header, so lookup the Axm at runtime instead.
+static std::optional<nat_t> isa_math_f(Emitter& e, const Def* type) {
+    auto math_f = e.world().annex(e.world().sym("%math.F"));
+    if (auto app = type->zonk()->isa<App>(); math_f && app && app->callee() == math_f) {
+        if (auto [p, ex] = app->arg()->projs<2>([](auto op) { return Lit::isa(op); }); p && ex) {
+            if (*p == 10 && *ex == 5) return 16;
+            if (*p == 23 && *ex == 8) return 32;
+            if (*p == 52 && *ex == 11) return 64;
+        }
+    }
+    return {};
+}
+
+/// A float Tok stores its value as mim::f64 bits; re-encode them for the width of the annotated type @p t.
+static u64 encode_f(Emitter& e, [[maybe_unused]] Loc loc, const Def* t, u64 bits) {
+    if (auto width = isa_math_f(e, t)) {
+        auto val = std::bit_cast<f64>(bits);
+        switch (*width) {
+#if defined(__STDCPP_FLOAT16_T__)
+            case 16: return std::bit_cast<u16>(f16(val));
+#else
+            case 16: error(loc, "16-bit floating-point literals are not supported on this platform");
+#endif
+            case 32: return std::bit_cast<u32>(f32(val));
+            default: break;
+        }
+    }
+    return bits;
+}
+
 const Def* LitExpr::emit_(Emitter& e) const {
     auto t = type() ? type()->emit(e) : nullptr;
     // clang-format off
     switch (tag()) {
-        case Tag::L_f:
+        case Tag::L_f:   return t ? e.world().lit(t, encode_f(e, loc(), t, tok().lit_u())) : e.world().lit_nat(tok().lit_u());
         case Tag::L_s:
         case Tag::L_u:   return t ? e.world().lit(t, tok().lit_u()) : e.world().lit_nat(tok().lit_u());
         case Tag::L_i:   return tok().lit_i();

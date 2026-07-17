@@ -6,6 +6,7 @@
 
 #include "mim/def.h"
 #include "mim/plugin.h"
+#include "mim/tuple.h"
 #include "mim/world.h"
 
 #include "mim/util/sets.h"
@@ -83,6 +84,57 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
         auto new_index = w.call<tuple::cat>(DefVec{outer_index, index});
 
         return op_get(T, new_r, new_s, outer_arr, new_index);
+    }
+
+    if (auto rep = Axm::isa<tensor::repeat>(arr)) {
+        // get after repeat: read the input directly at `idx mod s_in` per axis. Decidable when an axis
+        // passes through (`s_in#d == s_out#d`), is size-1 (read at 0), or has a literal extent and a
+        // literal index component (fold the mod); otherwise keep the repeat (the lowering paths emit the
+        // runtime mod).
+        w.DLOG("get after repeat, try to bypass");
+        auto input             = rep->arg();
+        auto [Tr, s_in, s_out] = rep->callee()->as<App>()->uncurry_args<3>();
+        if (auto r_l = Lit::isa<u64>(Tr->proj(2, 1))) {
+            DefVec new_index(*r_l);
+            for (u64 d = 0; d < *r_l; ++d) {
+                auto in_d  = s_in->proj(*r_l, d);
+                auto idx_d = index->proj(*r_l, d);
+                if (in_d == s_out->proj(*r_l, d)) {
+                    new_index[d] = idx_d;
+                } else if (auto l = Lit::isa<u64>(in_d); l && *l == 1) {
+                    new_index[d] = w.lit_idx(1, 0);
+                } else if (auto e = Lit::isa<u64>(in_d), i = Lit::isa<u64>(idx_d); e && i) {
+                    new_index[d] = w.lit_idx(*e, *i % *e);
+                } else {
+                    return nullptr;
+                }
+            }
+            w.DLOG("bypass successful");
+            return op_get(T, Tr->proj(2, 1), s_in, input, w.tuple(new_index));
+        }
+    }
+
+    if (auto bc = Axm::isa<tensor::broadcast>(arr)) {
+        // get after broadcast: read the input directly. Per axis, the broadcast either passes the index
+        // through (`s_in#d == s_out#d`) or reads a size-1 input axis at 0; if some axis is neither
+        // decidably equal nor literal 1, keep the broadcast.
+        w.DLOG("get after broadcast, try to bypass");
+        auto [s_in, s_out, input] = bc->args<3>();
+        auto [b_T, b_r]           = bc->callee()->as<App>()->args<2>();
+        if (auto r_l = Lit::isa<u64>(b_r)) {
+            DefVec new_index(*r_l);
+            for (u64 d = 0; d < *r_l; ++d) {
+                auto in_d = s_in->proj(*r_l, d);
+                if (in_d == s_out->proj(*r_l, d))
+                    new_index[d] = index->proj(*r_l, d);
+                else if (auto l = Lit::isa<u64>(in_d); l && *l == 1)
+                    new_index[d] = w.lit_idx(1, 0);
+                else
+                    return nullptr;
+            }
+            w.DLOG("bypass successful");
+            return op_get(T, b_r, s_in, input, w.tuple(new_index));
+        }
     }
 
     return nullptr;
@@ -173,13 +225,72 @@ const Def* normalize_broadcast(const Def*, const Def* c, const Def* arg) {
 const Def* normalize_broadcast_in_dim(const Def*, const Def*, const Def*) { return nullptr; }
 
 const Def* normalize_map_reduce(const Def*, const Def*, const Def*) {
-    // TODO: is there anything we can normalize here?
+    // TODO: fold size-1 loop dimensions / identity access maps.
     return nullptr;
 }
 
-const Def* normalize_map_reduce_aff(const Def*, const Def*, const Def*) {
-    // TODO: fold size-1 loop dimensions / identity access maps.
+const Def* normalize_repeat(const Def*, const Def* c, const Def* arg) {
+    // Identity repeat: if the input and output shapes agree, the repeat is a no-op.
+    auto [Tr, s_in, s_out] = c->as<App>()->uncurry_args<3>();
+    if (s_in == s_out) return arg;
     return nullptr;
+}
+
+const Def* normalize_reshape(const Def*, const Def* c, const Def* arg) {
+    // Identity reshape: if the input and output shapes agree, the reshape is a no-op.
+    auto [Trr, s_in, s_out] = c->as<App>()->uncurry_args<3>();
+    if (s_in == s_out) return arg;
+    return nullptr;
+}
+
+const Def* normalize_slice(const Def*, const Def* c, const Def* arg) {
+    // Identity slice: every axis starts at 0 with step 1 and keeps its full extent (s_out == s_in) -> the input itself.
+    auto [Tr, s_in, params]   = c->as<App>()->uncurry_args<3>();
+    auto [start, step, s_out] = params->projs<3>();
+    if (s_out != s_in) return nullptr;
+    auto r = Lit::isa<u64>(Tr->proj(2, 1));
+    if (!r) return nullptr;
+    for (u64 d = 0; d != *r; ++d) {
+        auto st = Lit::isa<u64>(start->proj(*r, d));
+        auto sp = Lit::isa<u64>(step->proj(*r, d));
+        if (!st || *st != 0 || !sp || *sp != 1) return nullptr;
+    }
+    return arg;
+}
+
+const Def* normalize_flip(const Def*, const Def*, const Def*) { return nullptr; }
+
+const Def* normalize_pad(const Def*, const Def* c, const Def* arg) {
+    // Identity pad: every axis has lo == hi == 0 (so s_out == s_in) -> the input itself (the fill value is irrelevant).
+    auto [Tr, s_in, params] = c->as<App>()->uncurry_args<3>();
+    auto [mode, lo, hi]     = params->projs<3>();
+    auto r                  = Lit::isa<u64>(Tr->proj(2, 1));
+    if (!r) return nullptr;
+    for (u64 d = 0; d != *r; ++d) {
+        auto l = Lit::isa<u64>(lo->proj(*r, d));
+        auto h = Lit::isa<u64>(hi->proj(*r, d));
+        if (!l || *l != 0 || !h || *h != 0) return nullptr;
+    }
+    return arg->proj(2, 0); // input (arg = (input, value))
+}
+
+const Def* normalize_concat(const Def*, const Def*, const Def*) { return nullptr; }
+
+const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
+    // `%tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
+    auto& w = c->world();
+    auto r  = Lit::isa<u64>(c->as<App>()->arg()); // the explicit rank `r`
+    if (!r) return nullptr;
+
+    DefVec dims;
+    auto ty = arg->type();
+    for (u64 i = 0; i != *r; ++i)
+        if (auto a = ty->isa<Seq>()) {
+            dims.emplace_back(a->arity());
+            ty = a->body();
+        } else
+            return nullptr; // `arr` is not (statically) a rank-`r` array
+    return w.tuple(dims);   // the per-axis sizes; for a rectangular tensor each `arity()` is a plain Nat
 }
 
 MIM_tensor_NORMALIZER_IMPL

@@ -1,0 +1,53 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll
+// RUN: clang++ -std=c++23 %S/hlo_aux.cpp %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t
+
+// Executable forward pass of the MLP in hlo.mim, lowered all the way to LLVM and driven by aux.cpp.
+// `main_hlo` computes, for a batch of 128 samples:
+//   h0     = tanh(arg6 · arg0 + arg1)          // 128×784 · 784×1024 -> 128×1024
+//   h1     = tanh(h0   · arg2 + arg3)          // 128×1024 · 1024×1024 -> 128×1024
+//   logits =      h1   · arg4 + arg5           // 128×1024 · 1024×10 -> 128×10
+//   out[i] = max_j logits[i][j]                // row-wise reduction -> 128
+// The parameter order matches the C prototype in aux.cpp (arg0..arg4, arg6, arg7, arg5); arg7 (the
+// labels, only used by the training/backward pass) stays unused here.
+//
+// This runs through the DEFAULT `-p opt` pipeline, so the tensor ops are bufferized via
+// %tensor.lower_to_mem (get/set/map_reduce/broadcast -> %buffer/%matrix -> %mem). See hlo.mim for the
+// full training step (forward + backward), which is likewise executed and checked against a reference.
+plugin tensor;
+plugin core;
+plugin affine;
+plugin mem;
+plugin cps;
+plugin math;
+
+let f32 = %math.f32;
+let F32 = %math.F32;
+
+let R: %tensor.Ring = (F32, 0: F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+
+lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]] : «s; F32» = %tensor.binary (%math.arith.add @f32 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»] : «s; F32» = %tensor.unary (%math.tri.tanh @f32 0) i;
+
+// out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1.
+lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
+    %tensor.map_reduce @1 @(F32, 1, 1) (n, (n, m)) @(F32, 2, (n, m)) (pool_fun g, init)
+        (%tensor.proj_map @(2, 1) 0) (%tensor.proj_map @(2, 2) (0, 1),) input;
+
+fun extern main_hlo [arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg6: «128; «784; F32»», arg7: «128; «10; F32»», arg5: «10; F32»]
+  : «128; F32» =
+    let v_0  = %tensor.product_2d R (arg6, arg0);
+    let v_2  = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
+    let v_3  = F32_add @(2, (128, 1024)) (v_0, v_2);
+    let v_4  = F32_tanh @(2, (128, 1024)) v_3;
+    let v_7  = %tensor.product_2d R (v_4, arg2);
+    let v_9  = %tensor.broadcast ((1, 1024), (128, 1024), arg3);
+    let v_10 = F32_add @(2, (128, 1024)) (v_7, v_9);
+    let v_11 = F32_tanh @(2, (128, 1024)) v_10;
+    let v_14 = %tensor.product_2d R (v_11, arg4);
+    let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
+    let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
+    let v_ninf = 0xFF800000 : F32;
+    let v_18 = reduce_ax1 ((%math.extrema.fmax @f32 0), v_ninf) v_17;
+    return v_18;

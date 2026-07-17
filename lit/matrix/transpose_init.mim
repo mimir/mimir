@@ -4,11 +4,11 @@
 plugin core;
 plugin matrix;
 
-lam ex_internal_mapRed_matrix_transpose([k l: Nat], T:*)@tt: Cn[[%mem.M 0, %matrix.Mat (2,(k, l),T)], Cn [%mem.M 0, %matrix.Mat (2,(l, k),T)] ] =
+lam ex_internal_mapRed_matrix_transpose([k l: Nat], T:*)@tt: Cn[[%mem.M 0, %buffer.Buf (2,(k, l),T)], Cn [%mem.M 0, %buffer.Buf (2,(l, k),T)] ] =
     // TODO: or use generalized addition function
     // ignore acc
     con transpose_comb [[mem:%mem.M 0, acc:T, [a:T]], return: Cn[%mem.M 0,T]] = return (mem, a);
-    con inner_matrix_transpose[[mem: %mem.M 0, M: %matrix.Mat (2,(k, l),T)], return: Cn[%mem.M 0, %matrix.Mat (2,(l, k),T)]]@tt =
+    con inner_matrix_transpose[[mem: %mem.M 0, M: %buffer.Buf (2,(k, l),T)], return: Cn[%mem.M 0, %buffer.Buf (2,(l, k),T)]]@tt =
         // TODO: use generalized zero
         let zero = (⊥:T);
         return (
@@ -31,14 +31,14 @@ lam ex_internal_mapRed_matrix_transpose([k l: Nat], T:*)@tt: Cn[[%mem.M 0, %matr
     inner_matrix_transpose;
 
 con extern f [mem : %mem.M 0, [k l:Nat], return: Cn %mem.M 0] =
-    // M:%matrix.Mat (2,(k, m), I32),
-    // N:%matrix.Mat (2,(m, l), I32),
-    // return: Cn[%mem.M 0, %matrix.Mat (2,(k, l), I32)]] = {
+    // M:%buffer.Buf (2,(k, m), I32),
+    // N:%buffer.Buf (2,(m, l), I32),
+    // return: Cn[%mem.M 0, %buffer.Buf (2,(k, l), I32)]] = {
 
-    let (mem2, M) = %matrix.constMat (2,(k, l), I32) (mem, 42I32);
-    // let (mem3, N) = %matrix.constMat (2,(m, l), I32) (mem2, 44I32;
+    let (mem2, M) = %buffer.constant (2,(k, l), I32) (mem, 42I32);
+    // let (mem3, N) = %buffer.constant (2,(m, l), I32) (mem2, 44I32;
 
-    con cont [mem: %mem.M 0, N: %matrix.Mat (2,(l, k), I32)] = return mem;
+    con cont [mem: %mem.M 0, N: %buffer.Buf (2,(l, k), I32)] = return mem;
     ex_internal_mapRed_matrix_transpose ((k, l), I32) ((mem, M), cont);
 
 // CHECK-NOT: %matrix.

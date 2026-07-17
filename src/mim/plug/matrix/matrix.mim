@@ -11,83 +11,43 @@ plugin math;
 // needed to access cps2ds
 plugin cps;
 plugin affine;
+plugin buffer;
 ///
 /// ## Types
 ///
-/// ### %%matrix.Mat
+/// Matrices are n-dimensional dependent arrays, represented by the shared `%%buffer.Buf` type.
+/// The element operations (`%%buffer.alloc` / `%%buffer.read` / `%%buffer.write` / `%%buffer.constant` /
+/// `%%buffer.shape`) and their lowering to `%%mem.Ptr` (`%%buffer.lower_ptr`) live in the `buffer` plugin.
 ///
-/// Matrices are n-dimensional tensors with elements of type T.
-/// They can be seen as a generalization of Coq's vector type (a container with a fixed number of elements specified on type level).
-/// ```
-/// matrix = [n: Nat, S: «n; Nat», T: *] → *
-/// matrix n S T = «S_0; «S_1; ... «S_{n-1}; T» ... »»
-/// ```
-/// => a matrix is a dependend array
+/// ## High-level matrix operations
 ///
-axm %matrix.Mat: [n: Nat, S: «n; Nat», T: *] → *;
+/// ### %%matrix.prod
 ///
-/// ## Operations
-///
-/// ### %%matrix.shape
-///
-/// Extracts the size along the i-th dimension from the type.
-/// For a dependent matrix this is a simple projection to S(i).
-///
-/// #### Normalization
-/// * resolve shape calls at construction by replacing them with the size argument
-///
-axm %matrix.shape: [n: Nat, S: «n; Nat», T: *] as nST → [%matrix.Mat nST, i: Idx n] → Nat, normalize_shape;
-///
-/// ### %%matrix.const
-///
-/// a constant matrix
-axm %matrix.constMat: [n: Nat, S: «n; Nat», T: *] as nST → [%mem.M 0, T] → [%mem.M 0, %matrix.Mat nST];
-///
-/// ### %%matrix.read
-///
-/// read _ (mat, idx) : body_type
-///
-/// Accesses an element of the matrix.
-/// (currently: arithmetic pointer access)
-///
-/// #### Normalization:
-/// * read(insert)
-/// * read(const)
-///
-axm %matrix.read: [n: Nat, S: «n; Nat», T: *] as nST → [%mem.M 0, %matrix.Mat nST, idx: «i: n; Idx S#i»] → [%mem.M 0, T], normalize_read;
-///
-/// ### %%matrix.insert
-///
-/// insert (dims, sizes, type) (mat, idx, val) : mat
-///
-/// Depending on the matrix implementation, this operations needs the mem monad
-/// The implementation can be either as write or array insertion.
-///
-/// #### Normalization:
-/// * with other inserts
-/// * with initialization
-///
-axm %matrix.insert: [n: Nat, S: «n; Nat», T: *] as nST → [%mem.M 0, %matrix.Mat nST, idx: «i: n; Idx S#i», val: T] → [%mem.M 0, %matrix.Mat nST], normalize_insert;
-///
-/// ### %%matrix.init
-///
-/// A fresh matrix with uninitialized values.
-axm %matrix.init: [n: Nat, S: «n; Nat», T: *, %mem.M 0] → [%mem.M 0, %matrix.Mat (n, S, T)];
-///
-/// ### High-level matrix operations
+/// Matrix product of an `m × k` and a `k × l` matrix.
 ///
 // TODO: define alias: * fst, snd, split * zip = zipWith id
 axm %matrix.prod: [m: Nat, k: Nat, l: Nat, [p: Nat, e:Nat]]
-                → [%mem.M 0, %matrix.Mat (2, (m, k), %math.F (p, e)), %matrix.Mat (2, (k, l), %math.F (p, e))]
-                → [%mem.M 0, %matrix.Mat (2, (m, l), %math.F (p, e))], normalize_prod;
+                → [%mem.M 0, %buffer.Buf (2, (m, k), %math.F (p, e)), %buffer.Buf (2, (k, l), %math.F (p, e))]
+                → [%mem.M 0, %buffer.Buf (2, (m, l), %math.F (p, e))], normalize_prod;
 
+///
+/// ### %%matrix.transpose
+///
+/// Transposes a `k × l` matrix.
+///
 axm %matrix.transpose: [[k:Nat, l:Nat], T: *]
-                     → [%mem.M 0, %matrix.Mat (2, (k, l), T)]
-                     → [%mem.M 0, %matrix.Mat (2, (l, k), T)], normalize_transpose;
-
+                     → [%mem.M 0, %buffer.Buf (2, (k, l), T)]
+                     → [%mem.M 0, %buffer.Buf (2, (l, k), T)], normalize_transpose;
+///
+/// ### %%matrix.sum
+///
+/// Sums up all elements of a matrix and returns a scalar.
+///
 axm %matrix.sum: [n: Nat, S: «n; Nat», [p:Nat, e:Nat]]
-               → [%mem.M 0, %matrix.Mat (n, S, %math.F (p, e))]
+               → [%mem.M 0, %buffer.Buf (n, S, %math.F (p, e))]
                → [%mem.M 0, %math.F (p, e)];
+///
+/// ### %%matrix.map_reduce
 ///
 // TODO: handle reduction case: n=0, S=[] => not empty but scalar
 /// Our notation is inspired by einsum (with some generalizations):
@@ -107,8 +67,8 @@ axm %matrix.sum: [n: Nat, S: «n; Nat», [p:Nat, e:Nat]]
 /// * `einsum(idx, MatrixIndices) = map_reduce(0,+, product, MatrixIndices)`
 /// * `map f M = map_reduce (0,+, f,[(idx, M)])` (TODO: get rid of reduce step if not needed with dummy values)
 /// * `reduce acc f M = map_reduce (n=0) (acc, f, id,[(idx, M)])` (TODO: see index problem above)
-/// einsum application:
-/// * `tranpose ij→ji  (einsum(,[(1,0), M]))`
+/// einsum applications:
+/// * `transpose ij→ji  (einsum(,[(1,0), M]))`
 /// * `trace ii→`
 /// * `sum ij →`
 /// * `col sum ij → j `
@@ -118,7 +78,7 @@ axm %matrix.sum: [n: Nat, S: «n; Nat», [p:Nat, e:Nat]]
 /// * `dot matrix ij, ij →`
 /// * `outer product i, j → ij`
 /// TODO: introduce dummy values (zero, add, ...) in refly and use these
-/// dummy = has correct type but can not produce code (should always be eliminated)
+/// dummy = has correct type but cannot produce code (should always be eliminated)
 axm %matrix.map_reduce:
     // out shape depends on in shape but is complex
     [
@@ -134,19 +94,77 @@ axm %matrix.map_reduce:
         // TODO: propagate change: no addition but instead take acc as argument (like mlir.linarith.generic)
         comb:   Fn [%mem.M 0, T, «i: m; TI#i»] → [%mem.M 0, T], // inner combination
         // out_index not needed => always ij (0 ... n) for n dimensions
-        input:  «i: m; [«NI#i; Nat», %matrix.Mat (NI#i, SI#i, TI#i)]»
-    ] → [%mem.M 0, %matrix.Mat (n, S, T)],
+        input:  «i: m; [«NI#i; Nat», %buffer.Buf (NI#i, SI#i, TI#i)]»
+    ] → [%mem.M 0, %buffer.Buf (n, S, T)],
     normalize_map_reduce;
+///
+/// ### %%matrix.map_reduce_aff
+///
+/// The buffer-world counterpart of `%%tensor.map_reduce`: the affine-indexed generalisation of
+/// `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
+/// `So`/`Sr` are the (logical) output shape and full loop bounds; `acc_out`/`accs` are affine maps from the
+/// `Ro+Rr` loop vector to the output/input coordinates.
+/// The combiner is mem-threaded, like `%%matrix.map_reduce`.
+///
+axm %matrix.map_reduce_aff: {nis: Nat}
+                          → {To: *, Ro Rr: Nat}
+                          → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
+                          → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                          → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To]
+                          → [acc_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
+                          → [accs: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
+                          → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
+                          → [%mem.M 0, %buffer.Buf (Ro, So, To)];
+///
+/// ### %%matrix.broadcast
+///
+/// The buffer-world counterpart of `%%tensor.broadcast`: expand `input` from logical shape `s_in` to `s_out`
+/// (each dimension is either equal or broadcast from size 1).
+/// The input/output buffer shapes (`ri`/`si`, `ro`/`so`) are the actual — possibly size-1-folded — buffer
+/// shapes and are inferred from the operands; `s_in`/`s_out` are the logical (unfolded) shapes.
+///
+axm %matrix.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat», r: Nat}
+                     → [s_in: «r; Nat», s_out: «r; Nat»]
+                     → [%mem.M 0, %buffer.Buf (ri, si, T)]
+                     → [%mem.M 0, %buffer.Buf (ro, so, T)];
+///
+/// ### %%matrix.pad
+///
+/// The buffer-world counterpart of `%%tensor.pad`: `out[…o…] = input[…o−lo…]` inside the interior,
+/// `value` (mode 0, constant) or the clamped edge element (mode ≠ 0, replicate) outside.
+/// `s_out#d = lo#d + s_in#d + hi#d` is passed explicitly.
+/// The buffer shapes are stated as the logical shapes; `%%buffer.Buf` normalizes literal size-1 axes
+/// away, so they agree with the folded buffer handles, and the loop generation folds its read/write
+/// indices accordingly.
+///
+axm %matrix.pad: {T: *, r: Nat}
+              → [s_in s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
+              → [%mem.M 0, input: %buffer.Buf (r, s_in, T), value: T]
+              → [%mem.M 0, %buffer.Buf (r, s_out, T)];
+///
+/// ### %%matrix.concat
+///
+/// The buffer-world counterpart of `%%tensor.concat`: joins `nis` buffers along axis `ax`.
+/// `out[…o…] = is#k[… o with o#ax ↦ o#ax − off#k …]`, where `k` is the input whose range `o#ax` lands in
+/// (`off` are the prefix sums of the per-input extents along `ax`).
+/// `s_out` (the summed extent along `ax`, the shared extents elsewhere) is passed explicitly.
+///
+axm %matrix.concat: {T: *, nis r: Nat}
+                  → [ax: Idx r]
+                  → {Sis: «i: nis; «r; Nat»»}
+                  → [s_out: «r; Nat»]
+                  → [%mem.M 0, is: «i: nis; %buffer.Buf (r, Sis#i, T)»]
+                  → [%mem.M 0, %buffer.Buf (r, s_out, T)];
 ///
 /// ## Unfolding functions
 ///
 /// ### product
 ///
-/// Follow the principle `ij <- ik, kj` (`out[i, j] = sum_k in1[i, k] * in2[k, j]`) by using mulplication as combination function and addition as reduction function.
+/// Follows the principle `ij ← ik, kj` (`out[i, j] = Σ_k in1[i, k] · in2[k, j]`) by using multiplication as combination function and addition as reduction function.
 fun %matrix.mapRed_prod(m k l: Nat, pe: «2; Nat»)
-                                      (mem: %mem.M 0, M: %matrix.Mat (2, (m, k), %math.F pe),
-                                                    N: %matrix.Mat (2, (k, l), %math.F pe))@tt
-                                    : [     %mem.M 0,    %matrix.Mat (2, (m, l), %math.F pe)] =
+                                      (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe),
+                                                    N: %buffer.Buf (2, (k, l), %math.F pe))@tt
+                                    : [     %mem.M 0,    %buffer.Buf (2, (m, l), %math.F pe)] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     return (
@@ -175,8 +193,8 @@ fun %matrix.mapRed_prod(m k l: Nat, pe: «2; Nat»)
 // TODO: check code for 1-matrix edge case
 // TODO: would this automatically be handled by read(transpose) ?
 fun %matrix.mapRed_transpose((k l: Nat), T: *)
-                                           (mem: %mem.M 0, M: %matrix.Mat (2, (k, l), T))@tt
-                                         : [     %mem.M 0,    %matrix.Mat (2, (l, k), T)] =
+                                           (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt
+                                         : [     %mem.M 0,    %buffer.Buf (2, (l, k), T)] =
     let zero = ⊥:T; // TODO: use generalized zero
     return (
         %matrix.map_reduce
@@ -200,7 +218,7 @@ fun %matrix.mapRed_transpose((k l: Nat), T: *)
 /// Sums up all elements of a matrix and returns a scalar.
 //  TODO: test 0d matrix (edge cases in code)
 fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
-                                     (mem: %mem.M 0, M: %matrix.Mat (n, S, %math.F pe))@tt
+                                     (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt
                                    : [%mem.M 0, %math.F pe] =
     let R = %math.F pe;
     // TODO: use generalized zero
@@ -226,10 +244,24 @@ fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
         );
     return (mem, %core.bitcast R res); // TODO: test this cast
 ///
-/// ## Passes and Phases
+/// ## Phases
 ///
-/// ### Phases
+/// ### %%matrix.lower_matrix_high_level_map_reduce
+///
+/// Rewrites the high-level matrix operations (`%%matrix.prod`, `%%matrix.transpose`, `%%matrix.sum`)
+/// into `%%matrix.map_reduce` via the `mapRed_*` unfolding functions above.
 ///
 axm %matrix.lower_matrix_high_level_map_reduce: %compile.Phase;
+///
+/// ### %%matrix.lower_matrix_medium_level
+///
+/// Lowers `%%matrix.map_reduce` into `%%affine.For` loops, making the iteration scheme explicit.
+///
 axm %matrix.lower_matrix_medium_level:          %compile.Phase;
-axm %matrix.lower_matrix_low_level:             %compile.Phase;
+///
+/// ### %%matrix.lower_aff
+///
+/// Lowers the buffer-world ops (`%%matrix.map_reduce_aff`, `%%matrix.broadcast`, `%%matrix.pad`,
+/// `%%matrix.concat`) to `%%affine.For` loops over `%%buffer` element operations.
+///
+axm %matrix.lower_aff:                          %compile.Phase;
