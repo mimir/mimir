@@ -144,17 +144,18 @@ void ClosConv::rewrite_body(Lam* new_lam, Def2Def& subst) {
     auto& w = world();
     auto it = closures_.find(new_lam);
     assert(it != closures_.end() && "closure should have a stub if rewrite_body is called!");
-    auto [old_fn, num_fvs, env, new_fn] = it->second;
+    // Copy the stub: rewriting below adds new stubs to closures_, which may rehash and invalidate it->second.
+    auto [old_fn, fvs, env, new_fn] = it->second;
 
     if (!old_fn->is_set()) return;
 
     DLOG("rw body: {} [old={}, env={}]\nt", new_fn, old_fn, env);
     auto env_param = new_fn->var(Clos_Env_Param)->set("closure_env");
-    if (num_fvs == 1) {
-        subst.emplace(env, env_param);
+    if (fvs.size() == 1) {
+        subst.emplace(fvs.front(), env_param);
     } else {
-        for (size_t i = 0; i < num_fvs; i++) {
-            auto fv  = env->op(i);
+        for (size_t i = 0; i < fvs.size(); i++) {
+            auto fv  = fvs[i];
             auto sym = w.sym("fv_"s + (fv->sym() ? fv->sym().str() : std::to_string(i)));
             subst.emplace(fv, env_param->proj(i)->set(sym));
         }
@@ -190,10 +191,12 @@ const Def* ClosConv::rewrite(const Def* def, Def2Def& subst) {
     } else if (auto pi = Pi::isa_cn(def)) {
         return map(type_clos(pi, subst));
     } else if (auto lam = def->isa_mut<Lam>(); lam && Lam::isa_cn(lam)) {
-        auto [_, __, fv_env, new_lam] = make_stub(lam, subst);
-        auto clos_ty                  = rewrite(lam->type(), subst);
-        auto env                      = rewrite(fv_env, subst);
-        auto closure                  = clos_pack(env, new_lam, clos_ty);
+        auto [_, fvs, __, new_lam] = make_stub(lam, subst);
+        auto clos_ty               = rewrite(lam->type(), subst);
+        // Rewrite the individual free defs, not the (possibly normalized) env tuple:
+        // its normal form may reference defs that are not free vars and hence not in subst.
+        auto env     = w.tuple(DefVec(fvs.size(), [&](auto i) { return rewrite(fvs[i], subst); }));
+        auto closure = clos_pack(env, new_lam, clos_ty);
         DLOG("RW: pack {} ~> {} : {}", lam, closure, clos_ty);
         return map(closure);
     } else if (auto a = Axm::isa<attr>(def)) {
@@ -295,8 +298,8 @@ const Def* ClosConv::type_clos(const Pi* pi, Def2Def& subst, const Def* env_type
 
 ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam, Def2Def& subst) {
     auto& w          = world();
-    auto env         = w.tuple(DefVec(fvs.begin(), fvs.end()));
-    auto num_fvs     = fvs.size();
+    auto fv_vec      = DefVec(fvs.begin(), fvs.end());
+    auto env         = w.tuple(fv_vec);
     auto env_type    = rewrite(env->type(), subst);
     auto new_fn_type = type_clos(old_lam->type(), subst, env_type)->as<Pi>();
     auto new_lam     = old_lam->stub(new_fn_type);
@@ -319,7 +322,7 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam, Def2Def& sub
         new_lam->set(old_lam->filter(), old_lam->body());
     }
     DLOG("STUB {} ~~> ({}, {})", old_lam, env, new_lam);
-    auto closure = Stub{old_lam, num_fvs, env, new_lam};
+    auto closure = Stub{old_lam, std::move(fv_vec), env, new_lam};
     closures_.try_emplace(old_lam, closure);
     closures_.try_emplace(closure.fn, closure);
     return closure;

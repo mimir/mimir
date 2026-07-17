@@ -1,0 +1,18 @@
+// RUN: %mim %s
+
+// %tensor.shape r arr: reads the shape (the per-axis sizes) off `arr`'s nested array type, peeling `r` levels.
+// `normalize_shape` folds it to the literal shape vector, asserted here via %refly.equiv.struc_eq.
+
+plugin tensor;
+plugin refly;
+
+let v  = (10, 20, 30, 40);                 // «4; Nat»
+let m1 = ((1, 2, 3), (4, 5, 6));           // «2, 3; Nat»
+let m2 = (((1, 2), (3, 4)), ((5, 6), (7, 8))); // «2, 2, 2; Nat»
+
+// rank 1: a single Nat (the «1; Nat» result collapses to a scalar).
+let _ = %refly.equiv.struc_eq (%tensor.shape 1 v, 4);
+// rank 2.
+let _ = %refly.equiv.struc_eq (%tensor.shape 2 m1, (2, 3));
+// rank 3.
+let _ = %refly.equiv.struc_eq (%tensor.shape 3 m2, (2, 2, 2));

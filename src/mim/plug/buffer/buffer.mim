@@ -1,0 +1,84 @@
+/// # The buffer Plugin {#buffer}
+///
+/// @see mim::plug::buffer
+///
+/// [TOC]
+///
+/// A shared, low-level buffer abstraction.
+/// A `%%buffer.Buf (r, s, T)` is a dependent array of rank `r` and shape `s` holding elements of type `T`, but backed by real memory.
+/// Elements are accessed via `%%buffer.read` / `%%buffer.write` and buffers are created via `%%buffer.alloc`, all threading the `%%mem.M` memory monad.
+/// The `%%buffer.lower_ptr` phase lowers this layer to `%%mem.Ptr` + `%%mem.lea` / `%%mem.load` / `%%mem.store`.
+/// Both the `tensor` and `matrix` plugins bufferize their operations onto this layer.
+///
+/// ## Dependencies
+///
+import mem;
+import core;
+///
+/// ## Types
+///
+/// ### %%buffer.Buf
+///
+/// A buffer of rank `r`, shape `s`, holding elements of type `T`.
+/// Equivalent to the dependent array `«s; T»` but backed by memory.
+/// Literal size-1 axes are normalized away (`%%buffer.Buf (2, (3, 1), T)` ≡ `%%buffer.Buf (1, 3, T)`),
+/// mirroring the folding of the corresponding array types (`«3, 1; T»` ≡ `«3; T»`), so buffer types
+/// derived from logical shapes agree with the (folded) boundary types.
+///
+axm %buffer.Buf: [r: Nat, s: «r; Nat», T: *] → *, normalize_Buf;
+///
+/// ## Operations
+///
+/// ### %%buffer.alloc
+///
+/// Allocate a fresh (uninitialized) buffer.
+///
+axm %buffer.alloc: [r: Nat, s: «r; Nat», T: *] as rsT → %mem.M 0 → [%mem.M 0, %buffer.Buf rsT];
+///
+/// ### %%buffer.read
+///
+/// Read the element at `idx`.
+///
+axm %buffer.read: [r: Nat, s: «r; Nat», T: *] as rsT
+                → [%mem.M 0, %buffer.Buf rsT, idx: «i: r; Idx s#i»] → [%mem.M 0, T], normalize_read;
+///
+/// ### %%buffer.write
+///
+/// Write `val` at `idx` in place and return the same buffer.
+///
+axm %buffer.write: [r: Nat, s: «r; Nat», T: *] as rsT
+                 → [%mem.M 0, %buffer.Buf rsT, idx: «i: r; Idx s#i», val: T] → [%mem.M 0, %buffer.Buf rsT], normalize_write;
+///
+/// ### %%buffer.init
+///
+/// A buffer initialised with the contents of the SSA array value `val`.
+/// This is the boundary conversion from the value world into the buffer world.
+///
+axm %buffer.init: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, val: «s; T»] → [%mem.M 0, %buffer.Buf rsT];
+///
+/// ### %%buffer.constant
+///
+/// A buffer initialised with a constant value in every element.
+///
+axm %buffer.constant: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, T] → [%mem.M 0, %buffer.Buf rsT];
+///
+/// ### %%buffer.shape
+///
+/// Yields the size of the buffer along dimension `i` (resolved from the type).
+///
+axm %buffer.shape: [r: Nat, s: «r; Nat», T: *] as rsT → [%buffer.Buf rsT, i: Idx r] → Nat, normalize_shape;
+///
+/// ### %%buffer.copy
+///
+/// Copy the whole contents of `src` into `dst` and return the updated memory.
+///
+axm %buffer.copy: [r: Nat, s: «r; Nat», T: *] as rsT
+                → [%mem.M 0, dst: %buffer.Buf rsT, src: %buffer.Buf rsT] → %mem.M 0;
+///
+/// ## Passes and Phases
+///
+/// ### %%buffer.lower_ptr
+///
+/// Lowers `Buf` / `alloc` / `read` / `write` to `%%mem.Ptr` + `%%mem.lea` / `%%mem.load` / `%%mem.store`.
+///
+axm %buffer.lower_ptr: %compile.Phase;

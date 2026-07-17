@@ -7,11 +7,11 @@ plugin matrix;
 con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
     let MT = (2, (3,3), I32);
     let c = 5I32;
-    let (mem1,m) = %matrix.constMat MT (mem,c);
-    let f = %matrix.read MT;
+    let (mem1,m) = %buffer.constant MT (mem,c);
+    let f = %buffer.read MT;
     // let idx : «2; (Idx 3)» = (0, 0);
     let idx = ‹2; 0:(Idx 3)›;
-    let (mem2,d) = %matrix.read MT (mem1,m, idx);
+    let (mem2,d) = %buffer.read MT (mem1,m, idx);
     return (mem2, d);
 
 // CHECK-DAG: return{{.*}}5

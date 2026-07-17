@@ -19,6 +19,9 @@ config.environment = os.environ
 
 config.available_features.add("always")
 
+# Gate expensive tests on optimized builds via `// REQUIRES: release`.
+if getattr(config, 'build_type', '').lower() in ('release', 'relwithdebinfo', 'minsizerel'):
+    config.available_features.add("release")
 # 16-bit floating-point support (needs std::float16_t) is detected once by CMake and passed in via
 # lit.site.cfg.py. Tests emitting %math.F16 literals gate on this via `// REQUIRES: fp16`.
 if getattr(config, 'fp16', False):
