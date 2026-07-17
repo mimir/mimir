@@ -1,5 +1,7 @@
 #pragma once
 
+#include <absl/container/flat_hash_set.h>
+
 #include "mim/def.h"
 
 namespace mim {
@@ -125,6 +127,8 @@ private:
     template<Mode>
     [[nodiscard]] bool alpha_(const Def* d1, const Def* d2);
     template<Mode>
+    [[nodiscard]] bool alpha_impl_(const Def* d1, const Def* d2);
+    template<Mode>
     [[nodiscard]] bool check(const Prod*, const Def*);
     template<Mode>
     [[nodiscard]] bool check(const Seq*, const Def*);
@@ -132,9 +136,20 @@ private:
     [[nodiscard]] bool check(Seq*, const Seq*);
     [[nodiscard]] bool check(const UMax*, const Def*);
 
-    auto bind(Def* mut, const Def* d) { return mut ? binders_.emplace(mut, d) : std::pair(binders_.end(), true); }
+    auto bind(Def* mut, const Def* d) {
+        if (!mut) return std::pair(binders_.end(), true);
+        auto res = binders_.emplace(mut, d);
+        // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
+        if (res.second) {
+            memo_[Check].clear();
+            memo_[Test].clear();
+        }
+        return res;
+    }
+
     World& world_;
     MutMap<const Def*> binders_;
+    std::array<absl::flat_hash_set<std::pair<const Def*, const Def*>>, 2> memo_;
 };
 
 } // namespace mim
