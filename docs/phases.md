@@ -100,7 +100,7 @@ The lattice follows these conventions:
   Besides recording a lattice fact, it also seed the rewriter map, so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` immediately returns `abstr`.
   It `assert`s, if you go down from ⊤.
 - [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force) is the non-`assert`ing variant.
-- [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
+- [`pin(def)`](@ref mim::Analysis::pin) monotonically forces `def` to ⊤.
   Being built on [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), it invalidates iff it overwrote previous information.
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
 
@@ -334,7 +334,7 @@ This illustrates the benefit of building analysis on top of [`Rewriter`](@ref mi
 The join in `propagate()` is expressed entirely through the lattice API:
 [`lattice(var)`](@ref mim::Analysis::lattice) reads the current abstract value,
 [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) overwrites it, and
-[`pin_top()`](@ref mim::Analysis::pin_top) resolves conflicting values to ⊤.
+[`pin()`](@ref mim::Analysis::pin) resolves conflicting values to ⊤.
 No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`lattice(concr, abstr)`](@ref mim::Analysis::lattice).
 
 The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
@@ -351,7 +351,7 @@ This is a textbook use of [`Analysis`](@ref mim::Analysis):
 The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra:
 
 ```cpp
-if (lam_of(var)->nests(def)) return pin_top(var);
+if (lam_of(var)->nests(def)) return pin(var);
 ```
 
 It is the MimIR analogue of the *dominance* side condition that a classical SSA-based SCCP has to enforce, so it is worth spelling out what it replaces.
@@ -395,7 +395,7 @@ Now the guard reads directly:
 - `var` is a parameter of `L = lam_of(var)`; its call sites live *outside* `L`.
 - If `L->nests(def)`, the joined value refers to binders that only come into existence *within* `L`'s own body.
   Such a value simply does not exist at `L`'s call sites, so propagating it into `var` — and thus substituting it at `var`'s uses — would hoist a computation out of the region where its operands are defined.
-  This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin_top`](@ref mim::Analysis::pin_top)) instead.
+  This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin`](@ref mim::Analysis::pin)) instead.
 - If `L` does *not* nest `def`, the value is in scope at every call site — the analogue of *"the definition dominates all uses"* — and propagation is sound.
 
 In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks a single scope question: *is this value visible at the binder it would replace?*

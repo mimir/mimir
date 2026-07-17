@@ -50,12 +50,12 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
 
     // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
-    if (Axm::isa<mem::M>(var->type())) return pin_top(var);
+    if (Axm::isa<mem::M>(var->type())) return pin(var), var;
 
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
     if (!def->isa<Proxy>() && lam->nests(def)) {
         DLOG("cannot propagate {} -> {}: out of scope", var, def);
-        return pin_top(var);
+        return pin(var), var;
     }
 
     auto cur = lattice(var);
@@ -121,7 +121,8 @@ void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const 
                 bundle_vars.emplace_back(vars[j]);
 
         if (bundle_vars.size() == 1) {
-            abstr_vars[i] = pin_top(vars[i]);
+            pin(vars[i]);
+            abstr_vars[i] = vars[i];
         } else {
             auto bundle = mk_bundle(lam, vars[i], bundle_vars);
 
@@ -155,7 +156,8 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
 
             auto new_num = split_vars.size();
             if (new_num == 1) {
-                abstr_vars[i] = pin_top(vars[i]);
+                pin(vars[i]);
+                abstr_vars[i] = vars[i];
                 DLOG("gvn single: {}", vars[i]);
             } else if (new_num != num) {
                 auto new_proxy = mk_bundle(lam, abstr_args[i], split_vars);
@@ -344,8 +346,8 @@ void SEO::Analysis::analyze(const Def* def) {
             auto slot = sloxy2slot_[proxy];
             assert(slot);
             auto [_, ptr] = slot->projs<2>();
-            pin_top(slot);
-            pin_top(ptr);
+            pin(slot);
+            pin(ptr);
             DLOG("sloxy {} survived; setting slot to top: {}", proxy, slot);
         }
         return; // never walk a proxy's deps (would drag in meta info)
@@ -372,7 +374,7 @@ void SEO::Analysis::analyze(const Def* def) {
         DLOG("lam {} unknown", lam);
         unknowns_.emplace(lam);
         for (auto v : var->tprojs())
-            pin_top(v);
+            pin(v);
     }
 
     for (auto d : def->deps())

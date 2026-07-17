@@ -37,19 +37,15 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
     if (cur && !Lit::isa<u64>(cur)) return; // already ⊤ - monotone, do not downgrade
     // Too wide for the u64 bitmask (only with an unusually large scalarize threshold): conservatively pin
     // the whole Pi rather than risk splitting a dynamically-indexed parameter.
-    if (dom >= BitmaskWidth) return pin(pi);
-    auto mask = cur ? Lit::as<u64>(cur) : u64(0);
-    auto next = mask | (u64(1) << dom);
-    if (next == mask) return;
-    lattice_force(pi, world().lit_nat(next));
-    DLOG("keep: {} #{}", pi, dom);
-}
-
-void Scalarize::Analysis::pin(const Pi* pi) {
-    auto cur = lattice(pi);
-    if (cur && !Lit::isa<u64>(cur)) return; // already ⊤
-    pin_top(pi);
-    DLOG("pin: {}", pi);
+    if (dom >= BitmaskWidth) {
+        pin(pi);
+    } else {
+        auto mask = cur ? Lit::as<u64>(cur) : u64(0);
+        auto next = mask | (u64(1) << dom);
+        if (next == mask) return;
+        lattice_force(pi, world().lit_nat(next));
+        DLOG("keep: {} #{}", pi, dom);
+    }
 }
 
 /// Collects @p def%'s immutable subtree into @p set; stops at mutables.
@@ -173,7 +169,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
 }
 
 const Def* Scalarize::Analysis::rewrite(const Def* old) {
-    // Visit the subtree *before* inspecting: pin() seeds `pi ↦ pi` into the rewriter map (via pin_top),
+    // Visit the subtree *before* inspecting: pin() seeds `pi ↦ pi` into the rewriter map (via pin),
     // which would short-circuit the traversal into `old` and skip its subtree for the rest of the round -
     // during bootstrapping this would hide nested Pis from the blanket annex pin.
     auto res = mim::Analysis::rewrite(old);

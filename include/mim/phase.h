@@ -175,9 +175,6 @@ public:
         auto i = lattice_.find(def);
         return i != lattice_.end() && i->second == def;
     }
-
-    /// Monotonically forces @p def to ⊤ (keep as is).
-    const Def* pin_top(const Def* def) { return lattice(def, def), def; }
     ///@}
 
 protected:
@@ -220,6 +217,10 @@ protected:
         }
         return false;
     }
+
+    /// Monotonically forces @p def to ⊤ (keep as is).
+    /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
+    bool pin(const Def* def) { return lattice(def, def); }
     ///@}
 
     /// @name Rewrite
