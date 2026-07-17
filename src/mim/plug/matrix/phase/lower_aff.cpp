@@ -21,8 +21,17 @@ const Def* fold_index(const Def* shape, const Def* idx) {
     auto& w = shape->world();
     auto r  = shape->num_projs();
     DefVec out;
-    for (size_t i = 0; i != r; ++i)
-        if (auto l = Lit::isa<u64>(shape->proj(r, i)); !(l && *l == 1)) out.push_back(idx->proj(r, i));
+    bool dropped = false;
+    for (size_t i = 0; i != r; ++i) {
+        if (auto l = Lit::isa<u64>(shape->proj(r, i)); l && *l == 1)
+            dropped = true;
+        else
+            out.push_back(idx->proj(r, i));
+    }
+    // Without dropped axes the tuple below would just eta-reduce back to `idx` — but only after
+    // World::tuple's pack normalization has alpha-compared the projections, which walks `idx`'s whole
+    // (mem-threaded, Var-dependent) coordinate chain per element pair — exponentially. Return `idx` directly.
+    if (!dropped) return idx;
     return w.tuple(out);
 }
 
