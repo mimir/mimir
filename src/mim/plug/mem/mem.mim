@@ -51,8 +51,8 @@ axm %mem.alloc: [*, a: Nat] as Ta → [%mem.M a] → [%mem.M a, %mem.Ptr Ta];
 /// ### %%mem.slot
 ///
 /// Reserves a stack slot for type `T` in address space `a`.
-/// The provided `id` must be unique.
-axm %mem.slot: [*, a: Nat] as Ta → [%mem.M a, id: Nat] → [%mem.M a, %mem.Ptr Ta];
+/// The slot is passed to the continuation and its lifetime is scoped to that continuation.
+axm %mem.slot: [*, a: Nat] as Ta → Fn %mem.M a → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.malloc
 ///
@@ -69,8 +69,8 @@ axm %mem.free: {*, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta] → %mem.M a;
 ///
 /// Reserves a stack slot for type `T` in address space `a`.
 /// The reserved slot will be `size` bytes large.
-/// The provided `id` must be unique.
-axm %mem.mslot: [*, a: Nat] as Ta → [%mem.M a, size: Nat, id: Nat] → [%mem.M a, %mem.Ptr Ta];
+/// The slot is passed to the continuation and its lifetime is scoped to that continuation.
+axm %mem.mslot: [*, a: Nat] as Ta → Fn [%mem.M a, size: Nat] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ## Operations w/o Side Effects
 ///

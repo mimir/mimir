@@ -8,7 +8,7 @@ cfun println_char[%mem.M 0, I8]: %mem.M 0;
 cfun print_str[%mem.M 0, %mem.Ptr0 «⊤:Nat; I8»]: %mem.M 0;
 
 fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): [%mem.M 0, I32] =
-    let (mem, p1) = %mem.slot («15; I8», 0) (mem, 0);
+    ret (mem, p1) = %mem.slot («15; I8», 0) $ mem;
     let mem       = %mem.store (mem, p1, "Hello, World!\n\0");
     let p2        = %core.bitcast (%mem.Ptr0 «⊤:Nat; I8») p1;
     ret mem       = println_char $ (mem, 'x');

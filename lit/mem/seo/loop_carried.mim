@@ -15,7 +15,7 @@ plugin mem;
 cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
 
 fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
-    let (mem, p) = %mem.slot (Nat, 0) (mem, 0);
+    ret (mem, p) = %mem.slot (Nat, 0) $ mem;
     let mem      = %mem.store (mem, p, 42);
 
     head (mem, p) where

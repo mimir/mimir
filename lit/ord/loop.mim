@@ -38,7 +38,7 @@ cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Map]: [%mem.M 0];
 
 fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
     // stack-alloc dictionary and init with: 0 -> 23, 1 -> x
-    let (mem, ptr) = %mem.slot  (Map, 0) (mem, 0);
+    ret (mem, ptr) = %mem.slot  (Map, 0) $ mem;
     let  mem       = %mem.store (mem, ptr, %ord.init.map Key ((0I32, 23I64), (1I32, x))); // 0 → 23, 1 → x
     head (mem, x, x) where
         con head(mem: %mem.M 0, i j: I64) =

@@ -9,11 +9,11 @@ cfun use_address[mem: %mem.M 0, ptr: %mem.Ptr (Nat, 0)]: [%mem.M 0];
 
 fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
     // int x = 42;
-    let (mem, px) = %mem.slot (Nat, 0) (mem, 0);
+    ret (mem, px) = %mem.slot (Nat, 0) $ mem;
     let mem       = %mem.store (mem, px, 42);
 
     // int y = 42;
-    let (mem, py) = %mem.slot (Nat, 0) (mem, 1);
+    ret (mem, py) = %mem.slot (Nat, 0) $ mem;
     let mem       = %mem.store (mem, py, 42);
 
     head (mem, px, py) where

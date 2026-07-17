@@ -8,7 +8,7 @@ con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
             group_id: Idx 4, item_id: Idx 4, (), data: %gpu.GlobalPtr I32,
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let (m1, m3) = %gpu.sync_work_items (m1, m3);
-    let (m3, shared_ptr) = %mem.slot («4; I32», 3) (m3, 0);
+    ret (m3, shared_ptr) = %mem.slot («4; I32», 3) $ m3;
     let (m1, local_data) = %mem.alloc (I32, 1) m1;
     let (m1, m3) = %gpu.synced_scope (m1, m3, scope)
     where

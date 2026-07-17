@@ -3,7 +3,7 @@
 plugin core;
 
 fun extern test1(mem: %mem.M 0): [%mem.M 0, Nat] =
-    let (mem, ptr) = %mem.slot (Nat, 0) (mem, 0);
+    ret (mem, ptr) = %mem.slot (Nat, 0) $ mem;
     let mem        = %mem.store (mem, ptr, 1);
     let (mem, a)   = %mem.load (mem, ptr);
     let mem        = %mem.store (mem, ptr, 2);

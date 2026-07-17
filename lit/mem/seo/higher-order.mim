@@ -17,8 +17,8 @@ fun g (mem: %mem.M 0, h: H): [%mem.M 0, Nat] =
     return (mem, %core.nat.add (res1, res2));
 
 fun extern f (mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
-    let (mem, ph) = %mem.slot (H,   0) (mem, 0);
-    let (mem, pr) = %mem.slot (Nat, 0) (mem, 1);
+    ret (mem, ph) = %mem.slot (H,   0) $ mem;
+    ret (mem, pr) = %mem.slot (Nat, 0) $ mem;
     let  mem      = %mem.store (mem, ph, h);
     let  mem      = %mem.store (mem, pr, x);
     head mem where
