@@ -12,13 +12,13 @@ import compile;
 ///
 /// ### %%mem.M {#memM}
 ///
-/// This type tracks all kind of side-effects in the given address space.
+/// This type tracks all kinds of side effects in the given address space.
 axm %mem.M: Nat → *;
 ///
 /// ### %%mem.Ptr
 ///
 /// Pointer type with *pointee* type `T` and *address space* `a`.
-/// At the moment, the *address space* is not really used and a placeholder for future work.
+/// At the moment, the *address space* is not really used and serves as a placeholder for future work.
 axm %mem.Ptr: [*, Nat] → *;
 
 lam %mem.Ptr0(T: *): * = %mem.Ptr (T, 0);
@@ -30,12 +30,12 @@ lam %mem.Ptr0(T: *): * = %mem.Ptr (T, 0);
 ///
 /// ### %%mem.load
 ///
-/// Loads from a pointer of type `%%mem.Ptr (T, a)` the pointed value of type `T`.
+/// Loads the pointee of type `T` from a pointer of type `%%mem.Ptr (T, a)`.
 axm %mem.load: {T: *, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta] → [%mem.M a, T], normalize_load;
 ///
 /// ### %%mem.store
 ///
-/// Stores a value of type `T` to the location pointed to by a pointer of type `%%mem.Ptr (T, a)`,
+/// Stores a value of type `T` to the location pointed to by a pointer of type `%%mem.Ptr (T, a)`.
 axm %mem.store: {T: *, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta, T] → %mem.M a, normalize_store;
 ///
 /// ### %%mem.remem
@@ -50,14 +50,14 @@ axm %mem.alloc: [*, a: Nat] as Ta → [%mem.M a] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.slot
 ///
-/// Reserves a memory slot for type `T` in address space `a`.
-/// `id` has to be provided a unique id.
+/// Reserves a stack slot for type `T` in address space `a`.
+/// The provided `id` must be unique.
 axm %mem.slot: [*, a: Nat] as Ta → [%mem.M a, id: Nat] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.malloc
 ///
 /// Allocates memory of type `T` in address space `a`.
-/// The difference to `%%mem.alloc` is that the `size` is automatically inferred.
+/// The difference to `%%mem.alloc` is that the size is passed explicitly (in bytes) instead of being derived from `T`.
 axm %mem.malloc: [*, a: Nat] as Ta → [%mem.M a, Nat] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.free
@@ -67,9 +67,9 @@ axm %mem.free: {*, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta] → %mem.M a;
 ///
 /// ### %%mem.mslot
 ///
-/// Reserves a memory slot for type `T` in address space `a`.
+/// Reserves a stack slot for type `T` in address space `a`.
 /// The reserved slot will be `size` bytes large.
-/// `id` has to be provided an unique id.
+/// The provided `id` must be unique.
 axm %mem.mslot: [*, a: Nat] as Ta → [%mem.M a, size: Nat, id: Nat] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ## Operations w/o Side Effects
@@ -84,10 +84,16 @@ axm %mem.lea: {n: Nat, Ts: «n; *», a: Nat} → [%mem.Ptr («j: n; Ts#j», a), 
 ///
 /// ### Phases
 ///
+/// * `add_mem`: threads `%%mem.M` through functions that lack it.
+/// * `seo`: Symbolic Expression Optimization - SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).
+///
 axm %mem.add_mem: %compile.Phase;
-axm %mem.seo:     %compile.Phase; // symbolic expression optimization
+axm %mem.seo:     %compile.Phase;
 ///
 /// ### Repls
+///
+/// * `remem_repl`: removes `%%mem.remem`s.
+/// * `alloc2malloc_repl`: rewrites `%%mem.alloc` / `%%mem.slot` into `%%mem.malloc` / `%%mem.mslot`.
 ///
 axm %mem.remem_repl:        %compile.Phase;
 axm %mem.alloc2malloc_repl: %compile.Phase;

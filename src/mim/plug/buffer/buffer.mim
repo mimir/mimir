@@ -51,14 +51,14 @@ axm %buffer.write: [r: Nat, s: «r; Nat», T: *] as rsT
 ///
 /// ### %%buffer.init
 ///
-/// A buffer initialised with the contents of the SSA array value `val`.
+/// A buffer initialized with the contents of the SSA array value `val`.
 /// This is the boundary conversion from the value world into the buffer world.
 ///
 axm %buffer.init: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, val: «s; T»] → [%mem.M 0, %buffer.Buf rsT];
 ///
 /// ### %%buffer.constant
 ///
-/// A buffer initialised with a constant value in every element.
+/// A buffer initialized with a constant value in every element.
 ///
 axm %buffer.constant: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, T] → [%mem.M 0, %buffer.Buf rsT];
 ///

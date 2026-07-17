@@ -2,9 +2,9 @@
 ///
 /// @see mim::plug::math
 ///
-/// Introduces a type constructor `%%math.F` for viarious [IEEE-754](https://en.wikipedia.org/wiki/IEEE_754) floating-point formats and a set of operations to calculate with instances of these types.
-/// All operations with the exception of `%%math.conv` expect a `Nat` just in front of its actual argument.
-/// Here you can fine adjust via mim::plug::math::Mode how strictly you want to obey floating-point transformations.
+/// Introduces a type constructor `%%math.F` for various [IEEE-754](https://en.wikipedia.org/wiki/IEEE_754) floating-point formats and a set of operations to calculate with instances of these types.
+/// All operations with the exception of `%%math.conv` expect a `Nat` just in front of their actual argument.
+/// Via this [mode](@ref mim::plug::math::Mode) you can fine-tune how strictly floating-point transformations must obey IEEE semantics.
 ///
 /// [TOC]
 ///
@@ -12,7 +12,7 @@
 ///
 /// ### %%math.F
 ///
-/// A floating-point type with `p` many bits as precision and `e` many bits as exponent.
+/// A floating-point type with `p` bits of precision and `e` exponent bits.
 /// The sign bit is neither included in `p` nor in `e`.
 /// Thus, the total number of bits occupied by a value of this type is `p + e + 1`.
 /// Current constant folding only supports IEEE binary16/binary32/binary64 literals,
@@ -48,24 +48,21 @@ lam %math.minus {pe: «2; Nat»} (m: Nat) (a: %math.F pe): %math.F pe =
 ///
 /// ### %%math.extrema
 ///
-/// Minimum and Maximum.
-///     * `m`in or `M`ax
-///     * `i`:
-///         Follows the behavior of libm’s fmin/fmax.
+/// Minimum and maximum:
+/// * `m`in or `M`ax
+/// * `i`:
+///   Follows the behavior of libm's fmin/fmax.
+///   If either operand is a NaN, returns the other non-NaN operand.
+///   Returns NaN only if both operands are NaN; the returned NaN is always quiet.
+///   If the operands compare equal, returns a value that compares equal to both operands.
+///   This means that `fmin(+/-0.0, +/-0.0)` could return either `-0.0` or `0.0`.
+/// * `I`:
+///   Follows the semantics of `minNum`/`maxNum` specified in the draft of IEEE 754-2018.
+///   If either operand is a NaN, returns NaN.
+///   Otherwise, returns the lesser of the two arguments.
+///   `-0.0` is considered to be less than `+0.0` for this intrinsic.
 ///
-///         If either operand is a NaN, returns the other non-NaN operand.
-///         Returns NaN only if both operands are NaN.
-///         The returned NaN is always quiet.
-///         If the operands compare equal, returns a value that compares equal to both operands.
-///         This means that `fmin(+/-0.0, +/-0.0)` could return either `-0.0` or `0.0`.
-///     * `I`:
-///         Follows the semantics of `minNum`/`maxNum` specified in the draft of IEEE 754-2018.
-///
-///         If either operand is a NaN, returns NaN.
-///         Otherwise returns the lesser of the two arguments.
-///         `-0.0` is considered to be less than `+0.0` for this intrinsic.
-///
-/// | Subtag | Alias        | N | M |
+/// | Subtag | Alias        | I | M |
 /// |--------|--------------|---|---|
 /// | `im`   | `fmin`       | o | o |
 /// | `iM`   | `fmax`       | o | x |
@@ -84,24 +81,24 @@ axm %math.extrema(im = fmin,       iM = fmax,
 /// * `H`yperbolic counterpart
 /// * `A`rcus/`A`rea counterpart (inverse)
 ///
-/// | Subtag | Alias        | A | H | R | FF | Meaning                   | Semantics               |
-/// |--------|--------------|---|---|---|----|---------------------------|-------------------------|
-/// | `ahff` |  `sin`       | o | o | o | oo | sine                      | \f$\sin x\f$            |
-/// | `ahfF` |  `cos`       | o | o | o | xo | cosine                    | \f$\cos x\f$            |
-/// | `ahFf` |  `tan`       | o | o | o | ox | tangent                   | \f$\tan x\f$            |
-/// | `ahFF` |              | o | o | o | xx | *unused*                  | -                       |
-/// | `aHff` |  `sinh`, `h` | o | x | o | oo | hyperbolic sine           | \f$\sinh x\f$           |
-/// | `aHfF` |  `cosh`      | o | x | o | xo | hyperbolic cosine         | \f$\cosh x\f$           |
-/// | `aHFf` |  `tanh`      | o | x | o | ox | hyperbolic tangent        | \f$\tanh x\f$           |
-/// | `aHFF` |              | o | x | o | xx | *unused*                  | -                       |
-/// | `Ahff` | `asin` , `a` | x | o | o | oo | arcus sine                | \f$\textrm{asin}\,x\f$  |
-/// | `AhfF` | `acos`       | x | o | o | xo | arcus cosine              | \f$\textrm{acos}\,x\f$  |
-/// | `AhFf` | `atan`       | x | o | o | ox | arcus tangent             | \f$\textrm{atan}\,x\f$  |
-/// | `AhFF` |              | x | o | o | xx | arcus *unused*            | -                       |
-/// | `AHff` | `asinh`      | x | x | o | oo | area hyperbolic sine      | \f$\textrm{asinh}\,x\f$ |
-/// | `AHfF` | `acosh`      | x | x | o | xo | area hyperbolic cosine    | \f$\textrm{acosh}\,x\f$ |
-/// | `AHFf` | `atanh`      | x | x | o | ox | area hyperbolic tangent   | \f$\textrm{atanh}\,x\f$ |
-/// | `AHFF` |              | x | x | o | xx | *unused*                  | -                       |
+/// | Subtag | Alias        | A | H | FF | Meaning                   | Semantics               |
+/// |--------|--------------|---|---|----|---------------------------|-------------------------|
+/// | `ahff` |  `sin`       | o | o | oo | sine                      | \f$\sin x\f$            |
+/// | `ahfF` |  `cos`       | o | o | xo | cosine                    | \f$\cos x\f$            |
+/// | `ahFf` |  `tan`       | o | o | ox | tangent                   | \f$\tan x\f$            |
+/// | `ahFF` |              | o | o | xx | *unused*                  | -                       |
+/// | `aHff` |  `sinh`, `h` | o | x | oo | hyperbolic sine           | \f$\sinh x\f$           |
+/// | `aHfF` |  `cosh`      | o | x | xo | hyperbolic cosine         | \f$\cosh x\f$           |
+/// | `aHFf` |  `tanh`      | o | x | ox | hyperbolic tangent        | \f$\tanh x\f$           |
+/// | `aHFF` |              | o | x | xx | *unused*                  | -                       |
+/// | `Ahff` | `asin` , `a` | x | o | oo | arcus sine                | \f$\textrm{asin}\,x\f$  |
+/// | `AhfF` | `acos`       | x | o | xo | arcus cosine              | \f$\textrm{acos}\,x\f$  |
+/// | `AhFf` | `atan`       | x | o | ox | arcus tangent             | \f$\textrm{atan}\,x\f$  |
+/// | `AhFF` |              | x | o | xx | *unused*                  | -                       |
+/// | `AHff` | `asinh`      | x | x | oo | area hyperbolic sine      | \f$\textrm{asinh}\,x\f$ |
+/// | `AHfF` | `acosh`      | x | x | xo | area hyperbolic cosine    | \f$\textrm{acosh}\,x\f$ |
+/// | `AHFf` | `atanh`      | x | x | ox | area hyperbolic tangent   | \f$\textrm{atanh}\,x\f$ |
+/// | `AHFF` |              | x | x | xx | *unused*                  | -                       |
 ///
 axm %math.tri(ahff =  sin     , ahfF =  cos , ahFf =  tan , ahFF,
               aHff =  sinh = h, aHfF =  cosh, aHFf =  tanh, aHFF,
@@ -122,15 +119,15 @@ axm %math.pow: {pe: «2; Nat»} → Nat → «2; %math.F pe» → %math.F pe, no
 /// | Name           | Meaning     | Semantics          |
 /// |----------------|-------------|--------------------|
 /// | `%%math.rt.sq` | square root | \f$\sqrt{x}\f$     |
-/// | `%%math.rt.cb` | cube root   |\f$\sqrt[3]{x}\f$   |
+/// | `%%math.rt.cb` | cube root   | \f$\sqrt[3]{x}\f$  |
 ///
 axm %math.rt(sq, cb): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_rt;
 ///
 /// ### %%math.exp
 ///
 /// [Exponential function](https://en.wikipedia.org/wiki/Exponential_function) and [logarithm](https://en.wikipedia.org/wiki/Logarithm):
-///     * `L`ogarithm
-///     * `BB`: natural, binary, decimal, *unused*
+/// * `L`ogarithm
+/// * `BB`: natural, binary, decimal, *unused*
 ///
 /// | Subtag | Alias          | L | BB | Meaning                  | Semantics         |
 /// |--------|----------------|---|----|--------------------------|-------------------|
@@ -171,13 +168,13 @@ axm %math.gamma(t, l): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, n
 ///
 /// ### %%math.abs
 ///
-/// [Absolute value](https://en.wikipedia.org/wiki/Absolute_value) of a floating point number
+/// [Absolute value](https://en.wikipedia.org/wiki/Absolute_value) of a floating-point number.
 ///
 axm %math.abs: {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_abs;
 ///
 /// ### %%math.round
 ///
-/// Common rounding operations for floating points:
+/// Common rounding operations for floating-point numbers:
 /// * `f`loor
 /// * `c`eil
 /// * `r`ound
@@ -196,11 +193,11 @@ axm %math.round(f,c,r,t): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe
 ///
 /// ### %%math.cmp
 ///
-/// Floating point comparison is made of 4 disjoint relations:
-///     * `U`nordered (yields true if either operand is a QNAN)
-///     * `G`reater
-///     * `L`ess
-///     * `E`qual
+/// Floating-point comparison is composed of 4 disjoint relations:
+/// * `U`nordered (yields true if either operand is a QNaN)
+/// * `G`reater
+/// * `L`ess
+/// * `E`qual
 ///
 /// | Subtag | Alias | U | G | L | E | Meaning                      |
 /// |--------|-------|---|---|---|---|------------------------------|
@@ -212,12 +209,12 @@ axm %math.round(f,c,r,t): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe
 /// | `uGlE` |  `ge` | o | x | o | x | ordered and greater or equal |
 /// | `uGLe` |  `ne` | o | x | x | o | ordered and not equal        |
 /// | `uGLE` |   `o` | o | x | x | x | ordered (no NaNs)            |
-/// | `Ugle` |   `u` | x | o | o | o | unordered (either NaNs)      |
+/// | `Ugle` |   `u` | x | o | o | o | unordered (either is NaN)   |
 /// | `UglE` |  `ue` | x | o | o | x | unordered or equal           |
 /// | `UgLe` |  `ul` | x | o | x | o | unordered or less            |
 /// | `UgLE` | `ule` | x | o | x | x | unordered or less or equal   |
 /// | `UGle` |  `ug` | x | x | o | o | unordered or greater         |
-/// | `UGlE` | `uge` | x | x | o | x | unordered or greater or equa |
+/// | `UGlE` | `uge` | x | x | o | x | unordered or greater or equal |
 /// | `UGLe` | `une` | x | x | x | o | unordered or not equal       |
 /// | `UGLE` |   `t` | x | x | x | x | always true                  |
 ///
@@ -229,30 +226,30 @@ axm %math.cmp(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
 ///
 /// ### %%math.is_finite
 ///
-/// Returns True if the float is finite, and false if not (i.e. if it is +Inf/-Inf/NAN)
+/// Returns `tt` if the float is finite and `ff` if not (i.e. if it is ±∞ or NaN).
 ///
 axm %math.is_finite: {pe: «2; Nat»} → Nat → %math.F pe → Bool;
 ///
 /// ### %%math.conv
 ///
-/// Conversion between floating point and index types - both signed and unsigned - of different sizes.
+/// Conversion between floating-point and index types - both signed and unsigned - of different sizes.
 ///
 axm %math.conv(s2f, u2f): { ss:     Nat } → [dpe: «2; Nat»] →     Idx  ss → %math.F dpe, normalize_conv;
 axm %math.conv(f2s, f2u): {spe: «2; Nat»} → [ ds:     Nat ] → %math.F spe →     Idx  ds, normalize_conv;
 axm %math.conv(f2f):      {spe: «2; Nat»} → [dpe: «2; Nat»] → %math.F spe → %math.F dpe, normalize_conv;
 ///
 /// ### %%math.slf
-/// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating point number (\f$slf(x) = \frac{1}{1+e^{-x}}\f$)
+/// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)
 ///
-lam %math.slf {pe : <<2; Nat>>} (m : Nat) (x : %math.F pe): %math.F pe =
+lam %math.slf {pe: «2; Nat»} (m: Nat) (x: %math.F pe): %math.F pe =
     %math.arith.div m ((%math.conv.f2f pe 1.0:(%math.F64)), %math.arith.add m ((%math.conv.f2f pe 1.0:(%math.F64)), %math.exp.exp m (%math.minus m x)));
 ///
 /// ### %%math.sgn
 /// [Sign function](https://en.wikipedia.org/wiki/Sign_function)
-lam %math.sgn {pe : <<2; Nat>>} (m : Nat) (x : %math.F pe): %math.F pe =
+lam %math.sgn {pe: «2; Nat»} (m: Nat) (x: %math.F pe): %math.F pe =
     ((%math.conv.f2f pe -1.0:(%math.F64)), ((%math.conv.f2f pe 0.0:(%math.F64)), (%math.conv.f2f pe 1.0:(%math.F64)))#(%math.cmp.g m (x,(%math.conv.f2f pe 0.0:(%math.F64)))))#(%math.cmp.ge m (x, (%math.conv.f2f pe 0.0:(%math.F64))));
 ///
 /// ### %%math.rrt
-/// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$rrt(x) = \frac{1}{\sqrt{x}}\f$)
-lam %math.rrt {pe : <<2; Nat>>} (m : Nat) (x : %math.F pe): %math.F pe =
+/// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)
+lam %math.rrt {pe: «2; Nat»} (m: Nat) (x: %math.F pe): %math.F pe =
     %math.arith.div m (%math.conv.f2f pe 1.0:(%math.F64), %math.rt.sq m x);

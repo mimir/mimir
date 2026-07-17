@@ -20,7 +20,7 @@
 **MimIR** is a pure, graph-based, [higher-order](https://en.wikipedia.org/wiki/Higher-order_function) intermediate representation rooted in the [**Calculus of Constructions**](https://en.wikipedia.org/wiki/Calculus_of_constructions).
 MimIR provides:
 
-- [**Dependent types**](https://en.wikipedia.org/wiki/Dependent_type), [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism), and [**higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function) out of the box
+- [**Higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function), [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism), and [**dependent types**](https://en.wikipedia.org/wiki/Dependent_type) out of the box
 - **Extensible plugins** for domain-specific axioms, types, normalizers, and code generation
 - [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) **without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
 - A [**sea-of-nodes**](https://github.com/SeaOfNodes) style IR with on-the-fly normalization, type checking, and [partial evaluation](https://en.wikipedia.org/wiki/Partial_evaluation)

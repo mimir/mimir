@@ -48,7 +48,7 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
 void Scalarize::Analysis::pin(const Pi* pi) {
     auto cur = lattice(pi);
     if (cur && !Lit::isa<u64>(cur)) return; // already ⊤
-    lattice_force(pi, pi);                  // ⊤ sentinel: pin the whole Pi
+    pin_top(pi);
     DLOG("pin: {}", pi);
 }
 
@@ -173,8 +173,12 @@ void Scalarize::Analysis::inspect(const Def* def) {
 }
 
 const Def* Scalarize::Analysis::rewrite(const Def* old) {
+    // Visit the subtree *before* inspecting: pin() seeds `pi ↦ pi` into the rewriter map (via pin_top),
+    // which would short-circuit the traversal into `old` and skip its subtree for the rest of the round -
+    // during bootstrapping this would hide nested Pis from the blanket annex pin.
+    auto res = mim::Analysis::rewrite(old);
     inspect(old);
-    return mim::Analysis::rewrite(old);
+    return res;
 }
 
 Vector<bool> Scalarize::Analysis::plan(const Def* type) const {

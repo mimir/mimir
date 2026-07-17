@@ -17,24 +17,25 @@ plugin cps;
 ///
 /// ### RE
 ///
-/// Char & String
+/// Char and string types:
 let Char = I8;
 lam Str(n: Nat): * = %mem.Ptr0 «n; Char»;
-/// A regular expression matcher.
+/// `Res n` is a match result: the memory, a success flag, and the new position.
 lam Res (n: Nat): * = [%mem.M 0, Bool, Idx n];
+/// `RE` is the matcher itself: it takes the memory, the string, and the current position.
 let RE = {n: Nat} → [%mem.M 0, Str n, Idx n] → Res n;
 ///
 /// ## Meta
 ///
 /// ### %%regex.conj
 ///
-/// A sequence of RE's. <br>
-/// E.g.: `\d\d\d` matches 3 digits: `%%regex.conj (%%regex.cls.d, %%regex.cls.d, %%regex.cls.d)`
+/// A sequence of REs. <br>
+/// E.g., `\d\d\d` matches 3 digits: `%%regex.conj (%%regex.cls.d, %%regex.cls.d, %%regex.cls.d)`.
 axm %regex.conj: {n: Nat} → «n; RE» → RE, normalize_conj, 2;
 ///
 /// ### %%regex.disj
 ///
-/// Match any of the sub expressions: `[0123456789]`
+/// Matches any of the sub-expressions, e.g. `[0123456789]`.
 ///
 axm %regex.disj: {n: Nat} → «n; RE» → RE, normalize_disj, 2;
 ///
@@ -43,7 +44,7 @@ axm %regex.disj: {n: Nat} → «n; RE» → RE, normalize_disj, 2;
 /// ### %%regex.range
 ///
 /// Wraps a range of literals.
-/// Use: `%%regex.range ('a', 'z')` to match all lower case letters.
+/// E.g., use `%%regex.range ('a', 'z')` to match all lower-case letters.
 ///
 axm %regex.range: «2; Char» → RE, normalize_range, 1;
 ///
@@ -55,13 +56,13 @@ lam %regex.lit(val: Char) = %regex.range (val, val);
 ///
 /// ### %%regex.not_
 ///
-/// Do not match any of the ranges in the parameter - parameter must only contain `regex.disj`s and `regex.range`s.
+/// Matches anything but the ranges in the parameter - the parameter must only contain `%%regex.disj`s and `%%regex.range`s.
 ///
 axm %regex.not_: RE → RE, normalize_not, 1;
 ///
 /// ### %%regex.neg_lookahead
 ///
-/// Do not match the parameter!
+/// Succeeds iff the parameter does *not* match, without consuming input.
 ///
 axm %regex.neg_lookahead: RE → RE, 1;
 ///
@@ -85,11 +86,11 @@ let %regex.cls.S = %regex.not_ %regex.cls.s;
 ///
 /// ### %%regex.any
 ///
-/// Match any character.
+/// Matches any character.
 ///
 axm %regex.any: RE, 0;
 ///
-/// ## %%regex.empty
+/// ### %%regex.empty
 ///
 /// Matches the empty string.
 ///
@@ -99,10 +100,17 @@ axm %regex.empty: RE, 0;
 ///
 /// ### %%regex.quant.*
 ///
+/// The usual quantifiers:
+/// * `optional`: `?` - zero or one
+/// * `star`: `*` - zero or more
+/// * `plus`: `+` - one or more
+///
 axm %regex.quant(optional,star,plus): RE → RE, normalize_quant, 1;
 ///
 /// ## Passes and Phases
 ///
-/// ### Phases
+/// ### %%regex.lower_regex
+///
+/// Compiles the regex combinators into an executable matcher (via a DFA).
 ///
 axm %regex.lower_regex: %compile.Phase;

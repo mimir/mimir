@@ -4,9 +4,10 @@
 ///
 /// [TOC]
 ///
-/// This plugin handles the optimization pipeline of the compilation of MimIR programs.
+/// This plugin provides the building blocks for MimIR's optimization pipeline.
 /// This plugin's axioms can register mim::Phase%s.
-/// Invoke the optimization pipeline by defining a function `_compile: [] → %%compile.Phase`.
+/// Invoke the optimization pipeline by defining a function `_compile: [] → %%compile.Phase`
+/// (or rely on a plugin-provided `_default_compile` such as the one in the `opt` plugin).
 ///
 /// ## Types
 ///
@@ -26,7 +27,7 @@ axm %compile.is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
 /// ### %%compile.named
 ///
-/// Resolves to the `%compile.Phase` annex with the given fully-qualified name (e.g. `"clos.clos_conv"`).
+/// Resolves to the `%%compile.Phase` annex with the given fully-qualified name (e.g. `"%clos.clos_conv"`).
 /// Resolution is deferred until the phase pipeline is built so that the referenced plugin's `.mim` file does not
 /// have to be imported by users of this axm.
 /// If the named annex is missing at pipeline build time (its plugin is not loaded), it is silently elided, i.e. the
@@ -45,11 +46,25 @@ axm %compile.cond: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase,
 ///
 /// ### %%compile.phases
 ///
-/// Sets up `n` phases and bundles them
+/// Bundles `n` phases into one pipeline (a mim::PhaseMan).
+/// The Bool selects fixed-point iteration:
+/// `tt` reruns the pipeline until no phase requests another round, `ff` runs it once.
 ///
 axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Phase;
 ///
 /// ### Phases
+///
+/// * `beta_red`: β-reduction; inlines Lam%s that occur exactly once in the program (mim::BetaRed).
+/// * `branch_normalize`: η-expands non-Lam branch targets so both sides of a branch are Lam%s (mim::BranchNormalize).
+/// * `cleanup`: removes dead and unreachable code by rebuilding the World (mim::Cleanup).
+/// * `eta_conv`: combined, idempotent η-reduction/η-expansion (mim::EtaConv).
+/// * `lam_spec`: specializes a Lam at its call site by inlining higher-order arguments (mim::LamSpec).
+/// * `null`: does nothing; useful as an elided placeholder.
+/// * `ret_wrap`: prepares return continuations for the backend (mim::RetWrap).
+/// * `scalarize`: flattens function signatures (mim::Scalarize).
+/// * `tail_rec_elim`: turns tail recursion into loops (mim::TailRecElim).
+/// * `prefix_cleanup`: like `cleanup`, but additionally drops externals whose name starts with the given prefix (mim::PrefixCleanup).
+/// * `internal_cleanup`: `prefix_cleanup "internal_"`.
 ///
 axm %compile.beta_red:                            %compile.Phase;
 axm %compile.branch_normalize:                    %compile.Phase;

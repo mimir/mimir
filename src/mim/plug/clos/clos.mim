@@ -17,13 +17,13 @@ axm %clos.longjmp: Cn [%mem.M 0, %clos.BufPtr, I32];
 ///
 /// ## Closure Attribute
 ///
-/// Used internally to classify the use of differen Lambdas.
+/// Used internally to classify the use of different Lambdas.
 /// mim::plug::clos::ClosConvPrep places these attributes:
-///     * `ret`: returning lambda
-///     * `freeBB`: ordinary basic block (see mim::Lam::is_basicblock())
-///     * `fstclassBB`: basic block that is passed around
-///     * `esc`: lambda that escapes its parent scope
-///     * `bot`: no special use
+/// * `returning`: returning lambda
+/// * `freeBB`: ordinary basic block (see mim::Lam::isa_basicblock())
+/// * `fstclassBB`: basic block that is passed around
+/// * `esc`: lambda that escapes its parent scope
+/// * `bottom`: no special use
 ///
 axm %clos.attr(returning, freeBB, fstclassBB, esc, bottom): {T: *} → T → T, normalize_clos;
 ///

@@ -92,32 +92,19 @@ The lattice follows these conventions:
 
 [`Analysis`](@ref mim::Analysis) provides the following accessors and mutators:
 
+- [`lattice()`](@ref mim::Analysis::lattice) returns the full lattice map.
 - [`lattice(def)`](@ref mim::Analysis::lattice) returns the recorded abstract value for `def`, or `nullptr` if nothing is known.
 - [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) writes `concr ↦ abstr` into both the lattice and the rewriter map (so future rewrites of `concr` short-circuit to `abstr`) and **automatically** [`invalidate`s](@ref mim::Phase::invalidate) iff this changes observable information: an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
   Freshly inserting ⊤ (`def ↦ def`) stays silent, as it is indistinguishable from an *absent* entry for consumers.
   It returns `true` iff it changed observable information - i.e. iff it invalidated - so the caller can still react, e.g. log.
+  Besides recording a lattice fact, it also seed the rewriter map, so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` immediately returns `abstr`.
+  It `assert`s, if you go down from ⊤.
+- [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force) is the non-`assert`ing variant.
 - [`pin_top(def)`](@ref mim::Analysis::pin_top) monotonically forces `def` to ⊤.
   Being built on [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), it invalidates iff it overwrote previous information.
 - [`is_top(def)`](@ref mim::Analysis::is_top) checks for `def ↦ def`.
 
-The high-level writers are [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
 Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy`](@ref mim::Proxy) tag, as SEO uses for its GVN and pending-⊤ markers - never `nullptr`, which is reserved for *absent*.
-
-
-The methods [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top) intentionally do two things at once.
-Besides recording a lattice fact, they also seed the rewriter map, so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` immediately returns `abstr`.
-This is exactly the behavior a *propagating* analysis wants.
-
-Analyses whose lattice facts must **not** affect rewriting should use [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force) instead.
-A typical example is a "keep this parameter as-is" marker:
-installing such a fact into the rewriter would corrupt a same-world traversal.
-Unlike [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force):
-- updates **only** the lattice, never the rewriter map,
-- permits **non-monotone** updates (for example, restarting a join from scratch), and
-- [`invalidate`s](@ref mim::Phase::invalidate) iff the stored lattice value actually changed. Unlike [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), a fresh ⊤ *does* count as a change, since consumers of a non-monotone lattice may distinguish ⊥ from ⊤.
-
-The in-tree `Scalarize` analysis is an example of this pattern.
-It stores a per-parameter *keep-whole* bitmask keyed by the immutable `Pi` type itself (a stable, hash-consed key), using `pi ↦ pi` as the ⊤ sentinel for a fully pinned signature.
 
 ### Handling of Mutables
 

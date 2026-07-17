@@ -9,8 +9,8 @@
 /// ## Dependencies
 ///
 /// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `%compile.named` (which resolves to the plugin's
-/// annex iff it is loaded) and `%compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
+/// Every other plugin is referenced *by name* through `%%compile.named` (which resolves to the plugin's
+/// annex iff it is loaded) and `%%compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;

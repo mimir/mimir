@@ -2,6 +2,10 @@
 ///
 /// @see mim::plug::tensor
 ///
+/// SSA-world tensor operations: a generic `map_reduce` loop-nest abstraction plus derived operations
+/// (reshape, slice, convolution, pooling, dot product, ...), lowered via `affine` loops and bufferized
+/// onto the `buffer` layer.
+///
 /// [TOC]
 ///
 /// ## Dependencies
@@ -14,11 +18,12 @@ plugin affine;
 plugin buffer;
 plugin matrix;
 ///
-/// A tensor plugin
-///
 /// ## Types
 ///
-/// Represents an [algebraic Ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
+/// ### %%tensor.Ring
+///
+/// Represents an [algebraic ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
+/// E.g., `let nat_ring = (Nat, 0, %%core.nat.add, %%core.nat.mul);`.
 ///
 let %tensor.Ring = [
     T: *,
@@ -26,21 +31,20 @@ let %tensor.Ring = [
     add: [T, T] → T,
     mul: [T, T] → T,
 ];
-/// let nat_ring = (Nat, 0, %core.nat.add, %core.nat.mul);
 ///
 /// ## Operations
 ///
 /// ### %%tensor.get
 ///
-/// Extracts the element of `index` from `arr`.
-/// %tensor.get arr (a, b, c) = arr#a#b#c;
+/// Extracts the element at `index` from `arr`:
+/// `%%tensor.get (arr, (a, b, c))` ≡ `arr#a#b#c`.
 ///
 axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)»] → T, normalize_get;
 ///
 /// ### %%tensor.set
 ///
-/// Inserts the element `x` in `arr` at `index`.
-/// %tensor.set arr (a, b, c) x = Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x));
+/// Inserts the element `x` in `arr` at `index`:
+/// `%%tensor.set (arr, (a, b, c), x)` ≡ `Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x))`.
 ///
 axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)», x: T] → «s; T», normalize_set;
 ///
@@ -222,7 +226,7 @@ axm %tensor.concat: {T: *, nis r: Nat}
 ///
 /// `out[n,co,oh,ow] = Σ_{ci,kh,kw} padded[n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw] · weight[co,ci,kh,kw]`
 ///
-/// `padding` zero-pads the spatial axes (composed via %tensor.pad) so the windowed read is a pure affine map.
+/// `padding` zero-pads the spatial axes (composed via %%tensor.pad) so the windowed read is a pure affine map.
 /// The output shape is deduced from the input/weight extents and the window parameters (see `conv_shape`), so it
 /// is not passed explicitly.
 
@@ -283,13 +287,13 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
 ///
 /// 2-D pooling. Reduces each `(kernel#0, kernel#1)` window of `input: «N, C, H, W; T»` with the fold `g` (seeded by
 /// `init`) to `output: «N, C, OH, OW; T»`, pooling each channel independently. `padding` pads the spatial axes with
-/// `init` (composed via %tensor.pad), so padded cells are inert. So max-pooling is `g = max, init = −∞`, and
+/// `init` (composed via %%tensor.pad), so padded cells are inert. So max-pooling is `g = max, init = −∞`, and
 /// sum-/average-pooling is `g = +, init = 0` (divide by the window size afterwards for the average).
 ///
-/// Unlike %tensor.conv there is no weight, so the window size `kernel` is an explicit operand. The output spatial
+/// Unlike %%tensor.conv there is no weight, so the window size `kernel` is an explicit operand. The output spatial
 /// size `s_out = (OH, OW)` is passed explicitly (no `Nat` division to compute it).
 
-/// Wraps a binary fold `g` as a %tensor.map_reduce reduction `Fn [T, «1; T»] → T`.
+/// Wraps a binary fold `g` as a %%tensor.map_reduce reduction `Fn [T, «1; T»] → T`.
 fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (acc, y#0_1));
 
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
@@ -324,15 +328,14 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
 ///
 /// ### %%tensor.dot_product
 ///
+/// Returns the [generalized dot product](https://openxla.org/stablehlo/spec#dot_general) of `a` and `b`:
 /// * `R`: the ring in which the dot product is performed
-/// * `r1/r2` : the ranks of the input matrices
-/// * `nc/nb` : the amount of contracting/batching dimensions
-/// * `c/b``1/2` : respectively the contracting/batching dimensions of the left/right input
-/// * `s``1/2` : the shape of the left/right input
-/// * `a/b` : the left/right input
-///
-/// Returns the [generalised dot product](https://openxla.org/stablehlo/spec#dot_general) of `a` and `b`.
-///
+/// * `r1`/`r2`: the ranks of the two inputs
+/// * `nc`/`nb`: the number of contracting/batching dimensions
+/// * `c1`/`c2`: the contracting dimensions of the left/right input
+/// * `b1`/`b2`: the batching dimensions of the left/right input
+/// * `s1`/`s2`: the shape of the left/right input
+/// * `a`/`b`: the left/right input
 ///
 fun dot_general_fun [R: %tensor.Ring] [x: R#T, [y: R#T, z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
 lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
@@ -397,7 +400,7 @@ lam %tensor.dot_product_impl
 ///
 /// ### %%tensor.product_2d
 ///
-/// Computes the dot product of two 2-dimensional tensors.
+/// Computes the matrix product of two 2-dimensional tensors - a special case of %%tensor.dot_product.
 ///
 axm %tensor.product_2d: [R: %tensor.Ring]
                       → {m k l: Nat}
@@ -410,7 +413,7 @@ lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t
 ///
 /// ### %%tensor.bmm
 ///
-/// Computes the Batch Matrix Multiplication (BMM) of two 3-dimensional tensors.
+/// Computes the batch matrix multiplication (BMM) of two 3-dimensional tensors - a special case of %%tensor.dot_product.
 ///
 axm %tensor.bmm: [R: %tensor.Ring]
               → {B M K N: Nat}
@@ -457,12 +460,11 @@ lam %tensor.transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, 
 ///
 /// ### %%tensor.broadcast
 ///
-/// Expands the dimensions of `input` to fit `s_out`.
-/// For all i, `s_in#i` = `s_out#i` or 1
-/// The dimensions of size 1 are expanded to fit `s_out`.
+/// Expands the dimensions of `input` to fit `s_out`:
+/// for all `i`, either `s_in#i = s_out#i` or `s_in#i = 1`, and the size-1 dimensions are expanded to fit `s_out`.
 ///
 /// Lowered directly to `%pack`s by the `LowerMapReduce` phase (`lower_broadcast`): a size-1 axis broadcast to `n`
-/// becomes a `‹n; …›` pack rather than a materialised/looped copy, which `%tensor.map_reduce` cannot express.
+/// becomes a `‹n; …›` pack rather than a materialized/looped copy, which `%tensor.map_reduce` cannot express.
 axm %tensor.broadcast:  {T: *, r: Nat}
                       → [s_in: «r; Nat», s_out: «r; Nat», input: «s_in; T»]
                       → «s_out; T», normalize_broadcast;
@@ -470,9 +472,9 @@ axm %tensor.broadcast:  {T: *, r: Nat}
 /// ### %%tensor.broadcast_in_dim
 ///
 /// Transposes and expands the dimensions of `input` to fit `s_out`.
-/// Each dimensions is mapped to the corresponding `index` output dimension.
-/// The holes are filled by broadcasting.
-/// Todo: We could probably just implement this in terms of %tensor.broadcast and %tensor.transpose directly?
+/// Each input dimension is mapped to the output dimension given by `index`; the holes are filled by broadcasting.
+///
+/// @todo We could probably implement this in terms of %%tensor.broadcast and %%tensor.transpose directly.
 ///
 axm %tensor.broadcast_in_dim: {T: *, r_in r_out: Nat}
                             → [s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»]
@@ -537,7 +539,7 @@ lam %tensor.binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r
 ///
 /// ### %%tensor.select
 ///
-/// Maps %core.select over tensors.
+/// Maps %%core.select over tensors.
 ///
 axm %tensor.select: {T: *}
                   → {r: Nat, s: «r; Nat»}
@@ -548,6 +550,11 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
   %tensor.map_impl @(T, 3, (Bool, T, T)) (%core.select @T) @(r, s) is;
 ///
 /// ## Phases
+///
+/// * `lower_tensor`: lowers the high-level tensor axioms to the low-level ones (`map_reduce`, ...) by re-applying the matching `*_impl` annexes.
+/// * `lower_map_reduce`: lowers the low-level tensor axioms directly to their underlying primitives (loops, `extract`, `insert`, packs, ...).
+/// * `lower_get_set`: lowers `%%tensor.get` / `%%tensor.set` to their underlying primitives (`extract`, `insert`).
+/// * `fuse_tensor`: fuses producer `map_reduce`s into their consumers' access maps.
 ///
 axm %tensor.lower_tensor:     %compile.Phase;
 axm %tensor.lower_map_reduce: %compile.Phase;

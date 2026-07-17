@@ -16,12 +16,12 @@ plugin refly;
 ///
 /// This operation ranges from (including) `begin` to (excluding) `end` using `step` as stride.
 /// In addition, this loop manages `n` loop accumulators whose initial values `init` must be given.
-/// Each iteration the given `body` is invoked which receives
-/// * the current iteration index, and
+/// On each iteration, the given `body` is invoked and receives
+/// * the current iteration index,
 /// * the current values of the loop accumulators `acc`, and
-/// * a `yield` continuation to prematurely continue with the next iteration.
+/// * a `yield` continuation to continue with the next iteration, passing the new accumulator values.
 ///
-/// After termination of the loop `exit` is invoked.
+/// After termination of the loop, `exit` is invoked with the final accumulator values.
 axm %affine.For: {m n: Nat, Ts: «n; *»}
                → [Cn [iter: Idx m, acc: «i: n; Ts#i», yield: Cn «i: n; Ts#i»]] // body
                → [Cn «i: n; Ts#i»]                                             // exit
@@ -51,13 +51,13 @@ axm %affine.op(neg): %affine.index → %affine.index;
 ///
 /// ### %%affine.semiop(mul,ceildiv,floordiv,mod)
 /// Performs semi-linear operations on affine indices.
-/// The second argument must be a constant natural number with regards to the indices.
+/// The second argument is a natural number that must be constant with regard to the indices.
 ///
 axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.index, Nat] → %affine.index;
 ///
-/// ### %%affine.op(mul)
+/// ### %%affine.op.mul
 /// Performs multiplication of an affine index with a constant natural number.
-/// The second argument must be a constant natural number (which is a stronger argument than the semiop).
+/// The second argument must be a *closed* constant - a stronger requirement than %%affine.semiop imposes - which is enforced via %%refly.check.
 ///
 lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index =
     %affine.semiop.mul(d, %refly.check (%core.pe.is_closed(c), c, "The second argument of %affine.op.mul must be a constant."));
