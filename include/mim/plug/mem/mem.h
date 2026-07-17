@@ -127,6 +127,14 @@ inline const Def* op_slot(const Def* type, const Def* as, const Def* mem, const 
 inline const Def* op_slot(const Def* type, const Def* mem, const Def* ret) {
     return op_slot(type, type->world().lit_nat_0(), mem, ret);
 }
+/// Decomposes the continuation-based @p slot into `(mem, ret_lam, ptr)`,
+/// where `ptr` is the continuation's slot var; the slot's lifetime is `ret_lam`'s scope.
+inline std::tuple<const Def*, Lam*, const Def*> split_slot(const App* slot) {
+    auto [mem, ret] = slot->args<2>();
+    auto ret_lam    = ret->isa_mut<Lam>();
+    return {mem, ret_lam, ret_lam->tvar(1)};
+}
+
 ///@}
 
 /// @name %%mem.malloc
