@@ -188,6 +188,8 @@ protected:
     /// since a non-monotone lattice's consumers may well distinguish ⊥ from ⊤.
     /// @returns `true` iff this changed the entry - i.e. iff it invalidate()d.
     bool lattice_force(const Def* concr, const Def* abstr) {
+        map(concr, abstr);
+
         if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
             if (i->second == abstr) return false;
             i->second = abstr;

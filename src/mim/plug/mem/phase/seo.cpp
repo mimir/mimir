@@ -71,7 +71,6 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // letting `var` settle on a later site's value instead of climbing to ⊤.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
-        map(var, def);
         lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
         return def;
     }
