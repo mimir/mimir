@@ -47,10 +47,10 @@ private:
         void inspect(const Def* def);
         /// Marks parameter @p dom of @p lam as *keep whole* by OR-ing bit @p dom into a per-lam bitmask stored
         /// in lattice() under the (stable) `lam->var()` key.
-        /// We store the fact directly - **not** via lattice(concr, abstr)/pin_top() - because those also seed the
-        /// rewriter map(), which this same-World Analysis would then rebuild dependent types under (and never
-        /// converge). The key must be stable: `lam->tvar(dom)` is *not* (a dependent projection re-mints on every
-        /// call), whereas `lam->var()` is; hence the bitmask-on-var encoding. A fresh bit invalidate()s.
+        /// We store the fact via lattice_force() - **not** via lattice(concr, abstr)/pin_top() - because those also
+        /// seed the rewriter map(), which this same-World Analysis would then rebuild dependent types under (and
+        /// never converge). The key must be stable: `lam->tvar(dom)` is *not* (a dependent projection re-mints on
+        /// every call), whereas `lam->var()` is; hence the bitmask-on-var encoding. A fresh bit invalidate()s.
         void keep(Lam* lam, size_t dom);
         void demote(Lam* lam); ///< Marks the whole @p lam *keep whole* via a ⊤ sentinel (`var ↦ var`).
         void demote_all(const Def* lam_tuple);

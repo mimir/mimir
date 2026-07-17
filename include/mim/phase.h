@@ -184,8 +184,19 @@ protected:
     /// @name lattice
     ///@{
 
-    /// Low-level, **mutable** access to the raw map.
-    auto& lattice_mut() { return lattice_; }
+    /// **Non-monotone** write of `concr ↦ abstr` into lattice() - and *only* the lattice; map() is **not** seeded.
+    /// This is the escape hatch for analyses that must overwrite an earlier round's value (descending from ⊤ is fine)
+    /// or that must not feed the Rewriter (e.g. sentinel encodings that are no valid substitutes).
+    /// invalidate()s iff the stored value changed; an *absent* entry counts as changed - even for ⊤ -
+    /// since a non-monotone lattice's consumers may well distinguish ⊥ from ⊤.
+    /// @returns `true` iff this changed the entry - i.e. iff it invalidate()d.
+    bool lattice_force(const Def* concr, const Def* abstr) {
+        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
+            if (i->second == abstr) return false;
+            i->second = abstr;
+        }
+        return invalidate(), true;
+    }
 
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
@@ -274,10 +285,10 @@ public:
 
     /// Returns the abstract value computed by the associated Analysis for the given old-world Def, or `nullptr` if no
     /// value is available.
-    const Def* lattice(const Def* old_def) { return analysis_ ? analysis_->lattice(old_def) : nullptr; }
+    const Def* lattice(const Def* old_def) const { return analysis_ ? analysis_->lattice(old_def) : nullptr; }
 
     /// Returns lattice(@p old_def) if it differs from @p old_def (i.e. we learned something), otherwise `nullptr`.
-    const Def* abstracted(const Def* old_def) {
+    const Def* abstracted(const Def* old_def) const {
         auto l = lattice(old_def);
         return l && l != old_def ? l : nullptr;
     }

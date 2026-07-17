@@ -71,13 +71,16 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // letting `var` settle on a later site's value instead of climbing to ⊤.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
-        invalidate(cur != def);
         map(var, def);
-        return lattice_mut()[var] = def; // don't trigger assert when ⊤ -> def, so manage lattice magic manually
+        lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
+        return def;
     }
 
-    if (def->isa<Bot>() || cur == def || cur == var) return cur; // def ⊔ ⊥ = def; cur ⊔ def = def; def ⊔ def = def
-    if (cur->isa<Bot>()) return lattice(var, def), def;          // ⊥ ⊔ def = def
+    // Every first_ insertion also writes the lattice, so past the first touch `cur` exists;
+    // and it cannot be ⊤, as is_top() bailed out on entry.
+    assert(cur && cur != var);
+    if (def->isa<Bot>() || cur == def) return cur;      // cur ⊔ ⊥ = cur; def ⊔ def = def
+    if (cur->isa<Bot>()) return lattice(var, def), def; // ⊥ ⊔ def = def
 
     DLOG("cannot propagate {} -> {}; cur: {}, trying GVN", var, def, cur);
     auto top = mk_sccp_top(var);
@@ -232,7 +235,6 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             slots_.emplace(ptr);
             DLOG("slot {} -> sloxy {}", ptr, sloxy);
             lattice(ptr, sloxy);
-            map(ptr, sloxy);
             return world().tuple({abstr_mem, sloxy});
         }
     } else if (auto store = Axm::isa<mem::store>(app)) {
@@ -383,7 +385,7 @@ void SEO::Analysis::analyze(const Def* def) {
  */
 
 const Def* SEO::isa_optimized_sloxy(const Def* def) const {
-    if (auto l = analysis_.lattice(def))
+    if (auto l = lattice(def))
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(l)) return sloxy;
     return nullptr;
 }
