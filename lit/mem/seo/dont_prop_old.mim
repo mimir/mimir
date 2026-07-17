@@ -1,0 +1,54 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+// SEO must propagate the induction variable `i` unchanged through `next` (both branches pass the
+// same `i`), leaving a single loop phi in `head` - and must NOT re-introduce a redundant phi in
+// `next` that merges `i` with itself.
+
+// CHECK-LABEL: define{{.*}}@f(i64
+// The induction variable is a single loop phi in `head` (init 23, incremented on the back edge):
+// CHECK-DAG: = phi i64 [ 23, %f
+// The genuine phi for `j` survives (`x` on the true edge, `4` on the false edge):
+// CHECK-DAG: = phi i64 [ %x_{{[0-9]+}}, %true{{[0-9_]*}} ], [ 4, %false{{[0-9_]*}} ]
+// No redundant phi whose two incoming values are identical:
+// CHECK-NOT: = phi i64 [ [[V:%i_[0-9]+]], {{[^],]+}} ], [ [[V]], {{[^],]+}} ]
+
+plugin core;
+
+cfun dont_know[]: Bool;
+
+fun extern f(x: Nat): Nat =
+    head 23 where
+        con head (i: Nat) =
+            ret cond = dont_know $ ();
+            (exit, body)#cond () where
+                con body() =
+                    let cond       = %core.ncmp.e (x, 23);
+                    (false, true)#cond ()
+                    where
+                        con true () =
+                            next (i, x);
+
+                        con false() =
+                            next (i, 4);
+                        con next (i: Nat, j: Nat) as cxt =
+                            let i = %core.nat.add (i, 1);
+                            head i;
+                    end;
+
+                con exit() =
+                    return i;
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %compile.named "%ll.emit",
+    );

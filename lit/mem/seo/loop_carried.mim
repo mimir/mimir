@@ -1,0 +1,56 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+// Minimal SEO promotion test that is independent of any escape/post-analysis handling: a single stack slot
+// is initialized to 42 and incremented once per loop iteration; `exit` returns it. The returned value is
+// loop-carried (42, 43, 44, ...), so it must be threaded through the loop-header phi and NOT collapsed to
+// the entry constant 42.
+//
+// Regression: the loop-header slot correctly bundles into a phi, but that phi crosses the `#cond` mux (an
+// unknown edge) into `body`/`exit`. This exercises the unknown-edge phi propagation that upgrades a value
+// seen in an earlier fixed-point iteration (42) to a phi living in another block.
+
+plugin core;
+plugin mem;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+
+fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
+    let (mem, p) = %mem.slot (Nat, 0) (mem, 0);
+    let mem      = %mem.store (mem, p, 42);
+
+    head (mem, p) where
+        con head(mem: %mem.M 0, p: %mem.Ptr0 Nat) =
+            ret (mem, cond) = dont_know $ mem;
+
+            (exit, body)#cond mem where
+
+                con body(mem: %mem.M 0) =
+                    let (mem, x) = %mem.load (mem, p);
+                    let x1       = %core.nat.add (x, 1);
+                    let mem      = %mem.store (mem, p, x1);
+                    head (mem, p);
+
+                con exit(mem: %mem.M 0) =
+                    let (mem, x) = %mem.load (mem, p);
+                    return (mem, x);
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.beta_red,
+            %compile.eta_conv,
+        ),
+        %mem.seo,
+        %compile.named "%mem.alloc2malloc_repl",
+        %compile.named "%ll.emit",
+    );
+
+// The slot is promoted (no alloca) and the loop-carried return value is threaded through the header phi,
+// never frozen to the entry constant 42.
+// CHECK: define i64 @test()
+// CHECK-NOT: alloca
+// CHECK-NOT: ret i64 42
+// CHECK: ret i64 %

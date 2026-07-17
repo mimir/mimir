@@ -1,0 +1,148 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+//      incoming  loop          |       incoming  loop
+// -----------------------------|---------------------
+// pa :       10  +1, take_addr |  a :       100    +1
+// pb1:       20             +2 |  b1:       200    +2
+// pb2:       20             +2 |  b2:       200    +2
+// pc :       30             +3 |  c :       30     +3
+//
+// result:
+// - pa remains slot
+// -  a remains var
+// - pb1 + pb2: one merged phi
+// -  b1 +  b2: one merged var
+// - pc  +  c : one merged var
+
+
+plugin mem;
+plugin core;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Nat]: [%mem.M 0];
+
+fun extern f (mem: %mem.M 0): [%mem.M 0, Nat] =
+    let (mem, pa ) = %mem.slot  (Nat, 0) (mem, 0);
+    let (mem, pb1) = %mem.slot  (Nat, 0) (mem, 1);
+    let (mem, pb2) = %mem.slot  (Nat, 0) (mem, 2);
+    let (mem, pc ) = %mem.slot  (Nat, 0) (mem, 3);
+    let  mem       = %mem.store (mem, pa , 10); // pa  = 10
+    let  mem       = %mem.store (mem, pb1, 20); // pb1 = 20
+    let  mem       = %mem.store (mem, pb2, 20); // pb2 = 20
+    let  mem       = %mem.store (mem, pc , 30); // pc  = 30
+    head (mem, 100, 200, 200, 30) where // a = 100, b1 = 200, b2 = 200, c = 30
+        con head (mem: %mem.M 0, a b2 b1 c: Nat) =
+            ret (mem, cond) = dont_know $ mem;
+            (exit, body)#cond mem where
+                con body (mem: %mem.M 0) =
+                    let (mem, va ) = %mem.load (mem, pa );
+                    let (mem, vb1) = %mem.load (mem, pb1);
+                    let (mem, vb2) = %mem.load (mem, pb2);
+                    let cond       = %core.ncmp.e (vb1, vb2);
+                    (ff1, tt1)#cond mem
+                    where
+                        con tt1 (mem: %mem.M 0) =
+                            let va  = %core.nat.add (va , 1);
+                            let vb1 = %core.nat.add (vb1, 2);
+                            let vb2 = %core.nat.add (vb2, 2);
+                            let mem = %mem.store (mem, pa , va );
+                            let mem = %mem.store (mem, pb1, vb2);
+                            let mem = %mem.store (mem, pb2, vb1);
+                            ret mem = take_addr $ (mem, pa);
+                            n1 (mem, a, b1, b2, c);
+
+                        con ff1 (mem: %mem.M 0) =
+                            ret mem = take_addr $ (mem, pb1);
+                            ret mem = take_addr $ (mem, pb2);
+                            n1 (mem, a, b1, b2, c);
+
+                        con n1 (mem: %mem.M 0, a b1 b2 c: Nat) =
+                            let cond = %core.ncmp.e (b1, b2);
+                            (ff2, tt2)#cond mem
+                            where
+                                con tt2 (mem: %mem.M 0) =
+                                    let a  = %core.nat.add (a , 1);
+                                    let b1 = %core.nat.add (b1, 2);
+                                    let b2 = %core.nat.add (b2, 2);
+                                    n2 (mem, a, b1, b2, c);
+
+                                con ff2 (mem: %mem.M 0) =
+                                    let b1 = %core.nat.add (b1, 23);
+                                    let b2 = %core.nat.add (b2, 42);
+                                    n2 (mem, a, b1, b2, c);
+
+                                con n2 (mem: %mem.M 0, a b2 b1 c: Nat) =
+                                    let (mem, vc) = %mem.load (mem, pc);
+                                    let cond      = %core.ncmp.e (vc, c);
+                                    (ff3, tt3)#cond mem
+                                    where
+                                        con tt3 (mem: %mem.M 0) =
+                                            let vc = %core.nat.add (vc, 3);
+                                            let  c = %core.nat.add ( c, 3);
+                                            let mem = %mem.store (mem, pc, c);
+                                            n3 (mem, a, b2, b1, c);
+
+                                        con ff3 (mem: %mem.M 0) =
+                                            ret mem = take_addr $ (mem, pb1);
+                                            ret mem = take_addr $ (mem, pb2);
+                                            n3 (mem, a, b1, b2, c);
+
+                                        con n3 (mem: %mem.M 0, a b1 b2 c: Nat) =
+                                            head (mem, a, b1, b2, c);
+                                    end;
+                            end;
+                    end;
+
+                con exit(mem: %mem.M 0) =
+                    let (mem, va ) = %mem.load (mem, pa );
+                    let (mem, vb1) = %mem.load (mem, pb1);
+                    let (mem, vb2) = %mem.load (mem, pb2);
+                    let (mem, vc ) = %mem.load (mem, pc );
+                    let res        = va;
+                    let res        = %core.nat.add (res, vb1);
+                    let res        = %core.nat.add (res, vb2);
+                    let res        = %core.nat.add (res, vc );
+                    let res        = %core.nat.add (res,  a );
+                    let res        = %core.nat.add (res,  b1);
+                    let res        = %core.nat.add (res,  b2);
+                    let res        = %core.nat.add (res,  c );
+                    return (mem, res);
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %compile.branch_normalize,
+        %compile.ret_wrap,
+        %compile.named "%mem.alloc2malloc_repl",
+        %compile.named "%ll.emit",
+    );
+
+// pa remains a slot because its address escapes.
+// CHECK-LABEL: define i64 @f() {
+// CHECK: %[[PA:_[0-9]+]] = alloca i64
+// CHECK: store i64 10, i64* %[[PA]]
+// CHECK-NOT: alloca
+// CHECK-NOT: store i64 20
+// CHECK-NOT: store i64 30
+//
+// pb1 and pb2 merge into one loop phi, while pc and c merge into one variable.
+// CHECK-LABEL: head_
+// CHECK-DAG: %[[PB:[[:alnum:]_]+]] = phi i64 [ 20, %{{[^]]+}} ], [ %[[PB_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
+// CHECK-DAG: %[[PC_C:[[:alnum:]_]+]] = phi i64 [ 30, %{{[^]]+}} ], [ %[[PC_C_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
+//
+// a remains a variable, and b1 and b2 merge into one variable.
+// CHECK-DAG: %[[A:[[:alnum:]_]+]] = phi i64 [ 100, %{{[^]]+}} ], [ %[[A_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
+// CHECK-DAG: %[[B:[[:alnum:]_]+]] = phi i64 [ 200, %{{[^]]+}} ], [ %[[B_NEXT:[[:alnum:]_]+]], %{{[^]]+}} ]
+// CHECK: %[[A_NEXT]] = add nsw nuw i64 1, %[[A]]
+// CHECK: %[[B_NEXT]] = add nsw nuw i64 2, %[[B]]
+// CHECK: %[[PC_C_NEXT]] = add nsw nuw i64 3, %[[PC_C]]
+// CHECK: %[[PB_NEXT]] = add nsw nuw i64 2, %[[PB]]
