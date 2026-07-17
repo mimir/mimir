@@ -245,7 +245,7 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
-            if (auto [mem, ret_lam, ptr] = split_slot(slot); ret_lam) {
+            if (auto [mem, ret_lam, _, ptr] = split_slot(slot); ret_lam) {
                 auto abstr_mem     = rewrite(mem);
                 auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg());
                 sloxy2slot_[sloxy] = slot;
@@ -359,7 +359,7 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto app = def->isa<App>()) {
         if (auto slot = Axm::isa<mem::slot>(app)) {
             // The slot jump applies its continuation, so `ret_lam` is known - not reached as a value.
-            auto [mem, ret_lam, _] = split_slot(slot);
+            auto [mem, ret_lam, _, __] = split_slot(slot);
             analyze(app->type());
             analyze(mem); // the ptr var has no argument - the slot itself defines it
             for (auto d : ret_lam->deps())
@@ -405,7 +405,7 @@ const Def* SEO::isa_optimized_sloxy(const Def* def) const {
 
 const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
-        auto [mem, ret_lam, ptr] = split_slot(slot);
+        auto [mem, ret_lam, _, ptr] = split_slot(slot);
 
         if (isa_optimized_sloxy(ptr)) {
             // The slot was promoted away: jump straight to the (rebuilt) continuation, dropping the ptr var.
