@@ -80,20 +80,14 @@ axm %mem.mslot: [*, a: Nat] as Ta → [%mem.M a, size: Nat, id: Nat] → [%mem.M
 /// Performs address computation by offsetting the passed pointer with index `i`.
 axm %mem.lea: {n: Nat, Ts: «n; *», a: Nat} → [%mem.Ptr («j: n; Ts#j», a), i: Idx n] → %mem.Ptr (Ts#i, a), normalize_lea;
 ///
-/// ## Stages
-///
-/// ### Phases
+/// ## Phases
 ///
 /// * `add_mem`: threads `%%mem.M` through functions that lack it.
 /// * `seo`: Symbolic Expression Optimization - SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).
-///
-axm %mem.add_mem: %compile.Phase;
-axm %mem.seo:     %compile.Phase;
-///
-/// ### Repls
-///
 /// * `remem_repl`: removes `%%mem.remem`s.
 /// * `alloc2malloc_repl`: rewrites `%%mem.alloc` / `%%mem.slot` into `%%mem.malloc` / `%%mem.mslot`.
 ///
+axm %mem.add_mem:           %compile.Phase;
+axm %mem.seo:               %compile.Phase;
 axm %mem.remem_repl:        %compile.Phase;
 axm %mem.alloc2malloc_repl: %compile.Phase;

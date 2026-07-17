@@ -107,7 +107,7 @@ axm %regex.empty: RE, 0;
 ///
 axm %regex.quant(optional,star,plus): RE → RE, normalize_quant, 1;
 ///
-/// ## Passes and Phases
+/// ## Phases
 ///
 /// ### %%regex.lower_regex
 ///

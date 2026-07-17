@@ -93,7 +93,7 @@ axm %affine.linearize: {n: Nat} → [idxs: «n; %affine.index», s: «n; Nat»] 
 ///
 axm %affine.delinearize: {m: Nat} → [lin: %affine.index, s: «m; Nat»] → «m; %affine.index»;
 ///
-/// ## Passes and Phases
+/// ## Phases
 ///
 /// ### %%affine.lower_for
 ///

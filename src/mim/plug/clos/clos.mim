@@ -27,9 +27,7 @@ axm %clos.longjmp: Cn [%mem.M 0, %clos.BufPtr, I32];
 ///
 axm %clos.attr(returning, freeBB, fstclassBB, esc, bottom): {T: *} → T → T, normalize_clos;
 ///
-/// ## Passes and Phases
-///
-/// ### Phases
+/// ## Phases
 ///
 axm %clos.clos_conv_prep:        %compile.Phase;
 axm %clos.branch_clos:           %compile.Phase;

@@ -75,7 +75,7 @@ axm %buffer.shape: [r: Nat, s: «r; Nat», T: *] as rsT → [%buffer.Buf rsT, i:
 axm %buffer.copy: [r: Nat, s: «r; Nat», T: *] as rsT
                 → [%mem.M 0, dst: %buffer.Buf rsT, src: %buffer.Buf rsT] → %mem.M 0;
 ///
-/// ## Passes and Phases
+/// ## Phases
 ///
 /// ### %%buffer.lower_ptr
 ///

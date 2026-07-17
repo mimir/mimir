@@ -52,15 +52,10 @@ axm %autodiff.add: {T: *} → [T, T] → T, normalize_add;
 ///
 axm %autodiff.sum: [n: Nat, T: *] → «n; T» → T, normalize_sum;
 ///
-/// ## Stages
-///
-/// ### Repls
+/// ## Phases
 ///
 axm %autodiff.zero_repl: %compile.Phase;
-///
-/// ### Phases
-///
-axm %autodiff.eval: %compile.Phase;
+axm %autodiff.eval:      %compile.Phase;
 ///
 /// ## Registered translations
 ///

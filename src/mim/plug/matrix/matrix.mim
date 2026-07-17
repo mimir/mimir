@@ -244,7 +244,7 @@ fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
         );
     return (mem, %core.bitcast R res); // TODO: test this cast
 ///
-/// ## Passes and Phases
+/// ## Phases
 ///
 /// ### %%matrix.lower_matrix_high_level_map_reduce
 ///

@@ -101,9 +101,7 @@ axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_
 ///
 axm %refly.refine: {E X: *} → [e: %refly.Code E, i: Nat, x: %refly.Code X] → %refly.Code E, normalize_refine;
 ///
-/// ## Stages
-///
-/// ### Repls
+/// ## Phases
 ///
 /// Removes the permanent `%%refly.dbg` markers for code generation.
 ///
