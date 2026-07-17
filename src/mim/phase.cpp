@@ -54,46 +54,19 @@ void Analysis::reset() {
 void Analysis::start() {
     prepare();
 
-    full_round_ = !sparse_ || round_ == 0 || need_full_ || dirty_.empty();
-    certifying_ = need_full_;
-    need_full_  = false;
-    std::swap(dirty_prev_, dirty_);
-    dirty_.clear();
-    tracking_ = sparse_; // only sparse analyses consume readers_ - don't pay for tracking otherwise
+    for (const auto& [flags, e] : world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
+    drain();
 
-    if (full_round_) {
-        for (const auto& [flags, e] : world().annexes())
-            rewrite_annex(flags, e.sym, e.def);
-        drain();
+    bootstrapping_ = false;
 
-        bootstrapping_ = false;
+    for (auto mut : world().externals().muts())
+        rewrite_external(mut);
+    drain();
 
-        for (auto mut : world().externals().muts())
-            rewrite_external(mut);
-        drain();
+    finalize();
 
-        tracking_ = false;
-        finalize(); // only full rounds finalize: post-passes must see the complete abstract World
-    } else {
-        VLOG("sparse round {}: re-draining {} tainted muts", round_, dirty_prev_.size());
-        for (auto [concr, abstr] : set_map_)
-            map(concr, abstr);
-        for (auto mut : dirty_prev_)
-            rewrite(mut);
-        drain();
-        tracking_ = false;
-    }
-
-    ++round_;
-    profile_count(full_round_ ? "rounds.full" : "rounds.sparse");
     profile_count("muts.drained", std::exchange(num_drained_, size_t(0)));
-
-    // Sparse rounds quiesced - but they only certify the muts they visited.
-    // Force one full round; the fixed point counts only if that one stays quiet, too.
-    if (sparse_ && !full_round_ && !todo()) {
-        need_full_ = true;
-        invalidate();
-    }
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
@@ -102,8 +75,7 @@ void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
-    // In a sparse round only tainted muts are drained; all others just map to themselves.
-    if (full_round_ || mut->is_dirty()) worklist_.emplace_back(mut);
+    worklist_.emplace_back(mut);
     return mut;
 }
 
@@ -111,7 +83,6 @@ void Analysis::drain() {
     while (!worklist_.empty()) {
         auto mut = worklist_.front();
         worklist_.pop_front();
-        mut->dirty(false); // this is the (re)visit the dirty bit asked for
         ++num_drained_;
 
         auto _ = enter(mut);
@@ -141,13 +112,6 @@ void RWPhase::start() {
 
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
-
-    // Nothing consumes cross-phase dirt yet, so clear the bits while the old defs are still alive and
-    // drop the records: carrying Def*s past this Phase's own run would dangle after later world swaps.
-    // (Once a consumer exists, translate via lookup() into the new world *and* hand the records over
-    // to an owner that provably outlives all subsequent swaps.)
-    for (auto old_mut : std::exchange(dirty_, {}))
-        old_mut->dirty(false);
 
     swap(old_world(), new_world());
 }

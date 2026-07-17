@@ -2,7 +2,7 @@
 ///
 /// @see mim::plug::option
 ///
-/// An optional value type, either a value of type T or nothing.
+/// An optional value type: either a value of type `T` or nothing.
 ///
 /// [TOC]
 ///
@@ -12,7 +12,10 @@ plugin core;
 ///
 /// ## Types
 ///
-/// ### %option.Option
+/// ### %%option.Opt
+///
+/// The option type: `[] ∪ T`.
+///
 ///
 lam %option.Opt (T: *) : * = [] ∪ T;
 ///
@@ -20,13 +23,13 @@ lam %option.Opt (T: *) : * = [] ∪ T;
 ///
 /// ### %%option.some
 ///
-/// Wrap a value into an Option.
+/// Wraps a value into an option.
 ///
 lam %option.some {T: *} (v: T) : %option.Opt T = v inj %option.Opt T;
 ///
 /// ### %%option.none
 ///
-/// The empty Option.
+/// The empty option.
 ///
 lam %option.none {T: *} : %option.Opt T = () inj %option.Opt T;
 ///
@@ -34,7 +37,7 @@ lam %option.none {T: *} : %option.Opt T = () inj %option.Opt T;
 ///
 /// ### %%option.is_some
 ///
-/// Returns true if the Option contains a value.
+/// Returns `tt` if the option contains a value.
 ///
 lam %option.is_some {T: *} (o: %option.Opt T) : Bool =
     match o with
@@ -43,13 +46,13 @@ lam %option.is_some {T: *} (o: %option.Opt T) : Bool =
 ///
 /// ### %%option.unwrap_unsafe
 ///
-/// Extract the value without check. Unsafe if None.
+/// Extracts the value without checking - undefined behavior for `%%option.none`.
 ///
 axm %option.unwrap_unsafe: {T: *} → %option.Opt T → T, normalize_unwrap_unsafe;
 ///
 /// ### %%option.unwrap_or
 ///
-/// Extract the value or return a default.
+/// Extracts the value or returns `default`.
 ///
 lam %option.unwrap_or {T: *} (o: %option.Opt T) (default: T) : T =
     match o with

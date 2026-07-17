@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include <sstream>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -660,94 +661,4 @@ TEST(Phase, fp_iteration_cap) {
     Driver driver;
     driver.flags().max_fp_iters = 8;
     EXPECT_THROW(Phase::run<OscPhase>(driver.world()), std::logic_error);
-}
-
-namespace {
-
-/// Minimal propagation analysis: joins the (abstract) argument into the callee's var at every App site.
-class Prop : public Analysis {
-public:
-    Prop(World& world, bool sparse)
-        : Analysis(world, "prop") {
-        if (!sparse) make_dense();
-    }
-
-    void run_fixed_point() {
-        for (bool todo = true; todo;) {
-            reset();
-            run();
-            todo = this->todo();
-        }
-    }
-
-private:
-    const Def* join(const Def* var, const Def* def) {
-        auto cur = lattice(var);
-        if (!cur) return update(var, def), def;
-        if (cur == def || cur == var) return cur;
-        return pin_top(var);
-    }
-
-    const Def* rewrite_imm_App(const App* app) override {
-        if (auto lam = app->callee()->isa_mut<Lam>(); lam && lam->is_set()) {
-            auto j = join(lam->var(), rewrite(app->arg()));
-            // Substitute the abstract value into the callee's body via the rewriter map (SEO-style seeding):
-            // the callee consumes its var through map() - not through a lattice() read - so re-draining it
-            // after a change relies on owner()-tainting, not on reader-tracking.
-            set(lam->var(), j);
-        }
-        return Analysis::rewrite_imm_App(app);
-    }
-};
-
-} // namespace
-
-TEST(Phase, sparse_differential) {
-    Driver driver;
-    World& w = driver.world();
-    auto nat = w.type_nat();
-    auto pi  = w.pi(nat, nat);
-
-    auto f = w.mut_lam(pi)->set(w.sym("f")); // f x = x
-    f->set(w.lit_ff(), f->var());
-
-    auto g = w.mut_lam(pi)->set(w.sym("g")); // g x = f x - facts about g's var flow onward into f's var via g's body
-    g->set(w.lit_ff(), w.app(f, g->var()));
-
-    auto r = w.mut_lam(pi)->set(w.sym("r")); // r x = r 1 - self-recursive so the fixed point needs several rounds
-    r->set(w.lit_ff(), w.app(r, w.lit_nat(1)));
-
-    auto main1 = w.mut_lam(pi)->set(w.sym("main1")); // main1 x = g 5
-    main1->set(w.lit_ff(), w.app(g, w.lit_nat(5)));
-    main1->externalize();
-
-    auto main2 = w.mut_lam(pi)->set(w.sym("main2")); // main2 x = g (r 2) - joins a second value into g's var
-    main2->set(w.lit_ff(), w.app(g, w.app(r, w.lit_nat(2))));
-    main2->externalize();
-
-    Prop dense(w, false);
-    dense.run_fixed_point();
-    auto dense_lattice = Def2Def(dense.lattice());
-
-    Prop sparse(w, true);
-    sparse.run_fixed_point();
-    const auto& sparse_lattice = sparse.lattice();
-
-    // r's var joins 1 (self) and 2 (main) -> ⊤; sanity-check we computed something non-trivial
-    EXPECT_TRUE(dense.is_top(r->var()));
-    EXPECT_FALSE(dense_lattice.empty());
-
-    // The taint tracking must cover every flow: a change during a certification round means a hole
-    // (results stay correct either way, but holes cost extra rounds).
-    // Note the net's split: recoverable holes surface here as coverage_holes(); *unrecoverable* divergence
-    // (a sparse round committing a premature ⊤ on a stale view) surfaces as a lattice mismatch below.
-    EXPECT_EQ(sparse.coverage_holes(), 0u);
-
-    // sparse and dense must reach the identical fixed point
-    EXPECT_EQ(dense_lattice.size(), sparse_lattice.size());
-    for (auto [concr, abstr] : dense_lattice) {
-        auto i = sparse_lattice.find(concr);
-        ASSERT_NE(i, sparse_lattice.end()) << "missing lattice entry in sparse run";
-        EXPECT_EQ(i->second, abstr) << "diverging lattice entry";
-    }
 }

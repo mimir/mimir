@@ -61,15 +61,26 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         new_head_lam->branch(false, new_cmp, new_body, new_exit, new_mem);
         new_yield->app(false, new_head_lam, merge_t(new_inc, new_yield->var(), new_mem));
 
+        // `new_acc` references the head's phis, including the head's mem var.
+        // Each new bb receives its own mem, so re-thread the acc's mem through the bb's own mem var.
+        auto acc_for = [&](Lam* bb) -> const Def* {
+            if (!new_mem) return new_acc;
+            auto bb_mem = mem::mem_var(bb);
+            auto elems  = DefVec();
+            for (auto phi : new_phis.view().subspan(1))
+                elems.emplace_back(Axm::isa<mem::M>(phi->type()) ? bb_mem : phi);
+            return new_world().tuple(elems);
+        };
+
         push();
-        map(old_body_lam->var(), {new_iter, new_acc, new_yield});
+        map(old_body_lam->var(), {new_iter, acc_for(new_body), new_yield});
         auto new_body_filter = rewrite(old_body_lam->filter());
         auto new_body_value  = rewrite(old_body_lam->body());
         new_body->set({new_body_filter, new_body_value});
         pop();
 
         push();
-        map(old_exit_lam->var(), new_acc);
+        map(old_exit_lam->var(), acc_for(new_exit));
         auto new_exit_filter = rewrite(old_exit_lam->filter());
         auto new_exit_value  = rewrite(old_exit_lam->body());
         new_exit->set({new_exit_filter, new_exit_value});

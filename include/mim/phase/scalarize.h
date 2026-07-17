@@ -1,8 +1,5 @@
 #pragma once
 
-#include <absl/container/flat_hash_set.h>
-#include <absl/container/node_hash_map.h>
-
 #include "mim/phase.h"
 
 namespace mim {
@@ -16,47 +13,64 @@ namespace mim {
 /// ```
 /// f' := λ (y_1: T_1, y_2: T_2, .. y_n: T_n).E[x_1 \ (y_1, y_2); ..; x_n \ y_n]
 /// ```
-/// if `f` appears in callee position only (see @p EtaExp).
 ///
-/// The phase flattens **one level** of a lambda's (thresholded) parameters per run.
+/// The transformation is **type-directed**:
+/// the decision to flatten is made per continuation *type* (immutable `Cn`) - not per Lam.
+/// Every producer and consumer of such a type is reshaped in the same sweep:
+/// the Pi itself, all Lam%s of that type, and all App%s through it - no matter whether the callee is a mutable Lam,
+/// a Var (higher-order parameter), a branch tuple, or a value loaded back from memory.
+/// Hence, a Lam may escape (be stored, passed as argument) and still get its signature flattened.
+///
+/// A Pi is *pinned* (left untouched) if
+/// * it is reachable from an annex (normalizers and backends rely on its exact shape),
+/// * an Axm application's signature dictates it - what the Axm consumes and produces,
+///   plus a *bare* function argument's type (`%%autodiff.ad f`) - except for subtrees that are
+///   merely substituted in via (type) arguments (`T` in `%%mem.store T`), which stay flattenable,
+/// * it occurs inside an *interface* Lam's signature (external, annex, or unset declaration) -
+///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values;
+///   rewrite_mut_Lam() preserves the interface's top level by hand),
+/// * it types a value inside a dependently-typed aggregate (a typed closure),
+/// * an App connects a dom and an arg whose types are alpha-equivalent yet *distinct* defs, or
+/// * one of its parameters is Extract%ed / Insert%ed via a **non-constant** index
+///   (splitting would only force the body to reassemble the tuple);
+///   this is tracked per parameter via a keep-bitmask.
+///
+/// The phase flattens **one level** of a Pi's (thresholded) domain per run.
 /// Because it is scheduled inside a fixed-point pipeline (`%compile.phases tt (...)`),
 /// re-running it converges to a full flatten; each run that peels calls invalidate().
 ///
 /// Flattening respects Flags::scalarize_threshold via the thresholded projection helpers
-/// (Def::num_tprojs, Lam::tvar, App::targ): a parameter is only expanded if its arity is
+/// (Def::num_tprojs, Pi::tdom, App::targ): a parameter is only expanded if its arity is
 /// below the threshold.
 /// It will not flatten mutable @p Sigma%s or @p Arr%ays (their vars have no static arity).
-///
-/// A parameter that is @p Extract%ed / @p Insert%ed via a **non-constant** index is left
-/// intact: splitting it would only force the body to reassemble the tuple.
 class Scalarize : public RWPhase {
 private:
-    /// Optimistic fixed-point analysis: every optimizable @p Lam is assumed splittable
-    /// until proven otherwise (escape, branch/dispatch tuple disagreement, or a
-    /// dynamically-indexed parameter).
+    /// Optimistic fixed-point analysis: every immutable `Cn` is assumed flattenable
+    /// until proven otherwise (see the pinning rules above).
     class Analysis : public mim::Analysis {
     public:
         Analysis(World& world)
             : mim::Analysis(world, "Scalarize::Analysis") {}
 
-        /// Per-parameter expand mask for @p lam (length @p lam->num_tvars()); `true` marks
+        /// Per-parameter expand mask for @p type (length `num_tdoms`); `true` marks
         /// a parameter to be flattened one level. An **empty** mask means "leave untouched".
-        /// Cheap; recomputed on demand from the (post-fixed-point) demote/lock state.
-        Vector<bool> plan(Lam* lam);
+        /// Cheap; recomputed on demand from the (post-fixed-point) lattice.
+        Vector<bool> plan(const Def* type) const;
 
     private:
         const Def* rewrite(const Def* old) final;
 
         void inspect(const Def* def);
-        void demote(Lam*); ///< Mark @p lam as not splittable (monotone).
-        void demote_all(const Def* lam_tuple);
-        void lock(Lam*, size_t dom); ///< Mark parameter @p dom of @p lam as dynamically indexed.
-        bool eligible(Lam*) const;   ///< Cn with an immutable (non-dependent) Pi.
-        bool splittable(Lam*) const; ///< Optimistic: not demoted.
-
-        LamSet demoted_; ///< Persisted across fixed-point rounds.
-        // node_hash_map: values are not trivially relocatable, so keep them node-stable across rehashes.
-        absl::node_hash_map<Lam*, absl::flat_hash_set<size_t>, GIDHash<Lam*>> locked_; ///< Persisted across rounds.
+        /// Marks parameter @p dom of @p pi as *keep whole* by OR-ing bit @p dom into a per-Pi bitmask stored
+        /// in lattice() under @p pi.
+        /// We store the fact via lattice_force() - **not** via lattice(concr, abstr)/pin() - because those also
+        /// seed the rewriter map(), which this same-World Analysis would then substitute nonsensically.
+        /// A fresh bit invalidate()s.
+        void keep(const Pi* pi, size_t dom);
+        void pin_tree(const Def* def); ///< pin%s every flattenable Pi nested in @p def%'s type tree.
+        /// As above, but skips defs already in @p visited - seed it to exempt subtrees from pinning.
+        void pin_tree(const Def* def, DefSet& visited);
+        bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
     };
 
 public:
@@ -65,6 +79,7 @@ public:
         , analysis_(world) {}
 
 private:
+    const Def* rewrite_imm_Pi(const Pi*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
     const Def* rewrite_imm_App(const App*) final;
 

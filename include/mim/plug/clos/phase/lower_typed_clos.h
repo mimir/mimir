@@ -71,9 +71,12 @@ private:
     const Def* dummy_ret_ = nullptr; //< dummy return continuation
 
     /// @name memory-tokens
+    /// Initialized to `nullptr`: `start()` rewrites the top-level externals (their types, in particular)
+    /// before the worklist loop assigns these per-lam, and that rewrite reads them — so they must not be
+    /// indeterminate. `nullptr` is the correct "no current mem" sentinel there (nothing gets rethreaded).
     ///@{
-    const Def* lvm_; //< Last visited memory token
-    const Def* lcm_; //< Last created memory token
+    const Def* lvm_ = nullptr; //< Last visited memory token
+    const Def* lcm_ = nullptr; //< Last created memory token
     ///@}
 
     std::vector<Lam*> new_externals_;

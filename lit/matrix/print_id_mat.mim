@@ -9,22 +9,22 @@ plugin matrix;
 let MT1 = (2, (2,4), %math.F64);
 // let MT2 = (2, (4,3), %math.F64);
 
-ccon print_int_matrix    [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, (⊤:Nat,⊤:Nat), I32), return : Cn [%mem.M 0]];
-ccon print_double_matrix [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, (⊤:Nat,⊤:Nat), %math.F64), return : Cn [%mem.M 0]];
+ccon print_int_matrix    [mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (⊤:Nat,⊤:Nat), I32), return : Cn [%mem.M 0]];
+ccon print_double_matrix [mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (⊤:Nat,⊤:Nat), %math.F64), return : Cn [%mem.M 0]];
 
-con print_int_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, (k,l), I32), return : Cn [%mem.M 0]] =
-    let m2 = %core.bitcast (%matrix.Mat (2,(⊤:Nat,⊤:Nat),I32)) m;
+con print_int_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (k,l), I32), return : Cn [%mem.M 0]] =
+    let m2 = %core.bitcast (%buffer.Buf (2,(⊤:Nat,⊤:Nat),I32)) m;
     print_int_matrix(mem, k, l, m2, return);
 
-con print_double_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, (k,l), %math.F64), return : Cn [%mem.M 0]] =
-    let m2 = %core.bitcast (%matrix.Mat (2,(⊤:Nat,⊤:Nat),%math.F64)) m;
+con print_double_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (k,l), %math.F64), return : Cn [%mem.M 0]] =
+    let m2 = %core.bitcast (%buffer.Buf (2,(⊤:Nat,⊤:Nat),%math.F64)) m;
     print_double_matrix(mem, k, l, m2, return);
 
 // lam extern internal_mapRed_matrix_const
 //     ![m: Nat, l: Nat, [p: Nat, e:Nat]] →
 //     (Cn[
 //         [mem:%mem.M 0],
-//         Cn[%mem.M 0,%matrix.Mat (2,(m, l),%math.F (p,e))]
+//         Cn[%mem.M 0,%buffer.Buf (2,(m, l),%math.F (p,e))]
 //     ])
 //     = {
 //     let R = %math.F (p,e);
@@ -42,7 +42,7 @@ con print_double_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, 
 //             [
 //                 mem:%mem.M 0,
 //             ],
-//             return: Cn[%mem.M 0,%matrix.Mat (2,(m, l),R)]
+//             return: Cn[%mem.M 0,%buffer.Buf (2,(m, l),R)]
 //         ]
 //     = {
 //         let zero_64 = 0.0:(%math.F (52,11));
@@ -69,8 +69,8 @@ con print_double_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, 
 
 con extern main [mem : %mem.M 0, argc : I64, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
     let c = 42.0:%math.F64;
-    let (mem, m1) = %matrix.constMat MT1 (mem,c);
-    // let (mem3,m2) = %matrix.constMat MT2 (mem, d);
+    let (mem, m1) = %buffer.constant MT1 (mem,c);
+    // let (mem3,m2) = %buffer.constant MT2 (mem, d);
     // let (mem4, mP) = %matrix.prod (2,4,3, %math.f64) (mem3, m1, m2);
     // print_double_matrix_wrap (mem4, 2, 3, mP, return_cont)
     print_double_matrix_wrap (mem, 2, 4, m1, return_cont)

@@ -1,10 +1,15 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
+// Isolation test for the value-semantics %tensor.lower_get_set phase (pinned via a custom _compile):
+// all tensors here are local literals, which the buffers-only default pipeline would materialize into
+// buffers and read back at runtime (see lit/buffer/exec_local_tensors.mim) — this test instead checks
+// that the value phase folds everything at compile time.
 plugin tensor;
 plugin refly;
 plugin core;
 plugin cps;
 plugin affine;
+plugin opt;
 
 let m0 = ((1, 2), (3, 4));
 let m1 = ((1, 2, 3), (4, 5, 6));
@@ -30,6 +35,12 @@ let _ = %refly.equiv.struc_eq (sg3, 24);
 let _ = %refly.equiv.struc_eq (sg4, 36);
 
 fun extern e1() = return (g2, g3, g4, sg2_1);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_get_set,
+        %compile.internal_cleanup,
+    );
 
 // CHECK-NOT: tensor.get
 // CHECK-NOT: tensor.set

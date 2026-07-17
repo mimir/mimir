@@ -2,7 +2,7 @@
 ///
 /// @see mim::plug::refly
 ///
-/// The refly plugin allows to [reify](https://en.wikipedia.org/wiki/Reification_(computer_science)) and [reflect](https://en.wikipedia.org/wiki/Reflective_programming) MimIR's own representation.
+/// The refly plugin allows you to [reify](https://en.wikipedia.org/wiki/Reification_(computer_science)) and [reflect](https://en.wikipedia.org/wiki/Reflective_programming) MimIR's own representation.
 ///
 /// [TOC]
 ///
@@ -11,6 +11,10 @@
 import compile;
 ///
 /// ## Types
+///
+/// ### %%refly.Code
+///
+/// The reified internal representation of a Mim expression of type `T`.
 ///
 axm %refly.Code: * → *;
 ///
@@ -32,13 +36,13 @@ axm %refly.reflect: {T: *} → [%refly.Code T] → T, normalize_reflect;
 ///
 /// ### %%refly.type
 ///
-/// Retuns type of an expression.
+/// Returns the type of an expression.
 ///
 axm %refly.type: {T: *} → T → *, normalize_type;
 ///
 /// ### %%refly.gid
 ///
-/// Retuns the internal mim::Def::gid of the argument.
+/// Returns the internal mim::Def::gid of the argument.
 ///
 axm %refly.gid: {T: *} → T → Nat, normalize_gid;
 ///
@@ -61,17 +65,17 @@ axm %refly.dbg(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 ///
 /// ### %%refly.equiv
 ///
-/// Checks for structurual / alpha-equivalence.
-/// We are using two disjoint relations:
-///     * `A`lpha
-///     * `E`qual
+/// Checks for structural / alpha-equivalence.
+/// Two bits select the check:
+/// * `A`lpha: check α-equivalence instead of structural identity
+/// * `E`qual: assert equivalence instead of inequivalence
 ///
-/// | Subtag | Alias | A | E | Meaning                               |
-/// |--------|-------|---|---|---------------------------------------|
-/// | `ae`   | `f`   | o | o | assert strucutrual equivalent         |
-/// | `aE`   | `e`   | o | x | assert **not** structurual equivalent |
-/// | `Ae`   | `l`   | x | o | assert alpha equivalent               |
-/// | `AE`   | `le`  | x | x | assert **not** alpha equivalent       |
+/// | Subtag | Alias      | A | E | Meaning                                    |
+/// |--------|------------|---|---|--------------------------------------------|
+/// | `ae`   | `struc_ne` | o | o | assert **not** structurally equivalent     |
+/// | `aE`   | `struc_eq` | o | x | assert structurally equivalent             |
+/// | `Ae`   | `alpha_ne` | x | o | assert **not** alpha-equivalent            |
+/// | `AE`   | `alpha_eq` | x | x | assert alpha-equivalent                    |
 ///
 axm %refly.equiv(ae = struc_ne, aE = struc_eq,
                  Ae = alpha_ne, AE = alpha_eq):
@@ -79,13 +83,13 @@ axm %refly.equiv(ae = struc_ne, aE = struc_eq,
 ///
 /// ### %%refly.check_bot
 ///
-/// Checks whether argument is bottom.
+/// Checks whether the argument is `⊥`.
 ///
 axm %refly.check_bot: {T: *} → T → T, normalize_check_bot;
 ///
 /// ### %%refly.check
 ///
-/// Checks the given condition and emits the error message, if false.
+/// Checks the given condition and emits the error message if it is `ff`.
 ///
 axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
 ///
@@ -93,12 +97,12 @@ axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_
 ///
 /// ### %%refly.refine
 ///
-/// Sets the `i`th operand of the reified Code `e` to `x`.
+/// Sets the `i`th operand of the reified code `e` to `x`.
 ///
 axm %refly.refine: {E X: *} → [e: %refly.Code E, i: Nat, x: %refly.Code X] → %refly.Code E, normalize_refine;
 ///
-/// ## Stages
+/// ## Phases
 ///
-/// ### Repls
+/// Removes the permanent `%%refly.dbg` markers for code generation.
 ///
 axm %refly.remove_dbg_repl: %compile.Phase;

@@ -172,8 +172,12 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
         // ~>
         // let ...
         // F (m'', a1', ..., (env_ptr, f'))
+        // Only rethread the operand that consumed the current end of this function's mem chain (lvm_):
+        // boxing above may have advanced lcm_ past what the operand was rewritten to.
+        // Other mem operands may belong to another function's chain (shared subgraphs);
+        // rethreading them onto lcm_ would corrupt the chain and poison the global old2new_ cache.
         for (size_t i = 0; i < new_def->num_ops(); i++)
-            if (new_def->op(i)->type() == w.call<mem::M>(0)) new_def = new_def->refine(i, lcm_);
+            if (def->op(i) == lvm_ && new_def->op(i)->type() == w.call<mem::M>(0)) new_def = new_def->refine(i, lcm_);
 
         if (new_type == w.call<mem::M>(0)) { // :store
             lcm_ = new_def;

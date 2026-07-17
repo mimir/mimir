@@ -19,6 +19,8 @@ class Vector : public absl::InlinedVector<T, N, A> {
 public:
     using Base = absl::InlinedVector<T, N, A>;
 
+    using Base::insert;
+
     /// @name Constructors
     ///@{
     using Base::Base;
@@ -49,7 +51,7 @@ public:
     ///@{
     template<std::ranges::forward_range R>
     constexpr void insert_range(Base::const_iterator pos, R&& r) {
-        Base::insert(pos, r.begin(), r.end());
+        insert(pos, r.begin(), r.end());
     }
     template<std::ranges::forward_range R>
     constexpr void append_range(R&& r) {

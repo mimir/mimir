@@ -1,0 +1,26 @@
+// RUN: %mim %s -p opt -o %t
+// RUN: cat %t | %FileCheck %s
+// RUN: cat %t | %FileCheck %s --check-prefix=GONE
+
+// %tensor.slice: strided slice / narrow, out[…d…] = input[… start#d + step#d·d …]. A pure linear affine read over
+// %tensor.map_reduce. Checked on the lowered Mim IR (no codegen), as for hlo.mim / reshape.
+// GONE-NOT: %tensor.slice
+// GONE-NOT: map_reduce
+// GONE-NOT: %affine
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+// 1-D strided slice of a length-8 vector: out[i] = input[3*i + 2]  (reads input[2], input[5]).
+// CHECK-DAG: fun extern slice1d
+// CHECK-DAG: %core.wrap.mul {{.*}}(3I64
+// CHECK-DAG: %core.wrap.add {{.*}}(2I64
+fun extern slice1d (input: «8; I32»): «2; I32» =
+    return (%tensor.slice 8 (2, 3, 2) input);
+
+// 2-D strided slice (with a 0 start on one axis): out[i][j] = input[1 + 2*i][2*j].
+// CHECK-DAG: fun extern slice2d
+fun extern slice2d (input: «4, 6; I32»): «2, 3; I32» =
+    return (%tensor.slice (4, 6) ((1, 0), (2, 2), (2, 3)) input);

@@ -7,6 +7,7 @@
 #include "mim/def.h"
 
 #include "mim/plug/affine/affine.h"
+#include "mim/plug/buffer/buffer.h"
 #include "mim/plug/core/core.h"
 #include "mim/plug/cps/cps.h"
 #include "mim/plug/matrix/matrix.h"
@@ -227,7 +228,7 @@ const Def* LowerMatrixMediumLevel::rewrite_imm_App(const App* app) {
 
         // First create the output matrix.
         auto current_mem      = mem;
-        auto [mem2, init_mat] = w.app(w.annex<matrix::init>(), {n, S, T, current_mem})->projs<2>();
+        auto [mem2, init_mat] = buffer::op_alloc(n, S, T, current_mem)->projs<2>();
         current_mem           = mem2;
 
         // The function on where to continue -- return after all output loops.
@@ -281,8 +282,7 @@ const Def* LowerMatrixMediumLevel::rewrite_imm_App(const App* app) {
         DLOG("output tuple: {} : {}", output_it_tuple, output_it_tuple->type());
 
         auto [wb_mem2, written_matrix]
-            = w.app(w.app(w.annex<matrix::insert>(), {n, S, T}), {wb_mem, wb_matrix, output_it_tuple, element_final})
-                  ->projs<2>();
+            = buffer::op_write(n, S, T, wb_mem, wb_matrix, output_it_tuple, element_final)->projs<2>();
 
         write_back->app(true, cont, {wb_mem2, written_matrix});
 

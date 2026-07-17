@@ -1,6 +1,7 @@
 set(MIM_PLUGINS
     affine
     autodiff
+    buffer
     clos
     compile
     core

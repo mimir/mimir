@@ -148,6 +148,15 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
 
 template<Checker::Mode mode>
 bool Checker::alpha_(const Def* d1, const Def* d2) {
+    auto& memo = memo_[mode];
+    if (memo.contains({d1, d2}) || memo.contains({d2, d1})) return true;
+    if (!alpha_impl_<mode>(d1, d2)) return false;
+    memo.emplace(d1, d2);
+    return true;
+}
+
+template<Checker::Mode mode>
+bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     for (bool todo = true; todo;) {
         // below we check type and arity which may in turn open up more opportunities for zonking
         todo = false;

@@ -7,8 +7,8 @@ plugin matrix;
 con extern f[mem: %mem.M 0, [k: Nat, l: Nat], return: Cn[%mem.M 0, I32]] =
     let two      = %core.conv.u k 2I32;
     let three    = %core.conv.u l 3I32;
-    let (mem, M) = %matrix.init (2, (k, l), I32, mem); // :%matrix.Mat (2,(k,l), I32)
-    let (mem, a) = %matrix.read (2, (k, l), I32) (mem, M, (two, three));
+    let (mem, M) = %buffer.alloc (2, (k, l), I32) mem; // :%buffer.Buf (2,(k,l), I32)
+    let (mem, a) = %buffer.read (2, (k, l), I32) (mem, M, (two, three));
     return (mem, a);
 
 // CHECK-NOT: %matrix.

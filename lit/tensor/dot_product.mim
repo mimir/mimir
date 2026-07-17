@@ -1,0 +1,33 @@
+// RUN: %mim -p opt %s
+plugin tensor;
+plugin refly;
+plugin core;
+plugin cps;
+plugin affine;
+
+let m0 = ((1, 2), (3, 4));
+
+let R: %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+let f = dot_general_fun R;
+
+// The 2x2 matrix product spelled out as a %tensor.map_reduce: loop domain (2, 2, 2) with one
+// contraction, the identity write map and the subscript projections out[i,j] += a[i,k] * b[k,j].
+// %tensor.dot_product_impl must reduce to exactly this operation (checked via struc_eq below).
+let s_full = (2, 2, 2);
+let dot = %tensor.map_reduce @2 @(Nat, 2, 1) ((2, 2), s_full) @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›)) (f, 0)
+    (%tensor.proj_map @(3, 2) (0, 1))
+    (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+    (m0, m0);
+let dotd = %tensor.dot_product_impl R @(2, 2) (1_2, 0_2, (), ()) (m0, m0);
+let dot2d = %tensor.product_2d_impl R (m0, m0);
+
+let m3d = (((1, 2), (3, 4)), ((5, 6), (7, 8)));
+let dot3d = %tensor.bmm_impl R (m3d, m3d);
+let dotd3 = %tensor.dot_product_impl R @(3, 3) (2_3, 1_3, 0_3, 0_3) @((2, 2, 2), (2, 2, 2)) (m3d, m3d);
+
+let _ = %refly.equiv.struc_eq (dot, dotd);
+let _ = %refly.equiv.struc_eq (dot2d, dotd);
+let _ = %refly.equiv.struc_eq (dot3d, dotd3);
+
+fun extern main() = return (dot, dotd, dot2d, dot3d, dotd3);

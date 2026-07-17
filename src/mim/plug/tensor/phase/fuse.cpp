@@ -11,37 +11,47 @@
 
 namespace mim::plug::tensor::phase {
 
+/// `inner ∘ outer`: feeds the outer op's read coordinates for one input into the inner op's access map.
+static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
+    auto dom   = outer->type()->as<Pi>()->dom();
+    auto codom = inner->type()->as<Pi>()->codom();
+    auto lam   = w.mut_lam(dom, codom)->set("fused_map");
+    lam->set(true, w.app(inner, w.app(outer, lam->var())));
+    return lam;
+}
+
 // Fuses an outer `tensor.map_reduce` with any number of its inputs — and, recursively, any
 // fusible inputs of those inputs — whenever each such input is itself a `tensor.map_reduce`
-// whose subs only reference output indices (i.e. the inner reduction is empty, so reading the
-// inner tensor at a position is just a single call to the inner combination function).
+// without reduction loops (`Rr = 0`) that writes its full loop domain through the identity output
+// map (`Sr = So`, `map_out = %affine.id`). Reading such an inner tensor at a position is then just
+// a single call to the inner combination function, with each inner access map composed behind the
+// outer's access map for that input.
 //
-// Outer:    map_reduce nis_o (To, Ro) So (Tis_o, Ris_o, Sis_o) (f_o, init_o) subs_o is_o
-// Inner:    map_reduce nis_k (To_k, Ro_k) So_k (Tis_k, Ris_k, Sis_k) (f_k, init_k) subs_k is_k
+// Outer:    map_reduce nis_o (To, Ro, Rr) (So, Sr) (Tis_o, Ris_o, Sis_o) (f_o, init_o) map_out maps_o is_o
+// Inner:    map_reduce nis_k (To_k, Ro_k, 0) (So_k, So_k) (Tis_k, Ris_k, Sis_k) (f_k, init_k) id maps_k is_k
 //           for every fusible input — possibly nested inside another fusible input
 //
-// Result:   map_reduce nis_new (To, Ro) So (Tis_new, Ris_new, Sis_new) (f_new, init_o) subs_new
-//           is_new
+// Result:   map_reduce nis_new (To, Ro, Rr) (So, Sr) (Tis_new, Ris_new, Sis_new) (f_new, init_o)
+//           map_out maps_new is_new
 //
-// The collection phase walks the tree of fusible inner map_reduces below `app` once, producing
-// a flat list of *leaves* (the surviving tensor inputs of the fused mr) and *inner nodes* (the
-// inner combiners that must run before `f_o`). Each fusible input is replaced by its inner's
-// inputs, with subs remapped through the outer subs at that position; the remapping composes
-// across nested levels. The new combination function `f_new` invokes every inner combiner in
-// post-order — each starting from its own init — and finally invokes `f_o`, threading inner
-// results into the corresponding outer input slots.
+// The collection phase walks the tree of fusible inner ops below `app` once, producing a flat list
+// of *leaves* (the surviving tensor inputs of the fused op) and *inner nodes* (the inner combiners
+// that must run before `f_o`). Each fusible input is replaced by its inner's inputs, with access
+// maps composed behind the outer map at that position; the composition nests across levels. The
+// new combination function `f_new` invokes every inner combiner in post-order — each starting from
+// its own init — and finally invokes `f_o`, threading inner results into the corresponding outer
+// input slots.
 const Def* Fuse::fuse_map_reduce(const App* app) {
     auto outer_callee = rewrite(app->callee())->as<App>();
 
-    auto [nis, ToRo, So, TisRisSis, comb_init, subs] = outer_callee->uncurry_args<6>();
+    auto [nis, meta, shapes, TisRisSis, comb_init, map_out, maps] = outer_callee->uncurry_args<7>();
 
+    auto [To, Ro, Rr]    = meta->projs<3>();
     auto [comb, init]    = comb_init->projs<2>();
     auto [Tis, Ris, Sis] = TisRisSis->projs<3>();
-    auto [To, Ro]        = ToRo->projs<2>();
     auto is              = rewrite(app->arg());
 
     DLOG("considering map_reduce for fusion:");
-    DLOG("  subs = {} : {}", subs, subs->type());
     DLOG("  comb = {} : {}", comb, comb->type());
     DLOG("  init = {} : {}", init, init->type());
     DLOG("  Tis = {} : {}", Tis, Tis->type());
@@ -52,24 +62,23 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     DLOG("  nis = {} : {}", nis, nis->type());
     DLOG("  is = {} : {}", is, is->type());
 
+    auto& w = new_world();
+
     auto nis_lit = Lit::isa<u64>(nis);
     if (!nis_lit) return nullptr;
     auto nis_nat = *nis_lit;
 
     struct InnerInfo {
         bool fusible    = false;
-        const Def* subs = nullptr;
         const Def* comb = nullptr;
         const Def* init = nullptr;
         const Def* Tis  = nullptr;
         const Def* Ris  = nullptr;
         const Def* Sis  = nullptr;
         const Def* To   = nullptr;
+        const Def* maps = nullptr;
         u64 nis         = 0;
         const Def* is   = nullptr;
-        Vector<u64> Ris_nats;
-        u64 outer_Ris_nat     = 0;
-        const Def* outer_subs = nullptr;
     };
 
     Vector<InnerInfo> infos(nis_nat);
@@ -80,62 +89,43 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto inner   = Axm::isa<tensor::map_reduce>(input_k);
         if (!inner) continue;
 
-        auto [inner_nis, inner_ToRo, inner_So, inner_TisRisSis, inner_comb_init, inner_subs, inner_is]
-            = inner->uncurry_args<7>();
+        auto [inner_nis, inner_meta, inner_shapes, inner_TisRisSis, inner_comb_init, inner_map_out, inner_maps,
+              inner_is]                       
+            = inner->uncurry_args<8>();
+        auto [inner_To, inner_Ro, inner_Rr]    = inner_meta->projs<3>();
+        auto [inner_So, inner_Sr]              = inner_shapes->projs<2>();
         auto [inner_comb, inner_init]          = inner_comb_init->projs<2>();
         auto [inner_Tis, inner_Ris, inner_Sis] = inner_TisRisSis->projs<3>();
-        auto [inner_To, inner_Ro]              = inner_ToRo->projs<2>();
 
         auto inner_nis_nat = Lit::isa<u64>(inner_nis);
-        auto inner_Ro_nat  = Lit::isa<u64>(inner_Ro);
-        if (!inner_nis_nat || !inner_Ro_nat) continue;
+        if (!inner_nis_nat) continue;
 
-        // We can only fuse when the inner has no reduction dimensions, i.e. all subs are < Ro_i.
-        // In that case the inner tensor at any position is just a single call of `inner_comb`.
-        Vector<u64> inner_Ris_nats(*inner_nis_nat);
-        bool fusible = true;
-        for (u64 l = 0; l < *inner_nis_nat && fusible; ++l) {
-            auto Ris_l_lit = Lit::isa<u64>(inner_Ris->proj(*inner_nis_nat, l));
-            if (!Ris_l_lit) {
-                fusible = false;
-                break;
-            }
-            inner_Ris_nats[l] = *Ris_l_lit;
-            auto inner_subs_l = inner_subs->proj(*inner_nis_nat, l);
-            for (u64 j = 0; j < inner_Ris_nats[l]; ++j) {
-                auto idx_lit = Lit::isa<u64>(inner_subs_l->proj(inner_Ris_nats[l], j));
-                if (!idx_lit || *idx_lit >= *inner_Ro_nat) {
-                    fusible = false;
-                    break;
-                }
-            }
-        }
-        if (!fusible) continue;
+        // We can only fuse when the inner has no reduction loops and writes every cell of its full
+        // loop domain through the identity output map. In that case the inner tensor at any
+        // position is just a single call of `inner_comb` at that position.
+        // The identity map (`%affine.id`) is recognized structurally (a lam returning its own var),
+        // since the rewrite into this phase's world rebuilds mutables and breaks pointer equality.
+        auto inner_rr = Lit::isa<u64>(inner_Rr);
+        if (!inner_rr || *inner_rr != 0) continue;
+        if (inner_Sr != inner_So) continue;
+        auto id_lam = inner_map_out->isa_mut<Lam>();
+        if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) continue;
 
-        // We need the outer subs for input `k` to be indexable by literal positions.
-        auto Ris_k_lit = Lit::isa<u64>(Ris->proj(nis_nat, k));
-        if (!Ris_k_lit) continue;
-
-        auto& info         = infos[k];
-        info.fusible       = true;
-        info.subs          = inner_subs;
-        info.comb          = inner_comb;
-        info.init          = inner_init;
-        info.Tis           = inner_Tis;
-        info.Ris           = inner_Ris;
-        info.Sis           = inner_Sis;
-        info.To            = inner_To;
-        info.nis           = *inner_nis_nat;
-        info.is            = inner_is;
-        info.Ris_nats      = std::move(inner_Ris_nats);
-        info.outer_Ris_nat = *Ris_k_lit;
-        info.outer_subs    = subs->proj(nis_nat, k);
-        any_fusible        = true;
+        auto& info   = infos[k];
+        info.fusible = true;
+        info.comb    = inner_comb;
+        info.init    = inner_init;
+        info.Tis     = inner_Tis;
+        info.Ris     = inner_Ris;
+        info.Sis     = inner_Sis;
+        info.To      = inner_To;
+        info.maps    = inner_maps;
+        info.nis     = *inner_nis_nat;
+        info.is      = inner_is;
+        any_fusible  = true;
     }
 
     if (!any_fusible) return nullptr;
-
-    auto& w = new_world();
 
     // Each fusible outer input k is replaced by `infos[k].nis` slots in the fused input list;
     // every non-fusible input retains exactly one slot. `new_pos[i]` is the start of input i's
@@ -150,35 +140,29 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     DefVec new_Tis_vec(new_nis_nat);
     DefVec new_Ris_vec(new_nis_nat);
     DefVec new_Sis_vec(new_nis_nat);
-    DefVec new_subs_vec(new_nis_nat);
+    DefVec new_maps_vec(new_nis_nat);
     DefVec new_is_vec(new_nis_nat);
 
     for (u64 i = 0; i < nis_nat; ++i) {
         if (infos[i].fusible) {
             const auto& info = infos[i];
+            auto outer_map_i = maps->proj(nis_nat, i);
             for (u64 l = 0; l < info.nis; ++l) {
                 auto pos         = new_pos[i] + l;
                 new_Tis_vec[pos] = info.Tis->proj(info.nis, l);
                 new_Ris_vec[pos] = info.Ris->proj(info.nis, l);
                 new_Sis_vec[pos] = info.Sis->proj(info.nis, l);
                 new_is_vec[pos]  = info.is->proj(info.nis, l);
-
-                auto inner_subs_l = info.subs->proj(info.nis, l);
-                DefVec subs_l_vec(info.Ris_nats[l]);
-                for (u64 j = 0; j < info.Ris_nats[l]; ++j) {
-                    // The inner refers to one of its own output indices; remap that into the
-                    // outer index space via the outer subs at position `i`.
-                    auto inner_idx = *Lit::isa(inner_subs_l->proj(info.Ris_nats[l], j));
-                    subs_l_vec[j]  = rewrite(info.outer_subs->proj(info.outer_Ris_nat, inner_idx));
-                }
-                new_subs_vec[pos] = w.tuple(subs_l_vec);
+                // The inner reads at its own output coordinates; those are the outer's read
+                // coordinates for input i, so the fused access map is the composition.
+                new_maps_vec[pos] = compose_map(w, info.maps->proj(info.nis, l), outer_map_i);
             }
         } else {
             auto pos          = new_pos[i];
             new_Tis_vec[pos]  = Tis->proj(nis_nat, i);
             new_Ris_vec[pos]  = Ris->proj(nis_nat, i);
             new_Sis_vec[pos]  = Sis->proj(nis_nat, i);
-            new_subs_vec[pos] = subs->proj(nis_nat, i);
+            new_maps_vec[pos] = maps->proj(nis_nat, i);
             new_is_vec[pos]   = is->proj(nis_nat, i);
         }
     }
@@ -186,7 +170,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     auto new_Tis  = w.tuple(new_Tis_vec);
     auto new_Ris  = w.tuple(new_Ris_vec);
     auto new_Sis  = w.tuple(new_Sis_vec);
-    auto new_subs = w.tuple(new_subs_vec);
+    auto new_maps = w.tuple(new_maps_vec);
     auto new_is   = w.tuple(new_is_vec);
 
     auto new_nis_def = w.lit_nat(new_nis_nat);
@@ -255,14 +239,15 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     // After every inner combiner has produced its value, call the outer combiner.
     inner_rets.back()->app(true, comb, {w.tuple({new_acc, w.tuple(outer_inputs_vec)}), new_ret});
 
-    // Construct the fused map_reduce.
+    // Construct the fused map_reduce; the loop domain, output map and init are the outer's.
     auto mr = w.annex<tensor::map_reduce>();
     mr      = w.app(mr, new_nis_def);
-    mr      = w.app(mr, {To, Ro});
-    mr      = w.app(mr, So);
+    mr      = w.app(mr, meta);
+    mr      = w.app(mr, shapes);
     mr      = w.app(mr, {new_Tis, new_Ris, new_Sis});
     mr      = w.app(mr, {new_comb, init});
-    mr      = w.app(mr, new_subs);
+    mr      = w.app(mr, map_out);
+    mr      = w.app(mr, new_maps);
     mr      = w.app(mr, new_is);
 
     return mr;
