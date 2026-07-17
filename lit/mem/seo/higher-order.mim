@@ -6,15 +6,15 @@ plugin core;
 cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
 cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Nat]: [%mem.M 0];
 
-let H = Cn [%mem.M 0, Nat, Cn [%mem.M 0, Nat]];
+let H = Fn [%mem.M 0, Nat] →  [%mem.M 0, Nat];
 
-con h (mem: %mem.M 0, n: Nat, return: Cn [%mem.M 0, Nat]) =
+fun h (mem: %mem.M 0, n: Nat): [%mem.M 0, Nat] =
     return (mem, %core.nat.mul (n, n));
 
-con g (mem: %mem.M 0, h: H, return: Cn [%mem.M 0, Nat]) =
-    h (mem, 23, cn (mem, res1) =
-        h (mem, 23, cn (mem, res2) =
-            return (mem, %core.nat.add (res1, res2))));
+fun g (mem: %mem.M 0, h: H): [%mem.M 0, Nat] =
+    ret (mem, res1) = h $ (mem, 23);
+    ret (mem, res2) = h $ (mem, 23);
+    return (mem, %core.nat.add (res1, res2));
 
 fun extern f (mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
     let (mem, ph) = %mem.slot (H,   0) (mem, 0);
@@ -28,12 +28,12 @@ fun extern f (mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
                 con body (mem: %mem.M 0) =
                     let (mem, vh) = %mem.load (mem, ph);
                     let (mem, vr) = %mem.load (mem, pr);
-                    g (mem, vh, cn (mem, res1) =
-                        g (mem, vh, cn (mem, res2) =
-                            let add = %core.nat.add (vr, res1);
-                            let add = %core.nat.add (add, res2);
-                            let mem = %mem.store (mem, pr, add);
-                            head mem));
+                    ret (mem, res1) = g $ (mem, vh);
+                    ret (mem, res2) = g $ (mem, vh);
+                    let add = %core.nat.add (vr, res1);
+                    let add = %core.nat.add (add, res2);
+                    let mem = %mem.store (mem, pr, add);
+                    head mem;
 
                 con exit(mem: %mem.M 0) =
                     let (mem, vr) = %mem.load (mem, pr);
@@ -45,6 +45,7 @@ lam extern _compile(): %compile.Phase =
     %compile.phases ff (
         %compile.internal_cleanup,
         %compile.phases tt (
+            %compile.scalarize,
             %compile.phases tt (
                 %compile.beta_red,
                 %compile.eta_conv,
