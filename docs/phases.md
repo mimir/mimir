@@ -103,10 +103,21 @@ The lattice follows these conventions:
 The high-level writers are [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top); read access is available via [`lattice(def)`](@ref mim::Analysis::lattice) or the full map returned by [`lattice()`](@ref mim::Analysis::lattice).
 Analysis-specific sentinels should be ordinary `Def`s - e.g. a dedicated [`Proxy`](@ref mim::Proxy) tag, as SEO uses for its GVN and pending-⊤ markers - never `nullptr`, which is reserved for *absent*.
 
-@note [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top) do double duty on purpose: besides recording the fact, they seed the rewriter map so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` short-circuits to `abstr`.
-That is exactly what a *propagating* analysis wants.
-An analysis whose facts must **not** drive substitution - e.g. a "keep this parameter as-is" marker that would corrupt a same-world traversal if it were installed as a rewrite - should use [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force) instead: it writes *only* the lattice (never the rewriter map), tolerates **non-monotone** updates such as restarting a join from scratch, and [`invalidate`s](@ref mim::Phase::invalidate) iff the stored value changed - where, unlike [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), a fresh ⊤ *does* count as a change, since a non-monotone lattice's consumers may well distinguish ⊥ from ⊤.
-(The in-tree `Scalarize` analysis does exactly this: it keys a per-parameter *keep-whole* bitmask on the immutable `Pi` type itself - a stable, hash-consed key - and stores `pi ↦ pi` as the ⊤ sentinel for a fully pinned signature.)
+
+The methods [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) and [`pin_top()`](@ref mim::Analysis::pin_top) intentionally do two things at once.
+Besides recording a lattice fact, they also seed the rewriter map, so a later [`rewrite()`](@ref mim::Rewriter::rewrite) of `concr` immediately returns `abstr`.
+This is exactly the behavior a *propagating* analysis wants.
+
+Analyses whose lattice facts must **not** affect rewriting should use [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force) instead.
+A typical example is a "keep this parameter as-is" marker:
+installing such a fact into the rewriter would corrupt a same-world traversal.
+Unlike [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), [`lattice_force(concr, abstr)`](@ref mim::Analysis::lattice_force):
+- updates **only** the lattice, never the rewriter map,
+- permits **non-monotone** updates (for example, restarting a join from scratch), and
+- [`invalidate`s](@ref mim::Phase::invalidate) iff the stored lattice value actually changed. Unlike [`lattice(concr, abstr)`](@ref mim::Analysis::lattice), a fresh ⊤ *does* count as a change, since consumers of a non-monotone lattice may distinguish ⊥ from ⊤.
+
+The in-tree `Scalarize` analysis is an example of this pattern.
+It stores a per-parameter *keep-whole* bitmask keyed by the immutable `Pi` type itself (a stable, hash-consed key), using `pi ↦ pi` as the ⊤ sentinel for a fully pinned signature.
 
 ### Handling of Mutables
 
@@ -124,18 +135,21 @@ Breadth-first traversal is safe here precisely because an [`Analysis`](@ref mim:
 2. records the mutable as visited via `mut -> mut`, and
 3. **enqueues** it on the worklist — it does *not* recurse into the body itself.
 
-Once a batch of roots has been scheduled, [`Analysis::drain()`](@ref mim::Analysis) pops mutables from the worklist and, for each, enters it for [`curr_mut()`](@ref mim::Analysis::curr_mut) tracking and rewrites its [dependencies](@ref mim::Def::deps).
+Once a batch of roots has been scheduled, [`Analysis::drain()`](@ref mim::Analysis) pops mutables from the worklist and, for each, enters it for [`curr_mut()`](@ref mim::Rewriter::curr_mut) tracking and rewrites its [dependencies](@ref mim::Def::deps).
 Rewriting those dependencies schedules any further mutables it reaches, so the worklist drains in breadth-first order.
 
 The `mut -> mut` entry recorded in step 2 doubles as the per-round *"already scheduled"* marker: it lives in the rewriter map (see [`lookup()`](@ref mim::Rewriter::lookup)), which [`reset()`](@ref mim::Analysis::reset) clears at the start of every round.
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
+
+@warning Because [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) enqueues instead of dispatching by node, the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) are **never invoked** for an [`Analysis`](@ref mim::Analysis).
+Override [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) itself (or the `rewrite_imm_*` hooks, which dispatch as usual) instead.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
 [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
 
 ### Fixed-Point Iteration
 
-Every round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) rewrites all annex roots, drains the worklist, then does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
+Every round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all annex roots, drains the worklist, does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
 Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry it [`invalidate`s](@ref mim::Phase::invalidate), requesting another round; the analysis reruns until a whole-world round leaves the lattice unchanged.
 
 ### Reset Between Iterations
@@ -252,7 +266,7 @@ auto phases = mim::Phases();
 phases.emplace_back(std::make_unique<PhaseA>(world));
 phases.emplace_back(std::make_unique<PhaseB>(world));
 
-mim::PhaseMan man(world, mim::plug::compile::phases);
+mim::PhaseMan man(world, mim::Annex::base<mim::plug::compile::phases>());
 man.apply(/*fixed_point=*/true, std::move(phases));
 man.run();
 ```
@@ -502,9 +516,11 @@ public:
     size_t num_lams = 0;
 
 private:
-    const mim::Def* rewrite_mut_Lam(mim::Lam* lam) override {
-        ++num_lams;
-        return mim::Analysis::rewrite_mut_Lam(lam);
+    // Note: override rewrite_mut - the node-specific rewrite_mut_* hooks are not dispatched
+    // for an Analysis (see "Handling of Mutables").
+    mim::Def* rewrite_mut(mim::Def* mut) override {
+        if (!lookup(mut) && mut->isa_mut<mim::Lam>()) ++num_lams; // count on first visit only
+        return mim::Analysis::rewrite_mut(mut);
     }
 };
 ```
