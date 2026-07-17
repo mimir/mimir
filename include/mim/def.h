@@ -749,7 +749,7 @@ public:
 
     /// The binder of this Var.
     /// It is *not* an official Def::op but stored in Def::binder_, so it is out of the operand graph but still hashed.
-    Def* binder() const { return binder_->as_mut(); }
+    Def* binder() const { return binder_; }
     const Def* type() const { return binder()->var_type(); }
 
     static constexpr auto Node      = mim::Node::Var;
