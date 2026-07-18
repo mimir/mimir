@@ -24,7 +24,7 @@ void BetaRed::visit(const Def* def, bool candidate) {
 
 const Def* BetaRed::rewrite_imm_App(const App* app) {
     if (auto old_lam = app->callee()->isa_mut<Lam>(); old_lam && old_lam->is_set() && is_candidate(old_lam)) {
-        DLOG("beta-reduce: `{}`", old_lam);
+        profile_count("β-reduction");
         if (auto var = old_lam->has_var()) {
             auto new_arg = rewrite(app->arg());
             map(var, new_arg);

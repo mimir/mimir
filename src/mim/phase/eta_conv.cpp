@@ -45,6 +45,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
         if (auto f = lam->eta_reduce()) {
             // η-redex `λx.f x`: reduce unless `f` wants to stay expanded.
             if (!keep_wrapper(f)) {
+                profile_count("η-reduction");
                 DLOG("eta-reduce: `{}` → `{}`", lam, f);
                 invalidate();
                 return rewrite(f);
@@ -54,6 +55,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
             return Lam::eta_expand(rewrite_no_eta(f));
         } else if (eta_expand(lam)) {
             // bare Lam used in an unknown position more than once or in both positions: η-expand.
+            profile_count("η-expansion");
             auto eta = Lam::eta_expand(rewrite_no_eta(lam));
             DLOG("eta-expand: `{}` → `{}`", lam, eta);
             invalidate();

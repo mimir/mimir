@@ -4,8 +4,6 @@
 
 #include <mim/lam.h>
 
-#include "mim/util/util.h"
-
 #include "mim/plug/mem/mem.h"
 
 namespace mim::plug::mem::phase {
@@ -17,8 +15,9 @@ namespace mim::plug::mem::phase {
 enum {
     Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
-    Proxy_Sloxy,    // proxy(lam, ptr)                   <- ptr is the slot continuation's ptr var
-    Proxy_Phi,      // proxy(lam, sloxy)
+    Proxy_Sloxy,    // proxy(lam, ptr)                   <- slot invoked at lam where ptr is the slot continuation's ptr
+                    // var
+    Proxy_Phi,      // proxy(lam, sloxy)                 <- phi we need at lam for sloxy
 };
 
 static size_t idx_of(Defs vars, const Def* p) {
@@ -422,6 +421,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 
         if (isa_optimized_sloxy(ptr)) {
             // The slot was promoted away: jump straight to the (rebuilt) continuation, dropping the ptr var.
+            profile_count("seo.slots.eliminated");
             assert(!analysis_.unknowns().contains(ret_lam)); // promoted -> ret_lam was never reached as a value
             auto& phis    = phis_of(ret_lam);
             auto new_lam  = build_lam(phis, ret_lam);
@@ -558,6 +558,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     for (auto [sloxy, phi, val] : phis) {
         if (keep(old_lam, phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
+            profile_count("phis.materialized");
             DLOG("mapping phi {} to {}", phi, v);
             map(phi, v);
             if (val != phi) map(val, v); // phi is part of a GVN bundle
@@ -569,6 +570,10 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
         if (!keeps[i]) {
             auto old_var = old_lam->var(num_old, i);
             auto abstr   = lattice(old_var);
+            if (isa_bundle(abstr, old_lam))
+                profile_count("seo.gvn.vars_merged");
+            else if (!Proxy::isa<Proxy_Sloxy>(abstr))
+                profile_count("seo.sccp.vars_eliminated");
             // A dropped slot ptr (a promoted stack slot) carries no value: map it to ⊥.
             auto new_def = Proxy::isa<Proxy_Sloxy>(abstr) ? new_world().bot(rewrite(old_lam->dom(num_old, i)))
                                                           : rewrite(abstr); // SCCP propagate
