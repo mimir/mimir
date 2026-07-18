@@ -52,21 +52,46 @@ void Analysis::reset() {
 }
 
 void Analysis::start() {
+    curr_sparse_ = !dense_ && !nonlocal_ && !dirty_.empty();
+    nonlocal_    = false;
+    auto seeds   = Vector<Def*>(dirty_.begin(), dirty_.end());
+    dirty_.clear();
+
     prepare();
 
-    for (const auto& [flags, e] : world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
-    drain();
+    if (curr_sparse_) {
+        VLOG("sparse round: re-draining {} dirty muts", seeds.size());
+        std::ranges::sort(seeds, GIDLt<Def*>()); // MutSet iteration order is nondeterministic
 
-    bootstrapping_ = false;
+        // Replay the lattice into the fresh rewriter map: this re-installs the substitutions that
+        // non-revisited producers wrote in earlier rounds - except for mutables, whose map entry
+        // doubles as the per-round "already scheduled" marker and would suppress their drain.
+        for (auto [concr, abstr] : lattice_)
+            if (!concr->isa_mut()) map(concr, abstr);
 
-    for (auto mut : world().externals().muts())
-        rewrite_external(mut);
-    drain();
+        for (auto mut : seeds)
+            rewrite(mut);
+        drain();
+    } else {
+        for (const auto& [flags, e] : world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+        drain();
 
-    finalize();
+        bootstrapping_ = false;
 
+        for (auto mut : world().externals().muts())
+            rewrite_external(mut);
+        drain();
+
+        finalize();
+    }
+
+    profile_count(curr_sparse_ ? "rounds.sparse" : "rounds.full");
     profile_count("muts.drained", std::exchange(num_drained_, size_t(0)));
+
+    // A quiet sparse round only certifies the muts it visited:
+    // force one full round; the fixed point counts only if that one stays quiet, too.
+    if (curr_sparse_ && !todo()) invalidate();
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }

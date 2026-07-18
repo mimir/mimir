@@ -69,6 +69,10 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // The `⊥` case MUST also mark first_;
     // otherwise the *second* site would take this branch, resetting away this first contribution and
     // letting `var` settle on a later site's value instead of climbing to ⊤.
+    // This restart is only sound if the round re-joins *all* of lam's call sites - otherwise a sparse round
+    // would discard the unvisited sites' contributions, e.g. re-fold a loop's backedge increment forever
+    // without ever meeting the entry's conflicting constant.
+    // apply_known() guarantees this: any change to lam's abstract vars taints all of lam's callers.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
         lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
@@ -219,7 +223,10 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     auto n = abstr_targs.size();
     assert(n == known->num_tvars());
     DLOG("known edge: {} -> {}", curr_mut(), known);
+    if (auto mut = curr_mut()) lam2callers_[known].emplace(mut);
     rewrite(known); // enqueue so its body is drained this round; a no-op if already scheduled
+
+    auto v = version();
 
     DefVec all_vars(n, [&](size_t i) { return known->tvar(i); });
     DefVec all_abstr_args(abstr_targs.begin(), abstr_targs.end());
@@ -237,6 +244,13 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
 
     for (size_t i = n, e = all_vars.size(); i != e; ++i)
         lattice(all_vars[i], all_abstr_vars[i]);
+
+    // Something about known's abstract vars/phis changed: the next round must re-join them from *all* call
+    // sites - sccp_join's first_-restart discards any unvisited site's contribution, so re-visiting only the
+    // writer would be unsound in a sparse round (e.g. it would constant-fold a loop's backedge forever).
+    if (version() != v)
+        for (auto caller : lam2callers_[known])
+            taint(caller);
 
     return world().app(known, all_abstr_args.span().subspan(0, n));
 }

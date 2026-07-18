@@ -90,7 +90,8 @@ private:
         // global (kept between iterations)
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
-        LamSet unknowns_; // Lam%s reached as a *value*; their signature must stay untouched
+        LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
+        LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
 
 public:

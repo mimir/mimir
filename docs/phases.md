@@ -134,10 +134,20 @@ Override [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) itself (or the `rewr
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then simply [`rewrite()`](@ref mim::Rewriter::rewrite) the callee: this schedules the callee (or is a no-op if already scheduled) so its body is walked later during the drain, by which point the seeded facts — and any joins contributed by sibling call sites — are in place.
 [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) conveniently pairs the two writes (lattice and rewriter map) that arise in this seeding pattern.
 
-### Fixed-Point Iteration
+### Sparse Fixed-Point Iteration
 
-Every round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all annex roots, drains the worklist, does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
-Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry it [`invalidate`s](@ref mim::Phase::invalidate), requesting another round; the analysis reruns until a whole-world round leaves the lattice unchanged.
+A **full** round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all annex roots, drains the worklist, does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
+Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry it [`invalidate`s](@ref mim::Phase::invalidate), requesting another round, and records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as *dirty*.
+
+Only the first round (and certification rounds, see below) is full; a follow-up round is **sparse**: it re-drains only the dirty mutables — plus everything reachable from them — instead of walking the whole World.
+At the start of a sparse round the accumulated lattice is replayed into the rewriter map, so a dirty mutable's body sees the substitutions its (non-revisited) producers installed in earlier rounds.
+An analysis can [`taint()`](@ref mim::Analysis::taint) additional mutables when a change must re-visit more than the writer — e.g. SEO taints all call sites of a `Lam` whose abstract vars changed, which keeps its per-round join restart sound.
+A change that cannot be attributed to any mutable (during the annex walk or [`finalize()`](@ref mim::Analysis::finalize)) forces the next round to be full.
+
+Since dirt tracks *writers* — not readers — a sparse round may miss affected mutables.
+Hence, once sparse rounds quiesce, one final **full** round certifies the fixed point; if it discovers new facts, iteration continues sparsely from its dirt.
+Only full rounds run [`finalize()`](@ref mim::Analysis::finalize), so post-passes always see the complete abstract World.
+Use [`make_dense()`](@ref mim::Analysis::make_dense) to force whole-World rounds unconditionally.
 
 ### Reset Between Iterations
 
@@ -338,7 +348,7 @@ The join in `propagate()` is expressed entirely through the lattice API:
 No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`lattice(concr, abstr)`](@ref mim::Analysis::lattice).
 
 The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
-Whenever this changes the lattice, the analysis reruns until stable.
+Whenever this changes the lattice, the analysis reruns until stable - sparsely, re-draining only the dirty mutables in between full rounds.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
 - walk the old IR,

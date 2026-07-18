@@ -128,6 +128,14 @@ protected:
 /// 2. all World::externals() (during which it is `false`).
 ///
 /// Analysis provides a reusable lattice() mapping old Def%s to abstract values, represented as ordinary MimIR Def%s.
+///
+/// Fixed-point iteration is *sparse* by default:
+/// whenever a lattice write changes observable information, the mutable currently being drained is recorded as *dirty*.
+/// The next round then re-drains only those dirty mutables - plus everything reachable from them - instead of walking
+/// the whole World. At the start of such a round, the accumulated lattice() is replayed into the rewriter map, so a
+/// dirty mutable's body sees the substitutions its (non-revisited) producers installed in earlier rounds. Since dirt
+/// tracks *writers* - not readers - a sparse round may miss affected mutables; hence, once sparse rounds quiesce, one
+/// final **full** round certifies the fixed point.
 /// @note You can override
 /// - Rewriter::rewrite(),
 /// - Rewriter::rewrite_imm(),
@@ -148,6 +156,7 @@ public:
     /// Clears the rewriter map and resets Phase::todo() for the next fixed-point iteration.
     /// lattice() is **preserved** across iterations so that abstract values accumulated in earlier
     /// rounds remain available - this is what makes fixed-point convergence possible.
+    /// The dirty set survives as well; start() consumes it to decide whether the round can be sparse.
     /// @see RWPhase::analyze
     virtual void reset();
     ///@}
@@ -156,6 +165,16 @@ public:
     ///@{
     using Phase::world; ///< Disambiguates the Phase/Rewriter double base; for an Analysis both denote the same World.
     bool is_bootstrapping() const { return bootstrapping_; }
+    ///@}
+
+    /// @name Sparse Fixed-Point Iteration
+    ///@{
+    bool is_sparse() const {
+        return curr_sparse_;
+    } ///< Does the current round only re-drain last round's dirty mutables?
+    void make_dense() { dense_ = true; } ///< Forces whole-World rounds unconditionally.
+    /// Bumped on every observable lattice change; snapshot it around a code region to detect changes.
+    size_t version() const { return version_; }
     ///@}
 
     /// @name lattice
@@ -181,11 +200,11 @@ protected:
     /// @name lattice
     ///@{
 
-    /// **Non-monotone** write of `concr ↦ abstr` into lattice() - and *only* the lattice; map() is **not** seeded.
-    /// This is the escape hatch for analyses that must overwrite an earlier round's value (descending from ⊤ is fine)
-    /// or that must not feed the Rewriter (e.g. sentinel encodings that are no valid substitutes).
+    /// **Non-monotone** write of `concr ↦ abstr` into lattice() and map().
+    /// This is the escape hatch for analyses that must overwrite an earlier round's value (descending from ⊤ is fine).
     /// invalidate()s iff the stored value changed; an *absent* entry counts as changed - even for ⊤ -
     /// since a non-monotone lattice's consumers may well distinguish ⊥ from ⊤.
+    /// Every change also touch()es curr_mut() - the seed set of the next sparse round.
     /// @returns `true` iff this changed the entry - i.e. iff it invalidate()d.
     bool lattice_force(const Def* concr, const Def* abstr) {
         map(concr, abstr);
@@ -194,31 +213,43 @@ protected:
             if (i->second == abstr) return false;
             i->second = abstr;
         }
-        return invalidate(), true;
+        return touch(), true;
     }
 
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
+    /// Every change also touch()es curr_mut() - the seed set of the next sparse round.
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool lattice(const Def* concr, const Def* abstr) {
-#ifndef NDEBUG
-        auto old = lattice(concr);
-        assert((old != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
-#endif
-        return lattice_force(concr, abstr);
+        map(concr, abstr);
+
+        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
+            assert((i->second != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
+            if (i->second == abstr) return false;
+            i->second = abstr;
+        } else if (concr == abstr) {
+            return false;
+        }
+        return touch(), true;
     }
 
     /// Monotonically forces @p def to ⊤ (keep as is).
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool pin(const Def* def) { return lattice(def, def); }
+
+    /// Additionally schedules @p mut for the next sparse round.
+    /// Use this when a lattice change must re-visit *other* mutables than curr_mut() -
+    /// e.g. all call sites of a Lam whose var's abstract value changed.
+    void taint(Def* mut) { dirty_.emplace(mut); }
     ///@}
 
     /// @name Rewrite
     ///@{
-    virtual void prepare() {}  ///< Run **before** the main analysis.
-    virtual void finalize() {} ///< Run **after** the main analysis.
+    virtual void prepare() {} ///< Run **before** the main analysis.
+    /// Run **after** the main analysis - only in **full** rounds, so it always sees the complete abstract World.
+    virtual void finalize() {}
     void start() override;
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
@@ -232,11 +263,28 @@ protected:
     ///@}
 
 private:
+    /// Observable lattice information changed: records curr_mut() as *dirty* - the seed set of the next sparse
+    /// round - and invalidate()s. Outside of any mutable (annex walk, finalize()) the change cannot be
+    /// attributed to a mutable; then the next round falls back to a full one.
+    void touch() {
+        ++version_;
+        if (auto mut = curr_mut())
+            dirty_.emplace(mut);
+        else
+            nonlocal_ = true;
+        invalidate();
+    }
+
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
 
     Def2Def lattice_;
     std::deque<Def*> worklist_;
+    MutSet dirty_;               ///< Muts whose drain changed the lattice this round; seeds the next sparse round.
+    size_t version_     = 0;     ///< @see version()
+    bool nonlocal_      = false; ///< The lattice changed outside of any mut; the next round must be a full one.
+    bool curr_sparse_   = false; ///< Is the current round sparse?
+    bool dense_         = false; ///< @see make_dense()
     bool bootstrapping_ = true;
     size_t num_drained_ = 0; ///< muts drained this round; flushed into the Profiler
 };
