@@ -4,8 +4,6 @@
 
 #include <mim/lam.h>
 
-#include "mim/util/util.h"
-
 #include "mim/plug/mem/mem.h"
 
 namespace mim::plug::mem::phase {
@@ -17,8 +15,9 @@ namespace mim::plug::mem::phase {
 enum {
     Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
-    Proxy_Sloxy,    // proxy(lam, ptr)                   <- ptr is the slot continuation's ptr var
-    Proxy_Phi,      // proxy(lam, sloxy)
+    Proxy_Sloxy,    // proxy(lam, ptr)                   <- slot invoked at lam where ptr is the slot continuation's ptr
+                    // var
+    Proxy_Phi,      // proxy(lam, sloxy)                 <- phi we need at lam for sloxy
 };
 
 static size_t idx_of(Defs vars, const Def* p) {
@@ -69,9 +68,12 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // The `⊥` case MUST also mark first_;
     // otherwise the *second* site would take this branch, resetting away this first contribution and
     // letting `var` settle on a later site's value instead of climbing to ⊤.
+    // This restart is only sound if the round re-joins *all* of lam's call sites - otherwise a sparse round
+    // would discard the unvisited sites' contributions, e.g. re-fold a loop's backedge increment forever
+    // without ever meeting the entry's conflicting constant.
+    // apply_known() guarantees this: any change to lam's abstract vars taints all of lam's callers.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
-        map(var, def);
         lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
         return def;
     }
@@ -220,7 +222,10 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     auto n = abstr_targs.size();
     assert(n == known->num_tvars());
     DLOG("known edge: {} -> {}", curr_mut(), known);
+    if (auto mut = curr_mut()) lam2callers_[known].emplace(mut);
     rewrite(known); // enqueue so its body is drained this round; a no-op if already scheduled
+
+    auto v = version();
 
     DefVec all_vars(n, [&](size_t i) { return known->tvar(i); });
     DefVec all_abstr_args(abstr_targs.begin(), abstr_targs.end());
@@ -238,6 +243,13 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
 
     for (size_t i = n, e = all_vars.size(); i != e; ++i)
         lattice(all_vars[i], all_abstr_vars[i]);
+
+    // Something about known's abstract vars/phis changed: the next round must re-join them from *all* call
+    // sites - sccp_join's first_-restart discards any unvisited site's contribution, so re-visiting only the
+    // writer would be unsound in a sparse round (e.g. it would constant-fold a loop's backedge forever).
+    if (version() != v)
+        for (auto caller : lam2callers_[known])
+            taint(caller);
 
     return world().app(known, all_abstr_args.span().subspan(0, n));
 }
@@ -409,6 +421,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 
         if (isa_optimized_sloxy(ptr)) {
             // The slot was promoted away: jump straight to the (rebuilt) continuation, dropping the ptr var.
+            profile_count("seo.slots.eliminated");
             assert(!analysis_.unknowns().contains(ret_lam)); // promoted -> ret_lam was never reached as a value
             auto& phis    = phis_of(ret_lam);
             auto new_lam  = build_lam(phis, ret_lam);
@@ -545,6 +558,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     for (auto [sloxy, phi, val] : phis) {
         if (keep(old_lam, phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
+            profile_count("phis.materialized");
             DLOG("mapping phi {} to {}", phi, v);
             map(phi, v);
             if (val != phi) map(val, v); // phi is part of a GVN bundle
@@ -556,6 +570,10 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
         if (!keeps[i]) {
             auto old_var = old_lam->var(num_old, i);
             auto abstr   = lattice(old_var);
+            if (isa_bundle(abstr, old_lam))
+                profile_count("seo.gvn.vars_merged");
+            else if (!Proxy::isa<Proxy_Sloxy>(abstr))
+                profile_count("seo.sccp.vars_eliminated");
             // A dropped slot ptr (a promoted stack slot) carries no value: map it to ⊥.
             auto new_def = Proxy::isa<Proxy_Sloxy>(abstr) ? new_world().bot(rewrite(old_lam->dom(num_old, i)))
                                                           : rewrite(abstr); // SCCP propagate

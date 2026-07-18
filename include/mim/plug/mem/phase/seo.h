@@ -5,7 +5,7 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
-#include "mim/util/util.h"
+#include <mim/util/util.h>
 
 namespace mim::plug::mem::phase {
 
@@ -90,7 +90,8 @@ private:
         // global (kept between iterations)
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
-        LamSet unknowns_; // Lam%s reached as a *value*; their signature must stay untouched
+        LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
+        LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
 
 public:
@@ -109,6 +110,7 @@ private:
         const Def* val;
     };
 
+    /// Was the SSA construction able to eliminate this sloxy?
     const Def* isa_optimized_sloxy(const Def*) const;
     /// The (memoized) live phis of @p old_lam.
     const Vector<Phi>& phis_of(Lam* old_lam);
