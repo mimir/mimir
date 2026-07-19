@@ -3,13 +3,14 @@
 import mem;
 import spirv;
 import vec;
+import math;
 
 let F32 = %math.F32;
 
 let positions = (
-    (0.0:F32, -0.5:F32),
-    (0.5:F32, 0.5:F32),
-    (-0.5:F32, 0.5:F32),
+    (0.0:F32, -0.5:F32, 0.0:F32, 1.0:F32),
+    (0.5:F32, 0.5:F32, 0.0:F32, 1.0:F32),
+    (-0.5:F32, 0.5:F32, 0.0:F32, 1.0:F32),
 );
 
 let colors = (
@@ -18,14 +19,29 @@ let colors = (
     (0.0:F32, 0.0:F32, 1.0:F32),
 );
 
+// Push-constant camera block: `mvp` (mat4) + `tint` (vec4), matching std430-ish
+// layout (mat4 columns are 16-byte aligned, so `tint` starts right after at
+// offset 64). Never a single-field block: a 1-field Sigma collapses to its
+// bare element (Mim's arity-1 rule), which would silently stop being a
+// struct and break Block/MemberDecorate.
+let push = %spirv.variable %spirv.storage.PUSH_CONSTANT
+    (%spirv.decorc.block,
+     %spirv.decor_member 0 (%spirv.decor.offset 0),
+     %spirv.decor_member 0 %spirv.decorc.col_major,
+     %spirv.decor_member 0 (%spirv.decor.matrix_stride 16),
+     %spirv.decor_member 1 (%spirv.decor.offset 64))
+    [mvp: «4; «4; F32»», tint: «4; F32»];
+
 lam vertex_body [mem: %mem.M 0] (vert_id: Idx 3): [%mem.M 0, «4; F32», «3; F32»]
-    = let pos_var = %spirv.variable %spirv.storage.FUNCTION () «3; «2; F32»»;
+    = let pos_var = %spirv.variable %spirv.storage.FUNCTION () «3; «4; F32»»;
       let mem = %spirv.store (mem, pos_var, positions);
       let (mem, pos) = %spirv.load (mem, %spirv.access_chain (tt) (vert_id) pos_var);
       let col_var = %spirv.variable %spirv.storage.FUNCTION () «3; «3; F32»»;
       let mem = %spirv.store (mem, col_var, colors);
       let (mem, col) = %spirv.load (mem, %spirv.access_chain (tt) (vert_id) col_var);
-      (mem, %vec.cat (pos, (0.0:F32, 1.0:F32)), col);
+      let (mem, pc) = %spirv.load (mem, push);
+      let transformed = %spirv.mat_vec_mul (pc#(0:(Idx 2)), pos);
+      (mem, transformed, col);
 
 lam fragment_body [color: «3; F32»]: «4; F32»
     = (%vec.cat (color, 1.0:F32));
@@ -51,5 +67,7 @@ fun extern fragment [
 
 // CHECK-DAG: OpEntryPoint Vertex
 // CHECK-DAG: OpEntryPoint Fragment
-// CHECK-DAG: OpAccessChain
-// CHECK-DAG: OpAccessChain
+// CHECK-DAG: OpDecorate {{.*}} Block
+// CHECK-DAG: OpMemberDecorate {{.*}} ColMajor
+// CHECK-DAG: OpMemberDecorate {{.*}} MatrixStride 16
+// CHECK-DAG: OpMatrixTimesVector

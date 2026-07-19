@@ -71,7 +71,14 @@ void Emitter::visit(const Nest& nest) {
                 ret_var_ = root()->var(i);
                 break;
             }
-    assert(ret_var_ && "function has neither a CPS ret var nor an %scf.Ret parameter");
+    if (!ret_var_) {
+        // Not a genuine runtime entry/continuation -- e.g. a purely
+        // type-level recursive helper (like `make_Ts`/`chain_extract` from
+        // %spirv.access_chain's dependent-type computation) that stays
+        // around as a mutable Def because it can't be fully reduced away,
+        // but is never actually called at runtime. Nothing to emit.
+        return;
+    }
 
     Scheduler new_scheduler(nest);
     swap(scheduler_, new_scheduler);

@@ -201,6 +201,7 @@ std::string name(int storage_class) {
         case Output: return "Output"s;
         case Private: return "Private"s;
         case Function: return "Function"s;
+        case PushConstant: return "PushConstant"s;
         default: fe::unreachable();
     }
 }
@@ -212,6 +213,7 @@ StorageClass from_mim(spirv::storage s) {
         case spirv::storage::OUTPUT: return Output;
         case spirv::storage::PRIVATE: return Private;
         case spirv::storage::FUNCTION: return Function;
+        case spirv::storage::PUSH_CONSTANT: return PushConstant;
         default: fe::unreachable();
     }
 }
@@ -223,8 +225,11 @@ namespace decoration {
 std::string name(int decoration) {
     switch (decoration) {
         case Block: return "Block"s;
+        case ColMajor: return "ColMajor"s;
+        case MatrixStride: return "MatrixStride"s;
         case BuiltIn: return "BuiltIn"s;
         case Location: return "Location"s;
+        case Offset: return "Offset"s;
         default: fe::unreachable();
     }
 }

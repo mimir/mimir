@@ -16,6 +16,17 @@ const Def* isa_ret(const Def* def) {
     return nullptr;
 }
 
+bool isa_scf_fn(const Def* pi_) {
+    auto pi = pi_->isa<Pi>();
+    if (!pi) return false;
+    if (auto sigma = pi->dom()->isa<Sigma>()) {
+        for (auto field : sigma->projs())
+            if (isa_ret(field)) return true;
+        return false;
+    }
+    return isa_ret(pi->dom()) != nullptr;
+}
+
 const Def* Emitter::strip(const Def* def) {
     auto stripped = strip_rec(def);
     return stripped ? stripped : (def->type()->isa<Type>() ? (const Def*)def->world().sigma() : def->world().tuple());

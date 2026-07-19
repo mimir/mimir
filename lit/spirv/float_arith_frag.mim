@@ -1,0 +1,44 @@
+// RUN: %mim %s --output-spirv - | %FileCheck %s
+
+// Standalone fragment shader exercising %math.arith float ops (add/mul/sub)
+// together with the %math.cmp-based branching already proven by
+// branch.mim, independent of the Vulkan harness. The pattern itself is
+// arbitrary (not a real checkerboard/gradient formula) -- it just needs to
+// combine several float ops and a comparison over frag_coord.
+
+import mem;
+import scf;
+import spirv;
+import math;
+
+let F32 = %math.F32;
+
+let o_color = %spirv.output (%spirv.decor.location 0) «4; F32»;
+
+con extern fragment [
+    mem: %mem.M 0,
+    model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
+    path: %scf.Path,
+    step: %scf.Step,
+    token: %scf.Token path step,
+    return: %scf.Ret (%mem.M 0),
+] = let (mem, coord) = %spirv.load (mem, %spirv.frag_coord model);
+    let x = coord#(0:(Idx 2));
+    let y = coord#(1:(Idx 2));
+    // scaled = (x + y) * 0.1 -- exercises OpFAdd and OpFMul
+    let scaled = %math.arith.mul 0 (%math.arith.add 0 (x, y), 0.1:F32);
+    let halved = %math.arith.mul 0 (scaled, 0.5:F32);
+    // diff = halved - halved*halved -- exercises OpFSub
+    let diff = %math.arith.sub 0 (halved, %math.arith.mul 0 (halved, halved));
+    let cond = %math.cmp.l 0 (diff, 0.1:F32);
+    %scf.if token merge (black, white) cond () where
+        con white (_: [], struct, token) = %scf.merge token struct (1.0:F32, 1.0:F32, 1.0:F32, 1.0:F32);
+        con black (_: [], struct, token) = %scf.merge token struct (0.0:F32, 0.0:F32, 0.0:F32, 1.0:F32);
+        con merge (color: «4; F32», token) = %scf.return token return (%spirv.store (mem, o_color, color));
+    end;
+
+// CHECK: OpEntryPoint Fragment
+// CHECK-DAG: OpFAdd
+// CHECK-DAG: OpFMul
+// CHECK-DAG: OpFSub
+// CHECK-DAG: OpFOrdLessThan

@@ -23,7 +23,10 @@ public:
         if (auto var = Axm::isa<spirv::variable>(app)) {
             auto [storage_class, decs, type] = var->uncurry_args<3>();
             auto sc                          = storage_class::from_mim(Axm::as<spirv::storage>(storage_class).id());
-            if (!storage_class::is_local(sc)) vars_.push_back(app);
+            // We emit SPIR-V 1.0, where the OpEntryPoint interface list may
+            // only contain Input/Output variables (SPIR-V >=1.4 lifts this
+            // to "all global variables", but we're not targeting that).
+            if (sc == storage_class::Input || sc == storage_class::Output) vars_.push_back(app);
         }
         return Rewriter::rewrite_imm_App(app);
     }
@@ -34,7 +37,7 @@ private:
 
 } // namespace
 
-void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
+void Emitter::emit_decoration(Word var_id, Word struct_type_id, const Def* decoration_) {
     if (auto builtin = Axm::isa<spirv::builtin>(decoration_)) {
         auto magic = spv_builtin::from_mim(builtin.id());
         module_.annotations.emplace_back(Op{
@@ -46,6 +49,58 @@ void Emitter::emit_decoration(Word var_id, const Def* decoration_) {
         set_id_name(var_id, std::format("{}_{}", spv_builtin::name(magic), var_id));
         return;
     }
+
+    // `Block` decorates the struct *type* used as an interface block, not the
+    // variable pointing at it.
+    if (auto decorc = Axm::isa<spirv::decorc>(decoration_); decorc && decorc.id() == spirv::decorc::block) {
+        module_.annotations.emplace_back(Op{OpKind::Decorate, {struct_type_id, decoration::Block}, {}, {}});
+        return;
+    }
+
+    // `decor_member idx dec` tags `dec` with the (0-based) struct field it
+    // targets -- turns into `OpMemberDecorate` on the struct type instead of
+    // `OpDecorate` on the variable.
+    if (auto mem_dec = Axm::isa<spirv::decor_member>(decoration_)) {
+        auto [idx, inner]     = mem_dec->uncurry_args<2>();
+        Word member_idx       = static_cast<Word>(Lit::as(idx));
+
+        if (auto decorc = Axm::isa<spirv::decorc>(inner); decorc && decorc.id() == spirv::decorc::col_major) {
+            module_.annotations.emplace_back(
+                Op{OpKind::MemberDecorate, {struct_type_id, member_idx, decoration::ColMajor}, {}, {}});
+            return;
+        }
+
+        auto inner_decor = Axm::as<spirv::decor>(inner);
+        switch (inner_decor.id()) {
+            case spirv::decor::offset:
+                module_.annotations.emplace_back(Op{
+                    OpKind::MemberDecorate,
+                    {struct_type_id, member_idx, decoration::Offset, static_cast<Word>(Lit::as(inner_decor->arg()))},
+                    {},
+                    {},
+                });
+                break;
+            case spirv::decor::matrix_stride:
+                module_.annotations.emplace_back(Op{
+                    OpKind::MemberDecorate,
+                    {struct_type_id, member_idx, decoration::MatrixStride,
+                     static_cast<Word>(Lit::as(inner_decor->arg()))},
+                    {},
+                    {},
+                });
+                break;
+            case spirv::decor::location:
+                module_.annotations.emplace_back(Op{
+                    OpKind::MemberDecorate,
+                    {struct_type_id, member_idx, decoration::Location, static_cast<Word>(Lit::as(inner_decor->arg()))},
+                    {},
+                    {},
+                });
+                break;
+        }
+        return;
+    }
+
     auto decoration = Axm::as<spirv::decor>(decoration_);
     switch (decoration.id()) {
         case spirv::decor::location:
@@ -99,10 +154,14 @@ Word Emitter::emit_function(Lam* function) {
 
         // fun-style CPS lams nest their params: dom = [[params...], Cn R];
         // con-style structured functions (polymorphic `%scf.Ret` param)
-        // list their params directly.
-        auto sigma = root()->ret_pi() ? root()->dom()->op(0)->as<Sigma>() : root()->dom()->as<Sigma>();
-        for (size_t idx = 0; idx < sigma->num_ops(); ++idx) {
-            auto param = sigma->op(idx);
+        // list their params directly. A single-field param list collapses to
+        // its bare element (Mim's arity-1 Sigma rule), so it won't be a Sigma
+        // at all in that case -- fall back to treating it as one field.
+        auto dom             = root()->ret_pi() ? root()->dom()->op(0) : root()->dom();
+        auto sigma           = dom->isa<Sigma>();
+        size_t num_params    = sigma ? sigma->num_ops() : 1;
+        for (size_t idx = 0; idx < num_params; ++idx) {
+            auto param = sigma ? sigma->op(idx) : dom;
 
             // Check if this is an entry point marker
             if (auto entry_marker = Axm::isa<spirv::entry>(param)) {
@@ -208,7 +267,11 @@ void Emitter::layout_append(Lam* lam, MutSet& done) {
     while (auto curried = callee_base->isa<App>()) callee_base = curried->callee();
     if (callee_base == ret_var_) return;
 
-    if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
+    if (auto tail_callee = app->callee()->isa_mut<Lam>(); tail_callee && isa_scf_fn(tail_callee->type())) {
+        // Tail call into a sibling structured function (see emit_bb): its
+        // callee belongs to a different function's own layout entirely, and
+        // the current lam has no local successor to follow -- nothing to do.
+    } else if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
         layout_append(callee, done);
     } else if (auto cf_if = Axm::isa<scf::_if>(app)) {
         auto [token, cf_break, tuple, index, arg] = cf_if->uncurry_args<5>();
@@ -239,6 +302,14 @@ void Emitter::layout_append(Lam* lam, MutSet& done) {
 }
 
 void Emitter::finalize_function(Lam* fun) {
+    // SPIR-V requires all Function-storage OpVariables to be the first
+    // instructions in a function's entry block. `%spirv.variable` emission
+    // collects them into `function_vars_` (see expression.cpp) as they're
+    // encountered during codegen, so splice them into the front of the
+    // entry block's ops here, before anything else in that block runs.
+    lam2bb_[fun].ops.insert(lam2bb_[fun].ops.begin(), function_vars_.begin(), function_vars_.end());
+    function_vars_.clear();
+
     // Block layout is derived from the scf terminators alone, no CFG: each
     // construct site lays out its regions first and its exit (break/merge
     // target, latch for loops) behind them. Exit targets are exactly the

@@ -1,8 +1,0 @@
-import math;
-import mem;
-import spirv;
-
-fun extern vertex [
-    mem: %mem.M 0,
-    o_position: %spirv.Input (%spirv.decor.location 0) «4; %math.F32»,
-] = return mem;

@@ -51,6 +51,16 @@ let Decoration = %spirv.Decoration;
 axm %spirv.decorc(block): %spirv.Decoration;
 axm %spirv.decor(location): Nat → %spirv.Decoration;
 
+/// Layout decorations for members of a `Block`-decorated struct (needed for
+/// uniform/push-constant blocks). `decor_member` tags an existing
+/// `Decoration` with the (0-based) field index of the struct it targets;
+/// `emit_decoration` turns that into `OpMemberDecorate` instead of
+/// `OpDecorate`.
+axm %spirv.decor_member: Nat → %spirv.Decoration → %spirv.Decoration;
+axm %spirv.decor(offset): Nat → %spirv.Decoration;
+axm %spirv.decorc(col_major): %spirv.Decoration;
+axm %spirv.decor(matrix_stride): Nat → %spirv.Decoration;
+
 /// ## Storage Classes
 ///
 axm %spirv.StorageClass: [write: Bool] → ★;
@@ -182,6 +192,21 @@ lam %spirv.instance_id {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.
 axm %spirv.builtin(position): %spirv.Decoration;
 lam %spirv.position {n: Nat, modes: «n; %spirv.Mode»} [%spirv.entry %spirv.model.vertex modes]
     = %spirv.variable %spirv.storage.OUTPUT (%spirv.builtin.position) «4; %math.F32»;
+
+/// ## Matrix/Vector Arithmetic
+///
+/// Matrices are plain nested arrays of vectors, `«c; «r; F32»»` (`c` columns
+/// of `r`-component vectors), matching SPIR-V's column-major `OpTypeMatrix`
+/// layout directly -- there is no separate opaque matrix type.
+///
+/// `mat_vec_mul`: a `c`-column, `r`-row matrix times a `c`-component vector,
+/// yielding an `r`-component vector (`OpMatrixTimesVector`).
+axm %spirv.mat_vec_mul: {c: Nat, r: Nat} → [«c; «r; %math.F32»», «c; %math.F32»] → «r; %math.F32»;
+
+/// `mat_mat_mul`: a `c1`-column, `r`-row matrix times a `c2`-column,
+/// `c1`-row matrix, yielding a `c2`-column, `r`-row matrix
+/// (`OpMatrixTimesMatrix`).
+axm %spirv.mat_mat_mul: {c1: Nat, r: Nat, c2: Nat} → [«c1; «r; %math.F32»», «c2; «c1; %math.F32»»] → «c2; «r; %math.F32»»;
 
 /// ## Phases
 ///

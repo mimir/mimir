@@ -88,6 +88,33 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             bb.end = Op{OpKind::Return, {}, {}, {}};
         else
             bb.end = Op{OpKind::ReturnValue, {arg}, {}, {}};
+    } else if (auto tail_callee = app->callee()->isa_mut<Lam>(); tail_callee && isa_scf_fn(tail_callee->type())) {
+        // === Tail call into a sibling structured function ===
+        // The current lam ends by directly applying another `%scf.Fn` value
+        // to its own (payload, path, step, token, ret) tuple instead of
+        // routing through `%scf.call` -- forwarding the `Ret`/`Token` it
+        // already holds rather than having `%scf.call` synthesize a fresh
+        // one. Nothing runs in the current lam afterwards (giving away the
+        // token is necessarily its terminal jump), so this is a genuine tail
+        // call: lower to an `OpFunctionCall` immediately followed by the
+        // `OpReturn`/`OpReturnValue` that the callee's own eventual
+        // `%scf.return` would otherwise have produced here.
+        // => OpFunctionCall + OpReturn | OpReturnValue
+        auto t_val = app->arg()->proj(5, 0);
+
+        auto callee_type    = strip(tail_callee->type())->as<Pi>();
+        Word result_type_id = emit_type(callee_type->codom());
+        Word result_id      = next_id();
+
+        auto fn_id = function_id(tail_callee);
+        std::vector<Word> operands{fn_id};
+        if (strip(t_val->type()) != world().sigma()) operands.push_back(emit_term(t_val));
+        bb.tail.emplace_back(Op{OpKind::FunctionCall, operands, result_id, result_type_id});
+
+        if (callee_type->codom() == world().sigma())
+            bb.end = Op{OpKind::Return, {}, {}, {}};
+        else
+            bb.end = Op{OpKind::ReturnValue, {result_id}, {}, {}};
     } else if (auto callee = Lam::isa_mut_basicblock(app->callee())) {
         // === Ordinary jump ===
         // => OpBranch
@@ -105,11 +132,14 @@ Word Emitter::emit_bb(Lam* lam, BB& bb) {
             {},
             {}
         };
-        std::vector<Word> branches{emit_term(index)};
-        for (auto branch : tuple->ops()) {
-            link_phi(lam, branch->as_mut<Lam>(), arg);
-            branches.push_back(bb_id(branch->as_mut<Lam>()));
-        }
+        // `tuple` follows Mim's usual index-by-bool convention (element 0
+        // fires on `ff`/false, element 1 on `tt`/true -- same as e.g.
+        // `(dependent, uniform)#(uni#fst)` in spirv.mim's make_Ts), but
+        // OpBranchConditional's operands are (Condition, TrueLabel,
+        // FalseLabel), so the true arm (tuple element 1) must come first.
+        auto [false_arm, true_arm] = tuple->projs<2>();
+        for (auto branch : {false_arm, true_arm}) link_phi(lam, branch->as_mut<Lam>(), arg);
+        std::vector<Word> branches{emit_term(index), bb_id(true_arm->as_mut<Lam>()), bb_id(false_arm->as_mut<Lam>())};
         bb.end = Op{OpKind::BranchConditional, branches, {}, {}};
     } else if (auto cf_switch = Axm::isa<scf::_switch>(app)) {
         // === Structured switch-case ===

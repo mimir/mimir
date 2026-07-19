@@ -239,6 +239,7 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
         auto [storage_class, decs, type] = var->uncurry_args<3>();
         auto storage_class_              = storage_class::from_mim(Axm::as<spirv::storage>(storage_class).id());
         Word ptr_type_id                 = emit_type(def->type());
+        Word pointee_type_id             = emit_type(type);
         bool is_function                 = storage_class_ == storage_class::Function;
         // Function vars live in the function; everything else is a global.
         if (!is_function) globals_[def] = id;
@@ -247,9 +248,9 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
 
         if (decs->isa<Sigma>() || decs->isa<Tuple>())
             for (auto dec : decs->ops())
-                emit_decoration(id, dec);
+                emit_decoration(id, pointee_type_id, dec);
         else
-            emit_decoration(id, decs);
+            emit_decoration(id, pointee_type_id, decs);
         return id;
     }
 
@@ -274,6 +275,22 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
             id,
             type_id,
         });
+        return id;
+    }
+
+    if (auto ac = Axm::isa<spirv::access_chain>(def)) {
+        // `uni`/`Ts` only drive the dependent-type computation at the Mim
+        // level (already baked into `def->type()`, which `emit_type` handles
+        // via the existing `spirv::Ptr` case) -- nothing to do with them here.
+        auto [uni, indices, Ts, ptr] = ac->uncurry_args<4>();
+        (void)uni;
+        (void)Ts;
+
+        std::vector<Word> operands{emit_term(ptr)};
+        for (size_t i = 0, n = indices->num_projs(); i != n; ++i)
+            operands.push_back(emit_term(indices->proj(n, i)));
+
+        bb.ops.push_back(Op{OpKind::AccessChain, operands, id, type_id});
         return id;
     }
 
@@ -326,6 +343,44 @@ Word Emitter::emit_term_into(const Def* def, BB& bb) {
         }
 
         bb.ops.emplace_back(Op{op_kind, {lhs_id, rhs_id}, id, type_id});
+        return id;
+    }
+
+    // Handle float arithmetic (same shape as math::cmp: {pe} -> Nat (rounding
+    // mode) -> «2;F pe» -> F pe, so arith->arg() already skips straight to
+    // the operand pair).
+    if (auto arith = Axm::isa<math::arith>(def)) {
+        auto [lhs, rhs] = arith->arg()->projs<2>();
+        Word lhs_id     = emit_term(lhs);
+        Word rhs_id     = emit_term(rhs);
+
+        OpKind op_kind;
+        switch (arith.id()) {
+            case math::arith::add: op_kind = OpKind::FAdd; break;
+            case math::arith::sub: op_kind = OpKind::FSub; break;
+            case math::arith::mul: op_kind = OpKind::FMul; break;
+            case math::arith::div: op_kind = OpKind::FDiv; break;
+            default:
+                std::cerr << "unknown math.arith variant\n";
+                bb.ops.emplace_back(Op{OpKind::Undefined, {}, id, type_id});
+                return id;
+        }
+
+        bb.ops.emplace_back(Op{op_kind, {lhs_id, rhs_id}, id, type_id});
+        return id;
+    }
+
+    // Matrix x vector / matrix x matrix, both operating on plain nested
+    // arrays (see %spirv.mat_vec_mul/%spirv.mat_mat_mul in spirv.mim).
+    if (auto mv = Axm::isa<spirv::mat_vec_mul>(def)) {
+        auto [mat, vec] = mv->arg()->projs<2>();
+        bb.ops.emplace_back(Op{OpKind::MatrixTimesVector, {emit_term(mat), emit_term(vec)}, id, type_id});
+        return id;
+    }
+
+    if (auto mm = Axm::isa<spirv::mat_mat_mul>(def)) {
+        auto [lhs, rhs] = mm->arg()->projs<2>();
+        bb.ops.emplace_back(Op{OpKind::MatrixTimesMatrix, {emit_term(lhs), emit_term(rhs)}, id, type_id});
         return id;
     }
 

@@ -1,0 +1,43 @@
+plugin compile;
+plugin opt;
+plugin core;
+plugin mem;
+import compile;
+import affine;
+import mem;
+import core;
+import refly;
+import autodiff;
+import clos;
+import direct;
+import gpu;
+import matrix;
+plugin math;
+plugin direct;
+plugin affine;
+import regex;
+import tensor;
+plugin tuple;
+plugin refly;
+plugin vec;
+import lit/scf/if.mim;
+plugin scf;
+con extern foo [_: %scf.Path, _: %scf.Step, _: %scf.Gen, _: %scf.Token path_105623 step_105621 gen_105619, _: Bool, _: {_105628: [%scf.Path, %scf.Step, %scf.Gen]} → %scf.Token path_105631 step_105630 gen_105629 → Cn Nat] as _105640@(ff) =
+    con then_105678 [_: [], struct_105680: %scf.If path_105646 step_105645 (%scf.gen.mint gen_105642)#tt Nat, token_105681: %scf.Token _105660 %scf.zero (%scf.gen.mint gen_105642)#ff] as _105679@(ff) =
+        let _105660: %scf.Path = %scf.arm tt path_105646 step_105645;
+        let _104198: %scf.Path = %scf.arm arm_104195 path_104193 step_104191;
+        %scf.merge (Nat, path_105646, step_105645, %scf.zero, tt, (%scf.gen.mint gen_105642)#tt, (%scf.gen.mint gen_105642)#ff) token_105681 struct_105680 1;
+    
+    con else_105667 [_: [], struct_105669: %scf.If path_105646 step_105645 (%scf.gen.mint gen_105642)#tt Nat, token_105670: %scf.Token _105653 %scf.zero (%scf.gen.mint gen_105642)#ff] as _105668@(ff) =
+        let _105653: %scf.Path = %scf.arm ff path_105646 step_105645;
+        %scf.merge (Nat, path_105646, step_105645, %scf.zero, ff, (%scf.gen.mint gen_105642)#tt, (%scf.gen.mint gen_105642)#ff) token_105670 struct_105669 0;
+    
+    con exit_105695 [x_105697: Nat, token_105698: %scf.Token path_105646 (%scf.inc step_105645) gen_105642] as _105696@(ff) =
+        return_105701 (path_105646, %scf.inc step_105645, gen_105642) token_105698 x_105697;
+    
+    let _105733: %scf.Path = %scf.arm ff path_105716 step_105715;
+    let _105740: %scf.Path = %scf.arm tt path_105716 step_105715;
+    let _104240: %scf.Path = %scf.arm ff path_104219 step_104218;
+    let _104248: %scf.Path = %scf.arm tt path_104219 step_104218;
+    %scf.if ([], Nat) (path_105646, step_105645, gen_105642) token_105709 exit_105695 (else_105667, then_105678) cond_105641 ();
+

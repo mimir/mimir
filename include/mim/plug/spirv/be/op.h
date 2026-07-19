@@ -147,11 +147,12 @@ std::string name(int control);
 
 namespace storage_class {
 enum StorageClass {
-    Input    = 1,
-    Uniform  = 2,
-    Output   = 3,
-    Private  = 6,
-    Function = 7,
+    Input        = 1,
+    Uniform      = 2,
+    Output       = 3,
+    Private      = 6,
+    Function     = 7,
+    PushConstant = 9,
 };
 
 std::string name(int storage_class);
@@ -161,9 +162,12 @@ bool is_local(StorageClass s);
 
 namespace decoration {
 enum Decoration {
-    Block    = 2,
-    BuiltIn  = 11,
-    Location = 30,
+    Block        = 2,
+    ColMajor     = 5,
+    MatrixStride = 7,
+    BuiltIn      = 11,
+    Location     = 30,
+    Offset       = 35,
 };
 
 std::string name(int decoration);
@@ -201,6 +205,7 @@ enum class OpKind {
     EntryPoint,
     ExecutionMode,
     Decorate,
+    MemberDecorate,
     Decl,
     Function,
     FunctionParameter,
@@ -213,6 +218,7 @@ enum class OpKind {
     TypeInt,
     TypeFloat,
     TypeVector,
+    TypeMatrix,
     TypeArray,
     TypeStruct,
     TypePointer,
@@ -241,6 +247,14 @@ enum class OpKind {
     IAdd,
     ISub,
     IMul,
+    // Float arithmetic
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    // Matrix arithmetic
+    MatrixTimesVector,
+    MatrixTimesMatrix,
     // Int comparisons
     IEqual,
     INotEqual,
@@ -317,6 +331,7 @@ struct Op {
             case OpKind::EntryPoint: return "OpEntryPoint";
             case OpKind::ExecutionMode: return "OpExecutionMode";
             case OpKind::Decorate: return "OpDecorate";
+            case OpKind::MemberDecorate: return "OpMemberDecorate";
             case OpKind::Decl: return "OpDecl";
             case OpKind::Function: return "OpFunction";
             case OpKind::FunctionParameter: return "OpFunctionParameter";
@@ -328,6 +343,7 @@ struct Op {
             case OpKind::TypeInt: return "OpTypeInt";
             case OpKind::TypeFloat: return "OpTypeFloat";
             case OpKind::TypeVector: return "OpTypeVector";
+            case OpKind::TypeMatrix: return "OpTypeMatrix";
             case OpKind::TypeArray: return "OpTypeArray";
             case OpKind::TypeStruct: return "OpTypeStruct";
             case OpKind::TypePointer: return "OpTypePointer";
@@ -355,6 +371,12 @@ struct Op {
             case OpKind::IAdd: return "OpIAdd";
             case OpKind::ISub: return "OpISub";
             case OpKind::IMul: return "OpIMul";
+            case OpKind::FAdd: return "OpFAdd";
+            case OpKind::FSub: return "OpFSub";
+            case OpKind::FMul: return "OpFMul";
+            case OpKind::FDiv: return "OpFDiv";
+            case OpKind::MatrixTimesVector: return "OpMatrixTimesVector";
+            case OpKind::MatrixTimesMatrix: return "OpMatrixTimesMatrix";
             case OpKind::IEqual: return "OpIEqual";
             case OpKind::INotEqual: return "OpINotEqual";
             case OpKind::UGreaterThan: return "OpUGreaterThan";
@@ -389,11 +411,13 @@ struct Op {
             case OpKind::EntryPoint: return 15;
             case OpKind::ExecutionMode: return 16;
             case OpKind::Decorate: return 71;
+            case OpKind::MemberDecorate: return 72;
             case OpKind::TypeVoid: return 19;
             case OpKind::TypeFunction: return 33;
             case OpKind::TypeInt: return 21;
             case OpKind::TypeFloat: return 22;
             case OpKind::TypeVector: return 23;
+            case OpKind::TypeMatrix: return 24;
             case OpKind::TypeArray: return 28;
             case OpKind::TypeStruct: return 30;
             case OpKind::TypePointer: return 32;
@@ -424,6 +448,12 @@ struct Op {
             case OpKind::IAdd: return 128;
             case OpKind::ISub: return 130;
             case OpKind::IMul: return 132;
+            case OpKind::FAdd: return 129;
+            case OpKind::FSub: return 131;
+            case OpKind::FMul: return 133;
+            case OpKind::FDiv: return 136;
+            case OpKind::MatrixTimesVector: return 145;
+            case OpKind::MatrixTimesMatrix: return 146;
             case OpKind::IEqual: return 170;
             case OpKind::INotEqual: return 171;
             case OpKind::UGreaterThan: return 172;

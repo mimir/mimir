@@ -61,10 +61,30 @@ Word Emitter::emit_type(const Def* type) {
         if (auto arity_lit = Lit::isa(arr->arity())) {
             u64 size = *arity_lit;
 
+            // A small array of small float vectors is a matrix in SPIR-V
+            // terms (columns = outer arity, component = the already-emitted
+            // inner vector type -- OpTypeMatrix only ever accepts float
+            // vector components). `OpCompositeConstruct`/`OpCompositeExtract`/
+            // `OpAccessChain` behave identically over `OpTypeMatrix` and a
+            // plain array of vectors, so this is safe for arrays that aren't
+            // "really" matrices too (e.g. a per-vertex position table).
+            auto inner_arr    = arr->body()->isa<Arr>();
+            auto inner_arity  = inner_arr ? Lit::isa(inner_arr->arity()) : std::nullopt;
+            bool is_matrix    = size >= 2 && size <= 4 && inner_arr && inner_arity && *inner_arity >= 2 &&
+                                 *inner_arity <= 4 && math::isa_f(inner_arr->body());
+
             // use vector for small arrays of scalars (2, 3, or 4 elements)
             // TODO: sizes 8 and 16 are also supported for some memory
             // models, add check
-            if (size >= 2 && size <= 4 && is_scalar_type(arr->body())) {
+            if (is_matrix) {
+                module_.declarations.emplace_back(Op{
+                    OpKind::TypeMatrix,
+                    {elem_id, static_cast<Word>(size)},
+                    id,
+                    {}
+                });
+                set_id_name(id, std::format("mat{}x{}_{}", size, *inner_arity, id_name(emit_type(inner_arr->body()))));
+            } else if (size >= 2 && size <= 4 && is_scalar_type(arr->body())) {
                 module_.declarations.emplace_back(Op{
                     OpKind::TypeVector,
                     {elem_id, static_cast<Word>(size)},

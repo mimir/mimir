@@ -1,3 +1,5 @@
+// RUN: %mim %s --output-spirv - | %FileCheck %s
+
 import mem;
 import scf;
 import spirv;
@@ -16,8 +18,11 @@ let red   = (1.0:F32, 0.0:F32, 0.0:F32, 1.0:F32);
 let green = (0.0:F32, 1.0:F32, 0.0:F32, 1.0:F32);
 let blue  = (0.0:F32, 0.0:F32, 1.0:F32, 1.0:F32);
 
-lam vertex_body (vert_id: Idx 3): [«4; F32», F32]
-    = (%vec.cat (positions#vert_id, (0.0:F32, 1.0:F32)), (positions#vert_id)#(0:(Idx 2)));
+lam vertex_body [mem: %mem.M 0] (vert_id: Idx 3): [%mem.M 0, «4; F32», F32]
+    = let pos_var = %spirv.variable %spirv.storage.FUNCTION () «3; «2; F32»»;
+      let mem = %spirv.store (mem, pos_var, positions);
+      let (mem, pos) = %spirv.load (mem, %spirv.access_chain (tt) (vert_id) pos_var);
+      (mem, %vec.cat (pos, (0.0:F32, 1.0:F32)), pos#(0:(Idx 2)));
 
 let o_x     = %spirv.output (%spirv.decor.location 0) F32;
 let i_x     = %spirv.input  (%spirv.decor.location 0) F32;
@@ -26,14 +31,11 @@ let o_color = %spirv.output (%spirv.decor.location 0) «4; F32»;
 fun extern vertex [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.vertex (),
-] = let (mem_, vertex_id) = %spirv.load (mem, %spirv.vertex_id model);
-    let (position, x) = vertex_body (%core.bitcast (Idx 3) vertex_id);
-    let mem__ = %spirv.store (mem_, %spirv.position model, position);
-    return (%spirv.store (mem__, o_x, x));
+] = let (mem, vertex_id) = %spirv.load (mem, %spirv.vertex_id model);
+    let (mem, position, x) = vertex_body mem (%core.bitcast (Idx 3) vertex_id);
+    let mem = %spirv.store (mem, %spirv.position model, position);
+    return (%spirv.store (mem, o_x, x));
 
-// fragment uses the structured (con-style) function shape: the return
-// continuation is a %scf.Ret parameter consuming a token, while vertex
-// above deliberately keeps the raw fun-style CPS return.
 con extern fragment [
     mem: %mem.M 0,
     model: %spirv.entry %spirv.model.fragment %spirv.mode.origin_upper_left,
@@ -41,7 +43,7 @@ con extern fragment [
     step: %scf.Step,
     token: %scf.Token path step,
     return: %scf.Ret (%mem.M 0),
-] = let (mem_, x) = %spirv.load (mem, i_x);
+] = let (mem, x) = %spirv.load (mem, i_x);
     let cond_outer = %math.cmp.l 0 (x, -0.25:F32);
     %scf.if token merge (else_outer, then_outer) cond_outer () where
         con then_outer (_: [], struct, token) = %scf.merge token struct red;
@@ -52,5 +54,9 @@ con extern fragment [
                 con else_inner (_: [], s, token) = %scf.merge token s blue;
                 con break_inner (color: «4; F32», token) = %scf.merge token struct color;
             end;
-        con merge (color: «4; F32», token) = %scf.return token return (%spirv.store (mem_, o_color, color));
+        con merge (color: «4; F32», token) = %scf.return token return (%spirv.store (mem, o_color, color));
     end;
+
+// CHECK-DAG: OpEntryPoint Vertex
+// CHECK-DAG: OpEntryPoint Fragment
+// CHECK-DAG: OpAccessChain

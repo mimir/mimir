@@ -87,6 +87,9 @@ add_subdirectory(submodules/lyra)
 add_subdirectory(src)
 
 if(MIM_BUILD_EXAMPLES)
+    # Not REQUIRED: the vulkan_runner example is only built if Vulkan is
+    # available, everything else under examples/ doesn't need it.
+    find_package(Vulkan)
     add_subdirectory(examples)
 endif()
 

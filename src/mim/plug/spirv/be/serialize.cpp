@@ -86,6 +86,13 @@ void Serializer::assembly(Op& op, std::ostream& out) {
                     out << " " << op.operands[i];
             }
             break;
+        case OpKind::MemberDecorate:
+            out << " %" << id_name(op.operands[0]); // struct type
+            out << " " << op.operands[1];           // member index (literal)
+            out << " " << decoration::name(op.operands[2]);
+            for (size_t i = 3; i < op.operands.size(); ++i)
+                out << " " << op.operands[i];
+            break;
         case OpKind::TypePointer:
             out << " " << storage_class::name(op.operands[0]);
             out << " %" << id_name(op.operands[1]);
@@ -116,6 +123,10 @@ void Serializer::assembly(Op& op, std::ostream& out) {
         case OpKind::TypeVector:
             out << " %" << id_name(op.operands[0]); // component type
             out << " " << op.operands[1];           // component count
+            break;
+        case OpKind::TypeMatrix:
+            out << " %" << id_name(op.operands[0]); // column type (a vector)
+            out << " " << op.operands[1];           // column count
             break;
         case OpKind::TypeArray:
             out << " %" << id_name(op.operands[0]); // element type

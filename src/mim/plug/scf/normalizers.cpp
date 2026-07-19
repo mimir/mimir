@@ -37,17 +37,27 @@ bool path_contains(const Def* root_path, const Def* candidate_path) {
     return false;
 }
 
-/// `callee` is the App one curry step short of the Loop/Switch capability argument,
-/// i.e. the step that applied `inner_token` -- read its path back out of its type.
+/// `%scf.continue`/`%scf.break(l/s)`/`%scf.switch` all end in a bare `Cn X`
+/// result, so with no explicit curry override their normalizer only fires
+/// once that final `Cn X` is itself applied to its payload (matching
+/// `%scf.if`/`%scf.merge`, which have no override either) -- one application
+/// further than these normalizers historically expected. `callee` is
+/// therefore the App one curry step short of the *payload*, i.e. the step
+/// that applied the Loop/Switch capability; its own arg is that capability,
+/// and peeling one more level down gives the step that applied `inner_token`.
 const Def* inner_path(const Def* callee) {
-    auto inner_token                = callee->as<App>()->arg();
+    auto inner_token                = callee->as<App>()->callee()->as<App>()->arg();
     auto [inner_path_, inner_step_] = App::uncurry_args<2>(inner_token->type());
     return inner_path_;
 }
 
 } // namespace
 
-const Def* normalize_switch(const Def*, const Def*, const Def* cases) {
+const Def* normalize_switch(const Def*, const Def* callee, const Def*) {
+    // `callee` has token/break/default/cases/index all applied (see the
+    // `inner_path` comment above for why); `cases` is one step back from
+    // `index`.
+    auto cases = callee->as<App>()->callee()->as<App>()->arg();
     absl::flat_hash_set<nat_t> labels;
     for (auto c : cases->projs()) {
         auto index = c->proj(2, 0);
@@ -58,9 +68,10 @@ const Def* normalize_switch(const Def*, const Def*, const Def* cases) {
     return {};
 }
 
-const Def* normalize_continue(const Def*, const Def* callee, const Def* arg) {
-    auto tok                   = inner_path(callee);
-    auto [path, step_, B_, H_] = App::uncurry_args<4>(arg->type());
+const Def* normalize_continue(const Def*, const Def* callee, const Def*) {
+    auto tok                    = inner_path(callee);
+    auto capability             = callee->as<App>()->arg();
+    auto [path, step_, B_, H_]  = App::uncurry_args<4>(capability->type());
 
     if (!path_contains(path, tok))
         mim::error(tok->loc(), "token passed to '%scf.continue' does not belong to the targeted loop");
@@ -69,15 +80,16 @@ const Def* normalize_continue(const Def*, const Def* callee, const Def* arg) {
 }
 
 template<_break id>
-const Def* normalize_break(const Def*, const Def* callee, const Def* arg) {
-    auto tok = inner_path(callee);
+const Def* normalize_break(const Def*, const Def* callee, const Def*) {
+    auto tok        = inner_path(callee);
+    auto capability = callee->as<App>()->arg();
     const Def* path;
 
     if constexpr (id == _break::l) {
-        auto [p, step_, B_, H_] = App::uncurry_args<4>(arg->type());
+        auto [p, step_, B_, H_] = App::uncurry_args<4>(capability->type());
         path                    = p;
     } else {
-        auto [p, step_, T_, B_] = App::uncurry_args<4>(arg->type());
+        auto [p, step_, T_, B_] = App::uncurry_args<4>(capability->type());
         path                    = p;
     }
 

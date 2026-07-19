@@ -1,3 +1,5 @@
+// RUN: %mim %s --output-spirv - | %FileCheck %s
+
 import mem;
 import scf;
 import spirv;
@@ -59,3 +61,7 @@ con extern fragment [
         con break (_: [], tok) =
             %scf.return tok return (%spirv.store (mem_, f_color, fragment_body color));
     end;
+
+// CHECK-DAG: OpEntryPoint Vertex
+// CHECK-DAG: OpEntryPoint Fragment
+// CHECK-DAG: OpLoopMerge

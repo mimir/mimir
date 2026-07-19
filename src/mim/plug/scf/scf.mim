@@ -127,7 +127,7 @@ axm %scf.continue: {
   inner_path: Path, inner_step: Step,
 } → [inner_token: Token inner_path inner_step]
   → [Loop path step B H]
-  → Cn H, normalize_continue, 3;
+  → Cn H, normalize_continue;
 ///
 /// Branch to the next case of a given switch structure.
 /// Like merge, fallthrough requires a token from the same scope as the
@@ -148,7 +148,7 @@ axm %scf.break(s): {
   inner_path: Path, inner_step: Step,
 } → [inner_token: Token inner_path inner_step]
   → [Switch path step C B]
-  → Cn B, normalize_break, 3;
+  → Cn B, normalize_break;
 ///
 /// Branch to the break target of a `loop`.
 axm %scf.break(l): {
@@ -157,7 +157,7 @@ axm %scf.break(l): {
   inner_path: Path, inner_step: Step,
 } → [inner_token: Token inner_path inner_step]
   → [Loop path step B H]
-  → Cn B, normalize_break, 3;
+  → Cn B, normalize_break;
 ///
 /// Branch to the merge target of the innermost if/switch structure.
 /// Unlike break, merge requires a token from the same scope as the struct
@@ -225,7 +225,7 @@ axm %scf.switch: {count: Nat} → {T B: ★} → {path: Path, step: Step}
   → [default: Cn [T, Switch path step ⊥ B, Token (%scf.default path step) zero]]
   → [cases: «i: count; [index: Nat, Cn [T, Switch path step T B, Token (%scf.case (%core.bitcast Nat i) path step) zero]]»]
   → [index: Nat]
-  → Cn T, normalize_switch, 7;
+  → Cn T, normalize_switch;
 
 /// ## Loops
 ///

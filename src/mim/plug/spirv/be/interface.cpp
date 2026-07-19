@@ -35,11 +35,12 @@ Word Emitter::emit_interface(std::string name, const Def* def) {
     module_.declarations.emplace_back(Op{OpKind::Variable, {__storage_class}, interface_id, ptr_type_id});
     set_id_name(interface_id, std::format("{}", name));
 
+    Word wrapped_type_id = emit_type(wrapped_type);
     if (decorations->isa<Sigma>())
         for (auto decoration : decorations->ops())
-            emit_decoration(interface_id, decoration);
+            emit_decoration(interface_id, wrapped_type_id, decoration);
     else
-        emit_decoration(interface_id, decorations);
+        emit_decoration(interface_id, wrapped_type_id, decorations);
 
     return interface_id;
 }

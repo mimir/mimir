@@ -85,7 +85,7 @@ public:
 
     Word emit_entry(std::string name, const Def* ptr);
     Word emit_interface(std::string name, const Def* ptr);
-    void emit_decoration(Word var_id, const Def* decoration_);
+    void emit_decoration(Word var_id, Word struct_type_id, const Def* decoration_);
 
     /// Translate a MimIR expression to SPIR-V
     Word emit_term(const Def* def) {
@@ -219,6 +219,14 @@ const Def* scope_key_of_token(const Def* token);
 /// Matches `%scf.Ret R` (the opaque polymorphic return continuation
 /// wrapper); yields the return payload type `R` on a match.
 const Def* isa_ret(const Def* def);
+
+/// True iff `pi` is a genuine `%scf.Fn` entry -- its domain carries an
+/// `%scf.Ret` field. Structurally, a structured function's own entry point
+/// and a same-function local continuation (an if-arm, a merge/break lam,
+/// ...) are both plain `Cn` with no `ret_pi`, so `Pi::isa_basicblock` alone
+/// cannot tell them apart; the `Ret` field is what actually marks a function
+/// boundary.
+bool isa_scf_fn(const Def* pi);
 
 void emit_asm(World& world, std::ostream& out);
 void emit_bin(World& world, std::ostream& out);
