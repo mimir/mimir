@@ -27,21 +27,21 @@ static auto get_setup_phase(World& world) {
 constexpr auto default_compute_cap = "75";
 
 static std::string get_compute_capability() {
-    auto out      = sys::exec("nvidia-smi --query-gpu=compute_cap");
-    auto start    = out.find('\n') + 1;
-    auto newline2 = out.find('\n', start);
-    if (start < out.size()) out = out.substr(start, newline2 - start);
+    auto out = sys::exec("nvidia-smi --query-gpu=compute_cap --format=csv,noheader");
+    out.erase(std::remove_if(out.begin(), out.end(), ::isspace), out.end());
     // out should now have form "7.5" referencing the compute capability "sm_75"
 
     auto dot_pos = out.find('.');
     assert(dot_pos < out.size());
 
-    for (size_t i = 0; i < out.size(); ++i)
-        if (i != dot_pos && !std::isdigit(out[i])) {
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (i == dot_pos) continue;
+        if (!std::isdigit(out[i])) {
             std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
                          default_compute_cap);
             return default_compute_cap;
         }
+    }
 
     auto compute_cap = std::format("{}{}", out.substr(0, dot_pos), out.substr(dot_pos + 1));
     std::println(std::cout, "Determined compute capability to be '{}'", compute_cap);
