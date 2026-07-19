@@ -1,0 +1,14 @@
+[include]
+#include <mim/pass/optimize.h>          // mim::optimize (free function)
+
+[class:World]
+    // Run the optimization pipeline over this World (free function mim::optimize).
+    .def("optimize", [](World& self) { mim::optimize(self); })
+    // `annex(Id)` and `implicit_app<Normalize>(...)` are template methods, so the
+    // generator cannot emit them. Provide the concrete instantiations used by the
+    // Python `World.call` helper. `Defs` is implicitly constructible from a vector,
+    // so the argument list arrives as a plain Python list.
+    .def("annex", [](World& self, flags_t id) { return self.annex(id); }, nb::rv_policy::reference_internal)
+    .def("implicit_app", [](World& self, const Def* callee, std::vector<const Def*> args) {
+        return self.implicit_app(callee, Defs(args));
+    }, nb::rv_policy::reference_internal)

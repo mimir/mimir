@@ -1,4 +1,12 @@
+[include]
+#include <fstream>
+#include <mim/ast/ast.h>
+#include <nanobind/stl/filesystem.h>
+
 [class:Driver]
+    // Driver::sym is a template method (fe::SymPool), so the generator skips it;
+    // expose the std::string instantiation.
+    .def("sym", [](Driver& self, const std::string& s) { return self.sym(s); })
     .def("add_import", [](Driver& d, std::string path, std::string sym) {
         return d.imports().add(fs::path(path), d.sym(sym), ast::Tok::Tag::K_import);
     }, nb::rv_policy::reference_internal)
@@ -12,4 +20,3 @@
     .def("load_plugins", [](Driver& d, std::vector<std::string> plugins) {
         ast::load_plugins(d.world(), plugins);
     })
-
