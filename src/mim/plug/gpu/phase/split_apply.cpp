@@ -16,10 +16,7 @@ static void run_stage(World& world, flags_t annex) {
 
     auto stage = (*create_phase)(world);
     auto phase = stage.get()->as<Phase>();
-    auto app   = body->isa<App>();
-    if (!app) error("Phase is unexpectedly not an App");
-
-    phase->apply(app);
+    if (auto app = body->isa<App>()) phase->apply(app);
     phase->run();
 }
 

@@ -509,9 +509,6 @@ inline void Emitter::emit_epilogue(Lam* lam) {
         bb.tail("call void @longjmp(i8* {}, i32 {})", v_jb, v_tag);
         return bb.tail("unreachable");
     } else if (auto mslot = Axm::isa<mem::mslot>(app)) {
-        auto address_space = mslot->decurry()->arg(1);
-        if (Lit::as(address_space) != 0)
-            if (auto target_specific = isa_targetspecific_intrinsic(bb, app)) return;
         // Continuation-based stack slot: allocate and jump to the passed continuation with the fresh pointer.
         auto [Ta, rest]            = mslot->uncurry_args<2>();
         auto [pointee, addr_space] = Ta->projs<2>();

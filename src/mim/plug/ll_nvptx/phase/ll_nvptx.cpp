@@ -61,6 +61,7 @@ public:
         : Super(world, "llvm_nvptx_device_emitter", ostream) {}
 
     void start() final;
+    void emit_epilogue(Lam*) override;
 
     std::string prepare() override;
 
@@ -461,6 +462,30 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
     return std::nullopt;
 }
 
+void DeviceEmitter::emit_epilogue(Lam* lam) {
+    auto& bb = lam2bb_[lam];
+
+    // HACK: we partially re-implement the checks in Super::emit_epilogue to catch target-specific applications
+    auto app = lam->body()->as<App>();
+    if (auto mslot = Axm::isa<mem::mslot>(app)) {
+        // Continuation-based stack slot: allocate and jump to the passed continuation with the fresh pointer.
+        auto [Ta, rest]            = mslot->uncurry_args<2>();
+        auto [T, a] = Ta->projs<2>();
+        auto [msize, ret]          = rest->projs<2>();
+        emit_unsafe(msize->proj(0)); // mem
+        // TODO array with size
+        auto ret_lam = ret->as_mut<Lam>();
+        auto ptr     = ret_lam->var(2, 1);
+        auto v_ptr   = "@" + app->unique_name() + ".slot";
+        std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", v_ptr, a, convert(T));
+        lam2bb_[ret_lam].phis[ptr].emplace_back(v_ptr, id(lam, true));
+        globals_[ptr] = id(ptr);
+        return bb.tail("br label {}", id(ret_lam));
+    } else {
+        Super::emit_epilogue(lam);
+    }
+}
+
 void DeviceEmitter::start() {
     for (auto kernel : world().externals().muts()) {
         auto kernel_lam = kernel->isa_mut<Lam>();
@@ -528,17 +553,7 @@ std::string DeviceEmitter::prepare() {
 std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& bb, const Def* def) {
     auto name = id(def);
 
-    auto shared_as = Lit::as(world().annex<gpu::addr_space_shared>());
-
-    if (auto mslot = Axm::isa<mem::mslot>(def)) {
-        auto [T, a] = mslot->decurry()->args<2>();
-        if (Lit::as(a) == shared_as) {
-            name = "@" + def->unique_name();
-            emit_unsafe(mslot->arg(0));
-            std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", name, a, convert(T));
-            return name;
-        }
-    } else if (auto sync_work_items = Axm::isa<gpu::sync_work_items>(def)) {
+    if (auto sync_work_items = Axm::isa<gpu::sync_work_items>(def)) {
         declare("void @llvm.nvvm.barrier0()");
 
         emit_unsafe(sync_work_items->arg(0));
