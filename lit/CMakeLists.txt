@@ -91,11 +91,18 @@ else()
     set(MIM_FP16_SUPPORTED False)
 endif()
 
-find_package(CUDAToolkit QUIET)
-if(CUDAToolkit_FOUND)
-    set(MIM_CUDA_FOUND True)
+find_program(NVIDIA_SMI nvidia-smi)
+if(NVIDIA_SMI)
+  execute_process(COMMAND ${NVIDIA_SMI} -L
+    OUTPUT_VARIABLE _smi_out RESULT_VARIABLE _smi_rc
+    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(_smi_rc EQUAL 0 AND _smi_out MATCHES "GPU [0-9]+:")
+    set(MIM_CUDA_CAN_RUN_ON_DEVICE True)
+  else()
+    set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
+  endif()
 else()
-    set(MIM_CUDA_FOUND False)
+    set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
 endif()
 
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
