@@ -15,18 +15,9 @@ namespace mim::plug::ll_nvptx {
 
 namespace {
 
-static auto get_setup_phase(World& world) {
-    auto flags         = Annex::base<gpu::split_apply>();
-    auto stage_funcptr = world.driver().phase(flags);
-    auto stage         = (*stage_funcptr)(world);
-    auto phase         = stage->isa<RWPhase>();
-    if (!phase) error("Found unexpected gpu::split_apply stage");
-    return std::make_pair(std::move(stage), phase);
-}
-
 constexpr auto default_compute_cap = "75";
 
-static std::string get_compute_capability() {
+std::string get_compute_capability() {
     auto out = sys::exec("nvidia-smi --query-gpu=compute_cap --format=csv,noheader");
     out.erase(std::remove_if(out.begin(), out.end(), ::isspace), out.end());
     // out should now have form "7.5" referencing the compute capability "sm_75"
@@ -50,7 +41,7 @@ static std::string get_compute_capability() {
 
 constexpr auto LIBDEVICE_NAME = "libdevice.10.bc"s;
 
-static std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::path& cuda_bin_path) {
+std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::path& cuda_bin_path) {
     auto profile_path = cuda_bin_path / "nvcc.profile";
     if (!std::filesystem::exists(profile_path)) return std::nullopt;
 
@@ -79,7 +70,7 @@ static std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesy
     return resolved_path;
 }
 
-static std::string find_libdevice() {
+std::string find_libdevice() {
     auto nvcc_which = sys::find_cmd("nvcc");
     if (nvcc_which.find("not found") == std::string::npos) {
         auto nvcc_path     = std::filesystem::canonical(nvcc_which);
@@ -96,7 +87,7 @@ static std::string find_libdevice() {
     error("Unable to find libdevice. Try setting the CUDA_HOME environment variable.");
 }
 
-static void link_libdevice(const std::string& libdevice_path, const std::string& in_name, const std::string& out_name) {
+void link_libdevice(const std::string& libdevice_path, const std::string& in_name, const std::string& out_name) {
     if (!std::filesystem::exists(libdevice_path)) error("libdevice path does not exist: {}", libdevice_path);
     auto llvm_link = sys::find_cmd("llvm-link");
     if (!std::filesystem::exists(llvm_link)) error("Could not find command: llvm-link {}", llvm_link);
@@ -105,7 +96,7 @@ static void link_libdevice(const std::string& libdevice_path, const std::string&
     if (rc != 0) error("Command exited with error code {}", rc);
 }
 
-static void optimize_bytecode(const std::string& in_name, const std::string& out_name) {
+void optimize_bytecode(const std::string& in_name, const std::string& out_name) {
     auto opt = sys::find_cmd("opt");
     if (!std::filesystem::exists(opt)) error("Could not find command: opt {}", opt);
     // TODO: consider adding more (NVPTX-specific) passes
@@ -116,7 +107,7 @@ static void optimize_bytecode(const std::string& in_name, const std::string& out
     if (rc != 0) error("Command exited with error code {}", rc);
 }
 
-static void compile2ptx(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
+void compile2ptx(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
     auto llc = sys::find_cmd("llc");
     if (!std::filesystem::exists(llc)) error("Could not find command: llc {}", llc);
     // TODO: support 32-bit version?
@@ -126,7 +117,7 @@ static void compile2ptx(const std::string& compute_cap, const std::string& in_na
     if (rc != 0) error("Command exited with error code {}", rc);
 }
 
-static void compile2cubin(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
+void compile2cubin(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
     auto ptxas = sys::find_cmd("ptxas");
     if (!std::filesystem::exists(ptxas)) error("Could not find command: ptxas {}", ptxas);
     // TODO: consider setting other optimization level - currently ptxas' default: -O3
@@ -135,7 +126,7 @@ static void compile2cubin(const std::string& compute_cap, const std::string& in_
     if (rc != 0) error("Command exited with error code {}", rc);
 }
 
-static void compile2fatbin(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
+void compile2fatbin(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
     auto fatbinary = sys::find_cmd("fatbinary");
     if (!std::filesystem::exists(fatbinary)) error("Could not find command: fatbinary {}", fatbinary);
     auto cmd
@@ -164,7 +155,8 @@ public:
 
         auto host_ofs = std::ofstream(host_ll_name);
 
-        auto [stage, setup_phase] = get_setup_phase(world());
+        auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
+        auto setup_phase       = split_apply_phase.get()->as<RWPhase>();
         setup_phase->run();
 
         DeviceEmitFlags device_flags;
@@ -176,14 +168,9 @@ public:
         auto compute_cap = get_compute_capability();
 
         bool embed_device_code;
-#ifdef _WIN32
-        embed_device_code = false;
-#elif defined(__APPLE__)
-        embed_device_code = false;
-#elif defined(__linux__)
+#ifdef __linux__
         embed_device_code = true;
         if (device_flags.uses_libdevice) {
-            // TODO: search for libdevice or pass via argument
             auto libdevice_path = find_libdevice();
             link_libdevice(libdevice_path, dev_ll_name, dev_bc_raw_name);
             optimize_bytecode(dev_bc_raw_name, dev_bc_opt_name);
@@ -192,6 +179,8 @@ public:
         compile2ptx(compute_cap, compile_input, dev_ptx_name);
         compile2cubin(compute_cap, dev_ptx_name, dev_cubin_name);
         compile2fatbin(compute_cap, dev_cubin_name, dev_fatbin_name);
+#else
+        embed_device_code = false;
 #endif
         auto device_fatbin_file = embed_device_code ? std::optional(dev_fatbin_name) : std::nullopt;
         emit_host(setup_phase->old_world(), host_ofs, device_fatbin_file);
