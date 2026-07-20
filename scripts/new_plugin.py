@@ -72,6 +72,18 @@ def patch_workflow(workflow_file: Path, output_file: Path, plugin: str) -> None:
     # checkout moves into "mimir" the configure calls need an explicit -S.
     content = re.sub(r'cmake -B', 'cmake -S ${{github.workspace}}/mimir -B', content)
 
+    # Steps that use a bare relative path with no "${{github.workspace}}" or
+    # "working-directory" of their own (e.g. macOS's "python3 -m venv .venv")
+    # default to $GITHUB_WORKSPACE as their cwd, which is now one level above
+    # the actual mimir checkout. Set a job-wide default so every run step
+    # without its own working-directory executes inside mimir instead.
+    content = re.sub(
+        r'\n(    steps:\n)',
+        r'\n    defaults:\n      run:\n        working-directory: ${{github.workspace}}/mimir\n\n\1',
+        content,
+        count=1
+    )
+
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(content)
 
