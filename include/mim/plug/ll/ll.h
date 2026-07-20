@@ -323,6 +323,7 @@ inline std::string Emitter::prepare() {
     auto vars = root()->vars();
     for (auto sep = ""; auto var : vars.view().rsubspan(1)) {
         if (Axm::isa<mem::M>(var->type())) continue;
+        if (auto sigma = var->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) continue;
         if (auto arr = var->type()->isa<Arr>())
             if (is_simd(arr->body())) convert(arr->body()); // pre-add input vector to cache
         auto name    = id(var);
@@ -683,6 +684,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         // this exact location is important: after emitting the tuple -> ordering of mem ops
         // before emitting the index, as it might be a weird value for mem vars.
         if (Axm::isa<mem::M>(extract->type())) return {};
+        if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return {};
 
         auto t_tup = convert(tuple->type());
         if (auto li = Lit::isa(index)) {
