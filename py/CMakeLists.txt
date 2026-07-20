@@ -99,6 +99,7 @@ foreach(_unit IN LISTS _gen_units)
             "${MIM_PY_VENV_STAMP}"
             "${header}"
             "${_binding_script}"
+            "${CMAKE_BINARY_DIR}/compile_commands.json"
             ${_extra_deps}
         COMMENT "Generating nanobind bindings for ${stem}.h"
         VERBATIM

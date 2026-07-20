@@ -6,7 +6,7 @@ Usage:
     ./gen_nanobind_bindings.py path/to/header.h                    # stdout
     ./gen_nanobind_bindings.py path/to/header.h -o bind.cpp        # to file
     ./gen_nanobind_bindings.py --dir include/mim --recursive       # batch
-    ./gen_nanobind_bindings.py --dir include/mim --recursive \\
+    ./gen_nanobind_bindings.py --dir include/mim --recursive
         --namespace mim -I /custom/include
 
 Requires: the project venv at REPO_ROOT/.venv/ with `clang` (libclang Python bindings) installed.
@@ -53,7 +53,7 @@ if _venv_site.is_dir() and str(_venv_site) not in sys.path:
             os.environ.setdefault("LIBCLANG_LIBRARY_FILE", str(_lib))
 
 try:
-    import clang.cindex
+    import clang.cindex # pyright: ignore[reportMissingImports]
 except ImportError:
     print(
         "ERROR: clang.cindex not found in project venv.\n"
