@@ -55,13 +55,22 @@ def patch_workflow(workflow_file: Path, output_file: Path, plugin: str) -> None:
         content
     )
 
-    # Fix working directories and cmake paths
-    content = content.replace('${{github.workspace}}/build', 'mimir/build')
-    content = content.replace('${{github.workspace}}', 'mimir')
+    # Fix working directories and cmake paths.
+    # The mimir checkout now lives in a "mimir" subdirectory of the workspace
+    # rather than at the workspace root, so every reference to the workspace
+    # needs an extra "/mimir" path segment. Paths must stay absolute (i.e. keep
+    # the "${{github.workspace}}"/"$GITHUB_WORKSPACE" prefix): several steps
+    # set "working-directory" to the same path a "run:" command also
+    # references, and collapsing that to a relative "mimir/..." string would
+    # make the run command resolve relative to working-directory, doubling
+    # the "mimir" segment.
+    content = content.replace('${{github.workspace}}', '${{github.workspace}}/mimir')
+    content = content.replace('$GITHUB_WORKSPACE', '$GITHUB_WORKSPACE/mimir')
 
-    # The mimir checkout now lives in a "mimir" subdirectory rather than at the
-    # workspace root, so cmake needs an explicit source directory.
-    content = content.replace('-B mimir/build', '-S mimir -B mimir/build')
+    # cmake only infers the source directory from the current working
+    # directory when neither working-directory nor -S is given, so once the
+    # checkout moves into "mimir" the configure calls need an explicit -S.
+    content = re.sub(r'cmake -B', 'cmake -S ${{github.workspace}}/mimir -B', content)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(content)
