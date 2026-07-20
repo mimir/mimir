@@ -58,8 +58,10 @@ def patch_workflow(workflow_file: Path, output_file: Path, plugin: str) -> None:
     # Fix working directories and cmake paths
     content = content.replace('${{github.workspace}}/build', 'mimir/build')
     content = content.replace('${{github.workspace}}', 'mimir')
-    content = re.sub(r'-B mimir(?!/)', '-B build', content)
-    content = content.replace('cmake -B build/build', 'cmake -B build')
+
+    # The mimir checkout now lives in a "mimir" subdirectory rather than at the
+    # workspace root, so cmake needs an explicit source directory.
+    content = content.replace('-B mimir/build', '-S mimir -B mimir/build')
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(content)
