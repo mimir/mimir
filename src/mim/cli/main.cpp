@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 
+#include <fe/term.h>
 #include <lyra/lyra.hpp>
 
 #include "mim/config.h"
@@ -22,6 +23,8 @@ using namespace std::literals;
 int main(int argc, char** argv) {
     enum Backends { AST, Dot, H, PY, Md, Mim, Nest, SExpr, SlottedSExpr, ProfileTrace, Num_Backends };
     // test
+
+    fe::term::resolve_mode(); // colors in std::format-ed output depend on Auto being resolved up front
 
     try {
         Driver driver;
