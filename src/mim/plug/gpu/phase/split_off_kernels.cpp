@@ -39,6 +39,7 @@ const Def* SplitOffKernels::rewrite_mut_Lam(Lam* old_lam) {
     auto new_def = RWPhase::rewrite_mut_Lam(old_lam);
 
     if (kernels_.contains(old_lam)) {
+        old_lam->set<true>(old_lam->unique_name());
         auto new_lam = new_def->as_mut<Lam>();
         if (new_lam->sym().empty()) {
             assert(!old_lam->sym().empty());
