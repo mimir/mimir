@@ -1,7 +1,5 @@
 #include "mim/plug/clos/phase/lower_typed_clos.h"
 
-#include <functional>
-
 #include "mim/check.h"
 
 namespace mim::plug::clos {
@@ -41,9 +39,10 @@ Lam* LowerTypedClos::make_stub(Lam* lam, enum Mode mode, bool adjust_bb_type) {
     assert(lam && "make_stub: not a lam");
     if (auto i = old2new_.find(lam); i != old2new_.end() && i->second->isa_mut<Lam>()) return i->second->as_mut<Lam>();
     auto& w      = world();
+    auto ep      = env_param(lam->type()->as<Pi>());
     auto new_dom = w.sigma(DefVec(lam->num_doms(), [&](auto i) -> const Def* {
         auto new_dom = rewrite(lam->dom(i));
-        if (i == Clos_Env_Param) {
+        if (i == ep) {
             if (mode == Unbox)
                 return env_type();
             else if (mode == Box)
@@ -62,21 +61,46 @@ Lam* LowerTypedClos::make_stub(Lam* lam, enum Mode mode, bool adjust_bb_type) {
     }
     auto lcm = mem::mem_var(new_lam);
     // TODO I guess, this is not correct: check mode?
-    auto env = new_lam->num_vars() < 2 ? new_lam->var() : new_lam->var(Clos_Env_Param);
+    auto env = new_lam->num_vars() < 2 ? new_lam->var() : new_lam->var(ep);
     if (mode == Box) {
+        // A mem-free closure still has to unbox its heap-allocated environment via a mem.load; if it has no mem
+        // of its own, a throw-away witness is fine here -- if it actually closes over a real mem, that one is
+        // recovered from the unboxed environment below instead (see issue #126).
+        if (!lcm) lcm = w.bot(w.call<mem::M>(0));
         auto env_mem = w.call<mem::load>(Defs{lcm, env});
         lcm          = w.extract(env_mem, 0_u64)->set("mem");
         env          = w.extract(env_mem, 1_u64)->set("closure_env");
     } else if (mode == Unbox) {
-        env = w.call<core::bitcast>(lam->dom(Clos_Env_Param), env)->set("unboxed_env");
+        env = w.call<core::bitcast>(lam->dom(ep), env)->set("unboxed_env");
     }
     auto new_args = w.tuple(DefVec(lam->num_doms(), [&](auto i) {
-        return (i == Clos_Env_Param) ? env : (lam->var(i) == mem::mem_var(lam)) ? lcm : new_lam->var(i);
+        return (i == ep) ? env : (lam->var(i) == mem::mem_var(lam)) ? lcm : new_lam->var(i);
     }));
     assert(new_args->num_projs() == lam->num_doms());
     assert(lam->num_doms() <= new_lam->num_doms());
     map(lam->var(), new_args);
-    worklist_.emplace(mem::mem_var(lam), lcm, new_lam);
+
+    // This closure may not have mem as a direct parameter, yet still close over a real one through its captured
+    // environment (e.g. a callback typed without mem that nonetheless uses an outer `mem`). Recover it so
+    // mem-effectful operations inside this closure's own body (e.g. packing a further nested closure) have a
+    // real chain to thread, instead of none (see issue #126).
+    auto lvm = mem::mem_var(lam);
+    if (!lvm) {
+        auto old_env = lam->var(ep);
+        if (Axm::isa<mem::M>(old_env->type())) {
+            lvm = old_env;
+            lcm = env;
+        } else if (auto sig = old_env->type()->isa<Sigma>()) {
+            for (size_t i = 0; i < sig->num_ops(); ++i) {
+                if (Axm::isa<mem::M>(sig->op(i))) {
+                    lvm = old_env->proj(i);
+                    lcm = env->proj(i);
+                    break;
+                }
+            }
+        }
+    }
+    worklist_.emplace(lvm, lcm, new_lam);
     return map(lam, new_lam)->as<Lam>();
 }
 

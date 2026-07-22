@@ -6,6 +6,10 @@ namespace mim::plug::clos {
 
 namespace {
 
+// Exception-handling closures (sjlj branches, throw/landing-pad continuations) are always constructed by this
+// phase itself with an explicit leading `%mem.M`, so their env slot is always 1 -- see the callers of split/rebuild.
+constexpr size_t Sjlj_Env_Param = 1_u64;
+
 std::array<const Def*, 3> split(const Def* def) {
     auto new_ops = DefVec(def->num_projs() - 2, nullptr);
     auto& w      = def->world();
@@ -15,7 +19,7 @@ std::array<const Def*, 3> split(const Def* def) {
         auto op = def->proj(i);
         if (op == w.call<mem::M>(0) || op->type() == w.call<mem::M>(0))
             mem = op;
-        else if (i == Clos_Env_Param)
+        else if (i == Sjlj_Env_Param)
             env = op;
         else
             new_ops[j++] = op;
@@ -32,7 +36,7 @@ std::array<const Def*, 3> split(const Def* def) {
 const Def* rebuild(const Def* mem, const Def* env, Defs remaining) {
     auto& w      = mem->world();
     auto new_ops = DefVec(remaining.size() + 2, [&](auto i) -> const Def* {
-        static_assert(Clos_Env_Param == 1);
+        static_assert(Sjlj_Env_Param == 1);
         if (i == 0) return mem;
         if (i == 1) return env;
         return remaining[i - 2];
@@ -87,8 +91,8 @@ Lam* Clos2SJLJ::get_throw(const Def* dom) {
     auto [p, inserted] = dom2throw_.emplace(dom, nullptr);
     auto& tlam         = p->second;
     if (inserted || !tlam) {
-        tlam                = w.mut_con(clos_sub_env(dom, w.sigma({jb_type(), rb_type(), tag_type()})))->set("throw");
-        auto [m0, env, var] = split(tlam->var());
+        tlam = w.mut_con(clos_sub_env(Sjlj_Env_Param, dom, w.sigma({jb_type(), rb_type(), tag_type()})))->set("throw");
+        auto [m0, env, var]    = split(tlam->var());
         auto [jbuf, rbuf, tag] = env->projs<3>();
         auto [m1, r]           = mem::op_alloc(var->type(), m0)->projs<2>();
         auto m2                = w.call<mem::store>(Defs{m1, r, var});

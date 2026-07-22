@@ -3,6 +3,7 @@
 #include "mim/world.h"
 
 #include "mim/plug/clos/autogen.h"
+#include "mim/plug/mem/autogen.h"
 
 namespace mim::plug::clos {
 
@@ -59,7 +60,7 @@ private:
 /// Tries to match a closure literal.
 ClosLit isa_clos_lit(const Def* def, bool fn_isa_lam = true);
 
-/// Pack a typed closure. This assumes that @p fn expects the environment as its Clos_Env_Param%th argument.
+/// Pack a typed closure. This assumes that @p fn expects the environment at its env_param()%th argument.
 const Def* clos_pack(const Def* env, const Def* fn, const Def* ct = nullptr);
 
 /// Deconstruct a closure into `(env_type, function, env)`.
@@ -104,41 +105,44 @@ const Pi* clos_type_to_pi(const Def* ct, const Def* new_env_type = nullptr);
 ///@{
 /// `tup_or_sig` should generally be a Tuple, Sigma or Var.
 
-/// Describes where the environment is placed in the argument list.
-static constexpr size_t Clos_Env_Param = 1_u64;
+/// Describes where the environment is placed in the argument list: right after a leading `%mem.M`, if @p doms
+/// starts with one, or in slot 0 otherwise. This way, closures built from mem-free (pure) functions don't gain
+/// a bogus mem-shaped layout, and don't get misaligned with their real parameters (see issue #126).
+inline size_t env_param(Defs doms) { return (!doms.empty() && Axm::isa<mem::M>(doms.front())) ? 1_u64 : 0_u64; }
+inline size_t env_param(const Pi* pi) { return env_param(pi->doms()); }
 
 // Adjust the index of an argument to account for the env param
-inline size_t shift_env(size_t i) { return (i < Clos_Env_Param) ? i : i - 1_u64; }
+inline size_t shift_env(size_t ep, size_t i) { return (i < ep) ? i : i - 1_u64; }
 
 // Same but skip the env param
-inline size_t skip_env(size_t i) { return (i < Clos_Env_Param) ? i : i + 1_u64; }
+inline size_t skip_env(size_t ep, size_t i) { return (i < ep) ? i : i + 1_u64; }
 
 // TODO what does this do exactly?
 const Def* ctype(World& w, Defs doms, const Def* env_type = nullptr);
 
-const Def* clos_insert_env(size_t i, const Def* env, std::function<const Def*(size_t)> f);
-inline const Def* clos_insert_env(size_t i, const Def* env, const Def* a) {
-    return clos_insert_env(i, env, [&](auto i) { return a->proj(i); });
+const Def* clos_insert_env(size_t ep, size_t i, const Def* env, std::function<const Def*(size_t)> f);
+inline const Def* clos_insert_env(size_t ep, size_t i, const Def* env, const Def* a) {
+    return clos_insert_env(ep, i, env, [&](auto i) { return a->proj(i); });
 }
 
-inline const Def* clos_insert_env(const Def* env, const Def* tup_or_sig) {
+inline const Def* clos_insert_env(size_t ep, const Def* env, const Def* tup_or_sig) {
     auto& w      = tup_or_sig->world();
-    auto new_ops = DefVec(tup_or_sig->num_projs() + 1, [&](auto i) { return clos_insert_env(i, env, tup_or_sig); });
+    auto new_ops = DefVec(tup_or_sig->num_projs() + 1, [&](auto i) { return clos_insert_env(ep, i, env, tup_or_sig); });
     return (tup_or_sig->isa<Sigma>()) ? w.sigma(new_ops) : w.tuple(new_ops);
 }
 
-const Def* clos_remove_env(size_t i, std::function<const Def*(size_t)> f);
-inline const Def* clos_remove_env(size_t i, const Def* def) {
-    return clos_remove_env(i, [&](auto i) { return def->proj(i); });
+const Def* clos_remove_env(size_t ep, size_t i, std::function<const Def*(size_t)> f);
+inline const Def* clos_remove_env(size_t ep, size_t i, const Def* def) {
+    return clos_remove_env(ep, i, [&](auto i) { return def->proj(i); });
 }
-inline const Def* clos_remove_env(const Def* tup_or_sig) {
+inline const Def* clos_remove_env(size_t ep, const Def* tup_or_sig) {
     auto& w      = tup_or_sig->world();
-    auto new_ops = DefVec(tup_or_sig->num_projs() - 1, [&](auto i) { return clos_remove_env(i, tup_or_sig); });
+    auto new_ops = DefVec(tup_or_sig->num_projs() - 1, [&](auto i) { return clos_remove_env(ep, i, tup_or_sig); });
     return (tup_or_sig->isa<Sigma>()) ? w.sigma(new_ops) : w.tuple(new_ops);
 }
 
-inline const Def* clos_sub_env(const Def* tup_or_sig, const Def* new_env) {
-    return tup_or_sig->refine(Clos_Env_Param, new_env);
+inline const Def* clos_sub_env(size_t ep, const Def* tup_or_sig, const Def* new_env) {
+    return tup_or_sig->refine(ep, new_env);
 }
 ///@}
 
