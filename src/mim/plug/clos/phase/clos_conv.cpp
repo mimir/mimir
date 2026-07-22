@@ -257,7 +257,7 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
     // A DefSet iterates in insertion order, which unrelated changes elsewhere silently perturb.
     auto fv_vec = DefVec(fvs.begin(), fvs.end());
     std::ranges::sort(fv_vec, GIDLt<const Def*>());
-    auto env_type    = rewrite(old_world().tuple(fv_vec)->type());
+    auto env_type    = w.tuple(DefVec(fv_vec.size(), [&](auto i) { return rewrite(fv_vec[i]); }))->type();
     auto new_fn_type = clos_type_of(old_lam->type(), env_type)->as<Pi>();
     auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg_key());
 

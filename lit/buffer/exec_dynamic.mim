@@ -1,0 +1,37 @@
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+
+// End-to-end bufferization of a tensor op nest with a *dynamic* (runtime) extent, inline in `main`.
+// `n = argc + 4` is a runtime `Nat`, so `a_n = repeat a` has the symbolic shape `«n, 4»` and the
+// `%tensor.map_reduce` reduces over the dynamic axis `n`. Bufferization must:
+//   * thread the buffer-read (`get`) mem off the map_reduce's output mem, not the input buffer's
+//     (otherwise the input alloc/store leaks into the loop as a mem-typed free var — %mem.add_mem);
+//   * propagate the map_reduce's result mem even though its callee mentions `n` in a type argument and
+//     hence has a `Var` dependency (%mem.add_mem must not mistake it for a continuation call);
+//   * lower the dynamic reduction loop's affine indices on the `Idx 0` carrier rather than a dependent
+//     `Idx n` (%matrix.lower_aff), so no dependent index type leaks into the loop closures.
+// After the full pipeline all tensor/matrix/buffer/affine axioms are gone and only %mem.* + loops remain.
+// exec_dynamic_run.mim compiles this to an executable and asserts the exit code (n = 5 ⇒ 10·5 = 50).
+plugin core;
+plugin tensor;
+plugin cps;
+plugin affine;
+plugin mem;
+
+fun sum_f (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
+
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]] =
+    let a: «4, 4; I32» = ‹4; (1I32, 2I32, 3I32, 4I32)›;
+    let n   = %core.nat.add (%core.bitcast Nat argc, 4);
+    let a_n = %tensor.repeat @(I32, 2) (4, 4) (n, 4) a;
+    let s = %tensor.map_reduce @1 @(I32, 1, 2) (2, (2, n, 4))
+        @(I32, 2, (n, 4)) (sum_f, 0I32)
+        (%tensor.proj_map @(3, 1) 0) (%tensor.proj_map @(3, 2) (1, 2),) a_n;
+    return (mem, %tensor.get @(I32, 1, 2) (s, 0_2));
+
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
+// GONE-NOT: %matrix.
