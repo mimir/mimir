@@ -262,13 +262,23 @@ const Def* AddMem::add_mem_to_lams(Lam* curr_lam, const Def* def) {
                                               [&](const Def* def) { return add_mem_to_lams(place, def); });
     }
 
-    // call-site of a continuation
-    if (auto app = def->isa<App>(); app && (app->callee()->has_dep(Dep::Var))) {
+    // call-site of a continuation.
+    // Guard with `!app->axm()`: a fully-applied axm whose callee merely mentions a `Var` in a type argument
+    // (e.g. a dynamic tensor shape `(2, n, 4)` with `n` derived from a function parameter) also satisfies
+    // `has_dep(Dep::Var)`, but it is *not* a continuation call. Routing it here would skip the axm branch's
+    // `set_mem`, so its result mem would never be propagated and downstream mem operands would keep a stale
+    // (pre-op) mem — which later phases relocate into loop bodies, yielding mem-typed free vars.
+    if (auto app = def->isa<App>(); app && !app->axm() && app->callee()->has_dep(Dep::Var)) {
         auto new_callee = add_mem_to_lams(place, app->callee());
-        // Extend the argument only if the (rewritten) callee gained a leading mem parameter.
-        auto want                  = new_callee->type()->as<Pi>()->num_doms();
-        auto have                  = app->callee()->type()->as<Pi>()->num_doms();
-        auto arg                   = want == have + 1 ? rewrite_arg(app->arg()) : add_mem_to_lams(place, app->arg());
+        // Re-thread the leading mem argument whenever the (rewritten) callee threads memory — either it
+        // just gained a leading mem parameter (rewrite_arg prepends the current mem) or it already had one
+        // (rewrite_arg replaces it, since offset 0). rewrite_arg samples mem_for_lam last, after the value
+        // operands are processed, so a mem produced by a sibling value (e.g. the buffer read feeding
+        // `return (mem, read_result)`) becomes the threaded mem instead of the stale entry mem. Sampling it
+        // before would leave the entry mem in place, which later phases relocate into a loop-exit
+        // continuation, turning it into a mem-typed free var that closure conversion rejects.
+        auto arg                   = has_leading_mem(new_callee->type()->as<Pi>()) ? rewrite_arg(app->arg())
+                                                                                   : add_mem_to_lams(place, app->arg());
         return mem_rewritten_[def] = app->rebuild(app->type(), {new_callee, arg});
     }
 

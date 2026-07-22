@@ -300,12 +300,19 @@ const Def* ClosConv::type_clos(const Pi* pi, Def2Def& subst, const Def* env_type
 }
 
 ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam, Def2Def& subst) {
-    auto& w          = world();
-    auto fv_vec      = DefVec(fvs.begin(), fvs.end());
-    auto env         = w.tuple(fv_vec);
-    auto env_type    = rewrite(env->type(), subst);
-    auto new_fn_type = type_clos(old_lam->type(), subst, env_type)->as<Pi>();
-    auto new_lam     = old_lam->stub(new_fn_type);
+    auto& w     = world();
+    auto fv_vec = DefVec(fvs.begin(), fvs.end());
+    auto env    = w.tuple(fv_vec);
+    // Derive the env parameter type from the tuple of *individually rewritten* free defs — exactly how the
+    // packing site (ClosConv::rewrite) builds the env value. For a dependent env sigma (e.g. a dynamic tensor
+    // dimension `n` captured alongside `Idx n`-typed values), rewriting the whole old sigma yields a
+    // different dependent sigma than re-tupling the rewritten components, so the two would disagree and
+    // clos_pack's `env->type() == pi->dom(ep)` assertion would fail. Building both the same way keeps them
+    // in lock-step.
+    auto rewritten_env = w.tuple(DefVec(fv_vec.size(), [&](auto i) { return rewrite(fv_vec[i], subst); }));
+    auto env_type      = rewritten_env->type();
+    auto new_fn_type   = type_clos(old_lam->type(), subst, env_type)->as<Pi>();
+    auto new_lam       = old_lam->stub(new_fn_type);
     // TODO
     // new_lam->set_debug_name((old_lam->is_external() || !old_lam->is_set()) ? "cc_" + old_lam->name() :
     // old_lam->name());
