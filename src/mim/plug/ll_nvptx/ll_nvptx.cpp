@@ -24,7 +24,9 @@ public:
 constexpr auto default_compute_cap = "75";
 
 std::string get_compute_capability() {
-    auto out = sys::exec("nvidia-smi --query-gpu=compute_cap --format=csv,noheader");
+    auto nvidia_smi = sys::find_cmd("nvidia-smi");
+    if (!std::filesystem::exists(nvidia_smi)) error<CmdNotFound>("Could not find command: nvidia-smi {}", nvidia_smi);
+    auto out = sys::exec(std::format("{} --query-gpu=compute_cap --format=csv,noheader", nvidia_smi));
     out.erase(std::remove_if(out.begin(), out.end(), ::isspace), out.end());
     // out should now have form "7.5" referencing the compute capability "sm_75"
 
@@ -171,12 +173,11 @@ public:
             device_flags = emit_device(setup_phase->new_world(), dev_ofs);
         }
 
-        auto compute_cap = get_compute_capability();
-
         bool embed_device_code;
 #ifdef __linux__
         try {
             embed_device_code = true;
+            auto compute_cap  = get_compute_capability();
             if (device_flags.uses_libdevice) {
                 auto libdevice_path = find_libdevice();
                 link_libdevice(libdevice_path, dev_ll_name, dev_bc_raw_name);
