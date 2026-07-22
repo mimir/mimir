@@ -1,11 +1,11 @@
-// REQUIRES: system-linux, cuda
-// RUN: rm -f %{s:stem}.ll
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
 // RUN: %mim %s -p ll_nvptx -o -
-// RUN: rm -f %t
-// RUN: clang %{s:stem}.ll -o %t -lcuda -Wno-override-module
-// RUN: %t; test $? -eq 84
-// RUN: %t 1 2 3; test $? -eq 84
-// RUN: %t 1 2 3 4 5; test $? -eq 84
+// RUN: FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+// RUN: FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
+// RUN: %if system-linux && cuda %{ clang %{s:stem}.ll -o %t -lcuda -Wno-override-module %}
+// RUN: %if system-linux && cuda %{ %t; test $? -eq 84 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3; test $? -eq 84 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3 4 5; test $? -eq 84 %}
 
 plugin core;
 plugin gpu;
@@ -58,3 +58,30 @@ fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
     let m0 = %mem.free (m0, ptr2);
 
     return (m0, val);
+
+// HOST: define i32 @main(
+// HOST-DAG: call i32 @cuInit(i32 0)
+// HOST-DAG: call i32 @cuCtxCreate
+// HOST-DAG: call i32 @cuModuleLoad
+// HOST-DAG: call i32 @cuStreamCreate
+// HOST-DAG: call i32 @cuStreamCreate
+// HOST: call i32 @cuMemAllocAsync
+// HOST: call i32 @cuMemcpyHtoDAsync
+// HOST: call i32 @cuMemAllocAsync
+// HOST: call i32 @cuMemcpyHtoDAsync
+// HOST: call i32 @cuLaunchKernel
+// HOST: call i32 @cuLaunchKernel
+// HOST: call i32 @cuMemcpyDtoHAsync
+// HOST: call i32 @cuMemcpyDtoHAsync
+// HOST: call i32 @cuMemFreeAsync
+// HOST: call i32 @cuMemFreeAsync
+// HOST: call i32 @cuStreamSynchronize
+// HOST: call i32 @cuStreamSynchronize
+// HOST-DAG: call i32 @cuStreamDestroy
+// HOST-DAG: call i32 @cuStreamDestroy
+// HOST-DAG: call i32 @cuModuleUnload
+// HOST-DAG: call i32 @cuCtxDestroy
+// HOST: ret i32
+
+// DEVICE: define ptx_kernel void @{{.*}}([[GL_PTR_T:.*]] addrspace(1)* %[[GL_PTR:[0-9_a-zA-Z]+]])
+// DEVICE: store {{.*}} addrspace(1)* %{{.*}}

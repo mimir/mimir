@@ -1,12 +1,12 @@
-// REQUIRES: system-linux, cuda
-// RUN: rm -f %{s:stem}.ll
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
 // RUN: %mim %s -p ll_nvptx -o -
-// RUN: rm -f %t
-// RUN: clang %{s:stem}.ll -o %t -lcuda -Wno-override-module
-// RUN: %t; test $? -eq 42
-// RUN: %t 1; test $? -eq 43
-// RUN: %t 1 2; test $? -eq 44
-// RUN: %t 1 2 3; test $? -eq 45
+// RUN: FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+// RUN: FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
+// RUN: %if system-linux && cuda %{ clang %{s:stem}.ll -o %t -lcuda -Wno-override-module %}
+// RUN: %if system-linux && cuda %{ %t; test $? -eq 42 %}
+// RUN: %if system-linux && cuda %{ %t 1; test $? -eq 43 %}
+// RUN: %if system-linux && cuda %{ %t 1 2; test $? -eq 44 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3; test $? -eq 45 %}
 
 plugin core;
 plugin gpu;
@@ -51,3 +51,23 @@ fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
     let m0 = %mem.free (m0, arr);
 
     return (m0, val);
+
+// HOST: define i32 @main(
+// HOST-DAG: call i8* @malloc(i64 16)
+// HOST-DAG: call i32 @cuInit(i32 0)
+// HOST-DAG: call i32 @cuCtxCreate
+// HOST-DAG: call i32 @cuModuleLoad
+// HOST-DAG: call i32 @cuMemAlloc
+// HOST: call i32 @cuMemcpyHtoD
+// HOST: call i32 @cuLaunchKernel
+// HOST: call i32 @cuMemcpyDtoH
+// HOST: call i32 @cuMemFree
+// HOST-DAG: call void @free
+// HOST-DAG: call i32 @cuModuleUnload
+// HOST-DAG: call i32 @cuCtxDestroy
+// HOST: ret i32
+
+// DEVICE: define ptx_kernel void @kernel{{.*}}([[PTR_T:.*]] addrspace(1)* %[[PTR:[0-9_a-zA-Z]+]])
+// DEVICE: %{{.*}} = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+// DEVICE: getelementptr inbounds [[PTR_T]], [[PTR_T]] addrspace(1)* %[[PTR]]
+// DEVICE: store i32 {{.*}}, i32 addrspace(1)*
