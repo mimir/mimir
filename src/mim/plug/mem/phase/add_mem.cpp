@@ -10,35 +10,6 @@
 
 namespace mim::plug::mem::phase {
 
-namespace {
-
-/// Is @p def a memory-typed value?
-bool is_mem(const Def* def) {
-    auto type = def->type();
-    return type && Axm::isa<mem::M>(type);
-}
-
-/// If @p def produces a memory - either as a bare `%mem.M` or as the first component of a `[%mem.M, …]` tuple -
-/// yield that memory; otherwise `nullptr`.
-const Def* produced_mem(const Def* def) {
-    if (is_mem(def)) return def;
-    if (def->num_projs() > 1)
-        if (auto m = def->proj(0); is_mem(m)) return m;
-    return nullptr;
-}
-
-/// Does @p pi already thread memory - a leading `%mem.M`, either directly or grouped as the first
-/// component of the first parameter (e.g. the `Fn [%mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
-bool has_leading_mem(const Pi* pi) {
-    if (pi->num_doms() == 0) return false;
-    auto dom0 = pi->dom(0uz);
-    if (Axm::isa<mem::M>(dom0)) return true;
-    if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<mem::M>(sig->op(0))) return true;
-    return false;
-}
-
-} // namespace
-
 void AddMem::start() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
     // (combiners, affine index mappings, initial accumulators of `%matrix.map_reduce_aff`, …).
@@ -68,7 +39,7 @@ void AddMem::start() {
 const Def* AddMem::rewrite(const Def* old_def) {
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : %mem.M 0`) are thereby spliced into the chain.
-    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && is_mem(old_def)) {
+    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && isa_mem(old_def)) {
         Rewriter::rewrite(old_def);
         return curr_mem_;
     }
@@ -164,7 +135,7 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
     //   2. memory operands next - now resolving to the up-to-date current memory;
     //   3. continuation values last - their bodies run later, so a shared memory operation they capture must
     //      already have been anchored (threaded) in this scope by the memory operands above.
-    auto rank = [](const Def* op) { return is_mem(op) ? 1 : (op->type() && Pi::isa_cn(op->type()) ? 2 : 0); };
+    auto rank = [](const Def* op) { return isa_mem(op) ? 1 : (op->type() && Pi::isa_cn(op->type()) ? 2 : 0); };
 
     auto& w      = new_world();
     auto n       = tuple->num_ops();
@@ -176,7 +147,7 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
 }
 
 void AddMem::advance_mem(const Def* def) {
-    if (auto m = produced_mem(def)) curr_mem_ = m;
+    if (auto m = mem_def(def)) curr_mem_ = m;
 }
 
 } // namespace mim::plug::mem::phase
