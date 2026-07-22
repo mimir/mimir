@@ -24,8 +24,8 @@ inline Lam* mut_con(const Def* dom) {
 /// If @p def is a `%mem.M`-typed value, yields its memory type `%mem.M a`; otherwise `nullptr`.
 /// Null-safe: type-level Def%s (e.g. mim::Univ) have no type and hence are not memory.
 inline const App* isa_mem(const Def* def) {
-    auto type = def->type();
-    return type ? Axm::isa<mem::M>(type) : nullptr;
+    if (auto type = def->type()) return Axm::isa<mem::M>(type);
+    return nullptr;
 }
 
 /// Does @p pi already thread memory - a leading `%mem.M`, either directly or grouped as the first
