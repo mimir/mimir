@@ -15,6 +15,12 @@ namespace mim::plug::ll_nvptx {
 
 namespace {
 
+class CmdNotFound : public std::logic_error {
+public:
+    CmdNotFound(const std::string& s)
+        : std::logic_error(s) {}
+};
+
 constexpr auto default_compute_cap = "75";
 
 std::string get_compute_capability() {
@@ -84,13 +90,13 @@ std::string find_libdevice() {
     auto debian_fallback = "/usr/lib/nvidia-cuda-toolkit/libdevice/"s + LIBDEVICE_NAME;
     if (std::filesystem::exists(debian_fallback)) return debian_fallback;
 
-    error("Unable to find libdevice. Try setting the CUDA_HOME environment variable.");
+    error<CmdNotFound>("Unable to find libdevice. Try setting the CUDA_HOME environment variable.");
 }
 
 void link_libdevice(const std::string& libdevice_path, const std::string& in_name, const std::string& out_name) {
     if (!std::filesystem::exists(libdevice_path)) error("libdevice path does not exist: {}", libdevice_path);
     auto llvm_link = sys::find_cmd("llvm-link");
-    if (!std::filesystem::exists(llvm_link)) error("Could not find command: llvm-link {}", llvm_link);
+    if (!std::filesystem::exists(llvm_link)) error<CmdNotFound>("Could not find command: llvm-link {}", llvm_link);
     auto cmd = std::format("{} {} {} -o {}", llvm_link, in_name, libdevice_path, out_name);
     auto rc  = sys::system(cmd);
     if (rc != 0) error("Command exited with error code {}", rc);
@@ -98,7 +104,7 @@ void link_libdevice(const std::string& libdevice_path, const std::string& in_nam
 
 void optimize_bytecode(const std::string& in_name, const std::string& out_name) {
     auto opt = sys::find_cmd("opt");
-    if (!std::filesystem::exists(opt)) error("Could not find command: opt {}", opt);
+    if (!std::filesystem::exists(opt)) error<CmdNotFound>("Could not find command: opt {}", opt);
     // TODO: consider adding more (NVPTX-specific) passes
     // TODO: consider setting other optimization level
     auto passes = "default<O2>,nvvm-reflect";
@@ -109,7 +115,7 @@ void optimize_bytecode(const std::string& in_name, const std::string& out_name) 
 
 void compile2ptx(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
     auto llc = sys::find_cmd("llc");
-    if (!std::filesystem::exists(llc)) error("Could not find command: llc {}", llc);
+    if (!std::filesystem::exists(llc)) error<CmdNotFound>("Could not find command: llc {}", llc);
     // TODO: support 32-bit version?
     // TODO: consider setting other optimization level - currently llc's default: -O2
     auto cmd = std::format("{} -march=nvptx64 -mcpu=sm_{} {} -o {}", llc, compute_cap, in_name, out_name);
@@ -119,7 +125,7 @@ void compile2ptx(const std::string& compute_cap, const std::string& in_name, con
 
 void compile2cubin(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
     auto ptxas = sys::find_cmd("ptxas");
-    if (!std::filesystem::exists(ptxas)) error("Could not find command: ptxas {}", ptxas);
+    if (!std::filesystem::exists(ptxas)) error<CmdNotFound>("Could not find command: ptxas {}", ptxas);
     // TODO: consider setting other optimization level - currently ptxas' default: -O3
     auto cmd = std::format("{} -arch=sm_{} {} -o {}", ptxas, compute_cap, in_name, out_name);
     auto rc  = sys::system(cmd);
@@ -128,7 +134,7 @@ void compile2cubin(const std::string& compute_cap, const std::string& in_name, c
 
 void compile2fatbin(const std::string& compute_cap, const std::string& in_name, const std::string& out_name) {
     auto fatbinary = sys::find_cmd("fatbinary");
-    if (!std::filesystem::exists(fatbinary)) error("Could not find command: fatbinary {}", fatbinary);
+    if (!std::filesystem::exists(fatbinary)) error<CmdNotFound>("Could not find command: fatbinary {}", fatbinary);
     auto cmd
         = std::format("{} --create={} -64 --image3=kind=elf,sm={},file={}", fatbinary, out_name, compute_cap, in_name);
     auto rc = sys::system(cmd);
@@ -169,16 +175,18 @@ public:
 
         bool embed_device_code;
 #ifdef __linux__
-        embed_device_code = true;
-        if (device_flags.uses_libdevice) {
-            auto libdevice_path = find_libdevice();
-            link_libdevice(libdevice_path, dev_ll_name, dev_bc_raw_name);
-            optimize_bytecode(dev_bc_raw_name, dev_bc_opt_name);
-        }
-        auto compile_input = device_flags.uses_libdevice ? dev_bc_opt_name : dev_ll_name;
-        compile2ptx(compute_cap, compile_input, dev_ptx_name);
-        compile2cubin(compute_cap, dev_ptx_name, dev_cubin_name);
-        compile2fatbin(compute_cap, dev_cubin_name, dev_fatbin_name);
+        try {
+            embed_device_code = true;
+            if (device_flags.uses_libdevice) {
+                auto libdevice_path = find_libdevice();
+                link_libdevice(libdevice_path, dev_ll_name, dev_bc_raw_name);
+                optimize_bytecode(dev_bc_raw_name, dev_bc_opt_name);
+            }
+            auto compile_input = device_flags.uses_libdevice ? dev_bc_opt_name : dev_ll_name;
+            compile2ptx(compute_cap, compile_input, dev_ptx_name);
+            compile2cubin(compute_cap, dev_ptx_name, dev_cubin_name);
+            compile2fatbin(compute_cap, dev_cubin_name, dev_fatbin_name);
+        } catch (const CmdNotFound& e) { WLOG("{}\nFalling back to not embedding device code.", e.what()); }
 #else
         embed_device_code = false;
 #endif
