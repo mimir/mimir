@@ -1,7 +1,7 @@
 // RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
 // RUN: %mim %s -p ll_nvptx -o -
-// RUN: FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
-// RUN: FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
+// RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+// RUN: %FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
 // RUN: %if system-linux && cuda %{ clang %{s:stem}.ll -o %t -lcuda -Wno-override-module %}
 // RUN: %if system-linux && cuda %{ %t; test $? -eq 84 %}
 // RUN: %if system-linux && cuda %{ %t 1 2 3; test $? -eq 84 %}

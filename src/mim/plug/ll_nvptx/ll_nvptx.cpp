@@ -187,7 +187,10 @@ public:
             compile2ptx(compute_cap, compile_input, dev_ptx_name);
             compile2cubin(compute_cap, dev_ptx_name, dev_cubin_name);
             compile2fatbin(compute_cap, dev_cubin_name, dev_fatbin_name);
-        } catch (const CmdNotFound& e) { WLOG("{}\nFalling back to not embedding device code.", e.what()); }
+        } catch (const CmdNotFound& e) {
+            WLOG("{}\nFalling back to not embedding device code.", e.what());
+            embed_device_code = false;
+        }
 #else
         embed_device_code = false;
 #endif
