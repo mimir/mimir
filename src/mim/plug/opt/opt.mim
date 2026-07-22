@@ -58,7 +58,6 @@ lam extern _default_compile (): %compile.Phase =
             );
         %compile.cond "clos" (
             %compile.phases ff (
-                %compile.named "%mem.add_mem",
                 %compile.named "%clos.clos_conv_prep",
                 %compile.named "%clos.clos_conv",
                 clos_opt_phases,
