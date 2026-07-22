@@ -53,11 +53,33 @@ const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
     // Only continuations are mem-extended; a pi that already threads memory is left alone.
     if (Pi::isa_cn(pi) && !has_leading_mem(pi)) {
         auto& w  = new_world();
-        auto dom = DefVec();
-        dom.emplace_back(w.call<mem::M>(0));
+        auto mem = w.call<mem::M>(0);
+        auto dom = new_pi->dom();
+
+        // A dependent domain refers to its own Var.
+        // So prepending a leading mem shifts every component's index by one.
+        // Rebuild the domain as a fresh mutable Sigma and remap the old domain-Var to the shifted components of the new
+        // one. Otherwise the dependent references dangle (see issue #177).
+        if (auto sigma = dom->isa_mut<Sigma>(); sigma && sigma->has_var()) {
+            auto n         = sigma->num_ops();
+            auto old_var   = sigma->has_var();
+            auto new_sigma = w.mut_sigma(sigma->type(), n + 1);
+            new_sigma->set(0, mem);
+            // Component `i` may only refer to earlier components, whose (index-shifted) new Vars are already
+            // set - so build the substitution per component; padding slots `≥ i` are never extracted.
+            for (size_t i = 0; i != n; ++i) {
+                auto shift = w.tuple(DefVec(n, [&](size_t j) { return j < i ? new_sigma->var(n + 1, j + 1) : mem; }));
+                auto rw    = VarRewriter(old_var, shift);
+                new_sigma->set(i + 1, rw.rewrite(sigma->op(i)));
+            }
+            return w.cn(new_sigma);
+        }
+
+        auto new_dom = DefVec();
+        new_dom.emplace_back(mem);
         for (size_t i = 0, e = new_pi->num_doms(); i != e; ++i)
-            dom.emplace_back(new_pi->dom(i));
-        return w.cn(dom);
+            new_dom.emplace_back(new_pi->dom(i));
+        return w.cn(new_dom);
     }
     return new_pi;
 }
