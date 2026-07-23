@@ -10,6 +10,7 @@
 #include "mim/plug/ll_nvptx/ll_nvptx.h"
 
 using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 namespace mim::plug::ll_nvptx {
 
@@ -47,7 +48,7 @@ std::string get_compute_capability() {
     return compute_cap;
 }
 
-constexpr auto LIBDEVICE_NAME = "libdevice.10.bc"s;
+constexpr auto LIBDEVICE_NAME = "libdevice.10.bc"sv;
 
 std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::path& cuda_bin_path) {
     auto profile_path = cuda_bin_path / "nvcc.profile";
@@ -89,10 +90,10 @@ std::string find_libdevice() {
         auto libdevice_path = std::filesystem::path(cuda_home_env) / "nvvm" / "libdevice" / LIBDEVICE_NAME;
         if (std::filesystem::exists(libdevice_path)) return libdevice_path.string();
     }
-    auto debian_fallback = "/usr/lib/nvidia-cuda-toolkit/libdevice/"s + LIBDEVICE_NAME;
-    if (std::filesystem::exists(debian_fallback)) return debian_fallback;
+    auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / LIBDEVICE_NAME;
+    if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
 
-    error<CmdNotFound>("Unable to find libdevice. Try setting the CUDA_HOME environment variable.");
+    error<CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.", LIBDEVICE_NAME);
 }
 
 void link_libdevice(const std::string& libdevice_path, const std::string& in_name, const std::string& out_name) {
