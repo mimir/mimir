@@ -1,7 +1,7 @@
 // RUN: rm -f %{s:stem}.ll %t.ll
 // Route a CLI argument to the `ll` backend via `-X`; `o=<file>` overrides its output path.
 // RUN: %mim -p opt %s -p ll -X ll:o=%t.ll
-// RUN: cat %t.ll | FileCheck %s
+// RUN: %FileCheck %s < %t.ll
 // The default `<world>.ll` path must NOT be produced when the output path is overridden.
 // RUN: test ! -f %{s:stem}.ll
 plugin core;
