@@ -1,6 +1,6 @@
-/// # The ll_nvptx Plugin {#nvptx}
+/// # The ll_nvptx Plugin {#ll_nvptx}
 ///
-/// @see mim::plug::nvptx
+/// @see mim::plug::ll_nvptx
 ///
 /// A plugin to target LLVM IR with PTX intrinsics.
 ///
