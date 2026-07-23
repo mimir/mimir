@@ -126,6 +126,14 @@ public:
     auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(Annex::flags(d, t, s)); }
     ///@}
 
+    /// @name Plugin/Phase Arguments
+    /// Freeform command-line arguments addressed to a plugin/phase (`-X <plugin>:<arg>`).
+    /// A Phase reads its own arguments via Phase::args().
+    ///@{
+    void add_arg(Sym plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
+    const Vector<std::string>& args(Sym plugin) const; ///< Yields an empty Vector if @p plugin has none.
+    ///@}
+
 private:
     // This must go *first* so plugins will be unloaded *last* in the d'tor; otherwise funny things might happen ...
     absl::node_hash_map<Sym, Plugin::Handle> plugins_;
@@ -138,6 +146,7 @@ private:
     std::list<fs::path>::iterator insert_ = search_paths_.end();
     Flags2Phases phases_;
     Normalizers normalizers_;
+    fe::SymMap<Vector<std::string>> plugin_args_;
     Imports imports_;
 };
 

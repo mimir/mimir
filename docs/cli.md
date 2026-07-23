@@ -15,6 +15,30 @@ Mim looks for plugins in this order:
 4. `path/to/mim.exe/../../lib/mim`
 5. `CMAKE_INSTALL_PREFIX/lib/mim`
 
+## Passing Arguments to Plugins & Phases {#clipluginargs}
+
+Plugins - and in particular backends - often need to be configured from the command line.
+For example, a backend that invokes an external tool may want to forward optimization levels, a target triple for cross-compilation, or library paths.
+Use `-X` / `--plugin-arg` for this:
+
+```
+mim foo.mim -p ll -X ll:o=out.ll -X compile:aggr=on
+```
+
+The syntax is `-X <plugin>:<arg>`:
+
+- The option is repeatable; each occurrence contributes one argument.
+- Only the *first* `:` separates `<plugin>` from `<arg>`, so `<arg>` may itself contain `:` or `=` (e.g. Windows paths or `key=value` pairs).
+- Arguments are keyed by plugin name and collected on the [`mim::Driver`](@ref mim::Driver).
+  A [`mim::Phase`](@ref mim::Phase) reads the arguments addressed to its own plugin via [`mim::Phase::args`](@ref mim::Phase::args); the interpretation of each `<arg>` is up to the plugin.
+
+### Known Arguments
+
+| Plugin              | Argument      | Effect                                                                                                                   |
+|---------------------|---------------|--------------------------------------------------------------------------------------------------------------------------|
+| [compile](@ref compile) | `aggr=<bool>` | Value of `%%compile.aggr`; toggles fixed-point iteration of the `opt` pipeline's `optimize` stage (default off). `<bool>` is `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` means `on`. See @ref compile_cli_args. |
+| [ll](@ref ll)           | `o=<file>`    | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`. See @ref ll_cli_args.                          |
+
 ## Debugging Features {#clidebug}
 
 - The breakpoint-oriented flags below are developer options that are only available when MimIR is built with `MIM_ENABLE_CHECKS`.

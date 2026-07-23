@@ -124,4 +124,10 @@ void* Driver::get_fun_ptr(Sym plugin, const char* name) {
     return nullptr;
 }
 
+const Vector<std::string>& Driver::args(Sym plugin) const {
+    static const Vector<std::string> empty;
+    if (auto i = plugin_args_.find(plugin); i != plugin_args_.end()) return i->second;
+    return empty;
+}
+
 } // namespace mim

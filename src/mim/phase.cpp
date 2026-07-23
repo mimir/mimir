@@ -20,6 +20,10 @@ Phase::Phase(World& world, flags_t annex)
     , annex_(annex)
     , name_(world.annex(annex)->sym()) {}
 
+const Vector<std::string>& Phase::args() {
+    return driver().args(Annex::demangle(driver(), Annex::flags2plugin(annex_)));
+}
+
 std::unique_ptr<Phase> Phase::recreate() {
     auto ctor = driver().phase(annex());
     auto ptr  = (*ctor)(world());
