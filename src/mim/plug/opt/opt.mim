@@ -19,7 +19,8 @@ plugin compile;
 ///
 lam extern _default_compile (): %compile.Phase =
     let optimize =
-        %compile.phases tt (
+        // fixed-point iteration off by default; enable with `-X compile:aggr=on`
+        %compile.phases (%compile.aggr ff) (
             %compile.scalarize,
             %compile.phases tt (
                 %compile.beta_red,
@@ -58,7 +59,6 @@ lam extern _default_compile (): %compile.Phase =
             );
         %compile.cond "clos" (
             %compile.phases ff (
-                %compile.named "%mem.add_mem",
                 %compile.named "%clos.clos_conv_prep",
                 %compile.named "%clos.clos_conv",
                 clos_opt_phases,

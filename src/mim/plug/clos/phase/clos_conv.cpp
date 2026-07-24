@@ -150,18 +150,19 @@ void ClosConv::rewrite_body(Lam* new_lam, Def2Def& subst) {
     if (!old_fn->is_set()) return;
 
     DLOG("rw body: {} [old={}, env={}]\nt", new_fn, old_fn, env);
-    auto env_param = new_fn->var(Clos_Env_Param)->set("closure_env");
+    auto ep      = env_param(new_fn->type()->as<Pi>());
+    auto env_val = new_fn->var(ep)->set("closure_env");
     if (fvs.size() == 1) {
-        subst.emplace(fvs.front(), env_param);
+        subst.emplace(fvs.front(), env_val);
     } else {
         for (size_t i = 0; i < fvs.size(); i++) {
             auto fv  = fvs[i];
             auto sym = w.sym("fv_"s + (fv->sym() ? fv->sym().str() : std::to_string(i)));
-            subst.emplace(fv, env_param->proj(i)->set(sym));
+            subst.emplace(fv, env_val->proj(i)->set(sym));
         }
     }
 
-    auto params = w.tuple(DefVec(old_fn->num_doms(), [&](auto i) { return new_lam->var(skip_env(i)); }));
+    auto params = w.tuple(DefVec(old_fn->num_doms(), [&](auto i) { return new_lam->var(skip_env(ep, i)); }));
     subst.emplace(old_fn->var(), params);
 
     auto filter = rewrite(new_fn->filter(), subst);
@@ -233,7 +234,7 @@ const Def* ClosConv::rewrite(const Def* def, Def2Def& subst) {
         // HACK to rewrite a retvar that is defined in an enclosing lambda
         // If we put external bb's into the env, this should never happen
         auto new_lam = make_stub(lam, subst).fn;
-        auto new_idx = skip_env(Lit::as(var->index()));
+        auto new_idx = skip_env(env_param(new_lam->type()->as<Pi>()), Lit::as(var->index()));
         return map(new_lam->var(new_idx));
     }
 
@@ -309,16 +310,17 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam, Def2Def& sub
     // new_lam->set_debug_name((old_lam->is_external() || !old_lam->is_set()) ? "cc_" + old_lam->name() :
     // old_lam->name());
     if (!isa_optimizable(old_lam)) {
-        auto new_ext_type = w.cn(clos_remove_env(new_fn_type->dom()));
+        auto ep           = env_param(new_fn_type);
+        auto new_ext_type = w.cn(clos_remove_env(ep, new_fn_type->dom()));
         auto new_ext_lam  = old_lam->stub(new_ext_type);
         DLOG("wrap ext lam: {} -> stub: {}, ext: {}", old_lam, new_lam, new_ext_lam);
         if (old_lam->is_set()) {
             old_lam->transfer_external(new_ext_lam);
-            new_ext_lam->app(false, new_lam, clos_insert_env(env, new_ext_lam->var()));
+            new_ext_lam->app(false, new_lam, clos_insert_env(ep, env, new_ext_lam->var()));
             new_lam->set(old_lam->filter(), old_lam->body());
         } else {
             new_ext_lam->unset();
-            new_lam->app(false, new_ext_lam, clos_remove_env(new_lam->var()));
+            new_lam->app(false, new_ext_lam, clos_remove_env(ep, new_lam->var()));
         }
     } else {
         new_lam->set(old_lam->filter(), old_lam->body());

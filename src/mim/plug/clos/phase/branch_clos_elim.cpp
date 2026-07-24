@@ -30,6 +30,7 @@ const Def* BranchClosElim::rewrite_imm_App(const App* app) {
     auto& w = new_world();
     if (auto [branches, index] = isa_branch(app->callee()); index) {
         DLOG("FLATTEN BRANCH {}", app->callee());
+        auto ep           = env_param(branches[0].fnc_type());
         auto new_branches = w.tuple(DefVec(branches.size(), [&](size_t i) -> const Def* {
             auto c = branches[i];
             if (auto it = branch2dropped_.find(c); it != branch2dropped_.end()) return it->second;
@@ -40,10 +41,10 @@ const Def* BranchClosElim::rewrite_imm_App(const App* app) {
             auto dropped_lam   = w.mut_lam(rewrite(clos_type_to_pi(c.type()))->as<Pi>())->set(c.fnc_as_lam()->dbg());
             branch2dropped_[c] = dropped_lam;
             auto clam          = rewrite(c.fnc_as_lam())->as_mut<Lam>();
-            dropped_lam->set(clam->reduce(clos_insert_env(rewrite(c.env()), dropped_lam->var())));
+            dropped_lam->set(clam->reduce(clos_insert_env(ep, rewrite(c.env()), dropped_lam->var())));
             return dropped_lam;
         }));
-        return w.app(w.extract(new_branches, rewrite(index)), clos_remove_env(rewrite(app->arg())));
+        return w.app(w.extract(new_branches, rewrite(index)), clos_remove_env(ep, rewrite(app->arg())));
     }
 
     return RWPhase::rewrite_imm_App(app);

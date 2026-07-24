@@ -9,6 +9,14 @@
 /// Invoke the optimization pipeline by defining a function `_compile: [] → %%compile.Phase`
 /// (or rely on a plugin-provided `_default_compile` such as the one in the `opt` plugin).
 ///
+/// ## Command-Line Arguments {#compile_cli_args}
+///
+/// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X compile:<arg>`):
+///
+/// | Argument         | Effect                                                                                        |
+/// |------------------|-----------------------------------------------------------------------------------------------|
+/// | `aggr=<bool>`    | Sets the value of `%%compile.aggr` (see above). `<bool>` is one of `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` is equivalent to `aggr=on`. Used by the `opt` pipeline to switch fixed-point iteration on/off. |
+///
 /// ## Types
 ///
 /// ### %%compile.Phase
@@ -41,6 +49,15 @@ axm %compile.named: {n: Nat} → «n; I8» → %compile.Phase;
 /// Used to gate whole sub-pipelines on a plugin without importing it.
 ///
 axm %compile.cond: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond;
+///
+/// ### %%compile.aggr
+///
+/// Makes a fixed-point flag switchable from the command line.
+/// `%%compile.aggr fallback` yields `tt` if `-X compile:aggr=on` (also `=true` or a bare `aggr`) was passed,
+/// `ff` if `-X compile:aggr=off` (also `=false`), and otherwise the given `fallback`.
+/// Use it as the Bool of a `%%compile.phases` to make that pipeline's fixed-point iteration switchable via the CLI.
+///
+axm %compile.aggr: Bool → Bool, normalize_aggr;
 ///
 /// ## Constructors
 ///
