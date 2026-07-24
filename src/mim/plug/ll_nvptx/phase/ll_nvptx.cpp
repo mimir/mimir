@@ -71,7 +71,10 @@ public:
     const std::string& get_extra_flags() const { return extra_flags; }
 
 private:
-    std::string convert(const Def* def, bool simd = false) override { return Super::convert(def, simd); }
+    std::string convert(const Def* def, bool simd = false) override {
+        if (simd) WLOG("Ignoring simd=true for type conversion in device code.");
+        return Super::convert(def, false);
+    }
 
     absl::btree_map<std::string, int> symbols_;
     LamSet kernels_;
@@ -366,7 +369,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         emit_unsafe(copy_to_device->arg(1));
         auto host_ptr = emit(copy_to_device->arg(2));
         auto dev_ptr  = emit(copy_to_device->arg(3));
-        auto size     = emit(w.lit_nat(Lit::as(type_size)));
+        auto size     = emit(type_size);
 
         std::string copy_res;
         if (is_async) {
@@ -399,7 +402,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         emit_unsafe(copy_to_host->arg(1));
         auto dev_ptr  = emit(copy_to_host->arg(2));
         auto host_ptr = emit(copy_to_host->arg(3));
-        auto size     = emit(w.lit_nat(Lit::as(type_size)));
+        auto size     = emit(type_size);
 
         std::string copy_res;
         if (is_async) {
@@ -469,9 +472,9 @@ void DeviceEmitter::emit_epilogue(Lam* lam) {
     auto app = lam->body()->as<App>();
     if (auto mslot = Axm::isa<mem::mslot>(app)) {
         // Continuation-based stack slot: allocate and jump to the passed continuation with the fresh pointer.
-        auto [Ta, rest]            = mslot->uncurry_args<2>();
-        auto [T, a] = Ta->projs<2>();
-        auto [msize, ret]          = rest->projs<2>();
+        auto [Ta, rest]   = mslot->uncurry_args<2>();
+        auto [T, a]       = Ta->projs<2>();
+        auto [msize, ret] = rest->projs<2>();
         emit_unsafe(msize->proj(0)); // mem
         // TODO array with size
         auto ret_lam = ret->as_mut<Lam>();
@@ -519,7 +522,7 @@ std::string DeviceEmitter::prepare() {
         if (!opt_idx_lit) error("Type of '{}' must have known index type but has {}", def, type);
         auto idx_lit = opt_idx_lit.value();
         locals_[def] = name;
-        declare("i32 @llvm.nvvm.read.ptx.sreg.ctaid.x()");
+        declare("i32 @llvm.nvvm.read.ptx.sreg.{}()", sreg);
         if (type_name == "i0") {
             locals_[def] = "0";
         } else if (type_name == "i32") {

@@ -32,7 +32,11 @@ std::string get_compute_capability() {
     // out should now have form "7.5" referencing the compute capability "sm_75"
 
     auto dot_pos = out.find('.');
-    assert(dot_pos < out.size());
+    if (dot_pos == std::string::npos) {
+        std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
+                     default_compute_cap);
+        return default_compute_cap;
+    }
 
     for (size_t i = 0; i < out.size(); ++i) {
         if (i == dot_pos) continue;
@@ -64,12 +68,14 @@ std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::p
     while (std::getline(file, line)) {
         line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
         if (line.starts_with("TOP=")) {
-            size_t macro_pos = line.find("$(_HERE_)/");
-            top_dir          = line.substr(macro_pos + 10);
+            auto macro_pos = line.find("$(_HERE_)/");
+            if (macro_pos == std::string::npos) break;
+            top_dir = line.substr(macro_pos + 10);
         }
         if (line.rfind("NVVMIR_LIBRARY_DIR=", 0) == 0) {
-            size_t macro_pos = line.find("$(TOP)/");
-            lib_dir          = line.substr(macro_pos + 7);
+            auto macro_pos = line.find("$(TOP)/");
+            if (macro_pos == std::string::npos) break;
+            lib_dir = line.substr(macro_pos + 7);
         }
     }
     if (top_dir.empty() || lib_dir.empty()) return std::nullopt;
@@ -80,9 +86,9 @@ std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::p
 }
 
 std::string find_libdevice() {
-    auto nvcc_which = sys::find_cmd("nvcc");
-    if (nvcc_which.find("not found") == std::string::npos) {
-        auto nvcc_path     = std::filesystem::canonical(nvcc_which);
+    auto nvcc = sys::find_cmd("nvcc");
+    if (std::filesystem::exists(nvcc)) {
+        auto nvcc_path     = std::filesystem::canonical(nvcc);
         auto cuda_bin_path = nvcc_path.parent_path();
         if (auto libdevice_path = parse_nvcc_profile(cuda_bin_path)) return libdevice_path->string();
     }
