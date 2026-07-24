@@ -13,9 +13,9 @@ plugin nvptx;
 plugin opt;
 import compile;
 ///
-/// ## Command-Line Arguments {#ll_cli_args}
+/// ## Command-Line Arguments {#ll_nvptx_cli_args}
 ///
-/// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X ll:<arg>`):
+/// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X ll_nvptx:<arg>`):
 ///
 /// | Argument   | Effect                                                                      |
 /// |------------|-----------------------------------------------------------------------------|
