@@ -14,15 +14,21 @@ namespace mim::plug::ll {
 using namespace std::string_literals;
 
 /// Pipeline phase for `%ll.emit`.
-/// Writes the LLVM IR of the fully lowered world to `<world>.ll` or `a.ll`.
+/// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
+/// The output path can be overridden on the command line via `-X ll:o=<file>`.
 class Emit : public Phase {
 public:
     Emit(World& world, flags_t annex)
         : Phase(world, annex) {}
 
     void start() override {
-        auto name    = world().name() ? std::string(world().name().view()) : "a"s;
-        auto ofs     = std::ofstream(name + ".ll"s);
+        auto name = world().name() ? std::string(world().name().view()) : "a"s;
+        auto path = name + ".ll"s;
+        for (const auto& arg : args()) {
+            world().DLOG("ll backend arg: `{}`", arg);
+            if (arg.starts_with("o=")) path = arg.substr(2);
+        }
+        auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), ofs);
         emitter.run();
     }
