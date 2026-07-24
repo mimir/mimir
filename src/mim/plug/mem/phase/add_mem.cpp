@@ -1,7 +1,5 @@
 #include "mim/plug/mem/phase/add_mem.h"
 
-#include <utility>
-
 #include <mim/util/util.h>
 
 #include "mim/plug/mem/mem.h"
@@ -89,10 +87,8 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
 
     // Pinned ABI (an axm-app argument and everything below it): rewrite verbatim - no memory threaded or added.
     if (preserved_.contains(old_lam)) {
-        auto save    = std::exchange(preserving_, true);
-        auto new_lam = Rewriter::rewrite_mut_Lam(old_lam);
-        preserving_  = save;
-        return new_lam;
+        auto _ = Restore(preserving_, true);
+        return Rewriter::rewrite_mut_Lam(old_lam);
     }
 
     auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg());
@@ -111,9 +107,8 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
     if (!old_lam->is_set()) return new_lam;
 
     // The body's current memory is this lam's (leading or grouped) mem parameter - or none for direct-style fns.
-    auto save = std::exchange(curr_mem_, mem::mem_var(new_lam));
+    auto _ = Restore(curr_mem_, mem::mem_var(new_lam));
     new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
-    curr_mem_ = save;
     return new_lam;
 }
 
