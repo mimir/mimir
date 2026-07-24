@@ -16,9 +16,9 @@ plugin opt;
 ///
 /// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X ll:<arg>`):
 ///
-/// | Argument   | Effect                                                                      |
-/// |------------|-----------------------------------------------------------------------------|
-/// | `o=<file>` | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.   |
+/// | Argument                        | Effect                                                                      |
+/// |---------------------------------|-----------------------------------------------------------------------------|
+/// | `o=<file>` <br> `output=<file>` | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.   |
 ///
 /// ## Phases
 ///

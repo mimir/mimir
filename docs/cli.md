@@ -28,16 +28,16 @@ mim foo.mim -p ll -X ll:o=out.ll -X compile:aggr=on
 The syntax is `-X <plugin>:<arg>`:
 
 - The option is repeatable; each occurrence contributes one argument.
-- Only the *first* `:` separates `<plugin>` from `<arg>`, so `<arg>` may itself contain `:` or `=` (e.g. Windows paths or `key=value` pairs).
+- Only the _first_ `:` separates `<plugin>` from `<arg>`, so `<arg>` may itself contain `:` or `=` (e.g. Windows paths or `key=value` pairs).
 - Arguments are keyed by plugin name and collected on the [`mim::Driver`](@ref mim::Driver).
   A [`mim::Phase`](@ref mim::Phase) reads the arguments addressed to its own plugin via [`mim::Phase::args`](@ref mim::Phase::args); the interpretation of each `<arg>` is up to the plugin.
 
 ### Known Arguments
 
-| Plugin              | Argument      | Effect                                                                                                                   |
-|---------------------|---------------|--------------------------------------------------------------------------------------------------------------------------|
-| [compile](@ref compile) | `aggr=<bool>` | Value of `%%compile.aggr`; toggles fixed-point iteration of the `opt` pipeline's `optimize` stage (default off). `<bool>` is `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` means `on`. See @ref compile_cli_args. |
-| [ll](@ref ll)           | `o=<file>`    | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`. See @ref ll_cli_args.                          |
+| Plugin                  | Argument                        | Effect                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [compile](@ref compile) | `aggr=<bool>`                   | Value of `%%compile.aggr`; toggles fixed-point iteration of the `opt` pipeline's `optimize` stage (default off). `<bool>` is `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` means `on`. See @ref compile_cli_args. |
+| [ll](@ref ll)           | `o=<file>` <br> `output=<file>` | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`. See @ref ll_cli_args.                                                                                                                           |
 
 ## Debugging Features {#clidebug}
 
