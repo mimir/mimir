@@ -24,13 +24,13 @@ import compile;
 /// | `no-embed`         | Don't embed compiled device binary in host LLVM IR, which is the default behavior.       |
 /// | `no-ptx-embed`     | If embedding device binary, don't embed PTX image into fat binary (default: PTX and CUBIN).            |
 /// | `no-cubin-embed`   | If embedding device binary, don't embed CUBIN image into fat binary (default: PTX and CUBIN).          |
-/// | `sm=<SM>`          | If embedding device binary, compile the device binary for compute capability sm_<SM>.                  |
-/// | `libdevice=<path>` | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at <path> instead of trying to find it via CUDA paths. |
-/// | `Xlink_llvm=<args>`| If embedding device binary and if linking libdevice, invoke link_llvm with <args> (default: none).     |
-/// | `Xopt=<args>`      | If embedding device binary and if linking libdevice, invoke opt with <args> (default: -passes="default<O2>,nvvm-reflect"). |
-/// | `Xllc=<args>`      | If embedding device binary, invoke llc with <args> (default: none).                                    |
-/// | `Xptxas=<args>`    | If embedding device binary, invoke ptxas with <args> (default: none). Also passed to fatbinary via --cmdline if embedding PTX image. |
-/// | `Xfatbinary=<args>`| If embedding device binary, invoke fatbinary with <args> (default: none).                              |
+/// | `sm=<SM>`          | If embedding device binary, compile the device binary for compute capability sm_`<SM>`.                |
+/// | `libdevice=<path>` | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at `<path>` instead of trying to find it via CUDA paths. |
+/// | `Xlink_llvm=<args>`| If embedding device binary and if linking libdevice, invoke link_llvm with `<args>` (default: none).   |
+/// | `Xopt=<args>`      | If embedding device binary and if linking libdevice, invoke opt with `<args>` (default: `-passes="default<O2>,nvvm-reflect"`). |
+/// | `Xllc=<args>`      | If embedding device binary, invoke llc with `<args>` (default: none).                                  |
+/// | `Xptxas=<args>`    | If embedding device binary, invoke ptxas with `<args>` (default: none). Also passed to fatbinary via --cmdline if embedding PTX image. |
+/// | `Xfatbinary=<args>`| If embedding device binary, invoke fatbinary with `<args>` (default: none).                            |
 ///
 /// ## Phases
 ///

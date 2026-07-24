@@ -43,9 +43,9 @@ The syntax is `-X <plugin>:<arg>`:
 | [ll_nvptx](@ref ll_nvptx) | `no-embed`         | Don't embed compiled device binary in host LLVM IR, which is the default behavior. See @ref ll_nvptx_cli_args.       |
 | [ll_nvptx](@ref ll_nvptx) | `no-ptx-embed`     | If embedding device binary, don't embed PTX image into fat binary (default: PTX and CUBIN). See @ref ll_nvptx_cli_args.            |
 | [ll_nvptx](@ref ll_nvptx) | `no-cubin-embed`   | If embedding device binary, don't embed CUBIN image into fat binary (default: PTX and CUBIN). See @ref ll_nvptx_cli_args.          |
-| [ll_nvptx](@ref ll_nvptx) | `sm=<SM>`          | If embedding device binary, compile the device binary for compute capability sm_<SM>. See @ref ll_nvptx_cli_args.                  |
-| [ll_nvptx](@ref ll_nvptx) | `libdevice=<path>` | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at <path> instead of trying to find it via CUDA paths. See @ref ll_nvptx_cli_args. |
-| [ll_nvptx](@ref ll_nvptx) | `X<tool>=<args>`   | If embedding device binary invoke <tool> with <args>. See @ref ll_nvptx_cli_args for more details.     |
+| [ll_nvptx](@ref ll_nvptx) | `sm=<SM>`          | If embedding device binary, compile the device binary for compute capability sm_`<SM>`. See @ref ll_nvptx_cli_args.                  |
+| [ll_nvptx](@ref ll_nvptx) | `libdevice=<path>` | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at `<path>` instead of trying to find it via CUDA paths. See @ref ll_nvptx_cli_args. |
+| [ll_nvptx](@ref ll_nvptx) | `X<tool>=<args>`   | If embedding device binary invoke `<tool>` with `<args>`. See @ref ll_nvptx_cli_args for more details.     |
 
 ## Debugging Features {#clidebug}
 
