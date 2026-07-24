@@ -530,6 +530,18 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
                 default: break;
             }
         }
+        if (*lb != 0) {
+            if (auto mul = Axm::isa(nat::mul, a)) {
+                auto [x, y] = mul->args<2>();
+                if (x == b || y == b) {
+                    switch (id) {
+                        case nat::div: return x == b ? y : x;
+                        case nat::mod: return world.lit_nat_0();
+                        default: break;
+                    }
+                }
+            }
+        }
     }
 
     if (a == b) {
