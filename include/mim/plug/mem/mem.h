@@ -21,9 +21,26 @@ inline Lam* mut_con(const Def* dom) {
     return w.mut_con({w.call<M>(0), dom});
 }
 
+/// If @p def is a `%mem.M`-typed value, yields its memory type `%mem.M a`; otherwise `nullptr`.
+/// Null-safe: type-level Def%s (e.g. mim::Univ) have no type and hence are not memory.
+inline const App* isa_mem(const Def* def) {
+    if (auto type = def->type()) return Axm::isa<mem::M>(type);
+    return nullptr;
+}
+
+/// Does @p pi already thread memory - a leading `%mem.M`, either directly or grouped as the first
+/// component of the first parameter (e.g. the `Fn [%mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
+inline bool has_leading_mem(const Pi* pi) {
+    if (pi->num_doms() == 0) return false;
+    auto dom0 = pi->dom(0uz);
+    if (Axm::isa<mem::M>(dom0)) return true;
+    if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<mem::M>(sig->op(0))) return true;
+    return false;
+}
+
 /// Returns the (first) element of type `%mem.M a` from the given tuple.
 inline const Def* mem_def(const Def* def) {
-    if (Axm::isa<mem::M>(def->type())) return def;
+    if (isa_mem(def)) return def;
     if (def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
 
     if (def->num_projs() > 1) {
