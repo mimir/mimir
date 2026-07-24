@@ -218,7 +218,8 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
     if (type->isa<Nat>()) {
         return types_[type] = "i64";
     } else if (auto size = Idx::isa(type)) {
-        return types_[type] = "i" + std::to_string(*Idx::size2bitwidth(size));
+        // A non-literal (runtime) size uses the full 64-bit carrier, like `Idx ⊤`.
+        return types_[type] = "i" + std::to_string(Idx::size2bitwidth(size).value_or(64));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
             case 16: return types_[type] = "half";
@@ -790,7 +791,8 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         return bb.assign(name, "{} i64 {}, {}", op, a, b);
     } else if (auto idx = Axm::isa<core::idx>(def)) {
         auto x = emit(idx->arg());
-        auto s = *Idx::size2bitwidth(Idx::isa(idx->type()));
+        // A non-literal (runtime) size uses the full 64-bit carrier, like `Idx ⊤`.
+        auto s = Idx::size2bitwidth(Idx::isa(idx->type())).value_or(64);
         auto t = convert(idx->type());
         if (s < 64) return bb.assign(name, "trunc i64 {} to {}", x, t);
         return x;
@@ -910,8 +912,9 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto t_src = convert(conv->arg()->type());
         auto t_dst = convert(conv->type());
 
-        nat_t w_src = *Idx::size2bitwidth(Idx::isa(conv->arg()->type()));
-        nat_t w_dst = *Idx::size2bitwidth(Idx::isa(conv->type()));
+        // A non-literal (runtime) size uses the full 64-bit carrier, like `Idx ⊤`.
+        nat_t w_src = Idx::size2bitwidth(Idx::isa(conv->arg()->type())).value_or(64);
+        nat_t w_dst = Idx::size2bitwidth(Idx::isa(conv->type())).value_or(64);
 
         if (w_src == w_dst) return v_src;
 
@@ -937,7 +940,8 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
 
         auto size2width = [&](const Def* type) {
             if (type->isa<Nat>()) return 64_n;
-            if (auto size = Idx::isa(type)) return *Idx::size2bitwidth(size);
+            // A non-literal (runtime) size uses the full 64-bit carrier, like `Idx ⊤`.
+            if (auto size = Idx::isa(type)) return Idx::size2bitwidth(size).value_or(64_n);
             return 0_n;
         };
 
