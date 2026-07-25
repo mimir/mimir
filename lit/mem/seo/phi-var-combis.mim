@@ -129,8 +129,8 @@ lam extern _compile(): %compile.Phase =
 // pa remains a slot because its address escapes.
 // CHECK-LABEL: define i64 @f() {
 // CHECK: %[[SLOT:[[:alnum:]_.]+]] = alloca i64
-// CHECK: %[[PA:[[:alnum:]_]+]] = phi i64* [ %[[SLOT]], %{{[^]]+}} ]
-// CHECK: store i64 10, i64* %[[PA]]
+// CHECK: %[[PA:[[:alnum:]_]+]] = phi i64{{( addrspace\(0\))?}}* [ %[[SLOT]], %{{[^]]+}} ]
+// CHECK: store i64 10, i64{{( addrspace\(0\))?}}* %[[PA]]
 // CHECK-NOT: alloca
 // CHECK-NOT: store i64 20
 // CHECK-NOT: store i64 30

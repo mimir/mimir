@@ -1,0 +1,276 @@
+#include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
+
+#include <mim/driver.h>
+#include <mim/plugin.h>
+
+#include <mim/util/sys.h>
+
+#include <mim/plug/gpu/gpu.h>
+
+#include "mim/plug/ll_nvptx/ll_nvptx.h"
+
+using namespace std::string_literals;
+using namespace std::string_view_literals;
+
+namespace mim::plug::ll_nvptx {
+
+namespace {
+
+struct NvptxCompileArgs {
+    std::string host_ll_name, dev_ll_name, dev_ptx_name, dev_cubin_name, dev_fatbin_name, dev_bc_raw_name,
+        dev_bc_opt_name;
+    bool embed_device_code, embed_ptx, embed_cubin;
+    std::string compute_cap;
+    std::string libdevice_path;
+    std::string link_llvm_args, opt_args, llc_args, ptxas_args, fatbinary_args;
+};
+
+class CmdNotFound : public std::logic_error {
+public:
+    CmdNotFound(const std::string& s)
+        : std::logic_error(s) {}
+};
+
+constexpr auto default_compute_cap = "75";
+
+std::string get_compute_capability() {
+    auto nvidia_smi = sys::find_cmd("nvidia-smi");
+    if (!std::filesystem::exists(nvidia_smi)) error<CmdNotFound>("Could not find command: nvidia-smi {}", nvidia_smi);
+    auto out = sys::exec(std::format("{} --query-gpu=compute_cap --format=csv,noheader", nvidia_smi));
+    out.erase(std::remove_if(out.begin(), out.end(), ::isspace), out.end());
+    // out should now have form "7.5" referencing the compute capability "sm_75"
+
+    auto dot_pos = out.find('.');
+    if (dot_pos == std::string::npos) {
+        std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
+                     default_compute_cap);
+        return default_compute_cap;
+    }
+
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (i == dot_pos) continue;
+        if (!std::isdigit(out[i])) {
+            std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
+                         default_compute_cap);
+            return default_compute_cap;
+        }
+    }
+
+    auto compute_cap = std::format("{}{}", out.substr(0, dot_pos), out.substr(dot_pos + 1));
+    std::println(std::cout, "Determined compute capability to be '{}'", compute_cap);
+    return compute_cap;
+}
+
+constexpr auto LIBDEVICE_NAME = "libdevice.10.bc"sv;
+
+std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::path& cuda_bin_path) {
+    auto profile_path = cuda_bin_path / "nvcc.profile";
+    if (!std::filesystem::exists(profile_path)) return std::nullopt;
+
+    std::ifstream file(profile_path);
+    if (!file.is_open()) return std::nullopt;
+
+    std::string line;
+    std::string top_dir = "";
+    std::string lib_dir = "";
+
+    while (std::getline(file, line)) {
+        line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+        if (line.starts_with("TOP=")) {
+            auto macro_pos = line.find("$(_HERE_)/");
+            if (macro_pos == std::string::npos) break;
+            top_dir = line.substr(macro_pos + 10);
+        }
+        if (line.rfind("NVVMIR_LIBRARY_DIR=", 0) == 0) {
+            auto macro_pos = line.find("$(TOP)/");
+            if (macro_pos == std::string::npos) break;
+            lib_dir = line.substr(macro_pos + 7);
+        }
+    }
+    if (top_dir.empty() || lib_dir.empty()) return std::nullopt;
+    auto path          = cuda_bin_path / top_dir / lib_dir / LIBDEVICE_NAME;
+    auto resolved_path = path.lexically_normal();
+    if (!std::filesystem::exists(resolved_path)) return std::nullopt;
+    return resolved_path;
+}
+
+std::string find_libdevice() {
+    auto nvcc = sys::find_cmd("nvcc");
+    if (std::filesystem::exists(nvcc)) {
+        auto nvcc_path     = std::filesystem::canonical(nvcc);
+        auto cuda_bin_path = nvcc_path.parent_path();
+        if (auto libdevice_path = parse_nvcc_profile(cuda_bin_path)) return libdevice_path->string();
+    }
+    if (const char* cuda_home_env = std::getenv("CUDA_HOME")) {
+        auto libdevice_path = std::filesystem::path(cuda_home_env) / "nvvm" / "libdevice" / LIBDEVICE_NAME;
+        if (std::filesystem::exists(libdevice_path)) return libdevice_path.string();
+    }
+    auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / LIBDEVICE_NAME;
+    if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
+
+    error<CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.", LIBDEVICE_NAME);
+}
+
+void link_libdevice(const NvptxCompileArgs& c) {
+    if (!std::filesystem::exists(c.libdevice_path)) error("libdevice path does not exist: {}", c.libdevice_path);
+    auto llvm_link = sys::find_cmd("llvm-link");
+    if (!std::filesystem::exists(llvm_link)) error<CmdNotFound>("Could not find command: llvm-link {}", llvm_link);
+    auto cmd = std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
+                           c.dev_bc_raw_name);
+    auto rc  = sys::system(cmd);
+    if (rc != 0) error("Command exited with error code {}", rc);
+}
+
+void optimize_bytecode(const NvptxCompileArgs& c) {
+    auto opt = sys::find_cmd("opt");
+    if (!std::filesystem::exists(opt)) error<CmdNotFound>("Could not find command: opt {}", opt);
+    auto cmd = std::format("{} {} {} -o {}", opt, c.opt_args, c.dev_bc_raw_name, c.dev_bc_opt_name);
+    auto rc  = sys::system(cmd);
+    if (rc != 0) error("Command exited with error code {}", rc);
+}
+
+void compile2ptx(const NvptxCompileArgs& c, bool uses_libdevice) {
+    auto compile_input = uses_libdevice ? c.dev_bc_opt_name : c.dev_ll_name;
+    auto llc           = sys::find_cmd("llc");
+    if (!std::filesystem::exists(llc)) error<CmdNotFound>("Could not find command: llc {}", llc);
+    auto cmd = std::format("{} -march=nvptx64 -mcpu=sm_{} {} {} -o {}", llc, c.compute_cap, c.llc_args, compile_input,
+                           c.dev_ptx_name);
+    auto rc  = sys::system(cmd);
+    if (rc != 0) error("Command exited with error code {}", rc);
+}
+
+void compile2cubin(const NvptxCompileArgs& c) {
+    auto ptxas = sys::find_cmd("ptxas");
+    if (!std::filesystem::exists(ptxas)) error<CmdNotFound>("Could not find command: ptxas {}", ptxas);
+    auto cmd = std::format("{} -arch=sm_{} {} {} -o {}", ptxas, c.compute_cap, c.ptxas_args, c.dev_ptx_name,
+                           c.dev_cubin_name);
+    auto rc  = sys::system(cmd);
+    if (rc != 0) error("Command exited with error code {}", rc);
+}
+
+void compile2fatbin(const NvptxCompileArgs& c) {
+    auto fatbinary = sys::find_cmd("fatbinary");
+    if (!std::filesystem::exists(fatbinary)) error<CmdNotFound>("Could not find command: fatbinary {}", fatbinary);
+    std::vector<std::string> args;
+    auto ptx_args = ""s;
+    if (c.embed_ptx) {
+        ptx_args = std::format("--image3=kind=ptx,sm={},file={}", c.compute_cap, c.dev_ptx_name);
+        if (!c.ptxas_args.empty()) ptx_args += std::format(" --cmdline={}", c.ptxas_args);
+    }
+    auto cubin_args = ""s;
+    if (c.embed_cubin) cubin_args = std::format("--image3=kind=elf,sm={},file={}", c.compute_cap, c.dev_cubin_name);
+    auto cmd = std::format("{} --create={} -64 {} {} {}", fatbinary, c.dev_fatbin_name, c.fatbinary_args, ptx_args,
+                           cubin_args);
+    auto rc  = sys::system(cmd);
+    if (rc != 0) error("Command exited with error code {}", rc);
+}
+
+} // namespace
+
+class Emit : public Phase {
+public:
+    Emit(World& world, flags_t annex)
+        : Phase(world, annex) {}
+
+    void start() override {
+        auto name = world().name() ? std::string(world().name().view()) : "a"s;
+
+        auto c = NvptxCompileArgs{
+            .host_ll_name    = name + ".ll"s,
+            .dev_ll_name     = name + "_dev.ll"s,
+            .dev_ptx_name    = name + "_dev.ptx"s,
+            .dev_cubin_name  = name + "_dev.cubin"s,
+            .dev_fatbin_name = name + "_dev.fatbin"s,
+            .dev_bc_raw_name = name + "_dev_raw.bc"s,
+            .dev_bc_opt_name = name + "_dev_opt.bc"s,
+#ifdef __linux__
+            .embed_device_code = true,
+#else
+            .embed_device_code = false,
+#endif
+            .embed_ptx      = true,
+            .embed_cubin    = true,
+            .compute_cap    = ""s,
+            .libdevice_path = ""s,
+            .link_llvm_args = ""s,
+            .opt_args       = "-passes=\"default<O2>,nvvm-reflect\""s,
+            .llc_args       = ""s,
+            .ptxas_args     = ""s,
+            .fatbinary_args = ""s,
+        };
+
+        for (const auto& arg : args()) {
+            world().DLOG("ll backend arg: `{}`", arg);
+            if (arg.starts_with("o="))
+                c.host_ll_name = arg.substr(2);
+            else if (arg.starts_with("o-dev="))
+                c.dev_ll_name = arg.substr(6);
+            else if (arg == "no-embed")
+                c.embed_device_code = false;
+            else if (arg == "no-ptx-embed")
+                c.embed_ptx = false;
+            else if (arg == "no-cubin-embed")
+                c.embed_cubin = false;
+            else if (arg.starts_with("sm="))
+                c.compute_cap = arg.substr(3);
+            else if (arg.starts_with("libdevice="))
+                c.libdevice_path = arg.substr(10);
+            else if (arg.starts_with("Xlink_llvm="))
+                c.link_llvm_args = arg.substr(11);
+            else if (arg.starts_with("Xopt="))
+                c.opt_args = arg.substr(5);
+            else if (arg.starts_with("Xllc="))
+                c.llc_args = arg.substr(5);
+            else if (arg.starts_with("Xptxas="))
+                c.ptxas_args = arg.substr(7);
+            else if (arg.starts_with("Xfatbinary="))
+                c.fatbinary_args = arg.substr(11);
+        }
+
+        auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
+        auto setup_phase       = split_apply_phase.get()->as<RWPhase>();
+        setup_phase->run();
+
+        DeviceEmitFlags device_flags;
+        {
+            auto dev_ofs = std::ofstream(c.dev_ll_name);
+            device_flags = emit_device(setup_phase->new_world(), dev_ofs);
+        }
+        if (c.embed_device_code) {
+            if (!c.embed_ptx && !c.embed_cubin) error("Embedding requested with no images (neither PTX nor CUBIN).");
+            try {
+                if (c.compute_cap.empty()) c.compute_cap = get_compute_capability();
+                if (device_flags.uses_libdevice) {
+                    if (c.libdevice_path.empty()) c.libdevice_path = find_libdevice();
+                    link_libdevice(c);
+                    optimize_bytecode(c);
+                }
+                compile2ptx(c, device_flags.uses_libdevice);
+                compile2cubin(c);
+                compile2fatbin(c);
+            } catch (const CmdNotFound& e) {
+                WLOG("{}", e.what());
+                WLOG("Falling back to not embedding device code.");
+                c.embed_device_code = false;
+            }
+        }
+        auto device_fatbin_file = c.embed_device_code ? std::optional(c.dev_fatbin_name) : std::nullopt;
+        auto host_ofs           = std::ofstream(c.host_ll_name);
+        emit_host(setup_phase->old_world(), host_ofs, device_fatbin_file);
+
+        if (c.embed_device_code) {
+            std::println(std::cout, "Unified (Fat) LLVM IR written to {}", c.host_ll_name);
+        } else {
+            std::println(std::cout, "Host-only LLVM IR written to {}", c.host_ll_name);
+            std::println(std::cout, "Device-only LLVM IR written to {}", c.dev_ll_name);
+        }
+    }
+};
+
+} // namespace mim::plug::ll_nvptx
+
+using namespace mim;
+
+static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit, plug::ll_nvptx::Emit>(phases); }
+
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ll_nvptx", MIM_VERSION, nullptr, reg_phases}; }

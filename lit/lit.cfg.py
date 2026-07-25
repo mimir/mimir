@@ -26,3 +26,10 @@ if getattr(config, 'build_type', '').lower() in ('release', 'relwithdebinfo', 'm
 # lit.site.cfg.py. Tests emitting %math.F16 literals gate on this via `// REQUIRES: fp16`.
 if getattr(config, 'fp16', False):
     config.available_features.add("fp16")
+# operating system is detected using sys.platform (see https://docs.python.org/3/library/sys.html#sys.platform)
+# Tests that only work on e.g. Linux operating systems specify this via `// REQUIRES: system-linux`.
+config.available_features.add(f"system-{sys.platform}")
+# CUDA support (needs CUDA toolkit) is detected once by CMake and passed in via
+# lit.site.cfg.py. Tests gate on this via `// REQUIRES: cuda`.
+if getattr(config, 'cuda_can_run_on_device', False):
+    config.available_features.add('cuda')
