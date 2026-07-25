@@ -123,10 +123,6 @@ public:
     void finalize();
 
     virtual inline std::optional<std::string> isa_targetspecific_intrinsic(BB&, const Def*) { return std::nullopt; }
-    inline std::string as_targetspecific_intrinsic(BB& bb, const Def* def) {
-        if (auto res = isa_targetspecific_intrinsic(bb, def)) return res.value();
-        error("target-specific intrinsic detected but not handled in LLVM backend: {} : {}", def, def->type());
-    }
 
     template<class... Args>
     void declare(std::format_string<Args...> s, Args&&... args) {
@@ -140,6 +136,23 @@ protected:
     std::string id(const Def*, bool force_bb = false) const;
     virtual std::string convert(const Def*, bool simd = true);
     std::string convert_ret_pi(const Pi*);
+
+    /// Registers @p arg as an incoming phi value for @p phi in @p callee, coming from predecessor @p pred.
+    void emit_phi(Lam* callee, const Def* phi, std::string arg, Lam* pred) {
+        lam2bb_[callee].phis[phi].emplace_back(std::move(arg), id(pred, true));
+        locals_[phi] = id(phi);
+    }
+
+    /// Wires all non-`%mem.M` arguments of @p app into @p callee's phis, coming from predecessor @p pred.
+    void emit_phi_args(Lam* callee, const App* app, Lam* pred) {
+        size_t n = callee->num_tvars();
+        for (size_t i = 0; i != n; ++i)
+            if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
+                auto phi = callee->var(n, i);
+                if (Axm::isa<mem::M>(phi->type())) continue;
+                emit_phi(callee, phi, std::move(arg), pred);
+            }
+    }
 
     absl::btree_set<std::string> decls_;
     std::ostringstream type_decls_;
@@ -163,7 +176,7 @@ inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* typ
     return {};
 }
 
-inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(const std::vector<const Def*> types) {
+inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(Defs types) {
     if (std::ranges::all_of(types, [&](auto i) { return i == types[0]; })) {
         if (types[0]->isa<Nat>() || Idx::isa(types[0]) || Axm::isa<math::F>(types[0]))
             return std::pair{types.size(), types[0]};
@@ -386,8 +399,8 @@ inline void Emitter::emit_epilogue(Lam* lam) {
     auto app = lam->body()->as<App>();
     auto& bb = lam2bb_[lam];
     if (app->callee() == root()->ret_var()) { // return
-        std::vector<std::string> values;
-        std::vector<const Def*> types;
+        Vector<std::string> values;
+        DefVec types;
         for (auto arg : app->args()) {
             if (auto val = emit_unsafe(arg); !val.empty()) {
                 values.emplace_back(val);
@@ -440,24 +453,11 @@ inline void Emitter::emit_epilogue(Lam* lam) {
         }
 
     } else if (auto dispatch = Dispatch(app)) {
-        for (auto callee : dispatch.tuple()->projs([](const Def* def) { return def->isa_mut<Lam>(); })) {
-            size_t n = callee->num_tvars();
-            if (n == 1 && is_simd(callee->var(0)->type())) {
-                auto phi = callee->var(0);
-                auto arg = emit(app->arg(n, 0));
-                lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
-                locals_[phi] = id(phi);
-            } else {
-                for (size_t i = 0; i != n; ++i) {
-                    if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
-                        auto phi = callee->var(n, i);
-                        if (Axm::isa<mem::M>(phi->type())) continue;
-                        lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
-                        locals_[phi] = id(phi);
-                    }
-                }
-            }
-        }
+        for (auto callee : dispatch.tuple()->projs([](const Def* def) { return def->isa_mut<Lam>(); }))
+            if (size_t n = callee->num_tvars(); n == 1 && is_simd(callee->var(0)->type()))
+                emit_phi(callee, callee->var(0), emit(app->arg(n, 0)), lam);
+            else
+                emit_phi_args(callee, app, lam);
 
         auto v_index = emit(dispatch.index());
         size_t n     = dispatch.num_targets();
@@ -476,27 +476,17 @@ inline void Emitter::emit_epilogue(Lam* lam) {
         return bb.tail("ret ; bottom: unreachable");
     } else if (auto callee = Lam::isa_mut_basicblock(app->callee())) { // ordinary jump
 
-        auto common_src = find_common_simd_src(app);
-        if (common_src) {
+        if (auto common_src = find_common_simd_src(app)) {
             auto v_src      = emit(common_src);
             auto callee_var = callee->var();
             if (simd_phi_.find(callee) == simd_phi_.end()) simd_phi_[callee] = callee_var;
             auto key = simd_phi_[callee];
-            lam2bb_[callee].phis[key].emplace_back(v_src, id(lam, true));
-            locals_[key] = id(key);
+            emit_phi(callee, key, v_src, lam);
             for (auto var : callee->vars())
                 locals_[var] = id(key);
             locals_[callee_var] = id(key);
         } else {
-            size_t n = callee->num_tvars();
-            for (size_t i = 0; i != n; ++i) {
-                if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
-                    auto phi = callee->var(n, i);
-                    if (Axm::isa<mem::M>(phi->type())) continue;
-                    lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
-                    locals_[phi] = id(phi);
-                }
-            }
+            emit_phi_args(callee, app, lam);
         }
         return bb.tail("br label {}", id(callee));
 
@@ -520,13 +510,12 @@ inline void Emitter::emit_epilogue(Lam* lam) {
         auto ptr     = ret_lam->var(2, 1);
         auto v_ptr   = "%" + app->unique_name() + ".slot";
         std::print(bb.body().emplace_back(), "{} = alloca {}", v_ptr, convert(pointee, false));
-        lam2bb_[ret_lam].phis[ptr].emplace_back(v_ptr, id(lam, true));
-        locals_[ptr] = id(ptr);
+        emit_phi(ret_lam, ptr, v_ptr, lam);
         return bb.tail("br label {}", id(ret_lam));
     } else if (Pi::isa_returning(app->callee_type())) { // function call
         auto v_callee = emit(app->callee());
 
-        std::vector<std::string> args;
+        Vector<std::string> args;
         auto app_args = app->args();
         for (auto arg : app_args.view().rsubspan(1))
             if (auto v_arg = emit_unsafe(arg); !v_arg.empty()) args.emplace_back(convert(arg->type()) + " " + v_arg);
@@ -538,17 +527,10 @@ inline void Emitter::emit_epilogue(Lam* lam) {
             return bb.tail("unreachable");
         }
 
-        auto ret_lam    = app->args().back()->as_mut<Lam>();
-        size_t num_vars = ret_lam->num_vars();
-        size_t n        = 0;
-        DefVec values(num_vars);
-        DefVec types(num_vars);
-        for (auto var : ret_lam->vars()) {
-            if (Axm::isa<mem::M>(var->type())) continue;
-            values[n] = var;
-            types[n]  = var->type();
-            ++n;
-        }
+        auto ret_lam = app->args().back()->as_mut<Lam>();
+        size_t n     = 0;
+        for (auto var : ret_lam->vars())
+            if (!Axm::isa<mem::M>(var->type())) ++n;
 
         if (n == 0) {
             bb.tail("call void {}({})", v_callee, fe::Join(args));
@@ -556,9 +538,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
             auto name  = "%" + app->unique_name() + "ret";
             auto t_ret = convert_ret_pi(ret_lam->type());
             bb.tail("{} = call {} {}({})", name, t_ret, v_callee, fe::Join(args));
-            auto phi = ret_lam->var();
-            lam2bb_[ret_lam].phis[phi].emplace_back(name, id(lam, true));
-            locals_[phi] = id(phi);
+            emit_phi(ret_lam, ret_lam->var(), name, lam);
         }
 
         return bb.tail("br label {}", id(ret_lam));
