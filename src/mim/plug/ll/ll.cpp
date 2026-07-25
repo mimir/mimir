@@ -172,6 +172,9 @@ Fun:
 void Emitter::emit_epilogue_impl(Lam* lam) {
     auto app = lam->body()->as<App>();
     auto& bb = lam2bb_[lam];
+    // A target-specific intrinsic in tail position (e.g. %gpu.launch) emits its own code and
+    // yields the continuation to branch to.
+    if (auto ret = isa_targetspecific_intrinsic(bb, app)) return bb.tail("br label {}", *ret);
     if (app->callee() == root()->ret_var()) { // return
         Vector<std::string> values;
         DefVec types;
@@ -282,8 +285,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         // TODO array with size
         auto ret_lam = ret->as_mut<Lam>();
         auto ptr     = ret_lam->var(2, 1);
-        auto v_ptr   = "%" + app->unique_name() + ".slot";
-        std::print(bb.body().emplace_back(), "{} = alloca {}", v_ptr, convert(pointee, false));
+        auto v_ptr   = emit_slot(bb, app, pointee, addr_space);
         emit_phi(ret_lam, ptr, v_ptr, lam);
         return bb.tail("br label {}", id(ret_lam));
     } else if (Pi::isa_returning(app->callee_type())) { // function call

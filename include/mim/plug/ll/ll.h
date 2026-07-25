@@ -8,16 +8,14 @@
 
 #include <absl/container/btree_set.h>
 
+#include <mim/driver.h>
+
+#include <mim/be/emitter.h>
+
 #include <mim/plug/clos/clos.h>
 #include <mim/plug/math/math.h>
 #include <mim/plug/mem/mem.h>
 #include <mim/plug/vec/vec.h>
-
-#include "mim/driver.h"
-
-#include "mim/be/emitter.h"
-
-#include "mim/plug/math/autogen.h"
 
 // Lessons learned:
 // * **Always** follow all ops - even if you actually want to ignore one.
@@ -179,6 +177,16 @@ protected:
                 if (Axm::isa<mem::M>(phi->type())) continue;
                 emit_phi(callee, phi, std::move(arg), pred);
             }
+    }
+
+    /// Emits the storage backing a `%mem.slot` of type @p pointee and yields the pointer value.
+    /// The generic backend allocates on the stack; targets may override (e.g. a global in a specific address space).
+    /// Kept inline on purpose so `Emitter` retains no vtable key function (else its vtable would live in a single
+    /// module and break derived backends loaded from a separate plugin).
+    virtual std::string emit_slot(BB& bb, const App* app, const Def* pointee, const Def* /*addr_space*/) {
+        auto v_ptr = "%" + app->unique_name() + ".slot";
+        std::print(bb.body().emplace_back(), "{} = alloca {}", v_ptr, convert(pointee, false));
+        return v_ptr;
     }
 
     absl::btree_set<std::string> decls_;

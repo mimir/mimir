@@ -49,7 +49,7 @@ void run_cmd(const std::string& cmd) {
     if (auto rc = sys::system(cmd); rc != 0) error("Command exited with error code {}", rc);
 }
 
-constexpr auto default_compute_cap = "75";
+constexpr auto Default_Compute_Cap = "75";
 
 std::string get_compute_capability() {
     auto nvidia_smi = require_cmd("nvidia-smi");
@@ -60,16 +60,16 @@ std::string get_compute_capability() {
     auto dot_pos = out.find('.');
     if (dot_pos == std::string::npos) {
         std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
-                     default_compute_cap);
-        return default_compute_cap;
+                     Default_Compute_Cap);
+        return Default_Compute_Cap;
     }
 
     for (size_t i = 0; i < out.size(); ++i) {
         if (i == dot_pos) continue;
         if (!std::isdigit(out[i])) {
             std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
-                         default_compute_cap);
-            return default_compute_cap;
+                         Default_Compute_Cap);
+            return Default_Compute_Cap;
         }
     }
 
@@ -78,7 +78,7 @@ std::string get_compute_capability() {
     return compute_cap;
 }
 
-constexpr auto LIBDEVICE_NAME = "libdevice.10.bc"sv;
+constexpr auto Libdevice_Name = "libdevice.10.bc"sv;
 
 std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::path& cuda_bin_path) {
     auto profile_path = cuda_bin_path / "nvcc.profile";
@@ -103,7 +103,7 @@ std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::p
         }
     }
     if (top_dir.empty() || lib_dir.empty()) return std::nullopt;
-    auto path          = cuda_bin_path / top_dir / lib_dir / LIBDEVICE_NAME;
+    auto path          = cuda_bin_path / top_dir / lib_dir / Libdevice_Name;
     auto resolved_path = path.lexically_normal();
     if (!std::filesystem::exists(resolved_path)) return std::nullopt;
     return resolved_path;
@@ -117,13 +117,13 @@ std::string find_libdevice() {
         if (auto libdevice_path = parse_nvcc_profile(cuda_bin_path)) return libdevice_path->string();
     }
     if (const char* cuda_home_env = std::getenv("CUDA_HOME")) {
-        auto libdevice_path = std::filesystem::path(cuda_home_env) / "nvvm" / "libdevice" / LIBDEVICE_NAME;
+        auto libdevice_path = std::filesystem::path(cuda_home_env) / "nvvm" / "libdevice" / Libdevice_Name;
         if (std::filesystem::exists(libdevice_path)) return libdevice_path.string();
     }
-    auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / LIBDEVICE_NAME;
+    auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / Libdevice_Name;
     if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
 
-    error<CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.", LIBDEVICE_NAME);
+    error<CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.", Libdevice_Name);
 }
 
 void link_libdevice(const NvptxCompileArgs& c) {
