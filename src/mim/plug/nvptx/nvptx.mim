@@ -1,0 +1,24 @@
+/// # The nvptx Plugin {#nvptx}
+///
+/// @see mim::plug::nvptx
+///
+/// A plugin for NVIDIA PTX intrinsics.
+///
+/// [TOC]
+///
+/// ## Dependencies
+///
+plugin gpu;
+import compile;
+///
+/// ## Types
+///
+/// ### Streams
+///
+let %nvptx.Stream = %mem.Ptr0 I8;
+///
+/// ## Stages
+///
+/// ### Repls
+///
+axm %nvptx.stream_impl_repl: %compile.Phase;

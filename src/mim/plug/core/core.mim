@@ -162,7 +162,7 @@ lam %core.minus {s: Nat} (m: Nat) (a: Idx s): Idx s = %core.wrap.sub m (0:(Idx s
 /// For this reason, these axioms expect a `%%mem.M`.
 ///
 axm %core.div(sdiv, udiv, srem, urem):
-    {s: Nat} → [%mem.M 0, «2; Idx s»] → [%mem.M 0, Idx s], normalize_div;
+    {s a: Nat} → [%mem.M a, «2; Idx s»] → [%mem.M a, Idx s], normalize_div;
 ///
 /// ### %%core.icmp
 ///
@@ -251,7 +251,7 @@ axm %core.extrema(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s»
 ///
 /// @warning Computing the absolute value of the lowest possible value leads to *undefined behavior*, which is why this axiom expects a `%%mem.M`.
 ///
-axm %core.abs: {s: Nat} → [%mem.M 0, Idx s] → [%mem.M 0, Idx s], normalize_abs;
+axm %core.abs: {s a: Nat} → [%mem.M a, Idx s] → [%mem.M a, Idx s], normalize_abs;
 ///
 /// ## Conversions
 ///

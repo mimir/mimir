@@ -15,8 +15,8 @@ void SplitOffKernels::start() {
 }
 
 bool SplitOffKernels::analyze() {
-    for (auto& [f, entry] : old_world().annexes())
-        analyze(entry.def);
+    for (auto def : old_world().annexes().defs())
+        analyze(def);
     for (auto def : old_world().externals().muts())
         analyze(def);
 
@@ -39,6 +39,7 @@ const Def* SplitOffKernels::rewrite_mut_Lam(Lam* old_lam) {
     auto new_def = RWPhase::rewrite_mut_Lam(old_lam);
 
     if (kernels_.contains(old_lam)) {
+        old_lam->set<true>(old_lam->unique_name());
         auto new_lam = new_def->as_mut<Lam>();
         if (new_lam->sym().empty()) {
             assert(!old_lam->sym().empty());

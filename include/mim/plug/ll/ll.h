@@ -43,7 +43,7 @@ namespace math = mim::plug::math;
 namespace mem  = mim::plug::mem;
 namespace vec  = mim::plug::vec;
 
-namespace {
+namespace detail {
 inline const char* math_suffix(const Def* type) {
     if (auto w = math::isa_f(type)) {
         switch (*w) {
@@ -72,7 +72,7 @@ inline const Def* isa_mem_sigma_2(const Def* type) {
         if (sigma->num_ops() == 2 && Axm::isa<mem::M>(sigma->op(0))) return sigma->op(1);
     return {};
 }
-} // namespace
+} // namespace detail
 
 struct BB {
     BB()                    = default;
@@ -111,8 +111,8 @@ class Emitter : public mim::Emitter<std::string, std::string, BB, Emitter> {
 public:
     using Super = mim::Emitter<std::string, std::string, BB, Emitter>;
 
-    Emitter(World& world, std::ostream& ostream)
-        : Super(world, "llvm_emitter", ostream) {}
+    Emitter(World& world, std::string name, std::ostream& ostream)
+        : Super(world, name, ostream) {}
 
     bool is_valid(std::string_view s) { return !s.empty(); }
     void start() override;
@@ -136,9 +136,9 @@ public:
         decls_.emplace(decl.str());
     }
 
-private:
+protected:
     std::string id(const Def*, bool force_bb = false) const;
-    std::string convert(const Def*, bool simd = true);
+    virtual std::string convert(const Def*, bool simd = true);
     std::string convert_ret_pi(const Pi*);
 
     absl::btree_set<std::string> decls_;
@@ -228,8 +228,7 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [pointee, addr_space] = ptr->args<2>();
-        // TODO addr_space
-        std::print(s, "{}*", convert(pointee, false));
+        std::print(s, "{} addrspace({})*", convert(pointee, false), addr_space);
     } else if (auto arr = type->isa<Arr>()) {
         if (auto se = is_simd(arr); se && simd) {
             auto [size, elem] = *se;
@@ -243,7 +242,7 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
         assert(Pi::isa_returning(pi) && "should never have to convert type of BB");
         std::print(s, "{} (", convert_ret_pi(pi->ret_pi()));
 
-        if (auto t = isa_mem_sigma_2(pi->dom()))
+        if (auto t = detail::isa_mem_sigma_2(pi->dom()))
             s << convert(t);
         else {
             auto doms = pi->doms();
@@ -254,7 +253,7 @@ inline std::string Emitter::convert(const Def* type, bool simd) {
             }
         }
         s << ")*";
-    } else if (auto t = isa_mem_sigma_2(type)) {
+    } else if (auto t = detail::isa_mem_sigma_2(type)) {
         return convert(t);
     } else if (auto sigma = type->isa<Sigma>()) {
         if (sigma->isa_mut()) {
@@ -324,6 +323,7 @@ inline std::string Emitter::prepare() {
     auto vars = root()->vars();
     for (auto sep = ""; auto var : vars.view().rsubspan(1)) {
         if (Axm::isa<mem::M>(var->type())) continue;
+        if (auto sigma = var->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) continue;
         if (auto arr = var->type()->isa<Arr>())
             if (is_simd(arr->body())) convert(arr->body()); // pre-add input vector to cache
         auto name    = id(var);
@@ -397,7 +397,9 @@ inline void Emitter::emit_epilogue(Lam* lam) {
 
         switch (values.size()) {
             case 0: return bb.tail("ret void");
-            case 1: return bb.tail("ret {} {}", convert(types[0]), values[0]);
+            case 1:
+                return Axm::isa<mem::M>(types[0]) ? bb.tail("ret void")
+                                                  : bb.tail("ret {} {}", convert(types[0]), values[0]);
             default: {
                 std::string type;
                 std::string prev;
@@ -425,6 +427,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
                     prev = "undef";
                     type = convert(world().sigma(types));
                     for (size_t i = 0, n = values.size(); i != n; ++i) {
+                        if (auto mem = Axm::isa<mem::M>(types[i])) continue;
                         auto v_elem = values[i];
                         auto t_elem = convert(types[i]);
                         auto namei  = "%ret_val." + std::to_string(i);
@@ -448,7 +451,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
                 for (size_t i = 0; i != n; ++i) {
                     if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
                         auto phi = callee->var(n, i);
-                        assert(!Axm::isa<mem::M>(phi->type()));
+                        if (Axm::isa<mem::M>(phi->type())) continue;
                         lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
                         locals_[phi] = id(phi);
                     }
@@ -489,7 +492,7 @@ inline void Emitter::emit_epilogue(Lam* lam) {
             for (size_t i = 0; i != n; ++i) {
                 if (auto arg = emit_unsafe(app->arg(n, i)); !arg.empty()) {
                     auto phi = callee->var(n, i);
-                    assert(!Axm::isa<mem::M>(phi->type()));
+                    if (Axm::isa<mem::M>(phi->type())) continue;
                     lam2bb_[callee].phis[phi].emplace_back(arg, id(lam, true));
                     locals_[phi] = id(phi);
                 }
@@ -569,7 +572,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
     std::string op;
 
     auto emit_tuple = [&](const Def* tuple) {
-        if (isa_mem_sigma_2(tuple->type())) {
+        if (detail::isa_mem_sigma_2(tuple->type())) {
             emit_unsafe(tuple->proj(2, 0));
             return emit(tuple->proj(2, 1));
         }
@@ -681,10 +684,11 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         // this exact location is important: after emitting the tuple -> ordering of mem ops
         // before emitting the index, as it might be a weird value for mem vars.
         if (Axm::isa<mem::M>(extract->type())) return {};
+        if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return {};
 
         auto t_tup = convert(tuple->type());
         if (auto li = Lit::isa(index)) {
-            if (isa_mem_sigma_2(tuple->type())) return v_tup;
+            if (detail::isa_mem_sigma_2(tuple->type())) return v_tup;
             // Adjust index: convert() drops %mem.M elements from sigmas,
             // so subtract the number of mem elements preceding the index.
             auto v_i = *li;
@@ -965,21 +969,36 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
+        auto address_space = malloc->decurry()->arg(1);
+        if (Lit::as(address_space) != 0)
+            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return target_specific.value();
+
         declare("i8* @malloc(i64)");
 
         emit_unsafe(malloc->arg(0));
-        auto size  = emit(malloc->arg(1));
-        auto ptr_t = convert(Axm::as<mem::Ptr>(def->proj(1)->type()));
-        bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
-        return bb.assign(name, "bitcast i8* {} to {}", name + "i8", ptr_t);
+        auto size           = emit(malloc->arg(1));
+        auto ptr_t          = convert(Axm::as<mem::Ptr>(def->proj(1)->type()));
+        auto i8ptr          = bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
+        std::string i8ptr_t = "i8*";
+        if (Lit::as(address_space) != 0) {
+            i8ptr_t = std::format("i8 addrspace({})*", address_space);
+            i8ptr   = bb.assign(name + "i8conv", "addrspacecast i8* {} to {}", i8ptr, i8ptr_t);
+        }
+        return bb.assign(name, "bitcast {} {} to {}", i8ptr_t, i8ptr, ptr_t);
     } else if (auto free = Axm::isa<mem::free>(def)) {
+        auto address_space = free->decurry()->arg(1);
+        if (Lit::as(address_space) != 0)
+            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return {};
+
         declare("void @free(i8*)");
         emit_unsafe(free->arg(0));
         auto ptr   = emit(free->arg(1));
         auto ptr_t = convert(Axm::as<mem::Ptr>(free->arg(1)->type()));
 
-        bb.assign(name + "i8", "bitcast {} {} to i8*", ptr_t, ptr);
-        bb.tail("call void @free(i8* {})", name + "i8");
+        auto i8ptr = bb.assign(name + "i8", "bitcast {} {} to i8 addrspace({})*", ptr_t, ptr, address_space);
+        if (Lit::as(address_space) != 0)
+            i8ptr = bb.assign(name + "i8conv", "addrspacecast i8 addrspace({})* {} to i8*", address_space, i8ptr);
+        bb.tail("call void @free(i8* {})", i8ptr);
         return {};
     } else if (auto load = Axm::isa<mem::load>(def)) {
         emit_unsafe(load->arg(0));
@@ -1045,9 +1064,9 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         std::string f;
 
         if (tri.id() == math::tri::sin) {
-            f = std::string("llvm.sin") + llvm_suffix(tri->type());
+            f = std::string("llvm.sin") + detail::llvm_suffix(tri->type());
         } else if (tri.id() == math::tri::cos) {
-            f = std::string("llvm.cos") + llvm_suffix(tri->type());
+            f = std::string("llvm.cos") + detail::llvm_suffix(tri->type());
         } else {
             if (tri.sub() & sub_t(math::tri::a)) f += "a";
 
@@ -1060,7 +1079,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
             }
 
             if (tri.sub() & sub_t(math::tri::h)) f += "h";
-            f += math_suffix(tri->type());
+            f += detail::math_suffix(tri->type());
         }
 
         declare("{} @{}({})", t, f, t);
@@ -1075,7 +1094,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
             case math::extrema::ieee754min: f += "minimum"; break;
             case math::extrema::ieee754max: f += "maximum"; break;
         }
-        f += llvm_suffix(extrema->type());
+        f += detail::llvm_suffix(extrema->type());
 
         declare("{} @{}({}, {})", t, f, t, t);
         return bb.assign(name, "tail call {} @{}({} {}, {} {})", t, f, t, a, t, b);
@@ -1083,7 +1102,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto [a, b]   = pow->args<2>([this](auto def) { return emit(def); });
         auto t        = convert(pow->type());
         std::string f = "llvm.pow";
-        f += llvm_suffix(pow->type());
+        f += detail::llvm_suffix(pow->type());
         declare("{} @{}({}, {})", t, f, t, t);
         return bb.assign(name, "tail call {} @{}({} {}, {} {})", t, f, t, a, t, b);
     } else if (auto rt = Axm::isa<math::rt>(def)) {
@@ -1091,9 +1110,9 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto t = convert(rt->type());
         std::string f;
         if (rt.id() == math::rt::sq)
-            f = std::string("llvm.sqrt") + llvm_suffix(rt->type());
+            f = std::string("llvm.sqrt") + detail::llvm_suffix(rt->type());
         else
-            f = std::string("cbrt") += math_suffix(rt->type());
+            f = std::string("cbrt") += detail::math_suffix(rt->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto exp = Axm::isa<math::exp>(def)) {
@@ -1102,7 +1121,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         std::string f = "llvm.";
         f += (exp.sub() & sub_t(math::exp::log)) ? "log" : "exp";
         f += (exp.sub() & sub_t(math::exp::bin)) ? "2" : (exp.sub() & sub_t(math::exp::dec)) ? "10" : "";
-        f += llvm_suffix(exp->type());
+        f += detail::llvm_suffix(exp->type());
         // TODO doesn't work for exp10"
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
@@ -1110,14 +1129,14 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto a = emit(er->arg());
         auto t = convert(er->type());
         auto f = er.id() == math::er::f ? std::string("erf") : std::string("erfc");
-        f += math_suffix(er->type());
+        f += detail::math_suffix(er->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto gamma = Axm::isa<math::gamma>(def)) {
         auto a        = emit(gamma->arg());
         auto t        = convert(gamma->type());
         std::string f = gamma.id() == math::gamma::t ? "tgamma" : "lgamma";
-        f += math_suffix(gamma->type());
+        f += detail::math_suffix(gamma->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto cmp = Axm::isa<math::cmp>(def)) {
@@ -1153,7 +1172,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto at = convert(is_finite->arg()->type());
         auto t  = convert(is_finite->type());
 
-        auto s = llvm_suffix(is_finite->arg()->type());
+        auto s = detail::llvm_suffix(is_finite->arg()->type());
         auto f = "llvm.is.fpclass";
         declare("{} @{}{}({}, i32)", t, f, s, at);
         return bb.assign(name, "tail call {} @{}{}({} {}, i32 504)", t, f, s, at, a);
@@ -1178,7 +1197,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
         auto a        = emit(abs->arg());
         auto t        = convert(abs->type());
         std::string f = "llvm.fabs";
-        f += llvm_suffix(abs->type());
+        f += detail::llvm_suffix(abs->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto round = Axm::isa<math::round>(def)) {
@@ -1191,7 +1210,7 @@ inline std::string Emitter::emit_bb(BB& bb, const Def* def) {
             case math::round::r: f += "round"; break;
             case math::round::t: f += "trunc"; break;
         }
-        f += llvm_suffix(round->type());
+        f += detail::llvm_suffix(round->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto zip = Axm::isa<vec::zip>(def)) {

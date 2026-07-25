@@ -32,7 +32,7 @@ public:
                 path = arg.substr(7);
         }
         auto ofs     = std::ofstream(path);
-        auto emitter = Emitter(world(), ofs);
+        auto emitter = Emitter(world(), "llvm_emitter", ofs);
         emitter.run();
     }
 };
