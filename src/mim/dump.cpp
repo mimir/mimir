@@ -564,7 +564,7 @@ void Def::write(int max) const {
  */
 
 void World::dump(std::ostream& os) {
-    auto freezer = World::Freezer(*this);
+    auto _       = freeze();
     auto old_gid = curr_gid();
 
     if (flags().dump_recursive) {

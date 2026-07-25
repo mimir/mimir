@@ -5,7 +5,7 @@
 /// [TOC]
 ///
 /// The LLVM backend.
-/// Loading this plugin (`mim foo.mim -p ll`) appends an emission phase to the compilation pipeline that writes the LLVM IR of the fully lowered program to `<world>.ll`.
+/// Loading this plugin (`mim foo.mim -p ll`) appends an emission phase to the compilation pipeline that writes the LLVM IR of the fully lowered program to `<world>.ll` (or `a.ll` if the world is unnamed).
 /// The output path can be overridden via the `-X ll:o=<file>` command-line argument; see @ref ll_cli_args.
 ///
 /// ## Dependencies
@@ -16,9 +16,9 @@ plugin opt;
 ///
 /// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X ll:<arg>`):
 ///
-/// | Argument   | Effect                                                                      |
-/// |------------|-----------------------------------------------------------------------------|
-/// | `o=<file>` | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.   |
+/// | Argument                        | Effect                                                                      |
+/// |---------------------------------|-----------------------------------------------------------------------------|
+/// | `o=<file>` <br> `output=<file>` | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.   |
 ///
 /// ## Phases
 ///

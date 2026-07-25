@@ -203,8 +203,12 @@ public:
             world().DLOG("ll backend arg: `{}`", arg);
             if (arg.starts_with("o="))
                 c.host_ll_name = arg.substr(2);
+            else if (arg.starts_with("output="))
+                c.host_ll_name = arg.substr(7);
             else if (arg.starts_with("o-dev="))
                 c.dev_ll_name = arg.substr(6);
+            else if (arg.starts_with("output-dev="))
+                c.dev_ll_name = arg.substr(11);
             else if (arg == "no-embed")
                 c.embed_device_code = false;
             else if (arg == "no-ptx-embed")

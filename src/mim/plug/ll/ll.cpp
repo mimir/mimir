@@ -15,7 +15,7 @@ using namespace std::string_literals;
 
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
-/// The output path can be overridden on the command line via `-X ll:o=<file>`.
+/// The output path can be overridden on the command line via `-X ll:o=<file>` or `-X ll:output=<file>`.
 class Emit : public Phase {
 public:
     Emit(World& world, flags_t annex)
@@ -26,7 +26,10 @@ public:
         auto path = name + ".ll"s;
         for (const auto& arg : args()) {
             world().DLOG("ll backend arg: `{}`", arg);
-            if (arg.starts_with("o=")) path = arg.substr(2);
+            if (arg.starts_with("o="))
+                path = arg.substr(2);
+            else if (arg.starts_with("output="))
+                path = arg.substr(7);
         }
         auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), "llvm_emitter", ofs);

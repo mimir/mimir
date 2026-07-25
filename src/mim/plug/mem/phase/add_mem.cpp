@@ -1,7 +1,5 @@
 #include "mim/plug/mem/phase/add_mem.h"
 
-#include <utility>
-
 #include <mim/util/util.h>
 
 #include "mim/plug/mem/mem.h"
@@ -13,37 +11,38 @@ namespace mim::plug::mem::phase {
 void AddMem::start() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
     // (combiners, affine index mappings, initial accumulators of `%matrix.map_reduce_aff`, …).
-    unique_queue<DefSet> roots;
+    auto queue  = unique_queue<DefSet>();
+    auto pinned = unique_queue<DefSet>();
     for (auto mut : old_world().externals().muts())
-        if (mut) roots.push(mut);
+        queue.push(mut);
 
-    unique_queue<DefSet> pinned;
-    while (!roots.empty()) {
-        auto def = roots.pop();
+    while (!queue.empty()) {
+        auto def = queue.pop();
+
         if (auto app = def->isa<App>(); app && app->axm())
             for (auto arg : app->arg()->projs())
                 if (auto lam = arg->isa_mut<Lam>()) pinned.push(lam);
-        for (auto op : def->ops())
-            if (op) roots.push(op);
+
+        for (auto d : def->deps())
+            queue.push(d);
     }
+
     while (!pinned.empty()) {
         auto def = pinned.pop();
         if (auto lam = def->isa_mut<Lam>()) preserved_.emplace(lam);
-        for (auto op : def->ops())
-            if (op) pinned.push(op);
+        for (auto d : def->deps())
+            pinned.push(d);
     }
 
     RWPhase::start();
 }
 
 const Def* AddMem::rewrite(const Def* old_def) {
+    auto new_def = Rewriter::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : %mem.M 0`) are thereby spliced into the chain.
-    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && isa_mem(old_def)) {
-        Rewriter::rewrite(old_def);
-        return curr_mem_;
-    }
-    return Rewriter::rewrite(old_def);
+    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && isa_mem(old_def)) return curr_mem_;
+    return new_def;
 }
 
 const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
@@ -60,9 +59,8 @@ const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
         // So prepending a leading mem shifts every component's index by one.
         // Rebuild the domain as a fresh mutable Sigma and remap the old domain-Var to the shifted components of the new
         // one. Otherwise the dependent references dangle (see issue #177).
-        if (auto sigma = dom->isa_mut<Sigma>(); sigma && sigma->has_var()) {
+        if (auto [sigma, old_var] = dom->isa_binder<Sigma>(); sigma) {
             auto n         = sigma->num_ops();
-            auto old_var   = sigma->has_var();
             auto new_sigma = w.mut_sigma(sigma->type(), n + 1);
             new_sigma->set(0, mem);
             // Component `i` may only refer to earlier components, whose (index-shifted) new Vars are already
@@ -89,10 +87,8 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
 
     // Pinned ABI (an axm-app argument and everything below it): rewrite verbatim - no memory threaded or added.
     if (preserved_.contains(old_lam)) {
-        auto save   = std::exchange(preserving_, true);
-        auto new_it = Rewriter::rewrite_mut_Lam(old_lam);
-        preserving_ = save;
-        return new_it;
+        auto _ = Restore(preserving_, true);
+        return Rewriter::rewrite_mut_Lam(old_lam);
     }
 
     auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg());
@@ -111,9 +107,8 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
     if (!old_lam->is_set()) return new_lam;
 
     // The body's current memory is this lam's (leading or grouped) mem parameter - or none for direct-style fns.
-    auto save = std::exchange(curr_mem_, mem::mem_var(new_lam));
+    auto _ = Restore(curr_mem_, mem::mem_var(new_lam));
     new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
-    curr_mem_ = save;
     return new_lam;
 }
 
