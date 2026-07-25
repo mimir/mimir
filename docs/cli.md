@@ -15,7 +15,7 @@ Mim looks for plugins in this order:
 4. `path/to/mim.exe/../../lib/mim`
 5. `CMAKE_INSTALL_PREFIX/lib/mim`
 
-## Passing Arguments to Plugins & Phases {#clipluginargs}
+## Passing Arguments to Plugins {#clipluginargs}
 
 Plugins - and in particular backends - often need to be configured from the command line.
 For example, a backend that invokes an external tool may want to forward optimization levels, a target triple for cross-compilation, or library paths.
@@ -34,18 +34,18 @@ The syntax is `-X <plugin>:<arg>`:
 
 ### Known Arguments
 
-| Plugin                    | Argument                        | Effect                                                                                                                                                                                                                    |
-|---------------------------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [compile](@ref compile)   | `aggr=<bool>`                   | Value of `%%compile.aggr`; toggles fixed-point iteration of the `opt` pipeline's `optimize` stage (default off). `<bool>` is `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` means `on`. See @ref compile_cli_args. |
-| [ll](@ref ll)             | `o=<file>` <br> `output=<file>` | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`. See @ref ll_cli_args.                                                                                                                           |
-| [ll_nvptx](@ref ll_nvptx) | `o=<file>` <br> `output=<file>` | Write the (host) LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`. See @ref ll_nvptx_cli_args.                                                                                                              |
-| [ll_nvptx](@ref ll_nvptx) | `o-dev=<file>` <br> `output-dev=<file>` | Write the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`. See @ref ll_nvptx_cli_args.                                                                                              |
-| [ll_nvptx](@ref ll_nvptx) | `no-embed`                      | Don't embed the compiled device binary into the host LLVM IR (embedding is the default on Linux). See @ref ll_nvptx_cli_args.                                                                                             |
-| [ll_nvptx](@ref ll_nvptx) | `no-ptx-embed`                  | If embedding the device binary, don't embed the PTX image into the fat binary (default: embed both PTX and CUBIN). See @ref ll_nvptx_cli_args.                                                                            |
-| [ll_nvptx](@ref ll_nvptx) | `no-cubin-embed`                | If embedding the device binary, don't embed the CUBIN image into the fat binary (default: embed both PTX and CUBIN). See @ref ll_nvptx_cli_args.                                                                          |
-| [ll_nvptx](@ref ll_nvptx) | `sm=<SM>`                       | If embedding device binary, compile the device binary for compute capability sm_`<SM>`. See @ref ll_nvptx_cli_args.                                                                                                       |
-| [ll_nvptx](@ref ll_nvptx) | `libdevice=<path>`              | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at `<path>` instead of trying to find it via CUDA paths. See @ref ll_nvptx_cli_args.                                         |
-| [ll_nvptx](@ref ll_nvptx) | `X<tool>=<args>`                | If embedding device binary invoke `<tool>` with `<args>`. See @ref ll_nvptx_cli_args for more details.                                                                                                                    |
+| Plugin                    | Argument                                | Effect                                                                                                                                                                                         |
+| ------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [compile](@ref compile)   | `aggr=<bool>`                           | Value of `%%compile.aggr`; toggles fixed-point iteration of the `opt` pipeline's `optimize` stage (default off). `<bool>` is `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` means `on`. |
+| [ll](@ref ll)             | `o=<file>` <br> `output=<file>`         | Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.                                                                                                                      |
+| [ll_nvptx](@ref ll_nvptx) | `o=<file>` <br> `output=<file>`         | Write the (host) LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.                                                                                                               |
+| [ll_nvptx](@ref ll_nvptx) | `o-dev=<file>` <br> `output-dev=<file>` | Write the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`.                                                                                                       |
+| [ll_nvptx](@ref ll_nvptx) | `no-embed`                              | Don't embed the compiled device binary into the host LLVM IR (embedding is the default on Linux).                                                                                              |
+| [ll_nvptx](@ref ll_nvptx) | `no-ptx-embed`                          | If embedding the device binary, don't embed the PTX image into the fat binary (default: embed both PTX and CUBIN).                                                                             |
+| [ll_nvptx](@ref ll_nvptx) | `no-cubin-embed`                        | If embedding the device binary, don't embed the CUBIN image into the fat binary (default: embed both PTX and CUBIN).                                                                           |
+| [ll_nvptx](@ref ll_nvptx) | `sm=<SM>`                               | If embedding device binary, compile the device binary for compute capability sm\_`<SM>`.                                                                                                       |
+| [ll_nvptx](@ref ll_nvptx) | `libdevice=<path>`                      | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at `<path>` instead of trying to find it via CUDA paths.                                          |
+| [ll_nvptx](@ref ll_nvptx) | `X<tool>=<args>`                        | If embedding device binary invoke `<tool>` with `<args>`.                                                                                                                                      |
 
 ## Debugging Features {#clidebug}
 
