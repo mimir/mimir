@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s -p opt -o - | %FileCheck %s
 plugin mem;
 
 cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];

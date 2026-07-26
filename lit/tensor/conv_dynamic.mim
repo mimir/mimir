@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s -p opt -o - | %FileCheck %s
 
 // %tensor.conv with fully *dynamic* (symbolic) shapes: the input/weight extents are function parameters, so
 // `conv_shape` cannot fold to a literal output shape. Instead it stays as a %core.nat.div/sub/mul/add expression
