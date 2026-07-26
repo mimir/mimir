@@ -25,11 +25,8 @@ std::array<const Def*, 3> split(const Def* def) {
             new_ops[j++] = op;
     }
     assert(mem && env);
-    auto remaining = def->is_intro() ? w.tuple(new_ops) : w.sigma(new_ops);
-    if (new_ops.size() == 1 && remaining != new_ops[0]) {
-        // FIXME: For some reason this is not constant folded away??
-        remaining = new_ops[0];
-    }
+    // Unwrap a single remaining component: we want the bare value here, not a 1-element tuple/sigma wrapper.
+    auto remaining = new_ops.size() == 1 ? new_ops[0] : def->is_intro() ? w.tuple(new_ops) : w.sigma(new_ops);
     return {mem, env, remaining};
 }
 

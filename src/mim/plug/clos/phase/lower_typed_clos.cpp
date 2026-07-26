@@ -59,7 +59,9 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     if (lam->is_external()) new_lam->externalize();
 
     auto lcm = mem::mem_var(new_lam);
-    // TODO I guess, this is not correct: check mode?
+    // The environment always lives in slot `ep`; a single-parameter lam has an atomic var (no projection),
+    // so use the whole var there. This selection is independent of `mode` -- the mode only governs how the
+    // environment is subsequently consumed (loaded, bitcast, or passed through), not where it sits.
     auto env = new_lam->num_vars() < 2 ? new_lam->var() : new_lam->var(ep);
     if (mode == Box) {
         // A mem-free closure still has to unbox its heap-allocated environment via a mem.load; if it has no mem of

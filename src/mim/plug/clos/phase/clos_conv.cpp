@@ -214,8 +214,11 @@ const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
 }
 
 const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
-    // HACK to rewrite a ret_var defined in an enclosing Lam.
-    // If we put external basic blocks into the env, this should never happen.
+    // A closure body may still refer to a ret_var of an *enclosing* Lam: return continuations are not
+    // closure-converted, and the FVA deliberately excludes ret_vars, so they are never captured into an env.
+    // Map such a projection onto the corresponding var of the enclosing Lam's converted stub.
+    // This is a known workaround; the principled fix is to capture escaping enclosing BBs/ret_vars in the
+    // environment (tracked by issue #117).
     if (converting_)
         if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var) {
             auto new_fn  = make_stub(lam).fn;

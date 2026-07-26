@@ -107,7 +107,8 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
             DLOG("found firstclass use of BB: {}", bb_lam);
             return new_world().call(attr::fstclassBB, rewrite(bb_lam));
         }
-        // TODO: If eta-reduction eta-reduces branches, we have to wrap them again!
+        // @note This relies on branches staying in `Extract`-of-`Tuple` form; if eta-reduction were to collapse
+        // a branch back into a bare continuation, it would have to be re-wrapped here.
         if (isa_retvar(old_op)) {
             DLOG("found firstclass use of return var: {}", old_op);
             return eta_wrap(old_op, attr::fstclassBB)->set("fstclass_ret");
