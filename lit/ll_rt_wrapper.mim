@@ -2,12 +2,13 @@
 // `%clos.alloc_jmpbuf` is provided by the C runtime `rt/mim_rt.c` (`@mim_jmpbuf_size`)
 // instead of hard-coded LLVM IR.
 
-// embed mode (default): the wrapper's definition is spliced in, so the module is self-contained.
-// RUN: rm -f %t.embed.ll
+// embed mode (default): the wrapper's definition is spliced in, so the module is self-contained,
+// links, and runs. Use the bare `%t` executable name (matching e.g. fib.mim) so Windows can run it.
+// RUN: rm -f %t.embed.ll %t
 // RUN: %mim -p opt -p clos %s -p ll -X ll:rt=embed -X ll:o=%t.embed.ll
 // RUN: %FileCheck --check-prefix=EMBED %s < %t.embed.ll
-// RUN: clang %t.embed.ll -o %t.embed -Wno-override-module
-// RUN: %t.embed ; test $? -eq 1
+// RUN: clang %t.embed.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 1
 
 // extern mode: only a declaration is emitted; the runtime is linked in separately.
 // RUN: rm -f %t.extern.ll
