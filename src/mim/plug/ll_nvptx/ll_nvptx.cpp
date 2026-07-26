@@ -40,13 +40,13 @@ public:
 /// Locates @p name on the system or throws CmdNotFound.
 std::string require_cmd(std::string_view name) {
     auto cmd = sys::find_cmd(std::string(name));
-    if (!std::filesystem::exists(cmd)) error<CmdNotFound>("Could not find command: {} {}", name, cmd);
+    if (!std::filesystem::exists(cmd)) fe::throwf<CmdNotFound>("Could not find command: {} {}", name, cmd);
     return cmd;
 }
 
 /// Runs @p cmd and throws if it exits with a non-zero status.
 void run_cmd(const std::string& cmd) {
-    if (auto rc = sys::system(cmd); rc != 0) error("Command exited with error code {}", rc);
+    if (auto rc = sys::system(cmd); rc != 0) fe::throwf("Command exited with error code {}", rc);
 }
 
 constexpr auto Default_Compute_Cap = "75";
@@ -123,11 +123,11 @@ std::string find_libdevice() {
     auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / Libdevice_Name;
     if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
 
-    error<CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.", Libdevice_Name);
+    fe::throwf<CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.", Libdevice_Name);
 }
 
 void link_libdevice(const NvptxCompileArgs& c) {
-    if (!std::filesystem::exists(c.libdevice_path)) error("libdevice path does not exist: {}", c.libdevice_path);
+    if (!std::filesystem::exists(c.libdevice_path)) fe::throwf("libdevice path does not exist: {}", c.libdevice_path);
     auto llvm_link = require_cmd("llvm-link");
     run_cmd(std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
                         c.dev_bc_raw_name));
@@ -205,7 +205,7 @@ public:
         }
 
         auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
-        auto setup_phase       = split_apply_phase.get()->as<RWPhase>();
+        auto setup_phase       = split_apply_phase.get()->expect<RWPhase>("%gpu.split_apply to be an RWPhase");
         setup_phase->run();
 
         DeviceEmitFlags device_flags;
@@ -214,7 +214,8 @@ public:
             device_flags = emit_device(setup_phase->new_world(), dev_ofs);
         }
         if (c.embed_device_code) {
-            if (!c.embed_ptx && !c.embed_cubin) error("Embedding requested with no images (neither PTX nor CUBIN).");
+            if (!c.embed_ptx && !c.embed_cubin)
+                fe::throwf("Embedding requested with no images (neither PTX nor CUBIN).");
             try {
                 if (c.compute_cap.empty()) c.compute_cap = get_compute_capability();
                 if (device_flags.uses_libdevice) {

@@ -54,20 +54,20 @@ public:
 std::string Emitter::convert_impl(const Def* type, bool simd) {
     if (auto i = types_.find(type); i != types_.end()) return i->second;
 
-    assert(!Axm::isa<mem::M>(type));
+    if (Axm::isa<mem::M>(type)) fe::throwf("ll backend: cannot convert %mem.M type '{}'", type);
     std::ostringstream s;
     std::string name;
 
     if (type->isa<Nat>()) {
         return types_[type] = "i64";
-    } else if (auto size = Idx::isa(type)) {
-        return types_[type] = "i" + std::to_string(*Idx::size2bitwidth(size));
+    } else if (Idx::isa(type)) {
+        return types_[type] = "i" + std::to_string(Idx::expect_bitwidth(type, "a statically-sized index type"));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
             case 16: return types_[type] = "half";
             case 32: return types_[type] = "float";
             case 64: return types_[type] = "double";
-            default: fe::unreachable();
+            default: fe::throwf("ll backend: unsupported floating-point width {} in type '{}'", *w, type);
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [pointee, addr_space] = ptr->args<2>();
@@ -82,7 +82,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
             std::print(s, "[{} x {}]", size, convert(arr->body(), false));
         }
     } else if (auto pi = type->isa<Pi>()) {
-        assert(Pi::isa_returning(pi) && "should never have to convert type of BB");
+        if (!Pi::isa_returning(pi)) fe::throwf("ll backend: cannot convert the type of a basic block: '{}'", pi);
         std::print(s, "{} (", convert_ret_pi(pi->ret_pi()));
 
         if (auto t = detail::isa_mem_sigma_2(pi->dom()))
@@ -113,12 +113,12 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         }
         std::print(s, "}}");
     } else {
-        fe::unreachable();
+        fe::throwf("ll backend: cannot convert type '{}' to LLVM", type);
     }
 
     if (name.empty()) return types_[type] = s.str();
 
-    assert(!s.str().empty());
+    if (s.str().empty()) fe::throwf("ll backend: empty type declaration for '{}'", type);
     type_decls_ << s.str() << '\n';
     return types_[type] = name;
 }
@@ -136,7 +136,7 @@ void Emitter::finalize_impl() {
 
     for (auto mut : Scheduler::schedule(nest())) {
         if (auto lam = mut->isa_mut<Lam>()) {
-            assert(lam2bb_.contains(lam));
+            if (!lam2bb_.contains(lam)) fe::throwf("ll backend: no basic block was emitted for '{}'", lam);
             auto& bb = lam2bb_[lam];
             std::print(func_impls_, "{}:\n", lam->unique_name());
 
@@ -170,7 +170,7 @@ Fun:
           Cn[M, «2; A», Cn R]  →    1 args + ret
 */
 void Emitter::emit_epilogue_impl(Lam* lam) {
-    auto app = lam->body()->as<App>();
+    auto app = lam->body()->expect<App>("an application in tail position");
     auto& bb = lam2bb_[lam];
     // A target-specific intrinsic in tail position (e.g. %gpu.launch) emits its own code and
     // yields the continuation to branch to.
@@ -283,7 +283,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         auto [msize, ret]          = rest->projs<2>();
         emit_unsafe(msize->proj(0)); // mem
         // TODO array with size
-        auto ret_lam = ret->as_mut<Lam>();
+        auto ret_lam = ret->expect_mut<Lam>("a %mem.slot continuation");
         auto ptr     = ret_lam->var(2, 1);
         auto v_ptr   = emit_slot(bb, app, pointee, addr_space);
         emit_phi(ret_lam, ptr, v_ptr, lam);
@@ -298,12 +298,13 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
 
         if (app->args().back()->isa<Bot>()) {
             // TODO: Perhaps it'd be better to simply η-wrap this prior to the BE...
-            assert(convert_ret_pi(app->callee_type()->ret_pi()) == "void");
+            if (convert_ret_pi(app->callee_type()->ret_pi()) != "void")
+                fe::throwf("ll backend: call with a ⊥ return continuation must return void, but '{}' does not", app);
             bb.tail("call void {}({})", v_callee, fe::Join(args));
             return bb.tail("unreachable");
         }
 
-        auto ret_lam = app->args().back()->as_mut<Lam>();
+        auto ret_lam = app->args().back()->expect_mut<Lam>("a return continuation");
         size_t n     = 0;
         for (auto var : ret_lam->vars())
             if (!Axm::isa<mem::M>(var->type())) ++n;
@@ -408,13 +409,13 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                     break;
                 }
                 case 64: hex = lit->get<u64>(); break;
-                default: fe::unreachable();
+                default: fe::throwf("ll backend: unsupported floating-point width {} for literal '{}'", *w, def);
             }
 
             s << "0x" << std::setfill('0') << std::setw(16) << std::right << std::hex << hex;
             return s.str();
         }
-        fe::unreachable();
+        fe::throwf("ll backend: cannot emit literal '{}' of type '{}'", def, def->type());
     } else if (def->isa<Bot>()) {
         return "undef";
     } else if (auto top = def->isa<Top>()) {
@@ -465,7 +466,8 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                    t_tup, t_tup, name, t_i, v_i);
         return bb.assign(name, "load {}, {}* {}.gep", t_elem, t_elem, name);
     } else if (auto insert = def->isa<Insert>()) {
-        assert(!Axm::isa<mem::M>(insert->tuple()->proj(0)->type()));
+        if (Axm::isa<mem::M>(insert->tuple()->proj(0)->type()))
+            fe::throwf("ll backend: cannot insert into a tuple with a %mem.M element: '{}'", insert);
         auto t_tup = convert(insert->tuple()->type());
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
@@ -483,7 +485,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 auto v_i = emit(insert->index());
                 auto t_i = convert(insert->index()->type());
                 if (t_i != "i32") {
-                    auto w_src = *Idx::size2bitwidth(Idx::isa(insert->index()->type()));
+                    auto w_src = Idx::expect_bitwidth(insert->index()->type(), "an %insert index of known width");
                     v_i        = bb.assign(name + ".idx", "{} {} {} to i32", w_src < 32 ? "zext" : "trunc", t_i, v_i);
                 }
                 return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val, v_i);
@@ -500,7 +502,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         }
     } else if (auto global = def->isa<Global>()) {
         auto v_init                = emit(global->init());
-        auto [pointee, addr_space] = Axm::as<mem::Ptr>(global->type())->args<2>();
+        auto [pointee, addr_space] = Axm::expect<mem::Ptr>(global->type(), "a %mem.Ptr")->args<2>();
         std::print(vars_decls_, "{} = global {} {}\n", name, convert(pointee), v_init);
         return globals_[global] = name;
     } else if (auto nat = Axm::isa<core::nat>(def)) {
@@ -544,18 +546,18 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
             case core::ncmp::l:  op += "ult"; break;
             case core::ncmp::le: op += "ule"; break;
             // clang-format on
-            default: fe::unreachable();
+            default: fe::throwf("ll backend: unhandled %core.ncmp id in '{}'", def);
         }
 
         return bb.assign(name, "{} i64 {}, {}", op, a, b);
     } else if (auto idx = Axm::isa<core::idx>(def)) {
         auto x = emit(idx->arg());
-        auto s = *Idx::size2bitwidth(Idx::isa(idx->type()));
+        auto s = Idx::expect_bitwidth(idx->type(), "a %core.idx result of known width");
         auto t = convert(idx->type());
         if (s < 64) return bb.assign(name, "trunc i64 {} to {}", x, t);
         return x;
     } else if (auto bit1 = Axm::isa<core::bit1>(def)) {
-        assert(bit1.id() == core::bit1::neg);
+        if (bit1.id() != core::bit1::neg) fe::throwf("ll backend: unhandled %core.bit1 id in '{}'", def);
         auto x = emit(bit1->arg());
         auto t = convert(bit1->type());
         return bb.assign(name, "xor {} -1, {}", t, x);
@@ -576,7 +578,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
             case core::bit2:: iff: return bb.assign(name, "and {} {}, {}", t, neg(a), b);
             case core::bit2::niff: return bb.assign(name, "or  {} {}, {}", t, neg(a), b);
             // clang-format on
-            default: fe::unreachable();
+            default: fe::throwf("ll backend: unhandled %core.bit2 id in '{}'", def);
         }
     } else if (auto shr = Axm::isa<core::shr>(def)) {
         auto [a, b] = shr->args<2>([this](auto def) { return emit(def); });
@@ -592,7 +594,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         auto [mode, ab] = wrap->uncurry_args<2>();
         auto [a, b]     = ab->projs<2>([this](auto def) { return emit(def); });
         auto t          = convert(wrap->type());
-        auto lmode      = static_cast<core::Mode>(Lit::as(mode));
+        auto lmode      = static_cast<core::Mode>(Lit::expect(mode, "a %core.wrap mode"));
 
         switch (wrap.id()) {
             case core::wrap::add: op = "add"; break;
@@ -639,7 +641,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
             case core::icmp::ul:  op += "ult"; break;
             case core::icmp::ule: op += "ule"; break;
             // clang-format on
-            default: fe::unreachable();
+            default: fe::throwf("ll backend: unhandled %core.icmp id in '{}'", def);
         }
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
@@ -670,8 +672,8 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         auto t_src = convert(conv->arg()->type());
         auto t_dst = convert(conv->type());
 
-        nat_t w_src = *Idx::size2bitwidth(Idx::isa(conv->arg()->type()));
-        nat_t w_dst = *Idx::size2bitwidth(Idx::isa(conv->type()));
+        nat_t w_src = Idx::expect_bitwidth(conv->arg()->type(), "a %core.conv source of known width");
+        nat_t w_dst = Idx::expect_bitwidth(conv->type(), "a %core.conv target of known width");
 
         if (w_src == w_dst) return v_src;
 
@@ -697,7 +699,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
 
         auto size2width = [&](const Def* type) {
             if (type->isa<Nat>()) return 64_n;
-            if (auto size = Idx::isa(type)) return *Idx::size2bitwidth(size);
+            if (Idx::isa(type)) return Idx::expect_bitwidth(type, "a statically-sized index type");
             return 0_n;
         };
 
@@ -712,47 +714,47 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         return bb.assign(name, "{} {} {} to {}", op, t_src, v_src, t_dst);
     } else if (auto lea = Axm::isa<mem::lea>(def)) {
         auto [ptr, i]  = lea->args<2>();
-        auto pointee   = Axm::as<mem::Ptr>(ptr->type())->arg(0);
+        auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a %mem.Ptr")->arg(0);
         auto v_ptr     = emit(ptr);
         auto t_pointee = convert(pointee);
         auto t_ptr     = convert(ptr->type());
         if (pointee->isa<Sigma>())
             return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, i32 {}", t_pointee, t_ptr, v_ptr,
-                             Lit::as(i));
+                             Lit::expect(i, "a struct-field index"));
 
-        assert(pointee->isa<Arr>());
+        if (!pointee->isa<Arr>()) fe::throwf("ll backend: %mem.lea on a pointer to a non-aggregate '{}'", pointee);
         auto [v_i, t_i] = emit_gep_index(i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
         auto address_space = malloc->decurry()->arg(1);
-        if (Lit::as(address_space) != 0)
+        if (Lit::expect(address_space, "an address space") != 0)
             if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return target_specific.value();
 
         declare("i8* @malloc(i64)");
 
         emit_unsafe(malloc->arg(0));
         auto size           = emit(malloc->arg(1));
-        auto ptr_t          = convert(Axm::as<mem::Ptr>(def->proj(1)->type()));
+        auto ptr_t          = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a %mem.Ptr"));
         auto i8ptr          = bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
         std::string i8ptr_t = "i8*";
-        if (Lit::as(address_space) != 0) {
+        if (Lit::expect(address_space, "an address space") != 0) {
             i8ptr_t = std::format("i8 addrspace({})*", address_space);
             i8ptr   = bb.assign(name + "i8conv", "addrspacecast i8* {} to {}", i8ptr, i8ptr_t);
         }
         return bb.assign(name, "bitcast {} {} to {}", i8ptr_t, i8ptr, ptr_t);
     } else if (auto free = Axm::isa<mem::free>(def)) {
         auto address_space = free->decurry()->arg(1);
-        if (Lit::as(address_space) != 0)
+        if (Lit::expect(address_space, "an address space") != 0)
             if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return {};
 
         declare("void @free(i8*)");
         emit_unsafe(free->arg(0));
         auto ptr   = emit(free->arg(1));
-        auto ptr_t = convert(Axm::as<mem::Ptr>(free->arg(1)->type()));
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(free->arg(1)->type(), "a %mem.Ptr"));
 
         auto i8ptr = bb.assign(name + "i8", "bitcast {} {} to i8 addrspace({})*", ptr_t, ptr, address_space);
-        if (Lit::as(address_space) != 0)
+        if (Lit::expect(address_space, "an address space") != 0)
             i8ptr = bb.assign(name + "i8conv", "addrspacecast i8 addrspace({})* {} to i8*", address_space, i8ptr);
         bb.tail("call void @free(i8* {})", i8ptr);
         return {};
@@ -760,7 +762,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         emit_unsafe(load->arg(0));
         auto v_ptr     = emit(load->arg(1));
         auto t_ptr     = convert(load->arg(1)->type());
-        auto t_pointee = convert(Axm::as<mem::Ptr>(load->arg(1)->type())->arg(0), false);
+        auto t_pointee = convert(Axm::expect<mem::Ptr>(load->arg(1)->type(), "a %mem.Ptr")->arg(0), false);
         return bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr);
     } else if (auto store = Axm::isa<mem::store>(def)) {
         emit_unsafe(store->arg(0));
@@ -788,7 +790,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         auto [mode, ab] = arith->uncurry_args<2>();
         auto [a, b]     = ab->projs<2>([this](auto def) { return emit(def); });
         auto t          = convert(arith->type());
-        auto lmode      = static_cast<math::Mode>(Lit::as(mode));
+        auto lmode      = static_cast<math::Mode>(Lit::expect(mode, "a %math.arith mode"));
 
         switch (arith.id()) {
             case math::arith::add: op = "fadd"; break;
@@ -830,8 +832,8 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 case math::tri::sin: f += "sin"; break;
                 case math::tri::cos: f += "cos"; break;
                 case math::tri::tan: f += "tan"; break;
-                case math::tri::ahFF: error("this axm is supposed to be unused");
-                default: fe::unreachable();
+                case math::tri::ahFF: fe::throwf("this axm is supposed to be unused");
+                default: fe::throwf("ll backend: unhandled %math.tri id in '{}'", def);
             }
 
             if (tri.sub() & sub_t(math::tri::h)) f += "h";
@@ -917,7 +919,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
             case math::cmp::uge: op += "uge"; break;
             case math::cmp::une: op += "une"; break;
             // clang-format on
-            default: fe::unreachable();
+            default: fe::throwf("ll backend: unhandled %math.cmp id in '{}'", def);
         }
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
@@ -971,7 +973,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto zip = Axm::isa<vec::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();
-        auto nat_ni = *Lit::isa(ni_n->proj(2, 0));
+        auto nat_ni = Lit::expect(ni_n->proj(2, 0), "a %vec.zip lane count");
         auto f      = zip->decurry()->arg();
         auto inputs = zip->arg();
         auto t_in   = convert(inputs->proj(nat_ni, 0)->type());
@@ -997,7 +999,8 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 case core::nat::mod: op = "urem"; break;
             }
         } else if (auto arith_op = Axm::isa<math::arith, 1>(f)) {
-            auto lmode = static_cast<math::Mode>(Lit::as(f->as<App>()->arg()));
+            auto lmode = static_cast<math::Mode>(
+                Lit::expect(f->expect<App>("a zipped %math.arith")->arg(), "a %math.arith mode"));
             switch (arith_op.id()) {
                 case math::arith::add: op = "fadd"; break;
                 case math::arith::sub: op = "fsub"; break;
@@ -1026,7 +1029,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 case core::ncmp::ge: op += "uge"; break;
                 case core::ncmp::l: op += "ult"; break;
                 case core::ncmp::le: op += "ule"; break;
-                default: fe::unreachable();
+                default: fe::throwf("ll backend: unhandled zipped %core.ncmp id in '{}'", def);
             }
         } else if (auto icmp_op = Axm::isa<core::icmp, 1>(f)) {
             op = "icmp ";
@@ -1041,7 +1044,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 case core::icmp::uge: op += "uge"; break;
                 case core::icmp::ul: op += "ult"; break;
                 case core::icmp::ule: op += "ule"; break;
-                default: fe::unreachable();
+                default: fe::throwf("ll backend: unhandled zipped %core.icmp id in '{}'", def);
             }
         } else if (auto mcmp_op = Axm::isa<math::cmp, 1>(f)) {
             op = "fcmp ";
@@ -1060,10 +1063,10 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 case math::cmp::ug: op += "ugt"; break;
                 case math::cmp::uge: op += "uge"; break;
                 case math::cmp::une: op += "une"; break;
-                default: fe::unreachable();
+                default: fe::throwf("ll backend: unhandled zipped %math.cmp id in '{}'", def);
             }
         } else {
-            error("unhandled vec.zip operation: {}", f);
+            fe::throwf("unhandled vec.zip operation: {}", f);
         }
 
         auto v1 = emit(inputs->proj(nat_ni, 0));
@@ -1073,7 +1076,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     } else if (auto res = isa_targetspecific_intrinsic(bb, def)) {
         return res.value();
     }
-    error("unhandled def in LLVM backend: {} : {}", def, def->type());
+    fe::throwf("unhandled def in LLVM backend: {} : {}", def, def->type());
 }
 
 extern "C" {

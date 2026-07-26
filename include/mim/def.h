@@ -540,6 +540,15 @@ public:
         else
             return const_cast<Def*>(this)->template as<T>();
     }
+
+    /// Like Def::as_mut but - instead of merely asserting in `Debug` builds - throws via fe::throwf when the cast
+    /// fails; the mutable counterpart of fe::RuntimeCast::expect (which Def inherits for the general case).
+    /// @p fmt / @p args describe what was expected; a plain string works, as does a format string plus arguments.
+    template<class T = Def, class... Args>
+    T* expect_mut(std::format_string<Args...> fmt, Args&&... args) const {
+        if (auto res = isa_mut<T>()) return res;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), this);
+    }
     ///@}
 
     /// @name Dbg Getters
@@ -875,6 +884,12 @@ public:
     static T as(const Def* def) {
         return def->as<Lit>()->get<T>();
     }
+    /// Like Lit::as but throws a formatted mim::error instead of merely asserting in `Debug`; see Def::expect.
+    template<class T = nat_t, class... Args>
+    static T expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
+        if (auto res = isa<T>(def)) return *res;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), def);
+    }
     ///@}
 
     static constexpr auto Node      = mim::Node::Lit;
@@ -936,6 +951,16 @@ public:
     static constexpr nat_t size2bitwidth(nat_t n) { return n == 0 ? 64 : std::bit_width(n - 1_n); }
     // clang-format on
     static std::optional<nat_t> size2bitwidth(const Def* size);
+
+    /// Yields the bit width of the `Idx` @p type or throws a formatted mim::error - instead of yielding
+    /// std::nullopt or dereferencing an unchecked std::optional - if @p type is not an `Idx` of statically known
+    /// size; see Def::expect.
+    template<class... Args>
+    static nat_t expect_bitwidth(const Def* type, std::format_string<Args...> fmt, Args&&... args) {
+        if (auto size = isa(type))
+            if (auto w = size2bitwidth(size)) return *w;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), type);
+    }
     ///@}
 
     static constexpr auto Node      = mim::Node::Idx;

@@ -89,7 +89,7 @@ std::string exec(std::string cmd) {
             result += buffer.data();
         return result;
     } else
-        error("popen() failed!");
+        fe::throwf("popen() failed!");
 }
 
 std::string find_cmd(std::string cmd) {

@@ -240,6 +240,8 @@ Methods beginning with
 
 - `isa` behave like `dynamic_cast`: they perform a runtime check and return `nullptr` if the cast fails;
 - `as` behave more like `static_cast`: in `Debug` builds they assert, via the corresponding `isa`, that the cast is valid.
+- `expect` behave like `as`, but - instead of merely asserting in `Debug` builds and being silently unchecked in `Release` - they *always* check via the corresponding `isa` and throw a formatted exception (via mim::throwf) when the cast fails.
+  Reach for `expect` (over `as`) whenever the assumption is really a claim about the incoming IR that should surface as a proper error message rather than a `Debug`-only assertion or Release-mode undefined behavior - e.g. in backends that validate an already-lowered program.
 
 #### General Downcast
 
@@ -254,6 +256,15 @@ void foo(const Def* def) {
     // sigma has type "const Sigma*" and may be mutable or immutable
     // asserts if def is not a Sigma
     auto sigma = def->as<Sigma>();
+
+    // sigma has type "const Sigma*" and may be mutable or immutable
+    // throws an exception (via mim::throwf) like "expected a struct type, but got '<def>'" if def is not a Sigma;
+    // the argument is a description of what was expected - a plain string or a format string plus arguments
+    auto s1 = def->expect<Sigma>("a struct type");
+    auto s2 = def->expect<Sigma>("the operand of {}", parent);
+
+    // the mutable counterpart, mirroring Def::as_mut; yields "Lam*"
+    auto lam = def->expect_mut<Lam>("a mutable continuation");
 }
 ```
 
@@ -340,6 +351,10 @@ void foo(const Def* def) {
     // asserts if def is not a Lit
     auto lu64 = Lit::as(def);
     auto lf32 = Lit::as<f32>(def);
+
+    // throws an exception (via mim::throwf) like "expected an address space, but got '<def>'" if def is not a Lit
+    auto a = Lit::expect(def, "an address space");
+    auto f = Lit::expect<f32>(def, "a floating-point constant");
 }
 ```
 
@@ -347,13 +362,15 @@ void foo(const Def* def) {
 
 The following table summarizes the most important casts:
 
-| `dynamic_cast` <br> `static_cast`               | Returns                                                                                                                             | If `def` is a ...                    |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `def->isa<Lam>()` <br> `def->as<Lam>()`         | `const Lam*`                                                                                                                        | [`Lam`](@ref mim::Lam)               |
-| `def->isa_imm<Lam>()` <br> `def->as_imm<Lam>()` | `const Lam*`                                                                                                                        | **immutable** [`Lam`](@ref mim::Lam) |
-| `def->isa_mut<Lam>()` <br> `def->as_mut<Lam>()` | `Lam*`                                                                                                                              | **mutable** [`Lam`](@ref mim::Lam)   |
-| `Lit::isa(def)` <br> `Lit::as(def)`             | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`nat_t`](@ref mim::nat_t)`>` <br> [`nat_t`](@ref mim::nat_t) | [`Lit`](@ref mim::Lit)               |
-| `Lit::isa<f32>(def)` <br> `Lit::as<f32>(def)`   | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`f32`](@ref mim::f32)`>` <br> [`f32`](@ref mim::f32)         | [`Lit`](@ref mim::Lit)               |
+A method beginning with `expect` behaves like the `as` in the same row, but throws a formatted exception (via mim::throwf) instead of asserting; it takes a description (a plain string or a format string plus arguments) of what was expected.
+
+| `dynamic_cast` <br> `static_cast` <br> throwing                                     | Returns                                                                                                                             | If `def` is a ...                    |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `def->isa<Lam>()` <br> `def->as<Lam>()` <br> `def->expect<Lam>(fmt, ...)`           | `const Lam*`                                                                                                                        | [`Lam`](@ref mim::Lam)               |
+| `def->isa_imm<Lam>()` <br> `def->as_imm<Lam>()`                                     | `const Lam*`                                                                                                                        | **immutable** [`Lam`](@ref mim::Lam) |
+| `def->isa_mut<Lam>()` <br> `def->as_mut<Lam>()` <br> `def->expect_mut<Lam>(fmt, ...)` | `Lam*`                                                                                                                            | **mutable** [`Lam`](@ref mim::Lam)   |
+| `Lit::isa(def)` <br> `Lit::as(def)` <br> `Lit::expect(def, fmt, ...)`               | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`nat_t`](@ref mim::nat_t)`>` <br> [`nat_t`](@ref mim::nat_t) | [`Lit`](@ref mim::Lit)               |
+| `Lit::isa<f32>(def)` <br> `Lit::as<f32>(def)` <br> `Lit::expect<f32>(def, fmt, ...)` | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`f32`](@ref mim::f32)`>` <br> [`f32`](@ref mim::f32)         | [`Lit`](@ref mim::Lit)               |
 
 #### Further Casts
 
@@ -375,6 +392,10 @@ void foo(const Def* def) {
     if (auto pi = Pi::isa_basicblock(def)) {
         // def is a Pi whose codomain is bottom and which is not returning
     }
+
+    // yields the bit width of an Idx type, or throws a formatted exception (via mim::throwf) if it is not statically known
+    // (the throwing counterpart of the std::optional-returning Idx::size2bitwidth)
+    auto w = Idx::expect_bitwidth(def, "an index type of known width");
 }
 ```
 
@@ -382,8 +403,9 @@ void foo(const Def* def) {
 
 You can match [axioms](@ref mim::Axm) via
 
-- [`mim::Axm::isa`](@ref mim::Axm::isa), which behaves like a checked `dynamic_cast` and returns [a wrapped](@ref mim::Axm::isa) `nullptr`-like value on failure, or
-- [`mim::Axm::as`](@ref mim::Axm::as), which behaves like a checked `static_cast` and asserts in `Debug` builds if the match fails.
+- [`mim::Axm::isa`](@ref mim::Axm::isa), which behaves like a checked `dynamic_cast` and returns [a wrapped](@ref mim::Axm::isa) `nullptr`-like value on failure,
+- [`mim::Axm::as`](@ref mim::Axm::as), which behaves like a checked `static_cast` and asserts in `Debug` builds if the match fails, or
+- [`mim::Axm::expect`](@ref mim::Axm::expect), which - like the other `expect` helpers - throws a formatted exception (via mim::throwf) instead of asserting: `Axm::expect<mem::Ptr>(def, "a %mem.Ptr")`.
 
 The result is a `mim::Axm::isa<Id, D>`, which wraps a `const D*`.
 Here, `Id` is the enum corresponding to the [matched axiom tag](@ref anatomy), and `D` is usually an [`App`](@ref mim::App), because most [axioms](@ref mim::Axm) inhabit a [function type](@ref mim::Pi).
@@ -427,6 +449,9 @@ void foo(const Def* def) {
 
     // def must match mem::load - otherwise, this asserts
     auto load = Axm::as<mem::load>(def);
+
+    // def must match mem::load - otherwise, this throws a formatted exception (via mim::throwf)
+    auto ld = Axm::expect<mem::load>(def, "a %mem.load");
 }
 ```
 
