@@ -3,3 +3,9 @@ add_mim_plugin(ll
         ll.cpp
     INSTALL
 )
+
+add_mim_runtime(ll
+    SOURCES
+        rt/mim_rt.c
+    INSTALL
+)

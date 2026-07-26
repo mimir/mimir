@@ -11,6 +11,15 @@ if(NOT MIM_TARGET_NAMESPACE)
     set(MIM_TARGET_NAMESPACE "")
 endif()
 
+option(MIM_BUILD_LL_RUNTIME "Compile the ll backend's C runtime wrappers to LLVM IR (requires clang)." ON)
+find_program(MIM_CLANG NAMES clang)
+if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
+    message(STATUS
+        "MimIR: clang not found; ll backend C runtime wrappers will not be built. "
+        "Set MIM_CLANG or disable MIM_BUILD_LL_RUNTIME to silence this."
+    )
+endif()
+
 ## \page add_mim_plugin_cmake add_mim_plugin
 ## \brief Registers a new MimIR plugin.
 ##
@@ -192,5 +201,65 @@ function(add_mim_plugin)
                 DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
         endif()
+    endif()
+endfunction()
+
+## \page add_mim_runtime_cmake add_mim_runtime
+## \brief Compiles a plugin's C runtime wrappers to textual LLVM IR.
+##
+## \code{.cmake}
+## add_mim_runtime(<plugin-name>
+##     SOURCES <source>...
+##     [INSTALL])
+## \endcode
+##
+## Each `SOURCES` file is compiled with `clang` to a textual `.ll` placed in
+## `<libdir>/mim/rt/<source-stem>.ll`, next to the plugins. The `ll` backend
+## locates these files via the driver's search paths and either embeds them into
+## or links them with its emitted module (see `-X ll:rt=embed|extern`).
+##
+## If `clang` is unavailable (see `MIM_CLANG`) or `MIM_BUILD_LL_RUNTIME` is off,
+## the command is a no-op; the runtime is simply not built.
+function(add_mim_runtime)
+    set(PLUGIN ${ARGV0})
+
+    cmake_parse_arguments(
+        PARSE_ARGV 1        # skip first arg
+        PARSED              # prefix of output variables
+        "INSTALL"           # options
+        ""                  # one-value keywords (none)
+        "SOURCES"           # multi-value keywords
+    )
+
+    if(NOT MIM_BUILD_LL_RUNTIME OR NOT MIM_CLANG)
+        return()
+    endif()
+
+    set(RT_DIR ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/rt)
+    file(MAKE_DIRECTORY ${RT_DIR})
+
+    set(RT_OUTPUTS "")
+    foreach(src ${PARSED_SOURCES})
+        get_filename_component(stem ${src} NAME_WE)
+        set(out ${RT_DIR}/${stem}.ll)
+        add_custom_command(
+            OUTPUT  ${out}
+            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${CMAKE_CURRENT_LIST_DIR}/${src} -o ${out}
+            MAIN_DEPENDENCY ${CMAKE_CURRENT_LIST_DIR}/${src}
+            COMMENT "Compiling MimIR runtime wrapper '${src}' to LLVM IR"
+            VERBATIM
+        )
+        list(APPEND RT_OUTPUTS ${out})
+        if(${PARSED_INSTALL})
+            install(
+                FILES ${out}
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim/rt
+            )
+        endif()
+    endforeach()
+
+    add_custom_target(mim_runtime_${PLUGIN} ALL DEPENDS ${RT_OUTPUTS})
+    if(TARGET mim_${PLUGIN})
+        add_dependencies(mim_${PLUGIN} mim_runtime_${PLUGIN})
     endif()
 endfunction()

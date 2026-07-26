@@ -153,6 +153,27 @@ public:
         decls_.emplace(decl.str());
     }
 
+    /// How the C runtime wrappers (see `rt/mim_rt.c`, compiled to `mim_rt.ll`) reach the output.
+    enum class Rt {
+        embed, ///< Splice the wrapper IR into the emitted module so it is self-contained.
+        ext,   ///< Only `declare` the wrappers; the runtime is linked in externally.
+    };
+
+    void rt_mode(Rt rt) { rt_ = rt; }
+    /// Provides the textual LLVM IR of the runtime module to splice in `Rt::embed` mode.
+    void rt_module(std::string ll) { rt_module_ = std::move(ll); }
+
+    /// Declares a runtime wrapper @p sig (implemented in `rt/mim_rt.c`) and records that the
+    /// runtime is required by this module.
+    /// In `Rt::ext` mode the declaration is emitted like any other `declare`.
+    /// In `Rt::embed` mode the wrapper's *definition* is spliced into the output, so emitting a
+    /// `declare` as well would be a redefinition — hence it is suppressed here.
+    template<class... Args>
+    void declare_rt(std::format_string<Args...> sig, Args&&... args) {
+        rt_used_ = true;
+        if (rt_ == Rt::ext) declare(sig, std::forward<Args>(args)...);
+    }
+
 protected:
     std::string id(const Def*, bool force_bb = false) const;
     virtual std::string convert(const Def* type, bool simd = true) {
@@ -195,6 +216,10 @@ protected:
     std::ostringstream func_decls_;
     std::ostringstream func_impls_;
     LamMap<const Def*> simd_phi_;
+
+    Rt rt_        = Rt::embed;
+    bool rt_used_ = false;
+    std::string rt_module_;
 
 private:
     // Real implementations; defined in ll.cpp and exported via the `mim_ll_*` shims above.
@@ -285,6 +310,14 @@ inline std::string Emitter::convert_ret_pi(const Pi* pi) {
 
 inline void Emitter::start() {
     Super::start();
+
+    // Splice the runtime wrapper module first (it carries the module's target triple/datalayout).
+    if (rt_used_ && rt_ == Rt::embed) {
+        if (rt_module_.empty())
+            fe::throwf("ll backend: `-X ll:rt=embed` needs the runtime module `mim_rt.ll`, but it "
+                       "was not found (build with clang / `MIM_BUILD_LL_RUNTIME=ON`, or use `-X ll:rt=extern`)");
+        ostream() << rt_module_ << '\n';
+    }
 
     ostream() << type_decls_.str() << '\n';
     for (auto&& decl : decls_)

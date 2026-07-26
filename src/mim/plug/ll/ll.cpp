@@ -2,6 +2,8 @@
 
 #include <fstream>
 #include <iomanip>
+#include <iterator>
+#include <optional>
 #include <ranges>
 #include <string>
 
@@ -20,9 +22,25 @@ namespace clos = mim::plug::clos;
 namespace core = mim::plug::core;
 namespace vec  = mim::plug::vec;
 
+/// Locates the runtime wrapper module `mim_rt.ll` (see `rt/mim_rt.c`) in the driver's search paths
+/// and returns its textual LLVM IR, or `std::nullopt` if it cannot be found or read.
+static std::optional<std::string> read_rt_module(World& world) {
+    for (const auto& dir : world.driver().search_paths()) {
+        auto path = dir / "rt" / "mim_rt.ll";
+        std::error_code ec;
+        if (!fs::is_regular_file(path, ec) || ec) continue;
+        if (auto ifs = std::ifstream(path)) {
+            world.DLOG("ll backend: embedding runtime module `{}`", path.string());
+            return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+        }
+    }
+    return std::nullopt;
+}
+
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
 /// The output path can be overridden on the command line via `-X ll:o=<file>` or `-X ll:output=<file>`.
+/// The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
 class Emit : public Phase {
 public:
     Emit(World& world, flags_t annex)
@@ -31,15 +49,23 @@ public:
     void start() override {
         auto name = world().name() ? std::string(world().name().view()) : "a"s;
         auto path = name + ".ll"s;
+        auto rt   = Emitter::Rt::embed;
         for (const auto& arg : args()) {
             world().DLOG("ll backend arg: `{}`", arg);
             if (arg.starts_with("o="))
                 path = arg.substr(2);
             else if (arg.starts_with("output="))
                 path = arg.substr(7);
+            else if (arg == "rt=embed")
+                rt = Emitter::Rt::embed;
+            else if (arg == "rt=extern")
+                rt = Emitter::Rt::ext;
         }
         auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), "llvm_emitter", ofs);
+        emitter.rt_mode(rt);
+        if (rt == Emitter::Rt::embed)
+            if (auto rt_ll = read_rt_module(world())) emitter.rt_module(std::move(*rt_ll));
         emitter.run();
     }
 };
@@ -773,11 +799,13 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
         return {};
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {
-        declare("i64 @jmpbuf_size()");
+        // The size of a `jmp_buf` is platform/libc-dependent, so it is computed by a C runtime
+        // wrapper (`rt/mim_rt.c`) rather than hard-coded here; see issue #486.
+        declare_rt("i64 @mim_jmpbuf_size()");
 
         emit_unsafe(q->arg());
         auto size = name + ".size";
-        bb.assign(size, "call i64 @jmpbuf_size()");
+        bb.assign(size, "call i64 @mim_jmpbuf_size()");
         return bb.assign(name, "alloca i8, i64 {}", size);
     } else if (auto setjmp = Axm::isa<clos::setjmp>(def)) {
         declare("i32 @_setjmp(i8*) returns_twice");
