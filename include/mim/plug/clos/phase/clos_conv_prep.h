@@ -4,7 +4,7 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 /// Wraps operands with `%clos.attr` markers (returning, freeBB, fstclassBB, ...) and eta-expands
 /// branches and continuations so that ClosConv sees a canonical program.
@@ -35,4 +35,4 @@ private:
     bool analyzed_ = false;
 };
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

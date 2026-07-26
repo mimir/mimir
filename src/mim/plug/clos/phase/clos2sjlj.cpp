@@ -2,7 +2,7 @@
 
 #include <mim/plug/core/core.h>
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 namespace {
 
@@ -197,4 +197,4 @@ const Def* Clos2SJLJ::rewrite_mut_Lam(Lam* old) {
     return new_def;
 }
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

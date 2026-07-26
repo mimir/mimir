@@ -4,7 +4,7 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 namespace {
 
@@ -24,7 +24,7 @@ bool isa_callee_br(const App* body, const Def* def, size_t i) {
 }
 
 Lam* isa_retvar(const Def* def) {
-    if (auto [var, lam] = ca_isa_var<Lam>(def); var && lam && var == lam->ret_var()) return lam;
+    if (auto [var, lam] = isa_var_proj<Lam>(def); var && lam && var == lam->ret_var()) return lam;
     return nullptr;
 }
 
@@ -163,4 +163,4 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
     return w.app(new_callee, new_arg);
 }
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

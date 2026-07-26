@@ -1,134 +1,134 @@
 #pragma once
 
 #include <queue>
-#include <vector>
 
 #include "mim/phase.h"
 
 #include "mim/plug/clos/clos.h"
 #include "mim/plug/mem/mem.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
-/// Transitively compute free Def's on demand.
-/// This is used internally by ClosConv.
+/// Computes, on demand and with memoization, the free Def%s that a Lam must capture in its closure environment.
+///
+/// A referenced nested mutable does not become a free def itself; instead it contributes *its* free defs, since it
+/// will be closure-converted too.
+/// This makes the free-def sets of (mutually) recursive Lam%s inter-dependent, so they are solved to a fixed point
+/// over a little dependency graph: an edge `pred → node` means `node` must include all of `pred`'s free defs.
+///
+/// Mutables are only treated as free defs directly if annotated with clos::attr::freeBB / clos::attr::fstclassBB;
+/// immutables carrying free vars are broken down to their relevant leaves.
 class FreeDefAna {
 public:
     FreeDefAna(World& world)
-        : world_(world)
-        , cur_pass_id(1)
-        , lam2nodes_() {}
+        : world_(world) {}
 
-    /// FreeDefAna::run will compute free defs (FD) that appear in @p lam%s body.
-    /// Mutable Def%s are only considered free if they are annotated with Clos::freeBB or
-    /// Clos::fstclassBB.
-    /// Otherwise, we add a mut's free defs in order to build a closure for it.
-    /// Immutables containing mutables are broken up if necessary.
-    DefSet& run(Lam* lam);
+    /// Returns the free defs @p lam has to capture; see the class description.
+    const DefSet& run(Lam* lam);
 
 private:
-    /// @name analysis graph
-    /// @{
-    struct Node;
-    using NodeQueue = std::queue<Node*>;
-    using Nodes     = std::vector<Node*>;
-
-    /// In order to avoid recomputing FDs sets, sets are computed for the subgraph reachable from mut and memorized.
-    /// `pass_id` determines if the node has been initialized.
+    /// A memoized free-def set together with its dependency edges in the fixed-point graph.
     struct Node {
         Def* mut;
         DefSet fvs;
-        Nodes preds;
-        Nodes succs;
-        unsigned pass_id; //
+        Vector<Node*> preds; ///< Nodes whose free defs must flow into this one.
+        Vector<Node*> succs; ///< Reverse of preds; used to re-enqueue dependents when fvs grow.
+        unsigned pass = 0;   ///< 0 = uninitialized; otherwise the pass that last touched this node.
 
         auto add_fvs(const Def* def) {
             assert(!Axm::isa<mem::M>(def->type()));
             return fvs.emplace(def);
         }
     };
-    /// @}
 
-    /// Node is not initialized?
-    bool is_bot(Node* node) { return node->pass_id == 0; }
+    using NodeQueue = std::queue<Node*>;
 
-    /// FD set for node is already present?
-    bool is_done(Node* node) { return !is_bot(node) && node->pass_id < cur_pass_id; }
+    bool is_bot(Node* node) const { return node->pass == 0; }                          ///< Not yet initialized?
+    bool is_done(Node* node) const { return !is_bot(node) && node->pass < cur_pass_; } ///< Settled in an earlier pass?
+    void mark(Node* node) { node->pass = cur_pass_; }
 
-    /// Marks a node as done.
-    void mark(Node* node) { node->pass_id = cur_pass_id; }
-
-    /// Split a free Def. This may create more Nodes as more reachable nodes are discovered.
-    void split_fd(Node* node, const Def* fv, bool& is_init, NodeQueue& worklist);
+    /// Classifies a free def of @p node, either adding it as a captured fv or spawning/linking a predecessor Node.
+    /// @p spawned_pred is set if this created a fresh (uninitialized) predecessor Node.
+    void classify(Node* node, const Def* fd, bool& spawned_pred, NodeQueue& worklist);
 
     std::pair<Node*, bool> build_node(Def* mut, NodeQueue& worklist);
-    void run(NodeQueue& worklist);
+    void propagate(NodeQueue& worklist);
 
     World& world() { return world_; }
 
     World& world_;
-    unsigned cur_pass_id;
-    DefMap<std::unique_ptr<Node>> lam2nodes_;
+    unsigned cur_pass_ = 1;
+    DefMap<std::unique_ptr<Node>> lam2node_;
 };
 
-/// Performs *typed closure conversion*.
+/// Performs *typed closure conversion*, rebuilding the old world into a new one.
 /// This is based on the [Simply Typed Closure Conversion](https://dl.acm.org/doi/abs/10.1145/237721.237791).
 /// Closures are represented using tuples: `[Env: *, Cn [Env, Args..], Env]`.
-/// In general only *continuations* are converted.
-/// Different kind of Lam%s may be rewritten differently:
+/// In general only *continuations* are converted; different kinds of Lam%s are treated differently:
 /// - *returning continuations* ("functions"), *join-points* and *branches* are fully closure converted.
 /// - *return continuations* are not closure converted.
-/// - *first-class continuations* get a "dummy" closure, they still have free variables.
+/// - *first-class continuations* get a "dummy" closure; they still have free variables.
 ///
-/// This pass relies on ClosConvPrep to introduce annotations for these cases.
+/// This phase relies on ClosConvPrep to introduce annotations for these cases.
 ///
-/// Note: Since direct-style Def%s are not rewritten, this can lead to problems with certain Axm%s:
-/// `ax : (B : *, int -> B) -> (int -> B)` won't be converted, possible arguments may.
-/// Further, there is no machinery to handle free variables in a Lam%s type; this may lead to
-/// problems with polymorphic functions.
-class ClosConv : public Phase {
+/// A converted Lam is first stubbed (ClosConv::make_stub) and packed at each use site, while its body is
+/// enqueued and rewritten later (ClosConv::rewrite_body) in its own fresh substitution scope.
+/// This isolation is essential: inside a closure's body its free defs are replaced by projections of *its own*
+/// environment, and those substitutions must not leak into the enclosing scope where the closure was packed.
+///
+/// @note Direct-style Def%s are not rewritten, which can be a problem for certain Axm%s such as
+/// `ax : (B : *, int → B) → (int → B)`.
+/// There is also no machinery for free variables in a Lam's type, which may break polymorphic functions.
+class ClosConv : public RWPhase {
 public:
     ClosConv(World& world, flags_t annex)
-        : Phase(world, annex)
-        , fva_(world) {}
-
-    void start() override;
+        : RWPhase(world, annex)
+        , fva_(world) {} // the FVA operates on the old world
 
 private:
-    /// @name closure stubs
-    /// @{
+    /// A closure-converted Lam: the code part @p fn capturing the free defs @p fvs of @p old_fn.
     struct Stub {
         Lam* old_fn;
-        /// The free defs packed into env.
-        /// Do not recover them from env->ops(): World::tuple may normalize the env tuple
-        /// (η-reduction back to the underlying def, unary tuple, uniform Pack).
+        /// The captured free defs.
+        /// Do not recover them from the env tuple's ops: World::tuple may normalize it (η-reduction back to the
+        /// underlying def, unary tuple, uniform Pack).
         DefVec fvs;
-        const Def* env;
         Lam* fn;
     };
 
-    Stub make_stub(const DefSet& fvs, Lam* lam, Def2Def& subst);
-    Stub make_stub(Lam* lam, Def2Def& subst);
-    /// @}
+    void start() override;
 
-    /// @name Recursively rewrite Def%s.
-    /// @{
-    void rewrite_body(Lam* lam, Def2Def& subst);
-    const Def* rewrite(const Def* old_def, Def2Def& subst);
-    Def* rewrite_mut(Def* mut, const Def* new_type, Def2Def& subst);
-    const Pi* rewrite_type_cn(const Pi*, Def2Def& subst);
-    const Def* type_clos(const Pi* pi, Def2Def& subst, const Def* ent_type = nullptr);
-    /// @}
+    /// @name Rewrite hooks
+    ///@{
+    const Def* rewrite_imm_Pi(const Pi*) final;
+    const Def* rewrite_mut_Pi(Pi*) final;
+    const Def* rewrite_mut_Lam(Lam*) final;
+    const Def* rewrite_imm_App(const App*) final;
+    const Def* rewrite_imm_Extract(const Extract*) final;
+    const Def* rewrite_mut_Global(Global*) final;
+    ///@}
+
+    /// Handles the `%clos.attr.{returning,freeBB,fstclassBB}` wrappers; returns `nullptr` if @p a is none of these.
+    const Def* rewrite_attr(Axm::IsA<attr, App> a);
+
+    Stub make_stub(const DefSet& fvs, Lam* old_lam);
+    Stub make_stub(Lam* old_lam);
+    void rewrite_body(const Stub&);
+
+    /// Builds the closure type for the `Cn` @p pi; with @p env_type, the bare code `Cn` instead of the Sigma.
+    const Def* clos_type_of(const Pi* pi, const Def* env_type = nullptr);
+    /// Rewrites a return continuation's type: stays a plain `Cn`, but its domains are closure-converted.
+    const Pi* rewrite_ret_cn(const Pi*);
 
     FreeDefAna fva_;
-    DefMap<Stub> closures_;
+    DefMap<Stub> closures_; ///< old_fn *and* new fn ↦ Stub.
 
-    // Muts that must be re rewritten uniformly across the whole module:
-    // Currently, this includes globals and closure types (for typechecking to go through).
-    // Such muts must not depend on defs that live inside the scope of a continuation!
+    /// Muts that must be rewritten uniformly across the whole module: closure types and globals.
+    /// Such muts must not depend on defs living inside the scope of a continuation.
     Def2Def glob_muts_;
 
-    std::queue<const Def*> worklist_;
+    std::queue<Lam*> body_worklist_; ///< New fns whose bodies are yet to be rewritten.
+    bool converting_ = false;        ///< `false` while bootstrapping annexes; `true` once actually converting.
 };
 
-}; // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase
