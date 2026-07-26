@@ -1,7 +1,5 @@
 #include "mim/plug/clos/phase/clos_conv.h"
 
-#include "mim/check.h"
-
 #include "mim/plug/mem/autogen.h"
 
 using namespace std::literals;
@@ -49,7 +47,7 @@ void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQue
 
     if (auto [var, lam] = isa_var_proj<Lam>(fd); var && lam) {
         if (var != lam->ret_var()) node->add_fvs(fd);
-    } else if (auto free_bb = Axm::isa(attr::freeBB, fd)) {
+    } else if (auto free_bb = Axm::isa(attr::free_bb, fd)) {
         node->add_fvs(free_bb);
     } else if (auto pred = fd->isa_mut()) {
         // A referenced nested mutable contributes its own free defs (once it is closure-converted).
@@ -197,8 +195,8 @@ const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
                 return new_lam;
             }
             return nullptr;
-        case attr::fstclassBB:
-        case attr::freeBB: {
+        case attr::fstclass_bb:
+        case attr::free_bb: {
             // A free/first-class basic block captures nothing: it gets an empty environment and its body is
             // rewritten right here, sharing the enclosing scope (same η-conversion remark as above).
             auto bb_lam = a->arg()->isa_mut<Lam>();

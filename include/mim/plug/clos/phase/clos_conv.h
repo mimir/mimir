@@ -16,7 +16,7 @@ namespace mim::plug::clos::phase {
 /// This makes the free-def sets of (mutually) recursive Lam%s inter-dependent, so they are solved to a fixed point
 /// over a little dependency graph: an edge `pred → node` means `node` must include all of `pred`'s free defs.
 ///
-/// Mutables are only treated as free defs directly if annotated with clos::attr::freeBB / clos::attr::fstclassBB;
+/// Mutables are only treated as free defs directly if annotated with clos::attr::free_bb / clos::attr::fstclass_bb;
 /// immutables carrying free vars are broken down to their relevant leaves.
 class FreeDefAna {
 public:
@@ -108,7 +108,7 @@ private:
     const Def* rewrite_mut_Global(Global*) final;
     ///@}
 
-    /// Handles the `%clos.attr.{returning,freeBB,fstclassBB}` wrappers; returns `nullptr` if @p a is none of these.
+    /// Handles the `%clos.attr.{returning,free_bb,fstclass_bb}` wrappers; returns `nullptr` if @p a is none of these.
     const Def* rewrite_attr(Axm::IsA<attr, App> a);
 
     Stub make_stub(const DefSet& fvs, Lam* old_lam);
