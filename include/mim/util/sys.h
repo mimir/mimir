@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 
 #ifdef _WIN32
 #    define MIM_WHICH "where"
@@ -26,8 +28,21 @@ std::string exec(std::string cmd);
 
 std::string find_cmd(std::string);
 
+/// Thrown by sys::require_cmd when a command cannot be located on the system.
+class CmdNotFound : public std::logic_error {
+public:
+    CmdNotFound(const std::string& s)
+        : std::logic_error(s) {}
+};
+
+/// Locates @p name on the system or throws CmdNotFound.
+std::string require_cmd(std::string_view name);
+
 /// Wraps `std::system` and makes the return value usable.
 int system(std::string);
+
+/// Runs @p cmd via sys::system and throws if it exits with a non-zero status.
+void require_run(const std::string& cmd);
 
 /// Wraps sys::system and puts `.exe` at the back (Windows) and `./` at the front (otherwise) of @p cmd.
 int run(std::string cmd, std::string args = {});
