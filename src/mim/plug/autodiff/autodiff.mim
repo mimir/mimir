@@ -4,16 +4,21 @@
 ///
 /// [TOC]
 ///
+/// This plugin provides *reverse-mode automatic differentiation*: `%%autodiff.ad f` yields the augmented
+/// function `f' = λ args. (f args, f*)` that returns the result together with its pullback.
+/// The actual differentiation is performed by the mim::plug::autodiff::Eval phase.
+///
 /// ## Dependencies
 ///
 plugin mem;
 import compile;
-/// For derivatives:
-plugin core;
-///
+plugin core; // for derivatives
 ///
 /// ## Types
 ///
+/// ### %%autodiff.Tangent
+///
+/// The tangent type of a type `T` (currently the identity).
 axm %autodiff.Tangent: * → *, normalize_Tangent;
 ///
 /// ## Operations
@@ -97,19 +102,19 @@ axm %autodiff.eval:      %compile.Phase;
 ///
 /// The comparison pullback exists formally but is not used.
 ///
-fun extern internal_diff_core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn[Bool, Cn«2; Idx s»]] =
+fun extern internal_diff_core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
     return (%core.icmp.sle ab, fn [Bool]@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
 ///
 /// ### %%core.wrap.add
 ///
 /// s ↦ (s, s)
 ///
-fun extern internal_diff_core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn[Idx s, Cn«2; Idx s»]] =
+fun extern internal_diff_core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
     return (%core.wrap.add m ab, fn (i: Idx s)@tt: «2; Idx s» = return ‹2; i›);
 ///
 /// ### %%core.wrap.mul
 ///
 /// s ↦ (s*b, s*a)
 ///
-fun extern internal_diff_core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn[Idx s, Cn«2; Idx s»]] =
+fun extern internal_diff_core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
     return (%core.wrap.mul m ab, fn (i: Idx s)@tt: «2; Idx s» = return (%core.wrap.mul m (i, b), %core.wrap.mul m (i, a)));

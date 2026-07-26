@@ -8,7 +8,7 @@
 
 using namespace std::literals;
 
-namespace mim::plug::autodiff {
+namespace mim::plug::autodiff::phase {
 
 // TODO: maybe use template (https://codereview.stackexchange.com/questions/141961/memoization-via-template) to memoize
 const Def* Eval::augment(const Def* def, Lam* f, Lam* f_diff) {
@@ -394,4 +394,4 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
     fe::unreachable();
 }
 
-} // namespace mim::plug::autodiff
+} // namespace mim::plug::autodiff::phase
