@@ -4,37 +4,15 @@
 plugin core;
 plugin matrix;
 
-// let MT = (2, (2,4),  I32);
-
-con g [[mem:%mem.M 0, acc:I32, [a:I32, b:I32]], return: Cn[%mem.M 0,I32]] =
-    let v       = %core.wrap.mul 0 (a,b);
-    let new_acc = %core.wrap.add 0 (acc,v); // reduce op = addition
+con g ((mem: %mem.M 0, acc: I32, (a: I32, b: I32)), return: Cn [%mem.M 0, I32]) =
+    let v       = %core.wrap.mul 0 (a, b);
+    let new_acc = %core.wrap.add 0 (acc, v); // reduce op = addition
     return (mem, new_acc);
 
-con extern f [mem : %mem.M 0,
-    [k l m:Nat],
-    // M:%buffer.Buf (2,(k,m), I32),
-    // N:%buffer.Buf (2,(m,l), I32),
-    return: Cn[%mem.M 0, %buffer.Buf (2,(k,l), I32)]] =
-    let (mem, M) = %buffer.constant (2,(k,m), I32) (mem, 42I32);
-    let (mem, N) = %buffer.constant (2,(m,l), I32) (mem, 44I32);
-    let (mem,MN) = %matrix.map_reduce
-        (
-            2, (k,l),  I32,
-            2,
-            (2,2),
-            ( I32, I32),
-            ((k,m),(m,l))
-        )
-        (
-            mem,
-            0I32,
-            g,
-            (
-                ((0,2),M),
-                ((2,1),N)
-            )
-        );
-    return (mem,MN);
+con extern f (mem: %mem.M 0, (k l m: Nat), return: Cn [%mem.M 0, %buffer.Buf (2, (k, l), I32)]) =
+    let (mem, M)  = %buffer.constant (2, (k, m), I32) (mem, 42I32);
+    let (mem, N)  = %buffer.constant (2, (m, l), I32) (mem, 44I32);
+    let (mem, MN) = %matrix.map_reduce (2, (k, l), I32, 2, (2, 2), (I32, I32), ((k, m), (m, l))) (mem, 0I32, g, (((0, 2), M), ((2, 1), N)));
+    return (mem, MN);
 
 // CHECK-NOT: %matrix.

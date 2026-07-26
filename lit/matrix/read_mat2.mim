@@ -4,7 +4,7 @@
 plugin core;
 plugin matrix;
 
-con extern f[mem: %mem.M 0, [k: Nat, l: Nat], return: Cn[%mem.M 0, I32]] =
+con extern f(mem: %mem.M 0, (k: Nat, l: Nat), return: Cn [%mem.M 0, I32]) =
     let two      = %core.conv.u k 2I32;
     let three    = %core.conv.u l 3I32;
     let (mem, M) = %buffer.alloc (2, (k, l), I32) mem; // :%buffer.Buf (2,(k,l), I32)

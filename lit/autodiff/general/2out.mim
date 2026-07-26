@@ -4,14 +4,14 @@
 plugin core;
 plugin autodiff;
 
-con f [a:I32, return: Cn [I32,I32]] =
+con f (a: I32, return: Cn [I32, I32]) =
     let b = %core.wrap.mul 0 (2I32, a);
     let c = %core.wrap.mul 0 (3I32, a);
-    return (b,c);
+    return (b, c);
 
-con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
-    con ret_cont [[r1: I32,r2: I32]] =
-        con pb_ret_cont [pr:I32] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    con ret_cont ((r1: I32, r2: I32)) =
+        con pb_ret_cont (pr: I32) =
             let c = %core.wrap.mul 0 (100I32, r1);
             let d = %core.wrap.add 0 (c, pr);
             return (mem, d);
@@ -20,6 +20,6 @@ con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 
 
     let f_diff = f;
     let c = 42I32;
-    f_diff (c,ret_cont);
+    f_diff (c, ret_cont);
 
 // CHECK-DAG: return{{.*}}8401

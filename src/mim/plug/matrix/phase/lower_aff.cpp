@@ -11,7 +11,7 @@
 #include "mim/plug/matrix/matrix.h"
 #include "mim/plug/mem/mem.h"
 
-namespace mim::plug::matrix {
+namespace mim::plug::matrix::phase {
 
 namespace {
 
@@ -22,15 +22,14 @@ const Def* fold_index(const Def* shape, const Def* idx) {
     auto r  = shape->num_projs();
     DefVec out;
     bool dropped = false;
-    for (size_t i = 0; i != r; ++i) {
+    for (size_t i = 0; i != r; ++i)
         if (auto l = Lit::isa<u64>(shape->proj(r, i)); l && *l == 1)
             dropped = true;
         else
             out.push_back(idx->proj(r, i));
-    }
     // Without dropped axes the tuple below would just eta-reduce back to `idx` — but only after
     // World::tuple's pack normalization has alpha-compared the projections, which walks `idx`'s whole
-    // (mem-threaded, Var-dependent) coordinate chain per element pair — exponentially. Return `idx` directly.
+    // (mem-threaded, Var-dependent) coordinate chain per elem pair — exponentially. Return `idx` directly.
     if (!dropped) return idx;
     return w.tuple(out);
 }
@@ -46,9 +45,9 @@ std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const
 
 /// Pointwise scaffold shared by `pad`/`concat`: a `[mem, ins] → [mem, Buf]` fun (spliced via
 /// `%cps.cps2ds`) that allocates the output buffer, loops over `s_out` carrying `{mem, buf}`, and writes
-/// `compute`'s element at the (identity) output coordinates.
+/// `compute`'s elem at the (identity) output coordinates.
 /// `compute(iters, ins, mem)` receives the raw i64 loop counters, the fun's inputs var, and the current
-/// mem; it returns `(mem', element)`.
+/// mem; it returns `(mem', elem)`.
 template<class Compute>
 const Def* build_pointwise(World& w,
                            const Def* result_ty, // [%mem.M 0, %buffer.Buf (r, s_out, T)]
@@ -84,13 +83,13 @@ const Def* build_pointwise(World& w,
     auto [loop_mem, loop_buf] = acc->projs<2>();
 
     std::pair<const Def*, const Def*> el = compute(iters, ins, loop_mem);
-    auto [el_mem, element]               = el;
+    auto [el_mem, elem]                  = el;
 
     DefVec wcoords(rn);
     for (u64 d = 0; d < rn; ++d)
         wcoords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
     auto [wr_mem, wr_buf]
-        = buffer::op_write(obr, obs, obT, el_mem, loop_buf, fold_index(s_out, w.tuple(wcoords)), element)->projs<2>();
+        = buffer::op_write(obr, obs, obT, el_mem, loop_buf, fold_index(s_out, w.tuple(wcoords)), elem)->projs<2>();
     current_mut->app(true, cont, w.tuple({wr_mem, loop_buf}));
     return call;
 }
@@ -108,22 +107,21 @@ const Def* LowerAff::rewrite_imm_App(const App* app) {
 }
 
 const Def* LowerAff::lower_buffer_constant(const App* app) {
-    // `%buffer.constant (r, s, T) (mem, val)` fills every element with `val`. Emit a fill loop (via the same
+    // `%buffer.constant (r, s, T) (mem, val)` fills every elem with `val`. Emit a fill loop (via the same
     // pointwise scaffold as pad/concat) so the store never materializes as one giant literal array. A
     // non-literal rank has no static loop nest, so leave it for `%buffer.lower_ptr`'s monolithic fallback.
-    auto [r, s, T]  = app->callee()->as<App>()->args<3>();
-    auto s_out      = rewrite(s);
-    auto rn         = Lit::isa<u64>(rewrite(r));
+    auto [r, s, T] = app->callee()->as<App>()->args<3>();
+    auto s_out     = rewrite(s);
+    auto rn        = Lit::isa<u64>(rewrite(r));
     if (!rn) return RWPhase::rewrite_imm_App(app);
 
     auto& w         = new_world();
     auto [mem, val] = rewrite(app->arg())->projs<2>();
     auto result_ty  = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (r, s, T)]
     // `compute` ignores the loop counters and writes the (loop-invariant) scalar `ins` everywhere.
-    return build_pointwise(w, result_ty, mem, val, s_out, *rn, "constant_fill",
-                           [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> {
-                               return {m, ins};
-                           });
+    return build_pointwise(
+        w, result_ty, mem, val, s_out, *rn, "constant_fill",
+        [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> { return {m, ins}; });
 }
 
 const Def* LowerAff::lower_map_reduce_aff(const App* app) {
@@ -192,16 +190,16 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     auto [wb_mem, wb_buf] = acc->projs<2>();
 
     // Write-back continuation `Cn[mem, To]`.
-    auto write_back                 = mem::mut_con(To)->set("writeBack");
-    auto [wb_in_mem, element_final] = write_back->vars<2>();
-    DefVec wb_iters                 = out_iters;
+    auto write_back              = mem::mut_con(To)->set("writeBack");
+    auto [wb_in_mem, elem_final] = write_back->vars<2>();
+    DefVec wb_iters              = out_iters;
     for (u64 j = 0; j < rr; ++j)
         wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
     auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wb_in_mem);
-    auto stored                 = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), element_final);
+    auto stored = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), elem_final);
     write_back->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
 
-    // Reduction loops; accumulator `{mem, element}`.
+    // Reduction loops; accumulator `{mem, elem}`.
     acc  = w.tuple({wb_mem, init});
     cont = write_back;
     DefVec red_iters;
@@ -217,15 +215,15 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
         current_mut->set(true, for_call);
         current_mut = body;
     }
-    auto [red_mem, element_acc] = acc->projs<2>();
+    auto [red_mem, elem_acc] = acc->projs<2>();
 
     DefVec iters_v = out_iters;
     iters_v.insert(iters_v.end(), red_iters.begin(), red_iters.end());
     auto iters = w.tuple(iters_v);
 
-    // Read one element from each input at its affine coordinates, threading memory.
+    // Read one elem from each input at its affine coordinates, threading memory.
     auto cur = red_mem;
-    DefVec input_elements(nis_nat);
+    DefVec input_elems(nis_nat);
     for (u64 i = 0; i < nis_nat; ++i) {
         auto in_buf = new_inputs->proj(nis_nat, i);
         auto [mc_mem, coords]
@@ -234,12 +232,12 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
         auto [ir, is_, iT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
         auto [rd_mem, rd_val]
             = buffer::op_read(ir, is_, iT, cur, in_buf, fold_index(Sis->proj(nis_nat, i), coords))->projs<2>();
-        cur               = rd_mem;
-        input_elements[i] = rd_val;
+        cur            = rd_mem;
+        input_elems[i] = rd_val;
     }
 
     // The combiner is mem-threaded (`Fn [mem, To, «nis; Tis»] → [mem, To]`): call it directly, its result feeds `cont`.
-    current_mut->app(true, comb, w.tuple({w.tuple({cur, element_acc, w.tuple(input_elements)}), cont}));
+    current_mut->app(true, comb, w.tuple({w.tuple({cur, elem_acc, w.tuple(input_elems)}), cont}));
 
     return call;
 }
@@ -335,7 +333,8 @@ const Def* LowerAff::lower_pad(const App* app) {
             }
             clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
         }
-        auto [rd_mem, elem] = buffer::op_read(ibr, ibs, ibT, mem, in_buf, fold_index(s_in, w.tuple(clamped)))->projs<2>();
+        auto [rd_mem, elem]
+            = buffer::op_read(ibr, ibs, ibT, mem, in_buf, fold_index(s_in, w.tuple(clamped)))->projs<2>();
         if (mode_nat != 0) return {rd_mem, elem}; // replicate: always a (clamped) read
         auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
         for (u64 d = 1; d < valid.size(); ++d)
@@ -384,8 +383,8 @@ const Def* LowerAff::lower_concat(const App* app) {
     auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
 
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
-        auto o_ax       = iters[axn];
-        const Def* cur  = mem;
+        auto o_ax      = iters[axn];
+        const Def* cur = mem;
         // Read input `i` at `iters`, but with the `ax` coordinate shifted by off#i and clamped into input `i`.
         auto read_i = [&](u64 i) -> const Def* {
             auto in_buf          = ins->proj(nisn, i);
@@ -400,8 +399,9 @@ const Def* LowerAff::lower_concat(const App* app) {
                 auto idx_i64 = (d == axn) ? clamp : iters[d];
                 coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
             }
-            auto [rd_mem, rd_val] = buffer::op_read(ibr, ibs, ibT, cur, in_buf, fold_index(Sis_i, w.tuple(coords)))->projs<2>();
-            cur                   = rd_mem;
+            auto [rd_mem, rd_val]
+                = buffer::op_read(ibr, ibs, ibT, cur, in_buf, fold_index(Sis_i, w.tuple(coords)))->projs<2>();
+            cur = rd_mem;
             return rd_val;
         };
         // Select chain: the highest `i` with off#i ≤ o_ax owns the cell (offsets increase, later wins).
@@ -416,4 +416,4 @@ const Def* LowerAff::lower_concat(const App* app) {
     return build_pointwise(w, result_ty, op_mem, op_is, s_out, rn, "concat", compute);
 }
 
-} // namespace mim::plug::matrix
+} // namespace mim::plug::matrix::phase
