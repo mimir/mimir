@@ -4,8 +4,8 @@ plugin refly;
 
 lam f1 (a b: Nat): Nat = %core.nat.add (a, b);
 lam f2 (ab: «2; Nat»): Nat =
-    let b = ab#1_2; // this provokes b->gid() < a->gid()
-    let a = ab#0_2;
+    let b = ab#1₂; // this provokes b->gid() < a->gid()
+    let a = ab#0₂;
     %core.nat.add (a, b);
 
 lam g1 (a: Nat) (b: Nat): Nat = %core.nat.add (a, b);

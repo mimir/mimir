@@ -5,7 +5,7 @@
 plugin core;
 plugin vec;
 
-fun foo{n:Nat} (A: «n; Nat», B:«n; Nat»):  «n; Nat» =
+fun foo{n: Nat} (A: «n; Nat», B: «n; Nat»):  «n; Nat» =
     let C = %vec.zip %core.nat.sub (A, B);
     let D = %vec.zip %core.nat.sub (C, ‹n; 1›);
     return D;

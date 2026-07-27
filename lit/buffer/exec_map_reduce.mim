@@ -14,7 +14,7 @@ plugin affine;
 plugin mem;
 plugin cps;
 
-fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
+fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
 lam id1i (i j: %affine.index): «1; %affine.index» = i;
 lam id2  (i j: %affine.index): «2; %affine.index» = (i, j);
 
@@ -23,10 +23,10 @@ fun extern row_sum (input: «3, 4; I32»): «3; I32» =
     return (%tensor.map_reduce @1 @(I32, 1, 1) (3, (3, 4))
                 @(I32, 2, (3, 4)) (add, 0I32) id1i id2 input);
 
-con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let t = ((1I32, 2I32, 3I32, 4I32), (5I32, 6I32, 7I32, 8I32), (9I32, 10I32, 11I32, 12I32));
     con done (o: «3; I32») =
-        let v = %tensor.get @(I32, 1, (3,)) (o, (2_3,));
+        let v = %tensor.get @(I32, 1, (3, )) (o, (2₃, ));
         return (mem, v);
     row_sum (t, done);
 

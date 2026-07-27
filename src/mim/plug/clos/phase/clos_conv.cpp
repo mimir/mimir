@@ -1,12 +1,10 @@
 #include "mim/plug/clos/phase/clos_conv.h"
 
-#include "mim/check.h"
-
 #include "mim/plug/mem/autogen.h"
 
 using namespace std::literals;
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 namespace {
 
@@ -14,23 +12,19 @@ bool is_memop_res(const Def* fd) {
     auto proj = fd->isa<Extract>();
     if (!proj) return false;
     auto types = proj->tuple()->type()->ops();
-    return std::any_of(types.begin(), types.end(), [](auto d) { return Axm::isa<mem::M>(d); });
+    return std::ranges::any_of(types, [](auto d) { return Axm::isa<mem::M>(d); });
 }
 
-} // namespace
-
+/// The free (non-closed, not-nested) Def%s directly reachable from @p nest's root.
 DefSet free_defs(const Nest& nest) {
-    DefSet bound;
-    DefSet free;
+    DefSet bound, free;
     std::queue<const Def*> queue;
     queue.emplace(nest.root()->mut());
 
     while (!queue.empty()) {
-        auto def = pop(queue);
-        for (auto op : def->deps()) {
-            if (op->is_closed()) {
-                // do nothing
-            } else if (nest.contains(op)) {
+        for (auto op : pop(queue)->deps()) {
+            if (op->is_closed()) continue; // nothing free in here
+            if (nest.contains(op)) {
                 if (auto [_, ins] = bound.emplace(op); ins) queue.emplace(op);
             } else {
                 free.emplace(op);
@@ -41,81 +35,80 @@ DefSet free_defs(const Nest& nest) {
     return free;
 }
 
+} // namespace
+
 /*
  * Free variable analysis
  */
 
-void FreeDefAna::split_fd(Node* node, const Def* fd, bool& init_node, NodeQueue& worklist) {
+void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQueue& worklist) {
     assert(!Axm::isa<mem::M>(fd) && "mem tokens must not be free");
     if (fd->is_closed()) return;
-    if (auto [var, lam] = ca_isa_var<Lam>(fd); var && lam) {
+
+    if (auto [var, lam] = isa_var_proj<Lam>(fd); var && lam) {
         if (var != lam->ret_var()) node->add_fvs(fd);
-    } else if (auto q = Axm::isa(attr::freeBB, fd)) {
-        node->add_fvs(q);
+    } else if (auto free_bb = Axm::isa(attr::free_bb, fd)) {
+        node->add_fvs(free_bb);
     } else if (auto pred = fd->isa_mut()) {
+        // A referenced nested mutable contributes its own free defs (once it is closure-converted).
         if (pred != node->mut) {
             auto [pnode, inserted] = build_node(pred, worklist);
-            node->preds.push_back(pnode);
-            pnode->succs.push_back(node);
-            init_node |= inserted;
+            node->preds.emplace_back(pnode);
+            pnode->succs.emplace_back(node);
+            spawned_pred |= inserted;
         }
     } else if (fd->has_dep(Dep::Var) && !fd->isa<Tuple>()) {
-        // Note: Var's can still have Def::Top, if their type is a mut!
-        // So the first case is *not* redundant
+        // Note: a Var may still be closed if its type is a mut, so the isa_var_proj case above is not redundant.
         node->add_fvs(fd);
     } else if (is_memop_res(fd)) {
-        // Results of memops must not be floated down
-        node->add_fvs(fd);
+        node->add_fvs(fd); // results of memops must not be floated down
     } else {
         for (auto op : fd->ops())
-            split_fd(node, op, init_node, worklist);
+            classify(node, op, spawned_pred, worklist);
     }
 }
 
 std::pair<FreeDefAna::Node*, bool> FreeDefAna::build_node(Def* mut, NodeQueue& worklist) {
-    auto& w            = world();
-    auto [p, inserted] = lam2nodes_.emplace(mut, nullptr);
+    auto [p, inserted] = lam2node_.emplace(mut, nullptr);
     if (!inserted) return {p->second.get(), false};
-    w.DLOG("FVA: create node: {}", mut);
-    p->second      = std::make_unique<Node>(Node{mut, {}, {}, {}, 0});
-    auto node      = p->second.get();
-    auto nest      = Nest(mut);
-    bool init_node = false;
-    for (auto v : free_defs(nest))
-        split_fd(node, v, init_node, worklist);
-    if (!init_node) {
+    world().DLOG("FVA: create node: {}", mut);
+
+    p->second         = std::make_unique<Node>(mut);
+    auto node         = p->second.get();
+    bool spawned_pred = false;
+    for (auto fd : free_defs(Nest(mut)))
+        classify(node, fd, spawned_pred, worklist);
+
+    // A node with no fresh predecessors is ready to be settled right away.
+    if (!spawned_pred) {
         worklist.push(node);
-        w.DLOG("FVA: init {}", mut);
+        world().DLOG("FVA: init {}", mut);
     }
     return {node, true};
 }
 
-void FreeDefAna::run(NodeQueue& worklist) {
+void FreeDefAna::propagate(NodeQueue& worklist) {
     while (!worklist.empty()) {
-        auto node = worklist.front();
-        worklist.pop();
+        auto node = pop(worklist);
         if (is_done(node)) continue;
         auto changed = is_bot(node);
         mark(node);
-        for (auto p : node->preds) {
-            auto& pfvs = p->fvs;
-            for (auto&& pfv : pfvs)
+        for (auto pred : node->preds)
+            for (auto pfv : pred->fvs)
                 changed |= node->add_fvs(pfv).second;
-        }
         if (changed)
-            for (auto s : node->succs)
-                worklist.push(s);
+            for (auto succ : node->succs)
+                worklist.push(succ);
     }
 }
 
-DefSet& FreeDefAna::run(Lam* lam) {
+const DefSet& FreeDefAna::run(Lam* lam) {
     auto worklist  = NodeQueue();
     auto [node, _] = build_node(lam, worklist);
     if (!is_done(node)) {
-        cur_pass_id++;
-        run(worklist);
+        ++cur_pass_;
+        propagate(worklist);
     }
-
     return node->fvs;
 }
 
@@ -124,172 +117,137 @@ DefSet& FreeDefAna::run(Lam* lam) {
  */
 
 void ClosConv::start() {
-    auto subst = Def2Def();
-    for (auto mut : world().externals().mutate())
-        rewrite(mut, subst);
-    while (!worklist_.empty()) {
-        auto def = worklist_.front();
-        subst    = Def2Def();
-        worklist_.pop();
-        if (auto i = closures_.find(def); i != closures_.end()) {
-            rewrite_body(i->second.fn, subst);
-        } else {
-            DLOG("RUN: rewrite def {}", def);
-            rewrite(def, subst);
-        }
+    // Bootstrapping: rebuild all annexes verbatim - closure conversion is disabled while converting_ is false.
+    for (const auto& [flags, e] : old_world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
+
+    // Convert everything reachable from the externals, each in its own fresh substitution scope.
+    converting_ = true;
+    for (auto old_mut : old_world().externals().muts()) {
+        push();
+        auto new_def = rewrite(old_mut);
+        pop();
+        // Non-closure externals (e.g. data) carry their external-ness over directly;
+        // converted Lam%s are externalized through their wrapper inside make_stub instead.
+        if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
+            new_mut->externalize();
     }
+
+    // Rewrite the deferred closure bodies, each in isolation.
+    while (!body_worklist_.empty()) {
+        auto fn = body_worklist_.front();
+        body_worklist_.pop();
+        push();
+        rewrite_body(closures_.at(fn));
+        pop();
+    }
+
+    swap(old_world(), new_world());
 }
 
-void ClosConv::rewrite_body(Lam* new_lam, Def2Def& subst) {
-    auto& w = world();
-    auto it = closures_.find(new_lam);
-    assert(it != closures_.end() && "closure should have a stub if rewrite_body is called!");
-    // Copy the stub: rewriting below adds new stubs to closures_, which may rehash and invalidate it->second.
-    auto [old_fn, fvs, env, new_fn] = it->second;
-
-    if (!old_fn->is_set()) return;
-
-    DLOG("rw body: {} [old={}, env={}]\nt", new_fn, old_fn, env);
-    auto ep      = env_param(new_fn->type()->as<Pi>());
-    auto env_val = new_fn->var(ep)->set("closure_env");
-    if (fvs.size() == 1) {
-        subst.emplace(fvs.front(), env_val);
-    } else {
-        for (size_t i = 0; i < fvs.size(); i++) {
-            auto fv  = fvs[i];
-            auto sym = w.sym("fv_"s + (fv->sym() ? fv->sym().str() : std::to_string(i)));
-            subst.emplace(fv, env_val->proj(i)->set(sym));
-        }
-    }
-
-    auto params = w.tuple(DefVec(old_fn->num_doms(), [&](auto i) { return new_lam->var(skip_env(ep, i)); }));
-    subst.emplace(old_fn->var(), params);
-
-    auto filter = rewrite(new_fn->filter(), subst);
-    auto body   = rewrite(new_fn->body(), subst);
-    new_fn->unset()->set({filter, body});
+const Def* ClosConv::rewrite_imm_Pi(const Pi* pi) {
+    if (converting_ && Pi::isa_cn(pi)) return clos_type_of(pi);
+    return RWPhase::rewrite_imm_Pi(pi);
 }
 
-const Def* ClosConv::rewrite(const Def* def, Def2Def& subst) {
-    switch (def->node()) {
-        case Node::Type:
-        case Node::Univ:
-        case Node::Nat:
-        case Node::Bot: // TODO This is used by the AD stuff????
-        case Node::Top: return def;
-        default: break;
-    }
+const Def* ClosConv::rewrite_mut_Pi(Pi* pi) {
+    if (converting_ && Pi::isa_cn(pi)) return clos_type_of(pi);
+    return RWPhase::rewrite_mut_Pi(pi);
+}
 
-    auto& w  = world();
-    auto map = [&](const Def* new_def) {
-        subst[def] = new_def;
-        assert(subst[def] == new_def);
-        return new_def;
-    };
+const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
+    if (!converting_ || !Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
 
-    if (auto i = subst.find(def); i != subst.end()) {
-        return i->second;
-    } else if (auto pi = Pi::isa_cn(def)) {
-        return map(type_clos(pi, subst));
-    } else if (auto lam = def->isa_mut<Lam>(); lam && Lam::isa_cn(lam)) {
-        auto [_, fvs, __, new_lam] = make_stub(lam, subst);
-        auto clos_ty               = rewrite(lam->type(), subst);
-        // Rewrite the individual free defs, not the (possibly normalized) env tuple:
-        // its normal form may reference defs that are not free vars and hence not in subst.
-        auto env     = w.tuple(DefVec(fvs.size(), [&](auto i) { return rewrite(fvs[i], subst); }));
-        auto closure = clos_pack(env, new_lam, clos_ty);
-        DLOG("RW: pack {} ~> {} : {}", lam, closure, clos_ty);
-        return map(closure);
-    } else if (auto a = Axm::isa<attr>(def)) {
-        switch (a.id()) {
-            case attr::returning:
-                if (auto ret_lam = a->arg()->isa_mut<Lam>()) {
-                    // assert(ret_lam && ret_lam->is_basicblock());
-                    //  Note: This should be cont_lam's only occurance after η-expansion, so its okay to
-                    //  put into the local subst only
-                    auto new_doms
-                        = DefVec(ret_lam->num_doms(), [&](auto i) { return rewrite(ret_lam->dom(i), subst); });
-                    auto new_lam   = ret_lam->stub(w.cn(new_doms));
-                    subst[ret_lam] = new_lam;
-                    if (ret_lam->is_set()) {
-                        new_lam->set_filter(rewrite(ret_lam->filter(), subst));
-                        new_lam->set_body(rewrite(ret_lam->body(), subst));
-                    }
-                    return new_lam;
-                }
-                break;
-            case attr::fstclassBB:
-            case attr::freeBB: {
-                // Note: Same thing about η-conversion applies here
-                auto bb_lam = a->arg()->isa_mut<Lam>();
-                assert(bb_lam && Lam::isa_basicblock(bb_lam));
-                auto [_, __, ___, new_lam] = make_stub({}, bb_lam, subst);
-                subst[bb_lam]              = clos_pack(w.tuple(), new_lam, rewrite(bb_lam->type(), subst));
-                rewrite_body(new_lam, subst);
-                return map(subst[bb_lam]);
+    auto& w      = new_world();
+    auto stub    = make_stub(old_lam);
+    auto clos_ty = rewrite(old_lam->type());
+    // Rewrite the individual free defs, not the (possibly normalized) env tuple:
+    // its normal form may reference defs that are not free vars and hence not in the current map.
+    auto env     = w.tuple(DefVec(stub.fvs.size(), [&](auto i) { return rewrite(stub.fvs[i]); }));
+    auto closure = clos_pack(env, stub.fn, clos_ty);
+    DLOG("RW: pack {} ~> {} : {}", old_lam, closure, clos_ty);
+    return map(old_lam, closure);
+}
+
+const Def* ClosConv::rewrite_imm_App(const App* app) {
+    if (!converting_) return RWPhase::rewrite_imm_App(app);
+
+    if (auto a = Axm::isa<attr>(app))
+        if (auto handled = rewrite_attr(a)) return handled;
+
+    auto new_callee = rewrite(app->callee());
+    auto new_arg    = rewrite(app->arg());
+    if (new_callee->type()->isa<Sigma>()) return clos_apply(new_callee, new_arg);
+    return new_world().app(new_callee, new_arg);
+}
+
+const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
+    auto& w = new_world();
+    switch (a.id()) {
+        case attr::returning:
+            // A return continuation is *not* closure converted; it stays a plain Cn sharing the enclosing scope.
+            // After η-expansion this should be its only occurrence, so mapping it into the current scope suffices.
+            if (auto ret_lam = a->arg()->isa_mut<Lam>()) {
+                auto new_doms = DefVec(ret_lam->num_doms(), [&](auto i) { return rewrite(ret_lam->dom(i)); });
+                auto new_lam  = w.mut_lam(w.cn(new_doms))->set(ret_lam->dbg());
+                map(ret_lam, new_lam);
+                if (ret_lam->is_set()) new_lam->set(rewrite(ret_lam->filter()), rewrite(ret_lam->body()));
+                return new_lam;
             }
-            default: break;
+            return nullptr;
+        case attr::fstclass_bb:
+        case attr::free_bb: {
+            // A free/first-class basic block captures nothing: it gets an empty environment and its body is
+            // rewritten right here, sharing the enclosing scope (same η-conversion remark as above).
+            auto bb_lam = a->arg()->isa_mut<Lam>();
+            assert(bb_lam && Lam::isa_basicblock(bb_lam));
+            auto stub = make_stub({}, bb_lam);
+            auto pack = clos_pack(w.tuple(), stub.fn, rewrite(bb_lam->type()));
+            map(bb_lam, pack);
+            rewrite_body(stub);
+            return pack;
         }
-    } else if (auto [var, lam] = ca_isa_var<Lam>(def); var && lam && lam->ret_var() == var) {
-        // HACK to rewrite a retvar that is defined in an enclosing lambda
-        // If we put external bb's into the env, this should never happen
-        auto new_lam = make_stub(lam, subst).fn;
-        auto new_idx = skip_env(env_param(new_lam->type()->as<Pi>()), Lit::as(var->index()));
-        return map(new_lam->var(new_idx));
+        default: return nullptr;
     }
-
-    auto new_type = rewrite(def->type(), subst);
-
-    if (auto mut = def->isa_mut()) {
-        if (auto global = def->isa_mut<Global>()) {
-            if (auto i = glob_muts_.find(global); i != glob_muts_.end()) return i->second;
-            auto subst             = Def2Def();
-            return glob_muts_[mut] = rewrite_mut(global, new_type, subst);
-        }
-        assert(!isa_clos_type(mut));
-        DLOG("RW: mut {}", mut);
-        auto new_mut = rewrite_mut(mut, new_type, subst);
-        // Try to reduce the amount of muts that are created
-        if (!mut->isa_mut<Global>() && Checker::alpha<Checker::Check>(mut, new_mut)) return map(mut);
-        if (auto imm = new_mut->immutabilize()) return map(imm);
-        return map(new_mut);
-    } else if (auto var = def->isa<Var>()) {
-        return map(w.var(rewrite(var->binder(), subst)->as_mut())); // binder is in binder_, not an op
-    } else {
-        auto new_ops = DefVec(def->num_ops(), [&](auto i) { return rewrite(def->op(i), subst); });
-        if (auto app = def->isa<App>(); app && new_ops[0]->type()->isa<Sigma>())
-            return map(clos_apply(new_ops[0], new_ops[1]));
-        else if (def->isa<Axm>())
-            return def;
-        else
-            return map(def->rebuild(new_type, new_ops));
-    }
-
-    fe::unreachable();
 }
 
-Def* ClosConv::rewrite_mut(Def* mut, const Def* new_type, Def2Def& subst) {
-    auto new_mut = mut->stub(new_type);
-    subst.emplace(mut, new_mut);
-    for (size_t i = 0; i < mut->num_ops(); i++)
-        if (mut->op(i)) new_mut->set(i, rewrite(mut->op(i), subst));
-    return new_mut;
+const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
+    // A closure body may still refer to a ret_var of an *enclosing* Lam: return continuations are not
+    // closure-converted, and the FVA deliberately excludes ret_vars, so they are never captured into an env.
+    // Map such a projection onto the corresponding var of the enclosing Lam's converted stub.
+    // This is a known workaround; the principled fix is to capture escaping enclosing BBs/ret_vars in the
+    // environment (tracked by issue #117).
+    if (converting_)
+        if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var) {
+            auto new_fn  = make_stub(lam).fn;
+            auto new_idx = skip_env(env_param(new_fn->type()->as<Pi>()), Lit::as(var->index()));
+            return new_fn->var(new_idx);
+        }
+    return RWPhase::rewrite_imm_Extract(ex);
 }
 
-const Pi* ClosConv::rewrite_type_cn(const Pi* pi, Def2Def& subst) {
+const Def* ClosConv::rewrite_mut_Global(Global* global) {
+    // Globals are rewritten once and shared, in isolation from any surrounding continuation scope.
+    if (auto i = glob_muts_.find(global); i != glob_muts_.end()) return i->second;
+    push();
+    auto new_global = RWPhase::rewrite_mut_Global(global);
+    pop();
+    return glob_muts_[global] = new_global;
+}
+
+const Pi* ClosConv::rewrite_ret_cn(const Pi* pi) {
     assert(Pi::isa_basicblock(pi));
-    auto new_ops = DefVec(pi->num_doms(), [&](auto i) { return rewrite(pi->dom(i), subst); });
-    return world().cn(new_ops);
+    return new_world().cn(DefVec(pi->num_doms(), [&](auto i) { return rewrite(pi->dom(i)); }));
 }
 
-const Def* ClosConv::type_clos(const Pi* pi, Def2Def& subst, const Def* env_type) {
-    if (auto i = glob_muts_.find(pi); i != glob_muts_.end() && !env_type) return i->second;
-    auto& w       = world();
+const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {
+    if (!env_type)
+        if (auto i = glob_muts_.find(pi); i != glob_muts_.end()) return i->second;
+
     auto new_doms = DefVec(pi->num_doms(), [&](auto i) {
-        return (i == pi->num_doms() - 1 && Pi::isa_returning(pi)) ? rewrite_type_cn(pi->ret_pi(), subst)
-                                                                  : rewrite(pi->dom(i), subst);
+        return (i == pi->num_doms() - 1 && Pi::isa_returning(pi)) ? rewrite_ret_cn(pi->ret_pi()) : rewrite(pi->dom(i));
     });
-    auto ct       = ctype(w, new_doms, env_type);
+    auto ct       = ctype(new_world(), new_doms, env_type);
     if (!env_type) {
         glob_muts_.emplace(pi, ct);
         DLOG("C-TYPE: pct {} ~~> {}", pi, ct);
@@ -299,45 +257,66 @@ const Def* ClosConv::type_clos(const Pi* pi, Def2Def& subst, const Def* env_type
     return ct;
 }
 
-ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam, Def2Def& subst) {
-    auto& w          = world();
+ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
+    auto& w          = new_world();
     auto fv_vec      = DefVec(fvs.begin(), fvs.end());
-    auto env         = w.tuple(fv_vec);
-    auto env_type    = rewrite(env->type(), subst);
-    auto new_fn_type = type_clos(old_lam->type(), subst, env_type)->as<Pi>();
-    auto new_lam     = old_lam->stub(new_fn_type);
-    // TODO
-    // new_lam->set_debug_name((old_lam->is_external() || !old_lam->is_set()) ? "cc_" + old_lam->name() :
-    // old_lam->name());
+    auto env_type    = rewrite(old_world().tuple(fv_vec)->type());
+    auto new_fn_type = clos_type_of(old_lam->type(), env_type)->as<Pi>();
+    auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg());
+
     if (!isa_optimizable(old_lam)) {
+        // External or imported (unset) Lam%s get an η-wrapper that hides the environment.
         auto ep           = env_param(new_fn_type);
         auto new_ext_type = w.cn(clos_remove_env(ep, new_fn_type->dom()));
-        auto new_ext_lam  = old_lam->stub(new_ext_type);
-        DLOG("wrap ext lam: {} -> stub: {}, ext: {}", old_lam, new_lam, new_ext_lam);
+        auto new_ext_lam  = w.mut_lam(new_ext_type)->set(old_lam->dbg());
+        DLOG("wrap ext lam: {} -> stub: {}, ext: {}", old_lam, new_fn, new_ext_lam);
         if (old_lam->is_set()) {
-            old_lam->transfer_external(new_ext_lam);
-            new_ext_lam->app(false, new_lam, clos_insert_env(ep, env, new_ext_lam->var()));
-            new_lam->set(old_lam->filter(), old_lam->body());
+            if (old_lam->is_external()) new_ext_lam->externalize();
+            auto env = w.tuple(DefVec(fv_vec.size(), [&](auto i) { return rewrite(fv_vec[i]); }));
+            new_ext_lam->app(false, new_fn, clos_insert_env(ep, env, new_ext_lam->var()));
+            // new_fn's body is rewritten later via the body worklist.
         } else {
             new_ext_lam->unset();
-            new_lam->app(false, new_ext_lam, clos_remove_env(ep, new_lam->var()));
+            new_fn->app(false, new_ext_lam, clos_remove_env(ep, new_fn->var()));
         }
-    } else {
-        new_lam->set(old_lam->filter(), old_lam->body());
     }
-    DLOG("STUB {} ~~> ({}, {})", old_lam, env, new_lam);
-    auto closure = Stub{old_lam, std::move(fv_vec), env, new_lam};
-    closures_.try_emplace(old_lam, closure);
-    closures_.try_emplace(closure.fn, closure);
-    return closure;
+
+    DLOG("STUB {} ~~> {}", old_lam, new_fn);
+    auto stub = Stub{old_lam, std::move(fv_vec), new_fn};
+    closures_.try_emplace(old_lam, stub);
+    closures_.try_emplace(new_fn, stub);
+    return stub;
 }
 
-ClosConv::Stub ClosConv::make_stub(Lam* old_lam, Def2Def& subst) {
+ClosConv::Stub ClosConv::make_stub(Lam* old_lam) {
     if (auto i = closures_.find(old_lam); i != closures_.end()) return i->second;
-    auto fvs     = fva_.run(old_lam);
-    auto closure = make_stub(fvs, old_lam, subst);
-    worklist_.emplace(closure.fn);
-    return closure;
+    auto stub = make_stub(fva_.run(old_lam), old_lam);
+    body_worklist_.emplace(stub.fn);
+    return stub;
 }
 
-} // namespace mim::plug::clos
+void ClosConv::rewrite_body(const Stub& stub) {
+    auto old_fn = stub.old_fn;
+    if (!old_fn->is_set()) return;
+
+    auto& w      = new_world();
+    auto new_fn  = stub.fn;
+    auto ep      = env_param(new_fn->type()->as<Pi>());
+    auto env_val = new_fn->var(ep)->set("closure_env");
+    DLOG("rw body: {} [old={}]", new_fn, old_fn);
+    if (stub.fvs.size() == 1) {
+        map(stub.fvs.front(), env_val);
+    } else {
+        for (size_t i = 0, e = stub.fvs.size(); i != e; ++i) {
+            auto fv  = stub.fvs[i];
+            auto sym = w.sym("fv_"s + (fv->sym() ? fv->sym().str() : std::to_string(i)));
+            map(fv, env_val->proj(i)->set(sym));
+        }
+    }
+
+    auto params = w.tuple(DefVec(old_fn->num_doms(), [&](auto i) { return new_fn->var(skip_env(ep, i)); }));
+    map(old_fn->var(), params);
+    new_fn->set(rewrite(old_fn->filter()), rewrite(old_fn->body()));
+}
+
+} // namespace mim::plug::clos::phase

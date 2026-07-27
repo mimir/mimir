@@ -2,7 +2,7 @@
 
 #include <mim/phase.h>
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 /// Flattens branches over closure literals back into a direct branch over Lam%s.
 class BranchClosElim : public RWPhase {
@@ -16,4 +16,4 @@ private:
     DefMap<Lam*> branch2dropped_;
 };
 
-}; // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

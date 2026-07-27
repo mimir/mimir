@@ -11,14 +11,14 @@ plugin core;
 plugin gpu;
 
 con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, (), (data1: %gpu.GlobalPtr I32, data2: %gpu.GlobalPtr I32),
+            group_id item_id: Idx 4, (), (data1: %gpu.GlobalPtr I32, data2: %gpu.GlobalPtr I32),
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let m1 = %mem.store (m1, data1, 42I32);
     let m1 = %mem.store (m1, data2, 200I32);
     return (m1, m3, m4, m5);
 
 fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, I32] =
+: [%mem.M 0, I32] =
     let (m0, ptr1) = %mem.alloc (I32, 0) m0;
     let (m0, ptr2) = %mem.alloc (I32, 0) m0;
     let m0 = %mem.store (m0, ptr1, argc);

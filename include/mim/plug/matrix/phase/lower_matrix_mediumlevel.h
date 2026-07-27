@@ -3,7 +3,7 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
-namespace mim::plug::matrix {
+namespace mim::plug::matrix::phase {
 
 /// In this step, we lower `map_reduce` operations into affine for loops making the iteration scheme explicit.
 /// Pseudo-code:
@@ -50,4 +50,4 @@ public:
     const Def* rewrite_imm_App(const App*) final;
 };
 
-} // namespace mim::plug::matrix
+} // namespace mim::plug::matrix::phase

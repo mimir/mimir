@@ -12,16 +12,16 @@ plugin affine;
 plugin mem;
 
 lam f (idx: «2; %affine.index»): «2; %affine.index» =
-    ( %affine.semiop.floordiv (idx#0_2, 3)
-    , %affine.semiop.mod (idx#1_2, 3)
+    ( %affine.semiop.floordiv (idx#0₂, 3)
+    , %affine.semiop.mod (idx#1₂, 3)
     );
 
-con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I32, 0), 0), return : Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]) =
     let a = argc;
-    let (mem2, r) = %affine.map @(2, 2) @((i32, i32), (i32, i32)) f (a, a) mem;
+    let (mem, r) = %affine.map @(2, 2) @((i32, i32), (i32, i32)) f (a, a) mem;
     // s = argc / 3 + argc % 3
-    let s = %core.wrap.add 0 (r#0_2, r#1_2);
-    return (mem2, s);
+    let s = %core.wrap.add 0 (r#0₂, r#1₂);
+    return (mem, s);
 
 // CHECK-DAG: %core.div.udiv
 // CHECK-DAG: %core.div.urem

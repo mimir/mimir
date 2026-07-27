@@ -6,24 +6,23 @@
 
 #include "mim/plug/matrix/matrix.h"
 
-namespace mim::plug::matrix {
+namespace mim::plug::matrix::phase {
 
 namespace {
 
-// clang-format off
-absl::flat_hash_map<flags_t, flags_t> axm_to_impl_map = {
-    {flags_t(Annex::Base<prod>),      flags_t(Annex::Base<mapRed_prod>)},
-    {flags_t(Annex::Base<sum>),       flags_t(Annex::Base<mapRed_sum>)},
-    {flags_t(Annex::Base<transpose>), flags_t(Annex::Base<mapRed_transpose>)},
-};
-// clang-format on
-
+/// Maps a high-level matrix axm to the `map_reduce_*` unfolding function that implements it.
 std::optional<const Def*>
 internal_function_of_axm(World& world, const Axm* axm, const Def* meta_args, const Def* args) {
-    if (auto it = axm_to_impl_map.find(axm->flags()); it != axm_to_impl_map.end()) {
-        const Def* spec_fun = world.implicit_app(world.annexes().flags2entry().at(it->second).def, meta_args);
-        auto ds_fun         = cps::op_cps2ds_dep(spec_fun);
-        return world.app(ds_fun, args);
+    // clang-format off
+    static const absl::flat_hash_map<flags_t, flags_t> axm_to_impl = {
+        {flags_t(Annex::Base<prod>),      flags_t(Annex::Base<map_reduce_prod>)},
+        {flags_t(Annex::Base<sum>),       flags_t(Annex::Base<map_reduce_sum>)},
+        {flags_t(Annex::Base<transpose>), flags_t(Annex::Base<map_reduce_transpose>)},
+    };
+    // clang-format on
+    if (auto it = axm_to_impl.find(axm->flags()); it != axm_to_impl.end()) {
+        auto spec_fun = world.implicit_app(world.annexes().flags2entry().at(it->second).def, meta_args);
+        return world.app(cps::op_cps2ds_dep(spec_fun), args);
     }
     return std::nullopt;
 }
@@ -50,15 +49,12 @@ const Def* LowerMatrixHighLevelMapRed::rewrite_imm_App(const App* app) {
         if (auto axm = inner_app->callee()->isa<Axm>()) {
             auto new_meta_args = rewrite(inner_app->arg());
             auto new_args      = rewrite(app->arg());
-            if (auto internal_function = internal_function_of_axm(w, axm, new_meta_args, new_args)) {
-                DLOG("lower matrix axm {} in {} : {}", *axm->sym(), app, app->type());
-                DLOG("lower matrix axm using: {} : {}", *internal_function, (*internal_function)->type());
+            if (auto internal_function = internal_function_of_axm(w, axm, new_meta_args, new_args))
                 return *internal_function;
-            }
         }
     }
 
     return RWPhase::rewrite_imm_App(app);
 }
 
-} // namespace mim::plug::matrix
+} // namespace mim::plug::matrix::phase

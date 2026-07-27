@@ -4,9 +4,9 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
-/// Wraps operands with `%clos.attr` markers (returning, freeBB, fstclassBB, ...) and eta-expands
+/// Wraps operands with `%clos.attr` markers (returning, free_bb, fstclass_bb, ...) and eta-expands
 /// branches and continuations so that ClosConv sees a canonical program.
 class ClosConvPrep : public RWPhase {
 public:
@@ -35,4 +35,4 @@ private:
     bool analyzed_ = false;
 };
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

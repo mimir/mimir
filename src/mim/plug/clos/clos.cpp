@@ -3,8 +3,6 @@
 #include <mim/config.h>
 #include <mim/phase.h>
 
-#include <mim/phase/scalarize.h>
-
 #include "mim/plug/clos/phase/branch_clos_elim.h"
 #include "mim/plug/clos/phase/clos2sjlj.h"
 #include "mim/plug/clos/phase/clos_conv.h"
@@ -17,13 +15,12 @@ using namespace mim::plug;
 
 void reg_phases(Flags2Phases& phases) {
     // clang-format off
-    // phases
-    Phase::hook<clos::clos_conv,            clos::ClosConv          >(phases);
-    Phase::hook<clos::lower_typed_clos,     clos::LowerTypedClos    >(phases);
-    Phase::hook<clos::clos_conv_prep,       clos::ClosConvPrep      >(phases);
-    Phase::hook<clos::branch_clos,          clos::BranchClosElim    >(phases);
-    Phase::hook<clos::lower_typed_clos_prep,clos::LowerTypedClosPrep>(phases);
-    Phase::hook<clos::clos2sjlj,            clos::Clos2SJLJ         >(phases);
+    Phase::hook<clos::clos_conv_prep,        clos::phase::ClosConvPrep      >(phases);
+    Phase::hook<clos::clos_conv,             clos::phase::ClosConv          >(phases);
+    Phase::hook<clos::branch_clos,           clos::phase::BranchClosElim    >(phases);
+    Phase::hook<clos::lower_typed_clos_prep, clos::phase::LowerTypedClosPrep>(phases);
+    Phase::hook<clos::clos2sjlj,             clos::phase::Clos2SJLJ         >(phases);
+    Phase::hook<clos::lower_typed_clos,      clos::phase::LowerTypedClos    >(phases);
     // clang-format on
 }
 
@@ -35,62 +32,45 @@ namespace mim::plug::clos {
  * ClosLit
  */
 
-const Def* ClosLit::env() {
-    assert(def_);
-    return std::get<2_u64>(clos_unpack(def_));
-}
+const Def* ClosLit::env() const { return std::get<2>(clos_unpack(def_)); }
 
-const Def* ClosLit::fnc() {
-    assert(def_);
-    return std::get<1_u64>(clos_unpack(def_));
-}
+const Def* ClosLit::fnc() const { return std::get<1>(clos_unpack(def_)); }
 
-Lam* ClosLit::fnc_as_lam() {
+Lam* ClosLit::fnc_as_lam() const {
     auto f = fnc();
     if (auto a = Axm::isa<attr>(f)) f = a->arg();
     return f->isa_mut<Lam>();
 }
 
-const Def* ClosLit::env_var() {
+const Def* ClosLit::env_var() const {
     auto lam = fnc_as_lam();
     return lam->var(env_param(lam->type()->as<Pi>()));
 }
 
-ClosLit isa_clos_lit(const Def* def, bool lambda_or_branch) {
-    auto tpl = def->isa<Tuple>();
-    if (tpl && isa_clos_type(def->type())) {
-        auto a   = attr::bottom;
-        auto fnc = std::get<1_u64>(clos_unpack(tpl));
-        if (auto fa = Axm::isa<attr>(fnc)) {
-            fnc = fa->arg();
-            a   = fa.id();
-        }
-        if (!lambda_or_branch || fnc->isa<Lam>()) return ClosLit(tpl, a);
+ClosLit isa_clos_lit(const Def* def, bool fn_isa_lam) {
+    if (auto tpl = def->isa<Tuple>(); tpl && isa_clos_type(def->type())) {
+        auto fnc = std::get<1>(clos_unpack(tpl));
+        if (auto fa = Axm::isa<attr>(fnc)) fnc = fa->arg();
+        if (!fn_isa_lam || fnc->isa<Lam>()) return ClosLit(tpl);
     }
-    return ClosLit(nullptr, attr::bottom);
+    return ClosLit(nullptr);
 }
 
-const Def* clos_pack(const Def* env, const Def* lam, const Def* ct) {
-    assert(env && lam);
+const Def* clos_pack(const Def* env, const Def* fn, const Def* ct) {
+    assert(env && fn);
     assert(!ct || isa_clos_type(ct));
     auto& w = env->world();
-    auto pi = lam->type()->as<Pi>();
+    auto pi = fn->type()->as<Pi>();
     auto ep = env_param(pi);
     assert(env->type() == pi->dom(ep));
-    ct = (ct) ? ct : clos_type(w.cn(clos_remove_env(ep, pi->dom())));
-    return w.tuple(ct, {env->type(), lam, env})->isa<Tuple>();
+    ct = ct ? ct : clos_type(w.cn(clos_remove_env(ep, pi->dom())));
+    return w.tuple(ct, {env->type(), fn, env})->as<Tuple>();
 }
 
 std::tuple<const Def*, const Def*, const Def*> clos_unpack(const Def* c) {
     assert(c && isa_clos_type(c->type()));
-    // auto& w       = c->world();
-    // auto env_type = c->proj(0_u64);
-    // // auto pi       = clos_type_to_pi(c->type(), env_type);
-    // auto fn       = w.extract(c, w.lit_idx(3, 1));
-    // auto env      = w.extract(c, w.lit_idx(3, 2));
-    // return {env_type, fn, env};
-    auto [ty, pi, env] = c->projs<3>();
-    return {ty, pi, env};
+    auto [env_type, fn, env] = c->projs<3>();
+    return {env_type, fn, env};
 }
 
 const Def* clos_apply(const Def* closure, const Def* args) {

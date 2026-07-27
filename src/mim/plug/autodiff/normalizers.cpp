@@ -37,19 +37,10 @@ const Def* normalize_add(const Def* type, const Def* callee, const Def* arg) {
     auto T      = callee->as<App>()->arg();
     auto [a, b] = arg->projs<2>();
 
-    world.DLOG("add {} {} {}", T, a, b);
-
-    if (Axm::isa<zero>(a)) {
-        world.DLOG("0+b");
-        return b;
-    }
-    if (Axm::isa<zero>(b)) {
-        world.DLOG("0+a");
-        return a;
-    }
+    if (Axm::isa<zero>(a)) return b;
+    if (Axm::isa<zero>(b)) return a;
     // A value level match would be harder as a tuple might in reality be a var or extract
     if (auto sig = T->isa<Sigma>()) {
-        world.DLOG("add tuple");
         auto p   = sig->num_ops(); // TODO: or num_projs
         auto ops = DefVec(p, [&](size_t i) {
             return world.app(world.app(world.annex<add>(), sig->op(i)), {a->proj(i), b->proj(i)});
@@ -57,21 +48,13 @@ const Def* normalize_add(const Def* type, const Def* callee, const Def* arg) {
         return world.tuple(ops);
     } else if (auto arr = T->isa<Arr>()) {
         // TODO: is this working for non-lit (non-tuple) or do we need a loop?
-        world.DLOG("add arrays {} {} {}", T, a, b);
         auto pack      = world.mut_pack(T);
         auto body_type = arr->body();
-        world.DLOG("body type {}", body_type);
         pack->set(world.app(world.app(world.annex<add>(), body_type),
                             {world.extract(a, pack->var()), world.extract(b, pack->var())}));
-        world.DLOG("pack {}", pack);
         return pack;
     } else if (Idx::isa(type)) {
-        world.DLOG("add int");
-        auto width = Idx::as_lit(a->type());
-        world.DLOG("width {}", width);
-        auto int_add = world.call(core::wrap::add, 0_n, Defs{a, b});
-        world.DLOG("int add {} : {}", int_add, Idx::isa(int_add->type()));
-        return int_add;
+        return world.call(core::wrap::add, 0_n, Defs{a, b});
     } else if (Axm::isa<mem::M>(type)) {
         // TODO: mem stays here (only resolved after direct simplification)
         return {};
@@ -88,8 +71,7 @@ const Def* normalize_sum(const Def* type, const Def* callee, const Def* arg) {
     auto [count, T] = callee->as<App>()->args<2>();
 
     if (auto lit = count->isa<Lit>()) {
-        auto val = lit->get<nat_t>();
-        world.DLOG("val: {}", val);
+        auto val  = lit->get<nat_t>();
         auto args = arg->projs(val);
         auto sum  = world.app(world.annex<zero>(), T);
         // This special case would also be handled by add zero

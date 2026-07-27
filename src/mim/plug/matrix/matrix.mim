@@ -4,12 +4,14 @@
 ///
 /// [TOC]
 ///
+/// This plugin provides high-level matrix/tensor operations and lowers them, in several phases, to explicit
+/// `%%affine.For` loop nests over `%%buffer` element operations.
+///
 /// ## Dependencies
 ///
 plugin core;
 plugin math;
-// needed to access cps2ds
-plugin cps;
+plugin cps; // for %cps.cps2ds
 plugin affine;
 plugin buffer;
 ///
@@ -24,79 +26,45 @@ plugin buffer;
 /// ### %%matrix.prod
 ///
 /// Matrix product of an `m × k` and a `k × l` matrix.
-///
-// TODO: define alias: * fst, snd, split * zip = zipWith id
-axm %matrix.prod: [m: Nat, k: Nat, l: Nat, [p: Nat, e:Nat]]
+axm %matrix.prod: [m k l: Nat, [p e: Nat]]
                 → [%mem.M 0, %buffer.Buf (2, (m, k), %math.F (p, e)), %buffer.Buf (2, (k, l), %math.F (p, e))]
                 → [%mem.M 0, %buffer.Buf (2, (m, l), %math.F (p, e))], normalize_prod;
-
 ///
 /// ### %%matrix.transpose
 ///
 /// Transposes a `k × l` matrix.
-///
-axm %matrix.transpose: [[k:Nat, l:Nat], T: *]
+axm %matrix.transpose: [[k l: Nat], T: *]
                      → [%mem.M 0, %buffer.Buf (2, (k, l), T)]
                      → [%mem.M 0, %buffer.Buf (2, (l, k), T)], normalize_transpose;
 ///
 /// ### %%matrix.sum
 ///
 /// Sums up all elements of a matrix and returns a scalar.
-///
-axm %matrix.sum: [n: Nat, S: «n; Nat», [p:Nat, e:Nat]]
+axm %matrix.sum: [n: Nat, S: «n; Nat», [p e: Nat]]
                → [%mem.M 0, %buffer.Buf (n, S, %math.F (p, e))]
                → [%mem.M 0, %math.F (p, e)];
 ///
 /// ### %%matrix.map_reduce
 ///
-// TODO: handle reduction case: n=0, S=[] => not empty but scalar
-/// Our notation is inspired by einsum (with some generalizations):
-/// * Tensorflow / XLA: einsum
-/// * Pytorch: einsum
-/// * NumPy: einsum
-/// * Halide
-/// * Haskell: Tensor DSL
-/// * Ricci Calculus
-/// * Einstein Notation
-/// * Pytorch DSL
-/// * https://optimized-einsum.readthedocs.io/en/stable/
-///
-/// The `map_reduce` operation can be seen as the minimal abstraction over general iteration/control flow schemes over tensors.
-///
-/// map_reduce applications:
-/// * `einsum(idx, MatrixIndices) = map_reduce(0,+, product, MatrixIndices)`
-/// * `map f M = map_reduce (0,+, f,[(idx, M)])` (TODO: get rid of reduce step if not needed with dummy values)
-/// * `reduce acc f M = map_reduce (n=0) (acc, f, id,[(idx, M)])` (TODO: see index problem above)
-/// einsum applications:
-/// * `transpose ij→ji  (einsum(,[(1,0), M]))`
-/// * `trace ii→`
-/// * `sum ij →`
-/// * `col sum ij → j `
-/// * `mat vec prod ik, k→i`
-/// * `mat mat prod ik, kj → ij`
-/// * `dot product i, i →`
-/// * `dot matrix ij, ij →`
-/// * `outer product i, j → ij`
-/// TODO: introduce dummy values (zero, add, ...) in refly and use these
-/// dummy = has correct type but cannot produce code (should always be eliminated)
+/// A general iteration/reduction scheme over tensors, inspired by and generalizing einsum.
+/// It maps a combination function `comb` over the elements addressed by a set of index tuples and reduces the
+/// results with an accumulator starting from `zero`; e.g. `einsum(idx, inputs) = map_reduce(0, +, product, inputs)`.
+/// `%%matrix.prod`, `%%matrix.transpose`, and `%%matrix.sum` are all expressed via `map_reduce`
+/// (see the unfolding functions below).
+/// The counts, dimensions, and indices are assumed to be statically known, to avoid inline meta-programming.
 axm %matrix.map_reduce:
-    // out shape depends on in shape but is complex
-    [
-        n: Nat, S: «n; Nat», T: *, // out shape
-        m: Nat,                     // number of inputs
-        NI: «m; Nat»,               // input dimensions
-        TI: «m; *»,                  // input types
-        SI: «i:m; «NI#i; Nat»»      // input shapes
+    [ n: Nat, S: «n; Nat», T: *, // output shape
+      m: Nat,                    // number of inputs
+      NI: «m; Nat»,              // input dimension counts
+      TI: «m; *»,                // input element types
+      SI: «i: m; «NI#i; Nat»»    // input shapes
     ]
-  → [
-        mem:    %mem.M 0,              // memory
-        zero:   T,                   // initial value
-        // TODO: propagate change: no addition but instead take acc as argument (like mlir.linarith.generic)
-        comb:   Fn [%mem.M 0, T, «i: m; TI#i»] → [%mem.M 0, T], // inner combination
-        // out_index not needed => always ij (0 ... n) for n dimensions
-        input:  «i: m; [«NI#i; Nat», %buffer.Buf (NI#i, SI#i, TI#i)]»
-    ] → [%mem.M 0, %buffer.Buf (n, S, T)],
-    normalize_map_reduce;
+  → [ mem:   %mem.M 0,
+      zero:  T,                                              // initial accumulator
+      comb:  Fn [%mem.M 0, T, «i: m; TI#i»] → [%mem.M 0, T], // inner combination
+      input: «i: m; [«NI#i; Nat», %buffer.Buf (NI#i, SI#i, TI#i)]»
+    ]
+  → [%mem.M 0, %buffer.Buf (n, S, T)], normalize_map_reduce;
 ///
 /// ### %%matrix.map_reduce_aff
 ///
@@ -105,7 +73,6 @@ axm %matrix.map_reduce:
 /// `So`/`Sr` are the (logical) output shape and full loop bounds; `acc_out`/`accs` are affine maps from the
 /// `Ro+Rr` loop vector to the output/input coordinates.
 /// The combiner is mem-threaded, like `%%matrix.map_reduce`.
-///
 axm %matrix.map_reduce_aff: {nis: Nat}
                           → {To: *, Ro Rr: Nat}
                           → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
@@ -122,7 +89,6 @@ axm %matrix.map_reduce_aff: {nis: Nat}
 /// (each dimension is either equal or broadcast from size 1).
 /// The input/output buffer shapes (`ri`/`si`, `ro`/`so`) are the actual — possibly size-1-folded — buffer
 /// shapes and are inferred from the operands; `s_in`/`s_out` are the logical (unfolded) shapes.
-///
 axm %matrix.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat», r: Nat}
                      → [s_in: «r; Nat», s_out: «r; Nat»]
                      → [%mem.M 0, %buffer.Buf (ri, si, T)]
@@ -136,7 +102,6 @@ axm %matrix.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat»
 /// The buffer shapes are stated as the logical shapes; `%%buffer.Buf` normalizes literal size-1 axes
 /// away, so they agree with the folded buffer handles, and the loop generation folds its read/write
 /// indices accordingly.
-///
 axm %matrix.pad: {T: *, r: Nat}
               → [s_in s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
               → [%mem.M 0, input: %buffer.Buf (r, s_in, T), value: T]
@@ -148,7 +113,6 @@ axm %matrix.pad: {T: *, r: Nat}
 /// `out[…o…] = is#k[… o with o#ax ↦ o#ax − off#k …]`, where `k` is the input whose range `o#ax` lands in
 /// (`off` are the prefix sums of the per-input extents along `ax`).
 /// `s_out` (the summed extent along `ax`, the shared extents elsewhere) is passed explicitly.
-///
 axm %matrix.concat: {T: *, nis r: Nat}
                   → [ax: Idx r]
                   → {Sis: «i: nis; «r; Nat»»}
@@ -158,13 +122,15 @@ axm %matrix.concat: {T: *, nis r: Nat}
 ///
 /// ## Unfolding functions
 ///
-/// ### product
+/// These express the high-level operations above in terms of `%%matrix.map_reduce`.
 ///
-/// Follows the principle `ij ← ik, kj` (`out[i, j] = Σ_k in1[i, k] · in2[k, j]`) by using multiplication as combination function and addition as reduction function.
-fun %matrix.mapRed_prod(m k l: Nat, pe: «2; Nat»)
-                                      (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe),
-                                                    N: %buffer.Buf (2, (k, l), %math.F pe))@tt
-                                    : [     %mem.M 0,    %buffer.Buf (2, (m, l), %math.F pe)] =
+/// ### %%matrix.map_reduce_prod
+///
+/// Follows the principle `ij ← ik, kj` (`out[i, j] = Σ_k in1[i, k] · in2[k, j]`) using multiplication as
+/// combination and addition as reduction.
+fun %matrix.map_reduce_prod(m k l: Nat, pe: «2; Nat»)
+    (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe), N: %buffer.Buf (2, (k, l), %math.F pe))@tt
+    : [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     return (
@@ -187,15 +153,13 @@ fun %matrix.mapRed_prod(m k l: Nat, pe: «2; Nat»)
             )
     );
 ///
-/// ### transpose
+/// ### %%matrix.map_reduce_transpose
 ///
 /// Transpose a matrix by iterating the indices in swapped order.
-// TODO: check code for 1-matrix edge case
-// TODO: would this automatically be handled by read(transpose) ?
-fun %matrix.mapRed_transpose((k l: Nat), T: *)
-                                           (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt
-                                         : [     %mem.M 0,    %buffer.Buf (2, (l, k), T)] =
-    let zero = ⊥:T; // TODO: use generalized zero
+fun %matrix.map_reduce_transpose((k l: Nat), T: *)
+    (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt
+    : [%mem.M 0, %buffer.Buf (2, (l, k), T)] =
+    let zero = ⊥:T;
     return (
         %matrix.map_reduce
             (2, (l, k), T,
@@ -213,18 +177,15 @@ fun %matrix.mapRed_transpose((k l: Nat), T: *)
             )
     );
 ///
-/// ### sum
+/// ### %%matrix.map_reduce_sum
 ///
 /// Sums up all elements of a matrix and returns a scalar.
-//  TODO: test 0d matrix (edge cases in code)
-fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
-                                     (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt
-                                   : [%mem.M 0, %math.F pe] =
+fun %matrix.map_reduce_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
+    (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt
+    : [%mem.M 0, %math.F pe] =
     let R = %math.F pe;
-    // TODO: use generalized zero
     let zero_64 = 0.0:(%math.F (52,11));
     let zero_real = %math.conv.f2f pe zero_64;
-    // should be normalized to lit tuple
     let idxs = ‹i: n; %core.nat.add (1, %core.bitcast Nat i)›;
     let (mem, res) = %matrix.map_reduce
         (1, (1), R,
@@ -242,26 +203,23 @@ fun %matrix.mapRed_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
                 (idxs, M)
             )
         );
-    return (mem, %core.bitcast R res); // TODO: test this cast
+    return (mem, %core.bitcast R res);
 ///
 /// ## Phases
 ///
 /// ### %%matrix.lower_matrix_high_level_map_reduce
 ///
 /// Rewrites the high-level matrix operations (`%%matrix.prod`, `%%matrix.transpose`, `%%matrix.sum`)
-/// into `%%matrix.map_reduce` via the `mapRed_*` unfolding functions above.
-///
+/// into `%%matrix.map_reduce` via the `map_reduce_*` unfolding functions above.
 axm %matrix.lower_matrix_high_level_map_reduce: %compile.Phase;
 ///
 /// ### %%matrix.lower_matrix_medium_level
 ///
 /// Lowers `%%matrix.map_reduce` into `%%affine.For` loops, making the iteration scheme explicit.
-///
-axm %matrix.lower_matrix_medium_level:          %compile.Phase;
+axm %matrix.lower_matrix_medium_level: %compile.Phase;
 ///
 /// ### %%matrix.lower_aff
 ///
 /// Lowers the buffer-world ops (`%%matrix.map_reduce_aff`, `%%matrix.broadcast`, `%%matrix.pad`,
 /// `%%matrix.concat`) to `%%affine.For` loops over `%%buffer` element operations.
-///
-axm %matrix.lower_aff:                          %compile.Phase;
+axm %matrix.lower_aff: %compile.Phase;

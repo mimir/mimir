@@ -3,7 +3,7 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
-namespace mim::plug::matrix {
+namespace mim::plug::matrix::phase {
 
 /// Lowers the buffer-world operations (`%matrix.map_reduce_aff`, `%matrix.broadcast`, `%matrix.pad`,
 /// `%matrix.concat`) into `affine.For` loop nests over `%buffer.read` / `%buffer.write` / `%buffer.alloc`,
@@ -26,4 +26,4 @@ private:
     const Def* lower_buffer_constant(const App*);
 };
 
-} // namespace mim::plug::matrix
+} // namespace mim::plug::matrix::phase

@@ -12,52 +12,52 @@ let Tas = (I32, 0);
 // Therefore, we need to handle them explicitely.
 // As such functions prevent code gen, we want to ignore the extern flag.
 
-con extern f1 [mem: %mem.M 0, a: I32, return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern f1 (mem: %mem.M 0, a: I32, return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern f2 [[mem: %mem.M 0, a: I32], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern f2 ((mem: %mem.M 0, a: I32), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern g1 [mem: %mem.M 0, a: I32, b:I32, return: Cn [%mem.M 0, I32]] =
-    let c = %core.wrap.add 0 (a,b);
-    return (mem,c);
+con extern g1 (mem: %mem.M 0, a: I32, b: I32, return: Cn [%mem.M 0, I32]) =
+    let c = %core.wrap.add 0 (a, b);
+    return (mem, c);
 
-con extern g2 [[mem: %mem.M 0, a: I32, b:I32], return: Cn [%mem.M 0, I32]] =
-    let c = %core.wrap.add 0 (a,b);
-    return (mem,c);
+con extern g2 ((mem: %mem.M 0, a: I32, b: I32), return: Cn [%mem.M 0, I32]) =
+    let c = %core.wrap.add 0 (a, b);
+    return (mem, c);
 
-con extern g3 [[mem: %mem.M 0, [a: I32, b:I32]], return: Cn [%mem.M 0, I32]] =
-    let c = %core.wrap.add 0 (a,b);
-    return (mem,c);
+con extern g3 ((mem: %mem.M 0, (a b: I32)), return: Cn [%mem.M 0, I32]) =
+    let c = %core.wrap.add 0 (a, b);
+    return (mem, c);
 
-con extern g4 [mem: %mem.M 0, [a: I32, b:I32], return: Cn [%mem.M 0, I32]] =
-    let c = %core.wrap.add 0 (a,b);
-    return (mem,c);
+con extern g4 (mem: %mem.M 0, (a b: I32), return: Cn [%mem.M 0, I32]) =
+    let c = %core.wrap.add 0 (a, b);
+    return (mem, c);
 
-con extern h1 [mem: %mem.M 0, a: I32, x:%mem.Ptr (I32, 0), return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern h1 (mem: %mem.M 0, a: I32, x: %mem.Ptr (I32, 0), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern h2 [mem: %mem.M 0, [a: I32, x:%mem.Ptr (I32, 0)], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern h2 (mem: %mem.M 0, (a: I32, x: %mem.Ptr (I32, 0)), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern h3 [[mem: %mem.M 0, a: I32, x:%mem.Ptr (I32, 0)], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern h3 ((mem: %mem.M 0, a: I32, x: %mem.Ptr (I32, 0)), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern h4 [[mem: %mem.M 0, [a: I32, x:%mem.Ptr (I32, 0)]], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern h4 ((mem: %mem.M 0, (a: I32, x: %mem.Ptr (I32, 0))), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern e1 [mem: %mem.M 0, a: I32, [], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern e1 (mem: %mem.M 0, a: I32, (), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern e2 [mem: %mem.M 0, [a: I32, []], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern e2 (mem: %mem.M 0, (a: I32, ()), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern e3 [[mem: %mem.M 0, [a: I32, []]], return: Cn [%mem.M 0, I32]] =
-    return (mem,a);
+con extern e3 ((mem: %mem.M 0, (a: I32, ())), return: Cn [%mem.M 0, I32]) =
+    return (mem, a);
 
-con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
-    let (mem2,p) = %mem.alloc Tas mem;
-    // let mem3 = %mem.store Tas (mem2, p, argc);
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    let (mem, p) = %mem.alloc Tas mem;
+    // let mem = %mem.store Tas (mem, p, argc);
 
     // con extern cont_f1 (mem:%mem.M 0, v:I32) = f1 ();
-    return (mem2, argc);
+    return (mem, argc);

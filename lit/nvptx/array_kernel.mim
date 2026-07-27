@@ -12,7 +12,7 @@ plugin core;
 plugin gpu;
 
 con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, (), data: %gpu.GlobalPtr «4; I32»,
+            group_id item_id: Idx 4, (), data: %gpu.GlobalPtr «4; I32»,
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let el = %mem.lea (data, item_id);
     let val = %core.bitcast I32 item_id;
@@ -21,16 +21,16 @@ con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
     return (m1, m3, m4, m5);
 
 fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, I32] =
+: [%mem.M 0, I32] =
     let (m0, arr) = %mem.alloc («4; I32», 0) m0;
 
-    let arr_0 = %mem.lea (arr, 0_4);
+    let arr_0 = %mem.lea (arr, 0₄);
     let m0 = %mem.store (m0, arr_0, argc);
-    let arr_1 = %mem.lea (arr, 1_4);
+    let arr_1 = %mem.lea (arr, 1₄);
     let m0 = %mem.store (m0, arr_1, argc);
-    let arr_2 = %mem.lea (arr, 2_4);
+    let arr_2 = %mem.lea (arr, 2₄);
     let m0 = %mem.store (m0, arr_2, argc);
-    let arr_3 = %mem.lea (arr, 3_4);
+    let arr_3 = %mem.lea (arr, 3₄);
     let m0 = %mem.store (m0, arr_3, argc);
 
     let (m0, m1, m4) = %gpu.init m0;

@@ -9,8 +9,8 @@ plugin affine;
 plugin mem;
 
 lam f (idx: «2; %affine.index»): «2; %affine.index» =
-    ( %affine.op.add (idx#0_2, idx#1_2)
-    , %affine.semiop.mul (idx#1_2, 2)
+    ( %affine.op.add (idx#0₂, idx#1₂)
+    , %affine.semiop.mul (idx#1₂, 2)
     );
 
 // `a` and `b` carry distinct, symbolically-known bounds `m` and `n`; the outputs are `Idx m` and `Idx n` respectively.
