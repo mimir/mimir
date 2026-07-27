@@ -3,12 +3,12 @@
 
 plugin core;
 
-con extern and_lit [return : Cn Bool] =
+con extern and_lit [return: Cn Bool] =
     return (%core.bit2.and_ 0 (%core.icmp.uge (tt, ff), %core.icmp.ug (tt, ff)));
 
 // CHECK-DAG: return_{{[0-9_]+}} tt
 
-con extern and_lit2 [in: I8, return : Cn Bool] =
+con extern and_lit2 [in: I8, return: Cn Bool] =
     return (%core.bit2.and_ 0 (%core.icmp.uge (in, 'a'), %core.icmp.ule (in, 'a')));
 
 // CHECK-DAG: %core.icmp.xyglE i8 (97I8, in_{{[0-9]+}});

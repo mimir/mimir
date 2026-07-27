@@ -18,7 +18,7 @@ lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
 // CHECK-DAG: fun extern conv_dyn_valid
 fun extern conv_dyn_valid {n cin cout h w kh kw: Nat}
                           (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
-                        : «conv_shape (n, cout, (h, w), (kh, kw), (1, 1), (1, 1), (0, 0)); Nat» =
+: «conv_shape (n, cout, (h, w), (kh, kw), (1, 1), (1, 1), (0, 0)); Nat» =
     return (%tensor.conv (nat_ring ()) ((1, 1), (1, 1), (0, 0)) (input, weight));
 
 // Symbolic extents with stride 2: the output dim keeps a `%core.nat.div (_, 2)`, proving the shape is *computed*
@@ -27,7 +27,7 @@ fun extern conv_dyn_valid {n cin cout h w kh kw: Nat}
 // CHECK-DAG: %core.nat.div ({{.*}}, 2)
 fun extern conv_dyn_strided {n cin cout h w kh kw: Nat}
                             (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
-                          : «conv_shape (n, cout, (h, w), (kh, kw), (2, 2), (1, 1), (0, 0)); Nat» =
+: «conv_shape (n, cout, (h, w), (kh, kw), (2, 2), (1, 1), (0, 0)); Nat» =
     return (%tensor.conv (nat_ring ()) ((2, 2), (1, 1), (0, 0)) (input, weight));
 
 // Custom pipeline that stops before %tensor.lower_get_set: the get/set unrolling is expensive and the

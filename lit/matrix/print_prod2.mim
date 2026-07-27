@@ -25,12 +25,12 @@ con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), 
     let c = 3.0:%math.F64;
     let d = 5.0:%math.F64;
 
-    let (mem2, m1  ) = %buffer.constant MT1 (mem, c);
-    let (mem3, m2  ) = %buffer.constant MT2 (mem2, d);
-    let (mem4, m1_2) = %buffer.write   MT1 (mem3, m1, (0₂, 2₄), 4.0:%math.F64);
-    let (mem5, m2_2) = %buffer.write   MT2 (mem4, m2, (1₄, 2₃), 6.0:%math.F64);
-    let (mem6, mP  ) = %matrix.prod (2, 4, 3, %math.f64) (mem5, m1_2, m2_2);
-    print_double_matrix_wrap (mem6, 2, 3, mP, return_cont)
+    let (mem, m1  ) = %buffer.constant MT1 (mem, c);
+    let (mem, m2  ) = %buffer.constant MT2 (mem, d);
+    let (mem, m1_2) = %buffer.write   MT1 (mem, m1, (0₂, 2₄), 4.0:%math.F64);
+    let (mem, m2_2) = %buffer.write   MT2 (mem, m2, (1₄, 2₃), 6.0:%math.F64);
+    let (mem, mP  ) = %matrix.prod (2, 4, 3, %math.f64) (mem, m1_2, m2_2);
+    print_double_matrix_wrap (mem, 2, 3, mP, return_cont)
     where
         con return_cont (mem: %mem.M 0) = return (mem, 0I32);
     end

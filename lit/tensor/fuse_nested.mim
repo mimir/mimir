@@ -17,7 +17,7 @@ con extern f [v: «2; «3; Nat»», return: Cn «2; Nat»] =
     let inner2 = %tensor.unary @(Nat, Nat) mul2 @(2, (2, 3)) inner1;
     let outer  = %tensor.map_reduce @1 @(Nat, 1, 1) (2, (2, 3)) @(Nat, 2, (2, 3)) (sum_reduce, 0)
         (%tensor.proj_map @(2, 1) 0)
-        (%tensor.proj_map @(2, 2) (0, 1),)
+        (%tensor.proj_map @(2, 2) (0, 1), )
         inner2;
     return outer;
 

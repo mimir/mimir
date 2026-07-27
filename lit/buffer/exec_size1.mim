@@ -27,8 +27,8 @@ con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     con done1 (p: «5; I32») =
         con done2 (c: «3, 3; I32») =
             let v1 = %tensor.get @(I32, 2, (3, 3)) (c, (1_3, 2_3));
-            let v2 = %tensor.get @(I32, 1, (5,)) (p, (1_5,));
-            let v3 = %tensor.get @(I32, 1, (5,)) (p, (0_5,));
+            let v2 = %tensor.get @(I32, 1, (5, )) (p, (1_5, ));
+            let v3 = %tensor.get @(I32, 1, (5, )) (p, (0_5, ));
             let s  = %core.wrap.add 0 (%core.wrap.add 0 (v1, v2), v3);
             return (mem, s);
         cat_one ((a, b), done2);

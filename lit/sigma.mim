@@ -26,4 +26,4 @@ lam extern F1 v: vec1: %math.F64 = v#X;
 lam extern f2 v: Vec2: %math.F64 = v#y;
 lam extern f3 v: Vec3: %math.F64 = v#y;
 lam extern f4 v: Vec4: %math.F64 = v#y;
-lam extern f5 f: Foo : Bool     = f#bar#b;
+lam extern f5 f: Foo: Bool     = f#bar#b;

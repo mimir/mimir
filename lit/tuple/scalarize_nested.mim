@@ -3,9 +3,9 @@
 plugin tuple;
 plugin refly;
 
-con f (i : Idx 4, t : <<(4, 4, 4); Nat>>, r : Cn [<<(4, 4); Nat>>]) = r t#i;
+con f (i: Idx 4, t: <<(4, 4, 4); Nat>>, r: Cn [<<(4, 4); Nat>>]) = r t#i;
 
-con extern main(i :(Idx 2), r : Cn [<<(4, 4); Nat>>]) = (f (2:(Idx 4), <4,4,4; 20>, r), f (3:(Idx 4), ‹4, 4, 4; 19›, r))#i;
+con extern main(i:(Idx 2), r: Cn [<<(4, 4); Nat>>]) = (f (2:(Idx 4), <4, 4, 4; 20>, r), f (3:(Idx 4), ‹4, 4, 4; 19›, r))#i;
 
 // `t` is Extract%ed with the non-constant index `i`, so it must NOT be scalarized -
 // splitting it would only force the body to reassemble the tuple.

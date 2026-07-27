@@ -14,7 +14,7 @@ lam ex_internal_mapRed_matrix_transpose((k l: Nat), T: *)@tt
     inner_matrix_transpose;
 
 con extern f (mem: %mem.M 0, (k l: Nat), return: Cn %mem.M 0) =
-    let (mem2, M) = %buffer.constant (2, (k, l), I32) (mem, 42I32);
+    let (mem, M) = %buffer.constant (2, (k, l), I32) (mem, 42I32);
     con cont (mem: %mem.M 0, N: %buffer.Buf (2, (l, k), I32)) = return mem;
     ex_internal_mapRed_matrix_transpose ((k, l), I32) ((mem, M), cont);
 

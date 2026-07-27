@@ -4,7 +4,7 @@ plugin core;
 lam ForBody (n: Nat) = [%mem.M 0, Idx n] → [%mem.M 0];
 
 lam For {n: Nat} (start: Idx n, _end: Idx n) (mem: %mem.M 0) (it: ForBody n): %mem.M 0 =
-    lam loop (mem: %mem.M 0, i: Idx n) @(%core.pe.is_closed i) : [%mem.M 0, Idx n] =
+    lam loop (mem: %mem.M 0, i: Idx n) @(%core.pe.is_closed i): [%mem.M 0, Idx n] =
         let mem = it (mem, i);
 
         let j   = %core.wrap.add 0 (i, %core.idx n 0 1);

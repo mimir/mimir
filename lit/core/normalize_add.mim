@@ -3,12 +3,12 @@
 
 plugin core;
 
-con extern add0 [i :I8, return : Cn I8] =
+con extern add0 [i: I8, return: Cn I8] =
     return (%core.wrap.add 0 (i, 0I8));
 
 // CHECK-DAG: return_{{[0-9]+}} i_{{[0-9]+}}
 
-con extern add_lit [return : Cn I8] =
+con extern add_lit [return: Cn I8] =
     return (%core.wrap.add 0 (6I8, 0I8));
 
 // CHECK-DAG: return_{{[0-9]+}} 6I8

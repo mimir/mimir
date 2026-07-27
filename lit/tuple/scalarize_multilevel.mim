@@ -3,9 +3,9 @@
 plugin tuple;
 plugin refly;
 
-con f (t : <<(2, 2); Nat>>, r : Cn Nat) = r t#(0:(Idx 2))#(1:(Idx 2));
+con f (t: <<(2, 2); Nat>>, r: Cn Nat) = r t#(0:(Idx 2))#(1:(Idx 2));
 
-con extern main(i : Idx 2, r : Cn Nat) =
+con extern main(i: Idx 2, r: Cn Nat) =
     (f (((10, 20), (30, 40)), r), f (((50, 60), (70, 80)), r))#i;
 
 // `t` is only Extract%ed with constant indices, so it may be scalarized.

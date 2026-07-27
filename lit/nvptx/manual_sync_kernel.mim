@@ -30,7 +30,7 @@ con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
     end;
 
 fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, I32] =
+: [%mem.M 0, I32] =
     let (m0, ptr) = %mem.alloc (I32, 0) m0;
     let m0 = %mem.store (m0, ptr, argc);
 

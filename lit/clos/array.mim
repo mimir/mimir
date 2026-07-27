@@ -5,15 +5,15 @@ plugin core;
 plugin clos;
 
 
-con f [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] =
+con f [mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]] =
     return (mem, %core.wrap.add 0 (x, 42I32));
 
-con g [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] =
+con g [mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]] =
     return (mem, 1I32);
 
 
-con extern main [mem: %mem.M 0, argc: I32, argv : %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return : Cn [%mem.M 0, I32]] =
-    con h [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] = return (mem, %core.wrap.add 0 (x, argc));
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]] =
+    con h [mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]] = return (mem, %core.wrap.add 0 (x, argc));
 
     let pb_type = Cn [%mem.M 0, I32, Cn [%mem.M 0, I32]];
     let Tas = (pb_type, 0);
@@ -37,5 +37,5 @@ con extern main [mem: %mem.M 0, argc: I32, argv : %mem.Ptr («⊤:Nat; %mem.Ptr 
     let (mem, _)    = %mem.load (mem, lea);
     func(mem, 1I32, callback)
     where
-        con callback [mem: %mem.M 0, x : I32] = return (mem, x);
+        con callback [mem: %mem.M 0, x: I32] = return (mem, x);
     end;

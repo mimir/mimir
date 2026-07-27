@@ -13,7 +13,7 @@ plugin core;
 plugin tensor;
 plugin mem;
 
-fun extern kernel (t: «3,4; I32», i: [Idx 3, Idx 4]): I32 =
+fun extern kernel (t: «3, 4; I32», i: [Idx 3, Idx 4]): I32 =
     let s = %tensor.set @(I32, 2, (3, 4)) (t, (0_3, 0_4), 42I32);
     let a = %tensor.get @(I32, 2, (3, 4)) (s, (0_3, 0_4));
     let b = %tensor.get @(I32, 2, (3, 4)) (s, i);

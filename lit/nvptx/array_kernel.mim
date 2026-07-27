@@ -21,7 +21,7 @@ con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM
     return (m1, m3, m4, m5);
 
 fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, I32] =
+: [%mem.M 0, I32] =
     let (m0, arr) = %mem.alloc («4; I32», 0) m0;
 
     let arr_0 = %mem.lea (arr, 0_4);

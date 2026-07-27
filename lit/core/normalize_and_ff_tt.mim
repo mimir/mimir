@@ -3,7 +3,7 @@
 
 plugin core;
 
-con extern and_lit_ff_tt (return : Cn Bool) =
+con extern and_lit_ff_tt (return: Cn Bool) =
     return (%core.bit2.and_ 0 (ff, tt));
 
 // CHECK-DAG: return{{.*}}ff

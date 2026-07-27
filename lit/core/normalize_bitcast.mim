@@ -4,7 +4,7 @@
 
 plugin core;
 
-con extern bitcast_bitcast(i : %mem.Ptr (I8, 0), return: Cn I32) =
+con extern bitcast_bitcast(i: %mem.Ptr (I8, 0), return: Cn I32) =
     return (%core.bitcast I32 (%core.bitcast Nat i));
 
 // CHECK-DAG: %core.bitcast (%mem.Ptr (I8, 0)) I32 i

@@ -17,7 +17,7 @@ import compile;
 // OPT-LABEL: fun extern test_fold
 // OPT-NOT: %core.nat
 // OPT: (0, 7, 3, 1, 0)
-fun extern test_fold(x: Nat) : [Nat, Nat, Nat, Nat, Nat] =
+fun extern test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
     let a = %core.nat.div (x, 0); // -> 0 (symbolic a / 0 = 0)
     let b = %core.nat.mod (7, 0); // -> 7 (a % 0 = a)
     let c = %core.nat.div (10, 3); // -> 3
