@@ -2,6 +2,8 @@
 
 #include <deque>
 #include <format>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -153,7 +155,7 @@ public:
         decls_.emplace(decl.str());
     }
 
-    /// How the C runtime wrappers (see `rt/mim_rt.c`, compiled to `mim_rt.ll`) reach the output.
+    /// How the C runtime wrappers (compiled to a `<name>.ll` via `add_mim_runtime`) reach the output.
     enum class Rt {
         embed, ///< Splice the wrapper IR into the emitted module so it is self-contained.
         ext,   ///< Only `declare` the wrappers; the runtime is linked in externally.
@@ -163,8 +165,15 @@ public:
     /// Provides the textual LLVM IR of the runtime module to splice in `Rt::embed` mode.
     void rt_module(std::string ll) { rt_module_ = std::move(ll); }
 
-    /// Declares a runtime wrapper @p sig (implemented in `rt/mim_rt.c`) and records that the
-    /// runtime is required by this module.
+    /// Locates the runtime module `rt/<filename>` (produced by `add_mim_runtime`) in the driver's
+    /// search paths, reads it, and stores it for `Rt::embed` splicing.
+    /// Backends share this instead of duplicating the lookup: `ll` loads `mim_rt.ll`, `ll_nvptx`
+    /// loads `mim_cuda_rt.ll`, and so on.
+    /// @returns whether the module was found.
+    bool load_rt_module(std::string_view filename);
+
+    /// Declares a runtime wrapper @p sig (implemented in a C runtime, see `add_mim_runtime`) and
+    /// records that the runtime is required by this module.
     /// In `Rt::ext` mode the declaration is emitted like any other `declare`.
     /// In `Rt::embed` mode the wrapper's *definition* is spliced into the output, so emitting a
     /// `declare` as well would be a redefinition — hence it is suppressed here.
@@ -325,6 +334,20 @@ inline void Emitter::start() {
     ostream() << func_decls_.str() << '\n';
     ostream() << vars_decls_.str() << '\n';
     ostream() << func_impls_.str() << '\n';
+}
+
+inline bool Emitter::load_rt_module(std::string_view filename) {
+    for (const auto& dir : world().driver().search_paths()) {
+        auto path = dir / "rt" / std::string(filename);
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec) || ec) continue;
+        if (auto ifs = std::ifstream(path)) {
+            world().DLOG("ll backend: loaded runtime module `{}`", path.string());
+            rt_module_.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+            return true;
+        }
+    }
+    return false;
 }
 
 inline void Emitter::emit_imported(Lam* lam) {

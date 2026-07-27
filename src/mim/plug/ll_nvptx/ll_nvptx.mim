@@ -24,6 +24,7 @@ import compile;
 /// |---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
 /// | `o=<file>` <br> `output=<file>`         | Write the (host) LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.                                               |
 /// | `o-dev=<file>` <br> `output-dev=<file>` | Write the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`.                                       |
+/// | `rt=embed` <br> `rt=extern`             | How the C [runtime wrappers](@ref plugin_runtime) (e.g. `@mim_cu_check`) reach the host module: `embed` (default) splices their LLVM IR in; `extern` only `declare`s them. |
 /// | `no-embed`          | Don't embed the compiled device binary into the host LLVM IR (embedding is the default on Linux).                                                  |
 /// | `no-ptx-embed`      | If embedding the device binary, don't embed the PTX image into the fat binary (default: embed both PTX and CUBIN).                                 |
 /// | `no-cubin-embed`    | If embedding the device binary, don't embed the CUBIN image into the fat binary (default: embed both PTX and CUBIN).                               |
