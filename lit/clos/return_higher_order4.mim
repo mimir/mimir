@@ -3,7 +3,7 @@
 
 /*
 TODO: investigate and open error
-mim: /plug/clos/phase/clos_conv.cpp:64: const mim::Def* mim::clos::clos_pack_dbg(const mim::Def*, const mim::Def*, const mim::Def*, const mim::Def*): Assertion `pi && env→type() == pi→dom(Clos_Env_Param)' failed.
+mim: /plug/clos/phase/clos_conv.cpp: 64: const mim::Def* mim::clos::clos_pack_dbg(const mim::Def*, const mim::Def*, const mim::Def*, const mim::Def*): Assertion `pi && env→type() == pi→dom(Clos_Env_Param)' failed.
 */
 
 plugin core;

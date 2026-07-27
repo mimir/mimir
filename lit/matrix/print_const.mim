@@ -19,7 +19,7 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let (mem, m) = %buffer.constant MT (mem, c);
     print_int_matrix_wrap (mem, 2, 4, m, return_cont)
     where
-        con return_cont (mem:%mem.M 0) = return (mem, 0I32);
+        con return_cont (mem: %mem.M 0) = return (mem, 0I32);
     end;
 
 // CHECK: 3, 3, 3, 3,

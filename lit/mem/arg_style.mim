@@ -18,11 +18,11 @@ con extern f1 (mem: %mem.M 0, a: I32, return: Cn [%mem.M 0, I32]) =
 con extern f2 ((mem: %mem.M 0, a: I32), return: Cn [%mem.M 0, I32]) =
     return (mem, a);
 
-con extern g1 (mem: %mem.M 0, a: I32, b:I32, return: Cn [%mem.M 0, I32]) =
+con extern g1 (mem: %mem.M 0, a: I32, b: I32, return: Cn [%mem.M 0, I32]) =
     let c = %core.wrap.add 0 (a, b);
     return (mem, c);
 
-con extern g2 ((mem: %mem.M 0, a: I32, b:I32), return: Cn [%mem.M 0, I32]) =
+con extern g2 ((mem: %mem.M 0, a: I32, b: I32), return: Cn [%mem.M 0, I32]) =
     let c = %core.wrap.add 0 (a, b);
     return (mem, c);
 
@@ -34,16 +34,16 @@ con extern g4 (mem: %mem.M 0, (a b: I32), return: Cn [%mem.M 0, I32]) =
     let c = %core.wrap.add 0 (a, b);
     return (mem, c);
 
-con extern h1 (mem: %mem.M 0, a: I32, x:%mem.Ptr (I32, 0), return: Cn [%mem.M 0, I32]) =
+con extern h1 (mem: %mem.M 0, a: I32, x: %mem.Ptr (I32, 0), return: Cn [%mem.M 0, I32]) =
     return (mem, a);
 
-con extern h2 (mem: %mem.M 0, (a: I32, x:%mem.Ptr (I32, 0)), return: Cn [%mem.M 0, I32]) =
+con extern h2 (mem: %mem.M 0, (a: I32, x: %mem.Ptr (I32, 0)), return: Cn [%mem.M 0, I32]) =
     return (mem, a);
 
-con extern h3 ((mem: %mem.M 0, a: I32, x:%mem.Ptr (I32, 0)), return: Cn [%mem.M 0, I32]) =
+con extern h3 ((mem: %mem.M 0, a: I32, x: %mem.Ptr (I32, 0)), return: Cn [%mem.M 0, I32]) =
     return (mem, a);
 
-con extern h4 ((mem: %mem.M 0, (a: I32, x:%mem.Ptr (I32, 0))), return: Cn [%mem.M 0, I32]) =
+con extern h4 ((mem: %mem.M 0, (a: I32, x: %mem.Ptr (I32, 0))), return: Cn [%mem.M 0, I32]) =
     return (mem, a);
 
 con extern e1 (mem: %mem.M 0, a: I32, (), return: Cn [%mem.M 0, I32]) =

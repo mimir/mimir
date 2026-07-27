@@ -5,7 +5,7 @@ plugin core;
 plugin autodiff;
 
 
-con f (a:I32, return: Cn I32) =
+con f (a: I32, return: Cn I32) =
     let b = %core.wrap.add 0 (a, a);
     return b;
 

@@ -8,7 +8,7 @@ fun f(a: I32): I32 =
     let b = %core.wrap.add 0 (2I32, a);
     return b;
 
-fun f2(a:I32): I32 =
+fun f2(a: I32): I32 =
     let b = %core.wrap.add 0 (30I32, a);
     return b;
 

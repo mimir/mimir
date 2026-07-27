@@ -5,7 +5,7 @@ plugin core;
 plugin autodiff;
 
 
-fun f(mem: %mem.M 0, (a b:I32)): [%mem.M 0, I32] =
+fun f(mem: %mem.M 0, (a b: I32)): [%mem.M 0, I32] =
     let x = b;
     return (mem, x);
 
@@ -14,10 +14,10 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let c      = (42I32, 43I32);
     f_diff ((mem, c), ret_cont)
     where
-        con ret_cont ((rmem: %mem.M 0, r:I32), pb: Cn [[%mem.M 0, I32], Cn [%mem.M 0, [I32, I32]]]) =
+        con ret_cont ((rmem: %mem.M 0, r: I32), pb: Cn [[%mem.M 0, I32], Cn [%mem.M 0, [I32, I32]]]) =
             pb ((rmem, 1I32), pb_ret_cont)
             where
-                con pb_ret_cont (pb_mem:%mem.M 0, (pr_a pr_b: I32)) =
+                con pb_ret_cont (pb_mem: %mem.M 0, (pr_a pr_b: I32)) =
                     let sr = %core.wrap.mul 0 (10000I32, r);
                     let sa = %core.wrap.mul 0 (100I32, pr_a);
                     let sb = pr_b;

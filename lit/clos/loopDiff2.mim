@@ -124,9 +124,9 @@ con outer (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0]) =
     con print_bd(mem: %mem.M 0) = printArr(mem, bd_arr, print_cd);
     con print_ad(mem: %mem.M 0) = printArr(mem, ad_arr, print_bd);
 
-    con time_start_cont (mem:%mem.M 0, start_time:void_ptr) =
-        con timer (mem:%mem.M 0) =
-            con time_end_cont (mem:%mem.M 0, end_time:void_ptr) =
+    con time_start_cont (mem: %mem.M 0, start_time: void_ptr) =
+        con timer (mem: %mem.M 0) =
+            con time_end_cont (mem: %mem.M 0, end_time: void_ptr) =
                 print_time_diff (mem, start_time, end_time, print_ad);
             time (mem, time_end_cont);
             // print_ad(mem)

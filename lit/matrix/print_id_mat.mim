@@ -24,7 +24,7 @@ con extern main (mem: %mem.M 0, argc: I64, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let (mem, m) = %buffer.constant MT1 (mem, c);
     print_double_matrix_wrap (mem, 2, 4, m, return_cont)
     where
-        con return_cont (mem:%mem.M 0) = return (mem, 0I32);
+        con return_cont (mem: %mem.M 0) = return (mem, 0I32);
     end;
 
 // CHECK: 42.00, 42.00, 42.00, 42.00,
