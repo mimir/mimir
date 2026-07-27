@@ -123,8 +123,12 @@ void LowerToMem::validate() {
             if (is_tensor_fn(lam)) {
                 if (!lam->is_set())
                     lam->blame("cannot bufferize: tensor external requires an explicit buffer ABI").bail();
-                if (!Pi::isa_cn(lam->type()) && !lam->body()->isa<Lam>())
-                    lam->blame("cannot bufferize: tensor function requires memory-aware CPS conversion").bail();
+                if (!Pi::isa_cn(lam->type())) {
+                    if (auto inner = lam->body()->isa_mut<Lam>(); inner && Pi::isa_cn(inner->type()))
+                        shape_poly_.emplace(lam);
+                    else
+                        lam->blame("cannot bufferize: tensor function requires memory-aware CPS conversion").bail();
+                }
                 for (auto param : lam->vars()) {
                     auto type = param->type();
                     if (!mentions_tensor(type)) continue;
@@ -139,6 +143,14 @@ void LowerToMem::validate() {
         }
         for (auto op : d->ops()) {
             if (!op) continue;
+            if (auto lam = d->isa_mut<Lam>(); lam && shape_poly_.contains(lam) && lam->body() == op) {
+                wl.push(op);
+                continue;
+            }
+            if (auto sh = op->isa<App>())
+                if (auto f = sh->callee()->isa_mut<Lam>(); f && shape_poly_.contains(f))
+                    if (!(d->isa<App>() && d->as<App>()->callee() == op))
+                        sh->blame("cannot bufferize: partially applied shape-polymorphic function").bail();
             if (auto f = op->isa_mut<Lam>(); f && is_tensor_fn(f) && f->ret_pi() && !d->isa<Var>()
                                              && !(d->isa<App>() && d->as<App>()->callee() == op))
                 f->blame("cannot bufferize: tensor-processing function used as a value").bail();
@@ -219,8 +231,9 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
     // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
     // their own requests (and their own per-lam op memo).
-    auto _       = fe::Restore(pending_, {});
-    auto __      = fe::Restore(fresh_memo_, {});
+    auto _  = fe::Restore(pending_, {});
+    auto __ = fe::Restore(fresh_memo_, {});
+    if (shape_poly_.contains(lam)) return uncurry(lam);
     auto new_lam = new_world().mut_lam(rewrite(lam->type())->as<Pi>());
     map(lam, new_lam);
     if (!lam->is_set()) return new_lam;
@@ -229,6 +242,47 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     auto filter = rewrite(lam->filter());
     auto body   = wrap_fresh_mem(rewrite(lam->body()));
     new_lam->set(filter, body);
+    return seal(lam, new_lam);
+}
+
+const Def* LowerToMem::uncurry(Lam* lam) {
+    auto& w     = new_world();
+    auto pi     = lam->type()->as<Pi>();
+    auto pi_mut = pi->isa_mut<Pi>();
+    auto inner  = lam->body()->as_mut<Lam>();
+    auto k = pi->dom()->num_projs(), m = inner->num_vars(), n = k + m;
+    auto sigma = w.mut_sigma(n);
+    push();
+    if (pi_mut) bind_old(pi_mut->has_var());
+    bind_old(lam->has_var());
+    bind_old(inner->has_var());
+    for (size_t i = 0; i != k; ++i) {
+        sigma->set(i, rewrite(pi->dom()->proj(k, i)));
+        if (pi_mut) map(pi_mut->var(k, i), sigma->var(n, i));
+        map(lam->var(k, i), sigma->var(n, i));
+    }
+    if (k > 1) {
+        auto vars = w.tuple(DefVec(k, [&](size_t i) { return sigma->var(n, i); }));
+        if (pi_mut) map(pi_mut->var(), vars);
+        map(lam->var(), vars);
+    }
+    for (size_t i = 0; i != m; ++i) {
+        sigma->set(k + i, rewrite(inner->var(m, i)->type()));
+        map(inner->var(m, i), sigma->var(n, k + i));
+    }
+    pop();
+
+    auto new_lam = w.mut_con(sigma)->set(lam->dbg());
+    map(lam, new_lam);
+    map(inner, new_lam);
+    for (size_t i = 0; i != k; ++i)
+        map(lam->var(k, i), new_lam->var(n, i));
+    if (k > 1) map(lam->var(), w.tuple(DefVec(k, [&](size_t i) { return new_lam->var(n, i); })));
+    for (size_t i = 0; i != m; ++i)
+        map(inner->var(m, i), new_lam->var(n, k + i));
+    if (m > 1) map(inner->var(), w.tuple(DefVec(m, [&](size_t i) { return new_lam->var(n, k + i); })));
+    auto ___ = enter(new_lam);
+    new_lam->set(rewrite(inner->filter()), wrap_fresh_mem(rewrite(inner->body())));
     return seal(lam, new_lam);
 }
 
@@ -251,6 +305,16 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::concat>(app)) return lower_concat(app);
     if (Axm::isa<tensor::gather>(app)) return lower_gather(app);
     if (Axm::isa<tensor::scatter>(app)) return lower_scatter(app);
+    if (auto sh = app->callee()->isa<App>())
+        if (auto f = sh->callee()->isa_mut<Lam>(); f && shape_poly_.contains(f)) {
+            auto callee = rewrite(f);
+            DefVec args;
+            for (auto shape : sh->arg()->projs())
+                args.emplace_back(rewrite(shape));
+            for (auto arg : app->arg()->projs(f->body()->as_mut<Lam>()->num_vars()))
+                args.emplace_back(rewrite(arg));
+            return w.app(callee, w.tuple(args));
+        }
     return RWPhase::rewrite_imm_App(app);
 }
 
