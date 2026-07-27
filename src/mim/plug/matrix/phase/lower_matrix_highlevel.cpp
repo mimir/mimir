@@ -36,10 +36,16 @@ const Def* LowerMatrixHighLevelMapRed::rewrite_imm_App(const App* app) {
 
     if (auto axm = app->axm(); axm && app->curry() == 0) {
         if (auto i = axm_to_impl.find(axm->flags()); i != axm_to_impl.end()) {
-            auto impl = w.annexes().flags2entry().at(i->second).def;
-            auto meta = rewrite(app->callee()->as<App>()->arg());
-            auto args = rewrite(app->arg());
-            return w.call<cps::cps2ds>(w.call(impl, meta), args);
+            const Def* spec = w.annexes().flags2entry().at(i->second).def;
+            // Re-apply every (fully-inferred) implicit meta group to the impl, outermost first. We apply them
+            // explicitly (`w.app`, not `w.call`, which would insert fresh holes for the implicit domains and
+            // misapply the groups), then cps2ds and hand over the operands.
+            DefVec metas;
+            for (const Def* c = app->callee(); auto ca = c->isa<App>(); c = ca->callee())
+                metas.push_back(ca->arg());
+            for (auto m = metas.rbegin(); m != metas.rend(); ++m)
+                spec = w.app(spec, rewrite(*m));
+            return w.call<cps::cps2ds>(spec, rewrite(app->arg()));
         }
     }
 
