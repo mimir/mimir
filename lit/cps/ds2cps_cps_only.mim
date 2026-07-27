@@ -6,11 +6,11 @@
 plugin core;
 plugin cps;
 
-con h [mem : %mem.M 0, a : I32, return : Cn [%mem.M 0, I32]] =
+con h (mem: %mem.M 0, a: I32, return: Cn [%mem.M 0, I32]) =
     let c = a;
     return (mem, c);
 
-con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     h (mem, 40I32, return);
 
 // CHECK-DAG: return{{.*}}40

@@ -7,6 +7,7 @@
 
 #include <mim/plug/gpu/phase/mem_checks.h>
 #include <mim/plug/gpu/phase/remove_double_syncs.h>
+#include <mim/plug/gpu/phase/split_apply.h>
 #include <mim/plug/mem/mem.h>
 
 using namespace mim;
@@ -21,19 +22,19 @@ void reg_phases(Flags2Phases& phases) {
         if (auto malloc = Axm::isa<mem::malloc>(def)) {
             auto addr_space = Lit::as(malloc->decurry()->arg(1));
             if (addr_space == shared_as || addr_space == const_as || addr_space == local_as)
-                error("Invalid use of %mem.malloc: cannot be used in address space {}: {}", addr_space, malloc);
+                fe::throwf("Invalid use of %mem.malloc: cannot be used in address space {}: {}", addr_space, malloc);
         } else if (auto free = Axm::isa<mem::free>(def)) {
             auto addr_space = Lit::as(free->decurry()->arg(1));
             if (addr_space == shared_as || addr_space == const_as || addr_space == local_as)
-                error("Invalid use of %mem.free: cannot be used in address space {}: {}", addr_space, free);
+                fe::throwf("Invalid use of %mem.free: cannot be used in address space {}: {}", addr_space, free);
         } else if (auto mslot = Axm::isa<mem::mslot>(def)) {
             auto addr_space = Lit::as(mslot->decurry()->arg(1));
             if (addr_space == global_as || addr_space == const_as)
-                error("Invalid use of %mem.mslot: cannot be used in address space {}: {}", addr_space, mslot);
+                fe::throwf("Invalid use of %mem.mslot: cannot be used in address space {}: {}", addr_space, mslot);
         } else if (auto store = Axm::isa<mem::store>(def)) {
             auto addr_space = Lit::as(store->decurry()->arg(1));
             if (addr_space == const_as)
-                error("Invalid use of %mem.store: cannot be used in address space {}: {}", addr_space, store);
+                fe::throwf("Invalid use of %mem.store: cannot be used in address space {}: {}", addr_space, store);
         }
         return {};
     });
@@ -59,8 +60,9 @@ void reg_phases(Flags2Phases& phases) {
     });
 
     // clang-format off
-    Phase::hook<gpu::mem_checks,                 gpu::phase::MemChecks        >(phases);
-    Phase::hook<gpu::remove_double_syncs,              gpu::phase::RemoveDoubleSyncs>(phases);
+    Phase::hook<gpu::mem_checks,          gpu::phase::MemChecks        >(phases);
+    Phase::hook<gpu::remove_double_syncs, gpu::phase::RemoveDoubleSyncs>(phases);
+    Phase::hook<gpu::split_apply,         gpu::phase::SplitApply       >(phases);
     // clang-format on
 }
 

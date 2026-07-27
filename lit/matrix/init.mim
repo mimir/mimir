@@ -4,8 +4,8 @@
 plugin core;
 plugin matrix;
 
-con extern f [mem : %mem.M 0, [k:Nat, l:Nat], return: Cn[%mem.M 0, %buffer.Buf (2, (k,l), I32)]] =
-    let (mem2, M) = %buffer.alloc (2,(k,l),I32) mem;
-    return (mem2, M);
+con extern f (mem: %mem.M 0, (k l: Nat), return: Cn [%mem.M 0, %buffer.Buf (2, (k, l), I32)]) =
+    let (mem, M) = %buffer.alloc (2, (k, l), I32) mem;
+    return (mem, M);
 
 // CHECK-NOT: %matrix.

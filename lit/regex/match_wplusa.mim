@@ -13,7 +13,7 @@ plugin cps;
 let Top = ⊤:Nat;
 let re  = %regex.conj (%regex.quant.plus  %regex.cls.w, %regex.lit 'a');
 
-con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit : Cn [%mem.M 0, I32]] =
+con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [%mem.M 0, I32]] =
     (exit, match_argument) # (%core.icmp.ug (argc, 1I32)) (mem, 0I32)
     where
         con match_argument[mem: %mem.M 0, I32] =

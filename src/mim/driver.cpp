@@ -96,7 +96,7 @@ void Driver::load(Sym name) {
         }
     }
 
-    if (!handle) error("cannot open plugin '{}'", name);
+    if (!handle) fe::throwf("cannot open plugin '{}'", name);
 
     if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(dl::get(handle.get(), "mim_get_plugin"))) {
         auto plugin = get_info();
@@ -115,13 +115,19 @@ void Driver::load(Sym name) {
         if (auto reg = plugin.register_phases)      reg(phases_);
         // clang-format on
     } else {
-        error("mim/plugin has no 'mim_get_plugin()'");
+        fe::throwf("mim/plugin has no 'mim_get_plugin()'");
     }
 }
 
 void* Driver::get_fun_ptr(Sym plugin, const char* name) {
     if (auto handle = lookup(plugins_, plugin)) return dl::get(handle->get(), name);
     return nullptr;
+}
+
+const Vector<std::string>& Driver::args(Sym plugin) const {
+    static const Vector<std::string> empty;
+    if (auto i = plugin_args_.find(plugin); i != plugin_args_.end()) return i->second;
+    return empty;
 }
 
 } // namespace mim

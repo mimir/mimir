@@ -59,7 +59,7 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     std::println(h, "{}#pragma once\n", tab);
     std::println(h, "{}#include <mim/axm.h>", tab);
     std::println(h, "#include <mim/plugin.h>\n", tab);
-    std::println(h, "{}/// @namespace mim::plug::{} @ref {} ", tab, plugin, plugin);
+    std::println(h, "{}/// @namespace mim::plug::{} @ref {}", tab, plugin, plugin);
     std::println(h, "{}namespace mim {{", tab);
     std::println(h, "{}namespace plug::{} {{\n", tab, plugin);
 

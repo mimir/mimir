@@ -3,7 +3,7 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
-namespace mim::plug::autodiff {
+namespace mim::plug::autodiff::phase {
 
 /// This phase is the heart of AD.
 /// We replace an `autodiff fun` call with the differentiated function.
@@ -81,4 +81,4 @@ private:
     Def2Def shadow_pullback;
 };
 
-} // namespace mim::plug::autodiff
+} // namespace mim::plug::autodiff::phase

@@ -7,16 +7,16 @@ plugin core;
 
 ccon atoi [%mem.M 0, %mem.Ptr («⊤:Nat; I8», 0), Cn [%mem.M 0, I32]];
 
-con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
     let argv_ptr_a = %mem.lea (argv, 1I32);
     let (mem, val) = %mem.load (mem, argv_ptr_a);
     atoi (mem, val, atoi_cont_a)
     where
-        con atoi_cont_a [mem: %mem.M 0, a: I32] =
+        con atoi_cont_a (mem: %mem.M 0, a: I32) =
             let argv_ptr_b = %mem.lea (argv, 2I32);
             let argv_load_b = %mem.load (mem, argv_ptr_b);
-            atoi (argv_load_b#0_2, argv_load_b#1_2, atoi_cont_b)
+            atoi (argv_load_b#0₂, argv_load_b#1₂, atoi_cont_b)
             where
-                con atoi_cont_b [mem: %mem.M 0, b: I32] = return (mem, %core.bit2.and_ 0 (0b00000000000000000000000000001111I32, %core.bit2.nand 0 (a, b)));
+                con atoi_cont_b (mem: %mem.M 0, b: I32) = return (mem, %core.bit2.and_ 0 (0b00000000000000000000000000001111I32, %core.bit2.nand 0 (a, b)));
             end;
     end;

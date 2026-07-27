@@ -2,7 +2,7 @@
 
 #include <mim/plug/mem/mem.h>
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 namespace {
 
@@ -10,8 +10,8 @@ bool interesting_type(const Def* type, DefSet& visited) {
     if (type->isa_mut()) visited.insert(type);
     if (isa_clos_type(type)) return true;
     if (auto sigma = type->isa<Sigma>())
-        return std::any_of(sigma->ops().begin(), sigma->ops().end(),
-                           [&](auto d) { return !visited.contains(d) && interesting_type(d, visited); });
+        return std::ranges::any_of(sigma->ops(),
+                                   [&](auto d) { return !visited.contains(d) && interesting_type(d, visited); });
     if (auto arr = type->isa<Arr>()) return interesting_type(arr->body(), visited);
     return false;
 }
@@ -24,7 +24,7 @@ bool interesting_type(const Def* def) {
 void split(DefSet& out, const Def* def, bool as_callee) {
     if (auto lam = def->isa<Lam>()) {
         out.insert(lam);
-    } else if (auto [var, lam] = ca_isa_var<Lam>(def); var && lam) {
+    } else if (auto [var, lam] = isa_var_proj<Lam>(def); var && lam) {
         if (var->type()->isa<Pi>() || interesting_type(var)) out.insert(var);
     } else if (auto c = isa_clos_lit(def, false)) {
         split(out, c.fnc(), as_callee);
@@ -79,7 +79,7 @@ bool LowerTypedClosPrep::analyze() {
             auto callees = split(app->callee(), true);
             for (auto i = 0_u64; i < app->num_args(); i++) {
                 if (!interesting_type(app->arg(i))) continue;
-                if (std::any_of(callees.begin(), callees.end(), [&](const Def* callee) {
+                if (std::ranges::any_of(callees, [&](const Def* callee) {
                         if (auto lam = callee->isa_mut<Lam>()) return is_esc(lam->var(i));
                         return true;
                     }))
@@ -116,4 +116,4 @@ const Def* LowerTypedClosPrep::rewrite_imm_Tuple(const Tuple* tuple) {
     return RWPhase::rewrite_imm_Tuple(tuple);
 }
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

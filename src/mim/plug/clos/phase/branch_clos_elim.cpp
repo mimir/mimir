@@ -2,18 +2,18 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 namespace {
 
-std::tuple<std::vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
+std::tuple<Vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
     if (auto closure_proj = callee->isa<Extract>()) {
         auto inner_proj = closure_proj->tuple()->isa<Extract>();
         if (inner_proj && inner_proj->tuple()->isa<Tuple>() && isa_clos_type(inner_proj->type())) {
-            auto branches = std::vector<ClosLit>();
+            auto branches = Vector<ClosLit>();
             for (auto op : inner_proj->tuple()->ops())
                 if (auto c = isa_clos_lit(op))
-                    branches.push_back(std::move(c));
+                    branches.emplace_back(c);
                 else
                     return {};
             return {branches, inner_proj->index()};
@@ -50,4 +50,4 @@ const Def* BranchClosElim::rewrite_imm_App(const App* app) {
     return RWPhase::rewrite_imm_App(app);
 }
 
-}; // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

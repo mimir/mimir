@@ -29,7 +29,8 @@ bool contains_pi(const Def* t) {
 /// pack `‹i; f i›` or a genuine literal `((1, 2), (3, 4))` yields `nullptr`.
 const Def* splat_scalar(const Def* d) {
     if (!d->isa<Pack>()) return nullptr;
-    while (auto pack = d->isa<Pack>()) d = pack->body();
+    while (auto pack = d->isa<Pack>())
+        d = pack->body();
     return (d->is_closed() && !d->type()->isa<Arr>()) ? d : nullptr;
 }
 
@@ -44,7 +45,7 @@ bool is_tensor_op(const App* app) {
 void LowerToMem::collect_tensor_types() {
     // The default pipeline lowers tensors exclusively through buffers — there is no value-semantics
     // fallback. A program shape the conversion cannot handle is a hard error, not silent residue.
-    auto gate = [](const char* why, const Def* culprit) { error("cannot bufferize: {} ({})", why, culprit); };
+    auto gate = [](const char* why, const Def* culprit) { fe::throwf("cannot bufferize: {} ({})", why, culprit); };
     // Fully folded shapes (`«1; T»` ≡ `T`) denote plain scalars — recording them would poison every
     // function whose signature mentions the element type, so only genuine array types count as tensors.
     auto add_tensor_ty = [this](const Def* t) {
@@ -117,8 +118,8 @@ void LowerToMem::collect_tensor_types() {
                         add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
                     }
                 }
-            } else if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0
-                                                                && axm->plugin() == tensor::Plugin_Id) {
+            } else if (auto [axm, curry, trip] = Axm::get(app);
+                       axm && curry == 0 && axm->plugin() == tensor::Plugin_Id) {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
@@ -513,9 +514,8 @@ const Def* LowerToMem::lower_pad(const App* app) {
     // must keep size-1 axes (the result type's `Buf` folds them away and cannot be used here).
     DefVec so(*r_l);
     for (u64 d = 0; d < *r_l; ++d)
-        so[d] = w.call(core::nat::add,
-                       DefVec{w.call(core::nat::add, DefVec{lo->proj(*r_l, d), s_in->proj(*r_l, d)}),
-                              hi->proj(*r_l, d)});
+        so[d] = w.call(core::nat::add, DefVec{w.call(core::nat::add, DefVec{lo->proj(*r_l, d), s_in->proj(*r_l, d)}),
+                                              hi->proj(*r_l, d)});
     auto s_out = w.tuple(so);
 
     auto op       = w.annex<matrix::pad>();

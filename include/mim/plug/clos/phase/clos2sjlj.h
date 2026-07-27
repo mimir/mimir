@@ -6,7 +6,7 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 /// Lowers basicblock closures that are passed as arguments (i.e. exception continuations)
 /// to setjmp/longjmp: the caller setjmps and dispatches on the tag, the closures become longjmps.
@@ -44,4 +44,4 @@ private:
     const Def* cur_jbuf_ = nullptr;
 };
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

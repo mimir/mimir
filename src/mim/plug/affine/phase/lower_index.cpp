@@ -52,7 +52,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
                 return w.call(core::wrap::sub, core::Mode::none, Defs{w.lit(w.type_i64(), 0), a});
             }
             case affine::op::mul: {
-                error("affine.op.mul should have been rewritten to affine.semiop.mul and then to core.mul");
+                fe::throwf("affine.op.mul should have been rewritten to affine.semiop.mul and then to core.mul");
             }
         }
     }
@@ -61,7 +61,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [x, c] = rewrite(app->arg())->projs<2>();
         switch (semiop.id()) {
             case affine::semiop::mul: {
-                if (Axm::isa<refly::check>(c)) error("affine.op.mul called with non-constant second argument");
+                if (Axm::isa<refly::check>(c)) fe::throwf("affine.op.mul called with non-constant second argument");
                 // `c` is a `Nat` constant; reinterpret it on the `Idx 0` carrier.
                 return w.call(core::wrap::mul, core::Mode::none, Defs{x, w.call<core::bitcast>(w.type_i64(), c)});
             }
@@ -124,8 +124,8 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [mn, sinout, f, idxs] = app->callee()->as<App>()->uncurry_args<4>();
         auto [sin, sout]           = sinout->projs<2>();
 
-        auto saved = mem_;
-        auto mem   = rewrite(app->arg()); // the `%affine.map`'s mem operand
+        auto _   = Restore(mem_);
+        auto mem = rewrite(app->arg()); // the `%affine.map`'s mem operand
 
         auto ins    = rewrite(idxs)->projs();
         auto lifted = w.tuple(DefVec(ins.size(), [&](size_t i) { return w.call(core::conv::u, w.lit_i64(), ins[i]); }));
@@ -170,7 +170,6 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
             return w.call(core::conv::u, sout_n->proj(j), outs->proj(2, 1)->proj(j));
         }));
 
-        mem_ = saved;
         return w.tuple({outs->proj(0), narrowed});
     }
 

@@ -46,7 +46,7 @@ void optimize(World& world) {
             if (auto app = body->isa<App>()) phase->apply(app);
             phase->run();
         } else
-            world.ELOG("axm not found in passes");
+            fe::throwf("no phase registered for stage '{}'; is its plugin loaded?", callee);
     }
 }
 

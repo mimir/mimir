@@ -1,0 +1,46 @@
+/// # The ll_nvptx Plugin {#ll_nvptx}
+///
+/// @see mim::plug::ll_nvptx
+///
+/// An LLVM backend that targets NVIDIA GPUs.
+/// Loading this plugin (`mim foo.mim -p ll_nvptx`) appends an emission phase to the compilation pipeline that splits the fully lowered program into a host world and a device world.
+/// It writes the host LLVM IR to `<world>.ll` and the device LLVM IR (with PTX intrinsics) to `<world>_dev.ll`, and — on Linux by default — compiles and embeds the device binary into the host LLVM IR.
+/// The output paths and the embedding behavior can be overridden via `-X ll_nvptx:<arg>`; see @ref ll_nvptx_cli_args.
+///
+/// [TOC]
+///
+/// ## Dependencies
+///
+plugin gpu;
+plugin nvptx;
+plugin opt;
+import compile;
+///
+/// ## Command-Line Arguments {#ll_nvptx_cli_args}
+///
+/// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X ll_nvptx:<arg>`):
+///
+/// | Argument            | Effect                                                                                                                                              |
+/// |---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+/// | `o=<file>` <br> `output=<file>`         | Write the (host) LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`.                                               |
+/// | `o-dev=<file>` <br> `output-dev=<file>` | Write the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`.                                       |
+/// | `rt=embed` <br> `rt=extern`             | How the C [runtime wrappers](@ref plugin_runtime) (e.g. `@mim_cu_check`) reach the host module: `embed` (default) splices their LLVM IR in; `extern` only `declare`s them. |
+/// | `no-embed`          | Don't embed the compiled device binary into the host LLVM IR (embedding is the default on Linux).                                                  |
+/// | `no-ptx-embed`      | If embedding the device binary, don't embed the PTX image into the fat binary (default: embed both PTX and CUBIN).                                 |
+/// | `no-cubin-embed`    | If embedding the device binary, don't embed the CUBIN image into the fat binary (default: embed both PTX and CUBIN).                               |
+/// | `sm=<SM>`           | If embedding the device binary, compile it for compute capability sm_`<SM>`.                                                                       |
+/// | `libdevice=<path>`  | If embedding the device binary and linking libdevice, link against the libdevice NVVM library at `<path>` instead of locating it via CUDA paths.   |
+/// | `Xlink_llvm=<args>` | If embedding the device binary and linking libdevice, invoke link_llvm with `<args>` (default: none).                                             |
+/// | `Xopt=<args>`       | If embedding the device binary and linking libdevice, invoke opt with `<args>` (default: `-passes="default<O2>,nvvm-reflect"`).                    |
+/// | `Xllc=<args>`       | If embedding the device binary, invoke llc with `<args>` (default: none).                                                                          |
+/// | `Xptxas=<args>`     | If embedding the device binary, invoke ptxas with `<args>` (default: none). Also passed to fatbinary via `--cmdline` if embedding the PTX image.   |
+/// | `Xfatbinary=<args>` | If embedding the device binary, invoke fatbinary with `<args>` (default: none).                                                                    |
+///
+/// ## Phases
+///
+/// ### %%ll_nvptx.emit
+///
+/// Emits the LLVM IR with PTX intrinsics for the host and device worlds split from the current world.
+/// This phase is spliced into the default pipeline (see `opt`) whenever the `ll_nvptx` plugin is loaded.
+///
+axm %ll_nvptx.emit: %compile.Phase;

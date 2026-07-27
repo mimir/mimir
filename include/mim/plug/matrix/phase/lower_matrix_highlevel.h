@@ -3,7 +3,7 @@
 #include <mim/def.h>
 #include <mim/phase.h>
 
-namespace mim::plug::matrix {
+namespace mim::plug::matrix::phase {
 
 /// Resolves lowering of high level operations into medium/other high-level operations.
 /// Some of these transformations could be done as normalizer.
@@ -18,4 +18,4 @@ public:
     const Def* rewrite_imm_App(const App*) final;
 };
 
-} // namespace mim::plug::matrix
+} // namespace mim::plug::matrix::phase

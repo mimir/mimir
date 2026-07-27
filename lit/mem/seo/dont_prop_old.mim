@@ -30,7 +30,7 @@ fun extern f(x: Nat): Nat =
 
                         con false() =
                             next (i, 4);
-                        con next (i: Nat, j: Nat) as cxt =
+                        con next (i j: Nat) as cxt =
                             let i = %core.nat.add (i, 1);
                             head i;
                     end;

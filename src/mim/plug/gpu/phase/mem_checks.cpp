@@ -46,8 +46,8 @@ const Def* MemChecks::rewrite_imm_App(const App* app) {
 
         MemFinder mem_finder(kernel_args_t);
         if (mem_finder.next_mem()) {
-            error("You may not pass any %mem.M across device boundaries: passing {} : {} from host to kernel '{}'",
-                  kernel_args, kernel_args_t, kernel);
+            fe::throwf("You may not pass any %mem.M across device boundaries: passing {} : {} from host to kernel '{}'",
+                       kernel_args, kernel_args_t, kernel);
         }
     }
     return Super::rewrite_imm_App(app);
@@ -60,13 +60,13 @@ void MemChecks::rewrite_external(Def* def) {
         while (auto mem = intype_mem_finder.next_mem()) {
             auto addr_space = mem->arg();
             if (Lit::as(addr_space) != 0)
-                error("The main function may not take %mem.M n with a non-zero n as an argument");
+                fe::throwf("The main function may not take %mem.M n with a non-zero n as an argument");
         }
 
         MemFinder outtype_mem_finder(lam->type()->ret_dom());
         while (auto mem = outtype_mem_finder.next_mem()) {
             auto addr_space = mem->arg();
-            if (Lit::as(addr_space) != 0) error("The main function may not return any %mem.M n with a non-zero n");
+            if (Lit::as(addr_space) != 0) fe::throwf("The main function may not return any %mem.M n with a non-zero n");
         }
     }
     Super::rewrite_external(def);

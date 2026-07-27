@@ -4,7 +4,7 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 /// Escape analysis for closures:
 /// closure literals get their function wrapped in `%clos.attr.esc` or `%clos.attr.bottom`,
@@ -20,7 +20,7 @@ private:
     const Def* rewrite_imm_Tuple(const Tuple*) final;
 
     bool is_esc(const Def* def) {
-        if (auto [_, lam] = ca_isa_var<Lam>(def); lam && !lam->is_set()) return true;
+        if (auto [_, lam] = isa_var_proj<Lam>(def); lam && !lam->is_set()) return true;
         return esc_.contains(def);
     }
     bool set_esc(const Def*);
@@ -28,4 +28,4 @@ private:
     DefSet esc_;
 };
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

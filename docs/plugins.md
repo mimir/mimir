@@ -113,6 +113,36 @@ cmake .. -Dmim_DIR=<MIM_INSTALL_PREFIX>/lib/cmake/mim
 
 The authoritative reference for `add_mim_plugin` itself lives in [`cmake/Mim.cmake`](@ref add_mim_plugin_cmake).
 
+## Runtime Wrappers {#plugin_runtime}
+
+Backends such as [`ll`](@ref ll) sometimes need to emit calls to functionality that is awkward or brittle to express as hand-written LLVM IR — for example libc helpers, or complex argument setup for vendor APIs.
+Instead of emitting the implementation inline, a backend can offload it to a small C *wrapper* that is compiled to LLVM IR by `clang` and pulled into the output.
+This keeps the backend focused on emitting LLVM and lets `clang` deal with platform- and version-specific details.
+
+The [`add_mim_runtime`](@ref add_mim_runtime_cmake) CMake command compiles a plugin's C wrapper sources to textual LLVM IR:
+
+```cmake
+add_mim_plugin(foo
+    SOURCES
+        src/foo.cpp
+)
+
+add_mim_runtime(foo
+    SOURCES
+        rt/foo_rt.c
+    INSTALL
+)
+```
+
+All sources are merged into a single module `<libdir>/mim/rt/<plugin>_rt.ll` (next to the plugins) and, with `INSTALL`, installed alongside them — one runtime module per plugin, addressable by a well-known name no matter how many `.c` files it is split into.
+This step is optional: it requires `clang` (discovered as `MIM_CLANG`; merging multiple sources additionally needs `llvm-link`) and is skipped when `clang` is unavailable or `MIM_BUILD_LL_RUNTIME` is `OFF`.
+
+The [`ll`](@ref ll) backend locates such a runtime module via the driver's [search paths](@ref cli) and either embeds it into or links it with its emitted module, selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`; see the [CLI reference](@ref cli).
+The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmpbuf_size` for `%%clos.alloc_jmpbuf`, and `src/mim/plug/ll_nvptx/rt/mim_cuda_rt.c`, whose `@mim_cu_check` performs the `ll_nvptx` backend's CUDA driver-API error handling.
+The `ll_nvptx` backend reuses the very same [`load_rt_module`](@ref mim::plug::ll::Emitter::load_rt_module) helper as `ll`, differing only in the runtime module it names.
+
+The authoritative reference for `add_mim_runtime` lives in [`cmake/Mim.cmake`](@ref add_mim_runtime_cmake).
+
 ## Normalizers
 
 Normalizers usually obtain the owning [`World`](@ref mim::World) from one of their arguments, often `type->world()`, and then build the replacement directly in that world.

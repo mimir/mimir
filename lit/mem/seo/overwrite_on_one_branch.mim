@@ -1,14 +1,14 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s -p opt -o - | %FileCheck %s
 plugin mem;
 
 cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
 
-fun extern test1(mem0: %mem.M 0): [%mem.M 0, I64] =
-    ret (mem1, ptr) = %mem.slot (I64, 0) $ mem0;
-    let mem2        = %mem.store (mem1, ptr, 0I64);
-    ret (mem3, ptr2) = %mem.slot (I64, 0) $ mem2;
-    let mem4        = %mem.store (mem3, ptr2, 0I64);
-    head mem4 where
+fun extern test1(mem: %mem.M 0): [%mem.M 0, I64] =
+    ret (mem, ptr) = %mem.slot (I64, 0) $ mem;
+    let mem        = %mem.store (mem, ptr, 0I64);
+    ret (mem, ptr2) = %mem.slot (I64, 0) $ mem;
+    let mem        = %mem.store (mem, ptr2, 0I64);
+    head mem where
         con head(mem: %mem.M 0) =
             ret (mem, cond) = dont_know $ mem;
             (a, b)#cond mem where

@@ -98,23 +98,8 @@ private:
 protected:
     std::deque<Def2Def> old2news_;
 
-    /// Helps to keep track of curr_mut().
-    /// @see enter()
-    class Enter {
-    public:
-        Enter(Rewriter* rewriter, Def* new_mut)
-            : rewriter_(rewriter)
-            , prev_mut_(rewriter->curr_mut()) {
-            rewriter->curr_mut_ = new_mut;
-        }
-        ~Enter() { rewriter_->curr_mut_ = prev_mut_; }
-
-    private:
-        Rewriter* rewriter_;
-        Def* prev_mut_;
-    };
-
-    Enter enter(Def* new_mut) { return {this, new_mut}; } //< Updates curr_mut() to @p new_mut.
+    /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
+    auto enter(Def* new_mut) { return Restore(curr_mut_, new_mut); }
 };
 
 /// Extends Rewriter for variable substitution.

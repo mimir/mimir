@@ -4,7 +4,7 @@
 plugin core;
 plugin gpu;
 
-con generic_kernel (n_groups: Nat, n_items: Nat)
+con generic_kernel (n_groups n_items: Nat)
                    (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
                     group_id: Idx n_groups, item_id: Idx n_items, (), data: %gpu.GlobalPtr I32,
                     return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
@@ -12,7 +12,7 @@ con generic_kernel (n_groups: Nat, n_items: Nat)
     return (m1, m3, m4, m5);
 
 fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
-              : [%mem.M 0, I32] =
+: [%mem.M 0, I32] =
     let (m0, ptr) = %mem.alloc (I32, 0) m0;
     let m0 = %mem.store (m0, ptr, argc);
 

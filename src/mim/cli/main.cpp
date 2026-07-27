@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         DotConfig dot;
         std::string input, prefix;
         std::string clang = sys::find_cmd("clang");
-        std::vector<std::string> plugins, search_paths;
+        std::vector<std::string> plugins, search_paths, plugin_args;
 #ifdef MIM_ENABLE_CHECKS
         std::vector<uint32_t> breakpoints;
         std::vector<uint32_t> watchpoints;
@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
             | lyra::opt(clang,        "clang"              )["-c"]["--clang"                ]("Path to clang executable (default: '" MIM_WHICH " clang').")
             | lyra::opt(plugins,      "plugin"             )["-p"]["--plugin"               ]("Dynamically load plugin.")
             | lyra::opt(search_paths, "path"               )["-P"]["--plugin-path"          ]("Path to search for plugins.")
+            | lyra::opt(plugin_args,  "plugin:arg"         )["-X"]["--plugin-arg"           ]("Pass <arg> to plugin/phase <plugin>, e.g. -X ll:--target=sm_80. Repeatable.")
             | lyra::opt(inc_verbose                        )["-V"]["--verbose"              ]("Verbose mode. Multiple -V options increase the verbosity. The maximum is 4.").cardinality(0, 5)
             | lyra::opt(output[AST],  "file"               )      ["--output-ast"           ]("Directly emits AST representation of input.")
             | lyra::opt(output[Dot],  "file"               )      ["--output-dot"           ]("Emits the Mim program as a MimIR graph using Graphviz' DOT language.")
@@ -126,6 +127,13 @@ int main(int argc, char** argv) {
 
         for (auto&& path : search_paths)
             driver.add_search_path(path);
+
+        for (auto&& pa : plugin_args) {
+            auto pos = pa.find(':');
+            if (pos == std::string::npos)
+                throw std::invalid_argument("error: --plugin-arg expects <plugin>:<arg>, got '" + pa + "'");
+            driver.add_arg(driver.sym(pa.substr(0, pos)), pa.substr(pos + 1));
+        }
 
         if (list_search_paths) {
             for (auto&& path : driver.search_paths() | std::views::drop(1)) // skip first empty path
@@ -212,7 +220,7 @@ int main(int argc, char** argv) {
                     }
                 }
             } else {
-                error("couldn't read file '{}'", input);
+                fe::throwf("couldn't read file '{}'", input);
             }
         } catch (const Error& e) { // e.loc.path doesn't exist anymore in outer scope so catch Error here
             std::cerr << e;

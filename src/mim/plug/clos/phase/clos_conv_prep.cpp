@@ -4,7 +4,7 @@
 
 #include "mim/plug/clos/clos.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 namespace {
 
@@ -24,7 +24,7 @@ bool isa_callee_br(const App* body, const Def* def, size_t i) {
 }
 
 Lam* isa_retvar(const Def* def) {
-    if (auto [var, lam] = ca_isa_var<Lam>(def); var && lam && var == lam->ret_var()) return lam;
+    if (auto [var, lam] = isa_var_proj<Lam>(def); var && lam && var == lam->ret_var()) return lam;
     return nullptr;
 }
 
@@ -84,11 +84,11 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
 
     if (auto lam = isa_retvar(old_op); lam && from_outer_scope(lam)) {
         DLOG("found return var from enclosing scope: {}", old_op);
-        return eta_wrap(old_op, attr::freeBB)->set("free_ret");
+        return eta_wrap(old_op, attr::free_bb)->set("free_ret");
     }
     if (auto bb_lam = Lam::isa_mut_basicblock(old_op); bb_lam && from_outer_scope(bb_lam)) {
         DLOG("found BB from enclosing scope {}", old_op);
-        return new_world().call(attr::freeBB, rewrite(old_op));
+        return new_world().call(attr::free_bb, rewrite(old_op));
     }
     if (isa_cnt(app, arg, i)) {
         if (Axm::isa<attr>(attr::returning, old_op) || isa_retvar(old_op)) {
@@ -105,12 +105,13 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
     if (!isa_callee_br(app, arg, i)) {
         if (auto bb_lam = Lam::isa_mut_basicblock(old_op)) {
             DLOG("found firstclass use of BB: {}", bb_lam);
-            return new_world().call(attr::fstclassBB, rewrite(bb_lam));
+            return new_world().call(attr::fstclass_bb, rewrite(bb_lam));
         }
-        // TODO: If eta-reduction eta-reduces branches, we have to wrap them again!
+        // @note This relies on branches staying in `Extract`-of-`Tuple` form; if eta-reduction were to collapse
+        // a branch back into a bare continuation, it would have to be re-wrapped here.
         if (isa_retvar(old_op)) {
             DLOG("found firstclass use of return var: {}", old_op);
-            return eta_wrap(old_op, attr::fstclassBB)->set("fstclass_ret");
+            return eta_wrap(old_op, attr::fstclass_bb)->set("fstclass_ret");
         }
     }
 
@@ -163,4 +164,4 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
     return w.app(new_callee, new_arg);
 }
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

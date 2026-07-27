@@ -12,14 +12,11 @@ static void run_stage(World& world, flags_t annex) {
     auto callee       = App::uncurry_callee(body);
 
     auto create_phase = world.driver().phase(callee->flags());
-    if (!create_phase) error("Could not get phase");
+    if (!create_phase) fe::throwf("Could not get phase");
 
     auto stage = (*create_phase)(world);
     auto phase = stage.get()->as<Phase>();
-    auto app   = body->isa<App>();
-    if (!app) error("Phase is unexpectedly not an App");
-
-    phase->apply(app);
+    if (auto app = body->isa<App>()) phase->apply(app);
     phase->run();
 }
 

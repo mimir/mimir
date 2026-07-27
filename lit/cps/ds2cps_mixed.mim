@@ -5,7 +5,7 @@ plugin core;
 plugin cps;
 
 
-lam f(a :I32): I32 = %core.wrap.add 0 (2I32, a);
+lam f(a: I32): I32 = %core.wrap.add 0 (2I32, a);
 
 fun h(mem: %mem.M 0, a: I32): [%mem.M 0, I32] =
     return (mem, f a);
