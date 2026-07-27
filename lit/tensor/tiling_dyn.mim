@@ -1,0 +1,258 @@
+// RUN: %mim -p opt --dump-recursive %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+
+// Tiling with *runtime-only* extents via the frontend Tileable interface (see
+// tensor_tile.mim): the row count `n` is an implicit function parameter and never a
+// literal. The non-dividing tile size 3 is handled by the peel and pad+slice strategies,
+// whose extents are constructed in *provable form*: nm = (n/3)·3 and np = ⌈n/3⌉·3 are
+// divisible by 3 by construction. All remainder logic becomes runtime %core.nat
+// arithmetic and the tiled loop nests materialize as recursive functions over
+// runtime-extent accumulators (checked below). The divisibility side-condition
+// discharges symbolically: the nat normalizer cancels `(x·c)/c` to `x` for a literal
+// `c ≠ 0`, so `%refly.check` folds away despite `n` being runtime-only.
+//
+// The whole default `-p opt` pipeline runs: the dynamic-extent tensors bufferize to
+// `%mem` loops over dynamically-sized buffers (the shape parameter `n` reaches the buffer
+// allocations and `%mem.lea` index arithmetic as a runtime value), so nothing tensor-,
+// matrix-, buffer- or affine-level survives. The shape-polymorphic `fun extern f {n} (…)`
+// wrappers are *uncurried* into first-order `con` externals over a *dependent* dom sigma
+// `[n: Nat, %buffer.Buf (2, (n, 4), T), …]` (%tensor.lower_to_mem) — the precise
+// shape-dependent types are kept through the whole pipeline; the LLVM backend lowers a
+// runtime extent locally at emission (`[0 x T]`).
+//
+// CHECK-DAG: fun extern main
+// CHECK-DAG: fun extern rt_peel_main
+// CHECK-DAG: fun extern rt_peel_epi
+// CHECK-DAG: fun extern rt_pad
+// The remainder arithmetic stays as runtime Nat computation:
+// CHECK-DAG: %core.nat.div
+// The tiled loop nests are materialized (lower_for turns them into recursive `head`s):
+// CHECK-DAG: con head
+// Bufferization reached real memory over the runtime-sized buffers:
+// CHECK-DAG: %mem.lea
+// Everything interface-level and every tensor/matrix/buffer/affine op must be lowered
+// away, and the divisibility side-conditions must have discharged:
+// GONE-NOT: %tensor.
+// GONE-NOT: %matrix.
+// GONE-NOT: %buffer.
+// GONE-NOT: %affine.
+// GONE-NOT: %refly.
+// GONE-NOT: Tileable
+// GONE-NOT: tileable
+// GONE-NOT: strip_mine
+// GONE-NOT: restrict_par
+// GONE-NOT: retile
+
+plugin core;
+plugin tensor;
+plugin cps;
+plugin affine;
+plugin mem;
+plugin refly;
+plugin compile;
+
+// ---- Minimal slice of the Tileable interface (see tensor_tile.mim) -----------
+let Tileable = [
+    Out: [ro: Nat, so: «ro; Nat»] → *,
+    Ro: Nat, Rr: Nat,
+    So: «Ro; Nat»,
+    oax: «Ro; Nat»,
+    Sr: «%core.nat.add (Ro, Rr); Nat»,
+    retile: [Ro_n Rr_n: Nat]
+          → [So_n: «Ro_n; Nat», Sr_n: «%core.nat.add (Ro_n, Rr_n); Nat»]
+          → [iota:  «%core.nat.add (Ro_n, Rr_n); %affine.index» → «%core.nat.add (Ro, Rr); %affine.index»,
+             omega: [«Ro; %affine.index», «%core.nat.add (Ro_n, Rr_n); %affine.index»] → «Ro_n; %affine.index»]
+          → Out (Ro_n, So_n),
+];
+
+lam comp_map {A B C: *} (m: B → C, g: A → B) (o: A): C = m (g o);
+
+lam mr_tileable {nis: Nat}
+                {To: *, Ro Rr: Nat}
+                (So: «Ro; Nat», oax: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
+                {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
+                (map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»)
+                (maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»)
+                (is: «i: nis; «Sis#i; Tis#i»»)
+              : Tileable =
+    lam out_t (ro: Nat, so: «ro; Nat»): * = «so; To»;
+    lam retile (Ro_n Rr_n: Nat)
+               (So_n: «Ro_n; Nat», Sr_n: «%core.nat.add (Ro_n, Rr_n); Nat»)
+               (iota:  «%core.nat.add (Ro_n, Rr_n); %affine.index» → «%core.nat.add (Ro, Rr); %affine.index»,
+                omega: [«Ro; %affine.index», «%core.nat.add (Ro_n, Rr_n); %affine.index»] → «Ro_n; %affine.index»)
+             : «So_n; To» =
+        lam map_out_n (o: «%core.nat.add (Ro_n, Rr_n); %affine.index»): «Ro_n; %affine.index» =
+            omega (map_out (iota o), o);
+        %tensor.map_reduce @nis @(To, Ro_n, Rr_n) (So_n, Sr_n)
+            @(Tis, Ris, Sis) (f, init)
+            map_out_n
+            ‹i: nis; comp_map (maps#i, iota)›
+            is;
+    (out_t, Ro, Rr, So, oax, Sr, retile);
+
+lam materialize (t: Tileable): t#Out (t#Ro, t#So) =
+    lam id_i (o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «%core.nat.add (t#Ro, t#Rr); %affine.index» = o;
+    lam id_o (oo: «t#Ro; %affine.index», o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «t#Ro; %affine.index» = oo;
+    t#retile (t#Ro, t#Rr) (t#So, t#Sr) (id_i, id_o);
+
+lam nat_lt (a b: Nat): Bool = %core.ncmp.l (a, b);
+lam nat_eq (a b: Nat): Bool = %core.ncmp.e (a, b);
+lam shift_ax (a x: Nat): Nat = %core.select (nat_lt (x, a), x, %core.nat.add (x, 1));
+
+lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
+    ‹i: m; let ii = %core.bitcast Nat i;
+           %core.select (nat_lt (ii, d), v#(%core.idx n 0 ii),
+           %core.select (nat_eq (ii, d), nt,
+           %core.select (nat_eq (ii, %core.nat.add (d, 1)), ts,
+           v#(%core.idx n 0 (%core.nat.sub (ii, 1))))))›;
+
+lam split_iota (m n d ts: Nat) (o: «m; %affine.index»): «n; %affine.index» =
+    ‹j: n; let jj = %core.bitcast Nat j;
+           %core.select (nat_lt (jj, d), o#(%core.idx m 0 jj),
+           %core.select (nat_eq (jj, d),
+                         %affine.op.add (%affine.semiop.mul (o#(%core.idx m 0 d), ts),
+                                         o#(%core.idx m 0 (%core.nat.add (d, 1)))),
+           o#(%core.idx m 0 (%core.nat.add (jj, 1)))))›;
+
+lam split_omega (m n a ts: Nat) (oc: «n; %affine.index»): «m; %affine.index» =
+    ‹j: m; let jj = %core.bitcast Nat j;
+           %core.select (nat_lt (jj, a), oc#(%core.idx n 0 jj),
+           %core.select (nat_eq (jj, a), %affine.semiop.floordiv (oc#(%core.idx n 0 a), ts),
+           %core.select (nat_eq (jj, %core.nat.add (a, 1)), %affine.semiop.mod (oc#(%core.idx n 0 a), ts),
+           oc#(%core.idx n 0 (%core.nat.sub (jj, 1))))))›;
+
+lam check_div (sd ts: Nat): Nat =
+    %refly.check (%core.ncmp.e (%core.nat.mul (%core.nat.div (sd, ts), ts), sd),
+                  sd, "strip_mine: tile size must divide the extent");
+
+lam strip_mine_par (t: Tileable, d ts: Nat)@%core.pe.is_closed ts: Tileable =
+    let r    = %core.nat.add (t#Ro, t#Rr);
+    let ro_n = %core.nat.add (t#Ro, 1);
+    let r_n  = %core.nat.add (%core.nat.add (t#Ro, 1), t#Rr);
+    let a    = t#oax#(%core.idx (t#Ro) 0 d);
+    let sd   = %refly.check (%core.ncmp.e (t#So#(%core.idx (t#Ro) 0 a), t#Sr#(%core.idx r 0 d)),
+                             t#Sr#(%core.idx r 0 d),
+                             "strip_mine_par: output extent (at oax#d) must match domain extent");
+    let nt   = %core.nat.div (check_div (sd, ts), ts);
+    let oax_n = ‹j: ro_n; let jj = %core.bitcast Nat j;
+                          %core.select (nat_lt (jj, d), shift_ax (a, t#oax#(%core.idx (t#Ro) 0 jj)),
+                          %core.select (nat_eq (jj, d), a,
+                          %core.select (nat_eq (jj, %core.nat.add (d, 1)), %core.nat.add (a, 1),
+                          shift_ax (a, t#oax#(%core.idx (t#Ro) 0 (%core.nat.sub (jj, 1)))))))›;
+    lam retile_n (ro_m rr_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat»)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r_n; %affine.index»,
+                  omega: [«ro_n; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+               : t#Out (ro_m, so_m) =
+        lam iota_c  (o:  «%core.nat.add (ro_m, rr_m); %affine.index»): «r; %affine.index» =
+            split_iota (r_n, r, d, ts) (iota o);
+        lam omega_c (oo: «t#Ro; %affine.index», ov: «%core.nat.add (ro_m, rr_m); %affine.index»): «ro_m; %affine.index» =
+            omega (split_omega (ro_n, t#Ro, a, ts) oo, ov);
+        t#retile (ro_m, rr_m) (so_m, sr_m) (iota_c, omega_c);
+    (t#Out, ro_n, t#Rr,
+     split_bounds (ro_n, t#Ro, t#So, a, ts, nt), oax_n,
+     split_bounds (r_n, r, t#Sr, d, ts, nt), retile_n);
+
+lam restrict_par (t: Tileable, d lo hi: Nat): Tileable =
+    let r  = %core.nat.add (t#Ro, t#Rr);
+    let e  = %core.nat.sub (hi, lo);
+    let a  = t#oax#(%core.idx (t#Ro) 0 d);
+    let sr_n = ‹i: r; %core.select (nat_eq (%core.bitcast Nat i, d), e, t#Sr#i)›;
+    let so_n = ‹i: t#Ro; %core.select (nat_eq (%core.bitcast Nat i, a), e, t#So#i)›;
+    lam iota_d (o: «r; %affine.index»): «r; %affine.index» =
+        ‹j: r; %core.select (nat_eq (%core.bitcast Nat j, d),
+                             %affine.op.add (o#j, %affine.constant lo), o#j)›;
+    lam omega_d (oo: «t#Ro; %affine.index»): «t#Ro; %affine.index» =
+        ‹j: t#Ro; %core.select (nat_eq (%core.bitcast Nat j, a),
+                                %affine.op.sub (oo#j, %affine.constant lo), oo#j)›;
+    lam retile_n (ro_m rr_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat»)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r; %affine.index»,
+                  omega: [«t#Ro; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+               : t#Out (ro_m, so_m) =
+        lam iota_c  (o:  «%core.nat.add (ro_m, rr_m); %affine.index»): «r; %affine.index» =
+            iota_d (iota o);
+        lam omega_c (oo: «t#Ro; %affine.index», ov: «%core.nat.add (ro_m, rr_m); %affine.index»): «ro_m; %affine.index» =
+            omega (omega_d oo, ov);
+        t#retile (ro_m, rr_m) (so_m, sr_m) (iota_c, omega_c);
+    (t#Out, t#Ro, t#Rr, so_n, t#oax, sr_n, retile_n);
+
+// ---- Runtime-extent matmuls -----------------------------------------------------
+let I32Ring: %tensor.Ring = (I32, 0I32, %core.wrap.add @4294967296 0, %core.wrap.mul @4294967296 0);
+
+lam mk_mm {n: Nat} (a_n: «n, 4; I32», b: «4, 4; I32»): Tileable =
+    mr_tileable @2 @(I32, 2, 1) ((n, 4), (0, 1), (n, 4, 4))
+        @((I32, I32), (2, 2), ((n, 4), (4, 4)))
+        (dot_general_fun I32Ring, 0I32)
+        (%tensor.proj_map @(3, 2) (0, 1))
+        (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+        (a_n, b);
+
+// Peel, main part: rows [0, (n/3)·3) in tiles of 3. nm is divisible by 3 by
+// construction, so check_div discharges symbolically despite n being runtime.
+fun extern rt_peel_main {n: Nat} (a_n: «n, 4; I32», b: «4, 4; I32»)
+                      : «%core.nat.mul (%core.nat.div (n, 3), 3), 4; I32» =
+    let nm = %core.nat.mul (%core.nat.div (n, 3), 3);
+    let pk = materialize (strip_mine_par (restrict_par (mk_mm (a_n, b), 0, 0, nm), 0, 3));
+    return (%tensor.reshape (%tensor.shape 3 pk) (nm, 4) pk);
+
+// Peel, epilogue: rows [(n/3)·3, n).
+fun extern rt_peel_epi {n: Nat} (a_n: «n, 4; I32», b: «4, 4; I32»)
+                     : «%core.nat.sub (n, %core.nat.mul (%core.nat.div (n, 3), 3)), 4; I32» =
+    let nm = %core.nat.mul (%core.nat.div (n, 3), 3);
+    return (materialize (restrict_par (mk_mm (a_n, b), 0, nm, n)));
+
+// Pad + slice: pad the rows up to np = ⌈n/3⌉·3 with the fold-neutral element, tile
+// evenly (np is divisible by 3 by construction), slice the n valid rows back out.
+fun extern rt_pad {n: Nat} (a_n: «n, 4; I32», b: «4, 4; I32»): «n, 4; I32» =
+    let np  = %core.nat.mul (%core.nat.div (%core.nat.add (n, 2), 3), 3);
+    let hi  = %core.nat.sub (np, n);
+    let a_p = %tensor.pad (n, 4) (0, (0, 0), (hi, 0)) (a_n, 0I32);
+    let mm_p: Tileable =
+        mr_tileable @2 @(I32, 2, 1) ((np, 4), (0, 1), (np, 4, 4))
+            @((I32, I32), (2, 2), ((%core.nat.add (n, hi), 4), (4, 4)))
+            (dot_general_fun I32Ring, 0I32)
+            (%tensor.proj_map @(3, 2) (0, 1))
+            (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+            (a_p, b);
+    let pk = materialize (strip_mine_par (mm_p, 0, 3));
+    let rp = %tensor.reshape (%tensor.shape 3 pk) (np, 4) pk;
+    return (%tensor.slice @(I32, 2) (np, 4) ((0, 0), (1, 1), (n, 4)) rp);
+
+// ---- Runtime driver ---------------------------------------------------------------
+// `n = argc + 4` is runtime-only (argc = 1 ⇒ n = 5). `a_n = repeat base` cycles the base rows, so
+// (global) row i of `a_n` is filled with (i mod 4) + 1; multiplying with the identity `id4` reproduces
+// the rows. Probes into the pad+slice result: row 0 = 1, row 4 = 1, row 3 = 4.
+// Exit code: 1 + 10·1 + 100·4 = 411 mod 256 = 155 (see tiling_dyn_run.mim).
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]] =
+    let base: «4, 4; I32» = (‹4; 1I32›, ‹4; 2I32›, ‹4; 3I32›, ‹4; 4I32›);
+    let id4:  «4, 4; I32» = ((1I32, 0I32, 0I32, 0I32),
+                             (0I32, 1I32, 0I32, 0I32),
+                             (0I32, 0I32, 1I32, 0I32),
+                             (0I32, 0I32, 0I32, 1I32));
+    let n   = %core.nat.add (%core.bitcast Nat argc, 4);
+    let a_n = %tensor.repeat @(I32, 2) (4, 4) (n, 4) base;
+    con k_pad [rp: «n, 4; I32»] =
+        let p0 = %tensor.get @(I32, 2, (n, 4)) (rp, (%core.idx n 0 0, 0_4));
+        let p4 = %tensor.get @(I32, 2, (n, 4)) (rp, (%core.idx n 0 4, 0_4));
+        let p3 = %tensor.get @(I32, 2, (n, 4)) (rp, (%core.idx n 0 3, 0_4));
+        let chk = %core.wrap.add 0 (p0,
+                  %core.wrap.add 0 (%core.wrap.mul 0 (10I32, p4),
+                                    %core.wrap.mul 0 (100I32, p3)));
+        return (mem, chk);
+    rt_pad ((a_n, id4), k_pad);
+
+// // Stop after loop lowering: bufferization of dynamic-extent tensors is a known backend
+// // gap, orthogonal to the tiling interface (cf. conv_dynamic.mim).
+// lam extern _compile (): %compile.Phase =
+//     %compile.phases ff (
+//         %compile.internal_cleanup,
+//         %tensor.lower_tensor,
+//         %tensor.fuse_tensor,
+//         %tensor.lower_map_reduce,
+//         %affine.lower_index,
+//         %affine.lower_for,
+//         %compile.internal_cleanup,
+//     );
