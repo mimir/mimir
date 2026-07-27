@@ -9,17 +9,17 @@ fun f(a: I32): I32 =
     let b = a;
     return b;
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]] =
     let f_diff = %autodiff.ad f;
     let f_diff_cast = f_diff;
 
     let c = 43I32;
     f_diff_cast (c, ret_cont)
     where
-        con ret_cont (r: I32, pb: Cn [I32, Cn [I32]]) =
+        con ret_cont [r:I32, pb:Cn[I32, Cn[I32]]] =
             pb(1I32, pb_ret_cont)
             where
-                con pb_ret_cont (pr: I32) =
+                con pb_ret_cont [pr:I32] =
                     let c = %core.wrap.mul 0 (100I32, r);
                     let d = %core.wrap.add 0 (c, pr);
                     return (mem, d);

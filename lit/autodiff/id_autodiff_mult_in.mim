@@ -8,15 +8,15 @@ fun f(a b: I32): I32 =
     let x = b;
     return x;
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]] =
     let f_diff = %autodiff.ad f;
     let c      = (42I32, 43I32);
     f_diff (c, ret_cont)
     where
-        con ret_cont(r: I32, pb: Cn [I32, Cn [I32, I32]]) =
+        con ret_cont(r:I32, pb: Cn[I32, Cn[I32, I32]]) =
             pb(1I32, pb_ret_cont)
             where
-                con pb_ret_cont (pr_a: I32, pr_b: I32) =
+                con pb_ret_cont [pr_a:I32, pr_b:I32] =
                     let sr = %core.wrap.mul 0 (10000I32, r);
                     let sa = %core.wrap.mul 0 (100I32, pr_a);
                     let sb = pr_b;

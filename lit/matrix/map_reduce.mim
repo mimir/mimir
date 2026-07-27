@@ -4,10 +4,10 @@
 plugin core;
 plugin matrix;
 
-fun identity(mem: %mem.M 0, a:   I32): (%mem.M 0, I32) = return (mem, a);
-fun addition(mem: %mem.M 0, a b: I32): (%mem.M 0, I32) = return (mem, %core.wrap.add 0 (a, b));
+fun identity(mem: %mem.M 0, a:   I32): [%mem.M 0, I32] = return (mem, a);
+fun addition(mem: %mem.M 0, a b: I32): [%mem.M 0, I32] = return (mem, %core.wrap.add 0 (a, b));
 
-fun extern f(mem: %mem.M 0, k l: Nat, M: %buffer.Buf (2, (k, l), I32)): (%mem.M 0, %buffer.Buf (2, (l, k), I32)) =
+fun extern f(mem: %mem.M 0, k l: Nat, M: %buffer.Buf (2, (k, l), I32)): [%mem.M 0, %buffer.Buf (2, (l, k), I32)] =
     let MT = %matrix.map_reduce
         (
             2, (l, k), I32,
