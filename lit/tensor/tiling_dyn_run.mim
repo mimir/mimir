@@ -1,0 +1,12 @@
+// RUN: rm -f tiling_dyn.ll
+// RUN: FILE=%s;%mim -p opt -p clos -o - ${FILE%_run.mim}.mim -p ll
+// RUN: clang tiling_dyn.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 155
+// RUN: %t x ; test $? -eq 155
+// RUN: %t x y z ; test $? -eq 155
+
+// Compiles tiling_dyn.mim (tiling with runtime-only extents, pad+slice strategy) to an
+// executable and asserts the probe checksum for several dynamic sizes: n = argc + 4, so
+// the three runs exercise n = 5 and n = 8 (padding: 3 ∤ n) as well as n = 6 (even tiles).
+// Row i of `a_n · id4` is filled with (i mod 4) + 1, so for every n ≥ 5 the probes give
+// row0 + 10·row4 + 100·row3 = 1 + 10·1 + 100·4 = 411 ≡ 155 (mod 256).
