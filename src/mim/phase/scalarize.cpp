@@ -180,6 +180,10 @@ const Def* Scalarize::Analysis::rewrite(const Def* old) {
 Vector<bool> Scalarize::Analysis::plan(const Def* type) const {
     auto mask = Vector<bool>();
     if (auto pi = isa_flattenable(type)) {
+        // A *dependent* domain (a mut Sigma whose components reference siblings through its Var, e.g. a
+        // runtime extent `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) must not be flattened at all:
+        // splitting any component shifts the indices the dependent references are bound to.
+        if (auto sig = pi->dom()->isa_mut<Sigma>(); sig && sig->has_var()) return mask;
         auto n   = pi->num_tdoms();
         auto any = false;
         mask.assign(n, false);
