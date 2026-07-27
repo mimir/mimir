@@ -9,8 +9,9 @@
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
-#include "mim/plug/core/core.h"
-#include "mim/plug/ll/autogen.h"
+#include <mim/plug/core/core.h>
+
+#include "mim/plug/ll/ll.h"
 
 namespace mim::plug::ll {
 
