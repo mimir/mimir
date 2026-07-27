@@ -128,81 +128,41 @@ axm %matrix.concat: {T: *, nis r: Nat}
 ///
 /// Follows the principle `ij ← ik, kj` (`out[i, j] = Σ_k in1[i, k] · in2[k, j]`) using multiplication as
 /// combination and addition as reduction.
-fun %matrix.map_reduce_prod(m k l: Nat, pe: «2; Nat»)
-    (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe), N: %buffer.Buf (2, (k, l), %math.F pe))@tt
-    : [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)] =
+fun %matrix.map_reduce_prod (m k l: Nat, pe: «2; Nat») (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe), N: %buffer.Buf (2, (k, l), %math.F pe))@tt: [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
-    return (
-        %matrix.map_reduce
-            (2, (m, l), R,
-                2,
-                (2, 2),
-                (R, R),
-                ((m, k), (k, l))
-            )
-            (
-                mem,
-                zero_real,
-                fn (mem: %mem.M 0, acc: R, ab: «2; R»): [%mem.M 0, R] =
-                    return (mem, %math.arith.add 0 (acc, %math.arith.mul 0 ab)),
-                (
-                    ((0, 2), M),
-                    ((2, 1), N)
-                )
-            )
-    );
+    return (%matrix.map_reduce
+        (2, (m, l), R, 2, (2, 2), (R, R), ((m, k), (k, l)))
+        (mem, zero_real,
+            fn (mem: %mem.M 0, acc: R, ab: «2; R»): [%mem.M 0, R] =
+                return (mem, %math.arith.add 0 (acc, %math.arith.mul 0 ab)),
+            (((0, 2), M), ((2, 1), N))));
 ///
 /// ### %%matrix.map_reduce_transpose
 ///
 /// Transpose a matrix by iterating the indices in swapped order.
-fun %matrix.map_reduce_transpose((k l: Nat), T: *)
-    (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt
-    : [%mem.M 0, %buffer.Buf (2, (l, k), T)] =
+fun %matrix.map_reduce_transpose ((k l: Nat), T: *) (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt: [%mem.M 0, %buffer.Buf (2, (l, k), T)] =
     let zero = ⊥:T;
-    return (
-        %matrix.map_reduce
-            (2, (l, k), T,
-                1,
-                2,
-                T,
-                (k, l)
-            )
-            (
-                mem,
-                zero,
-                // We ignore the (zero) accumulator and just return the read value.
-                fn (mem: %mem.M 0, acc a: T): [%mem.M 0, T] = return (mem, a),
-                ((1, 0), M)
-            )
-    );
+    return (%matrix.map_reduce
+        (2, (l, k), T, 1, 2, T, (k, l))
+        (mem, zero,
+            // We ignore the (zero) accumulator and just return the read value.
+            fn (mem: %mem.M 0, acc a: T): [%mem.M 0, T] = return (mem, a),
+            ((1, 0), M)));
 ///
 /// ### %%matrix.map_reduce_sum
 ///
 /// Sums up all elements of a matrix and returns a scalar.
-fun %matrix.map_reduce_sum(n: Nat, S: «n; Nat», pe: «2; Nat»)
-    (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt
-    : [%mem.M 0, %math.F pe] =
+fun %matrix.map_reduce_sum(n: Nat, S: «n; Nat», pe: «2; Nat») (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt: [%mem.M 0, %math.F pe] =
     let R = %math.F pe;
-    let zero_64 = 0.0:(%math.F (52,11));
-    let zero_real = %math.conv.f2f pe zero_64;
+    let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     let idxs = ‹i: n; %core.nat.add (1, %core.bitcast Nat i)›;
     let (mem, res) = %matrix.map_reduce
-        (1, (1), R,
-            1,
-            n,
-            R,
-            S
-        )
-        (
-            mem,
-            zero_real,
-            fn (mem: %mem.M 0, acc: R, a: R): [%mem.M 0, R]
-                = return (mem, %math.arith.add 0 (acc, a)),
-            (
-                (idxs, M)
-            )
-        );
+        (1, 1, R, 1, n, R, S)
+        (mem, zero_real,
+            fn (mem: %mem.M 0, acc: R, a: R): [%mem.M 0, R] =
+                return (mem, %math.arith.add 0 (acc, a)),
+            (idxs, M));
     return (mem, %core.bitcast R res);
 ///
 /// ## Phases
