@@ -4,3 +4,9 @@ add_mim_plugin(ll_nvptx
         phase/ll_nvptx.cpp
     INSTALL
 )
+
+add_mim_runtime(ll_nvptx
+    SOURCES
+        rt/mim_cuda_rt.c
+    INSTALL
+)

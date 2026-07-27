@@ -134,11 +134,12 @@ add_mim_runtime(foo
 )
 ```
 
-Each source is compiled to `<libdir>/mim/rt/<source-stem>.ll` (next to the plugins) and, with `INSTALL`, installed alongside them.
-This step is optional: it requires `clang` (discovered as `MIM_CLANG`) and is skipped when `clang` is unavailable or `MIM_BUILD_LL_RUNTIME` is `OFF`.
+All sources are merged into a single module `<libdir>/mim/rt/<plugin>_rt.ll` (next to the plugins) and, with `INSTALL`, installed alongside them — one runtime module per plugin, addressable by a well-known name no matter how many `.c` files it is split into.
+This step is optional: it requires `clang` (discovered as `MIM_CLANG`; merging multiple sources additionally needs `llvm-link`) and is skipped when `clang` is unavailable or `MIM_BUILD_LL_RUNTIME` is `OFF`.
 
 The [`ll`](@ref ll) backend locates such a runtime module via the driver's [search paths](@ref cli) and either embeds it into or links it with its emitted module, selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`; see the [CLI reference](@ref cli).
-The in-tree example is `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmpbuf_size` for `%%clos.alloc_jmpbuf`.
+The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmpbuf_size` for `%%clos.alloc_jmpbuf`, and `src/mim/plug/ll_nvptx/rt/mim_cuda_rt.c`, whose `@mim_cu_check` performs the `ll_nvptx` backend's CUDA driver-API error handling.
+The `ll_nvptx` backend reuses the very same [`load_rt_module`](@ref mim::plug::ll::Emitter::load_rt_module) helper as `ll`, differing only in the runtime module it names.
 
 The authoritative reference for `add_mim_runtime` lives in [`cmake/Mim.cmake`](@ref add_mim_runtime_cmake).
 

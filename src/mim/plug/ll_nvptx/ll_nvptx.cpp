@@ -166,6 +166,7 @@ public:
         c.dev_bc_raw_name = name + "_dev_raw.bc"s;
         c.dev_bc_opt_name = name + "_dev_opt.bc"s;
 
+        auto rt = ll::Emitter::Rt::embed;
         for (const auto& arg : args()) {
             world().DLOG("ll backend arg: `{}`", arg);
             // clang-format off
@@ -184,6 +185,8 @@ public:
             else if (arg == "no-embed")              c.embed_device_code = false;
             else if (arg == "no-ptx-embed")          c.embed_ptx         = false;
             else if (arg == "no-cubin-embed")        c.embed_cubin       = false;
+            else if (arg == "rt=embed")              rt                  = ll::Emitter::Rt::embed;
+            else if (arg == "rt=extern")             rt                  = ll::Emitter::Rt::ext;
             // clang-format on
         }
 
@@ -217,7 +220,7 @@ public:
         }
         auto device_fatbin_file = c.embed_device_code ? std::optional(c.dev_fatbin_name) : std::nullopt;
         auto host_ofs           = std::ofstream(c.host_ll_name);
-        emit_host(setup_phase->old_world(), host_ofs, device_fatbin_file);
+        emit_host(setup_phase->old_world(), host_ofs, device_fatbin_file, rt);
 
         if (c.embed_device_code) {
             std::println(std::cout, "Unified (Fat) LLVM IR written to {}", c.host_ll_name);

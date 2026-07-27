@@ -2,8 +2,6 @@
 
 #include <fstream>
 #include <iomanip>
-#include <iterator>
-#include <optional>
 #include <ranges>
 #include <string>
 
@@ -21,21 +19,6 @@ using namespace std::string_literals;
 namespace clos = mim::plug::clos;
 namespace core = mim::plug::core;
 namespace vec  = mim::plug::vec;
-
-/// Locates the runtime wrapper module `mim_rt.ll` (see `rt/mim_rt.c`) in the driver's search paths
-/// and returns its textual LLVM IR, or `std::nullopt` if it cannot be found or read.
-static std::optional<std::string> read_rt_module(World& world) {
-    for (const auto& dir : world.driver().search_paths()) {
-        auto path = dir / "rt" / "mim_rt.ll";
-        std::error_code ec;
-        if (!fs::is_regular_file(path, ec) || ec) continue;
-        if (auto ifs = std::ifstream(path)) {
-            world.DLOG("ll backend: embedding runtime module `{}`", path.string());
-            return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
-        }
-    }
-    return std::nullopt;
-}
 
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
@@ -64,8 +47,7 @@ public:
         auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), "llvm_emitter", ofs);
         emitter.rt_mode(rt);
-        if (rt == Emitter::Rt::embed)
-            if (auto rt_ll = read_rt_module(world())) emitter.rt_module(std::move(*rt_ll));
+        if (rt == Emitter::Rt::embed) emitter.load_rt_module("ll_rt.ll");
         emitter.run();
     }
 };

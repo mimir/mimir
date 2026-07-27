@@ -38,12 +38,16 @@ fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
 
     return (m0, val);
 
+// The CUresult error handling is offloaded to the C runtime wrapper `@mim_cu_check` (rt/mim_cuda_rt.c);
+// in the default `embed` mode its definition is spliced into the host module (issue #486).
+// HOST: define{{.*}}@mim_cu_check
 // HOST: define i32 @main(
 // HOST-DAG: call i8* @malloc(i64 4)
 // HOST-DAG: call i32 @cuInit(i32 0)
 // HOST-DAG: call i32 @cuCtxCreate
 // HOST-DAG: call i32 @cuModuleLoad
 // HOST-DAG: call i32 @cuMemAlloc
+// HOST-DAG: call void @mim_cu_check(
 // HOST: call i32 @cuMemcpyHtoD
 // HOST: call i32 @cuLaunchKernel
 // HOST: call i32 @cuMemcpyDtoH
