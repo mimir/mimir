@@ -1,5 +1,7 @@
 #include "mim/plug/tensor/phase/lower_to_mem.h"
 
+#include <functional>
+
 #include "mim/axm.h"
 #include "mim/def.h"
 #include "mim/lam.h"
@@ -140,6 +142,32 @@ void LowerToMem::collect_tensor_types() {
 
     for (auto mut : old_world().externals().muts())
         if (auto lam = mut->isa_mut<Lam>(); lam && is_tensor_fn(lam)) tensor_fns_.emplace(lam);
+
+    // A shape-polymorphic tensor function (`fun extern f {n} (…): …`) hides its tensor-carrying `con` behind
+    // an implicit shape parameter: its type is a non-`Cn` Pi whose codomain is a continuation mentioning
+    // tensors. The tensor types in that codomain name their parameter with the Pi's own var, distinct from
+    // (but alpha-equivalent to) the lam var used by the body's ops — which is what the sweep above recorded.
+    // Record the codomain's boundary Arr types too, so `conv_boundary` recognizes them when rewriting the
+    // function's signature (see rewrite_mut_Lam). Walk only parameter positions (through `Cn`/`Sigma`), never
+    // into `Arr` element types, mirroring `conv_boundary`.
+    std::function<void(const Def*)> record_boundary = [&](const Def* t) {
+        if (t->isa<Arr>())
+            add_tensor_ty(t);
+        else if (auto cn = Pi::isa_cn(t))
+            record_boundary(cn->dom());
+        else if (auto sig = t->isa<Sigma>())
+            for (auto op : sig->ops()) record_boundary(op);
+    };
+    for (auto mut : old_world().externals().muts())
+        if (auto lam = mut->isa_mut<Lam>(); lam && lam->is_set() && !op_args_.contains(lam))
+            if (auto pi = lam->type()->isa_mut<Pi>(); pi && !Pi::isa_cn(pi) && mentions_tensor(pi->codom())) {
+                // The uncurrying rewrite (see rewrite_mut_Lam) needs the tensor-carrying `con` directly as
+                // the wrapper's body and a continuation codomain to splice the shape parameters into.
+                if (!Pi::isa_cn(pi->codom()) || !lam->body()->isa_mut<Lam>())
+                    gate("shape-polymorphic tensor function without a continuation body", lam);
+                record_boundary(pi->codom());
+                shape_poly_.emplace(lam);
+            }
     // No tensor boundaries AND no tensor ops: nothing for the sweeps below to check.
     // (Ops without boundaries still bufferize: their value-world operands are materialized.)
     if (tensor_fns_.empty() && !ops_seen_) return;
@@ -161,12 +189,26 @@ void LowerToMem::collect_tensor_types() {
     while (!wl2.empty()) {
         auto def = wl2.pop();
 
+        // A call of a shape-polymorphic function (`f @n (args…)`): record the *instantiated* boundary types —
+        // the loop above recorded only the signature's Pi-var versions — so the call-site flattening
+        // (see rewrite_imm_App) can materialize/convert the value arguments.
+        if (auto app = def->isa<App>())
+            if (auto sh = app->callee()->isa<App>())
+                if (auto f = sh->callee()->isa_mut<Lam>(); f && shape_poly_.contains(f))
+                    for (auto a : app->arg()->projs()) record_boundary(a->type());
+
         for (auto op : def->ops()) {
             if (!op) continue;
+            // A partially applied shape-polymorphic function is only legal as the callee of the value-level
+            // application — its curried form does not survive the uncurrying rewrite.
+            if (auto sh = op->isa<App>())
+                if (auto f = sh->callee()->isa_mut<Lam>(); f && shape_poly_.contains(f))
+                    if (!(def->isa<App>() && def->as<App>()->callee() == op))
+                        return gate("partially applied shape-polymorphic bufferized function", op);
             if (auto fn = op->isa_mut<Lam>()) {
                 // A bufferized function referenced as a value (not as the callee of a call, and not the
                 // binder back-reference of its own variable) cannot be adapted.
-                if (tensor_fns_.contains(fn))
+                if (tensor_fns_.contains(fn) || shape_poly_.contains(fn))
                     if (!(def->isa<App>() && def->as<App>()->callee() == op) && !def->isa<Var>())
                         return gate("bufferized function used as a value", fn);
                 if (!tensor_fns_.contains(fn) && !op_args_.contains(fn) && mentions_tensor(fn->type()->dom())) {
@@ -232,6 +274,12 @@ bool LowerToMem::is_tensor_fn(Lam* lam) const {
 
 const Def* LowerToMem::conv_boundary(const Def* t) {
     if (tensor_ty_.contains(t)) return buf_of(t);
+    // A nested continuation domain (e.g. the return continuation of a bufferized function, or a `Cn`
+    // component of a grouped parameter sigma) must have *its* domain converted. Handling it here — not only
+    // in the top-level tensor-fn rewrite — is what lets the local-continuation path convert the return
+    // continuation of a function whose tensor-carrying `con` is nested behind an implicit parameter (e.g.
+    // `{n: Nat}`), where the whole parameter sigma (return continuation included) is passed to conv_boundary.
+    if (auto pi = Pi::isa_cn(t); pi && mentions_tensor(pi->dom())) return new_world().cn(conv_boundary(pi->dom()));
     if (auto sig = t->isa_imm<Sigma>(); sig && mentions_tensor(sig)) {
         auto n = sig->num_ops();
         DefVec ops(n);
@@ -244,6 +292,55 @@ const Def* LowerToMem::conv_boundary(const Def* t) {
 
 const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     if (is_bootstrapping()) return RWPhase::rewrite_mut_Lam(lam);
+
+    // A shape-polymorphic tensor function: a *curried* lam whose codomain is a continuation type that
+    // mentions tensors, e.g. `Π{n: Nat}. Cn [«n, 4; T», Cn «n, 4; T»]` from `fun extern f {n} (...) = …`.
+    // The tensor-carrying `con` sits behind the implicit shape parameter, so `is_tensor_fn` (which only
+    // inspects the dom) does not fire. The curried form cannot survive to the backends — there is no runtime
+    // ABI for a shape-indexed *family* of functions — so it is *uncurried*: the shape parameters become
+    // leading value parameters of a first-order `con [n: Nat, %buffer.Buf (2, (n, 4), T), …]`. The converted
+    // domain is a *dependent* Sigma naming the shape parameters through its own Var — a closed type that
+    // later signature-rewriting phases (AddMem, ClosConv, SEO, LowerTypedClos) rebuild binder-aware and the
+    // LLVM backend lowers locally at emission (a runtime extent becomes `[0 x T]`). Call sites are flattened
+    // correspondingly (see rewrite_imm_App).
+    if (shape_poly_.contains(lam)) {
+        auto& w       = new_world();
+        auto pi       = lam->type()->as_mut<Pi>();
+        auto inner_pi = Pi::isa_cn(pi->codom());
+        auto inner    = lam->body()->as_mut<Lam>();
+        auto k        = pi->num_doms();       // shape parameters
+        auto m        = inner_pi->num_doms(); // value parameters (return continuation included)
+        auto n        = k + m;
+
+        // Build the dependent dom Sigma first: map the signature's shape vars to the Sigma's own vars, so
+        // `conv_boundary` rewrites the precise extents against them. Shape parameters reference nothing,
+        // value parameters only shape parameters — so setting ops in order is well-founded. Each shape dom is
+        // set *before* its var is mapped: the var projection types itself by reducing the corresponding op.
+        auto sigma = w.mut_sigma(n);
+        for (size_t i = 0; i != k; ++i) {
+            sigma->set(i, rewrite(pi->dom(i)));
+            map(pi->var(k, i), sigma->var(n, i));
+        }
+        if (k > 1) map(pi->var(), w.tuple(DefVec(k, [&](size_t i) { return sigma->var(n, i); })));
+        for (size_t i = 0; i != m; ++i) sigma->set(k + i, conv_boundary(inner_pi->dom(i)));
+
+        auto new_lam = w.mut_con(sigma)->set(lam->dbg());
+        map(lam, new_lam);
+        map(inner, new_lam);
+        // The shape parameter is named by two distinct (alpha-equivalent) vars: the Pi's var in the
+        // signature's types (mapped to the Sigma's vars above), the lam's var in the body — map the latter
+        // to the new parameters, under which the body's precise types rewrite to exactly the parameters'
+        // types (the Sigma reduces against the lam's var).
+        for (size_t i = 0; i != k; ++i) map(lam->var(i), new_lam->var(n, i));
+        if (k > 1) map(lam->var(), w.tuple(DefVec(k, [&](size_t i) { return new_lam->var(n, i); })));
+        for (size_t i = 0; i != m; ++i)
+            map(inner->var(i), new_lam->var(n, k + i)->set(inner->var(i)->dbg()));
+        if (m > 1)
+            map(inner->var(), w.tuple(DefVec(m, [&](size_t i) { return new_lam->var(n, k + i); })));
+
+        new_lam->set(rewrite(inner->filter()), rewrite(inner->body()));
+        return new_lam;
+    }
 
     // A bufferized function: convert tensor-typed parameters to `%buffer.Buf`, including inside grouped
     // sigma parameters and continuation domains. No memory is introduced here — AddMem does that.
@@ -297,6 +394,28 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     // Call of a bufferized function: adapt the call site.
     if (auto callee = app->callee()->isa_mut<Lam>(); callee && tensor_fns_.contains(callee))
         return lower_call(app, callee);
+
+    // Call of an uncurried shape-polymorphic function `f @n (args…)`: flatten the curried application to
+    // `f (n, args…)`. Value-world tensor arguments are materialized like `lower_call` does — against their
+    // *instantiated* types, recorded by `collect_tensor_types`' second sweep. These match the callee's
+    // dependent signature definitionally: reducing the dom Sigma against the argument tuple substitutes the
+    // very shape values the instantiated types were rewritten with.
+    if (auto sh = app->callee()->isa<App>()) {
+        if (auto f = sh->callee()->isa_mut<Lam>(); f && shape_poly_.contains(f)) {
+            auto& w    = new_world();
+            auto new_f = rewrite(f);
+            auto k     = f->type()->as<Pi>()->num_doms();
+            auto m     = new_f->type()->as<Pi>()->num_doms() - k;
+
+            DefVec args(k + m);
+            for (size_t i = 0; i != k; ++i) args[i] = rewrite(sh->arg()->proj(k, i));
+            for (size_t i = 0; i != m; ++i) {
+                auto a      = app->arg()->proj(m, i);
+                args[k + i] = Pi::isa_cn(a->type()) ? rewrite(a) : materialize(a->type(), a);
+            }
+            return w.app(new_f, w.tuple(args));
+        }
+    }
 
     // Call of a converted continuation (a local lam or a parameter var whose domain mentions a tensor):
     // materialize value-world tensor arguments into buffers. Element-level lams (op_args_) keep value ABI.

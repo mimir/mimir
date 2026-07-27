@@ -102,6 +102,12 @@ private:
     /// tensor type (pure type-based role tracking aliases, e.g. an `(x y: I32)` group *is* `«2; I32»`).
     LamSet op_args_;
 
+    /// Shape-polymorphic bufferized functions (`fun extern f {n: Nat} (…)`, i.e. a curried `Π{n}. Cn […]`
+    /// whose tensor boundaries sit behind the implicit shape parameter). They are *uncurried* into a
+    /// first-order `con` over a *dependent* dom sigma `[n: Nat, %buffer.Buf (2, (n, 4), T), …]`
+    /// (see `rewrite_mut_Lam`); call sites are flattened correspondingly.
+    LamSet shape_poly_;
+
 };
 
 } // namespace mim::plug::tensor::phase
