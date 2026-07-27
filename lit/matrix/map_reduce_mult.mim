@@ -5,7 +5,7 @@ plugin core;
 plugin matrix;
 
 
-con inner_fun [[mem:%mem.M 0, acc:I32, [a:I32, b:I32]], return: Cn[%mem.M 0, I32]] =
+con inner_fun [[mem:%mem.M 0, acc:I32, [a b: I32]], return: Cn[%mem.M 0, I32]] =
     let v       = %core.wrap.mul 0 (a, b);
     let new_acc = %core.wrap.add 0 (acc, v); // reduce op = addition
     return (mem, new_acc);

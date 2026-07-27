@@ -26,21 +26,21 @@ plugin buffer;
 /// ### %%matrix.prod
 ///
 /// Matrix product of an `m × k` and a `k × l` matrix.
-axm %matrix.prod: [m: Nat, k: Nat, l: Nat, [p: Nat, e: Nat]]
+axm %matrix.prod: [m k l: Nat, [p e: Nat]]
                 → [%mem.M 0, %buffer.Buf (2, (m, k), %math.F (p, e)), %buffer.Buf (2, (k, l), %math.F (p, e))]
                 → [%mem.M 0, %buffer.Buf (2, (m, l), %math.F (p, e))], normalize_prod;
 ///
 /// ### %%matrix.transpose
 ///
 /// Transposes a `k × l` matrix.
-axm %matrix.transpose: [[k: Nat, l: Nat], T: *]
+axm %matrix.transpose: [[k l: Nat], T: *]
                      → [%mem.M 0, %buffer.Buf (2, (k, l), T)]
                      → [%mem.M 0, %buffer.Buf (2, (l, k), T)], normalize_transpose;
 ///
 /// ### %%matrix.sum
 ///
 /// Sums up all elements of a matrix and returns a scalar.
-axm %matrix.sum: [n: Nat, S: «n; Nat», [p: Nat, e: Nat]]
+axm %matrix.sum: [n: Nat, S: «n; Nat», [p e: Nat]]
                → [%mem.M 0, %buffer.Buf (n, S, %math.F (p, e))]
                → [%mem.M 0, %math.F (p, e)];
 ///

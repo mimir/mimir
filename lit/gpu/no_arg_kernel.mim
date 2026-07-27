@@ -5,7 +5,7 @@ plugin core;
 plugin gpu;
 
 con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, (), (),
+            group_id item_id: Idx 4, (), (),
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     return (m1, m3, m4, m5);
 

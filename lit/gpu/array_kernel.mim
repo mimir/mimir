@@ -5,7 +5,7 @@ plugin core;
 plugin gpu;
 
 con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, (), data: %gpu.GlobalPtr «4; I32»,
+            group_id item_id: Idx 4, (), data: %gpu.GlobalPtr «4; I32»,
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let el = %mem.lea (data, item_id);
     let val = %core.bitcast I32 item_id;

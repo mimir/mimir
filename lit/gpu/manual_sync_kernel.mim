@@ -5,7 +5,7 @@ plugin core;
 plugin gpu;
 
 con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, (), data: %gpu.GlobalPtr I32,
+            group_id item_id: Idx 4, (), data: %gpu.GlobalPtr I32,
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     ret (m3, shared_ptr) = %mem.slot («4; I32», 3) $ m3;
     let store_loc = %mem.lea (shared_ptr, item_id);

@@ -10,7 +10,7 @@
 plugin core;
 plugin gpu;
 
-con generic_kernel (n_groups: Nat, n_items: Nat)
+con generic_kernel (n_groups n_items: Nat)
                    (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
                     group_id: Idx n_groups, item_id: Idx n_items, (), data: %gpu.GlobalPtr I32,
                     return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =

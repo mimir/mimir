@@ -26,11 +26,11 @@ con extern g2 [[mem: %mem.M 0, a: I32, b:I32], return: Cn [%mem.M 0, I32]] =
     let c = %core.wrap.add 0 (a, b);
     return (mem, c);
 
-con extern g3 [[mem: %mem.M 0, [a: I32, b:I32]], return: Cn [%mem.M 0, I32]] =
+con extern g3 [[mem: %mem.M 0, [a b: I32]], return: Cn [%mem.M 0, I32]] =
     let c = %core.wrap.add 0 (a, b);
     return (mem, c);
 
-con extern g4 [mem: %mem.M 0, [a: I32, b:I32], return: Cn [%mem.M 0, I32]] =
+con extern g4 [mem: %mem.M 0, [a b: I32], return: Cn [%mem.M 0, I32]] =
     let c = %core.wrap.add 0 (a, b);
     return (mem, c);
 

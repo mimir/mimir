@@ -4,7 +4,7 @@
 plugin core;
 plugin cps;
 
-lam f(n: Nat, w: Nat): Fn Idx n → Idx n =
+lam f(n w: Nat): Fn Idx n → Idx n =
     fn (a: Idx n): Idx n =
         let b = %core.conv.u n 42I32;
         let c = %core.wrap.add w (a, b);

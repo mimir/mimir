@@ -45,7 +45,7 @@ let r1 = %vec.zip %core.nat.add ((1, 1), (2, 2));
 let r2 = %vec.zip %core.nat.add ((1, 2), (3, 3));
 let r3 = %vec.zip %core.nat.add ((1, 1), (2, 3));
 let r4 = %vec.zip %core.nat.add ((1, 2), (3, 4));
-let foo  =  %vec.zip (λ (a: Nat, b: Nat, c: Bool): I32 = 23I32) ((2, 1, 2, 3), (4, 4, 4, 4), (tt, ff, ff, tt));
+let foo  =  %vec.zip (λ (a b: Nat, c: Bool): I32 = 23I32) ((2, 1, 2, 3), (4, 4, 4, 4), (tt, ff, ff, tt));
 
 let _  = %refly.equiv.struc_eq (r0, (3));
 let _  = %refly.equiv.struc_eq (r1, (3, 3));

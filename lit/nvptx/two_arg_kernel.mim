@@ -11,7 +11,7 @@ plugin core;
 plugin gpu;
 
 con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
-            group_id: Idx 4, item_id: Idx 4, (), (data1: %gpu.GlobalPtr I32, data2: %gpu.GlobalPtr I32),
+            group_id item_id: Idx 4, (), (data1: %gpu.GlobalPtr I32, data2: %gpu.GlobalPtr I32),
             return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
     let m1 = %mem.store (m1, data1, 42I32);
     let m1 = %mem.store (m1, data2, 200I32);
