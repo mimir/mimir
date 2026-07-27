@@ -47,7 +47,7 @@ public:
         auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), "llvm_emitter", ofs);
         emitter.rt_mode(rt);
-        if (rt == Emitter::Rt::embed) emitter.load_rt_module("mim_rt.ll");
+        if (rt == Emitter::Rt::embed) emitter.load_rt_module("ll_rt.ll");
         emitter.run();
     }
 };

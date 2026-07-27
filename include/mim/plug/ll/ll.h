@@ -167,8 +167,8 @@ public:
 
     /// Locates the runtime module `rt/<filename>` (produced by `add_mim_runtime`) in the driver's
     /// search paths, reads it, and stores it for `Rt::embed` splicing.
-    /// Backends share this instead of duplicating the lookup: `ll` loads `mim_rt.ll`, `ll_nvptx`
-    /// loads `mim_cuda_rt.ll`, and so on.
+    /// Backends share this instead of duplicating the lookup: `ll` loads `ll_rt.ll`, `ll_nvptx`
+    /// loads `ll_nvptx_rt.ll`, and so on — one merged module per plugin.
     /// @returns whether the module was found.
     bool load_rt_module(std::string_view filename);
 

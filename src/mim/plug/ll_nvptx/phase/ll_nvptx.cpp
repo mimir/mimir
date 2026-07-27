@@ -532,7 +532,7 @@ void emit_host(World& world, std::ostream& ostream, std::optional<std::string> d
     HostEmitter emitter(world, ostream, device_fatbin_file);
     emitter.rt_mode(rt);
     // Same one-liner the `ll` backend uses; each backend just names its own runtime module.
-    if (rt == ll::Emitter::Rt::embed) emitter.load_rt_module("mim_cuda_rt.ll");
+    if (rt == ll::Emitter::Rt::embed) emitter.load_rt_module("ll_nvptx_rt.ll");
     emitter.run();
 }
 
