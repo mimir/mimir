@@ -8,7 +8,6 @@ When reviewing Mim source files in this repository, treat the following as codin
 - Prefer `snake_case` for value-level names such as functions, lambdas, binders, local lets, pattern-bound values, and similar term-level identifiers.
 - Prefer `CamelCase` for type-level names such as types, type constructors, and similar identifiers that denote type-level entities.
 - Flag naming that mixes these roles incorrectly, even if the Mim code is otherwise valid.
-- Prefer the primary Unicode surface syntax over ASCII alternatives when both are valid, including notations such as `0₂` over `0_2` in docs and examples.
 - For binding and return-type annotations, prefer exactly one space after the colon and none before, e.g. `lam foo (a: A, b: B): R = ...` (not `a:A`, `a : A`, or `): R` written as `) :R`). Do not flag additional spaces used for deliberate column alignment.
 - For a literal type ascription the tight form `a:T` (no surrounding spaces) is correct, e.g. `⊤:Nat` or `0.0:%math.F64`. For integer literals prefer the suffix form over an ascription, e.g. `3I32` over `3:I32`.
 - Prefer `()`-style patterns over `[]`-style patterns in a function's parameter list, but only when every element is a named binding (or a nested pattern), e.g. `con f (mem: %mem.M 0, x: I32)`. Keep `[]` when the domain contains unnamed type elements (e.g. `[mem: %mem.M 0, I32, I32]`, which cannot be a `()`-pattern) and for a `ccon`'s type list (its brackets denote a type, not a pattern).
