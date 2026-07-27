@@ -2,6 +2,7 @@
 
 #include <absl/container/fixed_array.h>
 
+#include <mim/check.h>
 #include <mim/lam.h>
 
 #include "mim/plug/mem/mem.h"
@@ -251,7 +252,11 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
         for (auto caller : lam2callers_[known])
             taint(caller);
 
-    return world().app(known, all_abstr_args.span().subspan(0, n));
+    // This app is only a lattice token ("call of `known` with these abstract args"), never emitted code.
+    // Build it unchecked: abstract args (⊤/⊥/proxies/joins) need not — and for dependent domains, where the
+    // same runtime extent may be *spelled* differently per calling context, cannot — pass the full
+    // dependent assignability check.
+    return world().raw_app(known->type()->as<Pi>()->codom(), known, all_abstr_args.span().subspan(0, n));
 }
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
@@ -329,6 +334,17 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
     }
 
+    {
+        // Like apply_known: the rewritten app is only a lattice token, never emitted code. Abstract operands
+        // of a dependent domain may spell the same runtime extent differently per calling context (e.g. a
+        // closure-env projection vs the original value), which cannot pass the dependent assignability
+        // check — build such a token unchecked. All passing paths keep the checked (normalizing) app.
+        auto new_arg    = rewrite(app->arg());
+        auto new_callee = rewrite(app->callee());
+        auto pi         = new_callee->type()->isa<Pi>();
+        if (!pi || !Checker::assignable(pi->dom(), new_arg))
+            return world().raw_app(rewrite(app->type()), new_callee, new_arg);
+    }
     return Super::rewrite_imm_App(app);
 }
 
@@ -520,22 +536,53 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     size_t num_old = old_lam->num_tvars();
 
     // build new dom
-    auto keeps    = absl::FixedArray<bool>(num_old);
-    auto new_doms = DefVec();
+    auto keeps      = absl::FixedArray<bool>(num_old);
+    size_t num_kept = 0, num_phis = 0;
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
         keeps[i]     = keep(old_lam, old_var, lattice(old_var));
-        if (keeps[i]) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
+        num_kept += keeps[i];
     }
-
     for (auto [sloxy, phi, val] : phis)
-        if (keep(old_lam, phi, val)) new_doms.emplace_back(rewrite(phi->type()));
-
-    size_t num_new_vars = new_doms.size();
+        if (keep(old_lam, phi, val)) ++num_phis;
+    size_t num_new_vars = num_kept + num_phis;
 
     // build new lam
-    auto var_map          = absl::FixedArray<const Def*>(num_old);
-    auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+    Lam* new_lam;
+    auto new_dom = rewrite(old_lam->dom());
+    if (auto sigma = new_dom->isa_mut<Sigma>(); sigma && sigma->has_var() && sigma->num_ops() == num_old) {
+        // A *dependent* domain (components referencing siblings through the Sigma's Var, e.g. a runtime
+        // extent `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) cannot be destructured into a dom list
+        // and reassembled — that tears the components off their binder. Splice the kept components into a
+        // fresh mut Sigma, remapping the Var per component (cf. AddMem::rewrite_imm_Pi). A component may
+        // only refer to *earlier* components; dropped slots must not be referenced by kept ones (their
+        // padding is never extracted).
+        auto& w       = new_world();
+        auto res      = w.mut_sigma(sigma->type(), num_new_vars);
+        auto kept_pos = absl::FixedArray<size_t>(num_old);
+        size_t j      = 0;
+        for (size_t i = 0; i != num_old; ++i) {
+            if (!keeps[i]) continue;
+            auto shift = w.tuple(DefVec(num_old, [&](size_t k) -> const Def* {
+                return (keeps[k] && k < i) ? res->var(num_new_vars, kept_pos[k]) : w.tuple();
+            }));
+            auto rw    = VarRewriter(sigma->has_var(), shift);
+            res->set(j, rw.rewrite(sigma->op(i)));
+            kept_pos[i] = j++;
+        }
+        for (auto [sloxy, phi, val] : phis)
+            if (keep(old_lam, phi, val)) res->set(j++, rewrite(phi->type()));
+        new_lam = w.mut_lam(w.pi(res, rewrite(old_lam->codom())))->set(old_lam->dbg());
+    } else {
+        auto new_doms = DefVec();
+        for (size_t i = 0; i != num_old; ++i)
+            if (keeps[i]) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
+        for (auto [sloxy, phi, val] : phis)
+            if (keep(old_lam, phi, val)) new_doms.emplace_back(rewrite(phi->type()));
+        new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+    }
+
+    auto var_map = absl::FixedArray<const Def*>(num_old);
     lam_old2new_[old_lam] = new_lam;
     lam_new2old_[new_lam] = old_lam;
 
