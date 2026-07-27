@@ -31,8 +31,6 @@ public:
     void start() final;
     void find_kernels(const Def*);
 
-    void emit_epilogue(Lam*) final;
-
     std::optional<std::string> isa_targetspecific_intrinsic(ll::BB&, const Def*) final;
 
 protected:
@@ -61,7 +59,6 @@ public:
         : Super(world, "llvm_nvptx_device_emitter", ostream) {}
 
     void start() final;
-    void emit_epilogue(Lam*) override;
 
     std::string prepare() override;
 
@@ -74,6 +71,13 @@ private:
     std::string convert(const Def* def, bool simd = false) override {
         if (simd) WLOG("Ignoring simd=true for type conversion in device code.");
         return Super::convert(def, false);
+    }
+
+    /// Device slots live in a module-scope global in their requested address space, not on the stack.
+    std::string emit_slot(ll::BB&, const App* app, const Def* pointee, const Def* addr_space) override {
+        auto v_ptr = "@" + app->unique_name() + ".slot";
+        std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", v_ptr, addr_space, convert(pointee));
+        return v_ptr;
     }
 
     absl::btree_map<std::string, int> symbols_;
@@ -108,35 +112,34 @@ void HostEmitter::find_kernels(const Def* def) {
 
     if (auto launch = Axm::isa<gpu::launch>(def)) {
         auto kernel     = launch->decurry()->decurry()->arg();
-        auto kernel_lam = kernel->isa_mut<Lam>();
-        assert(kernel_lam && "Expect kernel passed to %gpu.launch to be a mutable lambda");
+        auto kernel_lam = kernel->expect_mut<Lam>("the kernel passed to %gpu.launch to be a mutable lambda");
         if (kernel_ids_.contains(kernel_lam)) return;
         auto kid                = kernel_ids_.size();
         kernel_ids_[kernel_lam] = kid;
     }
 }
 
-constexpr auto CU_INIT                = "cuInit";
-constexpr auto CU_CTX_CREATE          = "cuCtxCreate_v4";
-constexpr auto CU_CTX_DESTROY         = "cuCtxDestroy_v2";
-constexpr auto CU_DEVICE_GET          = "cuDeviceGet";
-constexpr auto CU_LAUNCH_KERNEL       = "cuLaunchKernel_ptsz";
-constexpr auto CU_MEM_ALLOC           = "cuMemAlloc_v2";
-constexpr auto CU_MEM_ALLOC_ASYNC     = "cuMemAllocAsync_ptsz";
-constexpr auto CU_MEM_FREE            = "cuMemFree_v2";
-constexpr auto CU_MEM_FREE_ASYNC      = "cuMemFreeAsync_ptsz";
-constexpr auto CU_MEMCPY_HTOD         = "cuMemcpyHtoD_v2";
-constexpr auto CU_MEMCPY_HTOD_ASYNC   = "cuMemcpyHtoDAsync_v2_ptsz";
-constexpr auto CU_MEMCPY_DTOH         = "cuMemcpyDtoH_v2";
-constexpr auto CU_MEMCPY_DTOH_ASYNC   = "cuMemcpyDtoHAsync_v2_ptsz";
-constexpr auto CU_MODULE_LOAD_FATBIN  = "cuModuleLoadFatBinary";
-constexpr auto CU_MODULE_GET_FUNCTION = "cuModuleGetFunction";
-constexpr auto CU_MODULE_UNLOAD       = "cuModuleUnload";
-constexpr auto CU_STREAM_CREATE       = "cuStreamCreate";
-constexpr auto CU_STREAM_DESTROY      = "cuStreamDestroy_v2";
-constexpr auto CU_STREAM_SYNC         = "cuStreamSynchronize_ptsz";
+constexpr auto Cu_Init                = "cuInit";
+constexpr auto Cu_Ctx_Create          = "cuCtxCreate_v4";
+constexpr auto Cu_Ctx_Destroy         = "cuCtxDestroy_v2";
+constexpr auto Cu_Device_Get          = "cuDeviceGet";
+constexpr auto Cu_Launch_Kernel       = "cuLaunchKernel_ptsz";
+constexpr auto Cu_Mem_Alloc           = "cuMemAlloc_v2";
+constexpr auto Cu_Mem_Alloc_Async     = "cuMemAllocAsync_ptsz";
+constexpr auto Cu_Mem_Free            = "cuMemFree_v2";
+constexpr auto Cu_Mem_Free_Async      = "cuMemFreeAsync_ptsz";
+constexpr auto Cu_Memcpy_Htod         = "cuMemcpyHtoD_v2";
+constexpr auto Cu_Memcpy_Htod_Async   = "cuMemcpyHtoDAsync_v2_ptsz";
+constexpr auto Cu_Memcpy_Dtoh         = "cuMemcpyDtoH_v2";
+constexpr auto Cu_Memcpy_Dtoh_Async   = "cuMemcpyDtoHAsync_v2_ptsz";
+constexpr auto Cu_Module_Load_Fatbin  = "cuModuleLoadFatBinary";
+constexpr auto Cu_Module_Get_Function = "cuModuleGetFunction";
+constexpr auto Cu_Module_Unload       = "cuModuleUnload";
+constexpr auto Cu_Stream_Create       = "cuStreamCreate";
+constexpr auto Cu_Stream_Destroy      = "cuStreamDestroy_v2";
+constexpr auto Cu_Stream_Sync         = "cuStreamSynchronize_ptsz";
 
-void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_result, bool tail) {
+void HostEmitter::emit_cu_error_handling(ll::BB& /*bb*/, const std::string& /*cu_result*/, bool /*tail*/) {
     // TODO: implement
     return;
 }
@@ -153,30 +156,6 @@ std::string HostEmitter::convert(const Def* type, bool simd) {
     return Super::convert(type, simd);
 }
 
-void HostEmitter::emit_epilogue(Lam* lam) {
-    auto& bb = lam2bb_[lam];
-
-    // HACK: we partially re-implement the checks in Super::emit_epilogue to catch target-specific applications
-    auto app = lam->body()->as<App>();
-    if (auto ret = isa_targetspecific_intrinsic(bb, app)) {
-        assert(ret.has_value());
-        if (app->callee() == root()->ret_var()) // return
-            assert(false && "Return not implemented in NVPTX backend");
-        else if (auto dispatch = Dispatch(app))
-            assert(false && "Dispatch not implemented in NVPTX backend");
-        else if (app->callee()->isa<Bot>())
-            assert(false && "Bot not implemented in NVPTX backend");
-        else if (auto _ = Lam::isa_mut_basicblock(app->callee())) // ordinary jump
-            assert(false && "Ordinary Jump not implemented in NVPTX backend");
-        else if (Pi::isa_returning(app->callee_type())) // function call
-            bb.tail("br label {}", ret.value());
-        else
-            assert(false && "Unexpected return case in NVPTX backend");
-    } else {
-        Super::emit_epilogue(lam);
-    }
-}
-
 std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb, const Def* def) {
     auto name = id(def);
     std::string op;
@@ -187,28 +166,28 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto dev_num   = 0; // TODO: consider parameterizing this
         auto ctx_flags = 0; // TODO: consider parameterizing this
 
-        declare("i32 @{}(i32)", CU_INIT);
-        auto init_res = bb.assign(name + "_init_res", "call i32 @{}(i32 0)", CU_INIT);
+        declare("i32 @{}(i32)", Cu_Init);
+        auto init_res = bb.assign(name + "_init_res", "call i32 @{}(i32 0)", Cu_Init);
         emit_cu_error_handling(bb, init_res);
 
-        declare("i32 @{}(ptr, i32)", CU_DEVICE_GET);
+        declare("i32 @{}(ptr, i32)", Cu_Device_Get);
         auto dev_ptr = bb.assign(name + "_dev_ptr", "alloca i32");
         auto dev_get_res
-            = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", CU_DEVICE_GET, dev_ptr, dev_num);
+            = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", Cu_Device_Get, dev_ptr, dev_num);
         emit_cu_error_handling(bb, dev_get_res);
 
-        declare("i32 @{}(ptr, ptr, i32, i32)", CU_CTX_CREATE);
+        declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
         std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
         auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
-        auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", CU_CTX_CREATE,
+        auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
                                  ctx_name_, ctx_flags, dev);
         emit_cu_error_handling(bb, ctx_res);
 
-        declare("i32 @{}(ptr, ptr)", CU_MODULE_LOAD_FATBIN);
+        declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
         std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
         if (device_fatbin_file_.has_value()) {
             std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
-            if (!fatbin_file) error("Could not open {} as binary file", device_fatbin_file_.value());
+            if (!fatbin_file) fe::throwf("Could not open {} as binary file", device_fatbin_file_.value());
 
             auto start = std::istreambuf_iterator<char>(fatbin_file);
             auto end   = std::istreambuf_iterator<char>();
@@ -231,64 +210,64 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
                        "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
                        fatbin_name_);
         }
-        auto mod_res = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", CU_MODULE_LOAD_FATBIN, mod_name_,
+        auto mod_res = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", Cu_Module_Load_Fatbin, mod_name_,
                                  fatbin_name_);
         emit_cu_error_handling(bb, mod_res);
         auto mod_inner = bb.assign(name + "_mod_inner", "load ptr, ptr {}", mod_name_);
 
-        declare("i32 @{}(ptr, ptr, ptr)", CU_MODULE_GET_FUNCTION);
+        declare("i32 @{}(ptr, ptr, ptr)", Cu_Module_Get_Function);
         for (auto [kernel, kid] : kernel_ids_) {
             auto kname    = id(kernel).substr(1);
             auto func_ptr = bb.assign("%" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
                                       kernel_array_name_, kid);
             auto func_res = bb.assign("%" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
-                                      CU_MODULE_GET_FUNCTION, func_ptr, mod_inner, kernel_name_prefix, kid);
+                                      Cu_Module_Get_Function, func_ptr, mod_inner, kernel_name_prefix, kid);
             emit_cu_error_handling(bb, func_res);
         }
 
         auto mem = init->arg();
         return emit_unsafe(mem);
     } else if (auto deinit = Axm::isa<gpu::deinit>(def)) {
-        declare("i32 @{}(ptr)", CU_MODULE_UNLOAD);
+        declare("i32 @{}(ptr)", Cu_Module_Unload);
         bb.tail("{}_mod = load ptr, ptr {}", name, mod_name_);
-        bb.tail("{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, CU_MODULE_UNLOAD, name);
+        bb.tail("{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload, name);
         emit_cu_error_handling(bb, name + "_mod_unload_res", true);
 
-        declare("i32 @{}(ptr)", CU_CTX_DESTROY);
+        declare("i32 @{}(ptr)", Cu_Ctx_Destroy);
         bb.tail("{}_ctx = load ptr, ptr {}", name, ctx_name_);
-        bb.tail("{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, CU_CTX_DESTROY, name);
+        bb.tail("{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy, name);
         emit_cu_error_handling(bb, name + "_ctx_destroy_res", true);
 
         emit_unsafe(deinit->arg(0));
         return emit_unsafe(deinit->arg(1));
     } else if (auto stream_init = Axm::isa<gpu::stream_init>(def)) {
-        declare("i32 @{}(ptr, i32)", CU_STREAM_CREATE);
+        declare("i32 @{}(ptr, i32)", Cu_Stream_Create);
 
         emit_unsafe(stream_init->arg(0));
         emit_unsafe(stream_init->arg(1));
         auto stream_ptr = emit(stream_init->arg(2));
 
-        auto res = bb.assign(name, "call i32 @{}(ptr {}, i32 0)", CU_STREAM_CREATE, stream_ptr);
+        auto res = bb.assign(name, "call i32 @{}(ptr {}, i32 0)", Cu_Stream_Create, stream_ptr);
         emit_cu_error_handling(bb, res);
         return res;
     } else if (auto stream_deinit = Axm::isa<gpu::stream_deinit>(def)) {
-        declare("i32 @{}(ptr)", CU_STREAM_DESTROY);
+        declare("i32 @{}(ptr)", Cu_Stream_Destroy);
 
         emit_unsafe(stream_deinit->arg(0));
         emit_unsafe(stream_deinit->arg(1));
         auto stream = emit(stream_deinit->arg(2));
 
-        auto res = bb.assign(name, "call i32 @{}(ptr {})", CU_STREAM_DESTROY, stream);
+        auto res = bb.assign(name, "call i32 @{}(ptr {})", Cu_Stream_Destroy, stream);
         emit_cu_error_handling(bb, res);
         return res;
     } else if (auto stream_sync = Axm::isa<gpu::stream_sync>(def)) {
-        declare("i32 @{}(ptr)", CU_STREAM_SYNC);
+        declare("i32 @{}(ptr)", Cu_Stream_Sync);
 
         emit_unsafe(stream_sync->arg(0));
         emit_unsafe(stream_sync->arg(1));
         auto stream = emit(stream_sync->arg(2));
 
-        auto res = bb.assign(name, "call i32 @{}(ptr {})", CU_STREAM_SYNC, stream);
+        auto res = bb.assign(name, "call i32 @{}(ptr {})", Cu_Stream_Sync, stream);
         emit_cu_error_handling(bb, res);
         return res;
     } else if (auto alloc = Axm::isa<gpu::alloc>(def)) {
@@ -296,13 +275,13 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (alloc.id()) {
             case gpu::alloc::block: is_async = false; break;
             case gpu::alloc::asyn: is_async = true; break;
-            default: fe::unreachable();
+            default: fe::throwf("ll_nvptx backend: unhandled %gpu.alloc id in '{}'", def);
         }
 
         if (is_async)
-            declare("i32 @{}(ptr, i64, ptr)", CU_MEM_ALLOC_ASYNC);
+            declare("i32 @{}(ptr, i64, ptr)", Cu_Mem_Alloc_Async);
         else
-            declare("i32 @{}(ptr, i64)", CU_MEM_ALLOC);
+            declare("i32 @{}(ptr, i64)", Cu_Mem_Alloc);
 
         emit_unsafe(alloc->arg(0));
         auto alloc_t    = alloc->decurry()->arg();
@@ -310,16 +289,16 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto type_size  = w.call(core::trait::size, alloc_t);
         auto alloc_size = emit(type_size);
 
-        auto ptr_t = convert(Axm::as<mem::Ptr>(def->proj(1)->type()));
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a %mem.Ptr"));
 
         auto alloc_ptr = bb.assign(name + "ptr", "alloca {}", ptr_t);
         std::string alloc_res;
         if (is_async) {
             auto stream = emit(alloc->arg(1));
-            alloc_res   = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, ptr {})", CU_MEM_ALLOC_ASYNC, alloc_ptr,
+            alloc_res   = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, ptr {})", Cu_Mem_Alloc_Async, alloc_ptr,
                                     alloc_size, stream);
         } else
-            alloc_res = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {})", CU_MEM_ALLOC, alloc_ptr, alloc_size);
+            alloc_res = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {})", Cu_Mem_Alloc, alloc_ptr, alloc_size);
 
         emit_cu_error_handling(bb, alloc_res);
         return bb.assign(name, "load {}, {} addrspace(0)* {}", ptr_t, ptr_t, alloc_ptr);
@@ -328,13 +307,13 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (free.id()) {
             case gpu::free::block: is_async = false; break;
             case gpu::free::asyn: is_async = true; break;
-            default: fe::unreachable();
+            default: fe::throwf("ll_nvptx backend: unhandled %gpu.free id in '{}'", def);
         }
 
         if (is_async)
-            declare("i32 @{}(i64)", CU_MEM_FREE_ASYNC);
+            declare("i32 @{}(i64)", Cu_Mem_Free_Async);
         else
-            declare("i32 @{}(i64)", CU_MEM_FREE);
+            declare("i32 @{}(i64)", Cu_Mem_Free);
 
         emit_unsafe(free->arg(0));
         auto ptr = emit(free->arg(1));
@@ -342,9 +321,9 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         std::string free_res;
         if (is_async) {
             auto stream = emit(free->arg(2));
-            free_res    = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {})", CU_MEM_FREE_ASYNC, ptr, stream);
+            free_res    = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {})", Cu_Mem_Free_Async, ptr, stream);
         } else
-            free_res = bb.assign(name + "res", "call i32 @{}(i64 {})", CU_MEM_FREE, ptr);
+            free_res = bb.assign(name + "res", "call i32 @{}(i64 {})", Cu_Mem_Free, ptr);
 
         emit_cu_error_handling(bb, free_res);
         return free_res;
@@ -353,13 +332,13 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (copy_to_device.id()) {
             case gpu::copy_to_device::block: is_async = false; break;
             case gpu::copy_to_device::asyn: is_async = true; break;
-            default: fe::unreachable();
+            default: fe::throwf("ll_nvptx backend: unhandled %gpu.copy_to_device id in '{}'", def);
         }
 
         if (is_async)
-            declare("i32 @{}(i64, ptr, i64, ptr)", CU_MEMCPY_HTOD_ASYNC);
+            declare("i32 @{}(i64, ptr, i64, ptr)", Cu_Memcpy_Htod_Async);
         else
-            declare("i32 @{}(i64, ptr, i64)", CU_MEMCPY_HTOD);
+            declare("i32 @{}(i64, ptr, i64)", Cu_Memcpy_Htod);
 
         auto type      = copy_to_device->decurry()->arg();
         World& w       = type->world();
@@ -374,10 +353,10 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         std::string copy_res;
         if (is_async) {
             auto stream = emit(copy_to_device->arg(4));
-            copy_res    = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {}, i64 {}, ptr {})", CU_MEMCPY_HTOD_ASYNC,
+            copy_res    = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {}, i64 {}, ptr {})", Cu_Memcpy_Htod_Async,
                                     dev_ptr, host_ptr, size, stream);
         } else
-            copy_res = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {}, i64 {})", CU_MEMCPY_HTOD, dev_ptr,
+            copy_res = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {}, i64 {})", Cu_Memcpy_Htod, dev_ptr,
                                  host_ptr, size);
 
         emit_cu_error_handling(bb, copy_res);
@@ -387,12 +366,12 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (copy_to_host.id()) {
             case gpu::copy_to_host::block: is_async = false; break;
             case gpu::copy_to_host::asyn: is_async = true; break;
-            default: fe::unreachable();
+            default: fe::throwf("ll_nvptx backend: unhandled %gpu.copy_to_host id in '{}'", def);
         }
         if (is_async)
-            declare("i32 @{}(ptr, i64, i64, ptr)", CU_MEMCPY_DTOH_ASYNC);
+            declare("i32 @{}(ptr, i64, i64, ptr)", Cu_Memcpy_Dtoh_Async);
         else
-            declare("i32 @{}(ptr, i64, i64)", CU_MEMCPY_DTOH);
+            declare("i32 @{}(ptr, i64, i64)", Cu_Memcpy_Dtoh);
 
         auto [type]    = copy_to_host->decurry()->args<1>();
         World& w       = type->world();
@@ -407,31 +386,31 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         std::string copy_res;
         if (is_async) {
             auto stream = emit(copy_to_host->arg(4));
-            copy_res    = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, i64 {}, ptr {})", CU_MEMCPY_DTOH_ASYNC,
+            copy_res    = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, i64 {}, ptr {})", Cu_Memcpy_Dtoh_Async,
                                     host_ptr, dev_ptr, size, stream);
         } else
-            copy_res = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, i64 {})", CU_MEMCPY_DTOH, host_ptr,
+            copy_res = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, i64 {})", Cu_Memcpy_Dtoh, host_ptr,
                                  dev_ptr, size);
 
         emit_cu_error_handling(bb, copy_res);
         return copy_res;
     } else if (auto launch = Axm::isa<gpu::launch>(def)) {
         // TODO: rewrite to use modern cuLaunchKernelEx instead
-        declare("i32 @{}(ptr, i32, i32, i32, i32, i32, i32, i32, ptr, ptr, ptr)", CU_LAUNCH_KERNEL);
+        declare("i32 @{}(ptr, i32, i32, i32, i32, i32, i32, i32, ptr, ptr, ptr)", Cu_Launch_Kernel);
 
         auto [implicits, launch_config, kernel_def, arg_def, func_args] = launch->uncurry_args<5>();
         auto [n_groups_def, n_items_def, stream_def, m, MT]             = launch_config->projs<5>();
         auto [mem, ret_lam_def]                                         = func_args->projs<2>();
 
         Lam* lam = kernel_def->isa_mut<Lam>();
-        if (!lam) error("kernel is not a lamda {}", kernel_def);
-        if (!kernel_ids_.contains(lam)) error("unknown kernel {}", lam);
+        if (!lam) fe::throwf("kernel is not a lamda {}", kernel_def);
+        if (!kernel_ids_.contains(lam)) fe::throwf("unknown kernel {}", lam);
         auto kid = kernel_ids_[lam];
 
         auto shared_mem_bytes = 0;
-        if (auto smem_count = Lit::as(m)) {
-            if (smem_count != 1) error("You can only have one dynamic allocation of shared memory per kernel");
-            shared_mem_bytes = Lit::as(world().call(core::trait::size, MT));
+        if (auto smem_count = Lit::expect(m, "a shared-memory allocation count")) {
+            if (smem_count != 1) fe::throwf("You can only have one dynamic allocation of shared memory per kernel");
+            shared_mem_bytes = Lit::expect(world().call(core::trait::size, MT), "a shared-memory size");
         }
 
         emit_unsafe(mem);
@@ -458,41 +437,16 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
             = bb.assign(name,
                         "call i32 @{}(ptr {}, i32 {}, i32 1, i32 1, i32 {}, i32 1, i32 1, "
                         "i32 {}, ptr {}, ptr {}, ptr null)",
-                        CU_LAUNCH_KERNEL, func_inner, n_groups, n_items, shared_mem_bytes, stream, args_inner);
+                        Cu_Launch_Kernel, func_inner, n_groups, n_items, shared_mem_bytes, stream, args_inner);
         emit_cu_error_handling(bb, launch_res);
         return ret_lam;
     }
     return std::nullopt;
 }
 
-void DeviceEmitter::emit_epilogue(Lam* lam) {
-    auto& bb = lam2bb_[lam];
-
-    // HACK: we partially re-implement the checks in Super::emit_epilogue to catch target-specific applications
-    auto app = lam->body()->as<App>();
-    if (auto mslot = Axm::isa<mem::mslot>(app)) {
-        // Continuation-based stack slot: allocate and jump to the passed continuation with the fresh pointer.
-        auto [Ta, rest]   = mslot->uncurry_args<2>();
-        auto [T, a]       = Ta->projs<2>();
-        auto [msize, ret] = rest->projs<2>();
-        emit_unsafe(msize->proj(0)); // mem
-        // TODO array with size
-        auto ret_lam = ret->as_mut<Lam>();
-        auto ptr     = ret_lam->var(2, 1);
-        auto v_ptr   = "@" + app->unique_name() + ".slot";
-        std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", v_ptr, a, convert(T));
-        lam2bb_[ret_lam].phis[ptr].emplace_back(v_ptr, id(lam, true));
-        globals_[ptr] = id(ptr);
-        return bb.tail("br label {}", id(ret_lam));
-    } else {
-        Super::emit_epilogue(lam);
-    }
-}
-
 void DeviceEmitter::start() {
     for (auto kernel : world().externals().muts()) {
-        auto kernel_lam = kernel->isa_mut<Lam>();
-        assert(kernel_lam && "Expect kernel passed to %gpu.launch to be a mutable lambda");
+        auto kernel_lam = kernel->expect_mut<Lam>("an external kernel to be a mutable lambda");
         kernels_.emplace(kernel_lam);
     }
     Super::start();
@@ -519,7 +473,7 @@ std::string DeviceEmitter::prepare() {
         auto type        = def->type();
         auto type_name   = convert(type);
         auto opt_idx_lit = Idx::isa_lit(type);
-        if (!opt_idx_lit) error("Type of '{}' must have known index type but has {}", def, type);
+        if (!opt_idx_lit) fe::throwf("Type of '{}' must have known index type but has {}", def, type);
         auto idx_lit = opt_idx_lit.value();
         locals_[def] = name;
         declare("i32 @llvm.nvvm.read.ptx.sreg.{}()", sreg);
@@ -531,20 +485,22 @@ std::string DeviceEmitter::prepare() {
             auto i32 = bb.assign(name + "i32", "call i32 @llvm.nvvm.read.ptx.sreg.{}()", sreg);
             bb.assign(name, "trunc i32 {} to {}", i32, type_name);
         } else {
-            error("Warp ID too large, must fit into I32");
+            fe::throwf("Warp ID too large, must fit into I32");
         }
     };
     register_sreg_idx(group_id, "ctaid.x");
     register_sreg_idx(item_id, "tid.x");
 
-    auto shared_as = Lit::as(world().annex<gpu::addr_space_shared>());
+    auto shared_as = Lit::expect(world().annex<gpu::addr_space_shared>(), "the shared address space");
     if (auto sigma = smem->type()->isa<Sigma>()) {
-        assert(sigma->num_ops() == 0 && "Expect empty sigma for shared memory variable");
+        if (sigma->num_ops() != 0)
+            fe::throwf("ll_nvptx backend: shared-memory variable must be an empty sigma, but got '{}'", smem->type());
     } else {
-        auto ptr = Axm::isa<mem::Ptr>(smem->type());
-        assert(ptr && "Expect pointer type for shared memory variable");
+        auto ptr    = Axm::expect<mem::Ptr>(smem->type(), "a shared-memory pointer type");
         auto [T, a] = ptr->args<2>();
-        assert(Lit::as(a) == shared_as && "Expect shared memory pointer type for shared memory variable");
+        if (Lit::expect(a, "an address space") != shared_as)
+            fe::throwf("ll_nvptx backend: shared-memory variable must live in the shared address space, but got '{}'",
+                       smem->type());
         auto name     = "@" + smem->unique_name();
         locals_[smem] = name;
         std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", name, a, convert(T));

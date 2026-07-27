@@ -2,21 +2,15 @@
 
 #include <algorithm>
 #include <sstream>
-#include <stdexcept>
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
+#include <fe/assert.h>
 #include <fe/loc.h>
 #include <fe/sym.h>
 #include <fe/term.h>
 
 namespace mim {
-
-/// Wraps `std::format` to throw `T` with a formatted message.
-template<class T = std::logic_error, class... Args>
-[[noreturn]] void error(std::format_string<Args...> fmt, Args&&... args) {
-    throw T("error: " + std::format(fmt, std::forward<Args>(args)...));
-}
 
 using fe::Loc;
 using fe::Pos;

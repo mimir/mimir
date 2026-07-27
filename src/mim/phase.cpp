@@ -129,7 +129,7 @@ void RWPhase::start() {
     auto max_iters = driver().flags().max_fp_iters;
     bool todo      = true;
     for (uint32_t i = 0; todo; ++i) {
-        if (i >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        if (i >= max_iters) fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
         VLOG("iteration: {}", i);
         todo = analyze();
     }
@@ -201,7 +201,8 @@ void PhaseMan::start() {
     auto any_stale = [&stale]() { return std::ranges::any_of(stale, [](bool b) { return b; }); };
 
     for (uint32_t iter = 0; any_stale(); ++iter) {
-        if (iter >= max_iters) error("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        if (iter >= max_iters)
+            fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
         if (fixed_point()) VLOG("🔄 fixed-point iteration: {}", iter);
 
         bool todo = false;

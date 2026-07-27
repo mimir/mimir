@@ -61,9 +61,9 @@ public:
                 }
                 return phase;
             } else
-                error("phase `{}` not found", axm->sym());
+                fe::throwf("phase `{}` not found", axm->sym());
         else
-            error("unsupported callee for a phase: `{}`", p_def);
+            fe::throwf("unsupported callee for a phase: `{}`", p_def);
     }
 
     template<class A, class P>

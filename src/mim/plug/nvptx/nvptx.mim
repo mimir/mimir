@@ -17,8 +17,6 @@ import compile;
 ///
 let %nvptx.Stream = %mem.Ptr0 I8;
 ///
-/// ## Stages
-///
-/// ### Repls
+/// ## Phases
 ///
 axm %nvptx.stream_impl_repl: %compile.Phase;
