@@ -43,16 +43,44 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     assert(lam && "make_stub: not a lam");
     if (auto i = lookup(lam); i && i->isa_mut<Lam>()) return i->as_mut<Lam>();
 
-    auto& w      = new_world();
-    auto ep      = env_param(lam->type()->as<Pi>());
-    auto new_dom = w.sigma(DefVec(lam->num_doms(), [&](auto i) -> const Def* {
-        auto new_dom = rewrite(lam->dom(i));
-        if (i == ep) {
-            if (mode == Unbox) return env_type();
-            if (mode == Box) return w.call<mem::Ptr0>(new_dom);
+    auto& w = new_world();
+    auto ep = env_param(lam->type()->as<Pi>());
+    const Def* new_dom;
+    // A *dependent* domain (components referencing siblings through the Sigma's Var, e.g. a runtime extent
+    // `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) cannot be destructured into a dom list and
+    // reassembled — that tears the components off their binder. Rewrite the whole Sigma first (the generic
+    // mut path remaps the Var properly), then splice the env-slot adjustment in a binder-aware rebuild.
+    if (auto sigma = rewrite(lam->type()->as<Pi>()->dom())->isa_mut<Sigma>(); sigma && sigma->has_var()) {
+        auto n   = sigma->num_ops();
+        auto res = w.mut_sigma(sigma->type(), n);
+        for (size_t i = 0; i != n; ++i) {
+            // A component may only refer to *earlier* components; padding slots `≥ i` are never extracted.
+            auto shift = w.tuple(DefVec(n, [&](size_t j) -> const Def* {
+                return j < i ? res->var(n, j) : w.tuple();
+            }));
+            auto rw    = VarRewriter(sigma->has_var(), shift);
+            auto d     = rw.rewrite(sigma->op(i));
+            if (i == ep) {
+                if (mode == Unbox)
+                    d = env_type();
+                else if (mode == Box)
+                    d = w.call<mem::Ptr0>(d);
+            }
+            res->set(i, d);
         }
-        return new_dom;
-    }));
+        new_dom = res;
+    } else {
+        new_dom = w.sigma(DefVec(lam->num_doms(), [&](auto i) -> const Def* {
+            auto nd = rewrite(lam->dom(i));
+            if (i == ep) {
+                if (mode == Unbox)
+                    return env_type();
+                else if (mode == Box)
+                    return w.call<mem::Ptr0>(nd);
+            }
+            return nd;
+        }));
+    }
     if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret_->type());
     auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg());
     DLOG("stub {} ~> {}", lam, new_lam);

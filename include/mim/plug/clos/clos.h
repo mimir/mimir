@@ -62,6 +62,13 @@ std::tuple<const Def*, const Def*, const Def*> clos_unpack(const Def* c);
 
 /// Apply a closure to arguments.
 const Def* clos_apply(const Def* closure, const Def* args);
+
+/// Adapts the value `v` to the expected type `dst` when the two differ only in the *spelling* of a dependent
+/// extent (e.g. `%mem.Ptr («n; T», 0)` vs the same pointer typed with `n` respelled as a closure-env
+/// projection — equal at runtime, definitionally distinct). Sigmas adapt component-wise against `dst`
+/// reduced by `v`; continuations and mem tokens pass through; anything else that still differs is
+/// `%core.bitcast` (precise-to-precise; a no-op in the backend).
+const Def* clos_respell(const Def* dst, const Def* v);
 inline const Def* apply_closure(const Def* closure, Defs args) {
     return clos_apply(closure, closure->world().tuple(args));
 }
