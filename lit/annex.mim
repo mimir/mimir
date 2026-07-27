@@ -6,7 +6,7 @@ let %annex.Vec3.xyz = [x: %math.F64, y: %math.F64, z: %math.F64];
 let %annex.Vec3.rgb = [r: %math.F64, g: %math.F64, w: %math.F64];
 rec %annex.Vec3.rpi: □ = %annex.Vec3.xyz → %annex.Vec3.rpi;
 let %annex.Vec3.zero = 0;
-lam %annex.Vec3.unit [i: Idx 3]: %annex.Vec3.xyz =
+lam %annex.Vec3.unit (i: Idx 3): %annex.Vec3.xyz =
     (%annex.Vec3.xyz (1.0:%math.F64, 0.0:%math.F64, 0.0:%math.F64),
      %annex.Vec3.xyz (0.0:%math.F64, 1.0:%math.F64, 0.0:%math.F64),
      %annex.Vec3.xyz (0.0:%math.F64, 0.0:%math.F64, 1.0:%math.F64)

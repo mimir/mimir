@@ -7,18 +7,18 @@ ccon printInteger [mem: %mem.M 0, val: I32, return: Cn [%mem.M 0]];
 
 let arr_size = ⊤:Nat;
 
-con init [mem: %mem.M 0, return: Cn [%mem.M 0]] =
-    con loop_head [mem: %mem.M 0, i: I32] =
-        con yield [mem: %mem.M 0] = loop_head( mem, %core.wrap.add 0 (i, 1I32) );;
-        con print [mem: %mem.M 0] = printInteger( mem, i, yield );
+con init (mem: %mem.M 0, return: Cn [%mem.M 0]) =
+    con loop_head (mem: %mem.M 0, i: I32) =
+        con yield (mem: %mem.M 0) = loop_head( mem, %core.wrap.add 0 (i, 1I32) );;
+        con print (mem: %mem.M 0) = printInteger( mem, i, yield );
 
         let condition = %core.icmp.ul (i, 42I32);
         let target = (return, print)#condition;
         target ( mem );
     loop_head ( mem, 0I32 );
 
-con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]] =
-    con init_b [mem: %mem.M 0] = return ( mem, 0I32 );
-    con init_a [mem: %mem.M 0] = init(mem, init_b);
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
+    con init_b (mem: %mem.M 0) = return ( mem, 0I32 );
+    con init_a (mem: %mem.M 0) = init(mem, init_b);
 
     init(mem, init_a);

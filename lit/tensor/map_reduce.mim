@@ -13,8 +13,8 @@ plugin cps;
 plugin affine;
 plugin mem;
 
-fun add  (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
-fun copy (x: I32, y: «1; I32»)@tt = return (y#0_1);
+fun add  (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
+fun copy (x: I32, y: «1; I32»)@tt = return (y#0₁);
 lam id1 (i: %affine.index): «1; %affine.index» = i;
 lam id1i(i, j: %affine.index): «1; %affine.index» = i;
 lam id2 (i, j: %affine.index): «2; %affine.index» = (i, j);

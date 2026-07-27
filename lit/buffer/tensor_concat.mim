@@ -26,23 +26,23 @@ plugin opt;
 // CHECK-DAG: %core.icmp
 // CHECK-DAG: %core.extrema.Sm
 fun extern cat0 (a: «2, 3; I32», b: «4, 3; I32»): «6, 3; I32» =
-    return (%tensor.concat @(I32, 2, 2) 0_2 @((2, 3), (4, 3)) (a, b));
+    return (%tensor.concat @(I32, 2, 2) 0₂ @((2, 3), (4, 3)) (a, b));
 
 // Concat a 2x3 and a 2x2 matrix along axis 1 -> 2x5: cols 0..2 from a, cols 3..4 from b.
 // CHECK-DAG: fun extern cat1
 fun extern cat1 (a: «2, 3; I32», b: «2, 2; I32»): «2, 5; I32» =
-    return (%tensor.concat @(I32, 2, 2) 1_2 @((2, 3), (2, 2)) (a, b));
+    return (%tensor.concat @(I32, 2, 2) 1₂ @((2, 3), (2, 2)) (a, b));
 
 // Concat two 1-D vectors with differing extents: 3 + 2 = 5.
 // CHECK-DAG: fun extern cat_vec
 fun extern cat_vec (a: «3; I32», b: «2; I32»): «5; I32» =
-    return (%tensor.concat @(I32, 2, 1) 0_1 @(3, 2) (a, b));
+    return (%tensor.concat @(I32, 2, 1) 0₁ @(3, 2) (a, b));
 
 // Size-1 extent along the concat axis: a's logical shape (1, 3) folds to «3; I32» (and its buffer to
 // rank 1) — the read of a folds away the axis-0 coordinate.
 // CHECK-DAG: fun extern cat_size1
 fun extern cat_size1 (a: «1, 3; I32», b: «2, 3; I32»): «3, 3; I32» =
-    return (%tensor.concat @(I32, 2, 2) 0_2 @((1, 3), (2, 3)) (a, b));
+    return (%tensor.concat @(I32, 2, 2) 0₂ @((1, 3), (2, 3)) (a, b));
 
 // Memory operations are emitted (the concatenated result is materialised into a buffer).
 // CHECK-DAG: %mem.alloc

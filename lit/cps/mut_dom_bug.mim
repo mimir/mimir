@@ -14,6 +14,6 @@ lam For {n: Nat} (start: Idx n, _end: Idx n) (mem: %mem.M 0) (it: ForBody n): %m
     let (mem, _) = loop (mem, start);
     mem;
 
-con extern main [mem: %mem.M 0, return: Cn [%mem.M 0, I32]] =
-    let mem = For (0_123, 122_123) mem (λ [mem: %mem.M 0, i: Idx 123]: %mem.M 0 = mem);
+con extern main (mem: %mem.M 0, return: Cn [%mem.M 0, I32]) =
+    let mem = For (0₁₂₃, 122₁₂₃) mem (λ [mem: %mem.M 0, i: Idx 123]: %mem.M 0 = mem);
     return (mem, 0I32);

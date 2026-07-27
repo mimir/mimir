@@ -24,13 +24,13 @@ fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
 : [%mem.M 0, I32] =
     let (m0, arr) = %mem.alloc («4; I32», 0) m0;
 
-    let arr_0 = %mem.lea (arr, 0_4);
+    let arr_0 = %mem.lea (arr, 0₄);
     let m0 = %mem.store (m0, arr_0, argc);
-    let arr_1 = %mem.lea (arr, 1_4);
+    let arr_1 = %mem.lea (arr, 1₄);
     let m0 = %mem.store (m0, arr_1, argc);
-    let arr_2 = %mem.lea (arr, 2_4);
+    let arr_2 = %mem.lea (arr, 2₄);
     let m0 = %mem.store (m0, arr_2, argc);
-    let arr_3 = %mem.lea (arr, 3_4);
+    let arr_3 = %mem.lea (arr, 3₄);
     let m0 = %mem.store (m0, arr_3, argc);
 
     let (m0, m1, m4) = %gpu.init m0;

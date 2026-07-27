@@ -8,7 +8,7 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let MT = (2, (3, 5), I32);
     let c = 5I32;
     let (mem, m) = %buffer.constant MT (mem, c);
-    let d = %buffer.shape MT (m, 0_2);
+    let d = %buffer.shape MT (m, 0₂);
     let e = %core.bitcast I32 d;
     return (mem, e);
 

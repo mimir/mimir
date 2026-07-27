@@ -5,7 +5,7 @@ plugin core;
 // index variable bound in a sibling `con`. Since `shared` is called from both
 // `left` and `right`, that variable escapes and `foo` cannot be closed.
 // This must be reported as a proper error instead of aborting via an assertion.
-fun extern foo (b: Bool) = (left, right)#b (3, 0_3) where
+fun extern foo (b: Bool) = (left, right)#b (3, 0₃) where
   con left  (n: Nat, x: Idx n) = shared x;
   con right (m: Nat, y: Idx m) = shared y;
   con shared (z)               = return 0;

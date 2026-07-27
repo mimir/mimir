@@ -11,8 +11,8 @@ plugin cps;
 
 let pb_type = Cn [%mem.M 0, Cn [%mem.M 0, I32]];
 
-con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]] =
-    con callback [mem: %mem.M 0, return: Cn [%mem.M 0, I32]] = return (mem, 1I32);
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
+    con callback (mem: %mem.M 0, return: Cn [%mem.M 0, I32]) = return (mem, 1I32);
 
     let (alloc_pb_mem, pb_ptr) = %mem.malloc (pb_type, 0) (mem, 1);
     let store_return_mem = %mem.store (alloc_pb_mem, pb_ptr, callback);
