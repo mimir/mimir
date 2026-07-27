@@ -139,9 +139,14 @@ constexpr auto Cu_Stream_Create       = "cuStreamCreate";
 constexpr auto Cu_Stream_Destroy      = "cuStreamDestroy_v2";
 constexpr auto Cu_Stream_Sync         = "cuStreamSynchronize_ptsz";
 
-void HostEmitter::emit_cu_error_handling(ll::BB& /*bb*/, const std::string& /*cu_result*/, bool /*tail*/) {
-    // TODO: implement
-    return;
+void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_result, bool at_tail) {
+    // Offload the CUresult check to the C runtime wrapper `mim_cu_check` (see rt/mim_cuda_rt.c)
+    // instead of open-coding it here; showcases the C-runtime system on the ll_nvptx backend.
+    declare_rt("void @mim_cu_check(i32)");
+    if (at_tail)
+        bb.tail("call void @mim_cu_check(i32 {})", cu_result);
+    else
+        std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
 }
 
 std::string HostEmitter::convert(const Def* type, bool simd) {
@@ -523,8 +528,11 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
     return std::nullopt;
 }
 
-void emit_host(World& world, std::ostream& ostream, std::optional<std::string> device_fatbin_file) {
+void emit_host(World& world, std::ostream& ostream, std::optional<std::string> device_fatbin_file, ll::Emitter::Rt rt) {
     HostEmitter emitter(world, ostream, device_fatbin_file);
+    emitter.rt_mode(rt);
+    // Same one-liner the `ll` backend uses; each backend just names its own runtime module.
+    if (rt == ll::Emitter::Rt::embed) emitter.load_rt_module("ll_nvptx_rt.ll");
     emitter.run();
 }
 

@@ -23,6 +23,7 @@ namespace vec  = mim::plug::vec;
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
 /// The output path can be overridden on the command line via `-X ll:o=<file>` or `-X ll:output=<file>`.
+/// The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
 class Emit : public Phase {
 public:
     Emit(World& world, flags_t annex)
@@ -31,15 +32,22 @@ public:
     void start() override {
         auto name = world().name() ? std::string(world().name().view()) : "a"s;
         auto path = name + ".ll"s;
+        auto rt   = Emitter::Rt::embed;
         for (const auto& arg : args()) {
             world().DLOG("ll backend arg: `{}`", arg);
             if (arg.starts_with("o="))
                 path = arg.substr(2);
             else if (arg.starts_with("output="))
                 path = arg.substr(7);
+            else if (arg == "rt=embed")
+                rt = Emitter::Rt::embed;
+            else if (arg == "rt=extern")
+                rt = Emitter::Rt::ext;
         }
         auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), "llvm_emitter", ofs);
+        emitter.rt_mode(rt);
+        if (rt == Emitter::Rt::embed) emitter.load_rt_module("ll_rt.ll");
         emitter.run();
     }
 };
@@ -773,11 +781,13 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
         return {};
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {
-        declare("i64 @jmpbuf_size()");
+        // The size of a `jmp_buf` is platform/libc-dependent, so it is computed by a C runtime
+        // wrapper (`rt/mim_rt.c`) rather than hard-coded here; see issue #486.
+        declare_rt("i64 @mim_jmpbuf_size()");
 
         emit_unsafe(q->arg());
         auto size = name + ".size";
-        bb.assign(size, "call i64 @jmpbuf_size()");
+        bb.assign(size, "call i64 @mim_jmpbuf_size()");
         return bb.assign(name, "alloca i8, i64 {}", size);
     } else if (auto setjmp = Axm::isa<clos::setjmp>(def)) {
         declare("i32 @_setjmp(i8*) returns_twice");

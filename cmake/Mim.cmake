@@ -11,6 +11,15 @@ if(NOT MIM_TARGET_NAMESPACE)
     set(MIM_TARGET_NAMESPACE "")
 endif()
 
+option(MIM_BUILD_LL_RUNTIME "Compile the ll backend's C runtime wrappers to LLVM IR (requires clang)." ON)
+find_program(MIM_CLANG NAMES clang)
+if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
+    message(STATUS
+        "MimIR: clang not found; ll backend C runtime wrappers will not be built. "
+        "Set MIM_CLANG or disable MIM_BUILD_LL_RUNTIME to silence this."
+    )
+endif()
+
 ## \page add_mim_plugin_cmake add_mim_plugin
 ## \brief Registers a new MimIR plugin.
 ##
@@ -192,5 +201,101 @@ function(add_mim_plugin)
                 DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
         endif()
+    endif()
+endfunction()
+
+## \page add_mim_runtime_cmake add_mim_runtime
+## \brief Compiles a plugin's C runtime wrappers into a single LLVM IR module.
+##
+## \code{.cmake}
+## add_mim_runtime(<plugin-name>
+##     SOURCES <source>...
+##     [INSTALL])
+## \endcode
+##
+## All `SOURCES` are compiled with `clang` and merged into a single textual module
+## `<libdir>/mim/rt/<plugin-name>_rt.ll`, next to the plugins. A backend locates
+## that one file via the driver's search paths (see
+## \ref mim::plug::ll::Emitter::load_rt_module) and either embeds it into or links
+## it with its emitted module (see `-X <plugin-name>:rt=embed|extern`). Producing a
+## single module keeps the runtime addressable by one well-known name regardless of
+## how many source files it is split into.
+##
+## A single source is compiled directly to the module; multiple sources are compiled
+## to bitcode and merged with `llvm-link` (which must then be on `PATH`).
+##
+## If `clang` is unavailable (see `MIM_CLANG`) or `MIM_BUILD_LL_RUNTIME` is off,
+## the command is a no-op; the runtime is simply not built.
+function(add_mim_runtime)
+    set(PLUGIN ${ARGV0})
+
+    cmake_parse_arguments(
+        PARSE_ARGV 1        # skip first arg
+        PARSED              # prefix of output variables
+        "INSTALL"           # options
+        ""                  # one-value keywords (none)
+        "SOURCES"           # multi-value keywords
+    )
+
+    if(NOT MIM_BUILD_LL_RUNTIME OR NOT MIM_CLANG)
+        return()
+    endif()
+
+    set(RT_DIR ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/rt)
+    file(MAKE_DIRECTORY ${RT_DIR})
+    set(RT_LL ${RT_DIR}/${PLUGIN}_rt.ll)
+
+    set(ABS_SOURCES "")
+    foreach(src ${PARSED_SOURCES})
+        list(APPEND ABS_SOURCES ${CMAKE_CURRENT_LIST_DIR}/${src})
+    endforeach()
+
+    list(LENGTH ABS_SOURCES N_SOURCES)
+    if(N_SOURCES EQUAL 1)
+        add_custom_command(
+            OUTPUT  ${RT_LL}
+            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${ABS_SOURCES} -o ${RT_LL}
+            DEPENDS ${ABS_SOURCES}
+            COMMENT "Compiling MimIR runtime '${PLUGIN}' to LLVM IR"
+            VERBATIM
+        )
+    else()
+        find_program(MIM_LLVM_LINK NAMES llvm-link)
+        if(NOT MIM_LLVM_LINK)
+            message(FATAL_ERROR
+                "add_mim_runtime(${PLUGIN}) with multiple SOURCES needs llvm-link to merge them"
+            )
+        endif()
+        set(RT_BCS "")
+        foreach(src ${PARSED_SOURCES})
+            get_filename_component(stem ${src} NAME_WE)
+            set(bc ${RT_DIR}/${PLUGIN}_${stem}.bc)
+            add_custom_command(
+                OUTPUT  ${bc}
+                COMMAND ${MIM_CLANG} -emit-llvm -O2 -c ${CMAKE_CURRENT_LIST_DIR}/${src} -o ${bc}
+                DEPENDS ${CMAKE_CURRENT_LIST_DIR}/${src}
+                COMMENT "Compiling MimIR runtime source '${src}' to LLVM bitcode"
+                VERBATIM
+            )
+            list(APPEND RT_BCS ${bc})
+        endforeach()
+        add_custom_command(
+            OUTPUT  ${RT_LL}
+            COMMAND ${MIM_LLVM_LINK} -S ${RT_BCS} -o ${RT_LL}
+            DEPENDS ${RT_BCS}
+            COMMENT "Linking MimIR runtime '${PLUGIN}' into a single LLVM IR module"
+            VERBATIM
+        )
+    endif()
+
+    add_custom_target(mim_runtime_${PLUGIN} ALL DEPENDS ${RT_LL})
+    if(TARGET mim_${PLUGIN})
+        add_dependencies(mim_${PLUGIN} mim_runtime_${PLUGIN})
+    endif()
+    if(${PARSED_INSTALL})
+        install(
+            FILES ${RT_LL}
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim/rt
+        )
     endif()
 endfunction()
