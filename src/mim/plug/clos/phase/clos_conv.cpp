@@ -5,6 +5,7 @@
 #include <fe/container.h>
 #include <fe/worklist.h>
 
+#include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
 using namespace std::literals;
@@ -43,8 +44,8 @@ DefSet free_defs(const Nest& nest) {
  */
 
 void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQueue& worklist) {
-    assert(!Axm::isa<mem::M>(fd) && "mem tokens must not be free");
     if (fd->is_closed()) return;
+    assert(!Axm::isa<mem::M>(fd) && "mem tokens must not be free");
 
     if (auto [var, lam] = isa_var_proj<Lam>(fd); var && lam) {
         if (var != lam->ret_var()) node->add_fvs(fd);
@@ -58,7 +59,10 @@ void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQue
             pnode->succs.emplace_back(node);
             spawned_pred |= inserted;
         }
-    } else if (fd->local_vars() && !fd->isa<Tuple>()) {
+    } else if (fd->isa<App>() && fd->type()->isa<Pi>()) {
+        for (auto op : fd->ops())
+            classify(node, op, spawned_pred, worklist);
+    } else if (fd->local_vars() && !fd->isa<Tuple>() && fd->is_term()) {
         // Note: a Var may still be closed if its type is a mut, so the isa_var_proj case above is not redundant.
         node->add_fvs(fd);
     } else if (is_memop_res(fd)) {
@@ -166,6 +170,10 @@ const Def* ClosConv::rewrite_imm_App(const App* app) {
     auto new_callee = rewrite(app->callee());
     auto new_arg    = rewrite(app->arg());
     if (new_callee->type()->isa<Sigma>()) return clos_apply(new_callee, new_arg);
+    auto root = app->callee();
+    while (auto a = root->isa<App>())
+        root = a->callee();
+    if (auto pi = Pi::isa_cn(new_callee->type()); pi && !root->isa<Axm>()) new_arg = clos_respell(pi->dom(), new_arg);
     return new_world().app(new_callee, new_arg);
 }
 
@@ -233,20 +241,73 @@ const Pi* ClosConv::rewrite_telescope_cn(const Pi* pi) {
     return w.cn(seal(sig, new_sig));
 }
 
-const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {
+const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type, Defs fvs) {
     if (!env_type)
         if (auto i = glob_muts_.find(pi); i != glob_muts_.end()) return i->second;
 
-    auto nd       = pi->num_doms();
-    auto new_doms = DefVec(nd, [&](auto i) {
-        return (i == nd - 1 && Pi::isa_returning(pi)) ? rewrite_ret_cn(pi->ret_pi()) : rewrite(pi->dom(nd, i));
-    });
-    auto ct       = ctype(new_world(), new_doms, env_type);
-    if (!env_type) {
-        glob_muts_.emplace(pi, ct);
-        log().d("closure type: {} → {} (pretyped)", pi, ct);
+    auto& w = new_world();
+    const Def* ct;
+
+    auto sigma       = pi->dom()->isa_mut<Sigma>();
+    auto old_var     = sigma ? sigma->has_var() : nullptr;
+    auto env_spelled = env_type && !fvs.empty() && !pi->is_closed();
+
+    if (old_var || env_spelled) {
+        auto n     = pi->num_doms();
+        auto build = [&](const Def* env_slot, bool project_fvs) -> const Pi* {
+            auto new_sigma = w.mut_sigma(n + 1);
+            size_t ep      = env_param(pi);
+            for (size_t out = 0; out != n + 1; ++out) {
+                if (out == ep) {
+                    new_sigma->set(out, env_slot);
+                    continue;
+                }
+                auto i = shift_env(ep, out);
+                push();
+                if (old_var) {
+                    bind_old(old_var);
+                    auto shift = w.tuple(DefVec(n, [&](size_t j) {
+                        return skip_env(ep, j) < out ? new_sigma->var(n + 1, skip_env(ep, j)) : env_slot;
+                    }));
+                    map(old_var, shift);
+                }
+                if (project_fvs && out > ep) {
+                    auto env_var = new_sigma->var(n + 1, ep);
+                    if (fvs.size() == 1)
+                        map(fvs.front(), env_var);
+                    else
+                        for (size_t fi = 0; fi != fvs.size(); ++fi)
+                            map(fvs[fi], env_var->proj(fvs.size(), fi));
+                }
+                auto comp = (i == n - 1 && Pi::isa_returning(pi)) ? rewrite_ret_cn(pi->ret_pi())
+                                                                  : rewrite(pi->dom(pi->num_doms(), i));
+                pop();
+                new_sigma->set(out, comp);
+            }
+            return w.cn(new_sigma);
+        };
+        if (env_type) {
+            ct = build(env_type, env_spelled);
+        } else {
+            auto clos = w.mut_sigma(w.type(), 3_u64)->set("Clos");
+            clos->set(0_u64, w.type());
+            clos->set(1_u64, build(clos->var(3, 0_u64), false));
+            clos->set(2_u64, clos->var(3, 0_u64));
+            ct = clos;
+        }
     } else {
-        log().d("closure type: {} → {} (env = {})", pi, ct, env_type);
+        auto new_doms = DefVec(pi->num_doms(), [&](auto i) {
+            return (i == pi->num_doms() - 1 && Pi::isa_returning(pi)) ? rewrite_ret_cn(pi->ret_pi())
+                                                                      : rewrite(pi->dom(pi->num_doms(), i));
+        });
+        ct            = ctype(w, new_doms, env_type);
+    }
+
+    if (!env_type) {
+        if (pi->is_closed()) glob_muts_.emplace(pi, ct);
+        log().d("closure type {} → {}", pi, ct);
+    } else {
+        log().d("closure type {} → {} (env = {})", pi, ct, env_type);
     }
     return ct;
 }
@@ -258,13 +319,28 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
     auto fv_vec = DefVec(fvs.begin(), fvs.end());
     std::ranges::sort(fv_vec, GIDLt<const Def*>());
     auto env_type    = w.tuple(DefVec(fv_vec.size(), [&](auto i) { return rewrite(fv_vec[i]); }))->type();
-    auto new_fn_type = clos_type_of(old_lam->type(), env_type)->as<Pi>();
+    auto new_fn_type = clos_type_of(old_lam->type(), env_type, fv_vec)->as<Pi>();
     auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg_key());
 
     if (!old_lam->is_rewritable()) {
         // External or imported (unset) Lam%s get an η-wrapper that hides the environment.
-        auto ep           = env_param(new_fn_type);
-        auto new_ext_type = w.cn(clos_remove_env(ep, new_fn_type->dom()));
+        auto ep = env_param(new_fn_type);
+        const Def* new_ext_dom;
+        if (auto sig = new_fn_type->dom()->isa_mut<Sigma>(); sig && sig->has_var()) {
+            auto n   = sig->num_ops();
+            auto res = w.mut_sigma(sig->type(), n - 1);
+            for (size_t i = 0, k = 0; i != n; ++i) {
+                if (i == ep) continue;
+                auto shift = w.tuple(DefVec(
+                    n, [&](size_t j) { return (j < i && j != ep) ? res->var(n - 1, shift_env(ep, j)) : w.sigma(); }));
+                auto rw    = VarRewriter(sig->has_var(), shift);
+                res->set(k++, rw.rewrite(sig->op(i)));
+            }
+            new_ext_dom = res;
+        } else {
+            new_ext_dom = clos_remove_env(ep, new_fn_type->dom());
+        }
+        auto new_ext_type = w.cn(new_ext_dom);
         auto new_ext_lam  = w.mut_lam(new_ext_type)->set(old_lam->dbg_key());
         log().d("wrap external lam {} → stub {}, external {}", old_lam, new_fn, new_ext_lam);
         if (old_lam->is_set()) {
@@ -313,6 +389,13 @@ void ClosConv::rewrite_body(const Stub& stub) {
 
     auto params = w.tuple(DefVec(old_fn->num_doms(), [&](auto i) { return new_fn->var(nv, skip_env(ep, i)); }));
     map(old_fn->var(), params);
+
+    for (auto fv : stub.fvs) {
+        auto mapped = lookup(fv);
+        auto want   = rewrite(fv->type());
+        if (mapped->type() != want) map(fv, w.call<core::bitcast>(want, mapped)->set(mapped->dbg_key()));
+    }
+
     new_fn->set(rewrite(old_fn->filter()), rewrite(old_fn->body()));
 }
 

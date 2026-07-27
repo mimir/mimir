@@ -28,19 +28,38 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     assert(lam && "make_stub: not a lam");
     if (auto i = lookup(lam); i && i->isa_mut<Lam>()) return i->as_mut<Lam>();
 
-    auto& w        = new_world();
-    auto ep        = env_param(lam->type()->as<Pi>());
-    auto nd        = lam->num_doms();
-    auto telescope = is_telescope_cn(lam->type());
-    assert(!telescope || mode == No_Env);
-    auto new_dom = telescope ? rewrite(lam->dom()) : w.sigma(DefVec(nd, [&](auto i) -> const Def* {
-        auto new_dom = rewrite(lam->dom(nd, i));
-        if (i == ep) {
-            if (mode == Unbox) return env_type();
-            if (mode == Box) return w.call<mem::Ptr0>(new_dom);
+    auto& w = new_world();
+    auto ep = env_param(lam->type()->as<Pi>());
+    auto nd = lam->num_doms();
+    const Def* new_dom;
+    if (auto sigma = rewrite(lam->type()->as<Pi>()->dom())->isa_mut<Sigma>(); sigma && sigma->has_var()) {
+        auto n   = sigma->num_ops();
+        auto res = w.mut_sigma(sigma->type(), n);
+        for (size_t i = 0; i != n; ++i) {
+            auto shift = w.tuple(DefVec(n, [&](size_t j) -> const Def* { return j < i ? res->var(n, j) : w.tuple(); }));
+            auto rw    = VarRewriter(sigma->has_var(), shift);
+            auto d     = rw.rewrite(sigma->op(i));
+            if (i == ep) {
+                if (mode == Unbox)
+                    d = env_type();
+                else if (mode == Box)
+                    d = w.call<mem::Ptr0>(d);
+            }
+            res->set(i, d);
         }
-        return new_dom;
-    }));
+        new_dom = res;
+    } else {
+        new_dom = w.sigma(DefVec(lam->num_doms(), [&](auto i) -> const Def* {
+            auto nd = rewrite(lam->dom(lam->num_doms(), i));
+            if (i == ep) {
+                if (mode == Unbox)
+                    return env_type();
+                else if (mode == Box)
+                    return w.call<mem::Ptr0>(nd);
+            }
+            return nd;
+        }));
+    }
     if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret()->type());
     auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg_key());
     log().d("stub {} → {}", lam, new_lam);

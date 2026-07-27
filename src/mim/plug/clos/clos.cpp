@@ -3,6 +3,8 @@
 #include <mim/config.h>
 #include <mim/phase.h>
 
+#include <mim/plug/core/core.h>
+
 #include "mim/plug/clos/phase/branch_clos_elim.h"
 #include "mim/plug/clos/phase/clos2sjlj.h"
 #include "mim/plug/clos/phase/clos_conv.h"
@@ -54,12 +56,28 @@ ClosLit isa_clos_lit(const Def* def, bool fn_isa_lam) {
     return ClosLit(nullptr);
 }
 
+const Def* clos_respell(const Def* dst, const Def* v) {
+    if (v->type() == dst) return v;
+    auto& w = dst->world();
+    if (auto sig = dst->isa<Sigma>()) {
+        auto n   = sig->num_ops();
+        auto red = sig->reduce(v);
+        DefVec ops(n);
+        for (size_t i = 0; i != n; ++i)
+            ops[i] = clos_respell(red[i], v->proj(n, i));
+        return w.tuple(ops);
+    }
+    if (dst->isa<Pi>() || v->type()->isa<Pi>() || Axm::isa<mem::M>(dst)) return v;
+    return w.call<core::bitcast>(dst, v);
+}
+
 const Def* clos_pack(const Def* env, const Def* fn, const Def* ct) {
     assert(env && fn);
     assert(!ct || isa_clos_type(ct));
     auto& w = env->world();
     auto pi = fn->type()->as<Pi>();
     auto ep = env_param(pi);
+    env     = clos_respell(pi->dom(pi->num_doms(), ep), env);
     assert(env->type() == pi->dom(pi->num_doms(), ep));
     ct = ct ? ct : clos_type(w.cn(clos_remove_env(ep, pi->dom())));
     return w.tuple(ct, {env->type(), fn, env})->as<Tuple>();
@@ -76,7 +94,8 @@ const Def* clos_apply(const Def* closure, const Def* args) {
     auto [_, fn, env] = clos_unpack(closure);
     auto pi           = fn->type()->as<Pi>();
     auto ep           = env_param(pi);
-    return w.app(fn, DefVec(pi->num_doms(), [&](auto i) { return clos_insert_env(ep, i, env, args); }));
+    auto arg          = w.tuple(DefVec(pi->num_doms(), [&](auto i) { return clos_insert_env(ep, i, env, args); }));
+    return w.app(fn, clos_respell(pi->dom(), arg));
 }
 
 /*
