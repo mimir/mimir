@@ -983,6 +983,11 @@ def _flags_from_cc_entry(entry: dict) -> list:
     """
     if "arguments" in entry:
         raw = list(entry["arguments"])
+    elif os.name == "nt":
+        # POSIX shlex treats '\' as an escape and would destroy the backslash
+        # paths in a Windows `command` string; split without POSIX rules and
+        # drop the surviving surrounding quotes.
+        raw = [t.strip('"') for t in shlex.split(entry.get("command", ""), posix=False)]
     else:
         raw = shlex.split(entry.get("command", ""))
 
@@ -1179,24 +1184,31 @@ def main(argv=None):
                 file=sys.stderr,
             )
 
-    # Hardcoded Fallbacks should you not use the cmake flag.
-    # TODO: Maybe change this to an argument in the future?
-    fallback_includes = [
+    # The header roots libmim, fe and abseil live under, plus the build tree's
+    # generated headers (`mim/config.h`).  These are passed as clean path tokens
+    # on every platform and are the single source of truth for *locating*
+    # headers — compile_commands.json is used only for build-type defines on top.
+    # We deliberately do not trust its own `-I` paths: in the `command`-string
+    # form CMake emits on Windows they are backslash paths that shlex mangles,
+    # which would leave libclang unable to find these headers.
+    _build_dir = Path(args.build_dir)
+    project_includes = [
         f"-I{_REPO_ROOT / 'include'}",
         f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'include'}",
         f"-I{_REPO_ROOT / 'submodules' / 'abseil-cpp'}",
-        f"-I{_REPO_ROOT / 'build' / 'include'}",
-        f"-I{_REPO_ROOT / 'build'}",
+        f"-I{_build_dir / 'include'}",
+        f"-I{_build_dir}",
     ]
 
     def _args_for_header(hdr: str) -> list:
         clang_args = list(base_args)
+        clang_args.extend(project_includes)
         if cc_entries:
             entry = _match_cc_entry(hdr, cc_entries)
             if entry:
+                # Adds build-type defines (NDEBUG, ABSL_*, …) on top of the
+                # project include roots above.
                 clang_args.extend(_flags_from_cc_entry(entry))
-                return clang_args
-        clang_args.extend(fallback_includes)
         return clang_args
 
     # Resolve extras directory
