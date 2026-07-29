@@ -1,18 +1,18 @@
-// RUN: rm -f %t.ll ; \
-// RUN: %mim %s -o - --output-ll %t.ll --aggr-lam-spec | %FileCheck %s
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll ; \
+// RUN: %mim -p opt %s -o - -p ll --aggr-lam-spec | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t; test $? -eq 1
 
 plugin mem;
 plugin core;
 plugin regex;
-plugin direct;
+plugin cps;
 
 let Top     = ⊤:Nat;
 let pattern = %regex.conj (%regex.quant.plus  %regex.cls.w, %regex.lit '@');
 let len     = 10;
 
-con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit : Cn [%mem.M 0, I32]] =
+con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [%mem.M 0, I32]) =
     let (mem, string) = %mem.alloc («len; Char», 0) mem;
     let mem           = %mem.store (mem, string, "testasdf@\0");
     match_regex len ((mem, string), exiting)
@@ -21,7 +21,7 @@ con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
             let (mem, matched, pos) = pattern (mem, str, 0:(Idx len));
             let end_ = %core.idx len 0 (%core.nat.sub (len, 1));
             return (mem, %core.bit2.and_ 0 (%core.icmp.e (pos, end_), matched));
-        con exiting[mem: %mem.M 0, return :Bool] = exit (mem, %core.conv.u i32 return)
+        con exiting(mem: %mem.M 0, return: Bool) = exit (mem, %core.conv.u i32 return)
     end
 
 // CHECK-NOT: %regex.

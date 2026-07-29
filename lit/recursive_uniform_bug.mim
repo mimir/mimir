@@ -1,4 +1,4 @@
-// RUN: %mim %s -o -
+// RUN: %mim -p opt %s -o -
 let Triple = [T: *, U: *, V: *];
 
 axm %bug.Box: Triple → *;

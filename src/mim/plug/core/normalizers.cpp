@@ -496,27 +496,49 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
                 case nat::add: return world.lit_nat(*la + *lb);
                 case nat::sub: return *la < *lb ? world.lit_nat_0() : world.lit_nat(*la - *lb);
                 case nat::mul: return world.lit_nat(*la * *lb);
+                case nat::div: return *lb == 0 ? world.lit_nat_0() : world.lit_nat(*la / *lb);
+                case nat::mod: return *lb == 0 ? a : world.lit_nat(*la % *lb);
             }
         }
 
         if (*la == 0) {
             switch (id) {
                 case nat::add: return b;
-                case nat::sub: return a; // 0 - b = 0
-                case nat::mul: return a; // 0 * b = 0
+                case nat::sub: return a;                 // 0 - b = 0
+                case nat::mul: return a;                 // 0 * b = 0
+                case nat::div: return world.lit_nat_0(); // 0 / b = 0
+                case nat::mod: return world.lit_nat_0(); // 0 % b = 0
             }
         }
 
         if (*la == 1 && id == nat::mul) return b; // 1 * b = b
     }
 
-    if (lb && *lb == 0 && id == nat::sub) return a; // a - 0 = a
+    if (lb) {
+        if (*lb == 0) {
+            switch (id) {
+                case nat::sub: return a;                 // a - 0 = a
+                case nat::div: return world.lit_nat_0(); // a / 0 = 0
+                case nat::mod: return a;                 // a % 0 = a
+                default: break;
+            }
+        }
+        if (*lb == 1) {
+            switch (id) {
+                case nat::div: return a;                 // a / 1 = a
+                case nat::mod: return world.lit_nat_0(); // a % 1 = 0
+                default: break;
+            }
+        }
+    }
 
     if (a == b) {
         switch (id) {
             case nat::add: return world.call(nat::mul, Defs{world.lit_nat(2), a}); // a + a = 2 * a
             case nat::sub: return world.lit_nat(0);                                // a - a = 0
             case nat::mul: break;
+            case nat::div: break;                    // 0 / 0 = 0, so we cannot fold a / a = 1 symbolically
+            case nat::mod: return world.lit_nat_0(); // a % a = 0 (even for a = 0, since 0 % 0 = 0)
         }
     }
 
@@ -872,6 +894,14 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
 
         return world.lit(d_t, idx_from_signed_mod(*ld, idx_sext(*ls, *l)));
     }
+
+    if (ls && ld)
+        if (auto c1 = Axm::isa(id, x)) {
+            auto x1 = c1->arg();
+            if (auto ls1 = Lit::isa(x1->type()->as<App>()->arg()))
+                if (*ls > *ls1 || *ls == 0)     // the intermediate conv is widening
+                    if (*ld == *ls1) return x1; // conv(conv(x)) -> x
+        }
 
     return {};
 }

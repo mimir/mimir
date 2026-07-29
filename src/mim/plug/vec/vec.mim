@@ -2,7 +2,7 @@
 ///
 /// @see mim::plug::vec
 ///
-/// Utilitly functions for arrays to behave them like vectors in other languages.
+/// Utility functions that make arrays behave like vectors in other languages.
 ///
 /// [TOC]
 ///
@@ -44,7 +44,7 @@ axm %vec.scan(for_all, exists): {E: *} → {n: Nat} → [p: E → Bool] → «n;
 ///
 /// ### %%vec.first / %%vec.last
 ///
-/// Is the given element in the vector, and what is the index of its first/last occurence?
+/// Is the given element in the vector, and what is the index of its first/last occurrence?
 ///
 lam f_first    {E: *} {n: Nat} (eq: [E, E] → Bool) (x: E) ((b: Bool, i: Idx n), y: E): [Bool, Idx n] = (((ff, %core.wrap.add 0 (i, %core.idx n 0 1)), (tt, i))#(eq (x, y)), (b, i))#b;
 lam f_last     {E: *} {n: Nat} (eq: [E, E] → Bool) (x: E) (y: E, [b: Bool, i: Idx n]): [Bool, Idx n] = f_first eq x ((b, i), y);
@@ -53,7 +53,7 @@ lam %vec.last  {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E):       
 ///
 /// ### %%vec.len
 ///
-/// Get length of vector.
+/// Yields the length of the vector.
 ///
 lam %vec.len {n: Nat} {T: *} [«n; T»]: Nat = n;
 ///
@@ -65,7 +65,9 @@ axm %vec.is_unique: {T: *} → {n: Nat} → «n; T» → Bool, normalize_is_uniq
 ///
 /// ## Modifiers
 ///
-/// Concatenation of an `n`-vector and an `m`-vector to an `n + m`-vector.
+/// ### %%vec.cat
+///
+/// Concatenates an `n`-vector and an `m`-vector to an `n + m`-vector.
 ///
 axm %vec.cat: {n m: Nat}
             → {T: *}
@@ -74,7 +76,7 @@ axm %vec.cat: {n m: Nat}
 ///
 /// ### %%vec.diff
 ///
-/// Removes elements from vector.
+/// Removes the elements at the given indices from the vector; the indices must be distinct (checked via %%vec.is_unique).
 ///
 axm %vec.diff: {T: *}
              → {n m: Nat}

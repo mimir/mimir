@@ -19,6 +19,8 @@ class Vector : public absl::InlinedVector<T, N, A> {
 public:
     using Base = absl::InlinedVector<T, N, A>;
 
+    using Base::insert;
+
     /// @name Constructors
     ///@{
     using Base::Base;
@@ -41,6 +43,19 @@ public:
         auto ri = std::ranges::begin(range);
         for (auto& elem : *this)
             elem = std::invoke(f, *ri++);
+    }
+    ///@}
+
+    /// @name insert_range / append_range
+    /// Available in C++23 but not absl.
+    ///@{
+    template<std::ranges::forward_range R>
+    constexpr void insert_range(Base::const_iterator pos, R&& r) {
+        insert(pos, r.begin(), r.end());
+    }
+    template<std::ranges::forward_range R>
+    constexpr void append_range(R&& r) {
+        insert_range(Base::end(), r);
     }
     ///@}
 

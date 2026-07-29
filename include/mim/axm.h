@@ -130,6 +130,15 @@ public:
     template<class Id, u8 Curry=0> static auto as(       const Def* def) { return isa<Id, Curry, false>(    def); }
     template<class Id, u8 Curry=0> static auto as(Id id, const Def* def) { return isa<Id, Curry, false>(id, def); }
     // clang-format on
+
+    /// Like Axm::as but - instead of merely asserting in `Debug` builds - throws a formatted mim::error when @p def
+    /// is not the expected axm.
+    /// @p fmt / @p args describe what was expected; a plain string works, as does a format string plus arguments.
+    template<class Id, u8 Curry = 0, class... Args>
+    static auto expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
+        if (auto res = isa<Id, Curry>(def)) return res;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), def);
+    }
     ///@}
 
     static constexpr u8 Trip_End    = u8(-1);

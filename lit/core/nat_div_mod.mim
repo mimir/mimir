@@ -1,0 +1,53 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=OPT
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -c -o %t -Wno-override-module
+// RUN: %FileCheck %s --check-prefix=DIV < %{s:stem}.ll
+// RUN: %FileCheck %s --check-prefix=MOD < %{s:stem}.ll
+
+plugin core;
+plugin mem;
+import compile;
+
+// %core.nat.div/mod fold the partial/degenerate cases at normalization time:
+//   a / 0 = 0,   a % 0 = a,   a % a = 0,   plus ordinary constant folding.
+// `x` is a runtime value, so `x / 0` and `x % x` exercise the symbolic rules;
+// everything must still collapse to literals, i.e. no `%core.nat` may remain.
+//
+// OPT-LABEL: fun extern test_fold
+// OPT-NOT: %core.nat
+// OPT: (0, 7, 3, 1, 0)
+fun extern test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
+    let a = %core.nat.div (x, 0); // -> 0 (symbolic a / 0 = 0)
+    let b = %core.nat.mod (7, 0); // -> 7 (a % 0 = a)
+    let c = %core.nat.div (10, 3); // -> 3
+    let d = %core.nat.mod (10, 3); // -> 1
+    let e = %core.nat.mod (x, x); // -> 0 (symbolic a % a = 0)
+    return (a, b, c, d, e);
+
+// For a runtime (non-literal) divisor the axiom survives normalization and must
+// be lowered by the `ll` backend. A bare `udiv`/`urem` would make division by
+// zero immediate UB, so the backend guards the divisor (replace 0 by 1) and
+// selects the defined result for the zero case: `a / 0 = 0`, `a % 0 = a`.
+//
+// The `mem` keeps the domain a heterogeneous sigma so the two `Nat`s stay scalar
+// `i64`s instead of folding into a `«2; Nat»` SIMD vector. DIV and MOD use
+// independent prefixes because the two functions' emission order is not stable.
+
+// MOD-LABEL: define{{.*}}@test_mod
+// MOD: icmp eq i64
+// MOD: select i1
+// MOD: urem i64
+// MOD: select i1
+fun extern test_mod(mem: %mem.M 0, x: Nat, y: Nat): [%mem.M 0, Nat] =
+    let r = %core.nat.mod (x, y);
+    return (mem, r);
+
+// DIV-LABEL: define{{.*}}@test_div
+// DIV: icmp eq i64
+// DIV: select i1
+// DIV: udiv i64
+// DIV: select i1
+fun extern test_div(mem: %mem.M 0, x: Nat, y: Nat): [%mem.M 0, Nat] =
+    let q = %core.nat.div (x, y);
+    return (mem, q);

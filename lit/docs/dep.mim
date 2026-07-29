@@ -1,0 +1,13 @@
+// RUN: %mim %s
+plugin core;
+plugin refly;
+
+// `Vec` is an ordinary `lam` — but it returns a *type*: it is a function `Nat → *`.
+lam extern Vec (n: Nat): * = «n; Nat»;
+
+// `zeros n` builds a length-`n` array of zeros.
+// Its return *type* `Vec n` mentions the *value* `n`: a dependent function type.
+lam extern zeros (n: Nat): Vec n = ‹n; 0›;
+
+// `zeros 3` is partial-evaluated to `‹3; 0›` during graph construction; assert it statically.
+let _ = %refly.equiv.struc_eq (zeros 3, ‹3; 0›);

@@ -6,6 +6,7 @@
     <tab type="mainpage" visible="yes" title=""/>
     <tab type="pages" visible="no" title="" intro=""/>
     <tab type="usergroup" title="📚 Documentation">
+        <tab type="user" url="@ref mimir" title="A Tour of MimIR"/>
         <tab type="user" url="@ref cli" title="Mim Command-Line Reference"/>
         <tab type="user" url="@ref langref" title="Mim Language Reference"/>
         <tab type="user" url="@ref coding" title="Contributing &amp; Debugging"/>

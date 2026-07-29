@@ -16,7 +16,7 @@ plugin option;
 ///
 /// ### %%ord.Key
 ///
-/// This is existential type specifies a type and a less-than function.
+/// This existential-style type specifies a type together with a less-than function.
 ///
 let %ord.Key = [T: *, lt: [T, T] → Bool];
 ///
@@ -33,14 +33,14 @@ axm %ord.Map: %ord.Key → * → *;
 ///
 /// ### %%ord.init
 ///
-/// Create set / map from a list of values / key-value-pairs.
+/// Creates a set / map from a list of values / key-value pairs.
 ///
 axm %ord.init(set): [K: %ord.Key] →          {n: Nat} → «n;  K#T    » → %ord.Set K  , normalize_init;
 axm %ord.init(map): [K: %ord.Key] → {V: *} → {n: Nat} → «n; [K#T, V]» → %ord.Map K V, normalize_init;
 ///
 /// ### %%ord.create
 ///
-/// Create empty set / map.
+/// Creates an empty set / map.
 ///
 lam %ord.create_set [K: %ord.Key]        : %ord.Set K   = %ord.init.set K    @0 ();
 lam %ord.create_map [K: %ord.Key] (V: *) : %ord.Map K V = %ord.init.map K @V @0 ();
@@ -49,14 +49,14 @@ lam %ord.create_map [K: %ord.Key] (V: *) : %ord.Map K V = %ord.init.map K @V @0 
 ///
 /// ### %%ord.size
 ///
-/// Get number of elements in container.
+/// Yields the number of elements in the container.
 ///
 axm %ord.size(set): {K: %ord.Key} →          %ord.Set K   → Nat, normalize_size;
 axm %ord.size(map): {K: %ord.Key} → {V: *} → %ord.Map K V → Nat, normalize_size;
 ///
 /// ### %%ord.is_empty
 ///
-/// Is container empty?
+/// Is the container empty?
 ///
 lam %ord.is_empty_set {K: %ord.Key}        (set: %ord.Set K  ): Bool = %core.ncmp.e (%ord.size.set set, 0);
 lam %ord.is_empty_map {K: %ord.Key} {V: *} (map: %ord.Map K V): Bool = %core.ncmp.e (%ord.size.map map, 0);
@@ -65,14 +65,14 @@ lam %ord.is_empty_map {K: %ord.Key} {V: *} (map: %ord.Map K V): Bool = %core.ncm
 ///
 /// ### %%ord.get
 ///
-/// Get value from key in map.
-/// Return option of V 
+/// Looks up the given key in the map.
+/// Returns an optional value (`%%option.Opt V`).
 ///
 axm %ord.get: {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → %option.Opt V, normalize_get;
 ///
 /// ### %%ord.contains
 ///
-/// Does the container conain the given key?
+/// Does the container contain the given key?
 ///
 axm %ord.contains(set): {K: %ord.Key} →          [%ord.Set K  , K#T] → Bool, normalize_contains;
 axm %ord.contains(map): {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → Bool, normalize_contains;
@@ -81,7 +81,7 @@ axm %ord.contains(map): {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → Boo
 ///
 /// ### %%ord.insert
 ///
-/// Insert key / key-value-pair into container.
+/// Inserts a key / key-value pair into the container.
 ///
 axm %ord.insert(set): {K: %ord.Key} →          [%ord.Set K  ,  K#T    ] → %ord.Set K  , normalize_insert;
 axm %ord.insert(map): {K: %ord.Key} → {V: *} → [%ord.Map K V, [K#T, V]] → %ord.Map K V, normalize_insert;

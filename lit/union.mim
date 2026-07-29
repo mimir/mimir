@@ -1,23 +1,23 @@
-// RUN: %mim %s -o -
+// RUN: %mim -p opt %s -o -
 
-lam combine (t1 t2: *) : * =
+lam combine (t1 t2: *): * =
     t1 ∪ t2;
 
-lam inject (t1 t2: *) (x:t1) : t1 ∪ t2 =
+lam inject (t1 t2: *) (x: t1): t1 ∪ t2 =
     x inj t1 ∪ t2;
 
-lam minject (t1 t2 t3: *) (x: t3) : t1 ∪ t2 ∪ t3 =
+lam minject (t1 t2 t3: *) (x: t3): t1 ∪ t2 ∪ t3 =
     x inj t1 ∪ t2 ∪ t3;
 
-lam extern f1 (t1 t2: *) (x:t1) (y:t2): t1 =
+lam extern f1 (t1 t2: *) (x: t1) (y: t2): t1 =
     match x inj t1 ∪ t2 with a: t1 => x | b: t2 => x;
 
-lam f (t1 t2: *) (x:t1) (y: t2): t2  =
+lam f (t1 t2: *) (x: t1) (y: t2): t2  =
     match x inj t1 ∪ t2 with
         | a: t1 => y
         | b: t2 => b;
 
-lam minject2 (t1 t2 t3: *) (x: t3) : t3 =
+lam minject2 (t1 t2 t3: *) (x: t3): t3 =
     let u = x inj t1 ∪ t2 ∪ t3 ∪ [I32, t3];
     match u with
         | a: t1 => x

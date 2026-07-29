@@ -1,12 +1,12 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll
-// RUN: clang++ %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang++ %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t foo bar; test $? -eq 64
 
 plugin math;
 plugin core;
 
-con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let s = %math.conv.u2f %math.f32 argc;
     let x = %math.exp.log2 0 (%math.exp.exp 0 s);
     let y = %math.exp.log 0 (%math.exp.exp2 0 s);

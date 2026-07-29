@@ -31,6 +31,10 @@ public:
     using Base              = std::span<T, N>;
     constexpr static auto D = std::dynamic_extent;
 
+    using Base::data;
+    using Base::empty;
+    using Base::size;
+
     /// @name Constructors
     ///@{
     using Base::Base;
@@ -76,18 +80,18 @@ public:
     /// Similar to Span::subspan but in *reverse*:
     ///@{
     [[nodiscard]] constexpr Span<T, D> rsubspan(size_t i, size_t n = D) const noexcept {
-        return n != D ? subspan(Base::size() - i - n, n) : subspan(0, Base::size() - i);
+        return n != D ? subspan(size() - i - n, n) : subspan(0, size() - i);
     }
 
     /// `span.rsubspan(3, 5)` removes the last 3 elements and picks 5 elements starting before those.
     template<size_t i, size_t n = D>
     [[nodiscard]] constexpr Span<T, n != D ? n : (N != D ? N - i : D)> rsubspan() const noexcept {
         if constexpr (n != D)
-            return Span<T, n>(Base::data() + Base::size() - i - n);
+            return Span<T, n>(data() + size() - i - n);
         else if constexpr (N != D)
-            return Span<T, N - i>(Base::data());
+            return Span<T, N - i>(data());
         else
-            return Span<T, D>(Base::data(), Base::size() - i);
+            return Span<T, D>(data(), size() - i);
     }
     ///@}
 };

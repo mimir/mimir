@@ -5,7 +5,6 @@
 Start here if you want to work on MimIR itself.
 This page is the contributor entry point for build, test, style, and debugging workflow.
 For API and IR usage patterns, continue with the [Developer Guide](@ref dev).
-For subsystem-specific material, see [Plugins](@ref plugins), [Rewriting](@ref rewriting), and [Phases](@ref phases).
 
 ## Contributor Quick Start {#building}
 
@@ -251,10 +250,10 @@ This section has more information about this topic.
 
 You can directly invoke several MimIR dump helpers from within GDB, for example:
 
-- [mim::Def::dump](@ref mim::Def::dump),
-- [mim::Def::write](@ref mim::Def::write),
-- [mim::World::dump](@ref mim::World::dump),
-- [mim::World::write](@ref mim::World::write), ...
+- [`mim::Def::dump`](@ref mim::Def::dump),
+- [`mim::Def::write`](@ref mim::Def::write),
+- [`mim::World::dump`](@ref mim::World::dump),
+- [`mim::World::write`](@ref mim::World::write), ...
 
 ```gdb
 (gdb) call def->dump()
@@ -263,9 +262,9 @@ You can directly invoke several MimIR dump helpers from within GDB, for example:
 (gdb) call world().write("out.mim")
 ```
 
-In particular, note the different output levels of [mim::Def::dump](@ref mim::Def::dump).
+In particular, note the different output levels of [`mim::Def::dump`](@ref mim::Def::dump).
 
-You can also tweak the output behavior directly from within GDB by changing [mim::World::flags](@ref mim::World::flags) or [mim::World::log](@ref mim::World::log):
+You can also tweak the output behavior directly from within GDB by changing [`mim::World::flags`](@ref mim::World::flags) or [`mim::World::log`](@ref mim::World::log):
 
 ```gdb
 (gdb) call world().flags().dump_gid = 1
@@ -273,7 +272,7 @@ You can also tweak the output behavior directly from within GDB by changing [mim
 (gdb) call world().log().max_level_ = 4
 ```
 
-Another useful trick is to recover a `Def*` from a [mim::Def::gid](@ref mim::Def::gid) via [mim::World::gid2def](@ref mim::World::gid2def):
+Another useful trick is to recover a `Def*` from a [`mim::Def::gid`](@ref mim::Def::gid) via [`mim::World::gid2def`](@ref mim::World::gid2def):
 
 ```gdb
 (gdb) p world().gid2def(123)
@@ -299,10 +298,10 @@ Here is the `xdot` GDB command in action:
 
 ### Conditional Breakpoints
 
-Often, you will want to inspect a specific [mim::Def](@ref mim::Def) at a particular point in the program.
+Often, you will want to inspect a specific [`mim::Def`](@ref mim::Def) at a particular point in the program.
 [Conditional breakpoints](https://ftp.gnu.org/old-gnu/Manuals/gdb/html_node/gdb_33.html) are very handy for this.
 
-For example, the following command breaks if the [mim::Def::gid](@ref mim::Def::gid) of variable `def` is `42` at source location `foo.cpp:23`:
+For example, the following command breaks if the [`mim::Def::gid`](@ref mim::Def::gid) of variable `def` is `42` at source location `foo.cpp:23`:
 
 ```gdb
 break foo.cpp:23 if def->gid() == 42
@@ -340,3 +339,21 @@ mim test.mim --break-on-alpha   # Break if a check for alpha-equivalence fails.
 ```
 
 See the [Command-Line Reference](@ref cli) for the full list of flags.
+
+### Profiling {#profiling}
+
+If a compilation is taking longer than expected, use `--profile` to find out which [`mim::Phase`](@ref mim::Phase) is responsible.
+It measures wall-clock time spent in each phase and reports it via `--output-profile <file>` (or `-` for stdout) in one of three formats:
+
+```sh
+mim test.mim --profile summary --output-profile -   # Flat table aggregated by phase name, sorted by total time.
+mim test.mim --profile tree    --output-profile -   # Indented tree that preserves phase nesting/order.
+mim test.mim --profile trace   --output-profile trace.json
+```
+
+`--profile` on its own (with no value) defaults to `summary`.
+
+The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
+Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.
+
+See [`mim::Profiler`](@ref mim::Profiler) for implementation details.

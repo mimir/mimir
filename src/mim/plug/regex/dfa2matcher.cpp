@@ -1,9 +1,7 @@
 #include "mim/plug/regex/dfa2matcher.h"
 
 #include <algorithm>
-#include <sstream>
 
-#include <absl/container/flat_hash_map.h>
 #include <automaton/dfa.h>
 #include <automaton/range_helper.h>
 
@@ -37,11 +35,8 @@ namespace {
 namespace core = plug::core;
 namespace mem  = plug::mem;
 
-std::string state_to_name(const DFANode* state) {
-    std::stringstream ss;
-    ss << "state_" << state;
-    return ss.str();
-}
+// Name states by their stable id - never by pointer value, which would change from run to run.
+std::string state_to_name(const DFANode* state) { return "state_" + std::to_string(state->id()); }
 
 DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
     DFAMap<Ranges> state2ranges;

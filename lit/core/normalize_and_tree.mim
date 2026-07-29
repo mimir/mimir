@@ -1,9 +1,9 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 plugin core;
 
-con extern and_lit [return : Cn Bool] =
+con extern and_lit (return: Cn Bool) =
     return
     (%core.bit2.and_ 0
         (%core.bit2.and_ 0

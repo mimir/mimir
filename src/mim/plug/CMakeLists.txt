@@ -1,15 +1,19 @@
 set(MIM_PLUGINS
     affine
     autodiff
+    buffer
     clos
     compile
     core
+    cps
     demo
-    direct
     gpu
+    ll
+    ll_nvptx
     math
     matrix
     mem
+    nvptx
     opt
     option
     ord

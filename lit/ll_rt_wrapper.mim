@@ -1,0 +1,57 @@
+// C runtime wrappers for the `ll` backend (issue #486): the size of a `jmp_buf` for
+// `%clos.alloc_jmpbuf` is provided by the C runtime `rt/mim_rt.c` (`@mim_jmpbuf_size`)
+// instead of hard-coded LLVM IR.
+
+// embed mode (default): the wrapper's definition is spliced in, so the module is self-contained.
+// RUN: rm -f %t.embed.ll %t
+// RUN: %mim -p opt -p clos %s -p ll -X ll:rt=embed -X ll:o=%t.embed.ll
+// RUN: %FileCheck --check-prefix=EMBED %s < %t.embed.ll
+// The self-contained module links and runs; gated to Linux because mixing the wrapper's C runtime
+// into the executable pulls in toolchain runtime DLLs that aren't on PATH on the Windows CI image.
+// RUN: %if system-linux %{ clang %t.embed.ll -o %t -Wno-override-module %}
+// RUN: %if system-linux %{ %t ; test $? -eq 1 %}
+
+// extern mode: only a declaration is emitted; the runtime is linked in separately.
+// RUN: rm -f %t.extern.ll
+// RUN: %mim -p opt -p clos %s -p ll -X ll:rt=extern -X ll:o=%t.extern.ll
+// RUN: %FileCheck --check-prefix=EXTERN %s < %t.extern.ll
+
+// EMBED: define{{.*}}@mim_jmpbuf_size
+// EMBED: call i64 @mim_jmpbuf_size()
+
+// EXTERN: declare i64 @mim_jmpbuf_size()
+// EXTERN: call i64 @mim_jmpbuf_size()
+// EXTERN-NOT: define{{.*}}@mim_jmpbuf_size
+
+plugin core;
+plugin cps;
+
+let pb_type = Cn [%mem.M 0];
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
+    con end_ (mem: %mem.M 0) = return (mem, 1I32); // <-- end_ backward pass
+
+    let (alloc_pb_mem, pb_ptr) = %mem.malloc (pb_type, 0) (mem, 100);
+    let pb_arr = %core.bitcast (%mem.Ptr («⊤:Nat; pb_type», 0)) pb_ptr;
+    let lea_pb = %mem.lea (pb_arr, 0I32);
+    let store_pb = %mem.store (alloc_pb_mem, lea_pb, end_);
+
+    con loop_head (mem: %mem.M 0, i: I32) =
+        con exit (mem: %mem.M 0) =
+            let (backward_pass_mem, backward_pass) = %mem.load (mem, lea_pb); // <- begin backward pass
+            backward_pass (backward_pass_mem);
+
+        con yield (mem: %mem.M 0) = loop_head (mem, %core.wrap.add 0 (i, 1I32));
+
+        con body (mem: %mem.M 0) =
+            let (load_pb_mem, last_pb) = %mem.load (mem, lea_pb);
+            con pb (mem: %mem.M 0) = last_pb (mem); // << call previous backward pass block
+
+            let store_pb_mem = %mem.store (load_pb_mem, lea_pb, pb); // << stack backward pass block
+            yield (store_pb_mem);
+
+        let condition = %core.icmp.ul (i, 19I32);
+        let target = (exit, body)#condition;
+        target (mem);
+
+    loop_head (store_pb, 0I32); // <-- start forward pass

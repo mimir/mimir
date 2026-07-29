@@ -1,5 +1,5 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p clos %s --output-ll %t.ll -o -
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll -o -
 
 
 // build a linked list/stack/for loop
@@ -9,31 +9,31 @@
 // the functions are stored and loaded in between each iteration
 
 plugin core;
-plugin direct;
+plugin cps;
 
 let pb_type = Cn [%mem.M 0];
 
-ccon printInteger [mem: %mem.M 0, val: I32, return : Cn [%mem.M 0]];
+ccon printInteger [mem: %mem.M 0, val: I32, return: Cn [%mem.M 0]];
 
-con extern main [mem: %mem.M 0, argc: I32, argv : %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return : Cn [%mem.M 0, I32]] =
-    con end_ [mem: %mem.M 0] = return (mem, 99I32);
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
+    con end_ (mem: %mem.M 0) = return (mem, 99I32);
 
-    con init22 [mem: %mem.M 0] =
+    con init22 (mem: %mem.M 0) =
         let (alloc_pb_mem, pb_ptr) = %mem.malloc (pb_type, 0) (mem, 100);
         let pb_arr = %core.bitcast (%mem.Ptr («⊤:Nat; pb_type», 0)) pb_ptr;
         let lea_pb = %mem.lea (pb_arr, 0I32);
         let store_pb = %mem.store (alloc_pb_mem, lea_pb, end_);
 
-        con loop_head [mem: %mem.M 0, i : I32] =
-            con exit [mem: %mem.M 0] =
+        con loop_head (mem: %mem.M 0, i: I32) =
+            con exit (mem: %mem.M 0) =
                 let (backward_pass_mem, backward_pass) = %mem.load (mem, lea_pb);  // <- begin backward pass
                 backward_pass (backward_pass_mem);
 
-            con yield [mem: %mem.M 0] = loop_head( mem, %core.wrap.add 0 (i, 1I32) );
+            con yield (mem: %mem.M 0) = loop_head( mem, %core.wrap.add 0 (i, 1I32) );
 
-            con body [mem: %mem.M 0] =
+            con body (mem: %mem.M 0) =
                 let (load_pb_mem, last_pb) = %mem.load (mem, lea_pb);
-                con pb [mem: %mem.M 0] =
+                con pb (mem: %mem.M 0) =
                     //last_pb (mem)  // << call previous backward pass block
                     printInteger(mem, i, last_pb);
 

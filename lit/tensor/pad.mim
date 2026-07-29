@@ -1,0 +1,36 @@
+// RUN: %mim %s -p opt -o %t
+// RUN: cat %t | %FileCheck %s
+// RUN: cat %t | %FileCheck %s --check-prefix=GONE
+
+// %tensor.pad: pads each axis (s_out#d = lo#d + s_in#d + hi#d). The guarded/clamped read needs %core.icmp /
+// %core.select, which an affine map cannot express, so it is lowered directly in C++ (LowerMapReduce::lower_pad).
+// Checked on the lowered Mim IR (no codegen), as for slice / flip.
+// GONE-NOT: %tensor.pad
+// GONE-NOT: map_reduce
+// GONE-NOT: %affine
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+// 1-D constant pad of a length-3 vector to length 6 (lo 1, hi 2, fill 0): out[i] = (1 ≤ i < 4) ? input[i−1] : 0.
+// The bounds check `i − 1 < 3` lowers to an unsigned %core.icmp (the index shift folds into %core.wrap.add).
+// CHECK-DAG: fun extern pad1d_const
+// CHECK-DAG: %core.icmp
+fun extern pad1d_const (input: «3; I32»): «6; I32» =
+    return (%tensor.pad 3 (0, 1, 2) (input, 0I32));
+
+// 2-D constant pad: out[i][j] = in_region ? input[i−1][j−2] : 0. The two per-axis bounds checks are AND-combined.
+// CHECK-DAG: fun extern pad2d_const
+// CHECK-DAG: %core.bit2.and_
+fun extern pad2d_const (input: «2, 3; I32»): «4, 7; I32» =
+    return (%tensor.pad (2, 3) (0, (1, 2), (1, 2)) (input, 0I32));
+
+// 1-D replicate pad: out-of-region cells take the nearest edge element; the read index is clamped to [0, 2]
+// via signed min/max (%core.extrema.Sm = smin, .SM = smax).
+// CHECK-DAG: fun extern pad1d_repl
+// CHECK-DAG: %core.extrema.Sm
+// CHECK-DAG: %core.extrema.SM
+fun extern pad1d_repl (input: «3; I32»): «6; I32» =
+    return (%tensor.pad 3 (1, 1, 2) (input, ⊥:I32));

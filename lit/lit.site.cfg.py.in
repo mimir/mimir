@@ -5,6 +5,9 @@ config.my_src_root = r'@CMAKE_SOURCE_DIR@'
 config.my_obj_root = r'@CMAKE_BINARY_DIR@'
 config.test_source_root = r'@CMAKE_CURRENT_BINARY_DIR@/tests'
 config.filecheck = r'@MIM_FILECHECK@'
+config.build_type = r'@CMAKE_BUILD_TYPE@'
+config.fp16 = @MIM_FP16_SUPPORTED@
+config.cuda_can_run_on_device = @MIM_CUDA_CAN_RUN_ON_DEVICE@
 lit_config.maxIndividualTestTime = @MIM_LIT_TIMEOUT@
 if sys.platform == "win32":
     config.mim = r'@CMAKE_BINARY_DIR@/bin/mim.exe'

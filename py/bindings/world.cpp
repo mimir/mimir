@@ -5,13 +5,15 @@
 
 #include <cstdint>
 
+#include <limits>
+
 #include <fe/sym.h>
 
 #include <mim/def.h>
 #include <mim/lam.h>
 #include <mim/world.h>
 
-#include <mim/pass/optimize.h>
+#include <mim/phase/optimize.h>
 
 namespace nb = nanobind;
 
@@ -57,7 +59,24 @@ void init_world(nb::module_& m) {
         .def("implicit_app", [](World& w, const Def* callee, DefVector  args) { return w.implicit_app(callee, Defs(args)); }, nb::rv_policy::reference_internal)
         .def("arr",     [](World& w, Def* arity, Def* body) { return w.arr(arity, body); }, nb::rv_policy::reference_internal)
         .def("optimize", [](World& w) { optimize(w); })
-        .def("dot", static_cast<void (World::*)(const char*, bool, bool) const>(&World::dot))
+        .def("set", [](World& w, std::string name) { w.set(name); })
+        .def("dot",
+             [](const World& w, const char* file, int max, bool all_annexes, bool follow_types, bool inline_consts,
+                bool default_filter, bool show_hidden) {
+                 w.dot(file, {.max            = max,
+                              .all_annexes    = all_annexes,
+                              .follow_types   = follow_types,
+                              .inline_consts  = inline_consts,
+                              .default_filter = default_filter,
+                              .show_hidden    = show_hidden});
+             },
+             nb::arg("file") = nullptr,
+             nb::arg("max") = std::numeric_limits<int>::max(),
+             nb::arg("all_annexes") = false,
+             nb::arg("follow_types") = false,
+             nb::arg("inline_consts") = false,
+             nb::arg("default_filter") = false,
+             nb::arg("show_hidden") = false)
         .def("annex", [](World& w, uint64_t id) { return w.annex(id); }, nb::rv_policy::reference_internal);
     // clang-format on
 }

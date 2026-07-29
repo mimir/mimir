@@ -1,19 +1,19 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
 
 plugin core;
 plugin clos;
 
 
-con f [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] =
+con f (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) =
     return (mem, %core.wrap.add 0 (x, 42I32));
 
-con g [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] =
+con g (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) =
     return (mem, 1I32);
 
 
-con extern main [mem: %mem.M 0, argc: I32, argv : %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return : Cn [%mem.M 0, I32]] =
-    con h [mem: %mem.M 0, x : I32, return : Cn [%mem.M 0, I32]] = return (mem, %core.wrap.add 0 (x, argc));
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
+    con h (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, %core.wrap.add 0 (x, argc));
 
     let pb_type = Cn [%mem.M 0, I32, Cn [%mem.M 0, I32]];
     let Tas = (pb_type, 0);
@@ -23,19 +23,19 @@ con extern main [mem: %mem.M 0, argc: I32, argv : %mem.Ptr («⊤:Nat; %mem.Ptr 
     let (mem, pb_arr) = %mem.alloc («4; pb_type», 0) mem;
     let (mem, a_arr)  = %mem.alloc («4; I32», 0) mem;
 
-    let lea_0 = %mem.lea (pb_arr, 0_4);
+    let lea_0 = %mem.lea (pb_arr, 0₄);
     let mem   = %mem.store (mem, lea_0, f);
-    let lea_1 = %mem.lea (pb_arr, 1_4);
+    let lea_1 = %mem.lea (pb_arr, 1₄);
     let mem   = %mem.store (mem, lea_1, g);
-    let lea_2 = %mem.lea (pb_arr, 2_4);
+    let lea_2 = %mem.lea (pb_arr, 2₄);
     let mem   = %mem.store (mem, lea_2, h);
-    let lea   = %mem.lea (a_arr, 0_4);
+    let lea   = %mem.lea (a_arr, 0₄);
     let mem   = %mem.store (mem, lea, 10I32);
 
-    let fn_lea      = %mem.lea (pb_arr, 2_4);
+    let fn_lea      = %mem.lea (pb_arr, 2₄);
     let (mem, func) = %mem.load (mem, fn_lea);
     let (mem, _)    = %mem.load (mem, lea);
     func(mem, 1I32, callback)
     where
-        con callback [mem: %mem.M 0, x : I32] = return (mem, x);
+        con callback (mem: %mem.M 0, x: I32) = return (mem, x);
     end;

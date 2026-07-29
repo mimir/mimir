@@ -1,17 +1,17 @@
 #include <cstdio>
 
 #include <sstream>
+#include <utility>
 
 #include <gtest/gtest.h>
 
 #include <mim/driver.h>
+#include <mim/phase.h>
 #include <mim/rewrite.h>
 
 #include <mim/ast/parser.h>
 
 #include <mim/plug/core/core.h>
-
-#include "helpers.h"
 
 using namespace mim;
 using namespace mim::plug;
@@ -87,7 +87,7 @@ TEST(trait, idx) {
     Driver driver;
     driver.log().set(Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
-    ast::load_plugins(w, "core");
+    ast::load_plugin(w, "core");
 
     EXPECT_EQ(Lit::as(op(core::trait::size, w.type_idx(0x0000'0000'0000'00FF_n))), 1);
     EXPECT_EQ(Lit::as(op(core::trait::size, w.type_idx(0x0000'0000'0000'0100_n))), 1);
@@ -358,7 +358,7 @@ TEST(FV, algos) {
     Driver driver;
     driver.log().set(Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
-    ast::load_plugins(w, "core");
+    ast::load_plugin(w, "core");
 
     auto nat = w.type_nat();
     auto run = w.curr_run();
@@ -459,6 +459,44 @@ TEST(FV, algos) {
     EXPECT_EQ(bj->free_vars(), vf_i1_j1);
     EXPECT_EQ(xi->free_vars(), vf_i1);
     EXPECT_EQ(xj->free_vars(), vf_i1_j1);
+}
+
+TEST(Def, nests) {
+    Driver driver;
+    driver.log().set(Log::Level::Debug).set(&std::cerr);
+    World& w = driver.world();
+
+    auto nat = w.type_nat();
+    auto pi  = w.pi(nat, nat);
+    auto f   = w.mut_lam(pi);
+    auto g   = w.mut_lam(pi);
+    auto h   = w.mut_lam(pi);
+    auto z   = w.mut_lam({nat, nat}, nat);
+    f->app(false, g, w.lit_nat(23));
+    g->app(false, h, f->var());
+    h->app(false, z, {h->var(), g->var()});
+    z->app(false, z, z->var());
+
+    EXPECT_TRUE(f->nests(g));
+    EXPECT_TRUE(g->nests(h));
+    EXPECT_TRUE(f->nests(h));
+
+    EXPECT_FALSE(f->nests(f));
+    EXPECT_FALSE(g->nests(g));
+    EXPECT_FALSE(h->nests(h));
+    EXPECT_FALSE(g->nests(f));
+    EXPECT_FALSE(h->nests(g));
+    EXPECT_FALSE(h->nests(f));
+
+    // nests(const Def*)
+    EXPECT_TRUE(f->nests(g->var()));  // g is nested in f
+    EXPECT_TRUE(g->nests(h->body())); // h's body hangs below h, which is nested in g
+    EXPECT_TRUE(f->nests(h->body())); // transitive via h's/g's free vars
+
+    EXPECT_FALSE(f->nests(f->var())); // f's var sits at f's level - like f->nests(f)
+    EXPECT_FALSE(f->nests(w.lit_nat(23)));
+    EXPECT_FALSE(g->nests(f->var()));
+    EXPECT_FALSE(h->nests(f->var()));
 }
 
 TEST(ADT, Span) {
@@ -592,5 +630,118 @@ TEST(Rewrite, Hole) {
         ASSERT_EQ(hole1->op(), hole3);
         ASSERT_EQ(hole2->op(), hole3);
         ASSERT_EQ(hole3, res);
+    }
+}
+
+namespace {
+
+// An Analysis that never converges: every round claims to have learned something new.
+class Oscillate : public Analysis {
+public:
+    Oscillate(World& world)
+        : Analysis(world, "oscillate") {}
+
+private:
+    void finalize() override { invalidate(); }
+};
+
+class OscPhase : public RWPhase {
+public:
+    OscPhase(World& world)
+        : RWPhase(world, "osc_phase", &analysis_)
+        , analysis_(world) {}
+
+private:
+    Oscillate analysis_;
+};
+
+} // namespace
+
+TEST(Phase, fp_iteration_cap) {
+    Driver driver;
+    driver.flags().max_fp_iters = 8;
+    EXPECT_THROW(Phase::run<OscPhase>(driver.world()), std::logic_error);
+}
+
+namespace {
+
+/// Minimal propagation analysis: joins the (abstract) argument into the callee's var at every App site.
+class Prop : public Analysis {
+public:
+    Prop(World& world, bool sparse)
+        : Analysis(world, "prop") {
+        if (!sparse) make_dense();
+    }
+
+    void run_fixed_point() {
+        for (bool todo = true; todo;) {
+            reset();
+            run();
+            todo = this->todo();
+        }
+    }
+
+private:
+    const Def* join(const Def* var, const Def* def) {
+        auto cur = lattice(var);
+        if (!cur) return lattice(var, def), def;
+        if (cur == def || cur == var) return cur;
+        return pin(var), var;
+    }
+
+    const Def* rewrite_imm_App(const App* app) override {
+        if (auto lam = app->callee()->isa_mut<Lam>(); lam && lam->is_set()) {
+            auto j = join(lam->var(), rewrite(app->arg()));
+            // Seed the abstract value into the rewriter map so the callee's body consumes it:
+            // a no-op on the lattice when nothing changed, but re-installs the map entry each round.
+            lattice(lam->var(), j);
+        }
+        return Analysis::rewrite_imm_App(app);
+    }
+};
+
+} // namespace
+
+TEST(Phase, sparse_differential) {
+    Driver driver;
+    World& w = driver.world();
+    auto nat = w.type_nat();
+    auto pi  = w.pi(nat, nat);
+
+    auto f = w.mut_lam(pi)->set(w.sym("f")); // f x = x
+    f->set(w.lit_ff(), f->var());
+
+    auto g = w.mut_lam(pi)->set(w.sym("g")); // g x = f x - facts about g's var flow onward into f's var via g's body
+    g->set(w.lit_ff(), w.app(f, g->var()));
+
+    auto r = w.mut_lam(pi)->set(w.sym("r")); // r x = r 1 - self-recursive so the fixed point needs several rounds
+    r->set(w.lit_ff(), w.app(r, w.lit_nat(1)));
+
+    auto main1 = w.mut_lam(pi)->set(w.sym("main1")); // main1 x = g 5
+    main1->set(w.lit_ff(), w.app(g, w.lit_nat(5)));
+    main1->externalize();
+
+    auto main2 = w.mut_lam(pi)->set(w.sym("main2")); // main2 x = g (r 2) - joins a second value into g's var
+    main2->set(w.lit_ff(), w.app(g, w.app(r, w.lit_nat(2))));
+    main2->externalize();
+
+    Prop dense(w, false);
+    dense.run_fixed_point();
+    auto dense_lattice = Def2Def(dense.lattice());
+
+    Prop sparse(w, true);
+    sparse.run_fixed_point();
+    const auto& sparse_lattice = sparse.lattice();
+
+    // r's var joins 1 (self) and 2 (main) -> ⊤; sanity-check we computed something non-trivial
+    EXPECT_TRUE(dense.is_top(r->var()));
+    EXPECT_FALSE(dense_lattice.empty());
+
+    // sparse and dense must reach the identical fixed point
+    EXPECT_EQ(dense_lattice.size(), sparse_lattice.size());
+    for (auto [concr, abstr] : dense_lattice) {
+        auto i = sparse_lattice.find(concr);
+        ASSERT_NE(i, sparse_lattice.end()) << "missing lattice entry in sparse run";
+        EXPECT_EQ(i->second, abstr) << "diverging lattice entry";
     }
 }

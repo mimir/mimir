@@ -15,6 +15,6 @@ if ! git diff --quiet --ignore-submodules=all || ! git diff --cached --quiet --i
     exit 1
 fi
 
-git fetch --recurse-submodules=yes "$remote"
+git fetch --recurse-submodules=yes "$remote" "$commit"
 git checkout --detach "$commit"
 git submodule update --init --recursive

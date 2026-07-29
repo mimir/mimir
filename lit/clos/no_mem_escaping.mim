@@ -1,0 +1,51 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll
+// RUN: clang %S/../lib.c %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t | %FileCheck %s
+
+// Regression test for #126: closures whose Pi type has no leading %mem.M must still be closure-converted
+// correctly. `f`, `g`, and `h` are typed `Cn [I32, Cn I32]` -- no mem -- yet are packed into real, escaping
+// (heap-stored) closures, so this exercises the actual env-packing/unpacking machinery rather than relying on
+// scalarize to inline everything away.
+
+plugin core;
+plugin mem;
+
+ccon println_i32 [mem: %mem.M 0, val: I32, return: Cn [%mem.M 0]];
+
+con f (x: I32, k: Cn I32) = k (%core.wrap.add 0 (x, 42I32));
+con g (x: I32, k: Cn I32) = k (1I32);
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    con h (x: I32, k: Cn I32) = k (%core.wrap.add 0 (x, argc));
+
+    let pb_type = Cn [I32, Cn I32];
+
+    let (mem, pb_ptr) = %mem.malloc (pb_type, 0) (mem, 96);
+    let pb_arr         = %core.bitcast (%mem.Ptr («⊤:Nat; pb_type», 0)) pb_ptr;
+
+    let lea = %mem.lea (pb_arr, %core.idx_unsafe 0);
+    let mem = %mem.store (mem, lea, f);
+    let lea = %mem.lea (pb_arr, %core.idx_unsafe 1);
+    let mem = %mem.store (mem, lea, g);
+    let lea = %mem.lea (pb_arr, %core.idx_unsafe 2);
+    let mem = %mem.store (mem, lea, h);
+
+    let lea0 = %mem.lea (pb_arr, %core.idx_unsafe 0);
+    let (mem, func0) = %mem.load (mem, lea0);
+    let lea1 = %mem.lea (pb_arr, %core.idx_unsafe 1);
+    let (mem, func1) = %mem.load (mem, lea1);
+    let lea2 = %mem.lea (pb_arr, %core.idx_unsafe 2);
+    let (mem, func2) = %mem.load (mem, lea2);
+
+    func0 (1I32, cn (r0: I32) =
+        func1 (1I32, cn (r1: I32) =
+            func2 (1I32, cn (r2: I32) =
+                println_i32 (mem, r0, cn (mem: %mem.M 0) =
+                    println_i32 (mem, r1, cn (mem: %mem.M 0) =
+                        println_i32 (mem, r2, cn (mem: %mem.M 0) =
+                            return (mem, 0I32)))))));
+
+// CHECK: 43
+// CHECK: 1
+// CHECK: 2

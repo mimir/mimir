@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
 
-project(MimIR VERSION 0.2)
+project(MimIR VERSION 0.3)
 set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev', '' for release)")
 
 include(CMakeDependentOption)
@@ -66,7 +66,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     option(BUILD_TESTING "Build lit and unit tests." OFF) # needs to be BEFORE "include(CTest)"
     include(CTest)
     cmake_dependent_option(MIM_LIT_WITH_VALGRIND "If ON, the Mim CLI in the lit tests will be run under valgrind." OFF "BUILD_TESTING" OFF)
-    set(MIM_LIT_TIMEOUT 20 CACHE STRING "Timout for lit tests.")
+    set(MIM_LIT_TIMEOUT 30 CACHE STRING "Timeout for lit tests.")
     if(BUILD_TESTING)
         include(GoogleTest)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)

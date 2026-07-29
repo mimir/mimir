@@ -1,0 +1,81 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+plugin core;
+plugin mem;
+
+cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+
+cfun use_address[mem: %mem.M 0, ptr: %mem.Ptr (Nat, 0)]: [%mem.M 0];
+
+fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
+    // int x = 42;
+    ret (mem, px) = %mem.slot (Nat, 0) $ mem;
+    let mem       = %mem.store (mem, px, 42);
+
+    // int y = 42;
+    ret (mem, py) = %mem.slot (Nat, 0) $ mem;
+    let mem       = %mem.store (mem, py, 42);
+
+    head mem where
+        con head(mem: %mem.M 0) =
+            ret (mem, cond) = dont_know $ mem;
+
+            (exit, body)#cond mem where
+
+                con body(mem: %mem.M 0) =
+                    let (mem, x) = %mem.load (mem, px);
+                    let (mem, y) = %mem.load (mem, py);
+
+                    let eq = %core.ncmp.e (x, y);
+
+                    (false_branch, true_branch)#eq mem where
+
+                        // if (x == y) {
+                        //     x++;
+                        //     y++;
+                        // }
+                        con true_branch(mem: %mem.M 0) =
+                            let x1  = %core.nat.add (x, 1);
+                            let mem = %mem.store (mem, px, x1);
+
+                            let y1  = %core.nat.add (y, 1);
+                            let mem = %mem.store (mem, py, y1);
+
+                            head mem;
+
+                        // else {
+                        //     use_address(x);
+                        //     use_address(y);
+                        // }
+                        con false_branch(mem: %mem.M 0) =
+                            ret mem = use_address $ (mem, px);
+                            ret mem = use_address $ (mem, py);
+                            head mem;
+                    end;
+
+                con exit(mem: %mem.M 0) =
+                    let (mem, x) = %mem.load (mem, px);
+                    return (mem, x);
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %compile.ret_wrap,
+        %compile.named "%ll.emit",
+    );
+
+// x and y are provably always equal, so the else-branch taking their addresses is dead:
+// both slots are promoted and GVN merges x and y into a single phi.
+// CHECK: define i64 @test()
+// CHECK-NOT: alloca
+// CHECK-NOT: use_address
+// CHECK: ret i64

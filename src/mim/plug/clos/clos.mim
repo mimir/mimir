@@ -4,68 +4,77 @@
 ///
 /// [TOC]
 ///
+/// This plugin performs *typed closure conversion*: it turns functions that capture free variables into
+/// self-contained *closures* - a pair of a *code pointer* and an *environment* holding the captured values - so
+/// that every function becomes closed and can be lifted to the top level.
+/// Later it lowers these typed closures to untyped `(code-ptr, env-ptr)` pairs and turns exception-like basic
+/// blocks into `setjmp`/`longjmp`.
+/// The transformation is a pipeline of @ref phases (see below); the C++ implementation lives in mim::plug::clos.
+///
 /// ## Dependencies
 ///
 plugin core;
 ///
-/// ## Operations related to longjmp
+/// ## Operations
 ///
+/// mim::plug::clos::phase::Clos2SJLJ lowers exception-like basic-block closures to these operations.
+///
+/// ### %%clos.BufPtr
+///
+/// An opaque pointer to a C `jmp_buf`; its size in bytes is provided by the runtime.
 let %clos.BufPtr = %mem.Ptr0 I8;
+///
+/// ### %%clos.alloc_jmpbuf
+///
+/// Allocates a fresh `jmp_buf` and yields a pointer to it.
 axm %clos.alloc_jmpbuf: %mem.M 0 → [%mem.M 0, %clos.BufPtr];
+///
+/// ### %%clos.setjmp
+///
+/// Saves the current execution context into the `jmp_buf` (like C `setjmp`).
+/// Yields `0` on the initial call and the non-zero tag passed to `%%clos.longjmp` when jumped to.
 axm %clos.setjmp: [%mem.M 0, %clos.BufPtr] → [%mem.M 0, I32];
+///
+/// ### %%clos.longjmp
+///
+/// Restores the context saved in the `jmp_buf`, resuming right after the corresponding `%%clos.setjmp` and making
+/// it yield the given tag (like C `longjmp`).
 axm %clos.longjmp: Cn [%mem.M 0, %clos.BufPtr, I32];
 ///
 /// ## Closure Attribute
 ///
-/// Used internally to classify the use of differen Lambdas.
-/// mim::plug::clos::ClosConvPrep places these attributes:
-///     * `ret`: returning lambda
-///     * `freeBB`: ordinary basic block (see mim::Lam::is_basicblock())
-///     * `fstclassBB`: basic block that is passed around
-///     * `esc`: lambda that escapes its parent scope
-///     * `bot`: no special use
+/// ### %%clos.attr
 ///
-axm %clos.attr(returning, freeBB, fstclassBB, esc, bottom): {T: *} → T → T, normalize_clos;
+/// A marker wrapped around a `Lam` (or a use of it) that classifies how it is used.
+/// mim::plug::clos::phase::ClosConvPrep introduces these so that mim::plug::clos::phase::ClosConv sees a canonical
+/// program and can treat each kind of continuation appropriately:
+/// * `returning`: a *returning continuation* ("function"); fully closure converted.
+/// * `free_bb`: an ordinary basic block referenced from an enclosing scope (see mim::Lam::isa_basicblock).
+/// * `fstclass_bb`: a basic block used as a first-class value (passed around) rather than only called.
+/// * `esc`: a closure whose environment escapes its parent scope, so it is heap- instead of stack-allocated
+///   (introduced by mim::plug::clos::phase::LowerTypedClosPrep).
+/// * `bottom`: no special use; this is the identity marker and is normalized away by `normalize_clos`.
+axm %clos.attr(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, normalize_clos;
 ///
-/// ## Passes and Phases
+/// ## Phases
 ///
-/// ### Passes
+/// The `%%opt` pipeline runs these in the order below, reusing `%%clos.branch_clos` as a repeated cleanup after
+/// the passes that introduce branch closures.
+/// * `clos_conv_prep`: prepares for closure conversion by wrapping operands with the `%%clos.attr` markers above
+///   and eta-expanding branches and continuations (mim::plug::clos::phase::ClosConvPrep).
+/// * `clos_conv`: the actual *typed closure conversion* (mim::plug::clos::phase::ClosConv).
+/// * `branch_clos`: flattens a branch over closure literals back into a direct branch over the underlying `Lam`s,
+///   inlining their environments (mim::plug::clos::phase::BranchClosElim).
+/// * `lower_typed_clos_prep`: escape analysis; marks closures whose environment escapes with `%%clos.attr.esc`
+///   (mim::plug::clos::phase::LowerTypedClosPrep).
+/// * `clos2sjlj`: lowers exception-like basic-block closures to `setjmp`/`longjmp`
+///   (mim::plug::clos::phase::Clos2SJLJ).
+/// * `lower_typed_clos`: lowers *typed* closures to untyped `(code-ptr, env-ptr)` pairs, boxing or unboxing the
+///   environment (mim::plug::clos::phase::LowerTypedClos).
 ///
-axm %clos.clos_conv_prep_pass:        %compile.Pass;
-axm %clos.branch_clos_pass:           %compile.Pass;
-axm %clos.lower_typed_clos_prep_pass: %compile.Pass;
-axm %clos.clos2sjlj_pass:             %compile.Pass;
-///
-/// ### Phases
-///
-axm %clos.clos_conv_phase:        %compile.Phase;
-axm %clos.lower_typed_clos_phase: %compile.Phase;
-
-let clos_opt1_passes =
-    %compile.passes (
-        %compile.eta_red_pass tt,
-        %compile.eta_exp_pass,
-        %compile.scalarize_pass,
-    );
-
-let clos_opt2_passes =
-    %compile.passes (
-        %compile.scalarize_pass,
-        %clos.branch_clos_pass,
-        %mem.copy_prop_pass tt,
-        %clos.lower_typed_clos_prep_pass,
-        %clos.clos2sjlj_pass,
-    );
-
-let clos_phases =
-    %compile.phases ff (
-        optimization_phase,
-        %compile.pass2phase (%mem.reshape_pass %mem.reshape_flat),
-        %mem.add_mem_phase,
-        %compile.pass2phase %clos.clos_conv_prep_pass,
-        %compile.pass2phase %compile.eta_exp_pass,
-        %clos.clos_conv_phase,
-        %compile.pass2phase clos_opt1_passes,
-        %compile.pass2phase clos_opt2_passes,
-        %clos.lower_typed_clos_phase,
-    );
+axm %clos.clos_conv_prep:        %compile.Phase;
+axm %clos.clos_conv:             %compile.Phase;
+axm %clos.branch_clos:           %compile.Phase;
+axm %clos.lower_typed_clos_prep: %compile.Phase;
+axm %clos.clos2sjlj:             %compile.Phase;
+axm %clos.lower_typed_clos:      %compile.Phase;

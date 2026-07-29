@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 1 2 ; test $? -eq 3
 // RUN: %t 4 5 ; test $? -eq 9
 
@@ -13,12 +13,12 @@ con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
     let (mem, val) = %mem.load (mem, argv_ptr_a);
     atoi (mem, val, atoi_cont_a)
     where
-        con atoi_cont_a [mem: %mem.M 0, a: I32] =
+        con atoi_cont_a (mem: %mem.M 0, a: I32) =
             let argv_ptr_b = %mem.lea (argv, 2I32);
             let (mem, val) = %mem.load (mem, argv_ptr_b);
             atoi (mem, val, atoi_cont_b)
             where
-                con atoi_cont_b [mem: %mem.M 0, b: I32] =
+                con atoi_cont_b (mem: %mem.M 0, b: I32) =
                     return (mem, %core.wrap.add 0 (a, b));
             end
     end

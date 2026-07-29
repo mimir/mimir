@@ -5,6 +5,16 @@
     z-index: 10000;
 }
 
+/* doxygen-awesome's sidebar-only layout clips #top to a fixed height with
+ * overflow: hidden, which cuts off the bottom of this dropdown once it has
+ * more entries than fit in that height. Lift the clipping only while the
+ * dropdown is actually open. */
+@media screen and (min-width: 768px) {
+    #top:has(.version-switcher--open) {
+        overflow: visible;
+    }
+}
+
 #projectnumber.version-switcher .version-switcher__button {
     border: 1px solid var(--separator-color);
     border-radius: var(--border-radius-medium);

@@ -1,4 +1,4 @@
-// RUN: %mim %s
+// RUN: %mim -p opt %s
 plugin tuple;
 plugin refly;
 

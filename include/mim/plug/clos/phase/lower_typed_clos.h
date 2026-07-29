@@ -7,7 +7,7 @@
 #include "mim/plug/clos/clos.h"
 #include "mim/plug/mem/mem.h"
 
-namespace mim::plug::clos {
+namespace mim::plug::clos::phase {
 
 /// This pass lowers *typed closures* to *untyped closures*.
 /// For details on typed closures, see ClosConv.
@@ -25,58 +25,54 @@ namespace mim::plug::clos {
 ///
 /// This pass will heap-allocate ClosKind::esc closures and stack-allocate everything else.
 /// These annotations are introduced by LowerTypedClosPrep.
-class LowerTypedClos : public Phase {
+///
+/// The rewrite carries a *mem token* along each function body (LowerTypedClos::lvm_ / LowerTypedClos::lcm_) so
+/// that the `%mem.alloc`/`%mem.store` it inserts for boxed environments are threaded into the mem chain.
+/// This stateful, order-sensitive threading is why LowerTypedClos::rewrite is overridden as a whole rather than
+/// via the per-node hooks.
+/// A converted Lam's body is enqueued and rewritten later, seeded with that body's own initial mem token.
+class LowerTypedClos : public RWPhase {
 public:
     LowerTypedClos(World& world, flags_t annex)
-        : Phase(world, annex) {}
-
-    void start() override;
+        : RWPhase(world, annex) {}
 
 private:
-    using StubQueue = std::queue<std::tuple<const Def*, const Def*, Lam*>>;
+    /// A pending body rewrite: the initial mem tokens (old @c lvm, new @c lcm) plus the old and new Lam.
+    struct Todo {
+        const Def* lvm;
+        const Def* lcm;
+        Lam* old_lam;
+        Lam* new_lam;
+    };
 
-    /// Recursively rewrites a Def.
-    const Def* rewrite(const Def* def);
+    void start() override;
+    const Def* rewrite(const Def* def) final;
 
     /// Describes how the environment should be treated.
     enum Mode {
-        Box = 0, //< Environment is boxed (default).
-        Unbox,   //< Environments is of primitive type (currently `iN`s) and directly stored in the pointer.
-        No_Env   //< Lambda has no environment (lifted, top-level).
+        Box = 0, ///< Environment is boxed (default).
+        Unbox,   ///< Environment is of primitive type (currently `iN`s) and directly stored in the pointer.
+        No_Env   ///< Lambda has no environment (lifted, top-level).
     };
 
     /// Create a new Lam stub.
     /// @p adjust_bb_type is true if the @p lam should be rewritten to a returning function.
-    Lam* make_stub(Lam* lam, enum Mode mode, bool adjust_bb_type);
+    Lam* make_stub(Lam* lam, Mode mode, bool adjust_bb_type);
 
-    /// @name Helpers
-    ///@{
-    /// wrapper around old2new_
-    const Def* map(const Def* old_def, const Def* new_def) { return old2new_[old_def] = new_def; }
-    Def* map(const Def* old_def, Def* new_def) {
-        old2new_[old_def] = new_def;
-        return new_def;
-    }
+    /// Pointer type used to represent environments.
+    const Def* env_type() { return new_world().call<mem::Ptr0>(new_world().sigma()); }
 
-    /// Pointer type used to represent environments
-    const Def* env_type() {
-        auto& w = world();
-        return w.call<mem::Ptr0>(w.sigma());
-    }
-    ///@}
+    std::queue<Todo> worklist_;
 
-    Def2Def old2new_;
-    StubQueue worklist_;
-
-    const Def* dummy_ret_ = nullptr; //< dummy return continuation
+    const Def* dummy_ret_ = nullptr; ///< dummy return continuation
+    bool converting_      = false;   ///< `false` while bootstrapping annexes; `true` once actually converting.
 
     /// @name memory-tokens
+    /// The mem token threaded through the body currently being rewritten.
     ///@{
-    const Def* lvm_; //< Last visited memory token
-    const Def* lcm_; //< Last created memory token
+    const Def* lvm_ = nullptr; ///< Last visited memory token.
+    const Def* lcm_ = nullptr; ///< Last created memory token.
     ///@}
-
-    std::vector<Lam*> new_externals_;
 };
 
-} // namespace mim::plug::clos
+} // namespace mim::plug::clos::phase

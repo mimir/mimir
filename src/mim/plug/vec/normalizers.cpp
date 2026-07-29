@@ -12,7 +12,7 @@
 namespace mim::plug::vec {
 
 template<fold id>
-const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
+const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
     auto& w     = c->world();
     auto callee = c->as<App>();
     auto f      = callee->arg();
@@ -25,12 +25,21 @@ const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
             for (auto op : tuple->ops())
                 acc = w.app(f, {acc, op});
         else // fold::r
-            for (auto op : tuple->ops() | std::ranges::views::reverse)
+            for (auto op : tuple->ops() | std::views::reverse)
                 acc = w.app(f, {op, acc});
         return acc;
     }
 
-    if (auto pack = vec->isa_imm<Pack>()) w.WLOG("packs not yet implemented: {}", pack);
+    if (auto seq = vec->isa<Seq>()) {
+        if (auto n = Lit::isa<u64>(seq->arity()); n && type->isa<Nat>()) {
+            if constexpr (id == fold::l)
+                for (auto proj : seq->projs(*n)) acc = w.app(f, {acc, proj});
+            else // fold::r
+                for (auto proj : seq->projs(*n) | std::views::reverse) acc = w.app(f, {proj, acc});
+            return acc;
+        }
+        w.WLOG("packs with non-literal arity not yet implemented: {}", seq);
+    }
 
     if (auto l = vec->isa<Lit>()) {
         if constexpr (id == fold::l)

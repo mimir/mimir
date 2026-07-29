@@ -1,10 +1,10 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p direct %s --output-ll %t.ll -o - | %FileCheck %s
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p cps %s -p ll -o - | %FileCheck %s
 
 plugin core;
 plugin autodiff;
 
-con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     return (mem, 42I32);
 
 // CHECK-DAG: return{{.*}}42

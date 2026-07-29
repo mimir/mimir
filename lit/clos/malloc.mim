@@ -1,11 +1,11 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p clos %s --output-ll %t.ll -o -
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll -o -
 
 plugin core;
 
 
-con f [mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]] = return (mem, %core.wrap.add 0 (x, 42I32));
-con g [mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]] = return (mem, 1I32);
+con f (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, %core.wrap.add 0 (x, 42I32));
+con g (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, 1I32);
 
 fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0)): [%mem.M 0, I32] =
     con h(mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, %core.wrap.add 0 (x, argc));

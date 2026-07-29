@@ -1,5 +1,5 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o -
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
 
 plugin core;
 
@@ -21,14 +21,14 @@ axm %foo.map_reduce:
         mul: «i: m; TI#i» → T,      // inner combination
         // out_index not needed => always ij (0 ... n) for n dimensions
         input: «x: m; [«NI#x; Nat», %foo.Mat (NI#x, SI#x, TI#x)]»
-    ] → %foo.Mat (n,S,T);
+    ] → %foo.Mat (n, S, T);
 
 // [(Nat, Nat)#x, («2; Nat», «3; Nat»),
 
 let test = %foo.map_reduce
-    (2,(4,3), I32,
+    (2, (4, 3), I32,
         2,
-        (2,3),
+        (2, 3),
         (I32, I32), // <2; I32>
         (
             (0, 1),

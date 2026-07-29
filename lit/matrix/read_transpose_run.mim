@@ -1,4 +1,4 @@
-// RUN: rm -f %t.ll
-// RUN: FILE=%s;%mim -p matrix -p clos -o - ${FILE%_run.mim}.mim --output-ll %t.ll
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f read_transpose.ll
+// RUN: FILE=%s;%mim -p opt -p matrix -p clos -o - ${FILE%_run.mim}.mim -p ll
+// RUN: clang read_transpose.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 5

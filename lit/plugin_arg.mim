@@ -1,0 +1,13 @@
+// RUN: rm -f %{s:stem}.ll %t.ll
+// Route a CLI argument to the `ll` backend via `-X`; `o=<file>` overrides its output path.
+// RUN: %mim -p opt %s -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// The default `<world>.ll` path must NOT be produced when the output path is overridden.
+// RUN: test ! -f %{s:stem}.ll
+plugin core;
+
+fun extern test(cond: Bool, a: «3; I32», b: «3; I32», i: Idx 3): «3; I32» =
+    con nx(phi: «3; I32») = return ins(phi, i, 23I32);
+    (cn () = nx a, cn () = nx b)#cond ();
+
+// CHECK: define

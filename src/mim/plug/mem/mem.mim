@@ -12,13 +12,13 @@ import compile;
 ///
 /// ### %%mem.M {#memM}
 ///
-/// This type tracks all kind of side-effects in the given address space.
+/// This type tracks all kinds of side effects in the given address space.
 axm %mem.M: Nat → *;
 ///
 /// ### %%mem.Ptr
 ///
 /// Pointer type with *pointee* type `T` and *address space* `a`.
-/// At the moment, the *address space* is not really used and a placeholder for future work.
+/// At the moment, the *address space* is not really used and serves as a placeholder for future work.
 axm %mem.Ptr: [*, Nat] → *;
 
 lam %mem.Ptr0(T: *): * = %mem.Ptr (T, 0);
@@ -30,12 +30,12 @@ lam %mem.Ptr0(T: *): * = %mem.Ptr (T, 0);
 ///
 /// ### %%mem.load
 ///
-/// Loads from a pointer of type `%%mem.Ptr (T, a)` the pointed value of type `T`.
+/// Loads the pointee of type `T` from a pointer of type `%%mem.Ptr (T, a)`.
 axm %mem.load: {T: *, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta] → [%mem.M a, T], normalize_load;
 ///
 /// ### %%mem.store
 ///
-/// Stores a value of type `T` to the location pointed to by a pointer of type `%%mem.Ptr (T, a)`,
+/// Stores a value of type `T` to the location pointed to by a pointer of type `%%mem.Ptr (T, a)`.
 axm %mem.store: {T: *, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta, T] → %mem.M a, normalize_store;
 ///
 /// ### %%mem.remem
@@ -50,14 +50,14 @@ axm %mem.alloc: [*, a: Nat] as Ta → [%mem.M a] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.slot
 ///
-/// Reserves a memory slot for type `T` in address space `a`.
-/// `id` has to be provided a unique id.
-axm %mem.slot: [*, a: Nat] as Ta → [%mem.M a, id: Nat] → [%mem.M a, %mem.Ptr Ta];
+/// Reserves a stack slot for type `T` in address space `a`.
+/// The slot is passed to the continuation and its lifetime is scoped to that continuation.
+axm %mem.slot: [*, a: Nat] as Ta → Fn %mem.M a → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.malloc
 ///
 /// Allocates memory of type `T` in address space `a`.
-/// The difference to `%%mem.alloc` is that the `size` is automatically inferred.
+/// The difference to `%%mem.alloc` is that the size is passed explicitly (in bytes) instead of being derived from `T`.
 axm %mem.malloc: [*, a: Nat] as Ta → [%mem.M a, Nat] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ### %%mem.free
@@ -67,10 +67,10 @@ axm %mem.free: {*, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta] → %mem.M a;
 ///
 /// ### %%mem.mslot
 ///
-/// Reserves a memory slot for type `T` in address space `a`.
+/// Reserves a stack slot for type `T` in address space `a`.
 /// The reserved slot will be `size` bytes large.
-/// `id` has to be provided an unique id.
-axm %mem.mslot: [*, a: Nat] as Ta → [%mem.M a, size: Nat, id: Nat] → [%mem.M a, %mem.Ptr Ta];
+/// The slot is passed to the continuation and its lifetime is scoped to that continuation.
+axm %mem.mslot: [*, a: Nat] as Ta → Fn [%mem.M a, size: Nat] → [%mem.M a, %mem.Ptr Ta];
 ///
 /// ## Operations w/o Side Effects
 ///
@@ -80,36 +80,14 @@ axm %mem.mslot: [*, a: Nat] as Ta → [%mem.M a, size: Nat, id: Nat] → [%mem.M
 /// Performs address computation by offsetting the passed pointer with index `i`.
 axm %mem.lea: {n: Nat, Ts: «n; *», a: Nat} → [%mem.Ptr («j: n; Ts#j», a), i: Idx n] → %mem.Ptr (Ts#i, a), normalize_lea;
 ///
-/// ## Stages
+/// ## Phases
 ///
-/// ### Phases
+/// * `add_mem`: threads `%%mem.M` through functions that lack it.
+/// * `seo`: Symbolic Expression Optimization - SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).
+/// * `remem_repl`: removes `%%mem.remem`s.
+/// * `alloc2malloc_repl`: rewrites `%%mem.alloc` / `%%mem.slot` into `%%mem.malloc` / `%%mem.mslot`.
 ///
-axm %mem.add_mem_phase: %compile.Phase;
-///
-/// ### Repls
-///
-axm %mem.remem_repl:        %compile.Repl;
-axm %mem.alloc2malloc_repl: %compile.Repl;
-///
-/// ### Passes
-///
-axm %mem.ssa_pass:              %compile.Pass;
-axm %mem.copy_prop_pass: Bool → %compile.Pass;
-///
-/// ##### %mem.reshape
-///
-axm %mem.reshape_mode: *;
-axm %mem.reshape_flat: %mem.reshape_mode;
-axm %mem.reshape_arg:  %mem.reshape_mode;
-///
-axm %mem.reshape_pass: %mem.reshape_mode → %compile.Pass;
-///
-/// ### Pipelines
-///
-let mem_opt_passes = %compile.passes (
-    //%compile.beta_red_pass,
-    //%compile.eta_red_pass ff,
-    //%compile.eta_exp_pass,
-    %mem.ssa_pass,
-    %mem.copy_prop_pass ff,
-);
+axm %mem.add_mem:           %compile.Phase;
+axm %mem.seo:               %compile.Phase;
+axm %mem.remem_repl:        %compile.Phase;
+axm %mem.alloc2malloc_repl: %compile.Phase;

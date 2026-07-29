@@ -1,0 +1,49 @@
+// Combining analyses, combining optimizations, Fig. 10
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+plugin core;
+
+cfun dont_know[]: Bool;
+cfun read[]: Nat;
+
+fun extern foo(x: Nat): Nat =
+    let x = 1;
+    ret z = read $ ();
+    let y = z;
+    head (x, y) where
+        con head(x y: Nat) =
+            ret cond = dont_know $ ();
+            (exit, body)#cond () where
+                con body() =
+                    let cond = %core.ncmp.ne (y, z);
+                    (f1, t1)#cond ()
+                    where
+                        con f1() = n1 x;
+                        con t1() = n1 2;
+                        con n1(x: Nat) =
+                            let x    = %core.nat.sub (2, x);
+                            let cond = %core.ncmp.ne (x, 1);
+                            (f2, t2)#cond ()
+                            where
+                                con f2() = n2 y;
+                                con t2() = n2 2;
+                                con n2(y: Nat) = head (x, y);
+                            end;
+                    end;
+                con exit() = return x;
+            end
+    end;
+
+lam extern _compile(): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %compile.phases tt (
+            %compile.phases tt (
+                %compile.beta_red,
+                %compile.eta_conv,
+            ),
+            %mem.seo,
+        ),
+        %compile.named "%ll.emit",
+    );
+
+// CHECK: ret i64 1

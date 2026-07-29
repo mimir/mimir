@@ -1,9 +1,9 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 plugin core;
 
-con extern and_tt [i :Bool, return : Cn Bool] =
+con extern and_tt (i: Bool, return: Cn Bool) =
     return (%core.bit2.and_ 0 (i, tt));
 
 // CHECK-DAG: return_{{[0-9_]+}} i_{{[0-9_]+}}

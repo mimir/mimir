@@ -12,7 +12,7 @@ void init_parser(nb::module_& m) {
         .def(nb::init<mim::ast::AST&>())
         .def("plugin", [](mim::ast::Parser& p, const std::string plug) {
             auto& ast = p.ast();
-            if (auto mod = p.plugin(plug)) mod->compile(ast);
+            if (auto mod = p.import(plug, mim::ast::Tok::Tag::K_plugin)) mod->compile(ast);
         });
 }
 
