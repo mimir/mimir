@@ -17,6 +17,13 @@ config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
 # inherit env vars
 config.environment = os.environ
 
+# Git-for-Windows bash occasionally fails to launch a freshly-built exe (a Windows loader hiccup
+# resolving a load-time DLL), surfacing as a spurious exit-127 with no output before mim even runs.
+# Retry only on Windows; a genuine regression still fails every attempt, so this cannot mask real
+# failures.
+if sys.platform == "win32":
+    config.test_retry_attempts = 2
+
 config.available_features.add("always")
 
 # Gate expensive tests on optimized builds via `// REQUIRES: release`.
