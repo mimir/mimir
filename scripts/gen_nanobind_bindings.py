@@ -342,6 +342,25 @@ def _extract_method(cursor, class_name: str) -> Optional[MethodInfo]:
     )
 
 
+def _report_diagnostics(tu, header_path: str) -> int:
+    """Print libclang's *fatal* diagnostics for *tu* to stderr; return their count.
+
+    A fatal (e.g. `'vector' file not found`) aborts the parse and leaves a
+    partial, garbage AST that the generator then turns into uncompilable
+    bindings — the classic symptom being output that only breaks on one
+    toolchain (e.g. a Windows/MSVC tree whose STL/SDK headers libclang cannot
+    locate).  Non-fatal errors are deliberately ignored: libclang lags the
+    bleeding-edge standard libraries it parses, so a clean, fully-compilable run
+    still emits plenty of benign `error`-level noise.
+    """
+    fatals = [d for d in tu.diagnostics if d.severity >= clang.Diagnostic.Fatal]
+    for d in fatals[:20]:  # the first few point at the root cause
+        print(f"  libclang: {header_path}: {d.spelling} [{d.location}]", file=sys.stderr)
+    if len(fatals) > 20:
+        print(f"  libclang: ... and {len(fatals) - 20} more", file=sys.stderr)
+    return len(fatals)
+
+
 def extract_from_header(tu, header_path: str):
     classes: dict = {}
     enums: list = []
@@ -880,10 +899,6 @@ def generate_module(units: list[tuple[str, str]], module_name: str = "_mim") -> 
 #  CMake integration: derive the real per-target compile flags from build/compile_commands.json
 # ---------------------------------------------------------------------------
 
-_CC_SEPARATE_FLAGS = ("-I", "-isystem", "-iquote", "-D", "-U", "-include")
-_CC_GLUED_PREFIXES = ("-I", "-isystem", "-iquote", "-D", "-U", "-std=", "-include")
-
-
 def _load_compile_commands(build_dir: Path) -> Optional[list]:
     """Load `<build_dir>/compile_commands.json`, or return None if unavailable."""
     cc = Path(build_dir) / "compile_commands.json"
@@ -938,24 +953,64 @@ def _match_cc_entry(header_path: str, entries: list) -> Optional[dict]:
     return best
 
 
+def _norm_std(value: str) -> str:
+    """Normalize a `-std`/`/std:` value to one libclang accepts."""
+    v = value.strip().lower()
+    # MSVC's open-ended 'latest' has no libclang equivalent; pin it to the
+    # standard we otherwise parse with.
+    return "c++23" if v in ("c++latest", "c++2b") else v
+
+
+def _strip_prefix(s: str, prefixes: tuple) -> Optional[str]:
+    """The remainder of *s* after the first matching (non-empty) prefix, else None."""
+    for p in prefixes:
+        if s.startswith(p) and len(s) > len(p):
+            return s[len(p):]
+    return None
+
+
 def _flags_from_cc_entry(entry: dict) -> list:
-    """Extract the preprocessor-relevant flags ."""
+    """Extract the parse-relevant flags from a compile-command entry.
+
+    Only include directories, preprocessor defines and the C++ standard affect
+    how libclang parses a header; codegen, warning and other toolchain flags are
+    irrelevant and dropped.  Both GNU (`-I`, `-isystem`, `-D`, `-std=`) and
+    MSVC / clang-cl (`/I`, `-external:I`, `-imsvc`, `/D`, `-std:`, `/std:`)
+    spellings are normalized to the GNU flags libclang expects — without this,
+    an MSVC `compile_commands.json` silently loses its system-include and
+    standard flags, leaving libclang unable to find the STL and producing a
+    garbage AST.
+    """
     if "arguments" in entry:
         raw = list(entry["arguments"])
     else:
         raw = shlex.split(entry.get("command", ""))
 
-    out, i = [], 0
-    while i < len(raw):
+    out: list = []
+    i, n = 0, len(raw)
+    while i < n:
         a = raw[i]
-        if a in _CC_SEPARATE_FLAGS and i + 1 < len(raw):
-            out.append(a)
-            out.append(raw[i + 1])
-            i += 2
-            continue
-        if a.startswith(_CC_GLUED_PREFIXES):
-            out.append(a)
-        i += 1
+        nxt = raw[i + 1] if i + 1 < n else None
+        step = 1
+
+        if m := re.match(r"[-/]std[=:](.+)", a):                          # C++ standard
+            out.append(f"-std={_norm_std(m.group(1))}")
+        elif a in ("-I", "/I") and nxt is not None:                       # user include (separate)
+            out.append(f"-I{nxt}"); step = 2
+        elif len(a) > 2 and a[:2] in ("-I", "/I"):                        # user include (glued)
+            out.append(f"-I{a[2:]}")
+        elif a in ("-isystem", "-iquote", "-imsvc", "-external:I", "/external:I") and nxt is not None:
+            out.append(f"-isystem{nxt}"); step = 2                        # system include (separate)
+        elif (rest := _strip_prefix(a, ("-external:I", "/external:I", "-imsvc", "-isystem", "-iquote"))) is not None:
+            out.append(f"-isystem{rest}")                                 # system include (glued)
+        elif a in ("-D", "/D", "-U", "/U") and nxt is not None:           # define/undef (separate)
+            out.append(f"-{a[-1]}{nxt}"); step = 2
+        elif len(a) > 2 and a[:2] in ("-D", "/D", "-U", "/U"):            # define/undef (glued)
+            out.append(f"-{a[1]}{a[2:]}")
+        elif a == "-include" and nxt is not None:                         # forced include
+            out += ["-include", nxt]; step = 2
+
+        i += step
     return out
 
 
@@ -1161,6 +1216,16 @@ def main(argv=None):
         if not tu:
             print(f"ERROR: failed to parse {hdr}", file=sys.stderr)
             continue
+
+        # A fatal parse error (typically a header libclang couldn't locate)
+        # leaves a partial AST and hence malformed bindings, so warn loudly.
+        if n := _report_diagnostics(tu, hdr):
+            print(
+                f"warning: {n} fatal libclang error(s) parsing {hdr}; generated "
+                "bindings will be malformed — the include flags are likely wrong "
+                "for this toolchain (see the errors above)",
+                file=sys.stderr,
+            )
 
         classes, enums = extract_from_header(tu, hdr)
         if not classes and not enums:
