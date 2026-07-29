@@ -18,6 +18,8 @@ import json
 import os
 import re
 import shlex
+import shutil
+import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -957,19 +959,54 @@ def _flags_from_cc_entry(entry: dict) -> list:
     return out
 
 
+def _resource_include_from(resource_dir: str) -> Optional[str]:
+    """`-isystem` flag for a clang resource dir, if it holds the builtin headers."""
+    inc = Path(resource_dir.strip()) / "include"
+    return f"-isystem{inc}" if (inc / "stddef.h").is_file() else None
+
+
 def _clang_resource_include() -> Optional[str]:
     """Locate libclang's builtin headers (stddef.h et al.) as an `-isystem` flag.
 
-    compile_commands.json never lists the compiler resource dir, so libclang
-    would otherwise fail to find its own builtin headers.
+    compile_commands.json never records the resource dir, and the pip `libclang`
+    wheel ships only the shared library — not its builtin headers — so libclang
+    cannot find `stddef.h` on its own.  Ask a real clang where they live
+    (`clang -print-resource-dir`), which is correct on Linux, macOS and Windows
+    alike; fall back to scanning the usual install locations if none is on PATH.
     """
-    base = Path("/usr/lib/clang")
-    if not base.is_dir():
-        return None
-    for ver_dir in sorted(base.iterdir(), reverse=True):
-        res_incl = ver_dir / "include"
-        if res_incl.is_dir() and (res_incl / "stddef.h").exists():
-            return f"-isystem{res_incl}"
+    # Primary, portable: ask a clang executable for its resource dir.
+    cc = os.environ.get("CC", "")
+    candidates = ([cc] if "clang" in os.path.basename(cc) else []) + ["clang", "clang++"]
+    for exe in candidates:
+        path = shutil.which(exe)
+        if not path:
+            continue
+        try:
+            proc = subprocess.run(
+                [path, "-print-resource-dir"], capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if proc.returncode == 0 and (flag := _resource_include_from(proc.stdout)):
+            return flag
+
+    # Fallback: scan the usual per-platform `.../lib/clang/<ver>` roots.
+    roots = [
+        Path("/usr/lib/clang"), Path("/usr/lib64/clang"),           # Linux
+        Path("/Library/Developer/CommandLineTools/usr/lib/clang"),  # macOS CommandLineTools
+        Path("/opt/homebrew/opt/llvm/lib/clang"),                   # macOS Homebrew (arm64)
+        Path("/usr/local/opt/llvm/lib/clang"),                      # macOS Homebrew (x86_64)
+        Path("C:/Program Files/LLVM/lib/clang"),                    # Windows LLVM installer
+    ]
+    prefix = os.environ.get("LLVM_PREFIX") or os.environ.get("LLVM_PATH")
+    if prefix:
+        roots.insert(0, Path(prefix) / "lib" / "clang")
+    for base in roots:
+        if not base.is_dir():
+            continue
+        for ver_dir in sorted(base.iterdir(), reverse=True):
+            if flag := _resource_include_from(str(ver_dir)):
+                return flag
     return None
 
 
