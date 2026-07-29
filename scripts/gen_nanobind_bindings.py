@@ -1214,7 +1214,12 @@ def main(argv=None):
         sys.exit(1)
 
     # Base clang arguments shared by every header.
-    base_args = ["-x", "c++-header"]
+    # `-ferror-limit=0` disables clang's early bail-out: libclang lags the
+    # standard libraries it parses and emits benign errors deep in the STL
+    # (harmless — the mim declarations still resolve).  Under the default cap
+    # (~20) a stdlib-heavy toolchain such as macOS/libc++ trips "too many errors
+    # emitted, stopping now" and yields a truncated, unusable AST.
+    base_args = ["-x", "c++-header", "-ferror-limit=0"]
     if args.extra_args:
         base_args.extend(args.extra_args.split())
     for inc in args.includes or []:
