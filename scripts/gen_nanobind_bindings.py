@@ -1035,6 +1035,49 @@ def _resource_include_from(resource_dir: str) -> Optional[str]:
     return f"-isystem{inc}" if (inc / "stddef.h").is_file() else None
 
 
+def _parse_search_dirs(stderr: str) -> list:
+    """Pull the include directories out of `clang -v` diagnostic output."""
+    dirs, capture = [], False
+    for line in stderr.splitlines():
+        s = line.strip()
+        if "search starts here:" in s:
+            capture = True
+        elif s.startswith("End of search list"):
+            break
+        elif capture and s and not s.startswith("#"):
+            # macOS annotates framework dirs; keep only the path.
+            dirs.append(s.replace(" (framework directory)", ""))
+    return dirs
+
+
+def _compiler_system_includes() -> list:
+    """Ask a real C++ compiler for its default system include dirs, as `-isystem` flags.
+
+    The pip `libclang` wheel ships no standard library and compile_commands.json
+    never lists the toolchain's implicit include dirs, so libclang cannot find
+    `<memory>`, `<cstdint>`, … on a toolchain whose stdlib is outside its own
+    default search — notably macOS/libc++.  Querying the compiler (`clang++ -v`)
+    yields exactly the libc++/libstdc++ and SDK paths it uses, which is portable
+    and always correct.  Returns an empty list if no compiler is reachable.
+    """
+    cxx = os.environ.get("CXX", "")
+    candidates = ([cxx] if "clang" in os.path.basename(cxx) else []) + ["clang++", "clang"]
+    for exe in candidates:
+        path = shutil.which(exe)
+        if not path:
+            continue
+        try:
+            proc = subprocess.run(
+                [path, "-E", "-x", "c++", "-v", os.devnull],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if dirs := _parse_search_dirs(proc.stderr):
+            return [f"-isystem{d}" for d in dirs]
+    return []
+
+
 def _clang_resource_include() -> Optional[str]:
     """Locate libclang's builtin headers (stddef.h et al.) as an `-isystem` flag.
 
@@ -1176,10 +1219,19 @@ def main(argv=None):
         base_args.extend(args.extra_args.split())
     for inc in args.includes or []:
         base_args.append(f"-I{inc}")
-    # libclang's own builtin headers need to be included as well.
-    res_flag = _clang_resource_include()
-    if res_flag:
-        base_args.append(res_flag)
+    # libclang ships no standard library, so it needs the toolchain's include
+    # dirs. On Windows it auto-detects the MSVC toolchain (and that path already
+    # works), so we only add the clang resource dir there. Elsewhere we ask the
+    # compiler for its full system include list — the only reliable way to point
+    # libclang at libc++/libstdc++ (e.g. macOS, where the SDK/libc++ paths are
+    # never in compile_commands.json).
+    sys_includes = [] if os.name == "nt" else _compiler_system_includes()
+    if sys_includes:
+        base_args.extend(sys_includes)
+    else:
+        res_flag = _clang_resource_include()
+        if res_flag:
+            base_args.append(res_flag)
 
     # Get all Cmake relevant includes and flags
     cc_entries = None
