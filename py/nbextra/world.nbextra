@@ -1,5 +1,5 @@
 [include]
-#include <mim/pass/optimize.h>          // mim::optimize (free function)
+#include <mim/phase/optimize.h>         // mim::optimize (free function)
 
 [class:World]
     // Run the optimization pipeline over this World (free function mim::optimize).
