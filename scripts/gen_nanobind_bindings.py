@@ -969,17 +969,23 @@ def _strip_prefix(s: str, prefixes: tuple) -> Optional[str]:
     return None
 
 
+# GNU value-carrying flags (separate form: flag then value) and their glued
+# prefixes. These are passed through *verbatim* — the exact form libclang parses
+# natively; rewriting them (e.g. re-gluing `-isystem <dir>`) regressed libc++
+# discovery on macOS.
+_GNU_VALUE_FLAGS = ("-I", "-isystem", "-iquote", "-D", "-U", "-include")
+_GNU_GLUED_PREFIXES = ("-I", "-isystem", "-iquote", "-D", "-U", "-std=", "-include")
+
+
 def _flags_from_cc_entry(entry: dict) -> list:
     """Extract the parse-relevant flags from a compile-command entry.
 
     Only include directories, preprocessor defines and the C++ standard affect
     how libclang parses a header; codegen, warning and other toolchain flags are
-    irrelevant and dropped.  Both GNU (`-I`, `-isystem`, `-D`, `-std=`) and
-    MSVC / clang-cl (`/I`, `-external:I`, `-imsvc`, `/D`, `-std:`, `/std:`)
-    spellings are normalized to the GNU flags libclang expects — without this,
-    an MSVC `compile_commands.json` silently loses its system-include and
-    standard flags, leaving libclang unable to find the STL and producing a
-    garbage AST.
+    irrelevant and dropped.  GNU spellings (`-I`, `-isystem`, `-D`, `-std=`) are
+    forwarded verbatim; MSVC / clang-cl spellings (`/I`, `-external:I`, `-imsvc`,
+    `/D`, `-std:`, `/std:`) are translated to their GNU equivalents so an MSVC
+    `compile_commands.json` still yields usable defines and standard flags.
     """
     if "arguments" in entry:
         raw = list(entry["arguments"])
@@ -998,22 +1004,26 @@ def _flags_from_cc_entry(entry: dict) -> list:
         nxt = raw[i + 1] if i + 1 < n else None
         step = 1
 
-        if m := re.match(r"[-/]std[=:](.+)", a):                          # C++ standard
+        # --- GNU spellings: forward verbatim (native libclang form) ---
+        if a in _GNU_VALUE_FLAGS and nxt is not None:
+            out += [a, nxt]; step = 2
+        elif a.startswith(_GNU_GLUED_PREFIXES):
+            out.append(a)
+        # --- MSVC / clang-cl spellings: translate to GNU ---
+        elif m := re.match(r"[-/]std:(.+)", a):                           # /std:, -std:
             out.append(f"-std={_norm_std(m.group(1))}")
-        elif a in ("-I", "/I") and nxt is not None:                       # user include (separate)
-            out.append(f"-I{nxt}"); step = 2
-        elif len(a) > 2 and a[:2] in ("-I", "/I"):                        # user include (glued)
+        elif a == "/I" and nxt is not None:                               # user include (separate)
+            out += ["-I", nxt]; step = 2
+        elif a.startswith("/I") and len(a) > 2:                           # user include (glued)
             out.append(f"-I{a[2:]}")
-        elif a in ("-isystem", "-iquote", "-imsvc", "-external:I", "/external:I") and nxt is not None:
-            out.append(f"-isystem{nxt}"); step = 2                        # system include (separate)
-        elif (rest := _strip_prefix(a, ("-external:I", "/external:I", "-imsvc", "-isystem", "-iquote"))) is not None:
-            out.append(f"-isystem{rest}")                                 # system include (glued)
-        elif a in ("-D", "/D", "-U", "/U") and nxt is not None:           # define/undef (separate)
-            out.append(f"-{a[-1]}{nxt}"); step = 2
-        elif len(a) > 2 and a[:2] in ("-D", "/D", "-U", "/U"):            # define/undef (glued)
+        elif a in ("-external:I", "/external:I", "-imsvc") and nxt is not None:
+            out += ["-isystem", nxt]; step = 2                            # system include (separate)
+        elif (rest := _strip_prefix(a, ("-external:I", "/external:I", "-imsvc"))) is not None:
+            out += ["-isystem", rest]                                     # system include (glued)
+        elif a in ("/D", "/U") and nxt is not None:                       # define/undef (separate)
+            out.append(f"-{a[1]}{nxt}"); step = 2
+        elif a.startswith(("/D", "/U")) and len(a) > 2:                   # define/undef (glued)
             out.append(f"-{a[1]}{a[2:]}")
-        elif a == "-include" and nxt is not None:                         # forced include
-            out += ["-include", nxt]; step = 2
 
         i += step
     return out
