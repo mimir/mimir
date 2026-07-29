@@ -21,7 +21,7 @@ class RegBuilder(MimPlugin):
         self.lvl = log_level
         self.world = self.driver.world()
         if initialize:
-            driver.load_plugins(["core", "compile", "regex", "opt"])
+            driver.load_plugins(["regex", "ll"])
 
     def _char_lit(self, lit) -> Def:
         return self.world.lit_i8(ord(lit))

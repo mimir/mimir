@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
 
-project(MimIR VERSION 0.2)
+project(MimIR VERSION 0.3)
 set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev', '' for release)")
 
 include(CMakeDependentOption)

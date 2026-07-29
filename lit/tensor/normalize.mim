@@ -1,8 +1,8 @@
-// RUN: %mim %s
+// RUN: %mim -p opt %s
 plugin tensor;
 plugin refly;
 plugin core;
-plugin direct;
+plugin cps;
 plugin affine;
 
 let m0 = ((1, 2), (3, 4));
@@ -10,27 +10,27 @@ let m1 = ((1, 2, 3), (4, 5, 6));
 let m2 = ((((1, 2, 3), (4, 5, 6)), ((7, 8, 9), (10, 11, 12))),
           (((21, 22, 23), (24, 25, 26)), ((27, 28, 29), (30, 31, 32))));
 
-let g2 = %tensor.get @(Nat, 2, (2, 2)) (m0, (1_2, 0_2));
+let g2 = %tensor.get @(Nat, 2, (2, 2)) (m0, (1₂, 0₂));
 
-let g4 = %tensor.get @(<<2; <<3; Nat>> >>, 2, (2, 2)) (m2, (1_2, 0_2));
-let g5 = %tensor.get @(Nat, 2, (2, 3)) (g4, (1_2, 2_3));
-let g6 = %tensor.get @(Nat, 4, (2, 2, 2, 3)) (m2, (1_2, 0_2, 1_2, 2_3));
+let g4 = %tensor.get @(<<2; <<3; Nat>> >>, 2, (2, 2)) (m2, (1₂, 0₂));
+let g5 = %tensor.get @(Nat, 2, (2, 3)) (g4, (1₂, 2₃));
+let g6 = %tensor.get @(Nat, 4, (2, 2, 2, 3)) (m2, (1₂, 0₂, 1₂, 2₃));
 let _ = %refly.equiv.struc_eq (g5, g6);
 
-let s2 = %tensor.set @(Nat, 2, (2, 2)) (m0, (1_2, 0_2), 12);
-let s3 = %tensor.set @(Nat, 2, (2, 3)) (m1, (1_2, 2_3), 24);
+let s2 = %tensor.set @(Nat, 2, (2, 2)) (m0, (1₂, 0₂), 12);
+let s3 = %tensor.set @(Nat, 2, (2, 3)) (m1, (1₂, 2₃), 24);
 
-let sg2 = %tensor.get @(Nat, 2, (2, 2)) (s2, (1_2, 0_2));
-let sg3 = %tensor.get @(Nat, 2, (2, 3)) (s3, (1_2, 2_3));
+let sg2 = %tensor.get @(Nat, 2, (2, 2)) (s2, (1₂, 0₂));
+let sg3 = %tensor.get @(Nat, 2, (2, 3)) (s3, (1₂, 2₃));
 let _ = %refly.equiv.struc_eq (sg2, 12);
 let _ = %refly.equiv.struc_eq (sg3, 24);
 
-let gs2 = %tensor.set @(Nat, 2, (2, 2)) (m0, (1_2, 0_2), g2);
+let gs2 = %tensor.set @(Nat, 2, (2, 2)) (m0, (1₂, 0₂), g2);
 let _ = %refly.equiv.struc_eq (gs2, m0);
 
-let s4 = %tensor.set @(Nat, 2, (2, 3)) (g4, (1_2, 2_3), 42);
-let s5 = %tensor.set @(<<2; <<3; Nat>> >>, 2, (2, 2)) (m2, (1_2, 0_2), s4);
-let s6 = %tensor.set @(Nat, 4, (2, 2, 2, 3)) (m2, (1_2, 0_2, 1_2, 2_3), 42);
+let s4 = %tensor.set @(Nat, 2, (2, 3)) (g4, (1₂, 2₃), 42);
+let s5 = %tensor.set @(<<2; <<3; Nat>> >>, 2, (2, 2)) (m2, (1₂, 0₂), s4);
+let s6 = %tensor.set @(Nat, 4, (2, 2, 2, 3)) (m2, (1₂, 0₂, 1₂, 2₃), 42);
 let _ = %refly.equiv.struc_eq (s5, s6);
 
 fun f1 (n m: Nat): Nat = return m;
@@ -42,8 +42,8 @@ let r = 2;
 let nc = 1;
 let nb = 0;
 let s = (2, 2);
-let c1 = 1_2;
-let c2 = 0_2;
+let c1 = 1₂;
+let c2 = 0₂;
 let b = ();
 
 let m = 2;
@@ -59,7 +59,7 @@ let bs = ‹i: nb; s1#(b#i)›;
 let _ = %refly.equiv.struc_eq (bs, ());
 
 let bc_1     = %vec.cat (b, c1);
-let _ = %refly.equiv.struc_eq (bc_1, 1_2);
+let _ = %refly.equiv.struc_eq (bc_1, 1₂);
 
 let s1_res   = %vec.diff (s1, bc_1);
 let _ = %refly.equiv.struc_eq (s1_res, m);
@@ -68,7 +68,7 @@ let n_s1_res = %vec.len s1_res;
 let _ = %refly.equiv.struc_eq (n_s1_res, 1);
 
 let bc_2     = %vec.cat (b, c2);
-let _ = %refly.equiv.struc_eq (bc_2, 0_2);
+let _ = %refly.equiv.struc_eq (bc_2, 0₂);
 
 let s2_res   = %vec.diff (s2, bc_2);
 let _ = %refly.equiv.struc_eq (s2_res, l);
@@ -87,15 +87,15 @@ let r_out    = %vec.len s_out;
 
 let a1       = %vec.diff (‹i: r; i›, bc_1);
 let a2       = %vec.diff (‹i: r; i›, bc_2);
-let _ = %refly.equiv.struc_eq (a1, 0_2);
-let _ = %refly.equiv.struc_eq (a2, 1_2);
+let _ = %refly.equiv.struc_eq (a1, 0₂);
+let _ = %refly.equiv.struc_eq (a2, 1₂);
 
-let ein_1    = ‹i: r; dot_general_pick (a1, b, c1) (0, r_out) i›;
-let ein_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
+let subs_1    = ‹i: r; dot_general_pick (a1, b, c1) (0, r_out) i›;
+let subs_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
 
-let (ab, ai) = %vec.first (%core.icmp.e @2) (a2, 1_2);
-let (bb, bi) = %vec.first (%core.icmp.e @2) (b, 1_2);
-let (cb, ci) = %vec.first (%core.icmp.e @2) (c2, 1_2);
+let (ab, ai) = %vec.first (%core.icmp.e @2) (a2, 1₂);
+let (bb, bi) = %vec.first (%core.icmp.e @2) (b, 1₂);
+let (cb, ci) = %vec.first (%core.icmp.e @2) (c2, 1₂);
 let bi_nat = %core.bitcast Nat bi;
 let ci_nat = %core.bitcast Nat ci;
 let ci_out = %core.nat.add (2, ci_nat);
@@ -105,8 +105,37 @@ let _ = %refly.equiv.struc_eq (bb, ff);
 let _ = %refly.equiv.struc_eq (cb, ff);
 let _ = %refly.equiv.struc_eq (ci_out, 2);
 
-let _ = %refly.equiv.struc_eq (ein_2, (2, 1));
+let _ = %refly.equiv.struc_eq (subs_2, (2, 1));
 
-let dot = %tensor.map_reduce @2 @(Nat, 2) s_out @(‹2; Nat›, ‹2; 2›, ((m, k), (k, l))) (f, 0) (ein_1, ein_2) (t1, t2);
+// The matrix product built from the pieces verified above, as %tensor.dot_product_impl builds it.
+let s_red   = ‹i: nc; s1#(c1#i)›;
+let s_full  = %vec.cat (s_out, s_red);
+let n_loops = %core.nat.add (r_out, nc);
+let dot = %tensor.map_reduce @2 @(Nat, r_out, nc) (s_out, s_full) @(‹2; Nat›, ‹2; 2›, ((m, k), (k, l))) (f, 0)
+    (%tensor.proj_map @(n_loops, r_out) ‹i: r_out; %core.bitcast Nat i›)
+    (%tensor.proj_map @(n_loops, r) subs_1, %tensor.proj_map @(n_loops, r) subs_2)
+    (t1, t2);
+
+// Identity shape ops normalize away to their input (m1 : «2, 3; Nat»).
+// A reshape to the same shape is the identity.
+let _ = %refly.equiv.struc_eq (%tensor.reshape (2, 3) (2, 3) m1, m1);
+// A repeat to the same shape is the identity.
+let _ = %refly.equiv.struc_eq (%tensor.repeat (2, 3) (2, 3) m1, m1);
+// A slice that starts at 0 with unit step and keeps the full extent is the identity.
+let _ = %refly.equiv.struc_eq (%tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1, m1);
+// A pad with lo == hi == 0 on every axis is the identity (the fill value is irrelevant).
+let _ = %refly.equiv.struc_eq (%tensor.pad (2, 3) (0, (0, 0), (0, 0)) (m1, 0), m1);
+
+// A get after a broadcast bypasses the broadcast: pass-through axes keep their index, broadcast
+// (size-1) axes read the input at 0 — here bg reads b[1][2] = input[1][0].
+let b  = %tensor.broadcast ((2, 1), (2, 3), (1, 2));
+let bg = %tensor.get @(Nat, 2, (2, 3)) (b, (1₂, 2₃));
+let _ = %refly.equiv.struc_eq (bg, %tensor.get @(Nat, 1, 2) ((1, 2), 1₂));
+
+// A get after a repeat bypasses the repeat: the (literal) read index is reduced mod s_in per axis —
+// here rg reads rep[3][4] = m1[3 mod 2][4 mod 3] = m1[1][1].
+let rep = %tensor.repeat (2, 3) (4, 6) m1;
+let rg  = %tensor.get @(Nat, 2, (4, 6)) (rep, (3₄, 4₆));
+let _ = %refly.equiv.struc_eq (rg, %tensor.get @(Nat, 2, (2, 3)) (m1, (1₂, 1₃)));
 
 fun extern main() = return dot;

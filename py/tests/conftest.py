@@ -18,5 +18,5 @@ def world(driver: mim.Driver):
 @pytest.fixture
 def regex_world():
     driver = mim.Driver()
-    driver.load_plugins(["compile", "mem", "core", "math", "regex", "opt"])
+    driver.load_plugins(["regex", "ll"])
     return driver.world()

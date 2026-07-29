@@ -1,0 +1,32 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
+
+// Size-1 dimension folding: «3,1;I32» is stored as «3;I32», so get/set indices must drop the folded
+// (size-1) dimension. The bufferized signature uses a rank-1 %mem.Ptr.
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
+plugin core;
+plugin tensor;
+plugin mem;
+plugin cps;
+plugin buffer;
+plugin affine;
+plugin opt;
+
+fun extern f (input: «3, 1; I32»): «3, 1; I32» =
+    let v = %tensor.get @(I32, 2, (3, 1)) (input, (1₃, 0₁));
+    return (%tensor.set @(I32, 2, (3, 1)) (input, (0₃, 0₁), v));
+
+// CHECK: %mem.Ptr («3; I32», 0)
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_to_mem,
+        %mem.add_mem,
+        %buffer.lower_ptr,
+        %affine.lower_index,
+        %affine.lower_for,
+        %compile.internal_cleanup,
+    );

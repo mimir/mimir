@@ -55,11 +55,34 @@ def patch_workflow(workflow_file: Path, output_file: Path, plugin: str) -> None:
         content
     )
 
-    # Fix working directories and cmake paths
-    content = content.replace('${{github.workspace}}/build', 'mimir/build')
-    content = content.replace('${{github.workspace}}', 'mimir')
-    content = re.sub(r'-B mimir(?!/)', '-B build', content)
-    content = content.replace('cmake -B build/build', 'cmake -B build')
+    # Fix working directories and cmake paths.
+    # The mimir checkout now lives in a "mimir" subdirectory of the workspace
+    # rather than at the workspace root, so every reference to the workspace
+    # needs an extra "/mimir" path segment. Paths must stay absolute (i.e. keep
+    # the "${{github.workspace}}"/"$GITHUB_WORKSPACE" prefix): several steps
+    # set "working-directory" to the same path a "run:" command also
+    # references, and collapsing that to a relative "mimir/..." string would
+    # make the run command resolve relative to working-directory, doubling
+    # the "mimir" segment.
+    content = content.replace('${{github.workspace}}', '${{github.workspace}}/mimir')
+    content = content.replace('$GITHUB_WORKSPACE', '$GITHUB_WORKSPACE/mimir')
+
+    # cmake only infers the source directory from the current working
+    # directory when neither working-directory nor -S is given, so once the
+    # checkout moves into "mimir" the configure calls need an explicit -S.
+    content = re.sub(r'cmake -B', 'cmake -S ${{github.workspace}}/mimir -B', content)
+
+    # Steps that use a bare relative path with no "${{github.workspace}}" or
+    # "working-directory" of their own (e.g. macOS's "python3 -m venv .venv")
+    # default to $GITHUB_WORKSPACE as their cwd, which is now one level above
+    # the actual mimir checkout. Set a job-wide default so every run step
+    # without its own working-directory executes inside mimir instead.
+    content = re.sub(
+        r'\n(    steps:\n)',
+        r'\n    defaults:\n      run:\n        working-directory: ${{github.workspace}}/mimir\n\n\1',
+        content,
+        count=1
+    )
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(content)

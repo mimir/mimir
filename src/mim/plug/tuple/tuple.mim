@@ -2,7 +2,7 @@
 ///
 /// @see mim::plug::tuple
 ///
-/// Utilitly functions for tuples.
+/// Utility functions for tuples.
 ///
 /// [TOC]
 ///
@@ -25,7 +25,7 @@ lam %tuple.typecat {n m: Nat} (Ts: «n; *») (Us: «m; *») : * = // «i: n + m;
 ///
 /// ### %%tuple.cat
 ///
-/// Concatenation of an `n`-tuple and an `m`-tuple to an `n + m`-tuple yielding
+/// Concatenates an `n`-tuple and an `m`-tuple to an `n + m`-tuple.
 ///
 axm %tuple.cat: {n m: Nat}
                  → {Ts: «n; *», Us: «m; *»}
@@ -33,6 +33,11 @@ axm %tuple.cat: {n m: Nat}
                  → %tuple.typecat Ts Us
                  , normalize_cat;
 
+///
+/// ### %%tuple.append / %%tuple.prepend
+///
+/// Appends / prepends a single element to a tuple.
+///
 lam %tuple.append   {n: Nat}
                     {Ts: «n; *», U: *}
                     (a: «i: n; Ts#i», b: U)
@@ -45,6 +50,11 @@ lam %tuple.prepend  {m: Nat}
                   : %tuple.typecat T Us
                   = %tuple.cat (a, b);
 
+///
+/// ### %%tuple.head / %%tuple.tail
+///
+/// The first element of a tuple / all elements but the first.
+///
 lam %tuple.head {n: Nat}
     {Ts: «n; *»}
     [values: «i: n; Ts#i»]
@@ -60,19 +70,18 @@ lam %tuple.tail {n: Nat}
 ///
 /// ### %%tuple.contains
 ///
-/// Does the tuple conain the given element?
+/// Does the tuple contain the given element?
 ///
 axm %tuple.contains: {n: Nat} → {Ts: «n; *», U: *} → [«i: n; Ts#i», U] → Bool, normalize_contains;
 ///
 /// ### %%tuple.zip
 ///
 /// [Zips](https://en.wikipedia.org/wiki/Zipping_(computer_science)) several tensors.
-///
-/// What is more, the signature will likely change in the future:
+/// The signature will likely change in the future:
 /// * `r`: rank of the tensors to zip
 /// * `s`: shape of the tensors to zip
-/// * `n_i`: number if inputs
-/// * `n_o`: number if outputs
+/// * `n_i`: number of inputs
+/// * `n_o`: number of outputs
 /// * `Is`: tuple with `n_i` many elements that describe the element types of the inputs
 /// * `Os`: tuple with `n_o` many elements that describe the element types of the outputs
 /// * `f`: zipping function that expects an `n_i`-tuple whose elements correspond to `Is` and yields an `n_o`-tuple whose element types correspond to `Os`

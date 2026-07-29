@@ -5,7 +5,7 @@
 [![Discord](https://img.shields.io/discord/960975142459179068?style=social&logo=discord&logoColor=black)](https://discord.gg/FPp7hdj3fQ)
 
 [![Release](https://img.shields.io/github/v/release/mimir/mimir?style=flat-square&logo=starship&color=blue&label=Release)](https://github.com/mimir/mimir/releases)
-[![Docs](https://img.shields.io/badge/Docs-master/v0.1-blue?style=flat-square&logo=gitbook&logoColor=white)](https://mimir.github.io)
+[![Docs](https://img.shields.io/badge/Docs-master/v0.2/v0.1-blue?style=flat-square&logo=gitbook&logoColor=white)](https://mimir.github.io)
 [![License](https://img.shields.io/github/license/mimir/mimir?style=flat-square&color=blue&logo=opensourceinitiative&logoColor=white&label=License)](https://github.com/mimir/mimir/blob/master/LICENSE.TXT)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=cplusplus)](https://en.wikipedia.org/wiki/C%2B%2B#Standardization)
 [![Python](https://img.shields.io/badge/Python-3.10-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
@@ -17,15 +17,45 @@
 
 [TOC]
 
-**MimIR** is a pure, graph-based, higher-order intermediate representation rooted in the **Calculus of Constructions**.
+**MimIR** is a pure, graph-based, [higher-order](https://en.wikipedia.org/wiki/Higher-order_function) intermediate representation rooted in the [**Calculus of Constructions**](https://en.wikipedia.org/wiki/Calculus_of_constructions).
 MimIR provides:
 
-- **Dependent types**, **parametric polymorphism**, and **higher-order functions** out of the box
+- [**Higher-order functions**](https://en.wikipedia.org/wiki/Higher-order_function), [**parametric polymorphism**](https://en.wikipedia.org/wiki/Parametric_polymorphism), and [**dependent types**](https://en.wikipedia.org/wiki/Dependent_type) out of the box
 - **Extensible plugins** for domain-specific axioms, types, normalizers, and code generation
-- **SSA without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
-- A **sea-of-nodes** style IR with on-the-fly normalization, type checking, and partial evaluation
+- [**SSA**](https://en.wikipedia.org/wiki/Static_single-assignment_form) **without dominance**: a scopeless IR for higher-order programs based on free-variable nesting
+- A [**sea-of-nodes**](https://github.com/SeaOfNodes) style IR with on-the-fly normalization, type checking, and [partial evaluation](https://en.wikipedia.org/wiki/Partial_evaluation)
 
-MimIR is well suited for DSL compilers, tensor compilers, automatic differentiation, regex engines, and other systems that need high-performance code from high-level abstractions.
+MimIR is well suited for [DSL](https://en.wikipedia.org/wiki/Domain-specific_language) compilers, tensor compilers, [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation), [regex](https://en.wikipedia.org/wiki/Regular_expression) engines, and other systems that need high-performance code from high-level abstractions.
+
+MimIR brings two worlds together: typed functional IRs supply the abstractions — polymorphism, dependent types — while sea-of-nodes graphs supply the performance.
+It has both at once, by extending sea-of-nodes to the Calculus of Constructions.
+And it pays off in practice: the [regex](@ref regex) plugin is the fastest engine in our evaluation (see the [POPL'25 paper](https://doi.org/10.1145/3704840)).
+
+## ✨ A Taste of Mim
+
+The following function `sq` squares `x` — for **any** type `T`, as long as `T` comes packaged with its own multiplication.
+Then, `f` instantiates `sq` for `Nat`:
+
+\include "sq.mim"
+
+That first argument `(T: *, mul: [T, T] → T)` is a [**dependent pair**](https://en.wikipedia.org/wiki/Dependent_type#%CE%A3_type) — an [existential](https://en.wikipedia.org/wiki/Type_system#Existential_types) bundling a type together with an operation on it.
+In MimIR, types are ordinary [**first-class values**](https://en.wikipedia.org/wiki/First-class_citizen): `T` and `mul` are just arguments, so polymorphism, [type operators](https://en.wikipedia.org/wiki/Type_constructor), and dependent types all fall out of the same mechanism.
+
+And under the hood, MimIR is not a list of instructions but a **graph** — and that graph *is* the program.
+The graph is also **complete**: it holds everything needed to make sense of the program, with no auxiliary side structure.
+Contrast a traditional instruction list, which is meaningless on its own and only becomes intelligible once you pair it with a separately maintained [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph).
+
+Watch what happens to `sq`.
+When `f` applies `sq (Nat, %core.nat.mul)`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
+This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam::filter) that every direct-style function gets, which greenlights inlining.
+What remains is the bare `x * x`, with **no trace** of `sq` or the existential abstraction.
+The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
+
+@image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
+
+For the full picture, with more examples and the graphs MimIR builds for them, read the [Tour of MimIR](@ref mimir).
+With MimIR's Python bindings, you can write full-blown DSL compilers embedded in Python; see the [embedded Python DSL](@ref python) for a complete end-to-end example.
+Or, naturally, you can continue exploring the rest of the [documentation](https://mimir.github.io/usergroup0.html).
 
 ## 💡 Why MimIR?
 
@@ -59,15 +89,22 @@ cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DCMAKE_INSTALL_P
 cmake --build build -j$(nproc) --target install
 ```
 
-See the full [build options](@ref building) in the docs.
-You can find the rest of the documentation [here](file:///home/roland/mimir/mimir/build/html/usergroup0.html)
+See the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
+New here? Start with the [Tour of MimIR](@ref mimir).
 
 ## 🔥 Key Innovations
 
 ### 🧩 Plugins
 
 Declare new types, operations, and normalizers in a single `.mim` file.
-C++ provides the heavy lifting: optimization, lowering, and code generation.
+For example, the [`demo`](@ref demo) plugin declares one axiom and wires it to a C++ normalizer:
+
+```mim
+/// the 42 constant, folded by the `normalize_const` C++ normalizer
+axm %demo.const_idx: [n: Nat] → Idx n, normalize_const;
+```
+
+The matching shared library implements `normalize_const` and any lowering or [phases](@ref phases); C++ does the heavy lifting of optimization, lowering, and code generation.
 
 Explore the [Plugin Registry](https://mimir.github.io/plugins) to discover and share community-developed plugins.
 
@@ -96,13 +133,14 @@ MimIR uses free-variable nesting:
 - **Free variables** replace dominance; the **nesting tree** replaces the dominator tree
 - Free-variable queries “just work”:
 
-  ```c++
-  if (expr->free_vars().contains(x)) /*x free in expr*/
-  if (expr->free_vars().has_intersection(xyz)) /*x, y, or z free in expr*/
+  ```cpp
+  if (expr->free_vars().contains(x))           // x free in expr
+  if (expr->free_vars().has_intersection(xyz)) // x, y, or z free in expr
   ```
 
   This is always correct.
   MimIR maintains free-variable information **lazily**, **locally**, and **transparently**: results are computed on demand, memoized, and invalidated only where needed.
+  For realistic programs a query costs **O(n log n)** in the size of the subgraph, and **O(1)** once memoized (see the [PLDI'26 paper](https://doi.org/10.48550/arXiv.2604.09961)).
 
 - Data dependencies remain precise, even for higher-order code
 - Loop peeling and unrolling reduce to simple β-reduction
@@ -117,7 +155,7 @@ After being beheaded in the Æsir–Vanir War, Odin preserved his head, which co
 
 Today, **you** have Mímir's head at your fingertips.
 
-- **MimIR** refers to the core graph-based intermediate representation and its C++ API.
+- **MimIR** refers to the graph-based intermediate representation and its C++ API.
 - **Mim** is a lightweight textual representation of MimIR.
   It is not a full-featured programming language, but provides enough syntactic sugar to concisely express polymorphic and dependent types (including type-level dependencies introduced by many type variables).
   Mim is mainly intended for defining plugin interfaces and writing small test cases.

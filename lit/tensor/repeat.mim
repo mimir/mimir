@@ -1,0 +1,24 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// RUN: %mim %s -p opt -o - | %FileCheck %s --check-prefix=GONE
+
+// %tensor.repeat tiles an input to a larger shape: out[…d…] = input[… d mod s_in#d …]. The wrap-around read lowers via
+// the affine `mod` semiop to %core.div.urem. Checked on the lowered Mim IR (no codegen), as for hlo.mim / map_reduce.
+// GONE-NOT: %tensor.repeat
+// GONE-NOT: map_reduce
+// GONE-NOT: %affine
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+// Tile a length-3 vector to length 6: out[i] = input[i mod 3].
+// CHECK-DAG: fun extern tile1d
+// CHECK-DAG: %core.div.urem
+fun extern tile1d (input: «3; I32»): «6; I32» =
+    return (%tensor.repeat 3 6 input);
+
+// Tile a 2x3 matrix along both axes to 4x6: out[i][j] = input[i mod 2][j mod 3].
+// CHECK-DAG: fun extern tile2d
+fun extern tile2d (input: «2, 3; I32»): «4, 6; I32» =
+    return (%tensor.repeat (2, 3) (4, 6) input);

@@ -1,9 +1,9 @@
 // RUN: rm -f %t.ll
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 plugin core;
 
-con extern myand (a b: Bool, return : Cn Bool) =
+con extern myand (a b: Bool, return: Cn Bool) =
     return (%core.bit2.and_ 0 (%core.icmp.uge (a, b), %core.icmp.ug (a, b)));
 
 // CHECK-DAG: %core.icmp.xYGle 2 (a_{{[0-9]+}}, b_{{[0-9]+}});

@@ -1,0 +1,72 @@
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
+// RUN: %mim %s -p ll_nvptx -o -
+// RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+// RUN: %FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
+// RUN: %if system-linux && cuda %{ clang %{s:stem}.ll -o %t -lcuda -Wno-override-module %}
+// RUN: %if system-linux && cuda %{ %t; test $? -eq 242 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3; test $? -eq 242 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3 4 5; test $? -eq 242 %}
+
+plugin core;
+plugin gpu;
+
+con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
+            group_id item_id: Idx 4, (), (data1: %gpu.GlobalPtr I32, data2: %gpu.GlobalPtr I32),
+            return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
+    let m1 = %mem.store (m1, data1, 42I32);
+    let m1 = %mem.store (m1, data2, 200I32);
+    return (m1, m3, m4, m5);
+
+fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
+: [%mem.M 0, I32] =
+    let (m0, ptr1) = %mem.alloc (I32, 0) m0;
+    let (m0, ptr2) = %mem.alloc (I32, 0) m0;
+    let m0 = %mem.store (m0, ptr1, argc);
+    let m0 = %mem.store (m0, ptr2, argc);
+
+    let (m0, m1, m4) = %gpu.init m0;
+
+    let (m1, d_ptr1) = %mem.alloc (I32, 1) m1;
+    let (m1, d_ptr2) = %mem.alloc (I32, 1) m1;
+    let (m0, m1) = %gpu.copy_to_device.block (m0, m1, ptr1, d_ptr1);
+    let (m0, m1) = %gpu.copy_to_device.block (m0, m1, ptr2, d_ptr2);
+
+    ret (m0, m1, m4) = %gpu.launch (4, 4, %gpu.default_stream, ff, ())
+        kernel (d_ptr1, d_ptr2) $ (m0, m1, m4);
+
+    let (m0, m1) = %gpu.copy_to_host.block (m0, m1, d_ptr1, ptr1);
+    let (m0, m1) = %gpu.copy_to_host.block (m0, m1, d_ptr2, ptr2);
+    let m1 = %mem.free (m1, d_ptr1);
+    let m1 = %mem.free (m1, d_ptr2);
+
+    let m0 = %gpu.deinit (m0, m1, m4);
+
+    let (m0, val1) = %mem.load (m0, ptr1);
+    let (m0, val2) = %mem.load (m0, ptr2);
+    let m0 = %mem.free (m0, ptr1);
+    let m0 = %mem.free (m0, ptr2);
+
+    let val = %core.wrap.add 0 (val1, val2);
+    return (m0, val);
+
+// HOST: define i32 @main(
+// HOST-DAG: call i32 @cuInit(i32 0)
+// HOST-DAG: call i32 @cuCtxCreate
+// HOST-DAG: call i32 @cuModuleLoad
+// HOST-DAG: call i32 @cuMemAlloc
+// HOST-DAG: call i32 @cuMemAlloc
+// HOST: call i32 @cuMemcpyHtoD
+// HOST: call i32 @cuMemcpyHtoD
+// HOST: call i32 @cuLaunchKernel
+// HOST: call i32 @cuMemcpyDtoH
+// HOST: call i32 @cuMemcpyDtoH
+// HOST: call i32 @cuMemFree
+// HOST: call i32 @cuMemFree
+// HOST-DAG: call void @free
+// HOST-DAG: call i32 @cuModuleUnload
+// HOST-DAG: call i32 @cuCtxDestroy
+// HOST: ret i32
+
+// DEVICE: define ptx_kernel void @kernel{{.*}}({{.*}} addrspace(1)*
+// DEVICE-DAG: store i32 42, i32 addrspace(1)* %{{.*}}
+// DEVICE-DAG: store i32 200, i32 addrspace(1)* %{{.*}}

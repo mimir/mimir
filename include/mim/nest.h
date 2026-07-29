@@ -4,9 +4,21 @@
 #include <optional>
 #include <ranges>
 
+#include <absl/container/btree_map.h>
+#include <absl/container/btree_set.h>
+
 #include "mim/def.h"
 
 namespace mim {
+
+namespace detail {
+/// Like GIDLt, but the *nesting virtual root* is represented as a `nullptr` Def%, which must sort first.
+struct NullSafeDefGIDLt {
+    constexpr bool operator()(const Def* a, const Def* b) const noexcept {
+        return (a ? a->gid() : 0) < (b ? b->gid() : 0);
+    }
+};
+} // namespace detail
 
 /// Builds a nesting tree for all mutables/binders.
 ///
@@ -36,6 +48,9 @@ public:
         }
         uint32_t level() const { return level_; }
         uint32_t loop_depth() const { return sccs().loop_depth_; }
+        /// Stable id for deterministic hashing/ordering: the underlying mut's gid, or `0` for the (unique) virtual
+        /// root.
+        uint32_t gid() const { return mut_ ? mut_->gid() : 0; }
         ///@}
 
         /// @name Children
@@ -71,7 +86,7 @@ public:
             auto end() { return mut2node_.end(); }
             Node* operator[](Def* mut) { return mim::lookup(mut2node_, mut); }
 
-            MutMap<Node*> mut2node_;
+            absl::btree_map<Def*, Node*, GIDLt<Def*>> mut2node_;
 
             friend class Nest;
         };
@@ -92,7 +107,7 @@ public:
             /// @name Getters
             ///@{
             size_t num() const { return nodes().size(); }
-            bool contains(const Node* n) const { return nodes_.contains(n); }
+            bool contains(const Node* n) const { return nodes_.contains(const_cast<Node*>(n)); }
             ///@}
 
             /// @name Iterators
@@ -106,7 +121,7 @@ public:
             auto begin() { return nodes_.begin(); }
             auto end() { return nodes_.end(); }
 
-            absl::flat_hash_set<Node*> nodes_;
+            absl::btree_set<Node*, GIDLt<Node*>> nodes_;
 
             friend class Nest;
         };
@@ -131,7 +146,7 @@ public:
         ///@}
 
         /// Strongly Connected Component.
-        using SCC = absl::flat_hash_set<const Node*>;
+        using SCC = absl::btree_set<const Node*, GIDLt<const Node*>>;
         /// @name SCCs
         /// [SCCs](https://en.wikipedia.org/wiki/Strongly_connected_component) for all children dependencies.
         /// @note The Nest::root() cannot be is_mutually_recursive() by definition.
@@ -176,7 +191,7 @@ public:
         SiblDeps<false> sibl_rev_deps_;
         Children children_;
         std::deque<std::unique_ptr<SCC>> topo_;
-        absl::flat_hash_map<const Node*, const SCC*> SCCs_;
+        absl::btree_map<const Node*, const SCC*, GIDLt<const Node*>> SCCs_;
         mutable const Node* idom_ = nullptr;
         // Nodes higher up in dominator tree within same sibling layer have higher postorder numbers.
         // This property is used to efficiently find the correct node for late code placement via [Nest::lca].
@@ -269,7 +284,7 @@ private:
     }
 
     World& world_;
-    absl::flat_hash_map<Def*, std::unique_ptr<Node>> mut2node_;
+    absl::btree_map<Def*, std::unique_ptr<Node>, detail::NullSafeDefGIDLt> mut2node_;
     Vars vars_;
     Node* root_;
     mutable bool siblings_ = false;

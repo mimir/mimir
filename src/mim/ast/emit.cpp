@@ -18,11 +18,11 @@ public:
     World& world() { return ast().world(); }
     Driver& driver() { return world().driver(); }
 
-    void register_annex(AnnexInfo* annex, sub_t sub, const Def* def) {
-        if (annex) {
-            const auto& id = annex->id;
-            world().register_annex(id.plugin | (id.tag << 8) | sub, def);
-        }
+    /// @p name is the full syntactic name of *this* registration (`%plugin.tag` or `%plugin.tag.sub`).
+    /// We must take it from the declaration rather than from Def::sym, since hash-consing can make several
+    /// annexes share a single Def (e.g. `let %foo.bar = 23; let %foo.baz = 23;`).
+    void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
+        if (annex) world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, name, def);
     }
 
     absl::node_hash_map<Sigma*, fe::SymMap<size_t>, GIDHash<const Def*>> sigma2sym2idx;
@@ -176,11 +176,42 @@ const Def* PrimaryExpr ::emit_(Emitter& e) const {
     // clang-format on
 }
 
+/// If @p type is a `%math.F` type of known precision/exponent, yields its bit width.
+/// Note that libmim must not depend on the generated math plugin header, so lookup the Axm at runtime instead.
+static std::optional<nat_t> isa_math_f(Emitter& e, const Def* type) {
+    auto math_f = e.world().annex(e.world().sym("%math.F"));
+    if (auto app = type->zonk()->isa<App>(); math_f && app && app->callee() == math_f) {
+        if (auto [p, ex] = app->arg()->projs<2>([](auto op) { return Lit::isa(op); }); p && ex) {
+            if (*p == 10 && *ex == 5) return 16;
+            if (*p == 23 && *ex == 8) return 32;
+            if (*p == 52 && *ex == 11) return 64;
+        }
+    }
+    return {};
+}
+
+/// A float Tok stores its value as mim::f64 bits; re-encode them for the width of the annotated type @p t.
+static u64 encode_f(Emitter& e, [[maybe_unused]] Loc loc, const Def* t, u64 bits) {
+    if (auto width = isa_math_f(e, t)) {
+        auto val = std::bit_cast<f64>(bits);
+        switch (*width) {
+#if defined(__STDCPP_FLOAT16_T__)
+            case 16: return std::bit_cast<u16>(f16(val));
+#else
+            case 16: error(loc, "16-bit floating-point literals are not supported on this platform");
+#endif
+            case 32: return std::bit_cast<u32>(f32(val));
+            default: break;
+        }
+    }
+    return bits;
+}
+
 const Def* LitExpr::emit_(Emitter& e) const {
     auto t = type() ? type()->emit(e) : nullptr;
     // clang-format off
     switch (tag()) {
-        case Tag::L_f:
+        case Tag::L_f:   return t ? e.world().lit(t, encode_f(e, loc(), t, tok().lit_u())) : e.world().lit_nat(tok().lit_u());
         case Tag::L_s:
         case Tag::L_u:   return t ? e.world().lit(t, tok().lit_u()) : e.world().lit_nat(tok().lit_u());
         case Tag::L_i:   return tok().lit_i();
@@ -393,8 +424,9 @@ const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant(
 
 void AxmDecl::emit(Emitter& e) const {
     if (!annex_) return; // Skip emit if binding failed
-    mim_type_ = type()->emit(e);
-    auto& id  = annex_->id;
+    mim_type_   = type()->emit(e);
+    auto& id    = annex_->id;
+    auto plugin = annex_->plugin_id();
 
     std::tie(id.curry, id.trip) = Axm::infer_curry_and_trip(mim_type_);
     if (curry_) {
@@ -412,17 +444,17 @@ void AxmDecl::emit(Emitter& e) const {
     }
 
     if (num_subs() == 0) {
-        auto norm = e.driver().normalizer(id.plugin, id.tag, 0);
-        auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, id.plugin, id.tag, 0)->set(dbg());
+        auto norm = e.driver().normalizer(plugin, id.tag, 0);
+        auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, 0)->set(dbg());
         def_      = axm;
-        e.world().register_annex(id.plugin, id.tag, 0, axm);
+        e.world().annexes().attach(plugin, id.tag, 0, dbg().sym(), axm);
     } else {
         for (sub_t i = 0, n = num_subs(); i != n; ++i) {
             sub_t s   = i + offset_;
-            auto norm = e.driver().normalizer(id.plugin, id.tag, s);
+            auto norm = e.driver().normalizer(plugin, id.tag, s);
             auto name = e.world().sym(dbg().sym().str() + "."s + sub(i).front()->dbg().sym().str());
-            auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, id.plugin, id.tag, s)->set(name);
-            e.world().register_annex(id.plugin, id.tag, s, axm);
+            auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, s)->set(name);
+            e.world().annexes().attach(plugin, id.tag, s, name, axm);
 
             for (const auto& alias : sub(i))
                 alias->def_ = axm;
@@ -433,7 +465,7 @@ void AxmDecl::emit(Emitter& e) const {
 void LetDecl::emit(Emitter& e) const {
     auto v = value()->emit(e);
     def_   = ptrn()->emit_value(e, v);
-    e.register_annex(annex_, sub_, def_);
+    if (auto id = ptrn()->isa<IdPtrn>()) e.attach(annex_, sub_, id->dbg().sym(), def_);
 }
 
 void RecDecl::emit(Emitter& e) const {
@@ -452,7 +484,7 @@ void RecDecl::emit_decl(Emitter& e) const {
 void RecDecl::emit_body(Emitter& e) const {
     body()->emit_body(e, def_);
     // TODO immutabilize?
-    e.register_annex(annex_, sub_, def_);
+    e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
 Lam* LamDecl::Dom::emit_value(Emitter& e) const {
@@ -523,8 +555,17 @@ void LamDecl::emit_body(Emitter& e) const {
         }
     }
 
-    if (is_external()) doms().front()->lam_->externalize();
-    e.register_annex(annex_, sub_, def_);
+    if (is_external()) {
+        auto lam = doms().front()->lam_;
+        if (!lam->is_closed())
+            error(loc(),
+                  "external function '{}' is not closed: its inferred type escapes into the scope of '{}'. This "
+                  "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
+                  "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
+                  dbg().sym(), (*lam->free_vars().begin())->binder()->sym());
+        lam->externalize();
+    }
+    e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
 void CDecl::emit(Emitter& e) const {

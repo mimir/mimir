@@ -19,6 +19,8 @@ find_program(MIM_FILECHECK_DEFAULT
 )
 set(MIM_FILECHECK "${MIM_FILECHECK_DEFAULT}" CACHE STRING "FileCheck command used by lit tests.")
 mark_as_advanced(MIM_FILECHECK_DEFAULT)
+# Normalize to forward slashes so the path embedded into lit.site.cfg.py is shell-agnostic.
+file(TO_CMAKE_PATH "${MIM_FILECHECK}" MIM_FILECHECK)
 
 if(NOT MIM_FILECHECK)
     message(FATAL_ERROR "Could not find FileCheck. Set MIM_FILECHECK to the FileCheck executable used by lit tests.")
@@ -71,6 +73,37 @@ set(MIM_LIT_STAGE_FILES_SCRIPT "")
 foreach(MIM_LIT_STAGE_FILE IN LISTS MIM_LIT_STAGE_FILES)
     string(APPEND MIM_LIT_STAGE_FILES_SCRIPT "    \"${MIM_LIT_STAGE_FILE}\"\n")
 endforeach()
+
+# Detect 16-bit floating-point support once at configure time; mim's fp16 path needs `std::float16_t`.
+# Exposed to lit as the `fp16` feature so tests emitting %math.F16 literals can gate via `// REQUIRES: fp16`.
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles(
+    "#include <stdfloat>
+     #if !defined(__STDCPP_FLOAT16_T__)
+     #    error no std::float16_t
+     #endif
+     int main() { std::float16_t f = 1.0f16; return int(f); }"
+    MIM_HAS_FLOAT16
+)
+if(MIM_HAS_FLOAT16)
+    set(MIM_FP16_SUPPORTED True)
+else()
+    set(MIM_FP16_SUPPORTED False)
+endif()
+
+find_program(NVIDIA_SMI nvidia-smi)
+if(NVIDIA_SMI)
+  execute_process(COMMAND ${NVIDIA_SMI} -L
+    OUTPUT_VARIABLE _smi_out RESULT_VARIABLE _smi_rc
+    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(_smi_rc EQUAL 0 AND _smi_out MATCHES "GPU [0-9]+:")
+    set(MIM_CUDA_CAN_RUN_ON_DEVICE True)
+  else()
+    set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
+  endif()
+else()
+    set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
+endif()
 
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/cmake/stage-lit-tests.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/stage-lit-tests.cmake" @ONLY)

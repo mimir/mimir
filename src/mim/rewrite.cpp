@@ -40,17 +40,17 @@ void Rewriter::reset() {
 }
 
 const Def* Rewriter::map(const Def* old_def, Defs new_defs) {
-    auto new_tuple                   = world().tuple(new_defs);
-    return old2news_.back()[old_def] = new_tuple;
+    auto new_tuple = world().tuple(new_defs);
+    return map(old_def, new_tuple);
 }
 const Def* Rewriter::map(Defs old_defs, const Def* new_def) {
-    auto old_tuple                     = world().tuple(old_defs);
-    return old2news_.back()[old_tuple] = new_def;
+    auto old_tuple = world().tuple(old_defs);
+    return map(old_tuple, new_def);
 }
 const Def* Rewriter::map(Defs old_defs, Defs new_defs) {
-    auto old_tuple                     = world().tuple(old_defs);
-    auto new_tuple                     = world().tuple(new_defs);
-    return old2news_.back()[old_tuple] = new_tuple;
+    auto old_tuple = world().tuple(old_defs);
+    auto new_tuple = world().tuple(new_defs);
+    return map(old_tuple, new_tuple);
 }
 
 const Def* Rewriter::rewrite(const Def* old_def) {
@@ -106,7 +106,7 @@ const Def* Rewriter::rewrite_imm_Type  (const Type*   d) { return world().type  
 const Def* Rewriter::rewrite_imm_UInc  (const UInc*   d) { return world().uinc  (rewrite(d->op()),     d->offset()); }
 const Def* Rewriter::rewrite_imm_UMax  (const UMax*   d) { return world().umax  (rewrite(d->ops()));                 }
 const Def* Rewriter::rewrite_imm_Uniq  (const Uniq*   d) { return world().uniq  (rewrite(d->op()));                  }
-const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->mut())->as_mut());       }
+const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->binder())->as_mut());       }
 const Def* Rewriter::rewrite_imm_Top   (const Top*    d) { return world().top   (rewrite(d->type()));                }
 const Def* Rewriter::rewrite_imm_Bot   (const Bot*    d) { return world().bot   (rewrite(d->type()));                }
 const Def* Rewriter::rewrite_imm_Meet  (const Meet*   d) { return world().meet  (rewrite(d->ops()));                 }
@@ -162,7 +162,7 @@ const Def* Rewriter::rewrite_imm_Pi(const Pi* d) {
 const Def* Rewriter::rewrite_imm_Proxy(const Proxy* d) {
     auto new_type = rewrite(d->type());
     auto new_ops  = rewrite(d->ops());
-    return world().proxy(new_type, new_ops, d->pass(), d->tag());
+    return world().proxy(new_type, new_ops, d->tag());
 }
 
 const Def* Rewriter::rewrite_imm_Rule(const Rule* d) {
@@ -186,16 +186,20 @@ const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
 }
 
 // clang-format on
-const Def* Rewriter::rewrite_mut_Pi(Pi* d) {
-    return rewrite_stub(d, world().mut_pi(rewrite(d->type()), d->is_implicit()));
+const Def* Rewriter::rewrite_mut_Pi(Pi* pi) {
+    if (pi->is_immutabilizable()) return rewrite_imm_Pi(pi);
+    return rewrite_stub(pi, world().mut_pi(rewrite(pi->type()), pi->is_implicit()));
 }
 const Def* Rewriter::rewrite_mut_Lam(Lam* d) { return rewrite_stub(d, world().mut_lam(rewrite(d->type())->as<Pi>())); }
 const Def* Rewriter::rewrite_mut_Rule(Rule* d) {
     return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Reform>()));
 }
-const Def* Rewriter::rewrite_mut_Sigma(Sigma* d) {
-    return rewrite_stub(d, world().mut_sigma(rewrite(d->type()), d->num_ops()));
+
+const Def* Rewriter::rewrite_mut_Sigma(Sigma* sigma) {
+    if (sigma->is_immutabilizable()) return rewrite_imm_Sigma(sigma);
+    return rewrite_stub(sigma, world().mut_sigma(rewrite(sigma->type()), sigma->num_ops()));
 }
+
 const Def* Rewriter::rewrite_mut_Global(Global* d) {
     return rewrite_stub(d, world().global(rewrite(d->type()), d->is_mutable()));
 }
@@ -234,6 +238,8 @@ const Def* Rewriter::rewrite_imm_Seq(const Seq* seq) {
 }
 
 const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
+    if (seq->is_immutabilizable()) return rewrite_imm_Seq(seq);
+
     if (!seq->is_set()) {
         auto new_seq = seq->as_mut<Seq>()->stub(world(), rewrite(seq->type()));
         return map(seq, new_seq);
@@ -262,9 +268,14 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     map(old_mut, new_mut);
 
     if (old_mut->is_set()) {
+        auto _ = enter(old_mut);
         for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
             new_mut->set(i, rewrite(old_mut->op(i)));
-        if (auto new_imm = new_mut->immutabilize()) return map(old_mut, new_imm);
+
+        // Immutabilize the *new* binder in hindsight:
+        // even when the old binder was not immutabilizable, rewriting may have made it vacuous.
+        if (new_mut->is_immutabilizable())
+            if (auto new_imm = new_mut->immutabilize()) return map(old_mut, new_imm);
     }
 
     return new_mut;

@@ -340,7 +340,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto pack = d->isa<Pack>()) {
         return os << std::format("{}{}; {}{}", pl, Op(pack->arity()), Op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
-        return os << std::format(".proxy#{}#{} {}", proxy->pass(), proxy->tag(), Op::map(proxy->ops()));
+        return os << std::format("(proxy#{} {})", proxy->tag(), Op::map(proxy->ops()));
     } else if (auto bound = d->isa<Bound>()) {
         auto op = bound->isa<Join>() ? "∪" : "∩"; // TODO ascii
         if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, mut->unique_name(), Op(mut->type()));
@@ -564,7 +564,7 @@ void Def::write(int max) const {
  */
 
 void World::dump(std::ostream& os) {
-    auto freezer = World::Freezer(*this);
+    auto _       = freeze();
     auto old_gid = curr_gid();
 
     if (flags().dump_recursive) {

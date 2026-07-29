@@ -69,7 +69,7 @@ class Def;
 class World;
 
 /// @name Def
-/// GIDSet / GIDMap keyed by Def::gid of `conset Def*`.
+/// GIDSet / GIDMap keyed by Def::gid of `const Def*`.
 ///@{
 template<class To>
 using DefMap  = GIDMap<const Def*, To>;
@@ -114,13 +114,15 @@ enum class Node : node_t {
 static constexpr size_t Num_Nodes = size_t(0) MIM_NODE(CODE);
 #undef CODE
 
-/// Tracks a dependency to certain Def%s transitively through the Def::deps() up to but excliding *mutables*.
+/// Tracks whether a Def transitively depends - through its Def::deps() but only up to (and excluding) the next
+/// *mutable* - on certain kinds of Def%s.
+/// @see Def::has_dep
 enum class Dep : unsigned {
-    None  = 0,
-    Mut   = 1 << 0,
-    Var   = 1 << 1,
-    Hole  = 1 << 2,
-    Proxy = 1 << 3,
+    None  = 0,      ///< Depends on nothing of interest.
+    Mut   = 1 << 0, ///< Depends on a *mutable*.
+    Var   = 1 << 1, ///< Depends on a Var.
+    Hole  = 1 << 2, ///< Depends on a Hole.
+    Proxy = 1 << 3, ///< Depends on a Proxy.
 };
 
 /// [Judgement](https://ncatlab.org/nlab/show/judgment).
@@ -134,11 +136,12 @@ enum class Judge : u32 {
     // clang-format on
 };
 
-/// [Judgement](https://ncatlab.org/nlab/show/judgment).
+/// Classifies whether a [`Node`](@ref mim::Node) may occur as a *mutable*, an *immutable*, or both.
+/// @see @ref mut
 enum class Mut {
     // clang-format off
     Mut = 1 << 0, ///< Node may be mutable.
-    Imm = 1 << 1, ///< Node may be immmutable.
+    Imm = 1 << 1, ///< Node may be immutable.
     // clang-format on
 };
 ///@}
@@ -209,6 +212,18 @@ public:
     // clang-format on
 };
 
+/// Options for Def::dot and World::dot.
+/// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+struct DotConfig {
+    int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
+    bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
+    bool follow_types   = false;                           ///< Follow Def::type() dependencies.
+    bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
+    bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
+    bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
+                                 ///< shared literals/axioms, type edges) with a visible color.
+};
+
 /// Base class for all Def%s.
 ///
 /// These are the most important subclasses:
@@ -217,7 +232,7 @@ public:
 /// | Pi                | Lam               | App               |
 /// | Sigma / Arr       | Tuple / Pack      | Extract           |
 /// |                   | Insert            | Insert            |
-/// | Uniq              | Wrap              | Unwrap            |
+/// | Uniq              |                   |                   |
 /// | Join              | Inj               | Match             |
 /// | Meet              | Merge             | Split             |
 /// | Reform            | Rule              |                   |
@@ -255,6 +270,7 @@ protected:
     Def(World*, Node, const Def* type, Defs ops, flags_t flags); ///< Constructor for an *immutable* Def.
     Def(Node, const Def* type, Defs ops, flags_t flags);         ///< As above but World retrieved from @p type.
     Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
+    Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
     virtual ~Def() = default;
     ///@}
 
@@ -291,8 +307,8 @@ public:
     const Def* type() const noexcept;
     /// Yields the type of this Def and builds a new `Type (UInc n)` if necessary.
     const Def* unfold_type() const;
-    bool is_term() const;
-    virtual const Def* arity() const;
+    bool is_term() const;             ///< Is this Def a *term*, i.e. is its type() a Type?
+    virtual const Def* arity() const; ///< Number of elements available to Extract / Insert (may be dynamic).
     ///@}
 
     /// @name ops
@@ -445,9 +461,11 @@ public:
     ///@}
 
     /// @name Free Vars and Muts
-    /// * local_muts() / local_vars() are cached and hash-consed.
-    /// * free_vars() are computed on demand and cached in mutables.
-    ///   They will be transitively invalidated by following users(), if a mutable is mutated.
+    /// MimIR splits the free-variable analysis into a *local* and a *global* layer:
+    /// * local_muts() / local_vars() only look at the *immutable* fan-out and are cheap, cached, and hash-consed.
+    /// * free_vars() close over the *mutable* boundary as well and are the actual set of free Var%s.
+    ///   They are computed on demand via a fixed-point iteration and cached in mutables.
+    ///   Mutating a mutable transitively invalidates these caches by following users().
     ///@{
 
     /// Mutables reachable by following *immutable* deps(); `mut->local_muts()` is by definition the set `{ mut }`.
@@ -457,9 +475,10 @@ public:
     /// @note `var->local_vars()` is by definition the set `{ var }`.
     Vars local_vars() const;
 
-    /// Compute a global solution by transitively following *mutables* as well.
+    /// Global set of free Var%s: extends local_vars() by transitively following *mutables* as well.
+    /// @note On a *mutable* this simply forwards to the caching non-`const` overload below.
     Vars free_vars() const;
-    Vars free_vars();
+    Vars free_vars();              ///< As above but drives (and caches) the fixed-point iteration for *mutables*.
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
     bool is_open() const;          ///< Has free_vars()?
     bool is_closed() const;        ///< Has no free_vars()?
@@ -467,6 +486,13 @@ public:
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
     Def* outermost_binder() const;
+
+    /// Does @p this nest @p mut?
+    /// The relation is strict: `f->nests(f)` is `false`.
+    bool nests(Def* mut);
+    /// Does @p this nest @p def?
+    /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
+    bool nests(const Def* def);
     ///@}
 
     /// @name external
@@ -476,6 +502,14 @@ public:
     void internalize();
     void transfer_external(Def* to);
     bool is_annex() const noexcept { return annex_; }
+    ///@}
+
+    /// @name dirty
+    /// Scratch bit for Phase%s to mark muts that need re-examination.
+    /// @see Phase::taint
+    ///@{
+    bool is_dirty() const noexcept { return dirty_; }
+    void dirty(bool dirty = true) noexcept { dirty_ = dirty; }
     ///@}
 
     /// @name Casts
@@ -505,6 +539,15 @@ public:
             return const_cast<Def*>(this);
         else
             return const_cast<Def*>(this)->template as<T>();
+    }
+
+    /// Like Def::as_mut but - instead of merely asserting in `Debug` builds - throws via fe::throwf when the cast
+    /// fails; the mutable counterpart of fe::RuntimeCast::expect (which Def inherits for the general case).
+    /// @p fmt / @p args describe what was expected; a plain string works, as does a format string plus arguments.
+    template<class T = Def, class... Args>
+    T* expect_mut(std::format_string<Args...> fmt, Args&&... args) const {
+        if (auto res = isa_mut<T>()) return res;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), this);
     }
     ///@}
 
@@ -618,30 +661,26 @@ public:
     ///@}
 
     /// @name Syntactic Comparison
-    ///
+    /// Establishes an arbitrary but deterministic total order on Def%s that is stable across runs.
+    ///@{
     enum class Cmp {
         L, ///< Less
         G, ///< Greater
         E, ///< Equal
         U, ///< Unknown
     };
-    /// @name Syntactic Comparison
-    ///@{
     [[nodiscard]] static Cmp cmp(const Def* a, const Def* b);
     [[nodiscard]] static bool less(const Def* a, const Def* b);
     [[nodiscard]] static bool greater(const Def* a, const Def* b);
     ///@}
 
     /// @name dot
-    /// Streams dot to @p os while obeying maximum recursion depth of @p max.
-    /// if @p types is `true`, Def::type() dependencies will be followed as well.
+    /// Streams dot to @p os, configured via @p cfg (see DotConfig).
     ///@{
-    void dot(std::ostream& os, int max = std::numeric_limits<int>::max(), bool types = false) const;
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, int max = std::numeric_limits<int>::max(), bool types = false) const;
-    void dot(const std::string& file, int max = std::numeric_limits<int>::max(), bool types = false) const {
-        return dot(file.c_str(), max, types);
-    }
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
+    void dot(const std::string& file, DotConfig cfg = {}) const { return dot(file.c_str(), cfg); }
     ///@}
 
 protected:
@@ -665,6 +704,7 @@ private:
         return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
     }
     bool equal(const Def* other) const;
+    bool nests(Def*, MutSet&);
 
     template<Cmp>
     [[nodiscard]] static bool cmp_(const Def* a, const Def* b);
@@ -675,6 +715,7 @@ protected:
         NormalizeFn normalizer_; ///< Axm only: Axm%s use this member to store their normalizer.
         const Axm* axm_;         ///< App only: Curried App%s of Axm%s use this member to propagate the Axm.
         const Var* var_;         ///< Mutable only: Var of a mutable.
+        Def* binder_;            ///< Var only: the binder this Var refers to (*not* an official op).
         mutable World* world_;
     };
     flags_t flags_;
@@ -686,7 +727,8 @@ private:
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
-    unsigned dep_       : 5;
+    bool dirty_         : 1;
+    unsigned dep_       : 4;
     u32 mark_ = 0;
 #ifndef NDEBUG
     size_t curr_op_ = 0;
@@ -714,20 +756,18 @@ private:
 class Var : public Def, public Setters<Var> {
 private:
     Var(Def* mut)
-        : Def(Node, nullptr, Defs{mut}, 0) {}
+        : Def(Node, mut) {}
 
 public:
     using Setters<Var>::set;
 
-    const Def* type() const { return mut()->var_type(); }
-
-    /// @name ops
-    ///@{
-    Def* mut() const { return op(0)->as_mut(); }
-    ///@}
+    /// The binder of this Var.
+    /// It is *not* an official Def::op but stored in Def::binder_, so it is out of the operand graph but still hashed.
+    Def* binder() const { return binder_; }
+    const Def* type() const { return binder()->var_type(); }
 
     static constexpr auto Node      = mim::Node::Var;
-    static constexpr size_t Num_Ops = 1;
+    static constexpr size_t Num_Ops = 0;
 
 private:
     const Def* rebuild_(World&, const Def*, Defs) const final;
@@ -844,6 +884,12 @@ public:
     static T as(const Def* def) {
         return def->as<Lit>()->get<T>();
     }
+    /// Like Lit::as but throws a formatted mim::error instead of merely asserting in `Debug`; see Def::expect.
+    template<class T = nat_t, class... Args>
+    static T expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
+        if (auto res = isa<T>(def)) return *res;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), def);
+    }
     ///@}
 
     static constexpr auto Node      = mim::Node::Lit;
@@ -905,6 +951,16 @@ public:
     static constexpr nat_t size2bitwidth(nat_t n) { return n == 0 ? 64 : std::bit_width(n - 1_n); }
     // clang-format on
     static std::optional<nat_t> size2bitwidth(const Def* size);
+
+    /// Yields the bit width of the `Idx` @p type or throws a formatted mim::error - instead of yielding
+    /// std::nullopt or dereferencing an unchecked std::optional - if @p type is not an `Idx` of statically known
+    /// size; see Def::expect.
+    template<class... Args>
+    static nat_t expect_bitwidth(const Def* type, std::format_string<Args...> fmt, Args&&... args) {
+        if (auto size = isa(type))
+            if (auto w = size2bitwidth(size)) return *w;
+        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), type);
+    }
     ///@}
 
     static constexpr auto Node      = mim::Node::Idx;
@@ -918,17 +974,22 @@ private:
 
 class Proxy : public Def, public Setters<Proxy> {
 private:
-    Proxy(const Def* type, u32 pass, u32 tag, Defs ops)
-        : Def(Node, type, ops, (u64(pass) << 32_u64) | u64(tag)) {}
+    Proxy(const Def* type, flags_t tag, Defs ops)
+        : Def(Node, type, ops, tag) {}
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    u32 pass() const { return u32(flags() >> 32_u64); } ///< IPass::index within PassMan.
-    u32 tag() const { return u32(flags()); }
+    flags_t tag() const { return flags_; }
     ///@}
+
+    template<flags_t Tag>
+    static const Proxy* isa(const Def* def) {
+        if (auto proxy = def->isa<Proxy>(); proxy && proxy->tag() == Tag) return proxy;
+        return nullptr;
+    }
 
     static constexpr auto Node      = mim::Node::Proxy;
     static constexpr size_t Num_Ops = std::dynamic_extent;

@@ -1,23 +1,12 @@
 #include "mim/plug/core/core.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
-
-#include "mim/plug/core/be/ll.h"
-#include "mim/plug/core/be/sexpr.h"
+#include <mim/phase.h>
 
 using namespace mim;
 using namespace mim::plug;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"core", MIM_VERSION, core::register_normalizers, nullptr, [](Backends& backends) {
-                backends["ll"]                  = &ll::emit;
-                backends["sexpr"]               = &sexpr::emit;
-                backends["sexpr-typed"]         = &sexpr::emit_typed;
-                backends["sexpr-slotted"]       = &sexpr::emit_slotted;
-                backends["sexpr-slotted-typed"] = &sexpr::emit_slotted_typed;
-            }};
-}
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"core", MIM_VERSION, core::register_normalizers, nullptr}; }
 
 namespace mim::plug::core {
 

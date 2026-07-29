@@ -1,0 +1,18 @@
+// RUN: %mim -p opt %s -o - --scalarize-threshold 32 | %FileCheck %s
+// RUN: %mim -p opt %s -o - --scalarize-threshold 64 | %FileCheck %s --check-prefix=SCALAR
+plugin tuple;
+plugin refly;
+
+con f (t: <<32; Nat>>, r: Cn [<<(32); Nat>>]) = r t;
+
+con extern main(i: (Idx 2), r: Cn [<<32; Nat>>]) = (f (<32; 20>, r), f (<32; 19>, r))#i;
+
+// A parameter is only scalarized when its arity is *below* the threshold (Def::num_tprojs).
+// «32; Nat» has arity 32, so at threshold 32 it is NOT scalarized: f is just eta/beta-reduced away.
+// CHECK-DAG: r_{{[0-9]+}} ‹32; 20›
+// CHECK-DAG: r_{{[0-9]+}} ‹32; 19›
+
+// At threshold 64 the arity is below the threshold, so `t` is scalarized and the constant
+// is propagated, collapsing the homogeneous pack to a single argument.
+// SCALAR-DAG: f_{{[0-9]+}} 20
+// SCALAR-DAG: f_{{[0-9]+}} 19

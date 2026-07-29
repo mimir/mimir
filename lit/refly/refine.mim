@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim %s --output-ll %t.ll -o - | %FileCheck %s
-// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 42
 
 plugin core;
@@ -10,7 +10,7 @@ fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0)):
     let exp = %refly.reify (0, 1, 2, 3);
     let new = %refly.refine (exp, 1, %refly.reify 42);
     let tup = %refly.reflect new;
-    let x   = %core.bitcast I64 tup#1_4;
+    let x   = %core.bitcast I64 tup#1₄;
     return (mem, %core.conv.u i32 x);
 
 // CHECK-DAG: return{{.*}}42

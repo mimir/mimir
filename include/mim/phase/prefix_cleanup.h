@@ -11,7 +11,7 @@ public:
 
     void apply(std::string);
     void apply(const App* app) final { apply(tuple2str(app->arg())); }
-    void apply(Stage& s) final { apply(std::move(static_cast<PrefixCleanup&>(s).prefix_)); }
+    void apply(Phase& p) final { apply(std::move(static_cast<PrefixCleanup&>(p).prefix_)); }
 
 private:
     void rewrite_external(Def*) final;

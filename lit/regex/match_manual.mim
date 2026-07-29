@@ -1,6 +1,6 @@
-// RUN: rm -f %t.ll ; \
-// RUN: %mim %s -o - --output-ll %t.ll | %FileCheck %s
-// RUN: clang %t.ll -o %t -Wno-override-module %S/../lib.c
+// RUN: rm -f %{s:stem}.ll ; \
+// RUN: %mim -p opt %s -o - -p ll | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module %S/../lib.c
 // RUN: %t "aa"; test $? -eq 1
 // RUN: %t "abbaa"; test $? -eq 1
 // RUN: %t "a"; test $? -eq 0
@@ -8,13 +8,13 @@
 plugin mem;
 plugin core;
 plugin regex;
-plugin direct;
+plugin cps;
 
 let Top = ⊤:Nat;
 
 // matches (a|b)+a
 
-con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit : Cn [%mem.M 0, I32]] =
+con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [%mem.M 0, I32]] =
     (exit, match_argument) # (%core.icmp.ug (argc, 1I32)) (mem, 0I32)
     where
         con match_argument[mem: %mem.M 0, I32] =
@@ -70,7 +70,7 @@ con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr (�
                             end
                     end
             end;
-        con error(mem: %mem.M 0, i : I32) =
+        con error(mem: %mem.M 0, i: I32) =
             reject (mem, 0I32)
             where
                 con reject[mem: %mem.M 0, Idx Top] = exit (mem, 0I32);

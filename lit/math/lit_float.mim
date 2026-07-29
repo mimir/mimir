@@ -1,0 +1,27 @@
+// RUN: %mim %s -o - -p ll | %FileCheck %s
+// RUN: %FileCheck %s --check-prefix=LLVM < %{s:stem}.ll
+plugin math;
+
+// Decimal float literals must be encoded with the bit width of their annotated type.
+// The Tok stores the value as f64 bits; re-encoding these for %math.F32 used to be forgotten,
+// so the low 32 bits of the f64 pattern ended up in the Lit (0 for most values).
+
+// CHECK-DAG: fun extern f32_one (): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} 1065353216:(%math.F (23, 8))
+// LLVM-DAG: ret float 0x3ff0000000000000
+con extern f32_one(return: Cn %math.F32) = return 1.0:(%math.F32);
+
+// CHECK-DAG: fun extern f32_em3 (): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} 981668463:(%math.F (23, 8))
+// LLVM-DAG: ret float 0x3f50624de0000000
+con extern f32_em3(return: Cn %math.F32) = return 1e-3:(%math.F32);
+
+// CHECK-DAG: fun extern f32_pe (): %math.F (23, 8) =
+// CHECK-DAG: return_{{[0-9_]+}} 1124073472:(%math.F (23, 8))
+// LLVM-DAG: ret float 0x4060000000000000
+con extern f32_pe(return: Cn (%math.F (23, 8))) = return 128.0:(%math.F (23, 8));
+
+// CHECK-DAG: fun extern f64_one (): %math.F (52, 11) =
+// CHECK-DAG: return_{{[0-9_]+}} 4607182418800017408:(%math.F (52, 11))
+// LLVM-DAG: ret double 0x3ff0000000000000
+con extern f64_one(return: Cn %math.F64) = return 1.0:(%math.F64);

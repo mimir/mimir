@@ -36,7 +36,7 @@ void RetWrap::visit(const Def* def, Lattice l) {
     } else if (auto app = def->isa<App>()) {
         if (auto var = app->arg()->isa<Var>()) {
             if (auto i = var2def_.find(var); i != var2def_.end()) {
-                auto lam = var->mut()->as_mut<Lam>();
+                auto lam = var->binder()->as_mut<Lam>();
                 DLOG("split: `{}`", lam);
                 split_.emplace(lam);
                 def2lattice_[i->second] = Eta;

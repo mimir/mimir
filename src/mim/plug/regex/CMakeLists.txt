@@ -4,7 +4,7 @@ add_mim_plugin(regex
         dfa2matcher.cpp
         regex.cpp
         regex2nfa.cpp
-        pass/lower_regex.cpp
+        phase/lower_regex.cpp
     PRIVATE
         automaton
     INSTALL

@@ -12,6 +12,8 @@ protected:
     using Def::Def;
 
 public:
+    ~Prod() override;
+
     static constexpr size_t Num_Ops = std::dynamic_extent;
 };
 
@@ -86,6 +88,8 @@ protected:
     using Def::Def;
 
 public:
+    ~Seq() override;
+
     /// @name ops
     ///@{
     const Def* body() const { return ops().back(); }
@@ -327,16 +331,6 @@ private:
 ///@{
 bool is_unit(const Def*);
 std::string tuple2str(const Def*);
-
-/// Flattens a sigma/array/pack/tuple.
-const Def* flatten(const Def* def);
-/// Same as unflatten, but uses the operands of a flattened Pack / Tuple directly.
-size_t flatten(DefVec& ops, const Def* def, bool flatten_sigmas = true);
-
-/// Applies the reverse transformation on a Pack / Tuple, given the original type.
-const Def* unflatten(const Def* def, const Def* type);
-/// Same as unflatten, but uses the operands of a flattened Pack / Tuple directly.
-const Def* unflatten(Defs ops, const Def* type, bool flatten_muts = true);
 
 const Def* tuple_of_types(const Def* t);
 ///@}

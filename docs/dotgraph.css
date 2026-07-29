@@ -1,0 +1,8 @@
+/* shrink margins for embedded dot graphs */
+.contents .image object,
+.contents .image img,
+.dotgraph img,
+.dotgraph iframe {
+    display: block;
+    margin-inline: auto;
+}

@@ -1,0 +1,30 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
+
+// Isolated check of the buffer plugin's lower_ptr phase: a hand-written
+// alloc/write/read program must lower to %mem.alloc/lea/load/store, with no %buffer.* left.
+plugin core;
+plugin mem;
+plugin buffer;
+plugin opt;
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    let RST          = (2, (2, 2), I32);
+    let (mem, buf)  = %buffer.alloc RST mem;
+    let idx          = (1₂, 0₂);
+    let (mem, buf2) = %buffer.write RST (mem, buf, idx, 7I32);
+    let (mem, v)    = %buffer.read RST (mem, buf2, idx);
+    return (mem, v);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %buffer.lower_ptr,
+        %compile.internal_cleanup,
+    );
+
+// CHECK-DAG: %mem.alloc
+// CHECK-DAG: %mem.lea
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+// GONE-NOT: %buffer.

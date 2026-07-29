@@ -1,9 +1,9 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 plugin core;
 
-lam f0(s: Nat, i: Nat): Idx s = %core.idx s 0 i;
-lam f1(s: Nat, i: Nat): Idx s = %core.idx s 1 i;
+lam f0(s i: Nat): Idx s = %core.idx s 0 i;
+lam f1(s i: Nat): Idx s = %core.idx s 1 i;
 
 lam extern g0() = f0(42, 23);
 lam extern g1() = f1(42, 23);

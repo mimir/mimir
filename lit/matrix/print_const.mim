@@ -1,27 +1,25 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p clos -o - --output-ll %t.ll %s
-// RUN: clang %S/../lib.c %t.ll -o %t -Wno-override-module
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos -o - -p ll %s
+// RUN: clang %S/../lib.c %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 2 3 | %FileCheck %s
 
 plugin core;
 plugin matrix;
 
-let MT = (2, (2,4), I32);
+let MT = (2, (2, 4), I32);
 
-ccon print_int_matrix [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, (⊤:Nat,⊤:Nat), I32), return : Cn [%mem.M 0]];
+ccon print_int_matrix [mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32), return: Cn [%mem.M 0]];
 
-con print_int_matrix_wrap [mem: %mem.M 0, k: Nat, l: Nat, m: %matrix.Mat (2, (k,l), I32), return : Cn [%mem.M 0]] =
-    let m2 = %core.bitcast (%matrix.Mat (2,(⊤:Nat,⊤:Nat),I32)) m;
-    print_int_matrix(mem, k, l, m2, return);
+con print_int_matrix_wrap (mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (k, l), I32), return: Cn [%mem.M 0]) =
+    let m = %core.bitcast (%buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32)) m;
+    print_int_matrix(mem, k, l, m, return);
 
-con extern main [mem : %mem.M 0, argc : I32, argv : %mem.Ptr (%mem.Ptr (I8, 0), 0), return : Cn [%mem.M 0, I32]] =
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let c = argc;
-    let (mem2,m) = %matrix.constMat MT (mem,c);
-    // return_cont mem2
-    // print_int_matrix (mem2, 2, 4, m, return_cont)
-    print_int_matrix_wrap (mem2, 2, 4, m, return_cont)
+    let (mem, m) = %buffer.constant MT (mem, c);
+    print_int_matrix_wrap (mem, 2, 4, m, return_cont)
     where
-        con return_cont [mem:%mem.M 0] = return (mem, 0I32);
+        con return_cont (mem: %mem.M 0) = return (mem, 0I32);
     end;
 
 // CHECK: 3, 3, 3, 3,

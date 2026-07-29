@@ -11,6 +11,7 @@
 
 #include "mim/ast/tok.h"
 #include "mim/util/log.h"
+#include "mim/util/profile.h"
 
 namespace mim {
 
@@ -20,7 +21,9 @@ class Driver : public fe::SymPool {
 public:
     /// @name Construction
     ///@{
-    Driver();
+    Driver(std::string name);
+    Driver()
+        : Driver(std::string{}) {}
 
     Driver(const Driver&)     = delete;
     Driver(Driver&&)          = delete;
@@ -32,6 +35,8 @@ public:
     Flags& flags() { return flags_; }
     const Flags& flags() const { return flags_; }
     Log& log() const { return log_; }
+    Profiler& profiler() { return profiler_; }
+    const Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
     const Version& version() const { return version_; } ///< MimIR Version.
     ///@}
@@ -115,11 +120,18 @@ public:
     /// @name Manage Plugins
     /// All these lookups yield `nullptr` if the key has not been found.
     ///@{
-    auto stage(flags_t flags) { return lookup(stages_, flags); }
-    const auto& stages() const { return stages_; }
+    auto phase(flags_t flags) { return lookup(phases_, flags); }
+    const auto& phases() const { return phases_; }
     auto normalizer(flags_t flags) const { return lookup(normalizers_, flags); }
-    auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(d | flags_t(t << 8u) | s); }
-    auto backend(std::string_view name) { return lookup(backends_, name); }
+    auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(Annex::flags(d, t, s)); }
+    ///@}
+
+    /// @name Plugin/Phase Arguments
+    /// Freeform command-line arguments addressed to a plugin/phase (`-X <plugin>:<arg>`).
+    /// A Phase reads its own arguments via Phase::args().
+    ///@{
+    void add_arg(Sym plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
+    const Vector<std::string>& args(Sym plugin) const; ///< Yields an empty Vector if @p plugin has none.
     ///@}
 
 private:
@@ -128,12 +140,13 @@ private:
     Version version_;
     Flags flags_;
     mutable Log log_;
+    Profiler profiler_;
     World world_;
     std::list<fs::path> search_paths_;
     std::list<fs::path>::iterator insert_ = search_paths_.end();
-    Backends backends_;
-    Flags2Stages stages_;
+    Flags2Phases phases_;
     Normalizers normalizers_;
+    fe::SymMap<Vector<std::string>> plugin_args_;
     Imports imports_;
 };
 

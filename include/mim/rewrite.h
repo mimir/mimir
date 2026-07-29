@@ -85,12 +85,21 @@ public:
         // Do NOT swap ptr_ and world_: they are back pointers!
     }
 
+    template<class D = Def>
+    D* curr_mut() const {
+        return curr_mut_ ? curr_mut_->template isa<D>() : nullptr;
+    }
+
 private:
     std::unique_ptr<World> ptr_;
     World* world_;
+    Def* curr_mut_ = nullptr;
 
 protected:
     std::deque<Def2Def> old2news_;
+
+    /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
+    auto enter(Def* new_mut) { return Restore(curr_mut_, new_mut); }
 };
 
 /// Extends Rewriter for variable substitution.

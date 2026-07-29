@@ -1,0 +1,31 @@
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+
+// End-to-end bufferization through the DEFAULT pipeline (no custom _compile): a mem-carrying `main`
+// builds a tensor literal and calls the bufferized `kernel` — the call site materializes the literal
+// into a buffer (%buffer.init -> alloc+store), threads `main`'s memory, and mem-extends `done`.
+// `kernel` also has a sigma-grouped parameter `(t, i)`, exercising boundary conversion inside sigmas.
+// Under the always-allocate-and-copy policy `t` is never mutated by the `set`:
+// a = s[0][0] = 42, b = s[1][2] = 7, c = t[0][0] = 1  =>  kernel returns 50.
+// exec_get_set_run.mim compiles this to an executable and asserts the exit code.
+plugin core;
+plugin tensor;
+plugin mem;
+
+fun extern kernel (t: «3, 4; I32», i: [Idx 3, Idx 4]): I32 =
+    let s = %tensor.set @(I32, 2, (3, 4)) (t, (0₃, 0₄), 42I32);
+    let a = %tensor.get @(I32, 2, (3, 4)) (s, (0₃, 0₄));
+    let b = %tensor.get @(I32, 2, (3, 4)) (s, i);
+    let c = %tensor.get @(I32, 2, (3, 4)) (t, (0₃, 0₄));
+    return (%core.wrap.add 0 (a, %core.wrap.add 0 (b, c)));
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    let t = ((1I32, 2I32, 3I32, 4I32), (5I32, 6I32, 7I32, 8I32), (9I32, 10I32, 11I32, 12I32));
+    con done (v: I32) = return (mem, v);
+    kernel ((t, (1₃, 2₄)), done);
+
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
