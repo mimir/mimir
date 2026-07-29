@@ -12,6 +12,9 @@
     .def("add_plugin", [](Driver& d, std::string path, std::string sym) {
         return d.imports().add(fs::path(path), d.sym(sym), ast::Tok::Tag::K_plugin);
     }, nb::rv_policy::reference_internal)
+    .def("load_plugin", [](Driver& d, std::string plugin) {
+        ast::load_plugin(d.world(), plugin);
+    })
     .def("load_plugins", [](Driver& d, std::vector<std::string> plugins) {
         ast::load_plugins(d.world(), plugins);
     })

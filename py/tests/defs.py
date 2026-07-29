@@ -1,4 +1,4 @@
-"""Tests for py/bindings/def.cpp bindings."""
+"""Tests for the def.h bindings."""
 from __future__ import annotations
 
 import mim
@@ -28,9 +28,9 @@ def test_driver(driver):
     d = driver.world().lit_i8(0).driver()
     assert d is not None
 
-# @pytest.mark.skip(reason="calling .var() on a projection currently segfaults; "
-#                     "convert to xfail-strict once the binding raises MIM_Error "
-#                     "instead of crashing.")
+@pytest.mark.skip(reason="calling .var() on a projection currently segfaults; "
+                    "convert to xfail-strict once the binding raises MIM_Error "
+                    "instead of crashing.")
 def test_var_on_projection_raises(world):
     m = world.mut_con([world.type_bool(), world.type_i8()])
     p = m.var().proj(0)

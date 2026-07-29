@@ -1,4 +1,4 @@
-"""Tests for py/bindings/world.cpp bindings (no plugins required)."""
+"""Tests for the world.h bindings (no plugins required)."""
 from __future__ import annotations
 
 import mim

@@ -19,7 +19,7 @@ import os
 import re
 import shlex
 import sys
-from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -101,34 +101,6 @@ def is_deleted(cursor) -> bool:
         raw = cursor.raw_comment or ""
         extent = str(cursor.extent.end)
         return "= delete" in extent or "= delete" in raw
-    except Exception:
-        return False
-
-
-def is_pure_virtual(cursor) -> bool:
-    try:
-        return cursor.is_pure_virtual()
-    except Exception:
-        return False
-
-
-def _type_is_nested_record(t) -> bool:
-    """True if *t* refers (through ptr/ref/cv) to a record nested inside a class.
-
-    Such names (e.g. `World::State`) are spelled unqualified by libclang, so a
-    binding emitted at namespace scope would not compile.
-    Skip the enclosing method/constructor instead of emitting broken code.
-    """
-    try:
-        canon = t.get_canonical()
-        if canon.kind in (TypeKind.POINTER, TypeKind.LVALUEREFERENCE, TypeKind.RVALUEREFERENCE):
-            decl = canon.get_pointee().get_declaration()
-        else:
-            decl = t.get_declaration()
-        if decl is None or not decl.spelling:
-            return False
-        parent = decl.semantic_parent
-        return parent is not None and parent.kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL)
     except Exception:
         return False
 
@@ -286,6 +258,23 @@ def _camel_to_snake(name: str) -> str:
     return s.lower()
 
 
+def _extract_params(cursor):
+    """Return ``(params, defaults)`` for a function cursor, or ``None`` to skip.
+
+    ``None`` signals that a parameter type is unbindable (see `_resolve_param_type`),
+    so the whole method/constructor must be dropped.
+    """
+    params, defaults = [], []
+    for p in cursor.get_children():
+        if p.kind == CursorKind.PARM_DECL:
+            pt = _resolve_param_type(p)
+            if pt is None:
+                return None
+            params.append((pt, p.spelling))
+            defaults.append(_param_default(p))
+    return params, defaults
+
+
 def _extract_method(cursor, class_name: str) -> Optional[MethodInfo]:
     if is_deleted(cursor):
         return None
@@ -302,15 +291,10 @@ def _extract_method(cursor, class_name: str) -> Optional[MethodInfo]:
     if cursor.kind == CursorKind.CONSTRUCTOR:
         if _is_copy_or_move_ctor(cursor, class_name):
             return None
-        params = []
-        defaults = []
-        for p in cursor.get_children():
-            if p.kind == CursorKind.PARM_DECL:
-                pt = _resolve_param_type(p)
-                if pt is None:
-                    return None
-                params.append((pt, p.spelling))
-                defaults.append(_param_default(p))
+        extracted = _extract_params(cursor)
+        if extracted is None:
+            return None
+        params, defaults = extracted
         return MethodInfo(
             name=cursor.spelling,
             return_type="",
@@ -340,15 +324,10 @@ def _extract_method(cursor, class_name: str) -> Optional[MethodInfo]:
     # substitute.
     if _is_unresolved_return(ret):
         return None
-    params = []
-    defaults = []
-    for p in cursor.get_children():
-        if p.kind == CursorKind.PARM_DECL:
-            pt = _resolve_param_type(p)
-            if pt is None:
-                return None
-            params.append((pt, p.spelling))
-            defaults.append(_param_default(p))
+    extracted = _extract_params(cursor)
+    if extracted is None:
+        return None
+    params, defaults = extracted
 
     return MethodInfo(
         name=cursor.spelling,
@@ -494,30 +473,6 @@ def _gen_constructor_binding(mi: MethodInfo, indent: str = "    ") -> str:
     return f'{indent}.def(nb::init<{args}>())'
 
 
-def _gen_static_binding(mi: MethodInfo, indent: str = "    ") -> str:
-    policy = ", nb::rv_policy::reference_internal" if _needs_ref_policy(mi.return_type) else ""
-    return f'{indent}.def_static("{mi.py_name}", {mi.cpp_ref}{policy})'
-
-
-def _gen_overload_binding(mi: MethodInfo, indent: str = "    ") -> str:
-    args_str = ", ".join(pt for pt, _ in mi.params)
-    policy = ", nb::rv_policy::reference_internal" if _needs_ref_policy(mi.return_type) else ""
-
-    if not args_str:
-        if mi.is_const:
-            return f'{indent}.def("{mi.py_name}", nb::overload_cast<>({mi.cpp_ref}, nb::const_){policy})'
-        return f'{indent}.def("{mi.py_name}", nb::overload_cast<>({mi.cpp_ref}){policy})'
-
-    if mi.is_const:
-        return f'{indent}.def("{mi.py_name}", nb::overload_cast<{args_str}>({mi.cpp_ref}, nb::const_){policy})'
-    return f'{indent}.def("{mi.py_name}", nb::overload_cast<{args_str}>({mi.cpp_ref}){policy})'
-
-
-def _gen_simple_binding(mi: MethodInfo, indent: str = "    ") -> str:
-    policy = ", nb::rv_policy::reference_internal" if _needs_ref_policy(mi.return_type) else ""
-    return f'{indent}.def("{mi.py_name}", {mi.cpp_ref}{policy})'
-
-
 def _gen_field_binding(mi: MethodInfo, indent: str = "    ") -> str:
     # Public data members are exposed as writable properties, unless the field
     # is const (or a reference we can't rebind), in which case it is read-only.
@@ -616,7 +571,7 @@ def _gen_static_lambda(mi: MethodInfo, indent: str = "    ") -> str:
     return f'{indent}.def_static("{mi.py_name}", []({params_str}) {{ return {body}; }}{policy}{_arg_spec(mi)})'
 
 
-def _generate_method_binding(mi: MethodInfo, overloaded_names: set, indent: str = "    ") -> str:
+def _generate_method_binding(mi: MethodInfo, indent: str = "    ") -> str:
     if mi.is_constructor:
         return _gen_constructor_binding(mi, indent)
     if mi.is_field:
@@ -656,17 +611,13 @@ def _base_spec(bases: list[str]) -> str:
     return f", {bases[0].split('::')[-1]}"
 
 
-def _compute_overloaded_names(classes: dict) -> set:
-    overloaded: set = set()
-    for info in classes.values():
-        seen = defaultdict(int)
-        for m in info["methods"]:
-            if not m.is_constructor:
-                seen[m.name] += 1
-        for name, cnt in seen.items():
-            if cnt > 1:
-                overloaded.add(name)
-    return overloaded
+def _empty_extra() -> dict:
+    """A fresh, empty set of .nbextra injection sections.
+
+    A factory (not a shared constant) because the `classes`/`skips` values are
+    mutated in place downstream.
+    """
+    return {"includes": "", "classes": {}, "standalone": "", "skips": {}}
 
 
 def _parse_extra_file(content: str, stem: str) -> dict:
@@ -684,7 +635,7 @@ def _parse_extra_file(content: str, stem: str) -> dict:
     Content before the first section header is ignored.
     Unrecognised tags emit a warning and their bodies are discarded.
     """
-    result: dict = {"includes": "", "classes": {}, "standalone": "", "skips": {}}
+    result = _empty_extra()
     current_key: str | None = None
     current_lines: list[str] = []
 
@@ -719,16 +670,15 @@ def _parse_extra_file(content: str, stem: str) -> dict:
 
 def _load_extra(header_path: str, extra_dir: str | None) -> dict:
     """Load and parse the companion .nbextra file for *header_path*, if any."""
-    _empty: dict = {"includes": "", "classes": {}, "standalone": "", "skips": {}}
     if not extra_dir:
-        return _empty
+        return _empty_extra()
     stem = os.path.splitext(os.path.basename(header_path))[0]
     extra_path = os.path.join(extra_dir, stem + ".nbextra")
     try:
         with open(extra_path) as f:
             return _parse_extra_file(f.read(), stem)
     except OSError:
-        return _empty
+        return _empty_extra()
 
 
 class ExtraSectionError(Exception):
@@ -798,7 +748,6 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
 
     header_stem = os.path.splitext(os.path.basename(header_path))[0]
     func_name = f"init_{header_stem}"
-    overloaded = _compute_overloaded_names(classes)
 
     if ns:
         lines.append(f"namespace {ns} {{")
@@ -865,7 +814,7 @@ def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = ""
         lines.append(cls_start)
 
         for i, mi in enumerate(methods):
-            binding = _generate_method_binding(mi, overloaded)
+            binding = _generate_method_binding(mi)
             if i == 0:
                 lines[-1] = lines[-1] + " " + binding.strip()
             else:
@@ -946,11 +895,15 @@ def _load_compile_commands(build_dir: Path) -> Optional[list]:
         return None
 
 
+@lru_cache(maxsize=None)
+def _anchor_base(anchor: str) -> Path:
+    return (_REPO_ROOT / anchor).resolve()
+
+
 def _rel_under(path, anchor: str) -> Optional[Path]:
     """Path relative to `<repo>/<anchor>`, or None if it does not live there."""
-    base = (_REPO_ROOT / anchor).resolve()
     try:
-        return Path(path).resolve().relative_to(base)
+        return Path(path).resolve().relative_to(_anchor_base(anchor))
     except ValueError:
         return None
 
