@@ -9,7 +9,8 @@ Usage:
     ./gen_nanobind_bindings.py --dir include/mim --recursive
         --namespace mim -I /custom/include
 
-Requires: the project venv at REPO_ROOT/.venv/ with `clang` (libclang Python bindings) installed.
+Requires the `libclang` wheel (bundles libclang + its Python bindings); it is
+installed into the build venv by CMake, which also invokes this script.
 """
 
 import argparse
@@ -25,46 +26,30 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-# TODO: change this, this is way too convoluted
 # ---------------------------------------------------------------------------
-#  Bootstrap: use the project venv so we get the bundled libclang.so
+#  Bootstrap: import the venv's bundled libclang
 # ---------------------------------------------------------------------------
+# Normally this runs under the build venv's own Python (invoked by CMake), so
+# the `libclang` wheel — which self-locates its native library — is already
+# importable.  When run manually with a system Python, add the repo `.venv`'s
+# site-packages so the same wheel is found.
 
-_SCRIPT_DIR = Path(__file__).resolve().parent          # scripts/
-_REPO_ROOT  = _SCRIPT_DIR.parent                       # repo root
+_SCRIPT_DIR = Path(__file__).resolve().parent  # scripts/
+_REPO_ROOT = _SCRIPT_DIR.parent                # repo root
 
-# When run via CMake (using the build venv's Python), sys.prefix already
-# points at the venv root.  When invoked manually with the system Python,
-# fall back to the repo-root .venv/ for the libclang bootstrap.
-if sys.prefix != sys.base_prefix:
-    _VENV = Path(sys.prefix)
-else:
-    _VENV = _REPO_ROOT / ".venv"
-
-# Determine the `site-packages` inside the venv
-_py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
-_venv_site = _VENV / "lib" / _py_ver / "site-packages"
-
-if _venv_site.is_dir() and str(_venv_site) not in sys.path:
-    sys.path.insert(0, str(_venv_site))
-    # Ensure the bundled libclang.so can be found by ctypes
-    _clang_native = _venv_site / "clang" / "native"
-    if _clang_native.is_dir():
-        _lib = _clang_native / "libclang.so"
-        if _lib.exists():
-            os.environ.setdefault("LIBCLANG_LIBRARY_FILE", str(_lib))
+if sys.prefix == sys.base_prefix:  # not already inside a venv
+    _site = _REPO_ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if _site.is_dir():
+        sys.path.insert(0, str(_site))
 
 try:
-    import clang.cindex # pyright: ignore[reportMissingImports]
-except ImportError:
+    import clang.cindex  # pyright: ignore[reportMissingImports]
+except Exception as e:  # ImportError, or libclang failing to load
     print(
-        "ERROR: clang.cindex not found in project venv.\n"
-        f"  Run: {_VENV}/bin/pip install clang",
+        f"ERROR: libclang not available: {e}\n"
+        "  Run under the build venv, or `pip install libclang` into it.",
         file=sys.stderr,
     )
-    sys.exit(1)
-except clang.cindex.LibclangError as e:
-    print(f"ERROR: libclang not loadable from venv: {e}", file=sys.stderr)
     sys.exit(1)
 
 clang = clang.cindex
@@ -1035,6 +1020,21 @@ def _resource_include_from(resource_dir: str) -> Optional[str]:
     return f"-isystem{inc}" if (inc / "stddef.h").is_file() else None
 
 
+def _clang_exes(env_var: str, names: tuple) -> list:
+    """Resolved clang executables to try: an `$env_var` override first (if it
+    names a clang), then *names* found on `PATH`; de-duplicated, order preserved.
+    """
+    override = os.environ.get(env_var, "")
+    ordered = ([override] if "clang" in os.path.basename(override) else []) + list(names)
+    seen, out = set(), []
+    for name in ordered:
+        path = shutil.which(name)
+        if path and path not in seen:
+            seen.add(path)
+            out.append(path)
+    return out
+
+
 def _parse_search_dirs(stderr: str) -> list:
     """Pull the include directories out of `clang -v` diagnostic output."""
     dirs, capture = [], False
@@ -1060,12 +1060,7 @@ def _compiler_system_includes() -> list:
     yields exactly the libc++/libstdc++ and SDK paths it uses, which is portable
     and always correct.  Returns an empty list if no compiler is reachable.
     """
-    cxx = os.environ.get("CXX", "")
-    candidates = ([cxx] if "clang" in os.path.basename(cxx) else []) + ["clang++", "clang"]
-    for exe in candidates:
-        path = shutil.which(exe)
-        if not path:
-            continue
+    for path in _clang_exes("CXX", ("clang++", "clang")):
         try:
             proc = subprocess.run(
                 [path, "-E", "-x", "c++", "-v", os.devnull],
@@ -1088,12 +1083,7 @@ def _clang_resource_include() -> Optional[str]:
     alike; fall back to scanning the usual install locations if none is on PATH.
     """
     # Primary, portable: ask a clang executable for its resource dir.
-    cc = os.environ.get("CC", "")
-    candidates = ([cc] if "clang" in os.path.basename(cc) else []) + ["clang", "clang++"]
-    for exe in candidates:
-        path = shutil.which(exe)
-        if not path:
-            continue
+    for path in _clang_exes("CC", ("clang", "clang++")):
         try:
             proc = subprocess.run(
                 [path, "-print-resource-dir"], capture_output=True, text=True, timeout=10
