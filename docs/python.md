@@ -3,8 +3,8 @@
 [TOC]
 
 MimIR ships a Python package called `mim`.
-It wraps selected parts of the C++ API via [nanobind](https://nanobind.readthedocs.io/) and adds a small Python layer on top for convenience.
-The package is intentionally close to the C++ API.
+Its binding code is generated directly from the C++ headers via [nanobind](https://nanobind.readthedocs.io/) (see [Extending the Bindings](#python_extending)), so it mirrors a large portion of the C++ API rather than a hand-picked subset, with a small Python layer on top for convenience.
+Because the surface is generated, it stays close to the C++ API by construction.
 Names such as `lit_i8`, `type_i32`, `arr`, `mut_con`, and `optimize` are exposed with the same spelling you see in the C++ code.
 You have to enable `MIM_BUILD_PYTHON` (default) during configuration for Python support.
 
@@ -31,7 +31,7 @@ import mim
 
 Internally, the package consists of a few layers:
 
-- `_mim`: the compiled nanobind extension module,
+- `_mim`: the compiled nanobind extension module (its C++ sources are generated at build time, see [Extending the Bindings](#python_extending)),
 - `mim`: the public Python package that re-exports `_mim` and adds helper functions,
 - `mim.plug.<name>`: generated plugin enum facades, for example `mim.plug.core`,
 
@@ -126,18 +126,41 @@ Available helpers:
 
 These are ordinary Python wrappers around the `MIM_Error` exception type exported by the binding module.
 
-## Current Scope
+## Coverage
 
-The Python bindings are intentionally selective.
-They already support useful workflows for:
+Because the bindings are generated straight from the C++ headers (see [Extending the Bindings](#python_extending)), the Python surface tracks the C++ API broadly rather than being a hand-picked subset.
+Core types such as [`Def`](@ref mim::Def), [`World`](@ref mim::World), [`Driver`](@ref mim::Driver), and [`Lam`](@ref mim::Lam) and their public methods are exposed automatically, with the same spelling.
 
-- constructing small IR fragments directly from Python,
+Typical workflows are all supported out of the box:
+
+- constructing IR fragments directly from Python,
 - loading plugins and calling generated annex enums,
-- driving optimization and backend emission through [`Driver`](@ref mim::Driver), and
-- end-to-end regex/JIT experiments.
+- driving optimization over a [`World`](@ref mim::World) (`world.optimize()`), and
+- end-to-end regex/JIT experiments (which emit LLVM IR and invoke `clang` under the hood).
 
-But the Python API is not yet a one-to-one mirror of the full C++ surface.
-If you need a feature that exists in C++ but not in Python yet, the binding files under `py/bindings/` are the place to extend.
+The only gaps are the handful of constructs libclang cannot express as a plain binding (e.g. template methods), and closing them is trivial — expose the C++ method, or add a small `.nbextra` patch, as described next.
+
+## Extending the Bindings {#python_extending}
+
+Most of the binding code is **generated at build time** rather than written by hand.
+`scripts/gen_nanobind_bindings.py` parses the C++ headers with libclang and emits one nanobind translation unit per header into `build/py/auto_bindings/`.
+The set of headers to wrap and the order in which their `init_*` functions are registered are listed in `py/CMakeLists.txt`; the module entry point (`NB_MODULE`) is generated from that same manifest, so it never drifts out of sync.
+
+To expose more of an already-wrapped class, just add the C++ method: on the next build it is picked up automatically.
+Adding a new header to the manifest in `py/CMakeLists.txt` wraps a new class.
+
+Some declarations cannot be expressed by the generator — template methods, private/overloaded constructors, or signatures that need a Python-friendly conversion (e.g. accepting a list where the C++ takes `Defs`).
+For these, drop a companion `<header-stem>.nbextra` file into `py/nbextra/` (it is picked up automatically when it exists).
+An `.nbextra` file is a small patch applied to the generated unit, with bracketed sections:
+
+- `[include]` — extra `#include` lines,
+- `[class:Name]` — a `.def(...)` chain appended to that class's binding,
+- `[skip:Name]` — whitespace-separated method names to drop from that class (pair with `[class:Name]` to substitute a hand-written binding),
+- `[standalone]` — raw code injected after all class/enum blocks.
+
+A `[class:Name]`/`[skip:Name]` that matches no parsed class fails the build loudly, so a stale name after a C++ rename cannot silently drop bindings.
+
+A handful of units are still fully hand-written under `py/bindings/` (listed in `py/CMakeLists.txt`): `error.cpp` registers the `MIM_Error` exception, while `ast.cpp` and `parser.cpp` cover surface the generator does not yet handle.
 
 ## Embedded Python DSL
 
