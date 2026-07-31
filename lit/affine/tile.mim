@@ -1,0 +1,55 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 0
+// RUN: %t 1 2 3 4 5 6 7 8 9 ; test $? -eq 45
+
+plugin core;
+plugin affine;
+
+// Loop tiling implemented entirely in the frontend via partial evaluation - no C++ involved.
+//
+// `ForT` is the type of anything with %affine.For's calling convention, i.e. a "loop implementation".
+// `tile` is a loop-transformer: it wraps an inner loop implementation in an outer loop over tiles
+// of size `ts`. Its filter demands that the tile size is compile-time known; PE then erases the
+// combinator completely, materializing the loop nest. Schedules compose by function composition:
+// `tile 8 (tile 2 affine_for)` yields a three-deep nest. Only the schedule must be static -
+// the trip count below is dynamic (argc).
+
+lam ForT (m n: Nat, Ts: «n; *»): * =
+      [Cn [iter: Idx m, acc: «i: n; Ts#i», yield: Cn «i: n; Ts#i»]]
+    → [Cn «i: n; Ts#i»]
+    → Cn [begin stop step: Idx m, init: «i: n; Ts#i»];
+
+// %affine.For itself, eta-wrapped so it can be passed around as a first-class ForT.
+con affine_for {m n: Nat, Ts: «n; *»}
+               (body: Cn [Idx m, «i: n; Ts#i», Cn «i: n; Ts#i»])
+               (exit: Cn «i: n; Ts#i»)
+               (begin stop step: Idx m, init: «i: n; Ts#i»)@tt =
+    %affine.For body exit (begin, stop, step, init);
+
+con tile {m n: Nat, Ts: «n; *»}
+         (ts: Idx m)
+         (inner: ForT (m, n, Ts))
+         (body: Cn [Idx m, «i: n; Ts#i», Cn «i: n; Ts#i»])
+         (exit: Cn «i: n; Ts#i»)
+         (begin stop step: Idx m, init: «i: n; Ts#i»)@%core.pe.is_closed ts =
+    %affine.For outer exit (begin, stop, %core.wrap.mul 0 (ts, step), init)
+    where
+        con outer (io: Idx m, acc: «i: n; Ts#i», yield: Cn «i: n; Ts#i») =
+            let hi_raw = %core.wrap.add 0 (io, %core.wrap.mul 0 (ts, step));
+            let cond   = %core.icmp.ul (hi_raw, stop);
+            let hi     = (stop, hi_raw)#cond;
+            inner body yield (io, hi, step, acc);
+    end;
+
+// Sum 0..argc-1 with a two-level tiling schedule: tiles of 8, subtiles of 2.
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]] =
+    tile 8I32 (tile 2I32 (affine_for @(4294967296, 1, ‹1; Idx 0›))) body exit (0I32, argc, 1I32, 0:(Idx 0))
+    where
+        con body [i: I32, acc: Idx 0, continue: Cn [Idx 0]] =
+            continue (%core.wrap.add 0 (%core.conv.u 0 i, acc));
+        con exit [acc: Idx 0] = return (mem, %core.conv.u 4294967296 acc);
+    end;
+
+// CHECK-NOT: affine.For

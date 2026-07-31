@@ -1,12 +1,18 @@
 // RUN: rm -f tiling_dyn.ll
-// RUN: FILE=%s;%mim -p opt -p clos -o - ${FILE%_run.mim}.mim -p ll
+// RUN: FILE=%s;%mim -p opt -o - ${FILE%_run.mim}.mim -p ll
 // RUN: clang tiling_dyn.ll -o %t -Wno-override-module
-// RUN: %t ; test $? -eq 155
-// RUN: %t x ; test $? -eq 155
-// RUN: %t x y z ; test $? -eq 155
+// RUN: %t ; test $? -eq 0
+// RUN: %t x ; test $? -eq 0
+// RUN: %t x y z ; test $? -eq 0
 
-// Compiles tiling_dyn.mim (tiling with runtime-only extents, pad+slice strategy) to an
-// executable and asserts the probe checksum for several dynamic sizes: n = argc + 4, so
-// the three runs exercise n = 5 and n = 8 (padding: 3 ∤ n) as well as n = 6 (even tiles).
-// Row i of `a_n · id4` is filled with (i mod 4) + 1, so for every n ≥ 5 the probes give
-// row0 + 10·row4 + 100·row3 = 1 + 10·1 + 100·4 = 411 ≡ 155 (mod 256).
+// Compiles tiling_dyn.mim (the full Tileable feature set over runtime-only extents) to
+// an executable and runs it for the runtime sizes n = 5, 7 and 11 (n = 2·argc + 3).
+// Every demo is self-checking against an untiled reference - blocked matmul (rows
+// padded to a multiple of 4, i/j/k tiled, interchanged), partial reduction (reduction-
+// tile loop outermost, trailing partials merged), transposed write map under a runtime
+// batch, peel main/epilogue, pad+slice, a tiled pure-loop nest, and the shape-
+// polymorphic tile4_for at a runtime size - so the expected exit code is simply 0.
+//
+// Note: compiled WITHOUT -p clos - everything PE-inlines to first-order code, and the
+// clos pass currently asserts on several of these shapes (free %mem.M in FreeDefAna;
+// see Testing/bug_two_dyn_operands_clos.mim and Testing/bug_two_dyn_params_boundary.mim).

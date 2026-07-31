@@ -1,77 +1,52 @@
-// RUN: %mim -p opt --dump-recursive %s -o - > %t.out
-// RUN: %FileCheck %s < %t.out
-// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 0
+// RUN: %t a b c ; test $? -eq 0
 
-// Tiling with *runtime-only* extents via the frontend Tileable interface - the full
-// feature set of tensor_tile.mim, over shapes that are never literals: the row count n
-// is a runtime function parameter.
+// An extensible tiling interface implemented entirely in the frontend IR via partial
+// evaluation - no C++ transformation code (cf. MLIR's TilingInterface/tileUsingSCF).
 //
-// Divisibility side-conditions discharge symbolically because the extents are
-// constructed in *provable form*: ⌈n/4⌉·4 is divisible by 4, (n/3)·3 and ⌈n/3⌉·3 are
-// divisible by 3, all by construction (the nat normalizer cancels `(x·c)/c` to `x` for
-// a literal `c ≠ 0`), so `%refly.check` folds away despite the extents being
-// runtime-only. All remainder logic becomes runtime %core.nat arithmetic.
+// `Tileable` existentially packages an op's iteration domain (incl. `oax`, the write-axis
+// permutation = getResultTilePosition for permutation write maps, and `Out`, the result
+// type constructor) plus a `retile` closure. On top sit composable domain transforms
+// (`strip_mine_par`/`strip_mine_red`/`interchange`/`partial_reduce`/`restrict_par`), an
+// MLIR-style options-as-data driver (`tile_sizes`, 0 = untiled), and loop implementations
+// as first-class policy values (`ForT`: `affine_for`, `unrolled_for` - MLIR's
+// LoopType/CustomOp). Three instances share all of it: %tensor.map_reduce (SSA tensors),
+// a multi-dim For accumulator nest (pure loops), and a single %affine.For adapted from
+// its native calling convention.
 //
-// The whole default `-p opt` pipeline runs: the dynamic-extent tensors bufferize to
-// `%mem` loops over dynamically-sized buffers (n reaches the buffer allocations and
-// `%mem.lea` index arithmetic as a runtime value), so nothing tensor-, matrix-, buffer-
-// or affine-level survives, and tiling_dyn_run.mim executes the whole thing for several
-// runtime sizes. Each rt_* routine is SELF-CHECKING (returns 0 iff its tiled result
-// agrees with an untiled reference) and takes its size as a plain runtime Nat, building
-// the dynamic tensors internally; comparisons of two distinct dynamic tensors use
-// order-sensitive rolling hashes over var extents (two clos-conversion frontiers found
-// on the way: Testing/bug_two_dyn_operands_clos.mim - two distinct compound-extent
-// buffers feeding one comparison - and Testing/bug_two_dyn_params_boundary.mim - two
-// dynamic tensor params in one extern signature).
+// The demos, each checked against an untiled reference at runtime (argc-tainted inputs,
+// so nothing constant-folds):
+// (1) 4x4 matmul tiled i,j,k by 2, parallel group interchanged to (io, jo, ii, ji);
+// (2) the same matmul with the contraction split via partial reduction (reduction-tile
+//     loop OUTERMOST, partials merged afterwards - PartialReductionOuterReduction);
+// (3) a pure-loop sum over a 2-D domain, j tiled by 2;
+// (4) a classic 1-D %affine.For call site whose body joins the schedule library
+//     unchanged, tiled by 4, loops interchanged;
+// (5) a TRANSPOSED-output matmul (oax = (1,0)) with input scaling fused into the fold,
+//     tiled like (1) - non-identity write maps;
+// (6) non-dividing tile size, strategy "peel": 8 rows tiled by 3 as main [0,6) +
+//     epilogue [6,8), concatenated (restrict_par + %tensor.concat);
+// (7) non-dividing tile size, strategy "pad + slice": rows padded 8→9 with the
+//     fold-neutral element, tiled evenly, sliced back;
+// (8) loop-type policy with compile-time dispatch: tile size 4 < 5 selects the fully
+//     unrolling loop implementation - the tiled nest becomes straight-line code;
+// (9) shape-polymorphic tiling: tile4_for tiles ANY extent k·4 by 4 - the divisibility
+//     side-condition discharges symbolically, instantiations are correct by construction.
 //
-// The demos, executed for n = 5, 7, 11 by tiling_dyn_run.mim:
-// (1) rt_blocked:    the FULL blocked-matmul schedule on runtime rows - rows padded to
-//                    ⌈n/4⌉·4 (fold-neutral), tiled i by 4, j and k by 2, parallel group
-//                    interchanged to (io, jo, ii, ji), unpacked, sliced back to n rows;
-// (2) rt_partial:    partial reduction - k split into (ko, ki) with the reduction-tile
-//                    loop OUTERMOST, «n, 4, 2» partials merged over the trailing axis;
-// (3) rt_transposed: TRANSPOSED write map under a runtime batch (oax = (0, 2, 1)) with
-//                    input scaling fused into the fold: out[b,j,i] = Σ_k a[b,i,k]·2·b[k,j],
-//                    checked against an independent %tensor.dot_product + transpose;
-// (4) rt_peel_main/rt_peel_epi: non-dividing tile size 3 on arbitrary runtime n,
-//                    strategy "peel" - main [0,nm) in 3-tiles + epilogue [nm,n), each
-//                    spot-checked against the constant-folded 4x4 product (rows of the
-//                    input repeat mod 4); the runtime concat glue is still blocked in
-//                    the bufferizer;
-// (5) rt_pad:        strategy "pad + slice" - rows padded to ⌈n/3⌉·3, tiled evenly,
-//                    the n valid rows sliced back and compared elementwise;
-// (6) pure loops:    a 2-D accumulator nest over the runtime domain (n, 4), j tiled by 2;
-// (7) tile4_for:     the shape-polymorphic tiled routine instantiated with a RUNTIME
-//                    k = n (extent n·4, tiled by 4), against a native %affine.For.
-// (unrolled_for is inherently static - PE-known bounds - and stays in tensor_tile.mim.)
-//
-// CHECK-DAG: fun extern main
-// CHECK-DAG: fun extern rt_blocked
-// CHECK-DAG: fun extern rt_partial
-// CHECK-DAG: fun extern rt_transposed
-// CHECK-DAG: fun extern rt_peel_main
-// CHECK-DAG: fun extern rt_peel_epi
-// CHECK-DAG: fun extern rt_pad
-// The remainder arithmetic stays as runtime Nat computation:
-// CHECK-DAG: %core.nat.div
-// The tiled loop nests are materialized (lower_for turns them into recursive `head`s):
-// CHECK-DAG: con head
-// Bufferization reached real memory over the runtime-sized buffers:
-// CHECK-DAG: %mem.lea
-// Everything interface-level and every tensor/matrix/buffer/affine op must be lowered
-// away, and the divisibility side-conditions must have discharged:
-// GONE-NOT: %tensor.
-// GONE-NOT: %matrix.
-// GONE-NOT: %buffer.
-// GONE-NOT: %affine.
-// GONE-NOT: %refly.
-// GONE-NOT: Tileable
-// GONE-NOT: tileable
-// GONE-NOT: strip_mine
-// GONE-NOT: partial_reduce
-// GONE-NOT: restrict_par
-// GONE-NOT: retile
-// GONE-NOT: ForT
+// After `-p opt`, every interface artifact must be erased:
+// CHECK-NOT: Tileable
+// CHECK-NOT: tileable
+// CHECK-NOT: strip_mine
+// CHECK-NOT: retile
+// CHECK-NOT: partial_reduce
+// CHECK-NOT: restrict_par
+// CHECK-NOT: ForT
+// CHECK-NOT: unrolled_for
+// CHECK-NOT: %tensor.map_reduce
+// CHECK-NOT: %affine.map
 
 plugin core;
 plugin tensor;
@@ -458,228 +433,185 @@ lam for_tileable {m: Nat} {A: *} (loop: ForT A, n: Nat, body: Cn [Idx m, A, Cn A
 lam tile4_for {m: Nat} {A: *} (k: Nat, body: Cn [Idx m, A, Cn A]): Cn [%mem.M 0, A, Cn [%mem.M 0, A]] =
     materialize (tile_sizes (for_tileable (affine_for @A, %core.nat.mul (k, 4), body), 4));
 
-// ---- Harness -----------------------------------------------------------------
+// ---- Test harness ------------------------------------------------------------
 let I32Ring: %tensor.Ring = (I32, 0I32, %core.wrap.add @4294967296 0, %core.wrap.mul @4294967296 0);
 
+// Elementwise "differs" indicator.
+lam ne01 (x y: I32): I32 = (0I32, 1I32)#(%core.icmp.ne (x, y));
+// Fold for scalar sum-reduction.
 fun sum_f (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0_1));
 // Fused fold for the transposed matmul: acc += a-elem · (2 · b-elem).
 fun dot2 (acc: I32, xy: «2; I32»)@tt =
     return (%core.wrap.add 0 (acc, %core.wrap.mul 0 (xy#0_2, %core.wrap.mul 0 (2I32, xy#1_2))));
 lam dbl (x: I32): I32 = %core.wrap.mul 0 (2I32, x);
 
-// Order-sensitive rolling hash (acc·31 + x) of a whole tensor, broadcast into a
-// «2; I32» tensor. The reduction traversal is deterministic, so equal hashes of two
-// same-shaped tensors imply equal contents up to hash collisions - and each hash
-// consumes only ONE dynamically-shaped tensor (see the bug notes in the header).
-fun hash_f (acc: I32, y: «1; I32»)@tt =
-    return (%core.wrap.add 0 (%core.wrap.mul 0 (31I32, acc), y#0_1));
+// Number of positions where two p·q tensors differ, broadcast into a «2; I32» tensor
+// (extent 2 rather than 1, because size-1 axes collapse out of tensor types and the
+// final %tensor.get would normalize away before bufferization).
+lam mismatches (p q: Nat) (x y: «p, q; I32»): «2; I32» =
+    let n  = %core.nat.mul (p, q);
+    let d  = %tensor.binary @(I32, I32, I32) ne01 @(2, (p, q)) (x, y);
+    let df = %tensor.reshape (p, q) n d;
+    %tensor.map_reduce @1 @(I32, 1, 1) (2, (2, n))
+        @(I32, 1, n) (sum_f, 0I32)
+        (%tensor.proj_map @(2, 1) 0) (%tensor.proj_map @(2, 1) 1,) df;
 
-lam hash2d (p q: Nat) (x: «p, q; I32»): «2; I32» =
-    %tensor.map_reduce @1 @(I32, 1, 2) (2, (2, p, q))
-        @(I32, 2, (p, q)) (hash_f, 0I32)
-        (%tensor.proj_map @(3, 1) 0) (%tensor.proj_map @(3, 2) (1, 2),) x;
+con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]] =
+    let a0: «4, 4; I32» = ((1I32, 2I32, 3I32, 4I32),
+                           (5I32, 6I32, 7I32, 8I32),
+                           (9I32, 10I32, 11I32, 12I32),
+                           (13I32, 14I32, 15I32, 16I32));
+    let b: «4, 4; I32»  = ((2I32, 0I32, 1I32, 3I32),
+                           (1I32, 1I32, 0I32, 2I32),
+                           (0I32, 3I32, 2I32, 1I32),
+                           (4I32, 1I32, 1I32, 0I32));
+    // Taint one element with a runtime value so nothing constant-folds away.
+    let a = %tensor.set @(I32, 2, (4, 4)) (a0, (0_4, 0_4), argc);
 
-lam hash3d (p q s: Nat) (x: «p, q, s; I32»): «2; I32» =
-    %tensor.map_reduce @1 @(I32, 1, 3) (2, (2, p, q, s))
-        @(I32, 3, (p, q, s)) (hash_f, 0I32)
-        (%tensor.proj_map @(4, 1) 0) (%tensor.proj_map @(4, 3) (1, 2, 3),) x;
+    let ref = %tensor.product_2d I32Ring (a, b);
 
-// 0 iff the hashes of x and y agree.
-lam hash_ne (hx hy: «2; I32»): I32 =
-    (0I32, 1I32)#(%core.icmp.ne (%tensor.get @(I32, 1, 2) (hx, 0_2), %tensor.get @(I32, 1, 2) (hy, 0_2)));
-
-// 0 iff x = y.
-lam ne01 (x y: I32): I32 = (0I32, 1I32)#(%core.icmp.ne (x, y));
-
-// A p·4 · 4·4 matmul as a Tileable (identity write map).
-lam mk_mm {p: Nat} (a: «p, 4; I32», b: «4, 4; I32»): Tileable =
-    mr_tileable @2 @(I32, 2, 1) ((p, 4), (0, 1), (p, 4, 4))
-        @((I32, I32), (2, 2), ((p, 4), (4, 4)))
-        (dot_general_fun I32Ring, 0I32)
-        (%tensor.proj_map @(3, 2) (0, 1))
-        (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
-        (a, b);
-
-// ---- Self-checking shape-polymorphic tiled routines ------------------------------
-// (1) The FULL blocked-matmul schedule on runtime rows: pad the rows to ⌈n/4⌉·4 with
-// the fold-neutral element (⌈n/4⌉·4 is divisible by 4 by construction), tile i by 4 and
-// j, k by 2, interchange the parallel group to (io, jo, ii, ji), unpack, slice back.
-fun extern rt_blocked (n: Nat, base: «4, 4; I32», b: «4, 4; I32», mem: %mem.M 0): [%mem.M 0, I32] =
-    let a   = %tensor.repeat @(I32, 2) (4, 4) (n, 4) base;
-    let np  = %core.nat.mul (%core.nat.div (%core.nat.add (n, 3), 4), 4);
-    let hi  = %core.nat.sub (np, n);
-    let a_p = %tensor.pad (n, 4) (0, (0, 0), (hi, 0)) (a, 0I32);
-    let mm_p: Tileable =
-        mr_tileable @2 @(I32, 2, 1) ((np, 4), (0, 1), (np, 4, 4))
-            @((I32, I32), (2, 2), ((%core.nat.add (n, hi), 4), (4, 4)))
+    // The same matmul, packaged as a Tileable (identity write map: oax = (0, 1)).
+    let mm: Tileable =
+        mr_tileable @2 @(I32, 2, 1) ((4, 4), (0, 1), (4, 4, 4))
+            @((I32, I32), (2, 2), ((4, 4), (4, 4)))
             (dot_general_fun I32Ring, 0I32)
             (%tensor.proj_map @(3, 2) (0, 1))
             (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
-            (a_p, b);
-    let pk  = materialize (interchange (tile_sizes (mm_p, (4, 2, 2)), (0, 2, 1, 3, 4, 5)));
-    let rp  = %tensor.reshape (%tensor.shape 4 pk) (np, 4) pk;
-    let r   = %tensor.slice @(I32, 2) (np, 4) ((0, 0), (1, 1), (n, 4)) rp;
-    let ref = %tensor.product_2d I32Ring (a, b);
-    return (mem, hash_ne (hash2d (n, 4) ref, hash2d (n, 4) r));
+            (a, b);
 
-// (2) Partial reduction with runtime rows: the reduction-tile loop ko runs OUTERMOST,
-// the «n, 4, 2» partials are merged by a separate sum-reduction over the trailing axis.
-fun extern rt_partial (n: Nat, base: «4, 4; I32», b: «4, 4; I32», mem: %mem.M 0): [%mem.M 0, I32] =
-    let a     = %tensor.repeat @(I32, 2) (4, 4) (n, 4) base;
-    let parts = materialize (partial_reduce (mk_mm (a, b), 2, 2));
-    let r     = %tensor.map_reduce @1 @(I32, 2, 1) ((n, 4), (n, 4, 2))
-        @(I32, 3, (n, 4, 2)) (sum_f, 0I32)
+    // (1) Fully blocked matmul, driven by an MLIR-style options record: tile i, j, k by 2
+    // -> loops (io, ii, jo, ji, ko, ki), interchange the parallel group to (io, jo, ii, ji).
+    // The packed «2,2,2,2; I32» result is unpacked by a row-major reshape.
+    let tiled_t = interchange (tile_sizes (mm, (2, 2, 2)), (0, 2, 1, 3, 4, 5));
+    let tiled   = %tensor.reshape (2, 2, 2, 2) (4, 4) (materialize tiled_t);
+    let bad_mm  = mismatches (4, 4) (ref, tiled);
+
+    // (2) Partial reduction: split k into (ko, ki) with ko as new leading PARALLEL loop
+    // -> «4, 4, 2; I32» partial results with the reduction-tile loop outermost; merge
+    // the partials with a separate sum-reduction over the trailing axis.
+    let parts  = materialize (partial_reduce (mm, 2, 2));
+    let merged = %tensor.map_reduce @1 @(I32, 2, 1) ((4, 4), (4, 4, 2))
+        @(I32, 3, (4, 4, 2)) (sum_f, 0I32)
         (%tensor.proj_map @(3, 2) (0, 1))
         (%tensor.proj_map @(3, 3) (0, 1, 2),)
         parts;
-    let ref = %tensor.product_2d I32Ring (a, b);
-    return (mem, hash_ne (hash2d (n, 4) ref, hash2d (n, 4) r));
+    let bad_pr = mismatches (4, 4) (ref, merged);
 
-// (3) Transposed write map under a runtime batch: out[b, j, i] = Σ_k a[b,i,k]·2·b[k,j] -
-// oax = (0, 2, 1), the input scaling fused into the fold; i, j, k tiled by 2. Checked
-// against an independent %tensor.dot_product + %tensor.transpose.
-fun extern rt_transposed (n: Nat, base3: «4, 4, 4; I32», b: «4, 4; I32», mem: %mem.M 0): [%mem.M 0, I32] =
-    let a3 = %tensor.repeat @(I32, 3) (4, 4, 4) (n, 4, 4) base3;
+    // (5) Non-identity write map (oax) + input-side fusion: a TRANSPOSED-output matmul,
+    // out[j,i] = Σ_k a[i,k] · 2·b[k,j] - the scaling is fused into the fold f, the
+    // transposed write lives in map_out/oax = (1, 0). Tiled with the same policy as (1);
+    // the packed axes come out as (jo, ji, io, ii), which the same row-major reshape
+    // collapses to the transposed shape.
+    let ref_t = %tensor.transpose_2d @I32 @(4, 4)
+                    (%tensor.product_2d I32Ring (a, %tensor.unary @(I32, I32) dbl @(2, (4, 4)) b));
     let mm_t: Tileable =
-        mr_tileable @2 @(I32, 3, 1) ((n, 4, 4), (0, 2, 1), (n, 4, 4, 4))
-            @((I32, I32), (3, 2), ((n, 4, 4), (4, 4)))
+        mr_tileable @2 @(I32, 2, 1) ((4, 4), (1, 0), (4, 4, 4))
+            @((I32, I32), (2, 2), ((4, 4), (4, 4)))
             (dot2, 0I32)
-            (%tensor.proj_map @(4, 3) (0, 2, 1))
-            (%tensor.proj_map @(4, 3) (0, 1, 3), %tensor.proj_map @(4, 2) (3, 2))
-            (a3, b);
-    let pk = materialize (tile_sizes (mm_t, (0, 2, 2, 2)));
-    let r  = %tensor.reshape (%tensor.shape 5 pk) (n, 4, 4) pk;
-    let b2   = %tensor.unary @(I32, I32) dbl @(2, (4, 4)) b;
-    let prod = %tensor.dot_product I32Ring @(3, 2) @(1, 0) (2_3, 0_2, (), ()) @((n, 4, 4), (4, 4)) (a3, b2);
-    let ref  = %tensor.transpose @(I32, 3, (n, 4, 4)) (prod, (0_3, 2_3, 1_3));
-    return (mem, hash_ne (hash3d (n, 4, 4) ref, hash3d (n, 4, 4) r));
+            (%tensor.proj_map @(3, 2) (1, 0))
+            (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+            (a, b);
+    let tiled_tt = %tensor.reshape (2, 2, 2, 2) (4, 4)
+                       (materialize (interchange (tile_sizes (mm_t, (2, 2, 2)), (0, 2, 1, 3, 4, 5))));
+    let bad_t = mismatches (4, 4) (ref_t, tiled_tt);
 
-// (4a) Peel, main part: rows [0, (n/3)·3) in tiles of 3 - nm is divisible by 3 by
-// construction. Spot-checked against the constant-folded 4x4 product (row i of the
-// input is base[i mod 4], so ref[i] = (base·b)[i mod 4]).
-fun extern rt_peel_main (n: Nat, base: «4, 4; I32», b: «4, 4; I32», mem: %mem.M 0): [%mem.M 0, I32] =
-    let a   = %tensor.repeat @(I32, 2) (4, 4) (n, 4) base;
-    let nm  = %core.nat.mul (%core.nat.div (n, 3), 3);
-    let pk  = materialize (strip_mine_par (restrict_par (mk_mm (a, b), 0, 0, nm), 0, 3));
-    let r   = %tensor.reshape (%tensor.shape 3 pk) (nm, 4) pk;
-    let p4  = %tensor.product_2d I32Ring (base, b);
-    let d0  = ne01 (%tensor.get @(I32, 2, (nm, 4)) (r, (%core.idx nm 0 0, 0_4)),
-                    %tensor.get @(I32, 2, (4, 4))  (p4, (0_4, 0_4)));
-    let d1  = ne01 (%tensor.get @(I32, 2, (nm, 4)) (r, (%core.idx nm 0 1, 2_4)),
-                    %tensor.get @(I32, 2, (4, 4))  (p4, (1_4, 2_4)));
-    let d2  = ne01 (%tensor.get @(I32, 2, (nm, 4)) (r, (%core.idx nm 0 2, 3_4)),
-                    %tensor.get @(I32, 2, (4, 4))  (p4, (2_4, 3_4)));
-    return (mem, %core.wrap.add 0 (d0, %core.wrap.add 0 (d1, d2)));
-
-// (4b) Peel, epilogue: rows [(n/3)·3, n) - iota shifts the reads by the RUNTIME offset
-// nm. Row 0 of the epilogue is global row nm, i.e. (base·b)[nm mod 4]; the test sizes
-// guarantee a non-empty epilogue.
-fun extern rt_peel_epi (n: Nat, base: «4, 4; I32», b: «4, 4; I32», mem: %mem.M 0): [%mem.M 0, I32] =
-    let a   = %tensor.repeat @(I32, 2) (4, 4) (n, 4) base;
-    let nm  = %core.nat.mul (%core.nat.div (n, 3), 3);
-    let re  = %core.nat.sub (n, nm);
-    let r   = materialize (restrict_par (mk_mm (a, b), 0, nm, n));
-    let p4  = %tensor.product_2d I32Ring (base, b);
-    let rw  = %core.idx 4 0 (%core.nat.sub (nm, %core.nat.mul (%core.nat.div (nm, 4), 4)));
-    let d0  = ne01 (%tensor.get @(I32, 2, (re, 4)) (r, (%core.idx re 0 0, 1_4)),
-                    %tensor.get @(I32, 2, (4, 4))  (p4, (rw, 1_4)));
-    let d1  = ne01 (%tensor.get @(I32, 2, (re, 4)) (r, (%core.idx re 0 0, 3_4)),
-                    %tensor.get @(I32, 2, (4, 4))  (p4, (rw, 3_4)));
-    return (mem, %core.wrap.add 0 (d0, d1));
-
-// (5) Pad + slice: pad the rows up to np = ⌈n/3⌉·3 with the fold-neutral element, tile
-// evenly (np is divisible by 3 by construction), slice the n valid rows back out.
-fun extern rt_pad (n: Nat, base: «4, 4; I32», b: «4, 4; I32», mem: %mem.M 0): [%mem.M 0, I32] =
-    let a   = %tensor.repeat @(I32, 2) (4, 4) (n, 4) base;
-    let np  = %core.nat.mul (%core.nat.div (%core.nat.add (n, 2), 3), 3);
-    let hi  = %core.nat.sub (np, n);
-    let a_p = %tensor.pad (n, 4) (0, (0, 0), (hi, 0)) (a, 0I32);
-    let mm_p: Tileable =
-        mr_tileable @2 @(I32, 2, 1) ((np, 4), (0, 1), (np, 4, 4))
-            @((I32, I32), (2, 2), ((%core.nat.add (n, hi), 4), (4, 4)))
+    // An 8x4 matmul for the non-dividing-tile-size strategies.
+    let a8   = %tensor.repeat @(I32, 2) (4, 4) (8, 4) a;
+    let ref8 = %tensor.product_2d I32Ring (a8, b);
+    let mm8: Tileable =
+        mr_tileable @2 @(I32, 2, 1) ((8, 4), (0, 1), (8, 4, 4))
+            @((I32, I32), (2, 2), ((8, 4), (4, 4)))
             (dot_general_fun I32Ring, 0I32)
             (%tensor.proj_map @(3, 2) (0, 1))
             (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
-            (a_p, b);
-    let pk  = materialize (strip_mine_par (mm_p, 0, 3));
-    let rp  = %tensor.reshape (%tensor.shape 3 pk) (np, 4) pk;
-    let r   = %tensor.slice @(I32, 2) (np, 4) ((0, 0), (1, 1), (n, 4)) rp;
-    let ref = %tensor.product_2d I32Ring (a, b);
-    return (mem, hash_ne (hash2d (n, 4) ref, hash2d (n, 4) r));
+            (a8, b);
 
-con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]] =
-    let base: «4, 4; I32» = ((1I32, 2I32, 3I32, 4I32),
-                             (5I32, 6I32, 7I32, 8I32),
-                             (9I32, 10I32, 11I32, 12I32),
-                             (13I32, 14I32, 15I32, 16I32));
-    let b:    «4, 4; I32» = ((2I32, 0I32, 1I32, 3I32),
-                             (1I32, 1I32, 0I32, 2I32),
-                             (0I32, 3I32, 2I32, 1I32),
-                             (4I32, 1I32, 1I32, 0I32));
-    let base3: «4, 4, 4; I32» = ‹4; base›;
-    // Runtime size: n = 2·argc + 3 - odd, ≥ 5, never divisible by 3, so the peel
-    // epilogue is always non-empty.
-    let n = %core.nat.add (%core.nat.mul (%core.bitcast Nat argc, 2), 3);
-    let m = %core.nat.mul (n, 4);
+    // (6) Strategy "peel": rows tiled by 3 (8 = 2·3 + 2) - main part [0,6) as 2 tiles
+    // of 3, epilogue [6,8), concatenated along the write axis.
+    let peel_main = %tensor.reshape (2, 3, 4) (6, 4)
+                        (materialize (strip_mine_par (restrict_par (mm8, 0, 0, 6), 0, 3)));
+    let peel_epi  = materialize (restrict_par (mm8, 0, 6, 8));
+    let peeled    = %tensor.concat @(I32, 2, 2) 0_2 @((6, 4), (2, 4)) (peel_main, peel_epi);
+    let bad_peel  = mismatches (8, 4) (ref8, peeled);
 
-    // (6) Pure loops over the runtime domain (n, 4), j tiled by 2.
+    // (7) Strategy "pad + slice": pad the rows to 9 (a multiple of 3) with zero rows -
+    // the fold-neutral element - tile evenly, slice the valid 8 rows back out.
+    let a9 = %tensor.pad (8, 4) (0, (0, 0), (1, 0)) (a8, 0I32);
+    let mm9: Tileable =
+        mr_tileable @2 @(I32, 2, 1) ((9, 4), (0, 1), (9, 4, 4))
+            @((I32, I32), (2, 2), ((9, 4), (4, 4)))
+            (dot_general_fun I32Ring, 0I32)
+            (%tensor.proj_map @(3, 2) (0, 1))
+            (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+            (a9, b);
+    let padded  = %tensor.reshape (3, 3, 4) (9, 4) (materialize (strip_mine_par (mm9, 0, 3)));
+    let sliced  = %tensor.slice @(I32, 2) (9, 4) ((0, 0), (1, 1), (8, 4)) padded;
+    let bad_pad = mismatches (8, 4) (ref8, sliced);
+
+    // (3) Pure loops: sum_{i<2, j<4} (i·argc + j) as a raw For nest behind the SAME
+    // interface; tile j by 2 via the same options-as-data policy.
     con nest_body [mem: %mem.M 0, acc: I32, iv: «2; I32», k: Cn [%mem.M 0, I32]] =
-        k (mem, %core.wrap.add 0 (acc, %core.wrap.add 0 (%core.wrap.mul 0 (iv#0_2, 3I32), iv#1_2)));
-    let nest     = nest_tileable @I32 (affine_for @I32, 2, (n, 4)) nest_body;
-    let run_nref = materialize nest;
-    let run_ntld = materialize (tile_sizes (nest, (0, 2)));
+        k (mem, %core.wrap.add 0 (acc, %core.wrap.add 0 (%core.wrap.mul 0 (iv#0_2, argc), iv#1_2)));
+    let nest = nest_tileable @I32 (affine_for @I32, 2, (2, 4)) nest_body;
+    let run_ref   = materialize nest;
+    let run_tiled = materialize (tile_sizes (nest, (0, 2)));
 
-    // (7) The shape-polymorphic tiled routine with a RUNTIME instantiation k = n; the
-    // native reference loop threads mem through the accumulator pair (a first-class
-    // continuation must not close over a raw %mem.M token).
+    // (4) A classic %affine.For call site, adopted unchanged: acc += iv·argc over [0,16).
+    // The same body runs natively (reference) and through the schedule library,
+    // tiled by 4 and with the two reduction loops interchanged (ki outer, ko inner).
     con for_body (iv: I32, acc: I32, yield: Cn I32) =
-        yield (%core.wrap.add 0 (acc, iv));
-    con for_body_m (iv: I32, macc: [%mem.M 0, I32], yield: Cn [%mem.M 0, I32]) =
-        yield (macc#0_2, %core.wrap.add 0 (macc#1_2, iv));
-    let run_t4 = tile4_for @4294967296 @I32 (n, for_body);
+        yield (%core.wrap.add 0 (acc, %core.wrap.mul 0 (iv, argc)));
+    let run_for = materialize (interchange (tile_sizes (for_tileable (affine_for @I32, 16, for_body), 4), (1, 0)));
 
-    run_nref (mem, 0I32, k_n1)
+    // (8) Loop-type policy with compile-time dispatch: pick the fully-unrolling loop
+    // implementation when the tile size is small (4 < 5) - both branches are well-typed
+    // ForT values, the extract selects at PE time. The whole tiled nest unrolls to
+    // straight-line code.
+    let loop_pick = (affine_for @I32, unrolled_for @I32)#(%core.ncmp.l (4, 5));
+    let run_for_u = materialize (tile_sizes (for_tileable (loop_pick, 16, for_body), 4));
+
+    // (9) Shape-polymorphic tiling: tile4_for is defined for ANY k over extent k·4;
+    // instantiate at k = 5 -> sum over [0, 20), tiled by 4.
+    let run_dyn = tile4_for @4294967296 @I32 (5, for_body);
+
+    run_ref (mem, 0I32, k1)
     where
-        con k_n1 (mem1: %mem.M 0, s_nref: I32) =
-            run_ntld (mem1, 0I32, k_n2)
+        con k1 (mem1: %mem.M 0, s_ref: I32) =
+            run_tiled (mem1, 0I32, k2)
             where
-                con k_n2 (mem2: %mem.M 0, s_ntld: I32) =
-                    %affine.For for_body_m t4_exit (0I32, %core.bitcast I32 m, 1I32, (mem2, 0I32))
+                con k2 (mem2: %mem.M 0, s_tld: I32) =
+                    %affine.For for_body for_exit (0I32, 16I32, 1I32, 0I32)
                     where
-                        con t4_exit (macc: [%mem.M 0, I32]) =
-                            run_t4 (macc#0_2, 0I32, k_t4)
+                        con for_exit (f_ref: I32) =
+                            run_for (mem2, 0I32, k3)
                             where
-                                con k_t4 (mem3: %mem.M 0, s_t4: I32) =
-                                    rt_blocked ((n, base, b, mem3), k1)
+                                con k3 (mem3: %mem.M 0, f_tld: I32) =
+                                    run_for_u (mem3, 0I32, k4)
                                     where
-                                        con k1 [mem4: %mem.M 0, g_blk: I32] =
-                                            rt_partial ((n, base, b, mem4), k2)
+                                        con k4 (mem4: %mem.M 0, f_u: I32) =
+                                            %affine.For for_body dyn_exit (0I32, 20I32, 1I32, 0I32)
                                             where
-                                                con k2 [mem5: %mem.M 0, g_par: I32] =
-                                                    rt_transposed ((n, base3, b, mem5), k3)
+                                                con dyn_exit (d_ref: I32) =
+                                                    run_dyn (mem4, 0I32, k5)
                                                     where
-                                                        con k3 [mem6: %mem.M 0, g_tr: I32] =
-                                                            rt_peel_main ((n, base, b, mem6), k4)
-                                                            where
-                                                                con k4 [mem7: %mem.M 0, g_pm: I32] =
-                                                                    rt_peel_epi ((n, base, b, mem7), k5)
-                                                                    where
-                                                                        con k5 [mem8: %mem.M 0, g_pe: I32] =
-                                                                            rt_pad ((n, base, b, mem8), k6)
-                                                                            where
-                                                                                con k6 [mem9: %mem.M 0, g_pd: I32] =
-                                                                                    let b_ns = (0I32, 1I32)#(%core.icmp.ne (s_nref, s_ntld));
-                                                                                    let b_t4 = (0I32, 1I32)#(%core.icmp.ne (macc#1_2, s_t4));
-                                                                                    let t0 = %core.wrap.add 0 (g_blk, g_par);
-                                                                                    let t1 = %core.wrap.add 0 (t0, g_tr);
-                                                                                    let t2 = %core.wrap.add 0 (t1, g_pm);
-                                                                                    let t3 = %core.wrap.add 0 (t2, g_pe);
-                                                                                    let t4 = %core.wrap.add 0 (t3, g_pd);
-                                                                                    let t5 = %core.wrap.add 0 (t4, b_ns);
-                                                                                    return (mem9, %core.wrap.add 0 (t5, b_t4));
-                                                                            end;
-                                                                    end;
-                                                            end;
+                                                        con k5 (mem5: %mem.M 0, d_tld: I32) =
+                                                            let bad_loop = (0I32, 1I32)#(%core.icmp.ne (s_ref, s_tld));
+                                                            let bad_for  = (0I32, 1I32)#(%core.icmp.ne (f_ref, f_tld));
+                                                            let bad_u    = (0I32, 1I32)#(%core.icmp.ne (f_ref, f_u));
+                                                            let bad_dyn  = (0I32, 1I32)#(%core.icmp.ne (d_ref, d_tld));
+                                                            let n_mm   = %tensor.get @(I32, 1, 2) (bad_mm, 0_2);
+                                                            let n_pr   = %tensor.get @(I32, 1, 2) (bad_pr, 0_2);
+                                                            let n_t    = %tensor.get @(I32, 1, 2) (bad_t, 0_2);
+                                                            let n_peel = %tensor.get @(I32, 1, 2) (bad_peel, 0_2);
+                                                            let n_pad  = %tensor.get @(I32, 1, 2) (bad_pad, 0_2);
+                                                            let t0 = %core.wrap.add 0 (n_mm, n_pr);
+                                                            let t1 = %core.wrap.add 0 (t0, n_t);
+                                                            let t2 = %core.wrap.add 0 (t1, n_peel);
+                                                            let t3 = %core.wrap.add 0 (t2, n_pad);
+                                                            let t4 = %core.wrap.add 0 (t3, bad_loop);
+                                                            let t5 = %core.wrap.add 0 (t4, bad_for);
+                                                            let t6 = %core.wrap.add 0 (t5, bad_u);
+                                                            return (mem5, %core.wrap.add 0 (t6, bad_dyn));
                                                     end;
                                             end;
                                     end;
