@@ -16,16 +16,33 @@ Inlining them or adding more yields the **exact same graph**, because in MimIR t
 ## Syntax
 
 Before we dive in, here is just enough Mim syntax to read the examples.
-Much of it is merely **syntactic sugar** over that graph: `let` names a subexpression, `where` groups binders for readability, and `fun` / `return` is sugar for threading an explicit return continuation.
-`lam` is a direct-style function that returns a value; `con` is just sugar for a `lam` whose return type is `⊥`.
-Equivalently, `Cn A` is sugar for `A → ⊥`; this matters in the [CPS section](@ref mimir_cps) below.
-`{}` carries implicit arguments, usually types.
-Tuples are written `(a, b, c)`, and tuple types are written `[A, B, C]`; more generally `[x: A, B x]` is a dependent pair type.
-Arrays are written `«i: n; T»` or just `«n; T»` when the element type does not mention the index, while packs are written `‹i: n; v›` or `‹n; v›` and represent homogeneous tuple terms.
-So `«n; Nat»` is the type of length-`n` arrays of naturals, and `‹n; 0›` is the pack of `n` zeros.
-Finally, `Idx n` is the finite type of `n` indices.
-So `Idx 3` is inhabited by `0₃`, `1₃`, `2₃`.
-In particular, `Idx 2` is just `Bool`, with `0₂` = `ff` and `1₂` = `tt`, so `(f, t)#cond` simply indexes the two-element tuple `(f, t)` with the boolean `cond`.
+Much of it is merely **syntactic sugar** over that graph:
+
+- **Naming and grouping**
+  - `let` names a subexpression.
+  - `e where d* end` is an upside-down `let`: it attaches a block of declarations — `let`s, but also whole `lam`s/`con`s — *after* the expression that uses them.
+
+- **Functions**
+  - `lam` is a direct-style function that returns a value.
+  - `con` is just sugar for a `lam` whose return type is `⊥` — a function that never returns.
+  - Equivalently, `Cn A` is sugar for `A → ⊥`; this matters in the [CPS section](@ref mimir_cps) below.
+  - `fun` / `return` is sugar for threading an explicit return continuation, so a CPS function still reads like an ordinary one.
+  - `{}` carries implicit arguments — usually types — as in `lam id {T: *} (x: T): T = x`, where `T` is inferred at the call site (`id tt`).
+
+- **Tuples**
+  - Tuples are written `(a, b, c)`, tuple types `[A, B, C]`.
+  - More generally, `[x: A, B x]` is a dependent pair type.
+
+- **Arrays and packs**
+  - Arrays are written `«i: n; T»`, or just `«n; T»` when the element type does not mention the index `i`.
+    So `«n; Nat»` is the type of length-`n` arrays of naturals.
+  - Packs are the corresponding homogeneous tuple terms, written `‹i: n; v›` or `‹n; v›`.
+    So `‹n; 0›` is the pack of `n` zeros.
+
+- **Indices**
+  - `Idx n` is the finite type of `n` indices, so `Idx 3` is inhabited by `0₃`, `1₃`, `2₃`.
+  - In particular, `Idx 2` is just `Bool`, with `0₂` = `ff` and `1₂` = `tt`.
+    Hence `(f, t)#cond` simply indexes the two-element tuple `(f, t)` with the boolean `cond`.
 
 ## Plugins {#mimir_plugins}
 
