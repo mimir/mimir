@@ -20,14 +20,18 @@ Much of it is merely **syntactic sugar** over that graph:
 
 - **Naming and grouping**
   - `let` names a subexpression.
-  - `e where d* end` is an upside-down `let`: it attaches a block of declarations — `let`s, but also whole `lam`s/`con`s — *after* the expression that uses them.
+  - `where` is an upside-down `let`: it attaches a block of declarations — `let`s, but also whole `lam`s/`con`s — *after* the expression that uses them.
 
 - **Functions**
   - `lam` is a direct-style function that returns a value.
   - `con` is just sugar for a `lam` whose return type is `⊥` — a function that never returns.
   - Equivalently, `Cn A` is sugar for `A → ⊥`; this matters in the [CPS section](@ref mimir_cps) below.
   - `fun` / `return` is sugar for threading an explicit return continuation, so a CPS function still reads like an ordinary one.
-  - `{}` carries implicit arguments — usually types — as in `lam id {T: *} (x: T): T = x`, where `T` is inferred at the call site (`id tt`).
+  - `{}` carries implicit arguments — usually types — as in
+    ```
+    lam id {T: *} (x: T): T = x
+    ```
+    where `T` is inferred at the call site (`id 23`).
 
 - **Tuples**
   - Tuples are written `(a, b, c)`, tuple types `[A, B, C]`.
