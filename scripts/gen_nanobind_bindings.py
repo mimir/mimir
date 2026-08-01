@@ -84,10 +84,19 @@ def is_public(cursor) -> bool:
 
 
 def is_deleted(cursor) -> bool:
+    """Whether *cursor* declares a `= delete`d function.
+
+    libclang exposes this directly; neither the extent nor the doc comment ever
+    contains the declaration's source text, so they cannot be searched for it.
+    `availability` is the fallback for libclang builds predating
+    `is_deleted_method()` — a deleted function is reported as NOT_AVAILABLE.
+    """
     try:
-        raw = cursor.raw_comment or ""
-        extent = str(cursor.extent.end)
-        return "= delete" in extent or "= delete" in raw
+        return bool(cursor.is_deleted_method())
+    except Exception:
+        pass
+    try:
+        return cursor.availability == clang.AvailabilityKind.NOT_AVAILABLE
     except Exception:
         return False
 
@@ -1211,7 +1220,13 @@ def main(argv=None):
     # emitted, stopping now" and yields a truncated, unusable AST.
     base_args = ["-x", "c++-header", "-ferror-limit=0"]
     if args.extra_args:
-        base_args.extend(args.extra_args.split())
+        # shlex, not str.split: a quoted define such as -DNAME="a b" is one
+        # argument. On Windows keep backslash paths intact, as when splitting a
+        # `command` string from compile_commands.json.
+        if os.name == "nt":
+            base_args.extend(t.strip('"') for t in shlex.split(args.extra_args, posix=False))
+        else:
+            base_args.extend(shlex.split(args.extra_args))
     for inc in args.includes or []:
         base_args.append(f"-I{inc}")
     # libclang ships no standard library, so it needs the toolchain's include
