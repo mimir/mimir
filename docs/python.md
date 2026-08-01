@@ -7,6 +7,9 @@ Its binding code is generated directly from the C++ headers via [nanobind](https
 Because the surface is generated, it stays close to the C++ API by construction.
 Names such as `lit_i8`, `type_i32`, `arr`, `mut_con`, and `optimize` are exposed with the same spelling you see in the C++ code.
 You have to enable `MIM_BUILD_PYTHON` (default) during configuration for Python support.
+The build creates a virtual environment at `build/.venv` and installs `mim` into it.
+Only the initial creation of that venv needs a network connection to fetch `pip`, `setuptools`, `wheel`, and `pytest`.
+Once `build/.venv` exists, all further builds stay offline.
 
 Activate that environment before importing `mim`:
 

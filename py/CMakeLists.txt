@@ -38,6 +38,14 @@ list(APPEND _venv_commands
     COMMAND "${CMAKE_COMMAND}" -E touch "${MIM_PY_VENV_STAMP}"
 )
 
+# Only creating the venv above needs the network.
+# The editable installs below run on every build and must stay offline:
+# --no-build-isolation reuses the venv's setuptools/wheel instead of letting pip
+# fetch a fresh build environment from PyPI each time.
+set(_mim_py_pip_install
+    -m pip install --quiet --disable-pip-version-check --no-deps --no-build-isolation
+)
+
 add_custom_command(
     OUTPUT "${MIM_PY_VENV_STAMP}"
     ${_venv_commands}
@@ -104,7 +112,8 @@ foreach(_unit IN LISTS _gen_units)
                 ${_extra_args}
                 -o "${output}"
         DEPENDS
-            "${MIM_PY_VENV_STAMP}"
+            # Depend on the venv *target*, not on ${MIM_PY_VENV_STAMP}: see mim_py_stubs below.
+            mim_py_venv
             "${header}"
             "${_binding_script}"
             "${CMAKE_BINARY_DIR}/compile_commands.json"
@@ -161,7 +170,7 @@ add_custom_command(
             ${_module_unit_args}
             -o "${_module_source}"
     DEPENDS
-        "${MIM_PY_VENV_STAMP}"
+        mim_py_venv
         "${_binding_script}"
     COMMENT "Generating nanobind module entry point py.cpp"
     VERBATIM
@@ -202,7 +211,10 @@ add_custom_command(
                 -q
                 -m _mim
                 -o "${MIM_PY_STUB_FILE}"
-    DEPENDS pymim "${MIM_PY_VENV_STAMP}" "${MIM_PY_NANOBIND_STUBGEN}"
+    # Depend on the venv *target*, not on ${MIM_PY_VENV_STAMP}: the Makefile generator
+    # duplicates a custom command into every target that consumes its output file, so a
+    # file-level dependency would let "make -j" run two venv creations at the same time.
+    DEPENDS pymim mim_py_venv "${MIM_PY_NANOBIND_STUBGEN}"
     COMMENT "mim_py: generating _mim.pyi via nanobind stubgen"
     COMMAND_EXPAND_LISTS
     VERBATIM
@@ -245,7 +257,7 @@ add_custom_target(mim_py_main
             "${MIM_PY_STUB_FILE}"
             "${MIM_PY_STAGE}/src/mim/_mim.pyi"
     ${_mim_py_stage_plugin_commands}
-    COMMAND ${_mim_py_python_command} -m pip install --quiet --no-deps -e "${MIM_PY_STAGE}"
+    COMMAND ${_mim_py_python_command} ${_mim_py_pip_install} -e "${MIM_PY_STAGE}"
     COMMENT "mim_py: staging & installing mim (editable)"
     COMMAND_EXPAND_LISTS
     VERBATIM
@@ -263,7 +275,7 @@ foreach(_toml ${_mim_py_plugin_tomls})
     set(_stage "${CMAKE_BINARY_DIR}/mim_py_stage/plugins/${_plugin_name}")
     add_custom_target(${_target}
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_plugin_dir}" "${_stage}"
-        COMMAND ${_mim_py_python_command} -m pip install --quiet --no-deps -e "${_stage}"
+        COMMAND ${_mim_py_python_command} ${_mim_py_pip_install} -e "${_stage}"
         COMMENT "mim_py: staging & installing ${_target} (editable)"
         VERBATIM
     )

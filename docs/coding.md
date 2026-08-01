@@ -36,12 +36,18 @@ The following CMake switches are available:
 | ----------------------- | ---------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
 | `CMAKE_BUILD_TYPE`      | `Debug` \| `Release` \| `RelWithDebInfo` | `Debug`      | Build type.                                                                                     |
 | `CMAKE_INSTALL_PREFIX`  |                                          | `/usr/local` | Install prefix.                                                                                 |
+| `BUILD_SHARED_LIBS`     | `ON` \| `OFF`                            | `ON`         | If `ON`, build shared libraries.                                                                |
 | `MIM_BUILD_DOCS`        | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the documentation <br> (requires Doxygen).                                       |
 | `MIM_BUILD_EXAMPLES`    | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the examples.                                                                    |
+| `MIM_BUILD_LL_RUNTIME`  | `ON` \| `OFF`                            | `ON`         | If `ON`, compile the `ll` backend's C runtime wrappers to LLVM IR <br> (requires `clang`).      |
 | `MIM_BUILD_PYTHON`      | `ON` \| `OFF`                            | `ON`         | If `ON`, build Python bindings.                                                                 |
+| `MIM_CLANG`             | `<path/to/clang>`                        | autodetected | `clang` used to compile the `ll` backend's C runtime wrappers.                                  |
 | `MIM_ENABLE_CHECKS`     | `ON` \| `OFF`                            | `ON`         | If `ON`, enable expensive runtime checks <br> (requires `CMAKE_BUILD_TYPE=Debug`).              |
+| `MIM_LLVM_LINK`         | `<path/to/llvm-link>`                    | autodetected | `llvm-link` used to link C runtime wrappers consisting of several files.                        |
+| `MIM_VER_SUFFIX`        | `<suffix>`                               | `-dev`       | Suffix appended to the version string; use `""` for a release.                                  |
 | `BUILD_TESTING`         | `ON` \| `OFF`                            | `OFF`        | If `ON`, build all unit tests and `lit` tests.                                                  |
-| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `20`         | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                    |
+| `MIM_FILECHECK`         | `<filecheck_cmd>`                        | autodetected | `FileCheck` command used by the `lit` tests. <br> (requires `BUILD_TESTING=ON`).                |
+| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `30`         | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                    |
 | `MIM_LIT_WITH_VALGRIND` | `ON` \| `OFF`                            | `OFF`        | If `ON`, run the Mim CLI in the `lit` tests under Valgrind. <br> (requires `BUILD_TESTING=ON`). |
 
 ### Dependencies

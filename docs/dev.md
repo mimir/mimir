@@ -240,7 +240,7 @@ Methods beginning with
 
 - `isa` behave like `dynamic_cast`: they perform a runtime check and return `nullptr` if the cast fails;
 - `as` behave more like `static_cast`: in `Debug` builds they assert, via the corresponding `isa`, that the cast is valid.
-- `expect` behave like `as`, but - instead of merely asserting in `Debug` builds and being silently unchecked in `Release` - they *always* check via the corresponding `isa` and throw a formatted exception (via mim::throwf) when the cast fails.
+- `expect` behave like `as`, but - instead of merely asserting in `Debug` builds and being silently unchecked in `Release` - they *always* check via the corresponding `isa` and throw a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) when the cast fails.
   Reach for `expect` (over `as`) whenever the assumption is really a claim about the incoming IR that should surface as a proper error message rather than a `Debug`-only assertion or Release-mode undefined behavior - e.g. in backends that validate an already-lowered program.
 
 #### General Downcast
@@ -258,7 +258,7 @@ void foo(const Def* def) {
     auto sigma = def->as<Sigma>();
 
     // sigma has type "const Sigma*" and may be mutable or immutable
-    // throws an exception (via mim::throwf) like "expected a struct type, but got '<def>'" if def is not a Sigma;
+    // throws an exception (via fe::throwf) like "expected a struct type, but got '<def>'" if def is not a Sigma;
     // the argument is a description of what was expected - a plain string or a format string plus arguments
     auto s1 = def->expect<Sigma>("a struct type");
     auto s2 = def->expect<Sigma>("the operand of {}", parent);
@@ -352,7 +352,7 @@ void foo(const Def* def) {
     auto lu64 = Lit::as(def);
     auto lf32 = Lit::as<f32>(def);
 
-    // throws an exception (via mim::throwf) like "expected an address space, but got '<def>'" if def is not a Lit
+    // throws an exception (via fe::throwf) like "expected an address space, but got '<def>'" if def is not a Lit
     auto a = Lit::expect(def, "an address space");
     auto f = Lit::expect<f32>(def, "a floating-point constant");
 }
@@ -362,7 +362,7 @@ void foo(const Def* def) {
 
 The following table summarizes the most important casts:
 
-A method beginning with `expect` behaves like the `as` in the same row, but throws a formatted exception (via mim::throwf) instead of asserting; it takes a description (a plain string or a format string plus arguments) of what was expected.
+A method beginning with `expect` behaves like the `as` in the same row, but throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting; it takes a description (a plain string or a format string plus arguments) of what was expected.
 
 | `dynamic_cast` <br> `static_cast` <br> throwing                                     | Returns                                                                                                                             | If `def` is a ...                    |
 | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -393,7 +393,7 @@ void foo(const Def* def) {
         // def is a Pi whose codomain is bottom and which is not returning
     }
 
-    // yields the bit width of an Idx type, or throws a formatted exception (via mim::throwf) if it is not statically known
+    // yields the bit width of an Idx type, or throws a formatted exception (via fe::throwf) if it is not statically known
     // (the throwing counterpart of the std::optional-returning Idx::size2bitwidth)
     auto w = Idx::expect_bitwidth(def, "an index type of known width");
 }
@@ -405,7 +405,7 @@ You can match [axioms](@ref mim::Axm) via
 
 - [`mim::Axm::isa`](@ref mim::Axm::isa), which behaves like a checked `dynamic_cast` and returns [a wrapped](@ref mim::Axm::isa) `nullptr`-like value on failure,
 - [`mim::Axm::as`](@ref mim::Axm::as), which behaves like a checked `static_cast` and asserts in `Debug` builds if the match fails, or
-- [`mim::Axm::expect`](@ref mim::Axm::expect), which - like the other `expect` helpers - throws a formatted exception (via mim::throwf) instead of asserting: `Axm::expect<mem::Ptr>(def, "a %mem.Ptr")`.
+- [`mim::Axm::expect`](@ref mim::Axm::expect), which - like the other `expect` helpers - throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting: `Axm::expect<mem::Ptr>(def, "a %mem.Ptr")`.
 
 The result is a `mim::Axm::isa<Id, D>`, which wraps a `const D*`.
 Here, `Id` is the enum corresponding to the [matched axiom tag](@ref anatomy), and `D` is usually an [`App`](@ref mim::App), because most [axioms](@ref mim::Axm) inhabit a [function type](@ref mim::Pi).
@@ -450,7 +450,7 @@ void foo(const Def* def) {
     // def must match mem::load - otherwise, this asserts
     auto load = Axm::as<mem::load>(def);
 
-    // def must match mem::load - otherwise, this throws a formatted exception (via mim::throwf)
+    // def must match mem::load - otherwise, this throws a formatted exception (via fe::throwf)
     auto ld = Axm::expect<mem::load>(def, "a %mem.load");
 }
 ```
