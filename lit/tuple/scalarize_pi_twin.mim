@@ -29,6 +29,6 @@ con extern main (mem: %mem.M 0, n: I32, return: Cn [%mem.M 0, I32]) =
 // Both twins are one immutable Pi now, so the pullback continuation is flattened consistently:
 // `[%mem.M 0, «2; I32»]` becomes `[%mem.M 0, I32, I32]` at the binder *and* at both call sites
 // (--implicit-check-not above pins down that no unflattened pack survives anywhere).
-// CHECK-DAG: con k_{{.*}}: %mem.M 0, {{.*}}: I32, {{.*}}: I32]
-// CHECK-DAG: fun id_pb_{{.*}}: [%mem.M 0, I32, I32]
-// CHECK-DAG: fun zero_pb_{{.*}}: [%mem.M 0, I32, I32]
+// CHECK-DAG: con k_{{[0-9]+}} [{{[_a-z0-9]+}}: %mem.M 0, {{[_a-z0-9]+}}: I32, {{[_a-z0-9]+}}: I32]
+// CHECK-DAG: fun id_pb_{{[0-9]+}} ({{.*}}): [%mem.M 0, I32, I32]
+// CHECK-DAG: fun zero_pb_{{[0-9]+}} ({{.*}}): [%mem.M 0, I32, I32]
