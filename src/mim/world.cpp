@@ -645,6 +645,17 @@ const Def* World::match(Defs ops_) {
         type = type ? this->join({type, pi->codom()}) : pi->codom();
     }
 
+    // A constructor fixes the active union case. Dispatch before the Match can
+    // escape into later lowering phases, where the payload representation may
+    // already have changed (for example, a tensor may have become a buffer).
+    if (auto inj = scrutinee->isa<Inj>()) {
+        for (size_t i = 0, e = arms.size(); i != e; ++i)
+            if (Checker::alpha<Checker::Check>(inj->value()->type(), join->op(i)))
+                return app(arms[i], inj->value());
+        error(scrutinee->loc(), "injected value type '{}' is not a case of union type '{}'", inj->value()->type(),
+              join);
+    }
+
     return unify<Match>(type, ops);
 }
 
