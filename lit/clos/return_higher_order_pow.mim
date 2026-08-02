@@ -1,0 +1,60 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll -o -
+
+/// Issue #117: closure conversion of a higher-order return.
+/// A differentiated `pow`: a recursive function whose augmented return continuation folds pullback
+/// continuations inside each other, so the return continuation is itself higher-order.
+plugin core;
+plugin mem;
+
+let PbVec  = Cn [%mem.M 0, «2; I32»];    // innermost pullback continuation
+let Pb     = Cn [%mem.M 0, I32, PbVec];  // pullback
+let AugRet = Cn [%mem.M 0, I32, Pb];     // augmented return continuation
+let TupPb  = Cn [%mem.M 0, PbVec];
+
+con zero_pb (mem: %mem.M 0, x: I32, pb_ret: PbVec) @tt =
+    con k (mem: %mem.M 0, v: «2; I32») = pb_ret (mem, v);
+    k (mem, ‹2; 0I32›);
+
+con tup_pb (mem: %mem.M 0, pb_ret: PbVec) @tt =
+    con k (mem: %mem.M 0, v: «2; I32») = pb_ret (mem, v);
+    k (mem, ‹2; 0I32›);
+
+con aug_f (mem: %mem.M 0, x: I32, aug_ret: AugRet) =
+    con aug_pow_cont (mem: %mem.M 0, r: I32, pb: Pb) =
+        con comp_tup_pb (mem: %mem.M 0, s: I32, pb_ret: PbVec) @tt =
+            con fwd (mem: %mem.M 0, v: «2; I32») = pb_ret (mem, v);
+            con comp_cont (mem: %mem.M 0, ab: [I32, I32]) @tt =
+                let (a, b) = ab;
+                let p = %core.wrap.mul 0 (r, s);
+                let q = %core.wrap.add 0 (p, a);
+                fwd (mem, (q, b));
+            let t = %core.wrap.mul 0 (4I32, s);
+            pb (mem, t, comp_cont);
+        let u = %core.wrap.mul 0 (4I32, r);
+        aug_ret (mem, u, comp_tup_pb);
+
+    con aug_pow_else (mem: %mem.M 0, unused: TupPb) =
+        let y = %core.wrap.add 0 (4294967295I32, x);
+        aug_f (mem, y, aug_pow_cont);
+
+    con aug_pow_then (mem: %mem.M 0, unused: TupPb) =
+        aug_ret (mem, 1I32, zero_pb);
+
+    let cond = %core.icmp.xyglE (0I32, x);
+    (aug_pow_else, aug_pow_then)#cond (mem, tup_pb);
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
+    con fwd (res: [%mem.M 0, I32]) = return res;
+
+    con ret_cont (m: %mem.M 0, r: I32, pb: Pb) =
+        con pb_ret_cont (m: %mem.M 0, prs: [I32, I32]) =
+            let (pr_a, pr_b) = prs;
+            let a = %core.wrap.mul 0 (10000I32, r);
+            let b = %core.wrap.mul 0 (100I32, pr_a);
+            let c = %core.wrap.add 0 (pr_b, b);
+            let d = %core.wrap.add 0 (a, c);
+            fwd (mem, d);
+        pb (m, 1I32, pb_ret_cont);
+
+    aug_f (mem, 3I32, ret_cont);

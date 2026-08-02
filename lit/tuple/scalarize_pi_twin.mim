@@ -1,0 +1,34 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not='«2; I32»'
+plugin core;
+plugin mem;
+
+/// A `Cn` *type expression* used to emit a **mutable** Pi, while the Pi of a `con` *declaration* of the very
+/// same signature came out **immutable** (LamDecl::emit_body() already immutabilized its own).
+/// Two alpha-equivalent yet distinct defs - and Scalarize decides per def, flattening only the immutable twin
+/// (`k`) while `PbVec` inside `Pb` stayed put, tearing the `pb (m, n, k)` edge apart:
+///   error: cannot apply argument to callee
+///     dom '[%mem.M 0, I32, Cn [%mem.M 0, «2; I32»]]' vs arg '[%mem.M 0, I32, Cn [%mem.M 0, I32, I32]]'
+let PbVec = Cn [%mem.M 0, [I32, I32]];
+let Pb    = Cn [%mem.M 0, I32, PbVec];
+
+con extern main (mem: %mem.M 0, n: I32, return: Cn [%mem.M 0, I32]) =
+    con use_pb (m: %mem.M 0, pb: Pb) =
+        con k (m: %mem.M 0, prs: [I32, I32]) =
+            let (a, b) = prs;
+            return (m, %core.wrap.add 0 (a, b));
+        pb (m, n, k);
+
+    con id_pb  (mem: %mem.M 0, x: I32, k: PbVec) = k (mem, (x, x));
+    con zero_pb (mem: %mem.M 0, x: I32, k: PbVec) = k (mem, (x, 0I32));
+
+    // `pb` is selected at runtime, so nothing here can be inlined away:
+    // the flattened signature has to survive into the output.
+    let cond = %core.icmp.ul (n, 3I32);
+    use_pb (mem, (id_pb, zero_pb)#cond);
+
+// Both twins are one immutable Pi now, so the pullback continuation is flattened consistently:
+// `[%mem.M 0, «2; I32»]` becomes `[%mem.M 0, I32, I32]` at the binder *and* at both call sites
+// (--implicit-check-not above pins down that no unflattened pack survives anywhere).
+// CHECK-DAG: con k_{{.*}}: %mem.M 0, {{.*}}: I32, {{.*}}: I32]
+// CHECK-DAG: fun id_pb_{{.*}}: [%mem.M 0, I32, I32]
+// CHECK-DAG: fun zero_pb_{{.*}}: [%mem.M 0, I32, I32]
