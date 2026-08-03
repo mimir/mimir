@@ -14,8 +14,8 @@ con extract_pb2 (s: I32, ret_cont: Cn [%mem.M 0, «2; I32»]) =
     k (%autodiff.zero (%mem.M 0), (0I32, s));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr ((I8), 0), 0), return: Cn [%mem.M 0, I32]) =
-    let a: [%mem.M 0, «2; I32»] = %cps.cps2ds (%mem.M 0, [%mem.M 0, «2; I32»]) extract_pb1 mem;
-    let b: [%mem.M 0, «2; I32»] = %cps.cps2ds (I32, [%mem.M 0, «2; I32»]) extract_pb2 1I32;
+    let a: [%mem.M 0, «2; I32»] = %cps.cps2ds extract_pb1 mem;
+    let b: [%mem.M 0, «2; I32»] = %cps.cps2ds extract_pb2 1I32;
     let m: %mem.M 0 = %autodiff.add (a#ff, b#0₂);
     let t: «2; I32» = %autodiff.add (a#tt, b#1₂);
     let x: I32 = %core.wrap.mul 0 (100I32, t#0₂);

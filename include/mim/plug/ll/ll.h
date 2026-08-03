@@ -19,6 +19,8 @@
 #include <mim/plug/mem/mem.h>
 #include <mim/plug/vec/vec.h>
 
+#include "mim/plug/ll/autogen.h"
+
 // Lessons learned:
 // * **Always** follow all ops - even if you actually want to ignore one.
 //   Otherwise, you might end up with an incorrect schedule.

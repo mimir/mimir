@@ -10,8 +10,8 @@
 #include <mim/plug/cps/cps.h>
 #include <mim/plug/mem/mem.h>
 
-#include "mim/plug/regex/autogen.h"
 #include "mim/plug/regex/dfa2matcher.h"
+#include "mim/plug/regex/regex.h"
 #include "mim/plug/regex/regex2nfa.h"
 
 // clang-format off

@@ -10,7 +10,7 @@ namespace mim::plug::cps {
 /// @name %%cps.cps2ds_dep
 /// ```
 /// let k: Cn [t: T, Cn U t] = ...;
-/// let f: [t: T] → U = %cps.cps2ds_dep (T, lm (t': T): * = [t → t']U) k;
+/// let f: [t: T] → U = %cps.cps2ds_dep (lm (t': T): * = [t → t']U) k;
 /// ```
 ///@{
 inline const Def* op_cps2ds_dep(const Def* k) {
@@ -25,7 +25,7 @@ inline const Def* op_cps2ds_dep(const Def* k) {
         body = VarRewriter(var, l->var()).rewrite(U); // TODO typeof(dom->var()) != typeof(l->var())
     l->set(true, body);
 
-    return w.app(w.app(w.annex<cps::cps2ds_dep>(), {T, l}), k);
+    return w.app(w.app(w.app(w.annex<cps::cps2ds_dep>(), T), l), k);
 }
 ///@}
 

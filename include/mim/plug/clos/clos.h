@@ -1,9 +1,10 @@
 #pragma once
 
-#include "mim/world.h"
+#include <mim/world.h>
+
+#include <mim/plug/mem/mem.h>
 
 #include "mim/plug/clos/autogen.h"
-#include "mim/plug/mem/autogen.h"
 
 namespace mim::plug::clos {
 
