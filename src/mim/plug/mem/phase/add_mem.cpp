@@ -85,13 +85,25 @@ const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
 const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
     if (is_bootstrapping() || preserving_) return Rewriter::rewrite_mut_Lam(old_lam);
 
-    // Pinned ABI (an axm-app argument and everything below it): rewrite verbatim - no memory threaded or added.
-    if (preserved_.contains(old_lam)) {
-        auto _ = Restore(preserving_, true);
-        return Rewriter::rewrite_mut_Lam(old_lam);
+    // Pinned ABI (an axm-app argument and everything below it): the *signature* must survive verbatim, because
+    // later lowering calls the lam with exactly the one the axm app's type prescribes - prepending a leading mem
+    // would stop that app from type-checking. Rewrite only the type in preserving mode, then continue below.
+    //
+    // The body, in contrast, is threaded like any other. `%affine.For` passes both its body *and its exit
+    // continuation* as lam arguments, so pinning a whole subtree would strip the memory chain from ordinary
+    // program code downstream of every affine loop - and the `⊥ : %mem.M` placeholders that
+    // `%tensor.lower_to_mem` leaves on its buffer ops would never be spliced in, leaving loads unordered
+    // w.r.t. the stores that fill their buffer (uninitialised reads; zero-filled and therefore invisible on
+    // Linux, garbage on Windows). A pinned lam that carries no memory at all (a `sum_f` combiner, an
+    // `%affine.map` index mapping) still ends up with `curr_mem_ == nullptr` below and is left verbatim.
+    auto pinned_abi = preserved_.contains(old_lam);
+    const Def* new_type;
+    {
+        auto _   = Restore(preserving_, pinned_abi);
+        new_type = rewrite(old_lam->type());
     }
 
-    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg());
+    auto new_lam = new_world().mut_lam(new_type->as<Pi>())->set(old_lam->dbg());
     map(old_lam, new_lam);
 
     // Map the parameters, accounting for a possibly inserted leading mem var.
