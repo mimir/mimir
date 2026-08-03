@@ -2,10 +2,11 @@
 
 #include <queue>
 
-#include "mim/phase.h"
+#include <mim/phase.h>
+
+#include <mim/plug/mem/mem.h>
 
 #include "mim/plug/clos/clos.h"
-#include "mim/plug/mem/mem.h"
 
 namespace mim::plug::clos::phase {
 

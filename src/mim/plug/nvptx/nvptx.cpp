@@ -3,7 +3,7 @@
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
-#include "mim/plug/gpu/gpu.h"
+#include <mim/plug/gpu/gpu.h>
 
 using namespace mim;
 using namespace mim::plug;

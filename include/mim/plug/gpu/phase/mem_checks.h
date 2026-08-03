@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mim/phase.h"
+#include <mim/phase.h>
 
 #include "mim/plug/gpu/gpu.h"
 

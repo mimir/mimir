@@ -1,12 +1,13 @@
 #include "mim/plug/tensor/phase/fuse.h"
 
-#include "mim/def.h"
-#include "mim/lam.h"
+#include <mim/def.h>
+#include <mim/lam.h>
 
-#include "mim/util/types.h"
+#include <mim/util/types.h>
 
-#include "mim/plug/core/core.h"
-#include "mim/plug/cps/cps.h"
+#include <mim/plug/core/core.h>
+#include <mim/plug/cps/cps.h>
+
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -90,7 +91,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         if (!inner) continue;
 
         auto [inner_nis, inner_meta, inner_shapes, inner_TisRisSis, inner_comb_init, inner_map_out, inner_maps,
-              inner_is]                       
+              inner_is]
             = inner->uncurry_args<8>();
         auto [inner_To, inner_Ro, inner_Rr]    = inner_meta->projs<3>();
         auto [inner_So, inner_Sr]              = inner_shapes->projs<2>();

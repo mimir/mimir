@@ -1,10 +1,9 @@
 #pragma once
 
-#include <mim/plug/gpu/phase/split_off_kernels.h>
-
-#include "mim/phase.h"
+#include <mim/phase.h>
 
 #include "mim/plug/gpu/gpu.h"
+#include "mim/plug/gpu/phase/split_off_kernels.h"
 
 namespace mim::plug::gpu::phase {
 

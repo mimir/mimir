@@ -101,7 +101,6 @@ private:
     /// they receive element values, never buffers — even when a parameter type incidentally collides with a
     /// tensor type (pure type-based role tracking aliases, e.g. an `(x y: I32)` group *is* `«2; I32»`).
     LamSet op_args_;
-
 };
 
 } // namespace mim::plug::tensor::phase

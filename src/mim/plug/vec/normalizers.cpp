@@ -1,13 +1,12 @@
 #include <absl/container/btree_set.h>
+#include <absl/container/fixed_array.h>
+
+#include <mim/tuple.h>
+#include <mim/world.h>
 
 #include <mim/plug/core/core.h>
 
-#include "mim/tuple.h"
-#include "mim/world.h"
-
 #include "mim/plug/vec/vec.h"
-
-#include "absl/container/fixed_array.h"
 
 namespace mim::plug::vec {
 
@@ -33,9 +32,11 @@ const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
     if (auto seq = vec->isa<Seq>()) {
         if (auto n = Lit::isa<u64>(seq->arity()); n && type->isa<Nat>()) {
             if constexpr (id == fold::l)
-                for (auto proj : seq->projs(*n)) acc = w.app(f, {acc, proj});
+                for (auto proj : seq->projs(*n))
+                    acc = w.app(f, {acc, proj});
             else // fold::r
-                for (auto proj : seq->projs(*n) | std::views::reverse) acc = w.app(f, {proj, acc});
+                for (auto proj : seq->projs(*n) | std::views::reverse)
+                    acc = w.app(f, {proj, acc});
             return acc;
         }
         w.WLOG("packs with non-literal arity not yet implemented: {}", seq);

@@ -1,15 +1,15 @@
+#include <mim/def.h>
+#include <mim/plugin.h>
+#include <mim/tuple.h>
+#include <mim/world.h>
+
+#include <mim/util/sets.h>
+
 #include <mim/plug/affine/affine.h>
 #include <mim/plug/core/core.h>
 #include <mim/plug/cps/cps.h>
 #include <mim/plug/tuple/tuple.h>
 #include <mim/plug/vec/vec.h>
-
-#include "mim/def.h"
-#include "mim/plugin.h"
-#include "mim/tuple.h"
-#include "mim/world.h"
-
-#include "mim/util/sets.h"
 
 #include "mim/plug/tensor/tensor.h"
 
@@ -99,15 +99,14 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
             for (u64 d = 0; d < *r_l; ++d) {
                 auto in_d  = s_in->proj(*r_l, d);
                 auto idx_d = index->proj(*r_l, d);
-                if (in_d == s_out->proj(*r_l, d)) {
+                if (in_d == s_out->proj(*r_l, d))
                     new_index[d] = idx_d;
-                } else if (auto l = Lit::isa<u64>(in_d); l && *l == 1) {
+                else if (auto l = Lit::isa<u64>(in_d); l && *l == 1)
                     new_index[d] = w.lit_idx(1, 0);
-                } else if (auto e = Lit::isa<u64>(in_d), i = Lit::isa<u64>(idx_d); e && i) {
+                else if (auto e = Lit::isa<u64>(in_d), i = Lit::isa<u64>(idx_d); e && i)
                     new_index[d] = w.lit_idx(*e, *i % *e);
-                } else {
+                else
                     return nullptr;
-                }
             }
             w.DLOG("bypass successful");
             return op_get(T, Tr->proj(2, 1), s_in, input, w.tuple(new_index));

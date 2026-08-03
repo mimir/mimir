@@ -1,10 +1,9 @@
 #include "mim/rewrite.h"
 
 #include <absl/container/fixed_array.h>
+#include <fe/assert.h>
 
 #include "mim/world.h"
-
-#include "fe/assert.h"
 
 // Don't use fancy C++-lambdas; it's way too annoying stepping through them in a debugger.
 

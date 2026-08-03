@@ -1,6 +1,6 @@
 #include "mim/plug/clos/phase/clos_conv.h"
 
-#include "mim/plug/mem/autogen.h"
+#include <mim/plug/mem/autogen.h>
 
 using namespace std::literals;
 

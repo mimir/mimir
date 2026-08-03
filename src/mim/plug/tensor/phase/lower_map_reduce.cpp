@@ -1,14 +1,15 @@
 #include "mim/plug/tensor/phase/lower_map_reduce.h"
 
-#include "mim/def.h"
-#include "mim/lam.h"
+#include <mim/def.h>
+#include <mim/lam.h>
 
-#include "mim/util/types.h"
+#include <mim/util/types.h>
 
-#include "mim/plug/affine/affine.h"
-#include "mim/plug/core/core.h"
-#include "mim/plug/cps/cps.h"
-#include "mim/plug/mem/mem.h"
+#include <mim/plug/affine/affine.h>
+#include <mim/plug/core/core.h>
+#include <mim/plug/cps/cps.h>
+#include <mim/plug/mem/mem.h>
+
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
