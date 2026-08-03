@@ -6,6 +6,7 @@
 // test checks the lowered Mim IR (no codegen). The GONE prefix asserts the axiom is fully lowered
 // away in every function.
 // GONE-NOT: %tensor.map_reduce
+// GONE-NOT: :(%mem.M 0)
 
 plugin core;
 plugin tensor;

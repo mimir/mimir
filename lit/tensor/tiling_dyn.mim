@@ -72,6 +72,9 @@
 // GONE-NOT: restrict_par
 // GONE-NOT: retile
 // GONE-NOT: ForT
+// No `⊥ : %mem.M` placeholder may survive `%mem.add_mem`: it would leave a load unordered w.r.t. the
+// stores that fill its buffer, i.e. a read of uninitialised memory (zero-filled, so invisible, on Linux).
+// GONE-NOT: :(%mem.M 0)
 
 plugin core;
 plugin tensor;

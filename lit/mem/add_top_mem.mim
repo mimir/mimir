@@ -1,5 +1,7 @@
 // RUN: rm -f %t.ll
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
 
 plugin core;
 
@@ -15,3 +17,6 @@ lam extern _compile (): %compile.Phase =
     );
 
 // CHECK: f (_{{[0-9]+}}, argc_{{[0-9]+}}, return_{{[0-9]+}})
+// No `⊥ : %mem.M` placeholder may survive `%mem.add_mem`: it would leave a load unordered w.r.t. the
+// stores that fill its buffer, i.e. a read of uninitialised memory (zero-filled, so invisible, on Linux).
+// GONE-NOT: :(%mem.M 0)

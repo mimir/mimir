@@ -3,6 +3,10 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 0
 // RUN: %t a b c ; test $? -eq 0
+// Every check below compares against an untiled reference and counts mismatches, so a *zero-filled* buffer
+// is indistinguishable from success. Re-run with a garbage-filled fresh heap (glibc; a no-op elsewhere) so
+// that a buffer read before it is written fails here instead of only on a platform that doesn't zero pages.
+// RUN: MALLOC_PERTURB_=42 %t a b c ; test $? -eq 0
 
 // An extensible tiling interface implemented entirely in the frontend IR via partial
 // evaluation - no C++ transformation code (cf. MLIR's TilingInterface/tileUsingSCF).
@@ -47,6 +51,9 @@
 // CHECK-NOT: unrolled_for
 // CHECK-NOT: %tensor.map_reduce
 // CHECK-NOT: %affine.map
+// No `⊥ : %mem.M` placeholder may survive `%mem.add_mem`: it would leave a load unordered w.r.t. the
+// stores that fill its buffer, i.e. a read of uninitialised memory (zero-filled, so invisible, on Linux).
+// CHECK-NOT: :(%mem.M 0)
 
 plugin core;
 plugin tensor;

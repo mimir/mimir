@@ -28,3 +28,4 @@ lam extern _compile (): %compile.Phase =
 // CHECK-DAG: %mem.load
 // CHECK-DAG: %mem.store
 // GONE-NOT: %buffer.
+// GONE-NOT: :(%mem.M 0)

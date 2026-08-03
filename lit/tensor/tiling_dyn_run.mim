@@ -4,6 +4,9 @@
 // RUN: %t ; test $? -eq 0
 // RUN: %t x ; test $? -eq 0
 // RUN: %t x y z ; test $? -eq 0
+// Self-checking against a zero-filled buffer cannot distinguish "correct" from "never written", so re-run
+// with a garbage-filled fresh heap (glibc; a no-op elsewhere) - cf. tensor_tile.mim.
+// RUN: MALLOC_PERTURB_=42 %t x y z ; test $? -eq 0
 
 // Compiles tiling_dyn.mim (the full Tileable feature set over runtime-only extents) to
 // an executable and runs it for the runtime sizes n = 5, 7 and 11 (n = 2·argc + 3).

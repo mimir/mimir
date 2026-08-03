@@ -1,4 +1,6 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
 
 // Isolation test for the value-semantics %tensor.lower_get_set phase (pinned via a custom _compile):
 // all tensors here are local literals, which the buffers-only default pipeline would materialize into
@@ -45,3 +47,4 @@ lam extern _compile (): %compile.Phase =
 // CHECK-NOT: tensor.get
 // CHECK-NOT: tensor.set
 // CHECK: return_{{[0-9]+}} (3, 6, 1, 4)
+// GONE-NOT: :(%mem.M 0)

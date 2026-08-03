@@ -1,11 +1,12 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
 plugin tensor;
 plugin refly;
 plugin core;
 plugin cps;
 plugin affine;
 plugin math;
-// plugin buffrize;
 
 let f32 = %math.f32;
 let F32 = %math.F32;
@@ -79,3 +80,4 @@ con extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     return (v_18);
 
 // CHECK-NOT: %tensor.
+// GONE-NOT: :(%mem.M 0)

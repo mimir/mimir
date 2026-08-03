@@ -1,4 +1,6 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
 
 plugin tensor;
 plugin refly;
@@ -22,4 +24,5 @@ let bid0 = %tensor.broadcast_in_dim ((2, 1, 2), (2, 50, 2), m0, (2₃, 1₃, 0�
 // CHECK-NOT: %affine
 // CHECK-DAG: %mem.store {{.*}} ((1, 2), (3, 4)))
 // CHECK-DAG: %mem.store {{.*}} ((1, 2, 3), (4, 5, 6)))
+// GONE-NOT: :(%mem.M 0)
 fun extern e1() = return (b0, b1, bid0);

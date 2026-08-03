@@ -1,4 +1,6 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
 
 // Regression test for issue #177: `add_mem` used to mishandle dependently-typed function domains.
 // Prepending the leading `%mem.M` must preserve free type-level variables (e.g. the `s` in `«2; Idx s»`)
@@ -25,3 +27,6 @@ lam extern _compile (): %compile.Phase =
 // CHECK-DAG: fun extern dep (_: %mem.M 0, _: Nat, _: «n_{{[0-9]+}}; I32»)
 // The free `s` is preserved and every nested continuation gets its own leading %mem.M.
 // CHECK-DAG: fun extern poly {s_{{[0-9]+}}: Nat} (_{{[0-9]+}}: %mem.M 0,{{.*}}Cn [%mem.M 0, Idx s_{{[0-9]+}}, Idx s_{{[0-9]+}}]]]
+// No `⊥ : %mem.M` placeholder may survive `%mem.add_mem`: it would leave a load unordered w.r.t. the
+// stores that fill its buffer, i.e. a read of uninitialised memory (zero-filled, so invisible, on Linux).
+// GONE-NOT: :(%mem.M 0)

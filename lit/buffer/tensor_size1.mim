@@ -5,6 +5,7 @@
 // (size-1) dimension. The bufferized signature uses a rank-1 %mem.Ptr.
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
+// GONE-NOT: :(%mem.M 0)
 plugin core;
 plugin tensor;
 plugin mem;

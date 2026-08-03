@@ -9,6 +9,7 @@
 // GONE-NOT: %matrix.
 // GONE-NOT: %buffer.
 // GONE-NOT: %affine.
+// GONE-NOT: :(%mem.M 0)
 plugin core;
 plugin tensor;
 plugin affine;
