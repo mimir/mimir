@@ -12,7 +12,3 @@
 // tile loop outermost, trailing partials merged), transposed write map under a runtime
 // batch, peel main/epilogue, pad+slice, a tiled pure-loop nest, and the shape-
 // polymorphic tile4_for at a runtime size - so the expected exit code is simply 0.
-//
-// Note: compiled WITHOUT -p clos - everything PE-inlines to first-order code, and the
-// clos pass currently asserts on several of these shapes (free %mem.M in FreeDefAna;
-// see Testing/bug_two_dyn_operands_clos.mim and Testing/bug_two_dyn_params_boundary.mim).
