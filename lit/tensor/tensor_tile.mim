@@ -1,6 +1,10 @@
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// TEMPORARY Windows diagnostics - remove once the exit-code-127 cause is known.
+// RUN: ls -la %t* ; true
+// RUN: rc=0; %t || rc=$?; echo "DIAG-BASH exit=$rc"
+// RUN: rc=0; cmd //c %t || rc=$?; echo "DIAG-CMD exit=$rc" ; true
 // RUN: %t ; test $? -eq 0
 // RUN: %t a b c ; test $? -eq 0
 
