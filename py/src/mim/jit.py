@@ -28,7 +28,7 @@ class JIT(ABC):
 
     def _compile_so(self):
         so_path = self._get_so_path()
-        cmd = ["clang", self.ll_name, "-o", so_path, "-shared", "-Wno-override-module"]
+        cmd = ["clang", "-O3", "-march=native", self.ll_name, "-o", so_path, "-shared", "-Wno-override-module"]
         if pf.system() == "Windows":
             for name in self.exports:
                 cmd += ["-Xlinker", f"/EXPORT:{name}"]
