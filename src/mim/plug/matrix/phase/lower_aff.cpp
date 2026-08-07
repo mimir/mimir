@@ -152,22 +152,19 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem`. The map is mem-threaded (its divisions consume mem),
     // and this phase threads real memory, so the caller passes the current mem and receives `(mem', coords)`.
     //
-    // The map's `sin` moduli only *type* its input indices (`«i:n; Idx (sin#i)»`); the index function operates
-    // on the opaque `%affine.index` (the `Idx 0` carrier) and `%affine.lower_index` never consults `sin`.
-    // We therefore declare all inputs as `Idx 0` so the caller can feed the raw i64 loop counters directly.
-    // Converting each counter to `Idx (loop-extent)` first (and lower_index widening it straight back) is not
-    // only a redundant round-trip: for a *dynamic* extent `n` it materialises a dependent `Idx n` index type
-    // that is loop-invariant, gets hoisted, and then leaks into loop closures — which closure conversion
-    // cannot pack (the dependency `n` does not unify across the closure boundary). `sout` still narrows the
-    // outputs to their real `Idx (sout#j)` for indexing the (statically-shaped) buffers.
-    auto affine_map = [&](const Def* f, const Def* m, const Def* nn, const Def* sout, const Def* idxs, const Def* mem) {
-        auto sin = w.pack(nn, w.lit_nat(0));
-        auto a   = w.app(w.annex<affine::map>(), w.tuple({m, nn}));
-        a        = w.app(a, w.tuple({sin, sout}));
-        a        = w.app(a, f);
-        a        = w.app(a, idxs);
-        return w.app(a, mem)->projs<2>();
-    };
+    // `sin`/`sout` are the per-element moduli: inputs arrive as `Idx (sin#i)` and outputs are narrowed to
+    // `Idx (sout#j)`. Both stay precise even for runtime-only extents — `%affine.lower_index` widens the
+    // inputs to i64 on entry (and the ll backend carries any non-literal `Idx` as i64 anyway), so the precise
+    // types cost nothing at runtime; they preserve the extent information in the IR.
+    auto affine_map
+        = [&](const Def* f, const Def* m, const Def* nn, const Def* sin, const Def* sout, const Def* idxs,
+              const Def* mem) {
+              auto a = w.app(w.annex<affine::map>(), w.tuple({m, nn}));
+              a      = w.app(a, w.tuple({sin, sout}));
+              a      = w.app(a, f);
+              a      = w.app(a, idxs);
+              return w.app(a, mem)->projs<2>();
+          };
 
     auto mem_ty = w.call<mem::M>(0);
 
@@ -191,7 +188,7 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
         auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forOut_" + std::to_string(i)));
         auto [iter, new_acc, yield] = body->vars<3>();
         cont                        = yield;
-        out_iters.push_back(iter); // fed to affine_map as an `Idx 0` (i64) input; see affine_map's note
+        out_iters.push_back(w.call(core::conv::u, dim, iter)); // precise `Idx dim`, also for runtime extents
         acc = new_acc;
         current_mut->set(true, for_call);
         current_mut = body;
@@ -202,9 +199,9 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     auto write_back              = mem::mut_con(To)->set("writeBack");
     auto [wb_in_mem, elem_final] = write_back->vars<2>();
     DefVec wb_iters              = out_iters;
-    for (u64 j = 0; j < rr; ++j)
-        wb_iters.push_back(w.lit(w.type_i64(), 0)); // reduction axes pinned to 0 for the write-back coords
-    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, So, w.tuple(wb_iters), wb_in_mem);
+    for (u64 j = 0; j < rr; ++j) // reduction axes pinned to 0 for the write-back coords
+        wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit_i64(0)));
+    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wb_in_mem);
     auto stored = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), elem_final);
     write_back->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
 
@@ -219,7 +216,7 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
         auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forIn_" + std::to_string(j)));
         auto [iter, new_acc, yield] = body->vars<3>();
         cont                        = yield;
-        red_iters.push_back(iter); // fed to affine_map as an `Idx 0` (i64) input; see affine_map's note
+        red_iters.push_back(w.call(core::conv::u, dim, iter)); // precise `Idx dim`, also for runtime extents
         acc = new_acc;
         current_mut->set(true, for_call);
         current_mut = body;
@@ -236,7 +233,7 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     for (u64 i = 0; i < nis_nat; ++i) {
         auto in_buf = new_inputs->proj(nis_nat, i);
         auto [mc_mem, coords]
-            = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sis->proj(nis_nat, i), iters, cur);
+            = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters, cur);
         cur                = mc_mem;
         auto [ir, is_, iT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
         auto [rd_mem, rd_val]

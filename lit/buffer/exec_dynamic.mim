@@ -9,8 +9,8 @@
 //     (otherwise the input alloc/store leaks into the loop as a mem-typed free var — %mem.add_mem);
 //   * propagate the map_reduce's result mem even though its callee mentions `n` in a type argument and
 //     hence has a `Var` dependency (%mem.add_mem must not mistake it for a continuation call);
-//   * lower the dynamic reduction loop's affine indices on the `Idx 0` carrier rather than a dependent
-//     `Idx n` (%matrix.lower_aff), so no dependent index type leaks into the loop closures.
+//   * keep the loop's affine indices precisely typed (`Idx n` with the runtime extent `n`) through
+//     %matrix.lower_aff; only the ll backend widens a non-literal `Idx` to its 64-bit carrier.
 // After the full pipeline all tensor/matrix/buffer/affine axioms are gone and only %mem.* + loops remain.
 // exec_dynamic_run.mim compiles this to an executable and asserts the exit code (n = 5 ⇒ 10·5 = 50).
 plugin core;
