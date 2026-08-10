@@ -116,13 +116,15 @@ nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, 
 const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     // meta arguments:
     // * nis = in-count (nat)
-    // * To = out-type (*), Ro = #output loops = result rank, Rr = #reduction loops
+    // * To = accumulator type, Tp = out-element type (post: Fn To → Tp), Ro = #output loops = result rank,
+    //   Rr = #reduction loops
     // * So = result shape (Ro*nat)
     // * Sr = the full loop bounds (Ro+Rr)*nat: the leading Ro are the output-loop bounds, the trailing Rr the
     // reductions
     // * Tis/Ris/Sis = input types/ranks/shapes
     // arguments:
-    // * f = combination function (CPS), init = accumulator init
+    // * f = combination function (CPS), init = accumulator init, post = per-output-cell epilogue (CPS),
+    //   applied to the folded accumulator right before the write-back
     // * acc_out = affine map from the (Ro+Rr) loop vector to the Ro write coordinates in the result «So» (the reduction
     //             part is not in scope at write-back, so acc_out must depend only on the leading Ro output indices)
     // * accs = per-input affine map from the (Ro+Rr) loop vector to the input's read coordinates
@@ -133,10 +135,10 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto type   = rewrite(app->type());
 
     auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [To, Ro, Rr]                                             = meta->projs<3>();
+    auto [To, Tp, Ro, Rr]                                         = meta->projs<4>();
     auto [So, Sr]                                                 = shapes->projs<2>();
     auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
-    auto [comb, init]                                             = comb_init->projs<2>();
+    auto [comb, init, post]                                       = comb_init->projs<3>();
 
     auto nis_l = Lit::isa<u64>(nis);
     auto ro_l = Lit::isa<u64>(Ro), rr_l = Lit::isa<u64>(Rr);
@@ -199,7 +201,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         }
         auto wb_matrix = acc;
 
-        // Write-back: narrow the accumulated element into the result at the affine write coordinates `acc_out`.
+        // Write-back: run the `post` epilogue on the accumulated element, then narrow the result into the
+        // output at the affine write coordinates `acc_out`.
         // acc_out takes the full (Ro+Rr) loop vector, but the reduction loops have already been folded away here, so we
         // pass 0 for those slots; acc_out must depend only on the leading Ro output indices.
         auto write_back    = w.mut_con(To)->set("writeBack");
@@ -208,7 +211,9 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         for (u64 j = 0; j < rr; ++j)
             wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
         auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters)); // «Ro; Idx (So#k)»
-        write_back->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, element_final));
+        auto after_post   = w.mut_con(Tp)->set("afterPost");
+        after_post->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, after_post->var(0)));
+        write_back->app(true, post, {element_final, after_post});
 
         // Inner (reduction) loops over the trailing Rr bounds of `Sr`, collecting the reduction iteration indices.
         acc  = init;
@@ -243,6 +248,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         }
 
         comb->set("comb");
+        post->set("post");
         current_mut->app(true, comb, {w.tuple({element_acc, w.tuple(input_elements)}), cont});
         return call;
     } catch (const std::exception& e) { fe::throwf("error during lowering map_reduce: {}", e.what()); }
@@ -427,7 +433,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (auto bc = Axm::isa<tensor::broadcast>(app)) {
         if (auto res = lower_broadcast(bc)) return res;
-    } else if (auto mr = Axm::isa<tensor::map_reduce>(app)) {
+    } else if (auto mr = Axm::isa<tensor::map_reduce_post>(app)) {
         if (auto res = lower_map_reduce(mr)) return res;
     } else if (auto pad = Axm::isa<tensor::pad>(app)) {
         if (auto res = lower_pad(pad)) return res;

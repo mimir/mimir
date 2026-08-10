@@ -99,7 +99,7 @@ const Def* build_pointwise(World& w,
 
 const Def* LowerAff::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-    if (Axm::isa<matrix::map_reduce_aff>(app)) return lower_map_reduce_aff(app);
+    if (Axm::isa<matrix::map_reduce_post>(app)) return lower_map_reduce_post(app);
     if (Axm::isa<matrix::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<matrix::pad>(app)) return lower_pad(app);
     if (Axm::isa<matrix::concat>(app)) return lower_concat(app);
@@ -125,15 +125,15 @@ const Def* LowerAff::lower_buffer_constant(const App* app) {
         [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> { return {m, ins}; });
 }
 
-const Def* LowerAff::lower_map_reduce_aff(const App* app) {
+const Def* LowerAff::lower_map_reduce_post(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
     auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [To, Ro, Rr]                                             = meta->projs<3>();
+    auto [To, Tp, Ro, Rr]                                         = meta->projs<4>();
     auto [So, Sr]                                                 = shapes->projs<2>();
     auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
-    auto [comb, init]                                             = comb_init->projs<2>();
+    auto [comb, init, post]                                       = comb_init->projs<3>();
 
     // The final argument is `[mem, is]`; the result is `[mem, Buf]`.
     auto [op_mem, op_is] = rewrite(app->arg())->projs<2>();
@@ -190,15 +190,19 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     }
     auto [wb_mem, wb_buf] = acc->projs<2>();
 
-    // Write-back continuation `Cn[mem, To]`.
+    // Write-back continuation `Cn[mem, To]`: run the mem-threaded `post` epilogue on the folded element,
+    // then store its result at the affine write coordinates.
     auto write_back              = mem::mut_con(To)->set("writeBack");
     auto [wb_in_mem, elem_final] = write_back->vars<2>();
     DefVec wb_iters              = out_iters;
     for (u64 j = 0; j < rr; ++j)
         wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
-    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wb_in_mem);
-    auto stored = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), elem_final);
-    write_back->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
+    auto after_post             = mem::mut_con(Tp)->set("afterPost");
+    auto [post_mem, elem_post]  = after_post->vars<2>();
+    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), post_mem);
+    auto stored = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), elem_post);
+    after_post->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
+    write_back->app(true, post, w.tuple({w.tuple({wb_in_mem, elem_final}), after_post}));
 
     // Reduction loops; accumulator `{mem, elem}`.
     acc  = w.tuple({wb_mem, init});

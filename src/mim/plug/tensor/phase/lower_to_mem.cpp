@@ -38,7 +38,7 @@ const Def* splat_scalar(const Def* d) {
 /// Is `app` one of the tensor ops this phase bufferizes?
 bool is_tensor_op(const App* app) {
     return Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app)
-        || Axm::isa<tensor::map_reduce>(app) || Axm::isa<tensor::pad>(app) || Axm::isa<tensor::concat>(app);
+        || Axm::isa<tensor::map_reduce_post>(app) || Axm::isa<tensor::pad>(app) || Axm::isa<tensor::concat>(app);
 }
 
 } // namespace
@@ -72,12 +72,13 @@ void LowerToMem::collect_tensor_types() {
                 auto [T, r, s] = app->callee()->as<App>()->args<3>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->arg()->proj(0)->type());
-            } else if (Axm::isa<tensor::map_reduce>(app)) {
+            } else if (Axm::isa<tensor::map_reduce_post>(app)) {
                 // result and each of the `nis` inputs are tensors.
                 add_tensor_ty(app->type());
                 auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs]
                     = app->callee()->as<App>()->uncurry_args<7>();
-                if (meta->proj(3, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(3, 0));
+                if (meta->proj(4, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(4, 0));
+                if (meta->proj(4, 1)->isa<Arr>()) gate("tensor with array element type", meta->proj(4, 1));
                 if (auto nis_l = Lit::isa<u64>(nis)) {
                     auto Tis = TisRisSis->proj(3, 0);
                     for (u64 i = 0; i < *nis_l; ++i) {
@@ -291,7 +292,7 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::get>(app)) return lower_get(app);
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);
-    if (Axm::isa<tensor::map_reduce>(app)) return lower_map_reduce(app);
+    if (Axm::isa<tensor::map_reduce_post>(app)) return lower_map_reduce(app);
     if (Axm::isa<tensor::pad>(app)) return lower_pad(app);
     if (Axm::isa<tensor::concat>(app)) return lower_concat(app);
 
@@ -439,14 +440,14 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 }
 
 const Def* LowerToMem::lower_map_reduce(const App* app) {
-    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce_aff`,
+    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce_post`,
     // reusing the (rewritten) meta. The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
     auto& w     = new_world();
     auto c      = rewrite(app->callee())->as<App>();
     auto inputs = rewrite(app->arg()); // the (bufferized) input buffers `is`
 
     auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [comb, init]                                             = comb_init->projs<2>();
+    auto [comb, init, post]                                       = comb_init->projs<3>();
 
     // Value-world tensor inputs (e.g. literals): materialize them into buffers.
     if (auto nis_l = Lit::isa<u64>(nis)) {
@@ -467,7 +468,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     }
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
-    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `matrix.map_reduce_aff` expects.
+    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `matrix.map_reduce_post` expects.
     auto mem_ty           = w.call<mem::M>(0);
     auto inner            = comb->type()->as<Pi>()->dom()->proj(0); // [To, «nis; Tis»]
     auto [cTo, ins_ty]    = inner->projs<2>();
@@ -478,12 +479,21 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     after->app(true, cret, w.tuple({cm, after->var(0_n)}));
     memcomb->set(true, w.app(comb, w.tuple({w.tuple({cacc, cins}), after})));
 
-    auto op       = w.annex<matrix::map_reduce_aff>();
+    // Likewise wrap the pure epilogue `Fn To → To'` into `Fn [%mem.M 0, To] → [%mem.M 0, To']`.
+    auto pTp        = meta->proj(4, 1);
+    auto mempost    = w.mut_fun(w.sigma({mem_ty, cTo}), w.sigma({mem_ty, pTp}))->set("memPost");
+    auto [pm, pacc] = mempost->var(0_n)->projs<2>();
+    auto pret       = mempost->var(1);
+    auto pafter     = w.mut_con(pTp)->set("afterPost");
+    pafter->app(true, pret, w.tuple({pm, pafter->var(0_n)}));
+    mempost->set(true, w.app(post, w.tuple({pacc, pafter})));
+
+    auto op       = w.annex<matrix::map_reduce_post>();
     op            = w.app(op, nis);
     op            = w.app(op, meta);
     op            = w.app(op, shapes);
     op            = w.app(op, TisRisSis);
-    op            = w.app(op, w.tuple({memcomb, init}));
+    op            = w.app(op, w.tuple({memcomb, init, mempost}));
     op            = w.app(op, acc_out);
     op            = w.app(op, accs);
     auto [m, out] = w.app(op, w.tuple({bot_mem(), inputs}))->projs<2>();

@@ -23,11 +23,11 @@ namespace mim::plug::mem::phase {
 ///
 /// Three rules keep the rewrite type-correct in the presence of axiom-pinned ABIs:
 /// - Only continuations (Pi::isa_cn) are mem-extended; direct-style functions (e.g. the affine index
-///   mappings passed to `%matrix.map_reduce_aff`) keep their signature.
+///   mappings passed to `%matrix.map_reduce_post`) keep their signature.
 /// - A pi whose leading parameter carries the memory *grouped* (the `Fn [%mem.M 0, To, ins] → …` shape of
 ///   a mem-threaded combiner) counts as already mem-threaded.
 /// - Lams reachable from axm-app arguments are preserved untouched: axioms pin their arguments' ABI
-///   (e.g. the combiner slot of `%matrix.map_reduce_aff`), so mem-extending them would be ill-typed.
+///   (e.g. the combiner slot of `%matrix.map_reduce_post`), so mem-extending them would be ill-typed.
 class AddMem : public RWPhase {
 public:
     AddMem(World& world, flags_t annex)

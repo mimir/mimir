@@ -1,23 +1,29 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
-// The inner map_reduce performs a reduction (sums along an axis), so its value at any
-// position requires a loop. The fuse phase must NOT fuse it into the outer pure map.
+// The inner map_reduce performs a reduction (sums along an axis), so its value at any position
+// requires a loop and must NOT be inlined into the outer's combiner. The outer is a pure map, but
+// it reads the reduction through a broadcast (its access map ignores the j loop), so composing it
+// into the inner's epilogue would rerun the whole reduction once per broadcast copy — the epilogue
+// direction must not fire either. Both map_reduces remain.
 plugin tensor;
 plugin core;
 plugin opt;
 
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
-
 fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
 
-con extern f (v: «2; «3; Nat»», return: Cn «2; Nat») =
+fun add1_of (acc: Nat, y: «1; Nat»)@tt: Nat = return (%core.nat.add (y#0_1, 1));
+
+con extern f (v: «2; «3; Nat»», return: Cn «2, 2; Nat») =
     // inner[i] = Σ_j v[i, j]: one output loop (bound 2), one reduction loop (bound 3)
     let inner = %tensor.map_reduce @1 @(Nat, 1, 1) (2, (2, 3)) @(Nat, 2, (2, 3)) (sum_reduce, 0)
         (%tensor.proj_map @(2, 1) 0)
         (%tensor.proj_map @(2, 2) (0, 1), )
         v;
-    // outer[i] = inner[i] + 1    (pure map)
-    let outer = %tensor.unary @(Nat, Nat) add1 @(1, 2) inner;
+    // outer[i, j] = inner[i] + 1    (pure map, broadcast read)
+    let outer = %tensor.map_reduce @1 @(Nat, 2, 0) ((2, 2), (2, 2)) @(Nat, 1, 2) (add1_of, 0)
+        (%affine.id @2)
+        (lm (i j: %affine.index) = (i), )
+        inner;
     return outer;
 
 lam extern _compile (): %compile.Phase =

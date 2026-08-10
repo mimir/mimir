@@ -69,22 +69,24 @@ axm %matrix.map_reduce:
     ]
   → [%mem.M 0, %buffer.Buf (n, S, T)], normalize_map_reduce;
 ///
-/// ### %%matrix.map_reduce_aff
+/// ### %%matrix.map_reduce_post
 ///
-/// The buffer-world counterpart of `%%tensor.map_reduce`: the affine-indexed generalisation of
+/// The buffer-world counterpart of `%%tensor.map_reduce_post`: the affine-indexed generalisation of
 /// `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
 /// `So`/`Sr` are the (logical) output shape and full loop bounds; `acc_out`/`accs` are affine maps from the
 /// `Ro+Rr` loop vector to the output/input coordinates.
-/// The combiner is mem-threaded, like `%%matrix.map_reduce`.
-axm %matrix.map_reduce_aff: {nis: Nat}
-                          → {To: *, Ro Rr: Nat}
+/// The combiner and the `post` epilogue (run once per output cell, between the fold and the write) are
+/// mem-threaded, like `%%matrix.map_reduce`.
+axm %matrix.map_reduce_post: {nis: Nat}
+                          → {To Tp: *, Ro Rr: Nat}
                           → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
                           → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
-                          → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To]
+                          → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To,
+                             post: Fn [%mem.M 0, To] → [%mem.M 0, Tp]]
                           → [acc_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
                           → [accs: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
                           → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
-                          → [%mem.M 0, %buffer.Buf (Ro, So, To)];
+                          → [%mem.M 0, %buffer.Buf (Ro, So, Tp)];
 ///
 /// ### %%matrix.broadcast
 ///
@@ -183,6 +185,6 @@ axm %matrix.lower_matrix_medium_level: %compile.Phase;
 ///
 /// ### %%matrix.lower_aff
 ///
-/// Lowers the buffer-world ops (`%%matrix.map_reduce_aff`, `%%matrix.broadcast`, `%%matrix.pad`,
+/// Lowers the buffer-world ops (`%%matrix.map_reduce_post`, `%%matrix.broadcast`, `%%matrix.pad`,
 /// `%%matrix.concat`) to `%%affine.For` loops over `%%buffer` element operations.
 axm %matrix.lower_aff: %compile.Phase;

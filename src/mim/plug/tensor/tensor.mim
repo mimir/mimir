@@ -59,7 +59,7 @@ axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r
 ///
 axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_shape;
 ///
-/// ### %%tensor.map_reduce
+/// ### %%tensor.map_reduce_post
 ///
 /// The workhorse behind every tensor operation: a reduction fold over an affinely-indexed loop nest.
 ///
@@ -69,20 +69,38 @@ axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_sh
 ///
 /// The full loop iteration vector `(o…, r…)` has length `Ro + Rr`.
 /// * `f` folds one element of each input into the accumulator (seeded per output cell with `init`).
+/// * `post` maps the folded accumulator to the stored element.
+///   It runs once per output cell, after the reduction is folded away and before the write-back — the epilogue slot that `fuse_tensor` composes trailing pure maps into (e.g. an activation after a matrix product).
 /// * `map_out` maps the full loop vector to the `Ro` write coordinates in the result `«So»`. As the reduction is folded away before the write, it must depend only on the leading `Ro` output indices.
 /// * `maps#i` maps the full loop vector to the `Ris#i` read coordinates of input `i`. Transposes, slices and broadcasts are expressed here, by reading the inputs accordingly.
 ///
 /// `nis`, `Ro`, `Rr` and the `Ris` must be literals before entering the `tensor::Lower` phase for the lowering to succeed; the bounds `So` and `Sr` may be symbolic.
 ///
-axm %tensor.map_reduce: {nis: Nat}
-                      → {To: *, Ro Rr: Nat}
-                      → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
-                      → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
-                      → [f: Fn [To, «i: nis; Tis#i»] → To, init: To]
-                      → [map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
-                      → [maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
-                      → [is: «i: nis; «Sis#i; Tis#i»»]
-                      → «So; To», normalize_map_reduce;
+axm %tensor.map_reduce_post: {nis: Nat}
+                           → {To Tp: *, Ro Rr: Nat}
+                           → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
+                           → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                           → [f: Fn [To, «i: nis; Tis#i»] → To, init: To, post: Fn To → Tp]
+                           → [map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
+                           → [maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
+                           → [is: «i: nis; «Sis#i; Tis#i»»]
+                           → «So; Tp», normalize_map_reduce;
+
+/// The CPS identity — the neutral `post` epilogue.
+fun %tensor.id {T: *} (x: T)@tt: T = return x;
+///
+/// ### %%tensor.map_reduce
+///
+/// %%tensor.map_reduce_post without the epilogue: delegates with `post = %%tensor.id` (so `Tp = To`).
+lam %tensor.map_reduce {nis: Nat} {To: *, Ro Rr: Nat}
+                       (So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
+                       {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                       (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
+                       (map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»)
+                       (maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»)
+                       (is: «i: nis; «Sis#i; Tis#i»»): «So; To» =
+    %tensor.map_reduce_post @nis @(To, To, Ro, Rr) (So, Sr) @(Tis, Ris, Sis)
+        (f, init, %tensor.id @To) map_out maps is;
 
 /// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
@@ -556,6 +574,7 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 /// * `lower_get_set`: lowers `%%tensor.get` / `%%tensor.set` to their underlying primitives (`extract`, `insert`).
 /// * `fuse_tensor`: fuses pure producer `map_reduce`s into their consumers' access maps.
 ///   A producer is only fused where the consumer reads it injectively (its access map uses every loop index, possibly strided/shifted), so fusion never recomputes a producer element — strided reads even skip producer elements entirely.
+///   In the reverse direction, a trailing elementwise map over a reducing `map_reduce` is composed into the producer's `post` epilogue (the GEMM-epilogue pattern), provided the map is its only consumer.
 /// * `lower_to_mem`: Bufferizes the low-level tensor axioms (`get`, `set`, `map_reduce`) onto the `buffer` layer:
 /// tensor array values become `%%buffer.Buf` handles and the operations become `%%buffer.read` / `%%buffer.write` / `%%buffer.alloc` (threading `%%mem.M`).
 /// Memory is threaded by `%%mem.add_mem` (scheduled next in the pipeline); run `%%buffer.lower_ptr` afterwards to reach `%%mem.Ptr`.
