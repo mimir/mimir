@@ -1,0 +1,29 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// The GEMM-epilogue pattern with extra inputs: bias add + "activation" after a matrix product.
+// The trailing binary reads the product elementwise, so it folds into the product's `post` slot
+// with `bias` becoming an epilogue input (read once per output cell); the trailing unary then
+// composes onto that. A single map_reduce remains.
+plugin tensor;
+plugin core;
+plugin opt;
+
+lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
+lam addp (x y: Nat): Nat = %core.nat.add (x, y);
+
+con extern f (a: «2, 3; Nat», b: «3, 4; Nat», bias: «2, 4; Nat», return: Cn «2, 4; Nat») =
+    let prod   = %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) (a, b);
+    let biased = %tensor.binary addp @(2, (2, 4)) (prod, bias);
+    let out    = %tensor.unary add1 @(2, (2, 4)) biased;
+    return out;
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %compile.internal_cleanup,
+    );
+
+// CHECK: %tensor.map_reduce
+// CHECK-NOT: %tensor.map_reduce

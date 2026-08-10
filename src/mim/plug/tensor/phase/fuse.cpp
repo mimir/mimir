@@ -84,13 +84,14 @@ static bool reads_injectively(const Def* map) {
     return std::ranges::all_of(used, std::identity{});
 }
 
-/// Is `post` the (rebuilt) CPS identity `%tensor.id`, i.e. a lam that just returns its argument?
+/// Is `post` the (rebuilt) CPS identity `%tensor.id`, i.e. a lam `(x, extras) ↦ x` that returns its
+/// first argument (and hence has no epilogue inputs)?
 /// Recognized structurally, since the rewrite into this phase's world breaks pointer equality.
 static bool is_identity_post(const Def* post) {
     auto lam = post->isa_mut<Lam>();
     if (!lam || !lam->is_set()) return false;
     auto app = lam->body()->isa<App>();
-    return app && app->callee() == lam->var(1) && app->arg() == lam->var(0);
+    return app && app->callee() == lam->var(1) && app->arg() == lam->var(0)->proj(2, 0);
 }
 
 /// `inner ∘ outer`: feeds the outer op's read coordinates for one input into the inner op's access map.
@@ -128,12 +129,16 @@ static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
 const Def* Fuse::fuse_map_reduce(const App* app) {
     auto outer_callee = rewrite(app->callee())->as<App>();
 
-    auto [nis, meta, shapes, TisRisSis, comb_init, map_out, maps] = outer_callee->uncurry_args<7>();
+    auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = outer_callee->uncurry_args<7>();
 
-    auto [To, Tp, Ro, Rr]   = meta->projs<4>();
-    auto [comb, init, post] = comb_init->projs<3>();
-    auto [Tis, Ris, Sis]    = TisRisSis->projs<3>();
-    auto is                 = rewrite(app->arg());
+    auto [nis, nps]                     = nis_nps->projs<2>();
+    auto [To, Tp, Ro, Rr]               = meta->projs<4>();
+    auto [comb, init, post]             = comb_init->projs<3>();
+    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
+    auto [maps, post_maps]              = maps_all->projs<2>();
+    auto is_all                         = rewrite(app->arg());
+    auto is                             = is_all->proj(2, 0);
+    auto post_is                        = is_all->proj(2, 1);
 
     DLOG("considering map_reduce for fusion:");
     DLOG("  comb = {} : {}", comb, comb->type());
@@ -173,15 +178,24 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto inner   = Axm::isa<tensor::map_reduce_post>(input_k);
         if (!inner) continue;
 
-        auto [inner_nis, inner_meta, inner_shapes, inner_TisRisSis, inner_comb_init, inner_map_out, inner_maps,
-              inner_is]                               = inner->uncurry_args<8>();
+        auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
+              inner_is_all]                           = inner->uncurry_args<8>();
         auto [inner_To, inner_Tp, inner_Ro, inner_Rr] = inner_meta->projs<4>();
         auto [inner_So, inner_Sr]                     = inner_shapes->projs<2>();
         auto [inner_comb, inner_init, inner_post]     = inner_comb_init->projs<3>();
-        auto [inner_Tis, inner_Ris, inner_Sis]        = inner_TisRisSis->projs<3>();
+        auto inner_Tis                                = inner_in_tys->proj(6, 0);
+        auto inner_Ris                                = inner_in_tys->proj(6, 1);
+        auto inner_Sis                                = inner_in_tys->proj(6, 2);
+        auto inner_maps                               = inner_maps_all->proj(2, 0);
+        auto inner_is                                 = inner_is_all->proj(2, 0);
 
-        auto inner_nis_nat = Lit::isa<u64>(inner_nis);
+        auto inner_nis_nat = Lit::isa<u64>(inner_nis_nps->proj(2, 0));
         if (!inner_nis_nat) continue;
+
+        // Epilogue inputs on the inner would have to be re-read inside the fused combiner; only
+        // epilogue-free inners fuse (their identity post is checked below).
+        auto inner_nps_nat = Lit::isa<u64>(inner_nis_nps->proj(2, 1));
+        if (!inner_nps_nat || *inner_nps_nat != 0) continue;
 
         // We can only fuse when the inner has no reduction loops and writes every cell of its full
         // loop domain through the identity output map. In that case the inner tensor at any
@@ -333,140 +347,260 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     // After every inner combiner has produced its value, call the outer combiner.
     inner_rets.back()->app(true, comb, {w.tuple({new_acc, w.tuple(outer_inputs_vec)}), new_ret});
 
-    // Construct the fused map_reduce; the loop domain, output map, init and epilogue are the outer's.
+    // Construct the fused map_reduce; the loop domain, output map, init and epilogue (including the
+    // epilogue inputs) are the outer's.
     auto mr = w.annex<tensor::map_reduce_post>();
-    mr      = w.app(mr, new_nis_def);
+    mr      = w.app(mr, {new_nis_def, nps});
     mr      = w.app(mr, meta);
     mr      = w.app(mr, shapes);
-    mr      = w.app(mr, {new_Tis, new_Ris, new_Sis});
+    mr      = w.app(mr, {new_Tis, new_Ris, new_Sis, Tps, Rps, Sps});
     mr      = w.app(mr, {new_comb, init, post});
     mr      = w.app(mr, map_out);
-    mr      = w.app(mr, new_maps);
-    mr      = w.app(mr, new_is);
+    mr      = w.app(mr, {new_maps, post_maps});
+    mr      = w.app(mr, {new_is, post_is});
 
     return mr;
 }
 
-// Fuses a trailing pure map into the reducing `tensor.map_reduce` producing its input — the reverse
-// of `fuse_map_reduce` and the direction the producer gate deliberately rejects for `Rr > 0`: a
-// reduction must not be inlined into a consumer's combiner (it would rerun per fold step), but it
-// *can* absorb the consumer into its per-output-cell `post` epilogue (the GEMM-epilogue pattern,
-// e.g. `unary(prod2d)`).
+// Fuses a trailing elementwise map into the reducing `tensor.map_reduce` producing one of its
+// inputs — the reverse of `fuse_map_reduce` and the direction the producer gate deliberately
+// rejects for `Rr > 0`: a reduction must not be inlined into a consumer's combiner (it would rerun
+// per fold step), but it *can* absorb the consumer into its per-output-cell `post` epilogue (the
+// GEMM-epilogue pattern, e.g. `relu(add(conv, bias))`).
 //
-// Outer:    map_reduce nis=1 (To, Tp, Ro, 0) (So, So) (f_o, init_o, post_o) id (id,) inner
-// Inner:    map_reduce nis_i (To_i, Tp_i, Ro_i, Rr_i) (So_i, Sr_i) (f_i, init_i, post_i) map_out_i maps_i is_i
-// Result:   the inner op with post := post_o ∘ f_o(init_o, ·) ∘ post_i and out-element type Tp.
+// The producer input `k0` must be read elementwise over the map's whole domain (identity access
+// map, `Sis#k0 = So`, with the map's `Rr = 0`, `Sr = So` and identity `map_out`) — anything else
+// changes coordinates or drops cells and would need map inversion. All *other* inputs of the map —
+// and the map's own epilogue inputs — become epilogue inputs of the producer, read once per output
+// cell at their (arbitrary) access maps: those maps take the map's loop vector, which under the
+// identity-read gate is exactly the producer's output-cell coordinate system.
 //
-// v1 restrictions: the outer must be a single-input map over its full domain (`Rr = 0`, `Sr = So`,
-// identity `map_out`) reading that input elementwise (identity access map covering the whole input,
-// `Sis#0 = So`) — anything else changes coordinates or drops cells and would need map inversion.
-// The inner must be consumed by this outer alone (checked on the old world): otherwise it stays
-// materialized for the other consumers and additionally runs fused — duplicating the whole
-// reduction loop nest.
-const Def* Fuse::fuse_epilogue(const App* app) {
-    auto outer_callee = rewrite(app->callee())->as<App>();
+// Result: the producer with
+//   post    := (x, extras) ↦ post_o(f_o(init_o, extras[k0 ↦ post_i(x, extras_i)]), extras_o)
+//   post_is := inner post_is ++ outer is \ k0 ++ outer post_is    (maps concatenated likewise)
+//
+// The producer must be consumed by this map alone (checked via its old-world consumer count):
+// otherwise it stays materialized for the other consumers and additionally runs fused —
+// duplicating the whole reduction loop nest.
+//
+// `callee`/`arg` are new-world (already rewritten): the caller iterates this on freshly fused apps.
+const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
+    auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
 
-    auto [nis, meta, shapes, TisRisSis, comb_init, map_out, maps] = outer_callee->uncurry_args<7>();
-
-    auto [To, Tp, Ro, Rr]   = meta->projs<4>();
-    auto [So, Sr]           = shapes->projs<2>();
-    auto [comb, init, post] = comb_init->projs<3>();
-    auto [Tis, Ris, Sis]    = TisRisSis->projs<3>();
+    auto [nis, nps]                     = nis_nps->projs<2>();
+    auto [To, Tp, Ro, Rr]               = meta->projs<4>();
+    auto [So, Sr]                       = shapes->projs<2>();
+    auto [comb, init, post]             = comb_init->projs<3>();
+    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
+    auto [maps, post_maps]              = maps_all->projs<2>();
 
     auto& w = new_world();
 
     auto nis_lit = Lit::isa<u64>(nis);
-    if (!nis_lit || *nis_lit != 1) return nullptr;
-    auto rr_lit = Lit::isa<u64>(Rr);
-    if (!rr_lit || *rr_lit != 0) return nullptr;
+    auto nps_lit = Lit::isa<u64>(nps);
+    auto rr_lit  = Lit::isa<u64>(Rr);
+    if (!nis_lit || !nps_lit || !rr_lit || *rr_lit != 0) return nullptr;
+    auto nis_nat = *nis_lit;
+    auto nps_nat = *nps_lit;
+    if (nis_nat == 0) return nullptr;
     if (Sr != So) return nullptr;
-    if (Sis->proj(1, 0) != So) return nullptr; // the map must cover its input exactly
 
     auto id_out = map_out->isa_mut<Lam>();
     if (!id_out || !id_out->is_set() || id_out->body() != id_out->var()) return nullptr;
-    auto id_in = maps->proj(1, 0)->isa_mut<Lam>();
-    if (!id_in || !id_in->is_set() || id_in->body() != id_in->var()) return nullptr;
 
-    auto inner = Axm::isa<tensor::map_reduce_post>(rewrite(app->arg())->proj(1, 0));
-    if (!inner) return nullptr;
+    auto is = arg->proj(2, 0);
+    auto ps = arg->proj(2, 1);
 
-    // Single-consumer guard on the old world: the inner op — and its wrapping argument tuple, if
-    // any — must be used by this outer app alone.
-    auto old_input = app->arg()->proj(1, 0);
-    if (auto it = num_users_.find(old_input); it == num_users_.end() || it->second != 1) return nullptr;
-    if (old_input != app->arg()) {
-        if (auto it = num_users_.find(app->arg()); it == num_users_.end() || it->second != 1) return nullptr;
+    // Is `d` (a new-world map_reduce) consumed by this map alone? Resolved via the old-world app it
+    // replaces; `new2old_` covers every map_reduce the phase has rewritten, i.e. all operands here.
+    auto sole_consumer = [&](const Def* d) {
+        auto old_it = new2old_.find(d);
+        if (old_it == new2old_.end()) return false;
+        auto cnt = mr_consumers_.find(old_it->second);
+        return cnt != mr_consumers_.end() && cnt->second == 1;
+    };
+
+    // Find the producer: the first input that is a map_reduce read elementwise over the whole
+    // domain — identity access map, input shape == So — and consumed by this map alone.
+    u64 k0               = 0;
+    const Def* inner_def = nullptr;
+    for (u64 k = 0; k < nis_nat && !inner_def; ++k) {
+        auto id_in = maps->proj(nis_nat, k)->isa_mut<Lam>();
+        if (!id_in || !id_in->is_set() || id_in->body() != id_in->var()) continue;
+        if (Sis->proj(nis_nat, k) != So) continue;
+        auto cand = is->proj(nis_nat, k);
+        if (!Axm::isa<tensor::map_reduce_post>(cand)) continue;
+        if (!sole_consumer(cand)) continue;
+
+        k0        = k;
+        inner_def = cand;
+    }
+    if (!inner_def) return nullptr;
+    auto inner = Axm::isa<tensor::map_reduce_post>(inner_def);
+
+    auto [i_nis_nps, i_meta, i_shapes, i_in_tys, i_comb_init, i_map_out, i_maps_all, i_is_all]
+        = inner->uncurry_args<8>();
+    auto [i_nis, i_nps]                             = i_nis_nps->projs<2>();
+    auto [i_To, i_Tp, i_Ro, i_Rr]                   = i_meta->projs<4>();
+    auto [i_Tis, i_Ris, i_Sis, i_Tps, i_Rps, i_Sps] = i_in_tys->projs<6>();
+    auto [i_comb, i_init, i_post]                   = i_comb_init->projs<3>();
+    auto [i_maps, i_post_maps]                      = i_maps_all->projs<2>();
+    auto i_is                                       = i_is_all->proj(2, 0);
+    auto i_ps                                       = i_is_all->proj(2, 1);
+
+    auto i_nps_lit = Lit::isa<u64>(i_nps);
+    if (!i_nps_lit) return nullptr;
+    auto i_nps_nat = *i_nps_lit;
+
+    DLOG("fusing trailing map {} {} into the epilogue of {}", callee, arg, inner_def);
+
+    // Concatenated epilogue inputs: the inner's own, then the map's other combiner inputs, then the
+    // map's epilogue inputs. The maps' access maps carry over verbatim — their domain (the map's
+    // loop vector) is the producer's output-cell coordinate system.
+    auto new_nps = i_nps_nat + (nis_nat - 1) + nps_nat;
+    DefVec nTps, nRps, nSps, nPmaps, nPis;
+    nTps.reserve(new_nps), nRps.reserve(new_nps), nSps.reserve(new_nps);
+    nPmaps.reserve(new_nps), nPis.reserve(new_nps);
+    for (u64 j = 0; j < i_nps_nat; ++j) {
+        nTps.emplace_back(i_Tps->proj(i_nps_nat, j));
+        nRps.emplace_back(i_Rps->proj(i_nps_nat, j));
+        nSps.emplace_back(i_Sps->proj(i_nps_nat, j));
+        nPmaps.emplace_back(i_post_maps->proj(i_nps_nat, j));
+        nPis.emplace_back(i_ps->proj(i_nps_nat, j));
+    }
+    for (u64 i = 0; i < nis_nat; ++i) {
+        if (i == k0) continue;
+        nTps.emplace_back(Tis->proj(nis_nat, i));
+        nRps.emplace_back(Ris->proj(nis_nat, i));
+        nSps.emplace_back(Sis->proj(nis_nat, i));
+        nPmaps.emplace_back(maps->proj(nis_nat, i));
+        nPis.emplace_back(is->proj(nis_nat, i));
+    }
+    for (u64 j = 0; j < nps_nat; ++j) {
+        nTps.emplace_back(Tps->proj(nps_nat, j));
+        nRps.emplace_back(Rps->proj(nps_nat, j));
+        nSps.emplace_back(Sps->proj(nps_nat, j));
+        nPmaps.emplace_back(post_maps->proj(nps_nat, j));
+        nPis.emplace_back(ps->proj(nps_nat, j));
     }
 
-    auto [inner_nis, inner_meta, inner_shapes, inner_TisRisSis, inner_comb_init, inner_map_out, inner_maps, inner_is]
-        = inner->uncurry_args<8>();
-    auto [inner_To, inner_Tp, inner_Ro, inner_Rr] = inner_meta->projs<4>();
-    auto [inner_comb, inner_init, inner_post]     = inner_comb_init->projs<3>();
-
-    DLOG("fusing trailing map {} into the epilogue of {}", app, inner);
-
-    // The composed epilogue `post_o ∘ f_o(init_o, ·) ∘ post_i`, as a CPS chain. Identity hops are
+    // The composed epilogue as a CPS chain: inner post → map combiner → map post. Identity hops are
     // called through anyway — their always-true filters inline them.
-    auto fused_post = w.mut_con({inner_To, w.cn(Tp)})->set("fused_post");
-    auto after_ip   = w.mut_con(inner_Tp)->set("afterInnerPost");
+    auto fused_post = w.mut_con({w.sigma({i_To, w.sigma(nTps)}), w.cn(Tp)})->set("fused_post");
+    auto after_ip   = w.mut_con(i_Tp)->set("afterInnerPost");
     auto after_comb = w.mut_con(To)->set("afterComb");
-    fused_post->app(true, inner_post, {fused_post->var(0), after_ip});
-    after_ip->app(true, comb, {w.tuple({init, w.tuple({after_ip->var(0)})}), after_comb});
-    after_comb->app(true, post, {after_comb->var(0), fused_post->var(1)});
+    auto x          = fused_post->var(0)->proj(2, 0);
+    auto extras     = fused_post->var(0)->proj(2, 1);
 
-    // The inner op, keeping its loop nest untouched; only the epilogue and the out-element type change.
+    DefVec i_extras(i_nps_nat);
+    for (u64 j = 0; j < i_nps_nat; ++j)
+        i_extras[j] = extras->proj(new_nps, j);
+    fused_post->app(true, i_post, {w.tuple({x, w.tuple(i_extras)}), after_ip});
+
+    DefVec comb_inputs(nis_nat);
+    {
+        u64 r = 0;
+        for (u64 i = 0; i < nis_nat; ++i)
+            comb_inputs[i] = (i == k0) ? after_ip->var(0) : extras->proj(new_nps, i_nps_nat + r++);
+    }
+    after_ip->app(true, comb, {w.tuple({init, w.tuple(comb_inputs)}), after_comb});
+
+    DefVec o_extras(nps_nat);
+    for (u64 j = 0; j < nps_nat; ++j)
+        o_extras[j] = extras->proj(new_nps, i_nps_nat + (nis_nat - 1) + j);
+    after_comb->app(true, post, {w.tuple({after_comb->var(0), w.tuple(o_extras)}), fused_post->var(1)});
+
+    // The producer, keeping its loop nest untouched; only the epilogue (inputs) and the out-element
+    // type change.
     auto mr = w.annex<tensor::map_reduce_post>();
-    mr      = w.app(mr, inner_nis);
-    mr      = w.app(mr, {inner_To, Tp, inner_Ro, inner_Rr});
-    mr      = w.app(mr, inner_shapes);
-    mr      = w.app(mr, inner_TisRisSis);
-    mr      = w.app(mr, {inner_comb, inner_init, fused_post});
-    mr      = w.app(mr, inner_map_out);
-    mr      = w.app(mr, inner_maps);
-    mr      = w.app(mr, inner_is);
+    mr      = w.app(mr, {i_nis, w.lit_nat(new_nps)});
+    mr      = w.app(mr, {i_To, Tp, i_Ro, i_Rr});
+    mr      = w.app(mr, i_shapes);
+    mr      = w.app(mr, {i_Tis, i_Ris, i_Sis, w.tuple(nTps), w.tuple(nRps), w.tuple(nSps)});
+    mr      = w.app(mr, {i_comb, i_init, fused_post});
+    mr      = w.app(mr, i_map_out);
+    mr      = w.app(mr, {i_maps, w.tuple(nPmaps)});
+    mr      = w.app(mr, {i_is, w.tuple(nPis)});
 
     return mr;
 }
 
-/// Does `def`'s user count matter for the epilogue direction's single-consumer guard?
-/// `fuse_epilogue` only ever queries `map_reduce_post` apps (the fusion candidates) and defs
-/// carrying one as an immediate operand (their wrapping argument tuples) — everything else
-/// need not be counted.
-static bool counts_users(const Def* def) {
-    if (Axm::isa<tensor::map_reduce_post>(def)) return true;
-    for (auto op : def->ops())
-        if (op && Axm::isa<tensor::map_reduce_post>(op)) return true;
-    return false;
+namespace {
+
+bool is_mr(const Def* d) { return static_cast<bool>(Axm::isa<tensor::map_reduce_post>(d)); }
+
+/// Does `d` — descending only through tuple/pack wrappers — contain a `map_reduce_post` app?
+bool contains_mr(const Def* d, DefMap<bool>& memo) {
+    if (is_mr(d)) return true;
+    if (!d->isa<Tuple>() && !d->isa<Pack>()) return false;
+    if (auto it = memo.find(d); it != memo.end()) return it->second;
+    bool res = false;
+    for (auto op : d->ops())
+        if (op && contains_mr(op, memo)) {
+            res = true;
+            break;
+        }
+    return memo[d] = res;
 }
 
+} // namespace
+
 void Fuse::start() {
-    // The epilogue direction needs to know whether a map_reduce is consumed by a single user; the
-    // old world does not track uses, so count users in one pass up front.
+    // The epilogue direction needs to know whether a map_reduce is consumed by exactly one other
+    // node; the old world does not track uses, so count consumers in one pass up front. Tuples and
+    // packs are transparent argument wrappers: consumption is attributed to the enclosing non-tuple
+    // node, so a shared argument tuple correctly charges each of its users, and using the same op
+    // twice in one argument list counts twice.
+    DefMap<bool> memo;
+    auto consume = [&](this auto&& consume, const Def* d) -> void {
+        if (is_mr(d)) {
+            ++mr_consumers_[d];
+            return;
+        }
+        if ((d->isa<Tuple>() || d->isa<Pack>()) && contains_mr(d, memo))
+            for (auto op : d->ops())
+                if (op) consume(op);
+    };
+
     unique_queue<DefSet> wl;
     for (auto root : old_world().roots())
         wl.push(root);
     while (!wl.empty()) {
         auto def = wl.pop();
-        for (auto op : def->ops()) {
-            if (!op) continue;
-            if (counts_users(op)) ++num_users_[op];
-            wl.push(op);
-        }
+        if (!def->isa<Tuple>() && !def->isa<Pack>())
+            for (auto op : def->ops())
+                if (op) consume(op);
+        for (auto op : def->ops())
+            if (op) wl.push(op);
         if (def->type()) wl.push(def->type());
     }
     RWPhase::start();
 }
 
 const Def* Fuse::rewrite_imm_App(const App* app) {
-    if (auto mr = Axm::isa<tensor::map_reduce_post>(app)) {
-        if (auto res = fuse_map_reduce(mr)) {
+    if (Axm::isa<tensor::map_reduce_post>(app)) {
+        const App* cur = nullptr;
+        if (auto res = fuse_map_reduce(app)) {
             DLOG("Fused map_reduce at {} into a new map_reduce {}", app, res);
-            return res;
+            cur = res->as<App>();
         }
-        if (auto res = fuse_epilogue(mr)) {
+        // The epilogue direction, to a fixpoint: each round may sink the current map — first the
+        // plainly rewritten one, then the producer-fused result, then each epilogue-fused result —
+        // into the producer of one of its inputs. Terminates quickly: a fused reduction fails the
+        // Rr = 0 outer gate on the next round.
+        auto callee = cur ? cur->callee()->as<App>() : rewrite(app->callee())->as<App>();
+        auto arg    = cur ? cur->arg() : rewrite(app->arg());
+        while (auto res = fuse_epilogue(callee, arg)) {
             DLOG("Fused the trailing map at {} into its producer's epilogue: {}", app, res);
-            return res;
+            cur    = res->as<App>();
+            callee = cur->callee()->as<App>();
+            arg    = cur->arg();
         }
+        auto result = cur ? cur : RWPhase::rewrite_imm_App(app);
+        // Remember which old app this (possibly fused) map_reduce replaces, so later epilogue
+        // rounds of its consumers can look up its consumer count.
+        if (is_mr(result)) new2old_[result] = app;
+        return result;
     }
     return RWPhase::rewrite_imm_App(app);
 }

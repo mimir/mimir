@@ -1,12 +1,10 @@
 #include "mim/plug/tensor/phase/lower_to_mem.h"
 
-#include <mim/util/util.h>
-
-#include <mim/util/util.h>
-
 #include <mim/axm.h>
 #include <mim/def.h>
 #include <mim/lam.h>
+
+#include <mim/util/util.h>
 
 #include <mim/plug/buffer/buffer.h>
 #include <mim/plug/core/core.h>
@@ -80,17 +78,24 @@ void LowerToMem::collect_tensor_types() {
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->arg()->proj(0)->type());
             } else if (Axm::isa<tensor::map_reduce_post>(app)) {
-                // result and each of the `nis` inputs are tensors.
+                // result and each of the `nis` inputs / `nps` epilogue inputs are tensors.
                 add_tensor_ty(app->type());
-                auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs]
+                auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs]
                     = app->callee()->as<App>()->uncurry_args<7>();
                 if (meta->proj(4, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(4, 0));
                 if (meta->proj(4, 1)->isa<Arr>()) gate("tensor with array element type", meta->proj(4, 1));
-                if (auto nis_l = Lit::isa<u64>(nis)) {
-                    auto Tis = TisRisSis->proj(3, 0);
+                if (auto nis_l = Lit::isa<u64>(nis_nps->proj(2, 0))) {
+                    auto Tis = in_tys->proj(6, 0);
                     for (u64 i = 0; i < *nis_l; ++i) {
                         if (Tis->proj(*nis_l, i)->isa<Arr>()) gate("tensor with array element type", Tis);
-                        add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
+                        add_tensor_ty(app->arg()->proj(2, 0)->proj(*nis_l, i)->type());
+                    }
+                }
+                if (auto nps_l = Lit::isa<u64>(nis_nps->proj(2, 1))) {
+                    auto Tps = in_tys->proj(6, 3);
+                    for (u64 j = 0; j < *nps_l; ++j) {
+                        if (Tps->proj(*nps_l, j)->isa<Arr>()) gate("tensor with array element type", Tps);
+                        add_tensor_ty(app->arg()->proj(2, 1)->proj(*nps_l, j)->type());
                     }
                 }
             } else if (Axm::isa<tensor::broadcast>(app)) {
@@ -496,30 +501,36 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 const Def* LowerToMem::lower_map_reduce(const App* app) {
     // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce_post`,
     // reusing the (rewritten) meta. The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
-    auto& w     = new_world();
-    auto c      = rewrite(app->callee())->as<App>();
-    auto inputs = rewrite(app->arg()); // the (bufferized) input buffers `is`
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg()); // (is, post_is): the (bufferized) input buffers
+    auto is = args->proj(2, 0), post_is = args->proj(2, 1);
 
-    auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [comb, init, post]                                       = comb_init->projs<3>();
+    auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs] = c->uncurry_args<7>();
+    auto [nis, nps]                                                = nis_nps->projs<2>();
+    auto [comb, init, post]                                        = comb_init->projs<3>();
 
-    // Value-world tensor inputs (e.g. literals): materialize them into buffers.
-    if (auto nis_l = Lit::isa<u64>(nis)) {
-        DefVec ins(*nis_l);
-        for (u64 i = 0; i < *nis_l; ++i) {
-            ins[i] = inputs->proj(*nis_l, i);
+    // Value-world tensor inputs (e.g. literals): materialize them into buffers. Re-tuple the lists:
+    // the generic rewrite rebuilds the argument tuple with its stale value-array type even when its
+    // elements were converted to buffers, which would not be assignable to the op's
+    // `«nis; %buffer.Buf …»` domain.
+    auto bufferize_list = [&](const Def* list, const Def* old_list, const Def* n) -> const Def* {
+        auto n_l = Lit::isa<u64>(n);
+        if (!n_l) return list;
+        DefVec ins(*n_l);
+        for (u64 i = 0; i < *n_l; ++i) {
+            ins[i] = list->proj(*n_l, i);
             if (!Axm::isa<buffer::Buf>(ins[i]->type())) {
-                auto old_in = app->arg()->proj(*nis_l, i);
+                auto old_in = old_list->proj(*n_l, i);
                 ins[i]      = materialize(old_in->type(), old_in);
-                if (!Axm::isa<buffer::Buf>(ins[i]->type()))
-                    return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+                if (!Axm::isa<buffer::Buf>(ins[i]->type())) return nullptr; // not a recorded tensor type
             }
         }
-        // Re-tuple the inputs: the generic rewrite rebuilds the argument tuple with its stale value-array
-        // type even when its elements were converted to buffers, which would not be assignable to the op's
-        // `«nis; %buffer.Buf …»` domain.
-        inputs = w.tuple(ins);
-    }
+        return w.tuple(ins);
+    };
+    is      = bufferize_list(is, app->arg()->proj(2, 0), nis);
+    post_is = bufferize_list(post_is, app->arg()->proj(2, 1), nps);
+    if (!is || !post_is) return RWPhase::rewrite_imm_App(app); // leave it alone
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
     // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `matrix.map_reduce_post` expects.
@@ -533,24 +544,27 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     after->app(true, cret, w.tuple({cm, after->var(0_n)}));
     memcomb->set(true, w.app(comb, w.tuple({w.tuple({cacc, cins}), after})));
 
-    // Likewise wrap the pure epilogue `Fn To → To'` into `Fn [%mem.M 0, To] → [%mem.M 0, To']`.
-    auto pTp        = meta->proj(4, 1);
-    auto mempost    = w.mut_fun(w.sigma({mem_ty, cTo}), w.sigma({mem_ty, pTp}))->set("memPost");
-    auto [pm, pacc] = mempost->var(0_n)->projs<2>();
-    auto pret       = mempost->var(1);
-    auto pafter     = w.mut_con(pTp)->set("afterPost");
+    // Likewise wrap the pure epilogue `Fn [To, «nps; Tps»] → Tp` into
+    // `Fn [%mem.M 0, To, «nps; Tps»] → [%mem.M 0, Tp]`.
+    auto pTp               = meta->proj(4, 1);
+    auto pin               = post->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nps; Tps»]
+    auto [pTo, pexts_ty]   = pin->projs<2>();
+    auto mempost           = w.mut_fun(w.sigma({mem_ty, pTo, pexts_ty}), w.sigma({mem_ty, pTp}))->set("memPost");
+    auto [pm, pacc, pexts] = mempost->var(0_n)->projs<3>();
+    auto pret              = mempost->var(1);
+    auto pafter            = w.mut_con(pTp)->set("afterPost");
     pafter->app(true, pret, w.tuple({pm, pafter->var(0_n)}));
-    mempost->set(true, w.app(post, w.tuple({pacc, pafter})));
+    mempost->set(true, w.app(post, w.tuple({w.tuple({pacc, pexts}), pafter})));
 
     auto op       = w.annex<matrix::map_reduce_post>();
-    op            = w.app(op, nis);
+    op            = w.app(op, nis_nps);
     op            = w.app(op, meta);
     op            = w.app(op, shapes);
-    op            = w.app(op, TisRisSis);
+    op            = w.app(op, in_tys);
     op            = w.app(op, w.tuple({memcomb, init, mempost}));
     op            = w.app(op, acc_out);
     op            = w.app(op, accs);
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), inputs}))->projs<2>();
+    auto [m, out] = w.app(op, w.tuple({fresh_mem(), is, post_is}))->projs<2>();
     return out;
 }
 

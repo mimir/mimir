@@ -77,15 +77,20 @@ axm %matrix.map_reduce:
 /// `Ro+Rr` loop vector to the output/input coordinates.
 /// The combiner and the `post` epilogue (run once per output cell, between the fold and the write) are
 /// mem-threaded, like `%%matrix.map_reduce`.
-axm %matrix.map_reduce_post: {nis: Nat}
+/// The `nps` epilogue inputs `post_is` are read once per output cell, at the `post_accs`-mapped
+/// *output-cell* coordinates (the write coordinates produced by `acc_out`), and fed to `post`.
+axm %matrix.map_reduce_post: {nis nps: Nat}
                           → {To Tp: *, Ro Rr: Nat}
                           → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
-                          → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                          → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»,
+                             Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                           → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To,
-                             post: Fn [%mem.M 0, To] → [%mem.M 0, Tp]]
+                             post: Fn [%mem.M 0, To, «j: nps; Tps#j»] → [%mem.M 0, Tp]]
                           → [acc_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
-                          → [accs: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
-                          → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
+                          → [accs: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»,
+                             post_accs: «j: nps; ([«Ro; %affine.index»] → «Rps#j; %affine.index»)»]
+                          → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»,
+                             post_is: «j: nps; %buffer.Buf (Rps#j, Sps#j, Tps#j)»]
                           → [%mem.M 0, %buffer.Buf (Ro, So, Tp)];
 ///
 /// ### %%matrix.broadcast

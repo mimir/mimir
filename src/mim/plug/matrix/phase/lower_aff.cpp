@@ -129,23 +129,27 @@ const Def* LowerAff::lower_map_reduce_post(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [To, Tp, Ro, Rr]                                         = meta->projs<4>();
-    auto [So, Sr]                                                 = shapes->projs<2>();
-    auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
-    auto [comb, init, post]                                       = comb_init->projs<3>();
+    auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
+    auto [nis, nps]                                                    = nis_nps->projs<2>();
+    auto [To, Tp, Ro, Rr]                                              = meta->projs<4>();
+    auto [So, Sr]                                                      = shapes->projs<2>();
+    auto [Tis, Ris, Sis, Tps, Rps, Sps]                                = in_tys->projs<6>();
+    auto [comb, init, post]                                            = comb_init->projs<3>();
+    auto [accs, post_accs]                                             = accs_all->projs<2>();
 
-    // The final argument is `[mem, is]`; the result is `[mem, Buf]`.
-    auto [op_mem, op_is] = rewrite(app->arg())->projs<2>();
-    auto result_ty       = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (Ro, So, To)]
+    // The final argument is `[mem, is, post_is]`; the result is `[mem, Buf]`.
+    auto [op_mem, op_is, op_post_is] = rewrite(app->arg())->projs<3>();
+    auto result_ty                   = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (Ro, So, Tp)]
 
     auto nis_l = Lit::isa<u64>(nis);
+    auto nps_l = Lit::isa<u64>(nps);
     auto ro_l = Lit::isa<u64>(Ro), rr_l = Lit::isa<u64>(Rr);
-    if (!nis_l || !ro_l || !rr_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/Ro/Rr)", app);
+    if (!nis_l || !nps_l || !ro_l || !rr_l) {
+        WLOG("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rr)", app);
         return RWPhase::rewrite_imm_App(app);
     }
     auto nis_nat = *nis_l;
+    auto nps_nat = *nps_l;
     auto ro = *ro_l, rr = *rr_l;
     auto nloops = ro + rr;
     auto n      = w.lit_nat(nloops);
@@ -163,11 +167,11 @@ const Def* LowerAff::lower_map_reduce_post(const App* app) {
 
     auto mem_ty = w.call<mem::M>(0);
 
-    // `[mem, is] → [mem, Buf]`, spliced via %cps.cps2ds and applied to the op's (mem, is).
-    auto fun                   = w.mut_fun(w.sigma({mem_ty, op_is->type()}), result_ty)->set("mapRedAff");
-    auto call                  = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_is}));
-    auto [fun_mem, new_inputs] = fun->var(0_n)->projs<2>();
-    auto cont                  = fun->var(1);
+    // `[mem, is, post_is] → [mem, Buf]`, spliced via %cps.cps2ds and applied to the op's (mem, is, post_is).
+    auto fun  = w.mut_fun(w.sigma({mem_ty, op_is->type(), op_post_is->type()}), result_ty)->set("mapRedAff");
+    auto call = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_is, op_post_is}));
+    auto [fun_mem, new_inputs, new_post_is] = fun->var(0_n)->projs<3>();
+    auto cont                               = fun->var(1);
 
     // Allocate the output buffer; the output loops carry `{mem, buf}`.
     auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
@@ -190,19 +194,35 @@ const Def* LowerAff::lower_map_reduce_post(const App* app) {
     }
     auto [wb_mem, wb_buf] = acc->projs<2>();
 
-    // Write-back continuation `Cn[mem, To]`: run the mem-threaded `post` epilogue on the folded element,
-    // then store its result at the affine write coordinates.
+    // Write-back continuation `Cn[mem, To]`: read the epilogue inputs at their post_accs-mapped
+    // output-cell (write) coordinates, run the mem-threaded `post` epilogue on the folded element and
+    // those reads, then store its result at the affine write coordinates.
     auto write_back              = mem::mut_con(To)->set("writeBack");
     auto [wb_in_mem, elem_final] = write_back->vars<2>();
     DefVec wb_iters              = out_iters;
     for (u64 j = 0; j < rr; ++j)
         wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
-    auto after_post             = mem::mut_con(Tp)->set("afterPost");
-    auto [post_mem, elem_post]  = after_post->vars<2>();
-    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), post_mem);
-    auto stored = buffer::op_write(obr, obs, obT, wc_mem, wb_buf, fold_index(So, write_coords), elem_post);
+    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wb_in_mem);
+
+    auto pcur = wc_mem;
+    DefVec post_elems(nps_nat);
+    for (u64 j = 0; j < nps_nat; ++j) {
+        auto sps_j = Sps->proj(nps_nat, j);
+        auto [pc_mem, pcoords]
+            = affine_map(post_accs->proj(nps_nat, j), Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords, pcur);
+        pcur                  = pc_mem;
+        auto p_buf            = new_post_is->proj(nps_nat, j);
+        auto [pr, ps_, pT]    = Axm::isa<buffer::Buf>(p_buf->type())->args<3>();
+        auto [prd_mem, p_val] = buffer::op_read(pr, ps_, pT, pcur, p_buf, fold_index(sps_j, pcoords))->projs<2>();
+        pcur                  = prd_mem;
+        post_elems[j]         = p_val;
+    }
+
+    auto after_post            = mem::mut_con(Tp)->set("afterPost");
+    auto [post_mem, elem_post] = after_post->vars<2>();
+    auto stored = buffer::op_write(obr, obs, obT, post_mem, wb_buf, fold_index(So, write_coords), elem_post);
     after_post->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
-    write_back->app(true, post, w.tuple({w.tuple({wb_in_mem, elem_final}), after_post}));
+    write_back->app(true, post, w.tuple({w.tuple({pcur, elem_final, w.tuple(post_elems)}), after_post}));
 
     // Reduction loops; accumulator `{mem, elem}`.
     acc  = w.tuple({wb_mem, init});
