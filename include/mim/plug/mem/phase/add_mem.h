@@ -8,7 +8,8 @@ namespace mim::plug::mem::phase {
 /// mem-extends continuations and rewires every memory operand to the *current* memory at that program point.
 /// It's primarily to be used as preparation for other phases that rely on all continuations having a mem.
 /// It also splices the `⊥ : %mem.M 0` memory placeholders of freshly emitted memory operations into the
-/// global memory chain (see mim::plug::tensor::phase::LowerToMem, which runs this phase embedded).
+/// global memory chain and resolves `%mem.fresh (a, k)` requests by jumping to `k` with the current memory
+/// (see mim::plug::tensor::phase::LowerToMem, which emits both and schedules this phase right behind itself).
 ///
 /// The rewrite is a plain RWPhase.
 /// Memory is a linear resource, so at any program point exactly one memory token is live - the *current* memory.
