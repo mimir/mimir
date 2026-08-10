@@ -22,8 +22,8 @@ plugin core;
 plugin tensor;
 plugin mem;
 
-lam i32_add (a: I32, b: I32): I32 = %core.wrap.add 0 (a, b);
-lam i32_sub (a: I32, b: I32): I32 = %core.wrap.sub 0 (a, b);
+lam i32_add (a b: I32): I32 = %core.wrap.add 0 (a, b);
+lam i32_sub (a b: I32): I32 = %core.wrap.sub 0 (a, b);
 
 fun extern kernel (x y: «3, 4; I32», i j: [Idx 6, Idx 4]): I32 =
     let a  = %tensor.binary @(I32, I32, I32) i32_add @(2, (3, 4)) (x, y);

@@ -101,9 +101,9 @@ private:
     const Def* fresh_mem();
 
     /// Chains the LowerToMem::pending_ continuations in front of @p new_lam's freshly rewritten body:
-    /// `new_lam ↦ k₁ (⊥: %mem.M 0)`, `k₁ ↦ k₂ (⊥: %mem.M 0)`, …, and the last one carries the body.
-    /// AddMem rewrites each jump's `⊥` argument to the scheduler-placed current memory, and the `tt` filter
-    /// beta-reduces the continuations away again as soon as that substitution happens.
+    /// `new_lam ↦ %mem.fresh (0, k₁)`, `k₁ ↦ %mem.fresh (0, k₂)`, …, and the last one carries the body.
+    /// AddMem resolves each request by jumping to the continuation with the scheduler-placed current memory,
+    /// and the `tt` filter beta-reduces the continuations away again as soon as that happens.
     void wrap_fresh_mem(Lam* new_lam);
 
     /// The fresh-memory continuations minted while the current lam's body is being rewritten.

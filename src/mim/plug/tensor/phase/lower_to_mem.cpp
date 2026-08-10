@@ -1,5 +1,7 @@
 #include "mim/plug/tensor/phase/lower_to_mem.h"
 
+#include <mim/util/util.h>
+
 #include "mim/axm.h"
 #include "mim/def.h"
 #include "mim/lam.h"
@@ -231,11 +233,10 @@ void LowerToMem::wrap_fresh_mem(Lam* new_lam) {
     auto filter = new_lam->filter();
     auto body   = new_lam->body();
     new_lam->unset();
-    // The last-minted continuation carries the original body; the lam ends up jumping to the first one.
+    // The last-minted continuation carries the original body; the lam ends up requesting the first memory.
     for (auto k : pending_ | std::views::reverse) {
-        auto jump = w.app(k, bot_mem()); // k is still unset here, so the jump cannot beta-reduce yet
-        k->set(true, body);              // filter `tt`: k vanishes as soon as AddMem substitutes the real memory
-        body = jump;
+        k->set(true, body); // filter `tt`: k vanishes as soon as AddMem substitutes the real memory
+        body = w.app(w.annex<mem::fresh>(), w.tuple({w.lit_nat_0(), k}));
     }
     new_lam->set(filter, body);
 }
@@ -288,12 +289,10 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
     // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
     // their own requests (and their own per-lam op memo).
-    auto pending = std::exchange(pending_, {});
-    auto memo    = std::exchange(fresh_memo_, {});
+    auto p       = Restore(pending_, {});
+    auto m       = Restore(fresh_memo_, {});
     auto new_def = conv_mut_Lam(lam);
     if (!pending_.empty()) wrap_fresh_mem(new_def->as_mut<Lam>());
-    pending_    = std::move(pending);
-    fresh_memo_ = std::move(memo);
     return new_def;
 }
 

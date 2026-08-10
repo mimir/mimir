@@ -43,6 +43,15 @@ axm %mem.store: {T: *, a: Nat} as Ta → [%mem.M a, %mem.Ptr Ta, T] → %mem.M a
 /// Creates a new dummy `%%mem.M a`-typed value in order to acknowledge the fact that some unspecified side-effect happened.
 axm %mem.remem: {a: Nat} → %mem.M a → %mem.M a, normalize_remem;
 ///
+/// ### %%mem.fresh
+///
+/// Passes a *fresh* `%%mem.M a` for address space `a` to its return continuation: `ret mem = %%mem.fresh $ 0`.
+/// Conversion-only phases (e.g. `%%tensor.lower_to_mem`) emit memory operations before memory has been threaded.
+/// Each call site's return continuation is a distinct mutable, so the received memories are distinct by construction -
+/// hash-consing cannot collapse two otherwise identical memory operations into one.
+/// `%%mem.add_mem` resolves each call by jumping to the continuation with the memory that is current at that point.
+axm %mem.fresh: Fn [a: Nat] → %mem.M a;
+///
 /// ### %%mem.alloc
 ///
 /// Allocates memory of type `T` in address space `a`.
