@@ -1,16 +1,88 @@
 #include "mim/plug/tensor/phase/fuse.h"
 
+#include <algorithm>
+#include <optional>
+
 #include <mim/def.h>
 #include <mim/lam.h>
+#include <mim/tuple.h>
 
 #include <mim/util/types.h>
 
+#include <mim/plug/affine/affine.h>
 #include <mim/plug/core/core.h>
 #include <mim/plug/cps/cps.h>
 
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
+
+/// If `e` reads coordinate `var#i` injectively, returns `i`:
+/// a plain extract, possibly strided (`%affine.semiop.mul` by a non-zero literal) and/or shifted
+/// (`%affine.op.add`/`sub` with a loop-invariant `%affine.constant` on the other side).
+/// Everything else — `mod`/`div`, sums of two loop indices (convolution windows), symbolic strides
+/// (which may be 0 at runtime) — yields nothing.
+static std::optional<u64> injective_coord(const Def* var, const Def* e) {
+    // A one-loop domain «1; %affine.index» collapses to a plain %affine.index, so the var itself is coordinate 0.
+    if (e == var) return 0;
+    if (auto ex = e->isa<Extract>(); ex && ex->tuple() == var) return Lit::isa<u64>(ex->index());
+
+    if (auto semiop = Axm::isa(affine::semiop::mul, e)) {
+        auto [x, c] = semiop->args<2>();
+        if (auto lit = Lit::isa<u64>(c); lit && *lit != 0) return injective_coord(var, x);
+        return {};
+    }
+
+    if (auto op = Axm::isa<affine::op>(e)) {
+        if (op.id() != affine::op::add && op.id() != affine::op::sub) return {};
+        auto [a, b]  = op->args<2>();
+        bool a_const = static_cast<bool>(Axm::isa<affine::constant>(a));
+        bool b_const = static_cast<bool>(Axm::isa<affine::constant>(b));
+        if (a_const == b_const) return {};
+        return injective_coord(var, a_const ? b : a);
+    }
+
+    return {};
+}
+
+/// Checks that `map` provably reads through *every* loop index of its domain: its body is the
+/// identity, or each result coordinate is an injective read of one loop index (see `injective_coord`)
+/// and together they cover all indices.
+/// Such a map is injective over the iteration domain, so each element of the input behind it is read
+/// (and, after fusion, computed) *at most* once — strided/shifted reads skip elements entirely, so
+/// fusing behind them even drops computations the consumer never looks at.
+/// Anything not provably injective — a dropped loop index, a wrapped coordinate (`mod`, ...), a
+/// non-literal rank — is conservatively rejected.
+static bool reads_injectively(const Def* map) {
+    auto lam = map->isa_mut<Lam>();
+    if (!lam || !lam->is_set()) return false;
+    auto var  = lam->var();
+    auto body = lam->body();
+    if (body == var) return true; // identity: every loop index passes through
+
+    auto n = Lit::isa<u64>(var->type()->arity());
+    if (!n) return false;
+
+    Vector<bool> used(*n, false);
+    auto mark = [&](const Def* elem) {
+        auto i = injective_coord(var, elem);
+        if (!i || *i >= *n) return false;
+        used[*i] = true;
+        return true;
+    };
+
+    if (auto tuple = body->isa<Tuple>()) {
+        for (auto elem : tuple->ops())
+            if (!mark(elem)) return false;
+    } else if (auto pack = body->isa<Pack>()) {
+        // A pack repeats a single coordinate, so it can only cover a one-loop domain.
+        if (!pack->is_set() || !mark(pack->body())) return false;
+    } else if (!mark(body)) {
+        return false;
+    }
+
+    return std::ranges::all_of(used, std::identity{});
+}
 
 /// `inner ∘ outer`: feeds the outer op's read coordinates for one input into the inner op's access map.
 static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
@@ -24,9 +96,11 @@ static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
 // Fuses an outer `tensor.map_reduce` with any number of its inputs — and, recursively, any
 // fusible inputs of those inputs — whenever each such input is itself a `tensor.map_reduce`
 // without reduction loops (`Rr = 0`) that writes its full loop domain through the identity output
-// map (`Sr = So`, `map_out = %affine.id`). Reading such an inner tensor at a position is then just
-// a single call to the inner combination function, with each inner access map composed behind the
-// outer's access map for that input.
+// map (`Sr = So`, `map_out = %affine.id`), *and* the outer reads that input injectively (its
+// access map uses every loop index, see `reads_injectively`). Reading such an inner tensor at a
+// position is then just a single call to the inner combination function, with each inner access
+// map composed behind the outer's access map for that input; injectivity guarantees that this
+// inlining performs each inner computation at most once, so fusion never duplicates work.
 //
 // Outer:    map_reduce nis_o (To, Ro, Rr) (So, Sr) (Tis_o, Ris_o, Sis_o) (f_o, init_o) map_out maps_o is_o
 // Inner:    map_reduce nis_k (To_k, Ro_k, 0) (So_k, So_k) (Tis_k, Ris_k, Sis_k) (f_k, init_k) id maps_k is_k
@@ -111,6 +185,13 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         if (inner_Sr != inner_So) continue;
         auto id_lam = inner_map_out->isa_mut<Lam>();
         if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) continue;
+
+        // Fusing inlines the inner combiner once per iteration of the outer's *full* loop nest.
+        // Unless the outer reads input k injectively, the same inner element is recomputed once
+        // for every iteration of each loop its access map ignores — e.g. a matrix product reads
+        // its first input at `(i, k)`, so a fused producer would be recomputed for every `j`.
+        // In that case keep the producer materialized instead.
+        if (!reads_injectively(maps->proj(nis_nat, k))) continue;
 
         auto& info   = infos[k];
         info.fusible = true;

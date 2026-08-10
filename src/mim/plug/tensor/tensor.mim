@@ -554,7 +554,8 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 /// * `lower_tensor`: lowers the high-level tensor axioms to the low-level ones (`map_reduce`, ...) by re-applying the matching `*_impl` annexes.
 /// * `lower_map_reduce`: lowers the low-level tensor axioms directly to their underlying primitives (loops, `extract`, `insert`, packs, ...).
 /// * `lower_get_set`: lowers `%%tensor.get` / `%%tensor.set` to their underlying primitives (`extract`, `insert`).
-/// * `fuse_tensor`: fuses producer `map_reduce`s into their consumers' access maps.
+/// * `fuse_tensor`: fuses pure producer `map_reduce`s into their consumers' access maps.
+///   A producer is only fused where the consumer reads it injectively (its access map uses every loop index, possibly strided/shifted), so fusion never recomputes a producer element — strided reads even skip producer elements entirely.
 /// * `lower_to_mem`: Bufferizes the low-level tensor axioms (`get`, `set`, `map_reduce`) onto the `buffer` layer:
 /// tensor array values become `%%buffer.Buf` handles and the operations become `%%buffer.read` / `%%buffer.write` / `%%buffer.alloc` (threading `%%mem.M`).
 /// Memory is threaded by `%%mem.add_mem` (scheduled next in the pipeline); run `%%buffer.lower_ptr` afterwards to reach `%%mem.Ptr`.
