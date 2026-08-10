@@ -103,6 +103,77 @@ static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
     return lam;
 }
 
+/// Recognizes the (rebuilt) `tensor_copy` combiner `(acc, ys) ↦ ys#0`: the result is exactly the
+/// single input element, so a map_reduce built on it is a pure re-indexed read of that input.
+static bool is_copy_comb(const Def* comb) {
+    auto lam = comb->isa_mut<Lam>();
+    if (!lam || !lam->is_set()) return false;
+    auto app = lam->body()->isa<App>();
+    return app && app->callee() == lam->var(1) && app->arg() == lam->var(0)->proj(2, 1)->proj(1, 0);
+}
+
+/// A pure re-indexed read behind an input: the source tensor, the access map into it (over the
+/// producer's output coordinates), and the source's element type/rank/shape.
+struct ReadThrough {
+    const Def* value = nullptr;
+    const Def* map   = nullptr;
+    const Def* T     = nullptr;
+    const Def* R     = nullptr;
+    const Def* S     = nullptr;
+};
+
+/// If `value` is a pure re-indexed read — a copy-combiner map_reduce (reshape/transpose/slice/
+/// flip/repeat lower to these) or a `%tensor.broadcast` — returns its source and access map, to be
+/// composed behind the consuming slot's map. Such reads perform no computation, so reading through
+/// them needs neither an injectivity gate nor a consumer count.
+static std::optional<ReadThrough> read_through(World& w, const Def* value, const Def* slot_map) {
+    if (auto mr = Axm::isa<tensor::map_reduce_post>(value)) {
+        auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all, is_all] = mr->uncurry_args<8>();
+        auto nis_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 0));
+        auto nps_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 1));
+        auto rr_l                                                                  = Lit::isa<u64>(meta->proj(4, 3));
+        if (!nis_l || *nis_l != 1 || !nps_l || *nps_l != 0 || !rr_l || *rr_l != 0) return {};
+        auto [So, Sr] = shapes->projs<2>();
+        if (Sr != So) return {};
+        auto id_lam = map_out->isa_mut<Lam>();
+        if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) return {};
+        auto [comb, init, post] = comb_init->projs<3>();
+        if (!is_copy_comb(comb) || !is_identity_post(post)) return {};
+
+        return ReadThrough{is_all->proj(2, 0)->proj(1, 0), maps_all->proj(2, 0)->proj(1, 0),
+                           in_tys->proj(6, 0)->proj(1, 0), in_tys->proj(6, 1)->proj(1, 0),
+                           in_tys->proj(6, 2)->proj(1, 0)};
+    }
+
+    if (auto bc = Axm::isa<tensor::broadcast>(value)) {
+        auto [T, r]               = bc->callee()->as<App>()->args<2>();
+        auto [s_in, s_out, input] = bc->arg()->projs<3>();
+        auto r_l                  = Lit::isa<u64>(r);
+        if (!r_l) return {};
+
+        // Source axis d reads o#d where the sizes agree and index 0 where the source axis is 1
+        // (expressed as `o#d · 0`, like `bid_map`). Bail on axes where neither is provable.
+        auto vec_ty = slot_map->type()->as<Pi>()->codom(); // «r; %affine.index»
+        auto lam    = w.mut_lam(vec_ty, vec_ty)->set("bcast_map");
+        DefVec elems(*r_l);
+        for (u64 d = 0; d < *r_l; ++d) {
+            auto in_d = s_in->proj(*r_l, d);
+            auto o_d  = lam->var()->proj(*r_l, d);
+            if (in_d == s_out->proj(*r_l, d))
+                elems[d] = o_d;
+            else if (auto l = Lit::isa<u64>(in_d); l && *l == 1)
+                elems[d] = w.call(affine::semiop::mul, Defs{o_d, w.lit_nat(0)});
+            else
+                return {};
+        }
+        lam->set(true, w.tuple(elems));
+
+        return ReadThrough{input, lam, T, r, s_in};
+    }
+
+    return {};
+}
+
 // Fuses an outer `tensor.map_reduce` with any number of its inputs — and, recursively, any
 // fusible inputs of those inputs — whenever each such input is itself a `tensor.map_reduce`
 // without reduction loops (`Rr = 0`) that writes its full loop domain through the identity output
@@ -525,6 +596,70 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     return mr;
 }
 
+// Rewires every input slot — combiner and epilogue alike — that is a pure re-indexed read
+// (a copy-combiner map_reduce or a `%tensor.broadcast`, see `read_through`) to read the underlying
+// source directly, with the read's access map composed behind the slot's map. This absorbs
+// reshape/transpose/slice/flip/repeat/broadcast chains into the access maps of the consuming
+// map_reduce, so they never materialize; the bypassed op dies with cleanup unless someone else
+// still reads it (in which case the rewiring is still free — it removes no sharing, only a copy).
+const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
+    auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
+
+    auto [nis, nps]                     = nis_nps->projs<2>();
+    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
+    auto [maps, post_maps]              = maps_all->projs<2>();
+
+    auto nis_lit = Lit::isa<u64>(nis);
+    auto nps_lit = Lit::isa<u64>(nps);
+    if (!nis_lit || !nps_lit) return nullptr;
+    auto nis_nat = *nis_lit;
+    auto nps_nat = *nps_lit;
+
+    auto& w = new_world();
+
+    auto is = arg->proj(2, 0);
+    auto ps = arg->proj(2, 1);
+
+    bool changed = false;
+    auto rewire  = [&](DefVec& T, DefVec& R, DefVec& S, DefVec& m, DefVec& v, u64 n, const Def* Ts, const Def* Rs,
+                       const Def* Ss, const Def* ms, const Def* vs) {
+        for (u64 i = 0; i < n; ++i) {
+            T[i] = Ts->proj(n, i);
+            R[i] = Rs->proj(n, i);
+            S[i] = Ss->proj(n, i);
+            m[i] = ms->proj(n, i);
+            v[i] = vs->proj(n, i);
+            if (auto rt = read_through(w, v[i], m[i])) {
+                DLOG("reading input {} of {} through {}", i, callee, v[i]);
+                m[i]    = compose_map(w, rt->map, m[i]);
+                v[i]    = rt->value;
+                T[i]    = rt->T;
+                R[i]    = rt->R;
+                S[i]    = rt->S;
+                changed = true;
+            }
+        }
+    };
+
+    DefVec nTis(nis_nat), nRis(nis_nat), nSis(nis_nat), nMaps(nis_nat), nIs(nis_nat);
+    DefVec nTps(nps_nat), nRps(nps_nat), nSps(nps_nat), nPmaps(nps_nat), nPis(nps_nat);
+    rewire(nTis, nRis, nSis, nMaps, nIs, nis_nat, Tis, Ris, Sis, maps, is);
+    rewire(nTps, nRps, nSps, nPmaps, nPis, nps_nat, Tps, Rps, Sps, post_maps, ps);
+    if (!changed) return nullptr;
+
+    auto mr = w.annex<tensor::map_reduce_post>();
+    mr      = w.app(mr, nis_nps);
+    mr      = w.app(mr, meta);
+    mr      = w.app(mr, shapes);
+    mr      = w.app(mr, {w.tuple(nTis), w.tuple(nRis), w.tuple(nSis), w.tuple(nTps), w.tuple(nRps), w.tuple(nSps)});
+    mr      = w.app(mr, comb_init);
+    mr      = w.app(mr, map_out);
+    mr      = w.app(mr, {w.tuple(nMaps), w.tuple(nPmaps)});
+    mr      = w.app(mr, {w.tuple(nIs), w.tuple(nPis)});
+
+    return mr;
+}
+
 namespace {
 
 bool is_mr(const Def* d) { return static_cast<bool>(Axm::isa<tensor::map_reduce_post>(d)); }
@@ -584,17 +719,26 @@ const Def* Fuse::rewrite_imm_App(const App* app) {
             DLOG("Fused map_reduce at {} into a new map_reduce {}", app, res);
             cur = res->as<App>();
         }
-        // The epilogue direction, to a fixpoint: each round may sink the current map — first the
-        // plainly rewritten one, then the producer-fused result, then each epilogue-fused result —
-        // into the producer of one of its inputs. Terminates quickly: a fused reduction fails the
-        // Rr = 0 outer gate on the next round.
+        // Read-throughs and the epilogue direction, to a fixpoint: each round may absorb pure
+        // re-indexed reads into access maps or sink the current map — first the plainly rewritten
+        // one, then the producer-fused result, then each fused result — into the producer of one
+        // of its inputs. Terminates quickly: rewiring walks strictly down the producer DAG, and a
+        // fused reduction fails the Rr = 0 outer gate on the next round.
         auto callee = cur ? cur->callee()->as<App>() : rewrite(app->callee())->as<App>();
         auto arg    = cur ? cur->arg() : rewrite(app->arg());
-        while (auto res = fuse_epilogue(callee, arg)) {
-            DLOG("Fused the trailing map at {} into its producer's epilogue: {}", app, res);
-            cur    = res->as<App>();
-            callee = cur->callee()->as<App>();
-            arg    = cur->arg();
+        for (bool progress = true; progress;) {
+            progress       = false;
+            const Def* res = fuse_read_through(callee, arg);
+            if (!res) {
+                res = fuse_epilogue(callee, arg);
+                if (res) DLOG("Fused the trailing map at {} into its producer's epilogue: {}", app, res);
+            }
+            if (res) {
+                cur      = res->as<App>();
+                callee   = cur->callee()->as<App>();
+                arg      = cur->arg();
+                progress = true;
+            }
         }
         auto result = cur ? cur : RWPhase::rewrite_imm_App(app);
         // Remember which old app this (possibly fused) map_reduce replaces, so later epilogue

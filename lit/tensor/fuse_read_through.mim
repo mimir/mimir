@@ -1,0 +1,30 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// The full linear-layer pattern: x·Wᵀ + tiled bias, then a trailing unary. The transpose, reshape
+// and repeat are pure re-indexed reads (copy-combiner map_reduces), so they are absorbed into the
+// access maps of the consuming ops; bias-add and unary compose into the product's `post` epilogue.
+// A single map_reduce remains, reading a, b and bias directly.
+plugin tensor;
+plugin core;
+plugin opt;
+
+lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
+lam addp (x y: Nat): Nat = %core.nat.add (x, y);
+
+con extern f (a: «2, 3; Nat», b: «4, 3; Nat», bias: «4; Nat», return: Cn «2, 4; Nat») =
+    let wt = %tensor.transpose_2d b;
+    let z  = %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) (a, wt);
+    let b2 = %tensor.repeat (1, 4) (2, 4) (%tensor.reshape 4 (1, 4) bias);
+    let s  = %tensor.binary addp @(2, (2, 4)) (z, b2);
+    return (%tensor.unary add1 @(2, (2, 4)) s);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %tensor.lower_tensor,
+        %tensor.fuse_tensor,
+        %compile.internal_cleanup,
+    );
+
+// CHECK: %tensor.map_reduce
+// CHECK-NOT: %tensor.map_reduce

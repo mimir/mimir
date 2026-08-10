@@ -15,6 +15,7 @@ private:
 
     const Def* fuse_map_reduce(const App*);
     const Def* fuse_epilogue(const App* callee, const Def* arg);
+    const Def* fuse_read_through(const App* callee, const Def* arg);
 
     /// Old-world consumer count per `map_reduce_post` app (attributed through tuple wrappers), for
     /// the epilogue direction's single-consumer guard.
