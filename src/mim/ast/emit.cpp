@@ -311,7 +311,9 @@ void PiExpr::emit_body(Emitter& e, const Def*) const { emit(e); }
 const Def* PiExpr::emit_(Emitter& e) const {
     dom()->emit_type(e);
     auto cod = codom() ? codom()->emit(e) : e.world().type_bot();
-    return dom()->pi_->set_codom(cod);
+    auto pi  = dom()->pi_->set_codom(cod);
+    if (auto imm = pi->immutabilize()) return imm;
+    return pi;
 }
 
 const Def* LamExpr::emit_decl(Emitter& e, const Def*) const { return lam()->emit_decl(e), lam()->def(); }

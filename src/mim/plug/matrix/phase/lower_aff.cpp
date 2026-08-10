@@ -1,15 +1,16 @@
 #include "mim/plug/matrix/phase/lower_aff.h"
 
-#include "mim/axm.h"
-#include "mim/def.h"
-#include "mim/lam.h"
+#include <mim/axm.h>
+#include <mim/def.h>
+#include <mim/lam.h>
 
-#include "mim/plug/affine/affine.h"
-#include "mim/plug/buffer/buffer.h"
-#include "mim/plug/core/core.h"
-#include "mim/plug/cps/cps.h"
+#include <mim/plug/affine/affine.h>
+#include <mim/plug/buffer/buffer.h>
+#include <mim/plug/core/core.h>
+#include <mim/plug/cps/cps.h>
+#include <mim/plug/mem/mem.h>
+
 #include "mim/plug/matrix/matrix.h"
-#include "mim/plug/mem/mem.h"
 
 namespace mim::plug::matrix::phase {
 

@@ -15,6 +15,12 @@ Mim looks for plugins in this order:
 4. `path/to/mim.exe/../../lib/mim`
 5. `CMAKE_INSTALL_PREFIX/lib/mim`
 
+## Generating Plugin Interfaces {#cligen}
+
+The switches `--output-h`, `--output-py`, and `--output-md` turn a `<plugin>.mim` file into, respectively, a C++ header, a Python `IntEnum` module, and a Markdown documentation page.
+The flag `--bootstrap` makes `plugin` directives behave as plain `import`s instead of `dlopen`ing other plugins, which matters when generating these outputs during the build, before the plugin's own shared library even exists.
+The CMake command [`add_mim_plugin`](@ref add_mim_plugin_cmake) runs all three automatically for every plugin as part of the normal build; see [Generated Interfaces](@ref plugin_codegen) for a full walkthrough using the [demo](@ref demo) plugin.
+
 ## Passing Arguments to Plugins {#clipluginargs}
 
 Plugins - and in particular backends - often need to be configured from the command line.

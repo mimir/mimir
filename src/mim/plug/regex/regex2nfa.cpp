@@ -7,7 +7,7 @@
 #include <mim/lam.h>
 #include <mim/world.h>
 
-#include <mim/plug/regex/regex.h>
+#include "mim/plug/regex/regex.h"
 
 using namespace mim;
 

@@ -1,0 +1,37 @@
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s < %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+
+// Regression: two `%tensor.set`s that agree on shape AND element type must get DISTINCT buffers.
+// `%buffer.alloc`'s identity is `(r, s, T, mem)` and it has no normalizer, so when both allocations shared
+// one `⊥: %mem.M 0` placeholder they were hash-consed into a single allocation: `a` and `b` aliased one
+// buffer, and `b`'s copy-then-write clobbered what `a` had written (see LowerToMem::fresh_mem).
+//
+// Each result is read at the index the *other* one wrote, for two reasons: a `get` at the very index a
+// `set` just wrote folds to the stored value (so the tensor would never reach a buffer at all), and the
+// cross-read is what makes the aliasing observable. The dynamic index parameters keep `i`/`j` opaque, so
+// neither `get` can be resolved statically.
+// ga = a[j] = t[j] = 30, gb = b[i] = t[i] = 12  =>  kernel returns 42.
+// Aliased, `b`'s copy of `t` overwrites `a`'s write, so ga reads b's 40 instead -> 52.
+// two_same_shape_set_run.mim compiles this to an executable and asserts the exit code.
+plugin core;
+plugin tensor;
+plugin mem;
+
+fun extern kernel (t: «3, 4; I32», i j: [Idx 3, Idx 4]): I32 =
+    let a  = %tensor.set @(I32, 2, (3, 4)) (t, i, 2I32);
+    let b  = %tensor.set @(I32, 2, (3, 4)) (t, j, 40I32);
+    let ga = %tensor.get @(I32, 2, (3, 4)) (a, j);
+    let gb = %tensor.get @(I32, 2, (3, 4)) (b, i);
+    return (%core.wrap.add 0 (ga, gb));
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    let t = ((12I32, 2I32, 3I32, 4I32), (5I32, 6I32, 30I32, 8I32), (9I32, 10I32, 11I32, 12I32));
+    con done (v: I32) = return (mem, v);
+    kernel ((t, (0₃, 0₄), (1₃, 2₄)), done);
+
+// CHECK-DAG: %mem.load
+// CHECK-DAG: %mem.store
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
+// GONE-NOT: %matrix.

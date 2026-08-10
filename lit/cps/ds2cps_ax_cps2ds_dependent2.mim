@@ -13,7 +13,7 @@ lam f(n w: Nat): Fn Idx n → Idx n =
 lam U(a: I32): * = I32;
 
 fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0)): [%mem.M 0, I32] =
-    let c = %cps.cps2ds_dep (I32, U) (f (i32, 0)) 5I32;
+    let c = %cps.cps2ds_dep U (f (i32, 0)) 5I32;
     return (mem, c);
 
 // CHECK-DAG: return{{.*}}47

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mim/world.h"
+#include <mim/world.h>
 
 #include "mim/plug/autodiff/autogen.h"
 

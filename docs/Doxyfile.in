@@ -1169,7 +1169,9 @@ EXAMPLE_PATH           = @CMAKE_CURRENT_BINARY_DIR@ \
                          @PROJECT_SOURCE_DIR@/lit/docs \
                          @PROJECT_SOURCE_DIR@/include \
                          @PROJECT_SOURCE_DIR@/src \
-                         @PROJECT_SOURCE_DIR@/examples
+                         @PROJECT_SOURCE_DIR@/examples \
+                         @PROJECT_BINARY_DIR@/include \
+                         @PROJECT_BINARY_DIR@/@CMAKE_INSTALL_LIBDIR@/mim
 
 # If the value of the EXAMPLE_PATH tag contains directories, you can use the
 # EXAMPLE_PATTERNS tag to specify one or more wildcard pattern (like *.cpp and

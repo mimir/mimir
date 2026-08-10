@@ -1,6 +1,6 @@
 #include "mim/plug/tensor/tensor.h"
 
-#include "mim/plugin.h"
+#include <mim/plugin.h>
 
 #include "mim/plug/tensor/phase/fuse.h"
 #include "mim/plug/tensor/phase/lower.h"

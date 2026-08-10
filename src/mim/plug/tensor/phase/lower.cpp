@@ -1,7 +1,7 @@
 #include "mim/plug/tensor/phase/lower.h"
 
-#include "mim/def.h"
-#include "mim/lam.h"
+#include <mim/def.h>
+#include <mim/lam.h>
 
 #include "mim/plug/tensor/tensor.h"
 

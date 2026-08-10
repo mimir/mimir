@@ -160,6 +160,55 @@ Use the following coding conventions:
   2. `protected`
   3. `private`
 
+#### Include Style {#includes}
+
+Use `#include "..."` for headers that belong to the artifact you are currently building and `#include <...>` for everything you link against - including external dependencies such as [Abseil](https://abseil.io/), [fe](https://github.com/leissa/fe), and the standard library.
+
+The artifact a file belongs to - and hence the prefix of its own headers - follows from its path:
+
+| Path                                           | Artifact               | Own headers        |
+| ---------------------------------------------- | ---------------------- | ------------------ |
+| `src/mim/...`, `include/mim/...`               | `libmim`               | `"mim/..."`        |
+| `src/automaton/...`, `include/automaton/...`   | `libautomaton`         | `"automaton/..."`  |
+| `src/mim/plug/X/...`, `include/mim/plug/X/...` | plugin `X`             | `"mim/plug/X/..."` |
+| `extra/X/...`                                  | out-of-tree plugin `X` | `"mim/plug/X/..."` |
+| `src/mim/cli/...`                              | the `mim` CLI          | -                  |
+| `gtest/...`                                    | the unit tests         | -                  |
+| `py/bindings/...`                              | the Python bindings    | -                  |
+
+The last three link against `libmim` but do not ship headers of their own, so they use `<...>` throughout.
+A plugin is a separate build artifact as well, so for a plugin `X`:
+
+```cpp
+#include <cstdlib> // standard library
+
+#include <absl/container/flat_hash_map.h> // other external dependencies
+#include <fe/assert.h>
+
+#include <mim/world.h> // libmim
+
+#include <mim/plug/mem/mem.h> // another plugin
+
+#include "mim/plug/X/autogen.h" // the plugin itself
+#include "mim/plug/X/X.h"
+```
+
+The generated `autogen.h` counts as part of the plugin, while another plugin's `autogen.h` does not.
+
+The main upshot is that in-tree plugins in `src/mim/plug/X` and out-of-tree plugins in `extra/X` spell their includes in exactly the same way.
+Hence, `scripts/extract_plugin.py` can move a plugin out of the tree without touching a single `#include`, and an in-tree plugin exercises the same public header surface that an external plugin sees.
+
+This is checked by `scripts/check_includes.py`, which is also wired up as a [pre-commit](https://pre-commit.com/) hook:
+
+```sh
+./scripts/check_includes.py          # check all sources
+./scripts/check_includes.py --fix    # rewrite offending includes in place
+```
+
+@note `--fix` only changes `"..."` to `<...>` and vice versa.
+Since the two forms belong to different include groups, run `pre-commit run clang-format --files <fixed files>` afterwards to regroup them.
+Only path-qualified includes are checked, so a plain `#include "foo.h"` next to the including file is always fine.
+
 #### Doxygen Style
 
 - Use `///` for Doxygen comments.

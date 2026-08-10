@@ -7,15 +7,15 @@
 #include <fe/term.h>
 #include <lyra/lyra.hpp>
 
-#include "mim/config.h"
-#include "mim/driver.h"
-#include "mim/flags.h"
-#include "mim/phase.h"
-#include "mim/sexpr.h"
+#include <mim/config.h>
+#include <mim/driver.h>
+#include <mim/flags.h>
+#include <mim/phase.h>
+#include <mim/sexpr.h>
 
-#include "mim/ast/parser.h"
-#include "mim/phase/optimize.h"
-#include "mim/util/sys.h"
+#include <mim/ast/parser.h>
+#include <mim/phase/optimize.h>
+#include <mim/util/sys.h>
 
 using namespace mim;
 using namespace std::literals;

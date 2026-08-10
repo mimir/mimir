@@ -11,7 +11,7 @@ lam U (n: Nat): * = «n; Nat»;
 con f (n: Nat, return: Cn «n; Nat») = return ‹i: n; %core.bitcast Nat i›;
 
 fun extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0)): [%mem.M 0, I32] =
-    let xs = %cps.cps2ds_dep (Nat, U) f 3;
+    let xs = %cps.cps2ds_dep U f 3;
     return (mem, %core.bitcast I32 (xs#1₃));
 
 // CHECK-DAG: return{{.*}}1I32

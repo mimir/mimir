@@ -1,9 +1,9 @@
 #include "mim/plug/tensor/phase/lower_get_set.h"
 
-#include "mim/def.h"
-#include "mim/lam.h"
+#include <mim/def.h>
+#include <mim/lam.h>
 
-#include "mim/util/types.h"
+#include <mim/util/types.h>
 
 #include "mim/plug/tensor/tensor.h"
 

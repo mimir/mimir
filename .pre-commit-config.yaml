@@ -11,3 +11,11 @@ repos:
     hooks:
       - id: clang-format
         files: \.(c|cc|cpp|cxx|h|hh|hpp|hxx)$
+  - repo: local
+    hooks:
+      - id: mim-include-style
+        name: mim include style
+        description: An artifact uses "..." for its own headers and <...> for everything it links against.
+        entry: scripts/check_includes.py
+        language: script
+        files: ^(src|include|extra|gtest|py/bindings)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$

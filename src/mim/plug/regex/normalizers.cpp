@@ -2,20 +2,18 @@
 #include <iterator>
 #include <numeric>
 #include <ranges>
-#include <vector>
 
 #include <automaton/range_helper.h>
 #include <fe/assert.h>
 
-#include "mim/axm.h"
-#include "mim/def.h"
-#include "mim/tuple.h"
-#include "mim/world.h"
+#include <mim/axm.h>
+#include <mim/def.h>
+#include <mim/tuple.h>
+#include <mim/world.h>
 
-#include "mim/util/dbg.h"
-#include "mim/util/log.h"
+#include <mim/util/dbg.h>
+#include <mim/util/log.h>
 
-#include "mim/plug/regex/autogen.h"
 #include "mim/plug/regex/regex.h"
 
 using Range  = automaton::Range;
