@@ -72,7 +72,7 @@ parts = var.projs(2)
 
 So the Python surface follows the same “named IR handle” model as the C++ API rather than copying nodes into Python-owned objects.
 
-## Loading Plugins
+## Loading Plugins {#pyplugins}
 
 Runtime plugins are still discovered the same way as in C++.
 `Driver()` usually picks up the in-tree plugin build directory automatically, including from the editable Python package.
