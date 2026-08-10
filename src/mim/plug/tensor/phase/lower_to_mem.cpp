@@ -2,14 +2,17 @@
 
 #include <mim/util/util.h>
 
-#include "mim/axm.h"
-#include "mim/def.h"
-#include "mim/lam.h"
+#include <mim/util/util.h>
 
-#include "mim/plug/buffer/buffer.h"
-#include "mim/plug/core/core.h"
-#include "mim/plug/matrix/matrix.h"
-#include "mim/plug/mem/mem.h"
+#include <mim/axm.h>
+#include <mim/def.h>
+#include <mim/lam.h>
+
+#include <mim/plug/buffer/buffer.h>
+#include <mim/plug/core/core.h>
+#include <mim/plug/matrix/matrix.h>
+#include <mim/plug/mem/mem.h>
+
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {

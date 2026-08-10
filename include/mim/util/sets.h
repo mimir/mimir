@@ -2,12 +2,12 @@
 
 #include <fstream>
 
+#include <fe/arena.h>
+
 #include "mim/util/link_cut_tree.h"
 #include "mim/util/types.h"
 #include "mim/util/util.h"
 #include "mim/util/vector.h"
-
-#include "fe/arena.h"
 
 namespace mim {
 

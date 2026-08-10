@@ -5,10 +5,11 @@
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
-#include <mim/plug/gpu/phase/mem_checks.h>
-#include <mim/plug/gpu/phase/remove_double_syncs.h>
-#include <mim/plug/gpu/phase/split_apply.h>
 #include <mim/plug/mem/mem.h>
+
+#include "mim/plug/gpu/phase/mem_checks.h"
+#include "mim/plug/gpu/phase/remove_double_syncs.h"
+#include "mim/plug/gpu/phase/split_apply.h"
 
 using namespace mim;
 using namespace mim::plug;

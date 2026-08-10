@@ -1,6 +1,6 @@
 #include "mim/phase/prefix_cleanup.h"
 
-#include <mim/lam.h>
+#include "mim/lam.h"
 
 namespace mim {
 

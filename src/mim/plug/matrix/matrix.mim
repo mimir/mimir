@@ -26,23 +26,26 @@ plugin buffer;
 /// ### %%matrix.prod
 ///
 /// Matrix product of an `m × k` and a `k × l` matrix.
-axm %matrix.prod: [m k l: Nat, [p e: Nat]]
-                → [%mem.M 0, %buffer.Buf (2, (m, k), %math.F (p, e)), %buffer.Buf (2, (k, l), %math.F (p, e))]
-                → [%mem.M 0, %buffer.Buf (2, (m, l), %math.F (p, e))], normalize_prod;
+axm %matrix.prod: {pe: «2; Nat»}
+                → {m k l: Nat}
+                → [%mem.M 0, %buffer.Buf (2, (m, k), %math.F pe), %buffer.Buf (2, (k, l), %math.F pe)]
+                → [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)], normalize_prod;
 ///
 /// ### %%matrix.transpose
 ///
 /// Transposes a `k × l` matrix.
-axm %matrix.transpose: [[k l: Nat], T: *]
+axm %matrix.transpose: {k l: Nat}
+                     → {T: *}
                      → [%mem.M 0, %buffer.Buf (2, (k, l), T)]
                      → [%mem.M 0, %buffer.Buf (2, (l, k), T)], normalize_transpose;
 ///
 /// ### %%matrix.sum
 ///
 /// Sums up all elements of a matrix and returns a scalar.
-axm %matrix.sum: [n: Nat, S: «n; Nat», [p e: Nat]]
-               → [%mem.M 0, %buffer.Buf (n, S, %math.F (p, e))]
-               → [%mem.M 0, %math.F (p, e)];
+axm %matrix.sum: {pe: «2; Nat»}
+               → {n: Nat, S: «n; Nat»}
+               → [%mem.M 0, %buffer.Buf (n, S, %math.F pe)]
+               → [%mem.M 0, %math.F pe];
 ///
 /// ### %%matrix.map_reduce
 ///
@@ -128,7 +131,7 @@ axm %matrix.concat: {T: *, nis r: Nat}
 ///
 /// Follows the principle `ij ← ik, kj` (`out[i, j] = Σ_k in1[i, k] · in2[k, j]`) using multiplication as
 /// combination and addition as reduction.
-fun %matrix.map_reduce_prod (m k l: Nat, pe: «2; Nat») (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe), N: %buffer.Buf (2, (k, l), %math.F pe))@tt: [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)] =
+fun %matrix.map_reduce_prod {pe: «2; Nat»} {m k l: Nat} (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe), N: %buffer.Buf (2, (k, l), %math.F pe))@tt: [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     return (%matrix.map_reduce
@@ -141,7 +144,7 @@ fun %matrix.map_reduce_prod (m k l: Nat, pe: «2; Nat») (mem: %mem.M 0, M: %buf
 /// ### %%matrix.map_reduce_transpose
 ///
 /// Transpose a matrix by iterating the indices in swapped order.
-fun %matrix.map_reduce_transpose ((k l: Nat), T: *) (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt: [%mem.M 0, %buffer.Buf (2, (l, k), T)] =
+fun %matrix.map_reduce_transpose {k l: Nat} {T: *} (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt: [%mem.M 0, %buffer.Buf (2, (l, k), T)] =
     let zero = ⊥:T;
     return (%matrix.map_reduce
         (2, (l, k), T, 1, 2, T, (k, l))
@@ -153,7 +156,7 @@ fun %matrix.map_reduce_transpose ((k l: Nat), T: *) (mem: %mem.M 0, M: %buffer.B
 /// ### %%matrix.map_reduce_sum
 ///
 /// Sums up all elements of a matrix and returns a scalar.
-fun %matrix.map_reduce_sum(n: Nat, S: «n; Nat», pe: «2; Nat») (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt: [%mem.M 0, %math.F pe] =
+fun %matrix.map_reduce_sum {pe: «2; Nat»} {n: Nat, S: «n; Nat»} (mem: %mem.M 0, M: %buffer.Buf (n, S, %math.F pe))@tt: [%mem.M 0, %math.F pe] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     let idxs = ‹i: n; %core.nat.add (1, %core.bitcast Nat i)›;
