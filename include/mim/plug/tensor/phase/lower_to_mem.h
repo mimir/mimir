@@ -14,7 +14,8 @@ namespace mim::plug::tensor::phase {
 ///
 /// This phase is *conversion-only*: it rewrites types and operations but does not thread the `%mem.M`
 /// memory monad itself. Emitted buffer operations consume a `⊥: %mem.M 0` placeholder (or a short local
-/// chain), and the SSA value dependencies keep them anchored and ordered. The `%mem.add_mem` phase
+/// chain rooted in a LowerToMem::fresh_mem continuation's var), and the SSA value dependencies keep them
+/// anchored and ordered. The `%mem.add_mem` phase
 /// (mim::plug::mem::phase::AddMem), scheduled right after this one in the pipeline, then mem-extends all
 /// continuations and rewires every memory operand to the scheduler-placed current memory — handling returns,
 /// error continuations, join points, branch arms, and interleaving with a caller's own memory operations
@@ -30,8 +31,13 @@ public:
 
 private:
     void start() override;
+    const Def* rewrite(const Def*) override;
     const Def* rewrite_mut_Lam(Lam*) override;
     const Def* rewrite_imm_App(const App*) override;
+
+    /// The conversion part of LowerToMem::rewrite_mut_Lam (boundary conversion, local continuations, or the
+    /// generic RWPhase rewrite); the override itself only scopes the fresh-memory bookkeeping around it.
+    const Def* conv_mut_Lam(Lam*);
 
     const Def* lower_get(const App*);
     const Def* lower_set(const App*);
@@ -77,7 +83,34 @@ private:
 
     /// A `⊥: %mem.M 0` placeholder consumed by emitted buffer operations; AddMem replaces it with the
     /// scheduler-placed current memory.
+    /// Shared by every op whose result is a pure function of its value operands, so that genuinely equal
+    /// ops still collapse into one (e.g. a weight literal materialized at many sites).
     const Def* bot_mem();
+
+    /// A *fresh* `%mem.M 0` for one emitted buffer/matrix operation: the var of a newly minted continuation
+    /// `con fresh_mem(mem: %mem.M 0)` that receives its memory once LowerToMem::wrap_fresh_mem has chained it
+    /// in front of the enclosing lam's body.
+    /// Required by every op that allocates a buffer it then writes into, for two independent reasons:
+    /// 1. Immutable Def%s are hash-consed, so two `%buffer.alloc`s agreeing on `(r, s, T)` and sharing one
+    ///    placeholder collapse into a single allocation - two distinct tensors would alias one buffer.
+    /// 2. AddMem is a memoizing Rewriter, so two operations sharing one argument tuple
+    ///    `(⊥: %mem.M 0, …)` - which happens whenever they differ only in their curried callee - are threaded
+    ///    from the *same* current memory, and the resulting parallel mem chains collapse in `%cps.conv`.
+    /// Mutables are never hash-consed, so the continuations' vars are distinct by construction - no
+    /// distinguishing tag required.
+    const Def* fresh_mem();
+
+    /// Chains the LowerToMem::pending_ continuations in front of @p new_lam's freshly rewritten body:
+    /// `new_lam ↦ %mem.fresh (0, k₁)`, `k₁ ↦ %mem.fresh (0, k₂)`, …, and the last one carries the body.
+    /// AddMem resolves each request by jumping to the continuation with the scheduler-placed current memory,
+    /// and the `tt` filter beta-reduces the continuations away again as soon as that happens.
+    void wrap_fresh_mem(Lam* new_lam);
+
+    /// The fresh-memory continuations minted while the current lam's body is being rewritten.
+    Vector<Lam*> pending_;
+
+    /// Per-lam memo for the ops that consume a fresh memory (see LowerToMem::rewrite).
+    DefMap<const Def*> fresh_memo_;
 
     /// A function is bufferized iff it is external, set, and mentions a tensor type in its domain.
     bool is_tensor_fn(Lam*) const;

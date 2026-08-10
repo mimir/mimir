@@ -19,7 +19,9 @@ void AddMem::start() {
     while (!queue.empty()) {
         auto def = queue.pop();
 
-        if (auto app = def->isa<App>(); app && app->axm())
+        // `%mem.fresh`'s return continuation is *not* pinned: it receives the current memory (see
+        // rewrite_imm_App below), so its body must be mem-threaded like any other continuation.
+        if (auto app = def->isa<App>(); app && app->axm() && !Axm::isa<mem::fresh>(app))
             for (auto arg : app->arg()->projs())
                 if (auto lam = arg->isa_mut<Lam>()) pinned.push(lam);
 
@@ -116,6 +118,13 @@ const Def* AddMem::rewrite_imm_App(const App* app) {
     if (is_bootstrapping() || preserving_ || !curr_mem_) return Rewriter::rewrite_imm_App(app);
 
     auto& w = new_world();
+
+    // `%mem.fresh (a, k)`: the request for a fresh memory resolves to the memory that is current right
+    // here - jump to `k` with it. (Like the rest of this phase, only address space 0 is threaded.)
+    if (Axm::isa<mem::fresh>(app)) {
+        auto [_, k] = app->args<2>();
+        return w.app(rewrite(k), curr_mem_);
+    }
     // Rewrite the argument before the callee (as the base Rewriter does). This threads the current memory
     // through the argument's memory effects first; and because operands are rewritten before their users, a
     // shared memory operation is anchored in the scope that consumes its result mem (its own scope) rather
