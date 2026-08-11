@@ -13,6 +13,8 @@ Requires the `libclang` wheel (bundles libclang + its Python bindings); it is
 installed into the build venv by CMake, which also invokes this script.
 """
 
+from __future__ import annotations
+
 import argparse
 import difflib
 import json
@@ -22,9 +24,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 #  Bootstrap: import the venv's bundled libclang
@@ -62,28 +64,267 @@ TypeKind = clang.TypeKind
 # ---------------------------------------------------------------------------
 
 def _type_spelling(t) -> str:
-    raw = t.spelling
-    raw = raw.replace("class ", "").replace("struct ", "").replace("enum ", "")
-    return raw
+    """*t*'s spelling without the elaborated-type keywords libclang prefixes."""
+    return t.spelling.replace("class ", "").replace("struct ", "").replace("enum ", "")
 
 
-def _is_def_ptr(typestr: str) -> bool:
-    norm = typestr.replace(" ", "")
-    return "Def*" in norm
+# ---------------------------------------------------------------------------
+#  Bindability: the types nanobind can actually convert
+# ---------------------------------------------------------------------------
+# Binding a method whose signature mentions a type nanobind has no caster for
+# still *compiles* — the failure only surfaces when Python calls it, and
+# `stubgen` meanwhile spells the raw C++ type into `_mim.pyi`
+# (`std::reverse_iterator<char const*>`, `absl::flat_hash_map<…>`, `mim::Dbg`).
+# Such a binding is dead weight that leaks implementation types into the public
+# stub, so every parameter, return and field type is checked here first and the
+# member is dropped unless nanobind can convert it.
+
+# Implementation-detail inline namespaces (libstdc++ `__cxx11`, libc++ `__1`,
+# abseil's `lts_<date>`) differ per toolchain and must never reach a spelling we
+# match on.
+_INLINE_NS = re.compile(r"\b(?:__[A-Za-z0-9_]+|lts_\d+)::")
+
+
+def _canon_spelling(t) -> str:
+    """Canonical spelling of *t*, free of typedefs and inline namespaces.
+
+    Dropping the inline namespace keeps the spelling both matchable and valid
+    C++: `std::__cxx11::basic_string<char>` and `std::basic_string<char>` name
+    the same type.
+    """
+    return _INLINE_NS.sub("", _type_spelling(t.get_canonical()))
+
+
+_LEADING_CV = re.compile(r"^(?:const|volatile)\s+")
+_TRAILING_CONST = re.compile(r"\s*\bconst$")
+
+
+def _strip_cv(spelling: str) -> str:
+    """*spelling* without its leading cv-qualifiers (`const std::list<…>` → `std::list<…>`)."""
+    return _LEADING_CV.sub("", spelling)
+
+
+def _kinds(*names) -> frozenset:
+    """The named `TypeKind`s known to this libclang; older ones lack e.g. `CHAR8`."""
+    return frozenset(k for k in (getattr(TypeKind, n, None) for n in names) if k is not None)
+
+
+_CHAR_KINDS = _kinds("CHAR_S", "CHAR_U", "SCHAR", "UCHAR", "CHAR8")
+
+# Types nanobind converts out of the box, without any caster header.
+_BUILTIN_KINDS = _CHAR_KINDS | _kinds(
+    "VOID", "BOOL", "CHAR16", "CHAR32", "WCHAR", "SHORT", "USHORT", "INT", "UINT", "LONG", "ULONG",
+    "LONGLONG", "ULONGLONG", "INT128", "UINT128", "FLOAT", "DOUBLE", "LONGDOUBLE", "NULLPTR",
+)
+
+# Standard containers nanobind casts, mapped to the caster header they need and
+# to how many leading template arguments carry a Python-visible type. The
+# remaining ones are allocators, deleters and traits that nanobind ignores, so
+# they must not be checked for bindability. `-1` means every argument counts.
+_STL_CASTERS = {
+    "std::basic_string":      ("string.h", 0),
+    "std::basic_string_view": ("string_view.h", 0),
+    "std::filesystem::path":  ("filesystem.h", 0),
+    "std::vector":            ("vector.h", 1),
+    "std::list":              ("list.h", 1),
+    "std::set":               ("set.h", 1),
+    "std::unordered_set":     ("unordered_set.h", 1),
+    "std::optional":          ("optional.h", 1),
+    "std::unique_ptr":        ("unique_ptr.h", 1),
+    "std::shared_ptr":        ("shared_ptr.h", 1),
+    "std::pair":              ("pair.h", 2),
+    "std::map":               ("map.h", 2),
+    "std::unordered_map":     ("unordered_map.h", 2),
+    "std::complex":           ("complex.h", 1),
+    "std::tuple":             ("tuple.h", -1),
+    "std::variant":           ("variant.h", -1),
+}
+
+# `std::function` is not in the table above: its single template argument is a
+# signature rather than a value type, so it needs its own traversal.
+_FUNCTION_CASTER = "function.h"
+
+# MimIR's own containers: no caster, but they are ranges of elements nanobind
+# *can* bind, so signatures mentioning one are rewritten to a `std::vector` of
+# the element type (see `_range_value_type`).
+_MIM_RANGES = ("mim::Span", "mim::Vector")
+
+_BOUND_HEADERS: frozenset = frozenset()
+
+
+@lru_cache(maxsize=None)
+def _realpath(path: str) -> str:
+    """`os.path.realpath`, memoised: the same handful of headers is resolved again
+    for every single type that is checked."""
+    return os.path.realpath(path)
+
+
+def set_bound_headers(paths) -> None:
+    """Record the manifest of headers whose classes and enums the *module* binds.
+
+    Only those types may appear in a generated signature: a `const Def*` becomes
+    a bound Python object, whereas a `mim::Dbg` — declared in a header nobody
+    binds — has no Python counterpart at all.
+
+    This is the whole build's manifest, not just the header being generated: each
+    invocation parses one header but must recognise the types registered by its
+    siblings. It is therefore only as accurate as that manifest — a header listed
+    here whose `init_*` never makes it into the module entry point would still be
+    treated as bound.
+    """
+    global _BOUND_HEADERS
+    _BOUND_HEADERS = frozenset(_realpath(p) for p in paths)
+
+
+def _decl_in_bound_header(decl) -> bool:
+    try:
+        file = decl.location.file
+    except Exception:
+        return False
+    return file is not None and _realpath(file.name) in _BOUND_HEADERS
+
+
+def _is_bound_class(decl) -> bool:
+    """True if *decl* names a class this build registers as a Python type.
+
+    Only a top-level class of a bound header is registered, so a nested class
+    (`World::State`, `Sets<D>::Set`) or a template specialization never is.
+    """
+    if decl is None or not decl.spelling or "<" in decl.displayname:
+        return False
+    parent = decl.semantic_parent
+    if parent is not None and parent.kind not in (CursorKind.NAMESPACE, CursorKind.TRANSLATION_UNIT):
+        return False
+    return _decl_in_bound_header(decl)
+
+
+def _casters_for_signature(proto, depth: int) -> set | None:
+    """Casters needed by a `std::function`'s signature, or None if unbindable."""
+    canon = proto.get_canonical()
+    if canon.kind != TypeKind.FUNCTIONPROTO:
+        return None
+    need: set = set()
+    for t in [canon.get_result(), *canon.argument_types()]:
+        if (sub := _casters_for(t, depth + 1)) is None:
+            return None
+        need |= sub
+    return need
+
+
+def _casters_for(t, depth: int = 0) -> set | None:
+    """The nanobind caster headers needed to bind *t*, or None if nanobind can't.
+
+    An empty set means *t* needs no caster beyond `nanobind.h`.
+    """
+    if depth > 6:  # a signature this deeply nested is not worth binding
+        return None
+
+    canon = t.get_canonical()
+    kind = canon.kind
+
+    if kind in (TypeKind.POINTER, TypeKind.LVALUEREFERENCE, TypeKind.RVALUEREFERENCE):
+        pointee = canon.get_pointee().get_canonical()
+        if pointee.kind in _CHAR_KINDS:
+            return set()  # `const char*` is just a Python string
+        if pointee.kind == TypeKind.FUNCTIONPROTO:
+            return None  # raw function pointer: no caster
+        if kind == TypeKind.POINTER:
+            # A pointer is only Python-visible if it points at a *bound* class: a
+            # caster converts a value or a reference (`const std::string&`), never
+            # a pointer to one (`const std::filesystem::path*`).
+            if pointee.kind != TypeKind.RECORD:
+                return None
+            return set() if _is_bound_class(pointee.get_declaration()) else None
+        return _casters_for(pointee, depth + 1)
+
+    if kind in _BUILTIN_KINDS:
+        return set()
+
+    if kind == TypeKind.ENUM:
+        # Nested enums are bound at module scope, so the declaring header is the
+        # only thing that matters here.
+        return set() if _decl_in_bound_header(canon.get_declaration()) else None
+
+    if kind == TypeKind.RECORD:
+        spelling = _strip_cv(_canon_spelling(canon))
+        base = spelling.split("<", 1)[0]
+        if base == "std::function":
+            sub = _casters_for_signature(canon.get_template_argument_type(0), depth)
+            return None if sub is None else sub | {_FUNCTION_CASTER}
+        if (entry := _STL_CASTERS.get(base)) is not None:
+            header, n_value_args = entry
+            need = {header}
+            # -1 template arguments means "not a template" (e.g. `fs::path`).
+            total = canon.get_num_template_arguments()
+            for i in range(total if n_value_args < 0 else min(n_value_args, total)):
+                arg = canon.get_template_argument_type(i)
+                if arg.kind == TypeKind.INVALID:
+                    continue  # a non-type argument (e.g. an extent): nothing to bind
+                if (sub := _casters_for(arg, depth + 1)) is None:
+                    return None
+                need |= sub
+            return need
+        if "<" in spelling:
+            return None  # some other template: nanobind has no caster for it
+        return set() if _is_bound_class(canon.get_declaration()) else None
+
+    return None
+
+
+def _range_value_type(t) -> tuple[str, set] | None:
+    """`(element spelling, casters)` if *t* is a MimIR range, else None.
+
+    The element spelling is the range's `value_type`, i.e. suitable as
+    `std::vector<...>`: a `Span<const T* const>` yields `const T*`, and a
+    `Sets<D>::Set` — whose iterator hands out `D*` — yields `D*`.
+    """
+    canon = t.get_canonical()
+    if canon.kind in (TypeKind.LVALUEREFERENCE, TypeKind.RVALUEREFERENCE):
+        canon = canon.get_pointee().get_canonical()  # `const DefVec&` is a range, too
+    if canon.kind != TypeKind.RECORD:
+        return None
+    spelling = _strip_cv(_canon_spelling(canon))
+
+    # `Sets` hands out pointers to its element type, the other two store the
+    # element type itself.
+    elem, elem_is_pointee = None, False
+    if spelling.split("<", 1)[0] in _MIM_RANGES and "<" in spelling:
+        elem = canon.get_template_argument_type(0)
+    elif spelling.startswith("mim::Sets<") and spelling.endswith(">::Set"):
+        # `Set` is nested in the `Sets<D, N>` specialization, which is where the
+        # element type D lives.
+        parent = canon.get_declaration().semantic_parent
+        if parent is not None:
+            elem, elem_is_pointee = parent.type.get_template_argument_type(0), True
+
+    if elem is None or elem.kind == TypeKind.INVALID:
+        return None
+    if (casters := _casters_for(elem)) is None:
+        return None
+
+    value = _TRAILING_CONST.sub("", _canon_spelling(elem))  # `T* const` → `T*`
+    if elem_is_pointee:
+        value += "*"
+    elif elem.get_canonical().kind != TypeKind.POINTER:
+        # `std::vector` requires a non-const value_type. Only a top-level const
+        # is dropped — for a pointer element the const belongs to the pointee
+        # (`Span<const Def* const>` → `const Def*`) and must stay.
+        value = _strip_cv(value)
+    return value, casters | {"vector.h"}
 
 
 # ---------------------------------------------------------------------------
 #  Extraction helpers
 # ---------------------------------------------------------------------------
 
-def is_public(cursor) -> bool:
+def _is_public(cursor) -> bool:
     try:
         return cursor.access_specifier == clang.AccessSpecifier.PUBLIC
     except Exception:
         return True
 
 
-def is_deleted(cursor) -> bool:
+def _is_deleted(cursor) -> bool:
     """Whether *cursor* declares a `= delete`d function.
 
     libclang exposes this directly; neither the extent nor the doc comment ever
@@ -121,25 +362,39 @@ def _nested_decl(t):
     return None
 
 
-def _resolve_param_type(p) -> Optional[str]:
-    """Spelling to emit for a parameter, or ``None`` to skip the whole method.
+def _resolve_param_type(p) -> tuple[str, set] | None:
+    """``(spelling to emit, casters needed)``, or ``None`` to skip the whole method.
 
-    - function-pointer params are unbindable → skip;
-    - a nested *record* param is spelled unqualified by libclang and is usually
-      an unbound type → skip;
-    - a nested *enum* param is qualified with its enclosing class (e.g.
-      ``Level`` → ``Log::Level``) so it resolves at namespace scope.
+    - a type nanobind cannot convert makes the whole method unbindable → skip
+      (this also covers function pointers, which have no caster);
+    - a MimIR range (`Defs`, `DefVec`) is taken as the corresponding
+      `std::vector`, which converts implicitly at the call site, so Python can
+      pass a plain list;
+    - a param declared through a nested type is spelled unqualified by libclang
+      (`Lam::Filter` → `Filter`), which would not resolve at namespace scope. A
+      nested *enum* is repaired by qualifying it (``Level`` → ``Log::Level``);
+      anything else has to be skipped.
     """
-    if _type_is_fn_ptr(p.type):
+    if rng := _range_value_type(p.type):
+        value, casters = rng
+        return f"const std::vector<{value}>&", casters
+    if (casters := _casters_for(p.type)) is None:
         return None
     spelling = _type_spelling(p.type)
-    nd = _nested_decl(p.type)
-    if nd:
+    if nd := _nested_decl(p.type):
         parent_name, decl = nd
         if decl.kind != CursorKind.ENUM_DECL:
             return None
-        return re.sub(rf"\b{re.escape(decl.spelling)}\b", f"{parent_name}::{decl.spelling}", spelling, count=1)
-    return spelling
+        spelling = re.sub(
+            rf"\b{re.escape(decl.spelling)}\b", f"{parent_name}::{decl.spelling}", spelling, count=1
+        )
+    return spelling, casters
+
+
+_UNDEDUCED = re.compile(r"\b(auto|decltype)\b")
+# A template argument that is a lone uppercase letter is a template parameter
+# (e.g. `Vector<R>`), never a concrete type in this codebase.
+_TEMPLATE_PARAM_ARG = re.compile(r"<\s*[A-Z]\s*[,>]")
 
 
 def _is_unresolved_return(ret: str) -> bool:
@@ -149,26 +404,7 @@ def _is_unresolved_return(ret: str) -> bool:
     such as `Vector<R>` (a single uppercase-letter template argument), which
     arise from the MIM_PROJ mixin methods and cannot be bound as written.
     """
-    if re.search(r"\b(auto|decltype)\b", ret):
-        return True
-    # A template argument that is a lone uppercase letter is a template
-    # parameter (e.g. `Vector<R>`), never a concrete type in this codebase.
-    return bool(re.search(r"<\s*[A-Z]\s*[,>]", ret))
-
-
-def _type_is_fn_ptr(t) -> bool:
-    """True if *t* is a raw function pointer (or function) type.
-
-    nanobind has no type caster for raw function pointers (e.g. the `Normalizer`
-    and `Backend` typedefs), so a method exposing one cannot be bound.
-    """
-    try:
-        canon = t.get_canonical()
-        if canon.kind == TypeKind.POINTER:
-            return canon.get_pointee().kind == TypeKind.FUNCTIONPROTO
-        return canon.kind == TypeKind.FUNCTIONPROTO
-    except Exception:
-        return False
+    return bool(_UNDEDUCED.search(ret) or _TEMPLATE_PARAM_ARG.search(ret))
 
 
 def _is_copy_or_move_ctor(cursor, class_name: str) -> bool:
@@ -191,6 +427,11 @@ def _is_copy_or_move_ctor(cursor, class_name: str) -> bool:
     return base.strip().split("::")[-1] == class_name
 
 
+def _header_stem(header_path: str) -> str:
+    """`include/mim/util/log.h` → `log`: names the init function and .nbextra file."""
+    return os.path.splitext(os.path.basename(header_path))[0]
+
+
 def _samefile(a, b):
     try:
         return os.path.samefile(a, b)
@@ -198,7 +439,7 @@ def _samefile(a, b):
         return os.path.abspath(a) == os.path.abspath(b)
 
 
-def _param_default(p) -> Optional[str]:
+def _param_default(p) -> str | None:
     """The source text of a parameter's default argument (after `=`), or None."""
     try:
         toks = [t.spelling for t in p.get_tokens()]
@@ -213,126 +454,130 @@ def _param_default(p) -> Optional[str]:
 #  Extraction: collect classes, methods, enums from a header
 # ---------------------------------------------------------------------------
 
+# Word boundaries in a CamelCase identifier: after a lowercase letter, and before
+# the last capital of a run (`isaLit` → `isa_lit`, `MIMError` → `mim_error`).
+_CAMEL_BOUNDARIES = (re.compile(r"(?<=[a-z])(?=[A-Z])"), re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])"))
+
+
+def _camel_to_snake(name: str) -> str:
+    for boundary in _CAMEL_BOUNDARIES:
+        name = boundary.sub("_", name)
+    return name.lower()
+
+
+@dataclass
+class Param:
+    """One parameter of a member to bind."""
+
+    spelling: str          # the C++ type to emit in the generated lambda
+    name: str = ""         # empty for an unnamed parameter
+    default: str | None = None  # source text of its default argument, if any
+
+
+@dataclass
 class MethodInfo:
-    def __init__(
-        self,
-        name: str,
-        return_type: str,
-        params: list[tuple[str, str]],
-        class_name: str = "",
-        is_const: bool = False,
-        is_static: bool = False,
-        is_constructor: bool = False,
-        is_field: bool = False,
-        defaults: Optional[list[Optional[str]]] = None,
-    ):
-        self.name = name
-        self.return_type = return_type
-        self.params = params
-        self.class_name = class_name
-        self.is_const = is_const
-        self.is_static = is_static
-        self.is_constructor = is_constructor
-        self.is_field = is_field
-        # Parallel to `params`: the source default value for each parameter, or None.
-        self.defaults = defaults if defaults is not None else [None] * len(params)
+    """One member to bind: a method, constructor, static method or data field."""
+
+    name: str
+    return_type: str
+    params: list[Param] = field(default_factory=list)
+    class_name: str = ""
+    is_const: bool = False
+    is_static: bool = False
+    is_constructor: bool = False
+    is_field: bool = False
+    # nanobind caster headers this signature needs (see `_casters_for`).
+    casters: set = field(default_factory=set)
+    # Element type if the return is a MimIR range copied into a std::vector.
+    range_elem: str | None = None
 
     @property
     def py_name(self) -> str:
         return _camel_to_snake(self.name)
 
-    @property
-    def cpp_ref(self) -> str:
-        if self.is_constructor:
-            return ""
-        return f"&{self.class_name}::{self.name}"
+
+@dataclass
+class ClassInfo:
+    """One class to register, as parsed from the header."""
+
+    bases: list[str] = field(default_factory=list)
+    methods: list[MethodInfo] = field(default_factory=list)
+    # A class deriving from std::exception is bound via nb::exception<> instead.
+    is_exception: bool = False
+    # An abstract class cannot be constructed from Python.
+    is_abstract: bool = False
 
 
-def _camel_to_snake(name: str) -> str:
-    s = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", name)
-    s = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", s)
-    return s.lower()
-
-
-def _extract_params(cursor):
-    """Return ``(params, defaults)`` for a function cursor, or ``None`` to skip.
+def _extract_params(cursor) -> tuple[list[Param], set] | None:
+    """``(parameters, casters needed)`` for a function cursor, or ``None`` to skip.
 
     ``None`` signals that a parameter type is unbindable (see `_resolve_param_type`),
     so the whole method/constructor must be dropped.
     """
-    params, defaults = [], []
+    params, casters = [], set()
     for p in cursor.get_children():
         if p.kind == CursorKind.PARM_DECL:
-            pt = _resolve_param_type(p)
-            if pt is None:
+            if (resolved := _resolve_param_type(p)) is None:
                 return None
-            params.append((pt, p.spelling))
-            defaults.append(_param_default(p))
-    return params, defaults
+            spelling, needed = resolved
+            params.append(Param(spelling, p.spelling, _param_default(p)))
+            casters |= needed
+    return params, casters
 
 
-def _extract_method(cursor, class_name: str) -> Optional[MethodInfo]:
-    if is_deleted(cursor):
-        return None
-
-    if cursor.kind == CursorKind.DESTRUCTOR:
-        return None
-
-    if cursor.spelling.startswith("operator"):
-        return None
-
-    if not is_public(cursor):
+def _extract_method(cursor, class_name: str) -> MethodInfo | None:
+    if (
+        _is_deleted(cursor)
+        or cursor.kind == CursorKind.DESTRUCTOR
+        or cursor.spelling.startswith("operator")
+        or not _is_public(cursor)
+    ):
         return None
 
     if cursor.kind == CursorKind.CONSTRUCTOR:
         if _is_copy_or_move_ctor(cursor, class_name):
             return None
-        extracted = _extract_params(cursor)
-        if extracted is None:
+        if (extracted := _extract_params(cursor)) is None:
             return None
-        params, defaults = extracted
+        params, casters = extracted
         return MethodInfo(
             name=cursor.spelling,
             return_type="",
             params=params,
             class_name=class_name,
             is_constructor=True,
-            defaults=defaults,
+            casters=casters,
         )
 
-    is_static = is_const = False
-    try:
-        is_static = cursor.is_static_method()
-    except Exception:
-        pass
-    try:
-        is_const = cursor.is_const_method()
-    except Exception:
-        pass
-
-    if _type_is_fn_ptr(cursor.result_type):
-        return None
     ret = _type_spelling(cursor.result_type)
     # Skip methods whose return type libclang could not resolve to a concrete
-    # bindable type (the MIM_PROJ mixin methods): either a bare `auto`/`decltype`
-    # or a dependent template parameter such as `Vector<R>`. The generated
-    # binding would be uncompilable/unconvertible, so leave it to an nbextra
-    # substitute.
+    # type (the MIM_PROJ mixin methods): either a bare `auto`/`decltype` or a
+    # dependent template parameter such as `Vector<R>`. The bindability check
+    # below rejects those too, but only via their canonical type — this catches
+    # them by their written spelling, which is what the emitted code uses to pick
+    # a return-value policy.
     if _is_unresolved_return(ret):
         return None
-    extracted = _extract_params(cursor)
-    if extracted is None:
+    # A MimIR range return is copied into a std::vector so it reaches Python as
+    # a list; anything else must be a type nanobind can convert.
+    range_elem = None
+    if rng := _range_value_type(cursor.result_type):
+        range_elem, ret_casters = rng
+    elif (ret_casters := _casters_for(cursor.result_type)) is None:
         return None
-    params, defaults = extracted
+    if (extracted := _extract_params(cursor)) is None:
+        return None
+    params, casters = extracted
 
     return MethodInfo(
         name=cursor.spelling,
         return_type=ret,
         params=params,
         class_name=class_name,
-        is_const=is_const,
-        is_static=is_static,
-        defaults=defaults,
+        is_const=cursor.is_const_method(),
+        is_static=cursor.is_static_method(),
+        casters=casters | ret_casters,
+        range_elem=range_elem,
     )
 
 
@@ -355,79 +600,75 @@ def _report_diagnostics(tu, header_path: str) -> int:
     return len(fatals)
 
 
-def extract_from_header(tu, header_path: str):
-    classes: dict = {}
+def _is_bindable_record(cursor) -> bool:
+    """True if *cursor* is a class definition worth registering as a Python type."""
+    if not cursor.is_definition():
+        return False  # a forward/opaque declaration has nothing to bind
+    name = cursor.spelling
+    if not name or name.startswith("__") or name.startswith("("):
+        return False
+    # Skip template specializations (e.g. `template<> struct fe::is_bit_enum<mim::Dep>`
+    # or `formatter<...>`): they are not real, bindable classes.
+    return "<" not in cursor.displayname
+
+
+def _extract_class(cursor, enums: list) -> ClassInfo:
+    """Collect the members to bind for the class at *cursor*.
+
+    Nested enums are appended to *enums*, since they are bound at module scope
+    rather than inside the class.
+    """
+    info = ClassInfo(is_abstract=cursor.is_abstract_record())
+    for child in cursor.get_children():
+        kind = child.kind
+        if kind == CursorKind.CXX_BASE_SPECIFIER:
+            base = _type_spelling(child.type).strip()
+            # A class deriving from std::exception is bound as a Python
+            # exception, not as an ordinary class.
+            if "exception" in base:
+                info.is_exception = True
+            # Only keep bases that are themselves bindable mim classes. Foreign
+            # (`fe::SymPool`, `std::true_type`) and template mixin bases
+            # (`fe::RuntimeCast<Def>`) are not registered nanobind types, so
+            # binding against them would not compile.
+            if "::" not in base and "<" not in base:
+                info.bases.append(base)
+        elif kind in (CursorKind.CXX_METHOD, CursorKind.CONSTRUCTOR):
+            if mi := _extract_method(child, cursor.spelling):
+                info.methods.append(mi)
+        elif kind == CursorKind.FIELD_DECL and _is_public(child):
+            if (casters := _casters_for(child.type)) is None:
+                continue  # nanobind cannot convert the field's type
+            info.methods.append(MethodInfo(
+                name=child.spelling, return_type=_type_spelling(child.type), params=[],
+                class_name=cursor.spelling, is_field=True,
+                is_const=child.type.is_const_qualified(), casters=casters,
+            ))
+        elif kind == CursorKind.ENUM_DECL and _is_public(child):
+            enums.append(child)
+    return info
+
+
+def extract_from_header(tu, header_path: str) -> tuple[dict[str, ClassInfo], list]:
+    """The classes and enums *header_path* itself declares, in declaration order.
+
+    Declarations pulled in from other headers are ignored — each one is bound by
+    the unit generated for the header that owns it.
+    """
+    classes: dict[str, ClassInfo] = {}
     enums: list = []
 
     def walk(cursor):
         loc = cursor.location
         if not loc.file or not _samefile(str(loc.file), header_path):
             return
-        kind = cursor.kind
-
-        if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
-            # Skip forward declarations / opaque declarations
-            try:
-                if not cursor.is_definition():
-                    return
-            except Exception:
-                pass
-            name = cursor.spelling
-            if not name or name.startswith("__") or name.startswith("("):
-                return
-            # Skip template specializations (e.g. `template<> struct fe::is_bit_enum<mim::Dep>`
-            # or `formatter<...>`): they are not real, bindable classes.
-            if "<" in cursor.displayname:
-                return
-            is_abstract = False
-            try:
-                is_abstract = cursor.is_abstract_record()
-            except Exception:
-                pass
-            bases = []
-            methods = []
-            is_exception = False
+        if cursor.kind == CursorKind.NAMESPACE:
             for child in cursor.get_children():
-                ck = child.kind
-                if ck == CursorKind.CXX_BASE_SPECIFIER:
-                    raw = child.type.spelling.replace("class ", "").replace("struct ", "").strip()
-                    # A class deriving from std::exception is bound as a Python
-                    # exception, not as an ordinary class.
-                    if "exception" in raw:
-                        is_exception = True
-                    # Only keep bases that are themselves bindable mim classes.
-                    # Foreign (`fe::SymPool`, `std::true_type`) and template mixin
-                    # bases (`fe::RuntimeCast<Def>`) are not registered nanobind
-                    # types, so binding against them would not compile.
-                    if "::" in raw or "<" in raw:
-                        continue
-                    bases.append(raw)
-                elif ck in (CursorKind.CXX_METHOD, CursorKind.CONSTRUCTOR):
-                    mi = _extract_method(child, name)
-                    if mi:
-                        methods.append(mi)
-                elif ck == CursorKind.FIELD_DECL and is_public(child):
-                    ft = _type_spelling(child.type)
-                    methods.append(MethodInfo(
-                        name=child.spelling, return_type=ft, params=[], class_name=name,
-                        is_field=True, is_const=child.type.is_const_qualified(),
-                    ))
-                elif ck == CursorKind.ENUM_DECL and is_public(child):
-                    # Nested enums (e.g. `Log::Level`) are bound at module scope.
-                    enums.append(child)
-            classes[name] = {
-                "bases": bases,
-                "methods": methods,
-                "is_exception": is_exception,
-                "is_abstract": is_abstract,
-            }
-
-        elif kind == CursorKind.ENUM_DECL:
+                walk(child)
+        elif cursor.kind == CursorKind.ENUM_DECL:
             enums.append(cursor)
-
-        elif kind == CursorKind.NAMESPACE:
-            for c in cursor.get_children():
-                walk(c)
+        elif cursor.kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL) and _is_bindable_record(cursor):
+            classes[cursor.spelling] = _extract_class(cursor, enums)
 
     for child in tu.cursor.get_children():
         walk(child)
@@ -439,12 +680,20 @@ def extract_from_header(tu, header_path: str):
 #  Code generation
 # ---------------------------------------------------------------------------
 
-INCLUDES_TEMPLATE = """\
-#include <nanobind/nanobind.h>
-#include <nanobind/stl/string.h>
-#include <nanobind/stl/string_view.h>
-#include <nanobind/stl/vector.h>
-"""
+# Casters every generated unit includes: they cost nothing extra to include and
+# the hand-written .nbextra fragments rely on them being there.
+_BASE_CASTERS = frozenset({"string.h", "string_view.h", "vector.h"})
+
+
+def _includes_block(casters: set) -> str:
+    """The nanobind includes for a unit: the core header plus the casters it uses.
+
+    A caster header is what teaches nanobind to convert a type; without it the
+    binding compiles but neither works at runtime nor renders in `_mim.pyi`.
+    """
+    lines = ["#include <nanobind/nanobind.h>"]
+    lines += [f"#include <nanobind/stl/{c}>" for c in sorted(_BASE_CASTERS | casters)]
+    return "\n".join(lines) + "\n"
 
 
 def _returns_lvalue_ref(ret_type: str) -> bool:
@@ -452,40 +701,21 @@ def _returns_lvalue_ref(ret_type: str) -> bool:
     return norm.endswith("&") and not norm.endswith("&&")
 
 
-def _returns_pointer(ret_type: str) -> bool:
-    return "*" in ret_type
-
-
-def _returns_def_vector(ret_type: str) -> bool:
-    # e.g. `Vector<const Def*>` / `mim::Vector<mim::Def const*, 4>` (DefVec): a
-    # custom container nanobind can't convert. We copy it into a std::vector so
-    # it reaches Python as a list of Def.
-    norm = ret_type.replace(" ", "")
-    return "Vector<" in norm and "Def*" in norm
-
-
-def _needs_ref_policy(ret_type: str) -> bool:
-    # A method returning a reference or pointer to a bound C++ object must hand
-    # Python a non-owning handle rather than copying the object into it.
-    # Value returns are moved by nanobind's default `automatic` policy and need
-    # no annotation.
-    return _returns_lvalue_ref(ret_type) or _returns_pointer(ret_type)
-
-
 def _policy_suffix(ret_type: str, static: bool) -> str:
-    if not _needs_ref_policy(ret_type):
+    """`, nb::rv_policy::…` for a return that must not be copied into Python.
+
+    A reference or pointer to a bound C++ object has to reach Python as a
+    non-owning handle; `reference_internal` ties its lifetime to `self`, which a
+    static method does not have. Value returns are moved by nanobind's default
+    `automatic` policy and need no annotation.
+    """
+    if not (_returns_lvalue_ref(ret_type) or "*" in ret_type):
         return ""
-    # `reference_internal` ties the result's lifetime to `self`; a static method
-    # has no `self`, so fall back to a plain non-owning `reference`.
-    pol = "reference" if static else "reference_internal"
-    return f", nb::rv_policy::{pol}"
+    return f", nb::rv_policy::{'reference' if static else 'reference_internal'}"
 
 
 def _gen_constructor_binding(mi: MethodInfo, indent: str = "    ") -> str:
-    args = ", ".join(pt for pt, _ in mi.params)
-    if not args:
-        return f'{indent}.def(nb::init<>())'
-    return f'{indent}.def(nb::init<{args}>())'
+    return f'{indent}.def(nb::init<{", ".join(p.spelling for p in mi.params)}>())'
 
 
 def _gen_field_binding(mi: MethodInfo, indent: str = "    ") -> str:
@@ -495,22 +725,13 @@ def _gen_field_binding(mi: MethodInfo, indent: str = "    ") -> str:
     return f'{indent}.{accessor}("{mi.py_name}", &{mi.class_name}::{mi.name})'
 
 
-# QoL parameter substitutions: expose a Python-friendly container type in the
-# lambda signature and let an implicit C++ conversion forward it to the wrapped
-# call. `Defs` (= Span<const Def*>) is implicitly constructible from any vector,
-# so accepting `std::vector<const Def*>` makes methods like `world.cn([...])`
-# take a plain Python list.
-_PARAM_TYPE_MAP = {
-    "Defs": "std::vector<const mim::Def*>",
-}
-
-
-def _map_param_type(pt: str) -> str:
-    return _PARAM_TYPE_MAP.get(pt.strip(), pt)
-
-
 # Default values simple enough to reproduce verbatim in a nb::arg() default.
 _SAFE_DEFAULT = re.compile(r"^(true|false|nullptr|-?\d+[uUlL]*|0[xX][0-9a-fA-F]+[uUlL]*)$")
+
+
+def _param_names(mi: MethodInfo) -> list[str]:
+    """The parameter names to emit; an unnamed parameter gets a synthetic `a<i>`."""
+    return [p.name or f"a{i}" for i, p in enumerate(mi.params)]
 
 
 def _arg_spec(mi: MethodInfo) -> str:
@@ -520,70 +741,63 @@ def _arg_spec(mi: MethodInfo) -> str:
     otherwise the parameters simply stay required (C++ guarantees defaults are
     trailing, so we never emit a default ahead of a non-default one).
     """
-    if not mi.params:
+    given = [p.default for p in mi.params if p.default is not None]
+    if not given or not all(_SAFE_DEFAULT.match(d) for d in given):
         return ""
-    defaults = mi.defaults
-    first = next((i for i, d in enumerate(defaults) if d is not None), None)
-    if first is None:
-        return ""
-    if not all(_SAFE_DEFAULT.match(d or "") for d in defaults[first:]):
-        return ""
-    parts = []
-    for i, (_, pn) in enumerate(mi.params):
-        name = pn or f"a{i}"
-        if defaults[i] is not None:
-            parts.append(f'nb::arg("{name}") = {defaults[i]}')
-        else:
-            parts.append(f'nb::arg("{name}")')
+    parts = [
+        f'nb::arg("{name}")' + (f" = {p.default}" if p.default is not None else "")
+        for name, p in zip(_param_names(mi), mi.params)
+    ]
     return ", " + ", ".join(parts)
 
 
 def _lambda_params(mi: MethodInfo) -> tuple[str, str]:
-    """Return the (declaration, call) strings for a method's parameters.
+    """The `(declaration, call)` strings for a method's parameters."""
+    names = _param_names(mi)
+    decls = [f"{p.spelling} {name}" for p, name in zip(mi.params, names)]
+    return ", ".join(decls), ", ".join(names)
 
-    Unnamed parameters are given synthetic names so they can be forwarded to
-    the wrapped call.
+
+def _range_copy_lambda(params: str, call: str, elem: str) -> str:
+    """A lambda that copies a MimIR range return into a `std::vector`.
+
+    `Defs`, `DefVec`, `Vars` and `Muts` have no nanobind caster, but a vector of
+    their element type converts to a Python list.
     """
-    lam_params = []
-    call_args = []
-    for idx, (pt, pn) in enumerate(mi.params):
-        name = pn or f"a{idx}"
-        lam_params.append(f"{_map_param_type(pt)} {name}")
-        call_args.append(name)
-    return ", ".join(lam_params), ", ".join(call_args)
+    return f'[]({params}) {{ auto _v = {call}; return std::vector<{elem}>(_v.begin(), _v.end()); }}'
 
 
-def _gen_lambda_wrapper(mi: MethodInfo, indent: str = "    ") -> str:
-    # Bind instance methods through a call-site lambda rather than a
-    # pointer-to-member. Taking `&Class::method` is ambiguous whenever the
-    # method has template or const/non-const overloads, so `overload_cast`
-    # fails; a lambda lets ordinary C++ overload resolution pick the right one.
-    params_str, args_str = _lambda_params(mi)
-    self_param = f"const {mi.class_name}& self" if mi.is_const else f"{mi.class_name}& self"
-    sep = ", " if params_str else ""
-    call = f"self.{mi.name}({args_str})"
-    # A `Vector<const Def*>` return is copied into a std::vector so it converts
-    # to a Python list; elements stay tied to `self` (reference_internal).
-    if _returns_def_vector(mi.return_type):
-        lam = f'[]({self_param}{sep}{params_str}) {{ auto _v = {call}; return std::vector<const mim::Def*>(_v.begin(), _v.end()); }}'
-        return f'{indent}.def("{mi.py_name}", {lam}, nb::rv_policy::reference_internal{_arg_spec(mi)})'
-    # An lvalue-reference return is bound through its address so it reaches
-    # Python as a non-owning pointer instead of being copied by value (which
-    # fails for non-copyable or forward-declared types such as World/Driver).
-    policy = _policy_suffix(mi.return_type, static=False)
-    body = "&" + call if _returns_lvalue_ref(mi.return_type) else call
-    return f'{indent}.def("{mi.py_name}", []({self_param}{sep}{params_str}) {{ return {body}; }}{policy}{_arg_spec(mi)})'
+def _gen_method_lambda(mi: MethodInfo, indent: str = "    ") -> str:
+    """Bind a (static) method through a call-site lambda.
 
+    A lambda rather than a pointer-to-member: taking `&Class::method` is
+    ambiguous whenever the method has template or const/non-const overloads, so
+    `overload_cast` fails, whereas a lambda lets ordinary C++ overload resolution
+    pick the right one.
+    """
+    decls, args = _lambda_params(mi)
+    if mi.is_static:
+        params, call = decls, f"{mi.class_name}::{mi.name}({args})"
+    else:
+        self_param = f"{'const ' if mi.is_const else ''}{mi.class_name}& self"
+        params = f"{self_param}, {decls}" if decls else self_param
+        call = f"self.{mi.name}({args})"
 
-def _gen_static_lambda(mi: MethodInfo, indent: str = "    ") -> str:
-    # Same rationale as _gen_lambda_wrapper, but for static methods there is no
-    # `self`, so we call `Class::method(args)` directly.
-    params_str, args_str = _lambda_params(mi)
-    policy = _policy_suffix(mi.return_type, static=True)
-    body = f"{mi.class_name}::{mi.name}({args_str})"
-    if _returns_lvalue_ref(mi.return_type):
-        body = "&" + body
-    return f'{indent}.def_static("{mi.py_name}", []({params_str}) {{ return {body}; }}{policy}{_arg_spec(mi)})'
+    if mi.range_elem:
+        body = _range_copy_lambda(params, call, mi.range_elem)
+        # A range is copied by value, but its elements are the bound objects the
+        # reference policy is about.
+        policy = f", nb::rv_policy::{'reference' if mi.is_static else 'reference_internal'}"
+    else:
+        # An lvalue-reference return is bound through its address so it reaches
+        # Python as a non-owning pointer instead of being copied by value (which
+        # fails for non-copyable or forward-declared types such as World/Driver).
+        ret = "&" + call if _returns_lvalue_ref(mi.return_type) else call
+        body = f"[]({params}) {{ return {ret}; }}"
+        policy = _policy_suffix(mi.return_type, static=mi.is_static)
+
+    definer = "def_static" if mi.is_static else "def"
+    return f'{indent}.{definer}("{mi.py_name}", {body}{policy}{_arg_spec(mi)})'
 
 
 def _generate_method_binding(mi: MethodInfo, indent: str = "    ") -> str:
@@ -591,9 +805,7 @@ def _generate_method_binding(mi: MethodInfo, indent: str = "    ") -> str:
         return _gen_constructor_binding(mi, indent)
     if mi.is_field:
         return _gen_field_binding(mi, indent)
-    if mi.is_static:
-        return _gen_static_lambda(mi, indent)
-    return _gen_lambda_wrapper(mi, indent)
+    return _gen_method_lambda(mi, indent)
 
 
 def _enum_qualified_name(cursor) -> str:
@@ -626,17 +838,9 @@ def _base_spec(bases: list[str]) -> str:
     return f", {bases[0].split('::')[-1]}"
 
 
-def _empty_extra() -> dict:
-    """A fresh, empty set of .nbextra injection sections.
-
-    A factory (not a shared constant) because the `classes`/`skips` values are
-    mutated in place downstream.
-    """
-    return {"includes": "", "classes": {}, "standalone": "", "skips": {}}
-
-
-def _parse_extra_file(content: str, stem: str) -> dict:
-    """Parse a structured .nbextra file into injection sections.
+@dataclass
+class Extra:
+    """The hand-written fragments a companion .nbextra file injects into a unit.
 
     Section headers are bracketed tags on their own line:
         [include]           — extra #include lines appended after the standard nanobind includes
@@ -646,61 +850,70 @@ def _parse_extra_file(content: str, stem: str) -> dict:
                               substitute a hand-written binding for something the generator
                               can't express
         [standalone]        — raw code injected inside init_* after all class/enum blocks
+    """
+
+    stem: str = ""
+    includes: str = ""
+    standalone: str = ""
+    classes: dict[str, str] = field(default_factory=dict)
+    skips: dict[str, set] = field(default_factory=dict)
+
+    def add_section(self, tag: str, body: str) -> None:
+        """Record one parsed section; an unrecognised tag warns and is dropped."""
+        if tag == "include":
+            self.includes = body
+        elif tag == "standalone":
+            self.standalone = body
+        elif tag.startswith("class:"):
+            self.classes[tag.removeprefix("class:")] = body
+        elif tag.startswith("skip:"):
+            self.skips.setdefault(tag.removeprefix("skip:"), set()).update(body.split())
+        else:
+            print(f"warning: {self.stem}.nbextra: unrecognised section [{tag}] — skipped", file=sys.stderr)
+
+
+def _parse_extra_file(content: str, stem: str) -> Extra:
+    """Parse a structured .nbextra file (see `Extra`).
 
     Content before the first section header is ignored.
-    Unrecognised tags emit a warning and their bodies are discarded.
     """
-    result = _empty_extra()
-    current_key: str | None = None
-    current_lines: list[str] = []
+    extra = Extra(stem=stem)
+    tag: str | None = None
+    body: list[str] = []
 
-    def _flush() -> None:
-        body = "\n".join(current_lines).strip()
-        current_lines.clear()
-        if not body or current_key is None:
-            return
-        if current_key == "include":
-            result["includes"] = body
-        elif current_key == "standalone":
-            result["standalone"] = body
-        elif current_key.startswith("class:"):
-            cls = current_key[len("class:"):]
-            result["classes"][cls] = body
-        elif current_key.startswith("skip:"):
-            cls = current_key[len("skip:"):]
-            result["skips"].setdefault(cls, set()).update(body.split())
-        else:
-            print(f"warning: {stem}.nbextra: unrecognised section [{current_key}] — skipped", file=sys.stderr)
+    def flush() -> None:
+        if tag is not None and (text := "\n".join(body).strip()):
+            extra.add_section(tag, text)
+        body.clear()
 
     for line in content.splitlines():
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
-            _flush()
-            current_key = stripped[1:-1].strip()
+            flush()
+            tag = stripped[1:-1].strip()
         else:
-            current_lines.append(line)
-    _flush()
-    return result
+            body.append(line)
+    flush()
+    return extra
 
 
-def _load_extra(header_path: str, extra_dir: str | None) -> dict:
+def _load_extra(header_path: str, extra_dir: str | None) -> Extra:
     """Load and parse the companion .nbextra file for *header_path*, if any."""
+    stem = _header_stem(header_path)
     if not extra_dir:
-        return _empty_extra()
-    stem = os.path.splitext(os.path.basename(header_path))[0]
-    extra_path = os.path.join(extra_dir, stem + ".nbextra")
+        return Extra(stem=stem)
     try:
-        with open(extra_path) as f:
+        with open(os.path.join(extra_dir, stem + ".nbextra")) as f:
             return _parse_extra_file(f.read(), stem)
     except OSError:
-        return _empty_extra()
+        return Extra(stem=stem)
 
 
 class ExtraSectionError(Exception):
     """A .nbextra section targets a class that will never receive it."""
 
 
-def _check_extra_sections(extra: dict, classes: dict, header_path: str, stem: str) -> None:
+def _check_extra_sections(extra: Extra, classes: dict[str, ClassInfo], header_path: str) -> None:
     """Reject `[class:X]`/`[skip:X]` sections that cannot be applied.
 
     Both are matched against the C++ class name verbatim, so a typo or a stale
@@ -710,7 +923,7 @@ def _check_extra_sections(extra: dict, classes: dict, header_path: str, stem: st
     header = os.path.basename(header_path)
     problems = []
 
-    for kind, names in (("class", extra["classes"]), ("skip", extra["skips"])):
+    for kind, names in (("class", extra.classes), ("skip", extra.skips)):
         for name in names:
             if name in classes:
                 continue
@@ -726,8 +939,8 @@ def _check_extra_sections(extra: dict, classes: dict, header_path: str, stem: st
 
     # Exception classes are registered via nb::exception<>, which takes no
     # `.def(...)` chain, so a [class:X] body aimed at one is dropped as well.
-    for name in extra["classes"]:
-        if classes.get(name, {}).get("is_exception"):
+    for name in extra.classes:
+        if name in classes and classes[name].is_exception:
             problems.append(
                 f"  [class:{name}] targets an exception class registered via "
                 f"nb::exception<{name}>, which accepts no .def(...) chain"
@@ -736,127 +949,115 @@ def _check_extra_sections(extra: dict, classes: dict, header_path: str, stem: st
     if problems:
         known = ", ".join(sorted(classes)) or "(none)"
         raise ExtraSectionError(
-            f"{stem}.nbextra: unusable section(s):\n"
+            f"{extra.stem}.nbextra: unusable section(s):\n"
             + "\n".join(problems)
             + f"\nClasses available from {header}: {known}"
         )
 
 
-def generate_bindings(header_path: str, classes: dict, enums: list, ns: str = "", extra_dir: str | None = None) -> str:
+def _bindable_methods(class_name: str, info: ClassInfo, extra: Extra) -> list[MethodInfo]:
+    """*info*'s members minus the ones this class must not or cannot expose."""
+    methods = info.methods
+
+    # Abstract classes cannot be constructed from Python (placement-new of an
+    # abstract type is ill-formed), so drop their constructor bindings.
+    if info.is_abstract:
+        methods = [m for m in methods if not m.is_constructor]
+
+    # Explicit [skip:Class] denylist: drop members the generator can't express
+    # (matched by C++ name or snake_case py_name); a companion [class:Class]
+    # section can substitute a hand-written binding.
+    if skip := extra.skips.get(class_name):
+        methods = [m for m in methods if m.name not in skip and m.py_name not in skip]
+
+    # nanobind rejects a Python name carrying both static and instance overloads
+    # (e.g. Def::zonk() const vs. static Def::zonk(Defs)). Keep the instance
+    # overloads and drop the colliding static ones.
+    instance = {m.py_name for m in methods if not (m.is_static or m.is_constructor or m.is_field)}
+    return [m for m in methods if not (m.is_static and m.py_name in instance)]
+
+
+def _gen_class_binding(class_name: str, info: ClassInfo, methods: list[MethodInfo], extra: Extra) -> list[str]:
+    """The registration block for one class, as lines."""
+    # A class deriving from std::exception is registered as a Python exception
+    # rather than an ordinary class.
+    if info.is_exception:
+        return [f'    nb::exception<{class_name}>(m, "{class_name}");']
+
+    # Def and everything deriving from it is never_destruct — the World owns all
+    # Def lifetimes.
+    never_destruct = class_name == "Def" or "Def" in info.bases
+    head = (
+        f'    nb::class_<{class_name}{_base_spec(info.bases)}>'
+        f'(m, "{class_name}"{", nb::never_destruct()" if never_destruct else ""})'
+    )
+
+    # The `.def(...)` chain: generated bindings first, hand-written ones last.
+    chain = [_generate_method_binding(mi) for mi in methods]
+    if class_extra := extra.classes.get(class_name):
+        chain.append(class_extra.strip())
+    if not chain:
+        return [head + ";"]
+
+    lines = [f"{head} {chain[0].strip()}", *chain[1:]]
+    if not lines[-1].rstrip().endswith(";"):  # a hand-written fragment may close itself
+        lines[-1] += ";"
+    return lines
+
+
+def generate_bindings(
+    header_path: str, classes: dict[str, ClassInfo], enums: list, ns: str = "", extra_dir: str | None = None
+) -> str:
+    """The complete nanobind translation unit registering *classes* and *enums*."""
     extra = _load_extra(header_path, extra_dir)
+    # An unmatched [class:X]/[skip:X] is almost always a typo or a stale name
+    # after a C++ rename. Silently dropping the section produces a module that
+    # compiles cleanly but is missing every binding the section declared, so fail
+    # loudly here — before emitting anything.
+    _check_extra_sections(extra, classes, header_path)
+
+    # An exception class is registered without a `.def(...)` chain, so none of its
+    # members — and none of their casters — reach the output.
+    bindable = {
+        name: [] if info.is_exception else _bindable_methods(name, info, extra)
+        for name, info in classes.items()
+    }
 
     lines = []
-    lines.append(INCLUDES_TEMPLATE)
-    if extra["includes"]:
-        lines.append(extra["includes"])
-        lines.append("")
-    lines.append(f'#include "{os.path.relpath(header_path, os.getcwd())}"')
+    if extra.includes:
+        lines += [extra.includes, ""]
     # The two runtime hub types are cross-referenced by most accessors (e.g.
     # `Def::world()`, `World::driver()`); include their full definitions so
     # nanobind can cast references/pointers to them (their headers are on the
     # PUBLIC include path of libmim).
-    lines.append("#include <mim/driver.h>")
-    lines.append("#include <mim/world.h>")
-    lines.append("")
-    lines.append("namespace nb = nanobind;")
-    lines.append("")
-
-    header_stem = os.path.splitext(os.path.basename(header_path))[0]
-    func_name = f"init_{header_stem}"
-
+    lines += [
+        f'#include "{os.path.relpath(header_path, os.getcwd())}"',
+        "#include <mim/driver.h>",
+        "#include <mim/world.h>",
+        "",
+        "namespace nb = nanobind;",
+        "",
+    ]
     if ns:
-        lines.append(f"namespace {ns} {{")
-        lines.append("")
-
-    lines.append(f"void {func_name}(nb::module_& m) {{")
-    lines.append("    // clang-format off")
+        lines += [f"namespace {ns} {{", ""]
+    lines += [f"void init_{_header_stem(header_path)}(nb::module_& m) {{", "    // clang-format off"]
 
     for cursor in enums:
-        lines.append("")
-        lines.append(_gen_enum_binding(cursor))
-
-    # An unmatched [class:X]/[skip:X] is almost always a typo or a stale name
-    # after a C++ rename. Silently dropping the section produces a module that
-    # compiles cleanly but is missing every binding the section declared, so
-    # fail loudly here — before emitting anything.
-    _check_extra_sections(extra, classes, header_path, header_stem)
-
+        lines += ["", _gen_enum_binding(cursor)]
     for class_name, info in classes.items():
-        # A class deriving from std::exception is registered as a Python
-        # exception rather than an ordinary class.
-        if info.get("is_exception"):
-            lines.append("")
-            lines.append(f'    nb::exception<{class_name}>(m, "{class_name}");')
-            continue
+        lines += ["", *_gen_class_binding(class_name, info, bindable[class_name], extra)]
+    if extra.standalone:
+        lines += ["", extra.standalone]
 
-        bases = info["bases"]
-        base_spec = _base_spec(bases)
-        # Def and everything deriving from it is never_destruct —
-        # the World owns all Def lifetimes.
-        suffix = ", nb::never_destruct()" if (class_name == "Def" or "Def" in bases) else ""
-
-        class_extra = extra["classes"].get(class_name, "")
-
-        lines.append("")
-        cls_start = f'    nb::class_<{class_name}{base_spec}>(m, "{class_name}"{suffix})'
-        methods = info["methods"]
-
-        # Abstract classes cannot be constructed from Python (placement-new of an
-        # abstract type is ill-formed), so drop their constructor bindings.
-        if info.get("is_abstract"):
-            methods = [m for m in methods if not m.is_constructor]
-
-        # Explicit [skip:Class] denylist: drop members the generator can't
-        # express (matched by C++ name or snake_case py_name); a companion
-        # [class:Class] section can substitute a hand-written binding.
-        _skip = extra["skips"].get(class_name)
-        if _skip:
-            methods = [m for m in methods if m.name not in _skip and m.py_name not in _skip]
-
-        # nanobind rejects a Python name carrying both static and instance
-        # overloads (e.g. Def::zonk() const vs. static Def::zonk(Defs)).
-        # Keep the instance overloads and drop the colliding static ones.
-        _static_py = {m.py_name for m in methods if m.is_static and not m.is_field}
-        _instance_py = {m.py_name for m in methods if not m.is_static and not m.is_constructor and not m.is_field}
-        _drop_static = _static_py & _instance_py
-        if _drop_static:
-            methods = [m for m in methods if not (m.is_static and m.py_name in _drop_static)]
-
-        if not methods and not class_extra:
-            lines.append(cls_start + ";")
-            continue
-
-        lines.append(cls_start)
-
-        for i, mi in enumerate(methods):
-            binding = _generate_method_binding(mi)
-            if i == 0:
-                lines[-1] = lines[-1] + " " + binding.strip()
-            else:
-                lines.append(binding)
-
-        if class_extra:
-            if lines[-1].rstrip().endswith(";"):
-                lines[-1] = lines[-1].rstrip()[:-1].rstrip()
-            lines.append(class_extra.strip())
-
-        if not lines[-1].rstrip().endswith(";"):
-            lines[-1] = lines[-1] + ";"
-
-    if extra["standalone"]:
-        lines.append("")
-        lines.append(extra["standalone"])
-
-    lines.append("")
-    lines.append("    // clang-format on")
-    lines.append("}")
-
+    lines += ["", "    // clang-format on", "}"]
     if ns:
-        lines.append("")
-        lines.append(f"}} // namespace {ns}")
-
+        lines += ["", f"}} // namespace {ns}"]
     lines.append("")
-    return "\n".join(lines)
+
+    # Only the bindings that survived the filtering need a caster, so the include
+    # block is assembled last.
+    casters = {c for methods in bindable.values() for mi in methods for c in mi.casters}
+    return "\n".join([_includes_block(casters), *lines])
 
 
 def generate_module(units: list[tuple[str, str]], module_name: str = "_mim") -> str:
@@ -868,16 +1069,12 @@ def generate_module(units: list[tuple[str, str]], module_name: str = "_mim") -> 
     """
     lines = ["#include <nanobind/nanobind.h>", "", "namespace nb = nanobind;", ""]
 
-    # Group forward declarations by namespace, preserving first-seen order.
-    order: list[str] = []
+    # Group the forward declarations by namespace; a dict keeps first-seen order.
     by_ns: dict[str, list[str]] = {}
     for ns, init in units:
-        if ns not in by_ns:
-            by_ns[ns] = []
-            order.append(ns)
-        by_ns[ns].append(init)
-    for ns in order:
-        decls = " ".join(f"void {i}(nb::module_&);" for i in by_ns[ns])
+        by_ns.setdefault(ns, []).append(init)
+    for ns, inits in by_ns.items():
+        decls = " ".join(f"void {i}(nb::module_&);" for i in inits)
         lines.append(f"namespace {ns} {{ {decls} }}" if ns else decls)
 
     lines.append("")
@@ -893,7 +1090,7 @@ def generate_module(units: list[tuple[str, str]], module_name: str = "_mim") -> 
 #  CMake integration: derive the real per-target compile flags from build/compile_commands.json
 # ---------------------------------------------------------------------------
 
-def _load_compile_commands(build_dir: Path) -> Optional[list]:
+def _load_compile_commands(build_dir: Path) -> list | None:
     """Load `<build_dir>/compile_commands.json`, or return None if unavailable."""
     cc = Path(build_dir) / "compile_commands.json"
     if not cc.is_file():
@@ -911,7 +1108,7 @@ def _anchor_base(anchor: str) -> Path:
     return (_REPO_ROOT / anchor).resolve()
 
 
-def _rel_under(path, anchor: str) -> Optional[Path]:
+def _rel_under(path, anchor: str) -> Path | None:
     """Path relative to `<repo>/<anchor>`, or None if it does not live there."""
     try:
         return Path(path).resolve().relative_to(_anchor_base(anchor))
@@ -919,7 +1116,7 @@ def _rel_under(path, anchor: str) -> Optional[Path]:
         return None
 
 
-def _match_cc_entry(header_path: str, entries: list) -> Optional[dict]:
+def _match_cc_entry(header_path: str, entries: list) -> dict | None:
     """Pick the compile-command entry whose target best matches *header_path*.
 
     Headers under `include/<sub>` are mapped to sources under `src/<sub>`; the
@@ -955,7 +1152,7 @@ def _norm_std(value: str) -> str:
     return "c++23" if v in ("c++latest", "c++2b") else v
 
 
-def _strip_prefix(s: str, prefixes: tuple) -> Optional[str]:
+def _strip_prefix(s: str, prefixes: tuple) -> str | None:
     """The remainder of *s* after the first matching (non-empty) prefix, else None."""
     for p in prefixes:
         if s.startswith(p) and len(s) > len(p):
@@ -1023,7 +1220,7 @@ def _flags_from_cc_entry(entry: dict) -> list:
     return out
 
 
-def _resource_include_from(resource_dir: str) -> Optional[str]:
+def _resource_include_from(resource_dir: str) -> str | None:
     """`-isystem` flag for a clang resource dir, if it holds the builtin headers."""
     inc = Path(resource_dir.strip()) / "include"
     return f"-isystem{inc}" if (inc / "stddef.h").is_file() else None
@@ -1082,7 +1279,7 @@ def _compiler_system_includes() -> list:
     return []
 
 
-def _clang_resource_include() -> Optional[str]:
+def _clang_resource_include() -> str | None:
     """Locate libclang's builtin headers (stddef.h et al.) as an `-isystem` flag.
 
     compile_commands.json never records the resource dir, and the pip `libclang`
@@ -1142,6 +1339,18 @@ def parse_args(argv=None):
     )
     p.add_argument("-I", action="append", dest="includes", default=[], help="Include paths")
     p.add_argument(
+        "--bound-header",
+        action="append",
+        dest="bound_headers",
+        default=[],
+        metavar="HEADER",
+        help="A header whose classes/enums the module registers (repeatable). Only these types "
+        "may appear in a generated signature; a member mentioning any other is dropped, since "
+        "nanobind cannot convert it and stubgen would leak the raw C++ spelling into _mim.pyi. "
+        "Pass every header of the build's manifest, not just the one being generated. "
+        "Defaults to the headers given on the command line.",
+    )
+    p.add_argument(
         "--build-dir",
         default=str(_REPO_ROOT / "build"),
         help="CMake build directory to source compile flags from (default: <repo>/build). "
@@ -1184,7 +1393,7 @@ def _header_has_decls(path: str) -> bool:
         return False
 
 
-def _write_or_print(code: str, output: Optional[str]) -> None:
+def _write_or_print(code: str, output: str | None) -> None:
     if output:
         # CMake's file(MAKE_DIRECTORY) runs at configure time only, so the
         # output directory may be gone on a later build; recreate it here.
@@ -1194,6 +1403,90 @@ def _write_or_print(code: str, output: Optional[str]) -> None:
         print(f"Written to {output}")
     else:
         print(code)
+
+
+def _split_flags(value: str) -> list:
+    """Split a command-line string the way the platform's shell would.
+
+    shlex, not `str.split()`: a quoted define such as `-DNAME="a b"` is one
+    argument. On Windows, POSIX rules would treat the `\\` of a path as an escape,
+    so split without them and drop the surviving quotes instead.
+    """
+    if os.name == "nt":
+        return [t.strip('"') for t in shlex.split(value, posix=False)]
+    return shlex.split(value)
+
+
+def _toolchain_includes() -> list:
+    """The system include flags libclang needs to find the standard library.
+
+    The pip `libclang` wheel ships none. On Windows libclang auto-detects the MSVC
+    toolchain, so only its own builtin headers are missing; elsewhere ask the
+    compiler for its full list and fall back to those builtins.
+    """
+    if os.name != "nt" and (includes := _compiler_system_includes()):
+        return includes
+    return [flag] if (flag := _clang_resource_include()) else []
+
+
+def _clang_args(args, cc_entries: list | None, header_path: str) -> list:
+    """The full libclang command line for parsing *header_path*."""
+    # `-ferror-limit=0` disables clang's early bail-out: libclang lags the
+    # standard libraries it parses and emits benign errors deep in the STL
+    # (harmless — the mim declarations still resolve).  Under the default cap
+    # (~20) a stdlib-heavy toolchain such as macOS/libc++ trips "too many errors
+    # emitted, stopping now" and yields a truncated, unusable AST.
+    out = ["-x", "c++-header", "-ferror-limit=0"]
+    if args.extra_args:
+        out += _split_flags(args.extra_args)
+    out += [f"-I{inc}" for inc in args.includes]
+    out += _toolchain_includes()
+
+    # The header roots libmim, fe and abseil live under, plus the build tree's
+    # generated headers (`mim/config.h`).  These are passed as clean path tokens
+    # on every platform and are the single source of truth for *locating*
+    # headers — compile_commands.json is used only for build-type defines on top.
+    # We deliberately do not trust its own `-I` paths: in the `command`-string
+    # form CMake emits on Windows they are backslash paths that shlex mangles,
+    # which would leave libclang unable to find these headers.
+    build_dir = Path(args.build_dir)
+    out += [
+        f"-I{_REPO_ROOT / 'include'}",
+        f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'include'}",
+        f"-I{_REPO_ROOT / 'submodules' / 'abseil-cpp'}",
+        f"-I{build_dir / 'include'}",
+        f"-I{build_dir}",
+    ]
+    # Adds build-type defines (NDEBUG, ABSL_*, …) on top of the include roots.
+    if cc_entries and (entry := _match_cc_entry(header_path, cc_entries)):
+        out += _flags_from_cc_entry(entry)
+    return out
+
+
+def _bindings_for_header(index, args, cc_entries: list | None, header_path: str) -> str | None:
+    """Generate one unit, or None if *header_path* has nothing to bind."""
+    if not _header_has_decls(header_path):
+        return None
+
+    tu = index.parse(header_path, _clang_args(args, cc_entries, header_path))
+    if not tu:
+        print(f"ERROR: failed to parse {header_path}", file=sys.stderr)
+        return None
+
+    # A fatal parse error (typically a header libclang couldn't locate) leaves a
+    # partial AST and hence malformed bindings, so warn loudly.
+    if n := _report_diagnostics(tu, header_path):
+        print(
+            f"warning: {n} fatal libclang error(s) parsing {header_path}; generated "
+            "bindings will be malformed — the include flags are likely wrong "
+            "for this toolchain (see the errors above)",
+            file=sys.stderr,
+        )
+
+    classes, enums = extract_from_header(tu, header_path)
+    if not classes and not enums:
+        return None
+    return generate_bindings(header_path, classes, enums, ns=args.namespace, extra_dir=args.extra_dir)
 
 
 def main(argv=None):
@@ -1212,123 +1505,32 @@ def main(argv=None):
         print("No headers specified.", file=sys.stderr)
         sys.exit(1)
 
-    # Base clang arguments shared by every header.
-    # `-ferror-limit=0` disables clang's early bail-out: libclang lags the
-    # standard libraries it parses and emits benign errors deep in the STL
-    # (harmless — the mim declarations still resolve).  Under the default cap
-    # (~20) a stdlib-heavy toolchain such as macOS/libc++ trips "too many errors
-    # emitted, stopping now" and yields a truncated, unusable AST.
-    base_args = ["-x", "c++-header", "-ferror-limit=0"]
-    if args.extra_args:
-        # shlex, not str.split: a quoted define such as -DNAME="a b" is one
-        # argument. On Windows keep backslash paths intact, as when splitting a
-        # `command` string from compile_commands.json.
-        if os.name == "nt":
-            base_args.extend(t.strip('"') for t in shlex.split(args.extra_args, posix=False))
-        else:
-            base_args.extend(shlex.split(args.extra_args))
-    for inc in args.includes or []:
-        base_args.append(f"-I{inc}")
-    # libclang ships no standard library, so it needs the toolchain's include
-    # dirs. On Windows it auto-detects the MSVC toolchain (and that path already
-    # works), so we only add the clang resource dir there. Elsewhere we ask the
-    # compiler for its full system include list — the only reliable way to point
-    # libclang at libc++/libstdc++ (e.g. macOS, where the SDK/libc++ paths are
-    # never in compile_commands.json).
-    sys_includes = [] if os.name == "nt" else _compiler_system_includes()
-    if sys_includes:
-        base_args.extend(sys_includes)
-    else:
-        res_flag = _clang_resource_include()
-        if res_flag:
-            base_args.append(res_flag)
+    set_bound_headers(args.bound_headers or headers)
+    if args.extra_dir is not None:
+        args.extra_dir = str(Path(args.extra_dir).resolve())
 
-    # Get all Cmake relevant includes and flags
-    cc_entries = None
-    if not args.no_cmake:
-        cc_entries = _load_compile_commands(Path(args.build_dir))
-        if cc_entries is None:
-            print(
-                f"warning: no compile_commands.json under {args.build_dir}; "
-                "falling back to built-in include detection — build-type guards "
-                "such as NDEBUG may not match your build "
-                "(configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)",
-                file=sys.stderr,
-            )
+    cc_entries = None if args.no_cmake else _load_compile_commands(Path(args.build_dir))
+    if not args.no_cmake and cc_entries is None:
+        print(
+            f"warning: no compile_commands.json under {args.build_dir}; "
+            "falling back to built-in include detection — build-type guards "
+            "such as NDEBUG may not match your build "
+            "(configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)",
+            file=sys.stderr,
+        )
 
-    # The header roots libmim, fe and abseil live under, plus the build tree's
-    # generated headers (`mim/config.h`).  These are passed as clean path tokens
-    # on every platform and are the single source of truth for *locating*
-    # headers — compile_commands.json is used only for build-type defines on top.
-    # We deliberately do not trust its own `-I` paths: in the `command`-string
-    # form CMake emits on Windows they are backslash paths that shlex mangles,
-    # which would leave libclang unable to find these headers.
-    _build_dir = Path(args.build_dir)
-    project_includes = [
-        f"-I{_REPO_ROOT / 'include'}",
-        f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'include'}",
-        f"-I{_REPO_ROOT / 'submodules' / 'abseil-cpp'}",
-        f"-I{_build_dir / 'include'}",
-        f"-I{_build_dir}",
-    ]
-
-    def _args_for_header(hdr: str) -> list:
-        clang_args = list(base_args)
-        clang_args.extend(project_includes)
-        if cc_entries:
-            entry = _match_cc_entry(hdr, cc_entries)
-            if entry:
-                # Adds build-type defines (NDEBUG, ABSL_*, …) on top of the
-                # project include roots above.
-                clang_args.extend(_flags_from_cc_entry(entry))
-        return clang_args
-
-    # Resolve extras directory
-    extra_dir = args.extra_dir
-    if extra_dir is not None:
-        extra_dir = str(Path(extra_dir).resolve())
-
-    idx = clang.Index.create()
-    outputs = []
-
-    for hdr in headers:
-        if not _header_has_decls(hdr):
-            continue
-
-        clang_args = _args_for_header(hdr)
-        tu = idx.parse(hdr, clang_args)
-        if not tu:
-            print(f"ERROR: failed to parse {hdr}", file=sys.stderr)
-            continue
-
-        # A fatal parse error (typically a header libclang couldn't locate)
-        # leaves a partial AST and hence malformed bindings, so warn loudly.
-        if n := _report_diagnostics(tu, hdr):
-            print(
-                f"warning: {n} fatal libclang error(s) parsing {hdr}; generated "
-                "bindings will be malformed — the include flags are likely wrong "
-                "for this toolchain (see the errors above)",
-                file=sys.stderr,
-            )
-
-        classes, enums = extract_from_header(tu, hdr)
-        if not classes and not enums:
-            continue
-
-        try:
-            code = generate_bindings(hdr, classes, enums, ns=args.namespace, extra_dir=extra_dir)
-        except ExtraSectionError as e:
-            print(f"ERROR: {e}", file=sys.stderr)
-            sys.exit(1)
-        outputs.append(code)
+    index = clang.Index.create()
+    try:
+        outputs = [code for h in headers if (code := _bindings_for_header(index, args, cc_entries, h))]
+    except ExtraSectionError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if not outputs:
         print("No bindings generated.", file=sys.stderr)
         return
 
-    combined = "\n// ============================================================\n".join(outputs)
-
-    _write_or_print(combined, args.output)
+    _write_or_print("\n// ============================================================\n".join(outputs), args.output)
 
 
 if __name__ == "__main__":

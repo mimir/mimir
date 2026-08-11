@@ -1,3 +1,10 @@
+[skip:Sym]
+    // Sym's iterators are `const char*`, so nanobind converts them to a Python
+    // string — `sym.begin()` would hand out the whole symbol, and `c_str()`
+    // duplicates `str()`. The reverse iterators are dropped by the generator
+    // itself (`std::reverse_iterator` has no caster).
+    begin end cbegin cend c_str
+
 [skip:SymPool]
     // SymPool::sym is overloaded on string_view / std::string / const char*.
     // Binding all three makes each lambda's `self.sym(s)` call rely on overload

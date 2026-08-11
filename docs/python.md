@@ -8,7 +8,7 @@ Because the surface is generated, it stays close to the C++ API by construction.
 Names such as `lit_i8`, `type_i32`, `arr`, `mut_con`, and `optimize` are exposed with the same spelling you see in the C++ code.
 You have to enable `MIM_BUILD_PYTHON` (default) during configuration for Python support.
 The build creates a virtual environment at `build/.venv` and installs `mim` into it.
-Only the initial creation of that venv needs a network connection to fetch `pip`, `setuptools`, `wheel`, and `pytest`.
+Only the initial creation of that venv needs a network connection to fetch `pip`, `setuptools`, `wheel`, `pytest`, and `libclang` (which the binding generator runs on).
 Once `build/.venv` exists, all further builds stay offline.
 
 Activate that environment before importing `mim`:
@@ -141,7 +141,7 @@ Typical workflows are all supported out of the box:
 - driving optimization over a [`World`](@ref mim::World) (`world.optimize()`), and
 - end-to-end regex/JIT experiments (which emit LLVM IR and invoke `clang` under the hood).
 
-The only gaps are the handful of constructs libclang cannot express as a plain binding (e.g. template methods), and closing them is trivial — expose the C++ method, or add a small `.nbextra` patch, as described next.
+The gaps are the handful of constructs libclang cannot express as a plain binding (e.g. template methods) and the members whose signature mentions a type nanobind cannot convert to a Python object (see [Bindable Types](#python_bindable)); closing either is trivial — expose the C++ method, or add a small `.nbextra` patch, as described next.
 
 ## Extending the Bindings {#python_extending}
 
@@ -149,10 +149,10 @@ Most of the binding code is **generated at build time** rather than written by h
 `scripts/gen_nanobind_bindings.py` parses the C++ headers with libclang and emits one nanobind translation unit per header into `build/py/auto_bindings/`.
 The set of headers to wrap and the order in which their `init_*` functions are registered are listed in `py/CMakeLists.txt`; the module entry point (`NB_MODULE`) is generated from that same manifest, so it never drifts out of sync.
 
-To expose more of an already-wrapped class, just add the C++ method: on the next build it is picked up automatically.
+To expose more of an already-wrapped class, just add the C++ method: on the next build it is picked up automatically, provided every type in its signature is convertible (see [Bindable Types](#python_bindable)).
 Adding a new header to the manifest in `py/CMakeLists.txt` wraps a new class.
 
-Some declarations cannot be expressed by the generator — template methods, private/overloaded constructors, or signatures that need a Python-friendly conversion (e.g. accepting a list where the C++ takes `Defs`).
+Some declarations cannot be expressed by the generator: template methods (e.g. `World::app`), signatures that need translating into something Python can use at all (`Log::set` takes a `std::ostream*`, so `py/nbextra/log.nbextra` substitutes a `set_stdout()`), and overload sets whose C++ resolution differs across standard libraries (`py/nbextra/sym.nbextra` replaces `SymPool::sym`'s three overloads with a single one).
 For these, drop a companion `<header-stem>.nbextra` file into `py/nbextra/` (it is picked up automatically when it exists).
 An `.nbextra` file is a small patch applied to the generated unit, with bracketed sections:
 
@@ -164,6 +164,18 @@ An `.nbextra` file is a small patch applied to the generated unit, with brackete
 A `[class:Name]`/`[skip:Name]` that matches no parsed class fails the build loudly, so a stale name after a C++ rename cannot silently drop bindings.
 
 A handful of units are still fully hand-written under `py/bindings/` (listed in `py/CMakeLists.txt`): `error.cpp` registers the `MIM_Error` exception, while `ast.cpp` and `parser.cpp` cover surface the generator does not yet handle.
+
+### Bindable Types {#python_bindable}
+
+A member is only generated if nanobind can convert *every* type in its signature; otherwise it is dropped.
+This matters because nanobind does not complain about the ones it cannot: the binding compiles, fails only when Python eventually calls it, and `stubgen` spells the raw C++ type into `_mim.pyi` (`std::reverse_iterator<char const*>`, `absl::flat_hash_map<…>`, `mim::Dbg`) in the meantime.
+
+Convertible are: built-in types and `const char*`; the standard containers with a nanobind caster (`std::pair`, `std::tuple`, `std::optional`, `std::function`, `std::filesystem::path`, …, for which the generator emits the matching `nanobind/stl/*.h` include); every top-level class or enum declared in a header of the manifest — those are the ones registered as Python types, so a pointer or reference to one becomes a Python object; and MimIR's own ranges (`Defs`, `DefVec`, `Vars`, `Muts`, `Span<const nat_t>`), which are copied into a `std::vector` so they arrive as a list and can be passed as one.
+
+Everything else — `std::ostream`, abseil containers, iterators, nested classes such as `World::State`, and any class from a header nobody wraps — makes its member disappear.
+To get such a member into Python, either add its type's header to the manifest, or write a `[class:Name]` binding that translates the type into a Python-friendly one (`py/nbextra/driver.nbextra` does this for `Imports::add`, which reports a `const fs::path*`).
+
+`py/tests/stubs.py` fails `test-py` if any C++ type still reaches `_mim.pyi`, e.g. from a hand-written `.nbextra` fragment or on a standard library that spells a type differently.
 
 ## Embedded Python DSL
 

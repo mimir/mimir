@@ -86,6 +86,19 @@ set(_gen_units
     "${CMAKE_SOURCE_DIR}/include/mim/util/log.h|mim"
 )
 
+# Every generated unit needs the *whole* manifest: a type is only legal in a
+# generated signature if some unit registers it as a Python type, so the
+# generator has to know all of them to tell `Def*` (bound) from `mim::Dbg` (not).
+# That also makes each unit depend on every manifest header — moving a class
+# between two of them changes what the other units may mention.
+set(_bound_headers ${_gen_units})
+list(TRANSFORM _bound_headers REPLACE "\\|.*$" "")  # drop the |<namespace> half
+
+set(_bound_header_args)
+foreach(_header IN LISTS _bound_headers)
+    list(APPEND _bound_header_args --bound-header "${_header}")
+endforeach()
+
 set(_generated_sources)
 foreach(_unit IN LISTS _gen_units)
     string(REPLACE "|" ";" _parts "${_unit}")
@@ -109,12 +122,13 @@ foreach(_unit IN LISTS _gen_units)
                 "${header}"
                 --namespace "${_ns}"
                 --build-dir "${CMAKE_BINARY_DIR}"
+                ${_bound_header_args}
                 ${_extra_args}
                 -o "${output}"
         DEPENDS
             # Depend on the venv *target*, not on ${MIM_PY_VENV_STAMP}: see mim_py_stubs below.
             mim_py_venv
-            "${header}"
+            ${_bound_headers}
             "${_binding_script}"
             "${CMAKE_BINARY_DIR}/compile_commands.json"
             ${_extra_deps}
