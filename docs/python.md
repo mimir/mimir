@@ -147,7 +147,8 @@ The gaps are the handful of constructs libclang cannot express as a plain bindin
 
 Most of the binding code is **generated at build time** rather than written by hand.
 `scripts/gen_nanobind_bindings.py` parses the C++ headers with libclang and emits one nanobind translation unit per header into `build/py/auto_bindings/`.
-The set of headers to wrap and the order in which their `init_*` functions are registered are listed in `py/CMakeLists.txt`; the module entry point (`NB_MODULE`) is generated from that same manifest, so it never drifts out of sync.
+`py/CMakeLists.txt` holds two hand-maintained lists: the headers to wrap, and the order in which every `init_*` — generated and hand-written alike — is registered.
+The module entry point (`NB_MODULE`) is generated from the second one, so its forward declarations and its calls can never disagree; keeping a new header in both lists is still up to you.
 
 To expose more of an already-wrapped class, just add the C++ method: on the next build it is picked up automatically, provided every type in its signature is convertible (see [Bindable Types](#python_bindable)).
 Adding a new header to the manifest in `py/CMakeLists.txt` wraps a new class.
