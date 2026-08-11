@@ -35,6 +35,32 @@ _FIX = (
 )
 
 
+# Members that no other test touches and that have gone missing before, when
+# libclang resolved a type differently on one platform than on another. A binding
+# that disappears cleanly leaves no trace in the stub, so the leak checks below
+# cannot see it — only naming the members does.
+_REQUIRED = {
+    "Sym": ("str", "view"),
+    "Def": ("proj", "projs", "deps", "free_vars", "local_muts", "world", "driver", "type"),
+    "World": ("set", "sym", "driver", "annex", "app", "implicit_app", "optimize", "arr", "tuple", "cn"),
+    "Driver": ("sym", "world", "search_paths", "add_search_path", "load_plugins", "add_import"),
+}
+
+
+def test_required_members_present():
+    missing = [
+        f"{cls}.{member}"
+        for cls, members in _REQUIRED.items()
+        for member in members
+        if not hasattr(getattr(mim, cls), member)
+    ]
+    assert not missing, (
+        "bindings vanished: " + ", ".join(missing) + "\nThe generator drops a member whose "
+        "signature it cannot convert; the build log's 'dropped N member(s)' note says which "
+        "type it choked on. " + _FIX
+    )
+
+
 @pytest.fixture(scope="module")
 def stub() -> str:
     path = Path(mim.__file__).parent / "_mim.pyi"

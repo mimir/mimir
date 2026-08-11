@@ -79,9 +79,10 @@ def _type_spelling(t) -> str:
 # stub, so every parameter, return and field type is checked here first and the
 # member is dropped unless nanobind can convert it.
 
-# Implementation-detail inline namespaces (libstdc++ `__cxx11`, libc++ `__1`,
-# abseil's `lts_<date>`) differ per toolchain and must never reach a spelling we
-# match on.
+# Implementation-detail namespaces (libstdc++ `__cxx11`, libc++ `__1` and `__fs`,
+# abseil's `lts_<date>`) differ per toolchain and must never reach a name we match
+# on — nor an emitted one, where they would also pin the output to one library.
+_IMPL_NS = re.compile(r"^(?:__[A-Za-z0-9_]+|lts_\d+)$")
 _INLINE_NS = re.compile(r"\b(?:__[A-Za-z0-9_]+|lts_\d+)::")
 
 
@@ -93,6 +94,28 @@ def _canon_spelling(t) -> str:
     the same type.
     """
     return _INLINE_NS.sub("", _type_spelling(t.get_canonical()))
+
+
+def _qualified_name(decl) -> str:
+    """The scope-qualified name of *decl*, without template arguments.
+
+    Built from the declaration itself rather than from a printed type spelling,
+    because that spelling is not portable: libclang prints libc++'s `std::string`
+    as the sugared typedef, and libstdc++'s as `std::basic_string<char>`, so a
+    table keyed on the printed form matches on one platform and misses on the
+    other. The declaration always answers `std::basic_string`, and skipping the
+    implementation-detail namespaces keeps `std::filesystem::path` (libc++ nests it
+    in `__fs`) and `mim::Sets::Set` recognisable everywhere.
+    """
+    parts = []
+    cursor = decl
+    while cursor is not None and cursor.kind != CursorKind.TRANSLATION_UNIT:
+        if not cursor.spelling:
+            break  # an anonymous scope: no name to match on
+        if not (cursor.kind == CursorKind.NAMESPACE and _IMPL_NS.match(cursor.spelling)):
+            parts.append(cursor.spelling)
+        cursor = cursor.semantic_parent
+    return "::".join(reversed(parts))
 
 
 _LEADING_CV = re.compile(r"^(?:const|volatile)\s+")
@@ -111,14 +134,18 @@ def _kinds(*names) -> frozenset:
 
 _CHAR_KINDS = _kinds("CHAR_S", "CHAR_U", "SCHAR", "UCHAR", "CHAR8")
 
-# libclang does not always resolve a type: its view of the standard library is
-# less complete than the compiler's, and it differs per platform — on macOS it
-# fails to resolve libc++'s `std::string`/`std::string_view`, which it handles
-# fine as libstdc++. "Unresolved" must therefore never be read as "unbindable":
-# that silently drops API on one toolchain only. Such a member is emitted as
-# before (its written spelling is valid C++ by construction), leaving the verdict
-# to the C++ compiler and to `py/tests/stubs.py`, which fails if the type really
-# turns out to have no caster.
+# Cursor kinds that introduce a scope worth descending into, and the two that
+# declare a class.
+_RECORD_KINDS = (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL)
+_SCOPE_KINDS = (CursorKind.NAMESPACE, CursorKind.ENUM_DECL, *_RECORD_KINDS)
+
+# libclang does not always resolve a type to something concrete, and its view of
+# the standard library is less complete than the compiler's. "Unresolved" must
+# never be read as "unbindable": that would drop the member on whichever toolchain
+# came up short, and nothing else would say so. Such a member is emitted as before
+# — its written spelling is valid C++ by construction — leaving the verdict to the
+# C++ compiler and to `py/tests/stubs.py`, which fails if the type really has no
+# caster.
 _OPAQUE_KINDS = _kinds("INVALID", "UNEXPOSED")
 
 # Types nanobind converts out of the box, without any caster header.
@@ -158,9 +185,10 @@ _FUNCTION_CASTER = "function.h"
 # *can* bind, so signatures mentioning one are rewritten to a `std::vector` of
 # the element type (see `_range_value_type`).
 _MIM_RANGES = ("mim::Span", "mim::Vector")
+_MIM_SET = "mim::Sets::Set"  # `Vars`/`Muts`: a forward range of `D*`
 
-# How many dropped members `_report_drops` spells out before summarising.
-_MAX_REPORTED_DROPS = 20
+# How many entries a note spells out before summarising the rest.
+_MAX_REPORTED = 20
 
 _BOUND_HEADERS: frozenset = frozenset()
 
@@ -197,33 +225,44 @@ def _decl_in_bound_header(decl) -> bool:
     return file is not None and _realpath(file.name) in _BOUND_HEADERS
 
 
-_BOUND_TYPE_NAMES: set = set()
+_BOUND_TYPE_NAMES: frozenset = frozenset()
 
 
 def collect_bound_types(tu) -> None:
-    """Record the name of every class and enum a bound header declares in *tu*.
+    """Record every class and enum a bound header declares in *tu*, by qualified name.
+
+    Must run before extracting from *tu*, and answers only for that one TU.
 
     The file of the declaration libclang hands back is not a reliable test on its
     own: for an incomplete type it is whichever forward declaration came first, so
     the include order decides the verdict. `Driver` is forward-declared in both
     `plugin.h` and `world.h`, libclang reports the `plugin.h` one, and `World::driver()`
     was dropped as "unbound" even though `driver.h` is in the manifest. Matching by
-    name instead makes it independent of which redeclaration is reported.
+    name instead makes it independent of which redeclaration is reported — qualified,
+    so that `fe::Driver` cannot pass for `mim::Driver`.
     """
-    _BOUND_TYPE_NAMES.clear()
+    global _BOUND_TYPE_NAMES
+    names: set = set()
 
     def walk(cursor):
         for child in cursor.get_children():
-            kind = child.kind
-            if kind == CursorKind.NAMESPACE:
-                walk(child)
-            elif kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL, CursorKind.ENUM_DECL):
-                if child.spelling and _decl_in_bound_header(child):
-                    _BOUND_TYPE_NAMES.add(child.spelling)
-                if kind != CursorKind.ENUM_DECL:
-                    walk(child)  # nested enums are bound at module scope
+            # A namespace or class cursor is one *reopening*, so it lies in a
+            # single file: if that file is not bound, neither is anything it
+            # contains — which prunes all of `std::` and `absl::` right here.
+            if child.kind not in _SCOPE_KINDS or not _decl_in_bound_header(child):
+                continue
+            if child.kind != CursorKind.NAMESPACE and child.spelling:
+                names.add(_qualified_name(child))
+            if child.kind != CursorKind.ENUM_DECL:
+                walk(child)  # a class may nest enums, which bind at module scope
 
     walk(tu.cursor)
+    _BOUND_TYPE_NAMES = frozenset(names)
+
+
+def _is_bound_decl(decl) -> bool:
+    """True if *decl* is one of the types this build registers with nanobind."""
+    return _qualified_name(decl) in _BOUND_TYPE_NAMES or _decl_in_bound_header(decl)
 
 
 def _is_bound_class(decl) -> bool:
@@ -237,7 +276,7 @@ def _is_bound_class(decl) -> bool:
     parent = decl.semantic_parent
     if parent is not None and parent.kind not in (CursorKind.NAMESPACE, CursorKind.TRANSLATION_UNIT):
         return False
-    return decl.spelling in _BOUND_TYPE_NAMES or _decl_in_bound_header(decl)
+    return _is_bound_decl(decl)
 
 
 def _casters_for_signature(proto, depth: int) -> set | None:
@@ -288,16 +327,15 @@ def _casters_for(t, depth: int = 0) -> set | None:
     if kind == TypeKind.ENUM:
         # Nested enums are bound at module scope, so only the declaring header
         # matters here — not whether the enum sits inside a class.
-        decl = canon.get_declaration()
-        return set() if decl.spelling in _BOUND_TYPE_NAMES or _decl_in_bound_header(decl) else None
+        return set() if _is_bound_decl(canon.get_declaration()) else None
 
     if kind == TypeKind.RECORD:
-        spelling = _strip_cv(_canon_spelling(canon))
-        base = spelling.split("<", 1)[0]
-        if base == "std::function":
+        decl = canon.get_declaration()
+        name = _qualified_name(decl)
+        if name == "std::function":
             sub = _casters_for_signature(canon.get_template_argument_type(0), depth)
             return None if sub is None else sub | {_FUNCTION_CASTER}
-        if (entry := _STL_CASTERS.get(base)) is not None:
+        if (entry := _STL_CASTERS.get(name)) is not None:
             header, n_value_args = entry
             need = {header}
             # -1 template arguments means "not a template" (e.g. `fs::path`).
@@ -310,9 +348,9 @@ def _casters_for(t, depth: int = 0) -> set | None:
                     return None
                 need |= sub
             return need
-        if "<" in spelling:
+        if canon.get_num_template_arguments() >= 0:
             return None  # some other template: nanobind has no caster for it
-        return set() if _is_bound_class(canon.get_declaration()) else None
+        return set() if _is_bound_class(decl) else None
 
     return None
 
@@ -329,17 +367,18 @@ def _range_value_type(t) -> tuple[str, set] | None:
         canon = canon.get_pointee().get_canonical()  # `const DefVec&` is a range, too
     if canon.kind != TypeKind.RECORD:
         return None
-    spelling = _strip_cv(_canon_spelling(canon))
+    decl = canon.get_declaration()
+    name = _qualified_name(decl)
 
     # `Sets` hands out pointers to its element type, the other two store the
     # element type itself.
     elem, elem_is_pointee = None, False
-    if spelling.split("<", 1)[0] in _MIM_RANGES and "<" in spelling:
+    if name in _MIM_RANGES:
         elem = canon.get_template_argument_type(0)
-    elif spelling.startswith("mim::Sets<") and spelling.endswith(">::Set"):
+    elif name == _MIM_SET:
         # `Set` is nested in the `Sets<D, N>` specialization, which is where the
         # element type D lives.
-        parent = canon.get_declaration().semantic_parent
+        parent = decl.semantic_parent
         if parent is not None:
             elem, elem_is_pointee = parent.type.get_template_argument_type(0), True
 
@@ -401,7 +440,7 @@ def _nested_decl(t):
         if decl is None or not decl.spelling:
             return None
         parent = decl.semantic_parent
-        if parent is not None and parent.kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
+        if parent is not None and parent.kind in _RECORD_KINDS:
             return parent.spelling, decl
     except Exception:
         pass
@@ -571,28 +610,38 @@ def _extract_params(cursor) -> tuple[list[Param], set] | None:
     return params, casters
 
 
-def _why_unbindable(cursor) -> str:
-    """Which type in *cursor*'s signature cannot be bound, and how libclang sees it.
+def _no_caster_reason(role: str, t) -> str:
+    """Why nanobind cannot convert *t*, including how libclang resolved it.
 
     The canonical kind and spelling are part of the message on purpose: when a
-    member is bound on one platform but not on another, the difference is always
-    in what libclang resolved the type to, and that is otherwise invisible.
+    member is bound on one platform but not on another, the difference is always in
+    what libclang made of the type, and that is otherwise invisible — macOS reports
+    libc++'s `std::string` as `RECORD 'std::string'` where Linux says
+    `RECORD 'std::basic_string<char>'`.
+    """
+    canon = t.get_canonical()
+    return f"no caster for {role} type {_type_spelling(t)!r} ({canon.kind.name} {canon.spelling!r})"
+
+
+def _why_unbindable(cursor) -> str:
+    """Which type in *cursor*'s signature cannot be bound, and why.
+
+    Checks the signature in the same order as `_extract_method`/`_resolve_param_type`
+    decide it, so the reason reported is the one that actually caused the drop.
     """
     params = [p.type for p in cursor.get_children() if p.kind == CursorKind.PARM_DECL]
-    for role, t in [("return", cursor.result_type)] + [("parameter", p) for p in params]:
+    for role, t in [("return", cursor.result_type), *(("parameter", p) for p in params)]:
+        if _range_value_type(t) is None and _casters_for(t) is None:
+            return _no_caster_reason(role, t)
+        # Only a parameter has to be *spelled* in the generated lambda.
         if role == "parameter" and (nd := _nested_decl(t)) and nd[1].kind != CursorKind.ENUM_DECL:
             return f"parameter type {_type_spelling(t)!r} is nested, so libclang spells it unqualified"
-        if _range_value_type(t) is None and _casters_for(t) is None:
-            canon = t.get_canonical()
-            return f"no caster for {role} type {_type_spelling(t)!r} ({canon.kind.name} {canon.spelling!r})"
     return "reason unclear — please report this"
 
 
 def _signature(cursor, class_name: str) -> str:
     """`World::set(std::string_view): no caster for …` — one dropped-member note."""
-    ret = _type_spelling(cursor.result_type)
-    suffix = f" -> {ret}" if ret and ret != "void" else ""
-    return f"{class_name}::{cursor.displayname}{suffix}: {_why_unbindable(cursor)}"
+    return f"{class_name}::{cursor.displayname}: {_why_unbindable(cursor)}"
 
 
 def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | None:
@@ -634,6 +683,7 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
     # them by their written spelling, which is what the emitted code uses to pick
     # a return-value policy.
     if _is_unresolved_return(ret):
+        drops.append(f"{class_name}::{cursor.displayname}: libclang did not resolve the return type {ret!r}")
         return None
     # A MimIR range return is copied into a std::vector so it reaches Python as
     # a list; anything else must be a type nanobind can convert.
@@ -660,6 +710,14 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
     )
 
 
+def _print_capped(lines: list[str], prefix: str) -> None:
+    """Print *lines* to stderr, each behind *prefix*, summarising past `_MAX_REPORTED`."""
+    for line in lines[:_MAX_REPORTED]:
+        print(f"{prefix}{line}", file=sys.stderr)
+    if len(lines) > _MAX_REPORTED:
+        print(f"{prefix}... and {len(lines) - _MAX_REPORTED} more", file=sys.stderr)
+
+
 def _report_diagnostics(tu, header_path: str) -> int:
     """Print libclang's *fatal* diagnostics for *tu* to stderr; return their count.
 
@@ -672,10 +730,8 @@ def _report_diagnostics(tu, header_path: str) -> int:
     still emits plenty of benign `error`-level noise.
     """
     fatals = [d for d in tu.diagnostics if d.severity >= clang.Diagnostic.Fatal]
-    for d in fatals[:20]:  # the first few point at the root cause
-        print(f"  libclang: {header_path}: {d.spelling} [{d.location}]", file=sys.stderr)
-    if len(fatals) > 20:
-        print(f"  libclang: ... and {len(fatals) - 20} more", file=sys.stderr)
+    # The first few point at the root cause.
+    _print_capped([f"{header_path}: {d.spelling} [{d.location}]" for d in fatals], "  libclang: ")
     return len(fatals)
 
 
@@ -717,7 +773,9 @@ def _extract_class(cursor, enums: list, drops: list[str]) -> ClassInfo:
                 info.methods.append(mi)
         elif kind == CursorKind.FIELD_DECL and _is_public(child):
             if (casters := _casters_for(child.type)) is None:
-                drops.append(f"{cursor.spelling}::{child.spelling} [{_type_spelling(child.type)}]")
+                drops.append(
+                    f"{cursor.spelling}::{child.spelling}: {_no_caster_reason('field', child.type)}"
+                )
                 continue  # nanobind cannot convert the field's type
             info.methods.append(MethodInfo(
                 name=child.spelling, return_type=_type_spelling(child.type), params=[],
@@ -749,7 +807,7 @@ def extract_from_header(tu, header_path: str) -> tuple[dict[str, ClassInfo], lis
                 walk(child)
         elif cursor.kind == CursorKind.ENUM_DECL:
             enums.append(cursor)
-        elif cursor.kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL) and _is_bindable_record(cursor):
+        elif cursor.kind in _RECORD_KINDS and _is_bindable_record(cursor):
             classes[cursor.spelling] = _extract_class(cursor, enums, drops)
 
     for child in tu.cursor.get_children():
@@ -897,7 +955,7 @@ def _enum_qualified_name(cursor) -> str:
     """
     parts = [cursor.spelling]
     p = cursor.semantic_parent
-    while p is not None and p.kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
+    while p is not None and p.kind in _RECORD_KINDS:
         parts.append(p.spelling)
         p = p.semantic_parent
     return "::".join(reversed(parts))
@@ -1561,10 +1619,7 @@ def _report_drops(header_path: str, drops: list[str]) -> None:
         "signature nanobind cannot convert:",
         file=sys.stderr,
     )
-    for d in drops[:_MAX_REPORTED_DROPS]:
-        print(f"    {d}", file=sys.stderr)
-    if len(drops) > _MAX_REPORTED_DROPS:
-        print(f"    ... and {len(drops) - _MAX_REPORTED_DROPS} more", file=sys.stderr)
+    _print_capped(drops, "    ")
 
 
 def _bindings_for_header(index, args, cc_entries: list | None, header_path: str) -> str | None:
