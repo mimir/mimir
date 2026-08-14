@@ -1,4 +1,4 @@
-"""Tests for py/bindings/driver.cpp bindings."""
+"""Tests for the driver.h bindings."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """Top-level binding registration smoke tests for mim.
 
-Catches missing init_*(m) calls in py/bindings/py.cpp and missing
-re-exports in mim/__init__.py without mirroring the full public API.
+Catches missing init_*(m) calls in the generated module entry point and
+missing re-exports in mim/__init__.py without mirroring the full public API.
 """
 from __future__ import annotations
 
