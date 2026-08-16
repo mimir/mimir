@@ -214,18 +214,12 @@ const Def* Arr::immutabilize() {
     auto& w = world();
     if (is_immutabilizable()) return w.arr(arity(), body());
 
-    if (auto n = Lit::isa(arity()); n && *n < w.flags().scalarize_threshold)
-        return w.sigma(DefVec(*n, [&](size_t i) { return reduce(w.lit_idx(*n, i)); }));
-
     return nullptr;
 }
 
 const Def* Pack::immutabilize() {
     auto& w = world();
     if (is_immutabilizable()) return w.pack(arity(), body());
-
-    if (auto n = Lit::isa(arity()); n && *n < w.flags().scalarize_threshold)
-        return w.tuple(DefVec(*n, [&](size_t i) { return reduce(w.lit_idx(*n, i)); }));
 
     return nullptr;
 }
