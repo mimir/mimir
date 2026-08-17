@@ -39,7 +39,7 @@ fun extern test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
 // MOD: select i1
 // MOD: urem i64
 // MOD: select i1
-fun extern test_mod(mem: %mem.M 0, x: Nat, y: Nat): [%mem.M 0, Nat] =
+fun extern test_mod(mem: %mem.M 0, x y: Nat): [%mem.M 0, Nat] =
     let r = %core.nat.mod (x, y);
     return (mem, r);
 
@@ -48,6 +48,6 @@ fun extern test_mod(mem: %mem.M 0, x: Nat, y: Nat): [%mem.M 0, Nat] =
 // DIV: select i1
 // DIV: udiv i64
 // DIV: select i1
-fun extern test_div(mem: %mem.M 0, x: Nat, y: Nat): [%mem.M 0, Nat] =
+fun extern test_div(mem: %mem.M 0, x y: Nat): [%mem.M 0, Nat] =
     let q = %core.nat.div (x, y);
     return (mem, q);

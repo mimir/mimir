@@ -200,7 +200,7 @@ let %gpu.alloc_copy.asyn = lm {T: *}
 /// Launches a kernel function on the device with dynamic shared memory and module symbols.
 // TODO: refactor to {n m: N, Ts: «n; *»} as soon as type inference bug is fixed
 axm %gpu.launch: {n: Nat, Ts: «n; *»}
-               → [n_groups: Nat, n_items: Nat, %gpu.Stream, m: Bool, MT: «%core.bitcast Nat m; *»]
+               → [n_groups n_items: Nat, %gpu.Stream, m: Bool, MT: «%core.bitcast Nat m; *»]
                → Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM, Idx n_groups, Idx n_items,
                      «i: %core.bitcast Nat m; %gpu.SharedPtr MT#i», «i: n; Ts#i»,
                      Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]]

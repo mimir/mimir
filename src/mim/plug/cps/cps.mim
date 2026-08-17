@@ -22,7 +22,7 @@ import compile;
 /// `%%cps.cps2ds_dep` is the dependently-typed general form; `%%cps.cps2ds` is the non-dependent shorthand.
 ///
 axm %cps.cps2ds_dep: {T: *} → [U: T → *] → [Fn [t: T] → U t] → [[t: T] → U t], 3;
-lam %cps.cps2ds      {T: *, U:     *}   (f: Fn     T  → U  ):  [    T  → U  ] = %cps.cps2ds_dep (λ [T]: * = U) f;
+lam %cps.cps2ds      {T U: *}           (f: Fn     T  → U  ):  [    T  → U  ] = %cps.cps2ds_dep (λ [T]: * = U) f;
 ///
 /// ## Phases
 ///

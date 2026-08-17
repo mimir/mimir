@@ -93,7 +93,7 @@ axm %matrix.map_reduce_aff: {nis: Nat}
 /// The input/output buffer shapes (`ri`/`si`, `ro`/`so`) are the actual — possibly size-1-folded — buffer
 /// shapes and are inferred from the operands; `s_in`/`s_out` are the logical (unfolded) shapes.
 axm %matrix.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat», r: Nat}
-                     → [s_in: «r; Nat», s_out: «r; Nat»]
+                     → [s_in s_out: «r; Nat»]
                      → [%mem.M 0, %buffer.Buf (ri, si, T)]
                      → [%mem.M 0, %buffer.Buf (ro, so, T)];
 ///
@@ -163,7 +163,7 @@ fun %matrix.map_reduce_sum {pe: «2; Nat»} {n: Nat, S: «n; Nat»} (mem: %mem.M
     let (mem, res) = %matrix.map_reduce
         (1, 1, R, 1, n, R, S)
         (mem, zero_real,
-            fn (mem: %mem.M 0, acc: R, a: R): [%mem.M 0, R] =
+            fn (mem: %mem.M 0, acc a: R): [%mem.M 0, R] =
                 return (mem, %math.arith.add 0 (acc, a)),
             (idxs, M));
     return (mem, %core.bitcast R res);

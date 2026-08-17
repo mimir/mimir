@@ -19,12 +19,12 @@ plugin mem;
 // CHECK-DAG: fun extern cat0
 // CHECK-DAG: %core.icmp
 // CHECK-DAG: %core.extrema.Sm
-fun extern cat0 (a: «2, 3; I32», b: «2, 3; I32»): «4, 3; I32» =
+fun extern cat0 (a b: «2, 3; I32»): «4, 3; I32» =
     return (%tensor.concat @(I32, 2, 2) 0₂ @((2, 3), (2, 3)) (a, b));
 
 // Concat two 2x3 matrices along axis 1 -> 2x6: cols 0..2 from a, cols 3..5 from b.
 // CHECK-DAG: fun extern cat1
-fun extern cat1 (a: «2, 3; I32», b: «2, 3; I32»): «2, 6; I32» =
+fun extern cat1 (a b: «2, 3; I32»): «2, 6; I32» =
     return (%tensor.concat @(I32, 2, 2) 1₂ @((2, 3), (2, 3)) (a, b));
 
 // Three-input concat along axis 0 with differing extents: 1 + 2 + 1 = 4 rows.

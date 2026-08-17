@@ -73,7 +73,7 @@ axm %buffer.shape: [r: Nat, s: «r; Nat», T: *] as rsT → [%buffer.Buf rsT, i:
 /// Copy the whole contents of `src` into `dst` and return the updated memory.
 ///
 axm %buffer.copy: [r: Nat, s: «r; Nat», T: *] as rsT
-                → [%mem.M 0, dst: %buffer.Buf rsT, src: %buffer.Buf rsT] → %mem.M 0;
+                → [%mem.M 0, dst src: %buffer.Buf rsT] → %mem.M 0;
 ///
 /// ## Phases
 ///

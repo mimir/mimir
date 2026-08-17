@@ -140,16 +140,16 @@ lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
 ///
 axm %tensor.slice: {T: *, r: Nat}
                  → [s_in: «r; Nat»]
-                 → [start: «r; Nat», step: «r; Nat», s_out: «r; Nat»]
+                 → [start step s_out: «r; Nat»]
                  → [input: «s_in; T»]
                  → «s_out; T», normalize_slice;
 
 /// `o ↦ (start#d + step#d · o#d)_d`: the strided read map.
-lam slice_map {r: Nat} (start: «r; Nat», step: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
     ‹d: r; %affine.op.add (%affine.semiop.mul (o#d, step#d), %affine.constant (start#d))›;
 
 lam %tensor.slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
-                       (start: «r; Nat», step: «r; Nat», s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+                       (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     %tensor.map_reduce @1 @(T, r, 0) (s_out, s_out)
         @(T, r, s_in) (tensor_copy @T, ⊥: T)
         (%affine.id @r) (slice_map (start, step),) input;
@@ -185,12 +185,12 @@ lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «
 /// The output shape is deduced from `lo`, `s_in` and `hi` (see `pad_shape`), so it is not passed explicitly.
 
 // `(lo, s_in, hi) ↦ ‹d; lo#d + s_in#d + hi#d›`: the padded shape.
-lam pad_shape {r: Nat} (lo: «r; Nat», s_in: «r; Nat», hi: «r; Nat»): «r; Nat» =
+lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
     ‹d: r; %core.nat.add (%core.nat.add (lo#d, s_in#d), hi#d)›;
 
 axm %tensor.pad: {T: *, r: Nat}
                → [s_in: «r; Nat»]
-               → [mode: Nat, lo: «r; Nat», hi: «r; Nat»]
+               → [mode: Nat, lo hi: «r; Nat»]
                → [input: «s_in; T», value: T]
                → «pad_shape (lo, s_in, hi); T», normalize_pad;
 ///
@@ -232,7 +232,7 @@ axm %tensor.concat: {T: *, nis r: Nat}
 
 // `(n, cout, (H, W), (KH, KW), stride, dilation, padding) ↦ (n, cout, OH, OW)`, where
 // `O#d = (s#d + 2·padding#d − (dilation#d·(k#d − 1) + 1)) / stride#d + 1`: the NCHW output shape.
-lam conv_shape (n cout: Nat, s: «2; Nat», k: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»): «4; Nat» =
+lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; Nat» =
     let hw = ‹d: 2;
         %core.nat.add (
             %core.nat.div (
@@ -251,19 +251,19 @@ fun conv_fun [R: %tensor.Ring] (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#ad
 /// write map `(n, co, oh, ow)` are `%tensor.proj_map` projections of it; only the padded-input read needs arithmetic.
 ///
 /// Padded-input read map: `(n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
-lam conv2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
+lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
     (o#0_7, o#4_7,
      %affine.op.add (%affine.semiop.mul (o#2_7, stride#0_2), %affine.semiop.mul (o#5_7, dilation#0_2)),
      %affine.op.add (%affine.semiop.mul (o#3_7, stride#1_2), %affine.semiop.mul (o#6_7, dilation#1_2)));
 
 axm %tensor.conv: [R: %tensor.Ring]
                 → {n cin cout h w kh kw: Nat}
-                → [stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»]
+                → [stride dilation padding: «2; Nat»]
                 → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
                 → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
 
 lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
-                      (stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»)
+                      (stride dilation padding: «2; Nat»)
                       (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
                     : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
     // Zero-pad only the spatial axes (lo = hi = (0, 0, pad_h, pad_w)); the pad value is the ring zero.
@@ -298,7 +298,7 @@ fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (a
 
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
 /// `(n, c, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
-lam pool2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
+lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
     (o#0_6, o#1_6,
      %affine.op.add (%affine.semiop.mul (o#2_6, stride#0_2), %affine.semiop.mul (o#4_6, dilation#0_2)),
      %affine.op.add (%affine.semiop.mul (o#3_6, stride#1_2), %affine.semiop.mul (o#5_6, dilation#1_2)));
@@ -306,12 +306,12 @@ lam pool2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «6; %affine.in
 axm %tensor.pool: {T: *}
                 → [g: [T, T] → T, init: T]
                 → {n c h w: Nat}
-                → [kernel: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»]
+                → [kernel stride dilation padding s_out: «2; Nat»]
                 → [input: «n, c, h, w; T»]
                 → «n, c, s_out#0_2, s_out#1_2; T»;
 
 lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
-                      (kernel: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»)
+                      (kernel stride dilation padding s_out: «2; Nat»)
                       (input: «n, c, h, w; T»)
                     : «n, c, s_out#0_2, s_out#1_2; T» =
     let s_in     = (n, c, h, w);
@@ -337,7 +337,7 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
 /// * `s1`/`s2`: the shape of the left/right input
 /// * `a`/`b`: the left/right input
 ///
-fun dot_general_fun [R: %tensor.Ring] [x: R#T, [y: R#T, z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
+fun dot_general_fun [R: %tensor.Ring] [x: R#T, [y z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
 lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
   let (ab, ai) = %vec.first (%core.icmp.e @n) (a, i);
   let (bb, bi) = %vec.first (%core.icmp.e @n) (b, i);
@@ -466,7 +466,7 @@ lam %tensor.transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, 
 /// Lowered directly to `%pack`s by the `LowerMapReduce` phase (`lower_broadcast`): a size-1 axis broadcast to `n`
 /// becomes a `‹n; …›` pack rather than a materialized/looped copy, which `%tensor.map_reduce` cannot express.
 axm %tensor.broadcast:  {T: *, r: Nat}
-                      → [s_in: «r; Nat», s_out: «r; Nat», input: «s_in; T»]
+                      → [s_in s_out: «r; Nat», input: «s_in; T»]
                       → «s_out; T», normalize_broadcast;
 ///
 /// ### %%tensor.broadcast_in_dim

@@ -13,11 +13,11 @@ let MT2 = (2, (4, 3), %math.F64);
 ccon print_int_matrix   [mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat),      I32), Cn %mem.M 0];
 ccon print_double_matrix[mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), %math.F64), Cn %mem.M 0];
 
-con print_int_matrix_wrap (mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (k, l), I32), return: Cn %mem.M 0) =
+con print_int_matrix_wrap (mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (k, l), I32), return: Cn %mem.M 0) =
     let m2 = %core.bitcast (%buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32)) m;
     print_int_matrix (mem, k, l, m2, return);
 
-con print_double_matrix_wrap (mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (k, l), %math.F64), return: Cn %mem.M 0) =
+con print_double_matrix_wrap (mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (k, l), %math.F64), return: Cn %mem.M 0) =
     let m2 = %core.bitcast (%buffer.Buf (2, (⊤:Nat, ⊤:Nat), %math.F64)) m;
     print_double_matrix (mem, k, l, m2, return);
 

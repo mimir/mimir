@@ -11,9 +11,9 @@ let u8 = I8;
 let String = %mem.Ptr («⊤:Nat; I8», 0);
 
 ccon atoi [%mem.M 0, String, Cn [%mem.M 0, I32]];
-ccon print_int_matrix [mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32), return: Cn [%mem.M 0]];
+ccon print_int_matrix [mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32), return: Cn [%mem.M 0]];
 
-con print_int_matrix_wrap (mem: %mem.M 0, k: Nat, l: Nat, m: %buffer.Buf (2, (k, l), I32), return: Cn [%mem.M 0]) =
+con print_int_matrix_wrap (mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (k, l), I32), return: Cn [%mem.M 0]) =
     let m = %core.bitcast (%buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32)) m;
     print_int_matrix(mem, k, l, m, return);
 

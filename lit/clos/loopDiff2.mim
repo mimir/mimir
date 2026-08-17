@@ -8,7 +8,7 @@ let void_ptr = %mem.Ptr («⊤:Nat; []», 0);
 ccon printInteger [mem: %mem.M 0, val: I32, return: Cn [%mem.M 0]];
 ccon printNL [mem: %mem.M 0, return: Cn [%mem.M 0]];
 ccon time [mem: %mem.M 0, return: Cn [%mem.M 0, void_ptr]];
-ccon print_time_diff [mem: %mem.M 0, t1: void_ptr, t2: void_ptr, return: Cn [%mem.M 0]];
+ccon print_time_diff [mem: %mem.M 0, t1 t2: void_ptr, return: Cn [%mem.M 0]];
 
 let arr_size = ⊤:Nat;
 let size = 100000;
