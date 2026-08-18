@@ -29,8 +29,8 @@ fun extern kernel (x y: «3, 4; I32», i j: [Idx 6, Idx 4]): I32 =
     let a  = %tensor.binary @(I32, I32, I32) i32_add @(2, (3, 4)) (x, y);
     let b  = %tensor.binary @(I32, I32, I32) i32_sub @(2, (3, 4)) (x, y);
     let c  = %tensor.concat @(I32, 2, 2) 0₂ @((3, 4), (3, 4)) (a, b);
-    let ga = %tensor.get @(I32, 2, (6, 4)) (c, i);
-    let gb = %tensor.get @(I32, 2, (6, 4)) (c, j);
+    let ga = %tensor.get (i, c);
+    let gb = %tensor.get (j, c);
     return (%core.wrap.add 0 (ga, gb));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =

@@ -19,10 +19,10 @@ plugin tensor;
 plugin mem;
 
 fun extern kernel (t: «3, 4; I32», i j: [Idx 3, Idx 4]): I32 =
-    let a  = %tensor.set @(I32, 2, (3, 4)) (t, i, 2I32);
-    let b  = %tensor.set @(I32, 2, (3, 4)) (t, j, 40I32);
-    let ga = %tensor.get @(I32, 2, (3, 4)) (a, j);
-    let gb = %tensor.get @(I32, 2, (3, 4)) (b, i);
+    let a  = %tensor.set (i, t, 2I32);
+    let b  = %tensor.set (j, t, 40I32);
+    let ga = %tensor.get (j, a);
+    let gb = %tensor.get (i, b);
     return (%core.wrap.add 0 (ga, gb));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =

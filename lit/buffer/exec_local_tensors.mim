@@ -16,12 +16,12 @@ plugin cps;
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let m  = ((10I32, 20I32), (30I32, 40I32));
-    let s  = %tensor.set @(I32, 2, (2, 2)) (m, (1₂, 1₂), 2I32);
+    let s  = %tensor.set ((1₂, 1₂), m, 2I32);
     let b  = %tensor.broadcast ((1, 2), (2, 2), (5I32, 7I32));
-    let g1 = %tensor.get @(I32, 2, (2, 2)) (s, (1₂, 1₂));
-    let g2 = %tensor.get @(I32, 2, (2, 2)) (s, (1₂, 0₂));
-    let g3 = %tensor.get @(I32, 2, (2, 2)) (b, (1₂, 0₂));
-    let g4 = %tensor.get @(I32, 2, (2, 2)) (b, (0₂, 0₂));
+    let g1 = %tensor.get ((1₂, 1₂), s);
+    let g2 = %tensor.get ((1₂, 0₂), s);
+    let g3 = %tensor.get ((1₂, 0₂), b);
+    let g4 = %tensor.get ((0₂, 0₂), b);
     let v  = %core.wrap.add 0 (%core.wrap.add 0 (%core.wrap.add 0 (g1, g2), g3), g4);
     return (mem, v);
 

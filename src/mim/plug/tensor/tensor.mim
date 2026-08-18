@@ -37,16 +37,21 @@ let %tensor.Ring = [
 /// ### %%tensor.get
 ///
 /// Extracts the element at `index` from `arr`:
-/// `%%tensor.get (arr, (a, b, c))` ≡ `arr#a#b#c`.
+/// `%%tensor.get ((a, b, c), arr)` ≡ `arr#a#b#c`.
 ///
-axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)»] → T, normalize_get;
+/// `index` precedes `arr` so that `{r, s}` can be inferred. `index: «i: r; Idx (s#i)»` pins the rank *and* every
+/// extent, after which `arr: «s; T»` peels off the right number of levels of its nested array type. The other way
+/// round `arr` would be checked while `r` is still unknown, and how deep to peel would be ambiguous - which is why
+/// this used to need `%%tensor.get @(T, r, s) …` at every call site.
+axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T»] → T, normalize_get;
 ///
 /// ### %%tensor.set
 ///
 /// Inserts the element `x` in `arr` at `index`:
-/// `%%tensor.set (arr, (a, b, c), x)` ≡ `Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x))`.
+/// `%%tensor.set ((a, b, c), arr, x)` ≡ `Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x))`.
 ///
-axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)», x: T] → «s; T», normalize_set;
+/// `index` precedes `arr` for the same reason as in %%tensor.get.
+axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T», x: T] → «s; T», normalize_set;
 ///
 /// ### %%tensor.shape
 ///

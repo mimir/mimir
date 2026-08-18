@@ -39,7 +39,7 @@ std::tuple<u64, const Def*, const Def*> fold_shape_and_index(const Def* shape, c
 const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
     auto& w = c->world();
 
-    auto [arr, index] = arg->projs<2>();
+    auto [index, arr] = arg->projs<2>();
     auto callee       = c->as<App>();
     auto [T, r, s]    = callee->args<3>();
 
@@ -62,7 +62,7 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
     if (Axm::isa<tensor::set>(arr)) {
         w.DLOG("get after set, try to bypass");
         auto set                  = arr->as<App>();
-        auto [_, target_index, x] = set->args<3>();
+        auto [target_index, _, x] = set->args<3>();
         if (target_index == index) {
             w.DLOG("bypass successful");
             return x;
@@ -71,7 +71,7 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
     if (Axm::isa<tensor::get>(arr)) {
         w.DLOG("get after get, try to bypass");
         auto get                      = arr->as<App>();
-        auto [outer_arr, outer_index] = get->args<2>();
+        auto [outer_index, outer_arr] = get->args<2>();
         auto [o_T, o_r, o_s]          = get->callee()->as<App>()->args<3>();
         w.DLOG("    outer_arr = {} : {}", outer_arr, outer_arr->type());
         w.DLOG("    outer_index = {} : {}", outer_index, outer_index->type());
@@ -142,7 +142,7 @@ const Def* normalize_get(const Def*, const Def* c, const Def* arg) {
 const Def* normalize_set(const Def*, const Def* c, const Def* arg) {
     auto& w = c->world();
 
-    auto [arr, index, x] = arg->projs<3>();
+    auto [index, arr, x] = arg->projs<3>();
     w.DLOG("normalize_set");
     w.DLOG("    arr = {} : {}", arr, arr->type());
     w.DLOG("    index = {} : {}", index, index->type());
@@ -163,7 +163,7 @@ const Def* normalize_set(const Def*, const Def* c, const Def* arg) {
     if (Axm::isa<tensor::get>(x)) {
         w.DLOG("set after get, try to bypass");
         auto get                      = x->as<App>();
-        auto [inner_arr, inner_index] = get->args<2>();
+        auto [inner_index, inner_arr] = get->args<2>();
         if (inner_arr == arr && inner_index == index) {
             w.DLOG("bypass successful");
             return inner_arr;
@@ -173,7 +173,7 @@ const Def* normalize_set(const Def*, const Def* c, const Def* arg) {
     if (Axm::isa<tensor::set>(x)) {
         w.DLOG("set after set, try to bypass");
         auto inner_set                         = x->as<App>();
-        auto [inner_arr, inner_index, inner_x] = inner_set->args<3>();
+        auto [inner_index, inner_arr, inner_x] = inner_set->args<3>();
         auto [i_T, i_r, i_s]                   = inner_set->callee()->as<App>()->args<3>();
 
         w.DLOG("    inner_arr = {} : {}", inner_arr, inner_arr->type());
@@ -184,7 +184,7 @@ const Def* normalize_set(const Def*, const Def* c, const Def* arg) {
         w.DLOG("    i_s = {} : {}", i_s, i_s->type());
 
         if (auto inner_get = Axm::isa<tensor::get>(inner_arr)) {
-            auto [g_arr, g_index] = inner_get->args<2>();
+            auto [g_index, g_arr] = inner_get->args<2>();
             if (g_arr == arr && g_index == index) {
                 auto new_r     = w.call(core::nat::add, DefVec{r, i_r});
                 auto new_s     = w.call<tuple::cat>(DefVec{s, i_s});

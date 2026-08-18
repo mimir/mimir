@@ -160,18 +160,18 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_91 = F32_sub (arg5, v_90);
     // Return the SGD update delta (old − new = lr·grad) of one element of each of the six results,
     // so every gradient chain stays live and the driver can check the backward pass numerically.
-    let g0 = %math.arith.sub 0 (%tensor.get @(F32, 2, (784, 1024))  (arg0, (3₇₈₄, 5₁₀₂₄)),
-                                %tensor.get @(F32, 2, (784, 1024))  (v_76, (3₇₈₄, 5₁₀₂₄)));
-    let g1 = %math.arith.sub 0 (%tensor.get @(F32, 1, (1024, ))      (arg1, (7₁₀₂₄, )),
-                                %tensor.get @(F32, 1, (1024, ))      (v_79, (7₁₀₂₄, )));
-    let g2 = %math.arith.sub 0 (%tensor.get @(F32, 2, (1024, 1024)) (arg2, (11₁₀₂₄, 13₁₀₂₄)),
-                                %tensor.get @(F32, 2, (1024, 1024)) (v_82, (11₁₀₂₄, 13₁₀₂₄)));
-    let g3 = %math.arith.sub 0 (%tensor.get @(F32, 1, (1024, ))      (arg3, (17₁₀₂₄, )),
-                                %tensor.get @(F32, 1, (1024, ))      (v_85, (17₁₀₂₄, )));
-    let g4 = %math.arith.sub 0 (%tensor.get @(F32, 2, (1024, 10))   (arg4, (19₁₀₂₄, 2₁₀)),
-                                %tensor.get @(F32, 2, (1024, 10))   (v_88, (19₁₀₂₄, 2₁₀)));
-    let g5 = %math.arith.sub 0 (%tensor.get @(F32, 1, (10, ))        (arg5, (3₁₀, )),
-                                %tensor.get @(F32, 1, (10, ))        (v_91, (3₁₀, )));
+    let g0 = %math.arith.sub 0 (%tensor.get  ((3₇₈₄, 5₁₀₂₄), arg0),
+                                %tensor.get  ((3₇₈₄, 5₁₀₂₄), v_76));
+    let g1 = %math.arith.sub 0 (%tensor.get      ((7₁₀₂₄, ), arg1),
+                                %tensor.get      ((7₁₀₂₄, ), v_79));
+    let g2 = %math.arith.sub 0 (%tensor.get ((11₁₀₂₄, 13₁₀₂₄), arg2),
+                                %tensor.get ((11₁₀₂₄, 13₁₀₂₄), v_82));
+    let g3 = %math.arith.sub 0 (%tensor.get      ((17₁₀₂₄, ), arg3),
+                                %tensor.get      ((17₁₀₂₄, ), v_85));
+    let g4 = %math.arith.sub 0 (%tensor.get   ((19₁₀₂₄, 2₁₀), arg4),
+                                %tensor.get   ((19₁₀₂₄, 2₁₀), v_88));
+    let g5 = %math.arith.sub 0 (%tensor.get        ((3₁₀, ), arg5),
+                                %tensor.get        ((3₁₀, ), v_91));
     return (%math.arith.add 0 (g0, %math.arith.add 0 (g1, %math.arith.add 0 (g2,
             %math.arith.add 0 (g3, %math.arith.add 0 (g4, g5))))));
 

@@ -1,12 +1,10 @@
 #include "mim/plug/tensor/phase/lower_to_mem.h"
 
-#include <mim/util/util.h>
-
-#include <mim/util/util.h>
-
 #include <mim/axm.h>
 #include <mim/def.h>
 #include <mim/lam.h>
+
+#include <mim/util/util.h>
 
 #include <mim/plug/buffer/buffer.h>
 #include <mim/plug/core/core.h>
@@ -75,10 +73,10 @@ void LowerToMem::collect_tensor_types() {
             if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0 && axm->plugin() == tensor::Plugin_Id)
                 ops_seen_ = true;
             if (Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app)) {
-                // get/set: the first explicit argument is the tensor `arr`.
+                // get/set: the tensor `arr` is the *second* explicit argument (the first one is `index`).
                 auto [T, r, s] = app->callee()->as<App>()->args<3>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
-                add_tensor_ty(app->arg()->proj(0)->type());
+                add_tensor_ty(app->arg()->proj(1)->type());
             } else if (Axm::isa<tensor::map_reduce>(app)) {
                 // result and each of the `nis` inputs are tensors.
                 add_tensor_ty(app->type());
@@ -415,12 +413,12 @@ const Def* LowerToMem::materialize(const Def* old_ty, const Def* old_arg) {
 const Def* LowerToMem::lower_get(const App* app) {
     auto c            = rewrite(app->callee())->as<App>();
     auto arg          = rewrite(app->arg());
-    auto [arr, index] = arg->projs<2>();
+    auto [index, arr] = arg->projs<2>();
     auto [T, r, s]    = c->args<3>();
     auto buf          = Axm::isa<buffer::Buf>(arr->type());
     // A `get` on a value-world tensor (e.g. a literal): materialize it into a buffer.
     if (!buf) {
-        arr = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        arr = materialize(app->arg()->proj(1)->type(), app->arg()->proj(1));
         buf = Axm::isa<buffer::Buf>(arr->type());
         if (!buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
     }
@@ -433,12 +431,12 @@ const Def* LowerToMem::lower_get(const App* app) {
 const Def* LowerToMem::lower_set(const App* app) {
     auto c               = rewrite(app->callee())->as<App>();
     auto arg             = rewrite(app->arg());
-    auto [arr, index, x] = arg->projs<3>();
+    auto [index, arr, x] = arg->projs<3>();
     auto [T, r, s]       = c->args<3>();
     auto buf             = Axm::isa<buffer::Buf>(arr->type());
     // A `set` on a value-world tensor (e.g. a literal): materialize it into a buffer.
     if (!buf) {
-        arr = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        arr = materialize(app->arg()->proj(1)->type(), app->arg()->proj(1));
         buf = Axm::isa<buffer::Buf>(arr->type());
         if (!buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
     }

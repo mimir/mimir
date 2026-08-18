@@ -12,8 +12,8 @@ plugin buffer;
 plugin opt;
 
 fun extern f (input: «3, 4; I32»): «3, 4; I32» =
-    let v = %tensor.get @(I32, 2, (3, 4)) (input, (1₃, 2₄));
-    return (%tensor.set @(I32, 2, (3, 4)) (input, (0₃, 0₄), v));
+    let v = %tensor.get ((1₃, 2₄), input);
+    return (%tensor.set ((0₃, 0₄), input, v));
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
