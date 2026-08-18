@@ -82,7 +82,7 @@ protected:
         child().finalize();
         locals_.clear();
         assert_unused(lam2bb_.size() == old_size && "really make sure we didn't trigger a rehash");
-        // A BB never crosses a function boundary: Nest::contains is `vars().has_intersection(def->free_vars())`,
+        // A BB never crosses a function boundary: Nest::contains is `def->has_free_vars_in(vars())`,
         // so a *closed* Lam is never a member of another Lam's Nest - and it cannot belong to two Nests either,
         // since a Lam free in the vars of two closed Lams would make the outer one open.
         // Every `BB&` handed out by emit_ died with the calls above, so clearing here is safe.
