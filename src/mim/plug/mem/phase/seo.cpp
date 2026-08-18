@@ -197,12 +197,13 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-static void find_unknowns(DefSet& visited, LamSet& res, const Def* def) {
+static void find_unknowns(DefSet& visited, Vector<Lam*>& res, const Def* def) {
     if (def->isa<Proxy>()) return;
+    if (def->local_muts().empty()) return;
     if (auto [_, ins] = visited.emplace(def); !ins) return;
 
     if (auto lam = def->isa_mut<Lam>()) {
-        if (lam->is_open()) res.emplace(lam);
+        if (lam->is_open()) res.emplace_back(lam);
         return;
     }
 
@@ -212,7 +213,7 @@ static void find_unknowns(DefSet& visited, LamSet& res, const Def* def) {
         find_unknowns(visited, res, d);
 }
 
-static void find_unknowns_callee(DefSet& visited, LamSet& res, const Def* def) {
+static void find_unknowns_callee(DefSet& visited, Vector<Lam*>& res, const Def* def) {
     if (def->isa<Lam>()) return;
     find_unknowns(visited, res, def);
 }
@@ -313,12 +314,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
-        DefSet visited;
-        LamSet lams;
-        find_unknowns_callee(visited, lams, abstr_callee);
-        find_unknowns(visited, lams, abstr_arg);
+        fu_visited_.clear();
+        fu_lams_.clear();
+        find_unknowns_callee(fu_visited_, fu_lams_, abstr_callee);
+        find_unknowns(fu_visited_, fu_lams_, abstr_arg);
 
-        for (auto lam : lams) {
+        for (auto lam : fu_lams_) {
             assert(lam != known && lam->is_open());
             DLOG("unknown edge: {} -> {}", curr_mut(), lam);
             propagate_phis(lam, phi_vars, phi_abstr_args);

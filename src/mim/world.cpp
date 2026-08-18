@@ -89,10 +89,12 @@ World::World(Driver* driver, const State& state)
 World::World(Driver* driver, Sym name)
     : World(driver, State(name)) {}
 
-World::~World() {
-    for (auto def : move_.defs)
-        def->~Def();
-}
+// ~Def() has nothing to do, so World does not run it.
+World::~World() = default;
+
+static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destructible_v<Vars>
+                  && std::is_trivially_destructible_v<Muts> && std::is_trivially_destructible_v<NormalizeFn>,
+              "a Def member gained a non-trivial destructor: World::~World must destroy Defs again");
 
 /*
  * Driver

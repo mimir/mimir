@@ -87,6 +87,13 @@ private:
         DefSet visited_;
         DefSet first_;
 
+        // Scratch for find_unknowns; cleared per query instead of constructing containers per App.
+        // fu_lams_ is a Vector, not a LamSet: find_unknowns pushes each Lam at most once (visited_ gates
+        // before the Lam check), and insertion order follows the structural deps() walk - so it is
+        // deterministic without a sort, and clear() always keeps its capacity.
+        DefSet fu_visited_;
+        Vector<Lam*> fu_lams_;
+
         // global (kept between iterations)
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs

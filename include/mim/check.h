@@ -136,6 +136,13 @@ private:
     [[nodiscard]] bool check(Seq*, const Seq*);
     [[nodiscard]] bool check(const UMax*, const Def*);
 
+    /// Symmetric key for the alpha_ memo: the two gids packed into one u64, smaller first.
+    /// Canonicalizing by gid is what lets alpha_ get away with a single probe.
+    static constexpr u64 memo_key(const Def* d1, const Def* d2) noexcept {
+        auto g1 = u64(d1->gid()), g2 = u64(d2->gid());
+        return g1 < g2 ? g1 << 32 | g2 : g2 << 32 | g1;
+    }
+
     auto bind(Def* mut, const Def* d) {
         if (!mut) return std::pair(binders_.end(), true);
         auto res = binders_.emplace(mut, d);
@@ -149,7 +156,7 @@ private:
 
     World& world_;
     MutMap<const Def*> binders_;
-    std::array<absl::flat_hash_set<std::pair<const Def*, const Def*>>, 2> memo_;
+    std::array<absl::flat_hash_set<u64>, 2> memo_;
 };
 
 } // namespace mim

@@ -58,18 +58,14 @@ struct FNV1<8> {
     static const uint64_t prime  = UINT64_C(1099511628211);
 };
 
+/// Mixes @p v into @p seed word-wise, reusing the FNV-1 prime as the multiplier.
+/// @note Hash values are never serialized - they only feed World::SeaHash and Scheduler's UseHash - so this
+/// formulation is free to change; equality is structural, never hash-based.
 template<class T>
 constexpr size_t hash_combine(size_t seed, T v) noexcept {
     static_assert(std::is_signed<T>::value || std::is_unsigned<T>::value, "please provide your own hash function");
 
-    size_t val = v;
-    for (size_t i = 0; i < sizeof(T); ++i) {
-        size_t octet = val & size_t(0xff); // extract lower 8 bits
-        seed ^= octet;
-        seed *= FNV1<sizeof(size_t)>::prime;
-        val >>= size_t(8);
-    }
-    return seed;
+    return hash(seed ^ (size_t(v) * FNV1<sizeof(size_t)>::prime));
 }
 
 inline consteval size_t hash_begin() noexcept { return FNV1<sizeof(size_t)>::offset; }
