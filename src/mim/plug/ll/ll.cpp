@@ -143,7 +143,7 @@ void Emitter::finalize_impl() {
         }
     }
 
-    for (auto mut : Scheduler::schedule(nest())) {
+    for (auto mut : schedule()) { // cached by Emitter::visit - recomputing it here doubled the work
         if (auto lam = mut->isa_mut<Lam>()) {
             if (!lam2bb_.contains(lam)) fe::throwf("ll backend: no basic block was emitted for '{}'", lam);
             auto& bb = lam2bb_[lam];
@@ -985,7 +985,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     } else if (auto zip = Axm::isa<vec::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();
         auto nat_ni = Lit::expect(ni_n->proj(2, 0), "a %vec.zip inputs count");
-        auto nat_n = Lit::expect(ni_n->proj(2, 1), "a %vec.zip lane count");
+        auto nat_n  = Lit::expect(ni_n->proj(2, 1), "a %vec.zip lane count");
         auto f      = zip->decurry()->arg();
         auto inputs = zip->arg();
         auto t_in   = convert(inputs->proj(nat_ni, 0)->type());

@@ -63,6 +63,8 @@ public:
     }
     template<class... Args>
     void log(Level level, const char* file, uint16_t line, std::format_string<Args...> fmt, Args&&... args) {
+        // Bail out *before* building the fs::path: that allocates, and in a Debug build DLOG/TLOG are live calls.
+        if (!ostream_ || level > max_level_) return;
         auto path = fs::path(file);
         log(level, Loc(&path, line), fmt, std::forward<Args>(args)...);
     }

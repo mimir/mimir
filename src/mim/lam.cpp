@@ -43,7 +43,7 @@ Defs Lam::reduce(Defs args) const { return Def::reduce(world().tuple(args)); }
 const Def* Lam::eta_reduce() const {
     if (auto var = has_var()) {
         if (auto app = body()->isa<App>())
-            if (app->arg() == var && !app->callee()->free_vars().contains(var)) return app->callee();
+            if (app->arg() == var && !app->callee()->has_free_var(var)) return app->callee();
     }
     return nullptr;
 }

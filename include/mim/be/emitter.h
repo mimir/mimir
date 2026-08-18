@@ -56,7 +56,8 @@ protected:
             return;
         }
 
-        auto muts = Scheduler::schedule(nest); // TODO make sure to not compute twice
+        schedule_        = Scheduler::schedule(nest); // cached; Child::finalize needs the very same schedule
+        const auto& muts = schedule_;
 
         // make sure that we don't need to rehash later on
         for (auto mut : muts)
@@ -81,11 +82,21 @@ protected:
         child().finalize();
         locals_.clear();
         assert_unused(lam2bb_.size() == old_size && "really make sure we didn't trigger a rehash");
+        // A BB never crosses a function boundary: Nest::contains is `def->has_free_vars_in(vars())`,
+        // so a *closed* Lam is never a member of another Lam's Nest - and it cannot belong to two Nests either,
+        // since a Lam free in the vars of two closed Lams would make the outer one open.
+        // Every `BB&` handed out by emit_ died with the calls above, so clearing here is safe.
+        // Without it, Child::finalize re-walks the BBs of all previously emitted functions - O(n²) in program size.
+        lam2bb_.clear();
     }
+
+    /// The Scheduler::schedule of the function currently being emitted; see Emitter::visit.
+    const Scheduler::Schedule& schedule() const { return schedule_; }
 
     Lam* curr_lam_ = nullptr;
     std::ostream& ostream_;
     Scheduler scheduler_;
+    Scheduler::Schedule schedule_;
     DefMap<Value> locals_;
     DefMap<Value> globals_;
     DefMap<Type> types_;
