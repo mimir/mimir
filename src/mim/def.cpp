@@ -4,11 +4,10 @@
 
 #include <absl/container/fixed_array.h>
 #include <fe/assert.h>
+#include <fe/hash.h>
 
 #include "mim/rule.h"
 #include "mim/world.h"
-
-#include "mim/util/hash.h"
 
 using namespace std::literals;
 
@@ -37,17 +36,17 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , type_(type) {
     if (node == Node::Univ) {
         gid_  = world->next_gid();
-        hash_ = mim::hash_begin(node_t(Node::Univ));
+        hash_ = fe::hash_begin(node_t(Node::Univ));
     } else {
-        hash_ = hash_begin(u8(node));
-        hash_ = hash_combine(hash_, flags_);
+        hash_ = fe::hash_begin(u8(node));
+        hash_ = fe::hash_combine(hash_, flags_);
 
         if (type) {
             world = &type->world();
             dep_ |= type->dep_;
             vars_ = type->local_vars();
             muts_ = type->local_muts();
-            hash_ = hash_combine(hash_, type->gid());
+            hash_ = fe::hash_combine(hash_, type->gid());
         } else {
             world = &ops[0]->world();
         }
@@ -63,7 +62,7 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
             dep_ |= op->dep_;
             vars_ = vars->merge(vars_, op->local_vars());
             muts_ = muts->merge(muts_, op->local_muts());
-            hash_ = hash_combine(hash_, op->gid());
+            hash_ = fe::hash_combine(hash_, op->gid());
         }
     }
 }
@@ -82,7 +81,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , num_ops_(num_ops)
     , type_(type) {
     gid_  = world().next_gid();
-    hash_ = mim::hash(gid());
+    hash_ = fe::hash(gid());
     var_  = nullptr;
     std::fill_n(ops_ptr(), num_ops, nullptr);
 }
@@ -100,8 +99,8 @@ Def::Def(Node node, Def* binder)
     , type_(nullptr) {
     gid_  = binder->world().next_gid();
     vars_ = Vars(as<Var>());
-    hash_ = hash_begin(node_t(Node::Var));
-    hash_ = hash_combine(hash_, binder->gid());
+    hash_ = fe::hash_begin(node_t(Node::Var));
+    hash_ = fe::hash_combine(hash_, binder->gid());
 }
 
 Nat::Nat(World& world)

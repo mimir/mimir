@@ -18,8 +18,7 @@
 #include <absl/container/node_hash_map.h>
 #include <absl/container/node_hash_set.h>
 #include <fe/assert.h>
-
-#include "mim/util/hash.h"
+#include <fe/hash.h>
 
 namespace mim {
 
@@ -154,7 +153,7 @@ private:
 
 template<class T>
 struct GIDHash {
-    constexpr size_t operator()(T p) const noexcept { return hash(p->gid()); }
+    constexpr size_t operator()(T p) const noexcept { return fe::hash(p->gid()); }
 };
 
 template<class T>
