@@ -37,7 +37,9 @@ const Def* LowerMatrixMediumLevel::rewrite_imm_App(const App* app) {
     // SI = dimensions.
     // Arguments: mem, zero (accumulator init), comb (combination function), inputs.
     auto [mem, zero, comb, inputs] = map_reduce_ax->args<4>();
-    auto [n, S, T, m, NI, TI, SI]  = map_reduce_ax->callee()->as<App>()->args<7>();
+    auto [m, Tn, S, NITISI]        = map_reduce_ax->callee()->as<App>()->uncurry_args<4>();
+    auto [T, n]                    = Tn->projs<2>();     // output element type and rank
+    auto [NI, TI, SI]              = NITISI->projs<3>(); // input meta (implicit, inferred from `input`)
 
     // Our goal is to generate a call to a function that performs:
     // ```

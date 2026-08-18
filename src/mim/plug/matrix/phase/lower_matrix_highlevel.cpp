@@ -27,9 +27,9 @@ const Def* LowerMatrixHighLevelMapRed::rewrite_imm_App(const App* app) {
         auto spec = w.app(w.app(w.annex<map_reduce_sum>(), pe), dims);
         return w.call<cps::cps2ds>(spec, rewrite(sum->arg()));
     } else if (auto transpose = Axm::isa<matrix::transpose>(app)) {
-        auto dims = rewrite(transpose->decurry()->decurry()->arg()); // {k, l}
-        auto T    = rewrite(transpose->decurry()->arg());            // {T}
-        auto spec = w.app(w.app(w.annex<map_reduce_transpose>(), dims), T);
+        auto T    = rewrite(transpose->decurry()->decurry()->arg()); // {T}
+        auto s    = rewrite(transpose->decurry()->arg());            // {s}
+        auto spec = w.app(w.app(w.annex<map_reduce_transpose>(), T), s);
         return w.call<cps::cps2ds>(spec, rewrite(transpose->arg()));
     }
 

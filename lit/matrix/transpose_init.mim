@@ -13,12 +13,7 @@ lam ex_internal_mapRed_matrix_transpose((k l: Nat), T: *)@tt: Cn [[%mem.M 0, %bu
         let zero = (⊥:T);
         return (
             %matrix.map_reduce
-                (2, (l, k), T,
-                    1,
-                    2,
-                    T,
-                    (k, l)
-                )
+                (l, k)
                 (
                     mem,
                     zero,
