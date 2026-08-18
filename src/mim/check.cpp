@@ -18,17 +18,26 @@ bool Def::needs_zonk() const {
     return false;
 }
 
-const Def* Def::zonk() const { return needs_zonk() ? world().zonker().rewrite(this) : this; }
+const Def* Def::zonk() const {
+    // A Hole needs special care: even when it is still unset, its *type* may have to be refreshed; see zonk_mut.
+    if (isa_mut<Hole>()) return zonk_mut();
+    return needs_zonk() ? world().zonker().rewrite(this) : this;
+}
 
 const Def* Def::zonk_mut() const {
+    if (auto hole = isa_mut<Hole>()) {
+        auto [last, op] = hole->find();
+        if (op) return op->zonk();
+        // The Hole is still unset, but its *type* may mention Hole%s that have been resolved in the meantime.
+        // Refresh it; otherwise e.g. an `«?n; T»` type won't collapse to `T` after `?n` has been unified with `1`.
+        if (auto t = last->type())
+            if (auto new_t = t->zonk_mut(); new_t != t) last->set_type(new_t);
+        return last;
+    }
+
     if (!is_set()) return this;
 
     if (auto mut = isa_mut()) {
-        if (auto hole = mut->isa<Hole>()) {
-            auto [last, op] = hole->find();
-            return op ? op->zonk() : last;
-        }
-
         for (auto def : deps())
             if (def->needs_zonk()) return world().zonker().rewire_mut(mut);
 
@@ -124,6 +133,23 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     if (type == val_ty) return val;
 
     auto& w = world();
+
+    // Implicit insertion at a coercion site: @p val still expects implicit arguments while @p type is an
+    // *explicit* function type, so fill them in with Hole%s - just like World::implicit_app does at an
+    // application site.
+    // This is what makes passing a polymorphic function as an *argument* work, e.g. handing `%%affine.id` to a
+    // parameter of type `«r; %%affine.index» → «r; %%affine.index»` instead of having to write `%%affine.id @r`.
+    // @p type has to be a Pi of its own for this to be justified: if it is still a Hole we would commit before
+    // knowing what is expected, and if it is an aggregate we might eat the implicits of a value whose element
+    // type is itself implicit (e.g. `%%regex.conj (%%regex.empty)`, where `RE` is an implicit Pi).
+    if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {
+        while (auto ipi = Pi::isa_implicit(val_ty)) {
+            val    = w.app(val, w.mut_hole(ipi->dom()));
+            val_ty = val->unfold_type()->zonk();
+        }
+        if (type == val_ty) return val;
+    }
+
     if (auto sigma = type->isa<Sigma>()) {
         if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
 

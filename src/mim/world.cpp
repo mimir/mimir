@@ -523,7 +523,7 @@ const Def* World::seq(bool term, const Def* arity, const Def* body) {
 
     // «(a, b, c); body» -> «a; «(b, c); body»»
     // e.g. when var, but still has array type
-    if (auto arr_arity = arity->type()->isa<Seq>())
+    if (auto arr_arity = arity_ty->isa<Seq>())
         if (auto lit_arity_arity = Lit::isa(arr_arity->arity())) {
             DefVec inner_arity(*lit_arity_arity - 1, [&](u64 i) { return arity->proj(*lit_arity_arity, i + 1); });
             return seq(term, arity->proj(*lit_arity_arity, 0), seq(term, tuple(inner_arity), body));

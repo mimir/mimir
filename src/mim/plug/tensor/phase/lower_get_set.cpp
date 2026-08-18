@@ -14,7 +14,7 @@ const Def* LowerGetSet::lower_get(const App* app) {
     auto c   = rewrite(app->callee());
     auto arg = rewrite(app->arg());
 
-    auto [arr, index] = arg->projs<2>();
+    auto [index, arr] = arg->projs<2>();
     auto callee       = c->as<App>();
     auto [T, r, s]    = callee->args<3>();
 
@@ -49,7 +49,7 @@ const Def* LowerGetSet::lower_set(const App* app) {
     auto c   = rewrite(app->callee());
     auto arg = rewrite(app->arg());
 
-    auto [arr, index, x] = arg->projs<3>();
+    auto [index, arr, x] = arg->projs<3>();
 
     DLOG("lower_set");
     DLOG("    arr = {} : {}", arr, arr->type());

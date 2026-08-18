@@ -15,9 +15,9 @@ let f = dot_general_fun R;
 // contraction, the identity write map and the subscript projections out[i,j] += a[i,k] * b[k,j].
 // %tensor.dot_product_impl must reduce to exactly this operation (checked via struc_eq below).
 let s_full = (2, 2, 2);
-let dot = %tensor.map_reduce @2 @(Nat, 2, 1) ((2, 2), s_full) @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›)) (f, 0)
-    (%tensor.proj_map @(3, 2) (0, 1))
-    (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+let dot = %tensor.map_reduce ((2, 2), s_full) (f, 0)
+    (%tensor.proj_map (0, 1))
+    (%tensor.proj_map (0, 2), %tensor.proj_map (2, 1))
     (m, m);
 let dotd = %tensor.dot_product_impl R @(2, 2) (1₂, 0₂, (), ()) (m, m);
 let dot2d = %tensor.product_2d_impl R (m, m);

@@ -130,7 +130,7 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     auto c  = rewrite(app->callee())->as<App>();
 
     auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [To, Ro, Rr]                                             = meta->projs<3>();
+    auto [To, Ro, Rn]                                             = meta->projs<3>();
     auto [So, Sr]                                                 = shapes->projs<2>();
     auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
     auto [comb, init]                                             = comb_init->projs<2>();
@@ -140,14 +140,14 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     auto result_ty       = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (Ro, So, To)]
 
     auto nis_l = Lit::isa<u64>(nis);
-    auto ro_l = Lit::isa<u64>(Ro), rr_l = Lit::isa<u64>(Rr);
-    if (!nis_l || !ro_l || !rr_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/Ro/Rr)", app);
+    auto ro_l = Lit::isa<u64>(Ro), rn_l = Lit::isa<u64>(Rn);
+    if (!nis_l || !ro_l || !rn_l || *rn_l < *ro_l) {
+        WLOG("{} doesn't have lowering-time known rank counts (nis/Ro/Rn)", app);
         return RWPhase::rewrite_imm_App(app);
     }
     auto nis_nat = *nis_l;
-    auto ro = *ro_l, rr = *rr_l;
-    auto nloops = ro + rr;
+    auto ro = *ro_l, rr = *rn_l - *ro_l;
+    auto nloops = *rn_l;
     auto n      = w.lit_nat(nloops);
 
     // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem`. The map is mem-threaded (its divisions consume mem),

@@ -7,6 +7,8 @@ plugin affine;
 
 let m0 = ((1, 2), (3, 4));
 
+// `{T, r, s}` has to be given: `input` is checked before `permutation`, so the rank is still unknown when the
+// shape vector would have to be read back off `input`'s nested array type (see %tensor.transpose_2d_impl).
 let m1 = %tensor.transpose @(Nat, 2, (2, 2)) (m0, (tt, ff));
 let m2 = %tensor.transpose @(Nat, 4, (1, 1, 2, 2)) (m0, (2₄, 1₄, 0₄, 3₄));
 let m21 = %tensor.transpose @(Nat, 4, (2, 2, 1, 1)) (m0, (0₄, 3₄, 1₄, 2₄));
