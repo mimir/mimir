@@ -293,12 +293,12 @@ const Def* LowerAff::lower_pad(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    // callee: pad {T, r} [s_in, s_out, mode, lo, hi]. The shapes are the logical ones; buffer reads and
+    // callee: pad {T, r} [s_in] [s_out, mode, lo, hi]. The shapes are the logical ones; buffer reads and
     // writes fold size-1 axes (the `Buf` handles are normalized), while the loops cover all logical dims.
-    auto [Tr, params]                = c->uncurry_args<2>();
-    auto [s_in, s_out, mode, lo, hi] = params->projs<5>();
-    auto [op_mem, input, value]      = rewrite(app->arg())->projs<3>();
-    auto result_ty                   = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (r, s_out, T)]
+    auto [Tr, s_in, params]     = c->uncurry_args<3>();
+    auto [s_out, mode, lo, hi]  = params->projs<4>();
+    auto [op_mem, input, value] = rewrite(app->arg())->projs<3>();
+    auto result_ty              = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (r, s_out, T)]
 
     auto r_l    = Lit::isa<u64>(Tr->proj(2, 1));
     auto mode_l = Lit::isa<u64>(mode);

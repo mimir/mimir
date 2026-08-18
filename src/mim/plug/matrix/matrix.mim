@@ -33,11 +33,12 @@ axm %matrix.prod: {pe: «2; Nat»}
 ///
 /// ### %%matrix.transpose
 ///
-/// Transposes a `k × l` matrix.
-axm %matrix.transpose: {k l: Nat}
-                     → {T: *}
-                     → [%mem.M 0, %buffer.Buf (2, (k, l), T)]
-                     → [%mem.M 0, %buffer.Buf (2, (l, k), T)], normalize_transpose;
+/// Transposes a `s#0 × s#1` matrix. Mirrors %%tensor.transpose_2d: the shape is a single `«2; Nat»` vector
+/// instead of two separate `Nat`s, and `{T}` precedes `{s}`.
+axm %matrix.transpose: {T: *}
+                     → {s: «2; Nat»}
+                     → [%mem.M 0, %buffer.Buf (2, s, T)]
+                     → [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)], normalize_transpose;
 ///
 /// ### %%matrix.sum
 ///
@@ -55,19 +56,26 @@ axm %matrix.sum: {pe: «2; Nat»}
 /// `%%matrix.prod`, `%%matrix.transpose`, and `%%matrix.sum` are all expressed via `map_reduce`
 /// (see the unfolding functions below).
 /// The counts, dimensions, and indices are assumed to be statically known, to avoid inline meta-programming.
-axm %matrix.map_reduce:
-    [ n: Nat, S: «n; Nat», T: *, // output shape
-      m: Nat,                    // number of inputs
-      NI: «m; Nat»,              // input dimension counts
-      TI: «m; *»,                // input element types
-      SI: «i: m; «NI#i; Nat»»    // input shapes
-    ]
-  → [ mem:   %mem.M 0,
-      zero:  T,                                              // initial accumulator
-      comb:  Fn [%mem.M 0, T, «i: m; TI#i»] → [%mem.M 0, T], // inner combination
-      input: «i: m; [«NI#i; Nat», %buffer.Buf (NI#i, SI#i, TI#i)]»
-    ]
-  → [%mem.M 0, %buffer.Buf (n, S, T)], normalize_map_reduce;
+///
+/// The group structure mirrors %%tensor.map_reduce: input count, then output element type and rank, then the
+/// output shape as the only *explicit* group, then the input meta.
+/// Everything but the output shape `S` is inferred:
+/// * `T` from `zero`, and `n` from `S` itself;
+/// * `m`, `NI`, `TI` and `SI` from `input` — `%%buffer.Buf` spells its rank, shape and element type out as
+///   ordinary arguments, so they unify structurally (no nested-array peeling involved).
+axm %matrix.map_reduce: {m: Nat}                     // number of inputs
+                      → {T: *, n: Nat}               // output element type and rank
+                      → [S: «n; Nat»]                // output shape
+                      → { NI: «m; Nat»,              // input dimension counts
+                          TI: «m; *»,                // input element types
+                          SI: «i: m; «NI#i; Nat»»    // input shapes
+                        }
+                      → [ mem:   %mem.M 0,
+                          zero:  T,                                              // initial accumulator
+                          comb:  Fn [%mem.M 0, T, «i: m; TI#i»] → [%mem.M 0, T], // inner combination
+                          input: «i: m; [«NI#i; Nat», %buffer.Buf (NI#i, SI#i, TI#i)]»
+                        ]
+                      → [%mem.M 0, %buffer.Buf (n, S, T)], normalize_map_reduce;
 ///
 /// ### %%matrix.map_reduce_aff
 ///
@@ -101,12 +109,14 @@ axm %matrix.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat»
 ///
 /// The buffer-world counterpart of `%%tensor.pad`: `out[…o…] = input[…o−lo…]` inside the interior,
 /// `value` (mode 0, constant) or the clamped edge element (mode ≠ 0, replicate) outside.
-/// `s_out#d = lo#d + s_in#d + hi#d` is passed explicitly.
+/// The groups mirror %%tensor.pad (`{T, r}` → input shape → pad parameters → operands); unlike there, `s_out`
+/// cannot be computed here (`pad_shape` lives in the `tensor` plugin), so it rides along with the parameters.
 /// The buffer shapes are stated as the logical shapes; `%%buffer.Buf` normalizes literal size-1 axes
 /// away, so they agree with the folded buffer handles, and the loop generation folds its read/write
 /// indices accordingly.
 axm %matrix.pad: {T: *, r: Nat}
-              → [s_in s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
+              → [s_in: «r; Nat»]
+              → [s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
               → [%mem.M 0, input: %buffer.Buf (r, s_in, T), value: T]
               → [%mem.M 0, %buffer.Buf (r, s_out, T)];
 ///
@@ -134,8 +144,7 @@ axm %matrix.concat: {T: *, nis r: Nat}
 fun %matrix.map_reduce_prod {pe: «2; Nat»} {m k l: Nat} (mem: %mem.M 0, M: %buffer.Buf (2, (m, k), %math.F pe), N: %buffer.Buf (2, (k, l), %math.F pe))@tt: [%mem.M 0, %buffer.Buf (2, (m, l), %math.F pe)] =
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
-    return (%matrix.map_reduce
-        (2, (m, l), R, 2, (2, 2), (R, R), ((m, k), (k, l)))
+    return (%matrix.map_reduce (m, l)
         (mem, zero_real,
             fn (mem: %mem.M 0, acc: R, ab: «2; R»): [%mem.M 0, R] =
                 return (mem, %math.arith.add 0 (acc, %math.arith.mul 0 ab)),
@@ -144,10 +153,9 @@ fun %matrix.map_reduce_prod {pe: «2; Nat»} {m k l: Nat} (mem: %mem.M 0, M: %bu
 /// ### %%matrix.map_reduce_transpose
 ///
 /// Transpose a matrix by iterating the indices in swapped order.
-fun %matrix.map_reduce_transpose {k l: Nat} {T: *} (mem: %mem.M 0, M: %buffer.Buf (2, (k, l), T))@tt: [%mem.M 0, %buffer.Buf (2, (l, k), T)] =
+fun %matrix.map_reduce_transpose {T: *} {s: «2; Nat»} (mem: %mem.M 0, M: %buffer.Buf (2, s, T))@tt: [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)] =
     let zero = ⊥:T;
-    return (%matrix.map_reduce
-        (2, (l, k), T, 1, 2, T, (k, l))
+    return (%matrix.map_reduce (s#tt, s#ff)
         (mem, zero,
             // We ignore the (zero) accumulator and just return the read value.
             fn (mem: %mem.M 0, acc a: T): [%mem.M 0, T] = return (mem, a),
@@ -160,8 +168,7 @@ fun %matrix.map_reduce_sum {pe: «2; Nat»} {n: Nat, S: «n; Nat»} (mem: %mem.M
     let R = %math.F pe;
     let zero_real = %math.conv.f2f pe 0.0:%math.F64;
     let idxs = ‹i: n; %core.nat.add (1, %core.bitcast Nat i)›;
-    let (mem, res) = %matrix.map_reduce
-        (1, 1, R, 1, n, R, S)
+    let (mem, res) = %matrix.map_reduce 1
         (mem, zero_real,
             fn (mem: %mem.M 0, acc a: R): [%mem.M 0, R] =
                 return (mem, %math.arith.add 0 (acc, a)),

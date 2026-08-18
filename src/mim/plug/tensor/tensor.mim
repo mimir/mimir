@@ -409,10 +409,12 @@ axm %tensor.product_2d: [R: %tensor.Ring]
                       → [t1: «m, k; R#T», t2: «k, l; R#T»]
                       → «m, l; R#T»;
 
-/// The `{r1 r2}` and `{s1 s2}` groups are passed explicitly on purpose: `%%tensor.dot_product_impl` builds its
-/// subscript rows with `%%vec.diff`/`%%vec.fold.l`, whose normalizers only fold once the ranks and shapes are
-/// literals. Leaving them to inference still type-checks, but the `%%vec.*` scaffolding is built *before* the
-/// Hole%s are solved and never re-normalized, so the resulting access maps stay unfolded.
+/// The `{r1 r2}` and `{s1 s2}` groups are passed explicitly on purpose - not because inference fails, but because
+/// of *when* it succeeds. `%%tensor.dot_product_impl` is a curried `lam`, so applying it to a group β-reduces its
+/// body right away; with a still-unsolved Hole for the ranks, the `%%vec.diff`/`%%vec.fold.l` subscript machinery
+/// gets built over non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the
+/// Hole%s are resolved. The result type-checks but keeps the whole `%%vec.*` scaffolding inside its access maps
+/// (`%%refly.equiv.struc_eq` in lit/tensor/dot_product.mim pins this down). Passing literals up front folds it away.
 lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
         = %tensor.dot_product_impl R @(2, 2) (1_2, 0_2, (), ()) @((m, k), (k, l)) (t1, t2);
 
@@ -438,15 +440,21 @@ lam %tensor.bmm_impl (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2:
 lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
   let shape_permutation = ‹i: r; (%vec.first %core.icmp.e (permutation, i))#tt›;
   ‹i: r; s#(shape_permutation#i)›;
-axm %tensor.transpose: {T: *, r: Nat, s: «r; Nat»}
-                     → [input: «s; T», permutation: «r; Idx r»]
+/// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
+/// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created - with the
+/// now-literal type `«r; Nat»`, which lets `input: «s; T»` peel off exactly `r` levels of its nested array type.
+/// Merging the two groups would not do: the domain `«s; T»` is built once, while `r` is still unknown.
+axm %tensor.transpose: {T: *, r: Nat}
+                     → [permutation: «r; Idx r»]
+                     → {s: «r; Nat»}
+                     → [input: «s; T»]
                      → «transpose_shape (s, permutation); T»;
 
 /// `o ↦ (o#(perm#0), …, o#(perm#(r−1)))`: input axis `j` reads output-loop var `o#(perm#j)`.
 lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; %affine.index»): «r; %affine.index» = ‹j: r; o#(perm#j)›;
 
-lam %tensor.transpose_impl {T: *, r: Nat, s: «r; Nat»}
-                           (input: «s;T», permutation: «r; Idx r»)
+lam %tensor.transpose_impl {T: *, r: Nat}
+                           (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
                          : «transpose_shape (s, permutation); T»
                          = let out_s = transpose_shape (s, permutation);
                            %tensor.map_reduce (out_s, out_s) (tensor_copy, ⊥: T)
@@ -461,11 +469,8 @@ axm %tensor.transpose_2d: {T: *}
                         → [input: «s; T»]
                         → «s#tt, s#ff; T»;
 
-/// `{T, r, s}` is explicit because `input` is checked before `permutation`: at that point the rank `r` is still
-/// unknown, so how many levels to peel off `input`'s nested array type - and hence the shape vector `s` - is
-/// ambiguous. Only `permutation: «r; Idx r»` pins `r`, and by then `s` has already been committed to.
 lam %tensor.transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
-  %tensor.transpose_impl @(T, 2, s) (input, (tt, ff));
+  %tensor.transpose_impl (tt, ff) input;
 ///
 /// ### %%tensor.broadcast
 ///

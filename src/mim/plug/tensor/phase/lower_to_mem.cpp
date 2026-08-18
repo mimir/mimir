@@ -483,6 +483,8 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
     auto [bri, bsi, biT] = in_buf->args<3>();
     auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(app->type()))->args<3>();
 
+    // NB: no `w.call` here — `{ro, so}` (the *output* buffer shape) occur nowhere but in the result type, so
+    // there is no argument for inference to read them off.
     auto op       = w.annex<matrix::broadcast>();
     op            = w.app(op, w.tuple({T, bri, bsi, bro, bso, r}));
     op            = w.app(op, w.tuple({s_in, s_out}));
@@ -530,6 +532,9 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     after->app(true, cret, w.tuple({cm, after->var(0_n)}));
     memcomb->set(true, w.app(comb, w.tuple({w.tuple({cacc, cins}), after})));
 
+    // NB: no `w.call` here — the meta groups are *forwarded* from the tensor op on purpose. Leaving them to
+    // inference would re-derive `{Tis, Ris, Sis}` from the `%buffer.Buf` operands, whose literal size-1 axes are
+    // already folded away, so they would no longer agree with the logical shapes the loop generation iterates.
     auto op       = w.annex<matrix::map_reduce_aff>();
     op            = w.app(op, nis);
     op            = w.app(op, meta);
@@ -571,10 +576,8 @@ const Def* LowerToMem::lower_pad(const App* app) {
                                               hi->proj(*r_l, d)});
     auto s_out = w.tuple(so);
 
-    auto op       = w.annex<matrix::pad>();
-    op            = w.app(op, w.tuple({T, r}));
-    op            = w.app(op, w.tuple({s_in, s_out, mode, lo, hi}));
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), input, value}))->projs<2>();
+    // `{T, r}` is inferred: `s_in` pins `r`, and `input`'s `%buffer.Buf (r, s_in, T)` pins `T`.
+    auto [m, out] = w.call<matrix::pad>(s_in, Defs{s_out, mode, lo, hi}, Defs{fresh_mem(), input, value})->projs<2>();
     return out;
 }
 
@@ -621,6 +624,10 @@ const Def* LowerToMem::lower_concat(const App* app) {
         so[d] = d == *ax_l ? w.lit_nat(sum_ax) : Sis->proj(*nis_l, 0)->proj(*r_l, d);
     auto s_out = w.tuple(so);
 
+    // NB: `{T, nis, r}` and `{Sis}` cannot be left to inference (hence no `w.call` here). `Sis` holds the
+    // *logical* per-input shapes, but the operands are `%buffer.Buf` handles with their literal size-1 axes
+    // already folded away — unifying `%buffer.Buf (r, Sis#i, T)` against a folded handle fails, because the
+    // left-hand side only folds once `Sis#i` is known. Passing the logical shapes makes both sides fold alike.
     auto op       = w.annex<matrix::concat>();
     op            = w.app(op, w.tuple({T, nis, r}));
     op            = w.app(op, ax);
