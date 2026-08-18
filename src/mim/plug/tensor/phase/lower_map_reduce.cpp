@@ -116,16 +116,16 @@ nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, 
 const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     // meta arguments:
     // * nis = in-count (nat)
-    // * To = out-type (*), Ro = #output loops = result rank, Rr = #reduction loops
+    // * To = out-type (*), Ro = #output loops = result rank, Rn = #loops in total
     // * So = result shape (Ro*nat)
-    // * Sr = the full loop bounds (Ro+Rr)*nat: the leading Ro are the output-loop bounds, the trailing Rr the
+    // * Sr = the full loop bounds Rn*nat: the leading Ro are the output-loop bounds, the trailing Rn - Ro the
     // reductions
     // * Tis/Ris/Sis = input types/ranks/shapes
     // arguments:
     // * f = combination function (CPS), init = accumulator init
-    // * acc_out = affine map from the (Ro+Rr) loop vector to the Ro write coordinates in the result «So» (the reduction
+    // * acc_out = affine map from the Rn loop vector to the Ro write coordinates in the result «So» (the reduction
     //             part is not in scope at write-back, so acc_out must depend only on the leading Ro output indices)
-    // * accs = per-input affine map from the (Ro+Rr) loop vector to the input's read coordinates
+    // * accs = per-input affine map from the Rn loop vector to the input's read coordinates
     // * is = input tensors
     auto& w     = new_world();
     auto c      = rewrite(app->callee())->as<App>();
@@ -133,21 +133,21 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto type   = rewrite(app->type());
 
     auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [To, Ro, Rr]                                             = meta->projs<3>();
+    auto [To, Ro, Rn]                                             = meta->projs<3>();
     auto [So, Sr]                                                 = shapes->projs<2>();
     auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
     auto [comb, init]                                             = comb_init->projs<2>();
 
     auto nis_l = Lit::isa<u64>(nis);
-    auto ro_l = Lit::isa<u64>(Ro), rr_l = Lit::isa<u64>(Rr);
-    if (!nis_l || !ro_l || !rr_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/Ro/Rr)", app);
+    auto ro_l = Lit::isa<u64>(Ro), rn_l = Lit::isa<u64>(Rn);
+    if (!nis_l || !ro_l || !rn_l || *rn_l < *ro_l) {
+        WLOG("{} doesn't have lowering-time known rank counts (nis/Ro/Rn)", app);
         return nullptr;
     }
     auto nis_nat = *nis_l;
-    auto ro = *ro_l, rr = *rr_l;
-    auto nloops = ro + rr;           // length of the full loop vector (= length of Sr)
-    auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
+    auto ro = *ro_l, rr = *rn_l - *ro_l; // #output loops and #reduction loops
+    auto nloops = *rn_l;                 // length of the full loop vector (= length of Sr)
+    auto n      = w.lit_nat(nloops);     // passed as the affine maps' domain length
 
     // ranks of each input must be literal so that we know how many `extract`s to emit
     Vector<u64> ris_nat(nis_nat);
@@ -200,7 +200,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto wb_matrix = acc;
 
         // Write-back: narrow the accumulated element into the result at the affine write coordinates `acc_out`.
-        // acc_out takes the full (Ro+Rr) loop vector, but the reduction loops have already been folded away here, so we
+        // acc_out takes the full Rn loop vector, but the reduction loops have already been folded away here, so we
         // pass 0 for those slots; acc_out must depend only on the leading Ro output indices.
         auto write_back    = w.mut_con(To)->set("writeBack");
         auto element_final = write_back->var(0);
@@ -210,7 +210,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters)); // «Ro; Idx (So#k)»
         write_back->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, element_final));
 
-        // Inner (reduction) loops over the trailing Rr bounds of `Sr`, collecting the reduction iteration indices.
+        // Inner (reduction) loops over the trailing `Rn - Ro` bounds of `Sr`, collecting the reduction iteration
+        // indices.
         acc  = init;
         cont = write_back;
         DefVec red_iters;

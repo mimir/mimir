@@ -27,8 +27,8 @@ lam F32_minus {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unar
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1
 // (one output loop over n, one reduction loop over m).
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
-    %tensor.map_reduce @1 @(F32, 1, 1) (n, (n, m)) @(F32, 2, (n, m)) (pool_fun g, init)
-        (%tensor.proj_map @(2, 1) 0) (%tensor.proj_map @(2, 2) (0, 1), ) input;
+    %tensor.map_reduce (n, (n, m)) (pool_fun g, init)
+        (%tensor.proj_map 0) (%tensor.proj_map (0, 1), ) input;
 
 con extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»», return: Cn [«128; F32»])  =
     // let v_0 = %tensor.product_2d R (arg6, arg0);

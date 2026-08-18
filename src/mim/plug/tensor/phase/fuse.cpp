@@ -23,16 +23,16 @@ static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
 
 // Fuses an outer `tensor.map_reduce` with any number of its inputs — and, recursively, any
 // fusible inputs of those inputs — whenever each such input is itself a `tensor.map_reduce`
-// without reduction loops (`Rr = 0`) that writes its full loop domain through the identity output
+// without reduction loops (`Rn = Ro`) that writes its full loop domain through the identity output
 // map (`Sr = So`, `map_out = %affine.id`). Reading such an inner tensor at a position is then just
 // a single call to the inner combination function, with each inner access map composed behind the
 // outer's access map for that input.
 //
-// Outer:    map_reduce nis_o (To, Ro, Rr) (So, Sr) (Tis_o, Ris_o, Sis_o) (f_o, init_o) map_out maps_o is_o
-// Inner:    map_reduce nis_k (To_k, Ro_k, 0) (So_k, So_k) (Tis_k, Ris_k, Sis_k) (f_k, init_k) id maps_k is_k
+// Outer:    map_reduce nis_o (To, Ro, Rn) (So, Sr) (Tis_o, Ris_o, Sis_o) (f_o, init_o) map_out maps_o is_o
+// Inner:    map_reduce nis_k (To_k, Ro_k, Ro_k) (So_k, So_k) (Tis_k, Ris_k, Sis_k) (f_k, init_k) id maps_k is_k
 //           for every fusible input — possibly nested inside another fusible input
 //
-// Result:   map_reduce nis_new (To, Ro, Rr) (So, Sr) (Tis_new, Ris_new, Sis_new) (f_new, init_o)
+// Result:   map_reduce nis_new (To, Ro, Rn) (So, Sr) (Tis_new, Ris_new, Sis_new) (f_new, init_o)
 //           map_out maps_new is_new
 //
 // The collection phase walks the tree of fusible inner ops below `app` once, producing a flat list
@@ -47,7 +47,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
 
     auto [nis, meta, shapes, TisRisSis, comb_init, map_out, maps] = outer_callee->uncurry_args<7>();
 
-    auto [To, Ro, Rr]    = meta->projs<3>();
+    auto [To, Ro, Rn]    = meta->projs<3>();
     auto [comb, init]    = comb_init->projs<2>();
     auto [Tis, Ris, Sis] = TisRisSis->projs<3>();
     auto is              = rewrite(app->arg());
@@ -93,7 +93,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto [inner_nis, inner_meta, inner_shapes, inner_TisRisSis, inner_comb_init, inner_map_out, inner_maps,
               inner_is]
             = inner->uncurry_args<8>();
-        auto [inner_To, inner_Ro, inner_Rr]    = inner_meta->projs<3>();
+        auto [inner_To, inner_Ro, inner_Rn]    = inner_meta->projs<3>();
         auto [inner_So, inner_Sr]              = inner_shapes->projs<2>();
         auto [inner_comb, inner_init]          = inner_comb_init->projs<2>();
         auto [inner_Tis, inner_Ris, inner_Sis] = inner_TisRisSis->projs<3>();
@@ -106,8 +106,9 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         // position is just a single call of `inner_comb` at that position.
         // The identity map (`%affine.id`) is recognized structurally (a lam returning its own var),
         // since the rewrite into this phase's world rebuilds mutables and breaks pointer equality.
-        auto inner_rr = Lit::isa<u64>(inner_Rr);
-        if (!inner_rr || *inner_rr != 0) continue;
+        auto inner_ro = Lit::isa<u64>(inner_Ro);
+        auto inner_rn = Lit::isa<u64>(inner_Rn);
+        if (!inner_ro || !inner_rn || *inner_ro != *inner_rn) continue;
         if (inner_Sr != inner_So) continue;
         auto id_lam = inner_map_out->isa_mut<Lam>();
         if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) continue;

@@ -74,15 +74,15 @@ axm %matrix.map_reduce:
 /// The buffer-world counterpart of `%%tensor.map_reduce`: the affine-indexed generalisation of
 /// `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
 /// `So`/`Sr` are the (logical) output shape and full loop bounds; `acc_out`/`accs` are affine maps from the
-/// `Ro+Rr` loop vector to the output/input coordinates.
+/// `Rn` loop vector to the output/input coordinates (`Ro` output loops, `Rn - Ro` reduction loops).
 /// The combiner is mem-threaded, like `%%matrix.map_reduce`.
 axm %matrix.map_reduce_aff: {nis: Nat}
-                          → {To: *, Ro Rr: Nat}
-                          → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»]
+                          → {To: *, Ro Rn: Nat}
+                          → [So: «Ro; Nat», Sr: «Rn; Nat»]
                           → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                           → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To]
-                          → [acc_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
-                          → [accs: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»]
+                          → [acc_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
+                          → [accs: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»]
                           → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
                           → [%mem.M 0, %buffer.Buf (Ro, So, To)];
 ///

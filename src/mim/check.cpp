@@ -18,17 +18,26 @@ bool Def::needs_zonk() const {
     return false;
 }
 
-const Def* Def::zonk() const { return needs_zonk() ? world().zonker().rewrite(this) : this; }
+const Def* Def::zonk() const {
+    // A Hole needs special care: even when it is still unset, its *type* may have to be refreshed; see zonk_mut.
+    if (isa_mut<Hole>()) return zonk_mut();
+    return needs_zonk() ? world().zonker().rewrite(this) : this;
+}
 
 const Def* Def::zonk_mut() const {
+    if (auto hole = isa_mut<Hole>()) {
+        auto [last, op] = hole->find();
+        if (op) return op->zonk();
+        // The Hole is still unset, but its *type* may mention Hole%s that have been resolved in the meantime.
+        // Refresh it; otherwise e.g. an `«?n; T»` type won't collapse to `T` after `?n` has been unified with `1`.
+        if (auto t = last->type())
+            if (auto new_t = t->zonk_mut(); new_t != t) last->set_type(new_t);
+        return last;
+    }
+
     if (!is_set()) return this;
 
     if (auto mut = isa_mut()) {
-        if (auto hole = mut->isa<Hole>()) {
-            auto [last, op] = hole->find();
-            return op ? op->zonk() : last;
-        }
-
         for (auto def : deps())
             if (def->needs_zonk()) return world().zonker().rewire_mut(mut);
 
