@@ -11,7 +11,7 @@ lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
 fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
 
 con extern f (v: «2; «3; Nat»», return: Cn «2; Nat») =
-    let inner = %tensor.unary @(Nat, Nat) add1 @(2, (2, 3)) v;
+    let inner = %tensor.unary add1 @(2, (2, 3)) v;
     // out[i] = Σ_j inner[i, j]: one output loop (bound 2), one reduction loop (bound 3).
     let outer = %tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
         (%tensor.proj_map 0)

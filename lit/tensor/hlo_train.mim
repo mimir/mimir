@@ -25,18 +25,18 @@ plugin math;
 let f32 = %math.f32;
 let F32 = %math.F32;
 
-let R: %tensor.Ring = (F32, 0: F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+let R: %tensor.Ring = (F32, 0: F32, %math.arith.add 0, %math.arith.mul 0);
 
 // NB: a decimal literal `x.y: %math.F32` currently lowers to 0.0 — only F64 decimal literals parse
 // correctly — so F32 constants are built by converting an F64 literal with %math.conv.f2f.
 let f32_lr = %math.conv.f2f (23, 8) (0.001: %math.F64); // learning rate
 let f32_c  = %math.conv.f2f (23, 8) (0.5: %math.F64);   // loss-gradient scale
 
-lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add @f32 0) is;
-lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.sub @f32 0) is;
-lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.mul @f32 0) is;
-lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.tri.tanh @f32 0) i;
-lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; Bool» = %tensor.unary (%math.is_finite @f32 0) i;
+lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add 0) is;
+lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.sub 0) is;
+lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.mul 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.tri.tanh 0) i;
+lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; Bool» = %tensor.unary (%math.is_finite 0) i;
 
 // out[i] = fold_j g (input[i, j]): reduce along axis 1 (one output loop over n, one reduction over m).
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
@@ -57,13 +57,13 @@ fun extern main_hlo (w: «8; «3; F32»», b: «3; F32», x: «4; «8; F32»», 
     let sc  = %tensor.broadcast ((1, 1), (4, 3), f32_c);                     // scalar broadcast -> [4, 3]
     let d   = F32_mul @(2, (4, 3)) (sc, d0);                                 // [4, 3]
     // row reduction + select (kept live through the result)
-    let rmax = reduce_ax1 ((%math.extrema.fmax @f32 0), 0xFF800000: F32) z;  // [4]
+    let rmax = reduce_ax1 ((%math.extrema.fmax 0), 0xFF800000: F32) z;  // [4]
     let fin  = F32_is_finite rmax;                                          // [4]
     let sel  = %tensor.select (fin, rmax, ‹4; 0: F32›);                     // [4]
     // backward: dW = (dᵀ·x)ᵀ, dx = d·wᵀ, db = Σ_n d
-    let dW  = %tensor.transpose_2d (%tensor.dot_product R @(2, 2) (0₂, 0₂, (), ()) (d, x)); // [8, 3]
-    let dx  = %tensor.dot_product R @(2, 2) (1₂, 1₂, (), ()) (d, w);       // [4, 8]
-    let db  = reduce_ax0 ((%math.arith.add @f32 0), 0: F32) d;               // [3]
+    let dW  = %tensor.transpose_2d (%tensor.dot_product R (0₂, 0₂, (), ()) (d, x)); // [8, 3]
+    let dx  = %tensor.dot_product R (1₂, 1₂, (), ()) (d, w);       // [4, 8]
+    let db  = reduce_ax0 ((%math.arith.add 0), 0: F32) d;               // [3]
     // SGD update
     let w2  = F32_sub @(2, (8, 3)) (w, F32_mul @(2, (8, 3)) (‹8, 3; f32_lr›, dW));
     let b2  = F32_sub (b, F32_mul (‹3; f32_lr›, db));
@@ -72,4 +72,4 @@ fun extern main_hlo (w: «8; «3; F32»», b: «3; F32», x: «4; «8; F32»», 
     let s1 = %tensor.get @(F32, 1, (3, ))   (b2,  (0₃, ));
     let s2 = %tensor.get @(F32, 2, (4, 8)) (dx,  (0₄, 0₈));
     let s3 = %tensor.get @(F32, 1, (4, ))   (sel, (0₄, ));
-    return (%math.arith.add @f32 0 (%math.arith.add @f32 0 (s0, s1), %math.arith.add @f32 0 (s2, s3)));
+    return (%math.arith.add 0 (%math.arith.add 0 (s0, s1), %math.arith.add 0 (s2, s3)));

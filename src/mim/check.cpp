@@ -133,6 +133,23 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     if (type == val_ty) return val;
 
     auto& w = world();
+
+    // Implicit insertion at a coercion site: @p val still expects implicit arguments while @p type is an
+    // *explicit* function type, so fill them in with Hole%s - just like World::implicit_app does at an
+    // application site.
+    // This is what makes passing a polymorphic function as an *argument* work, e.g. handing `%%affine.id` to a
+    // parameter of type `«r; %%affine.index» → «r; %%affine.index»` instead of having to write `%%affine.id @r`.
+    // @p type has to be a Pi of its own for this to be justified: if it is still a Hole we would commit before
+    // knowing what is expected, and if it is an aggregate we might eat the implicits of a value whose element
+    // type is itself implicit (e.g. `%%regex.conj (%%regex.empty)`, where `RE` is an implicit Pi).
+    if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {
+        while (auto ipi = Pi::isa_implicit(val_ty)) {
+            val    = w.app(val, w.mut_hole(ipi->dom()));
+            val_ty = val->unfold_type()->zonk();
+        }
+        if (type == val_ty) return val;
+    }
+
     if (auto sigma = type->isa<Sigma>()) {
         if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
 

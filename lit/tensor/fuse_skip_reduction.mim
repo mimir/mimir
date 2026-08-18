@@ -17,7 +17,7 @@ con extern f (v: «2; «3; Nat»», return: Cn «2; Nat») =
         (%tensor.proj_map (0, 1), )
         v;
     // outer[i] = inner[i] + 1    (pure map)
-    let outer = %tensor.unary @(Nat, Nat) add1 @(1, 2) inner;
+    let outer = %tensor.unary add1 inner;
     return outer;
 
 lam extern _compile (): %compile.Phase =

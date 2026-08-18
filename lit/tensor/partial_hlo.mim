@@ -10,19 +10,19 @@ plugin math;
 let f32 = %math.f32;
 let F32 = %math.F32;
 
-let R: %tensor.Ring = (F32, 0: F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+let R: %tensor.Ring = (F32, 0: F32, %math.arith.add 0, %math.arith.mul 0);
 
-lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add @f32 0) is;
-lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.sub @f32 0) is;
-lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.mul @f32 0) is;
-lam F32_div {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.div @f32 0) is;
-lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.tri.tanh @f32 0) i;
-lam F32_maximum {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.extrema.fmax @f32 0) is;
-lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; Bool» = %tensor.unary (%math.is_finite @f32 0) i;
-lam F32_exp {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.exp.exp @f32 0) i;
-lam F32_abs {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.abs @f32 0) i;
-lam F32_GE {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; Bool» = %tensor.binary (%math.cmp.ge @f32 0) is;
-lam F32_minus {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.minus @f32 0) i;
+lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add 0) is;
+lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.sub 0) is;
+lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.mul 0) is;
+lam F32_div {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.div 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.tri.tanh 0) i;
+lam F32_maximum {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.extrema.fmax 0) is;
+lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; Bool» = %tensor.unary (%math.is_finite 0) i;
+lam F32_exp {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.exp.exp 0) i;
+lam F32_abs {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.abs 0) i;
+lam F32_GE {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; Bool» = %tensor.binary (%math.cmp.ge 0) is;
+lam F32_minus {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.minus 0) i;
 
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1
 // (one output loop over n, one reduction loop over m).
@@ -51,7 +51,7 @@ con extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     // // let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
     // // let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
     // let v_cst_0 = 0xFF800000 : F32;
-    // let v_18 = reduce_ax1 ((%math.extrema.fmax @f32 0), v_cst_0) v_14;
+    // let v_18 = reduce_ax1 ((%math.extrema.fmax 0), v_cst_0) v_14;
     // // let v_cst_1 = 0xFF800000 : F32;
     // // let v_19 = ‹128; v_cst_1›;
     // // let v_20 = F32_maximum (v_19, v_18);
@@ -72,7 +72,7 @@ con extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
     let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
     let v_cst_0 = 0xFEC00000: F32;
-    let v_18 = reduce_ax1 ((%math.extrema.ieee754max @f32 0), v_cst_0) v_17;
+    let v_18 = reduce_ax1 ((%math.extrema.ieee754max 0), v_cst_0) v_17;
     // let v_cst_1 = 0xFF800000 : F32;
     // let v_19 = ‹128; v_cst_1›;
     // let v_20 = F32_maximum (v_19, v_18);

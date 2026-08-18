@@ -93,9 +93,9 @@ let _ = %refly.equiv.struc_eq (a2, 1₂);
 let subs_1    = ‹i: r; dot_general_pick (a1, b, c1) (0, r_out) i›;
 let subs_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
 
-let (ab, ai) = %vec.first (%core.icmp.e @2) (a2, 1₂);
-let (bb, bi) = %vec.first (%core.icmp.e @2) (b, 1₂);
-let (cb, ci) = %vec.first (%core.icmp.e @2) (c2, 1₂);
+let (ab, ai) = %vec.first (%core.icmp.e) (a2, 1₂);
+let (bb, bi) = %vec.first (%core.icmp.e) (b, 1₂);
+let (cb, ci) = %vec.first (%core.icmp.e) (c2, 1₂);
 let bi_nat = %core.bitcast Nat bi;
 let ci_nat = %core.bitcast Nat ci;
 let ci_out = %core.nat.add (2, ci_nat);

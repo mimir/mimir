@@ -25,10 +25,10 @@ plugin math;
 let f32 = %math.f32;
 let F32 = %math.F32;
 
-let R: %tensor.Ring = (F32, 0: F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+let R: %tensor.Ring = (F32, 0: F32, %math.arith.add 0, %math.arith.mul 0);
 
-lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add @f32 0) is;
-lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.tri.tanh @f32 0) i;
+lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = %tensor.unary (%math.tri.tanh 0) i;
 
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1.
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
@@ -49,5 +49,5 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
     let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
     let v_ninf = 0xFF800000: F32;
-    let v_18 = reduce_ax1 ((%math.extrema.fmax @f32 0), v_ninf) v_17;
+    let v_18 = reduce_ax1 ((%math.extrema.fmax 0), v_ninf) v_17;
     return v_18;
