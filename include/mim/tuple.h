@@ -14,6 +14,9 @@ protected:
 public:
     ~Prod() override;
 
+    /// Prod groups Sigma and Tuple; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Sigma || n == mim::Node::Tuple; }
+
     static constexpr size_t Num_Ops = std::dynamic_extent;
 };
 
@@ -89,6 +92,9 @@ protected:
 
 public:
     ~Seq() override;
+
+    /// Seq groups Arr and Pack; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Arr || n == mim::Node::Pack; }
 
     /// @name ops
     ///@{

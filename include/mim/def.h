@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <format>
 #include <limits>
 #include <optional>
@@ -335,7 +336,14 @@ public:
     /// MimIR assumes that a mutable is *final*, when its last operand is set.
     /// Then, Def::check() will be invoked.
     ///@{
-    bool is_set() const;            ///< Yields `true` if empty or the last op is set.
+    /// Yields `true` if empty or the last op is set.
+    bool is_set() const {
+        if (num_ops() == 0) return true;
+        bool result = ops().back();
+        assert((!result || std::ranges::all_of(ops().rsubspan(1), [](auto op) { return op; }))
+               && "the last operand is set but others in front of it aren't");
+        return result;
+    }
     Def* set(size_t i, const Def*); ///< Successively set from left to right.
     Def* set(Defs ops);             ///< Set @p ops all at once (no Def::unset necessary beforehand).
     Def* unset();                   ///< Unsets all Def::ops; works even, if not set at all or only partially set.
@@ -469,11 +477,14 @@ public:
     ///@{
 
     /// Mutables reachable by following *immutable* deps(); `mut->local_muts()` is by definition the set `{ mut }`.
-    Muts local_muts() const;
+    Muts local_muts() const {
+        if (auto mut = isa_mut()) return Muts(mut);
+        return muts_;
+    }
 
     /// Var%s reachable by following *immutable* deps().
     /// @note `var->local_vars()` is by definition the set `{ var }`.
-    Vars local_vars() const;
+    Vars local_vars() const { return mut_ ? Vars() : vars_; }
 
     /// Global set of free Var%s: extends local_vars() by transitively following *mutables* as well.
     /// @note On a *mutable* this simply forwards to the caching non-`const` overload below.
@@ -482,6 +493,18 @@ public:
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
     bool is_open() const;          ///< Has free_vars()?
     bool is_closed() const;        ///< Has no free_vars()?
+
+    /// @name free_vars predicates
+    /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
+    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
+    /// question without ever materializing the merged set.
+    /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
+    ///@{
+    bool has_free_var(const Var*) const; ///< Same as `free_vars().contains(var)`.
+    bool has_free_vars() const;          ///< Same as `!free_vars().empty()`.
+    bool has_free_vars_in(Vars) const;   ///< Same as `vars.has_intersection(free_vars())`.
+    ///@}
 
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
@@ -1042,6 +1065,45 @@ private:
 
     friend class World;
 };
+
+/// @name Def - hot inline definitions
+/// These need Univ, Type, Var, and Lit to be complete, so they live here rather than in the class body.
+/// They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
+/// opaque PLT calls in every other TU.
+///@{
+
+inline World& Def::world() const noexcept {
+    if (auto var = isa<Var>()) return var->binder()->world();
+
+    for (auto def = this;; def = def->type()) {
+        if (def->isa<Univ>()) return *def->world_;
+        if (auto type = def->isa<Type>()) return *type->level()->type()->as<Univ>()->world_;
+    }
+}
+
+inline const Def* Def::type() const noexcept {
+    if (auto var = isa<Var>()) return var->binder()->var_type();
+    return type_;
+}
+
+inline bool Def::equal(const Def* other) const {
+    if (isa<Univ>() || this->isa_mut() || other->isa_mut()) return this == other;
+
+    // A Var carries no ops and flags == 0, so it is identified solely by its binder (stored in binder_).
+    if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
+
+    bool result = this->node() == other->node() && this->flags() == other->flags()
+               && this->num_ops() == other->num_ops() && this->type() == other->type();
+
+    for (size_t i = 0, e = num_ops(); result && i != e; ++i)
+        result &= this->op(i) == other->op(i);
+
+    return result;
+}
+
+inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
+
+///@}
 
 } // namespace mim
 

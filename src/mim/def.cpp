@@ -188,7 +188,7 @@ bool Def::is_immutabilizable() {
 
     if (auto v = has_var()) {
         for (auto op : deps())
-            if (op->free_vars().contains(v)) return false;
+            if (op->has_free_var(v)) return false;
     }
     for (auto op : deps()) {
         for (auto mut : op->local_muts())
@@ -305,14 +305,6 @@ Def* Def::unset() {
     return this;
 }
 
-bool Def::is_set() const {
-    if (num_ops() == 0) return true;
-    bool result = ops().back();
-    assert((!result || std::ranges::all_of(ops().rsubspan(1), [](auto op) { return op; }))
-           && "the last operand is set but others in front of it aren't");
-    return result;
-}
-
 /*
  * free_vars
  */
@@ -339,11 +331,6 @@ const Def* Def::var_type() {
     fe::unreachable();
 }
 
-Muts Def::local_muts() const {
-    if (auto mut = isa_mut()) return Muts(mut);
-    return muts_;
-}
-
 Vars Def::free_vars() const {
     if (auto mut = isa_mut()) return mut->free_vars();
 
@@ -355,7 +342,35 @@ Vars Def::free_vars() const {
     return fvs;
 }
 
-Vars Def::local_vars() const { return mut_ ? Vars() : vars_; }
+bool Def::has_free_var(const Var* var) const {
+    if (auto mut = isa_mut()) return mut->free_vars().contains(var);
+
+    if (local_vars().contains(var)) return true;
+    for (auto mut : local_muts())
+        if (mut->free_vars().contains(var)) return true;
+
+    return false;
+}
+
+bool Def::has_free_vars() const {
+    if (auto mut = isa_mut()) return !mut->free_vars().empty();
+
+    if (!local_vars().empty()) return true;
+    for (auto mut : local_muts())
+        if (!mut->free_vars().empty()) return true;
+
+    return false;
+}
+
+bool Def::has_free_vars_in(Vars vars) const {
+    if (auto mut = isa_mut()) return vars.has_intersection(mut->free_vars());
+
+    if (vars.has_intersection(local_vars())) return true;
+    for (auto mut : local_muts())
+        if (vars.has_intersection(mut->free_vars())) return true;
+
+    return false;
+}
 
 Vars Def::free_vars() {
     if (mark_ == 0) {
@@ -428,14 +443,14 @@ void Def::invalidate() {
 bool Def::is_closed() const {
     if (local_vars().empty() && local_muts().empty()) return true;
 #ifdef MIM_ENABLE_CHECKS
-    assert(!is_external() || free_vars().empty());
+    assert(!is_external() || !has_free_vars());
 #endif
-    return free_vars().empty();
+    return !has_free_vars();
 }
 
 bool Def::is_open() const {
     if (!local_vars().empty()) return true;
-    return !free_vars().empty();
+    return has_free_vars();
 }
 
 Def* Def::outermost_binder() const {
@@ -444,7 +459,7 @@ Def* Def::outermost_binder() const {
 }
 
 bool Def::nests(Def* mut, MutSet& checked) {
-    if (mut->free_vars().contains(this->has_var())) return true;
+    if (mut->has_free_var(this->has_var())) return true;
     if (auto [_, ins] = checked.emplace(mut); !ins) return false;
 
     for (auto fv : mut->free_vars())
@@ -479,19 +494,6 @@ bool Def::nests(const Def* def) {
 Sym Def::sym(const char* s) const { return world().sym(s); }
 Sym Def::sym(std::string_view s) const { return world().sym(s); }
 Sym Def::sym(std::string s) const { return world().sym(std::move(s)); }
-
-World& Def::world() const noexcept {
-    if (auto var = isa<Var>()) return var->binder()->world();
-
-    for (auto def = this;; def = def->type()) {
-        if (def->isa<Univ>()) return *def->world_;
-        if (auto type = def->isa<Type>()) return *type->level()->type()->as<Univ>()->world_;
-    }
-}
-const Def* Def::type() const noexcept {
-    if (auto var = isa<Var>()) return var->binder()->var_type();
-    return type_;
-}
 
 const Def* Def::unfold_type() const {
     if (auto t = type()) return t;
@@ -599,21 +601,6 @@ const Def* Def::arity() const {
     return world().lit_nat_1();
 }
 
-bool Def::equal(const Def* other) const {
-    if (isa<Univ>() || this->isa_mut() || other->isa_mut()) return this == other;
-
-    // A Var carries no ops and flags == 0, so it is identified solely by its binder (stored in binder_).
-    if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
-
-    bool result = this->node() == other->node() && this->flags() == other->flags()
-               && this->num_ops() == other->num_ops() && this->type() == other->type();
-
-    for (size_t i = 0, e = num_ops(); result && i != e; ++i)
-        result &= this->op(i) == other->op(i);
-
-    return result;
-}
-
 void Def::externalize() { return world().externals().externalize(this); }
 void Def::internalize() { return world().externals().internalize(this); }
 
@@ -625,16 +612,12 @@ void Def::transfer_external(Def* to) {
 
 std::string Def::unique_name() const { return sym().str() + "_"s + std::to_string(gid()); }
 
-nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
-
 nat_t Def::num_tprojs() const {
     if (auto a = Lit::isa(arity()); a && *a < world().flags().scalarize_threshold) return *a;
     return 1;
 }
 
 const Def* Def::proj(nat_t a, nat_t i) const {
-    World& w = world();
-
     if (a == 1) {
         assert(i == 0 && "only inhabitant of Idx 2 is 0_1");
         if (!type()) return this;
@@ -648,7 +631,7 @@ const Def* Def::proj(nat_t a, nat_t i) const {
 
     if (isa<Prod>()) return op(i);
 
-    return w.extract(this, a, i);
+    return world().extract(this, a, i); // only compute world() on the path that needs it
 }
 
 /*

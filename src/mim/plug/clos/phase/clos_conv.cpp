@@ -1,5 +1,7 @@
 #include "mim/plug/clos/phase/clos_conv.h"
 
+#include <algorithm>
+
 #include <mim/plug/mem/autogen.h>
 
 using namespace std::literals;
@@ -258,8 +260,12 @@ const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {
 }
 
 ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
-    auto& w          = new_world();
-    auto fv_vec      = DefVec(fvs.begin(), fvs.end());
+    auto& w = new_world();
+    // Sort by gid: fv_vec's order *is* the closure environment layout (see rewrite_body's env_val->proj(i)),
+    // and iterating a DefSet (absl::flat_hash_set) leaves it at the mercy of hash-table insertion order -
+    // so unrelated changes elsewhere silently permuted the env slots.
+    auto fv_vec = DefVec(fvs.begin(), fvs.end());
+    std::ranges::sort(fv_vec, GIDLt<const Def*>());
     auto env_type    = rewrite(old_world().tuple(fv_vec)->type());
     auto new_fn_type = clos_type_of(old_lam->type(), env_type)->as<Pi>();
     auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg());

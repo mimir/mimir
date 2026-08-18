@@ -222,7 +222,7 @@ public:
     World& world() const { return world_; }
     const Node* root() const { return root_; }
     Vars vars() const { return vars_; } ///< All Var%s occurring in this Nest.
-    bool contains(const Def* def) const { return vars().has_intersection(def->free_vars()); }
+    bool contains(const Def* def) const { return def->has_free_vars_in(vars()); }
     bool is_recursive() const { return calc_SCCs().root()->is_recursive(); }
     ///@}
 

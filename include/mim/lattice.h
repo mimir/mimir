@@ -20,6 +20,9 @@ protected:
 public:
     ~Bound() override;
 
+    /// Bound groups Join and Meet; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Join || n == mim::Node::Meet; }
+
     /// @name Get Element by Type
     ///@{
     size_t find(const Def* type) const;
@@ -150,6 +153,9 @@ protected:
 
 public:
     ~Ext() override;
+
+    /// Ext groups Top and Bot; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Top || n == mim::Node::Bot; }
 };
 
 /// Ext%remum. Either Top (@p Up) or Bot%tom.

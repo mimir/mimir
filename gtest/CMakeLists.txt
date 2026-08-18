@@ -1,6 +1,7 @@
 add_executable(mim-gtest)
 target_sources(mim-gtest
     PRIVATE
+        cast.cpp
         helpers.cpp
         lexer.cpp
         test.cpp

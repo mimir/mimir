@@ -134,13 +134,19 @@ void RWPhase::start() {
         todo = analyze();
     }
 
+    // Count the Def%s each half of the rebuild creates in the new world.
+    // The annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the program.
+    auto gid = new_world().curr_gid();
     for (const auto& [flags, e] : old_world().annexes())
         rewrite_annex(flags, e.sym, e.def);
+    profile_count("rebuild.defs.annex", new_world().curr_gid() - gid);
 
     bootstrapping_ = false;
 
+    gid = new_world().curr_gid();
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
+    profile_count("rebuild.defs.external", new_world().curr_gid() - gid);
 
     swap(old_world(), new_world());
 }

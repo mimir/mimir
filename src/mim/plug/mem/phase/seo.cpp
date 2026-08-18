@@ -52,7 +52,8 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
 
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
-    if (!def->isa<Proxy>() && lam->nests(def)) {
+    // A closed def can never be nested, and Def::nests allocates a fresh MutSet per call - so skip it.
+    if (!def->isa<Proxy>() && !def->is_closed() && lam->nests(def)) {
         DLOG("cannot propagate {} -> {}: out of scope", var, def);
         return pin(var), var;
     }
