@@ -1066,12 +1066,10 @@ private:
     friend class World;
 };
 
-/// @name Def - hot inline definitions
-/// These need Univ, Type, Var, and Lit to be complete, so they live here rather than in the class body.
-/// They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
-/// opaque PLT calls in every other TU.
-///@{
-
+// Def - hot inline definitions
+// These need Univ, Type, Var, and Lit to be complete, so they live here rather than in the class body.
+// They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
+// opaque PLT calls in every other TU.
 inline World& Def::world() const noexcept {
     if (auto var = isa<Var>()) return var->binder()->world();
 
@@ -1102,8 +1100,6 @@ inline bool Def::equal(const Def* other) const {
 }
 
 inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
-
-///@}
 
 } // namespace mim
 
