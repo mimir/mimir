@@ -4,7 +4,7 @@
 
 // End-to-end bufferization of %tensor.pad and %tensor.concat through the DEFAULT pipeline: `main`
 // materializes the literals into buffers and calls the bufferized `pad_row` / `cat_two` (lowered via
-// %matrix.pad / %matrix.concat to loops over %buffer, then to %mem loops).
+// %btensor.pad / %btensor.concat to loops over %buffer, then to %mem loops).
 // pad (10,20,30) lo=1 hi=2 fill=5 -> (5,10,20,30,5,5); concat (10,20,30)+(1,2) -> (10,20,30,1,2).
 // done reads p[3] + c[4] + c[0] = 30 + 2 + 10 = 42.
 // exec_pad_concat_run.mim compiles this to an executable and asserts the exit code.
@@ -37,4 +37,4 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
 // CHECK-DAG: %mem.store
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.

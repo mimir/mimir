@@ -1,11 +1,11 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
-// Bufferization of %tensor.broadcast via the buffer-world %matrix.broadcast.
+// Bufferization of %tensor.broadcast via the buffer-world %btensor.broadcast.
 // Exercises size-1 dimension folding: the input «3,1;I32» is stored as «3;I32», so the input read uses a
 // single (folded) index while the output is rank 2.
 // GONE-NOT: %tensor.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.
 // GONE-NOT: %buffer.
 // GONE-NOT: %affine.
 plugin core;
@@ -14,7 +14,7 @@ plugin affine;
 plugin mem;
 plugin cps;
 plugin buffer;
-plugin matrix;
+plugin btensor;
 plugin opt;
 
 // out[i][j] = input[i][0]
@@ -37,7 +37,7 @@ lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %tensor.lower_to_mem,
         %mem.add_mem,
-        %matrix.lower_aff,
+        %btensor.lower_map_reduce,
         %buffer.lower_ptr,
         %affine.lower_index,
         %affine.lower_for,

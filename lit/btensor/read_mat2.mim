@@ -1,0 +1,14 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt -o - %s | %FileCheck %s
+
+plugin core;
+plugin btensor;
+
+con extern f(mem: %mem.M 0, (k l: Nat), return: Cn [%mem.M 0, I32]) =
+    let two      = %core.conv.u k 2I32;
+    let three    = %core.conv.u l 3I32;
+    let (mem, M) = %buffer.alloc (2, (k, l), I32) mem; // :%buffer.Buf (2,(k,l), I32)
+    let (mem, a) = %buffer.read (2, (k, l), I32) (mem, M, (two, three));
+    return (mem, a);
+
+// CHECK-NOT: %btensor.

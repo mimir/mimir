@@ -8,7 +8,7 @@
 /// A `%%buffer.Buf (r, s, T)` is a dependent array of rank `r` and shape `s` holding elements of type `T`, but backed by real memory.
 /// Elements are accessed via `%%buffer.read` / `%%buffer.write` and buffers are created via `%%buffer.alloc`, all threading the `%%mem.M` memory monad.
 /// The `%%buffer.lower_ptr` phase lowers this layer to `%%mem.Ptr` + `%%mem.lea` / `%%mem.load` / `%%mem.store`.
-/// Both the `tensor` and `matrix` plugins bufferize their operations onto this layer.
+/// Both the `tensor` and `btensor` plugins bufferize their operations onto this layer.
 ///
 /// ## Dependencies
 ///

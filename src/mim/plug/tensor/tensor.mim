@@ -16,7 +16,7 @@ plugin vec;
 plugin cps;
 plugin affine;
 plugin buffer;
-plugin matrix;
+plugin btensor;
 ///
 /// ## Types
 ///
@@ -25,12 +25,10 @@ plugin matrix;
 /// Represents an [algebraic ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
 /// E.g., `let nat_ring = (Nat, 0, %%core.nat.add, %%core.nat.mul);`.
 ///
-let %tensor.Ring = [
-    T: *,
-    _0: T,
-    add: [T, T] → T,
-    mul: [T, T] → T,
-];
+/// An alias for %%btensor.Ring.
+/// The buffer-world `btensor` plugin sits *below* `tensor` - `%%tensor.lower_to_mem` bufferizes onto `%%btensor.*` ops -
+/// so the definition lives there and both layers share one notion of a ring.
+let %tensor.Ring = %btensor.Ring;
 ///
 /// ## Operations
 ///
@@ -95,8 +93,8 @@ axm %tensor.map_reduce: {nis: Nat}
 
 /// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
-lam %tensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «r; %affine.index» =
-    ‹j: r; o#(%core.idx n 0 (subs#j))›;
+/// An alias for %%btensor.proj_map, which `btensor` owns for the same reason it owns %%btensor.Ring.
+let %tensor.proj_map = %btensor.proj_map;
 ///
 /// ### %%tensor.repeat
 ///

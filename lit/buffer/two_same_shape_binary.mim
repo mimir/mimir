@@ -4,7 +4,7 @@
 
 // Regression: two same-shaped elementwise results that are BOTH live must get DISTINCT buffers.
 // This is the *delayed* form of the collapse, and the one that silently corrupted multi-output graphs.
-// Both `%tensor.binary`s lower to `%matrix.map_reduce_aff` and differ only in their *curried callee* (the
+// Both `%tensor.binary`s lower to `%btensor.map_reduce` and differ only in their *curried callee* (the
 // combiner), so their final argument tuple `(⊥: %mem.M 0, (x, y))` was one shared Def. AddMem is a
 // memoizing Rewriter, so the second op got threaded from the *first's* memory; `%cps.conv` then
 // substituted both accumulator functions' mem vars with the same memory and the two `%mem.alloc`s - by
@@ -43,4 +43,4 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
 // CHECK-DAG: %mem.store
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.

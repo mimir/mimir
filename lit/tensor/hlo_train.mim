@@ -9,7 +9,7 @@
 // end to end:
 //   %tensor.product_2d, %tensor.dot_product (both contraction axes), %tensor.transpose_2d,
 //   %tensor.broadcast (vector *and scalar* — the scalar case is the one lower_to_mem now bufferizes via a
-//   %matrix.broadcast fill loop), %tensor.select, reduce_ax0 / reduce_ax1, and the elementwise math ops.
+//   %btensor.broadcast fill loop), %tensor.select, reduce_ax0 / reduce_ax1, and the elementwise math ops.
 // `main_hlo` returns one scalar summing one element of each result, so no chain is dead-code-eliminated.
 // hlo.mim is the full-size two-layer (128/784/1024/10) network this is a compact stand-in for; it now
 // runs as an executable test as well, so this variant mainly gives fast, small-dimension coverage.
