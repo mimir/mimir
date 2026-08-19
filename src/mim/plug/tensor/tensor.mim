@@ -93,8 +93,8 @@ axm %tensor.map_reduce: {nis: Nat}
 
 /// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
-lam %tensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «r; %affine.index» =
-    ‹j: r; o#(%core.idx n 0 (subs#j))›;
+/// An alias for %%matrix.proj_map, which `matrix` owns for the same reason it owns %%matrix.Ring.
+let %tensor.proj_map = %matrix.proj_map;
 ///
 /// ### %%tensor.repeat
 ///

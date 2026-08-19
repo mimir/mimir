@@ -5,7 +5,7 @@
 /// [TOC]
 ///
 /// Buffer-world matrix/tensor operations: a generic `map_reduce` loop-nest abstraction plus derived operations
-/// (matrix product, transpose, sum, pad, concat, ...), lowered to `%%affine.For` loop nests over `%%buffer` element
+/// (matrix product, transpose, pad, concat, ...), lowered to `%%affine.For` loop nests over `%%buffer` element
 /// operations.
 ///
 /// This is the bufferized mirror of the `tensor` plugin: every op here is the `%%buffer.Buf` counterpart of a
@@ -67,42 +67,12 @@ axm %matrix.map_reduce: {nis: Nat}
                       → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»]
                       → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
                       → [%mem.M 0, %buffer.Buf (Ro, So, To)];
-///
-/// ### %%matrix.map_reduce_idx
-///
-/// The index-tuple flavor of %%matrix.map_reduce, inspired by and generalizing einsum.
-/// It maps a combination function `f` over the elements addressed by a set of index tuples and reduces the
-/// results with an accumulator starting from `init`; e.g. `einsum(idx, is) = map_reduce_idx(0, +, product, is)`.
-/// Instead of the affine `map_out`/`maps` of %%matrix.map_reduce, each input carries its own subscript tuple
-/// inline - `is#i` is a pair of the `Ris#i` loop ids to read it at and the buffer itself - and the loop bounds are
-/// recovered from those subscripts rather than being passed as `Sr`.
-/// %%matrix.product_2d, %%matrix.transpose_2d, and %%matrix.sum are all expressed via `map_reduce_idx`
-/// (see the `_impl` annexes below).
-/// The counts, dimensions, and indices are assumed to be statically known, to avoid inline meta-programming.
-///
-/// * `nis`: the number of inputs
-/// * `To`/`Ro`: the element type and rank of the result
-/// * `So`: the shape of the result buffer
-/// * `Tis`/`Ris`/`Sis`: the element type, rank and shape of each input
-/// * `init`: the initial accumulator, seeded per output cell
-/// * `f`: the inner combination, folding one element of each input into the accumulator
-/// * `is#i`: the `Ris#i` loop ids to read input `i` at, paired with the input buffer itself
-///
-/// The group structure mirrors %%matrix.map_reduce: input count, then output element type and rank, then the
-/// output shape as the only *explicit* group, then the input meta.
-/// Everything but the output shape `So` is inferred:
-/// * `To` from `init`, and `Ro` from `So` itself;
-/// * `nis`, `Tis`, `Ris` and `Sis` from `is` — `%%buffer.Buf` spells its rank, shape and element type out as
-///   ordinary arguments, so they unify structurally (no nested-array peeling involved).
-///
-axm %matrix.map_reduce_idx: {nis: Nat}
-                          → {To: *, Ro: Nat}
-                          → [So: «Ro; Nat»]
-                          → {Tis: «nis; *», Ris: «nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
-                          → [ mem: %mem.M 0, init: To,
-                              f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To],
-                              is: «i: nis; [«Ris#i; Nat», %buffer.Buf (Ris#i, Sis#i, Tis#i)]»]
-                          → [%mem.M 0, %buffer.Buf (Ro, So, To)], normalize_map_reduce_idx;
+
+/// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
+/// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
+/// %%tensor.proj_map is an alias for this lam.
+lam %matrix.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «r; %affine.index» =
+    ‹j: r; o#(%core.idx n 0 (subs#j))›;
 ///
 /// ### %%matrix.product_2d
 ///
@@ -111,67 +81,46 @@ axm %matrix.map_reduce_idx: {nis: Nat}
 /// `[R: %%matrix.Ring]` is the leading *explicit* group, as in %%tensor.product_2d: a ring cannot be recovered from
 /// `R#T` by inference.
 ///
-axm %matrix.product_2d: [R: %matrix.Ring]
-                      → {m k l: Nat}
-                      → [%mem.M 0, t1: %buffer.Buf (2, (m, k), R#T), t2: %buffer.Buf (2, (k, l), R#T)]
-                      → [%mem.M 0, %buffer.Buf (2, (m, l), R#T)], normalize_product_2d;
+/// Unlike %%tensor.product_2d this is a `lam` wrapping %%matrix.map_reduce directly, not an `axm` paired with an
+/// `_impl` annex and a lowering phase: nothing in this plugin inspects the high-level form - there is no fusion
+/// phase over `%%matrix.*` and the normalizer was a no-op - so the extra staging bought nothing.
+/// %%matrix.transpose_2d follows the same pattern.
 
 /// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
 /// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
 fun product_2d_fun [R: %matrix.Ring] (mem: %mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [%mem.M 0, R#T] =
     return (mem, R#add (acc, R#mul (ab#0_2, ab#1_2)));
 
-/// Follows the principle `ij ← ik, kj` (`out[i, j] = Σ_k t1[i, k] · t2[k, j]`) using `R#mul` as
-/// combination and `R#add` as reduction.
-fun %matrix.product_2d_impl [R: %matrix.Ring] {m k l: Nat}
-                            (mem: %mem.M 0, t1: %buffer.Buf (2, (m, k), R#T), t2: %buffer.Buf (2, (k, l), R#T))@tt
-                          : [%mem.M 0, %buffer.Buf (2, (m, l), R#T)] =
-    let s_out = (m, l);
-    let is    = (((0, 2), t1), ((2, 1), t2));
-    return (%matrix.map_reduce_idx s_out (mem, R#_0, product_2d_fun R, is));
+/// The loop vector is `(i, j, k)` and follows the principle `ij ← ik, kj`
+/// (`out[i, j] = Σ_k t1[i, k] · t2[k, j]`), so `k` is the single reduction loop.
+lam %matrix.product_2d [R: %matrix.Ring] {m k l: Nat}
+                       (mem: %mem.M 0, t1: %buffer.Buf (2, (m, k), R#T), t2: %buffer.Buf (2, (k, l), R#T))
+                     : [%mem.M 0, %buffer.Buf (2, (m, l), R#T)] =
+    %matrix.map_reduce ((m, l), (m, l, k))
+        (product_2d_fun R, R#_0)
+        (%matrix.proj_map (0, 1))
+        (%matrix.proj_map (0, 2), %matrix.proj_map (2, 1))
+        (mem, (t1, t2));
 ///
 /// ### %%matrix.transpose_2d
 ///
 /// Permutes the dimensions of a 2-dimensional matrix - the buffer-world counterpart of %%tensor.transpose_2d.
 /// As there, the shape is a single `«2; Nat»` vector instead of two separate `Nat`s, and `{T}` precedes `{s}`.
-///
-axm %matrix.transpose_2d: {T: *}
-                        → {s: «2; Nat»}
-                        → [%mem.M 0, input: %buffer.Buf (2, s, T)]
-                        → [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)], normalize_transpose_2d;
+/// Like %%matrix.product_2d this is a `lam` over %%matrix.map_reduce rather than an `axm`.
 
 /// Ignores the (⊥) accumulator and just returns the read value - the mem-threaded `tensor_copy`.
 fun matrix_copy {T: *} (mem: %mem.M 0, acc y: T)@tt: [%mem.M 0, T] = return (mem, y);
 
-/// Transpose a matrix by iterating the indices in swapped order.
-fun %matrix.transpose_2d_impl {T: *} {s: «2; Nat»}
-                              (mem: %mem.M 0, input: %buffer.Buf (2, s, T))@tt
-                            : [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)] =
+/// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
+lam %matrix.transpose_2d {T: *} {s: «2; Nat»}
+                         (mem: %mem.M 0, input: %buffer.Buf (2, s, T))
+                       : [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)] =
     let s_out = (s#tt, s#ff);
-    let is    = ((1, 0), input);
-    return (%matrix.map_reduce_idx s_out (mem, ⊥:T, matrix_copy, is));
-///
-/// ### %%matrix.sum
-///
-/// Sums up all elements of a matrix with `R#add` and returns a scalar.
-/// There is no `%%tensor.*` counterpart; like %%matrix.product_2d the ring `R` leads as an explicit group.
-///
-axm %matrix.sum: [R: %matrix.Ring]
-               → {r: Nat, s: «r; Nat»}
-               → [%mem.M 0, input: %buffer.Buf (r, s, R#T)]
-               → [%mem.M 0, R#T];
-
-/// Folds one element into the accumulator with `R#add`.
-fun sum_fun [R: %matrix.Ring] (mem: %mem.M 0, acc y: R#T)@tt: [%mem.M 0, R#T] = return (mem, R#add (acc, y));
-
-/// Reduces every axis at once: all `r` loops are reduction loops, so the result is a single cell.
-fun %matrix.sum_impl [R: %matrix.Ring] {r: Nat, s: «r; Nat»}
-                     (mem: %mem.M 0, input: %buffer.Buf (r, s, R#T))@tt
-                   : [%mem.M 0, R#T] =
-    let idxs       = ‹i: r; %core.nat.add (1, %core.bitcast Nat i)›;
-    let is         = (idxs, input);
-    let (mem, res) = %matrix.map_reduce_idx 1 (mem, R#_0, sum_fun R, is);
-    return (mem, %core.bitcast R#T res);
+    %matrix.map_reduce (s_out, s_out)
+        (matrix_copy, ⊥:T)
+        %affine.id
+        (%matrix.proj_map (1, 0),)
+        (mem, input);
 ///
 /// ### %%matrix.broadcast
 ///
@@ -218,11 +167,9 @@ axm %matrix.concat: {T: *, nis r: Nat}
 ///
 /// ## Phases
 ///
-/// * `lower_matrix`: lowers the high-level matrix axioms to the low-level ones (`map_reduce_idx`, ...) by re-applying the matching `*_impl` annexes.
-/// * `lower_map_reduce_idx`: lowers `%%matrix.map_reduce_idx` into `%%affine.For` loops, making the iteration scheme explicit.
-/// * `lower_map_reduce`: lowers the affine buffer-world ops (`%%matrix.map_reduce`, `%%matrix.broadcast`, `%%matrix.pad`,
+/// * `lower_map_reduce`: lowers the buffer-world ops (`%%matrix.map_reduce`, `%%matrix.broadcast`, `%%matrix.pad`,
 /// `%%matrix.concat`) to `%%affine.For` loops over `%%buffer` element operations.
+/// `%%matrix.product_2d` and `%%matrix.transpose_2d` need no phase of their own: they are `lam`s that reduce to
+/// `%%matrix.map_reduce` at their call site.
 ///
-axm %matrix.lower_matrix:         %compile.Phase;
-axm %matrix.lower_map_reduce_idx: %compile.Phase;
-axm %matrix.lower_map_reduce:     %compile.Phase;
+axm %matrix.lower_map_reduce: %compile.Phase;
