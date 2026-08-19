@@ -33,11 +33,14 @@ jobs:
           sudo apt-get install -y llvm-20-tools ${{matrix.build-type == 'Debug' && 'clang-20' || 'g++-14 valgrind'}}
           sudo pip install lit psutil
 
+      # 500M was not enough for the sanitizer build: the Debug cache sat at 99.84% with 6 eviction
+      # sweeps per run, so objects (abseil's included) were evicted and recompiled next time.
+      # max_size is only a cap -- Release still uses ~77M -- so raising it costs nothing.
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
           update_packager_index: false
-          ccache_options: max_size=500M
+          ccache_options: max_size=2G
           override_cache_key: ubuntu-latest-ccache-${{matrix.build-type}}
 
       - name: Configure Debug

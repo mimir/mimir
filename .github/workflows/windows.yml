@@ -56,6 +56,15 @@ jobs:
         run: |
           "$GITHUB_WORKSPACE/bin/FileCheck-x86_64-win.exe" --version
 
+      # ccache cannot masquerade as cl.exe the way it does for gcc/clang, so it is hooked through
+      # CMAKE_{C,CXX}_COMPILER_LAUNCHER in the Configure step below.
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          windows_compile_environment: msvc
+          ccache_options: max_size=2G
+          override_cache_key: windows-2022-ccache-${{matrix.build-type}}
+
       - name: Configure
         shell: cmd
         run: |
@@ -66,6 +75,9 @@ jobs:
           set /p PYTHON_EXE= < tmpPath
           cmake -B ${{github.workspace}}/build -G Ninja   ^
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ^
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache        ^
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache      ^
+                -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=${{matrix.build-type == 'Debug' && 'Embedded' || ''}} ^
                 -DBUILD_TESTING=ON                        ^
                 -DMIM_BUILD_EXAMPLES=ON                   ^
                 -DPython3_EXECUTABLE=%PYTHON_EXE%         ^

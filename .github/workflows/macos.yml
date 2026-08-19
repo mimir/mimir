@@ -37,10 +37,15 @@ jobs:
           echo "LLVM_PREFIX=${LLVM_PREFIX}" >> $GITHUB_ENV
           echo "${LLVM_PREFIX}/bin" >> $GITHUB_PATH
 
+      # setup-ccache-action hooks the compiler by prepending its symlink dir (cc, c++, clang, ...)
+      # to PATH. The Configure step below passes *absolute* paths into ${LLVM_PREFIX}/bin, which
+      # sidesteps those symlinks entirely -- ccache saw 2 calls and a 40 KB cache, i.e. every build
+      # here, abseil included, was compiled from scratch. CMAKE_{C,CXX}_COMPILER_LAUNCHER hooks it
+      # regardless of how the compiler is spelled.
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
-          ccache_options: max_size=500M
+          ccache_options: max_size=2G
           override_cache_key: mac-latest-ccache-${{matrix.build-type}}
 
       - name: Configure
@@ -48,6 +53,8 @@ jobs:
           CC="${LLVM_PREFIX}/bin/clang" CXX="${LLVM_PREFIX}/bin/clang++" \
           cmake -B ${{github.workspace}}/build                           \
                 -G Ninja                                                 \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache                        \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                      \
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                \
                 -DBUILD_TESTING=ON                                       \
                 -DMIM_BUILD_EXAMPLES=ON                                  \
