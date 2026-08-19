@@ -373,8 +373,13 @@ axm %tensor.dot_product: [R: %tensor.Ring]
                        → [a: «s1; R#T», b: «s2; R#T»]
                        → «dot_general_shape (c1, c2, b1, b2) (s1, s2); R#T»;
 
+/// `r1`/`r2` are an *explicit* group here, unlike in the %%tensor.dot_product axiom. They have to be literals
+/// already when this `lam` is β-reduced: the subscript rows below are built with `%%vec.diff`/`%%vec.fold.l`,
+/// whose normalizers decline to fold over a non-literal rank, and nothing re-normalizes the body once a Hole is
+/// resolved later. `{s1 s2}` has no such problem and stays implicit.
+/// The `tensor::Lower` phase re-applies the axiom's groups positionally, so the two curry shapes still match.
 lam %tensor.dot_product_impl
-  (R: %tensor.Ring) {r1 r2: Nat} {nc nb: Nat}
+  (R: %tensor.Ring) (r1 r2: Nat) {nc nb: Nat}
   (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
   {s1: «r1; Nat», s2: «r2; Nat»} (a: «s1; R#T», b: «s2; R#T»)
     : let s_out = dot_general_shape (c1, c2, b1, b2) (s1, s2);
@@ -416,7 +421,7 @@ axm %tensor.product_2d: [R: %tensor.Ring]
 /// Hole%s are resolved. The result type-checks but keeps the whole `%%vec.*` scaffolding inside its access maps
 /// (`%%refly.equiv.struc_eq` in lit/tensor/dot_product.mim pins this down). Passing literals up front folds it away.
 lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
-        = %tensor.dot_product_impl R @(2, 2) (1_2, 0_2, (), ()) @((m, k), (k, l)) (t1, t2);
+        = %tensor.dot_product_impl R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
 
 ///
 /// ### %%tensor.bmm
@@ -430,7 +435,7 @@ axm %tensor.bmm: [R: %tensor.Ring]
 
 /// The `{r1 r2}`/`{s1 s2}` groups are explicit for the same reason as in %%tensor.product_2d_impl.
 lam %tensor.bmm_impl (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
-        = %tensor.dot_product_impl R @(3, 3) (2_3, 1_3, 0_3, 0_3) @((B, M, K), (B, K, N)) (t1, t2);
+        = %tensor.dot_product_impl R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
 
 ///
 /// ### %%tensor.transpose
@@ -521,8 +526,9 @@ lam %tensor.map_impl {T: *, ni: Nat, Is: «ni; *»}
                      (is: «i: ni; «s; Is#i» »)
                      : «s; T» =
   fun app_mr [x: T, y: «i: ni; Is#i»]@tt = return (app y);
-  // The `{Tis, Ris, Sis}` group is passed explicitly: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
-  // (i.e. `Sis := ‹ni; s›`) is higher-order unification under a binder, which inference does not attempt.
+  // The `{Tis, Ris, Sis}` group stays explicit: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
+  // (i.e. `Sis := ‹ni; s›`) is Miller pattern unification. Adding that rule to `Checker::alpha_impl_` was tried
+  // and reverted — even with an occurs check it fires inside `%%tuple`'s machinery and commits a wrong solution.
   %tensor.map_reduce (s, s) @(Is, ‹ni; r›, ‹ni; s›) (app_mr, ⊥: T)
       // `‹ni; …›` builds the pack bottom-up, so there is no expected type to drive implicit insertion for the
       // element; `%affine.id` needs its rank here.
