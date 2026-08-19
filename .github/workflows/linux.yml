@@ -11,12 +11,29 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build and test ${{matrix.build-type}} mode
+    name: Build and test ${{matrix.build-type}}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        build-type: [Debug, Release]
+        # ubuntu-24.04 already ships gcc-14, clang-18, cmake, and ninja, so `packages` lists only
+        # what each configuration is actually missing. The `RUN: clang ...` lines in lit/ and
+        # `find_program(NAMES clang)` in cmake/Mim.cmake resolve to the preinstalled clang-18.
+        include:
+          - build-type: Debug
+            cc: clang-20
+            cxx: clang++-20
+            packages: clang-20
+            test-target: test-all
+            cmake-args: >-
+              -DMIM_BUILD_PYTHON=OFF
+              -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr"
+          - build-type: Release
+            cc: gcc-14
+            cxx: g++-14
+            packages: g++-14 valgrind
+            test-target: lit
+            cmake-args: -DMIM_LIT_WITH_VALGRIND=ON
     env:
       ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:exitcode=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1"
       UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1:report_error_type=1"
@@ -30,59 +47,39 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-20-tools ${{matrix.build-type == 'Debug' && 'clang-20' || 'g++-14 valgrind'}}
+          sudo apt-get install -y llvm-20-tools ${{matrix.packages}}
           sudo pip install lit psutil
 
-      # 500M was not enough for the sanitizer build: the Debug cache sat at 99.84% with 6 eviction
-      # sweeps per run, so objects (abseil's included) were evicted and recompiled next time.
-      # max_size is only a cap -- Release still uses ~77M -- so raising it costs nothing.
+      # ccache hooks the compiler through its /usr/lib/ccache/<name> symlinks, which the action
+      # prepends to PATH -- so CC/CXX below must stay *bare names*; an absolute path would bypass
+      # them (see macos.yml, where it did). Keep this after the compiler install so the symlinks
+      # cover clang-20/g++-14. max_size is only a cap: 500M left the sanitizer build's cache at
+      # 99.84% with 6 eviction sweeps per run, evicting objects that then had to be recompiled.
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
           update_packager_index: false
           ccache_options: max_size=2G
-          override_cache_key: ubuntu-latest-ccache-${{matrix.build-type}}
+          override_cache_key: ${{runner.os}}-ccache-${{matrix.build-type}}
 
-      - name: Configure Debug
-        if: matrix.build-type == 'Debug'
+      - name: Configure
         run: |
-          CC=clang-20 CXX=clang++-20 cmake -B ${{github.workspace}}/build                                                                              \
-            -G Ninja                                                                                                                                   \
-            -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                                                                                                  \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr" \
-            -DBUILD_TESTING=ON                                                                                                                         \
-            -DMIM_BUILD_PYTHON=OFF                                                                                                                     \
-            -DMIM_BUILD_EXAMPLES=ON                                                                                                                    \
-            -DMIM_FILECHECK=/usr/bin/FileCheck-20                                                                                                      \
-            -DMIM_LIT_TIMEOUT=300
-
-      - name: Configure Release
-        if: matrix.build-type == 'Release'
-        run: |
-          CC=gcc-14 CXX=g++-14                            \
-          cmake -B ${{github.workspace}}/build            \
+          CC=${{matrix.cc}} CXX=${{matrix.cxx}}           \
+          cmake -B build                                  \
                 -G Ninja                                  \
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}} \
                 -DBUILD_TESTING=ON                        \
                 -DMIM_BUILD_EXAMPLES=ON                   \
                 -DMIM_FILECHECK=/usr/bin/FileCheck-20     \
-                -DMIM_LIT_WITH_VALGRIND=ON                \
-                -DMIM_LIT_TIMEOUT=300
+                -DMIM_LIT_TIMEOUT=300                     \
+                ${{matrix.cmake-args}}
 
       - name: Build
-        run: cmake --build ${{github.workspace}}/build -v
+        run: cmake --build build -v
 
       - name: Test
-        if: matrix.build-type == 'Debug'
-        working-directory: ${{github.workspace}}/build
-        run: cmake --build ${{github.workspace}}/build -v --target test-all
+        run: cmake --build build -v --target ${{matrix.test-target}}
 
-      - name: Run lit test suite
+      - name: Test with Valgrind
         if: matrix.build-type == 'Release'
-        working-directory: ${{github.workspace}}/build
-        run: cmake --build ${{github.workspace}}/build -v --target lit
-
-      - name: Test w/ Valgrind
-        if: matrix.build-type == 'Release'
-        working-directory: ${{github.workspace}}/build
-        run: ctest --verbose -C ${{matrix.build-type}} --output-on-failure -T memcheck
+        run: ctest --test-dir build --verbose --output-on-failure -T memcheck

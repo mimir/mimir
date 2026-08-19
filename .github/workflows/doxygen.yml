@@ -10,13 +10,13 @@ concurrency:
   cancel-in-progress: ${{github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/v')}}
 
 env:
-  DOXYGEN_TAG: Release_1_16_1
   DOXYGEN_VERSION: 1.16.1
-  DOXYGEN_CACHE_DIR: ${{ github.workspace }}/.cache/doxygen-1.16.1
+  DOXYGEN_DIR: ${{github.workspace}}/.cache/doxygen
+  DEPLOY: ${{github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))}}
 
 jobs:
-  build:
-    name: Build and deploy Doxygen documentation
+  build-and-deploy:
+    name: Build and deploy documentation
     runs-on: ubuntu-latest
 
     steps:
@@ -25,6 +25,11 @@ jobs:
         with:
           submodules: recursive
 
+      # ubuntu-24.04 already ships gcc-14, cmake, and ninja; g++-14 is re-listed only so the job
+      # does not silently depend on the image shipping it. gdb drives docs/generate_xdot_help.gdb
+      # and graphviz renders the .dot graphs. This used to also pull ghostscript and four texlive
+      # packages -- ~80 min of install time on its own -- to rasterise the formulas in core.mim and
+      # math.mim; docs/Doxyfile.in renders them with MathJax now, so no LaTeX is involved.
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -34,48 +39,52 @@ jobs:
         id: cache-doxygen
         uses: actions/cache@v4
         with:
-          path: ${{ env.DOXYGEN_CACHE_DIR }}
-          key: ${{ runner.os }}-doxygen-${{ env.DOXYGEN_VERSION }}
+          path: ${{env.DOXYGEN_DIR}}
+          # `bin` marks the flattened (--strip-components=1) layout: the previous key cached a
+          # doxygen-<version>/ subdir, and restoring that under the new path would report a hit
+          # while leaving DOXYGEN_DIR/bin/doxygen missing.
+          key: ${{runner.os}}-doxygen-bin-${{env.DOXYGEN_VERSION}}
 
       - name: Install Doxygen
         if: steps.cache-doxygen.outputs.cache-hit != 'true'
         run: |
           archive="doxygen-${DOXYGEN_VERSION}.linux.bin.tar.gz"
-          url="https://github.com/doxygen/doxygen/releases/download/${DOXYGEN_TAG}/${archive}"
+          tag="Release_${DOXYGEN_VERSION//./_}"
 
-          mkdir -p "${{ github.workspace }}/.cache"
-          rm -rf "${DOXYGEN_CACHE_DIR}"
-          curl -L --fail --retry 5 --retry-all-errors --output "${RUNNER_TEMP}/${archive}" "${url}"
-          tar -C "${{ github.workspace }}/.cache" -xf "${RUNNER_TEMP}/${archive}"
+          curl -L --fail --retry 5 --retry-all-errors --output "${RUNNER_TEMP}/${archive}" \
+               "https://github.com/doxygen/doxygen/releases/download/${tag}/${archive}"
+          rm -rf "${DOXYGEN_DIR}"
+          mkdir -p "${DOXYGEN_DIR}"
+          tar -C "${DOXYGEN_DIR}" --strip-components=1 -xf "${RUNNER_TEMP}/${archive}"
 
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
           update_packager_index: false
           ccache_options: max_size=2G
-          override_cache_key: ubuntu-latest-ccache-doxygen
+          override_cache_key: ${{runner.os}}-ccache-docs
 
       - name: Configure
         run: |
-          CC=gcc-14 CXX=g++-14                  \
-          cmake -B ${{github.workspace}}/build  \
-                -G Ninja                        \
-                -DCMAKE_BUILD_TYPE=Debug        \
-                -DMIM_BUILD_DOCS=ON             \
-                -DDOXYGEN_EXECUTABLE=${{ env.DOXYGEN_CACHE_DIR }}/bin/doxygen
+          CC=gcc-14 CXX=g++-14                                    \
+          cmake -B build                                          \
+                -G Ninja                                          \
+                -DCMAKE_BUILD_TYPE=Debug                          \
+                -DMIM_BUILD_DOCS=ON                               \
+                -DDOXYGEN_EXECUTABLE=${{env.DOXYGEN_DIR}}/bin/doxygen
 
       - name: Build
-        run: cmake --build ${{github.workspace}}/build -v --target docs
+        run: cmake --build build -v --target docs
 
       - name: Checkout docs repository
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        if: env.DEPLOY == 'true'
         uses: actions/checkout@v4
         with:
           repository: mimir/mimir.github.io
           ref: master
           path: site
-          ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          ssh-key: ${{secrets.ACTIONS_DEPLOY_KEY}}
 
       - name: Deploy
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        if: env.DEPLOY == 'true'
         run: python3 docs/deploy.py
