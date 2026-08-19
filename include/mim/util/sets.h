@@ -422,7 +422,11 @@ public:
                 auto [scratch, state] = allocate(N + 1);
                 auto o                = std::copy(src->begin(), src->end(), scratch->begin());
                 *o++                  = d;
-                auto res              = create_trie(scratch->begin(), o);
+#ifndef NDEBUG
+                auto scratch_state = data_arena_.state();
+#endif
+                auto res = create_trie(scratch->begin(), o);
+                assert(scratch_state == data_arena_.state() && "create_trie must only draw from node_arena_");
                 data_arena_.deallocate(state);
                 return res;
             }
@@ -478,9 +482,13 @@ public:
             o = std::copy(i2, e2, o);
 
             auto size = size_t(o - data->begin());
-            if (size > N) {                               // too big for a Data set: switch over to the trie
+            if (size > N) { // too big for a Data set: switch over to the trie
+#ifndef NDEBUG
+                auto scratch_state = data_arena_.state();
+#endif
                 auto res = create_trie(data->begin(), o); // only draws from node_arena_ ...
-                data_arena_.deallocate(state);            // ... so data is ours to throw away again
+                assert(scratch_state == data_arena_.state() && "create_trie must only draw from node_arena_");
+                data_arena_.deallocate(state); // ... so data is ours to throw away again
                 return res;
             }
 
@@ -601,6 +609,10 @@ private:
     ///@}
 
     /// Builds a trie Set from the *unique* elements in `[begin, end)`; reorders them in place.
+    /// @attention Must only ever draw from node_arena_.
+    /// Two callers use data_arena_ as scratch space and rewind it afterwards; drawing from data_arena_ in here
+    /// would pop pages that are still live - possibly including Data that pool_ still points at.
+    /// Both call sites assert this.
     template<class I>
     [[nodiscard]] Set create_trie(I begin, I end) {
         // Sorting is a performance optimization, not a correctness requirement:
