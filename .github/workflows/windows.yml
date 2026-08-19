@@ -5,13 +5,20 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: ${{github.ref != 'refs/heads/master'}}
+
 jobs:
   build-and-test:
-    name: Build and test ${{matrix.build-type}} mode
+    name: Build and test ${{matrix.build-type}}
     runs-on: windows-2022
     strategy:
+      fail-fast: false
       matrix:
         build-type: [Debug, Release]
+    env:
+      VCVARS: C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat
 
     steps:
       - name: Clone recursively
@@ -19,7 +26,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install LIT
+      - name: Install dependencies
         shell: cmd
         run: python -m pip install lit psutil
 
@@ -31,13 +38,13 @@ jobs:
           tag: llvmorg-22.1.8
           file: FileCheck-x86_64-win.exe
           path: ${{github.workspace}}/bin
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{secrets.GITHUB_TOKEN}}
 
       # The prebuilt FileCheck is a MinGW build and needs libstdc++-6.dll & friends at runtime.
       # Since the runner image 20260706.237.1 (Git for Windows 2.55), bash no longer has these
       # DLLs in its PATH, so every lit test piping into FileCheck dies with exit code 127.
       # Stage the DLLs next to the exe; the application directory always wins the DLL search.
-      - name: Stage MinGW runtime DLLs next to FileCheck
+      - name: Stage MinGW runtime DLLs
         shell: pwsh
         run: |
           foreach ($dll in 'libstdc++-6.dll', 'libgcc_s_seh-1.dll', 'libwinpthread-1.dll') {
@@ -46,21 +53,34 @@ jobs:
               Copy-Item $src "${{github.workspace}}\bin\"
           }
 
-      - name: Verify FileCheck runs from bash
+      - name: Verify FileCheck
         shell: bash
         run: |
           "$GITHUB_WORKSPACE/bin/FileCheck-x86_64-win.exe" --version
 
+      # ccache cannot masquerade as cl.exe the way it does for gcc/clang, so it is hooked through
+      # CMAKE_{C,CXX}_COMPILER_LAUNCHER below. That also forces /Z7 (Embedded) over MSVC's default
+      # /Zi for Debug: ccache rejects /Zi and /ZI outright as unsupported compiler options.
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          windows_compile_environment: msvc
+          ccache_options: max_size=2G
+          override_cache_key: ${{runner.os}}-ccache-${{matrix.build-type}}
+
       - name: Configure
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          call "%VCVARS%"
           set CC=cl.exe
           set CXX=cl.exe
           python -c "import sys; print(sys.executable)" > tmpPath
           set /p PYTHON_EXE= < tmpPath
-          cmake -B ${{github.workspace}}/build -G Ninja   ^
+          cmake -B build -G Ninja                         ^
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ^
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache        ^
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache      ^
+                -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=${{matrix.build-type == 'Debug' && 'Embedded' || ''}} ^
                 -DBUILD_TESTING=ON                        ^
                 -DMIM_BUILD_EXAMPLES=ON                   ^
                 -DPython3_EXECUTABLE=%PYTHON_EXE%         ^
@@ -69,6 +89,9 @@ jobs:
                 -DMIM_LIT_TIMEOUT=300                     ^
                 -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe
 
+      # Deliberately after Configure: moving it earlier would let `find_program(NAMES clang)` in
+      # cmake/Mim.cmake succeed and switch MIM_BUILD_LL_RUNTIME on for Windows, which is a behaviour
+      # change, not a cleanup. lit still needs clang on PATH at test time.
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v2.0.9
         with:
@@ -77,13 +100,12 @@ jobs:
       - name: Build
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cmake --build ${{github.workspace}}/build -v
+          call "%VCVARS%"
+          cmake --build build -v
 
       - name: Test
-        working-directory: ${{github.workspace}}/build
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          call "%VCVARS%"
           set PATH=${{github.workspace}}/bin;%PATH%
-          cmake --build ${{github.workspace}}/build -v --target test-all
+          cmake --build build -v --target test-all
