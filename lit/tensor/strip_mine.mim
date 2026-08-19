@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // Strip-mining as a pure domain transform on the Tileable interface: the strip-mined computation
 // is an ordinary %tensor.map_reduce_post over a higher-rank domain with composed access maps —
@@ -7,6 +7,7 @@
 plugin core;
 plugin tensor;
 plugin affine;
+plugin opt;
 
 fun add (x: Nat, y: «1; Nat»)@tt: Nat = return (%core.nat.add (x, y#0₁));
 lam mo (o: «3; %affine.index»): «2; %affine.index» = (o#0_3, o#1_3);
@@ -30,5 +31,9 @@ fun extern sum_par (input: «2, 4, 8; Nat»): «2, 2, 2; Nat» =
             mo mi input,
         1, 2)));
 
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%compile.internal_cleanup,);
+
+// The cleanup pass zonks inference holes, so the transformed domains print as plain literals.
 // CHECK-DAG: (2, 4, 4, 2)
 // CHECK-DAG: (2, 2, 2, 8)

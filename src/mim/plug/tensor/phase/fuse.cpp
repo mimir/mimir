@@ -140,9 +140,13 @@ static std::optional<ReadThrough> read_through(World& w, const Def* value, const
         auto [comb, init, post] = comb_init->projs<3>();
         if (!is_copy_comb(comb) || !is_identity_post(post)) return {};
 
-        return ReadThrough{is_all->proj(2, 0)->proj(1, 0), maps_all->proj(2, 0)->proj(1, 0),
-                           in_tys->proj(6, 0)->proj(1, 0), in_tys->proj(6, 1)->proj(1, 0),
-                           in_tys->proj(6, 2)->proj(1, 0)};
+        // A source whose axes are all size 1 type-collapses to a plain scalar («1; T» ≡ T): the
+        // fused op would carry an input the bufferization cannot represent - keep the copy instead.
+        auto src = is_all->proj(2, 0)->proj(1, 0);
+        if (!src->type()->isa<Arr>()) return {};
+
+        return ReadThrough{src, maps_all->proj(2, 0)->proj(1, 0), in_tys->proj(6, 0)->proj(1, 0),
+                           in_tys->proj(6, 1)->proj(1, 0), in_tys->proj(6, 2)->proj(1, 0)};
     }
 
     if (auto bc = Axm::isa<tensor::broadcast>(value)) {
@@ -150,6 +154,8 @@ static std::optional<ReadThrough> read_through(World& w, const Def* value, const
         auto [s_in, s_out, input] = bc->arg()->projs<3>();
         auto r_l                  = Lit::isa<u64>(r);
         if (!r_l) return {};
+        // See above: an all-size-1 source is a type-collapsed scalar - not readable through.
+        if (!input->type()->isa<Arr>()) return {};
 
         // Source axis d reads o#d where the sizes agree and index 0 where the source axis is 1
         // (expressed as `o#d · 0`, like `bid_map`). Bail on axes where neither is provable.

@@ -40,6 +40,15 @@ void AddMem::start() {
 }
 
 const Def* AddMem::rewrite(const Def* old_def) {
+    // Type rewriting is MODE-DEPENDENT: outside a pinned ABI every continuation pi gains a leading
+    // mem, inside one it must not - but the rewrite memo is shared. Whichever mode first touches a
+    // shared type (e.g. a plain 'Cn F32' return pi) would poison the other, hash-order-dependently.
+    // While preserving, rebuild immutable types fresh, neither reading nor storing the memo.
+    if (preserving_ && !is_bootstrapping()) {
+        if (auto pi = old_def->isa_imm<Pi>()) return rewrite_imm_Pi(pi);
+        if (auto sigma = old_def->isa_imm<Sigma>()) return rewrite_imm_Sigma(sigma);
+        if (auto arr = old_def->isa_imm<Arr>()) return rewrite_imm_Seq(arr);
+    }
     if (curr_mem_ && !preserving_ && !is_bootstrapping()) {
         // A tuple with a direct memory operand is context-dependent: the operand splices to the memory
         // current *at this use*. Two ops with hash-consed identical argument tuples (e.g. two `(⊥, val)`

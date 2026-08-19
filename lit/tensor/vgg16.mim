@@ -95,11 +95,4 @@ fun extern vgg16
     let a = %tensor.unary relu @(2, (10, 4096)) (linear (10, 4096, 4096) (a, fc3_w, fc3_b));
     return (linear (10, 4096, 1000) (a, fc6_w, fc6_b));
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.internal_cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.internal_cleanup,
-    );
 
