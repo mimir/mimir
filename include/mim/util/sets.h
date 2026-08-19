@@ -416,10 +416,14 @@ public:
                 if (d == e) return s; // already here
 
             if (size == N) { // one more element is too much for a Data set: switch over to the trie
-                auto buff = std::array<D*, N + 1>();
-                auto o    = std::copy(src->begin(), src->end(), buff.begin());
-                *o++      = d;
-                return create_trie(buff.begin(), o);
+                // Use the data arena as scratch space for the N + 1 elements; since create_trie only draws from
+                // node_arena_, it is ours to throw away again afterwards.
+                auto [scratch, state] = allocate(N + 1);
+                auto o                = std::copy(src->begin(), src->end(), scratch->begin());
+                *o++                  = d;
+                auto res              = create_trie(scratch->begin(), o);
+                data_arena_.deallocate(state);
+                return res;
             }
 
             auto [dst, state] = allocate(size + 1);
