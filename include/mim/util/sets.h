@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <fstream>
 
 #include <fe/arena.h>
@@ -412,13 +414,7 @@ public:
             return unify(data, state);
         }
 
-        // sort in ascending tids but 0 goes last
-        std::sort(vb, vu, [](D* d1, D* d2) { return d1->tid() != 0 && (d2->tid() == 0 || d1->tid() < d2->tid()); });
-
-        auto res = root();
-        for (auto i = vb; i != vu; ++i)
-            res = insert(res, *i);
-        return res;
+        return create_trie(vb, vu);
     }
 
     /// Yields @f$s \cup \{d\}@f$.
@@ -499,15 +495,35 @@ public:
         auto d1 = s1.isa_data();
         auto d2 = s2.isa_data();
         if (d1 && d2) {
-            auto v = Vector<D*>();
-            v.reserve(d1->size + d2->size);
+            // Both operands are ordered by gid and duplicate-free, so a linear merge yields the union directly -
+            // no heap allocation, no sort, no std::unique pass.
+            // A Data set holds at most N elements, hence the union fits into 2N.
+            auto buff = std::array<D*, 2 * N>();
+            auto i1 = d1->begin(), e1 = d1->end();
+            auto i2 = d2->begin(), e2 = d2->end();
+            auto o = buff.begin();
 
-            for (auto d : *d1)
-                v.emplace_back(d);
-            for (auto d : *d2)
-                v.emplace_back(d);
+            while (i1 != e1 && i2 != e2) {
+                auto g1 = (*i1)->gid();
+                auto g2 = (*i2)->gid();
+                if (g1 < g2)
+                    *o++ = *i1++;
+                else if (g2 < g1)
+                    *o++ = *i2++;
+                else
+                    *o++ = *i1++, ++i2; // drop the duplicate
+            }
+            o = std::copy(i1, e1, o);
+            o = std::copy(i2, e2, o);
 
-            return create(std::move(v));
+            auto size = size_t(o - buff.begin());
+            if (size <= N) {
+                auto [data, state] = allocate(size);
+                std::copy(buff.begin(), o, data->begin());
+                return unify(data, state);
+            }
+
+            return create_trie(buff.begin(), o); // too big for an array: switch over to the trie
         }
 
         auto n1 = s1.isa_node();
@@ -619,6 +635,22 @@ private:
 
         data_arena_.deallocate(state);
         return Set(*i);
+    }
+
+    /// Builds a trie Set from the *unique* elements in `[begin, end)`; reorders them in place.
+    template<class I>
+    [[nodiscard]] Set create_trie(I begin, I end) {
+        // Sorting is a performance optimization, not a correctness requirement:
+        // insert() restores the canonical increasing-tid path from any insertion order, but only an element whose
+        // tid exceeds the current tip mounts in O(1) - otherwise it walks up and re-mounts the suffix in O(depth).
+        // Feeding the elements in ascending tid order therefore turns O(k * depth) into O(k) mounts.
+        // A tid of 0 goes last because set_tid hands out the next - and hence maximal - counter value.
+        std::sort(begin, end, [](D* d1, D* d2) { return d1->tid() != 0 && (d2->tid() == 0 || d1->tid() < d2->tid()); });
+
+        auto res = root();
+        for (auto i = begin; i != end; ++i)
+            res = insert(res, *i);
+        return res;
     }
 
     // Trie helpers

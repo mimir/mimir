@@ -3,6 +3,7 @@ target_sources(mim-gtest
     PRIVATE
         cast.cpp
         helpers.cpp
+        sets.cpp
         lexer.cpp
         test.cpp
         restricted_dep_types.cpp
