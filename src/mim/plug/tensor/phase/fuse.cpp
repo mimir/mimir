@@ -678,6 +678,18 @@ bool contains_mr(const Def* d, DefMap<bool>& memo) {
     return memo[d] = res;
 }
 
+/// Attributes consumption of a map_reduce to the enclosing non-tuple node: tuples and packs are
+/// transparent argument wrappers, so recurse through them, charging each contained map_reduce.
+void count_mr_consumers(const Def* d, DefMap<u64>& counts, DefMap<bool>& memo) {
+    if (is_mr(d)) {
+        ++counts[d];
+        return;
+    }
+    if ((d->isa<Tuple>() || d->isa<Pack>()) && contains_mr(d, memo))
+        for (auto op : d->ops())
+            if (op) count_mr_consumers(op, counts, memo);
+}
+
 } // namespace
 
 void Fuse::start() {
@@ -687,16 +699,6 @@ void Fuse::start() {
     // node, so a shared argument tuple correctly charges each of its users, and using the same op
     // twice in one argument list counts twice.
     DefMap<bool> memo;
-    auto consume = [&](this auto&& consume, const Def* d) -> void {
-        if (is_mr(d)) {
-            ++mr_consumers_[d];
-            return;
-        }
-        if ((d->isa<Tuple>() || d->isa<Pack>()) && contains_mr(d, memo))
-            for (auto op : d->ops())
-                if (op) consume(op);
-    };
-
     unique_queue<DefSet> wl;
     for (auto root : old_world().roots())
         wl.push(root);
@@ -704,7 +706,7 @@ void Fuse::start() {
         auto def = wl.pop();
         if (!def->isa<Tuple>() && !def->isa<Pack>())
             for (auto op : def->ops())
-                if (op) consume(op);
+                if (op) count_mr_consumers(op, mr_consumers_, memo);
         for (auto op : def->ops())
             if (op) wl.push(op);
         if (def->type()) wl.push(def->type());
