@@ -1,12 +1,12 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
-// Bufferization of %tensor.concat: tensor.lower_to_mem maps it onto the buffer-world %matrix.concat,
-// %matrix.lower_map_reduce generates the range-selected/clamped-read loops over %buffer ops, and %buffer.lower_ptr
+// Bufferization of %tensor.concat: tensor.lower_to_mem maps it onto the buffer-world %btensor.concat,
+// %btensor.lower_map_reduce generates the range-selected/clamped-read loops over %buffer ops, and %buffer.lower_ptr
 // lowers to %mem. The pipeline below contains NO value-semantics tensor phases, so any residue would
 // show up in the GONE checks.
 // GONE-NOT: %tensor.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.
 // GONE-NOT: %buffer.
 // GONE-NOT: %affine.
 plugin core;
@@ -15,7 +15,7 @@ plugin affine;
 plugin mem;
 plugin cps;
 plugin buffer;
-plugin matrix;
+plugin btensor;
 plugin opt;
 
 // Concat a 2x3 and a 4x3 matrix along axis 0 -> 6x3: rows 0..1 from a, rows 2..5 from b (b read at row i−2).
@@ -53,9 +53,9 @@ lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %compile.named "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce/concat/… (+ broadcast)
         %compile.named "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast/pad/concat onto
-                                                           // %buffer/%matrix (hard error if not bufferizable)
+                                                           // %buffer/%btensor (hard error if not bufferizable)
         %mem.add_mem,
-        %compile.named "%matrix.lower_map_reduce",          // %matrix.* -> affine.For over %buffer
+        %compile.named "%btensor.lower_map_reduce",          // %btensor.* -> affine.For over %buffer
         %compile.named "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
         %compile.named "%affine.lower_index",  // %affine.map -> %core arithmetic
         %compile.named "%affine.lower_for",    // affine.For -> CPS loops

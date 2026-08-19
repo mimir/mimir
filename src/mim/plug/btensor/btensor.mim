@@ -1,0 +1,175 @@
+/// # The btensor Plugin {#btensor}
+///
+/// @see mim::plug::btensor
+///
+/// [TOC]
+///
+/// Bufferized tensor operations: a generic `map_reduce` loop-nest abstraction plus derived operations
+/// (matrix product, transpose, pad, concat, ...), lowered to `%%affine.For` loop nests over `%%buffer` element
+/// operations.
+///
+/// This is the bufferized mirror of the `tensor` plugin: every op here is the `%%buffer.Buf` counterpart of a
+/// `%%tensor.*` op, takes the same groups in the same order, and threads `%%mem.M` on top.
+/// `%%tensor.lower_to_mem` bufferizes the SSA-world `%%tensor.*` ops onto these.
+///
+/// ## Dependencies
+///
+plugin core;
+plugin cps; // for %cps.cps2ds
+plugin affine;
+plugin buffer;
+///
+/// ## Types
+///
+/// Matrices are n-dimensional dependent arrays, represented by the shared `%%buffer.Buf` type.
+/// The element operations (`%%buffer.alloc` / `%%buffer.read` / `%%buffer.write` / `%%buffer.constant` /
+/// `%%buffer.shape`) and their lowering to `%%mem.Ptr` (`%%buffer.lower_ptr`) live in the `buffer` plugin.
+///
+/// ### %%btensor.Ring
+///
+/// Represents an [algebraic ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
+/// E.g., `let nat_ring = (Nat, 0, %%core.nat.add, %%core.nat.mul);`.
+///
+/// %%tensor.Ring is an alias for this type: `tensor` bufferizes onto `%%btensor.*`, so `btensor` is the lower of the
+/// two layers and owns the definition.
+let %btensor.Ring = [
+    T: *,
+    _0: T,
+    add: [T, T] → T,
+    mul: [T, T] → T,
+];
+///
+/// ## Operations
+///
+/// ### %%btensor.map_reduce
+///
+/// The buffer-world counterpart of %%tensor.map_reduce and the workhorse behind every operation below:
+/// a reduction fold over an affinely-indexed loop nest on `%%buffer.Buf` operands, threading `%%mem.M`.
+///
+/// The iteration domain and the result shape are stated explicitly:
+/// * `Sr`: the bounds of the full loop nest of length `Rn`. Its leading `Ro` dimensions are the parallel output loops; the trailing `Rn - Ro` dimensions are the reduction loops that are folded away.
+/// * `So`: the shape of the result buffer (rank `Ro`). It may differ from the leading `Ro` bounds of `Sr`, which is what lets `map_out` write to a re-shaped output (e.g. a transpose).
+///
+/// The full loop iteration vector `(o…, r…)` has length `Rn`.
+/// * `f` folds one element of each input into the accumulator (seeded per output cell with `init`); unlike %%tensor.map_reduce's `f` it is mem-threaded.
+/// * `map_out` maps the full loop vector to the `Ro` write coordinates in the result. As the reduction is folded away before the write, it must depend only on the leading `Ro` output indices.
+/// * `maps#i` maps the full loop vector to the `Ris#i` read coordinates of input `i`. Transposes, slices and broadcasts are expressed here, by reading the inputs accordingly.
+///
+/// `nis`, `Ro`, `Rn` and the `Ris` must be literals before entering the `%%btensor.lower_map_reduce` phase for the
+/// lowering to succeed; the bounds `So` and `Sr` may be symbolic.
+///
+axm %btensor.map_reduce: {nis: Nat}
+                      → {To: *, Ro Rn: Nat}
+                      → [So: «Ro; Nat», Sr: «Rn; Nat»]
+                      → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                      → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To]
+                      → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
+                      → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»]
+                      → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
+                      → [%mem.M 0, %buffer.Buf (Ro, So, To)];
+
+/// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
+/// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
+/// %%tensor.proj_map is an alias for this lam.
+lam %btensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «r; %affine.index» =
+    ‹j: r; o#(%core.idx n 0 (subs#j))›;
+///
+/// ### %%btensor.product_2d
+///
+/// Computes the matrix product of two 2-dimensional matrices in the ring `R` - the buffer-world counterpart of
+/// %%tensor.product_2d.
+/// `[R: %%btensor.Ring]` is the leading *explicit* group, as in %%tensor.product_2d: a ring cannot be recovered from
+/// `R#T` by inference.
+///
+/// Unlike %%tensor.product_2d this is a `lam` wrapping %%btensor.map_reduce directly, not an `axm` paired with an
+/// `_impl` annex and a lowering phase: nothing in this plugin inspects the high-level form - there is no fusion
+/// phase over `%%btensor.*` and the normalizer was a no-op - so the extra staging bought nothing.
+/// %%btensor.transpose_2d follows the same pattern.
+
+/// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
+/// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
+fun product_2d_fun [R: %btensor.Ring] (mem: %mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [%mem.M 0, R#T] =
+    return (mem, R#add (acc, R#mul (ab#0_2, ab#1_2)));
+
+/// The loop vector is `(i, j, k)` and follows the principle `ij ← ik, kj`
+/// (`out[i, j] = Σ_k t1[i, k] · t2[k, j]`), so `k` is the single reduction loop.
+lam %btensor.product_2d [R: %btensor.Ring] {m k l: Nat}
+                       (mem: %mem.M 0, t1: %buffer.Buf (2, (m, k), R#T), t2: %buffer.Buf (2, (k, l), R#T))
+                     : [%mem.M 0, %buffer.Buf (2, (m, l), R#T)] =
+    %btensor.map_reduce ((m, l), (m, l, k))
+        (product_2d_fun R, R#_0)
+        (%btensor.proj_map (0, 1))
+        (%btensor.proj_map (0, 2), %btensor.proj_map (2, 1))
+        (mem, (t1, t2));
+///
+/// ### %%btensor.transpose_2d
+///
+/// Permutes the dimensions of a 2-dimensional matrix - the buffer-world counterpart of %%tensor.transpose_2d.
+/// As there, the shape is a single `«2; Nat»` vector instead of two separate `Nat`s, and `{T}` precedes `{s}`.
+/// Like %%btensor.product_2d this is a `lam` over %%btensor.map_reduce rather than an `axm`.
+
+/// Ignores the (⊥) accumulator and just returns the read value - the mem-threaded counterpart of `tensor_copy`.
+fun btensor_copy {T: *} (mem: %mem.M 0, acc y: T)@tt: [%mem.M 0, T] = return (mem, y);
+
+/// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
+lam %btensor.transpose_2d {T: *} {s: «2; Nat»}
+                         (mem: %mem.M 0, input: %buffer.Buf (2, s, T))
+                       : [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)] =
+    let s_out = (s#tt, s#ff);
+    %btensor.map_reduce (s_out, s_out)
+        (btensor_copy, ⊥:T)
+        %affine.id
+        (%btensor.proj_map (1, 0),)
+        (mem, input);
+///
+/// ### %%btensor.broadcast
+///
+/// Expands the dimensions of `input` to fit `s_out` - the buffer-world counterpart of %%tensor.broadcast:
+/// for all `i`, either `s_in#i = s_out#i` or `s_in#i = 1`, and the size-1 dimensions are expanded to fit `s_out`.
+/// The input/output buffer shapes (`ri`/`si`, `ro`/`so`) are the actual — possibly size-1-folded — buffer
+/// shapes and are inferred from the operands; `s_in`/`s_out` are the logical (unfolded) shapes.
+///
+axm %btensor.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat», r: Nat}
+                     → [s_in s_out: «r; Nat»]
+                     → [%mem.M 0, input: %buffer.Buf (ri, si, T)]
+                     → [%mem.M 0, %buffer.Buf (ro, so, T)];
+///
+/// ### %%btensor.pad
+///
+/// Pads each axis - the buffer-world counterpart of %%tensor.pad: `out[…o…] = input[…o−lo…]` inside the interior,
+/// `value` (mode 0, constant) or the clamped edge element (mode ≠ 0, replicate) outside.
+/// The groups mirror %%tensor.pad (`{T, r}` → input shape → pad parameters → operands); unlike there, `s_out`
+/// cannot be computed here (`pad_shape` lives in the `tensor` plugin), so it rides along with the parameters.
+/// The buffer shapes are stated as the logical shapes; `%%buffer.Buf` normalizes literal size-1 axes
+/// away, so they agree with the folded buffer handles, and the loop generation folds its read/write
+/// indices accordingly.
+///
+axm %btensor.pad: {T: *, r: Nat}
+              → [s_in: «r; Nat»]
+              → [s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
+              → [%mem.M 0, input: %buffer.Buf (r, s_in, T), value: T]
+              → [%mem.M 0, %buffer.Buf (r, s_out, T)];
+///
+/// ### %%btensor.concat
+///
+/// Joins `nis` buffers along axis `ax` - the buffer-world counterpart of %%tensor.concat.
+/// `out[…o…] = is#k[… o with o#ax ↦ o#ax − off#k …]`, where `k` is the input whose range `o#ax` lands in
+/// (`off` are the prefix sums of the per-input extents along `ax`).
+/// Unlike %%tensor.concat, `s_out` (the summed extent along `ax`, the shared extents elsewhere) is passed
+/// explicitly, since `concat_shape` lives in the `tensor` plugin.
+///
+axm %btensor.concat: {T: *, nis r: Nat}
+                  → [ax: Idx r]
+                  → {Sis: «i: nis; «r; Nat»»}
+                  → [s_out: «r; Nat»]
+                  → [%mem.M 0, is: «i: nis; %buffer.Buf (r, Sis#i, T)»]
+                  → [%mem.M 0, %buffer.Buf (r, s_out, T)];
+///
+/// ## Phases
+///
+/// * `lower_map_reduce`: lowers the buffer-world ops (`%%btensor.map_reduce`, `%%btensor.broadcast`, `%%btensor.pad`,
+/// `%%btensor.concat`) to `%%affine.For` loops over `%%buffer` element operations.
+/// `%%btensor.product_2d` and `%%btensor.transpose_2d` need no phase of their own: they are `lam`s that reduce to
+/// `%%btensor.map_reduce` at their call site.
+///
+axm %btensor.lower_map_reduce: %compile.Phase;

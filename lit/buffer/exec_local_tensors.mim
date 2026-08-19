@@ -29,4 +29,4 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
 // CHECK-DAG: %mem.store
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.

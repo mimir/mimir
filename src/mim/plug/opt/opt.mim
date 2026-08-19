@@ -38,7 +38,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%tensor.lower_to_mem",
         // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits %mem.M placeholders that must be stitched into a global mem chain.
         %compile.cond "tensor" (%compile.named "%mem.add_mem"),
-        %compile.named "%matrix.lower_map_reduce",
+        %compile.named "%btensor.lower_map_reduce",
         %compile.named "%gpu.mem_checks",
         %compile.named "%autodiff.eval",
         %compile.named "%autodiff.zero_repl",

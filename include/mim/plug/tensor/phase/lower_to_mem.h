@@ -8,7 +8,7 @@ namespace mim::plug::tensor::phase {
 
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
 /// `get` / `set` become `%buffer.read` / `%buffer.write`, `map_reduce` / `broadcast` / `pad` / `concat`
-/// become their buffer-world `%matrix.*` counterparts,
+/// become their buffer-world `%btensor.*` counterparts,
 /// and tensor array values `«s; T»` become `%buffer.Buf (r, s, T)` handles.
 /// Afterwards `%buffer.lower_ptr` lowers the buffer layer to `%mem.Ptr` + `%mem.lea` / `%mem.load` / `%mem.store`.
 ///
@@ -55,7 +55,7 @@ private:
     const Def* materialize(const Def* old_ty, const Def* old_arg);
 
     /// Fills a fresh buffer of (old) array type `arr_ty` with the (already rewritten) scalar `scalar`, via
-    /// `%buffer.constant`. `%matrix.lower_map_reduce` turns that into a fill loop, so it never materializes as a
+    /// `%buffer.constant`. `%btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
     /// monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).
     /// Used for constant splats `‹s; c›` and scalar `%tensor.broadcast`s.
     const Def* splat_buffer(const Def* arr_ty, const Def* scalar);
@@ -87,7 +87,7 @@ private:
     /// ops still collapse into one (e.g. a weight literal materialized at many sites).
     const Def* bot_mem();
 
-    /// A *fresh* `%mem.M 0` for one emitted buffer/matrix operation: the var of a newly minted continuation
+    /// A *fresh* `%mem.M 0` for one emitted buffer/btensor operation: the var of a newly minted continuation
     /// `con fresh_mem(mem: %mem.M 0)` that receives its memory once LowerToMem::wrap_fresh_mem has chained it
     /// in front of the enclosing lam's body.
     /// Required by every op that allocates a buffer it then writes into, for two independent reasons:
