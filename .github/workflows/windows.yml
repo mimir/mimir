@@ -5,11 +5,16 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: ${{github.ref != 'refs/heads/master'}}
+
 jobs:
   build-and-test:
     name: Build and test ${{matrix.build-type}} mode
     runs-on: windows-2022
     strategy:
+      fail-fast: false
       matrix:
         build-type: [Debug, Release]
 

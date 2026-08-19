@@ -5,6 +5,10 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: ${{github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/v')}}
+
 env:
   DOXYGEN_TAG: Release_1_16_1
   DOXYGEN_VERSION: 1.16.1
@@ -21,10 +25,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install build dependencies (gcc-14, gdb, graphviz, ghostscript, texlive)
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-14 g++-14 gdb graphviz ghostscript texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
+          sudo apt-get install -y g++-14 gdb graphviz
 
       - name: Restore Doxygen cache
         id: cache-doxygen
@@ -44,10 +48,18 @@ jobs:
           curl -L --fail --retry 5 --retry-all-errors --output "${RUNNER_TEMP}/${archive}" "${url}"
           tar -C "${{ github.workspace }}/.cache" -xf "${RUNNER_TEMP}/${archive}"
 
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          update_packager_index: false
+          ccache_options: max_size=500M
+          override_cache_key: ubuntu-latest-ccache-doxygen
+
       - name: Configure
         run: |
           CC=gcc-14 CXX=g++-14                  \
           cmake -B ${{github.workspace}}/build  \
+                -G Ninja                        \
                 -DCMAKE_BUILD_TYPE=Debug        \
                 -DMIM_BUILD_DOCS=ON             \
                 -DDOXYGEN_EXECUTABLE=${{ env.DOXYGEN_CACHE_DIR }}/bin/doxygen
