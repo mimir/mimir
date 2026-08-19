@@ -3,7 +3,7 @@
 // RUN: %FileCheck %s --check-prefix=GONE < %t.out
 
 // End-to-end bufferization of %tensor.map_reduce through the DEFAULT pipeline: `main` materializes
-// the tensor literal into a buffer and calls the bufferized `row_sum` (lowered via %matrix.map_reduce_aff
+// the tensor literal into a buffer and calls the bufferized `row_sum` (lowered via %matrix.map_reduce
 // to affine loops over %buffer, then to %mem loops). The result buffer flows back into `main`'s
 // mem-extended continuation `done`, where the `get` reads from it directly.
 // Row sums of ((1..4),(5..8),(9..12)) are (10, 26, 42); done reads out[2] = 42.

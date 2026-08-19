@@ -381,7 +381,7 @@ const Def* LowerToMem::lower_call(const App* app, Lam* old_callee) {
 }
 
 const Def* LowerToMem::splat_buffer(const Def* arr_ty, const Def* scalar) {
-    // `%buffer.constant` sets every element to `scalar`; `%matrix.lower_aff` fills it with a loop rather
+    // `%buffer.constant` sets every element to `scalar`; `%matrix.lower_map_reduce` fills it with a loop rather
     // than storing a monolithic literal array (which the LLVM backend cannot digest for large shapes).
     auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(arr_ty))->args<3>();
     auto [m, out]        = buffer::op_constant(bro, bso, boT, bot_mem(), scalar)->projs<2>();
@@ -458,7 +458,7 @@ const Def* LowerToMem::lower_set(const App* app) {
 
 const Def* LowerToMem::lower_broadcast(const App* app) {
     // Thin bufferization: map the SSA `tensor.broadcast` onto the buffer-world `matrix.broadcast`.
-    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // The loop generation lives in the matrix plugin (`%matrix.lower_map_reduce`).
     auto& w                   = new_world();
     auto c                    = rewrite(app->callee())->as<App>();
     auto arg                  = rewrite(app->arg());
@@ -493,8 +493,8 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 }
 
 const Def* LowerToMem::lower_map_reduce(const App* app) {
-    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce_aff`,
-    // reusing the (rewritten) meta. The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce`,
+    // reusing the (rewritten) meta. The loop generation lives in the matrix plugin (`%matrix.lower_map_reduce`).
     auto& w     = new_world();
     auto c      = rewrite(app->callee())->as<App>();
     auto inputs = rewrite(app->arg()); // the (bufferized) input buffers `is`
@@ -521,7 +521,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     }
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
-    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `matrix.map_reduce_aff` expects.
+    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `matrix.map_reduce` expects.
     auto mem_ty           = w.call<mem::M>(0);
     auto inner            = comb->type()->as<Pi>()->dom()->proj(0); // [To, «nis; Tis»]
     auto [cTo, ins_ty]    = inner->projs<2>();
@@ -535,7 +535,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     // NB: no `w.call` here — the meta groups are *forwarded* from the tensor op on purpose. Leaving them to
     // inference would re-derive `{Tis, Ris, Sis}` from the `%buffer.Buf` operands, whose literal size-1 axes are
     // already folded away, so they would no longer agree with the logical shapes the loop generation iterates.
-    auto op       = w.annex<matrix::map_reduce_aff>();
+    auto op       = w.annex<matrix::map_reduce>();
     op            = w.app(op, nis);
     op            = w.app(op, meta);
     op            = w.app(op, shapes);
@@ -549,7 +549,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
 
 const Def* LowerToMem::lower_pad(const App* app) {
     // Thin bufferization: map the SSA `tensor.pad` onto the buffer-world `matrix.pad`.
-    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // The loop generation lives in the matrix plugin (`%matrix.lower_map_reduce`).
     auto& w             = new_world();
     auto c              = rewrite(app->callee())->as<App>();
     auto [input, value] = rewrite(app->arg())->projs<2>();
@@ -583,7 +583,7 @@ const Def* LowerToMem::lower_pad(const App* app) {
 
 const Def* LowerToMem::lower_concat(const App* app) {
     // Thin bufferization: map the SSA `tensor.concat` onto the buffer-world `matrix.concat`.
-    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // The loop generation lives in the matrix plugin (`%matrix.lower_map_reduce`).
     auto& w  = new_world();
     auto c   = rewrite(app->callee())->as<App>();
     auto arg = rewrite(app->arg());

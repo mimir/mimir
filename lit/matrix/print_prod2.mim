@@ -9,6 +9,7 @@ plugin matrix;
 
 let MT1 = (2, (2, 4), %math.F64);
 let MT2 = (2, (4, 3), %math.F64);
+let R: %matrix.Ring = (%math.F64, 0.0:%math.F64, %math.arith.add 0, %math.arith.mul 0);
 
 ccon print_int_matrix   [mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat),      I32), Cn %mem.M 0];
 ccon print_double_matrix[mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), %math.F64), Cn %mem.M 0];
@@ -29,7 +30,7 @@ con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), 
     let (mem, m2  ) = %buffer.constant MT2 (mem, d);
     let (mem, m1_2) = %buffer.write   MT1 (mem, m1, (0₂, 2₄), 4.0:%math.F64);
     let (mem, m2_2) = %buffer.write   MT2 (mem, m2, (1₄, 2₃), 6.0:%math.F64);
-    let (mem, mP  ) = %matrix.prod (mem, m1_2, m2_2);
+    let (mem, mP  ) = %matrix.product_2d R (mem, m1_2, m2_2);
     print_double_matrix_wrap (mem, 2, 3, mP, return_cont)
     where
         con return_cont (mem: %mem.M 0) = return (mem, 0I32);

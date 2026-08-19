@@ -25,12 +25,10 @@ plugin matrix;
 /// Represents an [algebraic ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
 /// E.g., `let nat_ring = (Nat, 0, %%core.nat.add, %%core.nat.mul);`.
 ///
-let %tensor.Ring = [
-    T: *,
-    _0: T,
-    add: [T, T] → T,
-    mul: [T, T] → T,
-];
+/// An alias for %%matrix.Ring.
+/// The buffer-world `matrix` plugin sits *below* `tensor` - `%%tensor.lower_to_mem` bufferizes onto `%%matrix.*` ops -
+/// so the definition lives there and both layers share one notion of a ring.
+let %tensor.Ring = %matrix.Ring;
 ///
 /// ## Operations
 ///

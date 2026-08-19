@@ -1,4 +1,4 @@
-#include "mim/plug/matrix/phase/lower_aff.h"
+#include "mim/plug/matrix/phase/lower_map_reduce.h"
 
 #include <mim/axm.h>
 #include <mim/def.h>
@@ -97,9 +97,9 @@ const Def* build_pointwise(World& w,
 
 } // namespace
 
-const Def* LowerAff::rewrite_imm_App(const App* app) {
+const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-    if (Axm::isa<matrix::map_reduce_aff>(app)) return lower_map_reduce_aff(app);
+    if (Axm::isa<matrix::map_reduce>(app)) return lower_map_reduce(app);
     if (Axm::isa<matrix::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<matrix::pad>(app)) return lower_pad(app);
     if (Axm::isa<matrix::concat>(app)) return lower_concat(app);
@@ -107,7 +107,7 @@ const Def* LowerAff::rewrite_imm_App(const App* app) {
     return RWPhase::rewrite_imm_App(app);
 }
 
-const Def* LowerAff::lower_buffer_constant(const App* app) {
+const Def* LowerMapReduce::lower_buffer_constant(const App* app) {
     // `%buffer.constant (r, s, T) (mem, val)` fills every elem with `val`. Emit a fill loop (via the same
     // pointwise scaffold as pad/concat) so the store never materializes as one giant literal array. A
     // non-literal rank has no static loop nest, so leave it for `%buffer.lower_ptr`'s monolithic fallback.
@@ -125,7 +125,7 @@ const Def* LowerAff::lower_buffer_constant(const App* app) {
         [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> { return {m, ins}; });
 }
 
-const Def* LowerAff::lower_map_reduce_aff(const App* app) {
+const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
@@ -243,7 +243,7 @@ const Def* LowerAff::lower_map_reduce_aff(const App* app) {
     return call;
 }
 
-const Def* LowerAff::lower_broadcast(const App* app) {
+const Def* LowerMapReduce::lower_broadcast(const App* app) {
     auto& w              = new_world();
     auto callee          = app->callee()->as<App>(); // (broadcast {impl}) (s_in, s_out)
     auto [s_in, s_out]   = rewrite(callee->arg())->projs<2>();
@@ -289,7 +289,7 @@ const Def* LowerAff::lower_broadcast(const App* app) {
     return call;
 }
 
-const Def* LowerAff::lower_pad(const App* app) {
+const Def* LowerMapReduce::lower_pad(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
@@ -346,7 +346,7 @@ const Def* LowerAff::lower_pad(const App* app) {
     return build_pointwise(w, result_ty, op_mem, w.tuple({input, value}), s_out, rn, "pad", compute);
 }
 
-const Def* LowerAff::lower_concat(const App* app) {
+const Def* LowerMapReduce::lower_concat(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 

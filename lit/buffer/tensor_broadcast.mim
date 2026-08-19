@@ -37,7 +37,7 @@ lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %tensor.lower_to_mem,
         %mem.add_mem,
-        %matrix.lower_aff,
+        %matrix.lower_map_reduce,
         %buffer.lower_ptr,
         %affine.lower_index,
         %affine.lower_for,

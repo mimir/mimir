@@ -8,9 +8,9 @@ namespace mim::plug::matrix {
 // The element-level normalizers (read / insert / shape) now live in the `buffer` plugin.
 // These matrix normalizers are currently no-ops: the corresponding simplifications are performed by the lowering
 // phases instead.
-const Def* normalize_map_reduce(const Def*, const Def*, const Def*) { return {}; }
-const Def* normalize_prod(const Def*, const Def*, const Def*) { return {}; }
-const Def* normalize_transpose(const Def*, const Def*, const Def*) { return {}; }
+const Def* normalize_map_reduce_idx(const Def*, const Def*, const Def*) { return {}; }
+const Def* normalize_product_2d(const Def*, const Def*, const Def*) { return {}; }
+const Def* normalize_transpose_2d(const Def*, const Def*, const Def*) { return {}; }
 
 MIM_matrix_NORMALIZER_IMPL
 
