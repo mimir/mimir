@@ -101,6 +101,7 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
+    const Def* rewrite_imm_Var(const Var*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
 
     /// A live phi for @p old_lam: the @p sloxy it stands for, the @p phi proxy, and its abstract @p val.
@@ -125,6 +126,7 @@ private:
     Analysis analysis_;
     Lam2Lam lam_old2new_;
     Lam2Lam lam_new2old_;
+    LamSet in_flight_; ///< Lams whose build_lam() var mapping is currently being (re-)established.
     absl::node_hash_map<Lam*, Vector<Phi>, GIDHash<Lam*>> lam2phis_;
 };
 
