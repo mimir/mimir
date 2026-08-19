@@ -70,7 +70,10 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
     if (type->isa<Nat>()) {
         return types_[type] = "i64";
     } else if (Idx::isa(type)) {
-        return types_[type] = "i" + std::to_string(Idx::expect_bitwidth(type, "a statically-sized index type"));
+        // `Idx 1` is zero bits wide information-theoretically, but LLVM has no i0: clamp to i1
+        // (its only value is 0, so any i1 zext/trunc of it stays correct).
+        auto w              = Idx::expect_bitwidth(type, "a statically-sized index type");
+        return types_[type] = "i" + std::to_string(std::max<nat_t>(1, w));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
             case 16: return types_[type] = "half";
