@@ -450,12 +450,14 @@ public:
         auto d2 = s2.isa_data();
         if (d1 && d2) {
             // Both operands are ordered by gid and duplicate-free, so a linear merge yields the union directly -
-            // no heap allocation, no sort, no std::unique pass.
-            // A Data set holds at most N elements, hence the union fits into 2N.
-            auto buff = std::array<D*, 2 * N>();
+            // no sort, no std::unique pass.
+            // Its final size is only known afterwards, so allocate the upper bound `d1->size + d2->size` and merge
+            // straight into it; every dropped duplicate leaves one slot of excess at the tail that unify releases
+            // again.
+            auto [data, state] = allocate(d1->size + d2->size);
             auto i1 = d1->begin(), e1 = d1->end();
             auto i2 = d2->begin(), e2 = d2->end();
-            auto o = buff.begin();
+            auto o = data->begin();
 
             while (i1 != e1 && i2 != e2) {
                 auto g1 = (*i1)->gid();
@@ -470,14 +472,16 @@ public:
             o = std::copy(i1, e1, o);
             o = std::copy(i2, e2, o);
 
-            auto size = size_t(o - buff.begin());
-            if (size <= N) {
-                auto [data, state] = allocate(size);
-                std::copy(buff.begin(), o, data->begin());
-                return unify(data, state);
+            auto size = size_t(o - data->begin());
+            if (size > N) {                               // too big for a Data set: switch over to the trie
+                auto res = create_trie(data->begin(), o); // only draws from node_arena_ ...
+                data_arena_.deallocate(state);            // ... so data is ours to throw away again
+                return res;
             }
 
-            return create_trie(buff.begin(), o); // too big for an array: switch over to the trie
+            auto excess = data->size - size; // data->size is still the upper bound we allocated
+            data->size  = size;
+            return unify(data, state, excess);
         }
 
         auto n1 = s1.isa_node();
@@ -577,10 +581,14 @@ private:
     }
 
     /// Hash-conses @p data; rolls the arena back to @p state, if an equal Data is already pooled.
-    Set unify(Data* data, fe::Arena::State state) {
+    /// Pass the number of trailing elements allocated but not used as @p excess to release them again.
+    Set unify(Data* data, fe::Arena::State state, size_t excess = 0) {
         assert(data->size != 0);
         auto [i, ins] = pool_.emplace(data);
-        if (ins) return Set(data);
+        if (ins) {
+            data_arena_.deallocate(excess * sizeof(D*)); // data is the arena's most recent allocation
+            return Set(data);
+        }
 
         data_arena_.deallocate(state);
         return Set(*i);
