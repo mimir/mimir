@@ -40,6 +40,15 @@ void AddMem::start() {
 }
 
 const Def* AddMem::rewrite(const Def* old_def) {
+    if (curr_mem_ && !preserving_ && !is_bootstrapping()) {
+        // A tuple with a direct memory operand is context-dependent: the operand splices to the memory
+        // current *at this use*. Two ops with hash-consed identical argument tuples (e.g. two `(⊥, val)`
+        // buffer fills) must splice *different* memories - so never store or reuse such a tuple via the
+        // rewrite memo; rebuild it at every occurrence.
+        if (auto tuple = old_def->isa<Tuple>();
+            tuple && std::ranges::any_of(tuple->ops(), [](const Def* op) { return isa_mem(op); }))
+            return rewrite_imm_Tuple(tuple);
+    }
     auto new_def = Rewriter::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : %mem.M 0`) are thereby spliced into the chain.
