@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <print>
 
 #include <fe/arena.h>
 
@@ -48,10 +49,10 @@ private:
                 return "n_"s + (n->def ? std::to_string(n->def->tid()) : "root"s) + "_"s + std::to_string(n->id);
             };
 
-            std::println(os, "{} [tooltip=\"gid: {}, min: {}\"];", node2str(this), def ? def->gid() : 0, min);
+            std::print(os, "{} [tooltip=\"gid: {}, min: {}\"];\n", node2str(this), def ? def->gid() : 0, min);
 
             for (const auto& [_, child] : children)
-                std::println(os, "{} -> {}", node2str(this), node2str(child.get()));
+                std::print(os, "{} -> {}\n", node2str(this), node2str(child.get()));
             for (const auto& [_, child] : children)
                 child->dot(os);
         }
@@ -545,11 +546,11 @@ public:
     }
 
     void dot(std::ostream& os) const {
-        std::println(os, "digraph {{");
-        std::println(os, "ordering=out;");
-        std::println(os, "node [shape=box,style=filled];");
+        std::print(os, "digraph {{\n");
+        std::print(os, "ordering=out;\n");
+        std::print(os, "node [shape=box,style=filled];\n");
         root()->dot(os);
-        std::println(os, "}}");
+        std::print(os, "}}\n");
     }
 
     friend void swap(Sets& s1, Sets& s2) noexcept {
