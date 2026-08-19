@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
+
+#include <array>
 
 namespace mim::lct {
 
@@ -16,6 +19,13 @@ namespace mim::lct {
 /// ```
 template<class P, class K>
 class Node {
+public:
+    /// Index into Node::kids.
+    enum Dir : size_t {
+        Bot, ///< left/deeper/bottom/leaf-direction
+        Top, ///< right/shallower/top/root-direction
+    };
+
 private:
     P* self() { return static_cast<P*>(this); }
     const P* self() const { return static_cast<const P*>(this); }
@@ -25,13 +35,6 @@ public:
 
     ///@name Getters
     ///@{
-    [[nodiscard]] bool contains(const K& k) noexcept {
-        expose();
-        for (auto n = this; n; n = n->self()->lt(k) ? n->bot : n->top)
-            if (n->self()->eq(k)) return n->splay(), true;
-
-        return false;
-    }
 
     /// Find @p k or the element just greater than @p k.
     constexpr P* find(const K& k) noexcept {
@@ -41,58 +44,59 @@ public:
             if (n->self()->eq(k)) return n->splay(), n->self();
 
             if (n->self()->lt(k)) {
-                n = n->bot;
+                n = n->kids[Bot];
             } else {
                 prev = n;
-                n    = n->top;
+                n    = n->kids[Top];
             }
         }
 
         return prev->self();
     }
+
+    [[nodiscard]] bool contains(const K& k) noexcept { return find(k)->eq(k); }
     ///@}
 
     ///@name parent
     ///@{
+    /// Is `this` a child of Node::parent within the same splay tree?
+    constexpr bool is_aux_child() const noexcept {
+        return parent && (parent->kids[Bot] == this || parent->kids[Top] == this);
+    }
     // clang-format off
-    constexpr Node*  aux_parent() noexcept { return parent && (parent->bot == this || parent->top == this) ? parent         : nullptr; }
-    constexpr P*    path_parent() noexcept { return parent && (parent->bot != this && parent->top != this) ? parent->self() : nullptr; }
+    constexpr Node* aux_parent() noexcept { return  is_aux_child()           ? parent         : nullptr; }
+    constexpr P*   path_parent() noexcept { return !is_aux_child() && parent ? parent->self() : nullptr; }
     // clang-format on
     ///@}
 
     ///@name Splay Tree
     ///@{
 
+    /// Which of Node::kids is @p kid?
+    constexpr Dir dir(const Node* kid) const noexcept {
+        assert(kids[Bot] == kid || kids[Top] == kid);
+        return kids[Top] == kid ? Top : Bot;
+    }
+
     /// [Splays](https://hackmd.io/@CharlieChuang/By-UlEPFS#Operation1) `this` to the root of its splay tree.
     constexpr void splay() noexcept {
         while (auto p = aux_parent()) {
+            auto i = p->dir(this);
             if (auto pp = p->aux_parent()) {
-                if (p->bot == this && pp->bot == p) { // zig-zig
-                    pp->ror();
-                    p->ror();
-                } else if (p->top == this && pp->top == p) { // zag-zag
-                    pp->rol();
-                    p->rol();
-                } else if (p->bot == this && pp->top == p) { // zig-zag
-                    p->ror();
-                    pp->rol();
-                } else { // zag-zig
-                    assert(p->top == this && pp->bot == p);
-                    p->rol();
-                    pp->ror();
-                }
-            } else if (p->bot == this) { // zig
-                p->ror();
-            } else { // zag
-                assert(p->top == this);
-                p->rol();
+                auto j = pp->dir(p);
+                if (i == j) // zig-zig/zag-zag
+                    pp->rotate(j), p->rotate(i);
+                else // zig-zag/zag-zig
+                    p->rotate(i), pp->rotate(j);
+            } else { // zig/zag
+                p->rotate(i);
             }
         }
     }
 
-    /// Helper for Splay-Tree: rotate left/right:
+    /// Helper for Splay-Tree: rotates `this`'s @p i%th kid `c` into `this`'s (`x`'s) place:
     /// ```
-    ///  | Left                  | Right                  |
+    ///  | i == Top              | i == Bot               |
     ///  |-----------------------|------------------------|
     ///  |   p              p    |       p          p     |
     ///  |   |              |    |       |          |     |
@@ -102,36 +106,28 @@ public:
     ///  |    / \        / \     |    / \            / \  |
     ///  |   b   d      a   b    |   d   b          b   a |
     ///  ```
-    template<size_t l>
-    constexpr void rotate() noexcept {
-        constexpr size_t r   = (l + 1) % 2;
-        constexpr auto child = [](Node* n, size_t i) -> Node*& { return i == 0 ? n->bot : n->top; };
-
+    constexpr void rotate(Dir i) noexcept {
+        auto j = i == Bot ? Top : Bot;
         auto x = this;
         auto p = x->parent;
-        auto c = child(x, r);
-        auto b = child(c, l);
+        auto c = x->kids[i];
+        auto b = c->kids[j];
 
         if (b) b->parent = x;
 
+        // if p is only a path parent, it has no kid to fix up
         if (p) {
-            if (child(p, l) == x) {
-                child(p, l) = c;
-            } else if (child(p, r) == x) {
-                child(p, r) = c;
-            } else {
-                /* only path parent */;
-            }
+            if (p->kids[Bot] == x)
+                p->kids[Bot] = c;
+            else if (p->kids[Top] == x)
+                p->kids[Top] = c;
         }
 
-        x->parent   = c;
-        c->parent   = p;
-        child(x, r) = b;
-        child(c, l) = x;
+        x->parent  = c;
+        c->parent  = p;
+        x->kids[i] = b;
+        c->kids[j] = x;
     }
-
-    constexpr void rol() noexcept { return rotate<0>(); }
-    constexpr void ror() noexcept { return rotate<1>(); }
     ///@}
 
     /// @name Link-Cut-Tree
@@ -141,9 +137,9 @@ public:
     constexpr void link(Node* child) noexcept {
         this->expose();
         child->expose();
-        if (!child->top) {
-            this->parent = child;
-            child->top   = this;
+        if (!child->kids[Top]) {
+            this->parent     = child;
+            child->kids[Top] = this;
         }
     }
 
@@ -154,7 +150,7 @@ public:
         for (auto curr = this; curr; prev = curr, curr = curr->parent) {
             curr->splay();
             assert(!prev || prev->parent == curr);
-            curr->bot = prev;
+            curr->kids[Bot] = prev;
         }
         splay();
         return prev->self();
@@ -177,9 +173,8 @@ public:
     }
     ///@}
 
-    Node* parent = nullptr; ///< parent or path-parent
-    Node* bot    = nullptr; ///< left/deeper/bottom/leaf-direction
-    Node* top    = nullptr; ///< right/shallower/top/root-direction
+    Node* parent              = nullptr; ///< parent or path-parent
+    std::array<Node*, 2> kids = {};      ///< Node::Bot/Node::Top children
 };
 
 } // namespace mim::lct
