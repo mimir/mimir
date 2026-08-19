@@ -1,0 +1,38 @@
+// RUN: %mim -p opt %s -o - > %t.out
+// RUN: %FileCheck %s --check-prefix=GONE < %t.out
+
+// Partial reduction unrolling, driven by the op's SCHEDULE operands (frontend policy): unrolling
+// the trailing 1 dim of the reduction domain (37, 3), the lowering emits a For loop over the
+// leading dim whose body carries the trailing dim as three straight-line combiner calls with
+// constant coordinates. Summing an all-ones «2, 37, 3» tensor yields 111 per output cell — a
+// wrong unroll/loop split would miscount.
+// exec_unroll_run.mim compiles this to an executable and asserts the exit code.
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+plugin buffer;
+plugin matrix;
+plugin cps;
+
+fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
+lam mo (i a b: %affine.index): «1; %affine.index» = i;
+lam mi (i a b: %affine.index): «3; %affine.index» = (i, a, b);
+
+// out[i] = sum_{a, b} input[i][a][b]; the schedule operand is a chooser over the target's nest
+// builder (no vector dim, unroll the trailing 1 dim), applied — not interpreted — by the lowering.
+fun extern sum_all (input: «2, 37, 3; I32»): «2; I32» =
+    return (%tensor.map_reduce_post @(1, 0) @(I32, I32, 1, 2)
+                (2, (2, 37, 3), [N: *] → ([vdim unroll: Nat] → N) → N, %tensor.mk_sched (3, 1))
+                @(I32, 3, (2, 37, 3), (), (), ()) (add, 0I32, %tensor.id @I32) mo (mi, ()) (input, ()));
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    let t = ‹2; ‹37; ‹3; 1I32›››;
+    con done (o: «2; I32») =
+        let v = %tensor.get @(I32, 1, (2, )) (o, (1₂, ));
+        return (mem, v);
+    sum_all (t, done);
+
+// GONE-NOT: %tensor.
+// GONE-NOT: %buffer.
+// GONE-NOT: %matrix.

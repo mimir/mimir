@@ -133,7 +133,7 @@ static std::optional<ReadThrough> read_through(World& w, const Def* value, const
         auto nps_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 1));
         auto rr_l                                                                  = Lit::isa<u64>(meta->proj(4, 3));
         if (!nis_l || *nis_l != 1 || !nps_l || *nps_l != 0 || !rr_l || *rr_l != 0) return {};
-        auto [So, Sr] = shapes->projs<2>();
+        auto [So, Sr, TSched, sched] = shapes->projs<4>();
         if (Sr != So) return {};
         auto id_lam = map_out->isa_mut<Lam>();
         if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) return {};
@@ -250,15 +250,15 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         if (!inner) continue;
 
         auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
-              inner_is_all]                           = inner->uncurry_args<8>();
-        auto [inner_To, inner_Tp, inner_Ro, inner_Rr] = inner_meta->projs<4>();
-        auto [inner_So, inner_Sr]                     = inner_shapes->projs<2>();
-        auto [inner_comb, inner_init, inner_post]     = inner_comb_init->projs<3>();
-        auto inner_Tis                                = inner_in_tys->proj(6, 0);
-        auto inner_Ris                                = inner_in_tys->proj(6, 1);
-        auto inner_Sis                                = inner_in_tys->proj(6, 2);
-        auto inner_maps                               = inner_maps_all->proj(2, 0);
-        auto inner_is                                 = inner_is_all->proj(2, 0);
+              inner_is_all]                                  = inner->uncurry_args<8>();
+        auto [inner_To, inner_Tp, inner_Ro, inner_Rr]        = inner_meta->projs<4>();
+        auto [inner_So, inner_Sr, inner_TSched, inner_sched] = inner_shapes->projs<4>();
+        auto [inner_comb, inner_init, inner_post]            = inner_comb_init->projs<3>();
+        auto inner_Tis                                       = inner_in_tys->proj(6, 0);
+        auto inner_Ris                                       = inner_in_tys->proj(6, 1);
+        auto inner_Sis                                       = inner_in_tys->proj(6, 2);
+        auto inner_maps                                      = inner_maps_all->proj(2, 0);
+        auto inner_is                                        = inner_is_all->proj(2, 0);
 
         auto inner_nis_nat = Lit::isa<u64>(inner_nis_nps->proj(2, 0));
         if (!inner_nis_nat) continue;
@@ -460,7 +460,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
 
     auto [nis, nps]                     = nis_nps->projs<2>();
     auto [To, Tp, Ro, Rr]               = meta->projs<4>();
-    auto [So, Sr]                       = shapes->projs<2>();
+    auto [So, Sr, TSched, sched]        = shapes->projs<4>();
     auto [comb, init, post]             = comb_init->projs<3>();
     auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
     auto [maps, post_maps]              = maps_all->projs<2>();

@@ -132,7 +132,7 @@ const Def* LowerAff::lower_map_reduce_post(const App* app) {
     auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
     auto [nis, nps]                                                    = nis_nps->projs<2>();
     auto [To, Tp, Ro, Rr]                                              = meta->projs<4>();
-    auto [So, Sr]                                                      = shapes->projs<2>();
+    auto [So, Sr, TSched, sched]                                       = shapes->projs<4>();
     auto [Tis, Ris, Sis, Tps, Rps, Sps]                                = in_tys->projs<6>();
     auto [comb, init, post]                                            = comb_init->projs<3>();
     auto [accs, post_accs]                                             = accs_all->projs<2>();
@@ -173,96 +173,112 @@ const Def* LowerAff::lower_map_reduce_post(const App* app) {
     auto [fun_mem, new_inputs, new_post_is] = fun->var(0_n)->projs<3>();
     auto cont                               = fun->var(1);
 
-    // Allocate the output buffer; the output loops carry `{mem, buf}`.
+    // The op's SCHEDULE `sched` is a target-agnostic chooser over a loop-nest builder (canonically
+    // a `%tensor.mk_sched` value, selected in the frontend). This is the tensor→matrix boundary,
+    // so bind it HERE to this target's algebra — `%matrix.mr_nest` over the output buffer — then
+    // build only the decision-free pieces: the fold step `cell` (read one element per input, call
+    // the combiner) and the write-back `wb` (read the epilogue inputs, run `post`, store) — and
+    // APPLY the nest to them. Unrolling, interchange and the row accumulator are inside the
+    // builder: plain IR, not lowering behavior.
+    auto i32 = w.type_i32();
+
+    // Allocate the output buffer.
     auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
     auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    const Def* acc        = w.tuple({a_mem, out_buf});
-    auto current_mut      = fun;
 
-    DefVec out_iters;
-    out_iters.reserve(ro);
-    for (u64 i = 0; i < ro; ++i) {
-        auto dim                    = Sr->proj(nloops, i);
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forOut_" + std::to_string(i)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        out_iters.push_back(w.call(core::conv::u, dim, iter));
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
-    }
-    auto [wb_mem, wb_buf] = acc->projs<2>();
+    auto nest_args = w.tuple({Ro, Rr, Sr, To, result_ty->proj(1)});
+    auto nest
+        = w.app(w.app(sched, w.app(w.annex<matrix::NestT>(), nest_args)), w.app(w.annex<matrix::mr_nest>(), nest_args));
 
-    // Write-back continuation `Cn[mem, To]`: read the epilogue inputs at their post_accs-mapped
-    // output-cell (write) coordinates, run the mem-threaded `post` epilogue on the folded element and
-    // those reads, then store its result at the affine write coordinates.
-    auto write_back              = mem::mut_con(To)->set("writeBack");
-    auto [wb_in_mem, elem_final] = write_back->vars<2>();
-    DefVec wb_iters              = out_iters;
-    for (u64 j = 0; j < rr; ++j)
-        wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
-    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wb_in_mem);
+    // The bound nest dictates the exact `cell`/`wb` signatures (its [init, cell, wb] domain) —
+    // building them from the VALUE's own type sidesteps any Arr/Sigma normalization asymmetry.
+    auto sched_dom = nest->type()->as<Pi>()->dom();
 
-    auto pcur = wc_mem;
-    DefVec post_elems(nps_nat);
-    for (u64 j = 0; j < nps_nat; ++j) {
-        auto sps_j = Sps->proj(nps_nat, j);
-        auto [pc_mem, pcoords]
-            = affine_map(post_accs->proj(nps_nat, j), Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords, pcur);
-        pcur                  = pc_mem;
-        auto p_buf            = new_post_is->proj(nps_nat, j);
-        auto [pr, ps_, pT]    = Axm::isa<buffer::Buf>(p_buf->type())->args<3>();
-        auto [prd_mem, p_val] = buffer::op_read(pr, ps_, pT, pcur, p_buf, fold_index(sps_j, pcoords))->projs<2>();
-        pcur                  = prd_mem;
-        post_elems[j]         = p_val;
-    }
+    // The nest value's loop-vector components may appear as one «r; I32» value or flattened into r
+    // separate I32 components (normalization decides) — index the domains verbatim either way.
+    auto load_ivs = [&](Lam* l, u64 ndom, u64 pos, u64 cnt) {
+        DefVec out(cnt);
+        if (ndom == pos + cnt + 1) // flattened: cnt I32 scalars, then the continuation
+            for (u64 d = 0; d < cnt; ++d)
+                out[d] = l->var(ndom, pos + d);
+        else
+            for (u64 d = 0; d < cnt; ++d)
+                out[d] = l->var(ndom, pos)->proj(cnt, d);
+        return out;
+    };
 
-    auto after_post            = mem::mut_con(Tp)->set("afterPost");
-    auto [post_mem, elem_post] = after_post->vars<2>();
-    auto stored = buffer::op_write(obr, obs, obT, post_mem, wb_buf, fold_index(So, write_coords), elem_post);
-    after_post->app(true, cont, w.tuple({stored->proj(0), wb_buf}));
-    write_back->app(true, post, w.tuple({w.tuple({pcur, elem_final, w.tuple(post_elems)}), after_post}));
-
-    // Reduction loops; accumulator `{mem, elem}`.
-    acc  = w.tuple({wb_mem, init});
-    cont = write_back;
-    DefVec red_iters;
-    red_iters.reserve(rr);
-    for (u64 j = 0; j < rr; ++j) {
-        auto dim                    = Sr->proj(nloops, ro + j);
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forIn_" + std::to_string(j)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        red_iters.push_back(w.call(core::conv::u, dim, iter));
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
-    }
-    auto [red_mem, elem_acc] = acc->projs<2>();
-
-    DefVec iters_v = out_iters;
-    iters_v.insert(iters_v.end(), red_iters.begin(), red_iters.end());
-    auto iters = w.tuple(iters_v);
-
-    // Read one elem from each input at its affine coordinates, threading memory.
-    auto cur = red_mem;
-    DefVec input_elems(nis_nat);
-    for (u64 i = 0; i < nis_nat; ++i) {
-        auto in_buf = new_inputs->proj(nis_nat, i);
-        auto [mc_mem, coords]
-            = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters, cur);
-        cur                = mc_mem;
-        auto [ir, is_, iT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-        auto [rd_mem, rd_val]
-            = buffer::op_read(ir, is_, iT, cur, in_buf, fold_index(Sis->proj(nis_nat, i), coords))->projs<2>();
-        cur            = rd_mem;
-        input_elems[i] = rd_val;
+    // cell: Cn [mem, To, «ro+rr; I32», Cn [mem, To]] — fold the elements at one loop vector.
+    auto cdom = sched_dom->proj(3, 1)->as<Pi>()->dom();
+    auto cn   = cdom->num_projs();
+    auto cell = w.mut_con(cdom)->set("cell");
+    {
+        auto cm   = cell->var(cn, 0);
+        auto cacc = cell->var(cn, 1);
+        auto ck   = cell->var(cn, cn - 1);
+        auto civs = load_ivs(cell, cn, 2, nloops);
+        DefVec iters_v(nloops);
+        for (u64 d = 0; d < nloops; ++d)
+            iters_v[d] = w.call(core::conv::u, Sr->proj(nloops, d), civs[d]);
+        auto iters = w.tuple(iters_v);
+        auto cur   = cm;
+        DefVec input_elems(nis_nat);
+        for (u64 i = 0; i < nis_nat; ++i) {
+            auto in_buf = new_inputs->proj(nis_nat, i);
+            auto [mc_mem, coords]
+                = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters, cur);
+            cur                = mc_mem;
+            auto [ir, is_, iT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
+            auto [rd_mem, rd_val]
+                = buffer::op_read(ir, is_, iT, cur, in_buf, fold_index(Sis->proj(nis_nat, i), coords))->projs<2>();
+            cur            = rd_mem;
+            input_elems[i] = rd_val;
+        }
+        cell->app(true, comb, w.tuple({w.tuple({cur, cacc, w.tuple(input_elems)}), ck}));
     }
 
-    // The combiner is mem-threaded (`Fn [mem, To, «nis; Tis»] → [mem, To]`): call it directly, its result feeds `cont`.
-    current_mut->app(true, comb, w.tuple({w.tuple({cur, elem_acc, w.tuple(input_elems)}), cont}));
+    // wb: Cn [mem, Buf, To, «ro+rr; I32», Cn [mem, Buf]] — epilogue + store for one folded cell,
+    // threading the output buffer as the nest's write-back target. It receives the full loop
+    // vector; only the leading `ro` output coordinates are read (the trailing reduction slots are
+    // exhausted loop values and are replaced by zeros for `acc_out`).
+    auto wdom = sched_dom->proj(3, 2)->as<Pi>()->dom();
+    auto wn   = wdom->num_projs();
+    auto wb   = w.mut_con(wdom)->set("wb");
+    {
+        auto wm   = wb->var(wn, 0);
+        auto wu   = wb->var(wn, 1);
+        auto wv   = wb->var(wn, 2);
+        auto wk   = wb->var(wn, wn - 1);
+        auto wovs = load_ivs(wb, wn, 3, nloops);
+        DefVec wb_iters(nloops);
+        for (u64 i = 0; i < ro; ++i)
+            wb_iters[i] = w.call(core::conv::u, Sr->proj(nloops, i), wovs[i]);
+        for (u64 j = 0; j < rr; ++j)
+            wb_iters[ro + j] = w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(i32, 0));
+        auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wm);
+
+        auto pcur = wc_mem;
+        DefVec post_elems(nps_nat);
+        for (u64 j = 0; j < nps_nat; ++j) {
+            auto sps_j = Sps->proj(nps_nat, j);
+            auto [pc_mem, pcoords]
+                = affine_map(post_accs->proj(nps_nat, j), Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords, pcur);
+            pcur                  = pc_mem;
+            auto p_buf            = new_post_is->proj(nps_nat, j);
+            auto [pr, ps_, pT]    = Axm::isa<buffer::Buf>(p_buf->type())->args<3>();
+            auto [prd_mem, p_val] = buffer::op_read(pr, ps_, pT, pcur, p_buf, fold_index(sps_j, pcoords))->projs<2>();
+            pcur                  = prd_mem;
+            post_elems[j]         = p_val;
+        }
+        auto after_post            = mem::mut_con(Tp)->set("afterPost");
+        auto [post_mem, elem_post] = after_post->vars<2>();
+        auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, fold_index(So, write_coords), elem_post);
+        after_post->app(true, wk, w.tuple({stored->proj(0), stored->proj(1)}));
+        wb->app(true, post, w.tuple({w.tuple({pcur, wv, w.tuple(post_elems)}), after_post}));
+    }
+
+    // Apply the nest; the output buffer is threaded through as the nest's write-back target and
+    // yielded straight to the op's continuation.
+    fun->app(true, w.app(nest, w.tuple({init, cell, wb})), w.tuple({a_mem, out_buf, cont}));
 
     return call;
 }

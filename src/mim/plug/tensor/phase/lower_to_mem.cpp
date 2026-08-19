@@ -137,12 +137,19 @@ void LowerToMem::collect_tensor_types() {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
-            // Lams passed inside a tensor op's curry chain (combiners, affine index maps) are element-level.
+            // Lams passed inside a tensor op's curry chain (combiners, affine index maps, schedule
+            // nests) are element-level — TRANSITIVELY, including their local helper lams: e.g. the
+            // loop-vector prefixes «r; I32» inside a schedule nest must not be mistaken for value
+            // tensors of a recorded «r; I32» tensor type.
             if (is_tensor_op(app)) {
-                for (const App* a = app; a; a = a->callee()->isa<App>()) {
-                    if (auto k = a->arg()->isa_mut<Lam>()) op_args_.emplace(k);
-                    for (auto op : a->arg()->ops())
-                        if (auto k = op ? op->isa_mut<Lam>() : nullptr) op_args_.emplace(k);
+                unique_queue<DefSet> wl3;
+                for (const App* a = app; a; a = a->callee()->isa<App>())
+                    wl3.push(a->arg());
+                while (!wl3.empty()) {
+                    auto d = wl3.pop();
+                    if (auto k = d->isa_mut<Lam>()) op_args_.emplace(k);
+                    for (auto op : d->ops())
+                        if (op) wl3.push(op);
                 }
             }
         }
@@ -360,10 +367,24 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
         return lower_call(app, callee);
 
     // Call of a converted continuation (a local lam or a parameter var whose domain mentions a tensor):
-    // materialize value-world tensor arguments into buffers. Element-level lams (op_args_) keep value ABI.
+    // materialize value-world tensor arguments into buffers. Element-level lams (op_args_) — and their
+    // continuation PARAMETERS (e.g. a schedule nest's `cell`, whose «r; I32» loop vector may look like
+    // a recorded tensor type) — keep value ABI.
     if (auto pi = Pi::isa_cn(app->callee()->type()); pi && mentions_tensor(pi->dom())) {
-        if (auto callee = app->callee()->isa_mut<Lam>(); callee && op_args_.contains(callee))
-            return RWPhase::rewrite_imm_App(app);
+        auto elementwise = [&](const Def* callee) {
+            if (auto lam = callee->isa_mut<Lam>()) return op_args_.contains(lam);
+            for (auto d = callee; d;) {
+                if (auto ex = d->isa<Extract>()) {
+                    d = ex->tuple();
+                    continue;
+                }
+                if (auto var = d->isa<Var>())
+                    if (auto lam = var->binder()->isa_mut<Lam>()) return op_args_.contains(lam);
+                break;
+            }
+            return false;
+        };
+        if (elementwise(app->callee())) return RWPhase::rewrite_imm_App(app);
         auto& w = new_world();
         return w.app(rewrite(app->callee()), materialize(pi->dom(), app->arg()));
     }
