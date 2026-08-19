@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <print>
 
 #include <fe/arena.h>
 
@@ -48,34 +49,23 @@ private:
                 return "n_"s + (n->def ? std::to_string(n->def->tid()) : "root"s) + "_"s + std::to_string(n->id);
             };
 
-            std::println(os, "{} [tooltip=\"gid: {}, min: {}\"];", node2str(this), def ? def->gid() : 0, min);
+            std::print(os, "{} [tooltip=\"gid: {}, min: {}\"];\n", node2str(this), def ? def->gid() : 0, min);
 
-            for (const auto& [def, child] : children)
-                std::println(os, "{} -> {}", node2str(this), node2str(child.get()));
+            for (const auto& [_, child] : children)
+                std::print(os, "{} -> {}\n", node2str(this), node2str(child.get()));
             for (const auto& [_, child] : children)
                 child->dot(os);
-
-#if 0
-            // clang-format off
-            if (auto par = LCT::path_parent()) std::println(os, "{} -> {} [constraint=false,color=\"#0000ff\",style=dashed];", node2str(this), node2str(par));
-            if (auto top = aux.top      ) std::println(os, "{} -> {} [constraint=false,color=\"#ff0000\"];", node2str(this), node2str(top));
-            if (auto bot = aux.bot      ) std::println(os, "{} -> {} [constraint=false,color=\"#00ff00\"];", node2str(this), node2str(bot));
-            // clang-format on
-#endif
         }
 
         ///@name Getters
         ///@{
-        constexpr bool is_root() const noexcept { return def == 0; }
+        constexpr bool is_root() const noexcept { return def == nullptr; }
 
+        /// All tids on the path from the trie root to `this` live within `[Node::min, Node::def->tid()]`.
         [[nodiscard]] bool contains(D* d) noexcept {
-            auto tid = d->tid();
-            // clang-format off
-            if (tid == this->min || tid == this->def->tid()) return true;
-            if (tid <  this->min || tid >  this->def->tid()) return false;
-            // clang-format on
-
-            return LCT::contains(d);
+            size_t tid = d->tid(), lo = min, hi = def->tid();
+            if (tid == lo || tid == hi) return true;
+            return lo < tid && tid < hi && LCT::contains(d);
         }
 
         using LCT::find;
@@ -90,19 +80,15 @@ private:
     };
 
     struct Data {
-        constexpr Data() noexcept = default;
         constexpr Data(size_t size) noexcept
             : size(size) {}
 
-        size_t size = 0;
+        size_t size;
         D* elems[];
 
         struct Equal {
             constexpr bool operator()(const Data* d1, const Data* d2) const noexcept {
-                bool res = d1->size == d2->size;
-                for (size_t i = 0, e = d1->size; res && i != e; ++i)
-                    res &= d1->elems[i] == d2->elems[i];
-                return res;
+                return d1->size == d2->size && std::equal(d1->begin(), d1->end(), d2->begin());
             }
         };
 
@@ -190,10 +176,9 @@ public:
 
             /// @name Comparisons
             ///@{
-            // clang-format off
-            constexpr bool operator==(iterator other) const noexcept { return this->tag_ == other.tag_ && this->ptr_ == other.ptr_; }
-            constexpr bool operator!=(iterator other) const noexcept { return this->tag_ != other.tag_ || this->ptr_ != other.ptr_; }
-            // clang-format on
+            constexpr bool operator==(iterator other) const noexcept {
+                return this->tag_ == other.tag_ && this->ptr_ == other.ptr_;
+            }
             ///@}
 
             /// @name Dereference
@@ -207,18 +192,14 @@ public:
                 }
             }
 
-            constexpr pointer operator->() const noexcept { return this->operator*(); }
+            constexpr value_type operator->() const noexcept { return this->operator*(); }
             ///@}
 
-            iterator& clear() noexcept {
-                tag_ = Tag::Null;
-                ptr_ = 0;
-                return *this;
-            }
+            constexpr iterator& clear() noexcept { return *this = {}; }
 
         private:
-            Tag tag_;
-            uintptr_t ptr_;
+            Tag tag_       = Tag::Null;
+            uintptr_t ptr_ = 0;
 
             friend class Set;
         };
@@ -249,7 +230,7 @@ public:
             return ptr_ == 0;
         }
 
-        constexpr explicit operator bool() const noexcept { return ptr_ != 0; } ///< Not empty?
+        constexpr explicit operator bool() const noexcept { return !empty(); } ///< Not empty?
         ///@}
 
         /// @name Check Membership
@@ -341,7 +322,6 @@ public:
         /// @name Comparisons
         ///@{
         constexpr bool operator==(Set other) const noexcept { return this->ptr_ == other.ptr_; }
-        constexpr bool operator!=(Set other) const noexcept { return this->ptr_ != other.ptr_; }
         ///@}
 
         /// @name Output
@@ -363,7 +343,7 @@ public:
         constexpr Tag tag() const noexcept { return Tag(ptr_ & uintptr_t(0b11)); }
         template<class T>
         constexpr T* ptr() const noexcept {
-            return std::bit_cast<T*>(ptr_ & (uintptr_t(-2) << uintptr_t(2)));
+            return std::bit_cast<T*>(ptr_ & ~uintptr_t(0b11));
         }
         // clang-format off
         constexpr D*    isa_uniq() const noexcept { return tag() == Tag::Uniq ? ptr<D   >() : nullptr; }
@@ -399,10 +379,9 @@ public:
 
     /// Create a Set wih all elements in @p v.
     [[nodiscard]] Set create(Vector<D*> v) {
-        auto vb = v.begin();
-        auto ve = v.end();
-        std::sort(vb, ve, [](D* d1, D* d2) { return d1->gid() < d2->gid(); });
-        auto vu   = std::unique(vb, ve);
+        std::sort(v.begin(), v.end(), gid_lt);
+        auto vb   = v.begin();
+        auto vu   = std::unique(vb, v.end());
         auto size = std::distance(vb, vu);
 
         if (size == 0) return {};
@@ -432,48 +411,32 @@ public:
 
         if (auto src = s.isa_data()) {
             auto size = src->size;
-            if (size + 1 <= N) {
-                auto [dst, state] = allocate(size + 1);
+            assert(size <= N);
 
-                // copy over and insert new element d
-                bool ins = false;
-                for (auto si = src->begin(), di = dst->begin(), se = src->end(); si != se || !ins; ++di) {
-                    if (si != se && d == *si) { // already here
-                        data_arena_.deallocate(state);
-                        return s;
-                    }
+            for (auto e : *src)
+                if (d == e) return s; // already here
 
-                    if (!ins && (si == se || d->gid() < (*si)->gid()))
-                        *di = d, ins = true;
-                    else
-                        *di = *si++;
-                }
-
-                return unify(dst, state);
-            } else { // we need to switch from Data to Node
-                auto [dst, state] = allocate(size + 1);
-
-                // copy over
-                auto di = dst->begin();
-                for (auto si = src->begin(), se = src->end(); si != se; ++si, ++di) {
-                    if (d == *si) { // already here
-                        data_arena_.deallocate(state);
-                        return s;
-                    }
-
-                    *di = *si;
-                }
-                *di = d; // put new element at last into dst->elems
-
-                // sort in ascending tids but 0 goes last
-                std::sort(dst->begin(), di,
-                          [](D* d1, D* d2) { return d1->tid() != 0 && (d2->tid() == 0 || d1->tid() < d2->tid()); });
-
-                auto res = root();
-                for (auto i = dst->begin(), e = dst->end(); i != e; ++i)
-                    res = insert(res, *i);
+            if (size == N) { // one more element is too much for a Data set: switch over to the trie
+                // Use the data arena as scratch space for the N + 1 elements; since create_trie only draws from
+                // node_arena_, it is ours to throw away again afterwards.
+                auto [scratch, state] = allocate(N + 1);
+                auto o                = std::copy(src->begin(), src->end(), scratch->begin());
+                *o++                  = d;
+#ifndef NDEBUG
+                auto scratch_state = data_arena_.state();
+#endif
+                auto res = create_trie(scratch->begin(), o);
+                assert(scratch_state == data_arena_.state() && "create_trie must only draw from node_arena_");
+                data_arena_.deallocate(state);
                 return res;
             }
+
+            auto [dst, state] = allocate(size + 1);
+            auto i            = std::upper_bound(src->begin(), src->end(), d, gid_lt); // where d belongs
+            auto o            = std::copy(src->begin(), i, dst->begin());
+            *o++              = d;
+            std::copy(i, src->end(), o);
+            return unify(dst, state);
         }
 
         if (auto n = s.isa_node()) {
@@ -496,12 +459,14 @@ public:
         auto d2 = s2.isa_data();
         if (d1 && d2) {
             // Both operands are ordered by gid and duplicate-free, so a linear merge yields the union directly -
-            // no heap allocation, no sort, no std::unique pass.
-            // A Data set holds at most N elements, hence the union fits into 2N.
-            auto buff = std::array<D*, 2 * N>();
+            // no sort, no std::unique pass.
+            // Its final size is only known afterwards, so allocate the upper bound `d1->size + d2->size` and merge
+            // straight into it; every dropped duplicate leaves one slot of excess at the tail that unify releases
+            // again.
+            auto [data, state] = allocate(d1->size + d2->size);
             auto i1 = d1->begin(), e1 = d1->end();
             auto i2 = d2->begin(), e2 = d2->end();
-            auto o = buff.begin();
+            auto o = data->begin();
 
             while (i1 != e1 && i2 != e2) {
                 auto g1 = (*i1)->gid();
@@ -516,14 +481,20 @@ public:
             o = std::copy(i1, e1, o);
             o = std::copy(i2, e2, o);
 
-            auto size = size_t(o - buff.begin());
-            if (size <= N) {
-                auto [data, state] = allocate(size);
-                std::copy(buff.begin(), o, data->begin());
-                return unify(data, state);
+            auto size = size_t(o - data->begin());
+            if (size > N) { // too big for a Data set: switch over to the trie
+#ifndef NDEBUG
+                auto scratch_state = data_arena_.state();
+#endif
+                auto res = create_trie(data->begin(), o); // only draws from node_arena_ ...
+                assert(scratch_state == data_arena_.state() && "create_trie must only draw from node_arena_");
+                data_arena_.deallocate(state); // ... so data is ours to throw away again
+                return res;
             }
 
-            return create_trie(buff.begin(), o); // too big for an array: switch over to the trie
+            auto excess = data->size - size; // data->size is still the upper bound we allocated
+            data->size  = size;
+            return unify(data, state, excess);
         }
 
         auto n1 = s1.isa_node();
@@ -545,24 +516,21 @@ public:
         if (auto u = s.isa_uniq()) return d == u ? Set() : s;
 
         if (auto data = s.isa_data()) {
-            size_t i = 0, size = data->size;
-            for (; i != size; ++i)
-                if (data->elems[i] == d) break;
+            auto b = data->begin(), e = data->end();
+            auto i = std::find(b, e, d);
+            if (i == e) return s; // not in here
 
-            if (i == size--) return s;
+            auto size = data->size - 1;
             if (size == 0) return {};
-            if (size == 1) return {i == 0 ? data->elems[1] : data->elems[0]};
+            if (size == 1) return {i == b ? b[1] : b[0]};
 
             assert(size <= N);
             auto [new_data, state] = allocate(size);
-            auto db                = data->begin();
-            std::copy(db + i + 1, data->end(), std::copy(db, db + i, new_data->elems)); // copy over, skip i
-
+            std::copy(i + 1, e, std::copy(b, i, new_data->begin())); // copy over, skip i
             return unify(new_data, state);
         }
 
         if (auto n = s.isa_node()) {
-            if (d->tid() == 0 || d->tid() < n->min) return n;
             if (!n->contains(d)) return n;
 
             auto res = erase(n, d);
@@ -586,11 +554,11 @@ public:
     }
 
     void dot(std::ostream& os) const {
-        os << "digraph {{" << std::endl;
-        os << "ordering=out;" << std::endl;
-        os << "node [shape=box,style=filled];" << std::endl;
+        std::print(os, "digraph {{\n");
+        std::print(os, "ordering=out;\n");
+        std::print(os, "node [shape=box,style=filled];\n");
         root()->dot(os);
-        os << "}}" << std::endl;
+        std::print(os, "}}\n");
     }
 
     friend void swap(Sets& s1, Sets& s2) noexcept {
@@ -612,32 +580,39 @@ private:
         return def;
     }
 
-    // get rid of clang warnings
-    template<class T>
-    inline static constexpr size_t SizeOf = sizeof(std::conditional_t<std::is_pointer_v<T>, uintptr_t, T>);
+    /// Data sets are ordered by `D::gid`.
+    static constexpr bool gid_lt(D* d1, D* d2) noexcept { return d1->gid() < d2->gid(); }
 
-    // array helpers
+    /// @name Data helpers
+    ///@{
     std::pair<Data*, fe::Arena::State> allocate(size_t size) {
-        auto bytes = sizeof(Data) + size * SizeOf<D>;
+        auto bytes = sizeof(Data) + size * sizeof(D*);
         auto state = data_arena_.state();
         auto buff  = data_arena_.allocate(bytes, alignof(Data));
         auto data  = new (buff) Data(size);
         return {data, state};
     }
 
+    /// Hash-conses @p data; rolls the arena back to @p state, if an equal Data is already pooled.
+    /// Pass the number of trailing elements allocated but not used as @p excess to release them again.
     Set unify(Data* data, fe::Arena::State state, size_t excess = 0) {
         assert(data->size != 0);
         auto [i, ins] = pool_.emplace(data);
         if (ins) {
-            data_arena_.deallocate(excess * SizeOf<D>); // release excess memory
+            data_arena_.deallocate(excess * sizeof(D*)); // data is the arena's most recent allocation
             return Set(data);
         }
 
         data_arena_.deallocate(state);
         return Set(*i);
     }
+    ///@}
 
     /// Builds a trie Set from the *unique* elements in `[begin, end)`; reorders them in place.
+    /// @attention Must only ever draw from node_arena_.
+    /// Two callers use data_arena_ as scratch space and rewind it afterwards; drawing from data_arena_ in here
+    /// would pop pages that are still live - possibly including Data that pool_ still points at.
+    /// Both call sites assert this.
     template<class I>
     [[nodiscard]] Set create_trie(I begin, I end) {
         // Sorting is a performance optimization, not a correctness requirement:

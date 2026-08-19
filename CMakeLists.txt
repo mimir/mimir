@@ -40,6 +40,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}"
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}")
 
 option(BUILD_SHARED_LIBS    "Build shared libraries." ON)
+option(MIM_DEBUG_OPTIMIZE   "If ON, compile Debug builds with -Og instead of -O0." ON)
 option(MIM_BUILD_DOCS       "If ON, build the documentation (requires Doxygen)." OFF)
 option(MIM_BUILD_EXAMPLES   "If ON, build examples." OFF)
 option(MIM_BUILD_PYTHON     "If ON, build the mim Python package from py/ into ${CMAKE_BINARY_DIR}/.venv." ON)
@@ -56,6 +57,13 @@ if(WIN32)
     add_compile_definitions(NOMINMAX) # prevents windows.h defining min/max macros
 else()
     add_compile_options(-Wall -Wextra)
+endif()
+
+# -O0 makes Debug roughly 6x slower than it needs to be while adding little over -Og for most debugging.
+# Assertions and MIM_ENABLE_CHECKS are unaffected - only the optimizer changes.
+# Switch this OFF when stepping through code, as -Og optimizes away some locals.
+if(MIM_DEBUG_OPTIMIZE AND NOT MSVC)
+    add_compile_options($<$<CONFIG:Debug>:-Og>)
 endif()
 
 add_custom_target(mim_all)
