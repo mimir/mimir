@@ -146,6 +146,19 @@ public:
     Dbg& set(Loc loc) { return loc_ = loc, *this; }
     ///@}
 
+    /// @name Comparison and Hashing
+    /// Dbg%s are interned in the Driver so that a Def only has to store a `u32` index; see Def::dbg_.
+    ///@{
+    /// @note Like Loc::operator==, this only compares Loc::path by pointer identity.
+    bool operator==(const Dbg& other) const noexcept { return loc_ == other.loc_ && sym_ == other.sym_; }
+
+    template<class H>
+    friend H AbslHashValue(H h, Dbg dbg) noexcept {
+        return H::combine(std::move(h), dbg.loc_.path, dbg.loc_.begin.row, dbg.loc_.begin.col, dbg.loc_.finis.row,
+                          dbg.loc_.finis.col, dbg.sym_);
+    }
+    ///@}
+
 private:
     Loc loc_;
     Sym sym_;

@@ -3,6 +3,7 @@
 #include <list>
 #include <utility>
 
+#include <absl/container/flat_hash_map.h>
 #include <absl/container/node_hash_map.h>
 
 #include "mim/flags.h"
@@ -95,6 +96,17 @@ public:
     Imports& imports() { return imports_; }
     ///@}
 
+    /// @name Dbg Interning
+    /// A Def only stores a `u32` index into this table instead of a full Dbg; see Def::dbg_.
+    /// This lives in the Driver - not in the World - because both halves of a Dbg are already owned here:
+    /// Dbg::sym is interned in this Driver's fe::SymPool and Dbg::loc points into Imports::parsed_paths_.
+    /// Both outlive any individual World, so an index also stays valid when a RWPhase rebuilds the World.
+    /// Index `0` is always the empty Dbg.
+    ///@{
+    Dbg dbg(u32 idx) const { return dbgs_[idx]; }
+    u32 dbg(Dbg); ///< Interns @p dbg and yields its index.
+    ///@}
+
     /// @name Load Plugin
     /// Finds and loads a shared object file that implements the MimIR Plugin @p name.
     /// If \a name is an absolute path to a `.so`/`.dll` file, this is used.
@@ -148,6 +160,10 @@ private:
     Normalizers normalizers_;
     fe::SymMap<Vector<std::string>> plugin_args_;
     Imports imports_;
+    Vector<Dbg> dbgs_                      = {Dbg()}; ///< Index 0 is the empty Dbg.
+    absl::flat_hash_map<Dbg, u32> dbg2idx_ = {
+        {Dbg(), 0}
+    };
 };
 
 #define GET_FUN_PTR(plugin, f) get_fun_ptr<decltype(f)>(plugin, #f)

@@ -6,6 +6,7 @@
 #include <fe/assert.h>
 #include <fe/hash.h>
 
+#include "mim/driver.h"
 #include "mim/rule.h"
 #include "mim/world.h"
 
@@ -494,6 +495,13 @@ Sym Def::sym(const char* s) const { return world().sym(s); }
 Sym Def::sym(std::string_view s) const { return world().sym(s); }
 Sym Def::sym(std::string s) const { return world().sym(std::move(s)); }
 
+Dbg Def::dbg() const { return world().driver().dbg(dbg_); }
+void Def::set_dbg(Dbg d) const { dbg_ = world().driver().dbg(d); }
+
+void Def::set_loc(Driver& driver, Loc l) const {
+    if (auto d = driver.dbg(dbg_); !d.loc()) dbg_ = driver.dbg(d.set(l));
+}
+
 const Def* Def::unfold_type() const {
     if (auto t = type()) return t;
     auto& w = world();
@@ -513,6 +521,12 @@ std::string_view Def::node_name() const {
 }
 
 Defs Def::deps() const noexcept {
+    // deps() hands out `[type_, op0, op1, ...]` as one contiguous array by stepping back from ops_ptr()
+    // (which is `this + 1`). That only holds while type_ occupies the *last* 8 bytes of Def, so moving it
+    // - or appending any member after it - would silently corrupt every deps() walk.
+    assert((const void*)(ops_ptr() - 1) == (const void*)&type_
+           && "Def::type_ must stay Def's last member: Def::deps() and Def::ops_ptr() depend on it");
+
     if (isa<Type>() || isa<Univ>()) return Defs();
     if (isa<Var>()) return Defs(); // the binder lives in binder_, not in an op
     assert(type_);
@@ -541,8 +555,8 @@ bool Def::is_term() const {
 }
 
 #ifndef NDEBUG
-const Def* Def::debug_prefix(std::string prefix) const { return dbg_.set(world().sym(prefix + sym().str())), this; }
-const Def* Def::debug_suffix(std::string suffix) const { return dbg_.set(world().sym(sym().str() + suffix)), this; }
+const Def* Def::debug_prefix(std::string prefix) const { return set_dbg(dbg().set(sym(prefix + sym().str()))), this; }
+const Def* Def::debug_suffix(std::string suffix) const { return set_dbg(dbg().set(sym(sym().str() + suffix))), this; }
 #endif
 
 /*

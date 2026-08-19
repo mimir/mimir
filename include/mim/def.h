@@ -67,6 +67,7 @@ class App;
 class Axm;
 class Var;
 class Def;
+class Driver;
 class World;
 
 /// @name Def
@@ -576,9 +577,9 @@ public:
 
     /// @name Dbg Getters
     ///@{
-    Dbg dbg() const { return dbg_; }
-    Loc loc() const { return dbg_.loc(); }
-    Sym sym() const { return dbg_.sym(); }
+    Dbg dbg() const; ///< Looks up Def::dbg_ in Driver::dbg.
+    Loc loc() const { return dbg().loc(); }
+    Sym sym() const { return dbg().sym(); }
     std::string unique_name() const; ///< name + "_" + Def::gid
     ///@}
 
@@ -586,10 +587,10 @@ public:
     /// Every subclass `S` of Def has the same setters that return `S*`/`const S*` via the mixin Setters.
     ///@{
     // clang-format off
-    template<bool Ow = false> const Def* set(Loc l) const { if (Ow || !dbg_.loc()) dbg_.set(l); return this; }
-    template<bool Ow = false>       Def* set(Loc l)       { if (Ow || !dbg_.loc()) dbg_.set(l); return this; }
-    template<bool Ow = false> const Def* set(Sym s) const { if (Ow || !dbg_.sym()) dbg_.set(s); return this; }
-    template<bool Ow = false>       Def* set(Sym s)       { if (Ow || !dbg_.sym()) dbg_.set(s); return this; }
+    template<bool Ow = false> const Def* set(Loc l) const { if (auto d = dbg(); Ow || !d.loc()) set_dbg(d.set(l)); return this; }
+    template<bool Ow = false>       Def* set(Loc l)       { if (auto d = dbg(); Ow || !d.loc()) set_dbg(d.set(l)); return this; }
+    template<bool Ow = false> const Def* set(Sym s) const { if (auto d = dbg(); Ow || !d.sym()) set_dbg(d.set(s)); return this; }
+    template<bool Ow = false>       Def* set(Sym s)       { if (auto d = dbg(); Ow || !d.sym()) set_dbg(d.set(s)); return this; }
     template<bool Ow = false> const Def* set(       std::string s) const { set<Ow>(sym(std::move(s))); return this; }
     template<bool Ow = false>       Def* set(       std::string s)       { set<Ow>(sym(std::move(s))); return this; }
     template<bool Ow = false> const Def* set(Loc l, Sym s        ) const { set<Ow>(l); set<Ow>(s); return this; }
@@ -713,6 +714,14 @@ protected:
     Sym sym(const char*) const;
     Sym sym(std::string_view) const;
     Sym sym(std::string) const;
+    void set_dbg(Dbg) const; ///< Interns @p dbg via Driver::dbg and stores the index in Def::dbg_.
+
+    /// Like `set<false>(Loc)` but takes the Driver directly instead of going through Def::world().
+    /// World::unify/World::insert must use this: they call it between the arena state snapshot and a
+    /// possible deallocate() rewind, and Def::world() walks the type chain - where Def::type() on a
+    /// Var calls var_type() and can allocate. Those allocations would be silently discarded by the
+    /// rewind on a dedup hit, leaving dangling Def%s registered in the sea of nodes.
+    void set_loc(Driver&, Loc) const;
     ///@}
 
 private:
@@ -733,7 +742,6 @@ private:
     [[nodiscard]] static bool cmp_(const Def* a, const Def* b);
 
 protected:
-    mutable Dbg dbg_;
     union {
         NormalizeFn normalizer_; ///< Axm only: Axm%s use this member to store their normalizer.
         const Axm* axm_;         ///< App only: Curried App%s of Axm%s use this member to propagate the Axm.
@@ -746,7 +754,7 @@ protected:
     u8 trip_  = 0;
 
 private:
-    Node node_; // 8
+    Node node_; // node_t is u8; the four flags + dep_ below fill the remaining byte of this word
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
@@ -754,13 +762,17 @@ private:
     unsigned dep_       : 4;
     u32 mark_ = 0;
 #ifndef NDEBUG
-    size_t curr_op_ = 0;
+    u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too)
 #endif
     u32 gid_;
     u32 num_ops_;
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
+    /// Index into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
+    /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice. 0 is the empty Dbg.
+    /// @note Deliberately adjacent to Def::tid_ so the two `u32`s share one 8-byte slot.
+    mutable u32 dbg_ = 0;
     mutable u32 tid_ = 0;
     mutable const Def* type_;
 

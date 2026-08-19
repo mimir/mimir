@@ -733,7 +733,7 @@ private:
         auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
 
-        if (auto loc = get_loc()) def->set(loc);
+        if (auto loc = get_loc()) def->set_loc(driver(), loc);
 
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
@@ -777,7 +777,7 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
-        if (auto loc = get_loc()) def->set(loc);
+        if (auto loc = get_loc()) def->set_loc(driver(), loc);
 
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
