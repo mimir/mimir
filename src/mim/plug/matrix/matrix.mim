@@ -63,6 +63,7 @@ axm %matrix.sum: {pe: «2; Nat»}
 /// * `T` from `zero`, and `n` from `S` itself;
 /// * `m`, `NI`, `TI` and `SI` from `input` — `%%buffer.Buf` spells its rank, shape and element type out as
 ///   ordinary arguments, so they unify structurally (no nested-array peeling involved).
+///
 axm %matrix.map_reduce: {m: Nat}                     // number of inputs
                       → {T: *, n: Nat}               // output element type and rank
                       → [S: «n; Nat»]                // output shape
