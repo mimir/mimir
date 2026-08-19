@@ -142,6 +142,8 @@ lam %tensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «
 ///   dims of extents `so` yields.
 /// * the iteration domain `Sr` (leading `Ro` parallel dims, trailing `Rr` reduction dims) and the
 ///   result shape `So` — MLIR's getIterationDomain + getLoopIteratorTypes.
+/// * `oax`: which output axis each parallel dim writes — the piece of the write map the domain
+///   transforms need (`strip_mine_par` splits the output along `oax#d`).
 /// * the schedule `vdim`/`unroll` (see %%tensor.mk_sched): the chooser `retile` packs into the op.
 /// * `retile`: rebuild the computation over a *reindexed* domain, given the new domain and
 ///   schedule, `iota` (maps new loop vectors to old loop vectors) and `omega` (maps (old output
@@ -151,6 +153,7 @@ let Tileable = [
     Out: [ro: Nat, so: «ro; Nat»] → *,
     Ro: Nat, Rr: Nat,
     So: «Ro; Nat»,
+    oax: «Ro; Nat»,
     Sr: «%core.nat.add (Ro, Rr); Nat»,
     vdim: Nat, unroll: Nat,
     retile: [Ro_n Rr_n: Nat]
@@ -169,9 +172,12 @@ lam comp_map {A B C: *} (m: B → C, g: A → B) (o: A): C = m (g o);
 /// inputs through reindexed access maps. Epilogue-free (`nps = 0`) — impls build raw ops and the
 /// epilogue arrives later via `fuse_tensor` (epilogue-input access maps take output-cell
 /// coordinates, whose rank a domain transform may change).
-lam mr_tileable {nis: Nat}
+/// `oax` states which output axis `map_out` writes each parallel dim to (identity for the impls'
+/// projection write maps).
+lam %tensor.mr_tileable
+                {nis: Nat}
                 {To Tp: *, Ro Rr: Nat}
-                (So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
+                (So: «Ro; Nat», oax: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
                 {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                 (f: Fn [To, «i: nis; Tis#i»] → To, init: To, post: Fn [To, []] → Tp)
                 (map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»)
@@ -192,10 +198,10 @@ lam mr_tileable {nis: Nat}
             map_out_n
             (‹i: nis; comp_map (maps#i, iota)›, ())
             (is, ());
-    (out_t, Ro, Rr, So, Sr, %core.nat.add (Ro, Rr), 0, retile);
+    (out_t, Ro, Rr, So, oax, Sr, %core.nat.add (Ro, Rr), 0, retile);
 
 /// Materialize a Tileable over its current domain and schedule (identity reindexing).
-lam materialize (t: Tileable): t#Out (t#Ro, t#So) =
+lam %tensor.materialize (t: Tileable): t#Out (t#Ro, t#So) =
     lam id_i (o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «%core.nat.add (t#Ro, t#Rr); %affine.index» = o;
     lam id_o (oo: «t#Ro; %affine.index», o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «t#Ro; %affine.index» = oo;
     t#retile (t#Ro, t#Rr) (t#So, t#Sr, t#vdim, t#unroll) (id_i, id_o);
@@ -203,18 +209,18 @@ lam materialize (t: Tileable): t#Out (t#Ro, t#So) =
 /// vectorize: run the parallel dim `d` as the innermost loop, inside the reduction loops, over a
 /// row of accumulators — the unit-stride vectorization dim (per-cell fold order is unchanged).
 lam vectorize (t: Tileable, d: Nat): Tileable =
-    (t#Out, t#Ro, t#Rr, t#So, t#Sr, d, t#unroll, t#retile);
+    (t#Out, t#Ro, t#Rr, t#So, t#oax, t#Sr, d, t#unroll, t#retile);
 
 /// unroll_trailing: fully unroll the trailing `d` reduction dims into the loop body — e.g. a
 /// convolution's kh·kw window (`d = 2`). Their trip counts must be literals at lowering time.
 lam unroll_trailing (t: Tileable, d: Nat): Tileable =
-    (t#Out, t#Ro, t#Rr, t#So, t#Sr, t#vdim, d, t#retile);
+    (t#Out, t#Ro, t#Rr, t#So, t#oax, t#Sr, t#vdim, d, t#retile);
 
 /// interchange: permute the loop dims — new loop j iterates old dim perm#j. Loop order and write
 /// position are decoupled by the write map, so So is untouched. The permutation must keep parallel
 /// dims parallel (perm#j < Ro iff j < Ro), enforced at compile time; the schedule's `vdim` moves to
 /// its new position.
-lam interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»): Tileable =
+lam %tensor.interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»): Tileable =
     let r = %core.nat.add (t#Ro, t#Rr);
     let perm_ok = ‹j: r; let jj = %core.bitcast Nat j;
                          %refly.check (%core.icmp.e @2 (%core.ncmp.l (jj, t#Ro), %core.ncmp.l (perm#j, t#Ro)),
@@ -224,6 +230,9 @@ lam interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»): Tileab
     let vdim_n = %core.select (%core.ncmp.l (t#vdim, r),
                                %core.bitcast Nat ((%vec.first %core.ncmp.e (perm_ok, t#vdim))#1_2),
                                t#vdim);
+    // The parallel dims permute among themselves (checked above), so the new dim j writes the
+    // output axis its old dim perm#j wrote.
+    let oax_n = ‹j: t#Ro; t#oax#(%core.idx (t#Ro) 0 (perm_ok#(%core.idx r 0 (%core.bitcast Nat j))))›;
     // iota: old dim i is found at the new position j with perm#j = i.
     lam iota_p (o: «r; %affine.index»): «r; %affine.index» =
         ‹i: r; o#((%vec.first %core.ncmp.e (perm_ok, %core.bitcast Nat i))#1_2)›;
@@ -233,7 +242,109 @@ lam interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»): Tileab
                   omega: [«t#Ro; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
                : t#Out (ro_m, so_m) =
         t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (comp_map (iota_p, iota), omega);
-    (t#Out, t#Ro, t#Rr, t#So, sr_n, vdim_n, t#unroll, retile_n);
+    (t#Out, t#Ro, t#Rr, t#So, oax_n, sr_n, vdim_n, t#unroll, retile_n);
+///
+/// ### Domain transforms: strip-mining
+///
+/// Strip-mining is a pure DOMAIN transform (cf. TilingInterface's "op[N] → op[N/ts, ts]"): the
+/// `retile` interface absorbs it entirely — `iota` recombines the split loop vector and (for a
+/// parallel dim) `omega` splits the write coordinate — so the strip-mined computation is an
+/// ordinary %%tensor.map_reduce_post over a higher-rank domain with composed access maps; the
+/// schedule operand and the lowering are untouched. Classic cache tiling is composition:
+/// strip-mine, then `interchange` the tile loops outward.
+
+/// Axis renumbering after inserting a new axis at position `a`.
+lam shift_ax (a x: Nat): Nat = %core.select (%core.ncmp.l (x, a), x, %core.nat.add (x, 1));
+
+/// Split bounds vector `v` (length n) at dim `d` into (nt, ts); the result arity `m` (= n+1) is
+/// passed explicitly, in the syntactic form the call site's types require (the checker does not
+/// re-associate %%core.nat.add symbolically).
+lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
+    ‹i: m; let ii = %core.bitcast Nat i;
+           %core.select (%core.ncmp.l (ii, d), v#(%core.idx n 0 ii),
+           %core.select (%core.ncmp.e (ii, d), nt,
+           %core.select (%core.ncmp.e (ii, %core.nat.add (d, 1)), ts,
+           v#(%core.idx n 0 (%core.nat.sub (ii, 1))))))›;
+
+/// Recombine a split loop vector (m = n+1): old#d = new#d · ts + new#(d+1).
+lam split_iota (m n d ts: Nat) (o: «m; %affine.index»): «n; %affine.index» =
+    ‹j: n; let jj = %core.bitcast Nat j;
+           %core.select (%core.ncmp.l (jj, d), o#(%core.idx m 0 jj),
+           %core.select (%core.ncmp.e (jj, d),
+                         %affine.op.add (%affine.semiop.mul (o#(%core.idx m 0 d), ts),
+                                         o#(%core.idx m 0 (%core.nat.add (d, 1)))),
+           o#(%core.idx m 0 (%core.nat.add (jj, 1)))))›;
+
+/// Split an output coordinate vector (m = n+1): new#a = old#a ⌊/⌋ ts, new#(a+1) = old#a mod ts.
+lam split_omega (m n a ts: Nat) (oc: «n; %affine.index»): «m; %affine.index» =
+    ‹j: m; let jj = %core.bitcast Nat j;
+           %core.select (%core.ncmp.l (jj, a), oc#(%core.idx n 0 jj),
+           %core.select (%core.ncmp.e (jj, a), %affine.semiop.floordiv (oc#(%core.idx n 0 a), ts),
+           %core.select (%core.ncmp.e (jj, %core.nat.add (a, 1)), %affine.semiop.mod (oc#(%core.idx n 0 a), ts),
+           oc#(%core.idx n 0 (%core.nat.sub (jj, 1))))))›;
+
+/// Checks that `ts` exactly divides the extent `sd` (discharges symbolically for factored extents).
+lam check_div (sd ts: Nat): Nat =
+    %refly.check (%core.ncmp.e (%core.nat.mul (%core.nat.div (sd, ts), ts), sd),
+                  sd, "strip_mine: tile size must divide the extent");
+
+/// strip_mine_red: split reduction dim `d` (Ro ≤ d < Ro + Rr) of extent N into two adjacent
+/// reduction dims (N/ts, ts). If the split lands inside the trailing unroll window, both halves
+/// unroll — the tap count is unchanged.
+lam %tensor.strip_mine_red (t: Tileable, d ts: Nat): Tileable =
+    let r   = %core.nat.add (t#Ro, t#Rr);
+    let r_n = %core.nat.add (t#Ro, %core.nat.add (t#Rr, 1));
+    let nt  = %core.nat.div (check_div (t#Sr#(%core.idx r 0 d), ts), ts);
+    let vdim_n   = %core.select (%core.ncmp.l (t#vdim, t#Ro), t#vdim, r_n);
+    let unroll_n = %core.select (%core.ncmp.l (d, %core.nat.sub (r, t#unroll)),
+                                 t#unroll, %core.nat.add (t#unroll, 1));
+    lam retile_n (ro_m rr_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat», vdim_m unroll_m: Nat)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r_n; %affine.index»,
+                  omega: [«t#Ro; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+               : t#Out (ro_m, so_m) =
+        t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m)
+                 (comp_map (split_iota (r_n, r, d, ts), iota), omega);
+    (t#Out, t#Ro, %core.nat.add (t#Rr, 1), t#So, t#oax,
+     split_bounds (r_n, r, t#Sr, d, ts, nt), vdim_n, unroll_n, retile_n);
+
+/// strip_mine_par: split parallel dim `d` (d < Ro) into two adjacent parallel dims. The result
+/// shape splits along the output axis `d` writes (`oax#d`), so the materialized tensor is *packed*
+/// («…, N/ts, ts, …» along that axis); a row-major reshape restores the original shape — and in a
+/// fused graph `fuse_tensor`'s read-through absorbs it into the consumers' access maps.
+lam %tensor.strip_mine_par (t: Tileable, d ts: Nat): Tileable =
+    let r    = %core.nat.add (t#Ro, t#Rr);
+    let ro_n = %core.nat.add (t#Ro, 1);
+    let r_n  = %core.nat.add (%core.nat.add (t#Ro, 1), t#Rr);
+    let a    = t#oax#(%core.idx (t#Ro) 0 d);
+    let sd   = %refly.check (%core.ncmp.e (t#So#(%core.idx (t#Ro) 0 a), t#Sr#(%core.idx r 0 d)),
+                             t#Sr#(%core.idx r 0 d),
+                             "strip_mine_par: output extent (at oax#d) must match domain extent");
+    let nt   = %core.nat.div (check_div (sd, ts), ts);
+    // The split dim writes the split axis pair; all other dims write their old axis, renumbered
+    // around the insertion at `a`. The unit-stride half is the inner one: a vdim at `d` moves to
+    // `d + 1`.
+    let oax_n = ‹j: ro_n; let jj = %core.bitcast Nat j;
+                          %core.select (%core.ncmp.l (jj, d), shift_ax (a, t#oax#(%core.idx (t#Ro) 0 jj)),
+                          %core.select (%core.ncmp.e (jj, d), a,
+                          %core.select (%core.ncmp.e (jj, %core.nat.add (d, 1)), %core.nat.add (a, 1),
+                          shift_ax (a, t#oax#(%core.idx (t#Ro) 0 (%core.nat.sub (jj, 1)))))))›;
+    let vdim_n = %core.select (%core.ncmp.l (t#vdim, t#Ro),
+                               %core.select (%core.ncmp.l (t#vdim, d), t#vdim, %core.nat.add (t#vdim, 1)),
+                               r_n);
+    lam retile_n (ro_m rr_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat», vdim_m unroll_m: Nat)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r_n; %affine.index»,
+                  omega: [«ro_n; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+               : t#Out (ro_m, so_m) =
+        lam iota_c  (o: «%core.nat.add (ro_m, rr_m); %affine.index»): «r; %affine.index» =
+            split_iota (r_n, r, d, ts) (iota o);
+        lam omega_c (oo: «t#Ro; %affine.index», ov: «%core.nat.add (ro_m, rr_m); %affine.index»): «ro_m; %affine.index» =
+            omega (split_omega (ro_n, t#Ro, a, ts) oo, ov);
+        t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (iota_c, omega_c);
+    (t#Out, ro_n, t#Rr,
+     split_bounds (ro_n, t#Ro, t#So, a, ts, nt), oax_n,
+     split_bounds (r_n, r, t#Sr, d, ts, nt), vdim_n, t#unroll, retile_n);
 
 /// ### Schedules as first-class functions
 ///
@@ -457,9 +568,9 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
     // kh·kw window into the loop body (constant tap offsets) when it fits the budget, and run `ow`
     // as the innermost, unit-stride loop — for a fixed tap, adjacent output pixels read adjacent
     // input pixels, so the vectorizer emits contiguous vector loads instead of gathers.
-    materialize (conv_schedule (kh, kw) (
-        mr_tileable @2 @(R#T, R#T, 4, 3)
-            ((n, cout, oh, ow), (n, cout, oh, ow, cin, kh, kw))
+    %tensor.materialize (conv_schedule (kh, kw) (
+        %tensor.mr_tileable @2 @(R#T, R#T, 4, 3)
+            ((n, cout, oh, ow), (0, 1, 2, 3), (n, cout, oh, ow, cin, kh, kw))
             @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
             (conv_fun R, R#_0, %tensor.id @(R#T))
             (%tensor.proj_map @(7, 4) (0, 1, 2, 3))
@@ -503,9 +614,9 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
     let s_padded = %tensor.shape 4 padded;
 
     // Schedule (frontend, selected from the parameters — see `pool_schedule`).
-    materialize (pool_schedule kernel (
-        mr_tileable @1 @(T, T, 4, 2)
-            ((n, c, s_out#0_2, s_out#1_2), (n, c, s_out#0_2, s_out#1_2, kernel#0_2, kernel#1_2))
+    %tensor.materialize (pool_schedule kernel (
+        %tensor.mr_tileable @1 @(T, T, 4, 2)
+            ((n, c, s_out#0_2, s_out#1_2), (0, 1, 2, 3), (n, c, s_out#0_2, s_out#1_2, kernel#0_2, kernel#1_2))
             @(T, 4, s_padded)
             (pool_fun g, init, %tensor.id @T)
             (%tensor.proj_map @(6, 4) (0, 1, 2, 3))
@@ -579,8 +690,9 @@ lam %tensor.dot_product_impl
       let s_full   = %vec.cat (s_out, s_red);
       let n_loops  = %core.nat.add (r_out, nc);
       // Schedule (frontend, selected from the parameters — see `dot_schedule`).
-      materialize (dot_schedule r_out (
-          mr_tileable @2 @(R#T, R#T, r_out, nc) (s_out, s_full)
+      %tensor.materialize (dot_schedule r_out (
+          %tensor.mr_tileable @2 @(R#T, R#T, r_out, nc)
+              (s_out, ‹i: r_out; %core.bitcast Nat i›, s_full)
               @((R#T, R#T), (r1, r2), (s1, s2))
               (f, R#_0, %tensor.id @(R#T))
               (%tensor.proj_map @(n_loops, r_out) ‹i: r_out; %core.bitcast Nat i›)
