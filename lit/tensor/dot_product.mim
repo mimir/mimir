@@ -11,16 +11,22 @@ let R: %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
 
 let f = dot_general_fun R;
 
-// The 2x2 matrix product spelled out as a %tensor.map_reduce_post: loop domain (2, 2, 2) with one
-// contraction, the identity write map, the subscript projections out[i,j] += a[i,k] * b[k,j], and
-// the impl's schedule — vdim = 1 (the last output dim runs innermost) and no unrolling.
+// The 2x2 matrix product spelled out as a %tensor.map_reduce_post, carrying the impl's SELECTED
+// schedule: the contraction (extent 2, not divisible by 4) is strip-mined by the neutral tile —
+// loop domain (2, 2, 2, 1) with the split contraction recombined in the access maps as
+// k = ko·1 + ki — vdim = 1 (the last output dim runs innermost) and the 1-extent tile unrolled.
 // %tensor.dot_product_impl must reduce to exactly this operation (struc_eq below).
-let s_full = (2, 2, 2);
-let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 1)
-    ((2, 2), s_full, [N: *] → ([vdim unroll: Nat] → N) → N, %tensor.mk_sched (1, 0))
+lam mo_r (o: «4; %affine.index»): «2; %affine.index» = (o#0_4, o#1_4);
+lam ma_r (o: «4; %affine.index»): «2; %affine.index» =
+    (o#0_4, %affine.op.add (%affine.semiop.mul (o#2_4, 1), o#3_4));
+lam mb_r (o: «4; %affine.index»): «2; %affine.index» =
+    (%affine.op.add (%affine.semiop.mul (o#2_4, 1), o#3_4), o#1_4);
+let s_full = (2, 2, 2, 1);
+let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 2)
+    ((2, 2), s_full, [N: *] → ([vdim unroll: Nat] → N) → N, %tensor.mk_sched (1, 1))
     @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›), (), (), ()) (f, 0, %tensor.id @Nat)
-    (%tensor.proj_map @(3, 2) (0, 1))
-    ((%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1)), ())
+    mo_r
+    ((ma_r, mb_r), ())
     ((m, m), ());
 let dotd = %tensor.dot_product_impl R @(2, 2) (1₂, 0₂, (), ()) (m, m);
 let dot2d = %tensor.product_2d_impl R (m, m);

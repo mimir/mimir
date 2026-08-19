@@ -1,0 +1,29 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+
+// A matrix product whose extents are *runtime* values: dot_schedule's tile-size guard
+// (%tensor.if_static) cannot resolve at compile time, so the tensor lowering residualizes it to
+// the neutral tile (ts = 1) and the op lowers with symbolic bounds — the same selector serves
+// static shapes (register-blocked k) and dynamic shapes, with no staging annotation at the call
+// site.
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+// CHECK-DAG: fun extern mm_dyn
+fun extern mm_dyn {m k l: Nat} (a: «m, k; Nat», b: «k, l; Nat»): «m, l; Nat» =
+    return (%tensor.product_2d_impl (nat_ring ()) (a, b));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.internal_cleanup,
+        %tensor.lower_tensor,
+        %tensor.lower_map_reduce,
+        %compile.internal_cleanup,
+    );
+
+// The tile-size guard must not survive to the output: the lowering resolves it (to ts = 1 here).
+// CHECK-NOT: if_static

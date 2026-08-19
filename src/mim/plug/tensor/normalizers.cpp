@@ -275,6 +275,15 @@ const Def* normalize_pad(const Def*, const Def* c, const Def* arg) {
 
 const Def* normalize_concat(const Def*, const Def*, const Def*) { return nullptr; }
 
+const Def* normalize_if_static(const Def*, const Def*, const Def* arg) {
+    // `%tensor.if_static (k, s, d)` picks `s` once `k` has folded to a literal; a still-symbolic `k`
+    // keeps the App stuck, and the tensor lowerings residualize it to `d` (by lowering time,
+    // undecided means runtime).
+    auto [k, s, d] = arg->projs<3>();
+    if (Lit::isa(k)) return s;
+    return nullptr;
+}
+
 const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
     // `%tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
     auto& w = c->world();

@@ -132,6 +132,9 @@ void LowerToMem::collect_tensor_types() {
                         add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
                     }
                 }
+            } else if (Axm::isa<tensor::if_static>(app)) {
+                // Value-level binding-time dispatch; this phase's rewrite residualizes it to its
+                // dynamic branch - not a tensor op.
             } else if (auto [axm, curry, trip] = Axm::get(app);
                        axm && curry == 0 && axm->plugin() == tensor::Plugin_Id) {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
@@ -355,6 +358,9 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
 
 const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
+    // A `%tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
+    // its dynamic branch.
+    if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));
     if (Axm::isa<tensor::get>(app)) return lower_get(app);
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);

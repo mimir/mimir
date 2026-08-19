@@ -114,6 +114,16 @@ let SchedT = [N: *] → ([vdim unroll: Nat] → N) → N;
 /// reduction dims to unroll into straight-line code.
 lam %tensor.mk_sched (vdim unroll: Nat) (N: *) (mk: [vdim unroll: Nat] → N): N = mk (vdim, unroll);
 ///
+/// ### %%tensor.if_static
+///
+/// Binding-time dispatch for schedule selectors: picks `s` once `k` has folded to a literal
+/// (normalizer), and stays stuck while `k` is symbolic — a selector body under symbolic parameters
+/// keeps the choice open until instantiation. The tensor lowerings residualize any *still*-stuck
+/// occurrence to `d`: by lowering time an undecided `k` is a runtime value, so the dynamic branch
+/// is the only safe choice. This is what lets one selector serve compile-time and runtime extents
+/// without staging annotations at the call site.
+axm %tensor.if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
+///
 /// ### %%tensor.map_reduce
 ///
 /// %%tensor.map_reduce_post without the epilogue and with the neutral schedule: delegates with `post = %%tensor.id` (so `Tp = To`), no epilogue inputs (`nps = 0`), no vector dim, no unrolling.
@@ -357,26 +367,74 @@ let Schedule = Tileable → Tileable;
 
 lam sched_id (t: Tileable): Tileable = t;
 
-/// Unroll the trailing `d` reduction dims only while their tap product stays register-friendly.
-/// The dispatch selects the schedule VALUE (`(0, d)#cond`), not the whole record, so the Tileable
-/// stays a literal tuple under symbolic parameters and only the count resolves at instantiation.
-lam unroll_trailing_if (taps budget d: Nat) (t: Tileable): Tileable =
-    unroll_trailing (t, (0, d)#(%core.ncmp.le (taps, budget)));
+/// The greedy trailing-suffix unroll scan (the old lowering's budget scan): the number of trailing
+/// reduction dims whose tap product stays within `budget`. Folded innermost-first over the
+/// reduction dims with state (count, taps, alive); a dim whose extent is still open at lowering
+/// time stops the scan (%%tensor.if_static residualizes its step to "over budget").
+lam unroll_budget (t: Tileable, budget: Nat): Nat =
+    let r = %core.nat.add (t#Ro, t#Rr);
+    lam step (d: Nat, st: «3; Nat»): «3; Nat» =
+        let taps  = %core.nat.mul (st#1_3, t#Sr#(%core.idx r 0 d));
+        let ok    = %tensor.if_static (taps, (0, 1)#(%core.ncmp.le (taps, budget)), 0);
+        let alive = %core.nat.mul (st#2_3, ok);
+        (%core.nat.add (st#0_3, alive),
+         %core.select (%core.ncmp.e (alive, 1), taps, st#1_3),
+         alive);
+    let ds = ‹i: t#Rr; %core.nat.add (t#Ro, %core.bitcast Nat i)›;
+    (%vec.fold.r @(«3; Nat», Nat) @(t#Rr) step (ds, (0, 1, 1)))#0_3;
 
-/// The convolution schedule, selected from the parameters: run `ow` (parallel dim 3) as the
-/// innermost unit-stride loop, and unroll the kh·kw window while it stays within budget.
-lam conv_schedule (kh kw: Nat) (t: Tileable): Tileable =
-    unroll_trailing_if (%core.nat.mul (kh, kw), 32, 2) (vectorize (t, 3));
+/// Vectorize the parallel dim `d` only when `cond` holds; otherwise the sentinel "no vector dim".
+lam vectorize_if (t: Tileable, cond: Bool, d: Nat): Tileable =
+    vectorize (t, (%core.nat.add (t#Ro, t#Rr), d)#cond);
 
-/// The dot-product schedule: the last output dim is unit-stride in the right operand and invariant
-/// in the left one, so it runs innermost over a row of accumulators (GEMM-style vectorization).
+/// The convolution schedule, selected from the op's parameters — the old lowering's heuristics,
+/// now plain IR next to the op:
+/// * unroll the trailing reduction dims greedily while their tap product fits the register budget
+///   (the kh·kw window; a small cin joins it) — constant tap offsets, no window loops;
+/// * run `ow` (parallel dim 3) innermost with unit stride over a row of accumulators iff it beats
+///   the innermost *remaining* reduction dim on unit-stride/broadcast reads: ow reads the padded
+///   input at stride_w and is broadcast in the weight (score [stride_w = 1] + 1); an un-unrolled
+///   kw reads the input at dilation_w and the weight at unit stride ([dilation_w = 1] + 1 — the
+///   classic nest is already unit-stride, so vectorizing buys nothing); kh/cin score 0; with the
+///   whole reduction unrolled there is nothing to beat.
+/// Open extents/strides residualize to no unrolling and no vector dim (%%tensor.if_static).
+lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
+    let u     = unroll_budget (t, 32);
+    let s_ow  = %core.nat.add ((0, 1)#(%core.ncmp.e (stride#1_2, 1)), 1);
+    let s_red = %core.select (%core.ncmp.e (u, 0),
+                              %core.nat.add ((0, 1)#(%core.ncmp.e (dilation#1_2, 1)), 1),
+                              %core.select (%core.ncmp.l (u, t#Rr), 0, s_ow));
+    let ow    = t#Sr#(%core.idx (%core.nat.add (t#Ro, t#Rr)) 0 3);
+    let vec   = %tensor.if_static (%core.nat.mul (%core.nat.mul (stride#1_2, dilation#1_2), ow),
+                                   %core.ncmp.l (s_red, s_ow), ff);
+    unroll_trailing (vectorize_if (t, vec, 3), u);
+
+/// The dot-product schedule, selected from the op's parameters: the last output dim is unit-stride
+/// in the right operand and invariant in the left one, so it runs innermost over a row of
+/// accumulators (GEMM-style vectorization). The innermost contraction is register-blocked — strip-
+/// mined by 4 and the tile unrolled — when its extent is compile-time known and divisible; an
+/// extent still open at lowering time (a runtime shape) takes the neutral tile (`ts = 1`) via
+/// %%tensor.if_static, so one selector serves static and dynamic shapes.
 lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
-    vectorize (t, %core.nat.sub (r_out, 1));
+    let r  = %core.nat.add (t#Ro, t#Rr);
+    let d  = %core.nat.sub (r, 1);
+    let K  = t#Sr#(%core.idx r 0 d);
+    let ts = %tensor.if_static (K, (1, 4)#(%core.ncmp.e (%core.nat.mul (%core.nat.div (K, 4), 4), K)), 1);
+    unroll_trailing (%tensor.strip_mine_red (vectorize (t, %core.nat.sub (r_out, 1)), d, ts), 1);
 
-/// The pooling schedule: unroll the window while it stays within budget; `ow` is the vector dim
-/// (a no-op while the whole reduction unrolls, but kicks in for large windows).
-lam pool_schedule (kernel: «2; Nat») (t: Tileable): Tileable =
-    unroll_trailing_if (%core.nat.mul (kernel#0_2, kernel#1_2), 32, 2) (vectorize (t, 3));
+/// The pooling schedule: unroll the window while it stays within budget. Pooling reads its single
+/// input in every loop dim (no broadcast operand), so `ow` scores [stride_w = 1] against an
+/// un-unrolled kw's [dilation_w = 1] — the row accumulator never wins and the nest stays classic.
+lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
+    let u     = unroll_budget (t, 32);
+    let s_ow  = (0, 1)#(%core.ncmp.e (stride#1_2, 1));
+    let s_red = %core.select (%core.ncmp.e (u, 0),
+                              (0, 1)#(%core.ncmp.e (dilation#1_2, 1)),
+                              %core.select (%core.ncmp.l (u, t#Rr), 0, s_ow));
+    let ow    = t#Sr#(%core.idx (%core.nat.add (t#Ro, t#Rr)) 0 3);
+    let vec   = %tensor.if_static (%core.nat.mul (%core.nat.mul (stride#1_2, dilation#1_2), ow),
+                                   %core.ncmp.l (s_red, s_ow), ff);
+    unroll_trailing (vectorize_if (t, vec, 3), u);
 ///
 /// ### %%tensor.repeat
 ///
@@ -568,7 +626,7 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
     // kh·kw window into the loop body (constant tap offsets) when it fits the budget, and run `ow`
     // as the innermost, unit-stride loop — for a fixed tap, adjacent output pixels read adjacent
     // input pixels, so the vectorizer emits contiguous vector loads instead of gathers.
-    %tensor.materialize (conv_schedule (kh, kw) (
+    %tensor.materialize (conv_schedule (stride, dilation) (
         %tensor.mr_tileable @2 @(R#T, R#T, 4, 3)
             ((n, cout, oh, ow), (0, 1, 2, 3), (n, cout, oh, ow, cin, kh, kw))
             @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
@@ -614,7 +672,7 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
     let s_padded = %tensor.shape 4 padded;
 
     // Schedule (frontend, selected from the parameters — see `pool_schedule`).
-    %tensor.materialize (pool_schedule kernel (
+    %tensor.materialize (pool_schedule (stride, dilation) (
         %tensor.mr_tileable @1 @(T, T, 4, 2)
             ((n, c, s_out#0_2, s_out#1_2), (0, 1, 2, 3), (n, c, s_out#0_2, s_out#1_2, kernel#0_2, kernel#1_2))
             @(T, 4, s_padded)

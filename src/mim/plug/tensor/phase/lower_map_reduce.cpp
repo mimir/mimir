@@ -456,6 +456,9 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
 }
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
+    // A `%tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
+    // its dynamic branch.
+    if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));
     if (auto bc = Axm::isa<tensor::broadcast>(app)) {
         if (auto res = lower_broadcast(bc)) return res;
     } else if (auto mr = Axm::isa<tensor::map_reduce_post>(app)) {
