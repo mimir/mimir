@@ -52,6 +52,28 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
 
+    // Canonicalize `def` through the accumulated lattice: a mid-round write is not yet replayed
+    // into the rewriter map, so different call sites may spell the same abstract value at
+    // different depths of an alias chain (e.g. a var vs the closure-env projection it was packed
+    // into). Joining the raw spellings makes the result depend on visit order - and alternate
+    // forever when the chain is cyclic (a value that only round-trips a loop via env and
+    // backedge). Chase to a fixed point; a cycle's minimum-gid member is its (per-round stable)
+    // representative.
+    {
+        auto chain = DefVec();
+        while ((def->isa<Var>() || def->isa<Extract>()) && !std::ranges::contains(chain, def)) {
+            auto l = lattice(def);
+            if (!l || l == def || l->isa<Proxy>()) break;
+            chain.emplace_back(def);
+            def = l;
+        }
+        if (auto i = std::ranges::find(chain, def); i != chain.end())
+            def = *std::min_element(i, chain.end(), [](auto a, auto b) { return a->gid() < b->gid(); });
+    }
+    // A chase that reaches `var` itself is a pure self-contribution (e.g. a loop backedge passing
+    // the var through unchanged): it joins nothing - other sites alone determine the value.
+    if (def == var) return lattice(var) ? lattice(var) : var;
+
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
     if (!def->isa<Proxy>() && lam->nests(def)) {
         DLOG("cannot propagate {} -> {}: out of scope", var, def);
