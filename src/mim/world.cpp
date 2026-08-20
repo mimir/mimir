@@ -177,6 +177,7 @@ const Def* World::umax(Defs ops_) {
 
     level_t lvl = 0;
     DefVec res;
+    res.reserve(ops.size());
     for (auto op : ops) {
         if (!op->type()->isa<Univ>())
             error(op->loc(), "operand '{}' of a universe max must be of type 'Univ' but is of type '{}'", op,
@@ -268,13 +269,8 @@ const Def* World::app(const Def* callee, const Def* arg) {
                 auto filter = rw.rewrite(lam->filter());
                 if (filter == lit_tt()) {
                     DLOG("partial evaluate: {} ({})", lam, arg);
-                    auto body        = rw.rewrite(lam->body());
-                    auto size        = sizeof(Reduct) + 2 * sizeof(const Def*);
-                    auto buf         = move_.arena.substs.allocate(size, alignof(const Def*));
-                    auto reduct      = new (buf) Reduct(2);
-                    reduct->defs_[0] = filter;
-                    reduct->defs_[1] = body;
-                    assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+                    auto body = rw.rewrite(lam->body());
+                    cache_reduct(var, arg, {filter, body});
                     return body;
                 }
             }
@@ -359,9 +355,7 @@ const Def* World::tuple(const Def* type, Defs ops_) {
 }
 
 const Def* World::tuple(Sym sym) {
-    DefVec defs;
-    std::ranges::transform(sym, std::back_inserter(defs), [this](auto c) { return lit_i8(c); });
-    return tuple(defs);
+    return tuple(DefVec(sym, [this](char c) { return lit_i8(c); }));
 }
 
 const Def* World::extract(const Def* d, const Def* index) {
@@ -372,6 +366,7 @@ const Def* World::extract(const Def* d, const Def* index) {
     // The scalar case is by far the most common one, so probe it first and only fall back to the aggregate check.
     auto index_ty = index->type();
     auto size     = Idx::isa(index_ty);
+    auto lidx     = Lit::isa(index);
     if (!size && !isa_indices(index_ty))
         error(index->loc(), "index '{}' is not of Idx type but of type '{}'", index, index_ty);
 
@@ -393,7 +388,7 @@ const Def* World::extract(const Def* d, const Def* index) {
 
     if (size) {
         if (auto l = Lit::isa(size); l && *l == 1) {
-            if (auto i = Lit::isa(index); !i || *i != 0) WLOG("unknown Idx of size 1: {}", index);
+            if (!lidx || *lidx != 0) WLOG("unknown Idx of size 1: {}", index);
             // A *mutable* Sigma may be a 1-tuple and still needs a real Extract; TODO mutable Arr?
             auto sigma = type->isa_mut<Sigma>();
             if (!sigma || sigma->num_ops() != 1) return d;
@@ -416,9 +411,9 @@ const Def* World::extract(const Def* d, const Def* index) {
         if (index == insert->index()) return insert->value();
     }
 
-    if (auto i = Lit::isa(index)) {
-        if (auto hole = d->isa_mut<Hole>()) d = hole->tuplefy(Idx::as_lit(index->type()));
-        if (auto tuple = d->isa<Tuple>()) return tuple->op(*i);
+    if (lidx) {
+        if (auto hole = d->isa_mut<Hole>()) d = hole->tuplefy(Idx::as_lit(index_ty));
+        if (auto tuple = d->isa<Tuple>()) return tuple->op(*lidx);
 
         // extract(insert(x, j, val), i) -> extract(x, i) where i != j (guaranteed by rule above)
         if (auto insert = d->isa<Insert>()) {
@@ -428,11 +423,11 @@ const Def* World::extract(const Def* d, const Def* index) {
         if (auto sigma = type->isa<Sigma>()) {
             if (auto var = sigma->has_var()) {
                 if (is_frozen()) return nullptr; // if frozen, we don't risk rewriting
-                auto t = VarRewriter(var, d).rewrite(sigma->op(*i));
+                auto t = VarRewriter(var, d).rewrite(sigma->op(*lidx));
                 return unify<Extract>(t, d, index);
             }
 
-            return unify<Extract>(sigma->op(*i), d, index);
+            return unify<Extract>(sigma->op(*lidx), d, index);
         }
     }
 
@@ -681,17 +676,11 @@ Sym World::append_suffix(Sym symbol, std::string suffix) {
 Defs World::reduce(const Var* var, const Def* arg) {
     if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second->defs();
 
-    auto mut    = var->binder();
-    auto offset = mut->reduction_offset();
-    auto size   = mut->num_ops() - offset;
-
-    auto buf    = move_.arena.substs.allocate(sizeof(Reduct) + size * sizeof(const Def*), alignof(const Def*));
-    auto reduct = new (buf) Reduct(size);
-    auto rw     = VarRewriter(var, arg);
-    for (size_t i = 0; i != size; ++i)
-        reduct->defs_[i] = rw.rewrite(mut->op(i + offset));
-    assert_emplace(move_.substs, std::pair{var, arg}, reduct);
-    return reduct->defs();
+    auto mut     = var->binder();
+    auto offset  = mut->reduction_offset();
+    auto rw      = VarRewriter(var, arg);
+    auto rewrite = [&](size_t i) { return rw.rewrite(mut->op(i + offset)); };
+    return cache_reduct(var, arg, mut->num_ops() - offset, rewrite)->defs();
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {

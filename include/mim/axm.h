@@ -86,7 +86,7 @@ public:
         const Axm* axm() const { return axm_; }
         const D* operator->() const { return def_; }
         operator const D*() const { return def_; }
-        explicit operator bool() { return axm_ != nullptr; }
+        explicit operator bool() const { return axm_ != nullptr; }
         ///@}
 
         /// @name Axm Name
@@ -105,29 +105,33 @@ public:
     };
     ///@}
 
+private:
+    /// Common tail of the Axm::isa overloads: @p cond says whether the Axm found in @p def is the wanted one.
+    template<class Id, u8 Curry, bool DynCast>
+    static auto isa_(const Axm* axm, bool cond, const Def* def) {
+        using D = std::conditional_t<Curry == 0, typename Axm::IsANode<Id>::type, Def>;
+        if constexpr (DynCast) {
+            return cond ? IsA<Id, D>(axm, def->as<D>()) : IsA<Id, D>();
+        } else {
+            assert(cond && "assumed to be correct axm");
+            return IsA<Id, D>(axm, def->as<D>());
+        }
+    }
+
+public:
     /// @name isa/as
     ///@{
     /// @see @ref cast_axm
     template<class Id, u8 Curry = 0, bool DynCast = true>
     static auto isa(const Def* def) {
-        using D              = std::conditional_t<Curry == 0, typename Axm::IsANode<Id>::type, Def>;
         auto [axm, curry, _] = Axm::get(def);
-        bool cond            = axm && curry == Curry && axm->base() == Annex::base<Id>();
-
-        if constexpr (DynCast) return cond ? IsA<Id, D>(axm, def->as<D>()) : IsA<Id, D>();
-        assert(cond && "assumed to be correct axm");
-        return IsA<Id, D>(axm, def->as<D>());
+        return isa_<Id, Curry, DynCast>(axm, axm && curry == Curry && axm->base() == Annex::base<Id>(), def);
     }
 
     template<class Id, u8 Curry = 0, bool DynCast = true>
     static auto isa(Id id, const Def* def) {
-        using D              = std::conditional_t<Curry == 0, typename Axm::IsANode<Id>::type, Def>;
         auto [axm, curry, _] = Axm::get(def);
-        bool cond            = axm && curry == Curry && axm->flags() == (flags_t)id;
-
-        if constexpr (DynCast) return cond ? IsA<Id, D>(axm, def->as<D>()) : IsA<Id, D>();
-        assert(cond && "assumed to be correct axm");
-        return IsA<Id, D>(axm, def->as<D>());
+        return isa_<Id, Curry, DynCast>(axm, axm && curry == Curry && axm->flags() == (flags_t)id, def);
     }
 
     // clang-format off

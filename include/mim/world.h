@@ -217,7 +217,7 @@ public:
         const auto& flags2entry() const { return flags2entry_; }
         auto entries() const { return flags2entry_ | std::views::values; }
         auto defs() const {
-            return entries() | std::views::transform([](Entry e) { return e.def; });
+            return entries() | std::views::transform([](const Entry& e) { return e.def; });
         }
         const auto& sym2flags() const { return sym2flags_; }
         size_t size() const { return flags2entry_.size(); }
@@ -472,7 +472,7 @@ public:
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
     const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
-        return seq(is_pack, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body);
+        return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
     ///@}
@@ -512,7 +512,18 @@ public:
     const Lit* lit_univ(u64 level) { return lit(univ(), level); }
     const Lit* lit_univ_0() { return data_.lit_univ_0; }
     const Lit* lit_univ_1() { return data_.lit_univ_1; }
-    const Lit* lit_nat(nat_t a) { return lit(type_nat(), a); }
+    /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs immediately reads the value straight
+    /// back out, so a plain World::lit runs a full hash-cons round trip (arena alloc, Def c'tor, hash, probe,
+    /// dealloc) on a very hot path. Caching small values is worth ~4% of an `-Og` Debug compile; in Release the
+    /// round trip optimizes down far enough that the cache is a wash, so this is really for the Debug builds we
+    /// develop and test in. Filled lazily; entries live in this World's arena and travel with data_ across swap.
+    static constexpr nat_t Num_Lit_Nats = 64;
+
+    const Lit* lit_nat(nat_t a) {
+        if (a >= Num_Lit_Nats) return lit(type_nat(), a);
+        if (auto cached = data_.lit_nats[a]) return cached;
+        return data_.lit_nats[a] = lit(type_nat(), a); // stays null while frozen - then we simply retry
+    }
     const Lit* lit_nat_0() { return data_.lit_nat_0; }
     const Lit* lit_nat_1() { return data_.lit_nat_1; }
     const Lit* lit_nat_max() { return data_.lit_nat_max; }
@@ -723,16 +734,26 @@ private:
 #endif
     }
 
+    /// How many ops will @p T have?
+    /// For a variadic node this is the last argument - either the op list itself (unify) or its size (insert).
+    template<class T, class... Args>
+    static size_t num_ops_of(Args&&... args) {
+        if constexpr (T::Num_Ops != std::dynamic_extent) {
+            return T::Num_Ops;
+        } else {
+            auto&& last = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
+            if constexpr (requires { last.size(); })
+                return last.size();
+            else
+                return last;
+        }
+    }
+
     template<class T, class... Args>
     const T* unify(Args&&... args) {
-        auto num_ops = T::Num_Ops;
-        if constexpr (T::Num_Ops == std::dynamic_extent) {
-            auto&& last = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
-            num_ops     = last.size();
-        }
-
-        auto state = move_.arena.defs.state();
-        auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
+        auto num_ops = num_ops_of<T>(std::forward<Args>(args)...);
+        auto state   = move_.arena.defs.state();
+        auto def     = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
         stamp(def);
 
@@ -772,11 +793,8 @@ private:
     T* insert(Args&&... args) {
         if (is_frozen()) return nullptr;
 
-        auto num_ops = T::Num_Ops;
-        if constexpr (T::Num_Ops == std::dynamic_extent)
-            num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
-
-        auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
+        auto num_ops = num_ops_of<T>(std::forward<Args>(args)...);
+        auto def     = allocate<T>(num_ops, std::forward<Args>(args)...);
         stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
@@ -840,6 +858,23 @@ private:
         friend class World;
     };
 
+    /// Allocates a Reduct of @p n defs - each produced by `f(i)` - and caches it as the reduct of `[var -> arg]`.
+    /// @note Fills *before* caching: @p f may recursively reduce and must not observe a half-built Reduct.
+    template<class F>
+    const Reduct* cache_reduct(const Var* var, const Def* arg, size_t n, F f) {
+        auto buf    = move_.arena.substs.allocate(sizeof(Reduct) + n * sizeof(const Def*), alignof(const Def*));
+        auto reduct = new (buf) Reduct(n);
+        for (size_t i = 0; i != n; ++i)
+            reduct->defs_[i] = f(i);
+        assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+        return reduct;
+    }
+
+    /// As above but for @p defs that have already been computed.
+    const Reduct* cache_reduct(const Var* var, const Def* arg, Defs defs) {
+        return cache_reduct(var, arg, defs.size(), [defs](size_t i) { return defs[i]; });
+    }
+
     struct Move {
         Move(Driver* driver)
             : annexes(driver) {}
@@ -889,7 +924,8 @@ private:
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
-        u32 curr_run = 0;
+        std::array<const Lit*, Num_Lit_Nats> lit_nats = {}; ///< @see World::lit_nat
+        u32 curr_run                                  = 0;
     } data_;
 
     friend void swap(World& w1, World& w2) noexcept {

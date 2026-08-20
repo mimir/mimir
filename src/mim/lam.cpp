@@ -11,11 +11,9 @@ namespace mim {
  */
 
 const Pi* Pi::ret_pi() const {
-    if (num_doms() > 0) {
-        auto ret = dom(num_doms() - 1);
-        if (auto pi = Pi::isa_basicblock(ret)) return pi;
-    }
-
+    // num_doms() has to materialize a Lit for the arity of a Sigma dom - which means a full hash-cons round trip.
+    // So compute it *once* and feed it to the (a, i) projection instead of letting dom(i) re-derive it.
+    if (auto n = num_doms(); n != 0) return Pi::isa_basicblock(dom(n, n - 1));
     return nullptr;
 }
 
@@ -78,8 +76,9 @@ const Def* compose_cn(const Def* f, const Def* g) {
     world.DLOG("  B: {}", B);
     world.DLOG("  C: {}", C);
 
-    auto h     = world.mut_fun(A, C)->set("comp_"s + f->sym().str() + "_"s + g->sym().str());
-    auto hcont = world.mut_con(B)->set("comp_"s + f->sym().str() + "_"s + g->sym().str() + "_cont"s);
+    auto name  = "comp_"s + f->sym().str() + "_" + g->sym().str();
+    auto h     = world.mut_fun(A, C)->set(name);
+    auto hcont = world.mut_con(B)->set(name + "_cont");
 
     h->app(true, g, {h->var((nat_t)0), hcont});
 

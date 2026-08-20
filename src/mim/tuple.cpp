@@ -51,6 +51,7 @@ std::string tuple2str(const Def* def) {
     auto& w  = def->world();
     auto res = std::string();
     if (auto n = Lit::isa(def->arity())) {
+        res.reserve(*n);
         for (size_t i = 0; i != *n; ++i) {
             auto elem = def->proj(*n, i);
             if (elem->type() == w.type_i8()) {

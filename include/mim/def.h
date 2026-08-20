@@ -549,7 +549,7 @@ public:
     /// If `this` is *mutable*, it will cast `const`ness away and perform a `dynamic_cast` to @p T.
     template<class T = Def, bool invert = false>
     T* isa_mut() const {
-        if constexpr (std::is_same<T, Def>::value)
+        if constexpr (std::is_same_v<T, Def>)
             return mut_ ^ invert ? const_cast<Def*>(this) : nullptr;
         else
             return mut_ ^ invert ? const_cast<Def*>(this)->template isa<T>() : nullptr;
@@ -559,7 +559,7 @@ public:
     template<class T = Def, bool invert = false>
     T* as_mut() const {
         assert(mut_ ^ invert);
-        if constexpr (std::is_same<T, Def>::value)
+        if constexpr (std::is_same_v<T, Def>)
             return const_cast<Def*>(this);
         else
             return const_cast<Def*>(this)->template as<T>();

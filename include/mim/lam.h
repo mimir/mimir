@@ -63,7 +63,10 @@ public:
         return nullptr;
     }
     /// Yields the Pi::ret_pi() of @p d, if it is in fact a Pi.
-    static const Pi* has_ret_pi(const Def* d) { return d->isa<Pi>() ? d->as<Pi>()->ret_pi() : nullptr; }
+    static const Pi* has_ret_pi(const Def* d) {
+        auto pi = d->isa<Pi>();
+        return pi ? pi->ret_pi() : nullptr;
+    }
     ///@}
 
     /// @name Return Continuation
@@ -153,7 +156,11 @@ public:
     const Pi* ret_pi() const { return type()->ret_pi(); }
     const Def* ret_dom() const { return ret_pi()->dom(); }
     /// Yields the Lam::var of the Lam::ret_pi.
-    const Def* ret_var() { return type()->ret_pi() ? var(num_vars() - 1) : nullptr; }
+    const Def* ret_var() {
+        if (!type()->ret_pi()) return nullptr;
+        auto n = num_vars(); // compute the arity once and hand it to the (a, i) projection
+        return var(n, n - 1);
+    }
     ///@}
 
     /// @name Setters

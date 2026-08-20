@@ -60,12 +60,10 @@ std::pair<Hole*, const Def*> Hole::find() {
     auto last = this;
 
     while (def) {
-        if (auto h = def->isa_mut<Hole>()) {
-            def  = h->op();
-            last = h;
-        } else {
-            break;
-        }
+        auto h = def->isa_mut<Hole>();
+        if (!h) break;
+        def  = h->op();
+        last = h;
     }
 
     auto root = def ? def : last;
@@ -160,7 +158,9 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
             new_ops[i] = new_val;
         }
         return w.tuple(new_ops);
-    } else if (auto uniq = val_ty->isa<Uniq>()) {
+    }
+
+    if (auto uniq = val_ty->isa<Uniq>()) {
         if (auto new_val = assignable(type, uniq->op())) return new_val;
         return fail();
     }
@@ -234,7 +234,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     auto seq1 = d1->isa<Seq>();
     auto seq2 = d2->isa<Seq>();
 
-    if constexpr (mode == Mode::Check) {
+    if constexpr (mode == Check) {
         if (auto umax = d1->isa<UMax>(); umax && !d2->isa<UMax>()) return check(umax, d2);
         if (auto umax = d2->isa<UMax>(); umax && !d1->isa<UMax>()) return check(umax, d1);
 
