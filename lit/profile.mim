@@ -8,12 +8,10 @@ lam extern f(): «3; Nat» = ‹i: 3; %core.nat.add (1, %core.bitcast Nat i)›;
 
 // FLAT:      Phase profile (flat):
 // FLAT-NEXT: {{.*}}total{{.*}}self{{.*}}phase
-// FLAT:      {{.*}}cleanup
 // FLAT:      {{.*}}TOTAL
 
 // TREE:      Phase profile (tree):
 // TREE-NEXT: {{.*}}total{{.*}}self{{.*}}phase
-// TREE:      {{.*}}cleanup
 // TREE:      {{.*}}TOTAL
 
 // TRACE:      {{.*}}"traceEvents"

@@ -307,20 +307,17 @@ void Emitter::emit_imported(Lam* lam) {
 std::string Emitter::prepare() { return root()->unique_name(); }
 
 void Emitter::emit_epilogue(Lam* lam) {
-    if (root()->sym().str().starts_with("internal_")) return;
     auto& bb = lam2bb_[lam];
     if (is_bound(lam)) bb.tail("{}", emit(lam->body()));
 }
 
 void Emitter::finalize() {
-    if (root()->sym().str().starts_with("internal_")) return;
     // We don't want to emit config lams that define which rules should be emitted.
     // The rules in the body of such a lambda will be emitted into decls_
     // via emit_bb() but we don't want to emit the lambda itself.
     // We can't do this with Axm::isa because 'eqsat' is an out-of-tree plugin
     // that isn't guaranteed to have been cloned so we can't include its header file.
-    else if (root()->codom()->sym().str() == "%eqsat.Config")
-        return;
+    if (root()->codom()->sym().str() == "%eqsat.Config") return;
 
     LamSet rec_lams;
     auto root_lam = nest().root()->mut()->as_mut<Lam>();

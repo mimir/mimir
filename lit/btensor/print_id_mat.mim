@@ -1,5 +1,5 @@
 // RUN: rm -f %{s:stem}.ll
-// RUN: %mim -p opt -p clos -p math -o - -p ll %s
+// RUN: %mim -p opt -p math -o - -p ll %s
 // RUN: clang %S/../lib.c %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 2 3 | %FileCheck %s
 

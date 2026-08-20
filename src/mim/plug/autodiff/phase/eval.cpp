@@ -370,11 +370,10 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
         auto diff_name = ax->sym().str();
         find_and_replace(diff_name, ".", "_");
         find_and_replace(diff_name, "%", "");
-        diff_name = "internal_diff_" + diff_name;
+        diff_name = "%autodiff.diff." + diff_name;
 
-        // Look the derivative up in the old world: the new world's externals are still being populated while this
-        // phase runs, so an internal_diff_* function may not have been carried over yet.
-        auto old_diff_fun = old_world().externals()[old_world().sym(diff_name)];
+        // Look the derivative up in the old world; rewrite() below maps it into the new one.
+        auto old_diff_fun = old_world().annex(old_world().sym(diff_name));
         if (!old_diff_fun) {
             ELOG("derivation not found: {}", diff_name);
             auto expected_type = autodiff_type_fun(ax->type());

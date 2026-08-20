@@ -214,11 +214,13 @@ public:
         ///@{
         Driver& driver() { return *driver_; }
         /// An annex's flags map to its full name and its Def.
+        auto& flags2entry() { return flags2entry_; }
         const auto& flags2entry() const { return flags2entry_; }
         auto entries() const { return flags2entry_ | std::views::values; }
         auto defs() const {
             return entries() | std::views::transform([](const Entry& e) { return e.def; });
         }
+        auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
         size_t size() const { return flags2entry_.size(); }
         ///@}

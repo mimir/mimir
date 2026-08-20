@@ -42,7 +42,7 @@ fun extern f(x: Nat): Nat =
 
 lam extern _compile(): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %compile.phases tt (
             %compile.phases tt (
                 %compile.beta_red,

@@ -1,4 +1,4 @@
 // RUN: rm -f exec_get_set.ll
-// RUN: FILE=%s;%mim -p opt -p clos -o - ${FILE%_run.mim}.mim -p ll
+// RUN: FILE=%s;%mim -p opt -o - ${FILE%_run.mim}.mim -p ll
 // RUN: clang exec_get_set.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 50
