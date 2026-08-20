@@ -118,10 +118,6 @@ private:
         : Seq(Node, type, 2, 0) {} ///< Constructor for a *mutable* Arr.
 
 public:
-    /// @name ops
-    ///@{
-    ///@}
-
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{
@@ -135,10 +131,6 @@ public:
     /// @name Rebuild
     ///@{
     Arr* stub(const Def* type) { return Def::stub(world(), type)->as<Arr>(); }
-    ///@}
-
-    /// @name Type Checking
-    ///@{
     ///@}
 
     static constexpr auto Node      = mim::Node::Arr;
@@ -158,10 +150,6 @@ private:
         : Seq(Node, type, 1, 0) {} ///< Constructor for a *mutable* Pack.
 
 public:
-    /// @name ops
-    ///@{
-    ///@}
-
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{

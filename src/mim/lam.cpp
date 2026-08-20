@@ -61,11 +61,8 @@ Lam* Lam::eta_expand(Filter filter, const Def* f) {
 
 const Def* compose_cn(const Def* f, const Def* g) {
     auto& world = f->world();
-    world.DLOG("compose f (B->C): {} : {}", f, f->type());
-    world.DLOG("compose g (A->B): {} : {}", g, g->type());
-
-    auto F = f->type()->as<Pi>();
-    auto G = g->type()->as<Pi>();
+    auto F      = f->type()->as<Pi>();
+    auto G      = g->type()->as<Pi>();
 
     assert(Pi::isa_returning(F));
     assert(Pi::isa_returning(G));

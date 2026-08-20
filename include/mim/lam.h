@@ -42,14 +42,21 @@ public:
     /// @anchor continuations
     /// Checks certain properties of @p d regarding continuations.
     ///@{
-    // clang-format off
     /// Is this a continuation - i.e. is the Pi::codom mim::Bot%tom?
-    static const Pi* isa_cn(const Def* d) { return d->isa<Pi>() && d->as<Pi>()->codom()->node() == Node::Bot ? d->as<Pi>() : nullptr; }
+    static const Pi* isa_cn(const Def* d) {
+        auto pi = d->isa<Pi>();
+        return pi && pi->codom()->node() == Node::Bot ? pi : nullptr;
+    }
     /// Is this a continuation (Pi::isa_cn) which has a Pi::ret_pi?
-    static const Pi* isa_returning(const Def* d)  { return isa_cn(d) &&  d->as<Pi>()->ret_pi() ? d->as<Pi>() : nullptr; }
+    static const Pi* isa_returning(const Def* d) {
+        auto pi = isa_cn(d);
+        return pi && pi->ret_pi() ? pi : nullptr;
+    }
     /// Is this a continuation (Pi::isa_cn) that is **not** Pi::isa_returning?
-    static const Pi* isa_basicblock(const Def* d) { return isa_cn(d) && !d->as<Pi>()->ret_pi() ? d->as<Pi>() : nullptr; }
-    // clang-format on
+    static const Pi* isa_basicblock(const Def* d) {
+        auto pi = isa_cn(d);
+        return pi && !pi->ret_pi() ? pi : nullptr;
+    }
     /// Is @p d an Pi::is_implicit (mutable) Pi?
     static Pi* isa_implicit(const Def* d) {
         if (auto pi = d->isa_mut<Pi>(); pi && pi->is_implicit()) return pi;
@@ -189,10 +196,6 @@ public:
     const Def* eta_reduce() const;
     ///@}
 
-    /// @name Type Checking
-    ///@{
-    ///@}
-
     static constexpr auto Node      = mim::Node::Lam;
     static constexpr size_t Num_Ops = 2;
 
@@ -227,15 +230,14 @@ private:
                 callee = app->callee();
             }
 
-            if constexpr (Callee && Args) {
-                std::ranges::reverse(args);
+            if constexpr (Args) std::ranges::reverse(args);
+
+            if constexpr (Callee && Args)
                 return std::pair{callee, args};
-            } else if constexpr (Args) {
-                std::ranges::reverse(args);
+            else if constexpr (Args)
                 return args;
-            } else {
+            else
                 return callee;
-            }
         } else {
             auto args = std::array<const Def*, N>();
             for (size_t i = N; i-- != 0;) {

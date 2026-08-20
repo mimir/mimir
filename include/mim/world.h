@@ -262,7 +262,7 @@ public:
 
     /// annexes() + externals().muts() in this order.
     auto roots() const {
-        auto res = Vector<const Def*>(); // TODO use std::views::concat - once we have C++26
+        auto res = DefVec(); // TODO use std::views::concat - once we have C++26
         res.reserve(annexes().size() + externals().size());
         res.append_range(annexes().defs());
         res.append_range(externals().muts());
@@ -518,11 +518,11 @@ public:
     const Lit* lit_nat_max() { return data_.lit_nat_max; }
     const Lit* lit_idx_1_0() { return data_.lit_idx_1_0; }
     // clang-format off
-    const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); };
-    const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); };
-    const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); };
-    const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); };
-    const Lit* lit_i64() { return lit_nat(Idx::bitwidth2size(64)); };
+    const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); }
+    const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); }
+    const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); }
+    const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); }
+    const Lit* lit_i64() { return lit_nat(Idx::bitwidth2size(64)); }
     /// Constructs a Lit of type Idx of size @p size.
     /// @note `size = 0` means `2^64`.
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
@@ -597,12 +597,12 @@ public:
     // clang-format off
     const Def* type_bool() { return data_.type_bool; }
     const Def* type_i1()   { return data_.type_bool; }
-    const Def* type_i2()   { return type_int( 2);    };
-    const Def* type_i4()   { return type_int( 4);    };
-    const Def* type_i8()   { return type_int( 8);    };
-    const Def* type_i16()  { return type_int(16);    };
-    const Def* type_i32()  { return type_int(32);    };
-    const Def* type_i64()  { return type_int(64);    };
+    const Def* type_i2()   { return type_int( 2);    }
+    const Def* type_i4()   { return type_int( 4);    }
+    const Def* type_i8()   { return type_int( 8);    }
+    const Def* type_i16()  { return type_int(16);    }
+    const Def* type_i32()  { return type_int(32);    }
+    const Def* type_i64()  { return type_int(64);    }
     // clang-format on
     ///@}
 
@@ -714,6 +714,15 @@ public:
 private:
     /// @name Put into Sea of Nodes
     ///@{
+    /// Common tail of World::unify \& World::insert, right after World::allocate.
+    template<class T>
+    void stamp(T* def) {
+        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
+#ifdef MIM_ENABLE_CHECKS
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+#endif
+    }
+
     template<class T, class... Args>
     const T* unify(Args&&... args) {
         auto num_ops = T::Num_Ops;
@@ -725,11 +734,9 @@ private:
         auto state = move_.arena.defs.state();
         auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
-
-        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
+        stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
         for (auto op : def->ops())
             assert(&op->world() == this && "op of new Def belongs to a different World");
@@ -770,10 +777,9 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
-        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
+        stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         assert_emplace(move_.defs, def);
@@ -876,8 +882,6 @@ private:
         const Tuple* tuple;
         const Nat* type_nat;
         const Idx* type_idx;
-        const Def* table_id;
-        const Def* table_not;
         const Lit* lit_univ_0;
         const Lit* lit_univ_1;
         const Lit* lit_nat_0;

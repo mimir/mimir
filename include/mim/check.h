@@ -144,10 +144,9 @@ private:
         if (!mut) return std::pair(binders_.end(), true);
         auto res = binders_.emplace(mut, d);
         // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
-        if (res.second) {
-            memo_[Check].clear();
-            memo_[Test].clear();
-        }
+        if (res.second)
+            for (auto& memo : memo_)
+                memo.clear();
         return res;
     }
 

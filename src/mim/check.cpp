@@ -1,6 +1,5 @@
 #include "mim/check.h"
 
-#include <absl/container/fixed_array.h>
 #include <fe/assert.h>
 
 #include "mim/rewrite.h"
@@ -49,7 +48,7 @@ const Def* Def::zonk_mut() const {
 }
 
 DefVec Def::zonk(Defs defs) {
-    return DefVec(defs.size(), [defs](size_t i) { return defs[i]->zonk(); });
+    return DefVec(defs, [](const Def* def) { return def->zonk(); });
 }
 
 /*
@@ -85,7 +84,7 @@ const Def* Hole::tuplefy(nat_t n) {
     if (is_set()) return this;
 
     auto& w    = world();
-    auto holes = absl::FixedArray<const Def*>(n);
+    auto holes = DefVec(n);
     if (auto [sigma, var] = type()->isa_binder<Sigma>(); sigma && n >= 1) {
         auto rw  = VarRewriter(var, this);
         holes[0] = w.mut_hole(sigma->op(0));
@@ -123,9 +122,8 @@ const Def* Checker::fail() {
 const Def* Checker::is_uniform(Defs defs) {
     if (defs.empty()) return nullptr;
     auto first = defs.front();
-    for (size_t i = 1, e = defs.size(); i != e; ++i)
-        if (!alpha<Test>(first, defs[i])) return nullptr;
-    return first;
+    auto same  = [first](const Def* def) { return alpha<Test>(first, def); };
+    return std::ranges::all_of(defs.subspan(1), same) ? first : nullptr;
 }
 
 const Def* Checker::assignable_(const Def* type, const Def* val) {
@@ -155,13 +153,11 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
 
         size_t a     = sigma->num_ops();
         auto red     = sigma->reduce(val);
-        auto new_ops = absl::FixedArray<const Def*>(red.size());
+        auto new_ops = DefVec(a);
         for (size_t i = 0; i != a; ++i) {
             auto new_val = assignable_(red[i], val->proj(a, i));
-            if (new_val)
-                new_ops[i] = new_val;
-            else
-                return fail();
+            if (!new_val) return fail();
+            new_ops[i] = new_val;
         }
         return w.tuple(new_ops);
     } else if (auto uniq = val_ty->isa<Uniq>()) {
@@ -220,11 +216,9 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
 
         if (d1->isa<Top>() || d2->isa<Top>()) return mode == Check;
 
-        if (auto t1 = d1->type()) {
-            if (auto t2 = d2->type()) {
-                if (!alpha_<mode>(t1, t2)) return fail<mode>();
-            }
-        }
+        auto t1 = d1->type();
+        auto t2 = d2->type();
+        if (t1 && t2 && !alpha_<mode>(t1, t2)) return fail<mode>();
 
         if (!alpha_<mode>(d1->arity(), d2->arity())) return fail<mode>();
 
@@ -308,18 +302,12 @@ bool Checker::check(const UMax* umax, const Def* def) {
  * infer & check
  */
 
-const Def* Tuple::infer(World& world, Defs ops) {
-    auto elems = absl::FixedArray<const Def*>(ops.size());
-    for (size_t i = 0, e = ops.size(); i != e; ++i)
-        elems[i] = ops[i]->unfold_type();
-    return world.sigma(elems);
+const Def* Tuple::infer(World& w, Defs ops) {
+    return w.sigma(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
 const Def* Sigma::infer(World& w, Defs ops) {
-    auto elems = absl::FixedArray<const Def*>(ops.size());
-    for (size_t i = 0, e = ops.size(); i != e; ++i)
-        elems[i] = ops[i]->unfold_type();
-    return w.umax<UMax::Kind>(elems);
+    return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
 const Def* Pi::infer(const Def* dom, const Def* codom) {
