@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include <absl/container/fixed_array.h>
 #include <fe/assert.h>
 #include <fe/hash.h>
 
@@ -21,6 +20,20 @@ template void Sets<Def>::dot();
  * constructors
  */
 
+// The Deps a node contributes to *itself*; Def::dep_ then accumulates the ones of its deps() on top.
+static constexpr unsigned node2dep(Node node, bool mut) {
+    auto dep = mut ? Dep::Mut : Dep::None;
+    // clang-format off
+    switch (node) {
+        case Node::Hole:  dep |= Dep::Hole;           break;
+        case Node::Proxy: dep |= Dep::Proxy;          break;
+        case Node::Var:   dep |= Dep::Var | Dep::Mut; break;
+        default:                                      break;
+    }
+    // clang-format on
+    return fe::to_underlying(dep);
+}
+
 Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     : world_(world)
     , flags_(flags)
@@ -29,10 +42,7 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , external_(false)
     , annex_(false)
     , dirty_(false)
-    , dep_(node == Node::Hole    ? fe::to_underlying(Dep::Hole)
-           : node == Node::Proxy ? fe::to_underlying(Dep::Proxy)
-           : node == Node::Var   ? fe::to_underlying(Dep::Var | Dep::Mut)
-                                 : 0)
+    , dep_(node2dep(node, false))
     , num_ops_(ops.size())
     , type_(type) {
     if (node == Node::Univ) {
@@ -78,7 +88,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , external_(false)
     , annex_(false)
     , dirty_(false)
-    , dep_(fe::to_underlying(Dep::Mut | (node == Node::Hole ? Dep::Hole : Dep::None)))
+    , dep_(node2dep(node, true))
     , num_ops_(num_ops)
     , type_(type) {
     gid_  = world().next_gid();
@@ -95,7 +105,7 @@ Def::Def(Node node, Def* binder)
     , external_(false)
     , annex_(false)
     , dirty_(false)
-    , dep_(fe::to_underlying(Dep::Var | Dep::Mut))
+    , dep_(node2dep(node, false))
     , num_ops_(0)
     , type_(nullptr) {
     gid_  = binder->world().next_gid();
@@ -117,11 +127,9 @@ UMax::UMax(World& world, Defs ops)
 bool Def::is_immutabilizable() {
     if (!is_set()) return false;
 
-    if (auto v = has_var()) {
-        for (auto op : deps())
-            if (op->has_free_var(v)) return false;
-    }
+    auto v = has_var();
     for (auto op : deps()) {
+        if (v && op->has_free_var(v)) return false;
         for (auto mut : op->local_muts())
             if (mut == this) return false; // recursion
     }
@@ -134,13 +142,13 @@ bool Def::is_immutabilizable() {
 
 Defs Def::reduce_(const Def* arg) const {
     if (auto var = has_var()) return world().reduce(var, arg);
-    return {ops().begin() + reduction_offset(), num_ops() - reduction_offset()};
+    auto off = reduction_offset();
+    return {ops().begin() + off, num_ops() - off};
 }
 
 const Def* Def::refine(size_t i, const Def* new_op) const {
-    auto new_ops = absl::FixedArray<const Def*>(num_ops());
-    for (size_t j = 0, e = num_ops(); j != e; ++j)
-        new_ops[j] = i == j ? new_op : op(j);
+    auto new_ops = DefVec(ops().begin(), ops().end());
+    new_ops[i]   = new_op;
     return rebuild(type(), new_ops);
 }
 
@@ -148,10 +156,19 @@ const Def* Def::refine(size_t i, const Def* new_op) const {
  * Def - set
  */
 
-Def* Def::set(Defs ops) {
+void Def::watch() const {
 #ifdef MIM_ENABLE_CHECKS
     if (world().watchpoints().contains(gid())) fe::breakpoint();
 #endif
+}
+
+Def* Def::finalize() {
+    if (auto t = check()->zonk(); t != type()) type_ = t;
+    return this;
+}
+
+Def* Def::set(Defs ops) {
+    watch();
     invalidate();
 
     size_t n = ops.size();
@@ -166,25 +183,17 @@ Def* Def::set(Defs ops) {
     curr_op_ = n;
 #endif
 
-    if (auto t = check()->zonk(); t != type()) type_ = t;
-
-    return this;
+    return finalize();
 }
 
 Def* Def::set(size_t i, const Def* def) {
-#ifdef MIM_ENABLE_CHECKS
-    if (world().watchpoints().contains(gid())) fe::breakpoint();
-#endif
-
+    watch();
     invalidate();
     def = check(i, def);
     assert(def && !op(i) && curr_op_++ == i);
     ops_ptr()[i] = def;
 
-    if (i + 1 == num_ops()) { // set last op, so check kind
-        if (auto t = check()->zonk(); t != type()) type_ = t;
-    }
-
+    if (i + 1 == num_ops()) return finalize(); // set last op, so check kind
     return this;
 }
 
@@ -199,7 +208,7 @@ Def* Def::unset() {
 #ifndef NDEBUG
     curr_op_ = 0;
 #endif
-    std::ranges::fill(ops_ptr(), ops_ptr() + num_ops(), nullptr);
+    std::fill_n(ops_ptr(), num_ops(), nullptr);
     return this;
 }
 
@@ -214,13 +223,12 @@ const Def* Def::var() {
 
 // clang-format off
 const Def* Def::var_type() {
-    auto& w = world();
     switch (node()) {
         case Node::Lam:    return as<Lam >()->dom();
         case Node::Pi:     return as<Pi  >()->dom();
         case Node::Rule:   return as<Rule>()->dom();
         case Node::Arr:
-        case Node::Pack:   return w.type_idx(arity()); // TODO shapes like (2, 3)
+        case Node::Pack:   return world().type_idx(arity()); // TODO shapes like (2, 3)
         case Node::Sigma:
         case Node::Join:
         case Node::Meet:   return this;
@@ -242,34 +250,29 @@ Vars Def::free_vars() const {
     return fvs;
 }
 
-bool Def::has_free_var(const Var* var) const {
-    if (auto mut = isa_mut()) return mut->free_vars().contains(var);
+// free_vars() is a union, so any predicate over it distributes over that union: ask f for the local Vars and
+// then for each local mutable's free_vars() - instead of merging them all into one throw-away Set.
+template<class F>
+static bool any_free_vars(const Def* def, F f) {
+    if (auto mut = def->isa_mut()) return f(mut->free_vars());
 
-    if (local_vars().contains(var)) return true;
-    for (auto mut : local_muts())
-        if (mut->free_vars().contains(var)) return true;
+    if (f(def->local_vars())) return true;
+    for (auto mut : def->local_muts())
+        if (f(mut->free_vars())) return true;
 
     return false;
+}
+
+bool Def::has_free_var(const Var* var) const {
+    return any_free_vars(this, [var](Vars fvs) { return fvs.contains(var); });
 }
 
 bool Def::has_free_vars() const {
-    if (auto mut = isa_mut()) return !mut->free_vars().empty();
-
-    if (!local_vars().empty()) return true;
-    for (auto mut : local_muts())
-        if (!mut->free_vars().empty()) return true;
-
-    return false;
+    return any_free_vars(this, [](Vars fvs) { return !fvs.empty(); });
 }
 
 bool Def::has_free_vars_in(Vars vars) const {
-    if (auto mut = isa_mut()) return vars.has_intersection(mut->free_vars());
-
-    if (vars.has_intersection(local_vars())) return true;
-    for (auto mut : local_muts())
-        if (vars.has_intersection(mut->free_vars())) return true;
-
-    return false;
+    return any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
 }
 
 Vars Def::free_vars() {
@@ -279,19 +282,20 @@ Vars Def::free_vars() {
         auto& w     = world();
         bool cyclic = false;
         w.next_run();
-        free_vars<true>(cyclic, w.next_run());
+        free_vars<true>(w, cyclic, w.next_run());
 
         for (bool todo = cyclic; todo;) {
             todo = false;
-            free_vars<false>(todo, w.next_run());
+            free_vars<false>(w, todo, w.next_run());
         }
     }
 
     return vars_;
 }
 
+// w is threaded through instead of re-deriving it via world() - which chases the type chain - at every node.
 template<bool init>
-Vars Def::free_vars(bool& todo, uint32_t run) {
+Vars Def::free_vars(World& w, bool& todo, u32 run) {
     // If init == true : todo flag detects cycle.
     // If init == false: todo flag keeps track whether sth changed.
     //
@@ -309,7 +313,6 @@ Vars Def::free_vars(bool& todo, uint32_t run) {
 
     auto fvs0  = vars_;
     auto fvs   = fvs0;
-    auto& w    = world();
     auto& muts = w.muts();
     auto& vars = w.vars();
 
@@ -318,7 +321,7 @@ Vars Def::free_vars(bool& todo, uint32_t run) {
 
         for (auto mut : op->local_muts()) {
             if constexpr (init) mut->muts_ = muts.insert(mut->muts_, this); // register "this" as user of local_mut
-            fvs = vars.merge(fvs, mut->free_vars<init>(todo, run));
+            fvs = vars.merge(fvs, mut->free_vars<init>(w, todo, run));
         }
     }
 
@@ -340,50 +343,48 @@ void Def::invalidate() {
     }
 }
 
-bool Def::is_closed() const {
-    if (local_vars().empty() && local_muts().empty()) return true;
-#ifdef MIM_ENABLE_CHECKS
-    assert(!is_external() || !has_free_vars());
-#endif
-    return !has_free_vars();
-}
+// has_free_vars() already short-circuits on the local Var%s, so these are exactly its two polarities.
+bool Def::is_open() const { return has_free_vars(); }
 
-bool Def::is_open() const {
-    if (!local_vars().empty()) return true;
-    return has_free_vars();
+bool Def::is_closed() const {
+    bool closed = !has_free_vars();
+    assert((!is_external() || closed) && "an external must not have free Vars");
+    return closed;
 }
 
 Def* Def::outermost_binder() const {
-    if (is_closed()) return isa_mut();
-    return (*free_vars().begin())->outermost_binder();
+    auto fvs = free_vars();
+    if (fvs.empty()) return isa_mut();
+    // Terminates: the binder of a free Var of `this` sits strictly further out than `this`.
+    return (*fvs.begin())->binder()->outermost_binder();
 }
 
 bool Def::nests(Def* mut, MutSet& checked) {
-    if (mut->has_free_var(this->has_var())) return true;
+    auto var = has_var(); // `this` is fixed across the recursion, and so is its Var
+    auto fvs = mut->free_vars();
+    if (fvs.contains(var)) return true;
     if (auto [_, ins] = checked.emplace(mut); !ins) return false;
 
-    for (auto fv : mut->free_vars())
+    for (auto fv : fvs)
         if (this->nests(fv->binder(), checked)) return true;
 
     return false;
 }
 
 bool Def::nests(Def* mut) {
-    if (this->has_var()) {
-        auto checked = MutSet{};
-        return this->nests(mut, checked);
-    }
-    return false;
+    if (!this->has_var()) return false;
+    auto checked = MutSet();
+    return this->nests(mut, checked);
 }
 
 bool Def::nests(const Def* def) {
     if (auto mut = def->isa_mut()) return this->nests(mut);
+    if (!this->has_var()) return false;
 
-    if (has_var()) {
-        auto checked = MutSet();
-        for (auto fv : def->free_vars())
-            if (this->nests(fv->binder(), checked)) return true;
-    }
+    auto checked = MutSet();
+    for (auto fv : def->free_vars())
+        if (this->nests(fv->binder(), checked)) return true;
+
     return false;
 }
 
@@ -425,13 +426,12 @@ const Def* Def::unfold_type() const {
 }
 
 std::string_view Def::node_name() const {
-    switch (node()) {
-#define CODE(name, _) \
-    case Node::name: return #name;
+    static constexpr std::string_view Names[Num_Nodes] = {
+#define CODE(node, _) #node,
         MIM_NODE(CODE)
 #undef CODE
-        default: fe::unreachable();
-    }
+    };
+    return Names[node_t(node())];
 }
 
 Defs Def::deps() const noexcept {
@@ -441,30 +441,23 @@ Defs Def::deps() const noexcept {
     assert((const void*)(ops_ptr() - 1) == (const void*)&type_
            && "Def::type_ must stay Def's last member: Def::deps() and Def::ops_ptr() depend on it");
 
-    if (isa<Type>() || isa<Univ>()) return Defs();
-    if (isa<Var>()) return Defs(); // the binder lives in binder_, not in an op
-    assert(type_);
-    return Defs(ops_ptr() - 1, (is_set() ? num_ops_ : 0) + 1);
-}
-
-Judge Def::judge() const noexcept {
-    switch (node()) {
-#define CODE(n, j) \
-    case Node::n: return j;
-        MIM_NODE(CODE)
-#undef CODE
-        default: fe::unreachable();
+    // Univ, Type, and Var are the only nodes built without a type: for the first two the level is deliberately
+    // *not* a dep, and a Var's binder lives in binder_ rather than in an op.
+    if (!type_) {
+        assert(isa<Univ>() || isa<Type>() || isa<Var>());
+        return Defs();
     }
+
+    // Deliberately not is_set(): its assertion scans *all* ops, and deps() is the inner loop of the free-var
+    // fixed point, Nest, and Scheduler. The last-op check alone is what is_set() actually returns.
+    bool set = num_ops_ == 0 || ops_ptr()[num_ops_ - 1];
+    return Defs(ops_ptr() - 1, (set ? num_ops_ : 0) + 1);
 }
 
 bool Def::is_term() const {
-    if (auto t = type()) {
-        if (auto u = t->type()) {
-            if (auto type = u->isa<Type>()) {
-                if (auto level = Lit::isa(type->level())) return *level == 0;
-            }
-        }
-    }
+    if (auto t = type())
+        if (auto u = t->type())
+            if (auto type = u->isa<Type>()) return Lit::isa(type->level()) == nat_t(0);
     return false;
 }
 
@@ -480,8 +473,7 @@ const Def* Def::debug_suffix(std::string suffix) const { return set_dbg(dbg().se
 Def::Cmp Def::cmp(const Def* a, const Def* b) {
     if (a == b) return Cmp::E;
 
-    if (a->isa_imm() && b->isa_mut()) return Cmp::L;
-    if (a->isa_mut() && b->isa_imm()) return Cmp::G;
+    if (a->is_mutable() != b->is_mutable()) return a->is_mutable() ? Cmp::G : Cmp::L;
 
     // clang-format off
     if (a->node()    != b->node()   ) return a->node()    < b->node()    ? Cmp::L : Cmp::G;
@@ -489,8 +481,7 @@ Def::Cmp Def::cmp(const Def* a, const Def* b) {
     if (a->flags()   != b->flags()  ) return a->flags()   < b->flags()   ? Cmp::L : Cmp::G;
     // clang-format on
 
-    if (a->isa_mut() && b->isa_mut()) return Cmp::U;
-    assert(a->isa_imm() && b->isa_imm());
+    if (a->is_mutable()) return Cmp::U; // two distinct mutables of the same shape are incomparable
 
     if (auto va = a->isa<Var>()) {
         auto vb = b->as<Var>();
@@ -663,8 +654,9 @@ nat_t Def::num_tprojs() const {
 const Def* Def::proj(nat_t a, nat_t i) const {
     if (a == 1) {
         assert(i == 0 && "only inhabitant of Idx 2 is 0_1");
-        if (!type()) return this;
-        if (!isa_mut<Sigma>() && !type()->isa_mut<Sigma>()) return this;
+        auto t = type();
+        if (!t) return this;
+        if (!isa_mut<Sigma>() && !t->isa_mut<Sigma>()) return this;
     }
 
     if (auto seq = isa<Seq>()) {

@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <type_traits>
+#include <utility>
 
 #include <fe/assert.h>
 #include <fe/cast.h>
@@ -189,6 +190,11 @@ namespace mim {
     auto NAME##s(nat_t a) CONST noexcept { return ((const Def*)NAME())->projs(a); }
 
 /// CRTP-based mixin to declare setters for Def::loc \& Def::name using a *covariant* return type.
+/// Forwards every argument list that the Def::set%ters accept - `Loc`, `Sym`, `std::string`, Dbg, DbgKey, or a
+/// `Loc` plus a `Sym`/`std::string` - and hands back a @p P instead of a Def.
+/// @note Setters::Fwd is load-bearing: it keeps this variadic out of the overload set of the `set` members that
+/// subclasses declare themselves (Global::set, Pi::set, Sigma::set, Lam::set, ...), none of which is a template
+/// on @p Ow. So those keep winning at their own call sites instead of being shadowed by a greedy `Args&&...`.
 template<class P, class D = Def>
 class // D is only needed to make the resolution `D::template set` lazy
 #ifdef _MSC_VER
@@ -199,22 +205,16 @@ private:
     P* super() { return static_cast<P*>(this); }
     const P* super() const { return static_cast<const P*>(this); }
 
+    /// Is `D::set<Ow>(Args...)` a thing?
+    template<bool Ow, class... Args>
+    static constexpr bool Fwd = requires(D* d, Args&&... args) { d->template set<Ow>(std::forward<Args>(args)...); };
+
 public:
     // clang-format off
-    template<bool Ow = false> const P* set(Loc l               ) const { super()->D::template set<Ow>(l); return super(); }
-    template<bool Ow = false>       P* set(Loc l               )       { super()->D::template set<Ow>(l); return super(); }
-    template<bool Ow = false> const P* set(       Sym s        ) const { super()->D::template set<Ow>(s); return super(); }
-    template<bool Ow = false>       P* set(       Sym s        )       { super()->D::template set<Ow>(s); return super(); }
-    template<bool Ow = false> const P* set(       std::string s) const { super()->D::template set<Ow>(std::move(s)); return super(); }
-    template<bool Ow = false>       P* set(       std::string s)       { super()->D::template set<Ow>(std::move(s)); return super(); }
-    template<bool Ow = false> const P* set(Loc l, Sym s        ) const { super()->D::template set<Ow>(l, s); return super(); }
-    template<bool Ow = false>       P* set(Loc l, Sym s        )       { super()->D::template set<Ow>(l, s); return super(); }
-    template<bool Ow = false> const P* set(Loc l, std::string s) const { super()->D::template set<Ow>(l, std::move(s)); return super(); }
-    template<bool Ow = false>       P* set(Loc l, std::string s)       { super()->D::template set<Ow>(l, std::move(s)); return super(); }
-    template<bool Ow = false> const P* set(Dbg d               ) const { super()->D::template set<Ow>(d); return super(); }
-    template<bool Ow = false>       P* set(Dbg d               )       { super()->D::template set<Ow>(d); return super(); }
-    template<bool Ow = false> const P* set(DbgKey k            ) const { super()->D::template set<Ow>(k); return super(); }
-    template<bool Ow = false>       P* set(DbgKey k            )       { super()->D::template set<Ow>(k); return super(); }
+    template<bool Ow = false, class... Args> requires Fwd<Ow, Args...>
+    const P* set(Args&&... args) const { super()->D::template set<Ow>(std::forward<Args>(args)...); return super(); }
+    template<bool Ow = false, class... Args> requires Fwd<Ow, Args...>
+          P* set(Args&&... args)       { super()->D::template set<Ow>(std::forward<Args>(args)...); return super(); }
     // clang-format on
 };
 
@@ -456,10 +456,7 @@ public:
 
     const Var* has_var() { return var_; } ///< Only returns not `nullptr`, if Var of this mutable has ever been created.
     /// As above if `this` is a *mutable*.
-    const Var* has_var() const {
-        if (auto mut = isa_mut()) return mut->has_var();
-        return nullptr;
-    }
+    const Var* has_var() const { return mut_ ? var_ : nullptr; }
 
     /// Is `this` a mutable that introduces a Var?
     /// @returns `{nullptr, nullptr}` otherwise.
@@ -495,8 +492,8 @@ public:
     Vars free_vars() const;
     Vars free_vars();              ///< As above but drives (and caches) the fixed-point iteration for *mutables*.
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
-    bool is_open() const;          ///< Has free_vars()?
-    bool is_closed() const;        ///< Has no free_vars()?
+    bool is_open() const;          ///< Has free_vars()? Same as has_free_vars().
+    bool is_closed() const;        ///< Has no free_vars()? Same as `!has_free_vars()`.
 
     /// @name free_vars predicates
     /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
@@ -733,8 +730,11 @@ private:
     Def* stub_(World&, const Def*);
     const Def* rebuild_(World& w, const Def* type, Defs ops) const;
 
+    void watch() const; ///< Trips World::watchpoints in `MIM_ENABLE_CHECKS` builds; a no-op otherwise.
+    Def* finalize();    ///< Runs Def::check once the last op has been set; @see @ref set_ops.
+
     template<bool init>
-    Vars free_vars(bool&, uint32_t);
+    Vars free_vars(World&, bool&, u32);
     void invalidate();
     const Def** ops_ptr() const {
         return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
@@ -792,6 +792,17 @@ private:
 /// tag and dispatches on it instead - see the `dispatch` section in `def.cpp`.
 /// @note A *subclass* growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)` assert in World::allocate.
 static_assert(!std::is_polymorphic_v<Def>, "Def must not have a vtable; dispatch on Def::node() instead");
+
+/// Table-driven and defined here instead of in `def.cpp`, so that Def::is_form \& friends stay inlinable:
+/// `libmim` is a shared object, so an out-of-line judge() would be an opaque PLT call from every other TU.
+inline Judge Def::judge() const noexcept {
+    static constexpr Judge Judges[Num_Nodes] = {
+#define CODE(node, judge) judge,
+        MIM_NODE(CODE)
+#undef CODE
+    };
+    return Judges[node_t(node_)];
+}
 
 /// A variable introduced by a binder (mutable).
 /// @note Var will keep its type_ field as `nullptr`.
@@ -1072,12 +1083,17 @@ private:
 // They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
 // opaque PLT calls in every other TU.
 inline World& Def::world() const noexcept {
-    if (auto var = isa<Var>()) return var->binder()->world();
-
-    for (auto def = this;; def = def->type()) {
-        if (def->isa<Univ>()) return *def->world_;
-        if (auto type = def->isa<Type>()) return *type->level()->type()->as<Univ>()->world_;
+    // Walks up the type chain till it bottoms out in Univ - the only node that actually stores its World.
+    // clang-format off
+    for (auto def = this;;) {
+        switch (def->node_) {
+            case Node::Univ: return *def->world_;
+            case Node::Type: return *def->op(0)->type()->as<Univ>()->world_; // op(0) is Type::level
+            case Node::Var:  def = def->binder_; break;                      // a Var has no type_ of its own
+            default:         def = def->type_;   break;
+        }
     }
+    // clang-format on
 }
 
 inline const Def* Def::type() const noexcept {
@@ -1086,18 +1102,15 @@ inline const Def* Def::type() const noexcept {
 }
 
 inline bool Def::equal(const Def* other) const {
-    if (isa<Univ>() || this->isa_mut() || other->isa_mut()) return this == other;
+    // Univ is a singleton and mutables are never hash-consed, so for those identity *is* equality.
+    if (mut_ || other->mut_ || node_ == Node::Univ) return this == other;
 
     // A Var carries no ops and flags == 0, so it is identified solely by its binder (stored in binder_).
-    if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
+    if (node_ == Node::Var) return other->node_ == Node::Var && binder_ == other->binder_;
 
-    bool result = this->node() == other->node() && this->flags() == other->flags()
-               && this->num_ops() == other->num_ops() && this->type() == other->type();
-
-    for (size_t i = 0, e = num_ops(); result && i != e; ++i)
-        result &= this->op(i) == other->op(i);
-
-    return result;
+    // Neither side is a Var from here on, so type_ is the type - no need for the Var-aware Def::type.
+    return node_ == other->node_ && flags_ == other->flags_ && num_ops_ == other->num_ops_ && type_ == other->type_
+        && std::ranges::equal(ops(), other->ops());
 }
 
 inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
