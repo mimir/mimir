@@ -98,23 +98,36 @@ axm %autodiff.eval:      %compile.Phase;
 /// The tuple pullback transports the partial pullbacks of the operands and handles the sums.
 /// By its nature the pullback of a tuple needs to be a sum.
 ///
-/// ### %%core.icmp.xYgLE (eq)
+/// ### %%autodiff.diff
 ///
+/// The derivative of the axiom `%%plugin.tag.sub` is the annex `%%autodiff.diff.plugin_tag_sub`, i.e. the axiom's name
+/// with the `%` dropped and all `.`s replaced by `_`s;
+/// this is how mim::plug::autodiff::phase::Eval looks a derivative up.
+/// Being annexes, they are roots of the World and hence survive until mim::plug::autodiff::phase::Eval has consumed
+/// them.
+/// But - unlike externals - they are invisible to the backends and a `%%compile.unload "autodiff"` nukes them along
+/// with all the other annexes of this plugin.
+///
+/// #### %%autodiff.diff.core_icmp_xYgLE
+///
+/// The derivative of %%core.icmp.xYgLE (eq).
 /// The comparison pullback exists formally but is not used.
 ///
-fun extern internal_diff_core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
+fun %autodiff.diff.core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
     return (%core.icmp.sle ab, fn [Bool]@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
 ///
-/// ### %%core.wrap.add
+/// #### %%autodiff.diff.core_wrap_add
 ///
+/// The derivative of %%core.wrap.add:
 /// s ↦ (s, s)
 ///
-fun extern internal_diff_core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
+fun %autodiff.diff.core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
     return (%core.wrap.add m ab, fn (i: Idx s)@tt: «2; Idx s» = return ‹2; i›);
 ///
-/// ### %%core.wrap.mul
+/// #### %%autodiff.diff.core_wrap_mul
 ///
+/// The derivative of %%core.wrap.mul:
 /// s ↦ (s*b, s*a)
 ///
-fun extern internal_diff_core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
+fun %autodiff.diff.core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
     return (%core.wrap.mul m ab, fn (i: Idx s)@tt: «2; Idx s» = return (%core.wrap.mul m (i, b), %core.wrap.mul m (i, a)));

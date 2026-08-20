@@ -17,7 +17,7 @@ con extern dep (n: Nat, a: «n; I32», return: Cn [%mem.M 0, I32]) =
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %mem.add_mem,
     );
 

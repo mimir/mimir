@@ -39,7 +39,7 @@ fun extern e1() = return (g2, g3, g4, sg2_1);
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %tensor.lower_get_set,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
 
 // CHECK-NOT: tensor.get

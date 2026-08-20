@@ -34,11 +34,11 @@ fun extern conv_dyn_strided {n cin cout h w kh kw: Nat}
 // remaining %tensor.get / %tensor.set are irrelevant to the checks below, so skipping it keeps the test fast.
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %tensor.lower_tensor,
         %tensor.fuse_tensor,
         %tensor.lower_map_reduce,
         %affine.lower_index,
         %affine.lower_for,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

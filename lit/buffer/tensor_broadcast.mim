@@ -41,5 +41,5 @@ lam extern _compile (): %compile.Phase =
         %buffer.lower_ptr,
         %affine.lower_index,
         %affine.lower_for,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
