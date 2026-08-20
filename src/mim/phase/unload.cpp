@@ -6,7 +6,7 @@ namespace mim {
 
 void Unload::apply(std::string plugin) {
     plugin_str_ = plugin;
-    name_ += " \"" + plugin_str_ + " \"";
+    name_ += " \"" + plugin_str_ + "\"";
     if (auto plugin = Annex::mangle(driver().sym(plugin_str_)))
         plugin_ = *Annex::mangle(driver().sym(plugin_str_));
     else
@@ -25,6 +25,8 @@ void Unload::start() {
         } else
             ++i;
     }
+
+    // we could also literally unload the shared object now, but it's probably not worth the trouble
 }
 
 } // namespace mim
