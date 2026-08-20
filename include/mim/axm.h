@@ -146,8 +146,9 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def;
     friend class World;
 };
 

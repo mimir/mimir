@@ -273,7 +273,6 @@ protected:
     Def(Node, const Def* type, Defs ops, flags_t flags);         ///< As above but World retrieved from @p type.
     Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
     Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
-    virtual ~Def() = default;
     ///@}
 
 public:
@@ -309,8 +308,8 @@ public:
     const Def* type() const noexcept;
     /// Yields the type of this Def and builds a new `Type (UInc n)` if necessary.
     const Def* unfold_type() const;
-    bool is_term() const;             ///< Is this Def a *term*, i.e. is its type() a Type?
-    virtual const Def* arity() const; ///< Number of elements available to Extract / Insert (may be dynamic).
+    bool is_term() const;     ///< Is this Def a *term*, i.e. is its type() a Type?
+    const Def* arity() const; ///< Number of elements available to Extract / Insert (may be dynamic).
     ///@}
 
     /// @name ops
@@ -628,7 +627,7 @@ public:
 
     /// Tries to make an immutable from a mutable.
     /// This usually works if the mutable isn't recursive and its var isn't used.
-    virtual const Def* immutabilize() { return nullptr; }
+    const Def* immutabilize();
     bool is_immutabilizable();
 
     const Def* refine(size_t i, const Def* new_op) const;
@@ -641,7 +640,7 @@ public:
 
     /// First Def::op that needs to be dealt with during reduction; e.g. for a Pi we don't reduce the Pi::dom.
     /// @see World::reduce
-    virtual constexpr size_t reduction_offset() const noexcept { return size_t(-1); }
+    size_t reduction_offset() const noexcept;
     ///@}
 
     /// @name Type Checking
@@ -650,12 +649,12 @@ public:
     /// Checks whether the `i`th operand can be set to `def`.
     /// The method returns a possibly updated version of `def` (e.g. where Hole%s have been resolved).
     /// This is the actual `def` that will be set as the `i`th operand.
-    virtual const Def* check([[maybe_unused]] size_t i, const Def* def) { return def; }
+    const Def* check(size_t i, const Def* def);
 
     /// After all Def::ops have been Def::set, this method will be invoked to check the type of this mutable.
     /// The method returns a possibly updated version of its type (e.g. where Hole%s have been resolved).
     /// If different from Def::type, it will update its Def::type to a Def::zonk%ed version of that.
-    virtual const Def* check() { return type(); }
+    const Def* check();
 
     /// Yields `true`, if Def::local_muts() contain a Hole that is set.
     /// Rewriting (Def::zonk%ing) will resolve the Hole to its operand.
@@ -726,8 +725,8 @@ protected:
 
 private:
     Defs reduce_(const Def* arg) const;
-    virtual Def* stub_(World&, const Def*) { fe::unreachable(); }
-    virtual const Def* rebuild_(World& w, const Def* type, Defs ops) const = 0;
+    Def* stub_(World&, const Def*);
+    const Def* rebuild_(World& w, const Def* type, Defs ops) const;
 
     template<bool init>
     Vars free_vars(bool&, uint32_t);
@@ -805,8 +804,9 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -820,8 +820,9 @@ private:
     Univ(World& world)
         : Def(&world, Node, nullptr, Defs{}, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -836,8 +837,9 @@ public:
 private:
     UMax(World&, Defs ops);
 
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -859,8 +861,9 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -881,8 +884,9 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -931,8 +935,9 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -945,8 +950,9 @@ public:
 private:
     Nat(World& world);
 
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -1002,8 +1008,9 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -1030,8 +1037,9 @@ public:
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -1072,9 +1080,10 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Global* stub_(World&, const Def*) final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
+    Global* stub_(World&, const Def*);
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 

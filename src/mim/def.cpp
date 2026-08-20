@@ -609,9 +609,91 @@ bool Def::less   (const Def* a, const Def* b) { return cmp_<Cmp::L>(a, b); }
 bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 // clang-format on
 
+/*
+ * dispatch
+ *
+ * These used to be `virtual`. They are dispatched on Def::node() instead so that Def needs no vtable: a vptr
+ * would cost 8 bytes on *every* node in the World. Node names double as class names (see MIM_NODE), so the
+ * two exhaustive dispatchers can be generated from the same macros the Node enum itself is built from.
+ * Each `case` calls the implementation *qualified* (`n::f`), so it never re-enters the dispatcher.
+ */
+
+const Def* Def::rebuild_(World& w, const Def* type, Defs ops) const {
+    switch (node()) {
+#define CODE(n, _) \
+    case Node::n: return as<n>()->n::rebuild_(w, type, ops);
+        MIM_NODE(CODE)
+#undef CODE
+        default: fe::unreachable();
+    }
+}
+
+Def* Def::stub_(World& w, const Def* type) {
+    switch (node()) {
+#define CODE(n) \
+    case Node::n: return as<n>()->n::stub_(w, type);
+        MIM_MUT_NODE(CODE)
+#undef CODE
+        default: fe::unreachable(); // only *mutables* have a stub
+    }
+}
+
+const Def* Def::immutabilize() {
+    switch (node()) {
+        case Node::Pi: return as<Pi>()->Pi ::immutabilize();
+        case Node::Sigma: return as<Sigma>()->Sigma::immutabilize();
+        case Node::Arr: return as<Arr>()->Arr ::immutabilize();
+        case Node::Pack: return as<Pack>()->Pack ::immutabilize();
+        case Node::Rule: return as<Rule>()->Rule ::immutabilize();
+        default: return nullptr;
+    }
+}
+
+size_t Def::reduction_offset() const noexcept {
+    switch (node()) {
+        case Node::Pi: return as<Pi>()->Pi ::reduction_offset();
+        case Node::Lam: return as<Lam>()->Lam ::reduction_offset();
+        case Node::Sigma: return as<Sigma>()->Sigma::reduction_offset();
+        case Node::Arr: return as<Arr>()->Arr ::reduction_offset();
+        case Node::Pack: return as<Pack>()->Pack ::reduction_offset();
+        case Node::Rule: return as<Rule>()->Rule ::reduction_offset();
+        case Node::Join:
+        case Node::Meet: return as<Bound>()->Bound::reduction_offset();
+        default: return size_t(-1);
+    }
+}
+
+const Def* Def::check(size_t i, const Def* def) {
+    switch (node()) {
+        case Node::Pi: return as<Pi>()->Pi ::check(i, def);
+        case Node::Lam: return as<Lam>()->Lam ::check(i, def);
+        case Node::Sigma: return as<Sigma>()->Sigma::check(i, def);
+        case Node::Arr: return as<Arr>()->Arr ::check(i, def);
+        case Node::Rule: return as<Rule>()->Rule ::check(i, def);
+        default: return def;
+    }
+}
+
+const Def* Def::check() {
+    switch (node()) {
+        case Node::Pi: return as<Pi>()->Pi ::check();
+        case Node::Sigma: return as<Sigma>()->Sigma ::check();
+        case Node::Arr: return as<Arr>()->Arr ::check();
+        case Node::Reform: return as<Reform>()->Reform::check();
+        case Node::Rule: return as<Rule>()->Rule ::check();
+        default: return type();
+    }
+}
+
 const Def* Def::arity() const {
-    if (auto t = type(); t && !t->isa<Type>()) return t->arity();
-    return world().lit_nat_1();
+    switch (node()) {
+        case Node::Sigma: return as<Sigma>()->Sigma::arity();
+        case Node::Arr: return as<Arr>()->Arr ::arity();
+        case Node::Pack: return as<Pack>()->Pack ::arity();
+        default:
+            if (auto t = type(); t && !t->isa<Type>()) return t->arity();
+            return world().lit_nat_1();
+    }
 }
 
 void Def::externalize() { return world().externals().externalize(this); }

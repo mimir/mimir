@@ -7,9 +7,6 @@
 
 namespace mim {
 
-Prod::~Prod() = default;
-Seq::~Seq()   = default;
-
 const Def* Sigma::arity() const {
     auto n = num_ops();
     if (n != 1 || isa_mut()) return world().lit_nat(n);

@@ -71,9 +71,10 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Hole* stub_(World&, const Def*) final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
+    Hole* stub_(World&, const Def*);
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
     friend class Checker;
 };

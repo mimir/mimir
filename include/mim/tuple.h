@@ -12,8 +12,6 @@ protected:
     using Def::Def;
 
 public:
-    ~Prod() override;
-
     /// Prod groups Sigma and Tuple; see fe::NodeSetable.
     static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Sigma || n == mim::Node::Tuple; }
 
@@ -41,30 +39,31 @@ public:
 
     /// @name Rebuild
     ///@{
-    const Def* immutabilize() final;
+    const Def* immutabilize();
     Sigma* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
 
     /// @note Technically, it would make sense to have an offset of 1 as the first element can't be reduced.
     /// For example, in `[n: Nat, F n]` `n` only occurs free in the second element.
     /// However, this would cause a lot of confusion and special code to cope with the first element,
     /// So we just keep it.
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
+    constexpr size_t reduction_offset() const noexcept { return 0; }
     ///@}
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
+    const Def* check(size_t, const Def*);
+    const Def* check();
     static const Def* infer(World&, Defs);
-    const Def* arity() const final;
+    const Def* arity() const;
     ///@}
 
     static constexpr auto Node = mim::Node::Sigma;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Sigma* stub_(World&, const Def*) final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
+    Sigma* stub_(World&, const Def*);
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -80,8 +79,9 @@ private:
     Tuple(const Def* type, Defs args)
         : Prod(Node, type, args, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -91,8 +91,6 @@ protected:
     using Def::Def;
 
 public:
-    ~Seq() override;
-
     /// Seq groups Arr and Pack; see fe::NodeSetable.
     static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Arr || n == mim::Node::Pack; }
 
@@ -117,7 +115,7 @@ public:
     /// @name Rebuild
     ///@{
     Seq* stub(World& w, const Def* type) { return Def::stub(w, type)->as<Seq>(); }
-    virtual const Def* reduce(const Def* arg) const = 0;
+    const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 };
 
@@ -134,7 +132,7 @@ private:
 public:
     /// @name ops
     ///@{
-    const Def* arity() const final { return op(0); }
+    const Def* arity() const { return op(0); }
     ///@}
 
     /// @name Setters
@@ -150,24 +148,24 @@ public:
     /// @name Rebuild
     ///@{
     Arr* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize() final;
-    const Def* reduce(const Def* arg) const final { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 1; }
+    const Def* immutabilize();
+    constexpr size_t reduction_offset() const noexcept { return 1; }
     ///@}
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
+    const Def* check(size_t, const Def*);
+    const Def* check();
     ///@}
 
     static constexpr auto Node      = mim::Node::Arr;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Arr* stub_(World&, const Def*) final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
+    Arr* stub_(World&, const Def*);
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -183,7 +181,7 @@ private:
 public:
     /// @name ops
     ///@{
-    const Def* arity() const final;
+    const Def* arity() const;
     ///@}
 
     /// @name Setters
@@ -197,18 +195,18 @@ public:
     /// @name Rebuild
     ///@{
     Pack* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize() final;
-    const Def* reduce(const Def* arg) const final { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
+    const Def* immutabilize();
+    constexpr size_t reduction_offset() const noexcept { return 0; }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pack;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Pack* stub_(World&, const Def*) final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
+    Pack* stub_(World&, const Def*);
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -231,8 +229,9 @@ public:
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -259,8 +258,9 @@ public:
     static constexpr size_t Num_Ops = 3;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
+    const Def* rebuild_(World&, const Def*, Defs) const;
 
+    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
