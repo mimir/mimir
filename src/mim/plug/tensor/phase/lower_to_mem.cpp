@@ -314,7 +314,7 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
                 doms[i] = conv_boundary(d);
         }
 
-        auto new_lam = w.mut_con(doms)->set(lam->dbg());
+        auto new_lam = w.mut_con(doms)->set(lam->dbg_key());
         map(lam, new_lam);
         if (lam->num_vars() != 0) map(lam->var(), new_lam->var());
         new_lam->set(rewrite(lam->filter()), rewrite(lam->body()));
@@ -327,7 +327,7 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
     if (!lam->is_external() && lam->is_set() && !op_args_.contains(lam)) {
         if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom())) {
             auto& w      = new_world();
-            auto new_lam = w.mut_con(conv_boundary(pi->dom()))->set(lam->dbg());
+            auto new_lam = w.mut_con(conv_boundary(pi->dom()))->set(lam->dbg_key());
             map(lam, new_lam);
             if (lam->num_vars() != 0) map(lam->var(), new_lam->var());
             new_lam->set(rewrite(lam->filter()), rewrite(lam->body()));

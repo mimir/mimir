@@ -159,7 +159,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
                 if (rw_idx_lam) return rw_idx_lam->reduce_body(idx_map_lam->var(1));
                 return rewrite(f_lam->body());
             };
-            idx_map_lam->set(true, w.tuple({mem_, get_body()}))->set(f_lam->dbg());
+            idx_map_lam->set(true, w.tuple({mem_, get_body()}))->set(f_lam->dbg_key());
             pop();
         }
 

@@ -235,7 +235,7 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     }
 
     auto& w  = new_world();
-    auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg());
+    auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
     DLOG("scalarize {} : {} ~> {} : {}", old, old->type(), sca, sca->type());
     map(old, sca);
 

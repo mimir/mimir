@@ -12,8 +12,6 @@ protected:
     using Def::Def;
 
 public:
-    ~Prod() override;
-
     /// Prod groups Sigma and Tuple; see fe::NodeSetable.
     static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Sigma || n == mim::Node::Tuple; }
 
@@ -41,30 +39,22 @@ public:
 
     /// @name Rebuild
     ///@{
-    const Def* immutabilize() final;
-    Sigma* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Sigma* stub(const Def* type) { return Def::stub(world(), type)->as<Sigma>(); }
 
     /// @note Technically, it would make sense to have an offset of 1 as the first element can't be reduced.
     /// For example, in `[n: Nat, F n]` `n` only occurs free in the second element.
     /// However, this would cause a lot of confusion and special code to cope with the first element,
     /// So we just keep it.
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
     ///@}
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
     static const Def* infer(World&, Defs);
-    const Def* arity() const final;
     ///@}
 
     static constexpr auto Node = mim::Node::Sigma;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Sigma* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -80,8 +70,6 @@ private:
     Tuple(const Def* type, Defs args)
         : Prod(Node, type, args, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -91,8 +79,6 @@ protected:
     using Def::Def;
 
 public:
-    ~Seq() override;
-
     /// Seq groups Arr and Pack; see fe::NodeSetable.
     static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Arr || n == mim::Node::Pack; }
 
@@ -117,7 +103,7 @@ public:
     /// @name Rebuild
     ///@{
     Seq* stub(World& w, const Def* type) { return Def::stub(w, type)->as<Seq>(); }
-    virtual const Def* reduce(const Def* arg) const = 0;
+    const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 };
 
@@ -132,11 +118,6 @@ private:
         : Seq(Node, type, 2, 0) {} ///< Constructor for a *mutable* Arr.
 
 public:
-    /// @name ops
-    ///@{
-    const Def* arity() const final { return op(0); }
-    ///@}
-
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{
@@ -149,25 +130,13 @@ public:
 
     /// @name Rebuild
     ///@{
-    Arr* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize() final;
-    const Def* reduce(const Def* arg) const final { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 1; }
-    ///@}
-
-    /// @name Type Checking
-    ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
+    Arr* stub(const Def* type) { return Def::stub(world(), type)->as<Arr>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Arr;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Arr* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -181,11 +150,6 @@ private:
         : Seq(Node, type, 1, 0) {} ///< Constructor for a *mutable* Pack.
 
 public:
-    /// @name ops
-    ///@{
-    const Def* arity() const final;
-    ///@}
-
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{
@@ -196,19 +160,13 @@ public:
 
     /// @name Rebuild
     ///@{
-    Pack* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize() final;
-    const Def* reduce(const Def* arg) const final { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
+    Pack* stub(const Def* type) { return Def::stub(world(), type)->as<Pack>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pack;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Pack* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -231,8 +189,6 @@ public:
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -259,8 +215,6 @@ public:
     static constexpr size_t Num_Ops = 3;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 

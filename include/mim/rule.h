@@ -28,14 +28,11 @@ public:
     ///@}
 
     static const Def* infer(const Def* dom);
-    const Def* check() override;
 
     static constexpr auto Node      = mim::Node::Reform;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const override;
-
     friend class World;
 };
 
@@ -80,16 +77,12 @@ public:
 
     /// @name Type checking
     ///@{
-    const Def* check(size_t, const Def*) override;
-    const Def* check() override;
     ///@}
 
     /// @name Rebuild
     ///@{
-    Rule* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Rule* immutabilize() override;
+    Rule* stub(const Def* type) { return Def::stub(world(), type)->as<Rule>(); }
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept override { return 1; }
     ///@}
 
     /// @name Apply
@@ -104,8 +97,6 @@ public:
     static constexpr size_t Num_Ops = 3;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const override;
-    Rule* stub_(World&, const Def*) override;
     bool its_a_match_(const Def* lhs, const Def* rhs, Def2Def& seen) const;
     friend class World;
 };

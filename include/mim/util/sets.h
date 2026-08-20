@@ -27,7 +27,7 @@ private:
             : parent(nullptr)
             , def(nullptr)
             , size(0)
-            , min(size_t(-1))
+            , min(u32(-1))
             , id(id) {}
 
         constexpr Node(Node* parent, D* def, u32 id) noexcept
@@ -74,7 +74,9 @@ private:
         Node* const parent;
         D* const def;
         const size_t size;
-        const size_t min;
+        /// @note `u32` (not `size_t`) so that it packs into the same 8 bytes as Node::id;
+        /// it only ever holds a Def::tid, which is a `u32` itself.
+        const u32 min;
         u32 const id;
         GIDMap<D*, fe::Arena::Ptr<Node>> children;
     };

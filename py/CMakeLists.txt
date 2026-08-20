@@ -198,6 +198,8 @@ nanobind_add_module(pymim
 
 set_target_properties(pymim PROPERTIES LIBRARY_OUTPUT_NAME _mim)
 target_link_libraries(pymim PRIVATE libmim)
+# for nb_type_hook.h, which every generated unit includes
+target_include_directories(pymim PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Generate a stub for the internal nanobind module.
 set(MIM_PY_STUBS_DIR "${CMAKE_BINARY_DIR}/mim_py_stubs")

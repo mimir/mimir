@@ -833,6 +833,9 @@ def _includes_block(casters: set) -> str:
     """
     lines = ["#include <nanobind/nanobind.h>"]
     lines += [f"#include <nanobind/stl/{c}>" for c in sorted(_BASE_CASTERS | casters)]
+    # Every unit needs the nanobind::detail::type_hook<mim::Def> specialisation in scope: mim::Def is not
+    # polymorphic, so without it nanobind hands Python the base `Def` instead of the concrete node class.
+    lines += ["", '#include "nb_type_hook.h"']
     return "\n".join(lines) + "\n"
 
 

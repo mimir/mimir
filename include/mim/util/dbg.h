@@ -146,11 +146,41 @@ public:
     Dbg& set(Loc loc) { return loc_ = loc, *this; }
     ///@}
 
+    /// @name Comparison and Hashing
+    /// Dbg%s are interned in the Driver so that a Def only has to store a `u32` index; see Def::dbg_.
+    ///@{
+    /// @note Like Loc::operator==, this only compares Loc::path by pointer identity.
+    bool operator==(const Dbg& other) const noexcept { return loc_ == other.loc_ && sym_ == other.sym_; }
+
+    template<class H>
+    friend H AbslHashValue(H h, Dbg dbg) noexcept {
+        return H::combine(std::move(h), dbg.loc_.path, dbg.loc_.begin.row, dbg.loc_.begin.col, dbg.loc_.finis.row,
+                          dbg.loc_.finis.col, dbg.sym_);
+    }
+    ///@}
+
 private:
     Loc loc_;
     Sym sym_;
 
     friend std::ostream& operator<<(std::ostream& os, const Dbg& dbg) { return os << dbg.sym(); }
+};
+
+/// Opaque handle to an interned Dbg (see Def::dbg_).
+/// Handing one Def another's key copies the interned index verbatim: no Dbg is materialised and nothing is
+/// looked up in the Driver's table. @warning Keys are only meaningful within the Driver that interned them.
+class DbgKey {
+public:
+    constexpr DbgKey() noexcept = default; ///< The empty Dbg.
+
+private:
+    constexpr explicit DbgKey(uint32_t key) noexcept
+        : key_(key) {}
+
+    uint32_t key_ = 0;
+
+    friend class Def;
+    friend class World; ///< World::set_loc pre-interns World::get_loc into a key.
 };
 
 } // namespace mim

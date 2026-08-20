@@ -54,7 +54,7 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
         return new_dom;
     }));
     if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret_->type());
-    auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg());
+    auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg_key());
     DLOG("stub {} ~> {}", lam, new_lam);
     if (lam->is_external()) new_lam->externalize();
 
@@ -86,7 +86,10 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     // mem-effectful operations inside this closure's own body (e.g. packing a further nested closure) have a real
     // chain to thread, instead of none (see issue #126).
     auto lvm = mem::mem_var(lam);
-    if (!lvm) {
+    // `ep < num_vars()` guards a `Cn []` (or mem-only) closure: there is no environment slot to recover a
+    // mem from, and `lam->var(ep)` would be an out-of-bounds projection reading past the operand array.
+    // Mirrors the `num_vars() < 2` guard applied to `new_lam` above.
+    if (!lvm && ep < lam->num_vars()) {
         auto old_env = lam->var(ep);
         if (Axm::isa<mem::M>(old_env->type())) {
             lvm = old_env;

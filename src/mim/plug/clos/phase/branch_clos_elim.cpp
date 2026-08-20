@@ -38,7 +38,7 @@ const Def* BranchClosElim::rewrite_imm_App(const App* app) {
             // The Pi is computed on the old-world closure type and then rewritten -
             // rewriting the (mutable, existential) closure type itself does not survive the world change.
             // Memoize the stub first: rewriting the lam below revisits this very branch.
-            auto dropped_lam   = w.mut_lam(rewrite(clos_type_to_pi(c.type()))->as<Pi>())->set(c.fnc_as_lam()->dbg());
+            auto dropped_lam = w.mut_lam(rewrite(clos_type_to_pi(c.type()))->as<Pi>())->set(c.fnc_as_lam()->dbg_key());
             branch2dropped_[c] = dropped_lam;
             auto clam          = rewrite(c.fnc_as_lam())->as_mut<Lam>();
             dropped_lam->set(clam->reduce(clos_insert_env(ep, rewrite(c.env()), dropped_lam->var())));

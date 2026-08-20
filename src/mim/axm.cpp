@@ -41,4 +41,13 @@ std::tuple<const Axm*, u8, u8> Axm::get(const Def* def) {
     return {nullptr, 0, 0};
 }
 
+std::tuple<const Axm*, u8, u8> Axm::next(const Def* callee) {
+    auto [axm, curry, trip] = get(callee);
+    if (axm) {
+        curry = curry == 0 ? trip : curry;             // counter exhausted - start the next trip
+        curry = curry == Trip_End ? curry : curry - 1; // Trip_End sticks
+    }
+    return {axm, curry, trip};
+}
+
 } // namespace mim

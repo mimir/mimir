@@ -1,6 +1,5 @@
 #include "mim/check.h"
 
-#include <absl/container/fixed_array.h>
 #include <fe/assert.h>
 
 #include "mim/rewrite.h"
@@ -49,7 +48,7 @@ const Def* Def::zonk_mut() const {
 }
 
 DefVec Def::zonk(Defs defs) {
-    return DefVec(defs.size(), [defs](size_t i) { return defs[i]->zonk(); });
+    return DefVec(defs, [](const Def* def) { return def->zonk(); });
 }
 
 /*
@@ -61,12 +60,10 @@ std::pair<Hole*, const Def*> Hole::find() {
     auto last = this;
 
     while (def) {
-        if (auto h = def->isa_mut<Hole>()) {
-            def  = h->op();
-            last = h;
-        } else {
-            break;
-        }
+        auto h = def->isa_mut<Hole>();
+        if (!h) break;
+        def  = h->op();
+        last = h;
     }
 
     auto root = def ? def : last;
@@ -85,7 +82,7 @@ const Def* Hole::tuplefy(nat_t n) {
     if (is_set()) return this;
 
     auto& w    = world();
-    auto holes = absl::FixedArray<const Def*>(n);
+    auto holes = DefVec(n);
     if (auto [sigma, var] = type()->isa_binder<Sigma>(); sigma && n >= 1) {
         auto rw  = VarRewriter(var, this);
         holes[0] = w.mut_hole(sigma->op(0));
@@ -123,9 +120,8 @@ const Def* Checker::fail() {
 const Def* Checker::is_uniform(Defs defs) {
     if (defs.empty()) return nullptr;
     auto first = defs.front();
-    for (size_t i = 1, e = defs.size(); i != e; ++i)
-        if (!alpha<Test>(first, defs[i])) return nullptr;
-    return first;
+    auto same  = [first](const Def* def) { return alpha<Test>(first, def); };
+    return std::ranges::all_of(defs.subspan(1), same) ? first : nullptr;
 }
 
 const Def* Checker::assignable_(const Def* type, const Def* val) {
@@ -155,16 +151,16 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
 
         size_t a     = sigma->num_ops();
         auto red     = sigma->reduce(val);
-        auto new_ops = absl::FixedArray<const Def*>(red.size());
+        auto new_ops = DefVec(a);
         for (size_t i = 0; i != a; ++i) {
             auto new_val = assignable_(red[i], val->proj(a, i));
-            if (new_val)
-                new_ops[i] = new_val;
-            else
-                return fail();
+            if (!new_val) return fail();
+            new_ops[i] = new_val;
         }
         return w.tuple(new_ops);
-    } else if (auto uniq = val_ty->isa<Uniq>()) {
+    }
+
+    if (auto uniq = val_ty->isa<Uniq>()) {
         if (auto new_val = assignable(type, uniq->op())) return new_val;
         return fail();
     }
@@ -220,11 +216,9 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
 
         if (d1->isa<Top>() || d2->isa<Top>()) return mode == Check;
 
-        if (auto t1 = d1->type()) {
-            if (auto t2 = d2->type()) {
-                if (!alpha_<mode>(t1, t2)) return fail<mode>();
-            }
-        }
+        auto t1 = d1->type();
+        auto t2 = d2->type();
+        if (t1 && t2 && !alpha_<mode>(t1, t2)) return fail<mode>();
 
         if (!alpha_<mode>(d1->arity(), d2->arity())) return fail<mode>();
 
@@ -240,7 +234,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     auto seq1 = d1->isa<Seq>();
     auto seq2 = d2->isa<Seq>();
 
-    if constexpr (mode == Mode::Check) {
+    if constexpr (mode == Check) {
         if (auto umax = d1->isa<UMax>(); umax && !d2->isa<UMax>()) return check(umax, d2);
         if (auto umax = d2->isa<UMax>(); umax && !d1->isa<UMax>()) return check(umax, d1);
 
@@ -308,46 +302,12 @@ bool Checker::check(const UMax* umax, const Def* def) {
  * infer & check
  */
 
-const Def* Arr::check(size_t, const Def* def) { return def; } // TODO
-
-const Def* Arr::check() {
-    auto t = body()->unfold_type();
-    if (!Checker::alpha<Checker::Check>(t, type()))
-        error(type()->loc(), "declared sort '{}' of array does not match inferred one '{}'", type(), t);
-    return t;
-}
-
-const Def* Tuple::infer(World& world, Defs ops) {
-    auto elems = absl::FixedArray<const Def*>(ops.size());
-    for (size_t i = 0, e = ops.size(); i != e; ++i)
-        elems[i] = ops[i]->unfold_type();
-    return world.sigma(elems);
+const Def* Tuple::infer(World& w, Defs ops) {
+    return w.sigma(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
 const Def* Sigma::infer(World& w, Defs ops) {
-    auto elems = absl::FixedArray<const Def*>(ops.size());
-    for (size_t i = 0, e = ops.size(); i != e; ++i)
-        elems[i] = ops[i]->unfold_type();
-    return w.umax<UMax::Kind>(elems);
-}
-
-const Def* Sigma::check(size_t, const Def* def) { return def; } // TODO
-
-const Def* Sigma::check() {
-    auto t = infer(world(), ops());
-    if (t != type()) {
-        // TODO HACK
-        if (Checker::alpha<Checker::Check>(t, type()))
-            return t;
-        else {
-            world().WLOG(
-                "incorrect type '{}' for '{}'. Correct one would be: '{}'. I'll keep this one nevertheless due to "
-                "bugs in clos-conv",
-                type(), this, t);
-            return type();
-        }
-    }
-    return t;
+    return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
 const Def* Pi::infer(const Def* dom, const Def* codom) {
@@ -355,59 +315,80 @@ const Def* Pi::infer(const Def* dom, const Def* codom) {
     return w.umax<UMax::Kind>({dom->unfold_type(), codom->unfold_type()});
 }
 
-const Def* Pi::check(size_t, const Def* def) { return def; }
-
-const Def* Pi::check() {
-    auto t = infer(dom(), codom());
-    if (!Checker::alpha<Checker::Check>(t, type()))
-        error(type()->loc(), "declared sort '{}' of function type does not match inferred one '{}'", type(), t);
-    return t;
-}
-
-const Def* Lam::check(size_t i, const Def* def) {
-    if (i == 0) {
-        if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        throw Error().error(filter()->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'",
-                            filter(), filter()->type());
-    }
-    assert(i == 1);
-    if (auto body = Checker::assignable(codom(), def)) return body;
-    throw Error()
-        .error(def->loc(), "body of function is not assignable to declared codomain")
-        .note(def->loc(), "body: '{}'", def)
-        .note(def->loc(), "type: '{}'", def->type())
-        .note(codom()->loc(), "codomain: '{}'", codom());
-}
-
-const Def* Reform::check() {
-    auto t = infer(dom());
-    if (!Checker::alpha<Checker::Check>(t, type()))
-        error(type()->loc(), "declared sort '{}' of rule type does not match inferred one '{}'", type(), t);
-    return t;
-}
-
 const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
-
-const Def* Rule::check() {
-    auto t1 = lhs()->type();
-    auto t2 = rhs()->type();
-    if (!Checker::alpha<Checker::Check>(t1, t2))
-        error(type()->loc(), "type mismatch: '{}' for lhs, but '{}' for rhs", t1, t2);
-    if (!Checker::assignable(world().type_bool(), guard()))
-        error(guard()->loc(), "condition '{}' of rewrite is of type '{}' but must be of type 'Bool'", guard(),
-              guard()->type());
-
-    return type();
-}
-
-const Def* Rule::check(size_t, const Def* def) {
-    return def;
-    // TODO: do actual check + what are the parameters ?
-}
 
 #ifndef DOXYGEN
 template bool Checker::alpha_<Checker::Check>(const Def*, const Def*);
 template bool Checker::alpha_<Checker::Test>(const Def*, const Def*);
 #endif
+
+/*
+ * check
+ *
+ * These used to be `virtual` on Def. Def has no vtable, so they switch on Def::node() with the former
+ * overrides inlined; they live here rather than in def.cpp because that is where infer/Checker are.
+ */
+
+const Def* Def::check(size_t i, const Def* def) {
+    auto lam = isa<Lam>();
+    if (!lam) return def; // TODO Pi/Sigma/Arr/Rule accept any op for now
+
+    if (i == 0) {
+        if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
+        throw Error().error(def->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'", def,
+                            def->type());
+    }
+    assert(i == 1);
+    if (auto body = Checker::assignable(lam->codom(), def)) return body;
+    throw Error()
+        .error(def->loc(), "body of function is not assignable to declared codomain")
+        .note(def->loc(), "body: '{}'", def)
+        .note(def->loc(), "type: '{}'", def->type())
+        .note(lam->codom()->loc(), "codomain: '{}'", lam->codom());
+}
+
+const Def* Def::check() {
+    switch (node()) {
+        case Node::Pi: {
+            auto pi = as<Pi>();
+            auto t  = Pi::infer(pi->dom(), pi->codom());
+            if (!Checker::alpha<Checker::Check>(t, type()))
+                error(type()->loc(), "declared sort '{}' of function type does not match inferred one '{}'", type(), t);
+            return t;
+        }
+        case Node::Arr: {
+            auto t = as<Arr>()->body()->unfold_type();
+            if (!Checker::alpha<Checker::Check>(t, type()))
+                error(type()->loc(), "declared sort '{}' of array does not match inferred one '{}'", type(), t);
+            return t;
+        }
+        case Node::Reform: {
+            auto t = Reform::infer(as<Reform>()->dom());
+            if (!Checker::alpha<Checker::Check>(t, type()))
+                error(type()->loc(), "declared sort '{}' of rule type does not match inferred one '{}'", type(), t);
+            return t;
+        }
+        case Node::Sigma: {
+            auto t = Sigma::infer(world(), ops());
+            if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
+            world().WLOG("incorrect type '{}' for '{}'. Correct one would be: '{}'. I'll keep this one nevertheless "
+                         "due to bugs in clos-conv",
+                         type(), this, t);
+            return type();
+        }
+        case Node::Rule: {
+            auto rule = as<Rule>();
+            auto t1   = rule->lhs()->type();
+            auto t2   = rule->rhs()->type();
+            if (!Checker::alpha<Checker::Check>(t1, t2))
+                error(type()->loc(), "type mismatch: '{}' for lhs, but '{}' for rhs", t1, t2);
+            if (!Checker::assignable(world().type_bool(), rule->guard()))
+                error(rule->guard()->loc(), "condition '{}' of rewrite is of type '{}' but must be of type 'Bool'",
+                      rule->guard(), rule->guard()->type());
+            return type();
+        }
+        default: return type();
+    }
+}
 
 } // namespace mim

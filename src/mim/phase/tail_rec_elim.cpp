@@ -34,7 +34,7 @@ bool TailRecElim::is_tail_rec(Lam* lam) {
 const Def* TailRecElim::rewrite_mut_Lam(Lam* old) {
     if (!is_bootstrapping() && is_tail_rec(old)) {
         auto& w   = new_world();
-        auto rec  = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg());
+        auto rec  = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
         auto n    = rec->num_doms();
         auto loop = rec->stub(w.cn(rec->doms().view().rsubspan(1)));
         DLOG("old {} -> (rec: {}, loop: {})", old, rec, loop);

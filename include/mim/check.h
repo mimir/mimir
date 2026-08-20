@@ -39,7 +39,7 @@ public:
     Hole* unset() { return Def::unset()->as<Hole>(); }
     ///@}
 
-    Hole* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Hole* stub(const Def* type) { return Def::stub(world(), type)->as<Hole>(); }
 
     /// If unset, explode to Tuple.
     /// @returns the new Tuple, or `this` if unsuccessful.
@@ -71,9 +71,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Hole* stub_(World&, const Def*) final;
-
     friend class World;
     friend class Checker;
 };
@@ -147,10 +144,9 @@ private:
         if (!mut) return std::pair(binders_.end(), true);
         auto res = binders_.emplace(mut, d);
         // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
-        if (res.second) {
-            memo_[Check].clear();
-            memo_[Test].clear();
-        }
+        if (res.second)
+            for (auto& memo : memo_)
+                memo.clear();
         return res;
     }
 
