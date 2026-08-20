@@ -48,7 +48,6 @@ axm %autodiff.zero: [T: *] → T, normalize_zero;
 /// A universal addition that consumes zeros and defaults to normal addition for scalar types.
 /// It lifts addition over structured types and special-cases types that do not allow addition.
 ///
-/// TODO: how do we handle summations that need memory? (grab current memory?)
 axm %autodiff.add: {T: *} → [T, T] → T, normalize_add;
 ///
 /// ### %%autodiff.sum
