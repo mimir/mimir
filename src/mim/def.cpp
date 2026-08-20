@@ -212,22 +212,24 @@ const Def* Def::var() {
     return world().var(this);
 }
 
+// clang-format off
 const Def* Def::var_type() {
     auto& w = world();
-
-    // clang-format off
-    if (auto lam  = isa<Lam  >()) return lam->dom();
-    if (auto pi   = isa<Pi   >()) return pi ->dom();
-    if (auto sig  = isa<Sigma>()) return sig;
-    if (auto arr  = isa<Arr  >()) return w.type_idx(arr ->arity()); // TODO shapes like (2, 3)
-    if (auto pack = isa<Pack >()) return w.type_idx(pack->arity()); // TODO shapes like (2, 3)
-    if (auto rule = isa<Rule >()) return rule->type()->dom();
-    if (isa<Bound >()) return this;
-    if (isa<Hole  >()) return nullptr;
-    if (isa<Global>()) return nullptr;
-    // clang-format on
-    fe::unreachable();
+    switch (node()) {
+        case Node::Lam:    return as<Lam >()->dom();
+        case Node::Pi:     return as<Pi  >()->dom();
+        case Node::Rule:   return as<Rule>()->dom();
+        case Node::Arr:
+        case Node::Pack:   return w.type_idx(arity()); // TODO shapes like (2, 3)
+        case Node::Sigma:
+        case Node::Join:
+        case Node::Meet:   return this;
+        case Node::Global:
+        case Node::Hole:   return nullptr;
+        default:           fe::unreachable();
+    }
 }
+// clang-format on
 
 Vars Def::free_vars() const {
     if (auto mut = isa_mut()) return mut->free_vars();
