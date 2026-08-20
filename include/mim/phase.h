@@ -376,6 +376,93 @@ private:
     bool bootstrapping_ = true;
 };
 
+/// Rewrites the **current** World *in place* - unlike an RWPhase, which rebuilds it into a fresh one.
+///
+/// A mutable keeps its identity: only its ops() are Def::set anew, and only if the rewrite actually changed them.
+/// So hash-consing makes every unaffected Def free instead of a per-run rebuild tax.
+/// A mutable whose *type* changes is the one exception - identity is tied to the type - and falls back to an
+/// RWPhase-style stub rebuild in this same World.
+/// This matters most for the annex graph: it is proportional to the loaded plugins - not to the program - and a
+/// *local* rewrite never touches it, yet an RWPhase re-creates all of it on **every** run.
+///
+/// Override skip() to prune subtrees that provably cannot change; this is what turns the traversal from
+/// *"hash-cons every node"* into *"touch only what matters"*.
+///
+/// Since a change is only ever committed if it really is one, Phase::todo() is exact: a quiet run costs a pruned
+/// traversal and nothing else.
+///
+/// @warning An InplaceRWPhase
+/// * cannot immutabilize a mutable that the rewrite made vacuous (unless it takes the type-change fallback),
+/// * must not hand out a fresh identity for something already in its target shape - that would never converge, and
+/// * leaves what it replaced behind as garbage until the next Cleanup.
+///
+/// Use an RWPhase for anything else.
+/// @see @ref phases_inplace_rwphase
+class InplaceRWPhase : public Phase, public Rewriter {
+public:
+    /// @name Construction
+    ///@{
+    InplaceRWPhase(World& world, std::string name)
+        : Phase(world, std::move(name))
+        , Rewriter(world) {}
+    InplaceRWPhase(World& world, flags_t annex)
+        : Phase(world, annex)
+        , Rewriter(world) {}
+    ///@}
+
+    /// @name Getters
+    ///@{
+    using Phase::world; ///< Disambiguates the Phase/Rewriter double base; for an InplaceRWPhase both are the same.
+    ///@}
+
+    /// @name Rewrite
+    ///@{
+    /// Runs the optional pre-analysis on world(), typically to a fixed point, before rewriting begins.
+    /// If no analysis is needed, simply return `false`.
+    virtual bool analyze() { return false; }
+
+    /// Should start() walk the annex roots as well?
+    /// An RWPhase *has* to: it must re-create every annex to populate the new World's table.
+    /// An InplaceRWPhase finds that table already correct, so the annex graph - which is proportional to the loaded
+    /// plugins, not to the program - is pure extra coverage here, and a *local* rewrite gains nothing from it:
+    /// whatever the program actually uses is reached through the externals anyway.
+    /// Hence this defaults to `false`; say `true` if your rewrite must also see *unused* annexes.
+    virtual bool rewrite_annexes() const { return false; }
+
+    virtual void rewrite_annex(flags_t, Sym, const Def*);
+    virtual void rewrite_external(Def*);
+    ///@}
+
+protected:
+    /// @name Rewrite
+    ///@{
+    /// Rewrites a *root* - i.e.\ an annex or an external.
+    /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
+    virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
+
+    /// Cheap **O(1)** pruning hook: `true` iff @p def's subtree provably cannot change.
+    /// Defaults to pruning nothing.
+    virtual bool skip(const Def*) const { return false; }
+
+    /// The skip() predicate for phases that only rewrite mutables and/or substitute Var%s:
+    /// a *closed* immutable subtree contains neither.
+    /// @warning Checking only local_muts() is **not** enough: a substitution installed via Rewriter::map would silently
+    /// be dropped in a mut-free subtree that still mentions the substituted Var.
+    static bool skip_closed_imm(const Def* def) {
+        return !def->isa_mut() && def->local_muts().empty() && def->local_vars().empty();
+    }
+
+    void start() override;
+    using Rewriter::rewrite; ///< Keeps the `Defs` overload visible next to the override below.
+    /// Applies skip() and then delegates to rewrite_def(); override the latter, not this.
+    const Def* rewrite(const Def* def) final { return skip(def) ? def : rewrite_def(def); }
+    /// The actual rewrite hook - skip() has already said `false` for @p def.
+    virtual const Def* rewrite_def(const Def* def) { return Rewriter::rewrite(def); }
+    /// Keeps @p mut's identity and Def::set%s its ops anew iff rewriting them changed anything.
+    const Def* rewrite_mut(Def* mut) override;
+    ///@}
+};
+
 /// An RWPhase that searches for a pattern and replaces it.
 /// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
 class Repl : public RWPhase {

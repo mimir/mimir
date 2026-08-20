@@ -18,12 +18,12 @@ namespace mim {
 /// This makes `f`'s classification identical whether `f` is bare or wrapped, so the canonical η-form is a genuine
 /// fixed point - the phase does not fight itself and can share one big `%%compile.phases tt` fixed-point loop with
 /// BetaRed and %%mem.seo without oscillating.
-class EtaConv : public RWPhase {
+class EtaConv : public InplaceRWPhase {
 public:
     EtaConv(World& world)
-        : RWPhase(world, "EtaConv") {}
+        : InplaceRWPhase(world, "EtaConv") {}
     EtaConv(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+        : InplaceRWPhase(world, annex) {}
 
 private:
     enum Lattice : u8 {
@@ -61,6 +61,15 @@ private:
         return lam && eta_expand(lattice(lam));
     }
 
+    /// Is @p lam a wrapper that is already in the shape a fresh Lam::eta_expand would produce here?
+    /// That means: it belongs to this one occurrence alone and carries the canonical `tt` filter.
+    /// Only then may we keep it - re-creating it would hand out a fresh identity on every run, so this phase would
+    /// never reach a fixed point in place.
+    bool is_canonical_wrapper(const Lam* lam) const {
+        auto i = wrapper_uses_.find(lam);
+        return i != wrapper_uses_.end() && i->second == 1 && lam->filter() == lam->world().lit_tt();
+    }
+
     void join(const Lam* lam, Lattice l) {
         if (auto [i, ins] = lam2lattice_.emplace(lam, l); !ins) i->second = join(i->second, l);
     }
@@ -69,18 +78,21 @@ private:
     void analyze(const Def*);
     void visit(const Def*, Lattice);
 
-    void rewrite_annex(flags_t, Sym, const Def*) final;
-    void rewrite_external(Def*) final;
-    const Def* rewrite(const Def*) final;
+    /// η only ever applies to a *mutable* Lam, so a closed immutable is untouchable.
+    bool skip(const Def* def) const final { return skip_closed_imm(def); }
+    /// An annex or external must keep its shape: neither η-reduce nor η-expand a root.
+    const Def* rewrite_root(const Def* def) final { return rewrite_no_eta(def); }
+    const Def* rewrite_def(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_imm_Var(const Var*) final;
     /// η-reduce wrappers but never η-expand - used for callee (Known) positions, where expansion must not happen
     /// but a wrapper `λx.f x` should still collapse to `f` (just as the standalone EtaRed did everywhere).
     const Def* rewrite_no_exp(const Def* old_def);
-    const Def* rewrite_no_eta(const Def* old_def) { return RWPhase::rewrite(old_def); }
+    const Def* rewrite_no_eta(const Def* old_def) { return Rewriter::rewrite(old_def); }
 
     DefSet analyzed_;
     GIDMap<const Lam*, Lattice> lam2lattice_;
+    GIDMap<const Lam*, u32> wrapper_uses_; ///< How many occurrences does a wrapper `λx.f x` serve?
 };
 
 } // namespace mim

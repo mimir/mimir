@@ -169,6 +169,76 @@ void RWPhase::rewrite_external(Def* old_mut) {
 }
 
 /*
+ * InplaceRWPhase
+ */
+
+void InplaceRWPhase::start() {
+    auto max_iters = driver().flags().max_fp_iters;
+    bool todo      = true;
+    for (uint32_t i = 0; todo; ++i) {
+        if (i >= max_iters) fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        VLOG("iteration: {}", i);
+        todo = analyze();
+    }
+
+    auto gid = world().curr_gid();
+    if (rewrite_annexes())
+        for (const auto& [flags, e] : world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+
+    // mutate(): rewrite_external may re-externalize, which would invalidate a live iterator.
+    for (auto mut : world().externals().mutate())
+        rewrite_external(mut);
+
+    profile_count("inplace.defs.created", world().curr_gid() - gid);
+}
+
+void InplaceRWPhase::rewrite_annex(flags_t flags, Sym, const Def* def) {
+    if (auto new_def = rewrite_root(def); new_def != def) {
+        world().annexes().reattach(flags, new_def);
+        invalidate();
+    }
+}
+
+void InplaceRWPhase::rewrite_external(Def* old_mut) {
+    auto new_def = rewrite_root(old_mut);
+    if (new_def == old_mut) return;
+
+    // The rewrite replaced the external itself; carry the external flag over.
+    old_mut->internalize();
+    new_def->as_mut()->externalize();
+    invalidate();
+}
+
+const Def* InplaceRWPhase::rewrite_mut(Def* mut) {
+    if (auto hole = mut->isa<Hole>()) {
+        auto [last, op] = hole->find();
+        return op ? rewrite(op) : last; // an unresolved Hole stays as is
+    }
+
+    // A mutable's identity is tied to its type, so if the rewrite changes the type, we cannot keep it: fall back to
+    // an RWPhase-style rebuild - Rewriter::rewrite_mut stubs a fresh mutable (in this very World) and maps onto it.
+    if (auto type = mut->type(); type && rewrite(type) != type) {
+        profile_count("inplace.muts.rebuilt");
+        invalidate();
+        return Rewriter::rewrite_mut(mut);
+    }
+
+    map(mut, mut); // keep the identity; doubles as the cycle breaker for recursive mutables
+    if (!mut->is_set()) return mut;
+
+    auto _       = enter(mut);
+    auto new_ops = rewrite(mut->ops());
+    if (!std::ranges::equal(new_ops, mut->ops())) {
+        mut->unset()->set(new_ops);
+        profile_count("inplace.muts.reset");
+        invalidate();
+    }
+
+    return mut;
+}
+
+/*
  * PhaseMan
  */
 

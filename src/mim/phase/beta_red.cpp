@@ -3,7 +3,7 @@
 namespace mim {
 
 bool BetaRed::analyze() {
-    for (auto def : old_world().roots())
+    for (auto def : world().roots())
         visit(def, false);
     return false; // no fixed-point neccessary
 }
@@ -34,7 +34,7 @@ const Def* BetaRed::rewrite_imm_App(const App* app) {
         return rewrite(old_lam->body());
     }
 
-    return RWPhase::rewrite_imm_App(app);
+    return Rewriter::rewrite_imm_App(app);
 }
 
 } // namespace mim
