@@ -779,4 +779,11 @@ template const Def* World::implicit_app<true>(const Def*, const Def*);
 template const Def* World::implicit_app<false>(const Def*, const Def*);
 #endif
 
+// Interning here - once per push - instead of in unify() keeps ~170k redundant Driver::dbg lookups per compile
+// off the hot path: only a few thousand distinct Loc%s occur, yet every emitted Def wants one.
+// Restore rolls both fields back together, so popping a scope never re-interns either.
+World::ScopedLoc World::push(Loc loc) {
+    return ScopedLoc(state_.pod.curr_loc, {loc, loc ? DbgKey(driver().dbg(Dbg(loc))) : DbgKey()});
+}
+
 } // namespace mim

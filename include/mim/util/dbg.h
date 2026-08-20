@@ -166,6 +166,23 @@ private:
     friend std::ostream& operator<<(std::ostream& os, const Dbg& dbg) { return os << dbg.sym(); }
 };
 
+/// Opaque handle to an interned Dbg (see Def::dbg_).
+/// Handing one Def another's key copies the interned index verbatim: no Dbg is materialised and nothing is
+/// looked up in the Driver's table. @warning Keys are only meaningful within the Driver that interned them.
+class DbgKey {
+public:
+    constexpr DbgKey() noexcept = default; ///< The empty Dbg.
+
+private:
+    constexpr explicit DbgKey(uint32_t key) noexcept
+        : key_(key) {}
+
+    uint32_t key_ = 0;
+
+    friend class Def;
+    friend class World; ///< World::set_loc pre-interns World::get_loc into a key.
+};
+
 } // namespace mim
 
 #ifndef DOXYGEN // clang-format off

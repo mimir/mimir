@@ -35,6 +35,12 @@ struct Flags;
 /// Note that types are also just Def%s and will be hashed as well.
 class World {
 public:
+    /// World::get_loc together with its interned DbgKey, so pushing/popping a Loc never re-interns it.
+    struct CurrLoc {
+        Loc loc    = {};
+        DbgKey key = {};
+    };
+
     /// @name State
     ///@{
     struct State {
@@ -44,9 +50,9 @@ public:
 
         /// [Plain Old Data](https://en.cppreference.com/w/cpp/named_req/PODType)
         struct POD {
-            u32 curr_gid = 0;
-            u32 curr_sub = 0;
-            Loc loc      = {};
+            u32 curr_gid     = 0;
+            u32 curr_sub     = 0;
+            CurrLoc curr_loc = {};
             Sym name;
             mutable bool frozen = false;
         } pod;
@@ -57,7 +63,7 @@ public:
 #endif
         friend void swap(State& s1, State& s2) noexcept {
             using std::swap;
-            assert((!s1.pod.loc || !s2.pod.loc) && "Why is get_loc() still set?");
+            assert((!s1.pod.curr_loc.loc || !s2.pod.curr_loc.loc) && "Why is get_loc() still set?");
             swap(s1.pod, s2.pod);
 #ifdef MIM_ENABLE_CHECKS
             swap(s1.breakpoints, s2.breakpoints);
@@ -112,24 +118,11 @@ public:
 
     /// @name Loc
     ///@{
-    struct ScopedLoc {
-        ScopedLoc(World& world, Loc old_loc)
-            : world_(world)
-            , old_loc_(old_loc) {}
-        ~ScopedLoc() { world_.set_loc(old_loc_); }
+    using ScopedLoc = Restore<CurrLoc>;
 
-    private:
-        World& world_;
-        Loc old_loc_;
-    };
-
-    Loc get_loc() const { return state_.pod.loc; }
-    void set_loc(Loc loc = {}) { state_.pod.loc = loc; }
-    ScopedLoc push(Loc loc) {
-        auto sl = ScopedLoc(*this, get_loc());
-        set_loc(loc);
-        return sl;
-    }
+    Loc get_loc() const { return state_.pod.curr_loc.loc; }
+    DbgKey dbg_key() const { return state_.pod.curr_loc.key; } ///< World::get_loc, already interned.
+    [[nodiscard]] ScopedLoc push(Loc);
     ///@}
 
     /// @name Sym
@@ -733,7 +726,7 @@ private:
         auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
 
-        if (auto loc = get_loc()) def->set_loc(driver(), loc);
+        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
 
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
@@ -777,7 +770,7 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
-        if (auto loc = get_loc()) def->set_loc(driver(), loc);
+        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
 
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());

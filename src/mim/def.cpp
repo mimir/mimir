@@ -416,10 +416,6 @@ void Def::set_dbg_key_(DbgKey key, bool ow) const {
     set_dbg_(world().driver().dbg(key.key_), false); // rare: we carry a partial Dbg, so merge field-wise
 }
 
-void Def::set_loc(Driver& driver, Loc l) const {
-    if (auto d = driver.dbg(dbg_); !d.loc()) dbg_ = driver.dbg(d.set(l));
-}
-
 const Def* Def::unfold_type() const {
     if (auto t = type()) return t;
     auto& w = world();

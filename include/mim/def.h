@@ -80,21 +80,6 @@ using DefSet  = GIDSet<const Def*>;
 using Def2Def = DefMap<const Def*>;
 using Defs    = View<const Def*>;
 
-/// Opaque handle to an interned Dbg (see Def::dbg_).
-/// Handing one Def another's key copies the interned index verbatim: no Dbg is materialised and nothing is
-/// looked up in the Driver's table. @warning Keys are only meaningful within the Driver that interned them.
-class DbgKey {
-public:
-    constexpr DbgKey() noexcept = default; ///< The empty Dbg.
-
-private:
-    constexpr explicit DbgKey(u32 key) noexcept
-        : key_(key) {}
-
-    u32 key_ = 0;
-
-    friend class Def;
-};
 using DefVec = Vector<const Def*>;
 ///@}
 
@@ -741,12 +726,6 @@ protected:
     void set_dbg_(Dbg, bool ow) const;        ///< Backs Def::set(Dbg).
     void set_dbg_key_(DbgKey, bool ow) const; ///< Backs Def::set(DbgKey).
 
-    /// Like `set<false>(Loc)` but takes the Driver directly instead of going through Def::world().
-    /// World::unify/World::insert must use this: they call it between the arena state snapshot and a
-    /// possible deallocate() rewind, and Def::world() walks the type chain - where Def::type() on a
-    /// Var calls var_type() and can allocate. Those allocations would be silently discarded by the
-    /// rewind on a dedup hit, leaving dangling Def%s registered in the sea of nodes.
-    void set_loc(Driver&, Loc) const;
     ///@}
 
 private:
