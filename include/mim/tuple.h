@@ -39,31 +39,22 @@ public:
 
     /// @name Rebuild
     ///@{
-    const Def* immutabilize();
-    Sigma* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Sigma* stub(const Def* type) { return Def::stub(world(), type)->as<Sigma>(); }
 
     /// @note Technically, it would make sense to have an offset of 1 as the first element can't be reduced.
     /// For example, in `[n: Nat, F n]` `n` only occurs free in the second element.
     /// However, this would cause a lot of confusion and special code to cope with the first element,
     /// So we just keep it.
-    constexpr size_t reduction_offset() const noexcept { return 0; }
     ///@}
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*);
-    const Def* check();
     static const Def* infer(World&, Defs);
-    const Def* arity() const;
     ///@}
 
     static constexpr auto Node = mim::Node::Sigma;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Sigma* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -79,9 +70,6 @@ private:
     Tuple(const Def* type, Defs args)
         : Prod(Node, type, args, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -132,7 +120,6 @@ private:
 public:
     /// @name ops
     ///@{
-    const Def* arity() const { return op(0); }
     ///@}
 
     /// @name Setters
@@ -147,25 +134,17 @@ public:
 
     /// @name Rebuild
     ///@{
-    Arr* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize();
-    constexpr size_t reduction_offset() const noexcept { return 1; }
+    Arr* stub(const Def* type) { return Def::stub(world(), type)->as<Arr>(); }
     ///@}
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*);
-    const Def* check();
     ///@}
 
     static constexpr auto Node      = mim::Node::Arr;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Arr* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -181,7 +160,6 @@ private:
 public:
     /// @name ops
     ///@{
-    const Def* arity() const;
     ///@}
 
     /// @name Setters
@@ -194,19 +172,13 @@ public:
 
     /// @name Rebuild
     ///@{
-    Pack* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize();
-    constexpr size_t reduction_offset() const noexcept { return 0; }
+    Pack* stub(const Def* type) { return Def::stub(world(), type)->as<Pack>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pack;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Pack* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -229,9 +201,6 @@ public:
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -258,9 +227,6 @@ public:
     static constexpr size_t Num_Ops = 3;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 

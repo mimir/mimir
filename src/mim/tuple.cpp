@@ -7,18 +7,6 @@
 
 namespace mim {
 
-const Def* Sigma::arity() const {
-    auto n = num_ops();
-    if (n != 1 || isa_mut()) return world().lit_nat(n);
-    return op(0)->arity();
-}
-
-const Def* Pack::arity() const {
-    if (auto arr = type()->isa<Arr>()) return arr->arity();
-    if (type() == world().sigma()) return world().lit_nat_0();
-    return world().lit_nat_1();
-}
-
 Select::Select(const Def* def) {
     if (def) {
         if (auto extract = def->isa<Extract>(); extract && !Lit::isa(extract->index())) {

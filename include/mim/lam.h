@@ -82,27 +82,19 @@ public:
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*);
-    const Def* check();
     static const Def* infer(const Def* dom, const Def* codom);
     ///@}
 
     /// @name Rebuild
     ///@{
-    Pi* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Pi* immutabilize();
+    Pi* stub(const Def* type) { return Def::stub(world(), type)->as<Pi>(); }
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept { return 1; }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pi;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Pi* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -182,11 +174,10 @@ public:
 
     /// @name Rebuild
     ///@{
-    Lam* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Lam* stub(const Def* type) { return Def::stub(world(), type)->as<Lam>(); }
     using Def::reduce;
     Defs reduce(Defs) const;
     const Def* reduce_body(const Def* arg) const { return reduce(arg).back(); }
-    constexpr size_t reduction_offset() const noexcept { return 0; }
     ///@}
 
     /// @name Eta-Conversion
@@ -200,17 +191,12 @@ public:
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*);
     ///@}
 
     static constexpr auto Node      = mim::Node::Lam;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Lam* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -337,9 +323,6 @@ public:
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 

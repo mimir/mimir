@@ -15,10 +15,6 @@ protected:
     Bound(Node node, const Def* type, Defs ops)
         : Def(node, type, ops, 0) {}
 
-    constexpr size_t reduction_offset() const noexcept { return 0; }
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
-
 public:
     /// Bound groups Join and Meet; see fe::NodeSetable.
     static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Join || n == mim::Node::Meet; }
@@ -48,9 +44,6 @@ public:
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -66,9 +59,6 @@ private:
     Merge(const Def* type, Defs defs)
         : Def(Node, type, defs, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -91,9 +81,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -115,9 +102,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -144,9 +128,6 @@ public:
     ///@}
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -175,9 +156,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -209,9 +187,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 

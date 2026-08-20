@@ -39,7 +39,7 @@ public:
     Hole* unset() { return Def::unset()->as<Hole>(); }
     ///@}
 
-    Hole* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Hole* stub(const Def* type) { return Def::stub(world(), type)->as<Hole>(); }
 
     /// If unset, explode to Tuple.
     /// @returns the new Tuple, or `this` if unsuccessful.
@@ -71,10 +71,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Hole* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
     friend class Checker;
 };

@@ -5,6 +5,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <type_traits>
 
 #include <fe/assert.h>
 #include <fe/cast.h>
@@ -782,6 +783,12 @@ private:
     friend std::ostream& operator<<(std::ostream&, const Def*);
 };
 
+/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
+/// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()
+/// tag and dispatches on it instead - see the `dispatch` section in `def.cpp`.
+/// @note A *subclass* growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)` assert in World::allocate.
+static_assert(!std::is_polymorphic_v<Def>, "Def must not have a vtable; dispatch on Def::node() instead");
+
 /// A variable introduced by a binder (mutable).
 /// @note Var will keep its type_ field as `nullptr`.
 /// Instead, Def::type() and Var::type() will compute the type via Def::var_type().
@@ -804,9 +811,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -820,9 +824,6 @@ private:
     Univ(World& world)
         : Def(&world, Node, nullptr, Defs{}, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -837,9 +838,6 @@ public:
 private:
     UMax(World&, Defs ops);
 
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -861,9 +859,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -884,9 +879,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -935,9 +927,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -950,9 +939,6 @@ public:
 private:
     Nat(World& world);
 
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -1008,9 +994,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -1037,9 +1020,6 @@ public:
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -1073,17 +1053,13 @@ public:
 
     /// @name Rebuild
     ///@{
-    Global* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Global* stub(const Def* type) { return Def::stub(world(), type)->as<Global>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Global;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Global* stub_(World&, const Def*);
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 

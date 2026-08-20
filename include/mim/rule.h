@@ -28,15 +28,11 @@ public:
     ///@}
 
     static const Def* infer(const Def* dom);
-    const Def* check();
 
     static constexpr auto Node      = mim::Node::Reform;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 
@@ -81,16 +77,12 @@ public:
 
     /// @name Type checking
     ///@{
-    const Def* check(size_t, const Def*);
-    const Def* check();
     ///@}
 
     /// @name Rebuild
     ///@{
-    Rule* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Rule* immutabilize();
+    Rule* stub(const Def* type) { return Def::stub(world(), type)->as<Rule>(); }
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept { return 1; }
     ///@}
 
     /// @name Apply
@@ -105,10 +97,7 @@ public:
     static constexpr size_t Num_Ops = 3;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const;
-    Rule* stub_(World&, const Def*);
     bool its_a_match_(const Def* lhs, const Def* rhs, Def2Def& seen) const;
-    friend class Def; // Def dispatches its former virtuals to us by Def::node()
     friend class World;
 };
 } // namespace mim

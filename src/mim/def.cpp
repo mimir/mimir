@@ -110,75 +110,6 @@ Nat::Nat(World& world)
 UMax::UMax(World& world, Defs ops)
     : Def(Node, world.univ(), ops, 0) {}
 
-// clang-format off
-
-/*
- * rebuild
- */
-
-const Def* Hole   ::rebuild_(World&,   const Def*,   Defs  ) const { fe::unreachable(); }
-const Def* Global ::rebuild_(World&,   const Def*,   Defs  ) const { fe::unreachable(); }
-const Def* Idx    ::rebuild_(World& w, const Def*  , Defs  ) const { return w.type_idx(); }
-const Def* Nat    ::rebuild_(World& w, const Def*  , Defs  ) const { return w.type_nat(); }
-const Def* Univ   ::rebuild_(World& w, const Def*  , Defs  ) const { return w.univ(); }
-const Def* App    ::rebuild_(World& w, const Def*  , Defs o) const { return w.app(o[0], o[1]); }
-const Def* Arr    ::rebuild_(World& w, const Def*  , Defs o) const { return w.arr(o[0], o[1]); }
-const Def* Extract::rebuild_(World& w, const Def*  , Defs o) const { return w.extract(o[0], o[1]); }
-const Def* Inj    ::rebuild_(World& w, const Def* t, Defs o) const { return w.inj(t, o[0])->set(dbg()); }
-const Def* Insert ::rebuild_(World& w, const Def*  , Defs o) const { return w.insert(o[0], o[1], o[2]); }
-const Def* Lam    ::rebuild_(World& w, const Def* t, Defs o) const { return w.lam(t->as<Pi>(), o[0], o[1]); }
-const Def* Lit    ::rebuild_(World& w, const Def* t, Defs  ) const { return w.lit(t, get()); }
-const Def* Merge  ::rebuild_(World& w, const Def* t, Defs o) const { return w.merge(t, o); }
-const Def* Pack   ::rebuild_(World& w, const Def* t, Defs o) const { return w.pack(t->arity(), o[0]); }
-const Def* Pi     ::rebuild_(World& w, const Def*  , Defs o) const { return w.pi(o[0], o[1], is_implicit()); }
-const Def* Proxy  ::rebuild_(World& w, const Def* t, Defs o) const { return w.proxy(t, o, tag()); }
-const Def* Rule   ::rebuild_(World& w, const Def* t, Defs o) const { return w.rule(t->as<Reform>(), o[0], o[1], o[2]); }
-const Def* Reform ::rebuild_(World& w, const Def* ,  Defs o) const { return w.reform(o[0]); }
-const Def* Sigma  ::rebuild_(World& w, const Def*  , Defs o) const { return w.sigma(o); }
-const Def* Split  ::rebuild_(World& w, const Def* t, Defs o) const { return w.split(t, o[0]); }
-const Def* Match  ::rebuild_(World& w, const Def*  , Defs o) const { return w.match(o); }
-const Def* Tuple  ::rebuild_(World& w, const Def* t, Defs o) const { return w.tuple(t, o); }
-const Def* Type   ::rebuild_(World& w, const Def*  , Defs o) const { return w.type(o[0]); }
-const Def* UInc   ::rebuild_(World& w, const Def*  , Defs o) const { return w.uinc(o[0], offset()); }
-const Def* UMax   ::rebuild_(World& w, const Def*  , Defs o) const { return w.umax(o); }
-const Def* Uniq   ::rebuild_(World& w, const Def*  , Defs o) const { return w.uniq(o[0]); }
-const Def* Var    ::rebuild_(World&,   const Def*,   Defs  ) const { fe::unreachable(); } // binder is in binder_, not an op; rewrite via Rewriter::rewrite_imm_Var
-
-const Def* Axm    ::rebuild_(World& w, const Def* t, Defs ) const {
-    if (&w != &world()) return w.axm(normalizer(), curry(), trip(), t, plugin(), tag(), sub())->set(dbg());
-    assert(Checker::alpha<Checker::Check>(t, type()));
-    return this;
-}
-
-template<bool up> const Def* TExt  <up>::rebuild_(World& w, const Def* t, Defs  ) const { return w.ext  <up>(t)->set(dbg()); }
-template<bool up> const Def* TBound<up>::rebuild_(World& w, const Def*  , Defs o) const { return w.bound<up>(o)->set(dbg()); }
-
-/*
- * stub
- */
-
-Arr*    Arr   ::stub_(World& w, const Def* t) { return w.mut_arr  (t); }
-Global* Global::stub_(World& w, const Def* t) { return w.global   (t, is_mutable()); }
-Hole*   Hole  ::stub_(World& w, const Def* t) { return w.mut_hole (t); }
-Lam*    Lam   ::stub_(World& w, const Def* t) { return w.mut_lam  (t->as<Pi>()); }
-Pack*   Pack  ::stub_(World& w, const Def* t) { return w.mut_pack (t); }
-Pi*     Pi    ::stub_(World& w, const Def* t) { return w.mut_pi   (t, is_implicit()); }
-Rule*   Rule  ::stub_(World& w, const Def* t) { return w.mut_rule(t->as<Reform>()); }
-Sigma*  Sigma ::stub_(World& w, const Def* t) { return w.mut_sigma(t, num_ops()); }
-
-/*
- * instantiate templates
- */
-
-#ifndef DOXYGEN
-template const Def* TExt<false>  ::rebuild_(World&, const Def*, Defs) const;
-template const Def* TExt<true >  ::rebuild_(World&, const Def*, Defs) const;
-template const Def* TBound<false>::rebuild_(World&, const Def*, Defs) const;
-template const Def* TBound<true >::rebuild_(World&, const Def*, Defs) const;
-#endif
-
-// clang-format on
-
 /*
  * immutabilize
  */
@@ -195,39 +126,6 @@ bool Def::is_immutabilizable() {
             if (mut == this) return false; // recursion
     }
     return true;
-}
-
-const Pi* Pi::immutabilize() {
-    if (is_immutabilizable()) return world().pi(dom(), codom());
-    return nullptr;
-}
-
-// TODO should we ever immutabilize Rules?
-const Rule* Rule::immutabilize() { return nullptr; }
-
-const Def* Sigma::immutabilize() {
-    if (is_immutabilizable()) return static_cast<const Sigma*>(world().sigma(ops()));
-    return nullptr;
-}
-
-const Def* Arr::immutabilize() {
-    auto& w = world();
-    if (is_immutabilizable()) return w.arr(arity(), body());
-
-    if (auto n = Lit::isa(arity()); n && *n < w.flags().scalarize_threshold)
-        return w.sigma(DefVec(*n, [&](size_t i) { return reduce(w.lit_idx(*n, i)); }));
-
-    return nullptr;
-}
-
-const Def* Pack::immutabilize() {
-    auto& w = world();
-    if (is_immutabilizable()) return w.pack(arity(), body());
-
-    if (auto n = Lit::isa(arity()); n && *n < w.flags().scalarize_threshold)
-        return w.tuple(DefVec(*n, [&](size_t i) { return reduce(w.lit_idx(*n, i)); }));
-
-    return nullptr;
 }
 
 /*
@@ -609,92 +507,125 @@ bool Def::less   (const Def* a, const Def* b) { return cmp_<Cmp::L>(a, b); }
 bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 // clang-format on
 
+// clang-format off
+
 /*
  * dispatch
  *
- * These used to be `virtual`. They are dispatched on Def::node() instead so that Def needs no vtable: a vptr
- * would cost 8 bytes on *every* node in the World. Node names double as class names (see MIM_NODE), so the
- * two exhaustive dispatchers can be generated from the same macros the Node enum itself is built from.
- * Each `case` calls the implementation *qualified* (`n::f`), so it never re-enters the dispatcher.
+ * All of these used to be `virtual`. Def has no vtable - a vptr would cost 8 bytes on *every* node in the
+ * World - so each is one function switching on Def::node() with the former override inlined right here.
  */
 
-const Def* Def::rebuild_(World& w, const Def* type, Defs ops) const {
+const Def* Def::rebuild_(World& w, const Def* t, Defs o) const {
     switch (node()) {
-#define CODE(n, _) \
-    case Node::n: return as<n>()->n::rebuild_(w, type, ops);
-        MIM_NODE(CODE)
-#undef CODE
-        default: fe::unreachable();
+        case Node::App:     return w.app(o[0], o[1]);
+        case Node::Arr:     return w.arr(o[0], o[1]);
+        case Node::Bot:     return w.bot(t)->set(dbg());
+        case Node::Extract: return w.extract(o[0], o[1]);
+        case Node::Idx:     return w.type_idx();
+        case Node::Inj:     return w.inj(t, o[0])->set(dbg());
+        case Node::Insert:  return w.insert(o[0], o[1], o[2]);
+        case Node::Join:    return w.join(o)->set(dbg());
+        case Node::Lam:     return w.lam(t->as<Pi>(), o[0], o[1]);
+        case Node::Lit:     return w.lit(t, as<Lit>()->get());
+        case Node::Match:   return w.match(o);
+        case Node::Meet:    return w.meet(o)->set(dbg());
+        case Node::Merge:   return w.merge(t, o);
+        case Node::Nat:     return w.type_nat();
+        case Node::Pack:    return w.pack(t->arity(), o[0]);
+        case Node::Pi:      return w.pi(o[0], o[1], as<Pi>()->is_implicit());
+        case Node::Proxy:   return w.proxy(t, o, as<Proxy>()->tag());
+        case Node::Reform:  return w.reform(o[0]);
+        case Node::Rule:    return w.rule(t->as<Reform>(), o[0], o[1], o[2]);
+        case Node::Sigma:   return w.sigma(o);
+        case Node::Split:   return w.split(t, o[0]);
+        case Node::Top:     return w.top(t)->set(dbg());
+        case Node::Tuple:   return w.tuple(t, o);
+        case Node::Type:    return w.type(o[0]);
+        case Node::UInc:    return w.uinc(o[0], as<UInc>()->offset());
+        case Node::UMax:    return w.umax(o);
+        case Node::Uniq:    return w.uniq(o[0]);
+        case Node::Univ:    return w.univ();
+        case Node::Global:  fe::unreachable(); // *mutable*: rebuilt via Def::stub_
+        case Node::Hole:    fe::unreachable(); // *mutable*: rebuilt via Def::stub_
+        case Node::Var:     fe::unreachable(); // binder is in binder_, not an op; see Rewriter::rewrite_imm_Var
+        case Node::Axm: {
+            auto axm = as<Axm>();
+            if (&w != &world())
+                return w.axm(axm->normalizer(), axm->curry(), axm->trip(), t, axm->plugin(), axm->tag(), axm->sub())
+                    ->set(dbg());
+            assert(Checker::alpha<Checker::Check>(t, type()));
+            return this;
+        }
     }
+    fe::unreachable();
 }
 
-Def* Def::stub_(World& w, const Def* type) {
+Def* Def::stub_(World& w, const Def* t) {
     switch (node()) {
-#define CODE(n) \
-    case Node::n: return as<n>()->n::stub_(w, type);
-        MIM_MUT_NODE(CODE)
-#undef CODE
-        default: fe::unreachable(); // only *mutables* have a stub
+        case Node::Arr:    return w.mut_arr  (t);
+        case Node::Global: return w.global   (t, as<Global>()->is_mutable());
+        case Node::Hole:   return w.mut_hole (t);
+        case Node::Lam:    return w.mut_lam  (t->as<Pi>());
+        case Node::Pack:   return w.mut_pack (t);
+        case Node::Pi:     return w.mut_pi   (t, as<Pi>()->is_implicit());
+        case Node::Rule:   return w.mut_rule (t->as<Reform>());
+        case Node::Sigma:  return w.mut_sigma(t, num_ops());
+        default:           fe::unreachable(); // only *mutables* have a stub
     }
 }
 
 const Def* Def::immutabilize() {
+    auto& w = world();
     switch (node()) {
-        case Node::Pi: return as<Pi>()->Pi ::immutabilize();
-        case Node::Sigma: return as<Sigma>()->Sigma::immutabilize();
-        case Node::Arr: return as<Arr>()->Arr ::immutabilize();
-        case Node::Pack: return as<Pack>()->Pack ::immutabilize();
-        case Node::Rule: return as<Rule>()->Rule ::immutabilize();
+        case Node::Pi:    return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom()) : nullptr;
+        case Node::Sigma: return is_immutabilizable() ? w.sigma(ops()) : nullptr;
+        case Node::Rule:  return nullptr; // TODO should we ever immutabilize Rules?
+        case Node::Arr:
+        case Node::Pack: {
+            auto seq = as<Seq>();
+            auto arr = node() == Node::Arr;
+            if (is_immutabilizable())
+                return arr ? w.arr(seq->arity(), seq->body()) : w.pack(seq->arity(), seq->body());
+            // below the threshold an unrollable Seq becomes an explicit Sigma/Tuple
+            if (auto n = Lit::isa(seq->arity()); n && *n < w.flags().scalarize_threshold) {
+                auto elems = DefVec(*n, [&](size_t i) { return seq->reduce(w.lit_idx(*n, i)); });
+                return arr ? w.sigma(elems) : w.tuple(elems);
+            }
+            return nullptr;
+        }
         default: return nullptr;
     }
 }
 
 size_t Def::reduction_offset() const noexcept {
     switch (node()) {
-        case Node::Pi: return as<Pi>()->Pi ::reduction_offset();
-        case Node::Lam: return as<Lam>()->Lam ::reduction_offset();
-        case Node::Sigma: return as<Sigma>()->Sigma::reduction_offset();
-        case Node::Arr: return as<Arr>()->Arr ::reduction_offset();
-        case Node::Pack: return as<Pack>()->Pack ::reduction_offset();
-        case Node::Rule: return as<Rule>()->Rule ::reduction_offset();
         case Node::Join:
-        case Node::Meet: return as<Bound>()->Bound::reduction_offset();
-        default: return size_t(-1);
-    }
-}
-
-const Def* Def::check(size_t i, const Def* def) {
-    switch (node()) {
-        case Node::Pi: return as<Pi>()->Pi ::check(i, def);
-        case Node::Lam: return as<Lam>()->Lam ::check(i, def);
-        case Node::Sigma: return as<Sigma>()->Sigma::check(i, def);
-        case Node::Arr: return as<Arr>()->Arr ::check(i, def);
-        case Node::Rule: return as<Rule>()->Rule ::check(i, def);
-        default: return def;
-    }
-}
-
-const Def* Def::check() {
-    switch (node()) {
-        case Node::Pi: return as<Pi>()->Pi ::check();
-        case Node::Sigma: return as<Sigma>()->Sigma ::check();
-        case Node::Arr: return as<Arr>()->Arr ::check();
-        case Node::Reform: return as<Reform>()->Reform::check();
-        case Node::Rule: return as<Rule>()->Rule ::check();
-        default: return type();
+        case Node::Lam:
+        case Node::Meet:
+        case Node::Pack:
+        case Node::Sigma: return 0;
+        case Node::Arr:
+        case Node::Pi:
+        case Node::Rule:  return 1;
+        default:          return size_t(-1);
     }
 }
 
 const Def* Def::arity() const {
     switch (node()) {
-        case Node::Sigma: return as<Sigma>()->Sigma::arity();
-        case Node::Arr: return as<Arr>()->Arr ::arity();
-        case Node::Pack: return as<Pack>()->Pack ::arity();
+        case Node::Arr:   return op(0);
+        case Node::Sigma: return num_ops() != 1 || isa_mut() ? world().lit_nat(num_ops()) : op(0)->arity();
+        case Node::Pack:
+            if (auto arr = type()->isa<Arr>()) return arr->arity();
+            return type() == world().sigma() ? world().lit_nat_0() : world().lit_nat_1();
         default:
             if (auto t = type(); t && !t->isa<Type>()) return t->arity();
             return world().lit_nat_1();
     }
 }
+
+// clang-format on
 
 void Def::externalize() { return world().externals().externalize(this); }
 void Def::internalize() { return world().externals().internalize(this); }
