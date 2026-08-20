@@ -335,8 +335,8 @@ const Def* Def::check(size_t i, const Def* def) {
 
     if (i == 0) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        throw Error().error(lam->filter()->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'",
-                            lam->filter(), lam->filter()->type());
+        throw Error().error(def->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'", def,
+                            def->type());
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
