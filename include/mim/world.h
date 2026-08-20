@@ -512,11 +512,8 @@ public:
     const Lit* lit_univ(u64 level) { return lit(univ(), level); }
     const Lit* lit_univ_0() { return data_.lit_univ_0; }
     const Lit* lit_univ_1() { return data_.lit_univ_1; }
-    /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs immediately reads the value straight
-    /// back out, so a plain World::lit runs a full hash-cons round trip (arena alloc, Def c'tor, hash, probe,
-    /// dealloc) on a very hot path. Caching small values is worth ~4% of an `-Og` Debug compile; in Release the
-    /// round trip optimizes down far enough that the cache is a wash, so this is really for the Debug builds we
-    /// develop and test in. Filled lazily; entries live in this World's arena and travel with data_ across swap.
+    /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs reads it straight back out, so a plain
+    /// World::lit would hash-cons a Lit just to launder an integer. Worth ~4% of an `-Og` Debug compile.
     static constexpr nat_t Num_Lit_Nats = 64;
 
     const Lit* lit_nat(nat_t a) {
@@ -734,26 +731,16 @@ private:
 #endif
     }
 
-    /// How many ops will @p T have?
-    /// For a variadic node this is the last argument - either the op list itself (unify) or its size (insert).
-    template<class T, class... Args>
-    static size_t num_ops_of(Args&&... args) {
-        if constexpr (T::Num_Ops != std::dynamic_extent) {
-            return T::Num_Ops;
-        } else {
-            auto&& last = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
-            if constexpr (requires { last.size(); })
-                return last.size();
-            else
-                return last;
-        }
-    }
-
     template<class T, class... Args>
     const T* unify(Args&&... args) {
-        auto num_ops = num_ops_of<T>(std::forward<Args>(args)...);
-        auto state   = move_.arena.defs.state();
-        auto def     = allocate<T>(num_ops, std::forward<Args>(args)...);
+        auto num_ops = T::Num_Ops;
+        if constexpr (T::Num_Ops == std::dynamic_extent) {
+            auto&& last = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
+            num_ops     = last.size();
+        }
+
+        auto state = move_.arena.defs.state();
+        auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
         stamp(def);
 
@@ -793,8 +780,11 @@ private:
     T* insert(Args&&... args) {
         if (is_frozen()) return nullptr;
 
-        auto num_ops = num_ops_of<T>(std::forward<Args>(args)...);
-        auto def     = allocate<T>(num_ops, std::forward<Args>(args)...);
+        auto num_ops = T::Num_Ops;
+        if constexpr (T::Num_Ops == std::dynamic_extent)
+            num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
+
+        auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
         stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
@@ -858,8 +848,7 @@ private:
         friend class World;
     };
 
-    /// Allocates a Reduct of @p n defs - each produced by `f(i)` - and caches it as the reduct of `[var -> arg]`.
-    /// @note Fills *before* caching: @p f may recursively reduce and must not observe a half-built Reduct.
+    /// Caches `[var -> arg]` as `f(0), .., f(n-1)`; fills *before* caching, as @p f may recursively reduce.
     template<class F>
     const Reduct* cache_reduct(const Var* var, const Def* arg, size_t n, F f) {
         auto buf    = move_.arena.substs.allocate(sizeof(Reduct) + n * sizeof(const Def*), alignof(const Def*));

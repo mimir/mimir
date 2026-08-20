@@ -441,15 +441,13 @@ Defs Def::deps() const noexcept {
     assert((const void*)(ops_ptr() - 1) == (const void*)&type_
            && "Def::type_ must stay Def's last member: Def::deps() and Def::ops_ptr() depend on it");
 
-    // Univ, Type, and Var are the only nodes built without a type: for the first two the level is deliberately
-    // *not* a dep, and a Var's binder lives in binder_ rather than in an op.
+    // Univ, Type, and Var are the only nodes built without a type - and none of them has deps.
     if (!type_) {
         assert(isa<Univ>() || isa<Type>() || isa<Var>());
         return Defs();
     }
 
-    // Deliberately not is_set(): its assertion scans *all* ops, and deps() is the inner loop of the free-var
-    // fixed point, Nest, and Scheduler. The last-op check alone is what is_set() actually returns.
+    // Not is_set(): its assertion scans *all* ops and deps() is an inner loop.
     bool set = num_ops_ == 0 || ops_ptr()[num_ops_ - 1];
     return Defs(ops_ptr() - 1, (set ? num_ops_ : 0) + 1);
 }

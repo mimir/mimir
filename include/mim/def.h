@@ -190,11 +190,9 @@ namespace mim {
     auto NAME##s(nat_t a) CONST noexcept { return ((const Def*)NAME())->projs(a); }
 
 /// CRTP-based mixin to declare setters for Def::loc \& Def::name using a *covariant* return type.
-/// Forwards every argument list that the Def::set%ters accept - `Loc`, `Sym`, `std::string`, Dbg, DbgKey, or a
-/// `Loc` plus a `Sym`/`std::string` - and hands back a @p P instead of a Def.
-/// @note Setters::Fwd is load-bearing: it keeps this variadic out of the overload set of the `set` members that
-/// subclasses declare themselves (Global::set, Pi::set, Sigma::set, Lam::set, ...), none of which is a template
-/// on @p Ow. So those keep winning at their own call sites instead of being shadowed by a greedy `Args&&...`.
+/// Forwards every argument list the Def::set%ters accept and hands back a @p P instead of a Def.
+/// @note Setters::Fwd keeps this variadic out of the overload set of the `set` members subclasses declare
+/// themselves (Global::set, Pi::set, ...) - none of those is a template on @p Ow, so they keep winning.
 template<class P, class D = Def>
 class // D is only needed to make the resolution `D::template set` lazy
 #ifdef _MSC_VER
@@ -1105,12 +1103,16 @@ inline bool Def::equal(const Def* other) const {
     // Univ is a singleton and mutables are never hash-consed, so for those identity *is* equality.
     if (mut_ || other->mut_ || node_ == Node::Univ) return this == other;
 
-    // A Var carries no ops and flags == 0, so it is identified solely by its binder (stored in binder_).
-    if (node_ == Node::Var) return other->node_ == Node::Var && binder_ == other->binder_;
+    // A Var carries no ops and flags == 0, so it is identified solely by its binder
+    if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
 
-    // Neither side is a Var from here on, so type_ is the type - no need for the Var-aware Def::type.
-    return node_ == other->node_ && flags_ == other->flags_ && num_ops_ == other->num_ops_ && type_ == other->type_
-        && std::ranges::equal(ops(), other->ops());
+    bool result = this->node() == other->node() && this->flags() == other->flags()
+               && this->num_ops() == other->num_ops() && this->type() == other->type();
+
+    for (size_t i = 0, e = num_ops(); result && i != e; ++i)
+        result &= this->op(i) == other->op(i);
+
+    return result;
 }
 
 inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
