@@ -79,7 +79,23 @@ using DefMap  = GIDMap<const Def*, To>;
 using DefSet  = GIDSet<const Def*>;
 using Def2Def = DefMap<const Def*>;
 using Defs    = View<const Def*>;
-using DefVec  = Vector<const Def*>;
+
+/// Opaque handle to an interned Dbg (see Def::dbg_).
+/// Handing one Def another's key copies the interned index verbatim: no Dbg is materialised and nothing is
+/// looked up in the Driver's table. @warning Keys are only meaningful within the Driver that interned them.
+class DbgKey {
+public:
+    constexpr DbgKey() noexcept = default; ///< The empty Dbg.
+
+private:
+    constexpr explicit DbgKey(u32 key) noexcept
+        : key_(key) {}
+
+    u32 key_ = 0;
+
+    friend class Def;
+};
+using DefVec = Vector<const Def*>;
 ///@}
 
 /// @name Def (Mutable)
@@ -212,6 +228,8 @@ public:
     template<bool Ow = false>       P* set(Loc l, std::string s)       { super()->D::template set<Ow>(l, std::move(s)); return super(); }
     template<bool Ow = false> const P* set(Dbg d               ) const { super()->D::template set<Ow>(d); return super(); }
     template<bool Ow = false>       P* set(Dbg d               )       { super()->D::template set<Ow>(d); return super(); }
+    template<bool Ow = false> const P* set(DbgKey k            ) const { super()->D::template set<Ow>(k); return super(); }
+    template<bool Ow = false>       P* set(DbgKey k            )       { super()->D::template set<Ow>(k); return super(); }
     // clang-format on
 };
 
@@ -577,7 +595,8 @@ public:
 
     /// @name Dbg Getters
     ///@{
-    Dbg dbg() const; ///< Looks up Def::dbg_ in Driver::dbg.
+    Dbg dbg() const;                                ///< Looks up Def::dbg_ in Driver::dbg.
+    DbgKey dbg_key() const { return DbgKey(dbg_); } ///< Cheap handle for `other->set(this->dbg_key())`.
     Loc loc() const { return dbg().loc(); }
     Sym sym() const { return dbg().sym(); }
     std::string unique_name() const; ///< name + "_" + Def::gid
@@ -597,8 +616,12 @@ public:
     template<bool Ow = false>       Def* set(Loc l, Sym s        )       { set<Ow>(l); set<Ow>(s); return this; }
     template<bool Ow = false> const Def* set(Loc l, std::string s) const { set<Ow>(l); set<Ow>(sym(std::move(s))); return this; }
     template<bool Ow = false>       Def* set(Loc l, std::string s)       { set<Ow>(l); set<Ow>(sym(std::move(s))); return this; }
-    template<bool Ow = false> const Def* set(Dbg d) const { set<Ow>(d.loc(), d.sym()); return this; }
-    template<bool Ow = false>       Def* set(Dbg d)       { set<Ow>(d.loc(), d.sym()); return this; }
+    template<bool Ow = false> const Def* set(Dbg d) const { set_dbg_(d, Ow); return this; }
+    template<bool Ow = false>       Def* set(Dbg d)       { set_dbg_(d, Ow); return this; }
+    /// Adopts the Dbg behind @p key - just copies the interned index, so nothing is re-interned.
+    /// Prefer `a->set(b->dbg_key())` over `a->set(b->dbg())`.
+    template<bool Ow = false> const Def* set(DbgKey key) const { set_dbg_key_(key, Ow); return this; }
+    template<bool Ow = false>       Def* set(DbgKey key)       { set_dbg_key_(key, Ow); return this; }
     // clang-format on
     ///@}
 
@@ -616,13 +639,13 @@ public:
 
     /// @name Rebuild
     ///@{
-    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg()); }
+    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg_key()); }
     Def* stub(const Def* type) { return stub(world(), type); }
 
     /// Def::rebuild%s this Def while using @p new_op as substitute for its @p i'th Def::op
     const Def* rebuild(World& w, const Def* type, Defs ops) const {
         assert(isa_imm());
-        return rebuild_(w, type, ops)->set(dbg());
+        return rebuild_(w, type, ops)->set(dbg_key());
     }
     const Def* rebuild(const Def* type, Defs ops) const { return rebuild(world(), type, ops); }
 
@@ -714,7 +737,9 @@ protected:
     Sym sym(const char*) const;
     Sym sym(std::string_view) const;
     Sym sym(std::string) const;
-    void set_dbg(Dbg) const; ///< Interns @p dbg via Driver::dbg and stores the index in Def::dbg_.
+    void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the index in Def::dbg_.
+    void set_dbg_(Dbg, bool ow) const;        ///< Backs Def::set(Dbg).
+    void set_dbg_key_(DbgKey, bool ow) const; ///< Backs Def::set(DbgKey).
 
     /// Like `set<false>(Loc)` but takes the Driver directly instead of going through Def::world().
     /// World::unify/World::insert must use this: they call it between the arena state snapshot and a

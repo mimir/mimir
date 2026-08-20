@@ -54,7 +54,7 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
         return new_dom;
     }));
     if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret_->type());
-    auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg());
+    auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg_key());
     DLOG("stub {} ~> {}", lam, new_lam);
     if (lam->is_external()) new_lam->externalize();
 

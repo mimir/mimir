@@ -56,7 +56,7 @@ const Def* Rewriter::rewrite(const Def* old_def) {
     if (auto new_def = lookup(old_def)) return new_def;
 
     auto new_def = old_def->isa_mut() ? rewrite_mut((Def*)old_def) : rewrite_imm(old_def);
-    return new_def->set(old_def->dbg());
+    return new_def->set(old_def->dbg_key());
 }
 
 // clang-format off
@@ -288,11 +288,11 @@ const Def* VarRewriter::rewrite(const Def* old_def) {
     if (auto new_def = lookup(old_def)) return new_def;
 
     if (auto old_mut = old_def->isa_mut())
-        return has_intersection(old_mut) ? rewrite_mut(old_mut)->set(old_mut->dbg()) : old_mut;
+        return has_intersection(old_mut) ? rewrite_mut(old_mut)->set(old_mut->dbg_key()) : old_mut;
 
     if (old_def->local_vars().empty() && old_def->local_muts().empty()) return old_def; // safe to skip
 
-    return has_intersection(old_def) ? rewrite_imm(old_def)->set(old_def->dbg()) : old_def;
+    return has_intersection(old_def) ? rewrite_imm(old_def)->set(old_def->dbg_key()) : old_def;
 }
 
 const Def* VarRewriter::rewrite_mut(Def* mut) {

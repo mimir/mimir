@@ -398,6 +398,24 @@ Sym Def::sym(std::string s) const { return world().sym(std::move(s)); }
 Dbg Def::dbg() const { return world().driver().dbg(dbg_); }
 void Def::set_dbg(Dbg d) const { dbg_ = world().driver().dbg(d); }
 
+// Fills in only what is missing (unless @p ow) and interns *once* - the old form went through set(Loc) and
+// set(Sym) separately, each re-reading Def::dbg_ and re-interning through the Driver's hash table.
+void Def::set_dbg_(Dbg d, bool ow) const {
+    if (ow) return set_dbg(d);
+
+    auto mine = dbg(), merged = mine;
+    if (!merged.loc()) merged.set(d.loc());
+    if (!merged.sym()) merged.set(d.sym());
+    if (!(merged == mine)) set_dbg(merged);
+}
+
+void Def::set_dbg_key_(DbgKey key, bool ow) const {
+    // Nothing of ours to preserve, so adopting the index is exactly what set<Ow>(that Dbg) would compute -
+    // but without materialising a Dbg or touching Driver::dbg2idx_ at all.
+    if (ow || dbg_ == 0 || dbg_ == key.key_) return void(dbg_ = key.key_);
+    set_dbg_(world().driver().dbg(key.key_), false); // rare: we carry a partial Dbg, so merge field-wise
+}
+
 void Def::set_loc(Driver& driver, Loc l) const {
     if (auto d = driver.dbg(dbg_); !d.loc()) dbg_ = driver.dbg(d.set(l));
 }
@@ -514,6 +532,8 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 /*
  * dispatch
  *
+ * Def::rebuild and Def::stub already copy the Dbg over (see Def::set(DbgKey)), so nothing here does.
+ *
  * All of these used to be `virtual`. Def has no vtable - a vptr would cost 8 bytes on *every* node in the
  * World - so each is one function switching on Def::node() with the former override inlined right here.
  */
@@ -522,16 +542,16 @@ const Def* Def::rebuild_(World& w, const Def* t, Defs o) const {
     switch (node()) {
         case Node::App:     return w.app(o[0], o[1]);
         case Node::Arr:     return w.arr(o[0], o[1]);
-        case Node::Bot:     return w.bot(t)->set(dbg());
+        case Node::Bot:     return w.bot(t);
         case Node::Extract: return w.extract(o[0], o[1]);
         case Node::Idx:     return w.type_idx();
-        case Node::Inj:     return w.inj(t, o[0])->set(dbg());
+        case Node::Inj:     return w.inj(t, o[0]);
         case Node::Insert:  return w.insert(o[0], o[1], o[2]);
-        case Node::Join:    return w.join(o)->set(dbg());
+        case Node::Join:    return w.join(o);
         case Node::Lam:     return w.lam(t->as<Pi>(), o[0], o[1]);
         case Node::Lit:     return w.lit(t, as<Lit>()->get());
         case Node::Match:   return w.match(o);
-        case Node::Meet:    return w.meet(o)->set(dbg());
+        case Node::Meet:    return w.meet(o);
         case Node::Merge:   return w.merge(t, o);
         case Node::Nat:     return w.type_nat();
         case Node::Pack:    return w.pack(t->arity(), o[0]);
@@ -541,7 +561,7 @@ const Def* Def::rebuild_(World& w, const Def* t, Defs o) const {
         case Node::Rule:    return w.rule(t->as<Reform>(), o[0], o[1], o[2]);
         case Node::Sigma:   return w.sigma(o);
         case Node::Split:   return w.split(t, o[0]);
-        case Node::Top:     return w.top(t)->set(dbg());
+        case Node::Top:     return w.top(t);
         case Node::Tuple:   return w.tuple(t, o);
         case Node::Type:    return w.type(o[0]);
         case Node::UInc:    return w.uinc(o[0], as<UInc>()->offset());
@@ -554,8 +574,7 @@ const Def* Def::rebuild_(World& w, const Def* t, Defs o) const {
         case Node::Axm: {
             auto axm = as<Axm>();
             if (&w != &world())
-                return w.axm(axm->normalizer(), axm->curry(), axm->trip(), t, axm->plugin(), axm->tag(), axm->sub())
-                    ->set(dbg());
+                return w.axm(axm->normalizer(), axm->curry(), axm->trip(), t, axm->plugin(), axm->tag(), axm->sub());
             assert(Checker::alpha<Checker::Check>(t, type()));
             return this;
         }

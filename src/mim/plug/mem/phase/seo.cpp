@@ -98,7 +98,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg());
+    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
@@ -169,7 +169,7 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
 // SSA
 
 static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg());
+    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
@@ -261,7 +261,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (!is_top(slot)) {
             if (auto [mem, ret_lam, _, ptr] = split_slot(slot); ret_lam) {
                 auto abstr_mem     = rewrite(mem);
-                auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg());
+                auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 sloxy2slot_[sloxy] = slot;
                 slots_.emplace(ptr);
                 DLOG("slot {} -> sloxy {}", ptr, sloxy);
@@ -537,7 +537,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
 
     // build new lam
     auto var_map          = absl::FixedArray<const Def*>(num_old);
-    auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+    auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     lam_old2new_[old_lam] = new_lam;
     lam_new2old_[new_lam] = old_lam;
 
@@ -550,7 +550,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     for (size_t i = 0; i != num_old; ++i) {
         if (keeps[i]) {
             auto old_var = old_lam->var(num_old, i);
-            auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg());
+            auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg_key());
             var_map[i]   = map(old_var, v);
             if (auto abstr = lattice(old_var))
                 if (auto bundle = isa_bundle(abstr, old_lam)) map(bundle, v); // GVN bundle
