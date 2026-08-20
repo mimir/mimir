@@ -14,6 +14,7 @@
 #include <mim/phase/ret_wrap.h>
 #include <mim/phase/scalarize.h>
 #include <mim/phase/tail_rec_elim.h>
+#include <mim/phase/unload.h>
 
 #include "mim/plug/compile/autogen.h"
 
@@ -63,6 +64,7 @@ void reg_phases(Flags2Phases& phases) {
     Phase::hook<compile::named,            Named          >(phases);
     Phase::hook<compile::phases,           PhaseMan       >(phases);
     Phase::hook<compile::prefix_cleanup,   PrefixCleanup  >(phases);
+    Phase::hook<compile::unload,           Unload         >(phases);
     Phase::hook<compile::ret_wrap,         RetWrap        >(phases);
     Phase::hook<compile::scalarize,        Scalarize      >(phases);
     Phase::hook<compile::tail_rec_elim,    TailRecElim    >(phases);
