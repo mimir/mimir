@@ -165,10 +165,39 @@ axm %btensor.concat: {T: *, nis r: Nat}
                   → [%mem.M 0, is: «i: nis; %buffer.Buf (r, Sis#i, T)»]
                   → [%mem.M 0, %buffer.Buf (r, s_out, T)];
 ///
+/// ### %%btensor.gather
+///
+/// Buffer-world counterpart of %%tensor.gather. For each output coordinate `o`, reads the source at
+/// `o` with axis `dim` replaced by `index[o]`. The index element type proves that selected coordinates
+/// are in bounds along `dim`.
+///
+axm %btensor.gather: {T: *, r: Nat}
+                  → [s_src s_idx: «r; Nat»]
+                  → [dim: Idx r]
+                  → [%mem.M 0,
+                     input: %buffer.Buf (r, s_src, T),
+                     index: %buffer.Buf (r, s_idx, Idx (s_src#dim))]
+                  → [%mem.M 0, %buffer.Buf (r, s_idx, T)];
+///
+/// ### %%btensor.scatter
+///
+/// Buffer-world counterpart of %%tensor.scatter. Starts with a copy of `input`, then applies updates in
+/// row-major index order; for duplicate destinations, the last update wins.
+///
+axm %btensor.scatter: {T: *, r: Nat}
+                   → [s_src s_idx s_updates: «r; Nat»]
+                   → [dim: Idx r]
+                   → [%mem.M 0,
+                      input: %buffer.Buf (r, s_src, T),
+                      index: %buffer.Buf (r, s_idx, Idx (s_src#dim)),
+                      updates: %buffer.Buf (r, s_updates, T)]
+                   → [%mem.M 0, %buffer.Buf (r, s_src, T)];
+///
 /// ## Phases
 ///
 /// * `lower_map_reduce`: lowers the buffer-world ops (`%%btensor.map_reduce`, `%%btensor.broadcast`, `%%btensor.pad`,
-/// `%%btensor.concat`) to `%%affine.For` loops over `%%buffer` element operations.
+/// `%%btensor.concat`, `%%btensor.gather`, `%%btensor.scatter`) to `%%affine.For` loops over `%%buffer`
+/// element operations.
 /// `%%btensor.product_2d` and `%%btensor.transpose_2d` need no phase of their own: they are `lam`s that reduce to
 /// `%%btensor.map_reduce` at their call site.
 ///

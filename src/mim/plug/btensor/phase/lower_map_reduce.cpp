@@ -103,6 +103,8 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (Axm::isa<btensor::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<btensor::pad>(app)) return lower_pad(app);
     if (Axm::isa<btensor::concat>(app)) return lower_concat(app);
+    if (Axm::isa<btensor::gather>(app)) return lower_gather(app);
+    if (Axm::isa<btensor::scatter>(app)) return lower_scatter(app);
     if (Axm::isa<buffer::constant>(app)) return lower_buffer_constant(app);
     return RWPhase::rewrite_imm_App(app);
 }
@@ -415,6 +417,119 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     };
 
     return build_pointwise(w, result_ty, op_mem, op_is, s_out, rn, "concat", compute);
+}
+
+const Def* LowerMapReduce::lower_gather(const App* app) {
+    auto& w = new_world();
+    auto c  = rewrite(app->callee())->as<App>();
+
+    auto [Tr, shapes, dim]    = c->uncurry_args<3>();
+    auto [T, r]               = Tr->projs<2>();
+    auto [s_src, s_idx]       = shapes->projs<2>();
+    auto [op_mem, input, idx] = rewrite(app->arg())->projs<3>();
+    auto result_ty            = rewrite(app->type());
+
+    auto r_l   = Lit::isa<u64>(r);
+    auto dim_l = Lit::isa<u64>(dim);
+    if (!r_l || !dim_l) {
+        WLOG("{} doesn't have lowering-time known rank/axis", app);
+        return RWPhase::rewrite_imm_App(app);
+    }
+    auto rn = *r_l, axis = *dim_l;
+
+    auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
+        auto [in_buf, index_buf] = ins->projs<2>();
+        auto [ibr, ibs, ibT]     = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
+        auto [xbr, xbs, xbT]     = Axm::isa<buffer::Buf>(index_buf->type())->args<3>();
+
+        DefVec index_coords(rn);
+        for (u64 d = 0; d < rn; ++d)
+            index_coords[d] = w.call(core::conv::u, s_idx->proj(rn, d), iters[d]);
+        auto [index_mem, selected]
+            = buffer::op_read(xbr, xbs, xbT, mem, index_buf, fold_index(s_idx, w.tuple(index_coords)))->projs<2>();
+        auto selected_i64 = w.call<core::bitcast>(w.type_i64(), selected);
+
+        DefVec source_coords(rn);
+        for (u64 d = 0; d < rn; ++d) {
+            auto coordinate = d == axis ? selected_i64 : iters[d];
+            source_coords[d] = w.call(core::conv::u, s_src->proj(rn, d), coordinate);
+        }
+        auto [read_mem, value]
+            = buffer::op_read(ibr, ibs, ibT, index_mem, in_buf, fold_index(s_src, w.tuple(source_coords)))->projs<2>();
+        return {read_mem, value};
+    };
+    return build_pointwise(w, result_ty, op_mem, w.tuple({input, idx}), s_idx, rn, "gather", compute);
+}
+
+const Def* LowerMapReduce::lower_scatter(const App* app) {
+    auto& w = new_world();
+    auto c  = rewrite(app->callee())->as<App>();
+
+    auto [Tr, shapes, dim]             = c->uncurry_args<3>();
+    auto [T, r]                        = Tr->projs<2>();
+    auto [s_src, s_idx, s_updates]     = shapes->projs<3>();
+    auto [op_mem, input, idx, updates] = rewrite(app->arg())->projs<4>();
+    auto result_ty                     = rewrite(app->type());
+
+    auto r_l   = Lit::isa<u64>(r);
+    auto dim_l = Lit::isa<u64>(dim);
+    if (!r_l || !dim_l) {
+        WLOG("{} doesn't have lowering-time known rank/axis", app);
+        return RWPhase::rewrite_imm_App(app);
+    }
+    auto rn = *r_l, axis = *dim_l;
+
+    auto mem_ty = w.call<mem::M>(0);
+    auto fun = w.mut_fun(w.sigma({mem_ty, input->type(), idx->type(), updates->type()}), result_ty)->set("scatter");
+    auto call = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, input, idx, updates}));
+    auto [fun_mem, in_buf, index_buf, update_buf] = fun->var(0_n)->projs<4>();
+    auto cont = fun->var(1);
+
+    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
+    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
+    auto copy_mem         = buffer::op_copy(obr, obs, obT, a_mem, out_buf, in_buf);
+    const Def* acc        = w.tuple({copy_mem, out_buf});
+    auto current          = fun;
+    DefVec iters;
+    iters.reserve(rn);
+    for (u64 d = 0; d < rn; ++d) {
+        auto bound                  = w.call<core::bitcast>(w.type_i64(), s_idx->proj(rn, d));
+        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("scatter_" + std::to_string(d)));
+        auto [iter, new_acc, yield] = body->vars<3>();
+        cont                        = yield;
+        acc                         = new_acc;
+        iters.push_back(iter);
+        current->set(true, for_call);
+        current = body;
+    }
+    auto [loop_mem, loop_buf] = acc->projs<2>();
+    auto [xbr, xbs, xbT]      = Axm::isa<buffer::Buf>(index_buf->type())->args<3>();
+    auto [ubr, ubs, ubT]      = Axm::isa<buffer::Buf>(update_buf->type())->args<3>();
+
+    DefVec index_coords(rn);
+    for (u64 d = 0; d < rn; ++d)
+        index_coords[d] = w.call(core::conv::u, s_idx->proj(rn, d), iters[d]);
+    auto folded_index = fold_index(s_idx, w.tuple(index_coords));
+    DefVec update_coords(rn);
+    for (u64 d = 0; d < rn; ++d)
+        update_coords[d] = w.call(core::conv::u, s_updates->proj(rn, d), iters[d]);
+    auto [index_mem, selected]
+        = buffer::op_read(xbr, xbs, xbT, loop_mem, index_buf, folded_index)->projs<2>();
+    auto [update_mem, update]
+        = buffer::op_read(ubr, ubs, ubT, index_mem, update_buf,
+                          fold_index(s_updates, w.tuple(update_coords)))->projs<2>();
+    auto selected_i64 = w.call<core::bitcast>(w.type_i64(), selected);
+
+    DefVec destination_coords(rn);
+    for (u64 d = 0; d < rn; ++d) {
+        auto coordinate = d == axis ? selected_i64 : iters[d];
+        destination_coords[d] = w.call(core::conv::u, s_src->proj(rn, d), coordinate);
+    }
+    auto [write_mem, written]
+        = buffer::op_write(obr, obs, obT, update_mem, loop_buf,
+                           fold_index(s_src, w.tuple(destination_coords)), update)->projs<2>();
+    current->app(true, cont, w.tuple({write_mem, loop_buf}));
+    return call;
 }
 
 } // namespace mim::plug::btensor::phase

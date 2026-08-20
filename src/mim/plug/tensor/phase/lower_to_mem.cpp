@@ -40,7 +40,8 @@ const Def* splat_scalar(const Def* d) {
 /// Is `app` a tensor op whose lowering consumes a LowerToMem::fresh_mem?
 bool wants_fresh_mem(const App* app) {
     return Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app) || Axm::isa<tensor::map_reduce>(app)
-        || Axm::isa<tensor::pad>(app) || Axm::isa<tensor::concat>(app);
+        || Axm::isa<tensor::pad>(app) || Axm::isa<tensor::concat>(app)
+        || Axm::isa<tensor::gather>(app) || Axm::isa<tensor::scatter>(app);
 }
 
 /// Is `app` one of the tensor ops this phase bufferizes?
@@ -130,6 +131,15 @@ void LowerToMem::collect_tensor_types() {
                         add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
                     }
                 }
+            } else if (Axm::isa<tensor::gather>(app)) {
+                add_tensor_ty(app->type());
+                add_tensor_ty(app->arg()->proj(2, 0)->type());
+                add_tensor_ty(app->arg()->proj(2, 1)->type());
+            } else if (Axm::isa<tensor::scatter>(app)) {
+                add_tensor_ty(app->type());
+                add_tensor_ty(app->arg()->proj(3, 0)->type());
+                add_tensor_ty(app->arg()->proj(3, 1)->type());
+                add_tensor_ty(app->arg()->proj(3, 2)->type());
             } else if (auto [axm, curry, trip] = Axm::get(app);
                        axm && curry == 0 && axm->plugin() == tensor::Plugin_Id) {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
@@ -353,6 +363,8 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::map_reduce>(app)) return lower_map_reduce(app);
     if (Axm::isa<tensor::pad>(app)) return lower_pad(app);
     if (Axm::isa<tensor::concat>(app)) return lower_concat(app);
+    if (Axm::isa<tensor::gather>(app)) return lower_gather(app);
+    if (Axm::isa<tensor::scatter>(app)) return lower_scatter(app);
 
     // Call of a bufferized function: adapt the call site.
     if (auto callee = app->callee()->isa_mut<Lam>(); callee && tensor_fns_.contains(callee))
@@ -652,6 +664,50 @@ const Def* LowerToMem::lower_concat(const App* app) {
     op            = w.app(op, s_out);
     auto [m, out] = w.app(op, w.tuple({fresh_mem(), inputs}))->projs<2>();
     return out;
+}
+
+const Def* LowerToMem::lower_gather(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg());
+
+    auto [Tr, shapes, dim] = c->uncurry_args<3>();
+    auto [T, r]            = Tr->projs<2>();
+    auto [s_src, s_idx]    = shapes->projs<2>();
+    auto [input, index]    = args->projs<2>();
+    if (!Axm::isa<buffer::Buf>(input->type()))
+        input = materialize(app->arg()->proj(2, 0)->type(), app->arg()->proj(2, 0));
+    if (!Axm::isa<buffer::Buf>(index->type()))
+        index = materialize(app->arg()->proj(2, 1)->type(), app->arg()->proj(2, 1));
+
+    auto op = w.annex<btensor::gather>();
+    op      = w.app(op, Defs{T, r});
+    op      = w.app(op, Defs{s_src, s_idx});
+    op      = w.app(op, dim);
+    return w.app(op, Defs{fresh_mem(), input, index})->proj(1);
+}
+
+const Def* LowerToMem::lower_scatter(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg());
+
+    auto [Tr, shapes, dim]           = c->uncurry_args<3>();
+    auto [T, r]                      = Tr->projs<2>();
+    auto [s_src, s_idx, s_updates]   = shapes->projs<3>();
+    auto [input, index, updates]     = args->projs<3>();
+    if (!Axm::isa<buffer::Buf>(input->type()))
+        input = materialize(app->arg()->proj(3, 0)->type(), app->arg()->proj(3, 0));
+    if (!Axm::isa<buffer::Buf>(index->type()))
+        index = materialize(app->arg()->proj(3, 1)->type(), app->arg()->proj(3, 1));
+    if (!Axm::isa<buffer::Buf>(updates->type()))
+        updates = materialize(app->arg()->proj(3, 2)->type(), app->arg()->proj(3, 2));
+
+    auto op = w.annex<btensor::scatter>();
+    op      = w.app(op, Defs{T, r});
+    op      = w.app(op, Defs{s_src, s_idx, s_updates});
+    op      = w.app(op, dim);
+    return w.app(op, Defs{fresh_mem(), input, index, updates})->proj(1);
 }
 
 } // namespace mim::plug::tensor::phase

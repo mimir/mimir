@@ -425,6 +425,90 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     return build_pointwise(args, type, s_out, rn, compute);
 }
 
+static bool statically_le(const Def* lhs, const Def* rhs) {
+    if (lhs == rhs) return true;
+    auto l = Lit::isa<u64>(lhs);
+    auto r = Lit::isa<u64>(rhs);
+    return l && r && *l <= *r;
+}
+
+const Def* LowerMapReduce::lower_gather(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg());
+    auto type = rewrite(app->type());
+
+    auto [Tr, shapes, dim] = c->uncurry_args<3>();
+    auto [T, r]            = Tr->projs<2>();
+    auto [s_src, s_idx]    = shapes->projs<2>();
+    auto r_l               = Lit::isa<u64>(r);
+    auto dim_l             = Lit::isa<u64>(dim);
+    if (!r_l || !dim_l) return nullptr;
+
+    for (u64 d = 0; d < *r_l; ++d)
+        if (d != *dim_l && !statically_le(s_idx->proj(*r_l, d), s_src->proj(*r_l, d)))
+            fe::throwf("gather index shape exceeds input shape at axis {}", d);
+
+    auto compute = [&](const DefVec& out_indices, const Def* inputs) -> const Def* {
+        auto element = w.app(w.annex<tensor::gather_pointwise_elem_impl>(), Defs{T, r});
+        element      = w.app(element, Defs{s_src, s_idx});
+        element      = w.app(element, dim);
+        element      = w.app(element, w.tuple(out_indices));
+        return w.app(element, inputs);
+    };
+    return build_pointwise(args, type, s_idx, *r_l, compute);
+}
+
+const Def* LowerMapReduce::lower_scatter(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg());
+    auto type = rewrite(app->type());
+
+    auto [Tr, shapes, dim]         = c->uncurry_args<3>();
+    auto [T, r]                    = Tr->projs<2>();
+    auto [s_src, s_idx, s_updates] = shapes->projs<3>();
+    auto r_l                       = Lit::isa<u64>(r);
+    auto dim_l                     = Lit::isa<u64>(dim);
+    if (!r_l || !dim_l) return nullptr;
+    auto rn = *r_l;
+
+    for (u64 d = 0; d < rn; ++d) {
+        if (d != *dim_l && !statically_le(s_idx->proj(rn, d), s_src->proj(rn, d)))
+            fe::throwf("scatter index shape exceeds input shape at axis {}", d);
+        if (!statically_le(s_idx->proj(rn, d), s_updates->proj(rn, d)))
+            fe::throwf("scatter index shape exceeds updates shape at axis {}", d);
+    }
+
+    auto fun    = w.mut_fun(args->type(), type)->set("scatter");
+    auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
+    auto call   = w.app(ds_fun, args)->set("call");
+
+    auto [input, index, updates] = fun->var(0)->projs<3>();
+    auto cont                    = fun->var(1);
+    auto acc                     = input;
+    auto current                 = fun;
+    DefVec visit_indices;
+    visit_indices.reserve(rn);
+    for (u64 d = 0; d < rn; ++d) {
+        auto bound                  = w.call<core::bitcast>(w.type_i64(), s_idx->proj(rn, d));
+        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("scatter_" + std::to_string(d)));
+        auto [iter, new_acc, yield] = body->vars<3>();
+        cont                        = yield;
+        acc                         = new_acc;
+        visit_indices.push_back(iter);
+        current->set(true, for_call);
+        current = body;
+    }
+
+    auto step = w.app(w.annex<tensor::scatter_step_impl>(), Defs{T, r});
+    step      = w.app(step, Defs{s_src, s_idx, s_updates});
+    step      = w.app(step, dim);
+    step      = w.app(step, w.tuple(visit_indices));
+    current->app(true, cont, w.app(step, Defs{acc, index, updates}));
+    return call;
+}
+
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (auto bc = Axm::isa<tensor::broadcast>(app)) {
         if (auto res = lower_broadcast(bc)) return res;
@@ -434,6 +518,10 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
         if (auto res = lower_pad(pad)) return res;
     } else if (auto cat = Axm::isa<tensor::concat>(app)) {
         if (auto res = lower_concat(cat)) return res;
+    } else if (auto gather = Axm::isa<tensor::gather>(app)) {
+        if (auto res = lower_gather(gather)) return res;
+    } else if (auto scatter = Axm::isa<tensor::scatter>(app)) {
+        if (auto res = lower_scatter(scatter)) return res;
     }
     return RWPhase::rewrite_imm_App(app);
 }

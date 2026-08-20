@@ -587,6 +587,75 @@ axm %tensor.select: {T: *}
 lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
   %tensor.map_impl %core.select is;
 ///
+/// ### %%tensor.gather
+///
+/// Reads one source element for every index element. The output coordinate is
+/// also the index coordinate, except on `dim`, where the value loaded from
+/// `index` selects the source coordinate. For every `d != dim`, `s_idx#d <=
+/// s_src#d` is required. `dim: Idx r` and the index element type encode the
+/// axis and indexed-source bounds in the type.
+///
+/// Python:
+/// ```python
+/// for out_index in ndindex(s_idx):
+///     source_index = list(out_index)
+///     source_index[dim] = index[out_index]
+///     output[out_index] = input[source_index]
+/// ```
+axm %tensor.gather: {T: *, r: Nat}
+                  → [s_src: «r; Nat», s_idx: «r; Nat»]
+                  → [dim: Idx r]
+                  → [input: «s_src; T», index: «s_idx; Idx (s_src#dim)»]
+                  → «s_idx; T»;
+
+lam %tensor.gather_pointwise_elem_impl {T: *, r: Nat}
+                                       (s_src: «r; Nat», s_idx: «r; Nat»)
+                                       (dim: Idx r)
+                                       (out_indices: «r; I64»)
+                                       (input: «s_src; T», index: «s_idx; Idx (s_src#dim)»): T =
+    let index_coords = ‹d: r; %core.conv.u (s_idx#d) (out_indices#d)›;
+    let source_axis_index = %core.bitcast I64 (%tensor.get (index_coords, index));
+    let source_coords = ‹d: r;
+        let coordinate = %core.select (%core.icmp.e @r (d, dim), source_axis_index, out_indices#d);
+        %core.conv.u (s_src#d) coordinate›;
+    %tensor.get (source_coords, input);
+
+///
+/// ### %%tensor.scatter
+///
+/// Starts with `input` and visits `index` in row-major order. Each corresponding
+/// `updates` element is stored at the input coordinate selected by `index` on
+/// `dim`. Duplicate destinations use the last visited update. For `d != dim`,
+/// `s_idx#d <= s_src#d`; on every axis, `s_idx#d <= s_updates#d`.
+///
+/// Python:
+/// ```python
+/// output = input.copy()
+/// for index_coord in ndindex(s_idx):
+///     destination = list(index_coord)
+///     destination[dim] = index[index_coord]
+///     output[destination] = updates[index_coord]
+/// ```
+axm %tensor.scatter: {T: *, r: Nat}
+                   → [s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»]
+                   → [dim: Idx r]
+                   → [input: «s_src; T», index: «s_idx; Idx (s_src#dim)», updates: «s_updates; T»]
+                   → «s_src; T»;
+
+lam %tensor.scatter_step_impl {T: *, r: Nat}
+                              (s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»)
+                              (dim: Idx r)
+                              (visit_indices: «r; I64»)
+                              (acc: «s_src; T», index: «s_idx; Idx (s_src#dim)», updates: «s_updates; T»): «s_src; T» =
+    let index_coords = ‹d: r; %core.conv.u (s_idx#d) (visit_indices#d)›;
+    let update_coords = ‹d: r; %core.conv.u (s_updates#d) (visit_indices#d)›;
+    let destination_axis_index = %core.bitcast I64 (%tensor.get (index_coords, index));
+    let update = %tensor.get (update_coords, updates);
+    let destination_coords = ‹d: r;
+        let coordinate = %core.select (%core.icmp.e @r (d, dim), destination_axis_index, visit_indices#d);
+        %core.conv.u (s_src#d) coordinate›;
+    %tensor.set (destination_coords, acc, update);
+///
 /// ## Phases
 ///
 /// * `lower_tensor`: lowers the high-level tensor axioms to the low-level ones (`map_reduce`, ...) by re-applying the matching `*_impl` annexes.
