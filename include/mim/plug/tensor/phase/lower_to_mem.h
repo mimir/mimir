@@ -41,6 +41,7 @@ private:
 
     const Def* lower_get(const App*);
     const Def* lower_set(const App*);
+    const Def* lower_splat(const App*);
     const Def* lower_broadcast(const App*);
     const Def* lower_map_reduce(const App*);
     const Def* lower_pad(const App*);

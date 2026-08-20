@@ -51,6 +51,23 @@ axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», 
 /// `index` precedes `arr` for the same reason as in %%tensor.get.
 axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T», x: T] → «s; T», normalize_set;
 ///
+/// ### %%tensor.splat
+///
+/// Constructs a tensor whose every element is `value`. Keeping this operation
+/// explicit lets bufferization select a fill operation without first building
+/// an index lambda or a monolithic nested-array literal.
+///
+/// Python:
+/// ```python
+/// output = empty(s_out)
+/// for index in ndindex(s_out):
+///     output[index] = value
+/// return output
+/// ```
+axm %tensor.splat: {T: *, r: Nat}
+                 → [s_out: «r; Nat», value: T]
+                 → «s_out; T»;
+///
 /// ### %%tensor.shape
 ///
 /// Returns the shape of `arr` as a rank-`r` array of Nats: `(s#0, …, s#(r-1))`.
