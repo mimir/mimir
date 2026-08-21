@@ -18,12 +18,12 @@ namespace mim {
 /// This makes `f`'s classification identical whether `f` is bare or wrapped, so the canonical η-form is a genuine
 /// fixed point - the phase does not fight itself and can share one big `%%compile.phases tt` fixed-point loop with
 /// BetaRed and %%mem.seo without oscillating.
-class EtaConv : public FPPhase {
+class EtaConv : public InplaceRWPhase {
 public:
     EtaConv(World& world)
-        : FPPhase(world, "EtaConv") {}
+        : InplaceRWPhase(world, "EtaConv") {}
     EtaConv(World& world, flags_t annex)
-        : FPPhase(world, annex) {}
+        : InplaceRWPhase(world, annex) {}
 
 private:
     enum Lattice : u8 {

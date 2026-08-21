@@ -5,12 +5,12 @@
 namespace mim {
 
 /// Inlines in post-order all Lam%s that occur exactly *once* in the program.
-class BetaRed : public FPPhase {
+class BetaRed : public InplaceRWPhase {
 public:
     BetaRed(World& world)
-        : FPPhase(world, "BetaRed") {}
+        : InplaceRWPhase(world, "BetaRed") {}
     BetaRed(World& world, flags_t annex)
-        : FPPhase(world, annex) {}
+        : InplaceRWPhase(world, annex) {}
 
 private:
     bool analyze() final;

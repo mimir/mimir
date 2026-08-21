@@ -239,9 +239,9 @@ Run it with:
 mim::Phase::run<MyRWPhase>(world);
 ```
 
-## FPPhase {#phases_fpphase}
+## InplaceRWPhase {#phases_inplace_rw_phase}
 
-[`FPPhase`](@ref mim::FPPhase) rewrites the **current** world *in place* instead of rebuilding it into a fresh one.
+[`InplaceRWPhase`](@ref mim::InplaceRWPhase) rewrites the **current** world *in place* instead of rebuilding it into a fresh one.
 
 A mutable keeps its identity: only its [`ops()`](@ref mim::Def::ops) are [`Def::set`](@ref mim::Def::set) anew, and only if the rewrite actually changed them.
 So hash-consing makes every unaffected [`Def`](@ref mim::Def) free instead of a per-run rebuild tax.
@@ -252,7 +252,7 @@ It inherits from both [`Phase`](@ref mim::Phase) and [`Rewriter`](@ref mim::Rewr
 
 ### Restrictions
 
-An [`FPPhase`](@ref mim::FPPhase)
+An [`InplaceRWPhase`](@ref mim::InplaceRWPhase)
 
 - cannot immutabilize a mutable that the rewrite made vacuous (unless it takes the type-change fallback),
 - must not hand out a fresh identity for something that already is in its target shape — since [`Phase::todo()`](@ref mim::Phase::todo) is exact, that would never converge, and
@@ -262,35 +262,35 @@ Use an [`RWPhase`](@ref mim::RWPhase) for anything else.
 
 ### Pruning
 
-Override [`skip()`](@ref mim::FPPhase::skip) with a cheap **O(1)** predicate that is `true` iff a [`Def`](@ref mim::Def)'s subtree provably cannot change.
+Override [`skip()`](@ref mim::InplaceRWPhase::skip) with a cheap **O(1)** predicate that is `true` iff a [`Def`](@ref mim::Def)'s subtree provably cannot change.
 This is what turns the traversal from *"hash-cons every node"* into *"touch only what matters"*.
 
-[`skip_closed_imm()`](@ref mim::FPPhase::skip_closed_imm) is the ready-made predicate for phases that only rewrite mutables and/or substitute [`Var`s](@ref mim::Var): an immutable with neither [`local_muts()`](@ref mim::Def::local_muts) nor [`local_vars()`](@ref mim::Def::local_vars) contains neither.
+[`skip_closed_imm()`](@ref mim::InplaceRWPhase::skip_closed_imm) is the ready-made predicate for phases that only rewrite mutables and/or substitute [`Var`s](@ref mim::Var): an immutable with neither [`local_muts()`](@ref mim::Def::local_muts) nor [`local_vars()`](@ref mim::Def::local_vars) contains neither.
 Both [`BetaRed`](@ref mim::BetaRed) and [`EtaConv`](@ref mim::EtaConv) use it.
 
 @warning Testing only [`local_muts()`](@ref mim::Def::local_muts) is **not** enough: a substitution installed via [`Rewriter::map()`](@ref mim::Rewriter::map) would silently be dropped in a mut-free subtree that still mentions the substituted [`Var`](@ref mim::Var).
 
 ### Roots
 
-By default, an [`FPPhase`](@ref mim::FPPhase) walks only the **external** roots.
-[`rewrite_annexes()`](@ref mim::FPPhase::rewrite_annexes) returns `false`, because an [`RWPhase`](@ref mim::RWPhase) only *has* to walk the annexes in order to populate the new world's annex table — a phase that stays in the same world finds that table already correct.
+By default, an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) walks only the **external** roots.
+[`rewrite_annexes()`](@ref mim::InplaceRWPhase::rewrite_annexes) returns `false`, because an [`RWPhase`](@ref mim::RWPhase) only *has* to walk the annexes in order to populate the new world's annex table — a phase that stays in the same world finds that table already correct.
 Whatever the program actually uses is reached through the externals anyway.
 Say `true` if your rewrite must also see *unused* annexes.
 
-[`rewrite_root()`](@ref mim::FPPhase::rewrite_root) is the hook for rewrites that must exempt roots; [`EtaConv`](@ref mim::EtaConv) uses it so that an annex or external keeps its η-shape.
+[`rewrite_root()`](@ref mim::InplaceRWPhase::rewrite_root) is the hook for rewrites that must exempt roots; [`EtaConv`](@ref mim::EtaConv) uses it so that an annex or external keeps its η-shape.
 
 ### Fixed Points
 
 Since a change is only ever committed if it really is one, [`Phase::todo()`](@ref mim::Phase::todo) is exact: a quiet run costs a pruned traversal and nothing else.
-This is what makes an [`FPPhase`](@ref mim::FPPhase) cheap to re-run inside a [`PhaseMan`](@ref mim::PhaseMan) fixed-point loop.
+This is what makes an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) cheap to re-run inside a [`PhaseMan`](@ref mim::PhaseMan) fixed-point loop.
 
 ### Typical Shape
 
 ```cpp
-class MyFPPhase : public mim::FPPhase {
+class MyInplaceRWPhase : public mim::InplaceRWPhase {
 public:
-    MyFPPhase(World& world)
-        : FPPhase(world, "my_inplace_phase") {}
+    MyInplaceRWPhase(World& world)
+        : InplaceRWPhase(world, "my_inplace_phase") {}
 
 private:
     bool skip(const Def* def) const final { return skip_mutless(def); }
@@ -533,7 +533,7 @@ A useful rule of thumb is:
 - derive from [`Phase`](@ref mim::Phase) if you just need a custom one-off action,
 - derive from [`Analysis`](@ref mim::Analysis) if you want a graph-aware traversal that computes facts on the current world,
 - derive from [`RWPhase`](@ref mim::RWPhase) if you want to rebuild the world into a transformed new one, optionally consuming facts from an associated [`Analysis`](@ref mim::Analysis),
-- derive from [`FPPhase`](@ref mim::FPPhase) if your rewrite is type-preserving and *local*, so that paying for a full rebuild would be wasteful,
+- derive from [`InplaceRWPhase`](@ref mim::InplaceRWPhase) if your rewrite is type-preserving and *local*, so that paying for a full rebuild would be wasteful,
 - derive from [`ClosedMutPhase`](@ref mim::ClosedMutPhase) if you want to visit all reachable closed mutables,
 - derive from [`NestPhase`](@ref mim::NestPhase) if that visit should come with a computed [`Nest`](@ref mim::Nest).
 
@@ -608,7 +608,7 @@ Phases are MimIR’s main unit of compiler work.
 - [`Phase`](@ref mim::Phase) is the minimal base abstraction.
 - [`Analysis`](@ref mim::Analysis) is for graph-aware fact collection on the current world and provides a reusable [`lattice()`](@ref mim::Analysis::lattice) for abstract values.
 - [`RWPhase`](@ref mim::RWPhase) is for rewriting the current world into a transformed new one and can read analysis results through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
-- [`FPPhase`](@ref mim::FPPhase) is for type-preserving, local rewrites of the current world that must not pay for a rebuild.
+- [`InplaceRWPhase`](@ref mim::InplaceRWPhase) is for type-preserving, local rewrites of the current world that must not pay for a rebuild.
 - [`PhaseMan`](@ref mim::PhaseMan) sequences phases, optionally to a fixed point.
 - [`ClosedMutPhase`](@ref mim::ClosedMutPhase) and [`NestPhase`](@ref mim::NestPhase) are traversal helpers for common whole-world inspections.
 

@@ -233,7 +233,7 @@ public:
         }
 
         /// Overwrites the Def of an *already* attach()ed annex, keeping its Sym.
-        /// Unlike attach(), this expects @p flags to be present; @see FPPhase.
+        /// Unlike attach(), this expects @p flags to be present; @see InplaceRWPhase.
         const Def* reattach(flags_t flags, const Def* def) {
             auto i = flags2entry_.find(flags);
             assert(i != flags2entry_.end() && "cannot reattach an annex that was never attached");

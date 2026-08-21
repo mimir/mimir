@@ -169,10 +169,10 @@ void RWPhase::rewrite_external(Def* old_mut) {
 }
 
 /*
- * FPPhase
+ * InplaceRWPhase
  */
 
-void FPPhase::start() {
+void InplaceRWPhase::start() {
     auto max_iters = driver().flags().max_fp_iters;
     bool todo      = true;
     for (uint32_t i = 0; todo; ++i) {
@@ -193,14 +193,14 @@ void FPPhase::start() {
     profile_count("inplace.defs.created", world().curr_gid() - gid);
 }
 
-void FPPhase::rewrite_annex(flags_t flags, Sym, const Def* def) {
+void InplaceRWPhase::rewrite_annex(flags_t flags, Sym, const Def* def) {
     if (auto new_def = rewrite_root(def); new_def != def) {
         world().annexes().reattach(flags, new_def);
         invalidate();
     }
 }
 
-void FPPhase::rewrite_external(Def* old_mut) {
+void InplaceRWPhase::rewrite_external(Def* old_mut) {
     auto new_def = rewrite_root(old_mut);
     if (new_def == old_mut) return;
 
@@ -210,7 +210,7 @@ void FPPhase::rewrite_external(Def* old_mut) {
     invalidate();
 }
 
-const Def* FPPhase::rewrite_mut(Def* mut) {
+const Def* InplaceRWPhase::rewrite_mut(Def* mut) {
     if (auto hole = mut->isa<Hole>()) {
         auto [last, op] = hole->find();
         return op ? rewrite(op) : last; // an unresolved Hole stays as is

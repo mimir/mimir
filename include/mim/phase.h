@@ -376,8 +376,7 @@ private:
     bool bootstrapping_ = true;
 };
 
-/// Rewrites the **current** World **in place** until a fixed point is reached - unlike an RWPhase, which rebuilds a new
-/// World in one pass.
+/// Rewrites the **current** World **in place** - unlike an RWPhase, which rebuilds a new World.
 ///
 /// A *mutable* keeps its identity: only its ops() are Def::set anew, and only if the rewrite actually changed them.
 /// So hash-consing makes every unaffected Def free instead of a per-run rebuild tax.
@@ -392,28 +391,28 @@ private:
 /// Since a change is only ever committed if it really is one, Phase::todo() is exact: a quiet run costs a pruned
 /// traversal and nothing else.
 ///
-/// @warning A FPPhase
+/// @warning A InplaceRWPhase
 /// * cannot immutabilize a mutable that the rewrite made vacuous (unless it takes the type-change fallback),
 /// * must not hand out a fresh identity for something already in its target shape - that would never converge, and
 /// * leaves what it replaced behind as garbage until the next Cleanup.
 ///
 /// Use an RWPhase for anything else.
-/// @see @ref phases_fpphase
-class FPPhase : public Phase, public Rewriter {
+/// @see @ref phases_inplace_rw_phase
+class InplaceRWPhase : public Phase, public Rewriter {
 public:
     /// @name Construction
     ///@{
-    FPPhase(World& world, std::string name)
+    InplaceRWPhase(World& world, std::string name)
         : Phase(world, std::move(name))
         , Rewriter(world) {}
-    FPPhase(World& world, flags_t annex)
+    InplaceRWPhase(World& world, flags_t annex)
         : Phase(world, annex)
         , Rewriter(world) {}
     ///@}
 
     /// @name Getters
     ///@{
-    using Phase::world; ///< Disambiguates the Phase/Rewriter double base; for an FPPhase both are the same.
+    using Phase::world; ///< Disambiguates the Phase/Rewriter double base; for an InplaceRWPhase both are the same.
     ///@}
 
     /// @name Rewrite
@@ -424,7 +423,7 @@ public:
 
     /// Should start() walk the annex roots as well?
     /// An RWPhase *has* to: it must re-create every annex to populate the new World's table.
-    /// An FPPhase finds that table already correct, so the annex graph - which is proportional to the loaded
+    /// An InplaceRWPhase finds that table already correct, so the annex graph - which is proportional to the loaded
     /// plugins, not to the program - is pure extra coverage here, and a *local* rewrite gains nothing from it:
     /// whatever the program actually uses is reached through the externals anyway.
     /// Hence this defaults to `false`; say `true` if your rewrite must also see *unused* annexes.
