@@ -22,8 +22,8 @@ lam ma_r (o: «4; %affine.index»): «2; %affine.index» =
 lam mb_r (o: «4; %affine.index»): «2; %affine.index» =
     (%affine.op.add (%affine.semiop.mul (o#2_4, 1), o#3_4), o#1_4);
 let s_full = (2, 2, 2, 1);
-let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 4)
-    ((2, 2), s_full, [N: *] → ([vdim unroll: Nat] → N) → N, %tensor.mk_sched (1, 1))
+let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 4, [N: *] → ([vdim unroll: Nat] → N) → N)
+    ((2, 2), s_full, %tensor.mk_sched (1, 1))
     @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›), (), (), ()) (f, 0, %tensor.id @Nat)
     mo_r
     ((ma_r, mb_r), ())

@@ -93,9 +93,8 @@ axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_sh
 /// never names the target's loop machinery.
 ///
 axm %tensor.map_reduce_post: {nis nps: Nat}
-                           → {To Tp: *, Ro Rn: Nat}
-                           → [So: «Ro; Nat», Sr: «Rn; Nat»,
-                              TSched: □, sched: TSched]
+                           → {To Tp: *, Ro Rn: Nat, TSched: □}
+                           → [So: «Ro; Nat», Sr: «Rn; Nat», sched: TSched]
                            → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»,
                               Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                            → [f: Fn [To, «i: nis; Tis#i»] → To, init: To,
@@ -134,24 +133,22 @@ axm %tensor.if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
 ///
 /// ### %%tensor.map_reduce
 ///
-/// %%tensor.map_reduce_post without the epilogue and with the neutral schedule. Its normalizer immediately
-/// delegates to %%tensor.map_reduce_post with `post = %%tensor.id` (so `Tp = To`), no epilogue inputs
-/// (`nps = 0`), no vector dim, and no unrolling.
+/// %%tensor.map_reduce_post without the epilogue and with the neutral schedule: delegates with
+/// `post = %%tensor.id` (so `Tp = To`), no epilogue inputs (`nps = 0`), no vector dim (`vdim = Rn`, the
+/// out-of-range sentinel), and no unrolling.
 /// The total loop count `Rn` is stated instead of the reduction count `Rr = Rn - Ro`, because a `%%core.nat.add (Ro, Rr)`
 /// in the domain cannot be inverted by type inference, which would force every call site to pass the whole meta group
 /// explicitly with `@`. Stating `Rn` directly lets `Sr` pin it structurally.
-/// It stays an `axm` (rather than a delegating `lam`) so that call sites keep implicit inference: an axm
-/// application stays stuck while the checker solves the meta holes from the operands, whereas applying a `lam`
-/// would eagerly β-reduce the body over still-unsolved holes.
-axm %tensor.map_reduce: {nis: Nat}
-                      → {To: *, Ro Rn: Nat}
-                      → [So: «Ro; Nat», Sr: «Rn; Nat»]
-                      → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
-                      → [f: Fn [To, «i: nis; Tis#i»] → To, init: To]
-                      → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
-                      → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»]
-                      → [is: «i: nis; «Sis#i; Tis#i»»]
-                      → «So; To», normalize_map_reduce;
+lam %tensor.map_reduce {nis: Nat} {To: *, Ro Rn: Nat}
+                       (So: «Ro; Nat», Sr: «Rn; Nat»)
+                       {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                       (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
+                       (map_out: [«Rn; %affine.index»] → «Ro; %affine.index»)
+                       (maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»)
+                       (is: «i: nis; «Sis#i; Tis#i»»): «So; To» =
+    %tensor.map_reduce_post
+        (So, Sr, %tensor.mk_sched (Rn, 0))
+        (f, init, %tensor.id @To) map_out (maps, ()) (is, ());
 
 /// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
@@ -217,8 +214,8 @@ lam %tensor.mr_tileable
              : «So_n; Tp» =
         lam map_out_n (o: «%core.nat.add (Ro_n, Rr_n); %affine.index»): «Ro_n; %affine.index» =
             omega (map_out (iota o), o);
-        %tensor.map_reduce_post @(nis, 0) @(To, Tp, Ro_n, %core.nat.add (Ro_n, Rr_n))
-            (So_n, Sr_n, SchedT, %tensor.mk_sched (vdim_n, unroll_n))
+        %tensor.map_reduce_post @(nis, 0) @(To, Tp, Ro_n, %core.nat.add (Ro_n, Rr_n), SchedT)
+            (So_n, Sr_n, %tensor.mk_sched (vdim_n, unroll_n))
             @(Tis, Ris, Sis, (), (), ()) (f, init, post)
             map_out_n
             (‹i: nis; comp_map (maps#i, iota)›, ())

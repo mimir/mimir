@@ -137,8 +137,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
 
     auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
     auto [nis, nps]                                                    = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rn]                                              = meta->projs<4>();
-    auto [So, Sr, TSched, sched]                                       = shapes->projs<4>();
+    auto [To, Tp, Ro, Rn, TSched]                                      = meta->projs<5>();
+    auto [So, Sr, sched]                                               = shapes->projs<3>();
     auto [Tis, Ris, Sis, Tps, Rps, Sps]                                = in_tys->projs<6>();
     auto [comb, init, post]                                            = comb_init->projs<3>();
     auto [accs, post_accs]                                             = accs_all->projs<2>();

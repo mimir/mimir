@@ -259,9 +259,8 @@ lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) 
 /// `%%btensor.mr_nest` and merely APPLIES the result to the op's decision-free fold step and
 /// write-back.
 axm %btensor.map_reduce_post: {nis nps: Nat}
-                           → {To Tp: *, Ro Rn: Nat}
-                           → [So: «Ro; Nat», Sr: «Rn; Nat»,
-                              TSched: □, sched: TSched]
+                           → {To Tp: *, Ro Rn: Nat, TSched: □}
+                           → [So: «Ro; Nat», Sr: «Rn; Nat», sched: TSched]
                            → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»,
                               Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                            → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To,
@@ -288,9 +287,11 @@ lam %btensor.mk_sched (vdim unroll: Nat) (N: *) (mk: [vdim unroll: Nat] → N): 
 /// %%btensor.map_reduce_post without the epilogue and with the neutral schedule — the buffer-world counterpart of
 /// %%tensor.map_reduce. Its normalizer immediately delegates to %%btensor.map_reduce_post with `post = %%btensor.id`
 /// (so `Tp = To`), no epilogue inputs (`nps = 0`), no vector dim, and no unrolling.
-/// It stays an `axm` (rather than a delegating `lam`) so that call sites keep master-style implicit inference:
-/// an axm application stays stuck while the checker solves the `{Tis, Ris, Sis}` holes from the operands, whereas
-/// applying a `lam` would eagerly β-reduce `%%buffer.Buf` over still-unsolved holes.
+/// Unlike %%tensor.map_reduce this cannot be a delegating `lam`: applying a lam instantiates its later group
+/// domains eagerly, and the `is` domain here contains the *dependent* axm application
+/// `%%buffer.Buf (Ris#i, Sis#i, Tis#i)`, whose signature cannot be checked over the still-unsolved
+/// `{Tis, Ris, Sis}` holes (the tensor-level counterpart is a plain array and checks structurally).
+/// An axm application stays stuck until the checker has solved the holes from the operands.
 axm %btensor.map_reduce: {nis: Nat}
                       → {To: *, Ro Rn: Nat}
                       → [So: «Ro; Nat», Sr: «Rn; Nat»]

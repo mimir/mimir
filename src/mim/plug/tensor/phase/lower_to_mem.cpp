@@ -82,8 +82,8 @@ void LowerToMem::collect_tensor_types() {
                 add_tensor_ty(app->type());
                 auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs]
                     = app->callee()->as<App>()->uncurry_args<7>();
-                if (meta->proj(4, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(4, 0));
-                if (meta->proj(4, 1)->isa<Arr>()) gate("tensor with array element type", meta->proj(4, 1));
+                if (meta->proj(5, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(5, 0));
+                if (meta->proj(5, 1)->isa<Arr>()) gate("tensor with array element type", meta->proj(5, 1));
                 if (auto nis_l = Lit::isa<u64>(nis_nps->proj(2, 0))) {
                     auto Tis = in_tys->proj(6, 0);
                     for (u64 i = 0; i < *nis_l; ++i) {
@@ -575,7 +575,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
 
     // Likewise wrap the pure epilogue `Fn [To, «nps; Tps»] → Tp` into
     // `Fn [%mem.M 0, To, «nps; Tps»] → [%mem.M 0, Tp]`.
-    auto pTp               = meta->proj(4, 1);
+    auto pTp               = meta->proj(5, 1);
     auto pin               = post->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nps; Tps»]
     auto [pTo, pexts_ty]   = pin->projs<2>();
     auto mempost           = w.mut_fun(w.sigma({mem_ty, pTo, pexts_ty}), w.sigma({mem_ty, pTp}))->set("memPost");
