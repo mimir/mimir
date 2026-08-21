@@ -2,9 +2,9 @@
 applyTo: "**/CMakeLists.txt,**/*.cmake"
 ---
 
-When reviewing CMake files in this repository, treat the following as coding-style requirements:
+General CMake guidelines for this repository.
 
-- Use 4 spaces for one indentation level.
-- Prefer lowercase CMake commands such as `set`, `if`, `foreach`, and `add_subdirectory`.
-- Prefer uppercase names for project-specific CMake variables and options such as `MIM_BUILD_DOCS` and `MIM_PLUGINS`.
-- For longer CMake calls, prefer putting arguments on separate indented lines instead of cramming everything onto one line.
+- 4 spaces per indentation level.
+- Lowercase commands (`set`, `if`, `foreach`, `add_subdirectory`).
+- Uppercase project-specific variables and options (`MIM_BUILD_DOCS`, `MIM_PLUGINS`).
+- Put the arguments of longer calls on separate indented lines instead of one crammed line.
