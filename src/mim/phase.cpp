@@ -52,7 +52,8 @@ void Analysis::reset() {
     old2news_.clear();
     worklist_.clear();
     push();
-    todo_ = false;
+    todo_          = false;
+    bootstrapping_ = true; // every full round walks the annexes again - and that walk *is* the bootstrapping half
 }
 
 void Analysis::start() {
@@ -64,6 +65,7 @@ void Analysis::start() {
     prepare();
 
     if (curr_sparse_) {
+        bootstrapping_ = false; // a sparse round re-drains program muts - it has no annex half
         VLOG("sparse round: re-draining {} dirty muts", seeds.size());
         std::ranges::sort(seeds, GIDLt<Def*>()); // MutSet iteration order is nondeterministic
 

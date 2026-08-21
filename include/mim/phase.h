@@ -157,7 +157,7 @@ public:
         : Phase(world, annex)
         , Rewriter(world) {}
 
-    /// Clears the rewriter map and resets Phase::todo() for the next fixed-point iteration.
+    /// Clears the rewriter map and resets Phase::todo() and is_bootstrapping() for the next fixed-point iteration.
     /// lattice() is **preserved** across iterations so that abstract values accumulated in earlier
     /// rounds remain available - this is what makes fixed-point convergence possible.
     /// The dirty set survives as well; start() consumes it to decide whether the round can be sparse.
