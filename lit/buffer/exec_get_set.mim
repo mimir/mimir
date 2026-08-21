@@ -14,10 +14,10 @@ plugin tensor;
 plugin mem;
 
 fun extern kernel (t: «3, 4; I32», i: [Idx 3, Idx 4]): I32 =
-    let s = %tensor.set @(I32, 2, (3, 4)) (t, (0₃, 0₄), 42I32);
-    let a = %tensor.get @(I32, 2, (3, 4)) (s, (0₃, 0₄));
-    let b = %tensor.get @(I32, 2, (3, 4)) (s, i);
-    let c = %tensor.get @(I32, 2, (3, 4)) (t, (0₃, 0₄));
+    let s = %tensor.set ((0₃, 0₄), t, 42I32);
+    let a = %tensor.get ((0₃, 0₄), s);
+    let b = %tensor.get (i, s);
+    let c = %tensor.get ((0₃, 0₄), t);
     return (%core.wrap.add 0 (a, %core.wrap.add 0 (b, c)));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =

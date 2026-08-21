@@ -16,10 +16,10 @@ con extern f (v: «4, 6; Nat», return: Cn «2, 3; Nat») =
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %tensor.lower_tensor,
         %tensor.fuse_tensor,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
 
 // CHECK: %tensor.map_reduce

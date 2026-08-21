@@ -16,7 +16,7 @@ plugin vec;
 plugin cps;
 plugin affine;
 plugin buffer;
-plugin matrix;
+plugin btensor;
 ///
 /// ## Types
 ///
@@ -25,28 +25,31 @@ plugin matrix;
 /// Represents an [algebraic ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
 /// E.g., `let nat_ring = (Nat, 0, %%core.nat.add, %%core.nat.mul);`.
 ///
-let %tensor.Ring = [
-    T: *,
-    _0: T,
-    add: [T, T] → T,
-    mul: [T, T] → T,
-];
+/// An alias for %%btensor.Ring.
+/// The buffer-world `btensor` plugin sits *below* `tensor` - `%%tensor.lower_to_mem` bufferizes onto `%%btensor.*` ops -
+/// so the definition lives there and both layers share one notion of a ring.
+let %tensor.Ring = %btensor.Ring;
 ///
 /// ## Operations
 ///
 /// ### %%tensor.get
 ///
 /// Extracts the element at `index` from `arr`:
-/// `%%tensor.get (arr, (a, b, c))` ≡ `arr#a#b#c`.
+/// `%%tensor.get ((a, b, c), arr)` ≡ `arr#a#b#c`.
 ///
-axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)»] → T, normalize_get;
+/// `index` precedes `arr` so that `{r, s}` can be inferred. `index: «i: r; Idx (s#i)»` pins the rank *and* every
+/// extent, after which `arr: «s; T»` peels off the right number of levels of its nested array type. The other way
+/// round `arr` would be checked while `r` is still unknown, and how deep to peel would be ambiguous - which is why
+/// this used to need `%%tensor.get @(T, r, s) …` at every call site.
+axm %tensor.get: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T»] → T, normalize_get;
 ///
 /// ### %%tensor.set
 ///
 /// Inserts the element `x` in `arr` at `index`:
-/// `%%tensor.set (arr, (a, b, c), x)` ≡ `Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x))`.
+/// `%%tensor.set ((a, b, c), arr, x)` ≡ `Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x))`.
 ///
-axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [arr: «s; T», index: «i: r; Idx (s#i)», x: T] → «s; T», normalize_set;
+/// `index` precedes `arr` for the same reason as in %%tensor.get.
+axm %tensor.set: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T», x: T] → «s; T», normalize_set;
 ///
 /// ### %%tensor.shape
 ///
@@ -64,10 +67,10 @@ axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_sh
 /// The workhorse behind every tensor operation: a reduction fold over an affinely-indexed loop nest.
 ///
 /// The iteration domain and the result shape are stated explicitly:
-/// * `Sr`: the bounds of the full loop nest of length `Ro + Rr`. Its leading `Ro` dimensions are the parallel output loops; the trailing `Rr` dimensions are the reduction loops that are folded away.
+/// * `Sr`: the bounds of the full loop nest of length `Rn`. Its leading `Ro` dimensions are the parallel output loops; the trailing `Rn - Ro` dimensions are the reduction loops that are folded away.
 /// * `So`: the shape of the result tensor (rank `Ro`). It may differ from the leading `Ro` bounds of `Sr`, which is what lets `map_out` write to a re-shaped output (e.g. a transpose).
 ///
-/// The full loop iteration vector `(o…, r…)` has length `Ro + Rr`.
+/// The full loop iteration vector `(o…, r…)` has length `Rn`.
 /// * `f` folds one element of each input into the accumulator (seeded per output cell with `init`).
 /// * `post` maps the folded accumulator — together with one element of each of the `nps` *epilogue inputs* `post_is` — to the stored element.
 ///   It runs once per output cell, after the reduction is folded away and before the write-back — the epilogue slot that `fuse_tensor` composes trailing elementwise maps into (e.g. bias + activation after a convolution or matrix product).
@@ -75,7 +78,11 @@ axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_sh
 /// * `maps#i` maps the full loop vector to the `Ris#i` read coordinates of input `i`. Transposes, slices and broadcasts are expressed here, by reading the inputs accordingly.
 /// * `post_maps#j` maps the `Ro` *output-cell* coordinates (i.e. the write coordinates produced by `map_out`) to the read coordinates of epilogue input `j` — epilogue inputs are read once per output cell, not per loop iteration.
 ///
-/// `nis`, `nps`, `Ro`, `Rr`, the `Ris` and the `Rps` must be literals before entering the `tensor::Lower` phase for the lowering to succeed; the bounds `So` and `Sr` may be symbolic.
+/// The total loop count `Rn` is stated instead of the reduction count `Rr = Rn - Ro`, because a `%%core.nat.add (Ro, Rr)`
+/// in the domain cannot be inverted by type inference, which would force every call site to pass the whole meta group
+/// explicitly with `@`. Stating `Rn` directly lets `Sr` pin it structurally.
+///
+/// `nis`, `nps`, `Ro`, `Rn`, the `Ris` and the `Rps` must be literals before entering the `tensor::Lower` phase for the lowering to succeed; the bounds `So` and `Sr` may be symbolic.
 ///
 /// `sched` IS the op's SCHEDULE, selected in the frontend via the `Tileable` machinery below and
 /// carried as an ordinary operand through fusion: a target-agnostic chooser (canonically a
@@ -86,18 +93,18 @@ axm %tensor.shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_sh
 /// never names the target's loop machinery.
 ///
 axm %tensor.map_reduce_post: {nis nps: Nat}
-                           → {To Tp: *, Ro Rr: Nat}
-                           → [So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»,
+                           → {To Tp: *, Ro Rn: Nat}
+                           → [So: «Ro; Nat», Sr: «Rn; Nat»,
                               TSched: □, sched: TSched]
                            → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»,
                               Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                            → [f: Fn [To, «i: nis; Tis#i»] → To, init: To,
                               post: Fn [To, «j: nps; Tps#j»] → Tp]
-                           → [map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»]
-                           → [maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»,
+                           → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
+                           → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»,
                               post_maps: «j: nps; ([«Ro; %affine.index»] → «Rps#j; %affine.index»)»]
                            → [is: «i: nis; «Sis#i; Tis#i»», post_is: «j: nps; «Sps#j; Tps#j»»]
-                           → «So; Tp», normalize_map_reduce;
+                           → «So; Tp»;
 
 /// The CPS identity (with an empty epilogue-input pack) — the neutral `post` epilogue.
 fun %tensor.id {T: *} (x: T, _: [])@tt: T = return x;
@@ -110,9 +117,10 @@ fun %tensor.id {T: *} (x: T, _: [])@tt: T = return x;
 let SchedT = [N: *] → ([vdim unroll: Nat] → N) → N;
 
 /// The canonical schedule: pick `vdim`, the parallel dim to run innermost with unit stride over a
-/// row of accumulators (`vdim ≥ Ro + Rr` means "none"), and `unroll`, the number of trailing
+/// row of accumulators (`vdim ≥ Rn` means "none"), and `unroll`, the number of trailing
 /// reduction dims to unroll into straight-line code.
-lam %tensor.mk_sched (vdim unroll: Nat) (N: *) (mk: [vdim unroll: Nat] → N): N = mk (vdim, unroll);
+/// An alias for %%btensor.mk_sched, which `btensor` owns for the same reason it owns %%btensor.Ring.
+let %tensor.mk_sched = %btensor.mk_sched;
 ///
 /// ### %%tensor.if_static
 ///
@@ -126,22 +134,29 @@ axm %tensor.if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
 ///
 /// ### %%tensor.map_reduce
 ///
-/// %%tensor.map_reduce_post without the epilogue and with the neutral schedule: delegates with `post = %%tensor.id` (so `Tp = To`), no epilogue inputs (`nps = 0`), no vector dim, no unrolling.
-lam %tensor.map_reduce {nis: Nat} {To: *, Ro Rr: Nat}
-                       (So: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
-                       {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
-                       (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
-                       (map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»)
-                       (maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»)
-                       (is: «i: nis; «Sis#i; Tis#i»»): «So; To» =
-    %tensor.map_reduce_post @(nis, 0) @(To, To, Ro, Rr)
-        (So, Sr, SchedT, %tensor.mk_sched (%core.nat.add (Ro, Rr), 0))
-        @(Tis, Ris, Sis, (), (), ()) (f, init, %tensor.id @To) map_out (maps, ()) (is, ());
+/// %%tensor.map_reduce_post without the epilogue and with the neutral schedule. Its normalizer immediately
+/// delegates to %%tensor.map_reduce_post with `post = %%tensor.id` (so `Tp = To`), no epilogue inputs
+/// (`nps = 0`), no vector dim, and no unrolling.
+/// The total loop count `Rn` is stated instead of the reduction count `Rr = Rn - Ro`, because a `%%core.nat.add (Ro, Rr)`
+/// in the domain cannot be inverted by type inference, which would force every call site to pass the whole meta group
+/// explicitly with `@`. Stating `Rn` directly lets `Sr` pin it structurally.
+/// It stays an `axm` (rather than a delegating `lam`) so that call sites keep implicit inference: an axm
+/// application stays stuck while the checker solves the meta holes from the operands, whereas applying a `lam`
+/// would eagerly β-reduce the body over still-unsolved holes.
+axm %tensor.map_reduce: {nis: Nat}
+                      → {To: *, Ro Rn: Nat}
+                      → [So: «Ro; Nat», Sr: «Rn; Nat»]
+                      → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
+                      → [f: Fn [To, «i: nis; Tis#i»] → To, init: To]
+                      → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
+                      → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»]
+                      → [is: «i: nis; «Sis#i; Tis#i»»]
+                      → «So; To», normalize_map_reduce;
 
 /// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
-lam %tensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «r; %affine.index» =
-    ‹j: r; o#(%core.idx n 0 (subs#j))›;
+/// An alias for %%btensor.proj_map, which `btensor` owns for the same reason it owns %%btensor.Ring.
+let %tensor.proj_map = %btensor.proj_map;
 ///
 /// ## Scheduling: the `Tileable` interface
 ///
@@ -202,7 +217,7 @@ lam %tensor.mr_tileable
              : «So_n; Tp» =
         lam map_out_n (o: «%core.nat.add (Ro_n, Rr_n); %affine.index»): «Ro_n; %affine.index» =
             omega (map_out (iota o), o);
-        %tensor.map_reduce_post @(nis, 0) @(To, Tp, Ro_n, Rr_n)
+        %tensor.map_reduce_post @(nis, 0) @(To, Tp, Ro_n, %core.nat.add (Ro_n, Rr_n))
             (So_n, Sr_n, SchedT, %tensor.mk_sched (vdim_n, unroll_n))
             @(Tis, Ris, Sis, (), (), ()) (f, init, post)
             map_out_n
@@ -465,9 +480,8 @@ lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affi
     ‹d: r; %affine.semiop.mod (o#d, s_in#d)›;
 
 lam %tensor.repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
-    %tensor.map_reduce @1 @(T, r, 0) (s_out, s_out)
-        @(T, r, s_in) (tensor_copy @T, ⊥: T)
-        (%affine.id @r) (repeat_map @r s_in,) input;
+    %tensor.map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+        %affine.id (repeat_map s_in,) input;
 ///
 /// ### %%tensor.reshape
 ///
@@ -489,9 +503,8 @@ lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat»)
 
 lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
                          (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
-    %tensor.map_reduce @1 @(T, r_out, 0) (s_out, s_out)
-        @(T, r_in, s_in) (tensor_copy @T, ⊥: T)
-        (%affine.id @r_out) (reshape_map (s_in, s_out),) input;
+    %tensor.map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+        %affine.id (reshape_map (s_in, s_out),) input;
 ///
 /// ### %%tensor.slice
 ///
@@ -500,19 +513,18 @@ lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
 ///
 axm %tensor.slice: {T: *, r: Nat}
                  → [s_in: «r; Nat»]
-                 → [start: «r; Nat», step: «r; Nat», s_out: «r; Nat»]
+                 → [start step s_out: «r; Nat»]
                  → [input: «s_in; T»]
                  → «s_out; T», normalize_slice;
 
 /// `o ↦ (start#d + step#d · o#d)_d`: the strided read map.
-lam slice_map {r: Nat} (start: «r; Nat», step: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
     ‹d: r; %affine.op.add (%affine.semiop.mul (o#d, step#d), %affine.constant (start#d))›;
 
 lam %tensor.slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
-                       (start: «r; Nat», step: «r; Nat», s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
-    %tensor.map_reduce @1 @(T, r, 0) (s_out, s_out)
-        @(T, r, s_in) (tensor_copy @T, ⊥: T)
-        (%affine.id @r) (slice_map (start, step),) input;
+                       (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+    %tensor.map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+        %affine.id (slice_map (start, step),) input;
 ///
 /// ### %%tensor.flip
 ///
@@ -528,9 +540,8 @@ lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affine
     ‹d: r; %affine.op.sub (%affine.constant (%core.nat.sub (s_in#d, 1)), o#d)›;
 
 lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
-    %tensor.map_reduce @1 @(T, r, 0) (s_in, s_in)
-        @(T, r, s_in) (tensor_copy @T, ⊥: T)
-        (%affine.id @r) (flip_map @r s_in,) input;
+    %tensor.map_reduce (s_in, s_in) (tensor_copy, ⊥: T)
+        %affine.id (flip_map s_in,) input;
 ///
 /// ### %%tensor.pad
 ///
@@ -545,12 +556,12 @@ lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «
 /// The output shape is deduced from `lo`, `s_in` and `hi` (see `pad_shape`), so it is not passed explicitly.
 
 // `(lo, s_in, hi) ↦ ‹d; lo#d + s_in#d + hi#d›`: the padded shape.
-lam pad_shape {r: Nat} (lo: «r; Nat», s_in: «r; Nat», hi: «r; Nat»): «r; Nat» =
+lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
     ‹d: r; %core.nat.add (%core.nat.add (lo#d, s_in#d), hi#d)›;
 
 axm %tensor.pad: {T: *, r: Nat}
                → [s_in: «r; Nat»]
-               → [mode: Nat, lo: «r; Nat», hi: «r; Nat»]
+               → [mode: Nat, lo hi: «r; Nat»]
                → [input: «s_in; T», value: T]
                → «pad_shape (lo, s_in, hi); T», normalize_pad;
 ///
@@ -571,7 +582,7 @@ lam concat_acc {r: Nat} (ax: Idx r) (acc: Nat, row: «r; Nat»): Nat = %core.nat
 lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» =
     let sum_ax = %vec.fold.l (concat_acc ax) (0, Sis);
     let row_0  = Sis#(%core.idx nis 0 0);
-    ‹d: r; %core.select (%core.icmp.e @r (d, ax), sum_ax, row_0#d)›;
+    ‹d: r; %core.select (%core.icmp.e (d, ax), sum_ax, row_0#d)›;
 
 axm %tensor.concat: {T: *, nis r: Nat}
                   → [ax: Idx r]
@@ -592,7 +603,7 @@ axm %tensor.concat: {T: *, nis r: Nat}
 
 // `(n, cout, (H, W), (KH, KW), stride, dilation, padding) ↦ (n, cout, OH, OW)`, where
 // `O#d = (s#d + 2·padding#d − (dilation#d·(k#d − 1) + 1)) / stride#d + 1`: the NCHW output shape.
-lam conv_shape (n cout: Nat, s: «2; Nat», k: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»): «4; Nat» =
+lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; Nat» =
     let hw = ‹d: 2;
         %core.nat.add (
             %core.nat.div (
@@ -611,19 +622,19 @@ fun conv_fun [R: %tensor.Ring] (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#ad
 /// write map `(n, co, oh, ow)` are `%tensor.proj_map` projections of it; only the padded-input read needs arithmetic.
 ///
 /// Padded-input read map: `(n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
-lam conv2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
+lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
     (o#0_7, o#4_7,
      %affine.op.add (%affine.semiop.mul (o#2_7, stride#0_2), %affine.semiop.mul (o#5_7, dilation#0_2)),
      %affine.op.add (%affine.semiop.mul (o#3_7, stride#1_2), %affine.semiop.mul (o#6_7, dilation#1_2)));
 
 axm %tensor.conv: [R: %tensor.Ring]
                 → {n cin cout h w kh kw: Nat}
-                → [stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»]
+                → [stride dilation padding: «2; Nat»]
                 → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
                 → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
 
 lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
-                      (stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat»)
+                      (stride dilation padding: «2; Nat»)
                       (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
                     : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
     // Zero-pad only the spatial axes (lo = hi = (0, 0, pad_h, pad_w)); the pad value is the ring zero.
@@ -668,7 +679,7 @@ fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (a
 
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
 /// `(n, c, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
-lam pool2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
+lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
     (o#0_6, o#1_6,
      %affine.op.add (%affine.semiop.mul (o#2_6, stride#0_2), %affine.semiop.mul (o#4_6, dilation#0_2)),
      %affine.op.add (%affine.semiop.mul (o#3_6, stride#1_2), %affine.semiop.mul (o#5_6, dilation#1_2)));
@@ -676,12 +687,12 @@ lam pool2d_in_map (stride: «2; Nat», dilation: «2; Nat») (o: «6; %affine.in
 axm %tensor.pool: {T: *}
                 → [g: [T, T] → T, init: T]
                 → {n c h w: Nat}
-                → [kernel: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»]
+                → [kernel stride dilation padding s_out: «2; Nat»]
                 → [input: «n, c, h, w; T»]
                 → «n, c, s_out#0_2, s_out#1_2; T»;
 
 lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
-                      (kernel: «2; Nat», stride: «2; Nat», dilation: «2; Nat», padding: «2; Nat», s_out: «2; Nat»)
+                      (kernel stride dilation padding s_out: «2; Nat»)
                       (input: «n, c, h, w; T»)
                     : «n, c, s_out#0_2, s_out#1_2; T» =
     let s_in     = (n, c, h, w);
@@ -710,11 +721,11 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
 /// * `s1`/`s2`: the shape of the left/right input
 /// * `a`/`b`: the left/right input
 ///
-fun dot_general_fun [R: %tensor.Ring] [x: R#T, [y: R#T, z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
+fun dot_general_fun [R: %tensor.Ring] [x: R#T, [y z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
 lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
-  let (ab, ai) = %vec.first (%core.icmp.e @n) (a, i);
-  let (bb, bi) = %vec.first (%core.icmp.e @n) (b, i);
-  let (cb, ci) = %vec.first (%core.icmp.e @n) (c, i);
+  let (ab, ai) = %vec.first %core.icmp.e (a, i);
+  let (bb, bi) = %vec.first %core.icmp.e (b, i);
+  let (cb, ci) = %vec.first %core.icmp.e (c, i);
   let ai_nat = %core.bitcast Nat ai;
   let ai_out = %core.nat.add (off_1, ai_nat);
   let bi_nat = %core.bitcast Nat bi;
@@ -742,8 +753,13 @@ axm %tensor.dot_product: [R: %tensor.Ring]
                        → [a: «s1; R#T», b: «s2; R#T»]
                        → «dot_general_shape (c1, c2, b1, b2) (s1, s2); R#T»;
 
+/// `r1`/`r2` are an *explicit* group here, unlike in the %%tensor.dot_product axiom. They have to be literals
+/// already when this `lam` is β-reduced: the subscript rows below are built with `%%vec.diff`/`%%vec.fold.l`,
+/// whose normalizers decline to fold over a non-literal rank, and nothing re-normalizes the body once a Hole is
+/// resolved later. `{s1 s2}` has no such problem and stays implicit.
+/// The `tensor::Lower` phase re-applies the axiom's groups positionally, so the two curry shapes still match.
 lam %tensor.dot_product_impl
-  (R: %tensor.Ring) {r1 r2: Nat} {nc nb: Nat}
+  (R: %tensor.Ring) (r1 r2: Nat) {nc nb: Nat}
   (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
   {s1: «r1; Nat», s2: «r2; Nat»} (a: «s1; R#T», b: «s2; R#T»)
     : let s_out = dot_general_shape (c1, c2, b1, b2) (s1, s2);
@@ -784,8 +800,14 @@ axm %tensor.product_2d: [R: %tensor.Ring]
                       → [t1: «m, k; R#T», t2: «k, l; R#T»]
                       → «m, l; R#T»;
 
+/// The `{r1 r2}` and `{s1 s2}` groups are passed explicitly on purpose - not because inference fails, but because
+/// of *when* it succeeds. `%%tensor.dot_product_impl` is a curried `lam`, so applying it to a group β-reduces its
+/// body right away; with a still-unsolved Hole for the ranks, the `%%vec.diff`/`%%vec.fold.l` subscript machinery
+/// gets built over non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the
+/// Hole%s are resolved. The result type-checks but keeps the whole `%%vec.*` scaffolding inside its access maps
+/// (`%%refly.equiv.struc_eq` in lit/tensor/dot_product.mim pins this down). Passing literals up front folds it away.
 lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
-        = %tensor.dot_product_impl R @(2, 2) (1_2, 0_2, (), ()) @((m, k), (k, l)) (t1, t2);
+        = %tensor.dot_product_impl R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
 
 ///
 /// ### %%tensor.bmm
@@ -797,8 +819,9 @@ axm %tensor.bmm: [R: %tensor.Ring]
               → [t1: «B, M, K; R#T», t2: «B, K, N; R#T»]
               → «B, M, N; R#T»;
 
+/// The `{r1 r2}`/`{s1 s2}` groups are explicit for the same reason as in %%tensor.product_2d_impl.
 lam %tensor.bmm_impl (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
-        = %tensor.dot_product_impl R @(3, 3) (2_3, 1_3, 0_3, 0_3) @((B, M, K), (B, K, N)) (t1, t2);
+        = %tensor.dot_product_impl R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
 
 ///
 /// ### %%tensor.transpose
@@ -806,22 +829,27 @@ lam %tensor.bmm_impl (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2:
 /// Permutes the dimensions of `input` according to `permutation`.
 ///
 lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
-  let shape_permutation = ‹i: r; (%vec.first (%core.icmp.e @r) (permutation, i))#tt›;
+  let shape_permutation = ‹i: r; (%vec.first %core.icmp.e (permutation, i))#tt›;
   ‹i: r; s#(shape_permutation#i)›;
-axm %tensor.transpose: {T: *, r: Nat, s: «r; Nat»}
-                     → [input: «s; T», permutation: «r; Idx r»]
+/// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
+/// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created - with the
+/// now-literal type `«r; Nat»`, which lets `input: «s; T»` peel off exactly `r` levels of its nested array type.
+/// Merging the two groups would not do: the domain `«s; T»` is built once, while `r` is still unknown.
+axm %tensor.transpose: {T: *, r: Nat}
+                     → [permutation: «r; Idx r»]
+                     → {s: «r; Nat»}
+                     → [input: «s; T»]
                      → «transpose_shape (s, permutation); T»;
 
 /// `o ↦ (o#(perm#0), …, o#(perm#(r−1)))`: input axis `j` reads output-loop var `o#(perm#j)`.
 lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; %affine.index»): «r; %affine.index» = ‹j: r; o#(perm#j)›;
 
-lam %tensor.transpose_impl {T: *, r: Nat, s: «r; Nat»}
-                           (input: «s;T», permutation: «r; Idx r»)
+lam %tensor.transpose_impl {T: *, r: Nat}
+                           (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
                          : «transpose_shape (s, permutation); T»
                          = let out_s = transpose_shape (s, permutation);
-                           %tensor.map_reduce @1 @(T, r, 0) (out_s, out_s)
-                               @(T, r, s) (tensor_copy @T, ⊥: T)
-                               (%affine.id @r) (transpose_map permutation,) input;
+                           %tensor.map_reduce (out_s, out_s) (tensor_copy, ⊥: T)
+                               %affine.id (transpose_map permutation,) input;
 ///
 /// ### %%tensor.transpose_2d
 ///
@@ -833,7 +861,7 @@ axm %tensor.transpose_2d: {T: *}
                         → «s#tt, s#ff; T»;
 
 lam %tensor.transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
-  %tensor.transpose_impl @(T, 2, s) (input, (tt, ff));
+  %tensor.transpose_impl (tt, ff) input;
 ///
 /// ### %%tensor.broadcast
 ///
@@ -843,7 +871,7 @@ lam %tensor.transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, 
 /// Lowered directly to `%pack`s by the `LowerMapReduce` phase (`lower_broadcast`): a size-1 axis broadcast to `n`
 /// becomes a `‹n; …›` pack rather than a materialized/looped copy, which `%tensor.map_reduce` cannot express.
 axm %tensor.broadcast:  {T: *, r: Nat}
-                      → [s_in: «r; Nat», s_out: «r; Nat», input: «s_in; T»]
+                      → [s_in s_out: «r; Nat», input: «s_in; T»]
                       → «s_out; T», normalize_broadcast;
 ///
 /// ### %%tensor.broadcast_in_dim
@@ -865,9 +893,8 @@ lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
 
 lam %tensor.broadcast_in_dim_impl {T: *, r_in r_out: Nat}
     (s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»): «s_out; T» =
-    %tensor.map_reduce @1 @(T, r_out, 0) (s_out, s_out)
-        @(T, r_in, s_in) (tensor_copy @T, ⊥: T)
-        (%affine.id @r_out) (bid_map (s_in, index),) input;
+    %tensor.map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+        %affine.id (bid_map (s_in, index),) input;
 ///
 /// ### %%tensor.map
 ///
@@ -885,8 +912,13 @@ lam %tensor.map_impl {T: *, ni: Nat, Is: «ni; *»}
                      (is: «i: ni; «s; Is#i» »)
                      : «s; T» =
   fun app_mr [x: T, y: «i: ni; Is#i»]@tt = return (app y);
-  %tensor.map_reduce @ni @(T, r, 0) (s, s) @(Is, ‹ni; r›, ‹ni; s›) (app_mr, ⊥: T)
-      (%affine.id @r) ‹ni; %affine.id @r› is;
+  // The `{Tis, Ris, Sis}` group stays explicit: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
+  // (i.e. `Sis := ‹ni; s›`) is Miller pattern unification. Adding that rule to `Checker::alpha_impl_` was tried
+  // and reverted — even with an occurs check it fires inside `%%tuple`'s machinery and commits a wrong solution.
+  %tensor.map_reduce (s, s) @(Is, ‹ni; r›, ‹ni; s›) (app_mr, ⊥: T)
+      // `‹ni; …›` builds the pack bottom-up, so there is no expected type to drive implicit insertion for the
+      // element; `%affine.id` needs its rank here.
+      %affine.id ‹ni; %affine.id @r› is;
 ///
 /// ### %%tensor.unary
 ///
@@ -899,7 +931,7 @@ axm %tensor.unary: {Ti To: *}
                  → «s; To»;
 
 lam %tensor.unary_impl {Ti To : *} [app: Ti → To] {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
-  %tensor.map_impl @(To, 1, Ti) app @(r, s) i;
+  %tensor.map_impl app i;
 ///
 /// ### %%tensor.binary
 ///
@@ -912,7 +944,7 @@ axm %tensor.binary: {Ti1 Ti2 To: *}
                   → «s; To»;
 
 lam %tensor.binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [«s; Ti1», «s; Ti2»]): «s; To» =
-  %tensor.map_impl @(To, 2, (Ti1, Ti2)) app @(r, s) is;
+  %tensor.map_impl app is;
 ///
 /// ### %%tensor.select
 ///
@@ -924,7 +956,7 @@ axm %tensor.select: {T: *}
                   → «s; T»;
 
 lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
-  %tensor.map_impl @(T, 3, (Bool, T, T)) (%core.select @T) @(r, s) is;
+  %tensor.map_impl %core.select is;
 ///
 /// ## Phases
 ///

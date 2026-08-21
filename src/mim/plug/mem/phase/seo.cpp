@@ -75,7 +75,8 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     if (def == var) return lattice(var) ? lattice(var) : var;
 
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
-    if (!def->isa<Proxy>() && lam->nests(def)) {
+    // A closed def can never be nested, and Def::nests allocates a fresh MutSet per call - so skip it.
+    if (!def->isa<Proxy>() && !def->is_closed() && lam->nests(def)) {
         DLOG("cannot propagate {} -> {}: out of scope", var, def);
         return pin(var), var;
     }
@@ -120,7 +121,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg());
+    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
@@ -191,7 +192,7 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
 // SSA
 
 static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg());
+    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
@@ -219,12 +220,13 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-static void find_unknowns(DefSet& visited, LamSet& res, const Def* def) {
+static void find_unknowns(DefSet& visited, Vector<Lam*>& res, const Def* def) {
     if (def->isa<Proxy>()) return;
+    if (def->local_muts().empty()) return;
     if (auto [_, ins] = visited.emplace(def); !ins) return;
 
     if (auto lam = def->isa_mut<Lam>()) {
-        if (lam->is_open()) res.emplace(lam);
+        if (lam->is_open()) res.emplace_back(lam);
         return;
     }
 
@@ -234,7 +236,7 @@ static void find_unknowns(DefSet& visited, LamSet& res, const Def* def) {
         find_unknowns(visited, res, d);
 }
 
-static void find_unknowns_callee(DefSet& visited, LamSet& res, const Def* def) {
+static void find_unknowns_callee(DefSet& visited, Vector<Lam*>& res, const Def* def) {
     if (def->isa<Lam>()) return;
     find_unknowns(visited, res, def);
 }
@@ -286,7 +288,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (!is_top(slot)) {
             if (auto [mem, ret_lam, _, ptr] = split_slot(slot); ret_lam) {
                 auto abstr_mem     = rewrite(mem);
-                auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg());
+                auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 sloxy2slot_[sloxy] = slot;
                 slots_.emplace(ptr);
                 DLOG("slot {} -> sloxy {}", ptr, sloxy);
@@ -339,12 +341,12 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
-        DefSet visited;
-        LamSet lams;
-        find_unknowns_callee(visited, lams, abstr_callee);
-        find_unknowns(visited, lams, abstr_arg);
+        fu_visited_.clear();
+        fu_lams_.clear();
+        find_unknowns_callee(fu_visited_, fu_lams_, abstr_callee);
+        find_unknowns(fu_visited_, fu_lams_, abstr_arg);
 
-        for (auto lam : lams) {
+        for (auto lam : fu_lams_) {
             assert(lam != known && lam->is_open());
             DLOG("unknown edge: {} -> {}", curr_mut(), lam);
             propagate_phis(lam, phi_vars, phi_abstr_args);
@@ -647,14 +649,14 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
         }
         for (auto [sloxy, phi, val] : phis)
             if (keep(old_lam, phi, val)) res->set(j++, rewrite(phi->type()));
-        new_lam = w.mut_lam(w.pi(res, rewrite(old_lam->codom())))->set(old_lam->dbg());
+        new_lam = w.mut_lam(w.pi(res, rewrite(old_lam->codom())))->set(old_lam->dbg_key());
     } else {
         auto new_doms = DefVec();
         for (size_t i = 0; i != num_old; ++i)
             if (keeps[i]) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
         for (auto [sloxy, phi, val] : phis)
             if (keep(old_lam, phi, val)) new_doms.emplace_back(rewrite(phi->type()));
-        new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+        new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     }
 
     auto var_map          = absl::FixedArray<const Def*>(num_old);
@@ -670,7 +672,7 @@ Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
     for (size_t i = 0; i != num_old; ++i) {
         if (keeps[i]) {
             auto old_var = old_lam->var(num_old, i);
-            auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg());
+            auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg_key());
             var_map[i]   = map(old_var, v);
             if (auto abstr = lattice(old_var))
                 if (auto bundle = isa_bundle(abstr, old_lam)) map(bundle, v); // GVN bundle

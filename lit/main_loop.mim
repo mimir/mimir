@@ -9,7 +9,7 @@ plugin core;
 fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): [%mem.M 0, I32] =
     loop (mem, 0I32, 0I32)
     where
-        con loop(mem: %mem.M 0, i: I32, acc: I32) =
+        con loop(mem: %mem.M 0, i acc: I32) =
             let cond = %core.icmp.ul (i, argc);
             (exit, body)#cond mem
             where

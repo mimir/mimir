@@ -32,8 +32,8 @@ target_sources(libmim
         phase/beta_red.cpp
         phase/eta_conv.cpp
         phase/branch_normalize.cpp
-        phase/prefix_cleanup.cpp
         phase/ret_wrap.cpp
+        phase/unload.cpp
         util/dbg.cpp
         util/dl.cpp
         util/log.cpp
@@ -43,6 +43,14 @@ target_sources(libmim
 
 set_target_properties(libmim PROPERTIES PREFIX "")
 target_compile_features(libmim PUBLIC cxx_std_23)
+
+# libmim is always a shared object, so by default every intra-library call to an exported function
+# goes through the PLT and is opaque to the optimizer.
+# Binding those calls locally enables inlining and const-propagation across the whole library.
+target_compile_options(libmim
+    PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-fno-semantic-interposition>
+)
 
 if(MSVC)
     target_compile_options(libmim PUBLIC /utf-8 /wd4146 /wd4245)

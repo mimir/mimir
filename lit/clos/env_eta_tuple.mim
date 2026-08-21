@@ -22,8 +22,8 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let u = (1I32, 2I32);
     con done1 (p: «5; I32») =
         con done2 (c: «5; I32») =
-            let v1 = %tensor.get @(I32, 1, (5, )) (p, (0₅, ));   // reads p from OUTER scope
-            let v2 = %tensor.get @(I32, 1, (5, )) (c, (4₅, ));
+            let v1 = %tensor.get ((0₅, ), p);   // reads p from OUTER scope
+            let v2 = %tensor.get ((4₅, ), c);
             let s  = %core.wrap.add 0 (v1, v2);
             return (mem, s);
         cat_two ((t, u), done2);

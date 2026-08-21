@@ -10,7 +10,7 @@ namespace mim::plug::mem::phase {
 
 void AddMem::start() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
-    // (combiners, affine index mappings, initial accumulators of `%matrix.map_reduce_post`, …).
+    // (combiners, affine index mappings, initial accumulators of `%btensor.map_reduce_post`, …).
     auto queue  = unique_queue<DefSet>();
     auto pinned = unique_queue<DefSet>();
     for (auto mut : old_world().externals().muts())
@@ -111,14 +111,14 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
         return Rewriter::rewrite_mut_Lam(old_lam);
     }
 
-    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg());
+    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
     map(old_lam, new_lam);
 
     // Map the parameters, accounting for a possibly inserted leading mem var.
     if (auto n = old_lam->num_vars(); n != 0) {
         auto offset = new_lam->num_doms() - old_lam->num_doms(); // 1 iff we prepended a mem var
         for (size_t i = 0; i != n; ++i)
-            map(old_lam->var(i), new_lam->var(i + offset)->set(old_lam->var(i)->dbg()));
+            map(old_lam->var(i), new_lam->var(i + offset)->set(old_lam->var(i)->dbg_key()));
         // A use of the whole parameter tuple is reconstructed from the new (shifted) components.
         if (n > 1)
             map(old_lam->var(), new_world().tuple(DefVec(n, [&](size_t i) { return new_lam->var(i + offset); })));

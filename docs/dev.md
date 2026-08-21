@@ -96,6 +96,18 @@ So the rule of thumb is:
 - use `w.annex<Id>()` when you need the annex itself or want manual partial application;
 - use `w.call<Id>(...)` when you want the fully applied operation directly.
 
+#### Calling Annexes
+
+`Id` (e.g. `mem::alloc`, `mem::M`, `mem::Ptr0` above) is one of the `enum class <tag> : flags_t` types that `--output-h` generates per annex tag into a plugin's `autogen.h`; see [Generated Interfaces](@ref plugin_codegen) for how that header comes to be.
+Each enumerator's value already *is* the axiom's full mangled id — 48 bits plugin, 8 bits tag, 8 bits sub — composed by [`mim::Annex::flags`](@ref mim::Annex::flags).
+`w.annex(id)` just casts `id` to that `flags_t` and looks it up in the `World`'s flags-to-axiom registry.
+The tag-less form used above, `w.annex<mem::alloc>()`, instead reads the id from the `Annex::Base<Id>` specialization that `autogen.h` also emits, so no plugin-specific value has to appear at the call site at all.
+`w.call<Id>(...)` resolves the axiom the same way and then applies the remaining arguments one at a time; currying is driven by the axiom's own curry/trip counters, not by `Id`.
+
+This only works because the same mangling runs on both sides: when `<plugin>.mim` is parsed for real (not bootstrapped), each `axm` declaration is attached to the `World` under that identical `Annex::flags(plugin, tag, sub)`, using the same first-occurrence tag numbering that `--output-h` used to pick the enumerator values.
+So the constant baked into `Id` at compile time and the id the runtime axiom is attached under are guaranteed to agree.
+The Python bindings mirror this with a generated `IntEnum` per plugin instead of a C++ `enum class`; see [Loading Plugins](@ref pyplugins) for `world.annex(...)`/`world.call(...)` from Python.
+
 ### Mutables
 
 Mutables are built in three phases:

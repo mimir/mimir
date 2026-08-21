@@ -1,12 +1,12 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
-// Bufferization of %tensor.pad: tensor.lower_to_mem maps it onto the buffer-world %matrix.pad,
-// %matrix.lower_aff generates the guarded/clamped-read loops over %buffer ops, and %buffer.lower_ptr
+// Bufferization of %tensor.pad: tensor.lower_to_mem maps it onto the buffer-world %btensor.pad,
+// %btensor.lower_map_reduce generates the guarded/clamped-read loops over %buffer ops, and %buffer.lower_ptr
 // lowers to %mem. The pipeline below contains NO value-semantics tensor phases, so any residue would
 // show up in the GONE checks.
 // GONE-NOT: %tensor.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.
 // GONE-NOT: %buffer.
 // GONE-NOT: %affine.
 plugin core;
@@ -15,7 +15,7 @@ plugin affine;
 plugin mem;
 plugin cps;
 plugin buffer;
-plugin matrix;
+plugin btensor;
 plugin opt;
 
 // 1-D constant pad of a length-3 vector to length 6 (lo 1, hi 2, fill 0): out[i] = (1 ≤ i < 4) ? input[i−1] : 0.
@@ -52,9 +52,9 @@ lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %compile.named "%tensor.lower_tensor",       // high-level ops -> %tensor.map_reduce/pad/… (+ broadcast)
         %compile.named "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast/pad/concat onto
-                                                           // %buffer/%matrix (hard error if not bufferizable)
+                                                           // %buffer/%btensor (hard error if not bufferizable)
         %mem.add_mem,
-        %compile.named "%matrix.lower_aff",          // %matrix.* -> affine.For over %buffer
+        %compile.named "%btensor.lower_map_reduce",          // %btensor.* -> affine.For over %buffer
         %compile.named "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
         %compile.named "%affine.lower_index",  // %affine.map -> %core arithmetic
         %compile.named "%affine.lower_for",    // affine.For -> CPS loops

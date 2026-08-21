@@ -8,6 +8,104 @@ A plugin generally consists of two halves with the same name: a `<plugin>.mim` f
 
 Plugin names may only contain letters, digits, and underscores, and are limited to 8 characters.
 
+## Example: demo Plugin
+
+The [demo](@ref demo) plugin at `src/mim/plug/demo/` is the minimal, complete example every in-tree plugin follows.
+It consists of five checked-in files:
+
+- `CMakeLists.txt` — a single `add_mim_plugin` call
+- `demo.mim` — the public annex surface
+- `demo.h` — the public header, over in `include/mim/plug/demo/`
+- `demo.cpp` — the plugin's entry point
+- `normalizers.cpp` — the normalizer implementations
+
+**`CMakeLists.txt`**:
+
+\include "src/mim/plug/demo/CMakeLists.txt"
+
+**`demo.mim`**:
+
+\include "src/mim/plug/demo/demo.mim"
+
+Doc comments (`///`) are ordinary Doxygen-flavored Markdown (headings, `[TOC]`, `@see`, ...); everything else is plain Mim syntax declaring the annex itself.
+Here `%demo.const_idx` is a single axiom with no subtags, and `normalize_const` names the C++ function that evaluates it.
+Building the plugin auto-generates a C++ header and a Python module from this very file, and turns its doc comments into the plugin's Doxygen page — see [Generated Interfaces](@ref plugin_codegen) below, since this applies to every plugin, not just `demo`.
+
+\anchor demo_h
+**`demo.h`**:
+
+\include "include/mim/plug/demo/demo.h"
+
+It is a header, not a translation unit of its own: `demo.cpp` and `normalizers.cpp` `#include` it, and it in turn `#include`s the generated header it wraps.
+See [Generated Header](@ref plugin_h) below for why it is just this two-line indirection.
+
+**`demo.cpp`**:
+
+\include "src/mim/plug/demo/demo.cpp"
+
+The function `mim_get_plugin` is the single entry point [`Driver`](@ref mim::Driver) looks up (via `dlopen`/`dlsym`) when a `plugin demo;` directive or `-p demo` loads the shared module.
+It returns a [`mim::Plugin`](@ref mim::Plugin) record: the plugin's name, the `MIM_VERSION` it was built against (checked against the loading `mim` binary), the `register_normalizers` function that `normalizers.cpp` defined via `MIM_demo_NORMALIZER_IMPL`, and an optional backend-registration callback (`nullptr` here, since `demo` provides no backend).
+
+**`normalizers.cpp`**:
+
+\include "src/mim/plug/demo/normalizers.cpp"
+
+Normalizers usually obtain the owning [`World`](@ref mim::World) from one of their arguments — here `type->world()` — and build the replacement directly in that world, without ever materializing the [`App`](@ref mim::App) node it replaces; that is why `normalize_const` just returns the literal `42`.
+If a normalizer cannot do anything meaningful, it should return `{}`/`nullptr`: [`World::app`](@ref mim::World::app) treats a null return as "give up" and falls back to constructing the real `App` node from the original arguments instead.
+The macro `MIM_demo_NORMALIZER_IMPL` stems from the generated header (see [below](@ref plugin_codegen)) that expands into a full definition of `register_normalizers`, wiring `normalize_const` up under the axiom's mangled id.
+
+## Generated Interfaces {#plugin_codegen}
+
+Every plugin's `<plugin>.mim` file is also machine-readable input to `mim` itself.
+MimIR's custom CMake command `add_mim_plugin` runs the freshly built `mim` binary over it once, in `--bootstrap` mode (which makes `plugin` directives behave as plain `import`s instead of `dlopen`ing other plugins that may not exist yet at header-generation time), asking for three outputs in one invocation:
+
+```sh
+mim demo.mim --bootstrap \
+    --output-h  build/include/mim/plug/demo/autogen.h \
+    --output-py build/lib/mim/demo.py \
+    --output-md build/docs/plug/demo.md
+```
+
+This happens automatically as part of the normal build — plugin authors never invoke this by hand.
+See the [CLI reference](@ref cli) for the flags themselves.
+
+### Generated Header {#plugin_h}
+
+The switch `--output-h` walks the plugin's annexes after name binding and writes `include/mim/plug/<plugin>/autogen.h` into the build tree.
+For `demo`, that's:
+
+\include "include/mim/plug/demo/autogen.h"
+
+For each annex tag it emits an `enum class <tag> : flags_t` (populated with subtags/aliases when the axiom has any — empty here, since `const_idx` has none), a forward declaration of the tag's normalizer matching [`mim::NormalizeFn`](@ref mim::NormalizeFn)'s `(type, callee, arg) -> const Def*` signature, and — once per plugin — a `register_normalizers` declaration plus the `MIM_<plugin>_NORMALIZER_IMPL` macro that defines it, wiring every axiom's normalizer into the `Normalizers` map under its mangled `Annex::Base<Tag>` id.
+The `Annex::Base`/`Annex::Num` template specializations outside the plugin's namespace are implementation plumbing and are hidden from Doxygen via `#ifndef DOXYGEN`.
+
+This generated header is never checked in and never included directly.
+Instead, each plugin checks in a thin wrapper at `include/mim/plug/<plugin>/<plugin>.h` that plugin sources `#include` — [`demo.h`](@ref demo_h), shown above, is exactly that wrapper.
+
+Larger plugins (e.g. [core](@ref core), [mem](@ref mem), [clos](@ref clos)) follow the same wrapper pattern but add hand-written declarations around the `#include`, so plugin authors can extend the generated boilerplate without editing generated code.
+`add_mim_plugin`'s `INSTALL` option installs `autogen.h` itself (not the wrapper) into `<prefix>/include/mim/plug/<plugin>/` for out-of-tree consumers.
+
+### Generated Python Module
+
+The switch `--output-py` emits the same information as an `IntEnum`, for tooling written in Python:
+
+\include "demo.py"
+
+A tag with subtags gets its own `_<plugin>_<tag>(IntEnum)` class (later aliased as `<plugin>.<tag>`) instead of a plain member.
+This is the `mim.plug.<plugin>` module the Python bindings re-export; see [Loading Plugins](@ref pyplugins) in the [Python Bindings](@ref python) guide for `world.annex(...)`/`world.call(...)` from Python.
+
+### Generated Markdown Page
+
+The switch `--output-md` works differently from `-h`/`-py`: rather than being derived from the bound AST, it is streamed straight out of the lexer while it scans `<plugin>.mim`.
+Text inside `///` doc comments (ordinary Markdown, including Doxygen commands like `[TOC]` and `@see`) is copied through verbatim; every stretch of actual Mim syntax between comments is wrapped in a fenced ` ``` ` code block.
+The result for `demo.mim` is written to `docs/plug/demo.md` in the build tree:
+
+\include "plug/demo.md"
+
+`docs/Doxyfile.in`'s `INPUT` includes that build-tree `docs/plug` directory, so Doxygen picks up every plugin's generated `.md` file directly as a documentation page, anchored at whatever `{#...}` id the plugin's leading doc comment declares (`{#demo}` here — the same anchor used by `@ref demo` elsewhere in the docs).
+`add_mim_plugin` also adds a sidebar tab (of type `user`, pointing at `@ref <plugin>`) to the Doxygen layout for every registered plugin, so this page is linked from the sidebar automatically.
+Writing good `///` doc comments in a plugin's `.mim` file is therefore both the axiom documentation and the plugin's Doxygen page — there is no separate place to describe a plugin's annexes.
+
 ## Plugin Registry
 
 The [MimIR Plugin Registry](https://mimir.github.io/plugins) is the central hub for discovering, sharing, and maintaining third-party MimIR plugins.
@@ -142,17 +240,3 @@ The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmp
 The `ll_nvptx` backend reuses the very same [`load_rt_module`](@ref mim::plug::ll::Emitter::load_rt_module) helper as `ll`, differing only in the runtime module it names.
 
 The authoritative reference for `add_mim_runtime` lives in [`cmake/Mim.cmake`](@ref add_mim_runtime_cmake).
-
-## Normalizers
-
-Normalizers usually obtain the owning [`World`](@ref mim::World) from one of their arguments, often `type->world()`, and then build the replacement directly in that world.
-Small normalizers are expected to be direct and side-effect free.
-
-That often leads to tiny functions of the form:
-
-```cpp
-const Def* normalize_const(const Def* type, const Def*, const Def* arg) {
-    auto& world = type->world();
-    return world.lit(world.type_idx(arg), 42);
-}
-```

@@ -44,6 +44,11 @@ public:
     /// Yields currying counter of @p def.
     /// @returns `{nullptr, 0, 0}` if no Axm is present.
     static std::tuple<const Axm*, u8, u8> get(const Def* def);
+
+    /// Like Axm::get, but advances the counter as one more App is about to be built on top of @p callee.
+    /// @returns `{nullptr, 0, 0}` if no Axm is present.
+    static std::tuple<const Axm*, u8, u8> next(const Def* callee);
+
     static std::pair<u8, u8> infer_curry_and_trip(const Def* type);
     ///@}
 
@@ -81,7 +86,7 @@ public:
         const Axm* axm() const { return axm_; }
         const D* operator->() const { return def_; }
         operator const D*() const { return def_; }
-        explicit operator bool() { return axm_ != nullptr; }
+        explicit operator bool() const { return axm_ != nullptr; }
         ///@}
 
         /// @name Axm Name
@@ -90,7 +95,7 @@ public:
         auto plugin() const { return axm()->plugin(); } ///< @see Axm::plugin.
         auto tag() const { return axm()->tag(); }       ///< @see Axm::tag.
         auto sub() const { return axm()->sub(); }       ///< @see Axm::sub.
-        auto base() const { return axm()->sub(); }      ///< @see exiom::base.
+        auto base() const { return axm()->base(); }     ///< @see Axm::base.
         auto id() const { return Id(axm()->flags()); }  ///< Axm::flags cast to @p Id.
         ///@}
 
@@ -116,7 +121,6 @@ public:
 
     template<class Id, u8 Curry = 0, bool DynCast = true>
     static auto isa(Id id, const Def* def) {
-        // using D              = typename Axm::IsANode<Id>::type;
         using D              = std::conditional_t<Curry == 0, typename Axm::IsANode<Id>::type, Def>;
         auto [axm, curry, _] = Axm::get(def);
         bool cond            = axm && curry == Curry && axm->flags() == (flags_t)id;
@@ -146,8 +150,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 

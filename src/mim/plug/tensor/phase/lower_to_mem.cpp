@@ -6,9 +6,9 @@
 
 #include <mim/util/util.h>
 
+#include <mim/plug/btensor/btensor.h>
 #include <mim/plug/buffer/buffer.h>
 #include <mim/plug/core/core.h>
-#include <mim/plug/matrix/matrix.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/tensor/tensor.h"
@@ -73,10 +73,10 @@ void LowerToMem::collect_tensor_types() {
             if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0 && axm->plugin() == tensor::Plugin_Id)
                 ops_seen_ = true;
             if (Axm::isa<tensor::get>(app) || Axm::isa<tensor::set>(app)) {
-                // get/set: the first explicit argument is the tensor `arr`.
+                // get/set: the tensor `arr` is the *second* explicit argument (the first one is `index`).
                 auto [T, r, s] = app->callee()->as<App>()->args<3>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
-                add_tensor_ty(app->arg()->proj(0)->type());
+                add_tensor_ty(app->arg()->proj(1)->type());
             } else if (Axm::isa<tensor::map_reduce_post>(app)) {
                 // result and each of the `nis` inputs / `nps` epilogue inputs are tensors.
                 add_tensor_ty(app->type());
@@ -332,7 +332,7 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
                 doms[i] = conv_boundary(d);
         }
 
-        auto new_lam = w.mut_con(doms)->set(lam->dbg());
+        auto new_lam = w.mut_con(doms)->set(lam->dbg_key());
         map(lam, new_lam);
         if (lam->num_vars() != 0) map(lam->var(), new_lam->var());
         new_lam->set(rewrite(lam->filter()), rewrite(lam->body()));
@@ -345,7 +345,7 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
     if (!lam->is_external() && lam->is_set() && !op_args_.contains(lam)) {
         if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom())) {
             auto& w      = new_world();
-            auto new_lam = w.mut_con(conv_boundary(pi->dom()))->set(lam->dbg());
+            auto new_lam = w.mut_con(conv_boundary(pi->dom()))->set(lam->dbg_key());
             map(lam, new_lam);
             if (lam->num_vars() != 0) map(lam->var(), new_lam->var());
             new_lam->set(rewrite(lam->filter()), rewrite(lam->body()));
@@ -416,7 +416,7 @@ const Def* LowerToMem::lower_call(const App* app, Lam* old_callee) {
 }
 
 const Def* LowerToMem::splat_buffer(const Def* arr_ty, const Def* scalar) {
-    // `%buffer.constant` sets every element to `scalar`; `%matrix.lower_aff` fills it with a loop rather
+    // `%buffer.constant` sets every element to `scalar`; `%btensor.lower_map_reduce` fills it with a loop rather
     // than storing a monolithic literal array (which the LLVM backend cannot digest for large shapes).
     auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(arr_ty))->args<3>();
     auto [m, out]        = buffer::op_constant(bro, bso, boT, bot_mem(), scalar)->projs<2>();
@@ -448,12 +448,12 @@ const Def* LowerToMem::materialize(const Def* old_ty, const Def* old_arg) {
 const Def* LowerToMem::lower_get(const App* app) {
     auto c            = rewrite(app->callee())->as<App>();
     auto arg          = rewrite(app->arg());
-    auto [arr, index] = arg->projs<2>();
+    auto [index, arr] = arg->projs<2>();
     auto [T, r, s]    = c->args<3>();
     auto buf          = Axm::isa<buffer::Buf>(arr->type());
     // A `get` on a value-world tensor (e.g. a literal): materialize it into a buffer.
     if (!buf) {
-        arr = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        arr = materialize(app->arg()->proj(1)->type(), app->arg()->proj(1));
         buf = Axm::isa<buffer::Buf>(arr->type());
         if (!buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
     }
@@ -466,12 +466,12 @@ const Def* LowerToMem::lower_get(const App* app) {
 const Def* LowerToMem::lower_set(const App* app) {
     auto c               = rewrite(app->callee())->as<App>();
     auto arg             = rewrite(app->arg());
-    auto [arr, index, x] = arg->projs<3>();
+    auto [index, arr, x] = arg->projs<3>();
     auto [T, r, s]       = c->args<3>();
     auto buf             = Axm::isa<buffer::Buf>(arr->type());
     // A `set` on a value-world tensor (e.g. a literal): materialize it into a buffer.
     if (!buf) {
-        arr = materialize(app->arg()->proj(0)->type(), app->arg()->proj(0));
+        arr = materialize(app->arg()->proj(1)->type(), app->arg()->proj(1));
         buf = Axm::isa<buffer::Buf>(arr->type());
         if (!buf) return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
     }
@@ -492,8 +492,8 @@ const Def* LowerToMem::lower_set(const App* app) {
 }
 
 const Def* LowerToMem::lower_broadcast(const App* app) {
-    // Thin bufferization: map the SSA `tensor.broadcast` onto the buffer-world `matrix.broadcast`.
-    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // Thin bufferization: map the SSA `tensor.broadcast` onto the buffer-world `btensor.broadcast`.
+    // The loop generation lives in the btensor plugin (`%btensor.lower_map_reduce`).
     auto& w                   = new_world();
     auto c                    = rewrite(app->callee())->as<App>();
     auto arg                  = rewrite(app->arg());
@@ -514,11 +514,13 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
     // type, so `materialize` leaves it as a value. Broadcasting a scalar fills every element with it.
     if (!in_buf) return splat_buffer(app->type(), input);
 
-    // Actual (size-1-folded) input/output buffer shapes — `matrix.broadcast` is parameterised by them.
+    // Actual (size-1-folded) input/output buffer shapes — `btensor.broadcast` is parameterised by them.
     auto [bri, bsi, biT] = in_buf->args<3>();
     auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(app->type()))->args<3>();
 
-    auto op       = w.annex<matrix::broadcast>();
+    // NB: no `w.call` here — `{ro, so}` (the *output* buffer shape) occur nowhere but in the result type, so
+    // there is no argument for inference to read them off.
+    auto op       = w.annex<btensor::broadcast>();
     op            = w.app(op, w.tuple({T, bri, bsi, bro, bso, r}));
     op            = w.app(op, w.tuple({s_in, s_out}));
     auto [m, out] = w.app(op, w.tuple({fresh_mem(), input}))->projs<2>();
@@ -526,8 +528,8 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 }
 
 const Def* LowerToMem::lower_map_reduce(const App* app) {
-    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `matrix.map_reduce_post`,
-    // reusing the (rewritten) meta. The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // Thin bufferization: map the SSA `tensor.map_reduce_post` onto the buffer-world `btensor.map_reduce_post`,
+    // reusing the (rewritten) meta. The loop generation lives in the btensor plugin (`%btensor.lower_map_reduce`).
     auto& w   = new_world();
     auto c    = rewrite(app->callee())->as<App>();
     auto args = rewrite(app->arg()); // (is, post_is): the (bufferized) input buffers
@@ -560,7 +562,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     if (!is || !post_is) return RWPhase::rewrite_imm_App(app); // leave it alone
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
-    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `matrix.map_reduce_post` expects.
+    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `btensor.map_reduce_post` expects.
     auto mem_ty           = w.call<mem::M>(0);
     auto inner            = comb->type()->as<Pi>()->dom()->proj(0); // [To, «nis; Tis»]
     auto [cTo, ins_ty]    = inner->projs<2>();
@@ -583,7 +585,10 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     pafter->app(true, pret, w.tuple({pm, pafter->var(0_n)}));
     mempost->set(true, w.app(post, w.tuple({w.tuple({pacc, pexts}), pafter})));
 
-    auto op       = w.annex<matrix::map_reduce_post>();
+    // NB: no `w.call` here — the meta groups are *forwarded* from the tensor op on purpose. Leaving them to
+    // inference would re-derive `{Tis, Ris, Sis}` from the `%buffer.Buf` operands, whose literal size-1 axes are
+    // already folded away, so they would no longer agree with the logical shapes the loop generation iterates.
+    auto op       = w.annex<btensor::map_reduce_post>();
     op            = w.app(op, nis_nps);
     op            = w.app(op, meta);
     op            = w.app(op, shapes);
@@ -596,8 +601,8 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
 }
 
 const Def* LowerToMem::lower_pad(const App* app) {
-    // Thin bufferization: map the SSA `tensor.pad` onto the buffer-world `matrix.pad`.
-    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // Thin bufferization: map the SSA `tensor.pad` onto the buffer-world `btensor.pad`.
+    // The loop generation lives in the btensor plugin (`%btensor.lower_map_reduce`).
     auto& w             = new_world();
     auto c              = rewrite(app->callee())->as<App>();
     auto [input, value] = rewrite(app->arg())->projs<2>();
@@ -624,16 +629,14 @@ const Def* LowerToMem::lower_pad(const App* app) {
                                               hi->proj(*r_l, d)});
     auto s_out = w.tuple(so);
 
-    auto op       = w.annex<matrix::pad>();
-    op            = w.app(op, w.tuple({T, r}));
-    op            = w.app(op, w.tuple({s_in, s_out, mode, lo, hi}));
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), input, value}))->projs<2>();
+    // `{T, r}` is inferred: `s_in` pins `r`, and `input`'s `%buffer.Buf (r, s_in, T)` pins `T`.
+    auto [m, out] = w.call<btensor::pad>(s_in, Defs{s_out, mode, lo, hi}, Defs{fresh_mem(), input, value})->projs<2>();
     return out;
 }
 
 const Def* LowerToMem::lower_concat(const App* app) {
-    // Thin bufferization: map the SSA `tensor.concat` onto the buffer-world `matrix.concat`.
-    // The loop generation lives in the matrix plugin (`%matrix.lower_aff`).
+    // Thin bufferization: map the SSA `tensor.concat` onto the buffer-world `btensor.concat`.
+    // The loop generation lives in the btensor plugin (`%btensor.lower_map_reduce`).
     auto& w  = new_world();
     auto c   = rewrite(app->callee())->as<App>();
     auto arg = rewrite(app->arg());
@@ -674,7 +677,11 @@ const Def* LowerToMem::lower_concat(const App* app) {
         so[d] = d == *ax_l ? w.lit_nat(sum_ax) : Sis->proj(*nis_l, 0)->proj(*r_l, d);
     auto s_out = w.tuple(so);
 
-    auto op       = w.annex<matrix::concat>();
+    // NB: `{T, nis, r}` and `{Sis}` cannot be left to inference (hence no `w.call` here). `Sis` holds the
+    // *logical* per-input shapes, but the operands are `%buffer.Buf` handles with their literal size-1 axes
+    // already folded away — unifying `%buffer.Buf (r, Sis#i, T)` against a folded handle fails, because the
+    // left-hand side only folds once `Sis#i` is known. Passing the logical shapes makes both sides fold alike.
+    auto op       = w.annex<btensor::concat>();
     op            = w.app(op, w.tuple({T, nis, r}));
     op            = w.app(op, ax);
     op            = w.app(op, Sis);

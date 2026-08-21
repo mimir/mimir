@@ -1,4 +1,4 @@
-"""Tests for py/bindings/def.cpp bindings."""
+"""Tests for the def.h bindings."""
 from __future__ import annotations
 
 import mim

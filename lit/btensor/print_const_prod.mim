@@ -1,0 +1,36 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -o - -p ll %s
+// RUN: clang %S/../lib.c %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t 2 3 | %FileCheck %s
+
+plugin core;
+plugin math;
+plugin btensor;
+
+let MT1 = (2, (2, 4), %math.F64);
+let MT2 = (2, (4, 3), %math.F64);
+let R: %btensor.Ring = (%math.F64, 0.0:%math.F64, %math.arith.add 0, %math.arith.mul 0);
+
+ccon print_int_matrix    [mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32), return: Cn [%mem.M 0]];
+ccon print_double_matrix [mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (⊤:Nat, ⊤:Nat), %math.F64), return: Cn [%mem.M 0]];
+
+con print_int_matrix_wrap (mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (k, l), I32), return: Cn [%mem.M 0]) =
+    let m2 = %core.bitcast (%buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32)) m;
+    print_int_matrix(mem, k, l, m2, return);
+
+con print_double_matrix_wrap (mem: %mem.M 0, k l: Nat, m: %buffer.Buf (2, (k, l), %math.F64), return: Cn [%mem.M 0]) =
+    let m2 = %core.bitcast (%buffer.Buf (2, (⊤:Nat, ⊤:Nat), %math.F64)) m;
+    print_double_matrix(mem, k, l, m2, return);
+
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    con return_cont (mem: %mem.M 0) = return (mem, 0I32);
+    let c         = 3.0:%math.F64;
+    let d         = 5.0:%math.F64;
+    let (mem, m1)  = %buffer.constant MT1 (mem, c);
+    let (mem, m2)  = %buffer.constant MT2 (mem, d);
+    let (mem, mP) = %btensor.product_2d R (mem, m1, m2);
+    print_double_matrix_wrap (mem, 2, 3, mP, return_cont);
+
+// CHECK: 60.00, 60.00, 60.00,
+// CHECK: 60.00, 60.00, 60.00,

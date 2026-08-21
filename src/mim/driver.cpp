@@ -130,4 +130,12 @@ const Vector<std::string>& Driver::args(Sym plugin) const {
     return empty;
 }
 
+u32 Driver::dbg(Dbg dbg) {
+    if (auto i = dbg2idx_.find(dbg); i != dbg2idx_.end()) return i->second;
+    auto idx = u32(dbgs_.size());
+    dbgs_.emplace_back(dbg);
+    dbg2idx_.emplace(dbg, idx);
+    return idx;
+}
+
 } // namespace mim

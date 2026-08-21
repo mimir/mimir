@@ -22,18 +22,18 @@ lam ma_r (o: «4; %affine.index»): «2; %affine.index» =
 lam mb_r (o: «4; %affine.index»): «2; %affine.index» =
     (%affine.op.add (%affine.semiop.mul (o#2_4, 1), o#3_4), o#1_4);
 let s_full = (2, 2, 2, 1);
-let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 2)
+let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 4)
     ((2, 2), s_full, [N: *] → ([vdim unroll: Nat] → N) → N, %tensor.mk_sched (1, 1))
     @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›), (), (), ()) (f, 0, %tensor.id @Nat)
     mo_r
     ((ma_r, mb_r), ())
     ((m, m), ());
-let dotd = %tensor.dot_product_impl R @(2, 2) (1₂, 0₂, (), ()) (m, m);
+let dotd = %tensor.dot_product_impl R (2, 2) (1₂, 0₂, (), ()) (m, m);
 let dot2d = %tensor.product_2d_impl R (m, m);
 
 let m3d = (((1, 2), (3, 4)), ((5, 6), (7, 8)));
 let dot3d = %tensor.bmm_impl R (m3d, m3d);
-let dotd3 = %tensor.dot_product_impl R @(3, 3) (2₃, 1₃, 0₃, 0₃) @((2, 2, 2), (2, 2, 2)) (m3d, m3d);
+let dotd3 = %tensor.dot_product_impl R (3, 3) (2₃, 1₃, 0₃, 0₃) (m3d, m3d);
 
 let _ = %refly.equiv.struc_eq (dot, dotd);
 let _ = %refly.equiv.struc_eq (dot2d, dotd);

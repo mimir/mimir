@@ -129,10 +129,10 @@ struct ReadThrough {
 static std::optional<ReadThrough> read_through(World& w, const Def* value, const Def* slot_map) {
     if (auto mr = Axm::isa<tensor::map_reduce_post>(value)) {
         auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all, is_all] = mr->uncurry_args<8>();
-        auto nis_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 0));
-        auto nps_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 1));
-        auto rr_l                                                                  = Lit::isa<u64>(meta->proj(4, 3));
-        if (!nis_l || *nis_l != 1 || !nps_l || *nps_l != 0 || !rr_l || *rr_l != 0) return {};
+        auto nis_l = Lit::isa<u64>(nis_nps->proj(2, 0));
+        auto nps_l = Lit::isa<u64>(nis_nps->proj(2, 1));
+        // No reduction loops: the total loop count Rn equals the output rank Ro.
+        if (!nis_l || *nis_l != 1 || !nps_l || *nps_l != 0 || meta->proj(4, 2) != meta->proj(4, 3)) return {};
         auto [So, Sr, TSched, sched] = shapes->projs<4>();
         if (Sr != So) return {};
         auto id_lam = map_out->isa_mut<Lam>();
@@ -209,7 +209,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = outer_callee->uncurry_args<7>();
 
     auto [nis, nps]                     = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rr]               = meta->projs<4>();
+    auto [To, Tp, Ro, Rn]               = meta->projs<4>();
     auto [comb, init, post]             = comb_init->projs<3>();
     auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
     auto [maps, post_maps]              = maps_all->projs<2>();
@@ -257,7 +257,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
 
         auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
               inner_is_all]                                  = inner->uncurry_args<8>();
-        auto [inner_To, inner_Tp, inner_Ro, inner_Rr]        = inner_meta->projs<4>();
+        auto [inner_To, inner_Tp, inner_Ro, inner_Rn]        = inner_meta->projs<4>();
         auto [inner_So, inner_Sr, inner_TSched, inner_sched] = inner_shapes->projs<4>();
         auto [inner_comb, inner_init, inner_post]            = inner_comb_init->projs<3>();
         auto inner_Tis                                       = inner_in_tys->proj(6, 0);
@@ -279,8 +279,9 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         // position is just a single call of `inner_comb` at that position.
         // The identity map (`%affine.id`) is recognized structurally (a lam returning its own var),
         // since the rewrite into this phase's world rebuilds mutables and breaks pointer equality.
-        auto inner_rr = Lit::isa<u64>(inner_Rr);
-        if (!inner_rr || *inner_rr != 0) continue;
+        auto inner_ro = Lit::isa<u64>(inner_Ro);
+        auto inner_rn = Lit::isa<u64>(inner_Rn);
+        if (!inner_ro || !inner_rn || *inner_ro != *inner_rn) continue;
         if (inner_Sr != inner_So) continue;
         auto id_lam = inner_map_out->isa_mut<Lam>();
         if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) continue;
@@ -465,7 +466,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
 
     auto [nis, nps]                     = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rr]               = meta->projs<4>();
+    auto [To, Tp, Ro, Rn]               = meta->projs<4>();
     auto [So, Sr, TSched, sched]        = shapes->projs<4>();
     auto [comb, init, post]             = comb_init->projs<3>();
     auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
@@ -475,8 +476,9 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
 
     auto nis_lit = Lit::isa<u64>(nis);
     auto nps_lit = Lit::isa<u64>(nps);
-    auto rr_lit  = Lit::isa<u64>(Rr);
-    if (!nis_lit || !nps_lit || !rr_lit || *rr_lit != 0) return nullptr;
+    auto ro_lit  = Lit::isa<u64>(Ro);
+    auto rn_lit  = Lit::isa<u64>(Rn);
+    if (!nis_lit || !nps_lit || !ro_lit || !rn_lit || *ro_lit != *rn_lit) return nullptr;
     auto nis_nat = *nis_lit;
     auto nps_nat = *nps_lit;
     if (nis_nat == 0) return nullptr;
@@ -518,7 +520,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto [i_nis_nps, i_meta, i_shapes, i_in_tys, i_comb_init, i_map_out, i_maps_all, i_is_all]
         = inner->uncurry_args<8>();
     auto [i_nis, i_nps]                             = i_nis_nps->projs<2>();
-    auto [i_To, i_Tp, i_Ro, i_Rr]                   = i_meta->projs<4>();
+    auto [i_To, i_Tp, i_Ro, i_Rn]                   = i_meta->projs<4>();
     auto [i_Tis, i_Ris, i_Sis, i_Tps, i_Rps, i_Sps] = i_in_tys->projs<6>();
     auto [i_comb, i_init, i_post]                   = i_comb_init->projs<3>();
     auto [i_maps, i_post_maps]                      = i_maps_all->projs<2>();
@@ -591,7 +593,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     // type change.
     auto mr = w.annex<tensor::map_reduce_post>();
     mr      = w.app(mr, {i_nis, w.lit_nat(new_nps)});
-    mr      = w.app(mr, {i_To, Tp, i_Ro, i_Rr});
+    mr      = w.app(mr, {i_To, Tp, i_Ro, i_Rn});
     mr      = w.app(mr, i_shapes);
     mr      = w.app(mr, {i_Tis, i_Ris, i_Sis, w.tuple(nTps), w.tuple(nRps), w.tuple(nSps)});
     mr      = w.app(mr, {i_comb, i_init, fused_post});

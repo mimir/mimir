@@ -14,7 +14,7 @@ con extern main [mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0)
     let (mem, ptr) = %mem.alloc («%core.bitcast Nat argc; I32», 0) (mem);
     %affine.For for_body for_exit (0I32, argc, 1I32, (mem, 0I32, 0I32))
     where
-        con for_body [i: I32, [mem: %mem.M 0, acc_a: I32, acc_b: I32], continue: Cn [%mem.M 0, I32, I32]] =
+        con for_body [i: I32, [mem: %mem.M 0, acc_a acc_b: I32], continue: Cn [%mem.M 0, I32, I32]] =
             let a   = %core.wrap.add 0 (i, acc_a);
             let b   = %core.wrap.sub 0 (i, acc_b);
             let lea = %mem.lea (ptr, %core.conv.u arr_size i);

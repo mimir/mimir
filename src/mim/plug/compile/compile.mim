@@ -79,18 +79,15 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 /// * `ret_wrap`: prepares return continuations for the backend (mim::RetWrap).
 /// * `scalarize`: flattens function signatures (mim::Scalarize).
 /// * `tail_rec_elim`: turns tail recursion into loops (mim::TailRecElim).
-/// * `prefix_cleanup`: like `cleanup`, but additionally drops externals whose name starts with the given prefix (mim::PrefixCleanup).
-/// * `internal_cleanup`: `prefix_cleanup "internal_"`.
+/// * `unload`: unloads a plugin and nukes its annexes on the next World swap.
 ///
-axm %compile.beta_red:                            %compile.Phase;
-axm %compile.branch_normalize:                    %compile.Phase;
-axm %compile.cleanup:                             %compile.Phase;
-axm %compile.eta_conv:                            %compile.Phase;
-axm %compile.lam_spec:                            %compile.Phase;
-axm %compile.null:                                %compile.Phase;
-axm %compile.ret_wrap:                            %compile.Phase;
-axm %compile.scalarize:                           %compile.Phase;
-axm %compile.tail_rec_elim:                       %compile.Phase;
-axm %compile.prefix_cleanup: {n: Nat} → «n; I8» → %compile.Phase;
-
-let %compile.internal_cleanup = %compile.prefix_cleanup "internal_";
+axm %compile.beta_red:         %compile.Phase;
+axm %compile.branch_normalize: %compile.Phase;
+axm %compile.cleanup:          %compile.Phase;
+axm %compile.eta_conv:         %compile.Phase;
+axm %compile.lam_spec:         %compile.Phase;
+axm %compile.null:             %compile.Phase;
+axm %compile.ret_wrap:         %compile.Phase;
+axm %compile.scalarize:        %compile.Phase;
+axm %compile.tail_rec_elim:    %compile.Phase;
+axm %compile.unload:           {n: Nat} → «n; I8» → %compile.Phase;

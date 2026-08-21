@@ -1,5 +1,5 @@
 // RUN: %mim -p opt %s -o -
-let Triple = [T: *, U: *, V: *];
+let Triple = [T U V: *];
 
 axm %bug.Box: Triple → *;
 axm %bug.test: [n: Nat] → [Ss: «n; Triple», X: Triple] → %bug.Box X;

@@ -32,23 +32,40 @@ lam extern _default_compile (): %compile.Phase =
 
     %compile.phases ff (
         optimize,
+        // regex
         %compile.named "%regex.lower_regex",
+        %compile.unload "regex",
+
+        // tensor
         %compile.named "%tensor.lower_tensor",
         %compile.named "%tensor.fuse_tensor",
         %compile.named "%tensor.lower_to_mem",
         // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits %mem.M placeholders that must be stitched into a global mem chain.
         %compile.cond "tensor" (%compile.named "%mem.add_mem"),
-        %compile.named "%matrix.lower_aff",
+        %compile.unload "tensor",
+
+        // btensor
+        %compile.named "%btensor.lower_map_reduce",
+        %compile.unload "btensor",
+
+        // gpu
         %compile.named "%gpu.mem_checks",
+
+        // autdoiff
         %compile.named "%autodiff.eval",
         %compile.named "%autodiff.zero_repl",
-        %compile.named "%matrix.lower_matrix_high_level_map_reduce",
-        %compile.named "%matrix.lower_matrix_medium_level",
+        %compile.unload "autodiff",
+
+        // buffer
         %compile.named "%buffer.lower_ptr",
+        %compile.unload "buffer",
+
+        // affine + cpsp
         %compile.named "%affine.lower_index",
         %compile.named "%cps.conv",
         %compile.named "%affine.lower_for",
-        %compile.internal_cleanup,
+        %compile.unload "affine",
+        %compile.unload "cps",
 
         // clos conv
         let clos_opt_phases =

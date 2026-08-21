@@ -38,7 +38,7 @@ fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
 
 lam extern _compile(): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %compile.phases tt (
             %compile.beta_red,
             %compile.eta_conv,

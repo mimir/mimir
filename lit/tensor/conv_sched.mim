@@ -28,9 +28,9 @@ lam extern c64w (input: «2, 64, 16, 16; %math.F32», w: «16, 64, 3, 3; %math.F
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %tensor.lower_tensor,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
 
 // CHECK-DAG: {{mk_[0-9]+ \(8, 3\)}}

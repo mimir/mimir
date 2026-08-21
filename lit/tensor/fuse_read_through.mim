@@ -20,10 +20,10 @@ con extern f (a: «2, 3; Nat», b: «4, 3; Nat», bias: «4; Nat», return: Cn �
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %tensor.lower_tensor,
         %tensor.fuse_tensor,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
 
 // CHECK: %tensor.map_reduce

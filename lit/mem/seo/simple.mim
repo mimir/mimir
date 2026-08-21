@@ -11,7 +11,7 @@ lam extern lg(a: Nat): Nat = %core.nat.sub (g (23, 1), g (23, a));
 
 lam extern _compile(): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %mem.seo,
     );
 

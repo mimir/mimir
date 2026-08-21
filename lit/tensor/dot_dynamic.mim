@@ -19,10 +19,10 @@ fun extern mm_dyn {m k l: Nat} (a: «m, k; Nat», b: «k, l; Nat»): «m, l; Nat
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %compile.internal_cleanup,
+        %compile.cleanup,
         %tensor.lower_tensor,
         %tensor.lower_map_reduce,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
 
 // The tile-size guard must not survive to the output: the lowering resolves it (to ts = 1 here).

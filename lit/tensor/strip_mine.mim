@@ -32,7 +32,7 @@ fun extern sum_par (input: «2, 4, 8; Nat»): «2, 2, 2; Nat» =
         1, 2)));
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%compile.internal_cleanup,);
+    %compile.phases ff (%compile.cleanup,);
 
 // The cleanup pass zonks inference holes, so the transformed domains print as plain literals.
 // CHECK-DAG: (2, 4, 4, 2)

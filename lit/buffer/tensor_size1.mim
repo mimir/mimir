@@ -14,8 +14,8 @@ plugin affine;
 plugin opt;
 
 fun extern f (input: «3, 1; I32»): «3, 1; I32» =
-    let v = %tensor.get @(I32, 2, (3, 1)) (input, (1₃, 0₁));
-    return (%tensor.set @(I32, 2, (3, 1)) (input, (0₃, 0₁), v));
+    let v = %tensor.get ((1₃, 0₁), input);
+    return (%tensor.set ((0₃, 0₁), input, v));
 
 // CHECK: %mem.Ptr («3; I32», 0)
 // CHECK-DAG: %mem.load
@@ -28,5 +28,5 @@ lam extern _compile (): %compile.Phase =
         %buffer.lower_ptr,
         %affine.lower_index,
         %affine.lower_for,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

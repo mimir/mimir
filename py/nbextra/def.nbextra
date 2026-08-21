@@ -1,0 +1,23 @@
+[include]
+#include <nanobind/stl/pair.h>          // std::pair for def[a, i] indexing
+
+[skip:Def]
+    // Takes a mim::Vars (a Sets::Set) as a *parameter*; nanobind has a caster for returning one
+    // (it is copied into a list) but not for accepting one.
+    // Python can use `free_vars()` and intersect in Python instead.
+    has_free_vars_in
+
+[class:Def]
+    // Pythonic projection: def[i] -> proj(i); def[a, i] -> proj(a, i).
+    .def("__getitem__", [](const Def& self, nat_t i) { return self.proj(i); }, nb::rv_policy::reference_internal)
+    .def("__getitem__", [](const Def& self, std::pair<nat_t, nat_t> ai) { return self.proj(ai.first, ai.second); }, nb::rv_policy::reference_internal)
+    // The name-setting Def::set overloads are template methods (template<bool Ow>),
+    // so the generator skips them; expose the std::string instantiation used to
+    // name mutables from Python (e.g. `lam.set("foo")`).
+    .def("set", [](Def& self, std::string s) { return self.set(s); }, nb::rv_policy::reference_internal)
+    // Convenience: reach the Driver through the owning World.
+    .def("driver", [](Def& self) { return &self.world().driver(); }, nb::rv_policy::reference_internal)
+    // proj-family methods return mim::Vector<const Def*>; copy into a std::vector
+    // so they reach Python as a list (elements stay tied to `self`).
+    .def("projs", [](const Def& self, nat_t a) { auto v = self.projs(a); return std::vector<const Def*>(v.begin(), v.end()); }, nb::rv_policy::reference_internal)
+    .def("vars",  [](Def& self, nat_t a) { auto v = self.vars(a);  return std::vector<const Def*>(v.begin(), v.end()); }, nb::rv_policy::reference_internal)

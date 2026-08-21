@@ -12,8 +12,8 @@ namespace mim {
 std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
     if (v2v.empty()) return {nullptr, nullptr};
     std::vector<std::pair<const Def*, size_t>> tuple_of_args;
-    const Var* var_of_rule;
-    size_t tuple_size = 1;
+    const Var* var_of_rule = nullptr;
+    size_t tuple_size      = 1;
     for (auto [var, val] : v2v) {
         if (auto v = var->isa<Var>()) return {v, val}; // we have found all values already
         if (auto e = var->isa<Extract>()) {

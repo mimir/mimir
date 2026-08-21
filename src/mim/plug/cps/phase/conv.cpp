@@ -13,7 +13,7 @@ static bool convertible(Lam* lam) {
 }
 
 const Def* Conv::map(const Def* old_def, const Def* new_def) {
-    auto& old2new           = new_def->free_vars().has_intersection(scoped_) ? old2news_.back() : old2news_.front();
+    auto& old2new           = new_def->has_free_vars_in(scoped_) ? old2news_.back() : old2news_.front();
     return old2new[old_def] = new_def;
 }
 
@@ -51,7 +51,7 @@ const Def* Conv::convert(Lam* old_lam) {
     } else {
         new_lam = w.mut_fun(new_dom, rewrite(old_pi->codom()));
     }
-    new_lam->set(old_lam->dbg())->debug_suffix("_cps");
+    new_lam->set(old_lam->dbg_key())->debug_suffix("_cps");
 
     auto [param, ret] = new_lam->vars<2>();
     map(old_lam->var(), param);

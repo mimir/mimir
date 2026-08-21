@@ -1,9 +1,0 @@
-add_mim_plugin(matrix
-    SOURCES
-        matrix.cpp
-        normalizers.cpp
-        phase/lower_matrix_highlevel.cpp
-        phase/lower_matrix_mediumlevel.cpp
-        phase/lower_aff.cpp
-    INSTALL
-)

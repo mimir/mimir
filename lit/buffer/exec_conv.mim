@@ -26,12 +26,12 @@ fun extern wide (input: «2, 4, 4, 4; I32», w: «2, 4, 3, 3; I32»): «2, 2, 2,
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     con done_s (os: «2, 2, 2, 2; I32») =
         con done_w (ow: «2, 2, 2, 2; I32») =
-            let vs = %tensor.get @(I32, 4, (2, 2, 2, 2)) (os, (1₂, 1₂, 1₂, 1₂));
-            let vw = %tensor.get @(I32, 4, (2, 2, 2, 2)) (ow, (0₂, 1₂, 0₂, 1₂));
+            let vs = %tensor.get @(I32, 4, (2, 2, 2, 2)) ((1₂, 1₂, 1₂, 1₂), os);
+            let vw = %tensor.get @(I32, 4, (2, 2, 2, 2)) ((0₂, 1₂, 0₂, 1₂), ow);
             return (mem, %core.wrap.add 0 (vs, vw));
         wide ((‹2; ‹4; ‹4; ‹4; 1I32››››, ‹2; ‹4; ‹3; ‹3; 1I32››››), done_w);
     small ((‹2; ‹3; ‹4; ‹4; 1I32››››, ‹2; ‹3; ‹3; ‹3; 1I32››››), done_s);
 
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.

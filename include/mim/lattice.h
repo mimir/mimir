@@ -15,10 +15,9 @@ protected:
     Bound(Node node, const Def* type, Defs ops)
         : Def(node, type, ops, 0) {}
 
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
-
 public:
-    ~Bound() override;
+    /// Bound groups Join and Meet; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Join || n == mim::Node::Meet; }
 
     /// @name Get Element by Type
     ///@{
@@ -45,8 +44,6 @@ public:
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -61,8 +58,6 @@ public:
 private:
     Merge(const Def* type, Defs defs)
         : Def(Node, type, defs, 0) {}
-
-    const Def* rebuild_(World&, const Def*, Defs) const final;
 
     friend class World;
 };
@@ -86,8 +81,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -109,8 +102,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -137,8 +128,6 @@ public:
     ///@}
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -149,7 +138,8 @@ protected:
         : Def(node, type, Defs{}, 0) {}
 
 public:
-    ~Ext() override;
+    /// Ext groups Top and Bot; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Top || n == mim::Node::Bot; }
 };
 
 /// Ext%remum. Either Top (@p Up) or Bot%tom.
@@ -166,8 +156,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -199,8 +187,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 

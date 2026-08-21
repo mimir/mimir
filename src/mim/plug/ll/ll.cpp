@@ -146,7 +146,7 @@ void Emitter::finalize_impl() {
         }
     }
 
-    for (auto mut : Scheduler::schedule(nest())) {
+    for (auto mut : schedule()) { // cached by Emitter::visit - recomputing it here doubled the work
         if (auto lam = mut->isa_mut<Lam>()) {
             if (!lam2bb_.contains(lam)) fe::throwf("ll backend: no basic block was emitted for '{}'", lam);
             auto& bb = lam2bb_[lam];
@@ -1002,7 +1002,8 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         return emit(v->arg());
     } else if (auto zip = Axm::isa<vecp::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();
-        auto nat_ni = Lit::expect(ni_n->proj(2, 0), "a %vec.zip lane count");
+        auto nat_ni = Lit::expect(ni_n->proj(2, 0), "a %vec.zip inputs count");
+        auto nat_n  = Lit::expect(ni_n->proj(2, 1), "a %vec.zip lane count");
         auto f      = zip->decurry()->arg();
         auto inputs = zip->arg();
         auto t_in   = convert(inputs->proj(nat_ni, 0)->type());
@@ -1020,7 +1021,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                     auto v2     = emit(inputs->proj(nat_ni, 1));
                     auto ugt    = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
                     auto raw    = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
-                    return prev = bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_ni, ugt, t_out,
+                    return prev = bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_n, ugt, t_out,
                                             t_out, raw);
                 }
                 case core::nat::mul: op = "mul nuw nsw"; break;

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <format>
 #include <limits>
 #include <optional>
 #include <span>
+#include <type_traits>
+#include <utility>
 
 #include <fe/assert.h>
 #include <fe/cast.h>
@@ -66,6 +69,7 @@ class App;
 class Axm;
 class Var;
 class Def;
+class Driver;
 class World;
 
 /// @name Def
@@ -76,7 +80,8 @@ using DefMap  = GIDMap<const Def*, To>;
 using DefSet  = GIDSet<const Def*>;
 using Def2Def = DefMap<const Def*>;
 using Defs    = View<const Def*>;
-using DefVec  = Vector<const Def*>;
+
+using DefVec = Vector<const Def*>;
 ///@}
 
 /// @name Def (Mutable)
@@ -185,6 +190,9 @@ namespace mim {
     auto NAME##s(nat_t a) CONST noexcept { return ((const Def*)NAME())->projs(a); }
 
 /// CRTP-based mixin to declare setters for Def::loc \& Def::name using a *covariant* return type.
+/// Forwards every argument list the Def::set%ters accept and hands back a @p P instead of a Def.
+/// @note Setters::Fwd keeps this variadic out of the overload set of the `set` members subclasses declare
+/// themselves (Global::set, Pi::set, ...) - none of those is a template on @p Ow, so they keep winning.
 template<class P, class D = Def>
 class // D is only needed to make the resolution `D::template set` lazy
 #ifdef _MSC_VER
@@ -195,20 +203,16 @@ private:
     P* super() { return static_cast<P*>(this); }
     const P* super() const { return static_cast<const P*>(this); }
 
+    /// Is `D::set<Ow>(Args...)` a thing?
+    template<bool Ow, class... Args>
+    static constexpr bool Fwd = requires(D* d, Args&&... args) { d->template set<Ow>(std::forward<Args>(args)...); };
+
 public:
     // clang-format off
-    template<bool Ow = false> const P* set(Loc l               ) const { super()->D::template set<Ow>(l); return super(); }
-    template<bool Ow = false>       P* set(Loc l               )       { super()->D::template set<Ow>(l); return super(); }
-    template<bool Ow = false> const P* set(       Sym s        ) const { super()->D::template set<Ow>(s); return super(); }
-    template<bool Ow = false>       P* set(       Sym s        )       { super()->D::template set<Ow>(s); return super(); }
-    template<bool Ow = false> const P* set(       std::string s) const { super()->D::template set<Ow>(std::move(s)); return super(); }
-    template<bool Ow = false>       P* set(       std::string s)       { super()->D::template set<Ow>(std::move(s)); return super(); }
-    template<bool Ow = false> const P* set(Loc l, Sym s        ) const { super()->D::template set<Ow>(l, s); return super(); }
-    template<bool Ow = false>       P* set(Loc l, Sym s        )       { super()->D::template set<Ow>(l, s); return super(); }
-    template<bool Ow = false> const P* set(Loc l, std::string s) const { super()->D::template set<Ow>(l, std::move(s)); return super(); }
-    template<bool Ow = false>       P* set(Loc l, std::string s)       { super()->D::template set<Ow>(l, std::move(s)); return super(); }
-    template<bool Ow = false> const P* set(Dbg d               ) const { super()->D::template set<Ow>(d); return super(); }
-    template<bool Ow = false>       P* set(Dbg d               )       { super()->D::template set<Ow>(d); return super(); }
+    template<bool Ow = false, class... Args> requires Fwd<Ow, Args...>
+    const P* set(Args&&... args) const { super()->D::template set<Ow>(std::forward<Args>(args)...); return super(); }
+    template<bool Ow = false, class... Args> requires Fwd<Ow, Args...>
+          P* set(Args&&... args)       { super()->D::template set<Ow>(std::forward<Args>(args)...); return super(); }
     // clang-format on
 };
 
@@ -271,7 +275,6 @@ protected:
     Def(Node, const Def* type, Defs ops, flags_t flags);         ///< As above but World retrieved from @p type.
     Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
     Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
-    virtual ~Def() = default;
     ///@}
 
 public:
@@ -307,8 +310,8 @@ public:
     const Def* type() const noexcept;
     /// Yields the type of this Def and builds a new `Type (UInc n)` if necessary.
     const Def* unfold_type() const;
-    bool is_term() const;             ///< Is this Def a *term*, i.e. is its type() a Type?
-    virtual const Def* arity() const; ///< Number of elements available to Extract / Insert (may be dynamic).
+    bool is_term() const;     ///< Is this Def a *term*, i.e. is its type() a Type?
+    const Def* arity() const; ///< Number of elements available to Extract / Insert (may be dynamic).
     ///@}
 
     /// @name ops
@@ -335,7 +338,14 @@ public:
     /// MimIR assumes that a mutable is *final*, when its last operand is set.
     /// Then, Def::check() will be invoked.
     ///@{
-    bool is_set() const;            ///< Yields `true` if empty or the last op is set.
+    /// Yields `true` if empty or the last op is set.
+    bool is_set() const {
+        if (num_ops() == 0) return true;
+        bool result = ops().back();
+        assert((!result || std::ranges::all_of(ops().rsubspan(1), [](auto op) { return op; }))
+               && "the last operand is set but others in front of it aren't");
+        return result;
+    }
     Def* set(size_t i, const Def*); ///< Successively set from left to right.
     Def* set(Defs ops);             ///< Set @p ops all at once (no Def::unset necessary beforehand).
     Def* unset();                   ///< Unsets all Def::ops; works even, if not set at all or only partially set.
@@ -444,10 +454,7 @@ public:
 
     const Var* has_var() { return var_; } ///< Only returns not `nullptr`, if Var of this mutable has ever been created.
     /// As above if `this` is a *mutable*.
-    const Var* has_var() const {
-        if (auto mut = isa_mut()) return mut->has_var();
-        return nullptr;
-    }
+    const Var* has_var() const { return mut_ ? var_ : nullptr; }
 
     /// Is `this` a mutable that introduces a Var?
     /// @returns `{nullptr, nullptr}` otherwise.
@@ -469,19 +476,34 @@ public:
     ///@{
 
     /// Mutables reachable by following *immutable* deps(); `mut->local_muts()` is by definition the set `{ mut }`.
-    Muts local_muts() const;
+    Muts local_muts() const {
+        if (auto mut = isa_mut()) return Muts(mut);
+        return muts_;
+    }
 
     /// Var%s reachable by following *immutable* deps().
     /// @note `var->local_vars()` is by definition the set `{ var }`.
-    Vars local_vars() const;
+    Vars local_vars() const { return mut_ ? Vars() : vars_; }
 
     /// Global set of free Var%s: extends local_vars() by transitively following *mutables* as well.
     /// @note On a *mutable* this simply forwards to the caching non-`const` overload below.
     Vars free_vars() const;
     Vars free_vars();              ///< As above but drives (and caches) the fixed-point iteration for *mutables*.
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
-    bool is_open() const;          ///< Has free_vars()?
-    bool is_closed() const;        ///< Has no free_vars()?
+    bool is_open() const;          ///< Has free_vars()? Same as has_free_vars().
+    bool is_closed() const;        ///< Has no free_vars()? Same as `!has_free_vars()`.
+
+    /// @name free_vars predicates
+    /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
+    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
+    /// question without ever materializing the merged set.
+    /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
+    ///@{
+    bool has_free_var(const Var*) const; ///< Same as `free_vars().contains(var)`.
+    bool has_free_vars() const;          ///< Same as `!free_vars().empty()`.
+    bool has_free_vars_in(Vars) const;   ///< Same as `vars.has_intersection(free_vars())`.
+    ///@}
 
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
@@ -525,7 +547,7 @@ public:
     /// If `this` is *mutable*, it will cast `const`ness away and perform a `dynamic_cast` to @p T.
     template<class T = Def, bool invert = false>
     T* isa_mut() const {
-        if constexpr (std::is_same<T, Def>::value)
+        if constexpr (std::is_same_v<T, Def>)
             return mut_ ^ invert ? const_cast<Def*>(this) : nullptr;
         else
             return mut_ ^ invert ? const_cast<Def*>(this)->template isa<T>() : nullptr;
@@ -535,7 +557,7 @@ public:
     template<class T = Def, bool invert = false>
     T* as_mut() const {
         assert(mut_ ^ invert);
-        if constexpr (std::is_same<T, Def>::value)
+        if constexpr (std::is_same_v<T, Def>)
             return const_cast<Def*>(this);
         else
             return const_cast<Def*>(this)->template as<T>();
@@ -553,9 +575,10 @@ public:
 
     /// @name Dbg Getters
     ///@{
-    Dbg dbg() const { return dbg_; }
-    Loc loc() const { return dbg_.loc(); }
-    Sym sym() const { return dbg_.sym(); }
+    Dbg dbg() const;                                ///< Looks up Def::dbg_ in Driver::dbg.
+    DbgKey dbg_key() const { return DbgKey(dbg_); } ///< Cheap handle for `other->set(this->dbg_key())`.
+    Loc loc() const { return dbg().loc(); }
+    Sym sym() const { return dbg().sym(); }
     std::string unique_name() const; ///< name + "_" + Def::gid
     ///@}
 
@@ -563,18 +586,22 @@ public:
     /// Every subclass `S` of Def has the same setters that return `S*`/`const S*` via the mixin Setters.
     ///@{
     // clang-format off
-    template<bool Ow = false> const Def* set(Loc l) const { if (Ow || !dbg_.loc()) dbg_.set(l); return this; }
-    template<bool Ow = false>       Def* set(Loc l)       { if (Ow || !dbg_.loc()) dbg_.set(l); return this; }
-    template<bool Ow = false> const Def* set(Sym s) const { if (Ow || !dbg_.sym()) dbg_.set(s); return this; }
-    template<bool Ow = false>       Def* set(Sym s)       { if (Ow || !dbg_.sym()) dbg_.set(s); return this; }
+    template<bool Ow = false> const Def* set(Loc l) const { if (auto d = dbg(); Ow || !d.loc()) set_dbg(d.set(l)); return this; }
+    template<bool Ow = false>       Def* set(Loc l)       { if (auto d = dbg(); Ow || !d.loc()) set_dbg(d.set(l)); return this; }
+    template<bool Ow = false> const Def* set(Sym s) const { if (auto d = dbg(); Ow || !d.sym()) set_dbg(d.set(s)); return this; }
+    template<bool Ow = false>       Def* set(Sym s)       { if (auto d = dbg(); Ow || !d.sym()) set_dbg(d.set(s)); return this; }
     template<bool Ow = false> const Def* set(       std::string s) const { set<Ow>(sym(std::move(s))); return this; }
     template<bool Ow = false>       Def* set(       std::string s)       { set<Ow>(sym(std::move(s))); return this; }
     template<bool Ow = false> const Def* set(Loc l, Sym s        ) const { set<Ow>(l); set<Ow>(s); return this; }
     template<bool Ow = false>       Def* set(Loc l, Sym s        )       { set<Ow>(l); set<Ow>(s); return this; }
     template<bool Ow = false> const Def* set(Loc l, std::string s) const { set<Ow>(l); set<Ow>(sym(std::move(s))); return this; }
     template<bool Ow = false>       Def* set(Loc l, std::string s)       { set<Ow>(l); set<Ow>(sym(std::move(s))); return this; }
-    template<bool Ow = false> const Def* set(Dbg d) const { set<Ow>(d.loc(), d.sym()); return this; }
-    template<bool Ow = false>       Def* set(Dbg d)       { set<Ow>(d.loc(), d.sym()); return this; }
+    template<bool Ow = false> const Def* set(Dbg d) const { set_dbg_(d, Ow); return this; }
+    template<bool Ow = false>       Def* set(Dbg d)       { set_dbg_(d, Ow); return this; }
+    /// Adopts the Dbg behind @p key - just copies the interned index, so nothing is re-interned.
+    /// Prefer `a->set(b->dbg_key())` over `a->set(b->dbg())`.
+    template<bool Ow = false> const Def* set(DbgKey key) const { set_dbg_key_(key, Ow); return this; }
+    template<bool Ow = false>       Def* set(DbgKey key)       { set_dbg_key_(key, Ow); return this; }
     // clang-format on
     ///@}
 
@@ -592,19 +619,19 @@ public:
 
     /// @name Rebuild
     ///@{
-    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg()); }
+    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg_key()); }
     Def* stub(const Def* type) { return stub(world(), type); }
 
     /// Def::rebuild%s this Def while using @p new_op as substitute for its @p i'th Def::op
     const Def* rebuild(World& w, const Def* type, Defs ops) const {
         assert(isa_imm());
-        return rebuild_(w, type, ops)->set(dbg());
+        return rebuild_(w, type, ops)->set(dbg_key());
     }
     const Def* rebuild(const Def* type, Defs ops) const { return rebuild(world(), type, ops); }
 
     /// Tries to make an immutable from a mutable.
     /// This usually works if the mutable isn't recursive and its var isn't used.
-    virtual const Def* immutabilize() { return nullptr; }
+    const Def* immutabilize();
     bool is_immutabilizable();
 
     const Def* refine(size_t i, const Def* new_op) const;
@@ -617,7 +644,7 @@ public:
 
     /// First Def::op that needs to be dealt with during reduction; e.g. for a Pi we don't reduce the Pi::dom.
     /// @see World::reduce
-    virtual constexpr size_t reduction_offset() const noexcept { return size_t(-1); }
+    size_t reduction_offset() const noexcept;
     ///@}
 
     /// @name Type Checking
@@ -626,12 +653,12 @@ public:
     /// Checks whether the `i`th operand can be set to `def`.
     /// The method returns a possibly updated version of `def` (e.g. where Hole%s have been resolved).
     /// This is the actual `def` that will be set as the `i`th operand.
-    virtual const Def* check([[maybe_unused]] size_t i, const Def* def) { return def; }
+    const Def* check(size_t i, const Def* def);
 
     /// After all Def::ops have been Def::set, this method will be invoked to check the type of this mutable.
     /// The method returns a possibly updated version of its type (e.g. where Hole%s have been resolved).
     /// If different from Def::type, it will update its Def::type to a Def::zonk%ed version of that.
-    virtual const Def* check() { return type(); }
+    const Def* check();
 
     /// Yields `true`, if Def::local_muts() contain a Hole that is set.
     /// Rewriting (Def::zonk%ing) will resolve the Hole to its operand.
@@ -690,15 +717,22 @@ protected:
     Sym sym(const char*) const;
     Sym sym(std::string_view) const;
     Sym sym(std::string) const;
+    void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the index in Def::dbg_.
+    void set_dbg_(Dbg, bool ow) const;        ///< Backs Def::set(Dbg).
+    void set_dbg_key_(DbgKey, bool ow) const; ///< Backs Def::set(DbgKey).
+
     ///@}
 
 private:
     Defs reduce_(const Def* arg) const;
-    virtual Def* stub_(World&, const Def*) { fe::unreachable(); }
-    virtual const Def* rebuild_(World& w, const Def* type, Defs ops) const = 0;
+    Def* stub_(World&, const Def*);
+    const Def* rebuild_(World& w, const Def* type, Defs ops) const;
+
+    void watch() const; ///< Trips World::watchpoints in `MIM_ENABLE_CHECKS` builds; a no-op otherwise.
+    Def* finalize();    ///< Runs Def::check once the last op has been set; @see @ref set_ops.
 
     template<bool init>
-    Vars free_vars(bool&, uint32_t);
+    Vars free_vars(World&, bool&, u32);
     void invalidate();
     const Def** ops_ptr() const {
         return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
@@ -710,7 +744,6 @@ private:
     [[nodiscard]] static bool cmp_(const Def* a, const Def* b);
 
 protected:
-    mutable Dbg dbg_;
     union {
         NormalizeFn normalizer_; ///< Axm only: Axm%s use this member to store their normalizer.
         const Axm* axm_;         ///< App only: Curried App%s of Axm%s use this member to propagate the Axm.
@@ -723,7 +756,7 @@ protected:
     u8 trip_  = 0;
 
 private:
-    Node node_; // 8
+    Node node_; // node_t is u8; the four flags + dep_ below fill the remaining byte of this word
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
@@ -731,13 +764,17 @@ private:
     unsigned dep_       : 4;
     u32 mark_ = 0;
 #ifndef NDEBUG
-    size_t curr_op_ = 0;
+    u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too)
 #endif
     u32 gid_;
     u32 num_ops_;
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
+    /// Index into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
+    /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice. 0 is the empty Dbg.
+    /// @note Deliberately adjacent to Def::tid_ so the two `u32`s share one 8-byte slot.
+    mutable u32 dbg_ = 0;
     mutable u32 tid_ = 0;
     mutable const Def* type_;
 
@@ -747,6 +784,23 @@ private:
     friend void swap(World&, World&) noexcept;
     friend std::ostream& operator<<(std::ostream&, const Def*);
 };
+
+/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
+/// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()
+/// tag and dispatches on it instead - see the `dispatch` section in `def.cpp`.
+/// @note A *subclass* growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)` assert in World::allocate.
+static_assert(!std::is_polymorphic_v<Def>, "Def must not have a vtable; dispatch on Def::node() instead");
+
+/// Table-driven and defined here instead of in `def.cpp`, so that Def::is_form \& friends stay inlinable:
+/// `libmim` is a shared object, so an out-of-line judge() would be an opaque PLT call from every other TU.
+inline Judge Def::judge() const noexcept {
+    static constexpr Judge Judges[Num_Nodes] = {
+#define CODE(node, judge) judge,
+        MIM_NODE(CODE)
+#undef CODE
+    };
+    return Judges[node_t(node_)];
+}
 
 /// A variable introduced by a binder (mutable).
 /// @note Var will keep its type_ field as `nullptr`.
@@ -770,8 +824,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -784,8 +836,6 @@ public:
 private:
     Univ(World& world)
         : Def(&world, Node, nullptr, Defs{}, 0) {}
-
-    const Def* rebuild_(World&, const Def*, Defs) const final;
 
     friend class World;
 };
@@ -800,8 +850,6 @@ public:
 
 private:
     UMax(World&, Defs ops);
-
-    const Def* rebuild_(World&, const Def*, Defs) const final;
 
     friend class World;
 };
@@ -824,8 +872,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -846,8 +892,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -896,8 +940,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -909,8 +951,6 @@ public:
 
 private:
     Nat(World& world);
-
-    const Def* rebuild_(World&, const Def*, Defs) const final;
 
     friend class World;
 };
@@ -967,8 +1007,6 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -995,8 +1033,6 @@ public:
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -1030,18 +1066,56 @@ public:
 
     /// @name Rebuild
     ///@{
-    Global* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Global* stub(const Def* type) { return Def::stub(world(), type)->as<Global>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Global;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Global* stub_(World&, const Def*) final;
-
     friend class World;
 };
+
+// Def - hot inline definitions
+// These need Univ, Type, Var, and Lit to be complete, so they live here rather than in the class body.
+// They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
+// opaque PLT calls in every other TU.
+inline World& Def::world() const noexcept {
+    // Walks up the type chain till it bottoms out in Univ - the only node that actually stores its World.
+    // clang-format off
+    for (auto def = this;;) {
+        switch (def->node_) {
+            case Node::Univ: return *def->world_;
+            case Node::Type: return *def->op(0)->type()->as<Univ>()->world_; // op(0) is Type::level
+            case Node::Var:  def = def->binder_; break;                      // a Var has no type_ of its own
+            default:         def = def->type_;   break;
+        }
+    }
+    // clang-format on
+}
+
+inline const Def* Def::type() const noexcept {
+    if (auto var = isa<Var>()) return var->binder()->var_type();
+    return type_;
+}
+
+inline bool Def::equal(const Def* other) const {
+    // Univ is a singleton and mutables are never hash-consed, so for those identity *is* equality.
+    if (mut_ || other->mut_ || node_ == Node::Univ) return this == other;
+
+    // A Var carries no ops and flags == 0, so it is identified solely by its binder
+    if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
+
+    bool result = this->node() == other->node() && this->flags() == other->flags()
+               && this->num_ops() == other->num_ops() && this->type() == other->type();
+
+    for (size_t i = 0, e = num_ops(); result && i != e; ++i)
+        result &= this->op(i) == other->op(i);
+
+    return result;
+}
+
+inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
 
 } // namespace mim
 

@@ -143,8 +143,9 @@ public:
 
 private:
     bool has_intersection(const Def* old_def) {
+        // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
         for (const auto& vars : vars_ | std::views::reverse)
-            if (vars.has_intersection(old_def->free_vars())) return true;
+            if (old_def->has_free_vars_in(vars)) return true;
         return false;
     }
 

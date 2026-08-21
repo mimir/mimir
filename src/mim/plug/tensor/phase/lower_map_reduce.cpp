@@ -117,17 +117,17 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     // meta arguments:
     // * nis = in-count, nps = epilogue-input count (nat)
     // * To = accumulator type, Tp = out-element type (post: Fn [To, «nps; Tps»] → Tp), Ro = #output loops =
-    //   result rank, Rr = #reduction loops
+    //   result rank, Rn = #loops in total
     // * So = result shape (Ro*nat)
-    // * Sr = the full loop bounds (Ro+Rr)*nat: the leading Ro are the output-loop bounds, the trailing Rr the
+    // * Sr = the full loop bounds Rn*nat: the leading Ro are the output-loop bounds, the trailing Rn - Ro the
     // reductions
     // * Tis/Ris/Sis, Tps/Rps/Sps = (epilogue) input types/ranks/shapes
     // arguments:
     // * f = combination function (CPS), init = accumulator init, post = per-output-cell epilogue (CPS),
     //   applied to the folded accumulator and the epilogue elements right before the write-back
-    // * acc_out = affine map from the (Ro+Rr) loop vector to the Ro write coordinates in the result «So» (the reduction
+    // * acc_out = affine map from the Rn loop vector to the Ro write coordinates in the result «So» (the reduction
     //             part is not in scope at write-back, so acc_out must depend only on the leading Ro output indices)
-    // * accs = per-input affine map from the (Ro+Rr) loop vector to the input's read coordinates
+    // * accs = per-input affine map from the Rn loop vector to the input's read coordinates
     // * post_accs = per-epilogue-input affine map from the Ro output-cell (write) coordinates to its read coordinates
     // * is, post_is = input tensors
     auto& w     = new_world();
@@ -137,7 +137,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
 
     auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
     auto [nis, nps]                                                    = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rr]                                              = meta->projs<4>();
+    auto [To, Tp, Ro, Rn]                                              = meta->projs<4>();
     auto [So, Sr, TSched, sched]                                       = shapes->projs<4>();
     auto [Tis, Ris, Sis, Tps, Rps, Sps]                                = in_tys->projs<6>();
     auto [comb, init, post]                                            = comb_init->projs<3>();
@@ -145,15 +145,15 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
 
     auto nis_l = Lit::isa<u64>(nis);
     auto nps_l = Lit::isa<u64>(nps);
-    auto ro_l = Lit::isa<u64>(Ro), rr_l = Lit::isa<u64>(Rr);
-    if (!nis_l || !nps_l || !ro_l || !rr_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rr)", app);
+    auto ro_l = Lit::isa<u64>(Ro), rn_l = Lit::isa<u64>(Rn);
+    if (!nis_l || !nps_l || !ro_l || !rn_l || *rn_l < *ro_l) {
+        WLOG("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
         return nullptr;
     }
     auto nis_nat = *nis_l;
     auto nps_nat = *nps_l;
-    auto ro = *ro_l, rr = *rr_l;
-    auto nloops = ro + rr;           // length of the full loop vector (= length of Sr)
+    auto ro = *ro_l, rr = *rn_l - *ro_l;
+    auto nloops = *rn_l;             // length of the full loop vector (= length of Sr)
     auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
 
     // ranks of each input must be literal so that we know how many `extract`s to emit
@@ -240,7 +240,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         after_post->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, after_post->var(0)));
         write_back->app(true, post, {w.tuple({element_final, w.tuple(post_elements)}), after_post});
 
-        // Inner (reduction) loops over the trailing Rr bounds of `Sr`, collecting the reduction iteration indices.
+        // Inner (reduction) loops over the trailing `Rr` bounds of `Sr`, collecting the reduction iteration
+        // indices.
         acc  = init;
         cont = write_back;
         DefVec red_iters;

@@ -1,5 +1,7 @@
 #include "mim/plug/clos/phase/clos_conv.h"
 
+#include <algorithm>
+
 #include <mim/plug/mem/autogen.h>
 
 using namespace std::literals;
@@ -189,7 +191,7 @@ const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
             // After η-expansion this should be its only occurrence, so mapping it into the current scope suffices.
             if (auto ret_lam = a->arg()->isa_mut<Lam>()) {
                 auto new_doms = DefVec(ret_lam->num_doms(), [&](auto i) { return rewrite(ret_lam->dom(i)); });
-                auto new_lam  = w.mut_lam(w.cn(new_doms))->set(ret_lam->dbg());
+                auto new_lam  = w.mut_lam(w.cn(new_doms))->set(ret_lam->dbg_key());
                 map(ret_lam, new_lam);
                 if (ret_lam->is_set()) new_lam->set(rewrite(ret_lam->filter()), rewrite(ret_lam->body()));
                 return new_lam;
@@ -258,17 +260,21 @@ const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {
 }
 
 ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
-    auto& w          = new_world();
-    auto fv_vec      = DefVec(fvs.begin(), fvs.end());
+    auto& w = new_world();
+    // Sort by gid: fv_vec's order *is* the closure environment layout (see rewrite_body's env_val->proj(i)),
+    // and iterating a DefSet (absl::flat_hash_set) leaves it at the mercy of hash-table insertion order -
+    // so unrelated changes elsewhere silently permuted the env slots.
+    auto fv_vec = DefVec(fvs.begin(), fvs.end());
+    std::ranges::sort(fv_vec, GIDLt<const Def*>());
     auto env_type    = rewrite(old_world().tuple(fv_vec)->type());
     auto new_fn_type = clos_type_of(old_lam->type(), env_type)->as<Pi>();
-    auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg());
+    auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg_key());
 
     if (!isa_optimizable(old_lam)) {
         // External or imported (unset) Lam%s get an η-wrapper that hides the environment.
         auto ep           = env_param(new_fn_type);
         auto new_ext_type = w.cn(clos_remove_env(ep, new_fn_type->dom()));
-        auto new_ext_lam  = w.mut_lam(new_ext_type)->set(old_lam->dbg());
+        auto new_ext_lam  = w.mut_lam(new_ext_type)->set(old_lam->dbg_key());
         DLOG("wrap ext lam: {} -> stub: {}, ext: {}", old_lam, new_fn, new_ext_lam);
         if (old_lam->is_set()) {
             if (old_lam->is_external()) new_ext_lam->externalize();

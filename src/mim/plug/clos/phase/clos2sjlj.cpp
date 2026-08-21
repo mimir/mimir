@@ -11,10 +11,11 @@ namespace {
 constexpr size_t Sjlj_Env_Param = 1_u64;
 
 std::array<const Def*, 3> split(const Def* def) {
-    auto new_ops = DefVec(def->num_projs() - 2, nullptr);
-    auto& w      = def->world();
-    const Def *mem, *env;
-    auto j = 0;
+    auto new_ops   = DefVec(def->num_projs() - 2, nullptr);
+    auto& w        = def->world();
+    const Def* mem = nullptr;
+    const Def* env = nullptr;
+    auto j         = 0;
     for (size_t i = 0; i < def->num_projs(); i++) {
         auto op = def->proj(i);
         if (op == w.call<mem::M>(0) || op->type() == w.call<mem::M>(0))

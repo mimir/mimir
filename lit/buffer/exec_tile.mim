@@ -41,10 +41,10 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let a = (‹8; 1I32›, ‹8; 2I32›, ‹8; 3I32›, ‹8; 4I32›);
     let b = ‹8; (1I32, 3I32, 5I32, 7I32)›;
     con done (o: «2, 2, 2, 2; I32») =
-        let v = %tensor.get @(I32, 4, (2, 2, 2, 2)) (o, (0₂, 1₂, 1₂, 0₂));
+        let v = %tensor.get @(I32, 4, (2, 2, 2, 2)) ((0₂, 1₂, 1₂, 0₂), o);
         return (mem, v);
     gemm ((a, b), done);
 
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
-// GONE-NOT: %matrix.
+// GONE-NOT: %btensor.

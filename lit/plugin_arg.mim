@@ -6,7 +6,7 @@
 // RUN: test ! -f %{s:stem}.ll
 plugin core;
 
-fun extern test(cond: Bool, a: «3; I32», b: «3; I32», i: Idx 3): «3; I32» =
+fun extern test(cond: Bool, a b: «3; I32», i: Idx 3): «3; I32» =
     con nx(phi: «3; I32») = return ins(phi, i, 23I32);
     (cn () = nx a, cn () = nx b)#cond ();
 

@@ -1,0 +1,21 @@
+// RUN: %mim %s
+
+// Regression test: an implicit rank `n` that is only resolved *later* must still let the types
+// depending on it collapse. `S: «i: n; «R#i; Nat»»` is a mutable `Arr` whose arity is a Hole when it is
+// created; once `n` is unified with `1` (via `g`), `S`'s type has to collapse from `«1; «R#0; Nat»»` to
+// `«R#0; Nat»` so that `S#i` = `S` is a legal arity in `«S#i; Nat»`.
+// Before the fix only `n ≥ 2` worked; `n = 1` failed with "expected arity but got `S`".
+plugin core;
+
+lam f {n: Nat} {R: «n; Nat», S: «i: n; «R#i; Nat»»} (g: «n; Nat») (x: «i: n; «S#i; Nat»»): Nat = 0;
+
+lam extern use0 (dummy: Nat)               : Nat = f ()     ()    ;
+lam extern use1 (a: «3; Nat»)              : Nat = f (1,)   (a,)  ;
+lam extern use2 (a: «3; Nat», b: «4; Nat») : Nat = f (1, 1) (a, b);
+
+// The same, but the arity-1 collapse happens for a term-level `Pack` instead of a type-level `Arr`.
+lam p {n: Nat} {R: «n; Nat», S: «i: n; «R#i; Nat»»}
+      (g: «n; Nat») (x: «i: n; «S#i; Nat»»): «i: n; «S#i; Nat»» = ‹i: n; x#i›;
+
+lam extern use_pack1 (a: «3; Nat»)              : «3; Nat»             = p (1,)   (a,)  ;
+lam extern use_pack2 (a: «3; Nat», b: «4; Nat») : [«3; Nat», «4; Nat»] = p (1, 1) (a, b);

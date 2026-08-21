@@ -39,7 +39,7 @@ public:
     Hole* unset() { return Def::unset()->as<Hole>(); }
     ///@}
 
-    Hole* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
+    Hole* stub(const Def* type) { return Def::stub(world(), type)->as<Hole>(); }
 
     /// If unset, explode to Tuple.
     /// @returns the new Tuple, or `this` if unsuccessful.
@@ -71,9 +71,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Hole* stub_(World&, const Def*) final;
-
     friend class World;
     friend class Checker;
 };
@@ -136,20 +133,26 @@ private:
     [[nodiscard]] bool check(Seq*, const Seq*);
     [[nodiscard]] bool check(const UMax*, const Def*);
 
+    /// Symmetric key for the alpha_ memo: the two gids packed into one u64, smaller first.
+    /// Canonicalizing by gid is what lets alpha_ get away with a single probe.
+    static constexpr u64 memo_key(const Def* d1, const Def* d2) noexcept {
+        auto g1 = u64(d1->gid()), g2 = u64(d2->gid());
+        return g1 < g2 ? g1 << 32 | g2 : g2 << 32 | g1;
+    }
+
     auto bind(Def* mut, const Def* d) {
         if (!mut) return std::pair(binders_.end(), true);
         auto res = binders_.emplace(mut, d);
         // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
-        if (res.second) {
-            memo_[Check].clear();
-            memo_[Test].clear();
-        }
+        if (res.second)
+            for (auto& memo : memo_)
+                memo.clear();
         return res;
     }
 
     World& world_;
     MutMap<const Def*> binders_;
-    std::array<absl::flat_hash_set<std::pair<const Def*, const Def*>>, 2> memo_;
+    std::array<absl::flat_hash_set<u64>, 2> memo_;
 };
 
 } // namespace mim

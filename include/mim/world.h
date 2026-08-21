@@ -35,6 +35,12 @@ struct Flags;
 /// Note that types are also just Def%s and will be hashed as well.
 class World {
 public:
+    /// World::get_loc together with its interned DbgKey, so pushing/popping a Loc never re-interns it.
+    struct CurrLoc {
+        Loc loc    = {};
+        DbgKey key = {};
+    };
+
     /// @name State
     ///@{
     struct State {
@@ -44,9 +50,9 @@ public:
 
         /// [Plain Old Data](https://en.cppreference.com/w/cpp/named_req/PODType)
         struct POD {
-            u32 curr_gid = 0;
-            u32 curr_sub = 0;
-            Loc loc      = {};
+            u32 curr_gid     = 0;
+            u32 curr_sub     = 0;
+            CurrLoc curr_loc = {};
             Sym name;
             mutable bool frozen = false;
         } pod;
@@ -57,7 +63,7 @@ public:
 #endif
         friend void swap(State& s1, State& s2) noexcept {
             using std::swap;
-            assert((!s1.pod.loc || !s2.pod.loc) && "Why is get_loc() still set?");
+            assert((!s1.pod.curr_loc.loc || !s2.pod.curr_loc.loc) && "Why is get_loc() still set?");
             swap(s1.pod, s2.pod);
 #ifdef MIM_ENABLE_CHECKS
             swap(s1.breakpoints, s2.breakpoints);
@@ -112,24 +118,11 @@ public:
 
     /// @name Loc
     ///@{
-    struct ScopedLoc {
-        ScopedLoc(World& world, Loc old_loc)
-            : world_(world)
-            , old_loc_(old_loc) {}
-        ~ScopedLoc() { world_.set_loc(old_loc_); }
+    using ScopedLoc = Restore<CurrLoc>;
 
-    private:
-        World& world_;
-        Loc old_loc_;
-    };
-
-    Loc get_loc() const { return state_.pod.loc; }
-    void set_loc(Loc loc = {}) { state_.pod.loc = loc; }
-    ScopedLoc push(Loc loc) {
-        auto sl = ScopedLoc(*this, get_loc());
-        set_loc(loc);
-        return sl;
-    }
+    Loc get_loc() const { return state_.pod.curr_loc.loc; }
+    DbgKey dbg_key() const { return state_.pod.curr_loc.key; } ///< World::get_loc, already interned.
+    [[nodiscard]] ScopedLoc push(Loc);
     ///@}
 
     /// @name Sym
@@ -221,11 +214,13 @@ public:
         ///@{
         Driver& driver() { return *driver_; }
         /// An annex's flags map to its full name and its Def.
+        auto& flags2entry() { return flags2entry_; }
         const auto& flags2entry() const { return flags2entry_; }
         auto entries() const { return flags2entry_ | std::views::values; }
         auto defs() const {
-            return entries() | std::views::transform([](Entry e) { return e.def; });
+            return entries() | std::views::transform([](const Entry& e) { return e.def; });
         }
+        auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
         size_t size() const { return flags2entry_.size(); }
         ///@}
@@ -269,7 +264,7 @@ public:
 
     /// annexes() + externals().muts() in this order.
     auto roots() const {
-        auto res = Vector<const Def*>(); // TODO use std::views::concat - once we have C++26
+        auto res = DefVec(); // TODO use std::views::concat - once we have C++26
         res.reserve(annexes().size() + externals().size());
         res.append_range(annexes().defs());
         res.append_range(externals().muts());
@@ -479,7 +474,7 @@ public:
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
     const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
-        return seq(is_pack, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body);
+        return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
     ///@}
@@ -519,17 +514,25 @@ public:
     const Lit* lit_univ(u64 level) { return lit(univ(), level); }
     const Lit* lit_univ_0() { return data_.lit_univ_0; }
     const Lit* lit_univ_1() { return data_.lit_univ_1; }
-    const Lit* lit_nat(nat_t a) { return lit(type_nat(), a); }
+    /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs reads it straight back out, so a plain
+    /// World::lit would hash-cons a Lit just to launder an integer. Worth ~4% of an `-Og` Debug compile.
+    static constexpr nat_t Num_Lit_Nats = 64;
+
+    const Lit* lit_nat(nat_t a) {
+        if (a >= Num_Lit_Nats) return lit(type_nat(), a);
+        if (auto cached = data_.lit_nats[a]) return cached;
+        return data_.lit_nats[a] = lit(type_nat(), a); // stays null while frozen - then we simply retry
+    }
     const Lit* lit_nat_0() { return data_.lit_nat_0; }
     const Lit* lit_nat_1() { return data_.lit_nat_1; }
     const Lit* lit_nat_max() { return data_.lit_nat_max; }
     const Lit* lit_idx_1_0() { return data_.lit_idx_1_0; }
     // clang-format off
-    const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); };
-    const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); };
-    const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); };
-    const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); };
-    const Lit* lit_i64() { return lit_nat(Idx::bitwidth2size(64)); };
+    const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); }
+    const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); }
+    const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); }
+    const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); }
+    const Lit* lit_i64() { return lit_nat(Idx::bitwidth2size(64)); }
     /// Constructs a Lit of type Idx of size @p size.
     /// @note `size = 0` means `2^64`.
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
@@ -604,12 +607,12 @@ public:
     // clang-format off
     const Def* type_bool() { return data_.type_bool; }
     const Def* type_i1()   { return data_.type_bool; }
-    const Def* type_i2()   { return type_int( 2);    };
-    const Def* type_i4()   { return type_int( 4);    };
-    const Def* type_i8()   { return type_int( 8);    };
-    const Def* type_i16()  { return type_int(16);    };
-    const Def* type_i32()  { return type_int(32);    };
-    const Def* type_i64()  { return type_int(64);    };
+    const Def* type_i2()   { return type_int( 2);    }
+    const Def* type_i4()   { return type_int( 4);    }
+    const Def* type_i8()   { return type_int( 8);    }
+    const Def* type_i16()  { return type_int(16);    }
+    const Def* type_i32()  { return type_int(32);    }
+    const Def* type_i64()  { return type_int(64);    }
     // clang-format on
     ///@}
 
@@ -721,6 +724,15 @@ public:
 private:
     /// @name Put into Sea of Nodes
     ///@{
+    /// Common tail of World::unify \& World::insert, right after World::allocate.
+    template<class T>
+    void stamp(T* def) {
+        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
+#ifdef MIM_ENABLE_CHECKS
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+#endif
+    }
+
     template<class T, class... Args>
     const T* unify(Args&&... args) {
         auto num_ops = T::Num_Ops;
@@ -732,11 +744,9 @@ private:
         auto state = move_.arena.defs.state();
         auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
-
-        if (auto loc = get_loc()) def->set(loc);
+        stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
         for (auto op : def->ops())
             assert(&op->world() == this && "op of new Def belongs to a different World");
@@ -777,10 +787,9 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
-        if (auto loc = get_loc()) def->set(loc);
+        stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         assert_emplace(move_.defs, def);
@@ -841,6 +850,22 @@ private:
         friend class World;
     };
 
+    /// Caches `[var -> arg]` as `f(0), .., f(n-1)`; fills *before* caching, as @p f may recursively reduce.
+    template<class F>
+    const Reduct* cache_reduct(const Var* var, const Def* arg, size_t n, F f) {
+        auto buf    = move_.arena.substs.allocate(sizeof(Reduct) + n * sizeof(const Def*), alignof(const Def*));
+        auto reduct = new (buf) Reduct(n);
+        for (size_t i = 0; i != n; ++i)
+            reduct->defs_[i] = f(i);
+        assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+        return reduct;
+    }
+
+    /// As above but for @p defs that have already been computed.
+    const Reduct* cache_reduct(const Var* var, const Def* arg, Defs defs) {
+        return cache_reduct(var, arg, defs.size(), [defs](size_t i) { return defs[i]; });
+    }
+
     struct Move {
         Move(Driver* driver)
             : annexes(driver) {}
@@ -883,8 +908,6 @@ private:
         const Tuple* tuple;
         const Nat* type_nat;
         const Idx* type_idx;
-        const Def* table_id;
-        const Def* table_not;
         const Lit* lit_univ_0;
         const Lit* lit_univ_1;
         const Lit* lit_nat_0;
@@ -892,7 +915,8 @@ private:
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
-        u32 curr_run = 0;
+        std::array<const Lit*, Num_Lit_Nats> lit_nats = {}; ///< @see World::lit_nat
+        u32 curr_run                                  = 0;
     } data_;
 
     friend void swap(World& w1, World& w2) noexcept {
