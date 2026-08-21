@@ -130,22 +130,12 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
 
     auto& w = world();
 
-    // Implicit insertion at a coercion site: @p val still expects implicit arguments while @p type is an
-    // *explicit* function type, so fill them in with Hole%s - just like World::implicit_app does at an
-    // application site.
-    // This is what makes passing a polymorphic function as an *argument* work, e.g. handing `%%affine.id` to a
-    // parameter of type `«r; %%affine.index» → «r; %%affine.index»` instead of having to write `%%affine.id @r`.
-    // @p type has to be a Pi of its own for this to be justified: if it is still a Hole we would commit before
-    // knowing what is expected, and if it is an aggregate we might eat the implicits of a value whose element
-    // type is itself implicit (e.g. `%%regex.conj (%%regex.empty)`, where `RE` is an implicit Pi).
-    if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {
-        while (auto ipi = Pi::isa_implicit(val_ty)) {
-            val    = w.app(val, w.mut_hole(ipi->dom()));
-            val_ty = val->unfold_type()->zonk();
-        }
-        if (type == val_ty) return val;
-    }
-
+    // Implicit insertion at a coercion site: @p val expects implicit arguments, but @p type is an
+    // *explicit* function type. Fill them with Hole%s, as World::implicit_app does at application sites.
+    // This lets polymorphic functions be passed as arguments, e.g. `%%affine.id` to a parameter of type
+    // `«r; %%affine.index» → «r; %%affine.index»`, without writing `%%affine.id @r`.
+    // Only do this when @p type is a Pi: if it is a Hole, we'd commit before knowing what's expected;
+    // if it's an aggregate, we might consume implicits belonging to the value's element type.
     if (auto sigma = type->isa<Sigma>()) {
         if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
 
@@ -331,8 +321,13 @@ bool Checker::check(const UMax* umax, const Def* def) {
     return true;
 }
 
+#ifndef DOXYGEN
+template bool Checker::alpha_<Checker::Check>(const Def*, const Def*);
+template bool Checker::alpha_<Checker::Test>(const Def*, const Def*);
+#endif
+
 /*
- * infer & check
+ * infer
  */
 
 const Def* Tuple::infer(World& w, Defs ops) {
@@ -350,16 +345,8 @@ const Def* Pi::infer(const Def* dom, const Def* codom) {
 
 const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
 
-#ifndef DOXYGEN
-template bool Checker::alpha_<Checker::Check>(const Def*, const Def*);
-template bool Checker::alpha_<Checker::Test>(const Def*, const Def*);
-#endif
-
 /*
- * check
- *
- * These used to be `virtual` on Def. Def has no vtable, so they switch on Def::node() with the former
- * overrides inlined; they live here rather than in def.cpp because that is where infer/Checker are.
+ * Def::check
  */
 
 const Def* Def::check(size_t i, const Def* def) {
