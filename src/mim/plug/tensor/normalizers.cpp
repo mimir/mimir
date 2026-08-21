@@ -279,6 +279,33 @@ const Def* normalize_if_static(const Def*, const Def*, const Def* arg) {
     return nullptr;
 }
 
+const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
+    // `%tensor.fastest_axis (r, t)` reflects which axis of `t` is the fastest-varying (unit-stride)
+    // axis of the tensor actually read once `fuse_tensor`'s read-through has absorbed a pure
+    // re-indexed read behind `t`: without one, `t`'s own last axis; behind one, found by evaluating
+    // the read's access map on distinct `%affine.constant` markers — normalization folds the map's
+    // extracts over the marker tuple, and a last component that does not fold back to a marker
+    // (reshape arithmetic) stays unknown. Unknown answers the sentinel `r`.
+    auto& w     = arg->world();
+    auto [r, t] = arg->projs<2>();
+    auto r_l    = Lit::isa<u64>(r);
+    if (!r_l || *r_l == 0) return r;
+    auto pr = is_pure_read(t);
+    if (!pr) return w.lit_nat(*r_l - 1);
+    // One level only: a source that is itself absorbed would need the composed analysis.
+    if (is_pure_read(pr->src) || Axm::isa<tensor::broadcast>(pr->src)) return r;
+    auto r_src = Lit::isa<u64>(pr->map->type()->as<Pi>()->codom()->arity());
+    if (!r_src || *r_src == 0) return r;
+    // Markers start at 1: 0 is what a broadcast map's `o#d · 0` folds to, so it must not be one.
+    auto markers = DefVec(*r_l, [&](size_t i) { return w.call<affine::constant>(w.lit_nat(i + 1)); });
+    auto last    = w.app(pr->map, w.tuple(markers))->proj(*r_src, *r_src - 1);
+    auto c       = Axm::isa<affine::constant>(last);
+    if (!c) return r;
+    auto v = Lit::isa<u64>(c->arg());
+    if (!v || *v < 1 || *v > *r_l) return r;
+    return w.lit_nat(*v - 1);
+}
+
 const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
     // `%tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
     auto& w = c->world();

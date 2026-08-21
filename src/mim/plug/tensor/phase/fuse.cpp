@@ -84,16 +84,6 @@ static bool reads_injectively(const Def* map) {
     return std::ranges::all_of(used, std::identity{});
 }
 
-/// Is `post` the (rebuilt) CPS identity `%tensor.id`, i.e. a lam `(x, extras) ↦ x` that returns its
-/// first argument (and hence has no epilogue inputs)?
-/// Recognized structurally, since the rewrite into this phase's world breaks pointer equality.
-static bool is_identity_post(const Def* post) {
-    auto lam = post->isa_mut<Lam>();
-    if (!lam || !lam->is_set()) return false;
-    auto app = lam->body()->isa<App>();
-    return app && app->callee() == lam->var(1) && app->arg() == lam->var(0)->proj(2, 0);
-}
-
 /// `inner ∘ outer`: feeds the outer op's read coordinates for one input into the inner op's access map.
 static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
     auto dom   = outer->type()->as<Pi>()->dom();
@@ -101,15 +91,6 @@ static const Def* compose_map(World& w, const Def* inner, const Def* outer) {
     auto lam   = w.mut_lam(dom, codom)->set("fused_map");
     lam->set(true, w.app(inner, w.app(outer, lam->var())));
     return lam;
-}
-
-/// Recognizes the (rebuilt) `tensor_copy` combiner `(acc, ys) ↦ ys#0`: the result is exactly the
-/// single input element, so a map_reduce built on it is a pure re-indexed read of that input.
-static bool is_copy_comb(const Def* comb) {
-    auto lam = comb->isa_mut<Lam>();
-    if (!lam || !lam->is_set()) return false;
-    auto app = lam->body()->isa<App>();
-    return app && app->callee() == lam->var(1) && app->arg() == lam->var(0)->proj(2, 1)->proj(1, 0);
 }
 
 /// A pure re-indexed read behind an input: the source tensor, the access map into it (over the
@@ -127,26 +108,12 @@ struct ReadThrough {
 /// composed behind the consuming slot's map. Such reads perform no computation, so reading through
 /// them needs neither an injectivity gate nor a consumer count.
 static std::optional<ReadThrough> read_through(World& w, const Def* value, const Def* slot_map) {
-    if (auto mr = Axm::isa<tensor::map_reduce_post>(value)) {
-        auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all, is_all] = mr->uncurry_args<8>();
-        auto nis_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 0));
-        auto nps_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 1));
-        // No reduction loops: the total loop count Rn equals the output rank Ro.
-        if (!nis_l || *nis_l != 1 || !nps_l || *nps_l != 0 || meta->proj(5, 2) != meta->proj(5, 3)) return {};
-        auto [So, Sr, sched] = shapes->projs<3>();
-        if (Sr != So) return {};
-        auto id_lam = map_out->isa_mut<Lam>();
-        if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) return {};
-        auto [comb, init, post] = comb_init->projs<3>();
-        if (!is_copy_comb(comb) || !is_identity_post(post)) return {};
-
+    if (auto pr = is_pure_read(value)) {
         // A source whose axes are all size 1 type-collapses to a plain scalar («1; T» ≡ T): the
         // fused op would carry an input the bufferization cannot represent - keep the copy instead.
-        auto src = is_all->proj(2, 0)->proj(1, 0);
-        if (!src->type()->isa<Arr>()) return {};
+        if (!pr->src->type()->isa<Arr>()) return {};
 
-        return ReadThrough{src, maps_all->proj(2, 0)->proj(1, 0), in_tys->proj(6, 0)->proj(1, 0),
-                           in_tys->proj(6, 1)->proj(1, 0), in_tys->proj(6, 2)->proj(1, 0)};
+        return ReadThrough{pr->src, pr->map, pr->T, pr->R, pr->S};
     }
 
     if (auto bc = Axm::isa<tensor::broadcast>(value)) {
@@ -256,8 +223,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         if (!inner) continue;
 
         auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
-              inner_is_all]
-            = inner->uncurry_args<8>();
+              inner_is_all]                                         = inner->uncurry_args<8>();
         auto [inner_To, inner_Tp, inner_Ro, inner_Rn, inner_TSched] = inner_meta->projs<5>();
         auto [inner_So, inner_Sr, inner_sched]                      = inner_shapes->projs<3>();
         auto [inner_comb, inner_init, inner_post]                   = inner_comb_init->projs<3>();
@@ -463,6 +429,21 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
 // duplicating the whole reduction loop nest.
 //
 // `callee`/`arg` are new-world (already rewritten): the caller iterates this on freshly fused apps.
+/// Is `map` the row-major reshape read `%tensor.reshape_map (s_in, s_out)` — the map that reads a
+/// PACKED producer (its output strip-mined to `s_in`) at the unpacked coordinates `s_out`?
+/// Decided by normalization: both `map` and the canonical unpack map are applied to the same probe
+/// variable; the reduced bodies are hash-consed, so pointer equality decides alpha-equivalence.
+static bool
+is_unpack_read(World& w, const Def* map, const Def* r_in, const Def* s_in, const Def* r_out, const Def* s_out) {
+    auto pi = map->type()->isa<Pi>();
+    if (!pi) return false;
+    auto expected = w.app(w.app(w.annex<tensor::reshape_map>(), {r_in, r_out}), {s_in, s_out});
+    auto epi      = expected->type()->isa<Pi>();
+    if (!epi || epi->dom() != pi->dom() || epi->codom() != pi->codom()) return false;
+    auto probe = w.mut_lam(pi->dom(), pi->codom()); // scratch binder: its var stands in for the cell vector
+    return w.app(map, probe->var()) == w.app(expected, probe->var());
+}
+
 const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
 
@@ -488,6 +469,10 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto id_out = map_out->isa_mut<Lam>();
     if (!id_out || !id_out->is_set() || id_out->body() != id_out->var()) return nullptr;
 
+    // A consumer that computes nothing (a pure re-indexed read) is read-through's job — sinking it
+    // would re-wrap the producer forever (the unpack path below emits exactly such a copy on top).
+    if (nis_nat == 1 && nps_nat == 0 && is_copy_comb(comb) && is_identity_post(post)) return nullptr;
+
     auto is = arg->proj(2, 0);
     auto ps = arg->proj(2, 1);
 
@@ -501,21 +486,38 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     };
 
     // Find the producer: the first input that is a map_reduce read elementwise over the whole
-    // domain — identity access map, input shape == So — and consumed by this map alone.
+    // domain — at identity coordinates (input shape == So), or through the row-major reshape that
+    // unpacks a strip-mined (packed) producer — and consumed by this map alone.
     u64 k0               = 0;
     const Def* inner_def = nullptr;
+    bool unpack          = false;
     for (u64 k = 0; k < nis_nat && !inner_def; ++k) {
-        auto id_in = maps->proj(nis_nat, k)->isa_mut<Lam>();
-        if (!id_in || !id_in->is_set() || id_in->body() != id_in->var()) continue;
-        if (Sis->proj(nis_nat, k) != So) continue;
         auto cand = is->proj(nis_nat, k);
         if (!Axm::isa<tensor::map_reduce_post>(cand)) continue;
         if (!sole_consumer(cand)) continue;
 
-        k0        = k;
-        inner_def = cand;
+        auto m     = maps->proj(nis_nat, k);
+        auto id_in = m->isa_mut<Lam>();
+        if (id_in && id_in->is_set() && id_in->body() == id_in->var() && Sis->proj(nis_nat, k) == So) {
+            k0        = k;
+            inner_def = cand;
+        } else if (Sis->proj(nis_nat, k) != So
+                   && is_unpack_read(w, m, Ris->proj(nis_nat, k), Sis->proj(nis_nat, k), Ro, So)) {
+            k0        = k;
+            inner_def = cand;
+            unpack    = true;
+        }
     }
     if (!inner_def) return nullptr;
+
+    // Reading through the unpack: the fused epilogue runs at the producer's PACKED cell
+    // coordinates, so every map carried over from this consumer — its other combiner inputs and
+    // its own epilogue inputs, all taking unpacked cell coordinates — is composed behind the
+    // inverse reshape (packed cell → unpacked cell).
+    const Def* to_cells = nullptr;
+    if (unpack)
+        to_cells
+            = w.app(w.app(w.annex<tensor::reshape_map>(), {Ro, Ris->proj(nis_nat, k0)}), {So, Sis->proj(nis_nat, k0)});
     auto inner = Axm::isa<tensor::map_reduce_post>(inner_def);
 
     auto [i_nis_nps, i_meta, i_shapes, i_in_tys, i_comb_init, i_map_out, i_maps_all, i_is_all]
@@ -553,14 +555,15 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
         nTps.emplace_back(Tis->proj(nis_nat, i));
         nRps.emplace_back(Ris->proj(nis_nat, i));
         nSps.emplace_back(Sis->proj(nis_nat, i));
-        nPmaps.emplace_back(maps->proj(nis_nat, i));
+        nPmaps.emplace_back(to_cells ? compose_map(w, maps->proj(nis_nat, i), to_cells) : maps->proj(nis_nat, i));
         nPis.emplace_back(is->proj(nis_nat, i));
     }
     for (u64 j = 0; j < nps_nat; ++j) {
         nTps.emplace_back(Tps->proj(nps_nat, j));
         nRps.emplace_back(Rps->proj(nps_nat, j));
         nSps.emplace_back(Sps->proj(nps_nat, j));
-        nPmaps.emplace_back(post_maps->proj(nps_nat, j));
+        nPmaps.emplace_back(to_cells ? compose_map(w, post_maps->proj(nps_nat, j), to_cells)
+                                     : post_maps->proj(nps_nat, j));
         nPis.emplace_back(ps->proj(nps_nat, j));
     }
 
@@ -602,6 +605,18 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     mr      = w.app(mr, {i_maps, w.tuple(nPmaps)});
     mr      = w.app(mr, {i_is, w.tuple(nPis)});
 
+    if (unpack) {
+        // The fused op still materializes PACKED; re-wrap it in the unpacking reshape — expanded
+        // via the impl so the wrapper is again a pure copy-mr that consumers read through (or a
+        // plain copy at a graph boundary). The copy-consumer guard above keeps this wrapper from
+        // being sunk right back.
+        auto impl = w.annex<tensor::reshape_impl>();
+        impl      = w.app(impl, {Tp, Ris->proj(nis_nat, k0), Ro});
+        impl      = w.app(impl, Sis->proj(nis_nat, k0));
+        impl      = w.app(impl, So);
+        mr        = w.app(impl, mr);
+    }
+
     return mr;
 }
 
@@ -631,7 +646,7 @@ const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
 
     bool changed = false;
     auto rewire  = [&](DefVec& T, DefVec& R, DefVec& S, DefVec& m, DefVec& v, u64 n, const Def* Ts, const Def* Rs,
-                      const Def* Ss, const Def* ms, const Def* vs) {
+                       const Def* Ss, const Def* ms, const Def* vs) {
         for (u64 i = 0; i < n; ++i) {
             T[i] = Ts->proj(n, i);
             R[i] = Rs->proj(n, i);
@@ -754,7 +769,15 @@ const Def* Fuse::rewrite_imm_App(const App* app) {
         auto result = cur ? cur : RWPhase::rewrite_imm_App(app);
         // Remember which old app this (possibly fused) map_reduce replaces, so later epilogue
         // rounds of its consumers can look up its consumer count.
-        if (is_mr(result)) new2old_[result] = app;
+        if (is_mr(result)) {
+            new2old_[result] = app;
+            // An epilogue sink into a PACKED producer wraps the fused op in an unpack copy (see
+            // fuse_epilogue). Register the wrapped producer under the same old app — its sole
+            // consumer is the wrapper, which stands for this app — so the NEXT trailing map (which
+            // producer-fuses the wrapper away and reads the packed op directly) can sink too.
+            if (auto pr = is_pure_read(result); pr && is_mr(pr->src) && !new2old_.contains(pr->src))
+                new2old_[pr->src] = app;
+        }
         return result;
     }
     return RWPhase::rewrite_imm_App(app);

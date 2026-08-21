@@ -115,9 +115,10 @@ fun %tensor.id {T: *} (x: T, _: [])@tt: T = return x;
 /// to run.
 let SchedT = [N: *] → ([vdim unroll: Nat] → N) → N;
 
-/// The canonical schedule: pick `vdim`, the parallel dim to run innermost with unit stride over a
-/// row of accumulators (`vdim ≥ Rn` means "none"), and `unroll`, the number of trailing
-/// reduction dims to unroll into straight-line code.
+/// The canonical schedule: pick `vdim`, the dim to run innermost as the unit-stride vector loop
+/// (a parallel dim runs over a row of accumulators; the innermost REDUCTION dim selects the
+/// reduction-vectorized nest, see %%btensor.mr_nest; `vdim ≥ Rn` means "none"), and `unroll`, the
+/// number of trailing reduction dims to unroll into straight-line code.
 /// An alias for %%btensor.mk_sched, which `btensor` owns for the same reason it owns %%btensor.Ring.
 let %tensor.mk_sched = %btensor.mk_sched;
 ///
@@ -130,6 +131,19 @@ let %tensor.mk_sched = %btensor.mk_sched;
 /// is the only safe choice. This is what lets one selector serve compile-time and runtime extents
 /// without staging annotations at the call site.
 axm %tensor.if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
+///
+/// ### %%tensor.fastest_axis
+///
+/// Layout reflection for schedule selectors: which axis of the rank-`r` tensor `t` is the
+/// fastest-varying (unit-stride) axis of the tensor that is ACTUALLY read once `fuse_tensor`'s
+/// read-through has absorbed a pure re-indexed read behind `t` — behind a transpose the source's
+/// trailing axis maps back to a different axis of `t`. A plain tensor (anything that is not such a
+/// read, including a still-symbolic operand) answers its own last axis `r − 1`; an undecidable
+/// read (composed arithmetic like reshape, a nested read chain) answers the sentinel `r`.
+/// This axiom only reflects operand structure the frontend cannot inspect itself — the schedule
+/// DECISION built on the answer stays in the IR next to the op (see %%tensor.dot_product_impl).
+/// `tensor::Lower` applies it at the staging point where the op's operands are concrete.
+axm %tensor.fastest_axis: {T: *} → [r: Nat, t: T] → Nat, normalize_fastest_axis;
 ///
 /// ### %%tensor.map_reduce
 ///
@@ -228,8 +242,9 @@ lam %tensor.materialize (t: Tileable): t#Out (t#Ro, t#So) =
     lam id_o (oo: «t#Ro; %affine.index», o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «t#Ro; %affine.index» = oo;
     t#retile (t#Ro, t#Rr) (t#So, t#Sr, t#vdim, t#unroll) (id_i, id_o);
 
-/// vectorize: run the parallel dim `d` as the innermost loop, inside the reduction loops, over a
-/// row of accumulators — the unit-stride vectorization dim (per-cell fold order is unchanged).
+/// vectorize: run dim `d` as the innermost, unit-stride vector loop (per-cell fold order is
+/// unchanged). A parallel `d` runs inside the reduction loops over a row of accumulators; the
+/// innermost reduction dim as `d` selects %%btensor.mr_nest's reduction-vectorized nest instead.
 lam vectorize (t: Tileable, d: Nat): Tileable =
     (t#Out, t#Ro, t#Rr, t#So, t#oax, t#Sr, d, t#unroll, t#retile);
 
@@ -434,11 +449,11 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
                                    ff);
     unroll_trailing (vectorize_if (%tensor.strip_mine_par (t, 2, (1, bs)#block), vec, (4, 3)#block), u);
 
-/// The dot-product schedule, selected from the op's parameters: the last output dim is unit-stride
-/// in the right operand and invariant in the left one, so it runs innermost over a row of
-/// accumulators (GEMM-style vectorization). The innermost contraction is register-blocked — strip-
-/// mined by 4 and the tile unrolled — when its extent is compile-time known and divisible; an
-/// extent still open at lowering time (a runtime shape) takes the neutral tile (`ts = 1`) via
+/// The dot-product schedule for a contraction whose right operand stores the last output dim
+/// unit-stride (A·B): that dim is invariant in the left operand, so it runs innermost over a row
+/// of accumulators (GEMM-style vectorization). The innermost contraction is register-blocked —
+/// strip-mined by 4 and the tile unrolled — when its extent is compile-time known and divisible;
+/// an extent still open at lowering time (a runtime shape) takes the neutral tile (`ts = 1`) via
 /// %%tensor.if_static, so one selector serves static and dynamic shapes.
 lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
     let r  = %core.nat.add (t#Ro, t#Rr);
@@ -446,6 +461,47 @@ lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
     let K  = t#Sr#(%core.idx r 0 d);
     let ts = %tensor.if_static (K, (1, 4)#(%core.ncmp.e (%core.nat.mul (%core.nat.div (K, 4), 4), K)), 1);
     unroll_trailing (%tensor.strip_mine_red (vectorize (t, %core.nat.sub (r_out, 1)), d, ts), 1);
+
+/// The dot-product schedule for a contraction whose right operand stores the CONTRACTION
+/// unit-stride per output cell (x·Wᵀ — the fc/linear layout, where `fuse_tensor`'s read-through
+/// absorbs the weight transpose into the access map): vectorizing the last output dim would read a
+/// different weight row per lane (gathers), so instead the contraction itself runs as the vector
+/// loop — unit-stride in both the input row and each weight row, folded with a horizontal sum —
+/// and a small block of output cells is unroll-and-jammed into its body over independent vector
+/// accumulators (see %%btensor.mr_nest's reduction-vectorized branch, selected by a `vdim` naming
+/// the innermost reduction dim; `unroll` names the jam width there). The block is 2-D: the last
+/// output dim strip-mined by the largest divisor ≤ 4 (jammed lanes share the input-row loads) ×
+/// the second-to-last strip-mined by 2 (jammed rows share the weight-row loads — without this the
+/// whole weight matrix re-streams once per batch row). An extent still open at lowering time, an
+/// indivisible one, and the missing row dim of a rank-1 output all take the neutral split (`1`),
+/// whose size-1 jam dim folds away — one selector serves every case.
+lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
+    let r   = %core.nat.add (t#Ro, t#Rr);
+    // A block counts only when it divides AND leaves a non-trivial outer dim (`b < k`): an exact
+    // split's leading size-1 axis would type-collapse the packed output («1; T» ≡ T).
+    lam blk_by (k b: Nat): Bool = %core.bit2.and_ 2 (%core.ncmp.e (%core.nat.mul (%core.nat.div (k, b), b), k),
+                                                     %core.ncmp.l (b, k));
+    let d   = %core.nat.sub (r_out, 1);
+    let n   = t#So#(%core.idx (t#Ro) 0 d);
+    let bs  = %tensor.if_static (n, ((1, 2)#(blk_by (n, 2)), 4)#(blk_by (n, 4)), 1);
+    let t2  = %tensor.strip_mine_par (t, d, bs);
+    let d2  = %core.nat.sub (r_out, 2);
+    let m   = t#So#(%core.idx (t#Ro) 0 d2);
+    let ms  = (1, %tensor.if_static (m, (1, 2)#(blk_by (m, 2)), 1))#(%core.ncmp.le (2, r_out));
+    let t3  = %tensor.strip_mine_par (t2, d2, ms);
+    // Dims now (…, m/ms, ms, n/bs, bs | red): swap ms ↔ n/bs so both jam dims are the trailing
+    // parallel pair. Identity for a rank-1 output, where the neutral split already sits next to
+    // `bs` ((n/bs, 1, bs | red)). `r3` is spelled from t3's own (positional) fields so the pack's
+    // length is definitionally the «t#Ro + t#Rr» the dependent `interchange` domain expects —
+    // `%%core.nat.add` does not reassociate an equivalent spelling.
+    let r3   = %core.nat.add (t3#1_9, t3#2_9);
+    let swap = %core.ncmp.le (2, r_out);
+    let pa   = %core.nat.sub (r_out, 1);
+    let pb   = r_out;
+    let perm = ‹j: r3; let jj = %core.bitcast Nat j;
+                       %core.select (%core.bit2.and_ 2 (swap, %core.ncmp.e (jj, pa)), pb,
+                       %core.select (%core.bit2.and_ 2 (swap, %core.ncmp.e (jj, pb)), pa, jj))›;
+    unroll_trailing (vectorize (%tensor.interchange (t3, perm), %core.nat.sub (r3, 1)), 2);
 
 /// The pooling schedule: unroll the window while it stays within budget. Pooling reads its single
 /// input in every loop dim (no broadcast operand), so `ow` scores [stride_w = 1] against an
@@ -494,14 +550,14 @@ axm %tensor.reshape: {T: *, r_in r_out: Nat}
                    → «s_out; T», normalize_reshape;
 
 /// `o ↦ delinearize(linearize(o, s_out), s_in)`: the row-major output→input index map.
-lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat»)
+lam %tensor.reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat»)
                 (o: «r_out; %affine.index»): «r_in; %affine.index» =
     %affine.delinearize (%affine.linearize (o, s_out), s_in);
 
 lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
                          (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
     %tensor.map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
-        %affine.id (reshape_map (s_in, s_out),) input;
+        %affine.id (%tensor.reshape_map (s_in, s_out),) input;
 ///
 /// ### %%tensor.slice
 ///
@@ -754,8 +810,16 @@ axm %tensor.dot_product: [R: %tensor.Ring]
 /// already when this `lam` is β-reduced: the subscript rows below are built with `%%vec.diff`/`%%vec.fold.l`,
 /// whose normalizers decline to fold over a non-literal rank, and nothing re-normalizes the body once a Hole is
 /// resolved later. `{s1 s2}` has no such problem and stays implicit.
-/// The `tensor::Lower` phase re-applies the axiom's groups positionally, so the two curry shapes still match.
+/// The `tensor::Lower` phase re-applies the axiom's groups positionally, so the two curry shapes still match —
+/// except for the leading `fastest_2`, which has no axiom counterpart: it is `%%tensor.fastest_axis` of the
+/// right operand, pre-applied by `Lower` at the staging point where that operand is concrete. The schedule
+/// DECISION built on it lives below: a contracted fastest axis (x·Wᵀ, e.g. behind a weight transpose the
+/// read-through absorbs) selects `dot_schedule_kvec`, anything else `dot_schedule`. The selected schedule may
+/// strip-mine an output dim (row/output-cell blocking), packing the materialized tensor along that axis; the
+/// row-major reshape restores `s_out` (an identity for the neutral split, and absorbed into the consumers'
+/// access maps by `fuse_tensor`'s read-through in a fused graph).
 lam %tensor.dot_product_impl
+  (fastest_2: Nat)
   (R: %tensor.Ring) (r1 r2: Nat) {nc nb: Nat}
   (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
   {s1: «r1; Nat», s2: «r2; Nat»} (a: «s1; R#T», b: «s2; R#T»)
@@ -778,15 +842,28 @@ lam %tensor.dot_product_impl
       let s_red    = ‹i: nc; s1#(c1#i)›;
       let s_full   = %vec.cat (s_out, s_red);
       let n_loops  = %core.nat.add (r_out, nc);
-      // Schedule (frontend, selected from the parameters — see `dot_schedule`).
-      %tensor.materialize (dot_schedule r_out (
-          %tensor.mr_tileable @2 @(R#T, R#T, r_out, nc)
-              (s_out, ‹i: r_out; %core.bitcast Nat i›, s_full)
-              @((R#T, R#T), (r1, r2), (s1, s2))
-              (f, R#_0, %tensor.id @(R#T))
-              (%tensor.proj_map @(n_loops, r_out) ‹i: r_out; %core.bitcast Nat i›)
-              (%tensor.proj_map @(n_loops, r1) subs_1, %tensor.proj_map @(n_loops, r2) subs_2)
-              (a, b)));
+      let t        = %tensor.mr_tileable @2 @(R#T, R#T, r_out, nc)
+                         (s_out, ‹i: r_out; %core.bitcast Nat i›, s_full)
+                         @((R#T, R#T), (r1, r2), (s1, s2))
+                         (f, R#_0, %tensor.id @(R#T))
+                         (%tensor.proj_map @(n_loops, r_out) ‹i: r_out; %core.bitcast Nat i›)
+                         (%tensor.proj_map @(n_loops, r1) subs_1, %tensor.proj_map @(n_loops, r2) subs_2)
+                         (a, b);
+      // Schedule (frontend, selected from the parameters — see `dot_schedule`/`dot_schedule_kvec`):
+      // vectorize the contraction iff it is the right operand's effective fastest axis (x·Wᵀ);
+      // otherwise the last output dim is unit-stride in that operand (A·B) and runs as the vector
+      // loop. Dispatched as an extract over thunks, each materializing its own concretely-scheduled
+      // Tileable: behind a stuck extract the record's `Out` field would not reduce, so the
+      // reshape's input could not be checked. `sched#3_9` is the scheduled Tileable's (possibly
+      // packed) output shape `So`.
+      let (kvec, kvi) = %vec.first %core.ncmp.e (‹i: nc; %core.bitcast Nat (c2#i)›, fastest_2);
+      lam go_n    (u: []): «s_out; R#T» =
+          let sched = dot_schedule r_out t;
+          %tensor.reshape (sched#3_9) s_out (%tensor.materialize sched);
+      lam go_kvec (u: []): «s_out; R#T» =
+          let sched = dot_schedule_kvec r_out t;
+          %tensor.reshape (sched#3_9) s_out (%tensor.materialize sched);
+      (go_n, go_kvec)#kvec ();
 ///
 /// ### %%tensor.product_2d
 ///
@@ -803,8 +880,8 @@ axm %tensor.product_2d: [R: %tensor.Ring]
 /// gets built over non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the
 /// Hole%s are resolved. The result type-checks but keeps the whole `%%vec.*` scaffolding inside its access maps
 /// (`%%refly.equiv.struc_eq` in lit/tensor/dot_product.mim pins this down). Passing literals up front folds it away.
-lam %tensor.product_2d_impl (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
-        = %tensor.dot_product_impl R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
+lam %tensor.product_2d_impl (fastest_2: Nat) (R: %tensor.Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
+        = %tensor.dot_product_impl fastest_2 R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
 
 ///
 /// ### %%tensor.bmm
@@ -817,8 +894,8 @@ axm %tensor.bmm: [R: %tensor.Ring]
               → «B, M, N; R#T»;
 
 /// The `{r1 r2}`/`{s1 s2}` groups are explicit for the same reason as in %%tensor.product_2d_impl.
-lam %tensor.bmm_impl (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
-        = %tensor.dot_product_impl R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
+lam %tensor.bmm_impl (fastest_2: Nat) (R: %tensor.Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
+        = %tensor.dot_product_impl fastest_2 R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
 
 ///
 /// ### %%tensor.transpose

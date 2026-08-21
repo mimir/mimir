@@ -2,8 +2,13 @@
 
 // The full linear-layer pattern: x·Wᵀ + tiled bias, then a trailing unary. The transpose, reshape
 // and repeat are pure re-indexed reads (copy-combiner map_reduces), so they are absorbed into the
-// access maps of the consuming ops; bias-add and unary compose into the product's `post` epilogue.
-// A single map_reduce remains, reading a, b and bias directly.
+// access maps of the consuming ops. The transposed weight selects the reduction-vectorized
+// schedule (`dot_schedule_kvec`), whose 2-D output-cell jam materializes the product PACKED along
+// the strip-mined axes. The epilogue direction sinks THROUGH the restoring reshape (fuse_epilogue
+// recognizes the row-major unpack read): bias-add and unary land in the contraction's `post` —
+// with the bias map composed behind the inverse reshape — and the fused op is re-wrapped in the
+// unpacking copy. Exactly two map_reduces remain: the contraction (reading a, b and bias directly,
+// bias as a `post` input) and the pure unpack copy at the graph boundary.
 plugin tensor;
 plugin core;
 plugin opt;
@@ -26,5 +31,6 @@ lam extern _compile (): %compile.Phase =
         %compile.cleanup,
     );
 
+// CHECK: %tensor.map_reduce
 // CHECK: %tensor.map_reduce
 // CHECK-NOT: %tensor.map_reduce

@@ -132,7 +132,10 @@ lam %btensor.NestT (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *): *
 /// The scheduled nest builder: `unroll` trailing reduction dims run as compile-time-unrolled
 /// straight-line code; a valid `vdim` (a parallel dim, currently the last one, of extent ≠ 1) runs
 /// as the innermost loop, inside the reduction loops, over a row-accumulator buffer — the
-/// unit-stride vectorization dim. Per-cell fold order is untouched by either transform.
+/// unit-stride vectorization dim. A `vdim` naming the innermost REDUCTION dim instead selects the
+/// reduction-vectorized nest (see the `redvec` branch below): the contraction runs as the vector
+/// loop with the last parallel dim unroll-and-jammed into its body. Per-cell fold order is
+/// untouched by any of these transforms.
 lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) (vdim unroll: Nat)
                    : %btensor.NestT (ro, rr, Sr, To, U) =
     let r    = %core.nat.add (ro, rr);
@@ -236,8 +239,69 @@ lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) 
                     (range_nest (r, Sr) U (vec_for @U, sd_c, ro) fill)) (pref, mem, u, s1);
             (range_nest (r, Sr) U (affine_for @U, 0, pd_c) at_block) (‹r; 0I32›, mem1, u0, done);
 
+        // REDUCTION-VECTORIZED (`ro ≤ vdim < r`: the schedule names the innermost REDUCTION dim):
+        // the contraction itself runs as the innermost (vector) loop. For a contraction whose
+        // operands store the contracted axis unit-stride per output cell (x·Wᵀ — the fc/linear
+        // layout, where each output neuron folds one weight ROW), both operands stream unit-stride
+        // and the fold is a reduction the backend vectorizes with a horizontal sum (permitted by
+        // its reassociation flags) — where vectorizing an output dim would gather across weight
+        // rows. Here `unroll` names the JAM WIDTH instead of a trailing window (the contraction
+        // cannot be both looped and unrolled): the trailing `unroll` parallel dims — small
+        // strip-mined blocks of output cells, see `dot_schedule_kvec` — are unrolled INTO the
+        // vector body (unroll-and-jam) over a flattened «Sb; To» accumulator panel. The jammed
+        // cells share every load that is invariant in one of the jam dims (the input row across
+        // output neurons, the weight row across batch rows), and each panel cell is an independent
+        // reduction chain that gets its own vector accumulator. Clamps as above: the non-selected
+        // branch is still elaborated, and the jam extents are additionally clamped to 1 (`Sr_rv`)
+        // so the elaborated unrolls stay cheap.
+        let rv_j      = (1, unroll)#(%core.ncmp.le (1, unroll));
+        let rv_bd     = (0, %core.nat.sub (ro, rv_j))#(%core.ncmp.le (rv_j, ro));
+        let rv_vd     = (0, vdim)#(%core.ncmp.l (vdim, r));
+        let redvec_ok = %core.bit2.and_ 2 (%core.ncmp.le (ro, vdim),
+                        %core.bit2.and_ 2 (%core.ncmp.e (%core.nat.add (vdim, 1), r),
+                                           %core.ncmp.le (rv_j, ro)));
+        let Sr_rv     = ‹j: r; let jj  = %core.bitcast Nat j;
+                               let jam = %core.bit2.and_ 2 (%core.ncmp.le (rv_bd, jj), %core.ncmp.l (jj, ro));
+                               (Sr#j, (1, Sr#j)#redvec_ok)#jam›;
+        lam rv_mul (d: Nat, acc: Nat): Nat = %core.nat.mul (acc, Sr_rv#(%core.idx r 0 d));
+        let rv_ds = ‹i: rv_j; %core.nat.add (rv_bd, %core.bitcast Nat i)›;
+        let Sb    = %vec.fold.r @(Nat, Nat) @rv_j rv_mul (rv_ds, 1);
+
+        con redvec (mem0: %mem.M 0, u0: U, done: Cn [%mem.M 0, U])@tt =
+            // Flatten a loop vector's jam coordinates into the panel (any per-dim-bounded
+            // linearization is a bijection into «Sb»; the exact order is internal to the panel).
+            lam rv_lin (pref: «r; I32») (d: Nat, acc: I32): I32 =
+                %core.wrap.add 0 (%core.wrap.mul 0 (acc, %core.bitcast I32 (Sr_rv#(%core.idx r 0 d))),
+                                  pref#(%core.idx r 0 d));
+            let bi_of = lm (pref: «r; I32»): Idx Sb =
+                %core.conv.u Sb (%vec.fold.r @(I32, Nat) @rv_j (rv_lin pref) (rv_ds, 0I32));
+            let (mem1, panel) = %buffer.alloc (1, Sb, To) mem0;
+            con at_block (pref: «r; I32», mem: %mem.M 0, u: U, k: Cn [%mem.M 0, U]) =
+                con fill (pref2: «r; I32», memf: %mem.M 0, uf: U, kf: Cn [%mem.M 0, U]) =
+                    let (memf2, panel2) = %buffer.write (1, Sb, To) (memf, panel, bi_of pref2, init);
+                    kf (memf2, uf);
+                con at_point (pref2: «r; I32», memp: %mem.M 0, up: U, kp: Cn [%mem.M 0, U]) =
+                    let (memp1, acc0) = %buffer.read (1, Sb, To) (memp, panel, bi_of pref2);
+                    con after_cell (memp2: %mem.M 0, accn: To) =
+                        let (memp3, panel3) = %buffer.write (1, Sb, To) (memp2, panel, bi_of pref2, accn);
+                        kp (memp3, up);
+                    // `cell` directly — `unroll` names the jam width here, not a trailing window.
+                    cell (memp1, acc0, pref2, after_cell);
+                con wb_cell (pref2: «r; I32», memw: %mem.M 0, uw: U, kw: Cn [%mem.M 0, U]) =
+                    let (memw1, v) = %buffer.read (1, Sb, To) (memw, panel, bi_of pref2);
+                    wb (memw1, uw, v, pref2, kw);
+                con s2 (memB: %mem.M 0, uB: U) =
+                    (range_unroll (r, Sr_rv) U (rv_bd, ro) wb_cell) (pref, memB, uB, k);
+                con s1 (memA: %mem.M 0, uA: U) =
+                    (range_nest (r, Sr) U (affine_for @U, ro, rv_vd)
+                        (range_nest (r, Sr) U (vec_for @U, rv_vd, %core.nat.add (rv_vd, 1))
+                            (range_unroll (r, Sr_rv) U (rv_bd, ro) at_point)))
+                        (pref, memA, uA, s2);
+                (range_unroll (r, Sr_rv) U (rv_bd, ro) fill) (pref, mem, u, s1);
+            (range_nest (r, Sr) U (affine_for @U, 0, rv_bd) at_block) (‹r; 0I32›, mem1, u0, done);
+
         con run (mem0: %mem.M 0, u0: U, done: Cn [%mem.M 0, U])@tt =
-            (((classic, vectorized)#vec_ok, blocked)#block_ok) (mem0, u0, done);
+            ((((classic, vectorized)#vec_ok, blocked)#block_ok, redvec)#redvec_ok) (mem0, u0, done);
         run;
     nest;
 ///
@@ -277,8 +341,10 @@ axm %btensor.map_reduce_post: {nis nps: Nat}
 fun %btensor.id {T: *} (mem: %mem.M 0, x: T, _: [])@tt: [%mem.M 0, T] = return (mem, x);
 
 /// The canonical SCHEDULE value: a chooser over the target's loop-nest builder — pick `vdim`, the
-/// parallel dim to run innermost with unit stride over a row of accumulators (`vdim ≥ Rn` means
-/// "none"), and `unroll`, the number of trailing reduction dims to unroll into straight-line code.
+/// dim to run innermost as the unit-stride vector loop (a parallel dim runs over a row of
+/// accumulators; the innermost REDUCTION dim selects the reduction-vectorized nest, see
+/// %%btensor.mr_nest; `vdim ≥ Rn` means "none"), and `unroll`, the number of trailing reduction
+/// dims to unroll into straight-line code.
 /// %%tensor.mk_sched is an alias for this lam: `btensor` owns it for the same reason it owns %%btensor.Ring.
 lam %btensor.mk_sched (vdim unroll: Nat) (N: *) (mk: [vdim unroll: Nat] → N): N = mk (vdim, unroll);
 ///

@@ -28,12 +28,12 @@ let dot = %tensor.map_reduce_post @(2, 0) @(Nat, Nat, 2, 4, [N: *] → ([vdim un
     mo_r
     ((ma_r, mb_r), ())
     ((m, m), ());
-let dotd = %tensor.dot_product_impl R (2, 2) (1₂, 0₂, (), ()) (m, m);
-let dot2d = %tensor.product_2d_impl R (m, m);
+let dotd = %tensor.dot_product_impl 1 R (2, 2) (1₂, 0₂, (), ()) (m, m);
+let dot2d = %tensor.product_2d_impl 1 R (m, m);
 
 let m3d = (((1, 2), (3, 4)), ((5, 6), (7, 8)));
-let dot3d = %tensor.bmm_impl R (m3d, m3d);
-let dotd3 = %tensor.dot_product_impl R (3, 3) (2₃, 1₃, 0₃, 0₃) (m3d, m3d);
+let dot3d = %tensor.bmm_impl 2 R (m3d, m3d);
+let dotd3 = %tensor.dot_product_impl 2 R (3, 3) (2₃, 1₃, 0₃, 0₃) (m3d, m3d);
 
 let _ = %refly.equiv.struc_eq (dot, dotd);
 let _ = %refly.equiv.struc_eq (dot2d, dotd);

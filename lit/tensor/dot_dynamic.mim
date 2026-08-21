@@ -15,7 +15,7 @@ lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
 
 // CHECK-DAG: fun extern mm_dyn
 fun extern mm_dyn {m k l: Nat} (a: «m, k; Nat», b: «k, l; Nat»): «m, l; Nat» =
-    return (%tensor.product_2d_impl (nat_ring ()) (a, b));
+    return (%tensor.product_2d_impl 1 (nat_ring ()) (a, b));
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
