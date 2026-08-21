@@ -490,8 +490,8 @@ public:
     Vars free_vars() const;
     Vars free_vars();              ///< As above but drives (and caches) the fixed-point iteration for *mutables*.
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
-    bool is_open() const;          ///< Has free_vars()? Same as has_free_vars().
-    bool is_closed() const;        ///< Has no free_vars()? Same as `!has_free_vars()`.
+    bool is_open() const { return has_free_vars(); } ///< Same as has_free_vars().
+    bool is_closed() const;                          ///< Has no free_vars()? Same as `!has_free_vars()`.
 
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
