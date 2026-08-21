@@ -434,30 +434,14 @@ public:
     ///@}
 
 protected:
+    void start() override;
+
     /// @name Rewrite
     ///@{
+    using Rewriter::rewrite; ///< Keeps the `Defs` overload visible next to the override below.
     /// Rewrites a *root* - i.e.\ an annex or an external.
     /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
     virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
-
-    /// Cheap **O(1)** pruning hook: `true` iff @p def's subtree provably cannot change.
-    /// Defaults to pruning nothing.
-    virtual bool skip(const Def*) const { return false; }
-
-    /// The skip() predicate for phases that only rewrite mutables and/or substitute Var%s:
-    /// a *closed* immutable subtree contains neither.
-    /// @warning Checking only local_muts() is **not** enough: a substitution installed via Rewriter::map would silently
-    /// be dropped in a mut-free subtree that still mentions the substituted Var.
-    static bool skip_closed_imm(const Def* def) {
-        return !def->isa_mut() && def->local_muts().empty() && def->local_vars().empty();
-    }
-
-    void start() override;
-    using Rewriter::rewrite; ///< Keeps the `Defs` overload visible next to the override below.
-    /// Applies skip() and then delegates to rewrite_def(); override the latter, not this.
-    const Def* rewrite(const Def* def) final { return skip(def) ? def : rewrite_def(def); }
-    /// The actual rewrite hook - skip() has already said `false` for @p def.
-    virtual const Def* rewrite_def(const Def* def) { return Rewriter::rewrite(def); }
     /// Keeps @p mut's identity and Def::set%s its ops anew iff rewriting them changed anything.
     const Def* rewrite_mut(Def* mut) override;
     ///@}

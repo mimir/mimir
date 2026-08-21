@@ -78,11 +78,9 @@ private:
     void analyze(const Def*);
     void visit(const Def*, Lattice);
 
-    /// η only ever applies to a *mutable* Lam, so a closed immutable is untouchable.
-    bool skip(const Def* def) const final { return skip_closed_imm(def); }
     /// An annex or external must keep its shape: neither η-reduce nor η-expand a root.
     const Def* rewrite_root(const Def* def) final { return rewrite_no_eta(def); }
-    const Def* rewrite_def(const Def*) final;
+    const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_imm_Var(const Var*) final;
     /// η-reduce wrappers but never η-expand - used for callee (Known) positions, where expansion must not happen

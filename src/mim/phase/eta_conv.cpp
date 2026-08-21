@@ -34,7 +34,9 @@ void EtaConv::visit(const Def* def, Lattice l) {
     analyze(def);
 }
 
-const Def* EtaConv::rewrite_def(const Def* old_def) {
+const Def* EtaConv::rewrite(const Def* old_def) {
+    if (old_def->is_ground()) return old_def;
+
     if (auto lam = old_def->isa<Lam>()) {
         if (auto f = lam->eta_reduce()) {
             // η-redex `λx.f x`: reduce unless `f` wants to stay expanded.
