@@ -122,10 +122,10 @@ void Analysis::drain() {
 }
 
 /*
- * RWPhase
+ * RWBase
  */
 
-void RWPhase::start() {
+void RWBase::start() {
     auto max_iters = driver().flags().max_fp_iters;
     bool todo      = true;
     for (uint32_t i = 0; todo; ++i) {
@@ -134,24 +134,25 @@ void RWPhase::start() {
         todo = analyze();
     }
 
-    // Count the Def%s each half of the rebuild creates in the new world.
-    // The annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the program.
-    auto gid = new_world().curr_gid();
-    for (const auto& [flags, e] : old_world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
-    profile_count("rebuild.defs.annex", new_world().curr_gid() - gid);
+    // Count the Def%s each half of the walk creates.
+    // For an RWPhase the annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the
+    // program - which is exactly why an InplaceRWPhase skips it by default.
+    auto gid = Rewriter::world().curr_gid();
+    if (rewrite_annexes())
+        for (const auto& [flags, e] : Phase::world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+    profile_count("rw.defs.annex", Rewriter::world().curr_gid() - gid);
 
     bootstrapping_ = false;
 
-    gid = new_world().curr_gid();
-    for (auto mut : old_world().externals().muts())
+    gid = Rewriter::world().curr_gid();
+    // mutate(): an in-place rewrite_external may re-externalize, which would invalidate a live iterator.
+    for (auto mut : Phase::world().externals().mutate())
         rewrite_external(mut);
-    profile_count("rebuild.defs.external", new_world().curr_gid() - gid);
-
-    swap(old_world(), new_world());
+    profile_count("rw.defs.external", Rewriter::world().curr_gid() - gid);
 }
 
-bool RWPhase::analyze() {
+bool RWBase::analyze() {
     if (analysis_) {
         analysis_->reset();
         analysis_->run();
@@ -161,37 +162,27 @@ bool RWPhase::analyze() {
     return false;
 }
 
-void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) { new_world().annexes().attach(f, sym, rewrite(def)); }
+/*
+ * RWPhase
+ */
+
+void RWPhase::start() {
+    RWBase::start();
+    swap(old_world(), new_world());
+}
+
+void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
+    new_world().annexes().attach(f, sym, rewrite_root(def));
+}
 
 void RWPhase::rewrite_external(Def* old_mut) {
-    auto new_mut = rewrite(old_mut)->as_mut();
+    auto new_mut = rewrite_root(old_mut)->as_mut();
     if (old_mut->is_external()) new_mut->externalize();
 }
 
 /*
  * InplaceRWPhase
  */
-
-void InplaceRWPhase::start() {
-    auto max_iters = driver().flags().max_fp_iters;
-    bool todo      = true;
-    for (uint32_t i = 0; todo; ++i) {
-        if (i >= max_iters) fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
-        VLOG("iteration: {}", i);
-        todo = analyze();
-    }
-
-    auto gid = world().curr_gid();
-    if (rewrite_annexes())
-        for (const auto& [flags, e] : world().annexes())
-            rewrite_annex(flags, e.sym, e.def);
-
-    // mutate(): rewrite_external may re-externalize, which would invalidate a live iterator.
-    for (auto mut : world().externals().mutate())
-        rewrite_external(mut);
-
-    profile_count("inplace.defs.created", world().curr_gid() - gid);
-}
 
 void InplaceRWPhase::rewrite_annex(flags_t flags, Sym, const Def* def) {
     if (auto new_def = rewrite_root(def); new_def != def) {

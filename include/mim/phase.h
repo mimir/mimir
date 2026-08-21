@@ -92,7 +92,7 @@ public:
     /// Signals that another round of fixed-point iteration is required, either
     /// as part of
     /// - a pipeline managed by PhaseMan, or
-    /// - the optional pre-analysis of an RWPhase.
+    /// - the optional pre-analysis of an RWBase.
     ///
     /// Calling `invalidate(todo)` bitwise-ORs @p todo into the internal `todo_` flag.
     void invalidate(bool todo = true) { todo_ |= todo; }
@@ -161,7 +161,7 @@ public:
     /// lattice() is **preserved** across iterations so that abstract values accumulated in earlier
     /// rounds remain available - this is what makes fixed-point convergence possible.
     /// The dirty set survives as well; start() consumes it to decide whether the round can be sparse.
-    /// @see RWPhase::analyze
+    /// @see RWBase::analyze
     virtual void reset();
     ///@}
 
@@ -293,14 +293,11 @@ private:
     size_t num_drained_ = 0; ///< muts drained this round; flushed into the Profiler
 };
 
-/// Rebuilds old_world() into new_world() and then swaps them.
+/// Common base of the two rewriting Phase%s: RWPhase rebuilds the World, InplaceRWPhase stays in it.
 ///
-/// It recursively rewrites
-/// 1. all old World::annexes() (during which RWPhase::is_bootstrapping() is `true`, and then
-/// 2. all old World::externals() (during which it is `false`).
-///
-/// During bootstrapping, rewrites that depend on other annexes may need to be skipped,
-/// since those annexes might not yet exist in the new world.
+/// Both are a Phase *and* a Rewriter, both run an optional analyze() to a fixed point, and both then rewrite
+/// 1. all World::annexes() - if rewrite_annexes() says so - during which is_bootstrapping() is `true`, and then
+/// 2. all World::externals() during which it is `false`.
 ///
 /// If an associated Analysis is provided, the rewrite can query its abstract results through lattice().
 ///
@@ -308,38 +305,50 @@ private:
 /// - Rewriter::rewrite(),
 /// - Rewriter::rewrite_imm(),
 /// - Rewriter::rewrite_mut(), etc.
-/// @see @ref phases_rwphase
-class RWPhase : public Phase, public Rewriter {
-public:
+/// @see @ref phases_rwbase
+class RWBase : public Phase, public Rewriter {
+protected:
     /// @name Construction
+    /// Rewrite **in place**: Phase::world and Rewriter::world are the same.
     ///@{
-    RWPhase(World& world, std::string name, Analysis* analysis = nullptr)
+    RWBase(World& world, std::string name, Analysis* analysis)
         : Phase(world, std::move(name))
-        , Rewriter(world.inherit())
+        , Rewriter(world)
         , analysis_(analysis) {}
-    RWPhase(World& world, flags_t annex, Analysis* analysis = nullptr)
+    RWBase(World& world, flags_t annex, Analysis* analysis)
         : Phase(world, annex)
-        , Rewriter(world.inherit())
+        , Rewriter(world)
+        , analysis_(analysis) {}
+
+    /// Rewrite the World of Phase::world **into** @p new_world.
+    RWBase(World& world, std::string name, Analysis* analysis, std::unique_ptr<World>&& new_world)
+        : Phase(world, std::move(name))
+        , Rewriter(std::move(new_world))
+        , analysis_(analysis) {}
+    RWBase(World& world, flags_t annex, Analysis* analysis, std::unique_ptr<World>&& new_world)
+        : Phase(world, annex)
+        , Rewriter(std::move(new_world))
         , analysis_(analysis) {}
     ///@}
 
+public:
     /// @name Analysis
     ///@{
     Analysis* analysis() { return analysis_; }
     const Analysis* analysis() const { return analysis_; }
 
-    /// Returns the abstract value computed by the associated Analysis for the given old-world Def, or `nullptr` if no
-    /// value is available.
-    const Def* lattice(const Def* old_def) const { return analysis_ ? analysis_->lattice(old_def) : nullptr; }
+    /// Returns the abstract value computed by the associated Analysis for @p def, or `nullptr` if no value is
+    /// available.
+    /// @note @p def is a Def of the World the Analysis ran on - the **old** one in the case of an RWPhase.
+    const Def* lattice(const Def* def) const { return analysis_ ? analysis_->lattice(def) : nullptr; }
 
-    /// Returns lattice(@p old_def) if it differs from @p old_def (i.e. we learned something), otherwise `nullptr`.
-    const Def* abstracted(const Def* old_def) const {
-        auto l = lattice(old_def);
-        return l && l != old_def ? l : nullptr;
+    /// Returns lattice(@p def) if it differs from @p def (i.e. we learned something), otherwise `nullptr`.
+    const Def* abstracted(const Def* def) const {
+        auto l = lattice(def);
+        return l && l != def ? l : nullptr;
     }
 
-    /// Runs the optional pre-analysis on RWPhase::old_world(), typically to a fixed point,
-    /// before rewriting begins.
+    /// Runs the optional pre-analysis on Phase::world, typically to a fixed point, before rewriting begins.
     ///
     /// If analysis() is set, this is the natural place to iterate until Phase::todo() becomes `false`.
     /// If no Analysis is needed, simply return `false`.
@@ -348,12 +357,47 @@ public:
 
     /// @name Rewrite
     ///@{
-    virtual void rewrite_annex(flags_t, Sym, const Def*);
-    virtual void rewrite_external(Def*);
+    /// Should start() walk the annex roots as well?
+    virtual bool rewrite_annexes() const                 = 0;
+    virtual void rewrite_annex(flags_t, Sym, const Def*) = 0;
+    virtual void rewrite_external(Def*)                  = 0;
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).
     /// While bootstrapping, you have to skip rewrites that refer to other annexes, as they might not yet be available.
     bool is_bootstrapping() const { return bootstrapping_; }
+    ///@}
+
+protected:
+    void start() override;
+
+    /// Rewrites a *root* - i.e.\ an annex or an external.
+    /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
+    virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
+
+private:
+    Analysis* analysis_;
+    bool bootstrapping_ = true;
+};
+
+/// Rebuilds old_world() into new_world() and then swaps them.
+///
+/// During bootstrapping, rewrites that depend on other annexes may need to be skipped,
+/// since those annexes might not yet exist in the new world.
+/// @see @ref phases_rwphase
+class RWPhase : public RWBase {
+public:
+    /// @name Construction
+    ///@{
+    RWPhase(World& world, std::string name, Analysis* analysis = nullptr)
+        : RWBase(world, std::move(name), analysis, world.inherit()) {}
+    RWPhase(World& world, flags_t annex, Analysis* analysis = nullptr)
+        : RWBase(world, annex, analysis, world.inherit()) {}
+    ///@}
+
+    /// @name Rewrite
+    ///@{
+    void rewrite_annex(flags_t, Sym, const Def*) override;
+    void rewrite_external(Def*) override;
     ///@}
 
     /// @name World
@@ -369,11 +413,11 @@ public:
     ///@}
 
 protected:
-    void start() override;
+    void start() override; ///< RWBase::start() and then swaps the two worlds.
 
 private:
-    Analysis* analysis_;
-    bool bootstrapping_ = true;
+    /// An RWPhase *has* to walk the annexes: it must re-create every one of them to populate new_world()'s table.
+    bool rewrite_annexes() const final { return true; }
 };
 
 /// Rewrites the **current** World **in place** - unlike an RWPhase, which rebuilds a new World.
@@ -385,7 +429,7 @@ private:
 /// This matters most for the annex graph: it is proportional to the loaded plugins - not to the program - and a
 /// *local* rewrite never touches it, yet an RWPhase re-creates all of it on **every** run.
 ///
-/// Override skip() to prune subtrees that provably cannot change; this is what turns the traversal from
+/// Prune subtrees that provably cannot change - e.g. with Def::is_ground - to turn the traversal from
 /// *"hash-cons every node"* into *"touch only what matters"*.
 ///
 /// Since a change is only ever committed if it really is one, Phase::todo() is exact: a quiet run costs a pruned
@@ -398,16 +442,14 @@ private:
 ///
 /// Use an RWPhase for anything else.
 /// @see @ref phases_inplace_rw_phase
-class InplaceRWPhase : public Phase, public Rewriter {
+class InplaceRWPhase : public RWBase {
 public:
     /// @name Construction
     ///@{
-    InplaceRWPhase(World& world, std::string name)
-        : Phase(world, std::move(name))
-        , Rewriter(world) {}
-    InplaceRWPhase(World& world, flags_t annex)
-        : Phase(world, annex)
-        , Rewriter(world) {}
+    InplaceRWPhase(World& world, std::string name, Analysis* analysis = nullptr)
+        : RWBase(world, std::move(name), analysis) {}
+    InplaceRWPhase(World& world, flags_t annex, Analysis* analysis = nullptr)
+        : RWBase(world, annex, analysis) {}
     ///@}
 
     /// @name Getters
@@ -417,31 +459,19 @@ public:
 
     /// @name Rewrite
     ///@{
-    /// Runs the optional pre-analysis on world(), typically to a fixed point, before rewriting begins.
-    /// If no analysis is needed, simply return `false`.
-    virtual bool analyze() { return false; }
-
-    /// Should start() walk the annex roots as well?
-    /// An RWPhase *has* to: it must re-create every annex to populate the new World's table.
-    /// An InplaceRWPhase finds that table already correct, so the annex graph - which is proportional to the loaded
-    /// plugins, not to the program - is pure extra coverage here, and a *local* rewrite gains nothing from it:
-    /// whatever the program actually uses is reached through the externals anyway.
+    /// An RWPhase *has* to walk the annexes; an InplaceRWPhase finds that table already correct, so the annex graph -
+    /// which is proportional to the loaded plugins, not to the program - is pure extra coverage here, and a *local*
+    /// rewrite gains nothing from it: whatever the program actually uses is reached through the externals anyway.
     /// Hence this defaults to `false`; say `true` if your rewrite must also see *unused* annexes.
-    virtual bool rewrite_annexes() const { return false; }
+    bool rewrite_annexes() const override { return false; }
 
-    virtual void rewrite_annex(flags_t, Sym, const Def*);
-    virtual void rewrite_external(Def*);
+    void rewrite_annex(flags_t, Sym, const Def*) override;
+    void rewrite_external(Def*) override;
     ///@}
 
 protected:
-    void start() override;
-
     /// @name Rewrite
     ///@{
-    using Rewriter::rewrite; ///< Keeps the `Defs` overload visible next to the override below.
-    /// Rewrites a *root* - i.e.\ an annex or an external.
-    /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
-    virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
     /// Keeps @p mut's identity and Def::set%s its ops anew iff rewriting them changed anything.
     const Def* rewrite_mut(Def* mut) override;
     ///@}
