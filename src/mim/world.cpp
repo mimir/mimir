@@ -650,8 +650,7 @@ const Def* World::match(Defs ops_) {
     // already have changed (for example, a tensor may have become a buffer).
     if (auto inj = scrutinee->isa<Inj>()) {
         for (size_t i = 0, e = arms.size(); i != e; ++i)
-            if (Checker::alpha<Checker::Check>(inj->value()->type(), join->op(i)))
-                return app(arms[i], inj->value());
+            if (Checker::alpha<Checker::Check>(inj->value()->type(), join->op(i))) return app(arms[i], inj->value());
         error(scrutinee->loc(), "injected value type '{}' is not a case of union type '{}'", inj->value()->type(),
               join);
     }
