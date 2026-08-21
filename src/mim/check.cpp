@@ -168,8 +168,44 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     return alpha_<Check>(type, val_ty) ? val : fail();
 }
 
+std::pair<Checker::Binders::iterator, bool> Checker::bind(Def* mut, const Def* d) {
+    if (!mut) return {binders_.end(), true};
+
+    auto res = binders_.emplace(mut, d);
+    if (res.second) {
+        // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
+        for (auto& memo : memo_)
+            memo.clear();
+        // A Var that has never been created cannot occur in any Def.
+        if (auto var = mut->has_var()) bound_ = world().vars().insert(bound_, var);
+    }
+
+    return res;
+}
+
+// These may be α-equivalent to a Def with a different Node or Def::flags(); see alpha_impl_.
+static bool is_flex(const Def* def) {
+    auto n = def->node();
+    return n == Node::Hole || n == Node::Top || n == Node::UMax || Prod::isa_node(n) || Seq::isa_node(n);
+}
+
+template<Checker::Mode mode>
+std::optional<bool> Checker::try_alpha_(const Def* d1, const Def* d2) {
+    // Pointer equality decides the matter unless a free Var of d1 is bound on one side only: λx.x vs λz.x.
+    if (d1 == d2 && (bound_.empty() || !d1->has_free_vars_in(bound_))) return true;
+
+    // Only a ground Def is stable under Def::zonk_mut, which rewires mutables in place and unifies Hole%s.
+    if ((d1->node() != d2->node() || d1->flags() != d2->flags()) && d1->is_ground() && d2->is_ground() && !is_flex(d1)
+        && !is_flex(d2))
+        return fail<mode>();
+
+    return {};
+}
+
 template<Checker::Mode mode>
 bool Checker::alpha_(const Def* d1, const Def* d2) {
+    if (auto res = try_alpha_<mode>(d1, d2); res.has_value()) return *res;
+
     auto& memo = memo_[mode];
     auto key   = memo_key(d1, d2);
     if (memo.contains(key)) return true;
@@ -186,10 +222,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         d1   = d1->zonk_mut();
         d2   = d2->zonk_mut();
 
-        // It is only safe to check for pointer equality if there are no Vars involved.
-        // Otherwise, we have to look more thoroughly.
-        // Example: λx.x - λz.x
-        if (!d1->has_dep(Dep::Var) && !d2->has_dep(Dep::Var) && d1 == d2) return true;
+        if (auto res = try_alpha_<mode>(d1, d2); res.has_value()) return *res;
 
         auto h1 = d1->isa_mut<Hole>();
         auto h2 = d2->isa_mut<Hole>();
