@@ -347,6 +347,8 @@ void Def::invalidate() {
 bool Def::is_open() const { return has_free_vars(); }
 
 bool Def::is_closed() const {
+    if (local_vars().empty() && local_muts().empty()) return true;
+
     bool closed = !has_free_vars();
     assert((!is_external() || closed) && "an external must not have free Vars");
     return closed;
