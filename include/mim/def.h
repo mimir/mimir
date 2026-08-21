@@ -493,7 +493,7 @@ public:
     bool is_open() const { return has_free_vars(); } ///< Same as has_free_vars().
     bool is_closed() const;                          ///< Same as `!has_free_vars()`.
 
-    /// Immutable which does neither contain mutables or Var%s.
+    /// Immutable that contains neither mutables nor Var%s.
     bool is_ground() const { return !mut_ && local_muts().empty() && local_vars().empty(); }
 
     /// Transitively walks up free_vars() till the outermoust binder has been found.

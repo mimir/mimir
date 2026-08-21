@@ -439,7 +439,7 @@ private:
 /// Since a change is only ever committed if it really is one, Phase::todo() is exact: a quiet run costs a pruned
 /// traversal and nothing else.
 ///
-/// @warning A InplaceRWPhase
+/// @warning An InplaceRWPhase
 /// * cannot immutabilize a mutable that the rewrite made vacuous (unless it takes the type-change fallback),
 /// * must not hand out a fresh identity for something already in its target shape - that would never converge, and
 /// * leaves what it replaced behind as garbage until the next Cleanup.
