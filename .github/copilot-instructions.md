@@ -44,19 +44,33 @@ Assume a `build/` tree configured with
 
 ## Comments
 
-Comment *why*, not *what*.
-A comment that restates the code is worse than no comment:
+Comments are scarce. The default is **no comment**.
 
-```cpp
-vec.push_back(x); // BAD: "put x into the vector"
-```
+Comment only when the code itself cannot reasonably express the information.
 
-- Prefer a better name over a comment.
-- Keep comments short — usually a single line.
-- Reserve longer blocks for subtle invariants, non-obvious algorithms, or pointers to papers/issues.
-- Match the comment density of the surrounding code; existing code is the baseline, not a target to improve on.
-- Don't narrate the change itself ("now also handles X", "renamed from Y") — that belongs in the commit message.
-- Don't add banner/section-header comments to carve up a function.
+- Comment **why**, not what the code does.
+- Prefer a better name, structure, or API over a comment.
+- Keep comments to **one short sentence**, normally one line.
+- A comment should convey one fact only: an invariant, non-obvious constraint, algorithmic reason, or important external reference.
+- Do not explain the implementation, summarize a function, or provide a narrative of its control flow.
+- Match the comment density and brevity of the surrounding code. **Never increase comment density.**
+- Do not add documentation-style prose, introductions, conclusions, or motivational/explanatory language.
+- Do not use rhetorical contrasts such as `"X" -> "Y"`, `"instead of X"`, or `"from X to Y"` to explain an optimization.
+- Do not add comments describing the change itself ("now handles X", "renamed from Y"); that belongs in the commit message.
+- Do not add banner or section-header comments.
+- Do not add a comment if deleting it would leave the code equally correct and understandable.
+- A comment that restates the code is worse than no comment:
+  ```cpp
+  vec.push_back(x); // BAD: "put x into the vector"
+  ```
+
+**Hard limit:** Do not write multi-line comments unless the user explicitly asks for documentation or the comment is required to document a non-obvious invariant that cannot be stated briefly.
+
+Before adding a comment, ask:
+1. Is this information necessary?
+2. Is it already apparent from the code or names?
+3. Can it be expressed in one short sentence?
+If the answer to 1 or 3 is no, do not add the comment.
 
 ## Style
 
