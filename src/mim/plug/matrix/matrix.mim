@@ -16,6 +16,7 @@ plugin affine;
 plugin buffer;
 plugin vec; // for %vec.fold
 plugin mem;
+import ll;  // for the %ll.vec loop annotation (declarations only — no module load, no emit phase)
 ///
 /// ## Types
 ///
@@ -92,6 +93,15 @@ con affine_for {A: *} (body: Cn [I32, [%mem.M 0, A], Cn [%mem.M 0, A]])
                (exit: Cn [%mem.M 0, A])
                (begin stop step: I32, init: [%mem.M 0, A])@tt =
     %affine.For body exit (begin, stop, step, init);
+
+/// The loop implementation for a schedule's VECTOR dim: the same `%%affine.For`, its body wrapped
+/// in the identity annotation `%%ll.vec` — the nomination to run this loop as the innermost
+/// unit-stride vectorized loop. `%%affine.lower_for` moves the wrapper onto the loop's exit
+/// condition for the backend (and drops it when the ll module is not loaded).
+con vec_for {A: *} (body: Cn [I32, [%mem.M 0, A], Cn [%mem.M 0, A]])
+            (exit: Cn [%mem.M 0, A])
+            (begin stop step: I32, init: [%mem.M 0, A])@tt =
+    %affine.For (%ll.vec body) exit (begin, stop, step, init);
 
 /// One nest of `loop`-implemented loops over the dim range `[lo, hi)` of the bounds `Sr`, threading
 /// an accumulator `A` and the shared «r; I32» loop-vector prefix; calls `inner` at the bottom with
@@ -200,12 +210,12 @@ lam %matrix.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) (
                     let (memw1, v) = %buffer.read (1, Sv, To) (memw, row, vi_of pref2);
                     wb (memw1, uw, v, pref2, kw);
                 con s2 (memB: %mem.M 0, uB: U) =
-                    (range_nest (r, Sr) U (affine_for @U, vd, %core.nat.add (vd, 1)) wb_cell) (pref, memB, uB, k);
+                    (range_nest (r, Sr) U (vec_for @U, vd, %core.nat.add (vd, 1)) wb_cell) (pref, memB, uB, k);
                 con s1 (memA: %mem.M 0, uA: U) =
                     (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
-                        (range_nest (r, Sr) U (affine_for @U, vd, %core.nat.add (vd, 1)) at_point))
+                        (range_nest (r, Sr) U (vec_for @U, vd, %core.nat.add (vd, 1)) at_point))
                         (pref, memA, uA, s2);
-                (range_nest (r, Sr) U (affine_for @U, vd, %core.nat.add (vd, 1)) fill) (pref, mem, u, s1);
+                (range_nest (r, Sr) U (vec_for @U, vd, %core.nat.add (vd, 1)) fill) (pref, mem, u, s1);
             (range_nest (r, Sr) U (affine_for @U, 0, vd) at_row) (‹r; 0I32›, mem1, u0, done);
 
         // BLOCKED (`vdim = ro − 2`): the two trailing parallel dims are sunk inside the reduction
@@ -245,13 +255,15 @@ lam %matrix.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) (
                     let (memw1, v) = %buffer.read (1, Np, To) (memw, panel, vi_of pref2);
                     wb (memw1, uw, v, pref2, kw);
                 con s2 (memB: %mem.M 0, uB: U) =
-                    (range_nest (r, Sr) U (affine_for @U, pd_c, ro) wb_cell) (pref, memB, uB, k);
+                    (range_nest (r, Sr) U (affine_for @U, pd_c, sd_c)
+                        (range_nest (r, Sr) U (vec_for @U, sd_c, ro) wb_cell)) (pref, memB, uB, k);
                 con s1 (memA: %mem.M 0, uA: U) =
                     (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
-                        (range_nest (r, Sr) U (affine_for @U, sd_c, %core.nat.add (sd_c, 1))
+                        (range_nest (r, Sr) U (vec_for @U, sd_c, %core.nat.add (sd_c, 1))
                             (range_unroll (r, Sr) U (pd_c, %core.nat.add (pd_c, 1)) at_point)))
                         (pref, memA, uA, s2);
-                (range_nest (r, Sr) U (affine_for @U, pd_c, ro) fill) (pref, mem, u, s1);
+                (range_nest (r, Sr) U (affine_for @U, pd_c, sd_c)
+                    (range_nest (r, Sr) U (vec_for @U, sd_c, ro) fill)) (pref, mem, u, s1);
             (range_nest (r, Sr) U (affine_for @U, 0, pd_c) at_block) (‹r; 0I32›, mem1, u0, done);
 
         con run (mem0: %mem.M 0, u0: U, done: Cn [%mem.M 0, U])@tt =

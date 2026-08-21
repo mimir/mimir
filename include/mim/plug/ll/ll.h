@@ -228,6 +228,12 @@ protected:
     std::ostringstream func_impls_;
     LamMap<const Def*> simd_phi_;
 
+    /// Loop-metadata node id per `%ll.vec`-annotated loop header (see `emit_epilogue_impl`);
+    /// numbered from `LoopMdBase + 1` to stay clear of the ids the embedded runtime module
+    /// brings along.
+    static constexpr u64 LoopMdBase = 1000;
+    LamMap<u64> loop_md_;
+
     Rt rt_        = Rt::embed;
     bool rt_used_ = false;
     std::string rt_module_;
@@ -336,6 +342,13 @@ inline void Emitter::start() {
     ostream() << func_decls_.str() << '\n';
     ostream() << vars_decls_.str() << '\n';
     ostream() << func_impls_.str() << '\n';
+
+    // One distinct `!llvm.loop` node per hinted loop header, sharing the vectorize-enable hint.
+    if (!loop_md_.empty()) {
+        std::println(ostream(), "!{} = !{{!\"llvm.loop.vectorize.enable\", i1 true}}", LoopMdBase);
+        for (const auto& [_, md] : loop_md_)
+            std::println(ostream(), "!{} = distinct !{{!{}, !{}}}", md, md, LoopMdBase);
+    }
 }
 
 inline bool Emitter::load_rt_module(std::string_view filename) {

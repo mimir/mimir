@@ -1,0 +1,32 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt %s -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang -Wno-pass-failed %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 72
+
+// Wrapping a `%affine.For`'s body in the identity `%ll.vec` nominates that loop as a vector
+// loop: lower_for moves the wrapper onto the loop's exit condition (the ll module is loaded),
+// which the emitter turns into `llvm.loop.vectorize.enable` metadata on the branches into the
+// loop's header. The unannotated `%affine.For` gets none, so exactly one distinct loop-metadata
+// node is emitted.
+
+plugin core;
+plugin affine;
+plugin ll;
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]) =
+    %affine.For (%ll.vec vec_body) vec_exit (0I32, 8I32, 1I32, 0I32)
+    where
+        con vec_body (i acc: I32, continue: Cn I32) = continue (%core.wrap.add 0 (acc, argc));
+        con vec_exit (acc: I32) =
+            %affine.For plain_body plain_exit (0I32, 64I32, 1I32, acc)
+            where
+                con plain_body (i acc: I32, continue: Cn I32) = continue (%core.wrap.add 0 (acc, 1I32));
+                con plain_exit (acc: I32) = return (mem, acc);
+            end;
+    end;
+
+// CHECK: , !llvm.loop !
+// CHECK: !{!"llvm.loop.vectorize.enable", i1 true}
+// CHECK-COUNT-1: {{distinct !\{}}
+// CHECK-NOT: {{distinct !\{}}

@@ -19,7 +19,7 @@ using namespace std::string_literals;
 
 namespace clos = mim::plug::clos;
 namespace core = mim::plug::core;
-namespace vec  = mim::plug::vec;
+namespace vecp  = mim::plug::vec;
 
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
@@ -276,6 +276,17 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
             locals_[callee_var] = id(key);
         } else {
             emit_phi_args(callee, app, lam);
+        }
+        // A loop header whose exit condition is wrapped in `%ll.vec` (see affine's LowerFor)
+        // carries this loop's `!llvm.loop` vectorize hint on every branch into it; on the latch
+        // it lifts LLVM's tiny-trip-count bailout.
+        if (callee->is_set()) {
+            if (auto head = callee->body()->isa<App>()) {
+                if (auto dispatch = Dispatch(head); dispatch && Axm::isa<ll::vec>(dispatch.index())) {
+                    auto [it, _] = loop_md_.emplace(callee, LoopMdBase + 1 + loop_md_.size());
+                    return bb.tail("br label {}, !llvm.loop !{}", id(callee), it->second);
+                }
+            }
         }
         return bb.tail("br label {}", id(callee));
 
@@ -985,7 +996,11 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         f += detail::llvm_suffix(round->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
-    } else if (auto zip = Axm::isa<vec::zip>(def)) {
+    } else if (auto v = Axm::isa<ll::vec>(def)) {
+        // `%ll.vec` annotates a loop's exit condition; as a value it is the identity — the
+        // metadata it requests is attached at the branches into the loop's header.
+        return emit(v->arg());
+    } else if (auto zip = Axm::isa<vecp::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();
         auto nat_ni = Lit::expect(ni_n->proj(2, 0), "a %vec.zip lane count");
         auto f      = zip->decurry()->arg();
