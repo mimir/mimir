@@ -46,7 +46,8 @@ private:
         Lam* new_lam;
     };
 
-    void start() override;
+    void rewrite_external(Def*) final;
+    void finalize() final;
     const Def* rewrite(const Def* def) final;
 
     /// Describes how the environment should be treated.
@@ -63,10 +64,12 @@ private:
     /// Pointer type used to represent environments.
     const Def* env_type() { return new_world().call<mem::Ptr0>(new_world().sigma()); }
 
-    std::queue<Todo> worklist_;
+    /// Dummy return continuation.
+    /// @note Not cached: `mem::M` resolves through new_world()'s annex table, which is only populated once
+    /// bootstrapping is done - and by then everything is hash-consed anyway.
+    const Def* dummy_ret() { return new_world().bot(new_world().cn(new_world().call<mem::M>(0))); }
 
-    const Def* dummy_ret_ = nullptr; ///< dummy return continuation
-    bool converting_      = false;   ///< `false` while bootstrapping annexes; `true` once actually converting.
+    std::queue<Todo> worklist_;
 
     /// @name memory-tokens
     /// The mem token threaded through the body currently being rewritten.

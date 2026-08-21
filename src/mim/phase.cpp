@@ -149,6 +149,7 @@ void RWBase::start() {
     // mutate(): an in-place rewrite_external may re-externalize, which would invalidate a live iterator.
     for (auto mut : Phase::world().externals().mutate())
         rewrite_external(mut);
+    finalize(); // inside the span: work deferred by the root walk belongs to the root walk
     profile_count("rw.defs.external", Rewriter::world().curr_gid() - gid);
 }
 

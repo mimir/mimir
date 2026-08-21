@@ -15,7 +15,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    /// One escape-propagation round over the old world; RWPhase::start() iterates until fixpoint.
+    /// One escape-propagation round over the old world; RWBase::start() iterates until fixpoint.
     bool analyze() final;
     const Def* rewrite_imm_Tuple(const Tuple*) final;
 

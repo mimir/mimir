@@ -35,7 +35,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    void start() override;
+    bool analyze() final;
     const Def* rewrite(const Def*) override;
     const Def* rewrite_mut_Lam(Lam*) override;
     const Def* rewrite_imm_App(const App*) override;

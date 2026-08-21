@@ -118,23 +118,17 @@ const DefSet& FreeDefAna::run(Lam* lam) {
  * Closure Conversion
  */
 
-void ClosConv::start() {
-    // Bootstrapping: rebuild all annexes verbatim - closure conversion is disabled while converting_ is false.
-    for (const auto& [flags, e] : old_world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
+void ClosConv::rewrite_external(Def* old_mut) {
+    push(); // each external gets its own substitution scope
+    auto new_def = rewrite_root(old_mut);
+    pop();
+    // Non-closure externals (e.g. data) carry their external-ness over directly;
+    // converted Lam%s are externalized through their wrapper inside make_stub instead.
+    if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
+        new_mut->externalize();
+}
 
-    // Convert everything reachable from the externals, each in its own fresh substitution scope.
-    converting_ = true;
-    for (auto old_mut : old_world().externals().muts()) {
-        push();
-        auto new_def = rewrite(old_mut);
-        pop();
-        // Non-closure externals (e.g. data) carry their external-ness over directly;
-        // converted Lam%s are externalized through their wrapper inside make_stub instead.
-        if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
-            new_mut->externalize();
-    }
-
+void ClosConv::finalize() {
     // Rewrite the deferred closure bodies, each in isolation.
     while (!body_worklist_.empty()) {
         auto fn = body_worklist_.front();
@@ -143,22 +137,20 @@ void ClosConv::start() {
         rewrite_body(closures_.at(fn));
         pop();
     }
-
-    swap(old_world(), new_world());
 }
 
 const Def* ClosConv::rewrite_imm_Pi(const Pi* pi) {
-    if (converting_ && Pi::isa_cn(pi)) return clos_type_of(pi);
+    if (!is_bootstrapping() && Pi::isa_cn(pi)) return clos_type_of(pi);
     return RWPhase::rewrite_imm_Pi(pi);
 }
 
 const Def* ClosConv::rewrite_mut_Pi(Pi* pi) {
-    if (converting_ && Pi::isa_cn(pi)) return clos_type_of(pi);
+    if (!is_bootstrapping() && Pi::isa_cn(pi)) return clos_type_of(pi);
     return RWPhase::rewrite_mut_Pi(pi);
 }
 
 const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
-    if (!converting_ || !Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
+    if (is_bootstrapping() || !Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
 
     auto& w      = new_world();
     auto stub    = make_stub(old_lam);
@@ -172,7 +164,7 @@ const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
 }
 
 const Def* ClosConv::rewrite_imm_App(const App* app) {
-    if (!converting_) return RWPhase::rewrite_imm_App(app);
+    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
 
     if (auto a = Axm::isa<attr>(app))
         if (auto handled = rewrite_attr(a)) return handled;
@@ -219,7 +211,7 @@ const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
     // Map such a projection onto the corresponding var of the enclosing Lam's converted stub.
     // This is a known workaround; the principled fix is to capture escaping enclosing BBs/ret_vars in the
     // environment (tracked by issue #117).
-    if (converting_)
+    if (!is_bootstrapping())
         if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var) {
             auto new_fn  = make_stub(lam).fn;
             auto new_idx = skip_env(env_param(new_fn->type()->as<Pi>()), Lit::as(var->index()));

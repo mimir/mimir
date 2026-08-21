@@ -12,21 +12,14 @@ const Def* insert_ret(const Def* def, const Def* ret) {
 }
 } // namespace
 
-void LowerTypedClos::start() {
-    // Bootstrapping: rebuild all annexes verbatim (see LowerTypedClos::rewrite).
-    for (const auto& [flags, e] : old_world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
+void LowerTypedClos::rewrite_external(Def* old_mut) {
+    auto new_def = rewrite_root(old_mut);
+    // Converted Lam%s are externalized inside make_stub; other externals carry over here.
+    if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
+        new_mut->externalize();
+}
 
-    converting_ = true;
-    dummy_ret_  = new_world().bot(new_world().cn(new_world().call<mem::M>(0)));
-
-    for (auto old_mut : old_world().externals().muts()) {
-        auto new_def = rewrite(old_mut);
-        // Converted Lam%s are externalized inside make_stub; other externals carry over here.
-        if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
-            new_mut->externalize();
-    }
-
+void LowerTypedClos::finalize() {
     while (!worklist_.empty()) {
         auto [lvm, lcm, old_lam, new_lam] = worklist_.front();
         worklist_.pop();
@@ -35,8 +28,6 @@ void LowerTypedClos::start() {
         DLOG("in {} (lvm={}, lcm={})", new_lam, lvm_, lcm_);
         if (old_lam->is_set()) new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
     }
-
-    swap(old_world(), new_world());
 }
 
 Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
@@ -53,7 +44,7 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
         }
         return new_dom;
     }));
-    if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret_->type());
+    if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret()->type());
     auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg_key());
     DLOG("stub {} ~> {}", lam, new_lam);
     if (lam->is_external()) new_lam->externalize();
@@ -109,7 +100,7 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
 }
 
 const Def* LowerTypedClos::rewrite(const Def* def) {
-    if (!converting_) return RWPhase::rewrite(def); // bootstrapping: rebuild verbatim
+    if (is_bootstrapping()) return RWPhase::rewrite(def); // rebuild the annexes verbatim
     if (auto new_def = lookup(def)) return new_def;
 
     assert((!def->isa<Var>() || !def->as<Var>()->binder()->isa_mut<Lam>()) && "Lam vars should appear in a map!");
@@ -119,7 +110,7 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
     // Lower a closure type `[Env: *, Cn [Env, Args..], Env]` to an untyped `(code-ptr, env-ptr)` pair type.
     if (auto ct = isa_clos_type(def)) {
         auto pi = rewrite(ct->op(1))->as<Pi>();
-        if (Pi::isa_basicblock(pi)) pi = w.cn(insert_ret(pi->dom(), dummy_ret_->type()));
+        if (Pi::isa_basicblock(pi)) pi = w.cn(insert_ret(pi->dom(), dummy_ret()->type()));
         auto env_type = rewrite(ct->op(2));
         return map(def, w.sigma({pi, env_type}));
     }
@@ -174,7 +165,7 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
     if (auto app = def->isa<App>())
         if (auto p = app->callee()->isa<Extract>();
             p && isa_clos_type(p->tuple()->type()) && Pi::isa_basicblock(app->callee_type()))
-            new_ops[1] = insert_ret(new_ops[1], dummy_ret_);
+            new_ops[1] = insert_ret(new_ops[1], dummy_ret());
     auto new_def = def->rebuild(w, new_type, new_ops);
 
     // Rethread the operand that consumed this function's current mem chain end (lvm_): boxing above may have

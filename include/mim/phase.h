@@ -251,10 +251,10 @@ protected:
 
     /// @name Rewrite
     ///@{
+    void start() override;
     virtual void prepare() {} ///< Run **before** the main analysis.
     /// Run **after** the main analysis - only in **full** rounds, so it always sees the complete abstract World.
     virtual void finalize() {}
-    void start() override;
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
     const Def* rewrite_imm_Proxy(const Proxy* proxy) override { return proxy; } ///< By default: ignore Proxy%s.
@@ -373,6 +373,10 @@ protected:
     /// Rewrites a *root* - i.e.\ an annex or an external.
     /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
     virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
+
+    /// Run **after** all roots have been walked - but for an RWPhase still **before** the two worlds are swapped.
+    /// This is where you drain a worklist of rewrites your hooks deferred (see e.g. clos::phase::ClosConv).
+    virtual void finalize() {}
 
 private:
     Analysis* analysis_;

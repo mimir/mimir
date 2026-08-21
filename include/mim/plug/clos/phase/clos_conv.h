@@ -97,10 +97,10 @@ private:
         Lam* fn;
     };
 
-    void start() override;
-
     /// @name Rewrite hooks
     ///@{
+    void rewrite_external(Def*) final;
+    void finalize() final;
     const Def* rewrite_imm_Pi(const Pi*) final;
     const Def* rewrite_mut_Pi(Pi*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
@@ -129,7 +129,6 @@ private:
     Def2Def glob_muts_;
 
     std::queue<Lam*> body_worklist_; ///< New fns whose bodies are yet to be rewritten.
-    bool converting_ = false;        ///< `false` while bootstrapping annexes; `true` once actually converting.
 };
 
 } // namespace mim::plug::clos::phase

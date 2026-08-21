@@ -168,7 +168,8 @@ You never derive from [`RWBase`](@ref mim::RWBase) directly — pick one of the 
 2. rewrite the world roots:
    1. the annexes — if [`rewrite_annexes()`](@ref mim::RWBase::rewrite_annexes) says so,
    2. the external mutables;
-3. an [`RWPhase`](@ref mim::RWPhase) additionally swaps the **old** and the **new** world.
+3. run [`finalize()`](@ref mim::RWBase::finalize);
+4. an [`RWPhase`](@ref mim::RWPhase) additionally swaps the **old** and the **new** world.
 
 ### Optional Pre-Analysis
 
@@ -210,6 +211,12 @@ an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) finds that table already correct
 [`rewrite_root()`](@ref mim::RWBase::rewrite_root) is the hook for rewrites that must exempt roots.
 An annex or an external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the roots themselves alone;
 [`EtaConv`](@ref mim::EtaConv) uses it so that an annex or external keeps its η-shape.
+
+### Deferred Rewrites
+
+A rewrite hook may not be able to finish its work right away — e.g. a closure-converting phase must create a function's stub eagerly (so that callers can refer to it) but can only rewrite its body once the enclosing scope is done.
+Push such work onto your own worklist and drain it in [`finalize()`](@ref mim::RWBase::finalize), which runs after all roots have been walked but — for an [`RWPhase`](@ref mim::RWPhase) — still before the two worlds are swapped
+(see [`clos::phase::ClosConv`](@ref mim::plug::clos::phase::ClosConv)).
 
 ## RWPhase {#phases_rwphase}
 
