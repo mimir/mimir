@@ -136,6 +136,14 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     // `«r; %%affine.index» → «r; %%affine.index»`, without writing `%%affine.id @r`.
     // Only do this when @p type is a Pi: if it is a Hole, we'd commit before knowing what's expected;
     // if it's an aggregate, we might consume implicits belonging to the value's element type.
+    if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {
+        while (auto ipi = Pi::isa_implicit(val_ty)) {
+            val    = w.app(val, w.mut_hole(ipi->dom()));
+            val_ty = val->unfold_type()->zonk();
+        }
+        if (type == val_ty) return val;
+    }
+
     if (auto sigma = type->isa<Sigma>()) {
         if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
 
