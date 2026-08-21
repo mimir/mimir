@@ -493,18 +493,6 @@ public:
     bool is_open() const;          ///< Has free_vars()? Same as has_free_vars().
     bool is_closed() const;        ///< Has no free_vars()? Same as `!has_free_vars()`.
 
-    /// @name free_vars predicates
-    /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
-    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
-    /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
-    /// question without ever materializing the merged set.
-    /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
-    ///@{
-    bool has_free_var(const Var*) const; ///< Same as `free_vars().contains(var)`.
-    bool has_free_vars() const;          ///< Same as `!free_vars().empty()`.
-    bool has_free_vars_in(Vars) const;   ///< Same as `vars.has_intersection(free_vars())`.
-    ///@}
-
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
     Def* outermost_binder() const;
@@ -515,6 +503,18 @@ public:
     /// Does @p this nest @p def?
     /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
     bool nests(const Def* def);
+    ///@}
+
+    /// @name free_vars predicates
+    /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
+    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
+    /// question without ever materializing the merged set.
+    /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
+    ///@{
+    bool has_free_var(const Var*) const; ///< Same as `free_vars().contains(var)`.
+    bool has_free_vars() const;          ///< Same as `!free_vars().empty()`.
+    bool has_free_vars_in(Vars) const;   ///< Same as `vars.has_intersection(free_vars())`.
     ///@}
 
     /// @name external
