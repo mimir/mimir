@@ -189,8 +189,8 @@ static bool is_flex(const Def* def) {
 
 template<Checker::Mode mode>
 std::optional<bool> Checker::try_alpha_(const Def* d1, const Def* d2) {
-    // Pointer equality decides the matter unless a free Var of d1 is bound on one side only: λx.x vs λz.x.
-    if (d1 == d2 && (bound_.empty() || !d1->has_free_vars_in(bound_))) return true;
+    // Pointer equality decides the matter, unless a free Var of an immutable is bound on one side only: λx.x vs λz.x.
+    if (d1 == d2 && (d1->isa_mut() || bound_.empty() || !d1->has_free_vars_in(bound_))) return true;
 
     // Only a ground Def is stable under Def::zonk_mut, which rewires mutables in place and unifies Hole%s.
     if ((d1->node() != d2->node() || d1->flags() != d2->flags()) && d1->is_ground() && d2->is_ground() && !is_flex(d1)
