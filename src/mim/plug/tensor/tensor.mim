@@ -407,7 +407,20 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let ow    = t#Sr#(%core.idx (%core.nat.add (t#Ro, t#Rr)) 0 3);
     let vec   = %tensor.if_static (%core.nat.mul (%core.nat.mul (stride#1_2, dilation#1_2), ow),
                                    %core.ncmp.l (s_red, s_ow), ff);
-    unroll_trailing (vectorize_if (t, vec, 3), u);
+    // Rows too short for the vectorizer (ow < 16) are processed in BLOCKS: strip-mine oh by the
+    // largest block size ≤ 4 that divides it and sink both halves (vdim = ro − 2 selects mr_nest's
+    // blocked branch, which jams the block dim into the vector body — one reduction pass folds the
+    // whole row block, sharing the hoisted window weights). Otherwise the split is the neutral
+    // ts = 1 (its size-1 axis folds away), so one code path serves every case and no divisibility
+    // check fires on an untaken choice.
+    let oh    = t#Sr#(%core.idx (%core.nat.add (t#Ro, t#Rr)) 0 2);
+    lam divides (d: Nat): Bool = %core.ncmp.e (%core.nat.mul (%core.nat.div (oh, d), d), oh);
+    let bs    = ((1, 2)#(divides 2), 4)#(divides 4);
+    let block = %tensor.if_static (%core.nat.mul (oh, ow),
+                                   %core.bit2.and_ 2 (vec, %core.bit2.and_ 2 (%core.ncmp.l (ow, 16),
+                                                                              %core.ncmp.ne (bs, 1))),
+                                   ff);
+    unroll_trailing (vectorize_if (%tensor.strip_mine_par (t, 2, (1, bs)#block), vec, (4, 3)#block), u);
 
 /// The dot-product schedule, selected from the op's parameters: the last output dim is unit-stride
 /// in the right operand and invariant in the left one, so it runs innermost over a row of
@@ -625,15 +638,20 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
     // The SCHEDULE, selected in the frontend from the parameters (see `conv_schedule`): unroll the
     // kh·kw window into the loop body (constant tap offsets) when it fits the budget, and run `ow`
     // as the innermost, unit-stride loop — for a fixed tap, adjacent output pixels read adjacent
-    // input pixels, so the vectorizer emits contiguous vector loads instead of gathers.
-    %tensor.materialize (conv_schedule (stride, dilation) (
+    // input pixels, so the vectorizer emits contiguous vector loads instead of gathers. The
+    // schedule may strip-mine `oh` (row blocking), packing the materialized tensor along that axis;
+    // the row-major reshape restores `s_out` (an identity for the neutral split, and absorbed into
+    // the consumers' access maps by `fuse_tensor`'s read-through in a fused graph).
+    let sched = conv_schedule (stride, dilation) (
         %tensor.mr_tileable @2 @(R#T, R#T, 4, 3)
             ((n, cout, oh, ow), (0, 1, 2, 3), (n, cout, oh, ow, cin, kh, kw))
             @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
             (conv_fun R, R#_0, %tensor.id @(R#T))
             (%tensor.proj_map @(7, 4) (0, 1, 2, 3))
             (conv2d_in_map (stride, dilation), %tensor.proj_map @(7, 4) (1, 4, 5, 6))
-            (padded, weight)));
+            (padded, weight));
+    // `sched#3_9` is the scheduled Tileable's (possibly packed) output shape `So`.
+    %tensor.reshape (sched#3_9) s_out (%tensor.materialize sched);
 ///
 /// ### %%tensor.pool
 ///

@@ -208,8 +208,54 @@ lam %matrix.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) (
                 (range_nest (r, Sr) U (affine_for @U, vd, %core.nat.add (vd, 1)) fill) (pref, mem, u, s1);
             (range_nest (r, Sr) U (affine_for @U, 0, vd) at_row) (‹r; 0I32›, mem1, u0, done);
 
+        // BLOCKED (`vdim = ro − 2`): the two trailing parallel dims are sunk inside the reduction
+        // loops — the last dim runs as the vector loop and the BLOCK dim before it (any extent Sp;
+        // a strip-mined row block) is unrolled into its body (unroll-and-jam), so one pass over the
+        // row folds the whole block through a flattened «Sp·Sv; To» accumulator panel. Values
+        // hoisted out of the vector loop (a conv's window weights) now serve every row of the
+        // block, and adjacent rows' overlapping reads sit in the same loop body. Clamps as above:
+        // the non-selected branch is still elaborated.
+        let pd_c    = (0, vdim)#(%core.ncmp.l (vdim, r));
+        let sd_r    = %core.nat.add (vdim, 1);
+        let sd_c    = (0, sd_r)#(%core.ncmp.l (sd_r, r));
+        let block_ok = %core.bit2.and_ 2 (%core.ncmp.e (%core.nat.add (vdim, 2), ro),
+                      %core.bit2.and_ 2 (%core.ncmp.ne (Sr#(%core.idx r 0 pd_c), 1),
+                                         %core.ncmp.ne (Sr#(%core.idx r 0 sd_c), 1)));
+
+        con blocked (mem0: %mem.M 0, u0: U, done: Cn [%mem.M 0, U])@tt =
+            let Sp = Sr#(%core.idx r 0 pd_c);
+            let Sv = Sr#(%core.idx r 0 sd_c);
+            let Np = %core.nat.mul (Sp, Sv);
+            let vi_of = lm (pref: «r; I32»): Idx Np =
+                %core.conv.u Np (%core.wrap.add 0
+                    (%core.wrap.mul 0 (pref#(%core.idx r 0 pd_c), %core.bitcast I32 Sv),
+                     pref#(%core.idx r 0 sd_c)));
+            let (mem1, panel) = %buffer.alloc (1, Np, To) mem0;
+            con at_block (pref: «r; I32», mem: %mem.M 0, u: U, k: Cn [%mem.M 0, U]) =
+                con fill (pref2: «r; I32», memf: %mem.M 0, uf: U, kf: Cn [%mem.M 0, U]) =
+                    let (memf2, panel2) = %buffer.write (1, Np, To) (memf, panel, vi_of pref2, init);
+                    kf (memf2, uf);
+                con at_point (pref2: «r; I32», memp: %mem.M 0, up: U, kp: Cn [%mem.M 0, U]) =
+                    let (memp1, acc0) = %buffer.read (1, Np, To) (memp, panel, vi_of pref2);
+                    con after_win (memp2: %mem.M 0, accn: To) =
+                        let (memp3, panel3) = %buffer.write (1, Np, To) (memp2, panel, vi_of pref2, accn);
+                        kp (memp3, up);
+                    win (pref2, memp1, acc0, after_win);
+                con wb_cell (pref2: «r; I32», memw: %mem.M 0, uw: U, kw: Cn [%mem.M 0, U]) =
+                    let (memw1, v) = %buffer.read (1, Np, To) (memw, panel, vi_of pref2);
+                    wb (memw1, uw, v, pref2, kw);
+                con s2 (memB: %mem.M 0, uB: U) =
+                    (range_nest (r, Sr) U (affine_for @U, pd_c, ro) wb_cell) (pref, memB, uB, k);
+                con s1 (memA: %mem.M 0, uA: U) =
+                    (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
+                        (range_nest (r, Sr) U (affine_for @U, sd_c, %core.nat.add (sd_c, 1))
+                            (range_unroll (r, Sr) U (pd_c, %core.nat.add (pd_c, 1)) at_point)))
+                        (pref, memA, uA, s2);
+                (range_nest (r, Sr) U (affine_for @U, pd_c, ro) fill) (pref, mem, u, s1);
+            (range_nest (r, Sr) U (affine_for @U, 0, pd_c) at_block) (‹r; 0I32›, mem1, u0, done);
+
         con run (mem0: %mem.M 0, u0: U, done: Cn [%mem.M 0, U])@tt =
-            ((classic, vectorized)#vec_ok) (mem0, u0, done);
+            (((classic, vectorized)#vec_ok, blocked)#block_ok) (mem0, u0, done);
         run;
     nest;
 ///

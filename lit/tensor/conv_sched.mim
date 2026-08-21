@@ -1,12 +1,15 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // Schedule SELECTION for convolutions, decided in the IR from the op's parameters (the old
-// lowering's heuristics, carried as the op's schedule operand):
-// * cin = 64, 3x3, stride 1: the window unrolls (9 taps), cin stays a loop (576 > 32), and ow
-//   vectorizes (unit-stride input + broadcast weight beat the cin loop) — chooser (3, 2);
+// lowering's heuristics, carried as the op's schedule operand). `oh` is always strip-mined
+// (neutrally by 1, or by the largest dividing size ≤ 4 when rows BLOCK: vectorized, ow < 16, oh divisible), so the domain is
+// rank 8 (n, co, oh/ts, ts, ow, ci, kh, kw):
+// * cin = 64, 3x3, stride 1, 8x8: the window unrolls (9 taps), cin stays a loop (576 > 32), ow
+//   vectorizes AND rows block (ow = 8 < 16, oh = 8 → block size 4) — chooser (3, 2) (vdim = ro − 2 = the block dim);
+// * ditto at 16x16: ow vectorizes but rows do not block (ow = 16) — chooser (4, 2);
 // * cin = 3, 3x3: the whole reduction unrolls (27 taps ≤ 32) — nothing left to vectorize
-//   against — chooser (7, 3) (7 = "no vector dim" sentinel);
-// * stride 2: ow is strided in the input but still broadcast in the weight — chooser (3, 2).
+//   against — chooser (8, 3) (8 = "no vector dim" sentinel);
+// * stride 2: ow is strided in the input but still broadcast in the weight — blocks like c64.
 
 plugin core;
 plugin tensor;
@@ -20,6 +23,8 @@ lam extern c3 (input: «2, 3, 8, 8; %math.F32», w: «16, 3, 3, 3; %math.F32»):
     %tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
 lam extern cs2 (input: «2, 64, 9, 9; %math.F32», w: «16, 64, 3, 3; %math.F32»): «2, 16, 4, 4; %math.F32» =
     %tensor.conv_impl R ((2, 2), (1, 1), (0, 0)) (input, w);
+lam extern c64w (input: «2, 64, 16, 16; %math.F32», w: «16, 64, 3, 3; %math.F32»): «2, 16, 16, 16; %math.F32» =
+    %tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
@@ -28,7 +33,8 @@ lam extern _compile (): %compile.Phase =
         %compile.internal_cleanup,
     );
 
-// CHECK-DAG: {{mk_[0-9]+ \(7, 3\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(8, 3\)}}
 // CHECK-DAG: {{mk_[0-9]+ \(3, 2\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(4, 2\)}}
 // The binding-time guards must all have resolved.
 // CHECK-NOT: if_static
