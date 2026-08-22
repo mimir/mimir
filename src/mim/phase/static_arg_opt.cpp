@@ -30,8 +30,10 @@ void StaticArgOpt::visit(const App* app, Lam* lam) {
 StaticArgOpt::Mask StaticArgOpt::statics(Lam* lam) {
     if (auto i = lam2statics_.find(lam); i != lam2statics_.end()) return i->second;
 
+    // A *mutable* Pi is a dependent one; splitting it would require loop's doms to refer to wrap's vars.
     auto i = lam2sites_.find(lam);
-    if (i == lam2sites_.end() || !lam->is_set() || !lam->is_closed()) return lam2statics_[lam] = Mask();
+    if (i == lam2sites_.end() || !lam->is_set() || !lam->is_closed() || lam->type()->isa_mut<Pi>())
+        return lam2statics_[lam] = Mask();
 
     const auto& sites = i->second;
     auto n            = lam->num_tdoms();
