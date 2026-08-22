@@ -6,8 +6,9 @@ All `sizeof`/offset figures were measured against `build-release`
 (`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`, gcc).
 Line references are against the tree at the time of writing and may drift.
 
-This document answers a recurring question: MimIR already has performance
-problems, so why not use an academically more acclaimed language?
+This document answers a recurring question: Why not use an academically more
+acclaimed language?
+
 The short answer is that MimIR's core data structure is a mutable,
 hash-consed, cyclic graph of hand-packed 72-byte nodes, and none of those
 languages has an idiomatic form of that structure.
