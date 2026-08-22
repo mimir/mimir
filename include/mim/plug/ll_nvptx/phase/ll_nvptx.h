@@ -11,6 +11,9 @@ class World;
 
 namespace plug::ll_nvptx {
 
+/// Prefix for this backend's fe::throwf messages; see MIM_LL_BE.
+#define MIM_LL_NVPTX_BE "ll_nvptx backend: "
+
 namespace ll = mim::plug::ll;
 
 struct DeviceEmitFlags {

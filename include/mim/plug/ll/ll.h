@@ -38,6 +38,10 @@ class World;
 
 namespace plug::ll {
 
+/// Prefix for this backend's fe::throwf messages; concatenate it with the format literal.
+/// @note Not usable with the Def::expect family: those take the *inner* "what was expected" description.
+#define MIM_LL_BE "ll backend: "
+
 namespace math = mim::plug::math;
 namespace mem  = mim::plug::mem;
 
@@ -49,7 +53,7 @@ inline const char* math_suffix(const Def* type) {
             case 64: return "";
         }
     }
-    fe::throwf("ll backend: unsupported floating-point type `{}`", type);
+    fe::throwf(MIM_LL_BE "unsupported floating-point type `{}`", type);
 }
 
 inline const char* llvm_suffix(const Def* type) {
@@ -60,7 +64,7 @@ inline const char* llvm_suffix(const Def* type) {
             case 64: return ".f64";
         }
     }
-    fe::throwf("ll backend: unsupported floating-point type `{}`", type);
+    fe::throwf(MIM_LL_BE "unsupported floating-point type `{}`", type);
 }
 
 // [%mem.M 0, T] => T
@@ -325,7 +329,8 @@ inline void Emitter::start() {
     // Splice the runtime wrapper module first (it carries the module's target triple/datalayout).
     if (rt_used_ && rt_ == Rt::embed) {
         if (rt_module_.empty())
-            fe::throwf("ll backend: `-X ll:rt=embed` needs the runtime module `mim_rt.ll`, but it "
+            fe::throwf(MIM_LL_BE
+                       "`-X ll:rt=embed` needs the runtime module `mim_rt.ll`, but it "
                        "was not found (build with clang / `MIM_BUILD_LL_RUNTIME=ON`, or use `-X ll:rt=extern`)");
         ostream() << rt_module_ << '\n';
     }
