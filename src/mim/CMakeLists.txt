@@ -28,7 +28,7 @@ target_sources(libmim
         phase/lam_spec.cpp
         phase/optimize.cpp
         phase/scalarize.cpp
-        phase/tail_rec_elim.cpp
+        phase/static_arg_opt.cpp
         phase/beta_red.cpp
         phase/eta_conv.cpp
         phase/branch_normalize.cpp
