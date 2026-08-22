@@ -5,7 +5,7 @@ namespace mim {
 bool StaticArgOpt::analyze() {
     for (auto def : old_world().roots())
         analyze(def);
-    return false; // no fixed-point neccessary
+    return false; // no fixed-point necessary
 }
 
 void StaticArgOpt::analyze(const Def* def) {
