@@ -137,17 +137,17 @@ private:
     /// @name error messages
     ///@{
     /// Issue an error message of the form:
-    /// "expected \<what\>, got '\<tok>\' while parsing \<ctxt\>"
+    /// "expected \<what\>, got `\<tok>\` while parsing \<ctxt\>"
     void syntax_err(std::string_view what, const Tok& tok, std::string_view ctxt) {
-        ast().error(tok.loc(), "expected {}, got '{}' while parsing {}", what, tok, ctxt);
+        ast().error(tok.loc(), "expected {}, got `{}` while parsing {}", what, tok, ctxt);
     }
 
     /// Same above but uses @p ahead() as @p tok.
     void syntax_err(std::string_view what, std::string_view ctxt) { syntax_err(what, ahead(), ctxt); }
 
     void syntax_err(Tok::Tag tag, std::string_view ctxt) {
-        std::string msg("'");
-        msg.append(Tok::tag2str(tag)).append("'");
+        std::string msg("`");
+        msg.append(Tok::tag2str(tag)).append("`");
         syntax_err(msg, ctxt);
     }
 

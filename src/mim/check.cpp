@@ -363,16 +363,16 @@ const Def* Def::check(size_t i, const Def* def) {
 
     if (i == 0) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        throw Error().error(def->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'", def,
+        throw Error().error(def->loc(), "filter `{}` of lambda is of type `{}` but must be of type `Bool`", def,
                             def->type());
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
     throw Error()
-        .error(def->loc(), "body of function is not assignable to declared codomain")
-        .note(def->loc(), "body: '{}'", def)
-        .note(def->loc(), "type: '{}'", def->type())
-        .note(lam->codom()->loc(), "codomain: '{}'", lam->codom());
+        .error(def->loc(), "function body is not assignable to its declared codomain")
+        .note(def->loc(), "body: `{}`", def)
+        .note(def->loc(), "body type: `{}`", def->type())
+        .note(lam->codom()->loc(), "codomain: `{}`", lam->codom());
 }
 
 const Def* Def::check() {
@@ -381,26 +381,27 @@ const Def* Def::check() {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                error(type()->loc(), "declared sort '{}' of function type does not match inferred one '{}'", type(), t);
+                error(type()->loc(), "declared sort `{}` of function type does not match inferred sort `{}`", type(),
+                      t);
             return t;
         }
         case Node::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t, type()))
-                error(type()->loc(), "declared sort '{}' of array does not match inferred one '{}'", type(), t);
+                error(type()->loc(), "declared sort `{}` of array does not match inferred sort `{}`", type(), t);
             return t;
         }
         case Node::Reform: {
             auto t = Reform::infer(as<Reform>()->dom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                error(type()->loc(), "declared sort '{}' of rule type does not match inferred one '{}'", type(), t);
+                error(type()->loc(), "declared sort `{}` of rule type does not match inferred sort `{}`", type(), t);
             return t;
         }
         case Node::Sigma: {
             auto t = Sigma::infer(world(), ops());
             if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
-            world().WLOG("incorrect type '{}' for '{}'. Correct one would be: '{}'. I'll keep this one nevertheless "
-                         "due to bugs in clos-conv",
+            world().WLOG("incorrect type `{}` for `{}`; expected `{}` but keeping the existing type due to clos-conv "
+                         "bugs",
                          type(), this, t);
             return type();
         }
@@ -409,9 +410,10 @@ const Def* Def::check() {
             auto t1   = rule->lhs()->type();
             auto t2   = rule->rhs()->type();
             if (!Checker::alpha<Checker::Check>(t1, t2))
-                error(type()->loc(), "type mismatch: '{}' for lhs, but '{}' for rhs", t1, t2);
+                error(type()->loc(), "type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`", t1,
+                      t2);
             if (!Checker::assignable(world().type_bool(), rule->guard()))
-                error(rule->guard()->loc(), "condition '{}' of rewrite is of type '{}' but must be of type 'Bool'",
+                error(rule->guard()->loc(), "condition `{}` of rewrite rule is of type `{}` but must be of type `Bool`",
                       rule->guard(), rule->guard()->type());
             return type();
         }

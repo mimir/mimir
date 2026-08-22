@@ -2,4 +2,4 @@
 
 lam extern g (a: [Nat, Bool]) = a#1;
 
-// CHECK: error: index '1' is not of Idx type
+// CHECK: error: index `1` must be of `Idx` type
