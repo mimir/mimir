@@ -5,7 +5,7 @@ namespace mim {
 bool EtaConv::analyze() {
     for (auto def : world().roots())
         visit(def, Lattice::Known);
-    return false; // no fixed-point neccessary
+    return false; // no fixed-point necessary
 }
 
 void EtaConv::analyze(const Def* def) {

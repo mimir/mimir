@@ -5,7 +5,7 @@ namespace mim {
 bool BetaRed::analyze() {
     for (auto def : world().roots())
         visit(def, false);
-    return false; // no fixed-point neccessary
+    return false; // no fixed-point nccessary
 }
 
 void BetaRed::analyze(const Def* def) {
