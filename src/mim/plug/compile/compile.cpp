@@ -6,6 +6,7 @@
 #include <mim/driver.h>
 #include <mim/phase.h>
 
+#include <mim/phase/adce.h>
 #include <mim/phase/beta_red.h>
 #include <mim/phase/branch_normalize.h>
 #include <mim/phase/eta_conv.h>
@@ -55,6 +56,7 @@ private:
 void reg_phases(Flags2Phases& phases) {
     // clang-format off
     assert_emplace(phases, Annex::base<compile::null>(), [](World&) { return std::unique_ptr<Phase>{}; });
+    Phase::hook<compile::adce,             ACDE           >(phases);
     Phase::hook<compile::beta_red,         BetaRed        >(phases);
     Phase::hook<compile::branch_normalize, BranchNormalize>(phases);
     Phase::hook<compile::cleanup,          Cleanup        >(phases);

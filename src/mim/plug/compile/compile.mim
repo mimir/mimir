@@ -70,6 +70,7 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 ///
 /// ### Phases
 ///
+/// * `adce`: agressive dead cdoe elimination; removes variables nobody needs.
 /// * `beta_red`: β-reduction; inlines Lam%s that occur exactly once in the program (mim::BetaRed).
 /// * `branch_normalize`: η-expands non-Lam branch targets so both sides of a branch are Lam%s (mim::BranchNormalize).
 /// * `cleanup`: removes dead and unreachable code by rebuilding the World (mim::Cleanup).
@@ -81,6 +82,7 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 /// * `static_arg_opt`: drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).
 /// * `unload`: unloads a plugin and nukes its annexes on the next World swap.
 ///
+axm %compile.adce:             %compile.Phase;
 axm %compile.beta_red:         %compile.Phase;
 axm %compile.branch_normalize: %compile.Phase;
 axm %compile.cleanup:          %compile.Phase;
