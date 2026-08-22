@@ -118,6 +118,7 @@ const Def* StaticArgOpt::rewrite_imm_App(const App* old_app) {
                     else if (old_arg != old_lam->tvar(i))
                         return RWPhase::rewrite_imm_App(old_app); // not our class: go through wrap
                 }
+                invalidate();
                 return new_world().app(loop, args);
             }
         }
