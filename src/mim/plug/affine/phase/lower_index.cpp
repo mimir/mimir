@@ -52,7 +52,8 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
                 return w.call(core::wrap::sub, core::Mode::none, Defs{w.lit(w.type_i64(), 0), a});
             }
             case affine::op::mul: {
-                fe::throwf("affine.op.mul should have been rewritten to affine.semiop.mul and then to core.mul");
+                fe::throwf(
+                    "`%affine.op.mul` should have been rewritten to `%affine.semiop.mul` and then to `%core.mul`");
             }
         }
     }
@@ -61,7 +62,8 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [x, c] = rewrite(app->arg())->projs<2>();
         switch (semiop.id()) {
             case affine::semiop::mul: {
-                if (Axm::isa<refly::check>(c)) fe::throwf("affine.op.mul called with non-constant second argument");
+                if (Axm::isa<refly::check>(c))
+                    fe::throwf("`%affine.semiop.mul` called with non-constant second argument");
                 // `c` is a `Nat` constant; reinterpret it on the `Idx 0` carrier.
                 return w.call(core::wrap::mul, core::Mode::none, Defs{x, w.call<core::bitcast>(w.type_i64(), c)});
             }

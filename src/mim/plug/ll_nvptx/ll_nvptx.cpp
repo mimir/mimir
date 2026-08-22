@@ -105,12 +105,12 @@ std::string find_libdevice() {
     auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / Libdevice_Name;
     if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
 
-    fe::throwf<sys::CmdNotFound>("Unable to find '{}'. Try setting the CUDA_HOME environment variable.",
+    fe::throwf<sys::CmdNotFound>("unable to find `{}`; try setting the `CUDA_HOME` environment variable",
                                  Libdevice_Name);
 }
 
 void link_libdevice(const NvptxCompileArgs& c) {
-    if (!std::filesystem::exists(c.libdevice_path)) fe::throwf("libdevice path does not exist: {}", c.libdevice_path);
+    if (!std::filesystem::exists(c.libdevice_path)) fe::throwf("libdevice path does not exist: `{}`", c.libdevice_path);
     auto llvm_link = sys::require_cmd("llvm-link");
     sys::require_run(std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
                                  c.dev_bc_raw_name));
@@ -191,7 +191,8 @@ public:
         }
 
         auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
-        auto setup_phase       = split_apply_phase.get()->expect<RWPhase>("%gpu.split_apply to be an RWPhase");
+        auto setup_phase
+            = split_apply_phase.get()->expect<RWPhase>("the phase for `%gpu.split_apply` to be an `RWPhase`");
         setup_phase->run();
 
         DeviceEmitFlags device_flags;
@@ -201,7 +202,7 @@ public:
         }
         if (c.embed_device_code) {
             if (!c.embed_ptx && !c.embed_cubin)
-                fe::throwf("Embedding requested with no images (neither PTX nor CUBIN).");
+                fe::throwf("embedding requested with no images (neither PTX nor CUBIN)");
             try {
                 if (c.compute_cap.empty()) c.compute_cap = get_compute_capability();
                 if (device_flags.uses_libdevice) {

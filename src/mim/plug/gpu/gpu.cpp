@@ -23,19 +23,19 @@ void reg_phases(Flags2Phases& phases) {
         if (auto malloc = Axm::isa<mem::malloc>(def)) {
             auto addr_space = Lit::as(malloc->decurry()->arg(1));
             if (addr_space == shared_as || addr_space == const_as || addr_space == local_as)
-                fe::throwf("Invalid use of %mem.malloc: cannot be used in address space {}: {}", addr_space, malloc);
+                fe::throwf("`%mem.malloc` cannot be used in address space {}: `{}`", addr_space, malloc);
         } else if (auto free = Axm::isa<mem::free>(def)) {
             auto addr_space = Lit::as(free->decurry()->arg(1));
             if (addr_space == shared_as || addr_space == const_as || addr_space == local_as)
-                fe::throwf("Invalid use of %mem.free: cannot be used in address space {}: {}", addr_space, free);
+                fe::throwf("`%mem.free` cannot be used in address space {}: `{}`", addr_space, free);
         } else if (auto mslot = Axm::isa<mem::mslot>(def)) {
             auto addr_space = Lit::as(mslot->decurry()->arg(1));
             if (addr_space == global_as || addr_space == const_as)
-                fe::throwf("Invalid use of %mem.mslot: cannot be used in address space {}: {}", addr_space, mslot);
+                fe::throwf("`%mem.mslot` cannot be used in address space {}: `{}`", addr_space, mslot);
         } else if (auto store = Axm::isa<mem::store>(def)) {
             auto addr_space = Lit::as(store->decurry()->arg(1));
             if (addr_space == const_as)
-                fe::throwf("Invalid use of %mem.store: cannot be used in address space {}: {}", addr_space, store);
+                fe::throwf("`%mem.store` cannot be used in address space {}: `{}`", addr_space, store);
         }
         return {};
     });

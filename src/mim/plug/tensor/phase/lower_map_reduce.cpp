@@ -246,7 +246,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         comb->set("comb");
         current_mut->app(true, comb, {w.tuple({element_acc, w.tuple(input_elements)}), cont});
         return call;
-    } catch (const std::exception& e) { fe::throwf("error during lowering map_reduce: {}", e.what()); }
+    } catch (const std::exception& e) { fe::throwf("failed to lower `%tensor.map_reduce`: {}", e.what()); }
 }
 
 const Def* LowerMapReduce::build_pointwise(const Def* inputs,

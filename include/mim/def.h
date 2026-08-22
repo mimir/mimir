@@ -572,7 +572,7 @@ public:
     template<class T = Def, class... Args>
     T* expect_mut(std::format_string<Args...> fmt, Args&&... args) const {
         if (auto res = isa_mut<T>()) return res;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), this);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), this);
     }
     ///@}
 
@@ -935,7 +935,7 @@ public:
     template<class T = nat_t, class... Args>
     static T expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<T>(def)) return *res;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), def);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), def);
     }
     ///@}
 
@@ -1002,7 +1002,7 @@ public:
     static nat_t expect_bitwidth(const Def* type, std::format_string<Args...> fmt, Args&&... args) {
         if (auto size = isa(type))
             if (auto w = size2bitwidth(size)) return *w;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), type);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), type);
     }
     ///@}
 

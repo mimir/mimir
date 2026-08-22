@@ -53,7 +53,7 @@ bool is_tensor_op(const App* app) {
 void LowerToMem::collect_tensor_types() {
     // The default pipeline lowers tensors exclusively through buffers — there is no value-semantics
     // fallback. A program shape the conversion cannot handle is a hard error, not silent residue.
-    auto gate = [](const char* why, const Def* culprit) { fe::throwf("cannot bufferize: {} ({})", why, culprit); };
+    auto gate = [](const char* why, const Def* culprit) { fe::throwf("cannot bufferize: {} (`{}`)", why, culprit); };
     // Fully folded shapes (`«1; T»` ≡ `T`) denote plain scalars — recording them would poison every
     // function whose signature mentions the element type, so only genuine array types count as tensors.
     auto add_tensor_ty = [this](const Def* t) {
@@ -108,7 +108,7 @@ void LowerToMem::collect_tensor_types() {
                 auto [T, r]             = Tr->projs<2>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 if (!Lit::isa<u64>(r) || !Lit::isa<u64>(params->proj(3, 0)))
-                    gate("non-literal rank/mode of %tensor.pad", app);
+                    gate("non-literal rank/mode of `%tensor.pad`", app);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(0)->type());
             } else if (Axm::isa<tensor::concat>(app)) {
@@ -120,7 +120,7 @@ void LowerToMem::collect_tensor_types() {
                 auto r_l   = Lit::isa<u64>(r);
                 auto ax_l  = Lit::isa<u64>(ax);
                 if (!nis_l || !r_l || !ax_l) {
-                    gate("non-literal nis/rank/axis of %tensor.concat", app);
+                    gate("non-literal nis/rank/axis of `%tensor.concat`", app);
                 } else {
                     add_tensor_ty(app->type());
                     for (u64 i = 0; i < *nis_l; ++i) {
