@@ -194,8 +194,28 @@ template<> struct std::formatter<mim::Error::Msg> : fe::ostream_formatter {};
 
 namespace mim {
 
+/// Streams @p str, rendering the `` `code` `` spans our diagnostics cite in color.
+/// Color and backticks are alternative ways of setting a citation apart, so the backticks are dropped
+/// when coloring and kept verbatim otherwise.
+inline std::ostream& stream_code(std::ostream& os, std::string_view str) {
+    if (!fe::term::use_color(os)) return os << str;
+
+    for (size_t i = 0, e = str.size(); i != e;) {
+        auto l = str.find('`', i);
+        if (l == std::string_view::npos) return os << str.substr(i);
+        auto r = str.find('`', l + 1);
+        if (r == std::string_view::npos) return os << str.substr(i); // unpaired: not a citation
+        os << str.substr(i, l - i) << fe::term::FG::Cyan << str.substr(l + 1, r - l - 1) << fe::term::FG::Reset;
+        i = r + 1;
+    }
+    return os;
+}
+
+// Streamed piecewise instead of via std::format: a std::formatter cannot see its destination stream,
+// so embedded fe::term::FG values would resolve Mode::Auto to "no color"; see fe/term.h.
 inline std::ostream& operator<<(std::ostream& os, const Error::Msg& msg) {
-    return os << std::format("{}{}: {}: {}{}", fe::term::FG::Yellow, msg.loc, msg.tag, fe::term::FG::Reset, msg.str);
+    os << fe::term::FG::Yellow << msg.loc << ": " << msg.tag << ": " << fe::term::FG::Reset;
+    return stream_code(os, msg.str);
 }
 
 } // namespace mim
