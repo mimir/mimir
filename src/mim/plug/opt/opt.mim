@@ -60,7 +60,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%buffer.lower_ptr",
         %compile.unload "buffer",
 
-        // affine + cpsp
+        // affine + cps
         %compile.named "%affine.lower_index",
         %compile.named "%cps.conv",
         %compile.unload "cps",
