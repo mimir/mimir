@@ -184,6 +184,16 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
     // A target-specific intrinsic in tail position (e.g. %gpu.launch) emits its own code and
     // yields the continuation to branch to.
     if (auto ret = isa_targetspecific_intrinsic(bb, app)) return bb.tail("br label {}", *ret);
+
+    // A `%runtime.fail` argument never reaches its callee. Emit it in this predecessor instead of
+    // letting the scheduler hoist it into another block (which may already have a terminator).
+    for (auto arg : app->args()) {
+        if (Axm::isa<runtime::fail>(arg)) {
+            emit_runtime_fail(bb, arg);
+            return bb.tail("unreachable");
+        }
+    }
+
     if (app->callee() == root()->ret_var()) { // return
         Vector<std::string> values;
         DefVec types;
@@ -380,6 +390,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     };
 
     if (def->isa<Var>()) {
+        if (Axm::isa<mem::M>(def->type())) return {};
         if (is_simd(def->type())) return id(def);
         auto ts = def->type()->projs();
         if (std::ranges::any_of(ts, [](auto t) { return Axm::isa<mem::M>(t); })) return {};
@@ -402,7 +413,15 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         return std::pair(v_i, t_i);
     };
 
-    if (auto lit = def->isa<Lit>()) {
+    if (Axm::isa<runtime::assert>(def)) {
+        emit_runtime_assert(bb, def);
+        return {};
+    } else if (auto check = Axm::isa<runtime::static_check>(def)) {
+        return emit(check->arg()->proj(2, 0));
+    } else if (Axm::isa<runtime::fail>(def)) {
+        emit_runtime_fail(bb, def);
+        return "undef";
+    } else if (auto lit = def->isa<Lit>()) {
         if (lit->type()->isa<Nat>() || Idx::isa(lit->type())) {
             return std::to_string(lit->get());
         } else if (auto w = math::isa_f(lit->type())) {

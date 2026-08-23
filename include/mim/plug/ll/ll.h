@@ -3,6 +3,7 @@
 #include <deque>
 #include <format>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -17,7 +18,9 @@
 #include <mim/plug/clos/clos.h>
 #include <mim/plug/math/math.h>
 #include <mim/plug/mem/mem.h>
+#include <mim/plug/runtime/runtime.h>
 #include <mim/plug/vec/vec.h>
+#include <mim/tuple.h>
 
 #include "mim/plug/ll/autogen.h"
 
@@ -44,6 +47,7 @@ namespace plug::ll {
 
 namespace math = mim::plug::math;
 namespace mem  = mim::plug::mem;
+namespace runtime = mim::plug::runtime;
 
 namespace detail {
 inline const char* math_suffix(const Def* type) {
@@ -153,6 +157,11 @@ public:
 
     virtual inline std::optional<std::string> isa_targetspecific_intrinsic(BB&, const Def*) { return std::nullopt; }
 
+    /// Host realization of backend-neutral runtime checks. Device backends may
+    /// override these hooks when failure handling differs from the host ABI.
+    virtual inline void emit_runtime_fail(BB&, const Def*);
+    virtual inline void emit_runtime_assert(BB&, const Def*);
+
     template<class... Args>
     void declare(std::format_string<Args...> s, Args&&... args) {
         std::ostringstream decl;
@@ -229,6 +238,7 @@ protected:
     std::ostringstream type_decls_;
     std::ostringstream vars_decls_;
     std::ostringstream func_decls_;
+    std::ostringstream runtime_impls_;
     std::ostringstream func_impls_;
     LamMap<const Def*> simd_phi_;
 
@@ -340,7 +350,69 @@ inline void Emitter::start() {
         ostream() << decl << '\n';
     ostream() << func_decls_.str() << '\n';
     ostream() << vars_decls_.str() << '\n';
+    ostream() << runtime_impls_.str() << '\n';
     ostream() << func_impls_.str() << '\n';
+}
+
+inline std::string llvm_string(std::string_view value) {
+    std::ostringstream escaped;
+    for (unsigned char c : value) {
+        if (c >= 0x20 && c < 0x7f && c != '\\' && c != '"') {
+            escaped << static_cast<char>(c);
+        } else {
+            escaped << '\\' << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+                    << static_cast<unsigned>(c) << std::dec << std::setfill(' ');
+        }
+    }
+    escaped << "\\00";
+    return escaped.str();
+}
+
+inline void Emitter::emit_runtime_fail(BB& bb, const Def* def) {
+    auto fail    = Axm::expect<runtime::fail>(def, "a runtime failure");
+    auto message = tuple2str(fail->arg());
+    auto global  = ".mimir_fail_" + std::to_string(fail->gid());
+    auto size    = message.size() + 1;
+
+    std::print(vars_decls_, "@{} = private unnamed_addr constant [{} x i8] c\"{}\"\n", global, size,
+               llvm_string(message));
+    declare("i32 @puts(ptr)");
+    declare("i32 @fflush(ptr)");
+    declare("void @abort() noreturn");
+    bb.tail("call i32 @puts(ptr getelementptr inbounds ([{} x i8], ptr @{}, i64 0, i64 0))", size, global);
+    bb.tail("call i32 @fflush(ptr null)");
+    bb.tail("call void @abort()");
+}
+
+inline void Emitter::emit_runtime_assert(BB& bb, const Def* def) {
+    auto check     = Axm::expect<runtime::assert>(def, "a runtime assertion");
+    auto condition = check->arg()->proj(3, 1);
+    auto message   = tuple2str(check->arg()->proj(3, 2));
+    auto global    = ".mimir_assert_msg_" + std::to_string(check->gid());
+    auto helper    = "@.mimir_assert_" + std::to_string(check->gid());
+    auto size      = message.size() + 1;
+
+    std::print(vars_decls_, "@{} = private unnamed_addr constant [{} x i8] c\"{}\"\n", global, size,
+               llvm_string(message));
+    declare("i32 @puts(ptr)");
+    declare("i32 @fflush(ptr)");
+    declare("void @abort() noreturn");
+    std::print(runtime_impls_,
+               "define internal void {}(i1 %condition) {{\n"
+               "entry:\n"
+               "    br i1 %condition, label %success, label %failure\n"
+               "failure:\n"
+               "    call i32 @puts(ptr getelementptr inbounds ([{} x i8], ptr @{}, i64 0, i64 0))\n"
+               "    call i32 @fflush(ptr null)\n"
+               "    call void @abort()\n"
+               "    unreachable\n"
+               "success:\n"
+               "    ret void\n"
+               "}}\n\n",
+               helper, size, global);
+
+    emit_unsafe(check->arg()->proj(3, 0));
+    bb.tail("call void {}(i1 {})", helper, emit(condition));
 }
 
 inline bool Emitter::load_rt_module(std::string_view filename) {

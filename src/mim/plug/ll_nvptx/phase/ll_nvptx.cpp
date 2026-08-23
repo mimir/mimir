@@ -69,6 +69,9 @@ public:
     const std::string& get_extra_flags() const { return extra_flags; }
 
 private:
+    void emit_runtime_fail(ll::BB&, const Def*) override;
+    void emit_runtime_assert(ll::BB&, const Def*) override;
+
     std::string convert(const Def* def, bool simd = false) override {
         if (simd) WLOG("Ignoring simd=true for type conversion in device code.");
         return Super::convert(def, false);
@@ -87,6 +90,14 @@ private:
     bool uses_libdevice;
     std::string extra_flags;
 };
+
+void DeviceEmitter::emit_runtime_fail(ll::BB&, const Def* def) {
+    fe::throwf(MIM_LL_NVPTX_BE "`%runtime.fail` is only supported in host code; got `{}`", def);
+}
+
+void DeviceEmitter::emit_runtime_assert(ll::BB&, const Def* def) {
+    fe::throwf(MIM_LL_NVPTX_BE "`%runtime.assert` is only supported in host code; got `{}`", def);
+}
 
 void HostEmitter::start() {
     for (auto def : world().annexes().defs())
