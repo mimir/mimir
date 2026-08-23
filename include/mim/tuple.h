@@ -39,8 +39,6 @@ public:
 
     /// @name Rebuild
     ///@{
-    Sigma* stub(const Def* type) { return Def::stub(world(), type)->as<Sigma>(); }
-
     /// @note Technically, it would make sense to have an offset of 1 as the first element can't be reduced.
     /// For example, in `[n: Nat, F n]` `n` only occurs free in the second element.
     /// However, this would cause a lot of confusion and special code to cope with the first element,
@@ -102,7 +100,6 @@ public:
 
     /// @name Rebuild
     ///@{
-    Seq* stub(World& w, const Def* type) { return Def::stub(w, type)->as<Seq>(); }
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 };
@@ -128,11 +125,6 @@ public:
     Arr* unset() { return Def::unset()->as<Arr>(); }
     ///@}
 
-    /// @name Rebuild
-    ///@{
-    Arr* stub(const Def* type) { return Def::stub(world(), type)->as<Arr>(); }
-    ///@}
-
     static constexpr auto Node      = mim::Node::Arr;
     static constexpr size_t Num_Ops = 2;
 
@@ -156,11 +148,6 @@ public:
     using Setters<Pack>::set;
     Pack* set(const Def* body) { return Def::set({body})->as<Pack>(); }
     Pack* unset() { return Def::unset()->as<Pack>(); }
-    ///@}
-
-    /// @name Rebuild
-    ///@{
-    Pack* stub(const Def* type) { return Def::stub(world(), type)->as<Pack>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pack;

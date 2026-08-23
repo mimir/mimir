@@ -153,7 +153,7 @@ port:
 - **`Def` is not polymorphic.**
   There is no vtable pointer — verified: `std::is_polymorphic_v<Def>` is
   `false`.
-  `stub_` and `immutabilize` are ordinary member functions that `switch` on the
+  `immutabilize` and `arity` are ordinary member functions that `switch` on the
   1-byte `node_` tag (`src/mim/def.cpp`), and a subclass
   accidentally growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)`
   assert (`include/mim/def.h:784`).

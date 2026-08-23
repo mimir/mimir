@@ -622,9 +622,6 @@ public:
 
     /// @name Rebuild
     ///@{
-    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg_key()); }
-    Def* stub(const Def* type) { return stub(world(), type); }
-
     /// Tries to make an immutable from a mutable.
     /// This usually works if the mutable isn't recursive and its var isn't used.
     const Def* immutabilize();
@@ -719,7 +716,6 @@ protected:
 
 private:
     Defs reduce_(const Def* arg) const;
-    Def* stub_(World&, const Def*);
 
     void watch() const; ///< Trips World::watchpoints in `MIM_ENABLE_CHECKS` builds; a no-op otherwise.
     Def* finalize();    ///< Runs Def::check once the last op has been set; @see @ref set_ops.
@@ -1055,11 +1051,6 @@ public:
     /// @name Getters
     ///@{
     bool is_mutable() const { return flags(); }
-    ///@}
-
-    /// @name Rebuild
-    ///@{
-    Global* stub(const Def* type) { return Def::stub(world(), type)->as<Global>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Global;

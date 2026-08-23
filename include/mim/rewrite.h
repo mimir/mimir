@@ -66,8 +66,6 @@ public:
     virtual const Def* rewrite_imm(const Def*);
     virtual const Def* rewrite_mut(Def*);
     virtual const Def* rewrite_stub(Def*, Def*);
-    /// Stubs @p old_mut in Rewriter::world and rewrites its ops into it.
-    const Def* rewrite_stub(Def* old_mut);
     virtual DefVec rewrite(Defs);
 
 #define CODE_IMM(N) virtual const Def* rewrite_imm_##N(const N*);

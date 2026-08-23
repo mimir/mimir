@@ -39,8 +39,6 @@ public:
     Hole* unset() { return Def::unset()->as<Hole>(); }
     ///@}
 
-    Hole* stub(const Def* type) { return Def::stub(world(), type)->as<Hole>(); }
-
     /// If unset, explode to Tuple.
     /// @returns the new Tuple, or `this` if unsuccessful.
     const Def* tuplefy(nat_t);

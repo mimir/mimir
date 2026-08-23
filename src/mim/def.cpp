@@ -508,25 +508,9 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 /*
  * dispatch
  *
- * Def::stub already copies the Dbg over (see Def::set(DbgKey)), so nothing here does.
- *
  * All of these used to be `virtual`. Def has no vtable - a vptr would cost 8 bytes on *every* node in the
  * World - so each is one function switching on Def::node() with the former override inlined right here.
  */
-
-Def* Def::stub_(World& w, const Def* t) {
-    switch (node()) {
-        case Node::Arr:    return w.mut_arr  (t);
-        case Node::Global: return w.global   (t, as<Global>()->is_mutable());
-        case Node::Hole:   return w.mut_hole (t);
-        case Node::Lam:    return w.mut_lam  (t->as<Pi>());
-        case Node::Pack:   return w.mut_pack (t);
-        case Node::Pi:     return w.mut_pi   (t, as<Pi>()->is_implicit());
-        case Node::Rule:   return w.mut_rule (t->as<Reform>());
-        case Node::Sigma:  return w.mut_sigma(t, num_ops());
-        default:           fe::unreachable(); // only *mutables* have a stub
-    }
-}
 
 const Def* Def::immutabilize() {
     auto& w = world();
