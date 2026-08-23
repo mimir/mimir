@@ -2359,6 +2359,37 @@ lam torch_sum_all_scalar [A: %torch.Arithmetic]
     let values = ‹i: n; %tensor.get ((i,), flat)›;
     %vec.fold.l A#R#add (A#R#_0, values);
 
+/// Full reductions use two identical output cells so bufferization never has
+/// to allocate a rank-zero tensor. The implementation performs a block-level
+/// reduction followed by a reduction over the partials.
+lam torch_sum_all_runtime [A: %torch.Arithmetic]
+                           {r: Nat, s: «r; Nat»}
+                           (input: «s; A#R#T»): A#R#T =
+    let block = 65536;
+    let n = torch_numel s;
+    let blocks = %core.nat.div (
+        %core.nat.add (n, %core.nat.sub (block, 1)), block);
+    let padded_n = %core.nat.mul (blocks, block);
+    let padding = %core.nat.sub (padded_n, n);
+    let padded_extent = %core.nat.add (n, padding);
+    let flat = %tensor.reshape_impl @(A#R#T, r, 1) s (n,) input;
+    let padded = %tensor.pad (n,) (0, (0,), (padding,)) (flat, A#R#_0);
+    let matrix = %tensor.reshape_impl @(A#R#T, 1, 2)
+        (padded_extent,) (blocks, block) padded;
+    let partial = %tensor.map_reduce @1 @(A#R#T, 2, 3)
+        ((2, blocks), (2, blocks, block))
+        @(A#R#T, 2, (blocks, block)) (pool_fun A#R#add, A#R#_0)
+        (%tensor.proj_map @(3, 2) (0, 1))
+        (%tensor.proj_map @(3, 2) (1, 2),)
+        matrix;
+    let reduced = %tensor.map_reduce @1 @(A#R#T, 1, 2)
+        ((2,), (2, blocks))
+        @(A#R#T, 2, (2, blocks)) (pool_fun A#R#add, A#R#_0)
+        (%tensor.proj_map @(2, 1) (0,))
+        (%tensor.proj_map @(2, 2) (0, 1),)
+        partial;
+    %tensor.get ((0_2,), reduced);
+
 /// Full-tensor L2/Frobenius norm. A separate scalar schema keeps the dependent
 /// `norm2_dims` result useful for partial reductions without exposing an empty
 /// tensor shape to the native execution ABI.
@@ -2370,7 +2401,7 @@ lam %torch.reduction_impl.norm2_all [F: %torch.Floating]
                             (input: «s; F#A#R#T»): F#A#R#T =
     let squared = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
         (torch_square_scalar F#A) @(r, s) input;
-    F#sqrt (torch_sum_all_scalar F#A @(r, s) squared);
+    F#sqrt (torch_sum_all_runtime F#A @(r, s) squared);
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.sum.html
 /// Types: reduce every axis of `Tensor[A, s]` to its scalar physical representation.
@@ -2380,7 +2411,7 @@ axm %torch.reduction(sum_all): [A: %torch.Arithmetic]
 lam %torch.reduction_impl.sum_all [A: %torch.Arithmetic]
                            {r: Nat, s: «r; Nat»}
                            (input: «s; A#R#T»): A#R#T =
-    torch_sum_all_scalar A @(r, s) input;
+    torch_sum_all_runtime A @(r, s) input;
 
 /// Two-level sum over every axis. A fixed block bounds the linear floating
 /// point accumulation chain while shape arithmetic and zero padding fold for
@@ -2411,7 +2442,7 @@ axm %torch.reduction(mean_all): [F: %torch.Floating]
 lam %torch.reduction_impl.mean_all [F: %torch.Floating]
                             {r: Nat, s: «r; Nat»}
                             (input: «s; F#A#R#T»): F#A#R#T =
-    let sum = torch_sum_all_scalar F#A @(r, s) input;
+    let sum = torch_sum_all_runtime F#A @(r, s) input;
     let count = F#from_nat (torch_numel s);
     F#A#div (sum, count);
 
@@ -2458,7 +2489,7 @@ lam %torch.loss_impl.kl_div_reduced [F: %torch.Floating]
             let losses = %tensor.binary_impl
                 @(F#A#R#T, F#A#R#T, F#A#R#T)
                 (torch_kl_div_scalar F log_target) @(r, s) (input, target);
-            let total = torch_sum_all_scalar F#A @(r, s) losses;
+            let total = torch_sum_all_runtime F#A @(r, s) losses;
             let denominator = %core.select (
                 %core.ncmp.e (reduction, 1),
                 torch_numel s,
@@ -2512,7 +2543,7 @@ lam %torch.loss_impl.triplet_margin_reduced [F: %torch.Floating]
                 @(F#A#R#T, F#A#R#T, F#A#R#T)
                 (torch_triplet_margin_scalar F margin)
                 @(1, (n,)) (distance_positive, effective_negative);
-            let total = torch_sum_all_scalar F#A @(1, (n,)) losses;
+            let total = torch_sum_all_runtime F#A @(1, (n,)) losses;
             let mean = F#A#div (total, F#from_nat n);
             %core.select @F#A#R#T
                 (%core.ncmp.e (reduction, 0), total, mean);
