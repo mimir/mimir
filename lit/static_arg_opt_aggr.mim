@@ -1,0 +1,44 @@
+// RUN: rm -f %t.ll
+// RUN: %mim %s -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 7
+
+plugin compile;
+plugin core;
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.scalarize,
+        %compile.phases tt (%compile.beta_red, %compile.eta_conv),
+        %compile.static_arg_opt tt,
+        %compile.lam_spec,
+        %compile.branch_normalize,
+        %compile.ret_wrap,
+        %compile.named "%ll.emit",
+    );
+
+// Both sites forward `k`, so the ∀ split alone would only drop `k`.
+// With `tt` each site additionally gets the specialization for *its* statics: one for `a`, one for `b`.
+con f (a b: Nat, k: Cn Nat) =
+    (b_ne_0, b_eq_0)#(%core.ncmp.e (b, 0)) ()
+    where
+        con b_eq_0() = k (%core.nat.add (a, 7));
+
+        con b_ne_0() =
+            (a_ne_0, a_eq_0)#(%core.ncmp.e (a, 0)) ()
+            where
+                con a_eq_0() = f (a, %core.nat.sub (b, 1), k);
+                con a_ne_0() = f (%core.nat.sub (a, 1), b, k);
+            end;
+    end;
+
+fun extern main(argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): I32 =
+    f (2, 3, done)
+    where
+        con done (r: Nat) = return (%core.bitcast I32 r);
+    end;
+
+// The general wrapper plus one clone per site class.
+// CHECK-COUNT-3: define{{.*}}@f_
+// CHECK-NOT:     define{{.*}}@f_
