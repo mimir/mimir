@@ -1,12 +1,13 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s \
-// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%tensor.generate \
+// RUN:   --implicit-check-not=Match
 
 plugin torch;
 plugin compile;
 
 // CHECK-LABEL: fun extern index_2d
-// CHECK: %tensor.checked_index_cast
-// CHECK: %tensor.gather_impl_axm
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.gather
 fun extern index_2d(
     input: «3, 4; %math.F32»,
     rows columns: «2, 5; I64»): «2, 5; %math.F32» =
@@ -16,5 +17,5 @@ fun extern index_2d(
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

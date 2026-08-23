@@ -1,10 +1,11 @@
 // RUN: %mim -p opt %s -o - | %FileCheck \
-// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%tensor.generate \
+// RUN:   --implicit-check-not=Match %s
 
 // CHECK-LABEL: fun extern qwen_api_ops
 // CHECK: %tensor.map_reduce
-// CHECK: %tensor.checked_index_cast
-// CHECK: %tensor.gather_impl_axm
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.gather
 
 plugin torch;
 plugin tensor;
@@ -27,5 +28,5 @@ fun extern qwen_api_ops (
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

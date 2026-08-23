@@ -10,5 +10,5 @@ lam extern static_failure(): Bool =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

@@ -2,10 +2,14 @@
 // CHECK-LABEL: fun extern mish
 // CHECK-NOT: %torch.activation.mish
 // CHECK-NOT: %torch.activation.softplus
-// CHECK: %mem.malloc
+// CHECK: %tensor.map_reduce
 
 plugin torch;
+plugin compile;
 
 fun extern mish(input: «2, 4; %math.F32»): «2, 4; %math.F32» =
     return (%torch.activation.mish (%torch.resolve_floating %math.F32)
         @(2, (2, 4)) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

@@ -80,5 +80,5 @@ fun extern vector_matrix(lhs: «3; Nat», rhs: «3, 4; Nat»): «4; Nat» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

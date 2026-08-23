@@ -1,5 +1,6 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s \
-// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%tensor.generate \
+// RUN:   --implicit-check-not=Match
 
 plugin torch;
 plugin compile;
@@ -9,15 +10,15 @@ plugin compile;
 // CHECK-LABEL: fun extern gather_dynamic_dim
 // CHECK: %runtime.static_check
 // CHECK-LABEL: fun extern gather_negative_dim
-// CHECK: %tensor.checked_index_cast
-// CHECK: %tensor.gather_impl_axm
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.gather
 // CHECK-LABEL: fun extern scatter_src_negative_dim
-// CHECK: %tensor.checked_index_cast
-// CHECK: %tensor.scatter_impl_axm
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.scatter
 // CHECK-LABEL: fun extern scatter_value
-// CHECK: %tensor.checked_index_cast
+// CHECK: %tensor.map_reduce
 // CHECK: %tensor.splat
-// CHECK: %tensor.scatter_impl_axm
+// CHECK: %tensor.scatter
 
 // PyTorch-compatible indexing enters as I64. The Torch implementation owns
 // dimension canonicalization and checked conversion to tensor-level Idx.
@@ -48,4 +49,4 @@ fun extern gather_dynamic_dim(
         dimension (input, index));
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

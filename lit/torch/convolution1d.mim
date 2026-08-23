@@ -21,7 +21,7 @@ let NatArithmetic: %torch.Arithmetic = (
 );
 
 // CHECK-LABEL: fun extern convolution1d_stride
-// CHECK: %tensor.map_reduce_init
+// CHECK: %tensor.map_reduce
 fun extern convolution1d_stride(
     input: «1, 4, 16; Nat»,
     weight: «8, 4, 3; Nat»,
@@ -36,5 +36,5 @@ fun extern convolution1d_stride(
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

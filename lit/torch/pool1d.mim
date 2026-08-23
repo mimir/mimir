@@ -40,4 +40,4 @@ fun extern adaptive_avg_pool1d(input: «2, 3, 8; %math.F32»)
 // CHECK: %tensor.map_reduce
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

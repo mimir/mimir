@@ -46,4 +46,4 @@ fun extern min_dim(input: «2, 3; Nat»): [Bool, «2; Nat», «2; I64»] =
     return (%torch.reduction.min_dim NatFloating @(2, (2, 3)) (-1I64) input);
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

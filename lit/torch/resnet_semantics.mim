@@ -52,5 +52,5 @@ fun extern batch_norm_without_affine(
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

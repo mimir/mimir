@@ -1,9 +1,13 @@
 // RUN: %mim %s -p opt -o - | %FileCheck %s
 // CHECK-LABEL: fun extern ge_i64_scalar
 // CHECK-NOT: %torch.comparison.ge_i64_scalar
-// CHECK: %mem.malloc
+// CHECK: %tensor.map_reduce
 
 plugin torch;
+plugin compile;
 
 fun extern ge_i64_scalar(input: «2, 4; I64»): «2, 4; Bool» =
     return (%torch.comparison.ge_i64_scalar @(2, (2, 4)) (input, 2I64));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

@@ -38,17 +38,17 @@ let NatFloating: %torch.Floating = (
 // CHECK: %tensor.map_reduce
 // CHECK-LABEL: fun extern kl_sum
 // CHECK: %tensor.map_reduce
-fun extern kl_sum(input: «2, 3; Nat», target: «2, 3; Nat»): «(); Nat» =
+fun extern kl_sum(input: «2, 3; Nat», target: «2, 3; Nat»): Nat =
     return (%torch.loss.kl_div_reduced NatFloating
         @(2, (2, 3)) (ff, 0) (input, target));
 
-fun extern kl_mean_log_target(input: «2, 3; Nat», target: «2, 3; Nat»): «(); Nat» =
+fun extern kl_mean_log_target(input: «2, 3; Nat», target: «2, 3; Nat»): Nat =
     return (%torch.loss.kl_div_reduced NatFloating
         @(2, (2, 3)) (tt, 1) (input, target));
 
-fun extern kl_batchmean(input: «2, 3; Nat», target: «2, 3; Nat»): «(); Nat» =
+fun extern kl_batchmean(input: «2, 3; Nat», target: «2, 3; Nat»): Nat =
     return (%torch.loss.kl_div_reduced NatFloating
         @(2, (2, 3)) (ff, 2) (input, target));
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

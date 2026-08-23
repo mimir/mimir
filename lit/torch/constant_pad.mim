@@ -14,4 +14,4 @@ fun extern constant_pad(input: «2, 3, 5, 7; %math.F32»)
         ((1, 2, 3, 4), 0:(%math.F32)) input);
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

@@ -14,5 +14,5 @@ fun extern threshold_f32(input: «4; %math.F32»): «4; %math.F32» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

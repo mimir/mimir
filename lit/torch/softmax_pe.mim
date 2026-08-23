@@ -71,5 +71,5 @@ fun extern softmax_dynamic_dim(dimension: I64, input: «2, 4; Nat»): «2, 4; Na
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

@@ -1,16 +1,16 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s \
-// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%tensor.generate \
+// RUN:   --implicit-check-not=%%tensor.get --implicit-check-not=Match
 
 plugin torch;
 plugin compile;
 
 // CHECK-LABEL: fun extern unfold
-// CHECK: %core.wrap.mul
-// CHECK: %tensor.get
-// CHECK: %tensor.generate
+// CHECK-DAG: %affine.semiop.mul
+// CHECK-DAG: %tensor.map_reduce
 fun extern unfold(input: «2, 3, 8, 8; %math.F32»): «2, 3, 2, 8, 4; %math.F32» =
     return (%torch.indexing.unfold @(%math.F32, 4, (2, 3, 8, 8))
         (2I64, 4, 4) input);
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

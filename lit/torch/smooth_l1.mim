@@ -30,9 +30,9 @@ let NatFloating: %torch.Floating = (
 
 // CHECK-LABEL: fun extern smooth_l1
 // CHECK: %tensor.map_reduce
-fun extern smooth_l1(input: «17, 19; Nat», target: «17, 19; Nat»): «(); Nat» =
+fun extern smooth_l1(input: «17, 19; Nat», target: «17, 19; Nat»): Nat =
     return (%torch.loss.smooth_l1_mean NatFloating
         @(2, (17, 19)) (input, target) 1);
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

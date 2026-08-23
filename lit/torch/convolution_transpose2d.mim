@@ -20,7 +20,7 @@ let NatArithmetic: %torch.Arithmetic = (
 );
 
 // CHECK-LABEL: fun extern convolution_transpose2d
-// CHECK: %tensor.map_reduce_init
+// CHECK: %tensor.map_reduce
 fun extern convolution_transpose2d(
     input: «1, 4, 3, 4; Nat»,
     weight: «4, 3, 3, 2; Nat»,
@@ -33,5 +33,5 @@ fun extern convolution_transpose2d(
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

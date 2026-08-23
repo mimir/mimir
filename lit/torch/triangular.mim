@@ -23,7 +23,7 @@ lam extern triangular_dynamic {r: Nat, s: «r; Nat»}
 
 // CHECK-LABEL: lam extern triangular_static
 // CHECK-NOT: %runtime.static_check
-// CHECK-COUNT-2: %tensor.indexed_unary
+// CHECK-COUNT-2: %tensor.generate
 
 // PROFILE: Phase counters:
 // PROFILE-DAG: 3 %torch.lower_torch: decompose.impl
@@ -34,5 +34,5 @@ lam extern triangular_dynamic {r: Nat, s: «r; Nat»}
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

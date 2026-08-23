@@ -4,7 +4,6 @@
 
 // CHECK-LABEL: fun extern mean_all
 // CHECK: %tensor.map_reduce
-// CHECK: %tensor.map_reduce
 // CHECK-LABEL: fun extern reductions
 // CHECK: %tensor.map_reduce
 
@@ -41,12 +40,12 @@ fun extern reductions(input: «2, 3, 4; Nat»): «2, 4; Nat» =
     return (%torch.reduction.sum_dim NatArithmetic
         @(3, (2, 3, 4)) (-2I64) input);
 
-fun extern mean_all(input: «17, 19; Nat»): «(); Nat» =
+fun extern mean_all(input: «17, 19; Nat»): Nat =
     return (%torch.reduction.mean_all NatFloating
         @(2, (17, 19)) input);
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

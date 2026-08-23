@@ -16,5 +16,5 @@ fun extern permute_rank3(input: «2, 3, 4; I32»): «4, 2, 3; I32» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

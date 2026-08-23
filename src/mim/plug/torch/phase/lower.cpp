@@ -14,7 +14,10 @@
 namespace mim::plug::torch::phase {
 
 const Def* DecomposeByImpl::apply_impl(const App* app, flags_t impl_flags) {
+    auto [axm, curry, remaining] = Axm::get(app);
     auto [_, args] = app->uncurry();
+    (void)curry;
+    (void)remaining;
     auto impl      = new_world().annex(impl_flags);
     if (!impl) fe::throwf("implementation annex `{}` is unavailable", impl_flags);
 
@@ -22,11 +25,9 @@ const Def* DecomposeByImpl::apply_impl(const App* app, flags_t impl_flags) {
         for (auto arg : args)
             impl = new_world().app(impl, rewrite(arg));
         profile_count("decompose.impl");
+        profile_count("decompose.impl." + axm->sym().str());
         return decompose_generated(impl);
     } catch (const std::exception& e) {
-        auto [axm, curry, remaining] = Axm::get(app);
-        (void)curry;
-        (void)remaining;
         fe::throwf("while decomposing `{}`: {}", axm->sym(), e.what());
     }
 }
@@ -65,6 +66,7 @@ const Def* DecomposeByImpl::decompose_generated(const Def* def) {
                     for (auto arg : args)
                         impl = new_world().app(impl, decompose_generated(arg));
                     profile_count("decompose.impl");
+                    profile_count("decompose.impl." + axm->sym().str());
                     auto lowered = decompose_generated(impl);
                     active_.erase(app);
                     return generated_[def] = lowered;
@@ -89,7 +91,13 @@ const Def* DecomposeByImpl::decompose_generated(const Def* def) {
     bool changed  = new_type != def->type();
     for (size_t i = 0; i != def->num_ops(); ++i)
         changed |= new_ops[i] != def->op(i);
-    return generated_[def] = changed ? def->rebuild(new_world(), new_type, new_ops) : def;
+    if (!changed) return generated_[def] = def;
+
+    Rewriter rebuild(new_world());
+    if (def->type()) rebuild.map(def->type(), new_type);
+    for (size_t i = 0; i != def->num_ops(); ++i)
+        rebuild.map(def->op(i), new_ops[i]);
+    return generated_[def] = rebuild.rewrite(def);
 }
 
 const Def* DecomposeByImpl::rewrite_imm_App(const App* app) {
@@ -211,6 +219,7 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(comparison, ge, ge_op);
     bind_sub_if_enabled<torch::activation::relu, torch::activation_impl::relu>(
         "activation.relu", "relu_op");
+    MIM_BIND_TORCH_SUB(activation, leaky_relu, leaky_relu_op);
     MIM_BIND_TORCH_SUB(unary, neg, neg_op);
     MIM_BIND_TORCH_SUB(unary, abs, abs_op);
     MIM_BIND_TORCH_SUB(unary, exp, exp_op);
@@ -279,6 +288,7 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(reduction, sum_dims_keepdim, sum_dims_keepdim_op);
     MIM_BIND_TORCH_SUB(reduction, norm2_dims, norm2_dims_op);
     MIM_BIND_TORCH_SUB(reduction, norm2_dims_keepdim, norm2_dims_keepdim_op);
+    MIM_BIND_TORCH_SUB(reduction, norm2_all, norm2_all_op);
     MIM_BIND_TORCH_SUB(reduction, sum_all, sum_all_op);
     MIM_BIND_TORCH_SUB(reduction, mean_all, mean_all_op);
     MIM_BIND_TORCH_SUB(loss, smooth_l1_mean, smooth_l1_mean_op);
@@ -292,6 +302,11 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(reduction, var_mean_dims, var_mean_dims_op);
     MIM_BIND_TORCH_SUB(reduction, any_dims, any_dims_op);
     MIM_BIND_TORCH_SUB(reduction, all_dims, all_dims_op);
+    MIM_BIND_TORCH_SUB(scan, cumsum_2d, cumsum_2d_op);
+    MIM_BIND_TORCH_SUB(scan, cumsum_2d_direction, cumsum_2d_direction_op);
+    MIM_BIND_TORCH_SUB(scan, cumsum_exclusive_2d, cumsum_exclusive_2d_op);
+    MIM_BIND_TORCH_SUB(scan, cumsum_bool_i64, cumsum_bool_i64_op);
+    MIM_BIND_TORCH_SUB(scan, cumprod_2d, cumprod_2d_op);
 
     // Linear algebra and neural-network operators.
     MIM_BIND_TORCH_SUB(linalg, mm, mm_op);

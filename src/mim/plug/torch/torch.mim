@@ -23,6 +23,12 @@ plugin runtime;
 plugin vec;
 plugin option;
 
+/// Exact lookup in a flat `(scalar type, instance)` table. This deliberately
+/// small Torch-local dispatcher is sufficient for non-compositional dtypes.
+axm %torch.resolve: {V: *, n: Nat}
+                  → [key: *, instances: «n; [*, V]»]
+                  → V, normalize_resolve;
+
 let %torch.Arithmetic = [
     R: %tensor.Ring,
     sub: [R#T, R#T] → R#T,
@@ -131,7 +137,7 @@ lam torch_select_floating
 
 /// Resolves exact scalar arithmetic semantics for a supported flat dtype.
 lam %torch.resolve_arithmetic (T: *): %torch.Arithmetic =
-    let tag = %core.resolve @(Nat, 2) (T, %torch.scalar_type_tags);
+    let tag = %torch.resolve @(Nat, 2) (T, %torch.scalar_type_tags);
     torch_select_arithmetic (
         %core.ncmp.e (tag, 0),
         torch_f32_arithmetic (),
@@ -139,7 +145,7 @@ lam %torch.resolve_arithmetic (T: *): %torch.Arithmetic =
 
 /// Resolves exact floating-point semantics for a supported flat dtype.
 lam %torch.resolve_floating (T: *): %torch.Floating =
-    let tag = %core.resolve @(Nat, 2) (T, %torch.scalar_type_tags);
+    let tag = %torch.resolve @(Nat, 2) (T, %torch.scalar_type_tags);
     torch_select_floating (
         %core.ncmp.e (tag, 0),
         torch_f32_floating (),
@@ -527,7 +533,7 @@ lam torch_reduce_dim {T: *, r: Nat}
     let s_full = %vec.cat (s_out, (s#dimension,));
     let out_subs = ‹i: ro; %core.bitcast Nat i›;
     let in_subs = torch_reduce_subscripts @r dimension;
-    %tensor.map_reduce @1 @(T, ro, 1) (s_out, s_full)
+    %tensor.map_reduce @1 @(T, ro, loops) (s_out, s_full)
         @(T, r, s) (pool_fun g, init)
         (%tensor.proj_map @(loops, ro) out_subs)
         (%tensor.proj_map @(loops, r) in_subs,)
@@ -659,7 +665,7 @@ lam torch_multi_reduce {T: *, r nr: Nat}
     let loops = %core.nat.add (ro, nr);
     let out_subs = ‹i: ro; %core.bitcast Nat i›;
     let in_subs = torch_multi_reduce_subscripts @(r, nr) dimensions;
-    %tensor.map_reduce @1 @(T, ro, nr) (s_out, s_full)
+    %tensor.map_reduce @1 @(T, ro, loops) (s_out, s_full)
         @(T, r, s) (pool_fun g, init)
         (%tensor.proj_map @(loops, ro) out_subs)
         (%tensor.proj_map @(loops, r) in_subs,)
@@ -887,7 +893,8 @@ lam %torch.comparison_impl.eq_i64_scalar {r: Nat, s: «r; Nat»}
     %tensor.unary_impl @(I64, Bool)
         (torch_eq_i64_scalar other) @(r, s) input;
 
-/// Signed scalar comparison variants follow PyTorch's I64 semantics.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.lt.html
+/// Types: an I64 tensor and scalar to a same-shape Bool tensor.
 axm %torch.comparison(lt_i64_scalar): {r: Nat, s: «r; Nat»}
                             → [input: «s; I64», other: I64] → «s; Bool»;
 lam %torch.comparison_impl.lt_i64_scalar {r: Nat, s: «r; Nat»}
@@ -895,6 +902,8 @@ lam %torch.comparison_impl.lt_i64_scalar {r: Nat, s: «r; Nat»}
     %tensor.unary_impl @(I64, Bool)
         (torch_lt_i64_scalar other) @(r, s) input;
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.le.html
+/// Types: an I64 tensor and scalar to a same-shape Bool tensor.
 axm %torch.comparison(le_i64_scalar): {r: Nat, s: «r; Nat»}
                             → [input: «s; I64», other: I64] → «s; Bool»;
 lam %torch.comparison_impl.le_i64_scalar {r: Nat, s: «r; Nat»}
@@ -902,6 +911,8 @@ lam %torch.comparison_impl.le_i64_scalar {r: Nat, s: «r; Nat»}
     %tensor.unary_impl @(I64, Bool)
         (torch_le_i64_scalar other) @(r, s) input;
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.gt.html
+/// Types: an I64 tensor and scalar to a same-shape Bool tensor.
 axm %torch.comparison(gt_i64_scalar): {r: Nat, s: «r; Nat»}
                             → [input: «s; I64», other: I64] → «s; Bool»;
 lam %torch.comparison_impl.gt_i64_scalar {r: Nat, s: «r; Nat»}
@@ -909,6 +920,8 @@ lam %torch.comparison_impl.gt_i64_scalar {r: Nat, s: «r; Nat»}
     %tensor.unary_impl @(I64, Bool)
         (torch_gt_i64_scalar other) @(r, s) input;
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.ge.html
+/// Types: an I64 tensor and scalar to a same-shape Bool tensor.
 axm %torch.comparison(ge_i64_scalar): {r: Nat, s: «r; Nat»}
                             → [input: «s; I64», other: I64] → «s; Bool»;
 lam %torch.comparison_impl.ge_i64_scalar {r: Nat, s: «r; Nat»}
@@ -976,6 +989,8 @@ lam %torch.comparison_impl.ge_i64 {r: Nat, s: «r; Nat»}
     %tensor.binary_impl @(I64, I64, Bool)
         torch_ge_i64 @(r, s) (lhs, rhs);
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.mul.html
+/// Types: an `Arithmetic` tensor and same-dtype scalar to the original shape.
 axm %torch.binary(mul_scalar): [A: %torch.Arithmetic]
                          → {r: Nat, s: «r; Nat»}
                          → [input: «s; A#R#T», other: A#R#T]
@@ -1172,10 +1187,15 @@ lam %torch.activation_impl.relu [A: %torch.Arithmetic]
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.leaky_relu.html
 /// Types: a Floating tensor and same-dtype negative slope to the same tensor type.
-lam %torch.activation.leaky_relu [F: %torch.Floating]
-                                 {r: Nat, s: «r; Nat»}
-                                 (input: «s; F#A#R#T»,
-                                  negative_slope: F#A#R#T): «s; F#A#R#T» =
+axm %torch.activation(leaky_relu): [F: %torch.Floating]
+                              → {r: Nat, s: «r; Nat»}
+                              → [input: «s; F#A#R#T»,
+                                 negative_slope: F#A#R#T]
+                              → «s; F#A#R#T»;
+lam %torch.activation_impl.leaky_relu [F: %torch.Floating]
+                                      {r: Nat, s: «r; Nat»}
+                                      (input: «s; F#A#R#T»,
+                                       negative_slope: F#A#R#T): «s; F#A#R#T» =
     %tensor.unary_impl @(F#A#R#T, F#A#R#T)
         (torch_leaky_relu_scalar F negative_slope) @(r, s) input;
 
@@ -1454,11 +1474,59 @@ lam torch_permute_shape {r: Nat}
 // PyTorch lists the input axis selected by each output axis, whereas
 // %tensor.transpose maps each input axis to its output axis. Invert that
 // relation while projecting an output loop index back into the input tensor.
+lam torch_transpose_source_axis {r: Nat}
+                                (permutation: «r; Idx r»,
+                                 axis: Idx r): Idx r =
+    let source = %vec.fold.l %core.nat.add (
+        0,
+        ‹i: r; %core.select @Nat (
+            %core.icmp.e @r (permutation#i, axis),
+            %core.bitcast Nat i,
+            0)›);
+    %core.idx r 0 source;
+
+lam torch_checked_index_value {bound n: Nat}
+                              (message: «n; I8»)
+                              (value: I64): Idx bound =
+    let valid = %core.bit2.and_ 0 (
+        %core.icmp.sge (value, 0I64),
+        %core.icmp.sl (value, %core.bitcast I64 bound));
+    %runtime.require (valid, message) body
+    where
+        lam body(): Idx bound = %core.conv.u bound value;
+    end;
+
+/// Converts an I64 index tensor to the bounded index type required by the
+/// tensor gather/scatter contract. Static values and bounds disappear under
+/// PE; dynamic violations retain the runtime failure path.
+lam torch_checked_index_cast
+    {bound r: Nat, s: «r; Nat»} {n: Nat}
+    (message: «n; I8»)
+    (input: «s; I64»): «s; Idx bound» =
+    %tensor.unary_impl @(I64, Idx bound)
+        (torch_checked_index_value @(bound, n) message) @(r, s) input;
+
+lam torch_indexed_unary_element
+    {Ti T: *, r: Nat, s: «r; Nat»}
+    (app: [«r; I64», Ti] → T, input: «s; Ti»)
+    (indices: «r; I64»): T =
+    let coords = ‹d: r; %core.conv.u (s#d) (indices#d)›;
+    app (indices, %tensor.get (coords, input));
+
+lam torch_indexed_unary
+    {Ti T: *, r: Nat, s: «r; Nat»}
+    (app: [«r; I64», Ti] → T)
+    (input: «s; Ti»): «s; T» =
+    %tensor.generate @(T, r) s
+        (torch_indexed_unary_element @(Ti, T, r, s) (app, input));
+
 lam torch_permute_map {r: Nat}
                       (dims: «r; Idx r»)
                       (o: «r; %affine.index»): «r; %affine.index» =
-    ‹i: r; o#(transpose_source_axis (dims, i))›;
+    ‹i: r; o#(torch_transpose_source_axis (dims, i))›;
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.permute.html
+/// Types: rank-`r` tensor and an input-axis permutation to the permuted shape.
 axm %torch.shape(permute): {T: *, r: Nat, s: «r; Nat»}
                       → [input: «s; T», dims: «r; Idx r»]
                       → «torch_permute_shape (s, dims); T»;
@@ -1466,7 +1534,7 @@ lam %torch.shape_impl.permute {T: *, r: Nat, s: «r; Nat»}
                            (input: «s; T», dims: «r; Idx r»)
                          : «torch_permute_shape (s, dims); T» =
     let out_s = torch_permute_shape (s, dims);
-    %tensor.map_reduce @1 @(T, r, 0) (out_s, out_s)
+    %tensor.map_reduce @1 @(T, r, r) (out_s, out_s)
         @(T, r, s) (tensor_copy @T, ⊥: T)
         (%affine.id @r) (torch_permute_map dims,) input;
 
@@ -1500,8 +1568,8 @@ lam %torch.shape_impl.transpose_int {T: *, r: Nat, s: «r; Nat»}
     where
         lam body()
           : «transpose_shape (s, torch_transpose_dims @r (dim0, dim1)); T» =
-            %tensor.transpose_impl @(T, r, s)
-                (input, torch_transpose_dims @r (dim0, dim1));
+            %tensor.transpose_impl @(T, r)
+                (torch_transpose_dims @r (dim0, dim1)) input;
     end;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.Tensor.expand.html
@@ -1573,8 +1641,6 @@ lam %torch.shape_impl.cat {T: *, ni r: Nat}
                      : «concat_shape (dimension, shapes); T» =
     %tensor.concat @(T, ni, r) dimension @shapes inputs;
 
-/// PyTorch source correspondence: `aten/src/ATen/native/ReduceOps.cpp::diff`.
-/// This helper makes the concat-then-adjacent-subtract output shape explicit.
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.flatten.html
 /// Types: `Tensor[T, s_in] -> Tensor[T, s_out]`; the frontend computes the flattened shape.
 axm %torch.shape(flatten): {T: *, r_in r_out: Nat}
@@ -1626,47 +1692,10 @@ lam %torch.shape_impl.repeat {T: *, r: Nat, s: «r; Nat»}
                         : «torch_repeat_shape (s, repeats); T» =
     %tensor.repeat_impl @(T, r) s (torch_repeat_shape (s, repeats)) input;
 
-/// PyTorch source: `torch/_refs/__init__.py::flip` canonicalizes and validates
-/// dimensions before calling `prims.rev`; this is the explicit index formula.
-/// Python: reverse each requested coordinate, then return `input[coords]`.
-lam torch_flip_element {T: *, r nr: Nat}
-                       (s: «r; Nat», dimensions: «nr; Idx r»)
-                       (input: «s; T») (indices: «r; I64»): T =
-    let coords = ‹d: r;
-        let reverse = (%vec.first (%core.icmp.e @r) (dimensions, d))#ff;
-        let last = %core.wrap.sub 0 (%core.bitcast I64 (s#d), 1I64);
-        let coordinate = %core.select (
-            reverse,
-            %core.wrap.sub 0 (last, indices#d),
-            indices#d);
-        %core.conv.u (s#d) coordinate›;
-    %tensor.get @(T, r, s) (input, coords);
-
-/// Unlike tensor.flip, torch.flip reverses only the requested axes. Static
-/// dimensions turn every per-axis membership test into a constant under PE.
-/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.flip.html
-/// Types: rank-`r` tensor and unique signed axes to the same tensor type.
-axm %torch.indexing(flip): {T: *, r nr: Nat, s: «r; Nat»}
-                   → [dimensions: «nr; I64»]
-                   → «s; T» → «s; T»;
-lam %torch.indexing_impl.flip {T: *, r nr: Nat, s: «r; Nat»}
-                        (dimensions: «nr; I64»)
-                        (input: «s; T»): «s; T» =
-    %runtime.require
-        (torch_axis_list_valid @(r, nr) dimensions,
-         "flip expects unique, in-range dimensions")
-        body
-    where
-        lam body(): «s; T» =
-            let dims = torch_canonical_dims @(r, nr) dimensions;
-            let element = torch_flip_element @(T, r, nr) (s, dims) input;
-            %tensor.generate @(T, r) s element;
-    end;
-
-lam torch_roll_element {T: *, r nr: Nat}
-                       (s: «r; Nat», shifts: «nr; Nat», dimensions: «nr; Idx r»)
-                       (input: «s; T») (indices: «r; I64»): T =
-    let coords = ‹d: r;
+lam torch_roll_map {r nr: Nat}
+                   (s: «r; Nat», shifts: «nr; Nat», dimensions: «nr; Idx r»)
+                   (indices: «r; %affine.index»): «r; %affine.index» =
+    ‹d: r;
         let candidates = ‹i: nr;
             %core.select (
                 %core.icmp.e @r (d, dimensions#i),
@@ -1674,14 +1703,10 @@ lam torch_roll_element {T: *, r nr: Nat}
                 0)›;
         let shift = %vec.fold.l %core.nat.add (0, candidates);
         let normalized_shift = %core.nat.mod (shift, s#d);
-        let output_index = %core.bitcast Nat indices#d;
-        let source = %core.nat.mod (
-            %core.nat.add (
-                output_index,
-                %core.nat.sub (s#d, normalized_shift)),
-            s#d);
-        %core.idx (s#d) 0 source›;
-    %tensor.get @(T, r, s) (input, coords);
+        let offset = %core.nat.sub (s#d, normalized_shift);
+        %affine.semiop.mod (
+            %affine.op.add (indices#d, %affine.constant offset),
+            s#d)›;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.roll.html
 /// Static shifts and dimensions become per-axis modular index expressions;
@@ -1700,9 +1725,9 @@ lam %torch.indexing_impl.roll {T: *, r nr: Nat, s: «r; Nat»}
     where
         lam body(): «s; T» =
             let dims = torch_canonical_dims @(r, nr) dimensions;
-            let element = torch_roll_element @(T, r, nr)
-                (s, shifts, dims) input;
-            %tensor.generate @(T, r) s element;
+            %tensor.map_reduce @1 @(T, r, r) (s, s)
+                @(T, r, s) (tensor_copy @T, ⊥: T)
+                (%affine.id @r) (torch_roll_map (s, shifts, dims),) input;
     end;
 
 /// PyTorch source: `torch/_refs/__init__.py::_get_unfold_shape_stride`.
@@ -1719,22 +1744,19 @@ lam torch_unfold_shape {r: Nat}
 
 /// Python: source[d] is `window * step + offset` on the unfolded axis,
 /// and the original output coordinate on every other axis.
-lam torch_unfold_element {T: *, r: Nat}
-                         (s: «r; Nat», dimension: Idx r, step: Nat,
-                          input: «s; T»)
-                         (indices: «%core.nat.add (r, 1); I64»): T =
+lam torch_unfold_map {r: Nat}
+                     (dimension: Idx r, step: Nat)
+                     (indices: «%core.nat.add (r, 1); %affine.index»)
+                   : «r; %affine.index» =
     let window_offset = indices#(%core.idx (%core.nat.add (r, 1)) 0 r);
-    let step_i64 = %core.bitcast I64 step;
-    let coords = ‹d: r;
+    ‹d: r;
         let output_d = indices#(%core.idx (%core.nat.add (r, 1)) 0
             (%core.bitcast Nat d));
-        let source = %core.select (
+        %core.select @%affine.index (
             %core.icmp.e @r (d, dimension),
-            %core.wrap.add 0 (
-                %core.wrap.mul 0 (output_d, step_i64), window_offset),
-            output_d);
-        %core.conv.u (s#d) source›;
-    %tensor.get @(T, r, s) (input, coords);
+            %affine.op.add (
+                %affine.semiop.mul (output_d, step), window_offset),
+            output_d)›;
 
 /// Value-semantics form of PyTorch's sliding-window view. MimIR tensors do not
 /// expose strides, so the view is represented by its equivalent indexed value.
@@ -1771,8 +1793,11 @@ lam %torch.indexing_impl.unfold {T: *, r: Nat, s: «r; Nat»}
                 (s, torch_canonical_dim @r dimension, size, step); T» =
             let dim = torch_canonical_dim @r dimension;
             let out_shape = torch_unfold_shape (s, dim, size, step);
-            %tensor.generate @(T, %core.nat.add (r, 1)) out_shape
-                (torch_unfold_element @(T, r) (s, dim, step, input));
+            let out_rank = %core.nat.add (r, 1);
+            %tensor.map_reduce @1 @(T, out_rank, out_rank)
+                (out_shape, out_shape) @(T, r, s)
+                (tensor_copy @T, ⊥: T) (%affine.id @out_rank)
+                (torch_unfold_map @r (dim, step),) input;
     end;
 
 /// PyTorch source: `torch/_refs/__init__.py::narrow`.
@@ -1909,11 +1934,6 @@ lam %torch.creation_impl.full_like {Tin T: *, r: Nat, s: «r; Nat»}
                              (input: «s; Tin», value: T): «s; T» =
     %torch.creation_impl.full @(T, r) (s, value);
 
-/// Python: `return undefined_value(T)` for each coordinate.
-lam torch_undef_element {T: *, r: Nat}
-                        (indices: «r; I64»): T =
-    ⊥: T;
-
 /// Value semantics for contiguous `aten.empty_strided`. Layout is not part of
 /// the tensor type, so `stride` is retained at the Torch boundary while each
 /// element is intentionally undefined until initialized by a later operator.
@@ -1925,8 +1945,7 @@ axm %torch.creation(empty_strided): {T: *, r: Nat}
 lam %torch.creation_impl.empty_strided {T: *, r: Nat}
                                  (shape: «r; Nat», stride: «r; Nat»)
                                : «shape; T» =
-    %tensor.generate @(T, r)
-        shape (torch_undef_element @(T, r));
+    %tensor.splat @(T, r) (shape, ⊥: T);
 
 /// Functional value semantics of `aten.fill.Scalar`: the input determines
 /// dtype and shape, while every output element is replaced by `value`.
@@ -2079,8 +2098,9 @@ lam torch_arg_extrema [F: %torch.Floating] {r: Nat, s: «r; Nat»}
                       (input: «s; F#A#R#T»)
                     : [Bool,
                        «torch_reduce_shape (s, dimension); F#A#R#T»,
-                       «torch_reduce_shape (s, dimension); I64»] =
+                      «torch_reduce_shape (s, dimension); I64»] =
     let ro = %core.nat.sub (r, 1);
+    let loops = %core.nat.add (ro, 1);
     let initial = %core.select @F#A#R#T (
         maximum, F#neg_inf, F#A#sub (F#A#R#_0, F#neg_inf));
     let values = torch_reduce_dim
@@ -2088,7 +2108,7 @@ lam torch_arg_extrema [F: %torch.Floating] {r: Nat, s: «r; Nat»}
     let extrema = torch_broadcast_reduced
         @(F#A#R#T, r) (s, dimension) values;
     let indices = %tensor.generate @(I64, r) s (torch_axis_index @r dimension);
-    let result_indices = %tensor.map_reduce @3 @(I64, ro, 1)
+    let result_indices = %tensor.map_reduce @3 @(I64, ro, loops)
         (torch_reduce_shape (s, dimension),
          %vec.cat (torch_reduce_shape (s, dimension), (s#dimension,)))
         @((F#A#R#T, F#A#R#T, I64), (r, r, r), (s, s, s))
@@ -2328,21 +2348,39 @@ lam %torch.reduction_impl.norm2_dims_keepdim [F: %torch.Floating]
                 @(r, torch_multi_keepdim_shape (s, dims)) kept;
     end;
 
+/// Fold a statically shaped tensor directly to a scalar. The generated vector
+/// of reads and `%vec.fold.l` disappear under PE, so a logical rank-zero result
+/// never reaches tensor bufferization as an empty-shape allocation.
+lam torch_sum_all_scalar [A: %torch.Arithmetic]
+                           {r: Nat, s: «r; Nat»}
+                           (input: «s; A#R#T»): A#R#T =
+    let n = torch_numel s;
+    let flat = %tensor.reshape_impl @(A#R#T, r, 1) s (n,) input;
+    let values = ‹i: n; %tensor.get ((i,), flat)›;
+    %vec.fold.l A#R#add (A#R#_0, values);
+
+/// Full-tensor L2/Frobenius norm. A separate scalar schema keeps the dependent
+/// `norm2_dims` result useful for partial reductions without exposing an empty
+/// tensor shape to the native execution ABI.
+axm %torch.reduction(norm2_all): [F: %torch.Floating]
+                       → {r: Nat, s: «r; Nat»}
+                       → «s; F#A#R#T» → F#A#R#T;
+lam %torch.reduction_impl.norm2_all [F: %torch.Floating]
+                            {r: Nat, s: «r; Nat»}
+                            (input: «s; F#A#R#T»): F#A#R#T =
+    let squared = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+        (torch_square_scalar F#A) @(r, s) input;
+    F#sqrt (torch_sum_all_scalar F#A @(r, s) squared);
+
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.sum.html
-/// Types: reduce every axis of `Tensor[A, s]` to a rank-zero tensor of the same element type.
+/// Types: reduce every axis of `Tensor[A, s]` to its scalar physical representation.
 axm %torch.reduction(sum_all): [A: %torch.Arithmetic]
                       → {r: Nat, s: «r; Nat»}
-                      → «s; A#R#T» → «(); A#R#T»;
+                      → «s; A#R#T» → A#R#T;
 lam %torch.reduction_impl.sum_all [A: %torch.Arithmetic]
                            {r: Nat, s: «r; Nat»}
-                           (input: «s; A#R#T»): «(); A#R#T» =
-    let out_subs = ‹i: 0; %core.bitcast Nat i›;
-    let in_subs = ‹i: r; %core.bitcast Nat i›;
-    %tensor.map_reduce @1 @(A#R#T, 0, r) ((), s)
-        @(A#R#T, r, s) (pool_fun A#R#add, A#R#_0)
-        (%tensor.proj_map @(r, 0) out_subs)
-        (%tensor.proj_map @(r, r) in_subs,)
-        input;
+                           (input: «s; A#R#T»): A#R#T =
+    torch_sum_all_scalar A @(r, s) input;
 
 /// Two-level sum over every axis. A fixed block bounds the linear floating
 /// point accumulation chain while shape arithmetic and zero padding fold for
@@ -2366,17 +2404,16 @@ lam torch_blocked_sum_all [A: %torch.Arithmetic]
     torch_reduce_dim (A#R#add, A#R#_0) ((blocks,), 0_1) partial;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.mean.html
-/// Types: reduce every axis of a floating tensor to a rank-zero tensor.
+/// Types: reduce every axis of a floating tensor to its scalar physical representation.
 axm %torch.reduction(mean_all): [F: %torch.Floating]
                        → {r: Nat, s: «r; Nat»}
-                       → «s; F#A#R#T» → «(); F#A#R#T»;
+                       → «s; F#A#R#T» → F#A#R#T;
 lam %torch.reduction_impl.mean_all [F: %torch.Floating]
                             {r: Nat, s: «r; Nat»}
-                            (input: «s; F#A#R#T»): «(); F#A#R#T» =
-    let sum = torch_blocked_sum_all F#A @(r, s) input;
+                            (input: «s; F#A#R#T»): F#A#R#T =
+    let sum = torch_sum_all_scalar F#A @(r, s) input;
     let count = F#from_nat (torch_numel s);
-    %tensor.unary_impl @(F#A#R#T, F#A#R#T)
-        (torch_div_scalar F#A count) @(0, ()) sum;
+    F#A#div (sum, count);
 
 /// Mean-reduced SmoothL1/Huber loss over equal-shape floating tensors.
 /// PyTorch source: `torch/_decomp/decompositions.py::smooth_l1_loss`.
@@ -2385,11 +2422,11 @@ axm %torch.loss(smooth_l1_mean): [F: %torch.Floating]
                          → {r: Nat, s: «r; Nat»}
                          → [input: «s; F#A#R#T», target: «s; F#A#R#T»]
                          → [beta: F#A#R#T]
-                         → «(); F#A#R#T»;
+                         → F#A#R#T;
 lam %torch.loss_impl.smooth_l1_mean [F: %torch.Floating]
                               {r: Nat, s: «r; Nat»}
                               (input: «s; F#A#R#T», target: «s; F#A#R#T»)
-                              (beta: F#A#R#T): «(); F#A#R#T» =
+                              (beta: F#A#R#T): F#A#R#T =
     let losses = %tensor.binary_impl
         @(F#A#R#T, F#A#R#T, F#A#R#T)
         (torch_smooth_l1_scalar F beta) @(r, s) (input, target);
@@ -2406,29 +2443,28 @@ axm %torch.loss(kl_div_reduced): [F: %torch.Floating]
                          → {r: Nat, s: «r; Nat»}
                          → [log_target: Bool, reduction: Nat]
                          → [input target: «s; F#A#R#T»]
-                         → «(); F#A#R#T»;
+                         → F#A#R#T;
 lam %torch.loss_impl.kl_div_reduced [F: %torch.Floating]
                               {r: Nat, s: «r; Nat»}
                               (log_target: Bool, reduction: Nat)
-                              (input target: «s; F#A#R#T»): «(); F#A#R#T» =
+                              (input target: «s; F#A#R#T»): F#A#R#T =
     let valid = %core.bit2.and_ 0 (
         %core.ncmp.ge (r, 1), %core.ncmp.le (reduction, 2));
     %runtime.require
         (valid, "kl_div expects rank >= 1 and sum/mean/batchmean reduction")
         body
     where
-        lam body(): «(); F#A#R#T» =
+        lam body(): F#A#R#T =
             let losses = %tensor.binary_impl
                 @(F#A#R#T, F#A#R#T, F#A#R#T)
                 (torch_kl_div_scalar F log_target) @(r, s) (input, target);
-            let total = torch_blocked_sum_all F#A @(r, s) losses;
+            let total = torch_sum_all_scalar F#A @(r, s) losses;
             let denominator = %core.select (
                 %core.ncmp.e (reduction, 1),
                 torch_numel s,
                 s#(%core.idx r 0 0));
-            let normalized = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
-                (torch_div_scalar F#A (F#from_nat denominator)) @(0, ()) total;
-            %core.select @«(); F#A#R#T»
+            let normalized = F#A#div (total, F#from_nat denominator);
+            %core.select @F#A#R#T
                 (%core.ncmp.e (reduction, 0), total, normalized);
     end;
 
@@ -2447,11 +2483,11 @@ axm %torch.loss(triplet_margin_reduced): [F: %torch.Floating]
     → {n d: Nat}
     → [margin p eps: F#A#R#T, swap: Bool, reduction: Nat]
     → [anchor positive negative: «n, d; F#A#R#T»]
-    → «(); F#A#R#T»;
+    → F#A#R#T;
 lam %torch.loss_impl.triplet_margin_reduced [F: %torch.Floating]
     {n d: Nat}
     (margin p eps: F#A#R#T, swap: Bool, reduction: Nat)
-    (anchor positive negative: «n, d; F#A#R#T»): «(); F#A#R#T» =
+    (anchor positive negative: «n, d; F#A#R#T»): F#A#R#T =
     let valid = %core.bit2.and_ 0 (
         F#A#gt (margin, F#A#R#_0),
         %core.bit2.and_ 0 (
@@ -2460,7 +2496,7 @@ lam %torch.loss_impl.triplet_margin_reduced [F: %torch.Floating]
         (valid, "triplet_margin_loss expects margin>0, p>0, and sum/mean reduction")
         body
     where
-        lam body(): «(); F#A#R#T» =
+        lam body(): F#A#R#T =
             let distance_positive = torch_pairwise_distance_2d F
                 @(n, d) (eps, p) (anchor, positive);
             let distance_negative = torch_pairwise_distance_2d F
@@ -2476,10 +2512,9 @@ lam %torch.loss_impl.triplet_margin_reduced [F: %torch.Floating]
                 @(F#A#R#T, F#A#R#T, F#A#R#T)
                 (torch_triplet_margin_scalar F margin)
                 @(1, (n,)) (distance_positive, effective_negative);
-            let total = torch_blocked_sum_all F#A @(1, (n,)) losses;
-            let mean = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
-                (torch_div_scalar F#A (F#from_nat n)) @(0, ()) total;
-            %core.select @«(); F#A#R#T»
+            let total = torch_sum_all_scalar F#A @(1, (n,)) losses;
+            let mean = F#A#div (total, F#from_nat n);
+            %core.select @F#A#R#T
                 (%core.ncmp.e (reduction, 0), total, mean);
     end;
 
@@ -2578,6 +2613,9 @@ lam %torch.reduction_impl.mean_dims_keepdim
                 mean;
     end;
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.var_mean.html
+/// Types: floating tensor and unique signed reduction axes to variance and
+/// mean tensors with those axes removed.
 axm %torch.reduction(var_mean_dims):
     [F: %torch.Floating]
     → {r nr: Nat, s: «r; Nat»}
@@ -2754,12 +2792,13 @@ lam torch_matmul_batch_compatible {rl rr: Nat}
     let checks = ‹i: rb;
         let lhs = torch_matmul_batch_extent @(rl, rb) (sl, i);
         let rhs = torch_matmul_batch_extent @(rr, rb) (sr, i);
-        %core.bit2.or_ 0 (
+        let compatible = %core.bit2.or_ 0 (
             %core.ncmp.e (lhs, rhs),
             %core.bit2.or_ 0 (
                 %core.ncmp.e (lhs, 1),
-                %core.ncmp.e (rhs, 1)))›;
-    %vec.fold.l (%core.bit2.and_ 0) (tt, checks);
+                %core.ncmp.e (rhs, 1)));
+        %core.select @Nat (compatible, 1, 0)›;
+    %core.ncmp.e (%vec.fold.l %core.nat.mul (1, checks), 1);
 
 lam torch_matmul_batch_shape {rl rr: Nat}
                               (sl: «rl; Nat», sr: «rr; Nat»)
@@ -2892,6 +2931,48 @@ lam %torch.linalg_impl.matmul [A: %torch.Arithmetic]
 /// NCHW `aten.convolution` specialization decomposed through grouped
 /// cross-correlation. Transposed convolution and nonzero output padding remain
 /// explicit preconditions instead of silently changing the semantics.
+lam torch_grouped_conv2d_in_map
+    (cin_per_group cout_per_group: Nat,
+     stride dilation: «2; Nat»)
+    (o: «7; %affine.index»): «4; %affine.index» =
+    let group = %affine.semiop.floordiv (o#1_7, cout_per_group);
+    let channel = %affine.op.add
+        (%affine.semiop.mul (group, cin_per_group), o#4_7);
+    (o#0_7, channel,
+     %affine.op.add
+        (%affine.semiop.mul (o#2_7, stride#0_2),
+         %affine.semiop.mul (o#5_7, dilation#0_2)),
+     %affine.op.add
+        (%affine.semiop.mul (o#3_7, stride#1_2),
+         %affine.semiop.mul (o#6_7, dilation#1_2)));
+
+lam torch_grouped_conv2d
+    [A: %torch.Arithmetic]
+    {n cin cout cin_per_group h w kh kw: Nat}
+    (groups: Nat, stride dilation padding: «2; Nat»)
+    (input: «n, cin, h, w; A#R#T»,
+     weight: «cout, cin_per_group, kh, kw; A#R#T»)
+  : «conv_shape
+        (n, cout, (h, w), (kh, kw), stride, dilation, padding); A#R#T» =
+    let input_shape = (n, cin, h, w);
+    let pad_lohi = (0, 0, padding#0_2, padding#1_2);
+    let padded = %tensor.pad input_shape
+        (0, pad_lohi, pad_lohi) (input, A#R#_0);
+    let padded_shape = %tensor.shape 4 padded;
+    let output_shape = conv_shape
+        (n, cout, (h, w), (kh, kw), stride, dilation, padding);
+    let cout_per_group = %core.nat.div (cout, groups);
+    %tensor.map_reduce
+        (output_shape,
+         (n, cout, output_shape#2_4, output_shape#3_4,
+          cin_per_group, kh, kw))
+        (conv_fun A#R, A#R#_0)
+        (%tensor.proj_map (0, 1, 2, 3))
+        (torch_grouped_conv2d_in_map
+            (cin_per_group, cout_per_group, stride, dilation),
+         %tensor.proj_map (1, 4, 5, 6))
+        (padded, weight);
+
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.conv2d.html
 /// Types: NCHW input, OIHW weight, optional channel bias, and 2-D parameters to NCHW output.
 axm %torch.conv(general):
@@ -2931,11 +3012,18 @@ lam %torch.conv_impl.general
     where
         lam body():
             «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); A#R#T» =
-            let initializer = %option.unwrap_or (bias, ‹cout; A#R#_0›);
-            %tensor.grouped_conv_init_impl A#R
+            let output_shape = conv_shape
+                (n, cout, (h, w), (kh, kw), stride, dilation, padding);
+            let convolved = torch_grouped_conv2d A
                 @(n, cin, cout, cin_per_group, h, w, kh, kw)
                 (groups, stride, dilation, padding)
-                (initializer, input, weight);
+                (input, weight);
+            let effective_bias = %option.unwrap_or bias ‹cout; A#R#_0›;
+            let broadcast_bias = %tensor.broadcast_in_dim_impl
+                @(A#R#T, 1, 4)
+                ((cout,), output_shape, effective_bias, (1_4,));
+            %tensor.binary_impl @(A#R#T, A#R#T, A#R#T)
+                A#R#add @(4, output_shape) (convolved, broadcast_bias);
     end;
 
 /// Output shape for the rank-3 NCL specialization of PyTorch convolution.
@@ -3098,7 +3186,7 @@ lam %torch.pool_impl.max_pool2d_with_indices
         n, c, s_out#ff, s_out#tt, kernel#ff, kernel#tt);
     let window_map = pool2d_in_map (stride, dilation);
     let projection = %tensor.proj_map @(6, 4) (0, 1, 2, 3);
-    let result_indices = %tensor.map_reduce @3 @(I64, 4, 2)
+    let result_indices = %tensor.map_reduce @3 @(I64, 4, 6)
         (output_shape, iteration_shape)
         @((F#A#R#T, F#A#R#T, I64),
           (4, 4, 4), (s_padded, output_shape, s_padded))
@@ -3107,6 +3195,41 @@ lam %torch.pool_impl.max_pool2d_with_indices
         (window_map, projection, window_map)
         (padded, values, flat_indices);
     (values, result_indices);
+
+lam torch_pool3d_in_map
+    (stride dilation: «3; Nat»)
+    (o: «8; %affine.index»): «5; %affine.index» =
+    (o#0_8, o#1_8,
+     %affine.op.add
+        (%affine.semiop.mul (o#2_8, stride#0_3),
+         %affine.semiop.mul (o#5_8, dilation#0_3)),
+     %affine.op.add
+        (%affine.semiop.mul (o#3_8, stride#1_3),
+         %affine.semiop.mul (o#6_8, dilation#1_3)),
+     %affine.op.add
+        (%affine.semiop.mul (o#4_8, stride#2_3),
+         %affine.semiop.mul (o#7_8, dilation#2_3)));
+
+lam torch_pool3d
+    {T: *}
+    (g: [T, T] → T, init: T)
+    {n c d h w: Nat}
+    (kernel stride dilation padding s_out: «3; Nat»)
+    (input: «n, c, d, h, w; T»)
+  : «n, c, s_out#0_3, s_out#1_3, s_out#2_3; T» =
+    let input_shape = (n, c, d, h, w);
+    let pad_lohi = (0, 0, padding#0_3, padding#1_3, padding#2_3);
+    let padded = %tensor.pad input_shape
+        (0, pad_lohi, pad_lohi) (input, init);
+    let padded_shape = %tensor.shape 5 padded;
+    %tensor.map_reduce
+        ((n, c, s_out#0_3, s_out#1_3, s_out#2_3),
+         (n, c, s_out#0_3, s_out#1_3, s_out#2_3,
+          kernel#0_3, kernel#1_3, kernel#2_3))
+        (pool_fun g, init)
+        (%tensor.proj_map (0, 1, 2, 3, 4))
+        (torch_pool3d_in_map (stride, dilation),)
+        padded;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.max_pool3d.html
 /// Types: NCDHW floating input plus 3-D window parameters to the dependent pooled shape.
@@ -3144,7 +3267,7 @@ lam %torch.pool_impl.max_pool3d
         %core.nat.add (padding#2_3, extra_hi#2_3));
     let padded = %tensor.pad s_in (0, pad_lo, pad_hi) (input, F#neg_inf);
     let s_padded = pad_shape (pad_lo, s_in, pad_hi);
-    %tensor.pool3d_impl (F#A#maximum, F#neg_inf)
+    torch_pool3d (F#A#maximum, F#neg_inf)
         @(n, c, s_padded#2_5, s_padded#3_5, s_padded#4_5)
         (kernel, stride, dilation, (0, 0, 0), s_out) padded;
 
@@ -3228,7 +3351,7 @@ lam torch_avg_pool_divisor [F: %torch.Floating]
     let dw = torch_avg_pool_axis_count
         (w, kernel#tt, stride#tt, padding#tt, ow, count_include_pad);
     let divisor = %option.unwrap_or
-        (divisor_override, %core.nat.mul (dh, dw));
+        divisor_override (%core.nat.mul (dh, dw));
     F#from_nat divisor;
 
 lam torch_avg_pool3d_divisor [F: %torch.Floating]
@@ -3245,7 +3368,7 @@ lam torch_avg_pool3d_divisor [F: %torch.Floating]
     let dw = torch_avg_pool_axis_count
         (w, kernel#2_3, stride#2_3, padding#2_3, ow, count_include_pad);
     let divisor = %option.unwrap_or
-        (divisor_override, %core.nat.mul (dd, %core.nat.mul (dh, dw)));
+        divisor_override (%core.nat.mul (dd, %core.nat.mul (dh, dw)));
     F#from_nat divisor;
 
 lam %torch.pool_impl.avg_pool2d
@@ -3257,7 +3380,7 @@ lam %torch.pool_impl.avg_pool2d
     (input: «n, c, h, w; F#A#R#T»)
   : let s_out = torch_pool_shape (h, w, kernel, stride, (1, 1), padding, ceil_mode);
     «n, c, s_out#ff, s_out#tt; F#A#R#T» =
-    let checked_divisor = %option.unwrap_or (divisor_override, 1);
+    let checked_divisor = %option.unwrap_or divisor_override 1;
     %runtime.require
         (%core.ncmp.ne (checked_divisor, 0),
          "avg_pool2d divisor must be nonzero")
@@ -3320,7 +3443,7 @@ lam %torch.pool_impl.avg_pool3d
   : let s_out = torch_pool3d_shape
         (d, h, w, kernel, stride, (1, 1, 1), padding, ceil_mode);
     «n, c, s_out#0_3, s_out#1_3, s_out#2_3; F#A#R#T» =
-    let checked_divisor = %option.unwrap_or (divisor_override, 1);
+    let checked_divisor = %option.unwrap_or divisor_override 1;
     %runtime.require
         (%core.ncmp.ne (checked_divisor, 0),
          "avg_pool3d divisor must be nonzero")
@@ -3346,7 +3469,7 @@ lam %torch.pool_impl.avg_pool3d
             let padded = %tensor.pad
                 s_in (0, pad_lo, pad_hi) (input, F#A#R#_0);
             let s_padded = pad_shape (pad_lo, s_in, pad_hi);
-            let summed = %tensor.pool3d_impl
+            let summed = torch_pool3d
                 (F#A#R#add, F#A#R#_0)
                 @(n, c, s_padded#2_5, s_padded#3_5, s_padded#4_5)
                 (kernel, stride, (1, 1, 1), (0, 0, 0), s_out) padded;
@@ -3495,10 +3618,9 @@ lam %torch.linalg_impl.addmm [A: %torch.Arithmetic]
             end;
     end;
 
-/// PyTorch linear over an arbitrary batch prefix. It is a single affine
-/// contraction whose accumulator initializer is either `bias[n]` or a zero
-/// splat. `option.unwrap_or` lets PE remove the unused initializer without
-/// introducing a tensor-typed branch function.
+/// PyTorch linear over an arbitrary batch prefix. The contraction is expressed
+/// with the tensor dialect's scalar-initialized `map_reduce`; optional bias is
+/// then broadcast over the batch prefix and added pointwise.
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.linear.html
 /// Types: `batch_shape + [k]`, weight `[n, k]`, optional bias `[n]` to `batch_shape + [n]`.
 axm %torch.linalg(linear): [A: %torch.Arithmetic]
@@ -3527,25 +3649,42 @@ lam %torch.linalg_impl.linear [A: %torch.Arithmetic] {rb k n: Nat}
                       %core.bitcast Nat i)›;
     let weight_subs = (rb, ro);
     let comb = torch_linear_comb A;
-    let initializer = %option.unwrap_or (bias, ‹n; A#R#_0›);
-    %tensor.map_reduce_init @2 @(A#R#T, ro, 1)
+    let product = %tensor.map_reduce @2 @(A#R#T, ro, loops)
         (output_shape, full_shape)
-        @(1, n)
         @((A#R#T, A#R#T), (ro, 2), (input_shape, (n, k)))
-        comb
+        (comb, A#R#_0)
         (%tensor.proj_map @(loops, ro) out_subs)
-        (%core.idx ro 0 rb,)
         (%tensor.proj_map @(loops, ro) input_subs,
          %tensor.proj_map @(loops, 2) weight_subs)
-        (initializer, (input, weight));
+        (input, weight);
+    let effective_bias = %option.unwrap_or bias ‹n; A#R#_0›;
+    let broadcast_bias = %tensor.broadcast_in_dim_impl @(A#R#T, 1, ro)
+        ((n,), output_shape, effective_bias, (%core.idx ro 0 rb,));
+    %tensor.binary_impl @(A#R#T, A#R#T, A#R#T)
+        A#R#add @(ro, output_shape) (product, broadcast_bias);
 
 ///
 /// PyTorch source: `aten/src/ATen/native/ScatterGatherChecks.h` and
 /// `torch/_meta_registrations.py::gather_shape_check`.
-/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.gather.html
-/// Types: same-rank input and I64 index tensors; the result has index shape.
 /// The dependent tensor dialect type captures index bounds after checked cast,
 /// while its implementation checks every non-gather shape relation.
+lam torch_gather_shape_compatible {r: Nat}
+                                  (s_input s_index: «r; Nat»,
+                                   dimension: Idx r): Bool =
+    let checks = ‹d: r;
+        let compatible = %core.bit2.or_ 0 (
+            %core.icmp.e @r (d, dimension),
+            %core.ncmp.le (s_index#d, s_input#d));
+        %core.select @Nat (compatible, 1, 0)›;
+    %core.ncmp.e (%vec.fold.l %core.nat.mul (1, checks), 1);
+
+lam torch_shape_le {r: Nat} (lhs rhs: «r; Nat»): Bool =
+    let checks = ‹d: r;
+        %core.select @Nat (%core.ncmp.le (lhs#d, rhs#d), 1, 0)›;
+    %core.ncmp.e (%vec.fold.l %core.nat.mul (1, checks), 1);
+
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.gather.html
+/// Types: same-rank input and I64 index tensors; the result has index shape.
 axm %torch.indexing(gather): {T: *, r: Nat, s_input s_index: «r; Nat»}
                      → [dimension: I64]
                      → [input: «s_input; T», index: «s_index; I64»]
@@ -3561,9 +3700,17 @@ lam %torch.indexing_impl.gather {T: *, r: Nat, s_input s_index: «r; Nat»}
     where
         lam body(): «s_index; T» =
             let dim = torch_canonical_dim @r dimension;
-            let checked_index = %tensor.checked_index_cast
+            let shape_valid = %core.bit2.or_ 0 (
+                %core.ncmp.e (torch_numel s_index, 0),
+                torch_gather_shape_compatible (s_input, s_index, dim));
+            %runtime.require
+                (shape_valid, "gather index shape exceeds input shape")
+                gather;
+        lam gather(): «s_index; T» =
+            let dim = torch_canonical_dim @r dimension;
+            let checked_index = torch_checked_index_cast
                 @(s_input#dim, r, s_index) "gather index out of range" index;
-            %tensor.gather_impl @(T, r)
+            %tensor.gather @(T, r)
                 (s_input, s_index) dim (input, checked_index);
     end;
 
@@ -3589,14 +3736,26 @@ lam %torch.indexing_impl.scatter_src
     where
         lam body(): «s_input; T» =
             let dim = torch_canonical_dim @r dimension;
-            let checked_index = %tensor.checked_index_cast
+            let empty = %core.ncmp.e (torch_numel s_index, 0);
+            let shape_valid = %core.bit2.or_ 0 (
+                empty,
+                %core.bit2.and_ 0 (
+                    torch_gather_shape_compatible (s_input, s_index, dim),
+                    torch_shape_le (s_index, s_src)));
+            %runtime.require
+                (shape_valid, "scatter index shape exceeds input or source shape")
+                scatter;
+        lam scatter(): «s_input; T» =
+            let dim = torch_canonical_dim @r dimension;
+            let checked_index = torch_checked_index_cast
                 @(s_input#dim, r, s_index) "scatter index out of range" index;
-            %tensor.scatter_impl @(T, r)
+            %tensor.scatter @(T, r)
                 (s_input, s_index, s_src) dim (input, checked_index, src);
     end;
 
 /// PyTorch scalar-value scatter overload. Python equivalent:
 /// `return input.scatter(dim, index, torch.full(index.shape, value))`.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.Tensor.scatter_.html
 /// Types: scalar `T` is expanded to index shape before sharing src semantics.
 axm %torch.indexing(scatter_value): {T: *, r: Nat, s_input s_index: «r; Nat»}
                             → [dimension: I64, value: T]
@@ -3611,7 +3770,7 @@ lam %torch.indexing_impl.scatter_value {T: *, r: Nat, s_input s_index: «r; Nat�
         dimension (input, index, src);
 
 /// Inference value semantics of `aten.embedding`, decomposed through checked
-/// index conversion, broadcasting, and `%tensor.gather_impl`. `padding_idx`,
+/// index conversion, broadcasting, and `%tensor.gather`. `padding_idx`,
 /// `scale_grad_by_freq`, and `sparse` only affect autograd, but remain explicit
 /// so the axiom directly matches the public PyTorch operator.
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html
@@ -3645,13 +3804,13 @@ lam %torch.indexing_impl.embedding {T: *, vocab hidden ri: Nat}
         %core.select (%core.icmp.e @ro (d, gather_dim), vocab, s_out#d)›;
     let weight_dims = (gather_dim, %core.idx ro 0 ri);
     let index_dims = ‹d: ri; %core.idx ro 0 (%core.bitcast Nat d)›;
-    let checked_indices = %tensor.checked_index_cast
+    let checked_indices = torch_checked_index_cast
         @(vocab, ri, s_indices) "embedding index out of range" indices;
     let broadcast_weight = %tensor.broadcast_in_dim_impl @(T, 2, ro)
         ((vocab, hidden), source_shape, weight, weight_dims);
     let broadcast_indices = %tensor.broadcast_in_dim_impl @(Idx vocab, ri, ro)
         (s_indices, s_out, checked_indices, index_dims);
-    %tensor.gather_impl_axm @(T, ro)
+    %tensor.gather @(T, ro)
         (source_shape, s_out) gather_dim
         (broadcast_weight, broadcast_indices);
     end;
@@ -3666,7 +3825,7 @@ lam torch_linearize_2d_index {n: Nat} (indices: [I64, I64]): I64 =
 /// implementation converts `(row, column)` to a row-major linear index, then
 /// uses reshape, broadcast, and gather so every producer remains an explicit
 /// tensor operand. Dynamic bounds checks are sequenced by
-/// `%tensor.checked_index_cast`.
+/// `torch_checked_index_cast`.
 /// PyTorch API: https://pytorch.org/docs/stable/tensor_view.html#indexing-slicing-joining-mutating-ops
 /// Types: `[m, n]` input and same-shape I64 row/column indices to that shape.
 axm %torch.indexing(index_2d): {T: *, m n r: Nat, s: «r; Nat»}
@@ -3682,7 +3841,7 @@ lam %torch.indexing_impl.index_2d {T: *, m n r: Nat, s: «r; Nat»}
             let linear_i64 = %tensor.binary_impl @(I64, I64, I64)
                 (torch_linearize_2d_index @n) @(r, s) (rows, columns);
             let flat_size = %core.nat.mul (m, n);
-            let linear = %tensor.checked_index_cast
+            let linear = torch_checked_index_cast
                 @(flat_size, r, s) "2-D index out of range" linear_i64;
             let flat = %tensor.reshape_impl @(T, 2, 1)
                 (m, n) (flat_size,) input;
@@ -3693,7 +3852,7 @@ lam %torch.indexing_impl.index_2d {T: *, m n r: Nat, s: «r; Nat»}
                     s#d)›;
             let source = %tensor.broadcast_in_dim_impl @(T, 1, r)
                 ((flat_size,), source_shape, flat, (%core.idx r 0 0,));
-            %tensor.gather_impl_axm @(T, r)
+            %tensor.gather @(T, r)
                 (source_shape, s) (%core.idx r 0 0) (source, linear);
     end;
 
@@ -3774,7 +3933,7 @@ lam %torch.normalization_impl.native_layer_norm
             // normalizer resolves known Some/None values before tensor lowering.
             let default_weight = %tensor.splat @(F#A#R#T, rn)
                 (normalized_shape, F#from_nat 1);
-            let effective_weight = %option.unwrap_or (weight, default_weight);
+            let effective_weight = %option.unwrap_or weight default_weight;
             let flat_weight = %tensor.reshape_impl
                 @(F#A#R#T, rn, 1) normalized_shape (inner,) effective_weight;
             let weight_b = %tensor.broadcast_in_dim_impl
@@ -3785,7 +3944,7 @@ lam %torch.normalization_impl.native_layer_norm
                 F#A#R#mul @(2, flat_shape) (normalized, weight_b);
             let default_bias = %tensor.splat @(F#A#R#T, rn)
                 (normalized_shape, F#A#R#_0);
-            let effective_bias = %option.unwrap_or (bias, default_bias);
+            let effective_bias = %option.unwrap_or bias default_bias;
             let flat_bias = %tensor.reshape_impl
                 @(F#A#R#T, rn, 1) normalized_shape (inner,) effective_bias;
             let bias_b = %tensor.broadcast_in_dim_impl
@@ -3866,9 +4025,9 @@ lam %torch.normalization_impl.group_norm
                 @(F#A#R#T, grouped_rank, r)
                 grouped_shape s stats#0_3;
             let effective_weight = %option.unwrap_or
-                (weight, ‹channels; F#from_nat 1›);
+                weight ‹channels; F#from_nat 1›;
             let effective_bias = %option.unwrap_or
-                (bias, ‹channels; F#A#R#_0›);
+                bias ‹channels; F#A#R#_0›;
             let channel_dim = torch_channel_dim @r;
             let weight_b = %tensor.broadcast_in_dim_impl @(F#A#R#T, 1, r)
                 ((channels,), s, effective_weight, (channel_dim,));
@@ -3928,9 +4087,9 @@ lam %torch.normalization_impl.batch_norm_inference
             // Avoid tensor-typed branch functions: the option variant is a
             // compile-time API choice, while its tensor payload stays dynamic.
             let effective_weight = %option.unwrap_or
-                (weight, ‹channels; F#from_nat 1›);
+                weight ‹channels; F#from_nat 1›;
             let effective_bias = %option.unwrap_or
-                (bias, ‹channels; F#A#R#_0›);
+                bias ‹channels; F#A#R#_0›;
             let weight_b = %tensor.broadcast_in_dim_impl @(F#A#R#T, 1, r)
                 (channels, s, effective_weight, (channel_dim,));
             let bias_b = %tensor.broadcast_in_dim_impl @(F#A#R#T, 1, r)
@@ -4029,10 +4188,9 @@ lam %torch.normalization_impl.log_softmax [F: %torch.Floating]
                                (input: «s; F#A#R#T»): «s; F#A#R#T» =
     torch_softmax_common F @(r, s) (dimension, half_to_float, tt) input;
 
-/// Python: keep `value` iff `(col >= row + diagonal)` for upper, or `<=` for lower.
-lam triangular_element {T: *, r: Nat} (s: «r; Nat»)
-                       (upper: Bool, zero: T, diagonal: I64)
-                       (indices: «r; I64», value: T): T =
+/// Python: `col >= row + diagonal` for upper, or `col <= row + diagonal` for lower.
+lam triangular_keep {r: Nat} (upper: Bool, diagonal: I64)
+                    (indices: «r; I64»): Bool =
     let row_axis = %core.idx r 0 (%core.nat.sub (r, 2));
     let col_axis = %core.idx r 0 (%core.nat.sub (r, 1));
     let row = indices#row_axis;
@@ -4040,8 +4198,19 @@ lam triangular_element {T: *, r: Nat} (s: «r; Nat»)
     let shifted_row = %core.wrap.add 0 (row, diagonal);
     let keep_upper = %core.icmp.sge (col, shifted_row);
     let keep_lower = %core.icmp.sle (col, shifted_row);
-    let keep = %core.select (upper, keep_upper, keep_lower);
+    %core.select (upper, keep_upper, keep_lower);
+
+/// Python: `value if keep else zero`.
+lam triangular_select {T: *} (zero: T) (keep: Bool, value: T): T =
     %core.select @T (keep, value, zero);
+
+lam triangular_apply {T: *, r: Nat} (s: «r; Nat»)
+                     (upper: Bool, zero: T, diagonal: I64)
+                     (input: «s; T»): «s; T» =
+    let mask = %tensor.generate @(Bool, r) s
+        (triangular_keep @r (upper, diagonal));
+    %tensor.binary_impl @(Bool, T, T) (triangular_select @T zero)
+        @(r, s) (mask, input);
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.triu.html
 /// Types: rank >= 2 tensor plus same-type zero and I64 diagonal to the same tensor type.
@@ -4053,8 +4222,7 @@ lam %torch.linalg_impl.triu {T: *, r: Nat, s: «r; Nat»}
                         (zero: T, diagonal: I64) (input: «s; T»): «s; T» =
     %runtime.require (%core.ncmp.ge (r, 2), "triu expects rank >= 2") body where
         lam body(): «s; T» =
-            let element = triangular_element @(T, r) s (tt, zero, diagonal);
-            %tensor.indexed_unary @(T, T, r) s element input;
+            triangular_apply @(T, r) s (tt, zero, diagonal) input;
     end;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.tril.html
@@ -4067,8 +4235,7 @@ lam %torch.linalg_impl.tril {T: *, r: Nat, s: «r; Nat»}
                         (zero: T, diagonal: I64) (input: «s; T»): «s; T» =
     %runtime.require (%core.ncmp.ge (r, 2), "tril expects rank >= 2") body where
         lam body(): «s; T» =
-            let element = triangular_element @(T, r) s (ff, zero, diagonal);
-            %tensor.indexed_unary @(T, T, r) s element input;
+            triangular_apply @(T, r) s (ff, zero, diagonal) input;
     end;
 
 /// Runtime-visible size component of `aten._assert_tensor_metadata`.
@@ -4096,6 +4263,69 @@ axm %torch.decompose_torch: %compile.Phase;
 
 /// Exhaustively exposes all Torch reference semantics.
 axm %torch.lower_torch: %compile.Phase;
+
+lam conv3d_shape
+    (n cout: Nat, s k stride dilation padding: «3; Nat»): «5; Nat» =
+    let dhw = ‹axis: 3;
+        %core.nat.add (
+            %core.nat.div (
+                %core.nat.sub (
+                    %core.nat.add
+                        (s#axis, %core.nat.mul (2, padding#axis)),
+                    %core.nat.add (
+                        %core.nat.mul
+                            (dilation#axis, %core.nat.sub (k#axis, 1)),
+                        1)),
+                stride#axis),
+            1)›;
+    (n, cout, dhw#0_3, dhw#1_3, dhw#2_3);
+
+lam torch_grouped_conv3d_in_map
+    (cin_per_group cout_per_group: Nat,
+     stride dilation: «3; Nat»)
+    (o: «9; %affine.index»): «5; %affine.index» =
+    let group = %affine.semiop.floordiv (o#1_9, cout_per_group);
+    let channel = %affine.op.add
+        (%affine.semiop.mul (group, cin_per_group), o#5_9);
+    (o#0_9, channel,
+     %affine.op.add
+        (%affine.semiop.mul (o#2_9, stride#0_3),
+         %affine.semiop.mul (o#6_9, dilation#0_3)),
+     %affine.op.add
+        (%affine.semiop.mul (o#3_9, stride#1_3),
+         %affine.semiop.mul (o#7_9, dilation#1_3)),
+     %affine.op.add
+        (%affine.semiop.mul (o#4_9, stride#2_3),
+         %affine.semiop.mul (o#8_9, dilation#2_3)));
+
+lam torch_grouped_conv3d
+    [A: %torch.Arithmetic]
+    {n cin cout cin_per_group d h w kd kh kw: Nat}
+    (groups: Nat, stride dilation padding: «3; Nat»)
+    (input: «n, cin, d, h, w; A#R#T»,
+     weight: «cout, cin_per_group, kd, kh, kw; A#R#T»)
+  : «conv3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding); A#R#T» =
+    let input_shape = (n, cin, d, h, w);
+    let pad_lohi = (0, 0, padding#0_3, padding#1_3, padding#2_3);
+    let padded = %tensor.pad input_shape
+        (0, pad_lohi, pad_lohi) (input, A#R#_0);
+    let padded_shape = %tensor.shape 5 padded;
+    let output_shape = conv3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding);
+    let cout_per_group = %core.nat.div (cout, groups);
+    %tensor.map_reduce
+        (output_shape,
+         (n, cout, output_shape#2_5, output_shape#3_5,
+          output_shape#4_5, cin_per_group, kd, kh, kw))
+        (conv_fun A#R, A#R#_0)
+        (%tensor.proj_map (0, 1, 2, 3, 4))
+        (torch_grouped_conv3d_in_map
+            (cin_per_group, cout_per_group, stride, dilation),
+         %tensor.proj_map (1, 5, 6, 7, 8))
+        (padded, weight);
 
 /// Rank-5 NCDHW `aten.convolution` specialization. PyTorch exposes OIDHW
 /// weights for ordinary Conv3d; groups partition both channel dimensions.
@@ -4144,12 +4374,297 @@ lam %torch.conv_impl.conv3d
         lam body():
             «conv3d_shape (n, cout, (d, h, w), (kd, kh, kw),
                 stride, dilation, padding); A#R#T» =
-            let initializer = %option.unwrap_or (bias, ‹cout; A#R#_0›);
-            %tensor.grouped_conv3d_init_impl A#R
+            let output_shape = conv3d_shape
+                (n, cout, (d, h, w), (kd, kh, kw),
+                 stride, dilation, padding);
+            let convolved = torch_grouped_conv3d A
                 @(n, cin, cout, cin_per_group, d, h, w, kd, kh, kw)
                 (groups, stride, dilation, padding)
-                (initializer, input, weight);
+                (input, weight);
+            let effective_bias = %option.unwrap_or bias ‹cout; A#R#_0›;
+            let broadcast_bias = %tensor.broadcast_in_dim_impl
+                @(A#R#T, 1, 5)
+                ((cout,), output_shape, effective_bias, (1_5,));
+            %tensor.binary_impl @(A#R#T, A#R#T, A#R#T)
+                A#R#add @(5, output_shape) (convolved, broadcast_bias);
     end;
+
+/// PyTorch transposed-convolution output extent:
+/// `(input - 1) * stride - 2 * padding + dilation * (kernel - 1)
+///  + output_padding + 1`.
+lam conv_transpose2d_shape
+    (n cout: Nat, s k stride dilation padding output_padding: «2; Nat»)
+  : «4; Nat» =
+    let hw = ‹axis: 2;
+        let expanded = %core.nat.mul
+            (%core.nat.sub (s#axis, 1), stride#axis);
+        let kernel_span = %core.nat.mul
+            (dilation#axis, %core.nat.sub (k#axis, 1));
+        %core.nat.add (
+            %core.nat.sub
+                (%core.nat.add (expanded, kernel_span),
+                 %core.nat.mul (2, padding#axis)),
+            %core.nat.add (output_padding#axis, 1))›;
+    (n, cout, hw#0_2, hw#1_2);
+
+lam torch_conv_transpose_upsampled_dim
+    (size stride output_padding: Nat): Nat =
+    %core.nat.add (
+        %core.nat.add
+            (%core.nat.mul (%core.nat.sub (size, 1), stride), 1),
+        output_padding);
+
+lam torch_conv_transpose2d_flip_weight_map
+    (kh kw: Nat) (o: «4; %affine.index»): «4; %affine.index» =
+    (o#0_4, o#1_4,
+     %core.select (
+        %core.ncmp.e (kh, 1), o#2_4,
+        %affine.op.sub
+            (%affine.constant (%core.nat.sub (kh, 1)), o#2_4)),
+     %core.select (
+        %core.ncmp.e (kw, 1), o#3_4,
+        %affine.op.sub
+            (%affine.constant (%core.nat.sub (kw, 1)), o#3_4)));
+
+fun torch_conv_weight_copy [A: %torch.Arithmetic]
+                           (acc: A#R#T, value: «1; A#R#T»)@tt
+                         : A#R#T =
+    return (value#0_1);
+
+lam torch_conv_transpose2d_weight
+    [A: %torch.Arithmetic]
+    {cin cout cout_per_group kh kw: Nat}
+    (groups: Nat)
+    (weight: «cin, cout_per_group, kh, kw; A#R#T»)
+  : «cout, %core.nat.div (cin, groups), kh, kw; A#R#T» =
+    let cin_per_group = %core.nat.div (cin, groups);
+    let grouped_weight = %tensor.reshape_impl @(A#R#T, 4, 5)
+        (cin, cout_per_group, kh, kw)
+        (groups, cin_per_group, cout_per_group, kh, kw) weight;
+    let swapped_weight = %tensor.transpose_impl @(A#R#T, 5)
+        (0_5, 2_5, 1_5, 3_5, 4_5) grouped_weight;
+    let oi_weight = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (groups, cout_per_group, cin_per_group, kh, kw)
+        (cout, cin_per_group, kh, kw) swapped_weight;
+    %tensor.map_reduce @1 @(A#R#T, 4, 4)
+        ((cout, cin_per_group, kh, kw),
+         (cout, cin_per_group, kh, kw))
+        @(A#R#T, 4, (cout, cin_per_group, kh, kw))
+        (torch_conv_weight_copy A, A#R#_0)
+        (%affine.id @4)
+        (torch_conv_transpose2d_flip_weight_map (kh, kw),)
+        oi_weight;
+
+lam torch_grouped_conv_transpose2d_unit_stride
+    [A: %torch.Arithmetic]
+    {n cin cout cout_per_group h w kh kw: Nat}
+    (groups: Nat, stride dilation padding output_padding: «2; Nat»)
+    (input: «n, cin, h, w; A#R#T»,
+     weight: «cin, cout_per_group, kh, kw; A#R#T»)
+  : «conv_transpose2d_shape
+        (n, cout, (h, w), (kh, kw), stride, dilation,
+         padding, output_padding); A#R#T» =
+    let cin_per_group = %core.nat.div (cin, groups);
+    let flipped_weight = torch_conv_transpose2d_weight A
+        @(cin, cout, cout_per_group, kh, kw) groups weight;
+    let conv_padding = (
+        %core.nat.sub
+            (%core.nat.mul (dilation#0_2, %core.nat.sub (kh, 1)),
+             padding#0_2),
+        %core.nat.sub
+            (%core.nat.mul (dilation#1_2, %core.nat.sub (kw, 1)),
+             padding#1_2));
+    let result = torch_grouped_conv2d A
+        @(n, cin, cout, cin_per_group, h, w, kh, kw)
+        (groups, (1, 1), dilation, conv_padding)
+        (input, flipped_weight);
+    let result_shape = conv_shape
+        (n, cout, (h, w), (kh, kw),
+         (1, 1), dilation, conv_padding);
+    let output_shape = conv_transpose2d_shape
+        (n, cout, (h, w), (kh, kw),
+         stride, dilation, padding, output_padding);
+    %tensor.reshape_impl @(A#R#T, 4, 4)
+        result_shape output_shape result;
+
+/// Inserts zeros between NCHW spatial samples and appends output padding.
+/// Static unit strides collapse the reshape/pad/slice arithmetic under PE.
+lam torch_crop_prefix {T: *, r: Nat}
+                      (s_in s_out: «r; Nat»)
+                      (input: «s_in; T»): «s_out; T» =
+    %tensor.map_reduce @1 @(T, r, r) (s_out, s_out)
+        @(T, r, s_in) (tensor_copy, ⊥: T)
+        (%affine.id @r) (%affine.id @r,) input;
+
+lam torch_zero_insert2d
+    [A: %torch.Arithmetic]
+    {n c h w: Nat}
+    (stride output_padding: «2; Nat»)
+    (input: «n, c, h, w; A#R#T»)
+  : «n, c,
+      torch_conv_transpose_upsampled_dim
+          (h, stride#0_2, output_padding#0_2),
+      torch_conv_transpose_upsampled_dim
+          (w, stride#1_2, output_padding#1_2); A#R#T» =
+    let uh = torch_conv_transpose_upsampled_dim
+        (h, stride#0_2, output_padding#0_2);
+    let uw = torch_conv_transpose_upsampled_dim
+        (w, stride#1_2, output_padding#1_2);
+    let input_shape = (n, c, h, w);
+    let width_shape = (n, c, h, uw);
+    let output_shape = (n, c, uh, uw);
+
+    let width_expanded_shape = (n, c, h, w, 1);
+    let width_expanded = %tensor.reshape_impl @(A#R#T, 4, 5)
+        input_shape width_expanded_shape input;
+    let width_block_extent =
+        %core.nat.add (1, %core.nat.sub (stride#1_2, 1));
+    let width_block = %tensor.pad width_expanded_shape
+        (0, (0, 0, 0, 0, 0),
+         (0, 0, 0, 0, %core.nat.sub (stride#1_2, 1)))
+        (width_expanded, A#R#_0);
+    let width_dense_extent = %core.nat.mul (w, width_block_extent);
+    let width_dense = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (n, c, h, w, width_block_extent)
+        (n, c, h, width_dense_extent) width_block;
+    let width_extra = %core.nat.sub (uw, width_dense_extent);
+    let width_available = %tensor.pad
+        (n, c, h, width_dense_extent)
+        (0, (0, 0, 0, 0), (0, 0, 0, width_extra))
+        (width_dense, A#R#_0);
+    let width_upsampled = torch_crop_prefix @(A#R#T, 4)
+        ((n, c, h, %core.nat.add (width_dense_extent, width_extra)),
+         width_shape)
+        width_available;
+
+    let height_expanded_shape = (n, c, h, 1, uw);
+    let height_expanded = %tensor.reshape_impl @(A#R#T, 4, 5)
+        width_shape height_expanded_shape width_upsampled;
+    let height_block_extent =
+        %core.nat.add (1, %core.nat.sub (stride#0_2, 1));
+    let height_block = %tensor.pad height_expanded_shape
+        (0, (0, 0, 0, 0, 0),
+         (0, 0, 0, %core.nat.sub (stride#0_2, 1), 0))
+        (height_expanded, A#R#_0);
+    let height_dense_extent = %core.nat.mul (h, height_block_extent);
+    let height_dense = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (n, c, h, height_block_extent, uw)
+        (n, c, height_dense_extent, uw) height_block;
+    let height_extra = %core.nat.sub (uh, height_dense_extent);
+    let height_available = %tensor.pad
+        (n, c, height_dense_extent, uw)
+        (0, (0, 0, 0, 0), (0, 0, height_extra, 0))
+        (height_dense, A#R#_0);
+    torch_crop_prefix @(A#R#T, 4)
+        ((n, c, %core.nat.add (height_dense_extent, height_extra), uw),
+         output_shape)
+        height_available;
+
+lam torch_grouped_conv_transpose2d_strided
+    [A: %torch.Arithmetic]
+    {n cin cout cout_per_group h w kh kw: Nat}
+    (groups: Nat, stride dilation padding output_padding: «2; Nat»)
+    (input: «n, cin, h, w; A#R#T»,
+     weight: «cin, cout_per_group, kh, kw; A#R#T»)
+  : «conv_transpose2d_shape
+        (n, cout, (h, w), (kh, kw), stride, dilation,
+         padding, output_padding); A#R#T» =
+    let uh = torch_conv_transpose_upsampled_dim
+        (h, stride#0_2, output_padding#0_2);
+    let uw = torch_conv_transpose_upsampled_dim
+        (w, stride#1_2, output_padding#1_2);
+    let input_shape = (n, cin, h, w);
+    let width_shape = (n, cin, h, uw);
+    let upsampled_shape = (n, cin, uh, uw);
+
+    // Python pseudocode: insert `stride_w - 1` zeros after each input column,
+    // append output padding, then trim to the exact expanded width.
+    let width_expanded_shape = (n, cin, h, w, 1);
+    let width_expanded = %tensor.reshape_impl @(A#R#T, 4, 5)
+        input_shape width_expanded_shape input;
+    let width_block_extent =
+        %core.nat.add (1, %core.nat.sub (stride#1_2, 1));
+    let width_block = %tensor.pad width_expanded_shape
+        (0, (0, 0, 0, 0, 0),
+         (0, 0, 0, 0, %core.nat.sub (stride#1_2, 1)))
+        (width_expanded, A#R#_0);
+    let width_dense_extent = %core.nat.mul (w, width_block_extent);
+    let width_dense = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (n, cin, h, w, width_block_extent)
+        (n, cin, h, width_dense_extent) width_block;
+    let width_extra = %core.nat.sub (uw, width_dense_extent);
+    let width_available = %tensor.pad
+        (n, cin, h, width_dense_extent)
+        (0, (0, 0, 0, 0), (0, 0, 0, width_extra))
+        (width_dense, A#R#_0);
+    let width_upsampled = torch_crop_prefix @(A#R#T, 4)
+        ((n, cin, h, %core.nat.add (width_dense_extent, width_extra)),
+         width_shape)
+        width_available;
+
+    // Apply the same zero insertion to height.
+    let height_expanded_shape = (n, cin, h, 1, uw);
+    let height_expanded = %tensor.reshape_impl @(A#R#T, 4, 5)
+        width_shape height_expanded_shape width_upsampled;
+    let height_block_extent =
+        %core.nat.add (1, %core.nat.sub (stride#0_2, 1));
+    let height_block = %tensor.pad height_expanded_shape
+        (0, (0, 0, 0, 0, 0),
+         (0, 0, 0, %core.nat.sub (stride#0_2, 1), 0))
+        (height_expanded, A#R#_0);
+    let height_dense_extent = %core.nat.mul (h, height_block_extent);
+    let height_dense = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (n, cin, h, height_block_extent, uw)
+        (n, cin, height_dense_extent, uw) height_block;
+    let height_extra = %core.nat.sub (uh, height_dense_extent);
+    let height_available = %tensor.pad
+        (n, cin, height_dense_extent, uw)
+        (0, (0, 0, 0, 0), (0, 0, height_extra, 0))
+        (height_dense, A#R#_0);
+    let upsampled = torch_crop_prefix @(A#R#T, 4)
+        ((n, cin, %core.nat.add (height_dense_extent, height_extra), uw),
+         upsampled_shape)
+        height_available;
+
+    let unit_result = torch_grouped_conv_transpose2d_unit_stride A
+        @(n, cin, cout, cout_per_group, uh, uw, kh, kw)
+        (groups, (1, 1), dilation, padding, (0, 0))
+        (upsampled, weight);
+    let unit_shape = conv_transpose2d_shape
+        (n, cout, (uh, uw), (kh, kw),
+         (1, 1), dilation, padding, (0, 0));
+    let output_shape = conv_transpose2d_shape
+        (n, cout, (h, w), (kh, kw),
+         stride, dilation, padding, output_padding);
+    %tensor.reshape_impl @(A#R#T, 4, 4)
+        unit_shape output_shape unit_result;
+
+lam torch_grouped_conv_transpose2d
+    [A: %torch.Arithmetic]
+    {n cin cout cout_per_group h w kh kw: Nat}
+    (groups: Nat, stride dilation padding output_padding: «2; Nat»)
+    (input: «n, cin, h, w; A#R#T»,
+     weight: «cin, cout_per_group, kh, kw; A#R#T»)
+  : «conv_transpose2d_shape
+        (n, cout, (h, w), (kh, kw), stride, dilation,
+         padding, output_padding); A#R#T» =
+    let unit_stride = %core.bit2.and_ 0 (
+        %core.ncmp.e (stride#0_2, 1),
+        %core.bit2.and_ 0 (
+            %core.ncmp.e (stride#1_2, 1),
+            %core.bit2.and_ 0 (
+                %core.ncmp.e (output_padding#0_2, 0),
+                %core.ncmp.e (output_padding#1_2, 0))));
+    %core.select
+        (unit_stride,
+         torch_grouped_conv_transpose2d_unit_stride A
+            @(n, cin, cout, cout_per_group, h, w, kh, kw)
+            (groups, stride, dilation, padding, output_padding)
+            (input, weight),
+         torch_grouped_conv_transpose2d_strided A
+            @(n, cin, cout, cout_per_group, h, w, kh, kw)
+            (groups, stride, dilation, padding, output_padding)
+            (input, weight));
 
 /// Rank-4 NCHW transposed convolution with PyTorch IOHW weights.
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.conv_transpose2d.html
@@ -4213,11 +4728,19 @@ lam %torch.conv_impl.transpose2d
         lam body():
             «conv_transpose2d_shape (n, cout, (h, w), (kh, kw),
                 stride, dilation, padding, output_padding); A#R#T» =
-            let initializer = %option.unwrap_or (bias, ‹cout; A#R#_0›);
-            %tensor.grouped_conv_transpose2d_init_impl A#R
+            let output_shape = conv_transpose2d_shape
+                (n, cout, (h, w), (kh, kw),
+                 stride, dilation, padding, output_padding);
+            let convolved = torch_grouped_conv_transpose2d A
                 @(n, cin, cout, cout_per_group, h, w, kh, kw)
                 (groups, stride, dilation, padding, output_padding)
-                (initializer, input, weight);
+                (input, weight);
+            let effective_bias = %option.unwrap_or bias ‹cout; A#R#_0›;
+            let broadcast_bias = %tensor.broadcast_in_dim_impl
+                @(A#R#T, 1, 4)
+                ((cout,), output_shape, effective_bias, (1_4,));
+            %tensor.binary_impl @(A#R#T, A#R#T, A#R#T)
+                A#R#add @(4, output_shape) (convolved, broadcast_bias);
     end;
 
 lam torch_conv_transpose1d_shape
@@ -4269,6 +4792,186 @@ lam %torch.conv_impl.transpose1d
         (n, cout, length, kernel, stride, dilation, padding, output_padding);
     %tensor.reshape_impl @(A#R#T, 4, 3)
         output_2d_shape output_shape output_2d;
+
+lam conv_transpose3d_shape
+    (n cout: Nat, s k stride dilation padding output_padding: «3; Nat»)
+  : «5; Nat» =
+    let dhw = ‹axis: 3;
+        let expanded = %core.nat.mul
+            (%core.nat.sub (s#axis, 1), stride#axis);
+        let kernel_span = %core.nat.mul
+            (dilation#axis, %core.nat.sub (k#axis, 1));
+        %core.nat.add (
+            %core.nat.sub
+                (%core.nat.add (expanded, kernel_span),
+                 %core.nat.mul (2, padding#axis)),
+            %core.nat.add (output_padding#axis, 1))›;
+    (n, cout, dhw#0_3, dhw#1_3, dhw#2_3);
+
+lam torch_conv_transpose3d_flip_weight_map
+    (kd kh kw: Nat) (o: «5; %affine.index»): «5; %affine.index» =
+    (o#0_5, o#1_5,
+     %core.select (
+        %core.ncmp.e (kd, 1), o#2_5,
+        %affine.op.sub
+            (%affine.constant (%core.nat.sub (kd, 1)), o#2_5)),
+     %core.select (
+        %core.ncmp.e (kh, 1), o#3_5,
+        %affine.op.sub
+            (%affine.constant (%core.nat.sub (kh, 1)), o#3_5)),
+     %core.select (
+        %core.ncmp.e (kw, 1), o#4_5,
+        %affine.op.sub
+            (%affine.constant (%core.nat.sub (kw, 1)), o#4_5)));
+
+lam torch_conv_transpose3d_weight
+    [A: %torch.Arithmetic]
+    {cin cout cout_per_group kd kh kw: Nat}
+    (groups: Nat)
+    (weight: «cin, cout_per_group, kd, kh, kw; A#R#T»)
+  : «cout, %core.nat.div (cin, groups), kd, kh, kw; A#R#T» =
+    let cin_per_group = %core.nat.div (cin, groups);
+    let grouped_weight = %tensor.reshape_impl @(A#R#T, 5, 6)
+        (cin, cout_per_group, kd, kh, kw)
+        (groups, cin_per_group, cout_per_group, kd, kh, kw) weight;
+    let swapped_weight = %tensor.transpose_impl @(A#R#T, 6)
+        (0_6, 2_6, 1_6, 3_6, 4_6, 5_6) grouped_weight;
+    let oi_weight = %tensor.reshape_impl @(A#R#T, 6, 5)
+        (groups, cout_per_group, cin_per_group, kd, kh, kw)
+        (cout, cin_per_group, kd, kh, kw) swapped_weight;
+    %tensor.map_reduce @1 @(A#R#T, 5, 5)
+        ((cout, cin_per_group, kd, kh, kw),
+         (cout, cin_per_group, kd, kh, kw))
+        @(A#R#T, 5, (cout, cin_per_group, kd, kh, kw))
+        (torch_conv_weight_copy A, A#R#_0)
+        (%affine.id @5)
+        (torch_conv_transpose3d_flip_weight_map (kd, kh, kw),)
+        oi_weight;
+
+lam torch_grouped_conv_transpose3d_unit_stride
+    [A: %torch.Arithmetic]
+    {n cin cout cout_per_group d h w kd kh kw: Nat}
+    (groups: Nat, stride dilation padding output_padding: «3; Nat»)
+    (input: «n, cin, d, h, w; A#R#T»,
+     weight: «cin, cout_per_group, kd, kh, kw; A#R#T»)
+  : «conv_transpose3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding, output_padding); A#R#T» =
+    let cin_per_group = %core.nat.div (cin, groups);
+    let flipped_weight = torch_conv_transpose3d_weight A
+        @(cin, cout, cout_per_group, kd, kh, kw) groups weight;
+    let conv_padding = (
+        %core.nat.sub
+            (%core.nat.mul (dilation#0_3, %core.nat.sub (kd, 1)),
+             padding#0_3),
+        %core.nat.sub
+            (%core.nat.mul (dilation#1_3, %core.nat.sub (kh, 1)),
+             padding#1_3),
+        %core.nat.sub
+            (%core.nat.mul (dilation#2_3, %core.nat.sub (kw, 1)),
+             padding#2_3));
+    let result = torch_grouped_conv3d A
+        @(n, cin, cout, cin_per_group, d, h, w, kd, kh, kw)
+        (groups, (1, 1, 1), dilation, conv_padding)
+        (input, flipped_weight);
+    let result_shape = conv3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         (1, 1, 1), dilation, conv_padding);
+    let output_shape = conv_transpose3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding, output_padding);
+    %tensor.reshape_impl @(A#R#T, 5, 5)
+        result_shape output_shape result;
+
+lam torch_grouped_conv_transpose3d_strided
+    [A: %torch.Arithmetic]
+    {n cin cout cout_per_group d h w kd kh kw: Nat}
+    (groups: Nat, stride dilation padding output_padding: «3; Nat»)
+    (input: «n, cin, d, h, w; A#R#T»,
+     weight: «cin, cout_per_group, kd, kh, kw; A#R#T»)
+  : «conv_transpose3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding, output_padding); A#R#T» =
+    let ud = torch_conv_transpose_upsampled_dim
+        (d, stride#0_3, output_padding#0_3);
+    let uh = torch_conv_transpose_upsampled_dim
+        (h, stride#1_3, output_padding#1_3);
+    let uw = torch_conv_transpose_upsampled_dim
+        (w, stride#2_3, output_padding#2_3);
+
+    // Treat every depth plane as an NCHW image while inserting H/W zeros.
+    let plane_batch = %core.nat.mul (n, d);
+    let planes = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (n, cin, d, h, w) (plane_batch, cin, h, w) input;
+    let expanded_planes = torch_zero_insert2d A
+        @(plane_batch, cin, h, w)
+        ((stride#1_3, stride#2_3),
+         (output_padding#1_3, output_padding#2_3))
+        planes;
+    let spatially_expanded = %tensor.reshape_impl @(A#R#T, 4, 5)
+        (plane_batch, cin, uh, uw) (n, cin, d, uh, uw)
+        expanded_planes;
+
+    // Move D to a 2-D helper's height axis and collapse N/H/W into batch.
+    let depth_major = %tensor.transpose_impl @(A#R#T, 5)
+        (0_5, 3_5, 4_5, 1_5, 2_5) spatially_expanded;
+    let depth_batch = %core.nat.mul (n, %core.nat.mul (uh, uw));
+    let depth_rows = %tensor.reshape_impl @(A#R#T, 5, 4)
+        (n, uh, uw, cin, d) (depth_batch, cin, d, 1)
+        depth_major;
+    let expanded_depth_rows = torch_zero_insert2d A
+        @(depth_batch, cin, d, 1)
+        ((stride#0_3, 1), (output_padding#0_3, 0))
+        depth_rows;
+    let expanded_depth_major = %tensor.reshape_impl @(A#R#T, 4, 5)
+        (depth_batch, cin, ud, 1) (n, uh, uw, cin, ud)
+        expanded_depth_rows;
+    let upsampled = %tensor.transpose_impl @(A#R#T, 5)
+        (0_5, 3_5, 4_5, 1_5, 2_5) expanded_depth_major;
+
+    let unit_result = torch_grouped_conv_transpose3d_unit_stride A
+        @(n, cin, cout, cout_per_group, ud, uh, uw, kd, kh, kw)
+        (groups, (1, 1, 1), dilation, padding, (0, 0, 0))
+        (upsampled, weight);
+    let unit_shape = conv_transpose3d_shape
+        (n, cout, (ud, uh, uw), (kd, kh, kw),
+         (1, 1, 1), dilation, padding, (0, 0, 0));
+    let output_shape = conv_transpose3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding, output_padding);
+    %tensor.reshape_impl @(A#R#T, 5, 5)
+        unit_shape output_shape unit_result;
+
+lam torch_grouped_conv_transpose3d
+    [A: %torch.Arithmetic]
+    {n cin cout cout_per_group d h w kd kh kw: Nat}
+    (groups: Nat, stride dilation padding output_padding: «3; Nat»)
+    (input: «n, cin, d, h, w; A#R#T»,
+     weight: «cin, cout_per_group, kd, kh, kw; A#R#T»)
+  : «conv_transpose3d_shape
+        (n, cout, (d, h, w), (kd, kh, kw),
+         stride, dilation, padding, output_padding); A#R#T» =
+    let unit_stride = %core.bit2.and_ 0 (
+        %core.ncmp.e (stride#0_3, 1),
+        %core.bit2.and_ 0 (
+            %core.ncmp.e (stride#1_3, 1),
+            %core.bit2.and_ 0 (
+                %core.ncmp.e (stride#2_3, 1),
+                %core.bit2.and_ 0 (
+                    %core.ncmp.e (output_padding#0_3, 0),
+                    %core.bit2.and_ 0 (
+                        %core.ncmp.e (output_padding#1_3, 0),
+                        %core.ncmp.e (output_padding#2_3, 0))))));
+    %core.select
+        (unit_stride,
+         torch_grouped_conv_transpose3d_unit_stride A
+            @(n, cin, cout, cout_per_group, d, h, w, kd, kh, kw)
+            (groups, stride, dilation, padding, output_padding)
+            (input, weight),
+         torch_grouped_conv_transpose3d_strided A
+            @(n, cin, cout, cout_per_group, d, h, w, kd, kh, kw)
+            (groups, stride, dilation, padding, output_padding)
+            (input, weight));
 
 /// Rank-5 NCDHW transposed convolution with PyTorch IO(DHW) weights.
 /// Unit-stride axes are removed by partial evaluation; strided axes lower
@@ -4329,11 +5032,19 @@ lam %torch.conv_impl.transpose3d
             «conv_transpose3d_shape
                 (n, cout, (d, h, w), (kd, kh, kw),
                  stride, dilation, padding, output_padding); A#R#T» =
-            let initializer = %option.unwrap_or (bias, ‹cout; A#R#_0›);
-            %tensor.grouped_conv_transpose3d_init_impl A#R
+            let output_shape = conv_transpose3d_shape
+                (n, cout, (d, h, w), (kd, kh, kw),
+                 stride, dilation, padding, output_padding);
+            let convolved = torch_grouped_conv_transpose3d A
                 @(n, cin, cout, cout_per_group, d, h, w, kd, kh, kw)
                 (groups, stride, dilation, padding, output_padding)
-                (initializer, input, weight);
+                (input, weight);
+            let effective_bias = %option.unwrap_or bias ‹cout; A#R#_0›;
+            let broadcast_bias = %tensor.broadcast_in_dim_impl
+                @(A#R#T, 1, 5)
+                ((cout,), output_shape, effective_bias, (1_5,));
+            %tensor.binary_impl @(A#R#T, A#R#T, A#R#T)
+                A#R#add @(5, output_shape) (convolved, broadcast_bias);
     end;
 
 /// Python: `x * tanh(softplus(x, beta=1, threshold=20))`.
@@ -4520,9 +5231,9 @@ lam %torch.normalization_impl.native_group_norm
                 grouped_shape s stats#0_3;
             let actual_channels = s#(torch_channel_dim @r);
             let effective_weight = %option.unwrap_or
-                (weight, ‹actual_channels; F#from_nat 1›);
+                weight ‹actual_channels; F#from_nat 1›;
             let effective_bias = %option.unwrap_or
-                (bias, ‹actual_channels; F#A#R#_0›);
+                bias ‹actual_channels; F#A#R#_0›;
             let weight_b = %tensor.broadcast_in_dim_impl @(F#A#R#T, 1, r)
                 ((actual_channels,), s, effective_weight,
                  (torch_channel_dim @r,));
@@ -4541,4 +5252,270 @@ lam %torch.normalization_impl.native_group_norm
             let rstd = %tensor.reshape_impl @(F#A#R#T, 4, 2)
                 stat_shape (n, groups) stats#2_3;
             (output, mean, rstd);
+    end;
+
+/// Shifts a rank-2 tensor by `offset` along `dimension`. Padding supplies the
+/// reduction identity, and an identity projection keeps the original extent.
+lam torch_prefix_shift_2d
+    {T: *, m n: Nat}
+    (identity: T, dimension: Idx 2, offset: Nat)
+    (input: «m, n; T»): «m, n; T» =
+    let lo = ‹d: 2; %core.select (
+        %core.icmp.e @2 (dimension, d),
+        offset, 0)›;
+    let hi = (0, 0);
+    let padded = %tensor.pad (m, n) (0, lo, hi) (input, identity);
+    %tensor.map_reduce ((m, n), (m, n)) (tensor_copy, ⊥: T)
+        (%affine.id @2) (%affine.id @2,) padded;
+
+/// Hillis-Steele prefix reduction. `extent`, `offset`, the selected axis and
+/// direction are closed for statically shaped Torch graphs, so PE unfolds this
+/// recursive lambda into distances 1, 2, 4, ... and removes the control flow.
+lam torch_prefix_2d
+    {T: *, m n: Nat}
+    (combine: [T, T] → T, identity: T,
+     dimension: Idx 2)
+    (input: «m, n; T»): «m, n; T» =
+    loop (1, input)
+    where
+        lam loop (offset: Nat, current: «m, n; T»)
+          @%core.pe.is_closed ((m, n)#dimension): «m, n; T» =
+            let more = %core.ncmp.l (offset, (m, n)#dimension);
+            (%core.select (more, step, done)) ()
+            where
+                lam step (): «m, n; T» =
+                    let shifted = torch_prefix_shift_2d
+                        @(T, m, n)
+                        (identity, dimension, offset) current;
+                    let next = %tensor.binary_impl @(T, T, T)
+                        combine @(2, (m, n)) (current, shifted);
+                    loop (%core.nat.mul (offset, 2), next);
+                lam done (): «m, n; T» = current;
+            end;
+    end;
+
+lam torch_bool_to_i64 (value: Bool): I64 =
+    %core.select @I64 (value, 1I64, 0I64);
+
+lam torch_i64_add (lhs rhs: I64): I64 =
+    %core.wrap.add 0 (lhs, rhs);
+
+lam torch_reverse_window_out_map_2d
+    (indices: «3; %affine.index»): «2; %affine.index» =
+    (indices#0_3, indices#1_3);
+
+lam torch_reverse_window_in_map_2d
+    (dimension: Idx 2)
+    (indices: «3; %affine.index»): «2; %affine.index» =
+    let axis0 = %core.icmp.e @2 (dimension, 0_2);
+    let shifted0 = %affine.op.add (indices#0_3, indices#2_3);
+    let shifted1 = %affine.op.add (indices#1_3, indices#2_3);
+    (%core.select (axis0, shifted0, indices#0_3),
+     %core.select (axis0, indices#1_3, shifted1));
+
+lam torch_reverse_tail_mask_2d
+    (dimension: Idx 2, threshold: Nat)
+    (indices: «2; I64»): Bool =
+    let axis0 = %core.icmp.e @2 (dimension, 0_2);
+    let coordinate = %core.select (axis0, indices#0_2, indices#1_2);
+    %core.icmp.sge (coordinate, %core.bitcast I64 threshold);
+
+/// Computes at most 64 suffix elements in their natural coordinate order.
+/// The padded read is `input[output + reduction]`, so its affine map contains
+/// no embedded constants.
+lam torch_reverse_tail_add_2d [F: %torch.Floating]
+    {m n: Nat} (dimension: Idx 2)
+    (input: «m, n; F#A#R#T»): «m, n; F#A#R#T» =
+    let shape = (m, n);
+    let extent = shape#dimension;
+    let window = %core.select (%core.ncmp.l (extent, 64), extent, 64);
+    let extra = %core.nat.sub (window, 1);
+    let hi = ‹d: 2; %core.select (
+        %core.icmp.e @2 (dimension, d), extra, 0)›;
+    let padded_shape = pad_shape ((0, 0), shape, hi);
+    let padded = %tensor.pad shape (0, (0, 0), hi)
+        (input, F#A#R#_0);
+    let iteration_shape = (m, n, window);
+    %tensor.map_reduce @1 @(F#A#R#T, 2, 3)
+        (shape, iteration_shape)
+        @(F#A#R#T, 2, padded_shape)
+        (pool_fun F#A#R#add, F#A#R#_0)
+        torch_reverse_window_out_map_2d
+        (torch_reverse_window_in_map_2d dimension,)
+        padded;
+
+/// `sum(input, dim) - cumsum(input, dim) + input` is the inclusive reverse
+/// prefix sum. A short direct suffix reduction replaces its cancellation-prone
+/// tail while keeping the full scan logarithmic.
+lam torch_reverse_prefix_add_2d [F: %torch.Floating]
+    {m n: Nat} (dimension: Idx 2)
+    (input: «m, n; F#A#R#T»): «m, n; F#A#R#T» =
+    let shape = (m, n);
+    let forward = torch_prefix_2d @(F#A#R#T, m, n)
+        (F#A#R#add, F#A#R#_0, dimension) input;
+    let reduced_shape = torch_reduce_shape (shape, dimension);
+    let total = torch_reduce_dim
+        (F#A#R#add, F#A#R#_0) (shape, dimension) input;
+    let total_b = %tensor.broadcast_in_dim_impl @(F#A#R#T, 1, 2)
+        (reduced_shape, shape, total, torch_kept_dims @2 dimension);
+    let tail = %tensor.binary_impl
+        @(F#A#R#T, F#A#R#T, F#A#R#T)
+        F#A#sub @(2, shape) (total_b, forward);
+    let algebraic = %tensor.binary_impl
+        @(F#A#R#T, F#A#R#T, F#A#R#T)
+        F#A#R#add @(2, shape) (tail, input);
+    let extent = shape#dimension;
+    let window = %core.select (%core.ncmp.l (extent, 64), extent, 64);
+    let threshold = %core.nat.sub (extent, window);
+    let tail_mask = %tensor.generate @(Bool, 2) shape
+        (torch_reverse_tail_mask_2d (dimension, threshold));
+    let exact_tail = torch_reverse_tail_add_2d F @(m, n)
+        dimension input;
+    %tensor.select_impl @(F#A#R#T) @(2, shape)
+        (tail_mask, exact_tail, algebraic);
+
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.cumsum.html
+/// Types: rank-2 Floating tensor and signed axis to the same tensor type.
+axm %torch.scan(cumsum_2d): [F: %torch.Floating]
+                         → {m n: Nat}
+                         → [dimension: I64]
+                         → «m, n; F#A#R#T»
+                         → «m, n; F#A#R#T»;
+lam %torch.scan_impl.cumsum_2d [F: %torch.Floating]
+                              {m n: Nat} (dimension: I64)
+                              (input: «m, n; F#A#R#T»)
+                            : «m, n; F#A#R#T» =
+    %runtime.require
+        (torch_dim_in_range @2 dimension,
+         "cumsum expects an in-range dimension") body
+    where
+        lam body(): «m, n; F#A#R#T» =
+            torch_prefix_2d @(F#A#R#T, m, n)
+                (F#A#R#add, F#A#R#_0,
+                 torch_canonical_dim @2 dimension) input;
+    end;
+
+/// Directional form used to eliminate `flip -> cumsum -> flip`.
+axm %torch.scan(cumsum_2d_direction): [F: %torch.Floating]
+                                   → {m n: Nat}
+                                   → [dimension: I64, reverse: Bool]
+                                   → «m, n; F#A#R#T»
+                                   → «m, n; F#A#R#T»;
+lam %torch.scan_impl.cumsum_2d_direction [F: %torch.Floating]
+                                        {m n: Nat}
+                                        (dimension: I64, reverse: Bool)
+                                        (input: «m, n; F#A#R#T»)
+                                      : «m, n; F#A#R#T» =
+    %runtime.require
+        (torch_dim_in_range @2 dimension,
+         "cumsum expects an in-range dimension") body
+    where
+        lam body(): «m, n; F#A#R#T» =
+            let canonical = torch_canonical_dim @2 dimension;
+            (%core.select (reverse, backward, forward)) ()
+            where
+                lam forward(): «m, n; F#A#R#T» =
+                    torch_prefix_2d @(F#A#R#T, m, n)
+                        (F#A#R#add, F#A#R#_0, canonical) input;
+                lam backward(): «m, n; F#A#R#T» =
+                    torch_reverse_prefix_add_2d F @(m, n)
+                        canonical input;
+            end;
+    end;
+
+/// PyTorch composition: `cat((zeros_like(select(x, dim, 0)).unsqueeze(dim),
+/// cumsum(narrow(x, dim, 0, size(dim) - 1), dim)), dim)`.
+/// Static dimension and extent expose the full prefix and one-element shift to
+/// PE; only tensor pad/map operations remain.
+axm %torch.scan(cumsum_exclusive_2d): [F: %torch.Floating]
+                                   → {m n: Nat}
+                                   → [dimension: I64]
+                                   → «m, n; F#A#R#T»
+                                   → «m, n; F#A#R#T»;
+lam %torch.scan_impl.cumsum_exclusive_2d [F: %torch.Floating]
+                                        {m n: Nat} (dimension: I64)
+                                        (input: «m, n; F#A#R#T»)
+                                      : «m, n; F#A#R#T» =
+    %runtime.require
+        (torch_dim_in_range @2 dimension,
+         "exclusive cumsum expects an in-range dimension") body
+    where
+        lam body(): «m, n; F#A#R#T» =
+            let canonical = torch_canonical_dim @2 dimension;
+            let inclusive = torch_prefix_2d @(F#A#R#T, m, n)
+                (F#A#R#add, F#A#R#_0, canonical) input;
+            torch_prefix_shift_2d @(F#A#R#T, m, n)
+                (F#A#R#_0, canonical, 1) inclusive;
+    end;
+
+/// Boolean cumsum follows PyTorch's default promotion to I64.
+axm %torch.scan(cumsum_bool_i64): {m n: Nat}
+                              → [dimension: I64]
+                              → «m, n; Bool» → «m, n; I64»;
+lam %torch.scan_impl.cumsum_bool_i64 {m n: Nat}
+                                   (dimension: I64)
+                                   (input: «m, n; Bool»): «m, n; I64» =
+    %runtime.require
+        (torch_dim_in_range @2 dimension,
+         "cumsum expects an in-range dimension") body
+    where
+        lam body(): «m, n; I64» =
+            let converted = %tensor.unary_impl @(Bool, I64)
+                torch_bool_to_i64 @(2, (m, n)) input;
+            torch_prefix_2d @(I64, m, n)
+                (torch_i64_add, 0I64,
+                 torch_canonical_dim @2 dimension) converted;
+    end;
+
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.cumprod.html
+/// Types: rank-2 Floating tensor and signed axis to the same tensor type.
+axm %torch.scan(cumprod_2d): [F: %torch.Floating]
+                          → {m n: Nat}
+                          → [dimension: I64]
+                          → «m, n; F#A#R#T»
+                          → «m, n; F#A#R#T»;
+lam %torch.scan_impl.cumprod_2d [F: %torch.Floating]
+                               {m n: Nat} (dimension: I64)
+                               (input: «m, n; F#A#R#T»)
+                             : «m, n; F#A#R#T» =
+    %runtime.require
+        (torch_dim_in_range @2 dimension,
+         "cumprod expects an in-range dimension") body
+    where
+        lam body(): «m, n; F#A#R#T» =
+            torch_prefix_2d @(F#A#R#T, m, n)
+                (F#A#R#mul, F#from_nat 1,
+                 torch_canonical_dim @2 dimension) input;
+    end;
+
+/// Python: reverse each requested coordinate, then read the source tensor.
+lam torch_flip_element {T: *, r nr: Nat}
+                       (s: «r; Nat», dimensions: «nr; Idx r»)
+                       (input: «s; T») (indices: «r; I64»): T =
+    let coords = ‹d: r;
+        let reverse = (%vec.first (%core.icmp.e @r) (dimensions, d))#ff;
+        let last = %core.wrap.sub 0 (%core.bitcast I64 (s#d), 1I64);
+        let coordinate = %core.select (
+            reverse,
+            %core.wrap.sub 0 (last, indices#d),
+            indices#d);
+        %core.conv.u (s#d) coordinate›;
+    %tensor.get (coords, input);
+
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.flip.html
+/// Types: rank-`r` tensor and unique signed axes to the same tensor type.
+axm %torch.indexing(flip): {T: *, r nr: Nat, s: «r; Nat»}
+                       → [dimensions: «nr; I64»]
+                       → «s; T» → «s; T»;
+lam %torch.indexing_impl.flip {T: *, r nr: Nat, s: «r; Nat»}
+                            (dimensions: «nr; I64»)
+                            (input: «s; T»): «s; T» =
+    %runtime.require
+        (torch_axis_list_valid @(r, nr) dimensions,
+         "flip expects unique, in-range dimensions") body
+    where
+        lam body(): «s; T» =
+            let dims = torch_canonical_dims @(r, nr) dimensions;
+            %tensor.generate @(T, r) s
+                (torch_flip_element @(T, r, nr) (s, dims) input);
     end;

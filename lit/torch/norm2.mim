@@ -20,4 +20,4 @@ fun extern norm2_all_keepdim(input: «2, 3; %math.F32»): «1, 1; %math.F32» =
         @(2, 2, (2, 3)) (0I64, 1I64) input);
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

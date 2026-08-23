@@ -38,5 +38,5 @@ fun extern sub_alpha(lhs rhs: «2; Nat»): «2; Nat» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

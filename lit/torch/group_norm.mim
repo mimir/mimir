@@ -49,5 +49,5 @@ fun extern instance_norm_no_affine(input: «2, 8, 3, 5; Nat»)
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

@@ -26,5 +26,5 @@ fun extern gelu_tanh(input: «2, 4; %math.F32»): «2, 4; %math.F32» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

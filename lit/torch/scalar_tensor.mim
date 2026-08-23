@@ -3,6 +3,10 @@
 // CHECK-NOT: %torch.creation.scalar_tensor
 
 plugin torch;
+plugin compile;
 
 fun extern scalar_tensor(value: %math.F32): %math.F32 =
     return (%torch.creation.scalar_tensor @%math.F32 value);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

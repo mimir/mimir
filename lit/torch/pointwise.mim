@@ -30,5 +30,5 @@ fun extern pointwise(lhs rhs: «2, 3; Nat»): «2, 3; Nat» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

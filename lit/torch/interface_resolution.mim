@@ -32,5 +32,5 @@ fun extern exp_f64(input: «2, 3; %math.F64»): «2, 3; %math.F64» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

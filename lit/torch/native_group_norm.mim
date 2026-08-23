@@ -2,9 +2,10 @@
 // CHECK-LABEL: fun extern native_group_norm
 // CHECK-NOT: %torch.normalization.native_group_norm
 // CHECK-NOT: %torch.normalization.native_layer_norm
-// CHECK: %mem.malloc
+// CHECK: %tensor.map_reduce
 
 plugin torch;
+plugin compile;
 
 fun extern native_group_norm(
     input: «2, 4, 3, 5; %math.F32»,
@@ -18,3 +19,6 @@ fun extern native_group_norm(
         @(4, (2, 4, 3, 5))
         (input, (%option.some weight), (%option.some bias))
         (2, 4, 15, 2, 0.00001:%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

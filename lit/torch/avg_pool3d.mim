@@ -18,4 +18,4 @@ fun extern avg_pool3d(input: «2, 3, 5, 7, 9; %math.F32»)
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
-        %torch.lower_torch, %tensor.lower_tensor, %compile.internal_cleanup);
+        %torch.lower_torch, %tensor.lower_tensor, %compile.cleanup);

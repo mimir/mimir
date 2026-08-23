@@ -37,14 +37,14 @@ let NatFloating: %torch.Floating = (
 // CHECK-LABEL: fun extern triplet_sum_swap
 // CHECK: %tensor.map_reduce
 fun extern triplet_mean(anchor: «3, 5; Nat», positive: «3, 5; Nat»,
-                        negative: «3, 5; Nat»): «(); Nat» =
+                        negative: «3, 5; Nat»): Nat =
     return (%torch.loss.triplet_margin_reduced NatFloating
         @(3, 5) (1, 2, 1, ff, 1) (anchor, positive, negative));
 
 fun extern triplet_sum_swap(anchor: «3, 5; Nat», positive: «3, 5; Nat»,
-                            negative: «3, 5; Nat»): «(); Nat» =
+                            negative: «3, 5; Nat»): Nat =
     return (%torch.loss.triplet_margin_reduced NatFloating
         @(3, 5) (1, 2, 1, tt, 0) (anchor, positive, negative));
 
 lam extern _compile (): %compile.Phase =
-    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

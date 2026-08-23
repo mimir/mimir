@@ -9,4 +9,9 @@ fun extern invalid_shape(
         (0I64) (input, index));
 
 // CHECK: gather index shape exceeds input shape
-lam extern _compile (): %compile.Phase = %torch.lower_torch;
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.cleanup,
+        %tensor.lower_tensor,
+    );

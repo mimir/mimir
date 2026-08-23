@@ -4,7 +4,7 @@
 // RUN:   --implicit-check-not=Match %s
 
 // CHECK-LABEL: fun extern grouped_convolution
-// CHECK: %tensor.map_reduce_init
+// CHECK: %tensor.map_reduce
 // CHECK-LABEL: fun extern hardtanh
 // CHECK: %tensor.map_reduce
 
@@ -42,5 +42,5 @@ fun extern hardtanh(input: «2, 3; Nat»): «2, 3; Nat» =
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

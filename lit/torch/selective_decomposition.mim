@@ -1,5 +1,6 @@
 // RUN: %mim %s -X torch:preserve=native_layer_norm_op -o - | %FileCheck %s --check-prefix=PRESERVE
 // RUN: %mim %s -X torch:preserve=activation.relu -o - | %FileCheck %s --check-prefix=SUBTAG
+// RUN: %mim %s -X torch:preserve=activation.leaky_relu -o - | %FileCheck %s --check-prefix=LEAKY
 // RUN: %mim %s -o - | %FileCheck %s --check-prefix=LOWER
 // RUN: not %mim %s -X torch:preserve=not_an_op -o /dev/null 2>&1 | %FileCheck %s --check-prefix=INVALID
 
@@ -54,9 +55,15 @@ fun extern selective_activations(input: «2, 4; Nat»)
         %torch.activation.relu NatArithmetic @(2, (2, 4)) input,
         %torch.activation.tanh NatFloating @(2, (2, 4)) input);
 
+// LEAKY-LABEL: fun extern selective_leaky_relu
+// LEAKY: %torch.activation.leaky_relu
+fun extern selective_leaky_relu(input: «2, 4; Nat»): «2, 4; Nat» =
+    return (%torch.activation.leaky_relu NatFloating @(2, (2, 4))
+        (input, 1));
+
 // INVALID: unknown Torch operator in `preserve`: `not_an_op`
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.decompose_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );

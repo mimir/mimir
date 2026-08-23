@@ -59,12 +59,12 @@ fun extern convolution_depthwise(
         ((1, 1), (0, 0), (1, 1), ff, (0, 0), 4)
         (input, weight, %option.none @«4; Nat»));
 
-// CHECK-COUNT-4: %tensor.map_reduce_init
+// CHECK-COUNT-4: %tensor.map_reduce
 // CHECK-NOT: Match
 // PROFILE: Phase counters:
 // PROFILE-DAG: 4 %torch.lower_torch: decompose.impl.%torch.conv.general
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (
         %torch.lower_torch,
-        %compile.internal_cleanup,
+        %compile.cleanup,
     );
