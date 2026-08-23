@@ -622,22 +622,10 @@ public:
 
     /// @name Rebuild
     ///@{
-    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg_key()); }
-    Def* stub(const Def* type) { return stub(world(), type); }
-
-    /// Def::rebuild%s this Def while using @p new_op as substitute for its @p i'th Def::op
-    const Def* rebuild(World& w, const Def* type, Defs ops) const {
-        assert(isa_imm());
-        return rebuild_(w, type, ops)->set(dbg_key());
-    }
-    const Def* rebuild(const Def* type, Defs ops) const { return rebuild(world(), type, ops); }
-
     /// Tries to make an immutable from a mutable.
     /// This usually works if the mutable isn't recursive and its var isn't used.
     const Def* immutabilize();
     bool is_immutabilizable();
-
-    const Def* refine(size_t i, const Def* new_op) const;
 
     /// @see World::reduce
     template<size_t N = std::dynamic_extent>
@@ -728,8 +716,6 @@ protected:
 
 private:
     Defs reduce_(const Def* arg) const;
-    Def* stub_(World&, const Def*);
-    const Def* rebuild_(World& w, const Def* type, Defs ops) const;
 
     void watch() const; ///< Trips World::watchpoints in `MIM_ENABLE_CHECKS` builds; a no-op otherwise.
     Def* finalize();    ///< Runs Def::check once the last op has been set; @see @ref set_ops.
@@ -1065,11 +1051,6 @@ public:
     /// @name Getters
     ///@{
     bool is_mutable() const { return flags(); }
-    ///@}
-
-    /// @name Rebuild
-    ///@{
-    Global* stub(const Def* type) { return Def::stub(world(), type)->as<Global>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Global;

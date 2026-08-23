@@ -97,7 +97,6 @@ public:
 
     /// @name Rebuild
     ///@{
-    Pi* stub(const Def* type) { return Def::stub(world(), type)->as<Pi>(); }
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 
@@ -188,7 +187,6 @@ public:
 
     /// @name Rebuild
     ///@{
-    Lam* stub(const Def* type) { return Def::stub(world(), type)->as<Lam>(); }
     using Def::reduce;
     Defs reduce(Defs) const;
     const Def* reduce_body(const Def* arg) const { return reduce(arg).back(); }

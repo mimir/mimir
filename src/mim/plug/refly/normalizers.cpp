@@ -53,16 +53,6 @@ const Def* normalize_reify(const Def*, const Def*, const Def* arg) { return do_r
 
 const Def* normalize_reflect(const Def*, const Def*, const Def* arg) { return do_reflect(arg); }
 
-const Def* normalize_refine(const Def*, const Def*, const Def* arg) {
-    auto [code, i, x] = arg->projs<3>();
-    if (auto l = Lit::isa(i)) {
-        auto def = do_reflect(code);
-        return do_reify(def->refine(*l, do_reflect(x)));
-    }
-
-    return {};
-}
-
 const Def* normalize_type(const Def*, const Def*, const Def* arg) { return arg->type(); }
 const Def* normalize_gid(const Def*, const Def*, const Def* arg) { return arg->world().lit_nat(arg->gid()); }
 

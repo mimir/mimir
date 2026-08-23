@@ -480,7 +480,11 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
         return tuple(d, {val}); // d could be mut - that's why the tuple ctor is needed
 
     // insert((a, b, c, d), 2, x) -> (a, b, x, d)
-    if (auto t = d->isa<Tuple>(); t && lidx) return t->refine(*lidx, val);
+    if (auto t = d->isa<Tuple>(); t && lidx) {
+        auto new_ops   = DefVec(t->ops().begin(), t->ops().end());
+        new_ops[*lidx] = val;
+        return tuple(type, new_ops);
+    }
 
     // insert(‹4; x›, 2, y) -> (x, x, y, x)
     if (auto pack = d->isa<Pack>(); pack && lidx) {

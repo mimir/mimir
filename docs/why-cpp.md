@@ -145,7 +145,7 @@ Three deliberate optimizations produce that number, and none of them survives a
 port:
 
 - **`dbg_` is a `u32` index** into the Driver's `Dbg` table rather than an
-  inline `Dbg` (`include/mim/def.h:777-781`).
+  inline `Dbg` (`include/mim/def.h:763-767`).
   That alone is 20 bytes off *every* node, and `Dbg`s are shared roughly 10:1
   in practice.
   It is deliberately placed adjacent to `tid_` so the two `u32`s share one
@@ -153,10 +153,10 @@ port:
 - **`Def` is not polymorphic.**
   There is no vtable pointer — verified: `std::is_polymorphic_v<Def>` is
   `false`.
-  `rebuild_` and `stub_` are ordinary member functions that `switch` on the
-  1-byte `node_` tag (`src/mim/def.cpp:523`, `:567`), and a subclass
+  `immutabilize` and `arity` are ordinary member functions that `switch` on the
+  1-byte `node_` tag (`src/mim/def.cpp`), and a subclass
   accidentally growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)`
-  assert (`include/mim/def.h:794`).
+  assert (`include/mim/def.h:780`).
 - **Sub-word packing.**
   `u32` gids rather than `size_t`, a five-way union, and five flags sharing the
   single byte left over by the `u8` `node_` tag.

@@ -146,12 +146,6 @@ Defs Def::reduce_(const Def* arg) const {
     return {ops().begin() + off, num_ops() - off};
 }
 
-const Def* Def::refine(size_t i, const Def* new_op) const {
-    auto new_ops = DefVec(ops().begin(), ops().end());
-    new_ops[i]   = new_op;
-    return rebuild(type(), new_ops);
-}
-
 /*
  * Def - set
  */
@@ -514,69 +508,9 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 /*
  * dispatch
  *
- * Def::rebuild and Def::stub already copy the Dbg over (see Def::set(DbgKey)), so nothing here does.
- *
  * All of these used to be `virtual`. Def has no vtable - a vptr would cost 8 bytes on *every* node in the
  * World - so each is one function switching on Def::node() with the former override inlined right here.
  */
-
-const Def* Def::rebuild_(World& w, const Def* t, Defs o) const {
-    switch (node()) {
-        case Node::App:     return w.app(o[0], o[1]);
-        case Node::Arr:     return w.arr(o[0], o[1]);
-        case Node::Bot:     return w.bot(t);
-        case Node::Extract: return w.extract(o[0], o[1]);
-        case Node::Idx:     return w.type_idx();
-        case Node::Inj:     return w.inj(t, o[0]);
-        case Node::Insert:  return w.insert(o[0], o[1], o[2]);
-        case Node::Join:    return w.join(o);
-        case Node::Lam:     return w.lam(t->as<Pi>(), o[0], o[1]);
-        case Node::Lit:     return w.lit(t, as<Lit>()->get());
-        case Node::Match:   return w.match(o);
-        case Node::Meet:    return w.meet(o);
-        case Node::Merge:   return w.merge(t, o);
-        case Node::Nat:     return w.type_nat();
-        case Node::Pack:    return w.pack(t->arity(), o[0]);
-        case Node::Pi:      return w.pi(o[0], o[1], as<Pi>()->is_implicit());
-        case Node::Proxy:   return w.proxy(t, o, as<Proxy>()->tag());
-        case Node::Reform:  return w.reform(o[0]);
-        case Node::Rule:    return w.rule(t->as<Reform>(), o[0], o[1], o[2]);
-        case Node::Sigma:   return w.sigma(o);
-        case Node::Split:   return w.split(t, o[0]);
-        case Node::Top:     return w.top(t);
-        case Node::Tuple:   return w.tuple(t, o);
-        case Node::Type:    return w.type(o[0]);
-        case Node::UInc:    return w.uinc(o[0], as<UInc>()->offset());
-        case Node::UMax:    return w.umax(o);
-        case Node::Uniq:    return w.uniq(o[0]);
-        case Node::Univ:    return w.univ();
-        case Node::Global:  fe::unreachable(); // *mutable*: rebuilt via Def::stub_
-        case Node::Hole:    fe::unreachable(); // *mutable*: rebuilt via Def::stub_
-        case Node::Var:     fe::unreachable(); // binder is in binder_, not an op; see Rewriter::rewrite_imm_Var
-        case Node::Axm: {
-            auto axm = as<Axm>();
-            if (&w != &world())
-                return w.axm(axm->normalizer(), axm->curry(), axm->trip(), t, axm->plugin(), axm->tag(), axm->sub());
-            assert(Checker::alpha<Checker::Check>(t, type()));
-            return this;
-        }
-    }
-    fe::unreachable();
-}
-
-Def* Def::stub_(World& w, const Def* t) {
-    switch (node()) {
-        case Node::Arr:    return w.mut_arr  (t);
-        case Node::Global: return w.global   (t, as<Global>()->is_mutable());
-        case Node::Hole:   return w.mut_hole (t);
-        case Node::Lam:    return w.mut_lam  (t->as<Pi>());
-        case Node::Pack:   return w.mut_pack (t);
-        case Node::Pi:     return w.mut_pi   (t, as<Pi>()->is_implicit());
-        case Node::Rule:   return w.mut_rule (t->as<Reform>());
-        case Node::Sigma:  return w.mut_sigma(t, num_ops());
-        default:           fe::unreachable(); // only *mutables* have a stub
-    }
-}
 
 const Def* Def::immutabilize() {
     auto& w = world();

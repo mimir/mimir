@@ -32,7 +32,7 @@ const Def* LamSpec::rewrite_imm_App(const App* old_app) {
     if (new_doms.size() == lam->num_doms()) return RWPhase::rewrite_imm_App(old_app);
 
     auto& w      = new_world();
-    auto new_lam = lam->stub(w.cn(new_doms));
+    auto new_lam = w.mut_lam(w.cn(new_doms))->set(lam->dbg_key());
 
     // Project new_lam's var with the explicit arity new_doms.size():
     // a single remaining sigma dom is flattened by cn(), so new_lam->var(i) would project into that sigma.

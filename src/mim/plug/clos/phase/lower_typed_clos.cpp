@@ -148,6 +148,26 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
     }
     if (auto var = def->isa<Var>()) return map(def, w.var(rewrite(var->binder())->as_mut()));
 
+    return RWPhase::rewrite(def);
+}
+
+// Give first-class BBs their dummy return continuation.
+const Def* LowerTypedClos::rewrite_imm_App(const App* app) {
+    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
+
+    if (auto p = app->callee()->isa<Extract>();
+        p && isa_clos_type(p->tuple()->type()) && Pi::isa_basicblock(app->callee_type())) {
+        auto new_arg    = insert_ret(rewrite(app->arg()), dummy_ret()); // arg before callee; see the base hook
+        auto new_callee = rewrite(app->callee());
+        return new_world().app(new_callee, new_arg);
+    }
+
+    return RWPhase::rewrite_imm_App(app);
+}
+
+const Def* LowerTypedClos::rewrite_imm(const Def* def) {
+    if (is_bootstrapping()) return RWPhase::rewrite_imm(def);
+
     // Leaves and axioms need no mem threading; let the base rebuild them.
     switch (def->node()) {
         case Node::Bot:
@@ -159,20 +179,15 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
         default: break;
     }
 
-    // Generic immutable: rebuild, add a dummy return continuation to first-class BBs, then thread the mem token.
+    auto& w       = new_world();
     auto new_type = rewrite(def->type());
-    auto new_ops  = DefVec(def->num_ops(), [&](auto i) { return rewrite(def->op(i)); });
-    if (auto app = def->isa<App>())
-        if (auto p = app->callee()->isa<Extract>();
-            p && isa_clos_type(p->tuple()->type()) && Pi::isa_basicblock(app->callee_type()))
-            new_ops[1] = insert_ret(new_ops[1], dummy_ret());
-    auto new_def = def->rebuild(w, new_type, new_ops);
+    auto lcm      = lcm_;
+    auto new_def  = RWPhase::rewrite_imm(def);
 
-    // Rethread the operand that consumed this function's current mem chain end (lvm_): boxing above may have
-    // advanced lcm_ past what the operand was rewritten to. Only that operand - other mem operands may belong to
-    // another function's chain (shared subgraphs) and rethreading them would corrupt it.
-    for (size_t i = 0, e = new_def->num_ops(); i != e; ++i)
-        if (def->op(i) == lvm_ && new_def->op(i)->type() == w.call<mem::M>(0)) new_def = new_def->refine(i, lcm_);
+    // Boxing an environment advances lcm_ *while* the operands are rewritten, leaving the operands visited before
+    // it on the stale token. lvm_ maps to the new token by now, so redoing the node picks it up; everything else
+    // is memoized, so nothing is boxed twice.
+    if (lcm_ != lcm) new_def = RWPhase::rewrite_imm(def);
 
     if (new_type == w.call<mem::M>(0)) { // :store
         lcm_ = new_def;
@@ -186,7 +201,7 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
             }
     }
 
-    return map(def, new_def);
+    return new_def;
 }
 
 } // namespace mim::plug::clos::phase
