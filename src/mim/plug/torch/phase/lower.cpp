@@ -257,6 +257,7 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(indexing, slice, slice_op);
     MIM_BIND_TORCH_SUB(indexing, select, select_op);
     MIM_BIND_TORCH_SUB(shape, cat, cat_op);
+    MIM_BIND_TORCH_SUB(shape, stack, stack_op);
     MIM_BIND_TORCH_SUB(shape, flatten, flatten_op);
     MIM_BIND_TORCH_SUB(shape, squeeze, squeeze_op);
     MIM_BIND_TORCH_SUB(shape, unsqueeze, unsqueeze_op);

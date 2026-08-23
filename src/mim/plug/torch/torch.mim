@@ -1641,6 +1641,30 @@ lam %torch.shape_impl.cat {T: *, ni r: Nat}
                      : «concat_shape (dimension, shapes); T» =
     %tensor.concat @(T, ni, r) dimension @shapes inputs;
 
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.stack.html
+/// Types: equal-shaped rank-`r_in` tensors gain one singleton axis and are
+/// concatenated along it. The frontend supplies the statically inferred
+/// singleton shape and canonicalized dimension; the result shape is derived.
+axm %torch.shape(stack): {T: *, ni r_in r_out: Nat}
+                    → [s_in: «r_in; Nat»,
+                       s_singleton: «r_out; Nat»,
+                       dimension: Idx r_out]
+                    → «ni; «s_in; T»»
+                    → «concat_shape
+                         (dimension, ‹i: ni; s_singleton›); T»;
+lam %torch.shape_impl.stack {T: *, ni r_in r_out: Nat}
+                          (s_in: «r_in; Nat»,
+                           s_singleton: «r_out; Nat»,
+                           dimension: Idx r_out)
+                          (inputs: «ni; «s_in; T»»)
+                        : «concat_shape
+                             (dimension, ‹i: ni; s_singleton›); T» =
+    let reshaped = ‹i: ni;
+        %tensor.reshape_impl @(T, r_in, r_out)
+            s_in s_singleton (inputs#i)›;
+    let shapes = ‹i: ni; s_singleton›;
+    %tensor.concat @(T, ni, r_out) dimension @shapes reshaped;
+
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.flatten.html
 /// Types: `Tensor[T, s_in] -> Tensor[T, s_out]`; the frontend computes the flattened shape.
 axm %torch.shape(flatten): {T: *, r_in r_out: Nat}
