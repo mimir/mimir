@@ -79,6 +79,7 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 /// * `ret_wrap`: prepares return continuations for the backend (mim::RetWrap).
 /// * `scalarize`: flattens function signatures (mim::Scalarize).
 /// * `static_arg_opt`: drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).
+///   Its `Bool` clones the recursion to specialize for *all* statics; `ff` is the safe default, `tt` may blow up code size.
 /// * `unload`: unloads a plugin and nukes its annexes on the next World swap.
 ///
 axm %compile.beta_red:         %compile.Phase;
@@ -89,5 +90,5 @@ axm %compile.lam_spec:         %compile.Phase;
 axm %compile.null:             %compile.Phase;
 axm %compile.ret_wrap:         %compile.Phase;
 axm %compile.scalarize:        %compile.Phase;
-axm %compile.static_arg_opt:   %compile.Phase;
+axm %compile.static_arg_opt:   Bool → %compile.Phase;
 axm %compile.unload:           {n: Nat} → «n; I8» → %compile.Phase;

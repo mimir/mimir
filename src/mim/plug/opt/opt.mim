@@ -27,7 +27,7 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.eta_conv,
             ),
             %compile.named "%mem.seo",
-            %compile.static_arg_opt,
+            %compile.static_arg_opt ff,
         );
 
     %compile.phases ff (
