@@ -85,7 +85,7 @@ lam %btensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): �
 /// `_impl` annex and a lowering phase: nothing in this plugin inspects the high-level form - there is no fusion
 /// phase over `%%btensor.*` and the normalizer was a no-op - so the extra staging bought nothing.
 /// %%btensor.transpose_2d follows the same pattern.
-
+///
 /// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
 /// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
 fun product_2d_fun [R: %btensor.Ring] (mem: %mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [%mem.M 0, R#T] =
@@ -107,11 +107,13 @@ lam %btensor.product_2d [R: %btensor.Ring] {m k l: Nat}
 /// Permutes the dimensions of a 2-dimensional matrix - the buffer-world counterpart of %%tensor.transpose_2d.
 /// As there, the shape is a single `«2; Nat»` vector instead of two separate `Nat`s, and `{T}` precedes `{s}`.
 /// Like %%btensor.product_2d this is a `lam` over %%btensor.map_reduce rather than an `axm`.
-
+///
 /// Ignores the (⊥) accumulator and just returns the read value - the mem-threaded counterpart of `tensor_copy`.
+///
 fun btensor_copy {T: *} (mem: %mem.M 0, acc y: T)@tt: [%mem.M 0, T] = return (mem, y);
-
+///
 /// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
+///
 lam %btensor.transpose_2d {T: *} {s: «2; Nat»}
                          (mem: %mem.M 0, input: %buffer.Buf (2, s, T))
                        : [%mem.M 0, %buffer.Buf (2, (s#tt, s#ff), T)] =

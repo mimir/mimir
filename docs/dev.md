@@ -231,7 +231,7 @@ Free variables also underpin MimIR's scopeless nesting queries:
 - [`mim::Def::nests`](@ref mim::Def::nests) answers whether a mutable statically nests another [`Def`](@ref mim::Def).
   The relation is **strict**: `f->nests(f)` is `false`, and a `def` that only uses `f`'s own [`Var`](@ref mim::Var) sits at `f`'s level and is likewise *not* nested.
 
-##### `Dep`: A Cheap Approximation
+##### `Dep`
 
 When you only need a yes/no answer — *does this subtree contain **any** [`Var`](@ref mim::Var), [`Hole`](@ref mim::Hole), mutable, or [`Proxy`](@ref mim::Proxy)?* — [`mim::Def::has_dep`](@ref mim::Def::has_dep) is far cheaper than materializing `free_vars()`.
 Like `local_vars()`, it is a per-node bitset (see [`mim::Dep`](@ref mim::Dep)) that only looks up to the next mutable:

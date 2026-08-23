@@ -319,7 +319,7 @@ e   ::= e "→" e
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
 
-#### Products, Sequences, Unions, and Matching
+#### Products
 
 ```ebnf
 e   ::= "[" ... "]"
@@ -329,9 +329,6 @@ e   ::= "[" ... "]"
      |  e "#" e
      |  e "#" I
      |  "ins" "(" e "," e "," e ")"
-     |  e "∪" e
-     |  e "inj" e
-     |  "match" e "with" ("|"? p "=>" e)+
 
 arity ::= e
        |  I ":" e
@@ -344,6 +341,15 @@ arity ::= e
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
 - `e # i` or `e # e` extracts a component.
 - `ins(tuple, index, value)` inserts a value into a tuple-like aggregate.
+
+#### Unions
+
+```ebnf
+e   ::= e "∪" e
+     |  e "inj" e
+     |  "match" e "with" ("|"? p "=>" e)+
+```
+
 - `e ∪ t` forms a union type.
 - `e inj t` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
