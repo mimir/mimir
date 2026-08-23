@@ -16,6 +16,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
+    const Def* rewrite(const Def*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
 
     /// Restructures the (already rewritten, new-world) @p lam if its body passes exception closures.
@@ -33,17 +34,7 @@ private:
     void get_exn_closures(const Def* def, DefSet& visited);
 
     /// Substitutes closure literals of tagged exception Lam%s by throw closures; does not descend into mutables.
-    class SubstExn : public Rewriter {
-    public:
-        SubstExn(Clos2SJLJ& phase)
-            : Rewriter(phase.new_world())
-            , phase_(phase) {}
-
-        const Def* rewrite(const Def*) final;
-
-    private:
-        Clos2SJLJ& phase_;
-    };
+    const Def* subst_exn_closures(const Def* def);
 
     // clang-format off
     LamMap<std::pair<int, const Def*>> lam2tag_;

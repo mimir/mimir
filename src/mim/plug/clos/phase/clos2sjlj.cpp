@@ -168,21 +168,28 @@ void Clos2SJLJ::convert(Lam* lam) {
     lam->unset()->set({filter, clos_apply(branch, m1)});
 
     // Finally, replace the exception closures (which now live in the branch envs) with throw closures.
-    auto new_body = SubstExn(*this).rewrite(lam->body());
+    push(); // cur_jbuf_/cur_rbuf_ are per-Lam, so the substitution must not outlive this convert()
+    auto new_body = subst_exn_closures(lam->body());
+    pop();
     lam->unset()->set({filter, new_body});
 }
 
-const Def* Clos2SJLJ::SubstExn::rewrite(const Def* def) {
+// convert() substitutes within the *already rewritten* body, so a new-world Def means "substitute in place".
+const Def* Clos2SJLJ::rewrite(const Def* def) {
+    return &def->world() == &new_world() ? subst_exn_closures(def) : RWPhase::rewrite(def);
+}
+
+const Def* Clos2SJLJ::subst_exn_closures(const Def* def) {
     if (auto new_def = lookup(def)) return new_def;
-    if (auto c = isa_clos_lit(def); c && phase_.lam2tag_.contains(c.fnc_as_lam())) {
-        auto& w     = world();
-        auto [i, _] = phase_.lam2tag_[c.fnc_as_lam()];
-        auto tlam   = phase_.get_throw(c.fnc_as_lam()->dom());
-        return map(def, clos_pack(w.tuple({phase_.cur_jbuf_, phase_.cur_rbuf_, w.lit_idx(i)}), tlam, c.type()));
+    if (auto c = isa_clos_lit(def); c && lam2tag_.contains(c.fnc_as_lam())) {
+        auto& w     = new_world();
+        auto [i, _] = lam2tag_[c.fnc_as_lam()];
+        auto tlam   = get_throw(c.fnc_as_lam()->dom());
+        return map(def, clos_pack(w.tuple({cur_jbuf_, cur_rbuf_, w.lit_idx(i)}), tlam, c.type()));
     }
     if (def->isa_mut() || !def->is_term()) return def;
     if (def->isa<Var>()) return def; // atomic; binder is in binder_ and not descended into here
-    return Rewriter::rewrite(def);
+    return rewrite_imm(def)->set(def->dbg_key());
 }
 
 const Def* Clos2SJLJ::rewrite_mut_Lam(Lam* old) {
