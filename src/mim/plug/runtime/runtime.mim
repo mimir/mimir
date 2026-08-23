@@ -1,0 +1,52 @@
+/// # The Runtime Plugin {#runtime}
+///
+/// Backend-neutral runtime preconditions. Static checks normalize during
+/// compilation; dynamic assertions are sequenced by `%mem.M` and lowered by
+/// the selected backend.
+///
+/// Operator contracts use three layers:
+///
+/// 1. dependent input/output types encode rank, element-type, and shape
+///    relationships;
+/// 2. ordinary Mim predicates compute value constraints such as valid signed
+///    dimensions or compatible dynamic extents;
+/// 3. `%runtime.require` guards the implementation with such a predicate.
+///
+/// Partial evaluation removes a statically true guard, reports a statically
+/// false guard as a compile error, and leaves `%runtime.static_check` for a
+/// dynamic guard. Impl-decomposition phases report the number of remaining
+/// guards through the `constraints.dynamic_residual` profile counter.
+///
+/// [TOC]
+///
+/// ## Dependencies
+///
+plugin core;
+plugin mem;
+///
+/// ## Assertions
+///
+/// Non-returning failure with a compile-time message.
+axm %runtime.fail: {T: *, n: Nat} -> «n; I8» -> T;
+
+/// Eliminates a statically true condition and diagnoses a statically false
+/// one. A dynamic condition remains available to backend lowering.
+axm %runtime.static_check: {n: Nat}
+                          -> [Bool, «n; I8»]
+                          -> Bool, normalize_static_check;
+
+/// Statement-style dynamic assertion. The memory token makes the check
+/// dominate effects that rely on it without pretending that it mutates data.
+axm %runtime.assert: {a n: Nat}
+                    -> [%mem.M a, Bool, «n; I8»]
+                    -> %mem.M a;
+
+/// Expression-style precondition. The continuation prevents strict argument
+/// evaluation from executing the protected expression before the check.
+lam %runtime.require {T: *, n: Nat}
+                     (condition: Bool, message: «n; I8»)
+                     (success: [] -> T)
+                   : T =
+    (%core.select (%runtime.static_check (condition, message), success, failure)) () where
+        lam failure(): T = %runtime.fail @(T, n) message;
+    end;

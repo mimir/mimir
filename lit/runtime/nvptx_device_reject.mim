@@ -1,0 +1,24 @@
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll
+// RUN: not %mim %s -p ll_nvptx -X ll_nvptx:no-embed -o - 2>&1 | %FileCheck %s
+
+// CHECK: ll_nvptx backend: `%runtime.assert` is only supported in host code
+
+plugin core;
+plugin gpu;
+plugin runtime;
+
+con kernel (m1: %gpu.GlobalM, m3: %gpu.SharedM, m4: %gpu.ConstM, m5: %gpu.LocalM,
+            group_id item_id: Idx 4, (), data: %gpu.GlobalPtr I32,
+            return: Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]) =
+    let condition = %core.icmp.e (item_id, 0_4);
+    let m1 = %runtime.assert (m1, condition, "device assertion");
+    return (m1, m3, m4, m5);
+
+fun extern main (m0: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0))
+: [%mem.M 0, I32] =
+    let (m0, m1, m4) = %gpu.init m0;
+    let (m1, data) = %mem.alloc (I32, 1) m1;
+    ret (m0, m1, m4) = %gpu.launch (4, 4, %gpu.default_stream, ff, ()) kernel data $ (m0, m1, m4);
+    let m1 = %mem.free (m1, data);
+    let m0 = %gpu.deinit (m0, m1, m4);
+    return (m0, 0I32);

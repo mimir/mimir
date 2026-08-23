@@ -1,0 +1,17 @@
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll
+// RUN: %mim %s -p ll_nvptx -X ll_nvptx:no-embed -o -
+// RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+
+// HOST: c"host assertion\00"
+// HOST: define internal void @.mimir_assert_
+// HOST: call void @abort()
+
+plugin core;
+plugin runtime;
+
+con extern main [mem: %mem.M 0, argc: I32,
+                 argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
+                 return: Cn [%mem.M 0, I32]] =
+    let condition = %core.icmp.sg (argc, 0I32);
+    let mem = %runtime.assert (mem, condition, "host assertion");
+    return (mem, 0I32);

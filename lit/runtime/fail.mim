@@ -1,0 +1,14 @@
+// RUN: rm -f fail.ll
+// RUN: %mim -p opt -p clos %s -p ll
+// RUN: clang fail.ll -o %t -Wno-override-module
+// RUN: (! %t 2>&1) | %FileCheck %s
+
+plugin runtime;
+
+con extern main [mem: %mem.M 0, argc: I32,
+                 argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
+                 return: Cn [%mem.M 0, I32]] =
+    let result = %runtime.fail @(I32, 20) "explicit failure msg";
+    return (mem, result);
+
+// CHECK: explicit failure msg

@@ -1,0 +1,19 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ok; test $? -eq 9
+// RUN: (! %t 2>&1) | %FileCheck %s
+
+plugin runtime;
+plugin core;
+
+con extern main [mem: %mem.M 0, argc: I32,
+                 argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
+                 return: Cn [%mem.M 0, I32]] =
+    let condition = %core.icmp.sg (argc, 1I32);
+    let result = %runtime.require @(I32, 23) (condition, "require failure message") success where
+        lam success(): I32 = 9I32;
+    end;
+    return (mem, result);
+
+// CHECK: require failure message
