@@ -1,0 +1,9 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// CHECK-LABEL: fun extern ge_i64_scalar
+// CHECK-NOT: %torch.comparison.ge_i64_scalar
+// CHECK: %mem.malloc
+
+plugin torch;
+
+fun extern ge_i64_scalar(input: «2, 4; I64»): «2, 4; Bool» =
+    return (%torch.comparison.ge_i64_scalar @(2, (2, 4)) (input, 2I64));

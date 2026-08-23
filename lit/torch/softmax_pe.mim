@@ -1,0 +1,75 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=%%torch.
+// RUN: %mim %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity,
+    nat_identity,
+    %core.nat.mul,
+);
+
+// A non-empty input keeps max-subtraction, while static checks and the signed
+// negative-dimension conversion disappear.
+fun extern softmax_nonempty(input: «2, 4; Nat»): «2, 4; Nat» =
+    return (%torch.normalization.softmax NatFloating @(2, (2, 4)) (-1I64, ff) input);
+
+// Zero extent selects the empty path before lowering, so no max reduction is
+// materialized. The sum reduction remains part of PyTorch's empty result formula.
+fun extern softmax_empty(input: «2, 0; Nat»): «2, 0; Nat» =
+    return (%torch.normalization.softmax NatFloating @(2, (2, 0)) (1I64, ff) input);
+
+// The public operator fixes the mode statically; PE must select log-subtraction
+// rather than retaining the internal log/softmax branch.
+fun extern log_softmax_nonempty(input: «2, 4; Nat»): «2, 4; Nat» =
+    return (%torch.normalization.log_softmax NatFloating @(2, (2, 4)) (-1I64, ff) input);
+
+// A runtime dimension retains exactly the checked precondition. Its successful
+// continuation dominates canonicalization and all dimension-dependent indexing.
+fun extern softmax_dynamic_dim(dimension: I64, input: «2, 4; Nat»): «2, 4; Nat» =
+    return (%torch.normalization.softmax NatFloating @(2, (2, 4)) (dimension, ff) input);
+
+// Definitions are emitted in reverse declaration order.
+// CHECK-LABEL: fun extern log_softmax_nonempty
+// CHECK-NOT: %runtime.static_check
+// CHECK: let log_denominator_
+// CHECK-LABEL: fun extern softmax_dynamic_dim
+// CHECK: %runtime.static_check
+// CHECK-LABEL: fun extern softmax_empty
+// CHECK-NOT: maximum_
+// CHECK: let unnormalized_
+// CHECK-LABEL: fun extern softmax_nonempty
+// CHECK-NOT: %runtime.static_check
+// CHECK: let maximum_
+// CHECK-NOT: log_denominator_
+
+// PROFILE: Phase counters:
+// PROFILE-DAG: 3 %torch.lower_torch: decompose.impl.%torch.normalization.softmax
+// PROFILE-DAG: 1 %torch.lower_torch: decompose.impl.%torch.normalization.log_softmax
+// PROFILE-DAG: 1 %torch.lower_torch: constraints.dynamic_residual
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

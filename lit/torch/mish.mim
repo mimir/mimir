@@ -1,0 +1,11 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// CHECK-LABEL: fun extern mish
+// CHECK-NOT: %torch.activation.mish
+// CHECK-NOT: %torch.activation.softplus
+// CHECK: %mem.malloc
+
+plugin torch;
+
+fun extern mish(input: «2, 4; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.activation.mish (%torch.resolve_floating %math.F32)
+        @(2, (2, 4)) input);

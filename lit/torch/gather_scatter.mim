@@ -1,0 +1,51 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// Dynamic specializations are emitted first because their residual guard owns
+// dependencies shared by the static specializations below.
+// CHECK-LABEL: fun extern gather_dynamic_dim
+// CHECK: %runtime.static_check
+// CHECK-LABEL: fun extern gather_negative_dim
+// CHECK: %tensor.checked_index_cast
+// CHECK: %tensor.gather_impl_axm
+// CHECK-LABEL: fun extern scatter_src_negative_dim
+// CHECK: %tensor.checked_index_cast
+// CHECK: %tensor.scatter_impl_axm
+// CHECK-LABEL: fun extern scatter_value
+// CHECK: %tensor.checked_index_cast
+// CHECK: %tensor.splat
+// CHECK: %tensor.scatter_impl_axm
+
+// PyTorch-compatible indexing enters as I64. The Torch implementation owns
+// dimension canonicalization and checked conversion to tensor-level Idx.
+fun extern gather_negative_dim(
+    input: «2, 4; %math.F32», index: «2, 3; I64»): «2, 3; %math.F32» =
+    return (%torch.indexing.gather @(%math.F32, 2, (2, 4), (2, 3))
+        (-1I64) (input, index));
+
+fun extern scatter_src_negative_dim(
+    input: «2, 4; %math.F32», index: «2, 3; I64»,
+    src: «2, 3; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.indexing.scatter_src @(%math.F32, 2, (2, 4), (2, 3), (2, 3))
+        (-1I64) (input, index, src));
+
+// Scalar scatter materializes updates with the index shape and then shares
+// the same checked tensor.scatter path as the source overload.
+fun extern scatter_value(
+    input: «2, 4; %math.F32», index: «2, 3; I64»,
+    value: %math.F32): «2, 4; %math.F32» =
+    return (%torch.indexing.scatter_value @(%math.F32, 2, (2, 4), (2, 3))
+        (1I64, value) (input, index));
+
+// A symbolic dimension remains guarded after PE.
+fun extern gather_dynamic_dim(
+    dimension: I64, input: «2, 4; %math.F32», index: «2, 3; I64»)
+  : «2, 3; %math.F32» =
+    return (%torch.indexing.gather @(%math.F32, 2, (2, 4), (2, 3))
+        dimension (input, index));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

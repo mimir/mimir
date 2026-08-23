@@ -1,0 +1,24 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. %s
+
+// CHECK-LABEL: fun extern addcmul_dynamic
+// CHECK: %runtime.static_check
+
+plugin torch;
+plugin compile;
+
+fun extern addcmul_dynamic {a n m: Nat}(
+    self: «a; %math.F32», tensor1: «m; %math.F32»,
+    tensor2: «n, m; %math.F32»): «n, m; %math.F32» =
+    return (%torch.binary.addcmul (%torch.resolve_arithmetic %math.F32)
+        @(1, 1, 2, 2)
+        ((a,), (%core.idx 2 0 0,),
+         (m,), (%core.idx 2 0 1,),
+         (n, m), (%core.idx 2 0 0, %core.idx 2 0 1), (n, m))
+        (self, tensor1, tensor2, 1.0:%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

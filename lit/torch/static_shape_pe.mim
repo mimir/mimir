@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// CHECK-LABEL: fun extern slice_identity
+// CHECK-NOT: %torch.
+// CHECK: %tensor.map_reduce
+// CHECK: %affine.semiop.mul
+
+plugin torch;
+plugin tensor;
+plugin compile;
+
+fun extern slice_identity(input: «2, 3; I32»): «2, 3; I32» =
+    return (%torch.indexing.slice @(I32, 2)
+        ((2, 3), (0, 0), (1, 1), (2, 3)) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

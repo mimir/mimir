@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// CHECK-LABEL: fun extern index_2d
+// CHECK: %tensor.checked_index_cast
+// CHECK: %tensor.gather_impl_axm
+fun extern index_2d(
+    input: «3, 4; %math.F32»,
+    rows columns: «2, 5; I64»): «2, 5; %math.F32» =
+    return (%torch.indexing.index_2d
+        @(%math.F32, 3, 4, 2, (2, 5)) (input, rows, columns));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

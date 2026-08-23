@@ -1,0 +1,26 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. %s
+
+// CHECK-LABEL: fun extern add_scalar_lhs
+// CHECK: %math.arith.mul
+// CHECK: %math.arith.add
+// CHECK-LABEL: fun extern sub_scalar_lhs
+// CHECK: %math.arith.mul
+// CHECK: %math.arith.sub
+
+plugin torch;
+plugin compile;
+
+fun extern add_scalar_lhs(other: «4; %math.F32»): «4; %math.F32» =
+    return (%torch.binary.add_scalar_lhs (%torch.resolve_arithmetic %math.F32)
+        @(1, 4) (2.0:%math.F32, other, 3.0:%math.F32));
+
+fun extern sub_scalar_lhs(other: «4; %math.F32»): «4; %math.F32» =
+    return (%torch.binary.sub_scalar_lhs (%torch.resolve_arithmetic %math.F32)
+        @(1, 4) (2.0:%math.F32, other, 3.0:%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

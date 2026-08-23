@@ -1,0 +1,49 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity, nat_identity,
+    %core.nat.mul,
+);
+
+fun extern max_dim_dynamic(dimension: I64, input: «2, 3; Nat»)
+  : [Bool,
+     «torch_reduce_shape ((2, 3), torch_canonical_dim @2 dimension); Nat»,
+     «torch_reduce_shape ((2, 3), torch_canonical_dim @2 dimension); I64»] =
+    return (%torch.reduction.max_dim NatFloating @(2, (2, 3)) dimension input);
+
+// CHECK-LABEL: fun extern max_dim
+// CHECK-COUNT-3: %tensor.map_reduce
+// CHECK-LABEL: fun extern max_dim_dynamic
+// CHECK: %runtime.static_check
+fun extern max_dim(input: «2, 3; Nat»): [Bool, «2; Nat», «2; I64»] =
+    return (%torch.reduction.max_dim NatFloating @(2, (2, 3)) (-1I64) input);
+
+// CHECK-LABEL: fun extern min_dim
+// CHECK-COUNT-3: %tensor.map_reduce
+fun extern min_dim(input: «2, 3; Nat»): [Bool, «2; Nat», «2; I64»] =
+    return (%torch.reduction.min_dim NatFloating @(2, (2, 3)) (-1I64) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

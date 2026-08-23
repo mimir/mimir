@@ -1,0 +1,13 @@
+// RUN: not %mim %s -o /dev/null 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+// CHECK: masked_fill mask is not broadcastable
+fun extern invalid_masked_fill(
+    input: «2, 4; %math.F32», mask: «3; Bool»): «2, 4; %math.F32» =
+    return (%torch.pointwise.masked_fill_scalar
+        @(%math.F32, 1, 2) (3, (2, 4), 1₂)
+        (input, mask, 0.0:%math.F32));
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

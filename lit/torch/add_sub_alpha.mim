@@ -1,0 +1,42 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// PyTorch defines these as `lhs +/- alpha * rhs`. The alpha argument must
+// remain visible at the Torch boundary and specialize into the scalar lambda.
+fun extern add_alpha(lhs rhs: «2; Nat»): «2; Nat» =
+    return (%torch.binary.add NatArithmetic @(1, (2,)) (lhs, rhs, 3));
+
+fun extern sub_alpha(lhs rhs: «2; Nat»): «2; Nat» =
+    return (%torch.binary.sub NatArithmetic @(1, (2,)) (lhs, rhs, 4));
+
+// CHECK-LABEL: fun extern add_alpha
+// CHECK: %core.nat.mul
+// CHECK: %core.nat.add
+// CHECK-LABEL: fun extern sub_alpha
+// CHECK: %core.nat.mul
+// CHECK: %core.nat.sub
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

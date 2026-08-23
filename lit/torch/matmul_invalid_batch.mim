@@ -1,0 +1,29 @@
+// RUN: not %mim %s -o /dev/null 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+fun extern invalid_batch(
+    lhs: «2, 3, 4, 5; Nat», rhs: «7, 3, 5, 6; Nat»)
+  : «7, 3, 4, 6; Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(4, 4, (2, 3, 4, 5), (7, 3, 5, 6)) (lhs, rhs));
+
+// CHECK: matmul expects rank > 0, matching contraction, and broadcastable batches
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

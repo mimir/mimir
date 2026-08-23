@@ -1,0 +1,89 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=Match
+// RUN: %mim %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity,
+    nat_identity,
+    %core.nat.mul,
+);
+
+// A statically non-empty normalized suffix erases the precondition. Concrete
+// Some affine parameters also avoid tensor-valued Optional branch functions.
+fun extern layer_norm_static(
+    input: «2, 4; Nat», weight: «4; Nat», bias: «4; Nat»)
+  : [«2, 4; Nat», «2, 1; Nat», «2, 1; Nat»] =
+    return (%torch.normalization.native_layer_norm NatFloating
+        @(1, 1) ((2,), (4,)) input
+        ((%option.some weight), (%option.some bias)) 1);
+
+fun extern layer_norm_weight_only(input: «2, 4; Nat», weight: «4; Nat»)
+  : [«2, 4; Nat», «2, 1; Nat», «2, 1; Nat»] =
+    return (%torch.normalization.native_layer_norm NatFloating
+        @(1, 1) ((2,), (4,)) input
+        ((%option.some weight), (%option.none @«4; Nat»)) 1);
+
+fun extern layer_norm_bias_only(input: «2, 4; Nat», bias: «4; Nat»)
+  : [«2, 4; Nat», «2, 1; Nat», «2, 1; Nat»] =
+    return (%torch.normalization.native_layer_norm NatFloating
+        @(1, 1) ((2,), (4,)) input
+        ((%option.none @«4; Nat»), (%option.some bias)) 1);
+
+fun extern layer_norm_no_affine(input: «2, 4; Nat»)
+  : [«2, 4; Nat», «2, 1; Nat», «2, 1; Nat»] =
+    return (%torch.normalization.native_layer_norm NatFloating
+        @(1, 1) ((2,), (4,)) input
+        ((%option.none @«4; Nat»), (%option.none @«4; Nat»)) 1);
+
+// A symbolic normalized rank cannot discharge the non-empty constraint, so
+// the same semantic lambda leaves a runtime check instead of rejecting it.
+// CHECK-LABEL: fun extern layer_norm_dynamic
+// CHECK: %runtime.static_check
+fun extern layer_norm_dynamic {rn: Nat}
+    (normalized_shape: «rn; Nat»,
+     input: «%vec.cat ((2,), normalized_shape); Nat»)
+  : [«%vec.cat ((2,), normalized_shape); Nat»,
+     «%vec.cat ((2,), ‹i: rn; 1›); Nat»,
+     «%vec.cat ((2,), ‹i: rn; 1›); Nat»] =
+    return (%torch.normalization.native_layer_norm NatFloating
+        @(1, rn) ((2,), normalized_shape) input
+        ((%option.none @«normalized_shape; Nat»),
+         (%option.none @«normalized_shape; Nat»)) 1);
+
+// Definitions are printed in reverse declaration order.
+// CHECK-LABEL: fun extern layer_norm_static
+// CHECK-NOT: %runtime.static_check
+// CHECK-NOT: Match
+// CHECK: %tensor.map_reduce
+
+// PROFILE: Phase counters:
+// PROFILE-DAG: 5 %torch.lower_torch: decompose.impl
+// PROFILE-DAG: 5 %torch.lower_torch: decompose.impl.%torch.normalization.native_layer_norm
+// PROFILE-DAG: 1 %torch.lower_torch: constraints.dynamic_residual
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

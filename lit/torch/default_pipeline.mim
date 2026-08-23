@@ -1,0 +1,49 @@
+// RUN: %mim -p opt %s -o - | %FileCheck --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+plugin torch;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// CHECK-LABEL: fun extern add
+// CHECK: %mem.Ptr
+fun extern add(lhs rhs: «2, 3; Nat»): «2, 3; Nat» =
+    return (%torch.binary.add NatArithmetic @(2, (2, 3)) (lhs, rhs, 1));
+
+// Static optional tensor arguments must normalize after Torch decomposition
+// and before tensor bufferization. Otherwise an avoidable Match survives with
+// an aggregate branch type while its payload is rewritten to a pointer.
+// CHECK-LABEL: fun extern linear_bias
+// CHECK: %mem.Ptr
+fun extern linear_bias(
+    input: «2, 3; Nat», weight: «4, 3; Nat», bias: «4; Nat»)
+  : «2, 4; Nat» =
+    return (%torch.linalg.linear NatArithmetic @(1, 3, 4) (2,)
+        (input, weight) (%option.some bias));
+
+// CHECK-LABEL: fun extern linear_no_bias
+// CHECK: %mem.Ptr
+fun extern linear_no_bias(input: «2, 3; Nat», weight: «4, 3; Nat»)
+  : «2, 4; Nat» =
+    return (%torch.linalg.linear NatArithmetic @(1, 3, 4) (2,)
+        (input, weight) (%option.none @«4; Nat»));
+
+// A static non-empty shape folds the zero-extent guard before bufferization.
+// CHECK-LABEL: fun extern softmax_static
+// CHECK: %mem.Ptr
+fun extern softmax_static(input: «4, 4; %math.F32»): «4, 4; %math.F32» =
+    return (%torch.normalization.softmax (%torch.resolve_floating %math.F32)
+        @(2, (4, 4)) (-1I64, ff) input);

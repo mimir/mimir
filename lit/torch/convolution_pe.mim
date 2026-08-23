@@ -1,0 +1,70 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.static_check
+// RUN: %mim -p opt %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// Standard convolution keeps its concrete bias initializer.
+fun extern convolution_bias(
+    input: «1, 4, 8, 8; Nat»,
+    weight: «8, 4, 3, 3; Nat»,
+    bias: «8; Nat»): «1, 8, 8, 8; Nat» =
+    return (%torch.conv.general NatArithmetic
+        @(1, 4, 8, 4, 8, 8, 3, 3)
+        ((1, 1), (1, 1), (1, 1), ff, (0, 0), 1)
+        (input, weight, %option.some bias));
+
+// No-bias specialization materializes the zero initializer without retaining
+// an Optional branch.
+fun extern convolution_no_bias(
+    input: «1, 4, 8, 8; Nat»,
+    weight: «8, 4, 3, 3; Nat»): «1, 8, 8, 8; Nat» =
+    return (%torch.conv.general NatArithmetic
+        @(1, 4, 8, 4, 8, 8, 3, 3)
+        ((1, 1), (1, 1), (1, 1), ff, (0, 0), 1)
+        (input, weight, %option.none @«8; Nat»));
+
+// Groups=2 specializes channel-group arithmetic before tensor lowering.
+fun extern convolution_grouped(
+    input: «1, 4, 8, 8; Nat»,
+    weight: «8, 2, 3, 3; Nat»): «1, 8, 6, 6; Nat» =
+    return (%torch.conv.general NatArithmetic
+        @(1, 4, 8, 2, 8, 8, 3, 3)
+        ((1, 1), (0, 0), (1, 1), ff, (0, 0), 2)
+        (input, weight, %option.none @«8; Nat»));
+
+// Depthwise convolution is the groups=cin, cin_per_group=1 specialization.
+fun extern convolution_depthwise(
+    input: «1, 4, 8, 8; Nat»,
+    weight: «4, 1, 3, 3; Nat»): «1, 4, 6, 6; Nat» =
+    return (%torch.conv.general NatArithmetic
+        @(1, 4, 4, 1, 8, 8, 3, 3)
+        ((1, 1), (0, 0), (1, 1), ff, (0, 0), 4)
+        (input, weight, %option.none @«4; Nat»));
+
+// CHECK-COUNT-4: %tensor.map_reduce_init
+// CHECK-NOT: Match
+// PROFILE: Phase counters:
+// PROFILE-DAG: 4 %torch.lower_torch: decompose.impl.%torch.conv.general
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

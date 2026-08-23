@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// [2, 0, 1] is intentionally not self-inverse. It distinguishes PyTorch's
+// output-to-input axis convention from %tensor.transpose's convention.
+// CHECK-LABEL: fun extern permute_rank3
+// CHECK-SAME: ({{.*}}: «2; «3; «4; I32»»»): «4; «2; «3; I32»»»
+// CHECK: %tensor.map_reduce
+fun extern permute_rank3(input: «2, 3, 4; I32»): «4, 2, 3; I32» =
+    return (%torch.shape.permute @(I32, 3, (2, 3, 4))
+        (input, (2₃, 0₃, 1₃)));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

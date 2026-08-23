@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern view_ops
+// CHECK-COUNT-2: %tensor.map_reduce
+
+plugin torch;
+plugin compile;
+
+fun extern view_ops(input: «2, 3, 4; I32»)
+  : [«6, 4; I32», «2, 4, 3; I32»] =
+    return (
+        %torch.shape.reshape @(I32, 3, 2)
+            ((2, 3, 4), (6, 4)) input,
+        %torch.shape.transpose_int @(I32, 3, (2, 3, 4))
+            (input, -2I64, -1I64));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

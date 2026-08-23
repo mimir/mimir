@@ -1,0 +1,24 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. %s
+
+// CHECK-LABEL: fun extern maximum_f32
+// CHECK: %math.extrema.IM
+// CHECK-LABEL: fun extern minimum_f64
+// CHECK: %math.extrema.Im
+
+plugin torch;
+plugin compile;
+
+fun extern maximum_f32(lhs rhs: «2; %math.F32»): «2; %math.F32» =
+    return (%torch.binary.maximum (%torch.resolve_arithmetic %math.F32)
+        @(1, 2) (lhs, rhs));
+
+fun extern minimum_f64(lhs rhs: «2; %math.F64»): «2; %math.F64» =
+    return (%torch.binary.minimum (%torch.resolve_arithmetic %math.F64)
+        @(1, 2) (lhs, rhs));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

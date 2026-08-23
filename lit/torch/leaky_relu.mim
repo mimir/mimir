@@ -1,0 +1,16 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// CHECK-LABEL: fun extern leaky_relu
+// CHECK: %tensor.map_reduce
+// CHECK: %math.arith.mul
+// CHECK: %math.cmp
+fun extern leaky_relu(input: «2, 4; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.activation.leaky_relu (%torch.resolve_floating %math.F32)
+        @(2, (2, 4)) (input, 1036831949:(%math.F32)));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

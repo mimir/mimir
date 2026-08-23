@@ -1,0 +1,14 @@
+// RUN: not %mim %s -o /dev/null 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+fun extern zero_divisor(input: «1, 1, 3, 3; %math.F32»)
+  : «1, 1, 1, 1; %math.F32» =
+    return (%torch.pool.avg_pool2d (%torch.resolve_floating %math.F32)
+        @(1, 1, 3, 3)
+        ((2, 2), (2, 2), (0, 0), ff, tt, %option.some 0)
+        input);
+
+// CHECK: avg_pool2d divisor must be nonzero
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

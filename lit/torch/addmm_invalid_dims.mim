@@ -1,0 +1,31 @@
+// RUN: not %mim %s -o /dev/null 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// The extents happen to match after reversing the axes, but PyTorch broadcast
+// dimensions must preserve source-axis order.
+fun extern invalid_addmm_dimension_order(
+    self: «4, 2; Nat», mat1: «2, 3; Nat», mat2: «3, 4; Nat»)
+  : «2, 4; Nat» =
+    return (%torch.linalg.addmm NatArithmetic
+        @(2, 2, 3, 4) ((4, 2), (1_2, 0_2)) (self, mat1, mat2) (1, 1));
+
+// CHECK: addmm self is not broadcastable to the matrix result
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

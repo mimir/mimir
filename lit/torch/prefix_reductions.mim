@@ -1,0 +1,22 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=%%tensor.scan
+
+plugin torch;
+plugin runtime;
+plugin compile;
+
+// CHECK-LABEL: lam extern prefix_reductions
+// Each statically specialized scan is expressed with pad plus map_reduce.
+// CHECK-COUNT-8: %tensor.pad
+// CHECK-NOT: torch_prefix_2d
+// CHECK-NOT: %tensor.generate
+lam extern prefix_reductions(input: «2, 4; %math.F32», mask: «2, 4; Bool»)
+  : [«2, 4; %math.F32», «2, 4; %math.F32»,
+     «2, 4; %math.F32», «2, 4; I64»] =
+    let F = %torch.resolve_floating %math.F32;
+    (%torch.scan.cumsum_2d F @(2, 4) 1I64 input,
+     %torch.scan.cumsum_2d_direction F @(2, 4) (1I64, tt) input,
+     %torch.scan.cumprod_2d F @(2, 4) 1I64 input,
+     %torch.scan.cumsum_bool_i64 @(2, 4) 1I64 mask);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

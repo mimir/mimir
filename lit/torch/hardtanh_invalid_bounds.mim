@@ -1,0 +1,12 @@
+// RUN: not %mim %s -p opt -o /dev/null 2>&1 | %FileCheck %s
+
+// CHECK: hardtanh expects min_val <= max_val
+
+plugin torch;
+plugin compile;
+
+fun extern invalid_hardtanh(input: «4; %math.F32»): «4; %math.F32» =
+    return (%torch.activation.hardtanh (%torch.resolve_arithmetic %math.F32)
+        @(1, 4) (input, 1.0:%math.F32, -1.0:%math.F32));
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern clamp_min_f32
+// CHECK-DAG: %math.cmp.uGlE
+// CHECK-DAG: %math.cmp.Ugle
+
+plugin torch;
+plugin compile;
+
+fun extern clamp_min_f32(input: «4; %math.F32»): «4; %math.F32» =
+    return (%torch.activation.clamp (%torch.resolve_arithmetic %math.F32)
+        @(1, 4)
+        (input, %option.some (-1.0:%math.F32), %option.none @%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

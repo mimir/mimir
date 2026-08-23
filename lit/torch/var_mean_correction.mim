@@ -1,0 +1,48 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match %s
+
+plugin torch;
+plugin compile;
+
+// PyTorch accepts Scalar correction values. Negative and fractional values
+// are valid; correction >= reduction count uses a zero denominator and IEEE
+// NaN/Inf behavior instead of rejecting the operation.
+
+// CHECK-LABEL: fun extern correction_a_negative
+// CHECK: %tensor.map_reduce
+// CHECK: %math.arith.div {{.*}}1077936128:(%math.F (23, 8))
+fun extern correction_a_negative(input: «2, 2; %math.F32»)
+    : [Bool, «2; %math.F32», «2; %math.F32»] =
+    return (%torch.reduction.var_mean_dims (%torch.resolve_floating %math.F32)
+        @(2, 1, (2, 2)) ((1I64,), 0xBF800000:%math.F32) input);
+
+// CHECK-LABEL: fun extern correction_b_equal_count
+// CHECK: %tensor.map_reduce
+// CHECK: %math.arith.div {{.*}}0:(%math.F (23, 8))
+fun extern correction_b_equal_count(input: «2, 2; %math.F32»)
+    : [Bool, «2; %math.F32», «2; %math.F32»] =
+    return (%torch.reduction.var_mean_dims (%torch.resolve_floating %math.F32)
+        @(2, 1, (2, 2)) ((1I64,), 0x40000000:%math.F32) input);
+
+// CHECK-LABEL: fun extern correction_c_greater_than_count
+// CHECK: %tensor.map_reduce
+// CHECK: %math.arith.div {{.*}}0:(%math.F (23, 8))
+fun extern correction_c_greater_than_count(input: «2, 2; %math.F32»)
+    : [Bool, «2; %math.F32», «2; %math.F32»] =
+    return (%torch.reduction.var_mean_dims (%torch.resolve_floating %math.F32)
+        @(2, 1, (2, 2)) ((1I64,), 0x40400000:%math.F32) input);
+
+// CHECK-LABEL: fun extern correction_d_fractional
+// CHECK: %tensor.map_reduce
+// CHECK: %math.arith.div {{.*}}1069547520:(%math.F (23, 8))
+fun extern correction_d_fractional(input: «2, 2; %math.F32»)
+    : [Bool, «2; %math.F32», «2; %math.F32»] =
+    return (%torch.reduction.var_mean_dims (%torch.resolve_floating %math.F32)
+        @(2, 1, (2, 2)) ((1I64,), 0x3F000000:%math.F32) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

@@ -1,0 +1,18 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%math.cmp.uGle %s
+
+// CHECK-LABEL: fun extern threshold_f32
+// CHECK: %math.cmp.ugLE
+
+plugin torch;
+plugin compile;
+
+fun extern threshold_f32(input: «4; %math.F32»): «4; %math.F32» =
+    return (%torch.activation.threshold (%torch.resolve_arithmetic %math.F32)
+        @(1, 4) (input, 0.5:%math.F32, -2.0:%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

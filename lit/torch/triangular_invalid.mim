@@ -1,0 +1,11 @@
+// RUN: (! %mim %s -o - 2>&1) | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+lam extern invalid_rank(input: «4; I32»): «4; I32» =
+    %torch.linalg.triu @(I32, 1, (4,)) (0I32, 0I64) input;
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;
+
+// CHECK: error: static runtime assertion failed: triu expects rank >= 2

@@ -1,0 +1,85 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+plugin torch;
+plugin compile;
+
+// Chaining the results keeps every public pointwise entry live while the
+// implicit checks verify that all framework operations decompose completely.
+// CHECK-DAG: fun extern floating_pointwise
+// CHECK-DAG: %tensor.map_reduce
+fun extern floating_pointwise(lhs rhs: «2, 3; %math.F32»): «2, 3; %math.F32» =
+    let F = %torch.resolve_floating %math.F32;
+    let A = %torch.resolve_arithmetic %math.F32;
+    let x0 = %torch.binary.mul A @(2, (2, 3)) (lhs, rhs);
+    let x1 = %torch.binary.div A @(2, (2, 3)) (x0, rhs);
+    let x2 = %torch.binary.add_scalar A @(2, (2, 3))
+        (x1, 2.0:%math.F32, 3.0:%math.F32);
+    let x3 = %torch.binary.sub_scalar A @(2, (2, 3))
+        (x2, 2.0:%math.F32, 3.0:%math.F32);
+    let x4 = %torch.binary.mul_scalar A @(2, (2, 3))
+        (x3, 2.0:%math.F32);
+    let x5 = %torch.binary.pow_tensor_scalar F @(2, (2, 3))
+        (x4, 2.0:%math.F32);
+    let x6 = %torch.unary.neg A @(2, (2, 3)) x5;
+    let x7 = %torch.unary.abs A @(2, (2, 3)) x6;
+    let x8 = %torch.unary.log F @(2, (2, 3)) x7;
+    let x9 = %torch.unary.sqrt F @(2, (2, 3)) x8;
+    let x10 = %torch.unary.rsqrt F @(2, (2, 3)) x9;
+    let x11 = %torch.unary.sin F @(2, (2, 3)) x10;
+    let x12 = %torch.unary.cos F @(2, (2, 3)) x11;
+    let x13 = %torch.unary.reciprocal F @(2, (2, 3)) x12;
+    let x14 = %torch.activation.sigmoid F @(2, (2, 3)) x13;
+    return (%torch.activation.silu F @(2, (2, 3)) x14);
+
+// CHECK-DAG: fun extern floating_comparisons
+// CHECK-DAG: %tensor.map_reduce
+fun extern floating_comparisons(lhs rhs: «2, 3; %math.F32»): «2, 3; %math.F32» =
+    let A = %torch.resolve_arithmetic %math.F32;
+    let c0 = %torch.comparison.eq A @(2, (2, 3)) (lhs, rhs);
+    let x0 = %torch.pointwise.where_ @(%math.F32, 2, (2, 3)) (c0, lhs, rhs);
+    let c1 = %torch.comparison.ne A @(2, (2, 3)) (x0, rhs);
+    let x1 = %torch.pointwise.where_ @(%math.F32, 2, (2, 3)) (c1, x0, lhs);
+    let c2 = %torch.comparison.lt A @(2, (2, 3)) (x1, rhs);
+    let x2 = %torch.pointwise.where_ @(%math.F32, 2, (2, 3)) (c2, x1, lhs);
+    let c3 = %torch.comparison.le A @(2, (2, 3)) (x2, rhs);
+    let x3 = %torch.pointwise.where_ @(%math.F32, 2, (2, 3)) (c3, x2, lhs);
+    let c4 = %torch.comparison.gt A @(2, (2, 3)) (x3, rhs);
+    let x4 = %torch.pointwise.where_ @(%math.F32, 2, (2, 3)) (c4, x3, lhs);
+    let c5 = %torch.comparison.ge A @(2, (2, 3)) (x4, rhs);
+    return (%torch.pointwise.where_ @(%math.F32, 2, (2, 3)) (c5, x4, rhs));
+
+// CHECK-DAG: fun extern i64_pointwise
+// CHECK-DAG: %tensor.map_reduce
+fun extern i64_pointwise(lhs rhs: «2, 3; I64»): «2, 3; I64» =
+    let x0 = %torch.binary.add_i64_scalar @(2, (2, 3)) (lhs, 2I64, 3I64);
+    let c0 = %torch.comparison.eq_i64_scalar @(2, (2, 3)) (x0, 0I64);
+    let x1 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c0, x0, rhs);
+    let c1 = %torch.comparison.ne_i64_scalar @(2, (2, 3)) (x1, 1I64);
+    let x2 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c1, x1, lhs);
+    let c2 = %torch.comparison.lt_i64_scalar @(2, (2, 3)) (x2, 2I64);
+    let x3 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c2, x2, rhs);
+    let c3 = %torch.comparison.le_i64_scalar @(2, (2, 3)) (x3, 3I64);
+    let x4 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c3, x3, lhs);
+    let c4 = %torch.comparison.gt_i64_scalar @(2, (2, 3)) (x4, 4I64);
+    let x5 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c4, x4, rhs);
+    let c5 = %torch.comparison.ge_i64_scalar @(2, (2, 3)) (x5, 5I64);
+    let x6 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c5, x5, lhs);
+    let c6 = %torch.comparison.eq_i64 @(2, (2, 3)) (x6, rhs);
+    let x7 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c6, x6, lhs);
+    let c7 = %torch.comparison.ne_i64 @(2, (2, 3)) (x7, rhs);
+    let x8 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c7, x7, lhs);
+    let c8 = %torch.comparison.lt_i64 @(2, (2, 3)) (x8, rhs);
+    let x9 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c8, x8, lhs);
+    let c9 = %torch.comparison.le_i64 @(2, (2, 3)) (x9, rhs);
+    let x10 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c9, x9, lhs);
+    let c10 = %torch.comparison.gt_i64 @(2, (2, 3)) (x10, rhs);
+    let x11 = %torch.pointwise.where_ @(I64, 2, (2, 3)) (c10, x10, lhs);
+    let c11 = %torch.comparison.ge_i64 @(2, (2, 3)) (x11, rhs);
+    return (%torch.pointwise.where_ @(I64, 2, (2, 3)) (c11, x11, rhs));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.cleanup,
+    );

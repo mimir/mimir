@@ -1,0 +1,38 @@
+// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin runtime;
+plugin compile;
+
+// A known rank >= 2 proves the precondition and leaves no runtime guard.
+lam extern triangular_static(input: «2, 3; I32»): [«2, 3; I32», «2, 3; I32»] =
+    (
+        %torch.linalg.triu @(I32, 2, (2, 3)) (0I32, 1I64) input,
+        %torch.linalg.tril @(I32, 2, (2, 3)) (0I32, -1I64) input,
+    );
+
+// A dependent rank cannot prove r >= 2, so the guard residualizes. The dump
+// schedules this definition before the static one.
+// CHECK-LABEL: lam extern triangular_dynamic
+// CHECK: %core.ncmp.GlE
+// CHECK: %runtime.static_check
+lam extern triangular_dynamic {r: Nat, s: «r; Nat»}
+                               (input: «s; I32»): «s; I32» =
+    %torch.linalg.triu @(I32, r, s) (0I32, 0I64) input;
+
+// CHECK-LABEL: lam extern triangular_static
+// CHECK-NOT: %runtime.static_check
+// CHECK-COUNT-2: %tensor.indexed_unary
+
+// PROFILE: Phase counters:
+// PROFILE-DAG: 3 %torch.lower_torch: decompose.impl
+// PROFILE-DAG: 2 %torch.lower_torch: decompose.impl.%torch.linalg.triu
+// PROFILE-DAG: 1 %torch.lower_torch: decompose.impl.%torch.linalg.tril
+// PROFILE-DAG: 1 %torch.lower_torch: constraints.dynamic_residual
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

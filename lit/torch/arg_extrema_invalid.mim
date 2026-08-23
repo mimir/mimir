@@ -1,0 +1,29 @@
+// RUN: not %mim %s -o /dev/null 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul), %core.nat.sub, %core.nat.div,
+    nat_max, nat_min, %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0, nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity, nat_identity, nat_identity,
+    nat_identity, %core.nat.mul,
+);
+
+fun extern empty_dim(input: «2, 0; Nat»): [Bool, «2; Nat», «2; I64»] =
+    return (%torch.reduction.max_dim NatFloating @(2, (2, 0)) (1I64) input);
+
+// CHECK: max.dim expects an in-range non-empty dimension
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

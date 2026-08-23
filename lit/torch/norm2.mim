@@ -1,0 +1,23 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+plugin torch;
+plugin compile;
+
+// CHECK-LABEL: fun extern norm2_all_keepdim
+// CHECK: %tensor.map_reduce
+// CHECK: %math.rt.sq
+// CHECK-LABEL: fun extern norm2_dim
+// CHECK: %tensor.map_reduce
+// CHECK: %math.rt.sq
+fun extern norm2_dim(input: «2, 3, 4; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.reduction.norm2_dims (%torch.resolve_floating %math.F32)
+        @(3, 1, (2, 3, 4)) (1I64,) input);
+
+fun extern norm2_all_keepdim(input: «2, 3; %math.F32»): «1, 1; %math.F32» =
+    return (%torch.reduction.norm2_dims_keepdim
+        (%torch.resolve_floating %math.F32)
+        @(2, 2, (2, 3)) (0I64, 1I64) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

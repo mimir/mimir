@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// CHECK-LABEL: fun extern masked_fill_broadcast
+// CHECK-COUNT-2: %tensor.map_reduce
+fun extern masked_fill_broadcast(
+    input: «2, 4, 8, 8; %math.F32», mask: «8, 8; Bool»)
+  : «2, 4, 8, 8; %math.F32» =
+    return (%torch.pointwise.masked_fill_scalar
+        @(%math.F32, 2, 4) ((8, 8), (2, 4, 8, 8), (2₄, 3₄))
+        (input, mask, 0.0:%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

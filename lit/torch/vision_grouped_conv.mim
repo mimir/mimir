@@ -1,0 +1,46 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. \
+// RUN:   --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern grouped_convolution
+// CHECK: %tensor.map_reduce_init
+// CHECK-LABEL: fun extern hardtanh
+// CHECK: %tensor.map_reduce
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+fun extern grouped_convolution(
+    input: «1, 4, 5, 5; Nat»,
+    weight: «8, 2, 3, 3; Nat»): «1, 8, 3, 3; Nat» =
+    return (%torch.conv.general NatArithmetic
+        @(1, 4, 8, 2, 5, 5, 3, 3)
+        ((1, 1), (0, 0), (1, 1), ff, (0, 0), 2)
+        (input, weight, %option.none @(«8; Nat»)));
+
+fun extern hardtanh(input: «2, 3; Nat»): «2, 3; Nat» =
+    return (%torch.activation.hardtanh NatArithmetic
+        @(2, (2, 3)) (input, 1, 6));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

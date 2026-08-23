@@ -1,0 +1,54 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch.loss --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity,
+    nat_identity,
+    %core.nat.mul,
+);
+
+// Definitions are emitted in reverse declaration order. Reduction tags are
+// 0=sum, 1=mean, and 2=batchmean. Static choices remove unused formulas.
+// CHECK-LABEL: fun extern kl_batchmean
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern kl_mean_log_target
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern kl_sum
+// CHECK: %tensor.map_reduce
+fun extern kl_sum(input: «2, 3; Nat», target: «2, 3; Nat»): «(); Nat» =
+    return (%torch.loss.kl_div_reduced NatFloating
+        @(2, (2, 3)) (ff, 0) (input, target));
+
+fun extern kl_mean_log_target(input: «2, 3; Nat», target: «2, 3; Nat»): «(); Nat» =
+    return (%torch.loss.kl_div_reduced NatFloating
+        @(2, (2, 3)) (tt, 1) (input, target));
+
+fun extern kl_batchmean(input: «2, 3; Nat», target: «2, 3; Nat»): «(); Nat» =
+    return (%torch.loss.kl_div_reduced NatFloating
+        @(2, (2, 3)) (ff, 2) (input, target));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

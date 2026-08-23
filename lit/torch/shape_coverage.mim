@@ -1,0 +1,44 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match %s
+
+plugin torch;
+plugin compile;
+
+// CHECK-DAG: fun extern expand
+// CHECK-DAG: %tensor.map_reduce
+fun extern expand(input: «1, 3; I32»): «2, 3; I32» =
+    return (%torch.shape.expand @(I32, 2, 2)
+        ((1, 3), (2, 3)) (input, (0₂, 1₂)));
+
+// CHECK-DAG: fun extern select
+// CHECK-DAG: %tensor.map_reduce
+fun extern select(input: «2, 3, 4; I32»): «2, 3; I32» =
+    return (%torch.indexing.select @(I32, 3, (2, 3, 4))
+        (-1I64, -2I64) input);
+
+// CHECK-DAG: fun extern cat
+// CHECK-DAG: %tensor.concat
+fun extern cat(lhs: «2, 3; I32», rhs: «1, 3; I32»): «3, 3; I32» =
+    return (%torch.shape.cat @(I32, 2, 2) 0₂ @((2, 3), (1, 3)) (lhs, rhs));
+
+// CHECK-DAG: fun extern flatten
+// CHECK-DAG: %tensor.map_reduce
+fun extern flatten(input: «2, 3, 4; I32»): «6, 4; I32» =
+    return (%torch.shape.flatten @(I32, 3, 2) ((2, 3, 4), (6, 4)) input);
+
+// CHECK-DAG: fun extern squeeze
+// CHECK-DAG: %tensor.map_reduce
+fun extern squeeze(input: «2, 1, 3; I32»): «2, 3; I32» =
+    return (%torch.shape.squeeze @(I32, 3, 2) ((2, 1, 3), (2, 3)) input);
+
+// CHECK-DAG: fun extern unsqueeze
+// CHECK-DAG: %tensor.map_reduce
+fun extern unsqueeze(input: «2, 3; I32»): «2, 1, 3; I32» =
+    return (%torch.shape.unsqueeze @(I32, 2, 3) ((2, 3), (2, 1, 3)) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.cleanup,
+    );

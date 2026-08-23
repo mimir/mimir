@@ -1,0 +1,33 @@
+// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin runtime;
+plugin compile;
+
+// CHECK-DAG: %runtime.fail
+
+// Symbolic equality cannot be decided and remains an explicit runtime guard.
+// CHECK-LABEL: lam extern dynamic_check
+// CHECK: %runtime.static_check
+lam extern dynamic_check {n m: Nat}(): Bool =
+    %torch.metadata.assert_tensor_metadata @1 (n, m);
+
+// A statically true metadata check disappears after Torch lowering and PE.
+// CHECK-LABEL: lam extern static_success
+// CHECK-NOT: %runtime.static_check
+// CHECK-NOT: %runtime.fail
+// CHECK: tt
+
+// One symbolic guard remains, while the statically true guard is eliminated.
+// PROFILE: Phase counters:
+// PROFILE-DAG: 2 %torch.lower_torch: decompose.impl
+// PROFILE-DAG: 1 %torch.lower_torch: constraints.dynamic_residual
+lam extern static_success(): Bool =
+    %torch.metadata.assert_tensor_metadata @2 ((2, 3), (2, 3));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

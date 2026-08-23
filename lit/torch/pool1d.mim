@@ -1,0 +1,43 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// Externals are emitted in dependency order.
+// CHECK-LABEL: fun extern adaptive_avg_pool1d
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.map_reduce
+
+fun extern max_pool1d(input: «2, 3, 9; %math.F32»)
+  : «2, 3, 4; %math.F32» =
+    return (%torch.pool.max_pool1d (%torch.resolve_floating %math.F32)
+        @(2, 3, 9)
+        (3, 2, 1, 2, tt)
+        input);
+
+// CHECK-LABEL: fun extern avg_pool1d
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.pad
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.generate
+// CHECK: %tensor.map_reduce
+fun extern avg_pool1d(input: «2, 3, 8; %math.F32»)
+  : «2, 3, 5; %math.F32» =
+    return (%torch.pool.avg_pool1d (%torch.resolve_floating %math.F32)
+        @(2, 3, 8)
+        (3, 2, 1, tt, ff, %option.none @Nat)
+        input);
+
+fun extern adaptive_avg_pool1d(input: «2, 3, 8; %math.F32»)
+  : «2, 3, 1; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool1d (%torch.resolve_floating %math.F32)
+        @(2, 3, 8) 1 input);
+
+// CHECK-LABEL: fun extern max_pool1d
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.pad
+// CHECK: %tensor.map_reduce
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

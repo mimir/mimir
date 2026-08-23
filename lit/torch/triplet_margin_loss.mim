@@ -1,0 +1,50 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch.loss --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity,
+    nat_identity,
+    %core.nat.mul,
+);
+
+// Reduction tags are 0=sum and 1=mean; static `swap` and reduction choices
+// specialize before tensor lowering.
+// CHECK-LABEL: fun extern triplet_mean
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern triplet_sum_swap
+// CHECK: %tensor.map_reduce
+fun extern triplet_mean(anchor: «3, 5; Nat», positive: «3, 5; Nat»,
+                        negative: «3, 5; Nat»): «(); Nat» =
+    return (%torch.loss.triplet_margin_reduced NatFloating
+        @(3, 5) (1, 2, 1, ff, 1) (anchor, positive, negative));
+
+fun extern triplet_sum_swap(anchor: «3, 5; Nat», positive: «3, 5; Nat»,
+                            negative: «3, 5; Nat»): «(); Nat» =
+    return (%torch.loss.triplet_margin_reduced NatFloating
+        @(3, 5) (1, 2, 1, tt, 0) (anchor, positive, negative));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

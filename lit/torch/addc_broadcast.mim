@@ -1,0 +1,36 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime. %s
+
+// CHECK-LABEL: fun extern addcdiv_broadcast
+// CHECK-COUNT-6: %tensor.map_reduce
+// CHECK-LABEL: fun extern addcmul_broadcast
+// CHECK-COUNT-6: %tensor.map_reduce
+
+plugin torch;
+plugin compile;
+
+fun extern addcmul_broadcast(
+    self: «2; %math.F32», tensor1: «3; %math.F32»,
+    tensor2: «2, 3; %math.F32»): «2, 3; %math.F32» =
+    return (%torch.binary.addcmul (%torch.resolve_arithmetic %math.F32)
+        @(1, 1, 2, 2)
+        ((2,), (%core.idx 2 0 0,),
+         (3,), (%core.idx 2 0 1,),
+         (2, 3), (%core.idx 2 0 0, %core.idx 2 0 1), (2, 3))
+        (self, tensor1, tensor2, 2.5:%math.F32));
+
+fun extern addcdiv_broadcast(
+    self: «2; %math.F32», tensor1: «3; %math.F32»,
+    tensor2: «2, 3; %math.F32»): «2, 3; %math.F32» =
+    return (%torch.binary.addcdiv (%torch.resolve_arithmetic %math.F32)
+        @(1, 1, 2, 2)
+        ((2,), (%core.idx 2 0 0,),
+         (3,), (%core.idx 2 0 1,),
+         (2, 3), (%core.idx 2 0 0, %core.idx 2 0 1), (2, 3))
+        (self, tensor1, tensor2, 2.5:%math.F32));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

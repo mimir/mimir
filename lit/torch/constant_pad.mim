@@ -1,0 +1,17 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// PyTorch pad (1, 2, 3, 4) pads W then H.
+// CHECK-LABEL: fun extern constant_pad
+// CHECK: %tensor.pad
+// CHECK-SAME: (0, (0, 0, 3, 1), (0, 0, 4, 2))
+fun extern constant_pad(input: «2, 3, 5, 7; %math.F32»)
+  : «2, 3, 12, 10; %math.F32» =
+    return (%torch.creation.constant_pad @(%math.F32, 4, 2, (2, 3, 5, 7))
+        ((1, 2, 3, 4), 0:(%math.F32)) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.internal_cleanup);

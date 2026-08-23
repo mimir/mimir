@@ -1,0 +1,15 @@
+// RUN: not %mim %s -o /dev/null 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+fun extern invalid_input_shape(
+    input: «2, 3; %math.F32»,
+    index: «3, 2; I64»,
+    src: «3, 2; %math.F32»): «2, 3; %math.F32» =
+    return (%torch.indexing.scatter_src
+        @(%math.F32, 2, (2, 3), (3, 2), (3, 2))
+        (1I64) (input, index, src));
+
+// CHECK: scatter index shape exceeds input or source shape
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

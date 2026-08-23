@@ -1,0 +1,39 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern construction_ops
+// CHECK-DAG: %tensor.map_reduce
+// CHECK-DAG: %tensor.map_reduce
+// CHECK-DAG: %tensor.map_reduce
+// CHECK-DAG: %tensor.generate
+// CHECK-DAG: %tensor.generate (I64, 1)
+// CHECK-DAG: %tensor.splat
+// CHECK-DAG: %tensor.splat
+// CHECK-DAG: %tensor.splat
+
+plugin torch;
+plugin tensor;
+plugin compile;
+
+fun extern construction_ops (input: «2, 3; I32»)
+  : [«4, 3; I32», «2, 3; I32», «2, 2; I32»,
+     «2, 2; I32», «2, 3; I32», «2, 3; I32»,
+     «2, 3; I32», «5; I64»] =
+    return (
+        %torch.shape.repeat @(I32, 2, (2, 3)) (2, 1) input,
+        %torch.indexing.flip @(I32, 2, 2, (2, 3)) (-1I64, 0I64) input,
+        %torch.indexing.narrow @(I32, 2, (2, 3)) (-1I64, -2I64, 2) input,
+        %torch.creation.full @(I32, 2) ((2, 2), 7I32),
+        %torch.creation.full_like @(I32, I32, 2, (2, 3)) (input, 3I32),
+        %torch.creation.lift_fresh_copy
+            (%torch.creation.copy (%torch.creation.clone input)),
+        %torch.creation.fill_scalar @(I32, 2, (2, 3))
+            (%torch.creation.empty_strided @(I32, 2) ((2, 3), (3, 1)), 9I32),
+        %torch.creation.arange_i64 @5 (0I64, 5I64, 1I64));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.beta_red,
+        %compile.internal_cleanup,
+    );

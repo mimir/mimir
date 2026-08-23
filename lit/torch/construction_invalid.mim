@@ -1,0 +1,12 @@
+// RUN: (! %mim -p opt %s -o - 2>&1) | %FileCheck %s
+
+plugin torch;
+plugin tensor;
+plugin compile;
+
+lam extern invalid_flip (input: «2, 3; I32»): «2, 3; I32» =
+    %torch.indexing.flip @(I32, 2, 2, (2, 3)) (1I64, -1I64) input;
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;
+
+// CHECK: error: static runtime assertion failed: flip expects unique, in-range dimensions

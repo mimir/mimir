@@ -1,0 +1,46 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// CHECK-LABEL: fun extern pool_ceil
+// CHECK-NOT: %torch.pool.max_pool2d
+// CHECK: %tensor.pad
+// CHECK: %tensor.map_reduce
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity,
+    nat_identity,
+    %core.nat.mul,
+);
+
+fun extern pool_ceil(input: «1, 3, 14, 14; Nat»): «1, 3, 7, 7; Nat» =
+    return (%torch.pool.max_pool2d NatFloating
+        @(1, 3, 14, 14)
+        ((3, 3), (2, 2), (0, 0), (1, 1), tt)
+        input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

@@ -1,0 +1,18 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=%%torch.scan
+
+plugin torch;
+plugin runtime;
+plugin compile;
+
+// Length four unfolds to prefix offsets 1 and 2, followed by one shift.
+// CHECK-LABEL: lam extern cumsum_exclusive
+// CHECK-COUNT-3: %tensor.pad
+// CHECK-NOT: %tensor.slice
+// CHECK-NOT: %tensor.generate
+lam extern cumsum_exclusive(input: «2, 4; %math.F32»)
+  : «2, 4; %math.F32» =
+    let F = %torch.resolve_floating %math.F32;
+    %torch.scan.cumsum_exclusive_2d F @(2, 4) 1I64 input;
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

@@ -1,0 +1,8 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// CHECK-LABEL: fun extern scalar_tensor
+// CHECK-NOT: %torch.creation.scalar_tensor
+
+plugin torch;
+
+fun extern scalar_tensor(value: %math.F32): %math.F32 =
+    return (%torch.creation.scalar_tensor @%math.F32 value);

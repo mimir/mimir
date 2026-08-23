@@ -1,0 +1,84 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern batched_matmul_dynamic
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern batched_matmul_static
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern linear_algebra
+// CHECK-COUNT-2: %tensor.map_reduce
+// CHECK-LABEL: fun extern matrix_vector
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern tensor_matrix
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern vector_matrix
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern vector_vector
+// CHECK: %tensor.map_reduce
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+fun extern linear_algebra(
+    lhs: «2, 3; Nat», rhs: «3, 4; Nat»,
+    batch_lhs: «5, 2, 3; Nat», batch_rhs: «5, 3, 4; Nat»)
+  : [«2, 4; Nat», «5, 2, 4; Nat»] =
+    return (
+        %torch.linalg.mm NatArithmetic (lhs, rhs),
+        %torch.linalg.bmm NatArithmetic (batch_lhs, batch_rhs));
+
+// Static batch extents let PE fold `5 * 6`, both reshape shapes, and every
+// rank-derived value before the residual batched product is emitted.
+fun extern batched_matmul_static(
+    lhs: «5, 6, 2, 3; Nat», rhs: «5, 6, 3, 4; Nat»)
+  : «5, 6, 2, 4; Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(4, 4, (5, 6, 2, 3), (5, 6, 3, 4)) (lhs, rhs));
+
+// Matching symbolic batch extents prove compatibility, so PE removes the
+// runtime check while preserving the batch-size arithmetic.
+fun extern batched_matmul_dynamic {b0 b1: Nat} (
+    lhs: «b0, b1, 2, 3; Nat», rhs: «b0, b1, 3, 4; Nat»)
+  : «b0, b1, 2, 4; Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(4, 4, (b0, b1, 2, 3), (b0, b1, 3, 4)) (lhs, rhs));
+
+fun extern vector_vector(lhs: «3; Nat», rhs: «3; Nat»): «(); Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(1, 1, (3,), (3,)) (lhs, rhs));
+
+fun extern matrix_vector(lhs: «2, 3; Nat», rhs: «3; Nat»): «2; Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(2, 1, (2, 3), (3,)) (lhs, rhs));
+
+// A missing RHS batch axis is statically one. Keep this frontend-relevant case
+// explicit so dependent output-shape normalization cannot retain the branch.
+fun extern tensor_matrix(lhs: «2, 3, 5; Nat», rhs: «5, 7; Nat»): «2, 3, 7; Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(3, 2, (2, 3, 5), (5, 7)) (lhs, rhs));
+
+fun extern vector_matrix(lhs: «3; Nat», rhs: «3, 4; Nat»): «4; Nat» =
+    return (%torch.linalg.matmul NatArithmetic
+        @(1, 2, (3,), (3, 4)) (lhs, rhs));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

@@ -1,0 +1,31 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern qwen_api_ops
+// CHECK: %tensor.map_reduce
+// CHECK: %tensor.checked_index_cast
+// CHECK: %tensor.gather_impl_axm
+
+plugin torch;
+plugin tensor;
+plugin runtime;
+plugin compile;
+
+fun extern qwen_api_ops (
+    input: «2, 3, 4; I32»,
+    weight: «8, 4; I32»,
+    indices: «2, 3; I64»)
+  : [«2, 4, 3; I32», «2, 3, 4; I32», «2, 3; I64»] =
+    return (
+        %torch.shape.transpose_int @(I32, 3, (2, 3, 4))
+            (input, -2I64, -1I64),
+        %torch.indexing.embedding @(I32, 8, 4, 2) @(2, 3)
+            (-1I64, ff, ff) (weight, indices),
+        %torch.binary.sub_i64_scalar @(2, (2, 3))
+            (indices, 1I64, 1I64));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

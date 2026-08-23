@@ -1,0 +1,56 @@
+// RUN: %mim -p opt %s -o - | %FileCheck \
+// RUN:   --implicit-check-not=%%torch. \
+// RUN:   --implicit-check-not=%%option.unwrap_or \
+// RUN:   --implicit-check-not=Match %s
+
+// CHECK-LABEL: fun extern batch_norm_without_affine
+// CHECK: %tensor.map_reduce
+// CHECK-LABEL: fun extern mean_keepdim
+// CHECK: %tensor.map_reduce
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+lam nat_identity (x: Nat): Nat = x;
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+let NatFloating: %torch.Floating = (
+    NatArithmetic, 0,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity, nat_identity,
+    nat_identity, nat_identity,
+    nat_identity,
+    %core.nat.mul,
+);
+
+fun extern mean_keepdim(input: «2, 3, 4; Nat»): «2, 1, 1; Nat» =
+    return (%torch.reduction.mean_dims_keepdim NatFloating
+        @(3, 2, (2, 3, 4)) (-2I64, -1I64) input);
+
+fun extern batch_norm_without_affine(
+    input: «1, 3, 2, 2; Nat»,
+    running_mean running_var: «3; Nat»): «1, 3, 2, 2; Nat» =
+    return (%torch.normalization.batch_norm_inference NatFloating
+        @(4, (1, 3, 2, 2))
+        (input, %option.none @(«3; Nat»), %option.none @(«3; Nat»),
+         running_mean, running_var, 0));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

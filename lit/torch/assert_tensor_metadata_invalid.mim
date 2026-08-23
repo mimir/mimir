@@ -1,0 +1,14 @@
+// RUN: not %mim %s -o - 2>&1 | %FileCheck %s
+
+plugin torch;
+plugin compile;
+
+// CHECK: static runtime assertion failed: _assert_tensor_metadata size mismatch
+lam extern static_failure(): Bool =
+    %torch.metadata.assert_tensor_metadata @2 ((2, 3), (2, 4));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

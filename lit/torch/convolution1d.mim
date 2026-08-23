@@ -1,0 +1,40 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.static_check
+// RUN: %mim -p opt %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// CHECK-LABEL: fun extern convolution1d_stride
+// CHECK: %tensor.map_reduce_init
+fun extern convolution1d_stride(
+    input: «1, 4, 16; Nat»,
+    weight: «8, 4, 3; Nat»,
+    bias: «8; Nat»): «1, 8, 8; Nat» =
+    return (%torch.conv.conv1d NatArithmetic
+        @(1, 4, 8, 4, 16, 3)
+        (2, 1, 1, ff, 0, 1)
+        (input, weight, %option.some bias));
+
+// PROFILE: Phase counters:
+// PROFILE-DAG: 1 %torch.lower_torch: decompose.impl.%torch.conv.conv1d
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

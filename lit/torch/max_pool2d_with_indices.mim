@@ -1,0 +1,15 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+// CHECK-LABEL: fun extern max_pool2d_with_indices
+// CHECK-NOT: %torch.pool.max_pool2d_with_indices
+// CHECK-NOT: %torch.pool.max_pool2d
+// CHECK: %mem.malloc
+
+plugin torch;
+
+fun extern max_pool2d_with_indices(input: «1, 1, 4, 5; %math.F32»)
+  : [«1, 1, 3, 3; %math.F32», «1, 1, 3, 3; I64»] =
+    return (%torch.pool.max_pool2d_with_indices
+        (%torch.resolve_floating %math.F32)
+        @(1, 1, 4, 5)
+        ((2, 3), (2, 2), (1, 1), (1, 1), tt)
+        input);

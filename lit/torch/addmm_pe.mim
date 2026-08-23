@@ -1,0 +1,51 @@
+// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s --profile summary | %FileCheck %s --check-prefix=PROFILE
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// A static zero beta must erase every read and broadcast of self.
+// CHECK-LABEL: fun extern addmm_beta_zero
+// CHECK: let product_
+// CHECK-NOT: let broadcast_self_
+fun extern addmm_beta_zero(
+    self: «4; Nat», mat1: «2, 3; Nat», mat2: «3, 4; Nat»)
+  : «2, 4; Nat» =
+    return (%torch.linalg.addmm NatArithmetic
+        @(1, 2, 3, 4) ((4,), (1_2,)) (self, mat1, mat2) (0, 2));
+
+// A nonzero beta retains the checked self broadcast and accumulation.
+// CHECK-LABEL: fun extern addmm_with_self
+// CHECK: let product_
+// CHECK: let broadcast_self_
+fun extern addmm_with_self(
+    self: «2; Nat», mat1: «2, 3; Nat», mat2: «3, 4; Nat»)
+  : «2, 4; Nat» =
+    return (%torch.linalg.addmm NatArithmetic
+        @(1, 2, 3, 4) ((2,), (0_2,)) (self, mat1, mat2) (1, 1));
+
+// PROFILE: Phase counters:
+// PROFILE-DAG: 2 %torch.lower_torch: decompose.impl
+// PROFILE-DAG: 2 %torch.lower_torch: decompose.impl.%torch.linalg.addmm
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );

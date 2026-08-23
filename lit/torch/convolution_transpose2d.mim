@@ -1,0 +1,37 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.static_check
+
+plugin torch;
+plugin compile;
+
+lam nat_max (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.ge args, args#ff, args#tt);
+lam nat_min (args: [Nat, Nat]): Nat =
+    %core.select (%core.ncmp.le args, args#ff, args#tt);
+lam nat_never (x: Nat): Bool = ff;
+lam nat_is_zero (x: Nat): Bool = %core.ncmp.e (x, 0);
+let NatArithmetic: %torch.Arithmetic = (
+    (Nat, 0, %core.nat.add, %core.nat.mul),
+    %core.nat.sub, %core.nat.div,
+    nat_max, nat_min,
+    %core.ncmp.e, %core.ncmp.ne,
+    %core.ncmp.l, %core.ncmp.le, %core.ncmp.g, %core.ncmp.ge,
+    nat_never, nat_is_zero,
+);
+
+// CHECK-LABEL: fun extern convolution_transpose2d
+// CHECK: %tensor.map_reduce_init
+fun extern convolution_transpose2d(
+    input: «1, 4, 3, 4; Nat»,
+    weight: «4, 3, 3, 2; Nat»,
+    bias: «6; Nat»): «1, 6, 6, 14; Nat» =
+    return (%torch.conv.transpose2d NatArithmetic
+        @(1, 4, 6, 3, 3, 4, 3, 2)
+        ((2, 3), (1, 0), (1, 2), (1, 2), 2)
+        (input, weight, %option.some bias));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %torch.lower_torch,
+        %compile.internal_cleanup,
+    );
