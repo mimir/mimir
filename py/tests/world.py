@@ -28,6 +28,39 @@ def test(world):
     assert isinstance(world.mut_con([b, i8]), mim.Lam)
 
 
+def test_mut_sigma_type_zero_overload(world):
+    sigma = world.mut_sigma(2)
+
+    sigma.set(0, world.type_nat())
+    sigma.set(1, world.type_i32())
+    assert sigma.num_ops() == 2
+
+
+def test_implicit_app_single_argument_overload(world):
+    from mim._plugins.option import option
+
+    world.driver().load_plugins(["option"])
+    result = world.implicit_app(
+        world.annex(option.some.value), world.lit_nat(7)
+    )
+
+    assert isinstance(result, mim.Def)
+
+
+def test_lam_set_body_with_filter_overload(world):
+    identity = world.mut_lam(world.type_nat(), world.type_nat())
+
+    identity.set_body(True, identity.var())
+
+    assert identity.body() == identity.var()
+
+
+def test_lit_i64_accepts_negative_values(world):
+    value = world.lit_i64(-1)
+
+    assert value.get_nat() == 2**64 - 1
+
+
 def test_sym(world):
     s = world.sym("hello")
     assert isinstance(s, mim.Sym)

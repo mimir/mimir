@@ -1,10 +1,28 @@
 #include "mim/ast/ast.h"
 
+#include <array>
+
 #include "mim/ast/parser.h"
 
 using namespace std::literals;
 
 namespace mim::ast {
+
+namespace {
+
+std::string python_identifier(Sym sym) {
+    static constexpr auto keywords = std::to_array<std::string_view>({
+        "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue",
+        "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in",
+        "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
+    });
+
+    auto name = sym.str();
+    if (std::ranges::find(keywords, name) != keywords.end()) name += '_';
+    return name;
+}
+
+} // namespace
 
 AST::~AST() {
     assert(error().num_errors() == 0 && error().num_warnings() == 0
@@ -181,7 +199,7 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
         flags_t ax_id = annex.base();
 
         if (auto& subs = annex.subs; subs.empty())
-            std::println(h, "{}{} = 0x{:x}", tab, sym.tag, ax_id);
+            std::println(h, "{}{} = 0x{:x}", tab, python_identifier(sym.tag), ax_id);
         else
             annexes_with_subs.push_back(annex);
     }
@@ -196,7 +214,7 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
             for (const auto& aliases : annex.subs) {
                 auto id = ax_id++;
                 for (const auto alias : aliases)
-                    std::println(h, "{}{} = 0x{:x}", tab, alias, id);
+                    std::println(h, "{}{} = 0x{:x}", tab, python_identifier(alias), id);
             }
 
             --tab;

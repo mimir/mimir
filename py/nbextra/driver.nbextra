@@ -2,6 +2,7 @@
 #include <mim/ast/ast.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/pair.h>
+#include <sstream>
 
 [class:Driver]
     // Driver::sym is a template method (fe::SymPool), so the generator skips it;
@@ -27,4 +28,19 @@
     })
     .def("load_plugins", [](Driver& d, std::vector<std::string> plugins) {
         ast::load_plugins(d.world(), plugins);
+    })
+    .def("profile_summary", [](const Driver& d) {
+        std::ostringstream os;
+        d.profiler().summary(os);
+        return os.str();
+    })
+    .def("profile_tree", [](const Driver& d) {
+        std::ostringstream os;
+        d.profiler().tree(os);
+        return os.str();
+    })
+    .def("profile_trace", [](const Driver& d) {
+        std::ostringstream os;
+        d.profiler().chrome_trace(os);
+        return os.str();
     })

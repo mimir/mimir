@@ -2,6 +2,14 @@
 #include <mim/phase/optimize.h>         // mim::optimize (free function)
 
 [class:World]
+    // Template convenience overloads are not visible to libclang. Preserve the
+    // frontend-facing Type 0 constructor explicitly.
+    .def("mut_sigma", [](World& self, size_t size) { return self.mut_sigma(size); }, nb::rv_policy::reference_internal)
+    // The C++ API accepts an unsigned bit pattern. Python frontends naturally
+    // pass signed dimension values such as -1, so preserve that convenience.
+    .def("lit_i64", [](World& self, int64_t val) {
+        return self.lit_i64(static_cast<u64>(val));
+    }, nb::rv_policy::reference_internal)
     // Run the optimization pipeline over this World (free function mim::optimize).
     .def("optimize", [](World& self) { mim::optimize(self); })
     // `annex(Id)` and `implicit_app<Normalize>(...)` are template methods, so the
@@ -9,6 +17,9 @@
     // Python `World.call` helper. `Defs` is implicitly constructible from a vector,
     // so the argument list arrives as a plain Python list.
     .def("annex", [](World& self, flags_t id) { return self.annex(id); }, nb::rv_policy::reference_internal)
+    .def("implicit_app", [](World& self, const Def* callee, const Def* arg) {
+        return self.implicit_app(callee, arg);
+    }, nb::rv_policy::reference_internal)
     .def("implicit_app", [](World& self, const Def* callee, std::vector<const Def*> args) {
         return self.implicit_app(callee, Defs(args));
     }, nb::rv_policy::reference_internal)

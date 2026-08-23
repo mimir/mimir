@@ -21,3 +21,8 @@
     // so they reach Python as a list (elements stay tied to `self`).
     .def("projs", [](const Def& self, nat_t a) { auto v = self.projs(a); return std::vector<const Def*>(v.begin(), v.end()); }, nb::rv_policy::reference_internal)
     .def("vars",  [](Def& self, nat_t a) { auto v = self.vars(a);  return std::vector<const Def*>(v.begin(), v.end()); }, nb::rv_policy::reference_internal)
+
+[class:Lit]
+    // Literal payload accessors are templates and therefore need concrete
+    // frontend-facing instantiations.
+    .def("get_nat", [](const Lit& self) { return self.get<nat_t>(); })
