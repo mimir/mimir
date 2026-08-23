@@ -4,7 +4,8 @@
 
 All `sizeof`/offset figures were measured against `build-release`
 (`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`, gcc).
-Line references are against the tree at the time of writing and may drift.
+Code is referenced by file and symbol name rather than line number, so the
+references do not rot.
 
 This document answers a recurring question: Why not use an academically more
 acclaimed language?
@@ -35,15 +36,15 @@ The *idiomatic* column is the honest comparison, and it is much worse.
 
 ### `absl::flat_hash_*`
 
-`World::unify` probes the sea of nodes on **every** `Def` construction
-(`include/mim/world.h:773`).
+`World::unify` (`include/mim/world.h`) probes the sea of nodes on **every**
+`Def` construction.
 This is *the* hot path of the whole compiler.
 
 `absl::flat_hash_set` is a SwissTable: one control byte per slot holding 7 hash
 bits, probed 16-at-a-time with SSE2/NEON, payload stored inline in a flat
 array.
 A lookup is typically **one cache miss**.
-`GIDHash` (`include/mim/util/util.h:167`) makes it cheaper still — the hash is
+`GIDHash` (`include/mim/util/util.h`) makes it cheaper still — the hash is
 the already-computed dense `u32` gid, so hashing costs nothing.
 
 What the alternatives offer:
@@ -67,15 +68,15 @@ What the alternatives offer:
 Call it **2–4× on the hash-cons probe alone**.
 
 Also lost: `Vector = absl::InlinedVector<T, N>`
-(`include/mim/util/vector.h:18`), which keeps small op-vectors in the object
+(`include/mim/util/vector.h`), which keeps small op-vectors in the object
 with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
 allocation.
 
 ### `Sets::Set` — a four-way sum type in one machine word
 
-`Set` is a single `uintptr_t` with two tag bits
-(`include/mim/util/sets.h:115`, `:349-351`):
+`Sets::Set` (`include/mim/util/sets.h`) is a single `uintptr_t` with two tag
+bits:
 
     Null | Uniq (D* inline) | Data (arena FAM) | Node (trie node)
 
@@ -84,8 +85,8 @@ Consequences:
 - `Def::vars_` and `Def::muts_` cost **8 bytes each**.
 - A singleton set *is* the pointer to its element — zero allocation, zero
   indirection, and `contains` is one comparison.
-- Set equality is `ptr_ == ptr_` over the entire set (`:326`), because
-  everything is hash-consed.
+- Set equality is `ptr_ == ptr_` over the entire set, because everything is
+  hash-consed.
 
 In OCaml a 4-constructor variant with payloads is 3 boxed blocks plus 1
 immediate; in Haskell the same plus a thunk per constructor; on the JVM four
@@ -93,7 +94,7 @@ classes and a megamorphic call site.
 Pointer tagging is reachable only via `Obj.magic` or `Unsafe`, at which point
 you have left the language.
 
-`Data` (`sets.h:84-89`) is a **C99 flexible array member**
+`Sets::Data` is a **C99 flexible array member**
 (`size_t size; D* elems[];`) placement-`new`ed into `data_arena_` — not even
 portable C++.
 Elsewhere it becomes a record plus a separate array object: two allocations, an
@@ -101,9 +102,9 @@ extra hop per element access, and on the JVM a second 16-byte header.
 
 ### The link-cut tree mutates in place
 
-`lct::Node` is CRTP-intrusive (`include/mim/util/link_cut_tree.h:20`), embedded
+`lct::Node` (`include/mim/util/link_cut_tree.h`) is CRTP-intrusive, embedded
 directly into the trie `Node` by inheritance.
-`rotate` (`:109-130`) is six pointer stores into memory that already exists.
+`rotate` is six pointer stores into memory that already exists.
 `splay`, `expose`, `lca`, `is_descendant_of` are pure in-place pointer surgery
 with **zero allocation**.
 
@@ -113,7 +114,7 @@ A splay tree is amortized O(log n) **because it mutates on read**:
 `Set::contains` → `LCT::find` → `expose` → `splay`, so a membership test
 restructures the tree.
 A persistent splay tree allocates O(depth) nodes **per query**, and
-`Set::has_intersection` (`sets.h:257-306`) calls `find` inside a loop over two
+`Sets::Set::has_intersection` calls `find` inside a loop over two
 node-sets.
 
 ### Arenas, and how `Def`s are placed in them
@@ -145,7 +146,7 @@ Three deliberate optimizations produce that number, and none of them survives a
 port:
 
 - **`dbg_` is a `u32` index** into the Driver's `Dbg` table rather than an
-  inline `Dbg` (`include/mim/def.h:763-767`).
+  inline `Dbg` (see `Def`'s data members in `include/mim/def.h`).
   That alone is 20 bytes off *every* node, and `Dbg`s are shared roughly 10:1
   in practice.
   It is deliberately placed adjacent to `tid_` so the two `u32`s share one
@@ -156,12 +157,12 @@ port:
   `immutabilize` and `arity` are ordinary member functions that `switch` on the
   1-byte `node_` tag (`src/mim/def.cpp`), and a subclass
   accidentally growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)`
-  assert (`include/mim/def.h:780`).
+  assert in `World::allocate`.
 - **Sub-word packing.**
   `u32` gids rather than `size_t`, a five-way union, and five flags sharing the
   single byte left over by the `u8` `node_` tag.
 
-`World::allocate` (`include/mim/world.h:822-826`):
+`World::allocate` (`include/mim/world.h`):
 
 ```cpp
 static_assert(sizeof(Def) == sizeof(T),
@@ -192,7 +193,7 @@ The saving is the *vptr*, not the dispatch.
 
 ### Speculative construction with arena rollback
 
-This one has no counterpart anywhere (`include/mim/world.h:747-775`):
+This one has no counterpart anywhere — `World::unify`:
 
 ```cpp
 auto state = move_.arena.defs.state();
@@ -209,8 +210,8 @@ and the gid counter rolled back.
 In a normalizing hash-consed IR the hit rate is high by construction, so the
 common path costs **zero net allocation and produces zero garbage**.
 
-`Sets::unify` (`sets.h:600-610`) does the same for `Data`.
-`Sets::merge` (`:468-499`) goes further: it allocates the upper bound
+`Sets::unify` does the same for `Data`.
+`Sets::merge` goes further: it allocates the upper bound
 `d1->size + d2->size`, merges into it, then returns the unused tail via
 `unify(data, state, excess)`.
 Shrinking your most recent allocation is a bump-pointer-only move.
@@ -222,7 +223,7 @@ The cost is the **compounding**: high nursery churn forces frequent minor
 collections, and each must scan a remembered set that is enormous here, because
 MimIR constantly mutates old-generation `Def`s — `set()`, the users set in
 `muts_`, `mark_` sweeps in `free_vars()`, and lazy `tid_` assignment in
-`Sets::set_tid` (`sets.h:579`), which writes into a nominally-immutable `Def`
+`Sets::set_tid`, which writes into a nominally-immutable `Def`
 from inside the trie.
 Every one of those is an old→young pointer write paying `caml_modify` or
 card-marking.
@@ -368,6 +369,128 @@ placement new, tag bits, intrusive CRTP, arena rollback, hand-packed layout.
 Those languages do not have a worse version of that subset; they do not have it
 at all.
 
+## What about Rust?
+
+Rust is the only language on the list that offers the same systems-programming
+subset, so it deserves a separate answer.
+
+**The honest reason is historic.**
+MimIR descends from Thorin, which was C++ from the outset, years before Rust
+1.0 was a plausible choice for a compiler framework — and the surrounding
+ecosystem (LLVM, and the C++ literacy of everyone in a compilers group) pointed
+the same way.
+That is a perfectly good reason for how we got here.
+The interesting question is whether the technical case would justify moving,
+and it does not: the gain is close to zero and the losses are concrete.
+
+### Rust would land at roughly performance parity
+
+Estimate: **1.0–1.3×**, i.e. within noise of the C++ — but only via a design
+that gives up most of what makes the current implementation tight.
+
+A mutable, cyclic, aliased graph is the one area Rust is *known* to be
+awkward at, and the standard advice for graphs in Rust is exactly the
+workaround: **stop using pointers and use arena indices**.
+That advice is not folklore; it is what Rust compilers actually do.
+`rustc` interns types into arenas and threads `&'tcx` references and
+`rustc_index::IndexVec` indices everywhere.
+Cranelift indexes everything through `cranelift-entity`.
+`egg` hash-conses e-nodes behind `u32` ids and a union-find.
+None of them builds a pointer-linked mutable graph.
+
+Index-based arena Rust is a legitimate design and would perform fine — an
+index is a bounds-checked load, not a hash lookup, so unlike the OCaml/Haskell
+case there is no asymptotic loss.
+But it is a *different* implementation, and each of MimIR's five load-bearing
+structures pays something:
+
+- **No flexible array members.**
+  `sizeof(Def) + 8 * num_ops` in a single bump allocation with
+  `ops_ptr() == this + 1` has no safe Rust equivalent; custom DSTs are still
+  unstable.
+  Either `ops: &'a [&'a Def]` — a 16-byte fat pointer replacing the inline
+  `u32 num_ops_`, plus a second allocation and an extra indirection — or manual
+  `Layout` arithmetic in `unsafe`.
+  `rustc` chose the latter: `rustc_middle::ty::List<T>` is a hand-rolled
+  header-plus-trailing-elements allocation written in `unsafe`, precisely
+  because the language does not provide one.
+- **No tagged pointers.**
+  `Sets::Set` packs a four-way sum into one `uintptr_t` with two tag bits.
+  A Rust `enum` over four pointer-carrying variants is 16 bytes; niche
+  optimization does not apply.
+  That is `vars_` and `muts_` going 8 → 16 bytes each, +16 per node, unless you
+  hand-roll it with `NonNull` and `unsafe`.
+- **The rollback trick is the most anti-Rust pattern in the codebase.**
+  Rewinding a bump allocator past objects whose references may have escaped is
+  exactly what the borrow checker exists to prevent, and `bumpalo` offers no
+  checkpoint/rewind in its safe API — only a full `reset()`.
+  The C++ already guards this by comment and assertion (`create_trie` must draw
+  only from `node_arena_`); Rust would want
+  that invariant in the type system and cannot express it, so it becomes
+  `unsafe` with a `'a` lifetime that is a lie.
+- **The intrusive link-cut tree** is the textbook "you will write this with
+  indices or `unsafe`" structure: parent pointers plus `rotate` re-parenting
+  arbitrarily.
+  Worse, `splay` mutates during `contains` — a logically-`&self` operation that
+  restructures the tree.
+  In Rust that is `&mut self` (viral, and unusable while other borrows into the
+  same arena are live) or interior mutability over indices.
+- **`mutable` fields are fine, in fairness.**
+  `Cell<u32>` for `dbg_`, `tid_`, `mark_` and `Cell<Option<&'a Def>>` for
+  `type_` are genuinely zero-cost.
+  This one is syntactic noise, not a performance cost, and it would be
+  churlish to claim otherwise.
+
+The `Rc<RefCell<Def>>` design that a newcomer would reach for first is the one
+option that is clearly worse: refcount cycles leak by construction — and in a
+sea of nodes with `muts_` holding back-edges there is no spanning tree to make
+`Weak`, so there is no principled place to break them — plus a runtime borrow
+check on every access, whose failure mode is a panic rather than a compile
+error.
+
+### Where Rust genuinely wins
+
+Not nothing, and worth stating plainly:
+
+- **Cargo instead of CMake.** A real, daily quality-of-life improvement.
+- **Thread safety.** MimIR is single-threaded today.
+  If parallelising phases ever becomes a goal, `Send`/`Sync` is a far better
+  foundation than anything C++ offers, and this is the one argument that could
+  actually change the verdict later.
+- **Miri**, which would check exactly the `unsafe` core that a port would
+  produce.
+- **`enum` plus exhaustive `match`** for the genuinely closed parts, and
+  tooling (rust-analyzer, built-in test harness) that is simply better.
+
+### The plugin story is worse, not better
+
+This is the decisive practical point, because plugins are core architecture,
+not a peripheral feature.
+
+MimIR loads `dlopen`'d modules exporting `mim_get_plugin`, which register
+normalizers as raw function pointers stored inside the `Def` union.
+**Rust has no stable ABI.**
+Every plugin would have to be compiled with the exact same rustc version as
+`libmim`, or the entire interface reduced to `extern "C"` shims with
+`#[repr(C)]` types on both sides — losing the very type safety that motivated
+the move.
+C++ already has friction here (`absl` containers must not appear in types that
+cross the `dlopen` boundary), but "keep `absl` out of the interface" is a much
+smaller constraint than "no stable ABI exists".
+
+### Verdict
+
+Roughly performance parity, in exchange for an `unsafe` core that reimplements
+the flexible array member and the tagged pointer by hand, a rollback pattern
+the borrow checker is specifically designed to reject, and a materially worse
+plugin ABI story — against real wins in build tooling, future parallelism, and
+`unsafe`-checking.
+
+For a *new* project with these requirements the choice would be genuinely
+close, and the thread-safety argument might well decide it.
+For an existing, working, tuned implementation, that is not a trade that pays
+for itself.
+
 ## Summary
 
 > MimIR's IR is a mutable, hash-consed, cyclic graph of hand-packed 72-byte
@@ -376,5 +499,7 @@ at all.
 > every compiler written in them that needed one wrote imperative code to get
 > it.
 
-Rust is the only entry on the acclaimed list that offers the same subset, and
-even there the rollback-on-hit pattern fights the borrow checker.
+Rust is the only entry on the list that offers the same subset, and there the
+answer is parity rather than a win — see *What about Rust?* above.
+The reason MimIR is in C++ is historic; the reason it stays there is that
+nothing on offer would pay for the move.
