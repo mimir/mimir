@@ -169,6 +169,27 @@ const Def* ClosConv::rewrite_imm_App(const App* app) {
     if (auto a = Axm::isa<attr>(app))
         if (auto handled = rewrite_attr(a)) return handled;
 
+    // Scope-local branch targets remain plain basic blocks. Re-infer the
+    // dispatch tuple instead of rewriting its old `Cn` element type to a
+    // closure Sigma and subsequently mistaking the Extract for clos_apply.
+    if (auto extract = app->callee()->isa<Extract>(); extract && !Lit::isa(extract->index())) {
+        if (auto tuple = extract->tuple()->isa<Tuple>()) {
+            auto targets = DefVec();
+            targets.reserve(tuple->num_ops());
+            for (auto target : tuple->ops()) {
+                if (!Axm::isa<attr>(attr::local_bb, target)) {
+                    targets.clear();
+                    break;
+                }
+                targets.emplace_back(rewrite(target));
+            }
+            if (!targets.empty()) {
+                auto new_callee = new_world().extract(new_world().tuple(targets), rewrite(extract->index()));
+                return new_world().app(new_callee, rewrite(app->arg()));
+            }
+        }
+    }
+
     auto new_callee = rewrite(app->callee());
     auto new_arg    = rewrite(app->arg());
     if (new_callee->type()->isa<Sigma>()) return clos_apply(new_callee, new_arg);
@@ -179,9 +200,14 @@ const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
     auto& w = new_world();
     switch (a.id()) {
         case attr::returning:
+        case attr::local_bb:
             // A return continuation is *not* closure converted; it stays a plain Cn sharing the enclosing scope.
-            // After η-expansion this should be its only occurrence, so mapping it into the current scope suffices.
+            // A scope-local basic block follows the same rule. After η-expansion
+            // this should be its only occurrence, so mapping it into the current
+            // scope suffices.
             if (auto ret_lam = a->arg()->isa_mut<Lam>()) {
+                assert((a.id() != attr::local_bb || Lam::isa_basicblock(ret_lam))
+                       && "local_bb must wrap a basic block");
                 auto new_doms = DefVec(ret_lam->num_doms(), [&](auto i) { return rewrite(ret_lam->dom(i)); });
                 auto new_lam  = w.mut_lam(w.cn(new_doms))->set(ret_lam->dbg_key());
                 map(ret_lam, new_lam);

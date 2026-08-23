@@ -31,6 +31,7 @@ private:
     const Def* eta_wrap(const Def* old_op, attr a);
 
     DefMap<Lam*> old2wrapper_;
+    DefSet local_bbs_;
     Lam2Lam lam2fscope_;
     bool analyzed_ = false;
 };

@@ -32,6 +32,9 @@ namespace mim::plug::cps {
 /// A lifted call simply lives in the Lam whose body rewriting first reaches it.
 /// Rewrites whose result mentions such a continuation variable are scoped to that Lam (see Conv::map) and
 /// re-derived - and thus re-lifted - in sibling scopes.
+/// A dynamic dispatch whose targets are all `%%cps.cps2ds_dep` wrappers is
+/// lifted as a dispatch over the underlying CPS functions with one shared
+/// result continuation.
 class Conv : public RWPhase {
 public:
     Conv(World& world, flags_t annex)

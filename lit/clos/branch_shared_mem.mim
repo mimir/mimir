@@ -1,0 +1,20 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos %s -p ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t; test $? -eq 39
+// RUN: %t select-true; test $? -eq 42
+
+// Branches and their join point are basic blocks in the same returning
+// function. Closure conversion must preserve their shared memory state
+// without rejecting the outer `%mem.M` as a free value.
+plugin core;
+
+con extern main(mem: %mem.M 0, argc: I32,
+                argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
+                return: Cn [%mem.M 0, I32]) =
+    con result(value: I32) = return (mem, value);
+    con subtract() = result (%core.wrap.sub 0 (40I32, argc));
+    con add() = result (%core.wrap.add 0 (40I32, argc));
+
+    let condition = %core.icmp.sg (argc, 1I32);
+    (subtract, add)#condition ();

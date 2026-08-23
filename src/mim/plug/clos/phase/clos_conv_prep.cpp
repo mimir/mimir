@@ -1,5 +1,7 @@
 #include "mim/plug/clos/phase/clos_conv_prep.h"
 
+#include <algorithm>
+
 #include <mim/nest.h>
 
 #include "mim/plug/clos/clos.h"
@@ -119,6 +121,10 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
 }
 
 const Def* ClosConvPrep::rewrite_callee_op(const Def* old_op) {
+    if (auto bb = Lam::isa_mut_basicblock(old_op); bb && local_bbs_.contains(bb)) {
+        DLOG("found shared-scope BB in callee position: {}", bb);
+        return new_world().call(attr::local_bb, rewrite(bb));
+    }
     if (!old_op->isa_mut<Lam>()) {
         auto wrapper = eta_wrap(old_op, attr::bottom)->set("eta_br");
         DLOG("eta wrap branch: {} -> {}", old_op, wrapper);
@@ -143,13 +149,27 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
         if (auto br = app->callee()->isa<Extract>()) {
             auto branches = br->tuple();
             if (branches->isa<Tuple>() && branches->type()->isa<Arr>()) {
+                auto local_dispatch = std::ranges::all_of(branches->ops(), [](auto branch) {
+                    auto bb = Lam::isa_mut_basicblock(branch);
+                    return bb && bb->num_doms() == 0;
+                });
+                if (local_dispatch)
+                    for (auto branch : branches->ops()) local_bbs_.emplace(branch);
                 auto new_ops
                     = DefVec(branches->num_ops(), [&](size_t i) { return rewrite_callee_op(branches->op(i)); });
                 new_callee = w.extract(w.tuple(new_ops), rewrite(br->index()));
             }
         }
     }
-    if (!new_callee) new_callee = rewrite(app->callee());
+    if (!new_callee) {
+        auto local_source = curr_mut() && local_bbs_.contains(curr_mut());
+        if (auto bb = Lam::isa_mut_basicblock(app->callee()); bb && bb != curr_mut() && local_source) {
+            local_bbs_.emplace(bb);
+            new_callee = new_world().call(attr::local_bb, rewrite(bb));
+        } else {
+            new_callee = rewrite(app->callee());
+        }
+    }
 
     // Wrap the argument's projections.
     const Def* new_arg;

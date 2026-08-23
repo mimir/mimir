@@ -1,5 +1,7 @@
 #include "mim/plug/cps/phase/conv.h"
 
+#include <mim/tuple.h>
+
 #include "mim/plug/cps/cps.h"
 
 namespace mim::plug::cps {
@@ -71,8 +73,33 @@ const Def* Conv::rewrite_imm_App(const App* old_app) {
     auto new_arg    = rewrite(old_app->arg());
     auto new_callee = rewrite(old_app->callee());
 
-    if (liftable_)
+    if (liftable_) {
         if (auto wrapped = Axm::isa<cps2ds_dep>(new_callee)) return lift(wrapped->arg(), new_arg, old_app);
+
+        // A dynamic dispatch hides the individual cps2ds wrappers from the
+        // direct-call case above. Unwrap every target and lift the selected
+        // CPS callee with one shared result continuation:
+        //
+        //   (cps2ds f, cps2ds g)#i arg  ->  (f, g)#i (arg, cont)
+        if (auto extract = new_callee->isa<Extract>(); extract && !Lit::isa(extract->index())) {
+            if (auto arity = Lit::isa(extract->tuple()->arity())) {
+                auto targets = DefVec();
+                targets.reserve(*arity);
+                for (size_t i = 0; i != *arity; ++i) {
+                    auto wrapped = Axm::isa<cps2ds_dep>(extract->tuple()->proj(*arity, i));
+                    if (!wrapped) {
+                        targets.clear();
+                        break;
+                    }
+                    targets.emplace_back(wrapped->arg());
+                }
+                if (!targets.empty()) {
+                    auto dispatch = new_world().extract(new_world().tuple(targets), extract->index());
+                    return lift(dispatch, new_arg, old_app);
+                }
+            }
+        }
+    }
 
     return new_world().app(new_callee, new_arg);
 }
@@ -96,6 +123,23 @@ const Def* Conv::wire(size_t base, const Def* body) {
         auto [callee, arg, cont] = pending_.back();
         pending_.pop_back();
         cont->set_body(body);
+
+        // Selecting returning CPS functions directly would leave nested
+        // returning Lams after branch-closure elimination, while the backend
+        // only permits nested basic blocks. Dispatch through empty-domain
+        // basic blocks and let each arm invoke its CPS target instead.
+        if (auto extract = callee->isa<Extract>(); extract && !Lit::isa(extract->index())) {
+            if (auto arity = Lit::isa(extract->tuple()->arity())) {
+                auto arms = DefVec(*arity, [&](size_t i) -> const Def* {
+                    auto arm = w.mut_con(w.sigma())->set("cps_dispatch");
+                    arm->app(false, extract->tuple()->proj(*arity, i), Defs{arg, cont});
+                    return arm;
+                });
+                body = w.app(w.extract(w.tuple(arms), extract->index()), w.tuple());
+                continue;
+            }
+        }
+
         body = w.app(callee, w.tuple({arg, cont}));
     }
     return body;

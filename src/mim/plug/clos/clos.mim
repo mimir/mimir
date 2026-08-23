@@ -54,7 +54,9 @@ axm %clos.longjmp: Cn [%mem.M 0, %clos.BufPtr, I32];
 /// * `esc`: a closure whose environment escapes its parent scope, so it is heap- instead of stack-allocated
 ///   (introduced by mim::plug::clos::phase::LowerTypedClosPrep).
 /// * `bottom`: no special use; this is the identity marker and is normalized away by `normalize_clos`.
-axm %clos.attr(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, normalize_clos;
+/// * `local_bb`: a basic block used only inside its owning returning function;
+///   it shares that function's SSA scope and is not closure-packed.
+axm %clos.attr(returning, free_bb, fstclass_bb, esc, bottom, local_bb): {T: *} → T → T, normalize_clos;
 ///
 /// ## Phases
 ///
