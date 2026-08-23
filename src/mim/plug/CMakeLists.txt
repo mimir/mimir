@@ -19,7 +19,9 @@ set(MIM_PLUGINS
     ord
     refly
     regex
+    runtime
     tensor
+    torch
     tuple
     vec
 )
