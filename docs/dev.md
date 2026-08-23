@@ -65,7 +65,7 @@ MimIR distinguishes between two kinds of [`Def`s](@ref mim::Def): _immutables_ a
 | no [variables](@ref mim::Var)                                          | may have [variables](@ref mim::Var); use [`mim::Def::var`](@ref mim::Def::var) / [`mim::Def::has_var`](@ref mim::Def::has_var) |
 | build ops first, then the actual node                                  | build the actual node first, then [`set`](@ref mim::Def::set) the ops                                                          |
 | [hash-consed](https://en.wikipedia.org/wiki/Hash_consing)              | each new instance is fresh                                                                                                     |
-| [`Def::rebuild`](@ref mim::Def::rebuild)                               | [`Def::stub`](@ref mim::Def::stub)                                                                                             |
+| [`Rewriter::rewrite_imm`](@ref mim::Rewriter::rewrite_imm)             | [`Def::stub`](@ref mim::Def::stub)                                                                                             |
 
 ### Immutables
 

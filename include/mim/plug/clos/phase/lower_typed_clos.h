@@ -29,8 +29,8 @@ namespace mim::plug::clos::phase {
 ///
 /// The rewrite carries a *mem token* along each function body (LowerTypedClos::lvm_ / LowerTypedClos::lcm_) so
 /// that the `%mem.alloc`/`%mem.store` it inserts for boxed environments are threaded into the mem chain.
-/// This stateful, order-sensitive threading is why LowerTypedClos::rewrite is overridden as a whole rather than
-/// via the per-node hooks.
+/// This stateful, order-sensitive threading is why LowerTypedClos::rewrite intercepts whole classes of nodes
+/// instead of relying on the per-node hooks alone.
 /// A converted Lam's body is enqueued and rewritten later, seeded with that body's own initial mem token.
 class LowerTypedClos : public RWPhase {
 public:
@@ -49,6 +49,8 @@ private:
     void rewrite_external(Def*) final;
     void finalize() final;
     const Def* rewrite(const Def* def) final;
+    const Def* rewrite_imm(const Def* def) final;
+    const Def* rewrite_imm_App(const App*) final;
 
     /// Describes how the environment should be treated.
     enum Mode {

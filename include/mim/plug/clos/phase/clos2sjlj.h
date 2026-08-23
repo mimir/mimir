@@ -31,7 +31,19 @@ private:
 
     void get_exn_closures(Lam* lam);
     void get_exn_closures(const Def* def, DefSet& visited);
-    const Def* subst_exn_closures(const Def* def, Def2Def& memo);
+
+    /// Substitutes closure literals of tagged exception Lam%s by throw closures; does not descend into mutables.
+    class SubstExn : public Rewriter {
+    public:
+        SubstExn(Clos2SJLJ& phase)
+            : Rewriter(phase.new_world())
+            , phase_(phase) {}
+
+        const Def* rewrite(const Def*) final;
+
+    private:
+        Clos2SJLJ& phase_;
+    };
 
     // clang-format off
     LamMap<std::pair<int, const Def*>> lam2tag_;
