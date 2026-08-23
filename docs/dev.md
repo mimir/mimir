@@ -310,8 +310,8 @@ void foo(const Def* def) {
     if (auto mut = def->isa_mut()) {
         // mut has type "Def*" - note that "const" has been removed
         // This gives you access to the non-const methods:
-        auto var  = mut->var();
-        auto stub = mut->stub(type);
+        auto var = mut->var();
+        mut->unset();
         // ...
     }
 
