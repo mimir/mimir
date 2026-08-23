@@ -1139,12 +1139,12 @@ anx lam scatter_step_impl {T: *, r: Nat}
 ///   A product with more than one consumer stays a chain boundary, as pulling it apart would leave it materialized for its other consumers as well.
 ///   Reassociation is only exact for an associative ring; on floating-point rings it changes the rounding, just like `-ffast-math`.
 /// * `lower_tensor`: lowers the high-level tensor axioms to the low-level ones (`map_reduce`, ...) by re-applying the matching `*_impl` annexes.
-/// * `lower_map_reduce`: lowers the low-level tensor axioms directly to their underlying primitives (loops, `extract`, `insert`, packs, ...).
+/// * `lower_map_reduce`: lowers the low-level tensor axioms, including `generate`, directly to their underlying primitives (loops, `extract`, `insert`, packs, ...).
 /// * `lower_get_set`: lowers `get` / `set` to their underlying primitives (`extract`, `insert`).
 /// * `fuse_tensor`: fuses pure producer `map_reduce`s into their consumers' access maps.
 ///   A producer is only fused where the consumer reads it injectively (its access map uses every loop index, possibly strided/shifted), so fusion never recomputes a producer element — strided reads even skip producer elements entirely.
 ///   In the reverse direction, a trailing elementwise map over a reducing `map_reduce` is composed into the producer's `post` epilogue (the GEMM-epilogue pattern), provided the map is its only consumer.
-/// * `lower_to_mem`: Bufferizes the low-level tensor axioms (`get`, `set`, `map_reduce`) onto the `buffer` layer:
+/// * `lower_to_mem`: Bufferizes the low-level tensor axioms (`get`, `set`, `generate`, `map_reduce`) onto the `buffer` layer:
 /// tensor array values become `buffer.Buf` handles and the operations become `buffer.read` / `buffer.write` / `buffer.alloc` (threading `mem.M`).
 /// Memory is threaded by `mem.add_mem` (scheduled next in the pipeline); run `buffer.lower_ptr` afterwards to reach `mem.Ptr`.
 ///
@@ -1154,3 +1154,22 @@ axm lower_map_reduce: compile.Phase;
 axm lower_get_set:    compile.Phase;
 axm fuse_tensor:      compile.Phase;
 axm lower_to_mem:     compile.Phase;
+///
+/// ### generate
+///
+/// Constructs a tensor by evaluating `body` once for every logical output coordinate.
+/// Coordinates use `I64` so the body can do ordinary scalar arithmetic before converting them to bounded tensor indices.
+///
+/// Python:
+/// ```python
+/// output = empty(s_out)
+/// for index in ndindex(s_out):
+///     output[index] = body(index)
+/// return output
+/// ```
+///
+/// Declared after the existing annexes to keep their generated ids stable.
+axm generate: {T: *, r: Nat}
+            → [s_out: «r; Nat»]
+            → [body: [«r; I64»] → T]
+            → «s_out; T»;
