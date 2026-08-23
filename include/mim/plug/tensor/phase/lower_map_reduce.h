@@ -6,7 +6,7 @@
 
 namespace mim::plug::tensor::phase {
 
-/// Lowers the low-level tensor axioms (`map_reduce`, `pad`, `concat`, `broadcast`)
+/// Lowers the low-level tensor axioms (`map_reduce`, `generate`, `pad`, `concat`, `broadcast`)
 /// directly to their underlying primitives (loops, `extract`, `insert`, `pack`, …).
 /// High-level axioms (`transpose`, `conv`, `broadcast_in_dim`, …) are expected to have been desugared to
 /// these low-level axioms by an earlier `Lower` phase.
@@ -20,6 +20,7 @@ private:
 
     const Def* lower_broadcast(const App*);
     const Def* lower_map_reduce(const App*);
+    const Def* lower_generate(const App*);
     const Def* lower_pad(const App*);
     const Def* lower_concat(const App*);
     const Def* lower_gather(const App*);

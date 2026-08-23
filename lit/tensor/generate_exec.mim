@@ -1,0 +1,18 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos -p ll %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t; test $? -eq 30
+
+plugin core;
+plugin tensor;
+
+lam row_value(indices: «2; I64»): I32 =
+    %core.select (%core.icmp.e (indices#0_2, 0I64), 10I32, 20I32);
+
+con extern main (mem: %mem.M 0, argc: I32,
+                 argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
+                 return: Cn [%mem.M 0, I32]) =
+    let generated = %tensor.generate @(I32, 2) (2, 3) row_value;
+    let first = %tensor.get ((0_2, 2_3), generated);
+    let second = %tensor.get ((1_2, 1_3), generated);
+    return (mem, %core.wrap.add 0 (first, second));

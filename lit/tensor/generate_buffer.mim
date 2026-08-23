@@ -1,0 +1,27 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=%%tensor.generate
+
+// Generate allocates one output buffer and fills it in place inside
+// the generated loop nest.
+// CHECK-LABEL: fun extern generate2d
+// CHECK-COUNT-1: %buffer.alloc
+// CHECK: %affine.For
+// CHECK: %buffer.write
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin buffer;
+plugin compile;
+
+lam row_value(indices: «2; I64»): I32 =
+    %core.select (%core.icmp.e (indices#0_2, 0I64), 10I32, 20I32);
+
+fun extern generate2d(): «3, 2; I32» =
+    return (%tensor.generate @(I32, 2) (3, 2) row_value);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_to_mem,
+        %mem.add_mem,
+        %compile.cleanup,
+    );
