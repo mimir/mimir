@@ -23,6 +23,7 @@
 ///
 plugin core;
 plugin mem;
+plugin cps;
 ///
 /// ## Assertions
 ///

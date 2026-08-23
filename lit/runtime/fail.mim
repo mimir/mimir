@@ -1,7 +1,13 @@
 // RUN: rm -f fail.ll
 // RUN: %mim -p opt -p clos %s -p ll
+// RUN: %FileCheck %s --input-file=fail.ll --check-prefix=LLVM
 // RUN: clang fail.ll -o %t -Wno-override-module
 // RUN: (! %t 2>&1) | %FileCheck %s
+
+// LLVM: c"explicit failure msg\00"
+// LLVM: call i32 @puts(ptr
+// LLVM: call i32 @fflush(ptr null)
+// LLVM: call void @abort()
 
 plugin runtime;
 

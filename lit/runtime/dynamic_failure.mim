@@ -1,7 +1,12 @@
 // RUN: rm -f dynamic_failure.ll
 // RUN: %mim -p opt -p clos %s -p ll
+// RUN: %FileCheck %s --input-file=dynamic_failure.ll --check-prefix=LLVM
 // RUN: clang dynamic_failure.ll -o %t -Wno-override-module
 // RUN: (! %t 2>&1) | %FileCheck %s
+
+// LLVM: c"dynamic failure message\00"
+// LLVM: define internal void @.mimir_assert_
+// LLVM: call void @abort()
 
 plugin runtime;
 plugin core;

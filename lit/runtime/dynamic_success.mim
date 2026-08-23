@@ -1,7 +1,14 @@
 // RUN: rm -f dynamic_success.ll
 // RUN: %mim -p opt -p clos %s -p ll
+// RUN: %FileCheck %s --input-file=dynamic_success.ll --check-prefix=LLVM
 // RUN: clang dynamic_success.ll -o %t -Wno-override-module
 // RUN: %t; test $? -eq 7
+
+// LLVM: define internal void @.mimir_assert_
+// LLVM: br i1 %condition, label %success, label %failure
+// LLVM: call i32 @puts(ptr
+// LLVM: call i32 @fflush(ptr null)
+// LLVM: call void @abort()
 
 plugin runtime;
 plugin core;
