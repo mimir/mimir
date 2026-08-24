@@ -46,13 +46,7 @@ private:
         using Super = mim::Analysis;
 
         Analysis(World& world)
-            : mim::Analysis(world, "SEO::Analyzer") {
-            // No sparse rounds: Analysis::start replays the lattice into the rewriter map for a sparse round
-            // but lets a full one re-derive from the program, so the two spell one and the same abstract value
-            // differently. sccp_join's per-round restart would then revise a var into whichever spelling the
-            // current kind of round produces - round after round, without ever settling.
-            make_dense();
-        }
+            : mim::Analysis(world, "SEO::Analyzer") {}
 
         void reset() final;
 

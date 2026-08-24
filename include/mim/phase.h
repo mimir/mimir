@@ -140,6 +140,8 @@ protected:
 /// dirty mutable's body sees the substitutions its (non-revisited) producers installed in earlier rounds. Since dirt
 /// tracks *writers* - not readers - a sparse round may miss affected mutables; hence, once sparse rounds quiesce, one
 /// final **full** round certifies the fixed point.
+/// That replay only *prunes* the walk; what the lattice means is applied by rewrite() through repr(), in every kind of
+/// round alike - see repr() for why an analysis whose values are expressions needs that.
 /// @note You can override
 /// - Rewriter::rewrite(),
 /// - Rewriter::rewrite_imm(),
@@ -191,6 +193,26 @@ public:
     const Def* lattice(const Def* def) const {
         if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
         return nullptr;
+    }
+
+    /// The representative of @p def: follows `def ↦ lattice(def)` to a fixed point.
+    ///
+    /// The lattice records *expressions*, so one and the same abstract value can be spelled at several depths
+    /// of a chain (a var, and the value it was propagated to). repr() collapses those spellings to one def, so
+    /// that comparing two of them answers whether they mean the same value - not whether they were derived by
+    /// the same route. A cyclic chain has no end; its minimum-gid member serves as the representative.
+    const Def* repr(const Def* def) const {
+        auto chain = DefVec();
+        while (true) {
+            auto i = lattice_.find(def);
+            if (i == lattice_.end() || i->second == def) break; // ⊥ or ⊤
+            if (std::ranges::contains(chain, def))
+                return *std::min_element(chain.begin(), chain.end(),
+                                         [](auto a, auto b) { return a->gid() < b->gid(); });
+            chain.emplace_back(def);
+            def = i->second;
+        }
+        return def;
     }
 
     /// @returns whether @p def is pinned to ⊤ (`def ↦ def`).
@@ -258,6 +280,14 @@ protected:
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
     const Def* rewrite_imm_Proxy(const Proxy* proxy) override { return proxy; } ///< By default: ignore Proxy%s.
+
+    /// Rewrites @p def and then maps the result to its repr().
+    ///
+    /// This is how the lattice is applied: at the *point of use*, and only after the structural rewrite - so an
+    /// Analysis's hooks always see the program itself. Pre-installing the substitutions into map() instead
+    /// would skip those hooks, and only a sparse round would do so - putting the two kinds of round in
+    /// different regimes, where they spell one and the same abstract value differently.
+    const Def* rewrite(const Def*) override;
 
     /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
