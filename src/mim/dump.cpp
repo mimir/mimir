@@ -33,7 +33,8 @@ Def* isa_decl(const Def* def) {
 
 /// Def::unique_name - or the plain Def::sym while a diagnostic is being formatted, where a gid is noise.
 std::string name(const Def* def) {
-    if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(sym, def->gid())) return sym.str();
+    if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
+        return sym.str();
     return def->unique_name();
 }
 

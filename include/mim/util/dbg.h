@@ -21,15 +21,21 @@ class Driver;
 /// Renders Def%s with their plain Def::sym instead of Def::unique_name while alive.
 /// A gid is noise in a diagnostic about the user's source - but it is also the only thing that tells two
 /// same-named Def%s apart, so PlainNames::clashed reports when a message has to be rendered again with gids.
+/// The state lives in Driver::names, so two Driver%s formatting at once never share it.
 class PlainNames {
 public:
-    PlainNames();
+    /// Activates plain naming on @p driver until this guard dies; a null @p driver leaves it off.
+    explicit PlainNames(const Driver* driver);
     ~PlainNames();
+
+    bool clashed() const;
 
     /// Registers that @p gid renders as @p sym and reports whether the plain @p sym may be used.
     /// Sets the clash flag - but still answers `true` - if another gid already claimed @p sym.
-    static bool claim(Sym sym, uint32_t gid);
-    static bool clashed();
+    static bool claim(const Driver&, Sym sym, uint32_t gid);
+
+private:
+    const Driver* driver_;
 };
 
 class Error : public std::exception {
@@ -50,9 +56,11 @@ public:
 
     /// @name Constructors
     ///@{
-    /// @p driver supplies the Flags the renderer consults; without one, its defaults apply.
-    Error(const Driver& driver)
-        : driver_(&driver) {}
+    /// Snapshots Flags::no_snippet from @p driver and remembers it for Error::msg.
+    /// @note The snapshot is what lets an Error outlive @p driver: rendering must still work while an
+    /// exception unwinds past the Driver's scope, whereas Error::driver_ is only ever touched while
+    /// messages are added - at which point the Def%s being formatted prove their Driver is alive.
+    explicit Error(const Driver& driver);
     Error() = default;
     ///@}
 
@@ -72,9 +80,9 @@ public:
     Error& msg(Loc loc, Tag tag, std::format_string<Args...> s, Args&&... args) {
         auto str = std::string();
         {
-            auto _ = PlainNames();
-            str    = std::vformat(s.get(), std::make_format_args(args...));
-            if (PlainNames::clashed()) str.clear();
+            auto plain = PlainNames(driver_);
+            str        = std::vformat(s.get(), std::make_format_args(args...));
+            if (plain.clashed()) str.clear();
         }
         if (str.empty()) str = std::vformat(s.get(), std::make_format_args(args...));
 
@@ -139,11 +147,8 @@ private:
         return {};
     }
 
-    /// Driver::flags's Flags::no_snippet; `false` without a Driver.
-    /// Read at render time - not snapshotted - because the CLI fills the Flags in after the Driver is constructed.
-    bool no_snippet() const;
-
-    const Driver* driver_ = nullptr;
+    const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
+    bool no_snippet_      = false;   ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
     std::vector<Msg> msgs_;
     mutable std::string what_;
 };

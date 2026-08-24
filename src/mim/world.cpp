@@ -788,11 +788,16 @@ Loc World::err_loc(const Def* def) const {
     auto done               = DefSet{def};
     auto queue              = std::deque<const Def*>{def};
 
-    for (size_t i = 0; i != Budget && !queue.empty(); ++i) {
+    // Charged per inspected dep, not per dequeue: a single high-arity Def would otherwise scan - and
+    // enqueue - its whole operand list before the budget got a say.
+    auto budget = Budget;
+
+    while (!queue.empty()) {
         auto todo = queue.front();
         queue.pop_front();
 
         for (auto dep : todo->deps()) {
+            if (budget-- == 0) return {};
             if (!done.emplace(dep).second) continue;
             if (auto loc = dep->loc()) return loc;
             queue.push_back(dep);

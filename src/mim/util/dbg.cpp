@@ -79,30 +79,35 @@ fe::term::FG tag2color(Error::Tag tag) {
     // clang-format on
 }
 
-size_t plain_depth = 0;
-bool plain_clashed = false;
-auto plain_sym2gid = absl::flat_hash_map<Sym, uint32_t>();
-
 } // namespace
 
-PlainNames::PlainNames() {
-    if (plain_depth++ == 0) {
-        plain_clashed = false;
-        plain_sym2gid.clear();
+PlainNames::PlainNames(const Driver* driver)
+    : driver_(driver) {
+    if (!driver_) return;
+
+    auto& names = driver_->names();
+    if (names.depth++ == 0) {
+        names.clashed = false;
+        names.sym2gid.clear();
     }
 }
 
-PlainNames::~PlainNames() { --plain_depth; }
+PlainNames::~PlainNames() {
+    if (driver_) --driver_->names().depth;
+}
 
-bool PlainNames::clashed() { return plain_clashed; }
+bool PlainNames::clashed() const { return driver_ && driver_->names().clashed; }
 
-bool PlainNames::claim(Sym sym, uint32_t gid) {
-    if (plain_depth == 0) return false;
-    if (auto [i, ins] = plain_sym2gid.emplace(sym, gid); !ins && i->second != gid) plain_clashed = true;
+bool PlainNames::claim(const Driver& driver, Sym sym, uint32_t gid) {
+    auto& names = driver.names();
+    if (names.depth == 0) return false;
+    if (auto [i, ins] = names.sym2gid.emplace(sym, gid); !ins && i->second != gid) names.clashed = true;
     return true;
 }
 
-bool Error::no_snippet() const { return driver_ && driver_->flags().no_snippet; }
+Error::Error(const Driver& driver)
+    : driver_(&driver)
+    , no_snippet_(driver.flags().no_snippet) {}
 
 void Error::clear() { msgs_.clear(); }
 
@@ -127,7 +132,7 @@ std::ostream& operator<<(std::ostream& os, const Error& e) {
         } else {
             primary = msg.loc;
             os << msg << '\n';
-            if (!e.no_snippet()) stream_snippet(os, msg.loc, src.line(msg.loc), tag2color(msg.tag));
+            if (!e.no_snippet_) stream_snippet(os, msg.loc, src.line(msg.loc), tag2color(msg.tag));
         }
     }
 
