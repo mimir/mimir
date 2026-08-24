@@ -60,9 +60,6 @@ private:
     private:
         // SCCP
         const Proxy* mk_sccp_top(const Def* var);
-        /// Chases @p def through lattice() while it merely aliases, so that all spellings of one abstract
-        /// value join to a single representative.
-        const Def* alias_repr(const Def* def) const;
         const Def* sccp_join(Lam*, const Def*, const Def*);
         DefVec sccp(Lam*, Defs vars, Defs abstr_args);
 
@@ -100,6 +97,8 @@ private:
         Vector<Lam*> fu_lams_;
 
         // global (kept between iterations)
+        static constexpr size_t Max_Restarts = 4; ///< @see sccp_join
+        GIDMap<const Def*, size_t> restarts_;     ///< per var: how often a round re-descended its value
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched

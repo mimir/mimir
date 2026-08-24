@@ -46,24 +46,6 @@ void SEO::Analysis::reset() {
 
 const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
-const Def* SEO::Analysis::alias_repr(const Def* def) const {
-    // Two call sites may spell the same abstract value at different depths of one alias chain (a var vs the
-    // closure-env projection it was packed into); joining the raw spellings makes the result visit-order
-    // dependent - and alternate forever if the chain is cyclic.
-    auto chain = DefVec();
-    while ((def->isa<Var>() || def->isa<Extract>()) && !std::ranges::contains(chain, def)) {
-        auto l = lattice(def);
-        if (!l || l == def || l->isa<Proxy>()) break; // ⊤ or a sentinel is not an alias
-        chain.emplace_back(def);
-        def = l;
-    }
-
-    // A cyclic chain has no last element; its minimum-gid member serves as the (round-stable) representative.
-    if (auto i = std::ranges::find(chain, def); i != chain.end())
-        return *std::min_element(i, chain.end(), [](auto a, auto b) { return a->gid() < b->gid(); });
-    return def;
-}
-
 const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
     if (is_top(var)) return var;
@@ -72,9 +54,8 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
 
-    def = alias_repr(def);
-    // A chase that reaches `var` itself is a pure self-contribution (e.g. a loop backedge passing the var
-    // through unchanged): it joins nothing - the other call sites alone determine the value.
+    // A site passing `var` itself (a backedge threading a loop-invariant argument through) contributes
+    // nothing: the other call sites alone determine the value.
     if (def == var) return lattice(var) ? lattice(var) : var;
 
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
@@ -101,7 +82,13 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // apply_known() guarantees this: any change to lam's abstract vars taints all of lam's callers.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
-        lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
+        // The abstract domain has no bounded height - a value that round-trips a loop through a closure env
+        // is respelled every round - so widen to ⊤ once a var has re-descended Max_Restarts times.
+        // Without this the restart never settles and the phase runs out of fixed-point iterations.
+        if (lattice_force(var, def) && ++restarts_[var] > Max_Restarts) { // force: may descend from ⊤
+            DLOG("widen {} to ⊤ after {} re-descents", var, Max_Restarts);
+            return pin(var), var;
+        }
         return def;
     }
 
