@@ -191,6 +191,13 @@ const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
     return nullptr;
 }
 
+bool SEO::Analysis::can_supply(Lam* lam, const Def* sloxy) {
+    if (auto i = lam2callers_.find(lam); i != lam2callers_.end())
+        for (auto caller : i->second)
+            if (auto c = caller->isa_mut<Lam>(); c && !lam2sloxy2val(c, sloxy)) return false;
+    return true;
+}
+
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     for (auto ptr : slots()) {
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(rewrite(ptr))) {
@@ -351,6 +358,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
+            if (is_top(phi_vars[i])) continue; // ⊤ is final - lattice() must not descend from it
             assert_emplace(first_, phi_vars[i]);
             lattice(phi_vars[i], phi_abstr_args[i]);
         }
@@ -521,7 +529,8 @@ const Vector<SEO::Phi>& SEO::phis_of(Lam* old_lam) {
                 auto phi = mk_phi(old_world(), old_lam, sloxy);
                 if (var && phi->type()->has_free_var(var)) continue; // not expressible in old_lam's signature
                 if (auto val = lattice(phi); val && !Proxy::isa<Proxy_SCCP_Top>(val))
-                    phis.emplace_back(sloxy, phi, val);
+                    // build_args() needs an argument at *every* call site; else the slot has to survive.
+                    if (analysis_.can_supply(old_lam, sloxy)) phis.emplace_back(sloxy, phi, val);
             }
     }
     return phis;

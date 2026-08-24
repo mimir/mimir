@@ -56,6 +56,9 @@ private:
         const auto& slots() const { return slots_; }
         const auto& lam2sloxy2val() const { return lam2sloxy2val_; }
         const Def* lam2sloxy2val(Lam* lam, const Def* sloxy);
+        /// Can *every* recorded call site of @p lam supply a value for @p sloxy?
+        /// Only then may build_args() find an argument for a phi threaded through @p lam.
+        bool can_supply(Lam* lam, const Def* sloxy);
 
     private:
         // SCCP
