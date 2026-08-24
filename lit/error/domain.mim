@@ -4,4 +4,7 @@ plugin math;
 
 axm %foo.bar: Cn [I32, %math.F32];
 let err = %foo.bar(23:%math.F32, 42I32);
-// CHECK: error: argument is not assignable to callee's domain
+// CHECK: {{.*}}domain.mim:6:11-6:39: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 6 | let err = %foo.bar(23:%math.F32, 42I32);
+// CHECK-NEXT:   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// CHECK-NEXT:   = note: expected `[I32, %math.F (23, 8)]`, got `[%math.F (23, 8), I32]`

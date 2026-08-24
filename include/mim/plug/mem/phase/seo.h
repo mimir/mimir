@@ -65,6 +65,8 @@ private:
 
         /// Applies @p known to @p abstr_targs (one per tvar): propagates phis, runs SCCP + GVN, and sets the vars.
         const Def* apply_known(Lam* known, Defs abstr_targs);
+        /// An App that merely records "@p callee applied to these abstract args"; never emitted code.
+        const Def* abstract_app(const Def* callee, const Def* arg);
 
         // GVN
         const Proxy* mk_bundle(Lam* lam, const Def* var, Defs bundle_vars);
@@ -95,6 +97,8 @@ private:
         Vector<Lam*> fu_lams_;
 
         // global (kept between iterations)
+        static constexpr size_t Max_Restarts = 4; ///< @see sccp_join
+        GIDMap<const Def*, size_t> restarts_;     ///< per var: how often a round re-descended its value
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
@@ -124,6 +128,12 @@ private:
     const Vector<Phi>& phis_of(Lam* old_lam);
     /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?
     bool needs_seo(View<Phi>, Lam* old_lam);
+    /// Number of vars of the Lam build_lam() builds for @p old_lam: the kept ones plus the live phis.
+    size_t num_new_vars(View<Phi>, Lam* old_lam);
+    /// The new spelling of @p old_lam's var: kept projections become new vars, dropped ones their
+    /// propagated value (⊥ for a promoted slot). The single source of truth for both build_lam() and
+    /// rewrite_imm_Var(), and hence well-defined independent of build order.
+    const Def* var_of(View<Phi>, Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
     Lam* build_lam(View<Phi>, Lam* old_lam);
     /// Builds the argument list for a jump to @p old_lam (with the given @p old_targs, one per tvar)
@@ -133,7 +143,6 @@ private:
     Analysis analysis_;
     Lam2Lam lam_old2new_;
     Lam2Lam lam_new2old_;
-    LamSet in_flight_; ///< Lams whose build_lam() var mapping is currently being (re-)established.
     absl::node_hash_map<Lam*, Vector<Phi>, GIDHash<Lam*>> lam2phis_;
 };
 

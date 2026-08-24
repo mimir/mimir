@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
             | lyra::opt(profile, "|summary|tree|trace"     )      ["--profile"              ]("Measure how long each phase takes and write a summary, tree or chrome://tracing compatible output to the output-profile provided destination.")
             | lyra::opt(profile_path, "file"               )      ["--output-profile"       ]("The output path (or '-' for stdout) for the profiling information.")
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
+            | lyra::opt(flags.no_snippet                   )      ["--no-snippet"           ]("Do not render the offending source line and caret underneath a diagnostic.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(sexpr_include_types                )      ["--sexpr-include-types"  ]("Wraps symbolic expression terms in a type annotation. Types will not be wrapped in type annotations.")
             | lyra::opt(dot.follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")

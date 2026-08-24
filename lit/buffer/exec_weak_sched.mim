@@ -1,5 +1,5 @@
 // RUN: rm -f exec_weak_sched.ll
-// RUN: %mim -p opt -p clos %s -p ll -o /dev/null
+// RUN: %mim -p opt %s -p ll -o /dev/null
 // RUN: clang exec_weak_sched.ll -o %t -Wno-override-module
 // RUN: env MALLOC_PERTURB_=170 %t ; test $? -eq 10
 

@@ -31,9 +31,16 @@ Def* isa_decl(const Def* def) {
     return nullptr;
 }
 
+/// Def::unique_name - or the plain Def::sym while a diagnostic is being formatted, where a gid is noise.
+std::string name(const Def* def) {
+    if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
+        return sym.str();
+    return def->unique_name();
+}
+
 std::string id(const Def* def) {
     if (def->is_external() || (!def->is_set() && def->isa<Lam>())) return def->sym().str();
-    return def->unique_name();
+    return name(def);
 }
 
 std::string_view external(const Def* def) {
@@ -165,7 +172,7 @@ std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
 
     auto projs = def->tprojs();
     if (projs.size() == 1 || std::ranges::all_of(projs, [](auto d) { return !d; }))
-        return os << std::format("{}: {}", def->unique_name(), Op(type));
+        return os << std::format("{}: {}", name(def), Op(type));
 
     size_t i = 0;
     os << '(';
@@ -174,7 +181,7 @@ std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
         ptrn(os, proj, type->proj(i++));
         sep = ", ";
     }
-    return os << std::format(") as {}", def->unique_name());
+    return os << std::format(") as {}", name(def));
 }
 
 std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
@@ -201,7 +208,7 @@ curry(std::ostream& os, const Def* def, const Def* type, bool implicit, bool par
         sep = ", ";
     }
     os << r;
-    if (alias && def) os << std::format(" as {}", def->unique_name());
+    if (alias && def) os << std::format(" as {}", name(def));
     return os;
 }
 
@@ -279,10 +286,10 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         }
         return os << std::format("{}:{}", lit->get(), Op::r(lit->type(), Prec::Lit));
     } else if (auto ex = d->isa<Extract>()) {
-        if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << ex->unique_name();
+        if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
     } else if (auto var = d->isa<Var>()) {
-        return os << var->unique_name();
+        return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {
         auto l = pi->is_implicit() ? '{' : '[';
         auto r = pi->is_implicit() ? '}' : ']';
@@ -343,7 +350,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         return os << std::format("(proxy#{} {})", proxy->tag(), Op::map(proxy->ops()));
     } else if (auto bound = d->isa<Bound>()) {
         auto op = bound->isa<Join>() ? "∪" : "∩"; // TODO ascii
-        if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, mut->unique_name(), Op(mut->type()));
+        if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, name(mut), Op(mut->type()));
         return os << std::format("{}({})", op, Op::map(bound->ops()));
     }
 

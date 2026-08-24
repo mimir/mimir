@@ -2,4 +2,6 @@
 
 lam extern g (a: [Nat, Bool]) = a#1;
 
-// CHECK: error: index `1` must be of `Idx` type
+// CHECK: {{.*}}index_nat.mim:3:33-3:35: error: index `1` must be of `Idx` type but is of type `Nat`
+// CHECK-NEXT: 3 | lam extern g (a: [Nat, Bool]) = a#1;
+// CHECK-NEXT:   |                                 ^^^
