@@ -9,8 +9,8 @@ namespace mim::ast {
 namespace utf8 = fe::utf8;
 using Tag      = Tok::Tag;
 
-Lexer::Lexer(AST& ast, std::istream& istream, const fs::path* path /*= nullptr*/, std::ostream* md /*= nullptr*/)
-    : Super(istream, path)
+Lexer::Lexer(AST& ast, std::string_view buf, const fs::path* path /*= nullptr*/, std::ostream* md /*= nullptr*/)
+    : Super(buf, path)
     , ast_(ast)
     , md_(md) {
 #define CODE(t, str) keywords_[ast.sym(str)] = Tag::t;
@@ -143,11 +143,11 @@ Tok Lexer::lex() {
                 continue;
             }
 
-            ast().error({loc_.path, peek_}, "invalid input char `/`; maybe you wanted to start a comment?");
+            ast().error(peek(), "invalid input char `/`; maybe you wanted to start a comment?");
             continue;
         }
 
-        ast().error({loc_.path, peek_}, "invalid input char `{}`", utf8::Char32(ahead()));
+        ast().error(peek(), "invalid input char `{}`", utf8::Char32(ahead()));
         next();
     }
 }
@@ -279,7 +279,7 @@ char8_t Lexer::lex_char() {
         else if (accept<Append::Off>( 'r')) str_ += '\r';
         else if (accept<Append::Off>( 't')) str_ += '\t';
         else if (accept<Append::Off>( 'v')) str_ += '\v';
-        else ast().error(loc_.anew_finis(), "invalid escape character `\\{}`", (char)ahead());
+        else ast().error(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
         // clang-format on
         return str_.back();
     }

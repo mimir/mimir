@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include "mim/def.h"
+#include "mim/driver.h"
 #include "mim/lam.h"
 #include "mim/nest.h"
 #include "mim/world.h"
@@ -172,7 +173,7 @@ public:
     std::ostream& tooltip(const Def* def) {
         static constexpr auto NL = "&#13;&#10;"; // newline
 
-        auto loc  = escape(def->loc());
+        auto loc  = escape(def->world().driver().src().at(def->loc()));
         auto type = escape(def->type());
         std::print(os_, "tooltip=\"");
         std::print(os_, "<b>expr:</b> {}{}", def, NL);

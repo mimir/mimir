@@ -1,12 +1,14 @@
 #pragma once
 
 #include <algorithm>
+#include <memory>
 #include <sstream>
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
 #include <fe/assert.h>
 #include <fe/loc.h>
+#include <fe/src.h>
 #include <fe/sym.h>
 #include <fe/term.h>
 
@@ -50,14 +52,12 @@ public:
         Loc loc;
         Tag tag;
         std::string str;
-
-        friend std::ostream& operator<<(std::ostream&, const Msg&);
     };
 
     /// @name Constructors
     ///@{
-    /// Snapshots Flags::no_snippet from @p driver and remembers it for Error::msg.
-    /// @note The snapshot is what lets an Error outlive @p driver: rendering must still work while an
+    /// Shares @p driver's SrcMap and snapshots Flags::no_snippet from it.
+    /// @note Both are what let an Error outlive @p driver: rendering must still work while an
     /// exception unwinds past the Driver's scope, whereas Error::driver_ is only ever touched while
     /// messages are added - at which point the Def%s being formatted prove their Driver is alive.
     explicit Error(const Driver& driver);
@@ -147,8 +147,14 @@ private:
         return {};
     }
 
+    std::ostream& stream(std::ostream&, const Msg&) const;
+    /// Renders @p loc as `file:row:col`, falling back to its raw offsets without a SrcMap.
+    std::string str(Loc loc) const;
+    const fe::SrcFile* file(Loc loc) const { return src_ ? src_->lookup(loc) : nullptr; }
+
     const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
-    bool no_snippet_      = false;   ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
+    std::shared_ptr<const fe::SrcMap> src_;
+    bool no_snippet_ = false; ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
     std::vector<Msg> msgs_;
     mutable std::string what_;
 };
@@ -191,8 +197,7 @@ public:
 
     template<class H>
     friend H AbslHashValue(H h, Dbg dbg) noexcept {
-        return H::combine(std::move(h), dbg.loc_.path, dbg.loc_.begin.row, dbg.loc_.begin.col, dbg.loc_.finis.row,
-                          dbg.loc_.finis.col, dbg.sym_);
+        return H::combine(std::move(h), dbg.loc_.path, dbg.loc_.begin.off, dbg.loc_.end.off, dbg.sym_);
     }
     ///@}
 
@@ -226,7 +231,6 @@ private:
 template<> struct std::formatter<mim::Dbg       > : fe::ostream_formatter {};
 template<> struct std::formatter<mim::Error     > : fe::ostream_formatter {};
 template<> struct std::formatter<mim::Error::Tag> : fe::ostream_formatter {};
-template<> struct std::formatter<mim::Error::Msg> : fe::ostream_formatter {};
 #endif // clang-format on
 
 namespace mim {
@@ -246,13 +250,6 @@ inline std::ostream& stream_code(std::ostream& os, std::string_view str) {
         i = r + 1;
     }
     return os;
-}
-
-// Streamed piecewise instead of via std::format: a std::formatter cannot see its destination stream,
-// so embedded fe::term::FG values would resolve Mode::Auto to "no color"; see fe/term.h.
-inline std::ostream& operator<<(std::ostream& os, const Error::Msg& msg) {
-    os << fe::term::FG::Yellow << msg.loc << ": " << msg.tag << ": " << fe::term::FG::Reset;
-    return stream_code(os, msg.str);
 }
 
 } // namespace mim

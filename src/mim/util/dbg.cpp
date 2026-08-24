@@ -1,7 +1,5 @@
 #include "mim/util/dbg.h"
 
-#include <fstream>
-
 #include <fe/loc.cpp.h>
 #include <fe/utf8.h>
 
@@ -11,58 +9,35 @@ namespace mim {
 
 namespace {
 
-/// The source lines an Error refers to, read on demand and memoized per file.
-/// Scoped to a single rendering: Loc::path is owned by the Driver, so nothing may outlive it.
-class Src {
-public:
-    /// The line Loc::begin points at, or empty if the file or that row is unavailable.
-    std::string_view line(Loc loc) {
-        if (!loc || !loc.path) return {};
-
-        auto [i, ins] = path2lines_.try_emplace(loc.path);
-        if (ins) {
-            auto ifs = std::ifstream(*loc.path);
-            for (std::string line; std::getline(ifs, line);) {
-                if (!line.empty() && line.back() == '\r') line.pop_back();
-                i->second.emplace_back(std::move(line));
-            }
-        }
-
-        auto row = loc.begin.row;
-        return row <= i->second.size() ? std::string_view(i->second[row - 1]) : std::string_view();
-    }
-
-private:
-    absl::flat_hash_map<const fs::path*, std::vector<std::string>> path2lines_;
-};
-
 // Width of the line-number column; shared by the snippet gutter and the note prefix so they cannot drift apart.
 constexpr auto Gutter = 5;
 
-/// Streams @p line, then a caret run underlining the columns @p loc spans, both behind a Gutter-wide row number.
+/// Streams the row @p loc starts on, then a caret run underlining the columns it spans.
 /// A @p loc spanning several rows underlines the remainder of its first one.
-void stream_snippet(std::ostream& os, Loc loc, std::string_view line, fe::term::FG color) {
-    // A col of 0 is Pos's "unknown" sentinel, so there is nothing to point at.
-    if (line.empty() || loc.begin.col == 0) return;
+void stream_snippet(std::ostream& os, const fe::SrcFile& file, Loc loc, fe::term::FG color) {
+    auto row  = file.row(loc.begin);
+    auto line = file.line(row);
+    if (line.empty()) return;
 
     auto len   = fe::utf8::num_code_points(line);
-    auto begin = size_t(loc.begin.col) - 1;
+    auto begin = size_t(file.col(loc.begin)) - 1;
     if (begin >= len) return;
 
-    auto finis = loc.finis.row != loc.begin.row || loc.finis.col == 0 ? len : size_t(loc.finis.col);
-    finis      = std::min(std::max(finis, begin + 1), len);
+    auto last = file.prev(loc.end);
+    auto end  = file.row(last) != row ? len : size_t(file.col(last));
+    end       = std::min(std::max(end, begin + 1), len);
 
-    os << fe::term::FG::Gray << std::format("{:>{}} | ", loc.begin.row, Gutter) << fe::term::FG::Reset << line << '\n'
+    os << fe::term::FG::Gray << std::format("{:>{}} | ", row, Gutter) << fe::term::FG::Reset << line << '\n'
        << fe::term::FG::Gray << std::format("{:>{}} | ", "", Gutter) << color;
 
-    // One blank per *code point*, since that is what Pos::col counts;
+    // One blank per *code point*, since that is what a column counts;
     // a tab is echoed rather than blanked, or the carets drift by its width.
     for (size_t i = 0, c = 0; c != begin && i < line.size(); ++c) {
         auto n = fe::utf8::num_bytes(char8_t(line[i]));
         os << (line[i] == '\t' ? '\t' : ' ');
         i += n == 0 ? 1 : n;
     }
-    for (size_t i = begin; i != finis; ++i)
+    for (size_t i = begin; i != end; ++i)
         os << '^';
 
     os << fe::term::FG::Reset << '\n';
@@ -107,7 +82,17 @@ bool PlainNames::claim(const Driver& driver, Sym sym, uint32_t gid) {
 
 Error::Error(const Driver& driver)
     : driver_(&driver)
+    , src_(driver.src_ptr())
     , no_snippet_(driver.flags().no_snippet) {}
+
+std::string Error::str(Loc loc) const { return src_ ? std::format("{}", src_->at(loc)) : std::format("{}", loc); }
+
+// Streamed piecewise instead of via std::format: a std::formatter cannot see its destination stream,
+// so embedded fe::term::FG values would resolve Mode::Auto to "no color"; see fe/term.h.
+std::ostream& Error::stream(std::ostream& os, const Msg& msg) const {
+    os << fe::term::FG::Yellow << str(msg.loc) << ": " << msg.tag << ": " << fe::term::FG::Reset;
+    return stream_code(os, msg.str);
+}
 
 void Error::clear() { msgs_.clear(); }
 
@@ -119,7 +104,6 @@ void Error::ack(std::ostream& os) {
 }
 
 std::ostream& operator<<(std::ostream& os, const Error& e) {
-    auto src     = Src();
     auto primary = Loc();
 
     for (const auto& msg : e.msgs()) {
@@ -127,12 +111,14 @@ std::ostream& operator<<(std::ostream& os, const Error& e) {
             os << fe::term::FG::Gray << std::format("{:>{}} = ", "", Gutter) << msg.tag << ": " << fe::term::FG::Reset;
             stream_code(os, msg.str);
             // The primary Loc is already spelled out above; only a note that points elsewhere repeats one.
-            if (msg.loc && msg.loc != primary) os << fe::term::FG::Yellow << " at " << msg.loc << fe::term::FG::Reset;
+            if (msg.loc && msg.loc != primary)
+                os << fe::term::FG::Yellow << " at " << e.str(msg.loc) << fe::term::FG::Reset;
             os << '\n';
         } else {
             primary = msg.loc;
-            os << msg << '\n';
-            if (!e.no_snippet_) stream_snippet(os, msg.loc, src.line(msg.loc), tag2color(msg.tag));
+            e.stream(os, msg) << '\n';
+            if (!e.no_snippet_)
+                if (auto file = e.file(msg.loc)) stream_snippet(os, *file, msg.loc, tag2color(msg.tag));
         }
     }
 

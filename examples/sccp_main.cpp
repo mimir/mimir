@@ -47,8 +47,7 @@ int main(int, char**) {
         auto parser = mim::ast::Parser(ast);
         auto is     = std::istringstream(prog);
 
-        auto path = std::filesystem::path("prog.mim");
-        if (auto mod = parser.import(is, mim::Loc(&path, mim::Pos(1, 1), mim::Pos(1, 1)))) {
+        if (auto mod = parser.import(is, "prog.mim")) {
             mod->compile(ast);
             mim::Phase::run<mim::BetaRed>(world);
             mim::Phase::run<mim::EtaConv>(world); // mandatory in this example to remove critical edges

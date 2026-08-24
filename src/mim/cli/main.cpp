@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
             } else {
                 fe::throwf("could not read file `{}`", input);
             }
-        } catch (const Error& e) { // e.loc.path doesn't exist anymore in outer scope so catch Error here
+        } catch (const Error& e) {
             std::cerr << e;
             return EXIT_FAILURE;
         }
