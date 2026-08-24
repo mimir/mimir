@@ -1,0 +1,19 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+plugin core;
+
+axm %foo.bar: Nat → Nat, normalize_one;
+axm %foo.bar: Nat → Nat, normalize_two;
+
+// Row 4 is already on screen from the first note, so the second one does not repeat it -
+// while each error keeps its own snippet, since the carets differ.
+// CHECK:      {{.*}}normalizer_mismatch.mim:5:26-5:38: error: normalizer mismatch for axm `%foo.bar`
+// CHECK-NEXT: 5 | axm %foo.bar: Nat → Nat, normalize_two;
+// CHECK-NEXT:   |                          ^^^^^^^^^^^^^
+// CHECK-NEXT:   {{.*}}normalizer_mismatch.mim:4:26-4:38: note: previous normalizer `normalize_one` declared here
+// CHECK-NEXT: 4 | axm %foo.bar: Nat → Nat, normalize_one;
+// CHECK-NEXT:   |                          ^^^^^^^^^^^^^
+// CHECK-NEXT: {{.*}}normalizer_mismatch.mim:5:5-5:12: error: redeclaration of `%foo.bar`
+// CHECK-NEXT: 5 | axm %foo.bar: Nat → Nat, normalize_two;
+// CHECK-NEXT:   |     ^^^^^^^^
+// CHECK-NEXT:   {{.*}}normalizer_mismatch.mim:4:5-4:12: note: previous declaration here
+// CHECK-NOT:  ^^^^^^^^
