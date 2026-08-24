@@ -1,0 +1,39 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// Non-divisible 5 -> 3 windows exercise PyTorch's floor/ceil boundaries.
+// CHECK-DAG: fun extern adaptive_1d_unbatched
+fun extern adaptive_1d_unbatched(input: «2, 5; %math.F32»)
+  : «2, 3; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool1d
+        (%torch.resolve_floating %math.F32)
+        @(2, (2, 5)) 3 input);
+
+// CHECK-DAG: fun extern adaptive_1d_batched
+fun extern adaptive_1d_batched(input: «4, 2, 7; %math.F32»)
+  : «4, 2, 4; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool1d
+        (%torch.resolve_floating %math.F32)
+        @(3, (4, 2, 7)) 4 input);
+
+// Rank-4 is the unbatched CDHW form.
+// CHECK-DAG: fun extern adaptive_3d_unbatched
+fun extern adaptive_3d_unbatched(input: «2, 5, 4, 7; %math.F32»)
+  : «2, 3, 2, 4; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool3d
+        (%torch.resolve_floating %math.F32)
+        @(4, (2, 5, 4, 7)) (3, 2, 4) input);
+
+// CHECK-DAG: fun extern adaptive_3d_batched
+fun extern adaptive_3d_batched(input: «3, 2, 5, 4, 7; %math.F32»)
+  : «3, 2, 3, 2, 4; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool3d
+        (%torch.resolve_floating %math.F32)
+        @(5, (3, 2, 5, 4, 7)) (3, 2, 4) input);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

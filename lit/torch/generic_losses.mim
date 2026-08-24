@@ -1,0 +1,65 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s \
+// RUN:   --implicit-check-not=%%torch. --implicit-check-not=%%runtime.require \
+// RUN:   --implicit-check-not=Match
+
+plugin torch;
+plugin compile;
+
+// CHECK-DAG: fun extern smooth_none_broadcast
+fun extern smooth_none_broadcast(
+    input: «2, 4; %math.F32», target: «4; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.loss.smooth_l1_loss (%torch.resolve_floating %math.F32)
+        @(2, 1, 2)
+        ((2, 4), (0_2, 1_2), (4,), (1_2,), (2, 4))
+        (input, target) (0, 0x3F800000:%math.F32));
+
+// CHECK-DAG: fun extern smooth_sum
+fun extern smooth_sum(
+    input target: «2, 4; %math.F32»): %math.F32 =
+    return (%torch.loss.smooth_l1_loss (%torch.resolve_floating %math.F32)
+        @(2, 2, 2)
+        ((2, 4), (0_2, 1_2), (2, 4), (0_2, 1_2), (2, 4))
+        (input, target) (2, 0x3F000000:%math.F32));
+
+// CHECK-DAG: fun extern kl_none
+fun extern kl_none(
+    input target: «2, 4; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.loss.kl_div (%torch.resolve_floating %math.F32)
+        @(2, (2, 4)) (input, target) (0, ff));
+
+// CHECK-DAG: fun extern kl_batchmean
+fun extern kl_batchmean(
+    input target: «2, 4; %math.F32»): %math.F32 =
+    return (%torch.loss.kl_div (%torch.resolve_floating %math.F32)
+        @(2, (2, 4)) (input, target) (3, tt));
+
+// CHECK-DAG: fun extern triplet_none_2d
+fun extern triplet_none_2d(
+    anchor positive negative: «3, 5; %math.F32»): «3; %math.F32» =
+    return (%torch.loss.triplet_margin_loss
+        (%torch.resolve_floating %math.F32) @(2, (3, 5))
+        (anchor, positive, negative)
+        (0x3F800000:%math.F32, 0x40000000:%math.F32,
+         0x358637BD:%math.F32, ff, 0));
+
+// CHECK-DAG: fun extern triplet_mean_1d
+fun extern triplet_mean_1d(
+    anchor positive negative: «5; %math.F32»): %math.F32 =
+    return (%torch.loss.triplet_margin_loss
+        (%torch.resolve_floating %math.F32) @(1, (5,))
+        (anchor, positive, negative)
+        (0x3F800000:%math.F32, 0x40000000:%math.F32,
+         0x358637BD:%math.F32, tt, 1));
+
+// CHECK-DAG: fun extern triplet_none_1d_scalar
+fun extern triplet_none_1d_scalar(
+    anchor positive negative: «5; %math.F32»): %math.F32 =
+    return (%torch.loss.triplet_margin_loss_1d_none
+        (%torch.resolve_floating %math.F32) @5
+        (anchor, positive, negative)
+        (0x3F800000:%math.F32, 0x40000000:%math.F32,
+         0x358637BD:%math.F32, tt));
+
+// CHECK: %tensor.map_reduce
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (%torch.lower_torch, %compile.cleanup);

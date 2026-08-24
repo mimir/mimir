@@ -6,8 +6,7 @@ plugin compile;
 
 // Externals are emitted in dependency order.
 // CHECK-LABEL: fun extern adaptive_avg_pool1d
-// CHECK: %tensor.map_reduce
-// CHECK: %tensor.map_reduce
+// CHECK: %tensor.generate
 
 fun extern max_pool1d(input: «2, 3, 9; %math.F32»)
   : «2, 3, 4; %math.F32» =
@@ -32,7 +31,7 @@ fun extern avg_pool1d(input: «2, 3, 8; %math.F32»)
 fun extern adaptive_avg_pool1d(input: «2, 3, 8; %math.F32»)
   : «2, 3, 1; %math.F32» =
     return (%torch.pool.adaptive_avg_pool1d (%torch.resolve_floating %math.F32)
-        @(2, 3, 8) 1 input);
+        @(3, (2, 3, 8)) 1 input);
 
 // CHECK-LABEL: fun extern max_pool1d
 // CHECK: %tensor.map_reduce

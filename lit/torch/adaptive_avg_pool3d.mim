@@ -5,13 +5,11 @@ plugin torch;
 plugin compile;
 
 // CHECK-LABEL: fun extern adaptive_avg_pool3d
-// CHECK: %tensor.map_reduce
-// CHECK: %tensor.map_reduce
-// CHECK: %tensor.map_reduce
+// CHECK: %tensor.generate
 fun extern adaptive_avg_pool3d(input: «2, 3, 4, 5, 6; %math.F32»)
                              : «2, 3, 1, 1, 1; %math.F32» =
     return (%torch.pool.adaptive_avg_pool3d (%torch.resolve_floating %math.F32)
-        @(2, 3, 4, 5, 6)
+        @(5, (2, 3, 4, 5, 6))
         (1, 1, 1) input);
 
 lam extern _compile (): %compile.Phase =
