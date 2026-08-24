@@ -1,0 +1,15 @@
+// RUN: %mim -p opt %s 2>&1 | %FileCheck %s
+
+// A warning renders like an error: snippet plus its notes indented underneath.
+plugin core;
+
+lam g(x: Nat): Nat = x;
+let y = g let z = 3; z;
+
+// CHECK:      1 warning(s) encountered
+// CHECK-NEXT: {{.*}}warn_decl_arg.mim:7:11-7:13: warning: you are passing a declaration expression as argument
+// CHECK-NEXT: 7 | let y = g let z = 3; z;
+// CHECK-NEXT:   |           ^^^
+// CHECK-NEXT:   = note: to this expression at {{.*}}warn_decl_arg.mim:7:9
+// CHECK-NEXT:   = note: if this was your intention, consider parenthesizing the declaration expression
+// CHECK-NEXT:   = note: otherwise, you are probably missing a `;` at {{.*}}warn_decl_arg.mim:7:9

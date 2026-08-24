@@ -1,0 +1,12 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A Def is hash-consed, so `Def::loc` may belong to whichever file first created a structurally equal
+// term - here a library one. The diagnostic must blame the application the user actually wrote.
+plugin core;
+
+let id = λ [T: *] (x: T): T = x;
+let n = id 3;
+
+// CHECK: {{.*}}hashcons_loc.mim:8:9-8:12: error: argument is not assignable to callee's domain
+// CHECK-NOT: mem.mim
+// CHECK-NOT: core.mim
