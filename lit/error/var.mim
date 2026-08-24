@@ -16,4 +16,4 @@ lam f(x: Nat): [] =
 // CHECK-NEXT: 13 |     i x;
 // CHECK-NEXT:    |     ^^^
 // CHECK-NEXT:    = note: expected `%foo.T g`, got `%foo.T h`
-// CHECK: = note: callee `i` declared at {{.*}}var.mim:10:5-10:31
+// CHECK: {{.*}}var.mim:10:5-10:31: note: callee `i` declared here

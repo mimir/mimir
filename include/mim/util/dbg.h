@@ -101,7 +101,7 @@ public:
 
     /// Error::note whose whole point is to point *elsewhere*; dropped when @p loc adds nothing.
     /// A @p loc overlapping the primary one is already covered by its snippet and so points nowhere new.
-    /// The renderer appends `at <loc>`, so phrase the message to read into it: `"callee `{}` declared"`.
+    /// The renderer gives @p loc a header line of its own, so phrase the message to stand alone.
     template<class... Args>
     Error& note_at(Loc loc, std::format_string<Args...> s, Args&&... args) {
         if (!loc || (loc & primary_loc())) return *this;
@@ -136,7 +136,9 @@ public:
         // clang-format on
     }
 
-    /// Renders each Tag::Error/Tag::Warn with its source snippet and its Tag::Note%s indented underneath.
+    /// Renders each Tag::Error/Tag::Warn with its source snippet and its Tag::Note%s underneath.
+    /// A Tag::Note pointing at a Loc of its own reads as a diagnostic of its own - header line plus snippet;
+    /// one about the primary Loc has nowhere else to point and stays a `= note:` continuation line.
     friend std::ostream& operator<<(std::ostream&, const Error&);
 
 private:

@@ -232,7 +232,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
         throw Error(driver())
             .error(err_loc(callee), "callee is not of function type")
             .note(err_loc(callee), "callee `{}` has type `{}`", callee, callee->type())
-            .note_at(callee->loc(), "callee `{}` declared", callee);
+            .note_at(callee->loc(), "callee `{}` declared here", callee);
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
@@ -240,7 +240,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
             .error(err_loc(arg), "argument is not assignable to callee's domain")
             .note(err_loc(arg), "expected `{}`, got `{}`", pi->dom(), arg->type())
             .note(err_loc(arg), "argument: `{}`", arg)
-            .note_at(callee->loc(), "callee `{}` declared", callee);
+            .note_at(callee->loc(), "callee `{}` declared here", callee);
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();

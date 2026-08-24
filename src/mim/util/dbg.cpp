@@ -105,20 +105,38 @@ void Error::ack(std::ostream& os) {
 
 std::ostream& operator<<(std::ostream& os, const Error& e) {
     auto primary = Loc();
+    auto shown   = Vector<std::pair<const fe::SrcFile*, uint32_t>>();
+
+    // A Tag::Note only earns a snippet of its own if its row is not on screen yet; a primary always gets one.
+    auto snippet = [&](Loc loc, Error::Tag tag) {
+        auto file = e.file(loc);
+        if (e.no_snippet_ || !file) return;
+
+        auto row = file->row(loc.begin);
+        auto key = std::pair(file, row);
+        if (row == 0 || (tag == Error::Tag::Note && std::ranges::contains(shown, key))) return;
+
+        shown.emplace_back(key);
+        stream_snippet(os, *file, loc, tag2color(tag));
+    };
 
     for (const auto& msg : e.msgs()) {
         if (msg.tag == Error::Tag::Note) {
-            os << fe::term::FG::Gray << std::format("{:>{}} = ", "", Gutter) << msg.tag << ": " << fe::term::FG::Reset;
-            stream_code(os, msg.str);
-            // The primary Loc is already spelled out above; only a note that points elsewhere repeats one.
-            if (msg.loc && msg.loc != primary)
-                os << fe::term::FG::Yellow << " at " << e.str(msg.loc) << fe::term::FG::Reset;
-            os << '\n';
+            // A note pointing elsewhere reads as a diagnostic of its own; one about the primary Loc has no
+            // other place to name and stays a continuation line.
+            if (msg.loc && msg.loc != primary) {
+                os << std::format("{:>{}} ", "", Gutter);
+                e.stream(os, msg) << '\n';
+                snippet(msg.loc, msg.tag);
+            } else {
+                os << fe::term::FG::Gray << std::format("{:>{}} = ", "", Gutter) << msg.tag << ": "
+                   << fe::term::FG::Reset;
+                stream_code(os, msg.str) << '\n';
+            }
         } else {
             primary = msg.loc;
             e.stream(os, msg) << '\n';
-            if (!e.no_snippet_)
-                if (auto file = e.file(msg.loc)) stream_snippet(os, *file, msg.loc, tag2color(msg.tag));
+            snippet(msg.loc, msg.tag);
         }
     }
 
