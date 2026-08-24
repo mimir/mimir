@@ -139,7 +139,9 @@ lam %btensor.NestT (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *): *
 lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) (vdim unroll: Nat)
                    : %btensor.NestT (ro, rr, Sr, To, U) =
     let r    = %core.nat.add (ro, rr);
+    // The unroll window must stay within the reduction dims.
     let u_lo = %core.nat.sub (r, unroll);
+    let u_lo = (ro, u_lo)#(%core.ncmp.le (ro, u_lo));
     lam nest (init: To,
               cell: Cn [%mem.M 0, To, «r; I32», Cn [%mem.M 0, To]],
               wb:   Cn [%mem.M 0, U, To, «r; I32», Cn [%mem.M 0, U]])
@@ -150,7 +152,7 @@ lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) 
         let win = range_unroll (r, Sr) To (u_lo, r) cell_at;
         // `vd` is `vdim` clamped through the dispatch condition: the non-selected branch is still
         // ELABORATED, so its body must be type-sane even when `vdim` is the out-of-range sentinel.
-        let vec_ok = %core.bit2.and_ 2 (%core.ncmp.l (vdim, ro),
+        let vec_ok = %core.bit2.and_ 2 (%core.ncmp.e (%core.nat.add (vdim, 1), ro),
                                         %core.ncmp.ne (Sr#(%core.idx r 0 ((0, vdim)#(%core.ncmp.l (vdim, r)))), 1));
         let vd = (0, vdim)#vec_ok;
 

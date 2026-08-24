@@ -1,0 +1,48 @@
+// RUN: rm -f exec_weak_sched.ll
+// RUN: %mim -p opt -p clos %s -p ll -o /dev/null
+// RUN: clang exec_weak_sched.ll -o %t -Wno-override-module
+// RUN: env MALLOC_PERTURB_=170 %t ; test $? -eq 10
+
+// Degenerate schedules from the public %tensor.mk_sched must still compute every output cell
+// correctly. A vector dim that is not the LAST parallel dim (and matches no other nest) must fall
+// back to the classic nest: the vectorized nest never iterates the parallel dims after `vdim`, so
+// selecting it would leave every cell off the [i, 0, 0] slice unwritten — MALLOC_PERTURB_ makes
+// that read fail deterministically. An `unroll` exceeding the reduction rank must clamp to it:
+// letting the unroll window reach into the parallel dims folds neighboring cells' elements into
+// each cell (20 = 4·5 instead of 5).
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+plugin buffer;
+plugin btensor;
+plugin cps;
+
+fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
+lam mo (i j k a: %affine.index): «3; %affine.index» = (i, j, k);
+lam mi (i j k a: %affine.index): «4; %affine.index» = (i, j, k, a);
+
+// out[i,j,k] = sum_a input[i,j,k,a], scheduled with `sched`.
+lam sum_last (sched: [N: *] → ([vdim unroll: Nat] → N) → N)
+             (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
+    %tensor.map_reduce_post @(1, 0) @(I32, I32, 3, 4, [N: *] → ([vdim unroll: Nat] → N) → N)
+        ((2, 3, 4), (2, 3, 4, 5), sched)
+        @(I32, 4, (2, 3, 4, 5), (), (), ()) (add, 0I32, %tensor.id @I32) mo (mi, ()) (input, ());
+
+// vdim 0 of 3 parallel dims: not vectorizable, must run the full classic nest.
+fun extern sum_weak_vdim (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
+    return (sum_last (%tensor.mk_sched (0, 0)) input);
+
+// Sentinel vdim with unroll 2 > reduction rank 1: the window must clamp to the reduction dims.
+fun extern sum_over_unroll (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
+    return (sum_last (%tensor.mk_sched (4, 2)) input);
+
+con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+    let t = ‹2; ‹3; ‹4; ‹5; 1I32››››;
+    con done1 (o: «2, 3, 4; I32») =
+        let v1 = %tensor.get @(I32, 3, (2, 3, 4)) ((1₂, 2₃, 3₄), o);
+        con done2 (o: «2, 3, 4; I32») =
+            let v2 = %tensor.get @(I32, 3, (2, 3, 4)) ((1₂, 2₃, 3₄), o);
+            return (mem, %core.wrap.add 0 (v1, v2));
+        sum_over_unroll (t, done2);
+    sum_weak_vdim (t, done1);
