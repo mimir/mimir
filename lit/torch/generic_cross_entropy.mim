@@ -14,30 +14,34 @@ plugin compile;
 fun extern cross_entropy_index_mean(
     input: «2, 4; %math.F32», target: «2; I64»): %math.F32 =
     let F = %torch.resolve_floating %math.F32;
-    return (%torch.loss.cross_entropy_loss F @(2, (2, 4))
-        (input, target, %option.none @«4; %math.F32»)
+    return (%torch.loss.cross_entropy F @(2, (2, 4))
+        (input, %torch.cross_entropy_index_target F
+            @(2, (2, 4)) target, %option.none @«4; %math.F32»)
         (1, -100I64, 0x00000000:%math.F32));
 
 fun extern cross_entropy_index_spatial_none(
     input: «2, 4, 3, 5; %math.F32», target: «2, 3, 5; I64»,
     weight: «4; %math.F32»): «2, 3, 5; %math.F32» =
     let F = %torch.resolve_floating %math.F32;
-    return (%torch.loss.cross_entropy_loss F @(4, (2, 4, 3, 5))
-        (input, target, %option.some weight)
+    return (%torch.loss.cross_entropy F @(4, (2, 4, 3, 5))
+        (input, %torch.cross_entropy_index_target F
+            @(4, (2, 4, 3, 5)) target, %option.some weight)
         (0, -1I64, 0x3E4CCCCD:%math.F32));
 
 fun extern cross_entropy_probability_sum(
     input target: «2, 4, 3; %math.F32»): %math.F32 =
     let F = %torch.resolve_floating %math.F32;
-    return (%torch.loss.cross_entropy_probability_loss F @(3, (2, 4, 3))
-        (input, target, %option.none @«4; %math.F32»)
+    return (%torch.loss.cross_entropy F @(3, (2, 4, 3))
+        (input, %torch.cross_entropy_probability_target F
+            @(3, (2, 4, 3)) target, %option.none @«4; %math.F32»)
         (2, -100I64, 0x3DCCCCCD:%math.F32));
 
 fun extern cross_entropy_unbatched_none(
     input: «4; %math.F32», target: «(); I64»): «(); %math.F32» =
     let F = %torch.resolve_floating %math.F32;
-    return (%torch.loss.cross_entropy_loss F @(1, (4,))
-        (input, target, %option.none @«4; %math.F32»)
+    return (%torch.loss.cross_entropy F @(1, (4,))
+        (input, %torch.cross_entropy_index_target F
+            @(1, (4,)) target, %option.none @«4; %math.F32»)
         (0, -100I64, 0x00000000:%math.F32));
 
 // CHECK: %tensor.gather

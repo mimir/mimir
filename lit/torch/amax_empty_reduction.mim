@@ -1,0 +1,12 @@
+// RUN: not %mim %s -p opt -o /dev/null 2>&1 | %FileCheck %s
+
+// CHECK: amax reduction dimensions must have non-zero size
+
+plugin torch;
+plugin compile;
+
+fun extern empty_reduction(input: «2, 0, 4; %math.F32»): «2, 4; %math.F32» =
+    return (%torch.reduction.amax_dims (%torch.resolve_floating %math.F32)
+        @(3, 1, (2, 0, 4)) (1I64,) input);
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

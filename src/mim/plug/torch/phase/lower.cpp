@@ -288,15 +288,19 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(reduction, sum_dims, sum_dims_op);
     MIM_BIND_TORCH_SUB(reduction, sum_dims_keepdim, sum_dims_keepdim_op);
     MIM_BIND_TORCH_SUB(reduction, sum, sum_op);
+    MIM_BIND_TORCH_SUB(reduction, sum_typed, sum_typed_op);
+    MIM_BIND_TORCH_SUB(reduction, sum_typed_all, sum_typed_all_op);
     MIM_BIND_TORCH_SUB(reduction, vector_norm, vector_norm_op);
     MIM_BIND_TORCH_SUB(reduction, norm2_dims, norm2_dims_op);
     MIM_BIND_TORCH_SUB(reduction, norm2_dims_keepdim, norm2_dims_keepdim_op);
     MIM_BIND_TORCH_SUB(reduction, norm2_all, norm2_all_op);
     MIM_BIND_TORCH_SUB(reduction, sum_all, sum_all_op);
     MIM_BIND_TORCH_SUB(reduction, mean_all, mean_all_op);
+    MIM_BIND_TORCH_SUB(reduction, amax_all, amax_all_op);
+    MIM_BIND_TORCH_SUB(reduction, var_mean_all, var_mean_all_op);
+    MIM_BIND_TORCH_SUB(reduction, var_mean_singletons, var_mean_singletons_op);
     MIM_BIND_TORCH_SUB(loss, cross_entropy_mean_2d, cross_entropy_mean_2d_op);
-    MIM_BIND_TORCH_SUB(loss, cross_entropy_loss, cross_entropy_loss_op);
-    MIM_BIND_TORCH_SUB(loss, cross_entropy_probability_loss, cross_entropy_probability_loss_op);
+    MIM_BIND_TORCH_SUB(loss, cross_entropy, cross_entropy_op);
     MIM_BIND_TORCH_SUB(loss, smooth_l1_mean, smooth_l1_mean_op);
     MIM_BIND_TORCH_SUB(loss, kl_div_reduced, kl_div_reduced_op);
     MIM_BIND_TORCH_SUB(loss, triplet_margin_reduced, triplet_margin_reduced_op);
@@ -346,6 +350,7 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(pool, avg_pool2d, avg_pool2d_op);
     MIM_BIND_TORCH_SUB(pool, avg_pool3d, avg_pool3d_op);
     MIM_BIND_TORCH_SUB(pool, adaptive_avg_pool1d, adaptive_avg_pool1d_op);
+    MIM_BIND_TORCH_SUB(pool, adaptive_avg_pool2d, adaptive_avg_pool2d_op);
     MIM_BIND_TORCH_SUB(pool, adaptive_avg_pool3d, adaptive_avg_pool3d_op);
     MIM_BIND_TORCH_SUB(linalg, addmm, addmm_op);
     MIM_BIND_TORCH_SUB(linalg, linear, linear_op);
@@ -359,6 +364,8 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(normalization, group_norm, group_norm_op);
     MIM_BIND_TORCH_SUB(normalization, batch_norm_inference, batch_norm_inference_op);
     MIM_BIND_TORCH_SUB(normalization, batch_norm, batch_norm_op);
+    MIM_BIND_TORCH_SUB(normalization, native_batch_norm, native_batch_norm_op);
+    MIM_BIND_TORCH_SUB(normalization, native_batch_norm_functional, native_batch_norm_functional_op);
     MIM_BIND_TORCH_SUB(normalization, softmax, softmax_op);
     MIM_BIND_TORCH_SUB(normalization, log_softmax, log_softmax_op);
     MIM_BIND_TORCH_SUB(linalg, triu, triu_op);

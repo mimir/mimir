@@ -1,0 +1,14 @@
+// RUN: not %mim %s -p opt -o /dev/null 2>&1 | %FileCheck %s
+
+// CHECK: smooth_l1_loss does not support negative beta
+
+plugin torch;
+plugin compile;
+
+fun extern invalid_beta(input target: «2, 3; %math.F32»): %math.F32 =
+    return (%torch.loss.smooth_l1_loss
+        (%torch.resolve_floating %math.F32) @(2, 2, 2)
+        ((2, 3), (0_2, 1_2), (2, 3), (0_2, 1_2), (2, 3))
+        (input, target) (1, -1.0:%math.F32));
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

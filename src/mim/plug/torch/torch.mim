@@ -60,6 +60,73 @@ let %torch.Floating = [
     pow: [A#R#T, A#R#T] → A#R#T,
 ];
 
+/// Minimal mixed-dtype dictionary for reductions such as `sum`. Keeping this
+/// separate from Arithmetic avoids requiring meaningless integer division or
+/// floating transcendental operations.
+let %torch.Reduction = [
+    Input: *,
+    Output: *,
+    zero: Output,
+    add: [Output, Output] → Output,
+    cast: Input → Output,
+];
+
+lam torch_identity {T: *} (x: T): T = x;
+lam torch_reduction_i64_add (args: [I64, I64]): I64 = %core.wrap.add 0 args;
+lam torch_reduction_bool_to_i64 (x: Bool): I64 =
+    %core.select @I64 (x, 1I64, 0I64);
+lam torch_reduction_i64_to_f32 (x: I64): %math.F32 =
+    %math.conv.s2f %math.f32 x;
+
+lam torch_f32_sum_reduction (): %torch.Reduction =
+    (%math.F32, %math.F32, 0.0:%math.F32,
+     %math.arith.add @%math.f32 0, torch_identity @%math.F32);
+lam torch_f64_sum_reduction (): %torch.Reduction =
+    (%math.F64, %math.F64, 0.0:%math.F64,
+     %math.arith.add @%math.f64 0, torch_identity @%math.F64);
+lam torch_i64_sum_reduction (): %torch.Reduction =
+    (I64, I64, 0I64, torch_reduction_i64_add, torch_identity @I64);
+lam torch_bool_sum_reduction (): %torch.Reduction =
+    (Bool, I64, 0I64, torch_reduction_i64_add,
+     torch_reduction_bool_to_i64);
+lam torch_i64_f32_sum_reduction (): %torch.Reduction =
+    (I64, %math.F32, 0.0:%math.F32,
+     %math.arith.add @%math.f32 0, torch_reduction_i64_to_f32);
+
+let %torch.reduction_input_tags = (
+    (%math.F32, 0),
+    (%math.F64, 1),
+    (I64, 2),
+    (Bool, 3),
+);
+let %torch.reduction_output_tags = (
+    (I64, 0),
+    (%math.F32, 1),
+    (%math.F64, 2),
+);
+
+lam torch_select_reduction
+    (condition: Bool, if_true if_false: %torch.Reduction): %torch.Reduction =
+    (if_false, if_true)#condition;
+
+/// Resolve both input and result dtype. Exact pair lookup is sufficient for
+/// PyTorch's flat scalar dtype lattice and is completely removed by PE.
+lam %torch.resolve_reduction (Input: *) (Output: *): %torch.Reduction =
+    let input_tag = %torch.resolve @(Nat, 4)
+        (Input, %torch.reduction_input_tags);
+    let output_tag = %torch.resolve @(Nat, 3)
+        (Output, %torch.reduction_output_tags);
+    let i64_reduction = torch_select_reduction (
+        %core.ncmp.e (output_tag, 0),
+        torch_i64_sum_reduction (), torch_i64_f32_sum_reduction ());
+    torch_select_reduction (
+        %core.ncmp.e (input_tag, 0), torch_f32_sum_reduction (),
+        torch_select_reduction (
+            %core.ncmp.e (input_tag, 1), torch_f64_sum_reduction (),
+            torch_select_reduction (
+                %core.ncmp.e (input_tag, 2), i64_reduction,
+                torch_bool_sum_reduction ())));
+
 /// Python: `return math.isnan(x)`.
 lam torch_float_is_nan {pe: «2; Nat»} (x: %math.F pe): Bool =
     %math.cmp.u @pe 0 (x, x);
@@ -193,6 +260,10 @@ lam torch_add_i64_scalar (offset: I64) (x: I64): I64 =
 /// Python: `return x - other`.
 lam torch_sub_scalar [A: %torch.Arithmetic] (other: A#R#T) (x: A#R#T): A#R#T =
     A#sub (x, other);
+
+/// Python: `return value` for every tensor element.
+lam torch_constant_scalar [A: %torch.Arithmetic]
+                          (value: A#R#T) (x: A#R#T): A#R#T = value;
 
 /// Python: `return self + alpha * other` for scalar `self` and tensor `other`.
 lam torch_add_scalar_lhs [A: %torch.Arithmetic]
@@ -558,8 +629,9 @@ lam torch_pairwise_distance_2d [F: %torch.Floating]
     let sums = torch_reduce_dim
         (F#A#R#add, F#A#R#_0) ((n, d), 1_2) powers;
     let reciprocal_p = F#A#div (F#from_nat 1, p);
-    %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+    let powered = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
         (torch_pow_scalar F reciprocal_p) @(1, (n,)) sums;
+    %core.select @«n; F#A#R#T» (F#A#is_zero p, sums, powered);
 
 /// PyTorch source correspondence: reduction references use keepdim or
 /// unsqueeze followed by expand; explicit mapping follows
@@ -697,6 +769,12 @@ lam torch_reduction_numel {r nr: Nat}
                           (s: «r; Nat», dimensions: «nr; Idx r»): Nat =
     %vec.fold.l %core.nat.mul (1, ‹i: nr; s#(dimensions#i)›);
 
+/// Python: `return all(shape[d] != 0 for d in dimensions)`.
+lam torch_reduction_extents_nonzero {r nr: Nat}
+    (s: «r; Nat», dimensions: «nr; Idx r»): Bool =
+    %vec.fold.l (%core.bit2.and_ 0)
+        (tt, ‹i: nr; %core.ncmp.ne (s#(dimensions#i), 0)›);
+
 /// Python: `return x * x`.
 lam torch_square_scalar [A: %torch.Arithmetic] (x: A#R#T): A#R#T =
     A#R#mul (x, x);
@@ -707,15 +785,21 @@ lam torch_nonzero_count_scalar [F: %torch.Floating]
     %core.select @F#A#R#T
         (F#A#is_zero x, F#A#R#_0, F#from_nat 1);
 
-/// Python: `return (sum_sq - sum * (sum / count)) / denominator`.
-lam torch_variance_scalar [F: %torch.Floating]
-                          (count denominator: F#A#R#T)
-                          (args: «2; F#A#R#T»): F#A#R#T =
-    let sum = args#ff;
-    let sum_sq = args#tt;
-    let mean = F#A#div (sum, count);
-    let centered_sum_sq = F#A#sub (sum_sq, F#A#R#mul (sum, mean));
-    F#A#div (centered_sum_sq, denominator);
+/// Python: `return float(not isfinite(x))`.
+lam torch_nonfinite_count_scalar [F: %torch.Floating]
+                                  (x: F#A#R#T): F#A#R#T =
+    let positive_inf = F#A#sub (F#A#R#_0, F#neg_inf);
+    let nonfinite = %core.bit2.or_ 0 (
+        F#A#is_nan x,
+        F#A#eq (torch_abs_scalar F#A x, positive_inf));
+    %core.select @F#A#R#T (nonfinite, F#from_nat 1, F#A#R#_0);
+
+/// Welford `var_mean` reports a NaN mean for groups containing NaN or Inf.
+lam torch_var_mean_adjust_mean [F: %torch.Floating]
+    (args: «2; F#A#R#T»): F#A#R#T =
+    let nan = F#A#div (F#A#R#_0, F#A#R#_0);
+    %core.select @F#A#R#T
+        (F#A#gt (args#tt, F#A#R#_0), nan, args#ff);
 
 /// PyTorch source: `torch/_meta_registrations.py::pooling_output_shape_pad_lr`
 /// and `aten/src/ATen/native/Pool.h::pooling_output_shape_pad_lr`.
@@ -2109,7 +2193,15 @@ lam %torch.reduction_impl.amax_dim [F: %torch.Floating]
     where
         lam body(): «torch_reduce_shape (s, torch_canonical_dim @r dimension); F#A#R#T» =
             let dim = torch_canonical_dim @r dimension;
-            torch_reduce_dim (F#A#maximum, F#neg_inf) (s, dim) input;
+            %runtime.require
+                (%core.ncmp.ne (s#dim, 0),
+                 "amax reduction dimensions must have non-zero size")
+                reduce
+            where
+                lam reduce():
+                    «torch_reduce_shape (s, torch_canonical_dim @r dimension); F#A#R#T» =
+                    torch_reduce_dim (F#A#maximum, F#neg_inf) (s, dim) input;
+            end;
     end;
 
 lam torch_axis_index {r: Nat} (dimension: Idx r)
@@ -2364,6 +2456,40 @@ lam %torch.reduction_impl.sum [A: %torch.Arithmetic]
             (reduced, kept)#keepdim;
     end;
 
+/// Mixed-dtype `sum.dim_IntList`. The dictionary captures input conversion,
+/// accumulation and result dtype; static dtype resolution and identity casts
+/// are exposed to PE before tensor lowering.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.sum.html
+axm %torch.reduction(sum_typed): [D: %torch.Reduction]
+    → {r nr: Nat, s: «r; Nat»}
+    → [dimensions: «nr; I64», keepdim: Bool]
+    → «s; D#Input»
+    → («torch_multi_reduce_shape
+           (s, torch_canonical_dims @(r, nr) dimensions); D#Output»,
+       «torch_multi_keepdim_shape
+           (s, torch_canonical_dims @(r, nr) dimensions); D#Output»)#keepdim;
+lam %torch.reduction_impl.sum_typed [D: %torch.Reduction]
+    {r nr: Nat, s: «r; Nat»}
+    (dimensions: «nr; I64», keepdim: Bool)
+    (input: «s; D#Input») =
+    %runtime.require
+        (torch_dims_valid @(r, nr) dimensions,
+         "sum expects non-empty, unique, in-range dims")
+        body
+    where
+        lam body() =
+            let dims = torch_canonical_dims @(r, nr) dimensions;
+            let converted = %tensor.unary_impl @(D#Input, D#Output)
+                D#cast @(r, s) input;
+            let reduced = torch_multi_reduce
+                (D#add, D#zero) (s, dims) converted;
+            let kept = %tensor.reshape_impl
+                @(D#Output, torch_reduced_rank dims, r)
+                (torch_multi_reduce_shape (s, dims))
+                (torch_multi_keepdim_shape (s, dims)) reduced;
+            (reduced, kept)#keepdim;
+    end;
+
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.linalg.vector_norm.html
 /// Types: an L2 norm over non-empty unique axes, removing reduced dimensions.
 axm %torch.reduction(norm2_dims): [F: %torch.Floating]
@@ -2544,7 +2670,8 @@ lam torch_pairwise_distance_1d [F: %torch.Floating]
         (torch_pairwise_power_scalar F (eps, p))
         @(1, (d,)) (lhs, rhs);
     let sum = torch_sum_all_runtime F#A @(1, (d,)) powers;
-    F#pow (sum, F#A#div (F#from_nat 1, p));
+    let powered = F#pow (sum, F#A#div (F#from_nat 1, p));
+    %core.select @F#A#R#T (F#A#is_zero p, sum, powered);
 
 /// Full-tensor L2/Frobenius norm. A separate scalar schema keeps the dependent
 /// `norm2_dims` result useful for partial reductions without exposing an empty
@@ -2561,6 +2688,15 @@ lam %torch.reduction_impl.norm2_all [F: %torch.Floating]
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.sum.html
 /// Types: reduce every axis of `Tensor[A, s]` to its scalar physical representation.
+/// Scalar ABI companion for a full mixed-dtype sum reduction.
+axm %torch.reduction(sum_typed_all): [D: %torch.Reduction]
+    → {r: Nat, s: «r; Nat»} → «s; D#Input» → D#Output;
+lam %torch.reduction_impl.sum_typed_all [D: %torch.Reduction]
+    {r: Nat, s: «r; Nat»} (input: «s; D#Input»): D#Output =
+    let converted = %tensor.unary_impl @(D#Input, D#Output)
+        D#cast @(r, s) input;
+    torch_reduce_all_runtime (D#add, D#zero) @(r, s) converted;
+
 axm %torch.reduction(sum_all): [A: %torch.Arithmetic]
                       → {r: Nat, s: «r; Nat»}
                       → «s; A#R#T» → A#R#T;
@@ -2577,7 +2713,14 @@ axm %torch.reduction(amax_all): [F: %torch.Floating]
 lam %torch.reduction_impl.amax_all [F: %torch.Floating]
                             {r: Nat, s: «r; Nat»}
                             (input: «s; F#A#R#T»): F#A#R#T =
-    torch_reduce_all_runtime (F#A#maximum, F#neg_inf) @(r, s) input;
+    %runtime.require
+        (%core.ncmp.ne (torch_numel s, 0),
+         "amax reduction dimensions must have non-zero size")
+        body
+    where
+        lam body(): F#A#R#T =
+            torch_reduce_all_runtime (F#A#maximum, F#neg_inf) @(r, s) input;
+    end;
 
 /// Two-level sum over every axis. A fixed block bounds the linear floating
 /// point accumulation chain while shape arithmetic and zero padding fold for
@@ -2611,6 +2754,60 @@ lam %torch.reduction_impl.mean_all [F: %torch.Floating]
     let sum = torch_sum_all_runtime F#A @(r, s) input;
     let count = F#from_nat (torch_numel s);
     F#A#div (sum, count);
+
+/// Full `var_mean` reduction with scalar physical results. The Bool tag keeps
+/// the two equal scalar fields heterogeneous under MimIR normalization.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.var_mean.html
+axm %torch.reduction(var_mean_all): [F: %torch.Floating]
+    → {r: Nat, s: «r; Nat»}
+    → [correction: F#A#R#T]
+    → «s; F#A#R#T»
+    → [Bool, F#A#R#T, F#A#R#T];
+lam %torch.reduction_impl.var_mean_all [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (correction: F#A#R#T)
+    (input: «s; F#A#R#T»): [Bool, F#A#R#T, F#A#R#T] =
+    let n = torch_numel s;
+    let count = F#from_nat n;
+    let flat = %tensor.reshape_impl @(F#A#R#T, r, 1) s (n,) input;
+    let values = ‹i: n; %tensor.get ((i,), flat)›;
+    let sum = %vec.fold.l F#A#R#add (F#A#R#_0, values);
+    let arithmetic_mean = F#A#div (sum, count);
+    let nonfinite_count = %vec.fold.l F#A#R#add
+        (F#A#R#_0, ‹i: n; torch_nonfinite_count_scalar F (values#i)›);
+    let mean = torch_var_mean_adjust_mean F
+        (arithmetic_mean, nonfinite_count);
+    // Full reductions are statically specialized by the frontend, so PE
+    // unrolls this scalar fold without creating a rank-zero tensor buffer.
+    let squared_centered = ‹i: n;
+        let delta = F#A#sub (values#i, mean);
+        F#A#R#mul (delta, delta)›;
+    let centered_sum_sq = %vec.fold.l
+        F#A#R#add (F#A#R#_0, squared_centered);
+    let denominator = F#A#maximum (
+        F#A#sub (count, correction), F#A#R#_0);
+    let variance = F#A#div (centered_sum_sq, denominator);
+    (ff, variance, mean);
+
+/// Reduction over logical singleton axes. Such axes are erased from MimIR's
+/// physical tensor type, but correction still determines whether variance is
+/// zero or NaN, so this operation is not an unconditional identity.
+axm %torch.reduction(var_mean_singletons): [F: %torch.Floating]
+    → {r: Nat, s: «r; Nat»}
+    → [correction: F#A#R#T]
+    → «s; F#A#R#T»
+    → [Bool, «s; F#A#R#T», «s; F#A#R#T»];
+lam %torch.reduction_impl.var_mean_singletons [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (correction: F#A#R#T)
+    (input: «s; F#A#R#T»): [Bool, «s; F#A#R#T», «s; F#A#R#T»] =
+    let one = F#from_nat 1;
+    let denominator = F#A#maximum (
+        F#A#sub (one, correction), F#A#R#_0);
+    let singleton_variance = F#A#div (F#A#R#_0, denominator);
+    let variance = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+        (torch_constant_scalar F#A singleton_variance) @(r, s) input;
+    (ff, variance, input);
 
 /// Mean-reduced SmoothL1/Huber loss over equal-shape floating tensors.
 /// PyTorch source: `torch/_decomp/decompositions.py::smooth_l1_loss`.
@@ -2663,10 +2860,12 @@ lam %torch.loss_impl.smooth_l1_loss [F: %torch.Floating]
     let valid = %core.bit2.and_ 0 (
         %core.ncmp.le (reduction, 2),
         %core.bit2.and_ 0 (
-            torch_broadcast_compatible (si, so, di),
-            torch_broadcast_compatible (st, so, dt)));
+            F#A#ge (beta, F#A#R#_0),
+            %core.bit2.and_ 0 (
+                torch_broadcast_compatible (si, so, di),
+                torch_broadcast_compatible (st, so, dt))));
     let losses = %runtime.require
-        (valid, "smooth_l1_loss expects broadcastable inputs and a valid reduction")
+        (valid, "smooth_l1_loss does not support negative beta and expects broadcastable inputs and a valid reduction")
         (torch_smooth_l1_pointwise F
             @(ri, rt, ro) (si, di, st, dt, so) (input, target) beta);
     let total = torch_sum_all_runtime F#A @(ro, so) losses;
@@ -2768,10 +2967,9 @@ lam %torch.loss_impl.triplet_margin_reduced [F: %torch.Floating]
     (anchor positive negative: «n, d; F#A#R#T»): F#A#R#T =
     let valid = %core.bit2.and_ 0 (
         F#A#gt (margin, F#A#R#_0),
-        %core.bit2.and_ 0 (
-            F#A#gt (p, F#A#R#_0), %core.ncmp.le (reduction, 1)));
+        %core.ncmp.le (reduction, 1));
     %runtime.require
-        (valid, "triplet_margin_loss expects margin>0, p>0, and sum/mean reduction")
+        (valid, "triplet_margin_loss expects margin>0 and sum/mean reduction")
         body
     where
         lam body(): F#A#R#T =
@@ -2796,8 +2994,10 @@ lam %torch.loss_impl.triplet_margin_reduced [F: %torch.Floating]
                 (%core.ncmp.e (reduction, 0), total, mean);
     end;
 
-/// PyTorch TripletMarginLoss for both `(D)` and `(N,D)` inputs. Reduction tags
-/// are `0=none`, `1=mean`, and `2=sum`.
+/// PyTorch TripletMarginLoss for any non-scalar input. The final dimension is
+/// flattened as the pairwise-distance feature dimension; PE removes the
+/// reshape for each static rank. Reduction tags are `0=none`, `1=mean`, and
+/// `2=sum`.
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.triplet_margin_loss.html
 lam torch_triplet_margin_pointwise [F: %torch.Floating]
     {r: Nat, s: «r; Nat»}
@@ -2843,19 +3043,16 @@ lam %torch.loss_impl.triplet_margin_loss [F: %torch.Floating]
     {r: Nat, s: «r; Nat»}
     (anchor positive negative: «s; F#A#R#T»)
     (margin p eps: F#A#R#T, swap: Bool, reduction: Nat) =
-    let valid_rank = %core.bit2.or_ 0 (
-        %core.ncmp.e (r, 1), %core.ncmp.e (r, 2));
     let valid = %core.bit2.and_ 0 (
-        valid_rank,
+        %core.ncmp.ge (r, 1),
         %core.bit2.and_ 0 (
             F#A#gt (margin, F#A#R#_0),
-            %core.bit2.and_ 0 (
-                F#A#gt (p, F#A#R#_0), %core.ncmp.le (reduction, 2))));
+            %core.ncmp.le (reduction, 2)));
     let feature_dim = %core.idx r 0 (%core.nat.sub (r, 1));
     let loss_shape = torch_reduce_shape (s, feature_dim);
     let n = torch_numel loss_shape;
     let losses = %runtime.require
-        (valid, "triplet_margin_loss expects rank 1/2, margin>0, p>0, and a valid reduction")
+        (valid, "triplet_margin_loss expects rank >= 1, margin>0, and a valid reduction")
         (torch_triplet_margin_pointwise F
             @(r, s) (anchor, positive, negative) (margin, p, eps, swap));
     let unreduced = %tensor.reshape_impl
@@ -2879,16 +3076,25 @@ lam %torch.loss_impl.triplet_margin_loss_1d_none [F: %torch.Floating]
     {d: Nat}
     (anchor positive negative: «d; F#A#R#T»)
     (margin p eps: F#A#R#T, swap: Bool): F#A#R#T =
-    let distance_positive = torch_pairwise_distance_1d F
-        @d (eps, p) (anchor, positive);
-    let distance_negative = torch_pairwise_distance_1d F
-        @d (eps, p) (anchor, negative);
-    let distance_swap = torch_pairwise_distance_1d F
-        @d (eps, p) (positive, negative);
-    let effective_negative = %core.select @F#A#R#T
-        (swap, F#A#minimum (distance_negative, distance_swap), distance_negative);
-    torch_triplet_margin_scalar F margin
-        (distance_positive, effective_negative);
+    %runtime.require
+        (F#A#gt (margin, F#A#R#_0),
+         "triplet_margin_loss expects margin greater than zero")
+        body
+    where
+        lam body(): F#A#R#T =
+            let distance_positive = torch_pairwise_distance_1d F
+                @d (eps, p) (anchor, positive);
+            let distance_negative = torch_pairwise_distance_1d F
+                @d (eps, p) (anchor, negative);
+            let distance_swap = torch_pairwise_distance_1d F
+                @d (eps, p) (positive, negative);
+            let effective_negative = %core.select @F#A#R#T
+                (swap,
+                 F#A#minimum (distance_negative, distance_swap),
+                 distance_negative);
+            torch_triplet_margin_scalar F margin
+                (distance_positive, effective_negative);
+    end;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.amax.html
 /// Types: reduce a non-empty unique axis tuple of a `Floating` tensor and remove those axes.
@@ -2912,7 +3118,16 @@ lam %torch.reduction_impl.amax_dims [F: %torch.Floating]
             «torch_multi_reduce_shape
                 (s, torch_canonical_dims @(r, nr) dimensions); F#A#R#T» =
             let dims = torch_canonical_dims @(r, nr) dimensions;
-            torch_multi_reduce (F#A#maximum, F#neg_inf) (s, dims) input;
+            %runtime.require
+                (torch_reduction_extents_nonzero (s, dims),
+                 "amax reduction dimensions must have non-zero size")
+                reduce
+            where
+                lam reduce():
+                    «torch_multi_reduce_shape (s, dims); F#A#R#T» =
+                    torch_multi_reduce
+                        (F#A#maximum, F#neg_inf) (s, dims) input;
+            end;
     end;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.mean.html
@@ -3041,13 +3256,20 @@ lam %torch.reduction_impl.amax [F: %torch.Floating]
     where
         lam body() =
             let dims = torch_canonical_dims @(r, nr) dimensions;
-            let reduced = torch_multi_reduce
-                (F#A#maximum, F#neg_inf) (s, dims) input;
-            let kept = %tensor.reshape_impl
-                @(F#A#R#T, torch_reduced_rank dims, r)
-                (torch_multi_reduce_shape (s, dims))
-                (torch_multi_keepdim_shape (s, dims)) reduced;
-            (reduced, kept)#keepdim;
+            %runtime.require
+                (torch_reduction_extents_nonzero (s, dims),
+                 "amax reduction dimensions must have non-zero size")
+                reduce
+            where
+                lam reduce() =
+                    let reduced = torch_multi_reduce
+                        (F#A#maximum, F#neg_inf) (s, dims) input;
+                    let kept = %tensor.reshape_impl
+                        @(F#A#R#T, torch_reduced_rank dims, r)
+                        (torch_multi_reduce_shape (s, dims))
+                        (torch_multi_keepdim_shape (s, dims)) reduced;
+                    (reduced, kept)#keepdim;
+            end;
     end;
 
 /// PyTorch API: https://pytorch.org/docs/stable/generated/torch.var_mean.html
@@ -3082,22 +3304,39 @@ lam %torch.reduction_impl.var_mean_dims
             let s_out = torch_multi_reduce_shape (s, dims);
             let sum = torch_multi_reduce
                 (F#A#R#add, F#A#R#_0) (s, dims) input;
-            let squared = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
-                (torch_square_scalar F#A) @(r, s) input;
-            let sum_sq = torch_multi_reduce
-                (F#A#R#add, F#A#R#_0) (s, dims) squared;
             let count = F#from_nat (torch_reduction_numel (s, dims));
+            let arithmetic_mean = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_div_scalar F#A count)
+                @(torch_reduced_rank dims, s_out) sum;
+            let nonfinite = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_nonfinite_count_scalar F) @(r, s) input;
+            let nonfinite_count = torch_multi_reduce
+                (F#A#R#add, F#A#R#_0) (s, dims) nonfinite;
+            let mean = %tensor.binary_impl
+                @(F#A#R#T, F#A#R#T, F#A#R#T)
+                (torch_var_mean_adjust_mean F)
+                @(torch_reduced_rank dims, s_out)
+                (arithmetic_mean, nonfinite_count);
+            // Two-pass centered variance avoids the cancellation in
+            // E[x^2] - E[x]^2 for large-offset inputs.
+            let mean_b = %tensor.broadcast_in_dim_impl
+                @(F#A#R#T, torch_reduced_rank dims, r)
+                (s_out, s, mean, torch_kept_axes dims);
+            let centered = %tensor.binary_impl
+                @(F#A#R#T, F#A#R#T, F#A#R#T)
+                F#A#sub @(r, s) (input, mean_b);
+            let squared_centered = %tensor.unary_impl
+                @(F#A#R#T, F#A#R#T)
+                (torch_square_scalar F#A) @(r, s) centered;
+            let centered_sum_sq = torch_multi_reduce
+                (F#A#R#add, F#A#R#_0) (s, dims) squared_centered;
             // PyTorch clamps non-positive degrees of freedom to zero. IEEE
             // division then produces NaN or Inf instead of a runtime error.
             let denominator = F#A#maximum (
                 F#A#sub (count, correction), F#A#R#_0);
-            let variance = %tensor.binary_impl
-                @(F#A#R#T, F#A#R#T, F#A#R#T)
-                (torch_variance_scalar F (count, denominator))
-                @(torch_reduced_rank dims, s_out) (sum, sum_sq);
-            let mean = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
-                (torch_div_scalar F#A count)
-                @(torch_reduced_rank dims, s_out) sum;
+            let variance = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_div_scalar F#A denominator)
+                @(torch_reduced_rank dims, s_out) centered_sum_sq;
             // The heterogeneous tag prevents `[variance, mean]` from
             // normalizing into one rank-higher tensor when shapes coincide.
             (ff, variance, mean);
@@ -4004,10 +4243,33 @@ lam torch_adaptive_pool_max_window (input_size output_size: Nat): Nat =
             %core.ncmp.e (%core.nat.mod (input_size, output_size), 0),
             0, 1));
 
+/// Replaces the final `k` spatial extents with an adaptive output size. This
+/// is the shared dependent shape rule behind the three public schemas.
+lam torch_adaptive_pool_shape {r k: Nat}
+    (s: «r; Nat», output_size: «k; Nat»): «r; Nat» =
+    let spatial_start = %core.nat.sub (r, k);
+    ‹i: r;
+        let i_nat = %core.bitcast Nat i;
+        let spatial = %core.ncmp.ge (i_nat, spatial_start);
+        let output_axis = %core.idx k 0 (%core.nat.sub (i_nat, spatial_start));
+        %core.select (spatial, output_size#output_axis, s#i)›;
+
+/// ATen requires every non-batch input extent and every currently
+/// representable output extent to be positive.
+lam torch_adaptive_pool_extents_valid {r k: Nat}
+    (s: «r; Nat», output_size: «k; Nat»): Bool =
+    let spatial_start = %core.nat.sub (r, k);
+    %vec.fold.l (%core.bit2.and_ 0) (
+        tt,
+        ‹i: k;
+            %core.bit2.and_ 0 (
+                %core.ncmp.g (s#(%core.idx r 0
+                    (%core.nat.add (spatial_start, %core.bitcast Nat i))), 0),
+                %core.ncmp.g (output_size#i, 0))›);
+
 lam torch_adaptive_pool1d_shape {r: Nat}
     (s: «r; Nat», output_size: Nat): «r; Nat» =
-    let axis = %core.idx r 0 (%core.nat.sub (r, 1));
-    ‹i: r; %core.select (%core.icmp.e @r (i, axis), output_size, s#i)›;
+    torch_adaptive_pool_shape @(r, 1) (s, (output_size,));
 
 lam torch_adaptive_pool1d_element [F: %torch.Floating]
     {r: Nat, s: «r; Nat»}
@@ -4055,8 +4317,8 @@ lam %torch.pool_impl.adaptive_avg_pool1d [F: %torch.Floating]
     %runtime.require
         (%core.bit2.and_ 0 (
             rank_valid,
-            %core.bit2.and_ 0 (
-                %core.ncmp.g (input_size, 0), %core.ncmp.g (output_size, 0))),
+            torch_adaptive_pool_extents_valid @(r, 1)
+                (s, (output_size,))),
          "adaptive_avg_pool1d expects rank 2/3 and positive input/output sizes")
         body
     where
@@ -4068,14 +4330,115 @@ lam %torch.pool_impl.adaptive_avg_pool1d [F: %torch.Floating]
                     @(r, s) (output_size, input));
     end;
 
+lam torch_adaptive_pool2d_shape {r: Nat}
+    (s: «r; Nat», output_size: «2; Nat»): «r; Nat» =
+    torch_adaptive_pool_shape @(r, 2) (s, output_size);
+
+lam torch_adaptive_pool2d_window_element [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (output_size: «2; Nat», input: «s; F#A#R#T»)
+    (indices: «%core.nat.add (r, 2); I64»): F#A#R#T =
+    let total_rank = %core.nat.add (r, 2);
+    let h_axis = %core.idx r 0 (%core.nat.sub (r, 2));
+    let w_axis = %core.idx r 0 (%core.nat.sub (r, 1));
+    let oh = %core.bitcast Nat
+        (indices#(%core.idx total_rank 0 (%core.nat.sub (r, 2))));
+    let ow = %core.bitcast Nat
+        (indices#(%core.idx total_rank 0 (%core.nat.sub (r, 1))));
+    let sh = torch_adaptive_pool_start (oh, output_size#0_2, s#h_axis);
+    let sw = torch_adaptive_pool_start (ow, output_size#1_2, s#w_axis);
+    let eh = torch_adaptive_pool_end (oh, output_size#0_2, s#h_axis);
+    let ew = torch_adaptive_pool_end (ow, output_size#1_2, s#w_axis);
+    let kh = %core.bitcast Nat (indices#(%core.idx total_rank 0 r));
+    let kw = %core.bitcast Nat
+        (indices#(%core.idx total_rank 0 (%core.nat.add (r, 1))));
+    let ch = %core.nat.add (sh, kh);
+    let cw = %core.nat.add (sw, kw);
+    let inside = %core.bit2.and_ 0 (
+        %core.ncmp.l (ch, eh), %core.ncmp.l (cw, ew));
+    let safe_h = %core.select (inside, ch, sh);
+    let safe_w = %core.select (inside, cw, sw);
+    let coords = ‹i: r;
+        let output_i = %core.idx total_rank 0 (%core.bitcast Nat i);
+        let raw = %core.select @I64 (
+            %core.icmp.e @r (i, h_axis), %core.bitcast I64 safe_h,
+            %core.select @I64 (
+                %core.icmp.e @r (i, w_axis), %core.bitcast I64 safe_w,
+                indices#output_i));
+        %core.conv.u (s#i) raw›;
+    %core.select @F#A#R#T
+        (inside, %tensor.get (coords, input), F#A#R#_0);
+
+lam torch_adaptive_pool2d_divisor_element [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (output_size: «2; Nat»)
+    (indices: «r; I64»): F#A#R#T =
+    let h_axis = %core.idx r 0 (%core.nat.sub (r, 2));
+    let w_axis = %core.idx r 0 (%core.nat.sub (r, 1));
+    let oh = %core.bitcast Nat (indices#h_axis);
+    let ow = %core.bitcast Nat (indices#w_axis);
+    let sh = torch_adaptive_pool_start (oh, output_size#0_2, s#h_axis);
+    let sw = torch_adaptive_pool_start (ow, output_size#1_2, s#w_axis);
+    let eh = torch_adaptive_pool_end (oh, output_size#0_2, s#h_axis);
+    let ew = torch_adaptive_pool_end (ow, output_size#1_2, s#w_axis);
+    F#from_nat (%core.nat.mul (
+        %core.nat.sub (eh, sh), %core.nat.sub (ew, sw)));
+
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.adaptive_avg_pool2d.html
+/// Types: rank-3 (C,H,W) or rank-4 (N,C,H,W) input and a positive 2D output size.
+axm %torch.pool(adaptive_avg_pool2d): [F: %torch.Floating]
+    → {r: Nat, s: «r; Nat»}
+    → [output_size: «2; Nat»]
+    → «s; F#A#R#T»
+    → «torch_adaptive_pool2d_shape (s, output_size); F#A#R#T»;
+lam %torch.pool_impl.adaptive_avg_pool2d [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (output_size: «2; Nat»)
+    (input: «s; F#A#R#T»)
+  : «torch_adaptive_pool2d_shape (s, output_size); F#A#R#T» =
+    let rank_valid = %core.bit2.or_ 0 (
+        %core.ncmp.e (r, 3), %core.ncmp.e (r, 4));
+    let extents_valid = torch_adaptive_pool_extents_valid @(r, 2)
+        (s, output_size);
+    %runtime.require
+        (%core.bit2.and_ 0 (rank_valid, extents_valid),
+         "adaptive_avg_pool2d expects rank 3/4 and positive input/output sizes")
+        body
+    where
+        lam body(): «torch_adaptive_pool2d_shape
+                (s, output_size); F#A#R#T» =
+            let output_shape = torch_adaptive_pool2d_shape (s, output_size);
+            let h_axis = %core.idx r 0 (%core.nat.sub (r, 2));
+            let w_axis = %core.idx r 0 (%core.nat.sub (r, 1));
+            let mh = torch_adaptive_pool_max_window
+                (s#h_axis, output_size#0_2);
+            let mw = torch_adaptive_pool_max_window
+                (s#w_axis, output_size#1_2);
+            let window_shape = %vec.cat (output_shape, (mh, mw));
+            let total_rank = %core.nat.add (r, 2);
+            let windows = %tensor.generate @(F#A#R#T, total_rank)
+                window_shape
+                (torch_adaptive_pool2d_window_element F
+                    @(r, s) (output_size, input));
+            let output_subscripts = ‹i: r; %core.bitcast Nat i›;
+            let summed = %tensor.map_reduce @1
+                @(F#A#R#T, r, total_rank)
+                (output_shape, window_shape)
+                @(F#A#R#T, total_rank, window_shape)
+                (pool_fun F#A#R#add, F#A#R#_0)
+                (%tensor.proj_map @(total_rank, r) output_subscripts)
+                (%affine.id @total_rank,) windows;
+            let divisors = %tensor.generate @(F#A#R#T, r)
+                output_shape
+                (torch_adaptive_pool2d_divisor_element F
+                    @(r, s) output_size);
+            %tensor.binary_impl @(F#A#R#T, F#A#R#T, F#A#R#T)
+                F#A#div @(r, output_shape) (summed, divisors);
+    end;
+
 lam torch_adaptive_pool3d_shape {r: Nat}
     (s: «r; Nat», output_size: «3; Nat»): «r; Nat» =
-    let spatial_start = %core.nat.sub (r, 3);
-    ‹i: r;
-        let i_nat = %core.bitcast Nat i;
-        let spatial = %core.ncmp.ge (i_nat, spatial_start);
-        let output_axis = %core.idx 3 0 (%core.nat.sub (i_nat, spatial_start));
-        %core.select (spatial, output_size#output_axis, s#i)›;
+    torch_adaptive_pool_shape @(r, 3) (s, output_size);
 
 /// Materializes one masked member of the rectangular superset of every
 /// adaptive window. The following `tensor.map_reduce` performs the sum, which
@@ -4161,14 +4524,8 @@ lam %torch.pool_impl.adaptive_avg_pool3d [F: %torch.Floating]
   : «torch_adaptive_pool3d_shape (s, output_size); F#A#R#T» =
     let rank_valid = %core.bit2.or_ 0 (
         %core.ncmp.e (r, 4), %core.ncmp.e (r, 5));
-    let spatial_start = %core.nat.sub (r, 3);
-    let extents_valid = %vec.fold.l (%core.bit2.and_ 0) (
-        tt,
-        ‹i: 3;
-            %core.bit2.and_ 0 (
-                %core.ncmp.g (s#(%core.idx r 0
-                    (%core.nat.add (spatial_start, %core.bitcast Nat i))), 0),
-                %core.ncmp.g (output_size#i, 0))›);
+    let extents_valid = torch_adaptive_pool_extents_valid @(r, 3)
+        (s, output_size);
     %runtime.require
         (%core.bit2.and_ 0 (rank_valid, extents_valid),
          "adaptive_avg_pool3d expects rank 4/5 and positive input/output sizes")
@@ -4816,6 +5173,159 @@ lam torch_batch_norm_apply [F: %torch.Floating]
     %tensor.binary_impl @(F#A#R#T, F#A#R#T, F#A#R#T)
         F#A#R#add @(r, s) (scaled, bias_b);
 
+/// Pure training-result semantics of `aten.native_batch_norm`. The returned
+/// tuple is `(output, save_mean, save_invstd)`. ATen's optional running-stat
+/// mutation is intentionally outside this pure operator and must be made
+/// explicit by functionalization before calling it.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.native_batch_norm.html
+/// Types: rank >= 2 floating input and optional channel vectors to an output
+/// tensor plus two channel-sized saved-statistic tensors.
+axm %torch.normalization(native_batch_norm): [F: %torch.Floating]
+    → {r: Nat, s: «r; Nat»}
+    → [input: «s; F#A#R#T»,
+       weight bias running_mean running_var:
+          %option.Opt «s#(torch_channel_dim @r); F#A#R#T»]
+    → [training: Bool, momentum eps: F#A#R#T]
+    → [«s; F#A#R#T»,
+       «s#(torch_channel_dim @r); F#A#R#T»,
+       «s#(torch_channel_dim @r); F#A#R#T»];
+lam %torch.normalization_impl.native_batch_norm [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (input: «s; F#A#R#T»,
+     weight bias running_mean running_var:
+        %option.Opt «s#(torch_channel_dim @r); F#A#R#T»)
+    (training: Bool, momentum eps: F#A#R#T)
+  : [«s; F#A#R#T»,
+     «s#(torch_channel_dim @r); F#A#R#T»,
+     «s#(torch_channel_dim @r); F#A#R#T»] =
+    let channel_dim = torch_channel_dim @r;
+    let examples = torch_numel (torch_reduce_shape (s, channel_dim));
+    let valid = %core.bit2.and_ 0 (
+        training,
+        %core.bit2.and_ 0 (
+            %core.ncmp.ge (r, 2),
+            %core.bit2.and_ 0 (
+                %core.ncmp.g (examples, 1),
+                %core.bit2.and_ 0 (
+                    F#A#ge (momentum, F#A#R#_0),
+                    F#A#le (momentum, F#from_nat 1)))));
+    %runtime.require
+        (valid,
+         "native_batch_norm currently expects training, rank >= 2, more than one value per channel, and momentum in [0,1]")
+        body
+    where
+        lam body(): [«s; F#A#R#T»,
+                     «s#(torch_channel_dim @r); F#A#R#T»,
+                     «s#(torch_channel_dim @r); F#A#R#T»] =
+            let stats = torch_batch_norm_stats F
+                @(r, s) (input, running_mean, running_var, training);
+            let mean = stats#1_3;
+            let variance = stats#2_3;
+            let channels = s#(torch_channel_dim @r);
+            let variance_eps = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_add_scalar F#A eps) @(1, (channels,)) variance;
+            let invstd = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_rsqrt_scalar F) @(1, (channels,)) variance_eps;
+            let output = torch_batch_norm_apply F @(r, s)
+                (input, weight, bias, mean, variance, eps);
+            (output, mean, invstd);
+    end;
+
+/// Functionalization boundary for training BatchNorm. In addition to native
+/// saved statistics, return updated running statistics instead of mutating the
+/// two input buffers.
+/// PyTorch schema: `aten._native_batch_norm_legit_functional`.
+axm %torch.normalization(native_batch_norm_functional): [F: %torch.Floating]
+    → {r: Nat, s: «r; Nat»}
+    → [input: «s; F#A#R#T»,
+       weight bias: %option.Opt
+          «s#(torch_channel_dim @r); F#A#R#T»,
+       running_mean running_var:
+          «s#(torch_channel_dim @r); F#A#R#T»]
+    → [training: Bool, momentum eps: F#A#R#T]
+    → [«s; F#A#R#T»,
+       «s#(torch_channel_dim @r); F#A#R#T»,
+       «s#(torch_channel_dim @r); F#A#R#T»,
+       «s#(torch_channel_dim @r); F#A#R#T»,
+       «s#(torch_channel_dim @r); F#A#R#T»];
+lam %torch.normalization_impl.native_batch_norm_functional
+    [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (input: «s; F#A#R#T»,
+     weight bias: %option.Opt
+        «s#(torch_channel_dim @r); F#A#R#T»,
+     running_mean running_var:
+        «s#(torch_channel_dim @r); F#A#R#T»)
+    (training: Bool, momentum eps: F#A#R#T)
+  : [«s; F#A#R#T»,
+     «s#(torch_channel_dim @r); F#A#R#T»,
+     «s#(torch_channel_dim @r); F#A#R#T»,
+     «s#(torch_channel_dim @r); F#A#R#T»,
+     «s#(torch_channel_dim @r); F#A#R#T»] =
+    let channel_dim = torch_channel_dim @r;
+    let examples = torch_numel (torch_reduce_shape (s, channel_dim));
+    let valid = %core.bit2.and_ 0 (
+        training,
+        %core.bit2.and_ 0 (
+            %core.ncmp.ge (r, 2),
+            %core.bit2.and_ 0 (
+                %core.ncmp.g (examples, 1),
+                %core.bit2.and_ 0 (
+                    F#A#ge (momentum, F#A#R#_0),
+                    F#A#le (momentum, F#from_nat 1)))));
+    %runtime.require
+        (valid,
+         "functional native_batch_norm expects training, rank >= 2, more than one value per channel, and momentum in [0,1]")
+        body
+    where
+        lam body(): [«s; F#A#R#T»,
+                     «s#(torch_channel_dim @r); F#A#R#T»,
+                     «s#(torch_channel_dim @r); F#A#R#T»,
+                     «s#(torch_channel_dim @r); F#A#R#T»,
+                     «s#(torch_channel_dim @r); F#A#R#T»] =
+            let stats = torch_batch_norm_stats F @(r, s)
+                (input, %option.some running_mean,
+                 %option.some running_var, training);
+            let mean = stats#1_3;
+            let variance = stats#2_3;
+            let channels = s#(torch_channel_dim @r);
+            let variance_eps = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_add_scalar F#A eps) @(1, (channels,)) variance;
+            let invstd = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_rsqrt_scalar F) @(1, (channels,)) variance_eps;
+            let output = torch_batch_norm_apply F @(r, s)
+                (input, weight, bias, mean, variance, eps);
+            let retained = F#A#sub (F#from_nat 1, momentum);
+            let old_mean = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_scale_scalar F#A retained)
+                @(1, (channels,)) running_mean;
+            let batch_mean = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+                (torch_scale_scalar F#A momentum) @(1, (channels,)) mean;
+            let updated_mean = %tensor.binary_impl
+                @(F#A#R#T, F#A#R#T, F#A#R#T)
+                F#A#R#add @(1, (channels,)) (old_mean, batch_mean);
+            let unbiased_scale = F#A#div (
+                F#from_nat examples,
+                F#from_nat (%core.nat.sub (examples, 1)));
+            let unbiased_variance = %tensor.unary_impl
+                @(F#A#R#T, F#A#R#T)
+                (torch_scale_scalar F#A unbiased_scale)
+                @(1, (channels,)) variance;
+            let old_variance = %tensor.unary_impl
+                @(F#A#R#T, F#A#R#T)
+                (torch_scale_scalar F#A retained)
+                @(1, (channels,)) running_var;
+            let batch_variance = %tensor.unary_impl
+                @(F#A#R#T, F#A#R#T)
+                (torch_scale_scalar F#A momentum)
+                @(1, (channels,)) unbiased_variance;
+            let updated_variance = %tensor.binary_impl
+                @(F#A#R#T, F#A#R#T, F#A#R#T)
+                F#A#R#add @(1, (channels,))
+                (old_variance, batch_variance);
+            (output, mean, invstd, updated_mean, updated_variance);
+    end;
+
 /// Pure forward semantics of `aten.batch_norm`. Static `training` selects and
 /// eliminates either batch-statistics reduction or running-statistics use.
 /// `momentum` is retained in the API for direct mapping, but running-stat
@@ -4852,10 +5362,22 @@ lam %torch.normalization_impl.batch_norm [F: %torch.Floating]
         body
     where
         lam body(): «s; F#A#R#T» =
-            let stats = torch_batch_norm_stats F
-                @(r, s) (input, running_mean, running_var, training);
-            torch_batch_norm_apply F @(r, s)
-                (input, weight, bias, stats#1_3, stats#2_3, eps);
+            let channel_dim = torch_channel_dim @r;
+            let examples = torch_numel (torch_reduce_shape (s, channel_dim));
+            let valid_training_count = %core.bit2.or_ 0 (
+                %core.icmp.e @2 (training, ff),
+                %core.ncmp.g (examples, 1));
+            %runtime.require
+                (valid_training_count,
+                 "batch_norm training expects more than one value per channel")
+                normalize
+            where
+                lam normalize(): «s; F#A#R#T» =
+                    let stats = torch_batch_norm_stats F
+                        @(r, s) (input, running_mean, running_var, training);
+                    torch_batch_norm_apply F @(r, s)
+                        (input, weight, bias, stats#1_3, stats#2_3, eps);
+            end;
     end;
 
 /// Stable PyTorch softmax/log-softmax decomposition:
@@ -5127,23 +5649,15 @@ lam torch_cross_entropy_probability_components [F: %torch.Floating]
         (torch_neg_scalar F#A) @(r, s) weighted_logs;
     let loss = torch_reduce_dim
         (F#A#R#add, F#A#R#_0) (s, class_dim) weighted_terms;
-    (ff, loss, F#from_nat (torch_numel loss_shape));
+    // PyTorch defines mean over C=0 probability targets as NaN. Selecting a
+    // zero denominator preserves that result while none/sum remain zero.
+    let denominator_count = %core.select @Nat (
+        %core.ncmp.e (classes, 0), 0, torch_numel loss_shape);
+    (ff, loss, F#from_nat denominator_count);
 
-/// Rank-generic class-index CrossEntropyLoss. Reduction tags are
-/// `0=none`, `1=mean`, and `2=sum`.
-/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html
-axm %torch.loss(cross_entropy_loss): [F: %torch.Floating]
-    → {r: Nat, s: «r; Nat»}
-    → [input: «s; F#A#R#T»,
-       target: «torch_reduce_shape
-          (s, torch_cross_entropy_class_dim @r); I64»,
-       weight: %option.Opt
-          «s#(torch_cross_entropy_class_dim @r); F#A#R#T»]
-    → [reduction: Nat, ignore_index: I64, label_smoothing: F#A#R#T]
-    → let loss_shape = torch_reduce_shape
-        (s, torch_cross_entropy_class_dim @r);
-      («loss_shape; F#A#R#T», F#A#R#T)#(%core.ncmp.ne (reduction, 0));
-lam %torch.loss_impl.cross_entropy_loss [F: %torch.Floating]
+/// Internal class-index CrossEntropy implementation selected by the public
+/// target-domain match.
+lam torch_cross_entropy_index [F: %torch.Floating]
     {r: Nat, s: «r; Nat»}
     (input: «s; F#A#R#T»,
      target: «torch_reduce_shape
@@ -5173,20 +5687,8 @@ lam %torch.loss_impl.cross_entropy_loss [F: %torch.Floating]
         (%core.ncmp.e (reduction, 2), total, mean);
     (loss, reduced)#(%core.ncmp.ne (reduction, 0));
 
-/// Rank-generic probability-target CrossEntropyLoss. This separate typed entry
-/// is temporary until Torch dtype interfaces can resolve both target domains
-/// behind one public schema.
-/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html
-axm %torch.loss(cross_entropy_probability_loss): [F: %torch.Floating]
-    → {r: Nat, s: «r; Nat»}
-    → [input target: «s; F#A#R#T»,
-       weight: %option.Opt
-          «s#(torch_cross_entropy_class_dim @r); F#A#R#T»]
-    → [reduction: Nat, ignore_index: I64, label_smoothing: F#A#R#T]
-    → let loss_shape = torch_reduce_shape
-        (s, torch_cross_entropy_class_dim @r);
-      («loss_shape; F#A#R#T», F#A#R#T)#(%core.ncmp.ne (reduction, 0));
-lam %torch.loss_impl.cross_entropy_probability_loss [F: %torch.Floating]
+/// Internal probability-target implementation selected by the same match.
+lam torch_cross_entropy_probability [F: %torch.Floating]
     {r: Nat, s: «r; Nat»}
     (input target: «s; F#A#R#T»,
      weight: %option.Opt
@@ -5214,6 +5716,62 @@ lam %torch.loss_impl.cross_entropy_probability_loss [F: %torch.Floating]
     let reduced = %core.select @F#A#R#T
         (%core.ncmp.e (reduction, 2), total, mean);
     (loss, reduced)#(%core.ncmp.ne (reduction, 0));
+
+/// Typed target-domain constructors for the unified CrossEntropy schema.
+/// Their injections are compile-time values, so the implementation match is
+/// eliminated before tensor lowering.
+lam %torch.cross_entropy_index_target [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (target: «torch_reduce_shape
+        (s, torch_cross_entropy_class_dim @r); I64»)
+  : «s; F#A#R#T» ∪ «torch_reduce_shape
+      (s, torch_cross_entropy_class_dim @r); I64» =
+    target inj (
+        «s; F#A#R#T» ∪ «torch_reduce_shape
+            (s, torch_cross_entropy_class_dim @r); I64»);
+
+lam %torch.cross_entropy_probability_target [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (target: «s; F#A#R#T»)
+  : «s; F#A#R#T» ∪ «torch_reduce_shape
+      (s, torch_cross_entropy_class_dim @r); I64» =
+    target inj (
+        «s; F#A#R#T» ∪ «torch_reduce_shape
+            (s, torch_cross_entropy_class_dim @r); I64»);
+
+/// One public CrossEntropyLoss schema for both class-index and probability
+/// targets. The union is a lightweight target-domain interface: injection
+/// proves the target's element/shape relationship, and PE removes this match.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html
+axm %torch.loss(cross_entropy): [F: %torch.Floating]
+    → {r: Nat, s: «r; Nat»}
+    → [input: «s; F#A#R#T»,
+       target: «s; F#A#R#T» ∪ «torch_reduce_shape
+          (s, torch_cross_entropy_class_dim @r); I64»,
+       weight: %option.Opt
+          «s#(torch_cross_entropy_class_dim @r); F#A#R#T»]
+    → [reduction: Nat, ignore_index: I64, label_smoothing: F#A#R#T]
+    → let loss_shape = torch_reduce_shape
+        (s, torch_cross_entropy_class_dim @r);
+      («loss_shape; F#A#R#T», F#A#R#T)#(%core.ncmp.ne (reduction, 0));
+lam %torch.loss_impl.cross_entropy [F: %torch.Floating]
+    {r: Nat, s: «r; Nat»}
+    (input: «s; F#A#R#T»,
+     target: «s; F#A#R#T» ∪ «torch_reduce_shape
+        (s, torch_cross_entropy_class_dim @r); I64»,
+     weight: %option.Opt
+        «s#(torch_cross_entropy_class_dim @r); F#A#R#T»)
+    (reduction: Nat, ignore_index: I64, label_smoothing: F#A#R#T) =
+    match target with
+        | indices: «torch_reduce_shape
+              (s, torch_cross_entropy_class_dim @r); I64» =>
+            torch_cross_entropy_index F @(r, s)
+                (input, indices, weight)
+                (reduction, ignore_index, label_smoothing)
+        | probabilities: «s; F#A#R#T» =>
+            torch_cross_entropy_probability F @(r, s)
+                (input, probabilities, weight)
+                (reduction, ignore_index, label_smoothing);
 
 
 

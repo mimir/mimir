@@ -5,6 +5,10 @@
 plugin torch;
 plugin compile;
 
+// CHECK-DAG: fun extern sum_i64_default
+// CHECK-DAG: fun extern sum_bool_default
+// CHECK-DAG: fun extern sum_i64_f32
+
 lam nat_max (args: [Nat, Nat]): Nat =
     %core.select (%core.ncmp.ge args, args#ff, args#tt);
 lam nat_min (args: [Nat, Nat]): Nat =
@@ -73,6 +77,24 @@ fun extern sum_keep_dims(input: «2, 3, 4; Nat»): «1, 3, 1; Nat» =
 
 // CHECK-LABEL: fun extern sum_remove_dims
 // CHECK: %tensor.map_reduce
+
+// Mixed dtype policy is selected by exact flat-type lookup and disappears.
+fun extern sum_i64_default(input: «2, 3; I64»): «2; I64» =
+    return (%torch.reduction.sum_typed
+        (%torch.resolve_reduction I64 I64)
+        @(2, 1, (2, 3)) ((1I64,), ff) input);
+
+// PyTorch promotes Bool sum results to I64.
+fun extern sum_bool_default(input: «2, 3; Bool»): «2; I64» =
+    return (%torch.reduction.sum_typed
+        (%torch.resolve_reduction Bool I64)
+        @(2, 1, (2, 3)) ((1I64,), ff) input);
+
+// Explicit dtype performs conversion before accumulation.
+fun extern sum_i64_f32(input: «2, 3; I64»): «2; %math.F32» =
+    return (%torch.reduction.sum_typed
+        (%torch.resolve_reduction I64 %math.F32)
+        @(2, 1, (2, 3)) ((1I64,), ff) input);
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (%torch.lower_torch, %compile.cleanup);

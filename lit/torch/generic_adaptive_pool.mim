@@ -20,6 +20,21 @@ fun extern adaptive_1d_batched(input: «4, 2, 7; %math.F32»)
         (%torch.resolve_floating %math.F32)
         @(3, (4, 2, 7)) 4 input);
 
+// Non-divisible 5x7 -> 3x4 windows exercise both spatial boundaries.
+// CHECK-DAG: fun extern adaptive_2d_unbatched
+fun extern adaptive_2d_unbatched(input: «2, 5, 7; %math.F32»)
+  : «2, 3, 4; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool2d
+        (%torch.resolve_floating %math.F32)
+        @(3, (2, 5, 7)) (3, 4) input);
+
+// CHECK-DAG: fun extern adaptive_2d_batched
+fun extern adaptive_2d_batched(input: «3, 2, 5, 7; %math.F32»)
+  : «3, 2, 3, 4; %math.F32» =
+    return (%torch.pool.adaptive_avg_pool2d
+        (%torch.resolve_floating %math.F32)
+        @(4, (3, 2, 5, 7)) (3, 4) input);
+
 // Rank-4 is the unbatched CDHW form.
 // CHECK-DAG: fun extern adaptive_3d_unbatched
 fun extern adaptive_3d_unbatched(input: «2, 5, 4, 7; %math.F32»)

@@ -35,5 +35,34 @@ fun extern batch_norm_training(input: «2, 3, 4, 5; %math.F32»)
          %option.none @«3; %math.F32», %option.none @«3; %math.F32»)
         (tt, 0x3DCCCCCD:%math.F32, 0x3727C5AC:%math.F32, ff));
 
+// Functionalization also exposes updated running statistics.
+// CHECK-LABEL: fun extern native_batch_norm_functional
+// CHECK: %tensor.map_reduce
+
+// Native training exposes the saved mean and inverse standard deviation.
+// CHECK-LABEL: fun extern native_batch_norm_training
+// CHECK: %tensor.map_reduce
+fun extern native_batch_norm_training(
+    input: «2, 3, 4, 5; %math.F32»,
+    weight bias: «3; %math.F32»)
+  : [«2, 3, 4, 5; %math.F32», «3; %math.F32», «3; %math.F32»] =
+    return (%torch.normalization.native_batch_norm
+        (%torch.resolve_floating %math.F32)
+        @(4, (2, 3, 4, 5))
+        (input, %option.some weight, %option.some bias,
+         %option.none @«3; %math.F32», %option.none @«3; %math.F32»)
+        (tt, 0x3DCCCCCD:%math.F32, 0x3727C5AC:%math.F32));
+
+fun extern native_batch_norm_functional(
+    input: «2, 3, 4, 5; %math.F32»,
+    weight bias mean variance: «3; %math.F32»)
+  : [«2, 3, 4, 5; %math.F32», «3; %math.F32», «3; %math.F32»,
+     «3; %math.F32», «3; %math.F32»] =
+    return (%torch.normalization.native_batch_norm_functional
+        (%torch.resolve_floating %math.F32)
+        @(4, (2, 3, 4, 5))
+        (input, %option.some weight, %option.some bias, mean, variance)
+        (tt, 0x3E800000:%math.F32, 0x3727C5AC:%math.F32));
+
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (%torch.lower_torch, %compile.cleanup);

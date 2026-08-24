@@ -1,0 +1,17 @@
+// RUN: not %mim %s -p opt -o /dev/null 2>&1 | %FileCheck %s
+
+// CHECK: batch_norm expects rank >= 2, valid running stats
+
+plugin torch;
+plugin compile;
+
+fun extern missing_stats(input: «2, 3, 4; %math.F32»)
+  : «2, 3, 4; %math.F32» =
+    return (%torch.normalization.batch_norm
+        (%torch.resolve_floating %math.F32) @(3, (2, 3, 4))
+        (input,
+         %option.none @«3; %math.F32», %option.none @«3; %math.F32»,
+         %option.none @«3; %math.F32», %option.none @«3; %math.F32»)
+        (ff, 0x3DCCCCCD:%math.F32, 0x3727C5AC:%math.F32, ff));
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;

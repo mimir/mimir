@@ -1,0 +1,18 @@
+// RUN: not %mim %s -p opt -o /dev/null 2>&1 | %FileCheck %s
+
+// CHECK: batch_norm training expects more than one value per channel
+
+plugin torch;
+plugin compile;
+
+fun extern invalid_training(input: «1, 3, 1, 1; %math.F32»)
+  : «1, 3, 1, 1; %math.F32» =
+    return (%torch.normalization.batch_norm
+        (%torch.resolve_floating %math.F32)
+        @(4, (1, 3, 1, 1))
+        (input,
+         %option.none @«3; %math.F32», %option.none @«3; %math.F32»,
+         %option.none @«3; %math.F32», %option.none @«3; %math.F32»)
+        (tt, 0x3DCCCCCD:%math.F32, 0x3727C5AC:%math.F32, ff));
+
+lam extern _compile (): %compile.Phase = %torch.lower_torch;
