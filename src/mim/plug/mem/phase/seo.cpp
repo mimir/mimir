@@ -73,18 +73,11 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
 
     // First touch of `var` this round, including `cur == ⊥`: restart the join here.
     // `⊥` must set `first_`, or the next site would discard this value and let a later one win instead of reaching ⊤.
-    // This requires revisiting every `lam` call site;
-    // otherwise sparse rounds can forget unvisited contributions. `apply_known()` ensures that by tainting all callers
-    // when `lam`'s abstract vars change.
+    // Discarding what earlier sites contributed requires a round that revisits *every* `lam` call site;
+    // the Analysis is dense for exactly that reason - see its c'tor.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
-        // The abstract domain has no bounded height - a value that round-trips a loop through a closure env
-        // is respelled every round - so widen to ⊤ once a var has re-descended Max_Restarts times.
-        // Without this the restart never settles and the phase runs out of fixed-point iterations.
-        if (lattice_force(var, def) && ++restarts_[var] > Max_Restarts) { // force: may descend from ⊤
-            DLOG("widen {} to ⊤ after {} re-descents", var, Max_Restarts);
-            return pin(var), var;
-        }
+        lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
         return def;
     }
 

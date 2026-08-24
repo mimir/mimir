@@ -46,7 +46,13 @@ private:
         using Super = mim::Analysis;
 
         Analysis(World& world)
-            : mim::Analysis(world, "SEO::Analyzer") {}
+            : mim::Analysis(world, "SEO::Analyzer") {
+            // No sparse rounds: Analysis::start replays the lattice into the rewriter map for a sparse round
+            // but lets a full one re-derive from the program, so the two spell one and the same abstract value
+            // differently. sccp_join's per-round restart would then revise a var into whichever spelling the
+            // current kind of round produces - round after round, without ever settling.
+            make_dense();
+        }
 
         void reset() final;
 
@@ -100,8 +106,6 @@ private:
         Vector<Lam*> fu_lams_;
 
         // global (kept between iterations)
-        static constexpr size_t Max_Restarts = 4; ///< @see sccp_join
-        GIDMap<const Def*, size_t> restarts_;     ///< per var: how often a round re-descended its value
         Def2Def sloxy2slot_;
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
