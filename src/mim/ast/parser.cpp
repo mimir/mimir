@@ -275,7 +275,7 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                         ast().note(lhs->loc(), "passed to this expression");
                         ast().note(ahead().loc(),
                                    "if this was your intention, consider parenthesizing the declaration expression");
-                        ast().note(lhs->loc().anew_end(), "otherwise, you are probably missing a `;`");
+                        ast().note(lhs->loc().anew_end(), "or insert a `;` here");
                     default: break;
                 }
                 auto rhs = parse_expr("argument to an application", Prec::App);

@@ -4,8 +4,7 @@ plugin core;
 axm %foo.bar: Nat → Nat, normalize_one;
 axm %foo.bar: Nat → Nat, normalize_two;
 
-// Row 4 is already on screen from the first note, so the second one does not repeat it -
-// while each error keeps its own snippet, since the carets differ.
+// Both errors blame row 4 and row 5, but every caret differs, so every location is rendered.
 // CHECK:      {{.*}}normalizer_mismatch.mim:5:26-5:38: error: normalizer mismatch for axm `%foo.bar`
 // CHECK-NEXT: 5 | axm %foo.bar: Nat → Nat, normalize_two;
 // CHECK-NEXT:   |                          ^^^^^^^^^^^^^
@@ -16,4 +15,5 @@ axm %foo.bar: Nat → Nat, normalize_two;
 // CHECK-NEXT: 5 | axm %foo.bar: Nat → Nat, normalize_two;
 // CHECK-NEXT:   |     ^^^^^^^^
 // CHECK-NEXT:   {{.*}}normalizer_mismatch.mim:4:5-4:12: note: previous declaration here
-// CHECK-NOT:  ^^^^^^^^
+// CHECK-NEXT: 4 | axm %foo.bar: Nat → Nat, normalize_one;
+// CHECK-NEXT:   |     ^^^^^^^^

@@ -105,19 +105,10 @@ void Error::ack(std::ostream& os) {
 
 std::ostream& operator<<(std::ostream& os, const Error& e) {
     auto primary = Loc();
-    auto shown   = Vector<std::pair<const fe::SrcFile*, uint32_t>>();
 
-    // A Tag::Note only earns a snippet of its own if its row is not on screen yet; a primary always gets one.
     auto snippet = [&](Loc loc, Error::Tag tag) {
-        auto file = e.file(loc);
-        if (e.no_snippet_ || !file) return;
-
-        auto row = file->row(loc.begin);
-        auto key = std::pair(file, row);
-        if (row == 0 || (tag == Error::Tag::Note && std::ranges::contains(shown, key))) return;
-
-        shown.emplace_back(key);
-        stream_snippet(os, *file, loc, tag2color(tag));
+        if (e.no_snippet_) return;
+        if (auto file = e.file(loc)) stream_snippet(os, *file, loc, tag2color(tag));
     };
 
     for (const auto& msg : e.msgs()) {
