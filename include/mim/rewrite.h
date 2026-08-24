@@ -44,6 +44,11 @@ public:
     ///@{
     virtual const Def* map(const Def* old_def, const Def* new_def) { return old2news_.back()[old_def] = new_def; }
 
+    /// Like map() but records into the *root* map, so the entry outlives the current push()/pop() scope.
+    /// Use this for a context-free mapping - e.g. a Var of a rebuilt binder - that must stay valid after a
+    /// scope opened by rewrite_mut_Seq's scalarization is popped again.
+    const Def* map_root(const Def* old_def, const Def* new_def) { return old2news_.front()[old_def] = new_def; }
+
     // clang-format off
     const Def* map(const Def* old_def ,       Defs new_defs);
     const Def* map(Defs       old_defs, const Def* new_def );

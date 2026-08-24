@@ -2,7 +2,6 @@
 
 #include <absl/container/fixed_array.h>
 
-#include <mim/check.h>
 #include <mim/lam.h>
 
 #include "mim/plug/mem/mem.h"
@@ -28,6 +27,10 @@ static size_t idx_of(Defs vars, const Def* p) {
 
 static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
+/// Does @p lam's signature refer to its own binder's Var?
+/// Such a signature cannot be narrowed: dropping a component would tear its siblings off the binder.
+static bool is_dependent(Lam* lam) { return lam->type()->isa_mut() || lam->type()->dom()->isa_mut(); }
+
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
@@ -43,6 +46,24 @@ void SEO::Analysis::reset() {
 
 const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
+const Def* SEO::Analysis::alias_repr(const Def* def) const {
+    // Two call sites may spell the same abstract value at different depths of one alias chain (a var vs the
+    // closure-env projection it was packed into); joining the raw spellings makes the result visit-order
+    // dependent - and alternate forever if the chain is cyclic.
+    auto chain = DefVec();
+    while ((def->isa<Var>() || def->isa<Extract>()) && !std::ranges::contains(chain, def)) {
+        auto l = lattice(def);
+        if (!l || l == def || l->isa<Proxy>()) break; // ⊤ or a sentinel is not an alias
+        chain.emplace_back(def);
+        def = l;
+    }
+
+    // A cyclic chain has no last element; its minimum-gid member serves as the (round-stable) representative.
+    if (auto i = std::ranges::find(chain, def); i != chain.end())
+        return *std::min_element(i, chain.end(), [](auto a, auto b) { return a->gid() < b->gid(); });
+    return def;
+}
+
 const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     DLOG("sccp_join({}, {})", var, def);
     if (is_top(var)) return var;
@@ -51,26 +72,9 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
 
-    // Canonicalize `def` through the accumulated lattice: a mid-round write is not yet replayed
-    // into the rewriter map, so different call sites may spell the same abstract value at
-    // different depths of an alias chain (e.g. a var vs the closure-env projection it was packed
-    // into). Joining the raw spellings makes the result depend on visit order - and alternate
-    // forever when the chain is cyclic (a value that only round-trips a loop via env and
-    // backedge). Chase to a fixed point; a cycle's minimum-gid member is its (per-round stable)
-    // representative.
-    {
-        auto chain = DefVec();
-        while ((def->isa<Var>() || def->isa<Extract>()) && !std::ranges::contains(chain, def)) {
-            auto l = lattice(def);
-            if (!l || l == def || l->isa<Proxy>()) break;
-            chain.emplace_back(def);
-            def = l;
-        }
-        if (auto i = std::ranges::find(chain, def); i != chain.end())
-            def = *std::min_element(i, chain.end(), [](auto a, auto b) { return a->gid() < b->gid(); });
-    }
-    // A chase that reaches `var` itself is a pure self-contribution (e.g. a loop backedge passing
-    // the var through unchanged): it joins nothing - other sites alone determine the value.
+    def = alias_repr(def);
+    // A chase that reaches `var` itself is a pure self-contribution (e.g. a loop backedge passing the var
+    // through unchanged): it joins nothing - the other call sites alone determine the value.
     if (def == var) return lattice(var) ? lattice(var) : var;
 
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
@@ -249,6 +253,13 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     if (auto mut = curr_mut()) lam2callers_[known].emplace(mut);
     rewrite(known); // enqueue so its body is drained this round; a no-op if already scheduled
 
+    if (is_dependent(known)) {
+        DLOG("dependent signature; keeping all vars: {}", known);
+        for (auto var : known->tvars())
+            pin(var);
+        return abstract_app(known, world().tuple(abstr_targs));
+    }
+
     auto v = version();
 
     DefVec all_vars(n, [&](size_t i) { return known->tvar(i); });
@@ -275,11 +286,16 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
         for (auto caller : lam2callers_[known])
             taint(caller);
 
-    // This app is only a lattice token ("call of `known` with these abstract args"), never emitted code.
-    // Build it unchecked: abstract args (⊤/⊥/proxies/joins) need not — and for dependent domains, where the
-    // same runtime extent may be *spelled* differently per calling context, cannot — pass the full
-    // dependent assignability check.
-    return world().raw_app(known->type()->as<Pi>()->codom(), known, all_abstr_args.span().subspan(0, n));
+    return abstract_app(known, world().tuple(all_abstr_args.span().subspan(0, n)));
+}
+
+const Def* SEO::Analysis::abstract_app(const Def* callee, const Def* arg) {
+    // Only an Axm keeps the checked, normalizing World::app: its normalizer is what folds a propagated
+    // expression. Everywhere else abstract operands (⊤/⊥/proxies) need not be assignable to the domain -
+    // and World::app would either throw or partially evaluate the callee.
+    if (std::get<0>(Axm::next(callee))) return world().app(callee, arg);
+    auto pi = callee->type()->isa<Pi>();
+    return world().raw_app(pi ? pi->reduce(arg) : arg->type(), callee, arg);
 }
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
@@ -357,18 +373,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         }
     }
 
-    {
-        // Like apply_known: the rewritten app is only a lattice token, never emitted code. Abstract operands
-        // of a dependent domain may spell the same runtime extent differently per calling context (e.g. a
-        // closure-env projection vs the original value), which cannot pass the dependent assignability
-        // check — build such a token unchecked. All passing paths keep the checked (normalizing) app.
-        auto new_arg    = rewrite(app->arg());
-        auto new_callee = rewrite(app->callee());
-        auto pi         = new_callee->type()->isa<Pi>();
-        if (!pi || !Checker::assignable(pi->dom(), new_arg))
-            return world().raw_app(rewrite(app->type()), new_callee, new_arg);
-    }
-    return Super::rewrite_imm_App(app);
+    // Rewrite the arg before the callee; see Rewriter::rewrite_imm_App.
+    auto new_arg    = rewrite(app->arg());
+    auto new_callee = rewrite(app->callee());
+    return abstract_app(new_callee, new_arg);
 }
 
 /*
@@ -524,9 +532,11 @@ const Vector<SEO::Phi>& SEO::phis_of(Lam* old_lam) {
     auto [i, ins] = lam2phis_.emplace(old_lam, Vector<Phi>());
     auto& phis    = i->second;
     if (ins) {
+        auto var = old_lam->has_var();
         for (auto ptr : analysis_.slots())
             if (auto sloxy = isa_optimized_sloxy(ptr)) {
                 auto phi = mk_phi(old_world(), old_lam, sloxy);
+                if (var && phi->type()->has_free_var(var)) continue; // not expressible in old_lam's signature
                 if (auto val = lattice(phi); val && !Proxy::isa<Proxy_SCCP_Top>(val))
                     phis.emplace_back(sloxy, phi, val);
             }
@@ -551,179 +561,105 @@ bool SEO::needs_seo(View<Phi> phis, Lam* old_lam) {
     return false;
 }
 
-const Def* SEO::rewrite_imm_Var(const Var* var) {
-    // The whole var of a lam whose signature build_lam() changes must never fall through to the
-    // generic Var rewrite: the new var has a different arity, so projections resolve wrongly.
-    // This is reachable while that lam's build_lam() is still in flight (its propagated-value
-    // rewrites may trigger builds of nested lams whose propagated values reference this var) -
-    // before the whole-var mapping exists. Resolve per projection through the lattice instead,
-    // exactly like build_lam()'s var_map: this is well-defined independent of build order.
-    if (auto old_lam = var->binder()->isa_mut<Lam>()) {
-        if (auto& phis = phis_of(old_lam); needs_seo(phis, old_lam)) {
-            build_lam(phis, old_lam); // ensures/re-establishes the var mappings where possible
-            if (auto mapped = lookup(var)) return mapped;
+size_t SEO::num_new_vars(View<Phi> phis, Lam* old_lam) {
+    size_t n = old_lam->num_tvars(), res = 0;
+    for (size_t i = 0; i != n; ++i)
+        if (keep(old_lam, old_lam->var(n, i), lattice(old_lam->var(n, i)))) ++res;
+    for (auto [sloxy, phi, val] : phis)
+        if (keep(old_lam, phi, val)) ++res;
+    return res;
+}
 
-            size_t n   = old_lam->num_tvars();
-            auto elems = DefVec(n);
-            for (size_t i = 0; i != n; ++i) {
-                auto old_var = old_lam->var(n, i);
-                auto abstr   = lattice(old_var);
-                if (keep(old_lam, old_var, abstr)) {
-                    // Kept projections are mapped before any propagated-value rewrite may recurse here.
-                    auto kept = lookup(old_var);
-                    assert(kept && "kept projection of an in-flight lam must already be mapped");
-                    elems[i] = kept;
-                } else if (Proxy::isa<Proxy_Sloxy>(abstr)) {
-                    elems[i] = new_world().bot(rewrite(old_lam->dom(n, i)));
-                } else {
-                    elems[i] = rewrite(abstr); // SCCP propagate
-                }
-            }
-            return new_world().tuple(elems);
-        }
+const Def* SEO::var_of(View<Phi> phis, Lam* old_lam) {
+    auto new_lam   = build_lam(phis, old_lam);
+    size_t n       = old_lam->num_tvars();
+    size_t num_new = num_new_vars(phis, old_lam), j = 0;
+    auto elems = DefVec(n);
+
+    for (size_t i = 0; i != n; ++i) {
+        auto old_var = old_lam->var(n, i);
+        auto abstr   = lattice(old_var);
+        if (keep(old_lam, old_var, abstr))
+            elems[i] = new_lam->var(num_new, j++);
+        else if (Proxy::isa<Proxy_Sloxy>(abstr))
+            elems[i] = new_world().bot(rewrite(old_lam->dom(n, i))); // a promoted slot carries no value
+        else
+            elems[i] = rewrite(abstr); // SCCP propagate
     }
+
+    return new_world().tuple(elems);
+}
+
+const Def* SEO::rewrite_imm_Var(const Var* var) {
+    // The generic Var rewrite fabricates var(new_binder) - the wrong arity for a signature build_lam()
+    // narrowed. Reachable before build_lam() maps the whole var, e.g. from rewriting a propagated value.
+    if (auto old_lam = var->binder()->isa_mut<Lam>())
+        if (auto& phis = phis_of(old_lam); needs_seo(phis, old_lam)) return var_of(phis, old_lam);
     return Super::rewrite_imm_Var(var);
 }
 
 Lam* SEO::build_lam(View<Phi> phis, Lam* old_lam) {
-    auto memo = mim::lookup(lam_old2new_, old_lam);
-    // The var mappings below are recorded in the rewrite scope current at build time, and each
-    // mut's body rewrite runs in its own (popped-on-exit) scope. A memoized new lam whose var
-    // mapping has been popped must re-establish it for the current scope - otherwise old_lam's
-    // vars fall through to the generic Var rewrite and resolve projections against the *new*
-    // (narrower) signature.
-    if (memo && lookup(old_lam->var())) return memo;
-    // Guard recursive re-entry (the propagated-value rewrites below may reach apps of old_lam):
-    // by that point the kept projections are mapped, which is all a recursive consumer resolves.
-    if (auto [_, ins] = in_flight_.emplace(old_lam); !ins) {
-        assert(memo);
-        DLOG("build_lam in-flight re-entry: {}", old_lam);
-        return memo;
-    }
+    assert(!is_dependent(old_lam) && "apply_known pins a dependent signature to \u22a4");
+    if (auto memo = mim::lookup(lam_old2new_, old_lam)) return memo;
 
-    if (memo) {
-        DLOG("re-establishing var maps for {}", old_lam);
-    } else {
-        DLOG("building a new lam for {}", old_lam);
-        invalidate();
-    }
-    size_t num_old = old_lam->num_tvars();
+    DLOG("building a new lam for {}", old_lam);
+    invalidate();
+    size_t num_old      = old_lam->num_tvars();
+    size_t num_new_vars = this->num_new_vars(phis, old_lam);
 
-    // build new dom
-    auto keeps      = absl::FixedArray<bool>(num_old);
-    size_t num_kept = 0, num_phis = 0;
+    auto keeps    = absl::FixedArray<bool>(num_old);
+    auto new_doms = DefVec();
     for (size_t i = 0; i != num_old; ++i) {
         auto old_var = old_lam->var(num_old, i);
-        keeps[i]     = keep(old_lam, old_var, lattice(old_var));
-        num_kept += keeps[i];
+        auto abstr   = lattice(old_var);
+        keeps[i]     = keep(old_lam, old_var, abstr);
+        if (keeps[i])
+            new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
+        else if (isa_bundle(abstr, old_lam))
+            profile_count("seo.gvn.vars_merged");
+        else if (!Proxy::isa<Proxy_Sloxy>(abstr))
+            profile_count("seo.sccp.vars_eliminated");
     }
     for (auto [sloxy, phi, val] : phis)
-        if (keep(old_lam, phi, val)) ++num_phis;
-    size_t num_new_vars = num_kept + num_phis;
+        if (keep(old_lam, phi, val)) new_doms.emplace_back(rewrite(phi->type()));
 
-    // build new lam
-    Lam* new_lam = memo;
-    if (memo) {
-        // keep the memoized lam - only the var mappings below need re-establishing
-    } else if (auto sigma = rewrite(old_lam->dom())->isa_mut<Sigma>();
-               sigma && sigma->has_var() && sigma->num_ops() == num_old) {
-        // A *dependent* domain (components referencing siblings through the Sigma's Var, e.g. a runtime
-        // extent `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) cannot be destructured into a dom list
-        // and reassembled — that tears the components off their binder. Splice the kept components into a
-        // fresh mut Sigma, remapping the Var per component (cf. AddMem::rewrite_imm_Pi). A component may
-        // only refer to *earlier* components; dropped slots must not be referenced by kept ones (their
-        // padding is never extracted).
-        auto& w       = new_world();
-        auto res      = w.mut_sigma(sigma->type(), num_new_vars);
-        auto kept_pos = absl::FixedArray<size_t>(num_old);
-        size_t j      = 0;
-        for (size_t i = 0; i != num_old; ++i) {
-            if (!keeps[i]) continue;
-            auto shift = w.tuple(DefVec(num_old, [&](size_t k) -> const Def* {
-                return (keeps[k] && k < i) ? res->var(num_new_vars, kept_pos[k]) : w.tuple();
-            }));
-            auto rw    = VarRewriter(sigma->has_var(), shift);
-            res->set(j, rw.rewrite(sigma->op(i)));
-            kept_pos[i] = j++;
-        }
-        for (auto [sloxy, phi, val] : phis)
-            if (keep(old_lam, phi, val)) res->set(j++, rewrite(phi->type()));
-        new_lam = w.mut_lam(w.pi(res, rewrite(old_lam->codom())))->set(old_lam->dbg_key());
-    } else {
-        auto new_doms = DefVec();
-        for (size_t i = 0; i != num_old; ++i)
-            if (keeps[i]) new_doms.emplace_back(rewrite(old_lam->dom(num_old, i)));
-        for (auto [sloxy, phi, val] : phis)
-            if (keep(old_lam, phi, val)) new_doms.emplace_back(rewrite(phi->type()));
-        new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
-    }
-
-    auto var_map          = absl::FixedArray<const Def*>(num_old);
+    auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     lam_old2new_[old_lam] = new_lam;
     lam_new2old_[new_lam] = old_lam;
 
-    // Map all *kept* vars/phis before rewriting any propagated value below:
-    // that rewrite may recursively re-enter old_lam (via apps of it in other muts) and
-    // must be able to resolve the kept projections - otherwise the rewriter falls back
-    // to a second, generic stub of old_lam whose cached body defs poison ours.
+    // Map all *kept* vars/phis before rewriting any propagated value below: that rewrite may recursively
+    // re-enter old_lam and must be able to resolve them - see var_of().
+    // map_root(), because a Var mapping is context-free and must outlive a scalarization scope.
     size_t j = 0;
-
-    for (size_t i = 0; i != num_old; ++i) {
+    for (size_t i = 0; i != num_old; ++i)
         if (keeps[i]) {
             auto old_var = old_lam->var(num_old, i);
             auto v       = new_lam->var(num_new_vars, j++)->set(old_var->dbg_key());
-            var_map[i]   = map(old_var, v);
-            if (auto abstr = lattice(old_var))
-                if (auto bundle = isa_bundle(abstr, old_lam)) map(bundle, v); // GVN bundle
+            map_root(old_var, v);
+            if (auto bundle = isa_bundle(lattice(old_var), old_lam)) map_root(bundle, v); // GVN bundle
         }
-    }
 
-    for (auto [sloxy, phi, val] : phis) {
+    for (auto [sloxy, phi, val] : phis)
         if (keep(old_lam, phi, val)) {
             auto v = new_lam->var(num_new_vars, j++);
             profile_count("phis.materialized");
             DLOG("mapping phi {} to {}", phi, v);
-            map(phi, v);
-            if (val != phi) map(val, v); // phi is part of a GVN bundle
-        }
-    }
-
-    // now resolve the dropped vars to their propagated values
-    for (size_t i = 0; i != num_old; ++i)
-        if (!keeps[i]) {
-            auto old_var = old_lam->var(num_old, i);
-            auto abstr   = lattice(old_var);
-            if (isa_bundle(abstr, old_lam))
-                profile_count("seo.gvn.vars_merged");
-            else if (!Proxy::isa<Proxy_Sloxy>(abstr))
-                profile_count("seo.sccp.vars_eliminated");
-            // A dropped slot ptr (a promoted stack slot) carries no value: map it to ⊥.
-            auto new_def = Proxy::isa<Proxy_Sloxy>(abstr) ? new_world().bot(rewrite(old_lam->dom(num_old, i)))
-                                                          : rewrite(abstr); // SCCP propagate
-            DLOG("propagate: old_lam {} - new_lam {}; var {} - with {}", old_lam, new_lam, i, new_def);
-            var_map[i] = new_def;
+            map_root(phi, v);
+            if (val != phi) map_root(val, v); // phi is part of a GVN bundle
         }
 
-    // Map the whole var *before* rewriting dropped-phi values below: such a value may itself project a
-    // *dropped* var of old_lam (e.g. its now-removed empty closure env), which is only reachable through
-    // var_map - not the individually-mapped kept projections. Without this the projection falls through to
-    // the freshly built (narrower) var and its index no longer fits.
-    map(old_lam->var(), var_map);
+    // Map the whole var *before* rewriting a dropped phi's value below: such a value may project a *dropped*
+    // var of old_lam (e.g. its now-removed empty closure env), which only the whole var resolves.
+    map_root(old_lam->var(), var_of(phis, old_lam));
 
     for (auto [sloxy, phi, val] : phis)
         if (!keep(old_lam, phi, val)) {
             DLOG("mapping phi {} to its propagated value {}", phi, val);
-            map(phi, rewrite(val));
+            map_root(phi, rewrite(val));
         }
 
-    if (!memo) {
-        auto _          = enter(old_lam);
-        auto new_filter = rewrite(old_lam->filter());
-        auto new_body   = rewrite(old_lam->body());
-        new_lam->set(new_filter, new_body);
-    }
-
-    in_flight_.erase(old_lam);
+    auto _ = enter(old_lam);
+    new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
     return new_lam;
 }
 
