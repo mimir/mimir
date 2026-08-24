@@ -1,5 +1,6 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 axm foo: Nat → x;
 
-// CHECK: error: expected `<annex name>`
-// CHECK: error: identifier `x` not found
+// Two accumulated frontend errors, each with its own location.
+// CHECK: {{.*}}annex.mim:2:5-2:7: error: expected `<annex name>`
+// CHECK: {{.*}}annex.mim:2:16: error: identifier `x` not found

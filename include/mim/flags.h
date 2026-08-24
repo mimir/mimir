@@ -21,6 +21,7 @@ struct Flags {
     uint32_t max_fp_iters        = 1024; // max number of fixed-point iterations before a Phase errors out
 
     bool ascii               = false;
+    bool no_snippet          = false; // don't render the offending source line and caret under a diagnostic
     bool dump_recursive      = false;
     bool bootstrap           = false;
     bool force_load          = false;

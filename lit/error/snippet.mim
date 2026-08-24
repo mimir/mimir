@@ -1,0 +1,17 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+// RUN: (! %mim -p opt --no-snippet %s 2>&1) | %FileCheck --check-prefix=PLAIN %s
+
+// The caret must line up on a line with multi-byte characters: Pos::col counts code points, not bytes.
+plugin core;
+
+let id = λ [T: *] (x: T): T = x;
+let n = «3; id» 3;
+
+// CHECK:      {{.*}}snippet.mim:8:9-8:17: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 8 | let n = «3; id» 3;
+// CHECK-NEXT:   |         ^^^^^^^^^
+// CHECK-NEXT:   = note: expected `*`, got `Nat`
+
+// PLAIN:      {{.*}}snippet.mim:8:9-8:17: error: argument is not assignable to callee's domain
+// PLAIN-NEXT: = note: expected `*`, got `Nat`
+// PLAIN-NOT:  ^^^
