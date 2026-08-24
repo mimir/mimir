@@ -195,24 +195,19 @@ public:
         return nullptr;
     }
 
-    /// The representative of @p def: follows `def ↦ lattice(def)` to a fixed point.
+    /// The representative of @p def: follows `def ↦ lattice(def)` to the end of its chain.
     ///
     /// The lattice records *expressions*, so one and the same abstract value can be spelled at several depths
-    /// of a chain (a var, and the value it was propagated to). repr() collapses those spellings to one def, so
-    /// that comparing two of them answers whether they mean the same value - not whether they were derived by
-    /// the same route. A cyclic chain has no end; its minimum-gid member serves as the representative.
+    /// of a chain (a var, and the value it was propagated to).
+    /// repr() collapses those spellings to one def, so that comparing two of them answers whether they mean the same
+    /// value - not whether they were derived by the same route. This is union-find's *find* without the path
+    /// compression: the chain is what the lattice means, and its links keep changing between rounds - see
+    /// Analysis::lattice_force.
     const Def* repr(const Def* def) const {
-        auto chain = DefVec();
-        while (true) {
-            auto i = lattice_.find(def);
-            if (i == lattice_.end() || i->second == def) break; // ⊥ or ⊤
-            if (std::ranges::contains(chain, def))
-                return *std::min_element(chain.begin(), chain.end(),
-                                         [](auto a, auto b) { return a->gid() < b->gid(); });
-            chain.emplace_back(def);
-            def = i->second;
-        }
-        return def;
+        auto a = follow(def);
+        if (!a) return def; // ⊥ or ⊤
+        auto b = follow(a);
+        return b ? repr_(a, b) : a;
     }
 
     /// @returns whether @p def is pinned to ⊤ (`def ↦ def`).
@@ -297,6 +292,16 @@ protected:
     ///@}
 
 private:
+    /// The next def on @p def's chain, or `nullptr` if @p def ends it (⊥ or ⊤).
+    const Def* follow(const Def* def) const {
+        auto i = lattice_.find(def);
+        return i == lattice_.end() || i->second == def ? nullptr : i->second;
+    }
+
+    /// The tail of repr() past its first two links: chases @p slow and @p fast until the chain ends or they
+    /// meet in a cycle, whose minimum-gid member is its (entry-independent) representative.
+    const Def* repr_(const Def* slow, const Def* fast) const;
+
     /// Observable lattice information changed: records curr_mut() as *dirty* - the seed set of the next sparse
     /// round - and invalidate()s. Outside of any mutable (annex walk, finalize()) the change cannot be
     /// attributed to a mutable; then the next round falls back to a full one.

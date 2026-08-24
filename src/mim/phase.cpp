@@ -104,6 +104,22 @@ void Analysis::start() {
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
+const Def* Analysis::repr_(const Def* slow, const Def* fast) const {
+    while (slow != fast) {
+        auto next = follow(fast);
+        if (!next) return fast;
+        fast = follow(next);
+        if (!fast) return next;
+        slow = follow(slow);
+        assert(slow && "slow lags fast, so fast already traversed slow's successor");
+    }
+
+    auto res = slow;
+    for (auto def = follow(slow); def != slow; def = follow(def))
+        if (def->gid() < res->gid()) res = def;
+    return res;
+}
+
 const Def* Analysis::rewrite(const Def* def) {
     if (def->isa_mut()) return Rewriter::rewrite(def);
     return repr(Rewriter::rewrite(def));
