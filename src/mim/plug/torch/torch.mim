@@ -4243,6 +4243,40 @@ lam %torch.normalization_impl.log_softmax [F: %torch.Floating]
                                (input: «s; F#A#R#T»): «s; F#A#R#T» =
     torch_softmax_common F @(r, s) (dimension, half_to_float, tt) input;
 
+/// Mean-reduced cross entropy for the common `(N, C)` logits and `(N)` I64
+/// class-target schema.
+/// Python:
+/// ```python
+/// log_probs = torch.log_softmax(input, dim=1)
+/// losses = -torch.gather(log_probs, 1, target[:, None]).reshape(N)
+/// return losses.mean()
+/// ```
+/// The checked gather owns target bounds diagnostics. Stable log-softmax and
+/// the reduction remain composable Torch operators and are recursively
+/// decomposed by `%torch.lower_torch`.
+/// PyTorch API: https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html
+/// Types: `(N, C)` floating logits and `(N)` I64 class indices to a scalar.
+axm %torch.loss(cross_entropy_mean_2d): [F: %torch.Floating]
+    → {n c: Nat}
+    → [input: «n, c; F#A#R#T», target: «n; I64»]
+    → F#A#R#T;
+
+lam %torch.loss_impl.cross_entropy_mean_2d [F: %torch.Floating]
+    {n c: Nat}
+    (input: «n, c; F#A#R#T», target: «n; I64»): F#A#R#T =
+    let log_probs = %torch.normalization.log_softmax F
+        @(2, (n, c)) (1I64, ff) input;
+    let target_2d = %tensor.reshape_impl @(I64, 1, 2)
+        (n,) (n, 1) target;
+    let selected_2d = %torch.indexing.gather
+        @(F#A#R#T, 2, (n, c), (n, 1))
+        1I64 (log_probs, target_2d);
+    let selected = %tensor.reshape_impl @(F#A#R#T, 2, 1)
+        (n, 1) (n,) selected_2d;
+    let losses = %tensor.unary_impl @(F#A#R#T, F#A#R#T)
+        (torch_neg_scalar F#A) @(1, (n,)) selected;
+    %torch.reduction.mean_all F @(1, (n,)) losses;
+
 /// Python: `col >= row + diagonal` for upper, or `col <= row + diagonal` for lower.
 lam triangular_keep {r: Nat} (upper: Bool, diagonal: I64)
                     (indices: «r; I64»): Bool =

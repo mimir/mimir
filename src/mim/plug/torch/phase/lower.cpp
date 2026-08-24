@@ -292,6 +292,7 @@ Lower::Lower(World& world, flags_t annex, bool selective)
     MIM_BIND_TORCH_SUB(reduction, norm2_all, norm2_all_op);
     MIM_BIND_TORCH_SUB(reduction, sum_all, sum_all_op);
     MIM_BIND_TORCH_SUB(reduction, mean_all, mean_all_op);
+    MIM_BIND_TORCH_SUB(loss, cross_entropy_mean_2d, cross_entropy_mean_2d_op);
     MIM_BIND_TORCH_SUB(loss, smooth_l1_mean, smooth_l1_mean_op);
     MIM_BIND_TORCH_SUB(loss, kl_div_reduced, kl_div_reduced_op);
     MIM_BIND_TORCH_SUB(loss, triplet_margin_reduced, triplet_margin_reduced_op);
