@@ -1,0 +1,20 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A diagnostic prints plain Def::sym%s - but a message citing two distinct Def%s that share a sym is
+// rendered again with gids, since the gid is the only thing telling them apart.
+axm %foo.T: [Nat → Nat] → *;
+axm %foo.t: [f: Nat → Nat] → %foo.T f;
+
+lam outer(a: Nat): [] =
+    lam k(x: Nat): Nat = x;
+    lam i(_: %foo.T k): [] = ();
+    lam inner(b: Nat): [] =
+        lam k(y: Nat): Nat = b;
+        let v = %foo.t k;
+        i v;
+    inner a;
+
+// Both `k`s clash here, so both carry a gid ...
+// CHECK: = note: expected `%foo.T {{k_[0-9]+}}`, got `%foo.T {{k_[0-9]+}}`
+// ... while a message citing only one of them stays plain.
+// CHECK-NEXT: = note: argument: `%foo.t k`
