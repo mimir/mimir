@@ -342,7 +342,7 @@ const Def* RetExpr::emit_(Emitter& e) const {
         return app;
     }
 
-    error(c->loc(), "callee of a ret expression must type as a returning continuation but got '{}' of type '{}'", c,
+    error(c->loc(), "callee of a `ret` expression must be a returning continuation, but `{}` has type `{}`", c,
           c->type());
 }
 
@@ -403,7 +403,7 @@ const Def* ExtractExpr::emit_(Emitter& e) const {
         }
 
         if (decl()) return e.world().extract(tup, decl()->def());
-        error(dbg->loc(), "cannot resolve index '{}' for extraction", *dbg);
+        error(dbg->loc(), "cannot resolve field `{}` for extraction", *dbg);
     }
 
     auto expr = std::get<Ptr<Expr>>(index()).get();
@@ -440,7 +440,7 @@ void AxmDecl::emit(Emitter& e) const {
 
     if (trip_) {
         if (trip_.lit_u() > id.curry)
-            error(trip_.loc(), "trip counter cannot be greater than curry counter '{}'", (int)id.curry);
+            error(trip_.loc(), "trip counter cannot be greater than curry counter {}", (int)id.curry);
         else
             id.trip = trip_.lit_u();
     }
@@ -561,7 +561,7 @@ void LamDecl::emit_body(Emitter& e) const {
         auto lam = doms().front()->lam_;
         if (!lam->is_closed())
             error(loc(),
-                  "external function '{}' is not closed: its inferred type escapes into the scope of '{}'. This "
+                  "external function `{}` is not closed: its inferred type escapes into the scope of `{}`. This "
                   "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
                   "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
                   dbg().sym(), (*lam->free_vars().begin())->binder()->sym());

@@ -1,53 +1,77 @@
-# MimIR Copilot Instructions
+# MimIR AI Instructions
 
-## Build, test, and lint commands
+## Build & test
 
-- Configure a normal local dev build with tests and examples enabled: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON`.
-- Build everything from that tree with `cmake --build build -j$(nproc)`.
-- Build a specific target when you only need part of the tree: `cmake --build build --target mim`, `cmake --build build --target libmim`, or `cmake --build build --target mim_all_plugins`.
-- Run all in-tree tests with `cmake --build build --target test-all`.
-- Run the staged `lit` regression suite with `cmake --build build --target lit`.
-- Run a single `lit` test with `cd lit && ./lit ../build/lit -a --filter type_infer.mim`.
-- If the build directory is literally named `build`, `cd lit && ../scripts/probe.sh type_infer.mim` is the shortest way to repro one `lit` test.
-- Run all GoogleTests with `ctest --test-dir build --output-on-failure`.
-- Run a single discovered GoogleTest with `ctest --test-dir build -R dependent_extract --output-on-failure`.
-- Run one gtest binary directly with a GoogleTest filter, for example `build/bin/mim-gtest --gtest_filter='World.dependent_extract'` or `build/bin/mim-regex-gtest --gtest_filter='Automaton.DFA'`.
-- Formatting/linting is driven by pre-commit hooks in `.pre-commit-config.yaml`; use `pre-commit run --all-files` for the full set or `pre-commit run clang-format --all-files` when you only need formatting.
+Assume a `build/` tree configured with
+`cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON`.
 
-## High-level architecture
+| Task            | Command                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| Build all       | `cmake --build build -j$(nproc)`                                                            |
+| Build part      | same with `--target mim` / `libmim` / `mim_all_plugins`                                     |
+| All tests       | `cmake --build build --target test-all`                                                     |
+| `lit` suite     | `cmake --build build --target lit`                                                          |
+| One `lit` test  | `cd lit && ../scripts/probe.sh type_infer.mim` or `./lit ../build/lit -a --filter type_infer.mim` |
+| All gtests      | `ctest --test-dir build --output-on-failure`                                                |
+| One gtest       | `build/bin/mim-gtest --gtest_filter='World.dependent_extract'`                               |
+| Format/lint     | `pre-commit run --all-files` (or `pre-commit run clang-format --all-files`)                  |
 
-- `libmim` in `src/mim/` is the core library.
-  It contains the IR (`Def` and friends), `World`, the AST frontend (`ast/*`), rewriting, checks, phases, dumping, and utility code.
+`lit` runs against a *staged* copy of `lit/`, so build the `lit` target (or `mim_lit_tests`) after editing a test — otherwise you test a stale file.
+
+## Architecture
+
+- `libmim` (`src/mim/`) is the core library: the IR (`Def`, `World`), the AST frontend (`ast/*`), rewriting, checks, phases, dumping, and utilities.
 - `Driver` is the central runtime object.
-  It owns `Flags`, `Log`, the current `World`, plugin search paths, loaded plugin handles, and the registries for normalizers, stages, and backends.
-- The `mim` CLI in `src/mim/cli/main.cpp` is thin glue around `Driver`.
-  It parses Mim source into an AST, compiles it into the `World`, runs `optimize(World&)`, and then emits whatever the `--output-*` flags request: AST, DOT, Markdown, Mim, the nesting tree, S-expressions, or profiling data.
-  Plugins are loaded via `plugin` directives in the source or explicit `-p`/`--plugin` flags rather than being preloaded, and `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation.
-- Plugins are split across two artifacts with the same name: a `<plugin>.mim` file and a `libmim_<plugin>` module.
-  The `.mim` file declares annexes/axioms and is also used to autogenerate plugin headers and docs, while the shared module exports `mim_get_plugin` to register normalizers, stages, and backends.
-- In-tree plugins live under `src/mim/plug/*`.
-  Third-party plugins dropped into `extra/*/CMakeLists.txt` are auto-discovered at configure time, and any `extra/<plugin>/lit/*.mim` tests are automatically staged into the main `lit` target.
+  It owns `Flags`, `Log`, the current `World`, plugin search paths and handles, and the normalizer/stage/backend registries.
+- The `mim` CLI (`src/mim/cli/main.cpp`) is thin glue around `Driver`: parse Mim → compile into the `World` → `optimize(World&)` → emit whatever `--output-*` asks for.
+  Plugins are loaded on demand via `plugin` directives or `-p`/`--plugin`; `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation.
+  Plugin lookup order: current directory, `--plugin-path`, `MIM_PLUGIN_PATH`, the `mim` directory next to `libmim`, `<libdir>/mim`.
+- A plugin has two halves with the same name that must stay in sync: `<plugin>.mim` declares the public annex/axiom surface (and drives header and doc generation), while `libmim_<plugin>` exports `mim_get_plugin` to register normalizers, stages, and backends.
+  In-tree plugins live in `src/mim/plug/*`; plugins under `extra/*/CMakeLists.txt` are auto-discovered at configure time and their `extra/<plugin>/lit/*.mim` tests are staged into `lit`.
+  Plugin names may only use letters, digits, and underscores, and are limited to 8 characters.
 - Optimization is phase-driven.
-  `optimize(World&)` looks for compilation entry points (`_compile`, `_default_compile`, or any nullary external returning `%compile.Phase`), resolves the stage from the loaded plugin registry, and runs a `Phase`, `RWPhase`, or `PhaseMan` pipeline over the whole world; if no entry point exists, optimization is skipped.
-- `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end.
-  `Analysis` and `PhaseMan` supply the fixed-point infrastructure used by optimization pipelines.
-- `src/automaton/` is a separate static library used by the regex subsystem and its tests.
-- Tests are split into two layers.
-  `lit/` covers end-to-end Mim CLI behavior using `RUN:` lines and `FileCheck`, while `gtest/*.cpp` exercises library APIs directly and produces the `mim-gtest` and `mim-regex-gtest` executables.
+  `optimize(World&)` looks for an entry point (`_compile`, `_default_compile`, or any nullary external returning `%compile.Phase`), resolves stages from the plugin registry, and runs a `Phase`/`RWPhase`/`PhaseMan` pipeline; without an entry point optimization is skipped.
+  `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end; `Analysis` and `PhaseMan` provide the fixed-point machinery.
+  Use these instead of ad hoc whole-program traversals — the old `Pass`/`PassMan` machinery is gone.
+- `src/automaton/` is a separate static library backing the regex subsystem.
+- Tests come in two layers: `lit/` drives the CLI end-to-end with `RUN:` lines plus `FileCheck`, and `gtest/*.cpp` exercises library APIs (`mim-gtest`, `mim-regex-gtest`).
 
-## Key conventions
+## Core IR invariants
 
-- Preserve the core IR split between immutable and mutable `Def`s.
-  Non-binder expressions are hash-consed and normalized on construction, while binders and other mutables are created first and then filled in to support recursion and variables.
-- Terms and types live in the same `World` graph.
-  When changing construction, rewriting, or type logic, assume type-level computations participate in the same normalization and sharing machinery as ordinary terms.
-- Treat world roots carefully.
-  Annexes and external mutables are the roots that analyses and `RWPhase`-based rewrites traverse, and `Cleanup` removes anything not reachable from those roots.
-- Prefer the phase infrastructure over adding new ad hoc whole-program traversals.
-  `Phase`/`RWPhase` is the only pipeline model; the old `Pass`/`PassMan` machinery has been removed.
-- Mim source in docs and tests should use the primary UTF-8 surface syntax and parenthesized domain groups, preferring group patterns, for example `lam foo (x: X, a b c: T) (y: Y): Z = ...`.
-- Plugin names are constrained by the runtime encoding and CMake helpers.
-  They may use only letters, digits, and underscores, and must be at most 8 characters long.
-- When adding or changing plugins, keep both halves in sync.
-  The `.mim` file defines the public annex surface, and the C++ module provides the runtime registrations that make those annexes executable.
-- If plugin loading behavior matters, remember that `Driver` searches the current directory first, then explicit `--plugin-path` entries, then `MIM_PLUGIN_PATH`, then the `mim` directory next to `libmim`, and finally the install-relative `<libdir>/mim` directory.
+- Keep the immutable/mutable `Def` split: non-binders are hash-consed and normalized on construction, whereas mutables are created first and filled in later to support recursion and variables.
+- Terms and types live in the same `World` graph, so type-level computation goes through the same normalization and sharing as ordinary terms.
+- Annexes and external mutables are the world roots that analyses and `RWPhase` traverse; `Cleanup` removes whatever is unreachable from them.
+
+## Comments
+
+Comments are scarce. The default is **no comment**.
+
+Comment only when the code itself cannot reasonably express the information.
+
+- Comment **why**, not what the code does.
+- Prefer a better name, structure, or API over a comment.
+- Keep comments to **one short sentence**, normally one line.
+- A comment should convey one fact only: an invariant, non-obvious constraint, algorithmic reason, or important external reference.
+- Do not explain the implementation, summarize a function, or provide a narrative of its control flow.
+- Match the comment density and brevity of the surrounding code. **Never increase comment density.**
+- Do not add documentation-style prose, introductions, conclusions, or motivational/explanatory language.
+- Do not use rhetorical contrasts such as `"X" -> "Y"`, `"instead of X"`, or `"from X to Y"` to explain an optimization.
+- Do not add comments describing the change itself ("now handles X", "renamed from Y"); that belongs in the commit message.
+- Do not add banner or section-header comments.
+- Do not add a comment if deleting it would leave the code equally correct and understandable.
+- A comment that restates the code is worse than no comment:
+  ```cpp
+  vec.push_back(x); // BAD: "put x into the vector"
+  ```
+
+**Hard limit:** Do not write multi-line comments unless the user explicitly asks for documentation or the comment is required to document a non-obvious invariant that cannot be stated briefly.
+
+Before adding a comment, ask:
+1. Is this information necessary?
+2. Is it already apparent from the code or names?
+3. Can it be expressed in one short sentence?
+If the answer to 1 or 3 is no, do not add the comment.
+
+## Style
+
+Language-specific rules live in `.github/instructions/*.instructions.md` (C++, CMake, Mim).

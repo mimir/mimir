@@ -1,5 +1,5 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 axm foo: Nat → x;
 
-// CHECK: error: expected '<annex name>'
-// CHECK: error: 'x' not found
+// CHECK: error: expected `<annex name>`
+// CHECK: error: identifier `x` not found

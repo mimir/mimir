@@ -8,7 +8,7 @@
 
 namespace mim::plug::mem::phase {
 
-void AddMem::start() {
+bool AddMem::analyze() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
     // (combiners, affine index mappings, initial accumulators of `%btensor.map_reduce_post`, …).
     auto queue  = unique_queue<DefSet>();
@@ -36,7 +36,7 @@ void AddMem::start() {
             pinned.push(d);
     }
 
-    RWPhase::start();
+    return false; // one prepass suffices
 }
 
 const Def* AddMem::rewrite(const Def* old_def) {

@@ -5,7 +5,7 @@ namespace mim {
 bool RetWrap::analyze() {
     for (auto def : old_world().roots())
         visit(def);
-    return false; // no fixed-point neccessary
+    return false; // no fixed-point necessary
 }
 
 void RetWrap::analyze(const Def* def) {

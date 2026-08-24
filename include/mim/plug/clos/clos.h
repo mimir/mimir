@@ -134,7 +134,9 @@ inline const Def* clos_remove_env(size_t ep, const Def* tup_or_sig) {
 }
 
 inline const Def* clos_sub_env(size_t ep, const Def* tup_or_sig, const Def* new_env) {
-    return tup_or_sig->refine(ep, new_env);
+    auto& w      = tup_or_sig->world();
+    auto new_ops = DefVec(tup_or_sig->num_projs(), [&](auto i) { return i == ep ? new_env : tup_or_sig->proj(i); });
+    return (tup_or_sig->isa<Sigma>()) ? w.sigma(new_ops) : w.tuple(new_ops);
 }
 ///@}
 

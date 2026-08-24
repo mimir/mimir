@@ -116,7 +116,7 @@ Ptr<Module> Parser::parse_module() {
     bool where = ahead().isa(Tag::K_where);
     expect(Tag::EoF, "module");
     auto mod = ptr<Module>(track, std::move(imports), std::move(decls));
-    if (where) ast().note(mod->loc().anew_finis(), "did you accidentally end your declaration expression with a ';'?");
+    if (where) ast().note(mod->loc().anew_finis(), "did you accidentally end your declaration expression with a `;`?");
     return mod;
 }
 
@@ -148,7 +148,7 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
 Ptr<Module> Parser::import(std::istream& is, Loc loc, const fs::path* path, std::ostream* md) {
     driver().VLOG("📄 reading: {}", path ? path->string() : "<unknown file>"s);
     if (!is) {
-        ast().error(loc, "cannot read file {}", path->string());
+        ast().error(loc, "cannot read file `{}`", path->string());
         return {};
     }
 
@@ -203,7 +203,7 @@ Dbg Parser::parse_name(std::string_view ctxt) {
 Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {
     if (accept(Tag::T_colon)) return parse_expr(ctxt);
     if (ctxt.empty()) return nullptr;
-    syntax_err("':'", ctxt);
+    syntax_err("`:`", ctxt);
     return ptr<ErrorExpr>(curr_);
 }
 
@@ -272,8 +272,8 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                         ast().warn(ahead().loc(), "you are passing a declaration expression as argument");
                         ast().note(lhs->loc(), "to this expression");
                         ast().note(ahead().loc(),
-                                   "if this was your intention, consider to parenthesize the declaration expression");
-                        ast().note(lhs->loc().anew_finis(), "otherwise, you are probably missing a ';'");
+                                   "if this was your intention, consider parenthesizing the declaration expression");
+                        ast().note(lhs->loc().anew_finis(), "otherwise, you are probably missing a `;`");
                     default: break;
                 }
                 auto rhs = parse_expr("argument to an application", Prec::App);
@@ -290,7 +290,7 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                 expect(Tag::K_end, "end of a where declaration block");
                 if (where)
                     ast().note(lhs->loc().anew_finis(),
-                               "did you accidentally end your declaration expression with a ';'?");
+                               "did you accidentally end your declaration expression with a `;`?");
                 return lhs;
             }
             default: return lhs;

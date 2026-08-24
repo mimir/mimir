@@ -156,7 +156,7 @@ let %gpu.alloc_copy.block = lm {T: *}
     let (m0, m1) = %gpu.copy_to_device.block (m0, m1, ptr, d_ptr);
     (m0, m1, d_ptr);
 ///
-/// ### Asynchronous Memory Operations
+/// ### Async Memory Operations
 ///
 /// #### %%gpu.alloc(asyn)
 ///

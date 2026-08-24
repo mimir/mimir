@@ -89,7 +89,7 @@ std::string exec(std::string cmd) {
             result += buffer.data();
         return result;
     } else
-        fe::throwf("popen() failed!");
+        fe::throwf("`popen()` failed");
 }
 
 std::string find_cmd(std::string cmd) {
@@ -100,7 +100,8 @@ std::string find_cmd(std::string cmd) {
 
 std::string require_cmd(std::string_view name) {
     auto cmd = find_cmd(std::string(name));
-    if (!fs::exists(cmd)) fe::throwf<CmdNotFound>("Could not find command: {} {}", name, cmd);
+    if (!fs::exists(cmd))
+        fe::throwf<CmdNotFound>("could not find command `{}`; resolved path `{}` does not exist", name, cmd);
     return cmd;
 }
 
@@ -111,7 +112,7 @@ int system(std::string cmd) {
 }
 
 void require_run(const std::string& cmd) {
-    if (auto rc = sys::system(cmd); rc != 0) fe::throwf("Command exited with error code {}", rc);
+    if (auto rc = sys::system(cmd); rc != 0) fe::throwf("command `{}` exited with error code {}", cmd, rc);
 }
 
 int run(std::string cmd, std::string args /* = {}*/) {

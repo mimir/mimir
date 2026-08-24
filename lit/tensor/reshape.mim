@@ -41,6 +41,3 @@ fun extern reshape213 (input: «2, 3; I32»): «2, 1, 3; I32» =
 // CHECK-DAG: fun extern reshape2323
 fun extern reshape2323 (input: «2, 6, 3; I32»): «2, 3, 2, 3; I32» =
     return (%tensor.reshape (2, 6, 3) (2, 3, 2, 3) input);
-
-
-

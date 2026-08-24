@@ -113,7 +113,7 @@ void HostEmitter::find_kernels(const Def* def) {
 
     if (auto launch = Axm::isa<gpu::launch>(def)) {
         auto kernel     = launch->decurry()->decurry()->arg();
-        auto kernel_lam = kernel->expect_mut<Lam>("the kernel passed to %gpu.launch to be a mutable lambda");
+        auto kernel_lam = kernel->expect_mut<Lam>("the kernel passed to `%gpu.launch` to be a mutable lambda");
         if (kernel_ids_.contains(kernel_lam)) return;
         auto kid                = kernel_ids_.size();
         kernel_ids_[kernel_lam] = kid;
@@ -193,7 +193,8 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
         if (device_fatbin_file_.has_value()) {
             std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
-            if (!fatbin_file) fe::throwf("Could not open {} as binary file", device_fatbin_file_.value());
+            if (!fatbin_file)
+                fe::throwf(MIM_LL_NVPTX_BE "could not open `{}` as binary file", device_fatbin_file_.value());
 
             auto start = std::istreambuf_iterator<char>(fatbin_file);
             auto end   = std::istreambuf_iterator<char>();
@@ -281,7 +282,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (alloc.id()) {
             case gpu::alloc::block: is_async = false; break;
             case gpu::alloc::asyn: is_async = true; break;
-            default: fe::throwf("ll_nvptx backend: unhandled %gpu.alloc id in '{}'", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.alloc` id in `{}`", def);
         }
 
         if (is_async)
@@ -295,7 +296,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto type_size  = w.call(core::trait::size, alloc_t);
         auto alloc_size = emit(type_size);
 
-        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a %mem.Ptr"));
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a `%mem.Ptr`"));
 
         auto alloc_ptr = bb.assign(name + "ptr", "alloca {}", ptr_t);
         std::string alloc_res;
@@ -313,7 +314,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (free.id()) {
             case gpu::free::block: is_async = false; break;
             case gpu::free::asyn: is_async = true; break;
-            default: fe::throwf("ll_nvptx backend: unhandled %gpu.free id in '{}'", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.free` id in `{}`", def);
         }
 
         if (is_async)
@@ -338,7 +339,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (copy_to_device.id()) {
             case gpu::copy_to_device::block: is_async = false; break;
             case gpu::copy_to_device::asyn: is_async = true; break;
-            default: fe::throwf("ll_nvptx backend: unhandled %gpu.copy_to_device id in '{}'", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.copy_to_device` id in `{}`", def);
         }
 
         if (is_async)
@@ -372,7 +373,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (copy_to_host.id()) {
             case gpu::copy_to_host::block: is_async = false; break;
             case gpu::copy_to_host::asyn: is_async = true; break;
-            default: fe::throwf("ll_nvptx backend: unhandled %gpu.copy_to_host id in '{}'", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.copy_to_host` id in `{}`", def);
         }
         if (is_async)
             declare("i32 @{}(ptr, i64, i64, ptr)", Cu_Memcpy_Dtoh_Async);
@@ -409,13 +410,14 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto [mem, ret_lam_def]                                         = func_args->projs<2>();
 
         Lam* lam = kernel_def->isa_mut<Lam>();
-        if (!lam) fe::throwf("kernel is not a lamda {}", kernel_def);
-        if (!kernel_ids_.contains(lam)) fe::throwf("unknown kernel {}", lam);
+        if (!lam) fe::throwf(MIM_LL_NVPTX_BE "kernel `{}` is not a lambda", kernel_def);
+        if (!kernel_ids_.contains(lam)) fe::throwf(MIM_LL_NVPTX_BE "unknown kernel `{}`", lam);
         auto kid = kernel_ids_[lam];
 
         auto shared_mem_bytes = 0;
         if (auto smem_count = Lit::expect(m, "a shared-memory allocation count")) {
-            if (smem_count != 1) fe::throwf("You can only have one dynamic allocation of shared memory per kernel");
+            if (smem_count != 1)
+                fe::throwf(MIM_LL_NVPTX_BE "only one dynamic shared-memory allocation is allowed per kernel");
             shared_mem_bytes = Lit::expect(world().call(core::trait::size, MT), "a shared-memory size");
         }
 
@@ -479,7 +481,8 @@ std::string DeviceEmitter::prepare() {
         auto type        = def->type();
         auto type_name   = convert(type);
         auto opt_idx_lit = Idx::isa_lit(type);
-        if (!opt_idx_lit) fe::throwf("Type of '{}' must have known index type but has {}", def, type);
+        if (!opt_idx_lit)
+            fe::throwf(MIM_LL_NVPTX_BE "type of `{}` must be a statically-sized `Idx` but is `{}`", def, type);
         auto idx_lit = opt_idx_lit.value();
         locals_[def] = name;
         declare("i32 @llvm.nvvm.read.ptx.sreg.{}()", sreg);
@@ -491,7 +494,7 @@ std::string DeviceEmitter::prepare() {
             auto i32 = bb.assign(name + "i32", "call i32 @llvm.nvvm.read.ptx.sreg.{}()", sreg);
             bb.assign(name, "trunc i32 {} to {}", i32, type_name);
         } else {
-            fe::throwf("Warp ID too large, must fit into I32");
+            fe::throwf(MIM_LL_NVPTX_BE "warp ID too large; must fit into `I32`");
         }
     };
     register_sreg_idx(group_id, "ctaid.x");
@@ -500,12 +503,12 @@ std::string DeviceEmitter::prepare() {
     auto shared_as = Lit::expect(world().annex<gpu::addr_space_shared>(), "the shared address space");
     if (auto sigma = smem->type()->isa<Sigma>()) {
         if (sigma->num_ops() != 0)
-            fe::throwf("ll_nvptx backend: shared-memory variable must be an empty sigma, but got '{}'", smem->type());
+            fe::throwf(MIM_LL_NVPTX_BE "shared-memory variable must be an empty sigma, but got `{}`", smem->type());
     } else {
         auto ptr    = Axm::expect<mem::Ptr>(smem->type(), "a shared-memory pointer type");
         auto [T, a] = ptr->args<2>();
         if (Lit::expect(a, "an address space") != shared_as)
-            fe::throwf("ll_nvptx backend: shared-memory variable must live in the shared address space, but got '{}'",
+            fe::throwf(MIM_LL_NVPTX_BE "shared-memory variable must live in the shared address space, but got `{}`",
                        smem->type());
         auto name     = "@" + smem->unique_name();
         locals_[smem] = name;

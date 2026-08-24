@@ -16,8 +16,7 @@ namespace mim::plug::mem::phase {
 enum {
     Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
-    Proxy_Sloxy,    // proxy(lam, ptr)                   <- slot invoked at lam where ptr is the slot continuation's ptr
-                    // var
+    Proxy_Sloxy,    // proxy(lam, ptr)                   <- slot invoked at lam where ptr is the slot cons's ptr var
     Proxy_Phi,      // proxy(lam, sloxy)                 <- phi we need at lam for sloxy
 };
 

@@ -139,7 +139,7 @@ const Def* World::uinc(const Def* op, level_t offset) {
     op = op->zonk();
 
     if (!op->type()->isa<Univ>())
-        error(op->loc(), "operand '{}' of a universe increment must be of type `Univ` but is of type `{}`", op,
+        error(op->loc(), "operand `{}` of a universe increment must be of type `Univ` but is of type `{}`", op,
               op->type());
 
     if (auto l = Lit::isa(op)) return lit_univ(*l + 1);
@@ -169,7 +169,7 @@ const Def* World::umax(Defs ops_) {
             if (auto type = op->isa<Type>())
                 op = type->level();
             else
-                error(op->loc(), "operand '{}' must be a Type of some level", op); // TODO better error message
+                error(op->loc(), "operand `{}` must be a `Type` of some universe level", op);
         }
 
         flatten_umax(ops, op);
@@ -180,7 +180,7 @@ const Def* World::umax(Defs ops_) {
     res.reserve(ops.size());
     for (auto op : ops) {
         if (!op->type()->isa<Univ>())
-            error(op->loc(), "operand '{}' of a universe max must be of type 'Univ' but is of type '{}'", op,
+            error(op->loc(), "operand `{}` of a universe max must be of type `Univ` but is of type `{}`", op,
                   op->type());
 
         if (auto l = Lit::isa(op))
@@ -228,17 +228,18 @@ const Def* World::app(const Def* callee, const Def* arg) {
     auto pi = callee->type()->isa<Pi>();
     if (!pi)
         throw Error()
-            .error(callee->loc(), "called expression not of function type")
-            .error(callee->loc(), "'{}' <--- callee type", callee->type());
+            .error(callee->loc(), "callee is not of function type")
+            .note(callee->loc(), "callee: `{}`", callee)
+            .note(callee->loc(), "callee type: `{}`", callee->type());
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
         throw Error()
-            .error(arg->loc(), "cannot apply argument to callee")
-            .note(callee->loc(), "callee: '{}'", callee)
-            .note(arg->loc(), "argument: '{}'", arg)
-            .note(callee->loc(), "vvv domain type vvv\n'{}'\n'{}'", pi->dom(), arg->type())
-            .note(arg->loc(), "^^^ argument type ^^^");
+            .error(arg->loc(), "argument is not assignable to callee's domain")
+            .note(callee->loc(), "callee: `{}`", callee)
+            .note(callee->loc(), "domain type: `{}`", pi->dom())
+            .note(arg->loc(), "argument: `{}`", arg)
+            .note(arg->loc(), "argument type: `{}`", arg->type());
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
@@ -320,8 +321,7 @@ const Def* World::tuple(Defs ops) {
     auto sigma = Tuple::infer(*this, zops);
     auto t     = tuple(sigma, zops);
     auto new_t = Checker::assignable(sigma, t);
-    if (!new_t)
-        error(t->loc(), "cannot assign tuple '{}' of type '{}' to incompatible tuple type '{}'", t, t->type(), sigma);
+    if (!new_t) error(t->loc(), "tuple `{}` of type `{}` is not assignable to inferred type `{}`", t, t->type(), sigma);
 
     return new_t;
 }
@@ -368,7 +368,7 @@ const Def* World::extract(const Def* d, const Def* index) {
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
     if (!size && !isa_indices(index_ty))
-        error(index->loc(), "index '{}' is not of Idx type but of type '{}'", index, index_ty);
+        error(index->loc(), "index `{}` must be of `Idx` type but is of type `{}`", index, index_ty);
 
     if (auto tuple = index->isa<Tuple>()) {
         for (auto op : tuple->ops())
@@ -396,7 +396,7 @@ const Def* World::extract(const Def* d, const Def* index) {
     }
 
     if (size && !Checker::alpha<Checker::Check>(type->arity(), size))
-        error(index->loc(), "index '{}' does not fit within arity '{}'", index, type->arity());
+        error(index->loc(), "index `{}` does not fit within arity `{}`", index, type->arity());
     // TODO if we have indices we need to check as well that this is compatible with `d`
 
     if (auto pack = d->isa<Pack>()) {
@@ -458,19 +458,20 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
     auto size = Idx::isa(index->type());
     auto lidx = Lit::isa(index);
 
-    if (!size) error(d->loc(), "index '{}' must be of type 'Idx' but is of type '{}'", index, index->type());
+    if (!size) error(d->loc(), "index `{}` must be of `Idx` type but is of type `{}`", index, index->type());
 
     if (!Checker::alpha<Checker::Check>(type->arity(), size))
-        error(index->loc(), "index '{}' does not fit within arity '{}'", index, type->arity());
+        error(index->loc(), "index `{}` does not fit within arity `{}`", index, type->arity());
 
     if (lidx) {
         auto elem_type = type->proj(*lidx);
         auto new_val   = Checker::assignable(elem_type, val);
         if (!new_val) {
             throw Error()
-                .error(val->loc(), "value to be inserted not assignable to element")
-                .note(val->loc(), "vvv value type vvv \n'{}'\n'{}'", val->type(), elem_type)
-                .note(val->loc(), "^^^ element type ^^^", elem_type);
+                .error(val->loc(), "value is not assignable to element type")
+                .note(val->loc(), "value: `{}`", val)
+                .note(val->loc(), "value type: `{}`", val->type())
+                .note(val->loc(), "element type: `{}`", elem_type);
         }
         val = new_val;
     }
@@ -479,7 +480,11 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
         return tuple(d, {val}); // d could be mut - that's why the tuple ctor is needed
 
     // insert((a, b, c, d), 2, x) -> (a, b, x, d)
-    if (auto t = d->isa<Tuple>(); t && lidx) return t->refine(*lidx, val);
+    if (auto t = d->isa<Tuple>(); t && lidx) {
+        auto new_ops   = DefVec(t->ops().begin(), t->ops().end());
+        new_ops[*lidx] = val;
+        return tuple(type, new_ops);
+    }
 
     // insert(‹4; x›, 2, y) -> (x, x, y, x)
     if (auto pack = d->isa<Pack>(); pack && lidx) {
@@ -535,9 +540,9 @@ const Lit* World::lit(const Def* type, u64 val) {
         if (size->isa<Top>()) {
             // unsafe but fine
         } else if (auto s = Lit::isa(size)) {
-            if (*s != 0 && val >= *s) error(type->loc(), "index '{}' does not fit within arity '{}'", size, val);
+            if (*s != 0 && val >= *s) error(type->loc(), "index `{}` does not fit within arity `{}`", val, size);
         } else if (val != 0) { // 0 of any size is allowed
-            error(type->loc(), "cannot create literal '{}' of 'Idx {}' as size is unknown", val, size);
+            error(type->loc(), "cannot create literal `{}` of `Idx {}` as size is unknown", val, size);
         }
     }
 
@@ -622,7 +627,9 @@ const Def* World::match(Defs ops_) {
     auto arms      = ops.span().subspan(1);
     auto join      = scrutinee->type()->isa<Join>();
 
-    if (!join) error(scrutinee->loc(), "scrutinee of a test expression must be of union type");
+    if (!join)
+        error(scrutinee->loc(), "scrutinee `{}` of a test expression must be of union type but has type `{}`",
+              scrutinee, scrutinee->type());
 
     if (arms.size() != join->num_ops())
         error(scrutinee->loc(), "test expression has {} arms but union type has {} cases", arms.size(),
@@ -630,7 +637,8 @@ const Def* World::match(Defs ops_) {
 
     for (auto arm : arms)
         if (!arm->type()->isa<Pi>())
-            error(arm->loc(), "arm of test expression does not have a function type but is of type '{}'", arm->type());
+            error(arm->loc(), "arm `{}` of test expression does not have a function type but has type `{}`", arm,
+                  arm->type());
 
     std::ranges::sort(arms, GIDLt<const Def*>(), [](const Def* arm) { return arm->type()->as<Pi>()->dom(); });
 
@@ -639,10 +647,19 @@ const Def* World::match(Defs ops_) {
         auto arm = arms[i];
         auto pi  = arm->type()->as<Pi>();
         if (!Checker::alpha<Checker::Check>(pi->dom(), join->op(i)))
-            error(arm->loc(),
-                  "domain type '{}' of arm in a test expression does not match case type '{}' in union type", pi->dom(),
+            error(arm->loc(), "domain type `{}` of test-expression arm does not match union case type `{}`", pi->dom(),
                   join->op(i));
         type = type ? this->join({type, pi->codom()}) : pi->codom();
+    }
+
+    // A constructor fixes the active union case. Dispatch before the Match can
+    // escape into later lowering phases, where the payload representation may
+    // already have changed (for example, a tensor may have become a buffer).
+    if (auto inj = scrutinee->isa<Inj>()) {
+        for (size_t i = 0, e = arms.size(); i != e; ++i)
+            if (Checker::alpha<Checker::Check>(inj->value()->type(), join->op(i))) return app(arms[i], inj->value());
+        error(scrutinee->loc(), "injected value type `{}` is not a case of union type `{}`", inj->value()->type(),
+              join);
     }
 
     return unify<Match>(type, ops);

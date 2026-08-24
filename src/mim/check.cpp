@@ -130,14 +130,12 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
 
     auto& w = world();
 
-    // Implicit insertion at a coercion site: @p val still expects implicit arguments while @p type is an
-    // *explicit* function type, so fill them in with Hole%s - just like World::implicit_app does at an
-    // application site.
-    // This is what makes passing a polymorphic function as an *argument* work, e.g. handing `%%affine.id` to a
-    // parameter of type `«r; %%affine.index» → «r; %%affine.index»` instead of having to write `%%affine.id @r`.
-    // @p type has to be a Pi of its own for this to be justified: if it is still a Hole we would commit before
-    // knowing what is expected, and if it is an aggregate we might eat the implicits of a value whose element
-    // type is itself implicit (e.g. `%%regex.conj (%%regex.empty)`, where `RE` is an implicit Pi).
+    // Implicit insertion at a coercion site: @p val expects implicit arguments, but @p type is an
+    // *explicit* function type. Fill them with Hole%s, as World::implicit_app does at application sites.
+    // This lets polymorphic functions be passed as arguments, e.g. `%%affine.id` to a parameter of type
+    // `«r; %%affine.index» → «r; %%affine.index»`, without writing `%%affine.id @r`.
+    // Only do this when @p type is a Pi: if it is a Hole, we'd commit before knowing what's expected;
+    // if it's an aggregate, we might consume implicits belonging to the value's element type.
     if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {
         while (auto ipi = Pi::isa_implicit(val_ty)) {
             val    = w.app(val, w.mut_hole(ipi->dom()));
@@ -168,8 +166,44 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     return alpha_<Check>(type, val_ty) ? val : fail();
 }
 
+std::pair<Checker::Binders::iterator, bool> Checker::bind(Def* mut, const Def* d) {
+    if (!mut) return {binders_.end(), true};
+
+    auto res = binders_.emplace(mut, d);
+    if (res.second) {
+        // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
+        for (auto& memo : memo_)
+            memo.clear();
+        // A Var that has never been created cannot occur in any Def.
+        if (auto var = mut->has_var()) bound_ = world().vars().insert(bound_, var);
+    }
+
+    return res;
+}
+
+// These may be α-equivalent to a Def with a different Node or Def::flags(); see alpha_impl_.
+static bool is_flex(const Def* def) {
+    auto n = def->node();
+    return n == Node::Hole || n == Node::Top || n == Node::UMax || Prod::isa_node(n) || Seq::isa_node(n);
+}
+
+template<Checker::Mode mode>
+std::optional<bool> Checker::try_alpha_(const Def* d1, const Def* d2) {
+    // Pointer equality decides the matter, unless a free Var of an immutable is bound on one side only: λx.x vs λz.x.
+    if (d1 == d2 && (d1->isa_mut() || bound_.empty() || !d1->has_free_vars_in(bound_))) return true;
+
+    // Only a ground Def is stable under Def::zonk_mut, which rewires mutables in place and unifies Hole%s.
+    if ((d1->node() != d2->node() || d1->flags() != d2->flags()) && d1->is_ground() && d2->is_ground() && !is_flex(d1)
+        && !is_flex(d2))
+        return fail<mode>();
+
+    return {};
+}
+
 template<Checker::Mode mode>
 bool Checker::alpha_(const Def* d1, const Def* d2) {
+    if (auto res = try_alpha_<mode>(d1, d2); res.has_value()) return *res;
+
     auto& memo = memo_[mode];
     auto key   = memo_key(d1, d2);
     if (memo.contains(key)) return true;
@@ -186,10 +220,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         d1   = d1->zonk_mut();
         d2   = d2->zonk_mut();
 
-        // It is only safe to check for pointer equality if there are no Vars involved.
-        // Otherwise, we have to look more thoroughly.
-        // Example: λx.x - λz.x
-        if (!d1->has_dep(Dep::Var) && !d2->has_dep(Dep::Var) && d1 == d2) return true;
+        if (auto res = try_alpha_<mode>(d1, d2); res.has_value()) return *res;
 
         auto h1 = d1->isa_mut<Hole>();
         auto h2 = d2->isa_mut<Hole>();
@@ -298,8 +329,13 @@ bool Checker::check(const UMax* umax, const Def* def) {
     return true;
 }
 
+#ifndef DOXYGEN
+template bool Checker::alpha_<Checker::Check>(const Def*, const Def*);
+template bool Checker::alpha_<Checker::Test>(const Def*, const Def*);
+#endif
+
 /*
- * infer & check
+ * infer
  */
 
 const Def* Tuple::infer(World& w, Defs ops) {
@@ -317,16 +353,8 @@ const Def* Pi::infer(const Def* dom, const Def* codom) {
 
 const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
 
-#ifndef DOXYGEN
-template bool Checker::alpha_<Checker::Check>(const Def*, const Def*);
-template bool Checker::alpha_<Checker::Test>(const Def*, const Def*);
-#endif
-
 /*
- * check
- *
- * These used to be `virtual` on Def. Def has no vtable, so they switch on Def::node() with the former
- * overrides inlined; they live here rather than in def.cpp because that is where infer/Checker are.
+ * Def::check
  */
 
 const Def* Def::check(size_t i, const Def* def) {
@@ -335,16 +363,16 @@ const Def* Def::check(size_t i, const Def* def) {
 
     if (i == 0) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        throw Error().error(def->loc(), "filter '{}' of lambda is of type '{}' but must be of type 'Bool'", def,
+        throw Error().error(def->loc(), "filter `{}` of lambda is of type `{}` but must be of type `Bool`", def,
                             def->type());
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
     throw Error()
-        .error(def->loc(), "body of function is not assignable to declared codomain")
-        .note(def->loc(), "body: '{}'", def)
-        .note(def->loc(), "type: '{}'", def->type())
-        .note(lam->codom()->loc(), "codomain: '{}'", lam->codom());
+        .error(def->loc(), "function body is not assignable to its declared codomain")
+        .note(def->loc(), "body: `{}`", def)
+        .note(def->loc(), "body type: `{}`", def->type())
+        .note(lam->codom()->loc(), "codomain: `{}`", lam->codom());
 }
 
 const Def* Def::check() {
@@ -353,26 +381,27 @@ const Def* Def::check() {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                error(type()->loc(), "declared sort '{}' of function type does not match inferred one '{}'", type(), t);
+                error(type()->loc(), "declared sort `{}` of function type does not match inferred sort `{}`", type(),
+                      t);
             return t;
         }
         case Node::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t, type()))
-                error(type()->loc(), "declared sort '{}' of array does not match inferred one '{}'", type(), t);
+                error(type()->loc(), "declared sort `{}` of array does not match inferred sort `{}`", type(), t);
             return t;
         }
         case Node::Reform: {
             auto t = Reform::infer(as<Reform>()->dom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                error(type()->loc(), "declared sort '{}' of rule type does not match inferred one '{}'", type(), t);
+                error(type()->loc(), "declared sort `{}` of rule type does not match inferred sort `{}`", type(), t);
             return t;
         }
         case Node::Sigma: {
             auto t = Sigma::infer(world(), ops());
             if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
-            world().WLOG("incorrect type '{}' for '{}'. Correct one would be: '{}'. I'll keep this one nevertheless "
-                         "due to bugs in clos-conv",
+            world().WLOG("incorrect type `{}` for `{}`; expected `{}` but keeping the existing type due to clos-conv "
+                         "bugs",
                          type(), this, t);
             return type();
         }
@@ -381,9 +410,10 @@ const Def* Def::check() {
             auto t1   = rule->lhs()->type();
             auto t2   = rule->rhs()->type();
             if (!Checker::alpha<Checker::Check>(t1, t2))
-                error(type()->loc(), "type mismatch: '{}' for lhs, but '{}' for rhs", t1, t2);
+                error(type()->loc(), "type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`", t1,
+                      t2);
             if (!Checker::assignable(world().type_bool(), rule->guard()))
-                error(rule->guard()->loc(), "condition '{}' of rewrite is of type '{}' but must be of type 'Bool'",
+                error(rule->guard()->loc(), "condition `{}` of rewrite rule is of type `{}` but must be of type `Bool`",
                       rule->guard(), rule->guard()->type());
             return type();
         }

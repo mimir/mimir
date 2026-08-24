@@ -27,7 +27,7 @@ lam extern _default_compile (): %compile.Phase =
                 %compile.eta_conv,
             ),
             %compile.named "%mem.seo",
-            %compile.tail_rec_elim,
+            %compile.static_arg_opt,
         );
 
     %compile.phases ff (
@@ -40,9 +40,9 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%tensor.lower_tensor",
         %compile.named "%tensor.fuse_tensor",
         %compile.named "%tensor.lower_to_mem",
+        %compile.unload "tensor",
         // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits %mem.M placeholders that must be stitched into a global mem chain.
         %compile.cond "tensor" (%compile.named "%mem.add_mem"),
-        %compile.unload "tensor",
 
         // btensor
         %compile.named "%btensor.lower_map_reduce",
@@ -60,12 +60,12 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%buffer.lower_ptr",
         %compile.unload "buffer",
 
-        // affine + cpsp
+        // affine + cps
         %compile.named "%affine.lower_index",
         %compile.named "%cps.conv",
+        %compile.unload "cps",
         %compile.named "%affine.lower_for",
         %compile.unload "affine",
-        %compile.unload "cps",
 
         // clos conv
         let clos_opt_phases =
@@ -97,6 +97,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.named "%nvptx.stream_impl_repl",
         %compile.named "%mem.alloc2malloc_repl",
         %compile.named "%refly.remove_dbg_repl",
+        %compile.unload "refly",
         %compile.named "%gpu.check_addr_spaces_repl",
         // emit LLVM IR to <world>.ll iff the `ll` plugin is loaded (`-p ll`)
         %compile.named "%ll.emit",

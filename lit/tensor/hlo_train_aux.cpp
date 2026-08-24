@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+
 #include <vector>
 
 extern "C" {
@@ -34,12 +35,14 @@ int main() {
         for (int n = 0; n < N; ++n)
             for (int o = 0; o < O; ++o) {
                 float s = 0;
-                for (int k = 0; k < I; ++k) s += x[n * I + k] * w[k * O + o];
+                for (int k = 0; k < I; ++k)
+                    s += x[n * I + k] * w[k * O + o];
                 z[n * O + o] = s;
             }
         for (int n = 0; n < N; ++n) {
             float mx = -INFINITY;
-            for (int o = 0; o < O; ++o) mx = std::max(mx, z[n * O + o]);
+            for (int o = 0; o < O; ++o)
+                mx = std::max(mx, z[n * O + o]);
             rmax[n] = mx;
             for (int o = 0; o < O; ++o) {
                 a[n * O + o] = std::tanh(z[n * O + o] + b[o]);
@@ -53,16 +56,19 @@ int main() {
         for (int i = 0; i < I; ++i)
             for (int o = 0; o < O; ++o) {
                 float s = 0;
-                for (int n = 0; n < N; ++n) s += d[n * O + o] * x[n * I + i];
+                for (int n = 0; n < N; ++n)
+                    s += d[n * O + o] * x[n * I + i];
                 dW[i * O + o] = s;
             }
         float dx00 = 0;
-        for (int o = 0; o < O; ++o) dx00 += d[0 * O + o] * w[0 * O + o];
+        for (int o = 0; o < O; ++o)
+            dx00 += d[0 * O + o] * w[0 * O + o];
         Vec db(O, 0);
         for (int o = 0; o < O; ++o)
-            for (int n = 0; n < N; ++n) db[o] += d[n * O + o];
+            for (int n = 0; n < N; ++n)
+                db[o] += d[n * O + o];
 
-        float ref = (w[0] - lr * dW[0]) + (b[0] - lr * db[0]) + dx00 + sel0;
+        float ref  = (w[0] - lr * dW[0]) + (b[0] - lr * db[0]) + dx00 + sel0;
         float diff = std::abs(got - ref);
         std::printf("mode %d: got=%.7g ref=%.7g diff=%.3g\n", mode, got, ref, diff);
         if (diff > 1e-4f) ++failures;

@@ -89,7 +89,7 @@ Tok Lexer::lex() {
 
         if (accept('%')) {
             if (lex_id()) return {loc_, Tag::M_anx, sym()};
-            ast().error(loc_, "invalid axm name '{}'", str_);
+            ast().error(loc_, "invalid axm name `{}`", str_);
             continue;
         }
 
@@ -106,7 +106,7 @@ Tok Lexer::lex() {
         if (accept('\'')) {
             auto c = lex_char();
             if (accept('\'')) return {loc_, c};
-            ast().error(loc_, "invalid character literal {}", str_);
+            ast().error(loc_, "invalid character literal `{}`", str_);
             continue;
         }
 
@@ -143,11 +143,11 @@ Tok Lexer::lex() {
                 continue;
             }
 
-            ast().error({loc_.path, peek_}, "invalid input char '/'; maybe you wanted to start a comment?");
+            ast().error({loc_.path, peek_}, "invalid input char `/`; maybe you wanted to start a comment?");
             continue;
         }
 
-        ast().error({loc_.path, peek_}, "invalid input char '{}'", utf8::Char32(ahead()));
+        ast().error({loc_.path, peek_}, "invalid input char `{}`", utf8::Char32(ahead()));
         next();
     }
 }
@@ -229,7 +229,7 @@ std::optional<Tok> Lexer::parse_lit() {
     }
 
     if (sign && str_.empty()) {
-        ast().error(loc_, "stray '{}'", *sign ? "-" : "+");
+        ast().error(loc_, "stray `{}`", *sign ? "-" : "+");
         return {};
     }
 
@@ -279,14 +279,14 @@ char8_t Lexer::lex_char() {
         else if (accept<Append::Off>( 'r')) str_ += '\r';
         else if (accept<Append::Off>( 't')) str_ += '\t';
         else if (accept<Append::Off>( 'v')) str_ += '\v';
-        else ast().error(loc_.anew_finis(), "invalid escape character '\\{}'", (char)ahead());
+        else ast().error(loc_.anew_finis(), "invalid escape character `\\{}`", (char)ahead());
         // clang-format on
         return str_.back();
     }
     auto c = next();
     str_ += c;
     if (utf8::isascii(c)) return char8_t(c);
-    ast().error(loc_, "invalid character '{}'", (char)c);
+    ast().error(loc_, "invalid character `{}`", (char)c);
     return '\0';
 }
 
@@ -295,7 +295,7 @@ void Lexer::eat_comments() {
         while (ahead() != utf8::EoF && ahead() != '*')
             next();
         if (accept(utf8::EoF)) {
-            ast().error(loc_, "non-terminated multiline comment");
+            ast().error(loc_, "unterminated multi-line comment");
             return;
         }
         next();

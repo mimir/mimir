@@ -10,4 +10,4 @@ fun extern foo (b: Bool) = (left, right)#b (3, 0₃) where
   con right (m: Nat, y: Idx m) = shared y;
   con shared (z)               = return 0;
 end;
-// CHECK: error: external function 'foo' is not closed
+// CHECK: error: external function `foo` is not closed

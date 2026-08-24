@@ -12,4 +12,4 @@ lam f(x: Nat): [] =
     let x = %foo.t h;
     i x;
 
-// CHECK: error: cannot apply
+// CHECK: error: argument is not assignable to callee's domain

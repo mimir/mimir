@@ -29,8 +29,8 @@ namespace mim::plug::clos::phase {
 ///
 /// The rewrite carries a *mem token* along each function body (LowerTypedClos::lvm_ / LowerTypedClos::lcm_) so
 /// that the `%mem.alloc`/`%mem.store` it inserts for boxed environments are threaded into the mem chain.
-/// This stateful, order-sensitive threading is why LowerTypedClos::rewrite is overridden as a whole rather than
-/// via the per-node hooks.
+/// This stateful, order-sensitive threading is why LowerTypedClos::rewrite intercepts whole classes of nodes
+/// instead of relying on the per-node hooks alone.
 /// A converted Lam's body is enqueued and rewritten later, seeded with that body's own initial mem token.
 class LowerTypedClos : public RWPhase {
 public:
@@ -46,8 +46,11 @@ private:
         Lam* new_lam;
     };
 
-    void start() override;
+    void rewrite_external(Def*) final;
+    void finalize() final;
     const Def* rewrite(const Def* def) final;
+    const Def* rewrite_imm(const Def* def) final;
+    const Def* rewrite_imm_App(const App*) final;
 
     /// Describes how the environment should be treated.
     enum Mode {
@@ -63,10 +66,12 @@ private:
     /// Pointer type used to represent environments.
     const Def* env_type() { return new_world().call<mem::Ptr0>(new_world().sigma()); }
 
-    std::queue<Todo> worklist_;
+    /// Dummy return continuation.
+    /// @note Not cached: `mem::M` resolves through new_world()'s annex table, which is only populated once
+    /// bootstrapping is done - and by then everything is hash-consed anyway.
+    const Def* dummy_ret() { return new_world().bot(new_world().cn(new_world().call<mem::M>(0))); }
 
-    const Def* dummy_ret_ = nullptr; ///< dummy return continuation
-    bool converting_      = false;   ///< `false` while bootstrapping annexes; `true` once actually converting.
+    std::queue<Todo> worklist_;
 
     /// @name memory-tokens
     /// The mem token threaded through the body currently being rewritten.

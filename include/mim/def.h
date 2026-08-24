@@ -490,20 +490,11 @@ public:
     Vars free_vars() const;
     Vars free_vars();              ///< As above but drives (and caches) the fixed-point iteration for *mutables*.
     Muts users() { return muts_; } ///< Set of mutables where this mutable is locally referenced.
-    bool is_open() const;          ///< Has free_vars()? Same as has_free_vars().
-    bool is_closed() const;        ///< Has no free_vars()? Same as `!has_free_vars()`.
+    bool is_open() const { return has_free_vars(); } ///< Same as has_free_vars().
+    bool is_closed() const;                          ///< Same as `!has_free_vars()`.
 
-    /// @name free_vars predicates
-    /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
-    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
-    /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
-    /// question without ever materializing the merged set.
-    /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
-    ///@{
-    bool has_free_var(const Var*) const; ///< Same as `free_vars().contains(var)`.
-    bool has_free_vars() const;          ///< Same as `!free_vars().empty()`.
-    bool has_free_vars_in(Vars) const;   ///< Same as `vars.has_intersection(free_vars())`.
-    ///@}
+    /// Immutable that contains neither mutables nor Var%s.
+    bool is_ground() const { return !mut_ && local_muts().empty() && local_vars().empty(); }
 
     /// Transitively walks up free_vars() till the outermoust binder has been found.
     /// @returns `nullptr`, if is_closed() and not a mutable.
@@ -515,6 +506,18 @@ public:
     /// Does @p this nest @p def?
     /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
     bool nests(const Def* def);
+    ///@}
+
+    /// @name free_vars predicates
+    /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
+    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
+    /// question without ever materializing the merged set.
+    /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
+    ///@{
+    bool has_free_var(const Var*) const; ///< Same as `free_vars().contains(var)`.
+    bool has_free_vars() const;          ///< Same as `!free_vars().empty()`.
+    bool has_free_vars_in(Vars) const;   ///< Same as `vars.has_intersection(free_vars())`.
     ///@}
 
     /// @name external
@@ -569,7 +572,7 @@ public:
     template<class T = Def, class... Args>
     T* expect_mut(std::format_string<Args...> fmt, Args&&... args) const {
         if (auto res = isa_mut<T>()) return res;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), this);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), this);
     }
     ///@}
 
@@ -619,22 +622,10 @@ public:
 
     /// @name Rebuild
     ///@{
-    Def* stub(World& w, const Def* type) { return stub_(w, type)->set(dbg_key()); }
-    Def* stub(const Def* type) { return stub(world(), type); }
-
-    /// Def::rebuild%s this Def while using @p new_op as substitute for its @p i'th Def::op
-    const Def* rebuild(World& w, const Def* type, Defs ops) const {
-        assert(isa_imm());
-        return rebuild_(w, type, ops)->set(dbg_key());
-    }
-    const Def* rebuild(const Def* type, Defs ops) const { return rebuild(world(), type, ops); }
-
     /// Tries to make an immutable from a mutable.
     /// This usually works if the mutable isn't recursive and its var isn't used.
     const Def* immutabilize();
     bool is_immutabilizable();
-
-    const Def* refine(size_t i, const Def* new_op) const;
 
     /// @see World::reduce
     template<size_t N = std::dynamic_extent>
@@ -725,8 +716,6 @@ protected:
 
 private:
     Defs reduce_(const Def* arg) const;
-    Def* stub_(World&, const Def*);
-    const Def* rebuild_(World& w, const Def* type, Defs ops) const;
 
     void watch() const; ///< Trips World::watchpoints in `MIM_ENABLE_CHECKS` builds; a no-op otherwise.
     Def* finalize();    ///< Runs Def::check once the last op has been set; @see @ref set_ops.
@@ -932,7 +921,7 @@ public:
     template<class T = nat_t, class... Args>
     static T expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<T>(def)) return *res;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), def);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), def);
     }
     ///@}
 
@@ -999,7 +988,7 @@ public:
     static nat_t expect_bitwidth(const Def* type, std::format_string<Args...> fmt, Args&&... args) {
         if (auto size = isa(type))
             if (auto w = size2bitwidth(size)) return *w;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), type);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), type);
     }
     ///@}
 
@@ -1062,11 +1051,6 @@ public:
     /// @name Getters
     ///@{
     bool is_mutable() const { return flags(); }
-    ///@}
-
-    /// @name Rebuild
-    ///@{
-    Global* stub(const Def* type) { return Def::stub(world(), type)->as<Global>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Global;

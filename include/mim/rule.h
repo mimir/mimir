@@ -81,7 +81,6 @@ public:
 
     /// @name Rebuild
     ///@{
-    Rule* stub(const Def* type) { return Def::stub(world(), type)->as<Rule>(); }
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 

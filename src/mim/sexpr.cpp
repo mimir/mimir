@@ -719,7 +719,7 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
     } else if (auto top = type->isa<Top>()) {
         std::print(os, "(top {})", emit_type(bb, top->type(), in_term));
     } else {
-        fe::throwf("unsupported type '{}'", type);
+        fe::throwf("unsupported type `{}`", type);
         fe::unreachable();
     }
 
@@ -930,7 +930,7 @@ std::string Emitter::emit_bb(BB& bb, const Def* def) {
     } else if (auto hole = def->isa<Hole>()) {
         std::print(os, "\n{}(hole {})", tab, emit_type(bb, hole->type()));
     } else {
-        fe::throwf("Unhandled Def in SExpr backend: {} : {}", def, def->type());
+        fe::throwf("SExpr backend: unhandled def `{}` of type `{}`", def, def->type());
         fe::unreachable();
     }
 

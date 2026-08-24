@@ -44,14 +44,16 @@ bool wants_fresh_mem(const App* app) {
 }
 
 /// Is `app` one of the tensor ops this phase bufferizes?
-bool is_tensor_op(const App* app) { return Axm::isa<tensor::get>(app) || wants_fresh_mem(app); }
+bool is_tensor_op(const App* app) {
+    return Axm::isa<tensor::get>(app) || Axm::isa<tensor::splat>(app) || wants_fresh_mem(app);
+}
 
 } // namespace
 
 void LowerToMem::collect_tensor_types() {
     // The default pipeline lowers tensors exclusively through buffers — there is no value-semantics
     // fallback. A program shape the conversion cannot handle is a hard error, not silent residue.
-    auto gate = [](const char* why, const Def* culprit) { fe::throwf("cannot bufferize: {} ({})", why, culprit); };
+    auto gate = [](const char* why, const Def* culprit) { fe::throwf("cannot bufferize: {} (`{}`)", why, culprit); };
     // Fully folded shapes (`«1; T»` ≡ `T`) denote plain scalars — recording them would poison every
     // function whose signature mentions the element type, so only genuine array types count as tensors.
     auto add_tensor_ty = [this](const Def* t) {
@@ -77,6 +79,10 @@ void LowerToMem::collect_tensor_types() {
                 auto [T, r, s] = app->callee()->as<App>()->args<3>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->arg()->proj(1)->type());
+            } else if (Axm::isa<tensor::splat>(app)) {
+                auto [T, r] = app->callee()->as<App>()->args<2>();
+                if (T->isa<Arr>()) gate("tensor with array element type", T);
+                add_tensor_ty(app->type());
             } else if (Axm::isa<tensor::map_reduce_post>(app)) {
                 // result and each of the `nis` inputs / `nps` epilogue inputs are tensors.
                 add_tensor_ty(app->type());
@@ -110,7 +116,7 @@ void LowerToMem::collect_tensor_types() {
                 auto [T, r]             = Tr->projs<2>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 if (!Lit::isa<u64>(r) || !Lit::isa<u64>(params->proj(3, 0)))
-                    gate("non-literal rank/mode of %tensor.pad", app);
+                    gate("non-literal rank/mode of `%tensor.pad`", app);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(0)->type());
             } else if (Axm::isa<tensor::concat>(app)) {
@@ -122,7 +128,7 @@ void LowerToMem::collect_tensor_types() {
                 auto r_l   = Lit::isa<u64>(r);
                 auto ax_l  = Lit::isa<u64>(ax);
                 if (!nis_l || !r_l || !ax_l) {
-                    gate("non-literal nis/rank/axis of %tensor.concat", app);
+                    gate("non-literal nis/rank/axis of `%tensor.concat`", app);
                 } else {
                     add_tensor_ty(app->type());
                     for (u64 i = 0; i < *nis_l; ++i) {
@@ -363,6 +369,7 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));
     if (Axm::isa<tensor::get>(app)) return lower_get(app);
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
+    if (Axm::isa<tensor::splat>(app)) return lower_splat(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<tensor::map_reduce_post>(app)) return lower_map_reduce(app);
     if (Axm::isa<tensor::pad>(app)) return lower_pad(app);
@@ -489,6 +496,16 @@ const Def* LowerToMem::lower_set(const App* app) {
     auto m2        = buffer::op_copy(br, bs, bT, m1, q, arr);
     auto [m3, out] = buffer::op_write(br, bs, bT, m2, q, fidx, x)->projs<2>();
     return out;
+}
+
+const Def* LowerToMem::lower_splat(const App* app) {
+    auto value = app->arg()->proj(2, 1);
+
+    // MimIR folds rank-zero tensors and tensors whose literal dimensions are all
+    // one into their scalar element type. Such results have no tensor boundary to
+    // bufferize, so lower the splat directly to its scalar value.
+    if (!app->type()->isa<Arr>()) return rewrite(value);
+    return splat_buffer(app->type(), rewrite(value));
 }
 
 const Def* LowerToMem::lower_broadcast(const App* app) {

@@ -16,6 +16,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
+    const Def* rewrite(const Def*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
 
     /// Restructures the (already rewritten, new-world) @p lam if its body passes exception closures.
@@ -31,7 +32,9 @@ private:
 
     void get_exn_closures(Lam* lam);
     void get_exn_closures(const Def* def, DefSet& visited);
-    const Def* subst_exn_closures(const Def* def, Def2Def& memo);
+
+    /// Substitutes closure literals of tagged exception Lam%s by throw closures; does not descend into mutables.
+    const Def* subst_exn_closures(const Def* def);
 
     // clang-format off
     LamMap<std::pair<int, const Def*>> lam2tag_;

@@ -141,7 +141,7 @@ public:
     template<class Id, u8 Curry = 0, class... Args>
     static auto expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<Id, Curry>(def)) return res;
-        fe::throwf("expected {}, but got '{}'", std::format(fmt, std::forward<Args>(args)...), def);
+        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), def);
     }
     ///@}
 

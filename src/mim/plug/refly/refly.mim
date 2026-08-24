@@ -93,14 +93,6 @@ axm %refly.check_bot: {T: *} → T → T, normalize_check_bot;
 ///
 axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
 ///
-/// ## Manipulate
-///
-/// ### %%refly.refine
-///
-/// Sets the `i`th operand of the reified code `e` to `x`.
-///
-axm %refly.refine: {E X: *} → [e: %refly.Code E, i: Nat, x: %refly.Code X] → %refly.Code E, normalize_refine;
-///
 /// ## Phases
 ///
 /// Removes the permanent `%%refly.dbg` markers for code generation.

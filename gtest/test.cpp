@@ -268,6 +268,22 @@ TEST(Check, alpha) {
     check(l_1, l_1, true, true);
 }
 
+TEST(Check, alpha_shared_hole_under_binder) {
+    Driver driver;
+    World& w = driver.world();
+    auto nat = w.type_nat();
+    auto pi  = w.mut_pi(w.type())->set_dom(nat);
+    pi->set_codom(w.type_idx(pi->var())); // Π x: Nat. Idx x
+
+    auto l1 = w.mut_lam(pi);
+    auto h  = w.mut_hole(w.type_idx(l1->var())); // unset Hole whose *type* mentions l1's Var
+    l1->set(false, h);
+    auto l2 = w.mut_lam(pi)->set(false, h);
+
+    EXPECT_TRUE(Checker::alpha<Checker::Check>(l1, l2));
+    EXPECT_TRUE(Checker::alpha<Checker::Test>(l1, l2));
+}
+
 TEST(FV, free_vars) {
     Driver driver;
     World& w = driver.world();

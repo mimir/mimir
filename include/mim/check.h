@@ -39,8 +39,6 @@ public:
     Hole* unset() { return Def::unset()->as<Hole>(); }
     ///@}
 
-    Hole* stub(const Def* type) { return Def::stub(world(), type)->as<Hole>(); }
-
     /// If unset, explode to Tuple.
     /// @returns the new Tuple, or `this` if unsuccessful.
     const Def* tuplefy(nat_t);
@@ -125,6 +123,12 @@ private:
     [[nodiscard]] bool alpha_(const Def* d1, const Def* d2);
     template<Mode>
     [[nodiscard]] bool alpha_impl_(const Def* d1, const Def* d2);
+
+    /// Fast path for alpha_ that needs neither binders_ nor memo_ and hence doesn't allocate.
+    /// @returns `std::nullopt`, if the full alpha_impl_ machinery is needed.
+    template<Mode>
+    [[nodiscard]] std::optional<bool> try_alpha_(const Def* d1, const Def* d2);
+
     template<Mode>
     [[nodiscard]] bool check(const Prod*, const Def*);
     template<Mode>
@@ -140,18 +144,12 @@ private:
         return g1 < g2 ? g1 << 32 | g2 : g2 << 32 | g1;
     }
 
-    auto bind(Def* mut, const Def* d) {
-        if (!mut) return std::pair(binders_.end(), true);
-        auto res = binders_.emplace(mut, d);
-        // A new binding may change how bound Var%s compare, so positive memo entries may become invalid.
-        if (res.second)
-            for (auto& memo : memo_)
-                memo.clear();
-        return res;
-    }
+    using Binders = MutMap<const Def*>;
+    std::pair<Binders::iterator, bool> bind(Def* mut, const Def* d);
 
     World& world_;
-    MutMap<const Def*> binders_;
+    Binders binders_;
+    Vars bound_; ///< Var%s of all binders_; these are the Var%s subject to renaming.
     std::array<absl::flat_hash_set<u64>, 2> memo_;
 };
 

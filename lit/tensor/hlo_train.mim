@@ -1,4 +1,4 @@
-// REQUIRES: release
+// REQUIRES: release || !system-win32
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt %s -p ll
 // RUN: clang++ -std=c++23 %S/hlo_train_aux.cpp %{s:stem}.ll -o %t -Wno-override-module

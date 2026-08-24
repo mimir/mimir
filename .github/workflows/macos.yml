@@ -6,7 +6,9 @@ on:
     branches: [master]
 
 concurrency:
-  group: ${{github.workflow}}-${{github.ref}}
+  # Key PR runs by head SHA so a new push doesn't cancel the previous commit's still-running
+  # build; pushes to master/tags keep the plain workflow-ref group.
+  group: ${{github.workflow}}-${{github.ref}}${{github.event.pull_request.head.sha && format('-{0}', github.event.pull_request.head.sha) || ''}}
   cancel-in-progress: ${{github.ref != 'refs/heads/master'}}
 
 jobs:

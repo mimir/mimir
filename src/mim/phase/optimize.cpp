@@ -50,7 +50,7 @@ void optimize(World& world) {
             if (auto app = body->isa<App>()) phase->apply(app);
             phase->run();
         } else
-            fe::throwf("no phase registered for stage '{}'; is its plugin loaded?", callee);
+            fe::throwf("no phase registered for stage `{}`; is its plugin loaded?", callee);
     }
 }
 

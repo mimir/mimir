@@ -1,0 +1,39 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt %s -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 9
+
+plugin core;
+
+// Only 2 of the 3 recursive calls forward `k`, so `%compile.static_arg_opt` seeds the split with `k`,
+// drops it from the loop, and routes the remaining call through the wrapper.
+con ack (m n: Nat, k: Cn Nat) =
+    (m_ne_0, m_eq_0)#(%core.ncmp.e (m, 0)) ()
+    where
+        con m_eq_0() = k (%core.nat.add (n, 1));
+
+        con m_ne_0() =
+            (n_ne_0, n_eq_0)#(%core.ncmp.e (n, 0)) ()
+            where
+                con n_eq_0() = ack (%core.nat.sub (m, 1), 1, k);
+
+                con n_ne_0() =
+                    ack (m, %core.nat.sub (n, 1), inner)
+                    where
+                        con inner (v: Nat) = ack (%core.nat.sub (m, 1), v, k);
+                    end;
+            end;
+    end;
+
+fun extern main(argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): I32 =
+    ack (2, 3, done)
+    where
+        con done (r: Nat) = return (%core.bitcast I32 r);
+    end;
+
+// Only the one call that builds a fresh continuation survives; the other two are jumps into the loop.
+// CHECK-LABEL: define{{.*}}@ack
+// CHECK:         call{{.*}}@ack
+// CHECK-NOT:     call{{.*}}@ack
+// CHECK:       }
