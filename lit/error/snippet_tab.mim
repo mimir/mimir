@@ -1,0 +1,9 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The blanks before the carets are echoed tabs, so they line up whatever the terminal's tab width is.
+lam extern g (a: [Nat, Bool]) =
+	a#1;
+
+// CHECK:      {{.*}}snippet_tab.mim:5:2-5:4: error: index `1` must be of `Idx` type
+// CHECK-NEXT: 5 | 	a#1;
+// CHECK-NEXT:   | 	^^^

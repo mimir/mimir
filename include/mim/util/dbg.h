@@ -16,6 +16,28 @@ using fe::Loc;
 using fe::Pos;
 using fe::Sym;
 
+class Driver;
+
+/// Renders Def%s with their plain Def::sym instead of Def::unique_name while alive.
+/// A gid is noise in a diagnostic about the user's source - but it is also the only thing that tells two
+/// same-named Def%s apart, so PlainNames::clashed reports when a message has to be rendered again with gids.
+/// The state lives in Driver::names, so two Driver%s formatting at once never share it.
+class PlainNames {
+public:
+    /// Activates plain naming on @p driver until this guard dies; a null @p driver leaves it off.
+    explicit PlainNames(const Driver* driver);
+    ~PlainNames();
+
+    bool clashed() const;
+
+    /// Registers that @p gid renders as @p sym and reports whether the plain @p sym may be used.
+    /// Sets the clash flag - but still answers `true` - if another gid already claimed @p sym.
+    static bool claim(const Driver&, Sym sym, uint32_t gid);
+
+private:
+    const Driver* driver_;
+};
+
 class Error : public std::exception {
 public:
     enum class Tag {
@@ -34,12 +56,12 @@ public:
 
     /// @name Constructors
     ///@{
+    /// Snapshots Flags::no_snippet from @p driver and remembers it for Error::msg.
+    /// @note The snapshot is what lets an Error outlive @p driver: rendering must still work while an
+    /// exception unwinds past the Driver's scope, whereas Error::driver_ is only ever touched while
+    /// messages are added - at which point the Def%s being formatted prove their Driver is alive.
+    explicit Error(const Driver& driver);
     Error() = default;
-    /// Creates a single Tag::Error message.
-    Error(Loc loc, const std::string& str)
-        : msgs_{
-              {loc, Tag::Error, str}
-    } {}
     ///@}
 
     /// @name Getters
@@ -53,9 +75,18 @@ public:
 
     /// @name Add formatted message
     ///@{
+    /// @note Formats via `std::vformat` because a clashing pair of same-named Def%s makes us format @p s twice.
     template<class... Args>
     Error& msg(Loc loc, Tag tag, std::format_string<Args...> s, Args&&... args) {
-        msgs_.emplace_back(loc, tag, std::format(s, std::forward<Args>(args)...));
+        auto str = std::string();
+        {
+            auto plain = PlainNames(driver_);
+            str        = std::vformat(s.get(), std::make_format_args(args...));
+            if (plain.clashed()) str.clear();
+        }
+        if (str.empty()) str = std::vformat(s.get(), std::make_format_args(args...));
+
+        msgs_.emplace_back(loc, tag, std::move(str));
         return *this;
     }
 
@@ -67,6 +98,15 @@ public:
         return msg(loc, Tag::Note, s, std::forward<Args>(args)...);
     }
     // clang-format on
+
+    /// Error::note whose whole point is to point *elsewhere*; dropped when @p loc adds nothing.
+    /// A @p loc overlapping the primary one is already covered by its snippet and so points nowhere new.
+    /// The renderer appends `at <loc>`, so phrase the message to read into it: `"callee `{}` declared"`.
+    template<class... Args>
+    Error& note_at(Loc loc, std::format_string<Args...> s, Args&&... args) {
+        if (!loc || (loc & primary_loc())) return *this;
+        return note(loc, s, std::forward<Args>(args)...);
+    }
     ///@}
 
     /// @name Handle Errors/Warnings
@@ -96,25 +136,22 @@ public:
         // clang-format on
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const Error& e) {
-        for (const auto& msg : e.msgs())
-            os << msg << std::endl;
-        return os;
-    }
+    /// Renders each Tag::Error/Tag::Warn with its source snippet and its Tag::Note%s indented underneath.
+    friend std::ostream& operator<<(std::ostream&, const Error&);
 
 private:
+    /// Loc of the Tag::Error/Tag::Warn that subsequent Tag::Note%s belong to.
+    Loc primary_loc() const {
+        for (auto i = msgs_.rbegin(), e = msgs_.rend(); i != e; ++i)
+            if (i->tag != Tag::Note) return i->loc;
+        return {};
+    }
+
+    const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
+    bool no_snippet_      = false;   ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
     std::vector<Msg> msgs_;
     mutable std::string what_;
 };
-
-/// @name Formatted Output
-///@{
-/// Single Error that `throw`s immediately.
-template<class... Args>
-[[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) {
-    throw Error(loc, std::format(f, std::forward<Args>(args)...));
-}
-///@}
 
 struct Dbg {
 public:

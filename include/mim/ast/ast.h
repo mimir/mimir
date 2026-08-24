@@ -55,7 +55,8 @@ public:
     AST()           = default;
     AST(const AST&) = delete;
     AST(World& world)
-        : world_(&world) {}
+        : world_(&world)
+        , err_(world.driver()) {}
     AST(AST&& other)
         : AST() {
         swap(*this, other);

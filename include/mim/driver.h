@@ -42,6 +42,19 @@ public:
     const Version& version() const { return version_; } ///< MimIR Version.
     ///@}
 
+    /// @name Diagnostic Naming
+    /// Scratch state for PlainNames: which plain Def::sym each gid claimed while one message is formatted.
+    /// It lives here - not in a global - so that concurrent Driver%s never share it.
+    ///@{
+    struct Names {
+        size_t depth = 0;
+        bool clashed = false;
+        absl::flat_hash_map<Sym, u32> sym2gid;
+    };
+
+    Names& names() const { return names_; }
+    ///@}
+
     /// @name Manage Search Paths
     /// Search paths for plugins are in the following order:
     /// 1. The empty path. Used as prefix to look into current working directory without resorting to an absolute path.
@@ -152,6 +165,7 @@ private:
     Version version_;
     Flags flags_;
     mutable Log log_;
+    mutable Names names_;
     Profiler profiler_;
     World world_;
     std::list<fs::path> search_paths_;

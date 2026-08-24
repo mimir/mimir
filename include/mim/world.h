@@ -123,6 +123,23 @@ public:
     Loc get_loc() const { return state_.pod.curr_loc.loc; }
     DbgKey dbg_key() const { return state_.pod.curr_loc.key; } ///< World::get_loc, already interned.
     [[nodiscard]] ScopedLoc push(Loc);
+
+    /// Loc to blame for a diagnostic about @p def.
+    /// Def%s are hash-consed, so Def::loc may belong to whatever file first created a structurally equal term.
+    /// World::get_loc is the syntactic site the emitter is currently working on and thus the user's actual mistake;
+    /// it is only set during emit, so fall back to the Def itself - and to its enclosing mutable - afterwards.
+    Loc err_loc(const Def* def) const;
+    ///@}
+
+    /// @name Diagnostics
+    ///@{
+    /// Throws a single-message Error carrying this World's Driver, so the renderer can find its Flags.
+    template<class... Args>
+    [[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) const {
+        auto e = Error(driver());
+        e.error(loc, f, std::forward<Args>(args)...);
+        throw e;
+    }
     ///@}
 
     /// @name Sym

@@ -55,6 +55,12 @@ The syntax is `-X <plugin>:<arg>`:
 | [ll_nvptx](@ref ll_nvptx) | `libdevice=<path>`                      | If embedding device binary and if linking libdevice, link against the libdevice NVVM library at `<path>` instead of trying to find it via CUDA paths.                                          |
 | [ll_nvptx](@ref ll_nvptx) | `X<tool>=<args>`                        | If embedding device binary invoke `<tool>` with `<args>`.                                                                                                                                      |
 
+## Diagnostics {#clidiag}
+
+Errors and warnings are reported as `<file>:<row>:<col>: error: <message>`, followed by the offending source line with a caret underneath and any notes indented below it.
+Pass `--no-snippet` to omit the source line and caret, e.g. when the output is consumed by a script.
+Color is decided by the terminal and honors `NO_COLOR`, `CLICOLOR=0`, and `CLICOLOR_FORCE`.
+
 ## Debugging Features {#clidebug}
 
 - The breakpoint-oriented flags below are developer options that are only available when MimIR is built with `MIM_ENABLE_CHECKS`.
