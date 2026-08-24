@@ -71,15 +71,11 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     if (cur && Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
     if (cur && isa_bundle(cur, lam)) return cur;
 
-    // First touch of `var` this round - including the very first ever (cur == ⊥):
-    // restart the join from this call site, discarding any value accumulated in an earlier round.
-    // The `⊥` case MUST also mark first_;
-    // otherwise the *second* site would take this branch, resetting away this first contribution and
-    // letting `var` settle on a later site's value instead of climbing to ⊤.
-    // This restart is only sound if the round re-joins *all* of lam's call sites - otherwise a sparse round
-    // would discard the unvisited sites' contributions, e.g. re-fold a loop's backedge increment forever
-    // without ever meeting the entry's conflicting constant.
-    // apply_known() guarantees this: any change to lam's abstract vars taints all of lam's callers.
+    // First touch of `var` this round, including `cur == ⊥`: restart the join here.
+    // `⊥` must set `first_`, or the next site would discard this value and let a later one win instead of reaching ⊤.
+    // This requires revisiting every `lam` call site;
+    // otherwise sparse rounds can forget unvisited contributions. `apply_known()` ensures that by tainting all callers
+    // when `lam`'s abstract vars change.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
         // The abstract domain has no bounded height - a value that round-trips a loop through a closure env
