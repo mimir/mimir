@@ -1,4 +1,3 @@
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -16,8 +15,7 @@ TEST(Lexer, Toks) {
     Driver driver;
     auto& w  = driver.world();
     auto ast = AST(w);
-    std::istringstream is("{ } ( ) [ ] ‹ › « » : , . lam λ  23₀₁₂₃₄₅₆₇₈₉");
-    Lexer lexer(ast, is);
+    Lexer lexer(ast, "{ } ( ) [ ] ‹ › « » : , . lam λ  23₀₁₂₃₄₅₆₇₈₉");
 
     EXPECT_TRUE(lexer.lex().isa(Tok::Tag::D_brace_l));
     EXPECT_TRUE(lexer.lex().isa(Tok::Tag::D_brace_r));
@@ -44,31 +42,27 @@ TEST(Lexer, Errors) {
     Driver driver;
     auto& w  = driver.world();
     auto ast = ast::AST(w);
-    std::istringstream is1("asdf \xc0\xc0");
-    Lexer l1(ast, is1);
+    Lexer l1(ast, "asdf \xc0\xc0");
     l1.lex();
     l1.lex();
     EXPECT_GE(ast.error().num_errors(), 1);
     EXPECT_TRUE(ast.error().msgs().front().str.starts_with("invalid UTF-8"));
     ast.error().clear();
 
-    std::istringstream is2("foo \xaa");
-    Lexer l2(ast, is2);
+    Lexer l2(ast, "foo \xaa");
     l2.lex();
     l2.lex();
     EXPECT_GE(ast.error().num_errors(), 1);
     EXPECT_TRUE(ast.error().msgs().front().str.starts_with("invalid UTF-8"));
     ast.error().clear();
 
-    std::istringstream is3("+");
-    Lexer l3(ast, is3);
+    Lexer l3(ast, "+");
     l3.lex();
     EXPECT_GE(ast.error().num_errors(), 1);
     EXPECT_TRUE(ast.error().msgs().front().str.starts_with("stray"));
     ast.error().clear();
 
-    std::istringstream is4("-");
-    Lexer l4(ast, is4);
+    Lexer l4(ast, "-");
     l4.lex();
     EXPECT_GE(ast.error().num_errors(), 1);
     EXPECT_TRUE(ast.error().msgs().front().str.starts_with("stray"));
@@ -79,9 +73,7 @@ TEST(Lexer, Eof) {
     Driver driver;
     auto& w  = driver.world();
     auto ast = AST(w);
-    std::istringstream is("");
-
-    Lexer lexer(ast, is);
+    Lexer lexer(ast, "");
     for (int i = 0; i < 10; i++)
         EXPECT_TRUE(lexer.lex().isa(Tok::Tag::EoF));
 }
@@ -103,8 +95,7 @@ TEST_P(Real, sign) {
             default: fe::unreachable();
         }
 
-        std::istringstream is(s);
-        Lexer lexer(ast, is);
+        Lexer lexer(ast, s);
 
         auto tag = lexer.lex();
         EXPECT_TRUE(tag.isa(Tok::Tag::L_f));
@@ -122,15 +113,13 @@ TEST_P(Real, sign) {
     check("0x2.3p-4", 0x2.3p-4); check("0x2.3P4", 0x2.3P4);
     // clang-format on
 
-    std::istringstream is1("0x2.34");
-    Lexer l1(ast, is1);
+    Lexer l1(ast, "0x2.34");
     l1.lex();
     EXPECT_EQ(ast.error().num_errors(), 1);
     EXPECT_TRUE(ast.error().msgs().front().str == "hexadecimal floating constants require an exponent"sv);
     ast.error().clear();
 
-    std::istringstream is2("2.34e");
-    Lexer l2(ast, is2);
+    Lexer l2(ast, "2.34e");
     l2.lex();
     EXPECT_EQ(ast.error().num_errors(), 1);
     EXPECT_TRUE(ast.error().msgs().front().str == "exponent has no digits");

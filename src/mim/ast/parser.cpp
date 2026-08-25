@@ -1,7 +1,6 @@
 #include "mim/ast/parser.h"
 
 #include <filesystem>
-#include <fstream>
 #include <ranges>
 
 #include "mim/driver.h"
@@ -116,7 +115,7 @@ Ptr<Module> Parser::parse_module() {
     bool where = ahead().isa(Tag::K_where);
     expect(Tag::EoF, "module");
     auto mod = ptr<Module>(track, std::move(imports), std::move(decls));
-    if (where) ast().note(mod->loc().anew_finis(), "did you accidentally end your declaration expression with a `;`?");
+    if (where) ast().note(mod->loc().anew_end(), "did you accidentally end your declaration expression with a `;`?");
     return mod;
 }
 
@@ -138,24 +137,34 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
         if (bool reg_file = fs::is_regular_file(rel_path, ignore); reg_file && !ignore) break;
     }
 
-    if (auto [path, fresh] = driver().imports().add(std::move(rel_path), name, tag); fresh) {
-        auto ifs = std::ifstream(*path);
-        return import(ifs, dbg.loc(), path, md);
-    }
-    return {};
-}
-
-Ptr<Module> Parser::import(std::istream& is, Loc loc, const fs::path* path, std::ostream* md) {
-    driver().VLOG("📄 reading: {}", path ? path->string() : "<unknown file>"s);
-    if (!is) {
-        ast().error(loc, "cannot read file `{}`", path->string());
+    auto [src, fresh] = driver().imports().add(rel_path, name, tag);
+    if (!src) {
+        // rel_path is whatever candidate the search loop tried last, so it only names a real file here.
+        if (fs::exists(rel_path))
+            ast().error(dbg.loc(), "cannot read file `{}`", rel_path.string());
+        else
+            ast().error(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
+    return fresh ? import(*src, md) : Ptr<Module>();
+}
+
+Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {
+    if (!is) {
+        ast().error(loc, "cannot read file `{}`", path.string());
+        return {};
+    }
+    auto [src, _] = driver().src().add(std::move(path), fe::SrcMap::slurp(is));
+    return import(*src, md);
+}
+
+Ptr<Module> Parser::import(const fe::Src& src, std::ostream* md) {
+    driver().VLOG("📄 reading: {}", src.path().string());
 
     auto state = std::tuple(curr_, ahead_, lexer_);
-    auto lexer = Lexer(ast(), is, path, md);
+    auto lexer = Lexer(ast(), src, md);
     lexer_     = &lexer;
-    init(path);
+    init();
     auto mod                        = parse_module();
     std::tie(curr_, ahead_, lexer_) = state;
     return mod;
@@ -270,10 +279,10 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                 switch (ahead().tag()) {
                     case Tag::C_DECL:
                         ast().warn(ahead().loc(), "you are passing a declaration expression as argument");
-                        ast().note(lhs->loc(), "to this expression");
+                        ast().note(lhs->loc(), "passed to this expression");
                         ast().note(ahead().loc(),
                                    "if this was your intention, consider parenthesizing the declaration expression");
-                        ast().note(lhs->loc().anew_finis(), "otherwise, you are probably missing a `;`");
+                        ast().note(lhs->loc().anew_end(), "or insert a `;` here");
                     default: break;
                 }
                 auto rhs = parse_expr("argument to an application", Prec::App);
@@ -289,7 +298,7 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                 bool where = ahead().tag() == Tag::K_where;
                 expect(Tag::K_end, "end of a where declaration block");
                 if (where)
-                    ast().note(lhs->loc().anew_finis(),
+                    ast().note(lhs->loc().anew_end(),
                                "did you accidentally end your declaration expression with a `;`?");
                 return lhs;
             }
@@ -556,7 +565,7 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(int style) {
             if (accept(Tag::T_colon)) { // identifier group: x y x: T
                 auto dbg  = dbgs.back();
                 auto type = parse_expr("type of an identifier group within a tuple pattern");
-                auto id   = ptr<IdPtrn>(dbg.loc() + type->loc().finis, dbg, std::move(type));
+                auto id   = ptr<IdPtrn>(dbg.loc() + type->loc().end, dbg, std::move(type));
 
                 for (auto dbg : dbgs | std::views::take(dbgs.size() - 1))
                     ptrns.emplace_back(ptr<GrpPtrn>(dbg, id.get()));

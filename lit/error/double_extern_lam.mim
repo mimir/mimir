@@ -1,4 +1,11 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 lam extern a() = ();
 lam extern a() = ();
-// CHECK: error: redeclaration
+
+// A redeclaration blames two rows, so each gets a header line and a snippet of its own.
+// CHECK:      {{.*}}double_extern_lam.mim:3:12: error: redeclaration of `a`
+// CHECK-NEXT: 3 | lam extern a() = ();
+// CHECK-NEXT:   |            ^
+// CHECK-NEXT:   {{.*}}double_extern_lam.mim:2:12: note: previous declaration here
+// CHECK-NEXT: 2 | lam extern a() = ();
+// CHECK-NEXT:   |            ^

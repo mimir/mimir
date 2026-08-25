@@ -373,7 +373,7 @@ const Def* Def::check(size_t i, const Def* def) {
         .error(world().err_loc(def), "function body is not assignable to its declared codomain")
         .note(world().err_loc(def), "expected `{}`, got `{}`", lam->codom(), def->type())
         .note(world().err_loc(def), "body: `{}`", def)
-        .note_at(lam->codom()->loc(), "codomain `{}` declared", lam->codom());
+        .note_at(lam->codom()->loc(), "codomain `{}` declared here", lam->codom());
 }
 
 const Def* Def::check() {

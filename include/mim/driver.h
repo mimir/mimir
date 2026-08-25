@@ -69,6 +69,15 @@ public:
     }
     ///@}
 
+    /// @name Source Files
+    /// Owns the text - and the fe::Src a Loc points at - of every file we have lexed.
+    /// @warning Every Loc - and hence every Error - dies with this Driver, so keep it alive until
+    /// the last diagnostic has been rendered; in particular, create it *outside* the `try` block.
+    ///@{
+    fe::SrcMap& src() { return src_; }
+    const fe::SrcMap& src() const { return src_; }
+    ///@}
+
     /// @name Manage Imports
     /// This tracks:
     /// 1. The distinct files that have already been parsed to avoid reparsing them,
@@ -77,7 +86,7 @@ public:
     class Imports {
     public:
         struct Entry {
-            fs::path path;
+            const fe::Src* src;
             Sym sym;
             ast::Tok::Tag tag;
         };
@@ -96,13 +105,14 @@ public:
         auto end() const { return entries_.cend(); }
         ///@}
 
-        /// Remembers an import or plugin directive and reports whether the resolved file is new.
-        std::pair<const fs::path*, bool> add(fs::path, Sym, ast::Tok::Tag);
+        /// Reads @p path, remembers the import or plugin directive, and reports whether the file is new.
+        /// Yields a `nullptr` fe::Src if @p path cannot be read; reporting that is the caller's job,
+        /// since only it knows the Loc of the directive to blame.
+        std::pair<const fe::Src*, bool> add(fs::path, Sym, ast::Tok::Tag);
 
     private:
         Driver& driver_;
         std::deque<Entry> entries_;
-        std::deque<fs::path> parsed_paths_;
     };
 
     const Imports& imports() const { return imports_; }
@@ -112,7 +122,7 @@ public:
     /// @name Dbg Interning
     /// A Def only stores a `u32` index into this table instead of a full Dbg; see Def::dbg_.
     /// This lives in the Driver - not in the World - because both halves of a Dbg are already owned here:
-    /// Dbg::sym is interned in this Driver's fe::SymPool and Dbg::loc points into Imports::parsed_paths_.
+    /// Dbg::sym is interned in this Driver's fe::SymPool and Dbg::loc points into Driver::src.
     /// Both outlive any individual World, so an index also stays valid when a RWPhase rebuilds the World.
     /// Index `0` is always the empty Dbg.
     ///@{
@@ -164,6 +174,7 @@ private:
     absl::node_hash_map<Sym, Plugin::Handle> plugins_;
     Version version_;
     Flags flags_;
+    fe::SrcMap src_;
     mutable Log log_;
     mutable Names names_;
     Profiler profiler_;

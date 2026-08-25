@@ -11,37 +11,21 @@
 
 namespace mim {
 
-std::pair<const fs::path*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
-    if (!fs::exists(path)) {
-        driver_.WLOG("import path '{}' does not exist", path.string());
-        return {nullptr, false};
-    }
+std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
+    auto [src, fresh] = driver_.src().add(std::move(path));
+    if (!src) return {nullptr, false};
 
-    const fs::path* imported_path = nullptr;
-    bool fresh                    = true;
-    for (const auto& parsed_path : parsed_paths_) {
-        if (fs::equivalent(parsed_path, path)) {
-            imported_path = &parsed_path;
-            fresh         = false;
-            break;
-        }
-    }
-
-    if (!imported_path) {
-        parsed_paths_.emplace_back(std::move(path));
-        imported_path = &parsed_paths_.back();
-    }
-
+    // The SrcMap interns paths, so one file is one fe::Src - comparing those settles "same file".
     bool seen_entry = false;
     for (const auto& entry : entries_) {
-        if (entry.sym == sym && entry.tag == tag && fs::equivalent(entry.path, *imported_path)) {
+        if (entry.sym == sym && entry.tag == tag && entry.src == src) {
             seen_entry = true;
             break;
         }
     }
 
-    if (!seen_entry) entries_.emplace_back(Entry{*imported_path, sym, tag});
-    return {imported_path, fresh};
+    if (!seen_entry) entries_.emplace_back(Entry{src, sym, tag});
+    return {src, fresh};
 }
 
 Driver::Driver(std::string name)
