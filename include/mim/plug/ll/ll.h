@@ -249,6 +249,16 @@ private:
     void emit_epilogue_impl(Lam*);
     std::string emit_bb_impl(BB&, const Def*);
 
+    // Case groups of emit_bb_impl, split so one recursion level only pays the frame of the group it hits.
+    MIM_NOINLINE std::string emit_lit(const Def*);
+    MIM_NOINLINE std::string emit_tuple(BB&, const std::string& name, const Def* tuple);
+    MIM_NOINLINE std::pair<std::string, std::string> emit_gep_index(BB&, const std::string& name, const Def* index);
+    MIM_NOINLINE std::optional<std::string> emit_builtin(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_core(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_mem(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_math(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_vec(BB&, const std::string& name, const Def*);
+
     decltype(&mim_ll_convert) convert_             = nullptr;
     decltype(&mim_ll_finalize) finalize_           = nullptr;
     decltype(&mim_ll_emit_epilogue) emit_epilogue_ = nullptr;

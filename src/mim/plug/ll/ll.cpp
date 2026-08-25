@@ -19,7 +19,7 @@ using namespace std::string_literals;
 
 namespace clos = mim::plug::clos;
 namespace core = mim::plug::core;
-namespace vecp  = mim::plug::vec;
+namespace vecp = mim::plug::vec;
 
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
@@ -345,77 +345,65 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
     }
 }
 
-std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
-    if (auto lam = def->isa<Lam>()) return id(lam);
-
-    auto name = id(def);
-    std::string op;
-
-    auto emit_tuple = [&](const Def* tuple) {
-        if (detail::isa_mem_sigma_2(tuple->type())) {
-            emit_unsafe(tuple->proj(2, 0));
-            return emit(tuple->proj(2, 1));
-        }
-
-        if (tuple->is_closed()) {
-            bool is_array   = tuple->type()->isa<Arr>();
-            auto simd_array = convert(tuple->type()).front() == '<'; // needed to respect pointer context
-            std::string s;
-            s += simd_array ? "<" : is_array ? "[" : "{";
-            auto sep = "";
-            for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
-                auto e = tuple->proj(n, i);
-                if (auto v_elem = emit_unsafe(e); !v_elem.empty()) {
-                    auto t_elem = convert(e->type());
-                    s += sep + t_elem + " " + v_elem;
-                    sep = ", ";
-                }
-            }
-
-            return s += simd_array ? ">" : is_array ? "]" : "}";
-        }
-
-        std::string prev = "undef";
-        auto t           = convert(tuple->type());
-        for (size_t src = 0, dst = 0, n = tuple->num_projs(); src != n; ++src) {
-            auto e = tuple->proj(n, src);
-            if (auto elem = emit_unsafe(e); !elem.empty()) {
-                auto elem_t = convert(e->type());
-                // TODO: check dst vs src
-                auto namei = name + "." + std::to_string(dst);
-                if (t.front() == '<') // not using is_simd to respect the pointer context (Pointer Pointee case)
-                    prev = bb.assign(namei, "insertelement {} {}, {} {}, {} {}", t, prev, elem_t, elem, elem_t, dst);
-                else
-                    prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
-                dst++;
-            }
-        }
-        return prev;
-    };
-
-    if (def->isa<Var>()) {
-        if (is_simd(def->type())) return id(def);
-        auto ts = def->type()->projs();
-        if (std::ranges::any_of(ts, [](auto t) { return Axm::isa<mem::M>(t); })) return {};
-        return emit_tuple(def);
+std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tuple) {
+    if (detail::isa_mem_sigma_2(tuple->type())) {
+        emit_unsafe(tuple->proj(2, 0));
+        return emit(tuple->proj(2, 1));
     }
 
-    auto emit_gep_index = [&](const Def* index) {
-        auto v_i = emit(index);
-        auto t_i = convert(index->type());
-
-        if (auto size = Idx::isa(index->type())) {
-            if (auto w = Idx::size2bitwidth(size); w && *w < 64) {
-                v_i = bb.assign(name + ".zext",
-                                "zext {} {} to i{} ; add one more bit for gep index as it is treated as signed value",
-                                t_i, v_i, *w + 1);
-                t_i = "i" + std::to_string(*w + 1);
+    if (tuple->is_closed()) {
+        bool is_array   = tuple->type()->isa<Arr>();
+        auto simd_array = convert(tuple->type()).front() == '<'; // needed to respect pointer context
+        std::string s;
+        s += simd_array ? "<" : is_array ? "[" : "{";
+        auto sep = "";
+        for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
+            auto e = tuple->proj(n, i);
+            if (auto v_elem = emit_unsafe(e); !v_elem.empty()) {
+                auto t_elem = convert(e->type());
+                s += sep + t_elem + " " + v_elem;
+                sep = ", ";
             }
         }
 
-        return std::pair(v_i, t_i);
-    };
+        return s += simd_array ? ">" : is_array ? "]" : "}";
+    }
 
+    std::string prev = "undef";
+    auto t           = convert(tuple->type());
+    for (size_t src = 0, dst = 0, n = tuple->num_projs(); src != n; ++src) {
+        auto e = tuple->proj(n, src);
+        if (auto elem = emit_unsafe(e); !elem.empty()) {
+            auto elem_t = convert(e->type());
+            // TODO: check dst vs src
+            auto namei = name + "." + std::to_string(dst);
+            if (t.front() == '<') // not using is_simd to respect the pointer context (Pointer Pointee case)
+                prev = bb.assign(namei, "insertelement {} {}, {} {}, {} {}", t, prev, elem_t, elem, elem_t, dst);
+            else
+                prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
+            dst++;
+        }
+    }
+    return prev;
+}
+
+std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::string& name, const Def* index) {
+    auto v_i = emit(index);
+    auto t_i = convert(index->type());
+
+    if (auto size = Idx::isa(index->type())) {
+        if (auto w = Idx::size2bitwidth(size); w && *w < 64) {
+            v_i = bb.assign(name + ".zext",
+                            "zext {} {} to i{} ; add one more bit for gep index as it is treated as signed value", t_i,
+                            v_i, *w + 1);
+            t_i = "i" + std::to_string(*w + 1);
+        }
+    }
+
+    return std::pair(v_i, t_i);
+}
+
+std::string Emitter::emit_lit(const Def* def) {
     if (auto lit = def->isa<Lit>()) {
         if (lit->type()->isa<Nat>() || Idx::isa(lit->type())) {
             return std::to_string(lit->get());
@@ -439,16 +427,30 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
             return s.str();
         }
         fe::throwf(MIM_LL_BE "cannot emit literal `{}` of type `{}`", def, def->type());
+    }
+    fe::unreachable();
+}
+
+std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name, const Def* def) {
+    if (def->isa<Var>()) {
+        if (is_simd(def->type())) return id(def);
+        auto ts = def->type()->projs();
+        if (std::ranges::any_of(ts, [](auto t) { return Axm::isa<mem::M>(t); })) return std::string();
+        return emit_tuple(bb, name, def);
+    }
+
+    if (def->isa<Lit>()) {
+        return emit_lit(def);
     } else if (def->isa<Bot>()) {
         return "undef";
     } else if (auto top = def->isa<Top>()) {
-        if (Axm::isa<mem::M>(top->type())) return {};
-        // bail out to error below
+        if (Axm::isa<mem::M>(top->type())) return std::string();
+        // bail out to the dispatcher's error
     } else if (auto tuple = def->isa<Tuple>()) {
-        return emit_tuple(tuple);
+        return emit_tuple(bb, name, tuple);
     } else if (auto pack = def->isa<Pack>()) {
         if (auto lit = Lit::isa(pack->body()); lit && *lit == 0) return "zeroinitializer";
-        return emit_tuple(pack);
+        return emit_tuple(bb, name, pack);
     } else if (auto sel = Select(def)) {
         auto t                = convert(sel.extract()->type());
         auto [elem_a, elem_b] = sel.pair()->projs<2>([&](auto e) { return emit_unsafe(e); });
@@ -463,8 +465,8 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
 
         // this exact location is important: after emitting the tuple -> ordering of mem ops
         // before emitting the index, as it might be a weird value for mem vars.
-        if (Axm::isa<mem::M>(extract->type())) return {};
-        if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return {};
+        if (Axm::isa<mem::M>(extract->type())) return std::string();
+        if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return std::string();
 
         auto t_tup = convert(tuple->type());
         if (auto li = Lit::isa(index)) {
@@ -480,7 +482,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         }
 
         auto t_elem     = convert(extract->type());
-        auto [v_i, t_i] = emit_gep_index(index);
+        auto [v_i, t_i] = emit_gep_index(bb, name, index);
 
         std::print(lam2bb_[root()].body().emplace_front(),
                    "{}.alloca = alloca {} ; copy to alloca to emulate extract with store + gep + load", name, t_tup);
@@ -514,7 +516,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                 return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val, v_i);
             }
             auto t_elem     = convert(insert->value()->type());
-            auto [v_i, t_i] = emit_gep_index(insert->index());
+            auto [v_i, t_i] = emit_gep_index(bb, name, insert->index());
             std::print(lam2bb_[root()].body().emplace_front(),
                        "{}.alloca = alloca {} ; copy to alloca to emulate insert with store + gep + load", name, t_tup);
             std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
@@ -528,7 +530,13 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         auto [pointee, addr_space] = Axm::expect<mem::Ptr>(global->type(), "a `%mem.Ptr`")->args<2>();
         std::print(vars_decls_, "{} = global {} {}\n", name, convert(pointee), v_init);
         return globals_[global] = name;
-    } else if (auto nat = Axm::isa<core::nat>(def)) {
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, const Def* def) {
+    std::string op;
+    if (auto nat = Axm::isa<core::nat>(def)) {
         auto [a, b] = nat->args<2>([this](auto def) { return emit(def); });
 
         switch (nat.id()) {
@@ -735,7 +743,12 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
             op = (src_size < dst_size) ? "zext" : "trunc";
         }
         return bb.assign(name, "{} {} {} to {}", op, t_src, v_src, t_dst);
-    } else if (auto lea = Axm::isa<mem::lea>(def)) {
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, const Def* def) {
+    if (auto lea = Axm::isa<mem::lea>(def)) {
         auto [ptr, i]  = lea->args<2>();
         auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `%mem.Ptr`")->arg(0);
         auto v_ptr     = emit(ptr);
@@ -746,7 +759,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
                              Lit::expect(i, "a struct-field index"));
 
         if (!pointee->isa<Arr>()) fe::throwf(MIM_LL_BE "`%mem.lea` on a pointer to a non-aggregate `{}`", pointee);
-        auto [v_i, t_i] = emit_gep_index(i);
+        auto [v_i, t_i] = emit_gep_index(bb, name, i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
@@ -769,7 +782,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     } else if (auto free = Axm::isa<mem::free>(def)) {
         auto address_space = free->decurry()->arg(1);
         if (Lit::expect(address_space, "an address space") != 0)
-            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return {};
+            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return std::string();
 
         declare("void @free(i8*)");
         emit_unsafe(free->arg(0));
@@ -780,7 +793,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         if (Lit::expect(address_space, "an address space") != 0)
             i8ptr = bb.assign(name + "i8conv", "addrspacecast i8 addrspace({})* {} to i8*", address_space, i8ptr);
         bb.tail("call void @free(i8* {})", i8ptr);
-        return {};
+        return std::string();
     } else if (auto load = Axm::isa<mem::load>(def)) {
         emit_unsafe(load->arg(0));
         auto v_ptr     = emit(load->arg(1));
@@ -794,7 +807,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         auto t_ptr = convert(store->arg(1)->type());
         auto t_val = convert(store->arg(2)->type(), false);
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
-        return {};
+        return std::string();
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {
         // The size of a `jmp_buf` is platform/libc-dependent, so it is computed by a C runtime
         // wrapper (`rt/mim_rt.c`) rather than hard-coded here; see issue #486.
@@ -811,7 +824,13 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         emit_unsafe(mem);
         auto v_jb = emit(jmpbuf);
         return bb.assign(name, "call i32 @_setjmp(i8* {})", v_jb);
-    } else if (auto arith = Axm::isa<math::arith>(def)) {
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, const Def* def) {
+    std::string op;
+    if (auto arith = Axm::isa<math::arith>(def)) {
         auto [mode, ab] = arith->uncurry_args<2>();
         auto [a, b]     = ab->projs<2>([this](auto def) { return emit(def); });
         auto t          = convert(arith->type());
@@ -996,7 +1015,12 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         f += detail::llvm_suffix(round->type());
         declare("{} @{}({})", t, f, t);
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
-    } else if (auto v = Axm::isa<ll::vec>(def)) {
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, const Def* def) {
+    if (auto v = Axm::isa<ll::vec>(def)) {
         // `%ll.vec` annotates a loop's exit condition; as a value it is the identity — the
         // metadata it requests is attached at the branches into the loop's header.
         return emit(v->arg());
@@ -1103,9 +1127,20 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
         auto v2 = emit(inputs->proj(nat_ni, 1));
         prev    = bb.assign(name, "{} {} {}, {}", op, t_in, v1, v2);
         return prev;
-    } else if (auto res = isa_targetspecific_intrinsic(bb, def)) {
-        return res.value();
     }
+    return std::nullopt;
+}
+
+std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
+    if (auto lam = def->isa<Lam>()) return id(lam);
+
+    auto name = id(def);
+    if (auto res = emit_builtin(bb, name, def)) return *std::move(res);
+    if (auto res = emit_core(bb, name, def)) return *std::move(res);
+    if (auto res = emit_mem(bb, name, def)) return *std::move(res);
+    if (auto res = emit_math(bb, name, def)) return *std::move(res);
+    if (auto res = emit_vec(bb, name, def)) return *std::move(res);
+    if (auto res = isa_targetspecific_intrinsic(bb, def)) return *std::move(res);
     fe::throwf(MIM_LL_BE "unhandled def `{}` of type `{}`", def, def->type());
 }
 

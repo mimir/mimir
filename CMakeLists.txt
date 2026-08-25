@@ -55,6 +55,12 @@ cmake_dependent_option(
 
 if(WIN32)
     add_compile_definitions(NOMINMAX) # prevents windows.h defining min/max macros
+    # deep Def recursion overflows the default 1MB stack; match Linux's 8MB plus headroom
+    if(MSVC)
+        add_link_options(/STACK:16777216)
+    else()
+        add_link_options(-Wl,--stack,16777216)
+    endif()
 else()
     add_compile_options(-Wall -Wextra)
 endif()
