@@ -434,10 +434,28 @@ const Def* World::extract(const Def* d, const Def* index) {
     }
 
     const Def* elem_t;
-    if (auto arr = type->isa<Arr>())
+    if (auto arr = type->isa<Arr>()) {
         elem_t = arr->reduce(index);
-    else
-        elem_t = join(type->as<Sigma>()->ops());
+    } else {
+        auto sigma = type->as<Sigma>();
+        elem_t     = nullptr;
+        // «(a_0, ..., a_{n-1})#index; body» is more precise than the join if all ops are Arrs of the same body.
+        if (sigma->isa_imm()) {
+            const Def* body = nullptr;
+            auto extents    = DefVec();
+            for (auto op : sigma->ops()) {
+                auto op_arr = op->zonk()->isa<Arr>();
+                if (!op_arr || (body && op_arr->body()->zonk() != body)) {
+                    extents.clear();
+                    break;
+                }
+                body = op_arr->body()->zonk();
+                extents.emplace_back(op_arr->arity());
+            }
+            if (!extents.empty()) elem_t = this->arr(extract(tuple(extents), index), body);
+        }
+        if (!elem_t) elem_t = join(sigma->ops());
+    }
 
     if (index->isa<Top>()) {
         if (auto hole = Hole::isa_unset(d)) {

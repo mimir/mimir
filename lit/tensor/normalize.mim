@@ -110,10 +110,7 @@ let _ = %refly.equiv.struc_eq (subs_2, (2, 1));
 // The matrix product built from the pieces verified above, as %tensor.dot_product_impl builds it.
 let s_red   = ‹i: nc; s1#(c1#i)›;
 let s_full  = %vec.cat (s_out, s_red);
-// The `{Tis, Ris, Sis}` group is passed explicitly: the ranks are symbolic here (`r_out`/`nc` are computed),
-// and inferring the group through the `%tensor.map_reduce` wrapper lam would eagerly build the domain over
-// still-unsolved holes.
-let dot = %tensor.map_reduce (s_out, s_full) @((Nat, Nat), (2, 2), (s1, s2)) (f, 0)
+let dot = %tensor.map_reduce (s_out, s_full) (f, 0)
     (%tensor.proj_map ‹i: r_out; %core.bitcast Nat i›)
     (%tensor.proj_map subs_1, %tensor.proj_map subs_2)
     (t1, t2);
