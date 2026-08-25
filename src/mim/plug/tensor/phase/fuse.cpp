@@ -597,7 +597,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     // type change.
     auto mr = w.annex<tensor::map_reduce_post>();
     mr      = w.app(mr, {i_nis, w.lit_nat(new_nps)});
-    mr      = w.app(mr, {i_To, Tp, i_Ro, i_Rn, TSched});
+    mr      = w.app(mr, {i_To, Tp, i_Ro, i_Rn, i_TSched});
     mr      = w.app(mr, i_shapes);
     mr      = w.app(mr, {i_Tis, i_Ris, i_Sis, w.tuple(nTps), w.tuple(nRps), w.tuple(nSps)});
     mr      = w.app(mr, {i_comb, i_init, fused_post});
