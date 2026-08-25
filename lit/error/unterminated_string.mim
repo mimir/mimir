@@ -1,5 +1,6 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
 // The lexer must stop at EoF instead of spinning forever.
-// CHECK: {{.*}}unterminated_string.mim:5:9-5:13: error: unterminated string literal
+// The literal swallows the line ending, so the end column is 13 with LF and 14 with CRLF.
+// CHECK: {{.*}}unterminated_string.mim:6:9-6:{{1[34]}}: error: unterminated string literal
 let s = "abc
