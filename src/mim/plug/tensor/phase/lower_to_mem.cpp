@@ -39,7 +39,7 @@ const Def* splat_scalar(const Def* d) {
 
 /// Is `app` a tensor op whose lowering consumes a LowerToMem::fresh_mem?
 bool wants_fresh_mem(const App* app) {
-    return Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app) || Axm::isa<tensor::map_reduce>(app)
+    return Axm::isa<tensor::set>(app) || Axm::isa<tensor::broadcast>(app) || Axm::isa<tensor::map_reduce_post>(app)
         || Axm::isa<tensor::pad>(app) || Axm::isa<tensor::concat>(app);
 }
 
@@ -83,17 +83,25 @@ void LowerToMem::collect_tensor_types() {
                 auto [T, r] = app->callee()->as<App>()->args<2>();
                 if (T->isa<Arr>()) gate("tensor with array element type", T);
                 add_tensor_ty(app->type());
-            } else if (Axm::isa<tensor::map_reduce>(app)) {
-                // result and each of the `nis` inputs are tensors.
+            } else if (Axm::isa<tensor::map_reduce_post>(app)) {
+                // result and each of the `nis` inputs / `nps` epilogue inputs are tensors.
                 add_tensor_ty(app->type());
-                auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs]
+                auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs]
                     = app->callee()->as<App>()->uncurry_args<7>();
-                if (meta->proj(3, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(3, 0));
-                if (auto nis_l = Lit::isa<u64>(nis)) {
-                    auto Tis = TisRisSis->proj(3, 0);
+                if (meta->proj(5, 0)->isa<Arr>()) gate("tensor with array element type", meta->proj(5, 0));
+                if (meta->proj(5, 1)->isa<Arr>()) gate("tensor with array element type", meta->proj(5, 1));
+                if (auto nis_l = Lit::isa<u64>(nis_nps->proj(2, 0))) {
+                    auto Tis = in_tys->proj(6, 0);
                     for (u64 i = 0; i < *nis_l; ++i) {
                         if (Tis->proj(*nis_l, i)->isa<Arr>()) gate("tensor with array element type", Tis);
-                        add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
+                        add_tensor_ty(app->arg()->proj(2, 0)->proj(*nis_l, i)->type());
+                    }
+                }
+                if (auto nps_l = Lit::isa<u64>(nis_nps->proj(2, 1))) {
+                    auto Tps = in_tys->proj(6, 3);
+                    for (u64 j = 0; j < *nps_l; ++j) {
+                        if (Tps->proj(*nps_l, j)->isa<Arr>()) gate("tensor with array element type", Tps);
+                        add_tensor_ty(app->arg()->proj(2, 1)->proj(*nps_l, j)->type());
                     }
                 }
             } else if (Axm::isa<tensor::broadcast>(app)) {
@@ -130,17 +138,27 @@ void LowerToMem::collect_tensor_types() {
                         add_tensor_ty(app->arg()->proj(*nis_l, i)->type());
                     }
                 }
+            } else if (Axm::isa<tensor::if_static>(app)) {
+                // Value-level binding-time dispatch; this phase's rewrite residualizes it to its
+                // dynamic branch - not a tensor op.
             } else if (auto [axm, curry, trip] = Axm::get(app);
                        axm && curry == 0 && axm->plugin() == tensor::Plugin_Id) {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
-            // Lams passed inside a tensor op's curry chain (combiners, affine index maps) are element-level.
+            // Lams passed inside a tensor op's curry chain (combiners, affine index maps, schedule
+            // nests) are element-level — TRANSITIVELY, including their local helper lams: e.g. the
+            // loop-vector prefixes «r; I32» inside a schedule nest must not be mistaken for value
+            // tensors of a recorded «r; I32» tensor type.
             if (is_tensor_op(app)) {
-                for (const App* a = app; a; a = a->callee()->isa<App>()) {
-                    if (auto k = a->arg()->isa_mut<Lam>()) op_args_.emplace(k);
-                    for (auto op : a->arg()->ops())
-                        if (auto k = op ? op->isa_mut<Lam>() : nullptr) op_args_.emplace(k);
+                unique_queue<DefSet> wl3;
+                for (const App* a = app; a; a = a->callee()->isa<App>())
+                    wl3.push(a->arg());
+                while (!wl3.empty()) {
+                    auto d = wl3.pop();
+                    if (auto k = d->isa_mut<Lam>()) op_args_.emplace(k);
+                    for (auto op : d->ops())
+                        if (op) wl3.push(op);
                 }
             }
         }
@@ -346,11 +364,14 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
 
 const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
+    // A `%tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
+    // its dynamic branch.
+    if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));
     if (Axm::isa<tensor::get>(app)) return lower_get(app);
     if (Axm::isa<tensor::set>(app)) return lower_set(app);
     if (Axm::isa<tensor::splat>(app)) return lower_splat(app);
     if (Axm::isa<tensor::broadcast>(app)) return lower_broadcast(app);
-    if (Axm::isa<tensor::map_reduce>(app)) return lower_map_reduce(app);
+    if (Axm::isa<tensor::map_reduce_post>(app)) return lower_map_reduce(app);
     if (Axm::isa<tensor::pad>(app)) return lower_pad(app);
     if (Axm::isa<tensor::concat>(app)) return lower_concat(app);
 
@@ -359,10 +380,24 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
         return lower_call(app, callee);
 
     // Call of a converted continuation (a local lam or a parameter var whose domain mentions a tensor):
-    // materialize value-world tensor arguments into buffers. Element-level lams (op_args_) keep value ABI.
+    // materialize value-world tensor arguments into buffers. Element-level lams (op_args_) — and their
+    // continuation PARAMETERS (e.g. a schedule nest's `cell`, whose «r; I32» loop vector may look like
+    // a recorded tensor type) — keep value ABI.
     if (auto pi = Pi::isa_cn(app->callee()->type()); pi && mentions_tensor(pi->dom())) {
-        if (auto callee = app->callee()->isa_mut<Lam>(); callee && op_args_.contains(callee))
-            return RWPhase::rewrite_imm_App(app);
+        auto elementwise = [&](const Def* callee) {
+            if (auto lam = callee->isa_mut<Lam>()) return op_args_.contains(lam);
+            for (auto d = callee; d;) {
+                if (auto ex = d->isa<Extract>()) {
+                    d = ex->tuple();
+                    continue;
+                }
+                if (auto var = d->isa<Var>())
+                    if (auto lam = var->binder()->isa_mut<Lam>()) return op_args_.contains(lam);
+                break;
+            }
+            return false;
+        };
+        if (elementwise(app->callee())) return RWPhase::rewrite_imm_App(app);
         auto& w = new_world();
         return w.app(rewrite(app->callee()), materialize(pi->dom(), app->arg()));
     }
@@ -510,35 +545,41 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 }
 
 const Def* LowerToMem::lower_map_reduce(const App* app) {
-    // Thin bufferization: map the SSA `tensor.map_reduce` onto the buffer-world `btensor.map_reduce`,
+    // Thin bufferization: map the SSA `tensor.map_reduce_post` onto the buffer-world `btensor.map_reduce_post`,
     // reusing the (rewritten) meta. The loop generation lives in the btensor plugin (`%btensor.lower_map_reduce`).
-    auto& w     = new_world();
-    auto c      = rewrite(app->callee())->as<App>();
-    auto inputs = rewrite(app->arg()); // the (bufferized) input buffers `is`
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg()); // (is, post_is): the (bufferized) input buffers
+    auto is = args->proj(2, 0), post_is = args->proj(2, 1);
 
-    auto [nis, meta, shapes, TisRisSis, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [comb, init]                                             = comb_init->projs<2>();
+    auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs] = c->uncurry_args<7>();
+    auto [nis, nps]                                                = nis_nps->projs<2>();
+    auto [comb, init, post]                                        = comb_init->projs<3>();
 
-    // Value-world tensor inputs (e.g. literals): materialize them into buffers.
-    if (auto nis_l = Lit::isa<u64>(nis)) {
-        DefVec ins(*nis_l);
-        for (u64 i = 0; i < *nis_l; ++i) {
-            ins[i] = inputs->proj(*nis_l, i);
+    // Value-world tensor inputs (e.g. literals): materialize them into buffers. Re-tuple the lists:
+    // the generic rewrite rebuilds the argument tuple with its stale value-array type even when its
+    // elements were converted to buffers, which would not be assignable to the op's
+    // `«nis; %buffer.Buf …»` domain.
+    auto bufferize_list = [&](const Def* list, const Def* old_list, const Def* n) -> const Def* {
+        auto n_l = Lit::isa<u64>(n);
+        if (!n_l) return list;
+        DefVec ins(*n_l);
+        for (u64 i = 0; i < *n_l; ++i) {
+            ins[i] = list->proj(*n_l, i);
             if (!Axm::isa<buffer::Buf>(ins[i]->type())) {
-                auto old_in = app->arg()->proj(*nis_l, i);
+                auto old_in = old_list->proj(*n_l, i);
                 ins[i]      = materialize(old_in->type(), old_in);
-                if (!Axm::isa<buffer::Buf>(ins[i]->type()))
-                    return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+                if (!Axm::isa<buffer::Buf>(ins[i]->type())) return nullptr; // not a recorded tensor type
             }
         }
-        // Re-tuple the inputs: the generic rewrite rebuilds the argument tuple with its stale value-array
-        // type even when its elements were converted to buffers, which would not be assignable to the op's
-        // `«nis; %buffer.Buf …»` domain.
-        inputs = w.tuple(ins);
-    }
+        return w.tuple(ins);
+    };
+    is      = bufferize_list(is, app->arg()->proj(2, 0), nis);
+    post_is = bufferize_list(post_is, app->arg()->proj(2, 1), nps);
+    if (!is || !post_is) return RWPhase::rewrite_imm_App(app); // leave it alone
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
-    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `btensor.map_reduce` expects.
+    // `Fn [%mem.M 0, To, «nis; Tis»] → [%mem.M 0, To]` that `btensor.map_reduce_post` expects.
     auto mem_ty           = w.call<mem::M>(0);
     auto inner            = comb->type()->as<Pi>()->dom()->proj(0); // [To, «nis; Tis»]
     auto [cTo, ins_ty]    = inner->projs<2>();
@@ -549,18 +590,30 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     after->app(true, cret, w.tuple({cm, after->var(0_n)}));
     memcomb->set(true, w.app(comb, w.tuple({w.tuple({cacc, cins}), after})));
 
+    // Likewise wrap the pure epilogue `Fn [To, «nps; Tps»] → Tp` into
+    // `Fn [%mem.M 0, To, «nps; Tps»] → [%mem.M 0, Tp]`.
+    auto pTp               = meta->proj(5, 1);
+    auto pin               = post->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nps; Tps»]
+    auto [pTo, pexts_ty]   = pin->projs<2>();
+    auto mempost           = w.mut_fun(w.sigma({mem_ty, pTo, pexts_ty}), w.sigma({mem_ty, pTp}))->set("memPost");
+    auto [pm, pacc, pexts] = mempost->var(0_n)->projs<3>();
+    auto pret              = mempost->var(1);
+    auto pafter            = w.mut_con(pTp)->set("afterPost");
+    pafter->app(true, pret, w.tuple({pm, pafter->var(0_n)}));
+    mempost->set(true, w.app(post, w.tuple({w.tuple({pacc, pexts}), pafter})));
+
     // NB: no `w.call` here — the meta groups are *forwarded* from the tensor op on purpose. Leaving them to
     // inference would re-derive `{Tis, Ris, Sis}` from the `%buffer.Buf` operands, whose literal size-1 axes are
     // already folded away, so they would no longer agree with the logical shapes the loop generation iterates.
-    auto op       = w.annex<btensor::map_reduce>();
-    op            = w.app(op, nis);
+    auto op       = w.annex<btensor::map_reduce_post>();
+    op            = w.app(op, nis_nps);
     op            = w.app(op, meta);
     op            = w.app(op, shapes);
-    op            = w.app(op, TisRisSis);
-    op            = w.app(op, w.tuple({memcomb, init}));
+    op            = w.app(op, in_tys);
+    op            = w.app(op, w.tuple({memcomb, init, mempost}));
     op            = w.app(op, acc_out);
     op            = w.app(op, accs);
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), inputs}))->projs<2>();
+    auto [m, out] = w.app(op, w.tuple({fresh_mem(), is, post_is}))->projs<2>();
     return out;
 }
 

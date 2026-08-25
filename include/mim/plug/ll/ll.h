@@ -232,6 +232,12 @@ protected:
     std::ostringstream func_impls_;
     LamMap<const Def*> simd_phi_;
 
+    /// Loop-metadata node id per `%ll.vec`-annotated loop header (see `emit_epilogue_impl`);
+    /// numbered from `LoopMdBase + 1` to stay clear of the ids the embedded runtime module
+    /// brings along.
+    static constexpr u64 LoopMdBase = 1000;
+    LamMap<u64> loop_md_;
+
     Rt rt_        = Rt::embed;
     bool rt_used_ = false;
     std::string rt_module_;
@@ -242,6 +248,16 @@ private:
     void finalize_impl();
     void emit_epilogue_impl(Lam*);
     std::string emit_bb_impl(BB&, const Def*);
+
+    // Case groups of emit_bb_impl, split so one recursion level only pays the frame of the group it hits.
+    MIM_NOINLINE std::string emit_lit(const Def*);
+    MIM_NOINLINE std::string emit_tuple(BB&, const std::string& name, const Def* tuple);
+    MIM_NOINLINE std::pair<std::string, std::string> emit_gep_index(BB&, const std::string& name, const Def* index);
+    MIM_NOINLINE std::optional<std::string> emit_builtin(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_core(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_mem(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_math(BB&, const std::string& name, const Def*);
+    MIM_NOINLINE std::optional<std::string> emit_vec(BB&, const std::string& name, const Def*);
 
     decltype(&mim_ll_convert) convert_             = nullptr;
     decltype(&mim_ll_finalize) finalize_           = nullptr;
@@ -341,6 +357,13 @@ inline void Emitter::start() {
     ostream() << func_decls_.str() << '\n';
     ostream() << vars_decls_.str() << '\n';
     ostream() << func_impls_.str() << '\n';
+
+    // One distinct `!llvm.loop` node per hinted loop header, sharing the vectorize-enable hint.
+    if (!loop_md_.empty()) {
+        std::println(ostream(), "!{} = !{{!\"llvm.loop.vectorize.enable\", i1 true}}", LoopMdBase);
+        for (const auto& [_, md] : loop_md_)
+            std::println(ostream(), "!{} = distinct !{{!{}, !{}}}", md, md, LoopMdBase);
+    }
 }
 
 inline bool Emitter::load_rt_module(std::string_view filename) {

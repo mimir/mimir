@@ -30,3 +30,19 @@ plugin opt;
 /// This phase is spliced into the default pipeline (see `opt`) whenever the `ll` plugin is loaded.
 ///
 axm %ll.emit: %compile.Phase;
+///
+/// ## Annotations
+///
+/// ### %%ll.vec
+///
+/// The identity, used as a vectorization annotation on loops; it has no normalizer and is an
+/// opaque op to every phase.
+/// At the surface, wrapping a `%%affine.For`'s BODY nominates that loop as a schedule's vector
+/// loop while keeping the `For` application's shape intact for every matcher (see `vec_for` in
+/// the matrix plugin).
+/// `%%affine.lower_for` moves the wrapper from the body onto the loop's EXIT CONDITION — unique
+/// per loop, since the condition reads the header's own variable — but only when this plugin's
+/// module is loaded (otherwise the annotation is dropped).
+/// The emitter then attaches `llvm.loop.vectorize.enable` metadata to the branches into the
+/// annotated loop's header, which on the latch lifts LLVM's tiny-trip-count (< 16) bailout.
+axm %ll.vec: {T: *} → T → T;

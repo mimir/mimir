@@ -1,8 +1,10 @@
 #include "mim/plug/affine/phase/lower_for.h"
 
+#include <mim/driver.h>
 #include <mim/lam.h>
 #include <mim/tuple.h>
 
+#include <mim/plug/ll/ll.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/affine/affine.h"
@@ -39,6 +41,12 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         auto [old_body, old_exit, args]               = for_ax->uncurry_args<3>();
         auto [new_begin, new_end, new_step, new_init] = args->projs<4>([this](const Def* def) { return rewrite(def); });
 
+        const Def* vec_axm = nullptr;
+        if (auto ll_vec = Axm::isa<ll::vec>(old_body)) {
+            old_body = ll_vec->arg();
+            if (old_world().driver().is_loaded(old_world().sym("ll"))) vec_axm = ll_vec->axm();
+        }
+
         auto old_body_lam = old_body->isa_mut<Lam>();
         auto old_exit_lam = old_exit->isa_mut<Lam>();
         if (!old_body_lam) old_body_lam = Lam::eta_expand(old_body);
@@ -57,6 +65,8 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         auto new_yield = new_world().mut_con(new_init->type())->set("new_yield");
         auto new_cmp   = new_world().call(core::icmp::ul, Defs{new_iter, new_end});
         auto new_inc   = new_world().call(core::wrap::add, core::Mode::nsuw, Defs{new_iter, new_step});
+
+        if (vec_axm) new_cmp = new_world().app(new_world().app(rewrite(vec_axm), new_cmp->type()), new_cmp);
 
         new_head_lam->branch(false, new_cmp, new_body, new_exit, new_mem);
         new_yield->app(false, new_head_lam, merge_t(new_inc, new_yield->var(), new_mem));

@@ -54,17 +54,20 @@ private:
 
         // SSA
         const auto& slots() const { return slots_; }
-        const auto& lam2sloxy2val() const { return lam2sloxy2val_; }
         const Def* lam2sloxy2val(Lam* lam, const Def* sloxy);
+        /// Can *every* recorded call site of @p lam supply a value for @p sloxy?
+        /// Only then may build_args() find an argument for a phi threaded through @p lam.
+        bool can_supply(Lam* lam, const Def* sloxy);
 
     private:
         // SCCP
         const Proxy* mk_sccp_top(const Def* var);
         const Def* sccp_join(Lam*, const Def*, const Def*);
-        DefVec sccp(Lam*, Defs vars, Defs abstr_args);
 
         /// Applies @p known to @p abstr_targs (one per tvar): propagates phis, runs SCCP + GVN, and sets the vars.
         const Def* apply_known(Lam* known, Defs abstr_targs);
+        /// An App that merely records "@p callee applied to these abstract args"; never emitted code.
+        const Def* abstract_app(const Def* callee, const Def* arg);
 
         // GVN
         const Proxy* mk_bundle(Lam* lam, const Def* var, Defs bundle_vars);
@@ -75,6 +78,9 @@ private:
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
+
+        /// Collects the open Lam%s reachable from @p def as a *value* into fu_lams_.
+        void find_unknowns(const Def* def);
 
         const Def* rewrite_imm_App(const App*) final;
 
@@ -88,7 +94,7 @@ private:
         DefSet first_;
 
         // Scratch for find_unknowns; cleared per query instead of constructing containers per App.
-        // fu_lams_ is a Vector, not a LamSet: find_unknowns pushes each Lam at most once (visited_ gates
+        // fu_lams_ is a Vector, not a LamSet: find_unknowns pushes each Lam at most once (fu_visited_ gates
         // before the Lam check), and insertion order follows the structural deps() walk - so it is
         // deterministic without a sort, and clear() always keeps its capacity.
         DefSet fu_visited_;
@@ -108,31 +114,47 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
+    const Def* rewrite_imm_Var(const Var*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
 
-    /// A live phi for @p old_lam: the @p sloxy it stands for, the @p phi proxy, and its abstract @p val.
+    /// A live phi for a Lam: the @p sloxy it stands for, the @p phi proxy, its abstract @p val,
+    /// and whether the new signature keeps it as a var.
     struct Phi {
         const Def* sloxy;
         const Def* phi;
         const Def* val;
+        bool keep;
     };
+
+    /// The new signature of an old Lam.
+    struct Sig {
+        Vector<Phi> phis;        ///< Its live phis.
+        Vector<bool> keeps;      ///< Is this tvar of the old Lam kept as is?
+        size_t num_vars = 0;     ///< Vars of the new Lam: the kept old ones plus the kept phis.
+        bool todo       = false; ///< Does the old Lam need a new signature at all?
+    };
+
+    bool analyze() final;
 
     /// Was the SSA construction able to eliminate this sloxy?
     const Def* isa_optimized_sloxy(const Def*) const;
-    /// The (memoized) live phis of @p old_lam.
-    const Vector<Phi>& phis_of(Lam* old_lam);
-    /// Does @p old_lam have propagated vars or live phis and hence needs a new signature?
-    bool needs_seo(View<Phi>, Lam* old_lam);
+    /// The (memoized) new signature of @p old_lam.
+    const Sig& sig_of(Lam* old_lam);
+    /// The new spelling of @p old_lam's var: kept projections become new vars, dropped ones their
+    /// propagated value (⊥ for a promoted slot). The single source of truth for both build_lam() and
+    /// rewrite_imm_Var(), and hence well-defined independent of build order.
+    const Def* var_of(Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
-    Lam* build_lam(View<Phi>, Lam* old_lam);
+    Lam* build_lam(Lam* old_lam);
     /// Builds the argument list for a jump to @p old_lam (with the given @p old_targs, one per tvar)
     /// matching the signature built by build_lam().
-    DefVec build_args(View<Phi>, Lam* old_lam, Defs old_targs);
+    DefVec build_args(Lam* old_lam, Defs old_targs);
 
     Analysis analysis_;
     Lam2Lam lam_old2new_;
     Lam2Lam lam_new2old_;
-    absl::node_hash_map<Lam*, Vector<Phi>, GIDHash<Lam*>> lam2phis_;
+    absl::node_hash_map<Lam*, Sig, GIDHash<Lam*>> lam2sig_; // node_hash_map: a Sig& outlives nested rewrites
+    DefVec sloxies_;                                        // the eliminated sloxies; every Lam's phi candidates
 };
 
 } // namespace mim::plug::mem::phase

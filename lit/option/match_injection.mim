@@ -2,13 +2,6 @@
 
 plugin option;
 
-// CHECK-LABEL: fun extern unwrap_some
-// CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
-fun extern unwrap_some(x: Nat): Nat =
-    return (match (%option.some x) with
-        | value: Nat => value
-        | _: [] => 7);
-
 // CHECK-LABEL: fun extern unwrap_none
 // CHECK: return_{{[0-9]+}} 7;
 fun extern unwrap_none(): Nat =
@@ -18,12 +11,19 @@ fun extern unwrap_none(): Nat =
 
 // The option library is a client of the same generic reduction: its lambda
 // unfolds to a Match, which then dispatches on the known injection.
+// CHECK-LABEL: fun extern unwrap_or_none
+// CHECK: return_{{[0-9]+}} 7;
+fun extern unwrap_or_none(): Nat =
+    return (%option.unwrap_or (%option.none @Nat) 7);
+
 // CHECK-LABEL: fun extern unwrap_or_some
 // CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
 fun extern unwrap_or_some(x: Nat): Nat =
     return (%option.unwrap_or (%option.some x) 7);
 
-// CHECK-LABEL: fun extern unwrap_or_none
-// CHECK: return_{{[0-9]+}} 7;
-fun extern unwrap_or_none(): Nat =
-    return (%option.unwrap_or (%option.none @Nat) 7);
+// CHECK-LABEL: fun extern unwrap_some
+// CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
+fun extern unwrap_some(x: Nat): Nat =
+    return (match (%option.some x) with
+        | value: Nat => value
+        | _: [] => 7);

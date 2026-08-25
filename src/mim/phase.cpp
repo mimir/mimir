@@ -69,9 +69,10 @@ void Analysis::start() {
         VLOG("sparse round: re-draining {} dirty muts", seeds.size());
         std::ranges::sort(seeds, GIDLt<Def*>()); // MutSet iteration order is nondeterministic
 
-        // Replay the lattice into the fresh rewriter map: this re-installs the substitutions that
-        // non-revisited producers wrote in earlier rounds - except for mutables, whose map entry
-        // doubles as the per-round "already scheduled" marker and would suppress their drain.
+        // Pre-install what earlier rounds substituted, so this round prunes everything they already settled -
+        // except for mutables, whose map entry doubles as the per-round "already scheduled" marker and would
+        // suppress their drain. Pruning skips rewrite hooks, which is why only a sparse round does it: the
+        // full round that certifies the fixed point always re-derives from the program.
         for (auto [concr, abstr] : lattice_)
             if (!concr->isa_mut()) map(concr, abstr);
 
@@ -102,6 +103,27 @@ void Analysis::start() {
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
+
+const Def* Analysis::repr_(const Def* slow, const Def* fast) const {
+    while (slow != fast) {
+        auto next = follow(fast);
+        if (!next) return fast;
+        fast = follow(next);
+        if (!fast) return next;
+        slow = follow(slow);
+        assert(slow && "slow lags fast, so fast already traversed slow's successor");
+    }
+
+    auto res = slow;
+    for (auto def = follow(slow); def != slow; def = follow(def))
+        if (def->gid() < res->gid()) res = def;
+    return res;
+}
+
+const Def* Analysis::rewrite(const Def* def) {
+    if (def->isa_mut()) return Rewriter::rewrite(def);
+    return repr(Rewriter::rewrite(def));
+}
 
 Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round

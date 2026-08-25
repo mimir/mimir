@@ -1,9 +1,9 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
-// Bufferization of %tensor.map_reduce: reduction, transpose (Rn=Ro, no reduction loop) and strided access.
-// tensor.lower_to_mem maps it onto the buffer-world %btensor.map_reduce, %btensor.lower_map_reduce generates the
-// loops over %buffer ops, and %buffer.lower_ptr lowers to %mem. After the full pipeline, all tensor/btensor/
+// Bufferization of %tensor.map_reduce: reduction, transpose (Rr=0) and strided access.
+// tensor.lower_to_mem maps it onto the buffer-world %btensor.map_reduce_post, %btensor.lower_map_reduce generates
+// the loops over %buffer ops, and %buffer.lower_ptr lowers to %mem. After the full pipeline, all tensor/btensor/
 // buffer/affine axioms are gone and only %mem.* + loops remain.
 // GONE-NOT: %tensor.
 // GONE-NOT: %btensor.
@@ -55,7 +55,7 @@ lam extern _compile (): %compile.Phase =
         %compile.named "%tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast onto
                                                            // %buffer/%btensor (hard error if not bufferizable)
         %mem.add_mem,
-        %compile.named "%btensor.lower_map_reduce",          // %btensor.map_reduce/broadcast -> affine.For over %buffer
+        %compile.named "%btensor.lower_map_reduce",  // %btensor.map_reduce_post/broadcast -> affine.For over %buffer
         %compile.named "%buffer.lower_ptr",          // %buffer.* -> %mem.Ptr / lea / load / store
         %compile.named "%affine.lower_index",  // %affine.map -> %core arithmetic
         %compile.named "%affine.lower_for",    // affine.For -> CPS loops

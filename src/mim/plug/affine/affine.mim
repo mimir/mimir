@@ -27,6 +27,10 @@ axm %affine.For: {m n: Nat, Ts: «n; *»}
                → [Cn «i: n; Ts#i»]                                             // exit
                → Cn [begin _end step: Idx m, init: «i: n; Ts#i»];
 ///
+/// A `For` whose BODY is wrapped in the identity annotation `%%ll.vec` is a schedule's nominated
+/// vector loop; `%%affine.lower_for` strips the wrapper and re-attaches it to the loop's exit
+/// condition for the backend (when the ll plugin is loaded — otherwise it is dropped).
+///
 /// ## Affine Index Operations
 ///
 /// ### %%affine.index

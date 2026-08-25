@@ -886,6 +886,10 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
     if (s_t == d_t) return x;
     if (x->isa<Bot>()) return world.bot(d_t);
 
+    // `Idx 1` has exactly one inhabitant: any conversion into it is the literal 0₁. This also keeps
+    // its zero-width arithmetic out of the backend (a 1-extent loop dim would otherwise emit i0).
+    if (ld && *ld == 1) return world.lit(d_t, 0);
+
     if (auto l = Lit::isa(x); l && ls && ld) {
         if constexpr (id == conv::u) {
             if (*ld == 0) return world.lit(d_t, *l); // I64

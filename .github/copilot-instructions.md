@@ -51,6 +51,7 @@ Comment only when the code itself cannot reasonably express the information.
 - Comment **why**, not what the code does.
 - Prefer a better name, structure, or API over a comment.
 - Keep comments to **one short sentence**, normally one line.
+- When a comment spans multiple lines, use **one complete sentence per line**. Do not wrap a single sentence across multiple lines merely to fit a line-length limit.
 - A comment should convey one fact only: an invariant, non-obvious constraint, algorithmic reason, or important external reference.
 - Do not explain the implementation, summarize a function, or provide a narrative of its control flow.
 - Match the comment density and brevity of the surrounding code. **Never increase comment density.**

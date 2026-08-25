@@ -10,7 +10,7 @@ namespace mim::plug::mem::phase {
 
 bool AddMem::analyze() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
-    // (combiners, affine index mappings, initial accumulators of `%btensor.map_reduce`, …).
+    // (combiners, affine index mappings, initial accumulators of `%btensor.map_reduce_post`, …).
     auto queue  = unique_queue<DefSet>();
     auto pinned = unique_queue<DefSet>();
     for (auto mut : old_world().externals().muts())
@@ -40,6 +40,24 @@ bool AddMem::analyze() {
 }
 
 const Def* AddMem::rewrite(const Def* old_def) {
+    // Type rewriting is MODE-DEPENDENT: outside a pinned ABI every continuation pi gains a leading
+    // mem, inside one it must not - but the rewrite memo is shared. Whichever mode first touches a
+    // shared type (e.g. a plain 'Cn F32' return pi) would poison the other, hash-order-dependently.
+    // While preserving, rebuild immutable types fresh, neither reading nor storing the memo.
+    if (preserving_ && !is_bootstrapping()) {
+        if (auto pi = old_def->isa_imm<Pi>()) return rewrite_imm_Pi(pi);
+        if (auto sigma = old_def->isa_imm<Sigma>()) return rewrite_imm_Sigma(sigma);
+        if (auto arr = old_def->isa_imm<Arr>()) return rewrite_imm_Seq(arr);
+    }
+    if (curr_mem_ && !preserving_ && !is_bootstrapping()) {
+        // A tuple with a direct memory operand is context-dependent: the operand splices to the memory
+        // current *at this use*. Two ops with hash-consed identical argument tuples (e.g. two `(⊥, val)`
+        // buffer fills) must splice *different* memories - so never store or reuse such a tuple via the
+        // rewrite memo; rebuild it at every occurrence.
+        if (auto tuple = old_def->isa<Tuple>();
+            tuple && std::ranges::any_of(tuple->ops(), [](const Def* op) { return isa_mem(op); }))
+            return rewrite_imm_Tuple(tuple);
+    }
     auto new_def = Rewriter::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : %mem.M 0`) are thereby spliced into the chain.
