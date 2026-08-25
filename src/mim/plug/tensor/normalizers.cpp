@@ -296,6 +296,9 @@ const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
     if (is_pure_read(pr->src) || Axm::isa<tensor::broadcast>(pr->src)) return r;
     auto r_src = Lit::isa<u64>(pr->map->type()->as<Pi>()->codom()->arity());
     if (!r_src || *r_src == 0) return r;
+    // `r` is not type-coupled to `t`; a mismatched rank must answer unknown, not break the app below.
+    auto r_dom = Lit::isa<u64>(pr->map->type()->as<Pi>()->dom()->arity());
+    if (!r_dom || *r_dom != *r_l) return r;
     // Markers start at 1: 0 is what a broadcast map's `o#d · 0` folds to, so it must not be one.
     auto markers = DefVec(*r_l, [&](size_t i) { return w.call<affine::constant>(w.lit_nat(i + 1)); });
     auto last    = w.app(pr->map, w.tuple(markers))->proj(*r_src, *r_src - 1);
