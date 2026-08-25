@@ -45,8 +45,7 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
     auto mr = Axm::isa<tensor::map_reduce_post>(value);
     if (!mr) return {};
     auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all, is_all] = mr->uncurry_args<8>();
-    auto nis_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 0));
-    auto nps_l                                                                 = Lit::isa<u64>(nis_nps->proj(2, 1));
+    auto [nis_l, nps_l] = nis_nps->projs<2>([](const Def* d) { return Lit::isa<u64>(d); });
     // No reduction loops: the total loop count Rn equals the output rank Ro.
     if (!nis_l || *nis_l != 1 || !nps_l || *nps_l != 0 || meta->proj(5, 2) != meta->proj(5, 3)) return {};
     auto [So, Sr, sched] = shapes->projs<3>();

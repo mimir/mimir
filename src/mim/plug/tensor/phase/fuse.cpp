@@ -181,8 +181,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
     auto [maps, post_maps]              = maps_all->projs<2>();
     auto is_all                         = rewrite(app->arg());
-    auto is                             = is_all->proj(2, 0);
-    auto post_is                        = is_all->proj(2, 1);
+    auto [is, post_is]                  = is_all->projs<2>();
 
     DLOG("considering map_reduce for fusion:");
     DLOG("  comb = {} : {}", comb, comb->type());
@@ -223,7 +222,8 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         if (!inner) continue;
 
         auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
-              inner_is_all]                                         = inner->uncurry_args<8>();
+              inner_is_all]
+            = inner->uncurry_args<8>();
         auto [inner_To, inner_Tp, inner_Ro, inner_Rn, inner_TSched] = inner_meta->projs<5>();
         auto [inner_So, inner_Sr, inner_sched]                      = inner_shapes->projs<3>();
         auto [inner_comb, inner_init, inner_post]                   = inner_comb_init->projs<3>();
@@ -347,14 +347,12 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     // `outer_inputs[i]` is `value_<r>` when input i is the r-th fused input, and the
     // corresponding `new_in` slot otherwise. Each `inner_ret_<r>` closes over the prior
     // `value_<j>`s as free variables — those are bound by the dynamic call chain.
-    auto inputs_sigma = w.sigma(new_Tis_vec);
-    auto data_sigma   = w.sigma({To, inputs_sigma});
-    auto ret_cn_type  = w.cn(To);
-    auto new_comb     = w.mut_con({data_sigma, ret_cn_type})->set("fused_comb");
-    auto new_data     = new_comb->var(0);
-    auto new_ret      = new_comb->var(1);
-    auto new_acc      = new_data->proj(2, 0);
-    auto new_in       = new_data->proj(2, 1);
+    auto inputs_sigma        = w.sigma(new_Tis_vec);
+    auto data_sigma          = w.sigma({To, inputs_sigma});
+    auto ret_cn_type         = w.cn(To);
+    auto new_comb            = w.mut_con({data_sigma, ret_cn_type})->set("fused_comb");
+    auto [new_data, new_ret] = new_comb->vars<2>();
+    auto [new_acc, new_in]   = new_data->projs<2>();
 
     Vector<u64> fused_indices;
     for (u64 i = 0; i < nis_nat; ++i)
@@ -488,8 +486,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     // would re-wrap the producer forever (the unpack path below emits exactly such a copy on top).
     if (nis_nat == 1 && nps_nat == 0 && is_copy_comb(comb) && is_identity_post(post)) return nullptr;
 
-    auto is = arg->proj(2, 0);
-    auto ps = arg->proj(2, 1);
+    auto [is, ps] = arg->projs<2>();
 
     // Find the producer: the first input that is a map_reduce read elementwise over the whole
     // domain — at identity coordinates (input shape == So), or through the row-major reshape that
@@ -533,8 +530,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto [i_Tis, i_Ris, i_Sis, i_Tps, i_Rps, i_Sps] = i_in_tys->projs<6>();
     auto [i_comb, i_init, i_post]                   = i_comb_init->projs<3>();
     auto [i_maps, i_post_maps]                      = i_maps_all->projs<2>();
-    auto i_is                                       = i_is_all->proj(2, 0);
-    auto i_ps                                       = i_is_all->proj(2, 1);
+    auto [i_is, i_ps]                               = i_is_all->projs<2>();
 
     auto i_nps_lit = Lit::isa<u64>(i_nps);
     if (!i_nps_lit) return nullptr;
@@ -575,11 +571,10 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
 
     // The composed epilogue as a CPS chain: inner post → map combiner → map post. Identity hops are
     // called through anyway — their always-true filters inline them.
-    auto fused_post = w.mut_con({w.sigma({i_To, w.sigma(nTps)}), w.cn(Tp)})->set("fused_post");
-    auto after_ip   = w.mut_con(i_Tp)->set("afterInnerPost");
-    auto after_comb = w.mut_con(To)->set("afterComb");
-    auto x          = fused_post->var(0)->proj(2, 0);
-    auto extras     = fused_post->var(0)->proj(2, 1);
+    auto fused_post  = w.mut_con({w.sigma({i_To, w.sigma(nTps)}), w.cn(Tp)})->set("fused_post");
+    auto after_ip    = w.mut_con(i_Tp)->set("afterInnerPost");
+    auto after_comb  = w.mut_con(To)->set("afterComb");
+    auto [x, extras] = fused_post->var(0)->projs<2>();
 
     DefVec i_extras(i_nps_nat);
     for (u64 j = 0; j < i_nps_nat; ++j)
@@ -647,12 +642,11 @@ const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
 
     auto& w = new_world();
 
-    auto is = arg->proj(2, 0);
-    auto ps = arg->proj(2, 1);
+    auto [is, ps] = arg->projs<2>();
 
     bool changed = false;
     auto rewire  = [&](DefVec& T, DefVec& R, DefVec& S, DefVec& m, DefVec& v, u64 n, const Def* Ts, const Def* Rs,
-                       const Def* Ss, const Def* ms, const Def* vs) {
+                      const Def* Ss, const Def* ms, const Def* vs) {
         for (u64 i = 0; i < n; ++i) {
             T[i] = Ts->proj(n, i);
             R[i] = Rs->proj(n, i);

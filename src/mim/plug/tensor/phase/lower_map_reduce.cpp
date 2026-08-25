@@ -193,9 +193,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         auto call   = w.app(ds_fun, inputs)->set("call");
 
-        auto new_inputs  = fun->var(0)->set("is");
-        auto new_is      = new_inputs->proj(2, 0);
-        auto new_post_is = new_inputs->proj(2, 1);
+        auto new_inputs            = fun->var(0)->set("is");
+        auto [new_is, new_post_is] = new_inputs->projs<2>();
 
         // Outer (parallel) loops over the leading Ro bounds of `Sr`, collecting the output iteration indices.
         auto cont        = fun->var(1);

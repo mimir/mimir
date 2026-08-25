@@ -547,10 +547,10 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 const Def* LowerToMem::lower_map_reduce(const App* app) {
     // Thin bufferization: map the SSA `tensor.map_reduce_post` onto the buffer-world `btensor.map_reduce_post`,
     // reusing the (rewritten) meta. The loop generation lives in the btensor plugin (`%btensor.lower_map_reduce`).
-    auto& w   = new_world();
-    auto c    = rewrite(app->callee())->as<App>();
-    auto args = rewrite(app->arg()); // (is, post_is): the (bufferized) input buffers
-    auto is = args->proj(2, 0), post_is = args->proj(2, 1);
+    auto& w            = new_world();
+    auto c             = rewrite(app->callee())->as<App>();
+    auto args          = rewrite(app->arg()); // (is, post_is): the (bufferized) input buffers
+    auto [is, post_is] = args->projs<2>();
 
     auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs] = c->uncurry_args<7>();
     auto [nis, nps]                                                = nis_nps->projs<2>();
@@ -574,8 +574,9 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
         }
         return w.tuple(ins);
     };
-    is      = bufferize_list(is, app->arg()->proj(2, 0), nis);
-    post_is = bufferize_list(post_is, app->arg()->proj(2, 1), nps);
+    auto [old_is, old_post_is] = app->arg()->projs<2>();
+    is                         = bufferize_list(is, old_is, nis);
+    post_is                    = bufferize_list(post_is, old_post_is, nps);
     if (!is || !post_is) return RWPhase::rewrite_imm_App(app); // leave it alone
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
