@@ -603,13 +603,34 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     // Value-world tensor inputs (e.g. literals): materialize them into buffers.
     if (auto nis_l = Lit::isa<u64>(nis)) {
         DefVec ins(*nis_l);
+        auto Tis = TisRisSis->proj(3, 0);
+        auto Sis = TisRisSis->proj(3, 2);
         for (u64 i = 0; i < *nis_l; ++i) {
             ins[i] = inputs->proj(*nis_l, i);
             if (!Axm::isa<buffer::Buf>(ins[i]->type())) {
                 auto old_in = app->arg()->proj(*nis_l, i);
-                ins[i]      = materialize(old_in->type(), old_in);
+                // Singleton axes are folded from MimIR's nested-array type.  In that case `old_in`
+                // can be a scalar even though map_reduce's logical input is an array described by Sis.
+                // Materializing from old_in->type() would therefore miss the tensor boundary; rebuild
+                // the logical array type from the map_reduce metadata before creating the buffer.
+                auto logical_ty = new_world().arr(Sis->proj(*nis_l, i), Tis->proj(*nis_l, i));
+                auto scalar = splat_scalar(old_in);
+                // A fully singleton tensor is normalized all the way to its scalar, so there is no Pack
+                // left for splat_scalar() to peel.
+                if (!scalar && !old_in->type()->isa<Arr>()) scalar = old_in;
+                if (scalar)
+                    ins[i] = splat_buffer(logical_ty, rewrite(scalar));
+                else {
+                    auto value = rewrite(old_in);
+                    if (Axm::isa<buffer::Buf>(value->type())) ins[i] = value;
+                    else {
+                        auto [br, bs, bT] = Axm::isa<buffer::Buf>(buf_of(logical_ty))->args<3>();
+                        auto [m, buf] = buffer::op_init(br, bs, bT, bot_mem(), value)->projs<2>();
+                        ins[i] = buf;
+                    }
+                }
                 if (!Axm::isa<buffer::Buf>(ins[i]->type()))
-                    return RWPhase::rewrite_imm_App(app); // not a recorded tensor type: leave it alone
+                    fe::throwf("cannot bufferize `%tensor.map_reduce` input {}: {}", i, old_in);
             }
         }
         // Re-tuple the inputs: the generic rewrite rebuilds the argument tuple with its stale value-array
