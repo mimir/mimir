@@ -26,8 +26,9 @@ int main(int argc, char** argv) {
 
     fe::term::resolve_mode(); // colors in std::format-ed output depend on Auto being resolved up front
 
+    Driver driver; // outlives the handlers below: an Error's Locs point into its SrcMap
+
     try {
-        Driver driver;
         bool show_help           = false;
         bool show_version        = false;
         bool list_search_paths   = false;
@@ -221,6 +222,7 @@ int main(int argc, char** argv) {
                     }
                 }
             } else {
+                ast.error().ack(); // prefer the parser's own diagnostic, if it recorded one
                 fe::throwf("could not read file `{}`", input);
             }
         } catch (const Error& e) {

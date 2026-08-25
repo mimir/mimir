@@ -762,20 +762,16 @@ TEST(Phase, sparse_differential) {
     }
 }
 
-TEST(Error, outlives_driver) {
-    auto err = Error();
-    {
-        Driver driver;
-        auto [src, _] = driver.src().add("outlives.mim", "let x = 1;\nlet y = 2;\n");
-        err           = Error(driver);
-        err.error(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing");
-        err.note(Loc(src, Pos(15), Pos(16)), "declared");
-    }
+TEST(Error, render) {
+    Driver driver;
+    auto [src, _] = driver.src_map().add("render.mim", "let x = 1;\nlet y = 2;\n");
+    auto err      = Error(driver);
+    err.error(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing");
+    err.note(Loc(src, Pos(15), Pos(16)), "declared");
 
-    // The Error shares the Driver's SrcMap, so the fe::Src its Loc%s point at is still alive - and a
-    // Loc resolves itself through that - once the Driver is gone.
+    // A Loc renders through the fe::Src it points at, which the Driver's SrcMap keeps alive.
     auto what = std::string(err.what());
-    EXPECT_NE(what.find("outlives.mim:1:5-1:9: error: bad `thing`"), std::string::npos) << what;
+    EXPECT_NE(what.find("render.mim:1:5-1:9: error: bad `thing`"), std::string::npos) << what;
     EXPECT_NE(what.find("let x = 1;"), std::string::npos) << what;
-    EXPECT_NE(what.find("outlives.mim:2:5"), std::string::npos) << what;
+    EXPECT_NE(what.find("render.mim:2:5"), std::string::npos) << what;
 }

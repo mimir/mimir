@@ -146,7 +146,7 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
             ast().error(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
-    return fresh ? import(*src, dbg.loc(), md) : Ptr<Module>();
+    return fresh ? import(*src, md) : Ptr<Module>();
 }
 
 Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {
@@ -154,11 +154,11 @@ Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostrea
         ast().error(loc, "cannot read file `{}`", path.string());
         return {};
     }
-    auto [src, _] = driver().src().add(std::move(path), fe::SrcMap::slurp(is));
-    return import(*src, loc, md);
+    auto [src, _] = driver().src_map().add(std::move(path), fe::SrcMap::slurp(is));
+    return import(*src, md);
 }
 
-Ptr<Module> Parser::import(const fe::Src& src, Loc loc, std::ostream* md) {
+Ptr<Module> Parser::import(const fe::Src& src, std::ostream* md) {
     driver().VLOG("📄 reading: {}", src.path().string());
 
     auto state = std::tuple(curr_, ahead_, lexer_);

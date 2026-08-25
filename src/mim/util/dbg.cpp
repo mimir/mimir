@@ -82,7 +82,6 @@ bool PlainNames::claim(const Driver& driver, Sym sym, uint32_t gid) {
 
 Error::Error(const Driver& driver)
     : driver_(&driver)
-    , src_(driver.src_ptr())
     , no_snippet_(driver.flags().no_snippet) {}
 
 // Streamed piecewise instead of via std::format: a std::formatter cannot see its destination stream,

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <memory>
 #include <sstream>
 
 #include <absl/container/flat_hash_map.h>
@@ -57,10 +56,8 @@ public:
 
     /// @name Constructors
     ///@{
-    /// Shares @p driver's SrcMap and snapshots Flags::no_snippet from it.
-    /// @note Both are what let an Error outlive @p driver: rendering must still work while an
-    /// exception unwinds past the Driver's scope, whereas Error::driver_ is only ever touched while
-    /// messages are added - at which point the Def%s being formatted prove their Driver is alive.
+    /// Snapshots Flags::no_snippet from @p driver, so that rendering needs no Driver.
+    /// @warning A Msg::loc points into @p driver's SrcMap, so @p driver must outlive this Error.
     explicit Error(const Driver& driver);
     Error() = default;
     ///@}
@@ -153,10 +150,7 @@ private:
     std::ostream& stream(std::ostream&, const Msg&) const;
 
     const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
-    /// Keeps the fe::Src%s alive that Msg::loc points at - a Loc renders itself, but only as long as
-    /// its fe::Src is around. Never read; owning it *is* the job.
-    std::shared_ptr<const fe::SrcMap> src_;
-    bool no_snippet_ = false; ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
+    bool no_snippet_      = false;   ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
     std::vector<Msg> msgs_;
     mutable std::string what_;
 };

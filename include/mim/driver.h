@@ -1,7 +1,6 @@
 #pragma once
 
 #include <list>
-#include <memory>
 #include <utility>
 
 #include <absl/container/flat_hash_map.h>
@@ -72,11 +71,11 @@ public:
 
     /// @name Source Files
     /// Owns the text - and the fe::Src a Loc points at - of every file we have lexed.
+    /// @warning Every Loc - and hence every Error - dies with this Driver, so keep it alive until
+    /// the last diagnostic has been rendered; in particular, create it *outside* the `try` block.
     ///@{
-    fe::SrcMap& src() { return *src_; }
-    const fe::SrcMap& src() const { return *src_; }
-    /// Shared so that the fe::Src%s an Error's Loc%s point at stay alive once this Driver is gone.
-    std::shared_ptr<const fe::SrcMap> src_ptr() const { return src_; }
+    fe::SrcMap& src_map() { return src_map_; }
+    const fe::SrcMap& src_map() const { return src_map_; }
     ///@}
 
     /// @name Manage Imports
@@ -175,7 +174,7 @@ private:
     absl::node_hash_map<Sym, Plugin::Handle> plugins_;
     Version version_;
     Flags flags_;
-    std::shared_ptr<fe::SrcMap> src_ = std::make_shared<fe::SrcMap>();
+    fe::SrcMap src_map_;
     mutable Log log_;
     mutable Names names_;
     Profiler profiler_;

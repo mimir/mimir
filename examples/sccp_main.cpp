@@ -40,8 +40,9 @@ fun extern f(x: Nat): Nat =
 )";
 
 int main(int, char**) {
+    auto driver = mim::Driver(); // outlives the handlers below: an Error's Locs point into its SrcMap
+
     try {
-        auto driver = mim::Driver();
         auto& world = driver.world();
         auto ast    = mim::ast::AST(world);
         auto parser = mim::ast::Parser(ast);
