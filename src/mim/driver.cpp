@@ -11,25 +11,26 @@
 
 namespace mim {
 
-std::pair<const fe::SrcFile*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
-    auto [file, fresh] = driver_.src().add(std::move(path));
-    if (!file) return {nullptr, false};
+std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
+    auto [src, fresh] = driver_.src().add(std::move(path));
+    if (!src) return {nullptr, false};
 
+    // The SrcMap interns paths, so one file is one fe::Src - comparing those settles "same file".
     bool seen_entry = false;
     for (const auto& entry : entries_) {
-        if (entry.sym == sym && entry.tag == tag && entry.path == file->path()) {
+        if (entry.sym == sym && entry.tag == tag && entry.src == src) {
             seen_entry = true;
             break;
         }
     }
 
-    if (!seen_entry) entries_.emplace_back(Entry{file->path(), sym, tag});
-    return {file, fresh};
+    if (!seen_entry) entries_.emplace_back(Entry{src, sym, tag});
+    return {src, fresh};
 }
 
 Driver::Driver(std::string name)
     : version_(MIM_VERSION)
-    , log_(flags_, *src_)
+    , log_(flags_)
     , world_(this, sym(name))
     , imports_(*this) {
     // prepend empty path

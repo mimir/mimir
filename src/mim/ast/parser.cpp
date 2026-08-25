@@ -137,8 +137,8 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
         if (bool reg_file = fs::is_regular_file(rel_path, ignore); reg_file && !ignore) break;
     }
 
-    auto [file, fresh] = driver().imports().add(rel_path, name, tag);
-    if (!file) {
+    auto [src, fresh] = driver().imports().add(rel_path, name, tag);
+    if (!src) {
         // rel_path is whatever candidate the search loop tried last, so it only names a real file here.
         if (fs::exists(rel_path))
             ast().error(dbg.loc(), "cannot read file `{}`", rel_path.string());
@@ -146,7 +146,7 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
             ast().error(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
-    return fresh ? import(*file, dbg.loc(), md) : Ptr<Module>();
+    return fresh ? import(*src, dbg.loc(), md) : Ptr<Module>();
 }
 
 Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {
@@ -154,15 +154,15 @@ Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostrea
         ast().error(loc, "cannot read file `{}`", path.string());
         return {};
     }
-    auto [file, _] = driver().src().add(std::move(path), fe::SrcMap::slurp(is));
-    return import(*file, loc, md);
+    auto [src, _] = driver().src().add(std::move(path), fe::SrcMap::slurp(is));
+    return import(*src, loc, md);
 }
 
-Ptr<Module> Parser::import(const fe::SrcFile& file, Loc loc, std::ostream* md) {
-    driver().VLOG("📄 reading: {}", file.path()->string());
+Ptr<Module> Parser::import(const fe::Src& src, Loc loc, std::ostream* md) {
+    driver().VLOG("📄 reading: {}", src.path().string());
 
     auto state = std::tuple(curr_, ahead_, lexer_);
-    auto lexer = Lexer(ast(), file.buf(), file.path(), md);
+    auto lexer = Lexer(ast(), src.buf(), &src, md);
     lexer_     = &lexer;
     init();
     auto mod                        = parse_module();

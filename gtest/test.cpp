@@ -766,14 +766,14 @@ TEST(Error, outlives_driver) {
     auto err = Error();
     {
         Driver driver;
-        auto [file, _] = driver.src().add("outlives.mim", "let x = 1;\nlet y = 2;\n");
-        err            = Error(driver);
-        err.error(Loc(file->path(), Pos(4), Pos(9)), "bad `{}`", "thing");
-        err.note(Loc(file->path(), Pos(15), Pos(16)), "declared");
+        auto [src, _] = driver.src().add("outlives.mim", "let x = 1;\nlet y = 2;\n");
+        err           = Error(driver);
+        err.error(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing");
+        err.note(Loc(src, Pos(15), Pos(16)), "declared");
     }
 
-    // The Error shares the Driver's SrcMap, so its Loc%s still resolve - and Loc::path still points
-    // at a live fs::path - once the Driver is gone.
+    // The Error shares the Driver's SrcMap, so the fe::Src its Loc%s point at is still alive - and a
+    // Loc resolves itself through that - once the Driver is gone.
     auto what = std::string(err.what());
     EXPECT_NE(what.find("outlives.mim:1:5-1:9: error: bad `thing`"), std::string::npos) << what;
     EXPECT_NE(what.find("let x = 1;"), std::string::npos) << what;

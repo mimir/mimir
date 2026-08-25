@@ -71,11 +71,11 @@ public:
     ///@}
 
     /// @name Source Files
-    /// Owns the text - and the `fs::path` a Loc points at - of every file we have lexed.
+    /// Owns the text - and the fe::Src a Loc points at - of every file we have lexed.
     ///@{
     fe::SrcMap& src() { return *src_; }
     const fe::SrcMap& src() const { return *src_; }
-    /// Shared so that an Error can still resolve its Loc%s once this Driver is gone.
+    /// Shared so that the fe::Src%s an Error's Loc%s point at stay alive once this Driver is gone.
     std::shared_ptr<const fe::SrcMap> src_ptr() const { return src_; }
     ///@}
 
@@ -87,7 +87,7 @@ public:
     class Imports {
     public:
         struct Entry {
-            const fs::path* path;
+            const fe::Src* src;
             Sym sym;
             ast::Tok::Tag tag;
         };
@@ -107,9 +107,9 @@ public:
         ///@}
 
         /// Reads @p path, remembers the import or plugin directive, and reports whether the file is new.
-        /// Yields a `nullptr` SrcFile if @p path cannot be read; reporting that is the caller's job,
+        /// Yields a `nullptr` fe::Src if @p path cannot be read; reporting that is the caller's job,
         /// since only it knows the Loc of the directive to blame.
-        std::pair<const fe::SrcFile*, bool> add(fs::path, Sym, ast::Tok::Tag);
+        std::pair<const fe::Src*, bool> add(fs::path, Sym, ast::Tok::Tag);
 
     private:
         Driver& driver_;

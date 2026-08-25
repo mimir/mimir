@@ -3,6 +3,7 @@
 #include <ostream>
 #include <print>
 
+#include <fe/format.h>
 #include <fe/term.h>
 
 #include "mim/flags.h"
@@ -17,9 +18,8 @@ namespace fs = std::filesystem;
 /// @see @ref log "Logging Macros"
 class Log {
 public:
-    Log(const Flags& flags, const fe::SrcMap& src)
-        : flags_(flags)
-        , src_(src) {}
+    Log(const Flags& flags)
+        : flags_(flags) {}
 
     enum class Level { Error, Warn, Info, Verbose, Debug, Trace };
 
@@ -52,10 +52,10 @@ public:
     ///@{
     template<class... Args>
     void log(Level level, Loc loc, std::format_string<Args...> fmt, Args&&... args) const {
-        if (ostream_ && level <= max_level_) emit(level, src_.at(loc), fmt, std::forward<Args>(args)...);
+        if (ostream_ && level <= max_level_) emit(level, loc, fmt, std::forward<Args>(args)...);
     }
 
-    /// A `__FILE__`/`__LINE__` pair is no Loc: it points into *our* source, which no SrcMap knows.
+    /// A `__FILE__`/`__LINE__` pair is no Loc: it points into *our* source, which has no fe::Src.
     template<class... Args>
     void log(Level level, const char* file, uint32_t line, std::format_string<Args...> fmt, Args&&... args) const {
         if (ostream_ && level <= max_level_)
@@ -82,7 +82,6 @@ private:
     }
 
     const Flags& flags_;
-    const fe::SrcMap& src_;
     std::ostream* ostream_ = nullptr;
     Level max_level_       = Level::Error;
 };

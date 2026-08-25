@@ -7,6 +7,7 @@
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
 #include <fe/assert.h>
+#include <fe/format.h>
 #include <fe/loc.h>
 #include <fe/src.h>
 #include <fe/sym.h>
@@ -152,6 +153,8 @@ private:
     std::ostream& stream(std::ostream&, const Msg&) const;
 
     const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
+    /// Keeps the fe::Src%s alive that Msg::loc points at - a Loc renders itself, but only as long as
+    /// its fe::Src is around. Never read; owning it *is* the job.
     std::shared_ptr<const fe::SrcMap> src_;
     bool no_snippet_ = false; ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
     std::vector<Msg> msgs_;
@@ -191,12 +194,12 @@ public:
     /// @name Comparison and Hashing
     /// Dbg%s are interned in the Driver so that a Def only has to store a `u32` index; see Def::dbg_.
     ///@{
-    /// @note Like Loc::operator==, this only compares Loc::path by pointer identity.
+    /// @note Like Loc::operator==, this only compares Loc::src by pointer identity.
     bool operator==(const Dbg& other) const noexcept { return loc_ == other.loc_ && sym_ == other.sym_; }
 
     template<class H>
     friend H AbslHashValue(H h, Dbg dbg) noexcept {
-        return H::combine(std::move(h), dbg.loc_.path, dbg.loc_.begin.off, dbg.loc_.end.off, dbg.sym_);
+        return H::combine(std::move(h), dbg.loc_.src, dbg.loc_.begin.off, dbg.loc_.end.off, dbg.sym_);
     }
     ///@}
 

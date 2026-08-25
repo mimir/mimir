@@ -14,16 +14,16 @@ constexpr auto Gutter = 5;
 
 /// Streams the row @p loc starts on, then a caret run underlining the columns it spans.
 /// A @p loc spanning several rows underlines the remainder of its first one.
-void stream_snippet(std::ostream& os, const fe::SrcFile& file, Loc loc, fe::term::FG color) {
-    auto [row, col] = file.rowcol(loc.begin);
-    auto line       = file.line(row);
+void stream_snippet(std::ostream& os, const fe::Src& src, Loc loc, fe::term::FG color) {
+    auto [row, col] = src.rowcol(loc.begin);
+    auto line       = src.line(row);
     if (line.empty()) return;
 
     auto len   = fe::utf8::num_code_points(line);
     auto begin = size_t(col) - 1;
     if (begin >= len) return;
 
-    auto [last_row, last_col] = file.rowcol(file.prev(loc.end));
+    auto [last_row, last_col] = src.rowcol(src.prev(loc.end));
     auto end                  = last_row != row ? len : size_t(last_col);
     end                       = std::min(std::max(end, begin + 1), len);
 
@@ -88,9 +88,7 @@ Error::Error(const Driver& driver)
 // Streamed piecewise instead of via std::format: a std::formatter cannot see its destination stream,
 // so embedded fe::term::FG values would resolve Mode::Auto to "no color"; see fe/term.h.
 std::ostream& Error::stream(std::ostream& os, const Msg& msg) const {
-    os << fe::term::FG::Yellow;
-    src_ ? os << src_->at(msg.loc) : os << msg.loc;
-    os << ": " << msg.tag << ": " << fe::term::FG::Reset;
+    os << fe::term::FG::Yellow << msg.loc << ": " << msg.tag << ": " << fe::term::FG::Reset;
     return stream_code(os, msg.str);
 }
 
@@ -107,8 +105,8 @@ std::ostream& operator<<(std::ostream& os, const Error& e) {
     auto primary = Loc();
 
     auto snippet = [&](Loc loc, Error::Tag tag) {
-        if (e.no_snippet_ || !e.src_) return;
-        if (auto file = e.src_->lookup(loc)) stream_snippet(os, *file, loc, tag2color(tag));
+        if (e.no_snippet_) return;
+        if (auto src = loc.src) stream_snippet(os, *src, loc, tag2color(tag));
     };
 
     for (const auto& msg : e.msgs()) {
