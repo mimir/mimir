@@ -162,7 +162,7 @@ Ptr<Module> Parser::import(const fe::Src& src, std::ostream* md) {
     driver().VLOG("📄 reading: {}", src.path().string());
 
     auto state = std::tuple(curr_, ahead_, lexer_);
-    auto lexer = Lexer(ast(), src.buf(), &src, md);
+    auto lexer = Lexer(ast(), src, md);
     lexer_     = &lexer;
     init();
     auto mod                        = parse_module();

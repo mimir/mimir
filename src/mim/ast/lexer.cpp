@@ -9,8 +9,8 @@ namespace mim::ast {
 namespace utf8 = fe::utf8;
 using Tag      = Tok::Tag;
 
-Lexer::Lexer(AST& ast, std::string_view buf, const fe::Src* src /*= nullptr*/, std::ostream* md /*= nullptr*/)
-    : Super(buf, src)
+Lexer::Lexer(AST& ast, const fe::Src& src, std::ostream* md /*= nullptr*/)
+    : Super(src)
     , ast_(ast)
     , md_(md) {
 #define CODE(t, str) keywords_[ast.sym(str)] = Tag::t;
