@@ -1,6 +1,6 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
-// A Loc spanning several rows underlines the rest of its first row - not the whole span.
+// Every row a Loc spans is underlined on the columns it covers there.
 plugin core;
 
 let id = λ [T: *] (x: T): T = x;
@@ -10,3 +10,5 @@ let n = id
 // CHECK:      {{.*}}snippet_multiline.mim:7:9-8:9: error: argument is not assignable to callee's domain
 // CHECK-NEXT: 7 | let n = id
 // CHECK-NEXT:   |         ^^
+// CHECK-NEXT: 8 |         3;
+// CHECK-NEXT:   | ^^^^^^^^^

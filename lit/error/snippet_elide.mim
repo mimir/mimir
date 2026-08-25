@@ -1,0 +1,36 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A Loc spanning more rows than a snippet prints elides its middle.
+plugin core;
+
+let id = λ [T: *] (x: T): T = x;
+let n = id
+        (
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+        );
+
+// CHECK:       {{.*}}snippet_elide.mim:7:9-17:9: error: argument is not assignable to callee's domain
+// CHECK-NEXT:  7 | let n = id
+// CHECK-NEXT:    |         ^^
+// CHECK-NEXT:  8 |         (
+// CHECK-NEXT:    | ^^^^^^^^^
+// CHECK-NEXT:  9 |             3,
+// CHECK-NEXT:    | ^^^^^^^^^^^^^^
+// CHECK-NEXT: 10 |             4,
+// CHECK-NEXT:    | ^^^^^^^^^^^^^^
+// CHECK-NEXT: ... |
+// CHECK-NEXT: 14 |             8,
+// CHECK-NEXT:    | ^^^^^^^^^^^^^^
+// CHECK-NEXT: 15 |             9,
+// CHECK-NEXT:    | ^^^^^^^^^^^^^^
+// CHECK-NEXT: 16 |             10
+// CHECK-NEXT:    | ^^^^^^^^^^^^^^
+// CHECK-NEXT: 17 |         );
+// CHECK-NEXT:    | ^^^^^^^^^

@@ -12,6 +12,8 @@
 #include <fe/sym.h>
 #include <fe/term.h>
 
+#include "mim/flags.h"
+
 namespace mim {
 
 using fe::Loc;
@@ -56,7 +58,7 @@ public:
 
     /// @name Constructors
     ///@{
-    /// Snapshots Flags::no_snippet from @p driver, so that rendering needs no Driver.
+    /// Snapshots @p driver's Flags, so that rendering needs no Driver.
     /// @warning A Msg::loc points into @p driver's SrcMap, so @p driver must outlive this Error.
     explicit Error(const Driver& driver);
     Error() = default;
@@ -150,7 +152,7 @@ private:
     std::ostream& stream(std::ostream&, const Msg&) const;
 
     const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
-    bool no_snippet_      = false;   ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
+    Flags flags_;                    ///< Snapshot of Driver::flags, so rendering needs no Driver.
     std::vector<Msg> msgs_;
     mutable std::string what_;
 };
