@@ -6,10 +6,11 @@ on:
     branches: [master]
 
 concurrency:
-  # Key PR runs by head SHA so a new push doesn't cancel the previous commit's still-running
-  # build; pushes to master/tags keep the plain workflow-ref group.
-  group: ${{github.workflow}}-${{github.ref}}${{github.event.pull_request.head.sha && format('-{0}', github.event.pull_request.head.sha) || ''}}
-  cancel-in-progress: ${{github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/v')}}
+  # Deploying runs share one group so they queue instead of racing on mimir.github.io; every other
+  # run gets its own group via run_id and is therefore never cancelled nor queued.
+  # `env` is unavailable here, so the DEPLOY condition below is spelled out again.
+  group: ${{github.workflow}}-${{(github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) && 'deploy' || github.run_id}}
+  cancel-in-progress: false
 
 env:
   DOXYGEN_VERSION: 1.16.1
