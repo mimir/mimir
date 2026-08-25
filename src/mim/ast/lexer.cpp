@@ -111,8 +111,14 @@ Tok Lexer::lex() {
         }
 
         if (accept<Append::Off>('\"')) {
-            while (lex_char() != '"') {}
-            str_.pop_back(); // remove final '"'
+            // Test for the terminator before lex_char, or an escaped `\"` would end the literal.
+            while (!accept<Append::Off>('\"')) {
+                if (ahead() == utf8::EoF) {
+                    ast().error(loc_, "unterminated string literal");
+                    break;
+                }
+                lex_char();
+            }
             return {loc_, Tag::L_str, sym()};
         }
 
@@ -279,9 +285,9 @@ char8_t Lexer::lex_char() {
         else if (accept<Append::Off>( 'r')) str_ += '\r';
         else if (accept<Append::Off>( 't')) str_ += '\t';
         else if (accept<Append::Off>( 'v')) str_ += '\v';
-        else ast().error(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
+        else if (ahead() != utf8::EoF) ast().error(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
         // clang-format on
-        return str_.back();
+        return str_.empty() ? '\0' : str_.back();
     }
     auto c = next();
     str_ += c;

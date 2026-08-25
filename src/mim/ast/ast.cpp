@@ -251,7 +251,8 @@ AST load_plugins(World& world, View<Sym> plugins) {
             imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, Dbg(plugin), std::move(mod)));
 
     if (!plugins.empty()) {
-        auto mod = ast.ptr<Module>(imports.front()->loc() + imports.back()->loc(), std::move(imports), Ptrs<ValDecl>());
+        // No Loc: this Module spans no source, and hulling the imports would mix Loc%s of different files.
+        auto mod = ast.ptr<Module>(Loc(), std::move(imports), Ptrs<ValDecl>());
         mod->compile(ast);
     }
 

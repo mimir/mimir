@@ -27,6 +27,7 @@ bool is_shape(const Def* s) {
 
 /// Is @p def an `Idx` - or an aggregate of `Idx`%s, i.e. a multi-dimensional index?
 bool isa_indices(const Def* def) {
+    if (!def) return false; // Univ has no type
     if (Idx::isa(def)) return true;
     if (auto sigma = def->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), [](auto op) { return Idx::isa(op); });
     if (auto arr = def->isa<Arr>()) return Idx::isa(arr->body());
@@ -130,9 +131,9 @@ const Type* World::type(const Def* level) {
     if (!level) return nullptr;
     level = level->zonk();
 
-    if (!level->type()->isa<Univ>())
+    if (!level->isa_type<Univ>())
         error(err_loc(level), "argument `{}` to `Type` must be of type `Univ` but is of type `{}`", level,
-              level->type());
+              type_of(level));
 
     return unify<Type>(level)->as<Type>();
 }
@@ -140,9 +141,9 @@ const Type* World::type(const Def* level) {
 const Def* World::uinc(const Def* op, level_t offset) {
     op = op->zonk();
 
-    if (!op->type()->isa<Univ>())
+    if (!op->isa_type<Univ>())
         error(err_loc(op), "operand `{}` of a universe increment must be of type `Univ` but is of type `{}`", op,
-              op->type());
+              type_of(op));
 
     if (auto l = Lit::isa(op)) return lit_univ(*l + 1);
     return unify<UInc>(op, offset);
@@ -181,9 +182,9 @@ const Def* World::umax(Defs ops_) {
     DefVec res;
     res.reserve(ops.size());
     for (auto op : ops) {
-        if (!op->type()->isa<Univ>())
+        if (!op->isa_type<Univ>())
             error(err_loc(op), "operand `{}` of a universe max must be of type `Univ` but is of type `{}`", op,
-                  op->type());
+                  type_of(op));
 
         if (auto l = Lit::isa(op))
             lvl = std::max(lvl, *l);
@@ -217,7 +218,7 @@ const Def* World::var(Def* mut) {
 
 template<bool Normalize>
 const Def* World::implicit_app(const Def* callee, const Def* arg) {
-    while (auto pi = Pi::isa_implicit(callee->type()))
+    while (auto pi = Pi::isa_implicit(callee->unfold_type()))
         callee = app(callee, mut_hole(pi->dom()));
     return app<Normalize>(callee, arg);
 }
@@ -227,25 +228,25 @@ const Def* World::app(const Def* callee, const Def* arg) {
     callee = callee->zonk();
     arg    = arg->zonk();
 
-    auto pi = callee->type()->isa<Pi>();
+    auto pi = callee->isa_type<Pi>();
     if (!pi)
         throw Error(driver())
             .error(err_loc(callee), "callee is not of function type")
-            .note(err_loc(callee), "callee `{}` has type `{}`", callee, callee->type())
+            .note(err_loc(callee), "callee `{}` has type `{}`", callee, type_of(callee))
             .note_at(callee->loc(), "callee `{}` declared here", callee);
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
         throw Error(driver())
             .error(err_loc(arg), "argument is not assignable to callee's domain")
-            .note(err_loc(arg), "expected `{}`, got `{}`", pi->dom(), arg->type())
+            .note(err_loc(arg), "expected `{}`, got `{}`", pi->dom(), type_of(arg))
             .note(err_loc(arg), "argument: `{}`", arg)
             .note_at(callee->loc(), "callee `{}` declared here", callee);
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
     callee = callee->zonk();
-    pi     = callee->type()->isa<Pi>();
+    pi     = callee->isa_type<Pi>();
 
     // always β-reduce non-recursive, non-parametric lambdas
     if (auto imm = callee->isa_imm<Lam>()) return imm->body();
@@ -323,7 +324,7 @@ const Def* World::tuple(Defs ops) {
     auto t     = tuple(sigma, zops);
     auto new_t = Checker::assignable(sigma, t);
     if (!new_t)
-        error(err_loc(t), "tuple `{}` of type `{}` is not assignable to inferred type `{}`", t, t->type(), sigma);
+        error(err_loc(t), "tuple `{}` of type `{}` is not assignable to inferred type `{}`", t, type_of(t), sigma);
 
     return new_t;
 }
@@ -366,11 +367,11 @@ const Def* World::extract(const Def* d, const Def* index) {
     index = index->zonk();
 
     // The scalar case is by far the most common one, so probe it first and only fall back to the aggregate check.
-    auto index_ty = index->type();
+    auto index_ty = index->unfold_type();
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
     if (!size && !isa_indices(index_ty))
-        error(err_loc(index), "index `{}` must be of `Idx` type but is of type `{}`", index, index_ty);
+        error(err_loc(index), "index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index));
 
     if (auto tuple = index->isa<Tuple>()) {
         for (auto op : tuple->ops())
@@ -475,10 +476,10 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
     val   = val->zonk();
 
     auto type = d->unfold_type();
-    auto size = Idx::isa(index->type());
+    auto size = Idx::isa(index->unfold_type());
     auto lidx = Lit::isa(index);
 
-    if (!size) error(err_loc(d), "index `{}` must be of `Idx` type but is of type `{}`", index, index->type());
+    if (!size) error(err_loc(d), "index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index));
 
     if (!Checker::alpha<Checker::Check>(type->arity(), size))
         error(err_loc(index), "index `{}` does not fit within arity `{}`", index, type->arity());
@@ -489,7 +490,7 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
         if (!new_val) {
             throw Error(driver())
                 .error(err_loc(val), "value is not assignable to element type")
-                .note(err_loc(val), "expected `{}`, got `{}`", elem_type, val->type())
+                .note(err_loc(val), "expected `{}`, got `{}`", elem_type, type_of(val))
                 .note(err_loc(val), "value: `{}`", val);
         }
         val = new_val;
@@ -542,7 +543,7 @@ const Def* World::seq(bool is_pack, const Def* arity, const Def* body) {
             return seq(is_pack, arity->proj(*n, 0), seq(is_pack, tuple(inner), body));
         }
 
-    if (is_pack) return unify<Pack>(arr(arity, body->type()), body);
+    if (is_pack) return unify<Pack>(arr(arity, body->unfold_type()), body);
     return unify<Arr>(body->unfold_type(), arity, body);
 }
 
@@ -610,7 +611,7 @@ const Def* World::merge(const Def* type, Defs ops_) {
     auto ops = Def::zonk(ops_);
 
     if (type->isa<Meet>()) {
-        auto types = DefVec(ops.size(), [&](size_t i) { return ops[i]->type(); });
+        auto types = DefVec(ops.size(), [&](size_t i) { return ops[i]->unfold_type(); });
         return unify<Merge>(meet(types), ops);
     }
 
@@ -644,27 +645,27 @@ const Def* World::match(Defs ops_) {
 
     auto scrutinee = ops.front();
     auto arms      = ops.span().subspan(1);
-    auto join      = scrutinee->type()->isa<Join>();
+    auto join      = scrutinee->isa_type<Join>();
 
     if (!join)
         error(err_loc(scrutinee), "scrutinee `{}` of a test expression must be of union type but has type `{}`",
-              scrutinee, scrutinee->type());
+              scrutinee, type_of(scrutinee));
 
     if (arms.size() != join->num_ops())
         error(err_loc(scrutinee), "test expression has {} arms but union type has {} cases", arms.size(),
               join->num_ops());
 
     for (auto arm : arms)
-        if (!arm->type()->isa<Pi>())
+        if (!arm->isa_type<Pi>())
             error(err_loc(arm), "arm `{}` of test expression does not have a function type but has type `{}`", arm,
-                  arm->type());
+                  type_of(arm));
 
-    std::ranges::sort(arms, GIDLt<const Def*>(), [](const Def* arm) { return arm->type()->as<Pi>()->dom(); });
+    std::ranges::sort(arms, GIDLt<const Def*>(), [](const Def* arm) { return arm->isa_type<Pi>()->dom(); });
 
     const Def* type = nullptr;
     for (size_t i = 0, e = arms.size(); i != e; ++i) {
         auto arm = arms[i];
-        auto pi  = arm->type()->as<Pi>();
+        auto pi  = arm->isa_type<Pi>();
         if (!Checker::alpha<Checker::Check>(pi->dom(), join->op(i)))
             error(err_loc(arm), "domain type `{}` of test-expression arm does not match union case type `{}`",
                   pi->dom(), join->op(i));
@@ -676,8 +677,9 @@ const Def* World::match(Defs ops_) {
     // already have changed (for example, a tensor may have become a buffer).
     if (auto inj = scrutinee->isa<Inj>()) {
         for (size_t i = 0, e = arms.size(); i != e; ++i)
-            if (Checker::alpha<Checker::Check>(inj->value()->type(), join->op(i))) return app(arms[i], inj->value());
-        error(err_loc(scrutinee), "injected value type `{}` is not a case of union type `{}`", inj->value()->type(),
+            if (Checker::alpha<Checker::Check>(inj->value()->unfold_type(), join->op(i)))
+                return app(arms[i], inj->value());
+        error(err_loc(scrutinee), "injected value type `{}` is not a case of union type `{}`", type_of(inj->value()),
               join);
     }
 
@@ -686,7 +688,10 @@ const Def* World::match(Defs ops_) {
 
 const Def* World::uniq(const Def* inhabitant) {
     inhabitant = inhabitant->zonk();
-    return unify<Uniq>(inhabitant->type()->unfold_type(), inhabitant);
+    // A singleton type sits one level above its inhabitant, so the top of the hierarchy has none.
+    auto t = inhabitant->unfold_type();
+    if (auto tt = t ? t->unfold_type() : nullptr) return unify<Uniq>(tt, inhabitant);
+    error(err_loc(inhabitant), "`{}` is too high in the universe hierarchy to inhabit a singleton type", inhabitant);
 }
 
 Sym World::append_suffix(Sym symbol, std::string suffix) {
@@ -793,7 +798,9 @@ template const Def* World::implicit_app<false>(const Def*, const Def*);
 // off the hot path: only a few thousand distinct Loc%s occur, yet every emitted Def wants one.
 // Restore rolls both fields back together, so popping a scope never re-interns either.
 World::ScopedLoc World::push(Loc loc) {
-    return ScopedLoc(state_.pod.curr_loc, {loc, loc ? DbgKey(driver().dbg(Dbg(loc))) : DbgKey()});
+    auto& curr = state_.pod.curr_loc;
+    if (loc == curr.loc) return ScopedLoc(curr); // nested emitters push the same Loc; don't re-intern it
+    return ScopedLoc(curr, {loc, loc ? DbgKey(driver().dbg(Dbg(loc))) : DbgKey()});
 }
 
 Loc World::err_loc(const Def* def) const {

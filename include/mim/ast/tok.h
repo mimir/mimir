@@ -207,19 +207,21 @@ public:
         : loc_(loc)
         , tag_(tag)
         , sym_(sym) {
-        assert(tag == Tag::M_id || tag == Tag::M_anx || tag == Tag::L_str);
+        assert(has_sym());
     }
 
     bool isa(Tag tag) const { return tag == tag_; }
     Tag tag() const { return tag_; }
-    Dbg dbg() const { return {loc(), sym()}; }
+    bool has_sym() const { return isa(Tag::M_id) || isa(Tag::M_anx) || isa(Tag::L_str); }
+    /// @note A failed Parser::expect yields a Nil Tok; its Dbg is anonymous instead of asserting in Tok::sym.
+    Dbg dbg() const { return {loc(), has_sym() ? sym_ : Sym()}; }
     Loc loc() const { return loc_; }
     explicit operator bool() const { return tag_ != Tag::Nil; }
     // clang-format off
     const Lit* lit_i() const { assert(isa(Tag::L_i)); return i_; }
     char8_t    lit_c() const { assert(isa(Tag::L_c)); return c_;   }
     uint64_t   lit_u() const { assert(isa(Tag::L_u ) || isa(Tag::L_s ) || isa(Tag::L_f  )); return u_;   }
-    Sym        sym()   const { assert(isa(Tag::M_anx) || isa(Tag::M_id) || isa(Tag::L_str)); return sym_; }
+    Sym        sym()   const { assert(has_sym()); return sym_; }
     // clang-format on
     std::string str() const;
 

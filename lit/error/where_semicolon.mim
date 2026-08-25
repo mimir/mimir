@@ -1,0 +1,15 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The note has to point *at* the stray `;`: one column past it sits behind the end of the line,
+// where stream_snippet has nothing left to underline.
+let x = 1;
+where
+    let y = 2;
+end
+
+// CHECK:      {{.*}}where_semicolon.mim:6:1-6:5: error: expected `<end of file>`, got `where` while parsing module
+// CHECK-NEXT: 6 | where
+// CHECK-NEXT:   | ^^^^^
+// CHECK-NEXT:   {{.*}}where_semicolon.mim:5:10: note: did you accidentally end your declaration expression with a `;`?
+// CHECK-NEXT: 5 | let x = 1;
+// CHECK-NEXT:   |          ^

@@ -1,0 +1,5 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The lexer must stop at EoF instead of spinning forever.
+// CHECK: {{.*}}unterminated_string.mim:5:9-5:12: error: unterminated string literal
+let s = "abc

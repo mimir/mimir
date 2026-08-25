@@ -1,0 +1,11 @@
+// RUN: (! %mim --bootstrap %s 2>&1) | %FileCheck %s
+
+// `Test s s` in a pattern position is parsed as a curried application; the inner
+// application must end at its own argument instead of spanning the whole run.
+let Test = lm (a: Nat) (b: Nat): * = Nat;
+let s = *;
+axm %test.foo: {Test s s} → [];
+
+// CHECK:      {{.*}}id_run_app_loc.mim:7:17-7:22: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 7 | axm %test.foo: {Test s s} → [];
+// CHECK-NEXT:   |                 ^^^^^^

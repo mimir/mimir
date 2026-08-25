@@ -69,11 +69,16 @@ const Def* AliasPtrn::emit_value(Emitter& e, const Def* def) const {
     return def_ = ptrn()->emit_value(e, def)->set(dbg());
 }
 
+const Def* Ptrn::emit_proj(Emitter& e, const Def* def, size_t n, size_t i) const {
+    auto _ = e.world().push(loc());
+    return emit_value(e, def->proj(n, i));
+}
+
 const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
     auto _ = e.world().push(loc());
     emit_type(e);
     for (size_t i = 0, n = num_ptrns(); i != n; ++i)
-        ptrn(i)->emit_value(e, def->proj(n, i));
+        ptrn(i)->emit_proj(e, def, n, i);
     return def_ = def;
 }
 
@@ -109,7 +114,7 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
 
     for (size_t i = 0; i != n; ++i) {
         sigma->set(i, ptrn(i)->emit_type(e));
-        ptrn(i)->emit_value(e, var->proj(n, i));
+        ptrn(i)->emit_proj(e, var, n, i);
         if (auto id = ptrn(i)->isa<IdPtrn>()) sym2idx[id->dbg().sym()] = i;
     }
 
@@ -130,6 +135,16 @@ const Def* TuplePtrn::emit_decl(Emitter& e, const Def* type) const {
 const Def* Expr::emit(Emitter& e) const {
     auto _ = e.world().push(loc());
     return emit_(e);
+}
+
+const Def* Expr::emit_decl(Emitter& e, const Def* type) const {
+    auto _ = e.world().push(loc());
+    return emit_decl_(e, type);
+}
+
+void Expr::emit_body(Emitter& e, const Def* decl) const {
+    auto _ = e.world().push(loc());
+    emit_body_(e, decl);
 }
 
 const Def* ErrorExpr::emit_(Emitter&) const { fe::unreachable(); }
@@ -234,11 +249,9 @@ const Def* DeclExpr::emit_(Emitter& e) const {
     return expr()->emit(e);
 }
 
-const Def* ArrowExpr::emit_decl(Emitter& e, const Def* type) const {
-    return decl_ = e.world().mut_pi(type, false)->set(loc());
-}
+const Def* ArrowExpr::emit_decl_(Emitter& e, const Def* type) const { return decl_ = e.world().mut_pi(type, false); }
 
-void ArrowExpr::emit_body(Emitter& e, const Def*) const {
+void ArrowExpr::emit_body_(Emitter& e, const Def*) const {
     decl_->set_dom(dom()->emit(e));
     decl_->set_codom(codom()->emit(e)); // TODO try to immutabilize
 }
@@ -280,14 +293,16 @@ const Def* MatchExpr::emit_(Emitter& e) const {
 }
 
 void PiExpr::Dom::emit_type(Emitter& e) const {
+    // Created before the push: the Pi belongs to the whole function type, not just to this Dom.
     pi_        = decl_ ? decl_ : e.world().mut_pi(e.world().type_infer_univ(), is_implicit());
+    auto _     = e.world().push(loc());
     auto dom_t = ptrn()->emit_type(e);
 
     if (ret()) {
-        auto sigma = e.world().mut_sigma(2)->set(loc());
-        auto var   = sigma->var()->set(ret()->loc().anew_begin());
+        auto sigma = e.world().mut_sigma(2);
+        auto var   = sigma->var();
         sigma->set(0, dom_t);
-        ptrn()->emit_value(e, var->proj(2, 0));
+        ptrn()->emit_proj(e, var, 2, 0);
         auto ret_t = e.world().cn(ret()->emit_type(e));
         sigma->set(1, ret_t);
 
@@ -302,11 +317,11 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
     }
 }
 
-const Def* PiExpr::emit_decl(Emitter& e, const Def* type) const {
-    return dom()->decl_ = e.world().mut_pi(type, dom()->is_implicit())->set(loc());
+const Def* PiExpr::emit_decl_(Emitter& e, const Def* type) const {
+    return dom()->decl_ = e.world().mut_pi(type, dom()->is_implicit());
 }
 
-void PiExpr::emit_body(Emitter& e, const Def*) const { emit(e); }
+void PiExpr::emit_body_(Emitter& e, const Def*) const { emit(e); }
 
 const Def* PiExpr::emit_(Emitter& e) const {
     dom()->emit_type(e);
@@ -316,8 +331,8 @@ const Def* PiExpr::emit_(Emitter& e) const {
     return pi;
 }
 
-const Def* LamExpr::emit_decl(Emitter& e, const Def*) const { return lam()->emit_decl(e), lam()->def(); }
-void LamExpr::emit_body(Emitter& e, const Def*) const { lam()->emit_body(e); }
+const Def* LamExpr::emit_decl_(Emitter& e, const Def*) const { return lam()->emit_decl(e), lam()->def(); }
+void LamExpr::emit_body_(Emitter& e, const Def*) const { lam()->emit_body(e); }
 
 const Def* LamExpr::emit_(Emitter& e) const {
     auto res = emit_decl(e, {});
@@ -336,7 +351,7 @@ const Def* RetExpr::emit_(Emitter& e) const {
     if (auto cn = Pi::has_ret_pi(c->type())) {
         auto con  = e.world().mut_lam(cn);
         auto pair = e.world().tuple({arg()->emit(e), con});
-        auto app  = e.world().app(c, pair)->set(c->loc() + arg()->loc());
+        auto app  = e.world().app(c, pair);
         ptrn()->emit_value(e, con->var());
         con->set(false, body()->emit(e));
         return app;
@@ -347,8 +362,8 @@ const Def* RetExpr::emit_(Emitter& e) const {
                     c->type());
 }
 
-const Def* SigmaExpr::emit_decl(Emitter& e, const Def* type) const { return ptrn()->emit_decl(e, type); }
-void SigmaExpr::emit_body(Emitter& e, const Def* decl) const { ptrn()->emit_body(e, decl); }
+const Def* SigmaExpr::emit_decl_(Emitter& e, const Def* type) const { return ptrn()->emit_decl(e, type); }
+void SigmaExpr::emit_body_(Emitter& e, const Def* decl) const { ptrn()->emit_body(e, decl); }
 const Def* SigmaExpr::emit_(Emitter& e) const { return ptrn()->emit_type(e); }
 
 const Def* TupleExpr::emit_(Emitter& e) const {
@@ -427,6 +442,7 @@ const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant(
 
 void AxmDecl::emit(Emitter& e) const {
     if (!annex_) return; // Skip emit if binding failed
+    auto _      = e.world().push(loc());
     mim_type_   = type()->emit(e);
     auto& id    = annex_->id;
     auto plugin = annex_->plugin_id();
@@ -448,7 +464,7 @@ void AxmDecl::emit(Emitter& e) const {
 
     if (num_subs() == 0) {
         auto norm = e.driver().normalizer(plugin, id.tag, 0);
-        auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, 0)->set(dbg());
+        auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, 0)->set(dbg().sym());
         def_      = axm;
         e.world().annexes().attach(plugin, id.tag, 0, dbg().sym(), axm);
     } else {
@@ -466,6 +482,7 @@ void AxmDecl::emit(Emitter& e) const {
 }
 
 void LetDecl::emit(Emitter& e) const {
+    auto _ = e.world().push(loc());
     auto v = value()->emit(e);
     def_   = ptrn()->emit_value(e, v);
     if (auto id = ptrn()->isa<IdPtrn>()) e.attach(annex_, sub_, id->dbg().sym(), def_);
@@ -479,24 +496,28 @@ void RecDecl::emit(Emitter& e) const {
 }
 
 void RecDecl::emit_decl(Emitter& e) const {
+    auto _ = e.world().push(loc());
     auto t = type() ? type()->emit(e) : e.world().type_infer_univ();
     def_   = body()->emit_decl(e, t);
-    def_->set(dbg());
+    def_->set(dbg().sym());
 }
 
 void RecDecl::emit_body(Emitter& e) const {
+    auto _ = e.world().push(loc());
     body()->emit_body(e, def_);
     // TODO immutabilize?
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
 Lam* LamDecl::Dom::emit_value(Emitter& e) const {
+    // Created before the push: the Lam belongs to the whole declaration, not just to this Dom.
     lam_     = e.world().mut_lam(pi_);
+    auto _   = e.world().push(loc());
     auto var = lam_->var();
 
     if (ret()) {
-        ptrn()->emit_value(e, var->proj(2, 0));
-        ret()->emit_value(e, var->proj(2, 1));
+        ptrn()->emit_proj(e, var, 2, 0);
+        ret()->emit_proj(e, var, 2, 1);
     } else {
         ptrn()->emit_value(e, var);
     }
@@ -517,12 +538,14 @@ void LamDecl::emit_decl(Emitter& e) const {
         for (const auto& dom : doms() | std::views::drop(i) | std::views::reverse)
             cod = dom->pi_->set_codom(cod);
 
-        auto cur    = dom(i);
-        auto lam    = cur->emit_value(e);
-        auto filter = cur->filter()        ? cur->filter()->emit(e)
-                    : i + 1 == n && is_cps ? e.world().lit_ff()
-                                           : e.world().lit_tt();
-        lam->set_filter(filter);
+        auto cur = dom(i);
+        auto lam = cur->emit_value(e);
+        if (auto filter = cur->filter()) {
+            auto _filter = e.world().push(filter->loc());
+            lam->set_filter(filter->emit(e));
+        } else {
+            lam->set_filter(i + 1 == n && is_cps ? e.world().lit_ff() : e.world().lit_tt());
+        }
 
         if (i == 0)
             def_ = lam->set(dbg().sym());
@@ -532,8 +555,11 @@ void LamDecl::emit_decl(Emitter& e) const {
 }
 
 void LamDecl::emit_body(Emitter& e) const {
-    auto b = body()->emit(e);
-    doms().back()->lam_->set_body(b);
+    auto _ = e.world().push(loc());
+    {
+        auto _body = e.world().push(body()->loc());
+        doms().back()->lam_->set_body(body()->emit(e));
+    }
 
     // rewrite holes
     for (size_t i = 0, n = num_doms(); i != n; ++i) {
@@ -573,12 +599,13 @@ void LamDecl::emit_body(Emitter& e) const {
 }
 
 void CDecl::emit(Emitter& e) const {
+    auto _     = e.world().push(loc());
     auto dom_t = dom()->emit_type(e);
     if (tag() == Tag::K_cfun) {
         auto ret_t = codom()->emit(e);
-        def_       = e.world().mut_fun(dom_t, ret_t)->set(dbg());
+        def_       = e.world().mut_fun(dom_t, ret_t)->set(dbg().sym());
     } else {
-        def_ = e.world().mut_con(dom_t)->set(dbg());
+        def_ = e.world().mut_con(dom_t)->set(dbg().sym());
     }
 }
 
