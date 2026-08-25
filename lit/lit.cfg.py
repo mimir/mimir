@@ -3,7 +3,12 @@ sys.path.insert(0, os.path.dirname(__file__))
 from mim_sh_test import MimShTest
 
 config.name = 'mim regression'
-config.test_format = MimShTest(True)
+# lit 23 deprecates the external shell, but our RUN lines rely on `$?` and `VAR=`, which the
+# internal shell does not implement.
+try:
+    config.test_format = MimShTest(True, force_execute_external=True)
+except TypeError:
+    config.test_format = MimShTest(True)
 
 config.suffixes = ['.mim']
 
