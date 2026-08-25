@@ -71,7 +71,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // First touch of `var` this round, including `cur == ⊥`: restart the join here.
     // `⊥` must set `first_`, or the next site would discard this value and let a later one win instead of reaching ⊤.
     // Discarding what earlier sites contributed requires a round that revisits *every* `lam` call site;
-    // the Analysis is dense for exactly that reason - see its c'tor.
+    // apply_known() taints all of lam2callers_ whenever the abstract vars change, so the next round does.
     if (auto [_, ins] = first_.emplace(var); ins) {
         DLOG("first; restart: {} -> {}", var, def);
         lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
