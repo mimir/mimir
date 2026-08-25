@@ -285,9 +285,9 @@ char8_t Lexer::lex_char() {
         else if (accept<Append::Off>( 'r')) str_ += '\r';
         else if (accept<Append::Off>( 't')) str_ += '\t';
         else if (accept<Append::Off>( 'v')) str_ += '\v';
-        else ast().error(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
+        else if (ahead() != utf8::EoF) ast().error(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
         // clang-format on
-        return str_.back();
+        return str_.empty() ? '\0' : str_.back();
     }
     auto c = next();
     str_ += c;
