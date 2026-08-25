@@ -154,7 +154,7 @@ Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostrea
         ast().error(loc, "cannot read file `{}`", path.string());
         return {};
     }
-    auto [src, _] = driver().src_map().add(std::move(path), fe::SrcMap::slurp(is));
+    auto [src, _] = driver().src().add(std::move(path), fe::SrcMap::slurp(is));
     return import(*src, md);
 }
 

@@ -12,7 +12,7 @@
 namespace mim {
 
 std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
-    auto [src, fresh] = driver_.src_map().add(std::move(path));
+    auto [src, fresh] = driver_.src().add(std::move(path));
     if (!src) return {nullptr, false};
 
     // The SrcMap interns paths, so one file is one fe::Src - comparing those settles "same file".

@@ -764,7 +764,7 @@ TEST(Phase, sparse_differential) {
 
 TEST(Error, render) {
     Driver driver;
-    auto [src, _] = driver.src_map().add("render.mim", "let x = 1;\nlet y = 2;\n");
+    auto [src, _] = driver.src().add("render.mim", "let x = 1;\nlet y = 2;\n");
     auto err      = Error(driver);
     err.error(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing");
     err.note(Loc(src, Pos(15), Pos(16)), "declared");

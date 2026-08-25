@@ -74,8 +74,8 @@ public:
     /// @warning Every Loc - and hence every Error - dies with this Driver, so keep it alive until
     /// the last diagnostic has been rendered; in particular, create it *outside* the `try` block.
     ///@{
-    fe::SrcMap& src_map() { return src_map_; }
-    const fe::SrcMap& src_map() const { return src_map_; }
+    fe::SrcMap& src() { return src_; }
+    const fe::SrcMap& src() const { return src_; }
     ///@}
 
     /// @name Manage Imports
@@ -174,7 +174,7 @@ private:
     absl::node_hash_map<Sym, Plugin::Handle> plugins_;
     Version version_;
     Flags flags_;
-    fe::SrcMap src_map_;
+    fe::SrcMap src_;
     mutable Log log_;
     mutable Names names_;
     Profiler profiler_;
