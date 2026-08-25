@@ -87,7 +87,7 @@ public:
     class Imports {
     public:
         struct Entry {
-            fs::path path;
+            const fs::path* path;
             Sym sym;
             ast::Tok::Tag tag;
         };
@@ -107,7 +107,8 @@ public:
         ///@}
 
         /// Reads @p path, remembers the import or plugin directive, and reports whether the file is new.
-        /// Yields a `nullptr` SrcFile - and warns - if @p path cannot be read.
+        /// Yields a `nullptr` SrcFile if @p path cannot be read; reporting that is the caller's job,
+        /// since only it knows the Loc of the directive to blame.
         std::pair<const fe::SrcFile*, bool> add(fs::path, Sym, ast::Tok::Tag);
 
     private:

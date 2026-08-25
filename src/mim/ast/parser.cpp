@@ -137,9 +137,16 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
         if (bool reg_file = fs::is_regular_file(rel_path, ignore); reg_file && !ignore) break;
     }
 
-    if (auto [file, fresh] = driver().imports().add(std::move(rel_path), name, tag); fresh)
-        return import(*file, dbg.loc(), md);
-    return {};
+    auto [file, fresh] = driver().imports().add(rel_path, name, tag);
+    if (!file) {
+        // rel_path is whatever candidate the search loop tried last, so it only names a real file here.
+        if (fs::exists(rel_path))
+            ast().error(dbg.loc(), "cannot read file `{}`", rel_path.string());
+        else
+            ast().error(dbg.loc(), "cannot find `{}` in the search paths", name);
+        return {};
+    }
+    return fresh ? import(*file, dbg.loc(), md) : Ptr<Module>();
 }
 
 Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {

@@ -12,26 +12,18 @@
 namespace mim {
 
 std::pair<const fe::SrcFile*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
-    if (!fs::exists(path)) {
-        driver_.WLOG("import path '{}' does not exist", path.string());
-        return {nullptr, false};
-    }
-
-    auto [file, fresh] = driver_.src().add(path);
-    if (!file) {
-        driver_.WLOG("cannot read file '{}'", path.string());
-        return {nullptr, false};
-    }
+    auto [file, fresh] = driver_.src().add(std::move(path));
+    if (!file) return {nullptr, false};
 
     bool seen_entry = false;
     for (const auto& entry : entries_) {
-        if (entry.sym == sym && entry.tag == tag && fs::equivalent(entry.path, *file->path())) {
+        if (entry.sym == sym && entry.tag == tag && entry.path == file->path()) {
             seen_entry = true;
             break;
         }
     }
 
-    if (!seen_entry) entries_.emplace_back(Entry{*file->path(), sym, tag});
+    if (!seen_entry) entries_.emplace_back(Entry{file->path(), sym, tag});
     return {file, fresh};
 }
 

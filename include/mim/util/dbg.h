@@ -150,9 +150,6 @@ private:
     }
 
     std::ostream& stream(std::ostream&, const Msg&) const;
-    /// Renders @p loc as `file:row:col`, falling back to its raw offsets without a SrcMap.
-    std::string str(Loc loc) const;
-    const fe::SrcFile* file(Loc loc) const { return src_ ? src_->lookup(loc) : nullptr; }
 
     const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
     std::shared_ptr<const fe::SrcMap> src_;
