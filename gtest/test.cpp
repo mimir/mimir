@@ -27,7 +27,7 @@ TEST(Zip, fold) {
                            "let b = ((6I32, 7I32,  8I32), ( 9I32, 10I32, 11I32));"
                            "let c = ((6I32, 8I32, 10I32), (12I32, 14I32, 16I32));"
                            "let r = %tuple.zip (2, (2, 3)) (2, (I32, I32), 1, I32, %core.wrap.add 0) (a, b);");
-    parser.import(iss);
+    parser.import(iss, "zip.mim");
     // auto c = parser.scopes().find({Loc(), driver.sym("c")});
     // auto r = parser.scopes().find({Loc(), driver.sym("r")});
 
@@ -760,4 +760,18 @@ TEST(Phase, sparse_differential) {
         ASSERT_NE(i, sparse_lattice.end()) << "missing lattice entry in sparse run";
         EXPECT_EQ(i->second, abstr) << "diverging lattice entry";
     }
+}
+
+TEST(Error, render) {
+    Driver driver;
+    auto [src, _] = driver.src().add("render.mim", "let x = 1;\nlet y = 2;\n");
+    auto err      = Error(driver);
+    err.error(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing");
+    err.note(Loc(src, Pos(15), Pos(16)), "declared");
+
+    // A Loc renders through the fe::Src it points at, which the Driver's SrcMap keeps alive.
+    auto what = std::string(err.what());
+    EXPECT_NE(what.find("render.mim:1:5-1:9: error: bad `thing`"), std::string::npos) << what;
+    EXPECT_NE(what.find("let x = 1;"), std::string::npos) << what;
+    EXPECT_NE(what.find("render.mim:2:5"), std::string::npos) << what;
 }

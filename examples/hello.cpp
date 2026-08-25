@@ -10,9 +10,10 @@ using namespace mim;
 using namespace mim::plug;
 
 int main(int, char**) {
+    auto driver = Driver("hello"); // outlives the handlers below: an Error's Locs point into its SrcMap
+
     try {
-        auto driver = Driver("hello");
-        auto& w     = driver.world();
+        auto& w = driver.world();
         driver.log().set(&std::cerr).set(Log::Level::Debug);
         ast::load_plugins(w, View<std::string>{"core", "ll"});
 

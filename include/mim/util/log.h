@@ -3,6 +3,7 @@
 #include <ostream>
 #include <print>
 
+#include <fe/format.h>
 #include <fe/term.h>
 
 #include "mim/flags.h"
@@ -51,22 +52,14 @@ public:
     ///@{
     template<class... Args>
     void log(Level level, Loc loc, std::format_string<Args...> fmt, Args&&... args) const {
-        if (ostream_ && level <= max_level_) {
-            std::print(ostream(), "{}{}:{}{}:{} ", level2color(level), level2acro(level), fe::term::FG::Gray, loc,
-                       fe::term::FG::Reset);
-            std::println(ostream(), fmt, std::forward<Args>(args)...);
-#ifdef MIM_ENABLE_CHECKS
-            if ((level == Level::Error && flags().break_on_error) || (level == Level::Warn && flags().break_on_warn))
-                fe::breakpoint();
-#endif
-        }
+        if (ostream_ && level <= max_level_) emit(level, loc, fmt, std::forward<Args>(args)...);
     }
+
+    /// A `__FILE__`/`__LINE__` pair is no Loc: it points into *our* source, which has no fe::Src.
     template<class... Args>
-    void log(Level level, const char* file, uint16_t line, std::format_string<Args...> fmt, Args&&... args) {
-        // Bail out *before* building the fs::path: that allocates, and in a Debug build DLOG/TLOG are live calls.
-        if (!ostream_ || level > max_level_) return;
-        auto path = fs::path(file);
-        log(level, Loc(&path, line), fmt, std::forward<Args>(args)...);
+    void log(Level level, const char* file, uint32_t line, std::format_string<Args...> fmt, Args&&... args) const {
+        if (ostream_ && level <= max_level_)
+            emit(level, std::format("{}:{}", file, line), fmt, std::forward<Args>(args)...);
     }
     ///@}
 
@@ -77,6 +70,17 @@ public:
     ///@}
 
 private:
+    template<class W, class... Args>
+    void emit(Level level, const W& where, std::format_string<Args...> fmt, Args&&... args) const {
+        std::print(ostream(), "{}{}:{}{}:{} ", level2color(level), level2acro(level), fe::term::FG::Gray, where,
+                   fe::term::FG::Reset);
+        std::println(ostream(), fmt, std::forward<Args>(args)...);
+#ifdef MIM_ENABLE_CHECKS
+        if ((level == Level::Error && flags().break_on_error) || (level == Level::Warn && flags().break_on_warn))
+            fe::breakpoint();
+#endif
+    }
+
     const Flags& flags_;
     std::ostream* ostream_ = nullptr;
     Level max_level_       = Level::Error;

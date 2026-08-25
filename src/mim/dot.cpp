@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include "mim/def.h"
+#include "mim/driver.h"
 #include "mim/lam.h"
 #include "mim/nest.h"
 #include "mim/world.h"

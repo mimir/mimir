@@ -266,10 +266,10 @@ void AxmDecl::bind(Scopes& s) const {
                           dbg().sym());
 
         if (annex_ && annex_->normalizer.sym() != normalizer().sym()) {
-            auto l = normalizer().loc() ? normalizer().loc() : loc().anew_finis();
+            auto l = normalizer().loc() ? normalizer().loc() : loc().anew_end();
             s.ast().error(l, "normalizer mismatch for axm `{}`", dbg());
             if (auto norm = annex_->normalizer)
-                s.ast().note(norm.loc(), "previous normalizer `{}`", norm);
+                s.ast().note(norm.loc(), "previous normalizer `{}` declared here", norm);
             else
                 s.ast().note(l, "initially no normalizer was specified");
         }

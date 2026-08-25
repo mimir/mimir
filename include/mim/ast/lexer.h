@@ -17,13 +17,18 @@ class Lexer : public fe::Lexer<3, Lexer> {
 public:
     /// Creates a lexer to read `*.mim` files (see [Lexical Structure](@ref lex)).
     /// If @p md is not `nullptr`, a Markdown output will be generated.
-    Lexer(AST&, std::istream&, const fs::path* path = nullptr, std::ostream* md = nullptr);
+    Lexer(AST& ast, const fe::Src& src, std::ostream* md = nullptr)
+        : Lexer(ast, src.buf(), &src, md) {}
+    /// As above, but the Loc%ations of the Tok%s produced have no fe::Src to resolve against.
+    Lexer(AST& ast, std::string_view buf, std::ostream* md = nullptr)
+        : Lexer(ast, buf, nullptr, md) {}
 
     AST& ast() { return ast_; }
-    const fs::path* path() const { return loc_.path; }
     Tok lex();
 
 private:
+    Lexer(AST&, std::string_view, const fe::Src*, std::ostream*);
+
     char32_t next() {
         auto res = Super::next();
         if (md_ && out_) {

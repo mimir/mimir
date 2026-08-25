@@ -6,7 +6,9 @@
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
 #include <fe/assert.h>
+#include <fe/format.h>
 #include <fe/loc.h>
+#include <fe/src.h>
 #include <fe/sym.h>
 #include <fe/term.h>
 
@@ -50,16 +52,12 @@ public:
         Loc loc;
         Tag tag;
         std::string str;
-
-        friend std::ostream& operator<<(std::ostream&, const Msg&);
     };
 
     /// @name Constructors
     ///@{
-    /// Snapshots Flags::no_snippet from @p driver and remembers it for Error::msg.
-    /// @note The snapshot is what lets an Error outlive @p driver: rendering must still work while an
-    /// exception unwinds past the Driver's scope, whereas Error::driver_ is only ever touched while
-    /// messages are added - at which point the Def%s being formatted prove their Driver is alive.
+    /// Snapshots Flags::no_snippet from @p driver, so that rendering needs no Driver.
+    /// @warning A Msg::loc points into @p driver's SrcMap, so @p driver must outlive this Error.
     explicit Error(const Driver& driver);
     Error() = default;
     ///@}
@@ -101,7 +99,7 @@ public:
 
     /// Error::note whose whole point is to point *elsewhere*; dropped when @p loc adds nothing.
     /// A @p loc overlapping the primary one is already covered by its snippet and so points nowhere new.
-    /// The renderer appends `at <loc>`, so phrase the message to read into it: `"callee `{}` declared"`.
+    /// The renderer gives @p loc a header line of its own, so phrase the message to stand alone.
     template<class... Args>
     Error& note_at(Loc loc, std::format_string<Args...> s, Args&&... args) {
         if (!loc || (loc & primary_loc())) return *this;
@@ -136,7 +134,9 @@ public:
         // clang-format on
     }
 
-    /// Renders each Tag::Error/Tag::Warn with its source snippet and its Tag::Note%s indented underneath.
+    /// Renders each Tag::Error/Tag::Warn with its source snippet and its Tag::Note%s underneath.
+    /// A Tag::Note pointing at a Loc of its own reads as a diagnostic of its own - header line plus snippet;
+    /// one about the primary Loc has nowhere else to point and stays a `= note:` continuation line.
     friend std::ostream& operator<<(std::ostream&, const Error&);
 
 private:
@@ -146,6 +146,8 @@ private:
             if (i->tag != Tag::Note) return i->loc;
         return {};
     }
+
+    std::ostream& stream(std::ostream&, const Msg&) const;
 
     const Driver* driver_ = nullptr; ///< Only valid while messages are added; see the constructor.
     bool no_snippet_      = false;   ///< Snapshot of Flags::no_snippet, so rendering needs no Driver.
@@ -186,13 +188,12 @@ public:
     /// @name Comparison and Hashing
     /// Dbg%s are interned in the Driver so that a Def only has to store a `u32` index; see Def::dbg_.
     ///@{
-    /// @note Like Loc::operator==, this only compares Loc::path by pointer identity.
+    /// @note Like Loc::operator==, this only compares Loc::src by pointer identity.
     bool operator==(const Dbg& other) const noexcept { return loc_ == other.loc_ && sym_ == other.sym_; }
 
     template<class H>
     friend H AbslHashValue(H h, Dbg dbg) noexcept {
-        return H::combine(std::move(h), dbg.loc_.path, dbg.loc_.begin.row, dbg.loc_.begin.col, dbg.loc_.finis.row,
-                          dbg.loc_.finis.col, dbg.sym_);
+        return H::combine(std::move(h), dbg.loc_.src, dbg.loc_.begin.off, dbg.loc_.end.off, dbg.sym_);
     }
     ///@}
 
@@ -226,7 +227,6 @@ private:
 template<> struct std::formatter<mim::Dbg       > : fe::ostream_formatter {};
 template<> struct std::formatter<mim::Error     > : fe::ostream_formatter {};
 template<> struct std::formatter<mim::Error::Tag> : fe::ostream_formatter {};
-template<> struct std::formatter<mim::Error::Msg> : fe::ostream_formatter {};
 #endif // clang-format on
 
 namespace mim {
@@ -246,13 +246,6 @@ inline std::ostream& stream_code(std::ostream& os, std::string_view str) {
         i = r + 1;
     }
     return os;
-}
-
-// Streamed piecewise instead of via std::format: a std::formatter cannot see its destination stream,
-// so embedded fe::term::FG values would resolve Mode::Auto to "no color"; see fe/term.h.
-inline std::ostream& operator<<(std::ostream& os, const Error::Msg& msg) {
-    os << fe::term::FG::Yellow << msg.loc << ": " << msg.tag << ": " << fe::term::FG::Reset;
-    return stream_code(os, msg.str);
 }
 
 } // namespace mim

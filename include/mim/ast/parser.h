@@ -40,7 +40,9 @@ public:
         return import({Loc(), driver().sym(sv)}, nullptr, tag);
     }
     Ptr<Module> import(Dbg, std::ostream* md = nullptr, Tok::Tag tag = Tok::Tag::K_import);
-    Ptr<Module> import(std::istream&, Loc = {}, const fs::path* = nullptr, std::ostream* md = nullptr);
+    Ptr<Module> import(const fe::Src&, std::ostream* md = nullptr);
+    /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
+    Ptr<Module> import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
     Ptr<Module> import_main(std::string_view input, View<std::string> plugins, std::ostream* md = nullptr);
 
 private:

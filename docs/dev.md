@@ -15,6 +15,10 @@ Let's jump straight into an example.
 It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](@ref mim::Log), and the current [`World`](@ref mim::World).
 In this example, the log is configured to write debug output to `std::cerr`; see also @ref clidebug.
 
+@warning Note how the [`Driver`](@ref mim::Driver) is created *outside* the `try` block.
+It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](@ref mim::Error) only renders its `Loc`s - and their source snippets - through it.
+So the [`Driver`](@ref mim::Driver) must outlive everything that may still print a diagnostic, in particular your `catch` handlers.
+
 Next, we load the [`core`](@ref core) and [`ll`](@ref ll) plugins.
 A plugin has two halves — a `.mim` file declaring its annexes and a shared library providing their runtime behavior; see [Plugins & Annexes](@ref mimir_plugins) for the overview and [Plugins](@ref plugins) for the details.
 Calling `mim::ast::load_plugins` parses the `.mim` file and also loads the shared object, while the [`Driver`](@ref mim::Driver) keeps track of the resulting plugin state.
