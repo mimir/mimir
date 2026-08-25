@@ -187,8 +187,8 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
 
     auto nest_args = w.tuple({Ro, w.lit_nat(rr), Sr, To, result_ty->proj(1)});
-    auto nest
-        = w.app(w.app(sched, w.app(w.annex<btensor::NestT>(), nest_args)), w.app(w.annex<btensor::mr_nest>(), nest_args));
+    auto nest      = w.app(w.app(sched, w.app(w.annex<btensor::NestT>(), nest_args)),
+                           w.app(w.annex<btensor::mr_nest>(), nest_args));
 
     // The bound nest dictates the exact `cell`/`wb` signatures (its [init, cell, wb] domain) —
     // building them from the VALUE's own type sidesteps any Arr/Sigma normalization asymmetry.
@@ -346,12 +346,12 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    // callee: pad {T, r} [s_in] [s_out, mode, lo, hi]. The shapes are the logical ones; buffer reads and
+    // callee: pad {T, r} [s_in] [mode, lo, hi] [s_out]. The shapes are the logical ones; buffer reads and
     // writes fold size-1 axes (the `Buf` handles are normalized), while the loops cover all logical dims.
-    auto [Tr, s_in, params]     = c->uncurry_args<3>();
-    auto [s_out, mode, lo, hi]  = params->projs<4>();
-    auto [op_mem, input, value] = rewrite(app->arg())->projs<3>();
-    auto result_ty              = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (r, s_out, T)]
+    auto [Tr, s_in, params, s_out] = c->uncurry_args<4>();
+    auto [mode, lo, hi]            = params->projs<3>();
+    auto [op_mem, input, value]    = rewrite(app->arg())->projs<3>();
+    auto result_ty                 = rewrite(app->type()); // [%mem.M 0, %buffer.Buf (r, s_out, T)]
 
     auto r_l    = Lit::isa<u64>(Tr->proj(2, 1));
     auto mode_l = Lit::isa<u64>(mode);

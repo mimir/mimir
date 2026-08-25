@@ -313,13 +313,13 @@ lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) 
 ///
 /// The buffer-world counterpart of `%%tensor.map_reduce_post` and the workhorse behind every operation below:
 /// the affine-indexed generalisation of `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
-/// `So`/`Sr` are the (logical) output shape and full loop bounds; `acc_out`/`accs` are affine maps from the
+/// `So`/`Sr` are the (logical) output shape and full loop bounds; `map_out`/`maps` are affine maps from the
 /// `Rn` loop vector to the output/input coordinates. As in %%tensor.map_reduce_post, the total loop count `Rn` is
 /// stated instead of the reduction count `Rr = Rn - Ro`, so that type inference can pin it from `Sr`.
 /// The combiner and the `post` epilogue (run once per output cell, between the fold and the write) are
 /// mem-threaded, unlike their `%%tensor.map_reduce_post` counterparts.
-/// The `nps` epilogue inputs `post_is` are read once per output cell, at the `post_accs`-mapped
-/// *output-cell* coordinates (the write coordinates produced by `acc_out`), and fed to `post`.
+/// The `nps` epilogue inputs `post_is` are read once per output cell, at the `post_maps`-mapped
+/// *output-cell* coordinates (the write coordinates produced by `map_out`), and fed to `post`.
 /// `sched` IS the op's schedule: a chooser over the target's loop-nest builder (canonically a
 /// `%%tensor.mk_sched` value), selected in the frontend; `%%btensor.lower_map_reduce` binds it to
 /// `%%btensor.mr_nest` and merely APPLIES the result to the op's decision-free fold step and
@@ -331,9 +331,9 @@ axm %btensor.map_reduce_post: {nis nps: Nat}
                               Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                            → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To,
                               post: Fn [%mem.M 0, To, «j: nps; Tps#j»] → [%mem.M 0, Tp]]
-                           → [acc_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
-                           → [accs: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»,
-                              post_accs: «j: nps; ([«Ro; %affine.index»] → «Rps#j; %affine.index»)»]
+                           → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
+                           → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»,
+                              post_maps: «j: nps; ([«Ro; %affine.index»] → «Rps#j; %affine.index»)»]
                            → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»,
                               post_is: «j: nps; %buffer.Buf (Rps#j, Sps#j, Tps#j)»]
                            → [%mem.M 0, %buffer.Buf (Ro, So, Tp)];
@@ -412,7 +412,7 @@ lam %btensor.product_2d [R: %btensor.Ring] {m k l: Nat}
 ///
 /// Ignores the (⊥) accumulator and just returns the read value - the mem-threaded counterpart of `tensor_copy`.
 ///
-fun btensor_copy {T: *} (mem: %mem.M 0, acc y: T)@tt: [%mem.M 0, T] = return (mem, y);
+fun btensor_copy {T: *} (mem: %mem.M 0, acc: T, y: «1; T»)@tt: [%mem.M 0, T] = return (mem, y#0_1);
 ///
 /// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
 ///
@@ -443,14 +443,16 @@ axm %btensor.broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat�
 /// Pads each axis - the buffer-world counterpart of %%tensor.pad: `out[…o…] = input[…o−lo…]` inside the interior,
 /// `value` (mode 0, constant) or the clamped edge element (mode ≠ 0, replicate) outside.
 /// The groups mirror %%tensor.pad (`{T, r}` → input shape → pad parameters → operands); unlike there, `s_out`
-/// cannot be computed here (`pad_shape` lives in the `tensor` plugin), so it rides along with the parameters.
+/// cannot be computed here (`pad_shape` lives in the `tensor` plugin), so it is passed as its own group in front of
+/// the operands, as in %%btensor.concat.
 /// The buffer shapes are stated as the logical shapes; `%%buffer.Buf` normalizes literal size-1 axes
 /// away, so they agree with the folded buffer handles, and the loop generation folds its read/write
 /// indices accordingly.
 ///
 axm %btensor.pad: {T: *, r: Nat}
               → [s_in: «r; Nat»]
-              → [s_out: «r; Nat», mode: Nat, lo hi: «r; Nat»]
+              → [mode: Nat, lo hi: «r; Nat»]
+              → [s_out: «r; Nat»]
               → [%mem.M 0, input: %buffer.Buf (r, s_in, T), value: T]
               → [%mem.M 0, %buffer.Buf (r, s_out, T)];
 ///

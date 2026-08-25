@@ -648,7 +648,7 @@ const Def* LowerToMem::lower_pad(const App* app) {
     auto s_out = w.tuple(so);
 
     // `{T, r}` is inferred: `s_in` pins `r`, and `input`'s `%buffer.Buf (r, s_in, T)` pins `T`.
-    auto [m, out] = w.call<btensor::pad>(s_in, Defs{s_out, mode, lo, hi}, Defs{fresh_mem(), input, value})->projs<2>();
+    auto [m, out] = w.call<btensor::pad>(s_in, Defs{mode, lo, hi}, s_out, Defs{fresh_mem(), input, value})->projs<2>();
     return out;
 }
 
