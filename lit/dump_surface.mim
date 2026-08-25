@@ -1,0 +1,15 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// Every construct with surface syntax must dump as that syntax - not as the `(Node ops…)`
+// debug fallback - or `--output-mim` does not round-trip.
+lam extern i (t: [I32, I32], v: I32): [I32, I32] = ins(t, 0_2, v);
+lam extern j (a b: *) (x: a): a ∪ b = x inj a ∪ b;
+lam extern r (): Rule Nat = ⊥:(Rule Nat);
+lam extern u (a: *) (x: ⦃a⦄): ⦃a⦄ = x;
+
+// CHECK:      ins({{.*}}, ff, {{.*}});
+// CHECK:      : {{.*}} ∪ {{.*}} =
+// CHECK-NEXT: {{.*}} inj {{.*}} ∪ {{.*}};
+// CHECK:      lam extern r (): Rule Nat =
+// CHECK-NEXT: ⊥:(Rule Nat);
+// CHECK:      ⦃{{.*}}⦄

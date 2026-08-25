@@ -603,7 +603,7 @@ const Def* Def::proj(nat_t a, nat_t i) const {
  */
 
 const Def* Idx::isa(const Def* def) {
-    if (auto app = def->isa<App>()) {
+    if (auto app = def ? def->isa<App>() : nullptr) {
         if (app->callee()->isa<Idx>()) return app->arg();
     }
 

@@ -1,0 +1,15 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// LamDecl::emit_body runs outside of Expr::emit, so it has to install its own Loc:
+// otherwise the enclosing Module's Loc leaks through and the whole file gets underlined.
+let pad = 42;
+
+lam extern f (x: I32): Nat =
+    x;
+
+let pad2 = 43;
+
+// CHECK:      {{.*}}lam_body_codom.mim:8:5: error: function body is not assignable to its declared codomain
+// CHECK-NEXT: 8 |     x;
+// CHECK-NEXT:   |     ^
+// CHECK-NEXT:   = note: expected `Nat`, got `I32`

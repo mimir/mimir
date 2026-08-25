@@ -54,6 +54,9 @@ using ast::prec_assoc;
 
 Prec def2prec(const Def* def) {
     if (def->isa<Extract>()) return Prec::Extract;
+    if (def->isa<Join>()) return Prec::Union;
+    if (def->isa<Inj>()) return Prec::Inj;
+    if (def->isa<Reform>()) return Prec::App;
     if (auto pi = def->isa<Pi>(); pi && !Pi::isa_cn(pi)) return Prec::Arrow;
     if (auto app = def->isa<App>()) {
         if (auto size = Idx::isa(app)) {
@@ -86,8 +89,8 @@ public:
     static Op l(const Def* def, Prec prec = Prec::Bot) { return {def, prec, true}; }
     static Op r(const Def* def, Prec prec = Prec::Bot) { return {def, prec, false}; }
 
-    static auto map(const auto& range) {
-        return fe::Join(range | std::views::transform([](auto op) { return Op(op); }));
+    static auto map(const auto& range, const char* sep = ", ", Prec prec = Prec::Bot) {
+        return fe::Join(range | std::views::transform([prec](auto op) { return Op(op, prec); }), sep);
     }
 
     /// @name Getters
@@ -237,6 +240,10 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
             if (level == 1) return os << "□";
         }
         return os << std::format("Type {}", Op::r(type->level(), Prec::App));
+    } else if (auto reform = d->isa<Reform>()) {
+        return os << std::format("Rule {}", Op::r(reform->dom(), Prec::App));
+    } else if (d->isa<Univ>()) {
+        return os << "Univ";
     } else if (d->isa<Nat>()) {
         return os << "Nat";
     } else if (d->isa<Idx>()) {
@@ -288,6 +295,8 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto ex = d->isa<Extract>()) {
         if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
+    } else if (auto ins = d->isa<Insert>()) {
+        return os << std::format("ins({}, {}, {})", Op(ins->tuple()), Op(ins->index()), Op(ins->value()));
     } else if (auto var = d->isa<Var>()) {
         return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {
@@ -351,12 +360,18 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto bound = d->isa<Bound>()) {
         auto op = bound->isa<Join>() ? "∪" : "∩"; // TODO ascii
         if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, name(mut), Op(mut->type()));
-        return os << std::format("{}({})", op, Op::map(bound->ops()));
+        if (!bound->isa<Join>()) return os << std::format("{}({})", op, Op::map(bound->ops()));
+        return os << Op::map(bound->ops(), " ∪ ", Prec::Union);
+    } else if (auto inj = d->isa<Inj>()) {
+        return os << std::format("{} inj {}", Op::l(inj->value(), Prec::Inj), Op::r(inj->type(), Prec::Inj));
+    } else if (auto uniq = d->isa<Uniq>()) {
+        return os << std::format("⦃{}⦄", Op(uniq->op())); // TODO ascii
     }
 
     // other
-    if (d->flags() == 0) return os << std::format("({} {})", d->node_name(), fe::Join(d->ops()));
-    return os << std::format("({}#{} {})", d->node_name(), d->flags(), Op::map(d->ops()));
+    auto tag = d->flags() == 0 ? std::string(d->node_name()) : std::format("{}#{}", d->node_name(), d->flags());
+    if (d->ops().empty()) return os << std::format("({})", tag);
+    return os << std::format("({} {})", tag, Op::map(d->ops(), " "));
 }
 
 /*

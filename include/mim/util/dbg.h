@@ -220,7 +220,7 @@ private:
     uint32_t key_ = 0;
 
     friend class Def;
-    friend class World; ///< World::set_loc pre-interns World::get_loc into a key.
+    friend class World; ///< World::push pre-interns World::get_loc into a key.
 };
 
 } // namespace mim

@@ -58,8 +58,9 @@ public:
         return pi && !pi->ret_pi() ? pi : nullptr;
     }
     /// Is @p d an Pi::is_implicit (mutable) Pi?
+    /// @note A `nullptr` @p d - Def::unfold_type of Univ - simply is not one.
     static Pi* isa_implicit(const Def* d) {
-        if (auto pi = d->isa_mut<Pi>(); pi && pi->is_implicit()) return pi;
+        if (auto pi = d ? d->isa_mut<Pi>() : nullptr; pi && pi->is_implicit()) return pi;
         return nullptr;
     }
     /// Yields the Pi::ret_pi() of @p d, if it is in fact a Pi.

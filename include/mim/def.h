@@ -310,6 +310,12 @@ public:
     const Def* type() const noexcept;
     /// Yields the type of this Def and builds a new `Type (UInc n)` if necessary.
     const Def* unfold_type() const;
+    /// Is Def::unfold_type a @p T? Yields `nullptr` for Univ, which has no type at all.
+    template<class T>
+    const T* isa_type() const {
+        auto t = unfold_type();
+        return t ? t->template isa<T>() : nullptr;
+    }
     bool is_term() const;     ///< Is this Def a *term*, i.e. is its type() a Type?
     const Def* arity() const; ///< Number of elements available to Extract / Insert (may be dynamic).
     ///@}
@@ -1100,6 +1106,15 @@ inline bool Def::equal(const Def* other) const {
 }
 
 inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
+
+/// Def::unfold_type of @p def for a diagnostic - Univ is the one Def that has no type at all.
+/// Streams lazily so that it still renders under the PlainNames guard Error::msg formats within.
+inline auto type_of(const Def* def) {
+    return fe::StreamFn{[def](std::ostream& os) -> std::ostream& {
+        if (auto t = def->unfold_type()) return os << t;
+        return os << "<no type>";
+    }};
+}
 
 } // namespace mim
 

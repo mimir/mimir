@@ -125,7 +125,9 @@ const Def* Checker::is_uniform(Defs defs) {
 }
 
 const Def* Checker::assignable_(const Def* type, const Def* val) {
-    auto val_ty = val->unfold_type()->zonk();
+    auto val_t = val->unfold_type();
+    if (!val_t) return fail(); // Univ has no type, so it is assignable to nothing
+    auto val_ty = val_t->zonk();
     if (type == val_ty) return val;
 
     auto& w = world();
@@ -365,13 +367,13 @@ const Def* Def::check(size_t i, const Def* def) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
         throw Error(world().driver())
             .error(world().err_loc(def), "filter `{}` of lambda is of type `{}` but must be of type `Bool`", def,
-                   def->type());
+                   type_of(def));
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
     throw Error(world().driver())
         .error(world().err_loc(def), "function body is not assignable to its declared codomain")
-        .note(world().err_loc(def), "expected `{}`, got `{}`", lam->codom(), def->type())
+        .note(world().err_loc(def), "expected `{}`, got `{}`", lam->codom(), type_of(def))
         .note(world().err_loc(def), "body: `{}`", def)
         .note_at(lam->codom()->loc(), "codomain `{}` declared here", lam->codom());
 }
@@ -411,15 +413,15 @@ const Def* Def::check() {
         }
         case Node::Rule: {
             auto rule = as<Rule>();
-            auto t1   = rule->lhs()->type();
-            auto t2   = rule->rhs()->type();
+            auto t1   = rule->lhs()->unfold_type();
+            auto t2   = rule->rhs()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t1, t2))
                 w.error(w.err_loc(type()), "type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`",
                         t1, t2);
             if (!Checker::assignable(w.type_bool(), rule->guard()))
                 w.error(w.err_loc(rule->guard()),
                         "condition `{}` of rewrite rule is of type `{}` but must be of type `Bool`", rule->guard(),
-                        rule->guard()->type());
+                        type_of(rule->guard()));
             return type();
         }
         default: return type();

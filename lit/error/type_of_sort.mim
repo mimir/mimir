@@ -1,0 +1,12 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A sort has no `Def::type` of its own: the diagnostic must go through Def::unfold_type
+// instead of leaking a `<nullptr>` - and must not dereference it either.
+let f = λ (n: Nat): Nat = n;
+let y = f *;
+
+// CHECK:      {{.*}}type_of_sort.mim:6:9-6:11: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 6 | let y = f *;
+// CHECK-NEXT:   |         ^^^
+// CHECK-NEXT:   = note: expected `Nat`, got `□`
+// CHECK-NEXT:   = note: argument: `*`

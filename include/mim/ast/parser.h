@@ -51,8 +51,8 @@ private:
         return ast_.ptr<const T>(std::forward<Args>(args)...);
     }
 
-    Dbg anon() const { return {ahead().loc().anew_begin(), ast_.sym_anon()}; }
-    Dbg dbg(const Tracker& tracker, Sym sym) const { return {tracker.loc(), sym}; }
+    /// Empty Loc right after the last consumed token - where a node sits that is *missing* rather than wrong.
+    Loc missing() const { return curr_.anew_end(); }
     Lexer& lexer() { return *lexer_; }
 
     /// @name parse misc

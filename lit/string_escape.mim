@@ -1,0 +1,7 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// An escaped `\"` must not terminate the string literal: `s` is the 3 chars `a`, `"`, `b`.
+let s = "a\"b";
+lam extern f (): I8 = s#(2_3);
+
+// CHECK: 98I8

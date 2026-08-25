@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A failed `expect` yields a Nil Tok; asking it for a Dbg must not trip the assertion in Tok::sym.
+ccon [Nat];
+
+// CHECK: {{.*}}missing_name.mim:4:6: error: expected `<identifier>`, got `[` while parsing C function declaration

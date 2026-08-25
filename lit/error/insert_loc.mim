@@ -1,0 +1,11 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The Loc of an `ins` expression must cover the keyword, not just its argument list.
+plugin core;
+
+let t = (1I32, 2I32);
+let u = ins(t, 0I2, 7I32);
+
+// CHECK:      {{.*}}insert_loc.mim:7:9-7:25: error: index `0₄` does not fit within arity `2`
+// CHECK-NEXT: 7 | let u = ins(t, 0I2, 7I32);
+// CHECK-NEXT:   |         ^^^^^^^^^^^^^^^^^

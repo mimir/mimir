@@ -149,13 +149,20 @@ protected:
 public:
     using Prec = ast::Prec; ///< Backward-compatible alias; prefer the free-standing ast::Prec.
 
+    /// @name emit
+    /// Each installs this Expr's Loc as World::get_loc, so every Def emitted underneath is blamed on it.
+    ///@{
     const Def* emit(Emitter&) const;
+    const Def* emit_decl(Emitter&, const Def* type) const;
+    void emit_body(Emitter&, const Def* decl) const;
+    ///@}
+
     virtual void bind(Scopes&) const = 0;
-    virtual const Def* emit_decl(Emitter&, const Def* /*type*/) const { fe::unreachable(); }
-    virtual void emit_body(Emitter&, const Def* /*decl*/) const { fe::unreachable(); }
 
 private:
     virtual const Def* emit_(Emitter&) const = 0;
+    virtual const Def* emit_decl_(Emitter&, const Def* /*type*/) const { fe::unreachable(); }
+    virtual void emit_body_(Emitter&, const Def* /*decl*/) const { fe::unreachable(); }
 };
 
 class Decl : public Node {
@@ -194,6 +201,10 @@ public:
     virtual void bind(Scopes&, bool rebind, bool quiet) const = 0;
     virtual const Def* emit_value(Emitter&, const Def*) const = 0;
     virtual const Def* emit_type(Emitter&) const              = 0;
+
+    /// Ptrn::emit_value on @p def's @p i-th of @p n projections - with this Ptrn's Loc, so the
+    /// projection is blamed on the binder it introduces instead of on the enclosing pattern.
+    const Def* emit_proj(Emitter&, const Def* def, size_t n, size_t i) const;
 
     [[nodiscard]] static Ptr<Expr> to_expr(AST&, Ptr<Ptrn>&&);
     [[nodiscard]] static Ptr<Ptrn> to_ptrn(Ptr<Expr>&&);
@@ -565,12 +576,12 @@ private:
     const Expr* codom() const { return codom_.get(); }
 
     void bind(Scopes&) const override;
-    const Def* emit_decl(Emitter&, const Def* type) const override;
-    void emit_body(Emitter&, const Def* decl) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     const Def* emit_(Emitter&) const override;
+    const Def* emit_decl_(Emitter&, const Def* type) const override;
+    void emit_body_(Emitter&, const Def* decl) const override;
 
     Ptr<Expr> dom_;
     Ptr<Expr> codom_;
@@ -625,12 +636,12 @@ private:
     const Expr* codom() const { return codom_.get(); }
 
     void bind(Scopes&) const override;
-    const Def* emit_decl(Emitter&, const Def* type) const override;
-    void emit_body(Emitter&, const Def* decl) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     const Def* emit_(Emitter&) const override;
+    const Def* emit_decl_(Emitter&, const Def* type) const override;
+    void emit_body_(Emitter&, const Def* decl) const override;
 
     Tok::Tag tag_;
     Ptr<Dom> dom_;
@@ -645,12 +656,12 @@ public:
     const LamDecl* lam() const { return lam_.get(); }
 
     void bind(Scopes&) const override;
-    const Def* emit_decl(Emitter&, const Def* type) const override;
-    void emit_body(Emitter&, const Def* decl) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     const Def* emit_(Emitter&) const override;
+    const Def* emit_decl_(Emitter&, const Def* type) const override;
+    void emit_body_(Emitter&, const Def* decl) const override;
 
     Ptr<LamDecl> lam_;
 };
@@ -717,12 +728,12 @@ public:
     const TuplePtrn* ptrn() const { return ptrn_.get(); }
 
     void bind(Scopes&) const override;
-    const Def* emit_decl(Emitter&, const Def* type) const override;
-    void emit_body(Emitter&, const Def* decl) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     const Def* emit_(Emitter&) const override;
+    const Def* emit_decl_(Emitter&, const Def* type) const override;
+    void emit_body_(Emitter&, const Def* decl) const override;
 
     Ptr<TuplePtrn> ptrn_;
 

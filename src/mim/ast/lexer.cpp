@@ -111,8 +111,14 @@ Tok Lexer::lex() {
         }
 
         if (accept<Append::Off>('\"')) {
-            while (lex_char() != '"') {}
-            str_.pop_back(); // remove final '"'
+            // Test for the terminator before lex_char, or an escaped `\"` would end the literal.
+            while (!accept<Append::Off>('\"')) {
+                if (ahead() == utf8::EoF) {
+                    ast().error(loc_, "unterminated string literal");
+                    break;
+                }
+                lex_char();
+            }
             return {loc_, Tag::L_str, sym()};
         }
 

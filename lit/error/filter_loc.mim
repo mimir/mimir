@@ -1,0 +1,9 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A bad filter must blame the filter expression - not the whole lambda declaration.
+lam extern f (x: I32) @ x : I32 =
+    x;
+
+// CHECK:      {{.*}}filter_loc.mim:4:25: error: filter `x` of lambda is of type `I32` but must be of type `Bool`
+// CHECK-NEXT: 4 | lam extern f (x: I32) @ x : I32 =
+// CHECK-NEXT:   |                         ^

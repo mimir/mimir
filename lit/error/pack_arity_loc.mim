@@ -1,0 +1,10 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// `‹a, b; e›` nests one SeqExpr per arity: the inner one starts at its own binder
+// instead of claiming the opening delimiter of the outer one.
+let p = ‹i: 4, j: 1I32; (i, j)›;
+
+// CHECK:      {{.*}}pack_arity_loc.mim:5:16-5:31: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 5 | let p = ‹i: 4, j: 1I32; (i, j)›;
+// CHECK-NEXT:   |                ^^^^^^^^^^^^^^^^
+// CHECK-NEXT:   = note: expected `Nat`, got `I32`
