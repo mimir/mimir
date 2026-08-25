@@ -9,27 +9,16 @@ namespace mim::ast {
 namespace utf8 = fe::utf8;
 using Tag      = Tok::Tag;
 
-Lexer::Lexer(AST& ast, const fe::Src& src, std::ostream* md /*= nullptr*/)
-    : Super(src)
+Lexer::Lexer(AST& ast, std::string_view buf, const fe::Src* src, std::ostream* md)
+    : Super(buf, src)
     , ast_(ast)
     , md_(md) {
-    init();
-}
-
-Lexer::Lexer(AST& ast, std::string_view buf, std::ostream* md /*= nullptr*/)
-    : Super(buf)
-    , ast_(ast)
-    , md_(md) {
-    init();
-}
-
-void Lexer::init() {
-#define CODE(t, str) keywords_[ast_.sym(str)] = Tag::t;
+#define CODE(t, str) keywords_[ast.sym(str)] = Tag::t;
     MIM_KEY(CODE)
 #undef CODE
 
 #define CODE(str, t) \
-    if (Tag::t != Tag::Nil) keywords_[ast_.sym(str)] = Tag::t;
+    if (Tag::t != Tag::Nil) keywords_[ast.sym(str)] = Tag::t;
     MIM_SUBST(CODE)
 #undef CODE
 
