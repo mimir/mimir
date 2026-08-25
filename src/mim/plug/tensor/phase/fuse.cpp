@@ -300,12 +300,16 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         if (infos[i].fusible) {
             const auto& info = infos[i];
             auto outer_map_i = maps->proj(nis_nat, i);
+            // Inlining a shared inner forwards its consumers to its inputs: they are no longer
+            // sole-consumed for the epilogue guard.
+            bool shared = !sole_consumer(is->proj(nis_nat, i));
             for (u64 l = 0; l < info.nis; ++l) {
                 auto pos         = new_pos[i] + l;
                 new_Tis_vec[pos] = info.Tis->proj(info.nis, l);
                 new_Ris_vec[pos] = info.Ris->proj(info.nis, l);
                 new_Sis_vec[pos] = info.Sis->proj(info.nis, l);
                 new_is_vec[pos]  = info.is->proj(info.nis, l);
+                if (shared) shared_.insert(new_is_vec[pos]);
                 // The inner reads at its own output coordinates; those are the outer's read
                 // coordinates for input i, so the fused access map is the composition.
                 new_maps_vec[pos] = compose_map(w, info.maps->proj(info.nis, l), outer_map_i);
@@ -444,6 +448,17 @@ is_unpack_read(World& w, const Def* map, const Def* r_in, const Def* s_in, const
     return w.app(map, probe->var()) == w.app(expected, probe->var());
 }
 
+// Is `d` (a new-world map_reduce) consumed by exactly one node? Resolved via the old-world app it
+// replaces; `new2old_` covers every map_reduce the phase has rewritten. Defs in `shared_` gained
+// consumers by a read-through of a shared read, which the old-world count cannot see.
+bool Fuse::sole_consumer(const Def* d) const {
+    if (shared_.contains(d)) return false;
+    auto old_it = new2old_.find(d);
+    if (old_it == new2old_.end()) return false;
+    auto cnt = mr_consumers_.find(old_it->second);
+    return cnt != mr_consumers_.end() && cnt->second == 1;
+}
+
 const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
 
@@ -475,15 +490,6 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
 
     auto is = arg->proj(2, 0);
     auto ps = arg->proj(2, 1);
-
-    // Is `d` (a new-world map_reduce) consumed by this map alone? Resolved via the old-world app it
-    // replaces; `new2old_` covers every map_reduce the phase has rewritten, i.e. all operands here.
-    auto sole_consumer = [&](const Def* d) {
-        auto old_it = new2old_.find(d);
-        if (old_it == new2old_.end()) return false;
-        auto cnt = mr_consumers_.find(old_it->second);
-        return cnt != mr_consumers_.end() && cnt->second == 1;
-    };
 
     // Find the producer: the first input that is a map_reduce read elementwise over the whole
     // domain — at identity coordinates (input shape == So), or through the row-major reshape that
@@ -655,6 +661,9 @@ const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
             v[i] = vs->proj(n, i);
             if (auto rt = read_through(w, v[i], m[i])) {
                 DLOG("reading input {} of {} through {}", i, callee, v[i]);
+                // The bypassed read forwards its consumers to the source: a shared (or uncounted,
+                // e.g. broadcast) read leaves the source multiply-consumed for the epilogue guard.
+                if (!sole_consumer(v[i])) shared_.insert(rt->value);
                 m[i]    = compose_map(w, rt->map, m[i]);
                 v[i]    = rt->value;
                 T[i]    = rt->T;
