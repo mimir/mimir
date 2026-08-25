@@ -128,7 +128,12 @@ private:
 class Node : public fe::RuntimeCast<Node> {
 protected:
     Node(Loc loc)
-        : loc_(loc) {}
+        : loc_(loc) {
+        // Loc::operator+ takes src from its left operand, so a hull across two files points outside its own Src.
+        assert((!loc.begin == !loc.end && loc.begin <= loc.end) && "malformed Loc");
+        assert((!loc || !loc.src || (loc.src->contains(loc.begin) && loc.src->contains(loc.end)))
+               && "Loc outside its Src");
+    }
     virtual ~Node() {}
 
 public:
