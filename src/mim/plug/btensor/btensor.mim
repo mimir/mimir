@@ -474,7 +474,5 @@ axm %btensor.concat: {T: *, nis r: Nat}
 /// * `lower_map_reduce`: lowers the buffer-world ops (`%%btensor.map_reduce_post`, `%%btensor.broadcast`,
 /// `%%btensor.pad`, `%%btensor.concat`) to `%%affine.For` loops over `%%buffer` element operations, binding each
 /// op's `sched` chooser to `%%btensor.mr_nest`.
-/// `%%btensor.map_reduce`, `%%btensor.product_2d` and `%%btensor.transpose_2d` need no phase of their own: they are
-/// `lam`s that reduce to `%%btensor.map_reduce_post` at their call site.
 ///
 axm %btensor.lower_map_reduce: %compile.Phase;
