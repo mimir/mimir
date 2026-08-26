@@ -9,6 +9,7 @@
 /// ## Dependencies
 ///
 plugin core;
+plugin option;
 plugin refly;
 ///
 /// ## Iterators
@@ -44,12 +45,12 @@ axm %vec.scan(for_all, exists): {E: *} → {n: Nat} → [p: E → Bool] → «n;
 ///
 /// ### %%vec.first / %%vec.last
 ///
-/// Is the given element in the vector, and what is the index of its first/last occurrence?
+/// Yields the index of the first/last occurrence of the given element, or %%option.none if it does not occur.
 ///
 lam f_first    {E: *} {n: Nat} (eq: [E, E] → Bool) (x: E) ((b: Bool, i: Idx n), y: E): [Bool, Idx n] = (((ff, %core.wrap.add 0 (i, %core.idx n 0 1)), (tt, i))#(eq (x, y)), (b, i))#b;
 lam f_last     {E: *} {n: Nat} (eq: [E, E] → Bool) (x: E) (y: E, [b: Bool, i: Idx n]): [Bool, Idx n] = f_first eq x ((b, i), y);
-lam %vec.first {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E):                  [Bool, Idx n] = %vec.fold.l (f_first eq x) ((ff, %core.idx n 0 0), v);
-lam %vec.last  {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E):                  [Bool, Idx n] = %vec.fold.r (f_last eq x) (v, (ff, %core.idx n 0 0));
+lam %vec.first {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E): %option.Opt (Idx n) = %option.some_if (%vec.fold.l (f_first eq x) ((ff, %core.idx n 0 0), v));
+lam %vec.last  {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E): %option.Opt (Idx n) = %option.some_if (%vec.fold.r (f_last  eq x) (v, (ff, %core.idx n 0 0)));
 ///
 /// ### %%vec.len
 ///

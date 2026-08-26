@@ -1,0 +1,9 @@
+// RUN: %mim -p opt %s
+plugin option;
+plugin refly;
+
+let _ = %refly.equiv.struc_eq (%option.some_if (tt, 23), %option.some 23);
+let _ = %refly.equiv.struc_eq (%option.some_if (ff, 23), %option.none @Nat);
+let _ = %refly.equiv.struc_eq (%option.unwrap_or (%option.some_if (tt, 23)) 7, 23);
+let _ = %refly.equiv.struc_eq (%option.unwrap_or (%option.some_if (ff, 23)) 7, 7);
+let _ = %refly.equiv.struc_eq (%option.is_some (%option.some_if (ff, 23)), ff);
