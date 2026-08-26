@@ -98,8 +98,8 @@ let a_opt = %vec.first %core.icmp.e (a2, 1₂);
 let b_opt = %vec.first %core.icmp.e (b,  1₂);
 let c_opt = %vec.first %core.icmp.e (c2, 1₂);
 let _ = %refly.equiv.struc_eq (a_opt, %option.some 0₁);
-let _ = %refly.equiv.struc_eq (b_opt, %option.none @(Idx 0));
-let _ = %refly.equiv.struc_eq (c_opt, %option.none @(Idx 1));
+let _ = %refly.equiv.struc_eq (b_opt, %option.none (Idx 0));
+let _ = %refly.equiv.struc_eq (c_opt, %option.none (Idx 1));
 
 let _ = %refly.equiv.struc_eq (subs_2, (2, 1));
 
