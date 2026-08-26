@@ -187,7 +187,7 @@ lam %tensor.map_reduce {nis: Nat} {To: *, Ro Rn: Nat}
 /// An alias for %%btensor.proj_map, which `btensor` owns for the same reason it owns %%btensor.Ring.
 let %tensor.proj_map = %btensor.proj_map;
 ///
-/// ## Scheduling: the `Tileable` interface
+/// ## Tiling
 ///
 /// A `Tileable` existentially packages a computation over an affinely-indexed iteration domain
 /// together with its SCHEDULE (cf. MLIR's TilingInterface) — implemented entirely in the frontend
@@ -299,7 +299,7 @@ lam %tensor.interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»)
         t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (comp_map (iota_p, iota), omega);
     (t#Out, t#Ro, t#Rr, t#So, oax_n, sr_n, vdim_n, t#unroll, retile_n);
 ///
-/// ### Domain transforms: strip-mining
+/// ### Strip-Mining
 ///
 /// Strip-mining is a pure DOMAIN transform (cf. TilingInterface's "op[N] → op[N/ts, ts]"): the
 /// `retile` interface absorbs it entirely — `iota` recombines the split loop vector and (for a
@@ -307,7 +307,7 @@ lam %tensor.interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»)
 /// ordinary %%tensor.map_reduce_post over a higher-rank domain with composed access maps; the
 /// schedule operand and the lowering are untouched. Classic cache tiling is composition:
 /// strip-mine, then `interchange` the tile loops outward.
-
+///
 /// Axis renumbering after inserting a new axis at position `a`.
 lam shift_ax (a x: Nat): Nat = %core.select (%core.ncmp.l (x, a), x, %core.nat.add (x, 1));
 
@@ -401,7 +401,7 @@ lam %tensor.strip_mine_par (t: Tileable, d ts: Nat): Tileable =
      split_bounds (ro_n, t#Ro, t#So, a, ts, nt), oax_n,
      split_bounds (r_n, r, t#Sr, d, ts, nt), vdim_n, t#unroll, retile_n);
 
-/// ### Schedules as first-class functions
+/// ### Schedules
 ///
 /// A `Schedule` is just a Tileable transformer. A SELECTOR inspects an op's parameters at compile
 /// time and returns the appropriate schedule — combinator composition, with the dispatch expressed
