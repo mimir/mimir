@@ -12,6 +12,7 @@
 ///
 plugin tuple;
 plugin refly;
+plugin option;
 plugin vec;
 plugin cps;
 plugin affine;
@@ -281,15 +282,15 @@ lam %tensor.interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»)
                                        perm#j,
                                        "interchange: permutation must not mix parallel and reduction dims")›;
     let sr_n   = ‹i: r; t#Sr#(%core.idx r 0 (perm_ok#i))›;
-    let vdim_n = %core.select (%core.ncmp.l (t#vdim, r),
-                               %core.bitcast Nat ((%vec.first %core.ncmp.e (perm_ok, t#vdim))#1_2),
-                               t#vdim);
+    let vdim_n = match %vec.first %core.ncmp.e (perm_ok, t#vdim) with
+                     | j: Idx r => %core.bitcast Nat j
+                     | _: []    => t#vdim;
     // The parallel dims permute among themselves (checked above), so the new dim j writes the
     // output axis its old dim perm#j wrote.
     let oax_n = ‹j: t#Ro; t#oax#(%core.idx (t#Ro) 0 (perm_ok#(%core.idx r 0 (%core.bitcast Nat j))))›;
     // iota: old dim i is found at the new position j with perm#j = i.
     lam iota_p (o: «r; %affine.index»): «r; %affine.index» =
-        ‹i: r; o#((%vec.first %core.ncmp.e (perm_ok, %core.bitcast Nat i))#1_2)›;
+        ‹i: r; o#(%option.unwrap_unsafe (%vec.first %core.ncmp.e (perm_ok, %core.bitcast Nat i)))›;
     lam retile_n (ro_m rr_m: Nat)
                  (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat», vdim_m unroll_m: Nat)
                  (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r; %affine.index»,
@@ -793,15 +794,13 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
 ///
 fun dot_general_fun [R: %tensor.Ring] [x: R#T, [y z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
 lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
-  let (ab, ai) = %vec.first %core.icmp.e (a, i);
-  let (bb, bi) = %vec.first %core.icmp.e (b, i);
-  let (cb, ci) = %vec.first %core.icmp.e (c, i);
-  let ai_nat = %core.bitcast Nat ai;
-  let ai_out = %core.nat.add (off_1, ai_nat);
-  let bi_nat = %core.bitcast Nat bi;
-  let ci_nat = %core.bitcast Nat ci;
-  let ci_out = %core.nat.add (off_2, ci_nat);
-  ((ai_out, ci_out)#cb, bi_nat)#bb;
+  match %vec.first %core.icmp.e (b, i) with
+      | bi: Idx nb => %core.bitcast Nat bi
+      | _:  []     => match %vec.first %core.icmp.e (c, i) with
+          | ci: Idx nc => %core.nat.add (off_2, %core.bitcast Nat ci)
+          | _:  []     => match %vec.first %core.icmp.e (a, i) with
+              | ai: Idx na => %core.nat.add (off_1, %core.bitcast Nat ai)
+              | _:  []     => 0;
 lam dot_general_shape {r1 r2: Nat} {nc nb: Nat}
   (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
   (s1: «r1; Nat», s2: «r2; Nat») =
@@ -873,7 +872,7 @@ lam %tensor.dot_product_impl
       // Tileable: behind a stuck extract the record's `Out` field would not reduce, so the
       // reshape's input could not be checked. `sched#3_9` is the scheduled Tileable's (possibly
       // packed) output shape `So`.
-      let (kvec, kvi) = %vec.first %core.ncmp.e (‹i: nc; %core.bitcast Nat (c2#i)›, fastest_2);
+      let kvec = %option.is_some (%vec.first %core.ncmp.e (‹i: nc; %core.bitcast Nat (c2#i)›, fastest_2));
       lam go_n    (u: []): «s_out; R#T» =
           let sched = dot_schedule r_out t;
           %tensor.reshape (sched#3_9) s_out (%tensor.materialize sched);
@@ -920,7 +919,7 @@ lam %tensor.bmm_impl (fastest_2: Nat) (R: %tensor.Ring) {B M K N: Nat} (t1: «B,
 /// Permutes the dimensions of `input` according to `permutation`.
 ///
 lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
-  let shape_permutation = ‹i: r; (%vec.first %core.icmp.e (permutation, i))#tt›;
+  let shape_permutation = ‹i: r; %option.unwrap_unsafe (%vec.first %core.icmp.e (permutation, i))›;
   ‹i: r; s#(shape_permutation#i)›;
 /// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
 /// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created - with the

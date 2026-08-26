@@ -1,5 +1,6 @@
 // RUN: %mim -p opt %s
 plugin tensor;
+plugin option;
 plugin refly;
 plugin core;
 plugin cps;
@@ -93,17 +94,12 @@ let _ = %refly.equiv.struc_eq (a2, 1₂);
 let subs_1    = ‹i: r; dot_general_pick (a1, b, c1) (0, r_out) i›;
 let subs_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
 
-let (ab, ai) = %vec.first (%core.icmp.e) (a2, 1₂);
-let (bb, bi) = %vec.first (%core.icmp.e) (b, 1₂);
-let (cb, ci) = %vec.first (%core.icmp.e) (c2, 1₂);
-let bi_nat = %core.bitcast Nat bi;
-let ci_nat = %core.bitcast Nat ci;
-let ci_out = %core.nat.add (2, ci_nat);
-let ai_nat = %core.bitcast Nat ai;
-let ai_out = %core.nat.add (1, ai_nat);
-let _ = %refly.equiv.struc_eq (bb, ff);
-let _ = %refly.equiv.struc_eq (cb, ff);
-let _ = %refly.equiv.struc_eq (ci_out, 2);
+let a_opt = %vec.first %core.icmp.e (a2, 1₂);
+let b_opt = %vec.first %core.icmp.e (b,  1₂);
+let c_opt = %vec.first %core.icmp.e (c2, 1₂);
+let _ = %refly.equiv.struc_eq (a_opt, %option.some 0₁);
+let _ = %refly.equiv.struc_eq (b_opt, %option.none (Idx 0));
+let _ = %refly.equiv.struc_eq (c_opt, %option.none (Idx 1));
 
 let _ = %refly.equiv.struc_eq (subs_2, (2, 1));
 

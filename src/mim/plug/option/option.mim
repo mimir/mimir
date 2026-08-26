@@ -31,7 +31,13 @@ lam %option.some {T: *} (v: T) : %option.Opt T = v inj %option.Opt T;
 ///
 /// The empty option.
 ///
-lam %option.none {T: *} : %option.Opt T = () inj %option.Opt T;
+lam %option.none [T: *] : %option.Opt T = () inj %option.Opt T;
+///
+/// ### %%option.some_if
+///
+/// Wraps `v` into an option iff `b` holds.
+///
+lam %option.some_if {T: *} (b: Bool, v: T) : %option.Opt T = (%option.none T, %option.some v)#b;
 ///
 /// ## Operations
 ///

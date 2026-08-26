@@ -5,7 +5,7 @@ plugin option;
 // CHECK-LABEL: fun extern unwrap_none
 // CHECK: return_{{[0-9]+}} 7;
 fun extern unwrap_none(): Nat =
-    return (match (%option.none @Nat) with
+    return (match (%option.none Nat) with
         | value: Nat => value
         | _: [] => 7);
 
@@ -14,7 +14,7 @@ fun extern unwrap_none(): Nat =
 // CHECK-LABEL: fun extern unwrap_or_none
 // CHECK: return_{{[0-9]+}} 7;
 fun extern unwrap_or_none(): Nat =
-    return (%option.unwrap_or (%option.none @Nat) 7);
+    return (%option.unwrap_or (%option.none Nat) 7);
 
 // CHECK-LABEL: fun extern unwrap_or_some
 // CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
