@@ -230,7 +230,8 @@ lam comp_map {A B C: *} (m: B → C, g: A → B) (o: A): C = m (g o);
 /// projection write maps).
 lam %tensor.mr_tileable
                 {nis: Nat}
-                {To Tp: *, Ro Rr: Nat}
+                {Ro Rr: Nat}
+                {To Tp: *}
                 (So: «Ro; Nat», oax: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
                 {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                 (f: Fn [To, «i: nis; Tis#i»] → To, init: To, post: Fn [To, []] → Tp)
@@ -725,7 +726,7 @@ lam %tensor.conv_impl [R: %tensor.Ring] {n cin cout h w kh kw: Nat}
     // the row-major reshape restores `s_out` (an identity for the neutral split, and absorbed into
     // the consumers' access maps by `fuse_tensor`'s read-through in a fused graph).
     let sched = conv_schedule (stride, dilation) (
-        %tensor.mr_tileable @2 @(R#T, R#T, 4, 3)
+        %tensor.mr_tileable @2 @(4, 3)
             ((n, cout, oh, ow), (0, 1, 2, 3), (n, cout, oh, ow, cin, kh, kw))
             @((R#T, R#T), (4, 4), (s_padded, (cout, cin, kh, kw)))
             (conv_fun R, R#_0, %tensor.id @(R#T))
@@ -773,7 +774,7 @@ lam %tensor.pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
 
     // Schedule (frontend, selected from the parameters — see `pool_schedule`).
     %tensor.materialize (pool_schedule (stride, dilation) (
-        %tensor.mr_tileable @1 @(T, T, 4, 2)
+        %tensor.mr_tileable @1 @(4, 2)
             ((n, c, s_out#0_2, s_out#1_2), (0, 1, 2, 3), (n, c, s_out#0_2, s_out#1_2, kernel#0_2, kernel#1_2))
             @(T, 4, s_padded)
             (pool_fun g, init, %tensor.id @T)
@@ -858,7 +859,7 @@ lam %tensor.dot_product_impl
       let s_red    = ‹i: nc; s1#(c1#i)›;
       let s_full   = %vec.cat (s_out, s_red);
       let n_loops  = %core.nat.add (r_out, nc);
-      let t        = %tensor.mr_tileable @2 @(R#T, R#T, r_out, nc)
+      let t        = %tensor.mr_tileable @2 @(r_out, nc)
                          (s_out, ‹i: r_out; %core.bitcast Nat i›, s_full)
                          @((R#T, R#T), (r1, r2), (s1, s2))
                          (f, R#_0, %tensor.id @(R#T))

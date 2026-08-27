@@ -21,7 +21,7 @@ lam mi (i a b: %affine.index): «3; %affine.index» = (i, a, b);
 // out[i] = sum_{a, b} input[i][a][b], with `a` strip-mined by 4.
 fun extern sum_all (input: «2, 8, 3; I32»): «2; I32» =
     return (%tensor.materialize (%tensor.strip_mine_red (
-        %tensor.mr_tileable @1 @(I32, I32, 1, 2) (2, 0, (2, 8, 3))
+        %tensor.mr_tileable @1 @(1, 2) (2, 0, (2, 8, 3))
             (add, 0I32, %tensor.id)
             mo mi input,
         1, 4)));

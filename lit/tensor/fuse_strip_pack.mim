@@ -17,7 +17,7 @@ lam mi (i k: %affine.index): «2; %affine.index» = (i, k);
 
 con extern f (input: «4, 8; Nat», return: Cn «4; Nat») =
     let packed = %tensor.materialize (%tensor.strip_mine_par (
-        %tensor.mr_tileable @1 @(Nat, Nat, 1, 1) (4, 0, (4, 8))
+        %tensor.mr_tileable @1 @(1, 1) (4, 0, (4, 8))
             (addf, 0, %tensor.id)
             mo mi input,
         0, 2));

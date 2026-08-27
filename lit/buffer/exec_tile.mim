@@ -23,7 +23,7 @@ fun extern gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
         %tensor.strip_mine_red (
             %tensor.strip_mine_par (
                 %tensor.strip_mine_par (
-                    %tensor.mr_tileable @2 @(I32, I32, 2, 1) ((4, 4), (0, 1), (4, 4, 8))
+                    %tensor.mr_tileable @2 @(2, 1) ((4, 4), (0, 1), (4, 4, 8))
                         (mul_add, 0I32, %tensor.id)
                         (%tensor.proj_map (0, 1))
                         (%tensor.proj_map (0, 2), %tensor.proj_map (2, 1))
