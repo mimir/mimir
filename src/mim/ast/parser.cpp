@@ -204,7 +204,8 @@ Dbg Parser::parse_id(std::string_view ctxt) {
 }
 
 Dbg Parser::split_annex_sub(Dbg& dbg) {
-    auto sv  = dbg.sym().view();
+    auto anx = dbg.sym(); // a short Sym's view() aliases the Sym itself, so it must outlive sv
+    auto sv  = anx.view();
     auto dot = sv.rfind('.');
     if (dot == std::string_view::npos || sv.find('.') == dot) return {};
 
