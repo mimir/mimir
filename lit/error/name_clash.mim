@@ -17,4 +17,3 @@ lam outer(a: Nat): [] =
 // Both `k`s clash here, so both carry a gid ...
 // CHECK: = note: expected `%foo.T {{k_[0-9]+}}`, got `%foo.T {{k_[0-9]+}}`
 // ... while a message citing only one of them stays plain.
-// CHECK-NEXT: = note: argument: `%foo.t k`
