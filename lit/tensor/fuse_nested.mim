@@ -13,8 +13,8 @@ lam mul2 (x: Nat): Nat = %core.nat.mul (x, 2);
 fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
 
 con extern f (v: «2; «3; Nat»», return: Cn «2; Nat») =
-    let inner1 = %tensor.unary add1 @(2, (2, 3)) v;
-    let inner2 = %tensor.unary mul2 @(2, (2, 3)) inner1;
+    let inner1 = %tensor.unary add1 v;
+    let inner2 = %tensor.unary mul2 inner1;
     let outer  = %tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
         (%tensor.proj_map 0)
         (%tensor.proj_map (0, 1), )

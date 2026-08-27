@@ -23,7 +23,7 @@ fun extern splat_static_f32(): «2, 3; %math.F32» =
     return (%tensor.splat ((2, 3), 1.0:%math.F32));
 
 fun extern splat_physical_rank0(): I32 =
-    return (%tensor.splat @(I32, 2) ((1, 1), 11I32));
+    return (%tensor.splat ((1, 1), 11I32));
 
 fun extern splat_dynamic {n: Nat} (index: Idx n, value: I32): I32 =
     let tensor = %tensor.splat ((n, 2), value);

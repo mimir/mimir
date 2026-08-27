@@ -24,10 +24,9 @@ fun extern gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
             %tensor.strip_mine_par (
                 %tensor.strip_mine_par (
                     %tensor.mr_tileable @2 @(I32, I32, 2, 1) ((4, 4), (0, 1), (4, 4, 8))
-                        @((I32, I32), (2, 2), ((4, 8), (8, 4)))
-                        (mul_add, 0I32, %tensor.id @I32)
-                        (%tensor.proj_map @(3, 2) (0, 1))
-                        (%tensor.proj_map @(3, 2) (0, 2), %tensor.proj_map @(3, 2) (2, 1))
+                        (mul_add, 0I32, %tensor.id)
+                        (%tensor.proj_map (0, 1))
+                        (%tensor.proj_map (0, 2), %tensor.proj_map (2, 1))
                         (a, b),
                     0, 2),
                 2, 2),
@@ -41,7 +40,7 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let a = (‹8; 1I32›, ‹8; 2I32›, ‹8; 3I32›, ‹8; 4I32›);
     let b = ‹8; (1I32, 3I32, 5I32, 7I32)›;
     con done (o: «2, 2, 2, 2; I32») =
-        let v = %tensor.get @(I32, 4, (2, 2, 2, 2)) ((0₂, 1₂, 1₂, 0₂), o);
+        let v = %tensor.get ((0₂, 1₂, 1₂, 0₂), o);
         return (mem, v);
     gemm ((a, b), done);
 

@@ -18,11 +18,11 @@ lam mi (i k: %affine.index): «2; %affine.index» = (i, k);
 con extern f (input: «4, 8; Nat», return: Cn «4; Nat») =
     let packed = %tensor.materialize (%tensor.strip_mine_par (
         %tensor.mr_tileable @1 @(Nat, Nat, 1, 1) (4, 0, (4, 8))
-            @(Nat, 2, (4, 8)) (addf, 0, %tensor.id @Nat)
+            (addf, 0, %tensor.id)
             mo mi input,
         0, 2));
     let flat = %tensor.reshape (2, 2) 4 packed;
-    return (%tensor.unary add1 @(1, (4, )) flat);
+    return (%tensor.unary add1 flat);
 
 lam extern _compile (): %compile.Phase =
     %compile.phases ff (

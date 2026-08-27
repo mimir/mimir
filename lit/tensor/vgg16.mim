@@ -24,10 +24,10 @@ plugin math;
 let f32 = %math.f32;
 let F32 = %math.F32;
 
-let R: %tensor.Ring = (F32, 0:F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+let R: %tensor.Ring = (F32, 0:F32, %math.arith.add 0, %math.arith.mul 0);
 
 let add     = %math.arith.add @f32 0;
-let fmax    = %math.extrema.fmax @f32 0;
+let fmax    = %math.extrema.fmax 0;
 let neg_inf = 0xFF800000:F32;
 
 lam relu (x: F32): F32 = fmax (0:F32, x);
@@ -38,13 +38,13 @@ let same = ((1, 1), (1, 1), (1, 1));
 // Per-channel bias + ReLU after a convolution: `bias` is reshaped to rank 4 and broadcast over NCHW.
 lam conv_epilogue (n c h w: Nat) (t: «n, c, h, w; F32», bias: «c; F32»): «n, c, h, w; F32» =
     let bias4 = %tensor.broadcast ((1, c, 1, 1), (n, c, h, w), %tensor.reshape c (1, c, 1, 1) bias);
-    %tensor.unary relu @(4, (n, c, h, w)) (%tensor.binary add @(4, (n, c, h, w)) (t, bias4));
+    %tensor.unary relu (%tensor.binary add (t, bias4));
 
 // x·Wᵀ + b for a linear layer with the weight stored PyTorch-style as «c_out, c_in; F32».
 lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», bias: «c_out; F32»): «n, c_out; F32» =
     let z  = %tensor.product_2d R (x, %tensor.transpose_2d w);
     let b2 = %tensor.repeat (1, c_out) (n, c_out) (%tensor.reshape c_out (1, c_out) bias);
-    %tensor.binary add @(2, (n, c_out)) (z, b2);
+    %tensor.binary add (z, b2);
 
 // Parameters follow torchvision's vgg16: w<i>/b<i> is features.<i>.{weight,bias}, fc<i>_* is classifier.<i>.*.
 fun extern vgg16
@@ -91,8 +91,6 @@ fun extern vgg16
     let a = %tensor.pool (fmax, neg_inf) ((2, 2), (2, 2), (1, 1), (0, 0), (7, 7)) a;
     // Classifier: flatten, then 25088 -> 4096 -> 4096 -> 1000 (ReLU in between, none after the last layer).
     let a = %tensor.reshape (10, 512, 7, 7) (10, 25088) a;
-    let a = %tensor.unary relu @(2, (10, 4096)) (linear (10, 25088, 4096) (a, fc0_w, fc0_b));
-    let a = %tensor.unary relu @(2, (10, 4096)) (linear (10, 4096, 4096) (a, fc3_w, fc3_b));
+    let a = %tensor.unary relu (linear (10, 25088, 4096) (a, fc0_w, fc0_b));
+    let a = %tensor.unary relu (linear (10, 4096, 4096) (a, fc3_w, fc3_b));
     return (linear (10, 4096, 1000) (a, fc6_w, fc6_b));
-
-
