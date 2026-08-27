@@ -5,7 +5,7 @@ plugin core;
 plugin btensor;
 
 con extern f (mem: %mem.M 0, (k l: Nat), return: Cn [%mem.M 0]) =
-    let (mem, M) = %buffer.constant (2, (k, l), I32) (mem, 0I32);
+    let (mem, M) = %buffer.lit (2, (k, l), I32) (mem, 0I32);
     return mem;
 
 // CHECK-NOT: %btensor.

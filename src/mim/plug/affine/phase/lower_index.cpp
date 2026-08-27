@@ -13,7 +13,7 @@
 namespace mim::plug::affine::phase {
 
 const Def* LowerIndex::rewrite(const Def* def) {
-    // The opaque affine index idx lowers to the wide `Idx 0` (i64) carrier.
+    // The opaque affine index type lowers to the wide `Idx 0` (i64) carrier.
     if (Axm::isa<affine::Idx>(def)) return new_world().type_i64();
     return RWPhase::rewrite(def);
 }
@@ -30,12 +30,12 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         return v;
     };
 
-    // The affine index idx is computed on the wide `Idx 0` carrier with wrap-around (`Mode::none`) arithmetic, so
+    // The affine index algebra is computed on the wide `Idx 0` carrier with wrap-around (`Mode::none`) arithmetic, so
     // that negation/subtraction are correct via two's complement; the boundary `%affine.map` casts in/out with
     // `%core.conv.u`.
 
-    // %affine.constant n ↦ the `Nat` n reinterpreted as an `Idx 0`.
-    if (Axm::isa<affine::constant>(app)) return w.call<core::bitcast>(w.type_i64(), rewrite(app->arg()));
+    // %affine.lit n ↦ the `Nat` n reinterpreted as an `Idx 0`.
+    if (Axm::isa<affine::lit>(app)) return w.call<core::bitcast>(w.type_i64(), rewrite(app->arg()));
 
     if (auto op = Axm::isa<affine::op>(app)) {
         switch (op.id()) {

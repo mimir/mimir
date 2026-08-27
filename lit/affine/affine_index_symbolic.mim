@@ -8,8 +8,8 @@ plugin core;
 plugin affine;
 plugin mem;
 
-lam f (a b: %affine.Idx): «2; %affine.Idx» =
-    (%affine.op.add (a, b) , %affine.semiop.mul (b, 2));
+lam f (i j: %affine.Idx): «2; %affine.Idx» =
+    (%affine.op.add (i, j), %affine.semiop.mul (j, 2));
 
 // `a` and `b` carry distinct, symbolically-known bounds `m` and `n`; the outputs are `Idx m` and `Idx n` respectively.
 fun extern g {m n: Nat} (mem: %mem.M 0, a: Idx m, b: Idx n): [%mem.M 0, «i: 2; Idx ((m, n)#i)»] =

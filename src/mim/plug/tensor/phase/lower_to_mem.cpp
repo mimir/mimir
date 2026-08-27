@@ -146,7 +146,7 @@ void LowerToMem::collect_tensor_types() {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
-            // Lams passed inside a tensor op's curry chain (combiners, affine index idx, schedule
+            // Lams passed inside a tensor op's curry chain (combiners, affine index maps, schedule
             // nests) are element-level — TRANSITIVELY, including their local helper lams: e.g. the
             // loop-vector prefixes «r; I32» inside a schedule nest must not be mistaken for value
             // tensors of a recorded «r; I32» tensor type.
@@ -423,10 +423,10 @@ const Def* LowerToMem::lower_call(const App* app, Lam* old_callee) {
 }
 
 const Def* LowerToMem::splat_buffer(const Def* arr_ty, const Def* scalar) {
-    // `%buffer.constant` sets every element to `scalar`; `%btensor.lower_map_reduce` fills it with a loop rather
+    // `%buffer.lit` sets every element to `scalar`; `%btensor.lower_map_reduce` fills it with a loop rather
     // than storing a monolithic literal array (which the LLVM backend cannot digest for large shapes).
     auto [bro, bso, boT] = Axm::isa<buffer::Buf>(buf_of(arr_ty))->args<3>();
-    auto [m, out]        = buffer::op_constant(bro, bso, boT, bot_mem(), scalar)->projs<2>();
+    auto [m, out]        = buffer::op_lit(bro, bso, boT, bot_mem(), scalar)->projs<2>();
     return out;
 }
 
@@ -434,7 +434,7 @@ const Def* LowerToMem::materialize(const Def* old_ty, const Def* old_arg) {
     auto& w = new_world();
     if (tensor_ty_.contains(old_ty)) {
         // A constant splat `‹s; c›` (e.g. a learning-rate or bias literal): a `%buffer.init` would store the
-        // whole array as one giant LLVM constant. Emit `%buffer.constant` (lowered to a fill loop) instead.
+        // whole array as one giant LLVM constant. Emit `%buffer.lit` (lowered to a fill loop) instead.
         if (auto c = splat_scalar(old_arg)) return splat_buffer(old_ty, rewrite(c));
         auto v = rewrite(old_arg);
         if (Axm::isa<buffer::Buf>(v->type())) return v; // already a buffer

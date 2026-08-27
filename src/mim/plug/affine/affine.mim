@@ -31,17 +31,17 @@ axm %affine.For: {m n: Nat, Ts: «n; *»}
 /// vector loop; `%%affine.lower_for` strips the wrapper and re-attaches it to the loop's exit
 /// condition for the backend (when the ll plugin is loaded — otherwise it is dropped).
 ///
-/// ## Affine Index idx
+/// ## Affine Index Operations
 ///
 /// ### %%affine.Idx
 /// The affine index type is an opaque type that can only be manipulated through the following operations.
 ///
 axm %affine.Idx: *;
 ///
-/// ### %%affine.constant
-/// Constructs an affine index idx a constant natural number.
+/// ### %%affine.lit
+/// Constructs an affine index from a constant natural number.
 ///
-axm %affine.constant: Nat → %affine.Idx;
+axm %affine.lit: Nat → %affine.Idx;
 ///
 /// ### %%affine.op(add,sub)
 /// Performs addition and subtraction on affine indices.
@@ -49,7 +49,8 @@ axm %affine.constant: Nat → %affine.Idx;
 axm %affine.op(add,sub): [%affine.Idx, %affine.Idx] → %affine.Idx;
 ///
 /// ### %%affine.op(neg)
-/// Negates an affine indexidx
+/// Negates an affine index.
+///
 axm %affine.op(neg): %affine.Idx → %affine.Idx;
 ///
 /// ### %%affine.semiop(mul,ceildiv,floordiv,mod)
@@ -59,7 +60,7 @@ axm %affine.op(neg): %affine.Idx → %affine.Idx;
 axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.Idx, Nat] → %affine.Idx;
 ///
 /// ### %%affine.op.mul
-/// Performs multiplication of an affine index idx a constant natural number.
+/// Performs multiplication of an affine index with a constant natural number.
 /// The second argument must be a *closed* constant - a stronger requirement than %%affine.semiop imposes - which is enforced via %%refly.check.
 ///
 lam %affine.op.mul (d : %affine.Idx, c : Nat): %affine.Idx =
@@ -106,6 +107,6 @@ axm %affine.lower_for: %compile.Phase;
 ///
 /// ### %%affine.lower_index
 ///
-/// Lowers the affine index idx (%%%affine.Idx, %%%affine.constant, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
+/// Lowers the affine index algebra (%%%affine.Idx, %%%affine.lit, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
 ///
 axm %affine.lower_index: %compile.Phase;

@@ -27,8 +27,8 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     con return_cont (mem: %mem.M 0) = return (mem, 0I32);
     let c         = 3.0:%math.F64;
     let d         = 5.0:%math.F64;
-    let (mem, m1)  = %buffer.constant MT1 (mem, c);
-    let (mem, m2)  = %buffer.constant MT2 (mem, d);
+    let (mem, m1)  = %buffer.lit MT1 (mem, c);
+    let (mem, m2)  = %buffer.lit MT2 (mem, d);
     let (mem, mP) = %btensor.product_2d R (mem, m1, m2);
     print_double_matrix_wrap (mem, 2, 3, mP, return_cont);
 

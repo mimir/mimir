@@ -23,7 +23,7 @@ fun extern bc (input: «3, 1; I32»): «3, 4; I32» =
     return (%tensor.broadcast ((3, 1), (3, 4), input));
 
 // Rank-0 source: an all-size-1 input shape folds to a plain scalar `x`, so there is no input buffer to
-// read from. Broadcasting a scalar fills every output element with it (lowers to %buffer.constant).
+// read from. Broadcasting a scalar fills every output element with it (lowers to %buffer.lit).
 // out[i][j] = x
 // CHECK-DAG: fun extern bc_scalar
 fun extern bc_scalar (x: I32): «3, 4; I32» =

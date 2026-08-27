@@ -43,10 +43,10 @@ inline const Def* op_init(const Def* r, const Def* s, const Def* T, const Def* m
     return w.app(w.app(w.annex<init>(), {r, s, T}), {mem, val});
 }
 
-/// `%buffer.constant (r, s, T) (mem, val)` ↦ `[%mem.M 0, %buffer.Buf (r, s, T)]` (every element initialised to `val`).
-inline const Def* op_constant(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* val) {
+/// `%buffer.lit (r, s, T) (mem, val)` ↦ `[%mem.M 0, %buffer.Buf (r, s, T)]` (every element initialised to `val`).
+inline const Def* op_lit(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* val) {
     auto& w = mem->world();
-    return w.app(w.app(w.annex<constant>(), {r, s, T}), {mem, val});
+    return w.app(w.app(w.annex<lit>(), {r, s, T}), {mem, val});
 }
 
 } // namespace mim::plug::buffer

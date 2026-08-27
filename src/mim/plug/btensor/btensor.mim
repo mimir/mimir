@@ -25,7 +25,7 @@ import ll;  // for the %ll.vec loop annotation (declarations only — no module 
 /// ## Types
 ///
 /// Matrices are n-dimensional dependent arrays, represented by the shared `%%buffer.Buf` type.
-/// The element operations (`%%buffer.alloc` / `%%buffer.read` / `%%buffer.write` / `%%buffer.constant` /
+/// The element operations (`%%buffer.alloc` / `%%buffer.read` / `%%buffer.write` / `%%buffer.lit` /
 /// `%%buffer.shape`) and their lowering to `%%mem.Ptr` (`%%buffer.lower_ptr`) live in the `buffer` plugin.
 ///
 /// ### %%btensor.Ring
@@ -312,7 +312,7 @@ lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) 
 /// ### %%btensor.map_reduce_post
 ///
 /// The buffer-world counterpart of `%%tensor.map_reduce_post` and the workhorse behind every operation below:
-/// the affine-idx generalisation of `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
+/// the affine-indexed generalisation of `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
 /// `So`/`Sr` are the (logical) output shape and full loop bounds; `map_out`/`maps` are affine maps from the
 /// `Rn` loop vector to the output/input coordinates. As in %%tensor.map_reduce_post, the total loop count `Rn` is
 /// stated instead of the reduction count `Rr = Rn - Ro`, so that type inference can pin it from `Sr`.

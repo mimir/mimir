@@ -93,7 +93,7 @@ const Def* LowerPtr::rewrite_imm_App(const App* app) {
         auto [mem2, ptr] = mem::op_alloc(arr_ty_of(s, T), mem)->projs<2>();
         auto mem3        = w.call<mem::store>(Defs{mem2, ptr, val});
         return w.tuple({mem3, ptr});
-    } else if (auto const_ax = Axm::isa<buffer::constant>(app)) {
+    } else if (auto const_ax = Axm::isa<buffer::lit>(app)) {
         auto [mem, val]  = const_ax->args<2>();
         auto [r, s, T]   = const_ax->callee()->as<App>()->args<3>();
         mem              = rewrite(mem);

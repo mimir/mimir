@@ -16,8 +16,8 @@ plugin btensor;
 plugin cps;
 
 fun add (x y: I32)@tt = return (%core.wrap.add 0 (x, y));
-lam mo (i a b: %affine.Idx): «1; %affine.Idx» = i;
-lam mi (i a b: %affine.Idx): «3; %affine.Idx» = (i, a, b);
+lam mo (i _ _: %affine.Idx): «1; %affine.Idx» = i;
+lam mi (i j k: %affine.Idx): «3; %affine.Idx» = (i, j, k);
 
 // out[i] = sum_{a, b} input[i][a][b]; the schedule operand is a chooser over the target's nest
 // builder (no vector dim, unroll the trailing 1 dim), applied — not interpreted — by the lowering.

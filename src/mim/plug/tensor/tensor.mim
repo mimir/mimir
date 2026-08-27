@@ -591,7 +591,7 @@ axm %tensor.slice: {T: *, r: Nat}
 
 /// `o ↦ (start#d + step#d · o#d)_d`: the strided read map.
 lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; %affine.Idx»): «r; %affine.Idx» =
-    ‹d: r; %affine.op.add (%affine.semiop.mul (o#d, step#d), %affine.constant (start#d))›;
+    ‹d: r; %affine.op.add (%affine.semiop.mul (o#d, step#d), %affine.lit (start#d))›;
 
 lam %tensor.slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
                        (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
@@ -609,7 +609,7 @@ axm %tensor.flip: {T: *, r: Nat}
 
 /// `o ↦ ((s_in#d − 1) − o#d)_d`: the reverse read map.
 lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.Idx»): «r; %affine.Idx» =
-    ‹d: r; %affine.op.sub (%affine.constant (%core.nat.sub (s_in#d, 1)), o#d)›;
+    ‹d: r; %affine.op.sub (%affine.lit (%core.nat.sub (s_in#d, 1)), o#d)›;
 
 lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
     %tensor.map_reduce (s_in, s_in) (tensor_copy, ⊥: T)

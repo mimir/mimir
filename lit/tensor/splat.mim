@@ -8,9 +8,9 @@
 // CHECK-LABEL: fun extern splat_physical_rank0
 // CHECK: return_{{[0-9]+}} 11I32;
 // CHECK-LABEL: fun extern splat_static
-// CHECK: %buffer.constant
+// CHECK: %buffer.lit
 // CHECK-LABEL: fun extern splat_static_f32
-// CHECK: %buffer.constant (2, (2, 3), %math.F (23, 8)) ({{.*}}, 1065353216:(%math.F (23, 8)))
+// CHECK: %buffer.lit (2, (2, 3), %math.F (23, 8)) ({{.*}}, 1065353216:(%math.F (23, 8)))
 
 plugin tensor;
 plugin compile;

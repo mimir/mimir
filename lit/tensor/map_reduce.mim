@@ -19,7 +19,7 @@ lam id1 (i: %affine.Idx): «1; %affine.Idx» = i;
 lam id1i(i, j: %affine.Idx): «1; %affine.Idx» = i;
 lam id2 (i, j: %affine.Idx): «2; %affine.Idx» = (i, j);
 lam tr  (i, j: %affine.Idx): «2; %affine.Idx» = (j, i);
-lam sl  (i: %affine.Idx): «1; %affine.Idx» = (%affine.op.add (%affine.semiop.mul (i, 3), %affine.constant 2), );
+lam sl  (i: %affine.Idx): «1; %affine.Idx» = (%affine.op.add (%affine.semiop.mul (i, 3), %affine.lit 2), );
 
 // A reduction (`Ro = 1`, `Rn = 2`): out[i] = sum_j input[i][j], with a projection input access and the identity output map.
 // CHECK-DAG: fun extern row_sum

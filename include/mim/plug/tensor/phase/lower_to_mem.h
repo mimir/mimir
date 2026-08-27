@@ -56,7 +56,7 @@ private:
     const Def* materialize(const Def* old_ty, const Def* old_arg);
 
     /// Fills a fresh buffer of (old) array type `arr_ty` with the (already rewritten) scalar `scalar`, via
-    /// `%buffer.constant`. `%btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
+    /// `%buffer.lit`. `%btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
     /// monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).
     /// Used for constant splats `‹s; c›` and scalar `%tensor.broadcast`s.
     const Def* splat_buffer(const Def* arr_ty, const Def* scalar);

@@ -19,11 +19,11 @@ namespace mim::plug::tensor::phase {
 
 /// If `e` reads coordinate `var#i` injectively, returns `i`:
 /// a plain extract, possibly strided (`%affine.semiop.mul` by a non-zero literal) and/or shifted
-/// (`%affine.op.add`/`sub` with a loop-invariant `%affine.constant` on the other side).
+/// (`%affine.op.add`/`sub` with a loop-invariant `%affine.lit` on the other side).
 /// Everything else — `mod`/`div`, sums of two loop indices (convolution windows), symbolic strides
 /// (which may be 0 at runtime) — yields nothing.
 static std::optional<u64> injective_coord(const Def* var, const Def* e) {
-    // A one-loop domain «1; %affine.Idx» collapses to a plain %affine.idx, so the var itself is coordinate 0.
+    // A one-loop domain «1; %affine.Idx» collapses to a plain %affine.Idx, so the var itself is coordinate 0.
     if (e == var) return 0;
     if (auto ex = e->isa<Extract>(); ex && ex->tuple() == var) return Lit::isa<u64>(ex->index());
 
@@ -36,8 +36,8 @@ static std::optional<u64> injective_coord(const Def* var, const Def* e) {
     if (auto op = Axm::isa<affine::op>(e)) {
         if (op.id() != affine::op::add && op.id() != affine::op::sub) return {};
         auto [a, b]  = op->args<2>();
-        bool a_const = static_cast<bool>(Axm::isa<affine::constant>(a));
-        bool b_const = static_cast<bool>(Axm::isa<affine::constant>(b));
+        bool a_const = static_cast<bool>(Axm::isa<affine::lit>(a));
+        bool b_const = static_cast<bool>(Axm::isa<affine::lit>(b));
         if (a_const == b_const) return {};
         return injective_coord(var, a_const ? b : a);
     }

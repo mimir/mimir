@@ -103,12 +103,12 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (Axm::isa<btensor::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<btensor::pad>(app)) return lower_pad(app);
     if (Axm::isa<btensor::concat>(app)) return lower_concat(app);
-    if (Axm::isa<buffer::constant>(app)) return lower_buffer_constant(app);
+    if (Axm::isa<buffer::lit>(app)) return lower_buffer_lit(app);
     return RWPhase::rewrite_imm_App(app);
 }
 
-const Def* LowerMapReduce::lower_buffer_constant(const App* app) {
-    // `%buffer.constant (r, s, T) (mem, val)` fills every elem with `val`. Emit a fill loop (via the same
+const Def* LowerMapReduce::lower_buffer_lit(const App* app) {
+    // `%buffer.lit (r, s, T) (mem, val)` fills every elem with `val`. Emit a fill loop (via the same
     // pointwise scaffold as pad/concat) so the store never materializes as one giant literal array. A
     // non-literal rank has no static loop nest, so leave it for `%buffer.lower_ptr`'s monolithic fallback.
     auto [r, s, T] = app->callee()->as<App>()->args<3>();

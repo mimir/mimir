@@ -10,7 +10,7 @@ namespace mim::plug::mem::phase {
 
 bool AddMem::analyze() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
-    // (combiners, affine index idx, initial accumulators of `%btensor.map_reduce_post`, …).
+    // (combiners, affine index mappings, initial accumulators of `%btensor.map_reduce_post`, …).
     auto queue  = unique_queue<DefSet>();
     auto pinned = unique_queue<DefSet>();
     for (auto mut : old_world().externals().muts())

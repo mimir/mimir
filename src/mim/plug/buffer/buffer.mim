@@ -56,11 +56,11 @@ axm %buffer.write: [r: Nat, s: «r; Nat», T: *] as rsT
 ///
 axm %buffer.init: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, val: «s; T»] → [%mem.M 0, %buffer.Buf rsT];
 ///
-/// ### %%buffer.constant
+/// ### %%buffer.lit
 ///
 /// A buffer initialized with a constant value in every element.
 ///
-axm %buffer.constant: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, T] → [%mem.M 0, %buffer.Buf rsT];
+axm %buffer.lit: [r: Nat, s: «r; Nat», T: *] as rsT → [%mem.M 0, T] → [%mem.M 0, %buffer.Buf rsT];
 ///
 /// ### %%buffer.shape
 ///
