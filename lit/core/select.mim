@@ -1,0 +1,7 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+
+lam extern F (cond: Bool): * = %core.Select (cond, Nat, Bool);
+
+// CHECK: lam extern F (cond{{.*}}: Bool): * =
+// CHECK-NEXT: (Bool, Nat)#cond

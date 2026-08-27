@@ -1,0 +1,9 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// While the element type is unknown, `«s; T»` matches `«2; «3; Nat»»` at every depth, so the rank stays
+// undetermined and the call site has to supply `{r, s}` with `@`.
+lam rank {r: Nat, s: «r; Nat», T: *} (i: «s; T»): Nat = r;
+lam extern f (a: «2, 3; Nat»): Nat = rank a;
+
+// CHECK: {{.*}}infer_rank.mim:6:38-6:43: error: argument is not assignable to callee's domain
+// CHECK: note: expected `«s; T»`, got `«2; «3; Nat»»`

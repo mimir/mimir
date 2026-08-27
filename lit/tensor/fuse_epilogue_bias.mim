@@ -13,8 +13,8 @@ lam addp (x y: Nat): Nat = %core.nat.add (x, y);
 
 con extern f (a: «2, 3; Nat», b: «3, 4; Nat», bias: «2, 4; Nat», return: Cn «2, 4; Nat») =
     let prod   = %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) (a, b);
-    let biased = %tensor.binary addp @(2, (2, 4)) (prod, bias);
-    let out    = %tensor.unary add1 @(2, (2, 4)) biased;
+    let biased = %tensor.binary addp (prod, bias);
+    let out    = %tensor.unary add1 biased;
     return out;
 
 lam extern _compile (): %compile.Phase =

@@ -22,20 +22,20 @@ plugin math;
 let f32 = %math.f32;
 let F32 = %math.F32;
 
-let R: %tensor.Ring = (F32, 0:F32, %math.arith.add @f32 0, %math.arith.mul @f32 0);
+let R: %tensor.Ring = (F32, 0:F32, %math.arith.add 0, %math.arith.mul 0);
 
 let add  = %math.arith.add @f32 0;
-let fmax = %math.extrema.fmax @f32 0;
+let fmax = %math.extrema.fmax 0;
 
 lam relu (x: F32): F32 = fmax (0:F32, x);
 
 lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», bias: «c_out; F32»): «n, c_out; F32» =
     let z  = %tensor.product_2d R (x, %tensor.transpose_2d w);
     let b2 = %tensor.repeat (1, c_out) (n, c_out) (%tensor.reshape c_out (1, c_out) bias);
-    %tensor.binary add @(2, (n, c_out)) (z, b2);
+    %tensor.binary add (z, b2);
 
 fun extern fc_t (x: «6, 40; F32», w: «8, 40; F32», bias: «8; F32»): «6, 8; F32» =
-    return (%tensor.unary relu @(2, (6, 8)) (linear (6, 40, 8) (x, w, bias)));
+    return (%tensor.unary relu (linear (6, 40, 8) (x, w, bias)));
 
 fun extern fc_odd (x: «5, 33; F32», w: «7, 33; F32», bias: «7; F32»): «5, 7; F32» =
-    return (%tensor.unary relu @(2, (5, 7)) (linear (5, 33, 7) (x, w, bias)));
+    return (%tensor.unary relu (linear (5, 33, 7) (x, w, bias)));

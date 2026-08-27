@@ -21,15 +21,15 @@ lam mi (i a b: %affine.index): «3; %affine.index» = (i, a, b);
 // out[i] = sum_{a, b} input[i][a][b], with `a` strip-mined by 4.
 fun extern sum_all (input: «2, 8, 3; I32»): «2; I32» =
     return (%tensor.materialize (%tensor.strip_mine_red (
-        %tensor.mr_tileable @1 @(I32, I32, 1, 2) (2, 0, (2, 8, 3))
-            @(I32, 3, (2, 8, 3)) (add, 0I32, %tensor.id @I32)
+        %tensor.mr_tileable @1 @(1, 2) (2, 0, (2, 8, 3))
+            (add, 0I32, %tensor.id)
             mo mi input,
         1, 4)));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let t = ‹2; ‹8; ‹3; 1I32›››;
     con done (o: «2; I32») =
-        let v = %tensor.get @(I32, 1, (2, )) ((1₂, ), o);
+        let v = %tensor.get ((1₂, ), o);
         return (mem, v);
     sum_all (t, done);
 

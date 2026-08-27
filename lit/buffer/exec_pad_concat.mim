@@ -18,7 +18,7 @@ fun extern pad_row (input: «3; I32»): «6; I32» =
     return (%tensor.pad 3 (0, 1, 2) (input, 5I32));
 
 fun extern cat_two (a: «3; I32», b: «2; I32»): «5; I32» =
-    return (%tensor.concat @(I32, 2, 1) 0₁ @(3, 2) (a, b));
+    return (%tensor.concat 0₁ (a, b));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let t = (10I32, 20I32, 30I32);

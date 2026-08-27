@@ -15,7 +15,7 @@ plugin core;
 plugin tensor;
 plugin math;
 
-let R: %tensor.Ring = (%math.F32, 0.0:%math.F32, %math.arith.add @%math.f32 0, %math.arith.mul @%math.f32 0);
+let R: %tensor.Ring = (%math.F32, 0.0:%math.F32, %math.arith.add 0, %math.arith.mul 0);
 
 lam extern c64 (input: «2, 64, 8, 8; %math.F32», w: «16, 64, 3, 3; %math.F32»): «2, 16, 8, 8; %math.F32» =
     %tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);

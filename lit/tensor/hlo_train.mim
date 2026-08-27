@@ -50,12 +50,12 @@ lam reduce_ax0 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32
 fun extern main_hlo (w: «8; «3; F32»», b: «3; F32», x: «4; «8; F32»», t: «4; «3; F32»»): F32 =
     // forward: a = tanh(x·w + b)
     let z   = %tensor.product_2d R (x, w);                                   // [4, 3]
-    let zb  = F32_add @(2, (4, 3)) (z, %tensor.broadcast ((1, 3), (4, 3), b));
-    let a   = F32_tanh @(2, (4, 3)) zb;                                      // [4, 3]
+    let zb  = F32_add (z, %tensor.broadcast ((1, 3), (4, 3), b));
+    let a   = F32_tanh zb;                                      // [4, 3]
     // loss gradient d = c * (a - t), with c a *scalar* broadcast
-    let d0  = F32_sub @(2, (4, 3)) (a, t);
+    let d0  = F32_sub (a, t);
     let sc  = %tensor.broadcast ((1, 1), (4, 3), f32_c);                     // scalar broadcast -> [4, 3]
-    let d   = F32_mul @(2, (4, 3)) (sc, d0);                                 // [4, 3]
+    let d   = F32_mul (sc, d0);                                 // [4, 3]
     // row reduction + select (kept live through the result)
     let rmax = reduce_ax1 ((%math.extrema.fmax 0), 0xFF800000: F32) z;  // [4]
     let fin  = F32_is_finite rmax;                                          // [4]
@@ -65,7 +65,7 @@ fun extern main_hlo (w: «8; «3; F32»», b: «3; F32», x: «4; «8; F32»», 
     let dx  = %tensor.dot_product R (1₂, 1₂, (), ()) (d, w);       // [4, 8]
     let db  = reduce_ax0 ((%math.arith.add 0), 0: F32) d;               // [3]
     // SGD update
-    let w2  = F32_sub @(2, (8, 3)) (w, F32_mul @(2, (8, 3)) (‹8, 3; f32_lr›, dW));
+    let w2  = F32_sub (w, F32_mul (‹8, 3; f32_lr›, dW));
     let b2  = F32_sub (b, F32_mul (‹3; f32_lr›, db));
     // sum one element of each result so no chain is dead-code-eliminated
     let s0 = %tensor.get ((0₈, 0₃), w2);

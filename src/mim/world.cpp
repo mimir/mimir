@@ -240,7 +240,6 @@ const Def* World::app(const Def* callee, const Def* arg) {
         throw Error(driver())
             .error(err_loc(arg), "argument is not assignable to callee's domain")
             .note(err_loc(arg), "expected `{}`, got `{}`", pi->dom(), type_of(arg))
-            .note(err_loc(arg), "argument: `{}`", arg)
             .note_at(callee->loc(), "callee `{}` declared here", callee);
 
     // re-zonk after assignable check above - we might have inferred new stuff

@@ -1,0 +1,8 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+plugin core;
+
+// `%%core.select`'s `{T: *}` is one level below `Nat`/`Bool`; selecting types needs `%%core.Select`.
+lam extern f (cond: Bool): * = %core.select (cond, Nat, Bool);
+
+// CHECK: {{.*}}select_level.mim:5:32-5:61: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 5 | lam extern f (cond: Bool): * = %core.select (cond, Nat, Bool);

@@ -39,15 +39,15 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
 : «128; F32» =
     let v_0  = %tensor.product_2d R (arg6, arg0);
     let v_2  = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
-    let v_3  = F32_add @(2, (128, 1024)) (v_0, v_2);
-    let v_4  = F32_tanh @(2, (128, 1024)) v_3;
+    let v_3  = F32_add (v_0, v_2);
+    let v_4  = F32_tanh v_3;
     let v_7  = %tensor.product_2d R (v_4, arg2);
     let v_9  = %tensor.broadcast ((1, 1024), (128, 1024), arg3);
-    let v_10 = F32_add @(2, (128, 1024)) (v_7, v_9);
-    let v_11 = F32_tanh @(2, (128, 1024)) v_10;
+    let v_10 = F32_add (v_7, v_9);
+    let v_11 = F32_tanh v_10;
     let v_14 = %tensor.product_2d R (v_11, arg4);
     let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
-    let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
+    let v_17 = F32_add (v_14, v_16);
     let v_ninf = 0xFF800000: F32;
     let v_18 = reduce_ax1 ((%math.extrema.fmax 0), v_ninf) v_17;
     return v_18;

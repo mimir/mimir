@@ -76,13 +76,13 @@ Nest::Node* Nest::make_node(Def* mut, Node* inest) {
 }
 
 void Nest::assign_postorder_numbers() const {
-    if (root()->postorder_number_.has_value()) return;
+    if (root()->postorder_number_) return;
 
     auto number = 0;
 
     std::function<void(const Nest::Node*)> visit = [&](const Nest::Node* node) {
-        if (node->postorder_number_.has_value()) return; // already visited
-        node->postorder_number_ = 0;                     // mark in progress
+        if (node->postorder_number_) return; // already visited
+        node->postorder_number_ = 0;         // mark in progress
         for (auto op : node->mut()->deps()) {
             for (auto mut : op->local_muts())
                 if (auto succ = node->nest()[mut]) visit(succ);

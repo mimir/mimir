@@ -12,8 +12,8 @@ lam dbl (x: Nat): Nat = %core.nat.mul (x, 2);
 
 con extern f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«2, 4; Nat», «2, 4; Nat»]) =
     let prod = %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) (a, b);
-    let out1 = %tensor.unary @(Nat, Nat) add1 @(2, (2, 4)) prod;
-    let out2 = %tensor.unary @(Nat, Nat) dbl  @(2, (2, 4)) prod;
+    let out1 = %tensor.unary add1 prod;
+    let out2 = %tensor.unary dbl prod;
     return (out1, out2);
 
 lam extern _compile (): %compile.Phase =

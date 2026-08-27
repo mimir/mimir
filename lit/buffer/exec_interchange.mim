@@ -20,7 +20,7 @@ con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0),
     let a = ((1I32, 2I32, 3I32), (4I32, 5I32, 6I32));
     let b = ((0I32, 1I32, 2I32, 3I32), (1I32, 2I32, 3I32, 4I32), (2I32, 3I32, 4I32, 5I32));
     con done (o: «2, 4; I32») =
-        let v = %tensor.get @(I32, 2, (2, 4)) ((1₂, 2₄), o);
+        let v = %tensor.get ((1₂, 2₄), o);
         return (mem, v);
     matmul ((a, b), done);
 

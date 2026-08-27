@@ -12,9 +12,9 @@ lam mul2 (x: Nat): Nat = %core.nat.mul (x, 2);
 lam add  (xs: [Nat, Nat]): Nat = %core.nat.add xs;
 
 con extern f (v1 v2: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
-    let inner1 = %tensor.unary add1 @(2, (2, 3)) v1;
-    let inner2 = %tensor.unary mul2 @(2, (2, 3)) v2;
-    let outer  = %tensor.binary add @(2, (2, 3)) (inner1, inner2);
+    let inner1 = %tensor.unary add1 v1;
+    let inner2 = %tensor.unary mul2 v2;
+    let outer  = %tensor.binary add (inner1, inner2);
     return outer;
 
 lam extern _compile (): %compile.Phase =

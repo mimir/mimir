@@ -18,7 +18,7 @@ plugin core;
 lam %tuple.typecat {n m: Nat} (Ts: «n; *») (Us: «m; *») : * = // «i: n + m; select(i < n , Ts#i, Us#(i - n))»
     «i: %core.nat.add (n, m);
         let nat_i = %core.bitcast Nat i;
-        %core.select (
+        %core.Select (
             %core.ncmp.l (nat_i, n),
             Ts#(%core.bitcast (Idx n) i),
             Us#(%core.bitcast (Idx m) (%core.nat.sub (nat_i, n))))»;

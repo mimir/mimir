@@ -9,4 +9,3 @@ let y = f *;
 // CHECK-NEXT: 6 | let y = f *;
 // CHECK-NEXT:   |         ^^^
 // CHECK-NEXT:   = note: expected `Nat`, got `□`
-// CHECK-NEXT:   = note: argument: `*`

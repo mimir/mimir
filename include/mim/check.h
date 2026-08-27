@@ -133,6 +133,8 @@ private:
     [[nodiscard]] bool check(const Prod*, const Def*);
     template<Mode>
     [[nodiscard]] bool check(const Seq*, const Def*);
+    [[nodiscard]] bool check(Hole*, const Def*);
+    [[nodiscard]] bool check_rank(const Seq*, Hole* rank, const Def*);
     [[nodiscard]] bool check1(const Seq*, const Def*);
     [[nodiscard]] bool check(Seq*, const Seq*);
     [[nodiscard]] bool check(const UMax*, const Def*);

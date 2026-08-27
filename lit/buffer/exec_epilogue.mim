@@ -26,16 +26,16 @@ lam id2  (i j: %affine.index): «2; %affine.index» = (i, j);
 // out[i] = (sum_j input[j][i]) + bias[i] + 1
 fun extern row_sum1 (input: «4, 3; I32», bias: «3; I32»): «3; I32» =
     let t      = %tensor.transpose_2d input;
-    let sums   = %tensor.map_reduce @1 @(I32, 1, 2) (3, (3, 4))
-                     @(I32, 2, (3, 4)) (add, 0I32) id1i id2 t;
-    let biased = %tensor.binary addb @(1, 3) (sums, bias);
-    return (%tensor.unary @(I32, I32) add1 @(1, 3) biased);
+    let sums   = %tensor.map_reduce (3, (3, 4))
+                     (add, 0I32) id1i id2 t;
+    let biased = %tensor.binary addb (sums, bias);
+    return (%tensor.unary add1 biased);
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
     let t = ((1I32, 5I32, 9I32), (2I32, 6I32, 10I32), (3I32, 7I32, 11I32), (4I32, 8I32, 12I32));
     let bias = (1I32, 2I32, 3I32);
     con done (o: «3; I32») =
-        let v = %tensor.get @(I32, 1, (3, )) ((2₃, ), o);
+        let v = %tensor.get ((2₃, ), o);
         return (mem, v);
     row_sum1 ((t, bias), done);
 

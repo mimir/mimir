@@ -17,8 +17,8 @@ lam mi (o: «3; %affine.index»): «3; %affine.index» = o;
 // the domain becomes (2, 4, 4, 2) with two reduction dims.
 fun extern sum_red (input: «2, 4, 8; Nat»): «2, 4; Nat» =
     return (%tensor.materialize (%tensor.strip_mine_red (
-        %tensor.mr_tileable @1 @(Nat, Nat, 2, 1) ((2, 4), (0, 1), (2, 4, 8))
-            @(Nat, 3, (2, 4, 8)) (add, 0, %tensor.id @Nat)
+        %tensor.mr_tileable @1 @(2, 1) ((2, 4), (0, 1), (2, 4, 8))
+            (add, 0, %tensor.id)
             mo mi input,
         2, 2)));
 
@@ -26,8 +26,8 @@ fun extern sum_red (input: «2, 4, 8; Nat»): «2, 4; Nat» =
 // and the output is packed «2, 2, 2» (a row-major reshape restores «2, 4»).
 fun extern sum_par (input: «2, 4, 8; Nat»): «2, 2, 2; Nat» =
     return (%tensor.materialize (%tensor.strip_mine_par (
-        %tensor.mr_tileable @1 @(Nat, Nat, 2, 1) ((2, 4), (0, 1), (2, 4, 8))
-            @(Nat, 3, (2, 4, 8)) (add, 0, %tensor.id @Nat)
+        %tensor.mr_tileable @1 @(2, 1) ((2, 4), (0, 1), (2, 4, 8))
+            (add, 0, %tensor.id)
             mo mi input,
         1, 2)));
 

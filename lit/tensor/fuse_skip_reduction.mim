@@ -20,8 +20,8 @@ con extern f (v: «2; «3; Nat»», return: Cn «2, 2; Nat») =
         (%tensor.proj_map (0, 1), )
         v;
     // outer[i, j] = inner[i] + 1    (pure map, broadcast read)
-    let outer = %tensor.map_reduce @1 @(Nat, 2, 2) ((2, 2), (2, 2)) @(Nat, 1, 2) (add1_of, 0)
-        (%affine.id @2)
+    let outer = %tensor.map_reduce ((2, 2), (2, 2)) (add1_of, 0)
+        (%affine.id)
         (lm (i j: %affine.index) = (i), )
         inner;
     return outer;
