@@ -59,7 +59,7 @@ let %refly.info    = 2;
 let %refly.verbose = 3;
 let %refly.debug   = 4;
 
-axm %refly.dbg(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
+axm %refly.dbg.(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 ///
 /// ## Testing
 ///
@@ -77,7 +77,7 @@ axm %refly.dbg(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 /// | `Ae`   | `alpha_ne` | x | o | assert **not** alpha-equivalent            |
 /// | `AE`   | `alpha_eq` | x | x | assert alpha-equivalent                    |
 ///
-axm %refly.equiv(ae = struc_ne, aE = struc_eq,
+axm %refly.equiv.(ae = struc_ne, aE = struc_eq,
                  Ae = alpha_ne, AE = alpha_eq):
     {T: *} → [T, T] → T, normalize_equiv;
 ///

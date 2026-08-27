@@ -46,18 +46,18 @@ axm %affine.lit: Nat → %affine.Idx;
 /// ### %%affine.op(add,sub)
 /// Performs addition and subtraction on affine indices.
 ///
-axm %affine.op(add,sub): [%affine.Idx, %affine.Idx] → %affine.Idx;
+axm %affine.op.(add,sub): [%affine.Idx, %affine.Idx] → %affine.Idx;
 ///
 /// ### %%affine.op(neg)
 /// Negates an affine index.
 ///
-axm %affine.op(neg): %affine.Idx → %affine.Idx;
+axm %affine.op.neg: %affine.Idx → %affine.Idx;
 ///
 /// ### %%affine.semiop(mul,ceildiv,floordiv,mod)
 /// Performs semi-linear operations on affine indices.
 /// The second argument is a natural number that must be constant with regard to the indices.
 ///
-axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.Idx, Nat] → %affine.Idx;
+axm %affine.semiop.(mul,ceildiv,floordiv,mod): [%affine.Idx, Nat] → %affine.Idx;
 ///
 /// ### %%affine.op.mul
 /// Performs multiplication of an affine index with a constant natural number.

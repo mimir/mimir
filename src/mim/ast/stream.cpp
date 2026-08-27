@@ -204,8 +204,10 @@ void AxmDecl::Alias::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
 
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "axm {}", dbg());
-    if (num_subs() != 0) {
-        os << '(';
+    if (num_subs() == 1 && sub(0).size() == 1) {
+        std::print(os, ".{}", sub(0).front()->dbg());
+    } else if (num_subs() != 0) {
+        os << ".(";
         for (auto sep = ""; const auto& aliases : subs()) {
             std::print(os, "{}{}", sep, R(tab, aliases, " = "));
             sep = ", ";

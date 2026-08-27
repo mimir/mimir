@@ -1,0 +1,27 @@
+// RUN: %mim %s --output-h - --bootstrap | %FileCheck %s
+// RUN: %mim %s --output-ast - | %FileCheck --check-prefix=AST %s
+
+axm %subs.fold.l: Nat → Nat, normalize_fold;
+axm %subs.fold.r: Nat → Nat, normalize_fold;
+axm %subs.cmp.(le, ge = geq): Nat → Nat;
+axm %subs.plain: Nat → Nat;
+
+// Two dotted decls append to the same tag; a group shares one id among its aliases.
+// CHECK:      enum class fold : flags_t {
+// CHECK-NEXT:     l = 0x[[#%x,FOLD:]],
+// CHECK-NEXT:     r = 0x[[#FOLD+1]],
+// CHECK:      enum class cmp : flags_t {
+// CHECK-NEXT:     le = 0x[[#%x,LE:]],
+// CHECK-NEXT:     ge = 0x[[#LE+1]],
+// CHECK-NEXT:     geq = 0x[[#LE+1]],
+// CHECK:      enum class plain : flags_t {
+// CHECK-NEXT: };
+// CHECK:      Annex::Num<plug::subs::fold> = 2;
+// CHECK:      Annex::Num<plug::subs::cmp> = 2;
+// CHECK:      Annex::Num<plug::subs::plain> = 0;
+
+// A lone sub round-trips as a dotted name, a group as a `.(...)` group.
+// AST:      axm %subs.fold.l: Nat -> Nat, normalize_fold;
+// AST-NEXT: axm %subs.fold.r: Nat -> Nat, normalize_fold;
+// AST-NEXT: axm %subs.cmp.(le, ge = geq): Nat -> Nat;
+// AST-NEXT: axm %subs.plain: Nat -> Nat;

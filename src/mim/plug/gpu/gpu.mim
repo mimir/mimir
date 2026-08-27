@@ -124,24 +124,24 @@ fun %gpu.with_streams (n: Nat, func: Fn [%mem.M 0, %gpu.GlobalM, «n; %gpu.Strea
 /// #### %%gpu.alloc(block)
 ///
 /// Allocates memory on the device (in global address space).
-axm %gpu.alloc(block): [T: *] → %gpu.GlobalM → [%gpu.GlobalM, %gpu.GlobalPtr T];
+axm %gpu.alloc.block: [T: *] → %gpu.GlobalM → [%gpu.GlobalM, %gpu.GlobalPtr T];
 ///
 /// #### %%gpu.free(block)
 ///
 /// Frees memory on the device (in global address space).
-axm %gpu.free(block): {T: *} → [%gpu.GlobalM, %gpu.GlobalPtr T] → %gpu.GlobalM;
+axm %gpu.free.block: {T: *} → [%gpu.GlobalM, %gpu.GlobalPtr T] → %gpu.GlobalM;
 ///
 /// #### %%gpu.copy_to_device(block)
 ///
 /// Copies data from host memory to device memory.
-axm %gpu.copy_to_device(block): {T: *}
+axm %gpu.copy_to_device.block: {T: *}
                               → [%mem.M 0, %gpu.GlobalM, %mem.Ptr0 T, %gpu.GlobalPtr T]
                               → [%mem.M 0, %gpu.GlobalM];
 ///
 /// #### %%gpu.copy_to_host(block)
 ///
 /// Copies data from device memory to host memory.
-axm %gpu.copy_to_host(block): {T: *}
+axm %gpu.copy_to_host.block: {T: *}
                             → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr T, %mem.Ptr0 T]
                             → [%mem.M 0, %gpu.GlobalM];
 ///
@@ -161,24 +161,24 @@ let %gpu.alloc_copy.block = lm {T: *}
 /// #### %%gpu.alloc(asyn)
 ///
 /// Asynchronously allocates memory on the device (in global address space).
-axm %gpu.alloc(asyn): [T: *] → [%gpu.GlobalM, %gpu.Stream] → [%gpu.GlobalM, %gpu.GlobalPtr T];
+axm %gpu.alloc.asyn: [T: *] → [%gpu.GlobalM, %gpu.Stream] → [%gpu.GlobalM, %gpu.GlobalPtr T];
 ///
 /// #### %%gpu.free(asyn)
 ///
 /// Asynchronously frees memory on the device (in global address space).
-axm %gpu.free(asyn): {T: *} → [%gpu.GlobalM, %gpu.GlobalPtr T, %gpu.Stream] → %gpu.GlobalM;
+axm %gpu.free.asyn: {T: *} → [%gpu.GlobalM, %gpu.GlobalPtr T, %gpu.Stream] → %gpu.GlobalM;
 ///
 /// #### %%gpu.copy_to_device(asyn)
 ///
 /// Asynchronously copies data from host memory to device memory.
-axm %gpu.copy_to_device(asyn): {T: *}
+axm %gpu.copy_to_device.asyn: {T: *}
                               → [%mem.M 0, %gpu.GlobalM, %mem.Ptr0 T, %gpu.GlobalPtr T, %gpu.Stream]
                               → [%mem.M 0, %gpu.GlobalM];
 ///
 /// #### %%gpu.copy_to_host(asyn)
 ///
 /// Asynchronously copies data from device memory to host memory.
-axm %gpu.copy_to_host(asyn): {T: *}
+axm %gpu.copy_to_host.asyn: {T: *}
                             → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr T, %mem.Ptr0 T, %gpu.Stream]
                             → [%mem.M 0, %gpu.GlobalM];
 ///

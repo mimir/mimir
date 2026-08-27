@@ -38,6 +38,29 @@ TEST(Lexer, Toks) {
     EXPECT_EQ(tok.lit_i(), driver.world().lit_idx(123456789, 23));
 }
 
+TEST(Lexer, Annex) {
+    Driver driver;
+    auto& w  = driver.world();
+    auto ast = AST(w);
+    Lexer lexer(ast, "%plug.tag.sub %plug.tag.( %plug.a.b.c");
+
+    auto sub = lexer.lex();
+    EXPECT_TRUE(sub.isa(Tok::Tag::M_anx));
+    EXPECT_EQ(sub.sym(), driver.sym("%plug.tag.sub"));
+
+    auto tag = lexer.lex();
+    EXPECT_TRUE(tag.isa(Tok::Tag::M_anx));
+    EXPECT_EQ(tag.sym(), driver.sym("%plug.tag"));
+    EXPECT_TRUE(lexer.lex().isa(Tok::Tag::T_dot));
+    EXPECT_TRUE(lexer.lex().isa(Tok::Tag::D_paren_l));
+    EXPECT_EQ(ast.error().num_errors(), 0);
+
+    auto deep = lexer.lex();
+    EXPECT_EQ(ast.error().num_errors(), 1);
+    EXPECT_EQ(deep.sym(), driver.sym("%plug.a")); // truncated to `%plugin.tag`
+    ast.error().clear();
+}
+
 TEST(Lexer, Errors) {
     Driver driver;
     auto& w  = driver.world();

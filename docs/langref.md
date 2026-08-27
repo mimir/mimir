@@ -88,7 +88,7 @@ The following terminals are defined by lexical patterns.
 
 ```ebnf
 I      ::= sym
-A      ::= "%" sym "." sym ("." sym)?
+A      ::= "%" id "." id ("." id)?
 L      ::= dec+
          |  "0" ["bB"] bin+
          |  "0" ["oO"] oct+
@@ -122,7 +122,8 @@ hex    ::= [0-9a-fA-F]
 eE     ::= ["eE"]
 pP     ::= ["pP"]
 sign   ::= ["+-"]
-sym    ::= [_a-zA-Z] [._0-9a-zA-Z]*
+id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
+sym    ::= id ("." id)*
 esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
 ```
 
@@ -180,7 +181,7 @@ rec n [: e] = e
 and n [: e] = e
 and lam|con|fun [extern] n dom+ [: e] = e
 
-axm A ["(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
+axm A ["." "(" sub ("=" alias)* ("," sub ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
 
 rule|norm n p : e [when e] => e
 ```
@@ -194,7 +195,11 @@ Here `n` is either an identifier or an annex name.
 - `ccon` and `cfun` declare external C continuations and C functions.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration.
-- `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
+- `axm` declares an axiom and may carry sub aliases, a normalizer, and curry or trip metadata.
+- A single sub is spelled as the third component of the annex name, just like at every use site: `axm %vec.fold.l`.
+- The `.(...)` group factors one type, one normalizer, and one curry/trip over several subs.
+- Only a `.(...)` group can introduce aliases, and only an `axm` may declare one; every other declaration binds a single entity.
+- Declaring the same tag again appends further subs, so `axm %vec.fold.l` and `axm %vec.fold.r` may sit in separate declarations.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
 
@@ -448,6 +453,7 @@ As a consequence, `_` may appear repeatedly in the same scope without conflict, 
 ### Annex
 
 Annex names live in a separate global namespace.
+Each alias of a sub is a name of its own, all of them denoting the same entity.
 
 ### Field Names of Sigmas
 

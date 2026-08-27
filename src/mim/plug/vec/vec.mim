@@ -24,8 +24,8 @@ plugin refly;
 /// |------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
 /// | ![Left Fold](https://upload.wikimedia.org/wikipedia/commons/5/5a/Left-fold-transformation.png) | ![Right Fold](https://upload.wikimedia.org/wikipedia/commons/3/3e/Right-fold-transformation.png) |
 ///
-axm %vec.fold(l): {A E: *} → {n: Nat} → [f: [A, E] → A] → [A, «n; E»] → A, normalize_fold;
-axm %vec.fold(r): {A E: *} → {n: Nat} → [f: [E, A] → A] → [«n; E», A] → A, normalize_fold;
+axm %vec.fold.l: {A E: *} → {n: Nat} → [f: [A, E] → A] → [A, «n; E»] → A, normalize_fold;
+axm %vec.fold.r: {A E: *} → {n: Nat} → [f: [E, A] → A] → [«n; E», A] → A, normalize_fold;
 ///
 /// ### %%vec.zip
 ///
@@ -41,7 +41,7 @@ axm %vec.zip: {ni n: Nat} → {Is: «ni; *», R: *} → [f: «i: ni; Is#i» → 
 ///
 /// Does the given predicate hold for all elements/at least one element?
 ///
-axm %vec.scan(for_all, exists): {E: *} → {n: Nat} → [p: E → Bool] → «n; E» → Bool, normalize_scan;
+axm %vec.scan.(for_all, exists): {E: *} → {n: Nat} → [p: E → Bool] → «n; E» → Bool, normalize_scan;
 ///
 /// ### %%vec.first / %%vec.last
 ///

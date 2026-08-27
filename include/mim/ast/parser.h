@@ -61,6 +61,8 @@ private:
     Dbg parse_id(std::string_view ctxt = {});
     std::pair<Annex&, bool> parse_annex(std::string_view ctxt = {});
     Dbg parse_name(std::string_view ctxt = {});
+    /// Splits the `sub` off an annex name: @p dbg is reduced to `%plugin.tag` and the `sub` returned.
+    Dbg split_annex_sub(Dbg& dbg);
     Ptr<Import> parse_import_or_plugin();
     Ptr<Import> parse_plugin();
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});

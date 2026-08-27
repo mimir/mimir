@@ -1,5 +1,7 @@
 #include "mim/ast/lexer.h"
 
+#include <algorithm>
+
 #include "mim/ast/ast.h"
 
 using namespace std::literals;
@@ -88,7 +90,13 @@ Tok Lexer::lex() {
         // clang-format on
 
         if (accept('%')) {
-            if (lex_id()) return {loc_, Tag::M_anx, sym()};
+            if (lex_id()) {
+                if (std::ranges::count(str_, '.') > 2) {
+                    ast().error(loc_, "annex name `{}` has more than one sub", str_);
+                    str_.erase(str_.find('.', str_.find('.') + 1)); // truncate to `%plugin.tag` to avoid cascades
+                }
+                return {loc_, Tag::M_anx, sym()};
+            }
             ast().error(loc_, "invalid axm name `{}`", str_);
             continue;
         }
@@ -159,8 +167,11 @@ Tok Lexer::lex() {
 }
 
 bool Lexer::lex_id() {
-    if (accept([](char32_t c) { return c == '_' || utf8::isalpha(c); })) {
-        while (accept([](char32_t c) { return c == '_' || c == '.' || utf8::isalnum(c); })) {}
+    auto is_head = [](char32_t c) { return c == '_' || utf8::isalpha(c); };
+    if (accept(is_head)) {
+        // A `.` only continues the name if another component follows, so `%plug.tag.(sub, ...)` lexes as `.` + `(`.
+        while (accept([](char32_t c) { return c == '_' || utf8::isalnum(c); })
+               || (ahead() == '.' && is_head(ahead(1)) && accept('.'))) {}
         return true;
     }
     return false;

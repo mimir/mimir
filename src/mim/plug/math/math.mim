@@ -40,7 +40,7 @@ let %math.PXR24   = %math.F %math.pxr24;
 /// ### %%math.arith
 ///
 /// Arithmetic operations.
-axm %math.arith(add, sub, mul, div, rem):
+axm %math.arith.(add, sub, mul, div, rem):
     {pe: «2; Nat»} → Nat → «2; %math.F pe» → %math.F pe, normalize_arith;
 
 lam %math.minus {pe: «2; Nat»} (m: Nat) (a: %math.F pe): %math.F pe =
@@ -69,7 +69,7 @@ lam %math.minus {pe: «2; Nat»} (m: Nat) (a: %math.F pe): %math.F pe =
 /// | `Im`   | `ieee754min` | x | o |
 /// | `IM`   | `ieee754max` | x | x |
 ///
-axm %math.extrema(im = fmin,       iM = fmax,
+axm %math.extrema.(im = fmin,       iM = fmax,
                   Im = ieee754min, IM = ieee754max):
     {pe: «2; Nat»} → Nat → «2; %math.F pe» → %math.F pe, normalize_extrema;
 ///
@@ -100,7 +100,7 @@ axm %math.extrema(im = fmin,       iM = fmax,
 /// | `AHFf` | `atanh`      | x | x | ox | area hyperbolic tangent   | \f$\textrm{atanh}\,x\f$ |
 /// | `AHFF` |              | x | x | xx | *unused*                  | -                       |
 ///
-axm %math.tri(ahff =  sin     , ahfF =  cos , ahFf =  tan , ahFF,
+axm %math.tri.(ahff =  sin     , ahfF =  cos , ahFf =  tan , ahFF,
               aHff =  sinh = h, aHfF =  cosh, aHFf =  tanh, aHFF,
               Ahff = asin  = a, AhfF = acos , AhFf = atan , AhFF,
               AHff = asinh    , AHfF = acosh, AHFf = atanh, AHFF):
@@ -121,7 +121,7 @@ axm %math.pow: {pe: «2; Nat»} → Nat → «2; %math.F pe» → %math.F pe, no
 /// | `%%math.rt.sq` | square root | \f$\sqrt{x}\f$     |
 /// | `%%math.rt.cb` | cube root   | \f$\sqrt[3]{x}\f$  |
 ///
-axm %math.rt(sq, cb): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_rt;
+axm %math.rt.(sq, cb): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_rt;
 ///
 /// ### %%math.exp
 ///
@@ -140,7 +140,7 @@ axm %math.rt(sq, cb): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, no
 /// | `LBb`  | `log10`        | x | xo | logarithm with base 10   | \f$\log_{10} x\f$ |
 /// | `LBB`  | *unused*       | x | xx | -                        | *unused*          |
 ///
-axm %math.exp(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
+axm %math.exp.(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
               Lbb = log, LbB = log2      , LBb = log10      , LBB):
     {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_exp;
 ///
@@ -153,7 +153,7 @@ axm %math.exp(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
 /// | `%%math.er.f`  | error function               | \f$\frac{2}{\sqrt\pi}\int_0^x e^{-t^2}\,dt\f$                            |
 /// | `%%math.er.fc` | complementary error function | \f$\frac{2}{\sqrt\pi}\int_x^\infty e^{-t^2}\,dt = 1 - \textrm{erf}(x)\f$ |
 ///
-axm %math.er(f, fc): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_er;
+axm %math.er.(f, fc): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_er;
 ///
 /// ### %%math.gamma
 ///
@@ -164,7 +164,7 @@ axm %math.er(f, fc): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, nor
 /// | `%%math.gamma.t` | gamma function                      | \f$\Gamma(x) = \int_0^\infty t^{x-1} e^{-t}\,dt\f$               |
 /// | `%%math.gamma.l` | natural logarithm of gamma function | \f$\ln \mid \int_0^\infty t^{x-1} e^{-t}\,dt \mid\f$ |
 ///
-axm %math.gamma(t, l): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_gamma;
+axm %math.gamma.(t, l): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_gamma;
 ///
 /// ### %%math.abs
 ///
@@ -187,7 +187,7 @@ axm %math.abs: {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize
 /// | `%%math.round.r`| [round to nearest integer](https://en.wikipedia.org/wiki/Rounding#Rounding_to_the_nearest_integer) | \f$round (x)\f$          |
 /// | `%%math.round.t`| [round towards zero](https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero)                  | \f$trunc (x)\f$          |
 ///
-axm %math.round(f,c,r,t): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_round;
+axm %math.round.(f,c,r,t): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe, normalize_round;
 ///
 /// ## Other Operations
 ///
@@ -218,7 +218,7 @@ axm %math.round(f,c,r,t): {pe: «2; Nat»} → Nat → %math.F pe → %math.F pe
 /// | `UGLe` | `une` | x | x | x | o | unordered or not equal       |
 /// | `UGLE` |   `t` | x | x | x | x | always true                  |
 ///
-axm %math.cmp(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
+axm %math.cmp.(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
               uGle =   g, uGlE =  ge, uGLe =  ne, uGLE =   o,
               Ugle =   u, UglE =  ue, UgLe =  ul, UgLE = ule,
               UGle =  ug, UGlE = uge, UGLe = une, UGLE =   t):
@@ -234,9 +234,9 @@ axm %math.is_finite: {pe: «2; Nat»} → Nat → %math.F pe → Bool;
 ///
 /// Conversion between floating-point and index types - both signed and unsigned - of different sizes.
 ///
-axm %math.conv(s2f, u2f): { ss:     Nat } → [dpe: «2; Nat»] →     Idx  ss → %math.F dpe, normalize_conv;
-axm %math.conv(f2s, f2u): {spe: «2; Nat»} → [ ds:     Nat ] → %math.F spe →     Idx  ds, normalize_conv;
-axm %math.conv(f2f):      {spe: «2; Nat»} → [dpe: «2; Nat»] → %math.F spe → %math.F dpe, normalize_conv;
+axm %math.conv.(s2f, u2f): { ss:     Nat } → [dpe: «2; Nat»] →     Idx  ss → %math.F dpe, normalize_conv;
+axm %math.conv.(f2s, f2u): {spe: «2; Nat»} → [ ds:     Nat ] → %math.F spe →     Idx  ds, normalize_conv;
+axm %math.conv.f2f:       {spe: «2; Nat»} → [dpe: «2; Nat»] → %math.F spe → %math.F dpe, normalize_conv;
 ///
 /// ### %%math.slf
 /// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)

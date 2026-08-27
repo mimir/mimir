@@ -203,11 +203,30 @@ Dbg Parser::parse_id(std::string_view ctxt) {
     return {missing(), driver().sym("<error>")};
 }
 
+Dbg Parser::split_annex_sub(Dbg& dbg) {
+    auto sv  = dbg.sym().view();
+    auto dot = sv.rfind('.');
+    if (dot == std::string_view::npos || sv.find('.') == dot) return {};
+
+    auto loc = dbg.loc();
+    auto sub = Dbg({loc.src, loc.begin + u32(dot + 1), loc.end}, ast().sym(sv.substr(dot + 1)));
+    dbg      = Dbg({loc.src, loc.begin, loc.begin + u32(dot)}, ast().sym(sv.substr(0, dot)));
+    return sub;
+}
+
 Dbg Parser::parse_name(std::string_view ctxt) {
-    if (auto tok = accept(Tag::M_anx)) return tok.dbg();
-    if (auto tok = accept(Tag::M_id)) return tok.dbg();
-    syntax_err("identifier or annex name", ctxt);
-    return Dbg(missing(), ast().sym("<error>"));
+    Dbg dbg;
+    if (auto tok = accept(Tag::M_anx))
+        dbg = tok.dbg();
+    else if (auto tok = accept(Tag::M_id))
+        dbg = tok.dbg();
+    else {
+        syntax_err("identifier or annex name", ctxt);
+        return Dbg(missing(), ast().sym("<error>"));
+    }
+
+    if (auto dot = accept(Tag::T_dot)) ast().error(dot.loc(), "only an `axm` may declare a group of subs");
+    return dbg;
 }
 
 Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {
@@ -651,12 +670,20 @@ Ptr<ValDecl> Parser::parse_axm_decl() {
     }
 
     std::deque<Ptrs<AxmDecl::Alias>> subs;
-    if (ahead().isa(Tag::D_paren_l)) {
-        parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
+    auto anx = dbg.sym(); // the name as written, including a dotted sub
+    if (auto sub = split_annex_sub(dbg)) subs.emplace_back().emplace_back(ptr<AxmDecl::Alias>(sub));
+
+    if (auto dot = accept(Tag::T_dot); dot || ahead().isa(Tag::D_paren_l)) {
+        if (!dot) ast().warn(ahead().loc(), "a group of subs must be introduced with `.`; use `{}.(...)`", anx);
+        if (!subs.empty()) {
+            ast().error(ahead().loc(), "axm `{}` already names a sub and cannot declare a group of subs", dbg);
+            subs.clear();
+        }
+        parse_list("group of subs of an axm", Tag::D_paren_l, [&]() {
             auto& aliases = subs.emplace_back();
-            aliases.emplace_back(ptr<AxmDecl::Alias>(parse_id("tag of an axm")));
+            aliases.emplace_back(ptr<AxmDecl::Alias>(parse_id("sub of an axm")));
             while (accept(Tag::T_assign))
-                aliases.emplace_back(ptr<AxmDecl::Alias>(parse_id("alias of an axm tag")));
+                aliases.emplace_back(ptr<AxmDecl::Alias>(parse_id("alias of an axm sub")));
         });
     }
 

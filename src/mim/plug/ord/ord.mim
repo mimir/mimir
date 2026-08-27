@@ -35,8 +35,8 @@ axm %ord.Map: %ord.Key → * → *;
 ///
 /// Creates a set / map from a list of values / key-value pairs.
 ///
-axm %ord.init(set): [K: %ord.Key] →          {n: Nat} → «n;  K#T    » → %ord.Set K  , normalize_init;
-axm %ord.init(map): [K: %ord.Key] → {V: *} → {n: Nat} → «n; [K#T, V]» → %ord.Map K V, normalize_init;
+axm %ord.init.set: [K: %ord.Key] →          {n: Nat} → «n;  K#T    » → %ord.Set K  , normalize_init;
+axm %ord.init.map: [K: %ord.Key] → {V: *} → {n: Nat} → «n; [K#T, V]» → %ord.Map K V, normalize_init;
 ///
 /// ### %%ord.create
 ///
@@ -51,8 +51,8 @@ lam %ord.create_map [K: %ord.Key] (V: *) : %ord.Map K V = %ord.init.map K @V @0 
 ///
 /// Yields the number of elements in the container.
 ///
-axm %ord.size(set): {K: %ord.Key} →          %ord.Set K   → Nat, normalize_size;
-axm %ord.size(map): {K: %ord.Key} → {V: *} → %ord.Map K V → Nat, normalize_size;
+axm %ord.size.set: {K: %ord.Key} →          %ord.Set K   → Nat, normalize_size;
+axm %ord.size.map: {K: %ord.Key} → {V: *} → %ord.Map K V → Nat, normalize_size;
 ///
 /// ### %%ord.is_empty
 ///
@@ -74,8 +74,8 @@ axm %ord.get: {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → %option.Opt V
 ///
 /// Does the container contain the given key?
 ///
-axm %ord.contains(set): {K: %ord.Key} →          [%ord.Set K  , K#T] → Bool, normalize_contains;
-axm %ord.contains(map): {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → Bool, normalize_contains;
+axm %ord.contains.set: {K: %ord.Key} →          [%ord.Set K  , K#T] → Bool, normalize_contains;
+axm %ord.contains.map: {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → Bool, normalize_contains;
 ///
 /// ## Modifiers
 ///
@@ -83,5 +83,5 @@ axm %ord.contains(map): {K: %ord.Key} → {V: *} → [%ord.Map K V, K#T] → Boo
 ///
 /// Inserts a key / key-value pair into the container.
 ///
-axm %ord.insert(set): {K: %ord.Key} →          [%ord.Set K  ,  K#T    ] → %ord.Set K  , normalize_insert;
-axm %ord.insert(map): {K: %ord.Key} → {V: *} → [%ord.Map K V, [K#T, V]] → %ord.Map K V, normalize_insert;
+axm %ord.insert.set: {K: %ord.Key} →          [%ord.Set K  ,  K#T    ] → %ord.Set K  , normalize_insert;
+axm %ord.insert.map: {K: %ord.Key} → {V: *} → [%ord.Map K V, [K#T, V]] → %ord.Map K V, normalize_insert;

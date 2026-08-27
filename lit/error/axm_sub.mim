@@ -1,0 +1,14 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+axm %foo.a.b.c: Nat → Nat;
+axm %foo.d.e(f, g): Nat → Nat;
+lam %foo.h.(x, y): Nat = 0;
+
+// CHECK:      {{.*}}axm_sub.mim:2:5-2:14: error: annex name `%foo.a.b.c` has more than one sub
+// CHECK-NEXT: 2 | axm %foo.a.b.c: Nat → Nat;
+// CHECK-NEXT:   |     ^^^^^^^^^^
+// CHECK:      {{.*}}axm_sub.mim:3:13: error: axm `%foo.d` already names a sub and cannot declare a group of subs
+// CHECK-NEXT: 3 | axm %foo.d.e(f, g): Nat → Nat;
+// CHECK-NEXT:   |             ^
+// CHECK:      {{.*}}axm_sub.mim:4:11: error: only an `axm` may declare a group of subs
+// CHECK-NEXT: 4 | lam %foo.h.(x, y): Nat = 0;
+// CHECK-NEXT:   |           ^

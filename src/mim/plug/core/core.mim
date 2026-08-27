@@ -18,7 +18,7 @@ plugin mem;
 /// `%%core.nat.mod (a, b)` yields `a` if `b` is `0`. <br>
 /// This holds both statically (literal folding) and dynamically (runtime lowering).
 ///
-axm %core.nat(add, sub, mul, div, mod): «2; Nat» → Nat, normalize_nat;
+axm %core.nat.(add, sub, mul, div, mod): «2; Nat» → Nat, normalize_nat;
 ///
 /// ### %%core.ncmp
 ///
@@ -38,7 +38,7 @@ axm %core.nat(add, sub, mul, div, mod): «2; Nat» → Nat, normalize_nat;
 /// | `GLe`  | `ne`  | x | x | o | not equal        |
 /// | `GLE`  | `t`   | x | x | x | always true      |
 ///
-axm %core.ncmp(gle = f, glE =  e, gLe =  l, gLE = le,
+axm %core.ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
                Gle = g, GlE = ge, GLe = ne, GLE =  t):
     «2; Nat» → Bool, normalize_ncmp;
 ///
@@ -96,7 +96,7 @@ axm %core.idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
 ///
 /// @todo Add type constraint that `bit1` is only allowed for powers of two.
 ///
-axm %core.bit1(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normalize_bit1;
+axm %core.bit1.(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normalize_bit1;
 ///
 /// ### %%core.bit2
 ///
@@ -123,7 +123,7 @@ axm %core.bit1(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normal
 ///
 /// @todo Add type constraint that `bit2` is only allowed for powers of two.
 ///
-axm %core.bit2( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
+axm %core.bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
                 and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
     {s: Nat} → [m: Nat] → «2; Idx s» → Idx s , normalize_bit2;
 ///
@@ -139,7 +139,7 @@ axm %core.bit2( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
 /// * `shr.l` divides the unsigned representative by `2^b`.
 /// * `shr.a` divides the signed representative by `2^b`, rounding toward `-∞`.
 ///
-axm %core.shr(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
+axm %core.shr.(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 ///
 /// ### %%core.wrap
 ///
@@ -150,7 +150,7 @@ axm %core.shr(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 /// It multiplies the unsigned representative by `2^b` and then wraps modulo `s`.
 /// `nuw` and `nsw` check the unwrapped unsigned and signed results, respectively.
 ///
-axm %core.wrap(add, sub, mul, shl): {s: Nat} → [m: Nat] → «2; Idx s» → Idx s, normalize_wrap;
+axm %core.wrap.(add, sub, mul, shl): {s: Nat} → [m: Nat] → «2; Idx s» → Idx s, normalize_wrap;
 
 lam %core.minus {s: Nat} (m: Nat) (a: Idx s): Idx s = %core.wrap.sub m (0:(Idx s), a);
 ///
@@ -161,7 +161,7 @@ lam %core.minus {s: Nat} (m: Nat) (a: Idx s): Idx s = %core.wrap.sub m (0:(Idx s
 /// @warning Division by zero is *undefined behavior* and a visible side effect.
 /// For this reason, these axioms expect a `%%mem.M`.
 ///
-axm %core.div(sdiv, udiv, srem, urem):
+axm %core.div.(sdiv, udiv, srem, urem):
     {s a: Nat} → [%mem.M a, «2; Idx s»] → [%mem.M a, Idx s], normalize_div;
 ///
 /// ### %%core.icmp
@@ -227,7 +227,7 @@ axm %core.div(sdiv, udiv, srem, urem):
 /// | `XYGLe` |  `ne`  | x | x | x | x | o | not equal                                       |
 /// | `XYGLE` |  `t`   | x | x | x | x | x | always true                                     |
 ///
-axm %core.icmp(xygle = f,  xyglE = e,   xygLe,      xygLE,
+axm %core.icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
                xyGle,      xyGlE,       xyGLe,      xyGLE,
                xYgle,      xYglE,       xYgLe = sl, xYgLE = sle,
                xYGle = ug, xYGlE = uge, xYGLe,      xYGLE,
@@ -243,7 +243,7 @@ axm %core.icmp(xygle = f,  xyglE = e,   xygLe,      xygLE,
 /// * un`s`igned or `S`igned
 /// * `m`inimum or `M`aximum
 ///
-axm %core.extrema(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
+axm %core.extrema.(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
 ///
 /// ### %%core.abs
 ///
@@ -261,7 +261,7 @@ axm %core.abs: {s a: Nat} → [%mem.M a, Idx s] → [%mem.M a, Idx s], normalize
 /// * `conv.u` preserves the unsigned representative modulo the destination carrier.
 /// * `conv.s` preserves the signed representative modulo the destination carrier.
 ///
-axm %core.conv(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
+axm %core.conv.(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
 ///
 /// ### %%core.bitcast
 ///
@@ -276,14 +276,14 @@ axm %core.bitcast: {S: *} → [D: *] → S → D, normalize_bitcast;
 ///
 /// Yields the size or align of a type.
 ///
-axm %core.trait(size, align): * → Nat, normalize_trait;
+axm %core.trait.(size, align): * → Nat, normalize_trait;
 ///
 /// ### %%core.pe
 ///
 /// Steers the partial evaluator.
 ///
-axm %core.pe(hlt, run):  {T: *} → T → T, normalize_pe;
-axm %core.pe(is_closed): {T: *} → T → Bool, normalize_pe;
+axm %core.pe.(hlt, run): {T: *} → T → T, normalize_pe;
+axm %core.pe.is_closed:  {T: *} → T → Bool, normalize_pe;
 ///
 /// ### %%core.select
 ///

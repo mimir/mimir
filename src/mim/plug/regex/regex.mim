@@ -105,7 +105,7 @@ axm %regex.empty: RE, 0;
 /// * `star`: `*` - zero or more
 /// * `plus`: `+` - one or more
 ///
-axm %regex.quant(optional,star,plus): RE → RE, normalize_quant, 1;
+axm %regex.quant.(optional,star,plus): RE → RE, normalize_quant, 1;
 ///
 /// ## Phases
 ///
