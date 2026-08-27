@@ -10,8 +10,8 @@ plugin affine;
 plugin opt;
 
 fun add (x: Nat, y: «1; Nat»)@tt: Nat = return (%core.nat.add (x, y#0₁));
-lam mo (o: «3; %affine.index»): «2; %affine.index» = (o#0_3, o#1_3);
-lam mi (o: «3; %affine.index»): «3; %affine.index» = o;
+lam mo (o: «3; %affine.Idx»): «2; %affine.Idx» = (o#0_3, o#1_3);
+lam mi (o: «3; %affine.Idx»): «3; %affine.Idx» = o;
 
 // out[i, j] = Σ_k in[i, j, k] over «2, 4, 8» with the reduction dim strip-mined by 2:
 // the domain becomes (2, 4, 4, 2) with two reduction dims.

@@ -135,7 +135,7 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     // Implicit insertion at a coercion site: @p val expects implicit arguments, but @p type is an
     // *explicit* function type. Fill them with Hole%s, as World::implicit_app does at application sites.
     // This lets polymorphic functions be passed as arguments, e.g. `%%affine.id` to a parameter of type
-    // `«r; %%affine.index» → «r; %%affine.index»`, without writing `%%affine.id @r`.
+    // `«r; %%affine.Idx» → «r; %%affine.idx»`, without writing `%%affine.id @r`.
     // Only do this when @p type is a Pi: if it is a Hole, we'd commit before knowing what's expected;
     // if it's an aggregate, we might consume implicits belonging to the value's element type.
     if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {

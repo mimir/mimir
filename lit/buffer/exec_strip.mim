@@ -15,8 +15,8 @@ plugin buffer;
 plugin cps;
 
 fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
-lam mo (i a b: %affine.index): «1; %affine.index» = i;
-lam mi (i a b: %affine.index): «3; %affine.index» = (i, a, b);
+lam mo (i a b: %affine.Idx): «1; %affine.Idx» = i;
+lam mi (i a b: %affine.Idx): «3; %affine.Idx» = (i, a, b);
 
 // out[i] = sum_{a, b} input[i][a][b], with `a` strip-mined by 4.
 fun extern sum_all (input: «2, 8, 3; I32»): «2; I32» =

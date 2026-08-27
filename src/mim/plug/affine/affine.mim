@@ -31,39 +31,38 @@ axm %affine.For: {m n: Nat, Ts: «n; *»}
 /// vector loop; `%%affine.lower_for` strips the wrapper and re-attaches it to the loop's exit
 /// condition for the backend (when the ll plugin is loaded — otherwise it is dropped).
 ///
-/// ## Affine Index Operations
+/// ## Affine Index idx
 ///
-/// ### %%affine.index
+/// ### %%affine.Idx
 /// The affine index type is an opaque type that can only be manipulated through the following operations.
 ///
-axm %affine.index: *;
+axm %affine.Idx: *;
 ///
 /// ### %%affine.constant
-/// Constructs an affine index from a constant natural number.
+/// Constructs an affine index idx a constant natural number.
 ///
-axm %affine.constant: Nat → %affine.index;
+axm %affine.constant: Nat → %affine.Idx;
 ///
 /// ### %%affine.op(add,sub)
 /// Performs addition and subtraction on affine indices.
 ///
-axm %affine.op(add,sub): [%affine.index, %affine.index] → %affine.index;
+axm %affine.op(add,sub): [%affine.Idx, %affine.Idx] → %affine.Idx;
 ///
 /// ### %%affine.op(neg)
-/// Negates an affine index.
-///
-axm %affine.op(neg): %affine.index → %affine.index;
+/// Negates an affine indexidx
+axm %affine.op(neg): %affine.Idx → %affine.Idx;
 ///
 /// ### %%affine.semiop(mul,ceildiv,floordiv,mod)
 /// Performs semi-linear operations on affine indices.
 /// The second argument is a natural number that must be constant with regard to the indices.
 ///
-axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.index, Nat] → %affine.index;
+axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.Idx, Nat] → %affine.Idx;
 ///
 /// ### %%affine.op.mul
-/// Performs multiplication of an affine index with a constant natural number.
+/// Performs multiplication of an affine index idx a constant natural number.
 /// The second argument must be a *closed* constant - a stronger requirement than %%affine.semiop imposes - which is enforced via %%refly.check.
 ///
-lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index =
+lam %affine.op.mul (d : %affine.Idx, c : Nat): %affine.Idx =
     %affine.semiop.mul(d, %refly.check (%core.pe.is_closed(c), c, "The second argument of %affine.op.mul must be a constant."));
 
 ///
@@ -74,7 +73,7 @@ lam %affine.op.mul (d : %affine.index, c : Nat): %affine.index =
 ///
 axm %affine.map: {m n: Nat}
                → {sin: «n; Nat», sout: «m; Nat»}
-               → ([«n; %affine.index»] → «m; %affine.index»)
+               → ([«n; %affine.Idx»] → «m; %affine.Idx»)
                → «i: n; Idx (sin#i)»
                → (%mem.M 0)
                → [(%mem.M 0), «i: m; Idx (sout#i)»];
@@ -83,19 +82,19 @@ axm %affine.map: {m n: Nat}
 /// ### %%affine.id
 /// The identity map on affine indices.
 ///
-lam %affine.id {r: Nat} (o: «r; %affine.index»): «r; %affine.index» = o;
+lam %affine.id {r: Nat} (o: «r; %affine.Idx»): «r; %affine.Idx» = o;
 ///
 /// ### %%affine.linearize
 /// Row-major flattening of a multi-index: `linearize(idxs, s) = Σ_k idxs#k · (∏_{j>k} s#j)`.
 /// `s` is the (row-major) shape; only its rank `n` need be a literal.
 ///
-axm %affine.linearize: {n: Nat} → [idxs: «n; %affine.index», s: «n; Nat»] → %affine.index;
+axm %affine.linearize: {n: Nat} → [idxs: «n; %affine.Idx», s: «n; Nat»] → %affine.Idx;
 ///
 /// ### %%affine.delinearize
 /// Row-major unflattening: `delinearize(lin, s)#d = (lin floordiv (∏_{j>d} s#j)) mod s#d`.
 /// The inverse of %affine.linearize; only the rank `m` of `s` need be a literal.
 ///
-axm %affine.delinearize: {m: Nat} → [lin: %affine.index, s: «m; Nat»] → «m; %affine.index»;
+axm %affine.delinearize: {m: Nat} → [lin: %affine.Idx, s: «m; Nat»] → «m; %affine.Idx»;
 ///
 /// ## Phases
 ///
@@ -107,6 +106,6 @@ axm %affine.lower_for: %compile.Phase;
 ///
 /// ### %%affine.lower_index
 ///
-/// Lowers the affine index algebra (%%%affine.index, %%%affine.constant, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
+/// Lowers the affine index idx (%%%affine.Idx, %%%affine.constant, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
 ///
 axm %affine.lower_index: %compile.Phase;

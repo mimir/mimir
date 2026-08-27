@@ -117,9 +117,9 @@ axm %tensor.map_reduce_post: {nis nps: Nat}
                               Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                            → [f: Fn [To, «i: nis; Tis#i»] → To, init: To,
                               post: Fn [To, «j: nps; Tps#j»] → Tp]
-                           → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
-                           → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»,
-                              post_maps: «j: nps; ([«Ro; %affine.index»] → «Rps#j; %affine.index»)»]
+                           → [map_out: [«Rn; %affine.Idx»] → «Ro; %affine.Idx»]
+                           → [maps: «i: nis; ([«Rn; %affine.Idx»] → «Ris#i; %affine.Idx»)»,
+                              post_maps: «j: nps; ([«Ro; %affine.Idx»] → «Rps#j; %affine.Idx»)»]
                            → [is: «i: nis; «Sis#i; Tis#i»», post_is: «j: nps; «Sps#j; Tps#j»»]
                            → «So; Tp»;
 
@@ -175,8 +175,8 @@ lam %tensor.map_reduce {nis: Nat} {To: *, Ro Rn: Nat}
                        (So: «Ro; Nat», Sr: «Rn; Nat»)
                        {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                        (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
-                       (map_out: [«Rn; %affine.index»] → «Ro; %affine.index»)
-                       (maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»)
+                       (map_out: [«Rn; %affine.Idx»] → «Ro; %affine.Idx»)
+                       (maps: «i: nis; ([«Rn; %affine.Idx»] → «Ris#i; %affine.Idx»)»)
                        (is: «i: nis; «Sis#i; Tis#i»»): «So; To» =
     %tensor.map_reduce_post
         (So, Sr, %tensor.mk_sched (Rn, 0))
@@ -212,8 +212,8 @@ let Tileable = [
     vdim: Nat, unroll: Nat,
     retile: [Ro_n Rr_n: Nat]
           → [So_n: «Ro_n; Nat», Sr_n: «%core.nat.add (Ro_n, Rr_n); Nat», vdim_n unroll_n: Nat]
-          → [iota:  «%core.nat.add (Ro_n, Rr_n); %affine.index» → «%core.nat.add (Ro, Rr); %affine.index»,
-             omega: [«Ro; %affine.index», «%core.nat.add (Ro_n, Rr_n); %affine.index»] → «Ro_n; %affine.index»]
+          → [iota:  «%core.nat.add (Ro_n, Rr_n); %affine.Idx» → «%core.nat.add (Ro, Rr); %affine.Idx»,
+             omega: [«Ro; %affine.Idx», «%core.nat.add (Ro_n, Rr_n); %affine.Idx»] → «Ro_n; %affine.Idx»]
           → Out (Ro_n, So_n),
 ];
 
@@ -235,17 +235,17 @@ lam %tensor.mr_tileable
                 (So: «Ro; Nat», oax: «Ro; Nat», Sr: «%core.nat.add (Ro, Rr); Nat»)
                 {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                 (f: Fn [To, «i: nis; Tis#i»] → To, init: To, post: Fn [To, []] → Tp)
-                (map_out: [«%core.nat.add (Ro, Rr); %affine.index»] → «Ro; %affine.index»)
-                (maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.index»] → «Ris#i; %affine.index»)»)
+                (map_out: [«%core.nat.add (Ro, Rr); %affine.Idx»] → «Ro; %affine.Idx»)
+                (maps: «i: nis; ([«%core.nat.add (Ro, Rr); %affine.Idx»] → «Ris#i; %affine.Idx»)»)
                 (is: «i: nis; «Sis#i; Tis#i»»)
               : Tileable =
     lam out_t (ro: Nat, so: «ro; Nat»): * = «so; Tp»;
     lam retile (Ro_n Rr_n: Nat)
                (So_n: «Ro_n; Nat», Sr_n: «%core.nat.add (Ro_n, Rr_n); Nat», vdim_n unroll_n: Nat)
-               (iota:  «%core.nat.add (Ro_n, Rr_n); %affine.index» → «%core.nat.add (Ro, Rr); %affine.index»,
-                omega: [«Ro; %affine.index», «%core.nat.add (Ro_n, Rr_n); %affine.index»] → «Ro_n; %affine.index»)
+               (iota:  «%core.nat.add (Ro_n, Rr_n); %affine.Idx» → «%core.nat.add (Ro, Rr); %affine.Idx»,
+                omega: [«Ro; %affine.Idx», «%core.nat.add (Ro_n, Rr_n); %affine.Idx»] → «Ro_n; %affine.Idx»)
              : «So_n; Tp» =
-        lam map_out_n (o: «%core.nat.add (Ro_n, Rr_n); %affine.index»): «Ro_n; %affine.index» =
+        lam map_out_n (o: «%core.nat.add (Ro_n, Rr_n); %affine.Idx»): «Ro_n; %affine.Idx» =
             omega (map_out (iota o), o);
         %tensor.map_reduce_post @(nis, 0) @(To, Tp, Ro_n, %core.nat.add (Ro_n, Rr_n), SchedT)
             (So_n, Sr_n, %tensor.mk_sched (vdim_n, unroll_n))
@@ -257,8 +257,8 @@ lam %tensor.mr_tileable
 
 /// Materialize a Tileable over its current domain and schedule (identity reindexing).
 lam %tensor.materialize (t: Tileable): t#Out (t#Ro, t#So) =
-    lam id_i (o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «%core.nat.add (t#Ro, t#Rr); %affine.index» = o;
-    lam id_o (oo: «t#Ro; %affine.index», o: «%core.nat.add (t#Ro, t#Rr); %affine.index»): «t#Ro; %affine.index» = oo;
+    lam id_i (o: «%core.nat.add (t#Ro, t#Rr); %affine.Idx»): «%core.nat.add (t#Ro, t#Rr); %affine.Idx» = o;
+    lam id_o (oo: «t#Ro; %affine.Idx», o: «%core.nat.add (t#Ro, t#Rr); %affine.Idx»): «t#Ro; %affine.Idx» = oo;
     t#retile (t#Ro, t#Rr) (t#So, t#Sr, t#vdim, t#unroll) (id_i, id_o);
 
 /// vectorize: run dim `d` as the innermost, unit-stride vector loop (per-cell fold order is
@@ -290,12 +290,12 @@ lam %tensor.interchange (t: Tileable, perm: «%core.nat.add (t#Ro, t#Rr); Nat»)
     // output axis its old dim perm#j wrote.
     let oax_n = ‹j: t#Ro; t#oax#(%core.idx (t#Ro) 0 (perm_ok#(%core.idx r 0 (%core.bitcast Nat j))))›;
     // iota: old dim i is found at the new position j with perm#j = i.
-    lam iota_p (o: «r; %affine.index»): «r; %affine.index» =
+    lam iota_p (o: «r; %affine.Idx»): «r; %affine.Idx» =
         ‹i: r; o#(%option.unwrap_unsafe (%vec.first %core.ncmp.e (perm_ok, %core.bitcast Nat i)))›;
     lam retile_n (ro_m rr_m: Nat)
                  (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat», vdim_m unroll_m: Nat)
-                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r; %affine.index»,
-                  omega: [«t#Ro; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.Idx» → «r; %affine.Idx»,
+                  omega: [«t#Ro; %affine.Idx», «%core.nat.add (ro_m, rr_m); %affine.Idx»] → «ro_m; %affine.Idx»)
                : t#Out (ro_m, so_m) =
         t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (comp_map (iota_p, iota), omega);
     (t#Out, t#Ro, t#Rr, t#So, oax_n, sr_n, vdim_n, t#unroll, retile_n);
@@ -323,7 +323,7 @@ lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
            v#(%core.idx n 0 (%core.nat.sub (ii, 1))))))›;
 
 /// Recombine a split loop vector (m = n+1): old#d = new#d · ts + new#(d+1).
-lam split_iota (m n d ts: Nat) (o: «m; %affine.index»): «n; %affine.index» =
+lam split_iota (m n d ts: Nat) (o: «m; %affine.Idx»): «n; %affine.Idx» =
     ‹j: n; let jj = %core.bitcast Nat j;
            %core.select (%core.ncmp.l (jj, d), o#(%core.idx m 0 jj),
            %core.select (%core.ncmp.e (jj, d),
@@ -332,7 +332,7 @@ lam split_iota (m n d ts: Nat) (o: «m; %affine.index»): «n; %affine.index» =
            o#(%core.idx m 0 (%core.nat.add (jj, 1)))))›;
 
 /// Split an output coordinate vector (m = n+1): new#a = old#a ⌊/⌋ ts, new#(a+1) = old#a mod ts.
-lam split_omega (m n a ts: Nat) (oc: «n; %affine.index»): «m; %affine.index» =
+lam split_omega (m n a ts: Nat) (oc: «n; %affine.Idx»): «m; %affine.Idx» =
     ‹j: m; let jj = %core.bitcast Nat j;
            %core.select (%core.ncmp.l (jj, a), oc#(%core.idx n 0 jj),
            %core.select (%core.ncmp.e (jj, a), %affine.semiop.floordiv (oc#(%core.idx n 0 a), ts),
@@ -356,8 +356,8 @@ lam %tensor.strip_mine_red (t: Tileable, d ts: Nat): Tileable =
                                  t#unroll, %core.nat.add (t#unroll, 1));
     lam retile_n (ro_m rr_m: Nat)
                  (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat», vdim_m unroll_m: Nat)
-                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r_n; %affine.index»,
-                  omega: [«t#Ro; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.Idx» → «r_n; %affine.Idx»,
+                  omega: [«t#Ro; %affine.Idx», «%core.nat.add (ro_m, rr_m); %affine.Idx»] → «ro_m; %affine.Idx»)
                : t#Out (ro_m, so_m) =
         t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m)
                  (comp_map (split_iota (r_n, r, d, ts), iota), omega);
@@ -390,12 +390,12 @@ lam %tensor.strip_mine_par (t: Tileable, d ts: Nat): Tileable =
                                r_n);
     lam retile_n (ro_m rr_m: Nat)
                  (so_m: «ro_m; Nat», sr_m: «%core.nat.add (ro_m, rr_m); Nat», vdim_m unroll_m: Nat)
-                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.index» → «r_n; %affine.index»,
-                  omega: [«ro_n; %affine.index», «%core.nat.add (ro_m, rr_m); %affine.index»] → «ro_m; %affine.index»)
+                 (iota:  «%core.nat.add (ro_m, rr_m); %affine.Idx» → «r_n; %affine.Idx»,
+                  omega: [«ro_n; %affine.Idx», «%core.nat.add (ro_m, rr_m); %affine.Idx»] → «ro_m; %affine.Idx»)
                : t#Out (ro_m, so_m) =
-        lam iota_c  (o: «%core.nat.add (ro_m, rr_m); %affine.index»): «r; %affine.index» =
+        lam iota_c  (o: «%core.nat.add (ro_m, rr_m); %affine.Idx»): «r; %affine.Idx» =
             split_iota (r_n, r, d, ts) (iota o);
-        lam omega_c (oo: «t#Ro; %affine.index», ov: «%core.nat.add (ro_m, rr_m); %affine.index»): «ro_m; %affine.index» =
+        lam omega_c (oo: «t#Ro; %affine.Idx», ov: «%core.nat.add (ro_m, rr_m); %affine.Idx»): «ro_m; %affine.Idx» =
             omega (split_omega (ro_n, t#Ro, a, ts) oo, ov);
         t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (iota_c, omega_c);
     (t#Out, ro_n, t#Rr,
@@ -548,7 +548,7 @@ axm %tensor.repeat: {T: *, r: Nat}
 
 fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
 /// `o ↦ (o#d mod s_in#d)_d`: the wrap-around (tiling) read map.
-lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.Idx»): «r; %affine.Idx» =
     ‹d: r; %affine.semiop.mod (o#d, s_in#d)›;
 
 lam %tensor.repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
@@ -570,7 +570,7 @@ axm %tensor.reshape: {T: *, r_in r_out: Nat}
 
 /// `o ↦ delinearize(linearize(o, s_out), s_in)`: the row-major output→input index map.
 lam %tensor.reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat»)
-                (o: «r_out; %affine.index»): «r_in; %affine.index» =
+                (o: «r_out; %affine.Idx»): «r_in; %affine.Idx» =
     %affine.delinearize (%affine.linearize (o, s_out), s_in);
 
 lam %tensor.reshape_impl {T: *, r_in r_out: Nat}
@@ -590,7 +590,7 @@ axm %tensor.slice: {T: *, r: Nat}
                  → «s_out; T», normalize_slice;
 
 /// `o ↦ (start#d + step#d · o#d)_d`: the strided read map.
-lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; %affine.Idx»): «r; %affine.Idx» =
     ‹d: r; %affine.op.add (%affine.semiop.mul (o#d, step#d), %affine.constant (start#d))›;
 
 lam %tensor.slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
@@ -608,7 +608,7 @@ axm %tensor.flip: {T: *, r: Nat}
                 → «s_in; T», normalize_flip;
 
 /// `o ↦ ((s_in#d − 1) − o#d)_d`: the reverse read map.
-lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.index»): «r; %affine.index» =
+lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; %affine.Idx»): «r; %affine.Idx» =
     ‹d: r; %affine.op.sub (%affine.constant (%core.nat.sub (s_in#d, 1)), o#d)›;
 
 lam %tensor.flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
@@ -689,12 +689,12 @@ lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; Nat�
 /// Fused multiply-add over the ring `R`; `ab#0` is the padded-input element, `ab#1` the weight.
 fun conv_fun [R: %tensor.Ring] (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
 
-/// The full `«7; %affine.index»` loop vector is `o = (n, co, oh, ow, ci, kh, kw)`:
+/// The full `«7; %affine.Idx»` loop vector is `o = (n, co, oh, ow, ci, kh, kw)`:
 /// indices into `o`: 0 n, 1 co, 2 oh, 3 ow, 4 ci, 5 kh, 6 kw. The weight read map `(co, ci, kh, kw)` and the output
 /// write map `(n, co, oh, ow)` are `%tensor.proj_map` projections of it; only the padded-input read needs arithmetic.
 ///
 /// Padded-input read map: `(n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
-lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; %affine.index»): «4; %affine.index» =
+lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; %affine.Idx»): «4; %affine.Idx» =
     (o#0_7, o#4_7,
      %affine.op.add (%affine.semiop.mul (o#2_7, stride#0_2), %affine.semiop.mul (o#5_7, dilation#0_2)),
      %affine.op.add (%affine.semiop.mul (o#3_7, stride#1_2), %affine.semiop.mul (o#6_7, dilation#1_2)));
@@ -751,7 +751,7 @@ fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (a
 
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
 /// `(n, c, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
-lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; %affine.index»): «4; %affine.index» =
+lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; %affine.Idx»): «4; %affine.Idx» =
     (o#0_6, o#1_6,
      %affine.op.add (%affine.semiop.mul (o#2_6, stride#0_2), %affine.semiop.mul (o#4_6, dilation#0_2)),
      %affine.op.add (%affine.semiop.mul (o#3_6, stride#1_2), %affine.semiop.mul (o#5_6, dilation#1_2)));
@@ -933,7 +933,7 @@ axm %tensor.transpose: {T: *, r: Nat}
                      → «transpose_shape (s, permutation); T»;
 
 /// `o ↦ (o#(perm#0), …, o#(perm#(r−1)))`: input axis `j` reads output-loop var `o#(perm#j)`.
-lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; %affine.index»): «r; %affine.index» = ‹j: r; o#(perm#j)›;
+lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; %affine.Idx»): «r; %affine.Idx» = ‹j: r; o#(perm#j)›;
 
 lam %tensor.transpose_impl {T: *, r: Nat}
                            (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
@@ -979,7 +979,7 @@ axm %tensor.broadcast_in_dim: {T: *, r_in r_out: Nat}
 /// `o ↦ (o#(index#i) · [s_in#i ≠ 1])_i`: input axis `i` reads output-loop var `o#(index#i)` (the transpose), unless
 /// it is a broadcast axis (`s_in#i = 1`), which reads index 0.
 lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
-            (o: «r_out; %affine.index»): «r_in; %affine.index» =
+            (o: «r_out; %affine.Idx»): «r_in; %affine.Idx» =
     ‹i: r_in; %affine.semiop.mul (o#(index#i), %core.select (%core.ncmp.e (s_in#i, 1), 0, 1))›;
 
 lam %tensor.broadcast_in_dim_impl {T: *, r_in r_out: Nat}

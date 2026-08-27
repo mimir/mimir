@@ -18,9 +18,9 @@ plugin buffer;
 plugin btensor;
 plugin cps;
 
-fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
-lam mo (i j k a: %affine.index): «3; %affine.index» = (i, j, k);
-lam mi (i j k a: %affine.index): «4; %affine.index» = (i, j, k, a);
+fun add (x y: I32)@tt = return (%core.wrap.add 0 (x, y));
+lam mo (i j k a: %affine.Idx): «3; %affine.Idx» = (i, j, k);
+lam mi (i j k a: %affine.Idx): «4; %affine.Idx» = (i, j, k, a);
 
 // out[i,j,k] = sum_a input[i,j,k,a], scheduled with `sched`.
 lam sum_last (sched: [N: *] → ([vdim unroll: Nat] → N) → N)

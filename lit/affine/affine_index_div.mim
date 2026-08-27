@@ -11,20 +11,18 @@ plugin core;
 plugin affine;
 plugin mem;
 
-lam f (idx: «2; %affine.index»): «2; %affine.index» =
-    ( %affine.semiop.floordiv (idx#0₂, 3)
-    , %affine.semiop.mod (idx#1₂, 3)
-    );
+lam f (a b: %affine.Idx): «2; %affine.Idx» =
+    (%affine.semiop.floordiv (a, 3) , %affine.semiop.mod (b, 3));
 
 con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I32, 0), 0), return: Cn [%mem.M 0, I32]) =
     let a = argc;
-    let (mem, r) = %affine.map @(2, 2) @((i32, i32), (i32, i32)) f (a, a) mem;
+    let (mem, (r1, r2)) = %affine.map @(2, 2) @((i32, i32), (i32, i32)) f (a, a) mem;
     // s = argc / 3 + argc % 3
-    let s = %core.wrap.add 0 (r#0₂, r#1₂);
+    let s = %core.wrap.add 0 (r1, r2);
     return (mem, s);
 
 // CHECK-DAG: %core.div.udiv
 // CHECK-DAG: %core.div.urem
-// The affine index algebra must be gone after lowering.
+// The affine index idx must be gone after lowering.
 // CHECK-NOT: %affine.semiop
 // CHECK-NOT: %affine.map

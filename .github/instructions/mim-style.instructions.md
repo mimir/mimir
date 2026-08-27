@@ -16,6 +16,7 @@ Use the primary UTF-8 surface syntax.
   Keep `[]` when the domain has unnamed type elements (`[mem: %mem.M 0, I32, I32]` cannot be a `()`-pattern) and for a `ccon`'s type list, whose brackets denote a type rather than a pattern.
 - Prefer group patterns: `(x y: T)` for `(x: T, y: T)`.
   Exception: don't group fields of a named sigma extracted by name (`s#x`), since grouping drops the field names.
+- Prefer pattern matching over extractions: `let (a, b) = tup` over `tup#0_1` and `tup#0_2`.
 - Prefer `Cn X`/`Fn X` over `Cn [X]`/`Fn [X]` for a single argument.
   Keep brackets for several arguments (`Cn [X, Y]`) or when the single argument is an application (`Cn [%mem.M 0]`).
 - Shadow one name instead of numbering: `let (mem, x) = f (mem, ...); let (mem, y) = g (mem, ...)` rather than `mem0`/`mem1`/`mem2`.

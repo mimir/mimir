@@ -312,7 +312,7 @@ lam %btensor.mr_nest (ro rr: Nat, Sr: «%core.nat.add (ro, rr); Nat», To U: *) 
 /// ### %%btensor.map_reduce_post
 ///
 /// The buffer-world counterpart of `%%tensor.map_reduce_post` and the workhorse behind every operation below:
-/// the affine-indexed generalisation of `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
+/// the affine-idx generalisation of `map_reduce` on `%%buffer.Buf` operands, threading `%%mem.M`.
 /// `So`/`Sr` are the (logical) output shape and full loop bounds; `map_out`/`maps` are affine maps from the
 /// `Rn` loop vector to the output/input coordinates. As in %%tensor.map_reduce_post, the total loop count `Rn` is
 /// stated instead of the reduction count `Rr = Rn - Ro`, so that type inference can pin it from `Sr`.
@@ -331,9 +331,9 @@ axm %btensor.map_reduce_post: {nis nps: Nat}
                               Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                            → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To,
                               post: Fn [%mem.M 0, To, «j: nps; Tps#j»] → [%mem.M 0, Tp]]
-                           → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
-                           → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»,
-                              post_maps: «j: nps; ([«Ro; %affine.index»] → «Rps#j; %affine.index»)»]
+                           → [map_out: [«Rn; %affine.Idx»] → «Ro; %affine.Idx»]
+                           → [maps: «i: nis; ([«Rn; %affine.Idx»] → «Ris#i; %affine.Idx»)»,
+                              post_maps: «j: nps; ([«Ro; %affine.Idx»] → «Rps#j; %affine.Idx»)»]
                            → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»,
                               post_is: «j: nps; %buffer.Buf (Rps#j, Sps#j, Tps#j)»]
                            → [%mem.M 0, %buffer.Buf (Ro, So, Tp)];
@@ -365,15 +365,15 @@ axm %btensor.map_reduce: {nis: Nat}
                       → [So: «Ro; Nat», Sr: «Rn; Nat»]
                       → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                       → [f: Fn [%mem.M 0, To, «i: nis; Tis#i»] → [%mem.M 0, To], init: To]
-                      → [map_out: [«Rn; %affine.index»] → «Ro; %affine.index»]
-                      → [maps: «i: nis; ([«Rn; %affine.index»] → «Ris#i; %affine.index»)»]
+                      → [map_out: [«Rn; %affine.Idx»] → «Ro; %affine.Idx»]
+                      → [maps: «i: nis; ([«Rn; %affine.Idx»] → «Ris#i; %affine.Idx»)»]
                       → [%mem.M 0, is: «i: nis; %buffer.Buf (Ris#i, Sis#i, Tis#i)»]
                       → [%mem.M 0, %buffer.Buf (Ro, So, To)], normalize_map_reduce;
 
 /// `subs ↦ λ o. ‹j; o#(subs#j)›`: the access map that reads input axis `j` at loop variable `subs#j`,
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
 /// %%tensor.proj_map is an alias for this lam.
-lam %btensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.index»): «r; %affine.index» =
+lam %btensor.proj_map {n r: Nat} (subs: «r; Nat») (o: «n; %affine.Idx»): «r; %affine.Idx» =
     ‹j: r; o#(%core.idx n 0 (subs#j))›;
 ///
 /// ### %%btensor.product_2d

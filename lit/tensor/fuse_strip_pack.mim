@@ -12,8 +12,8 @@ plugin opt;
 
 fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (%core.nat.add (x, y#0₁));
 lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
-lam mo (i k: %affine.index): «1; %affine.index» = i;
-lam mi (i k: %affine.index): «2; %affine.index» = (i, k);
+lam mo (i k: %affine.Idx): «1; %affine.Idx» = i;
+lam mi (i k: %affine.Idx): «2; %affine.Idx» = (i, k);
 
 con extern f (input: «4, 8; Nat», return: Cn «4; Nat») =
     let packed = %tensor.materialize (%tensor.strip_mine_par (

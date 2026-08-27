@@ -146,7 +146,7 @@ void LowerToMem::collect_tensor_types() {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
-            // Lams passed inside a tensor op's curry chain (combiners, affine index maps, schedule
+            // Lams passed inside a tensor op's curry chain (combiners, affine index idx, schedule
             // nests) are element-level — TRANSITIVELY, including their local helper lams: e.g. the
             // loop-vector prefixes «r; I32» inside a schedule nest must not be mistaken for value
             // tensors of a recorded «r; I32» tensor type.

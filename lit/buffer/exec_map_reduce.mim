@@ -15,8 +15,8 @@ plugin mem;
 plugin cps;
 
 fun add (x: I32, y: «1; I32»)@tt = return (%core.wrap.add 0 (x, y#0₁));
-lam id1i (i j: %affine.index): «1; %affine.index» = i;
-lam id2  (i j: %affine.index): «2; %affine.index» = (i, j);
+lam id1i (i j: %affine.Idx): «1; %affine.Idx» = i;
+lam id2  (i j: %affine.Idx): «2; %affine.Idx» = (i, j);
 
 // out[i] = sum_j input[i][j]
 fun extern row_sum (input: «3, 4; I32»): «3; I32» =
