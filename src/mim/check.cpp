@@ -192,12 +192,12 @@ static bool isa_dim(const Def* def) {
 /// The rank of `«s; T»` with `s: «r; Nat»` is unknown as long as `r` is: World::seq cannot un-nest it yet.
 /// @returns the unset Hole standing for `r`, or `nullptr`.
 static Hole* isa_flex_rank(const Def* def) {
-    auto seq = def->isa_imm<Seq>();
-    if (!seq) return nullptr;
-    auto shape = Hole::isa_unset(seq->arity()->zonk_mut());
-    if (!shape) return nullptr;
-    auto arr = shape->type()->zonk_mut()->isa<Arr>();
-    return arr ? Hole::isa_unset(arr->arity()->zonk_mut()) : nullptr;
+    if (auto seq = def->isa_imm<Seq>()) {
+        if (auto shape = Hole::isa_unset(seq->arity()->zonk_mut())) {
+            if (auto arr = shape->type()->zonk_mut()->isa<Arr>()) return Hole::isa_unset(arr->arity()->zonk_mut());
+        }
+    }
+    return nullptr;
 }
 
 // These may be α-equivalent to a Def with a different Node or Def::flags(); see alpha_impl_.
@@ -221,7 +221,7 @@ std::optional<bool> Checker::try_alpha_(const Def* d1, const Def* d2) {
 
 template<Checker::Mode mode>
 bool Checker::alpha_(const Def* d1, const Def* d2) {
-    if (auto res = try_alpha_<mode>(d1, d2); res.has_value()) return *res;
+    if (auto res = try_alpha_<mode>(d1, d2)) return *res;
 
     auto& memo = memo_[mode];
     auto key   = memo_key(d1, d2);
@@ -341,9 +341,10 @@ bool Checker::check(const Prod* prod, const Def* def) {
 // A Hole may only be solved with a Def its type accepts; this is what pins `r` down in `s: «r; Nat»`.
 bool Checker::check(Hole* hole, const Def* def) {
     if (def->unfold_type()) { // Univ has no type and is assignable to nothing
-        auto new_def = assignable_(hole->type(), def);
-        if (!new_def) return fail<Check>();
-        def = new_def;
+        if (auto new_def = assignable_(hole->type(), def))
+            def = new_def;
+        else
+            return fail<Check>();
     }
     return hole->set(def), true;
 }
@@ -351,9 +352,9 @@ bool Checker::check(Hole* hole, const Def* def) {
 // alpha(«?s; body», «e₀; «e₁; … «e_{n-1}; def»…»): peel dimensions until the remainder matches body.
 // This determines the rank; Hole::tuplefy then hands the extents to the regular structural comparison.
 bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
-    auto body = seq->body();
-    auto n    = size_t(0);
-    auto num  = size_t(0);
+    auto body  = seq->body();
+    size_t n   = 0;
+    size_t num = 0;
 
     for (size_t i = 1; isa_dim(def); ++i) {
         def = def->as<Seq>()->body();
