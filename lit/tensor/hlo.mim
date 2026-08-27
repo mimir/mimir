@@ -22,8 +22,6 @@ let F32 = %math.F32;
 
 let R: %tensor.Ring = (F32, 0: F32, %math.arith.add 0, %math.arith.mul 0);
 
-// These wrappers take `{r, s}` implicitly, but every call site below has to pass it with `@`: a concrete shape
-// vector cannot be recovered from a nested array type like `«128, 1024; F32»` without knowing the rank first.
 lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.add 0) is;
 lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.sub 0) is;
 lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = %tensor.binary (%math.arith.mul 0) is;
@@ -51,25 +49,25 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
   = let v_0 = %tensor.product_2d R (arg6, arg0);
     /// let v_1 : «1, 1024; F32» = arg1;
     let v_2 = %tensor.broadcast ((1, 1024), (128, 1024), arg1);
-    let v_3 = F32_add @(2, (128, 1024)) (v_0, v_2);
-    let v_4 = F32_tanh @(2, (128, 1024)) v_3;
+    let v_3 = F32_add (v_0, v_2);
+    let v_4 = F32_tanh v_3;
     // NB: decimal (and small integer) F32 literals lower to garbage bit patterns — only F64 decimal
     // literals parse correctly — so F32 constants are built by converting an F64 literal with
     // %math.conv.f2f (see hlo_train.mim).
     let v_cst = %math.conv.f2f (23, 8) (1.0: %math.F64);
     let v_5 = ‹128, 1024; v_cst›;
-    let v_6 = F32_sub @(2, (128, 1024)) (v_5, v_4);
+    let v_6 = F32_sub (v_5, v_4);
     let v_7 = %tensor.product_2d R (v_4, arg2);
     /// let v_8 : «1, 1024; F32» = arg3;
     let v_9 = %tensor.broadcast ((1, 1024), (128, 1024), arg3);
-    let v_10 = F32_add @(2, (128, 1024)) (v_7, v_9);
-    let v_11 = F32_tanh @(2, (128, 1024)) v_10;
+    let v_10 = F32_add (v_7, v_9);
+    let v_11 = F32_tanh v_10;
     let v_12 = ‹128; ‹1024; v_cst››;
-    let v_13 = F32_sub @(2, (128, 1024)) (v_12, v_11);
+    let v_13 = F32_sub (v_12, v_11);
     let v_14 = %tensor.product_2d R (v_11, arg4);
     /// let v_15 : «1, 10; F32» = arg5;
     let v_16 = %tensor.broadcast ((1, 10), (128, 10), arg5);
-    let v_17 = F32_add @(2, (128, 10)) (v_14, v_16);
+    let v_17 = F32_add (v_14, v_16);
     let v_cst_0 = 0xFF800000: F32;
     let v_18 = reduce_ax1 ((%math.extrema.fmax 0), v_cst_0) v_17;
     let v_cst_1 = 0xFF800000: F32;
@@ -81,8 +79,8 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_23 = ‹128; v_cst_2›;
     let v_24 = %tensor.select (v_22, v_20, v_23);
     let v_25 = %tensor.broadcast ((128, 1), (128, 10), v_24);
-    let v_26 = F32_sub @(2, (128, 10)) (v_17, v_25);
-    let v_27 = F32_exp @(2, (128, 10)) v_26;
+    let v_26 = F32_sub (v_17, v_25);
+    let v_27 = F32_exp v_26;
     let v_cst_3 = 0: F32;
     let v_28 = reduce_ax1 ((%math.arith.add 0), v_cst_3) v_27;
     /// let v_29 : «128, 1; F32» = v_28;
@@ -94,8 +92,8 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_34 = %math.arith.div 0 (v_33, v_cst_4);
     /// let v_35 = ‹128; v_34›;
     let v_36 = %tensor.broadcast ((1, 1), (128, 10), v_34);
-    let v_37 = F32_mul @(2, (128, 10)) (v_36, arg7);
-    let v_38 = F32_minus @(2, (128, 10)) v_37;
+    let v_37 = F32_mul (v_36, arg7);
+    let v_38 = F32_minus v_37;
     let v_cst_5 = 0: F32;
     let v_39 = reduce_ax1 ((%math.arith.add 0), v_cst_5) v_38;
     /// let v_40 : «128, 1; F32» = v_39;
@@ -108,8 +106,8 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_cst_6 = 0: F32;
     /// let v_47 = reduce_ax1 ((%math.arith.add 0), v_cst_6) v_46;
     let v_48 = %tensor.broadcast ((128, 1), (128, 10), v_46);
-    let v_49 = F32_mul @(2, (128, 10)) (v_48, v_27);
-    let v_50 = F32_add @(2, (128, 10)) (v_37, v_49);
+    let v_49 = F32_mul (v_48, v_27);
+    let v_50 = F32_add (v_37, v_49);
     let v_cst_7 = 0: F32;
     let v_51 = reduce_ax0 ((%math.arith.add 0), v_cst_7) v_50;
     /// let v_52 : «1, 10; F32» = v_51;
@@ -118,9 +116,9 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_54 = %tensor.dot_product R (0₂, 0₂, (), ()) (v_50, v_11);
     let v_55 = %tensor.transpose_2d v_54;
     let v_56 = %tensor.dot_product R (1₂, 1₂, (), ()) (v_50, arg4);
-    let v_57 = F32_mul @(2, (128, 1024)) (v_56, v_13);
-    let v_58 = F32_mul @(2, (128, 1024)) (v_56, v_11);
-    let v_59 = F32_add @(2, (128, 1024)) (v_57, v_58);
+    let v_57 = F32_mul (v_56, v_13);
+    let v_58 = F32_mul (v_56, v_11);
+    let v_59 = F32_add (v_57, v_58);
     let v_cst_9 = 0: F32;
     let v_60 = reduce_ax0 ((%math.arith.add 0), v_cst_9) v_59;
     /// let v_61 : «1, 1024; F32» = v_60;
@@ -129,9 +127,9 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_63 = %tensor.dot_product R (0₂, 0₂, (), ()) (v_59, v_4);
     let v_64 = %tensor.transpose_2d v_63;
     let v_65 = %tensor.dot_product R (1₂, 1₂, (), ()) (v_59, arg2);
-    let v_66 = F32_mul @(2, (128, 1024)) (v_65, v_6);
-    let v_67 = F32_mul @(2, (128, 1024)) (v_66, v_4);
-    let v_68 = F32_add @(2, (128, 1024)) (v_66, v_67);
+    let v_66 = F32_mul (v_65, v_6);
+    let v_67 = F32_mul (v_66, v_4);
+    let v_68 = F32_add (v_66, v_67);
     let v_cst_11 = 0: F32;
     let v_69 = reduce_ax0 ((%math.arith.add 0), v_cst_11) v_68;
     /// let v_70 : «1, 1024; F32» = v_69;
@@ -141,20 +139,20 @@ fun extern main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_73 = %tensor.transpose_2d v_72;
     let v_cst_13 = %math.conv.f2f (23, 8) (0.001: %math.F64);
     let v_74 = ‹784, 1024; v_cst_13›;
-    let v_75 = F32_mul @(2, (784, 1024)) (v_74, v_73);
-    let v_76 = F32_sub @(2, (784, 1024)) (arg0, v_75);
+    let v_75 = F32_mul (v_74, v_73);
+    let v_76 = F32_sub (arg0, v_75);
     let v_77 = ‹1024; v_cst_13›;
     let v_78 = F32_mul (v_77, v_69);
     let v_79 = F32_sub (arg1, v_78);
     let v_80 = ‹1024, 1024; v_cst_13›;
-    let v_81 = F32_mul @(2, (1024, 1024)) (v_80, v_64);
-    let v_82 = F32_sub @(2, (1024, 1024)) (arg2, v_81);
+    let v_81 = F32_mul (v_80, v_64);
+    let v_82 = F32_sub (arg2, v_81);
     let v_83 = ‹1024; v_cst_13›;
     let v_84 = F32_mul (v_83, v_60);
     let v_85 = F32_sub (arg3, v_84);
     let v_86 = ‹1024, 10; v_cst_13›;
-    let v_87 = F32_mul @(2, (1024, 10)) (v_86, v_55);
-    let v_88 = F32_sub @(2, (1024, 10)) (arg4, v_87);
+    let v_87 = F32_mul (v_86, v_55);
+    let v_88 = F32_sub (arg4, v_87);
     let v_89 = ‹10; v_cst_13›;
     let v_90 = F32_mul (v_89, v_51);
     let v_91 = F32_sub (arg5, v_90);

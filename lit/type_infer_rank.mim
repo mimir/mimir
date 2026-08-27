@@ -1,0 +1,14 @@
+// RUN: %mim -p opt %s
+plugin refly;
+
+// `{r, s}` is recovered from the argument's nested array type by peeling dimensions until the body matches.
+lam rank {r: Nat, s: «r; Nat»} (i: «s; Nat»): Nat = r;
+
+let _ = %refly.equiv.struc_eq (1, rank ‹128; 7›);
+let _ = %refly.equiv.struc_eq (2, rank ‹128, 1024; 7›);
+let _ = %refly.equiv.struc_eq (3, rank ‹2, 3, 4; 7›);
+
+// A non-scalar body pins the rank down just as well.
+lam rows {r: Nat, s: «r; Nat»} (i: «s; «4; Nat»»): Nat = r;
+
+let _ = %refly.equiv.struc_eq (2, rows ‹2, 3, 4; 7›);

@@ -290,3 +290,9 @@ axm %core.pe(is_closed): {T: *} → T → Bool, normalize_pe;
 /// More readable shorthand to create a select/if:
 ///
 lam %core.select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
+///
+/// ### %%core.Select
+///
+/// %%core.select one level up, to select between types.
+///
+lam %core.Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
