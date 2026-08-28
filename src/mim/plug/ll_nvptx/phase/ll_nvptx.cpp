@@ -44,10 +44,11 @@ private:
     static constexpr std::string_view kernel_array_name_ = "@.mimir_kernels";
     static constexpr std::string_view kernel_name_prefix = "@.kname.";
 
-    void emit_cu_error_handling(ll::BB&, const std::string&, bool at_tail = false);
+    void emit_cu_error_handling(ll::BB&, const std::string&);
 
     std::optional<std::string> device_fatbin_file_;
     LamMap<int> kernel_ids_;
+    bool cu_globals_declared_ = false;
 
     DefSet analyzed_;
 };
@@ -140,14 +141,11 @@ constexpr auto Cu_Stream_Create       = "cuStreamCreate";
 constexpr auto Cu_Stream_Destroy      = "cuStreamDestroy_v2";
 constexpr auto Cu_Stream_Sync         = "cuStreamSynchronize_ptsz";
 
-void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_result, bool at_tail) {
+void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_result) {
     // Offload the CUresult check to the C runtime wrapper `mim_cu_check` (see rt/mim_cuda_rt.c)
     // instead of open-coding it here; showcases the C-runtime system on the ll_nvptx backend.
     declare_rt("void @mim_cu_check(i32)");
-    if (at_tail)
-        bb.tail("call void @mim_cu_check(i32 {})", cu_result);
-    else
-        std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
+    std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
 }
 
 std::string HostEmitter::convert(const Def* type, bool simd) {
@@ -169,6 +167,8 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
     if (auto default_stream = Axm::isa<gpu::default_stream>(def)) {
         return "null";
     } else if (auto init = Axm::isa<gpu::init>(def)) {
+        auto mem_val = emit_unsafe(init->arg());
+
         auto dev_num   = 0; // TODO: consider parameterizing this
         auto ctx_flags = 0; // TODO: consider parameterizing this
 
@@ -183,39 +183,42 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         emit_cu_error_handling(bb, dev_get_res);
 
         declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
-        std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
+        if (!cu_globals_declared_) std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
         auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
         auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
                                  ctx_name_, ctx_flags, dev);
         emit_cu_error_handling(bb, ctx_res);
 
         declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
-        std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
-        if (device_fatbin_file_.has_value()) {
-            std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
-            if (!fatbin_file)
-                fe::throwf(MIM_LL_NVPTX_BE "could not open `{}` as binary file", device_fatbin_file_.value());
+        if (!cu_globals_declared_) {
+            std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
+            if (device_fatbin_file_.has_value()) {
+                std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
+                if (!fatbin_file)
+                    fe::throwf(MIM_LL_NVPTX_BE "could not open `{}` as binary file", device_fatbin_file_.value());
 
-            auto start = std::istreambuf_iterator<char>(fatbin_file);
-            auto end   = std::istreambuf_iterator<char>();
-            std::vector<u8> fatbin_bytes(start, end);
+                auto start = std::istreambuf_iterator<char>(fatbin_file);
+                auto end   = std::istreambuf_iterator<char>();
+                std::vector<u8> fatbin_bytes(start, end);
 
-            std::print(vars_decls_, "{} = private constant [{} x i8] c\"", fatbin_name_, fatbin_bytes.size());
-            for (auto byte : fatbin_bytes) {
-                bool invalid_cstr_char = byte == '"' || byte == '\\';
-                if (std::isprint(byte) && !invalid_cstr_char) {
-                    std::print(vars_decls_, "{:c}", byte);
-                } else {
-                    auto byte_val = static_cast<int>(byte);
-                    std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
+                std::print(vars_decls_, "{} = private constant [{} x i8] c\"", fatbin_name_, fatbin_bytes.size());
+                for (auto byte : fatbin_bytes) {
+                    bool invalid_cstr_char = byte == '"' || byte == '\\';
+                    if (std::isprint(byte) && !invalid_cstr_char) {
+                        std::print(vars_decls_, "{:c}", byte);
+                    } else {
+                        auto byte_val = static_cast<int>(byte);
+                        std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
+                    }
                 }
+                std::print(vars_decls_, "\"\n");
+            } else {
+                std::print(vars_decls_, "; Add the bytes of your compiled nvptx fatbin binary here:\n");
+                std::print(vars_decls_,
+                           "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
+                           fatbin_name_);
             }
-            std::print(vars_decls_, "\"\n");
-        } else {
-            std::print(vars_decls_, "; Add the bytes of your compiled nvptx fatbin binary here:\n");
-            std::print(vars_decls_,
-                       "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
-                       fatbin_name_);
+            cu_globals_declared_ = true;
         }
         auto mod_res = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", Cu_Module_Load_Fatbin, mod_name_,
                                  fatbin_name_);
@@ -225,28 +228,31 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         declare("i32 @{}(ptr, ptr, ptr)", Cu_Module_Get_Function);
         for (auto [kernel, kid] : kernel_ids_) {
             auto kname    = id(kernel).substr(1);
-            auto func_ptr = bb.assign("%" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
+            auto func_ptr = bb.assign(name + "_" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
                                       kernel_array_name_, kid);
-            auto func_res = bb.assign("%" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
+            auto func_res = bb.assign(name + "_" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
                                       Cu_Module_Get_Function, func_ptr, mod_inner, kernel_name_prefix, kid);
             emit_cu_error_handling(bb, func_res);
         }
 
-        auto mem = init->arg();
-        return emit_unsafe(mem);
+        return mem_val;
     } else if (auto deinit = Axm::isa<gpu::deinit>(def)) {
+        emit_unsafe(deinit->arg(0));
+        emit_unsafe(deinit->arg(1));
+
         declare("i32 @{}(ptr)", Cu_Module_Unload);
-        bb.tail("{}_mod = load ptr, ptr {}", name, mod_name_);
-        bb.tail("{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload, name);
-        emit_cu_error_handling(bb, name + "_mod_unload_res", true);
+        std::print(bb.body().emplace_back(), "{}_mod = load ptr, ptr {}", name, mod_name_);
+        std::print(bb.body().emplace_back(), "{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload,
+                   name);
+        emit_cu_error_handling(bb, name + "_mod_unload_res");
 
         declare("i32 @{}(ptr)", Cu_Ctx_Destroy);
-        bb.tail("{}_ctx = load ptr, ptr {}", name, ctx_name_);
-        bb.tail("{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy, name);
-        emit_cu_error_handling(bb, name + "_ctx_destroy_res", true);
+        std::print(bb.body().emplace_back(), "{}_ctx = load ptr, ptr {}", name, ctx_name_);
+        std::print(bb.body().emplace_back(), "{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy,
+                   name);
+        emit_cu_error_handling(bb, name + "_ctx_destroy_res");
 
-        emit_unsafe(deinit->arg(0));
-        return emit_unsafe(deinit->arg(1));
+        return ""s;
     } else if (auto stream_init = Axm::isa<gpu::stream_init>(def)) {
         declare("i32 @{}(ptr, i32)", Cu_Stream_Create);
 
@@ -527,6 +533,56 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
         emit_unsafe(sync_work_items->arg(0));
         emit_unsafe(sync_work_items->arg(1));
         std::print(bb.body().emplace_back(), "call void @llvm.nvvm.barrier0()");
+        return name;
+    } else if (auto tri = Axm::isa<math::tri>(def)) {
+        auto arg       = emit(tri->arg());
+        auto type      = convert(tri->arg()->type());
+        auto func_name = ""s;
+        switch (tri.id()) {
+            case math::tri::ahff: func_name = "sin"; break;
+            case math::tri::ahfF: func_name = "cos"; break;
+            case math::tri::ahFf: func_name = "tan"; break;
+            case math::tri::ahFF: break;
+            case math::tri::aHff: func_name = "sinh"; break;
+            case math::tri::aHfF: func_name = "cosh"; break;
+            case math::tri::aHFf: func_name = "tanh"; break;
+            case math::tri::aHFF: break;
+            case math::tri::Ahff: func_name = "asin"; break;
+            case math::tri::AhfF: func_name = "acos"; break;
+            case math::tri::AhFf: func_name = "atan"; break;
+            case math::tri::AhFF: break;
+            case math::tri::AHff: func_name = "asinh"; break;
+            case math::tri::AHfF: func_name = "acosh"; break;
+            case math::tri::AHFf: func_name = "atanh"; break;
+            case math::tri::AHFF: break;
+        }
+        if (func_name.empty()) fe::throwf("Trigonometric tag used by {} is currently unused", def);
+        func_name                = func_name + ll::detail::math_suffix(tri->arg()->type());
+        auto libdevice_func_name = "__nv_" + func_name;
+        declare("{} @{}({})", type, libdevice_func_name, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {})", type, libdevice_func_name, type, arg);
+        return name;
+    } else if (auto exp = Axm::isa<math::exp>(def)) {
+        auto arg       = emit(exp->arg());
+        auto type      = convert(exp->arg()->type());
+        auto func_name = ""s;
+        switch (exp.id()) {
+            case math::exp::lbb: func_name = "exp"; break;
+            case math::exp::lbB: func_name = "exp2"; break;
+            case math::exp::lBb: func_name = "exp10"; break;
+            case math::exp::lBB: break;
+            case math::exp::Lbb: func_name = "log"; break;
+            case math::exp::LbB: func_name = "log2"; break;
+            case math::exp::LBb: func_name = "log10"; break;
+            case math::exp::LBB: break;
+        }
+        if (func_name.empty()) fe::throwf("Exponential tag used by {} is currently unused", def);
+        func_name                = func_name + ll::detail::math_suffix(exp->arg()->type());
+        auto libdevice_func_name = "__nv_" + func_name;
+        declare("{} @{}({})", type, libdevice_func_name, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {})", type, libdevice_func_name, type, arg);
         return name;
     }
     return std::nullopt;
