@@ -80,10 +80,7 @@ private:
     }
 
     /// Discard all closing delimiters that no enclosing context is waiting for.
-    void recover(std::string_view ctxt) {
-        while (Tok::is_delim_r(ahead().tag()) && !anchored(ahead().tag()))
-            Super::recover(ahead().tag(), ctxt);
-    }
+    void recover(std::string_view ctxt) { Super::recover(Tok::is_delim_r, ctxt); }
     ///@}
 
     /// @name parse exprs
