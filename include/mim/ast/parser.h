@@ -69,12 +69,20 @@ private:
     void parse_list(std::string ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {
         expect(delim_l, ctxt);
         auto delim_r = Tok::delim_l2r(delim_l);
-        if (!ahead().isa(delim_r)) {
-            do {
-                f();
-            } while (accept(sep) && !ahead().isa(delim_r));
-        }
+        auto _       = this->anchor(delim_r);
+        do {
+            recover(ctxt);
+            if (ahead().isa(delim_r)) break;
+            f();
+            recover(ctxt);
+        } while (accept(sep));
         expect(delim_r, std::string("closing delimiter of a ") + ctxt);
+    }
+
+    /// Discard all closing delimiters that no enclosing context is waiting for.
+    void recover(std::string_view ctxt) {
+        while (Tok::is_delim_r(ahead().tag()) && !anchored(ahead().tag()))
+            Super::recover(ahead().tag(), ctxt);
     }
     ///@}
 
@@ -146,6 +154,10 @@ private:
 
     /// Same above but uses @p ahead() as @p tok.
     void syntax_err(std::string_view what, std::string_view ctxt) { syntax_err(what, ahead(), ctxt); }
+
+    void unanchored_err(Tok tok, std::string_view ctxt) {
+        ast().error(tok.loc(), "ignoring unmatched `{}` while parsing {}", tok, ctxt);
+    }
 
     void syntax_err(Tok::Tag tag, std::string_view ctxt) {
         std::string msg("`");

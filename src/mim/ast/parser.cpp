@@ -310,11 +310,13 @@ Ptr<Expr> Parser::parse_insert_expr() {
     auto track = tracker();
     eat(Tag::K_ins);
     expect(Tag::D_paren_l, "opening paren for insert arguments");
+    auto _     = this->anchor(Tag::D_paren_r);
     auto tuple = parse_expr("the tuple to insert into");
     expect(Tag::T_comma, "comma after tuple to insert into");
     auto index = parse_expr("insert index");
     expect(Tag::T_comma, "comma after insert index");
     auto value = parse_expr("insert value");
+    recover("insert arguments");
     expect(Tag::D_paren_r, "closing paren for insert arguments");
     return ptr<InsertExpr>(track, std::move(tuple), std::move(index), std::move(value));
 }
@@ -322,7 +324,9 @@ Ptr<Expr> Parser::parse_insert_expr() {
 Ptr<Expr> Parser::parse_uniq_expr() {
     auto track = tracker();
     expect(Tag::D_curly_l, "opening curly bracket for singleton type");
+    auto _          = this->anchor(Tag::D_curly_r);
     auto inhabitant = parse_expr("singleton type");
+    recover("singleton type");
     expect(Tag::D_curly_r, "closing curly bracket for singleton type");
     return ptr<UniqExpr>(track, std::move(inhabitant));
 }
@@ -374,7 +378,10 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
 
 Ptr<Expr> Parser::parse_seq_expr() {
     auto track   = tracker();
-    bool is_pack = accept(Tag::D_angle_l) ? true : (eat(Tag::D_quote_l), false);
+    bool is_pack = ahead().isa(Tag::D_angle_l);
+    auto delim_l = is_pack ? Tag::D_angle_l : Tag::D_quote_l;
+    eat(delim_l);
+    auto _ = this->anchor(Tok::delim_l2r(delim_l));
 
     Ptrs<IdPtrn> arities;
 
@@ -391,8 +398,8 @@ Ptr<Expr> Parser::parse_seq_expr() {
 
     expect(Tag::T_semicolon, is_pack ? "pack" : "array");
     auto body = parse_expr(is_pack ? "body of a pack" : "body of an array");
-    expect(is_pack ? Tag::D_angle_r : Tag::D_quote_r,
-           is_pack ? "closing delimiter of a pack" : "closing delimiter of an array");
+    recover(is_pack ? "pack" : "array");
+    expect(Tok::delim_l2r(delim_l), is_pack ? "closing delimiter of a pack" : "closing delimiter of an array");
 
     // `‹a, b; e›` nests one SeqExpr per arity; only the outermost one covers the delimiters.
     for (auto& ptrn : arities | std::views::reverse) {
