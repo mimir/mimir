@@ -66,21 +66,38 @@ private:
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});
 
     template<class F>
-    void parse_list(std::string ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {
+    void parse_list(std::string_view ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {
         expect(delim_l, ctxt);
         auto delim_r = Tok::delim_l2r(delim_l);
-        if (!ahead().isa(delim_r)) {
-            do {
-                f();
-            } while (accept(sep) && !ahead().isa(delim_r));
-        }
-        expect(delim_r, std::string("closing delimiter of a ") + ctxt);
+        auto _       = this->anchor(delim_r);
+        do {
+            recover(ctxt);
+            if (ahead().isa(delim_r)) break;
+            f();
+            recover(ctxt);
+        } while (accept(sep));
+        expect(delim_r, "closing delimiter of a {}", ctxt);
     }
+
+    /// Discard all closing delimiters that no enclosing context is waiting for.
+    void recover(std::string_view ctxt) { Super::recover(Tok::is_delim_r, ctxt); }
     ///@}
 
     /// @name parse exprs
     ///@{
     Ptr<Expr> parse_expr(std::string_view ctxt, Prec = Prec::Bot);
+
+    /// As above but builds @p ctxt via std::format.
+    template<class... Args>
+    Ptr<Expr> parse_expr(std::format_string<Args...> fmt, Args&&... args) {
+        return parse_expr(std::format(fmt, std::forward<Args>(args)...));
+    }
+
+    /// As above but with @p prec.
+    template<class... Args>
+    Ptr<Expr> parse_expr(Prec prec, std::format_string<Args...> fmt, Args&&... args) {
+        return parse_expr(std::format(fmt, std::forward<Args>(args)...), prec);
+    }
     Ptr<Expr> parse_primary_expr(std::string_view ctxt);
     Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot);
     ///@}
@@ -117,6 +134,12 @@ private:
     static bool is_brket_style(int style) { return (style & Style_Bit) == Brckt_Style; }
     static bool is_implicit(int style) { return (style & Implicit); }
     Ptr<Ptrn> parse_ptrn(int style, std::string_view ctxt, Prec = Prec::Bot);
+
+    /// As above but builds @p ctxt via std::format.
+    template<class... Args>
+    Ptr<Ptrn> parse_ptrn(int style, Prec prec, std::format_string<Args...> fmt, Args&&... args) {
+        return parse_ptrn(style, std::format(fmt, std::forward<Args>(args)...), prec);
+    }
     Ptr<Ptrn> parse_ptrn_(int style, std::string_view ctxt, Prec = Prec::Bot);
     Ptr<TuplePtrn> parse_tuple_ptrn(int style);
     ///@}
@@ -147,16 +170,11 @@ private:
     /// Same above but uses @p ahead() as @p tok.
     void syntax_err(std::string_view what, std::string_view ctxt) { syntax_err(what, ahead(), ctxt); }
 
-    void syntax_err(Tok::Tag tag, std::string_view ctxt) {
-        std::string msg("`");
-        msg.append(Tok::tag2str(tag)).append("`");
-        syntax_err(msg, ctxt);
-    }
+    /// Same above but @p what is a @p tag.
+    void syntax_err(Tok::Tag tag, std::string_view ctxt) { syntax_err(std::format("`{}`", tag), ctxt); }
 
-    using Super::expect;
-    template<class... Args>
-    Tok expect(Tok::Tag tag, std::format_string<Args...> f, Args&&... args) {
-        return Super::expect(tag, std::format(f, std::forward<Args>(args)...));
+    void unanchored_err(Tok tok, std::string_view ctxt) {
+        ast().error(tok.loc(), "ignoring unmatched `{}` while parsing {}", tok, ctxt);
     }
     ///@}
 

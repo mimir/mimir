@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include <fe/restore.h>
+
 #include "mim/check.h"
 #include "mim/def.h"
 #include "mim/lam.h"
@@ -104,7 +106,7 @@ protected:
     std::deque<Def2Def> old2news_;
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
-    auto enter(Def* new_mut) { return Restore(curr_mut_, new_mut); }
+    auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 };
 
 /// Extends Rewriter for variable substitution.

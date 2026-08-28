@@ -175,6 +175,9 @@ public:
 
     static const char* tag2str(Tok::Tag);
     static constexpr Tok::Tag delim_l2r(Tag tag) { return Tok::Tag(int(tag) + 1); }
+    static constexpr bool is_delim_r(Tag tag) {
+        return Tag::D_angle_l <= tag && tag <= Tag::D_quote_r && (int(tag) - int(Tag::D_angle_l)) % 2 == 1;
+    }
     ///@}
 
     // clang-format on

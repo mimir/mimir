@@ -107,7 +107,7 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
 
     // Pinned ABI (an axm-app argument and everything below it): rewrite verbatim - no memory threaded or added.
     if (preserved_.contains(old_lam)) {
-        auto _ = Restore(preserving_, true);
+        auto _ = fe::Restore(preserving_, true);
         return Rewriter::rewrite_mut_Lam(old_lam);
     }
 
@@ -127,7 +127,7 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
     if (!old_lam->is_set()) return new_lam;
 
     // The body's current memory is this lam's (leading or grouped) mem parameter - or none for direct-style fns.
-    auto _ = Restore(curr_mem_, mem::mem_var(new_lam));
+    auto _ = fe::Restore(curr_mem_, mem::mem_var(new_lam));
     new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
     return new_lam;
 }

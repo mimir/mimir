@@ -1,0 +1,15 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+// A `]` nobody is waiting for is discarded and parsing carries on.
+let x = (1, 2], 3);
+
+// The `)` is anchored by `ins`, so the bracket pattern must not swallow it and `ins` still closes cleanly.
+let y = ins(1, 0_1, [2, 3);
+
+// CHECK:      {{.*}}unanchored_delim.mim:4:14: error: ignoring unmatched `]` while parsing tuple
+// CHECK-NEXT: 4 | let x = (1, 2], 3);
+// CHECK-NEXT:   |              ^
+// CHECK-NEXT: {{.*}}unanchored_delim.mim:7:26: error: expected `]`, got `)` while parsing closing delimiter of a tuple pattern
+// CHECK-NEXT: 7 | let y = ins(1, 0_1, [2, 3);
+// CHECK-NEXT:   |                          ^
+// CHECK-NOT:  error:

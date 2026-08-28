@@ -126,13 +126,11 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [mn, sinout, f, idxs, _] = app->callee()->as<App>()->uncurry_args<5>();
         auto [sin, sout]              = sinout->projs<2>();
 
-        auto __  = Restore(mem_);
-        auto mem = rewrite(app->arg()); // the `%affine.map`'s mem operand
-
+        auto __     = fe::Restore(mem_);
+        auto mem    = rewrite(app->arg()); // the `%affine.map`'s mem operand
         auto ins    = rewrite(idxs)->projs();
         auto lifted = w.tuple(DefVec(ins.size(), [&](size_t i) { return w.call(core::conv::u, w.lit_i64(), ins[i]); }));
-
-        auto f_lam = f->isa_mut<Lam>();
+        auto f_lam  = f->isa_mut<Lam>();
 
         Lam* idx_map_lam = nullptr;
         Lam* rw_idx_lam  = nullptr;
