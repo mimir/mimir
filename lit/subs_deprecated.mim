@@ -1,7 +1,9 @@
-// RUN: %mim %s --output-h /dev/null --bootstrap 2>&1 | %FileCheck %s
+// RUN: %mim %s 2>&1 | %FileCheck %s
 
 axm %subs.nat(add, sub): Nat → Nat;
 
-// CHECK:      {{.*}}subs_deprecated.mim:3:14: warning: a group of subs must be introduced with `.`; use `%subs.nat.(...)`
+// The bare `(` still parses, but the `.(...)` group is the spelling to use.
+// CHECK:      1 warning(s) encountered
+// CHECK-NEXT: {{.*}}subs_deprecated.mim:3:14: warning: a group of subs must be introduced with `.`; use `%subs.nat.(...)`
 // CHECK-NEXT: 3 | axm %subs.nat(add, sub): Nat → Nat;
 // CHECK-NEXT:   |              ^
