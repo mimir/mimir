@@ -45,6 +45,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.cond "tensor" (%compile.named "%mem.add_mem"),
 
         // btensor
+        %compile.named "%gpu.lower_btensor_map_reduce",
         %compile.named "%btensor.lower_map_reduce",
         %compile.unload "btensor",
 

@@ -3,6 +3,7 @@
 #include <mim/axm.h>
 #include <mim/def.h>
 
+#include <mim/plug/gpu/gpu.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/buffer/buffer.h"
@@ -103,6 +104,17 @@ const Def* LowerPtr::rewrite_imm_App(const App* app) {
         auto [mem2, ptr] = mem::op_alloc(arr_ty_of(s, T), mem)->projs<2>();
         auto mem3        = w.call<mem::store>(Defs{mem2, ptr, pack_tuple(s, val)});
         return w.tuple({mem3, ptr});
+    } else if (auto buf_alloc_copy = Axm::isa<gpu::buf_alloc_copy>(app)) {
+        auto m0  = rewrite(buf_alloc_copy->arg(0));
+        auto m1  = rewrite(buf_alloc_copy->arg(1));
+        auto ptr = rewrite(buf_alloc_copy->arg(2));
+        return w.call(gpu::alloc_copy::block, w.tuple({m0, m1, ptr}));
+    } else if (auto buf_copy_to_host = Axm::isa<gpu::buf_copy_to_host>(app)) {
+        auto m0    = rewrite(buf_copy_to_host->arg(0));
+        auto m1    = rewrite(buf_copy_to_host->arg(1));
+        auto d_ptr = rewrite(buf_copy_to_host->arg(2));
+        auto h_ptr = rewrite(buf_copy_to_host->arg(3));
+        return w.call(gpu::copy_to_host::block, w.tuple({m0, m1, d_ptr, h_ptr}));
     }
 
     return RWPhase::rewrite_imm_App(app);
