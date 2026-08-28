@@ -7,6 +7,7 @@
 
 #include <mim/plug/mem/mem.h>
 
+#include "mim/plug/gpu/phase/lower_map_reduce.h"
 #include "mim/plug/gpu/phase/mem_checks.h"
 #include "mim/plug/gpu/phase/remove_double_syncs.h"
 #include "mim/plug/gpu/phase/split_apply.h"
@@ -61,9 +62,10 @@ void reg_phases(Flags2Phases& phases) {
     });
 
     // clang-format off
-    Phase::hook<gpu::mem_checks,          gpu::phase::MemChecks        >(phases);
-    Phase::hook<gpu::remove_double_syncs, gpu::phase::RemoveDoubleSyncs>(phases);
-    Phase::hook<gpu::split_apply,         gpu::phase::SplitApply       >(phases);
+    Phase::hook<gpu::mem_checks,                gpu::phase::MemChecks        >(phases);
+    Phase::hook<gpu::remove_double_syncs,       gpu::phase::RemoveDoubleSyncs>(phases);
+    Phase::hook<gpu::split_apply,               gpu::phase::SplitApply       >(phases);
+    Phase::hook<gpu::lower_btensor_map_reduce,  gpu::phase::LowerMapReduce   >(phases);
     // clang-format on
 }
 

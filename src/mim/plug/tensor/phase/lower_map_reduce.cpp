@@ -185,6 +185,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         a      = w.app(a, w.tuple({sin, sout}));
         a      = w.app(a, f);
         a      = w.app(a, idxs);
+        a      = w.app(a, w.lit_nat_0());
         return w.app(a, w.bot(mem0))->proj(2, 1); // drop the returned mem at proj 0
     };
 

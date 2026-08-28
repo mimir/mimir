@@ -8,6 +8,7 @@
 ///
 plugin core;
 plugin mem;
+plugin buffer;
 import compile;
 ///
 /// ## Types
@@ -156,6 +157,24 @@ let %gpu.alloc_copy.block = lm {T: *}
     let (m0, m1) = %gpu.copy_to_device.block (m0, m1, ptr, d_ptr);
     (m0, m1, d_ptr);
 ///
+/// ### Buffer Operations
+///
+/// #### %%gpu.buf_alloc_copy
+///
+/// Placeholder for copying a host-side `%buffer.Buf` to the device.
+/// Unlike `%gpu.alloc_copy(block)`, this operates directly on the still-abstract `%buffer.Buf`
+axm %gpu.buf_alloc_copy: {r: Nat, s: «r; Nat», T: *}
+                       → [%mem.M 0, %gpu.GlobalM, %buffer.Buf (r, s, T)]
+                       → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr «s; T»];
+///
+/// #### %%gpu.buf_copy_to_host
+///
+/// Placeholder for copying device data to a host-side `%buffer.Buf`.
+/// Unlike `%gpu.copy_to_host(block)`, this operates directly on the still-abstract `%buffer.Buf`
+axm %gpu.buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
+                       → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr «s; T», %buffer.Buf (r, s, T)]
+                       → [%mem.M 0, %gpu.GlobalM];
+///
 /// ### Async Memory Operations
 ///
 /// #### %%gpu.alloc(asyn)
@@ -234,6 +253,7 @@ axm %gpu.host_malloc2gpualloc_repl: %compile.Phase;
 axm %gpu.mem_checks:                %compile.Phase;
 axm %gpu.remove_double_syncs:       %compile.Phase;
 axm %gpu.split_apply:               %compile.Phase;
+axm %gpu.lower_btensor_map_reduce:  %compile.Phase;
 ///
 /// ### Pipelines
 ///
