@@ -76,8 +76,9 @@ axm %affine.map: {m n: Nat}
                → {sin: «n; Nat», sout: «m; Nat»}
                → ([«n; %affine.Idx»] → «m; %affine.Idx»)
                → «i: n; Idx (sin#i)»
-               → (%mem.M 0)
-               → [(%mem.M 0), «i: m; Idx (sout#i)»];
+               → {a: Nat}
+               → (%mem.M a)
+               → [(%mem.M a), «i: m; Idx (sout#i)»];
 
 ///
 /// ### %%affine.id
