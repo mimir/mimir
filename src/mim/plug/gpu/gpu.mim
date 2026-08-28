@@ -254,6 +254,7 @@ axm %gpu.mem_checks:                %compile.Phase;
 axm %gpu.remove_double_syncs:       %compile.Phase;
 axm %gpu.split_apply:               %compile.Phase;
 axm %gpu.lower_btensor_map_reduce:  %compile.Phase;
+axm %gpu.merge_init_deinit:         %compile.Phase;
 ///
 /// ### Pipelines
 ///
