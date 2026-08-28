@@ -9,7 +9,7 @@ namespace mim {
 /// Compiler switches that must be saved and looked up in later phases of compilation.
 /// @see @ref cli
 struct Flags {
-    /// How (if at all) to report Phase runtimes; @see Profiler.
+    /// How (if at all) to report Phase runtimes; @see fe::Profiler.
     enum class Profile {
         None,    ///< No profiling.
         Summary, ///< Flat table aggregated by Phase name.

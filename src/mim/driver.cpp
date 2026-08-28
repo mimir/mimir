@@ -1,15 +1,54 @@
 #include "mim/driver.h"
 
+#include <filesystem>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
+#include <fe/dl.h>
+#include <fe/sys.h>
+
+#include "mim/config.h"
 #include "mim/plugin.h"
 
-#include "mim/util/dl.h"
-#include "mim/util/sys.h"
+// Any address inside libmim identifies the shared object it was loaded from; see path_to_libmim.
+extern "C" MIM_EXPORT void mim_lib_anchor() {}
 
 namespace mim {
+
+namespace {
+
+bool has_plugin_dir(const fs::path& libmim_path) {
+    std::error_code ignore;
+    return fs::is_directory(libmim_path.parent_path() / "mim", ignore) && !ignore;
+}
+
+fs::path adjust_libmim_path(const fs::path& libmim_path) {
+    if (has_plugin_dir(libmim_path)) return libmim_path;
+
+    auto dir      = libmim_path.parent_path();
+    auto lib_name = libmim_path.filename();
+    while (!dir.empty()) {
+        if (dir == dir.root_path()) break;
+
+        std::error_code ignore;
+        auto candidate = dir / MIM_LIBDIR / "mim";
+        if (fs::is_directory(candidate, ignore) && !ignore) return candidate.parent_path() / lib_name;
+
+        dir = dir.parent_path();
+    }
+
+    return libmim_path;
+}
+
+/// Path of libmim itself, adjusted so that `<parent>/mim` resolves to the default in-tree plugin directory.
+std::optional<fs::path> path_to_libmim() {
+    if (auto path = fe::sys::path_to_lib((const void*)&mim_lib_anchor)) return adjust_libmim_path(*path);
+    return {};
+}
+
+} // namespace
 
 std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
     auto [src, fresh] = driver_.src().add(std::move(path));
@@ -45,7 +84,7 @@ Driver::Driver(std::string name)
     }
 
     // add <path/to/libmim>/mim
-    if (auto path = sys::path_to_libmim()) add_search_path(path->parent_path() / "mim");
+    if (auto path = path_to_libmim()) add_search_path(path->parent_path() / "mim");
 
     // add install path if different from above
     if (auto install_path = fs::path{MIM_INSTALL_PREFIX} / MIM_LIBDIR / "mim"; fs::exists(install_path)) {
@@ -65,16 +104,16 @@ void Driver::load(Sym name) {
         return;
     }
 
-    auto handle = Plugin::Handle{nullptr, dl::close};
+    auto handle = Plugin::Handle{nullptr, fe::dl::close};
     if (auto path = fs::path{name.view()}; path.is_absolute() && fs::is_regular_file(path))
-        handle.reset(dl::open(name.c_str()));
+        handle.reset(fe::dl::open(name.c_str()));
     if (!handle) {
         for (const auto& path : search_paths()) {
-            auto full_path = path / std::format("libmim_{}.{}", name, dl::extension);
+            auto full_path = path / std::format("libmim_{}.{}", name, fe::dl::extension);
             std::error_code ignore;
             if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
                 auto path_str = full_path.string();
-                if (handle.reset(dl::open(path_str.c_str())); handle) break;
+                if (handle.reset(fe::dl::open(path_str.c_str())); handle) break;
             }
             if (handle) break;
         }
@@ -82,7 +121,7 @@ void Driver::load(Sym name) {
 
     if (!handle) fe::throwf("cannot open plugin `{}`", name);
 
-    if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(dl::get(handle.get(), "mim_get_plugin"))) {
+    if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"))) {
         auto plugin = get_info();
         if (version() != plugin.version) {
             std::ostringstream oss;
@@ -104,7 +143,7 @@ void Driver::load(Sym name) {
 }
 
 void* Driver::get_fun_ptr(Sym plugin, const char* name) {
-    if (auto handle = lookup(plugins_, plugin)) return dl::get(handle->get(), name);
+    if (auto handle = lookup(plugins_, plugin)) return fe::dl::get(handle->get(), name);
     return nullptr;
 }
 

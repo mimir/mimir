@@ -110,7 +110,7 @@ public:
         p.run();
     }
 
-    /// Adds @p n to the custom Profiler counter @p key of the current run; no-op unless profiling is enabled.
+    /// Adds @p n to the custom fe::Profiler counter @p key of the current run; no-op unless profiling is enabled.
     void profile_count(std::string_view key, uint64_t n = 1);
     ///@}
 
@@ -325,7 +325,7 @@ private:
     bool curr_sparse_   = false; ///< Is the current round sparse?
     bool dense_         = false; ///< @see make_dense()
     bool bootstrapping_ = true;
-    size_t num_drained_ = 0; ///< muts drained this round; flushed into the Profiler
+    size_t num_drained_ = 0; ///< muts drained this round; flushed into the fe::Profiler
 };
 
 /// Common base of the two rewriting Phase%s: RWPhase rebuilds the World, InplaceRWPhase stays in it.

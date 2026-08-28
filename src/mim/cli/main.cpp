@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 
+#include <fe/sys.h>
 #include <fe/term.h>
 #include <lyra/lyra.hpp>
 
@@ -15,7 +16,6 @@
 
 #include <mim/ast/parser.h>
 #include <mim/phase/optimize.h>
-#include <mim/util/sys.h>
 
 using namespace mim;
 using namespace std::literals;
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         bool sexpr_include_types = false;
         DotConfig dot;
         std::string input, prefix;
-        std::string clang = sys::find_cmd("clang");
+        std::string clang = fe::sys::find_cmd("clang");
         std::vector<std::string> plugins, search_paths, plugin_args;
 #ifdef MIM_ENABLE_CHECKS
         std::vector<uint32_t> breakpoints;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
             | lyra::help(show_help)
             | lyra::opt(show_version                       )["-v"]["--version"              ]("Display version info and exit.")
             | lyra::opt(list_search_paths                  )["-l"]["--list-search-paths"    ]("List search paths in order and exit.")
-            | lyra::opt(clang,        "clang"              )["-c"]["--clang"                ]("Path to clang executable (default: '" MIM_WHICH " clang').")
+            | lyra::opt(clang,        "clang"              )["-c"]["--clang"                ](std::format("Path to clang executable (default: '{} clang').", fe::sys::which))
             | lyra::opt(plugins,      "plugin"             )["-p"]["--plugin"               ]("Dynamically load plugin.")
             | lyra::opt(search_paths, "path"               )["-P"]["--plugin-path"          ]("Path to search for plugins.")
             | lyra::opt(plugin_args,  "plugin:arg"         )["-X"]["--plugin-arg"           ]("Pass <arg> to plugin/phase <plugin>, e.g. -X ll:--target=sm_80. Repeatable.")

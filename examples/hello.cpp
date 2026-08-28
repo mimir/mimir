@@ -1,8 +1,9 @@
+#include <fe/sys.h>
+
 #include <mim/driver.h>
 
 #include <mim/ast/parser.h>
 #include <mim/phase/optimize.h>
-#include <mim/util/sys.h>
 
 #include <mim/plug/mem/mem.h>
 
@@ -30,8 +31,8 @@ int main(int, char**) {
         // the `ll` plugin's emit phase writes `hello.ll` as part of `optimize`
         optimize(w);
 
-        sys::system("clang hello.ll -o hello -Wno-override-module");
-        std::println("exit code: {}", sys::system("./hello a b c"));
+        fe::sys::system("clang hello.ll -o hello -Wno-override-module");
+        std::println("exit code: {}", fe::sys::system("./hello a b c"));
     } catch (const std::exception& e) {
         std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;

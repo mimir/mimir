@@ -5,6 +5,7 @@
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/node_hash_map.h>
+#include <fe/profile.h>
 
 #include "mim/flags.h"
 #include "mim/plugin.h"
@@ -12,7 +13,6 @@
 
 #include "mim/ast/tok.h"
 #include "mim/util/log.h"
-#include "mim/util/profile.h"
 
 namespace mim {
 
@@ -36,8 +36,8 @@ public:
     Flags& flags() { return flags_; }
     const Flags& flags() const { return flags_; }
     Log& log() const { return log_; }
-    Profiler& profiler() { return profiler_; }
-    const Profiler& profiler() const { return profiler_; }
+    fe::Profiler& profiler() { return profiler_; }
+    const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
     const Version& version() const { return version_; } ///< MimIR Version.
     ///@}
@@ -177,7 +177,7 @@ private:
     fe::SrcMap src_;
     mutable Log log_;
     mutable Names names_;
-    Profiler profiler_;
+    fe::Profiler profiler_;
     World world_;
     std::list<fs::path> search_paths_;
     std::list<fs::path>::iterator insert_ = search_paths_.end();
