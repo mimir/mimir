@@ -126,7 +126,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [mn, sinout, f, idxs] = app->callee()->as<App>()->uncurry_args<4>();
         auto [sin, sout]           = sinout->projs<2>();
 
-        auto _   = Restore(mem_);
+        auto _   = fe::Restore(mem_);
         auto mem = rewrite(app->arg()); // the `%affine.map`'s mem operand
 
         auto ins    = rewrite(idxs)->projs();

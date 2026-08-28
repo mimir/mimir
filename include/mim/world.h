@@ -8,6 +8,7 @@
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
+#include <fe/restore.h>
 
 #include "mim/axm.h"
 #include "mim/rewrite.h"
@@ -118,7 +119,7 @@ public:
 
     /// @name Loc
     ///@{
-    using ScopedLoc = Restore<CurrLoc>;
+    using ScopedLoc = fe::Restore<CurrLoc>;
 
     Loc get_loc() const { return state_.pod.curr_loc.loc; }
     DbgKey dbg_key() const { return state_.pod.curr_loc.key; } ///< World::get_loc, already interned.
@@ -163,7 +164,7 @@ public:
     ///     // do stuff
     /// }
     /// ```
-    [[nodiscard]] auto freeze() const { return Restore(state_.pod.frozen, true); }
+    [[nodiscard]] auto freeze() const { return fe::Restore(state_.pod.frozen, true); }
     ///@}
 
     /// @name Debugging Features

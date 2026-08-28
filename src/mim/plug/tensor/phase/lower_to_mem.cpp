@@ -314,8 +314,8 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
     // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
     // their own requests (and their own per-lam op memo).
-    auto p       = Restore(pending_, {});
-    auto m       = Restore(fresh_memo_, {});
+    auto _       = fe::Restore(pending_, {});
+    auto __      = fe::Restore(fresh_memo_, {});
     auto new_def = conv_mut_Lam(lam);
     if (!pending_.empty()) wrap_fresh_mem(new_def->as_mut<Lam>());
     return new_def;
