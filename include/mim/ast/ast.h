@@ -698,7 +698,7 @@ private:
 /// `ret ptrn = callee $ arg; body`
 class RetExpr : public Expr {
 public:
-    RetExpr(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& callee, Ptr<Expr>&& arg, Ptr<Expr> body)
+    RetExpr(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& callee, Ptr<Expr>&& arg, Ptr<Expr>&& body)
         : Expr(loc)
         , ptrn_(std::move(ptrn))
         , callee_(std::move(callee))
@@ -1072,7 +1072,7 @@ class RuleDecl : public ValDecl {
 public:
     RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn>&& var, Ptr<Expr>&& lhs, Ptr<Expr>&& rhs, Ptr<Expr>&& guard, bool is_normalizer)
         : ValDecl(loc)
-        , dbg_(std::move(dbg))
+        , dbg_(dbg)
         , var_(std::move(var))
         , lhs_(std::move(lhs))
         , rhs_(std::move(rhs))
