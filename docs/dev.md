@@ -16,7 +16,7 @@ It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](
 In this example, the log is configured to write debug output to `std::cerr`; see also @ref clidebug.
 
 @warning Note how the [`Driver`](@ref mim::Driver) is created *outside* the `try` block.
-It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](@ref mim::Error) only renders its `Loc`s - and their source snippets - through it.
+It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](https://leissa.github.io/fe/classfe_1_1Error.html) only renders its `Loc`s - and their source snippets - through it.
 So the [`Driver`](@ref mim::Driver) must outlive everything that may still print a diagnostic, in particular your `catch` handlers.
 
 Next, we load the [`core`](@ref core) and [`ll`](@ref ll) plugins.

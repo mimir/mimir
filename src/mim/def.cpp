@@ -410,8 +410,8 @@ void Def::set_dbg_(Dbg d, bool ow) const {
 void Def::set_dbg_key_(DbgKey key, bool ow) const {
     // Nothing of ours to preserve, so adopting the index is exactly what set<Ow>(that Dbg) would compute -
     // but without materialising a Dbg or touching Driver::dbg2idx_ at all.
-    if (ow || dbg_ == 0 || dbg_ == key.key_) return void(dbg_ = key.key_);
-    set_dbg_(world().driver().dbg(key.key_), false); // rare: we carry a partial Dbg, so merge field-wise
+    if (ow || !dbg_ || dbg_ == key) return void(dbg_ = key);
+    set_dbg_(world().driver().dbg(key), false); // rare: we carry a partial Dbg, so merge field-wise
 }
 
 const Def* Def::unfold_type() const {

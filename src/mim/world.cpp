@@ -119,6 +119,12 @@ static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destruc
  */
 
 fe::Log& World::log() const { return driver().log(); }
+
+void World::error_(Loc loc, const std::function<std::string()>& fmt) const {
+    auto e = Error(driver());
+    e.msg(loc, Error::Tag::Error, fmt);
+    throw e;
+}
 Flags& World::flags() { return driver().flags(); }
 
 Sym World::sym(const char* s) { return driver().sym(s); }
@@ -801,7 +807,7 @@ template const Def* World::implicit_app<false>(const Def*, const Def*);
 World::ScopedLoc World::push(Loc loc) {
     auto& curr = state_.pod.curr_loc;
     if (loc == curr.loc) return ScopedLoc(curr); // nested emitters push the same Loc; don't re-intern it
-    return ScopedLoc(curr, {loc, loc ? DbgKey(driver().dbg(Dbg(loc))) : DbgKey()});
+    return ScopedLoc(curr, {loc, loc ? driver().dbg(Dbg(loc)) : DbgKey()});
 }
 
 Loc World::err_loc(const Def* def) const {

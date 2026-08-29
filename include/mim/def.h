@@ -594,8 +594,8 @@ public:
 
     /// @name Dbg Getters
     ///@{
-    Dbg dbg() const;                                ///< Looks up Def::dbg_ in Driver::dbg.
-    DbgKey dbg_key() const { return DbgKey(dbg_); } ///< Cheap handle for `other->set(this->dbg_key())`.
+    Dbg dbg() const;                        ///< Looks up Def::dbg_ in Driver::dbg.
+    DbgKey dbg_key() const { return dbg_; } ///< Cheap handle for `other->set(this->dbg_key())`.
     Loc loc() const { return dbg().loc(); }
     Sym sym() const { return dbg().sym(); }
     std::string unique_name() const; ///< name + "_" + Def::gid
@@ -724,7 +724,7 @@ protected:
     Sym sym(const char*) const;
     Sym sym(std::string_view) const;
     Sym sym(std::string) const;
-    void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the index in Def::dbg_.
+    void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the key in Def::dbg_.
     void set_dbg_(Dbg, bool ow) const;        ///< Backs Def::set(Dbg).
     void set_dbg_key_(DbgKey, bool ow) const; ///< Backs Def::set(DbgKey).
 
@@ -776,10 +776,10 @@ private:
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
-    /// Index into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
-    /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice. 0 is the empty Dbg.
+    /// Handle into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
+    /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice.
     /// @note Deliberately adjacent to Def::tid_ so the two `u32`s share one 8-byte slot.
-    mutable u32 dbg_ = 0;
+    mutable DbgKey dbg_;
     mutable u32 tid_ = 0;
     mutable const Def* type_;
 

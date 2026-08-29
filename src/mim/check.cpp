@@ -2,6 +2,7 @@
 
 #include <fe/assert.h>
 
+#include "mim/driver.h"
 #include "mim/rewrite.h"
 #include "mim/rule.h"
 #include "mim/world.h"

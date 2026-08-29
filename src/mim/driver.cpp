@@ -152,12 +152,39 @@ const fe::Vector<std::string>& Driver::args(Sym plugin) const {
     return empty;
 }
 
-u32 Driver::dbg(Dbg dbg) {
-    if (auto i = dbg2idx_.find(dbg); i != dbg2idx_.end()) return i->second;
-    auto idx = u32(dbgs_.size());
-    dbgs_.emplace_back(dbg);
-    dbg2idx_.emplace(dbg, idx);
-    return idx;
+PlainNames::PlainNames(const Driver* driver)
+    : driver_(driver) {
+    if (!driver_) return;
+
+    auto& names = driver_->names();
+    if (names.depth++ == 0) {
+        names.clashed = false;
+        names.sym2gid.clear();
+    }
+}
+
+PlainNames::~PlainNames() {
+    if (driver_) --driver_->names().depth;
+}
+
+bool PlainNames::clashed() const { return driver_ && driver_->names().clashed; }
+
+bool PlainNames::claim(const Driver& driver, Sym sym, u32 gid) {
+    auto& names = driver.names();
+    if (names.depth == 0) return false;
+    if (auto [i, ins] = names.sym2gid.emplace(sym, gid); !ins && i->second != gid) names.clashed = true;
+    return true;
+}
+
+std::string Driver::render(const std::function<std::string()>& fmt) const {
+    bool clashed = false;
+    auto str     = std::string();
+    {
+        auto plain = PlainNames(this);
+        str        = fmt();
+        clashed    = plain.clashed();
+    }
+    return clashed ? fmt() : str; // the retry must run outside the guard, or it renders plainly again
 }
 
 } // namespace mim

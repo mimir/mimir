@@ -34,7 +34,6 @@ target_sources(libmim
         phase/branch_normalize.cpp
         phase/ret_wrap.cpp
         phase/unload.cpp
-        util/dbg.cpp
 )
 
 set_target_properties(libmim PROPERTIES PREFIX "")

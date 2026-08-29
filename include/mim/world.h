@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -13,6 +14,7 @@
 #include <fe/span.h>
 
 #include "mim/axm.h"
+#include "mim/flags.h"
 #include "mim/rewrite.h"
 
 #include "mim/util/dbg.h"
@@ -134,12 +136,11 @@ public:
 
     /// @name Diagnostics
     ///@{
-    /// Throws a single-message Error carrying this World's Driver, so the renderer can find its Flags.
+    /// Throws a single-message Error bound to this World's Driver, so it renders with its layout.
     template<class... Args>
     [[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) const {
-        auto e = Error(driver());
-        e.error(loc, f, std::forward<Args>(args)...);
-        throw e;
+        // Driver is incomplete here, so the Error is built in world.cpp; the lambda keeps Driver::render in charge.
+        error_(loc, [&] { return std::vformat(f.get(), std::make_format_args(args...)); });
     }
     ///@}
 
@@ -750,6 +751,9 @@ public:
     ///@}
 
 private:
+    /// Backs World::error; @p fmt renders the message.
+    [[noreturn]] void error_(Loc, const std::function<std::string()>& fmt) const;
+
     /// @name Put into Sea of Nodes
     ///@{
     /// Common tail of World::unify \& World::insert, right after World::allocate.
