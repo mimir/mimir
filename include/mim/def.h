@@ -11,11 +11,12 @@
 #include <fe/assert.h>
 #include <fe/cast.h>
 #include <fe/enum.h>
+#include <fe/xtrie.h>
 
 #include "mim/config.h"
 
 #include "mim/util/dbg.h"
-#include "mim/util/sets.h"
+#include "mim/util/types.h"
 #include "mim/util/util.h"
 #include "mim/util/vector.h"
 
@@ -72,6 +73,14 @@ class Def;
 class Driver;
 class World;
 
+/// Grants fe::XTrie access to Def::gid_ and Def::tid_.
+struct DefKey {
+    static u32 gid(const Def*) noexcept;
+    static u32 tid(const Def*) noexcept;
+    static void set_tid(const Def*, u32) noexcept;
+    static std::ostream& stream(std::ostream&, const Def*);
+};
+
 /// @name Def
 /// GIDSet / GIDMap keyed by Def::gid of `const Def*`.
 ///@{
@@ -91,7 +100,7 @@ template<class To>
 using MutMap  = GIDMap<Def*, To>;
 using MutSet  = GIDSet<Def*>;
 using Mut2Mut = MutMap<Def*>;
-using Muts    = Sets<Def>::Set;
+using Muts    = fe::XTrie<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
@@ -99,9 +108,8 @@ using Muts    = Sets<Def>::Set;
 ///@{
 template<class To>
 using VarMap  = GIDMap<const Var*, To>;
-using VarSet  = GIDSet<const Var*>;
 using Var2Var = VarMap<const Var*>;
-using Vars    = Sets<const Var>::Set;
+using Vars    = fe::XTrie<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
@@ -516,7 +524,7 @@ public:
 
     /// @name free_vars predicates
     /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
-    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// every call, and each XTrie::merge allocates, sorts, hashes, and probes the pool.
     /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
     /// question without ever materializing the merged set.
     /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
@@ -773,12 +781,15 @@ private:
     mutable u32 tid_ = 0;
     mutable const Def* type_;
 
-    template<class D, size_t N>
-    friend class Sets;
+    friend struct DefKey;
     friend class World;
     friend void swap(World&, World&) noexcept;
     friend std::ostream& operator<<(std::ostream&, const Def*);
 };
+
+inline u32 DefKey::gid(const Def* d) noexcept { return d->gid_; }
+inline u32 DefKey::tid(const Def* d) noexcept { return d->tid_; }
+inline void DefKey::set_tid(const Def* d, u32 tid) noexcept { d->tid_ = tid; }
 
 /// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
 /// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()

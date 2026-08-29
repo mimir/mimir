@@ -89,7 +89,7 @@ public:
     /// World::curr_gid will be offset to not collide with the original World.
     std::unique_ptr<World> inherit() {
         auto s = state();
-        s.pod.curr_gid += move_.defs.size();
+        s.pod.curr_gid += move_.sea.size();
         return std::make_unique<World>(&driver(), s);
     }
     ///@}
@@ -782,13 +782,13 @@ private:
 #endif
 
         if (is_frozen()) {
-            auto i = move_.defs.find(def);
+            auto i = move_.sea.find(def);
             deallocate<T>(state, def);
-            if (i != move_.defs.end()) return static_cast<const T*>(*i);
+            if (i != move_.sea.end()) return static_cast<const T*>(*i);
             return nullptr;
         }
 
-        if (auto [i, ins] = move_.defs.emplace(def); !ins) {
+        if (auto [i, ins] = move_.sea.emplace(def); !ins) {
             deallocate<T>(state, def);
             return static_cast<const T*>(*i);
         }
@@ -820,7 +820,7 @@ private:
 #ifdef MIM_ENABLE_CHECKS
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
-        assert_emplace(move_.defs, def);
+        assert_emplace(move_.sea, def);
         return def;
     }
 
@@ -904,9 +904,9 @@ private:
 
         Externals externals;
         Annexes annexes;
-        absl::flat_hash_set<const Def*, SeaHash, SeaEq> defs;
-        Sets<Def> muts;
-        Sets<const Var> vars;
+        absl::flat_hash_set<const Def*, SeaHash, SeaEq> sea;
+        fe::XTrie<Def, DefKey> muts;
+        fe::XTrie<const Var, DefKey> vars;
         absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {
@@ -914,7 +914,7 @@ private:
             // clang-format off
             swap(m1.arena.defs,   m2.arena.defs);
             swap(m1.arena.substs, m2.arena.substs);
-            swap(m1.defs,         m2.defs);
+            swap(m1.sea,          m2.sea);
             swap(m1.substs,       m2.substs);
             swap(m1.vars,         m2.vars);
             swap(m1.muts,         m2.muts);

@@ -763,8 +763,8 @@ void World::breakpoint(u32 gid) { state_.breakpoints.emplace(gid); }
 void World::watchpoint(u32 gid) { state_.watchpoints.emplace(gid); }
 
 const Def* World::gid2def(u32 gid) {
-    auto i = std::ranges::find_if(move_.defs, [=](auto def) { return def->gid() == gid; });
-    if (i == move_.defs.end()) return nullptr;
+    auto i = std::ranges::find_if(move_.sea, [=](auto def) { return def->gid() == gid; });
+    if (i == move_.sea.end()) return nullptr;
     return *i;
 }
 

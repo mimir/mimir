@@ -3,8 +3,6 @@
 #include <mim/tuple.h>
 #include <mim/world.h>
 
-#include <mim/util/sets.h>
-
 #include <mim/plug/affine/affine.h>
 #include <mim/plug/core/core.h>
 #include <mim/plug/cps/cps.h>

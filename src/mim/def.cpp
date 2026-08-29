@@ -11,10 +11,16 @@
 
 using namespace std::literals;
 
+#ifndef DOXYGEN // fe::XTrie is not part of the documented input
+template void fe::XTrie<const mim::Var, mim::DefKey>::dot();
+template void fe::XTrie<mim::Def, mim::DefKey>::dot();
+#endif
+
 namespace mim {
 
-template void Sets<const Var>::dot();
-template void Sets<Def>::dot();
+std::ostream& DefKey::stream(std::ostream& os, const Def* d) {
+    return os << d->sym() << ": " << d->gid() << '/' << d->tid();
+}
 
 /*
  * constructors
