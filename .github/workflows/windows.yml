@@ -132,7 +132,7 @@ jobs:
               $boot = 'import site; site.addsitedir(r"' + $sp + '"); '
               $env:_NT_SYMBOL_PATH = "${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;srv*https://msdl.microsoft.com/download/symbols"
               Write-Host "=== native stack for A (base=$base) ==="
-              & $cdb.FullName -g -G -c "g; .echo ===FAULT===; .lastevent; .echo ===STACK===; kb 60; .echo ===END===; q" `
+              & $cdb.FullName -g -G -c "g; .echo ===FAULT===; .lastevent; .exr -1; .ecxr; .echo ===REGS===; r; .echo ===DISASM===; u . L8; .echo ===THIS===; dq @rcx L8; .echo ===STACK===; kb 20; .echo ===END===; q" `
                   $base -c ($boot + $probes['A driver only, no plugin'])
           } else {
               Write-Host "cdb not available - no native stack"
