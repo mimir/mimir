@@ -181,10 +181,10 @@ _STL_CASTERS = {
 # signature rather than a value type, so it needs its own traversal.
 _FUNCTION_CASTER = "function.h"
 
-# MimIR's own containers: no caster, but they are ranges of elements nanobind
+# `fe`'s own containers: no caster, but they are ranges of elements nanobind
 # *can* bind, so signatures mentioning one are rewritten to a `std::vector` of
 # the element type (see `_range_value_type`).
-_MIM_RANGES = ("mim::Span", "mim::Vector")
+_MIM_RANGES = ("fe::Span", "fe::Vector")
 _MIM_SET = "fe::XTrie::Set"  # `Vars`/`Muts`: a forward range of `D*`
 
 # How many entries a note spells out before summarising the rest.
