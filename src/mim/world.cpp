@@ -121,9 +121,7 @@ static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destruc
 fe::Log& World::log() const { return driver().log(); }
 
 void World::error_(Loc loc, const std::function<std::string()>& fmt) const {
-    auto e = Error(driver());
-    e.msg(loc, Error::Tag::Error, fmt);
-    throw e;
+    Error(driver()).msg(loc, Error::Tag::Error, fmt).bail();
 }
 Flags& World::flags() { return driver().flags(); }
 
@@ -238,17 +236,19 @@ const Def* World::app(const Def* callee, const Def* arg) {
 
     auto pi = callee->isa_type<Pi>();
     if (!pi)
-        throw Error(driver())
+        Error(driver())
             .error(err_loc(callee), "callee is not of function type")
             .note("callee `{}` has type `{}`", callee, type_of(callee))
-            .note(callee->loc(), "callee `{}` declared here", callee);
+            .note(callee->loc(), "callee `{}` declared here", callee)
+            .bail();
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
-        throw Error(driver())
+        Error(driver())
             .error(err_loc(arg), "argument is not assignable to callee's domain")
             .note("expected `{}`, got `{}`", pi->dom(), type_of(arg))
-            .note(callee->loc(), "callee `{}` declared here", callee);
+            .note(callee->loc(), "callee `{}` declared here", callee)
+            .bail();
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
@@ -495,10 +495,11 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
         auto elem_type = type->proj(*lidx);
         auto new_val   = Checker::assignable(elem_type, val);
         if (!new_val) {
-            throw Error(driver())
+            Error(driver())
                 .error(err_loc(val), "value is not assignable to element type")
                 .note("expected `{}`, got `{}`", elem_type, type_of(val))
-                .note("value: `{}`", val);
+                .note("value: `{}`", val)
+                .bail();
         }
         val = new_val;
     }

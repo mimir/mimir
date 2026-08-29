@@ -690,7 +690,7 @@ TEST(Error, render) {
     err.note(Loc(src, Pos(15), Pos(16)), "declared");
 
     // A Loc renders through the fe::Src it points at, which the Driver's SrcMap keeps alive.
-    auto what = std::string(err.what());
+    auto what = err.str();
     EXPECT_NE(what.find("render.mim:1:5-1:9: error: bad `thing`"), std::string::npos) << what;
     EXPECT_NE(what.find("let x = 1;"), std::string::npos) << what;
     EXPECT_NE(what.find("render.mim:2:5"), std::string::npos) << what;

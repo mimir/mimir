@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
                 ast.error().ack(); // prefer the parser's own diagnostic, if it recorded one
                 fe::throwf("could not read file `{}`", input);
             }
-        } catch (const Error& e) {
+        } catch (const Error::Bail& e) {
             std::cerr << e;
             return EXIT_FAILURE;
         }
