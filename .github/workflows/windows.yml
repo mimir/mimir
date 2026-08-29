@@ -93,15 +93,54 @@ jobs:
         with:
           version: "21.1.8"
 
+      # DIAGNOSTIC (remove once the py access violation is understood): a mini dump carries the
+      # thread stacks, which is all we need to see which module faults.
+      - name: Enable crash dumps
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
+          New-Item -Path $key -Force | Out-Null
+          Set-ItemProperty -Path $key -Name DumpFolder -Value '${{github.workspace}}\dumps' -Type ExpandString
+          Set-ItemProperty -Path $key -Name DumpType   -Value 1 -Type DWord
+          Set-ItemProperty -Path $key -Name DumpCount  -Value 3 -Type DWord
+          New-Item -ItemType Directory -Force -Path '${{github.workspace}}\dumps' | Out-Null
+
       - name: Build
         shell: cmd
         run: |
           call "%VCVARS%"
           cmake --build build -v
 
+      # DIAGNOSTIC (remove once the py access violation is understood): the suite dies right after
+      # call.py::test, whose teardown is the first ~Driver that unloads a plugin DLL. Try just that.
+      - name: Probe plugin unload
+        shell: cmd
+        continue-on-error: true
+        run: |
+          call "%VCVARS%"
+          set PATH=${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;%PATH%
+          "${{github.workspace}}\build\.venv\Scripts\python.exe" -X faulthandler -c "import mim, gc; d = mim.Driver(); d.load_plugin('core'); w = d.world(); del w, d; gc.collect(); print('unloaded ok')"
+
       - name: Test
         shell: cmd
         run: |
           call "%VCVARS%"
           set PATH=${{github.workspace}}/bin;%PATH%
+          rem DIAGNOSTIC (remove with the steps above): name every test and fixture as it runs, unbuffered,
+          rem so the last line printed before the crash is the one that crashed.
+          set PYTHONUNBUFFERED=1
+          set PYTEST_ADDOPTS=-v --setup-show
           cmake --build build -v --target test-all
+
+      # DIAGNOSTIC (remove once the py access violation is understood): the .pdb files are what make
+      # the dump symbolizable; the Debug matrix leg is the one worth opening.
+      - name: Upload crash dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-dumps-${{matrix.build-type}}
+          path: |
+            ${{github.workspace}}\dumps
+            ${{github.workspace}}\build\bin\*.pdb
+            ${{github.workspace}}\build\lib\mim\*.pdb
+          if-no-files-found: ignore
