@@ -81,7 +81,7 @@ public:
     Names& names() const { return names_; }
 
     /// Renders through PlainNames and - if that turned out ambiguous - once more with Def::unique_name.
-    /// The constructor installs this as the Diagnostics::render hook.
+    /// The constructor installs this as the fe::Driver::render hook.
     std::string render_plain(const std::function<std::string()>&) const;
 
     ///@}
