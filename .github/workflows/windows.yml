@@ -99,8 +99,8 @@ jobs:
           call "%VCVARS%"
           cmake --build build -v
 
-      # DIAGNOSTIC (remove once the py access violation is understood): a one-liner outside pytest
-      # already faults, so triangulate which phase does it and get a native stack for the one that does.
+      # DIAGNOSTIC (remove once the py access violation is understood): ~Driver faults on its own -
+      # no plugin involved - so keep the triangulation and get a native stack for the plain case.
       - name: Probe plugin unload
         shell: pwsh
         continue-on-error: true
@@ -124,9 +124,14 @@ jobs:
               $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue
           }
           if ($cdb) {
-              Write-Host "=== native stack for B ==="
-              & $cdb.FullName -g -G -c "g; .echo ===FAULT===; .lastevent; kb 60; .echo ===END===; q" `
-                  $py -c $probes['B load, then unload']
+              # The venv python.exe is a launcher stub that re-execs; debug the real interpreter instead,
+              # with the venv's site-packages handed to it explicitly.
+              $base = & $py -c "import sys; print(sys._base_executable)"
+              $env:PYTHONPATH = & $py -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+              $env:_NT_SYMBOL_PATH = "${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;srv*https://msdl.microsoft.com/download/symbols"
+              Write-Host "=== native stack for A (base=$base) ==="
+              & $cdb.FullName -g -G -c "g; .echo ===FAULT===; .lastevent; .echo ===STACK===; kb 60; .echo ===END===; q" `
+                  $base -c $probes['A driver only, no plugin']
           } else {
               Write-Host "cdb not available - no native stack"
           }
