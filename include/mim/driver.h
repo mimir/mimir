@@ -81,7 +81,9 @@ public:
     Names& names() const { return names_; }
 
     /// Renders through PlainNames and - if that turned out ambiguous - once more with Def::unique_name.
-    std::string render(const std::function<std::string()>&) const override;
+    /// The constructor installs this as the Diagnostics::render hook.
+    std::string render_plain(const std::function<std::string()>&) const;
+
     ///@}
 
     /// @name Manage Search Paths
