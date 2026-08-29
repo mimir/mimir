@@ -11,7 +11,7 @@
 #include <fe/assert.h>
 #include <fe/cast.h>
 #include <fe/enum.h>
-#include <fe/sets.h>
+#include <fe/xtrie.h>
 
 #include "mim/config.h"
 
@@ -73,7 +73,7 @@ class Def;
 class Driver;
 class World;
 
-/// Grants fe::Sets access to Def::gid_ and Def::tid_.
+/// Grants fe::XTrie access to Def::gid_ and Def::tid_.
 struct DefKey {
     static u32 gid(const Def*) noexcept;
     static u32 tid(const Def*) noexcept;
@@ -100,8 +100,7 @@ template<class To>
 using MutMap  = GIDMap<Def*, To>;
 using MutSet  = GIDSet<Def*>;
 using Mut2Mut = MutMap<Def*>;
-using MutSets = fe::Sets<Def, DefKey>;
-using Muts    = MutSets::Set;
+using Muts    = fe::XTrie<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
@@ -110,7 +109,7 @@ using Muts    = MutSets::Set;
 template<class To>
 using VarMap  = GIDMap<const Var*, To>;
 using Var2Var = VarMap<const Var*>;
-using Vars    = fe::Sets<const Var, DefKey>::Set;
+using Vars    = fe::XTrie<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
@@ -525,7 +524,7 @@ public:
 
     /// @name free_vars predicates
     /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
-    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// every call, and each XTrie::merge allocates, sorts, hashes, and probes the pool.
     /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
     /// question without ever materializing the merged set.
     /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.

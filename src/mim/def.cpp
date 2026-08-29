@@ -11,9 +11,9 @@
 
 using namespace std::literals;
 
-#ifndef DOXYGEN // fe::Sets is not part of the documented input
-template void fe::Sets<const mim::Var, mim::DefKey>::dot();
-template void mim::MutSets::dot();
+#ifndef DOXYGEN // fe::XTrie is not part of the documented input
+template void fe::XTrie<const mim::Var, mim::DefKey>::dot();
+template void fe::XTrie<mim::Def, mim::DefKey>::dot();
 #endif
 
 namespace mim {
