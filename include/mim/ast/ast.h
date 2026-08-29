@@ -91,6 +91,7 @@ public:
     // clang-format off
     template<class... Args> Error& error(Loc loc, std::format_string<Args...> fmt, Args&&... args) const { return err_.error(loc, fmt, std::forward<Args>(args)...); }
     template<class... Args> Error& warn (Loc loc, std::format_string<Args...> fmt, Args&&... args) const { return err_.warn (loc, fmt, std::forward<Args>(args)...); }
+    template<class... Args> Error& note (         std::format_string<Args...> fmt, Args&&... args) const { return err_.note (     fmt, std::forward<Args>(args)...); }
     template<class... Args> Error& note (Loc loc, std::format_string<Args...> fmt, Args&&... args) const { return err_.note (loc, fmt, std::forward<Args>(args)...); }
     // clang-format on
     ///@}

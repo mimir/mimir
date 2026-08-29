@@ -240,15 +240,15 @@ const Def* World::app(const Def* callee, const Def* arg) {
     if (!pi)
         throw Error(driver())
             .error(err_loc(callee), "callee is not of function type")
-            .note(err_loc(callee), "callee `{}` has type `{}`", callee, type_of(callee))
-            .note_at(callee->loc(), "callee `{}` declared here", callee);
+            .note("callee `{}` has type `{}`", callee, type_of(callee))
+            .note(callee->loc(), "callee `{}` declared here", callee);
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
         throw Error(driver())
             .error(err_loc(arg), "argument is not assignable to callee's domain")
-            .note(err_loc(arg), "expected `{}`, got `{}`", pi->dom(), type_of(arg))
-            .note_at(callee->loc(), "callee `{}` declared here", callee);
+            .note("expected `{}`, got `{}`", pi->dom(), type_of(arg))
+            .note(callee->loc(), "callee `{}` declared here", callee);
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
@@ -497,8 +497,8 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
         if (!new_val) {
             throw Error(driver())
                 .error(err_loc(val), "value is not assignable to element type")
-                .note(err_loc(val), "expected `{}`, got `{}`", elem_type, type_of(val))
-                .note(err_loc(val), "value: `{}`", val);
+                .note("expected `{}`, got `{}`", elem_type, type_of(val))
+                .note("value: `{}`", val);
         }
         val = new_val;
     }

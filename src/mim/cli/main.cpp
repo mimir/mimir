@@ -89,6 +89,8 @@ int main(int argc, char** argv) {
             | lyra::opt(driver.diag.no_snippet             )      ["--no-snippet"           ]("Do not render the offending source line and caret underneath a diagnostic.")
             | lyra::opt(driver.diag.gutter, "width"        )      ["--gutter"               ]("Width of a diagnostic's line-number column.")
             | lyra::opt(driver.diag.max_rows, "num"        )      ["--max-rows"             ]("Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
+            | lyra::opt(driver.diag.max_errors, "num"      )      ["--max-errors"           ]("Maximum number of errors to report before dropping the rest; 0 reports all of them.")
+            | lyra::opt(driver.diag.werror                 )      ["--werror"               ]("Treat warnings as errors.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(sexpr_include_types                )      ["--sexpr-include-types"  ]("Wraps symbolic expression terms in a type annotation. Types will not be wrapped in type annotations.")
             | lyra::opt(dot.follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")

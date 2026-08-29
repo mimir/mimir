@@ -271,7 +271,7 @@ void AxmDecl::bind(Scopes& s) const {
             if (auto norm = annex_->normalizer)
                 s.ast().note(norm.loc(), "previous normalizer `{}` declared here", norm);
             else
-                s.ast().note(l, "initially no normalizer was specified");
+                s.ast().note("initially no normalizer was specified");
         }
     }
 

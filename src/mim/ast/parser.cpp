@@ -279,8 +279,7 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                     case Tag::C_DECL:
                         ast().warn(ahead().loc(), "you are passing a declaration expression as argument");
                         ast().note(lhs->loc(), "passed to this expression");
-                        ast().note(ahead().loc(),
-                                   "if this was your intention, consider parenthesizing the declaration expression");
+                        ast().note("if this was your intention, consider parenthesizing the declaration expression");
                         ast().note(lhs->loc().anew_end(), "or insert a `;` here");
                     default: break;
                 }
