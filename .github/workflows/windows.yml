@@ -127,11 +127,13 @@ jobs:
               # The venv python.exe is a launcher stub that re-execs; debug the real interpreter instead,
               # with the venv's site-packages handed to it explicitly.
               $base = & $py -c "import sys; print(sys._base_executable)"
-              $env:PYTHONPATH = & $py -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+              # mim is installed editable, so it hangs off a .pth that bare PYTHONPATH never processes.
+              $sp   = & $py -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+              $boot = 'import site; site.addsitedir(r"' + $sp + '"); '
               $env:_NT_SYMBOL_PATH = "${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;srv*https://msdl.microsoft.com/download/symbols"
               Write-Host "=== native stack for A (base=$base) ==="
               & $cdb.FullName -g -G -c "g; .echo ===FAULT===; .lastevent; .echo ===STACK===; kb 60; .echo ===END===; q" `
-                  $base -c $probes['A driver only, no plugin']
+                  $base -c ($boot + $probes['A driver only, no plugin'])
           } else {
               Write-Host "cdb not available - no native stack"
           }
