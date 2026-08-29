@@ -905,8 +905,8 @@ private:
         Externals externals;
         Annexes annexes;
         absl::flat_hash_set<const Def*, SeaHash, SeaEq> defs;
-        Sets<Def> muts;
-        Sets<const Var> vars;
+        MutSets muts;
+        VarSets vars;
         absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {

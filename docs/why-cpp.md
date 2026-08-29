@@ -75,7 +75,7 @@ allocation.
 
 ### `Sets::Set` — a four-way sum type in one machine word
 
-`Sets::Set` (`include/mim/util/sets.h`) is a single `uintptr_t` with two tag
+`Sets::Set` (`submodules/fe/include/fe/sets.h`) is a single `uintptr_t` with two tag
 bits:
 
     Null | Uniq (D* inline) | Data (arena FAM) | Node (trie node)
@@ -102,7 +102,7 @@ extra hop per element access, and on the JVM a second 16-byte header.
 
 ### The link-cut tree mutates in place
 
-`lct::Node` (`include/mim/util/link_cut_tree.h`) is CRTP-intrusive, embedded
+`lct::Node` (`submodules/fe/include/fe/link_cut_tree.h`) is CRTP-intrusive, embedded
 directly into the trie `Node` by inheritance.
 `rotate` is six pointer stores into memory that already exists.
 `splay`, `expose`, `lca`, `is_descendant_of` are pure in-place pointer surgery

@@ -11,10 +11,16 @@
 
 using namespace std::literals;
 
+#ifndef DOXYGEN // fe::Sets is not part of the documented input
+template void mim::VarSets::dot();
+template void mim::MutSets::dot();
+#endif
+
 namespace mim {
 
-template void Sets<const Var>::dot();
-template void Sets<Def>::dot();
+std::ostream& DefKey::stream(std::ostream& os, const Def* d) {
+    return os << d->sym() << ": " << d->gid() << '/' << d->tid();
+}
 
 /*
  * constructors
