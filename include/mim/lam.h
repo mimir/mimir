@@ -342,9 +342,14 @@ inline const App* isa_callee(const Def* def, size_t i) { return i == 0 ? def->is
 /// * neither `nullptr`,
 /// * nor Lam::is_external,
 /// * nor Lam::is_annex,
-/// * nor Lam::is_unset.
+/// * nor Lam::is_unset,
+/// * nor type-level.
+/// Type-level Lam%s (the body is a type, not a term) must stay representation-stable:
+/// their filter is the normalization strategy, and unfolding or eta-manipulating their applications
+/// desyncs types in rewritten positions from Var types, which alpha-equivalence cannot reconcile.
 inline Lam* isa_optimizable(Lam* lam) {
     if (!lam || lam->is_external() || lam->is_annex() || !lam->is_set()) return nullptr;
+    if (!lam->body()->is_term()) return nullptr;
     return lam;
 }
 
