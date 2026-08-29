@@ -132,7 +132,24 @@ jobs:
               $boot = 'import site; site.addsitedir(r"' + $sp + '"); '
               $env:_NT_SYMBOL_PATH = "${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;srv*https://msdl.microsoft.com/download/symbols"
               Write-Host "=== native stack for A (base=$base) ==="
-              & $cdb.FullName -g -G -c "g; .echo ===FAULT===; .lastevent; .exr -1; .ecxr; .echo ===REGS===; r; .echo ===DISASM===; u . L8; .echo ===THIS===; dq @rcx L8; .echo ===STACK===; kb 20; .echo ===END===; q" `
+              # Trace every ~Driver call: the same pointer twice means a double free.
+              # bm's ? wildcards stand in for the <> of the template name.
+              $script = @(
+                'bm _mim_cp312_win_amd64!nanobind::detail::wrap_destruct?mim::Driver? ".printf \"DTOR this=%p\\n\", @rcx; gc"',
+                'g',
+                '.echo ===FAULT===',
+                '.exr -1',
+                '.echo ===SYM===',
+                'ln poi(@rcx)',
+                '.echo ===HEAP===',
+                '!heap -p -a @rcx',
+                '.echo ===STACK===',
+                'kb 20',
+                '.echo ===END===',
+                'q'
+              )
+              $script | Set-Content -Encoding ascii "${{github.workspace}}\cdb.txt"
+              & $cdb.FullName -g -G -cf "${{github.workspace}}\cdb.txt" `
                   $base -c ($boot + $probes['A driver only, no plugin'])
           } else {
               Write-Host "cdb not available - no native stack"
