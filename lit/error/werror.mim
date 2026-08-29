@@ -1,0 +1,10 @@
+// RUN: (! %mim -p opt --werror %s 2>&1) | %FileCheck %s
+
+// --werror records the warning as an error, so ack throws instead of merely reporting.
+plugin core;
+
+lam g(x: Nat): Nat = x;
+let y = g let z = 3; z;
+
+// CHECK:      {{.*}}werror.mim:7:11-7:13: error: you are passing a declaration expression as argument
+// CHECK:      1 error(s) encountered
