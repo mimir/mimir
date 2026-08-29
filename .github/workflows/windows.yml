@@ -99,69 +99,9 @@ jobs:
           call "%VCVARS%"
           cmake --build build -v
 
-      # DIAGNOSTIC (remove once the py access violation is understood): ~Driver faults on its own -
-      # no plugin involved - so keep the triangulation and get a native stack for the plain case.
-      - name: Probe plugin unload
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $env:PATH = "${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;$env:PATH"
-          $py = "${{github.workspace}}\build\.venv\Scripts\python.exe"
-          $probes = [ordered]@{
-            'A driver only, no plugin' = 'import mim, gc; d = mim.Driver(); del d; gc.collect(); print("A ok")'
-            'B load, then unload'      = 'import mim, gc; d = mim.Driver(); d.load_plugin("core"); w = d.world(); del w, d; gc.collect(); print("B ok")'
-            'C load, never unload'     = 'import mim, os; d = mim.Driver(); d.load_plugin("core"); w = d.world(); print("C ok", flush=True); os._exit(0)'
-          }
-          foreach ($name in $probes.Keys) {
-            Write-Host "=== $name ==="
-            & $py -X faulthandler -c $probes[$name]
-            Write-Host "=== $name exit=$LASTEXITCODE ==="
-          }
-
-          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue
-          if (-not $cdb) {
-              choco install windbg -y --no-progress | Out-Null
-              $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue
-          }
-          if ($cdb) {
-              # The venv python.exe is a launcher stub that re-execs; debug the real interpreter instead,
-              # with the venv's site-packages handed to it explicitly.
-              $base = & $py -c "import sys; print(sys._base_executable)"
-              # mim is installed editable, so it hangs off a .pth that bare PYTHONPATH never processes.
-              $sp   = & $py -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
-              $boot = 'import site; site.addsitedir(r"' + $sp + '"); '
-              $env:_NT_SYMBOL_PATH = "${{github.workspace}}\build\bin;${{github.workspace}}\build\lib\mim;srv*https://msdl.microsoft.com/download/symbols"
-              Write-Host "=== native stack for A (base=$base) ==="
-              # Trace every ~Driver call: the same pointer twice means a double free.
-              # bm's ? wildcards stand in for the <> of the template name.
-              $script = @(
-                'bm _mim_cp312_win_amd64!nanobind::detail::wrap_destruct?mim::Driver? ".printf \"DTOR this=%p\\n\", @rcx; gc"',
-                'g',
-                '.echo ===FAULT===',
-                '.exr -1',
-                '.echo ===SYM===',
-                'ln poi(@rcx)',
-                '.echo ===HEAP===',
-                '!heap -p -a @rcx',
-                '.echo ===STACK===',
-                'kb 20',
-                '.echo ===END===',
-                'q'
-              )
-              $script | Set-Content -Encoding ascii "${{github.workspace}}\cdb.txt"
-              & $cdb.FullName -g -G -cf "${{github.workspace}}\cdb.txt" `
-                  $base -c ($boot + $probes['A driver only, no plugin'])
-          } else {
-              Write-Host "cdb not available - no native stack"
-          }
-
       - name: Test
         shell: cmd
         run: |
           call "%VCVARS%"
           set PATH=${{github.workspace}}/bin;%PATH%
-          rem DIAGNOSTIC (remove with the steps above): name every test and fixture as it runs, unbuffered,
-          rem so the last line printed before the crash is the one that crashed.
-          set PYTHONUNBUFFERED=1
-          set PYTEST_ADDOPTS=-v --setup-show
           cmake --build build -v --target test-all
