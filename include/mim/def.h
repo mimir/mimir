@@ -109,10 +109,8 @@ using Muts    = MutSets::Set;
 ///@{
 template<class To>
 using VarMap  = GIDMap<const Var*, To>;
-using VarSet  = GIDSet<const Var*>;
 using Var2Var = VarMap<const Var*>;
-using VarSets = fe::Sets<const Var, DefKey>;
-using Vars    = VarSets::Set;
+using Vars    = fe::Sets<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);

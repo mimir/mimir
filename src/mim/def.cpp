@@ -12,7 +12,7 @@
 using namespace std::literals;
 
 #ifndef DOXYGEN // fe::Sets is not part of the documented input
-template void mim::VarSets::dot();
+template void fe::Sets<const mim::Var, mim::DefKey>::dot();
 template void mim::MutSets::dot();
 #endif
 
