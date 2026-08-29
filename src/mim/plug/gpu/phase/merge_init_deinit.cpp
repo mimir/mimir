@@ -17,6 +17,15 @@ std::optional<nat_t> mem_addr_space(const Def* def) {
     return {};
 }
 
+bool is_touching_addr_space(const Def* def, nat_t space) {
+    if (auto a = mem_addr_space(def)) return *a == space;
+    if (def->type()->isa<Arr>()) return false;
+    if (def->num_projs() > 1)
+        for (auto proj : def->projs())
+            if (is_touching_addr_space(proj, space)) return true;
+    return false;
+}
+
 } // namespace
 
 const Def* MergeInitDeinit::rewrite_imm_App(const App* app) {
@@ -24,9 +33,12 @@ const Def* MergeInitDeinit::rewrite_imm_App(const App* app) {
 
     auto& w         = new_world();
     auto gpu_plugin = Annex::mangle(w.sym("gpu"));
+    auto global_as  = Lit::as(w.annex<gpu::addr_space_global>());
+    auto const_as   = Lit::as(w.annex<gpu::addr_space_const>());
 
     const Def* cur          = app->arg();
     const App* found_deinit = nullptr;
+    // TODO: find and merge more complex combinations of init and deinit occurences
     for (int hop = 0; hop != Max_Hops; ++hop) {
         auto producer = cur->isa<Extract>() ? cur->as<Extract>()->tuple() : cur;
 
@@ -37,9 +49,12 @@ const Def* MergeInitDeinit::rewrite_imm_App(const App* app) {
 
         auto [axm, curry, trip] = Axm::get(producer);
         if (!axm) break;
-        if (gpu_plugin && axm->plugin() == *gpu_plugin) break; // an unrelated gpu op - can't see through it
+        if (gpu_plugin && axm->plugin() == *gpu_plugin) break;
 
-        auto next = mem::mem_def(producer->as<App>()->arg());
+        auto producer_arg = producer->as<App>()->arg();
+        if (is_touching_addr_space(producer_arg, global_as) || is_touching_addr_space(producer_arg, const_as)) break;
+
+        auto next = mem::mem_def(producer_arg);
         if (!next || mem_addr_space(next) != nat_t(0)) break;
 
         cur = next;
@@ -49,9 +64,13 @@ const Def* MergeInitDeinit::rewrite_imm_App(const App* app) {
 
     auto rewritten_deinit_arg                      = rewrite(found_deinit->arg());
     auto [deinit_mem, deinit_global, deinit_const] = rewritten_deinit_arg->projs<3>();
-    map_root(found_deinit, deinit_mem);
 
-    return w.tuple({rewrite(app->arg()), deinit_global, deinit_const});
+    push();
+    map(found_deinit, deinit_mem); // scoped: other uses of found_deinit must still see the real deinit
+    auto new_mem = rewrite(app->arg());
+    pop();
+
+    return w.tuple({new_mem, deinit_global, deinit_const});
 }
 
 } // namespace mim::plug::gpu::phase

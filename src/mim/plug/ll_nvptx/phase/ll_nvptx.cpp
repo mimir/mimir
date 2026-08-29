@@ -85,7 +85,7 @@ private:
     absl::btree_map<std::string, int> symbols_;
     LamSet kernels_;
 
-    bool uses_libdevice;
+    bool uses_libdevice = false;
     std::string extra_flags;
 };
 

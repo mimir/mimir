@@ -6,10 +6,7 @@
 
 namespace mim::plug::gpu::phase {
 
-/// Elides a `%gpu.deinit` immediately followed by a `%gpu.init` on its result — tearing down a context
-/// only to recreate an equivalent one, e.g. between two `LowerMapReduce`-generated launches back to back.
-/// Since the whole program shares one fatbinary, the next launch's kernel is already resolvable from the
-/// still-loaded module, so the pair collapses to `%gpu.deinit`'s own `(mem, GlobalM, ConstM)` operands.
+/// Deletes a `%gpu.deinit` followed by a `%gpu.init`, e.g. between two back-to-back `LowerMapReduce` launches.
 class MergeInitDeinit : public RWPhase {
 public:
     using Super = RWPhase;
