@@ -5,6 +5,7 @@
 
 #include <automaton/range_helper.h>
 #include <fe/assert.h>
+#include <fe/log_macros.h>
 
 #include <mim/axm.h>
 #include <mim/def.h>
@@ -12,12 +13,11 @@
 #include <mim/world.h>
 
 #include <mim/util/dbg.h>
-#include <mim/util/log.h>
 
 #include "mim/plug/regex/regex.h"
 
 using Range  = automaton::Range;
-using Ranges = mim::Vector<Range>;
+using Ranges = fe::Vector<Range>;
 
 namespace mim::plug::regex {
 

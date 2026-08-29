@@ -240,7 +240,7 @@ void Module::compile(AST& ast) const {
     if (ast.error().num_warnings() != 0) std::cerr << ast.error();
 }
 
-AST load_plugins(World& world, View<Sym> plugins) {
+AST load_plugins(World& world, fe::View<Sym> plugins) {
     auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
     auto ast     = AST(world);
     auto parser  = Parser(ast);

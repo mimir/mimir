@@ -8,14 +8,14 @@
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
+#include <fe/log_macros.h>
 #include <fe/restore.h>
+#include <fe/span.h>
 
 #include "mim/axm.h"
 #include "mim/rewrite.h"
 
 #include "mim/util/dbg.h"
-#include "mim/util/log.h"
-#include "mim/util/span.h"
 
 namespace mim {
 
@@ -190,10 +190,10 @@ public:
         const auto& sym2mut() const { return sym2mut_; }
         auto syms() const { return sym2mut_ | std::views::keys; }
         auto muts() const { return sym2mut_ | std::views::values; }
-        /// Returns a copy of @p muts() in a Vector; this allows you to modify the Externals while iterating.
+        /// Returns a copy of @p muts() in a fe::Vector; this allows you to modify the Externals while iterating.
         /// @note The iteration will see all old externals, of course.
-        Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
-        Def* operator[](Sym name) const { return mim::lookup(sym2mut_, name); } ///< Lookup by @p name.
+        fe::Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
+        Def* operator[](Sym name) const { return fe::lookup(sym2mut_, name); } ///< Lookup by @p name.
         size_t size() const { return sym2mut_.size(); }
         ///@}
 
@@ -307,7 +307,7 @@ public:
 
     /// Lookup annex by flags.
     const Def* annex(flags_t flags) {
-        if (auto e = lookup(annexes().flags2entry(), flags)) return e->def;
+        if (auto e = fe::lookup(annexes().flags2entry(), flags)) return e->def;
         ELOG("Axm with ID `{}` not found; demangled plugin name is `{}`", flags, Annex::demangle(driver(), flags));
         return nullptr;
     }
@@ -482,8 +482,8 @@ public:
     const Def* pack(Defs       shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (u64            n, const Def* body) { return seq(false,     n, body); }
     const Def* pack(u64            n, const Def* body) { return seq(true ,     n, body); }
-    const Def* arr (View<u64>  shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(View<u64>  shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (fe::View<u64>  shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(fe::View<u64>  shape, const Def* body) { return seq(true , shape, body); }
     const Def*  arr_unsafe(           const Def* body) { return seq_unsafe(false, body); }
     const Def* pack_unsafe(           const Def* body) { return seq_unsafe(true , body); }
 
@@ -501,7 +501,7 @@ public:
     const Def* seq(bool is_pack, const Def* arity, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
-    const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
+    const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
         return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
@@ -731,10 +731,10 @@ public:
 
     /// @name dump/log
     ///@{
-    Log& log() const;
+    fe::Log& log() const;
     void dump(std::ostream& os);  ///< Dump to @p os.
     void dump();                  ///< Dump to `std::cout`.
-    void debug_dump();            ///< Dump in Debug build if World::log::level is Log::Level::Debug.
+    void debug_dump();            ///< Dump in Debug build if World::log::level is fe::Log::Level::Debug.
     void write(const char* file); ///< Write to a file named @p file.
     void write();                 ///< Same above but file name defaults to World::name.
     ///@}
@@ -820,7 +820,7 @@ private:
 #ifdef MIM_ENABLE_CHECKS
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
-        assert_emplace(move_.sea, def);
+        fe::assert_emplace(move_.sea, def);
         return def;
     }
 
@@ -868,7 +868,7 @@ private:
 
         template<size_t N = std::dynamic_extent>
         constexpr auto defs() const noexcept {
-            return View<const Def*, N>{defs_, size_};
+            return fe::View<const Def*, N>{defs_, size_};
         }
 
     private:
@@ -885,7 +885,7 @@ private:
         auto reduct = new (buf) Reduct(n);
         for (size_t i = 0; i != n; ++i)
             reduct->defs_[i] = f(i);
-        assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
         return reduct;
     }
 

@@ -4,7 +4,7 @@
 
 #include "mim/phase.h"
 
-#include "mim/util/util.h"
+#include "mim/util/gid.h"
 
 namespace mim {
 

@@ -35,7 +35,6 @@ target_sources(libmim
         phase/ret_wrap.cpp
         phase/unload.cpp
         util/dbg.cpp
-        util/log.cpp
 )
 
 set_target_properties(libmim PROPERTIES PREFIX "")

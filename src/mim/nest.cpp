@@ -10,7 +10,7 @@ Nest::Nest(Def* r)
     populate();
 }
 
-Nest::Nest(View<Def*> muts)
+Nest::Nest(fe::View<Def*> muts)
     : world_(muts.front()->world())
     , root_(make_node(nullptr)) {
     for (auto mut : muts)
@@ -35,7 +35,7 @@ void Nest::populate() {
             queue.push(child);
 
     while (!queue.empty()) {
-        auto curr_node = pop(queue);
+        auto curr_node = fe::pop(queue);
         for (auto op : curr_node->mut()->deps()) {
             for (auto local_mut : op->local_muts()) {
                 if ((*this)[local_mut] || !contains(local_mut)) continue;
@@ -173,7 +173,7 @@ uint32_t Nest::Node::tarjan(uint32_t i, Node* inest, Stack& stack) {
         Node* node;
         int num = 0;
         do {
-            node             = pop(stack);
+            node             = fe::pop(stack);
             node->on_stack_  = false;
             node->recursive_ = true;
             node->low_       = this->idx_;
@@ -201,7 +201,7 @@ const Nest::Node* Nest::Node::calc_dominance() const {
 
     // Holds all siblings in reverse post-order coming from the parent
     absl::flat_hash_set<const Node*> visited;
-    Vector<const Node*> nodes;
+    fe::Vector<const Node*> nodes;
 
     // Initialize entry nodes directly referenced by the parent
     for (auto op : inest()->mut()->deps()) {

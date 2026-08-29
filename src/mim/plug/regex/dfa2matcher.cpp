@@ -8,14 +8,16 @@
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
+#ifndef DOXYGEN
 template<>
 struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
+#endif
 
 using namespace mim;
 using namespace automaton;
 
 using Range  = automaton::Range;
-using Ranges = Vector<Range>;
+using Ranges = fe::Vector<Range>;
 
 // nomenclature:
 // c is the character from the string we want to match

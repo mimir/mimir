@@ -15,8 +15,8 @@ int main(int, char**) {
 
     try {
         auto& w = driver.world();
-        driver.log().set(&std::cerr).set(Log::Level::Debug);
-        ast::load_plugins(w, View<std::string>{"core", "ll"});
+        driver.log().set(&std::cerr).set(fe::Log::Level::Debug);
+        ast::load_plugins(w, fe::View<std::string>{"core", "ll"});
 
         // Cn [%mem.M 0, I32, %mem.Ptr (I32, 0) Cn [%mem.M 0, I32]]
         auto mem_t  = w.call<mem::M>(0);

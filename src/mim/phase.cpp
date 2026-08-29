@@ -20,7 +20,7 @@ Phase::Phase(World& world, flags_t annex)
     , annex_(annex)
     , name_(world.annex(annex)->sym()) {}
 
-const Vector<std::string>& Phase::args() {
+const fe::Vector<std::string>& Phase::args() {
     return driver().args(Annex::demangle(driver(), Annex::flags2plugin(annex_)));
 }
 
@@ -59,7 +59,7 @@ void Analysis::reset() {
 void Analysis::start() {
     curr_sparse_ = !dense_ && !nonlocal_ && !dirty_.empty();
     nonlocal_    = false;
-    auto seeds   = Vector<Def*>(dirty_.begin(), dirty_.end());
+    auto seeds   = fe::Vector<Def*>(dirty_.begin(), dirty_.end());
     dirty_.clear();
 
     prepare();

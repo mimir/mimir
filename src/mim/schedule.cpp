@@ -13,14 +13,14 @@ Scheduler::Scheduler(const Nest& nest)
 
     auto enqueue = [&](const Def* def, size_t i, const Def* op) {
         if (nest.contains(op)) {
-            assert_emplace(def2uses_[op], def, i);
+            fe::assert_emplace(def2uses_[op], def, i);
             if (auto [_, ins] = done.emplace(op); ins) queue.push(op);
         }
     };
 
     for (auto mut : nest.muts()) {
         queue.push(mut);
-        assert_emplace(done, mut);
+        fe::assert_emplace(done, mut);
     }
 
     while (!queue.empty()) {

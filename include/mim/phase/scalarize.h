@@ -55,7 +55,7 @@ private:
         /// Per-parameter expand mask for @p type (length `num_tdoms`); `true` marks
         /// a parameter to be flattened one level. An **empty** mask means "leave untouched".
         /// Cheap; recomputed on demand from the (post-fixed-point) lattice.
-        Vector<bool> plan(const Def* type) const;
+        fe::Vector<bool> plan(const Def* type) const;
 
     private:
         const Def* rewrite(const Def* old) final;
@@ -88,7 +88,7 @@ private:
     const Def* rewrite_imm_App(const App*) final;
 
     /// Flattens @p app%'s arguments one level according to @p mask.
-    DefVec flatten_args(const App* app, const Vector<bool>& mask);
+    DefVec flatten_args(const App* app, const fe::Vector<bool>& mask);
 
     Analysis analysis_;
 };

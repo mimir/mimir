@@ -43,7 +43,7 @@ public:
     Ptr<Module> import(const fe::Src&, std::ostream* md = nullptr);
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
     Ptr<Module> import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
-    Ptr<Module> import_main(std::string_view input, View<std::string> plugins, std::ostream* md = nullptr);
+    Ptr<Module> import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
 
 private:
     template<class T, class... Args>

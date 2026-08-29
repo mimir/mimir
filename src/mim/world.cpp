@@ -3,6 +3,8 @@
 #include <deque>
 #include <ranges>
 
+#include <fe/container.h>
+
 #include "mim/check.h"
 #include "mim/def.h"
 #include "mim/driver.h"
@@ -10,7 +12,7 @@
 #include "mim/schedule.h"
 #include "mim/tuple.h"
 
-#include "mim/util/util.h"
+#include "mim/util/gid.h"
 
 namespace mim {
 
@@ -46,7 +48,7 @@ void World::Externals::externalize(Def* def) {
     assert(!def->is_external());
     assert(def->is_closed());
     def->external_ = true;
-    assert_emplace(sym2mut_, def->sym(), def);
+    fe::assert_emplace(sym2mut_, def->sym(), def);
 }
 
 void World::Externals::internalize(Def* def) {
@@ -60,8 +62,8 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     driver().TLOG("register: 0x{:x} -> {} ({})", flags, def, sym);
     auto plugin = Annex::demangle(driver(), flags);
     if (driver().is_loaded(plugin)) {
-        assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
-        assert_emplace(sym2flags_, sym, flags);
+        fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
+        fe::assert_emplace(sym2flags_, sym, flags);
         def->annex_ = true;
         return def;
     }
@@ -116,7 +118,7 @@ static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destruc
  * Driver
  */
 
-Log& World::log() const { return driver().log(); }
+fe::Log& World::log() const { return driver().log(); }
 Flags& World::flags() { return driver().flags(); }
 
 Sym World::sym(const char* s) { return driver().sym(s); }
@@ -724,11 +726,11 @@ Defs World::reduce(const Var* var, const Def* arg) {
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
-    unique_queue<MutSet> queue;
+    fe::UniqueQueue<MutSet> queue;
     for (auto mut : externals().muts())
         queue.push(mut);
 
-    auto muts = Vector<Def*>();
+    auto muts = fe::Vector<Def*>();
     while (!queue.empty()) {
         auto mut = queue.pop();
         if (mut->is_closed() && (!elide_empty || mut->is_set())) muts.emplace_back(mut);

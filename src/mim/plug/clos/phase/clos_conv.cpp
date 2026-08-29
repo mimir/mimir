@@ -24,7 +24,7 @@ DefSet free_defs(const Nest& nest) {
     queue.emplace(nest.root()->mut());
 
     while (!queue.empty()) {
-        for (auto op : pop(queue)->deps()) {
+        for (auto op : fe::pop(queue)->deps()) {
             if (op->is_closed()) continue; // nothing free in here
             if (nest.contains(op)) {
                 if (auto [_, ins] = bound.emplace(op); ins) queue.emplace(op);
@@ -91,7 +91,7 @@ std::pair<FreeDefAna::Node*, bool> FreeDefAna::build_node(Def* mut, NodeQueue& w
 
 void FreeDefAna::propagate(NodeQueue& worklist) {
     while (!worklist.empty()) {
-        auto node = pop(worklist);
+        auto node = fe::pop(worklist);
         if (is_done(node)) continue;
         auto changed = is_bot(node);
         mark(node);

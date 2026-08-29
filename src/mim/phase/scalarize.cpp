@@ -177,8 +177,8 @@ const Def* Scalarize::Analysis::rewrite(const Def* old) {
     return res;
 }
 
-Vector<bool> Scalarize::Analysis::plan(const Def* type) const {
-    auto mask = Vector<bool>();
+fe::Vector<bool> Scalarize::Analysis::plan(const Def* type) const {
+    auto mask = fe::Vector<bool>();
     if (auto pi = isa_flattenable(type)) {
         // A *dependent* domain (a mut Sigma whose components reference siblings through its Var, e.g. a
         // runtime extent `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) must not be flattened at all:
@@ -204,7 +204,7 @@ Vector<bool> Scalarize::Analysis::plan(const Def* type) const {
  */
 
 const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
-    auto mask = is_bootstrapping() ? Vector<bool>() : analysis_.plan(pi);
+    auto mask = is_bootstrapping() ? fe::Vector<bool>() : analysis_.plan(pi);
     if (mask.empty()) return RWPhase::rewrite_imm_Pi(pi);
 
     // build the flattened (one level) domain
@@ -227,7 +227,7 @@ const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
 }
 
 const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
-    auto mask = is_bootstrapping() ? Vector<bool>() : analysis_.plan(old->type());
+    auto mask = is_bootstrapping() ? fe::Vector<bool>() : analysis_.plan(old->type());
     if (mask.empty()) return RWPhase::rewrite_mut_Lam(old);
 
     if (!isa_optimizable(old)) {
@@ -262,7 +262,7 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     return sca;
 }
 
-DefVec Scalarize::flatten_args(const App* app, const Vector<bool>& mask) {
+DefVec Scalarize::flatten_args(const App* app, const fe::Vector<bool>& mask) {
     auto args = DefVec();
     for (size_t i = 0, n = app->num_targs(); i != n; ++i) {
         auto arg = rewrite(app->targ(i));

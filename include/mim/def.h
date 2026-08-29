@@ -8,17 +8,19 @@
 #include <type_traits>
 #include <utility>
 
+#include <fe/algo.h>
 #include <fe/assert.h>
 #include <fe/cast.h>
+#include <fe/container.h>
 #include <fe/enum.h>
+#include <fe/vector.h>
 #include <fe/xtrie.h>
 
 #include "mim/config.h"
 
 #include "mim/util/dbg.h"
+#include "mim/util/gid.h"
 #include "mim/util/types.h"
-#include "mim/util/util.h"
-#include "mim/util/vector.h"
 
 // clang-format off
 #define MIM_NODE(X)                                                                                                \
@@ -88,9 +90,9 @@ template<class To>
 using DefMap  = GIDMap<const Def*, To>;
 using DefSet  = GIDSet<const Def*>;
 using Def2Def = DefMap<const Def*>;
-using Defs    = View<const Def*>;
+using Defs    = fe::View<const Def*>;
 
-using DefVec = Vector<const Def*>;
+using DefVec = fe::Vector<const Def*>;
 ///@}
 
 /// @name Def (Mutable)
@@ -332,7 +334,7 @@ public:
     ///@{
     template<size_t N = std::dynamic_extent>
     constexpr auto ops() const noexcept {
-        return View<const Def*, N>(ops_ptr(), num_ops_);
+        return fe::View<const Def*, N>(ops_ptr(), num_ops_);
     }
     const Def* op(size_t i) const noexcept { return ops()[i]; }
     constexpr size_t num_ops() const noexcept { return num_ops_; }
@@ -403,11 +405,11 @@ public:
     /// std::array<u64, 2>        xy = def->projs<2>([](auto def) { return Lit::as(def); });
     /// auto [a, b]                  = def->projs<2>();
     /// auto [x, y]                  = def->projs<2>([](auto def) { return Lit::as(def); });
-    /// Vector<const Def*> projs1    = def->projs(); // "projs1" has def->num_projs() many elements
-    /// Vector<const Def*> projs2    = def->projs(n);// "projs2" has n elements - asserts if incorrect
+    /// fe::Vector<const Def*> projs1    = def->projs(); // "projs1" has def->num_projs() many elements
+    /// fe::Vector<const Def*> projs2    = def->projs(n);// "projs2" has n elements - asserts if incorrect
     /// // same as above but applies Lit::as<nat_t>(def) to each element
-    /// Vector<const Lit*> lits1     = def->projs(   [](auto def) { return Lit::as(def); });
-    /// Vector<const Lit*> lits2     = def->projs(n, [](auto def) { return Lit::as(def); });
+    /// fe::Vector<const Lit*> lits1     = def->projs(   [](auto def) { return Lit::as(def); });
+    /// fe::Vector<const Lit*> lits2     = def->projs(n, [](auto def) { return Lit::as(def); });
     /// ```
     ///@{
 
@@ -443,7 +445,7 @@ public:
     template<class F>
     auto projs(nat_t a, F f) const {
         using R = std::decay_t<decltype(f(this))>;
-        return Vector<R>(a, [&](nat_t i) { return f(proj(a, i)); });
+        return fe::Vector<R>(a, [&](nat_t i) { return f(proj(a, i)); });
     }
     template<nat_t A = std::dynamic_extent>
     auto projs() const {
@@ -914,7 +916,7 @@ public:
     template<class T = flags_t>
     T get() const {
         static_assert(sizeof(T) <= 8);
-        return bitcast_resize<T>(flags_);
+        return fe::bitcast_resize<T>(flags_);
     }
     ///@}
 

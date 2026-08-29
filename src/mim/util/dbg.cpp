@@ -70,7 +70,7 @@ std::ostream& operator<<(std::ostream& os, const Error& e) {
 
     auto snippet = [&](Loc loc, Error::Tag tag) {
         if (e.flags_.no_snippet) return;
-        fe::stream_snippet(os, loc, tag2color(tag), e.flags_.gutter, e.flags_.max_rows);
+        os << fe::Snippet{loc, tag2color(tag), e.flags_.gutter, e.flags_.max_rows};
     };
 
     for (const auto& msg : e.msgs()) {

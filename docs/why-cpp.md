@@ -44,7 +44,7 @@ This is *the* hot path of the whole compiler.
 bits, probed 16-at-a-time with SSE2/NEON, payload stored inline in a flat
 array.
 A lookup is typically **one cache miss**.
-`GIDHash` (`include/mim/util/util.h`) makes it cheaper still — the hash is
+`GIDHash` (`include/mim/util/gid.h`) makes it cheaper still — the hash is
 the already-computed dense `u32` gid, so hashing costs nothing.
 
 What the alternatives offer:
@@ -67,8 +67,8 @@ What the alternatives offer:
 
 Call it **2–4× on the hash-cons probe alone**.
 
-Also lost: `Vector = absl::InlinedVector<T, N>`
-(`include/mim/util/vector.h`), which keeps small op-vectors in the object
+Also lost: `fe::Vector = absl::InlinedVector<T, N>`
+(`submodules/fe/include/fe/vector.h`), which keeps small op-vectors in the object
 with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
 allocation.

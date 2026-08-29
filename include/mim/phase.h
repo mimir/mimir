@@ -68,7 +68,7 @@ public:
 
     template<class A, class P>
     static void hook(Flags2Phases& phases) {
-        assert_emplace(phases, Annex::base<A>(), [](World& w) { return std::make_unique<P>(w, Annex::base<A>()); });
+        fe::assert_emplace(phases, Annex::base<A>(), [](World& w) { return std::make_unique<P>(w, Annex::base<A>()); });
     }
     ///@}
 
@@ -76,13 +76,13 @@ public:
     ///@{
     World& world() { return world_; }
     Driver& driver() { return world().driver(); }
-    Log& log() const { return world_.log(); }
+    fe::Log& log() const { return world_.log(); }
     std::string_view name() const { return name_; }
     flags_t annex() const { return annex_; }
 
     /// Command-line arguments passed to this Phase's plugin via `-X <plugin>:<arg>`.
-    /// Derived from Phase::annex; yields an empty Vector for name-constructed Phase%s.
-    const Vector<std::string>& args();
+    /// Derived from Phase::annex; yields an empty fe::Vector for name-constructed Phase%s.
+    const fe::Vector<std::string>& args();
     ///@}
 
     /// @name Fixed-Point Handling

@@ -66,7 +66,7 @@ If a rewrite replaces an external mutable with a fresh one, preserve the root ex
 ### Preserving Metadata
 
 Most rebuilds preserve debug metadata explicitly.
-The default [`Rewriter`](@ref mim::Rewriter) restores the old debug info with `new_def->set(old_def->dbg_key())`, which just copies the interned index instead of re-interning the [`Dbg`](@ref mim::Dbg).
+The default [`Rewriter`](@ref mim::Rewriter) restores the old debug info with `new_def->set(old_def->dbg_key())`, which just copies the interned index instead of re-interning the [`Dbg`](https://leissa.github.io/fe/structfe_1_1Dbg.html).
 Hand-written transformations commonly propagate names or add derived names with helpers such as [`mim::Def::debug_suffix`](@ref mim::Def::debug_suffix).
 
 If you create a replacement node that should still be recognizable in dumps, diagnostics, or generated code, preserve or adapt its debug payload immediately instead of treating naming as an afterthought.

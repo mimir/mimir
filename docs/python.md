@@ -169,7 +169,7 @@ A handful of units are still fully hand-written under `py/bindings/` (listed in 
 ### Bindable Types {#python_bindable}
 
 A member is only generated if nanobind can convert *every* type in its signature; otherwise it is dropped.
-This matters because nanobind does not complain about the ones it cannot: the binding compiles, fails only when Python eventually calls it, and `stubgen` spells the raw C++ type into `_mim.pyi` (`std::reverse_iterator<char const*>`, `absl::flat_hash_map<…>`, `mim::Dbg`) in the meantime.
+This matters because nanobind does not complain about the ones it cannot: the binding compiles, fails only when Python eventually calls it, and `stubgen` spells the raw C++ type into `_mim.pyi` (`std::reverse_iterator<char const*>`, `absl::flat_hash_map<…>`, `fe::Dbg`) in the meantime.
 
 Convertible are: built-in types and `const char*`; the standard containers with a nanobind caster (`std::pair`, `std::tuple`, `std::optional`, `std::function`, `std::filesystem::path`, …, for which the generator emits the matching `nanobind/stl/*.h` include); every top-level class or enum declared in a header of the manifest — those are the ones registered as Python types, so a pointer or reference to one becomes a Python object; and MimIR's own ranges (`Defs`, `DefVec`, `Vars`, `Muts`, `Span<const nat_t>`), which are copied into a `std::vector` so they arrive as a list and can be passed as one.
 

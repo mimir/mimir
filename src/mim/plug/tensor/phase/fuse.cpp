@@ -63,7 +63,7 @@ static bool reads_injectively(const Def* map) {
     auto n = Lit::isa<u64>(var->type()->arity());
     if (!n) return false;
 
-    Vector<bool> used(*n, false);
+    fe::Vector<bool> used(*n, false);
     auto mark = [&](const Def* elem) {
         auto i = injective_coord(var, elem);
         if (!i || *i >= *n) return false;
@@ -213,7 +213,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         const Def* is   = nullptr;
     };
 
-    Vector<InnerInfo> infos(nis_nat);
+    fe::Vector<InnerInfo> infos(nis_nat);
     bool any_fusible = false;
 
     for (u64 k = 0; k < nis_nat; ++k) {
@@ -283,7 +283,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     // Each fusible outer input k is replaced by `infos[k].nis` slots in the fused input list;
     // every non-fusible input retains exactly one slot. `new_pos[i]` is the start of input i's
     // slot range in the fused list.
-    Vector<u64> new_pos(nis_nat);
+    fe::Vector<u64> new_pos(nis_nat);
     u64 new_nis_nat = 0;
     for (u64 i = 0; i < nis_nat; ++i) {
         new_pos[i] = new_nis_nat;
@@ -354,12 +354,12 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     auto [new_data, new_ret] = new_comb->vars<2>();
     auto [new_acc, new_in]   = new_data->projs<2>();
 
-    Vector<u64> fused_indices;
+    fe::Vector<u64> fused_indices;
     for (u64 i = 0; i < nis_nat; ++i)
         if (infos[i].fusible) fused_indices.emplace_back(i);
 
-    Vector<Lam*> inner_rets(fused_indices.size());
-    Vector<const Def*> inner_values(fused_indices.size());
+    fe::Vector<Lam*> inner_rets(fused_indices.size());
+    fe::Vector<const Def*> inner_values(fused_indices.size());
     for (size_t r = 0; r < fused_indices.size(); ++r) {
         auto new_inner_To = infos[fused_indices[r]].To;
         inner_rets[r]     = w.mut_con(new_inner_To)->set("inner_ret");
@@ -726,7 +726,7 @@ void Fuse::start() {
     // node, so a shared argument tuple correctly charges each of its users, and using the same op
     // twice in one argument list counts twice.
     DefMap<bool> memo;
-    unique_queue<DefSet> wl;
+    fe::UniqueQueue<DefSet> wl;
     for (auto root : old_world().roots())
         wl.push(root);
     while (!wl.empty()) {

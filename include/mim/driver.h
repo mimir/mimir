@@ -1,10 +1,12 @@
 #pragma once
 
+#include <filesystem>
 #include <list>
 #include <utility>
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/node_hash_map.h>
+#include <fe/log.h>
 #include <fe/profile.h>
 
 #include "mim/flags.h"
@@ -12,9 +14,10 @@
 #include "mim/world.h"
 
 #include "mim/ast/tok.h"
-#include "mim/util/log.h"
 
 namespace mim {
+
+namespace fs = std::filesystem;
 
 /// Some "global" variables needed all over the place.
 /// Well, there are not really global - that's the point of this class.
@@ -35,7 +38,7 @@ public:
     ///@{
     Flags& flags() { return flags_; }
     const Flags& flags() const { return flags_; }
-    Log& log() const { return log_; }
+    fe::Log& log() const { return log_; }
     fe::Profiler& profiler() { return profiler_; }
     const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
@@ -138,7 +141,7 @@ public:
     ///@{
     void load(Sym name);
     void load(const std::string& name) { return load(sym(name)); }
-    bool is_loaded(Sym sym) const { return lookup(plugins_, sym); }
+    bool is_loaded(Sym sym) const { return fe::lookup(plugins_, sym); }
     void* get_fun_ptr(Sym plugin, const char* name);
 
     template<class F>
@@ -155,9 +158,9 @@ public:
     /// @name Manage Plugins
     /// All these lookups yield `nullptr` if the key has not been found.
     ///@{
-    auto phase(flags_t flags) { return lookup(phases_, flags); }
+    auto phase(flags_t flags) { return fe::lookup(phases_, flags); }
     const auto& phases() const { return phases_; }
-    auto normalizer(flags_t flags) const { return lookup(normalizers_, flags); }
+    auto normalizer(flags_t flags) const { return fe::lookup(normalizers_, flags); }
     auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(Annex::flags(d, t, s)); }
     ///@}
 
@@ -166,7 +169,7 @@ public:
     /// A Phase reads its own arguments via Phase::args().
     ///@{
     void add_arg(Sym plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
-    const Vector<std::string>& args(Sym plugin) const; ///< Yields an empty Vector if @p plugin has none.
+    const fe::Vector<std::string>& args(Sym plugin) const; ///< Yields an empty fe::Vector if @p plugin has none.
     ///@}
 
 private:
@@ -175,7 +178,7 @@ private:
     Version version_;
     Flags flags_;
     fe::SrcMap src_;
-    mutable Log log_;
+    mutable fe::Log log_;
     mutable Names names_;
     fe::Profiler profiler_;
     World world_;
@@ -183,9 +186,9 @@ private:
     std::list<fs::path>::iterator insert_ = search_paths_.end();
     Flags2Phases phases_;
     Normalizers normalizers_;
-    fe::SymMap<Vector<std::string>> plugin_args_;
+    fe::SymMap<fe::Vector<std::string>> plugin_args_;
     Imports imports_;
-    Vector<Dbg> dbgs_                      = {Dbg()}; ///< Index 0 is the empty Dbg.
+    fe::Vector<Dbg> dbgs_                  = {Dbg()}; ///< Index 0 is the empty Dbg.
     absl::flat_hash_map<Dbg, u32> dbg2idx_ = {
         {Dbg(), 0}
     };

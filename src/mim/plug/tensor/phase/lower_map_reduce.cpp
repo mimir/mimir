@@ -157,7 +157,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
 
     // ranks of each input must be literal so that we know how many `extract`s to emit
-    Vector<u64> ris_nat(nis_nat);
+    fe::Vector<u64> ris_nat(nis_nat);
     for (u64 i = 0; i < nis_nat; ++i) {
         auto l = Lit::isa<u64>(Ris->proj(nis_nat, i));
         if (!l) {
@@ -166,7 +166,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         }
         ris_nat[i] = *l;
     }
-    Vector<u64> rps_nat(nps_nat);
+    fe::Vector<u64> rps_nat(nps_nat);
     for (u64 j = 0; j < nps_nat; ++j) {
         auto l = Lit::isa<u64>(Rps->proj(nps_nat, j));
         if (!l) {

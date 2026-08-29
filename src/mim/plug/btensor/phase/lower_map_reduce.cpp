@@ -422,7 +422,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
 
     // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#i#ax (literal extents required).
     DefVec off(nisn);
-    Vector<u64> ext(nisn);
+    fe::Vector<u64> ext(nisn);
     u64 acc_off = 0;
     for (u64 i = 0; i < nisn; ++i) {
         off[i]  = w.lit_i64(acc_off);

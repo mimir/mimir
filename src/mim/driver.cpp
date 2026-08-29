@@ -69,7 +69,6 @@ std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast
 
 Driver::Driver(std::string name)
     : version_(MIM_VERSION)
-    , log_(flags_)
     , world_(this, sym(name))
     , imports_(*this) {
     // prepend empty path
@@ -132,7 +131,7 @@ void Driver::load(Sym name) {
             else
                 throw std::logic_error(oss.str());
         }
-        assert_emplace(plugins_, name, std::move(handle));
+        fe::assert_emplace(plugins_, name, std::move(handle));
         // clang-format off
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
         if (auto reg = plugin.register_phases)      reg(phases_);
@@ -143,12 +142,12 @@ void Driver::load(Sym name) {
 }
 
 void* Driver::get_fun_ptr(Sym plugin, const char* name) {
-    if (auto handle = lookup(plugins_, plugin)) return fe::dl::get(handle->get(), name);
+    if (auto handle = fe::lookup(plugins_, plugin)) return fe::dl::get(handle->get(), name);
     return nullptr;
 }
 
-const Vector<std::string>& Driver::args(Sym plugin) const {
-    static const Vector<std::string> empty;
+const fe::Vector<std::string>& Driver::args(Sym plugin) const {
+    static const fe::Vector<std::string> empty;
     if (auto i = plugin_args_.find(plugin); i != plugin_args_.end()) return i->second;
     return empty;
 }

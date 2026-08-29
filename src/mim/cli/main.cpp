@@ -152,7 +152,11 @@ int main(int argc, char** argv) {
         for (auto w : watchpoints)
             world.watchpoint(w);
 #endif
-        driver.log().set(&std::cerr).set((Log::Level)verbose);
+        driver.log().set(&std::cerr).set((fe::Log::Level)verbose);
+#ifdef MIM_ENABLE_CHECKS
+        driver.log().break_on_error = flags.break_on_error;
+        driver.log().break_on_warn  = flags.break_on_warn;
+#endif
 
         // prepare output files and streams
         std::array<std::ofstream, Num_Backends> ofs;

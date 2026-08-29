@@ -1,10 +1,10 @@
 #include "mim/plug/tensor/phase/lower_to_mem.h"
 
+#include <fe/container.h>
+
 #include <mim/axm.h>
 #include <mim/def.h>
 #include <mim/lam.h>
-
-#include <mim/util/util.h>
 
 #include <mim/plug/btensor/btensor.h>
 #include <mim/plug/buffer/buffer.h>
@@ -60,7 +60,7 @@ void LowerToMem::collect_tensor_types() {
         if (t->isa<Arr>()) tensor_ty_.emplace(t);
     };
 
-    unique_queue<DefSet> wl;
+    fe::UniqueQueue<DefSet> wl;
     auto push = [&wl](const Def* d) {
         if (d) wl.push(d);
     };
@@ -151,7 +151,7 @@ void LowerToMem::collect_tensor_types() {
             // loop-vector prefixes «r; I32» inside a schedule nest must not be mistaken for value
             // tensors of a recorded «r; I32» tensor type.
             if (is_tensor_op(app)) {
-                unique_queue<DefSet> wl3;
+                fe::UniqueQueue<DefSet> wl3;
                 for (const App* a = app; a; a = a->callee()->isa<App>())
                     wl3.push(a->arg());
                 while (!wl3.empty()) {
@@ -185,7 +185,7 @@ void LowerToMem::collect_tensor_types() {
     }
 
     // Second sweep: shapes the conversion cannot adapt — the value-semantics path lowers everything instead.
-    unique_queue<DefSet> wl2;
+    fe::UniqueQueue<DefSet> wl2;
     for (auto mut : old_world().externals().muts())
         if (mut) wl2.push(mut);
     while (!wl2.empty()) {

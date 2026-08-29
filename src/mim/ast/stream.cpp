@@ -19,8 +19,10 @@ struct S {
 
 } // namespace mim::ast
 
+#ifndef DOXYGEN
 template<>
 struct std::formatter<mim::ast::S> : fe::ostream_formatter {};
+#endif
 
 namespace mim::ast {
 
@@ -47,8 +49,10 @@ struct R {
 
 } // namespace mim::ast
 
+#ifndef DOXYGEN
 template<class T>
 struct std::formatter<mim::ast::R<T>> : fe::ostream_formatter {};
+#endif
 
 namespace mim::ast {
 

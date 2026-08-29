@@ -169,7 +169,7 @@ Ptr<Module> Parser::import(const fe::Src& src, std::ostream* md) {
     return mod;
 }
 
-Ptr<Module> Parser::import_main(std::string_view input, View<std::string> plugins, std::ostream* md) {
+Ptr<Module> Parser::import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md) {
     Ptrs<Import> imports;
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));

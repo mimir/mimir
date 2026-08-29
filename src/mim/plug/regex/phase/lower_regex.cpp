@@ -14,10 +14,10 @@
 #include "mim/plug/regex/regex.h"
 #include "mim/plug/regex/regex2nfa.h"
 
-// clang-format off
+#ifndef DOXYGEN // clang-format off
 template<> struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
 template<> struct std::formatter<automaton::NFA> : fe::ostream_formatter {};
-// clang-format on
+#endif // clang-format on
 
 namespace mim::plug::regex {
 
