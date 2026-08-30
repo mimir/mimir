@@ -3,6 +3,7 @@
 #include <ranges>
 
 #include <fe/container.h>
+#include <fe/worklist.h>
 
 #include "mim/check.h"
 #include "mim/def.h"
@@ -732,7 +733,7 @@ Defs World::reduce(const Var* var, const Def* arg) {
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
-    fe::UniqueQueue<MutSet> queue;
+    fe::BFSWorklist<MutSet> queue;
     for (auto mut : externals().muts())
         queue.push(mut);
 
@@ -817,7 +818,7 @@ Loc World::err_loc(const Def* def) const {
 
     // Nothing was pushed and def itself is anonymous: settle for the closest Loc among its deps.
     constexpr size_t Budget = 512; // a diagnostic is not worth traversing the whole World for
-    auto queue              = fe::UniqueQueue<DefSet>{def};
+    auto queue              = fe::BFSWorklist<DefSet>{def};
 
     // Charged per inspected dep, not per dequeue: a single high-arity Def would otherwise scan - and
     // enqueue - its whole operand list before the budget got a say.

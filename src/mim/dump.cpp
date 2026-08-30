@@ -3,7 +3,7 @@
 #include <ranges>
 
 #include <fe/assert.h>
-#include <fe/container.h>
+#include <fe/worklist.h>
 
 #include "mim/driver.h"
 #include "mim/nest.h"
@@ -397,7 +397,7 @@ public:
     std::ostream& os;
     const Nest* nest;
     fe::Tab tab = fe::Tab::spaces();
-    fe::UniqueQueue<MutSet> muts;
+    fe::BFSWorklist<MutSet> muts;
     DefSet defs;
 };
 

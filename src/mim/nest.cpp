@@ -1,5 +1,7 @@
 #include "mim/nest.h"
 
+#include <queue>
+
 #include "mim/world.h"
 
 namespace mim {

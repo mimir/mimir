@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include <fe/container.h>
+#include <fe/worklist.h>
 
 #include <mim/plug/mem/autogen.h>
 
@@ -22,7 +23,7 @@ bool is_memop_res(const Def* fd) {
 /// The free (non-closed, not-nested) Def%s directly reachable from @p nest's root.
 DefSet free_defs(const Nest& nest) {
     DefSet free;
-    auto queue = fe::UniqueQueue<DefSet>{nest.root()->mut()};
+    auto queue = fe::BFSWorklist<DefSet>{nest.root()->mut()};
 
     while (!queue.empty()) {
         for (auto op : queue.pop()->deps()) {

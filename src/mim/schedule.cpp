@@ -1,6 +1,7 @@
 #include "mim/schedule.h"
 
 #include <fe/container.h>
+#include <fe/worklist.h>
 
 #include "mim/world.h"
 
@@ -8,7 +9,7 @@ namespace mim {
 
 Scheduler::Scheduler(const Nest& nest)
     : nest_(&nest) {
-    auto queue = fe::UniqueQueue<DefSet>();
+    auto queue = fe::BFSWorklist<DefSet>();
 
     auto enqueue = [&](const Def* def, size_t i, const Def* op) {
         if (nest.contains(op)) {

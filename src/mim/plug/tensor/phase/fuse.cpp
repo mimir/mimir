@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <optional>
 
+#include <fe/worklist.h>
+
 #include <mim/def.h>
 #include <mim/lam.h>
 #include <mim/tuple.h>
@@ -726,7 +728,7 @@ void Fuse::start() {
     // node, so a shared argument tuple correctly charges each of its users, and using the same op
     // twice in one argument list counts twice.
     DefMap<bool> memo;
-    fe::UniqueQueue<DefSet> wl;
+    fe::BFSWorklist<DefSet> wl;
     for (auto root : old_world().roots())
         wl.push(root);
     while (!wl.empty()) {
