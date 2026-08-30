@@ -1,6 +1,6 @@
 #include "mim/schedule.h"
 
-#include <queue>
+#include <fe/container.h>
 
 #include "mim/world.h"
 
@@ -8,24 +8,19 @@ namespace mim {
 
 Scheduler::Scheduler(const Nest& nest)
     : nest_(&nest) {
-    std::queue<const Def*> queue;
-    DefSet done;
+    auto queue = fe::UniqueQueue<DefSet>();
 
     auto enqueue = [&](const Def* def, size_t i, const Def* op) {
         if (nest.contains(op)) {
             fe::assert_emplace(def2uses_[op], def, i);
-            if (auto [_, ins] = done.emplace(op); ins) queue.push(op);
+            queue.push(op);
         }
     };
 
-    for (auto mut : nest.muts()) {
-        queue.push(mut);
-        fe::assert_emplace(done, mut);
-    }
+    queue.push(nest.muts());
 
     while (!queue.empty()) {
-        auto def = queue.front();
-        queue.pop();
+        auto def = queue.pop();
 
         if (!def->is_set()) continue;
 

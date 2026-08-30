@@ -1,6 +1,5 @@
 #include "mim/world.h"
 
-#include <deque>
 #include <ranges>
 
 #include <fe/container.h>
@@ -818,22 +817,17 @@ Loc World::err_loc(const Def* def) const {
 
     // Nothing was pushed and def itself is anonymous: settle for the closest Loc among its deps.
     constexpr size_t Budget = 512; // a diagnostic is not worth traversing the whole World for
-    auto done               = DefSet{def};
-    auto queue              = std::deque<const Def*>{def};
+    auto queue              = fe::UniqueQueue<DefSet>{def};
 
     // Charged per inspected dep, not per dequeue: a single high-arity Def would otherwise scan - and
     // enqueue - its whole operand list before the budget got a say.
     auto budget = Budget;
 
     while (!queue.empty()) {
-        auto todo = queue.front();
-        queue.pop_front();
-
-        for (auto dep : todo->deps()) {
+        for (auto dep : queue.pop()->deps()) {
             if (budget-- == 0) return {};
-            if (!done.emplace(dep).second) continue;
+            if (!queue.push(dep)) continue;
             if (auto loc = dep->loc()) return loc;
-            queue.push_back(dep);
         }
     }
 
