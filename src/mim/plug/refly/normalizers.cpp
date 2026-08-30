@@ -24,11 +24,12 @@ const Def* do_reflect(const Def* def) { return reinterpret_cast<const Def*>(def-
 
 void debug_print(const Def* lvl, const Def* def) {
     auto& world = def->world();
-    auto level  = Log::Level::Debug;
+    auto level  = fe::Log::Level::Debug;
     if (auto l = Lit::isa(lvl)) {
-        level = std::to_underlying(Log::Level::Error) <= int(*l) && int(*l) <= std::to_underlying(Log::Level::Debug)
-                  ? static_cast<Log::Level>(*l)
-                  : Log::Level::Debug;
+        level = std::to_underlying(fe::Log::Level::Error) <= int(*l)
+                     && int(*l) <= std::to_underlying(fe::Log::Level::Debug)
+                  ? static_cast<fe::Log::Level>(*l)
+                  : fe::Log::Level::Debug;
     }
     world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
     world.log().log(level, def->loc(), "def : {}", def);

@@ -85,7 +85,7 @@ TEST(Annex, split) {
 
 TEST(trait, idx) {
     Driver driver;
-    driver.log().set(Log::Level::Debug).set(&std::cerr);
+    driver.log().set(fe::Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
     ast::load_plugin(w, "core");
 
@@ -372,7 +372,7 @@ TEST(FV, fixed_point) {
 // Testing the example from Table 1 in "SSA without Dominance for Higher-Order Programs".
 TEST(FV, algos) {
     Driver driver;
-    driver.log().set(Log::Level::Debug).set(&std::cerr);
+    driver.log().set(fe::Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
     ast::load_plugin(w, "core");
 
@@ -398,9 +398,9 @@ TEST(FV, algos) {
     auto i2  = w.call(core::nat::add, Defs{i1, j1});
 
     // var sets
-    auto vf_i1    = w.vars().create(Vector<const Var*>{vf, i1});
-    auto vf_j1    = w.vars().create(Vector<const Var*>{vf, j1});
-    auto vf_i1_j1 = w.vars().create(Vector<const Var*>{vf, i1, j1});
+    auto vf_i1    = w.vars().create(fe::Vector<const Var*>{vf, i1});
+    auto vf_j1    = w.vars().create(fe::Vector<const Var*>{vf, j1});
+    auto vf_i1_j1 = w.vars().create(fe::Vector<const Var*>{vf, i1, j1});
 
     // connect
     f_->app(false, hi, w.lit_nat_0());
@@ -479,7 +479,7 @@ TEST(FV, algos) {
 
 TEST(Def, nests) {
     Driver driver;
-    driver.log().set(Log::Level::Debug).set(&std::cerr);
+    driver.log().set(fe::Log::Level::Debug).set(&std::cerr);
     World& w = driver.world();
 
     auto nat = w.type_nat();
@@ -513,86 +513,6 @@ TEST(Def, nests) {
     EXPECT_FALSE(f->nests(w.lit_nat(23)));
     EXPECT_FALSE(g->nests(f->var()));
     EXPECT_FALSE(h->nests(f->var()));
-}
-
-TEST(ADT, Span) {
-    {
-        int a[3]        = {0, 1, 2};
-        auto s          = Span(a);
-        auto& [x, y, z] = s;
-        y               = 23;
-        EXPECT_EQ(a[1], 23);
-    }
-
-    int a[9] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-    int* p   = a;
-
-    auto check = [](auto span, int b, int e) {
-        EXPECT_EQ(span.front(), b);
-        EXPECT_EQ(span.back(), e - 1);
-        EXPECT_EQ(span.size(), e - b);
-    };
-
-    {
-        auto vec         = std::vector(a, a + 9);
-        const auto& cvec = vec;
-        auto vs          = Span(vec);
-        auto vv          = View<int>(vec);
-        auto vw          = Span(cvec);
-        static_assert(std::is_same_v<decltype(vs), Span<int, std::dynamic_extent>>, "incorrect constness");
-        static_assert(std::is_same_v<decltype(vv), Span<const int, std::dynamic_extent>>, "incorrect constness");
-        static_assert(std::is_same_v<decltype(vw), Span<const int, std::dynamic_extent>>, "incorrect constness");
-    }
-
-    auto s_0_9 = Span(a);
-    auto d_0_9 = Span(p, 9);
-    static_assert(std::is_same_v<decltype(s_0_9), Span<int, 9>>, "dynamic_extent broken");
-    static_assert(std::is_same_v<decltype(d_0_9), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-    check(s_0_9, 0, 9);
-    check(d_0_9, 0, 9);
-
-    {
-        auto s_7_9 = s_0_9.subspan<7>();
-        auto s_2_6 = s_0_9.subspan<2, 4>();
-        auto s_1_4 = d_0_9.subspan<1, 3>();
-        auto d_2_9 = d_0_9.subspan<2>();
-        auto d_7_9 = s_0_9.subspan(7);
-        auto d_2_6 = s_0_9.subspan(2, 4);
-        static_assert(std::is_same_v<decltype(s_7_9), Span<int, 2>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(s_2_6), Span<int, 4>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(s_1_4), Span<int, 3>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(d_2_9), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(d_7_9), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(d_2_6), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-
-        check(s_7_9, 7, 9);
-        check(s_2_6, 2, 6);
-        check(s_1_4, 1, 4);
-        check(d_2_9, 2, 9);
-        check(d_7_9, 7, 9);
-        check(d_2_6, 2, 6);
-    }
-    {
-        auto s_0_2 = s_0_9.rsubspan<7>();
-        auto s_3_7 = s_0_9.rsubspan<2, 4>();
-        auto s_5_8 = d_0_9.rsubspan<1, 3>();
-        auto d_0_6 = d_0_9.rsubspan<3>();
-        auto d_0_2 = s_0_9.rsubspan(7);
-        auto d_3_7 = s_0_9.rsubspan(2, 4);
-        static_assert(std::is_same_v<decltype(s_0_2), Span<int, 2>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(s_3_7), Span<int, 4>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(s_5_8), Span<int, 3>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(d_0_6), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(d_0_2), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-        static_assert(std::is_same_v<decltype(d_3_7), Span<int, std::dynamic_extent>>, "dynamic_extent broken");
-
-        check(s_0_2, 0, 2);
-        check(s_3_7, 3, 7);
-        check(s_5_8, 5, 8);
-        check(d_0_6, 0, 6);
-        check(d_0_2, 0, 2);
-        check(d_3_7, 3, 7);
-    }
 }
 
 TEST(Rewrite, Hole) {
@@ -770,7 +690,7 @@ TEST(Error, render) {
     err.note(Loc(src, Pos(15), Pos(16)), "declared");
 
     // A Loc renders through the fe::Src it points at, which the Driver's SrcMap keeps alive.
-    auto what = std::string(err.what());
+    auto what = err.str();
     EXPECT_NE(what.find("render.mim:1:5-1:9: error: bad `thing`"), std::string::npos) << what;
     EXPECT_NE(what.find("let x = 1;"), std::string::npos) << what;
     EXPECT_NE(what.find("render.mim:2:5"), std::string::npos) << what;

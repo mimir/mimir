@@ -34,11 +34,6 @@ target_sources(libmim
         phase/branch_normalize.cpp
         phase/ret_wrap.cpp
         phase/unload.cpp
-        util/dbg.cpp
-        util/dl.cpp
-        util/log.cpp
-        util/profile.cpp
-        util/sys.cpp
 )
 
 set_target_properties(libmim PROPERTIES PREFIX "")
@@ -69,6 +64,8 @@ target_include_directories(libmim
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include> # for config.h
         $<INSTALL_INTERFACE:include>
 )
+# fe-lib is compiled into libmim rather than propagated, so that the plugins - which all link
+# libmim - resolve fe's non-header-only symbols there instead of each carrying a copy.
 target_link_libraries(libmim
     PUBLIC
         absl::btree
@@ -78,6 +75,8 @@ target_link_libraries(libmim
         absl::node_hash_map absl::node_hash_set
         fe
         ${CMAKE_DL_LIBS}
+    PRIVATE
+        fe-lib
 )
 
 install(

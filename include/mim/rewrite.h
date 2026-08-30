@@ -156,7 +156,7 @@ private:
         return false;
     }
 
-    Vector<Vars> vars_;
+    fe::Vector<Vars> vars_;
 };
 
 class Zonker : public Rewriter {

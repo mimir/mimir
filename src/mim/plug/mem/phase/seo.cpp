@@ -100,9 +100,9 @@ const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars
     return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
-void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
+void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, fe::Span<const Def*> abstr_vars) {
     auto n    = vars.size();
-    auto idxs = Vector<size_t>();
+    auto idxs = fe::Vector<size_t>();
 
     for (size_t i = 0; i != n; ++i) {
         if (!Proxy::isa<Proxy_SCCP_Top>(abstr_vars[i])) continue;
@@ -124,7 +124,7 @@ void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const 
     }
 }
 
-void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, Span<const Def*> abstr_vars) {
+void SEO::Analysis::gvn_split(Lam* lam, Defs vars, fe::Span<const Def*> abstr_args, fe::Span<const Def*> abstr_vars) {
     // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
     // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
     // a -> {a, c}
@@ -170,8 +170,8 @@ static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
-    if (auto sloxy2val = mim::lookup(lam2sloxy2val_, lam))
-        if (auto val = mim::lookup(*sloxy2val, sloxy)) return val;
+    if (auto sloxy2val = fe::lookup(lam2sloxy2val_, lam))
+        if (auto val = fe::lookup(*sloxy2val, sloxy)) return val;
 
     auto phi = mk_phi(world(), lam, sloxy);
     DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
@@ -281,7 +281,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 slots_.emplace(ptr);
                 DLOG("slot {} -> sloxy {}", ptr, sloxy);
                 // The slot is ptr's *defining* site: mark first_ so the ⊥ joined below cannot restart it away.
-                assert_emplace(first_, ptr);
+                fe::assert_emplace(first_, ptr);
                 lattice(ptr, sloxy);
                 // Treat the slot jump like an app of `ret_lam` so mem and existing phis flow across the edge.
                 // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
@@ -342,7 +342,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
             if (is_top(phi_vars[i])) continue; // ⊤ is final - lattice() must not descend from it
-            assert_emplace(first_, phi_vars[i]);
+            fe::assert_emplace(first_, phi_vars[i]);
             lattice(phi_vars[i], phi_abstr_args[i]);
         }
     }
@@ -379,7 +379,7 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto proxy = def->isa<Proxy>()) {
         if (proxy->tag() == Proxy_Sloxy) {
             auto ptr  = proxy->op(1); // the continuation's slot var; see rewrite_imm_App
-            auto slot = mim::lookup(sloxy2slot_, proxy);
+            auto slot = fe::lookup(sloxy2slot_, proxy);
             assert(slot);
             pin(slot);
             pin(ptr);
@@ -518,7 +518,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             // The callee may fold to a rebuilt lam in the new world only,
             // e.g. a branch `(f, t)#cond` whose cond becomes constant after GVN merged vars.
             if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
-                if (auto ol = mim::lookup(lam_new2old_, new_lam)) old_lam = ol;
+                if (auto ol = fe::lookup(lam_new2old_, new_lam)) old_lam = ol;
         }
 
         if (old_lam) {
@@ -572,7 +572,7 @@ const Def* SEO::var_of(Lam* old_lam) {
 
 Lam* SEO::build_lam(Lam* old_lam) {
     assert(!is_dependent(old_lam) && "apply_known pins a dependent signature to \u22a4");
-    if (auto memo = mim::lookup(lam_old2new_, old_lam)) return memo;
+    if (auto memo = fe::lookup(lam_old2new_, old_lam)) return memo;
 
     DLOG("building a new lam for {}", old_lam);
     invalidate();

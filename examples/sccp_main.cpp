@@ -1,7 +1,6 @@
 #include <mim/ast/parser.h>
 #include <mim/phase/beta_red.h>
 #include <mim/phase/eta_conv.h>
-#include <mim/util/sys.h>
 
 #include <mim/plug/mem/mem.h>
 

@@ -2,7 +2,7 @@
 #include <nanobind/stl/pair.h>          // std::pair for def[a, i] indexing
 
 [skip:Def]
-    // Takes a mim::Vars (a Sets::Set) as a *parameter*; nanobind has a caster for returning one
+    // Takes a mim::Vars (an XTrie::Set) as a *parameter*; nanobind has a caster for returning one
     // (it is copied into a list) but not for accepting one.
     // Python can use `free_vars()` and intersect in Python instead.
     has_free_vars_in

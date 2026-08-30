@@ -18,7 +18,7 @@ public:
 
 private:
     /// One bit per Lam::tdom; thresholded, so a huge sigma dom stays a single bit.
-    using Mask = Vector<bool>;
+    using Mask = fe::Vector<bool>;
 
     bool analyze() final;
     void analyze(const Def*);
@@ -32,7 +32,7 @@ private:
     Mask statics(Lam* lam);
 
     DefSet analyzed_;
-    LamMap<Vector<Mask>> lam2sites_;
+    LamMap<fe::Vector<Mask>> lam2sites_;
     LamMap<Mask> lam2statics_;
     LamMap<std::pair<Lam*, Lam*>> old2wrap_loop_;
 };

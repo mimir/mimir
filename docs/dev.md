@@ -12,11 +12,11 @@ Let's jump straight into an example.
 \include "examples/hello.cpp"
 
 [`Driver`](@ref mim::Driver) is usually the first object you create.
-It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](@ref mim::Log), and the current [`World`](@ref mim::World).
+It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](https://leissa.github.io/fe/classfe_1_1Log.html), and the current [`World`](@ref mim::World).
 In this example, the log is configured to write debug output to `std::cerr`; see also @ref clidebug.
 
 @warning Note how the [`Driver`](@ref mim::Driver) is created *outside* the `try` block.
-It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](@ref mim::Error) only renders its `Loc`s - and their source snippets - through it.
+It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](https://leissa.github.io/fe/classfe_1_1Error.html) only renders its `Loc`s - and their source snippets - through it.
 So the [`Driver`](@ref mim::Driver) must outlive everything that may still print a diagnostic, in particular your `catch` handlers.
 
 Next, we load the [`core`](@ref core) and [`ll`](@ref ll) plugins.
@@ -54,7 +54,7 @@ ret (mem, argc)
 It is also important to mark `main` as [external](@ref mim::Def::externalize).
 Otherwise, MimIR may remove it as dead code.
 
-Finally, we [`optimize`](@ref mim::optimize) the program, emit an [LLVM assembly file](https://llvm.org/docs/LangRef.html), compile it [via](@ref mim::sys::system) `clang`, and [execute](@ref mim::sys::system) the generated binary with `./hello a b c`.
+Finally, we [`optimize`](@ref mim::optimize) the program, emit an [LLVM assembly file](https://llvm.org/docs/LangRef.html), compile it via `clang`, and execute the generated binary with `./hello a b c` - both through `fe::sys::system`.
 We then print its exit code, which should be `4`.
 
 ## Immutables vs. Mutables {#mut}

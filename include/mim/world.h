@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -8,14 +9,15 @@
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
+#include <fe/log_macros.h>
 #include <fe/restore.h>
+#include <fe/span.h>
 
 #include "mim/axm.h"
+#include "mim/flags.h"
 #include "mim/rewrite.h"
 
 #include "mim/util/dbg.h"
-#include "mim/util/log.h"
-#include "mim/util/span.h"
 
 namespace mim {
 
@@ -89,7 +91,7 @@ public:
     /// World::curr_gid will be offset to not collide with the original World.
     std::unique_ptr<World> inherit() {
         auto s = state();
-        s.pod.curr_gid += move_.defs.size();
+        s.pod.curr_gid += move_.sea.size();
         return std::make_unique<World>(&driver(), s);
     }
     ///@}
@@ -134,12 +136,11 @@ public:
 
     /// @name Diagnostics
     ///@{
-    /// Throws a single-message Error carrying this World's Driver, so the renderer can find its Flags.
+    /// Throws a single-message Error bound to this World's Driver, so it renders with its layout.
     template<class... Args>
     [[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) const {
-        auto e = Error(driver());
-        e.error(loc, f, std::forward<Args>(args)...);
-        throw e;
+        // Driver is incomplete here, so the Error is built in world.cpp; the lambda keeps Driver::render in charge.
+        error_(loc, [&] { return std::vformat(f.get(), std::make_format_args(args...)); });
     }
     ///@}
 
@@ -190,10 +191,10 @@ public:
         const auto& sym2mut() const { return sym2mut_; }
         auto syms() const { return sym2mut_ | std::views::keys; }
         auto muts() const { return sym2mut_ | std::views::values; }
-        /// Returns a copy of @p muts() in a Vector; this allows you to modify the Externals while iterating.
+        /// Returns a copy of @p muts() in a fe::Vector; this allows you to modify the Externals while iterating.
         /// @note The iteration will see all old externals, of course.
-        Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
-        Def* operator[](Sym name) const { return mim::lookup(sym2mut_, name); } ///< Lookup by @p name.
+        fe::Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
+        Def* operator[](Sym name) const { return fe::lookup(sym2mut_, name); } ///< Lookup by @p name.
         size_t size() const { return sym2mut_.size(); }
         ///@}
 
@@ -307,7 +308,7 @@ public:
 
     /// Lookup annex by flags.
     const Def* annex(flags_t flags) {
-        if (auto e = lookup(annexes().flags2entry(), flags)) return e->def;
+        if (auto e = fe::lookup(annexes().flags2entry(), flags)) return e->def;
         ELOG("Axm with ID `{}` not found; demangled plugin name is `{}`", flags, Annex::demangle(driver(), flags));
         return nullptr;
     }
@@ -482,8 +483,8 @@ public:
     const Def* pack(Defs       shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (u64            n, const Def* body) { return seq(false,     n, body); }
     const Def* pack(u64            n, const Def* body) { return seq(true ,     n, body); }
-    const Def* arr (View<u64>  shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(View<u64>  shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (fe::View<u64>  shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(fe::View<u64>  shape, const Def* body) { return seq(true , shape, body); }
     const Def*  arr_unsafe(           const Def* body) { return seq_unsafe(false, body); }
     const Def* pack_unsafe(           const Def* body) { return seq_unsafe(true , body); }
 
@@ -501,7 +502,7 @@ public:
     const Def* seq(bool is_pack, const Def* arity, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
-    const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
+    const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
         return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
@@ -731,10 +732,10 @@ public:
 
     /// @name dump/log
     ///@{
-    Log& log() const;
+    fe::Log& log() const;
     void dump(std::ostream& os);  ///< Dump to @p os.
     void dump();                  ///< Dump to `std::cout`.
-    void debug_dump();            ///< Dump in Debug build if World::log::level is Log::Level::Debug.
+    void debug_dump();            ///< Dump in Debug build if World::log::level is fe::Log::Level::Debug.
     void write(const char* file); ///< Write to a file named @p file.
     void write();                 ///< Same above but file name defaults to World::name.
     ///@}
@@ -750,6 +751,9 @@ public:
     ///@}
 
 private:
+    /// Backs World::error; @p fmt renders the message.
+    [[noreturn]] void error_(Loc, const std::function<std::string()>& fmt) const;
+
     /// @name Put into Sea of Nodes
     ///@{
     /// Common tail of World::unify \& World::insert, right after World::allocate.
@@ -782,13 +786,13 @@ private:
 #endif
 
         if (is_frozen()) {
-            auto i = move_.defs.find(def);
+            auto i = move_.sea.find(def);
             deallocate<T>(state, def);
-            if (i != move_.defs.end()) return static_cast<const T*>(*i);
+            if (i != move_.sea.end()) return static_cast<const T*>(*i);
             return nullptr;
         }
 
-        if (auto [i, ins] = move_.defs.emplace(def); !ins) {
+        if (auto [i, ins] = move_.sea.emplace(def); !ins) {
             deallocate<T>(state, def);
             return static_cast<const T*>(*i);
         }
@@ -820,7 +824,7 @@ private:
 #ifdef MIM_ENABLE_CHECKS
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
-        assert_emplace(move_.defs, def);
+        fe::assert_emplace(move_.sea, def);
         return def;
     }
 
@@ -868,7 +872,7 @@ private:
 
         template<size_t N = std::dynamic_extent>
         constexpr auto defs() const noexcept {
-            return View<const Def*, N>{defs_, size_};
+            return fe::View<const Def*, N>{defs_, size_};
         }
 
     private:
@@ -885,7 +889,7 @@ private:
         auto reduct = new (buf) Reduct(n);
         for (size_t i = 0; i != n; ++i)
             reduct->defs_[i] = f(i);
-        assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
         return reduct;
     }
 
@@ -904,9 +908,9 @@ private:
 
         Externals externals;
         Annexes annexes;
-        absl::flat_hash_set<const Def*, SeaHash, SeaEq> defs;
-        Sets<Def> muts;
-        Sets<const Var> vars;
+        absl::flat_hash_set<const Def*, SeaHash, SeaEq> sea;
+        fe::XTrie<Def, DefKey> muts;
+        fe::XTrie<const Var, DefKey> vars;
         absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {
@@ -914,7 +918,7 @@ private:
             // clang-format off
             swap(m1.arena.defs,   m2.arena.defs);
             swap(m1.arena.substs, m2.arena.substs);
-            swap(m1.defs,         m2.defs);
+            swap(m1.sea,          m2.sea);
             swap(m1.substs,       m2.substs);
             swap(m1.vars,         m2.vars);
             swap(m1.muts,         m2.muts);

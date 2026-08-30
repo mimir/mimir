@@ -108,7 +108,7 @@ private:
     void wrap_fresh_mem(Lam* new_lam);
 
     /// The fresh-memory continuations minted while the current lam's body is being rewritten.
-    Vector<Lam*> pending_;
+    fe::Vector<Lam*> pending_;
 
     /// Per-lam memo for the ops that consume a fresh memory (see LowerToMem::rewrite).
     DefMap<const Def*> fresh_memo_;

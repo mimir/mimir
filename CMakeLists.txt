@@ -94,6 +94,7 @@ set(ABSL_PROPAGATE_CXX_STD ON)
 set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 set(ABSL_ENABLE_INSTALL ON)
 set(FE_ABSL ON)
+set(FE_LIB ON)
 
 add_subdirectory(submodules/abseil-cpp)
 add_subdirectory(submodules/fe)

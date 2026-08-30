@@ -40,7 +40,7 @@ StaticArgOpt::Mask StaticArgOpt::statics(Lam* lam) {
 
     // A static *function* arg is what SAT is after, as it exposes the loop's free var to inlining (Santos §7).
     // So seed the split with the rightmost Pi-typed dom and keep only the sites forwarding it; ∀ if there is none.
-    auto pool = Vector<bool>(sites.size(), true);
+    auto pool = fe::Vector<bool>(sites.size(), true);
     for (size_t d = n; d-- != 0;) {
         if (!lam->tdom(d)->isa<Pi>()) continue;
         auto seeded = false;

@@ -105,7 +105,7 @@ def _qualified_name(decl) -> str:
     table keyed on the printed form matches on one platform and misses on the
     other. The declaration always answers `std::basic_string`, and skipping the
     implementation-detail namespaces keeps `std::filesystem::path` (libc++ nests it
-    in `__fs`) and `mim::Sets::Set` recognisable everywhere.
+    in `__fs`) and `fe::XTrie::Set` recognisable everywhere.
     """
     parts = []
     cursor = decl
@@ -181,11 +181,11 @@ _STL_CASTERS = {
 # signature rather than a value type, so it needs its own traversal.
 _FUNCTION_CASTER = "function.h"
 
-# MimIR's own containers: no caster, but they are ranges of elements nanobind
+# `fe`'s own containers: no caster, but they are ranges of elements nanobind
 # *can* bind, so signatures mentioning one are rewritten to a `std::vector` of
 # the element type (see `_range_value_type`).
-_MIM_RANGES = ("mim::Span", "mim::Vector")
-_MIM_SET = "mim::Sets::Set"  # `Vars`/`Muts`: a forward range of `D*`
+_MIM_RANGES = ("fe::Span", "fe::Vector")
+_MIM_SET = "fe::XTrie::Set"  # `Vars`/`Muts`: a forward range of `D*`
 
 # How many entries a note spells out before summarising the rest.
 _MAX_REPORTED = 20
@@ -269,7 +269,7 @@ def _is_bound_class(decl) -> bool:
     """True if *decl* names a class this build registers as a Python type.
 
     Only a top-level class of a bound header is registered, so a nested class
-    (`World::State`, `Sets<D>::Set`) or a template specialization never is.
+    (`World::State`, `XTrie<D, K>::Set`) or a template specialization never is.
     """
     if decl is None or not decl.spelling or "<" in decl.displayname:
         return False
@@ -360,7 +360,7 @@ def _range_value_type(t) -> tuple[str, set] | None:
 
     The element spelling is the range's `value_type`, i.e. suitable as
     `std::vector<...>`: a `Span<const T* const>` yields `const T*`, and a
-    `Sets<D>::Set` — whose iterator hands out `D*` — yields `D*`.
+    `XTrie<D, K>::Set` — whose iterator hands out `D*` — yields `D*`.
     """
     canon = t.get_canonical()
     if canon.kind in (TypeKind.LVALUEREFERENCE, TypeKind.RVALUEREFERENCE):
@@ -370,13 +370,13 @@ def _range_value_type(t) -> tuple[str, set] | None:
     decl = canon.get_declaration()
     name = _qualified_name(decl)
 
-    # `Sets` hands out pointers to its element type, the other two store the
+    # `XTrie` hands out pointers to its element type, the other two store the
     # element type itself.
     elem, elem_is_pointee = None, False
     if name in _MIM_RANGES:
         elem = canon.get_template_argument_type(0)
     elif name == _MIM_SET:
-        # `Set` is nested in the `Sets<D, N>` specialization, which is where the
+        # `Set` is nested in the `XTrie<D, K, N>` specialization, which is where the
         # element type D lives.
         parent = decl.semantic_parent
         if parent is not None:

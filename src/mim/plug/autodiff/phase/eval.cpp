@@ -368,8 +368,8 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
         return augment_pack(pack, f, f_diff);
     } else if (auto ax = def->isa<Axm>()) {
         auto diff_name = ax->sym().str();
-        find_and_replace(diff_name, ".", "_");
-        find_and_replace(diff_name, "%", "");
+        fe::find_and_replace(diff_name, ".", "_");
+        fe::find_and_replace(diff_name, "%", "");
         diff_name = "%autodiff.diff." + diff_name;
 
         // Look the derivative up in the old world; rewrite() below maps it into the new one.

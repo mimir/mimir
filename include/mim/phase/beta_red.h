@@ -21,7 +21,7 @@ private:
 
     const Def* rewrite(const Def* def) { return def->is_ground() ? def : Super::rewrite(def); }
     const Def* rewrite_imm_App(const App*) final;
-    bool is_candidate(Lam* lam) const { return assert_lookup(candidates_, lam); }
+    bool is_candidate(Lam* lam) const { return fe::assert_lookup(candidates_, lam); }
 
     DefSet analyzed_;
     LamMap<bool> candidates_;

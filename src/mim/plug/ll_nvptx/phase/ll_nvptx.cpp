@@ -4,8 +4,6 @@
 
 #include <mim/driver.h>
 
-#include <mim/util/sys.h>
-
 #include <mim/plug/core/core.h>
 #include <mim/plug/gpu/gpu.h>
 #include <mim/plug/mem/mem.h>

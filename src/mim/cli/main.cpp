@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 
+#include <fe/sys.h>
 #include <fe/term.h>
 #include <lyra/lyra.hpp>
 
@@ -15,7 +16,6 @@
 
 #include <mim/ast/parser.h>
 #include <mim/phase/optimize.h>
-#include <mim/util/sys.h>
 
 using namespace mim;
 using namespace std::literals;
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         bool sexpr_include_types = false;
         DotConfig dot;
         std::string input, prefix;
-        std::string clang = sys::find_cmd("clang");
+        std::string clang = fe::sys::find_cmd("clang");
         std::vector<std::string> plugins, search_paths, plugin_args;
 #ifdef MIM_ENABLE_CHECKS
         std::vector<uint32_t> breakpoints;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
             | lyra::help(show_help)
             | lyra::opt(show_version                       )["-v"]["--version"              ]("Display version info and exit.")
             | lyra::opt(list_search_paths                  )["-l"]["--list-search-paths"    ]("List search paths in order and exit.")
-            | lyra::opt(clang,        "clang"              )["-c"]["--clang"                ]("Path to clang executable (default: '" MIM_WHICH " clang').")
+            | lyra::opt(clang,        "clang"              )["-c"]["--clang"                ](std::format("Path to clang executable (default: '{} clang').", fe::sys::which))
             | lyra::opt(plugins,      "plugin"             )["-p"]["--plugin"               ]("Dynamically load plugin.")
             | lyra::opt(search_paths, "path"               )["-P"]["--plugin-path"          ]("Path to search for plugins.")
             | lyra::opt(plugin_args,  "plugin:arg"         )["-X"]["--plugin-arg"           ]("Pass <arg> to plugin/phase <plugin>, e.g. -X ll:--target=sm_80. Repeatable.")
@@ -86,9 +86,11 @@ int main(int argc, char** argv) {
             | lyra::opt(profile, "|summary|tree|trace"     )      ["--profile"              ]("Measure how long each phase takes and write a summary, tree or chrome://tracing compatible output to the output-profile provided destination.")
             | lyra::opt(profile_path, "file"               )      ["--output-profile"       ]("The output path (or '-' for stdout) for the profiling information.")
             | lyra::opt(flags.ascii                        )["-a"]["--ascii"                ]("Use ASCII alternatives in output instead of UTF-8.")
-            | lyra::opt(flags.no_snippet                   )      ["--no-snippet"           ]("Do not render the offending source line and caret underneath a diagnostic.")
-            | lyra::opt(flags.gutter, "width"              )      ["--gutter"               ]("Width of a diagnostic's line-number column.")
-            | lyra::opt(flags.max_rows, "num"              )      ["--max-rows"             ]("Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
+            | lyra::opt(driver.diag.no_snippet             )      ["--no-snippet"           ]("Do not render the offending source line and caret underneath a diagnostic.")
+            | lyra::opt(driver.diag.gutter, "width"        )      ["--gutter"               ]("Width of a diagnostic's line-number column.")
+            | lyra::opt(driver.diag.max_rows, "num"        )      ["--max-rows"             ]("Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
+            | lyra::opt(driver.diag.max_errors, "num"      )      ["--max-errors"           ]("Maximum number of errors to report before dropping the rest; 0 reports all of them.")
+            | lyra::opt(driver.diag.werror                 )      ["--werror"               ]("Treat warnings as errors.")
             | lyra::opt(flags.bootstrap                    )      ["--bootstrap"            ]("Puts mim into \"bootstrap mode\". This means a 'plugin' directive has the same effect as an 'import' and will not load a library. In addition, no standard plugins will be loaded.")
             | lyra::opt(sexpr_include_types                )      ["--sexpr-include-types"  ]("Wraps symbolic expression terms in a type annotation. Types will not be wrapped in type annotations.")
             | lyra::opt(dot.follow_types                   )      ["--dot-follow-types"     ]("Follow type dependencies in DOT output.")
@@ -152,7 +154,11 @@ int main(int argc, char** argv) {
         for (auto w : watchpoints)
             world.watchpoint(w);
 #endif
-        driver.log().set(&std::cerr).set((Log::Level)verbose);
+        driver.log().set(&std::cerr).set((fe::Log::Level)verbose);
+#ifdef MIM_ENABLE_CHECKS
+        driver.log().break_on_error = flags.break_on_error;
+        driver.log().break_on_warn  = flags.break_on_warn;
+#endif
 
         // prepare output files and streams
         std::array<std::ofstream, Num_Backends> ofs;
@@ -227,7 +233,7 @@ int main(int argc, char** argv) {
                 ast.error().ack(); // prefer the parser's own diagnostic, if it recorded one
                 fe::throwf("could not read file `{}`", input);
             }
-        } catch (const Error& e) {
+        } catch (const Error::Bail& e) {
             std::cerr << e;
             return EXIT_FAILURE;
         }

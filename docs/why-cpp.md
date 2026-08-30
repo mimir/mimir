@@ -44,7 +44,7 @@ This is *the* hot path of the whole compiler.
 bits, probed 16-at-a-time with SSE2/NEON, payload stored inline in a flat
 array.
 A lookup is typically **one cache miss**.
-`GIDHash` (`include/mim/util/util.h`) makes it cheaper still — the hash is
+`GIDHash` (`include/mim/util/gid.h`) makes it cheaper still — the hash is
 the already-computed dense `u32` gid, so hashing costs nothing.
 
 What the alternatives offer:
@@ -67,15 +67,15 @@ What the alternatives offer:
 
 Call it **2–4× on the hash-cons probe alone**.
 
-Also lost: `Vector = absl::InlinedVector<T, N>`
-(`include/mim/util/vector.h`), which keeps small op-vectors in the object
+Also lost: `fe::Vector = absl::InlinedVector<T, N>`
+(`submodules/fe/include/fe/vector.h`), which keeps small op-vectors in the object
 with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
 allocation.
 
-### `Sets::Set` — a four-way sum type in one machine word
+### `XTrie::Set` — a four-way sum type in one machine word
 
-`Sets::Set` (`include/mim/util/sets.h`) is a single `uintptr_t` with two tag
+`XTrie::Set` (`submodules/fe/include/fe/xtrie.h`) is a single `uintptr_t` with two tag
 bits:
 
     Null | Uniq (D* inline) | Data (arena FAM) | Node (trie node)
@@ -94,7 +94,7 @@ classes and a megamorphic call site.
 Pointer tagging is reachable only via `Obj.magic` or `Unsafe`, at which point
 you have left the language.
 
-`Sets::Data` is a **C99 flexible array member**
+`XTrie::Data` is a **C99 flexible array member**
 (`size_t size; D* elems[];`) placement-`new`ed into `data_arena_` — not even
 portable C++.
 Elsewhere it becomes a record plus a separate array object: two allocations, an
@@ -102,7 +102,7 @@ extra hop per element access, and on the JVM a second 16-byte header.
 
 ### The link-cut tree mutates in place
 
-`lct::Node` (`include/mim/util/link_cut_tree.h`) is CRTP-intrusive, embedded
+`lct::Node` (`submodules/fe/include/fe/lct.h`) is CRTP-intrusive, embedded
 directly into the trie `Node` by inheritance.
 `rotate` is six pointer stores into memory that already exists.
 `splay`, `expose`, `lca`, `is_descendant_of` are pure in-place pointer surgery
@@ -114,7 +114,7 @@ A splay tree is amortized O(log n) **because it mutates on read**:
 `Set::contains` → `LCT::find` → `expose` → `splay`, so a membership test
 restructures the tree.
 A persistent splay tree allocates O(depth) nodes **per query**, and
-`Sets::Set::has_intersection` calls `find` inside a loop over two
+`XTrie::Set::has_intersection` calls `find` inside a loop over two
 node-sets.
 
 ### Arenas, and how `Def`s are placed in them
@@ -210,8 +210,8 @@ and the gid counter rolled back.
 In a normalizing hash-consed IR the hit rate is high by construction, so the
 common path costs **zero net allocation and produces zero garbage**.
 
-`Sets::unify` does the same for `Data`.
-`Sets::merge` goes further: it allocates the upper bound
+`XTrie::unify` does the same for `Data`.
+`XTrie::merge` goes further: it allocates the upper bound
 `d1->size + d2->size`, merges into it, then returns the unused tail via
 `unify(data, state, excess)`.
 Shrinking your most recent allocation is a bump-pointer-only move.
@@ -223,7 +223,7 @@ The cost is the **compounding**: high nursery churn forces frequent minor
 collections, and each must scan a remembered set that is enormous here, because
 MimIR constantly mutates old-generation `Def`s — `set()`, the users set in
 `muts_`, `mark_` sweeps in `free_vars()`, and lazy `tid_` assignment in
-`Sets::set_tid`, which writes into a nominally-immutable `Def`
+`XTrie::set_tid`, which writes into a nominally-immutable `Def`
 from inside the trie.
 Every one of those is an old→young pointer write paying `caml_modify` or
 card-marking.
@@ -415,7 +415,7 @@ structures pays something:
   header-plus-trailing-elements allocation written in `unsafe`, precisely
   because the language does not provide one.
 - **No tagged pointers.**
-  `Sets::Set` packs a four-way sum into one `uintptr_t` with two tag bits.
+  `XTrie::Set` packs a four-way sum into one `uintptr_t` with two tag bits.
   A Rust `enum` over four pointer-carrying variants is 16 bytes; niche
   optimization does not apply.
   That is `vars_` and `muts_` going 8 → 16 bytes each, +16 per node, unless you

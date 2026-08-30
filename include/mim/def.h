@@ -8,16 +8,19 @@
 #include <type_traits>
 #include <utility>
 
+#include <fe/algo.h>
 #include <fe/assert.h>
 #include <fe/cast.h>
+#include <fe/container.h>
 #include <fe/enum.h>
+#include <fe/vector.h>
+#include <fe/xtrie.h>
 
 #include "mim/config.h"
 
 #include "mim/util/dbg.h"
-#include "mim/util/sets.h"
-#include "mim/util/util.h"
-#include "mim/util/vector.h"
+#include "mim/util/gid.h"
+#include "mim/util/types.h"
 
 // clang-format off
 #define MIM_NODE(X)                                                                                                \
@@ -72,6 +75,14 @@ class Def;
 class Driver;
 class World;
 
+/// Grants fe::XTrie access to Def::gid_ and Def::tid_.
+struct DefKey {
+    static u32 gid(const Def*) noexcept;
+    static u32 tid(const Def*) noexcept;
+    static void set_tid(const Def*, u32) noexcept;
+    static std::ostream& stream(std::ostream&, const Def*);
+};
+
 /// @name Def
 /// GIDSet / GIDMap keyed by Def::gid of `const Def*`.
 ///@{
@@ -79,9 +90,9 @@ template<class To>
 using DefMap  = GIDMap<const Def*, To>;
 using DefSet  = GIDSet<const Def*>;
 using Def2Def = DefMap<const Def*>;
-using Defs    = View<const Def*>;
+using Defs    = fe::View<const Def*>;
 
-using DefVec = Vector<const Def*>;
+using DefVec = fe::Vector<const Def*>;
 ///@}
 
 /// @name Def (Mutable)
@@ -91,7 +102,7 @@ template<class To>
 using MutMap  = GIDMap<Def*, To>;
 using MutSet  = GIDSet<Def*>;
 using Mut2Mut = MutMap<Def*>;
-using Muts    = Sets<Def>::Set;
+using Muts    = fe::XTrie<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
@@ -99,9 +110,8 @@ using Muts    = Sets<Def>::Set;
 ///@{
 template<class To>
 using VarMap  = GIDMap<const Var*, To>;
-using VarSet  = GIDSet<const Var*>;
 using Var2Var = VarMap<const Var*>;
-using Vars    = Sets<const Var>::Set;
+using Vars    = fe::XTrie<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
@@ -324,7 +334,7 @@ public:
     ///@{
     template<size_t N = std::dynamic_extent>
     constexpr auto ops() const noexcept {
-        return View<const Def*, N>(ops_ptr(), num_ops_);
+        return fe::View<const Def*, N>(ops_ptr(), num_ops_);
     }
     const Def* op(size_t i) const noexcept { return ops()[i]; }
     constexpr size_t num_ops() const noexcept { return num_ops_; }
@@ -395,11 +405,11 @@ public:
     /// std::array<u64, 2>        xy = def->projs<2>([](auto def) { return Lit::as(def); });
     /// auto [a, b]                  = def->projs<2>();
     /// auto [x, y]                  = def->projs<2>([](auto def) { return Lit::as(def); });
-    /// Vector<const Def*> projs1    = def->projs(); // "projs1" has def->num_projs() many elements
-    /// Vector<const Def*> projs2    = def->projs(n);// "projs2" has n elements - asserts if incorrect
+    /// fe::Vector<const Def*> projs1    = def->projs(); // "projs1" has def->num_projs() many elements
+    /// fe::Vector<const Def*> projs2    = def->projs(n);// "projs2" has n elements - asserts if incorrect
     /// // same as above but applies Lit::as<nat_t>(def) to each element
-    /// Vector<const Lit*> lits1     = def->projs(   [](auto def) { return Lit::as(def); });
-    /// Vector<const Lit*> lits2     = def->projs(n, [](auto def) { return Lit::as(def); });
+    /// fe::Vector<const Lit*> lits1     = def->projs(   [](auto def) { return Lit::as(def); });
+    /// fe::Vector<const Lit*> lits2     = def->projs(n, [](auto def) { return Lit::as(def); });
     /// ```
     ///@{
 
@@ -435,7 +445,7 @@ public:
     template<class F>
     auto projs(nat_t a, F f) const {
         using R = std::decay_t<decltype(f(this))>;
-        return Vector<R>(a, [&](nat_t i) { return f(proj(a, i)); });
+        return fe::Vector<R>(a, [&](nat_t i) { return f(proj(a, i)); });
     }
     template<nat_t A = std::dynamic_extent>
     auto projs() const {
@@ -516,7 +526,7 @@ public:
 
     /// @name free_vars predicates
     /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
-    /// every call, and each Sets::merge allocates, sorts, hashes, and probes the pool.
+    /// every call, and each XTrie::merge allocates, sorts, hashes, and probes the pool.
     /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
     /// question without ever materializing the merged set.
     /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
@@ -584,8 +594,8 @@ public:
 
     /// @name Dbg Getters
     ///@{
-    Dbg dbg() const;                                ///< Looks up Def::dbg_ in Driver::dbg.
-    DbgKey dbg_key() const { return DbgKey(dbg_); } ///< Cheap handle for `other->set(this->dbg_key())`.
+    Dbg dbg() const;                        ///< Looks up Def::dbg_ in Driver::dbg.
+    DbgKey dbg_key() const { return dbg_; } ///< Cheap handle for `other->set(this->dbg_key())`.
     Loc loc() const { return dbg().loc(); }
     Sym sym() const { return dbg().sym(); }
     std::string unique_name() const; ///< name + "_" + Def::gid
@@ -714,7 +724,7 @@ protected:
     Sym sym(const char*) const;
     Sym sym(std::string_view) const;
     Sym sym(std::string) const;
-    void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the index in Def::dbg_.
+    void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the key in Def::dbg_.
     void set_dbg_(Dbg, bool ow) const;        ///< Backs Def::set(Dbg).
     void set_dbg_key_(DbgKey, bool ow) const; ///< Backs Def::set(DbgKey).
 
@@ -766,19 +776,22 @@ private:
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
-    /// Index into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
-    /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice. 0 is the empty Dbg.
+    /// Handle into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
+    /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice.
     /// @note Deliberately adjacent to Def::tid_ so the two `u32`s share one 8-byte slot.
-    mutable u32 dbg_ = 0;
+    mutable DbgKey dbg_;
     mutable u32 tid_ = 0;
     mutable const Def* type_;
 
-    template<class D, size_t N>
-    friend class Sets;
+    friend struct DefKey;
     friend class World;
     friend void swap(World&, World&) noexcept;
     friend std::ostream& operator<<(std::ostream&, const Def*);
 };
+
+inline u32 DefKey::gid(const Def* d) noexcept { return d->gid_; }
+inline u32 DefKey::tid(const Def* d) noexcept { return d->tid_; }
+inline void DefKey::set_tid(const Def* d, u32 tid) noexcept { d->tid_ = tid; }
 
 /// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
 /// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()
@@ -903,7 +916,7 @@ public:
     template<class T = flags_t>
     T get() const {
         static_assert(sizeof(T) <= 8);
-        return bitcast_resize<T>(flags_);
+        return fe::bitcast_resize<T>(flags_);
     }
     ///@}
 

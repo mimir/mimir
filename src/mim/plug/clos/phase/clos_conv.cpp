@@ -2,6 +2,9 @@
 
 #include <algorithm>
 
+#include <fe/container.h>
+#include <fe/worklist.h>
+
 #include <mim/plug/mem/autogen.h>
 
 using namespace std::literals;
@@ -19,18 +22,16 @@ bool is_memop_res(const Def* fd) {
 
 /// The free (non-closed, not-nested) Def%s directly reachable from @p nest's root.
 DefSet free_defs(const Nest& nest) {
-    DefSet bound, free;
-    std::queue<const Def*> queue;
-    queue.emplace(nest.root()->mut());
+    DefSet free;
+    auto queue = fe::BFSWorklist<DefSet>{nest.root()->mut()};
 
     while (!queue.empty()) {
-        for (auto op : pop(queue)->deps()) {
+        for (auto op : queue.pop()->deps()) {
             if (op->is_closed()) continue; // nothing free in here
-            if (nest.contains(op)) {
-                if (auto [_, ins] = bound.emplace(op); ins) queue.emplace(op);
-            } else {
+            if (nest.contains(op))
+                queue.push(op);
+            else
                 free.emplace(op);
-            }
         }
     }
 
@@ -91,7 +92,7 @@ std::pair<FreeDefAna::Node*, bool> FreeDefAna::build_node(Def* mut, NodeQueue& w
 
 void FreeDefAna::propagate(NodeQueue& worklist) {
     while (!worklist.empty()) {
-        auto node = pop(worklist);
+        auto node = fe::pop(worklist);
         if (is_done(node)) continue;
         auto changed = is_bot(node);
         mark(node);

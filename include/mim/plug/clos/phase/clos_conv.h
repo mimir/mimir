@@ -32,9 +32,9 @@ private:
     struct Node {
         Def* mut;
         DefSet fvs;
-        Vector<Node*> preds; ///< Nodes whose free defs must flow into this one.
-        Vector<Node*> succs; ///< Reverse of preds; used to re-enqueue dependents when fvs grow.
-        unsigned pass = 0;   ///< 0 = uninitialized; otherwise the pass that last touched this node.
+        fe::Vector<Node*> preds; ///< Nodes whose free defs must flow into this one.
+        fe::Vector<Node*> succs; ///< Reverse of preds; used to re-enqueue dependents when fvs grow.
+        unsigned pass = 0;       ///< 0 = uninitialized; otherwise the pass that last touched this node.
 
         auto add_fvs(const Def* def) {
             assert(!Axm::isa<mem::M>(def->type()));

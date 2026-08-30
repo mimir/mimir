@@ -76,7 +76,7 @@ public:
     /// @name Schedule Mutabales
     /// Order of Mutables within a Scope.
     ///@{
-    using Schedule = Vector<Def*>;
+    using Schedule = fe::Vector<Def*>;
     static Schedule schedule(const Nest&);
     ///@}
 

@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <stack>
 
 #include <absl/container/btree_map.h>
 #include <absl/container/btree_set.h>
@@ -84,7 +85,7 @@ public:
             auto muts() { return mut2node_ | std::views::keys; }
             auto begin() { return mut2node_.begin(); }
             auto end() { return mut2node_.end(); }
-            Node* operator[](Def* mut) { return mim::lookup(mut2node_, mut); }
+            Node* operator[](Def* mut) { return fe::lookup(mut2node_, mut); }
 
             absl::btree_map<Def*, Node*, GIDLt<Def*>> mut2node_;
 
@@ -210,8 +211,8 @@ public:
     /// @name Constructors
     ///@{
     Nest(Def* root);
-    Nest(View<Def*> muts); ///< Constructs a *virtual root* with @p muts as children.
-    Nest(World&);          ///< *Virtual root* with all World::externals as children.
+    Nest(fe::View<Def*> muts); ///< Constructs a *virtual root* with @p muts as children.
+    Nest(World&);              ///< *Virtual root* with all World::externals as children.
     Nest(const Nest&)     = delete;
     Nest(Nest&&)          = delete;
     Nest& operator=(Nest) = delete;

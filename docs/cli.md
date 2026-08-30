@@ -65,12 +65,12 @@ Color is decided by the terminal and honors `NO_COLOR`, `CLICOLOR=0`, and `CLICO
 
 - The breakpoint-oriented flags below are developer options that are only available when MimIR is built with `MIM_ENABLE_CHECKS`.
 - You can increase the log level with `-V`.
-  - No `-V` corresponds to mim::Log::Level::Error.
-  - `-V` corresponds to mim::Log::Level::Warn.
-  - `-VV` corresponds to mim::Log::Level::Info.
-  - `-VVV` corresponds to mim::Log::Level::Verbose.
-  - `-VVVV` corresponds to mim::Log::Level::Debug. This output only exists in a Debug build of MimIR.
-  - `-VVVVV` corresponds to mim::Log::Level::Trace. This output only exists in a Debug build of MimIR.
+  - No `-V` corresponds to fe::Log::Level::Error.
+  - `-V` corresponds to fe::Log::Level::Warn.
+  - `-VV` corresponds to fe::Log::Level::Info.
+  - `-VVV` corresponds to fe::Log::Level::Verbose.
+  - `-VVVV` corresponds to fe::Log::Level::Debug. This output only exists in a Debug build of MimIR.
+  - `-VVVVV` corresponds to fe::Log::Level::Trace. This output only exists in a Debug build of MimIR.
 - You can trigger a breakpoint when constructing a [`mim::Def`](@ref mim::Def) with a specific global id.
 
   For example, this triggers a breakpoint when the [`mim::Def`](@ref mim::Def) with [`gid`](@ref mim::Def::gid) `4223` is created:

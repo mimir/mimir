@@ -6,10 +6,7 @@ using namespace std::literals;
 
 namespace mim::ast {
 
-AST::~AST() {
-    assert(error().num_errors() == 0 && error().num_warnings() == 0
-           && "please encounter any errors before destroying this class");
-}
+AST::~AST() { assert(error().empty() && "please acknowledge all diagnostics before destroying this class"); }
 
 Import::Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module)
     : Node(loc)
@@ -237,10 +234,10 @@ void Module::compile(AST& ast) const {
     bind(ast);
     ast.error().ack();
     emit(ast);
-    if (ast.error().num_warnings() != 0) std::cerr << ast.error();
+    ast.error().report();
 }
 
-AST load_plugins(World& world, View<Sym> plugins) {
+AST load_plugins(World& world, fe::View<Sym> plugins) {
     auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
     auto ast     = AST(world);
     auto parser  = Parser(ast);
