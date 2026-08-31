@@ -16,6 +16,16 @@ namespace mim::plug::gpu::phase {
 
 namespace {
 
+/// Whether an explicit, user-written `%gpu.init` is reachable from `def` (mirrors the same reachability
+/// walk `HostEmitter::find_kernels`/`reaches_gpu_auto_init` use in the `ll_nvptx` backend).
+bool contains_gpu_init(const Def* def, DefSet& seen) {
+    if (auto [_, ins] = seen.emplace(def); !ins) return false;
+    if (Axm::isa<gpu::init>(def)) return true;
+    for (auto d : def->deps())
+        if (contains_gpu_init(d, seen)) return true;
+    return false;
+}
+
 /// Mirrors `btensor::phase::LowerMapReduce`'s helper of the same name: a counting `%affine.For` loop body
 std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
     auto& w       = bound->world();
@@ -316,12 +326,23 @@ Lam* build_teardown(World& w,
         cur_global = w.call(gpu::free::block, w.tuple({cur_global, dptr}));
     cur_global = w.call(gpu::free::block, w.tuple({cur_global, out_dptr}));
 
-    auto final_mem = w.app(w.annex<gpu::deinit>(), w.tuple({cb_mem, cur_global, post_const}));
+    auto final_mem = w.app(w.annex<gpu::auto_deinit>(), w.tuple({cb_mem, cur_global, post_const}));
     after_launch->app(true, cont, w.tuple({final_mem, host_buf}));
     return after_launch;
 }
 
 } // namespace
+
+void LowerMapReduce::start() {
+    DefSet seen;
+    auto has_gpu_init
+        = std::ranges::any_of(old_world().roots(), [&](auto def) { return contains_gpu_init(def, seen); });
+    if (has_gpu_init) {
+        WLOG("not lowering any map-reduce operations to GPU: the program already contains an explicit `%gpu.init`");
+        return;
+    }
+    Super::start();
+}
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (Axm::isa<btensor::map_reduce_post>(app)) return lower_map_reduce_post(app);
@@ -382,13 +403,13 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto mem_ty                                    = w.call<mem::M>(0);
     auto rewritten_arg                             = rewrite(app->arg());
     auto [_, rewritten_inputs, rewritten_post_ins] = rewritten_arg->projs<3>();
-    auto fun = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
-                   ->set("mapReduceAffGpu");
-    auto call                                = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
+    auto fun  = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
+                    ->set("mapReduceAffGpu");
+    auto call = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
     auto [fun_mem, new_inputs, new_post_ins] = fun->var(0_n)->projs<3>();
     auto cont                                = fun->var(1);
 
-    auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::init>(), fun_mem)->projs<3>();
+    auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
 
     auto in_desc = extract_input_desc(nis_n, Ris, Sis, Tis, accs);
     auto inputs  = alloc_copy_inputs(w, h_mem, h_global, in_desc.rs, in_desc.ss, in_desc.ts, new_inputs);

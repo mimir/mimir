@@ -92,7 +92,6 @@ lam extern _default_compile (): %compile.Phase =
 
         // CodeGenPrep
         optimize,
-        %compile.named "%gpu.merge_init_deinit",
         %compile.branch_normalize,
         %compile.ret_wrap,
         %compile.named "%mem.remem_repl",

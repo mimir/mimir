@@ -3,6 +3,7 @@
 #include <format>
 
 #include <mim/driver.h>
+#include <mim/lam.h>
 
 #include <mim/util/sys.h>
 
@@ -32,6 +33,9 @@ public:
     void start() final;
     void find_kernels(const Def*);
 
+    std::string prepare() override;
+    void emit_epilogue(Lam*) override;
+
     std::optional<std::string> isa_targetspecific_intrinsic(ll::BB&, const Def*) final;
 
 protected:
@@ -45,12 +49,16 @@ private:
     static constexpr std::string_view kernel_name_prefix = "@.kname.";
 
     void emit_cu_error_handling(ll::BB&, const std::string&);
+    void emit_gpu_setup(ll::BB&, const std::string& name);
+    void emit_gpu_teardown(ll::BB&, const std::string& name);
 
     std::optional<std::string> device_fatbin_file_;
     LamMap<int> kernel_ids_;
     bool cu_globals_declared_ = false;
 
     DefSet analyzed_;
+    /// Externals that transitively reach a `%gpu.auto_init` - see HostEmitter::start().
+    DefSet gpu_externals_;
 };
 
 class DeviceEmitter : public ll::Emitter {
@@ -89,6 +97,16 @@ private:
     std::string extra_flags;
 };
 
+namespace {
+bool reaches_gpu_auto_init(const Def* def, DefSet& seen) {
+    if (auto [_, ins] = seen.emplace(def); !ins) return false;
+    if (Axm::isa<gpu::auto_init>(def)) return true;
+    for (auto d : def->deps())
+        if (reaches_gpu_auto_init(d, seen)) return true;
+    return false;
+}
+} // namespace
+
 void HostEmitter::start() {
     for (auto def : world().annexes().defs())
         find_kernels(def);
@@ -102,6 +120,13 @@ void HostEmitter::start() {
     }
     std::print(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer\n", kernel_array_name_,
                kernel_ids_.size());
+
+    for (auto mut : world().externals().muts()) {
+        auto lam = mut->isa_mut<Lam>();
+        if (!lam || !lam->ret_pi()) continue;
+        DefSet seen;
+        if (reaches_gpu_auto_init(lam, seen)) gpu_externals_.emplace(lam);
+    }
 
     Super::start();
 }
@@ -148,6 +173,104 @@ void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_resul
     std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
 }
 
+void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
+    auto dev_num   = 0; // TODO: consider parameterizing this
+    auto ctx_flags = 0; // TODO: consider parameterizing this
+
+    declare("i32 @{}(i32)", Cu_Init);
+    auto init_res = bb.assign(name + "_init_res", "call i32 @{}(i32 0)", Cu_Init);
+    emit_cu_error_handling(bb, init_res);
+
+    declare("i32 @{}(ptr, i32)", Cu_Device_Get);
+    auto dev_ptr     = bb.assign(name + "_dev_ptr", "alloca i32");
+    auto dev_get_res = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", Cu_Device_Get, dev_ptr, dev_num);
+    emit_cu_error_handling(bb, dev_get_res);
+
+    declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
+    if (!cu_globals_declared_) std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
+    auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
+    auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
+                             ctx_name_, ctx_flags, dev);
+    emit_cu_error_handling(bb, ctx_res);
+
+    declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
+    if (!cu_globals_declared_) {
+        std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
+        if (device_fatbin_file_.has_value()) {
+            std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
+            if (!fatbin_file)
+                fe::throwf(MIM_LL_NVPTX_BE "could not open `{}` as binary file", device_fatbin_file_.value());
+
+            auto start = std::istreambuf_iterator<char>(fatbin_file);
+            auto end   = std::istreambuf_iterator<char>();
+            std::vector<u8> fatbin_bytes(start, end);
+
+            std::print(vars_decls_, "{} = private constant [{} x i8] c\"", fatbin_name_, fatbin_bytes.size());
+            for (auto byte : fatbin_bytes) {
+                bool invalid_cstr_char = byte == '"' || byte == '\\';
+                if (std::isprint(byte) && !invalid_cstr_char) {
+                    std::print(vars_decls_, "{:c}", byte);
+                } else {
+                    auto byte_val = static_cast<int>(byte);
+                    std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
+                }
+            }
+            std::print(vars_decls_, "\"\n");
+        } else {
+            std::print(vars_decls_, "; Add the bytes of your compiled nvptx fatbin binary here:\n");
+            std::print(vars_decls_,
+                       "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
+                       fatbin_name_);
+        }
+        cu_globals_declared_ = true;
+    }
+    auto mod_res
+        = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", Cu_Module_Load_Fatbin, mod_name_, fatbin_name_);
+    emit_cu_error_handling(bb, mod_res);
+    auto mod_inner = bb.assign(name + "_mod_inner", "load ptr, ptr {}", mod_name_);
+
+    declare("i32 @{}(ptr, ptr, ptr)", Cu_Module_Get_Function);
+    for (auto [kernel, kid] : kernel_ids_) {
+        auto kname    = id(kernel).substr(1);
+        auto func_ptr = bb.assign(name + "_" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
+                                  kernel_array_name_, kid);
+        auto func_res = bb.assign(name + "_" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
+                                  Cu_Module_Get_Function, func_ptr, mod_inner, kernel_name_prefix, kid);
+        emit_cu_error_handling(bb, func_res);
+    }
+}
+
+void HostEmitter::emit_gpu_teardown(ll::BB& bb, const std::string& name) {
+    declare("i32 @{}(ptr)", Cu_Module_Unload);
+    std::print(bb.body().emplace_back(), "{}_mod = load ptr, ptr {}", name, mod_name_);
+    std::print(bb.body().emplace_back(), "{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload, name);
+    emit_cu_error_handling(bb, name + "_mod_unload_res");
+
+    declare("i32 @{}(ptr)", Cu_Ctx_Destroy);
+    std::print(bb.body().emplace_back(), "{}_ctx = load ptr, ptr {}", name, ctx_name_);
+    std::print(bb.body().emplace_back(), "{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy, name);
+    emit_cu_error_handling(bb, name + "_ctx_destroy_res");
+}
+
+std::string HostEmitter::prepare() {
+    auto name = Super::prepare();
+    // func_impls_ only gets root()'s label and BB content once, in Emitter::finalize_impl - so "first in
+    // this function" means appending to root()'s own (still empty) BB, not to func_impls_ directly.
+    if (gpu_externals_.contains(root())) emit_gpu_setup(lam2bb_[root()], "%" + root()->unique_name());
+    return name;
+}
+
+void HostEmitter::emit_epilogue(Lam* lam) {
+    // Super::emit_epilogue must run first: it forces emission of the return value's own dependencies
+    // (e.g. %gpu.copy_to_host/%gpu.free) into bb.body(). Appending the teardown afterward still lands it
+    // before the `ret` (in bb.tail(), always printed after bb.body()), just after everything else.
+    Super::emit_epilogue(lam);
+    if (gpu_externals_.contains(root())) {
+        if (auto app = lam->body()->isa<App>(); app && app->callee() == root()->ret_var())
+            emit_gpu_teardown(lam2bb_[lam], "%" + root()->unique_name());
+    }
+}
+
 std::string HostEmitter::convert(const Def* type, bool simd) {
     if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [_, addr_space] = ptr->args<2>();
@@ -168,91 +291,22 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         return "null";
     } else if (auto init = Axm::isa<gpu::init>(def)) {
         auto mem_val = emit_unsafe(init->arg());
-
-        auto dev_num   = 0; // TODO: consider parameterizing this
-        auto ctx_flags = 0; // TODO: consider parameterizing this
-
-        declare("i32 @{}(i32)", Cu_Init);
-        auto init_res = bb.assign(name + "_init_res", "call i32 @{}(i32 0)", Cu_Init);
-        emit_cu_error_handling(bb, init_res);
-
-        declare("i32 @{}(ptr, i32)", Cu_Device_Get);
-        auto dev_ptr = bb.assign(name + "_dev_ptr", "alloca i32");
-        auto dev_get_res
-            = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", Cu_Device_Get, dev_ptr, dev_num);
-        emit_cu_error_handling(bb, dev_get_res);
-
-        declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
-        if (!cu_globals_declared_) std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
-        auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
-        auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
-                                 ctx_name_, ctx_flags, dev);
-        emit_cu_error_handling(bb, ctx_res);
-
-        declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
-        if (!cu_globals_declared_) {
-            std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
-            if (device_fatbin_file_.has_value()) {
-                std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
-                if (!fatbin_file)
-                    fe::throwf(MIM_LL_NVPTX_BE "could not open `{}` as binary file", device_fatbin_file_.value());
-
-                auto start = std::istreambuf_iterator<char>(fatbin_file);
-                auto end   = std::istreambuf_iterator<char>();
-                std::vector<u8> fatbin_bytes(start, end);
-
-                std::print(vars_decls_, "{} = private constant [{} x i8] c\"", fatbin_name_, fatbin_bytes.size());
-                for (auto byte : fatbin_bytes) {
-                    bool invalid_cstr_char = byte == '"' || byte == '\\';
-                    if (std::isprint(byte) && !invalid_cstr_char) {
-                        std::print(vars_decls_, "{:c}", byte);
-                    } else {
-                        auto byte_val = static_cast<int>(byte);
-                        std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
-                    }
-                }
-                std::print(vars_decls_, "\"\n");
-            } else {
-                std::print(vars_decls_, "; Add the bytes of your compiled nvptx fatbin binary here:\n");
-                std::print(vars_decls_,
-                           "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
-                           fatbin_name_);
-            }
-            cu_globals_declared_ = true;
-        }
-        auto mod_res = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", Cu_Module_Load_Fatbin, mod_name_,
-                                 fatbin_name_);
-        emit_cu_error_handling(bb, mod_res);
-        auto mod_inner = bb.assign(name + "_mod_inner", "load ptr, ptr {}", mod_name_);
-
-        declare("i32 @{}(ptr, ptr, ptr)", Cu_Module_Get_Function);
-        for (auto [kernel, kid] : kernel_ids_) {
-            auto kname    = id(kernel).substr(1);
-            auto func_ptr = bb.assign(name + "_" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
-                                      kernel_array_name_, kid);
-            auto func_res = bb.assign(name + "_" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
-                                      Cu_Module_Get_Function, func_ptr, mod_inner, kernel_name_prefix, kid);
-            emit_cu_error_handling(bb, func_res);
-        }
-
+        emit_gpu_setup(bb, name);
         return mem_val;
     } else if (auto deinit = Axm::isa<gpu::deinit>(def)) {
         emit_unsafe(deinit->arg(0));
         emit_unsafe(deinit->arg(1));
-
-        declare("i32 @{}(ptr)", Cu_Module_Unload);
-        std::print(bb.body().emplace_back(), "{}_mod = load ptr, ptr {}", name, mod_name_);
-        std::print(bb.body().emplace_back(), "{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload,
-                   name);
-        emit_cu_error_handling(bb, name + "_mod_unload_res");
-
-        declare("i32 @{}(ptr)", Cu_Ctx_Destroy);
-        std::print(bb.body().emplace_back(), "{}_ctx = load ptr, ptr {}", name, ctx_name_);
-        std::print(bb.body().emplace_back(), "{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy,
-                   name);
-        emit_cu_error_handling(bb, name + "_ctx_destroy_res");
-
+        emit_gpu_teardown(bb, name);
         return ""s;
+    } else if (auto auto_init = Axm::isa<gpu::auto_init>(def)) {
+        // A no-op here; emit_unsafe still forces whatever precedes this occurrence to emit.
+        return emit_unsafe(auto_init->arg());
+    } else if (auto auto_deinit = Axm::isa<gpu::auto_deinit>(def)) {
+        // Also a no-op, but emit_unsafe on `global` still forces any %gpu.free for this occurrence's
+        // device buffers to emit - otherwise nothing would keep them reachable.
+        emit_unsafe(auto_deinit->arg(1));
+        emit_unsafe(auto_deinit->arg(2));
+        return emit_unsafe(auto_deinit->arg(0));
     } else if (auto stream_init = Axm::isa<gpu::stream_init>(def)) {
         declare("i32 @{}(ptr, i32)", Cu_Stream_Create);
 
