@@ -59,7 +59,7 @@ void World::Externals::internalize(Def* def) {
 }
 
 const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
-    driver().log().t("register: 0x{:x} -> {} ({})", flags, def, sym);
+    driver().log().t("register annex `{}` 0x{:x} → {}", sym, flags, def);
     auto plugin = Annex::demangle(driver(), flags);
     if (driver().is_loaded(plugin)) {
         fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
@@ -278,7 +278,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
                 auto rw     = VarRewriter(var, arg);
                 auto filter = rw.rewrite(lam->filter());
                 if (filter == lit_tt()) {
-                    log().d("partial evaluate: {} ({})", lam, arg);
+                    log().d("partially evaluate {} ({})", lam, arg);
                     auto body = rw.rewrite(lam->body());
                     cache_reduct(var, arg, {filter, body});
                     return body;
@@ -398,7 +398,7 @@ const Def* World::extract(const Def* d, const Def* index) {
 
     if (size) {
         if (auto l = Lit::isa(size); l && *l == 1) {
-            if (!lidx || *lidx != 0) log().w("unknown Idx of size 1: {}", index);
+            if (!lidx || *lidx != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
             // A *mutable* Sigma may be a 1-tuple and still needs a real Extract; TODO mutable Arr?
             auto sigma = type->isa_mut<Sigma>();
             if (!sigma || sigma->num_ops() != 1) return d;

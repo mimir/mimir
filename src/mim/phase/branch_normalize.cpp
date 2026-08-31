@@ -11,7 +11,7 @@ const Def* BranchNormalize::rewrite_mut_Lam(Lam* lam) {
             auto ff = br.ff()->isa<Lam>() ? br.ff() : Lam::eta_expand(br.ff());
 
             if (tt != br.tt() || ff != br.ff()) {
-                log().d("branch-normalize: tt: `{} -> `{}` - ff: `{}` -> `{}`", br.tt(), tt, br.ff(), ff);
+                log().d("branch-normalize: tt {} → {}, ff {} → {}", br.tt(), tt, br.ff(), ff);
                 lam->branch(lam->filter(), br.cond(), tt, ff, br.arg());
                 // if we have this pattern nested, it will work recursively due to the rewrite of the new stuff below
             }

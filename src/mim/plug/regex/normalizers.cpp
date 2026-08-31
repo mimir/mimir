@@ -57,7 +57,7 @@ const Def* make_binary_tree(Defs args) {
 
 const Def* normalize_conj(const Def* type, const Def* callee, const Def* arg) {
     auto& world = type->world();
-    world.log().d("conj {}:{} ({})", type, callee, arg);
+    world.log().d("conj {}: {} ({})", callee, type, arg);
 
     if (auto a = Lit::isa(arg->arity())) {
         switch (*a) {
@@ -197,7 +197,7 @@ const Def* normalize_disj(const Def* type, const Def*, const Def* arg) {
                 }
 
                 erase(new_args, to_remove);
-                world.log().d("final ranges {}", fe::Join(new_args));
+                world.log().d("final ranges: {}", fe::Join(new_args));
 
                 if (new_args.size() > 2) return make_binary_tree<disj>(new_args);
                 if (new_args.size() > 1) return world.call<disj, false>(new_args);

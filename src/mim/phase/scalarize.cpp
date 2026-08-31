@@ -44,7 +44,7 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
         auto next = mask | (u64(1) << dom);
         if (next == mask) return;
         lattice_force(pi, world().lit_nat(next));
-        log().d("keep: {} #{}", pi, dom);
+        log().d("keep {}#{}", pi, dom);
     }
 }
 
@@ -217,7 +217,7 @@ const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
 
     auto& w  = new_world();
     auto sca = w.pi(w.sigma(doms), rewrite(pi->codom()), pi->is_implicit());
-    log().d("scalarize {} ~> {}", pi, sca);
+    log().d("scalarize {} → {}", pi, sca);
     invalidate();
     return sca;
 }
@@ -236,7 +236,7 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
 
     auto& w  = new_world();
     auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
-    log().d("scalarize {} : {} ~> {} : {}", old, old->type(), sca, sca->type());
+    log().d("scalarize {}: {} → {}: {}", old, old->type(), sca, sca->type());
     map(old, sca);
 
     // reassemble the old var one level from the fresh scalar vars

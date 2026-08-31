@@ -169,7 +169,7 @@ public:
 
         auto rt = ll::Emitter::Rt::embed;
         for (const auto& arg : args()) {
-            world().log().d("ll backend arg: `{}`", arg);
+            world().log().d("ll_nvptx backend arg: `{}`", arg);
             // clang-format off
             if (false) {}
             else if (arg.starts_with("o="))          c.host_ll_name      = arg.substr(2);
@@ -215,8 +215,7 @@ public:
                 compile2cubin(c);
                 compile2fatbin(c);
             } catch (const fe::sys::CmdNotFound& e) {
-                log().w("{}", e.what());
-                log().w("Falling back to not embedding device code.");
+                log().w("{}; not embedding device code", e.what());
                 c.embed_device_code = false;
             }
         }

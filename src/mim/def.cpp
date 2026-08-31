@@ -498,7 +498,7 @@ template<Def::Cmp c>
 bool Def::cmp_(const Def* a, const Def* b) {
     auto res = cmp(a, b);
     if (res == Cmp::U) {
-        a->world().log().w("resorting to unstable gid-based compare for commute check");
+        a->world().log().w("commute check resorts to an unstable gid-based compare");
         return c == Cmp::L ? a->gid() < b->gid() : a->gid() > b->gid();
     }
     return res == c;

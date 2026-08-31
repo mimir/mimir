@@ -93,7 +93,7 @@ DFAMap<const Def*> create_check_match_transitions_from(const Def* c, const DFANo
 } // namespace
 
 extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
-    w.log().d("dfa to match: {}", dfa);
+    w.log().d("DFA to match: {}", dfa);
 
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;

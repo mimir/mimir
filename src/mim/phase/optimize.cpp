@@ -36,14 +36,14 @@ void optimize(World& world) {
     }
 
     if (!compilation) {
-        world.log().i("no compilation function found - skipping optimization");
+        world.log().i("no compilation function found; skipping optimization");
     } else {
-        world.log().d("compilation using {} : {}", compilation, compilation->type());
+        world.log().d("compile with {}: {}", compilation, compilation->type());
 
         auto body   = compilation->as<Lam>()->body();
         auto callee = App::uncurry_callee(body);
 
-        world.log().d("Building pipeline");
+        world.log().d("build pipeline");
         if (auto f = world.driver().phase(callee->flags())) {
             auto stage = (*f)(world);
             auto phase = stage.get()->as<Phase>();

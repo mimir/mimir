@@ -41,11 +41,11 @@ bool ClosConvPrep::analyze() {
 
         if (auto lam = def->isa_mut<Lam>(); lam && Pi::isa_returning(lam)) {
             lam2fscope_[lam] = lam;
-            log().d("scope {} -> {}", lam, lam);
+            log().d("scope: {} → {}", lam, lam);
             auto nest = Nest(lam);
             for (auto mut : nest.muts())
                 if (auto bb_lam = Lam::isa_mut_basicblock(mut)) {
-                    log().d("scope {} -> {}", bb_lam, lam);
+                    log().d("scope: {} → {}", bb_lam, lam);
                     lam2fscope_[bb_lam] = lam;
                 }
         }
@@ -83,11 +83,11 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
         if (arg->proj(i) == old_op) break;
 
     if (auto lam = isa_retvar(old_op); lam && from_outer_scope(lam)) {
-        log().d("found return var from enclosing scope: {}", old_op);
+        log().d("return var from an enclosing scope: {}", old_op);
         return eta_wrap(old_op, attr::free_bb)->set("free_ret");
     }
     if (auto bb_lam = Lam::isa_mut_basicblock(old_op); bb_lam && from_outer_scope(bb_lam)) {
-        log().d("found BB from enclosing scope {}", old_op);
+        log().d("BB from an enclosing scope: {}", old_op);
         return new_world().call(attr::free_bb, rewrite(old_op));
     }
     if (isa_cnt(app, arg, i)) {
@@ -97,20 +97,20 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
             return new_world().call(attr::returning, rewrite(contlam));
         } else {
             auto wrapper = eta_wrap(old_op, attr::returning)->set("eta_cont");
-            log().d("eta expanded return cont: {} -> {}", old_op, wrapper);
+            log().d("eta-expand return continuation: {} → {}", old_op, wrapper);
             return wrapper;
         }
     }
 
     if (!isa_callee_br(app, arg, i)) {
         if (auto bb_lam = Lam::isa_mut_basicblock(old_op)) {
-            log().d("found firstclass use of BB: {}", bb_lam);
+            log().d("first-class use of BB: {}", bb_lam);
             return new_world().call(attr::fstclass_bb, rewrite(bb_lam));
         }
         // @note This relies on branches staying in `Extract`-of-`Tuple` form; if eta-reduction were to collapse
         // a branch back into a bare continuation, it would have to be re-wrapped here.
         if (isa_retvar(old_op)) {
-            log().d("found firstclass use of return var: {}", old_op);
+            log().d("first-class use of return var: {}", old_op);
             return eta_wrap(old_op, attr::fstclass_bb)->set("fstclass_ret");
         }
     }
@@ -121,7 +121,7 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
 const Def* ClosConvPrep::rewrite_callee_op(const Def* old_op) {
     if (!old_op->isa_mut<Lam>()) {
         auto wrapper = eta_wrap(old_op, attr::bottom)->set("eta_br");
-        log().d("eta wrap branch: {} -> {}", old_op, wrapper);
+        log().d("eta-wrap branch: {} → {}", old_op, wrapper);
         return wrapper;
     }
     return rewrite(old_op);

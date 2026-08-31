@@ -59,7 +59,7 @@ fe::Bitset StaticArgOpt::statics(Lam* lam) {
         if (pool[s]) res &= sites[s];
     if (res.none()) return lam2statics_[lam] = fe::Bitset();
 
-    log().d("statics for `{}`: {}", lam, res);
+    log().d("statics of {}: {}", lam, res);
     return lam2statics_[lam] = res;
 }
 
@@ -75,7 +75,7 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
             auto wrap = w.mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
             auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
             loop->debug_suffix("_loop");
-            log().d("old {} -> (wrap: {}, loop: {})", old_lam, wrap, loop);
+            log().d("{} → wrap {}, loop {}", old_lam, wrap, loop);
             old2wrap_loop_[old_lam] = {wrap, loop};
 
             // The body lives in loop; the static vars stay wrap's and are free in loop.

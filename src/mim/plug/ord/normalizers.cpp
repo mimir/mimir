@@ -58,7 +58,7 @@ const Def* normalize_contains(const Def*, const Def*, const Def* arg) {
             return tuple->is_closed() ? w.lit_ff() : nullptr;
         }
 
-        if (auto pack = init->arg()->isa_imm<Pack>()) w.log().w("packs not yet implemented: {}", pack);
+        if (auto pack = init->arg()->isa_imm<Pack>()) w.log().w("Pack not yet implemented: {}", pack);
     }
 
     return nullptr;
@@ -100,7 +100,7 @@ const Def* normalize_insert(const Def* type, const Def*, const Def* arg) {
             }
         }
 
-        if (auto pack = init->arg()->isa_imm<Pack>()) w.log().w("packs not yet implemented: {}", pack);
+        if (auto pack = init->arg()->isa_imm<Pack>()) w.log().w("Pack not yet implemented: {}", pack);
     }
 
     return {};
