@@ -1,6 +1,6 @@
 #include "mim/ast/lexer.h"
 
-#include "mim/ast/ast.h"
+#include "mim/def.h" // Idx::bitwidth2size is all the IR a lexer needs
 
 using namespace std::literals;
 
