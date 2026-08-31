@@ -19,19 +19,19 @@ void StaticArgOpt::analyze(const Def* def) {
 }
 
 void StaticArgOpt::visit(const App* app, Lam* lam) {
-    auto mask = Mask();
+    auto mask = fe::Bitset();
     for (size_t i = 0, n = lam->num_tdoms(); i != n; ++i)
         if (app->targ(i) == lam->tvar(i)) mask.set(i);
     if (mask.any()) lam2sites_[lam].emplace_back(std::move(mask)); // only lam's own body can mention lam's vars
 }
 
-StaticArgOpt::Mask StaticArgOpt::statics(Lam* lam) {
+fe::Bitset StaticArgOpt::statics(Lam* lam) {
     if (auto i = lam2statics_.find(lam); i != lam2statics_.end()) return i->second;
 
     // A *mutable* Pi is a dependent one; splitting it would require loop's doms to refer to wrap's vars.
     auto i = lam2sites_.find(lam);
     if (i == lam2sites_.end() || !lam->is_set() || !lam->is_closed() || lam->type()->isa_mut<Pi>())
-        return lam2statics_[lam] = Mask();
+        return lam2statics_[lam] = fe::Bitset();
 
     const auto& sites = i->second;
     auto n            = lam->num_tdoms();
@@ -52,12 +52,12 @@ StaticArgOpt::Mask StaticArgOpt::statics(Lam* lam) {
         break;
     }
 
-    auto res = Mask();
+    auto res = fe::Bitset();
     for (size_t d = 0; d != n; ++d)
         res.set(d);
     for (size_t s = 0, e = sites.size(); s != e; ++s)
         if (pool[s]) res &= sites[s];
-    if (res.none()) return lam2statics_[lam] = Mask();
+    if (res.none()) return lam2statics_[lam] = fe::Bitset();
 
     DLOG("statics for `{}`: {}", lam, res);
     return lam2statics_[lam] = res;
