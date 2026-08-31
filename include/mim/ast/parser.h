@@ -160,21 +160,6 @@ private:
     Ptr<RecDecl> parse_and_decl();
     ///@}
 
-    /// @name error messages
-    ///@{
-    /// Issue an error message of the form:
-    /// "expected \<what\>, got `\<tok>\` while parsing \<ctxt\>"
-    void syntax_err(std::string_view what, const Tok& tok, std::string_view ctxt) {
-        ast().error(tok.loc(), "expected {}, got `{}` while parsing {}", what, tok, ctxt);
-    }
-
-    /// Same above but uses @p ahead() as @p tok.
-    void syntax_err(std::string_view what, std::string_view ctxt) { syntax_err(what, ahead(), ctxt); }
-
-    /// Same above but @p what is a @p tag.
-    void syntax_err(Tok::Tag tag, std::string_view ctxt) { syntax_err(std::format("`{}`", tag), ctxt); }
-    ///@}
-
     AST& ast_;
     Lexer* lexer_ = nullptr;
 
