@@ -84,7 +84,7 @@ const Nest::Node* Scheduler::smart(Def* curr_mut, const Def* def) {
         i = i->inest();
 
         if (i == nullptr) {
-            world().ELOG("this should never occur - don't know where to put {}", def);
+            world().log().e("no place found for {}", def);
             s = l;
             break;
         }

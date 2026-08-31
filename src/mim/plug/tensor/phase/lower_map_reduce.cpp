@@ -20,12 +20,7 @@ const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, cons
     if (i == r) return input;
 
     auto s_in_ri = s_in->proj(r, i), s_out_ri = s_out->proj(r, i);
-    DLOG("rec_broadcast");
-    DLOG("    r = {}", r);
-    DLOG("    i = {}", i);
-    DLOG("    s_in_ri = {} : {}", s_in_ri, s_in_ri->type());
-    DLOG("    s_out_ri = {} : {}", s_out_ri, s_out_ri->type());
-    DLOG("    input = {} : {}", input, input->type());
+    log().d("broadcast dimension {} of {}: {} → {}, input = {}: {}", i, r, s_in_ri, s_out_ri, input, input->type());
 
     if (s_in_ri == s_out_ri) {
         if (auto s_in_lit = Lit::isa<u64>(s_in_ri)) {
@@ -34,18 +29,17 @@ const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, cons
         } else {
             // TODO: we could probably support non-literal sizes as well, but we would need to generate loops to copy
             // the data instead of just packing it.
-            WLOG("dimension {} of the input and output are equal but not literal: {} : {}", i, s_in_ri,
-                 s_in_ri->type());
+            log().w("dimension {} has equal but non-literal extent: {}", i, s_in_ri);
             return nullptr;
         }
     }
 
     if (auto s_in_lit = Lit::isa<u64>(s_in_ri); s_in_lit && *s_in_lit == 1) {
-        DLOG("dimension {} of the input is 1, can be broadcasted to dimension {} of the output", i, s_out_ri);
+        log().d("dimension {}: packing the size-1 input to {}", i, s_out_ri);
         return w.pack(s_out_ri, rec_broadcast(s_in, s_out, input, r, i + 1));
     }
 
-    WLOG("cannot broadcast dimension {} of size {} to size {}", i, s_in_ri, s_out_ri);
+    log().w("cannot broadcast dimension {}: {} → {}", i, s_in_ri, s_out_ri);
     return nullptr;
 }
 
@@ -57,16 +51,12 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     auto [s_in, s_out, input] = arg->projs<3>();
     auto callee               = c->as<App>();
     auto [T, r]               = callee->args<2>();
-    DLOG("lower_broadcast");
-    DLOG("    s_out = {} : {}", s_out, s_out->type());
-    DLOG("    input = {} : {}", input, input->type());
-    DLOG("    T = {} : {}", T, T->type());
-    DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s_in = {} : {}", s_in, s_in->type());
+    log().d("lower broadcast: input = {}: {}, T = {}, r = {}, s_in = {}, s_out = {}", input, input->type(), T, r, s_in,
+            s_out);
 
     auto r_nat = Lit::isa<u64>(r);
     if (!r_nat) {
-        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
+        log().w("rank {} of {} is not known at lowering time", r, app);
         return nullptr;
     }
     // r_nat will never be 0, as we would have normalized this case away already
@@ -80,7 +70,7 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     }
 
     auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
-    DLOG("result of rec_broadcast = {} : {}", result, result->type());
+    log().d("broadcast result: {}", result);
     return result;
 }
 
@@ -147,7 +137,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto nps_l = Lit::isa<u64>(nps);
     auto ro_l = Lit::isa<u64>(Ro), rn_l = Lit::isa<u64>(Rn);
     if (!nis_l || !nps_l || !ro_l || !rn_l || *rn_l < *ro_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
+        log().w("rank counts (nis/nps/Ro/Rn) of {} are not known at lowering time", app);
         return nullptr;
     }
     auto nis_nat = *nis_l;
@@ -161,7 +151,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     for (u64 i = 0; i < nis_nat; ++i) {
         auto l = Lit::isa<u64>(Ris->proj(nis_nat, i));
         if (!l) {
-            WLOG("input {} of {} has a non-literal rank", i, app);
+            log().w("rank of input {} of {} is not known at lowering time", i, app);
             return nullptr;
         }
         ris_nat[i] = *l;
@@ -170,7 +160,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     for (u64 j = 0; j < nps_nat; ++j) {
         auto l = Lit::isa<u64>(Rps->proj(nps_nat, j));
         if (!l) {
-            WLOG("epilogue input {} of {} has a non-literal rank", j, app);
+            log().w("rank of epilogue input {} of {} is not known at lowering time", j, app);
             return nullptr;
         }
         rps_nat[j] = *l;
@@ -335,7 +325,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto r_l    = Lit::isa<u64>(r);
     auto mode_l = Lit::isa<u64>(mode);
     if (!r_l || !mode_l) {
-        WLOG("{} doesn't have a lowering-time known rank/mode", app);
+        log().w("rank/mode of {} is not known at lowering time", app);
         return nullptr;
     }
     auto rn       = *r_l;
@@ -400,7 +390,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     auto r_l   = Lit::isa<u64>(r);
     auto ax_l  = Lit::isa<u64>(ax);
     if (!nis_l || !r_l || !ax_l) {
-        WLOG("{} doesn't have lowering-time known nis/r/ax", app);
+        log().w("nis/r/ax of {} are not known at lowering time", app);
         return nullptr;
     }
     auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
@@ -413,7 +403,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         off[i]  = w.lit_i64(acc_off);
         auto ei = Lit::isa<u64>(Sis->proj(nisn, i)->proj(rn, axn));
         if (!ei) {
-            WLOG("{} input {} has a non-literal extent along the concat axis", app, i);
+            log().w("extent of input {} of {} along the concat axis is not known at lowering time", i, app);
             return nullptr;
         }
         acc_off += *ei;

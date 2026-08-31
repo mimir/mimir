@@ -29,7 +29,7 @@ const Def* BranchClosElim::rewrite_imm_App(const App* app) {
 
     auto& w = new_world();
     if (auto [branches, index] = isa_branch(app->callee()); index) {
-        DLOG("FLATTEN BRANCH {}", app->callee());
+        log().d("flatten branch: {}", app->callee());
         auto ep           = env_param(branches[0].fnc_type());
         auto new_branches = w.tuple(DefVec(branches.size(), [&](size_t i) -> const Def* {
             auto c = branches[i];

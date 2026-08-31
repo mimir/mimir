@@ -58,7 +58,7 @@ DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
         }
 
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
-        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.DLOG("{}", msg); });
+        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.log().d("{}", msg); });
     }
     return state2ranges;
 }
@@ -93,7 +93,7 @@ DFAMap<const Def*> create_check_match_transitions_from(const Def* c, const DFANo
 } // namespace
 
 extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
-    w.DLOG("dfa to match: {}", dfa);
+    w.log().d("DFA to match: {}", dfa);
 
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;

@@ -123,7 +123,7 @@ const Def* autodiff_type_fun(const Def* ty) {
     }
     // mem
     if (Axm::isa<mem::M>(ty)) return ty;
-    world.WLOG("no-diff type: {}", ty);
+    world.log().w("not differentiable: {}", ty);
     return nullptr;
 }
 

@@ -34,9 +34,9 @@ std::unique_ptr<Phase> Phase::recreate() {
 void Phase::run() {
     auto profiling = driver().flags().profile != Flags::Profile::None;
     if (profiling) driver().profiler().start(name());
-    world().verify().ILOG("🚀 Phase launch: `{}`", name());
+    world().verify().log().i("🚀 launch phase `{}`", name());
     start();
-    world().verify().ILOG("🏁 Phase finish: `{}`", name());
+    world().verify().log().i("🏁 finish phase `{}`", name());
     if (profiling) driver().profiler().stop();
 }
 
@@ -66,7 +66,7 @@ void Analysis::start() {
 
     if (curr_sparse_) {
         bootstrapping_ = false; // a sparse round re-drains program muts - it has no annex half
-        VLOG("sparse round: re-draining {} dirty muts", seeds.size());
+        log().v("sparse round: re-drain {} dirty muts", seeds.size());
         std::ranges::sort(seeds, GIDLt<Def*>()); // MutSet iteration order is nondeterministic
 
         // Pre-install what earlier rounds substituted, so this round prunes everything they already settled -
@@ -139,7 +139,7 @@ void Analysis::drain() {
         ++num_drained_;
 
         auto _ = enter(mut);
-        DLOG("enter: {}", mut);
+        log().d("enter {}", mut);
         for (auto d : mut->deps())
             rewrite(d);
     }
@@ -154,7 +154,7 @@ void RWBase::start() {
     bool todo      = true;
     for (uint32_t i = 0; todo; ++i) {
         if (i >= max_iters) fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
-        VLOG("iteration: {}", i);
+        log().v("iteration {}", i);
         todo = analyze();
     }
 
@@ -295,13 +295,13 @@ void PhaseMan::start() {
     for (uint32_t iter = 0; any_stale(); ++iter) {
         if (iter >= max_iters)
             fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
-        if (fixed_point()) VLOG("🔄 fixed-point iteration: {}", iter);
+        if (fixed_point()) log().v("🔄 fixed-point iteration {}", iter);
 
         bool todo = false;
         for (size_t i = 0; i != n; ++i) {
             auto& phase = phases()[i];
             if (!stale[i]) {
-                VLOG("skipping `{}`: World unchanged since its last quiet run", phase->name());
+                log().v("skip `{}`: World unchanged since its last quiet run", phase->name());
                 profile_count("phases.skipped");
                 continue;
             }

@@ -68,7 +68,7 @@ public:
 
 private:
     std::string convert(const Def* def, bool simd = false) override {
-        if (simd) WLOG("Ignoring simd=true for type conversion in device code.");
+        if (simd) log().w("ignoring simd=true for type conversion in device code");
         return Super::convert(def, false);
     }
 

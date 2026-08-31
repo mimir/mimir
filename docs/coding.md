@@ -325,7 +325,7 @@ You can also tweak the output behavior directly from within GDB by changing [`mi
 ```gdb
 (gdb) call world().flags().dump_gid = 1
 (gdb) call world().flags().dump_recursive = 1
-(gdb) call world().log().max_level_ = 4
+(gdb) call world().log.max_level_ = 4
 ```
 
 Another useful trick is to recover a `Def*` from a [`mim::Def::gid`](@ref mim::Def::gid) via [`mim::World::gid2def`](@ref mim::World::gid2def):

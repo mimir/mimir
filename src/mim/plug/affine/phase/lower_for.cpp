@@ -37,7 +37,7 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
 
     if (auto for_ax = Axm::isa<affine::For>(app)) {
-        DLOG("rewriting for axm: `{}`", for_ax);
+        log().d("lower for: {}", for_ax);
         auto [old_body, old_exit, args]               = for_ax->uncurry_args<3>();
         auto [new_begin, new_end, new_step, new_init] = args->projs<4>([this](const Def* def) { return rewrite(def); });
 

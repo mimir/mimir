@@ -107,8 +107,8 @@ int main(int argc, char** argv) {
             | lyra::opt(watchpoints,    "gid"              )["-w"]["--watch"                ]("*Triggers breakpoint when setting a node whose global id is <gid>.")
             | lyra::opt(flags.reeval_breakpoints           )      ["--reeval-breakpoints"   ]("*Triggers breakpoint even upon unfying a node that has already been built.")
             | lyra::opt(flags.break_on_alpha               )      ["--break-on-alpha"       ]("*Triggers breakpoint as soon as two expressions turn out to be not alpha-equivalent.")
-            | lyra::opt(flags.break_on_error               )      ["--break-on-error"       ]("*Triggers breakpoint on ELOG.")
-            | lyra::opt(flags.break_on_warn                )      ["--break-on-warn"        ]("*Triggers breakpoint on WLOG.")
+            | lyra::opt(flags.break_on_error               )      ["--break-on-error"       ]("*Triggers breakpoint on an error log.")
+            | lyra::opt(flags.break_on_warn                )      ["--break-on-warn"        ]("*Triggers breakpoint on a warning log.")
             | lyra::opt(flags.trace_gids                   )      ["--trace-gids"           ]("*Output gids during World::unify/insert.")
 #endif
             | lyra::arg(input,          "file"             )                                  ("Input file.")

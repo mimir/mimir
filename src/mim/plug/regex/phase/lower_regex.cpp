@@ -35,10 +35,10 @@ const Def* LowerRegex::rewrite_imm_App(const App* app) {
         // The NFA is derived from the old callee's structure; only the argument needs rewriting.
         auto new_n = rewrite(app->arg());
         auto nfa   = regex2nfa(callee);
-        DLOG("nfa: {}", *nfa);
+        log().d("NFA: {}", *nfa);
 
         auto dfa = automaton::nfa2dfa(*nfa);
-        DLOG("dfa: {}", *dfa);
+        log().d("DFA: {}", *dfa);
 
         auto min_dfa = automaton::minimize_dfa(*dfa);
         return wrap_in_cps2ds(dfa2matcher(new_world(), *min_dfa, new_n));

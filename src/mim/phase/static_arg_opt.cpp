@@ -19,28 +19,28 @@ void StaticArgOpt::analyze(const Def* def) {
 }
 
 void StaticArgOpt::visit(const App* app, Lam* lam) {
-    auto n    = lam->num_tdoms();
-    auto mask = Mask(n, false);
-    auto self = false;
-    for (size_t i = 0; i != n; ++i)
-        self |= (mask[i] = app->targ(i) == lam->tvar(i));
-    if (self) lam2sites_[lam].emplace_back(std::move(mask)); // only lam's own body can mention lam's vars
+    auto mask = fe::Bitset();
+    for (size_t i = 0, n = lam->num_tdoms(); i != n; ++i)
+        if (app->targ(i) == lam->tvar(i)) mask.set(i);
+    if (mask.any()) lam2sites_[lam].emplace_back(std::move(mask)); // only lam's own body can mention lam's vars
 }
 
-StaticArgOpt::Mask StaticArgOpt::statics(Lam* lam) {
+fe::Bitset StaticArgOpt::statics(Lam* lam) {
     if (auto i = lam2statics_.find(lam); i != lam2statics_.end()) return i->second;
 
     // A *mutable* Pi is a dependent one; splitting it would require loop's doms to refer to wrap's vars.
     auto i = lam2sites_.find(lam);
     if (i == lam2sites_.end() || !lam->is_set() || !lam->is_closed() || lam->type()->isa_mut<Pi>())
-        return lam2statics_[lam] = Mask();
+        return lam2statics_[lam] = fe::Bitset();
 
     const auto& sites = i->second;
     auto n            = lam->num_tdoms();
 
     // A static *function* arg is what SAT is after, as it exposes the loop's free var to inlining (Santos §7).
     // So seed the split with the rightmost Pi-typed dom and keep only the sites forwarding it; ∀ if there is none.
-    auto pool = fe::Vector<bool>(sites.size(), true);
+    auto pool = fe::Bitset();
+    for (size_t s = 0, e = sites.size(); s != e; ++s)
+        pool.set(s);
     for (size_t d = n; d-- != 0;) {
         if (!lam->tdom(d)->isa<Pi>()) continue;
         auto seeded = false;
@@ -48,29 +48,26 @@ StaticArgOpt::Mask StaticArgOpt::statics(Lam* lam) {
             seeded |= mask[d];
         if (seeded)
             for (size_t s = 0, e = sites.size(); s != e; ++s)
-                pool[s] = sites[s][d];
+                pool.set(s, sites[s][d]);
         break;
     }
 
-    auto res        = Mask(n, true);
-    auto num_static = size_t(0);
+    auto res = fe::Bitset();
+    for (size_t d = 0; d != n; ++d)
+        res.set(d);
     for (size_t s = 0, e = sites.size(); s != e; ++s)
-        if (pool[s])
-            for (size_t d = 0; d != n; ++d)
-                res[d] = res[d] && sites[s][d];
-    for (auto r : res)
-        num_static += r;
-    if (num_static == 0) return lam2statics_[lam] = Mask();
+        if (pool[s]) res &= sites[s];
+    if (res.none()) return lam2statics_[lam] = fe::Bitset();
 
-    DLOG("statics for `{}`: {}", lam, fe::Join(res, ", "));
+    log().d("statics of {}: {}", lam, res);
     return lam2statics_[lam] = res;
 }
 
 const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
     if (!is_bootstrapping()) {
-        if (auto statics = this->statics(old_lam); !statics.empty()) {
+        if (auto statics = this->statics(old_lam); statics.any()) {
             auto& w        = new_world();
-            auto n         = statics.size();
+            auto n         = old_lam->num_tdoms();
             auto loop_doms = DefVec();
             for (size_t i = 0; i != n; ++i)
                 if (!statics[i]) loop_doms.emplace_back(rewrite(old_lam->tdom(i)));
@@ -78,7 +75,7 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
             auto wrap = w.mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
             auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
             loop->debug_suffix("_loop");
-            DLOG("old {} -> (wrap: {}, loop: {})", old_lam, wrap, loop);
+            log().d("{} → wrap {}, loop {}", old_lam, wrap, loop);
             old2wrap_loop_[old_lam] = {wrap, loop};
 
             // The body lives in loop; the static vars stay wrap's and are free in loop.
@@ -105,11 +102,11 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
 
 const Def* StaticArgOpt::rewrite_imm_App(const App* old_app) {
     if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !is_bootstrapping()) {
-        if (auto statics = this->statics(old_lam); !statics.empty()) {
+        if (auto statics = this->statics(old_lam); statics.any()) {
             rewrite(old_lam); // make sure wrap/loop exist
             if (auto i = old2wrap_loop_.find(old_lam); i != old2wrap_loop_.end()) {
                 auto loop = i->second.second;
-                auto n    = statics.size();
+                auto n    = old_lam->num_tdoms();
                 auto args = DefVec();
                 for (size_t i = 0; i != n; ++i) {
                     auto old_arg = old_app->targ(i);

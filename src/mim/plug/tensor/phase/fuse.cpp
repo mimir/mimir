@@ -1,8 +1,8 @@
 #include "mim/plug/tensor/phase/fuse.h"
 
-#include <algorithm>
 #include <optional>
 
+#include <fe/bitset.h>
 #include <fe/worklist.h>
 
 #include <mim/def.h>
@@ -65,11 +65,11 @@ static bool reads_injectively(const Def* map) {
     auto n = Lit::isa<u64>(var->type()->arity());
     if (!n) return false;
 
-    fe::Vector<bool> used(*n, false);
+    auto used = fe::Bitset();
     auto mark = [&](const Def* elem) {
         auto i = injective_coord(var, elem);
         if (!i || *i >= *n) return false;
-        used[*i] = true;
+        used.set(*i);
         return true;
     };
 
@@ -83,7 +83,7 @@ static bool reads_injectively(const Def* map) {
         return false;
     }
 
-    return std::ranges::all_of(used, std::identity{});
+    return used.count() == *n;
 }
 
 /// `inner ∘ outer`: feeds the outer op's read coordinates for one input into the inner op's access map.
@@ -185,16 +185,8 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     auto is_all                         = rewrite(app->arg());
     auto [is, post_is]                  = is_all->projs<2>();
 
-    DLOG("considering map_reduce for fusion:");
-    DLOG("  comb = {} : {}", comb, comb->type());
-    DLOG("  init = {} : {}", init, init->type());
-    DLOG("  Tis = {} : {}", Tis, Tis->type());
-    DLOG("  Ris = {} : {}", Ris, Ris->type());
-    DLOG("  Sis = {} : {}", Sis, Sis->type());
-    DLOG("  To = {} : {}", To, To->type());
-    DLOG("  Ro = {} : {}", Ro, Ro->type());
-    DLOG("  nis = {} : {}", nis, nis->type());
-    DLOG("  is = {} : {}", is, is->type());
+    log().d("consider for fusion: comb = {}, init = {}, To = {}, Ro = {}", comb, init, To, Ro);
+    log().d("    inputs: nis = {}, Tis = {}, Ris = {}, Sis = {}, is = {}", nis, Tis, Ris, Sis, is);
 
     auto& w = new_world();
 
@@ -538,7 +530,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     if (!i_nps_lit) return nullptr;
     auto i_nps_nat = *i_nps_lit;
 
-    DLOG("fusing trailing map {} {} into the epilogue of {}", callee, arg, inner_def);
+    log().d("fuse trailing map {} {} into the epilogue of {}", callee, arg, inner_def);
 
     // Concatenated epilogue inputs: the inner's own, then the map's other combiner inputs, then the
     // map's epilogue inputs. The maps' access maps carry over verbatim — their domain (the map's
@@ -656,7 +648,7 @@ const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
             m[i] = ms->proj(n, i);
             v[i] = vs->proj(n, i);
             if (auto rt = read_through(w, v[i], m[i])) {
-                DLOG("reading input {} of {} through {}", i, callee, v[i]);
+                log().d("read input {} of {} through {}", i, callee, v[i]);
                 // The bypassed read forwards its consumers to the source: a shared (or uncounted,
                 // e.g. broadcast) read leaves the source multiply-consumed for the epilogue guard.
                 if (!sole_consumer(v[i])) shared_.insert(rt->value);
@@ -747,7 +739,7 @@ const Def* Fuse::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::map_reduce_post>(app)) {
         const App* cur = nullptr;
         if (auto res = fuse_map_reduce(app)) {
-            DLOG("Fused map_reduce at {} into a new map_reduce {}", app, res);
+            log().d("fused map_reduce {} → {}", app, res);
             cur = res->as<App>();
         }
         // Read-throughs and the epilogue direction, to a fixpoint: each round may absorb pure
@@ -762,7 +754,7 @@ const Def* Fuse::rewrite_imm_App(const App* app) {
             const Def* res = fuse_read_through(callee, arg);
             if (!res) {
                 res = fuse_epilogue(callee, arg);
-                if (res) DLOG("Fused the trailing map at {} into its producer's epilogue: {}", app, res);
+                if (res) log().d("fused trailing map {} into its producer's epilogue → {}", app, res);
             }
             if (res) {
                 cur      = res->as<App>();

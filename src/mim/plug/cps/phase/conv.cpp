@@ -57,7 +57,7 @@ const Def* Conv::convert(Lam* old_lam) {
     map(old_lam->var(), param);
     auto wrapper = map(old_lam, op_cps2ds_dep(new_lam));
 
-    DLOG("convert {}: {} ↝ {}: {}", old_lam, old_pi, new_lam, new_lam->type());
+    log().d("convert {}: {} → {}: {}", old_lam, old_pi, new_lam, new_lam->type());
 
     auto scope      = Scope(*this, true);
     auto new_filter = rewrite(old_lam->filter());
@@ -85,7 +85,7 @@ const Def* Conv::lift(const Def* k, const Def* new_arg, const App* old_app) {
     scoped_ = w.vars().insert(scoped_, cont->has_var());
     pending_.emplace_back(k, new_arg, cont);
 
-    DLOG("lift {} ↝ {} ({}, {})", old_app, k, new_arg, cont);
+    log().d("lift {} → {} ({}, {})", old_app, k, new_arg, cont);
 
     return res;
 }

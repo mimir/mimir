@@ -35,7 +35,7 @@ public:
         auto path = name + ".ll"s;
         auto rt   = Emitter::Rt::embed;
         for (const auto& arg : args()) {
-            world().DLOG("ll backend arg: `{}`", arg);
+            world().log().d("ll backend arg: `{}`", arg);
             if (arg.starts_with("o="))
                 path = arg.substr(2);
             else if (arg.starts_with("output="))
