@@ -177,24 +177,20 @@ const Def* Scalarize::Analysis::rewrite(const Def* old) {
     return res;
 }
 
-fe::Vector<bool> Scalarize::Analysis::plan(const Def* type) const {
-    auto mask = fe::Vector<bool>();
+fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
+    auto mask = fe::Bitset();
     if (auto pi = isa_flattenable(type)) {
         // A *dependent* domain (a mut Sigma whose components reference siblings through its Var, e.g. a
         // runtime extent `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) must not be flattened at all:
         // splitting any component shifts the indices the dependent references are bound to.
         if (auto sig = pi->dom()->isa_mut<Sigma>(); sig && sig->has_var()) return mask;
-        auto n   = pi->num_tdoms();
-        auto any = false;
-        mask.assign(n, false);
-        for (size_t i = 0; i != n; ++i) {
+        for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {
             // Only split immutable types: a mutable Sigma's element types may reference
             // the Sigma's own var (e.g. a typed closure `[T: *, Cn [.., T, ..], T]`),
             // which splitting would leave unbound.
             auto t = pi->tdom(i);
-            if (!kept(pi, i) && t->isa_imm() && t->num_tprojs() > 1) mask[i] = any = true;
+            if (!kept(pi, i) && t->isa_imm() && t->num_tprojs() > 1) mask.set(i);
         }
-        if (!any) mask.clear();
     }
     return mask;
 }
@@ -204,8 +200,8 @@ fe::Vector<bool> Scalarize::Analysis::plan(const Def* type) const {
  */
 
 const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
-    auto mask = is_bootstrapping() ? fe::Vector<bool>() : analysis_.plan(pi);
-    if (mask.empty()) return RWPhase::rewrite_imm_Pi(pi);
+    auto mask = is_bootstrapping() ? fe::Bitset() : analysis_.plan(pi);
+    if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);
 
     // build the flattened (one level) domain
     auto doms = DefVec();
@@ -227,8 +223,8 @@ const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
 }
 
 const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
-    auto mask = is_bootstrapping() ? fe::Vector<bool>() : analysis_.plan(old->type());
-    if (mask.empty()) return RWPhase::rewrite_mut_Lam(old);
+    auto mask = is_bootstrapping() ? fe::Bitset() : analysis_.plan(old->type());
+    if (mask.none()) return RWPhase::rewrite_mut_Lam(old);
 
     if (!isa_optimizable(old)) {
         // An interface Lam's signature is ABI: rebuild its Pi via the generic hook -
@@ -262,11 +258,11 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     return sca;
 }
 
-DefVec Scalarize::flatten_args(const App* app, const fe::Vector<bool>& mask) {
+DefVec Scalarize::flatten_args(const App* app, const fe::Bitset& mask) {
     auto args = DefVec();
     for (size_t i = 0, n = app->num_targs(); i != n; ++i) {
         auto arg = rewrite(app->targ(i));
-        if (i < mask.size() && mask[i]) {
+        if (mask[i]) {
             auto pieces = arg->tprojs();
             args.insert(args.end(), pieces.begin(), pieces.end());
         } else {
@@ -281,7 +277,7 @@ const Def* Scalarize::rewrite_imm_App(const App* app) {
         // A direct call to an interface Lam keeps its argument shape - the callee's signature stays put.
         auto lam = app->callee()->isa_mut<Lam>();
         if (!lam || isa_optimizable(lam))
-            if (auto mask = analysis_.plan(app->callee_type()); !mask.empty())
+            if (auto mask = analysis_.plan(app->callee_type()); mask.any())
                 return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
     }
 

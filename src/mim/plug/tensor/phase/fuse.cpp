@@ -1,8 +1,8 @@
 #include "mim/plug/tensor/phase/fuse.h"
 
-#include <algorithm>
 #include <optional>
 
+#include <fe/bitset.h>
 #include <fe/worklist.h>
 
 #include <mim/def.h>
@@ -65,11 +65,11 @@ static bool reads_injectively(const Def* map) {
     auto n = Lit::isa<u64>(var->type()->arity());
     if (!n) return false;
 
-    fe::Vector<bool> used(*n, false);
+    auto used = fe::Bitset();
     auto mark = [&](const Def* elem) {
         auto i = injective_coord(var, elem);
         if (!i || *i >= *n) return false;
-        used[*i] = true;
+        used.set(*i);
         return true;
     };
 
@@ -83,7 +83,7 @@ static bool reads_injectively(const Def* map) {
         return false;
     }
 
-    return std::ranges::all_of(used, std::identity{});
+    return used.count() == *n;
 }
 
 /// `inner ∘ outer`: feeds the outer op's read coordinates for one input into the inner op's access map.

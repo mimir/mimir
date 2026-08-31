@@ -1,6 +1,7 @@
 #pragma once
 
 #include <absl/container/btree_set.h>
+#include <fe/bitset.h>
 
 #include <mim/def.h>
 #include <mim/phase.h>
@@ -129,7 +130,7 @@ private:
     /// The new signature of an old Lam.
     struct Sig {
         fe::Vector<Phi> phis;    ///< Its live phis.
-        fe::Vector<bool> keeps;  ///< Is this tvar of the old Lam kept as is?
+        fe::Bitset keeps;        ///< Which tvars of the old Lam are kept as is?
         size_t num_vars = 0;     ///< Vars of the new Lam: the kept old ones plus the kept phis.
         bool todo       = false; ///< Does the old Lam need a new signature at all?
     };

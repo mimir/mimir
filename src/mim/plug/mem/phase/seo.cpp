@@ -454,7 +454,7 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 
     for (size_t j = 0; j != n; ++j) {
         auto old_var = old_lam->var(n, j);
-        sig.keeps.emplace_back(keep(old_lam, old_var, lattice(old_var)));
+        if (keep(old_lam, old_var, lattice(old_var))) sig.keeps.set(j);
     }
 
     for (auto sloxy : sloxies_) {
@@ -468,12 +468,8 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 
     // A new signature is needed iff some var is dropped/propagated/merged or some phi has to be threaded in -
     // except for an unknown lam, which is used as a value somewhere and hence must keep its signature as is.
-    auto todo = false;
-    for (auto k : sig.keeps)
-        if (k)
-            ++sig.num_vars;
-        else
-            todo = true;
+    sig.num_vars = sig.keeps.count();
+    auto todo    = sig.num_vars != n;
     for (const auto& p : sig.phis)
         if (p.keep) ++sig.num_vars, todo = true;
     sig.todo = todo && !analysis_.unknowns().contains(old_lam);

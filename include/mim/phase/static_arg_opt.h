@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fe/bitset.h>
+
 #include "mim/phase.h"
 
 namespace mim {
@@ -18,7 +20,7 @@ public:
 
 private:
     /// One bit per Lam::tdom; thresholded, so a huge sigma dom stays a single bit.
-    using Mask = fe::Vector<bool>;
+    using Mask = fe::Bitset;
 
     bool analyze() final;
     void analyze(const Def*);
