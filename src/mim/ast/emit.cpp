@@ -229,7 +229,7 @@ const Def* LitExpr::emit_(Emitter& e) const {
         case Tag::L_f:   return t ? e.world().lit(t, encode_f(e, loc(), t, tok().lit_u())) : e.world().lit_nat(tok().lit_u());
         case Tag::L_s:
         case Tag::L_u:   return t ? e.world().lit(t, tok().lit_u()) : e.world().lit_nat(tok().lit_u());
-        case Tag::L_i:   return tok().lit_i();
+        case Tag::L_i:   { auto [size, val] = tok().lit_i(); return e.world().lit_idx(size, val); }
         case Tag::L_c:   return e.world().lit_i8(tok().lit_c());
         case Tag::L_str: return e.world().tuple(tok().sym());
         case Tag::T_bot: return t ? e.world().bot(t) : e.world().type_bot();

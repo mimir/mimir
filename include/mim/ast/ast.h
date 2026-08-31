@@ -54,8 +54,7 @@ class AST {
 public:
     AST(const AST&) = delete;
     AST(World& world)
-        : world_(&world)
-        , err_(world.driver()) {}
+        : world_(&world) {}
     AST(AST&& other)
         : AST(other.world()) {
         swap(*this, other);
@@ -64,10 +63,9 @@ public:
 
     /// @name Getters
     ///@{
-    World& world() { return *world_; }
-    Driver& driver() { return world().driver(); }
-    Error& error() { return err_; }
-    const Error& error() const { return err_; }
+    World& world() const { return *world_; }
+    Driver& driver() const { return world().driver(); }
+    Error& error() const { return driver().error(); }
     ///@}
 
     /// @name Sym
@@ -84,16 +82,6 @@ public:
     auto ptr(Args&&... args) {
         return arena_.mk<const T>(std::forward<Args>(args)...);
     }
-
-    /// @name Formatted Output
-    ///@{
-    // clang-format off
-    template<class... Args> Error& error(Loc loc, std::format_string<Args...> fmt, Args&&... args) const { return err_.error(loc, fmt, std::forward<Args>(args)...); }
-    template<class... Args> Error& warn (Loc loc, std::format_string<Args...> fmt, Args&&... args) const { return err_.warn (loc, fmt, std::forward<Args>(args)...); }
-    template<class... Args> Error& note (         std::format_string<Args...> fmt, Args&&... args) const { return err_.note (     fmt, std::forward<Args>(args)...); }
-    template<class... Args> Error& note (Loc loc, std::format_string<Args...> fmt, Args&&... args) const { return err_.note (loc, fmt, std::forward<Args>(args)...); }
-    // clang-format on
-    ///@}
 
     /// @name Manage Annex
     ///@{
@@ -112,14 +100,12 @@ public:
         // clang-format off
         swap(a1.world_, a2.world_);
         swap(a1.arena_, a2.arena_);
-        swap(a1.err_,   a2.err_);
         // clang-format on
     }
 
 private:
     World* world_ = nullptr;
     fe::Arena arena_;
-    mutable Error err_;
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;

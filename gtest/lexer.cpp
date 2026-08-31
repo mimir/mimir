@@ -4,7 +4,6 @@
 
 #include <mim/driver.h>
 
-#include <mim/ast/ast.h>
 #include <mim/ast/lexer.h>
 
 using namespace std::literals;
@@ -12,10 +11,8 @@ using namespace mim;
 using namespace mim::ast;
 
 TEST(Lexer, Toks) {
-    Driver driver;
-    auto& w  = driver.world();
-    auto ast = AST(w);
-    Lexer lexer(ast, "{ } ( ) [ ] ‹ › « » : , . lam λ  23₀₁₂₃₄₅₆₇₈₉");
+    Driver drv;
+    Lexer lexer(drv, "{ } ( ) [ ] ‹ › « » : , . lam λ  23₀₁₂₃₄₅₆₇₈₉");
 
     EXPECT_TRUE(lexer.lex().isa(Tok::Tag::D_brace_l));
     EXPECT_TRUE(lexer.lex().isa(Tok::Tag::D_brace_r));
@@ -35,45 +32,41 @@ TEST(Lexer, Toks) {
     auto tok = lexer.lex();
     EXPECT_TRUE(tok.isa(Tok::Tag::L_i));
     EXPECT_TRUE(lexer.lex().isa(Tok::Tag::EoF));
-    EXPECT_EQ(tok.lit_i(), driver.world().lit_idx(123456789, 23));
+    EXPECT_EQ(tok.lit_i(), std::pair(u64(123456789), u64(23)));
 }
 
 TEST(Lexer, Errors) {
-    Driver driver;
-    auto& w  = driver.world();
-    auto ast = ast::AST(w);
-    Lexer l1(ast, "asdf \xc0\xc0");
+    Driver drv;
+    Lexer l1(drv, "asdf \xc0\xc0");
     l1.lex();
     l1.lex();
-    EXPECT_GE(ast.error().num_errors(), 1);
-    EXPECT_TRUE(ast.error().msgs().front().str.starts_with("invalid UTF-8"));
-    ast.error().clear();
+    EXPECT_GE(drv.error().num_errors(), 1);
+    EXPECT_TRUE(drv.error().msgs().front().str.starts_with("invalid UTF-8"));
+    drv.error().clear();
 
-    Lexer l2(ast, "foo \xaa");
+    Lexer l2(drv, "foo \xaa");
     l2.lex();
     l2.lex();
-    EXPECT_GE(ast.error().num_errors(), 1);
-    EXPECT_TRUE(ast.error().msgs().front().str.starts_with("invalid UTF-8"));
-    ast.error().clear();
+    EXPECT_GE(drv.error().num_errors(), 1);
+    EXPECT_TRUE(drv.error().msgs().front().str.starts_with("invalid UTF-8"));
+    drv.error().clear();
 
-    Lexer l3(ast, "+");
+    Lexer l3(drv, "+");
     l3.lex();
-    EXPECT_GE(ast.error().num_errors(), 1);
-    EXPECT_TRUE(ast.error().msgs().front().str.starts_with("stray"));
-    ast.error().clear();
+    EXPECT_GE(drv.error().num_errors(), 1);
+    EXPECT_TRUE(drv.error().msgs().front().str.starts_with("stray"));
+    drv.error().clear();
 
-    Lexer l4(ast, "-");
+    Lexer l4(drv, "-");
     l4.lex();
-    EXPECT_GE(ast.error().num_errors(), 1);
-    EXPECT_TRUE(ast.error().msgs().front().str.starts_with("stray"));
-    ast.error().clear();
+    EXPECT_GE(drv.error().num_errors(), 1);
+    EXPECT_TRUE(drv.error().msgs().front().str.starts_with("stray"));
+    drv.error().clear();
 }
 
 TEST(Lexer, Eof) {
-    Driver driver;
-    auto& w  = driver.world();
-    auto ast = AST(w);
-    Lexer lexer(ast, "");
+    Driver drv;
+    Lexer lexer(drv, "");
     for (int i = 0; i < 10; i++)
         EXPECT_TRUE(lexer.lex().isa(Tok::Tag::EoF));
 }
@@ -81,12 +74,10 @@ TEST(Lexer, Eof) {
 class Real : public testing::TestWithParam<int> {};
 
 TEST_P(Real, sign) {
-    Driver driver;
-    auto& w  = driver.world();
-    auto ast = AST(w);
+    Driver drv;
 
     // clang-format off
-    auto check = [&ast](std::string s, f64 r) {
+    auto check = [&drv](std::string s, f64 r) {
         const auto sign = GetParam();
         switch (sign) {
             case 0: break;
@@ -95,7 +86,7 @@ TEST_P(Real, sign) {
             default: fe::unreachable();
         }
 
-        Lexer lexer(ast, s);
+        Lexer lexer(drv, s);
 
         auto tag = lexer.lex();
         EXPECT_TRUE(tag.isa(Tok::Tag::L_f));
@@ -113,17 +104,17 @@ TEST_P(Real, sign) {
     check("0x2.3p-4", 0x2.3p-4); check("0x2.3P4", 0x2.3P4);
     // clang-format on
 
-    Lexer l1(ast, "0x2.34");
+    Lexer l1(drv, "0x2.34");
     l1.lex();
-    EXPECT_EQ(ast.error().num_errors(), 1);
-    EXPECT_TRUE(ast.error().msgs().front().str == "hexadecimal floating constants require an exponent"sv);
-    ast.error().clear();
+    EXPECT_EQ(drv.error().num_errors(), 1);
+    EXPECT_TRUE(drv.error().msgs().front().str == "hexadecimal floating constants require an exponent"sv);
+    drv.error().clear();
 
-    Lexer l2(ast, "2.34e");
+    Lexer l2(drv, "2.34e");
     l2.lex();
-    EXPECT_EQ(ast.error().num_errors(), 1);
-    EXPECT_TRUE(ast.error().msgs().front().str == "exponent has no digits");
-    ast.error().clear();
+    EXPECT_EQ(drv.error().num_errors(), 1);
+    EXPECT_TRUE(drv.error().msgs().front().str == "exponent has no digits");
+    drv.error().clear();
 }
 
 INSTANTIATE_TEST_SUITE_P(Lexer, Real, testing::Range(0, 3));
