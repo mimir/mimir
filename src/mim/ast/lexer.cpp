@@ -9,7 +9,10 @@ namespace mim::ast {
 namespace utf8 = fe::utf8;
 using Tag      = Tok::Tag;
 
-Lexer::Lexer(Driver& driver, std::string_view buf, const fe::Src* src, std::ostream* md)
+/// As World::lit_idx_mod but at token level: a @p mod of `0` means 2^64 and wraps nothing.
+static Tok idx_tok(Loc loc, u64 mod, u64 val) { return {loc, mod, mod == 0 ? val : val % mod}; }
+
+Lexer::Lexer(fe::Driver& driver, std::string_view buf, const fe::Src* src, std::ostream* md)
     : Super(buf, src)
     , driver_(driver)
     , md_(md) {
@@ -34,10 +37,7 @@ Tok Lexer::lex() {
 
         if (accept(utf8::EoF)) return tok(Tag::EoF);
         if (accept(utf8::isspace)) continue;
-        if (accept(utf8::Invalid)) {
-            driver().error(loc_, "invalid UTF-8 character");
-            continue;
-        }
+        if (recover_utf8()) continue;
 
         // clang-format off
         // delimiters
@@ -153,8 +153,7 @@ Tok Lexer::lex() {
             continue;
         }
 
-        driver().error(peek(), "invalid input char `{}`", utf8::Char32(ahead()));
-        next();
+        recover_char();
     }
 }
 
@@ -196,7 +195,7 @@ std::optional<Tok> Lexer::parse_lit() {
         str_.clear();
         parse_digits();
         auto width = std::strtoull(str_.c_str(), nullptr, 10);
-        return Tok{loc_, driver().world().lit_int(width, val)};
+        return Tok{loc_, Idx::bitwidth2size(width), val};
     }
 
     if (!sign && base == 10) {
@@ -205,14 +204,14 @@ std::optional<Tok> Lexer::parse_lit() {
             std::string mod;
             while (utf8::isrange(ahead(), U'₀', U'₉')) mod += next() - U'₀' + '0';
             auto m = std::strtoull(mod.c_str(), nullptr, 10);
-            return Tok{loc_, driver().world().lit_idx_mod(m, i)};
+            return idx_tok(loc_, m, i);
         } else if (accept<Append::Off>('_')) {
             auto i = std::strtoull(str_.c_str(), nullptr, 10);
             str_.clear();
             if (accept(utf8::isdigit)) {
                 parse_digits(10);
                 auto m = std::strtoull(str_.c_str(), nullptr, 10);
-                return Tok{loc_, driver().world().lit_idx_mod(m, i)};
+                return idx_tok(loc_, m, i);
             } else {
                 driver().error(loc_, "stray underscore in Idx literal; size is missing");
                 auto i = std::strtoull(str_.c_str(), nullptr, 10);

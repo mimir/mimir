@@ -32,7 +32,7 @@ TEST(Lexer, Toks) {
     auto tok = lexer.lex();
     EXPECT_TRUE(tok.isa(Tok::Tag::L_i));
     EXPECT_TRUE(lexer.lex().isa(Tok::Tag::EoF));
-    EXPECT_EQ(tok.lit_i(), drv.world().lit_idx(123456789, 23));
+    EXPECT_EQ(tok.lit_i(), std::pair(u64(123456789), u64(23)));
 }
 
 TEST(Lexer, Errors) {

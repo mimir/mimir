@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 #include <fe/assert.h>
 #include <fe/format.h>
 
@@ -8,7 +10,6 @@
 namespace mim {
 
 class Def;
-class Lit;
 
 namespace ast {
 
@@ -202,10 +203,11 @@ public:
         : loc_(loc)
         , tag_(Tag::L_f)
         , u_(std::bit_cast<uint64_t>(d)) {}
-    Tok(Loc loc, const Lit* i)
+    /// @p size and @p val of an Idx literal; World::lit_idx makes a Lit of it at emit time.
+    Tok(Loc loc, uint64_t size, uint64_t val)
         : loc_(loc)
         , tag_(Tag::L_i)
-        , i_(i) {}
+        , idx_{size, val} {}
     Tok(Loc loc, Tag tag, Sym sym)
         : loc_(loc)
         , tag_(tag)
@@ -221,7 +223,7 @@ public:
     Loc loc() const { return loc_; }
     explicit operator bool() const { return tag_ != Tag::Nil; }
     // clang-format off
-    const Lit* lit_i() const { assert(isa(Tag::L_i)); return i_; }
+    std::pair<uint64_t, uint64_t> lit_i() const { assert(isa(Tag::L_i)); return {idx_.size, idx_.val}; }
     char8_t    lit_c() const { assert(isa(Tag::L_c)); return c_;   }
     uint64_t   lit_u() const { assert(isa(Tag::L_u ) || isa(Tag::L_s ) || isa(Tag::L_f  )); return u_;   }
     Sym        sym()   const { assert(has_sym()); return sym_; }
@@ -238,7 +240,9 @@ private:
         Sym sym_;
         uint64_t u_;
         char8_t c_;
-        const Lit* i_;
+        struct {
+            uint64_t size, val;
+        } idx_;
     };
 };
 

@@ -5,11 +5,7 @@
 
 #include "mim/ast/tok.h"
 
-namespace mim {
-
-class Driver;
-
-namespace ast {
+namespace mim::ast {
 
 class Lexer : public fe::Lexer<3, Lexer> {
     using Super = fe::Lexer<3, Lexer>;
@@ -17,17 +13,17 @@ class Lexer : public fe::Lexer<3, Lexer> {
 public:
     /// Creates a lexer to read `*.mim` files (see [Lexical Structure](@ref lex)).
     /// If @p md is not `nullptr`, a Markdown output will be generated.
-    Lexer(Driver& driver, const fe::Src& src, std::ostream* md = nullptr)
+    Lexer(fe::Driver& driver, const fe::Src& src, std::ostream* md = nullptr)
         : Lexer(driver, src.buf(), &src, md) {}
     /// As above, but the Loc%ations of the Tok%s produced have no fe::Src to resolve against.
-    Lexer(Driver& driver, std::string_view buf, std::ostream* md = nullptr)
+    Lexer(fe::Driver& driver, std::string_view buf, std::ostream* md = nullptr)
         : Lexer(driver, buf, nullptr, md) {}
 
-    Driver& driver() { return driver_; }
+    fe::Driver& driver() { return driver_; } ///< fe::Lexer's default diagnostics go to its Driver::error.
     Tok lex();
 
 private:
-    Lexer(Driver&, std::string_view, const fe::Src*, std::ostream*);
+    Lexer(fe::Driver&, std::string_view, const fe::Src*, std::ostream*);
 
     char32_t next() {
         auto res = Super::next();
@@ -57,7 +53,7 @@ private:
         if (md_) *md_ << "```\n";
     }
 
-    Driver& driver_;
+    fe::Driver& driver_;
     std::ostream* md_;
     bool out_ = true;
     fe::SymMap<Tok::Tag> keywords_;
@@ -65,5 +61,4 @@ private:
     friend class fe::Lexer<3, Lexer>;
 };
 
-} // namespace ast
-} // namespace mim
+} // namespace mim::ast
