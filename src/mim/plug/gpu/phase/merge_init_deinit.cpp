@@ -73,10 +73,8 @@ const Def* MergeInitDeinit::rewrite_imm_App(const App* app) {
     auto rewritten_deinit_arg                      = rewrite(found_deinit->arg());
     auto [deinit_mem, deinit_global, deinit_const] = rewritten_deinit_arg->projs<3>();
 
-    push();
-    map(found_deinit, deinit_mem); // scoped: other uses of found_deinit must still see the real deinit
+    map_root(found_deinit, deinit_mem);
     auto new_mem = rewrite(app->arg());
-    pop();
 
     return w.tuple({new_mem, deinit_global, deinit_const});
 }
