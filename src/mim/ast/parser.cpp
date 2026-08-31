@@ -123,7 +123,7 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
     if (tag == Tag::K_plugin && !driver().is_loaded(name) && !driver().flags().bootstrap) driver().load(name);
 
     auto filename = fs::path(name.view());
-    driver().VLOG("📥 import: {}", name);
+    driver().log().v("📥 import: {}", name);
 
     if (!filename.has_extension()) filename.replace_extension("mim"); // TODO error cases
 
@@ -158,7 +158,7 @@ Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostrea
 }
 
 Ptr<Module> Parser::import(const fe::Src& src, std::ostream* md) {
-    driver().VLOG("📄 reading: {}", src.path().string());
+    driver().log().v("📄 reading: {}", src.path().string());
 
     auto state = std::tuple(curr_, ahead_, lexer_);
     auto lexer = Lexer(ast(), src, md);

@@ -15,7 +15,7 @@ const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
     auto cur = lattice(var);
     if (!cur) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it inserts a fresh non-⊤ fact
         lattice(var, def);
-        DLOG("propagate: {} → {}", var, def);
+        log().d("propagate: {} → {}", var, def);
         return def;
     }
 

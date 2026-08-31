@@ -55,7 +55,7 @@ const Def* LamSpec::rewrite_imm_App(const App* old_app) {
     }
 
     new_lam->set(lam->reduce(w.tuple(new_vars)));
-    DLOG("{} -> {}: {} -> {})", lam, new_lam, lam->dom(), new_lam->dom());
+    log().d("{} -> {}: {} -> {})", lam, new_lam, lam->dom(), new_lam->dom());
 
     return old2new_[old_app] = w.app(new_lam, new_args);
 }

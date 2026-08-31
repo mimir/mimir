@@ -18,27 +18,27 @@ const Def* LowerGetSet::lower_get(const App* app) {
     auto callee       = c->as<App>();
     auto [T, r, s]    = callee->args<3>();
 
-    DLOG("lower_get");
-    DLOG("    arr = {} : {}", arr, arr->type());
-    if (auto arr_seq = arr->type()->isa<Seq>()) DLOG("    arr shape = {}", arr_seq->arity());
-    DLOG("    index = {} : {}", index, index->type());
-    DLOG("    T = {} : {}", T, T->type());
-    DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s = {} : {}", s, s->type());
+    log().d("lower_get");
+    log().d("    arr = {} : {}", arr, arr->type());
+    if (auto arr_seq = arr->type()->isa<Seq>()) log().d("    arr shape = {}", arr_seq->arity());
+    log().d("    index = {} : {}", index, index->type());
+    log().d("    T = {} : {}", T, T->type());
+    log().d("    r = {} : {}", r, r->type());
+    log().d("    s = {} : {}", s, s->type());
 
     auto r_nat = Lit::isa<u64>(r);
     if (!r_nat) {
-        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
+        log().w("{} doesn't have a lowering-time known rank: {}", app, r);
         return nullptr;
     }
     if (r_nat == 1) {
-        DLOG("index of size 1, extract");
+        log().d("index of size 1, extract");
         return w.extract(arr, index);
     }
     auto curr_arr = arr;
     for (auto ri = 0_u64; ri < *r_nat; ++ri) {
         auto idx = index->proj(*r_nat, ri);
-        DLOG("    idx = {} : {}", idx, idx->type());
+        log().d("    idx = {} : {}", idx, idx->type());
         curr_arr = w.extract(curr_arr, idx);
     }
     return curr_arr;
@@ -51,24 +51,24 @@ const Def* LowerGetSet::lower_set(const App* app) {
 
     auto [index, arr, x] = arg->projs<3>();
 
-    DLOG("lower_set");
-    DLOG("    arr = {} : {}", arr, arr->type());
-    DLOG("    index = {} : {}", index, index->type());
-    DLOG("    x = {} : {}", x, x->type());
+    log().d("lower_set");
+    log().d("    arr = {} : {}", arr, arr->type());
+    log().d("    index = {} : {}", index, index->type());
+    log().d("    x = {} : {}", x, x->type());
 
     auto callee    = c->as<App>();
     auto [T, r, s] = callee->args<3>();
-    DLOG("    T = {} : {}", T, T->type());
-    DLOG("    r = {} : {}", r, r->type());
-    DLOG("    s = {} : {}", s, s->type());
+    log().d("    T = {} : {}", T, T->type());
+    log().d("    r = {} : {}", r, r->type());
+    log().d("    s = {} : {}", s, s->type());
 
     auto r_nat = Lit::isa<u64>(r);
     if (!r_nat) {
-        WLOG("{} doesn't have a lowering-time known rank: {}", app, r);
+        log().w("{} doesn't have a lowering-time known rank: {}", app, r);
         return nullptr;
     }
     if (r_nat == 1) {
-        DLOG("index of size 1, insert");
+        log().d("index of size 1, insert");
         return w.insert(arr, index, x);
     }
 
@@ -77,15 +77,15 @@ const Def* LowerGetSet::lower_set(const App* app) {
     arrs_to_insert_into[0] = arr;
     for (auto ri = 0_u64; ri < *r_nat - 1; ++ri) {
         auto idx = index->proj(*r_nat, ri);
-        DLOG("    extract idx = {} : {}", idx, idx->type());
+        log().d("    extract idx = {} : {}", idx, idx->type());
         arrs_to_insert_into[ri + 1] = w.extract(arrs_to_insert_into[ri], idx);
     }
 
     auto new_arr = x;
     for (auto ri = static_cast<s64>(*r_nat - 1); ri >= 0; --ri) {
         auto idx = index->proj(*r_nat, ri);
-        DLOG("    idx = {} : {}", idx, idx->type());
-        DLOG("    arr_to_insert_into = {} : {}", arrs_to_insert_into[ri], arrs_to_insert_into[ri]->type());
+        log().d("    idx = {} : {}", idx, idx->type());
+        log().d("    arr_to_insert_into = {} : {}", arrs_to_insert_into[ri], arrs_to_insert_into[ri]->type());
 
         new_arr = w.insert(arrs_to_insert_into[ri], idx, new_arr);
     }

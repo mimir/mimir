@@ -10,7 +10,7 @@ void reg_phases(Flags2Phases& phases) {
     MIM_REPL(phases, refly::remove_dbg_repl, {
         if (auto dbg_perm = Axm::isa(refly::dbg::perm, def)) {
             auto [lvl, x] = dbg_perm->args<2>();
-            DLOG("dbg_perm: {}", x);
+            log().d("dbg_perm: {}", x);
             return x;
         }
 

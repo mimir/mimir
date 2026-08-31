@@ -61,7 +61,8 @@ public:
     ///@{
     Flags& flags() { return flags_; }
     const Flags& flags() const { return flags_; }
-    fe::Log& log() const { return log_; }
+    fe::Log& log() { return log_; }
+    const fe::Log& log() const { return log_; }
     fe::Profiler& profiler() { return profiler_; }
     const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
@@ -185,7 +186,7 @@ private:
     absl::node_hash_map<Sym, Plugin::Handle> plugins_;
     Version version_;
     Flags flags_;
-    mutable fe::Log log_;
+    fe::Log log_;
     mutable Names names_;
     fe::Profiler profiler_;
     World world_;

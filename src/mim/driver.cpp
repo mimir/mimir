@@ -98,10 +98,10 @@ Driver::Driver(std::string name)
 }
 
 void Driver::load(Sym name) {
-    ILOG("💾 loading plugin: '{}'", name);
+    log().i("💾 loading plugin: '{}'", name);
 
     if (is_loaded(name)) {
-        WLOG("mim/plugin '{}' already loaded", name);
+        log().w("mim/plugin '{}' already loaded", name);
         return;
     }
 

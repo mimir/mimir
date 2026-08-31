@@ -54,7 +54,7 @@ bool LowerTypedClosPrep::set_esc(const Def* def) {
     auto changed = false;
     for (auto d : split(def, false)) {
         if (is_esc(d)) continue;
-        DLOG("set esc: {}", d);
+        log().d("set esc: {}", d);
         esc_.emplace(d);
         changed = true;
     }
@@ -69,13 +69,13 @@ bool LowerTypedClosPrep::analyze() {
         if (!done.emplace(def).second) return;
 
         if (auto c = isa_clos_lit(def, false)) {
-            DLOG("closure ({}, {})", c.env(), c.fnc());
+            log().d("closure ({}, {})", c.env(), c.fnc());
             if (!c.fnc_as_lam() || is_esc(c.fnc_as_lam()) || is_esc(c.env_var())) changed |= set_esc(c.env());
         } else if (auto store = Axm::isa<mem::store>(def)) {
-            DLOG("store {}", store->arg(2));
+            log().d("store {}", store->arg(2));
             changed |= set_esc(store->arg(2));
         } else if (auto app = def->isa<App>(); app && Pi::isa_cn(app->callee_type())) {
-            DLOG("app {}", def);
+            log().d("app {}", def);
             auto callees = split(app->callee(), true);
             for (auto i = 0_u64; i < app->num_args(); i++) {
                 if (!interesting_type(app->arg(i))) continue;

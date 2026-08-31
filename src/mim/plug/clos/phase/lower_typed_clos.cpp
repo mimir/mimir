@@ -25,7 +25,7 @@ void LowerTypedClos::finalize() {
         worklist_.pop();
         lvm_ = lvm;
         lcm_ = lcm;
-        DLOG("in {} (lvm={}, lcm={})", new_lam, lvm_, lcm_);
+        log().d("in {} (lvm={}, lcm={})", new_lam, lvm_, lcm_);
         if (old_lam->is_set()) new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
     }
 }
@@ -46,7 +46,7 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     }));
     if (Lam::isa_basicblock(lam) && adjust_bb_type) new_dom = insert_ret(new_dom, dummy_ret()->type());
     auto new_lam = w.mut_lam(w.cn(new_dom))->set(lam->dbg_key());
-    DLOG("stub {} ~> {}", lam, new_lam);
+    log().d("stub {} ~> {}", lam, new_lam);
     if (lam->is_external()) new_lam->externalize();
 
     auto lcm = mem::mem_var(new_lam);

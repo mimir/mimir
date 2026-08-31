@@ -50,7 +50,7 @@ public:
     static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def) {
         auto& world = def->world();
         auto p_def  = App::uncurry_callee(def);
-        world.DLOG("apply phase: `{}`", p_def);
+        world.log().d("apply phase: `{}`", p_def);
 
         if (auto axm = p_def->isa<Axm>())
             if (auto i = phases.find(axm->flags()); i != phases.end()) {
@@ -76,7 +76,7 @@ public:
     ///@{
     World& world() { return world_; }
     Driver& driver() { return world().driver(); }
-    fe::Log& log() const { return world_.log(); }
+    const fe::Log& log() const { return world_.log(); }
     std::string_view name() const { return name_; }
     flags_t annex() const { return annex_; }
 

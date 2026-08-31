@@ -70,11 +70,11 @@ const Def* compose_cn(const Def* f, const Def* g) {
     auto C = F->ret_dom();
     // The type check of codom G = dom F is better handled by the application type checking
 
-    world.DLOG("compose f (B->C): {} : {}", f, F);
-    world.DLOG("compose g (A->B): {} : {}", g, G);
-    world.DLOG("  A: {}", A);
-    world.DLOG("  B: {}", B);
-    world.DLOG("  C: {}", C);
+    world.log().d("compose f (B->C): {} : {}", f, F);
+    world.log().d("compose g (A->B): {} : {}", g, G);
+    world.log().d("  A: {}", A);
+    world.log().d("  B: {}", B);
+    world.log().d("  C: {}", C);
 
     auto name  = "comp_"s + f->sym().str() + "_" + g->sym().str();
     auto h     = world.mut_fun(A, C)->set(name);

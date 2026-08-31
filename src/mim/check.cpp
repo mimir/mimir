@@ -470,9 +470,9 @@ const Def* Def::check() {
         case Node::Sigma: {
             auto t = Sigma::infer(w, ops());
             if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
-            w.WLOG("incorrect type `{}` for `{}`; expected `{}` but keeping the existing type due to clos-conv "
-                   "bugs",
-                   type(), this, t);
+            w.log().w("incorrect type `{}` for `{}`; expected `{}` but keeping the existing type due to clos-conv "
+                      "bugs",
+                      type(), this, t);
             return type();
         }
         case Node::Rule: {

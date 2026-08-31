@@ -31,7 +31,7 @@ void debug_print(const Def* lvl, const Def* def) {
                   ? static_cast<fe::Log::Level>(*l)
                   : fe::Log::Level::Debug;
     }
-    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
+    world.log().log(level, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
     world.log().log(level, def->loc(), "def : {}", def);
     world.log().log(level, def->loc(), "id  : {}", def->unique_name());
     world.log().log(level, def->type()->loc(), "type: {}", def->type());
@@ -85,7 +85,7 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     if (cond == w.lit_ff()) {
         auto s = tuple2str(msg);
         if (s.empty()) s = "unknown error"s;
-        w.ELOG("{}", s);
+        w.log().e("{}", s);
     }
 
     return nullptr;

@@ -27,7 +27,7 @@ void RetWrap::visit(const Def* def, Lattice l) {
             auto var = lam->has_var(); // must be set due to lam->ret_var() above
             join(ret_var, Bot);
             if (ret_var != lam->var()) {
-                DLOG("{} → {}", var, ret_var);
+                log().d("{} → {}", var, ret_var);
                 var2def_[var] = ret_var;
             }
         }
@@ -37,7 +37,7 @@ void RetWrap::visit(const Def* def, Lattice l) {
         if (auto var = app->arg()->isa<Var>()) {
             if (auto i = var2def_.find(var); i != var2def_.end()) {
                 auto lam = var->binder()->as_mut<Lam>();
-                DLOG("split: `{}`", lam);
+                log().d("split: `{}`", lam);
                 split_.emplace(lam);
                 def2lattice_[i->second] = Eta;
             }
@@ -51,7 +51,7 @@ const Def* RetWrap::rewrite(const Def* old_def) {
     if (lattice(old_def) == Eta) {
         auto [i, ins] = def2eta_.emplace(old_def, nullptr);
         if (ins) i->second = Lam::eta_expand(rewrite_no_eta(old_def));
-        DLOG("eta-expand: `{}` → `{}`", old_def, i->second);
+        log().d("eta-expand: `{}` → `{}`", old_def, i->second);
         return i->second;
     }
     return RWPhase::rewrite(old_def);

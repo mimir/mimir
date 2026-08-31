@@ -9,7 +9,7 @@
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
-#include <fe/log_macros.h>
+#include <fe/log.h>
 #include <fe/restore.h>
 #include <fe/span.h>
 
@@ -309,7 +309,7 @@ public:
     /// Lookup annex by flags.
     const Def* annex(flags_t flags) {
         if (auto e = fe::lookup(annexes().flags2entry(), flags)) return e->def;
-        ELOG("Axm with ID `{}` not found; demangled plugin name is `{}`", flags, Annex::demangle(driver(), flags));
+        log().e("Axm with ID `{}` not found; demangled plugin name is `{}`", flags, Annex::demangle(driver(), flags));
         return nullptr;
     }
     /// Lookup annex by Axm::id
@@ -660,8 +660,7 @@ public:
     }
     template<bool Normalize = true, class E>
     const Def* implicit_app(const Def* callee, E arg)
-        requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t>
-    {
+        requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t> {
         return implicit_app<Normalize>(callee, lit_nat(std::to_underlying(arg)));
     }
     ///@}
@@ -688,8 +687,7 @@ public:
 
     /// Annex overload with enum tempalte argument @p Id for annexes w/o subtag.
     template<class Id, bool Normalize = true, class... Args>
-    requires std::is_enum_v<Id>
-    const Def* call(Args&&... args) {
+    requires std::is_enum_v<Id> const Def* call(Args&&... args) {
         return call<Normalize>(annex<Id>(), std::forward<Args>(args)...);
     }
 
@@ -732,7 +730,7 @@ public:
 
     /// @name dump/log
     ///@{
-    fe::Log& log() const;
+    const fe::Log& log() const;   ///< Log via `log().e("...", args)` etc.; owned by the Driver.
     void dump(std::ostream& os);  ///< Dump to @p os.
     void dump();                  ///< Dump to `std::cout`.
     void debug_dump();            ///< Dump in Debug build if World::log::level is fe::Log::Level::Debug.
