@@ -35,8 +35,7 @@ public:
         : ast_(ast) {}
 
     AST& ast() { return ast_; }
-    Driver& driver() { return ast().driver(); }
-    fe::Error& error() { return ast().error(); } ///< Where fe::Parser's default diagnostics go.
+    Driver& driver() { return ast().driver(); } ///< fe::Parser's default diagnostics go to its Driver::error.
     Ptr<Module> import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
         return import({Loc(), driver().sym(sv)}, nullptr, tag);
     }

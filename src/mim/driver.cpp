@@ -68,11 +68,10 @@ std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast
 }
 
 Driver::Driver(std::string name)
-    : version_(MIM_VERSION)
+    : fe::Driver(std::make_unique<Diag>(*this))
+    , version_(MIM_VERSION)
     , world_(this, sym(name))
     , imports_(*this) {
-    diag(std::make_unique<Diag>(*this));
-
     // prepend empty path
     search_paths_.emplace_front(fs::path{});
 

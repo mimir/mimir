@@ -6,7 +6,7 @@ using namespace std::literals;
 
 namespace mim::ast {
 
-AST::~AST() { assert(error().empty() && "please acknowledge all diagnostics before destroying this class"); }
+AST::~AST() = default;
 
 Import::Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module)
     : Node(loc)
@@ -24,12 +24,12 @@ AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
     auto& sym2annex               = plugin2sym2annex_[plugin_s];
     auto tag_id                   = sym2annex.size();
 
-    if (plugin_s == sym_error()) error(dbg.loc(), "plugin name `{}` is reserved", dbg);
+    if (plugin_s == sym_error()) driver().error(dbg.loc(), "plugin name `{}` is reserved", dbg);
     if (tag_id > std::numeric_limits<tag_t>::max())
-        error(dbg.loc(), "exceeded maximum number of annexes in current plugin");
+        driver().error(dbg.loc(), "exceeded maximum number of annexes in current plugin");
 
     if (!Annex::mangle(plugin_s)) {
-        error(dbg.loc(), "invalid annex name `{}`", dbg);
+        driver().error(dbg.loc(), "invalid annex name `{}`", dbg);
         plugin_s = sym_error();
     }
 
@@ -43,7 +43,7 @@ AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
             auto& aliases = annex->subs.emplace_back();
             aliases.emplace_back(sub_s);
         } else {
-            error(dbg.loc(), "annex `{}` must not have a subtag", dbg);
+            driver().error(dbg.loc(), "annex `{}` must not have a subtag", dbg);
         }
     }
 
