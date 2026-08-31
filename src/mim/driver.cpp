@@ -71,7 +71,7 @@ Driver::Driver(std::string name)
     : version_(MIM_VERSION)
     , world_(this, sym(name))
     , imports_(*this) {
-    render = [this](const std::function<std::string()>& fmt) { return render_plain(fmt); };
+    diag(std::make_unique<Diag>(*this));
 
     // prepend empty path
     search_paths_.emplace_front(fs::path{});
@@ -178,15 +178,15 @@ bool PlainNames::claim(const Driver& driver, Sym sym, u32 gid) {
     return true;
 }
 
-std::string Driver::render_plain(const std::function<std::string()>& fmt) const {
+std::string Diag::render(const std::function<std::string()>& fmt) const {
     bool clashed = false;
     auto str     = std::string();
     {
-        auto plain = PlainNames(this);
-        str        = fmt();
+        auto plain = PlainNames(&driver_);
+        str        = CodeDiag::render(fmt);
         clashed    = plain.clashed();
     }
-    return clashed ? fmt() : str; // the retry must run outside the guard, or it renders plainly again
+    return clashed ? CodeDiag::render(fmt) : str; // the retry must run outside the guard, or it renders plainly again
 }
 
 } // namespace mim

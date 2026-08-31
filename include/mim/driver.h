@@ -42,6 +42,18 @@ private:
     const Driver* driver_;
 };
 
+/// Renders a diagnostic through PlainNames and - if that turned out ambiguous - once more with Def::unique_name.
+class Diag : public fe::CodeDiag {
+public:
+    explicit Diag(const Driver& driver)
+        : driver_(driver) {}
+
+    std::string render(const std::function<std::string()>&) const override;
+
+private:
+    const Driver& driver_;
+};
+
 /// Some "global" variables needed all over the place.
 /// Well, there are not really global - that's the point of this class.
 class Driver : public fe::Driver {
@@ -80,11 +92,6 @@ public:
     };
 
     Names& names() const { return names_; }
-
-    /// Renders through PlainNames and - if that turned out ambiguous - once more with Def::unique_name.
-    /// The constructor installs this as the fe::Driver::render hook.
-    std::string render_plain(const std::function<std::string()>&) const;
-
     ///@}
 
     /// @name Manage Search Paths

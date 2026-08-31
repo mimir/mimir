@@ -36,6 +36,7 @@ public:
 
     AST& ast() { return ast_; }
     Driver& driver() { return ast().driver(); }
+    fe::Error& error() { return ast().error(); } ///< Where fe::Parser's default diagnostics go.
     Ptr<Module> import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
         return import({Loc(), driver().sym(sv)}, nullptr, tag);
     }
@@ -172,10 +173,6 @@ private:
 
     /// Same above but @p what is a @p tag.
     void syntax_err(Tok::Tag tag, std::string_view ctxt) { syntax_err(std::format("`{}`", tag), ctxt); }
-
-    void unanchored_err(Tok tok, std::string_view ctxt) {
-        ast().error(tok.loc(), "ignoring unmatched `{}` while parsing {}", tok, ctxt);
-    }
     ///@}
 
     AST& ast_;
