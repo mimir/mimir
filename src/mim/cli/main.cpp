@@ -144,6 +144,7 @@ int main(int argc, char** argv) {
             for (auto&& plugin : plugins) // a plugin declares its `-X` arguments in its shared library
                 driver.load(driver.sym(plugin));
 
+            if (!driver.known_args().empty()) cli.section("Plugin Arguments", "", {});
             for (const auto& [plugin, args] : driver.known_args()) {
                 auto rows = std::vector<std::pair<std::string, std::string>>();
                 for (const auto& arg : args)

@@ -1,5 +1,6 @@
 /// # The ll_nvptx Plugin {#ll_nvptx}
 ///
+/// @see [`-X ll_nvptx:<arg>`](@ref xarg_ll_nvptx)
 /// @see mim::plug::ll_nvptx
 ///
 /// An LLVM backend that targets NVIDIA GPUs.

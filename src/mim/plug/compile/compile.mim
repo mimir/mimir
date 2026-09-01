@@ -1,5 +1,6 @@
 /// # The compile Plugin {#compile}
 ///
+/// @see [`-X compile:<arg>`](@ref xarg_compile)
 /// @see mim::plug::compile
 ///
 /// [TOC]
@@ -7,8 +8,6 @@
 /// This plugin provides the building blocks for MimIR's optimization pipeline: its axioms denote mim::Phase%s and the combinators that assemble them into a pipeline.
 /// Invoke the pipeline by defining a function `_compile: [] → %%compile.Phase`
 /// (or rely on a plugin-provided `_default_compile` such as the one in the `opt` plugin).
-///
-/// It reads the command-line arguments listed under [`-X compile:<arg>`](@ref xarg_compile).
 ///
 /// ## Types
 ///

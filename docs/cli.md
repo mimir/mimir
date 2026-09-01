@@ -8,17 +8,6 @@
 
 @note The *Developer Options* only exist if MimIR was built with `MIM_ENABLE_CHECKS`; see the [CMake switches](@ref building).
 
-## Plugin Search Paths
-
-You can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
-Mim looks for plugins in this order:
-
-1. The current working directory.
-2. All paths specified via `-P` / `--plugin-path` (in the given order).
-3. All paths specified in the environment variable `MIM_PLUGIN_PATH` (in the given order).
-4. `path/to/mim.exe/../../lib/mim`
-5. `CMAKE_INSTALL_PREFIX/lib/mim`
-
 ## Diagnostics {#clidiag}
 
 Errors and warnings are reported as `<file>:<row>:<col>: error: <message>`, followed by the offending source line with a caret underneath and any notes indented below it.
@@ -34,7 +23,20 @@ Use `--loc-style` to pick how much of a location that header spells out:
 
 Color is decided by the terminal and honors `NO_COLOR`, `CLICOLOR=0`, and `CLICOLOR_FORCE`.
 
-## Passing Arguments to Plugins {#clipluginargs}
+## Plugins
+
+### Search Paths
+
+You can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
+Mim looks for plugins in this order:
+
+1. The current working directory.
+2. All paths specified via `-P` / `--plugin-path` (in the given order).
+3. All paths specified in the environment variable `MIM_PLUGIN_PATH` (in the given order).
+4. `path/to/mim.exe/../../lib/mim`
+5. `CMAKE_INSTALL_PREFIX/lib/mim`
+
+### Arguments {#clipluginargs}
 
 Plugins - and in particular backends - often need to be configured from the command line.
 For example, a backend that invokes an external tool may want to forward optimization levels, a target triple for cross-compilation, or library paths.
