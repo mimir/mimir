@@ -3,10 +3,16 @@ set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
 set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
 
+# A plugin declares its -X arguments in its shared library, so all of them have to be loaded to be listed.
+set(CLI_HELP_PLUGINS "")
+foreach(PLUGIN IN LISTS MIM_PLUGIN_LIST)
+    list(APPEND CLI_HELP_PLUGINS -p ${PLUGIN})
+endforeach()
+
 add_custom_command(
     OUTPUT ${CLI_HELP}
-    COMMAND mim --help-md > ${CLI_HELP}
-    DEPENDS mim
+    COMMAND mim ${CLI_HELP_PLUGINS} --help-md > ${CLI_HELP}
+    DEPENDS mim mim_all_plugins
     COMMENT "Generating help text of Mim's CLI"
 )
 

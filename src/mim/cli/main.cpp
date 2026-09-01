@@ -138,13 +138,27 @@ int main(int argc, char** argv) {
 
         if (auto res = cli.parse(argc, argv); !res) throw std::invalid_argument(res.message());
 
-        if (show_help) {
-            std::cout << cli;
-            return EXIT_SUCCESS;
-        }
+        if (show_help || show_help_md) {
+            for (auto&& path : search_paths)
+                driver.add_search_path(path);
+            for (auto&& plugin : plugins) // a plugin declares its `-X` arguments in its shared library
+                driver.load(driver.sym(plugin));
 
-        if (show_help_md) {
-            cli.md(std::cout);
+            if (!driver.known_args().empty()) cli.section("Plugin Arguments", "", {});
+            for (const auto& [plugin, args] : driver.known_args()) {
+                auto rows = std::vector<std::pair<std::string, std::string>>();
+                for (const auto& arg : args)
+                    rows.emplace_back(arg.syntax, arg.descr);
+                // The Markdown gets an anchor, so that a plugin's own page can link to its table.
+                auto title = show_help ? std::format("-X {}:<arg>", plugin)
+                                       : std::format("-X {0}:<arg> {{#xarg_{0}}}", plugin);
+                cli.section(std::move(title), "Argument", std::move(rows));
+            }
+
+            if (show_help)
+                std::cout << cli;
+            else
+                cli.md(std::cout);
             return EXIT_SUCCESS;
         }
 

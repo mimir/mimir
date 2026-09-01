@@ -23,6 +23,13 @@ using Normalizers = absl::flat_hash_map<flags_t, NormalizeFn>;
 
 /// Maps an axiom of a Phase to a function that creates one.
 using Flags2Phases = absl::flat_hash_map<flags_t, std::function<std::unique_ptr<Phase>(World&)>>;
+
+/// One `-X <plugin>:<arg>` a Plugin understands; see @ref clipluginargs.
+/// A Plugin declares these next to the code that picks them apart, so that `mim -p <plugin> -h` can list them.
+struct PluginArg {
+    const char* syntax; ///< How to spell the argument, e.g. `"o=<file>, output=<file>"`.
+    const char* descr;  ///< What it does; one sentence, Markdown.
+};
 ///@}
 
 struct Version {
@@ -66,6 +73,9 @@ struct Plugin {
     void (*register_normalizers)(Normalizers&);
     /// Callback for registering the Plugin's callbacks for Phase%s.
     void (*register_phases)(Flags2Phases&);
+
+    const PluginArg* args = nullptr; ///< The `-X` arguments this Plugin understands; see PluginArg.
+    size_t num_args       = 0;       ///< Number of Plugin::args.
 };
 
 /// @name Plugin Interface

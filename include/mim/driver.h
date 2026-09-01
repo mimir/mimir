@@ -186,6 +186,9 @@ public:
     ///@{
     void add_arg(Sym plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
     const fe::Vector<std::string>& args(Sym plugin) const; ///< Yields an empty fe::Vector if @p plugin has none.
+
+    /// The PluginArg%s each loaded Plugin declares, in load order; only for listing them, see PluginArg.
+    const auto& known_args() const { return known_args_; }
     ///@}
 
 private:
@@ -202,6 +205,7 @@ private:
     Flags2Phases phases_;
     Normalizers normalizers_;
     fe::SymMap<fe::Vector<std::string>> plugin_args_;
+    std::vector<std::pair<Sym, fe::View<PluginArg>>> known_args_;
     Imports imports_;
 };
 
