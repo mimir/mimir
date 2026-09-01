@@ -56,8 +56,9 @@ The macro `MIM_demo_NORMALIZER_IMPL` stems from the generated header (see [below
 
 ## Generated Interfaces {#plugin_codegen}
 
-Every plugin's `<plugin>.mim` file is also machine-readable input to `mim` itself.
-MimIR's custom CMake command `add_mim_plugin` runs the freshly built `mim` binary over it once, in `--bootstrap` mode (which makes `plugin` directives behave as plain `import`s instead of `dlopen`ing other plugins that may not exist yet at header-generation time), asking for three outputs in one invocation:
+Every plugin's `<plugin>.mim` file is also machine-readable input to `mim` itself:
+the switches `--output-h`, `--output-py`, and `--output-md` turn it into, respectively, a C++ header, a Python `IntEnum` module, and a Markdown documentation page.
+MimIR's custom CMake command [`add_mim_plugin`](@ref add_mim_plugin_cmake) runs the freshly built `mim` binary over it once, in `--bootstrap` mode (which makes `plugin` directives behave as plain `import`s instead of `dlopen`ing other plugins that may not exist yet at header-generation time), asking for all three outputs in one invocation:
 
 ```sh
 mim demo.mim --bootstrap \

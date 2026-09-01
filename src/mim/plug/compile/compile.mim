@@ -8,13 +8,7 @@
 /// Invoke the pipeline by defining a function `_compile: [] → %%compile.Phase`
 /// (or rely on a plugin-provided `_default_compile` such as the one in the `opt` plugin).
 ///
-/// ## Command-Line Arguments {#compile_cli_args}
-///
-/// This plugin reads the following [plugin arguments](@ref clipluginargs) (`-X compile:<arg>`):
-///
-/// | Argument         | Effect                                                                                        |
-/// |------------------|-----------------------------------------------------------------------------------------------|
-/// | `aggr=<bool>`    | Sets the value of `%%compile.aggr` (see below). `<bool>` is one of `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` is equivalent to `aggr=on`. Used by the `opt` pipeline to switch fixed-point iteration on/off. |
+/// It reads the command-line arguments listed under [`-X compile:<arg>`](@ref xarg_compile).
 ///
 /// ## Types
 ///

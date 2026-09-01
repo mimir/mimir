@@ -1159,4 +1159,13 @@ using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll::emit, plug::ll::Emit>(phases); }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"ll", MIM_VERSION, nullptr, reg_phases}; }
+// clang-format off
+static constexpr PluginArg known_args[] = {
+    {"o=<file>, output=<file>", "Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
+    {"rt=embed, rt=extern",     "How the C [runtime wrappers](@ref plugin_runtime) reach the output: `embed` (default) splices their LLVM IR into the emitted module (self-contained); `extern` only `declare`s them so the runtime is linked in separately."},
+};
+// clang-format on
+
+extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+    return {"ll", MIM_VERSION, nullptr, reg_phases, known_args, std::size(known_args)};
+}

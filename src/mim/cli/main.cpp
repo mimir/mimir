@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
     try {
         bool show_help           = false;
         bool show_help_md        = false;
+        bool show_plugin_args    = false;
         bool show_version        = false;
         bool list_search_paths   = false;
         bool sexpr_include_types = false;
@@ -79,6 +80,7 @@ int main(int argc, char** argv) {
         auto cli = fe::cli::Cli("mim", "MimIR is my Intermediate Representation.")
             | fe::cli::help(show_help)
             | fe::cli::opt(show_help_md                          )      ["--help-md"              ]("Displays this help as Markdown and exits.")
+            | fe::cli::opt(show_plugin_args                      )      ["--plugin-args-md"       ]("Displays the -X arguments the loaded plugins understand as Markdown and exits.")
             | fe::cli::opt(show_version                          )["-v"]["--version"              ]("Displays version info and exits.")
             | fe::cli::opt(list_search_paths                     )["-l"]["--list-search-paths"    ]("Lists the search paths in order and exits.")
             | fe::cli::opt(clang,             "clang"            )["-c"]["--clang"                ]("Path to clang executable.")
@@ -145,6 +147,20 @@ int main(int argc, char** argv) {
 
         if (show_help_md) {
             cli.md(std::cout);
+            return EXIT_SUCCESS;
+        }
+
+        if (show_plugin_args) {
+            for (auto&& path : search_paths)
+                driver.add_search_path(path);
+            for (auto&& plugin : plugins)
+                driver.load(driver.sym(plugin));
+
+            for (const auto& [plugin, args] : driver.known_args()) {
+                std::println(std::cout, "\n### {0} {{#xarg_{0}}}\n\n| Argument | Effect |\n| --- | --- |", plugin);
+                for (const auto& arg : args)
+                    std::println(std::cout, "| `{}` | {} |", arg.syntax, arg.descr);
+            }
             return EXIT_SUCCESS;
         }
 

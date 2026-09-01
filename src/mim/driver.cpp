@@ -137,6 +137,7 @@ void Driver::load(Sym name) {
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
         if (auto reg = plugin.register_phases)      reg(phases_);
         // clang-format on
+        if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
     } else {
         fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
     }
