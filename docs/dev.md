@@ -13,7 +13,7 @@ Let's jump straight into an example.
 
 [`Driver`](@ref mim::Driver) is usually the first object you create.
 It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](https://leissa.github.io/fe/classfe_1_1Log.html), and the current [`World`](@ref mim::World).
-In this example, the log is configured to write debug output to `std::cerr`; see also @ref clidebug.
+In this example, the log is configured to write debug output to `std::cerr`; see also @ref logging.
 
 @warning Note how the [`Driver`](@ref mim::Driver) is created *outside* the `try` block.
 It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](https://leissa.github.io/fe/classfe_1_1Error.html) only renders its `Loc`s - and their source snippets - through it.

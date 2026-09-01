@@ -46,6 +46,18 @@ int main(int argc, char** argv) {
         auto inc_verbose = [&](bool) { ++verbose; };
         auto& flags      = driver.flags();
 
+        auto loc_style = [&](const std::string& t) -> std::string {
+            // clang-format off
+            if (false) {}
+            else if (t == "full"  ) driver.diag().loc_style = fe::Loc::Style::Full;
+            else if (t == "rowcol") driver.diag().loc_style = fe::Loc::Style::RowCol;
+            else if (t == "row"   ) driver.diag().loc_style = fe::Loc::Style::Row;
+            else if (t == "msvc"  ) driver.diag().loc_style = fe::Loc::Style::MSVC;
+            else return std::format("'{}' is not a location style", t);
+            // clang-format on
+            return {};
+        };
+
         auto profile = [&](const std::string& t) {
             if (t == "tree")
                 flags.profile = Flags::Profile::Tree;
@@ -96,6 +108,7 @@ int main(int argc, char** argv) {
             | fe::cli::opt(dot.default_filter                    )      ["--dot-default-filter"   ]("Always shows a lambda's filter in DOT output - even if it is the default one (ff for continuations, tt for direct-style functions).")
             | fe::cli::opt(dot.show_hidden                       )      ["--dot-show-hidden"      ]("Renders otherwise-transparent detached edges in DOT output - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray.")
             | fe::cli::group("Diagnostics")
+            | fe::cli::opt(loc_style,         "style"            )      ["--loc-style"            ]("How a diagnostic spells out a source location: full (path:row:col-row:col), rowcol (path:row:col), row (path:row), or msvc (path(row,col)).")
             | fe::cli::opt(driver.diag().no_snippet              )      ["--no-snippet"           ]("Does not render the offending source line and caret underneath a diagnostic.")
             | fe::cli::opt(driver.diag().gutter,    "width"      )      ["--gutter"               ]("Width of a diagnostic's line-number column.")
             | fe::cli::opt(driver.diag().max_rows,  "num"        )      ["--max-rows"             ]("Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
@@ -109,7 +122,7 @@ int main(int argc, char** argv) {
             | fe::cli::opt(flags.scalarize_threshold, "threshold")      ["--scalarize-threshold"  ]("MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
             | fe::cli::opt(flags.max_fp_iters, "num"             )      ["--max-fp-iters"         ]("Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
 #ifdef MIM_ENABLE_CHECKS
-            | fe::cli::group("Developer Options (only available with MIM_ENABLE_CHECKS)")
+            | fe::cli::group("Developer Options")
             | fe::cli::opt(breakpoints,       "gid"              )["-b"]["--break"                ]("Triggers a breakpoint when a node with this global id is created.")
             | fe::cli::opt(watchpoints,       "gid"              )["-w"]["--watch"                ]("Triggers a breakpoint when a node with this global id is set.")
             | fe::cli::opt(flags.reeval_breakpoints              )      ["--reeval-breakpoints"   ]("Triggers a breakpoint even upon unifying a node that has already been built.")

@@ -297,7 +297,7 @@ This section has more information about this topic.
 
 **See also:**
 
-- [Command-Line Reference](@ref clidebug)
+- [Command-Line Reference](@ref cli)
 - [GDB: A quick guide to make your debugging easier](https://johnnysswlab.com/gdb-a-quick-guide-to-make-your-debugging-easier/)
 - [Advanced GDB Usage](https://interrupt.memfault.com/blog/advanced-gdb)
 - [Debugging with GDB](https://sourceware.org/gdb/current/onlinedocs/gdb.html/)
@@ -383,6 +383,21 @@ valgrind --vgdb=yes --vgdb-error=0 build/bin/mim-gtest
 ```
 
 and then follow the instructions printed by Valgrind.
+
+### Logging {#logging}
+
+Each `-V` raises the log level by one; MimIR logs to `stderr`:
+
+| Flag     | `fe::Log::Level` |
+| -------- | ---------------- |
+| *none*   | `Error`          |
+| `-V`     | `Warn`           |
+| `-VV`    | `Info`           |
+| `-VVV`   | `Verbose`        |
+| `-VVVV`  | `Debug`          |
+| `-VVVVV` | `Trace`          |
+
+`Debug` and `Trace` output only exists in a `Debug` build.
 
 ### Triggering Breakpoints
 
