@@ -2,11 +2,11 @@
 
 #include <algorithm>
 
+#include <fe/log.h>
+#include <fe/vector.h>
+
 #include <mim/driver.h>
 #include <mim/lam.h>
-
-#include <mim/util/log.h>
-#include <mim/util/vector.h>
 
 #include <mim/plug/affine/affine.h>
 #include <mim/plug/btensor/btensor.h>
@@ -18,6 +18,8 @@
 namespace mim::plug::gpu::phase {
 
 namespace {
+
+using fe::Vector;
 
 /// Whether an explicit, user-written `%gpu.init` is reachable from `def` (mirrors the same reachability
 /// walk `HostEmitter::find_kernels`/`reaches_gpu_auto_init` use in the `ll_nvptx` backend).
@@ -341,7 +343,7 @@ void LowerMapReduce::start() {
     auto has_gpu_init
         = std::ranges::any_of(old_world().roots(), [&](auto def) { return contains_gpu_init(def, seen); });
     if (has_gpu_init) {
-        WLOG("not lowering any map-reduce operations to GPU: the program already contains an explicit `%gpu.init`");
+        log().w("not lowering any map-reduce operations to GPU: the program already contains an explicit `%gpu.init`");
         return;
     }
     Super::start();
@@ -372,7 +374,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto ro_l  = Lit::isa<nat_t>(Ro);
     auto rn_l  = Lit::isa<nat_t>(Rn);
     if (!nis_l || !nps_l || !ro_l || !rn_l || *rn_l < *ro_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
+        log().w("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
         return Super::rewrite_imm_App(app);
     }
     auto nis_n = *nis_l;
@@ -385,21 +387,21 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     for (nat_t d = 0; d != ro; ++d) {
         auto l = Lit::isa<nat_t>(Sr->proj(ro + rr, d));
         if (!l) {
-            WLOG("{} doesn't have a lowering-time known output (grid) shape", app);
+            log().w("{} doesn't have a lowering-time known output (grid) shape", app);
             return Super::rewrite_imm_App(app);
         }
         out_dims[d] = *l;
         out_total *= *l;
     }
     if (out_total == 0) {
-        WLOG("{} has a zero-sized output, skipping GPU lowering", app);
+        log().w("{} has a zero-sized output, skipping GPU lowering", app);
         return Super::rewrite_imm_App(app);
     }
 
     auto comb_lam = comb->isa_mut<Lam>();
     auto post_lam = post->isa_mut<Lam>();
     if (!comb_lam || !post_lam) {
-        WLOG("{} doesn't have a lowering-time known combiner/epilogue", app);
+        log().w("{} doesn't have a lowering-time known combiner/epilogue", app);
         return Super::rewrite_imm_App(app);
     }
 
