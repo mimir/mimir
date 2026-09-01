@@ -6,6 +6,8 @@
 
 \include{doc} "cli-help.md"
 
+## Remarks
+
 @note The *Developer Options* only exist if MimIR was built with `MIM_ENABLE_CHECKS`; see the [CMake switches](@ref building).
 
 In addition, you can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
