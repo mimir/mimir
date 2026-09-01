@@ -21,8 +21,7 @@ namespace {
 
 using fe::Vector;
 
-/// Whether an explicit, user-written `%gpu.init` is reachable from `def` (mirrors the same reachability
-/// walk `HostEmitter::find_kernels`/`reaches_gpu_auto_init` use in the `ll_nvptx` backend).
+/// Whether an explicit, user-written `%gpu.init` is reachable from `def`.
 bool contains_gpu_init(const Def* def, DefSet& seen) {
     if (auto [_, ins] = seen.emplace(def); !ins) return false;
     if (Axm::isa<gpu::init>(def)) return true;
@@ -78,14 +77,33 @@ const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
     return element;
 }
 
+/// Scalarize may flatten an escaped `comb`/`post` from `Cn [[mem, T, ins], Cn ret]` to `Cn [mem, T, ins, Cn ret]`.
 Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
-    auto& w                 = lam->world();
-    auto global_ty          = w.annex<gpu::GlobalM>();
-    auto old_dom            = lam->var(0_n)->type();
-    auto [_, Tin, extra_ty] = old_dom->projs<3>();
-    auto new_lam            = w.mut_con(Defs{w.sigma({global_ty, Tin, extra_ty}), w.cn({global_ty, Tout})})->set(name);
+    auto& w        = lam->world();
+    auto global_ty = w.annex<gpu::GlobalM>();
+
+    Lam* new_lam;
+    if (lam->num_vars() == 2) {
+        auto [_, Tin, extra_ty] = lam->var(0)->type()->projs<3>();
+        new_lam = w.mut_con(Defs{w.sigma({global_ty, Tin, extra_ty}), w.cn({global_ty, Tout})})->set(name);
+    } else {
+        auto Tin      = lam->var(1)->type();
+        auto extra_ty = lam->var(2)->type();
+        new_lam       = w.mut_con(Defs{global_ty, Tin, extra_ty, w.cn({global_ty, Tout})})->set(name);
+    }
     new_lam->set(true, lam->reduce_body(new_lam->var()));
     return new_lam;
+}
+
+/// Mirrors `btensor::phase::LowerMapReduce`'s helper of the same name.
+void apply_cps(World& w, Lam* mut, const Def* f, DefVec parts, const Def* k) {
+    auto dom = f->type()->as<Pi>()->dom();
+    if (dom->num_projs() == parts.size() + 1) {
+        parts.emplace_back(k);
+        mut->app(true, f, w.tuple(parts));
+    } else {
+        mut->app(true, f, w.tuple({w.tuple(parts), k}));
+    }
 }
 
 Vector<nat_t> row_major_strides(const Vector<nat_t>& dims) {
@@ -263,7 +281,7 @@ Lam* build_kernel(World& w,
     auto final_mem
         = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, fold_index(So, write_coords)), elem_post});
     after_post->app(true, k_ret, w.tuple({final_mem, k_shared, k_const, k_local}));
-    write_back->app(true, global_post, w.tuple({w.tuple({pcur, acc_final, w.tuple(post_elems)}), after_post}));
+    apply_cps(w, write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
 
     const Def* acc   = w.tuple({k_global, init});
     const Def* cont  = write_back;
@@ -299,7 +317,7 @@ Lam* build_kernel(World& w,
         input_elems[i] = rd_val;
     }
 
-    current_mut->app(true, global_comb, w.tuple({w.tuple({cur, elem_acc, w.tuple(input_elems)}), cont}));
+    apply_cps(w, current_mut, global_comb, {cur, elem_acc, w.tuple(input_elems)}, cont);
 
     return kernel;
 }

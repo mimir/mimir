@@ -1,5 +1,6 @@
 #include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
 
+#include <algorithm>
 #include <format>
 
 #include <fe/log.h>
@@ -58,8 +59,8 @@ private:
     bool cu_globals_declared_ = false;
 
     DefSet analyzed_;
-    /// Externals that transitively reach a `%gpu.auto_init` - see HostEmitter::start().
-    DefSet gpu_externals_;
+    /// Externals wrapped in their own GPU setup/teardown - see HostEmitter::start().
+    LamSet gpu_externals_;
 };
 
 class DeviceEmitter : public ll::Emitter {
@@ -99,13 +100,16 @@ private:
 };
 
 namespace {
-bool reaches_gpu_auto_init(const Def* def, DefSet& seen) {
+template<class Pred>
+bool reaches_if(const Def* def, DefSet& seen, Pred&& pred) {
     if (auto [_, ins] = seen.emplace(def); !ins) return false;
-    if (Axm::isa<gpu::auto_init>(def)) return true;
+    if (pred(def)) return true;
     for (auto d : def->deps())
-        if (reaches_gpu_auto_init(d, seen)) return true;
+        if (reaches_if(d, seen, pred)) return true;
     return false;
 }
+
+bool is_gpu_auto_init(const Def* def) { return Axm::isa<gpu::auto_init>(def) != nullptr; }
 } // namespace
 
 void HostEmitter::start() {
@@ -122,11 +126,22 @@ void HostEmitter::start() {
     std::print(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer\n", kernel_array_name_,
                kernel_ids_.size());
 
+    LamSet gpu_touching;
     for (auto mut : world().externals().muts()) {
         auto lam = mut->isa_mut<Lam>();
         if (!lam || !lam->ret_pi()) continue;
         DefSet seen;
-        if (reaches_gpu_auto_init(lam, seen)) gpu_externals_.emplace(lam);
+        if (reaches_if(lam, seen, is_gpu_auto_init)) gpu_touching.emplace(lam);
+    }
+    // Only wrap the ones not themselves called by another GPU-touching external: a caller's own
+    // setup/teardown already covers whatever GPU-touching external(s) it calls.
+    for (auto lam : gpu_touching) {
+        auto called_by_other = std::ranges::any_of(gpu_touching, [&](auto other) {
+            if (other == lam) return false;
+            DefSet seen;
+            return reaches_if(other, seen, [lam](const Def* d) { return d == lam; });
+        });
+        if (!called_by_other) gpu_externals_.emplace(lam);
     }
 
     Super::start();
@@ -255,20 +270,18 @@ void HostEmitter::emit_gpu_teardown(ll::BB& bb, const std::string& name) {
 
 std::string HostEmitter::prepare() {
     auto name = Super::prepare();
-    // func_impls_ only gets root()'s label and BB content once, in Emitter::finalize_impl - so "first in
-    // this function" means appending to root()'s own (still empty) BB, not to func_impls_ directly.
+    // Append to root()'s own BB, not func_impls_: Emitter::finalize_impl writes it out only once.
     if (gpu_externals_.contains(root())) emit_gpu_setup(lam2bb_[root()], "%" + root()->unique_name());
     return name;
 }
 
 void HostEmitter::emit_epilogue(Lam* lam) {
-    // Super::emit_epilogue must run first: it forces emission of the return value's own dependencies
-    // (e.g. %gpu.copy_to_host/%gpu.free) into bb.body(). Appending the teardown afterward still lands it
-    // before the `ret` (in bb.tail(), always printed after bb.body()), just after everything else.
+    // Must run first to force emission of the return value's own dependencies (e.g. %gpu.free) into bb.body().
     Super::emit_epilogue(lam);
     if (gpu_externals_.contains(root())) {
+        // lam, not root(): a function can have several return blocks, and LLVM names are function-scoped.
         if (auto app = lam->body()->isa<App>(); app && app->callee() == root()->ret_var())
-            emit_gpu_teardown(lam2bb_[lam], "%" + root()->unique_name());
+            emit_gpu_teardown(lam2bb_[lam], "%" + lam->unique_name());
     }
 }
 
@@ -286,7 +299,6 @@ std::string HostEmitter::convert(const Def* type, bool simd) {
 
 std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb, const Def* def) {
     auto name = id(def);
-    std::string op;
 
     if (auto default_stream = Axm::isa<gpu::default_stream>(def)) {
         return "null";
@@ -300,11 +312,9 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         emit_gpu_teardown(bb, name);
         return ""s;
     } else if (auto auto_init = Axm::isa<gpu::auto_init>(def)) {
-        // A no-op here; emit_unsafe still forces whatever precedes this occurrence to emit.
         return emit_unsafe(auto_init->arg());
     } else if (auto auto_deinit = Axm::isa<gpu::auto_deinit>(def)) {
-        // Also a no-op, but emit_unsafe on `global` still forces any %gpu.free for this occurrence's
-        // device buffers to emit - otherwise nothing would keep them reachable.
+        // emit_unsafe on `global` keeps any %gpu.free threaded through it reachable.
         emit_unsafe(auto_deinit->arg(1));
         emit_unsafe(auto_deinit->arg(2));
         return emit_unsafe(auto_deinit->arg(0));
