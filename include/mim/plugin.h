@@ -25,7 +25,7 @@ using Normalizers = absl::flat_hash_map<flags_t, NormalizeFn>;
 using Flags2Phases = absl::flat_hash_map<flags_t, std::function<std::unique_ptr<Phase>(World&)>>;
 
 /// One `-X <plugin>:<arg>` a Plugin understands; see @ref clipluginargs.
-/// A Plugin declares these next to the code that picks them apart, so that `mim --plugin-args-md` can list them.
+/// A Plugin declares these next to the code that picks them apart, so that `mim -p <plugin> -h` can list them.
 struct PluginArg {
     const char* syntax; ///< How to spell the argument, e.g. `"o=<file>, output=<file>"`.
     const char* descr;  ///< What it does; one sentence, Markdown.
