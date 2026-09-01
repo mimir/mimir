@@ -240,19 +240,19 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit,
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"o=<file>, output=<file>",         "Write the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
-    {"o-dev=<file>, output-dev=<file>", "Write the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`."},
-    {"rt=embed, rt=extern",             "How the C [runtime wrappers](@ref plugin_runtime) (e.g. `@mim_cu_check`) reach the host module: `embed` (default) splices their LLVM IR in; `extern` only `declare`s them."},
-    {"no-embed",                        "Don't embed the compiled device binary into the host LLVM IR (embedding is the default on Linux)."},
-    {"no-ptx-embed",                    "If embedding the device binary, don't embed the PTX image into the fat binary (default: embed both PTX and CUBIN)."},
-    {"no-cubin-embed",                  "If embedding the device binary, don't embed the CUBIN image into the fat binary (default: embed both PTX and CUBIN)."},
-    {"sm=<SM>",                         "If embedding the device binary, compile it for compute capability `sm_<SM>`."},
-    {"libdevice=<path>",                "If embedding the device binary and linking libdevice, link against the libdevice NVVM library at `<path>` instead of locating it via CUDA paths."},
-    {"Xlink_llvm=<args>",               "If embedding the device binary and linking libdevice, invoke `link_llvm` with `<args>` (default: none)."},
-    {"Xopt=<args>",                     "If embedding the device binary and linking libdevice, invoke `opt` with `<args>` (default: `-passes=\"default<O2>,nvvm-reflect\"`)."},
-    {"Xllc=<args>",                     "If embedding the device binary, invoke `llc` with `<args>` (default: none)."},
-    {"Xptxas=<args>",                   "If embedding the device binary, invoke `ptxas` with `<args>` (default: none). Also passed to `fatbinary` via `--cmdline` if embedding the PTX image."},
-    {"Xfatbinary=<args>",               "If embedding the device binary, invoke `fatbinary` with `<args>` (default: none)."},
+    {"o=<file>, output=<file>",         "Writes the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
+    {"o-dev=<file>, output-dev=<file>", "Writes the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`."},
+    {"rt=embed, rt=extern",             "Like `ll`'s `rt`, but for the host module's C [runtime wrappers](@ref plugin_runtime) such as `@mim_cu_check`."},
+    {"no-embed",                        "Doesn't embed the compiled device binary into the host LLVM IR; embedding is the default on Linux."},
+    {"no-ptx-embed",                    "When embedding: omits the PTX image from the fat binary (default: both PTX and CUBIN)."},
+    {"no-cubin-embed",                  "When embedding: omits the CUBIN image from the fat binary (default: both PTX and CUBIN)."},
+    {"sm=<SM>",                         "When embedding: compiles the device binary for compute capability `sm_<SM>`."},
+    {"libdevice=<path>",                "When embedding and linking libdevice: uses the NVVM library at `<path>` instead of locating it via the CUDA paths."},
+    {"Xlink_llvm=<args>",               "When embedding and linking libdevice: passes `<args>` to `link_llvm` (default: none)."},
+    {"Xopt=<args>",                     "When embedding and linking libdevice: passes `<args>` to `opt` (default: `-passes=\"default<O2>,nvvm-reflect\"`)."},
+    {"Xllc=<args>",                     "When embedding: passes `<args>` to `llc` (default: none)."},
+    {"Xptxas=<args>",                   "When embedding: passes `<args>` to `ptxas` (default: none); also passed to `fatbinary` via `--cmdline` when the PTX image is embedded."},
+    {"Xfatbinary=<args>",               "When embedding: passes `<args>` to `fatbinary` (default: none)."},
 };
 // clang-format on
 

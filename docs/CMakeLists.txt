@@ -1,27 +1,19 @@
 set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.md")
-set(CLI_XARGS  "${CMAKE_CURRENT_BINARY_DIR}/plugin-args.md")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
 set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
 
-add_custom_command(
-    OUTPUT ${CLI_HELP}
-    COMMAND mim --help-md > ${CLI_HELP}
-    DEPENDS mim
-    COMMENT "Generating help text of Mim's CLI"
-)
-
-# A plugin declares its -X arguments in its shared library, so they have to be loaded to be listed.
-set(CLI_XARGS_PLUGINS "")
+# A plugin declares its -X arguments in its shared library, so all of them have to be loaded to be listed.
+set(CLI_HELP_PLUGINS "")
 foreach(PLUGIN IN LISTS MIM_PLUGIN_LIST)
-    list(APPEND CLI_XARGS_PLUGINS -p ${PLUGIN})
+    list(APPEND CLI_HELP_PLUGINS -p ${PLUGIN})
 endforeach()
 
 add_custom_command(
-    OUTPUT ${CLI_XARGS}
-    COMMAND mim ${CLI_XARGS_PLUGINS} --plugin-args-md > ${CLI_XARGS}
+    OUTPUT ${CLI_HELP}
+    COMMAND mim ${CLI_HELP_PLUGINS} --help-md > ${CLI_HELP}
     DEPENDS mim mim_all_plugins
-    COMMENT "Generating plugin argument tables of Mim's CLI"
+    COMMENT "Generating help text of Mim's CLI"
 )
 
 # The tour graphs are small and fit on the page, so we render them to *static* SVGs
@@ -82,7 +74,7 @@ add_custom_command(
     OUTPUT ${DOXY_INDEX_HTML}
     COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
     MAIN_DEPENDENCY ${DOXYFILE}
-    DEPENDS mim ${CLI_HELP} ${CLI_XARGS} ${XDOT_HELP} ${DOC_GRAPH_SVGS} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
+    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${DOC_GRAPH_SVGS} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
     COMMENT "Generating Doxygen HTML documentation"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )

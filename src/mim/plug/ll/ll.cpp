@@ -1161,8 +1161,8 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll::emit, plug:
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"o=<file>, output=<file>", "Write the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
-    {"rt=embed, rt=extern",     "How the C [runtime wrappers](@ref plugin_runtime) reach the output: `embed` (default) splices their LLVM IR into the emitted module (self-contained); `extern` only `declare`s them so the runtime is linked in separately."},
+    {"o=<file>, output=<file>", "Writes the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
+    {"rt=embed, rt=extern",     "How the C [runtime wrappers](@ref plugin_runtime) reach the output: `embed` (default) splices their LLVM IR into the module; `extern` only `declare`s them and leaves linking to you."},
 };
 // clang-format on
 

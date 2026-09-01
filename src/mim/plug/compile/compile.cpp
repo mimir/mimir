@@ -71,7 +71,7 @@ void reg_phases(Flags2Phases& phases) {
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"aggr=<bool>", "Sets the value of `%%compile.aggr`, which the `opt` pipeline uses to switch fixed-point iteration of its `optimize` stage on/off (default off). `<bool>` is one of `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` is equivalent to `aggr=on`."},
+    {"aggr=<bool>", "Value of `%%compile.aggr`, which switches fixed-point iteration of the `opt` pipeline's `optimize` stage on or off (default off). `<bool>` is `on`/`tt`/`true` or `off`/`ff`/`false`; a bare `aggr` means `on`."},
 };
 // clang-format on
 

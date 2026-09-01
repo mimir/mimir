@@ -2,15 +2,13 @@
 
 [TOC]
 
-## Usage
+## Usage {#cliusage}
 
 \include{doc} "cli-help.md"
 
-## Remarks
-
 @note The *Developer Options* only exist if MimIR was built with `MIM_ENABLE_CHECKS`; see the [CMake switches](@ref building).
 
-### Plugin Search Paths
+## Plugin Search Paths
 
 You can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
 Mim looks for plugins in this order:
@@ -21,7 +19,7 @@ Mim looks for plugins in this order:
 4. `path/to/mim.exe/../../lib/mim`
 5. `CMAKE_INSTALL_PREFIX/lib/mim`
 
-### Diagnostics {#clidiag}
+## Diagnostics {#clidiag}
 
 Errors and warnings are reported as `<file>:<row>:<col>: error: <message>`, followed by the offending source line with a caret underneath and any notes indented below it.
 Pass `--no-snippet` to omit the source line and caret, e.g. when the output is consumed by a script.
@@ -53,6 +51,4 @@ The syntax is `-X <plugin>:<arg>`:
 - Arguments are keyed by plugin name and collected on the [`mim::Driver`](@ref mim::Driver).
   A [`mim::Phase`](@ref mim::Phase) reads the arguments addressed to its own plugin via [`mim::Phase::args`](@ref mim::Phase::args); the interpretation of each `<arg>` is up to the plugin.
 
-Each plugin declares the arguments it understands right next to the code that reads them; the tables below are generated from those declarations.
-
-\include{doc} "plugin-args.md"
+Each plugin declares the arguments it understands right next to the code that reads them, so the `-X <plugin>:<arg>` tables under [Usage](@ref cliusage) are generated from those declarations.
