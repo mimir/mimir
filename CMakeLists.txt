@@ -98,7 +98,6 @@ set(FE_LIB ON)
 
 add_subdirectory(submodules/abseil-cpp)
 add_subdirectory(submodules/fe)
-add_subdirectory(submodules/lyra)
 add_subdirectory(src)
 
 if(MIM_BUILD_EXAMPLES)

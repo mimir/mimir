@@ -4,7 +4,7 @@
 
 ## Usage
 
-\include "cli-help.sh"
+\include{doc} "cli-help.md"
 
 In addition, you can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
 Mim looks for plugins in this order:
