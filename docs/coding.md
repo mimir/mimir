@@ -325,7 +325,7 @@ You can also tweak the output behavior directly from within GDB by changing [`mi
 ```gdb
 (gdb) call world().flags().dump_gid = 1
 (gdb) call world().flags().dump_recursive = 1
-(gdb) call world().log().max_level_ = 4
+(gdb) call world().log.max_level_ = 4
 ```
 
 Another useful trick is to recover a `Def*` from a [`mim::Def::gid`](@ref mim::Def::gid) via [`mim::World::gid2def`](@ref mim::World::gid2def):
@@ -412,4 +412,4 @@ mim test.mim --profile trace   --output-profile trace.json
 The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
 Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.
 
-See [`mim::Profiler`](@ref mim::Profiler) for implementation details.
+See `fe::Profiler` in the `fe` submodule for implementation details.

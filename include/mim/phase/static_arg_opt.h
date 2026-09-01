@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fe/bitset.h>
+
 #include "mim/phase.h"
 
 namespace mim {
@@ -17,9 +19,6 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    /// One bit per Lam::tdom; thresholded, so a huge sigma dom stays a single bit.
-    using Mask = Vector<bool>;
-
     bool analyze() final;
     void analyze(const Def*);
     void visit(const App*, Lam*);
@@ -29,11 +28,11 @@ private:
 
     /// Which of @p lam's doms do the self-calls selected for the loop forward unchanged?
     /// An empty Mask means: leave @p lam alone.
-    Mask statics(Lam* lam);
+    fe::Bitset statics(Lam* lam);
 
     DefSet analyzed_;
-    LamMap<Vector<Mask>> lam2sites_;
-    LamMap<Mask> lam2statics_;
+    LamMap<fe::Vector<fe::Bitset>> lam2sites_;
+    LamMap<fe::Bitset> lam2statics_;
     LamMap<std::pair<Lam*, Lam*>> old2wrap_loop_;
 };
 

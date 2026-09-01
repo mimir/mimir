@@ -2,6 +2,7 @@
 
 #include <fe/assert.h>
 
+#include "mim/driver.h"
 #include "mim/rewrite.h"
 #include "mim/rule.h"
 #include "mim/world.h"
@@ -426,17 +427,19 @@ const Def* Def::check(size_t i, const Def* def) {
 
     if (i == 0) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        throw Error(world().driver())
+        Error(world().driver())
             .error(world().err_loc(def), "filter `{}` of lambda is of type `{}` but must be of type `Bool`", def,
-                   type_of(def));
+                   type_of(def))
+            .bail();
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
-    throw Error(world().driver())
+    Error(world().driver())
         .error(world().err_loc(def), "function body is not assignable to its declared codomain")
-        .note(world().err_loc(def), "expected `{}`, got `{}`", lam->codom(), type_of(def))
-        .note(world().err_loc(def), "body: `{}`", def)
-        .note_at(lam->codom()->loc(), "codomain `{}` declared here", lam->codom());
+        .note("expected `{}`, got `{}`", lam->codom(), type_of(def))
+        .note("body: `{}`", def)
+        .note(lam->codom()->loc(), "codomain `{}` declared here", lam->codom())
+        .bail();
 }
 
 const Def* Def::check() {
@@ -467,9 +470,7 @@ const Def* Def::check() {
         case Node::Sigma: {
             auto t = Sigma::infer(w, ops());
             if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
-            w.WLOG("incorrect type `{}` for `{}`; expected `{}` but keeping the existing type due to clos-conv "
-                   "bugs",
-                   type(), this, t);
+            w.log().w("expected type {} for {} but keeping the declared {} due to clos-conv bugs", t, this, type());
             return type();
         }
         case Node::Rule: {

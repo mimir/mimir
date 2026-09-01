@@ -372,7 +372,7 @@ inline bool Emitter::load_rt_module(std::string_view filename) {
         std::error_code ec;
         if (!std::filesystem::is_regular_file(path, ec) || ec) continue;
         if (auto ifs = std::ifstream(path)) {
-            world().DLOG("ll backend: loaded runtime module `{}`", path.string());
+            world().log().d("ll backend: load runtime module `{}`", path.string());
             rt_module_.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
             return true;
         }

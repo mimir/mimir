@@ -957,10 +957,10 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             if (!a || !s) return {};
 
             align  = std::max(align, *a);
-            offset = pad(offset, *a) + *s;
+            offset = fe::pad(offset, *a) + *s;
         }
 
-        offset   = pad(offset, align);
+        offset   = fe::pad(offset, align);
         u64 size = std::max(1_u64, offset);
 
         switch (id) {

@@ -6,11 +6,11 @@ namespace mim::plug::clos::phase {
 
 namespace {
 
-std::tuple<Vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
+std::tuple<fe::Vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
     if (auto closure_proj = callee->isa<Extract>()) {
         auto inner_proj = closure_proj->tuple()->isa<Extract>();
         if (inner_proj && inner_proj->tuple()->isa<Tuple>() && isa_clos_type(inner_proj->type())) {
-            auto branches = Vector<ClosLit>();
+            auto branches = fe::Vector<ClosLit>();
             for (auto op : inner_proj->tuple()->ops())
                 if (auto c = isa_clos_lit(op))
                     branches.emplace_back(c);
@@ -29,7 +29,7 @@ const Def* BranchClosElim::rewrite_imm_App(const App* app) {
 
     auto& w = new_world();
     if (auto [branches, index] = isa_branch(app->callee()); index) {
-        DLOG("FLATTEN BRANCH {}", app->callee());
+        log().d("flatten branch: {}", app->callee());
         auto ep           = env_param(branches[0].fnc_type());
         auto new_branches = w.tuple(DefVec(branches.size(), [&](size_t i) -> const Def* {
             auto c = branches[i];

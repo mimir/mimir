@@ -2,6 +2,9 @@
 
 #include <algorithm>
 
+#include <fe/container.h>
+#include <fe/worklist.h>
+
 #include <mim/plug/mem/autogen.h>
 
 using namespace std::literals;
@@ -19,18 +22,16 @@ bool is_memop_res(const Def* fd) {
 
 /// The free (non-closed, not-nested) Def%s directly reachable from @p nest's root.
 DefSet free_defs(const Nest& nest) {
-    DefSet bound, free;
-    std::queue<const Def*> queue;
-    queue.emplace(nest.root()->mut());
+    DefSet free;
+    auto queue = fe::BFSWorklist<DefSet>{nest.root()->mut()};
 
     while (!queue.empty()) {
-        for (auto op : pop(queue)->deps()) {
+        for (auto op : queue.pop()->deps()) {
             if (op->is_closed()) continue; // nothing free in here
-            if (nest.contains(op)) {
-                if (auto [_, ins] = bound.emplace(op); ins) queue.emplace(op);
-            } else {
+            if (nest.contains(op))
+                queue.push(op);
+            else
                 free.emplace(op);
-            }
         }
     }
 
@@ -73,7 +74,7 @@ void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQue
 std::pair<FreeDefAna::Node*, bool> FreeDefAna::build_node(Def* mut, NodeQueue& worklist) {
     auto [p, inserted] = lam2node_.emplace(mut, nullptr);
     if (!inserted) return {p->second.get(), false};
-    world().DLOG("FVA: create node: {}", mut);
+    world().log().d("FVA: create node {}", mut);
 
     p->second         = std::make_unique<Node>(mut);
     auto node         = p->second.get();
@@ -84,14 +85,14 @@ std::pair<FreeDefAna::Node*, bool> FreeDefAna::build_node(Def* mut, NodeQueue& w
     // A node with no fresh predecessors is ready to be settled right away.
     if (!spawned_pred) {
         worklist.push(node);
-        world().DLOG("FVA: init {}", mut);
+        world().log().d("FVA: init {}", mut);
     }
     return {node, true};
 }
 
 void FreeDefAna::propagate(NodeQueue& worklist) {
     while (!worklist.empty()) {
-        auto node = pop(worklist);
+        auto node = fe::pop(worklist);
         if (is_done(node)) continue;
         auto changed = is_bot(node);
         mark(node);
@@ -159,7 +160,7 @@ const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
     // its normal form may reference defs that are not free vars and hence not in the current map.
     auto env     = w.tuple(DefVec(stub.fvs.size(), [&](auto i) { return rewrite(stub.fvs[i]); }));
     auto closure = clos_pack(env, stub.fn, clos_ty);
-    DLOG("RW: pack {} ~> {} : {}", old_lam, closure, clos_ty);
+    log().d("pack {} → {}: {}", old_lam, closure, clos_ty);
     return map(old_lam, closure);
 }
 
@@ -244,9 +245,9 @@ const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {
     auto ct       = ctype(new_world(), new_doms, env_type);
     if (!env_type) {
         glob_muts_.emplace(pi, ct);
-        DLOG("C-TYPE: pct {} ~~> {}", pi, ct);
+        log().d("closure type: {} → {} (pretyped)", pi, ct);
     } else {
-        DLOG("C-TYPE: ct {}, env = {} ~~> {}", pi, env_type, ct);
+        log().d("closure type: {} → {} (env = {})", pi, ct, env_type);
     }
     return ct;
 }
@@ -267,7 +268,7 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
         auto ep           = env_param(new_fn_type);
         auto new_ext_type = w.cn(clos_remove_env(ep, new_fn_type->dom()));
         auto new_ext_lam  = w.mut_lam(new_ext_type)->set(old_lam->dbg_key());
-        DLOG("wrap ext lam: {} -> stub: {}, ext: {}", old_lam, new_fn, new_ext_lam);
+        log().d("wrap external lam {} → stub {}, external {}", old_lam, new_fn, new_ext_lam);
         if (old_lam->is_set()) {
             if (old_lam->is_external()) new_ext_lam->externalize();
             auto env = w.tuple(DefVec(fv_vec.size(), [&](auto i) { return rewrite(fv_vec[i]); }));
@@ -279,7 +280,7 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
         }
     }
 
-    DLOG("STUB {} ~~> {}", old_lam, new_fn);
+    log().d("stub {} → {}", old_lam, new_fn);
     auto stub = Stub{old_lam, std::move(fv_vec), new_fn};
     closures_.try_emplace(old_lam, stub);
     closures_.try_emplace(new_fn, stub);
@@ -301,7 +302,7 @@ void ClosConv::rewrite_body(const Stub& stub) {
     auto new_fn  = stub.fn;
     auto ep      = env_param(new_fn->type()->as<Pi>());
     auto env_val = new_fn->var(ep)->set("closure_env");
-    DLOG("rw body: {} [old={}]", new_fn, old_fn);
+    log().d("rewrite body of {} → {}", old_fn, new_fn);
     if (stub.fvs.size() == 1) {
         map(stub.fvs.front(), env_val);
     } else {

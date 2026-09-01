@@ -29,16 +29,16 @@ std::optional<u64> dispatch_int_width(nat_t width, F&& f) {
 template<nat_t w, class F>
 std::optional<u64> fold_float_unary_bits(u64 a, F&& f) {
     using T = w2f<w>;
-    auto x  = bitcast_resize<T>(a);
-    return bitcast_resize<u64>(static_cast<T>(f(x)));
+    auto x  = fe::bitcast_resize<T>(a);
+    return fe::bitcast_resize<u64>(static_cast<T>(f(x)));
 }
 
 template<nat_t w, class F>
 std::optional<u64> fold_float_binary_bits(u64 a, u64 b, F&& f) {
     using T = w2f<w>;
-    auto x  = bitcast_resize<T>(a);
-    auto y  = bitcast_resize<T>(b);
-    return bitcast_resize<u64>(static_cast<T>(f(x, y)));
+    auto x  = fe::bitcast_resize<T>(a);
+    auto y  = fe::bitcast_resize<T>(b);
+    return fe::bitcast_resize<u64>(static_cast<T>(f(x, y)));
 }
 
 template<nat_t w>
@@ -69,26 +69,26 @@ std::optional<u64> encode_signed(long double x) {
         if (x == 0.0L) return 0_u64;
         return {};
     } else {
-        return bitcast_resize<u64>(static_cast<w2s<w>>(x));
+        return fe::bitcast_resize<u64>(static_cast<w2s<w>>(x));
     }
 }
 
 template<nat_t w>
 std::optional<u64> encode_unsigned(long double x) {
-    return bitcast_resize<u64>(static_cast<w2u<w>>(x));
+    return fe::bitcast_resize<u64>(static_cast<w2u<w>>(x));
 }
 
 template<nat_t w>
 long double decode_signed(u64 a) {
     if constexpr (w == 1)
-        return bitcast_resize<bool>(a) ? -1.0L : 0.0L;
+        return fe::bitcast_resize<bool>(a) ? -1.0L : 0.0L;
     else
-        return static_cast<long double>(bitcast_resize<w2s<w>>(a));
+        return static_cast<long double>(fe::bitcast_resize<w2s<w>>(a));
 }
 
 template<nat_t w>
 long double decode_unsigned(u64 a) {
-    return static_cast<long double>(bitcast_resize<w2u<w>>(a));
+    return static_cast<long double>(fe::bitcast_resize<w2u<w>>(a));
 }
 
 template<nat_t w, class F>
@@ -187,17 +187,17 @@ const Def* fold(World& world, const Def* type, const Def* a) {
 template<class Id, Id id, nat_t w>
 std::optional<u64> fold_binary_lit(u64 a, u64 b) {
     using T = w2f<w>;
-    auto x  = bitcast_resize<T>(a);
-    auto y  = bitcast_resize<T>(b);
+    auto x  = fe::bitcast_resize<T>(a);
+    auto y  = fe::bitcast_resize<T>(b);
 
     if constexpr (std::is_same_v<Id, arith>) {
         // clang-format off
         if constexpr (false) {}
-        else if constexpr (id == arith::add) return bitcast_resize<u64>(static_cast<T>(x + y));
-        else if constexpr (id == arith::sub) return bitcast_resize<u64>(static_cast<T>(x - y));
-        else if constexpr (id == arith::mul) return bitcast_resize<u64>(static_cast<T>(x * y));
-        else if constexpr (id == arith::div) return bitcast_resize<u64>(static_cast<T>(x / y));
-        else if constexpr (id == arith::rem) return bitcast_resize<u64>(static_cast<T>(rem(x, y)));
+        else if constexpr (id == arith::add) return fe::bitcast_resize<u64>(static_cast<T>(x + y));
+        else if constexpr (id == arith::sub) return fe::bitcast_resize<u64>(static_cast<T>(x - y));
+        else if constexpr (id == arith::mul) return fe::bitcast_resize<u64>(static_cast<T>(x * y));
+        else if constexpr (id == arith::div) return fe::bitcast_resize<u64>(static_cast<T>(x / y));
+        else if constexpr (id == arith::rem) return fe::bitcast_resize<u64>(static_cast<T>(rem(x, y)));
         else static_assert(false, "missing sub tag");
         // clang-format on
     } else if constexpr (std::is_same_v<Id, math::extrema>) {
@@ -220,9 +220,9 @@ std::optional<u64> fold_binary_lit(u64 a, u64 b) {
             static_assert(false, "missing sub tag");
         }
 
-        return bitcast_resize<u64>(result);
+        return fe::bitcast_resize<u64>(result);
     } else if constexpr (std::is_same_v<Id, pow>) {
-        return bitcast_resize<u64>(static_cast<T>(std::pow(x, y)));
+        return fe::bitcast_resize<u64>(static_cast<T>(std::pow(x, y)));
     } else if constexpr (std::is_same_v<Id, cmp>) {
         using std::isunordered;
         bool result = false;
@@ -315,11 +315,11 @@ std::optional<u64> fold_conv_lit(u64 a) {
     using D = w2f<dw>;
     // clang-format off
     if constexpr (false) {}
-    else if constexpr (id == conv::s2f) return bitcast_resize<u64>(static_cast<D>(decode_signed<sw>(a)));
-    else if constexpr (id == conv::u2f) return bitcast_resize<u64>(static_cast<D>(decode_unsigned<sw>(a)));
-    else if constexpr (id == conv::f2s) return fold_float_to_signed_bits<dw>(bitcast_resize<S>(a));
-    else if constexpr (id == conv::f2u) return fold_float_to_unsigned_bits<dw>(bitcast_resize<S>(a));
-    else if constexpr (id == conv::f2f) return bitcast_resize<u64>(static_cast<D>(bitcast_resize<S>(a)));
+    else if constexpr (id == conv::s2f) return fe::bitcast_resize<u64>(static_cast<D>(decode_signed<sw>(a)));
+    else if constexpr (id == conv::u2f) return fe::bitcast_resize<u64>(static_cast<D>(decode_unsigned<sw>(a)));
+    else if constexpr (id == conv::f2s) return fold_float_to_signed_bits<dw>(fe::bitcast_resize<S>(a));
+    else if constexpr (id == conv::f2u) return fold_float_to_unsigned_bits<dw>(fe::bitcast_resize<S>(a));
+    else if constexpr (id == conv::f2f) return fe::bitcast_resize<u64>(static_cast<D>(fe::bitcast_resize<S>(a)));
     else static_assert(false, "missing sub tag");
     // clang-format on
 }

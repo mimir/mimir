@@ -1,7 +1,9 @@
 #include "mim/world.h"
 
-#include <deque>
 #include <ranges>
+
+#include <fe/container.h>
+#include <fe/worklist.h>
 
 #include "mim/check.h"
 #include "mim/def.h"
@@ -10,7 +12,7 @@
 #include "mim/schedule.h"
 #include "mim/tuple.h"
 
-#include "mim/util/util.h"
+#include "mim/util/gid.h"
 
 namespace mim {
 
@@ -46,7 +48,7 @@ void World::Externals::externalize(Def* def) {
     assert(!def->is_external());
     assert(def->is_closed());
     def->external_ = true;
-    assert_emplace(sym2mut_, def->sym(), def);
+    fe::assert_emplace(sym2mut_, def->sym(), def);
 }
 
 void World::Externals::internalize(Def* def) {
@@ -57,11 +59,11 @@ void World::Externals::internalize(Def* def) {
 }
 
 const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
-    driver().TLOG("register: 0x{:x} -> {} ({})", flags, def, sym);
+    driver().log().t("register annex `{}` 0x{:x} → {}", sym, flags, def);
     auto plugin = Annex::demangle(driver(), flags);
     if (driver().is_loaded(plugin)) {
-        assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
-        assert_emplace(sym2flags_, sym, flags);
+        fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
+        fe::assert_emplace(sym2flags_, sym, flags);
         def->annex_ = true;
         return def;
     }
@@ -116,7 +118,11 @@ static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destruc
  * Driver
  */
 
-Log& World::log() const { return driver().log(); }
+const fe::Log& World::log() const { return driver().log(); }
+
+void World::error_(Loc loc, const std::function<std::string()>& fmt) const {
+    Error(driver()).msg(loc, Error::Tag::Error, fmt).bail();
+}
 Flags& World::flags() { return driver().flags(); }
 
 Sym World::sym(const char* s) { return driver().sym(s); }
@@ -230,17 +236,19 @@ const Def* World::app(const Def* callee, const Def* arg) {
 
     auto pi = callee->isa_type<Pi>();
     if (!pi)
-        throw Error(driver())
+        Error(driver())
             .error(err_loc(callee), "callee is not of function type")
-            .note(err_loc(callee), "callee `{}` has type `{}`", callee, type_of(callee))
-            .note_at(callee->loc(), "callee `{}` declared here", callee);
+            .note("callee `{}` has type `{}`", callee, type_of(callee))
+            .note(callee->loc(), "callee `{}` declared here", callee)
+            .bail();
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
-        throw Error(driver())
+        Error(driver())
             .error(err_loc(arg), "argument is not assignable to callee's domain")
-            .note(err_loc(arg), "expected `{}`, got `{}`", pi->dom(), type_of(arg))
-            .note_at(callee->loc(), "callee `{}` declared here", callee);
+            .note("expected `{}`, got `{}`", pi->dom(), type_of(arg))
+            .note(callee->loc(), "callee `{}` declared here", callee)
+            .bail();
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
@@ -270,7 +278,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
                 auto rw     = VarRewriter(var, arg);
                 auto filter = rw.rewrite(lam->filter());
                 if (filter == lit_tt()) {
-                    DLOG("partial evaluate: {} ({})", lam, arg);
+                    log().d("partially evaluate {} ({})", lam, arg);
                     auto body = rw.rewrite(lam->body());
                     cache_reduct(var, arg, {filter, body});
                     return body;
@@ -390,7 +398,7 @@ const Def* World::extract(const Def* d, const Def* index) {
 
     if (size) {
         if (auto l = Lit::isa(size); l && *l == 1) {
-            if (!lidx || *lidx != 0) WLOG("unknown Idx of size 1: {}", index);
+            if (!lidx || *lidx != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
             // A *mutable* Sigma may be a 1-tuple and still needs a real Extract; TODO mutable Arr?
             auto sigma = type->isa_mut<Sigma>();
             if (!sigma || sigma->num_ops() != 1) return d;
@@ -487,10 +495,11 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
         auto elem_type = type->proj(*lidx);
         auto new_val   = Checker::assignable(elem_type, val);
         if (!new_val) {
-            throw Error(driver())
+            Error(driver())
                 .error(err_loc(val), "value is not assignable to element type")
-                .note(err_loc(val), "expected `{}`, got `{}`", elem_type, type_of(val))
-                .note(err_loc(val), "value: `{}`", val);
+                .note("expected `{}`, got `{}`", elem_type, type_of(val))
+                .note("value: `{}`", val)
+                .bail();
         }
         val = new_val;
     }
@@ -724,11 +733,11 @@ Defs World::reduce(const Var* var, const Def* arg) {
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
-    unique_queue<MutSet> queue;
+    fe::BFSWorklist<MutSet> queue;
     for (auto mut : externals().muts())
         queue.push(mut);
 
-    auto muts = Vector<Def*>();
+    auto muts = fe::Vector<Def*>();
     while (!queue.empty()) {
         auto mut = queue.pop();
         if (mut->is_closed() && (!elide_empty || mut->is_set())) muts.emplace_back(mut);
@@ -763,8 +772,8 @@ void World::breakpoint(u32 gid) { state_.breakpoints.emplace(gid); }
 void World::watchpoint(u32 gid) { state_.watchpoints.emplace(gid); }
 
 const Def* World::gid2def(u32 gid) {
-    auto i = std::ranges::find_if(move_.defs, [=](auto def) { return def->gid() == gid; });
-    if (i == move_.defs.end()) return nullptr;
+    auto i = std::ranges::find_if(move_.sea, [=](auto def) { return def->gid() == gid; });
+    if (i == move_.sea.end()) return nullptr;
     return *i;
 }
 
@@ -799,7 +808,7 @@ template const Def* World::implicit_app<false>(const Def*, const Def*);
 World::ScopedLoc World::push(Loc loc) {
     auto& curr = state_.pod.curr_loc;
     if (loc == curr.loc) return ScopedLoc(curr); // nested emitters push the same Loc; don't re-intern it
-    return ScopedLoc(curr, {loc, loc ? DbgKey(driver().dbg(Dbg(loc))) : DbgKey()});
+    return ScopedLoc(curr, {loc, loc ? driver().dbg(Dbg(loc)) : DbgKey()});
 }
 
 Loc World::err_loc(const Def* def) const {
@@ -809,22 +818,17 @@ Loc World::err_loc(const Def* def) const {
 
     // Nothing was pushed and def itself is anonymous: settle for the closest Loc among its deps.
     constexpr size_t Budget = 512; // a diagnostic is not worth traversing the whole World for
-    auto done               = DefSet{def};
-    auto queue              = std::deque<const Def*>{def};
+    auto queue              = fe::BFSWorklist<DefSet>{def};
 
     // Charged per inspected dep, not per dequeue: a single high-arity Def would otherwise scan - and
     // enqueue - its whole operand list before the budget got a say.
     auto budget = Budget;
 
     while (!queue.empty()) {
-        auto todo = queue.front();
-        queue.pop_front();
-
-        for (auto dep : todo->deps()) {
+        for (auto dep : queue.pop()->deps()) {
             if (budget-- == 0) return {};
-            if (!done.emplace(dep).second) continue;
+            if (!queue.push(dep)) continue;
             if (auto loc = dep->loc()) return loc;
-            queue.push_back(dep);
         }
     }
 

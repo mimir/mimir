@@ -45,7 +45,7 @@ void SEO::Analysis::reset() {
 const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
 const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
-    DLOG("sccp_join({}, {})", var, def);
+    log().d("sccp join: {} ⊔ {}", var, def);
     auto cur = lattice(var);
     if (cur == var) return var; // ⊤ is final
 
@@ -60,7 +60,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
     // A closed def can never be nested, and Def::nests allocates a fresh MutSet per call - so skip it.
     if (!def->isa<Proxy>() && !def->is_closed() && lam->nests(def)) {
-        DLOG("cannot propagate {} -> {}: out of scope", var, def);
+        log().d("cannot propagate {} → {}: out of scope", var, def);
         return pin(var), var;
     }
 
@@ -73,7 +73,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // Discarding what earlier sites contributed requires a round that revisits *every* `lam` call site;
     // apply_known() taints all of lam2callers_ whenever the abstract vars change, so the next round does.
     if (auto [_, ins] = first_.emplace(var); ins) {
-        DLOG("first; restart: {} -> {}", var, def);
+        log().d("first contribution; restart: {} → {}", var, def);
         lattice_force(var, def); // may descend from an earlier round's ⊤ - hence force, not lattice()
         return def;
     }
@@ -84,7 +84,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     if (def->isa<Bot>() || cur == def) return cur;      // cur ⊔ ⊥ = cur; def ⊔ def = def
     if (cur->isa<Bot>()) return lattice(var, def), def; // ⊥ ⊔ def = def
 
-    DLOG("cannot propagate {} -> {}; cur: {}, trying GVN", var, def, cur);
+    log().d("cannot propagate {} → {}; cur = {}; try GVN", var, def, cur);
     auto top = mk_sccp_top(var);
     return lattice(var, top), top;
 }
@@ -100,9 +100,9 @@ const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars
     return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
-void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const Def*> abstr_vars) {
+void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, fe::Span<const Def*> abstr_vars) {
     auto n    = vars.size();
-    auto idxs = Vector<size_t>();
+    auto idxs = fe::Vector<size_t>();
 
     for (size_t i = 0; i != n; ++i) {
         if (!Proxy::isa<Proxy_SCCP_Top>(abstr_vars[i])) continue;
@@ -119,12 +119,12 @@ void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, Span<const 
             auto bundle = mk_bundle(lam, vars[i], DefVec(idxs, [&](size_t j) { return vars[j]; }));
             for (auto j : idxs)
                 lattice(vars[j], abstr_vars[j] = bundle);
-            DLOG("bundle: {}", bundle);
+            log().d("bundle: {}", bundle);
         }
     }
 }
 
-void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, Span<const Def*> abstr_vars) {
+void SEO::Analysis::gvn_split(Lam* lam, Defs vars, fe::Span<const Def*> abstr_args, fe::Span<const Def*> abstr_vars) {
     // E.g.: Say we started with `{a, b, c, d, e}` as a single bundle for all tvars of `lam`.
     // Now, we see `lam (x, y, x, y, z)`. Then we have to build:
     // a -> {a, c}
@@ -151,10 +151,10 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, Span<const Def*> abstr_args, 
         if (split.size() == 1) {
             pin(vars[i]);
             abstr_vars[i] = vars[i];
-            DLOG("gvn single: {}", vars[i]);
+            log().d("GVN single: {}", vars[i]);
         } else {
             auto new_bundle = mk_bundle(lam, vars[i], split);
-            DLOG("gvn split: {}", new_bundle);
+            log().d("GVN split: {}", new_bundle);
             for (auto p : split) {
                 auto j = idx_of(vars, p);
                 lattice(vars[j], abstr_vars[j] = new_bundle);
@@ -170,11 +170,11 @@ static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
-    if (auto sloxy2val = mim::lookup(lam2sloxy2val_, lam))
-        if (auto val = mim::lookup(*sloxy2val, sloxy)) return val;
+    if (auto sloxy2val = fe::lookup(lam2sloxy2val_, lam))
+        if (auto val = fe::lookup(*sloxy2val, sloxy)) return val;
 
     auto phi = mk_phi(world(), lam, sloxy);
-    DLOG("sloxy {} not found in sloxy2val map; use phi {}", sloxy, phi);
+    log().d("no value for sloxy {}; use phi {}", sloxy, phi);
     if (auto val = lattice(phi); val && !Proxy::isa<Proxy_SCCP_Top>(val)) return val;
     return nullptr;
 }
@@ -193,9 +193,9 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
                 auto phi = mk_phi(world(), lam, sloxy);
                 phis.emplace_back(phi);
                 abstr_args.emplace_back(value);
-                DLOG("propagate phi {} for slot {} w/ val {}", phi, sloxy, value);
+                log().d("propagate phi {} for sloxy {} with value {}", phi, sloxy, value);
             } else {
-                DLOG("no value found for {}", sloxy);
+                log().d("no value for sloxy {}", sloxy);
             }
         }
     }
@@ -222,12 +222,12 @@ void SEO::Analysis::find_unknowns(const Def* def) {
 const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     auto n = abstr_targs.size();
     assert(n == known->num_tvars());
-    DLOG("known edge: {} -> {}", curr_mut(), known);
+    log().d("known edge: {} → {}", curr_mut(), known);
     if (auto mut = curr_mut()) lam2callers_[known].emplace(mut);
     rewrite(known); // enqueue so its body is drained this round; a no-op if already scheduled
 
     if (is_dependent(known)) {
-        DLOG("dependent signature; keeping all vars: {}", known);
+        log().d("dependent signature; keeping all vars: {}", known);
         for (auto var : known->tvars())
             pin(var);
         return abstract_app(known, world().tuple(abstr_targs));
@@ -279,9 +279,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 sloxy2slot_[sloxy] = slot;
                 slots_.emplace(ptr);
-                DLOG("slot {} -> sloxy {}", ptr, sloxy);
+                log().d("slot {} → sloxy {}", ptr, sloxy);
                 // The slot is ptr's *defining* site: mark first_ so the ⊥ joined below cannot restart it away.
-                assert_emplace(first_, ptr);
+                fe::assert_emplace(first_, ptr);
                 lattice(ptr, sloxy);
                 // Treat the slot jump like an app of `ret_lam` so mem and existing phis flow across the edge.
                 // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
@@ -298,10 +298,10 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
             sloxy2val(sloxy, abstr_val);
-            DLOG("store: {} <- {}", sloxy, abstr_val);
+            log().d("store: {} ← {}", sloxy, abstr_val);
             return abstr_mem;
         }
-        DLOG("store w/ unknown ptr: {} <- {}", abstr_ptr, abstr_val);
+        log().d("store to unknown ptr: {} ← {}", abstr_ptr, abstr_val);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [mem, ptr] = load->args<2>();
         auto [_, val]   = load->projs<2>();
@@ -310,13 +310,13 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
             if (auto abstr_val = sloxy2val(sloxy)) {
-                DLOG("load: {} -> {}", sloxy, abstr_val);
+                log().d("load: {} → {}", sloxy, abstr_val);
                 lattice(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
-            DLOG("load w/ unknown value: {}", sloxy);
+            log().d("load of unknown value: {}", sloxy);
         } else {
-            DLOG("load w/ unknown ptr: {}", abstr_ptr);
+            log().d("load from unknown ptr: {}", abstr_ptr);
         }
     } else {
         auto abstr_callee = rewrite(app->callee());
@@ -336,13 +336,13 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
         for (auto lam : fu_lams_) {
             assert(lam != known && lam->is_open());
-            DLOG("unknown edge: {} -> {}", curr_mut(), lam);
+            log().d("unknown edge: {} → {}", curr_mut(), lam);
             propagate_phis(lam, phi_vars, phi_abstr_args);
         }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
             if (is_top(phi_vars[i])) continue; // ⊤ is final - lattice() must not descend from it
-            assert_emplace(first_, phi_vars[i]);
+            fe::assert_emplace(first_, phi_vars[i]);
             lattice(phi_vars[i], phi_abstr_args[i]);
         }
     }
@@ -379,11 +379,11 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto proxy = def->isa<Proxy>()) {
         if (proxy->tag() == Proxy_Sloxy) {
             auto ptr  = proxy->op(1); // the continuation's slot var; see rewrite_imm_App
-            auto slot = mim::lookup(sloxy2slot_, proxy);
+            auto slot = fe::lookup(sloxy2slot_, proxy);
             assert(slot);
             pin(slot);
             pin(ptr);
-            DLOG("sloxy {} survived; setting slot to top: {}", proxy, slot);
+            log().d("sloxy {} survived; pinning slot {} to ⊤", proxy, slot);
         }
         return; // never walk a proxy's deps (would drag in meta info)
     }
@@ -415,7 +415,7 @@ void SEO::Analysis::analyze(const Def* def) {
             return;
         }
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
-        DLOG("lam {} unknown", lam);
+        log().d("unknown lam: {}", lam);
         unknowns_.emplace(lam);
         for (auto v : var->tprojs())
             pin(v);
@@ -454,7 +454,7 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 
     for (size_t j = 0; j != n; ++j) {
         auto old_var = old_lam->var(n, j);
-        sig.keeps.emplace_back(keep(old_lam, old_var, lattice(old_var)));
+        if (keep(old_lam, old_var, lattice(old_var))) sig.keeps.set(j);
     }
 
     for (auto sloxy : sloxies_) {
@@ -468,12 +468,8 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 
     // A new signature is needed iff some var is dropped/propagated/merged or some phi has to be threaded in -
     // except for an unknown lam, which is used as a value somewhere and hence must keep its signature as is.
-    auto todo = false;
-    for (auto k : sig.keeps)
-        if (k)
-            ++sig.num_vars;
-        else
-            todo = true;
+    sig.num_vars = sig.keeps.count();
+    auto todo    = sig.num_vars != n;
     for (const auto& p : sig.phis)
         if (p.keep) ++sig.num_vars, todo = true;
     sig.todo = todo && !analysis_.unknowns().contains(old_lam);
@@ -508,7 +504,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         if (auto sloxy = isa_optimized_sloxy(ptr)) {
             auto abstr_val = abstracted(res_val);
             assert(abstr_val && "a promoted slot implies every load from it resolved");
-            DLOG("rewriting a load from {}, we know that it's {}", sloxy, abstr_val);
+            log().d("load from {} resolved to {}", sloxy, abstr_val);
             auto new_mem = rewrite(mem);
             return new_world().tuple({new_mem, rewrite(abstr_val)});
         }
@@ -518,14 +514,14 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             // The callee may fold to a rebuilt lam in the new world only,
             // e.g. a branch `(f, t)#cond` whose cond becomes constant after GVN merged vars.
             if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
-                if (auto ol = mim::lookup(lam_new2old_, new_lam)) old_lam = ol;
+                if (auto ol = fe::lookup(lam_new2old_, new_lam)) old_lam = ol;
         }
 
         if (old_lam) {
-            DLOG("in {}, found app of {}", curr_mut(), old_lam);
+            log().d("in {}: app of {}", curr_mut(), old_lam);
 
             if (sig_of(old_lam).todo) {
-                DLOG("needs seo: {}", old_lam);
+                log().d("needs seo: {}", old_lam);
                 size_t n      = old_lam->num_tvars();
                 auto new_lam  = build_lam(old_lam);
                 auto new_args = build_args(old_lam, DefVec(n, [&](size_t i) { return old_app->arg(n, i); }));
@@ -572,9 +568,9 @@ const Def* SEO::var_of(Lam* old_lam) {
 
 Lam* SEO::build_lam(Lam* old_lam) {
     assert(!is_dependent(old_lam) && "apply_known pins a dependent signature to \u22a4");
-    if (auto memo = mim::lookup(lam_old2new_, old_lam)) return memo;
+    if (auto memo = fe::lookup(lam_old2new_, old_lam)) return memo;
 
-    DLOG("building a new lam for {}", old_lam);
+    log().d("build new lam for {}", old_lam);
     invalidate();
     const auto& sig = sig_of(old_lam);
     size_t n        = old_lam->num_tvars();
@@ -610,7 +606,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
         if (p.keep) {
             auto v = new_lam->var(sig.num_vars, j++);
             profile_count("phis.materialized");
-            DLOG("mapping phi {} to {}", p.phi, v);
+            log().d("map phi {} → {}", p.phi, v);
             map_root(p.phi, v);
             if (p.val != p.phi) map_root(p.val, v); // phi is part of a GVN bundle
         }
@@ -621,7 +617,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
 
     for (const auto& p : sig.phis)
         if (!p.keep) {
-            DLOG("mapping phi {} to its propagated value {}", p.phi, p.val);
+            log().d("map phi {} → its propagated value {}", p.phi, p.val);
             map_root(p.phi, rewrite(p.val));
         }
 
@@ -643,7 +639,7 @@ DefVec SEO::build_args(Lam* old_lam, Defs old_targs) {
         if (p.keep) {
             auto arg = analysis_.lam2sloxy2val(curr_mut<Lam>(), p.sloxy);
             assert(arg);
-            DLOG("wiring up phi argument {} for {}", arg, p.sloxy);
+            log().d("wire up phi argument {} for sloxy {}", arg, p.sloxy);
             new_args.emplace_back(rewrite(arg));
         }
 

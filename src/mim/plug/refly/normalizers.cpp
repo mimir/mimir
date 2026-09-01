@@ -24,13 +24,14 @@ const Def* do_reflect(const Def* def) { return reinterpret_cast<const Def*>(def-
 
 void debug_print(const Def* lvl, const Def* def) {
     auto& world = def->world();
-    auto level  = Log::Level::Debug;
+    auto level  = fe::Log::Level::Debug;
     if (auto l = Lit::isa(lvl)) {
-        level = std::to_underlying(Log::Level::Error) <= int(*l) && int(*l) <= std::to_underlying(Log::Level::Debug)
-                  ? static_cast<Log::Level>(*l)
-                  : Log::Level::Debug;
+        level = std::to_underlying(fe::Log::Level::Error) <= int(*l)
+                     && int(*l) <= std::to_underlying(fe::Log::Level::Debug)
+                  ? static_cast<fe::Log::Level>(*l)
+                  : fe::Log::Level::Debug;
     }
-    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
+    world.log().log(level, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
     world.log().log(level, def->loc(), "def : {}", def);
     world.log().log(level, def->loc(), "id  : {}", def->unique_name());
     world.log().log(level, def->type()->loc(), "type: {}", def->type());
@@ -84,7 +85,7 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     if (cond == w.lit_ff()) {
         auto s = tuple2str(msg);
         if (s.empty()) s = "unknown error"s;
-        w.ELOG("{}", s);
+        w.log().e("{}", s);
     }
 
     return nullptr;

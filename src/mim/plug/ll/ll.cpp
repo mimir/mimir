@@ -35,7 +35,7 @@ public:
         auto path = name + ".ll"s;
         auto rt   = Emitter::Rt::embed;
         for (const auto& arg : args()) {
-            world().DLOG("ll backend arg: `{}`", arg);
+            world().log().d("ll backend arg: `{}`", arg);
             if (arg.starts_with("o="))
                 path = arg.substr(2);
             else if (arg.starts_with("output="))
@@ -188,7 +188,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
     // yields the continuation to branch to.
     if (auto ret = isa_targetspecific_intrinsic(bb, app)) return bb.tail("br label {}", *ret);
     if (app->callee() == root()->ret_var()) { // return
-        Vector<std::string> values;
+        fe::Vector<std::string> values;
         DefVec types;
         for (auto arg : app->args()) {
             if (auto val = emit_unsafe(arg); !val.empty()) {
@@ -314,7 +314,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
     } else if (Pi::isa_returning(app->callee_type())) { // function call
         auto v_callee = emit(app->callee());
 
-        Vector<std::string> args;
+        fe::Vector<std::string> args;
         auto app_args = app->args();
         for (auto arg : app_args.view().rsubspan(1))
             if (auto v_arg = emit_unsafe(arg); !v_arg.empty()) args.emplace_back(convert(arg->type()) + " " + v_arg);

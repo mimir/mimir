@@ -8,14 +8,16 @@
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
+#ifndef DOXYGEN
 template<>
 struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
+#endif
 
 using namespace mim;
 using namespace automaton;
 
 using Range  = automaton::Range;
-using Ranges = Vector<Range>;
+using Ranges = fe::Vector<Range>;
 
 // nomenclature:
 // c is the character from the string we want to match
@@ -56,7 +58,7 @@ DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
         }
 
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
-        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.DLOG("{}", msg); });
+        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.log().d("{}", msg); });
     }
     return state2ranges;
 }
@@ -91,7 +93,7 @@ DFAMap<const Def*> create_check_match_transitions_from(const Def* c, const DFANo
 } // namespace
 
 extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
-    w.DLOG("dfa to match: {}", dfa);
+    w.log().d("DFA to match: {}", dfa);
 
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;

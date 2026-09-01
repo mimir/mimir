@@ -19,8 +19,10 @@ struct S {
 
 } // namespace mim::ast
 
+#ifndef DOXYGEN
 template<>
 struct std::formatter<mim::ast::S> : fe::ostream_formatter {};
+#endif
 
 namespace mim::ast {
 
@@ -47,8 +49,10 @@ struct R {
 
 } // namespace mim::ast
 
+#ifndef DOXYGEN
 template<class T>
 struct std::formatter<mim::ast::R<T>> : fe::ostream_formatter {};
+#endif
 
 namespace mim::ast {
 
@@ -103,7 +107,11 @@ void PrimaryExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}"
 
 void LitExpr::stream(fe::Tab& tab, std::ostream& os) const {
     switch (tag()) {
-        case Tag::L_i: std::print(os, "{}", tok().lit_i()); return;
+        case Tag::L_i: {
+            auto [size, val] = tok().lit_i();
+            std::print(os, "{}_{}", val, size); // the `_` form spells out every size, 2^64 included
+            return;
+        }
         case Tag::L_f: os << std::bit_cast<double>(tok().lit_u()); return;
         case Tag::L_s:
         case Tag::L_u:

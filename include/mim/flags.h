@@ -9,7 +9,7 @@ namespace mim {
 /// Compiler switches that must be saved and looked up in later phases of compilation.
 /// @see @ref cli
 struct Flags {
-    /// How (if at all) to report Phase runtimes; @see Profiler.
+    /// How (if at all) to report Phase runtimes; @see fe::Profiler.
     enum class Profile {
         None,    ///< No profiling.
         Summary, ///< Flat table aggregated by Phase name.
@@ -19,11 +19,8 @@ struct Flags {
 
     uint64_t scalarize_threshold = 32;
     uint32_t max_fp_iters        = 1024; // max number of fixed-point iterations before a Phase errors out
-    uint32_t gutter              = 5;    // width of the line-number column in a diagnostic
-    uint32_t max_rows            = 8;    // rows a snippet prints before eliding its middle; 0 elides nothing
 
     bool ascii               = false;
-    bool no_snippet          = false; // don't render the offending source line and caret under a diagnostic
     bool dump_recursive      = false;
     bool bootstrap           = false;
     bool force_load          = false;

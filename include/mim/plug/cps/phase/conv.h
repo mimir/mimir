@@ -85,7 +85,7 @@ private:
     /// Wires all Pending calls above @p base around @p body and returns the new body.
     const Def* wire(size_t base, const Def* body);
 
-    Vector<Pending> pending_;
+    fe::Vector<Pending> pending_;
     Vars scoped_;
     bool liftable_ = false;
 };

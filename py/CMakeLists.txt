@@ -83,7 +83,7 @@ set(_gen_units
     "${CMAKE_SOURCE_DIR}/include/mim/world.h|mim"
     "${CMAKE_SOURCE_DIR}/include/mim/driver.h|mim"
     "${CMAKE_SOURCE_DIR}/include/mim/flags.h|mim"
-    "${CMAKE_SOURCE_DIR}/include/mim/util/log.h|mim"
+    "${CMAKE_SOURCE_DIR}/submodules/fe/include/fe/log.h|fe"
 )
 
 # Every generated unit needs the *whole* manifest: a type is only legal in a
@@ -164,7 +164,7 @@ set(_module_units
     "mim#init_rule"
     "mim#init_world"
     "mim#init_flags"
-    "mim#init_log"
+    "fe#init_log"
     "mim#init_driver"
     "mim::ast#init_ast"
     "mim::ast#init_parser"

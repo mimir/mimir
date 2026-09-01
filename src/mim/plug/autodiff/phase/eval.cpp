@@ -357,7 +357,7 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
     } else if (auto lam = def->isa_mut<Lam>()) {
         return augment_lam(lam, f, f_diff);
     } else if (auto lam = def->isa<Lam>()) {
-        ELOG("Augment lambda: {}", lam);
+        log().e("cannot augment an immutable Lam: {}", lam);
         assert(false && "can not handle non-mutable lambdas");
     } else if (auto lit = def->isa<Lit>()) {
         return augment_lit(lit, f, f_diff);
@@ -368,16 +368,15 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
         return augment_pack(pack, f, f_diff);
     } else if (auto ax = def->isa<Axm>()) {
         auto diff_name = ax->sym().str();
-        find_and_replace(diff_name, ".", "_");
-        find_and_replace(diff_name, "%", "");
+        fe::find_and_replace(diff_name, ".", "_");
+        fe::find_and_replace(diff_name, "%", "");
         diff_name = "%autodiff.diff." + diff_name;
 
         // Look the derivative up in the old world; rewrite() below maps it into the new one.
         auto old_diff_fun = old_world().annex(old_world().sym(diff_name));
         if (!old_diff_fun) {
-            ELOG("derivation not found: {}", diff_name);
             auto expected_type = autodiff_type_fun(ax->type());
-            ELOG("expected: {} : {}", diff_name, expected_type);
+            log().e("no derivative `{}`; expected type: {}", diff_name, expected_type);
             assert(false && "unhandled axm");
         }
         // TODO: why does this cause a depth error?
@@ -387,8 +386,7 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
     // TODO: handle Pi for axm app
     // TODO: remaining (lambda, axm)
 
-    ELOG("did not expect to augment: {} : {}", def, def->type());
-    ELOG("node: {}", def->node_name());
+    log().e("cannot augment {} node {}: {}", def->node_name(), def, def->type());
     assert(false && "augment not implemented on this def");
     fe::unreachable();
 }

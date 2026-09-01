@@ -1,0 +1,8 @@
+// RUN: (! %mim -p opt --max-errors 1 %s 2>&1) | %FileCheck %s
+
+// --max-errors keeps the first error and says so instead of silently swallowing the rest.
+let a = b;
+let c = d;
+
+// CHECK:      {{.*}}max_errors.mim:4:9: error: identifier `b` not found
+// CHECK:      1 error(s) encountered; further diagnostics dropped

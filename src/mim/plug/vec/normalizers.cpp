@@ -39,7 +39,7 @@ const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
                     acc = w.app(f, {proj, acc});
             return acc;
         }
-        w.WLOG("packs with non-literal arity not yet implemented: {}", seq);
+        w.log().w("Pack of non-literal arity not yet implemented: {}", seq);
     }
 
     if (auto l = vec->isa<Lit>()) {
@@ -87,7 +87,7 @@ const Def* normalize_scan(const Def*, const Def* c, const Def* vec) {
         return acc;
     }
 
-    if (auto pack = vec->isa_imm<Pack>()) w.WLOG("packs not yet implemented: {}", pack);
+    if (auto pack = vec->isa_imm<Pack>()) w.log().w("Pack not yet implemented: {}", pack);
 
     return nullptr;
 }

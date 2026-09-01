@@ -1,11 +1,12 @@
 #pragma once
 
 #include <absl/container/btree_set.h>
+#include <fe/bitset.h>
 
 #include <mim/def.h>
 #include <mim/phase.h>
 
-#include <mim/util/util.h>
+#include <mim/util/gid.h>
 
 namespace mim::plug::mem::phase {
 
@@ -71,8 +72,8 @@ private:
 
         // GVN
         const Proxy* mk_bundle(Lam* lam, const Def* var, Defs bundle_vars);
-        void gvn_bundle(Lam*, Defs, Defs, Span<const Def*>);
-        void gvn_split(Lam*, Defs, Span<const Def*>, Span<const Def*>);
+        void gvn_bundle(Lam*, Defs, Defs, fe::Span<const Def*>);
+        void gvn_split(Lam*, Defs, fe::Span<const Def*>, fe::Span<const Def*>);
 
         // SSA
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
@@ -94,11 +95,11 @@ private:
         DefSet first_;
 
         // Scratch for find_unknowns; cleared per query instead of constructing containers per App.
-        // fu_lams_ is a Vector, not a LamSet: find_unknowns pushes each Lam at most once (fu_visited_ gates
+        // fu_lams_ is a fe::Vector, not a LamSet: find_unknowns pushes each Lam at most once (fu_visited_ gates
         // before the Lam check), and insertion order follows the structural deps() walk - so it is
         // deterministic without a sort, and clear() always keeps its capacity.
         DefSet fu_visited_;
-        Vector<Lam*> fu_lams_;
+        fe::Vector<Lam*> fu_lams_;
 
         // global (kept between iterations)
         Def2Def sloxy2slot_;
@@ -128,8 +129,8 @@ private:
 
     /// The new signature of an old Lam.
     struct Sig {
-        Vector<Phi> phis;        ///< Its live phis.
-        Vector<bool> keeps;      ///< Is this tvar of the old Lam kept as is?
+        fe::Vector<Phi> phis;    ///< Its live phis.
+        fe::Bitset keeps;        ///< Which tvars of the old Lam are kept as is?
         size_t num_vars = 0;     ///< Vars of the new Lam: the kept old ones plus the kept phis.
         bool todo       = false; ///< Does the old Lam need a new signature at all?
     };

@@ -3,12 +3,12 @@
 #include <ranges>
 
 #include <fe/assert.h>
+#include <fe/worklist.h>
 
 #include "mim/driver.h"
 #include "mim/nest.h"
 
 #include "mim/ast/tok.h"
-#include "mim/util/util.h"
 
 using namespace std::literals;
 
@@ -162,10 +162,10 @@ public:
 } // namespace
 } // namespace mim
 
-// clang-format off
+#ifndef DOXYGEN // clang-format off
 template<> struct std::formatter<mim::Op  > : fe::ostream_formatter {};
 template<> struct std::formatter<mim::Dump> : fe::ostream_formatter {};
-// clang-format on
+#endif // clang-format on
 
 namespace mim {
 namespace {
@@ -397,7 +397,7 @@ public:
     std::ostream& os;
     const Nest* nest;
     fe::Tab tab = fe::Tab::spaces();
-    unique_queue<MutSet> muts;
+    fe::BFSWorklist<MutSet> muts;
     DefSet defs;
 };
 
@@ -610,7 +610,7 @@ void World::dump(std::ostream& os) {
 void World::dump() { dump(std::cout); }
 
 void World::debug_dump() {
-    if (log().level() >= Log::Level::Debug) dump(log().ostream());
+    if (log().level() >= fe::Log::Level::Debug) dump(log().ostream());
 }
 
 void World::write(const char* file) {

@@ -8,16 +8,14 @@
 
 #include <mim/axm.h>
 #include <mim/def.h>
+#include <mim/driver.h>
 #include <mim/tuple.h>
 #include <mim/world.h>
-
-#include <mim/util/dbg.h>
-#include <mim/util/log.h>
 
 #include "mim/plug/regex/regex.h"
 
 using Range  = automaton::Range;
-using Ranges = mim::Vector<Range>;
+using Ranges = fe::Vector<Range>;
 
 namespace mim::plug::regex {
 
@@ -59,7 +57,7 @@ const Def* make_binary_tree(Defs args) {
 
 const Def* normalize_conj(const Def* type, const Def* callee, const Def* arg) {
     auto& world = type->world();
-    world.DLOG("conj {}:{} ({})", type, callee, arg);
+    world.log().d("conj {}: {} ({})", callee, type, arg);
 
     if (auto a = Lit::isa(arg->arity())) {
         switch (*a) {
@@ -119,7 +117,7 @@ void merge_ranges(DefVec& args) {
 
     std::transform(ranges_begin, args.end(), std::back_inserter(old_ranges), get_range);
 
-    auto new_ranges = automaton::merge_ranges(old_ranges, [&world](std::string_view msg) { world.DLOG("{}", msg); });
+    auto new_ranges = automaton::merge_ranges(old_ranges, [&world](std::string_view msg) { world.log().d("{}", msg); });
 
     // invalidates ranges_begin
     args.erase(ranges_begin, args.end());
@@ -199,7 +197,7 @@ const Def* normalize_disj(const Def* type, const Def*, const Def* arg) {
                 }
 
                 erase(new_args, to_remove);
-                world.DLOG("final ranges {}", fe::Join(new_args));
+                world.log().d("final ranges: {}", fe::Join(new_args));
 
                 if (new_args.size() > 2) return make_binary_tree<disj>(new_args);
                 if (new_args.size() > 1) return world.call<disj, false>(new_args);
@@ -233,11 +231,12 @@ const Def* any_unwanted_for_not(const Def* arg) {
 
 const Def* normalize_not(const Def*, const Def* callee, const Def* arg) {
     if (auto unwanted = any_unwanted_for_not(arg)) {
-        throw Error(arg->world().driver())
+        Error(arg->world().driver())
             .error(arg->loc(),
                    "regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_: {} {}", callee,
                    arg)
-            .error(unwanted->loc(), "found unwanted: {}", unwanted);
+            .error(unwanted->loc(), "found unwanted: {}", unwanted)
+            .bail();
     }
     return {};
 }

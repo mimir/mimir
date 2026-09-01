@@ -14,10 +14,10 @@
 #include "mim/plug/regex/regex.h"
 #include "mim/plug/regex/regex2nfa.h"
 
-// clang-format off
+#ifndef DOXYGEN // clang-format off
 template<> struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
 template<> struct std::formatter<automaton::NFA> : fe::ostream_formatter {};
-// clang-format on
+#endif // clang-format on
 
 namespace mim::plug::regex {
 
@@ -35,10 +35,10 @@ const Def* LowerRegex::rewrite_imm_App(const App* app) {
         // The NFA is derived from the old callee's structure; only the argument needs rewriting.
         auto new_n = rewrite(app->arg());
         auto nfa   = regex2nfa(callee);
-        DLOG("nfa: {}", *nfa);
+        log().d("NFA: {}", *nfa);
 
         auto dfa = automaton::nfa2dfa(*nfa);
-        DLOG("dfa: {}", *dfa);
+        log().d("DFA: {}", *dfa);
 
         auto min_dfa = automaton::minimize_dfa(*dfa);
         return wrap_in_cps2ds(dfa2matcher(new_world(), *min_dfa, new_n));

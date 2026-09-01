@@ -145,7 +145,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto nps_l = Lit::isa<u64>(nps);
     auto ro_l = Lit::isa<u64>(Ro), rn_l = Lit::isa<u64>(Rn);
     if (!nis_l || !nps_l || !ro_l || !rn_l || *rn_l < *ro_l) {
-        WLOG("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
+        log().w("rank counts (nis/nps/Ro/Rn) of {} are not known at lowering time", app);
         return RWPhase::rewrite_imm_App(app);
     }
     auto nis_nat = *nis_l;
@@ -357,7 +357,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto r_l    = Lit::isa<u64>(Tr->proj(2, 1));
     auto mode_l = Lit::isa<u64>(mode);
     if (!r_l || !mode_l) {
-        WLOG("{} doesn't have a lowering-time known rank/mode", app);
+        log().w("rank/mode of {} is not known at lowering time", app);
         return RWPhase::rewrite_imm_App(app);
     }
     auto rn       = *r_l;
@@ -415,20 +415,20 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     auto r_l   = Lit::isa<u64>(r);
     auto ax_l  = Lit::isa<u64>(ax);
     if (!nis_l || !r_l || !ax_l) {
-        WLOG("{} doesn't have lowering-time known nis/rank/axis", app);
+        log().w("nis/rank/axis of {} are not known at lowering time", app);
         return RWPhase::rewrite_imm_App(app);
     }
     auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
 
     // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#i#ax (literal extents required).
     DefVec off(nisn);
-    Vector<u64> ext(nisn);
+    fe::Vector<u64> ext(nisn);
     u64 acc_off = 0;
     for (u64 i = 0; i < nisn; ++i) {
         off[i]  = w.lit_i64(acc_off);
         auto ei = Lit::isa<u64>(Sis->proj(nisn, i)->proj(rn, axn));
         if (!ei) {
-            WLOG("{} input {} has a non-literal extent along the concat axis", app, i);
+            log().w("extent of input {} of {} along the concat axis is not known at lowering time", i, app);
             return RWPhase::rewrite_imm_App(app);
         }
         ext[i] = *ei;

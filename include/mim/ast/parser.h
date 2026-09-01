@@ -35,7 +35,7 @@ public:
         : ast_(ast) {}
 
     AST& ast() { return ast_; }
-    Driver& driver() { return ast().driver(); }
+    Driver& driver() { return ast().driver(); } ///< fe::Parser's default diagnostics go to its Driver::error.
     Ptr<Module> import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
         return import({Loc(), driver().sym(sv)}, nullptr, tag);
     }
@@ -43,7 +43,7 @@ public:
     Ptr<Module> import(const fe::Src&, std::ostream* md = nullptr);
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
     Ptr<Module> import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
-    Ptr<Module> import_main(std::string_view input, View<std::string> plugins, std::ostream* md = nullptr);
+    Ptr<Module> import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
 
 private:
     template<class T, class... Args>
@@ -157,25 +157,6 @@ private:
     Ptr<LamDecl> parse_lam_decl();
     Ptr<RecDecl> parse_rec_decl(bool first);
     Ptr<RecDecl> parse_and_decl();
-    ///@}
-
-    /// @name error messages
-    ///@{
-    /// Issue an error message of the form:
-    /// "expected \<what\>, got `\<tok>\` while parsing \<ctxt\>"
-    void syntax_err(std::string_view what, const Tok& tok, std::string_view ctxt) {
-        ast().error(tok.loc(), "expected {}, got `{}` while parsing {}", what, tok, ctxt);
-    }
-
-    /// Same above but uses @p ahead() as @p tok.
-    void syntax_err(std::string_view what, std::string_view ctxt) { syntax_err(what, ahead(), ctxt); }
-
-    /// Same above but @p what is a @p tag.
-    void syntax_err(Tok::Tag tag, std::string_view ctxt) { syntax_err(std::format("`{}`", tag), ctxt); }
-
-    void unanchored_err(Tok tok, std::string_view ctxt) {
-        ast().error(tok.loc(), "ignoring unmatched `{}` while parsing {}", tok, ctxt);
-    }
     ///@}
 
     AST& ast_;

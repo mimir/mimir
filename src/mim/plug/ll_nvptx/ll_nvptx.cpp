@@ -1,9 +1,9 @@
 #include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
 
+#include <fe/sys.h>
+
 #include <mim/driver.h>
 #include <mim/plugin.h>
-
-#include <mim/util/sys.h>
 
 #include <mim/plug/gpu/gpu.h>
 
@@ -34,8 +34,8 @@ struct NvptxCompileArgs {
 constexpr auto Default_Compute_Cap = "75";
 
 std::string get_compute_capability() {
-    auto nvidia_smi = sys::require_cmd("nvidia-smi");
-    auto out        = sys::exec(std::format("{} --query-gpu=compute_cap --format=csv,noheader", nvidia_smi));
+    auto nvidia_smi = fe::sys::require_cmd("nvidia-smi");
+    auto out        = fe::sys::exec(std::format("{} --query-gpu=compute_cap --format=csv,noheader", nvidia_smi));
     std::erase_if(out, ::isspace);
     // out should now have form "7.5" referencing the compute capability "sm_75"
 
@@ -92,7 +92,7 @@ std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::p
 }
 
 std::string find_libdevice() {
-    auto nvcc = sys::find_cmd("nvcc");
+    auto nvcc = fe::sys::find_cmd("nvcc");
     if (std::filesystem::exists(nvcc)) {
         auto nvcc_path     = std::filesystem::canonical(nvcc);
         auto cuda_bin_path = nvcc_path.parent_path();
@@ -105,38 +105,38 @@ std::string find_libdevice() {
     auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / Libdevice_Name;
     if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
 
-    fe::throwf<sys::CmdNotFound>(
+    fe::throwf<fe::sys::CmdNotFound>(
         MIM_LL_NVPTX_BE "unable to find `{}`; try setting the `CUDA_HOME` environment variable", Libdevice_Name);
 }
 
 void link_libdevice(const NvptxCompileArgs& c) {
     if (!std::filesystem::exists(c.libdevice_path))
         fe::throwf(MIM_LL_NVPTX_BE "libdevice path does not exist: `{}`", c.libdevice_path);
-    auto llvm_link = sys::require_cmd("llvm-link");
-    sys::require_run(std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
-                                 c.dev_bc_raw_name));
+    auto llvm_link = fe::sys::require_cmd("llvm-link");
+    fe::sys::require_run(std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
+                                     c.dev_bc_raw_name));
 }
 
 void optimize_bytecode(const NvptxCompileArgs& c) {
-    auto opt = sys::require_cmd("opt");
-    sys::require_run(std::format("{} {} {} -o {}", opt, c.opt_args, c.dev_bc_raw_name, c.dev_bc_opt_name));
+    auto opt = fe::sys::require_cmd("opt");
+    fe::sys::require_run(std::format("{} {} {} -o {}", opt, c.opt_args, c.dev_bc_raw_name, c.dev_bc_opt_name));
 }
 
 void compile2ptx(const NvptxCompileArgs& c, bool uses_libdevice) {
     auto compile_input = uses_libdevice ? c.dev_bc_opt_name : c.dev_ll_name;
-    auto llc           = sys::require_cmd("llc");
-    sys::require_run(std::format("{} -march=nvptx64 -mcpu=sm_{} {} {} -o {}", llc, c.compute_cap, c.llc_args,
-                                 compile_input, c.dev_ptx_name));
+    auto llc           = fe::sys::require_cmd("llc");
+    fe::sys::require_run(std::format("{} -march=nvptx64 -mcpu=sm_{} {} {} -o {}", llc, c.compute_cap, c.llc_args,
+                                     compile_input, c.dev_ptx_name));
 }
 
 void compile2cubin(const NvptxCompileArgs& c) {
-    auto ptxas = sys::require_cmd("ptxas");
-    sys::require_run(std::format("{} -arch=sm_{} {} {} -o {}", ptxas, c.compute_cap, c.ptxas_args, c.dev_ptx_name,
-                                 c.dev_cubin_name));
+    auto ptxas = fe::sys::require_cmd("ptxas");
+    fe::sys::require_run(std::format("{} -arch=sm_{} {} {} -o {}", ptxas, c.compute_cap, c.ptxas_args, c.dev_ptx_name,
+                                     c.dev_cubin_name));
 }
 
 void compile2fatbin(const NvptxCompileArgs& c) {
-    auto fatbinary = sys::require_cmd("fatbinary");
+    auto fatbinary = fe::sys::require_cmd("fatbinary");
     auto ptx_args  = ""s;
     if (c.embed_ptx) {
         ptx_args = std::format("--image3=kind=ptx,sm={},file={}", c.compute_cap, c.dev_ptx_name);
@@ -144,8 +144,8 @@ void compile2fatbin(const NvptxCompileArgs& c) {
     }
     auto cubin_args = ""s;
     if (c.embed_cubin) cubin_args = std::format("--image3=kind=elf,sm={},file={}", c.compute_cap, c.dev_cubin_name);
-    sys::require_run(std::format("{} --create={} -64 {} {} {}", fatbinary, c.dev_fatbin_name, c.fatbinary_args,
-                                 ptx_args, cubin_args));
+    fe::sys::require_run(std::format("{} --create={} -64 {} {} {}", fatbinary, c.dev_fatbin_name, c.fatbinary_args,
+                                     ptx_args, cubin_args));
 }
 
 } // namespace
@@ -169,7 +169,7 @@ public:
 
         auto rt = ll::Emitter::Rt::embed;
         for (const auto& arg : args()) {
-            world().DLOG("ll backend arg: `{}`", arg);
+            world().log().d("ll_nvptx backend arg: `{}`", arg);
             // clang-format off
             if (false) {}
             else if (arg.starts_with("o="))          c.host_ll_name      = arg.substr(2);
@@ -214,9 +214,8 @@ public:
                 compile2ptx(c, device_flags.uses_libdevice);
                 compile2cubin(c);
                 compile2fatbin(c);
-            } catch (const sys::CmdNotFound& e) {
-                WLOG("{}", e.what());
-                WLOG("Falling back to not embedding device code.");
+            } catch (const fe::sys::CmdNotFound& e) {
+                log().w("{}; not embedding device code", e.what());
                 c.embed_device_code = false;
             }
         }

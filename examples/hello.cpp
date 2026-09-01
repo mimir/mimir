@@ -1,8 +1,9 @@
+#include <fe/sys.h>
+
 #include <mim/driver.h>
 
 #include <mim/ast/parser.h>
 #include <mim/phase/optimize.h>
-#include <mim/util/sys.h>
 
 #include <mim/plug/mem/mem.h>
 
@@ -14,8 +15,8 @@ int main(int, char**) {
 
     try {
         auto& w = driver.world();
-        driver.log().set(&std::cerr).set(Log::Level::Debug);
-        ast::load_plugins(w, View<std::string>{"core", "ll"});
+        driver.log().set(&std::cerr).set(fe::Log::Level::Debug);
+        ast::load_plugins(w, fe::View<std::string>{"core", "ll"});
 
         // Cn [%mem.M 0, I32, %mem.Ptr (I32, 0) Cn [%mem.M 0, I32]]
         auto mem_t  = w.call<mem::M>(0);
@@ -30,8 +31,8 @@ int main(int, char**) {
         // the `ll` plugin's emit phase writes `hello.ll` as part of `optimize`
         optimize(w);
 
-        sys::system("clang hello.ll -o hello -Wno-override-module");
-        std::println("exit code: {}", sys::system("./hello a b c"));
+        fe::sys::system("clang hello.ll -o hello -Wno-override-module");
+        std::println("exit code: {}", fe::sys::system("./hello a b c"));
     } catch (const std::exception& e) {
         std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;

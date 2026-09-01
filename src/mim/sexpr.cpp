@@ -121,7 +121,7 @@ public:
     void emit_lam(Lam* parent, Lam* curr, LamSet& rec_lams);
     std::string emit_var(BB& bb, const Def* var, const Def* type, bool meta_var = false);
     std::string emit_head(BB& bb, Lam* lam, bool nested = false);
-    std::string emit_cons_type(BB& bb, View<const Def*> ops);
+    std::string emit_cons_type(BB& bb, fe::View<const Def*> ops);
     std::string emit_type(BB& bb, const Def* type, bool in_term = false);
     std::string emit_cons(std::vector<std::string> op_vals);
     std::string emit_node(BB& bb, const Def* def, std::string node_name, bool variadic = false, bool with_type = false);
@@ -560,7 +560,7 @@ std::string Emitter::emit_head(BB& bb, Lam* lam, bool nested) {
     return os.str();
 }
 
-std::string Emitter::emit_cons_type(BB& bb, View<const Def*> ops) {
+std::string Emitter::emit_cons_type(BB& bb, fe::View<const Def*> ops) {
     std::ostringstream os;
 
     if (ops.size() == 0) {
