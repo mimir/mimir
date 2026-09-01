@@ -5,6 +5,9 @@
 #include <mim/driver.h>
 #include <mim/lam.h>
 
+#include <mim/util/log.h>
+#include <mim/util/vector.h>
+
 #include <mim/plug/affine/affine.h>
 #include <mim/plug/btensor/btensor.h>
 #include <mim/plug/buffer/buffer.h>
