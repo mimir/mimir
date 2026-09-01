@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
             | fe::cli::opt(clang,             "clang"            )["-c"]["--clang"                ]("Path to clang executable.")
             | fe::cli::opt(plugins,           "plugin"           )["-p"]["--plugin"               ]("Dynamically loads a plugin.")
             | fe::cli::opt(search_paths,      "path"             )["-P"]["--plugin-path"          ]("Path to search for plugins.")
-            | fe::cli::opt(plugin_args,       "plugin:arg"       )["-X"]["--plugin-arg"           ]("Passes an argument to a plugin/phase, e.g. -X ll:--target=sm_80. Repeatable.")
+            | fe::cli::opt(plugin_args,       "plugin:arg"       )["-X"]["--plugin-arg"           ]("Passes an argument to a plugin/phase, e.g. -X ll:o=output.ll. Repeatable.")
             | fe::cli::opt(flags.force_load                      )      ["--force-load"           ]("Loads plugins even on version mismatch.")
             | fe::cli::opt(flags.bootstrap                       )      ["--bootstrap"            ]("Bootstrap mode: a 'plugin' directive acts as an 'import' and loads no library; no standard plugins are loaded either.")
             | fe::cli::opt(inc_verbose                           )["-V"]["--verbose"              ]("Raises the log level from error to warn, info, verbose, debug, trace; repeatable.").cardinality(0, 5)
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
         // clang-format on
         cli.epilog(R"(Every output option accepts "-" to write to stdout.)");
 
-        if (auto res = cli.parse(argc, argv); !res) throw std::invalid_argument(res.message());
+        if (auto err = cli.parse(argc, argv)) throw std::invalid_argument(*err);
 
         if (show_help || show_help_md) {
             for (auto&& path : search_paths)
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
             if (show_help)
                 std::cout << cli;
             else
-                cli.md(std::cout);
+                cli.markdown(std::cout);
             return EXIT_SUCCESS;
         }
 
