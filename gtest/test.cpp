@@ -686,8 +686,7 @@ TEST(Error, render) {
     Driver driver;
     auto [src, _] = driver.src().add("render.mim", "let x = 1;\nlet y = 2;\n");
     auto err      = Error(driver);
-    err.error(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing");
-    err.note(Loc(src, Pos(15), Pos(16)), "declared");
+    err.e(Loc(src, Pos(4), Pos(9)), "bad `{}`", "thing").n(Loc(src, Pos(15), Pos(16)), "declared");
 
     // A Loc renders through the fe::Src it points at, which the Driver's SrcMap keeps alive.
     auto what = err.str();

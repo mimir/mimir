@@ -389,6 +389,8 @@ bool Def::nests(const Def* def) {
  * Def - misc
  */
 
+Driver& Def::driver() const noexcept { return world().driver(); }
+
 Sym Def::sym(const char* s) const { return world().sym(s); }
 Sym Def::sym(std::string_view s) const { return world().sym(s); }
 Sym Def::sym(std::string s) const { return world().sym(std::move(s)); }

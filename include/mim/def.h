@@ -291,6 +291,7 @@ public:
     /// @name Getters
     ///@{
     World& world() const noexcept;
+    Driver& driver() const noexcept;
     constexpr flags_t flags() const noexcept { return flags_; }
     constexpr u32 gid() const noexcept { return gid_; }   ///< Global id - *unique* number for this Def.
     constexpr u32 tid() const noexcept { return tid_; }   ///< Trie id - only used in Trie.

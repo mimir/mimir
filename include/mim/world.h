@@ -101,6 +101,8 @@ public:
     const State& state() const { return state_; }
     const Driver& driver() const { return *driver_; }
     Driver& driver() { return *driver_; }
+    const fe::Error& error() const;
+    fe::Error& error();
     Zonker& zonker() { return zonker_; }
 
     Sym name() const { return state_.pod.name; }
@@ -132,16 +134,6 @@ public:
     /// World::get_loc is the syntactic site the emitter is currently working on and thus the user's actual mistake;
     /// it is only set during emit, so fall back to the Def itself - and to its enclosing mutable - afterwards.
     Loc err_loc(const Def* def) const;
-    ///@}
-
-    /// @name Diagnostics
-    ///@{
-    /// Throws a single-message Error bound to this World's Driver, so it renders with its layout.
-    template<class... Args>
-    [[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) const {
-        // Driver is incomplete here, so the Error is built in world.cpp; the lambda keeps Driver::render in charge.
-        error_(loc, [&] { return std::vformat(f.get(), std::make_format_args(args...)); });
-    }
     ///@}
 
     /// @name Sym

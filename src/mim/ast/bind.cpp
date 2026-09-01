@@ -25,7 +25,7 @@ public:
     }
 
     AST& ast() const { return ast_; }
-    Driver& driver() const { return ast().driver(); }
+    Error& error() const { return ast().error(); }
     Scope& top() { return scopes_.back(); }
     const Decl* dummy() const { return dummy_.get(); }
 
@@ -43,7 +43,7 @@ public:
             if (auto i = scope.find(dbg.sym()); i != scope.end()) return i->second.second;
 
         if (!quiet) {
-            driver().error(dbg.loc(), "identifier `{}` not found", dbg.sym());
+            error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
             bind(dbg, dummy()); // put into scope to prevent further errors
         }
         return nullptr;
@@ -56,10 +56,8 @@ public:
             top()[dbg.sym()] = std::pair(dbg.loc(), decl);
         } else if (auto [i, ins] = top().try_emplace(dbg.sym(), std::pair(dbg.loc(), decl)); !ins) {
             auto [prev_loc, prev_decl] = i->second;
-            if (!quiet && !prev_decl->isa<DummyDecl>()) { // if prev_decl stems from an error - don't complain
-                driver().error(dbg.loc(), "redeclaration of `{}`", dbg);
-                driver().note(prev_loc, "previous declaration here");
-            }
+            if (!quiet && !prev_decl->isa<DummyDecl>()) // if prev_decl stems from an error - don't complain
+                error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev_loc, "previous declaration here");
         }
     }
 
@@ -129,9 +127,9 @@ void LitExpr::bind(Scopes& s) const {
     if (type()) {
         type()->bind(s);
         if (tag() == Tag::L_str || tag() == Tag::L_c || tag() == Tag::L_i)
-            s.driver().error(type()->loc(), "a `{}` must not have a type annotation", tag());
+            s.error().e(type()->loc(), "a `{}` must not have a type annotation", tag());
     } else {
-        if (tag() == Tag::L_f) s.driver().error(loc(), "floating-point literal requires a type annotation");
+        if (tag() == Tag::L_f) s.error().e(loc(), "floating-point literal requires a type annotation");
     }
 }
 
@@ -182,7 +180,7 @@ void PiExpr::bind(Scopes& s) const {
     s.push();
     dom()->bind(s);
     if (codom()) {
-        if (tag() == Tag::K_Cn) s.driver().error(codom()->loc(), "a continuation must not have a codomain");
+        if (tag() == Tag::K_Cn) s.error().e(codom()->loc(), "a continuation must not have a codomain");
         codom()->bind(s);
     }
     s.pop();
@@ -262,16 +260,16 @@ void AxmDecl::bind(Scopes& s) const {
     } else {
         auto pi = type()->isa<PiExpr>() || type()->isa<ArrowExpr>();
         if (annex_ && pi ^ *annex_->pi)
-            s.driver().error(dbg().loc(), "all declarations of annex `{}` must be function types if one of them is",
-                             dbg().sym());
+            s.error().e(dbg().loc(), "all declarations of annex `{}` must be function types if one of them is",
+                        dbg().sym());
 
         if (annex_ && annex_->normalizer.sym() != normalizer().sym()) {
-            auto l = normalizer().loc() ? normalizer().loc() : loc().anew_end();
-            s.driver().error(l, "normalizer mismatch for axm `{}`", dbg());
+            auto l    = normalizer().loc() ? normalizer().loc() : loc().anew_end();
+            auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", dbg());
             if (auto norm = annex_->normalizer)
-                s.driver().note(norm.loc(), "previous normalizer `{}` declared here", norm);
+                err.n(norm.loc(), "previous normalizer `{}` declared here", norm);
             else
-                s.driver().note("initially no normalizer was specified");
+                err.n("initially no normalizer was specified");
         }
     }
 
@@ -281,9 +279,9 @@ void AxmDecl::bind(Scopes& s) const {
         if (auto old = s.find(dbg(), true)) {
             if (auto old_ax = old->isa<AxmDecl>()) {
                 if (old_ax->num_subs() == 0) {
-                    s.driver().error(dbg().loc(),
-                                     "axm `{}` was declared without subs and cannot be redeclared with subs", dbg());
-                    s.driver().note(old_ax->dbg().loc(), "previous declaration here");
+                    s.error()
+                        .e(dbg().loc(), "axm `{}` was declared without subs and cannot be redeclared with subs", dbg())
+                        .n(old_ax->dbg().loc(), "previous declaration here");
                 }
             }
         }
@@ -322,10 +320,10 @@ void RecDecl::bind(Scopes& s) const {
 void RecDecl::bind_decl(Scopes& s) const {
     if (auto t = type()) t->bind(s);
     if (!type()->isa<HoleExpr>() && body()->isa<LamExpr>())
-        s.driver().warn(type()->loc(), "type of recursive declaration ignored for function expression");
+        s.error().w(type()->loc(), "type of recursive declaration ignored for function expression");
 
     if (!body()->isa<LamExpr>() && !body()->isa<PiExpr>() && !body()->isa<ArrowExpr>() && !body()->isa<SigmaExpr>())
-        s.driver().error(body()->loc(), "unsupported expression in a recursive declaration");
+        s.error().e(body()->loc(), "unsupported expression in a recursive declaration");
 
     s.bind(dbg(), this);
     annex_ = s.ast().name2annex(dbg(), &sub_);
@@ -346,21 +344,21 @@ void LamDecl::bind_decl(Scopes& s) const {
     if (auto filter = doms().back()->filter()) {
         if (auto pe = filter->isa<PrimaryExpr>()) {
             if (pe->tag() == Tag::K_tt && (tag() == Tag::K_lam || tag() == Tag::T_lm))
-                s.driver().warn(filter->loc(),
-                                "`tt`-filter superfluous as the last curried function group of a `{}` receives a "
-                                "`tt`-filter by default",
-                                tag());
+                s.error().w(filter->loc(),
+                            "`tt`-filter superfluous as the last curried function group of a `{}` receives a "
+                            "`tt`-filter by default",
+                            tag());
             if (pe->tag() == Tag::K_ff && (tag() != Tag::K_lam && tag() != Tag::T_lm))
-                s.driver().warn(filter->loc(),
-                                "`ff`-filter superfluous as the last curried function group of a `{}` receives a "
-                                "`ff`-filter by default",
-                                tag());
+                s.error().w(filter->loc(),
+                            "`ff`-filter superfluous as the last curried function group of a `{}` receives a "
+                            "`ff`-filter by default",
+                            tag());
         }
     }
 
     if (codom()) {
         if (tag() == Tag::K_con || tag() == Tag::K_cn)
-            s.driver().error(codom()->loc(), "a continuation must not have a codomain");
+            s.error().e(codom()->loc(), "a continuation must not have a codomain");
         codom()->bind(s);
     }
 

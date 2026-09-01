@@ -24,12 +24,12 @@ AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
     auto& sym2annex               = plugin2sym2annex_[plugin_s];
     auto tag_id                   = sym2annex.size();
 
-    if (plugin_s == sym_error()) driver().error(dbg.loc(), "plugin name `{}` is reserved", dbg);
+    if (plugin_s == sym_error()) error().e(dbg.loc(), "plugin name `{}` is reserved", dbg);
     if (tag_id > std::numeric_limits<tag_t>::max())
-        driver().error(dbg.loc(), "exceeded maximum number of annexes in current plugin");
+        error().e(dbg.loc(), "exceeded maximum number of annexes in current plugin");
 
     if (!Annex::mangle(plugin_s)) {
-        driver().error(dbg.loc(), "invalid annex name `{}`", dbg);
+        error().e(dbg.loc(), "invalid annex name `{}`", dbg);
         plugin_s = sym_error();
     }
 
@@ -43,7 +43,7 @@ AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
             auto& aliases = annex->subs.emplace_back();
             aliases.emplace_back(sub_s);
         } else {
-            driver().error(dbg.loc(), "annex `{}` must not have a subtag", dbg);
+            error().e(dbg.loc(), "annex `{}` must not have a subtag", dbg);
         }
     }
 

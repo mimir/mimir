@@ -213,7 +213,8 @@ static u64 encode_f(Emitter& e, [[maybe_unused]] Loc loc, const Def* t, u64 bits
 #if defined(__STDCPP_FLOAT16_T__)
             case 16: return std::bit_cast<u16>(f16(val));
 #else
-            case 16: e.world().error(loc, "16-bit floating-point literals are not supported on this platform");
+            case 16:
+                Error(e.driver()).e(loc, "16-bit floating-point literals are not supported on this platform").bail();
 #endif
             case 32: return std::bit_cast<u32>(f32(val));
             default: break;
@@ -357,9 +358,10 @@ const Def* RetExpr::emit_(Emitter& e) const {
         return app;
     }
 
-    e.world().error(callee()->loc(),
-                    "callee of a `ret` expression must be a returning continuation, but `{}` has type `{}`", c,
-                    c->type());
+    Error(e.driver())
+        .e(callee()->loc(), "callee of a `ret` expression must be a returning continuation, but `{}` has type `{}`", c,
+           c->type())
+        .bail();
 }
 
 const Def* SigmaExpr::emit_decl_(Emitter& e, const Def* type) const { return ptrn()->emit_decl(e, type); }
@@ -419,7 +421,7 @@ const Def* ExtractExpr::emit_(Emitter& e) const {
         }
 
         if (decl()) return e.world().extract(tup, decl()->def());
-        e.world().error(dbg->loc(), "cannot resolve field `{}` for extraction", *dbg);
+        Error(e.driver()).e(dbg->loc(), "cannot resolve field `{}` for extraction", *dbg).bail();
     }
 
     auto expr = std::get<Ptr<Expr>>(index()).get();
@@ -450,14 +452,16 @@ void AxmDecl::emit(Emitter& e) const {
     std::tie(id.curry, id.trip) = Axm::infer_curry_and_trip(mim_type_);
     if (curry_) {
         if (curry_.lit_u() > id.curry)
-            e.world().error(curry_.loc(), "curry counter cannot be greater than {}", id.curry);
+            Error(e.driver()).e(curry_.loc(), "curry counter cannot be greater than {}", id.curry).bail();
         else
             id.curry = curry_.lit_u();
     }
 
     if (trip_) {
         if (trip_.lit_u() > id.curry)
-            e.world().error(trip_.loc(), "trip counter cannot be greater than curry counter {}", (int)id.curry);
+            Error(e.driver())
+                .e(trip_.loc(), "trip counter cannot be greater than curry counter {}", (int)id.curry)
+                .bail();
         else
             id.trip = trip_.lit_u();
     }
@@ -587,12 +591,13 @@ void LamDecl::emit_body(Emitter& e) const {
     if (is_external()) {
         auto lam = doms().front()->lam_;
         if (!lam->is_closed())
-            e.world().error(
-                loc(),
-                "external function `{}` is not closed: its inferred type escapes into the scope of `{}`. This "
-                "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
-                "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
-                dbg().sym(), (*lam->free_vars().begin())->binder()->sym());
+            Error(e.driver())
+                .e(loc(),
+                   "external function `{}` is not closed: its inferred type escapes into the scope of `{}`. This "
+                   "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
+                   "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
+                   dbg().sym(), (*lam->free_vars().begin())->binder()->sym())
+                .bail();
         lam->externalize();
     }
     e.attach(annex_, sub_, dbg().sym(), def_);
