@@ -4,7 +4,11 @@
 
 ## Usage
 
-\include "cli-help.sh"
+\include{doc} "cli-help.md"
+
+## Remarks
+
+@note The *Developer Options* only exist if MimIR was built with `MIM_ENABLE_CHECKS`; see the [CMake switches](@ref building).
 
 In addition, you can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
 Mim looks for plugins in this order:
@@ -59,26 +63,13 @@ The syntax is `-X <plugin>:<arg>`:
 
 Errors and warnings are reported as `<file>:<row>:<col>: error: <message>`, followed by the offending source line with a caret underneath and any notes indented below it.
 Pass `--no-snippet` to omit the source line and caret, e.g. when the output is consumed by a script.
+Use `--loc-style` to pick how much of a location that header spells out:
+
+| `<style>` | Renders as               |
+| --------- | ------------------------ |
+| `full`    | `path:row:col-row:col` (default) |
+| `rowcol`  | `path:row:col`           |
+| `row`     | `path:row`               |
+| `msvc`    | `path(row,col)`          |
+
 Color is decided by the terminal and honors `NO_COLOR`, `CLICOLOR=0`, and `CLICOLOR_FORCE`.
-
-## Debugging Features {#clidebug}
-
-- The breakpoint-oriented flags below are developer options that are only available when MimIR is built with `MIM_ENABLE_CHECKS`.
-- You can increase the log level with `-V`.
-  - No `-V` corresponds to fe::Log::Level::Error.
-  - `-V` corresponds to fe::Log::Level::Warn.
-  - `-VV` corresponds to fe::Log::Level::Info.
-  - `-VVV` corresponds to fe::Log::Level::Verbose.
-  - `-VVVV` corresponds to fe::Log::Level::Debug. This output only exists in a Debug build of MimIR.
-  - `-VVVVV` corresponds to fe::Log::Level::Trace. This output only exists in a Debug build of MimIR.
-- You can trigger a breakpoint when constructing a [`mim::Def`](@ref mim::Def) with a specific global id.
-
-  For example, this triggers a breakpoint when the [`mim::Def`](@ref mim::Def) with [`gid`](@ref mim::Def::gid) `4223` is created:
-
-  ```
-  mim -b 4223 in.mim
-  ```
-
-- You can also trigger breakpoints at other specific events, for example when an alpha-equivalence check fails via `--break-on-alpha`.
-- You can measure per-[`mim::Phase`](@ref mim::Phase) wall-clock time with `--profile` and `--output-profile`.
-  See [Profiling](@ref profiling) for details, including how to view `--profile trace` output in `chrome://tracing`.

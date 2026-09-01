@@ -297,7 +297,7 @@ This section has more information about this topic.
 
 **See also:**
 
-- [Command-Line Reference](@ref clidebug)
+- [Command-Line Reference](@ref cli)
 - [GDB: A quick guide to make your debugging easier](https://johnnysswlab.com/gdb-a-quick-guide-to-make-your-debugging-easier/)
 - [Advanced GDB Usage](https://interrupt.memfault.com/blog/advanced-gdb)
 - [Debugging with GDB](https://sourceware.org/gdb/current/onlinedocs/gdb.html/)
@@ -384,6 +384,21 @@ valgrind --vgdb=yes --vgdb-error=0 build/bin/mim-gtest
 
 and then follow the instructions printed by Valgrind.
 
+### Logging {#logging}
+
+Each `-V` raises the log level by one; MimIR logs to `stderr`:
+
+| Flag     | `fe::Log::Level` |
+| -------- | ---------------- |
+| *none*   | `Error`          |
+| `-V`     | `Warn`           |
+| `-VV`    | `Info`           |
+| `-VVV`   | `Verbose`        |
+| `-VVVV`  | `Debug`          |
+| `-VVVVV` | `Trace`          |
+
+`Debug` and `Trace` output only exists in a `Debug` build.
+
 ### Triggering Breakpoints
 
 You can tell `mim` to trigger a breakpoint when certain events happen:
@@ -407,7 +422,7 @@ mim test.mim --profile tree    --output-profile -   # Indented tree that preserv
 mim test.mim --profile trace   --output-profile trace.json
 ```
 
-`--profile` on its own (with no value) defaults to `summary`.
+Any other `<mode>` defaults to `summary`, and `--output-profile -` on its own implies `--profile summary`.
 
 The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
 Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.

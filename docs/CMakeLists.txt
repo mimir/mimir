@@ -1,11 +1,11 @@
-set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.sh")
+set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.md")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
 set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
 
 add_custom_command(
     OUTPUT ${CLI_HELP}
-    COMMAND mim --help > ${CLI_HELP}
+    COMMAND mim --help-md > ${CLI_HELP}
     DEPENDS mim
     COMMENT "Generating help text of Mim's CLI"
 )
