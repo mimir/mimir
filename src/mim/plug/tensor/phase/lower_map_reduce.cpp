@@ -1,5 +1,7 @@
 #include "mim/plug/tensor/phase/lower_map_reduce.h"
 
+#include <optional>
+
 #include <mim/def.h>
 #include <mim/lam.h>
 
@@ -24,7 +26,8 @@ const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, cons
 
     if (s_in_ri == s_out_ri) {
         if (auto s_in_lit = Lit::isa<u64>(s_in_ri)) {
-            DefVec inputs(*s_in_lit, [&](size_t j) { return rec_broadcast(s_in, s_out, input->proj(j), r, i + 1); });
+            DefVec inputs(*s_in_lit,
+                          [&](size_t j) { return rec_broadcast(s_in, s_out, input->proj(*s_in_lit, j), r, i + 1); });
             return w.tuple(inputs);
         } else {
             // TODO: we could probably support non-literal sizes as well, but we would need to generate loops to copy
@@ -74,7 +77,9 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     return result;
 }
 
-static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
+namespace {
+
+std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
     auto& w       = bound->world();
     auto acc_ty   = acc->type();
     auto body     = w.mut_con({/* iter */ w.type_i64(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
@@ -82,26 +87,62 @@ static std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc
     return {body, for_loop};
 }
 
-static const Def* get_element_type(const Def* type, u64 r) {
-    auto cur = type;
-    for (u64 i = 0; i < r; ++i)
-        if (auto seq = cur->isa<Seq>())
-            cur = seq->body();
+/// Nests one counting loop per bound of @p dims inside @p cur, threading @p cur, @p exit and @p acc down to
+/// the innermost body; @returns the raw i64 loop counters.
+DefVec build_loops(World& w, Lam*& cur, const Def*& exit, const Def*& acc, Defs dims, std::string_view name) {
+    auto iters = DefVec();
+    iters.reserve(dims.size());
+    for (size_t i = 0, e = dims.size(); i != e; ++i) {
+        auto bound                  = w.call<core::bitcast>(w.type_i64(), dims[i]);
+        auto [body, for_call]       = counting_for(bound, acc, exit, w.sym(std::format("{}_{}", name, i)));
+        auto [iter, new_acc, yield] = body->vars<3>();
+        exit                        = yield;
+        acc                         = new_acc;
+        iters.emplace_back(iter);
+        cur->set(true, for_call);
+        cur = body;
+    }
+    return iters;
+}
+
+const Def* elem_type(const Def* type, u64 r) {
+    for (u64 i = 0; i != r; ++i)
+        if (auto seq = type->isa<Seq>())
+            type = seq->body();
         else
             break;
-    return cur;
+    return type;
 }
 
-static const Def* nested_extract(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r) {
-    auto T = get_element_type(matrix->type(), r);
-    return op_get(T, w.lit_nat(r), shape, matrix, coords);
+const Def* nested_extract(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r) {
+    return op_get(elem_type(matrix->type(), r), w.lit_nat(r), shape, matrix, coords);
 }
 
-static const Def*
-nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r, const Def* elem) {
-    auto T = get_element_type(matrix->type(), r);
-    return op_set(T, w.lit_nat(r), shape, matrix, coords, elem);
+const Def* nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r, const Def* elem) {
+    return op_set(elem_type(matrix->type(), r), w.lit_nat(r), shape, matrix, coords, elem);
 }
+
+/// The literal values of @p def's @p n projections, or nothing if one of them is not a literal.
+std::optional<fe::Vector<u64>> lit_projs(const Def* def, u64 n) {
+    auto res = fe::Vector<u64>(n);
+    for (u64 i = 0; i != n; ++i)
+        if (auto l = Lit::isa<u64>(def->proj(n, i)))
+            res[i] = *l;
+        else
+            return {};
+    return res;
+}
+
+/// `select(cond, t, f)` as `(f, t)#cond` (cf. %%core.select); `cond: Bool`.
+const Def* select(World& w, const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); }
+
+/// Clamps the i64 @p x into `[0, bound − 1]`.
+const Def* clamp(World& w, const Def* x, const Def* bound) {
+    auto hi = w.call(core::wrap::sub, core::Mode::none, Defs{bound, w.lit_i64(1)});
+    return w.call(core::extrema::smax, w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({x, hi}))}));
+}
+
+} // namespace
 
 const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     // meta arguments:
@@ -147,23 +188,11 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
 
     // ranks of each input must be literal so that we know how many `extract`s to emit
-    fe::Vector<u64> ris_nat(nis_nat);
-    for (u64 i = 0; i < nis_nat; ++i) {
-        auto l = Lit::isa<u64>(Ris->proj(nis_nat, i));
-        if (!l) {
-            log().w("rank of input {} of {} is not known at lowering time", i, app);
-            return nullptr;
-        }
-        ris_nat[i] = *l;
-    }
-    fe::Vector<u64> rps_nat(nps_nat);
-    for (u64 j = 0; j < nps_nat; ++j) {
-        auto l = Lit::isa<u64>(Rps->proj(nps_nat, j));
-        if (!l) {
-            log().w("rank of epilogue input {} of {} is not known at lowering time", j, app);
-            return nullptr;
-        }
-        rps_nat[j] = *l;
+    auto ris_nat = lit_projs(Ris, nis_nat);
+    auto rps_nat = lit_projs(Rps, nps_nat);
+    if (!ris_nat || !rps_nat) {
+        log().w("the input ranks of {} are not known at lowering time", app);
+        return nullptr;
     }
 
     // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
@@ -184,27 +213,15 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
         auto call   = w.app(ds_fun, inputs)->set("call");
 
-        auto new_inputs            = fun->var(0)->set("is");
-        auto [new_is, new_post_is] = new_inputs->projs<2>();
+        auto [new_inputs, cont]    = fun->vars<2>();
+        auto [new_is, new_post_is] = new_inputs->set("is")->projs<2>();
+        auto sr                    = Sr->projs(nloops);
 
         // Outer (parallel) loops over the leading Ro bounds of `Sr`, collecting the output iteration indices.
-        auto cont        = fun->var(1);
-        auto init_mat    = w.bot(cont->type()->as<Pi>()->dom());
-        auto acc         = init_mat;
+        const Def* acc   = w.bot(cont->type()->as<Pi>()->dom());
         auto current_mut = fun;
-        DefVec out_iters;
-        out_iters.reserve(ro);
-        for (u64 i = 0; i < ro; ++i) {
-            auto dim                    = Sr->proj(nloops, i);
-            auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-            auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forOut_" + std::to_string(i)));
-            auto [iter, new_acc, yield] = body->vars<3>();
-            cont                        = yield;
-            out_iters.push_back(w.call(core::conv::u, dim, iter));
-            acc = new_acc;
-            current_mut->set(true, for_call);
-            current_mut = body;
-        }
+        auto raw_out     = build_loops(w, current_mut, cont, acc, Defs(sr).subspan(0, ro), "forOut");
+        DefVec out_iters(ro, [&](size_t i) { return w.call(core::conv::u, sr[i], raw_out[i]); });
         auto wb_matrix = acc;
 
         // Write-back: run the `post` epilogue on the accumulated element, then narrow the result into the
@@ -212,56 +229,42 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         // acc_out takes the full (Ro+Rr) loop vector, but the reduction loops have already been folded away here, so we
         // pass 0 for those slots; acc_out must depend only on the leading Ro output indices.
         auto write_back    = w.mut_con(To)->set("writeBack");
-        auto element_final = write_back->var(0);
+        auto element_final = write_back->var();
         DefVec wb_iters    = out_iters;
         for (u64 j = 0; j < rr; ++j)
-            wb_iters.push_back(w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(w.type_i64(), 0)));
+            wb_iters.emplace_back(w.call(core::conv::u, sr[ro + j], w.lit_i64(0)));
         auto write_coords = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters)); // «Ro; Idx (So#k)»
 
         // Read one element from each epilogue input at its post_accs-mapped output-cell coordinates.
-        DefVec post_elements(nps_nat);
-        for (u64 j = 0; j < nps_nat; ++j) {
+        DefVec post_elements(nps_nat, [&](size_t j) {
             auto sps_j  = Sps->proj(nps_nat, j);
             auto coords = affine_map(post_accs->proj(nps_nat, j), Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords);
-            post_elements[j] = nested_extract(w, new_post_is->proj(nps_nat, j), coords, sps_j, rps_nat[j]);
-        }
+            return nested_extract(w, new_post_is->proj(nps_nat, j), coords, sps_j, (*rps_nat)[j]);
+        });
 
         auto after_post = w.mut_con(Tp)->set("afterPost");
-        after_post->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, after_post->var(0)));
+        after_post->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, after_post->var()));
         write_back->app(true, post, {w.tuple({element_final, w.tuple(post_elements)}), after_post});
 
         // Inner (reduction) loops over the trailing `Rr` bounds of `Sr`, collecting the reduction iteration
         // indices.
-        acc  = init;
-        cont = write_back;
-        DefVec red_iters;
-        red_iters.reserve(rr);
-        for (u64 j = 0; j < rr; ++j) {
-            auto dim                    = Sr->proj(nloops, ro + j);
-            auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-            auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forIn_" + std::to_string(j)));
-            auto [iter, new_acc, yield] = body->vars<3>();
-            cont                        = yield;
-            red_iters.push_back(w.call(core::conv::u, dim, iter));
-            acc = new_acc;
-            current_mut->set(true, for_call);
-            current_mut = body;
-        }
+        acc              = init;
+        cont             = write_back;
+        auto raw_red     = build_loops(w, current_mut, cont, acc, Defs(sr).subspan(ro, rr), "forIn");
         auto element_acc = acc;
 
         // The full loop iteration vector `(o…, r…)`; its moduli are exactly `Sr`.
         DefVec iters_v = out_iters;
-        iters_v.insert(iters_v.end(), red_iters.begin(), red_iters.end());
+        for (u64 j = 0; j != rr; ++j)
+            iters_v.emplace_back(w.call(core::conv::u, sr[ro + j], raw_red[j]));
         auto iters = w.tuple(iters_v);
 
         // Read one element from each input at its affine read coordinates.
-        DefVec input_elements(nis_nat);
-        for (u64 i = 0; i < nis_nat; ++i) {
-            auto input_matrix = new_is->proj(nis_nat, i);
-            auto sis_i        = Sis->proj(nis_nat, i);
-            auto coords       = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
-            input_elements[i] = nested_extract(w, input_matrix, coords, sis_i, ris_nat[i]);
-        }
+        DefVec input_elements(nis_nat, [&](size_t i) {
+            auto sis_i  = Sis->proj(nis_nat, i);
+            auto coords = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
+            return nested_extract(w, new_is->proj(nis_nat, i), coords, sis_i, (*ris_nat)[i]);
+        });
 
         comb->set("comb");
         post->set("post");
@@ -281,31 +284,18 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
     auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
     auto call   = w.app(ds_fun, inputs)->set("call");
 
-    auto new_inputs = fun->var(0)->set("is");
+    auto [new_inputs, cont] = fun->vars<2>();
+    new_inputs->set("is");
 
     // Output loops over `So`, collecting the raw i64 iteration indices for `compute`.
-    auto cont        = fun->var(1);
-    auto acc         = w.bot(cont->type()->as<Pi>()->dom());
+    const Def* acc   = w.bot(cont->type()->as<Pi>()->dom());
     auto current_mut = fun;
-    DefVec out_iters; // raw i64 loop counters
-    out_iters.reserve(ro);
-    for (u64 i = 0; i < ro; ++i) {
-        auto dim                    = So->proj(ro, i);
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("forOut_" + std::to_string(i)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        out_iters.push_back(iter);
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
-    }
-    auto wb_matrix = acc;
+    auto so          = So->projs(ro);
+    auto out_iters   = build_loops(w, current_mut, cont, acc, so, "forOut"); // raw i64 loop counters
+    auto wb_matrix   = acc;
 
     // Write the computed element at the (identity) output coordinates; convert the i64 counters to `Idx (So#k)`.
-    DefVec write_coords(ro);
-    for (u64 i = 0; i < ro; ++i)
-        write_coords[i] = w.call(core::conv::u, So->proj(ro, i), out_iters[i]);
+    DefVec write_coords(ro, [&](size_t i) { return w.call(core::conv::u, so[i], out_iters[i]); });
     auto element = compute(out_iters, new_inputs);
     current_mut->app(true, cont, nested_insert(w, wb_matrix, w.tuple(write_coords), So, ro, element));
     return call;
@@ -342,9 +332,6 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     }
     auto s_out = w.tuple(so);
 
-    // select(cond, t, f) == `(f, t)#cond` (cf. %core.select); cond : Bool.
-    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
-
     auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value] = new_inputs->projs<2>();
         DefVec clamped(rn); // per-axis read index, kept in range, as `Idx (s_in#d)`
@@ -357,11 +344,9 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
             if (mode_nat == 0) { // constant: a single unsigned `<` covers both bounds (underflow wraps high)
                 auto v_d = w.call(core::icmp::ul, w.tuple({in_d, sin_d}));
                 valid.push_back(v_d);
-                idx_i64 = sel(v_d, in_d, w.lit_i64(0));
+                idx_i64 = select(w, v_d, in_d, w.lit_i64(0));
             } else { // replicate: clamp the read to the nearest edge [0, s_in#d − 1]
-                auto sin_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{sin_d, w.lit_i64(1)});
-                idx_i64     = w.call(core::extrema::smax,
-                                     w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({in_d, sin_m1}))}));
+                idx_i64 = clamp(w, in_d, sin_d);
             }
             clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
         }
@@ -370,7 +355,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
         for (u64 d = 1; d < valid.size(); ++d)
             all_valid = w.call(core::bit2::and_, w.lit_nat(2), w.tuple({all_valid, valid[d]}));
-        return sel(all_valid, elem, value); // constant: fill out-of-region cells with `value`
+        return select(w, all_valid, elem, value); // constant: fill out-of-region cells with `value`
     };
 
     return build_pointwise(args, type, s_out, rn, compute);
@@ -415,30 +400,24 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         so[d] = (d == axn) ? w.lit_nat(acc_off) : Sis->proj(nisn, 0)->proj(rn, d);
     auto s_out = w.tuple(so);
 
-    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
-
     auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
         auto o_ax = out_iters[axn];
         // Read input `i` at `out_iters`, but with the `ax` coordinate shifted by off#i and clamped into input `i`.
         auto read_i = [&](u64 i) -> const Def* {
-            auto Sis_i  = Sis->proj(nisn, i);
-            auto e_i    = w.call<core::bitcast>(i64, Sis_i->proj(rn, axn));
-            auto e_i_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{e_i, w.lit_i64(1)});
-            auto loc    = w.call(core::wrap::sub, core::Mode::none, Defs{o_ax, off[i]});
-            auto clamp  = w.call(core::extrema::smax,
-                                 w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({loc, e_i_m1}))}));
-            DefVec coords(rn);
-            for (u64 d = 0; d < rn; ++d) {
-                auto idx_i64 = (d == axn) ? clamp : out_iters[d];
-                coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
-            }
+            auto Sis_i = Sis->proj(nisn, i);
+            auto e_i   = w.call<core::bitcast>(i64, Sis_i->proj(rn, axn));
+            auto loc   = w.call(core::wrap::sub, core::Mode::none, Defs{o_ax, off[i]});
+            auto in_ax = clamp(w, loc, e_i);
+            DefVec coords(rn, [&](size_t d) {
+                return w.call(core::conv::u, Sis_i->proj(rn, d), d == axn ? in_ax : out_iters[d]);
+            });
             return nested_extract(w, new_inputs->proj(nisn, i), w.tuple(coords), Sis_i, rn);
         };
         // Select chain: the highest `i` with off#i ≤ o_ax owns the cell (offsets increase, later wins).
         auto result = read_i(0);
         for (u64 i = 1; i < nisn; ++i) {
             auto cond = w.call(core::icmp::uge, w.tuple({o_ax, off[i]}));
-            result    = sel(cond, read_i(i), result);
+            result    = select(w, cond, read_i(i), result);
         }
         return result;
     };

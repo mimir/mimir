@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>
-
 #include <mim/phase.h>
 
 namespace mim::plug::tensor::phase {

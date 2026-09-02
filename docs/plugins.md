@@ -44,7 +44,8 @@ See [Generated Header](@ref plugin_h) below for why it is just this two-line ind
 \include "src/mim/plug/demo/demo.cpp"
 
 The function `mim_get_plugin` is the single entry point [`Driver`](@ref mim::Driver) looks up (via `dlopen`/`dlsym`) when a `plugin demo;` directive or `-p demo` loads the shared module.
-It returns a [`mim::Plugin`](@ref mim::Plugin) record: the plugin's name, the `MIM_VERSION` it was built against (checked against the loading `mim` binary), the `register_normalizers` function that `normalizers.cpp` defined via `MIM_demo_NORMALIZER_IMPL`, and an optional backend-registration callback (`nullptr` here, since `demo` provides no backend).
+It returns a [`mim::Plugin`](@ref mim::Plugin) record: the plugin's name, the `MIM_VERSION` it was built against (checked against the loading `mim` binary), the `register_normalizers` function that `normalizers.cpp` defined via `MIM_demo_NORMALIZER_IMPL`, an optional phase-registration callback (`{}` here, since `demo` defines no phases), and the [`-X` arguments](@ref mim::PluginArg) it understands (none here).
+It is a POD, so every field must be spelled out - `{}` for the ones a Plugin does not use.
 
 **`normalizers.cpp`**:
 

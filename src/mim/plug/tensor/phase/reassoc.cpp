@@ -6,7 +6,6 @@
 #include <array>
 
 #include <fe/format.h>
-#include <fe/worklist.h>
 
 #include <mim/def.h>
 #include <mim/plugin.h>
@@ -179,16 +178,6 @@ std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(Defs dims) {
     return std::pair{std::move(split), std::move(cost[n - 1])};
 }
 
-/// Charges @p d to the enclosing non-tuple consumer; tuples and packs are transparent arg wrappers.
-void count_consumers(const Def* d, DefMap<u64>& consumers) {
-    if (Axm::isa<tensor::product_2d>(d)) {
-        ++consumers[d];
-    } else if (d->isa<Tuple>() || d->isa<Pack>()) {
-        for (auto op : d->ops())
-            if (op) count_consumers(op, consumers);
-    }
-}
-
 } // namespace
 
 void Reassoc::start() {
@@ -205,22 +194,9 @@ void Reassoc::start() {
         }
     }
 
-    // The old world does not track uses, so count consumers up front: flatten() may only pull a
-    // product apart where doing so cannot leave it materialized for another consumer as well.
-    auto wl = fe::BFSWorklist<DefSet>();
-    for (auto root : old_world().roots())
-        wl.push(root);
-
-    while (!wl.empty()) {
-        auto def         = wl.pop();
-        auto transparent = def->isa<Tuple>() || def->isa<Pack>();
-        for (auto op : def->ops())
-            if (op) {
-                if (!transparent) count_consumers(op, consumers_);
-                wl.push(op);
-            }
-        if (def->type()) wl.push(def->type());
-    }
+    // flatten() may only pull a product apart where doing so cannot leave it materialized for another
+    // consumer as well.
+    consumers_ = count_consumers(old_world(), [](const Def* d) { return Axm::isa<tensor::product_2d>(d) != nullptr; });
 
     RWPhase::start();
 }

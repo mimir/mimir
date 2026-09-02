@@ -55,6 +55,15 @@ private:
     /// on a `⊥` memory), recursing through sigmas; anything else is `rewrite`d.
     const Def* materialize(const Def* old_ty, const Def* old_arg);
 
+    /// The already rewritten @p val as a `%buffer.Buf`, materializing a value-world tensor (e.g. a literal)
+    /// from its old-world @p old.
+    /// The result is *not* a buffer if @p old's type was not recorded as a tensor type.
+    const Def* to_buffer(const Def* val, const Def* old);
+
+    /// LowerToMem::to_buffer on each element of an `«n; …»` operand list, re-tupled so the tuple type is
+    /// re-inferred from the converted elements; `nullptr` if one element is not a recorded tensor type.
+    const Def* buffer_list(const Def* list, const Def* old_list, const Def* n);
+
     /// Fills a fresh buffer of (old) array type `arr_ty` with the (already rewritten) scalar `scalar`, via
     /// `%buffer.lit`. `%btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
     /// monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).

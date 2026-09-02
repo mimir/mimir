@@ -36,4 +36,6 @@ void reg_phases(Flags2Phases& phases) {
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"mem", MIM_VERSION, mem::register_normalizers, reg_phases}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+    return {"mem", MIM_VERSION, mem::register_normalizers, reg_phases, {}, {}};
+}

@@ -16,4 +16,4 @@ void reg_phases(Flags2Phases& phases) {
     });
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"nvptx", MIM_VERSION, nullptr, reg_phases}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"nvptx", MIM_VERSION, {}, reg_phases, {}, {}}; }

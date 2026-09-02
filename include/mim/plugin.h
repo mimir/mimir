@@ -124,8 +124,9 @@ struct Plugin {
     /// Callback for registering the Plugin's callbacks for Phase%s.
     void (*register_phases)(Flags2Phases&);
 
-    const PluginArg* args = nullptr; ///< The `-X` arguments this Plugin understands; see PluginArg.
-    size_t num_args       = 0;       ///< Number of Plugin::args.
+    // No default member initializers: only a POD is C-compatible as an `extern "C"` return type.
+    const PluginArg* args; ///< The `-X` arguments this Plugin understands; see PluginArg.
+    size_t num_args;       ///< Number of Plugin::args.
 };
 
 /// @name Plugin Interface

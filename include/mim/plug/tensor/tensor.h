@@ -2,7 +2,10 @@
 
 #include <optional>
 
+#include <fe/worklist.h>
+
 #include <mim/lam.h>
+#include <mim/tuple.h>
 #include <mim/world.h>
 
 #include "mim/plug/tensor/autogen.h"
@@ -74,6 +77,40 @@ inline const Def* op_set(const Def* T, const Def* r, const Def* s, const Def* ar
     auto f  = w.app(w.annex<tensor::set>(), {T, r, s});
     f       = w.app(f, {index, arr, x});
     return f;
+}
+
+/// Counts the consumers of every def of @p world matched by @p pred.
+/// Tuples and packs are transparent argument wrappers, so a wrapped def is charged to the enclosing
+/// non-tuple consumer - a shared argument tuple charges each of its users, and a def used twice in one
+/// argument list counts twice.
+/// A phase whose world does not track uses needs this up front.
+template<class Pred>
+DefMap<u64> count_consumers(const World& world, Pred pred) {
+    auto counts = DefMap<u64>();
+    auto charge = [&](this auto&& charge, const Def* d) -> void {
+        if (pred(d))
+            ++counts[d];
+        else if (d->isa<Tuple>() || d->isa<Pack>())
+            for (auto op : d->ops())
+                if (op) charge(op);
+    };
+
+    auto wl = fe::BFSWorklist<DefSet>();
+    for (auto root : world.roots())
+        wl.push(root);
+
+    while (!wl.empty()) {
+        auto def         = wl.pop();
+        auto transparent = def->isa<Tuple>() || def->isa<Pack>();
+        for (auto op : def->ops())
+            if (op) {
+                if (!transparent) charge(op);
+                wl.push(op);
+            }
+        if (def->type()) wl.push(def->type());
+    }
+
+    return counts;
 }
 
 } // namespace mim::plug::tensor
