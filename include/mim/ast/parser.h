@@ -121,27 +121,29 @@ private:
     Ptr<Expr> parse_match_expr();
     ///@}
 
-    enum PtrnStyle {
-        Style_Bit   = 0b001,
-        Brckt_Style = 0b001,
-        Paren_Style = 0b000,
-        Implicit    = 0b010,
-    };
-
     /// @name parse ptrns
     ///@{
-    static bool is_paren_style(int style) { return (style & Style_Bit) == Paren_Style; }
-    static bool is_brket_style(int style) { return (style & Style_Bit) == Brckt_Style; }
-    static bool is_implicit(int style) { return (style & Implicit); }
-    Ptr<Ptrn> parse_ptrn(int style, std::string_view ctxt, Prec = Prec::Bot);
+
+    /// A pattern `p` binds a name, whereas a binder `b` (PtrnStyle::brckt) also accepts a bare type expression.
+    struct PtrnStyle {
+        bool brckt    = false;
+        bool implicit = false; ///< Also accept `{b, ..., b}`.
+    };
+
+    Ptr<Ptrn> parse_ptrn(PtrnStyle, std::string_view ctxt, Prec = Prec::Bot);
 
     /// As above but builds @p ctxt via std::format.
     template<class... Args>
-    Ptr<Ptrn> parse_ptrn(int style, Prec prec, std::format_string<Args...> fmt, Args&&... args) {
+    Ptr<Ptrn> parse_ptrn(PtrnStyle style, Prec prec, std::format_string<Args...> fmt, Args&&... args) {
         return parse_ptrn(style, std::format(fmt, std::forward<Args>(args)...), prec);
     }
-    Ptr<Ptrn> parse_ptrn_(int style, std::string_view ctxt, Prec = Prec::Bot);
-    Ptr<TuplePtrn> parse_tuple_ptrn(int style);
+    Ptr<Ptrn> parse_ptrn_(PtrnStyle, std::string_view ctxt, Prec = Prec::Bot);
+    Ptr<TuplePtrn> parse_tuple_ptrn(PtrnStyle);
+
+    /// The empty Sym - as opposed to `_` - is what lets Ptrn::to_expr turn this binder back into an expression.
+    Ptr<IdPtrn> anon_ptrn(Loc loc, Ptr<Expr>&& type) {
+        return ptr<IdPtrn>(loc, Dbg(loc.anew_begin()), std::move(type));
+    }
     ///@}
 
     /// @name parse decls
