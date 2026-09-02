@@ -43,8 +43,8 @@ std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const
 std::pair<const Def*, const Def*>
 affine_map(const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs, const Def* mem) {
     auto& w = mem->world();
-    auto a  = w.app(w.annex<affine::map>(), w.tuple({m, n}));
-    a       = w.app(a, w.tuple({sin, sout}));
+    auto a  = w.app(w.annex<affine::map>(), Defs{m, n});
+    a       = w.app(a, Defs{sin, sout});
     a       = w.app(a, f);
     a       = w.app(a, idxs);
     a       = w.app(a, mem->type()->as<App>()->arg());
@@ -100,9 +100,9 @@ void apply_cps(World& w, Lam* mut, const Def* f, DefVec parts, const Def* k) {
     auto dom = f->type()->as<Pi>()->dom();
     if (dom->num_projs() == parts.size() + 1) {
         parts.emplace_back(k);
-        mut->app(true, f, w.tuple(parts));
+        mut->app(true, f, parts);
     } else {
-        mut->app(true, f, w.tuple({w.tuple(parts), k}));
+        mut->app(true, f, Defs{w.tuple(parts), k});
     }
 }
 
@@ -149,13 +149,7 @@ struct Inputs {
     DefVec dptrs;
 };
 
-Inputs alloc_copy_inputs(World& w,
-                         const Def* m0,
-                         const Def* m1,
-                         const DefVec& ris,
-                         const DefVec& sis,
-                         const DefVec& tis,
-                         const Def* inputs) {
+Inputs alloc_copy_inputs(World& w, const Def* m0, const Def* m1, Defs ris, Defs sis, Defs tis, const Def* inputs) {
     DefVec dptrs(ris.size());
     for (size_t i = 0; i != ris.size(); ++i) {
         auto alloc_copy    = w.app(w.app(w.annex<gpu::buf_alloc_copy>(), {ris[i], sis[i], tis[i]}),
@@ -249,9 +243,9 @@ Lam* build_kernel(World& w,
         = w.call(core::wrap::add, core::Mode::none,
                  Defs{w.call(core::wrap::mul, core::Mode::none, Defs{group_i64, w.lit_i64(grid.n_items)}), item_i64});
 
-    auto in_range     = w.call(core::icmp::ul, w.tuple({flat, w.lit_i64(grid.total)}));
+    auto in_range     = w.call(core::icmp::ul, Defs{flat, w.lit_i64(grid.total)});
     auto early_return = w.mut_con(w.sigma(Defs{}))->set("outOfRange");
-    early_return->app(true, k_ret, w.tuple({k_global, k_shared, k_const, k_local}));
+    early_return->app(true, k_ret, Defs{k_global, k_shared, k_const, k_local});
     auto body = w.mut_con(w.sigma(Defs{}))->set("inRange");
     kernel->set(true, w.app(w.extract(w.tuple({early_return, body}), in_range), w.tuple()));
 
@@ -280,7 +274,7 @@ Lam* build_kernel(World& w,
     auto [post_mem, elem_post] = after_post->vars<2>();
     auto final_mem
         = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, fold_index(So, write_coords)), elem_post});
-    after_post->app(true, k_ret, w.tuple({final_mem, k_shared, k_const, k_local}));
+    after_post->app(true, k_ret, Defs{final_mem, k_shared, k_const, k_local});
     apply_cps(w, write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
 
     const Def* acc   = w.tuple({k_global, init});
@@ -326,8 +320,8 @@ Lam* build_teardown(World& w,
                     const Def* Ro,
                     const Def* So,
                     const Def* Tp,
-                    const DefVec& dptrs,
-                    const DefVec& post_dptrs,
+                    Defs dptrs,
+                    Defs post_dptrs,
                     const Def* out_dptr,
                     const Def* cont) {
     auto global_ty = w.annex<gpu::GlobalM>();
@@ -344,13 +338,13 @@ Lam* build_teardown(World& w,
 
     auto cur_global = cb_global;
     for (auto dptr : dptrs)
-        cur_global = w.call(gpu::free::block, w.tuple({cur_global, dptr}));
+        cur_global = w.call(gpu::free::block, Defs{cur_global, dptr});
     for (auto dptr : post_dptrs)
-        cur_global = w.call(gpu::free::block, w.tuple({cur_global, dptr}));
-    cur_global = w.call(gpu::free::block, w.tuple({cur_global, out_dptr}));
+        cur_global = w.call(gpu::free::block, Defs{cur_global, dptr});
+    cur_global = w.call(gpu::free::block, Defs{cur_global, out_dptr});
 
-    auto final_mem = w.app(w.annex<gpu::auto_deinit>(), w.tuple({cb_mem, cur_global, post_const}));
-    after_launch->app(true, cont, w.tuple({final_mem, host_buf}));
+    auto final_mem = w.app(w.annex<gpu::auto_deinit>(), Defs{cb_mem, cur_global, post_const});
+    after_launch->app(true, cont, Defs{final_mem, host_buf});
     return after_launch;
 }
 
@@ -379,24 +373,22 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto c  = rewrite(app->callee())->as<App>();
 
     auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
-    auto [nis, nps]                                                    = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rn, sched_ty]                                    = meta->projs<5>();
-    auto [So, Sr, sched]                                               = shapes->projs<3>();
-    auto [Tis, Ris, Sis, Tps, Rps, Sps]                                = in_tys->projs<6>();
-    auto [comb, init, post]                                            = comb_init->projs<3>();
-    auto [accs, post_accs]                                             = accs_all->projs<2>();
-    auto result_ty                                                     = rewrite(app->type());
+    auto [nis, nps]                     = nis_nps->projs<2>([](auto d) { return Lit::isa(d); });
+    auto [To, Tp, Ro, Rn, sched_ty]     = meta->projs<5>();
+    auto [So, Sr, sched]                = shapes->projs<3>();
+    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
+    auto [comb, init, post]             = comb_init->projs<3>();
+    auto [accs, post_accs]              = accs_all->projs<2>();
+    auto result_ty                      = rewrite(app->type());
 
-    auto nis_l = Lit::isa<nat_t>(nis);
-    auto nps_l = Lit::isa<nat_t>(nps);
-    auto ro_l  = Lit::isa<nat_t>(Ro);
-    auto rn_l  = Lit::isa<nat_t>(Rn);
-    if (!nis_l || !nps_l || !ro_l || !rn_l || *rn_l < *ro_l) {
+    auto ro_l = Lit::isa<nat_t>(Ro);
+    auto rn_l = Lit::isa<nat_t>(Rn);
+    if (!nis || !nps || !ro_l || !rn_l || *rn_l < *ro_l) {
         log().w("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
         return Super::rewrite_imm_App(app);
     }
-    auto nis_n = *nis_l;
-    auto nps_n = *nps_l;
+    auto nis_n = *nis;
+    auto nps_n = *nps;
     auto ro    = *ro_l;
     auto rr    = *rn_l - *ro_l;
 
@@ -460,18 +452,18 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
         kernel_arg_tys[nis_n + j] = post_inputs.dptrs[j]->type();
     kernel_arg_tys[nis_n + nps_n] = out_dptr->type();
 
-    auto launch = w.app(w.annex<gpu::launch>(), w.tuple({w.lit_nat(nis_n + nps_n + 1), w.tuple(kernel_arg_tys)}));
-    launch = w.app(launch, w.tuple({w.lit_nat(grid.n_groups), w.lit_nat(grid.n_items), w.annex<gpu::default_stream>(),
-                                    w.lit_ff(), w.tuple(Defs{})}));
-    launch = w.app(launch, kernel);
+    auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(nis_n + nps_n + 1), w.tuple(kernel_arg_tys)});
+    launch      = w.app(launch, Defs{w.lit_nat(grid.n_groups), w.lit_nat(grid.n_items), w.annex<gpu::default_stream>(),
+                                     w.lit_ff(), w.tuple()});
+    launch      = w.app(launch, kernel);
 
     DefVec kernel_args = inputs.dptrs;
     kernel_args.insert(kernel_args.end(), post_inputs.dptrs.begin(), post_inputs.dptrs.end());
     kernel_args.push_back(out_dptr);
-    launch = w.app(launch, w.tuple(kernel_args));
+    launch = w.app(launch, kernel_args);
 
     auto after_launch = build_teardown(w, Ro, So, Tp, inputs.dptrs, post_inputs.dptrs, out_dptr, cont);
-    auto launch_call  = w.app(launch, w.tuple({w.tuple({post_inputs.mem, out_global, h_const}), after_launch}));
+    auto launch_call  = w.app(launch, Defs{w.tuple({post_inputs.mem, out_global, h_const}), after_launch});
     fun->set(true, launch_call);
 
     return call;
