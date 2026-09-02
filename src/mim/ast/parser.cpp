@@ -5,91 +5,7 @@
 
 #include "mim/driver.h"
 
-// clang-format off
-#define C_PRIMARY     \
-              K_Univ: \
-    case Tag::K_Nat:  \
-    case Tag::K_Idx:  \
-    case Tag::K_Bool: \
-    case Tag::K_ff:   \
-    case Tag::K_tt:   \
-    case Tag::K_i1:   \
-    case Tag::K_i8:   \
-    case Tag::K_i16:  \
-    case Tag::K_i32:  \
-    case Tag::K_i64:  \
-    case Tag::K_I1:   \
-    case Tag::K_I8:   \
-    case Tag::K_I16:  \
-    case Tag::K_I32:  \
-    case Tag::K_I64:  \
-    case Tag::T_star: \
-    case Tag::T_box
-
-#define C_ID         \
-              M_anx: \
-    case Tag::M_id
-
-#define C_LIT        \
-              T_bot: \
-    case Tag::T_top: \
-    case Tag::L_str: \
-    case Tag::L_c:   \
-    case Tag::L_s:   \
-    case Tag::L_u:   \
-    case Tag::L_f:   \
-    case Tag::L_i
-
-#define C_LAM        \
-              K_lam: \
-    case Tag::K_con: \
-    case Tag::K_fun
-
-#define C_DECL        \
-              K_axm:  \
-    case Tag::K_let:  \
-    case Tag::K_rec:  \
-    case Tag::K_ccon: \
-    case Tag::K_cfun: \
-    case Tag::C_LAM
-
-#define C_PI             \
-              D_brace_l: \
-    case Tag::K_Cn:      \
-    case Tag::K_Fn
-
-#define C_LM        \
-              T_lm: \
-    case Tag::K_cn: \
-    case Tag::K_fn
-
-#define C_EXPR                          \
-              C_PRIMARY:                \
-    case Tag::C_ID:                     \
-    case Tag::C_LIT:                    \
-    case Tag::C_DECL:                   \
-    case Tag::C_PI:                     \
-    case Tag::C_LM:                     \
-    case Tag::K_Type:    /*TypeExpr*/   \
-    case Tag::K_Rule:    /*RuleExpr*/   \
-    case Tag::K_ins:     /*InsertExpr*/ \
-    case Tag::K_ret:     /*RetExpr*/    \
-    case Tag::D_angle_l: /*PackExpr*/   \
-    case Tag::D_brckt_l: /*SigmaExpr*/  \
-    case Tag::D_curly_l: /*UniqExpr*/   \
-    case Tag::D_paren_l: /*TupleExpr*/  \
-    case Tag::D_quote_l  /*ArrExpr*/
-
-#define C_CURRIED_B       \
-              D_brace_l:  \
-    case Tag::D_brckt_l:  \
-    case Tag::D_quote_l
-
-#define C_CURRIED_P       \
-              D_brace_l:  \
-    case Tag::D_brckt_l:  \
-    case Tag::D_paren_l
-// clang-format on
+#include "family.h"
 
 namespace mim::ast {
 
@@ -102,13 +18,8 @@ using Tag = Tok::Tag;
 Ptr<Module> Parser::parse_module() {
     auto track = tracker();
     Ptrs<Import> imports;
-    while (true) {
-        if (ahead().isa(Tag::K_import) || ahead().isa(Tag::K_plugin)) {
-            if (auto import = parse_import_or_plugin()) imports.emplace_back(std::move(import));
-        } else {
-            break;
-        }
-    }
+    while (ISA(ahead().tag(), C_IMPORT))
+        if (auto import = parse_import_or_plugin()) imports.emplace_back(std::move(import));
     auto decls = parse_decls();
     bool where = ahead().isa(Tag::K_where);
     expect(Tag::EoF, "module");
@@ -275,15 +186,12 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
             }
             case Tag::C_EXPR: {
                 if (should_reduce(curr_prec, Prec::App)) return lhs;
-                switch (ahead().tag()) {
-                    case Tag::C_DECL:
-                        error()
-                            .w(ahead().loc(), "you are passing a declaration expression as argument")
-                            .n(lhs->loc(), "passed to this expression")
-                            .n("if this was your intention, consider parenthesizing the declaration expression")
-                            .n(lhs->loc().anew_end(), "or insert a `;` here");
-                    default: break;
-                }
+                if (ISA(ahead().tag(), C_DECL))
+                    error()
+                        .w(ahead().loc(), "you are passing a declaration expression as argument")
+                        .n(lhs->loc(), "passed to this expression")
+                        .n("if this was your intention, consider parenthesizing the declaration expression")
+                        .n(lhs->loc().anew_end(), "or insert a `;` here");
                 auto rhs = parse_expr("argument to an application", Prec::App);
                 lhs      = ptr<AppExpr>(track, false, std::move(lhs), std::move(rhs));
                 continue;
@@ -359,8 +267,7 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
         case Tag::K_ins:     return parse_insert_expr();
         case Tag::K_ret:     return parse_ret_expr();
         case Tag::D_curly_l: return parse_uniq_expr();
-        case Tag::D_quote_l:
-        case Tag::D_angle_l: return parse_seq_expr();
+        case Tag::C_SEQ:     return parse_seq_expr();
         case Tag::D_brckt_l: return parse_sigma_expr();
         case Tag::D_paren_l: return parse_tuple_expr();
         case Tag::K_Type:    return parse_type_expr();
@@ -468,14 +375,14 @@ Ptr<Expr> Parser::parse_pi_expr() {
         entity = "returning continuation type";
 
     auto domt = tracker();
-    auto prec = tag == Tag::K_Cn ? Prec::Bot : Prec::Pi;
+    auto prec = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
     auto ptrn = parse_ptrn(Brckt_Style | Implicit, prec, "domain of a {}", entity);
     auto dom  = ptr<PiExpr::Dom>(domt, std::move(ptrn));
 
-    auto codom = tag != Tag::K_Cn ? (expect(Tag::T_arrow, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity))
-                                  : nullptr;
+    auto codom = ISA(tag, C_CN) ? nullptr
+                                : (expect(Tag::T_arrow, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
 
-    if (tag == Tag::K_Fn) dom->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
+    if (ISA(tag, C_FN)) dom->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
     return ptr<PiExpr>(track, tag, std::move(dom), std::move(codom));
 }
 
@@ -627,15 +534,11 @@ Ptrs<ValDecl> Parser::parse_decls() {
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
             case Tag::K_axm:       decls.emplace_back(parse_axm_decl());        break;
-            case Tag::K_ccon:
-            case Tag::K_cfun:      decls.emplace_back(parse_c_decl());            break;
+            case Tag::C_CDECL:     decls.emplace_back(parse_c_decl());            break;
             case Tag::K_let:       decls.emplace_back(parse_let_decl());          break;
             case Tag::K_rec:       decls.emplace_back(parse_rec_decl(true));      break;
-            case Tag::K_con:
-            case Tag::K_fun:
-            case Tag::K_lam:       decls.emplace_back(parse_lam_decl());          break;
-            case Tag::K_norm:
-            case Tag::K_rule:      decls.emplace_back(parse_rule_decl());         break;
+            case Tag::C_LAM:       decls.emplace_back(parse_lam_decl());          break;
+            case Tag::C_RULE:      decls.emplace_back(parse_rule_decl());         break;
             default:               return decls;
         }
         // clang-format on
@@ -741,7 +644,7 @@ Ptr<ValDecl> Parser::parse_rule_decl() {
 Ptr<LamDecl> Parser::parse_lam_decl() {
     auto track    = tracker();
     auto tag      = lex().tag();
-    auto prec     = tag == Tag::K_cn || tag == Tag::K_con ? Prec::Bot : Prec::Pi;
+    auto prec     = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
     bool external = (bool)accept(Tag::K_extern);
 
     bool decl;
@@ -766,16 +669,11 @@ Ptr<LamDecl> Parser::parse_lam_decl() {
         auto filter = accept(Tag::T_at) ? parse_expr("filter") : nullptr;
         doms.emplace_back(ptr<LamDecl::Dom>(track, std::move(ptrn), std::move(filter)));
 
-        switch (ahead().tag()) {
-            case Tag::C_CURRIED_P: continue;
-            default: break;
-        }
-        break;
+        if (!ISA(ahead().tag(), C_CURRIED_P)) break;
     }
 
     auto codom = accept(Tag::T_colon) ? parse_expr(Prec::Arrow, "codomain of a {}", entity) : nullptr;
-    if (tag == Tag::K_fn || tag == Tag::K_fun)
-        doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
+    if (ISA(tag, C_FN)) doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
 
     expect(Tag::T_assign, "body of a {}", entity);
     auto body = parse_expr("body of a {}", entity);
@@ -785,10 +683,8 @@ Ptr<LamDecl> Parser::parse_lam_decl() {
 }
 
 Ptr<RecDecl> Parser::parse_and_decl() {
-    switch (ahead(1).tag()) {
-        case Tag::C_LAM: return lex(), parse_lam_decl();
-        default: return parse_rec_decl(false);
-    }
+    if (ISA(ahead(1).tag(), C_LAM)) return lex(), parse_lam_decl();
+    return parse_rec_decl(false);
 }
 
 } // namespace mim::ast

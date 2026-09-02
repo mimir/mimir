@@ -3,6 +3,8 @@
 
 #include "mim/ast/ast.h"
 
+#include "family.h"
+
 using namespace std::literals;
 
 namespace mim::ast {
@@ -529,7 +531,7 @@ Lam* LamDecl::Dom::emit_value(Emitter& e) const {
 
 void LamDecl::emit_decl(Emitter& e) const {
     auto _      = e.world().push(loc());
-    bool is_cps = tag_ == Tag::K_cn || tag_ == Tag::K_con || tag_ == Tag::K_fn || tag_ == Tag::K_fun;
+    bool is_cps = !ISA(tag_, C_DS);
 
     // Iterate over all doms: Build a Lam for curr dom, by first building a curried Pi for the remaining doms.
     for (size_t i = 0, n = num_doms(); i != n; ++i) {

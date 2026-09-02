@@ -28,7 +28,7 @@ std::string Tok::str() const {
 /// @name std::ostream operator
 ///@{
 std::ostream& operator<<(std::ostream& os, Tok tok) {
-    if (tok.isa(Tok::Tag::M_anx) || tok.isa(Tok::Tag::M_id) || tok.isa(Tok::Tag::L_str)) return os << tok.sym();
+    if (tok.has_sym()) return os << tok.sym();
     return os << Tok::tag2str(tok.tag());
 }
 ///@}

@@ -1,5 +1,7 @@
 #include "mim/ast/ast.h"
 
+#include "family.h"
+
 using namespace std::literals;
 
 namespace mim::ast {
@@ -126,8 +128,7 @@ void PrimaryExpr::bind(Scopes&) const {}
 void LitExpr::bind(Scopes& s) const {
     if (type()) {
         type()->bind(s);
-        if (tag() == Tag::L_str || tag() == Tag::L_c || tag() == Tag::L_i)
-            s.error().e(type()->loc(), "a `{}` must not have a type annotation", tag());
+        if (ISA(tag(), C_LIT_TYPED)) s.error().e(type()->loc(), "a `{}` must not have a type annotation", tag());
     } else {
         if (tag() == Tag::L_f) s.error().e(loc(), "floating-point literal requires a type annotation");
     }
@@ -180,7 +181,7 @@ void PiExpr::bind(Scopes& s) const {
     s.push();
     dom()->bind(s);
     if (codom()) {
-        if (tag() == Tag::K_Cn) s.error().e(codom()->loc(), "a continuation must not have a codomain");
+        if (ISA(tag(), C_CN)) s.error().e(codom()->loc(), "a continuation must not have a codomain");
         codom()->bind(s);
     }
     s.pop();
@@ -343,12 +344,12 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     if (auto filter = doms().back()->filter()) {
         if (auto pe = filter->isa<PrimaryExpr>()) {
-            if (pe->tag() == Tag::K_tt && (tag() == Tag::K_lam || tag() == Tag::T_lm))
+            if (pe->tag() == Tag::K_tt && ISA(tag(), C_DS))
                 s.error().w(filter->loc(),
                             "`tt`-filter superfluous as the last curried function group of a `{}` receives a "
                             "`tt`-filter by default",
                             tag());
-            if (pe->tag() == Tag::K_ff && (tag() != Tag::K_lam && tag() != Tag::T_lm))
+            if (pe->tag() == Tag::K_ff && !ISA(tag(), C_DS))
                 s.error().w(filter->loc(),
                             "`ff`-filter superfluous as the last curried function group of a `{}` receives a "
                             "`ff`-filter by default",
@@ -357,8 +358,7 @@ void LamDecl::bind_decl(Scopes& s) const {
     }
 
     if (codom()) {
-        if (tag() == Tag::K_con || tag() == Tag::K_cn)
-            s.error().e(codom()->loc(), "a continuation must not have a codomain");
+        if (ISA(tag(), C_CN)) s.error().e(codom()->loc(), "a continuation must not have a codomain");
         codom()->bind(s);
     }
 
