@@ -10,12 +10,15 @@ Usage:
         --namespace mim -I /custom/include
 
 Requires the `libclang` wheel (bundles libclang + its Python bindings); it is
-installed into the build venv by CMake, which also invokes this script.
+installed into the build venv by CMake, which also invokes this script.  Its
+bindings drive the toolchain's own libclang where there is one (`$MIM_LIBCLANG`
+overrides the search); the wheel's bundled library is the fallback.
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import difflib
 import json
 import os
@@ -57,6 +60,16 @@ except Exception as e:  # ImportError, or libclang failing to load
 clang = clang.cindex
 CursorKind = clang.CursorKind
 TypeKind = clang.TypeKind
+
+# A libclang newer than these bindings reports kinds they have no name for, and
+# an unnamed kind makes every `.kind` access raise; a placeholder is simply never
+# equal to a kind we look for.
+for _enum in (CursorKind, TypeKind):
+    for _id in range(1, 1000):
+        try:
+            _enum.from_id(_id)
+        except ValueError:
+            setattr(_enum, f"UNKNOWN_{_id}", _enum(_id))
 
 
 # ---------------------------------------------------------------------------
@@ -1466,6 +1479,43 @@ def _clang_resource_include() -> str | None:
     return None
 
 
+_LIBCLANG = {"darwin": "libclang.dylib", "win32": "libclang.dll"}.get(sys.platform, "libclang.so")
+
+
+def _toolchain_libclang() -> str | None:
+    """The libclang belonging to the toolchain that compiles what we generate.
+
+    The pip `libclang` wheel is stuck at 18 and silently mis-parses a standard
+    library younger than itself: a Homebrew LLVM bump turned every unresolved
+    declaration into `int` and the emitted bindings stopped compiling.  Parsing
+    with the toolchain's own libclang keeps parser and standard library in
+    lock-step; the wheel remains the fallback for toolchains that ship none.
+    """
+    cands = [os.environ.get("MIM_LIBCLANG", "")]
+    for var in ("LLVM_PREFIX", "LLVM_PATH"):
+        if prefix := os.environ.get(var):
+            cands.append(str(Path(prefix) / "lib" / _LIBCLANG))
+    for exe in _clang_exes("CXX", ("clang++", "clang")):
+        try:
+            proc = subprocess.run(
+                [exe, f"-print-file-name={_LIBCLANG}"], capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if proc.returncode == 0:
+            cands.append(proc.stdout.strip())
+
+    for cand in cands:
+        if not cand or not Path(cand).is_file():
+            continue
+        try:
+            ctypes.CDLL(cand)
+        except OSError:
+            continue
+        return cand
+    return None
+
+
 # ---------------------------------------------------------------------------
 #  CLI
 # ---------------------------------------------------------------------------
@@ -1686,6 +1736,9 @@ def main(argv=None):
             "(configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)",
             file=sys.stderr,
         )
+
+    if lib := _toolchain_libclang():
+        clang.Config.set_library_file(lib)
 
     index = clang.Index.create()
     try:
