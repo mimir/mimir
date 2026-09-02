@@ -64,16 +64,16 @@ const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
 
     if constexpr (id == equiv::Ae || id == equiv::AE) {
         auto res = Checker::alpha<Checker::Test>(a, b);
-        if (res ^ eq) arg->world().error(arg->loc(), "'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "");
+        if (res ^ eq) arg->blame("'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "").bail();
     } else {
         auto res = a == b;
-        if (res ^ eq) arg->world().error(arg->loc(), "'{}' and '{}' {}structural-equivalent", a, b, !res ? "not " : "");
+        if (res ^ eq) arg->blame("'{}' and '{}' {}structural-equivalent", a, b, !res ? "not " : "").bail();
     }
     return a;
 }
 
 const Def* normalize_check_bot(const Def*, const Def* c, const Def* arg) {
-    if (!arg->isa<Bot>()) c->world().error(c->loc(), "'{}' is not bottom", arg);
+    if (!arg->isa<Bot>()) c->blame("'{}' is not bottom", arg).bail();
     return arg;
 }
 

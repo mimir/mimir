@@ -118,11 +118,9 @@ static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destruc
  * Driver
  */
 
+fe::Error& World::error() { return driver().error(); }
+const fe::Error& World::error() const { return driver().error(); }
 const fe::Log& World::log() const { return driver().log(); }
-
-void World::error_(Loc loc, const std::function<std::string()>& fmt) const {
-    Error(driver()).msg(loc, Error::Tag::Error, fmt).bail();
-}
 Flags& World::flags() { return driver().flags(); }
 
 Sym World::sym(const char* s) { return driver().sym(s); }
@@ -138,8 +136,8 @@ const Type* World::type(const Def* level) {
     level = level->zonk();
 
     if (!level->isa_type<Univ>())
-        error(err_loc(level), "argument `{}` to `Type` must be of type `Univ` but is of type `{}`", level,
-              type_of(level));
+        level->blame("argument `{}` to `Type` must be of type `Univ` but is of type `{}`", level, type_of(level))
+            .bail();
 
     return unify<Type>(level)->as<Type>();
 }
@@ -148,8 +146,8 @@ const Def* World::uinc(const Def* op, level_t offset) {
     op = op->zonk();
 
     if (!op->isa_type<Univ>())
-        error(err_loc(op), "operand `{}` of a universe increment must be of type `Univ` but is of type `{}`", op,
-              type_of(op));
+        op->blame("operand `{}` of a universe increment must be of type `Univ` but is of type `{}`", op, type_of(op))
+            .bail();
 
     if (auto l = Lit::isa(op)) return lit_univ(*l + 1);
     return unify<UInc>(op, offset);
@@ -178,7 +176,7 @@ const Def* World::umax(Defs ops_) {
             if (auto type = op->isa<Type>())
                 op = type->level();
             else
-                error(err_loc(op), "operand `{}` must be a `Type` of some universe level", op);
+                op->blame("operand `{}` must be a `Type` of some universe level", op).bail();
         }
 
         flatten_umax(ops, op);
@@ -189,8 +187,8 @@ const Def* World::umax(Defs ops_) {
     res.reserve(ops.size());
     for (auto op : ops) {
         if (!op->isa_type<Univ>())
-            error(err_loc(op), "operand `{}` of a universe max must be of type `Univ` but is of type `{}`", op,
-                  type_of(op));
+            op->blame("operand `{}` of a universe max must be of type `Univ` but is of type `{}`", op, type_of(op))
+                .bail();
 
         if (auto l = Lit::isa(op))
             lvl = std::max(lvl, *l);
@@ -236,18 +234,16 @@ const Def* World::app(const Def* callee, const Def* arg) {
 
     auto pi = callee->isa_type<Pi>();
     if (!pi)
-        Error(driver())
-            .error(err_loc(callee), "callee is not of function type")
-            .note("callee `{}` has type `{}`", callee, type_of(callee))
-            .note(callee->loc(), "callee `{}` declared here", callee)
+        callee->blame("callee is not of function type")
+            .n("callee `{}` has type `{}`", callee, type_of(callee))
+            .n(callee->loc(), "callee `{}` declared here", callee)
             .bail();
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
-        Error(driver())
-            .error(err_loc(arg), "argument is not assignable to callee's domain")
-            .note("expected `{}`, got `{}`", pi->dom(), type_of(arg))
-            .note(callee->loc(), "callee `{}` declared here", callee)
+        arg->blame("argument is not assignable to callee's domain")
+            .n("expected `{}`, got `{}`", pi->dom(), type_of(arg))
+            .n(callee->loc(), "callee `{}` declared here", callee)
             .bail();
 
     // re-zonk after assignable check above - we might have inferred new stuff
@@ -331,7 +327,7 @@ const Def* World::tuple(Defs ops) {
     auto t     = tuple(sigma, zops);
     auto new_t = Checker::assignable(sigma, t);
     if (!new_t)
-        error(err_loc(t), "tuple `{}` of type `{}` is not assignable to inferred type `{}`", t, type_of(t), sigma);
+        t->blame("tuple `{}` of type `{}` is not assignable to inferred type `{}`", t, type_of(t), sigma).bail();
 
     return new_t;
 }
@@ -378,7 +374,7 @@ const Def* World::extract(const Def* d, const Def* index) {
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
     if (!size && !isa_indices(index_ty))
-        error(err_loc(index), "index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index));
+        index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
 
     if (auto tuple = index->isa<Tuple>()) {
         for (auto op : tuple->ops())
@@ -406,7 +402,7 @@ const Def* World::extract(const Def* d, const Def* index) {
     }
 
     if (size && !Checker::alpha<Checker::Check>(type->arity(), size))
-        error(err_loc(index), "index `{}` does not fit within arity `{}`", index, type->arity());
+        index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
     // TODO if we have indices we need to check as well that this is compatible with `d`
 
     if (auto pack = d->isa<Pack>()) {
@@ -486,19 +482,18 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
     auto size = Idx::isa(index->unfold_type());
     auto lidx = Lit::isa(index);
 
-    if (!size) error(err_loc(d), "index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index));
+    if (!size) index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
 
     if (!Checker::alpha<Checker::Check>(type->arity(), size))
-        error(err_loc(index), "index `{}` does not fit within arity `{}`", index, type->arity());
+        index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
 
     if (lidx) {
         auto elem_type = type->proj(*lidx);
         auto new_val   = Checker::assignable(elem_type, val);
         if (!new_val) {
-            Error(driver())
-                .error(err_loc(val), "value is not assignable to element type")
-                .note("expected `{}`, got `{}`", elem_type, type_of(val))
-                .note("value: `{}`", val)
+            val->blame("value is not assignable to element type")
+                .n("expected `{}`, got `{}`", elem_type, type_of(val))
+                .n("value: `{}`", val)
                 .bail();
         }
         val = new_val;
@@ -536,7 +531,7 @@ const Def* World::seq(bool is_pack, const Def* arity, const Def* body) {
     body  = body->zonk();
 
     auto arity_ty = arity->unfold_type();
-    if (!is_shape(arity_ty)) error(err_loc(arity), "expected arity but got `{}` of type `{}`", arity, arity_ty);
+    if (!is_shape(arity_ty)) arity->blame("expected arity but got `{}` of type `{}`", arity, arity_ty).bail();
 
     if (auto a = Lit::isa(arity)) {
         if (*a == 0) return unit(is_pack);
@@ -568,9 +563,9 @@ const Lit* World::lit(const Def* type, u64 val) {
         if (size->isa<Top>()) {
             // unsafe but fine
         } else if (auto s = Lit::isa(size)) {
-            if (*s != 0 && val >= *s) error(err_loc(type), "index `{}` does not fit within arity `{}`", val, size);
+            if (*s != 0 && val >= *s) type->blame("index `{}` does not fit within arity `{}`", val, size).bail();
         } else if (val != 0) { // 0 of any size is allowed
-            error(err_loc(type), "cannot create literal `{}` of `Idx {}` as size is unknown", val, size);
+            type->blame("cannot create literal `{}` of `Idx {}` as size is unknown", val, size).bail();
         }
     }
 
@@ -656,17 +651,19 @@ const Def* World::match(Defs ops_) {
     auto join      = scrutinee->isa_type<Join>();
 
     if (!join)
-        error(err_loc(scrutinee), "scrutinee `{}` of a test expression must be of union type but has type `{}`",
-              scrutinee, type_of(scrutinee));
+        scrutinee
+            ->blame("scrutinee `{}` of a test expression must be of union type but has type `{}`", scrutinee,
+                    type_of(scrutinee))
+            .bail();
 
     if (arms.size() != join->num_ops())
-        error(err_loc(scrutinee), "test expression has {} arms but union type has {} cases", arms.size(),
-              join->num_ops());
+        scrutinee->blame("test expression has {} arms but union type has {} cases", arms.size(), join->num_ops())
+            .bail();
 
     for (auto arm : arms)
         if (!arm->isa_type<Pi>())
-            error(err_loc(arm), "arm `{}` of test expression does not have a function type but has type `{}`", arm,
-                  type_of(arm));
+            arm->blame("arm `{}` of test expression does not have a function type but has type `{}`", arm, type_of(arm))
+                .bail();
 
     std::ranges::sort(arms, GIDLt<const Def*>(), [](const Def* arm) { return arm->isa_type<Pi>()->dom(); });
 
@@ -675,8 +672,9 @@ const Def* World::match(Defs ops_) {
         auto arm = arms[i];
         auto pi  = arm->isa_type<Pi>();
         if (!Checker::alpha<Checker::Check>(pi->dom(), join->op(i)))
-            error(err_loc(arm), "domain type `{}` of test-expression arm does not match union case type `{}`",
-                  pi->dom(), join->op(i));
+            arm->blame("domain type `{}` of test-expression arm does not match union case type `{}`", pi->dom(),
+                       join->op(i))
+                .bail();
         type = type ? this->join({type, pi->codom()}) : pi->codom();
     }
 
@@ -687,8 +685,8 @@ const Def* World::match(Defs ops_) {
         for (size_t i = 0, e = arms.size(); i != e; ++i)
             if (Checker::alpha<Checker::Check>(inj->value()->unfold_type(), join->op(i)))
                 return app(arms[i], inj->value());
-        error(err_loc(scrutinee), "injected value type `{}` is not a case of union type `{}`", type_of(inj->value()),
-              join);
+        scrutinee->blame("injected value type `{}` is not a case of union type `{}`", type_of(inj->value()), join)
+            .bail();
     }
 
     return unify<Match>(type, ops);
@@ -699,7 +697,7 @@ const Def* World::uniq(const Def* inhabitant) {
     // A singleton type sits one level above its inhabitant, so the top of the hierarchy has none.
     auto t = inhabitant->unfold_type();
     if (auto tt = t ? t->unfold_type() : nullptr) return unify<Uniq>(tt, inhabitant);
-    error(err_loc(inhabitant), "`{}` is too high in the universe hierarchy to inhabit a singleton type", inhabitant);
+    inhabitant->blame("`{}` is too high in the universe hierarchy to inhabit a singleton type", inhabitant).bail();
 }
 
 Sym World::append_suffix(Sym symbol, std::string suffix) {
@@ -809,30 +807,6 @@ World::ScopedLoc World::push(Loc loc) {
     auto& curr = state_.pod.curr_loc;
     if (loc == curr.loc) return ScopedLoc(curr); // nested emitters push the same Loc; don't re-intern it
     return ScopedLoc(curr, {loc, loc ? driver().dbg(Dbg(loc)) : DbgKey()});
-}
-
-Loc World::err_loc(const Def* def) const {
-    if (auto loc = get_loc()) return loc;
-    if (!def) return {};
-    if (auto loc = def->loc()) return loc;
-
-    // Nothing was pushed and def itself is anonymous: settle for the closest Loc among its deps.
-    constexpr size_t Budget = 512; // a diagnostic is not worth traversing the whole World for
-    auto queue              = fe::BFSWorklist<DefSet>{def};
-
-    // Charged per inspected dep, not per dequeue: a single high-arity Def would otherwise scan - and
-    // enqueue - its whole operand list before the budget got a say.
-    auto budget = Budget;
-
-    while (!queue.empty()) {
-        for (auto dep : queue.pop()->deps()) {
-            if (budget-- == 0) return {};
-            if (!queue.push(dep)) continue;
-            if (auto loc = dep->loc()) return loc;
-        }
-    }
-
-    return {};
 }
 
 } // namespace mim

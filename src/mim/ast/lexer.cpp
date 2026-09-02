@@ -89,7 +89,7 @@ Tok Lexer::lex() {
 
         if (accept('%')) {
             if (lex_id()) return {loc_, Tag::M_anx, sym()};
-            driver().error(loc_, "invalid axm name `{}`", str_);
+            error().e(loc_, "invalid axm name `{}`", str_);
             continue;
         }
 
@@ -106,7 +106,7 @@ Tok Lexer::lex() {
         if (accept('\'')) {
             auto c = lex_char();
             if (accept('\'')) return {loc_, c};
-            driver().error(loc_, "invalid character literal `{}`", str_);
+            error().e(loc_, "invalid character literal `{}`", str_);
             continue;
         }
 
@@ -114,7 +114,7 @@ Tok Lexer::lex() {
             // Test for the terminator before lex_char, or an escaped `\"` would end the literal.
             while (!accept<Append::Off>('\"')) {
                 if (ahead() == utf8::EoF) {
-                    driver().error(loc_, "unterminated string literal");
+                    error().e(loc_, "unterminated string literal");
                     break;
                 }
                 lex_char();
@@ -149,7 +149,7 @@ Tok Lexer::lex() {
                 continue;
             }
 
-            driver().error(peek(), "invalid input char `/`; maybe you wanted to start a comment?");
+            error().e(peek(), "invalid input char `/`; maybe you wanted to start a comment?");
             continue;
         }
 
@@ -213,7 +213,7 @@ std::optional<Tok> Lexer::parse_lit() {
                 auto m = std::strtoull(str_.c_str(), nullptr, 10);
                 return idx_tok(loc_, m, i);
             } else {
-                driver().error(loc_, "stray underscore in Idx literal; size is missing");
+                error().e(loc_, "stray underscore in Idx literal; size is missing");
                 auto i = std::strtoull(str_.c_str(), nullptr, 10);
                 return Tok{loc_, u64(i)};
             }
@@ -229,12 +229,12 @@ std::optional<Tok> Lexer::parse_lit() {
         }
 
         bool has_exp = parse_exp(base);
-        if (base == 16 && is_float && !has_exp) driver().error(loc_, "hexadecimal floating constants require an exponent");
+        if (base == 16 && is_float && !has_exp) error().e(loc_, "hexadecimal floating constants require an exponent");
         is_float |= has_exp;
     }
 
     if (sign && str_.empty()) {
-        driver().error(loc_, "stray `{}`", *sign ? "-" : "+");
+        error().e(loc_, "stray `{}`", *sign ? "-" : "+");
         return {};
     }
 
@@ -261,7 +261,7 @@ void Lexer::parse_digits(int base /*= 10*/) {
 bool Lexer::parse_exp(int base /*= 10*/) {
     if (accept(base == 10 ? utf8::any('e', 'E') : utf8::any('p', 'P'))) {
         accept(utf8::any('+', '-'));
-        if (!utf8::isdigit(ahead())) driver().error(loc_, "exponent has no digits");
+        if (!utf8::isdigit(ahead())) error().e(loc_, "exponent has no digits");
         parse_digits();
         return true;
     }
@@ -284,14 +284,14 @@ char8_t Lexer::lex_char() {
         else if (accept<Append::Off>( 'r')) str_ += '\r';
         else if (accept<Append::Off>( 't')) str_ += '\t';
         else if (accept<Append::Off>( 'v')) str_ += '\v';
-        else if (ahead() != utf8::EoF) driver().error(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
+        else if (ahead() != utf8::EoF) error().e(loc_.anew_end(), "invalid escape character `\\{}`", (char)ahead());
         // clang-format on
         return str_.empty() ? '\0' : str_.back();
     }
     auto c = next();
     str_ += c;
     if (utf8::isascii(c)) return char8_t(c);
-    driver().error(loc_, "invalid character `{}`", (char)c);
+    error().e(loc_, "invalid character `{}`", (char)c);
     return '\0';
 }
 
@@ -300,7 +300,7 @@ void Lexer::eat_comments() {
         while (ahead() != utf8::EoF && ahead() != '*')
             next();
         if (accept(utf8::EoF)) {
-            driver().error(loc_, "unterminated multi-line comment");
+            error().e(loc_, "unterminated multi-line comment");
             return;
         }
         next();

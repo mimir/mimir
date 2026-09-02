@@ -291,6 +291,7 @@ public:
     /// @name Getters
     ///@{
     World& world() const noexcept;
+    Driver& driver() const noexcept;
     constexpr flags_t flags() const noexcept { return flags_; }
     constexpr u32 gid() const noexcept { return gid_; }   ///< Global id - *unique* number for this Def.
     constexpr u32 tid() const noexcept { return tid_; }   ///< Trie id - only used in Trie.
@@ -298,6 +299,20 @@ public:
     constexpr size_t hash() const noexcept { return hash_; }
     constexpr Node node() const noexcept { return node_; }
     std::string_view node_name() const;
+    ///@}
+
+    /// @name Diagnostics
+    ///@{
+    fe::Error& error() const noexcept;
+
+    /// Returns a blame Loc from World::get_loc, this Def, or its nearest located dependency, in that order.
+    Loc err_loc() const;
+
+    /// Reports an error that blames *this*; chain Error::n for Note%s and Error::bail to throw.
+    template<class... Args>
+    fe::Error& blame(std::format_string<Args...> s, Args&&... args) const {
+        return error().e(err_loc(), s, std::forward<Args>(args)...);
+    }
     ///@}
 
     /// @name Judgement

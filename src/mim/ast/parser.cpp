@@ -114,7 +114,7 @@ Ptr<Module> Parser::parse_module() {
     expect(Tag::EoF, "module");
     auto mod = ptr<Module>(track, std::move(imports), std::move(decls));
     // curr_ is the stray `;`; mod->loc().anew_end() would sit past the end of that line and render no snippet.
-    if (where) driver().note(curr_, "did you accidentally end your declaration expression with a `;`?");
+    if (where) error().n(curr_, "did you accidentally end your declaration expression with a `;`?");
     return mod;
 }
 
@@ -140,9 +140,9 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
     if (!src) {
         // rel_path is whatever candidate the search loop tried last, so it only names a real file here.
         if (fs::exists(rel_path))
-            driver().error(dbg.loc(), "cannot read file `{}`", rel_path.string());
+            error().e(dbg.loc(), "cannot read file `{}`", rel_path.string());
         else
-            driver().error(dbg.loc(), "cannot find `{}` in the search paths", name);
+            error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
     return fresh ? import(*src, md) : Ptr<Module>();
@@ -150,7 +150,7 @@ Ptr<Module> Parser::import(Dbg dbg, std::ostream* md, Tok::Tag tag) {
 
 Ptr<Module> Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {
     if (!is) {
-        driver().error(loc, "cannot read file `{}`", path.string());
+        error().e(loc, "cannot read file `{}`", path.string());
         return {};
     }
     auto [src, _] = driver().src().add(std::move(path), fe::SrcMap::slurp(is));
@@ -277,10 +277,11 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
                 if (should_reduce(curr_prec, Prec::App)) return lhs;
                 switch (ahead().tag()) {
                     case Tag::C_DECL:
-                        driver().warn(ahead().loc(), "you are passing a declaration expression as argument");
-                        driver().note(lhs->loc(), "passed to this expression");
-                        driver().note("if this was your intention, consider parenthesizing the declaration expression");
-                        driver().note(lhs->loc().anew_end(), "or insert a `;` here");
+                        error()
+                            .w(ahead().loc(), "you are passing a declaration expression as argument")
+                            .n(lhs->loc(), "passed to this expression")
+                            .n("if this was your intention, consider parenthesizing the declaration expression")
+                            .n(lhs->loc().anew_end(), "or insert a `;` here");
                     default: break;
                 }
                 auto rhs = parse_expr("argument to an application", Prec::App);
@@ -295,7 +296,7 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_pre
 
                 bool where = ahead().tag() == Tag::K_where;
                 expect(Tag::K_end, "end of a where declaration block");
-                if (where) driver().note(curr_, "did you accidentally end your declaration expression with a `;`?");
+                if (where) error().n(curr_, "did you accidentally end your declaration expression with a `;`?");
                 return lhs;
             }
             default: return lhs;

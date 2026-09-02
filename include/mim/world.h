@@ -99,8 +99,10 @@ public:
     /// @name Getters/Setters
     ///@{
     const State& state() const { return state_; }
-    const Driver& driver() const { return *driver_; }
     Driver& driver() { return *driver_; }
+    const Driver& driver() const { return *driver_; }
+    fe::Error& error();
+    const fe::Error& error() const;
     Zonker& zonker() { return zonker_; }
 
     Sym name() const { return state_.pod.name; }
@@ -119,29 +121,12 @@ public:
     Flags& flags();
     ///@}
 
+    using ScopedLoc = fe::Restore<CurrLoc>;
     /// @name Loc
     ///@{
-    using ScopedLoc = fe::Restore<CurrLoc>;
-
     Loc get_loc() const { return state_.pod.curr_loc.loc; }
     DbgKey dbg_key() const { return state_.pod.curr_loc.key; } ///< World::get_loc, already interned.
     [[nodiscard]] ScopedLoc push(Loc);
-
-    /// Loc to blame for a diagnostic about @p def.
-    /// Def%s are hash-consed, so Def::loc may belong to whatever file first created a structurally equal term.
-    /// World::get_loc is the syntactic site the emitter is currently working on and thus the user's actual mistake;
-    /// it is only set during emit, so fall back to the Def itself - and to its enclosing mutable - afterwards.
-    Loc err_loc(const Def* def) const;
-    ///@}
-
-    /// @name Diagnostics
-    ///@{
-    /// Throws a single-message Error bound to this World's Driver, so it renders with its layout.
-    template<class... Args>
-    [[noreturn]] void error(Loc loc, std::format_string<Args...> f, Args&&... args) const {
-        // Driver is incomplete here, so the Error is built in world.cpp; the lambda keeps Driver::render in charge.
-        error_(loc, [&] { return std::vformat(f.get(), std::make_format_args(args...)); });
-    }
     ///@}
 
     /// @name Sym
@@ -749,9 +734,6 @@ public:
     ///@}
 
 private:
-    /// Backs World::error; @p fmt renders the message.
-    [[noreturn]] void error_(Loc, const std::function<std::string()>& fmt) const;
-
     /// @name Put into Sea of Nodes
     ///@{
     /// Common tail of World::unify \& World::insert, right after World::allocate.
