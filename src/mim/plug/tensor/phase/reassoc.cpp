@@ -212,12 +212,13 @@ void Reassoc::start() {
         wl.push(root);
 
     while (!wl.empty()) {
-        auto def = wl.pop();
-        if (!def->isa<Tuple>() && !def->isa<Pack>())
-            for (auto op : def->ops())
-                if (op) count_consumers(op, consumers_);
+        auto def         = wl.pop();
+        auto transparent = def->isa<Tuple>() || def->isa<Pack>();
         for (auto op : def->ops())
-            if (op) wl.push(op);
+            if (op) {
+                if (!transparent) count_consumers(op, consumers_);
+                wl.push(op);
+            }
         if (def->type()) wl.push(def->type());
     }
 
