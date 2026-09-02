@@ -40,7 +40,7 @@ public:
         auto dot = str.find('.');
         if (dot == std::string::npos) return;
         auto begin = str[0] == '%' ? 1uz : 0uz; // skip the leading '%' of the annex name
-        if (!driver().is_loaded(driver().sym(str.substr(begin, dot - begin)))) return;
+        if (!driver().is_loaded(std::string_view(str).substr(begin, dot - begin))) return;
 
         if (auto def = world().annex(driver().sym(str))) resolved_ = Phase::create(driver().phases(), def);
     }

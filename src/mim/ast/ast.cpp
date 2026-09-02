@@ -237,15 +237,15 @@ void Module::compile(AST& ast) const {
     ast.error().report();
 }
 
-AST load_plugins(World& world, fe::View<Sym> plugins) {
+AST load_plugins(World& world, fe::View<std::string> plugins) {
     auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
     auto ast     = AST(world);
     auto parser  = Parser(ast);
     auto imports = Ptrs<Import>();
 
-    for (auto plugin : plugins)
-        if (auto mod = parser.import(plugin.view(), tag))
-            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, Dbg(plugin), std::move(mod)));
+    for (const auto& plugin : plugins)
+        if (auto mod = parser.import(plugin, tag))
+            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, Dbg(world.sym(plugin)), std::move(mod)));
 
     if (!plugins.empty()) {
         // No Loc: this Module spans no source, and hulling the imports would mix Loc%s of different files.

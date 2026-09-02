@@ -62,16 +62,14 @@ TEST(World, dependent_extract) {
 }
 
 TEST(Annex, mangle) {
-    Driver d;
-
-    EXPECT_EQ(Annex::demangle(d, *Annex::mangle(d.sym("test"))), d.sym("test"));
-    EXPECT_EQ(Annex::demangle(d, *Annex::mangle(d.sym("azAZ09_"))), d.sym("azAZ09_"));
-    EXPECT_EQ(Annex::demangle(d, *Annex::mangle(d.sym("01234567"))), d.sym("01234567"));
-    EXPECT_FALSE(Annex::mangle(d.sym("012345678")));
-    EXPECT_FALSE(Annex::mangle(d.sym("!")));
+    EXPECT_EQ(Annex::demangle(*Annex::mangle("test")), "test");
+    EXPECT_EQ(Annex::demangle(*Annex::mangle("azAZ09_")), "azAZ09_");
+    EXPECT_EQ(Annex::demangle(*Annex::mangle("01234567")), "01234567");
+    EXPECT_FALSE(Annex::mangle("012345678"));
+    EXPECT_FALSE(Annex::mangle("!"));
     // Check whether lower 16 bits are properly ignored
-    EXPECT_EQ(Annex::demangle(d, *Annex::mangle(d.sym("test")) | 0xFF_u64), d.sym("test"));
-    EXPECT_EQ(Annex::demangle(d, *Annex::mangle(d.sym("01234567")) | 0xFF_u64), d.sym("01234567"));
+    EXPECT_EQ(Annex::demangle(*Annex::mangle("test") | 0xFF_u64), "test");
+    EXPECT_EQ(Annex::demangle(*Annex::mangle("01234567") | 0xFF_u64), "01234567");
 }
 
 TEST(Annex, split) {

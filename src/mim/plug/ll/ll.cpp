@@ -31,20 +31,13 @@ public:
         : Phase(world, annex) {}
 
     void start() override {
-        auto name = world().name() ? std::string(world().name().view()) : "a"s;
+        world().log().d("ll backend args: {}", fe::Join(args()));
+
+        auto name = world().name() ? world().name().str() : "a"s;
         auto path = name + ".ll"s;
-        auto rt   = Emitter::Rt::embed;
-        for (const auto& arg : args()) {
-            world().log().d("ll backend arg: `{}`", arg);
-            if (arg.starts_with("o="))
-                path = arg.substr(2);
-            else if (arg.starts_with("output="))
-                path = arg.substr(7);
-            else if (arg == "rt=embed")
-                rt = Emitter::Rt::embed;
-            else if (arg == "rt=extern")
-                rt = Emitter::Rt::ext;
-        }
+        if (auto o = arg_value(args(), "o", "output")) path = *o;
+        auto rt = arg_value(args(), "rt") == "extern" ? Emitter::Rt::ext : Emitter::Rt::embed;
+
         auto ofs     = std::ofstream(path);
         auto emitter = Emitter(world(), "llvm_emitter", ofs);
         emitter.rt_mode(rt);

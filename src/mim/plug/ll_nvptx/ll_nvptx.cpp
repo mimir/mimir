@@ -156,7 +156,7 @@ public:
         : Phase(world, annex) {}
 
     void start() override {
-        auto name = world().name() ? std::string(world().name().view()) : "a"s;
+        auto name = world().name() ? world().name().str() : "a"s;
 
         auto c            = NvptxCompileArgs{};
         c.host_ll_name    = name + ".ll"s;
@@ -167,29 +167,24 @@ public:
         c.dev_bc_raw_name = name + "_dev_raw.bc"s;
         c.dev_bc_opt_name = name + "_dev_opt.bc"s;
 
-        auto rt = ll::Emitter::Rt::embed;
-        for (const auto& arg : args()) {
-            world().log().d("ll_nvptx backend arg: `{}`", arg);
-            // clang-format off
-            if (false) {}
-            else if (arg.starts_with("o="))          c.host_ll_name      = arg.substr(2);
-            else if (arg.starts_with("output="))     c.host_ll_name      = arg.substr(7);
-            else if (arg.starts_with("o-dev="))      c.dev_ll_name       = arg.substr(6);
-            else if (arg.starts_with("output-dev=")) c.dev_ll_name       = arg.substr(11);
-            else if (arg.starts_with("sm="))         c.compute_cap       = arg.substr(3);
-            else if (arg.starts_with("libdevice="))  c.libdevice_path    = arg.substr(10);
-            else if (arg.starts_with("Xlink_llvm=")) c.link_llvm_args    = arg.substr(11);
-            else if (arg.starts_with("Xopt="))       c.opt_args          = arg.substr(5);
-            else if (arg.starts_with("Xllc="))       c.llc_args          = arg.substr(5);
-            else if (arg.starts_with("Xptxas="))     c.ptxas_args        = arg.substr(7);
-            else if (arg.starts_with("Xfatbinary=")) c.fatbinary_args    = arg.substr(11);
-            else if (arg == "no-embed")              c.embed_device_code = false;
-            else if (arg == "no-ptx-embed")          c.embed_ptx         = false;
-            else if (arg == "no-cubin-embed")        c.embed_cubin       = false;
-            else if (arg == "rt=embed")              rt                  = ll::Emitter::Rt::embed;
-            else if (arg == "rt=extern")             rt                  = ll::Emitter::Rt::ext;
-            // clang-format on
-        }
+        world().log().d("ll_nvptx backend args: {}", fe::Join(args()));
+
+        // clang-format off
+        if (auto v = arg_value(args(), "o", "output"))          c.host_ll_name   = *v;
+        if (auto v = arg_value(args(), "o-dev", "output-dev"))  c.dev_ll_name    = *v;
+        if (auto v = arg_value(args(), "sm"))                   c.compute_cap    = *v;
+        if (auto v = arg_value(args(), "libdevice"))            c.libdevice_path = *v;
+        if (auto v = arg_value(args(), "Xlink_llvm"))           c.link_llvm_args = *v;
+        if (auto v = arg_value(args(), "Xopt"))                 c.opt_args       = *v;
+        if (auto v = arg_value(args(), "Xllc"))                 c.llc_args       = *v;
+        if (auto v = arg_value(args(), "Xptxas"))               c.ptxas_args     = *v;
+        if (auto v = arg_value(args(), "Xfatbinary"))           c.fatbinary_args = *v;
+        if (arg_flag(args(), "no-embed"))                       c.embed_device_code = false;
+        if (arg_flag(args(), "no-ptx-embed"))                   c.embed_ptx         = false;
+        if (arg_flag(args(), "no-cubin-embed"))                 c.embed_cubin       = false;
+        // clang-format on
+
+        auto rt = arg_value(args(), "rt") == "extern" ? ll::Emitter::Rt::ext : ll::Emitter::Rt::embed;
 
         auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
         auto setup_phase

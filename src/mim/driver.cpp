@@ -96,7 +96,7 @@ Driver::Driver(std::string name)
     insert_ = ++search_paths_.begin();
 }
 
-void Driver::load(Sym name) {
+void Driver::load(std::string_view name) {
     log().i("💾 load plugin `{}`", name);
 
     if (is_loaded(name)) {
@@ -105,8 +105,10 @@ void Driver::load(Sym name) {
     }
 
     auto handle = Plugin::Handle{nullptr, fe::dl::close};
-    if (auto path = fs::path{name.view()}; path.is_absolute() && fs::is_regular_file(path))
-        handle.reset(fe::dl::open(name.c_str()));
+    if (auto path = fs::path{name}; path.is_absolute() && fs::is_regular_file(path)) {
+        auto path_str = path.string();
+        handle.reset(fe::dl::open(path_str.c_str()));
+    }
     if (!handle) {
         for (const auto& path : search_paths()) {
             auto full_path = path / std::format("libmim_{}.{}", name, fe::dl::extension);
@@ -132,7 +134,7 @@ void Driver::load(Sym name) {
             else
                 throw std::logic_error(oss.str());
         }
-        fe::assert_emplace(plugins_, name, std::move(handle));
+        fe::assert_emplace(plugins_, std::string(name), std::move(handle));
         // clang-format off
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
         if (auto reg = plugin.register_phases)      reg(phases_);
@@ -143,12 +145,12 @@ void Driver::load(Sym name) {
     }
 }
 
-void* Driver::get_fun_ptr(Sym plugin, const char* name) {
+void* Driver::get_fun_ptr(std::string_view plugin, const char* name) {
     if (auto handle = fe::lookup(plugins_, plugin)) return fe::dl::get(handle->get(), name);
     return nullptr;
 }
 
-const fe::Vector<std::string>& Driver::args(Sym plugin) const {
+const fe::Vector<std::string>& Driver::args(std::string_view plugin) const {
     static const fe::Vector<std::string> empty;
     if (auto i = plugin_args_.find(plugin); i != plugin_args_.end()) return i->second;
     return empty;
