@@ -61,9 +61,7 @@ class Driver : public fe::Driver {
 public:
     /// @name Construction
     ///@{
-    Driver(std::string name);
-    Driver()
-        : Driver(std::string{}) {}
+    Driver(std::string name = {});
 
     Driver(const Driver&)     = delete;
     Driver(Driver&&)          = delete;

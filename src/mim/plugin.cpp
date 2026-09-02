@@ -2,8 +2,6 @@
 
 #include "mim/driver.h"
 
-using namespace std::literals;
-
 namespace mim {
 
 std::optional<plugin_t> Annex::mangle(std::string_view plugin) {
