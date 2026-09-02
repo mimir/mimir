@@ -14,4 +14,4 @@ void reg_phases(Flags2Phases& phases) {
     Phase::hook<affine::lower_index, affine::phase::LowerIndex>(phases);
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"affine", MIM_VERSION, nullptr, reg_phases}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"affine", MIM_VERSION, {}, reg_phases, {}, {}}; }

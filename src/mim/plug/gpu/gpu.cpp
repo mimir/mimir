@@ -69,4 +69,4 @@ void reg_phases(Flags2Phases& phases) {
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, nullptr, reg_phases}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, {}, reg_phases, {}, {}}; }

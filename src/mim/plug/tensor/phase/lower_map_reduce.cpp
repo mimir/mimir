@@ -1,7 +1,6 @@
 #include "mim/plug/tensor/phase/lower_map_reduce.h"
 
 #include <optional>
-#include <ranges>
 
 #include <mim/def.h>
 #include <mim/lam.h>
@@ -93,8 +92,8 @@ std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const
 DefVec build_loops(World& w, Lam*& cur, const Def*& exit, const Def*& acc, Defs dims, std::string_view name) {
     auto iters = DefVec();
     iters.reserve(dims.size());
-    for (auto [i, dim] : std::views::enumerate(dims)) {
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
+    for (size_t i = 0, e = dims.size(); i != e; ++i) {
+        auto bound                  = w.call<core::bitcast>(w.type_i64(), dims[i]);
         auto [body, for_call]       = counting_for(bound, acc, exit, w.sym(std::format("{}_{}", name, i)));
         auto [iter, new_acc, yield] = body->vars<3>();
         exit                        = yield;
