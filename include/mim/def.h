@@ -301,6 +301,23 @@ public:
     std::string_view node_name() const;
     ///@}
 
+    /// @name Diagnostics
+    ///@{
+    fe::Error& error() const noexcept;
+
+    /// Loc to blame for a diagnostic about @p def.
+    /// Def%s are hash-consed, so Def::loc may belong to whatever file first created a structurally equal term.
+    /// World::get_loc is the syntactic site the emitter is currently working on and thus the user's actual mistake;
+    /// it is only set during emit, so fall back to the Def itself - and to its enclosing mutable - afterwards.
+    Loc err_loc() const;
+
+    /// Reports an error that blames *this*; chain Error::n for Note%s and Error::bail to throw.
+    template<class... Args>
+    fe::Error& blame(std::format_string<Args...> s, Args&&... args) const {
+        return error().e(err_loc(), s, std::forward<Args>(args)...);
+    }
+    ///@}
+
     /// @name Judgement
     /// What kind of Judge%ment represents this Def?
     ///@{

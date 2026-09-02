@@ -4,6 +4,7 @@
 
 #include <fe/assert.h>
 #include <fe/hash.h>
+#include <fe/worklist.h>
 
 #include "mim/driver.h"
 #include "mim/rule.h"
@@ -390,6 +391,31 @@ bool Def::nests(const Def* def) {
  */
 
 Driver& Def::driver() const noexcept { return world().driver(); }
+fe::Error& Def::error() const noexcept { return driver().error(); }
+
+Loc Def::err_loc() const {
+    auto& w = world();
+    if (auto loc = w.get_loc()) return loc;
+    if (auto loc = this->loc()) return loc;
+
+    // Nothing was pushed and def itself is anonymous: settle for the closest Loc among its deps.
+    auto queue = fe::BFSWorklist<DefSet>{this};
+
+    // Charged per inspected dep, not per dequeue: a single high-arity Def would otherwise scan - and
+    // enqueue - its whole operand list before the budget got a say.
+    constexpr size_t Budget = 512; // a diagnostic is not worth traversing the whole World for
+    auto budget             = Budget;
+
+    while (!queue.empty()) {
+        for (auto dep : queue.pop()->deps()) {
+            if (budget-- == 0) return {};
+            if (!queue.push(dep)) continue;
+            if (auto loc = dep->loc()) return loc;
+        }
+    }
+
+    return {};
+}
 
 Sym Def::sym(const char* s) const { return world().sym(s); }
 Sym Def::sym(std::string_view s) const { return world().sym(s); }

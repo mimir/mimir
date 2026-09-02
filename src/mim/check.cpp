@@ -427,15 +427,11 @@ const Def* Def::check(size_t i, const Def* def) {
 
     if (i == 0) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        Error(world().driver())
-            .e(world().err_loc(def), "filter `{}` of lambda is of type `{}` but must be of type `Bool`", def,
-               type_of(def))
-            .bail();
+        def->blame("filter `{}` of lambda is of type `{}` but must be of type `Bool`", def, type_of(def)).bail();
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
-    Error(world().driver())
-        .e(world().err_loc(def), "function body is not assignable to its declared codomain")
+    def->blame("function body is not assignable to its declared codomain")
         .n("expected `{}`, got `{}`", lam->codom(), type_of(def))
         .n("body: `{}`", def)
         .n(lam->codom()->loc(), "codomain `{}` declared here", lam->codom())
@@ -450,27 +446,21 @@ const Def* Def::check() {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                Error(driver())
-                    .e(w.err_loc(type()), "declared sort `{}` of function type does not match inferred sort `{}`",
-                       type(), t)
+                type()
+                    ->blame("declared sort `{}` of function type does not match inferred sort `{}`", type(), t)
                     .bail();
             return t;
         }
         case Node::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t, type()))
-                Error(driver())
-                    .e(w.err_loc(type()), "declared sort `{}` of array does not match inferred sort `{}`", type(), t)
-                    .bail();
+                type()->blame("declared sort `{}` of array does not match inferred sort `{}`", type(), t).bail();
             return t;
         }
         case Node::Reform: {
             auto t = Reform::infer(as<Reform>()->dom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                Error(driver())
-                    .e(w.err_loc(type()), "declared sort `{}` of rule type does not match inferred sort `{}`", type(),
-                       t)
-                    .bail();
+                type()->blame("declared sort `{}` of rule type does not match inferred sort `{}`", type(), t).bail();
             return t;
         }
         case Node::Sigma: {
@@ -484,15 +474,13 @@ const Def* Def::check() {
             auto t1   = rule->lhs()->unfold_type();
             auto t2   = rule->rhs()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t1, t2))
-                Error(driver())
-                    .e(w.err_loc(type()), "type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`",
-                       t1, t2)
+                type()
+                    ->blame("type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`", t1, t2)
                     .bail();
             if (!Checker::assignable(w.type_bool(), rule->guard()))
-                Error(driver())
-                    .e(w.err_loc(rule->guard()),
-                       "condition `{}` of rewrite rule is of type `{}` but must be of type `Bool`", rule->guard(),
-                       type_of(rule->guard()))
+                rule->guard()
+                    ->blame("condition `{}` of rewrite rule is of type `{}` but must be of type `Bool`", rule->guard(),
+                            type_of(rule->guard()))
                     .bail();
             return type();
         }

@@ -1,0 +1,12 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+// `not_` accepts only `disj`, `range`, `any` and `not_`; the note names the operand that is none of them.
+plugin regex;
+
+let bad = %regex.not_ (%regex.conj (%regex.cls.d, %regex.cls.d));
+
+// CHECK:      {{.*}}not_unwanted.mim:6:11-6:64: error: regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_
+// CHECK-NEXT: 6 | let bad = %regex.not_ (%regex.conj (%regex.cls.d, %regex.cls.d));
+// CHECK-NEXT:   |           ^
+// CHECK-NEXT: = note: found unwanted: %regex.conj
+// CHECK-NOT:  error:

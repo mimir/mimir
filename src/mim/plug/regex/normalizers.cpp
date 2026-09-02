@@ -231,11 +231,9 @@ const Def* any_unwanted_for_not(const Def* arg) {
 
 const Def* normalize_not(const Def*, const Def* callee, const Def* arg) {
     if (auto unwanted = any_unwanted_for_not(arg)) {
-        Error(arg->world().driver())
-            .error(arg->loc(),
-                   "regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_: {} {}", callee,
+        arg->blame("regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_: {} {}", callee,
                    arg)
-            .error(unwanted->loc(), "found unwanted: {}", unwanted)
+            .n("found unwanted: {}", unwanted)
             .bail();
     }
     return {};
