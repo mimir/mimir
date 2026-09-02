@@ -18,10 +18,6 @@ const Def* normalize_is_loaded(const Def*, const Def*, const Def* arg) {
 const Def* normalize_aggr(const Def*, const Def*, const Def* arg) {
     auto& world  = arg->world();
     auto& driver = world.driver();
-    world.log().e("AGGR PROBE: args=[{}] -> {}", fe::Join(driver.args(driver.sym("compile"))),
-                  arg_bool(driver.args(driver.sym("compile")), "aggr")
-                      .transform([](bool b) { return b ? "true" : "false"; })
-                      .value_or("nullopt"));
     if (auto b = arg_bool(driver.args(driver.sym("compile")), "aggr")) return world.lit_bool(*b);
     return arg;
 }
