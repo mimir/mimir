@@ -1,4 +1,5 @@
 #include <mim/driver.h>
+#include <mim/plugin.h>
 #include <mim/world.h>
 
 #include "mim/plug/compile/compile.h"
@@ -17,12 +18,11 @@ const Def* normalize_is_loaded(const Def*, const Def*, const Def* arg) {
 const Def* normalize_aggr(const Def*, const Def*, const Def* arg) {
     auto& world  = arg->world();
     auto& driver = world.driver();
-    for (const auto& a : driver.args(driver.sym("compile"))) {
-        // clang-format off
-        if (a == "aggr=tt" || a == "aggr=on"  || a == "aggr=true" || a == "aggr") return world.lit_tt();
-        if (a == "aggr=ff" || a == "aggr=off" || a == "aggr=false")               return world.lit_ff();
-        // clang-format on
-    }
+    world.log().e("AGGR PROBE: args=[{}] -> {}", fe::Join(driver.args(driver.sym("compile"))),
+                  arg_bool(driver.args(driver.sym("compile")), "aggr")
+                      .transform([](bool b) { return b ? "true" : "false"; })
+                      .value_or("nullopt"));
+    if (auto b = arg_bool(driver.args(driver.sym("compile")), "aggr")) return world.lit_bool(*b);
     return arg;
 }
 

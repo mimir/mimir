@@ -5,6 +5,8 @@
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <tuple>
 
 #include <absl/container/flat_hash_map.h>
@@ -30,6 +32,53 @@ struct PluginArg {
     const char* syntax; ///< How to spell the argument, e.g. `"o=<file>, output=<file>"`.
     const char* descr;  ///< What it does; one sentence, Markdown.
 };
+///@}
+
+/// @name Plugin Argument Lookup
+/// Picks the `-X <plugin>:<arg>` strings of Driver::args / Phase::args apart.
+/// Each helper matches any of @p keys - `arg_value(args(), "o", "output")` - and the last occurrence wins.
+///@{
+namespace detail {
+/// `<key>` ↦ `""`, `<key>=<value>` ↦ `<value>`, anything else ↦ `std::nullopt`.
+inline std::optional<std::string_view> arg_split(std::string_view arg, std::string_view key) {
+    if (!arg.starts_with(key)) return {};
+    auto val = arg.substr(key.size());
+    if (val.empty()) return val;
+    if (val.front() == '=') return val.substr(1);
+    return {};
+}
+} // namespace detail
+
+/// Value of `<key>=<value>`; `std::nullopt` if none of @p keys carries one.
+template<class... Keys>
+std::optional<std::string_view> arg_value(fe::View<std::string> args, Keys... keys) {
+    std::optional<std::string_view> res;
+    for (std::string_view arg : args)
+        for (std::string_view key : {std::string_view(keys)...})
+            if (auto val = detail::arg_split(arg, key); val && !val->empty()) res = val;
+    return res;
+}
+
+/// A bare `<key>` or `<key>=on`/`tt`/`true` ↦ `true`, `<key>=off`/`ff`/`false` ↦ `false`; `std::nullopt` if absent.
+template<class... Keys>
+std::optional<bool> arg_bool(fe::View<std::string> args, Keys... keys) {
+    std::optional<bool> res;
+    for (std::string_view arg : args)
+        for (std::string_view key : {std::string_view(keys)...})
+            if (auto val = detail::arg_split(arg, key)) {
+                // clang-format off
+                if (val->empty() || *val == "on"  || *val == "tt" || *val == "true" ) res = true;
+                else if (          *val == "off" || *val == "ff" || *val == "false") res = false;
+                // clang-format on
+            }
+    return res;
+}
+
+/// Like arg_bool but an absent @p keys yields `false`.
+template<class... Keys>
+bool arg_flag(fe::View<std::string> args, Keys... keys) {
+    return arg_bool(args, keys...).value_or(false);
+}
 ///@}
 
 struct Version {

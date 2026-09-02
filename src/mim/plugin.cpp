@@ -58,18 +58,18 @@ Sym Annex::demangle(Driver& driver, plugin_t plugin) {
 std::tuple<Sym, Sym, Sym> Annex::split(Driver& driver, Sym s) {
     if (!s) return {};
     if (s[0] != '%') return {};
-    auto sv = fe::subview(s, 1);
+    auto sv = s.view().substr(1);
 
     auto dot = sv.find('.');
     if (dot == std::string_view::npos) return {};
 
-    auto plugin = driver.sym(fe::subview(sv, 0, dot));
+    auto plugin = driver.sym(sv.substr(0, dot));
     if (!mangle(plugin)) return {};
 
-    auto tag = fe::subview(sv, dot + 1);
+    auto tag = sv.substr(dot + 1);
     if (auto dot = tag.find('.'); dot != std::string_view::npos) {
-        auto sub = driver.sym(fe::subview(tag, dot + 1));
-        tag      = fe::subview(tag, 0, dot);
+        auto sub = driver.sym(tag.substr(dot + 1));
+        tag      = tag.substr(0, dot);
         return {plugin, driver.sym(tag), sub};
     }
 
