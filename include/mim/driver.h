@@ -180,7 +180,8 @@ public:
     /// A Phase reads its own arguments via Phase::args().
     ///@{
     void add_arg(std::string_view plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
-    const fe::Vector<std::string>& args(std::string_view plugin) const; ///< Empty fe::Vector if @p plugin has none.
+    /// Yields an empty fe::Vector if @p plugin has none.
+    const fe::Vector<std::string>& args(std::string_view plugin) const;
 
     /// The PluginArg%s each loaded Plugin declares, in load order; only for listing them, see PluginArg.
     const auto& known_args() const { return known_args_; }
