@@ -24,7 +24,7 @@ using Splits = fe::Vector<Split>;
 /// but it is only a *partial* order, so a chain can have several bracketings that each win for some
 /// instantiation (a batch dimension favouring a different one when small than when large).
 /// Up to Reassoc::max_dispatch_ matrices those survivors are emitted side by side behind a runtime
-/// comparison of their costs; a longer chain is left as written.
+/// comparison of their costs; a longer chain is only reassociated where one bracketing provably wins.
 class Reassoc : public RWPhase {
 public:
     Reassoc(World& world, flags_t annex)

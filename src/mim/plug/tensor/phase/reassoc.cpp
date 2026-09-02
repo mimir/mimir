@@ -121,8 +121,8 @@ fe::Vector<Splits> bracketings(u64 lo, u64 hi) {
 }
 
 /// Drops every bracketing that another one provably beats; equal costs keep the first.
-/// What survives is exactly the set that wins for *some* instantiation of the symbolic extents, so a
-/// single survivor is the unique optimum and several are a genuine run-time choice.
+/// A single survivor is hence the optimum under *every* instantiation of the symbolic extents.
+/// Several survivors need not each win for some instantiation - domination is only sufficient for `≤`.
 fe::Vector<Splits> pareto(fe::View<Splits> cands, Defs dims) {
     auto keep  = fe::Vector<Splits>();
     auto costs = fe::Vector<Poly>();
@@ -193,8 +193,9 @@ void count_consumers(const Def* d, DefMap<u64>& consumers) {
 
 void Reassoc::start() {
     if (auto val = arg_value(args(), "reassoc-max")) {
-        auto n = 0_u64;
-        if (auto [_, ec] = std::from_chars(val->data(), val->data() + val->size(), n); ec != std::errc()) {
+        auto n   = 0_u64;
+        auto end = val->data() + val->size();
+        if (auto [ptr, ec] = std::from_chars(val->data(), end, n); ec != std::errc() || ptr != end) {
             log().w("ignoring `-X tensor:reassoc-max={}`: not a number", *val);
         } else {
             max_dispatch_ = n;
