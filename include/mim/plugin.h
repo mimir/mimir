@@ -75,7 +75,7 @@ std::optional<bool> arg_bool(fe::View<std::string> args, Keys... keys) {
     return res;
 }
 
-/// Like arg_bool but an absent @p keys yields `false`.
+/// Like arg_bool but the absence of @p keys yields `false`.
 template<class... Keys>
 bool arg_flag(fe::View<std::string> args, Keys... keys) {
     return arg_bool(args, keys...).value_or(false);
