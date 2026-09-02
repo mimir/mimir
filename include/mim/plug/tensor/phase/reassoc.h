@@ -1,11 +1,19 @@
 #pragma once
 
-#include <array>
 #include <optional>
 
 #include <mim/phase.h>
 
 namespace mim::plug::tensor::phase {
+
+/// One node of a bracketing: `i … j` splits after `s`.
+/// Spelling the fields out keeps `size_t` out of the type - it is *not* mim::u64 everywhere.
+struct Split {
+    u64 i, s, j;
+};
+
+/// A bracketing of a matrix chain, innermost node first.
+using Splits = fe::Vector<Split>;
 
 /// Reassociates chains of %%tensor.product_2d with the classic matrix-chain-order dynamic program,
 /// so that a chain is evaluated with the least number of scalar multiplications.
@@ -13,14 +21,20 @@ namespace mim::plug::tensor::phase {
 /// Extents need not be literal: a cost is kept as a polynomial in the symbolic extents, ordered by
 /// coefficient-wise `≤`.
 /// Since extents are `Nat`s and hence non-negative, that order proves `≤` under *every* instantiation -
-/// but it is only a *partial* order, so a chain whose optimum depends on a symbolic extent (a batch
-/// dimension that favours a different bracketing when small than when large) is left as written.
+/// but it is only a *partial* order, so a chain can have several bracketings that each win for some
+/// instantiation (a batch dimension favouring a different one when small than when large).
+/// Up to Reassoc::Max_dispatch matrices those survivors are emitted side by side behind a runtime
+/// comparison of their costs; a longer chain is left as written.
 class Reassoc : public RWPhase {
 public:
     Reassoc(World& world, flags_t annex)
         : RWPhase(world, annex) {}
 
 private:
+    /// Longest chain whose bracketings are enumerated - and, failing a unique winner, dispatched over.
+    /// The number of bracketings is `Catalan(n − 1)`, so this cannot grow much.
+    static constexpr u64 Max_dispatch = 4;
+
     /// One `%tensor.product_2d` of a chain: `«m, k» · «k, l»`.
     struct Link {
         const App* app;
@@ -28,9 +42,6 @@ private:
         const Def* k;
         const Def* l;
     };
-
-    /// A bracketing as `(i, s, j)` triples: `i … j` splits after `s`.
-    using Splits = fe::Vector<std::array<u64, 3>>;
 
     void start() override;
     const Def* rewrite_imm_App(const App*) final;
@@ -44,6 +55,13 @@ private:
 
     /// Rebuilds `mats[i … j]` in the new world, parenthesized according to @p split (indexed `i * n + j`).
     const Def* build(const Def* head, Defs mats, Defs dims, fe::View<u64> split, u64 i, u64 j);
+
+    /// Emits every bracketing in @p cands as a thunk and selects the cheapest one by comparing their costs
+    /// at run time.
+    const Def* dispatch(const Def* head, const Def* res_ty, Defs mats, Defs dims, fe::View<Splits> cands);
+
+    /// The number of multiplications @p splits costs, as a `Nat` expression in the new world.
+    const Def* cost_expr(Defs dims, const Splits& splits);
 
     /// Old-world consumer count per `product_2d` app, attributed through tuple wrappers.
     DefMap<u64> consumers_;

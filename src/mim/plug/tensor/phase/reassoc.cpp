@@ -1,6 +1,7 @@
 #include "mim/plug/tensor/phase/reassoc.h"
 
 #include <algorithm>
+#include <array>
 
 #include <fe/format.h>
 #include <fe/worklist.h>
@@ -9,6 +10,8 @@
 #include <mim/tuple.h>
 
 #include <mim/util/types.h>
+
+#include <mim/plug/core/core.h>
 
 #include "mim/plug/tensor/tensor.h"
 
@@ -88,11 +91,53 @@ Poly mul_cost(const Def* x, const Def* y, const Def* z) {
     return poly;
 }
 
-Poly cost_of(fe::View<std::array<u64, 3>> splits, Defs dims) {
+Poly cost_of(fe::View<Split> splits, Defs dims) {
     auto poly = Poly();
     for (auto [i, s, j] : splits)
         poly.add(mul_cost(dims[i], dims[s + 1], dims[j + 1]));
     return poly;
+}
+
+/// Every bracketing of `lo … hi`.
+fe::Vector<Splits> bracketings(u64 lo, u64 hi) {
+    if (lo == hi) return {Splits()};
+
+    auto res = fe::Vector<Splits>();
+    for (auto s = lo; s != hi; ++s)
+        for (const auto& l : bracketings(lo, s))
+            for (const auto& r : bracketings(s + 1, hi)) {
+                auto b = l;
+                b.append_range(r);
+                b.emplace_back(Split{lo, s, hi});
+                res.emplace_back(std::move(b));
+            }
+    return res;
+}
+
+/// Drops every bracketing that another one provably beats; equal costs keep the first.
+/// What survives is exactly the set that wins for *some* instantiation of the symbolic extents, so a
+/// single survivor is the unique optimum and several are a genuine run-time choice.
+fe::Vector<Splits> pareto(fe::View<Splits> cands, Defs dims) {
+    auto keep  = fe::Vector<Splits>();
+    auto costs = fe::Vector<Poly>();
+
+    for (const auto& cand : cands) {
+        auto cost = cost_of(cand, dims);
+        if (std::ranges::any_of(costs, [&](const Poly& k) { return k.dominates(cost); })) continue;
+        for (auto i = costs.size(); i-- != 0;)
+            if (cost.dominates(costs[i])) keep.erase(keep.begin() + i), costs.erase(costs.begin() + i);
+        keep.emplace_back(cand);
+        costs.emplace_back(std::move(cost));
+    }
+
+    return keep;
+}
+
+fe::Vector<u64> split_table(const Splits& splits, u64 n) {
+    auto table = fe::Vector<u64>(n * n, 0);
+    for (auto [i, s, j] : splits)
+        table[i * n + j] = s;
+    return table;
 }
 
 /// Matrix-chain order: matrix `i` of the chain has shape `dims[i] × dims[i + 1]`.
@@ -181,7 +226,7 @@ void Reassoc::flatten(const Def* def, const Def* ring, const Def* rows, DefVec& 
             flatten(t1, ring, link->m, mats, dims, orig);
             auto mid = mats.size();
             flatten(t2, ring, link->k, mats, dims, orig);
-            orig.emplace_back(std::array{lo, mid - 1, mats.size() - 1});
+            orig.emplace_back(Split{lo, mid - 1, mats.size() - 1});
             return;
         }
 
@@ -200,6 +245,45 @@ const Def* Reassoc::build(const Def* head, Defs mats, Defs dims, fe::View<u64> s
     return w.app(w.app(head, mkl), {t1, t2});
 }
 
+const Def* Reassoc::cost_expr(Defs dims, const Splits& splits) {
+    auto& w        = new_world();
+    const Def* sum = nullptr;
+
+    for (auto [i, s, j] : splits) {
+        auto p = w.app(w.annex(core::nat::mul), {rewrite(dims[i]), rewrite(dims[s + 1])});
+        p      = w.app(w.annex(core::nat::mul), {p, rewrite(dims[j + 1])});
+        sum    = sum ? w.app(w.annex(core::nat::add), {sum, p}) : p;
+    }
+
+    return sum;
+}
+
+const Def* Reassoc::dispatch(const Def* head, const Def* res_ty, Defs mats, Defs dims, fe::View<Splits> cands) {
+    auto& w = new_world();
+    auto n  = mats.size();
+    auto pi = w.pi(w.sigma(), res_ty);
+
+    // Each bracketing goes behind a thunk so that only the selected one runs. The filter is `tt`, so once
+    // the comparison folds - a caller that knows the extents, `%compile.lam_spec` - the winner inlines and
+    // the losers become unreachable.
+    const Def* best      = nullptr;
+    const Def* best_cost = nullptr;
+    for (const auto& cand : cands) {
+        auto thunk = w.mut_lam(pi)->set(true, build(head, mats, dims, split_table(cand, n), 0, n - 1));
+        auto cost  = cost_expr(dims, cand);
+
+        if (!best) {
+            best = thunk, best_cost = cost;
+        } else {
+            auto cheaper = w.app(w.annex(core::ncmp::l), {cost, best_cost});
+            best         = w.extract(w.tuple({best, (const Def*)thunk}), cheaper);
+            best_cost    = w.extract(w.tuple({best_cost, cost}), cheaper);
+        }
+    }
+
+    return w.app(best, w.tuple());
+}
+
 const Def* Reassoc::reassoc(const App* app) {
     auto head = app->callee()->as<App>()->callee()->as<App>();
     auto link = isa_link(app, head->arg());
@@ -208,29 +292,41 @@ const Def* Reassoc::reassoc(const App* app) {
     auto [t1, t2] = app->args<2>();
     auto mats     = DefVec();
     auto dims     = DefVec();
-    auto splits   = Splits();
-    flatten(t1, head->arg(), link->m, mats, dims, splits);
+    auto orig     = Splits();
+    flatten(t1, head->arg(), link->m, mats, dims, orig);
     auto mid = mats.size();
-    flatten(t2, head->arg(), link->k, mats, dims, splits);
+    flatten(t2, head->arg(), link->k, mats, dims, orig);
     dims.emplace_back(link->l);
-    splits.emplace_back(std::array<u64, 3>{
-        0_u64,
-        static_cast<u64>(mid - 1),
-        static_cast<u64>(mats.size() - 1),
-    });
+    orig.emplace_back(Split{0_u64, mid - 1, mats.size() - 1});
 
     // Two matrices admit only one parenthesization.
-    if (mats.size() < 3) return nullptr;
+    auto n = mats.size();
+    if (n < 3) return nullptr;
+
+    auto orig_cost = cost_of(orig, dims);
+
+    if (n <= Max_dispatch) {
+        auto cands = pareto(bracketings(0, n - 1), dims);
+        if (cands.size() != 1) {
+            log().d("dispatch chain {} over {} bracketings, written as {}", fe::Join(dims, "×"), cands.size(),
+                    orig_cost.str());
+            return dispatch(rewrite(head), rewrite(app->type()), mats, dims, cands);
+        }
+
+        auto cost = cost_of(cands.front(), dims);
+        if (orig_cost.dominates(cost)) return nullptr;
+        log().d("reassociate chain {}: {} → {} multiplications", fe::Join(dims, "×"), orig_cost.str(), cost.str());
+        return build(rewrite(head), mats, dims, split_table(cands.front(), n), 0, n - 1);
+    }
 
     auto order = matrix_chain_order(dims);
     if (!order) return nullptr;
 
     auto& [split, cost] = *order;
-    auto orig           = cost_of(splits, dims);
-    if (orig.dominates(cost)) return nullptr;
+    if (orig_cost.dominates(cost)) return nullptr;
 
-    log().d("reassociate chain {}: {} → {} multiplications", fe::Join(dims, "×"), orig.str(), cost.str());
-    return build(rewrite(head), mats, dims, split, 0, mats.size() - 1);
+    log().d("reassociate chain {}: {} → {} multiplications", fe::Join(dims, "×"), orig_cost.str(), cost.str());
+    return build(rewrite(head), mats, dims, split, 0, n - 1);
 }
 
 const Def* Reassoc::rewrite_imm_App(const App* app) {

@@ -50,18 +50,22 @@ fun extern low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 76
     let R = nat_ring ();
     return (%tensor.product_2d R (x, %tensor.product_2d R (u, v)));
 
-// The same shape without a bottleneck has no such winner: contracting 784 first costs
-// 28224000 + 94080·m, contracting 300 first 271200·m, and neither dominates - small m prefers the
-// former, large m the latter. So the chain must survive exactly as written, left-deep.
-// CHECK-DAG: fun extern batch_dependent
-// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 784, 300)
-// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 300, 120)
-// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 120, 10)
-fun extern batch_dependent {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w2: «300, 120; Nat»,
-                                     w3: «120, 10; Nat»): «m, 10; Nat» =
+// The same shape without a bottleneck has no single winner: contracting 784 first costs
+// 28224000 + 95280·m, 300 first 272400·m, 120 first 2712000 + 7840·m, and so on - small m prefers a
+// small constant, large m a small factor. Three of the five bracketings survive the domination test
+// (each wins for some m), so their costs are compared at run time and only the winner's thunk runs.
+// The two comparisons below are that tournament; the `()` is the selected thunk being forced.
+// CHECK-DAG: fun extern batch_dispatch
+// CHECK-DAG: %core.nat.add (2712000, {{.*}})
+// CHECK-DAG: %core.nat.add (360000, {{.*}})
+// CHECK-DAG: %core.ncmp.gLe ({{.*}}, ({{.*}})#{{.*}})
+// CHECK-DAG: ({{.*}})#{{.*}} ();
+fun extern batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w2: «300, 120; Nat»,
+                                    w3: «120, 10; Nat»): «m, 10; Nat» =
     let R = nat_ring ();
     return (%tensor.product_2d R (%tensor.product_2d R (%tensor.product_2d R (x, w1), w2), w3));
 
-// Bufferization cannot yet carry a symbolically shaped tensor across a function boundary, so this
-// test stops after the reassociation it is about.
+// `%tensor.lower_to_mem` rejects a tensor-typed function *value*, which is what the dispatcher's
+// thunks are - and it cannot carry a symbolically shaped tensor across a function boundary either.
+// So this test stops after the reassociation it is about.
 lam extern _compile (): %compile.Phase = %tensor.reassoc;
