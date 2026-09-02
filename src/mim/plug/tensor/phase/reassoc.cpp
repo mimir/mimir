@@ -4,12 +4,12 @@
 
 #include <algorithm>
 #include <array>
-#include <string_view>
 
 #include <fe/format.h>
 #include <fe/worklist.h>
 
 #include <mim/def.h>
+#include <mim/plugin.h>
 #include <mim/tuple.h>
 
 #include <mim/util/types.h>
@@ -22,13 +22,11 @@ namespace mim::plug::tensor::phase {
 
 namespace {
 
-/// The symbolic extents of one `dims[i] · dims[s + 1] · dims[j + 1]` cost term, sorted by Def::gid and
-/// padded with `nullptr`; literal extents fold into the coefficient instead.
-constexpr auto Max_dispatch_arg = std::string_view("reassoc-max=");
-
 /// Beyond this the eager enumeration of `Catalan(n − 1)` bracketings is worth a warning.
 constexpr u64 Loud_max_dispatch = 8;
 
+/// The symbolic extents of one `dims[i] · dims[s + 1] · dims[j + 1]` cost term, sorted by Def::gid and
+/// padded with `nullptr`; literal extents fold into the coefficient instead.
 using Mono = std::array<const Def*, 3>;
 
 /// A chain cost as a polynomial in the symbolic extents.
@@ -194,18 +192,15 @@ void count_consumers(const Def* d, DefMap<u64>& consumers) {
 } // namespace
 
 void Reassoc::start() {
-    for (auto arg : args()) {
-        auto val = std::string_view(arg);
-        if (!val.starts_with(Max_dispatch_arg)) continue;
-        val.remove_prefix(Max_dispatch_arg.size());
-
+    if (auto val = arg_value(args(), "reassoc-max")) {
         auto n = 0_u64;
-        if (auto [_, ec] = std::from_chars(val.data(), val.data() + val.size(), n); ec != std::errc()) {
-            log().w("ignoring `-X tensor:{}`: `{}` is not a number", arg, val);
+        if (auto [_, ec] = std::from_chars(val->data(), val->data() + val->size(), n); ec != std::errc()) {
+            log().w("ignoring `-X tensor:reassoc-max={}`: not a number", *val);
         } else {
             max_dispatch_ = n;
             log().d("dispatch chains of up to {} matrices", n);
-            if (n > Loud_max_dispatch) log().w("`-X tensor:{}` enumerates up to Catalan({}) bracketings", arg, n - 1);
+            if (n > Loud_max_dispatch)
+                log().w("`-X tensor:reassoc-max={}` enumerates up to Catalan({}) bracketings", n, n - 1);
         }
     }
 
