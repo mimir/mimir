@@ -213,7 +213,11 @@ const Def* Reassoc::reassoc(const App* app) {
     auto mid = mats.size();
     flatten(t2, head->arg(), link->k, mats, dims, splits);
     dims.emplace_back(link->l);
-    splits.emplace_back(std::array{0_u64, mid - 1, mats.size() - 1});
+    splits.emplace_back(std::array<u64, 3>{
+        0_u64,
+        static_cast<u64>(mid - 1),
+        static_cast<u64>(mats.size() - 1),
+    });
 
     // Two matrices admit only one parenthesization.
     if (mats.size() < 3) return nullptr;
