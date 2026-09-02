@@ -40,4 +40,28 @@ fun extern shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d:
     let ab = %tensor.product_2d R (a, b);
     return (%tensor.product_2d R (ab, c), %tensor.product_2d R (ab, d));
 
+// A symbolic extent is fine as long as one bracketing wins for *every* value of it. Here the rank-8
+// bottleneck does: x·(U·V) costs 768·8·768 + 589824·m, (x·U)·V costs 12288·m, and 12288 ≤ 589824
+// with nothing left over - so the reassociation is provable without knowing m.
+// CHECK-DAG: fun extern low_rank
+// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 768, 8)
+// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 8, 768)
+fun extern low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 768; Nat»): «m, 768; Nat» =
+    let R = nat_ring ();
+    return (%tensor.product_2d R (x, %tensor.product_2d R (u, v)));
+
+// The same shape without a bottleneck has no such winner: contracting 784 first costs
+// 28224000 + 94080·m, contracting 300 first 271200·m, and neither dominates - small m prefers the
+// former, large m the latter. So the chain must survive exactly as written, left-deep.
+// CHECK-DAG: fun extern batch_dependent
+// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 784, 300)
+// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 300, 120)
+// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 120, 10)
+fun extern batch_dependent {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w2: «300, 120; Nat»,
+                                     w3: «120, 10; Nat»): «m, 10; Nat» =
+    let R = nat_ring ();
+    return (%tensor.product_2d R (%tensor.product_2d R (%tensor.product_2d R (x, w1), w2), w3));
+
+// Bufferization cannot yet carry a symbolically shaped tensor across a function boundary, so this
+// test stops after the reassociation it is about.
 lam extern _compile (): %compile.Phase = %tensor.reassoc;
