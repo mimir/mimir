@@ -1,7 +1,10 @@
 #include "mim/plug/tensor/phase/reassoc.h"
 
+#include <charconv>
+
 #include <algorithm>
 #include <array>
+#include <string_view>
 
 #include <fe/format.h>
 #include <fe/worklist.h>
@@ -21,6 +24,11 @@ namespace {
 
 /// The symbolic extents of one `dims[i] · dims[s + 1] · dims[j + 1]` cost term, sorted by Def::gid and
 /// padded with `nullptr`; literal extents fold into the coefficient instead.
+constexpr auto Max_dispatch_arg = std::string_view("reassoc-max=");
+
+/// Beyond this the eager enumeration of `Catalan(n − 1)` bracketings is worth a warning.
+constexpr u64 Loud_max_dispatch = 8;
+
 using Mono = std::array<const Def*, 3>;
 
 /// A chain cost as a polynomial in the symbolic extents.
@@ -186,6 +194,21 @@ void count_consumers(const Def* d, DefMap<u64>& consumers) {
 } // namespace
 
 void Reassoc::start() {
+    for (auto arg : args()) {
+        auto val = std::string_view(arg);
+        if (!val.starts_with(Max_dispatch_arg)) continue;
+        val.remove_prefix(Max_dispatch_arg.size());
+
+        auto n = 0_u64;
+        if (auto [_, ec] = std::from_chars(val.data(), val.data() + val.size(), n); ec != std::errc()) {
+            log().w("ignoring `-X tensor:{}`: `{}` is not a number", arg, val);
+        } else {
+            max_dispatch_ = n;
+            log().d("dispatch chains of up to {} matrices", n);
+            if (n > Loud_max_dispatch) log().w("`-X tensor:{}` enumerates up to Catalan({}) bracketings", arg, n - 1);
+        }
+    }
+
     // The old world does not track uses, so count consumers up front: flatten() may only pull a
     // product apart where doing so cannot leave it materialized for another consumer as well.
     auto wl = fe::BFSWorklist<DefSet>();
@@ -305,7 +328,7 @@ const Def* Reassoc::reassoc(const App* app) {
 
     auto orig_cost = cost_of(orig, dims);
 
-    if (n <= Max_dispatch) {
+    if (n <= max_dispatch_) {
         auto cands = pareto(bracketings(0, n - 1), dims);
         if (cands.size() != 1) {
             log().d("dispatch chain {} over {} bracketings, written as {}", fe::Join(dims, "×"), cands.size(),

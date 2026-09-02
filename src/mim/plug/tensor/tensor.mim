@@ -1,5 +1,6 @@
 /// # The tensor Plugin {#tensor}
 ///
+/// @see [`-X tensor:<arg>`](@ref xarg_tensor)
 /// @see mim::plug::tensor
 ///
 /// SSA-world tensor operations: a generic `map_reduce` loop-nest abstraction plus derived operations
@@ -1054,7 +1055,7 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 /// * `reassoc`: reassociates chains of %%tensor.product_2d to minimize the number of scalar multiplications, using the classic matrix-chain-order dynamic program.
 ///   Extents need not be literal: a cost is a polynomial in the symbolic extents, ordered by coefficient-wise `≤`, which proves `≤` for every instantiation because extents are non-negative.
 ///   That order is only *partial*, so a chain can have several bracketings that each win for some instantiation - a batch dimension favouring a different one when small than when large.
-///   Up to 4 matrices those survivors are emitted side by side behind a run-time comparison of their costs, so only the winner's thunk runs; a longer chain is left as written.
+///   Up to 4 matrices - `-X tensor:reassoc-max=<n>`, below `3` to switch it off - those survivors are emitted side by side behind a run-time comparison of their costs, so only the winner's thunk runs; a longer chain is left as written.
 ///   Common sub-products are hash-consed across the alternatives, so the code growth stays well below `Catalan(n − 1)`.
 ///   A product with more than one consumer stays a chain boundary, as pulling it apart would leave it materialized for its other consumers as well.
 ///   Reassociation is only exact for an associative ring; on floating-point rings it changes the rounding, just like `-ffast-math`.

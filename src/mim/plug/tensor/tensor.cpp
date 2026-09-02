@@ -23,6 +23,12 @@ void reg_phases(Flags2Phases& phases) {
 }
 } // namespace mim::plug::tensor
 
+// clang-format off
+static constexpr PluginArg known_args[] = {
+    {"reassoc-max=<n>", "Longest matrix chain whose bracketings `%%tensor.reassoc` enumerates (default `4`). Where no single bracketing is cheapest for *every* extent, the survivors are dispatched over at run time; a longer chain is left as written. The number of bracketings is `Catalan(n − 1)`, so raising this gets expensive fast, while anything below `3` switches the dispatch off."},
+};
+// clang-format on
+
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"tensor", MIM_VERSION, tensor::register_normalizers, tensor::reg_phases};
+    return {"tensor", MIM_VERSION, tensor::register_normalizers, tensor::reg_phases, known_args, std::size(known_args)};
 }

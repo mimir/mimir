@@ -23,7 +23,7 @@ using Splits = fe::Vector<Split>;
 /// Since extents are `Nat`s and hence non-negative, that order proves `≤` under *every* instantiation -
 /// but it is only a *partial* order, so a chain can have several bracketings that each win for some
 /// instantiation (a batch dimension favouring a different one when small than when large).
-/// Up to Reassoc::Max_dispatch matrices those survivors are emitted side by side behind a runtime
+/// Up to Reassoc::max_dispatch_ matrices those survivors are emitted side by side behind a runtime
 /// comparison of their costs; a longer chain is left as written.
 class Reassoc : public RWPhase {
 public:
@@ -31,9 +31,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    /// Longest chain whose bracketings are enumerated - and, failing a unique winner, dispatched over.
-    /// The number of bracketings is `Catalan(n − 1)`, so this cannot grow much.
-    static constexpr u64 Max_dispatch = 4;
+    static constexpr u64 Default_max_dispatch = 4;
 
     /// One `%tensor.product_2d` of a chain: `«m, k» · «k, l»`.
     struct Link {
@@ -65,6 +63,11 @@ private:
 
     /// Old-world consumer count per `product_2d` app, attributed through tuple wrappers.
     DefMap<u64> consumers_;
+
+    /// Longest chain whose bracketings are enumerated - and, failing a unique winner, dispatched over.
+    /// The number of bracketings is `Catalan(n − 1)`, so this cannot grow much.
+    /// Set with `-X tensor:reassoc-max=<n>`; below `3` nothing is ever dispatched.
+    u64 max_dispatch_ = Default_max_dispatch;
 };
 
 } // namespace mim::plug::tensor::phase
