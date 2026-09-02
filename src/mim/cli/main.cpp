@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
             .opt(search_paths             , "path"      , "-P", "--plugin-path"         , "Path to search for plugins.")
             .opt(plugin_args              , "plugin:arg", "-X", "--plugin-arg"          , "Passes an argument to a plugin/phase, e.g. -X ll:o=output.ll. Repeatable.")
             .opt(flags.force_load         , ""          , ""  , "--force-load"          , "Loads plugins even on version mismatch.")
-            .opt(flags.bootstrap          , ""          , ""  , "--bootstrap"           , "Bootstrap mode: a 'plugin' directive acts as an 'import' and loads no library; no standard plugins are loaded either.")
+            .opt(flags.bootstrap          , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR.")
             .opt(inc_verbose              , ""          , "-V", "--verbose"             , "Raises the log level from error to warn, info, verbose, debug, trace; repeatable.").cardinality(0, 5)
             .opt(flags.ascii              , ""          , "-a", "--ascii"               , "Uses ASCII alternatives in output instead of UTF-8.")
             .grp("Output")
