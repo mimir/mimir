@@ -305,10 +305,7 @@ public:
     ///@{
     fe::Error& error() const noexcept;
 
-    /// Loc to blame for a diagnostic about @p def.
-    /// Def%s are hash-consed, so Def::loc may belong to whatever file first created a structurally equal term.
-    /// World::get_loc is the syntactic site the emitter is currently working on and thus the user's actual mistake;
-    /// it is only set during emit, so fall back to the Def itself - and to its enclosing mutable - afterwards.
+    /// Returns a blame Loc from World::get_loc, this Def, or its nearest located dependency, in that order.
     Loc err_loc() const;
 
     /// Reports an error that blames *this*; chain Error::n for Note%s and Error::bail to throw.
