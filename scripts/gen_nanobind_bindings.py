@@ -858,7 +858,11 @@ def _policy_suffix(ret_type: str, static: bool) -> str:
 
 
 def _gen_constructor_binding(mi: MethodInfo, indent: str = "    ") -> str:
-    return f'{indent}.def(nb::init<{", ".join(p.spelling for p in mi.params)}>())'
+    # nanobind has no defaulted `nb::init`, so a defaulted parameter becomes one
+    # overload per callable arity.
+    required = sum(1 for p in mi.params if p.default is None)
+    specs = [", ".join(p.spelling for p in mi.params[:n]) for n in range(required, len(mi.params) + 1)]
+    return "\n".join(f"{indent}.def(nb::init<{spec}>())" for spec in specs)
 
 
 def _gen_field_binding(mi: MethodInfo, indent: str = "    ") -> str:
