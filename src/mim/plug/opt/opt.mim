@@ -37,6 +37,7 @@ lam extern _default_compile (): %compile.Phase =
         %compile.unload "regex",
 
         // tensor
+        %compile.named "%tensor.reassoc",
         %compile.named "%tensor.lower_tensor",
         %compile.named "%tensor.fuse_tensor",
         %compile.named "%tensor.lower_to_mem",

@@ -1,0 +1,43 @@
+// RUN: %mim %s -p opt -o %t
+// RUN: cat %t | %FileCheck %s
+// RUN: cat %t | %FileCheck %s --check-prefix=GONE
+
+// %tensor.reassoc: matrix-chain order.
+
+plugin core;
+plugin tensor;
+
+lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+// 4x10 · 10x2 · 2x10 written right-deep costs 10·2·10 + 4·10·10 = 600 multiplications; the dynamic
+// program picks the left-deep bracketing at 4·10·2 + 4·2·10 = 160.
+// CHECK-DAG: fun extern chain3
+// CHECK-DAG: %tensor.product_2d {{.*}} (4, 10, 2)
+// CHECK-DAG: %tensor.product_2d {{.*}} (4, 2, 10)
+// GONE-NOT: %tensor.product_2d {{.*}} (10, 2, 10)
+fun extern chain3 (a: «4, 10; Nat», b: «10, 2; Nat», c: «2, 10; Nat»): «4, 10; Nat» =
+    let R = nat_ring ();
+    return (%tensor.product_2d R (a, %tensor.product_2d R (b, c)));
+
+// 30x35 · 35x15 · 15x5 · 5x10 written left-deep costs 19500 multiplications; the optimum is
+// ((A·(B·C))·D) at 9375, a bracketing that is neither left- nor right-deep.
+// CHECK-DAG: fun extern chain4
+// CHECK-DAG: %tensor.product_2d {{.*}} (35, 15, 5)
+// CHECK-DAG: %tensor.product_2d {{.*}} (30, 35, 5)
+// CHECK-DAG: %tensor.product_2d {{.*}} (30, 5, 10)
+fun extern chain4 (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d: «5, 10; Nat»): «30, 10; Nat» =
+    let R = nat_ring ();
+    return (%tensor.product_2d R (%tensor.product_2d R (%tensor.product_2d R (a, b), c), d));
+
+// A shared intermediate is a chain boundary: reassociating across `ab` would leave it materialized
+// for its second consumer as well, so both chains keep contracting 35 first.
+// CHECK-DAG: fun extern shared
+// CHECK-DAG: %tensor.product_2d {{.*}} (30, 15, 5)
+// CHECK-DAG: %tensor.product_2d {{.*}} (30, 15, 10)
+fun extern shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d: «15, 10; Nat»)
+                 : [«30, 5; Nat», «30, 10; Nat»] =
+    let R  = nat_ring ();
+    let ab = %tensor.product_2d R (a, b);
+    return (%tensor.product_2d R (ab, c), %tensor.product_2d R (ab, d));
+
+lam extern _compile (): %compile.Phase = %tensor.reassoc;
