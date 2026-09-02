@@ -130,7 +130,7 @@ public:
         auto& driver = world.driver();
         // Ensure libmim_ll is loaded so the shims below resolve (e.g. when a derived backend like
         // ll_nvptx uses us). Loading merely registers %ll.emit; it does not run it.
-        if (auto ll = driver.sym("ll"); !driver.is_loaded(ll)) driver.load(ll);
+        if (!driver.is_loaded("ll")) driver.load("ll");
         convert_       = driver.GET_FUN_PTR("ll", mim_ll_convert);
         finalize_      = driver.GET_FUN_PTR("ll", mim_ll_finalize);
         emit_epilogue_ = driver.GET_FUN_PTR("ll", mim_ll_emit_epilogue);

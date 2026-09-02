@@ -1142,11 +1142,9 @@ private:
     Ptrs<ValDecl> decls_;
 };
 
-AST load_plugins(World&, fe::View<Sym>);
-inline AST load_plugins(World& w, fe::View<std::string> plugins) {
-    return load_plugins(w, fe::Vector<Sym>(plugins.size(), [&](size_t i) { return w.sym(plugins[i]); }));
+AST load_plugins(World&, fe::View<std::string>);
+inline AST load_plugin(World& w, std::string_view plugin) {
+    return load_plugins(w, fe::View<std::string>({std::string(plugin)}));
 }
-inline AST load_plugin(World& w, Sym sym) { return load_plugins(w, fe::View<Sym>({sym})); }
-inline AST load_plugin(World& w, const std::string& plugin) { return load_plugin(w, w.sym(plugin)); }
 
 } // namespace mim::ast

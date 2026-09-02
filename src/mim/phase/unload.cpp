@@ -5,10 +5,10 @@
 namespace mim {
 
 void Unload::apply(std::string plugin) {
-    plugin_str_ = plugin;
+    plugin_str_ = std::move(plugin);
     name_ += " \"" + plugin_str_ + "\"";
-    if (auto plugin = Annex::mangle(driver().sym(plugin_str_)))
-        plugin_ = *Annex::mangle(driver().sym(plugin_str_));
+    if (auto mangled = Annex::mangle(plugin_str_))
+        plugin_ = *mangled;
     else
         fe::throwf("invalid plugin name `{}`", plugin_str_);
 }

@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <list>
+#include <string>
 #include <utility>
 
 #include <absl/container/flat_hash_map.h>
@@ -60,9 +61,7 @@ class Driver : public fe::Driver {
 public:
     /// @name Construction
     ///@{
-    Driver(std::string name);
-    Driver()
-        : Driver(std::string{}) {}
+    Driver(std::string name = {});
 
     Driver(const Driver&)     = delete;
     Driver(Driver&&)          = delete;
@@ -155,19 +154,13 @@ public:
     /// Otherwise, "name", "libmim_name.so" (Linux, Mac), "mim_name.dll" (Win)
     /// are searched for in Driver::search_paths().
     ///@{
-    void load(Sym name);
-    void load(const std::string& name) { return load(sym(name)); }
-    bool is_loaded(Sym sym) const { return fe::lookup(plugins_, sym); }
-    void* get_fun_ptr(Sym plugin, const char* name);
+    void load(std::string_view name);
+    bool is_loaded(std::string_view name) const { return fe::lookup(plugins_, name); }
+    void* get_fun_ptr(std::string_view plugin, const char* name);
 
     template<class F>
-    auto get_fun_ptr(Sym plugin, const char* name) {
+    auto get_fun_ptr(std::string_view plugin, const char* name) {
         return reinterpret_cast<F*>(get_fun_ptr(plugin, name));
-    }
-
-    template<class F>
-    auto get_fun_ptr(const char* plugin, const char* name) {
-        return get_fun_ptr<F>(sym(plugin), name);
     }
     ///@}
 
@@ -184,8 +177,9 @@ public:
     /// Freeform command-line arguments addressed to a plugin/phase (`-X <plugin>:<arg>`).
     /// A Phase reads its own arguments via Phase::args().
     ///@{
-    void add_arg(Sym plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
-    const fe::Vector<std::string>& args(Sym plugin) const; ///< Yields an empty fe::Vector if @p plugin has none.
+    void add_arg(std::string_view plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
+    /// Yields an empty fe::Vector if @p plugin has none.
+    const fe::Vector<std::string>& args(std::string_view plugin) const;
 
     /// The PluginArg%s each loaded Plugin declares, in load order; only for listing them, see PluginArg.
     const auto& known_args() const { return known_args_; }
@@ -193,7 +187,7 @@ public:
 
 private:
     // This must go *first* so plugins will be unloaded *last* in the d'tor; otherwise funny things might happen ...
-    absl::node_hash_map<Sym, Plugin::Handle> plugins_;
+    absl::node_hash_map<std::string, Plugin::Handle> plugins_;
     Version version_;
     Flags flags_;
     fe::Log log_;
@@ -204,8 +198,8 @@ private:
     std::list<fs::path>::iterator insert_ = search_paths_.end();
     Flags2Phases phases_;
     Normalizers normalizers_;
-    fe::SymMap<fe::Vector<std::string>> plugin_args_;
-    std::vector<std::pair<Sym, fe::View<PluginArg>>> known_args_;
+    absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;
+    std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
     Imports imports_;
 };
 
