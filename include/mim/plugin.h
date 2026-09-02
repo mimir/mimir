@@ -6,6 +6,7 @@
 #include <iosfwd>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <tuple>
 
@@ -163,11 +164,11 @@ struct Annex {
     /// | 54-63:  | `0`-`9` |
     /// The 0 is special and marks the end of the name if the name has less than 8 chars.
     /// @returns `std::nullopt` if encoding is not possible.
-    static std::optional<plugin_t> mangle(Sym plugin);
+    static std::optional<plugin_t> mangle(std::string_view plugin);
 
-    /// Reverts an Axm::mangle%d string to a Sym.
-    /// Ignores lower 16-bit of @p u.
-    static Sym demangle(Driver&, plugin_t plugin);
+    /// Reverts an Axm::mangle%d @p plugin back to its name; never longer than Annex::Max_Plugin_Size.
+    /// Ignores lower 16-bit of @p plugin.
+    static std::string demangle(plugin_t plugin);
 
     static std::tuple<Sym, Sym, Sym> split(Driver&, Sym);
     ///@}

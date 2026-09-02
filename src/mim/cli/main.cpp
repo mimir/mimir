@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
             for (auto&& path : search_paths)
                 driver.add_search_path(path);
             for (auto&& plugin : plugins) // a plugin declares its `-X` arguments in its shared library
-                driver.load(driver.sym(plugin));
+                driver.load(plugin);
 
             if (!driver.known_args().empty()) cli.section("Plugin Arguments", "", {});
             for (const auto& [plugin, args] : driver.known_args()) {
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
             auto pos = pa.find(':');
             if (pos == std::string::npos)
                 throw std::invalid_argument("error: --plugin-arg expects <plugin>:<arg>, got '" + pa + "'");
-            driver.add_arg(driver.sym(pa.substr(0, pos)), pa.substr(pos + 1));
+            driver.add_arg(std::string_view(pa).substr(0, pos), pa.substr(pos + 1));
         }
 
         if (list_search_paths) {

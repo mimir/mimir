@@ -60,8 +60,7 @@ void World::Externals::internalize(Def* def) {
 
 const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     driver().log().t("register annex `{}` 0x{:x} → {}", sym, flags, def);
-    auto plugin = Annex::demangle(driver(), flags);
-    if (driver().is_loaded(plugin)) {
+    if (driver().is_loaded(Annex::demangle(flags))) {
         fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
         fe::assert_emplace(sym2flags_, sym, flags);
         def->annex_ = true;
