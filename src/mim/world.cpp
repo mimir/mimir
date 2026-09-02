@@ -673,7 +673,8 @@ const Def* World::match(Defs ops_) {
         auto pi  = arm->isa_type<Pi>();
         if (!Checker::alpha<Checker::Check>(pi->dom(), join->op(i)))
             arm->blame("domain type `{}` of test-expression arm does not match union case type `{}`", pi->dom(),
-                       join->op(i));
+                       join->op(i))
+                .bail();
         type = type ? this->join({type, pi->codom()}) : pi->codom();
     }
 
