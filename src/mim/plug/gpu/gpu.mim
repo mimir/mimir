@@ -59,6 +59,14 @@ axm %gpu.init: %mem.M 0 → [%mem.M 0, %gpu.GlobalM, %gpu.ConstM];
 /// Deinitializes the GPU runtime.
 axm %gpu.deinit: [%mem.M 0, %gpu.GlobalM, %gpu.ConstM] → %mem.M 0;
 ///
+/// #### %%gpu.auto_init / %%gpu.auto_deinit
+///
+/// The compiler-inserted counterparts of %%gpu.init / %%gpu.deinit.
+/// %%gpu.lower_btensor_map_reduce uses these instead of calling %%gpu.init / %%gpu.deinit directly, so a
+/// backend can recognize and collapse the sessions it creates without touching one that the user opened by hand.
+axm %gpu.auto_init: %mem.M 0 → [%mem.M 0, %gpu.GlobalM, %gpu.ConstM];
+axm %gpu.auto_deinit: [%mem.M 0, %gpu.GlobalM, %gpu.ConstM] → %mem.M 0;
+///
 /// ### Streams
 ///
 /// #### %%gpu.stream_init

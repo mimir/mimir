@@ -757,9 +757,6 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
         auto address_space = malloc->decurry()->arg(1);
-        if (Lit::expect(address_space, "an address space") != 0)
-            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return target_specific.value();
-
         declare("i8* @malloc(i64)");
 
         emit_unsafe(malloc->arg(0));
@@ -774,9 +771,6 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         return bb.assign(name, "bitcast {} {} to {}", i8ptr_t, i8ptr, ptr_t);
     } else if (auto free = Axm::isa<mem::free>(def)) {
         auto address_space = free->decurry()->arg(1);
-        if (Lit::expect(address_space, "an address space") != 0)
-            if (auto target_specific = isa_targetspecific_intrinsic(bb, def)) return std::string();
-
         declare("void @free(i8*)");
         emit_unsafe(free->arg(0));
         auto ptr   = emit(free->arg(1));
@@ -1128,12 +1122,12 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     if (auto lam = def->isa<Lam>()) return id(lam);
 
     auto name = id(def);
+    if (auto res = isa_targetspecific_intrinsic(bb, def)) return *std::move(res);
     if (auto res = emit_builtin(bb, name, def)) return *std::move(res);
     if (auto res = emit_core(bb, name, def)) return *std::move(res);
     if (auto res = emit_mem(bb, name, def)) return *std::move(res);
     if (auto res = emit_math(bb, name, def)) return *std::move(res);
     if (auto res = emit_vec(bb, name, def)) return *std::move(res);
-    if (auto res = isa_targetspecific_intrinsic(bb, def)) return *std::move(res);
     fe::throwf(MIM_LL_BE "unhandled def `{}` of type `{}`", def, def->type());
 }
 

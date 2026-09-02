@@ -1,8 +1,13 @@
 #include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
 
+#include <algorithm>
 #include <format>
 
+#include <fe/log.h>
+#include <fe/sys.h>
+
 #include <mim/driver.h>
+#include <mim/lam.h>
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/gpu/gpu.h>
@@ -30,6 +35,9 @@ public:
     void start() final;
     void find_kernels(const Def*);
 
+    std::string prepare() override;
+    void emit_epilogue(Lam*) override;
+
     std::optional<std::string> isa_targetspecific_intrinsic(ll::BB&, const Def*) final;
 
 protected:
@@ -42,12 +50,17 @@ private:
     static constexpr std::string_view kernel_array_name_ = "@.mimir_kernels";
     static constexpr std::string_view kernel_name_prefix = "@.kname.";
 
-    void emit_cu_error_handling(ll::BB&, const std::string&, bool at_tail = false);
+    void emit_cu_error_handling(ll::BB&, const std::string&);
+    void emit_gpu_setup(ll::BB&, const std::string& name);
+    void emit_gpu_teardown(ll::BB&, const std::string& name);
 
     std::optional<std::string> device_fatbin_file_;
     LamMap<int> kernel_ids_;
+    bool cu_globals_declared_ = false;
 
     DefSet analyzed_;
+    /// Externals wrapped in their own GPU setup/teardown - see HostEmitter::start().
+    LamSet gpu_externals_;
 };
 
 class DeviceEmitter : public ll::Emitter {
@@ -82,9 +95,22 @@ private:
     absl::btree_map<std::string, int> symbols_;
     LamSet kernels_;
 
-    bool uses_libdevice;
+    bool uses_libdevice = false;
     std::string extra_flags;
 };
+
+namespace {
+template<class Pred>
+bool reaches_if(const Def* def, DefSet& seen, Pred&& pred) {
+    if (auto [_, ins] = seen.emplace(def); !ins) return false;
+    if (pred(def)) return true;
+    for (auto d : def->deps())
+        if (reaches_if(d, seen, pred)) return true;
+    return false;
+}
+
+bool is_gpu_auto_init(const Def* def) { return Axm::isa<gpu::auto_init>(def) != nullptr; }
+} // namespace
 
 void HostEmitter::start() {
     for (auto def : world().annexes().defs())
@@ -99,6 +125,24 @@ void HostEmitter::start() {
     }
     std::print(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer\n", kernel_array_name_,
                kernel_ids_.size());
+
+    LamSet gpu_touching;
+    for (auto mut : world().externals().muts()) {
+        auto lam = mut->isa_mut<Lam>();
+        if (!lam || !lam->ret_pi()) continue;
+        DefSet seen;
+        if (reaches_if(lam, seen, is_gpu_auto_init)) gpu_touching.emplace(lam);
+    }
+    // Only wrap the ones not themselves called by another GPU-touching external: a caller's own
+    // setup/teardown already covers whatever GPU-touching external(s) it calls.
+    for (auto lam : gpu_touching) {
+        auto called_by_other = std::ranges::any_of(gpu_touching, [&](auto other) {
+            if (other == lam) return false;
+            DefSet seen;
+            return reaches_if(other, seen, [lam](const Def* d) { return d == lam; });
+        });
+        if (!called_by_other) gpu_externals_.emplace(lam);
+    }
 
     Super::start();
 }
@@ -138,56 +182,35 @@ constexpr auto Cu_Stream_Create       = "cuStreamCreate";
 constexpr auto Cu_Stream_Destroy      = "cuStreamDestroy_v2";
 constexpr auto Cu_Stream_Sync         = "cuStreamSynchronize_ptsz";
 
-void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_result, bool at_tail) {
+void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_result) {
     // Offload the CUresult check to the C runtime wrapper `mim_cu_check` (see rt/mim_cuda_rt.c)
     // instead of open-coding it here; showcases the C-runtime system on the ll_nvptx backend.
     declare_rt("void @mim_cu_check(i32)");
-    if (at_tail)
-        bb.tail("call void @mim_cu_check(i32 {})", cu_result);
-    else
-        std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
+    std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
 }
 
-std::string HostEmitter::convert(const Def* type, bool simd) {
-    if (auto ptr = Axm::isa<mem::Ptr>(type)) {
-        auto [_, addr_space] = ptr->args<2>();
-        auto lit             = Lit::isa(addr_space);
-        if (lit.value_or(0L) != 0) {
-            // NVIDIA treats all device pointers as i64s in host code
-            return "i64";
-        }
-    }
-    return Super::convert(type, simd);
-}
+void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
+    auto dev_num   = 0; // TODO: consider parameterizing this
+    auto ctx_flags = 0; // TODO: consider parameterizing this
 
-std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb, const Def* def) {
-    auto name = id(def);
-    std::string op;
+    declare("i32 @{}(i32)", Cu_Init);
+    auto init_res = bb.assign(name + "_init_res", "call i32 @{}(i32 0)", Cu_Init);
+    emit_cu_error_handling(bb, init_res);
 
-    if (auto default_stream = Axm::isa<gpu::default_stream>(def)) {
-        return "null";
-    } else if (auto init = Axm::isa<gpu::init>(def)) {
-        auto dev_num   = 0; // TODO: consider parameterizing this
-        auto ctx_flags = 0; // TODO: consider parameterizing this
+    declare("i32 @{}(ptr, i32)", Cu_Device_Get);
+    auto dev_ptr     = bb.assign(name + "_dev_ptr", "alloca i32");
+    auto dev_get_res = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", Cu_Device_Get, dev_ptr, dev_num);
+    emit_cu_error_handling(bb, dev_get_res);
 
-        declare("i32 @{}(i32)", Cu_Init);
-        auto init_res = bb.assign(name + "_init_res", "call i32 @{}(i32 0)", Cu_Init);
-        emit_cu_error_handling(bb, init_res);
+    declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
+    if (!cu_globals_declared_) std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
+    auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
+    auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
+                             ctx_name_, ctx_flags, dev);
+    emit_cu_error_handling(bb, ctx_res);
 
-        declare("i32 @{}(ptr, i32)", Cu_Device_Get);
-        auto dev_ptr = bb.assign(name + "_dev_ptr", "alloca i32");
-        auto dev_get_res
-            = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", Cu_Device_Get, dev_ptr, dev_num);
-        emit_cu_error_handling(bb, dev_get_res);
-
-        declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
-        std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
-        auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
-        auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
-                                 ctx_name_, ctx_flags, dev);
-        emit_cu_error_handling(bb, ctx_res);
-
-        declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
+    declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
+    if (!cu_globals_declared_) {
         std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
         if (device_fatbin_file_.has_value()) {
             std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
@@ -215,36 +238,86 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
                        "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
                        fatbin_name_);
         }
-        auto mod_res = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", Cu_Module_Load_Fatbin, mod_name_,
-                                 fatbin_name_);
-        emit_cu_error_handling(bb, mod_res);
-        auto mod_inner = bb.assign(name + "_mod_inner", "load ptr, ptr {}", mod_name_);
+        cu_globals_declared_ = true;
+    }
+    auto mod_res
+        = bb.assign(name + "_mod_res", "call i32 @{}(ptr {}, ptr {})", Cu_Module_Load_Fatbin, mod_name_, fatbin_name_);
+    emit_cu_error_handling(bb, mod_res);
+    auto mod_inner = bb.assign(name + "_mod_inner", "load ptr, ptr {}", mod_name_);
 
-        declare("i32 @{}(ptr, ptr, ptr)", Cu_Module_Get_Function);
-        for (auto [kernel, kid] : kernel_ids_) {
-            auto kname    = id(kernel).substr(1);
-            auto func_ptr = bb.assign("%" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
-                                      kernel_array_name_, kid);
-            auto func_res = bb.assign("%" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
-                                      Cu_Module_Get_Function, func_ptr, mod_inner, kernel_name_prefix, kid);
-            emit_cu_error_handling(bb, func_res);
+    declare("i32 @{}(ptr, ptr, ptr)", Cu_Module_Get_Function);
+    for (auto [kernel, kid] : kernel_ids_) {
+        auto kname    = id(kernel).substr(1);
+        auto func_ptr = bb.assign(name + "_" + kname + "_funcptr", "getelementptr inbounds ptr, ptr {}, i64 {}",
+                                  kernel_array_name_, kid);
+        auto func_res = bb.assign(name + "_" + kname + "_getfuncres", "call i32 @{}(ptr {}, ptr {}, ptr {}{})",
+                                  Cu_Module_Get_Function, func_ptr, mod_inner, kernel_name_prefix, kid);
+        emit_cu_error_handling(bb, func_res);
+    }
+}
+
+void HostEmitter::emit_gpu_teardown(ll::BB& bb, const std::string& name) {
+    declare("i32 @{}(ptr)", Cu_Module_Unload);
+    std::print(bb.body().emplace_back(), "{}_mod = load ptr, ptr {}", name, mod_name_);
+    std::print(bb.body().emplace_back(), "{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload, name);
+    emit_cu_error_handling(bb, name + "_mod_unload_res");
+
+    declare("i32 @{}(ptr)", Cu_Ctx_Destroy);
+    std::print(bb.body().emplace_back(), "{}_ctx = load ptr, ptr {}", name, ctx_name_);
+    std::print(bb.body().emplace_back(), "{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy, name);
+    emit_cu_error_handling(bb, name + "_ctx_destroy_res");
+}
+
+std::string HostEmitter::prepare() {
+    auto name = Super::prepare();
+    // Append to root()'s own BB, not func_impls_: Emitter::finalize_impl writes it out only once.
+    if (gpu_externals_.contains(root())) emit_gpu_setup(lam2bb_[root()], "%" + root()->unique_name());
+    return name;
+}
+
+void HostEmitter::emit_epilogue(Lam* lam) {
+    // Must run first to force emission of the return value's own dependencies (e.g. %gpu.free) into bb.body().
+    Super::emit_epilogue(lam);
+    if (gpu_externals_.contains(root())) {
+        // lam, not root(): a function can have several return blocks, and LLVM names are function-scoped.
+        if (auto app = lam->body()->isa<App>(); app && app->callee() == root()->ret_var())
+            emit_gpu_teardown(lam2bb_[lam], "%" + lam->unique_name());
+    }
+}
+
+std::string HostEmitter::convert(const Def* type, bool simd) {
+    if (auto ptr = Axm::isa<mem::Ptr>(type)) {
+        auto [_, addr_space] = ptr->args<2>();
+        auto lit             = Lit::isa(addr_space);
+        if (lit.value_or(0L) != 0) {
+            // NVIDIA treats all device pointers as i64s in host code
+            return "i64";
         }
+    }
+    return Super::convert(type, simd);
+}
 
-        auto mem = init->arg();
-        return emit_unsafe(mem);
+std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb, const Def* def) {
+    auto name = id(def);
+
+    if (auto default_stream = Axm::isa<gpu::default_stream>(def)) {
+        return "null";
+    } else if (auto init = Axm::isa<gpu::init>(def)) {
+        auto mem_val = emit_unsafe(init->arg());
+        emit_gpu_setup(bb, name);
+        return mem_val;
     } else if (auto deinit = Axm::isa<gpu::deinit>(def)) {
-        declare("i32 @{}(ptr)", Cu_Module_Unload);
-        bb.tail("{}_mod = load ptr, ptr {}", name, mod_name_);
-        bb.tail("{}_mod_unload_res = call i32 @{}(ptr {}_mod)", name, Cu_Module_Unload, name);
-        emit_cu_error_handling(bb, name + "_mod_unload_res", true);
-
-        declare("i32 @{}(ptr)", Cu_Ctx_Destroy);
-        bb.tail("{}_ctx = load ptr, ptr {}", name, ctx_name_);
-        bb.tail("{}_ctx_destroy_res = call i32 @{}(ptr {}_ctx)", name, Cu_Ctx_Destroy, name);
-        emit_cu_error_handling(bb, name + "_ctx_destroy_res", true);
-
         emit_unsafe(deinit->arg(0));
-        return emit_unsafe(deinit->arg(1));
+        emit_unsafe(deinit->arg(1));
+        emit_gpu_teardown(bb, name);
+        return ""s;
+    } else if (auto auto_init = Axm::isa<gpu::auto_init>(def)) {
+        return emit_unsafe(auto_init->arg());
+    } else if (auto auto_deinit = Axm::isa<gpu::auto_deinit>(def)) {
+        // emit_unsafe on `global` keeps any %gpu.free threaded through it reachable.
+        emit_unsafe(auto_deinit->arg(1));
+        emit_unsafe(auto_deinit->arg(2));
+        return emit_unsafe(auto_deinit->arg(0));
     } else if (auto stream_init = Axm::isa<gpu::stream_init>(def)) {
         declare("i32 @{}(ptr, i32)", Cu_Stream_Create);
 
@@ -525,6 +598,56 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
         emit_unsafe(sync_work_items->arg(0));
         emit_unsafe(sync_work_items->arg(1));
         std::print(bb.body().emplace_back(), "call void @llvm.nvvm.barrier0()");
+        return name;
+    } else if (auto tri = Axm::isa<math::tri>(def)) {
+        auto arg       = emit(tri->arg());
+        auto type      = convert(tri->arg()->type());
+        auto func_name = ""s;
+        switch (tri.id()) {
+            case math::tri::ahff: func_name = "sin"; break;
+            case math::tri::ahfF: func_name = "cos"; break;
+            case math::tri::ahFf: func_name = "tan"; break;
+            case math::tri::ahFF: break;
+            case math::tri::aHff: func_name = "sinh"; break;
+            case math::tri::aHfF: func_name = "cosh"; break;
+            case math::tri::aHFf: func_name = "tanh"; break;
+            case math::tri::aHFF: break;
+            case math::tri::Ahff: func_name = "asin"; break;
+            case math::tri::AhfF: func_name = "acos"; break;
+            case math::tri::AhFf: func_name = "atan"; break;
+            case math::tri::AhFF: break;
+            case math::tri::AHff: func_name = "asinh"; break;
+            case math::tri::AHfF: func_name = "acosh"; break;
+            case math::tri::AHFf: func_name = "atanh"; break;
+            case math::tri::AHFF: break;
+        }
+        if (func_name.empty()) fe::throwf("Trigonometric tag used by {} is currently unused", def);
+        func_name                = func_name + ll::detail::math_suffix(tri->arg()->type());
+        auto libdevice_func_name = "__nv_" + func_name;
+        declare("{} @{}({})", type, libdevice_func_name, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {})", type, libdevice_func_name, type, arg);
+        return name;
+    } else if (auto exp = Axm::isa<math::exp>(def)) {
+        auto arg       = emit(exp->arg());
+        auto type      = convert(exp->arg()->type());
+        auto func_name = ""s;
+        switch (exp.id()) {
+            case math::exp::lbb: func_name = "exp"; break;
+            case math::exp::lbB: func_name = "exp2"; break;
+            case math::exp::lBb: func_name = "exp10"; break;
+            case math::exp::lBB: break;
+            case math::exp::Lbb: func_name = "log"; break;
+            case math::exp::LbB: func_name = "log2"; break;
+            case math::exp::LBb: func_name = "log10"; break;
+            case math::exp::LBB: break;
+        }
+        if (func_name.empty()) fe::throwf("Exponential tag used by {} is currently unused", def);
+        func_name                = func_name + ll::detail::math_suffix(exp->arg()->type());
+        auto libdevice_func_name = "__nv_" + func_name;
+        declare("{} @{}({})", type, libdevice_func_name, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {})", type, libdevice_func_name, type, arg);
         return name;
     }
     return std::nullopt;
