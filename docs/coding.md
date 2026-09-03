@@ -102,6 +102,7 @@ cd lit
 ### Unit Tests
 
 `test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test` and `mim-regex-test`.
+A third-party plugin in `extra/X` gets its `test/*.cpp` picked up automatically and built as `mim-X-test`; see `extra/README.md`.
 Run them - and every other CTest test - with:
 
 ```sh

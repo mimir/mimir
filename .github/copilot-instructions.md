@@ -35,6 +35,7 @@ Assume a `build/` tree configured with
   Use these instead of ad hoc whole-program traversals — the old `Pass`/`PassMan` machinery is gone.
 - `src/automaton/` is a separate static library backing the regex subsystem.
 - Tests come in two layers: `lit/` drives the CLI end-to-end with `RUN:` lines plus `FileCheck`, and `test/*.cpp` exercises library APIs with [doctest](https://github.com/doctest/doctest) (`mim-test`, `mim-regex-test`).
+  A third-party plugin's `extra/<plugin>/test/*.cpp` are auto-discovered into `mim-<plugin>-test` the same way its `lit/` tests are staged.
 
 ## Core IR invariants
 
