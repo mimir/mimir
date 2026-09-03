@@ -8,7 +8,7 @@ target_sources(mim-test
 )
 target_link_libraries(mim-test
     PRIVATE
-        doctest::doctest_with_main
+        doctest::doctest
         libmim
 )
 add_dependencies(mim-test mim_all_plugins)
@@ -21,7 +21,7 @@ target_sources(mim-regex-test
 )
 target_link_libraries(mim-regex-test
     PRIVATE
-        doctest::doctest_with_main
+        doctest::doctest
         libmim
         automaton
 )

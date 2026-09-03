@@ -84,6 +84,9 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     if(BUILD_TESTING)
         # doctest lives inside fe, which pulls it in only for its own standalone build.
         set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
+        # doctest_with_main pins itself to C++11; keep that out of compile_commands.json,
+        # which scripts/gen_nanobind_bindings.py sources its parse flags from.
+        set(DOCTEST_WITH_MAIN_IN_STATIC_LIB OFF CACHE BOOL "" FORCE)
         add_subdirectory(submodules/fe/submodules/doctest EXCLUDE_FROM_ALL)
         include("${PROJECT_SOURCE_DIR}/submodules/fe/submodules/doctest/scripts/cmake/doctest.cmake")
         add_subdirectory(test)
