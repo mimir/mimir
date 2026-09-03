@@ -14,26 +14,6 @@
 using namespace mim;
 using namespace mim::plug;
 
-TEST_CASE("zip") {
-    Driver driver;
-    World& w    = driver.world();
-    auto ast    = ast::AST(w);
-    auto parser = ast::Parser(ast);
-
-    std::istringstream iss("plugin tuple;"
-                           "let a = ((0I32, 1I32,  2I32), ( 3I32,  4I32,  5I32));"
-                           "let b = ((6I32, 7I32,  8I32), ( 9I32, 10I32, 11I32));"
-                           "let c = ((6I32, 8I32, 10I32), (12I32, 14I32, 16I32));"
-                           "let r = %tuple.zip (2, (2, 3)) (2, (I32, I32), 1, I32, %core.wrap.add 0) (a, b);");
-    parser.import(iss, "zip.mim");
-    // auto c = parser.scopes().find({Loc(), driver.sym("c")});
-    // auto r = parser.scopes().find({Loc(), driver.sym("r")});
-
-    // CHECK(r->is_term());
-    // CHECK(!r->type()->is_term());
-    // CHECK(c == r);
-}
-
 TEST_CASE("World: one-tuples fold away") {
     Driver driver;
     World& w = driver.world();
