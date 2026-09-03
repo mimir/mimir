@@ -12,8 +12,8 @@ Assume a `build/` tree configured with
 | All tests       | `cmake --build build --target test-all`                                                     |
 | `lit` suite     | `cmake --build build --target lit`                                                          |
 | One `lit` test  | `cd lit && ../scripts/probe.sh type_infer.mim` or `./lit ../build/lit -a --filter type_infer.mim` |
-| All gtests      | `ctest --test-dir build --output-on-failure`                                                |
-| One gtest       | `build/bin/mim-gtest --gtest_filter='World.dependent_extract'`                               |
+| All unit tests  | `ctest --test-dir build --output-on-failure`                                                |
+| One unit test   | `build/bin/mim-test -tc='World: dependent extract'`                                         |
 | Format/lint     | `pre-commit run --all-files` (or `pre-commit run clang-format --all-files`)                  |
 
 `lit` runs against a *staged* copy of `lit/`, so build the `lit` target (or `mim_lit_tests`) after editing a test — otherwise you test a stale file.
@@ -34,7 +34,8 @@ Assume a `build/` tree configured with
   `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end; `Analysis` and `PhaseMan` provide the fixed-point machinery.
   Use these instead of ad hoc whole-program traversals — the old `Pass`/`PassMan` machinery is gone.
 - `src/automaton/` is a separate static library backing the regex subsystem.
-- Tests come in two layers: `lit/` drives the CLI end-to-end with `RUN:` lines plus `FileCheck`, and `gtest/*.cpp` exercises library APIs (`mim-gtest`, `mim-regex-gtest`).
+- Tests come in two layers: `lit/` drives the CLI end-to-end with `RUN:` lines plus `FileCheck`, and `test/*.cpp` exercises library APIs with [doctest](https://github.com/doctest/doctest) (`mim-test`, `mim-regex-test`).
+  A third-party plugin's `extra/<plugin>/test/*.cpp` are auto-discovered into `mim-<plugin>-test` the same way its `lit/` tests are staged.
 
 ## Core IR invariants
 

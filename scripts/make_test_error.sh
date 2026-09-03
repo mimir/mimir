@@ -2,11 +2,11 @@
 
 set -euo pipefail
 
-binary=./build/bin/mim-gtest
+binary=./build/bin/mim-test
 
 if [ "${1-}" = "-b" ]; then
     if [ "$#" -lt 3 ]; then
-        echo "usage: $0 [-b <gtest-binary>] <gtest-filter>" >&2
+        echo "usage: $0 [-b <test-binary>] <test-case>" >&2
         exit 1
     fi
     binary=$2
@@ -14,7 +14,7 @@ if [ "${1-}" = "-b" ]; then
 fi
 
 if [ "$#" -ne 1 ]; then
-    echo "usage: $0 [-b <gtest-binary>] <gtest-filter>" >&2
+    echo "usage: $0 [-b <test-binary>] <test-case>" >&2
     exit 1
 fi
 
@@ -24,5 +24,5 @@ filter=$1
 
 printf '```sh\n'
 printf './scripts/checkout.sh %q %q && ' "$remote" "$commit"
-printf '%q --gtest_filter=%q --gtest_break_on_failure\n' "$binary" "$filter"
+printf '%q --test-case=%q\n' "$binary" "$filter"
 printf '```\n'

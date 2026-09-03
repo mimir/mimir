@@ -7,9 +7,6 @@
 [submodule "fe"]
 	path = submodules/fe
 	url = ../../leissa/fe.git
-[submodule "googletest"]
-	path = submodules/googletest
-	url = ../../google/googletest.git
 [submodule "submodules/nanobind"]
 	path = submodules/nanobind
 	url = ../../wjakob/nanobind.git

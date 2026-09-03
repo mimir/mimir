@@ -1656,7 +1656,13 @@ def _clang_args(args, cc_entries: list | None, header_path: str) -> list:
     ]
     # Adds build-type defines (NDEBUG, ABSL_*, …) on top of the include roots.
     if cc_entries and (entry := _match_cc_entry(header_path, cc_entries)):
-        out += _flags_from_cc_entry(entry)
+        cc_flags = _flags_from_cc_entry(entry)
+        # Our own -std wins. A header outside <repo>/include matches no entry and falls
+        # back to the first one, so an unrelated target's standard would otherwise
+        # silently truncate the parse and drop members from the Python API.
+        if any(f.startswith("-std=") for f in out):
+            cc_flags = [f for f in cc_flags if not f.startswith("-std=")]
+        out += cc_flags
     return out
 
 
