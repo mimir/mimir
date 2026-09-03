@@ -466,3 +466,11 @@ Use parentheses to force the variable interpretation:
 let i = 1_2;
 [i: Nat, j: Nat]::X → f X#(i);
 ```
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Command-Line Reference](@ref cli) | [Contributing \& Debugging](@ref coding) |
+
+</div>

@@ -1505,7 +1505,6 @@ HTML_STYLESHEET        =
 HTML_EXTRA_STYLESHEET  = submodules/doxygen-awesome-css/doxygen-awesome.css \
                          submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only.css \
                          submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css \
-                         submodules/doxygen-awesome-css/doxygen-awesome-interactive-toc.js \
                          submodules/doxygen-awesome-css/doxygen-custom/custom.css \
                          docs/version-switcher.css \
                          docs/dotgraph.css
@@ -1534,7 +1533,7 @@ HTML_EXTRA_FILES       = submodules/doxygen-awesome-css/doxygen-awesome-darkmode
 # The default value is: AUTO_LIGHT.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_COLORSTYLE        = AUTO_LIGHT
+HTML_COLORSTYLE        = LIGHT
 
 # The HTML_COLORSTYLE_HUE tag controls the color of the HTML output. Doxygen
 # will adjust the colors in the style sheet and background images according to
@@ -1872,7 +1871,7 @@ GENERATE_TREEVIEW      = YES
 # The default value is: YES.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-PAGE_OUTLINE_PANEL     = NO
+PAGE_OUTLINE_PANEL     = YES
 
 # When GENERATE_TREEVIEW is set to YES, the FULL_SIDEBAR option determines if
 # the side bar is limited to only the treeview area (value NO) or if it should
@@ -1906,7 +1905,7 @@ SHOW_ENUM_VALUES       = NO
 # Minimum value: 0, maximum value: 1500, default value: 250.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-TREEVIEW_WIDTH         = 250
+TREEVIEW_WIDTH         = 335
 
 # If the EXT_LINKS_IN_WINDOW option is set to YES, Doxygen will open links to
 # external symbols imported via tag files in a separate window.

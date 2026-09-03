@@ -186,3 +186,11 @@ It builds MimIR through overloaded operators, runs optimization, emits LLVM IR, 
 \include "examples/regex.py"
 
 `RegBuilder` loads the required plugins by default, and `pattern.jit()` returns Python callables that wrap the exported compiled functions.
+
+<div class="section_buttons">
+
+| Previous |
+|:---------|
+| [Phases](@ref phases) |
+
+</div>

@@ -214,3 +214,11 @@ MimIR is licensed under the [MIT License](https://github.com/mimir/mimir/blob/ma
   [![zenodo](https://img.shields.io/badge/-10.5281/zenodo.13935445-blue?style=flat-square&logo=zenodo&logoColor=white&labelColor=555&logoSize=auto)](https://doi.org/10.5281/zenodo.13935445)
   [![YouTube](https://img.shields.io/badge/YouTube-grey?style=flat-square&logo=youtube)](https://youtu.be/2zKUa6b9XYc?si=3ZX68gEHarsCsO-R)
   [![dblp](https://img.shields.io/badge/dblp-grey?style=flat-square&logo=dblp)](https://dblp.uni-trier.de/rec/journals/pacmpl/LeissaUMH25.html?view=bibtex)
+
+<div class="section_buttons">
+
+|         Next |
+|-------------:|
+| [A Tour of MimIR](@ref mimir) |
+
+</div>

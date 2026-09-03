@@ -291,3 +291,11 @@ Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.
 This is the foundation the [`%tensor`](@ref tensor) plugin builds on: array shapes live in the types and are checked — and optimized — by the very same normalization you have already seen.
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Home](@ref index) | [Command-Line Reference](@ref cli) |
+
+</div>

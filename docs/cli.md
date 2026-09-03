@@ -54,3 +54,11 @@ The syntax is `-X <plugin>:<arg>`:
   A [`mim::Phase`](@ref mim::Phase) reads the arguments addressed to its own plugin via [`mim::Phase::args`](@ref mim::Phase::args); the interpretation of each `<arg>` is up to the plugin.
 
 Each plugin declares the arguments it understands right next to the code that reads them, so the `-X <plugin>:<arg>` tables under [Usage](@ref cliusage) are generated from those declarations.
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [A Tour of MimIR](@ref mimir) | [Mim Language Reference](@ref langref) |
+
+</div>

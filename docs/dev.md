@@ -595,3 +595,11 @@ void visit() {
 ```
 
 In practice, though, you will usually want to use the [phase](@ref phases) infrastructure instead.
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Plugins](@ref plugins) | [Rewriting](@ref rewriting) |
+
+</div>

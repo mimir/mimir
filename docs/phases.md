@@ -642,3 +642,11 @@ For substantial optimizations, the usual pattern is:
 - compute facts with [`Analysis`](@ref mim::Analysis),
 - store them in [`Analysis::lattice()`](@ref mim::Analysis::lattice),
 - consume them with [`RWPhase`](@ref mim::RWPhase).
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Rewriting](@ref rewriting) | [Python Bindings](@ref python) |
+
+</div>

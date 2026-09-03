@@ -425,3 +425,11 @@ The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/doc
 Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.
 
 See `fe::Profiler` in the `fe` submodule for implementation details.
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Mim Language Reference](@ref langref) | [Plugins](@ref plugins) |
+
+</div>

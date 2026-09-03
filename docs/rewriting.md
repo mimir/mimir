@@ -145,3 +145,11 @@ Conceptually, this rewrites only those parts of `def` whose free variables inter
 
   If you want to substitute variables while rebuilding, use [`VarRewriter`](@ref mim::VarRewriter):
   > What do I get if I substitute these variables and rebuild only where necessary?
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Developer Guide](@ref dev) | [Phases](@ref phases) |
+
+</div>

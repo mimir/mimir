@@ -245,3 +245,11 @@ The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmp
 The `ll_nvptx` backend reuses the very same [`load_rt_module`](@ref mim::plug::ll::Emitter::load_rt_module) helper as `ll`, differing only in the runtime module it names.
 
 The authoritative reference for `add_mim_runtime` lives in [`cmake/Mim.cmake`](@ref add_mim_runtime_cmake).
+
+<div class="section_buttons">
+
+| Previous |     Next |
+|:---------|---------:|
+| [Contributing \& Debugging](@ref coding) | [Developer Guide](@ref dev) |
+
+</div>
