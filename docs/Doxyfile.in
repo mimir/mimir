@@ -1502,12 +1502,7 @@ HTML_STYLESHEET        =
 # documentation.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_EXTRA_STYLESHEET  = submodules/doxygen-awesome-css/doxygen-awesome.css \
-                         submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only.css \
-                         submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css \
-                         submodules/doxygen-awesome-css/doxygen-custom/custom.css \
-                         docs/version-switcher.css \
-                         docs/dotgraph.css
+HTML_EXTRA_STYLESHEET  = @DOXY_STYLESHEETS_CONFIG@
 
 # The HTML_EXTRA_FILES tag can be used to specify one or more extra images or
 # other source files which should be copied to the HTML output directory. Note
@@ -1517,10 +1512,7 @@ HTML_EXTRA_STYLESHEET  = submodules/doxygen-awesome-css/doxygen-awesome.css \
 # files will be copied as-is; there are no commands or markers available.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_EXTRA_FILES       = submodules/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js \
-                         submodules/doxygen-awesome-css/doxygen-awesome-fragment-copy-button.js \
-                         submodules/doxygen-awesome-css/doxygen-awesome-paragraph-link.js \
-                         docs/version-switcher.js
+HTML_EXTRA_FILES       = @DOXY_ASSETS_CONFIG@
 
 # The HTML_COLORSTYLE tag can be used to specify if the generated HTML output
 # should be rendered with a dark or light theme.

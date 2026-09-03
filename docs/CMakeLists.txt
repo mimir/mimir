@@ -49,9 +49,26 @@ configure_file(
     "${MIM_LOGO}"
     COPYONLY)
 
+set(DOXY_AWESOME    "${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css")
+set(DOXY_STYLESHEETS
+    "${DOXY_AWESOME}/doxygen-awesome.css"
+    "${DOXY_AWESOME}/doxygen-awesome-sidebar-only.css"
+    "${DOXY_AWESOME}/doxygen-awesome-sidebar-only-darkmode-toggle.css"
+    "${DOXY_AWESOME}/doxygen-custom/custom.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+)
+set(DOXY_ASSETS
+    "${DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js"
+    "${DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
+    "${DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.js"
+)
+set(DOXY_HEADER     "${CMAKE_CURRENT_SOURCE_DIR}/header.html")
 set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 set(DOXY_LAYOUT     "${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml")
-set(DOXY_INDEX_HTML "${CMAKE_CURRENT_BINARY_DIR}/html/index.html")
+set(DOXY_INDEX_HTML "${PROJECT_BINARY_DIR}/html/index.html") # Doxyfile.in sets OUTPUT_DIRECTORY to PROJECT_BINARY_DIR.
 set(DOXY_EXTRA_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/mimir.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/cli.md"
@@ -66,6 +83,8 @@ set(DOXY_EXTRA_FILES
 )
 
 string(REPLACE ";" " " DOXY_EXTRA_FILES_CONFIG "${DOXY_EXTRA_FILES}")
+string(REPLACE ";" " " DOXY_STYLESHEETS_CONFIG "${DOXY_STYLESHEETS}")
+string(REPLACE ";" " " DOXY_ASSETS_CONFIG      "${DOXY_ASSETS}")
 
 configure_file(Doxyfile.in ${DOXYFILE} @ONLY)
 configure_file(DoxygenLayout.xml.in ${DOXY_LAYOUT} @ONLY)
@@ -74,7 +93,17 @@ add_custom_command(
     OUTPUT ${DOXY_INDEX_HTML}
     COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
     MAIN_DEPENDENCY ${DOXYFILE}
-    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${DOC_GRAPH_SVGS} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
+    DEPENDS
+        mim
+        ${CLI_HELP}
+        ${XDOT_HELP}
+        ${DOC_GRAPH_SVGS}
+        ${DOXY_EXTRA_FILES}
+        ${DOXY_STYLESHEETS}
+        ${DOXY_ASSETS}
+        ${DOXY_HEADER}
+        ${DOXY_LAYOUT}
+        ${MIM_LOGO}
     COMMENT "Generating Doxygen HTML documentation"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )
