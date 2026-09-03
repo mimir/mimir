@@ -417,12 +417,12 @@ If a compilation is taking longer than expected, use `--profile` to find out whi
 It measures wall-clock time spent in each phase and reports it via `--output-profile <file>` (or `-` for stdout) in one of three formats:
 
 ```sh
-mim test.mim --profile summary --output-profile -   # Flat table aggregated by phase name, sorted by total time.
-mim test.mim --profile tree    --output-profile -   # Indented tree that preserves phase nesting/order.
-mim test.mim --profile trace   --output-profile trace.json
+mim test.mim --profile summary                      # Flat table aggregated by phase name, sorted by total time.
+mim test.mim --profile tree                         # Indented tree that preserves phase nesting/order.
+mim test.mim --profile trace --output-profile trace.json
 ```
 
-Any other `<mode>` defaults to `summary`, and `--output-profile -` on its own implies `--profile summary`.
+`--output-profile` defaults to `-`, `--output-profile` without a `<mode>` implies `--profile trace`, and an unknown `<mode>` is an error.
 
 The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
 Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.

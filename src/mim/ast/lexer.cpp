@@ -272,8 +272,7 @@ bool Lexer::parse_exp(int base /*= 10*/) {
 char8_t Lexer::lex_char() {
     if (accept<Append::Off>('\\')) {
         // clang-format off
-        if (false) {}
-        else if (accept<Append::Off>('\'')) str_ += '\'';
+        if      (accept<Append::Off>('\'')) str_ += '\'';
         else if (accept<Append::Off>('\\')) str_ += '\\';
         else if (accept<Append::Off>( '"')) str_ += '\"';
         else if (accept<Append::Off>( '0')) str_ += '\0';

@@ -89,8 +89,7 @@ inline std::optional<nat_t> isa_f(const Def* def) {
 template<class R>
 const Lit* lit_f(World& w, R val) {
     static_assert(std::is_floating_point_v<R>);
-    if (false) {}
-    else if constexpr (sizeof(R) == 2) return w.lit(w.annex<F16>(), std::bit_cast<u16>(val));
+    if      constexpr (sizeof(R) == 2) return w.lit(w.annex<F16>(), std::bit_cast<u16>(val));
     else if constexpr (sizeof(R) == 4) return w.lit(w.annex<F32>(), std::bit_cast<u32>(val));
     else if constexpr (sizeof(R) == 8) return w.lit(w.annex<F64>(), std::bit_cast<u64>(val));
     else fe::unreachable();
