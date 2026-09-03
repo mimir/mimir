@@ -9,6 +9,38 @@ if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
     )
 endif()
 
+# Collects the .mim files that bootstrapping mim_file reads, transitively.
+# A plugin/import directive resolves to <root>/<name>/<name>.mim, mirroring add_mim_plugin's -P arguments.
+# A newly added directive is only picked up on the next configure; editing an existing one is tracked.
+function(mim_transitive_imports mim_file roots out)
+    set(pending "${mim_file}")
+    set(files "")
+
+    while(pending)
+        list(POP_FRONT pending current)
+        file(READ "${current}" contents)
+        string(REGEX REPLACE "/\\*[^*]*\\*+([^/*][^*]*\\*+)*/" "" contents "${contents}")
+        string(REGEX REPLACE "//[^\n]*" "" contents "${contents}")
+        string(REGEX MATCHALL "(plugin|import)[ \t\r\n]+[A-Za-z0-9_]+" directives "${contents}")
+
+        foreach(directive IN LISTS directives)
+            string(REGEX REPLACE "^(plugin|import)[ \t\r\n]+" "" name "${directive}")
+            foreach(root IN LISTS roots)
+                set(candidate "${root}/${name}/${name}.mim")
+                if(EXISTS "${candidate}")
+                    if(NOT candidate IN_LIST files)
+                        list(APPEND files "${candidate}")
+                        list(APPEND pending "${candidate}")
+                    endif()
+                    break()
+                endif()
+            endforeach()
+        endforeach()
+    endwhile()
+
+    set(${out} "${files}" PARENT_SCOPE)
+endfunction()
+
 ## \page add_mim_plugin_cmake add_mim_plugin
 ## \brief Registers a new MimIR plugin.
 ##
@@ -76,6 +108,9 @@ function(add_mim_plugin)
             ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/
     )
 
+    set(PLUGIN_ROOTS "${CMAKE_SOURCE_DIR}/src/mim/plug" "${CMAKE_CURRENT_LIST_DIR}/..")
+    mim_transitive_imports("${PLUGIN_MIM}" "${PLUGIN_ROOTS}" PLUGIN_IMPORTS)
+
     add_custom_command(
         OUTPUT
             ${AUTOGEN_H}
@@ -86,7 +121,7 @@ function(add_mim_plugin)
             --output-md ${PLUGIN_MD}
             --output-py ${AUTOGEN_PY}
         MAIN_DEPENDENCY ${PLUGIN_MIM}
-        DEPENDS ${MIM_TARGET_NAMESPACE}mim
+        DEPENDS ${MIM_TARGET_NAMESPACE}mim ${PLUGIN_IMPORTS}
         COMMENT "Bootstrapping MimIR plugin '${PLUGIN_MIM}'"
         VERBATIM
     )

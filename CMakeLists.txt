@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.25)
 
 project(MimIR VERSION 0.3)
 set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev', '' for release)")
@@ -131,7 +131,7 @@ endif()
 
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/mim-config-version.cmake"
-    VERSION ${Mim_VERSION}
+    VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
 configure_package_config_file(

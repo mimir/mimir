@@ -297,21 +297,27 @@ add_custom_target(mim_py ALL)
 add_dependencies(mim_py mim_py_main ${_mim_py_plugin_targets})
 
 # Windows has no RPATH, so pytest needs the mim DLLs on PATH.
-set(_mim_py_test_env)
+# The ;-separated value has to stay inline: routed through a variable, CMake list
+# semantics would split it into separate arguments and `env` would run the 2nd as the command.
 if(WIN32)
-    set(_mim_py_test_env
-        "PATH=${CMAKE_RUNTIME_OUTPUT_DIRECTORY};${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim;$ENV{PATH}"
+    add_custom_target(test-py
+        COMMAND "${CMAKE_COMMAND}" -E env
+                "PATH=${CMAKE_RUNTIME_OUTPUT_DIRECTORY};${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim;$ENV{PATH}"
+                "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        DEPENDS mim_py_main
+        COMMENT "mim_py: running Python tests"
+        USES_TERMINAL
+        VERBATIM
+    )
+else()
+    add_custom_target(test-py
+        COMMAND "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        DEPENDS mim_py_main
+        COMMENT "mim_py: running Python tests"
+        USES_TERMINAL
+        VERBATIM
     )
 endif()
-
-add_custom_target(test-py
-    COMMAND "${CMAKE_COMMAND}" -E env ${_mim_py_test_env}
-            "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
-    DEPENDS mim_py_main
-    COMMENT "mim_py: running Python tests"
-    USES_TERMINAL
-    VERBATIM
-)
 
 if(TARGET test-all)
     add_dependencies(test-all test-py)
