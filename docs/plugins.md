@@ -157,11 +157,14 @@ In `--extra` mode, the script also:
 - Generates GitHub Actions workflows that automatically build and test the plugin against the main MimIR repository
 - Patches workflow configurations to clone the main repository as the parent and the plugin as a submodule in `extra/<plugin>`
 
-### Third-Party Plugin Discovery
+### Third-Party Plugin Discovery {#extra_plugins}
+
+@see [`extra/README.md`](https://github.com/mimir/mimir/blob/master/extra/README.md)
 
 If you clone a plugin repository into `extra/`, MimIR picks it up automatically during configuration when the repository contains a `CMakeLists.txt` as a direct child of `extra/`.
 
-If the plugin repository also contains `lit/*.mim` tests, they are picked up automatically by the main `lit` target as well.
+- If it also contains `lit/*.mim` tests, they are picked up automatically by the main `lit` target as well.
+- If it also contains `test/*.cpp` unit tests, they are built as `mim-<plugin>-test` and picked up automatically by `ctest` and the `test-all` target as well.
 
 ## Extract an Existing In-Tree Plugin
 
