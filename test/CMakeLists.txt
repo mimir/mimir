@@ -54,25 +54,18 @@ add_mim_test(mim-regex-test
         automaton
 )
 
-file(GLOB MIM_EXTRA_TEST_DIRS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/extra/*/test")
-foreach(MIM_EXTRA_TEST_DIR IN LISTS MIM_EXTRA_TEST_DIRS)
-    if(NOT IS_DIRECTORY "${MIM_EXTRA_TEST_DIR}")
+mim_extra_plugins(test MIM_EXTRA_PLUGINS)
+foreach(PLUGIN IN LISTS MIM_EXTRA_PLUGINS)
+    set(DIR "${PROJECT_SOURCE_DIR}/extra/${PLUGIN}")
+    file(GLOB SOURCES CONFIGURE_DEPENDS "${DIR}/test/*.cpp")
+    if(NOT SOURCES)
         continue()
     endif()
 
-    file(GLOB MIM_EXTRA_TEST_SOURCES CONFIGURE_DEPENDS "${MIM_EXTRA_TEST_DIR}/*.cpp")
-    if(NOT MIM_EXTRA_TEST_SOURCES)
-        continue()
-    endif()
+    message(STATUS "Adding third-party Mim unit tests 'mim-${PLUGIN}-test' from 'extra/${PLUGIN}/test'")
+    add_mim_test(mim-${PLUGIN}-test SOURCES ${SOURCES})
 
-    get_filename_component(MIM_EXTRA_PLUGIN_DIR "${MIM_EXTRA_TEST_DIR}" DIRECTORY)
-    get_filename_component(MIM_EXTRA_PLUGIN_NAME "${MIM_EXTRA_PLUGIN_DIR}" NAME)
-    set(MIM_EXTRA_TEST "mim-${MIM_EXTRA_PLUGIN_NAME}-test")
-
-    message(STATUS "Adding third-party Mim unit tests '${MIM_EXTRA_TEST}' from '${MIM_EXTRA_TEST_DIR}'")
-    add_mim_test(${MIM_EXTRA_TEST} SOURCES ${MIM_EXTRA_TEST_SOURCES})
-
-    if(EXISTS "${MIM_EXTRA_PLUGIN_DIR}/include")
-        target_include_directories(${MIM_EXTRA_TEST} PRIVATE "${MIM_EXTRA_PLUGIN_DIR}/include")
+    if(EXISTS "${DIR}/include")
+        target_include_directories(mim-${PLUGIN}-test PRIVATE "${DIR}/include")
     endif()
 endforeach()

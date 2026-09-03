@@ -1,20 +1,13 @@
 find_package(Python3 COMPONENTS Interpreter)
-set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
+
+set(MIM_FILECHECK_NAMES "")
+foreach(VER RANGE 14 24)
+    list(PREPEND MIM_FILECHECK_NAMES FileCheck-${VER})
+endforeach()
+list(PREPEND MIM_FILECHECK_NAMES FileCheck)
 
 find_program(MIM_FILECHECK_DEFAULT
-    NAMES
-        FileCheck
-        FileCheck-24
-        FileCheck-23
-        FileCheck-22
-        FileCheck-21
-        FileCheck-20
-        FileCheck-19
-        FileCheck-18
-        FileCheck-17
-        FileCheck-16
-        FileCheck-15
-        FileCheck-14
+    NAMES ${MIM_FILECHECK_NAMES}
     DOC "FileCheck executable used by lit tests"
 )
 set(MIM_FILECHECK "${MIM_FILECHECK_DEFAULT}" CACHE STRING "FileCheck command used by lit tests.")
@@ -26,25 +19,20 @@ if(NOT MIM_FILECHECK)
     message(FATAL_ERROR "Could not find FileCheck. Set MIM_FILECHECK to the FileCheck executable used by lit tests.")
 endif()
 
+set(LIT_VALGRIND_COMMANDLINE "")
 if(MIM_LIT_WITH_VALGRIND)
     set(LIT_VALGRIND_COMMANDLINE "${MEMORYCHECK_COMMAND} ${VALGRIND_COMMAND_OPTIONS} ")
-else()
-    set(LIT_VALGRIND_COMMANDLINE "")
 endif()
 
 set(MIM_LIT_STAGE_FILES "")
 set(MIM_LIT_STAGE_DEPENDS "")
+set(MIM_LIT_NON_TESTS CMakeLists.txt lit.cfg.py lit.site.cfg.py lit.site.cfg.py.in)
 
 function(mim_stage_lit_tree source_root dest_root)
     file(GLOB_RECURSE lit_files CONFIGURE_DEPENDS RELATIVE "${source_root}" "${source_root}/*")
     foreach(rel_path IN LISTS lit_files)
-        if(IS_DIRECTORY "${source_root}/${rel_path}")
-            continue()
-        endif()
-
-        get_filename_component(file_name "${rel_path}" NAME)
-        if(file_name STREQUAL "CMakeLists.txt" OR file_name STREQUAL "lit.cfg.py" OR file_name STREQUAL "lit.site.cfg.py"
-           OR file_name STREQUAL "lit.site.cfg.py.in")
+        cmake_path(GET rel_path FILENAME file_name)
+        if(file_name IN_LIST MIM_LIT_NON_TESTS)
             continue()
         endif()
 
@@ -58,15 +46,9 @@ endfunction()
 
 mim_stage_lit_tree("${PROJECT_SOURCE_DIR}/lit" "")
 
-file(GLOB MIM_EXTRA_LIT_DIRS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/extra/*/lit")
-foreach(MIM_EXTRA_LIT_DIR IN LISTS MIM_EXTRA_LIT_DIRS)
-    if(NOT IS_DIRECTORY "${MIM_EXTRA_LIT_DIR}")
-        continue()
-    endif()
-
-    get_filename_component(MIM_EXTRA_PLUGIN_DIR "${MIM_EXTRA_LIT_DIR}" DIRECTORY)
-    get_filename_component(MIM_EXTRA_PLUGIN_NAME "${MIM_EXTRA_PLUGIN_DIR}" NAME)
-    mim_stage_lit_tree("${MIM_EXTRA_LIT_DIR}" "extra/${MIM_EXTRA_PLUGIN_NAME}")
+mim_extra_plugins(lit MIM_EXTRA_PLUGINS)
+foreach(PLUGIN IN LISTS MIM_EXTRA_PLUGINS)
+    mim_stage_lit_tree("${PROJECT_SOURCE_DIR}/extra/${PLUGIN}/lit" "extra/${PLUGIN}")
 endforeach()
 
 set(MIM_LIT_STAGE_FILES_SCRIPT "")
@@ -85,24 +67,26 @@ check_cxx_source_compiles(
      int main() { std::float16_t f = 1.0f16; return int(f); }"
     MIM_HAS_FLOAT16
 )
+
+# lit.site.cfg.py.in interpolates the *_SUPPORTED/*_CAN_* values into Python source.
+set(MIM_FP16_SUPPORTED False)
 if(MIM_HAS_FLOAT16)
     set(MIM_FP16_SUPPORTED True)
-else()
-    set(MIM_FP16_SUPPORTED False)
 endif()
 
+set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
 find_program(NVIDIA_SMI nvidia-smi)
 if(NVIDIA_SMI)
-  execute_process(COMMAND ${NVIDIA_SMI} -L
-    OUTPUT_VARIABLE _smi_out RESULT_VARIABLE _smi_rc
-    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  if(_smi_rc EQUAL 0 AND _smi_out MATCHES "GPU [0-9]+:")
-    set(MIM_CUDA_CAN_RUN_ON_DEVICE True)
-  else()
-    set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
-  endif()
-else()
-    set(MIM_CUDA_CAN_RUN_ON_DEVICE False)
+    execute_process(
+        COMMAND ${NVIDIA_SMI} -L
+        OUTPUT_VARIABLE SMI_OUT
+        RESULT_VARIABLE SMI_RC
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(SMI_RC EQUAL 0 AND SMI_OUT MATCHES "GPU [0-9]+:")
+        set(MIM_CUDA_CAN_RUN_ON_DEVICE True)
+    endif()
 endif()
 
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
@@ -119,17 +103,21 @@ add_custom_command(
 )
 add_custom_target(mim_lit_tests DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tests/.stamp")
 
-set(MIM_CTEST_CONFIG_ARGS "")
-if(CMAKE_CONFIGURATION_TYPES)
-    list(APPEND MIM_CTEST_CONFIG_ARGS -C $<CONFIG>)
-endif()
-
 set(MIM_LIT_COMMAND
-    ${PYTHON_EXECUTABLE}
+    ${Python3_EXECUTABLE}
     "${CMAKE_CURRENT_SOURCE_DIR}/lit"
     "${CMAKE_CURRENT_BINARY_DIR}"
     -v
 )
+
+set(MIM_CTEST_COMMAND
+    ${CMAKE_CTEST_COMMAND}
+    --test-dir "${CMAKE_BINARY_DIR}"
+    --output-on-failure
+)
+if(CMAKE_CONFIGURATION_TYPES)
+    list(APPEND MIM_CTEST_COMMAND -C $<CONFIG>)
+endif()
 
 add_custom_target(lit
     COMMAND ${MIM_LIT_COMMAND}
@@ -138,18 +126,14 @@ add_custom_target(lit
     USES_TERMINAL
 )
 
-set(MIM_TEST_ALL_DEPS
-    ${MIM_TEST_TARGETS}
-    mim
-    mim_all_plugins
-    mim_lit_tests
-)
-
 add_custom_target(test-all
-    COMMAND ${CMAKE_CTEST_COMMAND} --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure ${MIM_CTEST_CONFIG_ARGS}
+    COMMAND ${MIM_CTEST_COMMAND}
     COMMAND ${MIM_LIT_COMMAND}
     DEPENDS
-        ${MIM_TEST_ALL_DEPS}
+        ${MIM_TEST_TARGETS}
+        mim
+        mim_all_plugins
+        mim_lit_tests
     COMMAND_EXPAND_LISTS
     USES_TERMINAL
 )
