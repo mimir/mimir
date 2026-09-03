@@ -5,7 +5,6 @@
 #include <string>
 
 #include <fe/cli.h>
-#include <fe/sys.h>
 #include <fe/term.h>
 
 #include <mim/config.h>
@@ -46,7 +45,6 @@ private:
 /// Everything the command line configures that neither Flags nor fe::CodeDiag already holds.
 struct Opts {
     std::string input;
-    std::string clang = fe::sys::find_cmd("clang");
     std::vector<std::string> plugins, search_paths, plugin_args;
     std::array<Out, Num_Emits> outs;
     DotConfig dot;
@@ -164,21 +162,14 @@ int main(int argc, char** argv) {
             return {};
         };
 
-        auto profile = [&](const std::string& t) {
-            if (t == "tree")
-                flags.profile = Flags::Profile::Tree;
-            else if (t == "trace")
-                flags.profile = Flags::Profile::Trace;
-            else
-                flags.profile = Flags::Profile::Summary;
-            if (opts.outs[Profile].name().empty()) opts.outs[Profile].name() = "-";
-        };
-        auto profile_path = [&](const std::string& t) {
-            if (t == "-" && flags.profile == Flags::Profile::None)
-                flags.profile = Flags::Profile::Summary;
-            else
-                flags.profile = Flags::Profile::Trace;
-            opts.outs[Profile].name() = t;
+        auto profile = [&](const std::string& t) -> std::string {
+            // clang-format off
+            if      (t == "summary") flags.profile = Flags::Profile::Summary;
+            else if (t == "tree"   ) flags.profile = Flags::Profile::Tree;
+            else if (t == "trace"  ) flags.profile = Flags::Profile::Trace;
+            else return std::format("'{}' is not a profile mode", t);
+            // clang-format on
+            return {};
         };
 
         // clang-format off
@@ -187,7 +178,6 @@ int main(int argc, char** argv) {
             .opt(show_help_md              , ""          , ""  , "--help-md"             , "Displays this help as Markdown and exits.")
             .opt(show_version              , ""          , "-v", "--version"             , "Displays version info and exits.")
             .opt(list_search_paths         , ""          , "-l", "--list-search-paths"   , "Lists the search paths in order and exits.")
-            .opt(opts.clang                , "clang"     , "-c", "--clang"               , "Path to clang executable.")
             .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin.")
             .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins.")
             .opt(opts.plugin_args          , "plugin:arg", "-X", "--plugin-arg"          , "Passes an argument to a plugin/phase, e.g. -X ll:o=output.ll. Repeatable.")
@@ -221,8 +211,8 @@ int main(int argc, char** argv) {
             .opt(diag.max_errors           , "num"       , ""  , "--max-errors"          , "Maximum number of errors to report before dropping the rest; 0 reports all of them.")
             .opt(diag.werror               , ""          , ""  , "--werror"              , "Treats warnings as errors.")
             .grp("Profiling")
-            .opt(profile                   , "mode"      , ""  , "--profile"             , "Measures how long each phase takes and writes the result to --output-profile; <mode> is summary, tree, or trace (chrome://tracing compatible).")
-            .opt(profile_path              , "file"      , ""  , "--output-profile"      , "Where to write the profiling information.")
+            .opt(profile                   , "mode"      , ""  , "--profile"             , "Measures how long each phase takes; <mode> is summary, tree, or trace (chrome://tracing compatible).")
+            .opt(opts.outs[Profile].name() , "file"      , ""  , "--output-profile"      , "Where to write the profiling information; defaults to stdout and implies --profile trace, if no <mode> is given.")
             .grp("Optimization")
             .opt(flags.aggressive_lam_spec , ""          , ""  , "--aggr-lam-spec"       , "Overrides LamSpec behavior to follow recursive calls.")
             .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
@@ -242,6 +232,11 @@ int main(int argc, char** argv) {
         // clang-format on
 
         if (auto err = cli.parse(argc, argv)) throw std::invalid_argument(*err);
+
+        // Resolved here and not in the handlers, so that the order of the two profiling options does not matter.
+        auto& profile_file = opts.outs[Profile].name();
+        if (flags.profile == Flags::Profile::None && !profile_file.empty()) flags.profile = Flags::Profile::Trace;
+        if (flags.profile != Flags::Profile::None && profile_file.empty()) profile_file = "-";
 
         for (auto&& path : opts.search_paths)
             driver.add_search_path(path);
