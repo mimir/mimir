@@ -48,8 +48,7 @@ int main(int argc, char** argv) {
 
         auto loc_style = [&](const std::string& t) -> std::string {
             // clang-format off
-            if (false) {}
-            else if (t == "full"  ) driver.diag().loc_style = fe::Loc::Style::Full;
+            if      (t == "full"  ) driver.diag().loc_style = fe::Loc::Style::Full;
             else if (t == "rowcol") driver.diag().loc_style = fe::Loc::Style::RowCol;
             else if (t == "row"   ) driver.diag().loc_style = fe::Loc::Style::Row;
             else if (t == "msvc"  ) driver.diag().loc_style = fe::Loc::Style::MSVC;

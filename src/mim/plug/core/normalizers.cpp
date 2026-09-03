@@ -270,8 +270,7 @@ constexpr bool fold_icmp_idx(u64 size, u64 a, u64 b) {
 
     flags_t rel = 0;
     // clang-format off
-    if (false) {}
-    else if (a == b)     rel = icmp_mask & flags_t(icmp::xyglE); // equal
+    if      (a == b)     rel = icmp_mask & flags_t(icmp::xyglE); // equal
     else if (!su &&  sv) rel = icmp_mask & flags_t(icmp::Xygle); // plus, minus
     else if ( su && !sv) rel = icmp_mask & flags_t(icmp::xYgle); // minus, plus
     else if (a > b)      rel = icmp_mask & flags_t(icmp::xyGle); // greater (same sign)
