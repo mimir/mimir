@@ -33,7 +33,10 @@ public:
     std::ostream* os() {
         if (name_.empty()) return nullptr;
         if (name_ == "-") return &std::cout;
-        if (!ofs_.is_open()) ofs_.open(name_);
+        if (!ofs_.is_open()) {
+            ofs_.open(name_);
+            if (!ofs_) fe::throwf("cannot open output file `{}`", name_);
+        }
         return &ofs_;
     }
 

@@ -4,6 +4,7 @@
 // RUN: %mim -p opt %s --profile tree --output-profile -    | %FileCheck %s --check-prefix=TREE
 // RUN: %mim -p opt %s --output-profile -                   | %FileCheck %s --check-prefix=TRACE
 // RUN: (! %mim -p opt %s --profile bogus 2>&1)             | %FileCheck %s --check-prefix=BOGUS
+// RUN: (! %mim -p opt %s --output-profile %t.dir/nope.json 2>&1) | %FileCheck %s --check-prefix=NOOPEN
 // RUN: %mim -p opt %s --output-profile %t.json
 // RUN: %FileCheck %s --check-prefix=TRACE < %t.json
 
@@ -36,3 +37,5 @@ lam extern f(): «3; Nat» = ‹i: 3; %core.nat.add (1, %core.bitcast Nat i)›;
 // TRACE:      {{.*}}"ph":"X"{{.*}}"dur":
 
 // BOGUS: 'bogus' is not a profile mode
+
+// NOOPEN: error: cannot open output file

@@ -415,7 +415,8 @@ mim test.mim --profile tree                         # Indented tree that preserv
 mim test.mim --profile trace --output-profile trace.json
 ```
 
-`--output-profile` defaults to `-`, `--output-profile` without a `<mode>` implies `--profile trace`, and an unknown `<mode>` is an error.
+Once `--profile` has enabled profiling, `--output-profile` defaults to `-`; conversely, `--output-profile <file>` alone implies `--profile trace`.
+An unknown `<mode>` is an error.
 
 The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
 Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.
