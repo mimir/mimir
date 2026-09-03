@@ -139,8 +139,8 @@ add_custom_target(lit
 )
 
 set(MIM_TEST_ALL_DEPS
-    mim-gtest
-    mim-regex-gtest
+    mim-test
+    mim-regex-test
     mim
     mim_all_plugins
     mim_lit_tests

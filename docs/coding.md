@@ -99,9 +99,10 @@ cd lit
 ./scripts/make_lit_error.sh foo.mim
 ```
 
-### GoogleTest
+### Unit Tests
 
-Run the [GoogleTest](https://google.github.io/googletest/) unit tests with:
+`test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test` and `mim-regex-test`.
+Run them - and every other CTest test - with:
 
 ```sh
 ctest --test-dir build --output-on-failure
@@ -113,29 +114,21 @@ You can additionally enable [Valgrind](https://valgrind.org/) via:
 ctest --test-dir build -T memcheck --output-on-failure
 ```
 
-During debugging, you will usually want to run only a specific test case.
-You can [filter](https://github.com/google/googletest/blob/main/docs/advanced.md#running-a-subset-of-the-tests) tests like this:
+During debugging, you will usually want to run only a specific test case or subcase.
+Both filters accept `*` wildcards:
 
 ```sh
-build/bin/mim-gtest --gtest_filter="*Loc*"
+build/bin/mim-test --list-test-cases              # list all test cases
+build/bin/mim-test -tc="*free vars*"              # run matching test cases
+build/bin/mim-test -tc="Hole" -sc="*zonk*"        # narrow down to matching subcases
 ```
 
-This command lists all available tests:
+doctest breaks into an attached debugger on a failing assertion; pass `-nb` to suppress that.
+
+@note To generate a one-line reproducer for the current checkout and a specific unit-test failure, use:
 
 ```sh
-build/bin/mim-gtest --gtest_list_tests
-```
-
-It can also be useful to turn assertion failures into debugger breakpoints:
-
-```sh
-build/bin/mim-gtest --gtest_break_on_failure
-```
-
-@note To generate a one-line reproducer for the current checkout and a specific GoogleTest failure, use:
-
-```sh
-./scripts/make_gtest_error.sh "mim.World.dependent_extract"
+./scripts/make_test_error.sh "World: dependent extract"
 ```
 
 ## Coding Style
@@ -174,7 +167,7 @@ The artifact a file belongs to - and hence the prefix of its own headers - follo
 | `src/mim/plug/X/...`, `include/mim/plug/X/...` | plugin `X`             | `"mim/plug/X/..."` |
 | `extra/X/...`                                  | out-of-tree plugin `X` | `"mim/plug/X/..."` |
 | `src/mim/cli/...`                              | the `mim` CLI          | -                  |
-| `gtest/...`                                    | the unit tests         | -                  |
+| `test/...`                                     | the unit tests         | -                  |
 | `py/bindings/...`                              | the Python bindings    | -                  |
 
 The last three link against `libmim` but do not ship headers of their own, so they use `<...>` throughout.
@@ -379,7 +372,7 @@ If you run into memory-related problems, it can be useful to run the program wit
 Launch the test binary like this:
 
 ```sh
-valgrind --vgdb=yes --vgdb-error=0 build/bin/mim-gtest
+valgrind --vgdb=yes --vgdb-error=0 build/bin/mim-test
 ```
 
 and then follow the instructions printed by Valgrind.

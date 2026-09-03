@@ -18,4 +18,4 @@ repos:
         description: An artifact uses "..." for its own headers and <...> for everything it links against.
         entry: scripts/check_includes.py
         language: script
-        files: ^(src|include|extra|gtest|py/bindings)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$
+        files: ^(src|include|extra|test|py/bindings)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$

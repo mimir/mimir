@@ -9,7 +9,7 @@ The artifact a file belongs to - and hence the prefix of its own headers - is de
     src/mim/plug/X/... include/mim/plug/X/...   plugin X                "mim/plug/X/..."
     extra/X/...                                 out-of-tree plugin X    "mim/plug/X/..."
     src/mim/cli/...                             the mim CLI             -
-    gtest/...                                   the unit tests          -
+    test/...                                    the unit tests          -
     py/bindings/...                             the Python bindings     -
 
 The last three link against `libmim` but do not ship headers of their own, so they use `<...>` throughout.
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ROOTS = ['src', 'include', 'extra', 'gtest', 'py/bindings']
+ROOTS = ['src', 'include', 'extra', 'test', 'py/bindings']
 EXTS = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx'}
 
 INCLUDE = re.compile(r'^(?P<lead>\s*#\s*include\s*)(?P<open>["<])(?P<path>[^">]*)(?P<close>[">])')
@@ -63,7 +63,7 @@ def artifact_of(path: Path) -> tuple[str, str | None] | None:
             return f'plugin "{plugin}"', f'mim/plug/{plugin}/'
         case ('src', 'mim', 'cli', *rest) if rest:
             return 'the mim CLI', None
-        case ('gtest', *rest) if rest:
+        case ('test', *rest) if rest:
             return 'the unit tests', None
         case ('py', 'bindings', *rest) if rest:
             return 'the Python bindings', None
