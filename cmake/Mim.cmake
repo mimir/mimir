@@ -50,8 +50,7 @@ endfunction()
 ## \code{.cmake}
 ## add_mim_plugin(<plugin-name>
 ##     [SOURCES <source>...]
-##     [PRIVATE <private-item>...]
-##     [INSTALL])
+##     [PRIVATE <private-item>...])
 ## \endcode
 ##
 ## `<plugin-name>` may only contain letters, digits, and underscores, and must
@@ -69,9 +68,9 @@ endfunction()
 ## `SOURCES` lists the source files that are compiled into the loadable plugin.
 ## `PRIVATE` lists additional private link dependencies.
 ##
-## `INSTALL` installs the plugin module, its `.mim` file, and the generated
-## `autogen.h`. The export name `mim-targets` must be exported accordingly; see
-## CMake's `install(EXPORT ...)` documentation.
+## The plugin module, its `.mim` file, and the generated `autogen.h` are installed.
+## The export name `mim-targets` must be exported accordingly; see CMake's
+## `install(EXPORT ...)` documentation.
 ##
 ## Additional target properties can be set afterwards, for example:
 ## \code{.cmake}
@@ -90,7 +89,7 @@ function(add_mim_plugin)
     cmake_parse_arguments(
         PARSE_ARGV 1        # skip first arg
         PARSED              # prefix of output variables
-        "INSTALL"           # options
+        ""                  # options (none)
         ""                  # one-value keywords (none)
         "SOURCES;PRIVATE"   # multi-value keywords
     )
@@ -180,30 +179,28 @@ function(add_mim_plugin)
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim
     )
 
-    if(PARSED_INSTALL)
+    install(
+        TARGETS
+            mim_${PLUGIN}
+        EXPORT mim-targets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim
+    )
+    install(
+        FILES ${OUT_PLUGIN_MIM}
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+    )
+    install(
+        FILES ${AUTOGEN_H}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim/plug/${PLUGIN}
+    )
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/include")
         install(
-            TARGETS
-                mim_${PLUGIN}
-            EXPORT mim-targets
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-            RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim
+            DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include/"
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
-        install(
-            FILES ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${PLUGIN}.mim
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-        )
-        install(
-            FILES ${AUTOGEN_H}
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim/plug/${PLUGIN}
-        )
-        if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/include")
-            install(
-                DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include/"
-                DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            )
-        endif()
     endif()
 endfunction()
 
@@ -212,8 +209,7 @@ endfunction()
 ##
 ## \code{.cmake}
 ## add_mim_runtime(<plugin-name>
-##     SOURCES <source>...
-##     [INSTALL])
+##     SOURCES <source>...)
 ## \endcode
 ##
 ## All `SOURCES` are compiled with `clang` and merged into a single textual module
@@ -235,7 +231,7 @@ function(add_mim_runtime)
     cmake_parse_arguments(
         PARSE_ARGV 1        # skip first arg
         PARSED              # prefix of output variables
-        "INSTALL"           # options
+        ""                  # options (none)
         ""                  # one-value keywords (none)
         "SOURCES"           # multi-value keywords
     )
@@ -293,10 +289,8 @@ function(add_mim_runtime)
     if(TARGET mim_${PLUGIN})
         add_dependencies(mim_${PLUGIN} mim_runtime_${PLUGIN})
     endif()
-    if(PARSED_INSTALL)
-        install(
-            FILES ${RT_LL}
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim/rt
-        )
-    endif()
+    install(
+        FILES ${RT_LL}
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim/rt
+    )
 endfunction()

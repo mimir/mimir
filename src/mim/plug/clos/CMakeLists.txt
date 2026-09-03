@@ -8,5 +8,4 @@ add_mim_plugin(clos
         phase/clos_conv_prep.cpp
         phase/lower_typed_clos_prep.cpp
         phase/lower_typed_clos.cpp
-    INSTALL
 )

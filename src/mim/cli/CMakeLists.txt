@@ -1,4 +1,5 @@
 add_executable(mim main.cpp)
+add_executable(mim::mim ALIAS mim)
 target_link_libraries(mim PRIVATE libmim)
 
 # Relative to the executable, so `cmake --install --prefix` yields a working binary;

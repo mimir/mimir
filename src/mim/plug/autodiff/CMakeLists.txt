@@ -3,5 +3,4 @@ add_mim_plugin(autodiff
         autodiff.cpp
         phase/eval.cpp
         normalizers.cpp
-    INSTALL
 )

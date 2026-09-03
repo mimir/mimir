@@ -3,5 +3,4 @@ add_mim_plugin(buffer
         buffer.cpp
         normalizers.cpp
         phase/lower_ptr.cpp
-    INSTALL
 )

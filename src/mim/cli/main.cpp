@@ -54,21 +54,32 @@ struct Opts {
     bool sexpr_include_types = false;
 };
 
-void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool markdown) {
+void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool md) {
     for (auto&& plugin : plugins) // a plugin declares its `-X` arguments in its shared library
         driver.load(plugin);
 
-    if (!driver.known_args().empty()) cli.section("Plugin Arguments", "", {});
-    for (const auto& [plugin, args] : driver.known_args()) {
-        auto rows = std::vector<std::pair<std::string, std::string>>();
-        for (const auto& arg : args)
-            rows.emplace_back(arg.syntax, arg.descr);
-        // The Markdown gets an anchor, so that a plugin's own page can link to its table.
-        auto title = markdown ? std::format("-X {0}:<arg> {{#xarg_{0}}}", plugin) : std::format("-X {}:<arg>", plugin);
-        cli.section(std::move(title), "Argument", std::move(rows));
-    }
+    if (!driver.known_args().empty()) {
+        cli.section("Plugin Arguments");
 
-    if (markdown)
+        for (const auto& [plugin, args] : driver.known_args()) {
+            auto rows = fe::Cli::Rows();
+            for (const auto& arg : args)
+                rows.emplace_back(arg.syntax, arg.descr);
+            // The Markdown gets an anchor, so that a plugin's own page can link to its table.
+            auto title = md ? std::format("-X {0}:<arg> {{#xarg_{0}}}", plugin) : std::format("-X {}:<arg>", plugin);
+            cli.section(std::move(title), "Argument", std::move(rows));
+        }
+    }
+    // clang-format off
+    cli.section("Environment Variables", "Variable", {
+        {"MIM_PLUGIN_PATH", "Colon-separated list of plugin search paths, searched after those given via -P."},
+        {"NO_COLOR"       , "Disables colored output if set to a non-empty value; wins over the two below."},
+        {"CLICOLOR_FORCE" , "Forces colored output if set to a non-empty value other than 0."},
+        {"CLICOLOR"       , "Disables colored output if set to 0."},
+    });
+    // clang-format on
+
+    if (md)
         cli.markdown(std::cout);
     else
         std::cout << cli;
