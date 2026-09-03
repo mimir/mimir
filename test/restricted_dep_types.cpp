@@ -56,11 +56,11 @@ TEST_CASE("restricted dependent types") {
         CHECK_NOTHROW(app(i64_t, R, i32_t));
         CHECK_NOTHROW(app(i64_t, W, i32_t));
 
-        // WARN until we have vel type checking: none of these is rejected yet.
-        WARN_THROWS_AS(app(f32_t, R, i32_t), std::logic_error); // f32 is not in DT
-        WARN_THROWS_AS(app(f32_t, W, i32_t), std::logic_error);
-        WARN_THROWS_AS(app(i32_t, i32_t, i32_t), std::logic_error); // i32 is not in RW
-        WARN_THROWS_AS(app(i64_t, i64_t, i32_t), std::logic_error);
+        // Nothing rejects these yet; vel type checking must turn each into a CHECK_THROWS_AS.
+        CHECK_NOTHROW(app(f32_t, R, i32_t)); // f32 is not in DT
+        CHECK_NOTHROW(app(f32_t, W, i32_t));
+        CHECK_NOTHROW(app(i32_t, i32_t, i32_t)); // i32 is not in RW
+        CHECK_NOTHROW(app(i64_t, i64_t, i32_t));
     }
 
     SUBCASE("the mode is fixed to R") {
@@ -79,8 +79,8 @@ TEST_CASE("restricted dependent types") {
         CHECK_NOTHROW(app(i32_t, R, i32_t));
         CHECK_NOTHROW(app(i64_t, R, i64_t));
 
-        // WARN until we have vel type checking: f32 is not in DT, but nothing rejects it yet.
-        WARN_THROWS_AS(app(f32_t, R, i32_t), std::logic_error);
+        // Nothing rejects this yet; vel type checking must turn it into a CHECK_THROWS_AS.
+        CHECK_NOTHROW(app(f32_t, R, i32_t)); // f32 is not in DT
 
         CHECK_THROWS(app(i32_t, W, i32_t)); // the lam only accepts R
         CHECK_THROWS(app(i64_t, W, i32_t));
