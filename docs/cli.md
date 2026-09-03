@@ -43,7 +43,7 @@ For example, a backend that invokes an external tool may want to forward optimiz
 Use `-X` / `--plugin-arg` for this:
 
 ```
-mim foo.mim -p ll -X ll:o=out.ll -X compile:aggr=on
+mim foo.mim -p ll -X ll:o=out.ll -X compile:aggr
 ```
 
 The syntax is `-X <plugin>:<arg>`:

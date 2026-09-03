@@ -14,11 +14,11 @@ const Def* normalize_is_loaded(const Def*, const Def*, const Def* arg) {
     return {};
 }
 
-/// `%compile.aggr fallback` ↦ `tt`/`ff` if `-X compile:aggr=on`/`=off` was passed, else `fallback`.
+/// `%compile.aggr fallback` ↦ `tt`/`ff` if `-X compile:aggr`/`:no-aggr` was passed, else `fallback`.
 const Def* normalize_aggr(const Def*, const Def*, const Def* arg) {
     auto& world  = arg->world();
     auto& driver = world.driver();
-    if (auto b = arg_bool(driver.args("compile"), "aggr")) return world.lit_bool(*b);
+    if (auto b = arg_bool(driver.args("compile"), {"aggr"}, {"no-aggr"})) return world.lit_bool(*b);
     return arg;
 }
 

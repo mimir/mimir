@@ -179,7 +179,7 @@ public:
         if (auto v = arg_value(args(), "Xllc"))                 c.llc_args       = *v;
         if (auto v = arg_value(args(), "Xptxas"))               c.ptxas_args     = *v;
         if (auto v = arg_value(args(), "Xfatbinary"))           c.fatbinary_args = *v;
-        if (arg_flag(args(), "no-embed"))                       c.embed_device_code = false;
+        if (auto b = arg_bool(args(), {"embed"}, {"no-embed"})) c.embed_device_code = *b;
         if (arg_flag(args(), "no-ptx-embed"))                   c.embed_ptx         = false;
         if (arg_flag(args(), "no-cubin-embed"))                 c.embed_cubin       = false;
         // clang-format on
@@ -238,7 +238,7 @@ static constexpr PluginArg known_args[] = {
     {"o=<file>, output=<file>",         "Writes the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
     {"o-dev=<file>, output-dev=<file>", "Writes the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`."},
     {"rt=embed, rt=extern",             "Like `ll`'s `rt`, but for the host module's C [runtime wrappers](@ref plugin_runtime) such as `@mim_cu_check`."},
-    {"no-embed",                        "Doesn't embed the compiled device binary into the host LLVM IR; embedding is the default on Linux."},
+    {"embed, no-embed",                 "Embeds the compiled device binary into the host LLVM IR, or doesn't; the default is `embed` on Linux and `no-embed` elsewhere."},
     {"no-ptx-embed",                    "When embedding: omits the PTX image from the fat binary (default: both PTX and CUBIN)."},
     {"no-cubin-embed",                  "When embedding: omits the CUBIN image from the fat binary (default: both PTX and CUBIN)."},
     {"sm=<SM>",                         "When embedding: compiles the device binary for compute capability `sm_<SM>`."},

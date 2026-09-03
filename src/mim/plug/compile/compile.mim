@@ -45,8 +45,8 @@ axm %compile.cond: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase,
 /// ### %%compile.aggr
 ///
 /// Makes a fixed-point flag switchable from the command line.
-/// `%%compile.aggr fallback` yields `tt` if `-X compile:aggr=on` (also `=true` or a bare `aggr`) was passed,
-/// `ff` if `-X compile:aggr=off` (also `=false`), and otherwise the given `fallback`.
+/// `%%compile.aggr fallback` yields `tt` if `-X compile:aggr` was passed, `ff` if `-X compile:no-aggr` was passed,
+/// and otherwise the given `fallback`.
 /// Use it as the Bool of a `%%compile.phases` to make that pipeline's fixed-point iteration switchable via the CLI.
 ///
 axm %compile.aggr: Bool → Bool, normalize_aggr;

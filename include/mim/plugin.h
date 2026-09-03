@@ -3,6 +3,7 @@
 #include <compare>
 
 #include <functional>
+#include <initializer_list>
 #include <iosfwd>
 #include <memory>
 #include <optional>
@@ -60,25 +61,27 @@ std::optional<std::string_view> arg_value(fe::View<std::string> args, Keys... ke
     return res;
 }
 
-/// A bare `<key>` or `<key>=on`/`tt`/`true` ↦ `true`, `<key>=off`/`ff`/`false` ↦ `false`; `std::nullopt` if absent.
-template<class... Keys>
-std::optional<bool> arg_bool(fe::View<std::string> args, Keys... keys) {
+/// An @p on key ↦ `true`, an @p off key ↦ `false`; `std::nullopt` if neither occurs.
+inline std::optional<bool> arg_bool(fe::View<std::string> args,
+                                    std::initializer_list<std::string_view> on,
+                                    std::initializer_list<std::string_view> off) {
     std::optional<bool> res;
-    for (std::string_view arg : args)
-        for (std::string_view key : {std::string_view(keys)...})
-            if (auto val = detail::arg_split(arg, key)) {
-                // clang-format off
-                if (val->empty() || *val == "on"  || *val == "tt" || *val == "true" ) res = true;
-                else if (          *val == "off" || *val == "ff" || *val == "false") res = false;
-                // clang-format on
-            }
+    for (std::string_view arg : args) {
+        for (auto key : on)
+            if (arg == key) res = true;
+        for (auto key : off)
+            if (arg == key) res = false;
+    }
     return res;
 }
 
-/// Like arg_bool but the absence of @p keys yields `false`.
+/// Whether any of @p keys occurs.
 template<class... Keys>
 bool arg_flag(fe::View<std::string> args, Keys... keys) {
-    return arg_bool(args, keys...).value_or(false);
+    for (std::string_view arg : args)
+        for (std::string_view key : {std::string_view(keys)...})
+            if (arg == key) return true;
+    return false;
 }
 ///@}
 
