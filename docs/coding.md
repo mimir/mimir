@@ -49,7 +49,7 @@ The following CMake switches are available:
 | `MIM_VERIFY_PLUGINS`    | `ON` \| `OFF`                            | `ON`         | If `ON`, elaborate every plugin's `.mim` with its plugin library loaded after building it. <br> `--bootstrap` alone never loads the libraries, so it cannot catch errors that need the normalizers.  |
 | `BUILD_TESTING`         | `ON` \| `OFF`                            | `OFF`        | If `ON`, build all unit tests and `lit` tests.                                                                                                                                                     |
 | `MIM_FILECHECK`         | `<filecheck_cmd>`                        | autodetected | `FileCheck` command used by the `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                   |
-| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `30`         | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                                       |
+| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `120`        | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                                       |
 | `MIM_LIT_WITH_VALGRIND` | `ON` \| `OFF`                            | `OFF`        | If `ON`, run the Mim CLI in the `lit` tests under Valgrind. <br> (requires `BUILD_TESTING=ON`).                                                                                                    |
 
 ### Dependencies
