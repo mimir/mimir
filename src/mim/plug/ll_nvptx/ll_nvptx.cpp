@@ -249,8 +249,13 @@ static constexpr PluginArg known_args[] = {
     {"Xptxas=<args>",                   "When embedding: passes `<args>` to `ptxas` (default: none); also passed to `fatbinary` via `--cmdline` when the PTX image is embedded."},
     {"Xfatbinary=<args>",               "When embedding: passes `<args>` to `fatbinary` (default: none)."},
 };
+
+static constexpr PluginEnv known_envs[] = {
+    {"CUDA_HOME", "Root of the CUDA installation to locate `libdevice` in, if the CUDA paths do not yield one."},
+};
 // clang-format on
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"ll_nvptx", MIM_VERSION, {}, reg_phases, known_args, std::size(known_args)};
+    return {"ll_nvptx", MIM_VERSION,           {},         reg_phases,
+            known_args, std::size(known_args), known_envs, std::size(known_envs)};
 }

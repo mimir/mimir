@@ -3,5 +3,4 @@ add_mim_plugin(cps
         cps.cpp
         phase/conv.cpp
         normalizers.cpp
-    INSTALL
 )

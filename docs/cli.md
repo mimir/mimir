@@ -6,7 +6,7 @@
 
 \include{doc} "cli-help.md"
 
-@note The *Developer Options* only exist if MimIR was built with `MIM_ENABLE_CHECKS`; see the [CMake switches](@ref building).
+@note The _Developer Options_ only exist if MimIR was built with `MIM_ENABLE_CHECKS`; see the [CMake switches](@ref building).
 
 ## Diagnostics {#clidiag}
 
@@ -14,20 +14,17 @@ Errors and warnings are reported as `<file>:<row>:<col>: error: <message>`, foll
 Pass `--no-snippet` to omit the source line and caret, e.g. when the output is consumed by a script.
 Use `--loc-style` to pick how much of a location that header spells out:
 
-| `<style>` | Renders as               |
-| --------- | ------------------------ |
+| `<style>` | Renders as                       |
+| --------- | -------------------------------- |
 | `full`    | `path:row:col-row:col` (default) |
-| `rowcol`  | `path:row:col`           |
-| `row`     | `path:row`               |
-| `msvc`    | `path(row,col)`          |
-
-Color is decided by the terminal and honors `NO_COLOR`, `CLICOLOR=0`, and `CLICOLOR_FORCE`.
+| `rowcol`  | `path:row:col`                   |
+| `row`     | `path:row`                       |
+| `msvc`    | `path(row,col)`                  |
 
 ## Plugins
 
 ### Search Paths
 
-You can specify more search paths with `-P` / `--plugin-path` and via the environment variable `MIM_PLUGIN_PATH`.
 Mim looks for plugins in this order:
 
 1. The current working directory.
@@ -55,10 +52,16 @@ The syntax is `-X <plugin>:<arg>`:
 
 Each plugin declares the arguments it understands right next to the code that reads them, so the `-X <plugin>:<arg>` tables under [Usage](@ref cliusage) are generated from those declarations.
 
+### Environment Variables {#clipluginenv}
+
+A plugin may also read environment variables - typically to locate an external toolchain it shells out to.
+It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the *Plugin Environment Variables* tables under [Usage](@ref cliusage) are generated from those declarations, just like the `-X` tables above.
+Since a plugin only announces them once it is loaded, `mim -p <plugin> --help` lists the ones belonging to `<plugin>`.
+
 <div class="section_buttons">
 
-| Previous |     Next |
-|:---------|---------:|
+| Previous                      |                                   Next |
+| :---------------------------- | -------------------------------------: |
 | [A Tour of MimIR](@ref mimir) | [Mim Language Reference](@ref langref) |
 
 </div>

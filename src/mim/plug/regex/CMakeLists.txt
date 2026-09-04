@@ -7,5 +7,4 @@ add_mim_plugin(regex
         phase/lower_regex.cpp
     PRIVATE
         automaton
-    INSTALL
 )

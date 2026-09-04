@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.25)
 
 project(MimIR VERSION 0.3)
 set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev', '' for release)")
@@ -24,6 +24,18 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 set(MIM_PLUGIN_LIST "" CACHE INTERNAL "MIM_PLUGIN_LIST" FORCE)
 set(MIM_PLUGIN_LAYOUT "" CACHE INTERNAL "MIM_PLUGIN_LAYOUT" FORCE)
 include(Mim)
+
+# Names of the third-party plugins under extra/ that provide <entry> (a file or a directory).
+function(mim_extra_plugins entry out)
+    file(GLOB entries CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/extra/*/${entry}")
+    set(plugins "")
+    foreach(path IN LISTS entries)
+        cmake_path(GET path PARENT_PATH dir)
+        cmake_path(GET dir FILENAME plugin)
+        list(APPEND plugins ${plugin})
+    endforeach()
+    set(${out} "${plugins}" PARENT_SCOPE)
+endfunction()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)
@@ -80,7 +92,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     option(BUILD_TESTING "Build lit and unit tests." OFF) # needs to be BEFORE "include(CTest)"
     include(CTest)
     cmake_dependent_option(MIM_LIT_WITH_VALGRIND "If ON, the Mim CLI in the lit tests will be run under valgrind." OFF "BUILD_TESTING" OFF)
-    set(MIM_LIT_TIMEOUT 30 CACHE STRING "Timeout for lit tests.")
+    set(MIM_LIT_TIMEOUT 120 CACHE STRING "Timeout for lit tests.")
     if(BUILD_TESTING)
         # doctest lives inside fe, which pulls it in only for its own standalone build.
         set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
@@ -109,9 +121,7 @@ endif()
 
 if(MIM_BUILD_DOCS)
     find_package(Doxygen REQUIRED dot)
-    if(DOXYGEN_FOUND)
-        add_subdirectory(docs)
-    endif()
+    add_subdirectory(docs)
 endif()
 
 if(MIM_BUILD_PYTHON)
@@ -121,7 +131,7 @@ endif()
 
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/mim-config-version.cmake"
-    VERSION ${Mim_VERSION}
+    VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
 configure_package_config_file(

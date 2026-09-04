@@ -1,16 +1,5 @@
 include(GNUInstallDirs)
 
-if(NOT DEFINED MIM_PLUGIN_LIST)
-    set(MIM_PLUGIN_LIST "" CACHE INTERNAL "MIM_PLUGIN_LIST")
-endif()
-if(NOT DEFINED MIM_PLUGIN_LAYOUT)
-    set(MIM_PLUGIN_LAYOUT "" CACHE INTERNAL "MIM_PLUGIN_LAYOUT")
-endif()
-
-if(NOT MIM_TARGET_NAMESPACE)
-    set(MIM_TARGET_NAMESPACE "")
-endif()
-
 option(MIM_BUILD_LL_RUNTIME "Compile the ll backend's C runtime wrappers to LLVM IR (requires clang)." ON)
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
@@ -19,6 +8,38 @@ if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
         "Set MIM_CLANG or disable MIM_BUILD_LL_RUNTIME to silence this."
     )
 endif()
+
+# Collects the .mim files that bootstrapping mim_file reads, transitively.
+# A plugin/import directive resolves to <root>/<name>/<name>.mim, mirroring add_mim_plugin's -P arguments.
+# A newly added directive is only picked up on the next configure; editing an existing one is tracked.
+function(mim_transitive_imports mim_file roots out)
+    set(pending "${mim_file}")
+    set(files "")
+
+    while(pending)
+        list(POP_FRONT pending current)
+        file(READ "${current}" contents)
+        string(REGEX REPLACE "/\\*[^*]*\\*+([^/*][^*]*\\*+)*/" "" contents "${contents}")
+        string(REGEX REPLACE "//[^\n]*" "" contents "${contents}")
+        string(REGEX MATCHALL "(plugin|import)[ \t\r\n]+[A-Za-z0-9_]+" directives "${contents}")
+
+        foreach(directive IN LISTS directives)
+            string(REGEX REPLACE "^(plugin|import)[ \t\r\n]+" "" name "${directive}")
+            foreach(root IN LISTS roots)
+                set(candidate "${root}/${name}/${name}.mim")
+                if(EXISTS "${candidate}")
+                    if(NOT candidate IN_LIST files)
+                        list(APPEND files "${candidate}")
+                        list(APPEND pending "${candidate}")
+                    endif()
+                    break()
+                endif()
+            endforeach()
+        endforeach()
+    endwhile()
+
+    set(${out} "${files}" PARENT_SCOPE)
+endfunction()
 
 ## \page add_mim_plugin_cmake add_mim_plugin
 ## \brief Registers a new MimIR plugin.
@@ -29,8 +50,7 @@ endif()
 ## \code{.cmake}
 ## add_mim_plugin(<plugin-name>
 ##     [SOURCES <source>...]
-##     [PRIVATE <private-item>...]
-##     [INSTALL])
+##     [PRIVATE <private-item>...])
 ## \endcode
 ##
 ## `<plugin-name>` may only contain letters, digits, and underscores, and must
@@ -48,9 +68,9 @@ endif()
 ## `SOURCES` lists the source files that are compiled into the loadable plugin.
 ## `PRIVATE` lists additional private link dependencies.
 ##
-## `INSTALL` installs the plugin module, its `.mim` file, and the generated
-## `autogen.h`. The export name `mim-targets` must be exported accordingly; see
-## CMake's `install(EXPORT ...)` documentation.
+## The plugin module, its `.mim` file, and the generated `autogen.h` are installed.
+## The export name `mim-targets` must be exported accordingly; see CMake's
+## `install(EXPORT ...)` documentation.
 ##
 ## Additional target properties can be set afterwards, for example:
 ## \code{.cmake}
@@ -59,19 +79,17 @@ endif()
 function(add_mim_plugin)
     set(PLUGIN ${ARGV0})
 
-    if(NOT PLUGIN MATCHES "^[A-Za-z0-9_]+$")
-        message(FATAL_ERROR "Mim plugin names may only contain letters, digits, and underscores")
-    endif()
-
     string(LENGTH "${PLUGIN}" PLUGIN_LENGTH)
-    if(PLUGIN_LENGTH GREATER 8)
-        message(FATAL_ERROR "Mim plugin '${PLUGIN}' exceeds the maximum supported length of 8 characters")
+    if(NOT PLUGIN MATCHES "^[A-Za-z0-9_]+$" OR PLUGIN_LENGTH GREATER 8)
+        message(FATAL_ERROR
+            "Mim plugin name '${PLUGIN}' must be 1 to 8 letters, digits, or underscores"
+        )
     endif()
 
     cmake_parse_arguments(
         PARSE_ARGV 1        # skip first arg
         PARSED              # prefix of output variables
-        "INSTALL"           # options
+        ""                  # options (none)
         ""                  # one-value keywords (none)
         "SOURCES;PRIVATE"   # multi-value keywords
     )
@@ -82,20 +100,15 @@ function(add_mim_plugin)
     set(AUTOGEN_H       ${CMAKE_BINARY_DIR}/include/mim/plug/${PLUGIN}/autogen.h)
     set(AUTOGEN_PY      ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${PLUGIN}.py)
 
-    file(READ "${PLUGIN_MIM}" plugin_file_contents)
-
-    # Strip block comments (/* ... */) — greedy, so repeat if needed
-    string(REGEX REPLACE "/\\*[^*]*\\*+([^/*][^*]*\\*+)*/" "" plugin_file_contents "${plugin_file_contents}")
-
-    # Replace all newlines with semicolons to help with list processing
-    string(REPLACE "\n" ";" plugin_lines "${plugin_file_contents}")
-
     file(
         MAKE_DIRECTORY
             ${CMAKE_BINARY_DIR}/docs/plug/
             ${CMAKE_BINARY_DIR}/include/mim/plug/${PLUGIN}
             ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/
     )
+
+    set(PLUGIN_ROOTS "${CMAKE_SOURCE_DIR}/src/mim/plug" "${CMAKE_CURRENT_LIST_DIR}/..")
+    mim_transitive_imports("${PLUGIN_MIM}" "${PLUGIN_ROOTS}" PLUGIN_IMPORTS)
 
     add_custom_command(
         OUTPUT
@@ -107,7 +120,7 @@ function(add_mim_plugin)
             --output-md ${PLUGIN_MD}
             --output-py ${AUTOGEN_PY}
         MAIN_DEPENDENCY ${PLUGIN_MIM}
-        DEPENDS ${MIM_TARGET_NAMESPACE}mim
+        DEPENDS ${MIM_TARGET_NAMESPACE}mim ${PLUGIN_IMPORTS}
         COMMENT "Bootstrapping MimIR plugin '${PLUGIN_MIM}'"
         VERBATIM
     )
@@ -133,19 +146,11 @@ function(add_mim_plugin)
     list(APPEND MIM_PLUGIN_LIST "${PLUGIN}")
     string(APPEND MIM_PLUGIN_LAYOUT "<tab type=\"user\" url=\"@ref ${PLUGIN}\" title=\"${PLUGIN}\"/>")
 
-    # populate to globals
     set(MIM_PLUGIN_LIST   "${MIM_PLUGIN_LIST}"   CACHE INTERNAL "MIM_PLUGIN_LIST")
     set(MIM_PLUGIN_LAYOUT "${MIM_PLUGIN_LAYOUT}" CACHE INTERNAL "MIM_PLUGIN_LAYOUT")
 
-    #
-    # mim_plugin
-    #
     add_library(mim_${PLUGIN} MODULE)
-    add_dependencies(mim_${PLUGIN}
-        mim_internal_${PLUGIN}
-        ${PLUGIN_SOFT_DEPS}
-        ${PLUGIN_HARD_DEPS}
-    )
+    add_dependencies(mim_${PLUGIN} mim_internal_${PLUGIN})
     target_sources(mim_${PLUGIN}
         PRIVATE
             ${PARSED_SOURCES}
@@ -174,33 +179,28 @@ function(add_mim_plugin)
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim
     )
 
-    #
-    # install
-    #
-    if(${PARSED_INSTALL})
+    install(
+        TARGETS
+            mim_${PLUGIN}
+        EXPORT mim-targets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim
+    )
+    install(
+        FILES ${OUT_PLUGIN_MIM}
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
+    )
+    install(
+        FILES ${AUTOGEN_H}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim/plug/${PLUGIN}
+    )
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/include")
         install(
-            TARGETS
-                mim_${PLUGIN}
-            EXPORT mim-targets
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-            RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim
+            DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include/"
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
-        install(
-            FILES ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${PLUGIN}.mim
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim
-        )
-        install(
-            FILES ${AUTOGEN_H}
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim/plug/${PLUGIN}
-        )
-        if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/include")
-            install(
-                DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include/"
-                DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            )
-        endif()
     endif()
 endfunction()
 
@@ -209,8 +209,7 @@ endfunction()
 ##
 ## \code{.cmake}
 ## add_mim_runtime(<plugin-name>
-##     SOURCES <source>...
-##     [INSTALL])
+##     SOURCES <source>...)
 ## \endcode
 ##
 ## All `SOURCES` are compiled with `clang` and merged into a single textual module
@@ -232,7 +231,7 @@ function(add_mim_runtime)
     cmake_parse_arguments(
         PARSE_ARGV 1        # skip first arg
         PARSED              # prefix of output variables
-        "INSTALL"           # options
+        ""                  # options (none)
         ""                  # one-value keywords (none)
         "SOURCES"           # multi-value keywords
     )
@@ -245,17 +244,15 @@ function(add_mim_runtime)
     file(MAKE_DIRECTORY ${RT_DIR})
     set(RT_LL ${RT_DIR}/${PLUGIN}_rt.ll)
 
-    set(ABS_SOURCES "")
-    foreach(src ${PARSED_SOURCES})
-        list(APPEND ABS_SOURCES ${CMAKE_CURRENT_LIST_DIR}/${src})
-    endforeach()
+    set(RT_SOURCES ${PARSED_SOURCES})
+    list(TRANSFORM RT_SOURCES PREPEND ${CMAKE_CURRENT_LIST_DIR}/)
 
-    list(LENGTH ABS_SOURCES N_SOURCES)
+    list(LENGTH RT_SOURCES N_SOURCES)
     if(N_SOURCES EQUAL 1)
         add_custom_command(
             OUTPUT  ${RT_LL}
-            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${ABS_SOURCES} -o ${RT_LL}
-            DEPENDS ${ABS_SOURCES}
+            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${RT_SOURCES} -o ${RT_LL}
+            DEPENDS ${RT_SOURCES}
             COMMENT "Compiling MimIR runtime '${PLUGIN}' to LLVM IR"
             VERBATIM
         )
@@ -267,14 +264,14 @@ function(add_mim_runtime)
             )
         endif()
         set(RT_BCS "")
-        foreach(src ${PARSED_SOURCES})
-            get_filename_component(stem ${src} NAME_WE)
+        foreach(src IN LISTS RT_SOURCES)
+            cmake_path(GET src STEM stem)
             set(bc ${RT_DIR}/${PLUGIN}_${stem}.bc)
             add_custom_command(
                 OUTPUT  ${bc}
-                COMMAND ${MIM_CLANG} -emit-llvm -O2 -c ${CMAKE_CURRENT_LIST_DIR}/${src} -o ${bc}
-                DEPENDS ${CMAKE_CURRENT_LIST_DIR}/${src}
-                COMMENT "Compiling MimIR runtime source '${src}' to LLVM bitcode"
+                COMMAND ${MIM_CLANG} -emit-llvm -O2 -c ${src} -o ${bc}
+                DEPENDS ${src}
+                COMMENT "Compiling MimIR runtime source '${stem}' to LLVM bitcode"
                 VERBATIM
             )
             list(APPEND RT_BCS ${bc})
@@ -292,10 +289,8 @@ function(add_mim_runtime)
     if(TARGET mim_${PLUGIN})
         add_dependencies(mim_${PLUGIN} mim_runtime_${PLUGIN})
     endif()
-    if(${PARSED_INSTALL})
-        install(
-            FILES ${RT_LL}
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim/rt
-        )
-    endif()
+    install(
+        FILES ${RT_LL}
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/mim/rt
+    )
 endfunction()

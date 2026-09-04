@@ -3,5 +3,4 @@ add_mim_plugin(btensor
         btensor.cpp
         normalizers.cpp
         phase/lower_map_reduce.cpp
-    INSTALL
 )

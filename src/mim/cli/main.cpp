@@ -5,6 +5,7 @@
 #include <string>
 
 #include <fe/cli.h>
+#include <fe/sys.h>
 #include <fe/term.h>
 
 #include <mim/config.h>
@@ -54,21 +55,36 @@ struct Opts {
     bool sexpr_include_types = false;
 };
 
-void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool markdown) {
+void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool md) {
     for (auto&& plugin : plugins) // a plugin declares its `-X` arguments in its shared library
         driver.load(plugin);
 
-    if (!driver.known_args().empty()) cli.section("Plugin Arguments", "", {});
-    for (const auto& [plugin, args] : driver.known_args()) {
-        auto rows = std::vector<std::pair<std::string, std::string>>();
-        for (const auto& arg : args)
-            rows.emplace_back(arg.syntax, arg.descr);
-        // The Markdown gets an anchor, so that a plugin's own page can link to its table.
-        auto title = markdown ? std::format("-X {0}:<arg> {{#xarg_{0}}}", plugin) : std::format("-X {}:<arg>", plugin);
-        cli.section(std::move(title), "Argument", std::move(rows));
+    if (!driver.known_args().empty()) {
+        cli.section("Plugin Arguments");
+
+        for (const auto& [plugin, args] : driver.known_args()) {
+            auto rows = fe::Cli::Rows();
+            for (const auto& arg : args)
+                rows.emplace_back(arg.syntax, arg.descr);
+            // The Markdown gets an anchor, so that a plugin's own page can link to its table.
+            auto title = md ? std::format("-X {0}:<arg> {{#xarg_{0}}}", plugin) : std::format("-X {}:<arg>", plugin);
+            cli.section(std::move(title), "Argument", std::move(rows));
+        }
+    }
+    if (!driver.known_envs().empty()) {
+        cli.section("Plugin Environment Variables");
+
+        for (const auto& [plugin, envs] : driver.known_envs()) {
+            auto rows = fe::Cli::Rows();
+            for (const auto& env : envs)
+                rows.emplace_back(env.name, env.descr);
+            // The Markdown gets an anchor, so that a plugin's own page can link to its table.
+            auto title = md ? std::format("{0} {{#env_{0}}}", plugin) : std::string(plugin);
+            cli.section(std::move(title), "Variable", std::move(rows));
+        }
     }
 
-    if (markdown)
+    if (md)
         cli.markdown(std::cout);
     else
         std::cout << cli;
@@ -177,6 +193,7 @@ int main(int argc, char** argv) {
 
         // clang-format off
         auto cli = fe::Cli("mim", "MimIR is my Intermediate Representation.")
+            .arg(opts.input, "file", "Input file.")
             .help(show_help)
             .opt(show_help_md              , ""          , ""  , "--help-md"             , "Displays this help as Markdown and exits.")
             .opt(show_version              , ""          , "-v", "--version"             , "Displays version info and exits.")
@@ -187,50 +204,55 @@ int main(int argc, char** argv) {
             .opt(flags.force_load          , ""          , ""  , "--force-load"          , "Loads plugins even on version mismatch.")
             .opt(flags.bootstrap           , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR.")
             .opt(inc_verbose               , ""          , "-V", "--verbose"             , "Raises the log level from error to warn, info, verbose, debug, trace; repeatable.").cardinality(0, 5)
-            .opt(flags.ascii               , ""          , "-a", "--ascii"               , "Uses ASCII alternatives in output instead of UTF-8.")
             .grp("Output")
-            .opt(opts.outs[Mim].name()     , "file"      , "-o", "--output-mim"          , "Emits the Mim program again.")
+            .opt(flags.ascii               , ""          , "-a", "--ascii"               , "Uses ASCII alternatives in output instead of UTF-8.")
             .opt(opts.outs[AST].name()     , "file"      , ""  , "--output-ast"          , "Emits the AST of the input.")
             .opt(opts.outs[Dot].name()     , "file"      , ""  , "--output-dot"          , "Emits the Mim program as a MimIR graph using Graphviz' DOT language.")
             .opt(opts.outs[H].name()       , "file"      , ""  , "--output-h"            , "Emits a header file to be used to interface with a plugin in C++.")
-            .opt(opts.outs[PY].name()      , "file"      , ""  , "--output-py"           , "Emits a Python enum to be used to interface with a plugin in Python.")
             .opt(opts.outs[Md].name()      , "file"      , ""  , "--output-md"           , "Emits the input formatted as Markdown.")
+            .opt(opts.outs[Mim].name()     , "file"      , "-o", "--output-mim"          , "Emits the Mim program again.")
+            .opt(flags.dump_recursive      , ""          , ""  , "--dump-recursive"      , "Dumps the Mim program with a simple recursive algorithm; the result is not readable again but works for broken programs.")
             .opt(opts.outs[NestDot].name() , "file"      , ""  , "--output-nest"         , "Emits the program's nesting tree using Graphviz' DOT language.")
+            .opt(opts.outs[PY].name()      , "file"      , ""  , "--output-py"           , "Emits a Python enum to be used to interface with a plugin in Python.")
             .opt(opts.outs[SExpr].name()   , "file"      , ""  , "--output-sexpr"        , "Emits the program as symbolic expression.")
             .opt(opts.outs[Slotted].name() , "file"      , ""  , "--output-sexpr-slotted", "Emits the program as symbolic expression that follows the format required by slotted-egraphs.")
             .opt(opts.sexpr_include_types  , ""          , ""  , "--sexpr-include-types" , "Wraps each term of a symbolic expression in a type annotation; types themselves stay unwrapped.")
-            .opt(flags.dump_recursive      , ""          , ""  , "--dump-recursive"      , "Dumps the Mim program with a simple recursive algorithm; the result is not readable again but works for broken programs.")
             .grp("DOT Output")
-            .opt(opts.dot.follow_types     , ""          , ""  , "--dot-follow-types"    , "Follows type dependencies in DOT output.")
             .opt(opts.dot.all_annexes      , ""          , ""  , "--dot-all-annexes"     , "Emits all annexes in DOT output - even unused ones.")
-            .opt(opts.dot.inline_consts    , ""          , ""  , "--dot-inline-consts"   , "Wires up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
             .opt(opts.dot.default_filter   , ""          , ""  , "--dot-default-filter"  , "Always shows a lambda's filter in DOT output - even if it is the default one (ff for continuations, tt for direct-style functions).")
+            .opt(opts.dot.follow_types     , ""          , ""  , "--dot-follow-types"    , "Follows type dependencies in DOT output.")
+            .opt(opts.dot.inline_consts    , ""          , ""  , "--dot-inline-consts"   , "Wires up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
             .opt(opts.dot.show_hidden      , ""          , ""  , "--dot-show-hidden"     , "Renders otherwise-transparent detached edges in DOT output - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray.")
             .grp("Diagnostics")
-            .opt(loc_style                 , "style"     , ""  , "--loc-style"           , "How a diagnostic spells out a source location: full (path:row:col-row:col), rowcol (path:row:col), row (path:row), or msvc (path(row,col)).")
-            .opt(diag.no_snippet           , ""          , ""  , "--no-snippet"          , "Does not render the offending source line and caret underneath a diagnostic.")
             .opt(diag.gutter               , "width"     , ""  , "--gutter"              , "Width of a diagnostic's line-number column.")
-            .opt(diag.max_rows             , "num"       , ""  , "--max-rows"            , "Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
+            .opt(loc_style                 , "style"     , ""  , "--loc-style"           , "How a diagnostic spells out a source location: full (path:row:col-row:col), rowcol (path:row:col), row (path:row), or msvc (path(row,col)).")
             .opt(diag.max_errors           , "num"       , ""  , "--max-errors"          , "Maximum number of errors to report before dropping the rest; 0 reports all of them.")
+            .opt(diag.max_rows             , "num"       , ""  , "--max-rows"            , "Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
+            .opt(diag.no_snippet           , ""          , ""  , "--no-snippet"          , "Does not render the offending source line and caret underneath a diagnostic.")
             .opt(diag.werror               , ""          , ""  , "--werror"              , "Treats warnings as errors.")
             .grp("Profiling")
-            .opt(profile                   , "mode"      , ""  , "--profile"             , "Measures how long each phase takes; <mode> is summary, tree, or trace (chrome://tracing compatible).")
             .opt(opts.outs[Profile].name() , "file"      , ""  , "--output-profile"      , "Where to write the profiling information; defaults to stdout and implies --profile trace, if no <mode> is given.")
+            .opt(profile                   , "mode"      , ""  , "--profile"             , "Measures how long each phase takes; <mode> is summary, tree, or trace (chrome://tracing compatible).")
             .grp("Optimization")
             .opt(flags.aggressive_lam_spec , ""          , ""  , "--aggr-lam-spec"       , "Overrides LamSpec behavior to follow recursive calls.")
-            .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
             .opt(flags.max_fp_iters        , "num"       , ""  , "--max-fp-iters"        , "Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
+            .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
 #ifdef MIM_ENABLE_CHECKS
             .grp("Developer Options")
             .opt(breakpoints               , "gid"       , "-b", "--break"               , "Triggers a breakpoint when a node with this global id is created.")
-            .opt(watchpoints               , "gid"       , "-w", "--watch"               , "Triggers a breakpoint when a node with this global id is set.")
-            .opt(flags.reeval_breakpoints  , ""          , ""  , "--reeval-breakpoints"  , "Triggers a breakpoint even upon unifying a node that has already been built.")
             .opt(flags.break_on_alpha      , ""          , ""  , "--break-on-alpha"      , "Triggers a breakpoint as soon as two expressions turn out not to be alpha-equivalent.")
             .opt(flags.break_on_error      , ""          , ""  , "--break-on-error"      , "Triggers a breakpoint on an error log.")
             .opt(flags.break_on_warn       , ""          , ""  , "--break-on-warn"       , "Triggers a breakpoint on a warning log.")
+            .opt(flags.reeval_breakpoints  , ""          , ""  , "--reeval-breakpoints"  , "Triggers a breakpoint even upon unifying a node that has already been built.")
             .opt(flags.trace_gids          , ""          , ""  , "--trace-gids"          , "Outputs gids during World::unify/insert.")
+            .opt(watchpoints               , "gid"       , "-w", "--watch"               , "Triggers a breakpoint when a node with this global id is set.")
 #endif
-            .arg(opts.input, "file", "Input file.")
+            .section("Environment Variables", "Variable", {
+                {"MIM_PLUGIN_PATH", std::format("{}-separated list of plugin search paths, searched after those given via -P.", fe::sys::Path_Sep_Word)},
+                {"NO_COLOR"       , "Disables colored output if set to a non-empty value; wins over the two below."},
+                {"CLICOLOR_FORCE" , "Forces colored output if set to a non-empty value other than 0."},
+                {"CLICOLOR"       , "Disables colored output if set to 0."},
+            })
             .epilog(R"(Every output option accepts "-" to write to stdout.)");
         // clang-format on
 

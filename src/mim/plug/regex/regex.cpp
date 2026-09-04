@@ -11,5 +11,5 @@ using namespace mim::plug;
 void reg_phases(Flags2Phases& phases) { Phase::hook<regex::lower_regex, regex::LowerRegex>(phases); }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"regex", MIM_VERSION, regex::register_normalizers, reg_phases, {}, {}};
+    return {"regex", MIM_VERSION, regex::register_normalizers, reg_phases, {}, {}, {}, {}};
 }

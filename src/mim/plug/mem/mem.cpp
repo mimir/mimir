@@ -37,5 +37,5 @@ void reg_phases(Flags2Phases& phases) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"mem", MIM_VERSION, mem::register_normalizers, reg_phases, {}, {}};
+    return {"mem", MIM_VERSION, mem::register_normalizers, reg_phases, {}, {}, {}, {}};
 }

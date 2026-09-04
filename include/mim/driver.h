@@ -183,6 +183,9 @@ public:
 
     /// The PluginArg%s each loaded Plugin declares, in load order; only for listing them, see PluginArg.
     const auto& known_args() const { return known_args_; }
+
+    /// The PluginEnv%s each loaded Plugin declares, in load order; only for listing them, see PluginEnv.
+    const auto& known_envs() const { return known_envs_; }
     ///@}
 
 private:
@@ -200,6 +203,7 @@ private:
     Normalizers normalizers_;
     absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;
     std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
+    std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;
 };
 

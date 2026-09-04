@@ -79,7 +79,7 @@ Driver::Driver(std::string name)
     if (auto env_path = std::getenv("MIM_PLUGIN_PATH")) {
         std::stringstream env_path_stream{env_path};
         std::string sub_path;
-        while (std::getline(env_path_stream, sub_path, ':'))
+        while (std::getline(env_path_stream, sub_path, fe::sys::Path_Sep))
             add_search_path(sub_path);
     }
 
@@ -111,7 +111,7 @@ void Driver::load(std::string_view name) {
     }
     if (!handle) {
         for (const auto& path : search_paths()) {
-            auto full_path = path / std::format("libmim_{}.{}", name, fe::dl::extension);
+            auto full_path = path / std::format("libmim_{}.{}", name, fe::dl::Ext);
             std::error_code ignore;
             if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
                 auto path_str = full_path.string();
@@ -140,6 +140,7 @@ void Driver::load(std::string_view name) {
         if (auto reg = plugin.register_phases)      reg(phases_);
         // clang-format on
         if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
+        if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
     } else {
         fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
     }

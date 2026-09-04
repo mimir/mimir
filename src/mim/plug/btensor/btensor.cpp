@@ -14,5 +14,5 @@ void reg_phases(Flags2Phases& phases) {
 }
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"btensor", MIM_VERSION, btensor::register_normalizers, reg_phases, {}, {}};
+    return {"btensor", MIM_VERSION, btensor::register_normalizers, reg_phases, {}, {}, {}, {}};
 }

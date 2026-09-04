@@ -19,15 +19,18 @@ add_custom_command(
 # The tour graphs are small and fit on the page, so we render them to *static* SVGs
 # (embedded via @image html) for tight margins.
 set(DOC_GRAPH_FLAGS --dot-inline-consts --dot-show-hidden)
-set(dep_EXTRA_FLAGS --dot-follow-types)
 
 set(DOC_GRAPH_SVGS "")
 foreach(graph IN ITEMS count iter sq dep)
     set(dot "${CMAKE_CURRENT_BINARY_DIR}/${graph}.dot")
     set(svg "${CMAKE_CURRENT_BINARY_DIR}/${graph}.svg")
+    set(flags ${DOC_GRAPH_FLAGS})
+    if(graph STREQUAL dep)
+        list(APPEND flags --dot-follow-types)
+    endif()
     add_custom_command(
         OUTPUT ${svg}
-        COMMAND mim lit/docs/${graph}.mim ${DOC_GRAPH_FLAGS} ${${graph}_EXTRA_FLAGS} --output-dot ${dot}
+        COMMAND mim lit/docs/${graph}.mim ${flags} --output-dot ${dot}
         COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${dot} -o ${svg}
         DEPENDS mim mim_all_plugins "${LIT_DOCS}/${graph}.mim"
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -44,10 +47,7 @@ add_custom_command(
     COMMENT "Generating GDB xdot help text"
 )
 
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../assets/logo.svg"
-    "${MIM_LOGO}"
-    COPYONLY)
+configure_file("${PROJECT_SOURCE_DIR}/assets/logo.svg" "${MIM_LOGO}" COPYONLY)
 
 set(DOXY_AWESOME    "${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css")
 set(DOXY_STYLESHEETS
@@ -70,18 +70,20 @@ set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 set(DOXY_LAYOUT     "${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml")
 set(DOXY_INDEX_HTML "${PROJECT_BINARY_DIR}/html/index.html") # Doxyfile.in sets OUTPUT_DIRECTORY to PROJECT_BINARY_DIR.
 set(DOXY_EXTRA_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/mimir.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cli.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/coding.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dev.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/langref.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/python.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/plugins.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rewriting.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/phases.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+    mimir.md
+    cli.md
+    coding.md
+    dev.md
+    langref.md
+    python.md
+    plugins.md
+    rewriting.md
+    phases.md
+    README.md
 )
+list(TRANSFORM DOXY_EXTRA_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
+# Doxyfile.in wants space-separated lists.
 string(REPLACE ";" " " DOXY_EXTRA_FILES_CONFIG "${DOXY_EXTRA_FILES}")
 string(REPLACE ";" " " DOXY_STYLESHEETS_CONFIG "${DOXY_STYLESHEETS}")
 string(REPLACE ";" " " DOXY_ASSETS_CONFIG      "${DOXY_ASSETS}")

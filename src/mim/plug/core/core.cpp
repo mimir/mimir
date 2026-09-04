@@ -6,7 +6,9 @@
 using namespace mim;
 using namespace mim::plug;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"core", MIM_VERSION, core::register_normalizers, {}, {}, {}}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+    return {"core", MIM_VERSION, core::register_normalizers, {}, {}, {}, {}, {}};
+}
 
 namespace mim::plug::core {
 
