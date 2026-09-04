@@ -71,11 +71,12 @@ void reg_phases(Flags2Phases& phases) {
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"aggr",    "Forces `%%compile.aggr` to `tt`, switching fixed-point iteration of the `opt` pipeline's `optimize` stage on (off by default)."},
-    {"no-aggr", "Forces `%%compile.aggr` to `ff`, switching that fixed-point iteration off."},
+    {"aggr",    "Forces `%compile.aggr` to `tt`, switching fixed-point iteration of the `opt` pipeline's `optimize` stage on (off by default)."},
+    {"no-aggr", "Forces `%compile.aggr` to `ff`, switching that fixed-point iteration off."},
 };
 // clang-format on
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"compile", MIM_VERSION, compile::register_normalizers, reg_phases, known_args, std::size(known_args)};
+    return {"compile", MIM_VERSION, compile::register_normalizers, reg_phases, known_args, std::size(known_args),
+            {},        {}};
 }

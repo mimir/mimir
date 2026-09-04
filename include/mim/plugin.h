@@ -34,6 +34,13 @@ struct PluginArg {
     const char* syntax; ///< How to spell the argument, e.g. `"o=<file>, output=<file>"`.
     const char* descr;  ///< What it does; one sentence, Markdown.
 };
+
+/// One environment variable a Plugin reads; see @ref clipluginenv.
+/// A Plugin declares these next to the code that reads them, so that `mim -p <plugin> -h` can list them.
+struct PluginEnv {
+    const char* name;  ///< Name of the variable, e.g. `"CUDA_HOME"`.
+    const char* descr; ///< What it does; one sentence, Markdown.
+};
 ///@}
 
 /// @name Plugin Argument Lookup
@@ -130,6 +137,8 @@ struct Plugin {
     // No default member initializers: only a POD is C-compatible as an `extern "C"` return type.
     const PluginArg* args; ///< The `-X` arguments this Plugin understands; see PluginArg.
     size_t num_args;       ///< Number of Plugin::args.
+    const PluginEnv* envs; ///< The environment variables this Plugin reads; see PluginEnv.
+    size_t num_envs;       ///< Number of Plugin::envs.
 };
 
 /// @name Plugin Interface

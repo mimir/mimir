@@ -2,4 +2,4 @@
 
 using namespace mim;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"opt", MIM_VERSION, {}, {}, {}, {}}; }
+extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"opt", MIM_VERSION, {}, {}, {}, {}, {}, {}}; }

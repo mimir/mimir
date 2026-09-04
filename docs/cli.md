@@ -52,6 +52,12 @@ The syntax is `-X <plugin>:<arg>`:
 
 Each plugin declares the arguments it understands right next to the code that reads them, so the `-X <plugin>:<arg>` tables under [Usage](@ref cliusage) are generated from those declarations.
 
+### Environment Variables {#clipluginenv}
+
+A plugin may also read environment variables - typically to locate an external toolchain it shells out to.
+It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the *Plugin Environment Variables* tables under [Usage](@ref cliusage) are generated from those declarations, just like the `-X` tables above.
+Since a plugin only announces them once it is loaded, `mim -p <plugin> --help` lists the ones belonging to `<plugin>`.
+
 <div class="section_buttons">
 
 | Previous                      |                                   Next |
