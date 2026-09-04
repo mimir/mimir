@@ -24,6 +24,7 @@ template<class T>
 using Ptrs = std::deque<Ptr<T>>;
 using Dbgs = std::deque<Dbg>;
 
+/// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
     AnnexInfo(Sym sym_plugin, Sym sym_tag, tag_t id_tag)
         : sym{sym_plugin, sym_tag}
@@ -50,6 +51,7 @@ struct AnnexInfo {
     bool fresh = true;
 };
 
+/// Owns the arena all AST nodes live in as well as the AnnexInfo%s of all plugins.
 class AST {
 public:
     AST(const AST&) = delete;
@@ -111,6 +113,7 @@ private:
     absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
 };
 
+/// Base class of all AST nodes.
 class Node : public fe::RuntimeCast<Node> {
 protected:
     Node(Loc loc)
@@ -132,6 +135,7 @@ private:
     Loc loc_;
 };
 
+/// Base class of all expressions.
 class Expr : public Node {
 protected:
     Expr(Loc loc)
@@ -156,6 +160,7 @@ private:
     virtual void emit_body_(Emitter&, const Def* /*decl*/) const { fe::unreachable(); }
 };
 
+/// Base class of all declarations; caches the emitted Decl::def.
 class Decl : public Node {
 protected:
     Decl(Loc loc)
@@ -168,6 +173,7 @@ protected:
     mutable const Def* def_ = nullptr;
 };
 
+/// Base class of all declarations that bind values.
 class ValDecl : public Decl {
 protected:
     ValDecl(Loc loc)
@@ -182,6 +188,7 @@ public:
  * Ptrn
  */
 
+/// Base class of all patterns.
 class Ptrn : public Decl {
 public:
     Ptrn(Loc loc)
@@ -201,6 +208,7 @@ public:
     [[nodiscard]] static Ptr<Ptrn> to_ptrn(Ptr<Expr>&&);
 };
 
+/// Erroneous pattern.
 class ErrorPtrn : public Ptrn {
 public:
     ErrorPtrn(Loc loc)
@@ -242,7 +250,7 @@ private:
     Ptr<Expr> type_;
 };
 
-/// If you have `x1 x2 x3 x4: T` it consists of 3 GrpPtrn%s and 1 IdPtrn while each GrpPtrn references the last IdPtrn.
+/// `dbg` of a group `dbg_0 ... dbg_n-1: type` that refers to the trailing IdPtrn::id.
 class GrpPtrn : public Ptrn {
 public:
     GrpPtrn(Dbg dbg, const IdPtrn* id)
@@ -263,7 +271,7 @@ private:
     const IdPtrn* id_;
 };
 
-/// `ptrn as id`
+/// `ptrn as dbg`
 class AliasPtrn : public Ptrn {
 public:
     AliasPtrn(Loc loc, Ptr<Ptrn>&& ptrn, Dbg dbg)
@@ -319,6 +327,7 @@ private:
  * Expr
  */
 
+/// Erroneous expression.
 class ErrorExpr : public Expr {
 public:
     ErrorExpr(Loc loc)
@@ -331,6 +340,7 @@ private:
     const Def* emit_(Emitter&) const override;
 };
 
+/// `?`
 class HoleExpr : public Expr {
 public:
     HoleExpr(Loc loc)
@@ -343,7 +353,7 @@ private:
     const Def* emit_(Emitter&) const override;
 };
 
-/// `sym`
+/// `dbg`
 class IdExpr : public Expr {
 public:
     IdExpr(Dbg dbg)
@@ -405,7 +415,7 @@ private:
     Ptr<Expr> type_;
 };
 
-/// `decls e` or `e where decls` if @p where is `true`.
+/// `decls expr` or `expr where decls` if DeclExpr::is_where.
 class DeclExpr : public Expr {
 public:
     DeclExpr(Loc loc, Ptrs<ValDecl>&& decls, Ptr<Expr>&& expr, bool is_where)
@@ -447,7 +457,7 @@ private:
     Ptr<Expr> level_;
 };
 
-/// Reform (type of a rule) `Rule type`.
+/// `Rule dom`
 class RuleExpr : public Expr {
 public:
     RuleExpr(Loc loc, Ptr<Expr>&& dom)
@@ -467,7 +477,7 @@ private:
 
 // union
 
-/// `t1 ∪ t2`
+/// `type_0 ∪ ... ∪ type_n-1`
 class UnionExpr : public Expr {
 public:
     UnionExpr(Loc loc, Ptrs<Expr>&& types)
@@ -487,7 +497,7 @@ private:
 
 // injection
 
-/// `value inj t1 ∪ t2`
+/// `value inj type`
 class InjExpr : public Expr {
 public:
     InjExpr(Loc loc, Ptr<Expr>&& value, Ptr<Expr>&& type)
@@ -510,9 +520,10 @@ private:
 
 // matching for destruction of sum types
 
-// n-ary match
+/// `match scrutinee with | arm_0 | ... | arm_n-1`
 class MatchExpr : public Expr {
 public:
+    /// `ptrn => body` of a MatchExpr.
     class Arm : public Node {
     public:
         Arm(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& body)
@@ -579,12 +590,10 @@ private:
     mutable Pi* decl_ = nullptr;
 };
 
-/// One of:
-/// * `  {ptrn} → codom`
-/// * `Cn prn`
-/// * `Fn prn → codom`
+/// `dom → codom`, `Cn dom`, or `Fn dom → codom` depending on PiExpr::tag.
 class PiExpr : public Expr {
 public:
+    /// One `dom` of a PiExpr: `ptrn` with an optional `-> ret` type.
     class Dom : public Node {
     public:
         Dom(Loc loc, Ptr<Ptrn>&& ptrn)
@@ -709,7 +718,7 @@ private:
 };
 // tuple
 
-/// Just wraps TuplePtrn as Expr.
+/// Wraps a TuplePtrn as Expr.
 class SigmaExpr : public Expr {
 public:
     SigmaExpr(Ptr<TuplePtrn>&& ptrn)
@@ -751,7 +760,7 @@ private:
     Ptrs<Expr> elems_;
 };
 
-/// `«dbg: arity; body»` or `‹dbg: arity; body›`
+/// `«arity; body»` or `‹arity; body›` if SeqExpr::is_pack.
 class SeqExpr : public Expr {
 public:
     SeqExpr(Loc loc, bool is_pack, Ptr<IdPtrn>&& arity, Ptr<Expr>&& body)
@@ -826,7 +835,7 @@ private:
     Ptr<Expr> value_;
 };
 
-/// `⦃ expr ⦄`
+/// `⦃inhabitant⦄`
 class UniqExpr : public Expr {
 public:
     UniqExpr(Loc loc, Ptr<Expr>&& expr)
@@ -848,7 +857,7 @@ private:
  * Decls
  */
 
-/// `let ptrn: type = value;`
+/// `let ptrn = value;`
 class LetDecl : public ValDecl {
 public:
     LetDecl(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& value)
@@ -870,9 +879,10 @@ private:
     mutable sub_t sub_        = 0;
 };
 
-/// `axm ptrn: type = value;`
+/// `axm dbg(subs): type, normalizer, curry, trip;`
 class AxmDecl : public ValDecl {
 public:
+    /// One alias `dbg` of an AxmDecl sub.
     class Alias : public Decl {
     public:
         Alias(Dbg dbg)
@@ -924,7 +934,7 @@ private:
     mutable const Def* mim_type_;
 };
 
-/// `.rec dbg: type = body`
+/// `rec dbg: type = body;` with an optional `and` RecDecl::next.
 class RecDecl : public ValDecl {
 public:
     RecDecl(Loc loc, Dbg dbg, Ptr<Expr>&& type, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
@@ -958,15 +968,10 @@ private:
     mutable sub_t sub_        = 0;
 };
 
-/// One of:
-/// * `λ   dom_0 ... dom_n-1 -> codom`
-/// * `cn dom_0 ... dom_n-1`
-/// * `fn dom_0 ... dom_n-1 -> codom`
-/// * `lam dbg dom_0 ... dom_n-1 -> codom`
-/// * `con dbg dom_0 ... dom_n-1`
-/// * `fun dbg dom_0 ... dom_n-1 -> codom`
+/// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
 class LamDecl : public RecDecl {
 public:
+    /// One `dom` of a LamDecl: `ptrn@(filter)` with an optional `: ret` type.
     class Dom : public PiExpr::Dom {
     public:
         Dom(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& filter)
@@ -1025,7 +1030,7 @@ private:
     mutable sub_t sub_        = 0;
 };
 
-/// `cfun dbg dom -> codom`
+/// `ccon dbg dom;` or `cfun dbg dom: codom;`
 class CDecl : public ValDecl {
 public:
     CDecl(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Ptrn>&& dom, Ptr<Expr>&& codom)
@@ -1051,9 +1056,7 @@ private:
     Ptr<Expr> codom_;
 };
 
-/// rewrite rules
-/// rule (x:T, y:T) : x+y => y+x (when );
-/// all meta variables have to be introduced
+/// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
 class RuleDecl : public ValDecl {
 public:
     RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn>&& var, Ptr<Expr>&& lhs, Ptr<Expr>&& rhs, Ptr<Expr>&& guard, bool is_normalizer)
@@ -1090,6 +1093,7 @@ private:
  * Module
  */
 
+/// `import dbg;` or `plugin dbg;`
 class Import : public Node {
 public:
     Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module);
@@ -1116,6 +1120,7 @@ private:
     Ptr<Module> module_;
 };
 
+/// A whole file: its Module::imports followed by its Module::decls.
 class Module : public Node {
 public:
     Module(Loc loc, Ptrs<Import>&& imports, Ptrs<ValDecl>&& decls)
