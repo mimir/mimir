@@ -36,15 +36,17 @@ public:
 
     AST& ast() { return ast_; }
     Driver& driver() { return ast().driver(); } ///< fe::Parser's default diagnostics go to its Driver::error.
-    const Module* import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
+    const File* import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
         return import({Loc(), driver().sym(sv)}, false, tag, nullptr);
     }
     /// @p is_path selects the `import "some/path.mim"` form over the search-path lookup by name.
-    const Module* import(Dbg, bool is_path, Tok::Tag tag = Tok::Tag::K_import, std::ostream* md = nullptr);
-    const Module* import(const fe::Src&, std::ostream* md = nullptr, Loc = {});
+    /// @p record is `false` for the compilation root: it is not a directive that a dump should reproduce.
+    const File*
+    import(Dbg, bool is_path, Tok::Tag tag = Tok::Tag::K_import, std::ostream* md = nullptr, bool record = true);
+    const File* import(const fe::Src&, std::ostream* md = nullptr, Loc = {});
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
-    const Module* import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
-    const Module* import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
+    const File* import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
+    const File* import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
 
 private:
     template<class T, class... Args>
@@ -58,7 +60,7 @@ private:
 
     /// @name parse misc
     ///@{
-    Ptr<Module> parse_module();
+    Ptr<File> parse_file();
     Dbg parse_id(std::string_view ctxt = {});
     Dbg parse_name(std::string_view ctxt = {});
     /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm sub list a name is

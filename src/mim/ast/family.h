@@ -60,17 +60,20 @@
               K_norm: \
     case Tag::K_rule
 
-#define C_DECL         \
-              K_axm:   \
-    case Tag::K_let:   \
-    case Tag::K_rec:   \
-    case Tag::C_CDECL: \
-    case Tag::C_RULE:  \
-    case Tag::C_LAM
-
 #define C_IMPORT        \
               K_import: \
     case Tag::K_plugin
+
+#define C_DECL          \
+              K_axm:    \
+    case Tag::K_let:    \
+    case Tag::K_mod:    \
+    case Tag::K_rec:    \
+    case Tag::K_use:    \
+    case Tag::C_CDECL:  \
+    case Tag::C_IMPORT: \
+    case Tag::C_RULE:   \
+    case Tag::C_LAM
 
 /// Direct-style binders; all other binders are CPS.
 #define C_DS        \

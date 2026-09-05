@@ -35,29 +35,27 @@ private:
 };
 
 /*
- * Module
+ * File
  */
 
-void Module::emit(AST& ast) const {
+void File::emit(AST& ast) const {
     auto emitter = Emitter(ast);
     emit(emitter);
 }
 
-void Module::emit(Emitter& e) const {
+void File::emit(Emitter& e) const {
     if (emitted_) return;
     emitted_ = true;
 
     auto _ = e.world().push(loc());
     for (const auto& import : implicit_imports())
         import->emit(e);
-    for (const auto& import : imports())
-        import->emit(e);
     for (const auto& decl : decls())
         decl->emit(e);
 }
 
 void Import::emit(Emitter& e) const {
-    if (module()) module()->emit(e);
+    if (file()) file()->emit(e);
 }
 
 /*

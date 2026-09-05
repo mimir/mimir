@@ -63,22 +63,20 @@ void Node::dump() const {
 }
 
 /*
- * Module
+ * File
  */
 
-void Import::stream(fe::Tab& tab, std::ostream& os) const {
+void Import::stream(fe::Tab&, std::ostream& os) const {
     if (is_path())
-        std::print(os, "{}{} \"{}\"", tab, tag(), name());
+        std::print(os, "{} \"{}\"", tag(), name());
     else
-        std::print(os, "{}{} {}", tab, tag(), name());
+        std::print(os, "{} {}", tag(), name());
     // Only spell out an alias that a re-parse would not derive from the file name itself.
-    if (dbg().sym().view() != fs::path(name().view()).stem()) std::print(os, " as {}", dbg());
-    std::println(os, ";");
+    if (dbg().sym().view() != fs::path(name().view()).stem().string()) std::print(os, " as {}", dbg());
+    os << ';';
 }
 
-void Module::stream(fe::Tab& tab, std::ostream& os) const {
-    for (const auto& import : imports())
-        import->stream(tab, os);
+void File::stream(fe::Tab& tab, std::ostream& os) const {
     for (const auto& decl : decls())
         std::println(os, "{}{}", tab, S(tab, decl.get()));
 }

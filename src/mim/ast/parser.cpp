@@ -15,21 +15,18 @@ using Tag = Tok::Tag;
  * entry points
  */
 
-Ptr<Module> Parser::parse_module() {
+Ptr<File> Parser::parse_file() {
     auto track = tracker();
-    Ptrs<Import> imports;
-    while (ISA(ahead().tag(), C_IMPORT))
-        if (auto import = parse_import_or_plugin()) imports.emplace_back(std::move(import));
     auto decls = parse_decls();
     bool where = ahead().isa(Tag::K_where);
-    expect(Tag::EoF, "module");
-    auto mod = ptr<Module>(track, std::move(imports), std::move(decls));
-    // curr_ is the stray `;`; mod->loc().anew_end() would sit past the end of that line and render no snippet.
+    expect(Tag::EoF, "file");
+    auto file = ptr<File>(track, std::move(decls));
+    // curr_ is the stray `;`; file->loc().anew_end() would sit past the end of that line and render no snippet.
     if (where) error().n(curr_, "did you accidentally end your declaration expression with a `;`?");
-    return mod;
+    return file;
 }
 
-const Module* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md) {
+const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md, bool record) {
     auto name = dbg.sym();
     if (tag == Tag::K_plugin && !driver().is_loaded(name) && !driver().flags().bootstrap) driver().load(name);
 
@@ -61,7 +58,7 @@ const Module* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* 
         }
     }
 
-    auto [src, _] = driver().imports().add(rel_path, name, tag, is_path);
+    auto [src, _] = driver().src().add(rel_path);
     if (!src) {
         // rel_path is whatever candidate the search loop tried last, so it only names a real file here.
         if (fs::exists(rel_path))
@@ -70,10 +67,12 @@ const Module* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* 
             error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
+
+    if (record) driver().imports().add(src, name, tag, is_path);
     return import(*src, md, dbg.loc());
 }
 
-const Module* Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {
+const File* Parser::import(std::istream& is, fs::path path, Loc loc, std::ostream* md) {
     if (!is) {
         error().e(loc, "cannot read file `{}`", path.string());
         return {};
@@ -82,8 +81,8 @@ const Module* Parser::import(std::istream& is, fs::path path, Loc loc, std::ostr
     return import(*src, md, loc);
 }
 
-const Module* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
-    auto [mod, seen] = ast().module(&src);
+const File* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
+    auto [mod, seen] = ast().file(&src);
     if (seen) {
         // A `nullptr` entry is a file that is still being parsed further up the stack.
         if (!mod) error().e(loc, "cyclic import of `{}`", src.path().string());
@@ -96,24 +95,24 @@ const Module* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
     auto lexer = Lexer(driver(), src, md);
     lexer_     = &lexer;
     init();
-    auto parsed                     = parse_module();
+    auto parsed                     = parse_file();
     std::tie(curr_, ahead_, lexer_) = state;
 
-    auto [slot, _] = ast().module(&src);
-    slot           = ast().add_module(std::move(parsed));
+    auto [slot, _] = ast().file(&src);
+    slot           = ast().add_file(std::move(parsed));
     return slot;
 }
 
-const Module* Parser::import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md) {
+const File* Parser::import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md) {
     Ptrs<Import> imports;
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
-        if (auto mod = import(dbg, false, Tag::K_plugin))
-            imports.emplace_back(ast().ptr<Import>(Loc(), Tag::K_plugin, dbg, dbg.sym(), false, mod));
+        if (auto file = import(dbg, false, Tag::K_plugin))
+            imports.emplace_back(ast().ptr<Import>(Loc(), Tag::K_plugin, dbg, dbg.sym(), false, file));
     }
-    auto mod = import({Loc(), driver().sym(input)}, true, Tag::K_import, md);
-    if (mod) mod->add_implicit_imports(std::move(imports));
-    return mod;
+    auto file = import({Loc(), driver().sym(input)}, true, Tag::K_import, md, false);
+    if (file) file->add_implicit_imports(std::move(imports));
+    return file;
 }
 
 /*
@@ -604,6 +603,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
             case Tag::K_axm:       decls.emplace_back(parse_axm_decl());        break;
             case Tag::C_CDECL:     decls.emplace_back(parse_c_decl());            break;
+            case Tag::C_IMPORT:    if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i)); break;
             case Tag::K_let:       decls.emplace_back(parse_let_decl());          break;
             case Tag::K_mod:       decls.emplace_back(parse_mod_decl());          break;
             case Tag::K_use:       decls.emplace_back(parse_use_decl());          break;

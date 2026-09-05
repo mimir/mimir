@@ -15,7 +15,7 @@ namespace mim::ast {
 
 class Decl;
 class LamDecl;
-class Module;
+class File;
 class Scopes;
 class Emitter;
 
@@ -58,12 +58,8 @@ struct AnnexInfo {
 class AST {
 public:
     AST(const AST&) = delete;
-    AST(World& world)
-        : world_(&world) {}
-    AST(AST&& other)
-        : AST(other.world()) {
-        swap(*this, other);
-    }
+    AST(World&);
+    AST(AST&&);
     ~AST();
 
     /// @name Getters
@@ -88,15 +84,12 @@ public:
         return arena_.mk<const T>(std::forward<Args>(args)...);
     }
 
-    /// @name Manage Modules
-    /// A file is parsed exactly once; AST::module hands out the Module every Import of that file shares.
+    /// @name Manage Files
+    /// A file is parsed exactly once; AST::file hands out the File every Import of that file shares.
     ///@{
-    /// @returns the Module of @p src and whether it is already being parsed (`false` for a fresh entry).
-    std::pair<const Module*&, bool> module(const fe::Src* src) {
-        auto [i, fresh] = src2mod_.try_emplace(src, nullptr);
-        return {i->second, !fresh};
-    }
-    const Module* add_module(Ptr<Module>&&); ///< Takes ownership; @returns the raw Module.
+    /// @returns the File of @p src and whether it is already being parsed (`false` for a fresh entry).
+    std::pair<const File*&, bool> file(const fe::Src* src);
+    const File* add_file(Ptr<File>&&); ///< Takes ownership; @returns the raw File.
     ///@}
 
     /// @name Manage Annex
@@ -116,14 +109,17 @@ public:
         // clang-format off
         swap(a1.world_, a2.world_);
         swap(a1.arena_, a2.arena_);
+        swap(a1.files_,  a2.files_);
         // clang-format on
     }
 
 private:
+    // Out of line: a container of Ptr<File> would instantiate Arena::Deleter for the still incomplete File.
+    struct Files;
+
     World* world_ = nullptr;
     fe::Arena arena_;
-    std::vector<Ptr<Module>> modules_; ///< std::vector tolerates the still incomplete Module here.
-    absl::flat_hash_map<const fe::Src*, const Module*> src2mod_;
+    std::unique_ptr<Files> files_;
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
@@ -1178,30 +1174,30 @@ private:
 };
 
 /*
- * Module
+ * File
  */
 
 /// `import "path" [as dbg];`, `import dbg;`, or `plugin dbg;`
-/// Binds Import::dbg as a namespace; the Module itself is owned by the AST and shared by all its importers.
-class Import : public Decl {
+/// Binds Import::dbg as a namespace; the File itself is owned by the AST and shared by all its importers.
+class Import : public ValDecl {
 public:
-    Import(Loc loc, Tok::Tag tag, Dbg dbg, Sym name, bool is_path, const Module* module)
-        : Decl(loc)
+    Import(Loc loc, Tok::Tag tag, Dbg dbg, Sym name, bool is_path, const File* file)
+        : ValDecl(loc)
         , dbg_(dbg)
         , name_(name)
         , tag_(tag)
         , is_path_(is_path)
-        , module_(module) {}
+        , file_(file) {}
 
     Dbg dbg() const { return dbg_; }   ///< The name this Import binds.
     Sym name() const { return name_; } ///< Spelling of the imported entity: a plugin/file name or a path.
     bool is_path() const { return is_path_; }
     Tok::Tag tag() const { return tag_; }
-    const Module* module() const { return module_; }
+    const File* file() const { return file_; }
 
     const Scope* scope() const override;
-    void bind(Scopes&) const;
-    void emit(Emitter&) const;
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -1209,19 +1205,18 @@ private:
     Sym name_;
     Tok::Tag tag_;
     bool is_path_;
-    const Module* module_;
+    const File* file_;
 };
 
-/// A whole file: its Module::imports followed by its Module::decls.
-class Module : public Node {
+/// The AST of one source file; it forms a namespace that Import binds.
+class File : public Node {
 public:
-    Module(Loc loc, Ptrs<Import>&& imports, Ptrs<ValDecl>&& decls)
+    File(Loc loc, Ptrs<ValDecl>&& decls)
         : Node(loc)
-        , imports_(std::move(imports))
         , decls_(std::move(decls)) {}
 
+    /// Imports the driver was told about via `-p`; they precede everything the file itself declares.
     const auto& implicit_imports() const { return implicit_imports_; }
-    const auto& imports() const { return imports_; }
     const auto& decls() const { return decls_; }
 
     void add_implicit_imports(Ptrs<Import>&& imports) const { implicit_imports_ = std::move(imports); }
@@ -1236,7 +1231,6 @@ public:
 
 private:
     mutable Ptrs<Import> implicit_imports_;
-    Ptrs<Import> imports_;
     Ptrs<ValDecl> decls_;
     mutable Scope members_;
     // A file is parsed, bound, and emitted exactly once, no matter how many Imports alias it.

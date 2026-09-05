@@ -92,36 +92,34 @@ private:
 };
 
 /*
- * Module
+ * File
  */
 
-void Module::bind(AST& ast) const {
+void File::bind(AST& ast) const {
     auto scopes = Scopes(ast);
     bind(scopes);
 }
 
-void Module::bind(Scopes& s) const {
+void File::bind(Scopes& s) const {
     if (bound_) return;
     bound_ = true;
 
     auto barrier = s.push_barrier(members_);
     for (const auto& import : implicit_imports())
         import->bind(s);
-    for (const auto& import : imports())
-        import->bind(s);
     for (const auto& decl : decls())
         decl->bind(s);
     s.pop_barrier(barrier);
 }
 
-const Scope* Import::scope() const { return module() ? &module()->members() : nullptr; }
+const Scope* Import::scope() const { return file() ? &file()->members() : nullptr; }
 
 void Import::bind(Scopes& s) const {
-    if (module()) module()->bind(s);
+    if (file()) file()->bind(s);
 
     // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
     if (auto prev = s.find(dbg(), true))
-        if (auto import = prev->isa<Import>(); import && import->module() == module()) return;
+        if (auto import = prev->isa<Import>(); import && import->file() == file()) return;
 
     s.bind(dbg(), this);
 }
@@ -458,6 +456,7 @@ void UseDecl::bind(Scopes& s) const {
         return;
     }
 
+    // Quiet: a name already bound here wins, so `use` never shadows and never conflicts.
     for (const auto& [sym, entry] : *scope)
         s.bind(Dbg(path()->loc(), sym), entry.second, false, true);
 }

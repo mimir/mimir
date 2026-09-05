@@ -6,11 +6,30 @@ using namespace std::literals;
 
 namespace mim::ast {
 
+struct AST::Files {
+    std::deque<Ptr<File>> owned;
+    absl::flat_hash_map<const fe::Src*, const File*> src2file;
+};
+
+AST::AST(World& world)
+    : world_(&world)
+    , files_(std::make_unique<Files>()) {}
+
+AST::AST(AST&& other)
+    : AST(other.world()) {
+    swap(*this, other);
+}
+
 AST::~AST() = default;
 
-const Module* AST::add_module(Ptr<Module>&& mod) {
-    modules_.emplace_back(std::move(mod));
-    return modules_.back().get();
+std::pair<const File*&, bool> AST::file(const fe::Src* src) {
+    auto [i, fresh] = files_->src2file.try_emplace(src, nullptr);
+    return {i->second, !fresh};
+}
+
+const File* AST::add_file(Ptr<File>&& file) {
+    files_->owned.emplace_back(std::move(file));
+    return files_->owned.back().get();
 }
 
 const Decl* Decl::lookup(Sym sym) const {
@@ -233,7 +252,7 @@ Ptr<Ptrn> Ptrn::to_ptrn(Ptr<Expr>&& expr) {
     return {};
 }
 
-void Module::compile(AST& ast) const {
+void File::compile(AST& ast) const {
     bind(ast);
     ast.error().ack();
     emit(ast);
@@ -241,21 +260,21 @@ void Module::compile(AST& ast) const {
 }
 
 AST load_plugins(World& world, fe::View<std::string> plugins) {
-    auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
-    auto ast     = AST(world);
-    auto parser  = Parser(ast);
-    auto imports = Ptrs<Import>();
+    auto tag    = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
+    auto ast    = AST(world);
+    auto parser = Parser(ast);
+    auto decls  = Ptrs<ValDecl>();
 
     for (const auto& plugin : plugins) {
         auto dbg = Dbg(world.sym(plugin));
-        if (auto mod = parser.import(plugin, tag))
-            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, dbg, dbg.sym(), false, mod));
+        if (auto file = parser.import(plugin, tag))
+            decls.emplace_back(ast.ptr<Import>(file->loc(), tag, dbg, dbg.sym(), false, file));
     }
 
     if (!plugins.empty()) {
-        // No Loc: this Module spans no source, and hulling the imports would mix Loc%s of different files.
-        auto mod = ast.ptr<Module>(Loc(), std::move(imports), Ptrs<ValDecl>());
-        mod->compile(ast);
+        // No Loc: this File spans no source, and hulling the imports would mix Loc%s of different files.
+        auto file = ast.ptr<File>(Loc(), std::move(decls));
+        file->compile(ast);
     }
 
     return ast;

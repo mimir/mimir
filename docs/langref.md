@@ -139,28 +139,26 @@ Other `///` forms are emitted verbatim inside a [fenced code block](https://www.
 
 Mim is defined by a [context-free grammar](https://en.wikipedia.org/wiki/Context-free_grammar).
 Its terminals are the lexical elements defined above.
-The start symbol is `m` for *module*.
+The start symbol is `f` for *file*.
 
 The main nonterminals used below are:
 
 ```text
-m   module
+f   file
 d   declaration
 p   ()-style pattern
 b   []-style pattern
 e   expression
 ```
 
-### Module {#module}
+### Files and Imports {#module}
 
 ```ebnf
-m   ::= dep* d*
-dep ::= "import" (I | S) ["as" I] ";"
-     |  "plugin" I ";"
+f ::= d*
 ```
 
-A module consists of zero or more imports or plugins followed by zero or more declarations.
-Every file is a module and every import binds it as a [namespace](@ref path).
+A file is a sequence of declarations, `import` and `plugin` among them.
+Each file forms a [namespace](@ref path) of its own that an import binds under a name.
 
 - `import foo;` resolves the module name `foo` through the search path.
 - `import "some/dir/foo.mim";` resolves the path relative to the importing file first, then through the search path.
@@ -170,6 +168,7 @@ Every file is a module and every import binds it as a [namespace](@ref path).
 - The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
 - A file is parsed, bound, and emitted exactly once, no matter how many modules import it.
   Importing a file that is still being parsed is an error.
+- An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
 
 ### Paths and Namespaces {#path}
 
@@ -191,6 +190,9 @@ A namespace is an imported module or a `mod` declaration.
 Mim supports the following declaration families.
 
 ```text
+import (I | S) ["as" I]
+plugin I
+
 mod I "{" d* "}"
 use path
 
@@ -211,6 +213,7 @@ rule|norm n p : e [when e] => e
 
 Here `n` is either an identifier or an annex name.
 
+- `import` and `plugin` bind a file as a namespace; see [Files and Imports](@ref module).
 - `mod` groups declarations under a name; its body also sees the enclosing scope.
 - `use` splices all members of a namespace into the current scope.
 - `let` introduces a binding pattern.

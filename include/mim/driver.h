@@ -135,10 +135,8 @@ public:
         auto end() const { return entries_.cend(); }
         ///@}
 
-        /// Reads @p path, remembers the import or plugin directive, and reports whether the file is new.
-        /// Yields a `nullptr` fe::Src if @p path cannot be read; reporting that is the caller's job,
-        /// since only it knows the Loc of the directive to blame.
-        std::pair<const fe::Src*, bool> add(fs::path, Sym, ast::Tok::Tag, bool path = false);
+        /// Remembers the directive that pulled in @p src; a repeated import of the same file adds nothing.
+        void add(const fe::Src* src, Sym, ast::Tok::Tag, bool path);
 
     private:
         Driver& driver_;
