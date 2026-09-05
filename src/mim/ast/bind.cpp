@@ -37,6 +37,7 @@ public:
 
     void pop() {
         assert(scopes_.size() > barrier_);
+        if (!owned_.empty() && scopes_.back() == &owned_.back()) owned_.pop_back();
         scopes_.pop_back();
     }
 
