@@ -3,7 +3,7 @@
 import mem;
 plugin regex;
 
-import dont_compile.mim;
+import "dont_compile.mim";
 
 let Top = ⊤:Nat;
 

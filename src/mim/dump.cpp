@@ -599,8 +599,13 @@ void World::dump(std::ostream& os) {
         auto nest   = Nest(*this);
         auto dumper = Dumper(os, &nest);
 
-        for (const auto& import : driver().imports())
-            std::print(os, "{} {};\n", import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import", import.sym);
+        for (const auto& import : driver().imports()) {
+            auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
+            if (import.path)
+                std::print(os, "{} \"{}\";\n", kw, import.sym);
+            else
+                std::print(os, "{} {};\n", kw, import.sym);
+        }
         dumper.recurse(nest.root());
     }
 

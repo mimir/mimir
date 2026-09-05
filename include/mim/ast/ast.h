@@ -13,6 +13,7 @@
 
 namespace mim::ast {
 
+class Decl;
 class LamDecl;
 class Module;
 class Scopes;
@@ -23,6 +24,8 @@ using Ptr = fe::Arena::Ptr<const T>;
 template<class T>
 using Ptrs = std::deque<Ptr<T>>;
 using Dbgs = std::deque<Dbg>;
+/// Maps a name to the Decl introducing it and the Loc of that declaration.
+using Scope = fe::SymMap<std::pair<Loc, const Decl*>>;
 
 /// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
@@ -85,6 +88,17 @@ public:
         return arena_.mk<const T>(std::forward<Args>(args)...);
     }
 
+    /// @name Manage Modules
+    /// A file is parsed exactly once; AST::module hands out the Module every Import of that file shares.
+    ///@{
+    /// @returns the Module of @p src and whether it is already being parsed (`false` for a fresh entry).
+    std::pair<const Module*&, bool> module(const fe::Src* src) {
+        auto [i, fresh] = src2mod_.try_emplace(src, nullptr);
+        return {i->second, !fresh};
+    }
+    const Module* add_module(Ptr<Module>&&); ///< Takes ownership; @returns the raw Module.
+    ///@}
+
     /// @name Manage Annex
     ///@{
     AnnexInfo* name2annex(Dbg dbg, sub_t*);
@@ -108,6 +122,8 @@ public:
 private:
     World* world_ = nullptr;
     fe::Arena arena_;
+    std::vector<Ptr<Module>> modules_; ///< std::vector tolerates the still incomplete Module here.
+    absl::flat_hash_map<const fe::Src*, const Module*> src2mod_;
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
@@ -168,6 +184,10 @@ protected:
 
 public:
     const Def* def() const { return def_; }
+
+    /// Non-`nullptr` if this Decl is a namespace whose members a Path may walk into.
+    virtual const Scope* scope() const { return nullptr; }
+    const Decl* lookup(Sym) const;
 
 protected:
     mutable const Def* def_ = nullptr;
@@ -353,15 +373,45 @@ private:
     const Def* emit_(Emitter&) const override;
 };
 
-/// `dbg`
-class IdExpr : public Expr {
+/// `dbg_0.....dbg_n-1`.
+/// An annex name is a *single* component that keeps its `%` and its dots: the Lexer never splits it.
+class Path : public Node {
 public:
-    IdExpr(Dbg dbg)
-        : Expr(dbg.loc())
-        , dbg_(dbg) {}
+    Path(Loc loc, Dbgs&& dbgs)
+        : Node(loc)
+        , dbgs_(std::move(dbgs)) {}
+    Path(Dbg dbg)
+        : Node(dbg.loc())
+        , dbgs_{dbg} {}
+    Path(const Path& other)
+        : Node(other.loc())
+        , dbgs_(other.dbgs_) {}
 
-    Dbg dbg() const { return dbg_; }
+    const Dbgs& dbgs() const { return dbgs_; }
+    size_t num_dbgs() const { return dbgs_.size(); }
+    Dbg front() const { return dbgs_.front(); }
+    Dbg back() const { return dbgs_.back(); }
+    bool is_anx() const { return front().sym() && front().sym()[0] == '%'; }
     const Decl* decl() const { return decl_; }
+
+    void bind(Scopes&, bool quiet = false) const;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Dbgs dbgs_;
+    mutable const Decl* decl_ = nullptr;
+};
+
+/// `path`
+class PathExpr : public Expr {
+public:
+    PathExpr(Ptr<Path>&& path)
+        : Expr(path->loc())
+        , path_(std::move(path)) {}
+
+    const Path* path() const { return path_.get(); }
+    Dbg dbg() const { return path()->back(); }
+    const Decl* decl() const { return path()->decl(); }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -369,8 +419,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    Dbg dbg_;
-    mutable const Decl* decl_ = nullptr;
+    Ptr<Path> path_;
 };
 
 /// `tag`
@@ -1089,35 +1138,78 @@ private:
     bool is_normalizer_;
 };
 
+/// `mod dbg { decls }`
+class ModDecl : public ValDecl {
+public:
+    ModDecl(Loc loc, Dbg dbg, Ptrs<ValDecl>&& decls)
+        : ValDecl(loc)
+        , dbg_(dbg)
+        , decls_(std::move(decls)) {}
+
+    Dbg dbg() const { return dbg_; }
+    const auto& decls() const { return decls_; }
+
+    const Scope* scope() const override { return &members_; }
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Dbg dbg_;
+    Ptrs<ValDecl> decls_;
+    mutable Scope members_;
+};
+
+/// `use path;` - splices all members of the namespace @p path denotes into the current scope.
+class UseDecl : public ValDecl {
+public:
+    UseDecl(Loc loc, Ptr<Path>&& path)
+        : ValDecl(loc)
+        , path_(std::move(path)) {}
+
+    const Path* path() const { return path_.get(); }
+
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Ptr<Path> path_;
+};
+
 /*
  * Module
  */
 
-/// `import dbg;` or `plugin dbg;`
-class Import : public Node {
+/// `import "path" [as dbg];`, `import dbg;`, or `plugin dbg;`
+/// Binds Import::dbg as a namespace; the Module itself is owned by the AST and shared by all its importers.
+class Import : public Decl {
 public:
-    Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module);
-    ~Import();
+    Import(Loc loc, Tok::Tag tag, Dbg dbg, Sym name, bool is_path, const Module* module)
+        : Decl(loc)
+        , dbg_(dbg)
+        , name_(name)
+        , tag_(tag)
+        , is_path_(is_path)
+        , module_(module) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const { return dbg_; }   ///< The name this Import binds.
+    Sym name() const { return name_; } ///< Spelling of the imported entity: a plugin/file name or a path.
+    bool is_path() const { return is_path_; }
     Tok::Tag tag() const { return tag_; }
-    const Module* module() const { return module_.get(); }
+    const Module* module() const { return module_; }
 
+    const Scope* scope() const override;
     void bind(Scopes&) const;
     void emit(Emitter&) const;
-    void stream(fe::Tab&, std::ostream&) const;
-
-    friend void swap(Import& i1, Import& i2) noexcept {
-        using std::swap;
-        swap(i1.dbg_, i2.dbg_);
-        swap(i1.tag_, i2.tag_);
-        swap(i1.module_, i2.module_);
-    }
+    void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     Dbg dbg_;
+    Sym name_;
     Tok::Tag tag_;
-    Ptr<Module> module_;
+    bool is_path_;
+    const Module* module_;
 };
 
 /// A whole file: its Module::imports followed by its Module::decls.
@@ -1133,6 +1225,7 @@ public:
     const auto& decls() const { return decls_; }
 
     void add_implicit_imports(Ptrs<Import>&& imports) const { implicit_imports_ = std::move(imports); }
+    const Scope& members() const { return members_; }
 
     void compile(AST&) const;
     void bind(AST&) const;
@@ -1145,6 +1238,9 @@ private:
     mutable Ptrs<Import> implicit_imports_;
     Ptrs<Import> imports_;
     Ptrs<ValDecl> decls_;
+    mutable Scope members_;
+    // A file is parsed, bound, and emitted exactly once, no matter how many Imports alias it.
+    mutable bool bound_ = false, emitted_ = false;
 };
 
 AST load_plugins(World&, fe::View<std::string>);

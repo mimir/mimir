@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+import "not-an-id.mim";
+
+// CHECK: {{.*}}import_name.mim:3:8-3:22: error: cannot derive a module name from `not-an-id.mim`
+// CHECK: name it explicitly with `as`

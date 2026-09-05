@@ -16,6 +16,7 @@ plugin core;
 plugin cps;
 plugin affine;
 plugin math;
+use tensor;
 
 let f32 = %math.f32;
 let F32 = %math.F32;

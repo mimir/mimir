@@ -8,13 +8,16 @@ namespace mim::ast {
 
 AST::~AST() = default;
 
-Import::Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module)
-    : Node(loc)
-    , dbg_(dbg)
-    , tag_(tag)
-    , module_(std::move(module)) {}
+const Module* AST::add_module(Ptr<Module>&& mod) {
+    modules_.emplace_back(std::move(mod));
+    return modules_.back().get();
+}
 
-Import::~Import() = default;
+const Decl* Decl::lookup(Sym sym) const {
+    if (auto s = scope())
+        if (auto i = s->find(sym); i != s->end()) return i->second.second;
+    return nullptr;
+}
 
 AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
     if (!dbg || dbg.sym()[0] != '%') return nullptr;
@@ -216,7 +219,7 @@ LamExpr::LamExpr(Ptr<LamDecl>&& lam)
 
 Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn>&& ptrn) {
     if (auto idp = ptrn->isa<IdPtrn>(); idp && !idp->dbg() && idp->type()) {
-        if (auto ide = idp->type()->isa<IdExpr>()) return ast.ptr<IdExpr>(ide->dbg());
+        if (auto pe = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(ast.ptr<Path>(*pe->path()));
     } else if (auto tuple = ptrn->isa<TuplePtrn>(); tuple && tuple->is_brckt()) {
         (void)ptrn.release();
         return ast.ptr<SigmaExpr>(Ptr<TuplePtrn>(tuple));
@@ -243,9 +246,11 @@ AST load_plugins(World& world, fe::View<std::string> plugins) {
     auto parser  = Parser(ast);
     auto imports = Ptrs<Import>();
 
-    for (const auto& plugin : plugins)
+    for (const auto& plugin : plugins) {
+        auto dbg = Dbg(world.sym(plugin));
         if (auto mod = parser.import(plugin, tag))
-            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, Dbg(world.sym(plugin)), std::move(mod)));
+            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, dbg, dbg.sym(), false, mod));
+    }
 
     if (!plugins.empty()) {
         // No Loc: this Module spans no source, and hulling the imports would mix Loc%s of different files.

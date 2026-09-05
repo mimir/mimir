@@ -18,8 +18,6 @@ public:
 
 class Scopes {
 public:
-    using Scope = fe::SymMap<std::pair<Loc, const Decl*>>;
-
     Scopes(AST& ast)
         : ast_(ast)
         , dummy_(ast.ptr<DummyDecl>()) {
@@ -28,21 +26,40 @@ public:
 
     AST& ast() const { return ast_; }
     Error& error() const { return ast().error(); }
-    Scope& top() { return scopes_.back(); }
+    Scope& top() { return *scopes_.back(); }
     const Decl* dummy() const { return dummy_.get(); }
 
-    void push() { scopes_.emplace_back(); }
+    /// An annex name is global: it lives in one flat table, independent of the module structure.
+    static bool is_anx(Sym sym) { return sym && sym[0] == '%'; }
+
+    void push() { push(owned_.emplace_back()); }
+    void push(Scope& scope) { scopes_.emplace_back(&scope); }
 
     void pop() {
-        assert(!scopes_.empty());
+        assert(scopes_.size() > barrier_);
+        scopes_.pop_back();
+    }
+
+    /// A file must not see the scope of whoever imports it, so its Scope becomes the new lookup floor.
+    size_t push_barrier(Scope& scope) {
+        push(scope);
+        return std::exchange(barrier_, scopes_.size() - 1);
+    }
+
+    void pop_barrier(size_t old) {
+        barrier_ = old;
         scopes_.pop_back();
     }
 
     const Decl* find(Dbg dbg, bool quiet = false) {
         if (dbg.is_anon()) return nullptr;
 
-        for (auto& scope : scopes_ | std::views::reverse)
-            if (auto i = scope.find(dbg.sym()); i != scope.end()) return i->second.second;
+        if (is_anx(dbg.sym())) {
+            if (auto i = anx_.find(dbg.sym()); i != anx_.end()) return i->second.second;
+        } else {
+            for (size_t i = scopes_.size(); i-- != barrier_;)
+                if (auto j = scopes_[i]->find(dbg.sym()); j != scopes_[i]->end()) return j->second.second;
+        }
 
         if (!quiet) {
             error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
@@ -54,9 +71,10 @@ public:
     void bind(Dbg dbg, const Decl* decl, bool rebind = false, bool quiet = false) {
         if (dbg.is_anon()) return;
 
+        auto& scope = is_anx(dbg.sym()) ? anx_ : top();
         if (rebind) {
-            top()[dbg.sym()] = std::pair(dbg.loc(), decl);
-        } else if (auto [i, ins] = top().try_emplace(dbg.sym(), std::pair(dbg.loc(), decl)); !ins) {
+            scope[dbg.sym()] = std::pair(dbg.loc(), decl);
+        } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), std::pair(dbg.loc(), decl)); !ins) {
             auto [prev_loc, prev_decl] = i->second;
             if (!quiet && !prev_decl->isa<DummyDecl>()) // if prev_decl stems from an error - don't complain
                 error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev_loc, "previous declaration here");
@@ -66,8 +84,10 @@ public:
 private:
     AST& ast_;
     Ptr<DummyDecl> dummy_;
-    std::deque<Scope> scopes_;
-    absl::flat_hash_map<plugin_t, tag_t> plugin2tag_;
+    std::deque<Scope> owned_;
+    std::deque<Scope*> scopes_;
+    Scope anx_;
+    size_t barrier_ = 0;
 };
 
 /*
@@ -80,15 +100,30 @@ void Module::bind(AST& ast) const {
 }
 
 void Module::bind(Scopes& s) const {
+    if (bound_) return;
+    bound_ = true;
+
+    auto barrier = s.push_barrier(members_);
     for (const auto& import : implicit_imports())
         import->bind(s);
     for (const auto& import : imports())
         import->bind(s);
     for (const auto& decl : decls())
         decl->bind(s);
+    s.pop_barrier(barrier);
 }
 
-void Import::bind(Scopes& s) const { module()->bind(s); }
+const Scope* Import::scope() const { return module() ? &module()->members() : nullptr; }
+
+void Import::bind(Scopes& s) const {
+    if (module()) module()->bind(s);
+
+    // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
+    if (auto prev = s.find(dbg(), true))
+        if (auto import = prev->isa<Import>(); import && import->module() == module()) return;
+
+    s.bind(dbg(), this);
+}
 
 /*
  * Ptrn
@@ -116,8 +151,28 @@ void TuplePtrn::bind(Scopes& s, bool rebind, bool quiet) const {
  * Expr
  */
 
+void Path::bind(Scopes& s, bool quiet) const {
+    decl_ = s.find(front(), quiet);
+
+    for (const auto& dbg : dbgs() | std::views::drop(1)) {
+        if (!decl_) return;
+        auto member = decl_->lookup(dbg.sym());
+        if (!member) {
+            if (!quiet) {
+                if (decl_->scope())
+                    s.error().e(dbg.loc(), "`{}` has no member `{}`", front().sym(), dbg.sym());
+                else
+                    s.error().e(dbg.loc(), "`{}` is not a namespace", front().sym());
+            }
+            decl_ = nullptr;
+            return;
+        }
+        decl_ = member;
+    }
+}
+
 // clang-format off
-void IdExpr     ::bind(Scopes& s) const { decl_ = s.find(dbg()); }
+void PathExpr   ::bind(Scopes& s) const { path()->bind(s); }
 void TypeExpr   ::bind(Scopes& s) const { level()->bind(s); }
 void RuleExpr   ::bind(Scopes& s) const { dom()->bind(s); }
 void ErrorExpr  ::bind(Scopes&) const {}
@@ -381,6 +436,29 @@ void CDecl::bind(Scopes& s) const {
     s.pop(); // we don't allow codom to depent on dom
     if (codom()) codom()->bind(s);
     s.bind(dbg(), this);
+}
+
+void ModDecl::bind(Scopes& s) const {
+    s.push(members_);
+    for (const auto& decl : decls())
+        decl->bind(s);
+    s.pop();
+    s.bind(dbg(), this);
+}
+
+void UseDecl::bind(Scopes& s) const {
+    path()->bind(s);
+    auto decl = path()->decl();
+    if (!decl) return;
+
+    auto scope = decl->scope();
+    if (!scope) {
+        s.error().e(path()->loc(), "`{}` is not a namespace", path()->back().sym());
+        return;
+    }
+
+    for (const auto& [sym, entry] : *scope)
+        s.bind(Dbg(path()->loc(), sym), entry.second, false, true);
 }
 
 void RuleDecl::bind(Scopes& s) const {

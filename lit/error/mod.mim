@@ -1,0 +1,14 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+mod foo {
+    let bar = 42;
+}
+
+let a = foo.nope;
+let b = a.bar;
+use a;
+lam extern f(): Nat = foo;
+
+// CHECK: {{.*}}mod.mim:7:13-7:16: error: `foo` has no member `nope`
+// CHECK: {{.*}}mod.mim:8:11-8:13: error: `a` is not a namespace
+// CHECK: {{.*}}mod.mim:9:5: error: `a` is not a namespace

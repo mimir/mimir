@@ -7,6 +7,7 @@ plugin mem;
 plugin core;
 plugin regex;
 plugin cps;
+use regex;
 
 let Top     = ⊤:Nat;
 let pattern = %regex.conj (%regex.quant.plus  %regex.cls.w, %regex.lit '@');

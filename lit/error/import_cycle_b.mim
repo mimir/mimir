@@ -1,0 +1,4 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+
+import "import_cycle.mim";

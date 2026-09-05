@@ -118,6 +118,7 @@ public:
             const fe::Src* src;
             Sym sym;
             ast::Tok::Tag tag;
+            bool path; ///< The directive spelled a path (`import "a/b.mim"`) rather than a name.
         };
 
         Imports(Driver& driver)
@@ -137,7 +138,7 @@ public:
         /// Reads @p path, remembers the import or plugin directive, and reports whether the file is new.
         /// Yields a `nullptr` fe::Src if @p path cannot be read; reporting that is the caller's job,
         /// since only it knows the Loc of the directive to blame.
-        std::pair<const fe::Src*, bool> add(fs::path, Sym, ast::Tok::Tag);
+        std::pair<const fe::Src*, bool> add(fs::path, Sym, ast::Tok::Tag, bool path = false);
 
     private:
         Driver& driver_;

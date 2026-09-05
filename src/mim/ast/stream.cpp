@@ -66,7 +66,15 @@ void Node::dump() const {
  * Module
  */
 
-void Import::stream(fe::Tab& tab, std::ostream& os) const { std::println(os, "{}{} '{}';", tab, tag(), "TODO"); }
+void Import::stream(fe::Tab& tab, std::ostream& os) const {
+    if (is_path())
+        std::print(os, "{}{} \"{}\"", tab, tag(), name());
+    else
+        std::print(os, "{}{} {}", tab, tag(), name());
+    // Only spell out an alias that a re-parse would not derive from the file name itself.
+    if (dbg().sym().view() != fs::path(name().view()).stem()) std::print(os, " as {}", dbg());
+    std::println(os, ";");
+}
 
 void Module::stream(fe::Tab& tab, std::ostream& os) const {
     for (const auto& import : imports())
@@ -100,7 +108,12 @@ void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
  * Expr
  */
 
-void IdExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", dbg()); }
+void Path::stream(fe::Tab&, std::ostream& os) const {
+    for (size_t i = 0, e = num_dbgs(); i != e; ++i)
+        std::print(os, "{}{}", i == 0 ? "" : ".", dbgs()[i]);
+}
+
+void PathExpr::stream(fe::Tab& tab, std::ostream& os) const { path()->stream(tab, os); }
 void ErrorExpr::stream(fe::Tab&, std::ostream& os) const { os << "<error expression>"; }
 void HoleExpr::stream(fe::Tab&, std::ostream& os) const { os << "?"; }
 void PrimaryExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", tag()); }
@@ -226,6 +239,17 @@ void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
     if (trip()) std::print(os, ", {}", trip());
     os << ";";
 }
+
+void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    std::println(os, "mod {} {{", dbg());
+    ++tab;
+    for (const auto& decl : decls())
+        std::println(os, "{}{}", tab, S(tab, decl.get()));
+    --tab;
+    std::print(os, "{}}}", tab);
+}
+
+void UseDecl::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "use {};", S(tab, path())); }
 
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "let {} = {};", S(tab, ptrn()), S(tab, value()));

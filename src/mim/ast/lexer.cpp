@@ -88,7 +88,7 @@ Tok Lexer::lex() {
         // clang-format on
 
         if (accept('%')) {
-            if (lex_id()) return {loc_, Tag::M_anx, sym()};
+            if (lex_id(true)) return {loc_, Tag::M_anx, sym()};
             error().e(loc_, "invalid axm name `{}`", str_);
             continue;
         }
@@ -123,7 +123,8 @@ Tok Lexer::lex() {
         }
 
         if (lex_id()) {
-            if (auto i = keywords_.find(sym()); i != keywords_.end()) return tok(i->second);
+            // A keyword keeps its Sym: Parser::parse_member accepts one as a plain name.
+            if (auto i = keywords_.find(sym()); i != keywords_.end()) return {loc_, i->second, sym()};
             return {loc_, Tag::M_id, sym()};
         }
 
@@ -157,9 +158,10 @@ Tok Lexer::lex() {
     }
 }
 
-bool Lexer::lex_id() {
+// Only an annex name may contain `.`; elsewhere `.` separates the components of a Path.
+bool Lexer::lex_id(bool dots) {
     if (accept([](char32_t c) { return c == '_' || utf8::isalpha(c); })) {
-        while (accept([](char32_t c) { return c == '_' || c == '.' || utf8::isalnum(c); })) {}
+        while (accept([dots](char32_t c) { return c == '_' || (dots && c == '.') || utf8::isalnum(c); })) {}
         return true;
     }
     return false;
