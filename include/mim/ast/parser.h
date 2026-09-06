@@ -36,14 +36,19 @@ public:
 
     AST& ast() { return ast_; }
     Driver& driver() { return ast().driver(); } ///< fe::Parser's default diagnostics go to its Driver::error.
-    Ptr<Module> import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
-        return import({Loc(), driver().sym(sv)}, nullptr, tag);
+    const File* import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
+        return import({Loc(), driver().sym(sv)}, false, tag, nullptr);
     }
-    Ptr<Module> import(Dbg, std::ostream* md = nullptr, Tok::Tag tag = Tok::Tag::K_import);
-    Ptr<Module> import(const fe::Src&, std::ostream* md = nullptr);
+    /// @p is_path selects the `import "some/path.mim"` form over the search-path lookup by name.
+    /// @p record is `false` for the compilation root: it is not a directive that a dump should reproduce.
+    const File*
+    import(Dbg, bool is_path, Tok::Tag tag = Tok::Tag::K_import, std::ostream* md = nullptr, bool record = true);
+    const File* import(const fe::Src&, std::ostream* md = nullptr, Loc = {});
+    /// Imports the @p plugins the Driver was told about via `-p` as anonymous, unaliased Import%s.
+    Ptrs<Import> import_plugins(fe::View<std::string> plugins, Tok::Tag);
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
-    Ptr<Module> import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
-    Ptr<Module> import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
+    const File* import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
+    const File* import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
 
 private:
     template<class T, class... Args>
@@ -57,13 +62,19 @@ private:
 
     /// @name parse misc
     ///@{
-    Ptr<Module> parse_module();
+    Ptr<File> parse_file();
     Dbg parse_id(std::string_view ctxt = {});
-    std::pair<Annex&, bool> parse_annex(std::string_view ctxt = {});
     Dbg parse_name(std::string_view ctxt = {});
+    /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm sub list a name is
+    /// unambiguous, and annexes such as `%core.nat.mod` rely on it.
+    Dbg parse_member(std::string_view ctxt = {});
+    Path parse_path(std::string_view ctxt = {});
     Ptr<Import> parse_import_or_plugin();
-    Ptr<Import> parse_plugin();
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});
+
+    /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.
+    fs::path curr_dir() const { return curr_.src ? curr_.src->path().parent_path() : fs::path(); }
+    Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(Path(dbg)); }
 
     template<class F>
     void parse_list(std::string_view ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {
@@ -154,6 +165,8 @@ private:
     Ptrs<ValDecl> parse_decls();
     Ptr<ValDecl> parse_axm_decl();
     Ptr<ValDecl> parse_let_decl();
+    Ptr<ValDecl> parse_mod_decl();
+    Ptr<ValDecl> parse_use_decl();
     Ptr<ValDecl> parse_c_decl();
     Ptr<ValDecl> parse_rule_decl();
     Ptr<LamDecl> parse_lam_decl();

@@ -1,0 +1,26 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+mod foo {
+    let bar = 42;
+}
+
+mod outer {
+    mod inner {
+        let x = 42;
+    }
+}
+
+let a = foo.nope;
+let b = a.bar;
+use a;
+lam extern f(): Nat = foo;
+let c = outer.inner.nope;
+let d = outer.inner.x.y;
+let e = foo.where;
+
+// CHECK: {{.*}}mod.mim:13:13-13:16: error: `foo` has no member `nope`
+// CHECK: {{.*}}mod.mim:14:11-14:13: error: `a` is not a module
+// CHECK: {{.*}}mod.mim:15:5: error: `a` is not a module
+// CHECK: {{.*}}mod.mim:17:21-17:24: error: `inner` has no member `nope`
+// CHECK: {{.*}}mod.mim:18:23: error: `x` is not a module
+// CHECK: {{.*}}mod.mim:19:13-19:17: error: `foo` has no member `where`

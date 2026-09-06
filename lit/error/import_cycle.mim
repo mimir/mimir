@@ -1,0 +1,5 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+import "import_cycle_b.mim";
+
+// CHECK: {{.*}}import_cycle_b.mim:4:8-4:25: error: cyclic import of {{.*}}import_cycle.mim

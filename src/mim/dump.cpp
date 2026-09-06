@@ -8,6 +8,7 @@
 #include "mim/driver.h"
 #include "mim/nest.h"
 
+#include "mim/ast/lexer.h"
 #include "mim/ast/tok.h"
 
 using namespace std::literals;
@@ -599,8 +600,15 @@ void World::dump(std::ostream& os) {
         auto nest   = Nest(*this);
         auto dumper = Dumper(os, &nest);
 
-        for (const auto& import : driver().imports())
-            std::print(os, "{} {};\n", import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import", import.sym);
+        for (const auto& import : driver().imports()) {
+            auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
+            // The spelling was relative to the importing file; only the resolved path re-parses from here.
+            // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
+            if (import.path)
+                std::print(os, "{} \"{}\";\n", kw, ast::Lexer::escape(import.src->path().generic_string()));
+            else
+                std::print(os, "{} {};\n", kw, import.sym);
+        }
         dumper.recurse(nest.root());
     }
 

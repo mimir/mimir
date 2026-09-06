@@ -110,20 +110,20 @@ int compile(Driver& driver, Opts& opts) {
 
         auto ast    = ast::AST(world);
         auto parser = ast::Parser(ast);
-        auto mod    = parser.import_main(opts.input, opts.plugins, outs[Md].os());
+        auto file   = parser.import_main(opts.input, opts.plugins, outs[Md].os());
 
-        if (!mod) {
+        if (!file) {
             ast.error().ack(); // prefer the parser's own diagnostic, if it recorded one
             fe::throwf("could not read file `{}`", opts.input);
         }
 
         if (auto s = outs[AST].os()) {
             auto tab = fe::Tab::spaces();
-            mod->stream(tab, *s);
+            file->stream(tab, *s);
         }
 
         if (auto h = outs[H].os(), py = outs[PY].os(); h || py) {
-            mod->bind(ast);
+            file->bind(ast);
             ast.error().ack();
             auto plugin = world.sym(name);
             if (h) ast.bootstrap(plugin, *h);
@@ -131,7 +131,7 @@ int compile(Driver& driver, Opts& opts) {
             return EXIT_SUCCESS;
         }
 
-        mod->compile(ast);
+        file->compile(ast);
         optimize(world);
 
         auto types = opts.sexpr_include_types;

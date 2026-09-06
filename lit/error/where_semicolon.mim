@@ -7,7 +7,7 @@ where
     let y = 2;
 end
 
-// CHECK:      {{.*}}where_semicolon.mim:6:1-6:5: error: expected `<end of file>`, got `where` while parsing module
+// CHECK:      {{.*}}where_semicolon.mim:6:1-6:5: error: expected `<end of file>`, got `where` while parsing file
 // CHECK-NEXT: 6 | where
 // CHECK-NEXT:   | ^^^^^
 // CHECK-NEXT:   {{.*}}where_semicolon.mim:5:10: note: did you accidentally end your declaration expression with a `;`?

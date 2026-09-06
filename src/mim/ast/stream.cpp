@@ -1,6 +1,7 @@
 #include <ostream>
 
 #include "mim/ast/ast.h"
+#include "mim/ast/lexer.h"
 
 namespace mim::ast {
 
@@ -56,6 +57,12 @@ struct std::formatter<mim::ast::R<T>> : fe::ostream_formatter {};
 
 namespace mim::ast {
 
+template<class T>
+static void stream_decls(fe::Tab& tab, std::ostream& os, const Ptrs<T>& decls) {
+    for (const auto& decl : decls)
+        std::println(os, "{}{}", tab, S(tab, decl.get()));
+}
+
 void Node::dump() const {
     auto tab = fe::Tab::spaces();
     stream(tab, std::cout);
@@ -63,17 +70,19 @@ void Node::dump() const {
 }
 
 /*
- * Module
+ * File
  */
 
-void Import::stream(fe::Tab& tab, std::ostream& os) const { std::println(os, "{}{} '{}';", tab, tag(), "TODO"); }
-
-void Module::stream(fe::Tab& tab, std::ostream& os) const {
-    for (const auto& import : imports())
-        import->stream(tab, os);
-    for (const auto& decl : decls())
-        std::println(os, "{}{}", tab, S(tab, decl.get()));
+void Import::stream(fe::Tab&, std::ostream& os) const {
+    if (is_path())
+        std::print(os, "{} \"{}\"", tag(), Lexer::escape(path().view()));
+    else
+        std::print(os, "{} {}", tag(), name());
+    if (alias()) std::print(os, " as {}", alias());
+    os << ';';
 }
+
+void File::stream(fe::Tab& tab, std::ostream& os) const { stream_decls(tab, os, decls()); }
 
 /*
  * Ptrn
@@ -100,7 +109,9 @@ void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
  * Expr
  */
 
-void IdExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", dbg()); }
+void Path::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", fe::Join(dbgs(), ".")); }
+
+void PathExpr::stream(fe::Tab& tab, std::ostream& os) const { path()->stream(tab, os); }
 void ErrorExpr::stream(fe::Tab&, std::ostream& os) const { os << "<error expression>"; }
 void HoleExpr::stream(fe::Tab&, std::ostream& os) const { os << "?"; }
 void PrimaryExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", tag()); }
@@ -126,12 +137,10 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
     if (is_where()) {
         std::println(os, "{}{} where", tab, S(tab, expr()));
         ++tab;
-        for (const auto& decl : decls())
-            std::println(os, "{}{}", tab, S(tab, decl.get()));
+        stream_decls(tab, os, decls());
         --tab;
     } else {
-        for (const auto& decl : decls())
-            std::println(os, "{}{}", tab, S(tab, decl.get()));
+        stream_decls(tab, os, decls());
         std::print(os, "{}", S(tab, expr()));
     }
 }
@@ -226,6 +235,16 @@ void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
     if (trip()) std::print(os, ", {}", trip());
     os << ";";
 }
+
+void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    std::println(os, "mod {} {{", dbg());
+    ++tab;
+    stream_decls(tab, os, decls());
+    --tab;
+    std::print(os, "{}}}", tab);
+}
+
+void UseDecl::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "use {};", S(tab, path())); }
 
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "let {} = {};", S(tab, ptrn()), S(tab, value()));

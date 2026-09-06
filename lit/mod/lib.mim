@@ -1,0 +1,13 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by mod.mim - not a test of its own.
+
+let answer = 42I32;
+
+mod inner {
+    let deep = 23I32;
+
+    mod deeper {
+        let deepest = 7I32;
+    }
+}

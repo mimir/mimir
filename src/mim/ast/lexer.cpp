@@ -12,6 +12,9 @@ using Tag      = Tok::Tag;
 /// As World::lit_idx_mod but at token level: a @p mod of `0` means 2^64 and wraps nothing.
 static Tok idx_tok(Loc loc, u64 mod, u64 val) { return {loc, mod, mod == 0 ? val : val % mod}; }
 
+static bool is_id_head(char32_t c) { return c == '_' || utf8::isalpha(c); }
+static bool is_id_tail(char32_t c) { return c == '_' || utf8::isalnum(c); }
+
 Lexer::Lexer(fe::Driver& driver, std::string_view buf, const fe::Src* src, std::ostream* md)
     : Super(buf, src)
     , driver_(driver)
@@ -88,7 +91,7 @@ Tok Lexer::lex() {
         // clang-format on
 
         if (accept('%')) {
-            if (lex_id()) return {loc_, Tag::M_anx, sym()};
+            if (lex_id(true)) return {loc_, Tag::M_anx, sym()};
             error().e(loc_, "invalid axm name `{}`", str_);
             continue;
         }
@@ -123,8 +126,10 @@ Tok Lexer::lex() {
         }
 
         if (lex_id()) {
-            if (auto i = keywords_.find(sym()); i != keywords_.end()) return tok(i->second);
-            return {loc_, Tag::M_id, sym()};
+            // A keyword keeps its Sym: Parser::parse_member accepts one as a plain name.
+            auto s = sym();
+            if (auto i = keywords_.find(s); i != keywords_.end()) return {loc_, i->second, s};
+            return {loc_, Tag::M_id, s};
         }
 
         if (utf8::isdigit(ahead()) || utf8::any('+', '-')(ahead())) {
@@ -157,12 +162,43 @@ Tok Lexer::lex() {
     }
 }
 
-bool Lexer::lex_id() {
-    if (accept([](char32_t c) { return c == '_' || utf8::isalpha(c); })) {
-        while (accept([](char32_t c) { return c == '_' || c == '.' || utf8::isalnum(c); })) {}
+// Only an annex name may contain `.`; elsewhere `.` separates the components of a Path.
+bool Lexer::lex_id(bool dots) {
+    if (accept(is_id_head)) {
+        while (accept([dots](char32_t c) { return is_id_tail(c) || (dots && c == '.'); })) {}
         return true;
     }
     return false;
+}
+
+std::string Lexer::escape(std::string_view str) {
+    std::string res;
+    for (auto c : str) {
+        // clang-format off
+        switch (c) {
+            case '\\': res += "\\\\"; break;
+            case '\"': res += "\\\""; break;
+            case '\0': res += "\\0";  break;
+            case '\a': res += "\\a";  break;
+            case '\b': res += "\\b";  break;
+            case '\f': res += "\\f";  break;
+            case '\n': res += "\\n";  break;
+            case '\r': res += "\\r";  break;
+            case '\t': res += "\\t";  break;
+            case '\v': res += "\\v";  break;
+            default:   res += c;
+        }
+        // clang-format on
+    }
+    return res;
+}
+
+bool Lexer::is_id(std::string_view str) {
+    size_t i = 0;
+    if (!is_id_head(utf8::decode(str, i))) return false;
+    while (i != str.size())
+        if (!is_id_tail(utf8::decode(str, i))) return false;
+    return true;
 }
 
 // clang-format off

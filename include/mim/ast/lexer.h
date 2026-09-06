@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <absl/container/flat_hash_map.h>
 #include <fe/lexer.h>
 
@@ -22,6 +24,12 @@ public:
     fe::Driver& driver() { return driver_; } ///< fe::Lexer's default diagnostics go to its Driver::error.
     Tok lex();
 
+    /// Does @p str match the `id` production - the same rule Lexer::lex_id applies to the input?
+    static bool is_id(std::string_view str);
+
+    /// Inverse of Lexer::lex_char: renders @p str as the body of a Mim string literal.
+    static std::string escape(std::string_view str);
+
 private:
     Lexer(fe::Driver&, std::string_view, const fe::Src*, std::ostream*);
 
@@ -41,7 +49,7 @@ private:
 
     Tok tok(Tok::Tag tag) { return {loc_, tag}; }
     Sym sym();
-    bool lex_id();
+    bool lex_id(bool dots = false);
     char8_t lex_char();
     std::optional<Tok> parse_lit();
     void parse_digits(int base = 10);

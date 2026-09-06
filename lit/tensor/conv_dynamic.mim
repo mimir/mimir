@@ -10,6 +10,7 @@ plugin core;
 plugin tensor;
 plugin affine;
 plugin mem;
+use tensor;
 
 // A ring over Nat so the multiply-accumulate stays in %core.nat.
 lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);

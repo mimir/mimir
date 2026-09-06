@@ -6,15 +6,24 @@ using namespace std::literals;
 
 namespace mim::ast {
 
+// Node map: Parser::import holds the slot across the nested parses that may insert further entries.
+struct AST::Files : absl::node_hash_map<const fe::Src*, Ptr<File>> {};
+
+AST::AST(World& world)
+    : world_(&world)
+    , files_(std::make_unique<Files>()) {}
+
+AST::AST(AST&& other)
+    : AST(other.world()) {
+    swap(*this, other);
+}
+
 AST::~AST() = default;
 
-Import::Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module)
-    : Node(loc)
-    , dbg_(dbg)
-    , tag_(tag)
-    , module_(std::move(module)) {}
-
-Import::~Import() = default;
+std::pair<Ptr<File>&, bool> AST::file(const fe::Src* src) {
+    auto [i, fresh] = files_->try_emplace(src);
+    return {i->second, fresh};
+}
 
 AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
     if (!dbg || dbg.sym()[0] != '%') return nullptr;
@@ -216,7 +225,7 @@ LamExpr::LamExpr(Ptr<LamDecl>&& lam)
 
 Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn>&& ptrn) {
     if (auto idp = ptrn->isa<IdPtrn>(); idp && !idp->dbg() && idp->type()) {
-        if (auto ide = idp->type()->isa<IdExpr>()) return ast.ptr<IdExpr>(ide->dbg());
+        if (auto pe = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(Path(*pe->path()));
     } else if (auto tuple = ptrn->isa<TuplePtrn>(); tuple && tuple->is_brckt()) {
         (void)ptrn.release();
         return ast.ptr<SigmaExpr>(Ptr<TuplePtrn>(tuple));
@@ -230,7 +239,7 @@ Ptr<Ptrn> Ptrn::to_ptrn(Ptr<Expr>&& expr) {
     return {};
 }
 
-void Module::compile(AST& ast) const {
+void File::compile(AST& ast) const {
     bind(ast);
     ast.error().ack();
     emit(ast);
@@ -238,19 +247,19 @@ void Module::compile(AST& ast) const {
 }
 
 AST load_plugins(World& world, fe::View<std::string> plugins) {
-    auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
-    auto ast     = AST(world);
-    auto parser  = Parser(ast);
-    auto imports = Ptrs<Import>();
-
-    for (const auto& plugin : plugins)
-        if (auto mod = parser.import(plugin, tag))
-            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, Dbg(world.sym(plugin)), std::move(mod)));
+    auto tag    = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
+    auto ast    = AST(world);
+    auto parser = Parser(ast);
 
     if (!plugins.empty()) {
-        // No Loc: this Module spans no source, and hulling the imports would mix Loc%s of different files.
-        auto mod = ast.ptr<Module>(Loc(), std::move(imports), Ptrs<ValDecl>());
-        mod->compile(ast);
+        auto imports = parser.import_plugins(plugins, tag);
+        auto decls   = Ptrs<ValDecl>();
+        for (auto& import : imports)
+            decls.emplace_back(std::move(import));
+
+        // No Loc: this File spans no source, and hulling the imports would mix Loc%s of different files.
+        auto file = ast.ptr<File>(Loc(), std::move(decls));
+        file->compile(ast);
     }
 
     return ast;

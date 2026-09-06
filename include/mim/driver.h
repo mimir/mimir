@@ -108,9 +108,7 @@ public:
     ///@}
 
     /// @name Manage Imports
-    /// This tracks:
-    /// 1. The distinct files that have already been parsed to avoid reparsing them,
-    /// 2. The distinct import or plugin directives that should be emitted again later.
+    /// Tracks the distinct import or plugin directives that World::dump should emit again later.
     ///@{
     class Imports {
     public:
@@ -118,10 +116,8 @@ public:
             const fe::Src* src;
             Sym sym;
             ast::Tok::Tag tag;
+            bool path; ///< The directive spelled a path (`import "a/b.mim"`) rather than a name.
         };
-
-        Imports(Driver& driver)
-            : driver_(driver) {}
 
         /// @name Get imports
         ///@{
@@ -134,13 +130,10 @@ public:
         auto end() const { return entries_.cend(); }
         ///@}
 
-        /// Reads @p path, remembers the import or plugin directive, and reports whether the file is new.
-        /// Yields a `nullptr` fe::Src if @p path cannot be read; reporting that is the caller's job,
-        /// since only it knows the Loc of the directive to blame.
-        std::pair<const fe::Src*, bool> add(fs::path, Sym, ast::Tok::Tag);
+        /// Remembers the directive that pulled in @p src; a repeated import of the same file adds nothing.
+        void add(const fe::Src* src, Sym, ast::Tok::Tag, bool path);
 
     private:
-        Driver& driver_;
         std::deque<Entry> entries_;
     };
 

@@ -5,6 +5,7 @@ plugin refly;
 plugin core;
 plugin cps;
 plugin affine;
+use tensor;
 
 let m0 = ((1, 2), (3, 4));
 let m1 = ((1, 2, 3), (4, 5, 6));

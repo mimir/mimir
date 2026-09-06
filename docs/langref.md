@@ -41,6 +41,8 @@ For example, `λ` and `lm` are lexically equivalent.
 ```
 
 `%` is only part of annex names and is not a standalone token.
+An annex name `A` is a *single* token: only there may `.` occur inside a name, and only there may a component be spelled like a keyword - hence `%affine.Idx` and `%core.nat.mod`.
+Everywhere else `.` is the separator of a [path](@ref path).
 
 #### Secondary Terminals
 
@@ -57,11 +59,9 @@ For example, `λ` and `lm` are lexically equivalent.
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
 and as axm ccon cfun cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj ins lam let match module
-norm plugin rec ret rule tt when where with
+i1 i8 i16 i32 i64 import inj ins lam let match mod
+norm plugin rec ret rule tt when where with use
 ```
-
-`module` is currently reserved by the lexer even though it does not introduce a surface construct in the grammar below.
 
 The following names are predefined aliases:
 
@@ -87,8 +87,8 @@ i64  = 0
 The following terminals are defined by lexical patterns.
 
 ```ebnf
-I      ::= sym
-A      ::= "%" sym "." sym ("." sym)?
+I      ::= id
+A      ::= "%" id "." id ("." id)?
 L      ::= dec+
          |  "0" ["bB"] bin+
          |  "0" ["oO"] oct+
@@ -122,7 +122,7 @@ hex    ::= [0-9a-fA-F]
 eE     ::= ["eE"]
 pP     ::= ["pP"]
 sign   ::= ["+-"]
-sym    ::= [_a-zA-Z] [._0-9a-zA-Z]*
+id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
 esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
 ```
 
@@ -139,37 +139,63 @@ Other `///` forms are emitted verbatim inside a [fenced code block](https://www.
 
 Mim is defined by a [context-free grammar](https://en.wikipedia.org/wiki/Context-free_grammar).
 Its terminals are the lexical elements defined above.
-The start symbol is `m` for *module*.
+The start symbol is `f` for *file*.
 
 The main nonterminals used below are:
 
 ```text
-m   module
+f   file
 d   declaration
 p   ()-style pattern
 b   []-style pattern
 e   expression
 ```
 
-### Module {#module}
+### Files and Imports {#module}
 
 ```ebnf
-m   ::= dep* d*
-dep ::= "import" I ";"
-     |  "plugin" I ";"
+f ::= d*
 ```
 
-A module consists of zero or more imports or plugins followed by zero or more declarations.
+A file is a sequence of declarations, `import` and `plugin` among them.
+Each file forms a [module](@ref path) of its own that an import binds under a name.
 
 - `import foo;` resolves the module name `foo` through the search path.
+- `import "some/dir/foo.mim";` resolves the path relative to the importing file first, then through the search path.
 - If the resolved file name has no extension, `.mim` is appended.
 - `plugin foo;` first loads the plugin `foo` and then imports the module with the same name.
+  Only `plugin` loads a shared object; `import` never does.
+- The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
+- A file is parsed, bound, and emitted exactly once, no matter how many modules import it.
+  Importing a file that is still being parsed is an error.
+- An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
+
+### Paths and Modules {#path}
+
+```ebnf
+path ::= I ("." k)*
+      |  A
+k    ::= I | keyword
+```
+
+A path resolves its first component lexically and then walks into that module.
+A module is either an imported file or a `mod` declaration.
+
+- A component after a `.` may be spelled like a keyword, as may a tag in an `axm` tag list - both positions are unambiguous.
+- `.` never reads a field out of a value; use `#` for that.
+- An annex name `A` is one token and stays a flat, global name: it resolves in the global annex scope regardless of the surrounding modules.
 
 ### Declarations {#decl}
 
 Mim supports the following declaration families.
 
 ```text
+import (I | S) ["as" I]
+plugin I ["as" I]
+
+mod I "{" d* "}"
+use path
+
 let p = e
 let A = e
 
@@ -187,6 +213,9 @@ rule|norm n p : e [when e] => e
 
 Here `n` is either an identifier or an annex name.
 
+- `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
+- `mod` groups declarations under a name; its body also sees the enclosing scope.
+- `use` splices all members of a module into the current scope.
 - `let` introduces a binding pattern.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
 - `extern` may appear on `lam`, `con`, and `fun` declarations.
@@ -438,7 +467,8 @@ The following types are equivalent and describe the type of `f` above:
 ## Scoping
 
 Mim uses [lexical scoping](<https://en.wikipedia.org/wiki/Scope_(computer_science)#Lexical_scope>).
-Unless noted otherwise, all names live in the same namespace.
+Unless noted otherwise, all names live in the same scope.
+A file is bound in isolation: it never sees the scope of whoever imports it.
 
 ### Underscore
 
@@ -447,7 +477,7 @@ As a consequence, `_` may appear repeatedly in the same scope without conflict, 
 
 ### Annex
 
-Annex names live in a separate global namespace.
+Annex names live in a separate global scope that the module structure does not partition.
 
 ### Field Names of Sigmas
 

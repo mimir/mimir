@@ -50,28 +50,19 @@ std::optional<fs::path> path_to_libmim() {
 
 } // namespace
 
-std::pair<const fe::Src*, bool> Driver::Imports::add(fs::path path, Sym sym, ast::Tok::Tag tag) {
-    auto [src, fresh] = driver_.src().add(std::move(path));
-    if (!src) return {nullptr, false};
-
+void Driver::Imports::add(const fe::Src* src, Sym sym, ast::Tok::Tag tag, bool is_path) {
     // The SrcMap interns paths, so one file is one fe::Src - comparing those settles "same file".
-    bool seen_entry = false;
-    for (const auto& entry : entries_) {
-        if (entry.sym == sym && entry.tag == tag && entry.src == src) {
-            seen_entry = true;
-            break;
-        }
-    }
+    // Aliases (`as`) must not add a second entry, so the spelling is not part of the key.
+    for (const auto& entry : entries_)
+        if (entry.tag == tag && entry.src == src) return;
 
-    if (!seen_entry) entries_.emplace_back(Entry{src, sym, tag});
-    return {src, fresh};
+    entries_.emplace_back(Entry{src, sym, tag, is_path});
 }
 
 Driver::Driver(std::string name)
     : fe::Driver(std::make_unique<Diag>(*this))
     , version_(MIM_VERSION)
-    , world_(this, sym(name))
-    , imports_(*this) {
+    , world_(this, sym(name)) {
     // prepend empty path
     search_paths_.emplace_front(fs::path{});
 

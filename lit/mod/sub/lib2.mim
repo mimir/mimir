@@ -1,0 +1,17 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by mod.mim - not a test of its own.
+
+// Relative to *this* file, not to whoever imports it; resolves to the same file as mod.mim's `import "lib.mim"`.
+import "../lib.mim";
+
+let base  = 100I32;
+let total = lib.answer;
+
+mod util {
+    let scale = 3I32;
+
+    mod deep {
+        let leaf = 9I32;
+    }
+}

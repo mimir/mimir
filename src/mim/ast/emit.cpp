@@ -35,25 +35,27 @@ private:
 };
 
 /*
- * Module
+ * File
  */
 
-void Module::emit(AST& ast) const {
+void File::emit(AST& ast) const {
     auto emitter = Emitter(ast);
     emit(emitter);
 }
 
-void Module::emit(Emitter& e) const {
+void File::emit(Emitter& e) const {
+    if (emitted_) return;
+    emitted_ = true;
+
     auto _ = e.world().push(loc());
     for (const auto& import : implicit_imports())
         import->emit(e);
-    for (const auto& import : imports())
-        import->emit(e);
-    for (const auto& decl : decls())
-        decl->emit(e);
+    emit_decls(e);
 }
 
-void Import::emit(Emitter& e) const { module()->emit(e); }
+void Import::emit(Emitter& e) const {
+    if (file()) file()->emit(e);
+}
 
 /*
  * Ptrn::emit_value
@@ -153,9 +155,10 @@ void Expr::emit_body(Emitter& e, const Def* decl) const {
 const Def* ErrorExpr::emit_(Emitter&) const { fe::unreachable(); }
 const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type(); }
 
-const Def* IdExpr::emit_(Emitter&) const {
+const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
-    return decl()->def();
+    if (auto def = decl()->def()) return def;
+    e.error().e(loc(), "`{}` is a module and not a value", dbg().sym()).bail();
 }
 
 const Def* TypeExpr::emit_(Emitter& e) const {
@@ -484,6 +487,15 @@ void AxmDecl::emit(Emitter& e) const {
         }
     }
 }
+
+void ModDecl::emit_decls(Emitter& e) const {
+    for (const auto& decl : decls())
+        decl->emit(e);
+}
+
+void ModDecl::emit(Emitter& e) const { emit_decls(e); }
+
+void UseDecl::emit(Emitter&) const {}
 
 void LetDecl::emit(Emitter& e) const {
     auto _ = e.world().push(loc());

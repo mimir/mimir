@@ -7,19 +7,25 @@
     // Driver::sym is a template method (fe::SymPool), so the generator skips it;
     // expose the std::string instantiation.
     .def("sym", [](Driver& self, const std::string& s) { return self.sym(s); })
-    // Imports::add reports the resolved file as a `const fe::Src*` into the
-    // Driver's own store — not a Python type. Hand out its path instead
-    // (None if it did not resolve), paired with add()'s "this file is new" flag.
+    // Reading the file and remembering the directive are two steps; Python wants them as one.
+    // The resolved file is a `const fe::Src*` in the Driver's own store — not a Python type — so
+    // hand out its path instead (None if it did not resolve), paired with "this file is new".
     .def("add_import", [](Driver& d, std::string path, std::string sym) {
-        auto [p, fresh] = d.imports().add(fs::path(path), d.sym(sym), ast::Tok::Tag::K_import);
+        auto [src, fresh] = d.src().add(fs::path(path));
         std::optional<std::string> resolved;
-        if (p) resolved = p->path().string();
+        if (src) {
+            resolved = src->path().string();
+            d.imports().add(src, d.sym(sym), ast::Tok::Tag::K_import, false);
+        }
         return std::pair{resolved, fresh};
     })
     .def("add_plugin", [](Driver& d, std::string path, std::string sym) {
-        auto [p, fresh] = d.imports().add(fs::path(path), d.sym(sym), ast::Tok::Tag::K_plugin);
+        auto [src, fresh] = d.src().add(fs::path(path));
         std::optional<std::string> resolved;
-        if (p) resolved = p->path().string();
+        if (src) {
+            resolved = src->path().string();
+            d.imports().add(src, d.sym(sym), ast::Tok::Tag::K_plugin, false);
+        }
         return std::pair{resolved, fresh};
     })
     .def("load_plugin", [](Driver& d, std::string plugin) {
