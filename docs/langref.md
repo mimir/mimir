@@ -158,7 +158,7 @@ f ::= d*
 ```
 
 A file is a sequence of declarations, `import` and `plugin` among them.
-Each file forms a [namespace](@ref path) of its own that an import binds under a name.
+Each file forms a [module](@ref path) of its own that an import binds under a name.
 
 - `import foo;` resolves the module name `foo` through the search path.
 - `import "some/dir/foo.mim";` resolves the path relative to the importing file first, then through the search path.
@@ -170,7 +170,7 @@ Each file forms a [namespace](@ref path) of its own that an import binds under a
   Importing a file that is still being parsed is an error.
 - An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
 
-### Paths and Namespaces {#path}
+### Paths and Modules {#path}
 
 ```ebnf
 path ::= I ("." k)*
@@ -178,12 +178,12 @@ path ::= I ("." k)*
 k    ::= I | keyword
 ```
 
-A path resolves its first component lexically and then walks into that namespace.
-A namespace is an imported module or a `mod` declaration.
+A path resolves its first component lexically and then walks into that module.
+A module is either an imported file or a `mod` declaration.
 
 - A component after a `.` may be spelled like a keyword, as may a tag in an `axm` tag list - both positions are unambiguous.
 - `.` never reads a field out of a value; use `#` for that.
-- An annex name `A` is one token and stays a flat, global name: it resolves in the annex namespace regardless of the surrounding modules.
+- An annex name `A` is one token and stays a flat, global name: it resolves in the global annex scope regardless of the surrounding modules.
 
 ### Declarations {#decl}
 
@@ -213,9 +213,9 @@ rule|norm n p : e [when e] => e
 
 Here `n` is either an identifier or an annex name.
 
-- `import` and `plugin` bind a file as a namespace; see [Files and Imports](@ref module).
+- `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
 - `mod` groups declarations under a name; its body also sees the enclosing scope.
-- `use` splices all members of a namespace into the current scope.
+- `use` splices all members of a module into the current scope.
 - `let` introduces a binding pattern.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
 - `extern` may appear on `lam`, `con`, and `fun` declarations.
@@ -467,7 +467,7 @@ The following types are equivalent and describe the type of `f` above:
 ## Scoping
 
 Mim uses [lexical scoping](<https://en.wikipedia.org/wiki/Scope_(computer_science)#Lexical_scope>).
-Unless noted otherwise, all names live in the same namespace.
+Unless noted otherwise, all names live in the same scope.
 A file is bound in isolation: it never sees the scope of whoever imports it.
 
 ### Underscore
@@ -477,7 +477,7 @@ As a consequence, `_` may appear repeatedly in the same scope without conflict, 
 
 ### Annex
 
-Annex names live in a separate global namespace that the module structure does not partition.
+Annex names live in a separate global scope that the module structure does not partition.
 
 ### Field Names of Sigmas
 

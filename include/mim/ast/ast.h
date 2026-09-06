@@ -180,7 +180,7 @@ public:
 
     /// The name this Decl introduces; anonymous if it has none.
     virtual Dbg dbg() const { return Dbg(loc(), Sym()); }
-    /// Non-`nullptr` if this Decl is a namespace whose members a Path may walk into.
+    /// Non-`nullptr` if this Decl is a module whose members a Path may walk into.
     virtual const Scope* scope() const { return nullptr; }
 
 protected:
@@ -1153,7 +1153,7 @@ private:
     mutable Scope members_;
 };
 
-/// `use path;` - splices all members of the namespace @p path denotes into the current scope.
+/// `use path;` - splices all members of the module @p path denotes into the current scope.
 class UseDecl : public ValDecl {
 public:
     UseDecl(Loc loc, Path&& path)
@@ -1175,7 +1175,7 @@ private:
  */
 
 /// `import "path" [as alias];`, `import name [as alias];`, or `plugin name [as alias];`
-/// Binds Import::dbg as a namespace; the File itself is owned by the AST and shared by all its importers.
+/// Binds Import::dbg as a module; the File itself is owned by the AST and shared by all its importers.
 class Import : public ValDecl {
 public:
     Import(Loc loc, Tok::Tag tag, Dbg name, Sym path, Dbg alias, const File* file)

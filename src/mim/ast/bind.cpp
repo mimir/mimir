@@ -166,7 +166,7 @@ void Path::bind(Scopes& s, bool quiet) const {
                 if (scope)
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", front().sym(), dbg.sym());
                 else
-                    s.error().e(dbg.loc(), "`{}` is not a namespace", front().sym());
+                    s.error().e(dbg.loc(), "`{}` is not a module", front().sym());
             }
             decl_ = nullptr;
             return;
@@ -461,7 +461,7 @@ void UseDecl::bind(Scopes& s) const {
 
     auto scope = decl->scope();
     if (!scope) {
-        s.error().e(path()->loc(), "`{}` is not a namespace", path()->back().sym());
+        s.error().e(path()->loc(), "`{}` is not a module", path()->back().sym());
         return;
     }
 

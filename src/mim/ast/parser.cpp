@@ -679,7 +679,7 @@ Ptr<ValDecl> Parser::parse_mod_decl() {
 Ptr<ValDecl> Parser::parse_use_decl() {
     auto track = tracker();
     eat(Tag::K_use);
-    auto path = parse_path("namespace of a use declaration");
+    auto path = parse_path("module of a use declaration");
     expect(Tag::T_semicolon, "end of a use declaration");
     return ptr<UseDecl>(track, std::move(path));
 }
