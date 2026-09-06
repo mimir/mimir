@@ -24,8 +24,8 @@ using Ptr = fe::Arena::Ptr<const T>;
 template<class T>
 using Ptrs = std::deque<Ptr<T>>;
 using Dbgs = std::deque<Dbg>;
-/// Maps a name to the Decl introducing it and the Loc of that declaration.
-using Scope = fe::SymMap<std::pair<Loc, const Decl*>>;
+/// Maps a name to the Decl introducing it.
+using Scope = fe::SymMap<const Decl*>;
 
 /// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
@@ -181,6 +181,8 @@ protected:
 public:
     const Def* def() const { return def_; }
 
+    /// The name this Decl introduces; anonymous if it has none.
+    virtual Dbg dbg() const { return Dbg(loc(), Sym()); }
     /// Non-`nullptr` if this Decl is a namespace whose members a Path may walk into.
     virtual const Scope* scope() const { return nullptr; }
     const Decl* lookup(Sym) const;
@@ -244,7 +246,7 @@ public:
         , dbg_(dbg)
         , type_(std::move(type)) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     const Expr* type() const { return type_.get(); }
 
     static Ptr<IdPtrn> make_type(AST& ast, Ptr<Expr>&& type) {
@@ -274,7 +276,7 @@ public:
         , dbg_(dbg)
         , id_(id) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     const IdPtrn* id() const { return id_; }
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
@@ -296,7 +298,7 @@ public:
         , dbg_(dbg) {}
 
     const Ptrn* ptrn() const { return ptrn_.get(); }
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     bool is_implicit() const override { return ptrn()->is_implicit(); }
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
@@ -934,7 +936,7 @@ public:
             : Decl(dbg.loc())
             , dbg_(dbg) {}
 
-        Dbg dbg() const { return dbg_; }
+        Dbg dbg() const override { return dbg_; }
 
         void bind(Scopes&, const AxmDecl*) const;
         void stream(fe::Tab&, std::ostream&) const override;
@@ -955,7 +957,7 @@ public:
         , curry_(curry)
         , trip_(trip) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     const auto& subs() const { return subs_; }
     size_t num_subs() const { return subs_.size(); }
     const auto& sub(size_t i) const { return subs_[i]; }
@@ -989,7 +991,7 @@ public:
         , body_(std::move(body))
         , next_(std::move(next)) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     const Expr* type() const { return type_.get(); }
     const Expr* body() const { return body_.get(); }
     const RecDecl* next() const { return next_.get(); }
@@ -1085,7 +1087,7 @@ public:
         , dom_(std::move(dom))
         , codom_(std::move(codom)) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     Tok::Tag tag() const { return tag_; }
     const Ptrn* dom() const { return dom_.get(); }
     const Expr* codom() const { return codom_.get(); }
@@ -1113,7 +1115,7 @@ public:
         , guard_(std::move(guard))
         , is_normalizer_(is_normalizer) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     const Ptrn* var() const { return var_.get(); }
     const Expr* lhs() const { return lhs_.get(); }
     const Expr* rhs() const { return rhs_.get(); }
@@ -1142,7 +1144,7 @@ public:
         , dbg_(dbg)
         , decls_(std::move(decls)) {}
 
-    Dbg dbg() const { return dbg_; }
+    Dbg dbg() const override { return dbg_; }
     const auto& decls() const { return decls_; }
 
     const Scope* scope() const override { return &members_; }
@@ -1189,8 +1191,8 @@ public:
         , is_path_(is_path)
         , file_(file) {}
 
-    Dbg dbg() const { return dbg_; }   ///< The name this Import binds.
-    Sym name() const { return name_; } ///< Spelling of the imported entity: a plugin/file name or a path.
+    Dbg dbg() const override { return dbg_; } ///< The name this Import binds.
+    Sym name() const { return name_; }        ///< Spelling of the imported entity: a plugin/file name or a path.
     bool is_path() const { return is_path_; }
     Tok::Tag tag() const { return tag_; }
     const File* file() const { return file_; }

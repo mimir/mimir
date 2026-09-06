@@ -56,10 +56,10 @@ public:
         if (dbg.is_anon()) return nullptr;
 
         if (is_anx(dbg.sym())) {
-            if (auto i = anx_.find(dbg.sym()); i != anx_.end()) return i->second.second;
+            if (auto i = anx_.find(dbg.sym()); i != anx_.end()) return i->second;
         } else {
             for (size_t i = scopes_.size(); i-- != barrier_;)
-                if (auto j = scopes_[i]->find(dbg.sym()); j != scopes_[i]->end()) return j->second.second;
+                if (auto j = scopes_[i]->find(dbg.sym()); j != scopes_[i]->end()) return j->second;
         }
 
         if (!quiet) {
@@ -74,11 +74,11 @@ public:
 
         auto& scope = is_anx(dbg.sym()) ? anx_ : top();
         if (rebind) {
-            scope[dbg.sym()] = std::pair(dbg.loc(), decl);
-        } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), std::pair(dbg.loc(), decl)); !ins) {
-            auto [prev_loc, prev_decl] = i->second;
-            if (!quiet && !prev_decl->isa<DummyDecl>()) // if prev_decl stems from an error - don't complain
-                error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev_loc, "previous declaration here");
+            scope[dbg.sym()] = decl;
+        } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), decl); !ins) {
+            auto prev = i->second;
+            if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
+                error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev->dbg().loc(), "previous declaration here");
         }
     }
 
@@ -457,8 +457,8 @@ void UseDecl::bind(Scopes& s) const {
     }
 
     // Quiet: a name already bound here wins, so `use` never shadows and never conflicts.
-    for (const auto& [sym, entry] : *scope)
-        s.bind(Dbg(path()->loc(), sym), entry.second, false, true);
+    for (const auto& [sym, decl] : *scope)
+        s.bind(Dbg(path()->loc(), sym), decl, false, true);
 }
 
 void RuleDecl::bind(Scopes& s) const {

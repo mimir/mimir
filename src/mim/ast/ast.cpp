@@ -34,7 +34,7 @@ const File* AST::add_file(Ptr<File>&& file) {
 
 const Decl* Decl::lookup(Sym sym) const {
     if (auto s = scope())
-        if (auto i = s->find(sym); i != s->end()) return i->second.second;
+        if (auto i = s->find(sym); i != s->end()) return i->second;
     return nullptr;
 }
 
