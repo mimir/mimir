@@ -602,8 +602,9 @@ void World::dump(std::ostream& os) {
         for (const auto& import : driver().imports()) {
             auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
             // The spelling was relative to the importing file; only the resolved path re-parses from here.
+            // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
             if (import.path)
-                std::print(os, "{} \"{}\";\n", kw, import.src->path().string());
+                std::print(os, "{} \"{}\";\n", kw, import.src->path().generic_string());
             else
                 std::print(os, "{} {};\n", kw, import.sym);
         }

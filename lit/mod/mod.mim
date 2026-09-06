@@ -3,6 +3,7 @@
 plugin core;
 import "lib.mim";
 import "lib.mim" as l2;
+import "sub/lib2.mim";
 
 mod foo {
     let bar = 1I32;
@@ -15,10 +16,18 @@ mod foo {
 lam extern f(): I32 = %core.wrap.add 0 (foo.bar, foo.nested.baz);
 lam extern g(): I32 = %core.wrap.add 0 (lib.answer, l2.inner.deep);
 lam extern h(): I32 = l2.inner.deeper.deepest;
+lam extern i(): I32 = %core.wrap.add 0 (lib2.base, lib2.util.deep.leaf);
+lam extern j(): I32 = %core.wrap.add 0 (lib2.total, lib2.util.scale);
 
+// A `/` in the directive stays a `/` when dumped - a native Windows `\` would not re-parse.
+// CHECK-DAG: import "{{.*}}/mod/sub/lib2.mim";
 // CHECK-DAG: lam extern f (): I32 =
 // CHECK-DAG-NEXT: 3I32;
 // CHECK-DAG: lam extern g (): I32 =
 // CHECK-DAG-NEXT: 65I32;
 // CHECK-DAG: lam extern h (): I32 =
 // CHECK-DAG-NEXT: 7I32;
+// CHECK-DAG: lam extern i (): I32 =
+// CHECK-DAG-NEXT: 109I32;
+// CHECK-DAG: lam extern j (): I32 =
+// CHECK-DAG-NEXT: 45I32;
