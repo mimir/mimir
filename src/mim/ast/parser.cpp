@@ -334,10 +334,10 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
         case Tag::C_DECL:    return parse_decl_expr();
         case Tag::C_PI:      return parse_pi_expr();
         case Tag::C_LM:      return parse_lam_expr();
+        case Tag::C_SEQ:     return parse_seq_expr();
         case Tag::K_ins:     return parse_insert_expr();
         case Tag::K_ret:     return parse_ret_expr();
         case Tag::D_curly_l: return parse_uniq_expr();
-        case Tag::C_SEQ:     return parse_seq_expr();
         case Tag::D_brckt_l: return parse_sigma_expr();
         case Tag::D_paren_l: return parse_tuple_expr();
         case Tag::K_Type:    return parse_type_expr();
@@ -591,15 +591,15 @@ Ptrs<ValDecl> Parser::parse_decls() {
         // clang-format off
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
-            case Tag::K_axm:       decls.emplace_back(parse_axm_decl());        break;
-            case Tag::C_CDECL:     decls.emplace_back(parse_c_decl());            break;
-            case Tag::C_IMPORT:    if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i)); break;
+            case Tag::K_axm:       decls.emplace_back(parse_axm_decl());          break;
             case Tag::K_let:       decls.emplace_back(parse_let_decl());          break;
             case Tag::K_mod:       decls.emplace_back(parse_mod_decl());          break;
             case Tag::K_use:       decls.emplace_back(parse_use_decl());          break;
             case Tag::K_rec:       decls.emplace_back(parse_rec_decl(true));      break;
+            case Tag::C_CDECL:     decls.emplace_back(parse_c_decl());            break;
             case Tag::C_LAM:       decls.emplace_back(parse_lam_decl());          break;
             case Tag::C_RULE:      decls.emplace_back(parse_rule_decl());         break;
+            case Tag::C_IMPORT:    if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i)); break;
             default:               return decls;
         }
         // clang-format on
