@@ -108,9 +108,7 @@ public:
     ///@}
 
     /// @name Manage Imports
-    /// This tracks:
-    /// 1. The distinct files that have already been parsed to avoid reparsing them,
-    /// 2. The distinct import or plugin directives that should be emitted again later.
+    /// Tracks the distinct import or plugin directives that World::dump should emit again later.
     ///@{
     class Imports {
     public:
@@ -120,9 +118,6 @@ public:
             ast::Tok::Tag tag;
             bool path; ///< The directive spelled a path (`import "a/b.mim"`) rather than a name.
         };
-
-        Imports(Driver& driver)
-            : driver_(driver) {}
 
         /// @name Get imports
         ///@{
@@ -139,7 +134,6 @@ public:
         void add(const fe::Src* src, Sym, ast::Tok::Tag, bool path);
 
     private:
-        Driver& driver_;
         std::deque<Entry> entries_;
     };
 

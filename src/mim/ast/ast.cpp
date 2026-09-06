@@ -6,10 +6,8 @@ using namespace std::literals;
 
 namespace mim::ast {
 
-struct AST::Files {
-    std::deque<Ptr<File>> owned;
-    absl::flat_hash_map<const fe::Src*, const File*> src2file;
-};
+// Node map: Parser::import holds the slot across the nested parses that may insert further entries.
+struct AST::Files : absl::node_hash_map<const fe::Src*, Ptr<File>> {};
 
 AST::AST(World& world)
     : world_(&world)
@@ -22,20 +20,9 @@ AST::AST(AST&& other)
 
 AST::~AST() = default;
 
-std::pair<const File*&, bool> AST::file(const fe::Src* src) {
-    auto [i, fresh] = files_->src2file.try_emplace(src, nullptr);
-    return {i->second, !fresh};
-}
-
-const File* AST::add_file(Ptr<File>&& file) {
-    files_->owned.emplace_back(std::move(file));
-    return files_->owned.back().get();
-}
-
-const Decl* Decl::lookup(Sym sym) const {
-    if (auto s = scope())
-        if (auto i = s->find(sym); i != s->end()) return i->second;
-    return nullptr;
+std::pair<Ptr<File>&, bool> AST::file(const fe::Src* src) {
+    auto [i, fresh] = files_->try_emplace(src);
+    return {i->second, fresh};
 }
 
 AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
@@ -238,7 +225,7 @@ LamExpr::LamExpr(Ptr<LamDecl>&& lam)
 
 Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn>&& ptrn) {
     if (auto idp = ptrn->isa<IdPtrn>(); idp && !idp->dbg() && idp->type()) {
-        if (auto pe = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(ast.ptr<Path>(*pe->path()));
+        if (auto pe = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(Path(*pe->path()));
     } else if (auto tuple = ptrn->isa<TuplePtrn>(); tuple && tuple->is_brckt()) {
         (void)ptrn.release();
         return ast.ptr<SigmaExpr>(Ptr<TuplePtrn>(tuple));
@@ -263,15 +250,13 @@ AST load_plugins(World& world, fe::View<std::string> plugins) {
     auto tag    = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
     auto ast    = AST(world);
     auto parser = Parser(ast);
-    auto decls  = Ptrs<ValDecl>();
-
-    for (const auto& plugin : plugins) {
-        auto dbg = Dbg(world.sym(plugin));
-        if (auto file = parser.import(plugin, tag))
-            decls.emplace_back(ast.ptr<Import>(file->loc(), tag, dbg, dbg.sym(), false, file));
-    }
 
     if (!plugins.empty()) {
+        auto imports = parser.import_plugins(plugins, tag);
+        auto decls   = Ptrs<ValDecl>();
+        for (auto& import : imports)
+            decls.emplace_back(std::move(import));
+
         // No Loc: this File spans no source, and hulling the imports would mix Loc%s of different files.
         auto file = ast.ptr<File>(Loc(), std::move(decls));
         file->compile(ast);

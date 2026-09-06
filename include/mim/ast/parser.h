@@ -44,6 +44,8 @@ public:
     const File*
     import(Dbg, bool is_path, Tok::Tag tag = Tok::Tag::K_import, std::ostream* md = nullptr, bool record = true);
     const File* import(const fe::Src&, std::ostream* md = nullptr, Loc = {});
+    /// Imports the @p plugins the Driver was told about via `-p` as anonymous, unaliased Import%s.
+    Ptrs<Import> import_plugins(fe::View<std::string> plugins, Tok::Tag);
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
     const File* import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
     const File* import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
@@ -66,13 +68,13 @@ private:
     /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm sub list a name is
     /// unambiguous, and annexes such as `%core.nat.mod` rely on it.
     Dbg parse_member(std::string_view ctxt = {});
-    Ptr<Path> parse_path(std::string_view ctxt = {});
+    Path parse_path(std::string_view ctxt = {});
     Ptr<Import> parse_import_or_plugin();
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});
 
     /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.
     fs::path curr_dir() const { return curr_.src ? curr_.src->path().parent_path() : fs::path(); }
-    Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(ptr<Path>(dbg)); }
+    Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(Path(dbg)); }
 
     template<class F>
     void parse_list(std::string_view ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {

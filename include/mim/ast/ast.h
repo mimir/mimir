@@ -23,7 +23,7 @@ template<class T>
 using Ptr = fe::Arena::Ptr<const T>;
 template<class T>
 using Ptrs = std::deque<Ptr<T>>;
-using Dbgs = std::deque<Dbg>;
+using Dbgs = fe::Vector<Dbg>;
 /// Maps a name to the Decl introducing it.
 using Scope = fe::SymMap<const Decl*>;
 
@@ -87,9 +87,9 @@ public:
     /// @name Manage Files
     /// A file is parsed exactly once; AST::file hands out the File every Import of that file shares.
     ///@{
-    /// @returns the File of @p src and whether it is already being parsed (`false` for a fresh entry).
-    std::pair<const File*&, bool> file(const fe::Src* src);
-    const File* add_file(Ptr<File>&&); ///< Takes ownership; @returns the raw File.
+    /// The slot of @p src and whether it is fresh; a fresh slot is `nullptr` until the caller fills it in.
+    /// A `nullptr` slot that is *not* fresh is a file still being parsed further up the stack.
+    std::pair<Ptr<File>&, bool> file(const fe::Src* src);
     ///@}
 
     /// @name Manage Annex
@@ -185,7 +185,6 @@ public:
     virtual Dbg dbg() const { return Dbg(loc(), Sym()); }
     /// Non-`nullptr` if this Decl is a namespace whose members a Path may walk into.
     virtual const Scope* scope() const { return nullptr; }
-    const Decl* lookup(Sym) const;
 
 protected:
     mutable const Def* def_ = nullptr;
@@ -381,15 +380,11 @@ public:
     Path(Dbg dbg)
         : Node(dbg.loc())
         , dbgs_{dbg} {}
-    Path(const Path& other)
-        : Node(other.loc())
-        , dbgs_(other.dbgs_) {}
+    Path(const Path&) = default;
 
     const Dbgs& dbgs() const { return dbgs_; }
-    size_t num_dbgs() const { return dbgs_.size(); }
     Dbg front() const { return dbgs_.front(); }
     Dbg back() const { return dbgs_.back(); }
-    bool is_anx() const { return front().sym() && front().sym()[0] == '%'; }
     const Decl* decl() const { return decl_; }
 
     void bind(Scopes&, bool quiet = false) const;
@@ -403,13 +398,13 @@ private:
 /// `path`
 class PathExpr : public Expr {
 public:
-    PathExpr(Ptr<Path>&& path)
-        : Expr(path->loc())
+    PathExpr(Path&& path)
+        : Expr(path.loc())
         , path_(std::move(path)) {}
 
-    const Path* path() const { return path_.get(); }
-    Dbg dbg() const { return path()->back(); }
-    const Decl* decl() const { return path()->decl(); }
+    const Path* path() const { return &path_; }
+    Dbg dbg() const { return path_.back(); }
+    const Decl* decl() const { return path_.decl(); }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -417,7 +412,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    Ptr<Path> path_;
+    Path path_;
 };
 
 /// `tag`
@@ -1161,18 +1156,18 @@ private:
 /// `use path;` - splices all members of the namespace @p path denotes into the current scope.
 class UseDecl : public ValDecl {
 public:
-    UseDecl(Loc loc, Ptr<Path>&& path)
+    UseDecl(Loc loc, Path&& path)
         : ValDecl(loc)
         , path_(std::move(path)) {}
 
-    const Path* path() const { return path_.get(); }
+    const Path* path() const { return &path_; }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
-    Ptr<Path> path_;
+    Path path_;
 };
 
 /*
@@ -1183,17 +1178,19 @@ private:
 /// Binds Import::dbg as a namespace; the File itself is owned by the AST and shared by all its importers.
 class Import : public ValDecl {
 public:
-    Import(Loc loc, Tok::Tag tag, Dbg dbg, Sym name, bool is_path, const File* file)
+    Import(Loc loc, Tok::Tag tag, Dbg dbg, Sym name, bool is_path, bool is_aliased, const File* file)
         : ValDecl(loc)
         , dbg_(dbg)
         , name_(name)
         , tag_(tag)
         , is_path_(is_path)
+        , is_aliased_(is_aliased)
         , file_(file) {}
 
     Dbg dbg() const override { return dbg_; } ///< The name this Import binds.
     Sym name() const { return name_; }        ///< Spelling of the imported entity: a plugin/file name or a path.
     bool is_path() const { return is_path_; }
+    bool is_aliased() const { return is_aliased_; } ///< The source spelled an `as`; otherwise Import::dbg is derived.
     Tok::Tag tag() const { return tag_; }
     const File* file() const { return file_; }
 
@@ -1206,7 +1203,7 @@ private:
     Dbg dbg_;
     Sym name_;
     Tok::Tag tag_;
-    bool is_path_;
+    bool is_path_, is_aliased_;
     const File* file_;
 };
 

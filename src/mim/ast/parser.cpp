@@ -82,11 +82,11 @@ const File* Parser::import(std::istream& is, fs::path path, Loc loc, std::ostrea
 }
 
 const File* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
-    auto [mod, seen] = ast().file(&src);
-    if (seen) {
-        // A `nullptr` entry is a file that is still being parsed further up the stack.
-        if (!mod) error().e(loc, "cyclic import of `{}`", src.path().string());
-        return mod;
+    auto [slot, fresh] = ast().file(&src);
+    if (!fresh) {
+        // An empty slot is a file that is still being parsed further up the stack.
+        if (!slot) error().e(loc, "cyclic import of `{}`", src.path().string());
+        return slot.get();
     }
 
     driver().log().v("📄 read `{}`", src.path().string());
@@ -98,19 +98,23 @@ const File* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
     auto parsed                     = parse_file();
     std::tie(curr_, ahead_, lexer_) = state;
 
-    auto [slot, _] = ast().file(&src);
-    slot           = ast().add_file(std::move(parsed));
-    return slot;
+    slot = std::move(parsed);
+    return slot.get();
 }
 
-const File* Parser::import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md) {
+Ptrs<Import> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag) {
     Ptrs<Import> imports;
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
-        if (auto file = import(dbg, false, Tag::K_plugin))
-            imports.emplace_back(ast().ptr<Import>(Loc(), Tag::K_plugin, dbg, dbg.sym(), false, file));
+        if (auto file = import(dbg, false, tag))
+            imports.emplace_back(ast().ptr<Import>(Loc(), tag, dbg, dbg.sym(), false, false, file));
     }
-    auto file = import({Loc(), driver().sym(input)}, true, Tag::K_import, md, false);
+    return imports;
+}
+
+const File* Parser::import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md) {
+    auto imports = import_plugins(plugins, Tag::K_plugin);
+    auto file    = import({Loc(), driver().sym(input)}, true, Tag::K_import, md, false);
     if (file) file->add_implicit_imports(std::move(imports));
     return file;
 }
@@ -138,13 +142,11 @@ Ptr<Import> Parser::parse_import_or_plugin() {
 
     auto alias = accept(Tag::K_as) ? parse_id("alias of an import") : Dbg();
     expect(Tag::T_semicolon, "end of {}", entity);
+    bool is_aliased = (bool)alias;
 
-    if (!alias) {
-        auto stem = fs::path(name.sym().view()).stem().string();
-        auto id   = !stem.empty() && (stem[0] == '_' || fe::utf8::isalpha((char32_t)stem[0]));
-        for (auto c : stem)
-            id &= c == '_' || fe::utf8::isalnum((char32_t)c);
-        if (!id) {
+    if (!is_aliased) {
+        auto stem = is_path ? fs::path(name.sym().view()).stem().string() : std::string(name.sym().view());
+        if (!Lexer::is_id(stem)) {
             error()
                 .e(name.loc(), "cannot derive a module name from `{}`", name.sym())
                 .n("name it explicitly with `as`");
@@ -153,7 +155,8 @@ Ptr<Import> Parser::parse_import_or_plugin() {
         alias = Dbg(name.loc(), ast().sym(stem));
     }
 
-    if (auto module = import(name, is_path, tag)) return ptr<Import>(track, tag, alias, name.sym(), is_path, module);
+    if (auto file = import(name, is_path, tag))
+        return ptr<Import>(track, tag, alias, name.sym(), is_path, is_aliased, file);
     return {};
 }
 
@@ -180,23 +183,12 @@ Dbg Parser::parse_member(std::string_view ctxt) {
     return {missing(), driver().sym("<error>")};
 }
 
-Ptr<Path> Parser::parse_path(std::string_view ctxt) {
+Path Parser::parse_path(std::string_view ctxt) {
     auto track = tracker();
-    Dbgs dbgs;
-
-    if (auto anx = accept(Tag::M_anx))
-        dbgs.emplace_back(anx.dbg()); // an annex name is one component - dots and all
-    else if (auto id = accept(Tag::M_id))
-        dbgs.emplace_back(id.dbg());
-    else {
-        syntax_err("path", ctxt);
-        return ptr<Path>(Dbg(missing(), ast().sym("<error>")));
-    }
-
+    auto dbgs  = Dbgs{parse_name(ctxt)}; // an annex name is one component - dots and all
     while (accept(Tag::T_dot))
         dbgs.emplace_back(parse_member("component of a path"));
-
-    return ptr<Path>(track, std::move(dbgs));
+    return Path(track.loc(), std::move(dbgs));
 }
 
 Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {

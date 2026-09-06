@@ -56,6 +56,12 @@ struct std::formatter<mim::ast::R<T>> : fe::ostream_formatter {};
 
 namespace mim::ast {
 
+template<class T>
+static void stream_decls(fe::Tab& tab, std::ostream& os, const Ptrs<T>& decls) {
+    for (const auto& decl : decls)
+        std::println(os, "{}{}", tab, S(tab, decl.get()));
+}
+
 void Node::dump() const {
     auto tab = fe::Tab::spaces();
     stream(tab, std::cout);
@@ -71,15 +77,11 @@ void Import::stream(fe::Tab&, std::ostream& os) const {
         std::print(os, "{} \"{}\"", tag(), name());
     else
         std::print(os, "{} {}", tag(), name());
-    // Only spell out an alias that a re-parse would not derive from the file name itself.
-    if (dbg().sym().view() != fs::path(name().view()).stem().string()) std::print(os, " as {}", dbg());
+    if (is_aliased()) std::print(os, " as {}", dbg());
     os << ';';
 }
 
-void File::stream(fe::Tab& tab, std::ostream& os) const {
-    for (const auto& decl : decls())
-        std::println(os, "{}{}", tab, S(tab, decl.get()));
-}
+void File::stream(fe::Tab& tab, std::ostream& os) const { stream_decls(tab, os, decls()); }
 
 /*
  * Ptrn
@@ -106,10 +108,7 @@ void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
  * Expr
  */
 
-void Path::stream(fe::Tab&, std::ostream& os) const {
-    for (size_t i = 0, e = num_dbgs(); i != e; ++i)
-        std::print(os, "{}{}", i == 0 ? "" : ".", dbgs()[i]);
-}
+void Path::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", fe::Join(dbgs(), ".")); }
 
 void PathExpr::stream(fe::Tab& tab, std::ostream& os) const { path()->stream(tab, os); }
 void ErrorExpr::stream(fe::Tab&, std::ostream& os) const { os << "<error expression>"; }
@@ -137,12 +136,10 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
     if (is_where()) {
         std::println(os, "{}{} where", tab, S(tab, expr()));
         ++tab;
-        for (const auto& decl : decls())
-            std::println(os, "{}{}", tab, S(tab, decl.get()));
+        stream_decls(tab, os, decls());
         --tab;
     } else {
-        for (const auto& decl : decls())
-            std::println(os, "{}{}", tab, S(tab, decl.get()));
+        stream_decls(tab, os, decls());
         std::print(os, "{}", S(tab, expr()));
     }
 }
@@ -241,8 +238,7 @@ void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
 void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::println(os, "mod {} {{", dbg());
     ++tab;
-    for (const auto& decl : decls())
-        std::println(os, "{}{}", tab, S(tab, decl.get()));
+    stream_decls(tab, os, decls());
     --tab;
     std::print(os, "{}}}", tab);
 }

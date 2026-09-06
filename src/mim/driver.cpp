@@ -62,8 +62,7 @@ void Driver::Imports::add(const fe::Src* src, Sym sym, ast::Tok::Tag tag, bool i
 Driver::Driver(std::string name)
     : fe::Driver(std::make_unique<Diag>(*this))
     , version_(MIM_VERSION)
-    , world_(this, sym(name))
-    , imports_(*this) {
+    , world_(this, sym(name)) {
     // prepend empty path
     search_paths_.emplace_front(fs::path{});
 

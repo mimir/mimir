@@ -26,18 +26,18 @@ public:
 
     AST& ast() const { return ast_; }
     Error& error() const { return ast().error(); }
-    Scope& top() { return *scopes_.back(); }
+    Scope& top() { return *scopes_.back().scope; }
     const Decl* dummy() const { return dummy_.get(); }
 
     /// An annex name is global: it lives in one flat table, independent of the module structure.
     static bool is_anx(Sym sym) { return sym && sym[0] == '%'; }
 
-    void push() { push(owned_.emplace_back()); }
-    void push(Scope& scope) { scopes_.emplace_back(&scope); }
+    void push() { scopes_.emplace_back(&owned_.emplace_back(), true); }
+    void push(Scope& scope) { scopes_.emplace_back(&scope, false); }
 
     void pop() {
         assert(scopes_.size() > barrier_);
-        if (!owned_.empty() && scopes_.back() == &owned_.back()) owned_.pop_back();
+        if (scopes_.back().owned) owned_.pop_back();
         scopes_.pop_back();
     }
 
@@ -49,17 +49,17 @@ public:
 
     void pop_barrier(size_t old) {
         barrier_ = old;
-        scopes_.pop_back();
+        pop();
     }
 
     const Decl* find(Dbg dbg, bool quiet = false) {
         if (dbg.is_anon()) return nullptr;
 
         if (is_anx(dbg.sym())) {
-            if (auto i = anx_.find(dbg.sym()); i != anx_.end()) return i->second;
+            if (auto decl = fe::lookup(anx_, dbg.sym())) return decl;
         } else {
-            for (size_t i = scopes_.size(); i-- != barrier_;)
-                if (auto j = scopes_[i]->find(dbg.sym()); j != scopes_[i]->end()) return j->second;
+            for (const auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
+                if (auto decl = fe::lookup(*frame.scope, dbg.sym())) return decl;
         }
 
         if (!quiet) {
@@ -83,10 +83,15 @@ public:
     }
 
 private:
+    struct Frame {
+        Scope* scope;
+        bool owned; ///< Whether Scopes::owned_ holds this Scope; a File's or ModDecl's Scope outlives Scopes.
+    };
+
     AST& ast_;
     Ptr<DummyDecl> dummy_;
     std::deque<Scope> owned_;
-    std::deque<Scope*> scopes_;
+    std::deque<Frame> scopes_;
     Scope anx_;
     size_t barrier_ = 0;
 };
@@ -155,10 +160,11 @@ void Path::bind(Scopes& s, bool quiet) const {
 
     for (const auto& dbg : dbgs() | std::views::drop(1)) {
         if (!decl_) return;
-        auto member = decl_->lookup(dbg.sym());
+        auto scope  = decl_->scope();
+        auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
             if (!quiet) {
-                if (decl_->scope())
+                if (scope)
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", front().sym(), dbg.sym());
                 else
                     s.error().e(dbg.loc(), "`{}` is not a namespace", front().sym());
