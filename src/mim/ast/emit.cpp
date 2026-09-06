@@ -50,8 +50,7 @@ void File::emit(Emitter& e) const {
     auto _ = e.world().push(loc());
     for (const auto& import : implicit_imports())
         import->emit(e);
-    for (const auto& decl : decls())
-        decl->emit(e);
+    emit_decls(e);
 }
 
 void Import::emit(Emitter& e) const {
@@ -489,10 +488,12 @@ void AxmDecl::emit(Emitter& e) const {
     }
 }
 
-void ModDecl::emit(Emitter& e) const {
+void ModDecl::emit_decls(Emitter& e) const {
     for (const auto& decl : decls())
         decl->emit(e);
 }
+
+void ModDecl::emit(Emitter& e) const { emit_decls(e); }
 
 void UseDecl::emit(Emitter&) const {}
 

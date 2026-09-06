@@ -109,15 +109,14 @@ void File::bind(Scopes& s) const {
     if (bound_) return;
     bound_ = true;
 
-    auto barrier = s.push_barrier(members_);
+    auto barrier = s.push_barrier(members());
     for (const auto& import : implicit_imports())
         import->bind(s);
-    for (const auto& decl : decls())
-        decl->bind(s);
+    bind_decls(s);
     s.pop_barrier(barrier);
 }
 
-const Scope* Import::scope() const { return file() ? &file()->members() : nullptr; }
+const Scope* Import::scope() const { return file() ? file()->scope() : nullptr; }
 
 void Import::bind(Scopes& s) const {
     if (file()) file()->bind(s);
@@ -443,10 +442,14 @@ void CDecl::bind(Scopes& s) const {
     s.bind(dbg(), this);
 }
 
-void ModDecl::bind(Scopes& s) const {
-    s.push(members_);
+void ModDecl::bind_decls(Scopes& s) const {
     for (const auto& decl : decls())
         decl->bind(s);
+}
+
+void ModDecl::bind(Scopes& s) const {
+    s.push(members());
+    bind_decls(s);
     s.pop();
     s.bind(dbg(), this);
 }

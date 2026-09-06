@@ -1131,7 +1131,7 @@ private:
     bool is_normalizer_;
 };
 
-/// `mod dbg { decls }`
+/// `mod dbg { decls }`; also the base of the anonymous File.
 class ModDecl : public ValDecl {
 public:
     ModDecl(Loc loc, Dbg dbg, Ptrs<ValDecl>&& decls)
@@ -1146,6 +1146,11 @@ public:
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
+
+protected:
+    Scope& members() const { return members_; }
+    void bind_decls(Scopes&) const;
+    void emit_decls(Emitter&) const;
 
 private:
     Dbg dbg_;
@@ -1207,31 +1212,27 @@ private:
     const File* file_;
 };
 
-/// The AST of one source file; it forms a namespace that Import binds.
-class File : public Node {
+/// The AST of one source file: an anonymous ModDecl that Import binds under a name of its own.
+/// Unlike a nested ModDecl, its Scope is a barrier: a file must not see whoever imports it.
+class File : public ModDecl {
 public:
     File(Loc loc, Ptrs<ValDecl>&& decls)
-        : Node(loc)
-        , decls_(std::move(decls)) {}
+        : ModDecl(loc, Dbg(loc), std::move(decls)) {}
 
     /// Imports the driver was told about via `-p`; they precede everything the file itself declares.
     const auto& implicit_imports() const { return implicit_imports_; }
-    const auto& decls() const { return decls_; }
 
     void add_implicit_imports(Ptrs<Import>&& imports) const { implicit_imports_ = std::move(imports); }
-    const Scope& members() const { return members_; }
 
     void compile(AST&) const;
     void bind(AST&) const;
-    void bind(Scopes&) const;
+    void bind(Scopes&) const override;
     void emit(AST&) const;
-    void emit(Emitter&) const;
+    void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
     mutable Ptrs<Import> implicit_imports_;
-    Ptrs<ValDecl> decls_;
-    mutable Scope members_;
     // A file is parsed, bound, and emitted exactly once, no matter how many Imports alias it.
     mutable bool bound_ = false, emitted_ = false;
 };
