@@ -181,12 +181,12 @@ Dbg Parser::parse_member(std::string_view ctxt) {
     return {missing(), driver().sym("<error>")};
 }
 
-Ptr<PathExpr> Parser::parse_path(std::string_view ctxt) {
+Path Parser::parse_path(std::string_view ctxt) {
     auto track = tracker();
     auto dbgs  = Dbgs{parse_name(ctxt)}; // an annex name is one component - dots and all
     while (accept(Tag::T_dot))
         dbgs.emplace_back(parse_member("component of a path"));
-    return ptr<PathExpr>(track, std::move(dbgs));
+    return Path(track.loc(), std::move(dbgs));
 }
 
 Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {
@@ -329,7 +329,7 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
     // clang-format off
     switch (ahead().tag()) {
         case Tag::C_PRIMARY: return ptr<PrimaryExpr>(lex());
-        case Tag::C_ID:      return parse_path();
+        case Tag::C_ID:      return ptr<PathExpr>(parse_path());
         case Tag::C_LIT:     return parse_lit_expr();
         case Tag::C_DECL:    return parse_decl_expr();
         case Tag::C_PI:      return parse_pi_expr();
@@ -547,10 +547,10 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
             }
 
             // "x y z" is a curried app and maybe the prefix of a longer type expression
-            Ptr<Expr> lhs = ptr<PathExpr>(dbgs.front());
+            Ptr<Expr> lhs = path_expr(dbgs.front());
             for (auto dbg : dbgs | std::views::drop(1)) {
                 auto loc = lhs->loc() + dbg.loc();
-                lhs      = ptr<AppExpr>(loc, false, std::move(lhs), ptr<PathExpr>(dbg));
+                lhs      = ptr<AppExpr>(loc, false, std::move(lhs), path_expr(dbg));
             }
             ptrns.emplace_back(IdPtrn::make_type(ast(), parse_infix_expr(track, std::move(lhs))));
             return;

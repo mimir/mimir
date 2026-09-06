@@ -108,8 +108,9 @@ void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
  * Expr
  */
 
-void PathExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", fe::Join(dbgs(), ".")); }
+void Path::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", fe::Join(dbgs(), ".")); }
 
+void PathExpr::stream(fe::Tab& tab, std::ostream& os) const { path()->stream(tab, os); }
 void ErrorExpr::stream(fe::Tab&, std::ostream& os) const { os << "<error expression>"; }
 void HoleExpr::stream(fe::Tab&, std::ostream& os) const { os << "?"; }
 void PrimaryExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", tag()); }

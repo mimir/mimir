@@ -154,18 +154,20 @@ void TuplePtrn::bind(Scopes& s, bool rebind, bool quiet) const {
  * Expr
  */
 
-void PathExpr::bind(Scopes& s) const {
-    decl_ = s.find(front());
+void Path::bind(Scopes& s, bool quiet) const {
+    decl_ = s.find(front(), quiet);
 
     for (const auto& dbg : dbgs() | std::views::drop(1)) {
         if (!decl_) return;
         auto scope  = decl_->scope();
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
-            if (scope)
-                s.error().e(dbg.loc(), "`{}` has no member `{}`", front().sym(), dbg.sym());
-            else
-                s.error().e(dbg.loc(), "`{}` is not a namespace", front().sym());
+            if (!quiet) {
+                if (scope)
+                    s.error().e(dbg.loc(), "`{}` has no member `{}`", front().sym(), dbg.sym());
+                else
+                    s.error().e(dbg.loc(), "`{}` is not a namespace", front().sym());
+            }
             decl_ = nullptr;
             return;
         }
@@ -174,6 +176,7 @@ void PathExpr::bind(Scopes& s) const {
 }
 
 // clang-format off
+void PathExpr   ::bind(Scopes& s) const { path()->bind(s); }
 void TypeExpr   ::bind(Scopes& s) const { level()->bind(s); }
 void RuleExpr   ::bind(Scopes& s) const { dom()->bind(s); }
 void ErrorExpr  ::bind(Scopes&) const {}

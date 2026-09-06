@@ -225,7 +225,7 @@ LamExpr::LamExpr(Ptr<LamDecl>&& lam)
 
 Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn>&& ptrn) {
     if (auto idp = ptrn->isa<IdPtrn>(); idp && !idp->dbg() && idp->type()) {
-        if (auto path = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(*path);
+        if (auto pe = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(Path(*pe->path()));
     } else if (auto tuple = ptrn->isa<TuplePtrn>(); tuple && tuple->is_brckt()) {
         (void)ptrn.release();
         return ast.ptr<SigmaExpr>(Ptr<TuplePtrn>(tuple));

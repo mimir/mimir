@@ -369,20 +369,39 @@ private:
 
 /// `dbg_0.....dbg_n-1`.
 /// An annex name is a *single* component that keeps its `%` and its dots: the Lexer never splits it.
-class PathExpr : public Expr {
+class Path : public Node {
 public:
-    PathExpr(Loc loc, Dbgs&& dbgs)
-        : Expr(loc)
+    Path(Loc loc, Dbgs&& dbgs)
+        : Node(loc)
         , dbgs_(std::move(dbgs)) {}
-    PathExpr(Dbg dbg)
-        : Expr(dbg.loc())
+    Path(Dbg dbg)
+        : Node(dbg.loc())
         , dbgs_{dbg} {}
-    PathExpr(const PathExpr&) = default;
+    Path(const Path&) = default;
 
     const Dbgs& dbgs() const { return dbgs_; }
     Dbg front() const { return dbgs_.front(); }
     Dbg back() const { return dbgs_.back(); }
     const Decl* decl() const { return decl_; }
+
+    void bind(Scopes&, bool quiet = false) const;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Dbgs dbgs_;
+    mutable const Decl* decl_ = nullptr;
+};
+
+/// `path`
+class PathExpr : public Expr {
+public:
+    PathExpr(Path&& path)
+        : Expr(path.loc())
+        , path_(std::move(path)) {}
+
+    const Path* path() const { return &path_; }
+    Dbg dbg() const { return path_.back(); }
+    const Decl* decl() const { return path_.decl(); }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -390,8 +409,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    Dbgs dbgs_;
-    mutable const Decl* decl_ = nullptr;
+    Path path_;
 };
 
 /// `tag`
@@ -1138,18 +1156,18 @@ private:
 /// `use path;` - splices all members of the namespace @p path denotes into the current scope.
 class UseDecl : public ValDecl {
 public:
-    UseDecl(Loc loc, Ptr<PathExpr>&& path)
+    UseDecl(Loc loc, Path&& path)
         : ValDecl(loc)
         , path_(std::move(path)) {}
 
-    const PathExpr* path() const { return path_.get(); }
+    const Path* path() const { return &path_; }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
-    Ptr<PathExpr> path_;
+    Path path_;
 };
 
 /*

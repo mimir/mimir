@@ -158,7 +158,7 @@ const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type();
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
     if (auto def = decl()->def()) return def;
-    e.error().e(loc(), "`{}` is a namespace and not a value", back().sym()).bail();
+    e.error().e(loc(), "`{}` is a namespace and not a value", dbg().sym()).bail();
 }
 
 const Def* TypeExpr::emit_(Emitter& e) const {
