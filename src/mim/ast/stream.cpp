@@ -1,6 +1,7 @@
 #include <ostream>
 
 #include "mim/ast/ast.h"
+#include "mim/ast/lexer.h"
 
 namespace mim::ast {
 
@@ -74,7 +75,7 @@ void Node::dump() const {
 
 void Import::stream(fe::Tab&, std::ostream& os) const {
     if (is_path())
-        std::print(os, "{} \"{}\"", tag(), path());
+        std::print(os, "{} \"{}\"", tag(), Lexer::escape(path().view()));
     else
         std::print(os, "{} {}", tag(), name());
     if (alias()) std::print(os, " as {}", alias());

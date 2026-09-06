@@ -113,3 +113,22 @@ TEST_CASE("Lexer: malformed floating-point literals") {
     check("0x2.34", "hexadecimal floating constants require an exponent");
     check("2.34e", "exponent has no digits");
 }
+
+TEST_CASE("Lexer: escape round-trips through a string literal") {
+    Driver drv;
+
+    auto check = [&drv](std::string_view raw) {
+        CAPTURE(raw);
+        auto buf = "\""s + Lexer::escape(raw) + "\"";
+        Lexer lexer(drv, buf);
+        auto tok = lexer.lex();
+        CHECK(drv.error().num_errors() == 0);
+        CHECK(tok.isa(Tok::Tag::L_str));
+        CHECK(tok.sym() == raw);
+    };
+
+    check("plain/path.mim");
+    check("we\"ird.mim");
+    check("back\\slash.mim");
+    check("tab\there\nand\r\0more"sv);
+}

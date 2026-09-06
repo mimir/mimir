@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <absl/container/flat_hash_map.h>
 #include <fe/lexer.h>
 
@@ -24,6 +26,9 @@ public:
 
     /// Does @p str match the `id` production - the same rule Lexer::lex_id applies to the input?
     static bool is_id(std::string_view str);
+
+    /// Inverse of Lexer::lex_char: renders @p str as the body of a Mim string literal.
+    static std::string escape(std::string_view str);
 
 private:
     Lexer(fe::Driver&, std::string_view, const fe::Src*, std::ostream*);

@@ -171,6 +171,28 @@ bool Lexer::lex_id(bool dots) {
     return false;
 }
 
+std::string Lexer::escape(std::string_view str) {
+    std::string res;
+    for (auto c : str) {
+        // clang-format off
+        switch (c) {
+            case '\\': res += "\\\\"; break;
+            case '\"': res += "\\\""; break;
+            case '\0': res += "\\0";  break;
+            case '\a': res += "\\a";  break;
+            case '\b': res += "\\b";  break;
+            case '\f': res += "\\f";  break;
+            case '\n': res += "\\n";  break;
+            case '\r': res += "\\r";  break;
+            case '\t': res += "\\t";  break;
+            case '\v': res += "\\v";  break;
+            default:   res += c;
+        }
+        // clang-format on
+    }
+    return res;
+}
+
 bool Lexer::is_id(std::string_view str) {
     size_t i = 0;
     if (!is_id_head(utf8::decode(str, i))) return false;

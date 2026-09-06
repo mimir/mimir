@@ -240,7 +240,7 @@ public:
     char8_t    lit_c() const { assert(isa(Tag::L_c)); return c_;   }
     uint64_t   lit_u() const { assert(isa(Tag::L_u ) || isa(Tag::L_s ) || isa(Tag::L_f  )); return u_;   }
     Sym        sym()   const { assert(has_sym()); return sym_; }
-    /// Source spelling of a keyword: in member position a keyword is an ordinary name.
+    /// Source spelling of a keyword; null for `λ`/`⊥`/`⊤`, which have no `id` spelling.
     Sym        key_sym() const { assert(is_key(tag_)); return sym_; }
     // clang-format on
     std::string str() const;
@@ -252,7 +252,7 @@ private:
     Loc loc_;
     Tag tag_ = Tag::Nil;
     union {
-        Sym sym_;
+        Sym sym_ = {};
         uint64_t u_;
         char8_t c_;
         struct {

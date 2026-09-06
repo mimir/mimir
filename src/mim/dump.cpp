@@ -8,6 +8,7 @@
 #include "mim/driver.h"
 #include "mim/nest.h"
 
+#include "mim/ast/lexer.h"
 #include "mim/ast/tok.h"
 
 using namespace std::literals;
@@ -604,7 +605,7 @@ void World::dump(std::ostream& os) {
             // The spelling was relative to the importing file; only the resolved path re-parses from here.
             // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
             if (import.path)
-                std::print(os, "{} \"{}\";\n", kw, import.src->path().generic_string());
+                std::print(os, "{} \"{}\";\n", kw, ast::Lexer::escape(import.src->path().generic_string()));
             else
                 std::print(os, "{} {};\n", kw, import.sym);
         }

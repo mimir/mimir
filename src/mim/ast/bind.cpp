@@ -162,7 +162,8 @@ void TuplePtrn::bind(Scopes& s, bool rebind, bool quiet) const {
  */
 
 void Path::bind(Scopes& s, bool quiet) const {
-    decl_ = s.find(front(), quiet);
+    decl_     = s.find(front(), quiet);
+    auto prev = front();
 
     for (const auto& dbg : dbgs() | std::views::drop(1)) {
         if (!decl_) return;
@@ -171,14 +172,15 @@ void Path::bind(Scopes& s, bool quiet) const {
         if (!member) {
             if (!quiet) {
                 if (scope)
-                    s.error().e(dbg.loc(), "`{}` has no member `{}`", front().sym(), dbg.sym());
+                    s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
                 else
-                    s.error().e(dbg.loc(), "`{}` is not a module", front().sym());
+                    s.error().e(dbg.loc(), "`{}` is not a module", prev.sym());
             }
             decl_ = nullptr;
             return;
         }
         decl_ = member;
+        prev  = dbg;
     }
 }
 

@@ -191,7 +191,7 @@ Mim supports the following declaration families.
 
 ```text
 import (I | S) ["as" I]
-plugin I
+plugin I ["as" I]
 
 mod I "{" d* "}"
 use path

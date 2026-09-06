@@ -173,7 +173,7 @@ Dbg Parser::parse_name(std::string_view ctxt) {
 
 Dbg Parser::parse_member(std::string_view ctxt) {
     if (auto id = accept(Tag::M_id)) return id.dbg();
-    if (Tok::is_key(ahead().tag())) {
+    if (Tok::is_key(ahead().tag()) && ahead().key_sym()) {
         auto tok = lex();
         return {tok.loc(), tok.key_sym()};
     }
