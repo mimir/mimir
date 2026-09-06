@@ -26,18 +26,17 @@ public:
 
     AST& ast() const { return ast_; }
     Error& error() const { return ast().error(); }
-    Scope& top() { return *scopes_.back().scope; }
+    Scope& top() { return scopes_.back().scope(); }
     const Decl* dummy() const { return dummy_.get(); }
 
     /// An annex name is global: it lives in one flat table, independent of the module structure.
     static bool is_anx(Sym sym) { return sym && sym[0] == '%'; }
 
-    void push() { scopes_.emplace_back(&owned_.emplace_back(), true); }
-    void push(Scope& scope) { scopes_.emplace_back(&scope, false); }
+    void push() { scopes_.emplace_back(); }
+    void push(Scope& scope) { scopes_.emplace_back(scope); }
 
     void pop() {
         assert(scopes_.size() > barrier_);
-        if (scopes_.back().owned) owned_.pop_back();
         scopes_.pop_back();
     }
 
@@ -58,8 +57,8 @@ public:
         if (is_anx(dbg.sym())) {
             if (auto decl = fe::lookup(anx_, dbg.sym())) return decl;
         } else {
-            for (const auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
-                if (auto decl = fe::lookup(*frame.scope, dbg.sym())) return decl;
+            for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
+                if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;
         }
 
         if (!quiet) {
@@ -83,15 +82,23 @@ public:
     }
 
 private:
-    struct Frame {
-        Scope* scope;
-        bool owned; ///< Whether Scopes::owned_ holds this Scope; a File's or ModDecl's Scope outlives Scopes.
+    /// Owns the Scope of an anonymous binder; a File's or ModDecl's Scope outlives Scopes and is borrowed.
+    class Frame {
+    public:
+        Frame() = default;
+        Frame(Scope& scope)
+            : borrowed_(&scope) {}
+
+        Scope& scope() { return borrowed_ ? *borrowed_ : own_; }
+
+    private:
+        Scope own_;
+        Scope* borrowed_ = nullptr;
     };
 
     AST& ast_;
     Ptr<DummyDecl> dummy_;
-    std::deque<Scope> owned_;
-    std::deque<Frame> scopes_;
+    fe::Vector<Frame> scopes_;
     Scope anx_;
     size_t barrier_ = 0;
 };
