@@ -74,10 +74,10 @@ void Node::dump() const {
 
 void Import::stream(fe::Tab&, std::ostream& os) const {
     if (is_path())
-        std::print(os, "{} \"{}\"", tag(), name());
+        std::print(os, "{} \"{}\"", tag(), path());
     else
         std::print(os, "{} {}", tag(), name());
-    if (is_aliased()) std::print(os, " as {}", dbg());
+    if (alias()) std::print(os, " as {}", alias());
     os << ';';
 }
 

@@ -22,10 +22,9 @@ class Emitter;
 template<class T>
 using Ptr = fe::Arena::Ptr<const T>;
 template<class T>
-using Ptrs = std::deque<Ptr<T>>;
-using Dbgs = fe::Vector<Dbg>;
-/// Maps a name to the Decl introducing it.
-using Scope = fe::SymMap<const Decl*>;
+using Ptrs  = std::deque<Ptr<T>>;
+using Dbgs  = fe::Vector<Dbg>;
+using Scope = fe::SymMap<const Decl*>; ///< Maps a name to the Decl introducing it.
 
 /// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
@@ -109,7 +108,7 @@ public:
         // clang-format off
         swap(a1.world_, a2.world_);
         swap(a1.arena_, a2.arena_);
-        swap(a1.files_,  a2.files_);
+        swap(a1.files_, a2.files_);
         // clang-format on
     }
 
@@ -154,8 +153,6 @@ protected:
         : Node(loc) {}
 
 public:
-    using Prec = ast::Prec; ///< Backward-compatible alias; prefer the free-standing ast::Prec.
-
     /// @name emit
     /// Each installs this Expr's Loc as World::get_loc, so every Def emitted underneath is blamed on it.
     ///@{
@@ -559,8 +556,6 @@ private:
     Ptr<Expr> value_;
     Ptr<Expr> type_;
 };
-
-// matching for destruction of sum types
 
 /// `match scrutinee with | arm_0 | ... | arm_n-1`
 class MatchExpr : public Expr {
@@ -1179,25 +1174,26 @@ private:
  * File
  */
 
-/// `import "path" [as dbg];`, `import dbg;`, or `plugin dbg;`
+/// `import "path" [as alias];`, `import name [as alias];`, or `plugin name [as alias];`
 /// Binds Import::dbg as a namespace; the File itself is owned by the AST and shared by all its importers.
 class Import : public ValDecl {
 public:
-    Import(Loc loc, Tok::Tag tag, Dbg dbg, Sym name, bool is_path, bool is_aliased, const File* file)
+    Import(Loc loc, Tok::Tag tag, Dbg name, Sym path, Dbg alias, const File* file)
         : ValDecl(loc)
-        , dbg_(dbg)
-        , name_(name)
         , tag_(tag)
-        , is_path_(is_path)
-        , is_aliased_(is_aliased)
+        , name_(name)
+        , alias_(alias)
+        , path_(path)
         , file_(file) {}
 
-    Dbg dbg() const override { return dbg_; } ///< The name this Import binds.
-    Sym name() const { return name_; }        ///< Spelling of the imported entity: a plugin/file name or a path.
-    bool is_path() const { return is_path_; }
-    bool is_aliased() const { return is_aliased_; } ///< The source spelled an `as`; otherwise Import::dbg is derived.
     Tok::Tag tag() const { return tag_; }
+    Dbg name() const { return name_; }   ///< Name of the imported module; the stem of Import::path, if any.
+    Dbg alias() const { return alias_; } ///< Empty, unless the source spelled an `as`.
+    Sym path() const { return path_; }   ///< Spelling of a file import; empty for a plugin or module name.
+    bool is_path() const { return (bool)path_; }
     const File* file() const { return file_; }
+
+    Dbg dbg() const override { return alias_ ? alias_ : name_; } ///< The name this Import binds.
 
     const Scope* scope() const override;
     void bind(Scopes&) const override;
@@ -1205,10 +1201,9 @@ public:
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
-    Dbg dbg_;
-    Sym name_;
     Tok::Tag tag_;
-    bool is_path_, is_aliased_;
+    Dbg name_, alias_;
+    Sym path_;
     const File* file_;
 };
 

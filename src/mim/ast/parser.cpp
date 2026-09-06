@@ -107,7 +107,7 @@ Ptrs<Import> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag)
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
         if (auto file = import(dbg, false, tag))
-            imports.emplace_back(ast().ptr<Import>(Loc(), tag, dbg, dbg.sym(), false, false, file));
+            imports.emplace_back(ast().ptr<Import>(Loc(), tag, dbg, Sym(), Dbg(), file));
     }
     return imports;
 }
@@ -129,10 +129,10 @@ Ptr<Import> Parser::parse_import_or_plugin() {
     auto entity = tag == Tag::K_import ? "import" : "plugin";
 
     Dbg name;
-    bool is_path = false;
+    Sym path;
     if (tag == Tag::K_import && ahead().isa(Tag::L_str)) {
-        name    = lex().dbg();
-        is_path = true;
+        name = lex().dbg();
+        path = name.sym();
     } else {
         // Only `plugin` needs a bare name: it is also the key for the shared object and the annex prefix.
         auto tok = expect(Tag::M_id, "{} name", entity);
@@ -142,21 +142,19 @@ Ptr<Import> Parser::parse_import_or_plugin() {
 
     auto alias = accept(Tag::K_as) ? parse_id("alias of an import") : Dbg();
     expect(Tag::T_semicolon, "end of {}", entity);
-    bool is_aliased = (bool)alias;
 
-    if (!is_aliased) {
-        auto stem = is_path ? fs::path(name.sym().view()).stem().string() : std::string(name.sym().view());
-        if (!Lexer::is_id(stem)) {
-            error()
-                .e(name.loc(), "cannot derive a module name from `{}`", name.sym())
-                .n("name it explicitly with `as`");
+    auto mod = name;
+    if (path) {
+        auto stem  = fs::path(path.view()).stem().string();
+        bool is_id = Lexer::is_id(stem);
+        if (!is_id && !alias) {
+            error().e(name.loc(), "cannot derive a module name from `{}`", path).n("name it explicitly with `as`");
             return {};
         }
-        alias = Dbg(name.loc(), ast().sym(stem));
+        mod.set(is_id ? ast().sym(stem) : Sym());
     }
 
-    if (auto file = import(name, is_path, tag))
-        return ptr<Import>(track, tag, alias, name.sym(), is_path, is_aliased, file);
+    if (auto file = import(name, (bool)path, tag)) return ptr<Import>(track, tag, mod, path, alias, file);
     return {};
 }
 
