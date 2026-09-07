@@ -69,7 +69,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
             case affine::semiop::floordiv: {
                 return div(core::div::udiv, x, w.call<core::bitcast>(w.type_i64(), c));
             }
-            case affine::semiop::mod: {
+            case affine::semiop::rem: {
                 return div(core::div::urem, x, w.call<core::bitcast>(w.type_i64(), c));
             }
             case affine::semiop::ceildiv: {

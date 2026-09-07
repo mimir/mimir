@@ -40,7 +40,7 @@ For example, `λ` and `lm` are lexically equivalent.
 <eof>
 ```
 
-`.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.mod`.
+`.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
 
 #### Secondary Terminals
 

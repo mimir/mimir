@@ -120,9 +120,8 @@ Tok Lexer::lex() {
         }
 
         if (lex_id()) {
-            // A keyword keeps its Sym: Parser::parse_member accepts one as a plain name.
             auto s = sym();
-            if (auto i = keywords_.find(s); i != keywords_.end()) return {loc_, i->second, s};
+            if (auto i = keywords_.find(s); i != keywords_.end()) return {loc_, i->second};
             return {loc_, Tag::M_id, s};
         }
 

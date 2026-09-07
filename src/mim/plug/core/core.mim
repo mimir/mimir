@@ -15,10 +15,10 @@ plugin mem;
 /// Standard arithmetic operations on `Nat`s. <br>
 /// `core.nat.sub (a, b)` yields `0` if `a < b`. <br>
 /// `core.nat.div (a, b)` yields `0` if `b` is `0`. <br>
-/// `core.nat.mod (a, b)` yields `a` if `b` is `0`. <br>
+/// `core.nat.rem (a, b)` yields `a` if `b` is `0`. <br>
 /// This holds both statically (literal folding) and dynamically (runtime lowering).
 ///
-axm nat.(add, sub, mul, div, mod): «2; Nat» → Nat, normalize_nat;
+axm nat.(add, sub, mul, div, rem): «2; Nat» → Nat, normalize_nat;
 ///
 /// ### core.ncmp
 ///

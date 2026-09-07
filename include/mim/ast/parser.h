@@ -64,8 +64,6 @@ private:
     ///@{
     Ptr<File> parse_file();
     Dbg parse_id(std::string_view ctxt = {});
-    /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm tag list a name is unambiguous.
-    Dbg parse_member(std::string_view ctxt = {});
     Path parse_path(std::string_view ctxt = {});
     Ptr<Import> parse_import_or_plugin();
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});

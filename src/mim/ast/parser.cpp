@@ -164,21 +164,11 @@ Dbg Parser::parse_id(std::string_view ctxt) {
     return {missing(), driver().sym("<error>")};
 }
 
-Dbg Parser::parse_member(std::string_view ctxt) {
-    if (auto id = accept(Tag::M_id)) return id.dbg();
-    if (Tok::is_key(ahead().tag()) && ahead().key_sym()) {
-        auto tok = lex();
-        return {tok.loc(), tok.key_sym()};
-    }
-    syntax_err("identifier", ctxt);
-    return {missing(), driver().sym("<error>")};
-}
-
 Path Parser::parse_path(std::string_view ctxt) {
     auto track = tracker();
     auto dbgs  = Dbgs{parse_id(ctxt)};
     while (accept(Tag::T_dot))
-        dbgs.emplace_back(parse_member("component of a path"));
+        dbgs.emplace_back(parse_id("component of a path"));
     return Path(track.loc(), std::move(dbgs));
 }
 
@@ -653,7 +643,7 @@ void Parser::parse_axm_decl(Tracker track, Vis vis, Ptrs<ValDecl>& decls) {
         return;
     }
 
-    auto dbg = parse_member("name of an axm");
+    auto dbg = parse_id("name of an axm");
     if (accept(Tag::T_dot)) {
         auto group = parse_axm_group(vis);
         decls.emplace_back(ptr<ModDecl>(track, Vis::Pub, dbg, std::move(group)));
@@ -668,9 +658,9 @@ Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
     std::deque<Dbgs> members;
     parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
         Dbgs names;
-        names.emplace_back(parse_member("tag of an axm"));
+        names.emplace_back(parse_id("tag of an axm"));
         while (accept(Tag::T_assign))
-            names.emplace_back(parse_member("alias of an axm tag"));
+            names.emplace_back(parse_id("alias of an axm tag"));
         members.emplace_back(std::move(names));
     });
 

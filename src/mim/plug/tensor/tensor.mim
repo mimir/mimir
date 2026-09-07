@@ -339,7 +339,7 @@ lam split_omega (m n a ts: Nat) (oc: «n; affine.Index»): «m; affine.Index» =
     ‹j: m; let jj = core.bitcast Nat j;
            core.select (core.ncmp.l (jj, a), oc#(core.idx n 0 jj),
            core.select (core.ncmp.e (jj, a), affine.semiop.floordiv (oc#(core.idx n 0 a), ts),
-           core.select (core.ncmp.e (jj, core.nat.add (a, 1)), affine.semiop.mod (oc#(core.idx n 0 a), ts),
+           core.select (core.ncmp.e (jj, core.nat.add (a, 1)), affine.semiop.rem (oc#(core.idx n 0 a), ts),
            oc#(core.idx n 0 (core.nat.sub (jj, 1))))))›;
 
 /// Checks that `ts` exactly divides the extent `sd` (discharges symbolically for factored extents).
@@ -552,7 +552,7 @@ axm repeat: {T: *, r: Nat}
 fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
 /// `o ↦ (o#d mod s_in#d)_d`: the wrap-around (tiling) read map.
 lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine.Index» =
-    ‹d: r; affine.semiop.mod (o#d, s_in#d)›;
+    ‹d: r; affine.semiop.rem (o#d, s_in#d)›;
 
 anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)

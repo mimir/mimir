@@ -50,9 +50,9 @@ axm lit: Nat → Index;
 /// ### affine.op(neg)
 /// Negates an affine index.
 ///
-axm semiop.(mul,ceildiv,floordiv,mod): [Index, Nat] → Index;
+axm semiop.(mul,ceildiv,floordiv,rem): [Index, Nat] → Index;
 ///
-/// ### affine.semiop(mul,ceildiv,floordiv,mod)
+/// ### affine.semiop(mul,ceildiv,floordiv,rem)
 /// Performs semi-linear operations on affine indices.
 /// The second argument is a natural number that must be constant with regard to the indices.
 ///

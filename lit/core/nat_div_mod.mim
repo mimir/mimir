@@ -9,20 +9,20 @@ plugin core;
 plugin mem;
 import compile;
 
-// core.nat.div/mod fold the partial/degenerate cases at normalization time:
+// core.nat.div/rem fold the partial/degenerate cases at normalization time:
 //   a / 0 = 0,   a % 0 = a,   a % a = 0,   plus ordinary constant folding.
 // `x` is a runtime value, so `x / 0` and `x % x` exercise the symbolic rules;
 // everything must still collapse to literals, i.e. no `core.nat` may remain.
 //
 // OPT-LABEL: extern fun test_fold
-// OPT-NOT: %core.nat
+// OPT-NOT: core.nat
 // OPT: (0, 7, 3, 1, 0)
 extern fun test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
     let a = core.nat.div (x, 0); // -> 0 (symbolic a / 0 = 0)
-    let b = core.nat.mod (7, 0); // -> 7 (a % 0 = a)
+    let b = core.nat.rem (7, 0); // -> 7 (a % 0 = a)
     let c = core.nat.div (10, 3); // -> 3
-    let d = core.nat.mod (10, 3); // -> 1
-    let e = core.nat.mod (x, x); // -> 0 (symbolic a % a = 0)
+    let d = core.nat.rem (10, 3); // -> 1
+    let e = core.nat.rem (x, x); // -> 0 (symbolic a % a = 0)
     return (a, b, c, d, e);
 
 // For a runtime (non-literal) divisor the axiom survives normalization and must
@@ -40,7 +40,7 @@ extern fun test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
 // MOD: urem i64
 // MOD: select i1
 extern fun test_mod(m: mem.M 0, x y: Nat): [mem.M 0, Nat] =
-    let r = core.nat.mod (x, y);
+    let r = core.nat.rem (x, y);
     return (m, r);
 
 // DIV-LABEL: define{{.*}}@test_div

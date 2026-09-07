@@ -549,7 +549,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
                 auto q    = bb.assign(name + ".q", "udiv i64 {}, {}", a, bsaf);
                 return bb.assign(name, "select i1 {}, i64 0, i64 {}", bz, q);
             }
-            case core::nat::mod: {
+            case core::nat::rem: {
                 auto bz   = bb.assign(name + ".bz", "icmp eq i64 {}, 0", b);
                 auto bsaf = bb.assign(name + ".bsafe", "select i1 {}, i64 1, i64 {}", bz, b);
                 auto r    = bb.assign(name + ".r", "urem i64 {}, {}", a, bsaf);
@@ -1036,7 +1036,7 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
                 }
                 case core::nat::mul: op = "mul nuw nsw"; break;
                 case core::nat::div: op = "udiv"; break;
-                case core::nat::mod: op = "urem"; break;
+                case core::nat::rem: op = "urem"; break;
             }
         } else if (auto arith_op = Axm::isa<math::arith, 1>(f)) {
             auto lmode = static_cast<math::Mode>(

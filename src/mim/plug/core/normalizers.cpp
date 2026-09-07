@@ -496,7 +496,7 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
                 case nat::sub: return *la < *lb ? world.lit_nat_0() : world.lit_nat(*la - *lb);
                 case nat::mul: return world.lit_nat(*la * *lb);
                 case nat::div: return *lb == 0 ? world.lit_nat_0() : world.lit_nat(*la / *lb);
-                case nat::mod: return *lb == 0 ? a : world.lit_nat(*la % *lb);
+                case nat::rem: return *lb == 0 ? a : world.lit_nat(*la % *lb);
             }
         }
 
@@ -506,7 +506,7 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
                 case nat::sub: return a;                 // 0 - b = 0
                 case nat::mul: return a;                 // 0 * b = 0
                 case nat::div: return world.lit_nat_0(); // 0 / b = 0
-                case nat::mod: return world.lit_nat_0(); // 0 % b = 0
+                case nat::rem: return world.lit_nat_0(); // 0 % b = 0
             }
         }
 
@@ -518,14 +518,14 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
             switch (id) {
                 case nat::sub: return a;                 // a - 0 = a
                 case nat::div: return world.lit_nat_0(); // a / 0 = 0
-                case nat::mod: return a;                 // a % 0 = a
+                case nat::rem: return a;                 // a % 0 = a
                 default: break;
             }
         }
         if (*lb == 1) {
             switch (id) {
                 case nat::div: return a;                 // a / 1 = a
-                case nat::mod: return world.lit_nat_0(); // a % 1 = 0
+                case nat::rem: return world.lit_nat_0(); // a % 1 = 0
                 default: break;
             }
         }
@@ -537,7 +537,7 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
             case nat::sub: return world.lit_nat(0);                                // a - a = 0
             case nat::mul: break;
             case nat::div: break;                    // 0 / 0 = 0, so we cannot fold a / a = 1 symbolically
-            case nat::mod: return world.lit_nat_0(); // a % a = 0 (even for a = 0, since 0 % 0 = 0)
+            case nat::rem: return world.lit_nat_0(); // a % a = 0 (even for a = 0, since 0 % 0 = 0)
         }
     }
 
