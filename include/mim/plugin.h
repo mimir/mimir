@@ -2,9 +2,10 @@
 
 #include <compare>
 
+#include <fstream>
 #include <functional>
 #include <initializer_list>
-#include <iosfwd>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,7 +91,34 @@ bool arg_flag(fe::View<std::string> args, Keys... keys) {
             if (arg == key) return true;
     return false;
 }
+
 ///@}
+
+/// A file name from the command line and the stream to write to; @see arg_value.
+class Out {
+public:
+    Out() = default;
+    explicit Out(std::string name)
+        : name_(std::move(name)) {}
+
+    std::string& name() { return name_; } ///< Bound to a `fe::Cli` option, e.g. `--output-mim`.
+
+    /// The stream to write to; `nullptr` if this output was not requested, `std::cout` for `"-"`.
+    /// Opens the file upon first use, so an output no one writes to leaves no file behind.
+    std::ostream* os() {
+        if (name_.empty()) return nullptr;
+        if (name_ == "-") return &std::cout;
+        if (!ofs_.is_open()) {
+            ofs_.open(name_);
+            if (!ofs_) fe::throwf("cannot open output file `{}`", name_);
+        }
+        return &ofs_;
+    }
+
+private:
+    std::string name_;
+    std::ofstream ofs_;
+};
 
 struct Version {
     int major;

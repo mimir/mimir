@@ -1,6 +1,5 @@
 #include <cstdlib>
 
-#include <fstream>
 #include <string>
 
 #include <fe/cli.h>
@@ -11,6 +10,7 @@
 #include <mim/driver.h>
 #include <mim/flags.h>
 #include <mim/phase.h>
+#include <mim/plugin.h>
 #include <mim/sexpr.h>
 
 #include <mim/ast/parser.h>
@@ -22,28 +22,6 @@ using namespace std::literals;
 namespace {
 
 enum Emit { AST, Dot, H, PY, Md, Mim, NestDot, SExpr, Slotted, Profile, Num_Emits };
-
-/// One `--output-*` option: the file name from the command line and the stream to write to.
-class Out {
-public:
-    std::string& name() { return name_; } ///< Bound to the option by fe::Cli.
-
-    /// The stream to write to; `nullptr` if this output was not requested, `std::cout` for `"-"`.
-    /// Opens the file upon first use, so an output no one writes to leaves no file behind.
-    std::ostream* os() {
-        if (name_.empty()) return nullptr;
-        if (name_ == "-") return &std::cout;
-        if (!ofs_.is_open()) {
-            ofs_.open(name_);
-            if (!ofs_) fe::throwf("cannot open output file `{}`", name_);
-        }
-        return &ofs_;
-    }
-
-private:
-    std::string name_;
-    std::ofstream ofs_;
-};
 
 /// Everything the command line configures that neither Flags nor fe::CodeDiag already holds.
 struct Opts {

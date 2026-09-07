@@ -193,8 +193,8 @@ public:
 
         DeviceEmitFlags device_flags;
         {
-            auto dev_ofs = std::ofstream(c.dev_ll_name);
-            device_flags = emit_device(setup_phase->new_world(), dev_ofs);
+            auto dev_out = Out(c.dev_ll_name);
+            device_flags = emit_device(setup_phase->new_world(), *dev_out.os());
         }
         if (c.embed_device_code) {
             if (!c.embed_ptx && !c.embed_cubin)
@@ -215,8 +215,8 @@ public:
             }
         }
         auto device_fatbin_file = c.embed_device_code ? std::optional(c.dev_fatbin_name) : std::nullopt;
-        auto host_ofs           = std::ofstream(c.host_ll_name);
-        emit_host(setup_phase->old_world(), host_ofs, device_fatbin_file, rt);
+        auto host_out           = Out(c.host_ll_name);
+        emit_host(setup_phase->old_world(), *host_out.os(), device_fatbin_file, rt);
 
         if (c.embed_device_code) {
             std::println(std::cout, "Unified (Fat) LLVM IR written to {}", c.host_ll_name);
@@ -235,8 +235,8 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit,
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"o=<file>, output=<file>",         "Writes the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
-    {"o-dev=<file>, output-dev=<file>", "Writes the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`."},
+    {"o=<file>, output=<file>",         "Writes the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`; `<file>` may be `-` for stdout."},
+    {"o-dev=<file>, output-dev=<file>", "Writes the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`; `<file>` may be `-` for stdout."},
     {"rt=embed, rt=extern",             "Like `ll`'s `rt`, but for the host module's C [runtime wrappers](@ref plugin_runtime) such as `@mim_cu_check`."},
     {"embed, no-embed",                 "Embeds the compiled device binary into the host LLVM IR, or doesn't; the default is `embed` on Linux and `no-embed` elsewhere."},
     {"no-ptx-embed",                    "When embedding: omits the PTX image from the fat binary (default: both PTX and CUBIN)."},

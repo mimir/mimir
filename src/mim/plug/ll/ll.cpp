@@ -1,6 +1,5 @@
 #include "mim/plug/ll/ll.h"
 
-#include <fstream>
 #include <iomanip>
 #include <ranges>
 #include <string>
@@ -23,8 +22,8 @@ namespace vecp = mim::plug::vec;
 
 /// Pipeline phase for `%ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
-/// The output path can be overridden on the command line via `-X ll:o=<file>` or `-X ll:output=<file>`.
-/// The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
+/// The output path can be overridden on the command line via `-X ll:o=<file>` or `-X ll:output=<file>`; `<file>` may be
+/// `-` for stdout. The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
 class Emit : public Phase {
 public:
     Emit(World& world, flags_t annex)
@@ -38,8 +37,8 @@ public:
         if (auto o = arg_value(args(), "o", "output")) path = *o;
         auto rt = arg_value(args(), "rt") == "extern" ? Emitter::Rt::ext : Emitter::Rt::embed;
 
-        auto ofs     = std::ofstream(path);
-        auto emitter = Emitter(world(), "llvm_emitter", ofs);
+        auto out     = Out(path);
+        auto emitter = Emitter(world(), "llvm_emitter", *out.os());
         emitter.rt_mode(rt);
         if (rt == Emitter::Rt::embed) emitter.load_rt_module("ll_rt.ll");
         emitter.run();
@@ -1148,7 +1147,7 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll::emit, plug:
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"o=<file>, output=<file>", "Writes the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`."},
+    {"o=<file>, output=<file>", "Writes the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`; `<file>` may be `-` for stdout."},
     {"rt=embed, rt=extern",     "How the C [runtime wrappers](@ref plugin_runtime) reach the output: `embed` (default) splices their LLVM IR into the module; `extern` only `declare`s them and leaves linking to you."},
 };
 // clang-format on
