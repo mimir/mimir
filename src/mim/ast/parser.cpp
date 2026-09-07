@@ -164,13 +164,6 @@ Dbg Parser::parse_id(std::string_view ctxt) {
     return {missing(), driver().sym("<error>")};
 }
 
-Dbg Parser::parse_name(std::string_view ctxt) {
-    if (auto tok = accept(Tag::M_anx)) return tok.dbg();
-    if (auto tok = accept(Tag::M_id)) return tok.dbg();
-    syntax_err("identifier or annex name", ctxt);
-    return Dbg(missing(), ast().sym("<error>"));
-}
-
 Dbg Parser::parse_member(std::string_view ctxt) {
     if (auto id = accept(Tag::M_id)) return id.dbg();
     if (Tok::is_key(ahead().tag()) && ahead().key_sym()) {
@@ -183,7 +176,7 @@ Dbg Parser::parse_member(std::string_view ctxt) {
 
 Path Parser::parse_path(std::string_view ctxt) {
     auto track = tracker();
-    auto dbgs  = Dbgs{parse_name(ctxt)}; // an annex name is one component - dots and all
+    auto dbgs  = Dbgs{parse_id(ctxt)};
     while (accept(Tag::T_dot))
         dbgs.emplace_back(parse_member("component of a path"));
     return Path(track.loc(), std::move(dbgs));
@@ -405,7 +398,7 @@ Ptr<Expr> Parser::parse_sigma_expr() {
     switch (ahead().tag()) {
         case Tag::K_as: {
             lex();
-            auto alias = ptr<AliasPtrn>(track, std::move(ptrn), parse_name("alias pattern"));
+            auto alias = ptr<AliasPtrn>(track, std::move(ptrn), parse_id("alias pattern"));
             return parse_pi_expr(std::move(alias));
         }
         case Tag::C_CURRIED_B:
@@ -465,7 +458,7 @@ Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn>&& ptrn) {
     return ptr<PiExpr>(track, Tag::Nil, std::move(dom), std::move(codom));
 }
 
-Ptr<Expr> Parser::parse_lam_expr() { return ptr<LamExpr>(parse_lam_decl()); }
+Ptr<Expr> Parser::parse_lam_expr() { return ptr<LamExpr>(parse_lam_decl(Vis::Priv)); }
 
 Ptr<Expr> Parser::parse_ret_expr() {
     auto track = tracker();
@@ -487,7 +480,7 @@ Ptr<Expr> Parser::parse_ret_expr() {
 Ptr<Ptrn> Parser::parse_ptrn(PtrnStyle style, std::string_view ctxt, Prec prec) {
     auto track = tracker();
     auto ptrn  = parse_ptrn_(style, ctxt, prec);
-    if (accept(Tag::K_as)) return ptr<AliasPtrn>(track, std::move(ptrn), parse_name("alias pattern"));
+    if (accept(Tag::K_as)) return ptr<AliasPtrn>(track, std::move(ptrn), parse_id("alias pattern"));
     return ptrn;
 }
 
@@ -585,52 +578,53 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
  * decls
  */
 
+std::optional<Vis> Parser::parse_vis() {
+    // clang-format off
+    switch (ahead().tag()) {
+        case Tag::K_priv:   lex(); return Vis::Priv;
+        case Tag::K_pub:    lex(); return Vis::Pub;
+        case Tag::K_extern: lex(); return Vis::Extern;
+        case Tag::K_anx:    lex(); return Vis::Anx;
+        default:            return std::nullopt;
+    }
+    // clang-format on
+}
+
 Ptrs<ValDecl> Parser::parse_decls() {
     Ptrs<ValDecl> decls;
     while (true) {
+        auto vis = parse_vis();
         // clang-format off
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
-            case Tag::K_axm:       decls.emplace_back(parse_axm_decl());          break;
-            case Tag::K_let:       decls.emplace_back(parse_let_decl());          break;
-            case Tag::K_mod:       decls.emplace_back(parse_mod_decl());          break;
-            case Tag::K_use:       decls.emplace_back(parse_use_decl());          break;
-            case Tag::K_rec:       decls.emplace_back(parse_rec_decl(true));      break;
-            case Tag::C_CDECL:     decls.emplace_back(parse_c_decl());            break;
-            case Tag::C_LAM:       decls.emplace_back(parse_lam_decl());          break;
+            case Tag::K_axm: {
+                if (vis && *vis == Vis::Priv)
+                    error().e(curr_, "`axm` is implicitly `anx`; `priv axm` is a contradiction");
+                parse_axm_decl(vis.value_or(Vis::Anx), decls);
+                break;
+            }
+            case Tag::K_let: decls.emplace_back(parse_let_decl(vis.value_or(Vis::Priv)));      break;
+            case Tag::K_mod: decls.emplace_back(parse_mod_decl(vis.value_or(Vis::Priv)));      break;
+            case Tag::K_use: decls.emplace_back(parse_use_decl());                             break;
+            case Tag::K_rec: decls.emplace_back(parse_rec_decl(true, vis.value_or(Vis::Priv))); break;
+            case Tag::C_LAM: decls.emplace_back(parse_lam_decl(vis.value_or(Vis::Priv)));      break;
             case Tag::C_RULE:      decls.emplace_back(parse_rule_decl());         break;
             case Tag::C_IMPORT:    if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i)); break;
-            default:               return decls;
+            case Tag::M_id:
+                if (vis && *vis == Vis::Anx) { decls.emplace_back(parse_alias_decl()); break; }
+                [[fallthrough]];
+            default:
+                if (vis) error().e(curr_, "expected a declaration after a visibility modifier");
+                return decls;
         }
         // clang-format on
     }
 }
 
-Ptr<ValDecl> Parser::parse_axm_decl() {
-    auto track = tracker();
-    eat(Tag::K_axm);
-    Dbg dbg, normalizer;
-    Tok curry, trip;
-    // TODO if we check this later, we also have to report this error later
-    if (auto name = expect(Tag::M_anx, "annex name of an axm"))
-        dbg = name.dbg();
-    else {
-        accept(Tag::M_id);
-        dbg = Dbg(missing(), ast().sym("<error annex name>"));
-    }
-
-    std::deque<Ptrs<AxmDecl::Alias>> subs;
-    if (ahead().isa(Tag::D_paren_l)) {
-        parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
-            auto& aliases = subs.emplace_back();
-            aliases.emplace_back(ptr<AxmDecl::Alias>(parse_member("tag of an axm")));
-            while (accept(Tag::T_assign))
-                aliases.emplace_back(ptr<AxmDecl::Alias>(parse_member("alias of an axm tag")));
-        });
-    }
-
+std::tuple<Ptr<Expr>, Dbg, Tok, Tok> Parser::parse_axm_tail() {
     auto type = parse_type_ascr("type ascription of an axm");
-
+    Dbg normalizer;
+    Tok curry, trip;
     if (ahead(0).isa(Tag::T_comma) && ahead(1).isa(Tag::M_id)) {
         lex();
         normalizer = lex().dbg();
@@ -641,30 +635,78 @@ Ptr<ValDecl> Parser::parse_axm_decl() {
             if (auto t = expect(Tag::L_u, "trip count for axm")) trip = t;
         }
     }
-
-    return ptr<AxmDecl>(track, dbg, std::move(subs), std::move(type), normalizer, curry, trip);
+    return {std::move(type), normalizer, curry, trip};
 }
 
-Ptr<ValDecl> Parser::parse_let_decl() {
+void Parser::parse_axm_decl(Vis vis, Ptrs<ValDecl>& decls) {
     auto track = tracker();
-    eat(Tag::K_let);
+    eat(Tag::K_axm);
 
-    Ptr<Ptrn> ptrn;
-    if (auto anx = accept(Tok::Tag::M_anx)) {
-        auto anx_track = tracker(anx.loc());
-        auto type      = parse_type_ascr();
-        ptrn           = ptr<IdPtrn>(anx_track, anx.dbg(), std::move(type));
-    } else {
-        ptrn = parse_ptrn({}, "binding pattern of a let declaration", Prec::Bot);
+    if (ahead().isa(Tag::D_paren_l)) {
+        for (auto& decl : parse_axm_group(vis))
+            decls.emplace_back(std::move(decl));
+        return;
     }
 
+    auto dbg = parse_member("name of an axm");
+    if (accept(Tag::T_dot)) {
+        auto group = parse_axm_group(vis);
+        decls.emplace_back(ptr<ModDecl>(track, Vis::Pub, dbg, std::move(group)));
+        return;
+    }
+
+    auto [type, normalizer, curry, trip] = parse_axm_tail();
+    decls.emplace_back(ptr<AxmDecl>(track, vis, dbg, std::move(type), normalizer, curry, trip));
+}
+
+Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
+    std::deque<Dbgs> members;
+    parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
+        Dbgs names;
+        names.emplace_back(parse_member("tag of an axm"));
+        while (accept(Tag::T_assign))
+            names.emplace_back(parse_member("alias of an axm tag"));
+        members.emplace_back(std::move(names));
+    });
+
+    auto [type, normalizer, curry, trip] = parse_axm_tail();
+
+    Ptrs<ValDecl> decls;
+    const AxmDecl* owner = nullptr;
+    for (auto& names : members) {
+        auto primary = names.front();
+        if (!owner) {
+            auto axm = ptr<AxmDecl>(primary.loc(), vis, primary, std::move(type), normalizer, curry, trip);
+            owner    = axm.get();
+            decls.emplace_back(std::move(axm));
+        } else {
+            decls.emplace_back(ptr<AxmDecl::Sibling>(primary.loc(), vis, primary, owner));
+        }
+        for (auto alias : names | std::views::drop(1))
+            decls.emplace_back(ptr<AliasDecl>(alias.loc(), alias, Path(primary)));
+    }
+    return decls;
+}
+
+Ptr<ValDecl> Parser::parse_alias_decl() {
+    auto track = tracker();
+    auto dbg   = parse_id("name of an alias declaration");
+    expect(Tag::T_assign, "alias declaration");
+    auto path = parse_path("target of an alias declaration");
+    return ptr<AliasDecl>(track, dbg, std::move(path));
+}
+
+Ptr<ValDecl> Parser::parse_let_decl(Vis vis) {
+    auto track = tracker();
+    eat(Tag::K_let);
+    auto ptrn = parse_ptrn({}, "binding pattern of a let declaration", Prec::Bot);
     expect(Tag::T_assign, "let");
     auto type  = parse_type_ascr();
     auto value = parse_expr("value of a let declaration");
-    return ptr<LetDecl>(track, std::move(ptrn), std::move(value));
+    return ptr<LetDecl>(track, vis, std::move(ptrn), std::move(value));
 }
 
-Ptr<ValDecl> Parser::parse_mod_decl() {
+Ptr<ValDecl> Parser::parse_mod_decl(Vis vis) {
     auto track = tracker();
     eat(Tag::K_mod);
     auto dbg = parse_id("name of a module");
@@ -673,7 +715,7 @@ Ptr<ValDecl> Parser::parse_mod_decl() {
     auto decls = parse_decls();
     recover("module");
     expect(Tag::D_brace_r, "closing brace of a module");
-    return ptr<ModDecl>(track, dbg, std::move(decls));
+    return ptr<ModDecl>(track, vis, dbg, std::move(decls));
 }
 
 Ptr<ValDecl> Parser::parse_use_decl() {
@@ -684,34 +726,21 @@ Ptr<ValDecl> Parser::parse_use_decl() {
     return ptr<UseDecl>(track, std::move(path));
 }
 
-Ptr<ValDecl> Parser::parse_c_decl() {
-    auto track = tracker();
-    auto tag   = lex().tag();
-    auto id    = expect(Tag::M_id, "C function declaration");
-    auto dom   = parse_ptrn({.brckt = true}, "domain of a C function", Prec::App);
-    Ptr<Expr> codom;
-    if (tag == Tag::K_cfun) {
-        expect(Tag::T_colon, "codomain of a C function");
-        codom = parse_expr("codomain of a C function");
-    }
-    return ptr<CDecl>(track, tag, id.dbg(), std::move(dom), std::move(codom));
-}
-
-Ptr<RecDecl> Parser::parse_rec_decl(bool first) {
+Ptr<RecDecl> Parser::parse_rec_decl(bool first, Vis vis) {
     auto track = tracker();
     eat(first ? Tag::K_rec : Tag::K_and);
-    auto dbg  = parse_name("recursive declaration");
+    auto dbg  = parse_id("recursive declaration");
     auto type = accept(Tag::T_colon) ? parse_expr("type of a recursive declaration") : ptr<HoleExpr>(missing());
     expect(Tag::T_assign, "recursive declaration");
     auto body = parse_expr("body of a recursive declaration");
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
-    return ptr<RecDecl>(track, dbg, std::move(type), std::move(body), std::move(next));
+    return ptr<RecDecl>(track, vis, dbg, std::move(type), std::move(body), std::move(next));
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl() {
     auto track   = tracker();
     auto is_norm = lex().tag() == Tag::K_norm;
-    auto dbg     = parse_name("rewrite rule");
+    auto dbg     = parse_id("rewrite rule");
     auto ptrn    = parse_ptrn({}, "meta variables in rewrite rule");
     expect(Tag::T_colon, "rewrite rule declaration");
     auto lhs   = parse_expr("rewrite pattern");
@@ -722,11 +751,10 @@ Ptr<ValDecl> Parser::parse_rule_decl() {
     return ptr<RuleDecl>(track, dbg, std::move(ptrn), std::move(lhs), std::move(rhs), std::move(guard), is_norm);
 }
 
-Ptr<LamDecl> Parser::parse_lam_decl() {
-    auto track    = tracker();
-    auto tag      = lex().tag();
-    auto prec     = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
-    bool external = (bool)accept(Tag::K_extern);
+Ptr<LamDecl> Parser::parse_lam_decl(Vis vis) {
+    auto track = tracker();
+    auto tag   = lex().tag();
+    auto prec  = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
 
     bool decl;
     std::string_view entity;
@@ -742,7 +770,7 @@ Ptr<LamDecl> Parser::parse_lam_decl() {
     }
     // clang-format on
 
-    auto dbg = decl ? parse_name(entity) : Dbg();
+    auto dbg = decl ? parse_id(entity) : Dbg();
     Ptrs<LamDecl::Dom> doms;
     while (true) {
         auto track  = tracker();
@@ -756,16 +784,21 @@ Ptr<LamDecl> Parser::parse_lam_decl() {
     auto codom = accept(Tag::T_colon) ? parse_expr(Prec::Arrow, "codomain of a {}", entity) : nullptr;
     if (ISA(tag, C_FN)) doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
 
-    expect(Tag::T_assign, "body of a {}", entity);
-    auto body = parse_expr("body of a {}", entity);
+    Ptr<Expr> body;
+    if (decl && vis == Vis::Extern && ahead().isa(Tag::T_semicolon)) {
+        // forward declaration - the implementation lives in a native translation unit
+    } else {
+        expect(Tag::T_assign, "body of a {}", entity);
+        body = parse_expr("body of a {}", entity);
+    }
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
 
-    return ptr<LamDecl>(track, tag, external, dbg, std::move(doms), std::move(codom), std::move(body), std::move(next));
+    return ptr<LamDecl>(track, vis, tag, dbg, std::move(doms), std::move(codom), std::move(body), std::move(next));
 }
 
 Ptr<RecDecl> Parser::parse_and_decl() {
-    if (ISA(ahead(1).tag(), C_LAM)) return lex(), parse_lam_decl();
-    return parse_rec_decl(false);
+    if (ISA(ahead(1).tag(), C_LAM)) return lex(), parse_lam_decl(Vis::Priv);
+    return parse_rec_decl(false, Vis::Priv);
 }
 
 } // namespace mim::ast

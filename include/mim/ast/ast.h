@@ -26,6 +26,13 @@ using Ptrs  = std::deque<Ptr<T>>;
 using Dbgs  = fe::Vector<Dbg>;
 using Scope = fe::SymMap<const Decl*>; ///< Maps a name to the Decl introducing it.
 
+/// Visibility tier of a ValDecl.
+/// `Priv` is only visible inside its enclosing `mod`; `Pub` is visible via a path/`use` from outside;
+/// `Extern` implies `Pub` and additionally crosses the Mim/native boundary (body presence picks which side
+/// supplies the implementation); `Anx` implies `Pub` and additionally registers the entity as a compiler-exposed
+/// annex. `axm` is `Anx` by default.
+enum class Vis { Priv, Pub, Extern, Anx };
+
 /// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
     AnnexInfo(Sym sym_plugin, Sym sym_tag, tag_t id_tag)
@@ -37,6 +44,12 @@ struct AnnexInfo {
     plugin_t plugin_id() const { return *Annex::mangle(sym.plugin); }
     /// The base flags (`plugin` + `tag`, no `sub`).
     flags_t base() const { return Annex::flags(plugin_id(), id.tag); }
+    /// Fully-qualified `plugin.tag[.sub]` name for @p own (this decl's own Dbg::sym), registered for
+    /// by-name lookups (e.g. `compile.named`); @p own == sym.tag (no enclosing `mod`) omits the `.sub` part.
+    Sym qualified(Driver& driver, Sym own) const {
+        auto base = sym.plugin.str() + "." + sym.tag.str();
+        return driver.sym(own == sym.tag ? base : base + "." + own.str());
+    }
 
     struct {
         Sym plugin, tag;
@@ -93,7 +106,10 @@ public:
 
     /// @name Manage Annex
     ///@{
-    AnnexInfo* name2annex(Dbg dbg, sub_t*);
+    /// Registers @p dbg as an annex, deriving `plugin`/`tag`/`sub` from @p dbg's source file and @p s's current
+    /// `mod`-nesting (Scopes::mod_depth/Scopes::enclosing_mod); @p sub_id receives @p dbg's `sub` index within its
+    /// tag. `nullptr` if @p dbg is anonymous or nests more than one `mod` deep.
+    AnnexInfo* name2annex(Scopes& s, Dbg dbg, sub_t* sub_id);
     const auto& plugin2annexes(Sym plugin) { return plugin2sym2annex_[plugin]; }
     ///@}
 
@@ -182,6 +198,10 @@ public:
     virtual Dbg dbg() const { return Dbg(loc(), Sym()); }
     /// Non-`nullptr` if this Decl is a module whose members a Path may walk into.
     virtual const Scope* scope() const { return nullptr; }
+    /// The `(AnnexInfo, sub)` slot this decl registered itself under as an annex; `{nullptr, 0}` if it isn't one.
+    virtual std::pair<AnnexInfo*, sub_t> annex_sub() const { return {nullptr, 0}; }
+    /// A ValDecl's own Vis; `Pub` for anything else (Ptrn, Import, ...), which the `priv`/`pub` system ignores.
+    virtual Vis vis() const { return Vis::Pub; }
 
 protected:
     mutable const Def* def_ = nullptr;
@@ -190,12 +210,18 @@ protected:
 /// Base class of all declarations that bind values.
 class ValDecl : public Decl {
 protected:
-    ValDecl(Loc loc)
-        : Decl(loc) {}
+    ValDecl(Loc loc, Vis vis = Vis::Priv)
+        : Decl(loc)
+        , vis_(vis) {}
 
 public:
+    Vis vis() const override { return vis_; }
+
     virtual void bind(Scopes&) const  = 0;
     virtual void emit(Emitter&) const = 0;
+
+private:
+    Vis vis_;
 };
 
 /*
@@ -244,6 +270,9 @@ public:
 
     Dbg dbg() const override { return dbg_; }
     const Expr* type() const { return type_.get(); }
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
+    /// Mirrors the enclosing LetDecl::vis, since a `let`'s Ptrn - not the LetDecl - is what a Path resolves to.
+    Vis vis() const override { return vis_; }
 
     static Ptr<IdPtrn> make_type(AST& ast, Ptr<Expr>&& type) {
         auto loc = type->loc();
@@ -262,6 +291,11 @@ public:
 private:
     Dbg dbg_;
     Ptr<Expr> type_;
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
+    mutable Vis vis_          = Vis::Priv;
+
+    friend class LetDecl;
 };
 
 /// `dbg` of a group `dbg_0 ... dbg_n-1: type` that refers to the trailing IdPtrn::id.
@@ -368,7 +402,6 @@ private:
 };
 
 /// `dbg_0.....dbg_n-1`.
-/// An annex name is a *single* component that keeps its `%` and its dots: the Lexer never splits it.
 class Path : public Node {
 public:
     Path(Loc loc, Dbgs&& dbgs)
@@ -897,8 +930,8 @@ private:
 /// `let ptrn = value;`
 class LetDecl : public ValDecl {
 public:
-    LetDecl(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& value)
-        : ValDecl(loc)
+    LetDecl(Loc loc, Vis vis, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& value)
+        : ValDecl(loc, vis)
         , ptrn_(std::move(ptrn))
         , value_(std::move(value)) {}
 
@@ -912,70 +945,71 @@ public:
 private:
     Ptr<Ptrn> ptrn_;
     Ptr<Expr> value_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
 };
 
-/// `axm dbg(subs): type, normalizer, curry, trip;`
+/// `axm dbg: type, normalizer, curry, trip;`
 class AxmDecl : public ValDecl {
 public:
-    /// One alias `dbg` of an AxmDecl sub.
-    class Alias : public Decl {
+    /// A further tag sharing AxmDecl::type/normalizer/curry/trip with the AxmDecl that owns them.
+    /// Only ever synthesized by Parser::parse_axm_group when desugaring `axm tag.(sub_0, ..., sub_n-1): ...;`
+    /// into `mod tag { axm sub_0: ...; ... }`: AxmDecl::Sibling is `sub_1`, ..., `sub_n-1`.
+    class Sibling : public ValDecl {
     public:
-        Alias(Dbg dbg)
-            : Decl(dbg.loc())
-            , dbg_(dbg) {}
+        Sibling(Loc loc, Vis vis, Dbg dbg, const AxmDecl* owner)
+            : ValDecl(loc, vis)
+            , dbg_(dbg)
+            , owner_(owner) {}
 
         Dbg dbg() const override { return dbg_; }
+        const AxmDecl* owner() const { return owner_; }
 
-        void bind(Scopes&, const AxmDecl*) const;
+        void bind(Scopes&) const override;
+        void emit(Emitter&) const override;
         void stream(fe::Tab&, std::ostream&) const override;
+        std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
     private:
         Dbg dbg_;
-        mutable Dbg full_;
-
-        friend class AxmDecl;
+        const AxmDecl* owner_;
+        mutable AnnexInfo* annex_ = nullptr;
+        mutable sub_t sub_        = 0;
     };
 
-    AxmDecl(Loc loc, Dbg dbg, std::deque<Ptrs<Alias>>&& subs, Ptr<Expr>&& type, Dbg normalizer, Tok curry, Tok trip)
-        : ValDecl(loc)
+    AxmDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr>&& type, Dbg normalizer, Tok curry, Tok trip)
+        : ValDecl(loc, vis)
         , dbg_(dbg)
-        , subs_(std::move(subs))
         , type_(std::move(type))
         , normalizer_(normalizer)
         , curry_(curry)
         , trip_(trip) {}
 
     Dbg dbg() const override { return dbg_; }
-    const auto& subs() const { return subs_; }
-    size_t num_subs() const { return subs_.size(); }
-    const auto& sub(size_t i) const { return subs_[i]; }
     const Expr* type() const { return type_.get(); }
     Dbg normalizer() const { return normalizer_; }
     Tok curry() const { return curry_; }
     Tok trip() const { return trip_; }
+    const Def* mim_type() const { return mim_type_; }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
     Dbg dbg_;
-    std::deque<Ptrs<Alias>> subs_;
     Ptr<Expr> type_;
     Dbg normalizer_;
     Tok curry_, trip_;
-    mutable sub_t offset_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable const Def* mim_type_;
+    mutable AnnexInfo* annex_    = nullptr;
+    mutable sub_t sub_           = 0;
+    mutable const Def* mim_type_ = nullptr;
 };
 
 /// `rec dbg: type = body;` with an optional `and` RecDecl::next.
 class RecDecl : public ValDecl {
 public:
-    RecDecl(Loc loc, Dbg dbg, Ptr<Expr>&& type, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
-        : ValDecl(loc)
+    RecDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr>&& type, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
+        : ValDecl(loc, vis)
         , dbg_(dbg)
         , type_(std::move(type))
         , body_(std::move(body))
@@ -995,6 +1029,7 @@ public:
     virtual void emit_body(Emitter&) const;
 
     void stream(fe::Tab&, std::ostream&) const override;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
     Dbg dbg_;
@@ -1030,23 +1065,23 @@ public:
     };
 
     LamDecl(Loc loc,
+            Vis vis,
             Tok::Tag tag,
-            bool is_external,
             Dbg dbg,
             Ptrs<Dom>&& doms,
             Ptr<Expr>&& codom,
             Ptr<Expr>&& body,
             Ptr<RecDecl>&& next)
-        : RecDecl(loc, dbg, nullptr, std::move(body), std::move(next))
+        : RecDecl(loc, vis, dbg, nullptr, std::move(body), std::move(next))
         , tag_(tag)
-        , is_external_(is_external)
         , doms_(std::move(doms))
         , codom_(std::move(codom)) {
         assert(num_doms() != 0);
     }
 
     Tok::Tag tag() const { return tag_; }
-    bool is_external() const { return is_external_; }
+    /// `extern` without a body is a forward declaration whose implementation lives in a native translation unit.
+    bool is_external() const { return vis() == Vis::Extern; }
     const Ptrs<Dom>& doms() const { return doms_; }
     const Dom* dom(size_t i) const { return doms_[i].get(); }
     size_t num_doms() const { return doms_.size(); }
@@ -1057,40 +1092,37 @@ public:
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
     Tok::Tag tag_;
-    bool is_external_;
     Ptrs<Dom> doms_;
     Ptr<Expr> codom_;
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
 };
 
-/// `ccon dbg dom;` or `cfun dbg dom: codom;`
-class CDecl : public ValDecl {
+/// `anx dbg = path;` - a compiler-exposed alias sharing its target's annex slot.
+class AliasDecl : public ValDecl {
 public:
-    CDecl(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Ptrn>&& dom, Ptr<Expr>&& codom)
-        : ValDecl(loc)
-        , tag_(tag)
+    AliasDecl(Loc loc, Dbg dbg, Path&& path)
+        : ValDecl(loc, Vis::Anx)
         , dbg_(dbg)
-        , dom_(std::move(dom))
-        , codom_(std::move(codom)) {}
+        , path_(std::move(path)) {}
 
     Dbg dbg() const override { return dbg_; }
-    Tok::Tag tag() const { return tag_; }
-    const Ptrn* dom() const { return dom_.get(); }
-    const Expr* codom() const { return codom_.get(); }
+    const Path* path() const { return &path_; }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
-    Tok::Tag tag_;
     Dbg dbg_;
-    Ptr<Ptrn> dom_;
-    Ptr<Expr> codom_;
+    Path path_;
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
 };
 
 /// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
@@ -1129,8 +1161,8 @@ private:
 /// `mod dbg { decls }`; also the base of the anonymous File.
 class ModDecl : public ValDecl {
 public:
-    ModDecl(Loc loc, Dbg dbg, Ptrs<ValDecl>&& decls)
-        : ValDecl(loc)
+    ModDecl(Loc loc, Vis vis, Dbg dbg, Ptrs<ValDecl>&& decls)
+        : ValDecl(loc, vis)
         , dbg_(dbg)
         , decls_(std::move(decls)) {}
 
@@ -1212,7 +1244,7 @@ private:
 class File : public ModDecl {
 public:
     File(Loc loc, Ptrs<ValDecl>&& decls)
-        : ModDecl(loc, Dbg(loc), std::move(decls)) {}
+        : ModDecl(loc, Vis::Priv, Dbg(loc), std::move(decls)) {}
 
     /// Imports the driver was told about via `-p`; they precede everything the file itself declares.
     const auto& implicit_imports() const { return implicit_imports_; }

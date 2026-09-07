@@ -12,55 +12,55 @@ plugin core;
 ///
 /// ## Types
 ///
-/// ### %%option.Opt
+/// ### option.Opt
 ///
 /// The option type: `[] ∪ T`.
 ///
 ///
-lam %option.Opt (T: *) : * = [] ∪ T;
+anx lam Opt (T: *) : * = [] ∪ T;
 ///
 /// ## Constructors
 ///
-/// ### %%option.some
+/// ### option.some
 ///
 /// Wraps a value into an option.
 ///
-lam %option.some {T: *} (v: T) : %option.Opt T = v inj %option.Opt T;
+anx lam some {T: *} (v: T) : Opt T = v inj Opt T;
 ///
-/// ### %%option.none
+/// ### option.none
 ///
 /// The empty option.
 ///
-lam %option.none [T: *] : %option.Opt T = () inj %option.Opt T;
+anx lam none [T: *] : Opt T = () inj Opt T;
 ///
-/// ### %%option.some_if
+/// ### option.some_if
 ///
 /// Wraps `v` into an option iff `b` holds.
 ///
-lam %option.some_if {T: *} (b: Bool, v: T) : %option.Opt T = (%option.none T, %option.some v)#b;
+anx lam some_if {T: *} (b: Bool, v: T) : Opt T = (none T, some v)#b;
 ///
 /// ## Operations
 ///
-/// ### %%option.is_some
+/// ### option.is_some
 ///
 /// Returns `tt` if the option contains a value.
 ///
-lam %option.is_some {T: *} (o: %option.Opt T) : Bool =
+anx lam is_some {T: *} (o: Opt T) : Bool =
     match o with
         | _: T  => tt
         | _: [] => ff;
 ///
-/// ### %%option.unwrap_unsafe
+/// ### option.unwrap_unsafe
 ///
-/// Extracts the value without checking - undefined behavior for `%%option.none`.
+/// Extracts the value without checking - undefined behavior for `option.none`.
 ///
-axm %option.unwrap_unsafe: {T: *} → %option.Opt T → T, normalize_unwrap_unsafe;
+axm unwrap_unsafe: {T: *} → Opt T → T, normalize_unwrap_unsafe;
 ///
-/// ### %%option.unwrap_or
+/// ### option.unwrap_or
 ///
 /// Extracts the value or returns `default`.
 ///
-lam %option.unwrap_or {T: *} (o: %option.Opt T) (default: T) : T =
+anx lam unwrap_or {T: *} (o: Opt T) (default: T) : T =
     match o with
         | x: T  => x
         | _: [] => default;

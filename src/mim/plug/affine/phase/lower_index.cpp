@@ -14,7 +14,7 @@ namespace mim::plug::affine::phase {
 
 const Def* LowerIndex::rewrite(const Def* def) {
     // The opaque affine index type lowers to the wide `Idx 0` (i64) carrier.
-    if (Axm::isa<affine::Idx>(def)) return new_world().type_i64();
+    if (Axm::isa<affine::Index>(def)) return new_world().type_i64();
     return RWPhase::rewrite(def);
 }
 

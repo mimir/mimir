@@ -50,14 +50,6 @@ TEST_CASE("Annex") {
         CHECK(Annex::demangle(*Annex::mangle("test") | 0xFF_u64) == "test");
         CHECK(Annex::demangle(*Annex::mangle("01234567") | 0xFF_u64) == "01234567");
     }
-
-    SUBCASE("split") {
-        Driver d;
-        auto [plugin, group, tag] = Annex::split(d, d.sym("%foo.bar.baz"));
-        CHECK(plugin == d.sym("foo"));
-        CHECK(group == d.sym("bar"));
-        CHECK(tag == d.sym("baz"));
-    }
 }
 
 TEST_CASE("core.trait.size") {

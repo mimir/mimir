@@ -69,6 +69,13 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     return nullptr;
 }
 
+void World::Annexes::attach_alias(flags_t flags, Sym sym) {
+    if (!driver().is_loaded(Annex::demangle(flags))) return;
+    // An alias spelled the same as its target's own (unqualified) name registers the identical
+    // qualified string as the target - a benign no-op, not a conflict.
+    if (auto [i, ins] = sym2flags_.try_emplace(sym, flags); !ins) assert(i->second == flags);
+}
+
 /*
  * constructor & destructor
  */

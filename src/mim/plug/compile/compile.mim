@@ -6,60 +6,60 @@
 /// [TOC]
 ///
 /// This plugin provides the building blocks for MimIR's optimization pipeline: its axioms denote mim::Phase%s and the combinators that assemble them into a pipeline.
-/// Invoke the pipeline by defining a function `_compile: [] → %%compile.Phase`
+/// Invoke the pipeline by defining a function `_compile: [] → compile.Phase`
 /// (or rely on a plugin-provided `_default_compile` such as the one in the `opt` plugin).
 ///
 /// ## Types
 ///
-/// ### %%compile.Phase
+/// ### compile.Phase
 ///
 /// The type of compilation phases.
 ///
-axm %compile.Phase: *;
+axm Phase: *;
 ///
 /// ## Utility
 ///
-/// ### %%compile.is_loaded
+/// ### compile.is_loaded
 ///
 /// Checks whether the given plugin is loaded.
 ///
-axm %compile.is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
+axm is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
-/// ### %%compile.named
+/// ### compile.named
 ///
-/// Resolves to the `%%compile.Phase` annex with the given fully-qualified name (e.g. `"%clos.clos_conv"`).
+/// Resolves to the `compile.Phase` annex with the given fully-qualified name (e.g. `"clos.clos_conv"`).
 /// Resolution is deferred until the phase pipeline is built so that the referenced plugin's `.mim` file does not
 /// have to be imported by users of this axm.
 /// If the named annex is missing at pipeline build time (its plugin is not loaded), it is silently elided, i.e. the
-/// enclosing `%compile.phases` simply skips it.
+/// enclosing `compile.phases` simply skips it.
 ///
-axm %compile.named: {n: Nat} → «n; I8» → %compile.Phase;
+axm named: {n: Nat} → «n; I8» → Phase;
 ///
-/// ### %%compile.cond
+/// ### compile.cond
 ///
-/// Yields `phase` if the named plugin is loaded, otherwise `%compile.null`.
+/// Yields `phase` if the named plugin is loaded, otherwise `compile.null`.
 /// Used to gate whole sub-pipelines on a plugin without importing it.
 ///
-axm %compile.cond: {n: Nat} → «n; I8» → %compile.Phase → %compile.Phase, normalize_cond;
+axm cond: {n: Nat} → «n; I8» → Phase → Phase, normalize_cond;
 ///
-/// ### %%compile.aggr
+/// ### compile.aggr
 ///
 /// Makes a fixed-point flag switchable from the command line.
-/// `%%compile.aggr fallback` yields `tt` if `-X compile:aggr` was passed, `ff` if `-X compile:no-aggr` was passed,
+/// `compile.aggr fallback` yields `tt` if `-X compile:aggr` was passed, `ff` if `-X compile:no-aggr` was passed,
 /// and otherwise the given `fallback`.
-/// Use it as the Bool of a `%%compile.phases` to make that pipeline's fixed-point iteration switchable via the CLI.
+/// Use it as the Bool of a `compile.phases` to make that pipeline's fixed-point iteration switchable via the CLI.
 ///
-axm %compile.aggr: Bool → Bool, normalize_aggr;
+axm aggr: Bool → Bool, normalize_aggr;
 ///
 /// ## Constructors
 ///
-/// ### %%compile.phases
+/// ### compile.phases
 ///
 /// Bundles `n` phases into one pipeline (a mim::PhaseMan).
 /// The Bool selects fixed-point iteration:
 /// `tt` reruns the pipeline until no phase requests another round, `ff` runs it once.
 ///
-axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Phase;
+axm phases: {n: Nat} → Bool → «n; Phase» → Phase;
 ///
 /// ### Phases
 ///
@@ -74,13 +74,13 @@ axm %compile.phases: {n: Nat} → Bool → «n; %compile.Phase» → %compile.Ph
 /// * `static_arg_opt`: drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).
 /// * `unload`: unloads a plugin and nukes its annexes on the next World swap.
 ///
-axm %compile.beta_red:         %compile.Phase;
-axm %compile.branch_normalize: %compile.Phase;
-axm %compile.cleanup:          %compile.Phase;
-axm %compile.eta_conv:         %compile.Phase;
-axm %compile.lam_spec:         %compile.Phase;
-axm %compile.null:             %compile.Phase;
-axm %compile.ret_wrap:         %compile.Phase;
-axm %compile.scalarize:        %compile.Phase;
-axm %compile.static_arg_opt:   %compile.Phase;
-axm %compile.unload:           {n: Nat} → «n; I8» → %compile.Phase;
+axm beta_red:         Phase;
+axm branch_normalize: Phase;
+axm cleanup:          Phase;
+axm eta_conv:         Phase;
+axm lam_spec:         Phase;
+axm null:             Phase;
+axm ret_wrap:         Phase;
+axm scalarize:        Phase;
+axm static_arg_opt:   Phase;
+axm unload:           {n: Nat} → «n; I8» → Phase;

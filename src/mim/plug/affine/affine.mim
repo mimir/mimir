@@ -8,11 +8,12 @@
 ///
 import mem;
 import core;
+import compile;
 plugin refly;
 ///
 /// ## Operations
 ///
-/// ### %%affine.For
+/// ### affine.For
 ///
 /// This operation ranges from (including) `begin` to (excluding) `end` using `step` as stride.
 /// In addition, this loop manages `n` loop accumulators whose initial values `init` must be given.
@@ -22,92 +23,93 @@ plugin refly;
 /// * a `yield` continuation to continue with the next iteration, passing the new accumulator values.
 ///
 /// After termination of the loop, `exit` is invoked with the final accumulator values.
-axm %affine.For: {m n: Nat, Ts: «n; *»}
-               → [Cn [iter: Idx m, acc: «i: n; Ts#i», yield: Cn «i: n; Ts#i»]] // body
-               → [Cn «i: n; Ts#i»]                                             // exit
-               → Cn [begin _end step: Idx m, init: «i: n; Ts#i»];
+axm For: {m n: Nat, Ts: «n; *»}
+       → [Cn [iter: Idx m, acc: «i: n; Ts#i», yield: Cn «i: n; Ts#i»]] // body
+       → [Cn «i: n; Ts#i»]                                             // exit
+       → Cn [begin _end step: Idx m, init: «i: n; Ts#i»];
 ///
-/// A `For` whose BODY is wrapped in the identity annotation `%%ll.vec` is a schedule's nominated
-/// vector loop; `%%affine.lower_for` strips the wrapper and re-attaches it to the loop's exit
+/// A `For` whose BODY is wrapped in the identity annotation `ll.vec` is a schedule's nominated
+/// vector loop; `affine.lower_for` strips the wrapper and re-attaches it to the loop's exit
 /// condition for the backend (when the ll plugin is loaded — otherwise it is dropped).
 ///
 /// ## Affine Index Operations
 ///
-/// ### %%affine.Idx
+/// ### affine.Index
 /// The affine index type is an opaque type that can only be manipulated through the following operations.
 ///
-axm %affine.Idx: *;
+axm Index: *;
 ///
-/// ### %%affine.lit
+/// ### affine.lit
 /// Constructs an affine index from a constant natural number.
 ///
-axm %affine.lit: Nat → %affine.Idx;
+axm lit: Nat → Index;
 ///
-/// ### %%affine.op(add,sub)
+/// ### affine.op(add,sub)
 /// Performs addition and subtraction on affine indices.
 ///
-axm %affine.op(add,sub): [%affine.Idx, %affine.Idx] → %affine.Idx;
-///
-/// ### %%affine.op(neg)
+/// ### affine.op(neg)
 /// Negates an affine index.
 ///
-axm %affine.op(neg): %affine.Idx → %affine.Idx;
+axm semiop.(mul,ceildiv,floordiv,mod): [Index, Nat] → Index;
 ///
-/// ### %%affine.semiop(mul,ceildiv,floordiv,mod)
+/// ### affine.semiop(mul,ceildiv,floordiv,mod)
 /// Performs semi-linear operations on affine indices.
 /// The second argument is a natural number that must be constant with regard to the indices.
 ///
-axm %affine.semiop(mul,ceildiv,floordiv,mod): [%affine.Idx, Nat] → %affine.Idx;
-///
-/// ### %%affine.op.mul
-/// Performs multiplication of an affine index with a constant natural number.
-/// The second argument must be a *closed* constant - a stronger requirement than %%affine.semiop imposes - which is enforced via %%refly.check.
-///
-lam %affine.op.mul (d : %affine.Idx, c : Nat): %affine.Idx =
-    %affine.semiop.mul(d, %refly.check (%core.pe.is_closed(c), c, "The second argument of %affine.op.mul must be a constant."));
+pub mod op {
+    axm (add, sub): [Index, Index] → Index;
+    axm neg: Index → Index;
 
+    ///
+    /// ### affine.op.mul
+    /// Performs multiplication of an affine index with a constant natural number.
+    /// The second argument must be a *closed* constant - a stronger requirement than affine.semiop imposes - which is enforced via refly.check.
+    ///
+    anx lam mul (d : Index, c : Nat): Index =
+        semiop.mul(d, refly.check (core.pe.is_closed(c), c, "The second argument of affine.op.mul must be a constant."));
+}
 ///
-/// ### %%affine.map
+/// ### affine.map
 /// Maps a function over a list of affine indices.
 /// Any captured variables of the function must be closed over the entire list of indices, i.e. they must not depend on the iteration index.
 /// The moduli are per-element: each input index `i` carries its own modulus `sin#i` and each output index `j` its own `sout#j`.
 ///
-axm %affine.map: {m n: Nat}
-               → {sin: «n; Nat», sout: «m; Nat»}
-               → ([«n; %affine.Idx»] → «m; %affine.Idx»)
-               → «i: n; Idx (sin#i)»
-               → {a: Nat}
-               → (%mem.M a)
-               → [(%mem.M a), «i: m; Idx (sout#i)»];
+axm map: {m n: Nat}
+       → {sin: «n; Nat», sout: «m; Nat»}
+       → ([«n; Index»] → «m; Index»)
+       → «i: n; Idx (sin#i)»
+       → {a: Nat}
+       → (mem.M a)
+       → [(mem.M a), «i: m; Idx (sout#i)»];
 
 ///
-/// ### %%affine.id
+/// ### affine.id
 /// The identity map on affine indices.
 ///
-lam %affine.id {r: Nat} (o: «r; %affine.Idx»): «r; %affine.Idx» = o;
+anx lam id {r: Nat} (o: «r; Index»): «r; Index» = o;
 ///
-/// ### %%affine.linearize
+/// ### affine.linearize
 /// Row-major flattening of a multi-index: `linearize(idxs, s) = Σ_k idxs#k · (∏_{j>k} s#j)`.
 /// `s` is the (row-major) shape; only its rank `n` need be a literal.
 ///
-axm %affine.linearize: {n: Nat} → [idxs: «n; %affine.Idx», s: «n; Nat»] → %affine.Idx;
+axm linearize: {n: Nat} → [idxs: «n; Index», s: «n; Nat»] → Index;
 ///
-/// ### %%affine.delinearize
+/// ### affine.delinearize
 /// Row-major unflattening: `delinearize(lin, s)#d = (lin floordiv (∏_{j>d} s#j)) mod s#d`.
-/// The inverse of %affine.linearize; only the rank `m` of `s` need be a literal.
+/// The inverse of affine.linearize; only the rank `m` of `s` need be a literal.
 ///
-axm %affine.delinearize: {m: Nat} → [lin: %affine.Idx, s: «m; Nat»] → «m; %affine.Idx»;
+axm delinearize: {m: Nat} → [lin: Index, s: «m; Nat»] → «m; Index»;
 ///
 /// ## Phases
 ///
-/// ### %%affine.lower_for
+/// ### affine.lower_for
 ///
-/// Lowers the %%%affine.For operation to recursive function calls.
+/// Lowers the affine.For operation to recursive function calls.
 ///
-axm %affine.lower_for: %compile.Phase;
+axm lower_for: compile.Phase;
 ///
-/// ### %%affine.lower_index
+/// ### affine.lower_index
 ///
-/// Lowers the affine index algebra (%%%affine.Idx, %%%affine.lit, %%%affine.op, %%%affine.semiop, %%%affine.map) to %%core arithmetic.
+/// Lowers the affine index algebra (affine.Index, affine.lit, affine.op, affine.semiop, affine.map) to core arithmetic.
 ///
-axm %affine.lower_index: %compile.Phase;
+axm lower_index: compile.Phase;

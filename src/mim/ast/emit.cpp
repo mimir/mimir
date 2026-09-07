@@ -21,11 +21,13 @@ public:
     Driver& driver() { return world().driver(); }
     fe::Error& error() { return driver().error(); }
 
-    /// @p name is the full syntactic name of *this* registration (`%plugin.tag` or `%plugin.tag.sub`).
-    /// We must take it from the declaration rather than from Def::sym, since hash-consing can make several
-    /// annexes share a single Def (e.g. `let %foo.bar = 23; let %foo.baz = 23;`).
+    /// @p name is *this* registration's own (unqualified) Dbg::sym; AnnexInfo::qualified turns it into the
+    /// full `plugin.tag[.sub]` name. We must take it from the declaration rather than from Def::sym, since
+    /// hash-consing can make several annexes share a single Def (e.g. `mod foo { anx let bar = 23; anx let baz = 23;
+    /// }`).
     void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
-        if (annex) world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, name, def);
+        if (annex)
+            world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
     }
 
     absl::node_hash_map<Sigma*, fe::SymMap<size_t>, GIDHash<const Def*>> sigma2sym2idx;
@@ -469,23 +471,30 @@ void AxmDecl::emit(Emitter& e) const {
             id.trip = trip_.lit_u();
     }
 
-    if (num_subs() == 0) {
-        auto norm = e.driver().normalizer(plugin, id.tag, 0);
-        auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, 0)->set(dbg().sym());
-        def_      = axm;
-        e.world().annexes().attach(plugin, id.tag, 0, dbg().sym(), axm);
-    } else {
-        for (sub_t i = 0, n = num_subs(); i != n; ++i) {
-            sub_t s   = i + offset_;
-            auto norm = e.driver().normalizer(plugin, id.tag, s);
-            auto name = e.world().sym(dbg().sym().str() + "."s + sub(i).front()->dbg().sym().str());
-            auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, s)->set(name);
-            e.world().annexes().attach(plugin, id.tag, s, name, axm);
+    auto norm = e.driver().normalizer(plugin, id.tag, sub_);
+    auto name = annex_->qualified(e.driver(), dbg().sym());
+    auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, sub_)->set(name);
+    def_      = axm;
+    e.world().annexes().attach(plugin, id.tag, sub_, name, axm);
+}
 
-            for (const auto& alias : sub(i))
-                alias->def_ = axm;
-        }
-    }
+void AxmDecl::Sibling::emit(Emitter& e) const {
+    if (!annex_) return; // skip emit if binding failed
+    auto& id    = annex_->id;
+    auto plugin = annex_->plugin_id();
+    auto norm   = e.driver().normalizer(plugin, id.tag, sub_);
+    auto name   = annex_->qualified(e.driver(), dbg().sym());
+    auto axm    = e.world().axm(norm, id.curry, id.trip, owner()->mim_type(), plugin, id.tag, sub_)->set(name);
+    def_        = axm;
+    e.world().annexes().attach(plugin, id.tag, sub_, name, axm);
+}
+
+void AliasDecl::emit(Emitter& e) const {
+    if (!annex_) return; // skip emit if binding failed
+    auto target = path()->decl();
+    def_        = target->def();
+    auto name   = annex_->qualified(e.driver(), dbg().sym());
+    e.world().annexes().attach_alias(annex_->plugin_id(), annex_->id.tag, sub_, name);
 }
 
 void ModDecl::emit_decls(Emitter& e) const {
@@ -501,7 +510,7 @@ void LetDecl::emit(Emitter& e) const {
     auto _ = e.world().push(loc());
     auto v = value()->emit(e);
     def_   = ptrn()->emit_value(e, v);
-    if (auto id = ptrn()->isa<IdPtrn>()) e.attach(annex_, sub_, id->dbg().sym(), def_);
+    if (auto id = ptrn()->isa<IdPtrn>()) e.attach(id->annex_, id->sub_, id->dbg().sym(), def_);
 }
 
 void RecDecl::emit(Emitter& e) const {
@@ -571,6 +580,8 @@ void LamDecl::emit_decl(Emitter& e) const {
 }
 
 void LamDecl::emit_body(Emitter& e) const {
+    if (!body()) return; // extern forward declaration: the implementation lives in a native translation unit
+
     auto _ = e.world().push(loc());
     {
         auto _body = e.world().push(body()->loc());
@@ -613,17 +624,6 @@ void LamDecl::emit_body(Emitter& e) const {
         lam->externalize();
     }
     e.attach(annex_, sub_, dbg().sym(), def_);
-}
-
-void CDecl::emit(Emitter& e) const {
-    auto _     = e.world().push(loc());
-    auto dom_t = dom()->emit_type(e);
-    if (tag() == Tag::K_cfun) {
-        auto ret_t = codom()->emit(e);
-        def_       = e.world().mut_fun(dom_t, ret_t)->set(dbg().sym());
-    } else {
-        def_ = e.world().mut_con(dom_t)->set(dbg().sym());
-    }
 }
 
 void RuleDecl::emit(Emitter& e) const {

@@ -27,9 +27,7 @@
     case Tag::T_star: \
     case Tag::T_box
 
-#define C_ID         \
-              M_anx: \
-    case Tag::M_id
+#define C_ID M_id
 
 #define C_LIT        \
               T_bot: \
@@ -52,10 +50,6 @@
     case Tag::K_con: \
     case Tag::K_fun
 
-#define C_CDECL       \
-              K_ccon: \
-    case Tag::K_cfun
-
 #define C_RULE        \
               K_norm: \
     case Tag::K_rule
@@ -70,7 +64,6 @@
     case Tag::K_mod:    \
     case Tag::K_rec:    \
     case Tag::K_use:    \
-    case Tag::C_CDECL:  \
     case Tag::C_IMPORT: \
     case Tag::C_RULE:   \
     case Tag::C_LAM

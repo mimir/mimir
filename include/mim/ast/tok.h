@@ -75,10 +75,9 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_Type,   "Type"  )             \
     m(K_Univ,   "Univ"  )             \
     m(K_and,    "and"   )             \
+    m(K_anx,    "anx"   )             \
     m(K_as,     "as"    )             \
     m(K_axm,    "axm"   )             \
-    m(K_ccon,   "ccon"  )             \
-    m(K_cfun,   "cfun"  )             \
     m(K_cn,     "cn"    )             \
     m(K_con,    "con"   )             \
     m(K_end,    "end"   )             \
@@ -100,6 +99,8 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_mod,    "mod"   )             \
     m(K_norm,   "norm"  )             \
     m(K_plugin, "plugin")             \
+    m(K_priv,   "priv"  )             \
+    m(K_pub,    "pub"   )             \
     m(K_rec,    "rec"   )             \
     m(K_ret,    "ret"   )             \
     m(K_rule,   "rule"  )             \
@@ -125,7 +126,6 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(L_str,  "<string literal>"     ) \
     /* misc */                         \
     m(M_id,   "<identifier>"  )        \
-    m(M_anx,  "<annex name>"  )        \
     /* delimiters */                   \
     m(D_angle_l,    "‹")               \
     m(D_angle_r,    "›")               \
@@ -230,7 +230,7 @@ public:
 
     bool isa(Tag tag) const { return tag == tag_; }
     Tag tag() const { return tag_; }
-    bool has_sym() const { return isa(Tag::M_id) || isa(Tag::M_anx) || isa(Tag::L_str); }
+    bool has_sym() const { return isa(Tag::M_id) || isa(Tag::L_str); }
     /// @note A failed Parser::expect yields a Nil Tok; its Dbg is anonymous instead of asserting in Tok::sym.
     Dbg dbg() const { return {loc(), has_sym() ? sym_ : Sym()}; }
     Loc loc() const { return loc_; }

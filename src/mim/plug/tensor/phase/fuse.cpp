@@ -24,7 +24,7 @@ namespace mim::plug::tensor::phase {
 /// Everything else — `mod`/`div`, sums of two loop indices (convolution windows), symbolic strides
 /// (which may be 0 at runtime) — yields nothing.
 static std::optional<u64> injective_coord(const Def* var, const Def* e) {
-    // A one-loop domain «1; %affine.Idx» collapses to a plain %affine.Idx, so the var itself is coordinate 0.
+    // A one-loop domain «1; %affine.Index» collapses to a plain %affine.Index, so the var itself is coordinate 0.
     if (e == var) return 0;
     if (auto ex = e->isa<Extract>(); ex && ex->tuple() == var) return Lit::isa<u64>(ex->index());
 
@@ -126,7 +126,7 @@ static std::optional<PureRead> read_through(World& w, const Def* value, const De
 
         // Source axis d reads o#d where the sizes agree and index 0 where the source axis is 1
         // (expressed as `o#d · 0`, like `bid_map`). Bail on axes where neither is provable.
-        auto vec_ty = slot_map->type()->as<Pi>()->codom(); // «r; %affine.Idx»
+        auto vec_ty = slot_map->type()->as<Pi>()->codom(); // «r; %affine.Index»
         auto lam    = w.mut_lam(vec_ty, vec_ty)->set("bcast_map");
         DefVec elems(*r_l);
         for (u64 d = 0; d < *r_l; ++d) {

@@ -12,69 +12,69 @@ plugin core;
 ///
 /// ## Operations
 ///
-/// ### %%tuple.typecat
+/// ### tuple.typecat
 ///
-/// Computes the type of a `%%tuple.cat` with an `n`- and an `m`-tuple.
-lam %tuple.typecat {n m: Nat} (Ts: «n; *») (Us: «m; *») : * = // «i: n + m; select(i < n , Ts#i, Us#(i - n))»
-    «i: %core.nat.add (n, m);
-        let nat_i = %core.bitcast Nat i;
-        %core.Select (
-            %core.ncmp.l (nat_i, n),
-            Ts#(%core.bitcast (Idx n) i),
-            Us#(%core.bitcast (Idx m) (%core.nat.sub (nat_i, n))))»;
+/// Computes the type of a `tuple.cat` with an `n`- and an `m`-tuple.
+anx lam typecat {n m: Nat} (Ts: «n; *») (Us: «m; *») : * = // «i: n + m; select(i < n , Ts#i, Us#(i - n))»
+    «i: core.nat.add (n, m);
+        let nat_i = core.bitcast Nat i;
+        core.Select (
+            core.ncmp.l (nat_i, n),
+            Ts#(core.bitcast (Idx n) i),
+            Us#(core.bitcast (Idx m) (core.nat.sub (nat_i, n))))»;
 ///
-/// ### %%tuple.cat
+/// ### tuple.cat
 ///
 /// Concatenates an `n`-tuple and an `m`-tuple to an `n + m`-tuple.
 ///
-axm %tuple.cat: {n m: Nat}
-                 → {Ts: «n; *», Us: «m; *»}
-                 → [«i: n; Ts#i», «i: m; Us#i»]
-                 → %tuple.typecat Ts Us
-                 , normalize_cat;
+axm cat: {n m: Nat}
+          → {Ts: «n; *», Us: «m; *»}
+          → [«i: n; Ts#i», «i: m; Us#i»]
+          → typecat Ts Us
+          , normalize_cat;
 
 ///
-/// ### %%tuple.append / %%tuple.prepend
+/// ### tuple.append / tuple.prepend
 ///
 /// Appends / prepends a single element to a tuple.
 ///
-lam %tuple.append   {n: Nat}
-                    {Ts: «n; *», U: *}
-                    (a: «i: n; Ts#i», b: U)
-                  : %tuple.typecat Ts U
-                  = %tuple.cat (a, b);
+anx lam append   {n: Nat}
+                 {Ts: «n; *», U: *}
+                 (a: «i: n; Ts#i», b: U)
+               : typecat Ts U
+               = cat (a, b);
 
-lam %tuple.prepend  {m: Nat}
-                    {T: *, Us: «m; *»}
-                    (a: T, b: «i: m; Us#i»)
-                  : %tuple.typecat T Us
-                  = %tuple.cat (a, b);
+anx lam prepend  {m: Nat}
+                 {T: *, Us: «m; *»}
+                 (a: T, b: «i: m; Us#i»)
+               : typecat T Us
+               = cat (a, b);
 
 ///
-/// ### %%tuple.head / %%tuple.tail
+/// ### tuple.head / tuple.tail
 ///
 /// The first element of a tuple / all elements but the first.
 ///
-lam %tuple.head {n: Nat}
+anx lam head {n: Nat}
     {Ts: «n; *»}
     [values: «i: n; Ts#i»]
-  : [Ts#(%core.idx n %core.mode.US 0)]
-  = values#(%core.idx n %core.mode.US 0);
+  : [Ts#(core.idx n core.mode.US 0)]
+  = values#(core.idx n core.mode.US 0);
 
-lam %tuple.tail {n: Nat}
+anx lam tail {n: Nat}
     {Ts: «n; *»}
     [values: «i: n; Ts#i»]
-  : «i: %core.nat.sub (n, 1); Ts#(%core.bitcast (Idx n) (%core.nat.add (%core.bitcast Nat i, 1)))»
-  = ‹i: %core.nat.sub (n, 1); values#(%core.bitcast (Idx n) (%core.nat.add (%core.bitcast Nat i, 1)))›;
+  : «i: core.nat.sub (n, 1); Ts#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))»
+  = ‹i: core.nat.sub (n, 1); values#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))›;
 
 ///
-/// ### %%tuple.contains
+/// ### tuple.contains
 ///
 /// Does the tuple contain the given element?
 ///
-axm %tuple.contains: {n: Nat} → {Ts: «n; *», U: *} → [«i: n; Ts#i», U] → Bool, normalize_contains;
+axm contains: {n: Nat} → {Ts: «n; *», U: *} → [«i: n; Ts#i», U] → Bool, normalize_contains;
 ///
-/// ### %%tuple.zip
+/// ### tuple.zip
 ///
 /// [Zips](https://en.wikipedia.org/wiki/Zipping_(computer_science)) several tensors.
 /// The signature will likely change in the future:
@@ -87,7 +87,7 @@ axm %tuple.contains: {n: Nat} → {Ts: «n; *», U: *} → [«i: n; Ts#i», U] �
 /// * `f`: zipping function that expects an `n_i`-tuple whose elements correspond to `Is` and yields an `n_o`-tuple whose element types correspond to `Os`
 /// * `is`: the actual input tensors
 ///
-axm %tuple.zip: [r: Nat, s: «r; Nat»]
-              → [n_i: Nat, Is: «n_i; *», n_o: Nat, Os: «n_o; *», f: «i: n_i; Is#i» → «o: n_o; Os#o»]
-              → «i: n_i; «s; Is#i»»
-              → «o: n_o; «s; Os#o»», normalize_zip;
+axm zip: [r: Nat, s: «r; Nat»]
+       → [n_i: Nat, Is: «n_i; *», n_o: Nat, Os: «n_o; *», f: «i: n_i; Is#i» → «o: n_o; Os#o»]
+       → «i: n_i; «s; Is#i»»
+       → «o: n_o; «s; Os#o»», normalize_zip;

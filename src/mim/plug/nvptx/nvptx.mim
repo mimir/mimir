@@ -10,13 +10,14 @@
 ///
 plugin gpu;
 import compile;
+import mem;
 ///
 /// ## Types
 ///
 /// ### Streams
 ///
-let %nvptx.Stream = %mem.Ptr0 I8;
+anx let Stream = mem.Ptr0 I8;
 ///
 /// ## Phases
 ///
-axm %nvptx.stream_impl_repl: %compile.Phase;
+axm stream_impl_repl: compile.Phase;

@@ -64,9 +64,7 @@ private:
     ///@{
     Ptr<File> parse_file();
     Dbg parse_id(std::string_view ctxt = {});
-    Dbg parse_name(std::string_view ctxt = {});
-    /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm sub list a name is
-    /// unambiguous, and annexes such as `%core.nat.mod` rely on it.
+    /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm tag list a name is unambiguous.
     Dbg parse_member(std::string_view ctxt = {});
     Path parse_path(std::string_view ctxt = {});
     Ptr<Import> parse_import_or_plugin();
@@ -163,14 +161,21 @@ private:
     /// * ... empty: **Only** decls are parsed. @returns `nullptr`
     /// * ... **non**-empty: Decls are parsed, then an expression. @returns expression.
     Ptrs<ValDecl> parse_decls();
-    Ptr<ValDecl> parse_axm_decl();
-    Ptr<ValDecl> parse_let_decl();
-    Ptr<ValDecl> parse_mod_decl();
+    /// Parses an optional `priv`/`pub`/`extern`/`anx` modifier token; `nullopt` if none was written.
+    std::optional<Vis> parse_vis();
+    void parse_axm_decl(Vis, Ptrs<ValDecl>&);
+    /// Parses the `(tag_0 [= alias]*, ...): type[, normalizer[, curry[, trip]]]` tail shared by a bare
+    /// `axm (...)` group and the `axm tag.(...)` family-sugar; each Dbgs is one tag's `[primary, alias, ...]`.
+    Ptrs<ValDecl> parse_axm_group(Vis);
+    /// The `: type[, normalizer[, curry[, trip]]]` tail shared by a plain `axm` and Parser::parse_axm_group.
+    std::tuple<Ptr<Expr>, Dbg, Tok, Tok> parse_axm_tail();
+    Ptr<ValDecl> parse_alias_decl();
+    Ptr<ValDecl> parse_let_decl(Vis);
+    Ptr<ValDecl> parse_mod_decl(Vis);
     Ptr<ValDecl> parse_use_decl();
-    Ptr<ValDecl> parse_c_decl();
     Ptr<ValDecl> parse_rule_decl();
-    Ptr<LamDecl> parse_lam_decl();
-    Ptr<RecDecl> parse_rec_decl(bool first);
+    Ptr<LamDecl> parse_lam_decl(Vis);
+    Ptr<RecDecl> parse_rec_decl(bool first, Vis);
     Ptr<RecDecl> parse_and_decl();
     ///@}
 

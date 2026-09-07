@@ -6,7 +6,7 @@ namespace mim::plug::affine::phase {
 
 /// Lowers the affine index algebra to %core arithmetic.
 ///
-/// The opaque %affine.Idx type is rewritten to the wide `Idx 0` (i64) carrier, and the index operations are computed
+/// The opaque %affine.Index type is rewritten to the wide `Idx 0` (i64) carrier, and the index operations are computed
 /// with wrap-around (`%core.Mode::none`) arithmetic, so negation/subtraction are correct via two's complement:
 /// * `%affine.lit n`           ↦ `n` reinterpreted as an `Idx 0`,
 /// * `%affine.op.add (a, b)`        ↦ `%core.wrap.add none (a, b)`,

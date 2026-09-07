@@ -4,7 +4,7 @@
 ///
 /// [TOC]
 ///
-/// This plugin provides *reverse-mode automatic differentiation*: `%%autodiff.ad f` yields the augmented
+/// This plugin provides *reverse-mode automatic differentiation*: `autodiff.ad f` yields the augmented
 /// function `f' = λ args. (f args, f*)` that returns the result together with its pullback.
 /// The actual differentiation is performed by the mim::plug::autodiff::Eval phase.
 ///
@@ -16,50 +16,50 @@ plugin core; // for derivatives
 ///
 /// ## Types
 ///
-/// ### %%autodiff.Tangent
+/// ### autodiff.Tangent
 ///
 /// The tangent type of a type `T` (currently the identity).
-axm %autodiff.Tangent: * → *, normalize_Tangent;
+axm Tangent: * → *, normalize_Tangent;
 ///
 /// ## Operations
 ///
-/// ### %%autodiff.AD
+/// ### autodiff.AD
 ///
 /// Computes the augmented type of a function type: `(T → U) => (T → U × (U → T))`.
 ///
-axm %autodiff.AD: * → *, normalize_AD;
+axm AD: * → *, normalize_AD;
 ///
-/// ### %%autodiff.ad
+/// ### autodiff.ad
 ///
 /// Yields the augmented term of a closed term (function, operator, higher-order argument, registered axiom, etc.).
 /// The augmented term `f'` returns the result together with the pullback:
 /// `autodiff f = f' = λ args. (f args, f*)`
 ///
-axm %autodiff.ad: {T: *} → T → %autodiff.AD T, normalize_ad;
+axm ad: {T: *} → T → AD T, normalize_ad;
 ///
-/// ### %%autodiff.zero
+/// ### autodiff.zero
 ///
 /// Represents universal zero such that `(zero T) +_T t = t`.
 ///
-axm %autodiff.zero: [T: *] → T, normalize_zero;
+axm zero: [T: *] → T, normalize_zero;
 ///
-/// ### %%autodiff.add
+/// ### autodiff.add
 ///
 /// A universal addition that consumes zeros and defaults to normal addition for scalar types.
 /// It lifts addition over structured types and special-cases types that do not allow addition.
 ///
-axm %autodiff.add: {T: *} → [T, T] → T, normalize_add;
+axm add: {T: *} → [T, T] → T, normalize_add;
 ///
-/// ### %%autodiff.sum
+/// ### autodiff.sum
 ///
-/// Performs %%autodiff.add over a list of terms.
+/// Performs autodiff.add over a list of terms.
 ///
-axm %autodiff.sum: [n: Nat, T: *] → «n; T» → T, normalize_sum;
+axm sum: [n: Nat, T: *] → «n; T» → T, normalize_sum;
 ///
 /// ## Phases
 ///
-axm %autodiff.zero_repl: %compile.Phase;
-axm %autodiff.eval:      %compile.Phase;
+axm zero_repl: compile.Phase;
+axm eval:      compile.Phase;
 ///
 /// ## Registered translations
 ///
@@ -97,36 +97,39 @@ axm %autodiff.eval:      %compile.Phase;
 /// The tuple pullback transports the partial pullbacks of the operands and handles the sums.
 /// By its nature the pullback of a tuple needs to be a sum.
 ///
-/// ### %%autodiff.diff
+/// ### autodiff.diff
 ///
-/// The derivative of the axiom `%%plugin.tag.sub` is the annex `%%autodiff.diff.plugin_tag_sub`, i.e. the axiom's name
-/// with the `%` dropped and all `.`s replaced by `_`s;
+/// The derivative of the axiom `plugin.tag.sub` is the annex `autodiff.diff.plugin_tag_sub`, i.e. the axiom's name
+/// with all `.`s replaced by `_`s;
 /// this is how mim::plug::autodiff::phase::Eval looks a derivative up.
 /// Being annexes, they are roots of the World and hence survive until mim::plug::autodiff::phase::Eval has consumed
 /// them.
-/// But - unlike externals - they are invisible to the backends and a `%%compile.unload "autodiff"` nukes them along
+/// But - unlike externals - they are invisible to the backends and a `compile.unload "autodiff"` nukes them along
 /// with all the other annexes of this plugin.
 ///
-/// #### %%autodiff.diff.core_icmp_xYgLE
-///
-/// The derivative of %%core.icmp.xYgLE (eq).
-/// The comparison pullback exists formally but is not used.
-///
-fun %autodiff.diff.core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
-    return (%core.icmp.sle ab, fn [Bool]@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
-///
-/// #### %%autodiff.diff.core_wrap_add
-///
-/// The derivative of %%core.wrap.add:
-/// s ↦ (s, s)
-///
-fun %autodiff.diff.core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
-    return (%core.wrap.add m ab, fn (i: Idx s)@tt: «2; Idx s» = return ‹2; i›);
-///
-/// #### %%autodiff.diff.core_wrap_mul
-///
-/// The derivative of %%core.wrap.mul:
-/// s ↦ (s*b, s*a)
-///
-fun %autodiff.diff.core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
-    return (%core.wrap.mul m ab, fn (i: Idx s)@tt: «2; Idx s» = return (%core.wrap.mul m (i, b), %core.wrap.mul m (i, a)));
+mod diff {
+    ///
+    /// #### autodiff.diff.core_icmp_xYgLE
+    ///
+    /// The derivative of core.icmp.xYgLE (eq).
+    /// The comparison pullback exists formally but is not used.
+    ///
+    anx fun core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
+        return (core.icmp.sle ab, fn [Bool]@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
+    ///
+    /// #### autodiff.diff.core_wrap_add
+    ///
+    /// The derivative of core.wrap.add:
+    /// s ↦ (s, s)
+    ///
+    anx fun core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
+        return (core.wrap.add m ab, fn (i: Idx s)@tt: «2; Idx s» = return ‹2; i›);
+    ///
+    /// #### autodiff.diff.core_wrap_mul
+    ///
+    /// The derivative of core.wrap.mul:
+    /// s ↦ (s*b, s*a)
+    ///
+    anx fun core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
+        return (core.wrap.mul m ab, fn (i: Idx s)@tt: «2; Idx s» = return (core.wrap.mul m (i, b), core.wrap.mul m (i, a)));
+}

@@ -236,6 +236,10 @@ public:
             return attach(Annex::flags(p, t, s), sym, def);
         }
 
+        /// Registers a further Sym for an *already* attach()ed annex, sharing its flags_t; @see mim::ast::AliasDecl.
+        void attach_alias(flags_t, Sym);
+        void attach_alias(plugin_t p, tag_t t, sub_t s, Sym sym) { attach_alias(Annex::flags(p, t, s), sym); }
+
         /// Overwrites the Def of an *already* attach()ed annex, keeping its Sym.
         /// Unlike attach(), this expects @p flags to be present; @see InplaceRWPhase.
         const Def* reattach(flags_t flags, const Def* def) {

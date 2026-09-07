@@ -217,26 +217,36 @@ void UniqExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "â¦
  * Decl
  */
 
-void AxmDecl::Alias::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
+static std::string_view vis2str(Vis vis) {
+    switch (vis) {
+        case Vis::Priv: return "priv";
+        case Vis::Pub: return "pub";
+        case Vis::Extern: return "extern";
+        case Vis::Anx: return "anx";
+    }
+    fe::unreachable();
+}
 
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "axm {}", dbg());
-    if (num_subs() != 0) {
-        os << '(';
-        for (auto sep = ""; const auto& aliases : subs()) {
-            std::print(os, "{}{}", sep, R(tab, aliases, " = "));
-            sep = ", ";
-        }
-        os << ')';
-    }
-    std::print(os, ": {}", S(tab, type()));
+    if (vis() != Vis::Anx) std::print(os, "{} ", vis2str(vis()));
+    std::print(os, "axm {}: {}", dbg(), S(tab, type()));
     if (normalizer()) std::print(os, ", {}", normalizer());
     if (curry()) std::print(os, ", {}", curry());
     if (trip()) std::print(os, ", {}", trip());
     os << ";";
 }
 
+void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() != Vis::Anx) std::print(os, "{} ", vis2str(vis()));
+    std::print(os, "axm {}: {}", dbg(), S(tab, owner()->type()));
+    if (owner()->normalizer()) std::print(os, ", {}", owner()->normalizer());
+    os << ";";
+}
+
+void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "anx {} = {};", dbg(), S(tab, path())); }
+
 void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() != Vis::Priv) std::print(os, "{} ", vis2str(vis()));
     std::println(os, "mod {} {{", dbg());
     ++tab;
     stream_decls(tab, os, decls());
@@ -247,6 +257,7 @@ void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
 void UseDecl::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "use {};", S(tab, path())); }
 
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() != Vis::Priv) std::print(os, "{} ", vis2str(vis()));
     std::print(os, "let {} = {};", S(tab, ptrn()), S(tab, value()));
 }
 
@@ -263,6 +274,7 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() != Vis::Priv) std::print(os, "{} ", vis2str(vis()));
     std::print(os, "{} {}", tag(), dbg());
     if (!doms().front()->ptrn()->isa<TuplePtrn>()) os << ' ';
     std::print(os, "{}", R(tab, doms()));
@@ -278,11 +290,6 @@ void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
         }
     }
     os << ';';
-}
-
-void CDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}", dbg(), tag(), S(tab, dom()), S(tab, codom()));
-    if (tag() == Tag::K_cfun) std::print(os, ": {}", S(tab, codom()));
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {

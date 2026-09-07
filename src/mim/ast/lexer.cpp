@@ -90,12 +90,6 @@ Tok Lexer::lex() {
         if (accept(U'∪')) return tok(Tag::T_union);
         // clang-format on
 
-        if (accept('%')) {
-            if (lex_id(true)) return {loc_, Tag::M_anx, sym()};
-            error().e(loc_, "invalid axm name `{}`", str_);
-            continue;
-        }
-
         if (accept('.')) {
             if (accept(utf8::isdigit)) {
                 parse_digits();
@@ -162,10 +156,9 @@ Tok Lexer::lex() {
     }
 }
 
-// Only an annex name may contain `.`; elsewhere `.` separates the components of a Path.
-bool Lexer::lex_id(bool dots) {
+bool Lexer::lex_id() {
     if (accept(is_id_head)) {
-        while (accept([dots](char32_t c) { return is_id_tail(c) || (dots && c == '.'); })) {}
+        while (accept(is_id_tail)) {}
         return true;
     }
     return false;
