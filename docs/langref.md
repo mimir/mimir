@@ -40,9 +40,7 @@ For example, `λ` and `lm` are lexically equivalent.
 <eof>
 ```
 
-`%` is only part of annex names and is not a standalone token.
-An annex name `A` is a *single* token: only there may `.` occur inside a name, and only there may a component be spelled like a keyword - hence `%affine.Idx` and `%core.nat.mod`.
-Everywhere else `.` is the separator of a [path](@ref path).
+`.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.mod`.
 
 #### Secondary Terminals
 
@@ -88,7 +86,6 @@ The following terminals are defined by lexical patterns.
 
 ```ebnf
 I      ::= id
-A      ::= "%" id "." id ("." id)?
 L      ::= dec+
          |  "0" ["bB"] bin+
          |  "0" ["oO"] oct+
@@ -109,7 +106,7 @@ C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
-Here `I` is an identifier, `A` is an [annex](@ref mim::Annex) name, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
 
 The shorthand symbols used above are:
 
@@ -157,7 +154,7 @@ e   expression
 f ::= d*
 ```
 
-A file is a sequence of declarations, `import` and `plugin` among them.
+A file is a sequence of declarations.
 Each file forms a [module](@ref path) of its own that an import binds under a name.
 
 - `import foo;` resolves the module name `foo` through the search path.
@@ -174,7 +171,6 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 
 ```ebnf
 path ::= I ("." k)*
-      |  A
 k    ::= I | keyword
 ```
 
@@ -183,7 +179,7 @@ A module is either an imported file or a `mod` declaration.
 
 - A component after a `.` may be spelled like a keyword, as may a tag in an `axm` tag list - both positions are unambiguous.
 - `.` never reads a field out of a value; use `#` for that.
-- An annex name `A` is one token and stays a flat, global name: it resolves in the global annex scope regardless of the surrounding modules.
+- An `anx` declaration is an ordinary member of its enclosing module and is found by the same path resolution as any other member; see [Annex](@ref annex) for what additionally makes it an annex.
 
 ### Declarations {#decl}
 
@@ -197,7 +193,7 @@ mod I "{" d* "}"
 use path
 
 let p = e
-let A = e
+I = path
 
 lam|con|fun [extern] n dom+ [: e] = e
 ccon|cfun I b [: e]
@@ -206,17 +202,18 @@ rec n [: e] = e
 and n [: e] = e
 and lam|con|fun [extern] n dom+ [: e] = e
 
-axm A ["(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
+axm k ["." "(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
 
 rule|norm n p : e [when e] => e
 ```
 
-Here `n` is either an identifier or an annex name.
+Here `n` is an identifier.
 
 - `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
 - `mod` groups declarations under a name; its body also sees the enclosing scope.
 - `use` splices all members of a module into the current scope.
 - `let` introduces a binding pattern.
+- `I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
 - `extern` may appear on `lam`, `con`, and `fun` declarations.
 - Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
@@ -268,15 +265,15 @@ let (a, b, c) as abc = (1, 2, 3);
 This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
 - Bracket-style patterns may also contain general expressions.
-- This is what makes forms such as `[T: *] → T` and `Cn [mem: %mem.M 0, I32]` legal.
+- This is what makes forms such as `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
 - `let` and `ret` allow rebinding of an existing name.
 
 This is especially useful for state-threading style code:
 
 ```mim
-let (mem, ptr) = %mem.alloc (I32, 0) mem;
-let mem        = %mem.store (mem, ptr, 23:I32);
-let (mem, val) = %mem.load (mem, ptr);
+let (mem, ptr) = mem.alloc (I32, 0) mem;
+let mem        = mem.store (mem, ptr, 23:I32);
+let (mem, val) = mem.load (mem, ptr);
 ```
 
 ### Expressions {#expr}
@@ -475,9 +472,10 @@ A file is bound in isolation: it never sees the scope of whoever imports it.
 The symbol `_` is special: it never binds an entity.
 As a consequence, `_` may appear repeatedly in the same scope without conflict, but any use of `_` as a reference is a scoping error.
 
-### Annex
+### Annex {#annex}
 
-Annex names live in a separate global scope that the module structure does not partition.
+An `anx` declaration is an ordinary member of its enclosing module, found by the same path resolution as any other member.
+Its plugin-qualified name (`plugin.tag[.sub]`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
 
 ### Field Names of Sigmas
 

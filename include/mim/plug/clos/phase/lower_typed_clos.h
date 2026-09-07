@@ -28,7 +28,7 @@ namespace mim::plug::clos::phase {
 /// These annotations are introduced by LowerTypedClosPrep.
 ///
 /// The rewrite carries a *mem token* along each function body (LowerTypedClos::lvm_ / LowerTypedClos::lcm_) so
-/// that the `%mem.alloc`/`%mem.store` it inserts for boxed environments are threaded into the mem chain.
+/// that the `mem.alloc`/`mem.store` it inserts for boxed environments are threaded into the mem chain.
 /// This stateful, order-sensitive threading is why LowerTypedClos::rewrite intercepts whole classes of nodes
 /// instead of relying on the per-node hooks alone.
 /// A converted Lam's body is enqueued and rewritten later, seeded with that body's own initial mem token.

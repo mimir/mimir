@@ -26,8 +26,8 @@ namespace mim {
 /// A Pi is *pinned* (left untouched) if
 /// * it is reachable from an annex (normalizers and backends rely on its exact shape),
 /// * an Axm application's signature dictates it - what the Axm consumes and produces,
-///   plus a *bare* function argument's type (`%%autodiff.ad f`) - except for subtrees that are
-///   merely substituted in via (type) arguments (`T` in `%%mem.store T`), which stay flattenable,
+///   plus a *bare* function argument's type (`autodiff.ad f`) - except for subtrees that are
+///   merely substituted in via (type) arguments (`T` in `mem.store T`), which stay flattenable,
 /// * it occurs inside an *interface* Lam's signature (external, annex, or unset declaration) -
 ///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values;
 ///   rewrite_mut_Lam() preserves the interface's top level by hand),
@@ -38,7 +38,7 @@ namespace mim {
 ///   this is tracked per parameter via a keep-bitmask.
 ///
 /// The phase flattens **one level** of a Pi's (thresholded) domain per run.
-/// Because it is scheduled inside a fixed-point pipeline (`%compile.phases tt (...)`),
+/// Because it is scheduled inside a fixed-point pipeline (`compile.phases tt (...)`),
 /// re-running it converges to a full flatten; each run that peels calls invalidate().
 ///
 /// Flattening respects Flags::scalarize_threshold via the thresholded projection helpers

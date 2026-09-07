@@ -7,7 +7,7 @@
 namespace mim::plug::clos::phase {
 
 /// Escape analysis for closures:
-/// closure literals get their function wrapped in `%clos.attr.esc` or `%clos.attr.bottom`,
+/// closure literals get their function wrapped in `clos.attr.esc` or `clos.attr.bottom`,
 /// depending on whether their environment escapes.
 class LowerTypedClosPrep : public RWPhase {
 public:

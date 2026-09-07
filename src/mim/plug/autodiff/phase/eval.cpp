@@ -161,7 +161,7 @@ const Def* Eval::augment_lam(Lam* lam, Lam* f, Lam* f_diff) {
         return aug_lam;
     }
     // Some general function in the program needs to be differentiated.
-    // The old pass emitted a new `%autodiff.ad` application here and relied on the PassMan to revisit it;
+    // The old pass emitted a new `autodiff.ad` application here and relied on the PassMan to revisit it;
     // as a Phase we derive eagerly instead (derive() pre-registers itself, so recursion terminates).
     auto aug_lam = derive(lam);
     // TODO: directly more association here? => partly inline op_autodiff

@@ -7,7 +7,7 @@ namespace mim::plug::clos::phase {
 namespace {
 
 // Exception-handling closures (sjlj branches, throw/landing-pad continuations) are always constructed by this
-// phase itself with an explicit leading `%mem.M`, so their env slot is always 1 -- see the callers of split/rebuild.
+// phase itself with an explicit leading `mem.M`, so their env slot is always 1 -- see the callers of split/rebuild.
 constexpr size_t Sjlj_Env_Param = 1_u64;
 
 std::array<const Def*, 3> split(const Def* def) {

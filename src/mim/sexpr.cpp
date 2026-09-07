@@ -169,7 +169,7 @@ private:
     bool bindings_enabled() const { return bindings_enabled_; }
     bool bindings_enabled_;
 
-    // Ensures that we don't redeclare things, for example %axm.foo
+    // Ensures that we don't redeclare things, for example axm.foo
     // should only be declared once.
     absl::flat_hash_set<std::string> declared_;
     bool is_declared(std::string name) { return declared_.contains(name); }

@@ -13,7 +13,7 @@ static_assert(sizeof(void*) <= sizeof(u64), "pointer doesn't fit into Lit");
 
 namespace {
 
-// The trick is that we simply "box" the pointer of @p def inside a Lit of type `%refly.Code`.
+// The trick is that we simply "box" the pointer of @p def inside a Lit of type `refly.Code`.
 const Def* do_reify(const Def* def) {
     auto& world = def->world();
     return world.lit(world.call<Code>(def->type()), reinterpret_cast<u64>(def));

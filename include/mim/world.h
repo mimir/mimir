@@ -309,7 +309,7 @@ public:
 
     /// Get Axm from a plugin.
     /// Can be used to get an Axm without sub-tags.
-    /// E.g. use `w.annex<mem::M>();` to get the `%mem.M` Axm.
+    /// E.g. use `w.annex<mem::M>();` to get the `mem.M` Axm.
     template<annex_without_subs id>
     const Def* annex() {
         return annex(Annex::base<id>());

@@ -4,11 +4,11 @@
 
 namespace mim::plug::mem::phase {
 
-/// Threads the `%mem.M` memory monad through the world:
+/// Threads the `mem.M` memory monad through the world:
 /// mem-extends continuations and rewires every memory operand to the *current* memory at that program point.
 /// It's primarily to be used as preparation for other phases that rely on all continuations having a mem.
-/// It also splices the `⊥ : %mem.M 0` memory placeholders of freshly emitted memory operations into the
-/// global memory chain and resolves `%mem.fresh (a, k)` requests by jumping to `k` with the current memory
+/// It also splices the `⊥ : mem.M 0` memory placeholders of freshly emitted memory operations into the
+/// global memory chain and resolves `mem.fresh (a, k)` requests by jumping to `k` with the current memory
 /// (see mim::plug::tensor::phase::LowerToMem, which emits both and schedules this phase right behind itself).
 ///
 /// The rewrite is a plain RWPhase.
@@ -24,11 +24,11 @@ namespace mim::plug::mem::phase {
 ///
 /// Three rules keep the rewrite type-correct in the presence of axiom-pinned ABIs:
 /// - Only continuations (Pi::isa_cn) are mem-extended; direct-style functions (e.g. the affine index
-///   mappings passed to `%btensor.map_reduce_post`) keep their signature.
-/// - A pi whose leading parameter carries the memory *grouped* (the `Fn [%mem.M 0, To, ins] → …` shape of
+///   mappings passed to `btensor.map_reduce_post`) keep their signature.
+/// - A pi whose leading parameter carries the memory *grouped* (the `Fn [mem.M 0, To, ins] → …` shape of
 ///   a mem-threaded combiner) counts as already mem-threaded.
 /// - Lams reachable from axm-app arguments are preserved untouched: axioms pin their arguments' ABI
-///   (e.g. the combiner slot of `%btensor.map_reduce_post`), so mem-extending them would be ill-typed.
+///   (e.g. the combiner slot of `btensor.map_reduce_post`), so mem-extending them would be ill-typed.
 class AddMem : public RWPhase {
 public:
     AddMem(World& world, flags_t annex)
@@ -42,7 +42,7 @@ private:
     const Def* rewrite_imm_Tuple(const Tuple*) override;
     const Def* rewrite_imm_Pi(const Pi*) override;
 
-    /// Advances AddMem::curr_mem_ if @p def produces a memory (a bare `%mem.M` or a `[%mem.M, …]` tuple).
+    /// Advances AddMem::curr_mem_ if @p def produces a memory (a bare `mem.M` or a `[mem.M, …]` tuple).
     void advance_mem(const Def* def);
 
     /// The current memory token in the continuation being rewritten (new world), or `nullptr` outside any mem context.

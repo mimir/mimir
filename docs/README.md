@@ -50,7 +50,7 @@ The graph is also **complete**: it holds everything needed to make sense of the 
 Contrast a traditional instruction list, which is meaningless on its own and only becomes intelligible once you pair it with a separately maintained [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph).
 
 Watch what happens to `sq`.
-When `f` applies `sq (Nat, %core.nat.mul)`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
+When `f` applies `sq (Nat, core.nat.mul)`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
 This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam::filter) that every direct-style function gets, which greenlights inlining.
 What remains is the bare `x * x`, with **no trace** of `sq` or the existential abstraction.
 The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
@@ -104,7 +104,7 @@ For example, the [`demo`](@ref demo) plugin declares one axiom and wires it to a
 
 ```mim
 /// the 42 constant, folded by the `normalize_const` C++ normalizer
-axm %demo.const_idx: [n: Nat] → Idx n, normalize_const;
+axm demo.const_idx: [n: Nat] → Idx n, normalize_const;
 ```
 
 The matching shared library implements `normalize_const` and any lowering or [phases](@ref phases); C++ does the heavy lifting of optimization, lowering, and code generation.

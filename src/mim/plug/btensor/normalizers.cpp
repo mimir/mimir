@@ -5,12 +5,12 @@
 
 namespace mim::plug::btensor {
 
-/// %btensor.map_reduce is %btensor.map_reduce_post without the epilogue and with the neutral schedule:
-/// delegate with `post = %btensor.id` (so `Tp = To`), no epilogue inputs (`nps = 0`), no vector dim
+/// btensor.map_reduce is btensor.map_reduce_post without the epilogue and with the neutral schedule:
+/// delegate with `post = btensor.id` (so `Tp = To`), no epilogue inputs (`nps = 0`), no vector dim
 /// (`vdim = Rn`, the out-of-range sentinel), and no unrolling.
 /// The delegation lives in a normalizer (rather than a wrapping `lam`) so that call sites keep axm-style
 /// implicit inference: the stuck axm application lets the checker solve the `{Tis, Ris, Sis}` holes from the
-/// operands, whereas applying a `lam` would eagerly β-reduce `%buffer.Buf` over still-unsolved holes.
+/// operands, whereas applying a `lam` would eagerly β-reduce `buffer.Buf` over still-unsolved holes.
 const Def* normalize_map_reduce(const Def*, const Def* c, const Def* arg) {
     auto& w = c->world();
 

@@ -217,7 +217,7 @@ struct Annex {
     /// @anchor annex_name
     /// Anatomy of an Annex name:
     /// ```
-    /// %plugin.tag.sub
+    /// plugin.tag.sub
     /// |  48  | 8 | 8 | <-- Number of bits per field.
     /// ```
     /// * Def::name() retrieves the full name as Sym.

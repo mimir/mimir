@@ -39,7 +39,7 @@ public:
 
     /// @name Redirection
     /// A Phase may resolve to a *different* Phase (or to nothing) after Phase::apply.
-    /// This is used by the `%%compile.named` stage that resolves a string to another plugin's annex.
+    /// This is used by the `compile.named` stage that resolves a string to another plugin's annex.
     ///@{
     virtual bool redirects() const { return false; } ///< If `true`, Phase::create uses take_resolved().
     virtual std::unique_ptr<Phase> take_resolved() {

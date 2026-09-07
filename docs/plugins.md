@@ -28,7 +28,7 @@ It consists of five checked-in files:
 \include "src/mim/plug/demo/demo.mim"
 
 Doc comments (`///`) are ordinary Doxygen-flavored Markdown (headings, `[TOC]`, `@see`, ...); everything else is plain Mim syntax declaring the annex itself.
-Here `%demo.const_idx` is a single axiom with no subtags, and `normalize_const` names the C++ function that evaluates it.
+Here `demo.const_idx` is a single axiom with no subtags, and `normalize_const` names the C++ function that evaluates it.
 Building the plugin auto-generates a C++ header and a Python module from this very file, and turns its doc comments into the plugin's Doxygen page — see [Generated Interfaces](@ref plugin_codegen) below, since this applies to every plugin, not just `demo`.
 
 \anchor demo_h
@@ -241,7 +241,7 @@ All sources are merged into a single module `<libdir>/mim/rt/<plugin>_rt.ll` (ne
 This step is optional: it requires `clang` (discovered as `MIM_CLANG`; merging multiple sources additionally needs `llvm-link`) and is skipped when `clang` is unavailable or `MIM_BUILD_LL_RUNTIME` is `OFF`.
 
 The [`ll`](@ref ll) backend locates such a runtime module via the driver's [search paths](@ref cli) and either embeds it into or links it with its emitted module, selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`; see the [CLI reference](@ref cli).
-The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmpbuf_size` for `%%clos.alloc_jmpbuf`, and `src/mim/plug/ll_nvptx/rt/mim_cuda_rt.c`, whose `@mim_cu_check` performs the `ll_nvptx` backend's CUDA driver-API error handling.
+The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmpbuf_size` for `clos.alloc_jmpbuf`, and `src/mim/plug/ll_nvptx/rt/mim_cuda_rt.c`, whose `@mim_cu_check` performs the `ll_nvptx` backend's CUDA driver-API error handling.
 The `ll_nvptx` backend reuses the very same [`load_rt_module`](@ref mim::plug::ll::Emitter::load_rt_module) helper as `ll`, differing only in the runtime module it names.
 
 The authoritative reference for `add_mim_runtime` lives in [`cmake/Mim.cmake`](@ref add_mim_runtime_cmake).

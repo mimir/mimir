@@ -33,16 +33,16 @@ In this example, we construct the `main` function.
 In direct style, its type looks like this:
 
 ```mim
-[%mem.M 0, I32, %mem.Ptr (I32, 0)] -> [%mem.M 0, I32]
+[mem.M 0, I32, mem.Ptr (I32, 0)] -> [mem.M 0, I32]
 ```
 
 In [continuation-passing style (CPS)](https://en.wikipedia.org/wiki/Continuation-passing_style), the same type looks like this:
 
 ```mim
-Cn [%mem.M 0, I32, %mem.Ptr (I32, 0), Cn [%mem.M 0, I32]]
+Cn [mem.M 0, I32, mem.Ptr (I32, 0), Cn [mem.M 0, I32]]
 ```
 
-The type `%mem.M 0` tracks side effects.
+The type `mem.M 0` tracks side effects.
 Since `main` introduces [variables](@ref mim::Var), we must create it as a **mutable** [lambda](@ref mim::Lam); see @ref mut.
 
 The body of `main` is simple: it invokes the return continuation `ret` with `mem` and `argc`:
@@ -421,23 +421,23 @@ You can match [axioms](@ref mim::Axm) via
 
 - [`mim::Axm::isa`](@ref mim::Axm::isa), which behaves like a checked `dynamic_cast` and returns [a wrapped](@ref mim::Axm::isa) `nullptr`-like value on failure,
 - [`mim::Axm::as`](@ref mim::Axm::as), which behaves like a checked `static_cast` and asserts in `Debug` builds if the match fails, or
-- [`mim::Axm::expect`](@ref mim::Axm::expect), which - like the other `expect` helpers - throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting: `Axm::expect<mem::Ptr>(def, "a %mem.Ptr")`.
+- [`mim::Axm::expect`](@ref mim::Axm::expect), which - like the other `expect` helpers - throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting: `Axm::expect<mem::Ptr>(def, "a mem.Ptr")`.
 
 The result is a `mim::Axm::isa<Id, D>`, which wraps a `const D*`.
 Here, `Id` is the enum corresponding to the [matched axiom tag](@ref anatomy), and `D` is usually an [`App`](@ref mim::App), because most [axioms](@ref mim::Axm) inhabit a [function type](@ref mim::Pi).
 In other cases, it may wrap a plain [`Def`](@ref mim::Def) or some other subclass.
 
 By default, MimIR assumes that an [axiom](@ref mim::Axm) becomes "active" when its final curried argument is applied.
-For example, [matching](@ref mim::Axm::isa) `%%mem.load` only succeeds on the final [`App`](@ref mim::App) of the curried call
+For example, [matching](@ref mim::Axm::isa) `mem.load` only succeeds on the final [`App`](@ref mim::App) of the curried call
 
 ```mim
-%mem.load (T, as) (mem, ptr)
+mem.load (T, as) (mem, ptr)
 ```
 
 whereas
 
 ```mim
-%mem.load (T, as)
+mem.load (T, as)
 ```
 
 does **not** match.
@@ -445,7 +445,7 @@ does **not** match.
 In this example, the wrapped [`App`](@ref mim::App) refers to the final application, so:
 
 - [`mim::App::arg`](@ref mim::App::arg) is `(mem, ptr)`, and
-- [`mim::App::callee`](@ref mim::App::callee) is `%%mem.load (T, as)`.
+- [`mim::App::callee`](@ref mim::App::callee) is `mem.load (T, as)`.
 
 Use [`mim::App::decurry`](@ref mim::App::decurry) if you want direct access to the preceding application.
 See the examples below.
@@ -454,7 +454,7 @@ If you design an [axiom](@ref mim::Axm) that returns a function, you can [fine-t
 
 #### Without Subtags
 
-To match an [axiom](@ref mim::Axm) **without** subtags, such as `%%mem.load`, use:
+To match an [axiom](@ref mim::Axm) **without** subtags, such as `mem.load`, use:
 
 ```cpp
 void foo(const Def* def) {
@@ -467,13 +467,13 @@ void foo(const Def* def) {
     auto load = Axm::as<mem::load>(def);
 
     // def must match mem::load - otherwise, this throws a formatted exception (via fe::throwf)
-    auto ld = Axm::expect<mem::load>(def, "a %mem.load");
+    auto ld = Axm::expect<mem::load>(def, "a mem.load");
 }
 ```
 
 #### With Subtags
 
-To match an [axiom](@ref mim::Axm) **with** subtags, such as `%%core.wrap`, use:
+To match an [axiom](@ref mim::Axm) **with** subtags, such as `core.wrap`, use:
 
 ```cpp
 void foo(const Def* def) {
@@ -507,9 +507,9 @@ The following table summarizes the most important axiom matches:
 
 | `dynamic_cast` <br> `static_cast`                           | Returns                                                                                                                     | If `def` is a ...                           |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `isa<mem::load>(def)` <br> `as<mem::load>(def)`             | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`mem::load`](@ref mim::plug::mem::load) and [`App`](@ref mim::App)   | final curried `%%mem.load` application      |
-| `isa<core::wrap>(def)` <br> `as<core::wrap>(def)`           | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`core::wrap`](@ref mim::plug::core::wrap) and [`App`](@ref mim::App) | final curried `%%core.wrap` application     |
-| `isa(core::wrap::add, def)` <br> `as(core::wrap::add, def)` | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`core::wrap`](@ref mim::plug::core::wrap) and [`App`](@ref mim::App) | final curried `%%core.wrap.add` application |
+| `isa<mem::load>(def)` <br> `as<mem::load>(def)`             | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`mem::load`](@ref mim::plug::mem::load) and [`App`](@ref mim::App)   | final curried `mem.load` application      |
+| `isa<core::wrap>(def)` <br> `as<core::wrap>(def)`           | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`core::wrap`](@ref mim::plug::core::wrap) and [`App`](@ref mim::App) | final curried `core.wrap` application     |
+| `isa(core::wrap::add, def)` <br> `as(core::wrap::add, def)` | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`core::wrap`](@ref mim::plug::core::wrap) and [`App`](@ref mim::App) | final curried `core.wrap.add` application |
 
 ## Working with Indices
 

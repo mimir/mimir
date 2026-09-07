@@ -67,7 +67,7 @@ inline const char* llvm_suffix(const Def* type) {
     fe::throwf(MIM_LL_BE "unsupported floating-point type `{}`", type);
 }
 
-// [%mem.M 0, T] => T
+// [mem.M 0, T] => T
 // TODO there may be more instances where we have to deal with this trickery
 inline const Def* isa_mem_sigma_2(const Def* type) {
     if (auto sigma = type->isa<Sigma>())
@@ -129,7 +129,7 @@ public:
         : Super(world, name, ostream) {
         auto& driver = world.driver();
         // Ensure libmim_ll is loaded so the shims below resolve (e.g. when a derived backend like
-        // ll_nvptx uses us). Loading merely registers %ll.emit; it does not run it.
+        // ll_nvptx uses us). Loading merely registers ll.emit; it does not run it.
         if (!driver.is_loaded("ll")) driver.load("ll");
         convert_       = driver.GET_FUN_PTR("ll", mim_ll_convert);
         finalize_      = driver.GET_FUN_PTR("ll", mim_ll_finalize);
@@ -204,7 +204,7 @@ protected:
         locals_[phi] = id(phi);
     }
 
-    /// Wires all non-`%mem.M` arguments of @p app into @p callee's phis, coming from predecessor @p pred.
+    /// Wires all non-`mem.M` arguments of @p app into @p callee's phis, coming from predecessor @p pred.
     void emit_phi_args(Lam* callee, const App* app, Lam* pred) {
         size_t n = callee->num_tvars();
         for (size_t i = 0; i != n; ++i)
@@ -215,7 +215,7 @@ protected:
             }
     }
 
-    /// Emits the storage backing a `%mem.slot` of type @p pointee and yields the pointer value.
+    /// Emits the storage backing a `mem.slot` of type @p pointee and yields the pointer value.
     /// The generic backend allocates on the stack; targets may override (e.g. a global in a specific address space).
     /// Kept inline on purpose so `Emitter` retains no vtable key function (else its vtable would live in a single
     /// module and break derived backends loaded from a separate plugin).
@@ -232,7 +232,7 @@ protected:
     std::ostringstream func_impls_;
     LamMap<const Def*> simd_phi_;
 
-    /// Loop-metadata node id per `%ll.vec`-annotated loop header (see `emit_epilogue_impl`);
+    /// Loop-metadata node id per `ll.vec`-annotated loop header (see `emit_epilogue_impl`);
     /// numbered from `LoopMdBase + 1` to stay clear of the ids the embedded runtime module
     /// brings along.
     static constexpr u64 LoopMdBase = 1000;

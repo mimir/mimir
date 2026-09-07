@@ -109,7 +109,7 @@ private:
     const Def* rewrite_mut_Global(Global*) final;
     ///@}
 
-    /// Handles the `%clos.attr.{returning,free_bb,fstclass_bb}` wrappers; returns `nullptr` if @p a is none of these.
+    /// Handles the `clos.attr.{returning,free_bb,fstclass_bb}` wrappers; returns `nullptr` if @p a is none of these.
     const Def* rewrite_attr(Axm::IsA<attr, App> a);
 
     Stub make_stub(const DefSet& fvs, Lam* old_lam);

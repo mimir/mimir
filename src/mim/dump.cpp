@@ -252,8 +252,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto ext = d->isa<Ext>()) {
         return os << std::format("{}:{}", ext->isa<Bot>() ? bot : top, Op::r(ext->type(), Prec::Lit));
     } else if (auto axm = d->isa<Axm>()) {
-        const auto name = axm->sym();
-        return os << std::format("{}{}", name[0] == '%' ? "" : "%", name);
+        return os << axm->sym();
     } else if (auto lit = d->isa<Lit>()) {
         if (lit->type()->isa<Nat>()) {
             // clang-format off

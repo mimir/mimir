@@ -18,7 +18,7 @@ int main(int, char**) {
         driver.log().set(&std::cerr).set(fe::Log::Level::Debug);
         ast::load_plugins(w, fe::View<std::string>{"core", "ll"});
 
-        // Cn [%mem.M 0, I32, %mem.Ptr (I32, 0) Cn [%mem.M 0, I32]]
+        // Cn [mem.M 0, I32, mem.Ptr (I32, 0) Cn [mem.M 0, I32]]
         auto mem_t  = w.call<mem::M>(0);
         auto argv_t = w.call<mem::Ptr0>(w.call<mem::Ptr0>(w.type_i32()));
         auto main   = w.mut_fun({mem_t, w.type_i32(), argv_t}, {mem_t, w.type_i32()})->set("main");

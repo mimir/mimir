@@ -6,18 +6,18 @@
 
 namespace mim::plug::autodiff {
 
-/// @name %%autodiff.Tangent
+/// @name autodiff.Tangent
 ///@{
 const Def* tangent_type_fun(const Def*);
 ///@}
 
-/// @name %%autodiff.zero
+/// @name autodiff.zero
 ///@{
 const Def* zero_def(const Def* T);
 const Def* zero_pullback(const Def* E, const Def* A);
 ///@}
 
-/// @name %%autodiff.sum
+/// @name autodiff.sum
 ///@{
 const Def* op_sum(const Def* T, Defs);
 ///@}

@@ -12,7 +12,7 @@ namespace mim::plug::buffer {
 
 namespace {
 
-/// Successively offsets `ptr` by each component of the index `tuple`, peeling one array dimension per `%mem.lea`.
+/// Successively offsets `ptr` by each component of the index `tuple`, peeling one array dimension per `mem.lea`.
 const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
     auto n       = tuple->num_projs();
     auto element = ptr;

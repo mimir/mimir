@@ -50,7 +50,7 @@ inline const Def* mode(World& w, VMode m) {
 }
 ///@}
 
-/// @name %%math.F
+/// @name math.F
 ///@{
 inline const Def* type_f(const Def* pe) {
     World& w = pe->world();
@@ -108,7 +108,7 @@ inline const Lit* lit_f(World& w, nat_t width, mim::f64 val) {
 // clang-format on
 ///@}
 
-/// @name %%math.arith
+/// @name math.arith
 ///@{
 inline const Def* op_rminus(VMode m, const Def* a) {
     World& w = a->world();

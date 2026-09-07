@@ -49,7 +49,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     auto cur = lattice(var);
     if (cur == var) return var; // ⊤ is final
 
-    // Pin %mem.M-typed vars to top: mem must stay threaded through every lam,
+    // Pin mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
 

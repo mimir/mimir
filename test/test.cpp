@@ -112,7 +112,7 @@ TEST_CASE("Axm: curry and trip") {
 
         std::ostringstream os;
         a3->stream(os, 0);
-        CHECK(os.str() == "%test_5_3 0 1 2 3 42 5 6 42 8 9 42\n");
+        CHECK(os.str() == "test_5_3 0 1 2 3 42 5 6 42 8 9 42\n");
     }
 
     SUBCASE("a Pi that is its own codomain") {
@@ -134,7 +134,7 @@ TEST_CASE("Axm: curry and trip") {
 
         std::ostringstream os;
         a3->stream(os, 0);
-        CHECK(os.str() == "%test_1_1 42 42 42\n");
+        CHECK(os.str() == "test_1_1 42 42 42\n");
     }
 
     SUBCASE("a non-recursive Pi ends its trip") {
@@ -152,7 +152,7 @@ TEST_CASE("Axm: curry and trip") {
 
         std::ostringstream os;
         a2->stream(os, 0);
-        CHECK(os.str() == "%test_3_0 0 1 42 3\n");
+        CHECK(os.str() == "test_3_0 0 1 42 3\n");
     }
 }
 
