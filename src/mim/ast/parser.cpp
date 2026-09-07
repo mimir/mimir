@@ -595,7 +595,6 @@ Ptrs<ValDecl> Parser::parse_decls() {
     while (true) {
         auto track = tracker();
         auto vis   = parse_vis();
-        // clang-format off
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
             case Tag::K_axm: {
@@ -604,21 +603,27 @@ Ptrs<ValDecl> Parser::parse_decls() {
                 parse_axm_decl(track, vis.value_or(Vis::Anx), decls);
                 break;
             }
-            case Tag::K_let: decls.emplace_back(parse_let_decl(track, vis.value_or(Vis::Priv)));      break;
-            case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, vis.value_or(Vis::Priv)));      break;
-            case Tag::K_use: decls.emplace_back(parse_use_decl());                             break;
-            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, vis.value_or(Vis::Priv))); break;
-            case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, vis.value_or(Vis::Priv)));      break;
-            case Tag::C_RULE:      decls.emplace_back(parse_rule_decl());         break;
-            case Tag::C_IMPORT:    if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i)); break;
+                // clang-format off
+            case Tag::K_let:  decls.emplace_back(parse_let_decl(track, vis.value_or(Vis::Priv)));       break;
+            case Tag::K_mod:  decls.emplace_back(parse_mod_decl(track, vis.value_or(Vis::Priv)));       break;
+            case Tag::K_use:  decls.emplace_back(parse_use_decl());                                     break;
+            case Tag::K_rec:  decls.emplace_back(parse_rec_decl(track, true, vis.value_or(Vis::Priv))); break;
+            case Tag::C_LAM:  decls.emplace_back(parse_lam_decl(track, vis.value_or(Vis::Priv)));       break;
+            case Tag::C_RULE: decls.emplace_back(parse_rule_decl());                                    break;
+                // clang-format on
+            case Tag::C_IMPORT:
+                if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i));
+                break;
             case Tag::M_id:
-                if (vis && *vis == Vis::Anx) { decls.emplace_back(parse_alias_decl(track)); break; }
+                if (vis && *vis == Vis::Anx) {
+                    decls.emplace_back(parse_alias_decl(track));
+                    break;
+                }
                 [[fallthrough]];
             default:
                 if (vis) error().e(curr_, "expected a declaration after a visibility modifier");
                 return decls;
         }
-        // clang-format on
     }
 }
 

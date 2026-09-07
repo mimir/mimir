@@ -56,9 +56,9 @@ For example, `λ` and `lm` are lexically equivalent.
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
-and as axm ccon cfun cn con end extern ff fn fun
+and anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj ins lam let match mod
-norm plugin rec ret rule tt when where with use
+norm plugin priv pub rec ret rule tt when where with use
 ```
 
 The following names are predefined aliases:
@@ -184,6 +184,7 @@ A module is either an imported file or a `mod` declaration.
 ### Declarations {#decl}
 
 Mim supports the following declaration families.
+Most of them may be prefixed with a visibility modifier - `priv`, `pub`, `extern`, or `anx`.
 
 ```text
 import (I | S) ["as" I]
@@ -196,7 +197,7 @@ let p = e
 I = path
 
 lam|con|fun [extern] n dom+ [: e] = e
-ccon|cfun I b [: e]
+extern lam|con|fun n dom+ [: e] ";"
 
 rec n [: e] = e
 and n [: e] = e
@@ -209,15 +210,17 @@ rule|norm n p : e [when e] => e
 
 Here `n` is an identifier.
 
+- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility for every declaration below except `axm`.
+- `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
+- `anx` marks a declaration as an [annex](@ref annex); it is the (implicit) default visibility for `axm`.
 - `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
 - `mod` groups declarations under a name; its body also sees the enclosing scope.
 - `use` splices all members of a module into the current scope.
 - `let` introduces a binding pattern.
 - `I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
-- `extern` may appear on `lam`, `con`, and `fun` declarations.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
 - Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
-- `ccon` and `cfun` declare external C continuations and C functions.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration.
 - `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
