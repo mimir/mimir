@@ -1,5 +1,4 @@
 #include <cstdlib>
-#include <cstring>
 
 #include <fstream>
 #include <string>
@@ -67,7 +66,7 @@ void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plu
             for (const auto& arg : args)
                 rows.emplace_back(arg.syntax, arg.descr);
             // The Markdown gets an anchor, so that a plugin's own page can link to its table.
-            auto title = md ? std::format("-X {0}:<arg> {{#xarg_{0}}}", plugin) : std::format("-X {}:<arg>", plugin);
+            auto title = md ? std::format("{0} {{#xarg_{0}}}", plugin) : plugin;
             cli.section(std::move(title), "Argument", std::move(rows));
         }
     }
