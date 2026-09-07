@@ -72,6 +72,14 @@ public:
         return nullptr;
     }
 
+    /// Diagnostic-only: is a module named @p sym reachable, shadowed by whatever `find` would actually return?
+    /// Only `ModDecl`/`Import` ever yield a non-null Decl::scope, so this never confuses a value for a module.
+    const Decl* find_shadowed_module(Sym sym) {
+        for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
+            if (auto decl = fe::lookup(frame.scope(), sym); decl && decl->scope()) return decl;
+        return nullptr;
+    }
+
     void bind(Dbg dbg, const Decl* decl, bool rebind = false, bool quiet = false) {
         if (dbg.is_anon()) return;
 
@@ -82,6 +90,12 @@ public:
             auto prev = i->second;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
                 error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev->dbg().loc(), "previous declaration here");
+        } else if (!quiet && !decl->scope()) {
+            if (auto mod = find_shadowed_module(dbg.sym()))
+                error()
+                    .w(dbg.loc(), "`{}` shadows a module of the same name", dbg)
+                    .n(mod->dbg().loc(), "module declared here; a later `{}.member` would fail to resolve it",
+                       dbg.sym());
         }
     }
 
@@ -175,10 +189,14 @@ void Path::bind(Scopes& s, bool quiet) const {
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
             if (!quiet) {
-                if (scope)
+                if (scope) {
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
-                else
-                    s.error().e(dbg.loc(), "`{}` is not a module", prev.sym());
+                } else {
+                    auto& err = s.error().e(prev.loc(), "`{}` is not a module", prev.sym());
+                    if (auto mod = s.find_shadowed_module(prev.sym()))
+                        err.n(mod->dbg().loc(), "a module `{}` exists here but is shadowed by the `{}` in scope",
+                              prev.sym(), prev.sym());
+                }
             }
             decl_ = nullptr;
             return;
@@ -376,7 +394,9 @@ void AxmDecl::bind(Scopes& s) const {
     } else if (annex_) {
         auto pi = type()->isa<PiExpr>() || type()->isa<ArrowExpr>();
         if (pi ^ *annex_->pi)
-            s.error().e(dbg().loc(), "all declarations of annex `{}` must be function types if one of them is",
+            s.error().e(dbg().loc(),
+                        "all declarations of annex `{}` must be function types if one of them is (they share one "
+                        "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
                         dbg().sym());
 
         if (annex_->normalizer.sym() != normalizer().sym()) {
