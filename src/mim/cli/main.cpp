@@ -177,7 +177,7 @@ int main(int argc, char** argv) {
             .opt(list_search_paths         , ""          , "-l", "--list-search-paths"   , "Lists the search paths in order and exits.")
             .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin.")
             .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins.")
-            .opt(opts.plugin_args          , "plugin:arg", "-X", "--plugin-arg"          , "Passes an argument to a plugin/phase, e.g. -X ll:o=output.ll. Repeatable.")
+            .opt(opts.plugin_args          , "plugin:arg", "-X", "--plugin-arg"          , "Passes an argument to a plugin/phase, e.g. `-X ll:o=output.ll`. Repeatable.")
             .opt(flags.force_load          , ""          , ""  , "--force-load"          , "Loads plugins even on version mismatch.")
             .opt(flags.bootstrap           , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR.")
             .opt(inc_verbose               , ""          , "-V", "--verbose"             , "Raises the log level from error to warn, info, verbose, debug, trace; repeatable.").cardinality(0, 5)
@@ -196,20 +196,20 @@ int main(int argc, char** argv) {
             .opt(opts.sexpr_include_types  , ""          , ""  , "--sexpr-include-types" , "Wraps each term of a symbolic expression in a type annotation; types themselves stay unwrapped.")
             .grp("DOT Output")
             .opt(opts.dot.all_annexes      , ""          , ""  , "--dot-all-annexes"     , "Emits all annexes in DOT output - even unused ones.")
-            .opt(opts.dot.default_filter   , ""          , ""  , "--dot-default-filter"  , "Always shows a lambda's filter in DOT output - even if it is the default one (ff for continuations, tt for direct-style functions).")
+            .opt(opts.dot.default_filter   , ""          , ""  , "--dot-default-filter"  , "Always shows a lambda's filter in DOT output - even if it is the default one (`ff` for continuations, `tt` for direct-style functions).")
             .opt(opts.dot.follow_types     , ""          , ""  , "--dot-follow-types"    , "Follows type dependencies in DOT output.")
             .opt(opts.dot.inline_consts    , ""          , ""  , "--dot-inline-consts"   , "Wires up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
             .opt(opts.dot.show_hidden      , ""          , ""  , "--dot-show-hidden"     , "Renders otherwise-transparent detached edges in DOT output - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray.")
             .grp("Diagnostics")
             .opt(diag.gutter               , "width"     , ""  , "--gutter"              , "Width of a diagnostic's line-number column.")
-            .opt(loc_style                 , "style"     , ""  , "--loc-style"           , "How a diagnostic spells out a source location: full (path:row:col-row:col), rowcol (path:row:col), row (path:row), or msvc (path(row,col)).")
+            .opt(loc_style                 , "style"     , ""  , "--loc-style"           , "How a diagnostic spells out a source location: `full` (`path:row:col-row:col`), `rowcol` (`path:row:col`), `row` (`path:row`), or `msvc` (`path(row,col)`).")
             .opt(diag.max_errors           , "num"       , ""  , "--max-errors"          , "Maximum number of errors to report before dropping the rest; 0 reports all of them.")
             .opt(diag.max_rows             , "num"       , ""  , "--max-rows"            , "Maximum number of rows a diagnostic's snippet renders before eliding its middle; 0 elides nothing.")
             .opt(diag.no_snippet           , ""          , ""  , "--no-snippet"          , "Does not render the offending source line and caret underneath a diagnostic.")
             .opt(diag.werror               , ""          , ""  , "--werror"              , "Treats warnings as errors.")
             .grp("Profiling")
-            .opt(opts.outs[Profile].name() , "file"      , ""  , "--output-profile"      , "Where to write the profiling information; defaults to stdout and implies --profile trace, if no <mode> is given.")
-            .opt(profile                   , "mode"      , ""  , "--profile"             , "Measures how long each phase takes; <mode> is summary, tree, or trace (chrome://tracing compatible).")
+            .opt(opts.outs[Profile].name() , "file"      , ""  , "--output-profile"      , "Where to write the profiling information; defaults to stdout and implies --profile trace, if no `<mode>` is given.")
+            .opt(profile                   , "mode"      , ""  , "--profile"             , "Measures how long each phase takes; `<mode>` is `summary`, `tree`, or `trace` (`chrome://tracing` compatible).")
             .grp("Optimization")
             .opt(flags.aggressive_lam_spec , ""          , ""  , "--aggr-lam-spec"       , "Overrides LamSpec behavior to follow recursive calls.")
             .opt(flags.max_fp_iters        , "num"       , ""  , "--max-fp-iters"        , "Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
@@ -221,11 +221,11 @@ int main(int argc, char** argv) {
             .opt(flags.break_on_error      , ""          , ""  , "--break-on-error"      , "Triggers a breakpoint on an error log.")
             .opt(flags.break_on_warn       , ""          , ""  , "--break-on-warn"       , "Triggers a breakpoint on a warning log.")
             .opt(flags.reeval_breakpoints  , ""          , ""  , "--reeval-breakpoints"  , "Triggers a breakpoint even upon unifying a node that has already been built.")
-            .opt(flags.trace_gids          , ""          , ""  , "--trace-gids"          , "Outputs gids during World::unify/insert.")
+            .opt(flags.trace_gids          , ""          , ""  , "--trace-gids"          , "Outputs gids during `World::unify`/`insert`.")
             .opt(watchpoints               , "gid"       , "-w", "--watch"               , "Triggers a breakpoint when a node with this global id is set.")
 #endif
             .section("Environment Variables", "Variable", {
-                {"MIM_PLUGIN_PATH", std::format("{}-separated list of plugin search paths, searched after those given via -P.", fe::sys::Path_Sep_Word)},
+                {"MIM_PLUGIN_PATH", std::format("{}-separated list of plugin search paths, searched after those given via `-P`.", fe::sys::Path_Sep_Word)},
                 {"NO_COLOR"       , "Disables colored output if set to a non-empty value; wins over the two below."},
                 {"CLICOLOR_FORCE" , "Forces colored output if set to a non-empty value other than 0."},
                 {"CLICOLOR"       , "Disables colored output if set to 0."},
