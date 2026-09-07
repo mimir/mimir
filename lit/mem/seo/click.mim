@@ -1,11 +1,14 @@
 // Combining analyses, combining optimizations, Fig. 10
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 plugin core;
+plugin compile;
+plugin ll;
+plugin mem;
 
-cfun dont_know[]: Bool;
-cfun read[]: Nat;
+extern fun dont_know[]: Bool;
+extern fun read[]: Nat;
 
-fun extern foo(x: Nat): Nat =
+extern fun foo(x: Nat): Nat =
     let x = 1;
     ret z = read $ ();
     let y = z;
@@ -14,14 +17,14 @@ fun extern foo(x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond = %core.ncmp.ne (y, z);
+                    let cond = core.ncmp.ne (y, z);
                     (f1, t1)#cond ()
                     where
                         con f1() = n1 x;
                         con t1() = n1 2;
                         con n1(x: Nat) =
-                            let x    = %core.nat.sub (2, x);
-                            let cond = %core.ncmp.ne (x, 1);
+                            let x    = core.nat.sub (2, x);
+                            let cond = core.ncmp.ne (x, 1);
                             (f2, t2)#cond ()
                             where
                                 con f2() = n2 y;
@@ -33,17 +36,17 @@ fun extern foo(x: Nat): Nat =
             end
     end;
 
-lam extern _compile(): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %compile.phases tt (
-            %compile.phases tt (
-                %compile.beta_red,
-                %compile.eta_conv,
+extern lam _compile(): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        compile.phases tt (
+            compile.phases tt (
+                compile.beta_red,
+                compile.eta_conv,
             ),
-            %mem.seo,
+            mem.seo,
         ),
-        %compile.named "%ll.emit",
+        compile.named "ll.emit",
     );
 
 // CHECK: ret i64 1

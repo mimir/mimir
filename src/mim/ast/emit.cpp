@@ -202,7 +202,7 @@ const Def* PrimaryExpr ::emit_(Emitter& e) const {
 /// If @p type is a `%math.F` type of known precision/exponent, yields its bit width.
 /// Note that libmim must not depend on the generated math plugin header, so lookup the Axm at runtime instead.
 static std::optional<nat_t> isa_math_f(Emitter& e, const Def* type) {
-    auto math_f = e.world().annex(e.world().sym("%math.F"));
+    auto math_f = e.world().annex(e.world().sym("math.F"));
     if (auto app = type->zonk()->isa<App>(); math_f && app && app->callee() == math_f) {
         if (auto [p, ex] = app->arg()->projs<2>([](auto op) { return Lit::isa(op); }); p && ex) {
             if (*p == 10 && *ex == 5) return 16;

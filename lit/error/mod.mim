@@ -5,15 +5,15 @@ mod foo {
 }
 
 mod outer {
-    mod inner {
-        let x = 42;
+    pub mod inner {
+        pub let x = 42;
     }
 }
 
 let a = foo.nope;
 let b = a.bar;
 use a;
-lam extern f(): Nat = foo;
+extern lam f(): Nat = foo;
 let c = outer.inner.nope;
 let d = outer.inner.x.y;
 let e = foo.where;

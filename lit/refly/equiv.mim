@@ -3,8 +3,8 @@
 plugin core;
 plugin refly;
 
-let n = %core.nat.add (3, 4);
-let _ = %refly.equiv.alpha_eq (n, 7);
-let _ = %refly.equiv.struc_eq (n, 7);
-let _ = %refly.equiv.alpha_ne (n, 8);
-let _ = %refly.equiv.struc_ne (n, 8);
+let n = core.nat.add (3, 4);
+let _ = refly.equiv.alpha_eq (n, 7);
+let _ = refly.equiv.struc_eq (n, 7);
+let _ = refly.equiv.alpha_ne (n, 8);
+let _ = refly.equiv.struc_ne (n, 8);

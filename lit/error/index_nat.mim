@@ -1,7 +1,7 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
-lam extern g (a: [Nat, Bool]) = a#1;
+extern lam g (a: [Nat, Bool]) = a#1;
 
 // CHECK: {{.*}}index_nat.mim:3:33-3:35: error: index `1` must be of `Idx` type but is of type `Nat`
-// CHECK-NEXT: 3 | lam extern g (a: [Nat, Bool]) = a#1;
+// CHECK-NEXT: 3 | extern lam g (a: [Nat, Bool]) = a#1;
 // CHECK-NEXT:   |                                 ^^^

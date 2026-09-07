@@ -8,24 +8,25 @@
 plugin tensor;
 plugin core;
 plugin opt;
+plugin compile;
 
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
-lam dbl (x: Nat): Nat = %core.nat.mul (x, 2);
+lam add1 (x: Nat): Nat = core.nat.add (x, 1);
+lam dbl (x: Nat): Nat = core.nat.mul (x, 2);
 
-con extern f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«8; Nat», «8; Nat»]) =
-    let prod = %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) (a, b);
-    let flat = %tensor.reshape (2, 4) 8 prod;
-    let out1 = %tensor.unary add1 flat;
-    let out2 = %tensor.unary dbl flat;
+extern con f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«8; Nat», «8; Nat»]) =
+    let prod = tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, b);
+    let flat = tensor.reshape (2, 4) 8 prod;
+    let out1 = tensor.unary add1 flat;
+    let out2 = tensor.unary dbl flat;
     return (out1, out2);
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
-// CHECK-COUNT-3: %tensor.map_reduce
+// CHECK-COUNT-3: tensor.map_reduce
 // CHECK-NOT: %tensor.map_reduce

@@ -1,0 +1,21 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+plugin core;
+
+pub mod foo {
+    axm bar: Nat → Nat, normalize_one;
+    axm bar: Nat → Nat, normalize_two;
+}
+
+// Both errors blame row 6 and row 5, but every caret differs, so every location is rendered.
+// CHECK:      {{.*}}norm_mis.mim:6:25-6:37: error: normalizer mismatch for axm `bar`
+// CHECK-NEXT: 6 |     axm bar: Nat → Nat, normalize_two;
+// CHECK-NEXT:   |                         ^^^^^^^^^^^^^
+// CHECK-NEXT:   {{.*}}norm_mis.mim:5:25-5:37: note: previous normalizer `normalize_one` declared here
+// CHECK-NEXT: 5 |     axm bar: Nat → Nat, normalize_one;
+// CHECK-NEXT:   |                         ^^^^^^^^^^^^^
+// CHECK-NEXT: {{.*}}norm_mis.mim:6:9-6:11: error: redeclaration of `bar`
+// CHECK-NEXT: 6 |     axm bar: Nat → Nat, normalize_two;
+// CHECK-NEXT:   |         ^^^
+// CHECK-NEXT:   {{.*}}norm_mis.mim:5:9-5:11: note: previous declaration here
+// CHECK-NEXT: 5 |     axm bar: Nat → Nat, normalize_one;
+// CHECK-NEXT:   |         ^^^

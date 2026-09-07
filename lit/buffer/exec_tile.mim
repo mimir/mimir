@@ -14,19 +14,20 @@ plugin affine;
 plugin mem;
 plugin buffer;
 plugin cps;
+plugin btensor;
 
 fun mul_add (acc: I32, ab: «2; I32»)@tt =
-    return (%core.wrap.add 0 (acc, %core.wrap.mul 0 (ab#0₂, ab#1₂)));
+    return (core.wrap.add 0 (acc, core.wrap.mul 0 (ab#0₂, ab#1₂)));
 
-fun extern gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
-    return (%tensor.materialize (%tensor.interchange (
-        %tensor.strip_mine_red (
-            %tensor.strip_mine_par (
-                %tensor.strip_mine_par (
-                    %tensor.mr_tileable @2 @(2, 1) ((4, 4), (0, 1), (4, 4, 8))
-                        (mul_add, 0I32, %tensor.id)
-                        (%tensor.proj_map (0, 1))
-                        (%tensor.proj_map (0, 2), %tensor.proj_map (2, 1))
+extern fun gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
+    return (tensor.materialize (tensor.interchange (
+        tensor.strip_mine_red (
+            tensor.strip_mine_par (
+                tensor.strip_mine_par (
+                    tensor.mr_tileable @2 @(2, 1) ((4, 4), (0, 1), (4, 4, 8))
+                        (mul_add, 0I32, tensor.id)
+                        (tensor.proj_map (0, 1))
+                        (tensor.proj_map (0, 2), tensor.proj_map (2, 1))
                         (a, b),
                     0, 2),
                 2, 2),
@@ -36,12 +37,12 @@ fun extern gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
 // A[i][k] = i + 1, B[k][j] = 2·j + 1 ⇒ C[i, j] = 8·(i + 1)·(2·j + 1), asymmetric in (i, j):
 // a misplaced write (omega) or misrecombined read (iota) lands on a different value.
 // C_packed[0, 1, 1, 0] = C[1, 2] = 80.
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let a = (‹8; 1I32›, ‹8; 2I32›, ‹8; 3I32›, ‹8; 4I32›);
     let b = ‹8; (1I32, 3I32, 5I32, 7I32)›;
     con done (o: «2, 2, 2, 2; I32») =
-        let v = %tensor.get ((0₂, 1₂, 1₂, 0₂), o);
-        return (mem, v);
+        let v = tensor.get ((0₂, 1₂, 1₂, 0₂), o);
+        return (m, v);
     gemm ((a, b), done);
 
 // GONE-NOT: %tensor.

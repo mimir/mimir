@@ -143,7 +143,7 @@ mod alloc {
 ///
 /// Frees memory on the device (in global address space), synchronously (`block`) or asynchronously
 /// against a stream (`asyn`).
-mod free {
+pub mod free {
     axm block: {T: *} → [GlobalM, GlobalPtr T] → GlobalM;
     axm asyn:  {T: *} → [GlobalM, GlobalPtr T, Stream] → GlobalM;
 }
@@ -152,7 +152,7 @@ mod free {
 ///
 /// Copies data from host memory to device memory, synchronously (`block`) or asynchronously against a
 /// stream (`asyn`).
-mod copy_to_device {
+pub mod copy_to_device {
     axm block: {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T] → [mem.M 0, GlobalM];
     axm asyn:  {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T, Stream] → [mem.M 0, GlobalM];
 }
@@ -161,7 +161,7 @@ mod copy_to_device {
 ///
 /// Copies data from device memory to host memory, synchronously (`block`) or asynchronously against a
 /// stream (`asyn`).
-mod copy_to_host {
+pub mod copy_to_host {
     axm block: {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T] → [mem.M 0, GlobalM];
     axm asyn:  {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T, Stream] → [mem.M 0, GlobalM];
 }
@@ -170,7 +170,7 @@ mod copy_to_host {
 ///
 /// Allocates memory on the device (in global address space) for the provided host data and copies the
 /// host data to that memory, synchronously (`block`) or asynchronously against a stream (`asyn`).
-mod alloc_copy {
+pub mod alloc_copy {
     anx let block = lm {T: *}
                        (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T)
                      : [mem.M 0, GlobalM, GlobalPtr T] =

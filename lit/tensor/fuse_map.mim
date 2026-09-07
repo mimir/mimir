@@ -1,25 +1,26 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // Two chained pure tensor maps (no reductions): the fuse phase should collapse
-// them into a single %tensor.map_reduce.
+// them into a single tensor.map_reduce.
 plugin tensor;
 plugin core;
 plugin opt;
+plugin compile;
 
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
-lam mul2 (x: Nat): Nat = %core.nat.mul (x, 2);
+lam add1 (x: Nat): Nat = core.nat.add (x, 1);
+lam mul2 (x: Nat): Nat = core.nat.mul (x, 2);
 
-con extern f (v: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
-    let inner = %tensor.unary add1 v;
-    let outer = %tensor.unary mul2 inner;
+extern con f (v: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
+    let inner = tensor.unary add1 v;
+    let outer = tensor.unary mul2 inner;
     return outer;
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
 // CHECK: %tensor.map_reduce

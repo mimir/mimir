@@ -3,21 +3,22 @@
 
 plugin core;
 plugin autodiff;
+plugin mem;
 
 
 fun g(b: I32): I32 =
-    let c = %core.wrap.add 0 (3I32, b);
+    let c = core.wrap.add 0 (3I32, b);
     return c;
 
 // 4(3+2a)
 fun f(a: I32): I32 =
-    let b = %core.wrap.mul 0 (2I32, a);
+    let b = core.wrap.mul 0 (2I32, a);
     ret x = g $ b;
-    let c = %core.wrap.mul 0 (4I32, x);
+    let c = core.wrap.mul 0 (4I32, x);
     return c;
 
-con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
-    let f_diff = %autodiff.ad f;
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+    let f_diff = autodiff.ad f;
     let c      = 42I32;
     f_diff (c, ret_cont)
     where
@@ -25,9 +26,9 @@ con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), 
             pb(1I32, pb_ret_cont)
             where
                 con pb_ret_cont (pr: I32) =
-                    let c = %core.wrap.mul 0 (100I32, r);
-                    let d = %core.wrap.add 0 (c, pr);
-                    return (mem, d);
+                    let c = core.wrap.mul 0 (100I32, r);
+                    let d = core.wrap.add 0 (c, pr);
+                    return (m, d);
             end;
     end;
 

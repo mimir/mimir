@@ -458,7 +458,7 @@ Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn>&& ptrn) {
     return ptr<PiExpr>(track, Tag::Nil, std::move(dom), std::move(codom));
 }
 
-Ptr<Expr> Parser::parse_lam_expr() { return ptr<LamExpr>(parse_lam_decl(Vis::Priv)); }
+Ptr<Expr> Parser::parse_lam_expr() { return ptr<LamExpr>(parse_lam_decl(tracker(), Vis::Priv)); }
 
 Ptr<Expr> Parser::parse_ret_expr() {
     auto track = tracker();
@@ -593,25 +593,26 @@ std::optional<Vis> Parser::parse_vis() {
 Ptrs<ValDecl> Parser::parse_decls() {
     Ptrs<ValDecl> decls;
     while (true) {
-        auto vis = parse_vis();
+        auto track = tracker();
+        auto vis   = parse_vis();
         // clang-format off
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
             case Tag::K_axm: {
                 if (vis && *vis == Vis::Priv)
                     error().e(curr_, "`axm` is implicitly `anx`; `priv axm` is a contradiction");
-                parse_axm_decl(vis.value_or(Vis::Anx), decls);
+                parse_axm_decl(track, vis.value_or(Vis::Anx), decls);
                 break;
             }
-            case Tag::K_let: decls.emplace_back(parse_let_decl(vis.value_or(Vis::Priv)));      break;
-            case Tag::K_mod: decls.emplace_back(parse_mod_decl(vis.value_or(Vis::Priv)));      break;
+            case Tag::K_let: decls.emplace_back(parse_let_decl(track, vis.value_or(Vis::Priv)));      break;
+            case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, vis.value_or(Vis::Priv)));      break;
             case Tag::K_use: decls.emplace_back(parse_use_decl());                             break;
-            case Tag::K_rec: decls.emplace_back(parse_rec_decl(true, vis.value_or(Vis::Priv))); break;
-            case Tag::C_LAM: decls.emplace_back(parse_lam_decl(vis.value_or(Vis::Priv)));      break;
+            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, vis.value_or(Vis::Priv))); break;
+            case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, vis.value_or(Vis::Priv)));      break;
             case Tag::C_RULE:      decls.emplace_back(parse_rule_decl());         break;
             case Tag::C_IMPORT:    if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i)); break;
             case Tag::M_id:
-                if (vis && *vis == Vis::Anx) { decls.emplace_back(parse_alias_decl()); break; }
+                if (vis && *vis == Vis::Anx) { decls.emplace_back(parse_alias_decl(track)); break; }
                 [[fallthrough]];
             default:
                 if (vis) error().e(curr_, "expected a declaration after a visibility modifier");
@@ -638,8 +639,7 @@ std::tuple<Ptr<Expr>, Dbg, Tok, Tok> Parser::parse_axm_tail() {
     return {std::move(type), normalizer, curry, trip};
 }
 
-void Parser::parse_axm_decl(Vis vis, Ptrs<ValDecl>& decls) {
-    auto track = tracker();
+void Parser::parse_axm_decl(Tracker track, Vis vis, Ptrs<ValDecl>& decls) {
     eat(Tag::K_axm);
 
     if (ahead().isa(Tag::D_paren_l)) {
@@ -688,16 +688,14 @@ Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
     return decls;
 }
 
-Ptr<ValDecl> Parser::parse_alias_decl() {
-    auto track = tracker();
-    auto dbg   = parse_id("name of an alias declaration");
+Ptr<ValDecl> Parser::parse_alias_decl(Tracker track) {
+    auto dbg = parse_id("name of an alias declaration");
     expect(Tag::T_assign, "alias declaration");
     auto path = parse_path("target of an alias declaration");
     return ptr<AliasDecl>(track, dbg, std::move(path));
 }
 
-Ptr<ValDecl> Parser::parse_let_decl(Vis vis) {
-    auto track = tracker();
+Ptr<ValDecl> Parser::parse_let_decl(Tracker track, Vis vis) {
     eat(Tag::K_let);
     auto ptrn = parse_ptrn({}, "binding pattern of a let declaration", Prec::Bot);
     expect(Tag::T_assign, "let");
@@ -706,8 +704,7 @@ Ptr<ValDecl> Parser::parse_let_decl(Vis vis) {
     return ptr<LetDecl>(track, vis, std::move(ptrn), std::move(value));
 }
 
-Ptr<ValDecl> Parser::parse_mod_decl(Vis vis) {
-    auto track = tracker();
+Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Vis vis) {
     eat(Tag::K_mod);
     auto dbg = parse_id("name of a module");
     expect(Tag::D_brace_l, "opening brace of a module");
@@ -726,8 +723,7 @@ Ptr<ValDecl> Parser::parse_use_decl() {
     return ptr<UseDecl>(track, std::move(path));
 }
 
-Ptr<RecDecl> Parser::parse_rec_decl(bool first, Vis vis) {
-    auto track = tracker();
+Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Vis vis) {
     eat(first ? Tag::K_rec : Tag::K_and);
     auto dbg  = parse_id("recursive declaration");
     auto type = accept(Tag::T_colon) ? parse_expr("type of a recursive declaration") : ptr<HoleExpr>(missing());
@@ -751,10 +747,9 @@ Ptr<ValDecl> Parser::parse_rule_decl() {
     return ptr<RuleDecl>(track, dbg, std::move(ptrn), std::move(lhs), std::move(rhs), std::move(guard), is_norm);
 }
 
-Ptr<LamDecl> Parser::parse_lam_decl(Vis vis) {
-    auto track = tracker();
-    auto tag   = lex().tag();
-    auto prec  = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
+Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Vis vis) {
+    auto tag  = lex().tag();
+    auto prec = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
 
     bool decl;
     std::string_view entity;
@@ -797,8 +792,12 @@ Ptr<LamDecl> Parser::parse_lam_decl(Vis vis) {
 }
 
 Ptr<RecDecl> Parser::parse_and_decl() {
-    if (ISA(ahead(1).tag(), C_LAM)) return lex(), parse_lam_decl(Vis::Priv);
-    return parse_rec_decl(false, Vis::Priv);
+    if (ISA(ahead(1).tag(), C_LAM)) {
+        lex();
+        auto track = tracker();
+        return parse_lam_decl(track, Vis::Priv);
+    }
+    return parse_rec_decl(tracker(), false, Vis::Priv);
 }
 
 } // namespace mim::ast

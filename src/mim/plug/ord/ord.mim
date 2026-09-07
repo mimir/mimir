@@ -35,7 +35,7 @@ axm Map: Key → * → *;
 ///
 /// Creates a set / map from a list of values / key-value pairs.
 ///
-mod init {
+pub mod init {
     axm set: [K: Key] →          {n: Nat} → «n;  K#T    » → Set K  , normalize_init;
     axm map: [K: Key] → {V: *} → {n: Nat} → «n; [K#T, V]» → Map K V, normalize_init;
 }
@@ -53,7 +53,7 @@ anx lam create_map [K: Key] (V: *) : Map K V = init.map K @V @0 ();
 ///
 /// Yields the number of elements in the container.
 ///
-mod size {
+pub mod size {
     axm set: {K: Key} →          Set K   → Nat, normalize_size;
     axm map: {K: Key} → {V: *} → Map K V → Nat, normalize_size;
 }
@@ -78,7 +78,7 @@ axm get: {K: Key} → {V: *} → [Map K V, K#T] → option.Opt V, normalize_get;
 ///
 /// Does the container contain the given key?
 ///
-mod contains {
+pub mod contains {
     axm set: {K: Key} →          [Set K  , K#T] → Bool, normalize_contains;
     axm map: {K: Key} → {V: *} → [Map K V, K#T] → Bool, normalize_contains;
 }
@@ -90,7 +90,7 @@ mod contains {
 /// Inserts a key / key-value pair into the container.
 /// @note Named `insertion`, not `insert`: `insert` is a reserved ASCII spelling of the `ins` keyword.
 ///
-mod insertion {
+pub mod insertion {
     axm set: {K: Key} →          [Set K  ,  K#T    ] → Set K  , normalize_insert;
     axm map: {K: Key} → {V: *} → [Map K V, [K#T, V]] → Map K V, normalize_insert;
 }

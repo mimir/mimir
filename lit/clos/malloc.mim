@@ -2,32 +2,33 @@
 // RUN: %mim -p opt -p clos %s -p ll -o -
 
 plugin core;
+plugin mem;
 
 
-con f (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, %core.wrap.add 0 (x, 42I32));
-con g (mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, 1I32);
+con f (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) = return (m, core.wrap.add 0 (x, 42I32));
+con g (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) = return (m, 1I32);
 
-fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0)): [%mem.M 0, I32] =
-    con h(mem: %mem.M 0, x: I32, return: Cn [%mem.M 0, I32]) = return (mem, %core.wrap.add 0 (x, argc));
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0)): [mem.M 0, I32] =
+    con h(m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) = return (m, core.wrap.add 0 (x, argc));
 
-    let pb_type  = Cn [%mem.M 0, I32, Cn [%mem.M 0, I32]];
+    let pb_type  = Cn [mem.M 0, I32, Cn [mem.M 0, I32]];
     let Tas      = (pb_type, 0);
     let arr_size = ⊤:Nat;
 
-    let (mem, pb_ptr) = %mem.malloc Tas (mem, 32);
-    let pb_arr        = %core.bitcast (%mem.Ptr («⊤:Nat; Cn [%mem.M 0, I32, Cn [%mem.M 0, I32]]», 0)) pb_ptr;
-    let (mem, a_arr)  = %mem.alloc («4; I32», 0) (mem);
+    let (m, pb_ptr) = mem.malloc Tas (m, 32);
+    let pb_arr        = core.bitcast (mem.Ptr («⊤:Nat; Cn [mem.M 0, I32, Cn [mem.M 0, I32]]», 0)) pb_ptr;
+    let (m, a_arr)  = mem.alloc («4; I32», 0) (m);
 
-    let lea = %mem.lea (pb_arr, %core.idx_unsafe 0);
-    let mem = %mem.store (mem, lea, f);
-    let lea = %mem.lea (pb_arr, %core.idx_unsafe 1);
-    let mem = %mem.store (mem, lea, g);
-    let lea = %mem.lea (pb_arr, %core.idx_unsafe 2);
-    let mem = %mem.store (mem, lea, h);
-    let lea = %mem.lea (a_arr, %core.idx_unsafe 0);
-    let mem = %mem.store (mem, lea, %core.idx_unsafe 10);
-    let lea = %mem.lea (pb_arr, %core.idx_unsafe 2);
-    let (mem, func) = %mem.load (mem, lea);
-    let (mem,  val) = %mem.load (mem, lea);
+    let lea = mem.lea (pb_arr, core.idx_unsafe 0);
+    let m = mem.store (m, lea, f);
+    let lea = mem.lea (pb_arr, core.idx_unsafe 1);
+    let m = mem.store (m, lea, g);
+    let lea = mem.lea (pb_arr, core.idx_unsafe 2);
+    let m = mem.store (m, lea, h);
+    let lea = mem.lea (a_arr, core.idx_unsafe 0);
+    let m = mem.store (m, lea, core.idx_unsafe 10);
+    let lea = mem.lea (pb_arr, core.idx_unsafe 2);
+    let (m, func) = mem.load (m, lea);
+    let (m,  val) = mem.load (m, lea);
 
-    func(mem, 1I32, cn (mem: %mem.M 0, x: I32) = return (mem, x));
+    func(m, 1I32, cn (m: mem.M 0, x: I32) = return (m, x));

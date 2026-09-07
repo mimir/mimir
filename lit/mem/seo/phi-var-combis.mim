@@ -17,113 +17,115 @@
 
 plugin mem;
 plugin core;
+plugin compile;
+plugin ll;
 
-cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
-cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Nat]: [%mem.M 0];
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+extern fun take_addr[m: mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
 
-fun extern f (mem: %mem.M 0): [%mem.M 0, Nat] =
-    ret (mem, pa ) = %mem.slot  (Nat, 0) $ mem;
-    ret (mem, pb1) = %mem.slot  (Nat, 0) $ mem;
-    ret (mem, pb2) = %mem.slot  (Nat, 0) $ mem;
-    ret (mem, pc ) = %mem.slot  (Nat, 0) $ mem;
-    let  mem       = %mem.store (mem, pa , 10); // pa  = 10
-    let  mem       = %mem.store (mem, pb1, 20); // pb1 = 20
-    let  mem       = %mem.store (mem, pb2, 20); // pb2 = 20
-    let  mem       = %mem.store (mem, pc , 30); // pc  = 30
-    head (mem, 100, 200, 200, 30) where // a = 100, b1 = 200, b2 = 200, c = 30
-        con head (mem: %mem.M 0, a b2 b1 c: Nat) =
-            ret (mem, cond) = dont_know $ mem;
-            (exit, body)#cond mem where
-                con body (mem: %mem.M 0) =
-                    let (mem, va ) = %mem.load (mem, pa );
-                    let (mem, vb1) = %mem.load (mem, pb1);
-                    let (mem, vb2) = %mem.load (mem, pb2);
-                    let cond       = %core.ncmp.e (vb1, vb2);
-                    (ff1, tt1)#cond mem
+extern fun f (m: mem.M 0): [mem.M 0, Nat] =
+    ret (m, pa ) = mem.slot  (Nat, 0) $ m;
+    ret (m, pb1) = mem.slot  (Nat, 0) $ m;
+    ret (m, pb2) = mem.slot  (Nat, 0) $ m;
+    ret (m, pc ) = mem.slot  (Nat, 0) $ m;
+    let  m       = mem.store (m, pa , 10); // pa  = 10
+    let  m       = mem.store (m, pb1, 20); // pb1 = 20
+    let  m       = mem.store (m, pb2, 20); // pb2 = 20
+    let  m       = mem.store (m, pc , 30); // pc  = 30
+    head (m, 100, 200, 200, 30) where // a = 100, b1 = 200, b2 = 200, c = 30
+        con head (m: mem.M 0, a b2 b1 c: Nat) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, va ) = mem.load (m, pa );
+                    let (m, vb1) = mem.load (m, pb1);
+                    let (m, vb2) = mem.load (m, pb2);
+                    let cond       = core.ncmp.e (vb1, vb2);
+                    (ff1, tt1)#cond m
                     where
-                        con tt1 (mem: %mem.M 0) =
-                            let va  = %core.nat.add (va , 1);
-                            let vb1 = %core.nat.add (vb1, 2);
-                            let vb2 = %core.nat.add (vb2, 2);
-                            let mem = %mem.store (mem, pa , va );
-                            let mem = %mem.store (mem, pb1, vb2);
-                            let mem = %mem.store (mem, pb2, vb1);
-                            ret mem = take_addr $ (mem, pa);
-                            n1 (mem, a, b1, b2, c);
+                        con tt1 (m: mem.M 0) =
+                            let va  = core.nat.add (va , 1);
+                            let vb1 = core.nat.add (vb1, 2);
+                            let vb2 = core.nat.add (vb2, 2);
+                            let m = mem.store (m, pa , va );
+                            let m = mem.store (m, pb1, vb2);
+                            let m = mem.store (m, pb2, vb1);
+                            ret m = take_addr $ (m, pa);
+                            n1 (m, a, b1, b2, c);
 
-                        con ff1 (mem: %mem.M 0) =
-                            ret mem = take_addr $ (mem, pb1);
-                            ret mem = take_addr $ (mem, pb2);
-                            n1 (mem, a, b1, b2, c);
+                        con ff1 (m: mem.M 0) =
+                            ret m = take_addr $ (m, pb1);
+                            ret m = take_addr $ (m, pb2);
+                            n1 (m, a, b1, b2, c);
 
-                        con n1 (mem: %mem.M 0, a b1 b2 c: Nat) =
-                            let cond = %core.ncmp.e (b1, b2);
-                            (ff2, tt2)#cond mem
+                        con n1 (m: mem.M 0, a b1 b2 c: Nat) =
+                            let cond = core.ncmp.e (b1, b2);
+                            (ff2, tt2)#cond m
                             where
-                                con tt2 (mem: %mem.M 0) =
-                                    let a  = %core.nat.add (a , 1);
-                                    let b1 = %core.nat.add (b1, 2);
-                                    let b2 = %core.nat.add (b2, 2);
-                                    n2 (mem, a, b1, b2, c);
+                                con tt2 (m: mem.M 0) =
+                                    let a  = core.nat.add (a , 1);
+                                    let b1 = core.nat.add (b1, 2);
+                                    let b2 = core.nat.add (b2, 2);
+                                    n2 (m, a, b1, b2, c);
 
-                                con ff2 (mem: %mem.M 0) =
-                                    let b1 = %core.nat.add (b1, 23);
-                                    let b2 = %core.nat.add (b2, 42);
-                                    n2 (mem, a, b1, b2, c);
+                                con ff2 (m: mem.M 0) =
+                                    let b1 = core.nat.add (b1, 23);
+                                    let b2 = core.nat.add (b2, 42);
+                                    n2 (m, a, b1, b2, c);
 
-                                con n2 (mem: %mem.M 0, a b2 b1 c: Nat) =
-                                    let (mem, vc) = %mem.load (mem, pc);
-                                    let cond      = %core.ncmp.e (vc, c);
-                                    (ff3, tt3)#cond mem
+                                con n2 (m: mem.M 0, a b2 b1 c: Nat) =
+                                    let (m, vc) = mem.load (m, pc);
+                                    let cond      = core.ncmp.e (vc, c);
+                                    (ff3, tt3)#cond m
                                     where
-                                        con tt3 (mem: %mem.M 0) =
-                                            let vc = %core.nat.add (vc, 3);
-                                            let  c = %core.nat.add ( c, 3);
-                                            let mem = %mem.store (mem, pc, c);
-                                            n3 (mem, a, b2, b1, c);
+                                        con tt3 (m: mem.M 0) =
+                                            let vc = core.nat.add (vc, 3);
+                                            let  c = core.nat.add ( c, 3);
+                                            let m = mem.store (m, pc, c);
+                                            n3 (m, a, b2, b1, c);
 
-                                        con ff3 (mem: %mem.M 0) =
-                                            ret mem = take_addr $ (mem, pb1);
-                                            ret mem = take_addr $ (mem, pb2);
-                                            n3 (mem, a, b1, b2, c);
+                                        con ff3 (m: mem.M 0) =
+                                            ret m = take_addr $ (m, pb1);
+                                            ret m = take_addr $ (m, pb2);
+                                            n3 (m, a, b1, b2, c);
 
-                                        con n3 (mem: %mem.M 0, a b1 b2 c: Nat) =
-                                            head (mem, a, b1, b2, c);
+                                        con n3 (m: mem.M 0, a b1 b2 c: Nat) =
+                                            head (m, a, b1, b2, c);
                                     end;
                             end;
                     end;
 
-                con exit(mem: %mem.M 0) =
-                    let (mem, va ) = %mem.load (mem, pa );
-                    let (mem, vb1) = %mem.load (mem, pb1);
-                    let (mem, vb2) = %mem.load (mem, pb2);
-                    let (mem, vc ) = %mem.load (mem, pc );
+                con exit(m: mem.M 0) =
+                    let (m, va ) = mem.load (m, pa );
+                    let (m, vb1) = mem.load (m, pb1);
+                    let (m, vb2) = mem.load (m, pb2);
+                    let (m, vc ) = mem.load (m, pc );
                     let res        = va;
-                    let res        = %core.nat.add (res, vb1);
-                    let res        = %core.nat.add (res, vb2);
-                    let res        = %core.nat.add (res, vc );
-                    let res        = %core.nat.add (res,  a );
-                    let res        = %core.nat.add (res,  b1);
-                    let res        = %core.nat.add (res,  b2);
-                    let res        = %core.nat.add (res,  c );
-                    return (mem, res);
+                    let res        = core.nat.add (res, vb1);
+                    let res        = core.nat.add (res, vb2);
+                    let res        = core.nat.add (res, vc );
+                    let res        = core.nat.add (res,  a );
+                    let res        = core.nat.add (res,  b1);
+                    let res        = core.nat.add (res,  b2);
+                    let res        = core.nat.add (res,  c );
+                    return (m, res);
             end
     end;
 
-lam extern _compile(): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %compile.phases tt (
-            %compile.phases tt (
-                %compile.beta_red,
-                %compile.eta_conv,
+extern lam _compile(): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        compile.phases tt (
+            compile.phases tt (
+                compile.beta_red,
+                compile.eta_conv,
             ),
-            %mem.seo,
+            mem.seo,
         ),
-        %compile.branch_normalize,
-        %compile.ret_wrap,
-        %compile.named "%mem.alloc2malloc_repl",
-        %compile.named "%ll.emit",
+        compile.branch_normalize,
+        compile.ret_wrap,
+        compile.named "mem.alloc2malloc_repl",
+        compile.named "ll.emit",
     );
 
 // pa remains a slot because its address escapes.

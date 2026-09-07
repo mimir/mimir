@@ -4,21 +4,22 @@
 // RUN: %t ; test $? -eq 81
 
 plugin core;
+plugin mem;
 
 fun pow(a b: I32): I32 =
     con pow_cont(v: I32) =
-        return (%core.wrap.mul 0 (a, v));
+        return (core.wrap.mul 0 (a, v));
 
     con pow_then() =
         return 1I32;
 
     con pow_else() =
-        let b_1 = %core.wrap.sub 0 (b, 1I32);
+        let b_1 = core.wrap.sub 0 (b, 1I32);
         pow ((a, b_1), pow_cont);
 
-    let cmp = %core.icmp.e (b, 0I32);
+    let cmp = core.icmp.e (b, 0I32);
     (pow_else, pow_then)#cmp ();
 
-fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): [%mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
     ret res = pow $ (3I32, 4I32);
-    return (mem, res);
+    return (m, res);

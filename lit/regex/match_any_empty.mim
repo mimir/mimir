@@ -12,20 +12,20 @@ plugin regex;
 plugin cps;
 
 let Top = ⊤:Nat;
-let re  = %regex.conj (%regex.lit 'a', %regex.disj (%regex.empty, %regex.any));
+let re  = regex.conj (regex.lit 'a', regex.disj (regex.empty, regex.any));
 
-con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [%mem.M 0, I32]] =
-    (exit, match_argument) # (%core.icmp.ug (argc, 1I32)) (mem, 0I32)
+extern con main[m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]] =
+    (exit, match_argument) # (core.icmp.ug (argc, 1I32)) (m, 0I32)
     where
-        con match_argument[mem: %mem.M 0, I32] =
-            let arg1 = %mem.lea (argv, %core.idx_unsafe 1);
-            let (mem, to_match) = %mem.load (mem, arg1);
-            let (mem, matched, pos) = re (mem, to_match, 0:(Idx Top));
-            let pos_ptr = %mem.lea (to_match, pos);
-            let (mem, pos_val) = %mem.load (mem, pos_ptr);
-            let pos_is_zero = %core.icmp.e (pos_val, 0:(Idx 256));
-            let matched = %core.bit2.and_ %core.mode.us (matched, pos_is_zero);
-            exit (mem, %core.conv.u i32 matched);
+        con match_argument[m: mem.M 0, I32] =
+            let arg1 = mem.lea (argv, core.idx_unsafe 1);
+            let (m, to_match) = mem.load (m, arg1);
+            let (m, matched, pos) = re (m, to_match, 0:(Idx Top));
+            let pos_ptr = mem.lea (to_match, pos);
+            let (m, pos_val) = mem.load (m, pos_ptr);
+            let pos_is_zero = core.icmp.e (pos_val, 0:(Idx 256));
+            let matched = core.bit2.and_ core.mode.us (matched, pos_is_zero);
+            exit (m, core.conv.u i32 matched);
     end
 
 // CHECK-NOT: %regex.

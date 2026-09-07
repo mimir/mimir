@@ -10,18 +10,19 @@ plugin tensor;
 plugin mem;
 plugin buffer;
 plugin opt;
+plugin compile;
 
-fun extern f (input: «3, 4; I32»): «3, 4; I32» =
-    let v = %tensor.get ((1₃, 2₄), input);
-    return (%tensor.set ((0₃, 0₄), input, v));
+extern fun f (input: «3, 4; I32»): «3, 4; I32» =
+    let v = tensor.get ((1₃, 2₄), input);
+    return (tensor.set ((0₃, 0₄), input, v));
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_to_mem,
-        %mem.add_mem,
-        %buffer.lower_ptr,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_to_mem,
+        mem.add_mem,
+        buffer.lower_ptr,
+        compile.cleanup,
     );
 
 // CHECK-DAG: %mem.alloc

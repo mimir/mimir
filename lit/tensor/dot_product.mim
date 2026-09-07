@@ -8,36 +8,36 @@ use tensor;
 
 let m = ((1, 2), (3, 4));
 
-let R: %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+let R: tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 let f = dot_general_fun R;
 
-// The 2x2 matrix product spelled out as a %tensor.map_reduce_post, carrying the impl's SELECTED
+// The 2x2 matrix product spelled out as a tensor.map_reduce_post, carrying the impl's SELECTED
 // schedule: the contraction (extent 2, not divisible by 4) is strip-mined by the neutral tile —
 // loop domain (2, 2, 2, 1) with the split contraction recombined in the access maps as
 // k = ko·1 + ki — vdim = 1 (the last output dim runs innermost) and the 1-extent tile unrolled.
-// %tensor.dot_product_impl must reduce to exactly this operation (struc_eq below).
-lam mo_r (o: «4; %affine.Idx»): «2; %affine.Idx» = (o#0_4, o#1_4);
-lam ma_r (o: «4; %affine.Idx»): «2; %affine.Idx» =
-    (o#0_4, %affine.op.add (%affine.semiop.mul (o#2_4, 1), o#3_4));
-lam mb_r (o: «4; %affine.Idx»): «2; %affine.Idx» =
-    (%affine.op.add (%affine.semiop.mul (o#2_4, 1), o#3_4), o#1_4);
+// tensor.dot_product_impl must reduce to exactly this operation (struc_eq below).
+lam mo_r (o: «4; affine.Index»): «2; affine.Index» = (o#0_4, o#1_4);
+lam ma_r (o: «4; affine.Index»): «2; affine.Index» =
+    (o#0_4, affine.op.add (affine.semiop.mul (o#2_4, 1), o#3_4));
+lam mb_r (o: «4; affine.Index»): «2; affine.Index» =
+    (affine.op.add (affine.semiop.mul (o#2_4, 1), o#3_4), o#1_4);
 let s_full = (2, 2, 2, 1);
-let dot = %tensor.map_reduce_post @(2, 0)
-    ((2, 2), s_full, %tensor.mk_sched (1, 1))
-    @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›), (), (), ()) (f, 0, %tensor.id)
+let dot = tensor.map_reduce_post @(2, 0)
+    ((2, 2), s_full, tensor.mk_sched (1, 1))
+    @((Nat, Nat), (2, 2), (‹2; 2›, ‹2; 2›), (), (), ()) (f, 0, tensor.id)
     mo_r
     ((ma_r, mb_r), ())
     ((m, m), ());
-let dotd = %tensor.dot_product_impl 1 R (2, 2) (1₂, 0₂, (), ()) (m, m);
-let dot2d = %tensor.product_2d_impl 1 R (m, m);
+let dotd = tensor.dot_product_impl 1 R (2, 2) (1₂, 0₂, (), ()) (m, m);
+let dot2d = tensor.product_2d_impl 1 R (m, m);
 
 let m3d = (((1, 2), (3, 4)), ((5, 6), (7, 8)));
-let dot3d = %tensor.bmm_impl 2 R (m3d, m3d);
-let dotd3 = %tensor.dot_product_impl 2 R (3, 3) (2₃, 1₃, 0₃, 0₃) (m3d, m3d);
+let dot3d = tensor.bmm_impl 2 R (m3d, m3d);
+let dotd3 = tensor.dot_product_impl 2 R (3, 3) (2₃, 1₃, 0₃, 0₃) (m3d, m3d);
 
-let _ = %refly.equiv.struc_eq (dot, dotd);
-let _ = %refly.equiv.struc_eq (dot2d, dotd);
-let _ = %refly.equiv.struc_eq (dot3d, dotd3);
+let _ = refly.equiv.struc_eq (dot, dotd);
+let _ = refly.equiv.struc_eq (dot2d, dotd);
+let _ = refly.equiv.struc_eq (dot3d, dotd3);
 
-fun extern main() = return (dot, dotd, dot2d, dot3d, dotd3);
+extern fun main() = return (dot, dotd, dot2d, dot3d, dotd3);

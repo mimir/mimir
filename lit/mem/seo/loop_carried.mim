@@ -11,41 +11,43 @@
 
 plugin core;
 plugin mem;
+plugin compile;
+plugin ll;
 
-cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 
-fun extern test(mem: %mem.M 0): [%mem.M 0, Nat] =
-    ret (mem, p) = %mem.slot (Nat, 0) $ mem;
-    let mem      = %mem.store (mem, p, 42);
+extern fun test(m: mem.M 0): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot (Nat, 0) $ m;
+    let m      = mem.store (m, p, 42);
 
-    head (mem, p) where
-        con head(mem: %mem.M 0, p: %mem.Ptr0 Nat) =
-            ret (mem, cond) = dont_know $ mem;
+    head (m, p) where
+        con head(m: mem.M 0, p: mem.Ptr0 Nat) =
+            ret (m, cond) = dont_know $ m;
 
-            (exit, body)#cond mem where
+            (exit, body)#cond m where
 
-                con body(mem: %mem.M 0) =
-                    let (mem, x) = %mem.load (mem, p);
-                    let x1       = %core.nat.add (x, 1);
-                    let mem      = %mem.store (mem, p, x1);
-                    head (mem, p);
+                con body(m: mem.M 0) =
+                    let (m, x) = mem.load (m, p);
+                    let x1       = core.nat.add (x, 1);
+                    let m      = mem.store (m, p, x1);
+                    head (m, p);
 
-                con exit(mem: %mem.M 0) =
-                    let (mem, x) = %mem.load (mem, p);
-                    return (mem, x);
+                con exit(m: mem.M 0) =
+                    let (m, x) = mem.load (m, p);
+                    return (m, x);
             end
     end;
 
-lam extern _compile(): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %compile.phases tt (
-            %compile.beta_red,
-            %compile.eta_conv,
+extern lam _compile(): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        compile.phases tt (
+            compile.beta_red,
+            compile.eta_conv,
         ),
-        %mem.seo,
-        %compile.named "%mem.alloc2malloc_repl",
-        %compile.named "%ll.emit",
+        mem.seo,
+        compile.named "mem.alloc2malloc_repl",
+        compile.named "ll.emit",
     );
 
 // The slot is promoted (no alloca) and the loop-carried return value is threaded through the header phi,

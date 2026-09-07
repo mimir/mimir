@@ -4,7 +4,7 @@
 // otherwise the enclosing Module's Loc leaks through and the whole file gets underlined.
 let pad = 42;
 
-lam extern f (x: I32): Nat =
+extern lam f (x: I32): Nat =
     x;
 
 let pad2 = 43;

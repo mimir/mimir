@@ -9,7 +9,7 @@ lam inject (t1 t2: *) (x: t1): t1 ∪ t2 =
 lam minject (t1 t2 t3: *) (x: t3): t1 ∪ t2 ∪ t3 =
     x inj t1 ∪ t2 ∪ t3;
 
-lam extern f1 (t1 t2: *) (x: t1) (y: t2): t1 =
+extern lam f1 (t1 t2: *) (x: t1) (y: t2): t1 =
     match x inj t1 ∪ t2 with a: t1 => x | b: t2 => x;
 
 lam f (t1 t2: *) (x: t1) (y: t2): t2  =

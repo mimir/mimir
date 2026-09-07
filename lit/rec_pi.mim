@@ -1,16 +1,16 @@
 // RUN: %mim -p opt %s -o -
 
-axm %phase.Phase: *;
+axm Phase: *;
 
-axm %phase.phase1: Bool         → %phase.Phase;
-axm %phase.phase2: []            → %phase.Phase;
-axm %phase.phase3: [Nat, Bool] → %phase.Phase;
+axm phase1: Bool         → Phase;
+axm phase2: []            → Phase;
+axm phase3: [Nat, Bool] → Phase;
 
-rec PiPeline: * = %phase.Phase → PiPeline; // got the pun? XD
+rec PiPeline: * = Phase → PiPeline; // got the pun? XD
 
-axm %phase.pipe: PiPeline;
+axm pipe: PiPeline;
 
-let pipeline = %phase.pipe
-    (%phase.phase1 tt)
-    (%phase.phase2 ())
-    (%phase.phase3 (23, tt));
+let pipeline = pipe
+    (phase1 tt)
+    (phase2 ())
+    (phase3 (23, tt));

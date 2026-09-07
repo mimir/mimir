@@ -3,14 +3,16 @@
 
 plugin core;
 plugin btensor;
+plugin buffer;
+plugin mem;
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let MT = (2, (3, 3), I32);
     let c = 5I32;
-    let (mem, m) = %buffer.lit MT (mem, c);
-    let f = %buffer.read MT;
+    let (mm, m) = buffer.lit MT (mm, c);
+    let f = buffer.read MT;
     let idx = ‹2; 0:(Idx 3)›;
-    let (mem, d) = %buffer.read MT (mem, m, idx);
-    return (mem, d);
+    let (mm, d) = buffer.read MT (mm, m, idx);
+    return (mm, d);
 
 // CHECK-DAG: return{{.*}}5

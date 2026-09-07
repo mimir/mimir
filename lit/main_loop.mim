@@ -5,18 +5,19 @@
 // RUN: %t 1 2 3 ; test $? -eq 6
 
 plugin core;
+plugin mem;
 
-fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): [%mem.M 0, I32] =
-    loop (mem, 0I32, 0I32)
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
+    loop (m, 0I32, 0I32)
     where
-        con loop(mem: %mem.M 0, i acc: I32) =
-            let cond = %core.icmp.ul (i, argc);
-            (exit, body)#cond mem
+        con loop(m: mem.M 0, i acc: I32) =
+            let cond = core.icmp.ul (i, argc);
+            (exit, body)#cond m
             where
-                con body m: %mem.M 0 =
-                    let inc = %core.wrap.add 0 (1I32, i);
-                    let acc = %core.wrap.add 0 (i, acc);
+                con body m: mem.M 0 =
+                    let inc = core.wrap.add 0 (1I32, i);
+                    let acc = core.wrap.add 0 (i, acc);
                     loop (m, inc, acc);
-                con exit(m: %mem.M 0) = return (m, acc);
+                con exit(m: mem.M 0) = return (m, acc);
             end
     end

@@ -4,34 +4,35 @@
 // RUN: %t ; test $? -eq 144
 
 plugin core;
+plugin mem;
 
 con seq {A: *} (n: Nat) (body: [Cn A] → Cn A) (exit: Cn A) (acc: A)@tt =
     head(0, acc)
     where
-        con head (i: Nat, acc: A)@%core.pe.is_closed n =
-            let cond = %core.ncmp.l (i, n);
+        con head (i: Nat, acc: A)@core.pe.is_closed n =
+            let cond = core.ncmp.l (i, n);
             (f, t)#cond ()
             where
                 con t() = body continue acc
                 where
-                    con continue(acc: A) = head ((%core.nat.add (i, 1)), acc);
+                    con continue(acc: A) = head ((core.nat.add (i, 1)), acc);
                 end
                 con f() = exit acc;
             end;
     end;
 
-fun extern fib(n: Nat): Nat =
+extern fun fib(n: Nat): Nat =
     seq n body exit (0, 1)
     where
-        con body (yield: Cn [Nat, Nat]) (a b: Nat) = yield (b, %core.nat.add (a, b));
+        con body (yield: Cn [Nat, Nat]) (a b: Nat) = yield (b, core.nat.add (a, b));
         con exit (a _: Nat) = return a;
     end
 
-fun extern main(argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): I32 =
+extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
     seq 12 body exit (0, 1)
     where
-        con body (yield: Cn [Nat, Nat]) (a b: Nat) = yield (b, %core.nat.add (a, b));
-        con exit (a _: Nat) = return (%core.bitcast I32 a);
+        con body (yield: Cn [Nat, Nat]) (a b: Nat) = yield (b, core.nat.add (a, b));
+        con exit (a _: Nat) = return (core.bitcast I32 a);
     end;
 
 // CHECK-DAG: 144I32

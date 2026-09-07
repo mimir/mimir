@@ -1,17 +1,18 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 plugin core;
+plugin mem;
 
-lam Ptr(T: *): * = %mem.Ptr (T, 0);
+lam Ptr(T: *): * = mem.Ptr (T, 0);
 
 let _ = 23;
 
-fun foo(mem: %mem.M 0, x: I32)@(%core.icmp.e (x, 23I32)): [%mem.M 0, I32] =
-    return (mem, %core.wrap.add 0 (x, 1I32));
+fun foo(m: mem.M 0, x: I32)@(core.icmp.e (x, 23I32)): [mem.M 0, I32] =
+    return (m, core.wrap.add 0 (x, 1I32));
 
-fun extern main(mem: %mem.M 0, argc: I32, argv: Ptr (Ptr I8)): [%mem.M 0, I32] =
-    ret (mem, x) = foo $ (mem, 23I32);
-    ret (mem, y) = foo $ (mem, 23I32);
-    return (mem, %core.wrap.add 0 (x, y));
+extern fun main(m: mem.M 0, argc: I32, argv: Ptr (Ptr I8)): [mem.M 0, I32] =
+    ret (m, x) = foo $ (m, 23I32);
+    ret (m, y) = foo $ (m, 23I32);
+    return (m, core.wrap.add 0 (x, y));
 
 lam f1(T: *) ((x y: T), return: T → ⊥): ⊥ = return x;
 con f2(T: *) ((x y: T), return: Cn T)     = return x;

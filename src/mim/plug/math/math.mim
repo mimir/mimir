@@ -234,7 +234,7 @@ axm is_finite: {pe: «2; Nat»} → Nat → F pe → Bool;
 ///
 /// Conversion between floating-point and index types - both signed and unsigned - of different sizes.
 ///
-mod conv {
+pub mod conv {
     axm s2f: { ss:     Nat } → [dpe: «2; Nat»] →   Idx  ss → F dpe, normalize_conv;
     axm u2f: { ss:     Nat } → [dpe: «2; Nat»] →   Idx  ss → F dpe, normalize_conv;
     axm f2s: {spe: «2; Nat»} → [ ds:     Nat ] → F spe →   Idx  ds, normalize_conv;

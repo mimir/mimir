@@ -1,32 +1,33 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // A chain of three tensor ops (outer reduction over a pure map over a pure map).
-// The fuse phase should collapse all three into a single %tensor.map_reduce:
+// The fuse phase should collapse all three into a single tensor.map_reduce:
 // out[i] = sum_j ((v[i, j] + 1) * 2)
 plugin tensor;
 plugin core;
 plugin opt;
+plugin compile;
 
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
-lam mul2 (x: Nat): Nat = %core.nat.mul (x, 2);
+lam add1 (x: Nat): Nat = core.nat.add (x, 1);
+lam mul2 (x: Nat): Nat = core.nat.mul (x, 2);
 
-fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
+fun sum_reduce (acc x: Nat)@tt: Nat = return (core.nat.add (acc, x));
 
-con extern f (v: «2; «3; Nat»», return: Cn «2; Nat») =
-    let inner1 = %tensor.unary add1 v;
-    let inner2 = %tensor.unary mul2 inner1;
-    let outer  = %tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
-        (%tensor.proj_map 0)
-        (%tensor.proj_map (0, 1), )
+extern con f (v: «2; «3; Nat»», return: Cn «2; Nat») =
+    let inner1 = tensor.unary add1 v;
+    let inner2 = tensor.unary mul2 inner1;
+    let outer  = tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
+        (tensor.proj_map 0)
+        (tensor.proj_map (0, 1), )
         inner2;
     return outer;
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
 // CHECK: %tensor.map_reduce

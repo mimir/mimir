@@ -6,20 +6,21 @@
 plugin tensor;
 plugin core;
 plugin opt;
+plugin compile;
 
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
+lam add1 (x: Nat): Nat = core.nat.add (x, 1);
 
-con extern f (v: «4, 6; Nat», return: Cn «2, 3; Nat») =
-    let inner = %tensor.unary add1 v;
-    let outer = %tensor.slice (4, 6) ((1, 0), (2, 2), (2, 3)) inner;
+extern con f (v: «4, 6; Nat», return: Cn «2, 3; Nat») =
+    let inner = tensor.unary add1 v;
+    let outer = tensor.slice (4, 6) ((1, 0), (2, 2), (2, 3)) inner;
     return outer;
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
 // CHECK: %tensor.map_reduce
