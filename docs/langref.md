@@ -184,45 +184,48 @@ A module is either an imported file or a `mod` declaration.
 ### Declarations {#decl}
 
 Mim supports the following declaration families.
-Most of them may be prefixed with a visibility modifier - `priv`, `pub`, `extern`, or `anx`.
-
+Most of them may be prefixed with any combination of three independent modifiers:
+a visibility (`priv` or `pub`), `extern`, and `anx`.
+Visibility is a Mim-only, purely lexical fact - it has no effect on backend linkage or compiler registration.
+`extern` and `anx` are each independent of visibility and of each other;
+either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful, while `extern anx` on the same declaration is a static error.
 ```text
 import (I | S) ["as" I]
 plugin I ["as" I]
 
-mod I "{" d* "}"
+[priv|pub] mod I "{" d* "}"
 use path
 
-let p = e
-I = path
+[priv|pub] [anx] let p = e
+anx I = path
 
-lam|con|fun [extern] n dom+ [: e] = e
-extern lam|con|fun n dom+ [: e] ";"
+[priv|pub] [extern] lam|con|fun n dom+ [: e] = e
+[priv|pub] extern lam|con|fun n dom+ [: e] ";"
 
-rec n [: e] = e
+[priv|pub] [anx] rec n [: e] = e
 and n [: e] = e
-and lam|con|fun [extern] n dom+ [: e] = e
+and lam|con|fun n dom+ [: e] = e
 
-axm k ["." "(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
+[priv|pub] axm k ["." "(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
 
 rule|norm n p : e [when e] => e
 ```
 
 Here `n` is an identifier.
 
-- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility for every declaration below except `axm`.
+- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
-- `anx` marks a declaration as an [annex](@ref annex); it is the (implicit) default visibility for `axm`.
+- `anx` marks a declaration as an [annex](@ref annex). It doesn't apply to `mod`, since a module is pure AST grouping, not a single value. `axm` is implicitly `anx` and may not combine with `extern`.
 - `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
-- `mod` groups declarations under a name; its body also sees the enclosing scope.
+- `mod` groups declarations under a name; its body also sees the enclosing scope. Neither `extern` nor `anx` apply to it.
 - `use` splices all members of a module into the current scope.
 - `let` introduces a binding pattern.
-- `I = path` declares `I` as an alias for the annex denoted by `path`.
+- `I = path` declares `I` as an alias for the annex denoted by `path`; it is always implicitly `anx`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
-- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead. Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
 - Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
-- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration.
+- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
 - `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.

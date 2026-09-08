@@ -27,11 +27,23 @@ using Dbgs  = fe::Vector<Dbg>;
 using Scope = fe::SymMap<const Decl*>; ///< Maps a name to the Decl introducing it.
 
 /// Visibility tier of a ValDecl.
-/// `Priv` is only visible inside its enclosing `mod`; `Pub` is visible via a path/`use` from outside;
-/// `Extern` implies `Pub` and additionally crosses the Mim/native boundary (body presence picks which side
-/// supplies the implementation); `Anx` implies `Pub` and additionally registers the entity as a compiler-exposed
-/// annex. `axm` is `Anx` by default.
-enum class Vis { Priv, Pub, Extern, Anx };
+/// `Priv` is only visible inside its enclosing `mod`; `Pub` is visible via a path/`use` from outside.
+/// Orthogonal to this, a ValDecl may independently be `extern` (Decl::is_extern) and/or `anx` (Decl::is_anx);
+/// either one nudges the default visibility to `Pub` unless `priv` is given explicitly.
+enum class Vis { Priv, Pub };
+
+/// Raw, unvalidated combination of `priv`/`pub`/`extern`/`anx` modifiers written before a declaration.
+/// Parser::parse_modifiers only rejects a modifier being repeated (`priv priv`, `extern extern`, ...);
+/// whether a given combination makes sense for the decl that follows is up to that decl's own parser.
+struct Mods {
+    std::optional<Vis> vis;
+    bool is_extern = false;
+    bool is_anx    = false;
+
+    /// `extern`/`anx` nudge the default visibility to `Pub` unless `priv` is given explicitly.
+    Vis default_vis() const { return (is_extern || is_anx) ? Vis::Pub : Vis::Priv; }
+    Vis resolved_vis() const { return vis.value_or(default_vis()); }
+};
 
 /// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
@@ -202,6 +214,10 @@ public:
     virtual std::pair<AnnexInfo*, sub_t> annex_sub() const { return {nullptr, 0}; }
     /// A ValDecl's own Vis; `Pub` for anything else (Ptrn, Import, ...), which the `priv`/`pub` system ignores.
     virtual Vis vis() const { return Vis::Pub; }
+    /// Whether this decl crosses the Mim/native boundary (`extern`); body presence picks which side supplies it.
+    virtual bool is_extern() const { return false; }
+    /// Whether this decl is registered as a compiler-exposed annex (`anx`).
+    virtual bool is_anx() const { return false; }
 
 protected:
     mutable const Def* def_ = nullptr;
@@ -210,18 +226,21 @@ protected:
 /// Base class of all declarations that bind values.
 class ValDecl : public Decl {
 protected:
-    ValDecl(Loc loc, Vis vis = Vis::Priv)
+    ValDecl(Loc loc, Mods mods = {})
         : Decl(loc)
-        , vis_(vis) {}
+        , mods_(mods) {}
 
 public:
-    Vis vis() const override { return vis_; }
+    Vis vis() const override { return mods_.resolved_vis(); }
+    bool is_extern() const override { return mods_.is_extern; }
+    bool is_anx() const override { return mods_.is_anx; }
+    const Mods& mods() const { return mods_; }
 
     virtual void bind(Scopes&) const  = 0;
     virtual void emit(Emitter&) const = 0;
 
 private:
-    Vis vis_;
+    Mods mods_;
 };
 
 /*
@@ -271,8 +290,9 @@ public:
     Dbg dbg() const override { return dbg_; }
     const Expr* type() const { return type_.get(); }
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
-    /// Mirrors the enclosing LetDecl::vis, since a `let`'s Ptrn - not the LetDecl - is what a Path resolves to.
+    /// Mirrors the enclosing LetDecl::vis/is_anx, since a `let`'s Ptrn - not the LetDecl - is what a Path resolves to.
     Vis vis() const override { return vis_; }
+    bool is_anx() const override { return anx_; }
 
     static Ptr<IdPtrn> make_type(AST& ast, Ptr<Expr>&& type) {
         auto loc = type->loc();
@@ -294,6 +314,7 @@ private:
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
     mutable Vis vis_          = Vis::Priv;
+    mutable bool anx_         = false;
 
     friend class LetDecl;
 };
@@ -930,8 +951,8 @@ private:
 /// `let ptrn = value;`
 class LetDecl : public ValDecl {
 public:
-    LetDecl(Loc loc, Vis vis, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& value)
-        : ValDecl(loc, vis)
+    LetDecl(Loc loc, Mods mods, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& value)
+        : ValDecl(loc, mods)
         , ptrn_(std::move(ptrn))
         , value_(std::move(value)) {}
 
@@ -956,7 +977,7 @@ public:
     class Sibling : public ValDecl {
     public:
         Sibling(Loc loc, Vis vis, Dbg dbg, const AxmDecl* owner)
-            : ValDecl(loc, vis)
+            : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
             , dbg_(dbg)
             , owner_(owner) {}
 
@@ -976,7 +997,7 @@ public:
     };
 
     AxmDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr>&& type, Dbg normalizer, Tok curry, Tok trip)
-        : ValDecl(loc, vis)
+        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
         , dbg_(dbg)
         , type_(std::move(type))
         , normalizer_(normalizer)
@@ -1008,8 +1029,8 @@ private:
 /// `rec dbg: type = body;` with an optional `and` RecDecl::next.
 class RecDecl : public ValDecl {
 public:
-    RecDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr>&& type, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
-        : ValDecl(loc, vis)
+    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr>&& type, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
+        : ValDecl(loc, mods)
         , dbg_(dbg)
         , type_(std::move(type))
         , body_(std::move(body))
@@ -1065,14 +1086,14 @@ public:
     };
 
     LamDecl(Loc loc,
-            Vis vis,
+            Mods mods,
             Tok::Tag tag,
             Dbg dbg,
             Ptrs<Dom>&& doms,
             Ptr<Expr>&& codom,
             Ptr<Expr>&& body,
             Ptr<RecDecl>&& next)
-        : RecDecl(loc, vis, dbg, nullptr, std::move(body), std::move(next))
+        : RecDecl(loc, mods, dbg, nullptr, std::move(body), std::move(next))
         , tag_(tag)
         , doms_(std::move(doms))
         , codom_(std::move(codom)) {
@@ -1081,7 +1102,7 @@ public:
 
     Tok::Tag tag() const { return tag_; }
     /// `extern` without a body is a forward declaration whose implementation lives in a native translation unit.
-    bool is_external() const { return vis() == Vis::Extern; }
+    bool is_external() const { return is_extern(); }
     const Ptrs<Dom>& doms() const { return doms_; }
     const Dom* dom(size_t i) const { return doms_[i].get(); }
     size_t num_doms() const { return doms_.size(); }
@@ -1105,8 +1126,8 @@ private:
 /// `anx dbg = path;` - a compiler-exposed alias sharing its target's annex slot.
 class AliasDecl : public ValDecl {
 public:
-    AliasDecl(Loc loc, Dbg dbg, Path&& path)
-        : ValDecl(loc, Vis::Anx)
+    AliasDecl(Loc loc, Vis vis, Dbg dbg, Path&& path)
+        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
         , dbg_(dbg)
         , path_(std::move(path)) {}
 
@@ -1161,8 +1182,9 @@ private:
 /// `mod dbg { decls }`; also the base of the anonymous File.
 class ModDecl : public ValDecl {
 public:
+    // A ModDecl is pure AST grouping - it never represents a single value, so it's never `extern`/`anx`.
     ModDecl(Loc loc, Vis vis, Dbg dbg, Ptrs<ValDecl>&& decls)
-        : ValDecl(loc, vis)
+        : ValDecl(loc, Mods{vis})
         , dbg_(dbg)
         , decls_(std::move(decls)) {}
 

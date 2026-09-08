@@ -9,9 +9,9 @@
 auto constexpr prog = R"(
 plugin core;
 
-cfun dont_know[]: Bool;
+extern fun dont_know []: Bool;
 
-fun extern f(x: Nat): Nat =
+extern fun f (x: Nat): Nat =
     head (23, x, 3) where
         con head(c x t: Nat) =      // after SCCP: c → 23, x → x, t → top
             ret cond = dont_know $ ();

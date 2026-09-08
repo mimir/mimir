@@ -1,0 +1,9 @@
+// RUN: %mim %s --output-h - --bootstrap | %FileCheck %s
+
+pub mod foo {
+    priv anx lam bar (x: Nat): Nat = x;
+}
+
+// `bar` is `priv` (invisible to other .mim files) yet still Annex-registered for the C++ side.
+// CHECK: enum class foo : flags_t {
+// CHECK-NEXT: bar =

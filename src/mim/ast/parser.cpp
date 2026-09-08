@@ -448,7 +448,7 @@ Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn>&& ptrn) {
     return ptr<PiExpr>(track, Tag::Nil, std::move(dom), std::move(codom));
 }
 
-Ptr<Expr> Parser::parse_lam_expr() { return ptr<LamExpr>(parse_lam_decl(tracker(), Vis::Priv)); }
+Ptr<Expr> Parser::parse_lam_expr() { return ptr<LamExpr>(parse_lam_decl(tracker(), {})); }
 
 Ptr<Expr> Parser::parse_ret_expr() {
     auto track = tracker();
@@ -568,50 +568,65 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
  * decls
  */
 
-std::optional<Vis> Parser::parse_vis() {
-    // clang-format off
-    switch (ahead().tag()) {
-        case Tag::K_priv:   lex(); return Vis::Priv;
-        case Tag::K_pub:    lex(); return Vis::Pub;
-        case Tag::K_extern: lex(); return Vis::Extern;
-        case Tag::K_anx:    lex(); return Vis::Anx;
-        default:            return std::nullopt;
+Mods Parser::parse_modifiers() {
+    Mods mods;
+    while (true) {
+        // clang-format off
+        switch (ahead().tag()) {
+            case Tag::K_priv:
+            case Tag::K_pub: {
+                auto v = ahead().tag() == Tag::K_priv ? Vis::Priv : Vis::Pub;
+                if (mods.vis) error().e(curr_, "visibility already specified");
+                mods.vis = v;
+                lex();
+                continue;
+            }
+            case Tag::K_extern:
+                if (mods.is_extern) error().e(curr_, "`extern` already specified");
+                mods.is_extern = true;
+                lex();
+                continue;
+            case Tag::K_anx:
+                if (mods.is_anx) error().e(curr_, "`anx` already specified");
+                mods.is_anx = true;
+                lex();
+                continue;
+            default: return mods;
+        }
+        // clang-format on
     }
-    // clang-format on
+}
+
+void Parser::check_no_extern(const Mods& mods, std::string_view entity) {
+    if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not a {}", entity);
 }
 
 Ptrs<ValDecl> Parser::parse_decls() {
     Ptrs<ValDecl> decls;
     while (true) {
         auto track = tracker();
-        auto vis   = parse_vis();
+        auto mods  = parse_modifiers();
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
-            case Tag::K_axm: {
-                if (vis && *vis == Vis::Priv)
-                    error().e(curr_, "`axm` is implicitly `anx`; `priv axm` is a contradiction");
-                parse_axm_decl(track, vis.value_or(Vis::Anx), decls);
-                break;
-            }
-                // clang-format off
-            case Tag::K_let:  decls.emplace_back(parse_let_decl(track, vis.value_or(Vis::Priv)));       break;
-            case Tag::K_mod:  decls.emplace_back(parse_mod_decl(track, vis.value_or(Vis::Priv)));       break;
-            case Tag::K_use:  decls.emplace_back(parse_use_decl());                                     break;
-            case Tag::K_rec:  decls.emplace_back(parse_rec_decl(track, true, vis.value_or(Vis::Priv))); break;
-            case Tag::C_LAM:  decls.emplace_back(parse_lam_decl(track, vis.value_or(Vis::Priv)));       break;
-            case Tag::C_RULE: decls.emplace_back(parse_rule_decl());                                    break;
-                // clang-format on
+            case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
+            case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
+            case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
+            case Tag::K_use: decls.emplace_back(parse_use_decl()); break;
+            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
+            case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
+            case Tag::C_RULE: decls.emplace_back(parse_rule_decl()); break;
             case Tag::C_IMPORT:
                 if (auto i = parse_import_or_plugin()) decls.emplace_back(std::move(i));
                 break;
             case Tag::M_id:
-                if (vis && *vis == Vis::Anx) {
-                    decls.emplace_back(parse_alias_decl(track));
+                if (mods.is_anx) {
+                    decls.emplace_back(parse_alias_decl(track, mods));
                     break;
                 }
                 [[fallthrough]];
             default:
-                if (vis) error().e(curr_, "expected a declaration after a visibility modifier");
+                if (mods.vis || mods.is_extern || mods.is_anx)
+                    error().e(curr_, "expected a declaration after a modifier");
                 return decls;
         }
     }
@@ -634,8 +649,11 @@ std::tuple<Ptr<Expr>, Dbg, Tok, Tok> Parser::parse_axm_tail() {
     return {std::move(type), normalizer, curry, trip};
 }
 
-void Parser::parse_axm_decl(Tracker track, Vis vis, Ptrs<ValDecl>& decls) {
+void Parser::parse_axm_decl(Tracker track, Mods mods, Ptrs<ValDecl>& decls) {
     eat(Tag::K_axm);
+
+    if (mods.is_extern) error().e(curr_, "`axm` is implicitly `anx`; cannot combine with `extern`");
+    auto vis = mods.vis.value_or(Vis::Pub); // axm is always anx, so it always gets the pub nudge
 
     if (ahead().isa(Tag::D_paren_l)) {
         for (auto& decl : parse_axm_group(vis))
@@ -678,28 +696,35 @@ Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
             decls.emplace_back(ptr<AxmDecl::Sibling>(primary.loc(), vis, primary, owner));
         }
         for (auto alias : names | std::views::drop(1))
-            decls.emplace_back(ptr<AliasDecl>(alias.loc(), alias, Path(primary)));
+            decls.emplace_back(ptr<AliasDecl>(alias.loc(), Vis::Pub, alias, Path(primary)));
     }
     return decls;
 }
 
-Ptr<ValDecl> Parser::parse_alias_decl(Tracker track) {
+Ptr<ValDecl> Parser::parse_alias_decl(Tracker track, Mods mods) {
+    if (mods.is_extern) error().e(curr_, "`extern` and `anx` cannot be combined on an alias declaration");
+    auto vis = mods.vis.value_or(Vis::Pub); // always anx, so always the pub nudge unless overridden
     auto dbg = parse_id("name of an alias declaration");
     expect(Tag::T_assign, "alias declaration");
     auto path = parse_path("target of an alias declaration");
-    return ptr<AliasDecl>(track, dbg, std::move(path));
+    return ptr<AliasDecl>(track, vis, dbg, std::move(path));
 }
 
-Ptr<ValDecl> Parser::parse_let_decl(Tracker track, Vis vis) {
+Ptr<ValDecl> Parser::parse_let_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "let declaration");
     eat(Tag::K_let);
     auto ptrn = parse_ptrn({}, "binding pattern of a let declaration", Prec::Bot);
     expect(Tag::T_assign, "let");
     auto type  = parse_type_ascr();
     auto value = parse_expr("value of a let declaration");
-    return ptr<LetDecl>(track, vis, std::move(ptrn), std::move(value));
+    return ptr<LetDecl>(track, mods, std::move(ptrn), std::move(value));
 }
 
-Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Vis vis) {
+Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
+    // a mod is pure AST grouping, not a single value, so neither `extern` nor `anx` apply to it
+    if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not a module");
+    if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a module - it groups declarations, not a single value");
+    auto vis = mods.vis.value_or(Vis::Priv);
     eat(Tag::K_mod);
     auto dbg = parse_id("name of a module");
     expect(Tag::D_brace_l, "opening brace of a module");
@@ -718,14 +743,15 @@ Ptr<ValDecl> Parser::parse_use_decl() {
     return ptr<UseDecl>(track, std::move(path));
 }
 
-Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Vis vis) {
+Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
+    check_no_extern(mods, "recursive declaration");
     eat(first ? Tag::K_rec : Tag::K_and);
     auto dbg  = parse_id("recursive declaration");
     auto type = accept(Tag::T_colon) ? parse_expr("type of a recursive declaration") : ptr<HoleExpr>(missing());
     expect(Tag::T_assign, "recursive declaration");
     auto body = parse_expr("body of a recursive declaration");
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
-    return ptr<RecDecl>(track, vis, dbg, std::move(type), std::move(body), std::move(next));
+    return ptr<RecDecl>(track, mods, dbg, std::move(type), std::move(body), std::move(next));
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl() {
@@ -742,7 +768,10 @@ Ptr<ValDecl> Parser::parse_rule_decl() {
     return ptr<RuleDecl>(track, dbg, std::move(ptrn), std::move(lhs), std::move(rhs), std::move(guard), is_norm);
 }
 
-Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Vis vis) {
+Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
+    // unlike let/mod/rec, a function declaration is the one place `extern` currently makes sense
+    if (mods.is_extern && mods.is_anx)
+        error().e(curr_, "`extern` and `anx` cannot be combined on a function declaration");
     auto tag  = lex().tag();
     auto prec = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
 
@@ -775,7 +804,7 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Vis vis) {
     if (ISA(tag, C_FN)) doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
 
     Ptr<Expr> body;
-    if (decl && vis == Vis::Extern && ahead().isa(Tag::T_semicolon)) {
+    if (decl && mods.is_extern && ahead().isa(Tag::T_semicolon)) {
         // forward declaration - the implementation lives in a native translation unit
     } else {
         expect(Tag::T_assign, "body of a {}", entity);
@@ -783,16 +812,16 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Vis vis) {
     }
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
 
-    return ptr<LamDecl>(track, vis, tag, dbg, std::move(doms), std::move(codom), std::move(body), std::move(next));
+    return ptr<LamDecl>(track, mods, tag, dbg, std::move(doms), std::move(codom), std::move(body), std::move(next));
 }
 
 Ptr<RecDecl> Parser::parse_and_decl() {
     if (ISA(ahead(1).tag(), C_LAM)) {
         lex();
         auto track = tracker();
-        return parse_lam_decl(track, Vis::Priv);
+        return parse_lam_decl(track, {});
     }
-    return parse_rec_decl(tracker(), false, Vis::Priv);
+    return parse_rec_decl(tracker(), false, {});
 }
 
 } // namespace mim::ast

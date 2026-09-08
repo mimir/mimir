@@ -453,7 +453,8 @@ void LetDecl::bind(Scopes& s) const {
 
     if (auto id = ptrn()->isa<IdPtrn>()) {
         id->vis_ = vis();
-        if (vis() == Vis::Anx) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
+        id->anx_ = is_anx();
+        if (is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
     }
 }
 
@@ -473,7 +474,7 @@ void RecDecl::bind_decl(Scopes& s) const {
         s.error().e(body()->loc(), "unsupported expression in a recursive declaration");
 
     s.bind(dbg(), this);
-    if (vis() == Vis::Anx) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
@@ -510,7 +511,7 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    if (vis() == Vis::Anx) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
 }
 
 void LamDecl::bind_body(Scopes& s) const {

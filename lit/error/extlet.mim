@@ -1,0 +1,5 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+extern let x = 42;
+
+// CHECK: {{.*}}extlet.mim:3:1-3:6: error: `extern` is only meaningful on a function declaration, not a let declaration

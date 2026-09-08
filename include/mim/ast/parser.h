@@ -159,21 +159,30 @@ private:
     /// * ... empty: **Only** decls are parsed. @returns `nullptr`
     /// * ... **non**-empty: Decls are parsed, then an expression. @returns expression.
     Ptrs<ValDecl> parse_decls();
-    /// Parses an optional `priv`/`pub`/`extern`/`anx` modifier token; `nullopt` if none was written.
-    std::optional<Vis> parse_vis();
-    void parse_axm_decl(Tracker, Vis, Ptrs<ValDecl>&);
+
+    /// Parses any combination of `priv`/`pub`/`extern`/`anx` modifier tokens, in any order.
+    /// Only rejects a modifier being repeated (`priv priv`, `extern extern`, ...);
+    /// whether a given combination makes sense for the decl that follows is up to that decl's own parser.
+    Mods parse_modifiers();
+    /// Errors if @p mods sets `extern`, for decl kinds that don't support it (`let`/bare `rec`):
+    /// currently only a function declaration (`lam`/`con`/`fun`, see Parser::parse_lam_decl) may be `extern`.
+    /// The default-`Vis` nudge itself lives in Mods::default_vis, resolved lazily by ValDecl::vis.
+    /// `mod` doesn't call this at all: as pure AST grouping it supports neither `extern` nor `anx`
+    /// (see Parser::parse_mod_decl).
+    void check_no_extern(const Mods&, std::string_view entity);
+    void parse_axm_decl(Tracker, Mods, Ptrs<ValDecl>&);
     /// Parses the `(tag_0 [= alias]*, ...): type[, normalizer[, curry[, trip]]]` tail shared by a bare
     /// `axm (...)` group and the `axm tag.(...)` family-sugar; each Dbgs is one tag's `[primary, alias, ...]`.
     Ptrs<ValDecl> parse_axm_group(Vis);
     /// The `: type[, normalizer[, curry[, trip]]]` tail shared by a plain `axm` and Parser::parse_axm_group.
     std::tuple<Ptr<Expr>, Dbg, Tok, Tok> parse_axm_tail();
-    Ptr<ValDecl> parse_alias_decl(Tracker);
-    Ptr<ValDecl> parse_let_decl(Tracker, Vis);
-    Ptr<ValDecl> parse_mod_decl(Tracker, Vis);
+    Ptr<ValDecl> parse_alias_decl(Tracker, Mods);
+    Ptr<ValDecl> parse_let_decl(Tracker, Mods);
+    Ptr<ValDecl> parse_mod_decl(Tracker, Mods);
     Ptr<ValDecl> parse_use_decl();
     Ptr<ValDecl> parse_rule_decl();
-    Ptr<LamDecl> parse_lam_decl(Tracker, Vis);
-    Ptr<RecDecl> parse_rec_decl(Tracker, bool first, Vis);
+    Ptr<LamDecl> parse_lam_decl(Tracker, Mods);
+    Ptr<RecDecl> parse_rec_decl(Tracker, bool first, Mods);
     Ptr<RecDecl> parse_and_decl();
     ///@}
 
