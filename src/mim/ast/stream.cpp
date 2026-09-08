@@ -73,7 +73,7 @@ void Node::dump() const {
  * File
  */
 
-void Import::stream(fe::Tab&, std::ostream& os) const {
+void ImportDecl::stream(fe::Tab&, std::ostream& os) const {
     if (is_path())
         std::print(os, "{} \"{}\"", tag(), Lexer::escape(path().view()));
     else
@@ -271,7 +271,11 @@ void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}}}", tab);
 }
 
-void UseDecl::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "use {};", S(tab, path())); }
+void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "{}use {}", mods(), S(tab, path()));
+    if (alias()) std::print(os, " as {}", alias());
+    os << ';';
+}
 
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}let {} = {};", mods(), S(tab, ptrn()), S(tab, value()));

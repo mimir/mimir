@@ -102,12 +102,12 @@ const File* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
     return slot.get();
 }
 
-Ptrs<Import> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag) {
-    Ptrs<Import> imports;
+Ptrs<ImportDecl> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag) {
+    Ptrs<ImportDecl> imports;
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
         if (auto file = import(dbg, false, tag))
-            imports.emplace_back(ast().ptr<Import>(Loc(), tag, dbg, Sym(), Dbg(), file));
+            imports.emplace_back(ast().ptr<ImportDecl>(Loc(), tag, dbg, Sym(), Dbg(), file));
     }
     return imports;
 }
@@ -123,7 +123,7 @@ const File* Parser::import_main(std::string_view input, fe::View<std::string> pl
  * misc
  */
 
-Ptr<Import> Parser::parse_import_or_plugin() {
+Ptr<ImportDecl> Parser::parse_import_or_plugin() {
     auto track  = tracker();
     auto tag    = lex().tag();
     auto entity = tag == Tag::K_import ? "import" : "plugin";
@@ -154,7 +154,7 @@ Ptr<Import> Parser::parse_import_or_plugin() {
         mod.set(is_id ? ast().sym(stem) : Sym());
     }
 
-    if (auto file = import(name, (bool)path, tag)) return ptr<Import>(track, tag, mod, path, alias, file);
+    if (auto file = import(name, (bool)path, tag)) return ptr<ImportDecl>(track, tag, mod, path, alias, file);
     return {};
 }
 
@@ -611,7 +611,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
-            case Tag::K_use: decls.emplace_back(parse_use_decl()); break;
+            case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
             case Tag::C_RULE: decls.emplace_back(parse_rule_decl()); break;
@@ -735,12 +735,14 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     return ptr<ModDecl>(track, vis, dbg, std::move(decls));
 }
 
-Ptr<ValDecl> Parser::parse_use_decl() {
-    auto track = tracker();
+Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "use declaration");
+    if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a use declaration - it never represents a single value");
     eat(Tag::K_use);
-    auto path = parse_path("module of a use declaration");
+    auto path  = parse_path("module of a use declaration");
+    auto alias = accept(Tag::K_as) ? parse_id("alias of a use declaration") : Dbg();
     expect(Tag::T_semicolon, "end of a use declaration");
-    return ptr<UseDecl>(track, std::move(path));
+    return ptr<UseDecl>(track, mods.vis.value_or(Vis::Priv), std::move(path), alias);
 }
 
 Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {

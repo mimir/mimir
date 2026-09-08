@@ -948,6 +948,63 @@ private:
  * Decls
  */
 
+/// `import "path" [as alias];`, `import name [as alias];`, or `plugin name [as alias];`
+/// Binds Import::dbg as a module; the File itself is owned by the AST and shared by all its importers.
+class ImportDecl : public ValDecl {
+public:
+    ImportDecl(Loc loc, Tok::Tag tag, Dbg name, Sym path, Dbg alias, const File* file)
+        : ValDecl(loc)
+        , tag_(tag)
+        , name_(name)
+        , alias_(alias)
+        , path_(path)
+        , file_(file) {}
+
+    Tok::Tag tag() const { return tag_; }
+    Dbg name() const { return name_; }   ///< Name of the imported module; the stem of Import::path, if any.
+    Dbg alias() const { return alias_; } ///< Empty, unless the source spelled an `as`.
+    Sym path() const { return path_; }   ///< Spelling of a file import; empty for a plugin or module name.
+    bool is_path() const { return (bool)path_; }
+    const File* file() const { return file_; }
+
+    Dbg dbg() const override { return alias_ ? alias_ : name_; } ///< The name this Import binds.
+
+    const Scope* scope() const override;
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Tok::Tag tag_;
+    Dbg name_, alias_;
+    Sym path_;
+    const File* file_;
+};
+
+/// `use path;` - splices all public members of the module @p path denotes into the current scope.
+/// `use path as dbg;` - instead introduces a new module @p dbg containing (only) those members.
+class UseDecl : public ValDecl {
+public:
+    UseDecl(Loc loc, Vis vis, Path&& path, Dbg alias)
+        : ValDecl(loc, Mods{vis})
+        , path_(std::move(path))
+        , alias_(alias) {}
+
+    const Path* path() const { return &path_; }
+    Dbg alias() const { return alias_; }
+
+    Dbg dbg() const override { return alias_; }
+    const Scope* scope() const override { return alias_ ? &members_ : nullptr; }
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Path path_;
+    Dbg alias_;
+    mutable Scope members_;
+};
+
 /// `let ptrn = value;`
 class LetDecl : public ValDecl {
 public:
@@ -1207,59 +1264,9 @@ private:
     mutable Scope members_;
 };
 
-/// `use path;` - splices all members of the module @p path denotes into the current scope.
-class UseDecl : public ValDecl {
-public:
-    UseDecl(Loc loc, Path&& path)
-        : ValDecl(loc)
-        , path_(std::move(path)) {}
-
-    const Path* path() const { return &path_; }
-
-    void bind(Scopes&) const override;
-    void emit(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    Path path_;
-};
-
 /*
  * File
  */
-
-/// `import "path" [as alias];`, `import name [as alias];`, or `plugin name [as alias];`
-/// Binds Import::dbg as a module; the File itself is owned by the AST and shared by all its importers.
-class Import : public ValDecl {
-public:
-    Import(Loc loc, Tok::Tag tag, Dbg name, Sym path, Dbg alias, const File* file)
-        : ValDecl(loc)
-        , tag_(tag)
-        , name_(name)
-        , alias_(alias)
-        , path_(path)
-        , file_(file) {}
-
-    Tok::Tag tag() const { return tag_; }
-    Dbg name() const { return name_; }   ///< Name of the imported module; the stem of Import::path, if any.
-    Dbg alias() const { return alias_; } ///< Empty, unless the source spelled an `as`.
-    Sym path() const { return path_; }   ///< Spelling of a file import; empty for a plugin or module name.
-    bool is_path() const { return (bool)path_; }
-    const File* file() const { return file_; }
-
-    Dbg dbg() const override { return alias_ ? alias_ : name_; } ///< The name this Import binds.
-
-    const Scope* scope() const override;
-    void bind(Scopes&) const override;
-    void emit(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    Tok::Tag tag_;
-    Dbg name_, alias_;
-    Sym path_;
-    const File* file_;
-};
 
 /// The AST of one source file: an anonymous ModDecl that Import binds under a name of its own.
 /// Unlike a nested ModDecl, its Scope is a barrier: a file must not see whoever imports it.
@@ -1271,7 +1278,7 @@ public:
     /// Imports the driver was told about via `-p`; they precede everything the file itself declares.
     const auto& implicit_imports() const { return implicit_imports_; }
 
-    void add_implicit_imports(Ptrs<Import>&& imports) const { implicit_imports_ = std::move(imports); }
+    void add_implicit_imports(Ptrs<ImportDecl>&& imports) const { implicit_imports_ = std::move(imports); }
 
     void compile(AST&) const;
     void bind(AST&) const;
@@ -1281,7 +1288,7 @@ public:
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
-    mutable Ptrs<Import> implicit_imports_;
+    mutable Ptrs<ImportDecl> implicit_imports_;
     // A file is parsed, bound, and emitted exactly once, no matter how many Imports alias it.
     mutable bool bound_ = false, emitted_ = false;
 };

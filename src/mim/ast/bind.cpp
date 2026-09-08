@@ -141,14 +141,14 @@ void File::bind(Scopes& s) const {
     s.pop_barrier(barrier);
 }
 
-const Scope* Import::scope() const { return file() ? file()->scope() : nullptr; }
+const Scope* ImportDecl::scope() const { return file() ? file()->scope() : nullptr; }
 
-void Import::bind(Scopes& s) const {
+void ImportDecl::bind(Scopes& s) const {
     if (file()) file()->bind(s);
 
     // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
     if (auto prev = s.find(dbg(), true))
-        if (auto import = prev->isa<Import>(); import && import->file() == file()) return;
+        if (auto import = prev->isa<ImportDecl>(); import && import->file() == file()) return;
 
     s.bind(dbg(), this);
 }
@@ -544,6 +544,15 @@ void UseDecl::bind(Scopes& s) const {
     auto scope = decl->scope();
     if (!scope) {
         s.error().e(path()->loc(), "`{}` is not a module", path()->back().sym());
+        return;
+    }
+
+    if (alias()) {
+        for (const auto& [sym, member] : *scope) {
+            if (member->vis() == Vis::Priv) continue;
+            members_[sym] = member;
+        }
+        s.bind(alias(), this);
         return;
     }
 

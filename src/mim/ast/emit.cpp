@@ -55,7 +55,7 @@ void File::emit(Emitter& e) const {
     emit_decls(e);
 }
 
-void Import::emit(Emitter& e) const {
+void ImportDecl::emit(Emitter& e) const {
     if (file()) file()->emit(e);
 }
 
