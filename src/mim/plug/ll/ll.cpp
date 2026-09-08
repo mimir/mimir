@@ -179,6 +179,16 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
     // A target-specific intrinsic in tail position (e.g. %gpu.launch) emits its own code and
     // yields the continuation to branch to.
     if (auto ret = isa_targetspecific_intrinsic(bb, app)) return bb.tail("br label {}", *ret);
+
+    // A `%runtime.fail` argument never reaches its callee. Emit it in this predecessor instead of
+    // letting the scheduler hoist it into another block (which may already have a terminator).
+    for (auto arg : app->args()) {
+        if (Axm::isa<runtime::fail>(arg)) {
+            emit_runtime_fail(bb, arg);
+            return bb.tail("unreachable");
+        }
+    }
+
     if (app->callee() == root()->ret_var()) { // return
         fe::Vector<std::string> values;
         DefVec types;
@@ -431,7 +441,15 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         return emit_tuple(bb, name, def);
     }
 
-    if (def->isa<Lit>()) {
+    if (Axm::isa<runtime::assert>(def)) {
+        emit_runtime_assert(bb, def);
+        return std::string{};
+    } else if (auto check = Axm::isa<runtime::static_check>(def)) {
+        return emit(check->arg()->proj(2, 0));
+    } else if (Axm::isa<runtime::fail>(def)) {
+        emit_runtime_fail(bb, def);
+        return std::string{"undef"};
+    } else if (def->isa<Lit>()) {
         return emit_lit(def);
     } else if (def->isa<Bot>()) {
         return "undef";
