@@ -49,7 +49,7 @@ fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
                 con body(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
                     let map        = ord#insert_ (map, (1I32, 42I64)); // 1 → 42
-                    let m        = mem.store (m, ptr, map);
+                    let m          = mem.store (m, ptr, map);
                     let cond       = ord#contains (map, 1I32);
                     (false, true)#cond m
                     where
