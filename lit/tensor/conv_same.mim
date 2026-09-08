@@ -8,8 +8,8 @@
 //
 // Inputs use N >= 2 and Cin >= 2 so the NCHW layout does not collapse its leading size-1 dims (which would
 // defeat rank inference); for N = 1 / Cin = 1 the importer pins the implicit dims with `@`.
-// GONE-NOT: %tensor.conv
-// GONE-NOT: %tensor.pad
+// GONE-NOT: tensor.conv
+// GONE-NOT: tensor.pad
 // GONE-NOT: map_reduce
 // GONE-NOT: %affine
 
@@ -24,8 +24,8 @@ lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // "same" conv: 3x3 kernel, stride 1, dilation 1, pad 1 -> output keeps the 5x5 spatial size.
 // CHECK-DAG: extern fun conv_same
-// CHECK-DAG: %core.nat.mul
-// CHECK-DAG: %core.nat.add
+// CHECK-DAG: core.nat.mul
+// CHECK-DAG: core.nat.add
 extern fun conv_same (input: «2, 2, 5, 5; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 5, 5; Nat» =
     return (tensor.conv (nat_ring ()) ((1, 1), (1, 1), (1, 1)) (input, weight));
 

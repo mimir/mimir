@@ -17,5 +17,5 @@ lam f(x: Nat): [] =
 // CHECK: {{.*}}var.mim:15:5-15:7: error: argument is not assignable to callee's domain
 // CHECK-NEXT: 15 |     i x;
 // CHECK-NEXT:    |     ^^^
-// CHECK-NEXT:    = note: expected `%var.foo.T g`, got `%var.foo.T h`
+// CHECK-NEXT:    = note: expected `var.foo.T g`, got `var.foo.T h`
 // CHECK: {{.*}}var.mim:12:5-12:30: note: callee `i` declared here

@@ -18,4 +18,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), ret
         con for_exit (acc: [I32, I32]) = return (m, acc#ff);
     end;
 
-// CHECK-NOT: %affine.for
+// CHECK-NOT: affine.for

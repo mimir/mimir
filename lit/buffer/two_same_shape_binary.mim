@@ -42,8 +42,8 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     con done (v: I32) = return (m, v);
     kernel ((x, y, (0₆, 0₄), (4₆, 2₄)), done);
 
-// CHECK-DAG: %mem.load
-// CHECK-DAG: %mem.store
+// CHECK-DAG: mem.load
+// CHECK-DAG: mem.store
 // GONE-NOT: %tensor.
 // GONE-NOT: %buffer.
 // GONE-NOT: %btensor.

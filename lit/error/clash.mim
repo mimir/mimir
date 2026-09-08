@@ -17,5 +17,5 @@ lam outer(a: Nat): [] =
     inner a;
 
 // Both `k`s clash here, so both carry a gid ...
-// CHECK: = note: expected `%clash.foo.T {{k_[0-9]+}}`, got `%clash.foo.T {{k_[0-9]+}}`
+// CHECK: = note: expected `clash.foo.T {{k_[0-9]+}}`, got `clash.foo.T {{k_[0-9]+}}`
 // ... while a message citing only one of them stays plain.

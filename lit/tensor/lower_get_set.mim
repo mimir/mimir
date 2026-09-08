@@ -43,6 +43,6 @@ extern lam _compile (): compile.Phase =
         compile.cleanup,
     );
 
-// CHECK-NOT: %tensor.get
-// CHECK-NOT: %tensor.set
+// CHECK-NOT: tensor.get
+// CHECK-NOT: tensor.set
 // CHECK: return_{{[0-9]+}} (3, 6, 1, 4)

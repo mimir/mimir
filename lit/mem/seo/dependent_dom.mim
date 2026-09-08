@@ -20,4 +20,4 @@ extern lam _compile(): compile.Phase =
         mem.seo,
     );
 
-// CHECK-DAG: fun work_{{[0-9]+}} (_: %mem.M 0, _: Nat, _: «n_{{[0-9]+}}; Nat», _: Nat): [%mem.M 0, Nat]
+// CHECK-DAG: fun work_{{[0-9]+}} (_: mem.M 0, _: Nat, _: «n_{{[0-9]+}}; Nat», _: Nat): [mem.M 0, Nat]

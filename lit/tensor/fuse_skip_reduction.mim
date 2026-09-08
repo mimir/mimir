@@ -37,5 +37,5 @@ extern lam _compile (): compile.Phase =
     );
 
 // Two tensor.map_reduce operations must remain, since the inner has a reduction.
-// CHECK: %tensor.map_reduce
-// CHECK: %tensor.map_reduce
+// CHECK: tensor.map_reduce
+// CHECK: tensor.map_reduce

@@ -174,4 +174,4 @@ extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     return (math.arith.add 0 (g0, math.arith.add 0 (g1, math.arith.add 0 (g2,
             math.arith.add 0 (g3, math.arith.add 0 (g4, g5))))));
 
-// CHECK-NOT: %tensor.map_reduce
+// CHECK-NOT: tensor.map_reduce

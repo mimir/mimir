@@ -19,5 +19,5 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), ret
         con for_exit (acc: [I32, math.F64]) = return (m, math.conv.f2u 0 acc#tt);
     end;
 
-// CHECK-NOT: %affine.for
-// CHECK: %math.conv.f2u
+// CHECK-NOT: affine.for
+// CHECK: math.conv.f2u

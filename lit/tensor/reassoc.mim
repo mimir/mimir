@@ -17,9 +17,9 @@ lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
 // 4x10 · 10x2 · 2x10 written right-deep costs 10·2·10 + 4·10·10 = 600 multiplications; the dynamic
 // program picks the left-deep bracketing at 4·10·2 + 4·2·10 = 160.
 // CHECK-DAG: extern fun chain3
-// CHECK-DAG: %tensor.product_2d {{.*}} (4, 10, 2)
-// CHECK-DAG: %tensor.product_2d {{.*}} (4, 2, 10)
-// GONE-NOT: %tensor.product_2d {{.*}} (10, 2, 10)
+// CHECK-DAG: tensor.product_2d {{.*}} (4, 10, 2)
+// CHECK-DAG: tensor.product_2d {{.*}} (4, 2, 10)
+// GONE-NOT: tensor.product_2d {{.*}} (10, 2, 10)
 extern fun chain3 (a: «4, 10; Nat», b: «10, 2; Nat», c: «2, 10; Nat»): «4, 10; Nat» =
     let R = nat_ring ();
     return (tensor.product_2d R (a, tensor.product_2d R (b, c)));
@@ -27,9 +27,9 @@ extern fun chain3 (a: «4, 10; Nat», b: «10, 2; Nat», c: «2, 10; Nat»): «4
 // 30x35 · 35x15 · 15x5 · 5x10 written left-deep costs 19500 multiplications; the optimum is
 // ((A·(B·C))·D) at 9375, a bracketing that is neither left- nor right-deep.
 // CHECK-DAG: extern fun chain4
-// CHECK-DAG: %tensor.product_2d {{.*}} (35, 15, 5)
-// CHECK-DAG: %tensor.product_2d {{.*}} (30, 35, 5)
-// CHECK-DAG: %tensor.product_2d {{.*}} (30, 5, 10)
+// CHECK-DAG: tensor.product_2d {{.*}} (35, 15, 5)
+// CHECK-DAG: tensor.product_2d {{.*}} (30, 35, 5)
+// CHECK-DAG: tensor.product_2d {{.*}} (30, 5, 10)
 extern fun chain4 (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d: «5, 10; Nat»): «30, 10; Nat» =
     let R = nat_ring ();
     return (tensor.product_2d R (tensor.product_2d R (tensor.product_2d R (a, b), c), d));
@@ -37,8 +37,8 @@ extern fun chain4 (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d:
 // A shared intermediate is a chain boundary: reassociating across `ab` would leave it materialized
 // for its second consumer as well, so both chains keep contracting 35 first.
 // CHECK-DAG: extern fun shared
-// CHECK-DAG: %tensor.product_2d {{.*}} (30, 15, 5)
-// CHECK-DAG: %tensor.product_2d {{.*}} (30, 15, 10)
+// CHECK-DAG: tensor.product_2d {{.*}} (30, 15, 5)
+// CHECK-DAG: tensor.product_2d {{.*}} (30, 15, 10)
 extern fun shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d: «15, 10; Nat»)
                  : [«30, 5; Nat», «30, 10; Nat»] =
     let R  = nat_ring ();
@@ -49,8 +49,8 @@ extern fun shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d:
 // bottleneck does: x·(U·V) costs 768·8·768 + 589824·m, (x·U)·V costs 12288·m, and 12288 ≤ 589824
 // with nothing left over - so the reassociation is provable without knowing m.
 // CHECK-DAG: extern fun low_rank
-// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 768, 8)
-// CHECK-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 8, 768)
+// CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 768, 8)
+// CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 8, 768)
 extern fun low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 768; Nat»): «m, 768; Nat» =
     let R = nat_ring ();
     return (tensor.product_2d R (x, tensor.product_2d R (u, v)));
@@ -61,16 +61,16 @@ extern fun low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 76
 // (each wins for some m), so their costs are compared at run time and only the winner's thunk runs.
 // The two comparisons below are that tournament; the `()` is the selected thunk being forced.
 // CHECK-DAG: extern fun batch_dispatch
-// CHECK-DAG: %core.nat.add (2712000, {{.*}})
-// CHECK-DAG: %core.nat.add (360000, {{.*}})
-// CHECK-DAG: %core.ncmp.gLe ({{.*}}, ({{.*}})#{{.*}})
+// CHECK-DAG: core.nat.add (2712000, {{.*}})
+// CHECK-DAG: core.nat.add (360000, {{.*}})
+// CHECK-DAG: core.ncmp.gLe ({{.*}}, ({{.*}})#{{.*}})
 // CHECK-DAG: ({{.*}})#{{.*}} ();
 // Capped at 2 the chain falls back to the static dynamic program, which cannot decide it either, so
 // it survives as written and no cost is computed at run time.
-// NODISP-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 784, 300)
-// NODISP-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 300, 120)
-// NODISP-DAG: %tensor.product_2d (Nat, 0, %core.nat.add, %core.nat.mul) ({{.*}}, 120, 10)
-// NOCMP-NOT: %core.ncmp
+// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 784, 300)
+// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 300, 120)
+// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 120, 10)
+// NOCMP-NOT: core.ncmp
 extern fun batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w2: «300, 120; Nat»,
                                     w3: «120, 10; Nat»): «m, 10; Nat» =
     let R = nat_ring ();

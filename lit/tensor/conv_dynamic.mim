@@ -26,7 +26,7 @@ extern fun conv_dyn_valid {n cin cout h w kh kw: Nat}
 // Symbolic extents with stride 2: the output dim keeps a `core.nat.div (_, 2)`, proving the shape is *computed*
 // (not passed in) and survives symbolically.
 // CHECK-DAG: extern fun conv_dyn_strided
-// CHECK-DAG: %core.nat.div ({{.*}}, 2)
+// CHECK-DAG: core.nat.div ({{.*}}, 2)
 extern fun conv_dyn_strided {n cin cout h w kh kw: Nat}
                             (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
 : «conv_shape (n, cout, (h, w), (kh, kw), (2, 2), (1, 1), (0, 0)); Nat» =

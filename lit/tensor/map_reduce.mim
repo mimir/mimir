@@ -5,7 +5,7 @@
 // The inputs are taken as extern array arguments (as in hlo.mim) so the lowering is realistic; the
 // test checks the lowered Mim IR (no codegen). The GONE prefix asserts the axiom is fully lowered
 // away in every function.
-// GONE-NOT: %tensor.map_reduce
+// GONE-NOT: tensor.map_reduce
 
 plugin core;
 plugin tensor;
@@ -34,7 +34,7 @@ extern fun transpose (input: «2, 3; I32»): «3, 2; I32» =
 // A strided slice via the affine input map: out[i] = input[3*i + 2].
 // CHECK-DAG: extern fun strided
 // The affine read index `3*i + 2` lowers to %core arithmetic:
-// CHECK-DAG: %core.wrap.mul {{.*}}(3I64
-// CHECK-DAG: %core.wrap.add {{.*}}(2I64
+// CHECK-DAG: core.wrap.mul {{.*}}(3I64
+// CHECK-DAG: core.wrap.add {{.*}}(2I64
 extern fun strided (input: «8; I32»): «2; I32» =
     return (tensor.map_reduce (‹1; 2›, ‹1; 2›) (copy, ⊥:I32) id1 sl input);

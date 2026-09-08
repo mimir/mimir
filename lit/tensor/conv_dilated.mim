@@ -8,8 +8,8 @@
 //
 // Inputs use N >= 2 and Cin >= 2 so the NCHW layout does not collapse its leading size-1 dims (which would
 // defeat rank inference); for N = 1 / Cin = 1 the importer pins the implicit dims with `@`.
-// GONE-NOT: %tensor.conv
-// GONE-NOT: %tensor.pad
+// GONE-NOT: tensor.conv
+// GONE-NOT: tensor.pad
 // GONE-NOT: map_reduce
 // GONE-NOT: %affine
 

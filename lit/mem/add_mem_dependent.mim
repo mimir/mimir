@@ -23,6 +23,6 @@ extern lam _compile (): compile.Phase =
     );
 
 // A leading mem.M is prepended while the value-dependent `«n; I32»` domain stays well-typed.
-// CHECK-DAG: extern fun dep (_: %mem.M 0, _: Nat, _: «n_{{[0-9]+}}; I32»)
+// CHECK-DAG: extern fun dep (_: mem.M 0, _: Nat, _: «n_{{[0-9]+}}; I32»)
 // The free `s` is preserved and every nested continuation gets its own leading mem.M.
-// CHECK-DAG: extern fun poly {s_{{[0-9]+}}: Nat} (_{{[0-9]+}}: %mem.M 0,{{.*}}Cn [%mem.M 0, Idx s_{{[0-9]+}}, Idx s_{{[0-9]+}}]]]
+// CHECK-DAG: extern fun poly {s_{{[0-9]+}}: Nat} (_{{[0-9]+}}: mem.M 0,{{.*}}Cn [mem.M 0, Idx s_{{[0-9]+}}, Idx s_{{[0-9]+}}]]]

@@ -10,5 +10,5 @@ let Top = ⊤:Nat;
 extern con disj(m: mem.M 0, string: mem.Ptr («Top; I8», 0), return: Cn [mem.M 0, Bool, I32]) =
     let pattern = regex.disj (regex.cls.w, regex.cls.d, regex.lit '0', regex.lit '5', regex.lit '9', regex.lit 'Z', regex.lit '_', regex.lit 'a');
     return (pattern (m, string, 0I32));
-    // CHECK: %regex.disj 2 (%regex.disj 2 (%regex.disj 2 (%regex.range (48I8, 57I8), %regex.range (65I8, 90I8)), %regex.range ‹2; 95I8›), %regex.range (97I8, 122I8))
-    // CHECK-NOT: %regex.lit
+    // CHECK: regex.disj 2 (regex.disj 2 (regex.disj 2 (regex.range (48I8, 57I8), regex.range (65I8, 90I8)), regex.range ‹2; 95I8›), regex.range (97I8, 122I8))
+    // CHECK-NOT: regex.lit

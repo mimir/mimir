@@ -3,7 +3,7 @@
 
 // tensor.repeat tiles an input to a larger shape: out[…d…] = input[… d mod s_in#d …]. The wrap-around read lowers via
 // the affine `mod` semiop to core.div.urem. Checked on the lowered Mim IR (no codegen), as for hlo.mim / map_reduce.
-// GONE-NOT: %tensor.repeat
+// GONE-NOT: tensor.repeat
 // GONE-NOT: map_reduce
 // GONE-NOT: %affine
 
@@ -14,7 +14,7 @@ plugin mem;
 
 // Tile a length-3 vector to length 6: out[i] = input[i mod 3].
 // CHECK-DAG: extern fun tile1d
-// CHECK-DAG: %core.div.urem
+// CHECK-DAG: core.div.urem
 extern fun tile1d (input: «3; I32»): «6; I32» =
     return (tensor.repeat 3 6 input);
 

@@ -29,4 +29,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
     let (m, start_str) = mem.load (m, mem.lea (argv, 1I32));
     atoi (m, start_str, atoi_cont_begin);
 
-// CHECK-NOT: %affine.for
+// CHECK-NOT: affine.for

@@ -19,4 +19,4 @@ extern lam _compile(): compile.Phase =
 
 // CHECK: extern lam lf ({{[[:alnum:]_]+}}: Nat): Nat =
 // CHECK: lam f_{{[0-9]+}} ({{[[:alnum:]_]+}}: Nat): Nat =
-// CHECK: %core.nat.add ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}})
+// CHECK: core.nat.add ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}})

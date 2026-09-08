@@ -30,5 +30,5 @@ extern lam _compile (): compile.Phase =
         compile.cleanup,
     );
 
-// CHECK: %tensor.map_reduce
-// CHECK-NOT: %tensor.map_reduce
+// CHECK: tensor.map_reduce
+// CHECK-NOT: tensor.map_reduce

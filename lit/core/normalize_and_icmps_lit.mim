@@ -11,4 +11,4 @@ extern con and_lit (return: Cn Bool) =
 extern con and_lit2 (in: I8, return: Cn Bool) =
     return (core.bit2.and_ 0 (core.icmp.uge (in, 'a'), core.icmp.ule (in, 'a')));
 
-// CHECK-DAG: %core.icmp.xyglE i8 (97I8, in_{{[0-9]+}});
+// CHECK-DAG: core.icmp.xyglE i8 (97I8, in_{{[0-9]+}});

@@ -25,8 +25,8 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), ret
     return (m, s);
 
 // The whole affine index algebra must be gone after affine.lower_index.
-// CHECK-NOT: %affine.Index
-// CHECK-NOT: %affine.lit
-// CHECK-NOT: %affine.op
-// CHECK-NOT: %affine.semiop
-// CHECK-NOT: %affine.map
+// CHECK-NOT: affine.Index
+// CHECK-NOT: affine.lit
+// CHECK-NOT: affine.op
+// CHECK-NOT: affine.semiop
+// CHECK-NOT: affine.map

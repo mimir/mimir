@@ -5,8 +5,8 @@ plugin regex;
 
 let bad = regex.not_ (regex.conj (regex.cls.d, regex.cls.d));
 
-// CHECK:      {{.*}}not_unwanted.mim:6:11-6:60: error: regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_: %regex.not_ %regex.conj 2 ‹2; %regex.range (48I8, 57I8)›
+// CHECK:      {{.*}}not_unwanted.mim:6:11-6:60: error: regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_: regex.not_ regex.conj 2 ‹2; regex.range (48I8, 57I8)›
 // CHECK-NEXT: 6 | let bad = regex.not_ (regex.conj (regex.cls.d, regex.cls.d));
 // CHECK-NEXT:   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-// CHECK-NEXT: = note: found unwanted: %regex.conj 2 ‹2; %regex.range (48I8, 57I8)›
+// CHECK-NEXT: = note: found unwanted: regex.conj 2 ‹2; regex.range (48I8, 57I8)›
 // CHECK-NOT:  error:

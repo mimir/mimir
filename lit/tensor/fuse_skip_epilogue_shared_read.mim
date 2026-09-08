@@ -29,4 +29,4 @@ extern lam _compile (): compile.Phase =
     );
 
 // CHECK-COUNT-3: tensor.map_reduce
-// CHECK-NOT: %tensor.map_reduce
+// CHECK-NOT: tensor.map_reduce

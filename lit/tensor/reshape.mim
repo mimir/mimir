@@ -5,7 +5,7 @@
 // tensor.reshape (row-major) loops over the result and reads the input at the delinearized linear index, via the
 // affine.linearize / affine.delinearize helpers (which lower to %core arithmetic + core.div). Checked on the lowered
 // Mim IR (no codegen), as for hlo.mim / map_reduce. `s_in` is explicit so inference can pin the element type.
-// GONE-NOT: %tensor.reshape
+// GONE-NOT: tensor.reshape
 // GONE-NOT: map_reduce
 // GONE-NOT: %affine
 // GONE-NOT: linearize
@@ -17,8 +17,8 @@ plugin mem;
 
 // Flatten 2x3 -> 6: out[k] = input[(k / 3) % 2][k % 3].
 // CHECK-DAG: extern fun flatten
-// CHECK-DAG: %core.div.udiv
-// CHECK-DAG: %core.div.urem
+// CHECK-DAG: core.div.udiv
+// CHECK-DAG: core.div.urem
 extern fun flatten (input: «2, 3; I32»): «6; I32» =
     return (tensor.reshape (2, 3) 6 input);
 

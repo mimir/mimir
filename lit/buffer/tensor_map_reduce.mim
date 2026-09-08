@@ -39,15 +39,15 @@ extern fun transpose (input: «2, 3; I32»): «3, 2; I32» =
 
 // out[i] = input[3*i + 2]; the affine read index lowers to %core arithmetic.
 // CHECK-DAG: extern fun strided
-// CHECK-DAG: %core.wrap.mul {{.*}}(3I64
-// CHECK-DAG: %core.wrap.add {{.*}}(2I64
+// CHECK-DAG: core.wrap.mul {{.*}}(3I64
+// CHECK-DAG: core.wrap.add {{.*}}(2I64
 extern fun strided (input: «8; I32»): «2; I32» =
     return (tensor.map_reduce (‹1; 2›, ‹1; 2›) (copy, ⊥:I32) id1 sl input);
 
 // Memory operations are emitted.
-// CHECK-DAG: %mem.alloc
-// CHECK-DAG: %mem.lea
-// CHECK-DAG: %mem.store
+// CHECK-DAG: mem.alloc
+// CHECK-DAG: mem.lea
+// CHECK-DAG: mem.store
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

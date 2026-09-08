@@ -24,8 +24,8 @@ extern lam _compile (): compile.Phase =
         compile.cleanup,
     );
 
-// CHECK-DAG: %mem.alloc
-// CHECK-DAG: %mem.lea
-// CHECK-DAG: %mem.load
-// CHECK-DAG: %mem.store
+// CHECK-DAG: mem.alloc
+// CHECK-DAG: mem.lea
+// CHECK-DAG: mem.load
+// CHECK-DAG: mem.store
 // GONE-NOT: %buffer.

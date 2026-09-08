@@ -7,8 +7,8 @@
 // `g` + `init` are operands, so max-pooling (g = max, init = -inf) and sum-/avg-pooling (g = +, init = 0) share one op.
 // Checked on the lowered Mim IR (no codegen), as for conv / slice. Inputs use N,C >= 2 so the NCHW layout does not
 // collapse leading size-1 dims.
-// GONE-NOT: %tensor.pool
-// GONE-NOT: %tensor.pad
+// GONE-NOT: tensor.pool
+// GONE-NOT: tensor.pad
 // GONE-NOT: map_reduce
 // GONE-NOT: %affine
 
@@ -23,14 +23,14 @@ lam nat_max (a b: Nat): Nat = core.select (core.ncmp.ge (a, b), a, b);
 // 2x2 max-pool, stride 2, no padding: «2,2,4,4» -> «2,2,2,2». The reduction is the `nat_max` comparison; the strided
 // window read lowers to %core arithmetic.
 // CHECK-DAG: extern fun maxpool
-// CHECK-DAG: %core.ncmp
-// CHECK-DAG: %core.wrap.mul {{.*}}(2I64
+// CHECK-DAG: core.ncmp
+// CHECK-DAG: core.wrap.mul {{.*}}(2I64
 extern fun maxpool (input: «2, 2, 4, 4; Nat»): «2, 2, 2, 2; Nat» =
     return (tensor.pool (nat_max, 0) ((2, 2), (2, 2), (1, 1), (0, 0), (2, 2)) input);
 
 // 2x2 sum-pool, stride 2, padding 1 (pad value = init = 0): «2,2,4,4» -> «2,2,3,3». Exercises the tensor.pad
 // composition and a different fold (the running sum lowers to core.nat.add).
 // CHECK-DAG: extern fun sumpool
-// CHECK-DAG: %core.nat.add
+// CHECK-DAG: core.nat.add
 extern fun sumpool (input: «2, 2, 4, 4; Nat»): «2, 2, 3, 3; Nat» =
     return (tensor.pool (core.nat.add, 0) ((2, 2), (2, 2), (1, 1), (1, 1), (3, 3)) input);

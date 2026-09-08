@@ -18,9 +18,9 @@ let bid0 = tensor.broadcast_in_dim ((2, 1, 2), (2, 50, 2), m0, (2₃, 1₃, 0₃
 // Both tensor.broadcast and tensor.broadcast_in_dim lower through buffers: the literal inputs are
 // materialized once in their COMPACT form (the source tuples below, not the ‹50; …›-expanded packs), and
 // the broadcasts expand to loops over the buffers. Neither leaves any %tensor / %affine / map_reduce residue.
-// CHECK-NOT: %tensor.broadcast
+// CHECK-NOT: tensor.broadcast
 // CHECK-NOT: map_reduce
 // CHECK-NOT: %affine
-// CHECK-DAG: %mem.store {{.*}} ((1, 2), (3, 4)))
-// CHECK-DAG: %mem.store {{.*}} ((1, 2, 3), (4, 5, 6)))
+// CHECK-DAG: mem.store {{.*}} ((1, 2), (3, 4)))
+// CHECK-DAG: mem.store {{.*}} ((1, 2, 3), (4, 5, 6)))
 extern fun e1() = return (b0, b1, bid0);

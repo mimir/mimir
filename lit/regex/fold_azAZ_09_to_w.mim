@@ -13,4 +13,4 @@ extern con disj(m: mem.M 0, string: mem.Ptr («Top; I8», 0), return: Cn [mem.M 
                     regex.lit 95I8,
                     regex.lit 97I8, regex.lit 98I8, regex.lit 99I8, regex.lit 100I8, regex.lit 101I8, regex.lit 102I8, regex.lit 103I8, regex.lit 104I8, regex.lit 105I8, regex.lit 106I8, regex.lit 107I8, regex.lit 108I8, regex.lit 109I8, regex.lit 110I8, regex.lit 111I8, regex.lit 112I8, regex.lit 113I8, regex.lit 114I8, regex.lit 115I8, regex.lit 116I8, regex.lit 117I8, regex.lit 118I8, regex.lit 119I8, regex.lit 120I8, regex.lit 121I8, regex.lit 122I8);
     return (pattern (m, string, 0I32));
-// CHECK: %regex.disj 2 (%regex.disj 2 (%regex.disj 2 (%regex.range (48I8, 57I8), %regex.range (65I8, 90I8)), %regex.range ‹2; 95I8›), %regex.range (97I8, 122I8))
+// CHECK: regex.disj 2 (regex.disj 2 (regex.disj 2 (regex.range (48I8, 57I8), regex.range (65I8, 90I8)), regex.range ‹2; 95I8›), regex.range (97I8, 122I8))
