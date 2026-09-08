@@ -1,0 +1,10 @@
+// RUN: %mim %s --output-py - --bootstrap | %FileCheck %s
+
+axm %pykw.assert: Nat;
+axm %pykw.value: Nat;
+
+// Python keywords are suffixed only in generated bindings; MimIR names remain unchanged.
+// CHECK: class pykw(IntEnum):
+// CHECK: assert_ =
+// CHECK: value =
+// CHECK-NOT: {{^[[:space:]]+assert =}}
