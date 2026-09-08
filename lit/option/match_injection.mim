@@ -1,11 +1,11 @@
 // RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=Match
 
-plugin option;
+plugin option as o;
 
 // CHECK-LABEL: extern fun unwrap_none
 // CHECK: return_{{[0-9]+}} 7;
 extern fun unwrap_none(): Nat =
-    return (match (option.none Nat) with
+    return (match (o.none Nat) with
         | value: Nat => value
         | _: [] => 7);
 
@@ -14,16 +14,16 @@ extern fun unwrap_none(): Nat =
 // CHECK-LABEL: extern fun unwrap_or_none
 // CHECK: return_{{[0-9]+}} 7;
 extern fun unwrap_or_none(): Nat =
-    return (option.unwrap_or (option.none Nat) 7);
+    return (o.unwrap_or (o.none Nat) 7);
 
 // CHECK-LABEL: extern fun unwrap_or_some
 // CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
 extern fun unwrap_or_some(x: Nat): Nat =
-    return (option.unwrap_or (option.some x) 7);
+    return (o.unwrap_or (o.some x) 7);
 
 // CHECK-LABEL: extern fun unwrap_some
 // CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
 extern fun unwrap_some(x: Nat): Nat =
-    return (match (option.some x) with
+    return (match (o.some x) with
         | value: Nat => value
         | _: [] => 7);
