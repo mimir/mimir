@@ -36,9 +36,9 @@ enum class Vis { Priv, Pub };
 /// Parser::parse_modifiers only rejects a modifier being repeated (`priv priv`, `extern extern`, ...);
 /// whether a given combination makes sense for the decl that follows is up to that decl's own parser.
 struct Mods {
-    std::optional<Vis> vis;
-    bool is_extern = false;
-    bool is_anx    = false;
+    std::optional<Vis> vis = {};
+    bool is_extern         = false;
+    bool is_anx            = false;
 
     /// `extern`/`anx` nudge the default visibility to `Pub` unless `priv` is given explicitly.
     Vis default_vis() const { return (is_extern || is_anx) ? Vis::Pub : Vis::Priv; }
