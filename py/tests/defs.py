@@ -28,6 +28,10 @@ def test_driver(driver):
     d = driver.world().lit_i8(0).driver()
     assert d is not None
 
+
+def test_nat_literal_payload(world):
+    assert world.lit_nat(7).get_nat() == 7
+
 @pytest.mark.skip(reason="calling .var() on a projection currently segfaults; "
                     "convert to xfail-strict once the binding raises MIM_Error "
                     "instead of crashing.")

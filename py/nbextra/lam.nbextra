@@ -8,3 +8,8 @@
     .def("app", [](Lam& self, bool filter, const Def* callee, std::vector<const Def*> args) {
         return self.app(filter, callee, Defs(args));
     }, nb::rv_policy::reference_internal)
+    // Preserve the former frontend convenience spelling that initializes both
+    // the filter and body of a mutable lambda in one call.
+    .def("set_body", [](Lam& self, bool filter, const Def* body) {
+        return self.set(filter, body);
+    }, nb::rv_policy::reference_internal)

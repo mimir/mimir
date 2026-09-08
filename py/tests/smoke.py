@@ -77,3 +77,9 @@ def test_generated_plugin_facade_resolves():
     generated = importlib.import_module("mim._plugins.core")
 
     assert facade.core is generated.core
+
+
+def test_generated_plugin_escapes_python_keywords():
+    generated = importlib.import_module("mim._plugins.runtime")
+
+    assert generated.runtime.assert_.name == "assert_"
