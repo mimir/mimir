@@ -1,0 +1,27 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s --implicit-check-not=%%tensor.gather --implicit-check-not=%%tensor.scatter
+
+// Gather lowers to indexed reads; scatter lowers to an ordered sequence of
+// reads and writes. Their element formulas remain visible as tensor get/set.
+// CHECK-DAG: fun extern gather2d
+// CHECK-DAG: fun extern scatter2d
+// CHECK: %tensor.get
+// CHECK: %tensor.set
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin compile;
+
+fun extern gather2d (input: «2, 3; I32», index: «2, 2; Idx 3»): «2, 2; I32» =
+    return (%tensor.gather @(I32, 2) ((2, 3), (2, 2)) 1_2 (input, index));
+
+fun extern scatter2d
+    (input: «2, 3; I32», index: «2, 2; Idx 3», updates: «2, 2; I32»): «2, 3; I32» =
+    return (%tensor.scatter @(I32, 2) ((2, 3), (2, 2), (2, 2)) 1_2 (input, index, updates));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_tensor,
+        %tensor.lower_map_reduce,
+        %compile.cleanup,
+    );

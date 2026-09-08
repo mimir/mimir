@@ -43,6 +43,13 @@ fun extern transpose (input: «2, 3; I32»): «3, 2; I32» =
 fun extern strided (input: «8; I32»): «2; I32» =
     return (%tensor.map_reduce (‹1; 2›, ‹1; 2›) (copy, ⊥:I32) id1 sl input);
 
+// A logical singleton input is represented as a scalar after type normalization.  Bufferization must
+// recover its `(1)` shape from map_reduce metadata instead of passing the scalar to `%mem.store` as an
+// unlowered tensor operation.
+// CHECK-DAG: fun extern singleton_broadcast
+fun extern singleton_broadcast (input: I32): «2; I32» =
+    return (%tensor.map_reduce (2, 2) (copy, ⊥:I32) id1 id1 input);
+
 // Memory operations are emitted.
 // CHECK-DAG: %mem.alloc
 // CHECK-DAG: %mem.lea

@@ -1050,6 +1050,75 @@ axm %tensor.select: {T: *}
 lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
   %tensor.map_impl %core.select is;
 ///
+/// ### %%tensor.gather
+///
+/// Reads one source element for every index element. The output coordinate is
+/// also the index coordinate, except on `dim`, where the value loaded from
+/// `index` selects the source coordinate. For every `d != dim`, `s_idx#d <=
+/// s_src#d` is required. `dim: Idx r` and the index element type encode the
+/// axis and indexed-source bounds in the type.
+///
+/// Python:
+/// ```python
+/// for out_index in ndindex(s_idx):
+///     source_index = list(out_index)
+///     source_index[dim] = index[out_index]
+///     output[out_index] = input[source_index]
+/// ```
+axm %tensor.gather: {T: *, r: Nat}
+                  → [s_src: «r; Nat», s_idx: «r; Nat»]
+                  → [dim: Idx r]
+                  → [input: «s_src; T», index: «s_idx; Idx (s_src#dim)»]
+                  → «s_idx; T»;
+
+lam %tensor.gather_pointwise_elem_impl {T: *, r: Nat}
+                                       (s_src: «r; Nat», s_idx: «r; Nat»)
+                                       (dim: Idx r)
+                                       (out_indices: «r; I64»)
+                                       (input: «s_src; T», index: «s_idx; Idx (s_src#dim)»): T =
+    let index_coords = ‹d: r; %core.conv.u (s_idx#d) (out_indices#d)›;
+    let source_axis_index = %core.bitcast I64 (%tensor.get (index_coords, index));
+    let source_coords = ‹d: r;
+        let coordinate = %core.select (%core.icmp.e @r (d, dim), source_axis_index, out_indices#d);
+        %core.conv.u (s_src#d) coordinate›;
+    %tensor.get (source_coords, input);
+
+///
+/// ### %%tensor.scatter
+///
+/// Starts with `input` and visits `index` in row-major order. Each corresponding
+/// `updates` element is stored at the input coordinate selected by `index` on
+/// `dim`. Duplicate destinations use the last visited update. For `d != dim`,
+/// `s_idx#d <= s_src#d`; on every axis, `s_idx#d <= s_updates#d`.
+///
+/// Python:
+/// ```python
+/// output = input.copy()
+/// for index_coord in ndindex(s_idx):
+///     destination = list(index_coord)
+///     destination[dim] = index[index_coord]
+///     output[destination] = updates[index_coord]
+/// ```
+axm %tensor.scatter: {T: *, r: Nat}
+                   → [s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»]
+                   → [dim: Idx r]
+                   → [input: «s_src; T», index: «s_idx; Idx (s_src#dim)», updates: «s_updates; T»]
+                   → «s_src; T»;
+
+lam %tensor.scatter_step_impl {T: *, r: Nat}
+                              (s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»)
+                              (dim: Idx r)
+                              (visit_indices: «r; I64»)
+                              (acc: «s_src; T», index: «s_idx; Idx (s_src#dim)», updates: «s_updates; T»): «s_src; T» =
+    let index_coords = ‹d: r; %core.conv.u (s_idx#d) (visit_indices#d)›;
+    let update_coords = ‹d: r; %core.conv.u (s_updates#d) (visit_indices#d)›;
+    let destination_axis_index = %core.bitcast I64 (%tensor.get (index_coords, index));
+    let update = %tensor.get (update_coords, updates);
+    let destination_coords = ‹d: r;
+        let coordinate = %core.select (%core.icmp.e @r (d, dim), destination_axis_index, visit_indices#d);
+        %core.conv.u (s_src#d) coordinate›;
+    %tensor.set (destination_coords, acc, update);
+///
 /// ## Phases
 ///
 /// * `reassoc`: reassociates chains of %%tensor.product_2d to minimize the number of scalar multiplications, using the classic matrix-chain-order dynamic program.
@@ -1060,12 +1129,12 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 ///   A product with more than one consumer stays a chain boundary, as pulling it apart would leave it materialized for its other consumers as well.
 ///   Reassociation is only exact for an associative ring; on floating-point rings it changes the rounding, just like `-ffast-math`.
 /// * `lower_tensor`: lowers the high-level tensor axioms to the low-level ones (`map_reduce`, ...) by re-applying the matching `*_impl` annexes.
-/// * `lower_map_reduce`: lowers the low-level tensor axioms directly to their underlying primitives (loops, `extract`, `insert`, packs, ...).
+/// * `lower_map_reduce`: lowers the low-level tensor axioms, including `generate`, directly to their underlying primitives (loops, `extract`, `insert`, packs, ...).
 /// * `lower_get_set`: lowers `%%tensor.get` / `%%tensor.set` to their underlying primitives (`extract`, `insert`).
 /// * `fuse_tensor`: fuses pure producer `map_reduce`s into their consumers' access maps.
 ///   A producer is only fused where the consumer reads it injectively (its access map uses every loop index, possibly strided/shifted), so fusion never recomputes a producer element — strided reads even skip producer elements entirely.
 ///   In the reverse direction, a trailing elementwise map over a reducing `map_reduce` is composed into the producer's `post` epilogue (the GEMM-epilogue pattern), provided the map is its only consumer.
-/// * `lower_to_mem`: Bufferizes the low-level tensor axioms (`get`, `set`, `map_reduce`) onto the `buffer` layer:
+/// * `lower_to_mem`: Bufferizes the low-level tensor axioms (`get`, `set`, `generate`, `map_reduce_post`, `gather`, `scatter`) onto the `buffer` layer:
 /// tensor array values become `%%buffer.Buf` handles and the operations become `%%buffer.read` / `%%buffer.write` / `%%buffer.alloc` (threading `%%mem.M`).
 /// Memory is threaded by `%%mem.add_mem` (scheduled next in the pipeline); run `%%buffer.lower_ptr` afterwards to reach `%%mem.Ptr`.
 ///
@@ -1075,3 +1144,24 @@ axm %tensor.lower_map_reduce: %compile.Phase;
 axm %tensor.lower_get_set:    %compile.Phase;
 axm %tensor.fuse_tensor:      %compile.Phase;
 axm %tensor.lower_to_mem:     %compile.Phase;
+///
+/// ### %%tensor.generate
+///
+/// Constructs a tensor by evaluating `body` once for every logical output
+/// coordinate. Coordinates use `I64` so the body can perform ordinary scalar
+/// arithmetic before converting them to bounded tensor indices.
+///
+/// Python:
+/// ```python
+/// output = empty(s_out)
+/// for index in ndindex(s_out):
+///     output[index] = body(index)
+/// return output
+/// ```
+///
+/// This declaration is appended after the existing annexes to preserve their
+/// generated IDs.
+axm %tensor.generate: {T: *, r: Nat}
+                    → [s_out: «r; Nat»]
+                    → [body: [«r; I64»] → T]
+                    → «s_out; T»;

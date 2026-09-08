@@ -1,0 +1,30 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=%%tensor.generate
+
+// CHECK-LABEL: fun extern generate2d
+// CHECK: %affine.For
+// CHECK-LABEL: fun extern generate_singleton
+// CHECK: return_{{[0-9]+}} 7I32
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin compile;
+
+lam row_value(indices: «2; I64»): I32 =
+    %core.select (%core.icmp.e (indices#0_2, 0I64), 10I32, 20I32);
+
+lam singleton_value(indices: «2; I64»): I32 = 7I32;
+
+fun extern generate2d(): «2, 3; I32» =
+    return (%tensor.generate @(I32, 2) (2, 3) row_value);
+
+// Both logical singleton axes fold to the scalar representation. PE evaluates
+// the only valid coordinate directly, without constructing a physical buffer.
+fun extern generate_singleton(): I32 =
+    return (%tensor.generate @(I32, 2) (1, 1) singleton_value);
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_map_reduce,
+        %compile.cleanup,
+    );

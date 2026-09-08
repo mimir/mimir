@@ -1,0 +1,15 @@
+// RUN: not %mim %s -o - 2>&1 | %FileCheck %s
+
+plugin tensor;
+plugin compile;
+
+// CHECK: gather index shape exceeds input shape
+fun extern invalid (input: «2, 3; I32», index: «2, 4; Idx 2»): «2, 4; I32» =
+    return (%tensor.gather @(I32, 2) ((2, 3), (2, 4)) 0_2 (input, index));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %tensor.lower_tensor,
+        %tensor.lower_map_reduce,
+        %compile.cleanup,
+    );
