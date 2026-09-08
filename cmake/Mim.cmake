@@ -1,5 +1,18 @@
 include(GNUInstallDirs)
 
+if(NOT DEFINED MIM_PLUGIN_LIST)
+    set(MIM_PLUGIN_LIST "" CACHE INTERNAL "MIM_PLUGIN_LIST")
+endif()
+if(NOT DEFINED MIM_PLUGIN_LAYOUT)
+    set(MIM_PLUGIN_LAYOUT "" CACHE INTERNAL "MIM_PLUGIN_LAYOUT")
+endif()
+if(NOT DEFINED MIM_PLUGIN_INCLUDE_DIRS)
+    set(MIM_PLUGIN_INCLUDE_DIRS "" CACHE INTERNAL "MIM_PLUGIN_INCLUDE_DIRS")
+endif()
+
+if(NOT MIM_TARGET_NAMESPACE)
+    set(MIM_TARGET_NAMESPACE "")
+endif()
 option(MIM_BUILD_LL_RUNTIME "Compile the ll backend's C runtime wrappers to LLVM IR (requires clang)." ON)
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
@@ -89,7 +102,7 @@ function(add_mim_plugin)
     cmake_parse_arguments(
         PARSE_ARGV 1        # skip first arg
         PARSED              # prefix of output variables
-        ""                  # options (none)
+        "INSTALL"           # options
         ""                  # one-value keywords (none)
         "SOURCES;PRIVATE"   # multi-value keywords
     )
@@ -164,6 +177,9 @@ function(add_mim_plugin)
             PRIVATE
                 "${CMAKE_CURRENT_LIST_DIR}/include"
         )
+        list(APPEND MIM_PLUGIN_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/include")
+        list(REMOVE_DUPLICATES MIM_PLUGIN_INCLUDE_DIRS)
+        set(MIM_PLUGIN_INCLUDE_DIRS "${MIM_PLUGIN_INCLUDE_DIRS}" CACHE INTERNAL "MIM_PLUGIN_INCLUDE_DIRS" FORCE)
     endif()
     target_link_libraries(mim_${PLUGIN}
         PRIVATE
@@ -178,6 +194,12 @@ function(add_mim_plugin)
             PREFIX "lib" # always use "lib" as prefix regardless of OS/compiler
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim
     )
+    if(APPLE)
+        set(MIM_PLUGIN_INSTALL_RPATH "@loader_path/..")
+    elseif(UNIX)
+        set(MIM_PLUGIN_INSTALL_RPATH "\$ORIGIN/..")
+    endif()
+    set_target_properties(mim_${PLUGIN} PROPERTIES INSTALL_RPATH "${MIM_PLUGIN_INSTALL_RPATH}")
 
     install(
         TARGETS

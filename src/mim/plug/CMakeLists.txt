@@ -40,6 +40,13 @@ foreach(PLUGIN IN LISTS MIM_EXTRA_PLUGINS)
     add_subdirectory("${PROJECT_SOURCE_DIR}/extra/${PLUGIN}" "${CMAKE_BINARY_DIR}/extra/${PLUGIN}")
 endforeach()
 
+# Plugin headers are a shared C++ extension surface. Keep their source include
+# roots available to every plugin target; generated autogen.h files remain in
+# the build include directory and are already ordered through mim_internal_*.
+foreach(PLUGIN IN LISTS MIM_PLUGIN_LIST)
+    target_include_directories(mim_${PLUGIN} PRIVATE ${MIM_PLUGIN_INCLUDE_DIRS})
+endforeach()
+
 list(TRANSFORM MIM_PLUGIN_LIST PREPEND "mim_internal_" OUTPUT_VARIABLE MIM_INTERNAL_PLUGINS)
 
 add_custom_target(mim_all_plugins)

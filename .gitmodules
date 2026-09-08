@@ -10,3 +10,11 @@
 [submodule "submodules/nanobind"]
 	path = submodules/nanobind
 	url = ../../wjakob/nanobind.git
+[submodule "extra/runtime"]
+	path = extra/runtime
+	url = https://github.com/hsqStephenZhang/mimir-runtime-plugin.git
+	branch = main
+[submodule "extra/torch"]
+	path = extra/torch
+	url = https://github.com/hsqStephenZhang/mimir-torch-plugin.git
+	branch = main

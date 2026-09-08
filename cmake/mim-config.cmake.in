@@ -2,8 +2,16 @@
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 
+# The dependency export files validate their own package name.  Loading them
+# while CMAKE_FIND_PACKAGE_NAME is still `mim` would make an optional Abseil
+# test-only target turn into a false negative for this package.
+set(_mim_find_package_name "${CMAKE_FIND_PACKAGE_NAME}")
+set(CMAKE_FIND_PACKAGE_NAME absl)
 include(../absl/abslConfig)
+set(CMAKE_FIND_PACKAGE_NAME fe)
 include(../fe/fe-config)
+set(CMAKE_FIND_PACKAGE_NAME "${_mim_find_package_name}")
+unset(_mim_find_package_name)
 include(mim-targets)
 set(MIM_PLUGIN_LIST "" CACHE INTERNAL "MIM_PLUGIN_LIST" FORCE)
 set(MIM_PLUGIN_LAYOUT "" CACHE INTERNAL "MIM_PLUGIN_LAYOUT" FORCE)

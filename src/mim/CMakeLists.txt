@@ -82,6 +82,13 @@ target_link_libraries(libmim
         fe-lib
 )
 
+if(APPLE)
+    set(MIM_LIB_INSTALL_RPATH "@loader_path")
+elseif(UNIX)
+    set(MIM_LIB_INSTALL_RPATH "\$ORIGIN")
+endif()
+set_target_properties(libmim PROPERTIES INSTALL_RPATH "${MIM_LIB_INSTALL_RPATH}")
+
 install(
     FILES "${CMAKE_BINARY_DIR}/include/mim/config.h"
     DESTINATION include/mim
