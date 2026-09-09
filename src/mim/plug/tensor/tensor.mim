@@ -1052,7 +1052,8 @@ lam %tensor.select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T
 ///
 /// ## Phases
 ///
-/// * `reassoc`: reassociates chains of %%tensor.product_2d to minimize the number of scalar multiplications, using the classic matrix-chain-order dynamic program.
+/// * `reassoc`: reassociates chains of %%tensor.product_2d to minimize the number of vector-lane slots, using the classic matrix-chain-order dynamic program.
+///   A product's trailing extent is the vector loop of `dot_schedule`, so a literal one is charged rounded up to a whole number of lanes - `-X tensor:reassoc-vec=<n>`, `1` to count plain scalar multiplications: a bracketing whose intermediates are too narrow to fill a vector pays for the lanes it leaves idle, which is exactly what the multiplication count misses.
 ///   Extents need not be literal: a cost is a polynomial in the symbolic extents, ordered by coefficient-wise `≤`, which proves `≤` for every instantiation because extents are non-negative.
 ///   That order is only *partial*, so a chain can have several bracketings that each win for some instantiation - a batch dimension favouring a different one when small than when large.
 ///   Up to 4 matrices - `-X tensor:reassoc-max=<n>`, below `3` to switch it off - those survivors are emitted side by side behind a run-time comparison of their costs, so only the winner's thunk runs; a longer chain is only reassociated where one bracketing provably wins for every extent.
