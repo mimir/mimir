@@ -27,6 +27,7 @@ namespace ast {
     m(Arrow,   R)       \
     m(Pi,      N)       \
     m(Inj,     R)       \
+    m(Eq,      L)       \
     m(Add,     L)       \
     m(Mul,     L)       \
     m(App,     L)       \
@@ -157,8 +158,10 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_div,        "/")               \
     m(T_dollar,     "$")               \
     m(T_dot,        ".")               \
+    m(T_eq,         "==")              \
     m(T_extract,    "#")               \
     m(T_lm,         "λ")               \
+    m(T_ne,         "!=")              \
     m(T_rem,        "%")               \
     m(T_semicolon,  ";")               \
     m(T_star,       "*")               \
@@ -171,6 +174,8 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
 /// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
 ///@{
 #define MIM_INFIX(m)      \
+    m(T_eq,   "==", Eq )  \
+    m(T_ne,   "!=", Eq )  \
     m(T_add,  "+",  Add)  \
     m(T_sub,  "-",  Add)  \
     m(T_star, "*",  Mul)  \

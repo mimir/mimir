@@ -78,7 +78,13 @@ Tok Lexer::lex() {
         if (accept( '@')) return tok(Tag::T_at);
         if (accept( '=')) {
             if (accept('>')) return tok(Tag::T_fat_arrow);
+            if (accept('=')) return tok(Tag::T_eq);
             return tok(Tag::T_assign);
+        }
+        if (accept( '!')) {
+            if (accept('=')) return tok(Tag::T_ne);
+            error().e(loc_, "expected `=` after `!`");
+            continue;
         }
         if (accept(U'⊥')) return tok(Tag::T_bot);
         if (accept(U'⊤')) return tok(Tag::T_top);
@@ -108,7 +114,8 @@ Tok Lexer::lex() {
 
         if (accept('`')) {
             if (accept(utf8::any('+', '-', '*', '/', '%'))) return {loc_, Tag::M_id, sym()};
-            error().e(loc_, "expected one of `+`, `-`, `*`, `/`, `%` after the escape hatch");
+            if (accept(utf8::any('=', '!')) && accept('=')) return {loc_, Tag::M_id, sym()};
+            error().e(loc_, "expected one of `+`, `-`, `*`, `/`, `%`, `==`, `!=` after the escape hatch");
             continue;
         }
 

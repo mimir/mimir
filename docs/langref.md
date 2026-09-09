@@ -37,12 +37,12 @@ For example, `λ` and `lm` are lexically equivalent.
 ‹ › « »
 → => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
-+ - * / %
++ - * / % == !=
 <eof>
 ```
 
 `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
-`+`, `-`, `*`, `/`, and `%` are [infix operators](@ref infix).
+`+`, `-`, `*`, `/`, `%`, `==`, and `!=` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
@@ -395,7 +395,9 @@ e   ::= e "∪" e
 #### Infix Operators {#infix}
 
 ```ebnf
-e   ::= e "+" e
+e   ::= e "==" e
+     |  e "!=" e
+     |  e "+" e
      |  e "-" e
      |  e "*" e
      |  e "/" e
@@ -430,9 +432,10 @@ The current parser uses the following precedence, from strongest to weakest bind
 4.  e e, e @ e             application
 5.  e * e, e / e, e % e    multiplicative operators
 6.  e + e, e - e           additive operators
-7.  e inj e                injection
-8.  e → e                  arrow
-9.  e where d* end         local declaration block
+7.  e == e, e != e         equality operators
+8.  e inj e                injection
+9.  e → e                  arrow
+10. e where d* end         local declaration block
 ```
 
 - Extract, union, application, and the infix operators associate left-to-right.
