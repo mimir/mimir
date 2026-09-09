@@ -25,8 +25,8 @@ void reg_phases(Flags2Phases& phases) {
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"reassoc-max=<n>", "Longest matrix chain whose bracketings `%tensor.reassoc` enumerates (default `4`). Where no single bracketing is cheapest for *every* extent, the survivors are dispatched over at run time; a longer chain is only reassociated where one bracketing provably wins for every extent. The number of bracketings is `Catalan(n − 1)`, so raising this gets expensive fast, while anything below `3` switches the dispatch off."},
-    {"reassoc-vec=<n>", "Vector lanes `%tensor.reassoc` costs a product's vector loop in, between `1` and `1024` (default `8`, `1` to count plain scalar multiplications). The vector loop runs over the trailing extent (`dot_schedule`) or, for a transposed operand, over the contraction (`dot_schedule_kvec`); a literal extent is charged rounded up to a whole number of lanes, so a bracketing whose intermediates are too narrow to fill a vector pays for the lanes it leaves idle. Symbolic extents are assumed to vectorize perfectly."},
+    {"reassoc-max=<n>", "Longest matrix chain whose `Catalan(n − 1)` bracketings `%tensor.reassoc` enumerates and, failing one that provably wins for every extent, dispatches over at run time (default `4`; below `3` switches the dispatch off)."},
+    {"reassoc-vec=<n>", "Vector lanes `%tensor.reassoc` pads a product's vector loop to, so that a bracketing whose intermediates are too narrow to fill a vector is charged for the lanes it leaves idle (`1` … `1024`, default `8`; `1` counts plain scalar multiplications)."},
 };
 // clang-format on
 

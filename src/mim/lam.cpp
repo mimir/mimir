@@ -38,6 +38,13 @@ Defs Lam::reduce(Defs args) const { return Def::reduce(world().tuple(args)); }
 
 // TODO maybe we can eta-reduce immutable Lams in some edge casess like: lm _: [] = f ();
 
+const Def* Lam::isa_ret_arg(const Def* d) {
+    auto lam = d->isa_mut<Lam>();
+    if (!lam || !lam->is_set()) return nullptr;
+    auto app = lam->body()->isa<App>();
+    return app && app->callee() == lam->ret_var() ? app->arg() : nullptr;
+}
+
 const Def* Lam::eta_reduce() const {
     if (auto var = has_var()) {
         if (auto app = body()->isa<App>())
