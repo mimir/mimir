@@ -16,7 +16,7 @@ struct Split {
 using Splits = fe::Vector<Split>;
 
 /// Reassociates chains of %%tensor.product_2d with the classic matrix-chain-order dynamic program,
-/// so that a chain is evaluated with the least number of scalar multiplications.
+/// so that a chain is evaluated with the least number of vector-lane slots.
 ///
 /// Extents need not be literal: a cost is kept as a polynomial in the symbolic extents, ordered by
 /// coefficient-wise `≤`.
@@ -32,6 +32,7 @@ public:
 
 private:
     static constexpr u64 Default_max_dispatch = 4;
+    static constexpr u64 Default_vec          = 8;
 
     /// One `%tensor.product_2d` of a chain: `«m, k» · «k, l»`.
     struct Link {
@@ -58,8 +59,8 @@ private:
     /// at run time.
     const Def* dispatch(const Def* head, const Def* res_ty, Defs mats, Defs dims, fe::View<Splits> cands);
 
-    /// The number of multiplications @p splits costs, as a `Nat` expression in the new world.
-    const Def* cost_expr(Defs dims, const Splits& splits);
+    /// The number of lane slots @p splits costs, as a `Nat` expression in the new world.
+    const Def* cost_expr(Defs mats, Defs dims, const Splits& splits);
 
     /// Old-world consumer count per `product_2d` app, attributed through tuple wrappers.
     DefMap<u64> consumers_;
@@ -68,6 +69,13 @@ private:
     /// The number of bracketings is `Catalan(n − 1)`, so this cannot grow much.
     /// Set with `-X tensor:reassoc-max=<n>`; below `3` nothing is ever dispatched.
     u64 max_dispatch_ = Default_max_dispatch;
+
+    /// Lanes of the vector loop, which `dot_schedule` runs over each product's trailing extent - or,
+    /// for a transposed operand, `dot_schedule_kvec` over its contraction.
+    /// A literal extent is charged rounded up to a whole number of these, so a bracketing whose
+    /// intermediates are too narrow to fill a vector pays for the lanes it leaves idle.
+    /// Set with `-X tensor:reassoc-vec=<n>`; `1` counts plain scalar multiplications again.
+    u64 vec_ = Default_vec;
 };
 
 } // namespace mim::plug::tensor::phase

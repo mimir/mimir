@@ -161,6 +161,9 @@ public:
         auto n = num_vars(); // compute the arity once and hand it to the (a, i) projection
         return var(n, n - 1);
     }
+    /// Yields the `y` of `lm (x, ret) = ret y` - the argument @p d's body hands to its Lam::ret_var.
+    /// `nullptr` if @p d is not a set, mutable Lam with such a body.
+    static const Def* isa_ret_arg(const Def* d);
     ///@}
 
     /// @name Setters
