@@ -1,5 +1,4 @@
 // RUN: %mim %s
-plugin core;
 plugin refly;
 
 // `Vec` is an ordinary `lam` — but it returns a *type*: it is a function `Nat → *`.

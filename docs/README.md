@@ -37,22 +37,25 @@ And it pays off in practice: the [regex](@ref regex) plugin is the fastest engin
 
 ## ✨ A Taste of Mim
 
-The following function `sq` squares `x` — for **any** type `T`, as long as `T` comes packaged with its own multiplication.
+The following function `sq` squares `x` — for **any** type `T`, as long as you hand it a multiplication on `T`.
 Then, `f` instantiates `sq` for `Nat`:
 
 \include "sq.mim"
 
-That first argument `(T: *, mul: [T, T] → T)` is a [**dependent pair**](https://en.wikipedia.org/wiki/Dependent_type#%CE%A3_type) — an [existential](https://en.wikipedia.org/wiki/Type_system#Existential_types) bundling a type together with an operation on it.
-In MimIR, types are ordinary [**first-class values**](https://en.wikipedia.org/wiki/First-class_citizen): `T` and `mul` are just arguments, so polymorphism, [type operators](https://en.wikipedia.org/wiki/Type_constructor), and dependent types all fall out of the same mechanism.
+The type `T` sits in `{}` and is therefore an **implicit** argument: `f` just writes `sq nat.mul`, and MimIR infers `T = Nat` from the type of `nat.mul`.
+The remaining parameter is named `` `* `` — the [infix operator](@ref infix) `*` escaped into an ordinary identifier — so the body's `x * x` is nothing but an application of that very parameter.
+Its type `[T, T] → T` mentions `T`, which makes `sq` a [**dependent function**](https://en.wikipedia.org/wiki/Dependent_type#%CE%A0_type).
+In MimIR, types are ordinary [**first-class values**](https://en.wikipedia.org/wiki/First-class_citizen): `T` and `` `* `` are just arguments, so polymorphism, [type operators](https://en.wikipedia.org/wiki/Type_constructor), and dependent types all fall out of the same mechanism.
+(`plugin core as *` splices `core`'s annexes into the top-level scope, which is why `nat.mul` needs no `core.` prefix.)
 
 And under the hood, MimIR is not a list of instructions but a **graph** — and that graph *is* the program.
 The graph is also **complete**: it holds everything needed to make sense of the program, with no auxiliary side structure.
 Contrast a traditional instruction list, which is meaningless on its own and only becomes intelligible once you pair it with a separately maintained [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph).
 
 Watch what happens to `sq`.
-When `f` applies `sq (Nat, core.nat.mul)`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
+When `f` applies `sq nat.mul`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
 This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam::filter) that every direct-style function gets, which greenlights inlining.
-What remains is the bare `x * x`, with **no trace** of `sq` or the existential abstraction.
+What remains is the bare `x * x`, with **no trace** of `sq` or its abstraction over `T` and `` `* ``.
 The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
 
 @image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
