@@ -7,6 +7,8 @@
 
 #include "family.h"
 
+using namespace std::literals;
+
 namespace mim::ast {
 
 using Tag = Tok::Tag;
@@ -184,13 +186,31 @@ Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {
  */
 
 Ptr<Expr> Parser::parse_expr(std::string_view ctxt, Prec curr_prec) {
+    // An empty ctxt makes the expression optional, so there is nothing to recover into.
+    if (!ctxt.empty()) recover(ctxt);
     auto track = tracker();
     auto lhs   = parse_primary_expr(ctxt);
-    return parse_infix_expr(track, std::move(lhs), curr_prec);
+    return parse_infix_expr(track, std::move(lhs), curr_prec, ctxt);
 }
 
-Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_prec) {
+Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_prec, std::string_view ctxt) {
     while (true) {
+        // A closing delimiter nobody is waiting for must not end the expression.
+        recover(ctxt.empty() ? "expression"sv : ctxt);
+
+        // `a op b` is sugar for `` `op (a, b) ``.
+        if (auto prec = Tok::infix_prec(ahead().tag())) {
+            if (should_reduce(curr_prec, *prec)) return lhs;
+            auto op  = lex();
+            auto rhs = parse_expr(*prec, "right-hand side of the `{}` operator", op);
+            Ptrs<Expr> elems;
+            elems.emplace_back(std::move(lhs));
+            elems.emplace_back(std::move(rhs));
+            auto dbg = Dbg(op.loc(), driver().sym(Tok::infix_sym(op.tag())));
+            lhs      = ptr<AppExpr>(track, false, path_expr(dbg), ptr<TupleExpr>(track, std::move(elems)));
+            continue;
+        }
+
         // If operator in ahead has less left precedence: reduce (break).
         switch (ahead().tag()) {
             case Tag::T_extract: {
@@ -313,7 +333,8 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
     switch (ahead().tag()) {
         case Tag::C_PRIMARY: return ptr<PrimaryExpr>(lex());
         case Tag::C_ID:      return ptr<PathExpr>(parse_path());
-        case Tag::C_LIT:     return parse_lit_expr();
+        case Tag::C_LIT:
+        case Tag::C_SIGN:    return parse_lit_expr();
         case Tag::C_DECL:    return parse_decl_expr();
         case Tag::C_PI:      return parse_pi_expr();
         case Tag::C_LM:      return parse_lam_expr();
@@ -375,10 +396,31 @@ Ptr<Expr> Parser::parse_decl_expr() {
     return ptr<DeclExpr>(track, std::move(decls), std::move(expr), false);
 }
 
+/// Applies a leading `-` to a numeric literal Tok.
+static Tok negate(Tok tok) {
+    switch (tok.tag()) {
+        case Tag::L_s:
+        case Tag::L_u: return {tok.loc(), -s64(tok.lit_u())};
+        case Tag::L_f: return {tok.loc(), -std::bit_cast<f64>(tok.lit_u())};
+        case Tag::L_i: {
+            auto [mod, val] = tok.lit_i();
+            return {tok.loc(), mod, mod == 0 ? -val : (mod - val % mod) % mod};
+        }
+        default: fe::unreachable();
+    }
+}
+
 Ptr<Expr> Parser::parse_lit_expr() {
     auto track = tracker();
-    auto tok   = lex();
-    auto type  = accept(Tag::T_colon) ? parse_expr("literal", Prec::Lit) : nullptr;
+    auto sign  = ISA(ahead().tag(), C_SIGN) ? lex() : Tok();
+
+    if (sign && !ISA(ahead().tag(), C_LIT_NUM)) {
+        syntax_err("numeric literal", "signed literal");
+        return ptr<ErrorExpr>(missing());
+    }
+
+    auto tok  = sign.isa(Tag::T_sub) ? negate(lex()) : lex();
+    auto type = accept(Tag::T_colon) ? parse_expr("literal", Prec::Lit) : nullptr;
     return ptr<LitExpr>(track, tok, std::move(type));
 }
 
@@ -535,7 +577,8 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
                 auto loc = lhs->loc() + dbg.loc();
                 lhs      = ptr<AppExpr>(loc, false, std::move(lhs), path_expr(dbg));
             }
-            ptrns.emplace_back(IdPtrn::make_type(ast(), parse_infix_expr(track, std::move(lhs))));
+            auto app = parse_infix_expr(track, std::move(lhs), Prec::Bot, "element of a tuple pattern");
+            ptrns.emplace_back(IdPtrn::make_type(ast(), std::move(app)));
             return;
         }
 
@@ -548,7 +591,7 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
                 ptrn     = anon_ptrn(loc, parse_pi_expr(std::move(ptrn)));
             } else if (auto expr = Ptrn::to_expr(ast(), std::move(ptrn))) {
                 auto addr = expr.get();
-                expr      = parse_infix_expr(track, std::move(expr));
+                expr      = parse_infix_expr(track, std::move(expr), Prec::Bot, "element of a tuple pattern");
                 if (expr.get() != addr) {
                     auto loc = expr->loc();
                     ptrn     = anon_ptrn(loc, std::move(expr));

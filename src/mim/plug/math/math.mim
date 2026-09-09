@@ -251,7 +251,7 @@ anx lam slf {pe: «2; Nat»} (m: Nat) (x: F pe): F pe =
 /// ### math.sgn
 /// [Sign function](https://en.wikipedia.org/wiki/Sign_function)
 anx lam sgn {pe: «2; Nat»} (m: Nat) (x: F pe): F pe =
-    ((conv.f2f pe -1.0:(F64)), ((conv.f2f pe 0.0:(F64)), (conv.f2f pe 1.0:(F64)))#(cmp.g m (x,(conv.f2f pe 0.0:(F64)))))#(cmp.ge m (x, (conv.f2f pe 0.0:(F64))));
+    ((conv.f2f pe (-1.0:(F64))), ((conv.f2f pe 0.0:(F64)), (conv.f2f pe 1.0:(F64)))#(cmp.g m (x,(conv.f2f pe 0.0:(F64)))))#(cmp.ge m (x, (conv.f2f pe 0.0:(F64))));
 ///
 /// ### math.rrt
 /// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+#include <string_view>
 #include <utility>
 
 #include <fe/assert.h>
@@ -25,6 +27,8 @@ namespace ast {
     m(Arrow,   R)       \
     m(Pi,      N)       \
     m(Inj,     R)       \
+    m(Add,     L)       \
+    m(Mul,     L)       \
     m(App,     L)       \
     m(Union,   L)       \
     m(Extract, L)       \
@@ -140,6 +144,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(D_quote_l,    "«")               \
     m(D_quote_r,    "»")               \
     /* further tokens */               \
+    m(T_add,        "+")               \
     m(T_arrow,      "→")               \
     m(T_fat_arrow, "=>")               \
     m(T_assign,     "=")               \
@@ -149,14 +154,29 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_box,        "□")               \
     m(T_colon,      ":")               \
     m(T_comma,      ",")               \
+    m(T_div,        "/")               \
     m(T_dollar,     "$")               \
     m(T_dot,        ".")               \
     m(T_extract,    "#")               \
     m(T_lm,         "λ")               \
+    m(T_rem,        "%")               \
     m(T_semicolon,  ";")               \
     m(T_star,       "*")               \
+    m(T_sub,        "-")               \
     m(T_union,      "∪")               \
     m(T_pipe,       "|")               \
+
+/// @name Infix Operator Table
+/// X-macro listing all infix operators as `m(tag, str, prec)`.
+/// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
+///@{
+#define MIM_INFIX(m)      \
+    m(T_add,  "+",  Add)  \
+    m(T_sub,  "-",  Add)  \
+    m(T_star, "*",  Mul)  \
+    m(T_div,  "/",  Mul)  \
+    m(T_rem,  "%",  Mul)
+///@}
 
 #define MIM_SUBST(m)                  \
     m("lm",     T_lm   )              \
@@ -186,6 +206,26 @@ public:
 #undef CODE
             return true;
             default: return false;
+        }
+    }
+    /// Precedence of the infix operator @p tag; `std::nullopt` if @p tag isn't one.
+    static constexpr std::optional<Prec> infix_prec(Tag tag) {
+        switch (tag) {
+#define CODE(t, str, prec) \
+    case Tag::t: return Prec::prec;
+            MIM_INFIX(CODE)
+#undef CODE
+            default: return {};
+        }
+    }
+    /// Name the infix operator @p tag desugars to - including the leading `` ` ``.
+    static constexpr std::string_view infix_sym(Tag tag) {
+        switch (tag) {
+#define CODE(t, str, prec) \
+    case Tag::t: return "`" str;
+            MIM_INFIX(CODE)
+#undef CODE
+            default: fe::unreachable();
         }
     }
     static constexpr Tok::Tag delim_l2r(Tag tag) { return Tok::Tag(int(tag) + 1); }

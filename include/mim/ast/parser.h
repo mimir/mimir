@@ -106,7 +106,7 @@ private:
         return parse_expr(std::format(fmt, std::forward<Args>(args)...), prec);
     }
     Ptr<Expr> parse_primary_expr(std::string_view ctxt);
-    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot);
+    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot, std::string_view ctxt = {});
     ///@}
 
     /// @name parse primary exprs

@@ -39,6 +39,18 @@
     case Tag::L_f:   \
     case Tag::L_i
 
+/// Numeric literals that a leading sign may be applied to.
+#define C_LIT_NUM  \
+              L_s: \
+    case Tag::L_u: \
+    case Tag::L_f: \
+    case Tag::L_i
+
+/// Leading sign of a numeric literal.
+#define C_SIGN        \
+              T_add:  \
+    case Tag::T_sub
+
 /// Literals that already determine their type and hence must not be ascribed one.
 #define C_LIT_TYPED  \
               L_str: \

@@ -37,10 +37,12 @@ For example, `λ` and `lm` are lexically equivalent.
 ‹ › « »
 → => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
++ - * / %
 <eof>
 ```
 
 `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
+`+`, `-`, `*`, `/`, and `%` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
@@ -86,20 +88,17 @@ The following terminals are defined by lexical patterns.
 
 ```ebnf
 I      ::= id
+         |  "`" op
 L      ::= dec+
          |  "0" ["bB"] bin+
          |  "0" ["oO"] oct+
          |  "0" ["xX"] hex+
-         |  sign dec+
-         |  sign "0" ["bB"] bin+
-         |  sign "0" ["oO"] oct+
-         |  sign "0" ["xX"] hex+
-         |  sign? dec+ eE sign? dec+
-         |  sign? dec+ "." dec* (eE sign? dec+)?
-         |  sign? dec* "." dec+ (eE sign? dec+)?
-         |  sign? "0" ["xX"] hex+ pP sign? dec+
-         |  sign? "0" ["xX"] hex+ "." hex* pP sign? dec+
-         |  sign? "0" ["xX"] hex* "." hex+ pP sign? dec+
+         |  dec+ eE sign? dec+
+         |  dec+ "." dec* (eE sign? dec+)?
+         |  dec* "." dec+ (eE sign? dec+)?
+         |  "0" ["xX"] hex+ pP sign? dec+
+         |  "0" ["xX"] hex+ "." hex* pP sign? dec+
+         |  "0" ["xX"] hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
          |  dec+ "_" dec+
 C      ::= "'" (ascii_char | esc) "'"
@@ -107,6 +106,8 @@ S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
 Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
+`` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
 The shorthand symbols used above are:
 
@@ -120,6 +121,7 @@ eE     ::= ["eE"]
 pP     ::= ["pP"]
 sign   ::= ["+-"]
 id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
+op     ::= ["+-*/%"]
 esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
 ```
 
@@ -306,11 +308,11 @@ e   ::= "Univ"
 - `Bool` abbreviates `Idx i1`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
 
-#### Literals and Basic Forms
+#### Literals and Basic Forms {#lit}
 
 ```ebnf
-e   ::= L (":" e)?
-     |  X_n
+e   ::= sign? L (":" e)?
+     |  sign? X_n
      |  "ff"
      |  "tt"
      |  C
@@ -323,6 +325,8 @@ e   ::= L (":" e)?
 ```
 
 - A numeric, character, string, `⊥`, or `⊤` literal may carry an explicit type ascription.
+- A `+`/`-` sign is part of the literal expression, not of the literal token, and only a numeric literal accepts one.
+  Because `+` and `-` are [infix operators](@ref infix) everywhere else, `f -23` subtracts; pass a negative argument as `f (-23)`.
 - Without an explicit type, numeric literals default to `Nat`.
 - Without an explicit type, `⊥` and `⊤` default to `*`.
 - `d+ e` is a declaration expression: one or more declarations followed by a final expression `e`, which is the result.
@@ -386,6 +390,24 @@ e   ::= e "∪" e
 - `e inj t` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
 
+#### Infix Operators {#infix}
+
+```ebnf
+e   ::= e "+" e
+     |  e "-" e
+     |  e "*" e
+     |  e "/" e
+     |  e "%" e
+```
+
+- `a op b` is sugar for `` `op (a, b) ``, so `a + b` is `` `+ (a, b) ``.
+- Mim doesn't give the operators a meaning of their own; whatever `` `op `` is bound to is what they mean:
+  ```mim
+  let `+ = core.nat.add;
+  let x = 2 + 3;
+  ```
+- `*` doubles as the abbreviation of `Type (0:Univ)`, which is why `f *` is a multiplication and not an application; write `f (*)` for the latter.
+
 #### Local Declaration Blocks
 
 ```ebnf
@@ -404,12 +426,14 @@ The current parser uses the following precedence, from strongest to weakest bind
 2.  e # e                  extract
 3.  e ∪ e                  union
 4.  e e, e @ e             application
-5.  e inj e                injection
-6.  e → e                  arrow
-7.  e where d* end         local declaration block
+5.  e * e, e / e, e % e    multiplicative operators
+6.  e + e, e - e           additive operators
+7.  e inj e                injection
+8.  e → e                  arrow
+9.  e where d* end         local declaration block
 ```
 
-- Extract, union, and application associate left-to-right.
+- Extract, union, application, and the infix operators associate left-to-right.
 - `inj` and `→` associate right-to-left.
 - `where` is the loosest surface operator.
 

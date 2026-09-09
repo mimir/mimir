@@ -66,7 +66,10 @@ public:
             if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;
 
         if (!quiet) {
-            error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
+            auto& diag = error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
+            // An infix operator only exists as whatever the user bound its escaped name to.
+            if (dbg.sym().view().starts_with('`'))
+                diag.n("an infix operator means whatever you bind its escaped name to");
             bind(dbg, dummy()); // put into scope to prevent further errors
         }
         return nullptr;

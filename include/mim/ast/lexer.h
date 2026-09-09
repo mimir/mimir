@@ -51,7 +51,7 @@ private:
     Sym sym();
     bool lex_id();
     char8_t lex_char();
-    std::optional<Tok> parse_lit();
+    Tok parse_lit();
     void parse_digits(int base = 10);
     bool parse_exp(int base = 10);
     void eat_comments();
