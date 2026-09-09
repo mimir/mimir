@@ -5,7 +5,7 @@
 // RUN: %mim %s -p opt -X tensor:reassoc-max=2 -o %t2
 // RUN: cat %t2 | %FileCheck %s --check-prefix=NODISP
 // RUN: cat %t2 | %FileCheck %s --check-prefix=NOCMP
-// `-X tensor:reassoc-vec` counts plain multiplications instead of padded vector lanes.
+// `-X tensor:reassoc-vec=1` counts plain multiplications instead of padded vector lanes.
 // RUN: %mim %s -p opt -X tensor:reassoc-vec=1 -o %t3
 // RUN: cat %t3 | %FileCheck %s --check-prefix=SCALAR
 
@@ -94,6 +94,19 @@ fun extern batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w
 fun extern narrow (a: «100, 4; Nat», b: «4, 2; Nat», c: «2, 8; Nat»): «100, 8; Nat» =
     let R = nat_ring ();
     return (%tensor.product_2d R (%tensor.product_2d R (a, b), c));
+
+// A transposed operand is read with its contraction unit-stride, so `dot_schedule_kvec` vectorizes
+// that contraction instead of the trailing extent: as written the chain costs 10·5·8 + 10·9·8 = 1120,
+// while `a·(b·cᵀ)` costs 5·9·8 + 10·5·16 = 1160 - only the leaf `cᵀ` gets that schedule, as `b·cᵀ` is
+// materialized row-major. Charging the trailing extent throughout would pick the latter, 1440 to 1680.
+// CHECK-DAG: fun extern kvec
+// CHECK-DAG: %tensor.product_2d {{.*}} (10, 5, 8)
+// CHECK-DAG: %tensor.product_2d {{.*}} (10, 8, 9)
+// GONE-NOT: %tensor.product_2d {{.*}} (5, 8, 9)
+fun extern kvec (a: «10, 5; Nat», b: «5, 8; Nat», c: «9, 8; Nat»): «10, 9; Nat» =
+    let R  = nat_ring ();
+    let ct = %tensor.transpose (tt, ff) c;
+    return (%tensor.product_2d R (%tensor.product_2d R (a, b), ct));
 
 // `%tensor.lower_to_mem` rejects a tensor-typed function *value*, which is what the dispatcher's
 // thunks are - and it cannot carry a symbolically shaped tensor across a function boundary either.
