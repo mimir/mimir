@@ -144,22 +144,6 @@ void File::bind(Scopes& s) const {
     s.pop_barrier(barrier);
 }
 
-const Scope* ImportDecl::scope() const { return file() ? file()->scope() : nullptr; }
-
-const Scope* ImportDecl::module(Scopes& s) const {
-    if (!file()) return nullptr;
-    file()->bind(s);
-    return file()->scope();
-}
-
-void ImportDecl::bind_name(Scopes& s, const Scope&) const {
-    // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
-    if (auto prev = s.find(dbg(), true))
-        if (auto import = prev->isa<ImportDecl>(); import && import->file() == file()) return;
-
-    s.bind(dbg(), this);
-}
-
 /*
  * Ptrn
  */
@@ -543,20 +527,13 @@ void ModDecl::bind(Scopes& s) const {
     s.bind(dbg(), this);
 }
 
-void UseDecl::bind(Scopes& s) const {
-    auto mod = module(s);
-    if (!mod) return;
-
-    if (is_splice()) {
-        // Quiet: a name already bound here wins, so a splice never shadows and never conflicts.
-        for (const auto& [sym, decl] : pub(*mod))
-            s.bind(Dbg(loc(), sym), decl, false, true);
-    } else {
-        bind_name(s, *mod);
+const Scope* UseDecl::module(Scopes& s) const {
+    if (is_import()) {
+        if (!file()) return nullptr;
+        file()->bind(s);
+        return file()->scope();
     }
-}
 
-const Scope* PathUseDecl::module(Scopes& s) const {
     path()->bind(s);
     auto decl = path()->decl();
     if (!decl) return nullptr;
@@ -566,10 +543,24 @@ const Scope* PathUseDecl::module(Scopes& s) const {
     return scope;
 }
 
-void PathUseDecl::bind_name(Scopes& s, const Scope& module) const {
-    for (const auto& [sym, member] : pub(module))
-        members_[sym] = member;
-    s.bind(alias(), this);
+void UseDecl::bind(Scopes& s) const {
+    auto mod = module(s);
+    if (!mod) return;
+
+    if (is_splice()) {
+        // Quiet: a name already bound here wins, so a splice never shadows and never conflicts.
+        for (const auto& [sym, decl] : *mod)
+            if (decl->vis() == Vis::Pub) s.bind(Dbg(loc(), sym), decl, false, true);
+        return;
+    }
+
+    // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
+    if (file())
+        if (auto prev = s.find(dbg(), true))
+            if (auto use = prev->isa<UseDecl>(); use && use->file() == file()) return;
+
+    scope_ = mod;
+    s.bind(dbg(), this);
 }
 
 void RuleDecl::bind(Scopes& s) const {

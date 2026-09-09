@@ -73,16 +73,6 @@ void Node::dump() const {
  * File
  */
 
-void ImportDecl::stream(fe::Tab&, std::ostream& os) const {
-    if (is_path())
-        std::print(os, "{} \"{}\"", tag(), Lexer::escape(path().view()));
-    else
-        std::print(os, "{} {}", tag(), name());
-    if (alias()) std::print(os, " as {}", alias());
-    if (is_splice()) std::print(os, " {}", Tag::K_use);
-    os << ';';
-}
-
 void File::stream(fe::Tab& tab, std::ostream& os) const { stream_decls(tab, os, decls()); }
 
 /*
@@ -272,9 +262,13 @@ void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}}}", tab);
 }
 
-void PathUseDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{}use {}", mods(), S(tab, path()));
+void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (is_file_path())
+        std::print(os, "{}{} \"{}\"", mods(), tag(), Lexer::escape(file_path().view()));
+    else
+        std::print(os, "{}{} {}", mods(), tag(), S(tab, path()));
     if (alias()) std::print(os, " as {}", alias());
+    if (is_splice() && is_import()) std::print(os, " as {}", Tag::T_star);
     os << ';';
 }
 

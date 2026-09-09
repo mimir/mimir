@@ -55,7 +55,7 @@ void File::emit(Emitter& e) const {
     emit_decls(e);
 }
 
-void ImportDecl::emit(Emitter& e) const {
+void UseDecl::emit(Emitter& e) const {
     if (file()) file()->emit(e);
 }
 
@@ -503,8 +503,6 @@ void ModDecl::emit_decls(Emitter& e) const {
 }
 
 void ModDecl::emit(Emitter& e) const { emit_decls(e); }
-
-void PathUseDecl::emit(Emitter&) const {}
 
 void LetDecl::emit(Emitter& e) const {
     auto _ = e.world().push(loc());

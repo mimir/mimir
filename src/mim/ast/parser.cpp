@@ -104,12 +104,12 @@ const File* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
     return slot.get();
 }
 
-Ptrs<ImportDecl> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag) {
-    Ptrs<ImportDecl> imports;
+Ptrs<UseDecl> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag) {
+    Ptrs<UseDecl> imports;
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
         if (auto file = import(dbg, false, tag))
-            imports.emplace_back(ast().ptr<ImportDecl>(Loc(), tag, dbg, Sym(), Dbg(), false, file));
+            imports.emplace_back(ast().ptr<UseDecl>(Loc(), tag, dbg, Sym(), Dbg(), false, file));
     }
     return imports;
 }
@@ -125,7 +125,7 @@ const File* Parser::import_main(std::string_view input, fe::View<std::string> pl
  * misc
  */
 
-Ptr<ImportDecl> Parser::parse_import_or_plugin() {
+Ptr<UseDecl> Parser::parse_import_or_plugin() {
     auto track  = tracker();
     auto tag    = lex().tag();
     auto entity = tag == Tag::K_import ? "import" : "plugin";
@@ -144,10 +144,12 @@ Ptr<ImportDecl> Parser::parse_import_or_plugin() {
 
     Dbg alias;
     bool splice = false;
-    if (accept(Tag::K_as))
-        alias = parse_id("alias of an import");
-    else
-        splice = (bool)accept(Tag::K_use);
+    if (accept(Tag::K_as)) {
+        if (accept(Tag::T_star))
+            splice = true;
+        else
+            alias = parse_id("alias of an import");
+    }
     expect(Tag::T_semicolon, "end of {}", entity);
 
     auto mod = name;
@@ -158,13 +160,13 @@ Ptr<ImportDecl> Parser::parse_import_or_plugin() {
             error()
                 .e(name.loc(), "cannot derive a module name from `{}`", path)
                 .n("name it explicitly with `as`")
-                .n("or splice its members into this scope with `use`");
+                .n("or splice its members into this scope with `as *`");
             return {};
         }
         mod.set(is_id ? ast().sym(stem) : Sym());
     }
 
-    if (auto file = import(name, (bool)path, tag)) return ptr<ImportDecl>(track, tag, mod, path, alias, splice, file);
+    if (auto file = import(name, (bool)path, tag)) return ptr<UseDecl>(track, tag, mod, path, alias, splice, file);
     return {};
 }
 
@@ -790,10 +792,12 @@ Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "use declaration");
     if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a use declaration - it never represents a single value");
     eat(Tag::K_use);
-    auto path  = parse_path("module of a use declaration");
-    auto alias = accept(Tag::K_as) ? parse_id("alias of a use declaration") : Dbg();
+    auto path = parse_path("module of a use declaration");
+    Dbg alias;
+    // `use path;` is sugar for `use path as *;`
+    if (accept(Tag::K_as) && !accept(Tag::T_star)) alias = parse_id("alias of a use declaration");
     expect(Tag::T_semicolon, "end of a use declaration");
-    return ptr<PathUseDecl>(track, mods.vis.value_or(Vis::Priv), std::move(path), alias);
+    return ptr<UseDecl>(track, Mods{mods.vis.value_or(Vis::Priv)}, std::move(path), alias);
 }
 
 Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {

@@ -44,8 +44,8 @@ public:
     const File*
     import(Dbg, bool is_path, Tok::Tag tag = Tok::Tag::K_import, std::ostream* md = nullptr, bool record = true);
     const File* import(const fe::Src&, std::ostream* md = nullptr, Loc = {});
-    /// Imports the @p plugins the Driver was told about via `-p` as anonymous, unaliased Import%s.
-    Ptrs<ImportDecl> import_plugins(fe::View<std::string> plugins, Tok::Tag);
+    /// Imports the @p plugins the Driver was told about via `-p` as anonymous, unaliased UseDecl%s.
+    Ptrs<UseDecl> import_plugins(fe::View<std::string> plugins, Tok::Tag);
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
     const File* import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
     const File* import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
@@ -65,7 +65,7 @@ private:
     Ptr<File> parse_file();
     Dbg parse_id(std::string_view ctxt = {});
     Path parse_path(std::string_view ctxt = {});
-    Ptr<ImportDecl> parse_import_or_plugin();
+    Ptr<UseDecl> parse_import_or_plugin();
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});
 
     /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.

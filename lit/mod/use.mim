@@ -2,8 +2,8 @@
 
 plugin core;
 import "lib.mim";
-use lib;
-use lib.inner;
+use lib;              // sugar for `use lib as *;`
+use lib.inner as *;
 
 extern lam f(): I32 = core.wrap.add 0 (answer, deep);
 extern lam g(): I32 = deeper.deepest;
