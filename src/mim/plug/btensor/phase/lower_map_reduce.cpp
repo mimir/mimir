@@ -491,7 +491,7 @@ const Def* LowerMapReduce::lower_gather(const App* app) {
     }
     auto rn = *r_l, axis = *dim_l;
 
-    auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
+    auto compute = [&](Defs iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
         auto [in_buf, index_buf] = ins->projs<2>();
         auto [ibr, ibs, ibT]     = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
         auto [xbr, xbs, xbT]     = Axm::isa<buffer::Buf>(index_buf->type())->args<3>();

@@ -32,7 +32,7 @@ private:
                                const Def* type,
                                const Def* So,
                                u64 ro,
-                               std::function<const Def*(const DefVec&, const Def*)> compute);
+                               std::function<const Def*(Defs, const Def*)> compute);
 
     const Def* rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i);
 };

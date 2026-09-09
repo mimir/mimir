@@ -12,8 +12,8 @@ con extern main (mem: %mem.M 0, argc: I32,
     let input = ((10I32, 11I32, 12I32), (20I32, 21I32, 22I32));
     let index = ((2_3, 0_3), (1_3, 1_3));
     let updates = ((10I32, 20I32), (30I32, 40I32));
-    let gathered = %tensor.gather @(I32, 2) ((2, 3), (2, 2)) 1_2 (input, index);
-    let scattered = %tensor.scatter @(I32, 2) ((2, 3), (2, 2), (2, 2)) 1_2
+    let gathered = %tensor.gather ((2, 3), (2, 2)) 1_2 (input, index);
+    let scattered = %tensor.scatter ((2, 3), (2, 2), (2, 2)) 1_2
         (input, index, updates);
     let a = %tensor.get ((0_2, 0_2), gathered);
     let b = %tensor.get ((1_2, 0_2), gathered);

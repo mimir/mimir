@@ -11,6 +11,7 @@
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
+#include "mim/plug/tensor/phase/constraints.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -146,10 +147,20 @@ void LowerToMem::collect_tensor_types() {
                 // Value-level binding-time dispatch; this phase's rewrite residualizes it to its
                 // dynamic branch - not a tensor op.
             } else if (Axm::isa<tensor::gather>(app)) {
+                auto [Tr, shapes, dim] = app->callee()->as<App>()->uncurry_args<3>();
+                auto [T, r]            = Tr->projs<2>();
+                elem(T);
+                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(dim))
+                    gate("non-literal rank/axis of `%tensor.gather`", app);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(2, 0)->type());
                 add_tensor_ty(app->arg()->proj(2, 1)->type());
             } else if (Axm::isa<tensor::scatter>(app)) {
+                auto [Tr, shapes, dim] = app->callee()->as<App>()->uncurry_args<3>();
+                auto [T, r]            = Tr->projs<2>();
+                elem(T);
+                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(dim))
+                    gate("non-literal rank/axis of `%tensor.scatter`", app);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(3, 0)->type());
                 add_tensor_ty(app->arg()->proj(3, 1)->type());
@@ -689,45 +700,54 @@ const Def* LowerToMem::lower_concat(const App* app) {
 const Def* LowerToMem::lower_gather(const App* app) {
     auto& w   = new_world();
     auto c    = rewrite(app->callee())->as<App>();
-    auto args = rewrite(app->arg());
 
     auto [Tr, shapes, dim] = c->uncurry_args<3>();
     auto [T, r]            = Tr->projs<2>();
     auto [s_src, s_idx]    = shapes->projs<2>();
-    auto [input, index]    = args->projs<2>();
-    if (!Axm::isa<buffer::Buf>(input->type()))
-        input = materialize(app->arg()->proj(2, 0)->type(), app->arg()->proj(2, 0));
-    if (!Axm::isa<buffer::Buf>(index->type()))
-        index = materialize(app->arg()->proj(2, 1)->type(), app->arg()->proj(2, 1));
+    if (!check_gather_shape_constraints(r, dim, s_src, s_idx)) return RWPhase::rewrite_imm_App(app);
+    auto [old_input, old_index] = app->args<2>();
+    auto make_buffer = [&](const Def* old_arg, const Def* shape) {
+        auto value = materialize(old_arg->type(), old_arg);
+        if (Axm::isa<buffer::Buf>(value->type())) return value;
+        auto [m, buf] = buffer::op_lit(r, rewrite(shape), rewrite(value->type()), bot_mem(), value)->projs<2>();
+        return buf;
+    };
+    auto input = make_buffer(old_input, s_src);
+    auto index = make_buffer(old_index, s_idx);
 
-    auto op = w.annex<btensor::gather>();
-    op      = w.app(op, Defs{T, r});
-    op      = w.app(op, Defs{s_src, s_idx});
-    op      = w.app(op, dim);
-    return w.app(op, Defs{fresh_mem(), input, index})->proj(1);
+    auto op = w.app(w.annex<btensor::gather>(), {T, r});
+    auto [out_mem, out_buf] = w.call(op, Defs{s_src, s_idx}, dim, Defs{fresh_mem(), input, index})->projs<2>();
+    if (app->type()->isa<Arr>()) return out_buf;
+    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out_buf->type())->args<3>();
+    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(1);
 }
 
 const Def* LowerToMem::lower_scatter(const App* app) {
     auto& w   = new_world();
     auto c    = rewrite(app->callee())->as<App>();
-    auto args = rewrite(app->arg());
 
     auto [Tr, shapes, dim]           = c->uncurry_args<3>();
     auto [T, r]                      = Tr->projs<2>();
     auto [s_src, s_idx, s_updates]   = shapes->projs<3>();
-    auto [input, index, updates]     = args->projs<3>();
-    if (!Axm::isa<buffer::Buf>(input->type()))
-        input = materialize(app->arg()->proj(3, 0)->type(), app->arg()->proj(3, 0));
-    if (!Axm::isa<buffer::Buf>(index->type()))
-        index = materialize(app->arg()->proj(3, 1)->type(), app->arg()->proj(3, 1));
-    if (!Axm::isa<buffer::Buf>(updates->type()))
-        updates = materialize(app->arg()->proj(3, 2)->type(), app->arg()->proj(3, 2));
+    if (!check_scatter_shape_constraints(r, dim, s_src, s_idx, s_updates))
+        return RWPhase::rewrite_imm_App(app);
+    auto [old_input, old_index, old_updates] = app->args<3>();
+    auto make_buffer = [&](const Def* old_arg, const Def* shape) {
+        auto value = materialize(old_arg->type(), old_arg);
+        if (Axm::isa<buffer::Buf>(value->type())) return value;
+        auto [m, buf] = buffer::op_lit(r, rewrite(shape), rewrite(value->type()), bot_mem(), value)->projs<2>();
+        return buf;
+    };
+    auto input   = make_buffer(old_input, s_src);
+    auto index   = make_buffer(old_index, s_idx);
+    auto updates = make_buffer(old_updates, s_updates);
 
-    auto op = w.annex<btensor::scatter>();
-    op      = w.app(op, Defs{T, r});
-    op      = w.app(op, Defs{s_src, s_idx, s_updates});
-    op      = w.app(op, dim);
-    return w.app(op, Defs{fresh_mem(), input, index, updates})->proj(1);
+    auto op = w.app(w.annex<btensor::scatter>(), {T, r});
+    auto [out_mem, out_buf]
+        = w.call(op, Defs{s_src, s_idx, s_updates}, dim, Defs{fresh_mem(), input, index, updates})->projs<2>();
+    if (app->type()->isa<Arr>()) return out_buf;
+    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out_buf->type())->args<3>();
+    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(1);
 }
 
 } // namespace mim::plug::tensor::phase
