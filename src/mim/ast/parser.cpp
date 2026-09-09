@@ -109,7 +109,7 @@ Ptrs<ImportDecl> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag 
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
         if (auto file = import(dbg, false, tag))
-            imports.emplace_back(ast().ptr<ImportDecl>(Loc(), tag, dbg, Sym(), Dbg(), file));
+            imports.emplace_back(ast().ptr<ImportDecl>(Loc(), tag, dbg, Sym(), Dbg(), false, file));
     }
     return imports;
 }
@@ -142,21 +142,29 @@ Ptr<ImportDecl> Parser::parse_import_or_plugin() {
         name = tok.dbg();
     }
 
-    auto alias = accept(Tag::K_as) ? parse_id("alias of an import") : Dbg();
+    Dbg alias;
+    bool splice = false;
+    if (accept(Tag::K_as))
+        alias = parse_id("alias of an import");
+    else
+        splice = (bool)accept(Tag::K_use);
     expect(Tag::T_semicolon, "end of {}", entity);
 
     auto mod = name;
     if (path) {
         auto stem  = fs::path(path.view()).stem().string();
         bool is_id = Lexer::is_id(stem);
-        if (!is_id && !alias) {
-            error().e(name.loc(), "cannot derive a module name from `{}`", path).n("name it explicitly with `as`");
+        if (!is_id && !alias && !splice) {
+            error()
+                .e(name.loc(), "cannot derive a module name from `{}`", path)
+                .n("name it explicitly with `as`")
+                .n("or splice its members into this scope with `use`");
             return {};
         }
         mod.set(is_id ? ast().sym(stem) : Sym());
     }
 
-    if (auto file = import(name, (bool)path, tag)) return ptr<ImportDecl>(track, tag, mod, path, alias, file);
+    if (auto file = import(name, (bool)path, tag)) return ptr<ImportDecl>(track, tag, mod, path, alias, splice, file);
     return {};
 }
 
@@ -785,7 +793,7 @@ Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
     auto path  = parse_path("module of a use declaration");
     auto alias = accept(Tag::K_as) ? parse_id("alias of a use declaration") : Dbg();
     expect(Tag::T_semicolon, "end of a use declaration");
-    return ptr<UseDecl>(track, mods.vis.value_or(Vis::Priv), std::move(path), alias);
+    return ptr<PathUseDecl>(track, mods.vis.value_or(Vis::Priv), std::move(path), alias);
 }
 
 Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {

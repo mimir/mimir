@@ -165,6 +165,8 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 - `plugin foo;` first loads the plugin `foo` and then imports the module with the same name.
   Only `plugin` loads a shared object; `import` never does.
 - The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
+- `import foo use;` splices `foo`'s public members into the current scope like a following `use foo;` would - except that `foo` itself is never bound; the same goes for `plugin foo use;`.
+  Since no name is needed, this form also accepts a file name that isn't an identifier.
 - A file is parsed, bound, and emitted exactly once, no matter how many modules import it.
   Importing a file that is still being parsed is an error.
 - An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
@@ -192,11 +194,11 @@ Visibility is a Mim-only, purely lexical fact - it has no effect on backend link
 `extern` and `anx` are each independent of visibility and of each other;
 either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful, while `extern anx` on the same declaration is a static error.
 ```text
-import (I | S) ["as" I]
-plugin I ["as" I]
+import (I | S) ["as" I | "use"]
+plugin I ["as" I | "use"]
 
 [priv|pub] mod I "{" d* "}"
-use path
+use path ["as" I]
 
 [priv|pub] [anx] let p = e
 anx I = path
@@ -218,9 +220,9 @@ Here `n` is an identifier.
 - `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
 - `anx` marks a declaration as an [annex](@ref annex). It doesn't apply to `mod`, since a module is pure AST grouping, not a single value. `axm` is implicitly `anx` and may not combine with `extern`.
-- `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
+- `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
 - `mod` groups declarations under a name; its body also sees the enclosing scope. Neither `extern` nor `anx` apply to it.
-- `use` splices all members of a module into the current scope.
+- `use` splices all public members of a module into the current scope; with `as` it introduces a new module holding (only) those members instead.
 - `let` introduces a binding pattern.
 - `I = path` declares `I` as an alias for the annex denoted by `path`; it is always implicitly `anx`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.

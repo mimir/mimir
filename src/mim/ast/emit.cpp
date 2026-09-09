@@ -504,7 +504,7 @@ void ModDecl::emit_decls(Emitter& e) const {
 
 void ModDecl::emit(Emitter& e) const { emit_decls(e); }
 
-void UseDecl::emit(Emitter&) const {}
+void PathUseDecl::emit(Emitter&) const {}
 
 void LetDecl::emit(Emitter& e) const {
     auto _ = e.world().push(loc());

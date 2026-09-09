@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <memory>
+#include <ranges>
 
 #include <fe/arena.h>
 #include <fe/assert.h>
@@ -948,60 +949,90 @@ private:
  * Decls
  */
 
-/// `import "path" [as alias];`, `import name [as alias];`, or `plugin name [as alias];`
-/// Binds Import::dbg as a module; the File itself is owned by the AST and shared by all its importers.
-class ImportDecl : public ValDecl {
+/// Base of the declarations that make another module's members available here.
+/// Either that module is bound under a name (Decl::dbg), or its public members are spliced into the current scope.
+class UseDecl : public ValDecl {
+protected:
+    UseDecl(Loc loc, Mods mods, Dbg alias, bool splice)
+        : ValDecl(loc, mods)
+        , alias_(alias)
+        , splice_(splice) {}
+
 public:
-    ImportDecl(Loc loc, Tok::Tag tag, Dbg name, Sym path, Dbg alias, const File* file)
-        : ValDecl(loc)
+    Dbg alias() const { return alias_; }       ///< Empty, unless the source spelled an `as`.
+    bool is_splice() const { return splice_; } ///< Splice the module's public members instead of naming it.
+
+    void bind(Scopes&) const final;
+
+protected:
+    /// Only public members ever leave a module.
+    static auto pub(const Scope& scope) {
+        return scope | std::views::filter([](const auto& p) { return p.second->vis() == Vis::Pub; });
+    }
+
+    /// The module this decl refers to; `nullptr` if it doesn't resolve - the error has already been emitted.
+    virtual const Scope* module(Scopes&) const = 0;
+    /// Introduces Decl::dbg for the already resolved @p module.
+    virtual void bind_name(Scopes&, const Scope& module) const = 0;
+
+private:
+    Dbg alias_;
+    bool splice_;
+};
+
+/// `import "path" [as alias | use];`, `import name [as alias | use];`, or `plugin name [as alias | use];`
+/// The File itself is owned by the AST and shared by all its importers.
+class ImportDecl : public UseDecl {
+public:
+    ImportDecl(Loc loc, Tok::Tag tag, Dbg name, Sym path, Dbg alias, bool splice, const File* file)
+        : UseDecl(loc, {}, alias, splice)
         , tag_(tag)
         , name_(name)
-        , alias_(alias)
         , path_(path)
         , file_(file) {}
 
     Tok::Tag tag() const { return tag_; }
-    Dbg name() const { return name_; }   ///< Name of the imported module; the stem of Import::path, if any.
-    Dbg alias() const { return alias_; } ///< Empty, unless the source spelled an `as`.
-    Sym path() const { return path_; }   ///< Spelling of a file import; empty for a plugin or module name.
+    Dbg name() const { return name_; } ///< Name of the imported module; the stem of ImportDecl::path, if any.
+    Sym path() const { return path_; } ///< Spelling of a file import; empty for a plugin or module name.
     bool is_path() const { return (bool)path_; }
     const File* file() const { return file_; }
 
-    Dbg dbg() const override { return alias_ ? alias_ : name_; } ///< The name this Import binds.
+    Dbg dbg() const override { return alias() ? alias() : name_; } ///< The name this ImportDecl binds.
 
     const Scope* scope() const override;
-    void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
+    const Scope* module(Scopes&) const override;
+    void bind_name(Scopes&, const Scope&) const override;
+
     Tok::Tag tag_;
-    Dbg name_, alias_;
+    Dbg name_;
     Sym path_;
     const File* file_;
 };
 
 /// `use path;` - splices all public members of the module @p path denotes into the current scope.
 /// `use path as dbg;` - instead introduces a new module @p dbg containing (only) those members.
-class UseDecl : public ValDecl {
+class PathUseDecl : public UseDecl {
 public:
-    UseDecl(Loc loc, Vis vis, Path&& path, Dbg alias)
-        : ValDecl(loc, Mods{vis})
-        , path_(std::move(path))
-        , alias_(alias) {}
+    PathUseDecl(Loc loc, Vis vis, Path&& path, Dbg alias)
+        : UseDecl(loc, Mods{vis}, alias, !alias)
+        , path_(std::move(path)) {}
 
     const Path* path() const { return &path_; }
-    Dbg alias() const { return alias_; }
 
-    Dbg dbg() const override { return alias_; }
-    const Scope* scope() const override { return alias_ ? &members_ : nullptr; }
-    void bind(Scopes&) const override;
+    Dbg dbg() const override { return alias(); }
+    const Scope* scope() const override { return alias() ? &members_ : nullptr; }
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
+    const Scope* module(Scopes&) const override;
+    void bind_name(Scopes&, const Scope&) const override;
+
     Path path_;
-    Dbg alias_;
     mutable Scope members_;
 };
 

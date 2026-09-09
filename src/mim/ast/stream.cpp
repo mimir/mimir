@@ -79,6 +79,7 @@ void ImportDecl::stream(fe::Tab&, std::ostream& os) const {
     else
         std::print(os, "{} {}", tag(), name());
     if (alias()) std::print(os, " as {}", alias());
+    if (is_splice()) std::print(os, " {}", Tag::K_use);
     os << ';';
 }
 
@@ -271,7 +272,7 @@ void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}}}", tab);
 }
 
-void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
+void PathUseDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}use {}", mods(), S(tab, path()));
     if (alias()) std::print(os, " as {}", alias());
     os << ';';
