@@ -22,6 +22,8 @@ private:
     const Def* lower_map_reduce(const App*);
     const Def* lower_pad(const App*);
     const Def* lower_concat(const App*);
+    const Def* lower_gather(const App*);
+    const Def* lower_scatter(const App*);
 
     /// Builds `ro` output loops over `So` and writes the element returned by `compute(out_iters, inputs)` at the
     /// identity output coordinates. `out_iters` are the raw i64 loop counters. Used by the non-affine pointwise
@@ -30,7 +32,7 @@ private:
                                const Def* type,
                                const Def* So,
                                u64 ro,
-                               std::function<const Def*(const DefVec&, const Def*)> compute);
+                               std::function<const Def*(Defs, const Def*)> compute);
 
     const Def* rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i);
 };

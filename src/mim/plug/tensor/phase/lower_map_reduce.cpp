@@ -12,6 +12,7 @@
 #include <mim/plug/cps/cps.h>
 #include <mim/plug/mem/mem.h>
 
+#include "mim/plug/tensor/phase/constraints.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -277,7 +278,7 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
                                            const Def* type,
                                            const Def* So,
                                            u64 ro,
-                                           std::function<const Def*(const DefVec&, const Def*)> compute) {
+                                           std::function<const Def*(Defs, const Def*)> compute) {
     auto& w = new_world();
 
     auto fun    = w.mut_fun(inputs->type(), type)->set("pointwise");
@@ -332,7 +333,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     }
     auto s_out = w.tuple(so);
 
-    auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
+    auto compute = [&](Defs out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value] = new_inputs->projs<2>();
         DefVec clamped(rn); // per-axis read index, kept in range, as `Idx (s_in#d)`
         DefVec valid;       // per-axis in-bounds flag (constant mode only)
@@ -400,7 +401,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         so[d] = (d == axn) ? w.lit_nat(acc_off) : Sis->proj(nisn, 0)->proj(rn, d);
     auto s_out = w.tuple(so);
 
-    auto compute = [&](const DefVec& out_iters, const Def* new_inputs) -> const Def* {
+    auto compute = [&](Defs out_iters, const Def* new_inputs) -> const Def* {
         auto o_ax = out_iters[axn];
         // Read input `i` at `out_iters`, but with the `ax` coordinate shifted by off#i and clamped into input `i`.
         auto read_i = [&](u64 i) -> const Def* {
@@ -425,6 +426,66 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     return build_pointwise(args, type, s_out, rn, compute);
 }
 
+const Def* LowerMapReduce::lower_gather(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg());
+    auto type = rewrite(app->type());
+
+    auto [Tr, shapes, dim] = c->uncurry_args<3>();
+    auto [T, r]            = Tr->projs<2>();
+    auto [s_src, s_idx]    = shapes->projs<2>();
+    auto r_l               = Lit::isa<u64>(r);
+    auto dim_l             = Lit::isa<u64>(dim);
+    if (!r_l || !dim_l) return nullptr;
+
+    // On every axis other than `dim`, gather reuses the output coordinate as
+    // an input coordinate. The shared checker rejects statically provable
+    // violations before any source buffer access is emitted.
+    if (!check_gather_shape_constraints(r, dim, s_src, s_idx)) return nullptr;
+
+    auto compute = [&](Defs out_indices, const Def* inputs) -> const Def* {
+        auto element = w.app(w.annex<tensor::gather_pointwise_elem_impl>(), {T, r});
+        return w.call(element, Defs{s_src, s_idx}, dim, out_indices, inputs);
+    };
+    return build_pointwise(args, type, s_idx, *r_l, compute);
+}
+
+const Def* LowerMapReduce::lower_scatter(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto args = rewrite(app->arg());
+    auto type = rewrite(app->type());
+
+    auto [Tr, shapes, dim]         = c->uncurry_args<3>();
+    auto [T, r]                    = Tr->projs<2>();
+    auto [s_src, s_idx, s_updates] = shapes->projs<3>();
+    auto r_l                       = Lit::isa<u64>(r);
+    auto dim_l                     = Lit::isa<u64>(dim);
+    if (!r_l || !dim_l) return nullptr;
+    auto rn = *r_l;
+
+    // Every scatter visit reads one update at the same coordinate as the
+    // index tensor, while non-dim coordinates are also reused in the source.
+    if (!check_scatter_shape_constraints(r, dim, s_src, s_idx, s_updates)) return nullptr;
+
+    auto fun    = w.mut_fun(args->type(), type)->set("scatter");
+    auto ds_fun = cps::op_cps2ds_dep(fun)->set("dsFun");
+    auto call   = w.app(ds_fun, args)->set("call");
+
+    auto [iiu, cont]             = fun->vars<2>();
+    auto [input, index, updates] = iiu->projs<3>();
+    auto acc                     = input;
+    auto current                 = fun;
+    auto dims                    = s_idx->projs(rn);
+    auto visit_indices           = build_loops(w, current, cont, acc, dims, "scatter");
+
+    auto step = w.app(w.annex<tensor::scatter_step_impl>(), {T, r});
+    auto next = w.call(step, Defs{s_src, s_idx, s_updates}, dim, visit_indices, Defs{acc, index, updates});
+    current->app(true, cont, next);
+    return call;
+}
+
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     // A `tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
     // its dynamic branch.
@@ -437,6 +498,10 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
         if (auto res = lower_pad(pad)) return res;
     } else if (auto cat = Axm::isa<tensor::concat>(app)) {
         if (auto res = lower_concat(cat)) return res;
+    } else if (auto gather = Axm::isa<tensor::gather>(app)) {
+        if (auto res = lower_gather(gather)) return res;
+    } else if (auto scatter = Axm::isa<tensor::scatter>(app)) {
+        if (auto res = lower_scatter(scatter)) return res;
     }
     return RWPhase::rewrite_imm_App(app);
 }

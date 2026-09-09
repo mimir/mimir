@@ -1,0 +1,28 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s --implicit-check-not=tensor.gather --implicit-check-not=tensor.scatter --implicit-check-not=btensor.gather --implicit-check-not=btensor.scatter
+
+// Singleton logical tensors fold to scalars in the value representation, but
+// gather/scatter still lower through rank-one logical buffer shapes.
+// CHECK-LABEL: extern fun gather_scalar
+// CHECK-LABEL: extern fun scatter_scalar
+// CHECK-NOT: tensor.gather
+// CHECK-NOT: tensor.scatter
+// CHECK-NOT: btensor.gather
+// CHECK-NOT: btensor.scatter
+
+plugin tensor;
+plugin btensor;
+plugin affine;
+plugin compile;
+
+extern fun gather_scalar(input: I32, index: Idx 1): I32 =
+    return (tensor.gather ((1), (1)) 0_1 (input, index));
+
+extern fun scatter_scalar(input: I32, index: Idx 1, updates: I32): I32 =
+    return (tensor.scatter ((1), (1), (1)) 0_1 (input, index, updates));
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        tensor.lower_to_mem,
+        btensor.lower_map_reduce,
+        compile.cleanup,
+    );

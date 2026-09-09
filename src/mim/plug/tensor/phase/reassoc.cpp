@@ -24,6 +24,30 @@ namespace {
 /// Beyond this the eager enumeration of `Catalan(n − 1)` bracketings is worth a warning.
 constexpr u64 Loud_max_dispatch = 8;
 
+/// Sanity bound for `-X tensor:reassoc-vec`; it also keeps lanes() from wrapping.
+constexpr u64 Max_vec = 1024;
+
+/// @p n rounded up to a whole number of @p vec lanes; the tail iteration's idle lanes are charged.
+u64 lanes(u64 n, u64 vec) { return (n + vec - 1) / vec * vec; }
+
+/// Is @p mat read with its contraction unit-stride?
+/// `Lower` answers `%tensor.fastest_axis` 0 for a transposed operand - the read-through absorbs the
+/// transpose into the access map - which selects `dot_schedule_kvec`.
+bool is_kvec(const Def* mat) {
+    auto app = Axm::isa<tensor::transpose>(mat);
+    if (!app) return false;
+
+    auto perm = app->callee()->as<App>()->callee()->as<App>()->arg();
+    if (Lit::isa(perm->arity()) != 2) return false;
+
+    auto [p0, p1] = perm->projs<2>();
+    return Lit::isa(p0) == 1 && Lit::isa(p1) == 0;
+}
+
+/// Does `i … s … j` vectorize its contraction instead of its trailing extent?
+/// Only a leaf can: a subchain's result is materialized row-major.
+bool kvec_split(Defs mats, u64 s, u64 j) { return s + 1 == j && is_kvec(mats[j]); }
+
 /// The symbolic extents of one `dims[i] · dims[s + 1] · dims[j + 1]` cost term, sorted by Def::gid and
 /// padded with `nullptr`; literal extents fold into the coefficient instead.
 using Mono = std::array<const Def*, 3>;
@@ -76,16 +100,23 @@ private:
     fe::Vector<std::pair<Mono, u64>> terms_;
 };
 
-/// The cost of one product `«x, y» · «y, z»`.
-Poly mul_cost(const Def* x, const Def* y, const Def* z) {
-    auto coeff = 1_u64;
-    auto syms  = DefVec();
-
-    for (auto d : {x, y, z})
+/// The cost of one product `«x, y» · «y, z»`, in vector-lane slots.
+/// The vector loop is @p z (`dot_schedule`) or, under @p kvec, the contraction @p y
+/// (`dot_schedule_kvec`); a literal extent pads to a whole number of @p vec lanes, a symbolic one is
+/// assumed to vectorize perfectly.
+Poly mul_cost(const Def* x, const Def* y, const Def* z, u64 vec, bool kvec) {
+    auto coeff  = 1_u64;
+    auto syms   = DefVec();
+    auto extent = [&](const Def* d, u64 pad) {
         if (auto l = Lit::isa<u64>(d))
-            coeff *= *l;
+            coeff *= lanes(*l, pad);
         else
             syms.emplace_back(d);
+    };
+
+    extent(x, 1);
+    extent(y, kvec ? vec : 1);
+    extent(z, kvec ? 1 : vec);
     std::ranges::sort(syms, [](const Def* a, const Def* b) { return a->gid() < b->gid(); });
 
     auto mono = Mono{};
@@ -96,10 +127,10 @@ Poly mul_cost(const Def* x, const Def* y, const Def* z) {
     return poly;
 }
 
-Poly cost_of(fe::View<Split> splits, Defs dims) {
+Poly cost_of(fe::View<Split> splits, Defs mats, Defs dims, u64 vec) {
     auto poly = Poly();
     for (auto [i, s, j] : splits)
-        poly.add(mul_cost(dims[i], dims[s + 1], dims[j + 1]));
+        poly.add(mul_cost(dims[i], dims[s + 1], dims[j + 1], vec, kvec_split(mats, s, j)));
     return poly;
 }
 
@@ -122,12 +153,12 @@ fe::Vector<Splits> bracketings(u64 lo, u64 hi) {
 /// Drops every bracketing that another one provably beats; equal costs keep the first.
 /// A single survivor is hence the optimum under *every* instantiation of the symbolic extents.
 /// Several survivors need not each win for some instantiation - domination is only sufficient for `≤`.
-fe::Vector<Splits> pareto(fe::View<Splits> cands, Defs dims) {
+fe::Vector<Splits> pareto(fe::View<Splits> cands, Defs mats, Defs dims, u64 vec) {
     auto keep  = fe::Vector<Splits>();
     auto costs = fe::Vector<Poly>();
 
     for (const auto& cand : cands) {
-        auto cost = cost_of(cand, dims);
+        auto cost = cost_of(cand, mats, dims, vec);
         if (std::ranges::any_of(costs, [&](const Poly& k) { return k.dominates(cost); })) continue;
         for (auto i = costs.size(); i-- != 0;)
             if (cost.dominates(costs[i])) keep.erase(keep.begin() + i), costs.erase(costs.begin() + i);
@@ -149,7 +180,7 @@ fe::Vector<u64> split_table(const Splits& splits, u64 n) {
 /// @returns the split table - `split[i * n + j]` is the last matrix of the left factor of the cheapest
 /// parenthesization of `i … j` - together with that parenthesization's cost, or nothing at all if some
 /// subchain has no candidate that provably beats all the others.
-std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(Defs dims) {
+std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(Defs mats, Defs dims, u64 vec) {
     auto n     = dims.size() - 1;
     auto cost  = fe::Vector<Poly>(n * n);
     auto split = fe::Vector<u64>(n * n, 0);
@@ -159,7 +190,7 @@ std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(Defs dims) {
             auto j     = i + len - 1;
             auto cands = fe::Vector<Poly>();
             for (auto s = i; s != j; ++s) {
-                auto c = mul_cost(dims[i], dims[s + 1], dims[j + 1]);
+                auto c = mul_cost(dims[i], dims[s + 1], dims[j + 1], vec, kvec_split(mats, s, j));
                 c.add(cost[i * n + s]);
                 c.add(cost[(s + 1) * n + j]);
                 cands.emplace_back(std::move(c));
@@ -181,16 +212,31 @@ std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(Defs dims) {
 } // namespace
 
 void Reassoc::start() {
-    if (auto val = arg_value(args(), "reassoc-max")) {
+    auto num = [this](const char* key) -> std::optional<u64> {
+        auto val = arg_value(args(), key);
+        if (!val) return {};
         auto n   = 0_u64;
         auto end = val->data() + val->size();
         if (auto [ptr, ec] = std::from_chars(val->data(), end, n); ec != std::errc() || ptr != end) {
-            log().w("ignoring `-X tensor:reassoc-max={}`: not a number", *val);
+            log().w("ignoring `-X tensor:{}={}`: not a number", key, *val);
+            return {};
+        }
+        return n;
+    };
+
+    if (auto n = num("reassoc-max")) {
+        max_dispatch_ = *n;
+        log().d("dispatch chains of up to {} matrices", *n);
+        if (*n > Loud_max_dispatch)
+            log().w("`-X tensor:reassoc-max={}` enumerates up to Catalan({}) bracketings", *n, *n - 1);
+    }
+
+    if (auto n = num("reassoc-vec")) {
+        if (*n == 0 || *n > Max_vec) {
+            log().w("ignoring `-X tensor:reassoc-vec={}`: not between 1 and {} lanes", *n, Max_vec);
         } else {
-            max_dispatch_ = n;
-            log().d("dispatch chains of up to {} matrices", n);
-            if (n > Loud_max_dispatch)
-                log().w("`-X tensor:reassoc-max={}` enumerates up to Catalan({}) bracketings", n, n - 1);
+            vec_ = *n;
+            log().d("charge the vector loop in units of {} lanes", vec_);
         }
     }
 
@@ -241,14 +287,21 @@ const Def* Reassoc::build(const Def* head, Defs mats, Defs dims, fe::View<u64> s
     return w.app(w.app(head, mkl), {t1, t2});
 }
 
-const Def* Reassoc::cost_expr(Defs dims, const Splits& splits) {
+const Def* Reassoc::cost_expr(Defs mats, Defs dims, const Splits& splits) {
     auto& w        = new_world();
     const Def* sum = nullptr;
 
+    // Pads as in mul_cost, so the run-time tournament ranks by the same cost model.
+    auto extent = [&](const Def* d, u64 pad) -> const Def* {
+        if (auto l = Lit::isa<u64>(d)) return w.lit_nat(lanes(*l, pad));
+        return rewrite(d);
+    };
+
     for (auto [i, s, j] : splits) {
-        auto p = w.app(w.annex(core::nat::mul), {rewrite(dims[i]), rewrite(dims[s + 1])});
-        p      = w.app(w.annex(core::nat::mul), {p, rewrite(dims[j + 1])});
-        sum    = sum ? w.app(w.annex(core::nat::add), {sum, p}) : p;
+        auto kvec = kvec_split(mats, s, j);
+        auto p    = w.app(w.annex(core::nat::mul), {rewrite(dims[i]), extent(dims[s + 1], kvec ? vec_ : 1)});
+        p         = w.app(w.annex(core::nat::mul), {p, extent(dims[j + 1], kvec ? 1 : vec_)});
+        sum       = sum ? w.app(w.annex(core::nat::add), {sum, p}) : p;
     }
 
     return sum;
@@ -266,7 +319,7 @@ const Def* Reassoc::dispatch(const Def* head, const Def* res_ty, Defs mats, Defs
     const Def* best_cost = nullptr;
     for (const auto& cand : cands) {
         auto thunk = w.mut_lam(pi)->set(true, build(head, mats, dims, split_table(cand, n), 0, n - 1));
-        auto cost  = cost_expr(dims, cand);
+        auto cost  = cost_expr(mats, dims, cand);
 
         if (!best) {
             best = thunk, best_cost = cost;
@@ -299,29 +352,29 @@ const Def* Reassoc::reassoc(const App* app) {
     auto n = mats.size();
     if (n < 3) return nullptr;
 
-    auto orig_cost = cost_of(orig, dims);
+    auto orig_cost = cost_of(orig, mats, dims, vec_);
 
     if (n <= max_dispatch_) {
-        auto cands = pareto(bracketings(0, n - 1), dims);
+        auto cands = pareto(bracketings(0, n - 1), mats, dims, vec_);
         if (cands.size() != 1) {
             log().d("dispatch chain {} over {} bracketings, written as {}", fe::Join(dims, "×"), cands.size(),
                     orig_cost.str());
             return dispatch(rewrite(head), rewrite(app->type()), mats, dims, cands);
         }
 
-        auto cost = cost_of(cands.front(), dims);
+        auto cost = cost_of(cands.front(), mats, dims, vec_);
         if (orig_cost.dominates(cost)) return nullptr;
-        log().d("reassociate chain {}: {} → {} multiplications", fe::Join(dims, "×"), orig_cost.str(), cost.str());
+        log().d("reassociate chain {}: {} → {} lane slots", fe::Join(dims, "×"), orig_cost.str(), cost.str());
         return build(rewrite(head), mats, dims, split_table(cands.front(), n), 0, n - 1);
     }
 
-    auto order = matrix_chain_order(dims);
+    auto order = matrix_chain_order(mats, dims, vec_);
     if (!order) return nullptr;
 
     auto& [split, cost] = *order;
     if (orig_cost.dominates(cost)) return nullptr;
 
-    log().d("reassociate chain {}: {} → {} multiplications", fe::Join(dims, "×"), orig_cost.str(), cost.str());
+    log().d("reassociate chain {}: {} → {} lane slots", fe::Join(dims, "×"), orig_cost.str(), cost.str());
     return build(rewrite(head), mats, dims, split, 0, n - 1);
 }
 
