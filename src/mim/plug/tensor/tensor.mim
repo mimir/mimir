@@ -472,14 +472,19 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 /// The dot-product schedule for a contraction whose right operand stores the last output dim
 /// unit-stride (A·B): that dim is invariant in the left operand, so it runs innermost over a row
 /// of accumulators (GEMM-style vectorization). The innermost contraction is register-blocked —
-/// strip-mined by 4 and the tile unrolled — when its extent is compile-time known and divisible;
-/// an extent still open at lowering time (a runtime shape) takes the neutral tile (`ts = 1`) via
-/// %%tensor.if_static, so one selector serves static and dynamic shapes.
+/// strip-mined by 4 and the tile unrolled — whenever its DIVISIBILITY is decided, which is weaker
+/// than the extent being a literal: an extent built in factored form (`«(n+3)/4*4, …»`, say a
+/// padded row) folds the guard to `tt` under a symbolic `n`, because %%core.nat cancels `(c*x)/c`.
+/// %%tensor.if_static therefore gates on the tile size itself rather than on `K`: a tile that has
+/// folded to a literal is a decided tile, whether it was decided from a literal extent or from a
+/// symbolic one. An undecided divisibility is still open at lowering time and takes the neutral
+/// tile (`ts = 1`), so one selector serves static, symbolic and runtime shapes.
 lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
-    let r  = %core.nat.add (t#Ro, t#Rr);
-    let d  = %core.nat.sub (r, 1);
-    let K  = t#Sr#(%core.idx r 0 d);
-    let ts = %tensor.if_static (K, (1, 4)#(%core.ncmp.e (%core.nat.mul (%core.nat.div (K, 4), 4), K)), 1);
+    let r   = %core.nat.add (t#Ro, t#Rr);
+    let d   = %core.nat.sub (r, 1);
+    let K   = t#Sr#(%core.idx r 0 d);
+    let ts0 = (1, 4)#(%core.ncmp.e (%core.nat.mul (%core.nat.div (K, 4), 4), K));
+    let ts  = %tensor.if_static (ts0, ts0, 1);
     unroll_trailing (%tensor.strip_mine_red (vectorize (t, %core.nat.sub (r_out, 1)), d, ts), 1);
 
 /// The dot-product schedule for a contraction whose right operand stores the CONTRACTION

@@ -531,6 +531,18 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
         }
     }
 
+    // (c * x) / b = (c / b) * x and (c * x) % b = 0 if c % b == 0
+    if (lb && *lb != 0 && (id == nat::div || id == nat::mod)) {
+        if (auto m = Axm::isa(nat::mul, a)) {
+            const Def* marg = m->arg();
+            auto [c, x]     = marg->projs<2>();
+            if (auto lc = Lit::isa(c); lc && *lc != 0 && *lc % *lb == 0) {
+                if (id == nat::mod) return world.lit_nat_0();
+                return world.call(nat::mul, Defs{world.lit_nat(*lc / *lb), x});
+            }
+        }
+    }
+
     if (a == b) {
         switch (id) {
             case nat::add: return world.call(nat::mul, Defs{world.lit_nat(2), a}); // a + a = 2 * a

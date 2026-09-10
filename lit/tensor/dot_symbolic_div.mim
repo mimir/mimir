@@ -1,0 +1,40 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+
+// A matrix product whose contraction extent is SYMBOLIC but built in factored form: ceil(n/4)*4,
+// the shape a padded row gets from %tensor.pad. dot_schedule's tile-size guard asks whether the
+// extent is *divisible* by 4, not whether it is a literal, and %core.nat's `(c*x)/c` cancellation
+// discharges that under a symbolic `n`. So the contraction is register-blocked by 4 exactly as it
+// would be for a literal extent, and the outer contraction loop runs the symbolic (n+3)/4 times.
+// Contrast dot_dynamic.mim, where an opaque `k` leaves the guard undecided and takes ts = 1.
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+
+lam nat_ring (): %tensor.Ring = (Nat, 0, %core.nat.add, %core.nat.mul);
+
+// CHECK-DAG: fun extern mm_pad
+fun extern mm_pad {m n l: Nat} (
+        a: «m, %core.nat.mul (%core.nat.div (%core.nat.add (n, 3), 4), 4); Nat»,
+        b: «%core.nat.mul (%core.nat.div (%core.nat.add (n, 3), 4), 4), l; Nat»): «m, l; Nat» =
+    return (%tensor.product_2d_impl 1 (nat_ring ()) (a, b));
+
+lam extern _compile (): %compile.Phase =
+    %compile.phases ff (
+        %compile.cleanup,
+        %tensor.lower_tensor,
+        %tensor.lower_map_reduce,
+        %compile.cleanup,
+    );
+
+// The extent stays symbolic and factored: the strip-mined outer count is (3 + n) / 4.
+// CHECK-DAG: %core.nat.add (3, [[N:[_a-zA-Z0-9]+]])
+// CHECK-DAG: %core.nat.div ([[A:[_a-zA-Z0-9]+]], 4)
+
+// The split reduction dim recombines as `i * 4 + j`, i.e. the tile size really is 4 and not the
+// neutral 1 -- this is the line that regresses if the guard goes back to requiring a literal.
+// CHECK-DAG: %affine.semiop.mul ([[I:[_a-zA-Z0-9]+]], 4)
+
+// The guard must not survive to the output: it is decided here, not residualized.
+// CHECK-NOT: if_static
