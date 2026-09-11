@@ -22,7 +22,7 @@ x ("," x)* ","?   comma-separated list of zero or more x, with an optional trail
 
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
-For example, `<<<` is tokenized as `<<` followed by `<`.
+For example, `>>=` is tokenized as `>>` followed by `=`.
 
 ### Terminals {#terminals}
 
@@ -37,17 +37,16 @@ For example, `λ` and `lm` are lexically equivalent.
 ‹ › « »
 → => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
-+ - * / % == !=
++ - * / % == != < <= > >= << >>
 <eof>
 ```
 
 `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
-`+`, `-`, `*`, `/`, `%`, `==`, and `!=` are [infix operators](@ref infix).
+`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
 ```text
-< > << >>
 -> bot top lm insert
 ```
 
@@ -396,6 +395,12 @@ e   ::= e "∪" e
 ```ebnf
 e   ::= e "==" e
      |  e "!=" e
+     |  e "<" e
+     |  e "<=" e
+     |  e ">" e
+     |  e ">=" e
+     |  e "<<" e
+     |  e ">>" e
      |  e "+" e
      |  e "-" e
      |  e "*" e
@@ -431,10 +436,13 @@ The current parser uses the following precedence, from strongest to weakest bind
 4.  e e, e @ e             application
 5.  e * e, e / e, e % e    multiplicative operators
 6.  e + e, e - e           additive operators
-7.  e == e, e != e         equality operators
-8.  e inj e                injection
-9.  e → e                  arrow
-10. e where d* end         local declaration block
+7.  e << e, e >> e         shift operators
+8.  e < e, e <= e, e > e, e >= e
+                           relational operators
+9.  e == e, e != e         equality operators
+10. e inj e                injection
+11. e → e                  arrow
+12. e where d* end         local declaration block
 ```
 
 - Extract, union, application, and the infix operators associate left-to-right.

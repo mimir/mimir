@@ -28,6 +28,8 @@ namespace ast {
     m(Pi,      N)       \
     m(Inj,     R)       \
     m(Eq,      L)       \
+    m(Rel,     L)       \
+    m(Shift,   L)       \
     m(Add,     L)       \
     m(Mul,     L)       \
     m(App,     L)       \
@@ -160,10 +162,16 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_dot,        ".")               \
     m(T_eq,         "==")              \
     m(T_extract,    "#")               \
+    m(T_ge,         ">=")              \
+    m(T_gt,         ">")               \
+    m(T_le,         "<=")              \
     m(T_lm,         "λ")               \
+    m(T_lt,         "<")               \
     m(T_ne,         "!=")              \
     m(T_rem,        "%")               \
     m(T_semicolon,  ";")               \
+    m(T_shl,        "<<")              \
+    m(T_shr,        ">>")              \
     m(T_star,       "*")               \
     m(T_sub,        "-")               \
     m(T_union,      "∪")               \
@@ -173,14 +181,20 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
 /// X-macro listing all infix operators as `m(tag, str, prec)`.
 /// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
 ///@{
-#define MIM_INFIX(m)      \
-    m(T_eq,   "==", Eq )  \
-    m(T_ne,   "!=", Eq )  \
-    m(T_add,  "+",  Add)  \
-    m(T_sub,  "-",  Add)  \
-    m(T_star, "*",  Mul)  \
-    m(T_div,  "/",  Mul)  \
-    m(T_rem,  "%",  Mul)
+#define MIM_INFIX(m)        \
+    m(T_eq,   "==", Eq   )  \
+    m(T_ne,   "!=", Eq   )  \
+    m(T_lt,   "<",  Rel  )  \
+    m(T_le,   "<=", Rel  )  \
+    m(T_gt,   ">",  Rel  )  \
+    m(T_ge,   ">=", Rel  )  \
+    m(T_shl,  "<<", Shift)  \
+    m(T_shr,  ">>", Shift)  \
+    m(T_add,  "+",  Add  )  \
+    m(T_sub,  "-",  Add  )  \
+    m(T_star, "*",  Mul  )  \
+    m(T_div,  "/",  Mul  )  \
+    m(T_rem,  "%",  Mul  )
 ///@}
 
 #define MIM_SUBST(m)                  \

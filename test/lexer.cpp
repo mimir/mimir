@@ -39,7 +39,7 @@ TEST_CASE("Lexer") {
     }
 
     SUBCASE("infix operators and their escaped names") {
-        Lexer lexer(drv, "+ - * / % == != -> `+ `- `* `/ `% `== `!=");
+        Lexer lexer(drv, "+ - * / % == != < <= > >= << >> -> `+ `- `* `/ `% `== `!= `< `<= `> `>= `<< `>>");
 
         CHECK(lexer.lex().isa(Tok::Tag::T_add));
         CHECK(lexer.lex().isa(Tok::Tag::T_sub));
@@ -48,9 +48,16 @@ TEST_CASE("Lexer") {
         CHECK(lexer.lex().isa(Tok::Tag::T_rem));
         CHECK(lexer.lex().isa(Tok::Tag::T_eq));
         CHECK(lexer.lex().isa(Tok::Tag::T_ne));
+        CHECK(lexer.lex().isa(Tok::Tag::T_lt));
+        CHECK(lexer.lex().isa(Tok::Tag::T_le));
+        CHECK(lexer.lex().isa(Tok::Tag::T_gt));
+        CHECK(lexer.lex().isa(Tok::Tag::T_ge));
+        CHECK(lexer.lex().isa(Tok::Tag::T_shl));
+        CHECK(lexer.lex().isa(Tok::Tag::T_shr));
         CHECK(lexer.lex().isa(Tok::Tag::T_arrow));
 
-        for (auto op : {"`+"sv, "`-"sv, "`*"sv, "`/"sv, "`%"sv, "`=="sv, "`!="sv}) {
+        for (auto op : {"`+"sv, "`-"sv, "`*"sv, "`/"sv, "`%"sv, "`=="sv, "`!="sv, "`<"sv, "`<="sv, "`>"sv, "`>="sv,
+                        "`<<"sv, "`>>"sv}) {
             auto tok = lexer.lex();
             CHECK(tok.isa(Tok::Tag::M_id));
             CHECK(tok.sym() == op);
