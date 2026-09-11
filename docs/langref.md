@@ -174,8 +174,7 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 ### Paths and Modules {#path}
 
 ```ebnf
-path ::= I ("." k)*
-k    ::= I | keyword
+path ::= I ("." I)*
 ```
 
 A path resolves its first component lexically and then walks into that module.
