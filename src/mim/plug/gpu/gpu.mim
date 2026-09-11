@@ -20,250 +20,234 @@ import compile;
 /// * [User Guide for NVPTX Back-end](https://llvm.org/docs/NVPTXUsage.html#address-spaces)
 /// * [User Guide for AMDGPU Backend](https://llvm.org/docs/AMDGPUUsage.html#address-spaces)
 ///
-let %gpu.addr_space_global = 1;
-let %gpu.addr_space_shared = 3;
-let %gpu.addr_space_const  = 4;
-let %gpu.addr_space_local  = 5;
+anx let addr_space_global = 1;
+anx let addr_space_shared = 3;
+anx let addr_space_const  = 4;
+anx let addr_space_local  = 5;
 ///
 /// ### Memory Types
 ///
-let %gpu.GlobalM = %mem.M %gpu.addr_space_global;
-let %gpu.SharedM = %mem.M %gpu.addr_space_shared;
-let %gpu.ConstM  = %mem.M %gpu.addr_space_const;
-let %gpu.LocalM  = %mem.M %gpu.addr_space_local;
+anx let GlobalM = mem.M addr_space_global;
+anx let SharedM = mem.M addr_space_shared;
+anx let ConstM  = mem.M addr_space_const;
+anx let LocalM  = mem.M addr_space_local;
 ///
 /// ### Pointer Types
 ///
-lam %gpu.GlobalPtr(T: *): * = %mem.Ptr (T, %gpu.addr_space_global);
-lam %gpu.SharedPtr(T: *): * = %mem.Ptr (T, %gpu.addr_space_shared);
-lam %gpu.ConstPtr(T: *): *  = %mem.Ptr (T, %gpu.addr_space_const);
-lam %gpu.LocalPtr(T: *): *  = %mem.Ptr (T, %gpu.addr_space_local);
+anx lam GlobalPtr(T: *): * = mem.Ptr (T, addr_space_global);
+anx lam SharedPtr(T: *): * = mem.Ptr (T, addr_space_shared);
+anx lam ConstPtr(T: *): *  = mem.Ptr (T, addr_space_const);
+anx lam LocalPtr(T: *): *  = mem.Ptr (T, addr_space_local);
 ///
 /// ### Streams
 ///
-axm %gpu.Stream: *;
-axm %gpu.default_stream: %gpu.Stream;
+axm Stream: *;
+axm default_stream: Stream;
 ///
 /// ## Operations
 ///
 /// ### Context
 ///
-/// #### %%gpu.init
+/// #### gpu.init
 ///
 /// Initializes the GPU runtime.
 // TODO: consider allowing multiple contexts and configuration of device number or context flags
-axm %gpu.init: %mem.M 0 → [%mem.M 0, %gpu.GlobalM, %gpu.ConstM];
+axm init: mem.M 0 → [mem.M 0, GlobalM, ConstM];
 ///
-/// #### %%gpu.deinit
+/// #### gpu.deinit
 ///
 /// Deinitializes the GPU runtime.
-axm %gpu.deinit: [%mem.M 0, %gpu.GlobalM, %gpu.ConstM] → %mem.M 0;
+axm deinit: [mem.M 0, GlobalM, ConstM] → mem.M 0;
 ///
-/// #### %%gpu.auto_init / %%gpu.auto_deinit
+/// #### gpu.auto_init / gpu.auto_deinit
 ///
-/// The compiler-inserted counterparts of %%gpu.init / %%gpu.deinit.
-/// %%gpu.lower_btensor_map_reduce uses these instead of calling %%gpu.init / %%gpu.deinit directly, so a
+/// The compiler-inserted counterparts of gpu.init / gpu.deinit.
+/// gpu.lower_btensor_map_reduce uses these instead of calling gpu.init / gpu.deinit directly, so a
 /// backend can recognize and collapse the sessions it creates without touching one that the user opened by hand.
-axm %gpu.auto_init: %mem.M 0 → [%mem.M 0, %gpu.GlobalM, %gpu.ConstM];
-axm %gpu.auto_deinit: [%mem.M 0, %gpu.GlobalM, %gpu.ConstM] → %mem.M 0;
+axm auto_init: mem.M 0 → [mem.M 0, GlobalM, ConstM];
+axm auto_deinit: [mem.M 0, GlobalM, ConstM] → mem.M 0;
 ///
 /// ### Streams
 ///
-/// #### %%gpu.stream_init
+/// #### gpu.stream_init
 ///
 /// Initializes a stream.
-axm %gpu.stream_init: [%mem.M 0, %gpu.GlobalM, %mem.Ptr0 %gpu.Stream] → [%mem.M 0, %gpu.GlobalM];
+axm stream_init: [mem.M 0, GlobalM, mem.Ptr0 Stream] → [mem.M 0, GlobalM];
 ///
-/// #### %%gpu.stream_deinit
+/// #### gpu.stream_deinit
 ///
 /// Deinitializes a stream.
-axm %gpu.stream_deinit: [%mem.M 0, %gpu.GlobalM, %gpu.Stream] → [%mem.M 0, %gpu.GlobalM];
+axm stream_deinit: [mem.M 0, GlobalM, Stream] → [mem.M 0, GlobalM];
 ///
-/// #### %%gpu.stream_sync
+/// #### gpu.stream_sync
 ///
 /// Waits for a stream to finish all its work.
-axm %gpu.stream_sync: [%mem.M 0, %gpu.GlobalM, %gpu.Stream] → [%mem.M 0, %gpu.GlobalM];
+axm stream_sync: [mem.M 0, GlobalM, Stream] → [mem.M 0, GlobalM];
 ///
-/// ### %%gpu.with_streams
+/// ### gpu.with_streams
 ///
 /// Provides `n` streams to `func` for executing asynchronous GPU operations, managing their initialization and teardown.
-fun %gpu.with_streams (n: Nat, func: Fn [%mem.M 0, %gpu.GlobalM, «n; %gpu.Stream»] → [%mem.M 0, %gpu.GlobalM])
-                      (m0: %mem.M 0, m1: %gpu.GlobalM)
-                    : [%mem.M 0, %gpu.GlobalM] =
-    let (m0, streams_ptr) = %mem.alloc («n; %gpu.Stream», 0) m0;
+anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [mem.M 0, GlobalM])
+                     (m0: mem.M 0, m1: GlobalM)
+                   : [mem.M 0, GlobalM] =
+    let (m0, streams_ptr) = mem.alloc («n; Stream», 0) m0;
     init (m0, m1)
     where
-        con init (m0: %mem.M 0, m1: %gpu.GlobalM) =
+        con init (m0: mem.M 0, m1: GlobalM) =
             loop (m0, m1, 0)
             where
-                con loop (m0: %mem.M 0, m1: %gpu.GlobalM, i: Nat) =
-                    let cond = %core.ncmp.l (i, n);
+                con loop (m0: mem.M 0, m1: GlobalM, i: Nat) =
+                    let cond = core.ncmp.l (i, n);
                     (run, body)#cond (m0, m1)
                     where
-                        con body (m0: %mem.M 0, m1: %gpu.GlobalM) =
-                            let lea = %mem.lea (streams_ptr, %core.bitcast (Idx n) i);
-                            let (m0, m1) = %gpu.stream_init (m0, m1, lea);
-                            let inc = %core.nat.add (i, 1);
+                        con body (m0: mem.M 0, m1: GlobalM) =
+                            let lea = mem.lea (streams_ptr, core.bitcast (Idx n) i);
+                            let (m0, m1) = stream_init (m0, m1, lea);
+                            let inc = core.nat.add (i, 1);
                             loop (m0, m1, inc);
                     end;
             end;
-        con run (m0: %mem.M 0, m1: %gpu.GlobalM) =
-            let (m0, streams) = %mem.load (m0, streams_ptr);
+        con run (m0: mem.M 0, m1: GlobalM) =
+            let (m0, streams) = mem.load (m0, streams_ptr);
             ret (m0, m1) = func $ (m0, m1, streams);
             deinit (m0, m1);
-        con deinit (m0: %mem.M 0, m1: %gpu.GlobalM) =
-            let (m0, streams) = %mem.load (m0, streams_ptr);
+        con deinit (m0: mem.M 0, m1: GlobalM) =
+            let (m0, streams) = mem.load (m0, streams_ptr);
             loop (m0, m1, 0)
             where
-                con loop (m0: %mem.M 0, m1: %gpu.GlobalM, i: Nat) =
-                    let cond = %core.ncmp.l (i, n);
+                con loop (m0: mem.M 0, m1: GlobalM, i: Nat) =
+                    let cond = core.ncmp.l (i, n);
                     (return, body)#cond (m0, m1)
                     where
-                        con body (m0: %mem.M 0, m1: %gpu.GlobalM) =
-                            let idx = %core.bitcast (Idx n) i;
-                            let (m0, m1) = %gpu.stream_deinit (m0, m1, streams#idx);
-                            let inc = %core.nat.add (i, 1);
+                        con body (m0: mem.M 0, m1: GlobalM) =
+                            let idx = core.bitcast (Idx n) i;
+                            let (m0, m1) = stream_deinit (m0, m1, streams#idx);
+                            let inc = core.nat.add (i, 1);
                             loop (m0, m1, inc);
                     end;
             end;
     end;
 ///
-/// ### Blocking Memory Operations
+/// ### Blocking / Async Memory Operations
 ///
-/// #### %%gpu.alloc(block)
+/// #### gpu.alloc(block) / gpu.alloc(asyn)
 ///
-/// Allocates memory on the device (in global address space).
-axm %gpu.alloc(block): [T: *] → %gpu.GlobalM → [%gpu.GlobalM, %gpu.GlobalPtr T];
+/// Allocates memory on the device (in global address space), synchronously (`block`) or asynchronously
+/// against a stream (`asyn`).
+mod alloc {
+    axm block: [T: *] → GlobalM → [GlobalM, GlobalPtr T];
+    axm asyn:  [T: *] → [GlobalM, Stream] → [GlobalM, GlobalPtr T];
+}
 ///
-/// #### %%gpu.free(block)
+/// #### gpu.free(block) / gpu.free(asyn)
 ///
-/// Frees memory on the device (in global address space).
-axm %gpu.free(block): {T: *} → [%gpu.GlobalM, %gpu.GlobalPtr T] → %gpu.GlobalM;
+/// Frees memory on the device (in global address space), synchronously (`block`) or asynchronously
+/// against a stream (`asyn`).
+pub mod free {
+    axm block: {T: *} → [GlobalM, GlobalPtr T] → GlobalM;
+    axm asyn:  {T: *} → [GlobalM, GlobalPtr T, Stream] → GlobalM;
+}
 ///
-/// #### %%gpu.copy_to_device(block)
+/// #### gpu.copy_to_device(block) / gpu.copy_to_device(asyn)
 ///
-/// Copies data from host memory to device memory.
-axm %gpu.copy_to_device(block): {T: *}
-                              → [%mem.M 0, %gpu.GlobalM, %mem.Ptr0 T, %gpu.GlobalPtr T]
-                              → [%mem.M 0, %gpu.GlobalM];
+/// Copies data from host memory to device memory, synchronously (`block`) or asynchronously against a
+/// stream (`asyn`).
+pub mod copy_to_device {
+    axm block: {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T] → [mem.M 0, GlobalM];
+    axm asyn:  {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T, Stream] → [mem.M 0, GlobalM];
+}
 ///
-/// #### %%gpu.copy_to_host(block)
+/// #### gpu.copy_to_host(block) / gpu.copy_to_host(asyn)
 ///
-/// Copies data from device memory to host memory.
-axm %gpu.copy_to_host(block): {T: *}
-                            → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr T, %mem.Ptr0 T]
-                            → [%mem.M 0, %gpu.GlobalM];
+/// Copies data from device memory to host memory, synchronously (`block`) or asynchronously against a
+/// stream (`asyn`).
+pub mod copy_to_host {
+    axm block: {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T] → [mem.M 0, GlobalM];
+    axm asyn:  {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T, Stream] → [mem.M 0, GlobalM];
+}
 ///
-/// #### %%gpu.alloc_copy(block)
+/// #### gpu.alloc_copy(block) / gpu.alloc_copy(asyn)
 ///
-/// Allocates memory on the device (in global address space) for the provided host data
-/// and copies the host data to that memory.
-let %gpu.alloc_copy.block = lm {T: *}
-                               (m0: %mem.M 0, m1: %gpu.GlobalM, ptr: %mem.Ptr0 T)
-                             : [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr T] =
-    let (m1, d_ptr) = %gpu.alloc.block T m1;
-    let (m0, m1) = %gpu.copy_to_device.block (m0, m1, ptr, d_ptr);
-    (m0, m1, d_ptr);
+/// Allocates memory on the device (in global address space) for the provided host data and copies the
+/// host data to that memory, synchronously (`block`) or asynchronously against a stream (`asyn`).
+pub mod alloc_copy {
+    anx let block = lm {T: *}
+                       (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T)
+                     : [mem.M 0, GlobalM, GlobalPtr T] =
+        let (m1, d_ptr) = alloc.block T m1;
+        let (m0, m1) = copy_to_device.block (m0, m1, ptr, d_ptr);
+        (m0, m1, d_ptr);
+
+    anx let asyn = lm {T: *}
+                       (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T, stream: Stream)
+                     : [mem.M 0, GlobalM, GlobalPtr T] =
+        let (m1, d_ptr) = alloc.asyn T (m1, stream);
+        let (m0, m1) = copy_to_device.asyn (m0, m1, ptr, d_ptr, stream);
+        (m0, m1, d_ptr);
+}
 ///
 /// ### Buffer Operations
 ///
-/// #### %%gpu.buf_alloc_copy
+/// #### gpu.buf_alloc_copy
 ///
-/// Placeholder for copying a host-side `%buffer.Buf` to the device.
-/// Unlike `%gpu.alloc_copy(block)`, this operates directly on the still-abstract `%buffer.Buf`
-axm %gpu.buf_alloc_copy: {r: Nat, s: «r; Nat», T: *}
-                       → [%mem.M 0, %gpu.GlobalM, %buffer.Buf (r, s, T)]
-                       → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr «s; T»];
+/// Placeholder for copying a host-side `buffer.Buf` to the device.
+/// Unlike `gpu.alloc_copy(block)`, this operates directly on the still-abstract `buffer.Buf`
+axm buf_alloc_copy: {r: Nat, s: «r; Nat», T: *}
+                  → [mem.M 0, GlobalM, buffer.Buf (r, s, T)]
+                  → [mem.M 0, GlobalM, GlobalPtr «s; T»];
 ///
-/// #### %%gpu.buf_copy_to_host
+/// #### gpu.buf_copy_to_host
 ///
-/// Placeholder for copying device data to a host-side `%buffer.Buf`.
-/// Unlike `%gpu.copy_to_host(block)`, this operates directly on the still-abstract `%buffer.Buf`
-axm %gpu.buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
-                       → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr «s; T», %buffer.Buf (r, s, T)]
-                       → [%mem.M 0, %gpu.GlobalM];
-///
-/// ### Async Memory Operations
-///
-/// #### %%gpu.alloc(asyn)
-///
-/// Asynchronously allocates memory on the device (in global address space).
-axm %gpu.alloc(asyn): [T: *] → [%gpu.GlobalM, %gpu.Stream] → [%gpu.GlobalM, %gpu.GlobalPtr T];
-///
-/// #### %%gpu.free(asyn)
-///
-/// Asynchronously frees memory on the device (in global address space).
-axm %gpu.free(asyn): {T: *} → [%gpu.GlobalM, %gpu.GlobalPtr T, %gpu.Stream] → %gpu.GlobalM;
-///
-/// #### %%gpu.copy_to_device(asyn)
-///
-/// Asynchronously copies data from host memory to device memory.
-axm %gpu.copy_to_device(asyn): {T: *}
-                              → [%mem.M 0, %gpu.GlobalM, %mem.Ptr0 T, %gpu.GlobalPtr T, %gpu.Stream]
-                              → [%mem.M 0, %gpu.GlobalM];
-///
-/// #### %%gpu.copy_to_host(asyn)
-///
-/// Asynchronously copies data from device memory to host memory.
-axm %gpu.copy_to_host(asyn): {T: *}
-                            → [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr T, %mem.Ptr0 T, %gpu.Stream]
-                            → [%mem.M 0, %gpu.GlobalM];
-///
-/// #### %%gpu.alloc_copy(asyn)
-///
-/// Asynchronously allocates memory on the device (in global address space) for the provided host data
-/// and copies the host data to that memory.
-let %gpu.alloc_copy.asyn = lm {T: *}
-                               (m0: %mem.M 0, m1: %gpu.GlobalM, ptr: %mem.Ptr0 T, stream: %gpu.Stream)
-                             : [%mem.M 0, %gpu.GlobalM, %gpu.GlobalPtr T] =
-    let (m1, d_ptr) = %gpu.alloc.asyn T (m1, stream);
-    let (m0, m1) = %gpu.copy_to_device.asyn (m0, m1, ptr, d_ptr, stream);
-    (m0, m1, d_ptr);
+/// Placeholder for copying device data to a host-side `buffer.Buf`.
+/// Unlike `gpu.copy_to_host(block)`, this operates directly on the still-abstract `buffer.Buf`
+axm buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
+                  → [mem.M 0, GlobalM, GlobalPtr «s; T», buffer.Buf (r, s, T)]
+                  → [mem.M 0, GlobalM];
 ///
 /// ### Kernel Launch
 ///
-/// #### %%gpu.launch
+/// #### gpu.launch
 ///
 /// Launches a kernel function on the device with dynamic shared memory and module symbols.
 // TODO: refactor to {n m: N, Ts: «n; *»} as soon as type inference bug is fixed
-axm %gpu.launch: {n: Nat, Ts: «n; *»}
-               → [n_groups n_items: Nat, %gpu.Stream, m: Bool, MT: «%core.bitcast Nat m; *»]
-               → Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM, Idx n_groups, Idx n_items,
-                     «i: %core.bitcast Nat m; %gpu.SharedPtr MT#i», «i: n; Ts#i»,
-                     Cn [%gpu.GlobalM, %gpu.SharedM, %gpu.ConstM, %gpu.LocalM]]
-               → «i: n; Ts#i»
-               → Fn [%mem.M 0, %gpu.GlobalM, %gpu.ConstM]
-               → [%mem.M 0, %gpu.GlobalM, %gpu.ConstM];
+axm launch: {n: Nat, Ts: «n; *»}
+          → [n_groups n_items: Nat, Stream, m: Bool, MT: «core.bitcast Nat m; *»]
+          → Cn [GlobalM, SharedM, ConstM, LocalM, Idx n_groups, Idx n_items,
+                «i: core.bitcast Nat m; SharedPtr MT#i», «i: n; Ts#i»,
+                Cn [GlobalM, SharedM, ConstM, LocalM]]
+          → «i: n; Ts#i»
+          → Fn [mem.M 0, GlobalM, ConstM]
+          → [mem.M 0, GlobalM, ConstM];
 ///
 /// ### Work-Item Synchronization
 ///
-/// #### %%gpu.sync_work_items
+/// #### gpu.sync_work_items
 ///
 /// Low-level operation to synchronize all work-items in the same work-group.
-axm %gpu.sync_work_items: [%gpu.GlobalM, %gpu.SharedM] → [%gpu.GlobalM, %gpu.SharedM];
+axm sync_work_items: [GlobalM, SharedM] → [GlobalM, SharedM];
 ///
-/// #### %%gpu.synced_scope
+/// #### gpu.synced_scope
 ///
 /// Runs `scope` bracketed by work-item synchronization: syncs, runs `scope`, and syncs again.
 // TODO: consider variadic arguments and returns values for the scope
-lam %gpu.synced_scope (m1: %gpu.GlobalM, m3: %gpu.SharedM,
-                       scope: [%gpu.GlobalM, %gpu.SharedM] → [%gpu.GlobalM, %gpu.SharedM])
-                    : [%gpu.GlobalM, %gpu.SharedM] =
-    let (m1, m3) = %gpu.sync_work_items (m1, m3);
+anx lam synced_scope (m1: GlobalM, m3: SharedM,
+                      scope: [GlobalM, SharedM] → [GlobalM, SharedM])
+                   : [GlobalM, SharedM] =
+    let (m1, m3) = sync_work_items (m1, m3);
     let (m1, m3) = scope (m1, m3);
-    let (m1, m3) = %gpu.sync_work_items (m1, m3);
+    let (m1, m3) = sync_work_items (m1, m3);
     (m1, m3);
 ///
 /// ## Phases
 ///
-axm %gpu.check_addr_spaces_repl:    %compile.Phase;
-axm %gpu.host_malloc2gpualloc_repl: %compile.Phase;
-axm %gpu.mem_checks:                %compile.Phase;
-axm %gpu.remove_double_syncs:       %compile.Phase;
-axm %gpu.split_apply:               %compile.Phase;
-axm %gpu.lower_btensor_map_reduce:  %compile.Phase;
+axm check_addr_spaces_repl:    compile.Phase;
+axm host_malloc2gpualloc_repl: compile.Phase;
+axm mem_checks:                compile.Phase;
+axm remove_double_syncs:       compile.Phase;
+axm split_apply:               compile.Phase;
+axm lower_btensor_map_reduce:  compile.Phase;
 ///
 /// ### Pipelines
 ///
-lam %gpu.host_specific_phases () = %gpu.host_malloc2gpualloc_repl;
-lam %gpu.device_specific_phases () = %gpu.remove_double_syncs;
+anx lam host_specific_phases () = host_malloc2gpualloc_repl;
+anx lam device_specific_phases () = remove_double_syncs;

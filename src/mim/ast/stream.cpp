@@ -73,15 +73,6 @@ void Node::dump() const {
  * File
  */
 
-void Import::stream(fe::Tab&, std::ostream& os) const {
-    if (is_path())
-        std::print(os, "{} \"{}\"", tag(), Lexer::escape(path().view()));
-    else
-        std::print(os, "{} {}", tag(), name());
-    if (alias()) std::print(os, " as {}", alias());
-    os << ';';
-}
-
 void File::stream(fe::Tab& tab, std::ostream& os) const { stream_decls(tab, os, decls()); }
 
 /*
@@ -217,37 +208,72 @@ void UniqExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "â¦
  * Decl
  */
 
-void AxmDecl::Alias::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
+static std::string_view vis2str(Vis vis) {
+    switch (vis) {
+        case Vis::Priv: return "priv";
+        case Vis::Pub: return "pub";
+    }
+    fe::unreachable();
+}
+
+/// Prints `vis`/`extern`/`anx`, skipping `vis` if it's the modifier-nudged Mods::default_vis.
+static std::ostream& operator<<(std::ostream& os, const Mods& mods) {
+    if (auto vis = mods.resolved_vis(); vis != mods.default_vis()) std::print(os, "{} ", vis2str(vis));
+    if (mods.is_extern) std::print(os, "extern ");
+    if (mods.is_anx) std::print(os, "anx ");
+    return os;
+}
+
+} // namespace mim::ast
+
+#ifndef DOXYGEN
+template<>
+struct std::formatter<mim::ast::Mods> : fe::ostream_formatter {};
+#endif
+
+namespace mim::ast {
 
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "axm {}", dbg());
-    if (num_subs() != 0) {
-        os << '(';
-        for (auto sep = ""; const auto& aliases : subs()) {
-            std::print(os, "{}{}", sep, R(tab, aliases, " = "));
-            sep = ", ";
-        }
-        os << ')';
-    }
-    std::print(os, ": {}", S(tab, type()));
+    if (vis() == Vis::Priv) std::print(os, "priv "); // `axm` is always anx, so it's never printed here
+    std::print(os, "axm {}: {}", dbg(), S(tab, type()));
     if (normalizer()) std::print(os, ", {}", normalizer());
     if (curry()) std::print(os, ", {}", curry());
     if (trip()) std::print(os, ", {}", trip());
     os << ";";
 }
 
+void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() == Vis::Priv) std::print(os, "priv "); // `axm` is always anx, so it's never printed here
+    std::print(os, "axm {}: {}", dbg(), S(tab, owner()->type()));
+    if (owner()->normalizer()) std::print(os, ", {}", owner()->normalizer());
+    os << ";";
+}
+
+void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() == Vis::Priv) std::print(os, "priv ");
+    std::print(os, "anx {} = {};", dbg(), S(tab, path()));
+}
+
 void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::println(os, "mod {} {{", dbg());
+    std::println(os, "{}mod {} {{", mods(), dbg());
     ++tab;
     stream_decls(tab, os, decls());
     --tab;
     std::print(os, "{}}}", tab);
 }
 
-void UseDecl::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "use {};", S(tab, path())); }
+void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (is_file_path())
+        std::print(os, "{}{} \"{}\"", mods(), tag(), Lexer::escape(file_path().view()));
+    else
+        std::print(os, "{}{} {}", mods(), tag(), S(tab, path()));
+    if (alias()) std::print(os, " as {}", alias());
+    if (is_splice() && is_import()) std::print(os, " as {}", Tag::T_star);
+    os << ';';
+}
 
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "let {} = {};", S(tab, ptrn()), S(tab, value()));
+    std::print(os, "{}let {} = {};", mods(), S(tab, ptrn()), S(tab, value()));
 }
 
 void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
@@ -263,7 +289,7 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {}", tag(), dbg());
+    std::print(os, "{}{} {}", mods(), tag(), dbg());
     if (!doms().front()->ptrn()->isa<TuplePtrn>()) os << ' ';
     std::print(os, "{}", R(tab, doms()));
     if (codom()) std::print(os, ": {}", S(tab, codom()));
@@ -278,11 +304,6 @@ void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
         }
     }
     os << ';';
-}
-
-void CDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}", dbg(), tag(), S(tab, dom()), S(tab, codom()));
-    if (tag() == Tag::K_cfun) std::print(os, ": {}", S(tab, codom()));
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {

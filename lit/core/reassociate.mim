@@ -3,9 +3,9 @@
 
 plugin core;
 
-lam extern add(w: I32): I32 =
+extern lam add(w: I32): I32 =
     let xy = 23I32;
     let z  = 42I32;
-    %core.wrap.add 0 (xy, (%core.wrap.add 0 (z, w)));
+    core.wrap.add 0 (xy, (core.wrap.add 0 (z, w)));
 
 // CHECK-DAG: 65

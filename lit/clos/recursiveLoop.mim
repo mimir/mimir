@@ -3,42 +3,43 @@
 
 plugin core;
 plugin cps;
+plugin mem;
 
-let pb_type = Cn [%mem.M 0, Cn [%mem.M 0]];
+let pb_type = Cn [mem.M 0, Cn [mem.M 0]];
 
-ccon printInteger [mem: %mem.M 0, val: I32, return: Cn [%mem.M 0]];
-ccon printIntegerNL [mem: %mem.M 0, val: I32, return: Cn [%mem.M 0]];
-ccon printNL [mem: %mem.M 0, return: Cn [%mem.M 0]];
+extern con printInteger [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con printIntegerNL [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con printNL [m: mem.M 0, return: Cn [mem.M 0]];
 
 let size = 10;
 
-con recursive (mem: %mem.M 0, i: I32, last_pullback: pb_type, return: Cn [%mem.M 0]) =
-    let condition = %core.icmp.ul (i, %core.bitcast I32 size);
-    (exit, loop_body)#condition mem
+con recursive (m: mem.M 0, i: I32, last_pullback: pb_type, return: Cn [mem.M 0]) =
+    let condition = core.icmp.ul (i, core.bitcast I32 size);
+    (exit, loop_body)#condition m
     where
-        con loop_body (mem: %mem.M 0) =
-            con pb (mem: %mem.M 0, return: Cn [%mem.M 0]) =
-                printIntegerNL( mem, i , next )
+        con loop_body (m: mem.M 0) =
+            con pb (m: mem.M 0, return: Cn [mem.M 0]) =
+                printIntegerNL( m, i , next )
                 where
-                    con next (mem: %mem.M 0) = last_pullback (mem, return);
+                    con next (m: mem.M 0) = last_pullback (m, return);
                 end;
 
-            printIntegerNL (mem, i , next)
+            printIntegerNL (m, i , next)
             where
-                con next (mem: %mem.M 0) = recursive( mem, %core.wrap.add 0 (i, 1I32), pb, return );
+                con next (m: mem.M 0) = recursive( m, core.wrap.add 0 (i, 1I32), pb, return );
             end;
-        con exit (mem: %mem.M 0) = last_pullback (mem, return);
+        con exit (m: mem.M 0) = last_pullback (m, return);
     end;
 
-con end_ (mem: %mem.M 0, return: Cn [%mem.M 0]) = return (mem);
-con outer(mem: %mem.M 0, x: I32, return: Cn [%mem.M 0]) = recursive ( mem, 0I32, end_, return );
+con end_ (m: mem.M 0, return: Cn [mem.M 0]) = return (m);
+con outer(m: mem.M 0, x: I32, return: Cn [mem.M 0]) = recursive ( m, 0I32, end_, return );
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
-    outer(mem, 1I32, callback)
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+    outer(m, 1I32, callback)
     where
-        con callback (mem: %mem.M 0) =
-            recursive (mem, 3I32, end_, callback2)
+        con callback (m: mem.M 0) =
+            recursive (m, 3I32, end_, callback2)
             where
-                con callback2 (mem: %mem.M 0) = return (mem, 1I32);
+                con callback2 (m: mem.M 0) = return (m, 1I32);
             end;
     end;

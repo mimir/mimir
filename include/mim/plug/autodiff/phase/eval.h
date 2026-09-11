@@ -39,7 +39,7 @@ public:
     const Def* augment_pack(const Pack* pack, Lam* f, Lam* f_diff);
 
 private:
-    /// derive()/augment() run entirely in the new world: the `%autodiff.ad` argument is rewritten first, and the
+    /// derive()/augment() run entirely in the new world: the `autodiff.ad` argument is rewritten first, and the
     /// derivative is built from that copy. This alias resolves the world() calls in the augment machinery accordingly.
     World& world() { return new_world(); }
 

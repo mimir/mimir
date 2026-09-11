@@ -2,11 +2,11 @@
 
 plugin core;
 
-lam extern a(x: Idx 23) = %core.icmp.e   (x, x);
-lam extern b(x: Idx 23) = %core.icmp.ule (x, x);
-lam extern c(x: Idx 23) = %core.icmp.ul  (x, x);
-lam extern d(x: Idx 23) = %core.icmp.ne  (x, x);
-lam extern e(x: Idx 23) = %core.icmp.ne  (x, 7₂₃);
+extern lam a(x: Idx 23) = core.icmp.e   (x, x);
+extern lam b(x: Idx 23) = core.icmp.ule (x, x);
+extern lam c(x: Idx 23) = core.icmp.ul  (x, x);
+extern lam d(x: Idx 23) = core.icmp.ne  (x, x);
+extern lam e(x: Idx 23) = core.icmp.ne  (x, 7₂₃);
 
 // CHECK-DAG: tt
 // CHECK-DAG: tt

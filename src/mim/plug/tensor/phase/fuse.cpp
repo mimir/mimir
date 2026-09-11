@@ -19,12 +19,12 @@
 namespace mim::plug::tensor::phase {
 
 /// If `e` reads coordinate `var#i` injectively, returns `i`:
-/// a plain extract, possibly strided (`%affine.semiop.mul` by a non-zero literal) and/or shifted
-/// (`%affine.op.add`/`sub` with a loop-invariant `%affine.lit` on the other side).
+/// a plain extract, possibly strided (`affine.semiop.mul` by a non-zero literal) and/or shifted
+/// (`affine.op.add`/`sub` with a loop-invariant `affine.lit` on the other side).
 /// Everything else — `mod`/`div`, sums of two loop indices (convolution windows), symbolic strides
 /// (which may be 0 at runtime) — yields nothing.
 static std::optional<u64> injective_coord(const Def* var, const Def* e) {
-    // A one-loop domain «1; %affine.Idx» collapses to a plain %affine.Idx, so the var itself is coordinate 0.
+    // A one-loop domain «1; affine.Index» collapses to a plain affine.Index, so the var itself is coordinate 0.
     if (e == var) return 0;
     if (auto ex = e->isa<Extract>(); ex && ex->tuple() == var) return Lit::isa<u64>(ex->index());
 
@@ -105,7 +105,7 @@ struct Slots {
 };
 
 /// If `value` is a pure re-indexed read — a copy-combiner map_reduce (reshape/transpose/slice/
-/// flip/repeat lower to these) or a `%tensor.broadcast` — returns its source and access map, to be
+/// flip/repeat lower to these) or a `tensor.broadcast` — returns its source and access map, to be
 /// composed behind the consuming slot's map. Such reads perform no computation, so reading through
 /// them needs neither an injectivity gate nor a consumer count.
 static std::optional<PureRead> read_through(World& w, const Def* value, const Def* slot_map) {
@@ -126,7 +126,7 @@ static std::optional<PureRead> read_through(World& w, const Def* value, const De
 
         // Source axis d reads o#d where the sizes agree and index 0 where the source axis is 1
         // (expressed as `o#d · 0`, like `bid_map`). Bail on axes where neither is provable.
-        auto vec_ty = slot_map->type()->as<Pi>()->codom(); // «r; %affine.Idx»
+        auto vec_ty = slot_map->type()->as<Pi>()->codom(); // «r; affine.Index»
         auto lam    = w.mut_lam(vec_ty, vec_ty)->set("bcast_map");
         DefVec elems(*r_l);
         for (u64 d = 0; d < *r_l; ++d) {
@@ -150,7 +150,7 @@ static std::optional<PureRead> read_through(World& w, const Def* value, const De
 // Fuses an outer `tensor.map_reduce` with any number of its inputs — and, recursively, any
 // fusible inputs of those inputs — whenever each such input is itself a `tensor.map_reduce`
 // without reduction loops (`Rr = 0`) that writes its full loop domain through the identity output
-// map (`Sr = So`, `map_out = %affine.id`), *and* the outer reads that input injectively (its
+// map (`Sr = So`, `map_out = affine.id`), *and* the outer reads that input injectively (its
 // access map uses every loop index, see `reads_injectively`). Reading such an inner tensor at a
 // position is then just a single call to the inner combination function, with each inner access
 // map composed behind the outer's access map for that input; injectivity guarantees that this
@@ -232,7 +232,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         // We can only fuse when the inner has no reduction loops and writes every cell of its full
         // loop domain through the identity output map. In that case the inner tensor at any
         // position is just a single call of `inner_comb` at that position.
-        // The identity map (`%affine.id`) is recognized structurally (a lam returning its own var),
+        // The identity map (`affine.id`) is recognized structurally (a lam returning its own var),
         // since the rewrite into this phase's world rebuilds mutables and breaks pointer equality.
         auto inner_ro = Lit::isa<u64>(inner_Ro);
         auto inner_rn = Lit::isa<u64>(inner_Rn);
@@ -399,7 +399,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
 // duplicating the whole reduction loop nest.
 //
 // `callee`/`arg` are new-world (already rewritten): the caller iterates this on freshly fused apps.
-/// Is `map` the row-major reshape read `%tensor.reshape_map (s_in, s_out)` — the map that reads a
+/// Is `map` the row-major reshape read `tensor.reshape_map (s_in, s_out)` — the map that reads a
 /// PACKED producer (its output strip-mined to `s_in`) at the unpacked coordinates `s_out`?
 /// Decided by normalization: both `map` and the canonical unpack map are applied to the same probe
 /// variable; the reduced bodies are hash-consed, so pointer equality decides alpha-equivalence.
@@ -570,7 +570,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
 }
 
 // Rewires every input slot — combiner and epilogue alike — that is a pure re-indexed read
-// (a copy-combiner map_reduce or a `%tensor.broadcast`, see `read_through`) to read the underlying
+// (a copy-combiner map_reduce or a `tensor.broadcast`, see `read_through`) to read the underlying
 // source directly, with the read's access map composed behind the slot's map. This absorbs
 // reshape/transpose/slice/flip/repeat/broadcast chains into the access maps of the consuming
 // map_reduce, so they never materialize; the bypassed op dies with cleanup unless someone else

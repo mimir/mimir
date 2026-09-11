@@ -15,10 +15,10 @@ namespace mim::plug::cps {
 /// ```
 /// f_cps: Cn [a: A, Cn B]
 /// ```
-/// and every use of `f` is replaced by `%cps.cps2ds_dep (A, λ a: B) f_cps` to remain type-correct.
+/// and every use of `f` is replaced by `cps.cps2ds_dep (A, λ a: B) f_cps` to remain type-correct.
 ///
 /// Call sites are lifted on the fly:
-/// When the recursive rewrite encounters `App (%cps.cps2ds_dep (T, U) k) arg` inside a continuation,
+/// When the recursive rewrite encounters `App (cps.cps2ds_dep (T, U) k) arg` inside a continuation,
 /// it allocates a fresh continuation `cont` receiving the result, records the pending call `k (arg, cont)`,
 /// and uses `cont`'s variable as the value of the App.
 /// Once the enclosing Lam is done, the pending calls are wired up in encounter order - which respects

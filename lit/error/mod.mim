@@ -5,22 +5,26 @@ mod foo {
 }
 
 mod outer {
-    mod inner {
-        let x = 42;
+    pub mod inner {
+        pub let x = 42;
     }
 }
 
 let a = foo.nope;
 let b = a.bar;
 use a;
-lam extern f(): Nat = foo;
+extern lam f(): Nat = foo;
 let c = outer.inner.nope;
 let d = outer.inner.x.y;
-let e = foo.where;
+
+mod p { priv let hidden = 42; }
+use p as q;
+let e = q.hidden;
 
 // CHECK: {{.*}}mod.mim:13:13-13:16: error: `foo` has no member `nope`
-// CHECK: {{.*}}mod.mim:14:11-14:13: error: `a` is not a module
+// CHECK: {{.*}}mod.mim:14:9: error: `a` is not a module
 // CHECK: {{.*}}mod.mim:15:5: error: `a` is not a module
 // CHECK: {{.*}}mod.mim:17:21-17:24: error: `inner` has no member `nope`
-// CHECK: {{.*}}mod.mim:18:23: error: `x` is not a module
-// CHECK: {{.*}}mod.mim:19:13-19:17: error: `foo` has no member `where`
+// CHECK: {{.*}}mod.mim:18:21: error: `x` is not a module
+// A `use` alias is just another name for the module - `priv` blocks a path through it just the same.
+// CHECK: {{.*}}mod.mim:22:11-22:16: error: `hidden` is private to its enclosing `mod`

@@ -4,5 +4,5 @@ plugin tensor;
 plugin compile;
 
 // CHECK: gather index shape exceeds input shape
-fun extern invalid (input: «2, 3; I32», index: «2, 4; Idx 2»): «2, 4; I32» =
-    return (%tensor.gather ((2, 3), (2, 4)) 0_2 (input, index));
+extern fun invalid (input: «2, 3; I32», index: «2, 4; Idx 2»): «2, 4; I32» =
+    return (tensor.gather ((2, 3), (2, 4)) 0_2 (input, index));

@@ -38,6 +38,28 @@ TEST_CASE("Lexer") {
         CHECK(tok.lit_i() == std::pair(u64(123456789), u64(23)));
     }
 
+    SUBCASE("infix operators and their escaped names") {
+        Lexer lexer(drv, "+ - * / % == != -> `+ `- `* `/ `% `== `!=");
+
+        CHECK(lexer.lex().isa(Tok::Tag::T_add));
+        CHECK(lexer.lex().isa(Tok::Tag::T_sub));
+        CHECK(lexer.lex().isa(Tok::Tag::T_star));
+        CHECK(lexer.lex().isa(Tok::Tag::T_div));
+        CHECK(lexer.lex().isa(Tok::Tag::T_rem));
+        CHECK(lexer.lex().isa(Tok::Tag::T_eq));
+        CHECK(lexer.lex().isa(Tok::Tag::T_ne));
+        CHECK(lexer.lex().isa(Tok::Tag::T_arrow));
+
+        for (auto op : {"`+"sv, "`-"sv, "`*"sv, "`/"sv, "`%"sv, "`=="sv, "`!="sv}) {
+            auto tok = lexer.lex();
+            CHECK(tok.isa(Tok::Tag::M_id));
+            CHECK(tok.sym() == op);
+        }
+
+        CHECK(lexer.lex().isa(Tok::Tag::EoF));
+        CHECK(drv.error().num_errors() == 0);
+    }
+
     SUBCASE("EoF is sticky") {
         Lexer lexer(drv, "");
         for (int i = 0; i < 10; i++)
@@ -57,32 +79,21 @@ TEST_CASE("Lexer") {
 
         check("asdf \xc0\xc0", "invalid UTF-8");
         check("foo \xaa", "invalid UTF-8");
-        check("+", "stray");
-        check("-", "stray");
+        check("`", "expected one of");
     }
 }
 
 TEST_CASE("Lexer: floating-point literals") {
     Driver drv;
 
-    auto sign = 0;
-    SUBCASE("no sign") { sign = 0; }
-    SUBCASE("+") { sign = 1; }
-    SUBCASE("-") { sign = 2; }
-
-    auto check = [&drv, sign](std::string s, f64 r) {
-        switch (sign) {
-            case 0: break;
-            case 1: s.insert(0, "+"sv); break;
-            case 2: s.insert(0, "-"sv); break;
-            default: fe::unreachable();
-        }
+    // A sign is an infix operator to the Lexer; Parser::parse_lit_expr applies it to the literal.
+    auto check = [&drv](std::string s, f64 r) {
         CAPTURE(s);
 
         Lexer lexer(drv, s);
         auto tok = lexer.lex();
         CHECK(tok.isa(Tok::Tag::L_f));
-        CHECK(std::bit_cast<f64>(tok.lit_u()) == (sign == 2 ? -r : r));
+        CHECK(std::bit_cast<f64>(tok.lit_u()) == r);
     };
 
     // clang-format off

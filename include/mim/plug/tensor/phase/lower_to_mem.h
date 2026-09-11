@@ -7,16 +7,15 @@
 namespace mim::plug::tensor::phase {
 
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
-/// `get` / `set` become `%buffer.read` / `%buffer.write`, `map_reduce` / `broadcast` / `pad` / `concat` /
-/// `gather` / `scatter`
-/// become their buffer-world `%btensor.*` counterparts,
-/// and tensor array values `«s; T»` become `%buffer.Buf (r, s, T)` handles.
-/// Afterwards `%buffer.lower_ptr` lowers the buffer layer to `%mem.Ptr` + `%mem.lea` / `%mem.load` / `%mem.store`.
+/// `get` / `set` become `buffer.read` / `buffer.write`, `map_reduce` / `broadcast` / `pad` / `concat` /
+/// `gather` / `scatter` become their buffer-world `btensor.*` counterparts,
+/// and tensor array values `«s; T»` become `buffer.Buf (r, s, T)` handles.
+/// Afterwards `buffer.lower_ptr` lowers the buffer layer to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store`.
 ///
-/// This phase is *conversion-only*: it rewrites types and operations but does not thread the `%mem.M`
-/// memory monad itself. Emitted buffer operations consume a `⊥: %mem.M 0` placeholder (or a short local
+/// This phase is *conversion-only*: it rewrites types and operations but does not thread the `mem.M`
+/// memory monad itself. Emitted buffer operations consume a `⊥: mem.M 0` placeholder (or a short local
 /// chain rooted in a LowerToMem::fresh_mem continuation's var), and the SSA value dependencies keep them
-/// anchored and ordered. The `%mem.add_mem` phase
+/// anchored and ordered. The `mem.add_mem` phase
 /// (mim::plug::mem::phase::AddMem), scheduled right after this one in the pipeline, then mem-extends all
 /// continuations and rewires every memory operand to the scheduler-placed current memory — handling returns,
 /// error continuations, join points, branch arms, and interleaving with a caller's own memory operations
@@ -54,11 +53,11 @@ private:
     /// continuation arguments pass through (their domains are converted by `rewrite_mut_Lam`).
     const Def* lower_call(const App*, Lam* old_callee);
 
-    /// Converts an argument to a converted parameter type: tensor values become buffers (via `%buffer.init`
+    /// Converts an argument to a converted parameter type: tensor values become buffers (via `buffer.init`
     /// on a `⊥` memory), recursing through sigmas; anything else is `rewrite`d.
     const Def* materialize(const Def* old_ty, const Def* old_arg);
 
-    /// The already rewritten @p val as a `%buffer.Buf`, materializing a value-world tensor (e.g. a literal)
+    /// The already rewritten @p val as a `buffer.Buf`, materializing a value-world tensor (e.g. a literal)
     /// from its old-world @p old.
     /// The result is *not* a buffer if @p old's type was not recorded as a tensor type.
     const Def* to_buffer(const Def* val, const Def* old);
@@ -68,9 +67,9 @@ private:
     const Def* buffer_list(const Def* list, const Def* old_list, const Def* n);
 
     /// Fills a fresh buffer of (old) array type `arr_ty` with the (already rewritten) scalar `scalar`, via
-    /// `%buffer.lit`. `%btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
-    /// monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).
-    /// Used for constant splats `‹s; c›` and scalar `%tensor.broadcast`s.
+    /// `buffer.lit`. `btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
+    /// monolithic `mem.store` of a giant literal array (which the LLVM backend cannot digest).
+    /// Used for constant splats `‹s; c›` and scalar `tensor.broadcast`s.
     const Def* splat_buffer(const Def* arr_ty, const Def* scalar);
 
     /// Buffer-reuse policy. `false` (the initial *always-allocate-and-copy* policy) is always sound.
@@ -82,10 +81,10 @@ private:
     /// fallback in the default pipeline).
     void collect_tensor_types();
 
-    /// Builds the `%buffer.Buf` type for an old tensor array type `«s; T»` (peeling the nested `Arr`s).
+    /// Builds the `buffer.Buf` type for an old tensor array type `«s; T»` (peeling the nested `Arr`s).
     const Def* buf_of(const Def* arr_ty);
 
-    /// Converts a boundary type: tensor array types become `%buffer.Buf`, recursing through (immutable) sigmas
+    /// Converts a boundary type: tensor array types become `buffer.Buf`, recursing through (immutable) sigmas
     /// so that grouped parameters like `[«s; T», Idx s]` are converted as well; anything else is `rewrite`d.
     const Def* conv_boundary(const Def* t);
 
@@ -94,27 +93,27 @@ private:
     /// buffer must match the folded shape.
     const Def* fold_index(const Def* shape, const Def* idx);
 
-    /// A `⊥: %mem.M 0` placeholder consumed by emitted buffer operations; AddMem replaces it with the
+    /// A `⊥: mem.M 0` placeholder consumed by emitted buffer operations; AddMem replaces it with the
     /// scheduler-placed current memory.
     /// Shared by every op whose result is a pure function of its value operands, so that genuinely equal
     /// ops still collapse into one (e.g. a weight literal materialized at many sites).
     const Def* bot_mem();
 
-    /// A *fresh* `%mem.M 0` for one emitted buffer/btensor operation: the var of a newly minted continuation
-    /// `con fresh_mem(mem: %mem.M 0)` that receives its memory once LowerToMem::wrap_fresh_mem has chained it
+    /// A *fresh* `mem.M 0` for one emitted buffer/btensor operation: the var of a newly minted continuation
+    /// `con fresh_mem(mem: mem.M 0)` that receives its memory once LowerToMem::wrap_fresh_mem has chained it
     /// in front of the enclosing lam's body.
     /// Required by every op that allocates a buffer it then writes into, for two independent reasons:
-    /// 1. Immutable Def%s are hash-consed, so two `%buffer.alloc`s agreeing on `(r, s, T)` and sharing one
+    /// 1. Immutable Def%s are hash-consed, so two `buffer.alloc`s agreeing on `(r, s, T)` and sharing one
     ///    placeholder collapse into a single allocation - two distinct tensors would alias one buffer.
     /// 2. AddMem is a memoizing Rewriter, so two operations sharing one argument tuple
-    ///    `(⊥: %mem.M 0, …)` - which happens whenever they differ only in their curried callee - are threaded
-    ///    from the *same* current memory, and the resulting parallel mem chains collapse in `%cps.conv`.
+    ///    `(⊥: mem.M 0, …)` - which happens whenever they differ only in their curried callee - are threaded
+    ///    from the *same* current memory, and the resulting parallel mem chains collapse in `cps.conv`.
     /// Mutables are never hash-consed, so the continuations' vars are distinct by construction - no
     /// distinguishing tag required.
     const Def* fresh_mem();
 
     /// Chains the LowerToMem::pending_ continuations in front of @p new_lam's freshly rewritten body:
-    /// `new_lam ↦ %mem.fresh (0, k₁)`, `k₁ ↦ %mem.fresh (0, k₂)`, …, and the last one carries the body.
+    /// `new_lam ↦ mem.fresh (0, k₁)`, `k₁ ↦ mem.fresh (0, k₂)`, …, and the last one carries the body.
     /// AddMem resolves each request by jumping to the continuation with the scheduler-placed current memory,
     /// and the `tt` filter beta-reduces the continuations away again as soon as that happens.
     void wrap_fresh_mem(Lam* new_lam);

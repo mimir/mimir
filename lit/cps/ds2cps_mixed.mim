@@ -3,14 +3,15 @@
 
 plugin core;
 plugin cps;
+plugin mem;
 
 
-lam f(a: I32): I32 = %core.wrap.add 0 (2I32, a);
+lam f(a: I32): I32 = core.wrap.add 0 (2I32, a);
 
-fun h(mem: %mem.M 0, a: I32): [%mem.M 0, I32] =
-    return (mem, f a);
+fun h(m: mem.M 0, a: I32): [mem.M 0, I32] =
+    return (m, f a);
 
-fun extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr0 (%mem.Ptr0 I8)): [%mem.M 0, I32] =
-    h ((mem, 40I32), return);
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
+    h ((m, 40I32), return);
 
 // CHECK-DAG: return{{.*}}42

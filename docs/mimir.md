@@ -62,28 +62,28 @@ The examples below use the [`%core`](@ref core) plugin throughout, hence the `pl
 
 ### Annexes
 
-An **annex** is any entity a plugin exports; you reference it with the `%%plugin.path` syntax, such as `%%core.wrap.add` or `%%core.select` from the [`%core`](@ref core) plugin.
+An **annex** is any entity a plugin exports; you reference it with the `plugin.path` syntax, such as `core.wrap.add` or `core.select` from the [`%core`](@ref core) plugin.
 Annexes come in two flavors: Axioms and other definitions.
 
 #### Axioms
 
 These are opaque primitives with *no* Mim definition.
 Their meaning comes from the plugin's C++ side (see below), not from any Mim code.
-`%%core.wrap.add` (machine addition) and `%%core.pe.is_closed` (which checks whether an expression contains no free variables) are treated as axioms.
+`core.wrap.add` (machine addition) and `core.pe.is_closed` (which checks whether an expression contains no free variables) are treated as axioms.
 
 Axioms get their behavior from **normalizers**: small C++ functions that live *inside* the plugin's shared library, each attached to an axiom.
 Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, on the fly** — so the simplified node is the only one that ever exists.
-[Constant folding](https://en.wikipedia.org/wiki/Constant_folding) and [peephole](https://en.wikipedia.org/wiki/Peephole_optimization) rewrites such as `x + 0 → x` are implemented exactly this way: you never build `%%core.wrap.add (x, 0)` and optimize it away later — it collapses to `x` at construction time.
+[Constant folding](https://en.wikipedia.org/wiki/Constant_folding) and [peephole](https://en.wikipedia.org/wiki/Peephole_optimization) rewrites such as `x + 0 → x` are implemented exactly this way: you never build `core.wrap.add (x, 0)` and optimize it away later — it collapses to `x` at construction time.
 
 #### Other Definitions
 
 These are ordinary Mim values, written as plain Mim.
-`%%core.select`, for instance, is just
+`core.select`, for instance, is just
 ```
-lam %core.select {T: *} (cond, t, f): T = (f, t)#cond;
+lam core.select {T: *} (cond, t, f): T = (f, t)#cond;
 ```
 Being a direct-style function, it carries the default `tt` [`filter`](@ref mim::Lam::filter), which tells MimIR to **β-reduce its applications eagerly during graph construction**.
-So a call `%%core.select (a, b, c)` is inlined on the spot, collapsing to the indexed read `(c, b)#a` — the `select` itself never appears in the graph.
+So a call `core.select (a, b, c)` is inlined on the spot, collapsing to the indexed read `(c, b)#a` — the `select` itself never appears in the graph.
 
 ## SSA via CPS {#mimir_cps}
 
@@ -137,11 +137,11 @@ Correspondence between SSA form and CPS in MimIR:
 | φ-function at a block head           | continuation parameter (a *block argument*), e.g. `loop (i acc: I32)`    |
 | φ-argument `[ v, %pred ]`            | the value passed at a call site: `loop (0I32, 0I32)`, `loop (next, sum)` |
 | `br label %loop` (goto)              | tail call `loop (next, sum)`                                             |
-| `br i1 %cond, %body, %exit` (branch) | `%%core.select (cond, body, exit) ()` — pick the target, then apply       |
+| `br i1 %cond, %body, %exit` (branch) | `core.select (cond, body, exit) ()` — pick the target, then apply       |
 | `ret i32 %acc` (return)              | `return acc` — call the function's return continuation                   |
 
 The function `count` itself is written with `fun` / `return`: sugar that threads an explicit return continuation through, so it reads like an ordinary function even though it is CPS underneath.
-As explained in the [Plugins](@ref mimir_plugins) section above, the *annex* `%%core.select` is an ordinary direct-style lambda, so its `tt` filter makes the branch `%%core.select (cond, body, exit)` collapse to the indexed read `(exit, body)#cond` during construction — no `select` node survives.
+As explained in the [Plugins](@ref mimir_plugins) section above, the *annex* `core.select` is an ordinary direct-style lambda, so its `tt` filter makes the branch `core.select (cond, body, exit)` collapse to the indexed read `(exit, body)#cond` during construction — no `select` node survives.
 That is what the graph below actually shows.
 
 CPS makes three pieces of SSA folklore explicit:
@@ -235,7 +235,7 @@ The two styles even mix within one curried function: the outer arguments can be 
 
 The function `iter f (n, x)` applies `f` to `x` exactly `n` times.
 It is [**polymorphic**](https://en.wikipedia.org/wiki/Parametric_polymorphism) — the element type `T` is just another argument, passed implicitly in `{}` — and recursive.
-The `@(%%core.pe.is_closed n)` filter is a [**partial-evaluation**](https://en.wikipedia.org/wiki/Partial_evaluation) directive: whenever `n` is a constant, MimIR unrolls the recursion away at compile time:
+The `@(core.pe.is_closed n)` filter is a [**partial-evaluation**](https://en.wikipedia.org/wiki/Partial_evaluation) directive: whenever `n` is a constant, MimIR unrolls the recursion away at compile time:
 
 \include "iter.mim"
 
@@ -250,10 +250,10 @@ Each step hands a *partially applied* function — `add x`, `mul x` — to `iter
 The final line is a **compile-time assertion**:
 
 ```mim
-let _ = %refly.equiv.struc_eq (pow 3 5, 243);
+let _ = refly.equiv.struc_eq (pow 3 5, 243);
 ```
 
-Because `iter` carries the `@(%%core.pe.is_closed n)` [partial-evaluation](https://en.wikipedia.org/wiki/Partial_evaluation) filter — and every function in the tower is direct-style with the default `tt` filter — MimIR evaluates `pow 3 5` **completely during graph construction**: the whole tower unrolls to the literal `243`, and `%%refly.equiv.struc_eq` statically checks it.
+Because `iter` carries the `@(core.pe.is_closed n)` [partial-evaluation](https://en.wikipedia.org/wiki/Partial_evaluation) filter — and every function in the tower is direct-style with the default `tt` filter — MimIR evaluates `pow 3 5` **completely during graph construction**: the whole tower unrolls to the literal `243`, and `refly.equiv.struc_eq` statically checks it.
 A mismatch would fail the build.
 
 Now notice what *survives*.
@@ -284,7 +284,7 @@ Watch a *type* come out of an ordinary function:
 
 `Vec` is just a `lam` — but it returns `*`, the type of types, so it is a function `Nat → *`: a [type constructor](https://en.wikipedia.org/wiki/Type_constructor).
 `zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the *value* `n` of its argument.
-Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `%%core.select` above, even though the result is a *type* — and `%%refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
+Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `core.select` above, even though the result is a *type* — and `refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
 
 @image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown (type edges are dashed)"
 

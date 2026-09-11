@@ -1,0 +1,7 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+anx mod foo {
+    pub let x = 42;
+}
+
+// CHECK: {{.*}}anx_mod.mim:3:1-3:3: error: `anx` doesn't apply to a module - it groups declarations, not a single value

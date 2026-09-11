@@ -2,15 +2,15 @@
 // RUN: %mim -p opt %s -o -
 plugin math;
 
-rec Vec1 = [x: %math.F64];
-rec vec1 = [X: %math.F64];
-rec Vec3 = [x: %math.F64, y: %math.F64, z: %math.F64];
-rec Vec2 = [x: %math.F64, y: %math.F64];
-rec Vec4 = [x: %math.F64, y: %math.F64, z: %math.F64, w: %math.F64];
+rec Vec1 = [x: math.F64];
+rec vec1 = [X: math.F64];
+rec Vec3 = [x: math.F64, y: math.F64, z: math.F64];
+rec Vec2 = [x: math.F64, y: math.F64];
+rec Vec4 = [x: math.F64, y: math.F64, z: math.F64, w: math.F64];
 
 rec Foo = [
-    x: %math.F64,
-    y: %math.F64,
+    x: math.F64,
+    y: math.F64,
     bar:
         rec Bar = [
             n: Nat,
@@ -21,9 +21,9 @@ rec Foo = [
 
 rec F: * = Nat → F; // TODO make inference for F work again
 
-lam extern f1 v: Vec1: %math.F64 = v#x;
-lam extern F1 v: vec1: %math.F64 = v#X;
-lam extern f2 v: Vec2: %math.F64 = v#y;
-lam extern f3 v: Vec3: %math.F64 = v#y;
-lam extern f4 v: Vec4: %math.F64 = v#y;
-lam extern f5 f: Foo: Bool     = f#bar#b;
+extern lam f1 v: Vec1: math.F64 = v#x;
+extern lam F1 v: vec1: math.F64 = v#X;
+extern lam f2 v: Vec2: math.F64 = v#y;
+extern lam f3 v: Vec3: math.F64 = v#y;
+extern lam f4 v: Vec4: math.F64 = v#y;
+extern lam f5 f: Foo: Bool     = f#bar#b;

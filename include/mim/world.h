@@ -236,6 +236,10 @@ public:
             return attach(Annex::flags(p, t, s), sym, def);
         }
 
+        /// Registers a further Sym for an *already* attach()ed annex, sharing its flags_t; @see mim::ast::AliasDecl.
+        void attach_alias(flags_t, Sym);
+        void attach_alias(plugin_t p, tag_t t, sub_t s, Sym sym) { attach_alias(Annex::flags(p, t, s), sym); }
+
         /// Overwrites the Def of an *already* attach()ed annex, keeping its Sym.
         /// Unlike attach(), this expects @p flags to be present; @see InplaceRWPhase.
         const Def* reattach(flags_t flags, const Def* def) {
@@ -305,7 +309,7 @@ public:
 
     /// Get Axm from a plugin.
     /// Can be used to get an Axm without sub-tags.
-    /// E.g. use `w.annex<mem::M>();` to get the `%mem.M` Axm.
+    /// E.g. use `w.annex<mem::M>();` to get the `mem.M` Axm.
     template<annex_without_subs id>
     const Def* annex() {
         return annex(Annex::base<id>());

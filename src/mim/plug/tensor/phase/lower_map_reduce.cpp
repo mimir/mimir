@@ -1,5 +1,4 @@
 #include "mim/plug/tensor/phase/lower_map_reduce.h"
-#include "mim/plug/tensor/phase/constraints.h"
 
 #include <optional>
 
@@ -13,6 +12,7 @@
 #include <mim/plug/cps/cps.h>
 #include <mim/plug/mem/mem.h>
 
+#include "mim/plug/tensor/phase/constraints.h"
 #include "mim/plug/tensor/tensor.h"
 
 namespace mim::plug::tensor::phase {
@@ -134,7 +134,7 @@ std::optional<fe::Vector<u64>> lit_projs(const Def* def, u64 n) {
     return res;
 }
 
-/// `select(cond, t, f)` as `(f, t)#cond` (cf. %%core.select); `cond: Bool`.
+/// `select(cond, t, f)` as `(f, t)#cond` (cf. core.select); `cond: Bool`.
 const Def* select(World& w, const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); }
 
 /// Clamps the i64 @p x into `[0, bound − 1]`.
@@ -196,9 +196,9 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         return nullptr;
     }
 
-    // Builds `%affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
-    // mem). The emitted `%affine.map` is lowered to %core arithmetic by the subsequent %affine.lower_index. We
-    // invent a fresh `⊥ : %mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
+    // Builds `affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
+    // mem). The emitted `affine.map` is lowered to %core arithmetic by the subsequent affine.lower_index. We
+    // invent a fresh `⊥ : mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
     auto mem0       = w.app(w.annex<mem::M>(), w.lit_nat(0));
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
         auto a = w.app(w.annex<affine::map>(), w.tuple({m, n}));
@@ -271,7 +271,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         post->set("post");
         current_mut->app(true, comb, {w.tuple({element_acc, w.tuple(input_elements)}), cont});
         return call;
-    } catch (const std::exception& e) { fe::throwf("failed to lower `%tensor.map_reduce`: {}", e.what()); }
+    } catch (const std::exception& e) { fe::throwf("failed to lower `tensor.map_reduce`: {}", e.what()); }
 }
 
 const Def* LowerMapReduce::build_pointwise(const Def* inputs,
@@ -487,7 +487,7 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
 }
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
-    // A `%tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
+    // A `tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
     // its dynamic branch.
     if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));
     if (auto bc = Axm::isa<tensor::broadcast>(app)) {

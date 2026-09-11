@@ -10,19 +10,19 @@ plugin cps;
 use regex;
 
 let Top     = ⊤:Nat;
-let pattern = %regex.conj (%regex.quant.plus  %regex.cls.w, %regex.lit '@');
+let pattern = regex.conj (regex.quant.plus  regex.cls.w, regex.lit '@');
 let len     = 10;
 
-con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [%mem.M 0, I32]) =
-    let (mem, string) = %mem.alloc («len; Char», 0) mem;
-    let mem           = %mem.store (mem, string, "testasdf@\0");
-    match_regex len ((mem, string), exiting)
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
+    let (m, string) = mem.alloc («len; Char», 0) m;
+    let m           = mem.store (m, string, "testasdf@\0");
+    match_regex len ((m, string), exiting)
     where
-        fun match_regex(len: Nat) (mem: %mem.M 0, str: %mem.Ptr0 «len; Char»): [%mem.M 0, Bool] =
-            let (mem, matched, pos) = pattern (mem, str, 0:(Idx len));
-            let end_ = %core.idx len 0 (%core.nat.sub (len, 1));
-            return (mem, %core.bit2.and_ 0 (%core.icmp.e (pos, end_), matched));
-        con exiting(mem: %mem.M 0, return: Bool) = exit (mem, %core.conv.u i32 return)
+        fun match_regex(len: Nat) (m: mem.M 0, str: mem.Ptr0 «len; Char»): [mem.M 0, Bool] =
+            let (m, matched, pos) = pattern (m, str, 0:(Idx len));
+            let end_ = core.idx len 0 (core.nat.sub (len, 1));
+            return (m, core.bit2.and_ 0 (core.icmp.e (pos, end_), matched));
+        con exiting(m: mem.M 0, return: Bool) = exit (m, core.conv.u i32 return)
     end
 
 // CHECK-NOT: %regex.

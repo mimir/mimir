@@ -252,8 +252,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto ext = d->isa<Ext>()) {
         return os << std::format("{}:{}", ext->isa<Bot>() ? bot : top, Op::r(ext->type(), Prec::Lit));
     } else if (auto axm = d->isa<Axm>()) {
-        const auto name = axm->sym();
-        return os << std::format("{}{}", name[0] == '%' ? "" : "%", name);
+        return os << axm->sym();
     } else if (auto lit = d->isa<Lit>()) {
         if (lit->type()->isa<Nat>()) {
             // clang-format off
@@ -475,7 +474,7 @@ void Dumper::dump_lam(Lam* lam) {
     auto is_fun = Lam::isa_returning(last);
     auto is_con = Lam::isa_cn(last) && !is_fun;
 
-    std::print(os, "{}{} {}{}", tab, is_fun ? "fun" : is_con ? "con" : "lam", external(lam), id(lam));
+    std::print(os, "{}{}{} {}", tab, external(lam), is_fun ? "fun" : is_con ? "con" : "lam", id(lam));
     for (auto* c : currys) {
         os << ' ';
         auto num_doms = c->var() ? c->var()->num_tprojs() : c->type()->dom()->num_tprojs();

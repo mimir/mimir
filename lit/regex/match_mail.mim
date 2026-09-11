@@ -37,46 +37,46 @@ let Top = ⊤:Nat;
 // [a-zA-Z]+
 // $
 // ==> [a-zA-Z0-9](?:[a-zA-Z0-9]*[._\-]+[a-zA-Z0-9])*[a-zA-Z0-9]*@[a-zA-Z0-9](?:[a-zA-Z0-9]*[_\-]+[a-zA-Z0-9])*[a-zA-Z0-9]*\.(?:(?:[a-zA-Z0-9]*[_\-]+[a-zA-Z0-9])*[a-zA-Z0-9]+\.)*[a-zA-Z][a-zA-Z]+$
-let letterOrDigit = %regex.disj (%regex.lit '0', %regex.lit '1', %regex.lit '2', %regex.lit '3', %regex.lit '4', %regex.lit '5', %regex.lit '6', %regex.lit '7', %regex.lit '8', %regex.lit '9',
-      %regex.lit 'a', %regex.lit 'b', %regex.lit 'c', %regex.lit 'd', %regex.lit 'e', %regex.lit 'f', %regex.lit 'g', %regex.lit 'h', %regex.lit 'i', %regex.lit 'j', %regex.lit 'k', %regex.lit 'l', %regex.lit 'm',
-      %regex.lit 'n', %regex.lit 'o', %regex.lit 'p', %regex.lit 'q', %regex.lit 'r', %regex.lit 's', %regex.lit 't', %regex.lit 'u', %regex.lit 'v', %regex.lit 'w', %regex.lit 'x', %regex.lit 'y', %regex.lit 'z',
-      %regex.lit 'A', %regex.lit 'B', %regex.lit 'C', %regex.lit 'D', %regex.lit 'E', %regex.lit 'F', %regex.lit 'G', %regex.lit 'H', %regex.lit 'I', %regex.lit 'J', %regex.lit 'K', %regex.lit 'L', %regex.lit 'M',
-      %regex.lit 'N', %regex.lit 'O', %regex.lit 'P', %regex.lit 'Q', %regex.lit 'R', %regex.lit 'S', %regex.lit 'T', %regex.lit 'U', %regex.lit 'V', %regex.lit 'W', %regex.lit 'X', %regex.lit 'Y', %regex.lit 'Z'
+let letterOrDigit = regex.disj (regex.lit '0', regex.lit '1', regex.lit '2', regex.lit '3', regex.lit '4', regex.lit '5', regex.lit '6', regex.lit '7', regex.lit '8', regex.lit '9',
+      regex.lit 'a', regex.lit 'b', regex.lit 'c', regex.lit 'd', regex.lit 'e', regex.lit 'f', regex.lit 'g', regex.lit 'h', regex.lit 'i', regex.lit 'j', regex.lit 'k', regex.lit 'l', regex.lit 'm',
+      regex.lit 'n', regex.lit 'o', regex.lit 'p', regex.lit 'q', regex.lit 'r', regex.lit 's', regex.lit 't', regex.lit 'u', regex.lit 'v', regex.lit 'w', regex.lit 'x', regex.lit 'y', regex.lit 'z',
+      regex.lit 'A', regex.lit 'B', regex.lit 'C', regex.lit 'D', regex.lit 'E', regex.lit 'F', regex.lit 'G', regex.lit 'H', regex.lit 'I', regex.lit 'J', regex.lit 'K', regex.lit 'L', regex.lit 'M',
+      regex.lit 'N', regex.lit 'O', regex.lit 'P', regex.lit 'Q', regex.lit 'R', regex.lit 'S', regex.lit 'T', regex.lit 'U', regex.lit 'V', regex.lit 'W', regex.lit 'X', regex.lit 'Y', regex.lit 'Z'
 );
-let letter = %regex.disj (
-    %regex.lit 'a', %regex.lit 'b', %regex.lit 'c', %regex.lit 'd', %regex.lit 'e', %regex.lit 'f', %regex.lit 'g', %regex.lit 'h', %regex.lit 'i', %regex.lit 'j', %regex.lit 'k', %regex.lit 'l', %regex.lit 'm',
-    %regex.lit 'n', %regex.lit 'o', %regex.lit 'p', %regex.lit 'q', %regex.lit 'r', %regex.lit 's', %regex.lit 't', %regex.lit 'u', %regex.lit 'v', %regex.lit 'w', %regex.lit 'x', %regex.lit 'y', %regex.lit 'z',
-    %regex.lit 'A', %regex.lit 'B', %regex.lit 'C', %regex.lit 'D', %regex.lit 'E', %regex.lit 'F', %regex.lit 'G', %regex.lit 'H', %regex.lit 'I', %regex.lit 'J', %regex.lit 'K', %regex.lit 'L', %regex.lit 'M',
-    %regex.lit 'N', %regex.lit 'O', %regex.lit 'P', %regex.lit 'Q', %regex.lit 'R', %regex.lit 'S', %regex.lit 'T', %regex.lit 'U', %regex.lit 'V', %regex.lit 'W', %regex.lit 'X', %regex.lit 'Y', %regex.lit 'Z'
+let letter = regex.disj (
+    regex.lit 'a', regex.lit 'b', regex.lit 'c', regex.lit 'd', regex.lit 'e', regex.lit 'f', regex.lit 'g', regex.lit 'h', regex.lit 'i', regex.lit 'j', regex.lit 'k', regex.lit 'l', regex.lit 'm',
+    regex.lit 'n', regex.lit 'o', regex.lit 'p', regex.lit 'q', regex.lit 'r', regex.lit 's', regex.lit 't', regex.lit 'u', regex.lit 'v', regex.lit 'w', regex.lit 'x', regex.lit 'y', regex.lit 'z',
+    regex.lit 'A', regex.lit 'B', regex.lit 'C', regex.lit 'D', regex.lit 'E', regex.lit 'F', regex.lit 'G', regex.lit 'H', regex.lit 'I', regex.lit 'J', regex.lit 'K', regex.lit 'L', regex.lit 'M',
+    regex.lit 'N', regex.lit 'O', regex.lit 'P', regex.lit 'Q', regex.lit 'R', regex.lit 'S', regex.lit 'T', regex.lit 'U', regex.lit 'V', regex.lit 'W', regex.lit 'X', regex.lit 'Y', regex.lit 'Z'
 );
-let generalChars = %regex.disj (%regex.cls.w, %regex.lit '-');
-let re = %regex.conj (letterOrDigit,
-            %regex.quant.star (%regex.conj (%regex.quant.star letterOrDigit, %regex.quant.plus (%regex.disj (%regex.lit '.', %regex.lit '_', %regex.lit '-')), letterOrDigit)),
-            %regex.quant.star letterOrDigit,
-            %regex.lit '@',
+let generalChars = regex.disj (regex.cls.w, regex.lit '-');
+let re = regex.conj (letterOrDigit,
+            regex.quant.star (regex.conj (regex.quant.star letterOrDigit, regex.quant.plus (regex.disj (regex.lit '.', regex.lit '_', regex.lit '-')), letterOrDigit)),
+            regex.quant.star letterOrDigit,
+            regex.lit '@',
             letterOrDigit,
-            %regex.quant.star (%regex.conj (%regex.quant.star letterOrDigit, %regex.quant.plus (%regex.disj (%regex.lit '_', %regex.lit '-')), letterOrDigit)),
-            %regex.quant.star letterOrDigit,
-            %regex.lit '.',
-            %regex.quant.star (%regex.conj (
-                            %regex.quant.star (%regex.conj (%regex.quant.star letterOrDigit, %regex.quant.plus (%regex.disj (%regex.lit '_', %regex.lit '-')), letterOrDigit)),
-                            %regex.quant.plus letterOrDigit, %regex.lit '.')),
+            regex.quant.star (regex.conj (regex.quant.star letterOrDigit, regex.quant.plus (regex.disj (regex.lit '_', regex.lit '-')), letterOrDigit)),
+            regex.quant.star letterOrDigit,
+            regex.lit '.',
+            regex.quant.star (regex.conj (
+                            regex.quant.star (regex.conj (regex.quant.star letterOrDigit, regex.quant.plus (regex.disj (regex.lit '_', regex.lit '-')), letterOrDigit)),
+                            regex.quant.plus letterOrDigit, regex.lit '.')),
             letter,
-            %regex.quant.plus letter);
+            regex.quant.plus letter);
 
-ccon strlen[%mem.M 0, %mem.Ptr («⊤:Nat; I8», 0), Cn [%mem.M 0, I32]];
+extern con strlen[mem.M 0, mem.Ptr («⊤:Nat; I8», 0), Cn [mem.M 0, I32]];
 
-con extern main[mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [%mem.M 0, I32]] =
-    (exit, match_argument) # (%core.icmp.ug (argc, 1I32)) (mem, 0I32)
+extern con main[m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]] =
+    (exit, match_argument) # (core.icmp.ug (argc, 1I32)) (m, 0I32)
     where
-        con match_argument[mem: %mem.M 0, I32] =
-            let arg1 = %mem.lea (argv, %core.idx_unsafe 1);
-            let (mem, to_match) = %mem.load (mem, arg1);
-            let (mem, matched, pos) = re (mem, to_match, %core.idx_unsafe 0);
-            strlen(mem, to_match, exit_me)
+        con match_argument[m: mem.M 0, I32] =
+            let arg1 = mem.lea (argv, core.idx_unsafe 1);
+            let (m, to_match) = mem.load (m, arg1);
+            let (m, matched, pos) = re (m, to_match, core.idx_unsafe 0);
+            strlen(m, to_match, exit_me)
             where
-            con exit_me(mem: %mem.M 0, len: I32) =
-                exit (mem, (%core.idx i32 0 255, %core.wrap.sub i32 (len, %core.conv.u i32 pos))#matched)
+            con exit_me(m: mem.M 0, len: I32) =
+                exit (m, (core.idx i32 0 255, core.wrap.sub i32 (len, core.conv.u i32 pos))#matched)
             end
     end;
 

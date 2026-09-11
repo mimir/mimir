@@ -25,10 +25,10 @@ void optimize(World& world) {
         }
     }
 
-    // make all functions `[] -> %compile.Phase` internal
+    // make all functions `[] -> compile.Phase` internal
     for (auto def : world.externals().mutate()) {
         if (auto lam = def->isa<Lam>(); lam && lam->num_doms() == 0) {
-            if (lam->codom()->sym().view() == "%compile.Phase") {
+            if (lam->codom()->sym().view() == "compile.Phase") {
                 if (!compilation) compilation = lam;
                 def->internalize();
             }

@@ -50,8 +50,8 @@ const Def* Lower::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::pool>(app)) return lower_via_impl(app, w.annex<tensor::pool_impl>());
 
     // The dot family's `_impl`s take a leading `fastest_2` with no axiom counterpart — the
-    // `%tensor.fastest_axis` reflection of the right operand, pre-applied here at the staging
-    // point where that operand is concrete (see %tensor.dot_product_impl for the decision).
+    // `tensor.fastest_axis` reflection of the right operand, pre-applied here at the staging
+    // point where that operand is concrete (see tensor.dot_product_impl for the decision).
     if (Axm::isa<tensor::product_2d>(app))
         return lower_via_impl(app, w.app(w.annex<tensor::product_2d_impl>(), fastest_axis_2(app, w.lit_nat(2))));
     if (Axm::isa<tensor::bmm>(app))

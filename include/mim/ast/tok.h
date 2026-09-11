@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+#include <string_view>
 #include <utility>
 
 #include <fe/assert.h>
@@ -25,6 +27,9 @@ namespace ast {
     m(Arrow,   R)       \
     m(Pi,      N)       \
     m(Inj,     R)       \
+    m(Eq,      L)       \
+    m(Add,     L)       \
+    m(Mul,     L)       \
     m(App,     L)       \
     m(Union,   L)       \
     m(Extract, L)       \
@@ -75,10 +80,9 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_Type,   "Type"  )             \
     m(K_Univ,   "Univ"  )             \
     m(K_and,    "and"   )             \
+    m(K_anx,    "anx"   )             \
     m(K_as,     "as"    )             \
     m(K_axm,    "axm"   )             \
-    m(K_ccon,   "ccon"  )             \
-    m(K_cfun,   "cfun"  )             \
     m(K_cn,     "cn"    )             \
     m(K_con,    "con"   )             \
     m(K_end,    "end"   )             \
@@ -100,6 +104,8 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_mod,    "mod"   )             \
     m(K_norm,   "norm"  )             \
     m(K_plugin, "plugin")             \
+    m(K_priv,   "priv"  )             \
+    m(K_pub,    "pub"   )             \
     m(K_rec,    "rec"   )             \
     m(K_ret,    "ret"   )             \
     m(K_rule,   "rule"  )             \
@@ -125,7 +131,6 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(L_str,  "<string literal>"     ) \
     /* misc */                         \
     m(M_id,   "<identifier>"  )        \
-    m(M_anx,  "<annex name>"  )        \
     /* delimiters */                   \
     m(D_angle_l,    "‹")               \
     m(D_angle_r,    "›")               \
@@ -140,6 +145,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(D_quote_l,    "«")               \
     m(D_quote_r,    "»")               \
     /* further tokens */               \
+    m(T_add,        "+")               \
     m(T_arrow,      "→")               \
     m(T_fat_arrow, "=>")               \
     m(T_assign,     "=")               \
@@ -149,14 +155,33 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_box,        "□")               \
     m(T_colon,      ":")               \
     m(T_comma,      ",")               \
+    m(T_div,        "/")               \
     m(T_dollar,     "$")               \
     m(T_dot,        ".")               \
+    m(T_eq,         "==")              \
     m(T_extract,    "#")               \
     m(T_lm,         "λ")               \
+    m(T_ne,         "!=")              \
+    m(T_rem,        "%")               \
     m(T_semicolon,  ";")               \
     m(T_star,       "*")               \
+    m(T_sub,        "-")               \
     m(T_union,      "∪")               \
     m(T_pipe,       "|")               \
+
+/// @name Infix Operator Table
+/// X-macro listing all infix operators as `m(tag, str, prec)`.
+/// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
+///@{
+#define MIM_INFIX(m)      \
+    m(T_eq,   "==", Eq )  \
+    m(T_ne,   "!=", Eq )  \
+    m(T_add,  "+",  Add)  \
+    m(T_sub,  "-",  Add)  \
+    m(T_star, "*",  Mul)  \
+    m(T_div,  "/",  Mul)  \
+    m(T_rem,  "%",  Mul)
+///@}
 
 #define MIM_SUBST(m)                  \
     m("lm",     T_lm   )              \
@@ -186,6 +211,26 @@ public:
 #undef CODE
             return true;
             default: return false;
+        }
+    }
+    /// Precedence of the infix operator @p tag; `std::nullopt` if @p tag isn't one.
+    static constexpr std::optional<Prec> infix_prec(Tag tag) {
+        switch (tag) {
+#define CODE(t, str, prec) \
+    case Tag::t: return Prec::prec;
+            MIM_INFIX(CODE)
+#undef CODE
+            default: return {};
+        }
+    }
+    /// Name the infix operator @p tag desugars to - including the leading `` ` ``.
+    static constexpr std::string_view infix_sym(Tag tag) {
+        switch (tag) {
+#define CODE(t, str, prec) \
+    case Tag::t: return "`" str;
+            MIM_INFIX(CODE)
+#undef CODE
+            default: fe::unreachable();
         }
     }
     static constexpr Tok::Tag delim_l2r(Tag tag) { return Tok::Tag(int(tag) + 1); }
@@ -230,7 +275,7 @@ public:
 
     bool isa(Tag tag) const { return tag == tag_; }
     Tag tag() const { return tag_; }
-    bool has_sym() const { return isa(Tag::M_id) || isa(Tag::M_anx) || isa(Tag::L_str); }
+    bool has_sym() const { return isa(Tag::M_id) || isa(Tag::L_str); }
     /// @note A failed Parser::expect yields a Nil Tok; its Dbg is anonymous instead of asserting in Tok::sym.
     Dbg dbg() const { return {loc(), has_sym() ? sym_ : Sym()}; }
     Loc loc() const { return loc_; }
@@ -240,8 +285,6 @@ public:
     char8_t    lit_c() const { assert(isa(Tag::L_c)); return c_;   }
     uint64_t   lit_u() const { assert(isa(Tag::L_u ) || isa(Tag::L_s ) || isa(Tag::L_f  )); return u_;   }
     Sym        sym()   const { assert(has_sym()); return sym_; }
-    /// Source spelling of a keyword; null for `λ`/`⊥`/`⊤`, which have no `id` spelling.
-    Sym        key_sym() const { assert(is_key(tag_)); return sym_; }
     // clang-format on
     std::string str() const;
 

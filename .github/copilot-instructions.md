@@ -30,7 +30,7 @@ Assume a `build/` tree configured with
   In-tree plugins live in `src/mim/plug/*`; plugins under `extra/*/CMakeLists.txt` are auto-discovered at configure time and their `extra/<plugin>/lit/*.mim` tests are staged into `lit`.
   Plugin names may only use letters, digits, and underscores, and are limited to 8 characters.
 - Optimization is phase-driven.
-  `optimize(World&)` looks for an entry point (`_compile`, `_default_compile`, or any nullary external returning `%compile.Phase`), resolves stages from the plugin registry, and runs a `Phase`/`RWPhase`/`PhaseMan` pipeline; without an entry point optimization is skipped.
+  `optimize(World&)` looks for an entry point (`_compile`, `_default_compile`, or any nullary external returning `compile.Phase`), resolves stages from the plugin registry, and runs a `Phase`/`RWPhase`/`PhaseMan` pipeline; without an entry point optimization is skipped.
   `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end; `Analysis` and `PhaseMan` provide the fixed-point machinery.
   Use these instead of ad hoc whole-program traversals — the old `Pass`/`PassMan` machinery is gone.
 - `src/automaton/` is a separate static library backing the regex subsystem.

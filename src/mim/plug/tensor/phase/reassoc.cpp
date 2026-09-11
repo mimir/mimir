@@ -313,7 +313,7 @@ const Def* Reassoc::dispatch(const Def* head, const Def* res_ty, Defs mats, Defs
     auto pi = w.pi(w.sigma(), res_ty);
 
     // Each bracketing goes behind a thunk so that only the selected one runs. The filter is `tt`, so once
-    // the comparison folds - a caller that knows the extents, `%compile.lam_spec` - the winner inlines and
+    // the comparison folds - a caller that knows the extents, `compile.lam_spec` - the winner inlines and
     // the losers become unreachable.
     const Def* best      = nullptr;
     const Def* best_cost = nullptr;

@@ -1,19 +1,21 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
-axm %foo.T: [Nat → Nat] → *;
-axm %foo.t: [f: Nat → Nat] → %foo.T f;
+pub mod foo {
+    axm T: [Nat → Nat] → *;
+    axm t: [f: Nat → Nat] → T f;
+}
 
 lam f(x: Nat): [] =
     lam g(y: Nat): Nat = y;
     lam h(z: Nat): Nat = x;
 
-    lam i(_: %foo.T g): [] = ();
+    lam i(_: foo.T g): [] = ();
 
-    let x = %foo.t h;
+    let x = foo.t h;
     i x;
 
-// CHECK: {{.*}}var.mim:13:5-13:7: error: argument is not assignable to callee's domain
-// CHECK-NEXT: 13 |     i x;
+// CHECK: {{.*}}var.mim:15:5-15:7: error: argument is not assignable to callee's domain
+// CHECK-NEXT: 15 |     i x;
 // CHECK-NEXT:    |     ^^^
-// CHECK-NEXT:    = note: expected `%foo.T g`, got `%foo.T h`
-// CHECK: {{.*}}var.mim:10:5-10:31: note: callee `i` declared here
+// CHECK-NEXT:    = note: expected `var.foo.T g`, got `var.foo.T h`
+// CHECK: {{.*}}var.mim:12:5-12:30: note: callee `i` declared here

@@ -4,10 +4,10 @@
 plugin core;
 plugin vec;
 fun foo{n: Nat} (A B: «n; Nat»):  «n; Nat» =
-    let C = %vec.zip %core.nat.add (A, B);
-    let D = %vec.zip %core.nat.sub (C, ‹n; 1›);
+    let C = vec.zip core.nat.add (A, B);
+    let D = vec.zip core.nat.sub (C, ‹n; 1›);
     return D;
-fun extern bar(): «4; Nat» =
+extern fun bar(): «4; Nat» =
     let A = (1, 2, 3, 4);
     let B = (1, 2, 3, 4);
     ret C = foo @4 $ (A, B);

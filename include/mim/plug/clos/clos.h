@@ -95,7 +95,7 @@ const Pi* clos_type_to_pi(const Def* ct, const Def* new_env_type = nullptr);
 ///@{
 /// `tup_or_sig` should generally be a Tuple, Sigma or Var.
 
-/// Describes where the environment is placed in the argument list: right after a leading `%mem.M`, if @p doms
+/// Describes where the environment is placed in the argument list: right after a leading `mem.M`, if @p doms
 /// starts with one, or in slot 0 otherwise. This way, closures built from mem-free (pure) functions don't gain
 /// a bogus mem-shaped layout, and don't get misaligned with their real parameters (see issue #126).
 inline size_t env_param(Defs doms) { return (!doms.empty() && Axm::isa<mem::M>(doms.front())) ? 1_u64 : 0_u64; }

@@ -67,7 +67,7 @@ const Def* match_range(const Def* c, nat_t lo, nat_t hi) {
     World& w = c->world();
     if (lo == 0 && hi == 255) return w.lit_tt();
 
-    // let in_range     = %core.bit2.and_ 0 (%core.icmp.uge (char, lower),  %core.icmp.ule (char, upper));
+    // let in_range     = core.bit2.and_ 0 (core.icmp.uge (char, lower),  core.icmp.ule (char, upper));
     auto below_hi = w.call(core::icmp::ule, w.tuple({c, w.lit_i8(hi)}));
     auto above_lo = w.call(core::icmp::uge, w.tuple({c, w.lit_i8(lo)}));
     return w.call(core::bit2::and_, w.lit_nat(2), w.tuple({below_hi, above_lo}));
@@ -98,7 +98,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;
 
-    // ((mem: %mem.M 0, string: Str n, pos: Idx n), Cn [%mem.M 0, Bool, Idx n])
+    // ((mem: mem.M 0, string: Str n, pos: Idx n), Cn [mem.M 0, Bool, Idx n])
     auto matcher = w.mut_fun({w.call<mem::M>(0), w.call<mem::Ptr0>(w.arr(n, w.type_i8())), w.type_idx(n)},
                              {w.call<mem::M>(0), w.type_bool(), w.type_idx(n)});
     matcher->debug_prefix(std::string("match_regex"));

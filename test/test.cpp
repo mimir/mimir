@@ -50,14 +50,6 @@ TEST_CASE("Annex") {
         CHECK(Annex::demangle(*Annex::mangle("test") | 0xFF_u64) == "test");
         CHECK(Annex::demangle(*Annex::mangle("01234567") | 0xFF_u64) == "01234567");
     }
-
-    SUBCASE("split") {
-        Driver d;
-        auto [plugin, group, tag] = Annex::split(d, d.sym("%foo.bar.baz"));
-        CHECK(plugin == d.sym("foo"));
-        CHECK(group == d.sym("bar"));
-        CHECK(tag == d.sym("baz"));
-    }
 }
 
 TEST_CASE("core.trait.size") {
@@ -120,7 +112,7 @@ TEST_CASE("Axm: curry and trip") {
 
         std::ostringstream os;
         a3->stream(os, 0);
-        CHECK(os.str() == "%test_5_3 0 1 2 3 42 5 6 42 8 9 42\n");
+        CHECK(os.str() == "test_5_3 0 1 2 3 42 5 6 42 8 9 42\n");
     }
 
     SUBCASE("a Pi that is its own codomain") {
@@ -142,7 +134,7 @@ TEST_CASE("Axm: curry and trip") {
 
         std::ostringstream os;
         a3->stream(os, 0);
-        CHECK(os.str() == "%test_1_1 42 42 42\n");
+        CHECK(os.str() == "test_1_1 42 42 42\n");
     }
 
     SUBCASE("a non-recursive Pi ends its trip") {
@@ -160,7 +152,7 @@ TEST_CASE("Axm: curry and trip") {
 
         std::ostringstream os;
         a2->stream(os, 0);
-        CHECK(os.str() == "%test_3_0 0 1 42 3\n");
+        CHECK(os.str() == "test_3_0 0 1 42 3\n");
     }
 }
 

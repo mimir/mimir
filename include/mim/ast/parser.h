@@ -44,8 +44,8 @@ public:
     const File*
     import(Dbg, bool is_path, Tok::Tag tag = Tok::Tag::K_import, std::ostream* md = nullptr, bool record = true);
     const File* import(const fe::Src&, std::ostream* md = nullptr, Loc = {});
-    /// Imports the @p plugins the Driver was told about via `-p` as anonymous, unaliased Import%s.
-    Ptrs<Import> import_plugins(fe::View<std::string> plugins, Tok::Tag);
+    /// Imports the @p plugins the Driver was told about via `-p` as anonymous, unaliased UseDecl%s.
+    Ptrs<UseDecl> import_plugins(fe::View<std::string> plugins, Tok::Tag);
     /// Slurps @p is, registers it in Driver::src under @p path, and parses it.
     const File* import(std::istream& is, fs::path path, Loc = {}, std::ostream* md = nullptr);
     const File* import_main(std::string_view input, fe::View<std::string> plugins, std::ostream* md = nullptr);
@@ -64,12 +64,8 @@ private:
     ///@{
     Ptr<File> parse_file();
     Dbg parse_id(std::string_view ctxt = {});
-    Dbg parse_name(std::string_view ctxt = {});
-    /// As Parser::parse_id but also accepts a keyword: after a `.` or in an axm sub list a name is
-    /// unambiguous, and annexes such as `%core.nat.mod` rely on it.
-    Dbg parse_member(std::string_view ctxt = {});
     Path parse_path(std::string_view ctxt = {});
-    Ptr<Import> parse_import_or_plugin();
+    Ptr<UseDecl> parse_import_or_plugin();
     Ptr<Expr> parse_type_ascr(std::string_view ctxt = {});
 
     /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.
@@ -110,7 +106,7 @@ private:
         return parse_expr(std::format(fmt, std::forward<Args>(args)...), prec);
     }
     Ptr<Expr> parse_primary_expr(std::string_view ctxt);
-    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot);
+    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot, std::string_view ctxt = {});
     ///@}
 
     /// @name parse primary exprs
@@ -163,14 +159,30 @@ private:
     /// * ... empty: **Only** decls are parsed. @returns `nullptr`
     /// * ... **non**-empty: Decls are parsed, then an expression. @returns expression.
     Ptrs<ValDecl> parse_decls();
-    Ptr<ValDecl> parse_axm_decl();
-    Ptr<ValDecl> parse_let_decl();
-    Ptr<ValDecl> parse_mod_decl();
-    Ptr<ValDecl> parse_use_decl();
-    Ptr<ValDecl> parse_c_decl();
+
+    /// Parses any combination of `priv`/`pub`/`extern`/`anx` modifier tokens, in any order.
+    /// Only rejects a modifier being repeated (`priv priv`, `extern extern`, ...);
+    /// whether a given combination makes sense for the decl that follows is up to that decl's own parser.
+    Mods parse_modifiers();
+    /// Errors if @p mods sets `extern`, for decl kinds that don't support it (`let`/bare `rec`):
+    /// currently only a function declaration (`lam`/`con`/`fun`, see Parser::parse_lam_decl) may be `extern`.
+    /// The default-`Vis` nudge itself lives in Mods::default_vis, resolved lazily by ValDecl::vis.
+    /// `mod` doesn't call this at all: as pure AST grouping it supports neither `extern` nor `anx`
+    /// (see Parser::parse_mod_decl).
+    void check_no_extern(const Mods&, std::string_view entity);
+    void parse_axm_decl(Tracker, Mods, Ptrs<ValDecl>&);
+    /// Parses the `(tag_0 [= alias]*, ...): type[, normalizer[, curry[, trip]]]` tail shared by a bare
+    /// `axm (...)` group and the `axm tag.(...)` family-sugar; each Dbgs is one tag's `[primary, alias, ...]`.
+    Ptrs<ValDecl> parse_axm_group(Vis);
+    /// The `: type[, normalizer[, curry[, trip]]]` tail shared by a plain `axm` and Parser::parse_axm_group.
+    std::tuple<Ptr<Expr>, Dbg, Tok, Tok> parse_axm_tail();
+    Ptr<ValDecl> parse_alias_decl(Tracker, Mods);
+    Ptr<ValDecl> parse_let_decl(Tracker, Mods);
+    Ptr<ValDecl> parse_mod_decl(Tracker, Mods);
+    Ptr<ValDecl> parse_use_decl(Tracker, Mods);
     Ptr<ValDecl> parse_rule_decl();
-    Ptr<LamDecl> parse_lam_decl();
-    Ptr<RecDecl> parse_rec_decl(bool first);
+    Ptr<LamDecl> parse_lam_decl(Tracker, Mods);
+    Ptr<RecDecl> parse_rec_decl(Tracker, bool first, Mods);
     Ptr<RecDecl> parse_and_decl();
     ///@}
 

@@ -6,26 +6,27 @@
 plugin tensor;
 plugin core;
 plugin opt;
+plugin compile;
 
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
+lam add1 (x: Nat): Nat = core.nat.add (x, 1);
 
-fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
+fun sum_reduce (acc x: Nat)@tt: Nat = return (core.nat.add (acc, x));
 
-con extern f (v: «3; «2; Nat»», return: Cn «2; Nat») =
-    let inner = %tensor.unary add1 v;
-    let outer = %tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
-        (%tensor.proj_map 0)
-        (%tensor.proj_map (1, 0), )
+extern con f (v: «3; «2; Nat»», return: Cn «2; Nat») =
+    let inner = tensor.unary add1 v;
+    let outer = tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
+        (tensor.proj_map 0)
+        (tensor.proj_map (1, 0), )
         inner;
     return outer;
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
-// CHECK: %tensor.map_reduce
-// CHECK-NOT: %tensor.map_reduce
+// CHECK: tensor.map_reduce
+// CHECK-NOT: tensor.map_reduce

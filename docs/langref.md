@@ -37,12 +37,12 @@ For example, `λ` and `lm` are lexically equivalent.
 ‹ › « »
 → => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
++ - * / % == !=
 <eof>
 ```
 
-`%` is only part of annex names and is not a standalone token.
-An annex name `A` is a *single* token: only there may `.` occur inside a name, and only there may a component be spelled like a keyword - hence `%affine.Idx` and `%core.nat.mod`.
-Everywhere else `.` is the separator of a [path](@ref path).
+`.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
+`+`, `-`, `*`, `/`, `%`, `==`, and `!=` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
@@ -58,9 +58,9 @@ Everywhere else `.` is the separator of a [path](@ref path).
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
-and as axm ccon cfun cn con end extern ff fn fun
+and anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj ins lam let match mod
-norm plugin rec ret rule tt when where with use
+norm plugin priv pub rec ret rule tt when where with use
 ```
 
 The following names are predefined aliases:
@@ -88,28 +88,26 @@ The following terminals are defined by lexical patterns.
 
 ```ebnf
 I      ::= id
-A      ::= "%" id "." id ("." id)?
+         |  "`" op
 L      ::= dec+
          |  "0" ["bB"] bin+
          |  "0" ["oO"] oct+
          |  "0" ["xX"] hex+
-         |  sign dec+
-         |  sign "0" ["bB"] bin+
-         |  sign "0" ["oO"] oct+
-         |  sign "0" ["xX"] hex+
-         |  sign? dec+ eE sign? dec+
-         |  sign? dec+ "." dec* (eE sign? dec+)?
-         |  sign? dec* "." dec+ (eE sign? dec+)?
-         |  sign? "0" ["xX"] hex+ pP sign? dec+
-         |  sign? "0" ["xX"] hex+ "." hex* pP sign? dec+
-         |  sign? "0" ["xX"] hex* "." hex+ pP sign? dec+
+         |  dec+ eE sign? dec+
+         |  dec+ "." dec* (eE sign? dec+)?
+         |  dec* "." dec+ (eE sign? dec+)?
+         |  "0" ["xX"] hex+ pP sign? dec+
+         |  "0" ["xX"] hex+ "." hex* pP sign? dec+
+         |  "0" ["xX"] hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
          |  dec+ "_" dec+
 C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
-Here `I` is an identifier, `A` is an [annex](@ref mim::Annex) name, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
+`` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
 The shorthand symbols used above are:
 
@@ -123,6 +121,7 @@ eE     ::= ["eE"]
 pP     ::= ["pP"]
 sign   ::= ["+-"]
 id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
+op     ::= ["+-*/%"]
 esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
 ```
 
@@ -157,7 +156,7 @@ e   expression
 f ::= d*
 ```
 
-A file is a sequence of declarations, `import` and `plugin` among them.
+A file is a sequence of declarations.
 Each file forms a [module](@ref path) of its own that an import binds under a name.
 
 - `import foo;` resolves the module name `foo` through the search path.
@@ -166,6 +165,8 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 - `plugin foo;` first loads the plugin `foo` and then imports the module with the same name.
   Only `plugin` loads a shared object; `import` never does.
 - The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
+- `import foo as *;` splices `foo`'s public members into the current scope like a following `use foo;` would - except that `foo` itself is never bound; the same goes for `plugin foo as *;`.
+  Since no name is needed, this form also accepts a file name that isn't an identifier.
 - A file is parsed, bound, and emitted exactly once, no matter how many modules import it.
   Importing a file that is still being parsed is an error.
 - An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
@@ -174,7 +175,6 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 
 ```ebnf
 path ::= I ("." k)*
-      |  A
 k    ::= I | keyword
 ```
 
@@ -183,46 +183,53 @@ A module is either an imported file or a `mod` declaration.
 
 - A component after a `.` may be spelled like a keyword, as may a tag in an `axm` tag list - both positions are unambiguous.
 - `.` never reads a field out of a value; use `#` for that.
-- An annex name `A` is one token and stays a flat, global name: it resolves in the global annex scope regardless of the surrounding modules.
+- An `anx` declaration is an ordinary member of its enclosing module and is found by the same path resolution as any other member; see [Annex](@ref annex) for what additionally makes it an annex.
 
 ### Declarations {#decl}
 
 Mim supports the following declaration families.
-
+Most of them may be prefixed with any combination of three independent modifiers:
+a visibility (`priv` or `pub`), `extern`, and `anx`.
+Visibility is a Mim-only, purely lexical fact - it has no effect on backend linkage or compiler registration.
+`extern` and `anx` are each independent of visibility and of each other;
+either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful, while `extern anx` on the same declaration is a static error.
 ```text
-import (I | S) ["as" I]
-plugin I ["as" I]
+import (I | S) ["as" (I | "*")]
+plugin I ["as" (I | "*")]
 
-mod I "{" d* "}"
-use path
+[priv|pub] mod I "{" d* "}"
+use path ["as" (I | "*")]
 
-let p = e
-let A = e
+[priv|pub] [anx] let p = e
+anx I = path
 
-lam|con|fun [extern] n dom+ [: e] = e
-ccon|cfun I b [: e]
+[priv|pub] [extern] lam|con|fun n dom+ [: e] = e
+[priv|pub] extern lam|con|fun n dom+ [: e] ";"
 
-rec n [: e] = e
+[priv|pub] [anx] rec n [: e] = e
 and n [: e] = e
-and lam|con|fun [extern] n dom+ [: e] = e
+and lam|con|fun n dom+ [: e] = e
 
-axm A ["(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
+[priv|pub] axm k ["." "(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
 
 rule|norm n p : e [when e] => e
 ```
 
-Here `n` is either an identifier or an annex name.
+Here `n` is an identifier.
 
-- `import` and `plugin` bind a file as a module; see [Files and Imports](@ref module).
-- `mod` groups declarations under a name; its body also sees the enclosing scope.
-- `use` splices all members of a module into the current scope.
+- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
+- `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
+- `anx` marks a declaration as an [annex](@ref annex). It doesn't apply to `mod`, since a module is pure AST grouping, not a single value. `axm` is implicitly `anx` and may not combine with `extern`.
+- `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
+- `mod` groups declarations under a name; its body also sees the enclosing scope. Neither `extern` nor `anx` apply to it.
+- `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
 - `let` introduces a binding pattern.
+- `I = path` declares `I` as an alias for the annex denoted by `path`; it is always implicitly `anx`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
-- `extern` may appear on `lam`, `con`, and `fun` declarations.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead. Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
 - Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
-- `ccon` and `cfun` declare external C continuations and C functions.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
-- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration.
+- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
 - `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
@@ -268,15 +275,15 @@ let (a, b, c) as abc = (1, 2, 3);
 This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
 - Bracket-style patterns may also contain general expressions.
-- This is what makes forms such as `[T: *] → T` and `Cn [mem: %mem.M 0, I32]` legal.
+- This is what makes forms such as `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
 - `let` and `ret` allow rebinding of an existing name.
 
 This is especially useful for state-threading style code:
 
 ```mim
-let (mem, ptr) = %mem.alloc (I32, 0) mem;
-let mem        = %mem.store (mem, ptr, 23:I32);
-let (mem, val) = %mem.load (mem, ptr);
+let (mem, ptr) = mem.alloc (I32, 0) mem;
+let mem        = mem.store (mem, ptr, 23:I32);
+let (mem, val) = mem.load (mem, ptr);
 ```
 
 ### Expressions {#expr}
@@ -303,11 +310,11 @@ e   ::= "Univ"
 - `Bool` abbreviates `Idx i1`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
 
-#### Literals and Basic Forms
+#### Literals and Basic Forms {#lit}
 
 ```ebnf
-e   ::= L (":" e)?
-     |  X_n
+e   ::= sign? L (":" e)?
+     |  sign? X_n
      |  "ff"
      |  "tt"
      |  C
@@ -320,6 +327,8 @@ e   ::= L (":" e)?
 ```
 
 - A numeric, character, string, `⊥`, or `⊤` literal may carry an explicit type ascription.
+- A `+`/`-` sign is part of the literal expression, not of the literal token, and only a numeric literal accepts one.
+  Because `+` and `-` are [infix operators](@ref infix) everywhere else, `f -23` subtracts; pass a negative argument as `f (-23)`.
 - Without an explicit type, numeric literals default to `Nat`.
 - Without an explicit type, `⊥` and `⊤` default to `*`.
 - `d+ e` is a declaration expression: one or more declarations followed by a final expression `e`, which is the result.
@@ -383,6 +392,26 @@ e   ::= e "∪" e
 - `e inj t` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
 
+#### Infix Operators {#infix}
+
+```ebnf
+e   ::= e "==" e
+     |  e "!=" e
+     |  e "+" e
+     |  e "-" e
+     |  e "*" e
+     |  e "/" e
+     |  e "%" e
+```
+
+- `a op b` is sugar for `` `op (a, b) ``, so `a + b` is `` `+ (a, b) ``.
+- Mim doesn't give the operators a meaning of their own; whatever `` `op `` is bound to is what they mean:
+  ```mim
+  let `+ = core.nat.add;
+  let x = 2 + 3;
+  ```
+- `*` doubles as the abbreviation of `Type (0:Univ)`, which is why `f *` is a multiplication and not an application; write `f (*)` for the latter.
+
 #### Local Declaration Blocks
 
 ```ebnf
@@ -401,12 +430,15 @@ The current parser uses the following precedence, from strongest to weakest bind
 2.  e # e                  extract
 3.  e ∪ e                  union
 4.  e e, e @ e             application
-5.  e inj e                injection
-6.  e → e                  arrow
-7.  e where d* end         local declaration block
+5.  e * e, e / e, e % e    multiplicative operators
+6.  e + e, e - e           additive operators
+7.  e == e, e != e         equality operators
+8.  e inj e                injection
+9.  e → e                  arrow
+10. e where d* end         local declaration block
 ```
 
-- Extract, union, and application associate left-to-right.
+- Extract, union, application, and the infix operators associate left-to-right.
 - `inj` and `→` associate right-to-left.
 - `where` is the loosest surface operator.
 
@@ -475,9 +507,10 @@ A file is bound in isolation: it never sees the scope of whoever imports it.
 The symbol `_` is special: it never binds an entity.
 As a consequence, `_` may appear repeatedly in the same scope without conflict, but any use of `_` as a reference is a scoping error.
 
-### Annex
+### Annex {#annex}
 
-Annex names live in a separate global scope that the module structure does not partition.
+An `anx` declaration is an ordinary member of its enclosing module, found by the same path resolution as any other member.
+Its plugin-qualified name (`plugin.tag[.sub]`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
 
 ### Field Names of Sigmas
 

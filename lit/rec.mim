@@ -1,9 +1,9 @@
 // RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
 plugin core;
 
-lam is_even(i: Nat): Bool = (is_odd (%core.nat.sub (i, 1)), tt)#(%core.ncmp.e (i, 0))
+lam is_even(i: Nat): Bool = (is_odd (core.nat.sub (i, 1)), tt)#(core.ncmp.e (i, 0))
 and
-lam is_odd (i: Nat): Bool = (is_even(%core.nat.sub (i, 1)), ff)#(%core.ncmp.e (i, 0));
+lam is_odd (i: Nat): Bool = (is_even(core.nat.sub (i, 1)), ff)#(core.ncmp.e (i, 0));
 
-fun extern f(): Bool = return (is_even 4);
+extern fun f(): Bool = return (is_even 4);
 // CHECK-DAG: return{{.*}}tt

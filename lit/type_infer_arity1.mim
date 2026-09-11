@@ -9,13 +9,13 @@ plugin core;
 
 lam f {n: Nat} {R: «n; Nat», S: «i: n; «R#i; Nat»»} (g: «n; Nat») (x: «i: n; «S#i; Nat»»): Nat = 0;
 
-lam extern use0 (dummy: Nat)               : Nat = f ()     ()    ;
-lam extern use1 (a: «3; Nat»)              : Nat = f (1,)   (a,)  ;
-lam extern use2 (a: «3; Nat», b: «4; Nat») : Nat = f (1, 1) (a, b);
+extern lam use0 (dummy: Nat)               : Nat = f ()     ()    ;
+extern lam use1 (a: «3; Nat»)              : Nat = f (1,)   (a,)  ;
+extern lam use2 (a: «3; Nat», b: «4; Nat») : Nat = f (1, 1) (a, b);
 
 // The same, but the arity-1 collapse happens for a term-level `Pack` instead of a type-level `Arr`.
 lam p {n: Nat} {R: «n; Nat», S: «i: n; «R#i; Nat»»}
       (g: «n; Nat») (x: «i: n; «S#i; Nat»»): «i: n; «S#i; Nat»» = ‹i: n; x#i›;
 
-lam extern use_pack1 (a: «3; Nat»)              : «3; Nat»             = p (1,)   (a,)  ;
-lam extern use_pack2 (a: «3; Nat», b: «4; Nat») : [«3; Nat», «4; Nat»] = p (1, 1) (a, b);
+extern lam use_pack1 (a: «3; Nat»)              : «3; Nat»             = p (1,)   (a,)  ;
+extern lam use_pack2 (a: «3; Nat», b: «4; Nat») : [«3; Nat», «4; Nat»] = p (1, 1) (a, b);

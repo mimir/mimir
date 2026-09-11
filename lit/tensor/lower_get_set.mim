@@ -1,6 +1,6 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
-// Isolation test for the value-semantics %tensor.lower_get_set phase (pinned via a custom _compile):
+// Isolation test for the value-semantics tensor.lower_get_set phase (pinned via a custom _compile):
 // all tensors here are local literals, which the buffers-only default pipeline would materialize into
 // buffers and read back at runtime (see lit/buffer/exec_local_tensors.mim) — this test instead checks
 // that the value phase folds everything at compile time.
@@ -10,36 +10,37 @@ plugin core;
 plugin cps;
 plugin affine;
 plugin opt;
+plugin compile;
 
 let m0 = ((1, 2), (3, 4));
 let m1 = ((1, 2, 3), (4, 5, 6));
 let m2 = <(2, 2, 3); 1>;
 
-let g1 = %tensor.get (0₁, 3);
-let g2 = %tensor.get ((1₂, 0₂), m0);
-let g3 = %tensor.get ((1₂, 2₃), m1);
-let g4 = %tensor.get ((0₂, 1₂, 2₃), m2);
+let g1 = tensor.get (0₁, 3);
+let g2 = tensor.get ((1₂, 0₂), m0);
+let g3 = tensor.get ((1₂, 2₃), m1);
+let g4 = tensor.get ((0₂, 1₂, 2₃), m2);
 
-let s1 = %tensor.set (0₁, 3, 5);
-let s2 = %tensor.set ((1₂, 0₂), m0, 12);
-let s3 = %tensor.set ((1₂, 2₃), m1, 24);
-let s4 = %tensor.set ((0₂, 1₂, 2₃), m2, 36);
+let s1 = tensor.set (0₁, 3, 5);
+let s2 = tensor.set ((1₂, 0₂), m0, 12);
+let s3 = tensor.set ((1₂, 2₃), m1, 24);
+let s4 = tensor.set ((0₂, 1₂, 2₃), m2, 36);
 
-let sg2 = %tensor.get ((1₂, 0₂), s2);
-let sg2_1 = %tensor.get ((1₂, 1₂), s2);
-let sg3 = %tensor.get ((1₂, 2₃), s3);
-let sg4 = %tensor.get ((0₂, 1₂, 2₃), s4);
+let sg2 = tensor.get ((1₂, 0₂), s2);
+let sg2_1 = tensor.get ((1₂, 1₂), s2);
+let sg3 = tensor.get ((1₂, 2₃), s3);
+let sg4 = tensor.get ((0₂, 1₂, 2₃), s4);
 
-let _ = %refly.equiv.struc_eq (sg2, 12);
-let _ = %refly.equiv.struc_eq (sg3, 24);
-let _ = %refly.equiv.struc_eq (sg4, 36);
+let _ = refly.equiv.struc_eq (sg2, 12);
+let _ = refly.equiv.struc_eq (sg3, 24);
+let _ = refly.equiv.struc_eq (sg4, 36);
 
-fun extern e1() = return (g2, g3, g4, sg2_1);
+extern fun e1() = return (g2, g3, g4, sg2_1);
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %tensor.lower_get_set,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        tensor.lower_get_set,
+        compile.cleanup,
     );
 
 // CHECK-NOT: tensor.get

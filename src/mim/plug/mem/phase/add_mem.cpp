@@ -10,7 +10,7 @@ namespace mim::plug::mem::phase {
 
 bool AddMem::analyze() {
     // Collect the lams whose ABI is pinned: everything (transitively) reachable from an axm-app argument
-    // (combiners, affine index mappings, initial accumulators of `%btensor.map_reduce_post`, …).
+    // (combiners, affine index mappings, initial accumulators of `btensor.map_reduce_post`, …).
     auto queue  = fe::BFSWorklist<DefSet>();
     auto pinned = fe::BFSWorklist<DefSet>();
     for (auto mut : old_world().externals().muts())
@@ -19,7 +19,7 @@ bool AddMem::analyze() {
     while (!queue.empty()) {
         auto def = queue.pop();
 
-        // `%mem.fresh`'s return continuation is *not* pinned: it receives the current memory (see
+        // `mem.fresh`'s return continuation is *not* pinned: it receives the current memory (see
         // rewrite_imm_App below), so its body must be mem-threaded like any other continuation.
         if (auto app = def->isa<App>(); app && app->axm() && !Axm::isa<mem::fresh>(app))
             for (auto arg : app->arg()->projs())
@@ -60,7 +60,7 @@ const Def* AddMem::rewrite(const Def* old_def) {
     }
     auto new_def = Rewriter::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
-    // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : %mem.M 0`) are thereby spliced into the chain.
+    // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : mem.M 0`) are thereby spliced into the chain.
     if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && isa_mem(old_def)) return curr_mem_;
     return new_def;
 }
@@ -137,7 +137,7 @@ const Def* AddMem::rewrite_imm_App(const App* app) {
 
     auto& w = new_world();
 
-    // `%mem.fresh (a, k)`: the request for a fresh memory resolves to the memory that is current right
+    // `mem.fresh (a, k)`: the request for a fresh memory resolves to the memory that is current right
     // here - jump to `k` with it. (Like the rest of this phase, only address space 0 is threaded.)
     if (Axm::isa<mem::fresh>(app)) {
         auto [_, k] = app->args<2>();
@@ -174,7 +174,7 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
     // The current memory must be threaded through the operands in the right order, because a memory operand
     // (which resolves to the *current* memory) is positioned freely relative to the operands that establish
     // the real ordering. Rewrite in three groups:
-    //   1. plain values first - e.g. the `buf` of a buffer op's `(⊥ : %mem.M 0, buf)` argument, whose memory
+    //   1. plain values first - e.g. the `buf` of a buffer op's `(⊥ : mem.M 0, buf)` argument, whose memory
     //      effects must precede the memory operand;
     //   2. memory operands next - now resolving to the up-to-date current memory;
     //   3. continuation values last - their bodies run later, so a shared memory operation they capture must

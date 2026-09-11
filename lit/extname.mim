@@ -1,0 +1,11 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt %s -o -
+
+plugin core;
+plugin mem;
+
+anx rec Shape = [n: Nat, S: «n; Nat», T: *];
+axm len: Shape → Nat, normalize_len;
+anx lam Ptr (s: Shape): * = mem.Ptr0 «len s; s#T»;
+anx lam fooIdx (s: Shape): * = Idx (len s);
+lam get(s: Shape) (m: mem.M 0, p: Ptr s, i: fooIdx s): [mem.M 0, s#T] = (m, bot: (s#T) /* dummy impl */);

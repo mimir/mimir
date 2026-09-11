@@ -14,7 +14,7 @@ const Def* normalize_is_loaded(const Def*, const Def*, const Def* arg) {
     return {};
 }
 
-/// `%compile.aggr fallback` ↦ `tt`/`ff` if `-X compile:aggr`/`:no-aggr` was passed, else `fallback`.
+/// `compile.aggr fallback` ↦ `tt`/`ff` if `-X compile:aggr`/`:no-aggr` was passed, else `fallback`.
 const Def* normalize_aggr(const Def*, const Def*, const Def* arg) {
     auto& world  = arg->world();
     auto& driver = world.driver();
@@ -22,7 +22,7 @@ const Def* normalize_aggr(const Def*, const Def*, const Def* arg) {
     return arg;
 }
 
-/// `%compile.cond name phase` ↦ `phase` if `name`'s plugin is loaded, else `%compile.null`.
+/// `compile.cond name phase` ↦ `phase` if `name`'s plugin is loaded, else `compile.null`.
 const Def* normalize_cond(const Def*, const Def* callee, const Def* phase) {
     auto& world  = phase->world();
     auto& driver = world.driver();

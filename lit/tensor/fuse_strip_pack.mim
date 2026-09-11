@@ -9,28 +9,29 @@ plugin core;
 plugin tensor;
 plugin affine;
 plugin opt;
+plugin compile;
 
-fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (%core.nat.add (x, y#0₁));
-lam add1 (x: Nat): Nat = %core.nat.add (x, 1);
-lam mo (i k: %affine.Idx): «1; %affine.Idx» = i;
-lam mi (i k: %affine.Idx): «2; %affine.Idx» = (i, k);
+fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (core.nat.add (x, y#0₁));
+lam add1 (x: Nat): Nat = core.nat.add (x, 1);
+lam mo (i k: affine.Index): «1; affine.Index» = i;
+lam mi (i k: affine.Index): «2; affine.Index» = (i, k);
 
-con extern f (input: «4, 8; Nat», return: Cn «4; Nat») =
-    let packed = %tensor.materialize (%tensor.strip_mine_par (
-        %tensor.mr_tileable @1 @(1, 1) (4, 0, (4, 8))
-            (addf, 0, %tensor.id)
+extern con f (input: «4, 8; Nat», return: Cn «4; Nat») =
+    let packed = tensor.materialize (tensor.strip_mine_par (
+        tensor.mr_tileable @1 @(1, 1) (4, 0, (4, 8))
+            (addf, 0, tensor.id)
             mo mi input,
         0, 2));
-    let flat = %tensor.reshape (2, 2) 4 packed;
-    return (%tensor.unary add1 flat);
+    let flat = tensor.reshape (2, 2) 4 packed;
+    return (tensor.unary add1 flat);
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
-// CHECK-COUNT-2: %tensor.map_reduce_post
-// CHECK-NOT: %tensor.map_reduce
+// CHECK-COUNT-2: tensor.map_reduce_post
+// CHECK-NOT: tensor.map_reduce

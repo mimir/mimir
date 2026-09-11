@@ -5,14 +5,13 @@
 
 namespace mim::plug::btensor::phase {
 
-/// Lowers the buffer-world operations (`%btensor.map_reduce_post`, `%btensor.broadcast`, `%btensor.pad`,
-/// `%btensor.concat`, `%btensor.gather`, `%btensor.scatter`) into `affine.For` loop nests over
-/// `%buffer.read` / `%buffer.write` / `%buffer.alloc`,
-/// threading `%mem.M`.
-/// These are the buffer-world counterparts of the corresponding `%tensor.*` ops; the `tensor` plugin's
-/// bufferization (`%tensor.lower_to_mem`) maps the SSA tensor ops onto them.
-/// Also lowers `%buffer.lit` into a fill loop, so a large constant/splat tensor becomes a loop rather
-/// than a monolithic `%mem.store` of a giant literal array (which the LLVM backend cannot digest).
+/// Lowers the buffer-world operations (`btensor.map_reduce_post`, `btensor.broadcast`, `btensor.pad`,
+/// `btensor.concat`, `btensor.gather`, `btensor.scatter`) into `affine.For` loop nests over
+/// `buffer.read` / `buffer.write` / `buffer.alloc`, threading `mem.M`.
+/// These are the buffer-world counterparts of the corresponding `tensor.*` ops; the `tensor` plugin's
+/// bufferization (`tensor.lower_to_mem`) maps the SSA tensor ops onto them.
+/// Also lowers `buffer.lit` into a fill loop, so a large constant/splat tensor becomes a loop rather
+/// than a monolithic `mem.store` of a giant literal array (which the LLVM backend cannot digest).
 class LowerMapReduce : public RWPhase {
 public:
     LowerMapReduce(World& world, flags_t annex)

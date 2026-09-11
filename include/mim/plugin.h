@@ -211,14 +211,13 @@ struct Annex {
     /// Ignores lower 16-bit of @p plugin.
     static std::string demangle(plugin_t plugin);
 
-    static std::tuple<Sym, Sym, Sym> split(Driver&, Sym);
     ///@}
 
     /// @name Annex Name
     /// @anchor annex_name
     /// Anatomy of an Annex name:
     /// ```
-    /// %plugin.tag.sub
+    /// plugin.tag.sub
     /// |  48  | 8 | 8 | <-- Number of bits per field.
     /// ```
     /// * Def::name() retrieves the full name as Sym.

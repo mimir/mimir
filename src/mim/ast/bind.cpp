@@ -29,9 +29,6 @@ public:
     Scope& top() { return scopes_.back().scope(); }
     const Decl* dummy() const { return dummy_.get(); }
 
-    /// An annex name is global: it lives in one flat table, independent of the module structure.
-    static bool is_anx(Sym sym) { return sym && sym[0] == '%'; }
-
     void push() { scopes_.emplace_back(); }
     void push(Scope& scope) { scopes_.emplace_back(scope); }
 
@@ -43,7 +40,9 @@ public:
     /// A file must not see the scope of whoever imports it, so its Scope becomes the new lookup floor.
     size_t push_barrier(Scope& scope) {
         push(scope);
-        return std::exchange(barrier_, scopes_.size() - 1);
+        auto old = std::exchange(barrier_, scopes_.size() - 1);
+        mod_stack_.clear();
+        return old;
     }
 
     void pop_barrier(size_t old) {
@@ -51,33 +50,55 @@ public:
         pop();
     }
 
+    /// @name Annex nesting
+    /// Tracked by ModDecl::bind so AST::name2annex can derive `tag`/`sub` from lexical nesting.
+    ///@{
+    void push_mod(Sym name) { mod_stack_.emplace_back(name); }
+    void pop_mod() { mod_stack_.pop_back(); }
+    size_t mod_depth() const { return mod_stack_.size(); }
+    Sym enclosing_mod() const { return mod_stack_.empty() ? Sym() : mod_stack_.back(); }
+    ///@}
+
     const Decl* find(Dbg dbg, bool quiet = false) {
         if (dbg.is_anon()) return nullptr;
 
-        if (is_anx(dbg.sym())) {
-            if (auto decl = fe::lookup(anx_, dbg.sym())) return decl;
-        } else {
-            for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
-                if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;
-        }
+        for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
+            if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;
 
         if (!quiet) {
-            error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
+            auto& diag = error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
+            // An infix operator only exists as whatever the user bound its escaped name to.
+            if (dbg.sym().view().starts_with('`'))
+                diag.n("an infix operator means whatever you bind its escaped name to");
             bind(dbg, dummy()); // put into scope to prevent further errors
         }
+        return nullptr;
+    }
+
+    /// Diagnostic-only: is a module named @p sym reachable, shadowed by whatever `find` would actually return?
+    /// Only `ModDecl`/`Import` ever yield a non-null Decl::scope, so this never confuses a value for a module.
+    const Decl* find_shadowed_module(Sym sym) {
+        for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
+            if (auto decl = fe::lookup(frame.scope(), sym); decl && decl->scope()) return decl;
         return nullptr;
     }
 
     void bind(Dbg dbg, const Decl* decl, bool rebind = false, bool quiet = false) {
         if (dbg.is_anon()) return;
 
-        auto& scope = is_anx(dbg.sym()) ? anx_ : top();
+        auto& scope = top();
         if (rebind) {
             scope[dbg.sym()] = decl;
         } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), decl); !ins) {
             auto prev = i->second;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
                 error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev->dbg().loc(), "previous declaration here");
+        } else if (!quiet && !decl->scope()) {
+            if (auto mod = find_shadowed_module(dbg.sym()))
+                error()
+                    .w(dbg.loc(), "`{}` shadows a module of the same name", dbg)
+                    .n(mod->dbg().loc(), "module declared here; a later `{}.member` would fail to resolve it",
+                       dbg.sym());
         }
     }
 
@@ -99,8 +120,8 @@ private:
     AST& ast_;
     Ptr<DummyDecl> dummy_;
     fe::Vector<Frame> scopes_;
-    Scope anx_;
     size_t barrier_ = 0;
+    fe::Vector<Sym> mod_stack_;
 };
 
 /*
@@ -121,18 +142,6 @@ void File::bind(Scopes& s) const {
         import->bind(s);
     bind_decls(s);
     s.pop_barrier(barrier);
-}
-
-const Scope* Import::scope() const { return file() ? file()->scope() : nullptr; }
-
-void Import::bind(Scopes& s) const {
-    if (file()) file()->bind(s);
-
-    // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
-    if (auto prev = s.find(dbg(), true))
-        if (auto import = prev->isa<Import>(); import && import->file() == file()) return;
-
-    s.bind(dbg(), this);
 }
 
 /*
@@ -171,16 +180,27 @@ void Path::bind(Scopes& s, bool quiet) const {
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
             if (!quiet) {
-                if (scope)
+                if (scope) {
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
-                else
-                    s.error().e(dbg.loc(), "`{}` is not a module", prev.sym());
+                } else {
+                    auto& err = s.error().e(prev.loc(), "`{}` is not a module", prev.sym());
+                    if (auto mod = s.find_shadowed_module(prev.sym()))
+                        err.n(mod->dbg().loc(), "a module `{}` exists here but is shadowed by the `{}` in scope",
+                              prev.sym(), prev.sym());
+                }
             }
             decl_ = nullptr;
             return;
         }
         decl_ = member;
         prev  = dbg;
+
+        // A dotted path always crosses into decl_'s enclosing mod from outside: `priv` blocks it.
+        if (decl_->vis() == Vis::Priv) {
+            if (!quiet) s.error().e(dbg.loc(), "`{}` is private to its enclosing `mod`", dbg.sym());
+            decl_ = nullptr;
+            return;
+        }
     }
 }
 
@@ -312,27 +332,65 @@ void UniqExpr::bind(Scopes& s) const { inhabitant()->bind(s); }
  * Decl
  */
 
-void AxmDecl::Alias::bind(Scopes& s, const AxmDecl* axm) const {
-    auto sym = s.ast().sym(axm->dbg().sym().str() + "."s + dbg().sym().str());
-    full_    = Dbg(dbg().loc(), sym);
-    s.bind(full_, this);
+AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
+    if (!dbg) return nullptr;
+
+    auto depth = s.mod_depth();
+    if (depth > 1) {
+        error().e(dbg.loc(), "`{}` sits {} `mod` levels deep; an `anx` declaration may nest at most one", dbg, depth);
+        return nullptr;
+    }
+
+    auto plugin_s = dbg.loc().src ? sym(fs::path(dbg.loc().src->path()).stem().string()) : sym_error();
+    auto tag_s    = depth == 0 ? dbg.sym() : s.enclosing_mod();
+    Sym sub_s     = depth == 0 ? Sym() : dbg.sym();
+
+    auto& sym2annex = plugin2sym2annex_[plugin_s];
+    auto tag_id     = sym2annex.size();
+
+    if (plugin_s == sym_error()) error().e(dbg.loc(), "plugin name `{}` is reserved", dbg);
+    if (tag_id > std::numeric_limits<tag_t>::max())
+        error().e(dbg.loc(), "exceeded maximum number of annexes in current plugin");
+
+    if (!Annex::mangle(plugin_s)) {
+        error().e(dbg.loc(), "invalid annex name `{}`", dbg);
+        plugin_s = sym_error();
+    }
+
+    auto [i, fresh] = sym2annex.try_emplace(tag_s, AnnexInfo{plugin_s, tag_s, (tag_t)tag_id});
+    auto annex      = &i->second;
+
+    if (sub_s) {
+        if (sub_id) {
+            *sub_id       = annex->subs.size();
+            auto& aliases = annex->subs.emplace_back();
+            aliases.emplace_back(sub_s);
+        } else {
+            error().e(dbg.loc(), "annex `{}` must not have a subtag", dbg);
+        }
+    }
+
+    if (!fresh) annex->fresh = false;
+    return annex;
 }
 
 void AxmDecl::bind(Scopes& s) const {
     type()->bind(s);
 
-    annex_ = s.ast().name2annex(dbg(), nullptr);
+    annex_ = s.ast().name2annex(s, dbg(), &sub_);
 
     if (annex_ && annex_->fresh) {
         annex_->normalizer = normalizer();
         annex_->pi         = type()->isa<PiExpr>() || type()->isa<ArrowExpr>();
-    } else {
+    } else if (annex_) {
         auto pi = type()->isa<PiExpr>() || type()->isa<ArrowExpr>();
-        if (annex_ && pi ^ *annex_->pi)
-            s.error().e(dbg().loc(), "all declarations of annex `{}` must be function types if one of them is",
+        if (pi ^ *annex_->pi)
+            s.error().e(dbg().loc(),
+                        "all declarations of annex `{}` must be function types if one of them is (they share one "
+                        "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
                         dbg().sym());
 
-        if (annex_ && annex_->normalizer.sym() != normalizer().sym()) {
+        if (annex_->normalizer.sym() != normalizer().sym()) {
             auto l    = normalizer().loc() ? normalizer().loc() : loc().anew_end();
             auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", dbg());
             if (auto norm = annex_->normalizer)
@@ -342,32 +400,40 @@ void AxmDecl::bind(Scopes& s) const {
         }
     }
 
-    if (num_subs() == 0) {
-        s.bind(dbg(), this);
-    } else {
-        if (auto old = s.find(dbg(), true)) {
-            if (auto old_ax = old->isa<AxmDecl>()) {
-                if (old_ax->num_subs() == 0) {
-                    s.error()
-                        .e(dbg().loc(), "axm `{}` was declared without subs and cannot be redeclared with subs", dbg())
-                        .n(old_ax->dbg().loc(), "previous declaration here");
-                }
-            }
-        }
+    s.bind(dbg(), this);
+}
 
-        if (annex_) {
-            offset_ = annex_->subs.size();
-            for (const auto& aliases : subs())
-                for (const auto& alias : aliases)
-                    alias->bind(s, this);
+void AxmDecl::Sibling::bind(Scopes& s) const {
+    annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    s.bind(dbg(), this);
+}
 
-            for (auto& sub : subs()) {
-                auto& aliases = annex_->subs.emplace_back(std::deque<Sym>());
-                for (const auto& alias : sub)
-                    aliases.emplace_back(alias->dbg().sym());
-            }
-        }
+void AliasDecl::bind(Scopes& s) const {
+    path()->bind(s);
+    s.bind(dbg(), this);
+
+    auto target = path()->decl();
+    if (!target) return;
+
+    if (target->isa<AliasDecl>()) {
+        s.error().e(loc(), "`{}` aliases `{}`, which is itself an alias; alias chains are not supported", dbg(),
+                    path()->back());
+        return;
     }
+
+    std::tie(annex_, sub_) = target->annex_sub();
+    if (!annex_) {
+        s.error().e(loc(), "`{}` must alias a compiler-exposed (`anx`) declaration", dbg());
+        return;
+    }
+
+    // An ungrouped target (the common case) never allocated its own sub-group; seed one now,
+    // named after the target itself, so this alias has a slot to share.
+    if (sub_ >= annex_->subs.size()) {
+        assert(sub_ == annex_->subs.size());
+        annex_->subs.emplace_back(std::deque<Sym>{target->dbg().sym()});
+    }
+    annex_->subs[sub_].emplace_back(dbg().sym());
 }
 
 void LetDecl::bind(Scopes& s) const {
@@ -376,7 +442,11 @@ void LetDecl::bind(Scopes& s) const {
     s.pop();
     ptrn()->bind(s, true, false);
 
-    if (auto id = ptrn()->isa<IdPtrn>()) annex_ = s.ast().name2annex(id->dbg(), &sub_);
+    if (auto id = ptrn()->isa<IdPtrn>()) {
+        id->vis_ = vis();
+        id->anx_ = is_anx();
+        if (is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
+    }
 }
 
 void RecDecl::bind(Scopes& s) const {
@@ -395,7 +465,7 @@ void RecDecl::bind_decl(Scopes& s) const {
         s.error().e(body()->loc(), "unsupported expression in a recursive declaration");
 
     s.bind(dbg(), this);
-    annex_ = s.ast().name2annex(dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
@@ -432,23 +502,15 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    annex_ = s.ast().name2annex(dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
 }
 
 void LamDecl::bind_body(Scopes& s) const {
     s.push();
     for (const auto& dom : doms())
         dom->bind(s, true);
-    body()->bind(s);
+    if (body()) body()->bind(s);
     s.pop();
-}
-
-void CDecl::bind(Scopes& s) const {
-    s.push();
-    dom()->bind(s, false, false);
-    s.pop(); // we don't allow codom to depent on dom
-    if (codom()) codom()->bind(s);
-    s.bind(dbg(), this);
 }
 
 void ModDecl::bind_decls(Scopes& s) const {
@@ -458,25 +520,47 @@ void ModDecl::bind_decls(Scopes& s) const {
 
 void ModDecl::bind(Scopes& s) const {
     s.push(members());
+    s.push_mod(dbg().sym());
     bind_decls(s);
+    s.pop_mod();
     s.pop();
     s.bind(dbg(), this);
 }
 
-void UseDecl::bind(Scopes& s) const {
+const Scope* UseDecl::module(Scopes& s) const {
+    if (is_import()) {
+        if (!file()) return nullptr;
+        file()->bind(s);
+        return file()->scope();
+    }
+
     path()->bind(s);
     auto decl = path()->decl();
-    if (!decl) return;
+    if (!decl) return nullptr;
 
     auto scope = decl->scope();
-    if (!scope) {
-        s.error().e(path()->loc(), "`{}` is not a module", path()->back().sym());
+    if (!scope) s.error().e(path()->loc(), "`{}` is not a module", path()->back().sym());
+    return scope;
+}
+
+void UseDecl::bind(Scopes& s) const {
+    auto mod = module(s);
+    if (!mod) return;
+
+    if (is_splice()) {
+        // Quiet: a name already bound here wins, so a splice never shadows and never conflicts.
+        for (const auto& [sym, decl] : *mod)
+            if (decl->vis() == Vis::Pub) s.bind(Dbg(loc(), sym), decl, false, true);
         return;
     }
 
-    // Quiet: a name already bound here wins, so `use` never shadows and never conflicts.
-    for (const auto& [sym, decl] : *scope)
-        s.bind(Dbg(path()->loc(), sym), decl, false, true);
+    // The same file may be imported more than once - as `-p foo` plus a `plugin foo;` directive, say.
+    if (file())
+        if (auto prev = s.find(dbg(), true))
+            if (auto use = prev->isa<UseDecl>(); use && use->file() == file()) return;
+
+    scope_ = mod;
+    s.bind(dbg(), this);
 }
 
 void RuleDecl::bind(Scopes& s) const {

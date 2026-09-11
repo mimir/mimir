@@ -1,11 +1,13 @@
 // RUN: %mim -p opt %s -o -
-axm %foo.F: * → *;
-axm %foo.f: [T: *] → Nat → %foo.F T;
+pub mod foo {
+    axm F: * → *;
+    axm f: [T: *] → Nat → F T;
+}
 
-fun extern f(
+extern fun f(
         T: *,
-        U: let F = %foo.F T; F,
+        U: let F = foo.F T; F,
         V: F
     )(
         W: F
-    ): F = return (%foo.f T 23);
+    ): F = return (foo.f T 23);

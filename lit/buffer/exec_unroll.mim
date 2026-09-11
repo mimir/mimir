@@ -15,22 +15,22 @@ plugin buffer;
 plugin btensor;
 plugin cps;
 
-fun add (x y: I32)@tt = return (%core.wrap.add 0 (x, y));
-lam mo (i _ _: %affine.Idx): «1; %affine.Idx» = i;
-lam mi (i j k: %affine.Idx): «3; %affine.Idx» = (i, j, k);
+fun add (x y: I32)@tt = return (core.wrap.add 0 (x, y));
+lam mo (i _ _: affine.Index): «1; affine.Index» = i;
+lam mi (i j k: affine.Index): «3; affine.Index» = (i, j, k);
 
 // out[i] = sum_{a, b} input[i][a][b]; the schedule operand is a chooser over the target's nest
 // builder (no vector dim, unroll the trailing 1 dim), applied — not interpreted — by the lowering.
-fun extern sum_all (input: «2, 37, 3; I32»): «2; I32» =
-    return (%tensor.map_reduce_post
-                (2, (2, 37, 3), %tensor.mk_sched (3, 1))
-                (add, 0I32, %tensor.id) mo (mi, ()) (input, ()));
+extern fun sum_all (input: «2, 37, 3; I32»): «2; I32» =
+    return (tensor.map_reduce_post
+                (2, (2, 37, 3), tensor.mk_sched (3, 1))
+                (add, 0I32, tensor.id) mo (mi, ()) (input, ()));
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let t = ‹2; ‹37; ‹3; 1I32›››;
     con done (o: «2; I32») =
-        let v = %tensor.get ((1₂, ), o);
-        return (mem, v);
+        let v = tensor.get ((1₂, ), o);
+        return (m, v);
     sum_all (t, done);
 
 // GONE-NOT: %tensor.

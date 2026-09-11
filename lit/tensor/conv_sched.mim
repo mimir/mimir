@@ -14,23 +14,24 @@
 plugin core;
 plugin tensor;
 plugin math;
+plugin compile;
 
-let R: %tensor.Ring = (%math.F32, 0.0:%math.F32, %math.arith.add 0, %math.arith.mul 0);
+let R: tensor.Ring = (math.F32, 0.0:math.F32, math.arith.add 0, math.arith.mul 0);
 
-lam extern c64 (input: «2, 64, 8, 8; %math.F32», w: «16, 64, 3, 3; %math.F32»): «2, 16, 8, 8; %math.F32» =
-    %tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
-lam extern c3 (input: «2, 3, 8, 8; %math.F32», w: «16, 3, 3, 3; %math.F32»): «2, 16, 8, 8; %math.F32» =
-    %tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
-lam extern cs2 (input: «2, 64, 9, 9; %math.F32», w: «16, 64, 3, 3; %math.F32»): «2, 16, 4, 4; %math.F32» =
-    %tensor.conv_impl R ((2, 2), (1, 1), (0, 0)) (input, w);
-lam extern c64w (input: «2, 64, 16, 16; %math.F32», w: «16, 64, 3, 3; %math.F32»): «2, 16, 16, 16; %math.F32» =
-    %tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
+extern lam c64 (input: «2, 64, 8, 8; math.F32», w: «16, 64, 3, 3; math.F32»): «2, 16, 8, 8; math.F32» =
+    tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
+extern lam c3 (input: «2, 3, 8, 8; math.F32», w: «16, 3, 3, 3; math.F32»): «2, 16, 8, 8; math.F32» =
+    tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
+extern lam cs2 (input: «2, 64, 9, 9; math.F32», w: «16, 64, 3, 3; math.F32»): «2, 16, 4, 4; math.F32» =
+    tensor.conv_impl R ((2, 2), (1, 1), (0, 0)) (input, w);
+extern lam c64w (input: «2, 64, 16, 16; math.F32», w: «16, 64, 3, 3; math.F32»): «2, 16, 16, 16; math.F32» =
+    tensor.conv_impl R ((1, 1), (1, 1), (1, 1)) (input, w);
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        compile.cleanup,
     );
 
 // CHECK-DAG: {{mk_[0-9]+ \(8, 3\)}}

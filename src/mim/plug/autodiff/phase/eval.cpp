@@ -161,7 +161,7 @@ const Def* Eval::augment_lam(Lam* lam, Lam* f, Lam* f_diff) {
         return aug_lam;
     }
     // Some general function in the program needs to be differentiated.
-    // The old pass emitted a new `%autodiff.ad` application here and relied on the PassMan to revisit it;
+    // The old pass emitted a new `autodiff.ad` application here and relied on the PassMan to revisit it;
     // as a Phase we derive eagerly instead (derive() pre-registers itself, so recursion terminates).
     auto aug_lam = derive(lam);
     // TODO: directly more association here? => partly inline op_autodiff
@@ -369,8 +369,7 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
     } else if (auto ax = def->isa<Axm>()) {
         auto diff_name = ax->sym().str();
         fe::find_and_replace(diff_name, ".", "_");
-        fe::find_and_replace(diff_name, "%", "");
-        diff_name = "%autodiff.diff." + diff_name;
+        diff_name = "autodiff.diff." + diff_name;
 
         // Look the derivative up in the old world; rewrite() below maps it into the new one.
         auto old_diff_fun = old_world().annex(old_world().sym(diff_name));

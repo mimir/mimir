@@ -29,54 +29,56 @@ uint64_t f(uint64_t x) {
 
 plugin mem;
 plugin ord;
+plugin core;
+plugin option;
 
-let Key = (I32, %core.icmp.ul @i32);
-let Map = %ord.Map Key I64;
+let Key = (I32, core.icmp.ul @i32);
+let Map = ord.Map Key I64;
 
-cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
-cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Map]: [%mem.M 0];
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+extern fun take_addr[m: mem.M 0, mem.Ptr0 Map]: [mem.M 0];
 
-fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
+extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] =
     // stack-alloc dictionary and init with: 0 -> 23, 1 -> x
-    ret (mem, ptr) = %mem.slot  (Map, 0) $ mem;
-    let  mem       = %mem.store (mem, ptr, %ord.init.map Key ((0I32, 23I64), (1I32, x))); // 0 → 23, 1 → x
-    head (mem, x, x) where
-        con head(mem: %mem.M 0, i j: I64) =
-            ret (mem, cond) = dont_know $ mem;
-            (exit, body)#cond mem where
-                con body(mem: %mem.M 0) =
-                    let (mem, map) = %mem.load (mem, ptr);
-                    let map        = %ord.insert.map (map, (1I32, i)); // 1 -> 42
-                    let mem        = %mem.store (mem, ptr, map);
-                    let cond       = %ord.contains.map (map, 1I32);
-                    (ff1, tt1)#cond mem
+    ret (m, ptr) = mem.slot  (Map, 0) $ m;
+    let  m       = mem.store (m, ptr, ord.init.map Key ((0I32, 23I64), (1I32, x))); // 0 → 23, 1 → x
+    head (m, x, x) where
+        con head(m: mem.M 0, i j: I64) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body(m: mem.M 0) =
+                    let (m, map) = mem.load (m, ptr);
+                    let map        = ord.insertion.map (map, (1I32, i)); // 1 -> 42
+                    let m        = mem.store (m, ptr, map);
+                    let cond       = ord.contains.map (map, 1I32);
+                    (ff1, tt1)#cond m
                     where
-                        con tt1 (mem: %mem.M 0) =
-                            let (mem, map) = %mem.load (mem, ptr);
-                            let map        = %ord.insert.map (map, (1I32, x)); // 1 -> x
-                            let mem        = %mem.store (mem, ptr, map);
-                            n1 mem;
+                        con tt1 (m: mem.M 0) =
+                            let (m, map) = mem.load (m, ptr);
+                            let map        = ord.insertion.map (map, (1I32, x)); // 1 -> x
+                            let m        = mem.store (m, ptr, map);
+                            n1 m;
 
-                        con ff1 (mem: %mem.M 0) = n1 mem;
-                        con n1 (mem: %mem.M 0) =
-                            (ff2, tt2)#(%core.icmp.e (i, j)) mem where
-                                con tt2 (mem: %mem.M 0) =
-                                    let i = %core.wrap.add 0 (i, 1I64);
-                                    let j = %core.wrap.add 0 (j, 1I64);
-                                    n2 (mem, i, j);
-                                con ff2 (mem: %mem.M 0) =
-                                    ret mem = take_addr $ (mem, ptr);
-                                    n2 (mem, j, i); // swapped on purpose: i == j anyway - stresses GVN
-                                con n2 (mem: %mem.M 0, i j: I64) =
-                                    head (mem, i, j);
+                        con ff1 (m: mem.M 0) = n1 m;
+                        con n1 (m: mem.M 0) =
+                            (ff2, tt2)#(core.icmp.e (i, j)) m where
+                                con tt2 (m: mem.M 0) =
+                                    let i = core.wrap.add 0 (i, 1I64);
+                                    let j = core.wrap.add 0 (j, 1I64);
+                                    n2 (m, i, j);
+                                con ff2 (m: mem.M 0) =
+                                    ret m = take_addr $ (m, ptr);
+                                    n2 (m, j, i); // swapped on purpose: i == j anyway - stresses GVN
+                                con n2 (m: mem.M 0, i j: I64) =
+                                    head (m, i, j);
                             end;
                     end;
 
-                con exit(mem: %mem.M 0) =
-                    let (mem, map) = %mem.load (mem, ptr);
-                    let opt_v      = %ord.get (map, 1I32);
-                    let val        = %option.unwrap_unsafe opt_v;
-                    return (mem, val);
+                con exit(m: mem.M 0) =
+                    let (m, map) = mem.load (m, ptr);
+                    let opt_v      = ord.get (map, 1I32);
+                    let val        = option.unwrap_unsafe opt_v;
+                    return (m, val);
             end
     end;
 

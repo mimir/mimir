@@ -8,32 +8,34 @@
 plugin tensor;
 plugin core;
 plugin opt;
+plugin affine;
+plugin compile;
 
-fun sum_reduce (acc x: Nat)@tt: Nat = return (%core.nat.add (acc, x));
+fun sum_reduce (acc x: Nat)@tt: Nat = return (core.nat.add (acc, x));
 
-fun add1_of (acc: Nat, y: «1; Nat»)@tt: Nat = return (%core.nat.add (y#0_1, 1));
+fun add1_of (acc: Nat, y: «1; Nat»)@tt: Nat = return (core.nat.add (y#0_1, 1));
 
-con extern f (v: «2; «3; Nat»», return: Cn «2, 2; Nat») =
+extern con f (v: «2; «3; Nat»», return: Cn «2, 2; Nat») =
     // inner[i] = Σ_j v[i, j]: one output loop (bound 2), one reduction loop (bound 3)
-    let inner = %tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
-        (%tensor.proj_map 0)
-        (%tensor.proj_map (0, 1), )
+    let inner = tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
+        (tensor.proj_map 0)
+        (tensor.proj_map (0, 1), )
         v;
     // outer[i, j] = inner[i] + 1    (pure map, broadcast read)
-    let outer = %tensor.map_reduce ((2, 2), (2, 2)) (add1_of, 0)
-        (%affine.id)
-        (lm (i j: %affine.Idx) = (i), )
+    let outer = tensor.map_reduce ((2, 2), (2, 2)) (add1_of, 0)
+        (affine.id)
+        (lm (i j: affine.Index) = (i), )
         inner;
     return outer;
 
-lam extern _compile (): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %tensor.lower_tensor,
-        %tensor.fuse_tensor,
-        %compile.cleanup,
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
     );
 
-// Two %tensor.map_reduce operations must remain, since the inner has a reduction.
-// CHECK: %tensor.map_reduce
-// CHECK: %tensor.map_reduce
+// Two tensor.map_reduce operations must remain, since the inner has a reduction.
+// CHECK: tensor.map_reduce
+// CHECK: tensor.map_reduce

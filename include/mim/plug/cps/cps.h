@@ -7,10 +7,10 @@
 
 namespace mim::plug::cps {
 
-/// @name %%cps.cps2ds_dep
+/// @name cps.cps2ds_dep
 /// ```
 /// let k: Cn [t: T, Cn U t] = ...;
-/// let f: [t: T] → U = %cps.cps2ds_dep (lm (t': T): * = [t → t']U) k;
+/// let f: [t: T] → U = cps.cps2ds_dep (lm (t': T): * = [t → t']U) k;
 /// ```
 ///@{
 inline const Def* op_cps2ds_dep(const Def* k) {

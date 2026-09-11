@@ -27,9 +27,7 @@
     case Tag::T_star: \
     case Tag::T_box
 
-#define C_ID         \
-              M_anx: \
-    case Tag::M_id
+#define C_ID M_id
 
 #define C_LIT        \
               T_bot: \
@@ -41,6 +39,18 @@
     case Tag::L_f:   \
     case Tag::L_i
 
+/// Numeric literals that a leading sign may be applied to.
+#define C_LIT_NUM  \
+              L_s: \
+    case Tag::L_u: \
+    case Tag::L_f: \
+    case Tag::L_i
+
+/// Leading sign of a numeric literal.
+#define C_SIGN        \
+              T_add:  \
+    case Tag::T_sub
+
 /// Literals that already determine their type and hence must not be ascribed one.
 #define C_LIT_TYPED  \
               L_str: \
@@ -51,10 +61,6 @@
               K_lam: \
     case Tag::K_con: \
     case Tag::K_fun
-
-#define C_CDECL       \
-              K_ccon: \
-    case Tag::K_cfun
 
 #define C_RULE        \
               K_norm: \
@@ -70,7 +76,6 @@
     case Tag::K_mod:    \
     case Tag::K_rec:    \
     case Tag::K_use:    \
-    case Tag::C_CDECL:  \
     case Tag::C_IMPORT: \
     case Tag::C_RULE:   \
     case Tag::C_LAM

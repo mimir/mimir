@@ -1,4 +1,4 @@
 // RUN: rm -f %t.ll
 // RUN: %mim -p opt %s
 
-axm %foo.bar: [[Nat, Nat] → Nat];
+mod foo { axm bar: [[Nat, Nat] → Nat]; }

@@ -5,20 +5,21 @@
 // RUN: %t 16 3 ; test $? -eq 2
 
 plugin core;
+plugin mem;
 
-ccon atoi[%mem.M 0, %mem.Ptr («⊤:Nat; I8», 0), Cn [%mem.M 0, I32]];
+extern con atoi[mem.M 0, mem.Ptr («⊤:Nat; I8», 0), Cn [mem.M 0, I32]];
 
-con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
-    let argv_ptr_a = %mem.lea (argv, 1I32);
-    let (mem, val) = %mem.load (mem, argv_ptr_a);
-    atoi (mem, val, atoi_cont_a)
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+    let argv_ptr_a = mem.lea (argv, 1I32);
+    let (m, val) = mem.load (m, argv_ptr_a);
+    atoi (m, val, atoi_cont_a)
     where
-        con atoi_cont_a(mem: %mem.M 0, a: I32) =
-            let argv_ptr_b  = %mem.lea (argv, 2I32);
-            let (mem, val) = %mem.load (mem, argv_ptr_b);
-            atoi (mem, val, atoi_cont_b)
+        con atoi_cont_a(m: mem.M 0, a: I32) =
+            let argv_ptr_b  = mem.lea (argv, 2I32);
+            let (m, val) = mem.load (m, argv_ptr_b);
+            atoi (m, val, atoi_cont_b)
             where
-                con atoi_cont_b(mem: %mem.M 0, b: I32) =
-                    return (mem, %core.shr.l (a, b))
+                con atoi_cont_b(m: mem.M 0, b: I32) =
+                    return (m, core.shr.l (a, b))
             end
     end

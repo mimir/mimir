@@ -169,7 +169,7 @@ private:
     bool bindings_enabled() const { return bindings_enabled_; }
     bool bindings_enabled_;
 
-    // Ensures that we don't redeclare things, for example %axm.foo
+    // Ensures that we don't redeclare things, for example axm.foo
     // should only be declared once.
     absl::flat_hash_set<std::string> declared_;
     bool is_declared(std::string name) { return declared_.contains(name); }
@@ -317,7 +317,7 @@ void Emitter::finalize() {
     // via emit_bb() but we don't want to emit the lambda itself.
     // We can't do this with Axm::isa because 'eqsat' is an out-of-tree plugin
     // that isn't guaranteed to have been cloned so we can't include its header file.
-    if (root()->codom()->sym().str() == "%eqsat.Config") return;
+    if (root()->codom()->sym().str() == "eqsat.Config") return;
 
     LamSet rec_lams;
     auto root_lam = nest().root()->mut()->as_mut<Lam>();

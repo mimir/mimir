@@ -16,8 +16,8 @@ namespace mim {
 /// The analysis is **wrapper-transparent**: a use of a wrapper `λx.f x` is counted as a use of `f` at the same
 /// position/multiplicity instead of counting `f` as Known (the wrapper's callee).
 /// This makes `f`'s classification identical whether `f` is bare or wrapped, so the canonical η-form is a genuine
-/// fixed point - the phase does not fight itself and can share one big `%%compile.phases tt` fixed-point loop with
-/// BetaRed and %%mem.seo without oscillating.
+/// fixed point - the phase does not fight itself and can share one big `compile.phases tt` fixed-point loop with
+/// BetaRed and mem.seo without oscillating.
 class EtaConv : public InplaceRWPhase {
 public:
     EtaConv(World& world)

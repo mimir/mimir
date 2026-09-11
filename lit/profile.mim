@@ -12,7 +12,7 @@
 
 plugin core;
 
-lam extern f(): «3; Nat» = ‹i: 3; %core.nat.add (1, %core.bitcast Nat i)›;
+extern lam f(): «3; Nat» = ‹i: 3; core.nat.add (1, core.bitcast Nat i)›;
 
 // FLAT:      Profile (flat):
 // FLAT-NEXT: {{.*}}total{{.*}}self{{.*}}name
@@ -22,12 +22,12 @@ lam extern f(): «3; Nat» = ‹i: 3; %core.nat.add (1, %core.bitcast Nat i)›;
 // each phase's counters are contiguous and the phases themselves ascend.
 // Aggregating in a hash map instead scatters both.
 // FLAT:      Counters:
-// FLAT:      {{[0-9]+}}  [[COMPILE:%compile[a-z_.0-9]*]]: rw.defs.annex
-// FLAT-NEXT: {{[0-9]+}}  [[COMPILE]]: rw.defs.external
-// FLAT:      {{[0-9]+}}  [[MEM:%mem[a-z_.0-9]*]]: rw.defs.annex
-// FLAT-NEXT: {{[0-9]+}}  [[MEM]]: rw.defs.external
 // FLAT:      {{[0-9]+}}  cleanup: rw.defs.annex
 // FLAT-NEXT: {{[0-9]+}}  cleanup: rw.defs.external
+// FLAT:      {{[0-9]+}}  [[COMPILE:compile[a-z_.0-9]*]]: rw.defs.annex
+// FLAT-NEXT: {{[0-9]+}}  [[COMPILE]]: rw.defs.external
+// FLAT:      {{[0-9]+}}  [[MEM:mem[a-z_.0-9]*]]: rw.defs.annex
+// FLAT-NEXT: {{[0-9]+}}  [[MEM]]: rw.defs.external
 
 // TREE:      Profile (tree):
 // TREE-NEXT: {{.*}}total{{.*}}self{{.*}}name

@@ -12,58 +12,58 @@ import compile;
 ///
 /// ## Types
 ///
-/// ### %%refly.Code
+/// ### refly.Code
 ///
 /// The reified internal representation of a Mim expression of type `T`.
 ///
-axm %refly.Code: * → *;
+axm Code: * → *;
 ///
 /// ## Reify / Reflect
 ///
-/// ### %%refly.reify
+/// ### refly.reify
 ///
-/// Yields the internal MimIR representation of a Mim expression as `%%refly.Code`.
+/// Yields the internal MimIR representation of a Mim expression as `refly.Code`.
 ///
-axm %refly.reify: {T: *} → T → [%refly.Code T], normalize_reify;
+axm reify: {T: *} → T → [Code T], normalize_reify;
 ///
-/// ### %%refly.reflect
+/// ### refly.reflect
 ///
-/// Converts a `%%refly.Code` back to a Mim expression.
+/// Converts a `refly.Code` back to a Mim expression.
 ///
-axm %refly.reflect: {T: *} → [%refly.Code T] → T, normalize_reflect;
+axm reflect: {T: *} → [Code T] → T, normalize_reflect;
 ///
 /// ## Inspect
 ///
-/// ### %%refly.type
+/// ### refly.type
 ///
 /// Returns the type of an expression.
 ///
-axm %refly.type: {T: *} → T → *, normalize_type;
+axm type: {T: *} → T → *, normalize_type;
 ///
-/// ### %%refly.gid
+/// ### refly.gid
 ///
 /// Returns the internal mim::Def::gid of the argument.
 ///
-axm %refly.gid: {T: *} → T → Nat, normalize_gid;
+axm gid: {T: *} → T → Nat, normalize_gid;
 ///
-/// ### %%refly.dbg
+/// ### refly.dbg
 ///
 /// Debugs a given expression.
 /// * `tmp`: Prints debug information of a given expression at construction time and vanishes afterwards.
 /// * `perm`: Permanently debugs at every construction.
 ///   Gets removed at codegen preparation in mim::plug::refly::RemoveDbgPerm.
 ///
-let %refly.error   = 0;
-let %refly.warn    = 1;
-let %refly.info    = 2;
-let %refly.verbose = 3;
-let %refly.debug   = 4;
+anx let error   = 0;
+anx let warn    = 1;
+anx let info    = 2;
+anx let verbose = 3;
+anx let debug   = 4;
 
-axm %refly.dbg(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
+axm dbg.(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 ///
 /// ## Testing
 ///
-/// ### %%refly.equiv
+/// ### refly.equiv
 ///
 /// Checks for structural / alpha-equivalence.
 /// Two bits select the check:
@@ -77,24 +77,24 @@ axm %refly.dbg(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 /// | `Ae`   | `alpha_ne` | x | o | assert **not** alpha-equivalent            |
 /// | `AE`   | `alpha_eq` | x | x | assert alpha-equivalent                    |
 ///
-axm %refly.equiv(ae = struc_ne, aE = struc_eq,
-                 Ae = alpha_ne, AE = alpha_eq):
+axm equiv.(ae = struc_ne, aE = struc_eq,
+           Ae = alpha_ne, AE = alpha_eq):
     {T: *} → [T, T] → T, normalize_equiv;
 ///
-/// ### %%refly.check_bot
+/// ### refly.check_bot
 ///
 /// Checks whether the argument is `⊥`.
 ///
-axm %refly.check_bot: {T: *} → T → T, normalize_check_bot;
+axm check_bot: {T: *} → T → T, normalize_check_bot;
 ///
-/// ### %%refly.check
+/// ### refly.check
 ///
 /// Checks the given condition and emits the error message if it is `ff`.
 ///
-axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
+axm check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
 ///
 /// ## Phases
 ///
-/// Removes the permanent `%%refly.dbg` markers for code generation.
+/// Removes the permanent `refly.dbg` markers for code generation.
 ///
-axm %refly.remove_dbg_repl: %compile.Phase;
+axm remove_dbg_repl: compile.Phase;

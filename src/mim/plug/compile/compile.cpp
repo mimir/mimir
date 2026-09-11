@@ -20,11 +20,11 @@
 using namespace mim;
 using namespace mim::plug;
 
-/// Phase hook for `%compile.named`.
+/// Phase hook for `compile.named`.
 /// Reads the fully-qualified annex name (e.g. `"clos.clos_conv"`) from the driving App at phase-build time,
 /// looks up the matching annex `Def` in the current `World`, and *redirects* Phase::create to that annex's own
 /// Phase. If the plugin part of the name is not loaded or the annex is missing, it elides (resolves to nothing),
-/// so the enclosing `%compile.phases` simply skips it.
+/// so the enclosing `compile.phases` simply skips it.
 class Named : public Phase {
 public:
     Named(World& w, flags_t a)
@@ -39,8 +39,7 @@ public:
 
         auto dot = str.find('.');
         if (dot == std::string::npos) return;
-        auto begin = str[0] == '%' ? 1uz : 0uz; // skip the leading '%' of the annex name
-        if (!driver().is_loaded(std::string_view(str).substr(begin, dot - begin))) return;
+        if (!driver().is_loaded(std::string_view(str).substr(0, dot))) return;
 
         if (auto def = world().annex(driver().sym(str))) resolved_ = Phase::create(driver().phases(), def);
     }
@@ -71,8 +70,8 @@ void reg_phases(Flags2Phases& phases) {
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"aggr",    "Forces `%compile.aggr` to `tt`, switching fixed-point iteration of the `opt` pipeline's `optimize` stage on (off by default)."},
-    {"no-aggr", "Forces `%compile.aggr` to `ff`, switching that fixed-point iteration off."},
+    {"aggr",    "Forces `compile.aggr` to `tt`, switching fixed-point iteration of the `opt` pipeline's `optimize` stage on (off by default)."},
+    {"no-aggr", "Forces `compile.aggr` to `ff`, switching that fixed-point iteration off."},
 };
 // clang-format on
 

@@ -19,7 +19,7 @@ inline bool is_copy_comb(const Def* comb) {
     return ret && ret == comb->as_mut<Lam>()->var(0)->proj(2, 1)->proj(1, 0);
 }
 
-/// Is `post` the (rebuilt) CPS identity `%tensor.id`, i.e. a lam `(x, extras) ↦ x` that returns its
+/// Is `post` the (rebuilt) CPS identity `tensor.id`, i.e. a lam `(x, extras) ↦ x` that returns its
 /// first argument (and hence has no epilogue inputs)?
 inline bool is_identity_post(const Def* post) {
     auto ret = Lam::isa_ret_arg(post);
@@ -60,13 +60,13 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
                     sole(in_tys, 6, 2)};
 }
 
-/// @note `index` comes *before* `arr` in the operand tuple, see %%tensor.get.
+/// @note `index` comes *before* `arr` in the operand tuple, see tensor.get.
 inline const Def* op_get(const Def* T, const Def* r, const Def* s, const Def* arr, const Def* index) {
     auto& w = arr->world();
     return w.app(w.app(w.annex<tensor::get>(), {T, r, s}), {index, arr});
 }
 
-/// @note `index` comes *before* `arr` in the operand tuple, see %%tensor.get.
+/// @note `index` comes *before* `arr` in the operand tuple, see tensor.get.
 inline const Def* op_set(const Def* T, const Def* r, const Def* s, const Def* arr, const Def* index, const Def* x) {
     auto& w = arr->world();
     return w.app(w.app(w.annex<tensor::set>(), {T, r, s}), {index, arr, x});

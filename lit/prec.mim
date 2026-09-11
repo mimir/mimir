@@ -1,7 +1,7 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
-lam extern f (x: Nat): Nat = x;
-lam extern higher(f: (Nat → Nat) → Nat, x: Nat): Nat = f (λ y: Nat = y);
+extern lam f (x: Nat): Nat = x;
+extern lam higher(f: (Nat → Nat) → Nat, x: Nat): Nat = f (λ y: Nat = y);
 
-// CHECK-DAG: lam extern f (x_{{[0-9]+}}: Nat): Nat =
+// CHECK-DAG: extern lam f (x_{{[0-9]+}}: Nat): Nat =
 // CHECK-DAG: f_{{[0-9]+}}: (Nat → Nat) → Nat

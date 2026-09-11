@@ -24,56 +24,57 @@ int f(uint64_t x) { return poly<std::map>(x); }
 plugin mem;
 plugin ord;
 plugin option;
+plugin core;
 
-cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 
-let Key = (I32, %core.icmp.ul @i32);
+let Key = (I32, core.icmp.ul @i32);
 
 let Ord = [
-    Map:      %ord.Key → * → *,
-    init:     [K: %ord.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
-    get:      {K: %ord.Key} → {V: *} → [Map K V, K#T     ] → %option.Opt V,
-    insert_:  {K: %ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
-    contains: {K: %ord.Key} → {V: *} → [Map K V, K#T     ] → Bool,
+    Map:      ord.Key → * → *,
+    init:     [K: ord.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
+    get:      {K: ord.Key} → {V: *} → [Map K V, K#T     ] → option.Opt V,
+    insert_:  {K: ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
+    contains: {K: ord.Key} → {V: *} → [Map K V, K#T     ] → Bool,
 ];
 
-fun poly (ord: Ord) (mem: %mem.M 0, x: I64): [%mem.M 0, I64] =
+fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
     // stack-alloc dictionary and init with: 0 → 23, 1 → x
-    ret (mem, ptr) = %mem.slot (ord#Map Key I64, 0) $ mem;
-    let  mem       = %mem.store (mem, ptr, ord#init Key ((0I32, 23I64), (1I32, x)));
-    head mem where
-        con head(mem: %mem.M 0) =
-            ret (mem, cond) = dont_know $ mem;
-            (exit, body)#cond mem where
-                con body(mem: %mem.M 0) =
-                    let (mem, map) = %mem.load (mem, ptr);
+    ret (m, ptr) = mem.slot (ord#Map Key I64, 0) $ m;
+    let  m       = mem.store (m, ptr, ord#init Key ((0I32, 23I64), (1I32, x)));
+    head m where
+        con head(m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body(m: mem.M 0) =
+                    let (m, map) = mem.load (m, ptr);
                     let map        = ord#insert_ (map, (1I32, 42I64)); // 1 → 42
-                    let mem        = %mem.store (mem, ptr, map);
+                    let m          = mem.store (m, ptr, map);
                     let cond       = ord#contains (map, 1I32);
-                    (false, true)#cond mem
+                    (false, true)#cond m
                     where
-                        con true (mem: %mem.M 0) =
-                            let (mem, map) = %mem.load (mem, ptr);
+                        con true (m: mem.M 0) =
+                            let (m, map) = mem.load (m, ptr);
                             let map        = ord#insert_ (map, (1I32, x)); // 1 → x
-                            let mem        = %mem.store (mem, ptr, map);
-                            next mem;
+                            let m        = mem.store (m, ptr, map);
+                            next m;
 
-                        con false(mem: %mem.M 0) = next mem;
-                        con next (mem: %mem.M 0) = head mem;
+                        con false(m: mem.M 0) = next m;
+                        con next (m: mem.M 0) = head m;
                     end;
 
-                con exit(mem: %mem.M 0) =
-                    let (mem, map) = %mem.load (mem, ptr);
+                con exit(m: mem.M 0) =
+                    let (m, map) = mem.load (m, ptr);
                     let opt_v      = ord#get (map, 1I32);
-                    let val        = %option.unwrap_unsafe opt_v;
-                    return (mem, val);
+                    let val        = option.unwrap_unsafe opt_v;
+                    return (m, val);
             end
     end;
 
-let map = (%ord.Map, %ord.init.map, %ord.get, %ord.insert.map, %ord.contains.map);
+let map = (ord.Map, ord.init.map, ord.get, ord.insertion.map, ord.contains.map);
 
 // I can't have a polymorphic function as extern at the moment, so I instantiate here:
-fun extern f(mem: %mem.M 0, x: I64): [%mem.M 0, I64] = poly map ((mem, x), return);
+extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] = poly map ((m, x), return);
 
 // CHECK: define i64 @f(i64 [[X:%[[:alnum:]_]+]])
 // CHECK: ret i64 [[X]]

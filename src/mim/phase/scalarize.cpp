@@ -77,23 +77,23 @@ void Scalarize::Analysis::inspect(const Def* def) {
 
     if (auto app = def->isa<App>()) {
         // The shapes an Axm's signature *itself* dictates are interface - never reshape them
-        // (e.g. `%affine.For`'s body): normalizers and plugin phases match on their exact shape,
+        // (e.g. `affine.For`'s body): normalizers and plugin phases match on their exact shape,
         // and rebuilding the App re-derives them from the Axm's generic type.
         // Subtrees merely *substituted* in via earlier (type) arguments impose no shape, though -
-        // they rewrite consistently with the rest of the World (e.g. `T` in `%mem.store T`):
+        // they rewrite consistently with the rest of the World (e.g. `T` in `mem.store T`):
         // seed the walk's visited set with them so they stay flattenable.
         if (app->uncurry_callee()->isa<Axm>()) {
             if (auto pi = isa_flattenable(app->callee_type())) pin(pi); // this very application's shape
             auto skips = DefSet();
             for (auto d = def; auto a = d->isa<App>(); d = a->callee())
                 collect(skips, a->arg());
-            pin_tree(app->callee_type()->dom(), skips); // what the Axm consumes (e.g. `%affine.For`'s body)
-            pin_tree(app->type(), skips);               // what the Axm produces (e.g. `%autodiff.ad f`)
+            pin_tree(app->callee_type()->dom(), skips); // what the Axm consumes (e.g. `affine.For`'s body)
+            pin_tree(app->type(), skips);               // what the Axm produces (e.g. `autodiff.ad f`)
 
-            // An Axm taking a *bare* function argument (`%autodiff.ad f`) is higher-order machinery that
+            // An Axm taking a *bare* function argument (`autodiff.ad f`) is higher-order machinery that
             // will inspect and call that function by its own convention - keep the function's shape even
             // where the Axm's signature is fully polymorphic (`{T: *} → T → ...`).
-            // A function buried inside a tuple argument (`%mem.store (mem, ptr, f)`) is just data, though.
+            // A function buried inside a tuple argument (`mem.store (mem, ptr, f)`) is just data, though.
             if (auto lam = app->arg()->isa_mut<Lam>()) pin_tree(lam->type());
         }
 
@@ -181,7 +181,7 @@ fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
     auto mask = fe::Bitset();
     if (auto pi = isa_flattenable(type)) {
         // A *dependent* domain (a mut Sigma whose components reference siblings through its Var, e.g. a
-        // runtime extent `n: Nat` named by a pointee `%mem.Ptr («n; T», 0)`) must not be flattened at all:
+        // runtime extent `n: Nat` named by a pointee `mem.Ptr («n; T», 0)`) must not be flattened at all:
         // splitting any component shifts the indices the dependent references are bound to.
         if (auto sig = pi->dom()->isa_mut<Sigma>(); sig && sig->has_var()) return mask;
         for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {

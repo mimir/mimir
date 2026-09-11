@@ -1,7 +1,7 @@
 // RUN: %mim %s
-plugin core;
+plugin core as *;
 
-lam sq (T: *, mul: [T, T] → T) (x: T): T = mul (x, x);
+lam sq {T: *} (`*: [T, T] → T) (x: T): T = x * x;
 
-fun extern f(x: Nat): Nat =
-    return (sq (Nat, %core.nat.mul) x);
+extern fun f(x: Nat): Nat =
+    return (sq nat.mul x);

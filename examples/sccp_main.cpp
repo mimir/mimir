@@ -9,30 +9,30 @@
 auto constexpr prog = R"(
 plugin core;
 
-cfun dont_know[]: Bool;
+extern fun dont_know []: Bool;
 
-fun extern f(x: Nat): Nat =
+extern fun f (x: Nat): Nat =
     head (23, x, 3) where
         con head(c x t: Nat) =      // after SCCP: c → 23, x → x, t → top
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond       = %core.ncmp.e (c, 23);
+                    let cond       = core.ncmp.e (c, 23);
                     (false, true)#cond ()
                     where
                         con true () =
                             next (c, x, 4);
 
                         con false() =
-                            let c = %core.nat.add (c, 1);
-                            let x = %core.nat.add (x, 1);
+                            let c = core.nat.add (c, 1);
+                            let x = core.nat.add (x, 1);
                             next (c, x, t);
                         con next (c x t: Nat) as cxt = head cxt;
                     end;
 
                 con exit() =
-                    let r = %core.nat.add (c, x);
-                    let s = %core.nat.add (r, t);
+                    let r = core.nat.add (c, x);
+                    let s = core.nat.add (r, t);
                     return s;
             end
     end;

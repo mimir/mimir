@@ -64,7 +64,7 @@ const Def* normalize_contains(const Def*, const Def*, const Def* arg) {
     return nullptr;
 }
 
-template<insert id>
+template<insertion id>
 const Def* normalize_insert(const Def* type, const Def*, const Def* arg) {
     auto& w       = type->world();
     auto [ms, kv] = arg->projs<2>();
@@ -77,9 +77,9 @@ const Def* normalize_insert(const Def* type, const Def*, const Def* arg) {
                 auto new_ops = DefVec();
                 bool updated = false;
                 for (size_t i = 0, e = *l; i != e; ++i) {
-                    auto key = id == ord::insert::map ? kv->proj(2, 0) : kv;
+                    auto key = id == ord::insertion::map ? kv->proj(2, 0) : kv;
                     auto cur = tuple->proj(e, i);
-                    if (id == ord::insert::map) cur = cur->proj(2, 0);
+                    if (id == ord::insertion::map) cur = cur->proj(2, 0);
                     if (key == cur) {
                         updated = true;
                         new_ops.emplace_back(kv);
@@ -91,10 +91,10 @@ const Def* normalize_insert(const Def* type, const Def*, const Def* arg) {
                 if (!updated) new_ops.emplace_back(kv);
 
                 // return w.call(id, lt, Defs(new_ops));
-                auto insert = id == ord::insert::map ? ord::init::map : ord::init::set;
+                auto insert = id == ord::insertion::map ? ord::init::map : ord::init::set;
                 auto new_n  = w.lit_nat(new_ops.size());
                 auto app    = w.app(w.annex(insert), K);
-                if (id == ord::insert::map) app = w.app(app, V);
+                if (id == ord::insertion::map) app = w.app(app, V);
 
                 return w.app(w.app(app, new_n), new_ops);
             }

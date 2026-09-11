@@ -7,11 +7,11 @@ plugin math;
 plugin mem;
 plugin core;
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
-    let s   = %math.conv.u2f %math.f32 argc;
-    let d   = %math.conv.u2f %math.f64 argc;
-    let x   = %math.conv.f2f %math.f64 (%math.tri.sin 0 s);
-    let y   = %math.tri.atanh 0 (%math.arith.div 0 (d, 10.0:%math.F64));
-    let z   = %math.pow 0 (x, y);
-    let res = %math.arith.mul 0 (z, 100.0:%math.F64);
-    return (mem, %math.conv.f2u i32 res);
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+    let s   = math.conv.u2f math.f32 argc;
+    let d   = math.conv.u2f math.f64 argc;
+    let x   = math.conv.f2f math.f64 (math.tri.sin 0 s);
+    let y   = math.tri.atanh 0 (math.arith.div 0 (d, 10.0:math.F64));
+    let z   = math.pow 0 (x, y);
+    let res = math.arith.mul 0 (z, 100.0:math.F64);
+    return (m, math.conv.f2u i32 res);

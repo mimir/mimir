@@ -9,98 +9,98 @@
 /// ## Dependencies
 ///
 /// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `%%compile.named` (which resolves to the plugin's
-/// annex iff it is loaded) and `%%compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
+/// Every other plugin is referenced *by name* through `compile.named` (which resolves to the plugin's
+/// annex iff it is loaded) and `compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;
 ///
 /// ## The default pipeline
 ///
-lam extern _default_compile (): %compile.Phase =
+extern lam _default_compile (): compile.Phase =
     let optimize =
         // fixed-point iteration off by default; enable with `-X compile:aggr`
-        %compile.phases (%compile.aggr ff) (
-            %compile.scalarize,
-            %compile.phases tt (
-                %compile.beta_red,
-                %compile.eta_conv,
+        compile.phases (compile.aggr ff) (
+            compile.scalarize,
+            compile.phases tt (
+                compile.beta_red,
+                compile.eta_conv,
             ),
-            %compile.named "%mem.seo",
-            %compile.static_arg_opt,
+            compile.named "mem.seo",
+            compile.static_arg_opt,
         );
 
-    %compile.phases ff (
+    compile.phases ff (
         optimize,
         // regex
-        %compile.named "%regex.lower_regex",
-        %compile.unload "regex",
+        compile.named "regex.lower_regex",
+        compile.unload "regex",
 
         // tensor
-        %compile.named "%tensor.reassoc",
-        %compile.named "%tensor.lower_tensor",
-        %compile.named "%tensor.fuse_tensor",
-        %compile.named "%tensor.lower_to_mem",
-        %compile.unload "tensor",
-        // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits %mem.M placeholders that must be stitched into a global mem chain.
-        %compile.cond "tensor" (%compile.named "%mem.add_mem"),
+        compile.named "tensor.reassoc",
+        compile.named "tensor.lower_tensor",
+        compile.named "tensor.fuse_tensor",
+        compile.named "tensor.lower_to_mem",
+        compile.unload "tensor",
+        // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits mem.M placeholders that must be stitched into a global mem chain.
+        compile.cond "tensor" (compile.named "mem.add_mem"),
 
         // btensor
-        %compile.named "%gpu.lower_btensor_map_reduce",
-        %compile.named "%btensor.lower_map_reduce",
-        %compile.unload "btensor",
+        compile.named "gpu.lower_btensor_map_reduce",
+        compile.named "btensor.lower_map_reduce",
+        compile.unload "btensor",
 
         // gpu
-        %compile.named "%gpu.mem_checks",
+        compile.named "gpu.mem_checks",
 
         // autdoiff
-        %compile.named "%autodiff.eval",
-        %compile.named "%autodiff.zero_repl",
-        %compile.unload "autodiff",
+        compile.named "autodiff.eval",
+        compile.named "autodiff.zero_repl",
+        compile.unload "autodiff",
 
         // buffer
-        %compile.named "%buffer.lower_ptr",
-        %compile.unload "buffer",
+        compile.named "buffer.lower_ptr",
+        compile.unload "buffer",
 
         // affine + cps
-        %compile.named "%affine.lower_index",
-        %compile.named "%cps.conv",
-        %compile.unload "cps",
-        %compile.named "%affine.lower_for",
-        %compile.unload "affine",
+        compile.named "affine.lower_index",
+        compile.named "cps.conv",
+        compile.unload "cps",
+        compile.named "affine.lower_for",
+        compile.unload "affine",
 
         // clos conv
         let clos_opt_phases =
-            %compile.phases ff (
-                %compile.scalarize,
-                %compile.named "%clos.branch_clos",
-                %compile.named "%mem.seo",
+            compile.phases ff (
+                compile.scalarize,
+                compile.named "clos.branch_clos",
+                compile.named "mem.seo",
             );
-        %compile.cond "clos" (
-            %compile.phases ff (
-                %compile.named "%clos.clos_conv_prep",
-                %compile.named "%clos.clos_conv",
+        compile.cond "clos" (
+            compile.phases ff (
+                compile.named "clos.clos_conv_prep",
+                compile.named "clos.clos_conv",
                 clos_opt_phases,
-                %compile.named "%clos.lower_typed_clos_prep",
-                %compile.named "%clos.clos2sjlj",
+                compile.named "clos.lower_typed_clos_prep",
+                compile.named "clos.clos2sjlj",
                 // clos2sjlj introduces new branch closures; clean them up again
                 clos_opt_phases,
-                %compile.named "%clos.lower_typed_clos",
+                compile.named "clos.lower_typed_clos",
             )
         ),
 
-        %compile.lam_spec, // replace with lam-lifting
+        compile.lam_spec, // replace with lam-lifting
 
         // CodeGenPrep
         optimize,
-        %compile.branch_normalize,
-        %compile.ret_wrap,
-        %compile.named "%mem.remem_repl",
-        %compile.named "%nvptx.stream_impl_repl",
-        %compile.named "%mem.alloc2malloc_repl",
-        %compile.named "%refly.remove_dbg_repl",
-        %compile.unload "refly",
-        %compile.named "%gpu.check_addr_spaces_repl",
-        %compile.named "%ll.emit",
-        %compile.named "%ll_nvptx.emit",
+        compile.branch_normalize,
+        compile.ret_wrap,
+        compile.named "mem.remem_repl",
+        compile.named "nvptx.stream_impl_repl",
+        compile.named "mem.alloc2malloc_repl",
+        compile.named "refly.remove_dbg_repl",
+        compile.unload "refly",
+        compile.named "gpu.check_addr_spaces_repl",
+        compile.named "ll.emit",
+        compile.named "ll_nvptx.emit",
     );

@@ -246,7 +246,7 @@ const Def* normalize_pad(const Def*, const Def* c, const Def* arg) {
 const Def* normalize_concat(const Def*, const Def*, const Def*) { return nullptr; }
 
 const Def* normalize_if_static(const Def*, const Def*, const Def* arg) {
-    // `%tensor.if_static (k, s, d)` picks `s` once `k` has folded to a literal; a still-symbolic `k`
+    // `tensor.if_static (k, s, d)` picks `s` once `k` has folded to a literal; a still-symbolic `k`
     // keeps the App stuck, and the tensor lowerings residualize it to `d` (by lowering time,
     // undecided means runtime).
     auto [k, s, d] = arg->projs<3>();
@@ -255,10 +255,10 @@ const Def* normalize_if_static(const Def*, const Def*, const Def* arg) {
 }
 
 const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
-    // `%tensor.fastest_axis (r, t)` reflects which axis of `t` is the fastest-varying (unit-stride)
+    // `tensor.fastest_axis (r, t)` reflects which axis of `t` is the fastest-varying (unit-stride)
     // axis of the tensor actually read once `fuse_tensor`'s read-through has absorbed a pure
     // re-indexed read behind `t`: without one, `t`'s own last axis; behind one, found by evaluating
-    // the read's access map on distinct `%affine.lit` markers — normalization folds the map's
+    // the read's access map on distinct `affine.lit` markers — normalization folds the map's
     // extracts over the marker tuple, and a last component that does not fold back to a marker
     // (reshape arithmetic) stays unknown. Unknown answers the sentinel `r`.
     auto& w     = arg->world();
@@ -285,7 +285,7 @@ const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
 }
 
 const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
-    // `%tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
+    // `tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
     auto& w = c->world();
     auto r  = Lit::isa<u64>(c->as<App>()->arg()); // the explicit rank `r`
     if (!r) return nullptr;

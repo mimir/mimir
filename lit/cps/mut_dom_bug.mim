@@ -1,19 +1,20 @@
 // RUN: %mim -p opt %s -p cps -o -
 plugin core;
+plugin mem;
 
-lam ForBody (n: Nat) = [%mem.M 0, Idx n] → [%mem.M 0];
+lam ForBody (n: Nat) = [mem.M 0, Idx n] → [mem.M 0];
 
-lam For {n: Nat} (start _end: Idx n) (mem: %mem.M 0) (it: ForBody n): %mem.M 0 =
-    lam loop (mem: %mem.M 0, i: Idx n) @(%core.pe.is_closed i): [%mem.M 0, Idx n] =
-        let mem = it (mem, i);
+lam For {n: Nat} (start _end: Idx n) (m: mem.M 0) (it: ForBody n): mem.M 0 =
+    lam loop (m: mem.M 0, i: Idx n) @(core.pe.is_closed i): [mem.M 0, Idx n] =
+        let m = it (m, i);
 
-        let j   = %core.wrap.add 0 (i, %core.idx n 0 1);
-        let cmp = %core.icmp.ul    (i, _end);
-        ((mem, j), loop (mem, j))#cmp;
+        let j   = core.wrap.add 0 (i, core.idx n 0 1);
+        let cmp = core.icmp.ul    (i, _end);
+        ((m, j), loop (m, j))#cmp;
 
-    let (mem, _) = loop (mem, start);
-    mem;
+    let (m, _) = loop (m, start);
+    m;
 
-con extern main (mem: %mem.M 0, return: Cn [%mem.M 0, I32]) =
-    let mem = For (0₁₂₃, 122₁₂₃) mem (λ [mem: %mem.M 0, i: Idx 123]: %mem.M 0 = mem);
-    return (mem, 0I32);
+extern con main (m: mem.M 0, return: Cn [mem.M 0, I32]) =
+    let m = For (0₁₂₃, 122₁₂₃) m (λ [m: mem.M 0, i: Idx 123]: mem.M 0 = m);
+    return (m, 0I32);

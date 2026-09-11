@@ -5,13 +5,13 @@
 // Relative to *this* file, not to whoever imports it; resolves to the same file as mod.mim's `import "lib.mim"`.
 import "../lib.mim";
 
-let base  = 100I32;
-let total = lib.answer;
+pub let base  = 100I32;
+pub let total = lib.answer;
 
-mod util {
-    let scale = 3I32;
+pub mod util {
+    pub let scale = 3I32;
 
-    mod deep {
-        let leaf = 9I32;
+    pub mod deep {
+        pub let leaf = 9I32;
     }
 }

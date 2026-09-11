@@ -15,7 +15,7 @@ struct Split {
 /// A bracketing of a matrix chain, innermost node first.
 using Splits = fe::Vector<Split>;
 
-/// Reassociates chains of %%tensor.product_2d with the classic matrix-chain-order dynamic program,
+/// Reassociates chains of tensor.product_2d with the classic matrix-chain-order dynamic program,
 /// so that a chain is evaluated with the least number of vector-lane slots.
 ///
 /// Extents need not be literal: a cost is kept as a polynomial in the symbolic extents, ordered by
@@ -34,7 +34,7 @@ private:
     static constexpr u64 Default_max_dispatch = 4;
     static constexpr u64 Default_vec          = 8;
 
-    /// One `%tensor.product_2d` of a chain: `«m, k» · «k, l»`.
+    /// One `tensor.product_2d` of a chain: `«m, k» · «k, l»`.
     struct Link {
         const App* app;
         const Def* m;

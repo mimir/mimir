@@ -6,7 +6,7 @@ plugin core;
 
 // extern arguments prevent constant folding; this exercises the codegen path
 // nat.sub must emit saturating subtraction (select/icmp) not a plain sub nuw
-fun extern nat_sub(a b: Nat): Nat = return (%core.nat.sub (a, b));
+extern fun nat_sub(a b: Nat): Nat = return (core.nat.sub (a, b));
 
 // CHECK-LABEL: define{{.*}}@nat_sub
 // CHECK-NOT: sub nsw nuw i64

@@ -25,41 +25,6 @@ std::pair<Ptr<File>&, bool> AST::file(const fe::Src* src) {
     return {i->second, fresh};
 }
 
-AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
-    if (!dbg || dbg.sym()[0] != '%') return nullptr;
-
-    auto [plugin_s, tag_s, sub_s] = Annex::split(driver(), dbg.sym());
-    auto plugin_tag               = driver().sym("%"s + plugin_s.str() + "."s + tag_s.str());
-    auto& sym2annex               = plugin2sym2annex_[plugin_s];
-    auto tag_id                   = sym2annex.size();
-
-    if (plugin_s == sym_error()) error().e(dbg.loc(), "plugin name `{}` is reserved", dbg);
-    if (tag_id > std::numeric_limits<tag_t>::max())
-        error().e(dbg.loc(), "exceeded maximum number of annexes in current plugin");
-
-    if (!Annex::mangle(plugin_s)) {
-        error().e(dbg.loc(), "invalid annex name `{}`", dbg);
-        plugin_s = sym_error();
-    }
-
-    auto sub        = (tag_t)sym2annex.size();
-    auto [i, fresh] = sym2annex.try_emplace(plugin_tag, AnnexInfo{plugin_s, tag_s, sub});
-    auto annex      = &i->second;
-
-    if (sub_s) {
-        if (sub_id) {
-            *sub_id       = annex->subs.size();
-            auto& aliases = annex->subs.emplace_back();
-            aliases.emplace_back(sub_s);
-        } else {
-            error().e(dbg.loc(), "annex `{}` must not have a subtag", dbg);
-        }
-    }
-
-    if (!fresh) annex->fresh = false;
-    return annex;
-}
-
 void AST::bootstrap(Sym plugin, std::ostream& h) {
     auto tab = fe::Tab::spaces();
     std::println(h, "{}#pragma once\n", tab);

@@ -1,0 +1,32 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+plugin core;
+
+let `+ = core.nat.add;
+let `- = core.nat.sub;
+let `* = core.nat.mul;
+let `/ = core.nat.div;
+let `% = core.nat.rem;
+let `== = core.ncmp.e;
+let `!= = core.ncmp.ne;
+
+lam id (n: Nat): Nat = n;
+
+extern lam ops (): «6; Nat» =
+    ( 2 + 3 * 4                 // 14: `*` binds tighter than `+`
+    , (2 + 3) * 4               // 20
+    , 10 - 2 - 3                //  5: left associative
+    , 1 + 20 / 5 / 2 - 1        //  2
+    , id 3 * id 4               // 12: application binds tightest
+    , 1 + 17 % 5                //  3: `%` binds like `*`
+    );
+
+extern lam rels (): «4; Bool» =
+    ( 1 + 1 == 2                // tt: `+` binds tighter than `==`
+    , 2 * 3 != 6                // ff
+    , `== (3, 3)                // tt: the escape hatch
+    , `!= (3, 4)                // tt
+    );
+
+// CHECK-DAG: (14, 20, 5, 2, 12, 3)
+// CHECK-DAG: (tt, ff, tt, tt)

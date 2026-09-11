@@ -21,7 +21,7 @@ namespace {
 
 using fe::Vector;
 
-/// Whether an explicit, user-written `%gpu.init` is reachable from `def`.
+/// Whether an explicit, user-written `gpu.init` is reachable from `def`.
 bool contains_gpu_init(const Def* def, DefSet& seen) {
     if (auto [_, ins] = seen.emplace(def); !ins) return false;
     if (Axm::isa<gpu::init>(def)) return true;
@@ -30,7 +30,7 @@ bool contains_gpu_init(const Def* def, DefSet& seen) {
     return false;
 }
 
-/// Mirrors `btensor::phase::LowerMapReduce`'s helper of the same name: a counting `%affine.For` loop body
+/// Mirrors `btensor::phase::LowerMapReduce`'s helper of the same name: a counting `affine.For` loop body
 std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
     auto& w       = bound->world();
     auto acc_ty   = acc->type();
@@ -68,7 +68,7 @@ const Def* fold_index(const Def* shape, const Def* idx) {
     return w.tuple(out);
 }
 
-/// Chained `%mem.lea` over a coordinate tuple.
+/// Chained `mem.lea` over a coordinate tuple.
 const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
     auto n       = tuple->num_projs();
     auto element = ptr;
@@ -355,7 +355,7 @@ void LowerMapReduce::start() {
     auto has_gpu_init
         = std::ranges::any_of(old_world().roots(), [&](auto def) { return contains_gpu_init(def, seen); });
     if (has_gpu_init) {
-        log().w("not lowering any map-reduce operations to GPU: the program already contains an explicit `%gpu.init`");
+        log().w("not lowering any map-reduce operations to GPU: the program already contains an explicit `gpu.init`");
         return;
     }
     Super::start();
@@ -418,9 +418,9 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto mem_ty                                    = w.call<mem::M>(0);
     auto rewritten_arg                             = rewrite(app->arg());
     auto [_, rewritten_inputs, rewritten_post_ins] = rewritten_arg->projs<3>();
-    auto fun  = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
-                    ->set("mapReduceAffGpu");
-    auto call = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
+    auto fun = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
+                   ->set("mapReduceAffGpu");
+    auto call                                = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
     auto [fun_mem, new_inputs, new_post_ins] = fun->var(0_n)->projs<3>();
     auto cont                                = fun->var(1);
 
@@ -454,7 +454,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
 
     auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(nis_n + nps_n + 1), w.tuple(kernel_arg_tys)});
     launch      = w.app(launch, Defs{w.lit_nat(grid.n_groups), w.lit_nat(grid.n_items), w.annex<gpu::default_stream>(),
-                                     w.lit_ff(), w.tuple()});
+                                w.lit_ff(), w.tuple()});
     launch      = w.app(launch, kernel);
 
     DefVec kernel_args = inputs.dptrs;

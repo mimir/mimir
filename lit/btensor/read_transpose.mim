@@ -3,20 +3,22 @@
 
 plugin core;
 plugin btensor;
+plugin buffer;
+plugin mem;
 
 let MT = (2, (2, 4), I32);
 let MT2 = (2, (4, 2), I32);
 
-con extern cont (mem: %mem.M 0, m: (%buffer.Buf MT), return: Cn [%mem.M 0, I32]) =
-    let (mem, m) = %btensor.transpose_2d (mem, m);
+extern con cont (mm: mem.M 0, m: (buffer.Buf MT), return: Cn [mem.M 0, I32]) =
+    let (mm, m) = btensor.transpose_2d (mm, m);
     let idx2 = (3₄, 1₂);
-    let (mem, d) = %buffer.read MT2 (mem, m, idx2);
+    let (mm, d) = buffer.read MT2 (mm, m, idx2);
 
-    return (mem, d);
+    return (mm, d);
 
-con extern main (mem: %mem.M 0, argc: I32, argv: %mem.Ptr (%mem.Ptr (I8, 0), 0), return: Cn [%mem.M 0, I32]) =
+extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let c = 5I32;
-    let (mem, m) = %buffer.lit MT (mem, c);
-    cont (mem, m, return);
+    let (mm, m) = buffer.lit MT (mm, c);
+    cont (mm, m, return);
 
 // CHECK-NOT: %btensor.

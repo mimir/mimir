@@ -2,13 +2,13 @@
 
 plugin core;
 
-lam f0(s i: Nat): Idx s = %core.idx s 0 i;
-lam f1(s i: Nat): Idx s = %core.idx s 1 i;
+lam f0(s i: Nat): Idx s = core.idx s 0 i;
+lam f1(s i: Nat): Idx s = core.idx s 1 i;
 
-lam extern g0() = f0(42, 23);
-lam extern g1() = f1(42, 23);
-lam extern h0() = f0(23, 42);
-lam extern h1() = f1(23, 42);
+extern lam g0() = f0(42, 23);
+extern lam g1() = f1(42, 23);
+extern lam h0() = f0(23, 42);
+extern lam h1() = f1(23, 42);
 
 // CHECK-DAG: 23₄₂
 // CHECK-DAG: 23₄₂

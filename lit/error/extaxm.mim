@@ -1,0 +1,5 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+extern axm foo: Nat;
+
+// CHECK: {{.*}}extaxm.mim:3:8-3:10: error: `axm` is implicitly `anx`; cannot combine with `extern`

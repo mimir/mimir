@@ -2,60 +2,62 @@
 
 plugin mem;
 plugin core;
+plugin compile;
+plugin ll;
 
-cfun dont_know[mem: %mem.M 0]: [%mem.M 0, Bool];
-cfun take_addr[mem: %mem.M 0, %mem.Ptr0 Nat]: [%mem.M 0];
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+extern fun take_addr[m: mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
 
-let H = Fn [%mem.M 0, Nat] →  [%mem.M 0, Nat];
+let H = Fn [mem.M 0, Nat] →  [mem.M 0, Nat];
 
-fun h (mem: %mem.M 0, n: Nat): [%mem.M 0, Nat] =
-    return (mem, %core.nat.mul (n, n));
+fun h (m: mem.M 0, n: Nat): [mem.M 0, Nat] =
+    return (m, core.nat.mul (n, n));
 
-fun g (mem: %mem.M 0, h: H): [%mem.M 0, Nat] =
-    ret (mem, res1) = h $ (mem, 23);
-    ret (mem, res2) = h $ (mem, 23);
-    return (mem, %core.nat.add (res1, res2));
+fun g (m: mem.M 0, h: H): [mem.M 0, Nat] =
+    ret (m, res1) = h $ (m, 23);
+    ret (m, res2) = h $ (m, 23);
+    return (m, core.nat.add (res1, res2));
 
-fun extern f (mem: %mem.M 0, x: Nat): [%mem.M 0, Nat] =
-    ret (mem, ph) = %mem.slot (H,   0) $ mem;
-    ret (mem, pr) = %mem.slot (Nat, 0) $ mem;
-    let  mem      = %mem.store (mem, ph, h);
-    let  mem      = %mem.store (mem, pr, x);
-    head mem where
-        con head (mem: %mem.M 0) =
-            ret (mem, cond) = dont_know $ mem;
-            (exit, body)#cond mem where
-                con body (mem: %mem.M 0) =
-                    let (mem, vh) = %mem.load (mem, ph);
-                    let (mem, vr) = %mem.load (mem, pr);
-                    ret (mem, res1) = g $ (mem, vh);
-                    ret (mem, res2) = g $ (mem, vh);
-                    let add = %core.nat.add (vr, res1);
-                    let add = %core.nat.add (add, res2);
-                    let mem = %mem.store (mem, pr, add);
-                    head mem;
+extern fun f (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
+    ret (m, ph) = mem.slot (H,   0) $ m;
+    ret (m, pr) = mem.slot (Nat, 0) $ m;
+    let  m      = mem.store (m, ph, h);
+    let  m      = mem.store (m, pr, x);
+    head m where
+        con head (m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, vh) = mem.load (m, ph);
+                    let (m, vr) = mem.load (m, pr);
+                    ret (m, res1) = g $ (m, vh);
+                    ret (m, res2) = g $ (m, vh);
+                    let add = core.nat.add (vr, res1);
+                    let add = core.nat.add (add, res2);
+                    let m = mem.store (m, pr, add);
+                    head m;
 
-                con exit(mem: %mem.M 0) =
-                    let (mem, vr) = %mem.load (mem, pr);
-                    return (mem, vr);
+                con exit(m: mem.M 0) =
+                    let (m, vr) = mem.load (m, pr);
+                    return (m, vr);
             end
     end;
 
-lam extern _compile(): %compile.Phase =
-    %compile.phases ff (
-        %compile.cleanup,
-        %compile.phases tt (
-            %compile.scalarize,
-            %compile.phases tt (
-                %compile.beta_red,
-                %compile.eta_conv,
+extern lam _compile(): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        compile.phases tt (
+            compile.scalarize,
+            compile.phases tt (
+                compile.beta_red,
+                compile.eta_conv,
             ),
-            %mem.seo,
+            mem.seo,
         ),
-        %compile.branch_normalize,
-        %compile.ret_wrap,
-        %compile.named "%mem.alloc2malloc_repl",
-        %compile.named "%ll.emit",
+        compile.branch_normalize,
+        compile.ret_wrap,
+        compile.named "mem.alloc2malloc_repl",
+        compile.named "ll.emit",
     );
 
 // CHECK: ret i64 529

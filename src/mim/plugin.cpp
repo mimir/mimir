@@ -1,7 +1,5 @@
 #include "mim/plugin.h"
 
-#include "mim/driver.h"
-
 namespace mim {
 
 std::optional<plugin_t> Annex::mangle(std::string_view plugin) {
@@ -51,27 +49,6 @@ std::string Annex::demangle(plugin_t plugin) {
     }
 
     return result;
-}
-
-std::tuple<Sym, Sym, Sym> Annex::split(Driver& driver, Sym s) {
-    if (!s) return {};
-    if (s[0] != '%') return {};
-    auto sv = s.view().substr(1);
-
-    auto dot = sv.find('.');
-    if (dot == std::string_view::npos) return {};
-
-    auto plugin = driver.sym(sv.substr(0, dot));
-    if (!mangle(plugin)) return {};
-
-    auto tag = sv.substr(dot + 1);
-    if (auto dot = tag.find('.'); dot != std::string_view::npos) {
-        auto sub = driver.sym(tag.substr(dot + 1));
-        tag      = tag.substr(0, dot);
-        return {plugin, driver.sym(tag), sub};
-    }
-
-    return {plugin, driver.sym(tag), {}};
 }
 
 } // namespace mim

@@ -3,10 +3,10 @@
 
 import core;
 
-lam add (a: Nat) (b: Nat) = %core.nat.add (a, b);
-lam le (a: Nat) (b: Nat) = %core.ncmp.le (a, b);
+lam add (a: Nat) (b: Nat) = core.nat.add (a, b);
+lam le (a: Nat) (b: Nat) = core.ncmp.le (a, b);
 
-fun extern f (n: Nat): Nat =
+extern fun f (n: Nat): Nat =
     con hi (i: Nat) =
         con bi () = hj i;
         con xi () = return i;
