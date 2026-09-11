@@ -107,6 +107,9 @@ private:
     }
     Ptr<Expr> parse_primary_expr(std::string_view ctxt);
     Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot, std::string_view ctxt = {});
+
+    /// The `` `op `` a MIM_INFIX_SUGAR operator desugars to; `nullptr` for a MIM_INFIX_CORE one.
+    Ptr<Expr> sugar_callee(Tok op);
     ///@}
 
     /// @name parse primary exprs

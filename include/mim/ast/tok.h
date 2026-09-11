@@ -178,10 +178,11 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_pipe,       "|")               \
 
 /// @name Infix Operator Table
-/// X-macro listing all infix operators as `m(tag, str, prec)`.
-/// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
+/// X-macros listing all infix operators as `m(tag, str, prec)`.
 ///@{
-#define MIM_INFIX(m)        \
+
+/// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
+#define MIM_INFIX_SUGAR(m)  \
     m(T_eq,   "==", Eq   )  \
     m(T_ne,   "!=", Eq   )  \
     m(T_lt,   "<",  Rel  )  \
@@ -195,6 +196,16 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_star, "*",  Mul  )  \
     m(T_div,  "/",  Mul  )  \
     m(T_rem,  "%",  Mul  )
+
+/// These have a meaning of their own; InfixExpr::emit_ dispatches on the tag.
+#define MIM_INFIX_CORE(m)        \
+    m(T_extract, "#",   Extract) \
+    m(T_union,   "∪",   Union  ) \
+    m(K_inj,     "inj", Inj    ) \
+    m(T_arrow,   "→",   Arrow  ) \
+    m(T_at,      "@",   App    )
+
+#define MIM_INFIX(m) MIM_INFIX_SUGAR(m) MIM_INFIX_CORE(m)
 ///@}
 
 #define MIM_SUBST(m)                  \
@@ -237,14 +248,14 @@ public:
             default: return {};
         }
     }
-    /// Name the infix operator @p tag desugars to - including the leading `` ` ``.
+    /// Name the infix operator @p tag desugars to - including the leading `` ` ``; empty for MIM_INFIX_CORE.
     static constexpr std::string_view infix_sym(Tag tag) {
         switch (tag) {
 #define CODE(t, str, prec) \
     case Tag::t: return "`" str;
-            MIM_INFIX(CODE)
+            MIM_INFIX_SUGAR(CODE)
 #undef CODE
-            default: fe::unreachable();
+            default: return {};
         }
     }
     static constexpr Tok::Tag delim_l2r(Tag tag) { return Tok::Tag(int(tag) + 1); }

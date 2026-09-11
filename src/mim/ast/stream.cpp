@@ -139,14 +139,8 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
 void TypeExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(Type {})", S(tab, level())); }
 void RuleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(Rule {})", S(tab, dom())); }
 
-void ArrowExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} -> {}", S(tab, dom()), S(tab, codom()));
-}
-
-void UnionExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "({})", R(tab, types(), "∪ ")); }
-
-void InjExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} inj {}", S(tab, value()), S(tab, type()));
+void InfixExpr::stream(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "({} {} {})", S(tab, lhs()), Tok::tag2str(op().tag()), S(tab, rhs()));
 }
 
 void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
@@ -176,7 +170,7 @@ void PiExpr::stream(fe::Tab& tab, std::ostream& os) const {
 void LamExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "{};", S(tab, lam())); }
 
 void AppExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}", S(tab, callee()), is_explicit() ? "@" : "", S(tab, arg()));
+    std::print(os, "({} {})", S(tab, callee()), S(tab, arg()));
 }
 
 void RetExpr::stream(fe::Tab& tab, std::ostream& os) const {
@@ -189,13 +183,6 @@ void TupleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(
 
 void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
-}
-
-void ExtractExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    if (auto expr = std::get_if<Ptr<Expr>>(&index()))
-        std::print(os, "{}#{}", S(tab, tuple()), S(tab, expr->get()));
-    else
-        std::print(os, "{}#{}", S(tab, tuple()), std::get<Dbg>(index()));
 }
 
 void InsertExpr::stream(fe::Tab& tab, std::ostream& os) const {
