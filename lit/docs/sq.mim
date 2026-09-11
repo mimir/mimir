@@ -4,4 +4,4 @@ plugin core as *;
 lam sq {T: *} (`*: [T, T] → T) (x: T): T = x * x;
 
 extern fun f(x: Nat): Nat =
-    return ((sq nat.mul) x);
+    return (sq nat.mul x);
