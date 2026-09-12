@@ -31,7 +31,7 @@ Lexer::Lexer(fe::Driver& driver, std::string_view buf, const fe::Src* src, std::
     if (start_md())
         emit_md(true);
     else
-        md_fence();
+        md_open();
 }
 
 Tok Lexer::lex() {
@@ -348,7 +348,7 @@ void Lexer::eat_comments() {
 }
 
 void Lexer::emit_md(bool start_of_file) {
-    if (!start_of_file) md_fence();
+    if (!start_of_file) md_close();
 
     do {
         out_ = false;
@@ -365,7 +365,7 @@ void Lexer::emit_md(bool start_of_file) {
     if (ahead() == utf8::EoF)
         out_ = false;
     else
-        md_fence();
+        md_open();
 }
 
 Sym Lexer::sym() { return driver().sym(str_); }

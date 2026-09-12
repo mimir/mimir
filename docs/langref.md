@@ -13,9 +13,9 @@ A terminal is always quoted, a nonterminal never is, and the meta-symbols are:
 - `x | y` is either `x` or `y`.
 - `(x y)` groups.
 - `x*`, `x+`, and `x?` are zero or more, one or more, and an optional `x`.
-- `["ab"]` is one of the characters `a` or `b`, and `[a-c]` is a character range; both only occur in the [lexical rules](@ref terminals).
+- `[a-c]` is a character range from `a` to `c`, and `[a-cx-z]` combines several; ranges only occur in the [lexical rules](@ref terminals).
 
-For instance, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
+For example, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
 
 ## Lexical Structure {#lex}
 
@@ -27,8 +27,7 @@ For example, `>>=` is tokenized as `>>` followed by `=`.
 ### Terminals {#terminals}
 
 The grammar refers to *primary terminals*.
-Some tokens also have ASCII-only spellings, called *secondary terminals*, that denote the same lexical token.
-For example, `λ` and `lm` are lexically equivalent.
+Some tokens have a second spelling - an ASCII-only one or a Unicode variant - that denotes the very same lexical token; these are the *secondary terminals*.
 
 #### Primary Terminals
 
@@ -39,7 +38,7 @@ For example, `λ` and `lm` are lexically equivalent.
 ‹ › « »
 → ← => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
-+ - * / % == != < <= > >= << >>
++ - / % == != < <= > >= << >>
 <eof>
 ```
 
@@ -50,16 +49,18 @@ For example, `λ` and `lm` are lexically equivalent.
 
 #### Secondary Terminals
 
-<div class="ebnf-terminals">
-
-```text
--> <- bot top lm
-```
-
-</div>
-
-`⟨`, `⟩`, `⟪`, and `⟫` may be used as alternatives for `‹`, `›`, `«`, and `»`.
-`★` may be used as an alternative for `*`.
+| Primary | Secondary |
+|---------|-----------|
+| `→`     | `->`      |
+| `←`     | `<-`      |
+| `λ`     | `lm`      |
+| `⊥`     | `bot`     |
+| `⊤`     | `top`     |
+| `*`     | `★`       |
+| `‹`     | `⟨`       |
+| `›`     | `⟩`       |
+| `«`     | `⟪`       |
+| `»`     | `⟫`       |
 
 #### Keywords
 
@@ -69,7 +70,7 @@ For example, `λ` and `lm` are lexically equivalent.
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
 and anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod
-norm plugin priv pub rec ret rule tt when where with use
+norm plugin priv pub rec ret rule tt use when where with
 ```
 
 </div>
@@ -99,24 +100,26 @@ The following terminals are defined by lexical patterns.
 
 ```ebnf
 I      ::= id
-         |  "`" op
+        |  "`" op
 L      ::= dec+
-         |  "0" ["bB"] bin+
-         |  "0" ["oO"] oct+
-         |  "0" ["xX"] hex+
-         |  dec+ eE sign? dec+
-         |  dec+ "." dec* (eE sign? dec+)?
-         |  dec* "." dec+ (eE sign? dec+)?
-         |  "0" ["xX"] hex+ pP sign? dec+
-         |  "0" ["xX"] hex+ "." hex* pP sign? dec+
-         |  "0" ["xX"] hex* "." hex+ pP sign? dec+
+        |  "0" ("b" | "B") bin+
+        |  "0" ("o" | "O") oct+
+        |  "0" ("x" | "X") hex+
+        |  dec+ eE sign? dec+
+        |  dec+ "." dec* (eE sign? dec+)?
+        |  dec* "." dec+ (eE sign? dec+)?
+        |  "0" ("x" | "X") hex+ pP sign? dec+
+        |  "0" ("x" | "X") hex+ "." hex* pP sign? dec+
+        |  "0" ("x" | "X") hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
-         |  dec+ "_" dec+
+        |  dec+ "_" dec+
+        |  dec+ ("i" | "I") dec+
 C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
 Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`.
 A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
 `` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
@@ -128,18 +131,18 @@ oct    ::= [0-7]
 dec    ::= [0-9]
 sub    ::= [₀-₉]
 hex    ::= [0-9a-fA-F]
-eE     ::= ["eE"]
-pP     ::= ["pP"]
-sign   ::= ["+-"]
-id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
-op     ::= ["+-*/%"]
+eE     ::= "e" | "E"
+pP     ::= "p" | "P"
+sign   ::= "+" | "-"
+id     ::= ("_" | [a-zA-Z]) ("_" | [0-9a-zA-Z])*
+op     ::= "+" | "-" | "*" | "/" | "%"
 esc    ::= "\'" | "\"" | "\0" | "\a" | "\\" | "\b"
-         |  "\f" | "\n" | "\r" | "\t" | "\v"
+        |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
 Character and string literals only admit ASCII payload characters plus the escapes listed above.
 
-## Comments
+### Comments
 
 Mim supports `/* ... */` multi-line comments, `// ...` single-line comments, and `/// ...` comments that are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
 `/* ... */` comments are not nested.
@@ -154,7 +157,7 @@ The start symbol is `f` for *file*.
 
 The main nonterminals used below are:
 
-| Symbol | Nonterminal        |
+| Symbol | Meaning            |
 |--------|--------------------|
 | `f`    | file               |
 | `d`    | declaration        |
@@ -283,9 +286,13 @@ There are two pattern families.
 - Both forms distribute the annotated type over the listed names.
 - Patterns may be wrapped in an alias pattern.
 
+<div class="mim-code">
+
 ```mim
 let (a, b, c) as abc = (1, 2, 3);
 ```
+
+</div>
 
 This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
@@ -295,11 +302,15 @@ This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
 This is especially useful for state-threading style code:
 
+<div class="mim-code">
+
 ```mim
 let (mem, ptr) = mem.alloc (I32, 0) mem;
 let mem        = mem.store (mem, ptr, 23:I32);
 let (mem, val) = mem.load (mem, ptr);
 ```
+
+</div>
 
 ### Expressions {#expr}
 
@@ -431,10 +442,14 @@ e   ::= e "==" e
 
 - `a op b` is sugar for `` `op (a, b) ``, so `a + b` is `` `+ (a, b) ``.
 - Mim doesn't give the operators a meaning of their own; whatever `` `op `` is bound to is what they mean:
+  <div class="mim-code">
+
   ```mim
   let `+ = core.nat.add;
   let x = 2 + 3;
   ```
+
+  </div>
 - `*` doubles as the abbreviation of `Type (0:Univ)`, which is why `f *` is a multiplication and not an application; write `f (*)` for the latter.
 
 #### Local Declaration Blocks
@@ -485,11 +500,15 @@ Mim uses different surface syntax for declarations, expressions, and types:
 
 The following declarations are equivalent:
 
+<div class="mim-code">
+
 ```mim
 lam f(T: *)((x y: T), return: T → ⊥)@ff: ⊥ = return x;
 con f(T: *)((x y: T), return: Cn T)        = return x;
 fun f(T: *) (x y: T): T                    = return x;
 ```
+
+</div>
 
 Partial-evaluation filters default to `tt`, except for `con`, `cn`, `fun`, and `fn`.
 
@@ -498,6 +517,8 @@ Partial-evaluation filters default to `tt`, except for `con`, `cn`, `fun`, and `
 The following expressions are equivalent.
 Because they are bound by `let`, they behave like the declarations above:
 
+<div class="mim-code">
+
 ```mim
 let f =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
 let f = lm (T: *) ((x y: T), return: T → ⊥)   : ⊥ = return x;
@@ -505,24 +526,34 @@ let f = cn (T: *) ((x y: T), return: Cn T)        = return x;
 let f = fn (T: *)  (x y: T): T                    = return x;
 ```
 
+</div>
+
 ### Applications
 
 The following applications of `f` are equivalent:
+
+<div class="mim-code">
 
 ```mim
 f Nat ((23, 42), cn res: Nat = use(res))
 ret res = f Nat $ (23, 42); use(res)
 ```
 
+</div>
+
 ### Function Types
 
 The following types are equivalent and describe the type of `f` above:
+
+<div class="mim-code">
 
 ```mim
 [T: *] →    [[T, T], T → ⊥] → ⊥
 [T: *] → Cn [[T, T], Cn T]
 [T: *] → Fn  [T, T] → T
 ```
+
+</div>
 
 ## Scoping
 
@@ -546,17 +577,25 @@ Named elements of mutable sigma types are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
 In the example below, `i` refers to the field name of `X`, not the `let`-bound variable:
 
+<div class="mim-code">
+
 ```mim
 let i = 1_2;
 [i: Nat, j: Nat]::X → f X#i;
 ```
 
+</div>
+
 Use parentheses to force the variable interpretation:
+
+<div class="mim-code">
 
 ```mim
 let i = 1_2;
 [i: Nat, j: Nat]::X → f X#(i);
 ```
+
+</div>
 
 <div class="section_buttons">
 

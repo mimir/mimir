@@ -40,7 +40,11 @@ And it pays off in practice: the [regex](@ref regex) plugin is the fastest engin
 The following function `sq` squares `x` — for **any** type `T`, as long as you hand it a multiplication on `T`.
 Then, `f` instantiates `sq` for `Nat`:
 
+<div class="mim-code">
+
 \include "sq.mim"
+
+</div>
 
 The type `T` sits in `{}` and is therefore an **implicit** argument: `f` just writes `sq nat.mul`, and MimIR infers `T = Nat` from the type of `nat.mul`.
 The remaining parameter is named `` `* `` — the [infix operator](@ref infix) `*` escaped into an ordinary identifier — so the body's `x * x` is nothing but an application of that very parameter.
@@ -105,10 +109,14 @@ See the full [build options](@ref building) in the [Contributing & Debugging](@r
 Declare new types, operations, and normalizers in a single `.mim` file.
 For example, the [`demo`](@ref demo) plugin declares one axiom and wires it to a C++ normalizer:
 
+<div class="mim-code">
+
 ```mim
 /// the 42 constant, folded by the `normalize_const` C++ normalizer
 axm demo.const_idx: [n: Nat] → Idx n, normalize_const;
 ```
+
+</div>
 
 The matching shared library implements `normalize_const` and any lowering or [phases](@ref phases); C++ does the heavy lifting of optimization, lowering, and code generation.
 

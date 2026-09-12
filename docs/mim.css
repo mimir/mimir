@@ -1,0 +1,13 @@
+/* The Mim snippets reuse Doxygen's own token classes; these two have no counterpart in C++. */
+div.fragment span.mim-literal {
+    color: var(--fragment-token);
+}
+
+div.fragment span.mim-special {
+    color: var(--fragment-preprocessor);
+}
+
+/* Doxygen emits stray siblings for the wrapper; only the one holding the listing is real. */
+div.mim-code:not(:has(div.fragment)) {
+    display: none;
+}

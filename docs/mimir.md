@@ -79,9 +79,13 @@ Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, o
 
 These are ordinary Mim values, written as plain Mim.
 `core.select`, for instance, is just
-```
+<div class="mim-code">
+
+```mim
 lam core.select {T: *} (cond, t, f): T = (f, t)#cond;
 ```
+
+</div>
 Being a direct-style function, it carries the default `tt` [`filter`](@ref mim::Lam::filter), which tells MimIR to **β-reduce its applications eagerly during graph construction**.
 So a call `core.select (a, b, c)` is inlined on the spot, collapsing to the indexed read `(c, b)#a` — the `select` itself never appears in the graph.
 
@@ -127,7 +131,11 @@ every basic block becomes a **continuation** (`con` is a function that never ret
 However, in contrast to other CPS representations, functions and other binders in MimIR are **scopeless**: they are **not** explicitly nested inside one another.
 This makes MimIR's take on CPS much more faithful to the original SSA formulation (see @ref mimir_scopeless):
 
+<div class="mim-code">
+
 \include "count.mim"
+
+</div>
 
 Correspondence between SSA form and CPS in MimIR:
 
@@ -237,7 +245,11 @@ The function `iter f (n, x)` applies `f` to `x` exactly `n` times.
 It is [**polymorphic**](https://en.wikipedia.org/wiki/Parametric_polymorphism) — the element type `T` is just another argument, passed implicitly in `{}` — and recursive.
 The `@(core.pe.is_closed n)` filter is a [**partial-evaluation**](https://en.wikipedia.org/wiki/Partial_evaluation) directive: whenever `n` is a constant, MimIR unrolls the recursion away at compile time:
 
+<div class="mim-code">
+
 \include "iter.mim"
+
+</div>
 
 The rest of the file puts `iter` to work, building a small tower of arithmetic purely by [**partial application**](https://en.wikipedia.org/wiki/Partial_application):
 
@@ -249,9 +261,13 @@ The rest of the file puts `iter` to work, building a small tower of arithmetic p
 Each step hands a *partially applied* function — `add x`, `mul x` — to `iter`'s higher-order parameter `f`.
 The final line is a **compile-time assertion**:
 
+<div class="mim-code">
+
 ```mim
 let _ = refly.equiv.struc_eq (pow 3 5, 243);
 ```
+
+</div>
 
 Because `iter` carries the `@(core.pe.is_closed n)` [partial-evaluation](https://en.wikipedia.org/wiki/Partial_evaluation) filter — and every function in the tower is direct-style with the default `tt` filter — MimIR evaluates `pow 3 5` **completely during graph construction**: the whole tower unrolls to the literal `243`, and `refly.equiv.struc_eq` statically checks it.
 A mismatch would fail the build.
@@ -280,7 +296,11 @@ MimIR's defining feature ties all of that together: **types live in the same gra
 So a type can be computed by an ordinary function, depend on a runtime value, and be partially evaluated — all for free.
 Watch a *type* come out of an ordinary function:
 
+<div class="mim-code">
+
 \include "dep.mim"
+
+</div>
 
 `Vec` is just a `lam` — but it returns `*`, the type of types, so it is a function `Nat → *`: a [type constructor](https://en.wikipedia.org/wiki/Type_constructor).
 `zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the *value* `n` of its argument.
