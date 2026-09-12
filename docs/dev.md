@@ -32,36 +32,24 @@ You can think of the [`World`](@ref mim::World) as a giant hash set that owns al
 In this example, we construct the `main` function.
 In direct style, its type looks like this:
 
-<div class="mim-code">
-
 ```mim
 [mem.M 0, I32, mem.Ptr (I32, 0)] -> [mem.M 0, I32]
 ```
 
-</div>
-
 In [continuation-passing style (CPS)](https://en.wikipedia.org/wiki/Continuation-passing_style), the same type looks like this:
-
-<div class="mim-code">
 
 ```mim
 Cn [mem.M 0, I32, mem.Ptr (I32, 0), Cn [mem.M 0, I32]]
 ```
-
-</div>
 
 The type `mem.M 0` tracks side effects.
 Since `main` introduces [variables](@ref mim::Var), we must create it as a **mutable** [lambda](@ref mim::Lam); see @ref mut.
 
 The body of `main` is simple: it invokes the return continuation `ret` with `mem` and `argc`:
 
-<div class="mim-code">
-
 ```mim
 ret (mem, argc)
 ```
-
-</div>
 
 It is also important to mark `main` as [external](@ref mim::Def::externalize).
 Otherwise, MimIR may remove it as dead code.
@@ -146,13 +134,9 @@ Top-level entry points, generated wrapper functions, and replacement nodes for f
 
 As a more intricate example, we build a polymorphic identity function using MimIR's C++ API.
 
-<div class="mim-code">
-
 ```mim
 λ {T: *} (x: T): T = x
 ```
-
-</div>
 
 This example illustrates how mutables and immutables interact.
 All binders must be created as mutables in order to access the [variable](@ref mim::Var) they introduce.
@@ -446,23 +430,15 @@ In other cases, it may wrap a plain [`Def`](@ref mim::Def) or some other subclas
 By default, MimIR assumes that an [axiom](@ref mim::Axm) becomes "active" when its final curried argument is applied.
 For example, [matching](@ref mim::Axm::isa) `mem.load` only succeeds on the final [`App`](@ref mim::App) of the curried call
 
-<div class="mim-code">
-
 ```mim
 mem.load (T, as) (mem, ptr)
 ```
 
-</div>
-
 whereas
-
-<div class="mim-code">
 
 ```mim
 mem.load (T, as)
 ```
-
-</div>
 
 does **not** match.
 

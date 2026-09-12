@@ -234,19 +234,23 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 
 - `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
-- `anx` marks a declaration as an [annex](@ref annex). It doesn't apply to `mod`, since a module is pure AST grouping, not a single value. `axm` is implicitly `anx` and may not combine with `extern`.
+- `anx` marks a declaration as an [annex](@ref annex).
+  It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
+  `axm` is implicitly `anx` and may not combine with `extern`.
 - `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
-- `mod` groups declarations under a name; its body also sees the enclosing scope. Neither `extern` nor `anx` apply to it.
+- `mod` groups declarations under a name; its body also sees the enclosing scope.
+  Neither `extern` nor `anx` apply to it.
 - `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
 - `let` introduces a binding pattern.
 - `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
-- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead. Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
+  Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
 - The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
 - `axm` declares an axiom.
-  A `tag` list declares several axioms of the same type at once, and each `"=" I` adds another name for that tag.
+  A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
   Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
 - An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
 - `rule` and `norm` declare rewrite rules.
@@ -286,13 +290,9 @@ There are two pattern families.
 - Both forms distribute the annotated type over the listed names.
 - Patterns may be wrapped in an alias pattern.
 
-<div class="mim-code">
-
 ```mim
 let (a, b, c) as abc = (1, 2, 3);
 ```
-
-</div>
 
 This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
@@ -302,29 +302,29 @@ This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
 This is especially useful for state-threading style code:
 
-<div class="mim-code">
-
 ```mim
 let (mem, ptr) = mem.alloc (I32, 0) mem;
 let mem        = mem.store (mem, ptr, 23:I32);
 let (mem, val) = mem.load (mem, ptr);
 ```
 
-</div>
-
 ### Expressions {#expr}
 
 #### Kinds and Builtin Types
 
 ```ebnf
-e   ::= "Univ"
-     |  "Type" e
-     |  "*"
-     |  "□"
-     |  "Nat"
-     |  "Idx"
-     |  "Bool"
-     |  "Rule" e
+e     ::= "Univ"
+       |  "Type" e
+       |  "*"
+       |  "□"
+       |  "Nat"
+       |  "Idx"
+       |  "Rule" e
+       |  alias
+
+alias ::= "Bool"
+       |  "I1" | "I8" | "I16" | "I32" | "I64"
+       |  "i1" | "i8" | "i16" | "i32" | "i64"
 ```
 
 - `Univ` is the universe of type levels.
@@ -333,8 +333,8 @@ e   ::= "Univ"
 - `□` abbreviates `Type (1:Univ)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
-- `Bool` abbreviates `Idx i1`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
+- `alias` is one of the [predefined aliases](@ref terminals), so `Bool` abbreviates `Idx i1` and `I32` abbreviates `Idx i32`.
 
 #### Literals and Basic Forms {#lit}
 
@@ -386,14 +386,14 @@ e   ::= e "→" e
 #### Products
 
 ```ebnf
-e   ::= "[" (bg ("," bg)* ","?)? "]"
-     |  "(" (e ("," e)* ","?)? ")"
-     |  "«" arity ("," arity)* ";" e "»"
-     |  "‹" arity ("," arity)* ";" e "›"
-     |  e "#" e
-     |  e "#" I
-     |  e "#" e "←" e
-     |  e "←" e
+e     ::= "[" (bg ("," bg)* ","?)? "]"
+       |  "(" (e ("," e)* ","?)? ")"
+       |  "«" arity ("," arity)* ";" e "»"
+       |  "‹" arity ("," arity)* ";" e "›"
+       |  e "#" e
+       |  e "#" I
+       |  e "#" e "←" e
+       |  e "←" e
 
 arity ::= e
        |  I ":" e
@@ -404,7 +404,7 @@ arity ::= e
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
-- `e # i` or `e # e` extracts a component.
+- `e#i` or `e#e` extracts a component.
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
 - `e ← value` without a `#` leaves the index implicit: `e` is its own sole component, so this is `e#0₁ ← value` and hence `value`.
   An `e` of arity other than 1 is an error, just as `e#0₁` would be.
@@ -418,8 +418,8 @@ e   ::= e "∪" e
      |  "match" e "with" ("|"? p "=>" e)+
 ```
 
-- `e ∪ t` forms a union type.
-- `e inj t` injects a value into a union type.
+- `e ∪ e` forms a union type.
+- `e inj e` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
 
 #### Infix Operators {#infix}
@@ -442,14 +442,10 @@ e   ::= e "==" e
 
 - `a op b` is sugar for `` `op (a, b) ``, so `a + b` is `` `+ (a, b) ``.
 - Mim doesn't give the operators a meaning of their own; whatever `` `op `` is bound to is what they mean:
-  <div class="mim-code">
-
   ```mim
   let `+ = core.nat.add;
   let x = 2 + 3;
   ```
-
-  </div>
 - `*` doubles as the abbreviation of `Type (0:Univ)`, which is why `f *` is a multiplication and not an application; write `f (*)` for the latter.
 
 #### Local Declaration Blocks
@@ -469,8 +465,8 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 
 |  # | Level     | Assoc | Operators                            | Notes                                                                    |
 |---:|-----------|:-----:|--------------------------------------|--------------------------------------------------------------------------|
-|  1 | `Lit`     |   -   | `L : e`                              | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here. |
-|  2 | `Extract` | left  | `e # e`, `e # I`                     |                                                                          |
+|  1 | `Lit`     |   -   | `L:e`                                | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here. |
+|  2 | `Extract` | left  | `e#e`, `e#I`                         |                                                                          |
 |  3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`. |
 |  4 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.             |
 |  5 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                          |
@@ -500,15 +496,11 @@ Mim uses different surface syntax for declarations, expressions, and types:
 
 The following declarations are equivalent:
 
-<div class="mim-code">
-
 ```mim
 lam f(T: *)((x y: T), return: T → ⊥)@ff: ⊥ = return x;
 con f(T: *)((x y: T), return: Cn T)        = return x;
 fun f(T: *) (x y: T): T                    = return x;
 ```
-
-</div>
 
 Partial-evaluation filters default to `tt`, except for `con`, `cn`, `fun`, and `fn`.
 
@@ -517,8 +509,6 @@ Partial-evaluation filters default to `tt`, except for `con`, `cn`, `fun`, and `
 The following expressions are equivalent.
 Because they are bound by `let`, they behave like the declarations above:
 
-<div class="mim-code">
-
 ```mim
 let f =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
 let f = lm (T: *) ((x y: T), return: T → ⊥)   : ⊥ = return x;
@@ -526,34 +516,24 @@ let f = cn (T: *) ((x y: T), return: Cn T)        = return x;
 let f = fn (T: *)  (x y: T): T                    = return x;
 ```
 
-</div>
-
 ### Applications
 
 The following applications of `f` are equivalent:
-
-<div class="mim-code">
 
 ```mim
 f Nat ((23, 42), cn res: Nat = use(res))
 ret res = f Nat $ (23, 42); use(res)
 ```
 
-</div>
-
 ### Function Types
 
 The following types are equivalent and describe the type of `f` above:
-
-<div class="mim-code">
 
 ```mim
 [T: *] →    [[T, T], T → ⊥] → ⊥
 [T: *] → Cn [[T, T], Cn T]
 [T: *] → Fn  [T, T] → T
 ```
-
-</div>
 
 ## Scoping
 
@@ -569,33 +549,27 @@ As a consequence, `_` may appear repeatedly in the same scope without conflict, 
 ### Annex {#annex}
 
 An `anx` declaration is an ordinary member of its enclosing module, found by the same path resolution as any other member.
-Its plugin-qualified name (`plugin.tag[.sub]`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
+Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
 
 ### Field Names of Sigmas
 
 Named elements of mutable sigma types are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
-In the example below, `i` refers to the field name of `X`, not the `let`-bound variable:
-
-<div class="mim-code">
+In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 
 ```mim
 let i = 1_2;
-[i: Nat, j: Nat]::X → f X#i;
+rec S: * = [i: Nat, j: Nat];
+lam f (x: S): Nat = x#i;
 ```
-
-</div>
 
 Use parentheses to force the variable interpretation:
 
-<div class="mim-code">
-
 ```mim
 let i = 1_2;
-[i: Nat, j: Nat]::X → f X#(i);
+rec S: * = [i: Nat, j: Nat];
+lam f (x: S): Nat = x#(i);
 ```
-
-</div>
 
 <div class="section_buttons">
 

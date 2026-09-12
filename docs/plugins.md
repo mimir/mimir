@@ -25,11 +25,7 @@ It consists of five checked-in files:
 
 **`demo.mim`**:
 
-<div class="mim-code">
-
 \include "src/mim/plug/demo/demo.mim"
-
-</div>
 
 Doc comments (`///`) are ordinary Doxygen-flavored Markdown (headings, `[TOC]`, `@see`, ...); everything else is plain Mim syntax declaring the annex itself.
 Here `demo.const_idx` is a single axiom with no subtags, and `normalize_const` names the C++ function that evaluates it.

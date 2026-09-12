@@ -58,12 +58,12 @@ private:
     void eat_comments();
     bool start_md() const { return ahead(0) == '/' && ahead(1) == '/' && ahead(2) == '/'; }
     void emit_md(bool start_of_file = false);
-    /// The `mim-code` wrapper switches on Mim syntax highlighting in the generated documentation.
+    /// The language tag switches on Mim syntax highlighting in the generated documentation.
     void md_open() {
-        if (md_) *md_ << "\n<div class=\"mim-code\">\n\n```mim\n";
+        if (md_) *md_ << "```mim\n";
     }
     void md_close() {
-        if (md_) *md_ << "```\n\n</div>\n\n";
+        if (md_) *md_ << "```\n";
     }
 
     fe::Driver& driver_;
