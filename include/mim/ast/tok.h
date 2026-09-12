@@ -16,8 +16,11 @@ class Def;
 namespace ast {
 
 /// @name Precedence Table
-/// X-macro listing all expression precedences from lowest to highest.
-/// Each entry is `m(name, assoc)` where @p assoc is `L`, `R`, or `N`.
+/// X-macro listing all expression precedences from lowest to highest as `m(name, assoc)`.
+/// @p assoc is `L`eft-, `R`ight-, or `N`on-associative; `a op b op c` is an error for an `N` level.
+/// Only a level named by MIM_INFIX or by an entry below is an actual operator:
+/// `Err`, `Bot`, `Pi`, and `Lit` merely serve as a `curr_prec` bound while parsing.
+/// Application binds tighter than every operator - only `Extract` and `Lit` bind tighter still.
 ///@{
 // clang-format off
 #define MIM_PREC(m)     \
@@ -25,15 +28,15 @@ namespace ast {
     m(Bot,     N)       \
     m(Where,   L)       \
     m(Ins,     R)       \
+    m(Inj,     R)       \
+    m(Union,   L)       \
     m(Arrow,   R)       \
     m(Pi,      N)       \
-    m(Inj,     R)       \
-    m(Eq,      L)       \
-    m(Rel,     L)       \
-    m(Shift,   L)       \
+    m(Eq,      N)       \
+    m(Rel,     N)       \
     m(Add,     L)       \
     m(Mul,     L)       \
-    m(Union,   L)       \
+    m(Shift,   L)       \
     m(App,     L)       \
     m(Extract, L)       \
     m(Lit,     N)

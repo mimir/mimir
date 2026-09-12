@@ -38,7 +38,7 @@ extern lam rels (): «8; Bool» =
 
 extern lam shifts (): «4; I32» =
     ( 1I32 << 3I32              //  8
-    , 1I32 << 1I32 + 2I32       //  8: `+` binds tighter than `<<`
+    , 1I32 << 1I32 + 2I32       //  4: `<<` binds tighter than `+`
     , 32I32 >> 1I32 >> 2I32     //  4: left associative
     , `>> (32I32, 4I32)         //  2: the escape hatch
     )
@@ -60,5 +60,5 @@ extern lam cmps (): «2; Bool» =
 
 // CHECK-DAG: (14, 20, 5, 2, 12, 3)
 // CHECK-DAG: (tt, ff, tt, tt, tt, tt, tt, ff)
-// CHECK-DAG: (8I32, 8I32, 4I32, 2I32)
+// CHECK-DAG: (8I32, 4I32, 4I32, 2I32)
 // CHECK-DAG: ‹2; tt›

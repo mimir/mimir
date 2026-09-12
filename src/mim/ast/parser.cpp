@@ -204,12 +204,18 @@ Ptr<Expr> Parser::parse_expr(std::string_view ctxt, Prec curr_prec) {
 }
 
 Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_prec, std::string_view ctxt) {
+    auto prev = Prec::Err; // precedence this loop built last; a non-associative one must not repeat
     while (true) {
         // A closing delimiter nobody is waiting for must not end the expression.
         recover(ctxt.empty() ? "expression"sv : ctxt);
 
         if (auto prec = Tok::infix_prec(ahead().tag())) {
             if (should_reduce(curr_prec, *prec)) return lhs;
+            if (*prec == prev && prec_assoc(*prec) == Assoc::N)
+                error()
+                    .e(ahead().loc(), "operator `{}` is not associative", ahead())
+                    .n("parenthesize the left- or right-hand side");
+            prev     = *prec;
             auto op  = lex();
             auto rhs = parse_expr(*prec, "right-hand side of the `{}` operator", op);
             lhs      = ptr<InfixExpr>(track, std::move(lhs), op, std::move(rhs), sugar_callee(op));
@@ -797,7 +803,8 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         if (!ISA(ahead().tag(), C_CURRIED_P)) break;
     }
 
-    auto codom = accept(Tag::T_colon) ? parse_expr(Prec::Arrow, "codomain of a {}", entity) : nullptr;
+    // The `: codom` slot ends at `=`, so it takes everything short of a `where`.
+    auto codom = accept(Tag::T_colon) ? parse_expr(Prec::Ins, "codomain of a {}", entity) : nullptr;
     if (ISA(tag, C_FN)) doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
 
     Ptr<Expr> body;

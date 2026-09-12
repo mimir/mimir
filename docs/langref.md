@@ -23,7 +23,7 @@ x ("," x)* ","?   comma-separated list of zero or more x, with an optional trail
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
 For example, `>>=` is tokenized as `>>` followed by `=`.
-Note that `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
+@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
 
 ### Terminals {#terminals}
 
@@ -438,21 +438,23 @@ The current parser uses the following precedence, from strongest to weakest bind
 1.  L : e                  literal and token-local type ascription
 2.  e # e                  extract
 3.  e e, e @ e             application
-4.  e ∪ e                  union
+4.  e << e, e >> e         shift operators
 5.  e * e, e / e, e % e    multiplicative operators
 6.  e + e, e - e           additive operators
-7.  e << e, e >> e         shift operators
-8.  e < e, e <= e, e > e, e >= e
+7.  e < e, e <= e, e > e, e >= e
                            relational operators
-9.  e == e, e != e         equality operators
-10. e inj e                injection
-11. e → e                  arrow
+8.  e == e, e != e         equality operators
+9.  e → e                  arrow
+10. e ∪ e                  union
+11. e inj e                injection
 12. e#e ← e                insert
 13. e where d* end         local declaration block
 ```
 
-- Extract, union, application, and the infix operators associate left-to-right.
+- Application binds tighter than every operator; only extract and a literal ascription bind tighter still.
+- Extract, union, application, and the arithmetic and shift operators associate left-to-right.
 - `inj`, `→`, and `←` associate right-to-left.
+- The relational and equality operators are **non**-associative: `a == b == c` is an error, write `(a == b) == c`.
 - `where` is the loosest surface operator.
 
 ## Summary: Functions and Types
