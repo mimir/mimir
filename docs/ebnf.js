@@ -1,7 +1,7 @@
 /**
 
 Colours the EBNF blocks of the language reference.
-Doxygen discards the language of a fenced code block, so a grammar block is recognized by its `::=` and a terminal list by an `ebnf-terminals` wrapper.
+Doxygen discards the language of a fenced code block, so a grammar block is marked up with an `ebnf-code` wrapper and a terminal list with an `ebnf-terminals` one.
 
 */
 
@@ -12,17 +12,18 @@ class MimEbnf {
 
     static init() {
         $(function() {
-            for (const fragment of document.querySelectorAll("div.fragment")) {
-                if (fragment.querySelector("span")) continue // Doxygen highlighted this one itself.
-
-                const lines = [...fragment.querySelectorAll("div.line")]
-                if (fragment.closest(".ebnf-terminals"))
-                    for (const line of lines) line.innerHTML = MimEbnf.terminals(line.textContent)
-                else if (lines.some(line => MimEbnf.HEAD.test(line.textContent)))
-                    for (const line of lines) line.innerHTML = MimEbnf.rule(line.textContent)
-            }
+            MimEbnf.highlight(".ebnf-terminals div.fragment", MimEbnf.terminals)
+            MimEbnf.highlight(".ebnf-code div.fragment", MimEbnf.rule)
             document.addEventListener("click", MimEbnf.trace)
         })
+    }
+
+    static highlight(selector, colour) {
+        for (const fragment of document.querySelectorAll(selector)) {
+            if (fragment.querySelector("span")) continue // Doxygen highlighted this one itself.
+
+            for (const line of fragment.querySelectorAll("div.line")) line.innerHTML = colour(line.textContent)
+        }
     }
 
     static escape(text) {

@@ -69,7 +69,7 @@ set(DOXY_ASSETS
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/mim.js"
 )
-set(DOXY_FILTER     "${CMAKE_CURRENT_SOURCE_DIR}/mim_fences.py")
+set(DOXY_FILTER     "${CMAKE_CURRENT_SOURCE_DIR}/fences.py")
 set(DOXY_HEADER     "${CMAKE_CURRENT_SOURCE_DIR}/header.html")
 set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 set(DOXY_LAYOUT     "${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml")
