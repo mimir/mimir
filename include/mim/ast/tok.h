@@ -33,8 +33,8 @@ namespace ast {
     m(Shift,   L)       \
     m(Add,     L)       \
     m(Mul,     L)       \
-    m(App,     L)       \
     m(Union,   L)       \
+    m(App,     L)       \
     m(Extract, L)       \
     m(Lit,     N)
 // clang-format on

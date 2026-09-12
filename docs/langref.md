@@ -437,8 +437,8 @@ The current parser uses the following precedence, from strongest to weakest bind
 ```text
 1.  L : e                  literal and token-local type ascription
 2.  e # e                  extract
-3.  e ∪ e                  union
-4.  e e, e @ e             application
+3.  e e, e @ e             application
+4.  e ∪ e                  union
 5.  e * e, e / e, e % e    multiplicative operators
 6.  e + e, e - e           additive operators
 7.  e << e, e >> e         shift operators
