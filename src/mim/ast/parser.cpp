@@ -204,110 +204,57 @@ Ptr<Expr> Parser::parse_expr(std::string_view ctxt, Prec curr_prec) {
 }
 
 Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_prec, std::string_view ctxt) {
+    auto prev = Prec::Err; // precedence this loop built last; a non-associative one must not repeat
     while (true) {
         // A closing delimiter nobody is waiting for must not end the expression.
         recover(ctxt.empty() ? "expression"sv : ctxt);
 
-        // `a op b` is sugar for `` `op (a, b) ``.
         if (auto prec = Tok::infix_prec(ahead().tag())) {
             if (should_reduce(curr_prec, *prec)) return lhs;
+            if (*prec == prev && prec_assoc(*prec) == Assoc::N)
+                error()
+                    .e(ahead().loc(), "operator `{}` is not associative", ahead())
+                    .n("parenthesize the left- or right-hand side");
+            prev     = *prec;
             auto op  = lex();
             auto rhs = parse_expr(*prec, "right-hand side of the `{}` operator", op);
-            Ptrs<Expr> elems;
-            elems.emplace_back(std::move(lhs));
-            elems.emplace_back(std::move(rhs));
-            auto dbg = Dbg(op.loc(), driver().sym(Tok::infix_sym(op.tag())));
-            lhs      = ptr<AppExpr>(track, false, path_expr(dbg), ptr<TupleExpr>(track, std::move(elems)));
+            lhs      = ptr<InfixExpr>(track, std::move(lhs), op, std::move(rhs), sugar_callee(op));
             continue;
         }
 
-        // If operator in ahead has less left precedence: reduce (break).
-        switch (ahead().tag()) {
-            case Tag::T_extract: {
-                if (should_reduce(curr_prec, Prec::Extract)) return lhs;
-                lex();
-                if (auto tok = accept(Tag::M_id))
-                    lhs = ptr<ExtractExpr>(track, std::move(lhs), tok.dbg());
-                else {
-                    auto rhs = parse_expr("right-hand side of an extract", Prec::Extract);
-                    lhs      = ptr<ExtractExpr>(track, std::move(lhs), std::move(rhs));
-                }
-                continue;
-            }
-            case Tag::T_arrow: {
-                if (should_reduce(curr_prec, Prec::Arrow)) return lhs;
-                lex();
-                auto rhs = parse_expr("right-hand side of a function type", Prec::Arrow);
-                lhs      = ptr<ArrowExpr>(track, std::move(lhs), std::move(rhs));
-                continue;
-            }
-            case Tag::T_union: {
-                if (should_reduce(curr_prec, Prec::Union)) return lhs;
-                lex();
-                Ptrs<Expr> types;
-                types.emplace_back(std::move(lhs));
-                do {
-                    auto t = parse_expr("right-hand side of a union type", Prec::Union);
-                    types.emplace_back(std::move(t));
-                } while (accept(Tag::T_union));
-                lhs = ptr<UnionExpr>(track, std::move(types));
-                continue;
-            }
-            case Tag::K_inj: {
-                if (should_reduce(curr_prec, Prec::Inj)) return lhs;
-                lex();
-                auto rhs = parse_expr("type a value is injected in", Prec::Inj);
-                lhs      = ptr<InjExpr>(track, std::move(lhs), std::move(rhs));
-                continue;
-            }
-            case Tag::T_at: {
-                if (should_reduce(curr_prec, Prec::App)) return lhs;
-                lex();
-                auto rhs = parse_expr("explicit argument to an application", Prec::App);
-                lhs      = ptr<AppExpr>(track, true, std::move(lhs), std::move(rhs));
-                continue;
-            }
-            case Tag::C_EXPR: {
-                if (should_reduce(curr_prec, Prec::App)) return lhs;
-                if (ISA(ahead().tag(), C_DECL))
-                    error()
-                        .w(ahead().loc(), "you are passing a declaration expression as argument")
-                        .n(lhs->loc(), "passed to this expression")
-                        .n("if this was your intention, consider parenthesizing the declaration expression")
-                        .n(lhs->loc().anew_end(), "or insert a `;` here");
-                auto rhs = parse_expr("argument to an application", Prec::App);
-                lhs      = ptr<AppExpr>(track, false, std::move(lhs), std::move(rhs));
-                continue;
-            }
-            case Tag::K_where: {
-                if (should_reduce(curr_prec, Prec::Where)) return lhs;
-                lex();
-                auto decls = parse_decls();
-                lhs        = ptr<DeclExpr>(track, std::move(decls), std::move(lhs), true);
-
-                bool where = ahead().tag() == Tag::K_where;
-                expect(Tag::K_end, "end of a where declaration block");
-                if (where) error().n(curr_, "did you accidentally end your declaration expression with a `;`?");
-                return lhs;
-            }
-            default: return lhs;
+        // Application juxtaposes its operands, so there is no operator token to drive the loop above.
+        if (ISA(ahead().tag(), C_EXPR)) {
+            if (should_reduce(curr_prec, Prec::App)) return lhs;
+            if (ISA(ahead().tag(), C_DECL))
+                error()
+                    .w(ahead().loc(), "you are passing a declaration expression as argument")
+                    .n(lhs->loc(), "passed to this expression")
+                    .n("if this was your intention, consider parenthesizing the declaration expression")
+                    .n(lhs->loc().anew_end(), "or insert a `;` here");
+            auto rhs = parse_expr("argument to an application", Prec::App);
+            lhs      = ptr<AppExpr>(track, std::move(lhs), std::move(rhs));
+            continue;
         }
+
+        // `where` trails a whole declaration block instead of an expression, and closes the expression for good.
+        if (ahead().isa(Tag::K_where)) {
+            if (should_reduce(curr_prec, Prec::Where)) return lhs;
+            lex();
+            auto decls = parse_decls();
+            lhs        = ptr<DeclExpr>(track, std::move(decls), std::move(lhs), true);
+
+            bool where = ahead().tag() == Tag::K_where;
+            expect(Tag::K_end, "end of a where declaration block");
+            if (where) error().n(curr_, "did you accidentally end your declaration expression with a `;`?");
+        }
+
+        return lhs;
     }
 }
 
-Ptr<Expr> Parser::parse_insert_expr() {
-    auto track = tracker();
-    eat(Tag::K_ins);
-    expect(Tag::D_paren_l, "opening paren for insert arguments");
-    auto _     = this->anchor(Tag::D_paren_r);
-    auto tuple = parse_expr("the tuple to insert into");
-    expect(Tag::T_comma, "comma after tuple to insert into");
-    auto index = parse_expr("insert index");
-    expect(Tag::T_comma, "comma after insert index");
-    auto value = parse_expr("insert value");
-    recover("insert arguments");
-    expect(Tag::D_paren_r, "closing paren for insert arguments");
-    return ptr<InsertExpr>(track, std::move(tuple), std::move(index), std::move(value));
+Ptr<Expr> Parser::sugar_callee(Tok op) {
+    auto sym = Tok::infix_sym(op.tag());
+    return sym.empty() ? nullptr : path_expr(Dbg(op.loc(), driver().sym(sym)));
 }
 
 Ptr<Expr> Parser::parse_uniq_expr() {
@@ -349,7 +296,6 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
         case Tag::C_PI:      return parse_pi_expr();
         case Tag::C_LM:      return parse_lam_expr();
         case Tag::C_SEQ:     return parse_seq_expr();
-        case Tag::K_ins:     return parse_insert_expr();
         case Tag::K_ret:     return parse_ret_expr();
         case Tag::D_curly_l: return parse_uniq_expr();
         case Tag::D_brckt_l: return parse_sigma_expr();
@@ -444,7 +390,7 @@ Ptr<Expr> Parser::parse_sigma_expr() {
             return parse_pi_expr(std::move(alias));
         }
         case Tag::C_CURRIED_B:
-        case Tag::T_arrow: return parse_pi_expr(std::move(ptrn)); // TODO precedences for patterns
+        case Tag::T_arrow_r: return parse_pi_expr(std::move(ptrn)); // TODO precedences for patterns
         default: return ptr<SigmaExpr>(std::move(ptrn));
     }
 }
@@ -485,7 +431,7 @@ Ptr<Expr> Parser::parse_pi_expr() {
     auto dom  = ptr<PiExpr::Dom>(domt, std::move(ptrn));
 
     auto codom = ISA(tag, C_CN) ? nullptr
-                                : (expect(Tag::T_arrow, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
+                                : (expect(Tag::T_arrow_r, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
 
     if (ISA(tag, C_FN)) dom->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
     return ptr<PiExpr>(track, tag, std::move(dom), std::move(codom));
@@ -495,7 +441,7 @@ Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn>&& ptrn) {
     auto track              = tracker(ptrn->loc());
     std::string_view entity = "dependent function type";
     auto dom                = ptr<PiExpr::Dom>(ptrn->loc(), std::move(ptrn));
-    expect(Tag::T_arrow, entity);
+    expect(Tag::T_arrow_r, entity);
     auto codom = parse_expr(Prec::Arrow, "codomain of a {}", entity);
     return ptr<PiExpr>(track, Tag::Nil, std::move(dom), std::move(codom));
 }
@@ -585,7 +531,7 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
             Ptr<Expr> lhs = path_expr(dbgs.front());
             for (auto dbg : dbgs | std::views::drop(1)) {
                 auto loc = lhs->loc() + dbg.loc();
-                lhs      = ptr<AppExpr>(loc, false, std::move(lhs), path_expr(dbg));
+                lhs      = ptr<AppExpr>(loc, std::move(lhs), path_expr(dbg));
             }
             auto app = parse_infix_expr(track, std::move(lhs), Prec::Bot, "element of a tuple pattern");
             ptrns.emplace_back(IdPtrn::make_type(ast(), std::move(app)));
@@ -596,7 +542,7 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
 
         // A binder may turn out to be the prefix of an expr: `[[Nat, Nat] -> Nat]`, `[[Nat] Nat]`.
         if (style.brckt) {
-            if (ahead().isa(Tag::T_arrow)) {
+            if (ahead().isa(Tag::T_arrow_r)) {
                 auto loc = ptrn->loc();
                 ptrn     = anon_ptrn(loc, parse_pi_expr(std::move(ptrn)));
             } else if (auto expr = Ptrn::to_expr(ast(), std::move(ptrn))) {
@@ -857,7 +803,8 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         if (!ISA(ahead().tag(), C_CURRIED_P)) break;
     }
 
-    auto codom = accept(Tag::T_colon) ? parse_expr(Prec::Arrow, "codomain of a {}", entity) : nullptr;
+    // The `: codom` slot ends at `=`, so it takes everything short of a `where`.
+    auto codom = accept(Tag::T_colon) ? parse_expr(Prec(int(Prec::Where) + 1), "codomain of a {}", entity) : nullptr;
     if (ISA(tag, C_FN)) doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
 
     Ptr<Expr> body;

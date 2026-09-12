@@ -568,47 +568,46 @@ private:
     Ptr<Expr> dom_;
 };
 
-// union
+// infix
 
-/// `type_0 ∪ ... ∪ type_n-1`
-class UnionExpr : public Expr {
+/// `lhs op rhs`; InfixExpr::op picks the meaning - see MIM_INFIX.
+class InfixExpr : public Expr {
 public:
-    UnionExpr(Loc loc, Ptrs<Expr>&& types)
+    /// @p callee is the `` `op `` a MIM_INFIX_SUGAR operator desugars to and `nullptr` for MIM_INFIX_CORE.
+    InfixExpr(Loc loc, Ptr<Expr>&& lhs, Tok op, Ptr<Expr>&& rhs, Ptr<Expr>&& callee)
         : Expr(loc)
-        , types_(std::move(types)) {}
+        , lhs_(std::move(lhs))
+        , op_(op)
+        , rhs_(std::move(rhs))
+        , callee_(std::move(callee)) {}
 
-    const auto& types() const { return types_; }
+    const Expr* lhs() const { return lhs_.get(); }
+    Tok op() const { return op_; }
+    const Expr* rhs() const { return rhs_.get(); }
+    const Expr* callee() const { return callee_.get(); }
+
+    /// @returns @p expr if it is an InfixExpr whose operator is @p tag.
+    static const InfixExpr* isa_op(Tok::Tag tag, const Expr* expr) {
+        auto infix = expr->isa<InfixExpr>();
+        return infix && infix->op().isa(tag) ? infix : nullptr;
+    }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
+    /// Resolves this `#`'s index against @p tup - a simple path may name a field of tup's Sigma.
+    const Def* emit_index(Emitter&, const Def* tup) const;
+
     const Def* emit_(Emitter&) const override;
+    const Def* emit_decl_(Emitter&, const Def* type) const override;
+    void emit_body_(Emitter&, const Def* decl) const override;
 
-    Ptrs<Expr> types_;
-};
-
-// injection
-
-/// `value inj type`
-class InjExpr : public Expr {
-public:
-    InjExpr(Loc loc, Ptr<Expr>&& value, Ptr<Expr>&& type)
-        : Expr(loc)
-        , value_(std::move(value))
-        , type_(std::move(type)) {}
-
-    const Expr* value() const { return value_.get(); }
-    const Expr* type() const { return type_.get(); }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    const Def* emit_(Emitter&) const override;
-
-    Ptr<Expr> value_;
-    Ptr<Expr> type_;
+    Ptr<Expr> lhs_;
+    Tok op_;
+    Ptr<Expr> rhs_;
+    Ptr<Expr> callee_;
+    mutable Pi* pi_ = nullptr;
 };
 
 /// `match scrutinee with | arm_0 | ... | arm_n-1`
@@ -655,31 +654,6 @@ private:
 };
 
 // lam
-
-/// `dom -> codom`
-class ArrowExpr : public Expr {
-public:
-    ArrowExpr(Loc loc, Ptr<Expr>&& dom, Ptr<Expr>&& codom)
-        : Expr(loc)
-        , dom_(std::move(dom))
-        , codom_(std::move(codom)) {}
-
-private:
-    const Expr* dom() const { return dom_.get(); }
-    const Expr* codom() const { return codom_.get(); }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    const Def* emit_(Emitter&) const override;
-    const Def* emit_decl_(Emitter&, const Def* type) const override;
-    void emit_body_(Emitter&, const Def* decl) const override;
-
-    Ptr<Expr> dom_;
-    Ptr<Expr> codom_;
-    mutable Pi* decl_ = nullptr;
-};
 
 /// `dom → codom`, `Cn dom`, or `Fn dom → codom` depending on PiExpr::tag.
 class PiExpr : public Expr {
@@ -760,13 +734,11 @@ private:
 /// `callee arg`
 class AppExpr : public Expr {
 public:
-    AppExpr(Loc loc, bool is_explicit, Ptr<Expr>&& callee, Ptr<Expr>&& arg)
+    AppExpr(Loc loc, Ptr<Expr>&& callee, Ptr<Expr>&& arg)
         : Expr(loc)
-        , is_explicit_(is_explicit)
         , callee_(std::move(callee))
         , arg_(std::move(arg)) {}
 
-    bool is_explicit() const { return is_explicit_; }
     const Expr* callee() const { return callee_.get(); }
     const Expr* arg() const { return arg_.get(); }
 
@@ -776,7 +748,6 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    bool is_explicit_;
     Ptr<Expr> callee_;
     Ptr<Expr> arg_;
 };
@@ -873,57 +844,6 @@ private:
     bool is_pack_;
     Ptr<IdPtrn> arity_;
     Ptr<Expr> body_;
-};
-
-/// `tuple#index`
-class ExtractExpr : public Expr {
-public:
-    ExtractExpr(Loc loc, Ptr<Expr>&& tuple, Ptr<Expr>&& index)
-        : Expr(loc)
-        , tuple_(std::move(tuple))
-        , index_(std::move(index)) {}
-    ExtractExpr(Loc loc, Ptr<Expr>&& tuple, Dbg index)
-        : Expr(loc)
-        , tuple_(std::move(tuple))
-        , index_(index) {}
-
-    const Expr* tuple() const { return tuple_.get(); }
-    const auto& index() const { return index_; }
-    const Decl* decl() const { return decl_; }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    const Def* emit_(Emitter&) const override;
-
-    Ptr<Expr> tuple_;
-    std::variant<Ptr<Expr>, Dbg> index_;
-    mutable const Decl* decl_ = nullptr;
-};
-
-/// `ins(tuple, index, value)`
-class InsertExpr : public Expr {
-public:
-    InsertExpr(Loc loc, Ptr<Expr>&& tuple, Ptr<Expr>&& index, Ptr<Expr>&& value)
-        : Expr(loc)
-        , tuple_(std::move(tuple))
-        , index_(std::move(index))
-        , value_(std::move(value)) {}
-
-    const Expr* tuple() const { return tuple_.get(); }
-    const Expr* index() const { return index_.get(); }
-    const Expr* value() const { return value_.get(); }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    const Def* emit_(Emitter&) const override;
-
-    Ptr<Expr> tuple_;
-    Ptr<Expr> index_;
-    Ptr<Expr> value_;
 };
 
 /// `⦃inhabitant⦄`

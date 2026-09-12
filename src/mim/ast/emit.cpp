@@ -257,30 +257,77 @@ const Def* DeclExpr::emit_(Emitter& e) const {
     return expr()->emit(e);
 }
 
-const Def* ArrowExpr::emit_decl_(Emitter& e, const Def* type) const { return decl_ = e.world().mut_pi(type, false); }
-
-void ArrowExpr::emit_body_(Emitter& e, const Def*) const {
-    decl_->set_dom(dom()->emit(e));
-    decl_->set_codom(codom()->emit(e)); // TODO try to immutabilize
+const Def* InfixExpr::emit_decl_(Emitter& e, const Def* type) const {
+    assert(op().isa(Tag::T_arrow_r));
+    return pi_ = e.world().mut_pi(type, false);
 }
 
-const Def* ArrowExpr::emit_(Emitter& e) const {
-    auto d = dom()->emit(e);
-    auto c = codom()->emit(e);
-    return e.world().pi(d, c);
+void InfixExpr::emit_body_(Emitter& e, const Def*) const {
+    pi_->set_dom(lhs()->emit(e));
+    pi_->set_codom(rhs()->emit(e)); // TODO try to immutabilize
 }
 
-const Def* UnionExpr::emit_(Emitter& e) const {
-    DefVec etypes;
-    for (auto& t : types())
-        etypes.emplace_back(t->emit(e));
-    return e.world().join(etypes);
+/// `a ∪ b ∪ c` is one n-ary Join, so flatten the left spine the left-associative parse built.
+static void emit_union(Emitter& e, const Expr* expr, DefVec& types) {
+    if (auto infix = InfixExpr::isa_op(Tag::T_union, expr)) {
+        emit_union(e, infix->lhs(), types);
+        types.emplace_back(infix->rhs()->emit(e));
+    } else {
+        types.emplace_back(expr->emit(e));
+    }
 }
 
-const Def* InjExpr::emit_(Emitter& e) const {
-    auto v = value()->emit(e);
-    auto t = type()->emit(e);
-    return e.world().inj(t, v);
+const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
+    auto& w = e.world();
+    // A simple path names a field of tup's Sigma before anything the binder resolved it to.
+    if (auto path = rhs()->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
+        auto dbg = path->dbg();
+        if (auto mut = tup->type()->isa_mut<Sigma>()) {
+            if (auto i = e.sigma2sym2idx.find(mut); i != e.sigma2sym2idx.end()) {
+                auto sigma          = i->first->as_mut<Sigma>();
+                const auto& sym2idx = i->second;
+                if (auto i = sym2idx.find(dbg.sym()); i != sym2idx.end()) return w.lit_idx(sigma->num_ops(), i->second);
+            }
+        }
+        if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
+    }
+    return rhs()->emit(e);
+}
+
+const Def* InfixExpr::emit_(Emitter& e) const {
+    auto& w = e.world();
+
+    switch (op().tag()) {
+        case Tag::T_union: {
+            DefVec types;
+            emit_union(e, this, types);
+            return w.join(types);
+        }
+        case Tag::T_extract: {
+            auto tup = lhs()->emit(e);
+            return w.extract(tup, emit_index(e, tup));
+        }
+        case Tag::T_arrow_l: {
+            // Without a `#` the left-hand side is its own sole component, so the index can only be `0₁`.
+            auto ex  = InfixExpr::isa_op(Tag::T_extract, lhs());
+            auto tup = (ex ? ex->lhs() : lhs())->emit(e);
+            auto idx = ex ? ex->emit_index(e, tup) : w.lit_idx(1, 0);
+            auto val = rhs()->emit(e);
+            return w.insert(tup, idx, val);
+        }
+        default: break;
+    }
+
+    auto c = callee() ? callee()->emit(e) : nullptr;
+    auto l = lhs()->emit(e);
+    auto r = rhs()->emit(e);
+
+    switch (op().tag()) {
+        case Tag::T_arrow_r: return w.pi(l, r);
+        case Tag::T_at: return w.app(l, r);
+        case Tag::K_inj: return w.inj(r, l);
+        default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR
+    }
 }
 
 Lam* MatchExpr::Arm::emit(Emitter& e) const {
@@ -351,7 +398,7 @@ const Def* LamExpr::emit_(Emitter& e) const {
 const Def* AppExpr::emit_(Emitter& e) const {
     auto c = callee()->emit(e);
     auto a = arg()->emit(e);
-    return is_explicit() ? e.world().app(c, a) : e.world().implicit_app(c, a);
+    return e.world().implicit_app(c, a);
 }
 
 const Def* RetExpr::emit_(Emitter& e) const {
@@ -413,34 +460,6 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         if (auto imm = a->immutabilize()) return imm;
         return a;
     }
-}
-
-const Def* ExtractExpr::emit_(Emitter& e) const {
-    auto tup = tuple()->emit(e);
-    if (auto dbg = std::get_if<Dbg>(&index())) {
-        if (auto sigma = tup->type()->isa_mut<Sigma>()) {
-            if (auto i = e.sigma2sym2idx.find(sigma); i != e.sigma2sym2idx.end()) {
-                auto sigma          = i->first->as_mut<Sigma>();
-                const auto& sym2idx = i->second;
-                if (auto i = sym2idx.find(dbg->sym()); i != sym2idx.end())
-                    return e.world().extract(tup, sigma->num_ops(), i->second);
-            }
-        }
-
-        if (decl()) return e.world().extract(tup, decl()->def());
-        e.error().e(dbg->loc(), "cannot resolve field `{}` for extraction", *dbg).bail();
-    }
-
-    auto expr = std::get<Ptr<Expr>>(index()).get();
-    auto i    = expr->emit(e);
-    return e.world().extract(tup, i);
-}
-
-const Def* InsertExpr::emit_(Emitter& e) const {
-    auto t = tuple()->emit(e);
-    auto i = index()->emit(e);
-    auto v = value()->emit(e);
-    return e.world().insert(t, i, v);
 }
 
 const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant()->emit(e)); }

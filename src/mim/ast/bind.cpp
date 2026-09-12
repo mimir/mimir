@@ -232,19 +232,14 @@ void DeclExpr::bind(Scopes& s) const {
     expr()->bind(s);
 }
 
-void ArrowExpr::bind(Scopes& s) const {
-    dom()->bind(s);
-    codom()->bind(s);
-}
-
-void UnionExpr::bind(Scopes& s) const {
-    for (auto& type : types())
-        type->bind(s);
-}
-
-void InjExpr::bind(Scopes& s) const {
-    value()->bind(s);
-    type()->bind(s);
+void InfixExpr::bind(Scopes& s) const {
+    if (callee()) callee()->bind(s);
+    lhs()->bind(s);
+    // `t#x` may name a field of `t`'s Sigma rather than anything in scope; InfixExpr::emit_ resolves that.
+    if (auto path = op().isa(Tag::T_extract) ? rhs()->isa<PathExpr>() : nullptr)
+        path->path()->bind(s, true);
+    else
+        rhs()->bind(s);
 }
 
 void MatchExpr::Arm::bind(Scopes& s) const {
@@ -310,22 +305,6 @@ void SeqExpr::bind(Scopes& s) const {
     s.pop();
 }
 
-void ExtractExpr::bind(Scopes& s) const {
-    tuple()->bind(s);
-    if (auto expr = std::get_if<Ptr<Expr>>(&index()))
-        (*expr)->bind(s);
-    else {
-        auto dbg = std::get<Dbg>(index());
-        decl_    = s.find(dbg, true);
-    }
-}
-
-void InsertExpr::bind(Scopes& s) const {
-    tuple()->bind(s);
-    index()->bind(s);
-    value()->bind(s);
-}
-
 void UniqExpr::bind(Scopes& s) const { inhabitant()->bind(s); }
 
 /*
@@ -381,9 +360,9 @@ void AxmDecl::bind(Scopes& s) const {
 
     if (annex_ && annex_->fresh) {
         annex_->normalizer = normalizer();
-        annex_->pi         = type()->isa<PiExpr>() || type()->isa<ArrowExpr>();
+        annex_->pi         = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
     } else if (annex_) {
-        auto pi = type()->isa<PiExpr>() || type()->isa<ArrowExpr>();
+        auto pi = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
         if (pi ^ *annex_->pi)
             s.error().e(dbg().loc(),
                         "all declarations of annex `{}` must be function types if one of them is (they share one "
@@ -461,7 +440,8 @@ void RecDecl::bind_decl(Scopes& s) const {
     if (!type()->isa<HoleExpr>() && body()->isa<LamExpr>())
         s.error().w(type()->loc(), "type of recursive declaration ignored for function expression");
 
-    if (!body()->isa<LamExpr>() && !body()->isa<PiExpr>() && !body()->isa<ArrowExpr>() && !body()->isa<SigmaExpr>())
+    if (!body()->isa<LamExpr>() && !body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body())
+        && !body()->isa<SigmaExpr>())
         s.error().e(body()->loc(), "unsupported expression in a recursive declaration");
 
     s.bind(dbg(), this);

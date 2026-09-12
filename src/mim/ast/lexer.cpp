@@ -60,21 +60,14 @@ Tok Lexer::lex() {
         if (accept(U'›')) return tok(Tag::D_angle_r);
         if (accept(U'⟨')) return tok(Tag::D_angle_l);
         if (accept(U'⟩')) return tok(Tag::D_angle_r);
-        if (accept( '<')) {
-            if (accept( '<')) return tok(Tag::D_quote_l);
-            return tok(Tag::D_angle_l);
-        }
-        if (accept( '>')) {
-            if (accept( '>')) return tok(Tag::D_quote_r);
-            return tok(Tag::D_angle_r);
-        }
         // further tokens
         if (accept( '+')) return tok(Tag::T_add);
         if (accept( '-')) {
-            if (accept('>')) return tok(Tag::T_arrow);
+            if (accept('>')) return tok(Tag::T_arrow_r);
             return tok(Tag::T_sub);
         }
-        if (accept(U'→')) return tok(Tag::T_arrow);
+        if (accept(U'→')) return tok(Tag::T_arrow_r);
+        if (accept(U'←')) return tok(Tag::T_arrow_l);
         if (accept( '@')) return tok(Tag::T_at);
         if (accept( '=')) {
             if (accept('>')) return tok(Tag::T_fat_arrow);
@@ -85,6 +78,17 @@ Tok Lexer::lex() {
             if (accept('=')) return tok(Tag::T_ne);
             error().e(loc_, "expected `=` after `!`");
             continue;
+        }
+        if (accept( '<')) {
+            if (accept('<')) return tok(Tag::T_shl);
+            if (accept('=')) return tok(Tag::T_le);
+            if (accept('-')) return tok(Tag::T_arrow_l);
+            return tok(Tag::T_lt);
+        }
+        if (accept( '>')) {
+            if (accept('>')) return tok(Tag::T_shr);
+            if (accept('=')) return tok(Tag::T_ge);
+            return tok(Tag::T_gt);
         }
         if (accept(U'⊥')) return tok(Tag::T_bot);
         if (accept(U'⊤')) return tok(Tag::T_top);
@@ -114,8 +118,17 @@ Tok Lexer::lex() {
 
         if (accept('`')) {
             if (accept(utf8::any('+', '-', '*', '/', '%'))) return {loc_, Tag::M_id, sym()};
+            if (accept('<')) {
+                accept(utf8::any('<', '='));
+                return {loc_, Tag::M_id, sym()};
+            }
+            if (accept('>')) {
+                accept(utf8::any('>', '='));
+                return {loc_, Tag::M_id, sym()};
+            }
             if (accept(utf8::any('=', '!')) && accept('=')) return {loc_, Tag::M_id, sym()};
-            error().e(loc_, "expected one of `+`, `-`, `*`, `/`, `%`, `==`, `!=` after the escape hatch");
+            error().e(loc_, "expected one of `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, `>>` "
+                            "after the escape hatch");
             continue;
         }
 

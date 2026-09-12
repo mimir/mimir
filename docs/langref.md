@@ -22,7 +22,8 @@ x ("," x)* ","?   comma-separated list of zero or more x, with an optional trail
 
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
-For example, `<<<` is tokenized as `<<` followed by `<`.
+For example, `>>=` is tokenized as `>>` followed by `=`.
+@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
 
 ### Terminals {#terminals}
 
@@ -35,20 +36,19 @@ For example, `λ` and `lm` are lexically equivalent.
 ```text
 ( ) [ ] { } ⦃ ⦄
 ‹ › « »
-→ => ⊥ ⊤ * □ λ
+→ ← => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
-+ - * / % == !=
++ - * / % == != < <= > >= << >>
 <eof>
 ```
 
 `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
-`+`, `-`, `*`, `/`, `%`, `==`, and `!=` are [infix operators](@ref infix).
+`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
 ```text
-< > << >>
--> bot top lm insert
+-> <- bot top lm
 ```
 
 `⟨`, `⟩`, `⟪`, and `⟫` may be used as alternatives for `‹`, `›`, `«`, and `»`.
@@ -59,7 +59,7 @@ For example, `λ` and `lm` are lexically equivalent.
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
 and anx as axm cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj ins lam let match mod
+i1 i8 i16 i32 i64 import inj lam let match mod
 norm plugin priv pub rec ret rule tt when where with use
 ```
 
@@ -365,7 +365,8 @@ e   ::= "[" ... "]"
      |  "‹" arity ("," arity)* ";" e "›"
      |  e "#" e
      |  e "#" I
-     |  "ins" "(" e "," e "," e ")"
+     |  e "#" e "←" e
+     |  e "←" e
 
 arity ::= e
        |  I ":" e
@@ -377,7 +378,10 @@ arity ::= e
 - `‹ ... ; ... ›` builds a pack.
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
 - `e # i` or `e # e` extracts a component.
-- `ins(tuple, index, value)` inserts a value into a tuple-like aggregate.
+- `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
+- `e ← value` without a `#` leaves the index implicit: `e` is its own sole component, so this is `e#0₁ ← value` and hence `value`.
+  An `e` of arity other than 1 is an error, just as `e#0₁` would be.
+- `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
 
 #### Unions
 
@@ -396,6 +400,12 @@ e   ::= e "∪" e
 ```ebnf
 e   ::= e "==" e
      |  e "!=" e
+     |  e "<" e
+     |  e "<=" e
+     |  e ">" e
+     |  e ">=" e
+     |  e "<<" e
+     |  e ">>" e
      |  e "+" e
      |  e "-" e
      |  e "*" e
@@ -420,26 +430,30 @@ e   ::= e "where" d* "end"
 `where` attaches a local declaration block to an already parsed expression.
 `where` blocks bind more weakly than the other infix expression forms.
 
-### Precedence
+### Precedence {#prec}
 
-The current parser uses the following precedence, from strongest to weakest binding:
+Parser and dumper share one ladder of precedence levels, listed here from strongest to weakest binding.
+*Assoc* is left-, right-, or non-associative; chaining a non-associative operator, as in `a == b == c`, is an error - parenthesize one side.
+`Pi`, `Bot`, and `Err` are *pseudo levels*: they name no syntax at all and only ever bound how far a nested expression may extend.
 
-```text
-1.  L : e                  literal and token-local type ascription
-2.  e # e                  extract
-3.  e ∪ e                  union
-4.  e e, e @ e             application
-5.  e * e, e / e, e % e    multiplicative operators
-6.  e + e, e - e           additive operators
-7.  e == e, e != e         equality operators
-8.  e inj e                injection
-9.  e → e                  arrow
-10. e where d* end         local declaration block
-```
-
-- Extract, union, application, and the infix operators associate left-to-right.
-- `inj` and `→` associate right-to-left.
-- `where` is the loosest surface operator.
+|  # | Level     | Assoc | Operators                            | Notes                                                                    |
+|---:|-----------|:-----:|--------------------------------------|--------------------------------------------------------------------------|
+|  1 | `Lit`     |   -   | `L : e`                              | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here. |
+|  2 | `Extract` | left  | `e # e`, `e # I`                     |                                                                          |
+|  3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`. |
+|  4 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.             |
+|  5 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                          |
+|  6 | `Add`     | left  | `e + e`, `e - e`                     |                                                                          |
+|  7 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                          |
+|  8 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                          |
+|  9 | `Pi`      |   -   | *pseudo*                             | Bounds the domain of a `λ`/`Fn`/`b → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+| 10 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                    |
+| 11 | `Union`   | left  | `e ∪ e`                              |                                                                          |
+| 12 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                    |
+| 13 | `Ins`     | right | `e#e ← e`, `e ← e`                   | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`. |
+| 14 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                            |
+| 15 | `Bot`     |   -   | *pseudo*                             | A complete expression; the default bound, and the only one a trailing `where` fits into. |
+| 16 | `Err`     |   -   | *pseudo*                             | Below everything; the parser's "no operator seen yet" sentinel.          |
 
 ## Summary: Functions and Types
 

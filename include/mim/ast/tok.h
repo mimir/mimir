@@ -16,22 +16,28 @@ class Def;
 namespace ast {
 
 /// @name Precedence Table
-/// X-macro listing all expression precedences from lowest to highest.
-/// Each entry is `m(name, assoc)` where @p assoc is `L`, `R`, or `N`.
+/// X-macro listing all expression precedences from lowest to highest as `m(name, assoc)`.
+/// @p assoc is `L`eft-, `R`ight-, or `N`on-associative; `a op b op c` is an error for an `N` level.
+/// Only a level named by MIM_INFIX or by an entry below is an actual operator:
+/// `Err`, `Bot`, `Pi`, and `Lit` merely serve as a `curr_prec` bound while parsing.
+/// Application binds tighter than every operator - only `Extract` and `Lit` bind tighter still.
 ///@{
 // clang-format off
 #define MIM_PREC(m)     \
     m(Err,     N)       \
     m(Bot,     N)       \
     m(Where,   L)       \
+    m(Ins,     R)       \
+    m(Inj,     R)       \
+    m(Union,   L)       \
     m(Arrow,   R)       \
     m(Pi,      N)       \
-    m(Inj,     R)       \
-    m(Eq,      L)       \
+    m(Eq,      N)       \
+    m(Rel,     N)       \
     m(Add,     L)       \
     m(Mul,     L)       \
+    m(Shift,   L)       \
     m(App,     L)       \
-    m(Union,   L)       \
     m(Extract, L)       \
     m(Lit,     N)
 // clang-format on
@@ -97,7 +103,6 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_i8,     "i8"    )             \
     m(K_import, "import")             \
     m(K_inj,    "inj"   )             \
-    m(K_ins,    "ins"   )             \
     m(K_lam,    "lam"   )             \
     m(K_let,    "let"   )             \
     m(K_match,  "match" )             \
@@ -146,7 +151,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(D_quote_r,    "»")               \
     /* further tokens */               \
     m(T_add,        "+")               \
-    m(T_arrow,      "→")               \
+    m(T_arrow_r,      "→")               \
     m(T_fat_arrow, "=>")               \
     m(T_assign,     "=")               \
     m(T_at,         "@")               \
@@ -160,34 +165,58 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_dot,        ".")               \
     m(T_eq,         "==")              \
     m(T_extract,    "#")               \
+    m(T_ge,         ">=")              \
+    m(T_gt,         ">")               \
+    m(T_arrow_l,     "←")               \
+    m(T_le,         "<=")              \
     m(T_lm,         "λ")               \
+    m(T_lt,         "<")               \
     m(T_ne,         "!=")              \
     m(T_rem,        "%")               \
     m(T_semicolon,  ";")               \
+    m(T_shl,        "<<")              \
+    m(T_shr,        ">>")              \
     m(T_star,       "*")               \
     m(T_sub,        "-")               \
     m(T_union,      "∪")               \
     m(T_pipe,       "|")               \
 
 /// @name Infix Operator Table
-/// X-macro listing all infix operators as `m(tag, str, prec)`.
-/// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
+/// X-macros listing all infix operators as `m(tag, str, prec)`.
 ///@{
-#define MIM_INFIX(m)      \
-    m(T_eq,   "==", Eq )  \
-    m(T_ne,   "!=", Eq )  \
-    m(T_add,  "+",  Add)  \
-    m(T_sub,  "-",  Add)  \
-    m(T_star, "*",  Mul)  \
-    m(T_div,  "/",  Mul)  \
-    m(T_rem,  "%",  Mul)
+
+/// `a str b` is sugar for `` `str (a, b) ``; what `` `str `` means is up to whatever the user binds it to.
+#define MIM_INFIX_SUGAR(m)  \
+    m(T_eq,   "==", Eq   )  \
+    m(T_ne,   "!=", Eq   )  \
+    m(T_lt,   "<",  Rel  )  \
+    m(T_le,   "<=", Rel  )  \
+    m(T_gt,   ">",  Rel  )  \
+    m(T_ge,   ">=", Rel  )  \
+    m(T_shl,  "<<", Shift)  \
+    m(T_shr,  ">>", Shift)  \
+    m(T_add,  "+",  Add  )  \
+    m(T_sub,  "-",  Add  )  \
+    m(T_star, "*",  Mul  )  \
+    m(T_div,  "/",  Mul  )  \
+    m(T_rem,  "%",  Mul  )
+
+/// These have a meaning of their own; InfixExpr::emit_ dispatches on the tag.
+#define MIM_INFIX_CORE(m)        \
+    m(T_extract, "#",   Extract) \
+    m(T_union,   "∪",   Union  ) \
+    m(K_inj,     "inj", Inj    ) \
+    m(T_arrow_r, "→",   Arrow  ) \
+    m(T_arrow_l, "←",   Ins    ) \
+    m(T_at,      "@",   App    )
+
+#define MIM_INFIX(m) MIM_INFIX_SUGAR(m) MIM_INFIX_CORE(m)
 ///@}
 
 #define MIM_SUBST(m)                  \
     m("lm",     T_lm   )              \
     m("bot",    T_bot  )              \
     m("top",    T_top  )              \
-    m("insert", K_ins  )              \
 
 class Tok {
 public:
@@ -223,14 +252,14 @@ public:
             default: return {};
         }
     }
-    /// Name the infix operator @p tag desugars to - including the leading `` ` ``.
+    /// Name the infix operator @p tag desugars to - including the leading `` ` ``; empty for MIM_INFIX_CORE.
     static constexpr std::string_view infix_sym(Tag tag) {
         switch (tag) {
 #define CODE(t, str, prec) \
     case Tag::t: return "`" str;
-            MIM_INFIX(CODE)
+            MIM_INFIX_SUGAR(CODE)
 #undef CODE
-            default: fe::unreachable();
+            default: return {};
         }
     }
     static constexpr Tok::Tag delim_l2r(Tag tag) { return Tok::Tag(int(tag) + 1); }
