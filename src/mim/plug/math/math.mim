@@ -36,6 +36,26 @@ anx let NVTF32  = F nvtf32; // actually 19 bits; aligns to 32 bit
 anx let AMDFP24 = F amdfp24;
 anx let PXR24   = F pxr24;
 ///
+/// ## Mode
+///
+/// ### math.mode
+///
+/// Fine-tunes how strictly a floating-point operation must obey IEEE semantics - see mim::plug::math::Mode.
+///
+pub mod mode {
+    pub anx let none     = 0b0000000; // no optimizations allowed
+    pub anx let nnan     = 0b0000001; // no NaNs
+    pub anx let ninf     = 0b0000010; // no Infs
+    pub anx let nsz      = 0b0000100; // no signed zeros
+    pub anx let arcp     = 0b0001000; // allow reciprocal instead of division
+    pub anx let contract = 0b0010000; // allow contraction, e.g. fused multiply-add
+    pub anx let afn      = 0b0100000; // allow approximate functions
+    pub anx let reassoc  = 0b1000000; // allow reassociation
+    pub anx let finite   = 0b0000011; // nnan | ninf
+    pub anx let unsafe   = 0b1001100; // nsz | arcp | reassoc
+    pub anx let fast     = 0b1111111; // everything above
+}
+///
 /// ## Numerical Operations
 ///
 /// ### math.arith
@@ -258,3 +278,76 @@ anx lam sgn (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
 /// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)
 anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m (conv.f2f pe 1.0:(F64), rt.sq m x);
+///
+/// ### math.ops
+///
+/// Bindings for the infix operators, which are sugar for an application of the escaped name.
+/// `use` the module whose math.mode matches the accuracy you are willing to trade:
+///
+/// | Module            | Mode               |
+/// |-------------------|--------------------|
+/// | `math.ops.none`   | `math.mode.none`   |
+/// | `math.ops.finite` | `math.mode.finite` |
+/// | `math.ops.unsafe` | `math.mode.unsafe` |
+/// | `math.ops.fast`   | `math.mode.fast`   |
+///
+/// `!=` is math.cmp.une - the exact complement of `==` - and hence `tt` if an operand is a NaN.
+/// All other comparisons are ordered and thus `ff` in that case.
+///
+pub mod ops {
+    pub mod none {
+        pub let `+  = arith.add mode.none;
+        pub let `-  = arith.sub mode.none;
+        pub let `*  = arith.mul mode.none;
+        pub let `/  = arith.div mode.none;
+        pub let `%  = arith.rem mode.none;
+        pub let `== =   cmp.e   mode.none;
+        pub let `!= =   cmp.une mode.none;
+        pub let `<  =   cmp.l   mode.none;
+        pub let `<= =   cmp.le  mode.none;
+        pub let `>  =   cmp.g   mode.none;
+        pub let `>= =   cmp.ge  mode.none;
+    }
+
+    pub mod finite {
+        pub let `+  = arith.add mode.finite;
+        pub let `-  = arith.sub mode.finite;
+        pub let `*  = arith.mul mode.finite;
+        pub let `/  = arith.div mode.finite;
+        pub let `%  = arith.rem mode.finite;
+        pub let `== =   cmp.e   mode.finite;
+        pub let `!= =   cmp.une mode.finite;
+        pub let `<  =   cmp.l   mode.finite;
+        pub let `<= =   cmp.le  mode.finite;
+        pub let `>  =   cmp.g   mode.finite;
+        pub let `>= =   cmp.ge  mode.finite;
+    }
+
+    pub mod unsafe {
+        pub let `+  = arith.add mode.unsafe;
+        pub let `-  = arith.sub mode.unsafe;
+        pub let `*  = arith.mul mode.unsafe;
+        pub let `/  = arith.div mode.unsafe;
+        pub let `%  = arith.rem mode.unsafe;
+        pub let `== =   cmp.e   mode.unsafe;
+        pub let `!= =   cmp.une mode.unsafe;
+        pub let `<  =   cmp.l   mode.unsafe;
+        pub let `<= =   cmp.le  mode.unsafe;
+        pub let `>  =   cmp.g   mode.unsafe;
+        pub let `>= =   cmp.ge  mode.unsafe;
+    }
+
+    pub mod fast {
+        pub let `+  = arith.add mode.fast;
+        pub let `-  = arith.sub mode.fast;
+        pub let `*  = arith.mul mode.fast;
+        pub let `/  = arith.div mode.fast;
+        pub let `%  = arith.rem mode.fast;
+        pub let `== =   cmp.e   mode.fast;
+        pub let `!= =   cmp.une mode.fast;
+        pub let `<  =   cmp.l   mode.fast;
+        pub let `<= =   cmp.le  mode.fast;
+        pub let `>  =   cmp.g   mode.fast;
+        pub let `>= =   cmp.ge  mode.fast;
+    }
+}

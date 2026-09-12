@@ -302,3 +302,98 @@ anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
 /// core.select one level up, to select between types.
 ///
 anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
+///
+/// ### core.ops
+///
+/// Bindings for the infix operators, which are sugar for an application of the escaped name.
+/// `use` the module matching the domain at hand:
+///
+/// | Module          | Domain                                     |
+/// |-----------------|--------------------------------------------|
+/// | `core.ops.n`    | `Nat`                                      |
+/// | `core.ops.s.w`  | signed `Idx s`, wrap around                |
+/// | `core.ops.s.nw` | signed `Idx s`, `core.mode.nsw`            |
+/// | `core.ops.u.w`  | unsigned `Idx s`, wrap around              |
+/// | `core.ops.u.nw` | unsigned `Idx s`, `core.mode.nuw`          |
+///
+/// `core.ops.s`/`core.ops.u` offer only those operators that don't depend on the mode.
+/// `Idx s` has no `/` and `%`, since core.div expects a `mem.M`.
+///
+pub mod ops {
+    pub mod n {
+        pub let `+  =  nat.add;
+        pub let `-  =  nat.sub;
+        pub let `*  =  nat.mul;
+        pub let `/  =  nat.div;
+        pub let `%  =  nat.rem;
+        pub let `== = ncmp.e;
+        pub let `!= = ncmp.ne;
+        pub let `<  = ncmp.l;
+        pub let `<= = ncmp.le;
+        pub let `>  = ncmp.g;
+        pub let `>= = ncmp.ge;
+    }
+
+    mod eq {
+        pub let `== = icmp.e;
+        pub let `!= = icmp.ne;
+    }
+
+    mod signed {
+        use eq;
+        pub let `>> = shr.a;
+        pub let `<  = icmp.sl;
+        pub let `<= = icmp.sle;
+        pub let `>  = icmp.sg;
+        pub let `>= = icmp.sge;
+    }
+
+    mod unsigned {
+        use eq;
+        pub let `>> = shr.l;
+        pub let `<  = icmp.ul;
+        pub let `<= = icmp.ule;
+        pub let `>  = icmp.ug;
+        pub let `>= = icmp.uge;
+    }
+
+    pub mod s {
+        use signed;
+
+        pub mod w {
+            use signed;
+            pub let `+  = wrap.add mode.us;
+            pub let `-  = wrap.sub mode.us;
+            pub let `*  = wrap.mul mode.us;
+            pub let `<< = wrap.shl mode.us;
+        }
+
+        pub mod nw {
+            use signed;
+            pub let `+  = wrap.add mode.nsw;
+            pub let `-  = wrap.sub mode.nsw;
+            pub let `*  = wrap.mul mode.nsw;
+            pub let `<< = wrap.shl mode.nsw;
+        }
+    }
+
+    pub mod u {
+        use unsigned;
+
+        pub mod w {
+            use unsigned;
+            pub let `+  = wrap.add mode.us;
+            pub let `-  = wrap.sub mode.us;
+            pub let `*  = wrap.mul mode.us;
+            pub let `<< = wrap.shl mode.us;
+        }
+
+        pub mod nw {
+            use unsigned;
+            pub let `+  = wrap.add mode.nuw;
+            pub let `-  = wrap.sub mode.nuw;
+            pub let `*  = wrap.mul mode.nuw;
+            pub let `<< = wrap.shl mode.nuw;
+        }
+    }
+}
