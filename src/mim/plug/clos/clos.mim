@@ -21,23 +21,23 @@ import compile;
 ///
 /// mim::plug::clos::phase::Clos2SJLJ lowers exception-like basic-block closures to these operations.
 ///
-/// ### clos.BufPtr
+/// ### BufPtr
 ///
 /// An opaque pointer to a C `jmp_buf`; its size in bytes is provided by the runtime.
 anx let BufPtr = mem.Ptr0 I8;
 ///
-/// ### clos.alloc_jmpbuf
+/// ### alloc_jmpbuf
 ///
 /// Allocates a fresh `jmp_buf` and yields a pointer to it.
 axm alloc_jmpbuf: mem.M 0 → [mem.M 0, BufPtr];
 ///
-/// ### clos.setjmp
+/// ### setjmp
 ///
 /// Saves the current execution context into the `jmp_buf` (like C `setjmp`).
 /// Yields `0` on the initial call and the non-zero tag passed to `clos.longjmp` when jumped to.
 axm setjmp: [mem.M 0, BufPtr] → [mem.M 0, I32];
 ///
-/// ### clos.longjmp
+/// ### longjmp
 ///
 /// Restores the context saved in the `jmp_buf`, resuming right after the corresponding `clos.setjmp` and making
 /// it yield the given tag (like C `longjmp`).
@@ -45,7 +45,7 @@ axm longjmp: Cn [mem.M 0, BufPtr, I32];
 ///
 /// ## Closure Attribute
 ///
-/// ### clos.attr
+/// ### attr
 ///
 /// A marker wrapped around a `Lam` (or a use of it) that classifies how it is used.
 /// mim::plug::clos::phase::ClosConvPrep introduces these so that mim::plug::clos::phase::ClosConv sees a canonical

@@ -13,7 +13,7 @@ plugin refly;
 ///
 /// ## Operations
 ///
-/// ### affine.For
+/// ### For
 ///
 /// This operation ranges from (including) `begin` to (excluding) `end` using `step` as stride.
 /// In addition, this loop manages `n` loop accumulators whose initial values `init` must be given.
@@ -34,25 +34,25 @@ axm For: {m n: Nat, Ts: «n; *»}
 ///
 /// ## Affine Index Operations
 ///
-/// ### affine.Index
+/// ### Index
 /// The affine index type is an opaque type that can only be manipulated through the following operations.
 ///
 axm Index: *;
 ///
-/// ### affine.lit
+/// ### lit
 /// Constructs an affine index from a constant natural number.
 ///
 axm lit: Nat → Index;
 ///
-/// ### affine.op(add,sub)
+/// ### op(add,sub)
 /// Performs addition and subtraction on affine indices.
 ///
-/// ### affine.op(neg)
+/// ### op(neg)
 /// Negates an affine index.
 ///
 axm semiop.(mul,ceildiv,floordiv,rem): [Index, Nat] → Index;
 ///
-/// ### affine.semiop(mul,ceildiv,floordiv,rem)
+/// ### semiop(mul,ceildiv,floordiv,rem)
 /// Performs semi-linear operations on affine indices.
 /// The second argument is a natural number that must be constant with regard to the indices.
 ///
@@ -69,7 +69,7 @@ pub mod op {
         semiop.mul(d, refly.check (core.pe.is_closed(c), c, "The second argument of affine.op.mul must be a constant."));
 }
 ///
-/// ### affine.map
+/// ### map
 /// Maps a function over a list of affine indices.
 /// Any captured variables of the function must be closed over the entire list of indices, i.e. they must not depend on the iteration index.
 /// The moduli are per-element: each input index `i` carries its own modulus `sin#i` and each output index `j` its own `sout#j`.
@@ -83,18 +83,18 @@ axm map: {m n: Nat}
        → [(mem.M a), «i: m; Idx (sout#i)»];
 
 ///
-/// ### affine.id
+/// ### id
 /// The identity map on affine indices.
 ///
 anx lam id {r: Nat} (o: «r; Index»): «r; Index» = o;
 ///
-/// ### affine.linearize
+/// ### linearize
 /// Row-major flattening of a multi-index: `linearize(idxs, s) = Σ_k idxs#k · (∏_{j>k} s#j)`.
 /// `s` is the (row-major) shape; only its rank `n` need be a literal.
 ///
 axm linearize: {n: Nat} → [idxs: «n; Index», s: «n; Nat»] → Index;
 ///
-/// ### affine.delinearize
+/// ### delinearize
 /// Row-major unflattening: `delinearize(lin, s)#d = (lin floordiv (∏_{j>d} s#j)) mod s#d`.
 /// The inverse of affine.linearize; only the rank `m` of `s` need be a literal.
 ///
@@ -102,13 +102,13 @@ axm delinearize: {m: Nat} → [lin: Index, s: «m; Nat»] → «m; Index»;
 ///
 /// ## Phases
 ///
-/// ### affine.lower_for
+/// ### lower_for
 ///
 /// Lowers the affine.For operation to recursive function calls.
 ///
 axm lower_for: compile.Phase;
 ///
-/// ### affine.lower_index
+/// ### lower_index
 ///
 /// Lowers the affine index algebra (affine.Index, affine.lit, affine.op, affine.semiop, affine.map) to core arithmetic.
 ///

@@ -11,7 +11,7 @@
 ///
 /// ## Types
 ///
-/// ### math.F
+/// ### F
 ///
 /// A floating-point type with `p` bits of precision and `e` exponent bits.
 /// The sign bit is neither included in `p` nor in `e`.
@@ -38,7 +38,7 @@ anx let PXR24   = F pxr24;
 ///
 /// ## Mode
 ///
-/// ### math.mode
+/// ### mode
 ///
 /// Fine-tunes how strictly a floating-point operation must obey IEEE semantics - see mim::plug::math::Mode.
 ///
@@ -58,7 +58,7 @@ pub mod mode {
 ///
 /// ## Numerical Operations
 ///
-/// ### math.arith
+/// ### arith
 ///
 /// Arithmetic operations.
 axm arith.(add, sub, mul, div, rem):
@@ -67,7 +67,7 @@ axm arith.(add, sub, mul, div, rem):
 anx lam minus (m: Nat) {pe: «2; Nat»} (a: F pe): F pe =
     arith.sub m (0:(F pe), a);
 ///
-/// ### math.extrema
+/// ### extrema
 ///
 /// Minimum and maximum:
 /// * `m`in or `M`ax
@@ -94,7 +94,7 @@ axm extrema.(im = fmin,       iM = fmax,
              Im = ieee754min, IM = ieee754max):
     Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_extrema;
 ///
-/// ### math.tri
+/// ### tri
 ///
 /// [Trigonometric](https://en.wikipedia.org/wiki/Trigonometric_functions) and [hypberbolic](https://en.wikipedia.org/wiki/Hyperbolic_functions) functions.
 ///
@@ -127,13 +127,13 @@ axm tri.(ahff =  sin     , ahfF =  cos , ahFf =  tan , ahFF,
          AHff = asinh    , AHfF = acosh, AHFf = atanh, AHFF):
     Nat → {pe: «2; Nat»} → F pe → F pe, normalize_tri;
 ///
-/// ### math.pow
+/// ### pow
 ///
 /// Power function: \f$x^y\f$
 ///
 axm pow: Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_pow;
 ///
-/// ### math.rt
+/// ### rt
 ///
 /// [Square](https://en.wikipedia.org/wiki/Square_root) and [cube root](https://en.wikipedia.org/wiki/Cube_root):
 ///
@@ -144,7 +144,7 @@ axm pow: Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_pow;
 ///
 axm rt.(sq, cb): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_rt;
 ///
-/// ### math.exp
+/// ### exp
 ///
 /// [Exponential function](https://en.wikipedia.org/wiki/Exponential_function) and [logarithm](https://en.wikipedia.org/wiki/Logarithm):
 /// * `L`ogarithm
@@ -165,7 +165,7 @@ axm exp.(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
          Lbb = log, LbB = log2      , LBb = log10      , LBB):
     Nat → {pe: «2; Nat»} → F pe → F pe, normalize_exp;
 ///
-/// ### math.er
+/// ### er
 ///
 /// [Error](https://en.wikipedia.org/wiki/Error_function) and [complementary error function](https://en.wikipedia.org/wiki/Error_function#Complementary_error_function).
 ///
@@ -176,7 +176,7 @@ axm exp.(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
 ///
 axm er.(f, fc): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_er;
 ///
-/// ### math.gamma
+/// ### gamma
 ///
 /// [Gamma function](https://en.wikipedia.org/wiki/Gamma_function) and its natural [logarithm](https://en.wikipedia.org/wiki/Gamma_function#The_log-gamma_function).
 ///
@@ -187,13 +187,13 @@ axm er.(f, fc): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_er;
 ///
 axm gamma.(t, l): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_gamma;
 ///
-/// ### math.abs
+/// ### abs
 ///
 /// [Absolute value](https://en.wikipedia.org/wiki/Absolute_value) of a floating-point number.
 ///
 axm abs: Nat → {pe: «2; Nat»} → F pe → F pe, normalize_abs;
 ///
-/// ### math.round
+/// ### round
 ///
 /// Common rounding operations for floating-point numbers:
 /// * `f`loor
@@ -212,7 +212,7 @@ axm round.(f,c,r,t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round
 ///
 /// ## Other Operations
 ///
-/// ### math.cmp
+/// ### cmp
 ///
 /// Floating-point comparison is composed of 4 disjoint relations:
 /// * `U`nordered (yields true if either operand is a QNaN)
@@ -245,13 +245,13 @@ axm cmp.(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
          UGle =  ug, UGlE = uge, UGLe = une, UGLE =   t):
     Nat → {pe: «2; Nat»} → «2; F pe» → Bool, normalize_cmp;
 ///
-/// ### math.is_finite
+/// ### is_finite
 ///
 /// Returns `tt` if the float is finite and `ff` if not (i.e. if it is ±∞ or NaN).
 ///
 axm is_finite: Nat → {pe: «2; Nat»} → F pe → Bool;
 ///
-/// ### math.conv
+/// ### conv
 ///
 /// Conversion between floating-point and index types - both signed and unsigned - of different sizes.
 ///
@@ -263,18 +263,18 @@ pub mod conv {
     axm f2f: {spe: «2; Nat»} → [dpe: «2; Nat»] → F spe → F dpe,     normalize_conv;
 }
 ///
-/// ### math.slf
+/// ### slf
 /// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)
 ///
 anx lam slf (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m ((conv.f2f pe 1.0:(F64)), arith.add m ((conv.f2f pe 1.0:(F64)), exp.exp m (minus m x)));
 ///
-/// ### math.sgn
+/// ### sgn
 /// [Sign function](https://en.wikipedia.org/wiki/Sign_function)
 anx lam sgn (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     ((conv.f2f pe (-1.0:(F64))), ((conv.f2f pe 0.0:(F64)), (conv.f2f pe 1.0:(F64)))#(cmp.g m (x,(conv.f2f pe 0.0:(F64)))))#(cmp.ge m (x, (conv.f2f pe 0.0:(F64))));
 ///
-/// ### math.rrt
+/// ### rrt
 /// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)
 anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m (conv.f2f pe 1.0:(F64), rt.sq m x);

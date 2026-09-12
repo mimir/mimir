@@ -14,13 +14,13 @@ plugin option;
 ///
 /// ## Types
 ///
-/// ### ord.Key
+/// ### Key
 ///
 /// This existential-style type specifies a type together with a less-than function.
 ///
 anx let Key = [T: *, lt: [T, T] → Bool];
 ///
-/// ### ord.Set / ord.Map
+/// ### Set / Map
 ///
 /// Type constructors for set / map.
 /// * First argument must be of type `ord.Key`.
@@ -31,7 +31,7 @@ axm Map: Key → * → *;
 ///
 /// ## Constructors
 ///
-/// ### ord.init
+/// ### init
 ///
 /// Creates a set / map from a list of values / key-value pairs.
 ///
@@ -40,7 +40,7 @@ pub mod init {
     axm map: [K: Key] → {V: *} → {n: Nat} → «n; [K#T, V]» → Map K V, normalize_init;
 }
 ///
-/// ### ord.create
+/// ### create
 ///
 /// Creates an empty set / map.
 ///
@@ -49,7 +49,7 @@ anx lam create_map (K: Key) (V: *) : Map K V = init.map K @V @0 ();
 ///
 /// ## Capacity
 ///
-/// ### ord.size
+/// ### size
 ///
 /// Yields the number of elements in the container.
 ///
@@ -58,7 +58,7 @@ pub mod size {
     axm map: {K: Key} → {V: *} → Map K V → Nat, normalize_size;
 }
 ///
-/// ### ord.is_empty
+/// ### is_empty
 ///
 /// Is the container empty?
 ///
@@ -67,14 +67,14 @@ anx lam is_empty_map {K: Key} {V: *} (map: Map K V): Bool = core.ncmp.e (size.ma
 ///
 /// ## Lookup
 ///
-/// ### ord.get
+/// ### get
 ///
 /// Looks up the given key in the map.
 /// Returns an optional value (`option.Opt V`).
 ///
 axm get: {K: Key} → {V: *} → [Map K V, K#T] → option.Opt V, normalize_get;
 ///
-/// ### ord.contains
+/// ### contains
 ///
 /// Does the container contain the given key?
 ///
@@ -85,7 +85,7 @@ pub mod contains {
 ///
 /// ## Modifiers
 ///
-/// ### ord.insertion
+/// ### insertion
 ///
 /// Inserts a key / key-value pair into the container.
 /// @note Named `insertion`, not `insert`: `insert` is a reserved ASCII spelling of the `ins` keyword.

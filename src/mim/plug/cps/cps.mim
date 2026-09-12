@@ -15,7 +15,7 @@ import compile;
 ///
 /// ## Operations
 ///
-/// ### cps.cps2ds
+/// ### cps2ds
 ///
 /// This axiom lets the user call a CPS function in direct style.
 /// The function is not converted; only the call site is changed.
@@ -26,7 +26,7 @@ anx lam cps2ds       {T U: *}           (f: Fn     T  → U  ):  [    T  → U  
 ///
 /// ## Phases
 ///
-/// ### cps.conv
+/// ### conv
 ///
 /// Converts direct-style functions and calls to CPS.
 ///

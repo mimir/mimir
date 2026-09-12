@@ -8,7 +8,7 @@
 ///
 /// ## Operations
 ///
-/// ### demo.const_idx
+/// ### const_idx
 ///
 /// The constant `42`, evaluated by a normalizer.
 ///

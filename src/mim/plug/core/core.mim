@@ -10,7 +10,7 @@ plugin mem;
 ///
 /// ## Nat Operations
 ///
-/// ### core.nat
+/// ### nat
 ///
 /// Standard arithmetic operations on `Nat`s. <br>
 /// `core.nat.sub (a, b)` yields `0` if `a < b`. <br>
@@ -20,7 +20,7 @@ plugin mem;
 ///
 axm nat.(add, sub, mul, div, rem): «2; Nat» → Nat, normalize_nat;
 ///
-/// ### core.ncmp
+/// ### ncmp
 ///
 /// Nat comparison is composed of 3 disjoint relations:
 /// * `G`reater
@@ -74,19 +74,19 @@ pub mod mode {
     anx nsuw = US;
 }
 ///
-/// ### core.idx
+/// ### idx
 ///
 /// Creates a literal of type `Idx s` from `l` while obeying mode `m`.
 ///
 axm idx: [m: Nat] → [s: Nat] → [l: Nat] → Idx s, normalize_idx;
 ///
-/// ### core.idx_unsafe
+/// ### idx_unsafe
 ///
 /// Creates a literal of type `Idx ⊤`.
 ///
 axm idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
 ///
-/// ### core.bit1
+/// ### bit1
 ///
 /// These *unary* bitwise operations offer all [4 possible operations](https://en.wikipedia.org/wiki/Truth_table#Unary_operations) as summarized in the following table:
 ///
@@ -101,7 +101,7 @@ axm idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
 ///
 axm bit1.(f, neg, id, t): [m: Nat] → {s: Nat} → Idx s → Idx s, normalize_bit1;
 ///
-/// ### core.bit2
+/// ### bit2
 ///
 /// These *binary* bitwise operations offer all [16 possible operations](https://en.wikipedia.org/wiki/Truth_table#Truth_table_for_all_binary_logical_operators) as summarized in the following table:
 ///
@@ -130,7 +130,7 @@ axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
            and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
     [m: Nat] → {s: Nat} → «2; Idx s» → Idx s , normalize_bit2;
 ///
-/// ### core.shr
+/// ### shr
 ///
 /// Shift right:
 /// * [`a`rithmetic shift right](https://en.wikipedia.org/wiki/Arithmetic_shift)
@@ -144,7 +144,7 @@ axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
 ///
 axm shr.(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 ///
-/// ### core.wrap
+/// ### wrap
 ///
 /// Integer operations that may overflow.
 /// You can specify the desired behavior in the case of an overflow with the leading curried argument by providing a mim::plug::core::Mode as `Nat`.
@@ -157,7 +157,7 @@ axm wrap.(add, sub, mul, shl): [m: Nat] → {s: Nat} → «2; Idx s» → Idx s,
 
 anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (0:(Idx s), a);
 ///
-/// ### core.div
+/// ### div
 ///
 /// Signed and unsigned integer division/remainder.
 ///
@@ -167,7 +167,7 @@ anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (0:(Idx s), a);
 axm div.(sdiv, udiv, srem, urem):
     {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], normalize_div;
 ///
-/// ### core.icmp
+/// ### icmp
 ///
 /// Integer comparison is composed of 5 disjoint relations:
 /// * `X`: first operand plus, second minus
@@ -240,7 +240,7 @@ axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
           XYGle,      XYGlE,       XYGLe = ne, XYGLE = t):
     {s: Nat} → «2; Idx s» → Bool , normalize_icmp;
 ///
-/// ### core.extrema
+/// ### extrema
 ///
 /// Minimum and maximum of two integers:
 /// * un`s`igned or `S`igned
@@ -248,7 +248,7 @@ axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
 ///
 axm extrema.(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
 ///
-/// ### core.abs
+/// ### abs
 ///
 /// Absolute value of an integer.
 ///
@@ -258,7 +258,7 @@ axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
 ///
 /// ## Conversions
 ///
-/// ### core.conv
+/// ### conv
 ///
 /// Conversion between index types - both signed and unsigned - of different sizes.
 /// * `conv.u` preserves the unsigned representative modulo the destination carrier.
@@ -266,7 +266,7 @@ axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
 ///
 axm conv.(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
 ///
-/// ### core.bitcast
+/// ### bitcast
 ///
 /// Bitcast to reinterpret a value as another type.
 /// Can be used for pointer / integer conversions as well as integer / nat conversions.
@@ -275,13 +275,13 @@ axm bitcast: {S: *} → [D: *] → S → D, normalize_bitcast;
 ///
 /// ## Other Operations
 ///
-/// ### core.trait
+/// ### trait
 ///
 /// Yields the size or align of a type.
 ///
 axm trait.(size, align): * → Nat, normalize_trait;
 ///
-/// ### core.pe
+/// ### pe
 ///
 /// Steers the partial evaluator.
 ///
@@ -291,13 +291,13 @@ pub mod pe {
     axm is_closed: {T: *} → T → Bool, normalize_pe;
 }
 ///
-/// ### core.select
+/// ### select
 ///
 /// More readable shorthand to create a select/if:
 ///
 anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
 ///
-/// ### core.Select
+/// ### Select
 ///
 /// core.select one level up, to select between types.
 ///

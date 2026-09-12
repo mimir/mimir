@@ -12,7 +12,7 @@ plugin core;
 ///
 /// ## Operations
 ///
-/// ### tuple.typecat
+/// ### typecat
 ///
 /// Computes the type of a `tuple.cat` with an `n`- and an `m`-tuple.
 anx lam typecat {n m: Nat} (Ts: «n; *») (Us: «m; *») : * = // «i: n + m; select(i < n , Ts#i, Us#(i - n))»
@@ -23,7 +23,7 @@ anx lam typecat {n m: Nat} (Ts: «n; *») (Us: «m; *») : * = // «i: n + m; se
             Ts#(core.bitcast (Idx n) i),
             Us#(core.bitcast (Idx m) (core.nat.sub (nat_i, n))))»;
 ///
-/// ### tuple.cat
+/// ### cat
 ///
 /// Concatenates an `n`-tuple and an `m`-tuple to an `n + m`-tuple.
 ///
@@ -34,7 +34,7 @@ axm cat: {n m: Nat}
           , normalize_cat;
 
 ///
-/// ### tuple.append / tuple.prepend
+/// ### append / prepend
 ///
 /// Appends / prepends a single element to a tuple.
 ///
@@ -51,7 +51,7 @@ anx lam prepend  {m: Nat}
                = cat (a, b);
 
 ///
-/// ### tuple.head / tuple.tail
+/// ### head / tail
 ///
 /// The first element of a tuple / all elements but the first.
 ///
@@ -68,13 +68,13 @@ anx lam tail {n: Nat}
   = ‹i: core.nat.sub (n, 1); values#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))›;
 
 ///
-/// ### tuple.contains
+/// ### contains
 ///
 /// Does the tuple contain the given element?
 ///
 axm contains: {n: Nat} → {Ts: «n; *», U: *} → [«i: n; Ts#i», U] → Bool, normalize_contains;
 ///
-/// ### tuple.zip
+/// ### zip
 ///
 /// [Zips](https://en.wikipedia.org/wiki/Zipping_(computer_science)) several tensors.
 /// The signature will likely change in the future:

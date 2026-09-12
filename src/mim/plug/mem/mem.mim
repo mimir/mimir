@@ -10,12 +10,12 @@ import compile;
 ///
 /// ## Types
 ///
-/// ### mem.M {#memM}
+/// ### M {#memM}
 ///
 /// This type tracks all kinds of side effects in the given address space.
 axm M: Nat → *;
 ///
-/// ### mem.Ptr
+/// ### Ptr
 ///
 /// Pointer type with *pointee* type `T` and *address space* `a`.
 /// At the moment, the *address space* is not really used and serves as a placeholder for future work.
@@ -28,22 +28,22 @@ anx lam Ptr0(T: *): * = Ptr (T, 0);
 /// The following operations have side effects.
 /// For this reason, they consume a `mem.M a` and yield a new `mem.M a`.
 ///
-/// ### mem.load
+/// ### load
 ///
 /// Loads the pointee of type `T` from a pointer of type `mem.Ptr (T, a)`.
 axm load: {T: *, a: Nat} as Ta → [M a, Ptr Ta] → [M a, T], normalize_load;
 ///
-/// ### mem.store
+/// ### store
 ///
 /// Stores a value of type `T` to the location pointed to by a pointer of type `mem.Ptr (T, a)`.
 axm store: {T: *, a: Nat} as Ta → [M a, Ptr Ta, T] → M a, normalize_store;
 ///
-/// ### mem.remem
+/// ### remem
 ///
 /// Creates a new dummy `mem.M a`-typed value in order to acknowledge the fact that some unspecified side-effect happened.
 axm remem: {a: Nat} → M a → M a, normalize_remem;
 ///
-/// ### mem.fresh
+/// ### fresh
 ///
 /// Passes a *fresh* `mem.M a` for address space `a` to its return continuation: `ret mem = mem.fresh $ 0`.
 /// Conversion-only phases (e.g. `tensor.lower_to_mem`) emit memory operations before memory has been threaded.
@@ -52,29 +52,29 @@ axm remem: {a: Nat} → M a → M a, normalize_remem;
 /// `mem.add_mem` resolves each call by jumping to the continuation with the memory that is current at that point.
 axm fresh: Fn [a: Nat] → M a;
 ///
-/// ### mem.alloc
+/// ### alloc
 ///
 /// Allocates memory of type `T` in address space `a`.
 axm alloc: [*, a: Nat] as Ta → [M a] → [M a, Ptr Ta];
 ///
-/// ### mem.slot
+/// ### slot
 ///
 /// Reserves a stack slot for type `T` in address space `a`.
 /// The slot is passed to the continuation and its lifetime is scoped to that continuation.
 axm slot: [*, a: Nat] as Ta → Fn M a → [M a, Ptr Ta];
 ///
-/// ### mem.malloc
+/// ### malloc
 ///
 /// Allocates memory of type `T` in address space `a`.
 /// The difference to `mem.alloc` is that the size is passed explicitly (in bytes) instead of being derived from `T`.
 axm malloc: [*, a: Nat] as Ta → [M a, Nat] → [M a, Ptr Ta];
 ///
-/// ### mem.free
+/// ### free
 ///
 /// Frees memory of type `T` in address space `a`.
 axm free: {*, a: Nat} as Ta → [M a, Ptr Ta] → M a;
 ///
-/// ### mem.mslot
+/// ### mslot
 ///
 /// Reserves a stack slot for type `T` in address space `a`.
 /// The reserved slot will be `size` bytes large.
@@ -83,7 +83,7 @@ axm mslot: [*, a: Nat] as Ta → Fn [M a, size: Nat] → [M a, Ptr Ta];
 ///
 /// ## Operations w/o Side Effects
 ///
-/// ### mem.lea
+/// ### lea
 ///
 /// Load effective address.
 /// Performs address computation by offsetting the passed pointer with index `i`.

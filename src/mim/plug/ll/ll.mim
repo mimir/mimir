@@ -17,7 +17,7 @@ import compile;
 ///
 /// ## Phases
 ///
-/// ### ll.emit
+/// ### emit
 ///
 /// Emits the LLVM IR of the current world to `<world>.ll` (or to the path given via `-X ll:o=<file>`).
 /// This phase is spliced into the default pipeline (see `opt`) whenever the `ll` plugin is loaded.
@@ -26,7 +26,7 @@ axm emit: compile.Phase;
 ///
 /// ## Annotations
 ///
-/// ### ll.vec
+/// ### vec
 ///
 /// The identity, used as a vectorization annotation on loops; it has no normalizer and is an
 /// opaque op to every phase.

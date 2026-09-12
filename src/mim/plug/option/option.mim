@@ -12,7 +12,7 @@ plugin core;
 ///
 /// ## Types
 ///
-/// ### option.Opt
+/// ### Opt
 ///
 /// The option type: `[] ∪ T`.
 ///
@@ -21,19 +21,19 @@ anx lam Opt (T: *) : * = [] ∪ T;
 ///
 /// ## Constructors
 ///
-/// ### option.some
+/// ### some
 ///
 /// Wraps a value into an option.
 ///
 anx lam some {T: *} (v: T) : Opt T = v inj Opt T;
 ///
-/// ### option.none
+/// ### none
 ///
 /// The empty option.
 ///
 anx lam none (T: *) : Opt T = () inj Opt T;
 ///
-/// ### option.some_if
+/// ### some_if
 ///
 /// Wraps `v` into an option iff `b` holds.
 ///
@@ -41,7 +41,7 @@ anx lam some_if {T: *} (b: Bool, v: T) : Opt T = (none T, some v)#b;
 ///
 /// ## Operations
 ///
-/// ### option.is_some
+/// ### is_some
 ///
 /// Returns `tt` if the option contains a value.
 ///
@@ -50,13 +50,13 @@ anx lam is_some {T: *} (o: Opt T) : Bool =
         | _: T  => tt
         | _: [] => ff;
 ///
-/// ### option.unwrap_unsafe
+/// ### unwrap_unsafe
 ///
 /// Extracts the value without checking - undefined behavior for `option.none`.
 ///
 axm unwrap_unsafe: {T: *} → Opt T → T, normalize_unwrap_unsafe;
 ///
-/// ### option.unwrap_or
+/// ### unwrap_or
 ///
 /// Extracts the value or returns `default`.
 ///

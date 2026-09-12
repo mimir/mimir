@@ -48,18 +48,18 @@ axm default_stream: Stream;
 ///
 /// ### Context
 ///
-/// #### gpu.init
+/// #### init
 ///
 /// Initializes the GPU runtime.
 // TODO: consider allowing multiple contexts and configuration of device number or context flags
 axm init: mem.M 0 → [mem.M 0, GlobalM, ConstM];
 ///
-/// #### gpu.deinit
+/// #### deinit
 ///
 /// Deinitializes the GPU runtime.
 axm deinit: [mem.M 0, GlobalM, ConstM] → mem.M 0;
 ///
-/// #### gpu.auto_init / gpu.auto_deinit
+/// #### auto_init / auto_deinit
 ///
 /// The compiler-inserted counterparts of gpu.init / gpu.deinit.
 /// gpu.lower_btensor_map_reduce uses these instead of calling gpu.init / gpu.deinit directly, so a
@@ -69,22 +69,22 @@ axm auto_deinit: [mem.M 0, GlobalM, ConstM] → mem.M 0;
 ///
 /// ### Streams
 ///
-/// #### gpu.stream_init
+/// #### stream_init
 ///
 /// Initializes a stream.
 axm stream_init: [mem.M 0, GlobalM, mem.Ptr0 Stream] → [mem.M 0, GlobalM];
 ///
-/// #### gpu.stream_deinit
+/// #### stream_deinit
 ///
 /// Deinitializes a stream.
 axm stream_deinit: [mem.M 0, GlobalM, Stream] → [mem.M 0, GlobalM];
 ///
-/// #### gpu.stream_sync
+/// #### stream_sync
 ///
 /// Waits for a stream to finish all its work.
 axm stream_sync: [mem.M 0, GlobalM, Stream] → [mem.M 0, GlobalM];
 ///
-/// ### gpu.with_streams
+/// ### with_streams
 ///
 /// Provides `n` streams to `func` for executing asynchronous GPU operations, managing their initialization and teardown.
 anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [mem.M 0, GlobalM])
@@ -130,7 +130,7 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
 ///
 /// ### Blocking / Async Memory Operations
 ///
-/// #### gpu.alloc(block) / gpu.alloc(asyn)
+/// #### alloc(block) / alloc(asyn)
 ///
 /// Allocates memory on the device (in global address space), synchronously (`block`) or asynchronously
 /// against a stream (`asyn`).
@@ -139,7 +139,7 @@ mod alloc {
     axm asyn:  [T: *] → [GlobalM, Stream] → [GlobalM, GlobalPtr T];
 }
 ///
-/// #### gpu.free(block) / gpu.free(asyn)
+/// #### free(block) / free(asyn)
 ///
 /// Frees memory on the device (in global address space), synchronously (`block`) or asynchronously
 /// against a stream (`asyn`).
@@ -148,7 +148,7 @@ pub mod free {
     axm asyn:  {T: *} → [GlobalM, GlobalPtr T, Stream] → GlobalM;
 }
 ///
-/// #### gpu.copy_to_device(block) / gpu.copy_to_device(asyn)
+/// #### copy_to_device(block) / copy_to_device(asyn)
 ///
 /// Copies data from host memory to device memory, synchronously (`block`) or asynchronously against a
 /// stream (`asyn`).
@@ -157,7 +157,7 @@ pub mod copy_to_device {
     axm asyn:  {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T, Stream] → [mem.M 0, GlobalM];
 }
 ///
-/// #### gpu.copy_to_host(block) / gpu.copy_to_host(asyn)
+/// #### copy_to_host(block) / copy_to_host(asyn)
 ///
 /// Copies data from device memory to host memory, synchronously (`block`) or asynchronously against a
 /// stream (`asyn`).
@@ -166,7 +166,7 @@ pub mod copy_to_host {
     axm asyn:  {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T, Stream] → [mem.M 0, GlobalM];
 }
 ///
-/// #### gpu.alloc_copy(block) / gpu.alloc_copy(asyn)
+/// #### alloc_copy(block) / alloc_copy(asyn)
 ///
 /// Allocates memory on the device (in global address space) for the provided host data and copies the
 /// host data to that memory, synchronously (`block`) or asynchronously against a stream (`asyn`).
@@ -188,7 +188,7 @@ pub mod alloc_copy {
 ///
 /// ### Buffer Operations
 ///
-/// #### gpu.buf_alloc_copy
+/// #### buf_alloc_copy
 ///
 /// Placeholder for copying a host-side `buffer.Buf` to the device.
 /// Unlike `gpu.alloc_copy(block)`, this operates directly on the still-abstract `buffer.Buf`
@@ -196,7 +196,7 @@ axm buf_alloc_copy: {r: Nat, s: «r; Nat», T: *}
                   → [mem.M 0, GlobalM, buffer.Buf (r, s, T)]
                   → [mem.M 0, GlobalM, GlobalPtr «s; T»];
 ///
-/// #### gpu.buf_copy_to_host
+/// #### buf_copy_to_host
 ///
 /// Placeholder for copying device data to a host-side `buffer.Buf`.
 /// Unlike `gpu.copy_to_host(block)`, this operates directly on the still-abstract `buffer.Buf`
@@ -206,7 +206,7 @@ axm buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
 ///
 /// ### Kernel Launch
 ///
-/// #### gpu.launch
+/// #### launch
 ///
 /// Launches a kernel function on the device with dynamic shared memory and module symbols.
 // TODO: refactor to {n m: N, Ts: «n; *»} as soon as type inference bug is fixed
@@ -221,12 +221,12 @@ axm launch: {n: Nat, Ts: «n; *»}
 ///
 /// ### Work-Item Synchronization
 ///
-/// #### gpu.sync_work_items
+/// #### sync_work_items
 ///
 /// Low-level operation to synchronize all work-items in the same work-group.
 axm sync_work_items: [GlobalM, SharedM] → [GlobalM, SharedM];
 ///
-/// #### gpu.synced_scope
+/// #### synced_scope
 ///
 /// Runs `scope` bracketed by work-item synchronization: syncs, runs `scope`, and syncs again.
 // TODO: consider variadic arguments and returns values for the scope

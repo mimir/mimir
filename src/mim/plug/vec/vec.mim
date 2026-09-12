@@ -14,7 +14,7 @@ plugin refly;
 ///
 /// ## Iterators
 ///
-/// ### vec.fold
+/// ### fold
 ///
 /// [Fold aka Reduction](https://en.wikipedia.org/wiki/Fold_(higher-order_function)) of the vector with `f`:
 /// * `vec.fold.l f (init, (e1, ..., en))` is `f (... (f (f (init, e1), e2)) ..., en)`.
@@ -29,7 +29,7 @@ pub mod fold {
     axm r: {A E: *} → {n: Nat} → [f: [E, A] → A] → [«n; E», A] → A, normalize_fold;
 }
 ///
-/// ### vec.zip
+/// ### zip
 ///
 /// [Combines](https://en.wikipedia.org/wiki/Zipping_(computer_science)) multiple vectors element-wise using the provided function.
 /// Given `ni` vectors of length `n`, and a function `f` that takes one element from each vector,
@@ -39,13 +39,13 @@ axm zip: {ni n: Nat} → {Is: «ni; *», R: *} → [f: «i: ni; Is#i» → R] �
 ///
 /// ## Scanning
 ///
-/// ### vec.scan
+/// ### scan
 ///
 /// Does the given predicate hold for all elements/at least one element?
 ///
 axm scan.(for_all, exists): {E: *} → {n: Nat} → [p: E → Bool] → «n; E» → Bool, normalize_scan;
 ///
-/// ### vec.first / vec.last
+/// ### first / last
 ///
 /// Yields the index of the first/last occurrence of the given element, or option.none if it does not occur.
 ///
@@ -54,13 +54,13 @@ lam f_last     {E: *} {n: Nat} (eq: [E, E] → Bool) (x: E) (y: E, (b: Bool, i: 
 anx lam first {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E): option.Opt (Idx n) = option.some_if (fold.l (f_first eq x) ((ff, core.idx 0 n 0), v));
 anx lam last  {E: *} {n: Nat} (eq: [E, E] → Bool) (v: «n; E», x: E): option.Opt (Idx n) = option.some_if (fold.r (f_last  eq x) (v, (ff, core.idx 0 n 0)));
 ///
-/// ### vec.len
+/// ### len
 ///
 /// Yields the length of the vector.
 ///
 anx lam len {n: Nat} {T: *} (_: «n; T»): Nat = n;
 ///
-/// ### vec.is_unique
+/// ### is_unique
 ///
 /// Checks whether all elements in the given vector are distinct from each other (using structural equivalence).
 ///
@@ -68,7 +68,7 @@ axm is_unique: {T: *} → {n: Nat} → «n; T» → Bool, normalize_is_unique;
 ///
 /// ## Modifiers
 ///
-/// ### vec.cat
+/// ### cat
 ///
 /// Concatenates an `n`-vector and an `m`-vector to an `n + m`-vector.
 ///
@@ -77,7 +77,7 @@ axm cat: {n m: Nat}
        → [«n; T», «m; T»]
        → «core.nat.add (n, m); T», normalize_cat;
 ///
-/// ### vec.diff
+/// ### diff
 ///
 /// Removes the elements at the given indices from the vector; the indices must be distinct (checked via vec.is_unique).
 ///

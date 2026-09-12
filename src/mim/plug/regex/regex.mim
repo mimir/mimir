@@ -27,13 +27,13 @@ let RE = {n: Nat} → [mem.M 0, Str n, Idx n] → Res n;
 ///
 /// ## Meta
 ///
-/// ### regex.conj
+/// ### conj
 ///
 /// A sequence of REs. <br>
 /// E.g., `\d\d\d` matches 3 digits: `regex.conj (regex.cls.d, regex.cls.d, regex.cls.d)`.
 axm conj: {n: Nat} → «n; RE» → RE, normalize_conj, 2;
 ///
-/// ### regex.disj
+/// ### disj
 ///
 /// Matches any of the sub-expressions, e.g. `[0123456789]`.
 ///
@@ -41,32 +41,32 @@ axm disj: {n: Nat} → «n; RE» → RE, normalize_disj, 2;
 ///
 /// ## Values
 ///
-/// ### regex.range
+/// ### range
 ///
 /// Wraps a range of literals.
 /// E.g., use `regex.range ('a', 'z')` to match all lower-case letters.
 ///
 axm range: «2; Char» → RE, normalize_range, 1;
 ///
-/// ### regex.lit
+/// ### lit
 ///
 /// Wraps a literal.
 ///
 anx lam lit(val: Char) = range (val, val);
 ///
-/// ### regex.not_
+/// ### not_
 ///
 /// Matches anything but the ranges in the parameter - the parameter must only contain `regex.disj`s and `regex.range`s.
 ///
 axm not_: RE → RE, normalize_not, 1;
 ///
-/// ### regex.neg_lookahead
+/// ### neg_lookahead
 ///
 /// Succeeds iff the parameter does *not* match, without consuming input.
 ///
 axm neg_lookahead: RE → RE, 1;
 ///
-/// ### regex.cls.*
+/// ### cls.*
 ///
 /// | Subtag | Matches                        |
 /// |--------|--------------------------------|
@@ -86,13 +86,13 @@ pub mod cls {
     anx let S = not_ s;
 }
 ///
-/// ### regex.any
+/// ### any
 ///
 /// Matches any character.
 ///
 axm any: RE, 0;
 ///
-/// ### regex.empty
+/// ### empty
 ///
 /// Matches the empty string.
 ///
@@ -100,7 +100,7 @@ axm empty: RE, 0;
 ///
 /// ## Quantifiers
 ///
-/// ### regex.quant.*
+/// ### quant.*
 ///
 /// The usual quantifiers:
 /// * `optional`: `?` - zero or one
@@ -111,7 +111,7 @@ axm quant.(optional,star,plus): RE → RE, normalize_quant, 1;
 ///
 /// ## Phases
 ///
-/// ### regex.lower_regex
+/// ### lower_regex
 ///
 /// Compiles the regex combinators into an executable matcher (via a DFA).
 ///

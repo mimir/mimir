@@ -12,7 +12,7 @@ import compile;
 ///
 /// ## Types
 ///
-/// ### refly.Code
+/// ### Code
 ///
 /// The reified internal representation of a Mim expression of type `T`.
 ///
@@ -20,13 +20,13 @@ axm Code: * → *;
 ///
 /// ## Reify / Reflect
 ///
-/// ### refly.reify
+/// ### reify
 ///
 /// Yields the internal MimIR representation of a Mim expression as `refly.Code`.
 ///
 axm reify: {T: *} → T → [Code T], normalize_reify;
 ///
-/// ### refly.reflect
+/// ### reflect
 ///
 /// Converts a `refly.Code` back to a Mim expression.
 ///
@@ -34,19 +34,19 @@ axm reflect: {T: *} → [Code T] → T, normalize_reflect;
 ///
 /// ## Inspect
 ///
-/// ### refly.type
+/// ### type
 ///
 /// Returns the type of an expression.
 ///
 axm type: {T: *} → T → *, normalize_type;
 ///
-/// ### refly.gid
+/// ### gid
 ///
 /// Returns the internal mim::Def::gid of the argument.
 ///
 axm gid: {T: *} → T → Nat, normalize_gid;
 ///
-/// ### refly.dbg
+/// ### dbg
 ///
 /// Debugs a given expression.
 /// * `tmp`: Prints debug information of a given expression at construction time and vanishes afterwards.
@@ -63,7 +63,7 @@ axm dbg.(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 ///
 /// ## Testing
 ///
-/// ### refly.equiv
+/// ### equiv
 ///
 /// Checks for structural / alpha-equivalence.
 /// Two bits select the check:
@@ -81,13 +81,13 @@ axm equiv.(ae = struc_ne, aE = struc_eq,
            Ae = alpha_ne, AE = alpha_eq):
     {T: *} → [T, T] → T, normalize_equiv;
 ///
-/// ### refly.check_bot
+/// ### check_bot
 ///
 /// Checks whether the argument is `⊥`.
 ///
 axm check_bot: {T: *} → T → T, normalize_check_bot;
 ///
-/// ### refly.check
+/// ### check
 ///
 /// Checks the given condition and emits the error message if it is `ff`.
 ///

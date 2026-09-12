@@ -16,20 +16,20 @@ plugin core; // for derivatives
 ///
 /// ## Types
 ///
-/// ### autodiff.Tangent
+/// ### Tangent
 ///
 /// The tangent type of a type `T` (currently the identity).
 axm Tangent: * → *, normalize_Tangent;
 ///
 /// ## Operations
 ///
-/// ### autodiff.AD
+/// ### AD
 ///
 /// Computes the augmented type of a function type: `(T → U) => (T → U × (U → T))`.
 ///
 axm AD: * → *, normalize_AD;
 ///
-/// ### autodiff.ad
+/// ### ad
 ///
 /// Yields the augmented term of a closed term (function, operator, higher-order argument, registered axiom, etc.).
 /// The augmented term `f'` returns the result together with the pullback:
@@ -37,20 +37,20 @@ axm AD: * → *, normalize_AD;
 ///
 axm ad: {T: *} → T → AD T, normalize_ad;
 ///
-/// ### autodiff.zero
+/// ### zero
 ///
 /// Represents universal zero such that `(zero T) +_T t = t`.
 ///
 axm zero: [T: *] → T, normalize_zero;
 ///
-/// ### autodiff.add
+/// ### add
 ///
 /// A universal addition that consumes zeros and defaults to normal addition for scalar types.
 /// It lifts addition over structured types and special-cases types that do not allow addition.
 ///
 axm add: {T: *} → [T, T] → T, normalize_add;
 ///
-/// ### autodiff.sum
+/// ### sum
 ///
 /// Performs autodiff.add over a list of terms.
 ///
@@ -97,7 +97,7 @@ axm eval:      compile.Phase;
 /// The tuple pullback transports the partial pullbacks of the operands and handles the sums.
 /// By its nature the pullback of a tuple needs to be a sum.
 ///
-/// ### autodiff.diff
+/// ### diff
 ///
 /// The derivative of the axiom `plugin.tag.sub` is the annex `autodiff.diff.plugin_tag_sub`, i.e. the axiom's name
 /// with all `.`s replaced by `_`s;

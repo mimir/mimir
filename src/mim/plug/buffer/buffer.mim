@@ -18,7 +18,7 @@ import compile;
 ///
 /// ## Types
 ///
-/// ### buffer.Buf
+/// ### Buf
 ///
 /// A buffer of rank `r`, shape `s`, holding elements of type `T`.
 /// Equivalent to the dependent array `«s; T»` but backed by memory.
@@ -30,46 +30,46 @@ axm Buf: [r: Nat, s: «r; Nat», T: *] → *, normalize_Buf;
 ///
 /// ## Operations
 ///
-/// ### buffer.alloc
+/// ### alloc
 ///
 /// Allocate a fresh (uninitialized) buffer.
 ///
 axm alloc: [r: Nat, s: «r; Nat», T: *] as rsT → mem.M 0 → [mem.M 0, Buf rsT];
 ///
-/// ### buffer.read
+/// ### read
 ///
 /// Read the element at `idx`.
 ///
 axm read: [r: Nat, s: «r; Nat», T: *] as rsT
         → [mem.M 0, Buf rsT, idx: «i: r; Idx s#i»] → [mem.M 0, T], normalize_read;
 ///
-/// ### buffer.write
+/// ### write
 ///
 /// Write `val` at `idx` in place and return the same buffer.
 ///
 axm write: [r: Nat, s: «r; Nat», T: *] as rsT
          → [mem.M 0, Buf rsT, idx: «i: r; Idx s#i», val: T] → [mem.M 0, Buf rsT], normalize_write;
 ///
-/// ### buffer.init
+/// ### init
 ///
 /// A buffer initialized with the contents of the SSA array value `val`.
 /// This is the boundary conversion from the value world into the buffer world.
 ///
 axm init: [r: Nat, s: «r; Nat», T: *] as rsT → [mem.M 0, val: «s; T»] → [mem.M 0, Buf rsT];
 ///
-/// ### buffer.lit
+/// ### lit
 ///
 /// A buffer initialized with a constant value in every element.
 ///
 axm lit: [r: Nat, s: «r; Nat», T: *] as rsT → [mem.M 0, T] → [mem.M 0, Buf rsT];
 ///
-/// ### buffer.shape
+/// ### shape
 ///
 /// Yields the size of the buffer along dimension `i` (resolved from the type).
 ///
 axm shape: [r: Nat, s: «r; Nat», T: *] as rsT → [Buf rsT, i: Idx r] → Nat, normalize_shape;
 ///
-/// ### buffer.copy
+/// ### copy
 ///
 /// Copy the whole contents of `src` into `dst` and return the updated memory.
 ///
@@ -78,7 +78,7 @@ axm copy: [r: Nat, s: «r; Nat», T: *] as rsT
 ///
 /// ## Phases
 ///
-/// ### buffer.lower_ptr
+/// ### lower_ptr
 ///
 /// Lowers `Buf` / `alloc` / `read` / `write` to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store`.
 ///
