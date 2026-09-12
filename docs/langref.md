@@ -180,7 +180,7 @@ The main nonterminals used below are:
 | `f`    | file               |
 | `d`    | declaration        |
 | `p`    | pattern            |
-| `b`    | telescope          |
+| `t`    | telescope          |
 | `e`    | expression         |
 
 ### Files and Imports {#module}
@@ -244,7 +244,7 @@ and    ::= "and" I (":" e)? "=" e
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
 dom    ::= p ("@" e)?
-fwd    ::= (p | b) ("@" e)?
+fwd    ::= (p | t) ("@" e)?
 axm    ::= I ":" e tail
         |  (I ".")? "(" (tag ("," tag)* ","?)? ")" ":" e tail
 tag    ::= I ("=" I)*
@@ -282,32 +282,29 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 A pattern decomposes a value; a telescope describes a type.
 
 ```ebnf
-p   ::= I (":" e)?
-     |  "(" (pg ("," pg)* ","?)? ")"
-     |  p "as" I
+p     ::= I (":" e)?
+       |  "(" plist? ")"
+       |  p "as" I
 
-pg  ::= p
-     |  g
+t     ::= I (":" e)?
+       |  "[" tlist? "]"
+       |  t "as" I
+       |  e
 
-b   ::= I (":" e)?
-     |  "[" (bg ("," bg)* ","?)? "]"
-     |  b "as" I
-     |  e
-
-bg  ::= b
-     |  g
-
-g   ::= I+ ":" e
+plist ::= (p | g) ("," (p | g))* ","?
+tlist ::= (t | g) ("," (t | g))* ","?
+g     ::= I+ ":" e
 ```
 
 These are two different things, not two spellings of one thing.
 
 - A **pattern** `p` destructs a value into names that a body uses, so it only appears where a body exists.
-- A **telescope** `b` describes a type and names a component only so that later components or the codomain may depend on it.
+- A **telescope** `t` describes a type and names a component only so that later components or the codomain may depend on it.
 - The two grammars are identical except that a telescope additionally admits a bare `e`.
   Hence the whole difference: **an unnamed element is a binder in `(...)` and a type in `[...]`**.
   `(a, b, c)` binds three components with inferred types; `[A, B, C]` describes three unnamed components of those types.
-- Both support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`, which distribute the annotated type over the listed names.
+- A **group** `g` distributes one annotated type over several names, as in `(a b c: Nat, d e: Bool)` or `[a b c: Nat, d e: Bool]`.
+  It is only ever an element of a `plist`/`tlist`, never a `p`/`t` of its own.
 - Only a telescope may contain general expressions, which is what makes `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
 - `[...]` never binds for a body: a declaration or `λ`/`cn`/`fn` **with** a body must spell its domain as a `(...)` pattern, and writes an unnamed component as `_: T`.
   A bodyless `extern` declaration accepts either, since nothing binds there anyway.
@@ -390,9 +387,9 @@ e   ::= sign? L (":" e)?
 
 ```ebnf
 e   ::= e "→" e
-     |  b "→" e
-     |  "Cn" b
-     |  "Fn" b "→" e
+     |  t "→" e
+     |  "Cn" t
+     |  "Fn" t "→" e
      |  "λ" p+ (":" e)? "=" e
      |  "cn" p+ (":" e)? "=" e
      |  "fn" p+ (":" e)? "=" e
@@ -402,7 +399,7 @@ e   ::= e "→" e
 ```
 
 - `e → e` is the ordinary arrow type.
-- `b → e`, `Cn b`, and `Fn b → e` are dependent function forms whose domain is described by a telescope.
+- `t → e`, `Cn t`, and `Fn t → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
 - Application is written by juxtaposition.
 - `e @ e` passes an explicit implicit argument.
@@ -411,7 +408,7 @@ e   ::= e "→" e
 #### Products
 
 ```ebnf
-e     ::= "[" (bg ("," bg)* ","?)? "]"
+e     ::= "[" tlist? "]"
        |  "(" (e ("," e)* ","?)? ")"
        |  "«" arity ("," arity)* ";" e "»"
        |  "‹" arity ("," arity)* ";" e "›"
@@ -498,7 +495,7 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 |  6 | `Add`     | left  | `e + e`, `e - e`                     |                                                                          |
 |  7 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                          |
 |  8 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                          |
-|  9 | `Pi`      |   -   | *pseudo*                             | Bounds the domain of a `λ`/`Fn`/`b → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+|  9 | `Pi`      |   -   | *pseudo*                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
 | 10 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                    |
 | 11 | `Union`   | left  | `e ∪ e`                              |                                                                          |
 | 12 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                    |
