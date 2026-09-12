@@ -84,7 +84,7 @@ lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
     lam wrap (d: Nat, w: Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]])
            : Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]] =
         con level (pref: «r; I32», m: mem.M 0, acc: A, k: Cn [mem.M 0, A]) =
-            loop lbody lexit (0I32, core.bitcast I32 (Sr#(core.idx r 0 d)), 1I32, (m, acc))
+            loop lbody lexit (0I32, core.bitcast I32 (Sr#(core.idx 0 r d)), 1I32, (m, acc))
             where
                 con lbody (iv: I32, macc: [mem.M 0, A], yield: Cn [mem.M 0, A]) =
                     let pref2 = ‹j: r; core.select (core.ncmp.e (core.bitcast Nat j, d), iv, pref#j)›;
@@ -112,7 +112,7 @@ lam range_unroll (r: Nat, Sr: «r; Nat») (A: *) (lo hi: Nat)
                                                      core.bitcast I32 i, pref#j)›;
                     w (pref2, m2, a2, kk);
                 at;
-            let t  = Sr#(core.idx r 0 d);
+            let t  = Sr#(core.idx 0 r d);
             let ks = ‹i: t; core.bitcast Nat i›;
             (vec.fold.r @(Cn [mem.M 0, A], Nat) @t step (ks, k)) (m, acc);
         level;
@@ -154,7 +154,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         // `vd` is `vdim` clamped through the dispatch condition: the non-selected branch is still
         // ELABORATED, so its body must be type-sane even when `vdim` is the out-of-range sentinel.
         let vec_ok = core.bit2.and_ 2 (core.ncmp.e (core.nat.add (vdim, 1), ro),
-                                        core.ncmp.ne (Sr#(core.idx r 0 ((0, vdim)#(core.ncmp.l (vdim, r)))), 1));
+                                        core.ncmp.ne (Sr#(core.idx 0 r ((0, vdim)#(core.ncmp.l (vdim, r)))), 1));
         let vd = (0, vdim)#vec_ok;
 
         // CLASSIC: reduction loops inside all output loops, one accumulator cell at a time; the
@@ -169,8 +169,8 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         // VECTORIZED: the vector dim as the innermost loop over a row of accumulators — refill the
         // row per output row, fold whole rows in lockstep, then write the row back cell by cell.
         con vectorized (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
-            let Sv = Sr#(core.idx r 0 vd);
-            let vi_of = lm (pref: «r; I32»): Idx Sv = core.conv.u Sv (pref#(core.idx r 0 vd));
+            let Sv = Sr#(core.idx 0 r vd);
+            let vi_of = lm (pref: «r; I32»): Idx Sv = core.conv.u Sv (pref#(core.idx 0 r vd));
             let (mem1, row) = buffer.alloc (1, Sv, To) mem0;
             con at_row (pref: «r; I32», m: mem.M 0, u: U, k: Cn [mem.M 0, U]) =
                 con fill (pref2: «r; I32», memf: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
@@ -205,17 +205,17 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         let sd_r    = core.nat.add (vdim, 1);
         let sd_c    = (0, sd_r)#(core.ncmp.l (sd_r, r));
         let block_ok = core.bit2.and_ 2 (core.ncmp.e (core.nat.add (vdim, 2), ro),
-                      core.bit2.and_ 2 (core.ncmp.ne (Sr#(core.idx r 0 pd_c), 1),
-                                         core.ncmp.ne (Sr#(core.idx r 0 sd_c), 1)));
+                      core.bit2.and_ 2 (core.ncmp.ne (Sr#(core.idx 0 r pd_c), 1),
+                                         core.ncmp.ne (Sr#(core.idx 0 r sd_c), 1)));
 
         con blocked (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
-            let Sp = Sr#(core.idx r 0 pd_c);
-            let Sv = Sr#(core.idx r 0 sd_c);
+            let Sp = Sr#(core.idx 0 r pd_c);
+            let Sv = Sr#(core.idx 0 r sd_c);
             let Np = core.nat.mul (Sp, Sv);
             let vi_of = lm (pref: «r; I32»): Idx Np =
                 core.conv.u Np (core.wrap.add 0
-                    (core.wrap.mul 0 (pref#(core.idx r 0 pd_c), core.bitcast I32 Sv),
-                     pref#(core.idx r 0 sd_c)));
+                    (core.wrap.mul 0 (pref#(core.idx 0 r pd_c), core.bitcast I32 Sv),
+                     pref#(core.idx 0 r sd_c)));
             let (mem1, panel) = buffer.alloc (1, Np, To) mem0;
             con at_block (pref: «r; I32», m: mem.M 0, u: U, k: Cn [mem.M 0, U]) =
                 con fill (pref2: «r; I32», memf: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
@@ -266,7 +266,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         let Sr_rv     = ‹j: r; let jj  = core.bitcast Nat j;
                                let jam = core.bit2.and_ 2 (core.ncmp.le (rv_bd, jj), core.ncmp.l (jj, ro));
                                (Sr#j, (1, Sr#j)#redvec_ok)#jam›;
-        lam rv_mul (d: Nat, acc: Nat): Nat = core.nat.mul (acc, Sr_rv#(core.idx r 0 d));
+        lam rv_mul (d: Nat, acc: Nat): Nat = core.nat.mul (acc, Sr_rv#(core.idx 0 r d));
         let rv_ds = ‹i: rv_j; core.nat.add (rv_bd, core.bitcast Nat i)›;
         let Sb    = vec.fold.r @(Nat, Nat) @rv_j rv_mul (rv_ds, 1);
 
@@ -274,8 +274,8 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
             // Flatten a loop vector's jam coordinates into the panel (any per-dim-bounded
             // linearization is a bijection into «Sb»; the exact order is internal to the panel).
             lam rv_lin (pref: «r; I32») (d: Nat, acc: I32): I32 =
-                core.wrap.add 0 (core.wrap.mul 0 (acc, core.bitcast I32 (Sr_rv#(core.idx r 0 d))),
-                                  pref#(core.idx r 0 d));
+                core.wrap.add 0 (core.wrap.mul 0 (acc, core.bitcast I32 (Sr_rv#(core.idx 0 r d))),
+                                  pref#(core.idx 0 r d));
             let bi_of = lm (pref: «r; I32»): Idx Sb =
                 core.conv.u Sb (vec.fold.r @(I32, Nat) @rv_j (rv_lin pref) (rv_ds, 0I32));
             let (mem1, panel) = buffer.alloc (1, Sb, To) mem0;
@@ -375,7 +375,7 @@ axm map_reduce: {nis: Nat}
 /// e.g. `((0, 2), (2, 1))` for the two inputs of a matrix product.
 /// tensor.proj_map is an alias for this lam.
 anx lam proj_map {n r: Nat} (subs: «r; Nat») (o: «n; affine.Index»): «r; affine.Index» =
-    ‹j: r; o#(core.idx n 0 (subs#j))›;
+    ‹j: r; o#(core.idx 0 n (subs#j))›;
 ///
 /// ### product_2d
 ///

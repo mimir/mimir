@@ -3,7 +3,7 @@
 plugin math;
 
 // CHECK-DAG: extern fun foo (f_{{[0-9]+}}: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: let _[[FOO_VAL:[0-9]+]]: {{.*}} = math.arith.sub (23, 8) 127 (0:(math.F (23, 8)), f_{{[0-9]+}})
+// CHECK-DAG: let _[[FOO_VAL:[0-9]+]]: {{.*}} = math.arith.sub 127 (23, 8) (0:(math.F (23, 8)), f_{{[0-9]+}})
 // CHECK-DAG: return_{{[0-9_]+}} _[[FOO_VAL]]
 extern con foo(f: math.F32, return: Cn math.F32) = return (math.minus 127 f);
 

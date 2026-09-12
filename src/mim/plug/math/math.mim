@@ -3,8 +3,9 @@
 /// @see mim::plug::math
 ///
 /// Introduces a type constructor `math.F` for various [IEEE-754](https://en.wikipedia.org/wiki/IEEE_754) floating-point formats and a set of operations to calculate with instances of these types.
-/// All operations with the exception of `math.conv` expect a `Nat` just in front of their actual argument.
+/// All operations with the exception of `math.conv` expect a `Nat` as their very first argument.
 /// Via this [mode](@ref mim::plug::math::Mode) you can fine-tune how strictly floating-point transformations must obey IEEE semantics.
+/// It comes before the implicit `pe` so that currying it - `math.arith.add 0` - still yields a value polymorphic in `pe`.
 ///
 /// [TOC]
 ///
@@ -41,9 +42,9 @@ anx let PXR24   = F pxr24;
 ///
 /// Arithmetic operations.
 axm arith.(add, sub, mul, div, rem):
-    {pe: «2; Nat»} → Nat → «2; F pe» → F pe, normalize_arith;
+    Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_arith;
 
-anx lam minus {pe: «2; Nat»} (m: Nat) (a: F pe): F pe =
+anx lam minus (m: Nat) {pe: «2; Nat»} (a: F pe): F pe =
     arith.sub m (0:(F pe), a);
 ///
 /// ### math.extrema
@@ -71,7 +72,7 @@ anx lam minus {pe: «2; Nat»} (m: Nat) (a: F pe): F pe =
 ///
 axm extrema.(im = fmin,       iM = fmax,
              Im = ieee754min, IM = ieee754max):
-    {pe: «2; Nat»} → Nat → «2; F pe» → F pe, normalize_extrema;
+    Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_extrema;
 ///
 /// ### math.tri
 ///
@@ -104,13 +105,13 @@ axm tri.(ahff =  sin     , ahfF =  cos , ahFf =  tan , ahFF,
          aHff =  sinh = h, aHfF =  cosh, aHFf =  tanh, aHFF,
          Ahff = asin  = a, AhfF = acos , AhFf = atan , AhFF,
          AHff = asinh    , AHfF = acosh, AHFf = atanh, AHFF):
-    {pe: «2; Nat»} → Nat → F pe → F pe, normalize_tri;
+    Nat → {pe: «2; Nat»} → F pe → F pe, normalize_tri;
 ///
 /// ### math.pow
 ///
 /// Power function: \f$x^y\f$
 ///
-axm pow: {pe: «2; Nat»} → Nat → «2; F pe» → F pe, normalize_pow;
+axm pow: Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_pow;
 ///
 /// ### math.rt
 ///
@@ -121,7 +122,7 @@ axm pow: {pe: «2; Nat»} → Nat → «2; F pe» → F pe, normalize_pow;
 /// | `math.rt.sq` | square root | \f$\sqrt{x}\f$     |
 /// | `math.rt.cb` | cube root   | \f$\sqrt[3]{x}\f$  |
 ///
-axm rt.(sq, cb): {pe: «2; Nat»} → Nat → F pe → F pe, normalize_rt;
+axm rt.(sq, cb): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_rt;
 ///
 /// ### math.exp
 ///
@@ -142,7 +143,7 @@ axm rt.(sq, cb): {pe: «2; Nat»} → Nat → F pe → F pe, normalize_rt;
 ///
 axm exp.(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
          Lbb = log, LbB = log2      , LBb = log10      , LBB):
-    {pe: «2; Nat»} → Nat → F pe → F pe, normalize_exp;
+    Nat → {pe: «2; Nat»} → F pe → F pe, normalize_exp;
 ///
 /// ### math.er
 ///
@@ -153,7 +154,7 @@ axm exp.(lbb = exp, lbB = exp2 = bin, lBb = exp10 = dec, lBB,
 /// | `math.er.f`   | error function               | \f$\frac{2}{\sqrt\pi}\int_0^x e^{-t^2}\,dt\f$                            |
 /// | `math.er.fc`  | complementary error function | \f$\frac{2}{\sqrt\pi}\int_x^\infty e^{-t^2}\,dt = 1 - \textrm{erf}(x)\f$ |
 ///
-axm er.(f, fc): {pe: «2; Nat»} → Nat → F pe → F pe, normalize_er;
+axm er.(f, fc): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_er;
 ///
 /// ### math.gamma
 ///
@@ -164,13 +165,13 @@ axm er.(f, fc): {pe: «2; Nat»} → Nat → F pe → F pe, normalize_er;
 /// | `math.gamma.t`    | gamma function                      | \f$\Gamma(x) = \int_0^\infty t^{x-1} e^{-t}\,dt\f$               |
 /// | `math.gamma.l`    | natural logarithm of gamma function | \f$\ln \mid \int_0^\infty t^{x-1} e^{-t}\,dt \mid\f$ |
 ///
-axm gamma.(t, l): {pe: «2; Nat»} → Nat → F pe → F pe, normalize_gamma;
+axm gamma.(t, l): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_gamma;
 ///
 /// ### math.abs
 ///
 /// [Absolute value](https://en.wikipedia.org/wiki/Absolute_value) of a floating-point number.
 ///
-axm abs: {pe: «2; Nat»} → Nat → F pe → F pe, normalize_abs;
+axm abs: Nat → {pe: «2; Nat»} → F pe → F pe, normalize_abs;
 ///
 /// ### math.round
 ///
@@ -187,7 +188,7 @@ axm abs: {pe: «2; Nat»} → Nat → F pe → F pe, normalize_abs;
 /// | `math.round.r`   | [round to nearest integer](https://en.wikipedia.org/wiki/Rounding#Rounding_to_the_nearest_integer) | \f$round (x)\f$          |
 /// | `math.round.t`   | [round towards zero](https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero)                  | \f$trunc (x)\f$          |
 ///
-axm round.(f,c,r,t): {pe: «2; Nat»} → Nat → F pe → F pe, normalize_round;
+axm round.(f,c,r,t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round;
 ///
 /// ## Other Operations
 ///
@@ -222,13 +223,13 @@ axm cmp.(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
          uGle =   g, uGlE =  ge, uGLe =  ne, uGLE =   o,
          Ugle =   u, UglE =  ue, UgLe =  ul, UgLE = ule,
          UGle =  ug, UGlE = uge, UGLe = une, UGLE =   t):
-    {pe: «2; Nat»} → Nat → «2; F pe» → Bool, normalize_cmp;
+    Nat → {pe: «2; Nat»} → «2; F pe» → Bool, normalize_cmp;
 ///
 /// ### math.is_finite
 ///
 /// Returns `tt` if the float is finite and `ff` if not (i.e. if it is ±∞ or NaN).
 ///
-axm is_finite: {pe: «2; Nat»} → Nat → F pe → Bool;
+axm is_finite: Nat → {pe: «2; Nat»} → F pe → Bool;
 ///
 /// ### math.conv
 ///
@@ -245,15 +246,15 @@ pub mod conv {
 /// ### math.slf
 /// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)
 ///
-anx lam slf {pe: «2; Nat»} (m: Nat) (x: F pe): F pe =
+anx lam slf (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m ((conv.f2f pe 1.0:(F64)), arith.add m ((conv.f2f pe 1.0:(F64)), exp.exp m (minus m x)));
 ///
 /// ### math.sgn
 /// [Sign function](https://en.wikipedia.org/wiki/Sign_function)
-anx lam sgn {pe: «2; Nat»} (m: Nat) (x: F pe): F pe =
+anx lam sgn (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     ((conv.f2f pe (-1.0:(F64))), ((conv.f2f pe 0.0:(F64)), (conv.f2f pe 1.0:(F64)))#(cmp.g m (x,(conv.f2f pe 0.0:(F64)))))#(cmp.ge m (x, (conv.f2f pe 0.0:(F64))));
 ///
 /// ### math.rrt
 /// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)
-anx lam rrt {pe: «2; Nat»} (m: Nat) (x: F pe): F pe =
+anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m (conv.f2f pe 1.0:(F64), rt.sq m x);

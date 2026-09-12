@@ -122,7 +122,7 @@ mod diff {
     /// The derivative of core.wrap.add:
     /// s ↦ (s, s)
     ///
-    anx fun core_wrap_add {s: Nat} (m: Nat) (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
+    anx fun core_wrap_add (m: Nat) {s: Nat} (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
         return (core.wrap.add m ab, fn (i: Idx s)@tt: «2; Idx s» = return ‹2; i›);
     ///
     /// #### autodiff.diff.core_wrap_mul
@@ -130,6 +130,6 @@ mod diff {
     /// The derivative of core.wrap.mul:
     /// s ↦ (s*b, s*a)
     ///
-    anx fun core_wrap_mul {s: Nat} (m: Nat) (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
+    anx fun core_wrap_mul (m: Nat) {s: Nat} (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
         return (core.wrap.mul m ab, fn (i: Idx s)@tt: «2; Idx s» = return (core.wrap.mul m (i, b), core.wrap.mul m (i, a)));
 }

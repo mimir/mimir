@@ -284,13 +284,13 @@ anx lam interchange (t: Tileable, perm: «core.nat.add (t#Ro, t#Rr); Nat»): Til
                          refly.check (core.icmp.e @2 (core.ncmp.l (jj, t#Ro), core.ncmp.l (perm#j, t#Ro)),
                                        perm#j,
                                        "interchange: permutation must not mix parallel and reduction dims")›;
-    let sr_n   = ‹i: r; t#Sr#(core.idx r 0 (perm_ok#i))›;
+    let sr_n   = ‹i: r; t#Sr#(core.idx 0 r (perm_ok#i))›;
     let vdim_n = match vec.first core.ncmp.e (perm_ok, t#vdim) with
                      | j: Idx r => core.bitcast Nat j
                      | _: []    => t#vdim;
     // The parallel dims permute among themselves (checked above), so the new dim j writes the
     // output axis its old dim perm#j wrote.
-    let oax_n = ‹j: t#Ro; t#oax#(core.idx (t#Ro) 0 (perm_ok#(core.idx r 0 (core.bitcast Nat j))))›;
+    let oax_n = ‹j: t#Ro; t#oax#(core.idx 0 (t#Ro) (perm_ok#(core.idx 0 r (core.bitcast Nat j))))›;
     // iota: old dim i is found at the new position j with perm#j = i.
     lam iota_p (o: «r; affine.Index»): «r; affine.Index» =
         ‹i: r; o#(option.unwrap_unsafe (vec.first core.ncmp.e (perm_ok, core.bitcast Nat i)))›;
@@ -319,27 +319,27 @@ lam shift_ax (a x: Nat): Nat = core.select (core.ncmp.l (x, a), x, core.nat.add 
 /// re-associate core.nat.add symbolically).
 lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
     ‹i: m; let ii = core.bitcast Nat i;
-           core.select (core.ncmp.l (ii, d), v#(core.idx n 0 ii),
+           core.select (core.ncmp.l (ii, d), v#(core.idx 0 n ii),
            core.select (core.ncmp.e (ii, d), nt,
            core.select (core.ncmp.e (ii, core.nat.add (d, 1)), ts,
-           v#(core.idx n 0 (core.nat.sub (ii, 1))))))›;
+           v#(core.idx 0 n (core.nat.sub (ii, 1))))))›;
 
 /// Recombine a split loop vector (m = n+1): old#d = new#d · ts + new#(d+1).
 lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
     ‹j: n; let jj = core.bitcast Nat j;
-           core.select (core.ncmp.l (jj, d), o#(core.idx m 0 jj),
+           core.select (core.ncmp.l (jj, d), o#(core.idx 0 m jj),
            core.select (core.ncmp.e (jj, d),
-                         affine.op.add (affine.semiop.mul (o#(core.idx m 0 d), ts),
-                                         o#(core.idx m 0 (core.nat.add (d, 1)))),
-           o#(core.idx m 0 (core.nat.add (jj, 1)))))›;
+                         affine.op.add (affine.semiop.mul (o#(core.idx 0 m d), ts),
+                                         o#(core.idx 0 m (core.nat.add (d, 1)))),
+           o#(core.idx 0 m (core.nat.add (jj, 1)))))›;
 
 /// Split an output coordinate vector (m = n+1): new#a = old#a ⌊/⌋ ts, new#(a+1) = old#a mod ts.
 lam split_omega (m n a ts: Nat) (oc: «n; affine.Index»): «m; affine.Index» =
     ‹j: m; let jj = core.bitcast Nat j;
-           core.select (core.ncmp.l (jj, a), oc#(core.idx n 0 jj),
-           core.select (core.ncmp.e (jj, a), affine.semiop.floordiv (oc#(core.idx n 0 a), ts),
-           core.select (core.ncmp.e (jj, core.nat.add (a, 1)), affine.semiop.rem (oc#(core.idx n 0 a), ts),
-           oc#(core.idx n 0 (core.nat.sub (jj, 1))))))›;
+           core.select (core.ncmp.l (jj, a), oc#(core.idx 0 n jj),
+           core.select (core.ncmp.e (jj, a), affine.semiop.floordiv (oc#(core.idx 0 n a), ts),
+           core.select (core.ncmp.e (jj, core.nat.add (a, 1)), affine.semiop.rem (oc#(core.idx 0 n a), ts),
+           oc#(core.idx 0 n (core.nat.sub (jj, 1))))))›;
 
 /// Checks that `ts` exactly divides the extent `sd` (discharges symbolically for factored extents).
 lam check_div (sd ts: Nat): Nat =
@@ -352,7 +352,7 @@ lam check_div (sd ts: Nat): Nat =
 anx lam strip_mine_red (t: Tileable, d ts: Nat): Tileable =
     let r   = core.nat.add (t#Ro, t#Rr);
     let r_n = core.nat.add (t#Ro, core.nat.add (t#Rr, 1));
-    let nt  = core.nat.div (check_div (t#Sr#(core.idx r 0 d), ts), ts);
+    let nt  = core.nat.div (check_div (t#Sr#(core.idx 0 r d), ts), ts);
     let vdim_n   = core.select (core.ncmp.l (t#vdim, t#Ro), t#vdim, r_n);
     let unroll_n = core.select (core.ncmp.l (d, core.nat.sub (r, t#unroll)),
                                  t#unroll, core.nat.add (t#unroll, 1));
@@ -374,19 +374,19 @@ anx lam strip_mine_par (t: Tileable, d ts: Nat): Tileable =
     let r    = core.nat.add (t#Ro, t#Rr);
     let ro_n = core.nat.add (t#Ro, 1);
     let r_n  = core.nat.add (core.nat.add (t#Ro, 1), t#Rr);
-    let a    = t#oax#(core.idx (t#Ro) 0 d);
-    let sd   = refly.check (core.ncmp.e (t#So#(core.idx (t#Ro) 0 a), t#Sr#(core.idx r 0 d)),
-                             t#Sr#(core.idx r 0 d),
+    let a    = t#oax#(core.idx 0 (t#Ro) d);
+    let sd   = refly.check (core.ncmp.e (t#So#(core.idx 0 (t#Ro) a), t#Sr#(core.idx 0 r d)),
+                             t#Sr#(core.idx 0 r d),
                              "strip_mine_par: output extent (at oax#d) must match domain extent");
     let nt   = core.nat.div (check_div (sd, ts), ts);
     // The split dim writes the split axis pair; all other dims write their old axis, renumbered
     // around the insertion at `a`. The unit-stride half is the inner one: a vdim at `d` moves to
     // `d + 1`.
     let oax_n = ‹j: ro_n; let jj = core.bitcast Nat j;
-                          core.select (core.ncmp.l (jj, d), shift_ax (a, t#oax#(core.idx (t#Ro) 0 jj)),
+                          core.select (core.ncmp.l (jj, d), shift_ax (a, t#oax#(core.idx 0 (t#Ro) jj)),
                           core.select (core.ncmp.e (jj, d), a,
                           core.select (core.ncmp.e (jj, core.nat.add (d, 1)), core.nat.add (a, 1),
-                          shift_ax (a, t#oax#(core.idx (t#Ro) 0 (core.nat.sub (jj, 1)))))))›;
+                          shift_ax (a, t#oax#(core.idx 0 (t#Ro) (core.nat.sub (jj, 1)))))))›;
     let vdim_n = core.select (core.ncmp.l (t#vdim, t#Ro),
                                core.select (core.ncmp.l (t#vdim, d), t#vdim, core.nat.add (t#vdim, 1)),
                                r_n);
@@ -422,7 +422,7 @@ lam sched_id (t: Tileable): Tileable = t;
 lam unroll_budget (t: Tileable, budget: Nat): Nat =
     let r = core.nat.add (t#Ro, t#Rr);
     lam step (d: Nat, st: «3; Nat»): «3; Nat» =
-        let taps  = core.nat.mul (st#1_3, t#Sr#(core.idx r 0 d));
+        let taps  = core.nat.mul (st#1_3, t#Sr#(core.idx 0 r d));
         let ok    = if_static (taps, (0, 1)#(core.ncmp.le (taps, budget)), 0);
         let alive = core.nat.mul (st#2_3, ok);
         (core.nat.add (st#0_3, alive),
@@ -452,7 +452,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let s_red = core.select (core.ncmp.e (u, 0),
                               core.nat.add ((0, 1)#(core.ncmp.e (dilation#1_2, 1)), 1),
                               core.select (core.ncmp.l (u, t#Rr), 0, s_ow));
-    let ow    = t#Sr#(core.idx (core.nat.add (t#Ro, t#Rr)) 0 3);
+    let ow    = t#Sr#(core.idx 0 (core.nat.add (t#Ro, t#Rr)) 3);
     let vec   = if_static (core.nat.mul (core.nat.mul (stride#1_2, dilation#1_2), ow),
                                    core.ncmp.l (s_red, s_ow), ff);
     // Rows too short for the vectorizer (ow < 16) are processed in BLOCKS: strip-mine oh by the
@@ -461,7 +461,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     // whole row block, sharing the hoisted window weights). Otherwise the split is the neutral
     // ts = 1 (its size-1 axis folds away), so one code path serves every case and no divisibility
     // check fires on an untaken choice.
-    let oh    = t#Sr#(core.idx (core.nat.add (t#Ro, t#Rr)) 0 2);
+    let oh    = t#Sr#(core.idx 0 (core.nat.add (t#Ro, t#Rr)) 2);
     lam divides (d: Nat): Bool = core.ncmp.e (core.nat.mul (core.nat.div (oh, d), d), oh);
     let bs    = ((1, 2)#(divides 2), 4)#(divides 4);
     let block = if_static (core.nat.mul (oh, ow),
@@ -483,7 +483,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
     let r   = core.nat.add (t#Ro, t#Rr);
     let d   = core.nat.sub (r, 1);
-    let K   = t#Sr#(core.idx r 0 d);
+    let K   = t#Sr#(core.idx 0 r d);
     let ts0 = (1, 4)#(core.ncmp.e (core.nat.mul (core.nat.div (K, 4), 4), K));
     let ts  = if_static (ts0, ts0, 1);
     unroll_trailing (strip_mine_red (vectorize (t, core.nat.sub (r_out, 1)), d, ts), 1);
@@ -508,11 +508,11 @@ lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
     lam blk_by (k b: Nat): Bool = core.bit2.and_ 2 (core.ncmp.e (core.nat.mul (core.nat.div (k, b), b), k),
                                                      core.ncmp.l (b, k));
     let d   = core.nat.sub (r_out, 1);
-    let n   = t#So#(core.idx (t#Ro) 0 d);
+    let n   = t#So#(core.idx 0 (t#Ro) d);
     let bs  = if_static (n, ((1, 2)#(blk_by (n, 2)), 4)#(blk_by (n, 4)), 1);
     let t2  = strip_mine_par (t, d, bs);
     let d2  = core.nat.sub (r_out, 2);
-    let m   = t#So#(core.idx (t#Ro) 0 d2);
+    let m   = t#So#(core.idx 0 (t#Ro) d2);
     let ms  = (1, if_static (m, (1, 2)#(blk_by (m, 2)), 1))#(core.ncmp.le (2, r_out));
     let t3  = strip_mine_par (t2, d2, ms);
     // Dims now (…, m/ms, ms, n/bs, bs | red): swap ms ↔ n/bs so both jam dims are the trailing
@@ -538,7 +538,7 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let s_red = core.select (core.ncmp.e (u, 0),
                               (0, 1)#(core.ncmp.e (dilation#1_2, 1)),
                               core.select (core.ncmp.l (u, t#Rr), 0, s_ow));
-    let ow    = t#Sr#(core.idx (core.nat.add (t#Ro, t#Rr)) 0 3);
+    let ow    = t#Sr#(core.idx 0 (core.nat.add (t#Ro, t#Rr)) 3);
     let vec   = if_static (core.nat.mul (core.nat.mul (stride#1_2, dilation#1_2), ow),
                                    core.ncmp.l (s_red, s_ow), ff);
     unroll_trailing (vectorize_if (t, vec, 3), u);
@@ -660,7 +660,7 @@ lam concat_acc {r: Nat} (ax: Idx r) (acc: Nat, row: «r; Nat»): Nat = core.nat.
 // `(ax, Sis) ↦ s_out`: sums the inputs' extents along `ax`, keeps the shared extents on every other axis.
 lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» =
     let sum_ax = vec.fold.l (concat_acc ax) (0, Sis);
-    let row_0  = Sis#(core.idx nis 0 0);
+    let row_0  = Sis#(core.idx 0 nis 0);
     ‹d: r; core.select (core.icmp.e (d, ax), sum_ax, row_0#d)›;
 
 axm concat: {T: *, nis r: Nat}

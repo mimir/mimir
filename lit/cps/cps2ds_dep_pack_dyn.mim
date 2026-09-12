@@ -13,7 +13,7 @@ con f (n: Nat, return: Cn «n; Nat») = return ‹i: n; core.bitcast Nat i›;
 extern fun main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [mem.M 0, I32] =
     let n  = core.bitcast Nat argc;
     let xs = cps.cps2ds_dep U f n;
-    return (m, core.bitcast I32 (xs#(core.idx n 0 0)));
+    return (m, core.bitcast I32 (xs#(core.idx 0 n 0)));
 
 // CHECK: extern fun main
 // CHECK: return

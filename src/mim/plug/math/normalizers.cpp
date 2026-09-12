@@ -290,7 +290,7 @@ const Def* reassociate(Id id, World& world, [[maybe_unused]] const App* ab, cons
     // build mode for all new ops by using the least upper bound of all involved apps
     auto mode       = std::to_underlying(Mode::bot);
     auto check_mode = [&](const App* app) {
-        auto app_m = Lit::isa(app->arg(0));
+        auto app_m = Lit::isa(app->decurry()->arg());
         if (!app_m || !fe::has_flag(static_cast<Mode>(*app_m), Mode::reassoc)) return false;
         mode &= *app_m; // least upper bound
         return true;
@@ -347,7 +347,7 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     auto [a, b] = arg->projs<2>();
-    auto mode   = callee->arg();
+    auto mode   = callee->decurry()->arg();
     auto lm     = Lit::isa(mode);
     auto w      = isa_f(a->type());
 
@@ -416,7 +416,7 @@ const Def* normalize_extrema(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     auto [a, b] = arg->projs<2>();
-    auto m      = callee->arg();
+    auto m      = callee->decurry()->arg();
     auto lm     = Lit::isa(m);
     // TODO commute
 

@@ -76,7 +76,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
             strlen(m, to_match, exit_me)
             where
             con exit_me(m: mem.M 0, len: I32) =
-                exit (m, (core.idx i32 0 255, core.wrap.sub i32 (len, core.conv.u i32 pos))#matched)
+                exit (m, (core.idx 0 i32 255, core.wrap.sub i32 (len, core.conv.u i32 pos))#matched)
             end
     end;
 
