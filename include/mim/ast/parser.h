@@ -133,10 +133,11 @@ private:
     /// @name parse ptrns
     ///@{
 
-    /// A pattern `p` binds a name, whereas a binder `b` (PtrnStyle::brckt) also accepts a bare type expression.
+    /// A pattern `p` binds names for a body, whereas a telescope `b` (PtrnStyle::brckt) describes a type and names a
+    /// component only so that later components or the codomain may depend on it.
     struct PtrnStyle {
         bool brckt    = false;
-        bool implicit = false; ///< Also accept `{b, ..., b}`.
+        bool implicit = false; ///< Also accept `{p, ..., p}` / `{b, ..., b}`.
     };
 
     Ptr<Ptrn> parse_ptrn(PtrnStyle, std::string_view ctxt, Prec = Prec::Bot);

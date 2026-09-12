@@ -44,8 +44,8 @@ pub mod init {
 ///
 /// Creates an empty set / map.
 ///
-anx lam create_set [K: Key]        : Set K   = init.set K    @0 ();
-anx lam create_map [K: Key] (V: *) : Map K V = init.map K @V @0 ();
+anx lam create_set (K: Key)        : Set K   = init.set K    @0 ();
+anx lam create_map (K: Key) (V: *) : Map K V = init.map K @V @0 ();
 ///
 /// ## Capacity
 ///

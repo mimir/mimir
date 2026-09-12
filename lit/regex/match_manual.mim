@@ -14,10 +14,10 @@ let Top = ⊤:Nat;
 
 // matches (a|b)+a
 
-extern con main[m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]] =
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (core.icmp.ug (argc, 1I32)) (m, 0I32)
     where
-        con match_argument[m: mem.M 0, I32] =
+        con match_argument(m: mem.M 0, _: I32) =
             let arg1             = mem.lea (argv, core.idx_unsafe 1);
             let (m, to_match) = mem.load (m, arg1);
             start (m, 0I32)
@@ -55,7 +55,7 @@ extern con main[m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
                                                             let is_match_a = core.icmp.e (c, 'a');
                                                             (not_a, state2)#is_match_a (m, i);
 
-                                                        con accept[m: mem.M 0, I32] =
+                                                        con accept(m: mem.M 0, _: I32) =
                                                             exit (m, 1I32);
 
                                                         con not_a(m: mem.M 0, i: I32) =
@@ -73,7 +73,7 @@ extern con main[m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
         con error(m: mem.M 0, i: I32) =
             reject (m, 0I32)
             where
-                con reject[m: mem.M 0, Idx Top] = exit (m, 0I32);
+                con reject(m: mem.M 0, _: Idx Top) = exit (m, 0I32);
             end;
     end
 

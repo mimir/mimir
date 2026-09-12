@@ -178,7 +178,7 @@ namespace mim {
 namespace {
 
 std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
-    if (!def) return os << Op(type);
+    if (!def) return os << std::format("_: {}", Op(type));
 
     auto projs = def->tprojs();
     if (projs.size() == 1 || std::ranges::all_of(projs, [](auto d) { return !d; }))
@@ -199,10 +199,9 @@ std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
     return os << std::format("_: {}", Op(type));
 }
 
-std::ostream&
-curry(std::ostream& os, const Def* def, const Def* type, bool implicit, bool paren_style, size_t limit, bool alias) {
-    auto l = implicit ? '{' : paren_style ? '(' : '[';
-    auto r = implicit ? '}' : paren_style ? ')' : ']';
+std::ostream& curry(std::ostream& os, const Def* def, const Def* type, bool implicit, size_t limit, bool alias) {
+    auto l = implicit ? '{' : '(';
+    auto r = implicit ? '}' : ')';
 
     if (limit == 0) return os << l << r;
     if (limit == 1) {
@@ -486,7 +485,7 @@ void Dumper::dump_lam(Lam* lam) {
         os << ' ';
         auto num_doms = c->var() ? c->var()->num_tprojs() : c->type()->dom()->num_tprojs();
         auto limit    = is_fun && c == last ? num_doms - 1 : num_doms;
-        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), !is_con, limit, !is_fun || c != last);
+        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), limit, !is_fun || c != last);
         if (is_con && c == last) std::print(os, "@({})", c->filter());
     }
 

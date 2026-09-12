@@ -12,8 +12,9 @@ Use the primary UTF-8 surface syntax.
   Extra spaces for column alignment are fine.
 - Literal ascriptions are tight: `⊤:Nat`, `0.0:math.F64`.
   For integers prefer the suffix form: `3I32` over `3:I32`.
-- In a parameter list prefer `()`-patterns over `[]` — but only when every element is a named binding or nested pattern, e.g. `con f (mem: mem.M 0, x: I32)`.
-  Keep `[]` when the domain has unnamed type elements (`[mem: mem.M 0, I32, I32]` cannot be a `()`-pattern) and for a `ccon`'s type list, whose brackets denote a type rather than a pattern.
+- `()` is a pattern and `[]` is a telescope; position decides which one you need, not taste.
+  A declaration or lambda **with a body** takes a `()`-pattern, e.g. `con f (mem: mem.M 0, _: I32, x: I32)` — spell an unnamed component `_: T`.
+  A bodyless `extern` declaration and a type (a `ccon`'s list, a `Cn`/`Fn` domain) take `[]`.
 - Prefer group patterns: `(x y: T)` for `(x: T, y: T)`.
   Exception: don't group fields of a named sigma extracted by name (`s#x`), since grouping drops the field names.
 - Prefer pattern matching over extractions: `let (a, b) = tup` over `tup#0_1` and `tup#0_2`.

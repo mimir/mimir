@@ -694,7 +694,7 @@ pub lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; 
     (n, cout, hw#0_2, hw#1_2);
 
 /// Fused multiply-add over the ring `R`; `ab#0` is the padded-input element, `ab#1` the weight.
-fun conv_fun [R: Ring] (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
+fun conv_fun (R: Ring) (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
 
 /// The full `«7; affine.Index»` loop vector is `o = (n, co, oh, ow, ci, kh, kw)`:
 /// indices into `o`: 0 n, 1 co, 2 oh, 3 ow, 4 ci, 5 kh, 6 kw. The weight read map `(co, ci, kh, kw)` and the output
@@ -712,7 +712,7 @@ axm conv: [R: Ring]
                 → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
                 → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
 
-anx lam conv_impl [R: Ring] {n cin cout h w kh kw: Nat}
+anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
                       (stride dilation padding: «2; Nat»)
                       (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
                     : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
@@ -800,7 +800,7 @@ anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
 /// * `s1`/`s2`: the shape of the left/right input
 /// * `a`/`b`: the left/right input
 ///
-pub fun dot_general_fun [R: Ring] [x: R#T, [y z: R#T]]@tt: R#T = return (R#add (x, (R#mul (y, z))));
+pub fun dot_general_fun (R: Ring) (x: R#T, (y z: R#T))@tt: R#T = return (R#add (x, (R#mul (y, z))));
 pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
   match vec.first core.icmp.e (b, i) with
       | bi: Idx nb => core.bitcast Nat bi
@@ -1009,7 +1009,7 @@ anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
                      {r: Nat, s: «r; Nat»}
                      (is: «i: ni; «s; Is#i» »)
                      : «s; T» =
-  fun app_mr [x: T, y: «i: ni; Is#i»]@tt = return (app y);
+  fun app_mr (x: T, y: «i: ni; Is#i»)@tt = return (app y);
   // The `{Tis, Ris, Sis}` group stays explicit: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
   // (i.e. `Sis := ‹ni; s›`) is Miller pattern unification. Adding that rule to `Checker::alpha_impl_` was tried
   // and reverted — even with an occurs check it fires inside `tuple`'s machinery and commits a wrong solution.
@@ -1028,7 +1028,7 @@ axm unary: {Ti To: *}
                  → [i: «s; Ti»]
                  → «s; To»;
 
-anx lam unary_impl {Ti To : *} [app: Ti → To] {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
+anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
   map_impl app i;
 ///
 /// ### binary

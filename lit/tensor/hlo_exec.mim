@@ -28,8 +28,8 @@ let F32 = math.F32;
 
 let R: tensor.Ring = (F32, 0: F32, math.arith.add 0, math.arith.mul 0);
 
-lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = tensor.binary (math.arith.add 0) is;
-lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = tensor.unary (math.tri.tanh 0) i;
+lam F32_add {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; F32» = tensor.binary (math.arith.add 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; F32» = tensor.unary (math.tri.tanh 0) i;
 
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1.
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =

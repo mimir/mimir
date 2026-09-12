@@ -476,11 +476,11 @@ Ptr<Ptrn> Parser::parse_ptrn_(PtrnStyle style, std::string_view ctxt, Prec prec)
     auto track = tracker();
 
     // p -> (p, ..., p)
-    // p -> {b, ..., b}     b -> {b, ..., b}
-    // p -> [b, ..., b]     b -> [b, ..., b]
+    // p -> {p, ..., p}     b -> {b, ..., b}
+    //                      b -> [b, ..., b]
     if (!style.brckt && ahead().isa(Tag::D_paren_l)) return parse_tuple_ptrn(style);
     if (style.implicit && ahead().isa(Tag::D_brace_l)) return parse_tuple_ptrn(style);
-    if (ahead().isa(Tag::D_brckt_l)) return parse_tuple_ptrn({.brckt = true});
+    if (style.brckt && ahead().isa(Tag::D_brckt_l)) return parse_tuple_ptrn(style);
 
     // p ->  s: e           b ->  s: e
     if (ahead(0).isa(Tag::M_id) && ahead(1).isa(Tag::T_colon)) {
@@ -524,6 +524,13 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
                 for (auto dbg : dbgs | std::views::take(dbgs.size() - 1))
                     ptrns.emplace_back(ptr<GrpPtrn>(dbg, id.get()));
                 ptrns.emplace_back(std::move(id));
+                return;
+            }
+
+            if (!style.brckt) { // `(x y)` is two binders short a `,`, never an application
+                error().e(dbgs[1].loc(), "expected `,` or `:` between the binders of a tuple pattern");
+                for (auto dbg : dbgs)
+                    ptrns.emplace_back(ptr<IdPtrn>(dbg.loc(), dbg, nullptr));
                 return;
             }
 
@@ -795,8 +802,10 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
     auto dbg = decl ? parse_id(entity) : Dbg();
     Ptrs<LamDecl::Dom> doms;
     while (true) {
-        auto track  = tracker();
-        auto ptrn   = parse_ptrn({.implicit = true}, prec, "domain pattern of a {}", entity);
+        auto track = tracker();
+        // A domain spelled with brackets is a telescope; the check after the body rejects that where names must bind.
+        auto style  = ahead().isa(Tag::D_brckt_l) ? PtrnStyle{.brckt = true} : PtrnStyle{.implicit = true};
+        auto ptrn   = parse_ptrn(style, prec, "domain pattern of a {}", entity);
         auto filter = accept(Tag::T_at) ? parse_expr("filter") : nullptr;
         doms.emplace_back(ptr<LamDecl::Dom>(track, std::move(ptrn), std::move(filter)));
 
@@ -813,6 +822,14 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
     } else {
         expect(Tag::T_assign, "body of a {}", entity);
         body = parse_expr("body of a {}", entity);
+
+        // Only a forward declaration may spell its domain as a telescope; with a body the names must actually bind.
+        for (const auto& dom : doms)
+            if (auto tuple = dom->ptrn()->isa<TuplePtrn>(); tuple && tuple->is_brckt())
+                error()
+                    .e(tuple->loc(), "a {} with a body must spell its domain as a `(...)` pattern", entity)
+                    .n("`[...]` describes a type, so its names bind nothing here")
+                    .n("write an unnamed component as `_: T`");
     }
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
 

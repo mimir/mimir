@@ -4,7 +4,7 @@
 // term - here a library one. The diagnostic must blame the application the user actually wrote.
 plugin core;
 
-let id = λ [T: *] (x: T): T = x;
+let id = λ (T: *) (x: T): T = x;
 let n = id 3;
 
 // CHECK: {{.*}}hashcons_loc.mim:8:9-8:12: error: argument is not assignable to callee's domain

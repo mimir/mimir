@@ -179,8 +179,8 @@ The main nonterminals used below are:
 |--------|--------------------|
 | `f`    | file               |
 | `d`    | declaration        |
-| `p`    | `()`-style pattern |
-| `b`    | `[]`-style pattern |
+| `p`    | pattern            |
+| `b`    | telescope          |
 | `e`    | expression         |
 
 ### Files and Imports {#module}
@@ -234,7 +234,7 @@ d      ::= "import" (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
-        |  vis? "extern" lam I dom+ (":" e)? ";"
+        |  vis? "extern" lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I (":" e)? "=" e and*
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
@@ -244,6 +244,7 @@ and    ::= "and" I (":" e)? "=" e
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
 dom    ::= p ("@" e)?
+fwd    ::= (p | b) ("@" e)?
 axm    ::= I ":" e tail
         |  (I ".")? "(" (tag ("," tag)* ","?)? ")" ":" e tail
 tag    ::= I ("=" I)*
@@ -276,14 +277,13 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
 
-### Patterns {#ptrn}
+### Patterns and Telescopes {#ptrn}
 
-Patterns decompose values and describe binders.
+A pattern decomposes a value; a telescope describes a type.
 
 ```ebnf
 p   ::= I (":" e)?
      |  "(" (pg ("," pg)* ","?)? ")"
-     |  b
      |  p "as" I
 
 pg  ::= p
@@ -300,14 +300,20 @@ bg  ::= b
 g   ::= I+ ":" e
 ```
 
-There are two pattern families.
+These are two different things, not two spellings of one thing.
 
-- `p` is the ordinary parenthesized binder syntax.
-- `b` is the bracketed syntax used for sigma binders and Pi domains.
-- Roughly speaking, `(a, b, c)` binds tuple components with inferred types, while `[a, b, c]` binds components whose types are described by the bracket entries.
-- When all component types are written explicitly, `(a: A, b: B)` and `[a: A, b: B]` coincide.
-- Tuple patterns support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`; both forms distribute the annotated type over the listed names.
-- Bracket-style patterns may also contain general expressions, which is what makes forms such as `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
+- A **pattern** `p` destructs a value into names that a body uses, so it only appears where a body exists.
+- A **telescope** `b` describes a type and names a component only so that later components or the codomain may depend on it.
+- The two grammars are identical except that a telescope additionally admits a bare `e`.
+  Hence the whole difference: **an unnamed element is a binder in `(...)` and a type in `[...]`**.
+  `(a, b, c)` binds three components with inferred types; `[A, B, C]` describes three unnamed components of those types.
+- Both support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`, which distribute the annotated type over the listed names.
+- Only a telescope may contain general expressions, which is what makes `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
+- `[...]` never binds for a body: a declaration or `λ`/`cn`/`fn` **with** a body must spell its domain as a `(...)` pattern, and writes an unnamed component as `_: T`.
+  A bodyless `extern` declaration accepts either, since nothing binds there anyway.
+
+A telescope name is visible only to what stands to its right - later components, and the codomain after a `→`.
+`Cn X` abbreviates `X → ⊥` and so has no codomain at all, which makes every name in `Cn [x y: I32]` erased: it is the very same type as `Cn [I32, I32]`.
 
 An alias pattern wraps another pattern and additionally binds the whole value:
 
@@ -396,7 +402,7 @@ e   ::= e "→" e
 ```
 
 - `e → e` is the ordinary arrow type.
-- `b → e`, `Cn b`, and `Fn b → e` are dependent function forms whose domain is described by a bracket-style pattern.
+- `b → e`, `Cn b`, and `Fn b → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
 - Application is written by juxtaposition.
 - `e @ e` passes an explicit implicit argument.

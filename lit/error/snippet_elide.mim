@@ -3,7 +3,7 @@
 // A Loc spanning more rows than a snippet prints elides its middle.
 plugin core;
 
-let id = λ [T: *] (x: T): T = x;
+let id = λ (T: *) (x: T): T = x;
 let n = id
         (
             3,

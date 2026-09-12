@@ -60,7 +60,11 @@ public:
     ///@}
 
     const Decl* find(Dbg dbg, bool quiet = false) {
-        if (dbg.is_anon()) return nullptr;
+        // `_` never enters a Scope, so it cannot be planted as a dummy; the recorded error keeps emit from running.
+        if (dbg.is_anon()) {
+            if (!quiet) error().e(dbg.loc(), "`_` never binds an entity and cannot be referenced");
+            return nullptr;
+        }
 
         for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
             if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;

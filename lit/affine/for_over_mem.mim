@@ -11,18 +11,18 @@ plugin mem;
 let arr_size = ⊤:Nat;
 // let arr_size = 16;
 
-extern con main [m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]] =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
     let (m, ptr) = mem.alloc («core.bitcast Nat argc; I32», 0) (m);
     affine.For for_body for_exit (0I32, argc, 1I32, (m, 0I32, 0I32))
     where
-        con for_body [i: I32, [m: mem.M 0, acc_a acc_b: I32], continue: Cn [mem.M 0, I32, I32]] =
+        con for_body (i: I32, (m: mem.M 0, acc_a acc_b: I32), continue: Cn [mem.M 0, I32, I32]) =
             let a   = core.wrap.add 0 (i, acc_a);
             let b   = core.wrap.sub 0 (i, acc_b);
             let lea = mem.lea (ptr, core.conv.u arr_size i);
             let m = mem.store (m, lea, a);
             continue (m, a, b);
 
-        con for_exit [m: mem.M 0, I32, I32] =
+        con for_exit (m: mem.M 0, _: I32, _: I32) =
             let lea = mem.lea (ptr, core.conv.u arr_size (core.wrap.sub 0 (argc, 4I32)));
             let ld  = mem.load (m, lea);
             return ld;

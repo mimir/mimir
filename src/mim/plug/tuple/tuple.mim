@@ -57,13 +57,13 @@ anx lam prepend  {m: Nat}
 ///
 anx lam head {n: Nat}
     {Ts: «n; *»}
-    [values: «i: n; Ts#i»]
+    (values: «i: n; Ts#i»)
   : [Ts#(core.idx n core.mode.US 0)]
   = values#(core.idx n core.mode.US 0);
 
 anx lam tail {n: Nat}
     {Ts: «n; *»}
-    [values: «i: n; Ts#i»]
+    (values: «i: n; Ts#i»)
   : «i: core.nat.sub (n, 1); Ts#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))»
   = ‹i: core.nat.sub (n, 1); values#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))›;
 
