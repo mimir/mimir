@@ -12,8 +12,7 @@ con seq {A: *} (n: Nat) (body: [Cn A] → Cn A) (exit: Cn A) (acc: A)@tt =
     head(0, acc)
     where
         con head (i: Nat, acc: A)@core.pe.is_closed n =
-            let cond = i < n;
-            (f, t)#cond ()
+            (f, t)#(i < n) ()
             where
                 con t() = body continue acc
                 where

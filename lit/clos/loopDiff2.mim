@@ -26,11 +26,7 @@ con printArr (m: mem.M 0, arr: mem.Ptr («size; I32», 0), return: Cn [mem.M 0])
         con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
         con exit (m: mem.M 0) = printNL (m, return);
-
-        let condition = i < core.bitcast I32 size;
-        let target = (exit, enter)#condition;
-        target ( m );
-
+        (exit, enter)#(i < core.bitcast I32 size) m;
     loop_head ( m, 0I32 );
 
 con init (m: mem.M 0, arr: mem.Ptr («size; I32», 0), offset: I32, return: Cn [mem.M 0]) =
@@ -43,11 +39,7 @@ con init (m: mem.M 0, arr: mem.Ptr («size; I32», 0), offset: I32, return: Cn [
     con loop_head (m: mem.M 0, i: I32) =
         con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
-
-        let condition = i < core.bitcast I32 size;
-        let target = (return, enter)#condition;
-        target ( m );
-
+        (return, enter)#(i < core.bitcast I32 size) m;
     loop_head ( m, 0I32 );
 
 con const (m: mem.M 0, arr: mem.Ptr («size; I32», 0), constValue: I32, return: Cn [mem.M 0]) =
@@ -59,11 +51,7 @@ con const (m: mem.M 0, arr: mem.Ptr («size; I32», 0), constValue: I32, return:
     con loop_head (m: mem.M 0, i: I32) =
         con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
-
-        let condition = i < core.bitcast I32 size;
-        let target = (return, enter)#condition;
-        target ( m );
-
+        (return, enter)#(i < core.bitcast I32 size) m;
     loop_head ( m, 0I32 );
 
 con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0]) =
@@ -139,18 +127,13 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0]) =
                 let (backward_pass_mem, backward_pass) = mem.load (m, lea_pb);
                 backward_pass ( backward_pass_mem, 1I32, yield );
 
-            let condition = i < core.bitcast I32 size;
-            let target = (timer, enter)#condition;
-            target ( m );
+            (timer, enter)#(i < core.bitcast I32 size) m;
 
         con loop_head (m: mem.M 0, i: I32) =
             con exit (m: mem.M 0) = backward_loop_head(m, 0I32);
             con yield (m: mem.M 0) = loop_head( m, i + 1I32);
             con enter (m: mem.M 0) = loop_body ( m, i, yield );
-
-            let condition = i < core.bitcast I32 size;
-            let target = (exit, enter)#condition;
-            target ( m );
+            (exit, enter)#(i < core.bitcast I32 size) m;
         loop_head ( m, 0I32 );
 
     con init_a (m: mem.M 0) =

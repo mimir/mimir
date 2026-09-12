@@ -14,8 +14,7 @@ extern fun f(x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond       = i <= j;
-                    (false, true)#cond ()
+                    (false, true)#(i <= j) ()
                     where
                         con false () =
                             let i = i + 2; // unreachable due to GVN

@@ -18,11 +18,7 @@ con init (m: mem.M 0, arr: mem.Ptr («4; I32», 0), return: Cn [mem.M 0]) =
     con loop_head (m: mem.M 0, i: I32) =
         con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
-
-        let condition = i < 19I32;
-        let target = (return, enter)#condition;
-        target ( m );
-
+        (return, enter)#(i < 19I32) m;
     loop_head ( m, 0I32 );
 
 con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
@@ -78,10 +74,7 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
         con exit (m: mem.M 0) = return (m, i);
         con yield(m: mem.M 0) = loop_head( m, i + 1I32);
         con enter(m: mem.M 0) = loop_body ( m, i, yield );
-
-        let condition = i < 19I32;
-        let target = (exit, enter)#condition;
-        target ( m );
+        (exit, enter)#(i < 19I32) m;
 
     con init_a (m: mem.M 0) =
         con init_b (m: mem.M 0) =

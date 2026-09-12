@@ -7,8 +7,7 @@ extern fun count(n: I32): I32 =
     loop (0I32, 0I32)
     where
         con loop (i acc: I32) =
-            let cond = i < n;
-            core.select (cond, body, exit) ()
+            core.select ((i < n), body, exit) ()
             where
                 con body() =
                     loop (i + 1I32, acc + i);

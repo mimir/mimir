@@ -13,8 +13,7 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, 
     loop (m, 0I32, 0I32)
     where
         con loop(m: mem.M 0, i acc: I32) =
-            let cond = i < argc;
-            (exit, body)#cond m
+            (exit, body)#(i < argc) m
             where
                 con body m: mem.M 0 =
                     let inc = 1I32 + i;

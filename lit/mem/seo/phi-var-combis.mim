@@ -42,8 +42,7 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                     let (m, va ) = mem.load (m, pa );
                     let (m, vb1) = mem.load (m, pb1);
                     let (m, vb2) = mem.load (m, pb2);
-                    let cond       = vb1 == vb2;
-                    (ff1, tt1)#cond m
+                    (ff1, tt1)#(vb1 == vb2) m
                     where
                         con tt1 (m: mem.M 0) =
                             let va  = va + 1;
@@ -61,8 +60,7 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                             n1 (m, a, b1, b2, c);
 
                         con n1 (m: mem.M 0, a b1 b2 c: Nat) =
-                            let cond = b1 == b2;
-                            (ff2, tt2)#cond m
+                            (ff2, tt2)#(b1 == b2) m
                             where
                                 con tt2 (m: mem.M 0) =
                                     let a  = a + 1;
@@ -77,8 +75,7 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
 
                                 con n2 (m: mem.M 0, a b2 b1 c: Nat) =
                                     let (m, vc) = mem.load (m, pc);
-                                    let cond      = vc == c;
-                                    (ff3, tt3)#cond m
+                                    (ff3, tt3)#(vc == c) m
                                     where
                                         con tt3 (m: mem.M 0) =
                                             let vc = vc + 3;

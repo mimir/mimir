@@ -5,8 +5,7 @@ plugin refly;
 use core.ops.n;
 
 extern lam iter {T: *} (f: T → T) (n: Nat, x: T)@(core.pe.is_closed n): T =
-    let cond = n <= 0;
-    (core.select (cond, cons, alt)) () where
+    (core.select ((n <= 0), cons, alt)) () where
         lam cons(): T =
             x;
         lam alt(): T =

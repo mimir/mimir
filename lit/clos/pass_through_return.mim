@@ -39,7 +39,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
 
             printInteger(store_pb_mem, i, yield);
 
-        let condition = i < 19I32;
-        (exit, body)#condition ( m );
+        (exit, body)#(i < 19I32) ( m );
 
     loop_head ( store_pb, 0I32 ); // <-- start forward pass

@@ -14,8 +14,7 @@ let size    = 100;
 extern con println_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
 
 con recursive (m: mem.M 0, i: I32, last_pullback: pb_type, return: Cn [mem.M 0]) =
-    let condition = i < core.bitcast I32 size;
-    (exit, loop_body)#condition m
+    (exit, loop_body)#(i < core.bitcast I32 size) m
     where
         con loop_body (m: mem.M 0) =
             println_i32( m, i , next )

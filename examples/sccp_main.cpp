@@ -17,8 +17,7 @@ extern fun f (x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond       = core.ncmp.e (c, 23);
-                    (false, true)#cond ()
+                    (false, true)#(core.ncmp.e (c, 23)) ()
                     where
                         con true () =
                             next (c, x, 4);

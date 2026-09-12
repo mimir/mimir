@@ -16,8 +16,7 @@ con kernel (m1: gpu.GlobalM, m3: gpu.SharedM, m4: gpu.ConstM, m5: gpu.LocalM,
     let m3 = mem.store (m3, store_loc, val);
     let (m1, m3) = gpu.sync_work_items (m1, m3);
     let (m3, load_val) = mem.load (m3, mem.lea (shared_ptr, 3₄ - item_id));
-    let cond = item_id == 1₄;
-    (return, store)#cond (m1, m3, m4, m5)
+    (return, store)#(item_id == 1₄) (m1, m3, m4, m5)
     where
         lam store (m1: gpu.GlobalM, m3: gpu.SharedM, m4: gpu.ConstM, m5: gpu.LocalM) =
             let m1 = mem.store (m1, data, load_val);

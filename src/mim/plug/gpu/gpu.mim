@@ -97,8 +97,7 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
             loop (m0, m1, 0)
             where
                 con loop (m0: mem.M 0, m1: GlobalM, i: Nat) =
-                    let cond = core.ncmp.l (i, n);
-                    (run, body)#cond (m0, m1)
+                    (run, body)#(core.ncmp.l (i, n)) (m0, m1)
                     where
                         con body (m0: mem.M 0, m1: GlobalM) =
                             let lea = mem.lea (streams_ptr, core.bitcast (Idx n) i);
@@ -116,8 +115,7 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
             loop (m0, m1, 0)
             where
                 con loop (m0: mem.M 0, m1: GlobalM, i: Nat) =
-                    let cond = core.ncmp.l (i, n);
-                    (return, body)#cond (m0, m1)
+                    (return, body)#(core.ncmp.l (i, n)) (m0, m1)
                     where
                         con body (m0: mem.M 0, m1: GlobalM) =
                             let idx = core.bitcast (Idx n) i;

@@ -19,15 +19,13 @@ extern fun foo(x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond = y != z;
-                    (f1, t1)#cond ()
+                    (f1, t1)#(y != z) ()
                     where
                         con f1() = n1 x;
                         con t1() = n1 2;
                         con n1(x: Nat) =
                             let x    = 2 - x;
-                            let cond = x != 1;
-                            (f2, t2)#cond ()
+                            (f2, t2)#(x != 1) ()
                             where
                                 con f2() = n2 y;
                                 con t2() = n2 2;
