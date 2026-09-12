@@ -58,12 +58,14 @@ set(DOXY_STYLESHEETS
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.css"
 )
 set(DOXY_ASSETS
     "${DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js"
     "${DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
     "${DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"
 )
 set(DOXY_HEADER     "${CMAKE_CURRENT_SOURCE_DIR}/header.html")
 set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")

@@ -7,16 +7,15 @@ This page is the reference for Mim surface syntax.
 ## Notation
 
 This document uses a lightweight [EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)-style notation.
+A terminal is always quoted, a nonterminal never is, and the meta-symbols are:
 
-```ebnf
-"a"        literal terminal token a
-[a b]      one of a or b
-[a-c]      character range from a to c
-x*         zero or more repetitions of x
-x+         one or more repetitions of x
-x?         optional x
-x ("," x)* ","?   comma-separated list of zero or more x, with an optional trailing comma
-```
+- `x ::= y` defines the nonterminal `x` as `y`.
+- `x | y` is either `x` or `y`.
+- `(x y)` groups.
+- `x*`, `x+`, and `x?` are zero or more, one or more, and an optional `x`.
+- `["ab"]` is one of the characters `a` or `b`, and `[a-c]` is a character range; both only occur in the [lexical rules](@ref terminals).
+
+For instance, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
 
 ## Lexical Structure {#lex}
 
@@ -33,6 +32,8 @@ For example, `λ` and `lm` are lexically equivalent.
 
 #### Primary Terminals
 
+<div class="ebnf-terminals">
+
 ```text
 ( ) [ ] { } ⦃ ⦄
 ‹ › « »
@@ -42,19 +43,27 @@ For example, `λ` and `lm` are lexically equivalent.
 <eof>
 ```
 
+</div>
+
 `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
 `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
+<div class="ebnf-terminals">
+
 ```text
 -> <- bot top lm
 ```
+
+</div>
 
 `⟨`, `⟩`, `⟪`, and `⟫` may be used as alternatives for `‹`, `›`, `«`, and `»`.
 `★` may be used as an alternative for `*`.
 
 #### Keywords
+
+<div class="ebnf-terminals">
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
@@ -62,6 +71,8 @@ and anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod
 norm plugin priv pub rec ret rule tt when where with use
 ```
+
+</div>
 
 The following names are predefined aliases:
 
@@ -122,7 +133,8 @@ pP     ::= ["pP"]
 sign   ::= ["+-"]
 id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
 op     ::= ["+-*/%"]
-esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
+esc    ::= "\'" | "\"" | "\0" | "\a" | "\\" | "\b"
+         |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
 Character and string literals only admit ASCII payload characters plus the escapes listed above.
@@ -142,13 +154,13 @@ The start symbol is `f` for *file*.
 
 The main nonterminals used below are:
 
-```text
-f   file
-d   declaration
-p   ()-style pattern
-b   []-style pattern
-e   expression
-```
+| Symbol | Nonterminal        |
+|--------|--------------------|
+| `f`    | file               |
+| `d`    | declaration        |
+| `p`    | `()`-style pattern |
+| `b`    | `[]`-style pattern |
+| `e`    | expression         |
 
 ### Files and Imports {#module}
 
@@ -192,29 +204,30 @@ a visibility (`priv` or `pub`), `extern`, and `anx`.
 Visibility is a Mim-only, purely lexical fact - it has no effect on backend linkage or compiler registration.
 `extern` and `anx` are each independent of visibility and of each other;
 either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful, while `extern anx` on the same declaration is a static error.
-```text
-import (I | S) ["as" (I | "*")]
-plugin I ["as" (I | "*")]
 
-[priv|pub] mod I "{" d* "}"
-use path ["as" (I | "*")]
+```ebnf
+d      ::= "import" (I | S) ("as" (I | "*"))? ";"
+        |  "plugin" I ("as" (I | "*"))? ";"
+        |  vis? "mod" I "{" d* "}"
+        |  "use" path ("as" (I | "*"))? ";"
+        |  vis? "anx"? "let" p "=" e
+        |  vis? "anx" I "=" path
+        |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
+        |  vis? "extern" lam I dom+ (":" e)? ";"
+        |  vis? "anx"? "rec" I (":" e)? "=" e and*
+        |  vis? "axm" axm
+        |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
-[priv|pub] [anx] let p = e
-anx I = path
-
-[priv|pub] [extern] lam|con|fun n dom+ [: e] = e
-[priv|pub] extern lam|con|fun n dom+ [: e] ";"
-
-[priv|pub] [anx] rec n [: e] = e
-and n [: e] = e
-and lam|con|fun n dom+ [: e] = e
-
-[priv|pub] axm k ["." "(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
-
-rule|norm n p : e [when e] => e
+and    ::= "and" I (":" e)? "=" e
+        |  "and" lam I dom+ (":" e)? "=" e
+vis    ::= "priv" | "pub"
+lam    ::= "lam" | "con" | "fun"
+dom    ::= p ("@" e)?
+axm    ::= I ":" e tail
+        |  (I ".")? "(" (tag ("," tag)* ","?)? ")" ":" e tail
+tag    ::= I ("=" I)*
+tail   ::= ("," I)? ("," L ("," L)?)?
 ```
-
-Here `n` is an identifier.
 
 - `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
@@ -223,13 +236,16 @@ Here `n` is an identifier.
 - `mod` groups declarations under a name; its body also sees the enclosing scope. Neither `extern` nor `anx` apply to it.
 - `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
 - `let` introduces a binding pattern.
-- `I = path` declares `I` as an alias for the annex denoted by `path`; it is always implicitly `anx`.
+- `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
 - `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead. Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
-- Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
+- The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
-- `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
+- `axm` declares an axiom.
+  A `tag` list declares several axioms of the same type at once, and each `"=" I` adds another name for that tag.
+  Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
+- An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
 
@@ -320,7 +336,7 @@ e   ::= sign? L (":" e)?
      |  S
      |  "⊥" (":" e)?
      |  "⊤" (":" e)?
-     |  n
+     |  path
      |  d+ e
      |  "⦃" e "⦄"
 ```
@@ -359,7 +375,7 @@ e   ::= e "→" e
 #### Products
 
 ```ebnf
-e   ::= "[" ... "]"
+e   ::= "[" (bg ("," bg)* ","?)? "]"
      |  "(" (e ("," e)* ","?)? ")"
      |  "«" arity ("," arity)* ";" e "»"
      |  "‹" arity ("," arity)* ";" e "›"
@@ -459,12 +475,11 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 
 Mim uses different surface syntax for declarations, expressions, and types:
 
-```text
-Declaration   Expression   Type
-lam           λ / lm       ->
-con           cn           Cn
-fun           fn           Fn
-```
+| Declaration | Expression   | Type |
+|-------------|--------------|------|
+| `lam`       | `λ` / `lm`   | `→`  |
+| `con`       | `cn`         | `Cn` |
+| `fun`       | `fn`         | `Fn` |
 
 ### Declarations
 
