@@ -18,6 +18,7 @@
 /// Thus, the total number of bits occupied by a value of this type is `p + e + 1`.
 /// Current constant folding only supports IEEE binary16/binary32/binary64 literals,
 /// subject to host `f16` support.
+///
 axm F: «2; Nat» → *;
 
 anx let f16     = (10,  5);
@@ -61,6 +62,7 @@ pub mod mode {
 /// ### arith
 ///
 /// Arithmetic operations.
+///
 axm arith.(add, sub, mul, div, rem):
     Nat → {pe: «2; Nat»} → «2; F pe» → F pe, normalize_arith;
 
@@ -196,10 +198,10 @@ axm abs: Nat → {pe: «2; Nat»} → F pe → F pe, normalize_abs;
 /// ### round
 ///
 /// Common rounding operations for floating-point numbers:
-/// * `f`loor
-/// * `c`eil
-/// * `r`ound
-/// * `t`runcate
+/// - `f`loor
+/// - `c`eil
+/// - `r`ound
+/// - `t`runcate
 ///
 /// | Name             | Meaning                                                                                            | Semantics                |
 /// |------------------|-----------------------------------------------------------------------------------------------------|--------------------------|
@@ -215,10 +217,10 @@ axm round.(f,c,r,t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round
 /// ### cmp
 ///
 /// Floating-point comparison is composed of 4 disjoint relations:
-/// * `U`nordered (yields true if either operand is a QNaN)
-/// * `G`reater
-/// * `L`ess
-/// * `E`qual
+/// - `U`nordered (yields true if either operand is a QNaN)
+/// - `G`reater
+/// - `L`ess
+/// - `E`qual
 ///
 /// | Subtag | Alias | U | G | L | E | Meaning                      |
 /// |--------|-------|---|---|---|---|------------------------------|
@@ -291,8 +293,8 @@ anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
 /// | `math.ops.unsafe` | `math.mode.unsafe` |
 /// | `math.ops.fast`   | `math.mode.fast`   |
 ///
-/// `!=` is math.cmp.une - the exact complement of `==` - and hence `tt` if an operand is a NaN.
-/// All other comparisons are ordered and thus `ff` in that case.
+/// - `!=` is math.cmp.une - the exact complement of `==` - and hence `tt` if an operand is a NaN.
+/// - All other comparisons are ordered and thus `ff` in that case.
 ///
 pub mod ops {
     pub mod none {
