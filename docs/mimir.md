@@ -79,7 +79,7 @@ Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, o
 
 These are ordinary Mim values, written as plain Mim.
 `core.select`, for instance, is just
-```
+```mim
 lam core.select {T: *} (cond, t, f): T = (f, t)#cond;
 ```
 Being a direct-style function, it carries the default `tt` [`filter`](@ref mim::Lam::filter), which tells MimIR to **β-reduce its applications eagerly during graph construction**.

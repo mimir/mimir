@@ -7,16 +7,15 @@ This page is the reference for Mim surface syntax.
 ## Notation
 
 This document uses a lightweight [EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)-style notation.
+A terminal is always quoted, a nonterminal never is, and the meta-symbols are:
 
-```ebnf
-"a"        literal terminal token a
-[a b]      one of a or b
-[a-c]      character range from a to c
-x*         zero or more repetitions of x
-x+         one or more repetitions of x
-x?         optional x
-x ("," x)* ","?   comma-separated list of zero or more x, with an optional trailing comma
-```
+- `x ::= y` defines the nonterminal `x` as `y`.
+- `x | y` is either `x` or `y`.
+- `(x y)` groups.
+- `x*`, `x+`, and `x?` are zero or more, one or more, and an optional `x`.
+- `[a-c]` is a character range from `a` to `c`, and `[a-cx-z]` combines several; ranges only occur in the [lexical rules](@ref terminals).
+
+For example, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
 
 ## Lexical Structure {#lex}
 
@@ -28,40 +27,53 @@ For example, `>>=` is tokenized as `>>` followed by `=`.
 ### Terminals {#terminals}
 
 The grammar refers to *primary terminals*.
-Some tokens also have ASCII-only spellings, called *secondary terminals*, that denote the same lexical token.
-For example, `λ` and `lm` are lexically equivalent.
+Some tokens have a second spelling - an ASCII-only one or a Unicode variant - that denotes the very same lexical token; these are the *secondary terminals*.
 
 #### Primary Terminals
+
+<div class="ebnf-terminals">
 
 ```text
 ( ) [ ] { } ⦃ ⦄
 ‹ › « »
 → ← => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
-+ - * / % == != < <= > >= << >>
++ - / % == != < <= > >= << >>
 <eof>
 ```
+
+</div>
 
 `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
 `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
-```text
--> <- bot top lm
-```
-
-`⟨`, `⟩`, `⟪`, and `⟫` may be used as alternatives for `‹`, `›`, `«`, and `»`.
-`★` may be used as an alternative for `*`.
+| Primary | Secondary |
+|---------|-----------|
+| `→`     | `->`      |
+| `←`     | `<-`      |
+| `λ`     | `lm`      |
+| `⊥`     | `bot`     |
+| `⊤`     | `top`     |
+| `*`     | `★`       |
+| `‹`     | `⟨`       |
+| `›`     | `⟩`       |
+| `«`     | `⟪`       |
+| `»`     | `⟫`       |
 
 #### Keywords
+
+<div class="ebnf-terminals">
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
 and anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod
-norm plugin priv pub rec ret rule tt when where with use
+norm plugin priv pub rec ret rule tt use when where with
 ```
+
+</div>
 
 The following names are predefined aliases:
 
@@ -88,24 +100,26 @@ The following terminals are defined by lexical patterns.
 
 ```ebnf
 I      ::= id
-         |  "`" op
+        |  "`" op
 L      ::= dec+
-         |  "0" ["bB"] bin+
-         |  "0" ["oO"] oct+
-         |  "0" ["xX"] hex+
-         |  dec+ eE sign? dec+
-         |  dec+ "." dec* (eE sign? dec+)?
-         |  dec* "." dec+ (eE sign? dec+)?
-         |  "0" ["xX"] hex+ pP sign? dec+
-         |  "0" ["xX"] hex+ "." hex* pP sign? dec+
-         |  "0" ["xX"] hex* "." hex+ pP sign? dec+
+        |  "0" ("b" | "B") bin+
+        |  "0" ("o" | "O") oct+
+        |  "0" ("x" | "X") hex+
+        |  dec+ eE sign? dec+
+        |  dec+ "." dec* (eE sign? dec+)?
+        |  dec* "." dec+ (eE sign? dec+)?
+        |  "0" ("x" | "X") hex+ pP sign? dec+
+        |  "0" ("x" | "X") hex+ "." hex* pP sign? dec+
+        |  "0" ("x" | "X") hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
-         |  dec+ "_" dec+
+        |  dec+ "_" dec+
+        |  dec+ ("i" | "I") dec+
 C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
 Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`.
 A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
 `` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
@@ -117,17 +131,18 @@ oct    ::= [0-7]
 dec    ::= [0-9]
 sub    ::= [₀-₉]
 hex    ::= [0-9a-fA-F]
-eE     ::= ["eE"]
-pP     ::= ["pP"]
-sign   ::= ["+-"]
-id     ::= [_a-zA-Z] [_0-9a-zA-Z]*
-op     ::= ["+-*/%"]
-esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
+eE     ::= "e" | "E"
+pP     ::= "p" | "P"
+sign   ::= "+" | "-"
+id     ::= ("_" | [a-zA-Z]) ("_" | [0-9a-zA-Z])*
+op     ::= "+" | "-" | "*" | "/" | "%"
+esc    ::= "\'" | "\"" | "\0" | "\a" | "\\" | "\b"
+        |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
 Character and string literals only admit ASCII payload characters plus the escapes listed above.
 
-## Comments
+### Comments
 
 Mim supports `/* ... */` multi-line comments, `// ...` single-line comments, and `/// ...` comments that are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
 `/* ... */` comments are not nested.
@@ -142,13 +157,13 @@ The start symbol is `f` for *file*.
 
 The main nonterminals used below are:
 
-```text
-f   file
-d   declaration
-p   ()-style pattern
-b   []-style pattern
-e   expression
-```
+| Symbol | Meaning            |
+|--------|--------------------|
+| `f`    | file               |
+| `d`    | declaration        |
+| `p`    | `()`-style pattern |
+| `b`    | `[]`-style pattern |
+| `e`    | expression         |
 
 ### Files and Imports {#module}
 
@@ -192,44 +207,52 @@ a visibility (`priv` or `pub`), `extern`, and `anx`.
 Visibility is a Mim-only, purely lexical fact - it has no effect on backend linkage or compiler registration.
 `extern` and `anx` are each independent of visibility and of each other;
 either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful, while `extern anx` on the same declaration is a static error.
-```text
-import (I | S) ["as" (I | "*")]
-plugin I ["as" (I | "*")]
 
-[priv|pub] mod I "{" d* "}"
-use path ["as" (I | "*")]
+```ebnf
+d      ::= "import" (I | S) ("as" (I | "*"))? ";"
+        |  "plugin" I ("as" (I | "*"))? ";"
+        |  vis? "mod" I "{" d* "}"
+        |  "use" path ("as" (I | "*"))? ";"
+        |  vis? "anx"? "let" p "=" e
+        |  vis? "anx" I "=" path
+        |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
+        |  vis? "extern" lam I dom+ (":" e)? ";"
+        |  vis? "anx"? "rec" I (":" e)? "=" e and*
+        |  vis? "axm" axm
+        |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
-[priv|pub] [anx] let p = e
-anx I = path
-
-[priv|pub] [extern] lam|con|fun n dom+ [: e] = e
-[priv|pub] extern lam|con|fun n dom+ [: e] ";"
-
-[priv|pub] [anx] rec n [: e] = e
-and n [: e] = e
-and lam|con|fun n dom+ [: e] = e
-
-[priv|pub] axm k ["." "(" tag ("=" alias)* ("," tag ("=" alias)*)* ")"] : e [, normalizer] [, curry] [, trip]
-
-rule|norm n p : e [when e] => e
+and    ::= "and" I (":" e)? "=" e
+        |  "and" lam I dom+ (":" e)? "=" e
+vis    ::= "priv" | "pub"
+lam    ::= "lam" | "con" | "fun"
+dom    ::= p ("@" e)?
+axm    ::= I ":" e tail
+        |  (I ".")? "(" (tag ("," tag)* ","?)? ")" ":" e tail
+tag    ::= I ("=" I)*
+tail   ::= ("," I)? ("," L ("," L)?)?
 ```
-
-Here `n` is an identifier.
 
 - `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
-- `anx` marks a declaration as an [annex](@ref annex). It doesn't apply to `mod`, since a module is pure AST grouping, not a single value. `axm` is implicitly `anx` and may not combine with `extern`.
+- `anx` marks a declaration as an [annex](@ref annex).
+  It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
+  `axm` is implicitly `anx` and may not combine with `extern`.
 - `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
-- `mod` groups declarations under a name; its body also sees the enclosing scope. Neither `extern` nor `anx` apply to it.
+- `mod` groups declarations under a name; its body also sees the enclosing scope.
+  Neither `extern` nor `anx` apply to it.
 - `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
 - `let` introduces a binding pattern.
-- `I = path` declares `I` as an alias for the annex denoted by `path`; it is always implicitly `anx`.
+- `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
-- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead. Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
-- Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
+  Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
+- The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
-- `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
+- `axm` declares an axiom.
+  A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
+  Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
+- An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
 
@@ -290,14 +313,18 @@ let (mem, val) = mem.load (mem, ptr);
 #### Kinds and Builtin Types
 
 ```ebnf
-e   ::= "Univ"
-     |  "Type" e
-     |  "*"
-     |  "□"
-     |  "Nat"
-     |  "Idx"
-     |  "Bool"
-     |  "Rule" e
+e     ::= "Univ"
+       |  "Type" e
+       |  "*"
+       |  "□"
+       |  "Nat"
+       |  "Idx"
+       |  "Rule" e
+       |  alias
+
+alias ::= "Bool"
+       |  "I1" | "I8" | "I16" | "I32" | "I64"
+       |  "i1" | "i8" | "i16" | "i32" | "i64"
 ```
 
 - `Univ` is the universe of type levels.
@@ -306,8 +333,8 @@ e   ::= "Univ"
 - `□` abbreviates `Type (1:Univ)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
-- `Bool` abbreviates `Idx i1`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
+- `alias` is one of the [predefined aliases](@ref terminals), so `Bool` abbreviates `Idx i1` and `I32` abbreviates `Idx i32`.
 
 #### Literals and Basic Forms {#lit}
 
@@ -320,7 +347,7 @@ e   ::= sign? L (":" e)?
      |  S
      |  "⊥" (":" e)?
      |  "⊤" (":" e)?
-     |  n
+     |  path
      |  d+ e
      |  "⦃" e "⦄"
 ```
@@ -359,14 +386,14 @@ e   ::= e "→" e
 #### Products
 
 ```ebnf
-e   ::= "[" ... "]"
-     |  "(" (e ("," e)* ","?)? ")"
-     |  "«" arity ("," arity)* ";" e "»"
-     |  "‹" arity ("," arity)* ";" e "›"
-     |  e "#" e
-     |  e "#" I
-     |  e "#" e "←" e
-     |  e "←" e
+e     ::= "[" (bg ("," bg)* ","?)? "]"
+       |  "(" (e ("," e)* ","?)? ")"
+       |  "«" arity ("," arity)* ";" e "»"
+       |  "‹" arity ("," arity)* ";" e "›"
+       |  e "#" e
+       |  e "#" I
+       |  e "#" e "←" e
+       |  e "←" e
 
 arity ::= e
        |  I ":" e
@@ -377,7 +404,7 @@ arity ::= e
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
-- `e # i` or `e # e` extracts a component.
+- `e#i` or `e#e` extracts a component.
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
 - `e ← value` without a `#` leaves the index implicit: `e` is its own sole component, so this is `e#0₁ ← value` and hence `value`.
   An `e` of arity other than 1 is an error, just as `e#0₁` would be.
@@ -391,8 +418,8 @@ e   ::= e "∪" e
      |  "match" e "with" ("|"? p "=>" e)+
 ```
 
-- `e ∪ t` forms a union type.
-- `e inj t` injects a value into a union type.
+- `e ∪ e` forms a union type.
+- `e inj e` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
 
 #### Infix Operators {#infix}
@@ -438,8 +465,8 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 
 |  # | Level     | Assoc | Operators                            | Notes                                                                    |
 |---:|-----------|:-----:|--------------------------------------|--------------------------------------------------------------------------|
-|  1 | `Lit`     |   -   | `L : e`                              | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here. |
-|  2 | `Extract` | left  | `e # e`, `e # I`                     |                                                                          |
+|  1 | `Lit`     |   -   | `L:e`                                | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here. |
+|  2 | `Extract` | left  | `e#e`, `e#I`                         |                                                                          |
 |  3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`. |
 |  4 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.             |
 |  5 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                          |
@@ -459,12 +486,11 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 
 Mim uses different surface syntax for declarations, expressions, and types:
 
-```text
-Declaration   Expression   Type
-lam           λ / lm       ->
-con           cn           Cn
-fun           fn           Fn
-```
+| Declaration | Expression   | Type |
+|-------------|--------------|------|
+| `lam`       | `λ` / `lm`   | `→`  |
+| `con`       | `cn`         | `Cn` |
+| `fun`       | `fn`         | `Fn` |
 
 ### Declarations
 
@@ -523,24 +549,26 @@ As a consequence, `_` may appear repeatedly in the same scope without conflict, 
 ### Annex {#annex}
 
 An `anx` declaration is an ordinary member of its enclosing module, found by the same path resolution as any other member.
-Its plugin-qualified name (`plugin.tag[.sub]`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
+Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
 
 ### Field Names of Sigmas
 
 Named elements of mutable sigma types are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
-In the example below, `i` refers to the field name of `X`, not the `let`-bound variable:
+In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 
 ```mim
 let i = 1_2;
-[i: Nat, j: Nat]::X → f X#i;
+rec S: * = [i: Nat, j: Nat];
+lam f (x: S): Nat = x#i;
 ```
 
 Use parentheses to force the variable interpretation:
 
 ```mim
 let i = 1_2;
-[i: Nat, j: Nat]::X → f X#(i);
+rec S: * = [i: Nat, j: Nat];
+lam f (x: S): Nat = x#(i);
 ```
 
 <div class="section_buttons">

@@ -58,13 +58,18 @@ set(DOXY_STYLESHEETS
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mim.css"
 )
 set(DOXY_ASSETS
     "${DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js"
     "${DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
     "${DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mim.js"
 )
+set(DOXY_FILTER     "${CMAKE_CURRENT_SOURCE_DIR}/mim_fences.py")
 set(DOXY_HEADER     "${CMAKE_CURRENT_SOURCE_DIR}/header.html")
 set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 set(DOXY_LAYOUT     "${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml")
@@ -103,6 +108,7 @@ add_custom_command(
         ${DOXY_EXTRA_FILES}
         ${DOXY_STYLESHEETS}
         ${DOXY_ASSETS}
+        ${DOXY_FILTER}
         ${DOXY_HEADER}
         ${DOXY_LAYOUT}
         ${MIM_LOGO}

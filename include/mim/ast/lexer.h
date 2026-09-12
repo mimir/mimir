@@ -37,7 +37,8 @@ private:
         auto res = Super::next();
         if (md_ && out_) {
             if (res == fe::utf8::EoF) {
-                *md_ << "\n```\n";
+                *md_ << '\n';
+                md_close();
                 out_ = false;
             } else if (res) {
                 bool success = fe::utf8::encode(*md_, res);
@@ -57,7 +58,11 @@ private:
     void eat_comments();
     bool start_md() const { return ahead(0) == '/' && ahead(1) == '/' && ahead(2) == '/'; }
     void emit_md(bool start_of_file = false);
-    void md_fence() {
+    /// The language tag switches on Mim syntax highlighting in the generated documentation.
+    void md_open() {
+        if (md_) *md_ << "```mim\n";
+    }
+    void md_close() {
         if (md_) *md_ << "```\n";
     }
 
