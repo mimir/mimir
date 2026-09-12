@@ -430,32 +430,30 @@ e   ::= e "where" d* "end"
 `where` attaches a local declaration block to an already parsed expression.
 `where` blocks bind more weakly than the other infix expression forms.
 
-### Precedence
+### Precedence {#prec}
 
-The current parser uses the following precedence, from strongest to weakest binding:
+Parser and dumper share one ladder of precedence levels, listed here from strongest to weakest binding.
+*Assoc* is left-, right-, or non-associative; chaining a non-associative operator, as in `a == b == c`, is an error - parenthesize one side.
+`Pi`, `Bot`, and `Err` are *pseudo levels*: they name no syntax at all and only ever bound how far a nested expression may extend.
 
-```text
-1.  L : e                  literal and token-local type ascription
-2.  e # e                  extract
-3.  e e, e @ e             application
-4.  e << e, e >> e         shift operators
-5.  e * e, e / e, e % e    multiplicative operators
-6.  e + e, e - e           additive operators
-7.  e < e, e <= e, e > e, e >= e
-                           relational operators
-8.  e == e, e != e         equality operators
-9.  e → e                  arrow
-10. e ∪ e                  union
-11. e inj e                injection
-12. e#e ← e                insert
-13. e where d* end         local declaration block
-```
-
-- Application binds tighter than every operator; only extract and a literal ascription bind tighter still.
-- Extract, union, application, and the arithmetic and shift operators associate left-to-right.
-- `inj`, `→`, and `←` associate right-to-left.
-- The relational and equality operators are **non**-associative: `a == b == c` is an error, write `(a == b) == c`.
-- `where` is the loosest surface operator.
+|  # | Level     | Assoc | Operators                            | Notes                                                                    |
+|---:|-----------|:-----:|--------------------------------------|--------------------------------------------------------------------------|
+|  1 | `Lit`     |   -   | `L : e`                              | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here. |
+|  2 | `Extract` | left  | `e # e`, `e # I`                     |                                                                          |
+|  3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`. |
+|  4 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.             |
+|  5 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                          |
+|  6 | `Add`     | left  | `e + e`, `e - e`                     |                                                                          |
+|  7 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                          |
+|  8 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                          |
+|  9 | `Pi`      |   -   | *pseudo*                             | Bounds the domain of a `λ`/`Fn`/`b → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+| 10 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                    |
+| 11 | `Union`   | left  | `e ∪ e`                              |                                                                          |
+| 12 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                    |
+| 13 | `Ins`     | right | `e#e ← e`, `e ← e`                   | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`. |
+| 14 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                            |
+| 15 | `Bot`     |   -   | *pseudo*                             | A complete expression; the default bound, and the only one a trailing `where` fits into. |
+| 16 | `Err`     |   -   | *pseudo*                             | Below everything; the parser's "no operator seen yet" sentinel.          |
 
 ## Summary: Functions and Types
 

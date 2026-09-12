@@ -804,7 +804,7 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
     }
 
     // The `: codom` slot ends at `=`, so it takes everything short of a `where`.
-    auto codom = accept(Tag::T_colon) ? parse_expr(Prec::Ins, "codomain of a {}", entity) : nullptr;
+    auto codom = accept(Tag::T_colon) ? parse_expr(Prec(int(Prec::Where) + 1), "codomain of a {}", entity) : nullptr;
     if (ISA(tag, C_FN)) doms.back()->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
 
     Ptr<Expr> body;
