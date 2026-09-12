@@ -6,9 +6,9 @@ Doxygen has no Mim parser and discards the language of a fenced code block, so a
 */
 
 class MimCode {
-    static KEYWORD = new Set(["as", "cn", "end", "fn", "inj", "lm", "match", "ret", "when", "where", "with", "λ"])
+    static KEYWORD = new Set(["cn", "end", "fn", "inj", "lm", "match", "ret", "when", "where", "with", "λ"])
     /// `C_DECL` of `src/mim/ast/family.h` plus the modifiers of `Parser::parse_modifiers`.
-    static DECL = new Set(["and", "anx", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "norm",
+    static DECL = new Set(["and", "anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "norm",
                            "plugin", "priv", "pub", "rec", "rule", "use"])
     static TYPE = new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ",
                            "i1", "i8", "i16", "i32", "i64"])

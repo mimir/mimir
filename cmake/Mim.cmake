@@ -98,13 +98,13 @@ function(add_mim_plugin)
     set(OUT_PLUGIN_MIM  ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${PLUGIN}.mim)
     set(PLUGIN_MD       ${CMAKE_BINARY_DIR}/docs/plug/${PLUGIN}.md)
     set(AUTOGEN_H       ${CMAKE_BINARY_DIR}/include/mim/plug/${PLUGIN}/autogen.h)
-    set(AUTOGEN_PY      ${CMAKE_BINARY_DIR}/py/plug/${PLUGIN}.py)
+    set(AUTOGEN_PY      ${CMAKE_BINARY_DIR}/py/mim/_plugins/${PLUGIN}.py)
 
     file(
         MAKE_DIRECTORY
             ${CMAKE_BINARY_DIR}/docs/plug/
             ${CMAKE_BINARY_DIR}/include/mim/plug/${PLUGIN}
-            ${CMAKE_BINARY_DIR}/py/plug/
+            ${CMAKE_BINARY_DIR}/py/mim/_plugins/
             ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/
     )
 
