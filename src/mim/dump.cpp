@@ -32,15 +32,20 @@ Def* isa_decl(const Def* def) {
     return nullptr;
 }
 
+/// A `` ` `` is an ordinary character in a dump but delimits a citation in a diagnostic.
+std::string cited(const Def* def, std::string str) {
+    return PlainNames::active(def->world().driver()) ? cite(str) : std::move(str);
+}
+
 /// Def::unique_name - or the plain Def::sym while a diagnostic is being formatted, where a gid is noise.
 std::string name(const Def* def) {
     if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
-        return sym.str();
-    return def->unique_name();
+        return cited(def, sym.str());
+    return cited(def, def->unique_name());
 }
 
 std::string id(const Def* def) {
-    if (def->is_external() || (!def->is_set() && def->isa<Lam>())) return def->sym().str();
+    if (def->is_external() || (!def->is_set() && def->isa<Lam>())) return cited(def, def->sym().str());
     return name(def);
 }
 

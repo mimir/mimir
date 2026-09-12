@@ -39,6 +39,9 @@ public:
     /// Sets the clash flag - but still answers `true` - if another gid already claimed @p sym.
     static bool claim(const Driver&, Sym sym, uint32_t gid);
 
+    /// Is a diagnostic being formatted on @p driver right now?
+    static bool active(const Driver&);
+
 private:
     const Driver* driver_;
 };

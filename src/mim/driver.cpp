@@ -165,6 +165,8 @@ PlainNames::~PlainNames() {
 
 bool PlainNames::clashed() const { return driver_ && driver_->names().clashed; }
 
+bool PlainNames::active(const Driver& driver) { return driver.names().depth != 0; }
+
 bool PlainNames::claim(const Driver& driver, Sym sym, u32 gid) {
     auto& names = driver.names();
     if (names.depth == 0) return false;

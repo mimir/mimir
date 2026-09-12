@@ -160,7 +160,7 @@ const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type();
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
     if (auto def = decl()->def()) return def;
-    e.error().e(loc(), "`{}` is a module and not a value", dbg().sym()).bail();
+    e.error().e(loc(), "`{}` is a module and not a value", cite(dbg().sym())).bail();
 }
 
 const Def* TypeExpr::emit_(Emitter& e) const {
@@ -289,7 +289,7 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
                 if (auto i = sym2idx.find(dbg.sym()); i != sym2idx.end()) return w.lit_idx(sigma->num_ops(), i->second);
             }
         }
-        if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
+        if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", cite(dbg.sym())).bail();
     }
     return rhs()->emit(e);
 }
