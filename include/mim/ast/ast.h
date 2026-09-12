@@ -294,10 +294,6 @@ public:
     Vis vis() const override { return vis_; }
     bool is_anx() const override { return anx_; }
 
-    static Ptr<IdPtrn> make_type(AST& ast, Ptr<Expr>&& type) {
-        auto loc = type->loc();
-        return ast.ptr<IdPtrn>(loc, Dbg(loc, ast.sym_anon()), std::move(type));
-    }
     static Ptr<IdPtrn> make_id(AST& ast, Dbg dbg, Ptr<Expr>&& type) {
         auto loc = (type && dbg) ? dbg.loc() + type->loc() : type ? type->loc() : dbg.loc();
         return ast.ptr<IdPtrn>(loc, dbg, std::move(type));

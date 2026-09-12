@@ -541,7 +541,8 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
                 lhs      = ptr<AppExpr>(loc, std::move(lhs), path_expr(dbg));
             }
             auto app = parse_infix_expr(track, std::move(lhs), Prec::Bot, "element of a tuple pattern");
-            ptrns.emplace_back(IdPtrn::make_type(ast(), std::move(app)));
+            auto loc = app->loc();
+            ptrns.emplace_back(anon_ptrn(loc, std::move(app)));
             return;
         }
 
