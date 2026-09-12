@@ -63,11 +63,11 @@ Tok Lexer::lex() {
         // further tokens
         if (accept( '+')) return tok(Tag::T_add);
         if (accept( '-')) {
-            if (accept('>')) return tok(Tag::T_arrow);
+            if (accept('>')) return tok(Tag::T_arrow_r);
             return tok(Tag::T_sub);
         }
-        if (accept(U'→')) return tok(Tag::T_arrow);
-        if (accept(U'←')) return tok(Tag::T_larrow);
+        if (accept(U'→')) return tok(Tag::T_arrow_r);
+        if (accept(U'←')) return tok(Tag::T_arrow_l);
         if (accept( '@')) return tok(Tag::T_at);
         if (accept( '=')) {
             if (accept('>')) return tok(Tag::T_fat_arrow);
@@ -82,7 +82,7 @@ Tok Lexer::lex() {
         if (accept( '<')) {
             if (accept('<')) return tok(Tag::T_shl);
             if (accept('=')) return tok(Tag::T_le);
-            if (accept('-')) return tok(Tag::T_larrow);
+            if (accept('-')) return tok(Tag::T_arrow_l);
             return tok(Tag::T_lt);
         }
         if (accept( '>')) {

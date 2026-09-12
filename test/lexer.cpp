@@ -54,7 +54,7 @@ TEST_CASE("Lexer") {
         CHECK(lexer.lex().isa(Tok::Tag::T_ge));
         CHECK(lexer.lex().isa(Tok::Tag::T_shl));
         CHECK(lexer.lex().isa(Tok::Tag::T_shr));
-        CHECK(lexer.lex().isa(Tok::Tag::T_arrow));
+        CHECK(lexer.lex().isa(Tok::Tag::T_arrow_r));
 
         for (auto op : {"`+"sv, "`-"sv, "`*"sv, "`/"sv, "`%"sv, "`=="sv, "`!="sv, "`<"sv, "`<="sv, "`>"sv, "`>="sv,
                         "`<<"sv, "`>>"sv}) {

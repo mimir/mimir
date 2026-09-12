@@ -360,9 +360,9 @@ void AxmDecl::bind(Scopes& s) const {
 
     if (annex_ && annex_->fresh) {
         annex_->normalizer = normalizer();
-        annex_->pi         = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow, type());
+        annex_->pi         = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
     } else if (annex_) {
-        auto pi = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow, type());
+        auto pi = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
         if (pi ^ *annex_->pi)
             s.error().e(dbg().loc(),
                         "all declarations of annex `{}` must be function types if one of them is (they share one "
@@ -440,7 +440,7 @@ void RecDecl::bind_decl(Scopes& s) const {
     if (!type()->isa<HoleExpr>() && body()->isa<LamExpr>())
         s.error().w(type()->loc(), "type of recursive declaration ignored for function expression");
 
-    if (!body()->isa<LamExpr>() && !body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow, body())
+    if (!body()->isa<LamExpr>() && !body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body())
         && !body()->isa<SigmaExpr>())
         s.error().e(body()->loc(), "unsupported expression in a recursive declaration");
 

@@ -258,7 +258,7 @@ const Def* DeclExpr::emit_(Emitter& e) const {
 }
 
 const Def* InfixExpr::emit_decl_(Emitter& e, const Def* type) const {
-    assert(op().isa(Tag::T_arrow));
+    assert(op().isa(Tag::T_arrow_r));
     return pi_ = e.world().mut_pi(type, false);
 }
 
@@ -307,7 +307,7 @@ const Def* InfixExpr::emit_(Emitter& e) const {
             auto tup = lhs()->emit(e);
             return w.extract(tup, emit_index(e, tup));
         }
-        case Tag::T_larrow: {
+        case Tag::T_arrow_l: {
             // Without a `#` the left-hand side is its own sole component, so the index can only be `0₁`.
             auto ex  = InfixExpr::isa_op(Tag::T_extract, lhs());
             auto tup = (ex ? ex->lhs() : lhs())->emit(e);
@@ -323,7 +323,7 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     auto r = rhs()->emit(e);
 
     switch (op().tag()) {
-        case Tag::T_arrow: return w.pi(l, r);
+        case Tag::T_arrow_r: return w.pi(l, r);
         case Tag::T_at: return w.app(l, r);
         case Tag::K_inj: return w.inj(r, l);
         default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR

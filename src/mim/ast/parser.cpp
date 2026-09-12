@@ -384,7 +384,7 @@ Ptr<Expr> Parser::parse_sigma_expr() {
             return parse_pi_expr(std::move(alias));
         }
         case Tag::C_CURRIED_B:
-        case Tag::T_arrow: return parse_pi_expr(std::move(ptrn)); // TODO precedences for patterns
+        case Tag::T_arrow_r: return parse_pi_expr(std::move(ptrn)); // TODO precedences for patterns
         default: return ptr<SigmaExpr>(std::move(ptrn));
     }
 }
@@ -425,7 +425,7 @@ Ptr<Expr> Parser::parse_pi_expr() {
     auto dom  = ptr<PiExpr::Dom>(domt, std::move(ptrn));
 
     auto codom = ISA(tag, C_CN) ? nullptr
-                                : (expect(Tag::T_arrow, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
+                                : (expect(Tag::T_arrow_r, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
 
     if (ISA(tag, C_FN)) dom->add_ret(ast(), codom ? std::move(codom) : ptr<HoleExpr>(missing()));
     return ptr<PiExpr>(track, tag, std::move(dom), std::move(codom));
@@ -435,7 +435,7 @@ Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn>&& ptrn) {
     auto track              = tracker(ptrn->loc());
     std::string_view entity = "dependent function type";
     auto dom                = ptr<PiExpr::Dom>(ptrn->loc(), std::move(ptrn));
-    expect(Tag::T_arrow, entity);
+    expect(Tag::T_arrow_r, entity);
     auto codom = parse_expr(Prec::Arrow, "codomain of a {}", entity);
     return ptr<PiExpr>(track, Tag::Nil, std::move(dom), std::move(codom));
 }
@@ -536,7 +536,7 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
 
         // A binder may turn out to be the prefix of an expr: `[[Nat, Nat] -> Nat]`, `[[Nat] Nat]`.
         if (style.brckt) {
-            if (ahead().isa(Tag::T_arrow)) {
+            if (ahead().isa(Tag::T_arrow_r)) {
                 auto loc = ptrn->loc();
                 ptrn     = anon_ptrn(loc, parse_pi_expr(std::move(ptrn)));
             } else if (auto expr = Ptrn::to_expr(ast(), std::move(ptrn))) {
