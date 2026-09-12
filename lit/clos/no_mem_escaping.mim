@@ -43,7 +43,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
                 println_i32 (m, r0, cn (m: mem.M 0) =
                     println_i32 (m, r1, cn (m: mem.M 0) =
                         println_i32 (m, r2, cn (m: mem.M 0) =
-                            return ((m, 0I32))))))));
+                            return (((m, 0I32)))))))));
 
 // CHECK: 43
 // CHECK: 1

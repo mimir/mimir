@@ -96,15 +96,13 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0]) =
             let ad_lea = mem.lea (ad_arr, core.bitcast (Idx arr_size) i);
             let (load_mem, val) = mem.load (m, ad_lea);
             let new_val = val + s;
-            let store_mem = mem.store (load_mem, ad_lea, new_val);
-            return store_mem;
+            return (mem.store (load_mem, ad_lea, new_val));
 
         con right_pb (m: mem.M 0, s: I32, return: Cn [mem.M 0]) =
             let bd_lea = mem.lea (bd_arr, core.bitcast (Idx arr_size) i);
             let (load_mem, val) = mem.load (m, bd_lea);
             let new_val = val + s;
-            let store_mem = mem.store (load_mem, bd_lea, new_val);
-            return store_mem;
+            return (mem.store (load_mem, bd_lea, new_val));
 
         con mul_pb (m: mem.M 0, s: I32, return: Cn [mem.M 0]) =
             let sa_mul = s * b_val;

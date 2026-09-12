@@ -14,7 +14,7 @@ fun g_diff(a: I32): [I32, Fn I32 → I32] =
     return (c, fn (s: I32): I32 =
         let b = 2I32 * a;
         let c = 3I32 + b;
-        return (c));
+        return ((c)));
 
 fun f(a: I32): I32 =
     con ret_cont (r: I32, pb: Fn I32 → I32) =
