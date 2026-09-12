@@ -6,18 +6,19 @@
 plugin core;
 plugin mem;
 
+use core.ops.u.w;
+
 fun pow(a b: I32): I32 =
     con pow_cont(v: I32) =
-        return (core.wrap.mul 0 (a, v));
+        return (a * v);
 
     con pow_then() =
         return 1I32;
 
     con pow_else() =
-        let b_1 = core.wrap.sub 0 (b, 1I32);
-        pow ((a, b_1), pow_cont);
+        pow ((a, b - 1I32), pow_cont);
 
-    let cmp = core.icmp.e (b, 0I32);
+    let cmp = b == 0I32;
     (pow_else, pow_then)#cmp ();
 
 extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =

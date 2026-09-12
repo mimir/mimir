@@ -13,12 +13,14 @@ plugin tensor;
 plugin affine;
 plugin mem;
 
+use core.ops.n;
+
 lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // CHECK-DAG: extern fun mm_pad
 extern fun mm_pad {m n l: Nat} (
-        a: «m, core.nat.mul (core.nat.div (core.nat.add (n, 3), 4), 4); Nat»,
-        b: «core.nat.mul (core.nat.div (core.nat.add (n, 3), 4), 4), l; Nat»): «m, l; Nat» =
+        a: «m, (n + 3) / 4 * 4; Nat»,
+        b: «(n + 3) / 4 * 4, l; Nat»): «m, l; Nat» =
     return (tensor.product_2d_impl 1 (nat_ring ()) (a, b));
 
 extern lam _compile (): compile.Phase =

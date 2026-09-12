@@ -2,6 +2,8 @@
 plugin core;
 plugin mem;
 
+use core.ops.u.w;
+
 /// A `Cn` *type expression* used to emit a **mutable** Pi, while the Pi of a `con` *declaration* of the very
 /// same signature came out **immutable** (LamDecl::emit_body() already immutabilized its own).
 /// Two alpha-equivalent yet distinct defs - and Scalarize decides per def, flattening only the immutable twin
@@ -15,7 +17,7 @@ extern con main (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
     con use_pb (m: mem.M 0, pb: Pb) =
         con k (m: mem.M 0, prs: [I32, I32]) =
             let (a, b) = prs;
-            return (m, core.wrap.add 0 (a, b));
+            return (m, a + b);
         pb (m, n, k);
 
     con id_pb  (m: mem.M 0, x: I32, k: PbVec) = k (m, (x, x));
@@ -23,8 +25,7 @@ extern con main (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
 
     // `pb` is selected at runtime, so nothing here can be inlined away:
     // the flattened signature has to survive into the output.
-    let cond = core.icmp.ul (n, 3I32);
-    use_pb (m, (id_pb, zero_pb)#cond);
+    use_pb (m, (id_pb, zero_pb)#(n < 3I32));
 
 // Both twins are one immutable Pi now, so the pullback continuation is flattened consistently:
 // `[mem.M 0, «2; I32»]` becomes `[mem.M 0, I32, I32]` at the binder *and* at both call sites

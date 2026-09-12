@@ -5,10 +5,11 @@ plugin core;
 plugin autodiff;
 plugin mem;
 
+use core.ops.u.w;
+
 
 fun f(m: mem.M 0, (a b: I32)): [mem.M 0, I32] =
-    let x = b;
-    return (m, x);
+    return (m, b);
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let f_diff = autodiff.ad f;
@@ -19,12 +20,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
             pb ((rmem, 1I32), pb_ret_cont)
             where
                 con pb_ret_cont (pb_mem: mem.M 0, (pr_a pr_b: I32)) =
-                    let sr = core.wrap.mul 0 (10000I32, r);
-                    let sa = core.wrap.mul 0 (100I32, pr_a);
-                    let sb = pr_b;
-                    let sp = core.wrap.add 0 (sa, sb);
-                    let o  = core.wrap.add 0 (sr, sp);
-                    return (pb_mem, o);
+                    return (pb_mem, 10000I32 * r + (100I32 * pr_a + pr_b));
             end;
     end;
 

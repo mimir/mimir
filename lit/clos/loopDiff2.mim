@@ -4,6 +4,8 @@
 plugin core;
 plugin mem;
 
+use core.ops.u.w;
+
 let void_ptr = mem.Ptr («⊤:Nat; []», 0);
 
 extern con printInteger [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
@@ -21,11 +23,11 @@ con printArr (m: mem.M 0, arr: mem.Ptr («size; I32», 0), return: Cn [mem.M 0])
         printInteger(load_mem, val, continue);
 
     con loop_head (m: mem.M 0, i: I32) =
-        con yield (m: mem.M 0) = loop_head( m, core.wrap.add 0 (i, 1I32));
+        con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
         con exit (m: mem.M 0) = printNL (m, return);
 
-        let condition = core.icmp.ul (i, core.bitcast I32 size);
+        let condition = i < core.bitcast I32 size;
         let target = (exit, enter)#condition;
         target ( m );
 
@@ -34,15 +36,15 @@ con printArr (m: mem.M 0, arr: mem.Ptr («size; I32», 0), return: Cn [mem.M 0])
 con init (m: mem.M 0, arr: mem.Ptr («size; I32», 0), offset: I32, return: Cn [mem.M 0]) =
     con loop_body (m: mem.M 0, i: I32, continue: Cn mem.M 0) =
         let lea = mem.lea (arr, core.bitcast (Idx arr_size) i);
-        let add = core.wrap.add 0 (offset, i);
+        let add = offset + i;
         let store_mem = mem.store (m, lea, add);
         continue(store_mem);
 
     con loop_head (m: mem.M 0, i: I32) =
-        con yield (m: mem.M 0) = loop_head( m, core.wrap.add 0 (i, 1I32));
+        con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
 
-        let condition = core.icmp.ul (i, core.bitcast I32 size);
+        let condition = i < core.bitcast I32 size;
         let target = (return, enter)#condition;
         target ( m );
 
@@ -55,10 +57,10 @@ con const (m: mem.M 0, arr: mem.Ptr («size; I32», 0), constValue: I32, return:
         continue(store_mem);
 
     con loop_head (m: mem.M 0, i: I32) =
-        con yield (m: mem.M 0) = loop_head( m, core.wrap.add 0 (i, 1I32));
+        con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
 
-        let condition = core.icmp.ul (i, core.bitcast I32 size);
+        let condition = i < core.bitcast I32 size;
         let target = (return, enter)#condition;
         target ( m );
 
@@ -86,30 +88,27 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0]) =
         let (a_load_mem, a_val) = mem.load (m, a_lea);
         let (b_load_mem, b_val) = mem.load (a_load_mem, b_lea);
 
-        let prod = core.wrap.mul 0 (a_val, b_val);
+        let prod = a_val * b_val;
 
         let c_store_mem = mem.store (b_load_mem, c_lea, prod);
 
         con left_pb (m: mem.M 0, s: I32, return: Cn [mem.M 0]) =
             let ad_lea = mem.lea (ad_arr, core.bitcast (Idx arr_size) i);
             let (load_mem, val) = mem.load (m, ad_lea);
-            let new_val = core.wrap.add 0 (val, s);
-            let store_mem = mem.store (load_mem, ad_lea, new_val);
-            return store_mem;
+            let new_val = val + s;
+            return (mem.store (load_mem, ad_lea, new_val));
 
         con right_pb (m: mem.M 0, s: I32, return: Cn [mem.M 0]) =
             let bd_lea = mem.lea (bd_arr, core.bitcast (Idx arr_size) i);
             let (load_mem, val) = mem.load (m, bd_lea);
-            let new_val = core.wrap.add 0 (val, s);
-            let store_mem = mem.store (load_mem, bd_lea, new_val);
-            return store_mem;
+            let new_val = val + s;
+            return (mem.store (load_mem, bd_lea, new_val));
 
         con mul_pb (m: mem.M 0, s: I32, return: Cn [mem.M 0]) =
-            let sa_mul = core.wrap.mul 0 (s, b_val);
+            let sa_mul = s * b_val;
 
             con next (m: mem.M 0) =
-                let sb_mul = core.wrap.mul 0 (s, a_val);
-                right_pb(m, sb_mul, return);
+                right_pb(m, s * a_val, return);
 
             left_pb( m, sa_mul,  next);
 
@@ -133,23 +132,23 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0]) =
             // print_ad(mem)
 
         con backward_loop_head (m: mem.M 0, i: I32) =
-            con yield (m: mem.M 0) = backward_loop_head( m, core.wrap.add 0 (i, 1I32 ) );
+            con yield (m: mem.M 0) = backward_loop_head( m, i + 1I32 );
 
             con enter (m: mem.M 0) =
                 let lea_pb = mem.lea (pb_arr, core.bitcast (Idx arr_size) i);
                 let (backward_pass_mem, backward_pass) = mem.load (m, lea_pb);
                 backward_pass ( backward_pass_mem, 1I32, yield );
 
-            let condition = core.icmp.ul (i, core.bitcast I32 size);
+            let condition = i < core.bitcast I32 size;
             let target = (timer, enter)#condition;
             target ( m );
 
         con loop_head (m: mem.M 0, i: I32) =
             con exit (m: mem.M 0) = backward_loop_head(m, 0I32);
-            con yield (m: mem.M 0) = loop_head( m, core.wrap.add 0 (i, 1I32));
+            con yield (m: mem.M 0) = loop_head( m, i + 1I32);
             con enter (m: mem.M 0) = loop_body ( m, i, yield );
 
-            let condition = core.icmp.ul (i, core.bitcast I32 size);
+            let condition = i < core.bitcast I32 size;
             let target = (exit, enter)#condition;
             target ( m );
         loop_head ( m, 0I32 );

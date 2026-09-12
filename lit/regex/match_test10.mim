@@ -20,7 +20,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
     where
         fun match_regex(len: Nat) (m: mem.M 0, str: mem.Ptr0 «len; Char»): [mem.M 0, Bool] =
             let (m, matched, pos) = pattern (m, str, 0:(Idx len));
-            let end_ = core.idx len 0 (core.nat.sub (len, 1));
+            let end_ = core.idx 0 len (core.nat.sub (len, 1));
             return (m, core.bit2.and_ 0 (core.icmp.e (pos, end_), matched));
         con exiting(m: mem.M 0, return: Bool) = exit (m, core.conv.u i32 return)
     end

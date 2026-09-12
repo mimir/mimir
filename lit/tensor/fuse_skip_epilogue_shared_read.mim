@@ -10,15 +10,15 @@ plugin core;
 plugin opt;
 plugin compile;
 
-lam add1 (x: Nat): Nat = core.nat.add (x, 1);
-lam dbl (x: Nat): Nat = core.nat.mul (x, 2);
+use core.ops.n;
+
+lam add1 (x: Nat): Nat = x + 1;
+lam dbl (x: Nat): Nat = x * 2;
 
 extern con f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«8; Nat», «8; Nat»]) =
     let prod = tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, b);
     let flat = tensor.reshape (2, 4) 8 prod;
-    let out1 = tensor.unary add1 flat;
-    let out2 = tensor.unary dbl flat;
-    return (out1, out2);
+    return (tensor.unary add1 flat, tensor.unary dbl flat);
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

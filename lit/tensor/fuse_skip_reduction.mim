@@ -11,9 +11,11 @@ plugin opt;
 plugin affine;
 plugin compile;
 
-fun sum_reduce (acc x: Nat)@tt: Nat = return (core.nat.add (acc, x));
+use core.ops.n;
 
-fun add1_of (acc: Nat, y: «1; Nat»)@tt: Nat = return (core.nat.add (y#0_1, 1));
+fun sum_reduce (acc x: Nat)@tt: Nat = return (acc + x);
+
+fun add1_of (acc: Nat, y: «1; Nat»)@tt: Nat = return (y#0_1 + 1);
 
 extern con f (v: «2; «3; Nat»», return: Cn «2, 2; Nat») =
     // inner[i] = Σ_j v[i, j]: one output loop (bound 2), one reduction loop (bound 3)

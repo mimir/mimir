@@ -2,8 +2,8 @@
 
 plugin core;
 
-lam f0(s i: Nat): Idx s = core.idx s 0 i;
-lam f1(s i: Nat): Idx s = core.idx s 1 i;
+lam f0(s i: Nat): Idx s = core.idx 0 s i;
+lam f1(s i: Nat): Idx s = core.idx 1 s i;
 
 extern lam g0() = f0(42, 23);
 extern lam g1() = f1(42, 23);

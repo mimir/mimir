@@ -5,6 +5,8 @@ plugin compile;
 plugin ll;
 plugin mem;
 
+use core.ops.n;
+
 extern fun dont_know[]: Bool;
 extern fun read[]: Nat;
 
@@ -17,14 +19,14 @@ extern fun foo(x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond = core.ncmp.ne (y, z);
+                    let cond = y != z;
                     (f1, t1)#cond ()
                     where
                         con f1() = n1 x;
                         con t1() = n1 2;
                         con n1(x: Nat) =
-                            let x    = core.nat.sub (2, x);
-                            let cond = core.ncmp.ne (x, 1);
+                            let x    = 2 - x;
+                            let cond = x != 1;
                             (f2, t2)#cond ()
                             where
                                 con f2() = n2 y;

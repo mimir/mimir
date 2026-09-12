@@ -471,7 +471,7 @@ const Def* merge_cmps(std::array<std::array<u64, 2>, 2> tab, const Def* a, const
         res >>= (7_u8 - u8(num_bits));
 
         if constexpr (std::is_same_v<Id, math::cmp>)
-            return world.call(math::cmp(res), /*mode*/ a_cmp->decurry()->arg(), a_cmp->arg());
+            return world.call(math::cmp(res), /*mode*/ a_cmp->decurry()->decurry()->arg(), a_cmp->arg());
         else
             return world.call(icmp(Annex::base<icmp>() | res), a_cmp->arg());
     }
@@ -632,7 +632,7 @@ template<bit1 id>
 const Def* normalize_bit1(const Def* type, const Def* c, const Def* a) {
     auto& world = type->world();
     auto callee = c->as<App>();
-    auto s      = callee->decurry()->arg();
+    auto s      = callee->arg();
     // TODO cope with wrap around
 
     if constexpr (id == bit1::id) return a;
@@ -657,7 +657,8 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     auto [a, b] = arg->projs<2>();
-    auto s      = callee->decurry()->arg();
+    auto mode   = callee->decurry()->arg();
+    auto s      = callee->arg();
     auto ls     = Lit::isa(s);
     // TODO cope with wrap around
 
@@ -676,10 +677,10 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
         case bit2::    t: if (ls) return world.lit(type, *ls-1_u64); break;
         case bit2::  fst: return a;
         case bit2::  snd: return b;
-        case bit2:: nfst: return world.call(bit1::neg,  s, a);
-        case bit2:: nsnd: return world.call(bit1::neg,  s, b);
-        case bit2:: ciff: return world.call(bit2:: iff, s, Defs{b, a});
-        case bit2::nciff: return world.call(bit2::niff, s, Defs{b, a});
+        case bit2:: nfst: return world.call(bit1::neg,  mode, a);
+        case bit2:: nsnd: return world.call(bit1::neg,  mode, b);
+        case bit2:: ciff: return world.call(bit2:: iff, mode, Defs{b, a});
+        case bit2::nciff: return world.call(bit2::niff, mode, Defs{b, a});
         default:         break;
     }
 
@@ -702,7 +703,7 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
         if (!x && !y) return world.lit(type, 0);
         if ( x &&  y) return ls ? world.lit(type, *ls-1_u64) : nullptr;
         if (!x &&  y) return a;
-        if ( x && !y && id != bit2::xor_) return world.call(bit1::neg, s, a);
+        if ( x && !y && id != bit2::xor_) return world.call(bit1::neg, mode, a);
         return nullptr;
     };
     // clang-format on
@@ -738,7 +739,7 @@ const Def* normalize_idx(const Def* type, const Def* c, const Def* arg) {
     if (auto i = Lit::isa(arg)) {
         if (auto s = Lit::isa(Idx::isa(type))) {
             if (*i < *s) return world.lit_idx(*s, *i);
-            if (auto m = Lit::isa(callee->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);
+            if (auto m = Lit::isa(callee->decurry()->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);
         }
     }
 
@@ -788,7 +789,7 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     auto [a, b] = arg->projs<2>();
-    auto mode   = callee->arg();
+    auto mode   = callee->decurry()->arg();
     auto s      = Idx::isa(a->type());
     auto ls     = Lit::isa(s);
     auto width  = ls.transform(idx_shift_width);

@@ -61,7 +61,8 @@ axm ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
 /// ### Mode
 ///
 /// A common problem when dealing with integer operations is [overflow](https://en.wikipedia.org/wiki/Integer_overflow).
-/// All operations that may overflow have an additional parameter `m` - [mode](@ref mim::plug::core::Mode) - of type `Nat` that determines the exact desired behavior in the case of an overflow.
+/// All operations that may overflow take a leading parameter `m` - [mode](@ref mim::plug::core::Mode) - of type `Nat` that determines the exact desired behavior in the case of an overflow.
+/// It comes first so that currying it - `core.wrap.add 0` - still yields a value polymorphic in `s`.
 ///
 pub mod mode {
     anx let us = 0b00; // wrap around - both signed and unsigned
@@ -77,7 +78,7 @@ pub mod mode {
 ///
 /// Creates a literal of type `Idx s` from `l` while obeying mode `m`.
 ///
-axm idx: [s: Nat] → [m: Nat] → [l: Nat] → Idx s, normalize_idx;
+axm idx: [m: Nat] → [s: Nat] → [l: Nat] → Idx s, normalize_idx;
 ///
 /// ### core.idx_unsafe
 ///
@@ -98,7 +99,7 @@ axm idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
 ///
 /// @todo Add type constraint that `bit1` is only allowed for powers of two.
 ///
-axm bit1.(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normalize_bit1;
+axm bit1.(f, neg, id, t): [m: Nat] → {s: Nat} → Idx s → Idx s, normalize_bit1;
 ///
 /// ### core.bit2
 ///
@@ -127,7 +128,7 @@ axm bit1.(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normalize_b
 ///
 axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
            and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
-    {s: Nat} → [m: Nat] → «2; Idx s» → Idx s , normalize_bit2;
+    [m: Nat] → {s: Nat} → «2; Idx s» → Idx s , normalize_bit2;
 ///
 /// ### core.shr
 ///
@@ -146,15 +147,15 @@ axm shr.(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 /// ### core.wrap
 ///
 /// Integer operations that may overflow.
-/// You can specify the desired behavior in the case of an overflow with the curried argument just in front of the actual argument by providing a mim::plug::core::Mode as `Nat`.
+/// You can specify the desired behavior in the case of an overflow with the leading curried argument by providing a mim::plug::core::Mode as `Nat`.
 ///
 /// `shl` uses the same shift-count rule as `core.shr`.
 /// It multiplies the unsigned representative by `2^b` and then wraps modulo `s`.
 /// `nuw` and `nsw` check the unwrapped unsigned and signed results, respectively.
 ///
-axm wrap.(add, sub, mul, shl): {s: Nat} → [m: Nat] → «2; Idx s» → Idx s, normalize_wrap;
+axm wrap.(add, sub, mul, shl): [m: Nat] → {s: Nat} → «2; Idx s» → Idx s, normalize_wrap;
 
-anx lam minus {s: Nat} (m: Nat) (a: Idx s): Idx s = wrap.sub m (0:(Idx s), a);
+anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (0:(Idx s), a);
 ///
 /// ### core.div
 ///
@@ -301,3 +302,98 @@ anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
 /// core.select one level up, to select between types.
 ///
 anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
+///
+/// ## ops
+///
+/// Bindings for the infix operators, which are sugar for an application of the escaped name.
+/// `use` the module matching the domain at hand:
+///
+/// | Module          | Domain                                     |
+/// |-----------------|--------------------------------------------|
+/// | `core.ops.n`    | `Nat`                                      |
+/// | `core.ops.s.w`  | signed `Idx s`, wrap around                |
+/// | `core.ops.s.nw` | signed `Idx s`, `core.mode.nsw`            |
+/// | `core.ops.u.w`  | unsigned `Idx s`, wrap around              |
+/// | `core.ops.u.nw` | unsigned `Idx s`, `core.mode.nuw`          |
+///
+/// `core.ops.s`/`core.ops.u` offer only those operators that don't depend on the mode.
+/// `Idx s` has no `/` and `%`, since core.div expects a `mem.M`.
+///
+pub mod ops {
+    pub mod n {
+        pub let `+  =  nat.add;
+        pub let `-  =  nat.sub;
+        pub let `*  =  nat.mul;
+        pub let `/  =  nat.div;
+        pub let `%  =  nat.rem;
+        pub let `== = ncmp.e;
+        pub let `!= = ncmp.ne;
+        pub let `<  = ncmp.l;
+        pub let `<= = ncmp.le;
+        pub let `>  = ncmp.g;
+        pub let `>= = ncmp.ge;
+    }
+
+    mod eq {
+        pub let `== = icmp.e;
+        pub let `!= = icmp.ne;
+    }
+
+    mod signed {
+        use eq;
+        pub let `>> = shr.a;
+        pub let `<  = icmp.sl;
+        pub let `<= = icmp.sle;
+        pub let `>  = icmp.sg;
+        pub let `>= = icmp.sge;
+    }
+
+    mod unsigned {
+        use eq;
+        pub let `>> = shr.l;
+        pub let `<  = icmp.ul;
+        pub let `<= = icmp.ule;
+        pub let `>  = icmp.ug;
+        pub let `>= = icmp.uge;
+    }
+
+    pub mod s {
+        use signed;
+
+        pub mod w {
+            use signed;
+            pub let `+  = wrap.add mode.us;
+            pub let `-  = wrap.sub mode.us;
+            pub let `*  = wrap.mul mode.us;
+            pub let `<< = wrap.shl mode.us;
+        }
+
+        pub mod nw {
+            use signed;
+            pub let `+  = wrap.add mode.nsw;
+            pub let `-  = wrap.sub mode.nsw;
+            pub let `*  = wrap.mul mode.nsw;
+            pub let `<< = wrap.shl mode.nsw;
+        }
+    }
+
+    pub mod u {
+        use unsigned;
+
+        pub mod w {
+            use unsigned;
+            pub let `+  = wrap.add mode.us;
+            pub let `-  = wrap.sub mode.us;
+            pub let `*  = wrap.mul mode.us;
+            pub let `<< = wrap.shl mode.us;
+        }
+
+        pub mod nw {
+            use unsigned;
+            pub let `+  = wrap.add mode.nuw;
+            pub let `-  = wrap.sub mode.nuw;
+            pub let `*  = wrap.mul mode.nuw;
+            pub let `<< = wrap.shl mode.nuw;
+        }
+    }
+}

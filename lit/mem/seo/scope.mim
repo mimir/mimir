@@ -3,6 +3,8 @@ plugin core;
 plugin compile;
 plugin mem;
 
+use core.ops.n;
+
 extern fun dont_know[]: Bool;
 
 // Two chained loops: the outer accumulator `acc_a` starts as ⊥ and is
@@ -20,8 +22,8 @@ extern fun f(x: Nat): Nat =
                         con head_b(j acc_b: Nat) =
                             ret cb = dont_know $ ();
                             (body_b, exit_b)#cb () where
-                                con body_b() = head_b (core.nat.add (j, 1), 7);
-                                con exit_b() = head_a (core.nat.add (i, 1), acc_b);
+                                con body_b() = head_b (j + 1, 7);
+                                con exit_b() = head_a (i + 1, acc_b);
                             end;
                     end;
 

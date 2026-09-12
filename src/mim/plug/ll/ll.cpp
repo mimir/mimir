@@ -614,10 +614,10 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto wrap = Axm::isa<core::wrap>(def)) {
-        auto [mode, ab] = wrap->uncurry_args<2>();
-        auto [a, b]     = ab->projs<2>([this](auto def) { return emit(def); });
-        auto t          = convert(wrap->type());
-        auto lmode      = static_cast<core::Mode>(Lit::expect(mode, "a `%core.wrap` mode"));
+        auto [mode, _, ab] = wrap->uncurry_args<3>();
+        auto [a, b]        = ab->projs<2>([this](auto def) { return emit(def); });
+        auto t             = convert(wrap->type());
+        auto lmode         = static_cast<core::Mode>(Lit::expect(mode, "a `%core.wrap` mode"));
 
         switch (wrap.id()) {
             case core::wrap::add: op = "add"; break;
@@ -817,10 +817,10 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
 std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, const Def* def) {
     std::string op;
     if (auto arith = Axm::isa<math::arith>(def)) {
-        auto [mode, ab] = arith->uncurry_args<2>();
-        auto [a, b]     = ab->projs<2>([this](auto def) { return emit(def); });
-        auto t          = convert(arith->type());
-        auto lmode      = static_cast<math::Mode>(Lit::expect(mode, "a `%math.arith` mode"));
+        auto [mode, _, ab] = arith->uncurry_args<3>();
+        auto [a, b]        = ab->projs<2>([this](auto def) { return emit(def); });
+        auto t             = convert(arith->type());
+        auto lmode         = static_cast<math::Mode>(Lit::expect(mode, "a `%math.arith` mode"));
 
         switch (arith.id()) {
             case math::arith::add: op = "fadd"; break;
@@ -1040,7 +1040,7 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
             }
         } else if (auto arith_op = Axm::isa<math::arith, 1>(f)) {
             auto lmode = static_cast<math::Mode>(
-                Lit::expect(f->expect<App>("a zipped `%math.arith`")->arg(), "a `%math.arith` mode"));
+                Lit::expect(f->expect<App>("a zipped `%math.arith`")->decurry()->arg(), "a `%math.arith` mode"));
             switch (arith_op.id()) {
                 case math::arith::add: op = "fadd"; break;
                 case math::arith::sub: op = "fsub"; break;

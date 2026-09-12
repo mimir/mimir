@@ -5,12 +5,14 @@ plugin core;
 plugin gpu;
 plugin mem;
 
+use core.ops.u.w;
+
 con kernel (m1: gpu.GlobalM, m3: gpu.SharedM, m4: gpu.ConstM, m5: gpu.LocalM,
             group_id item_id: Idx 4, (), data: gpu.GlobalPtr «4; I32»,
             return: Cn [gpu.GlobalM, gpu.SharedM, gpu.ConstM, gpu.LocalM]) =
     let el = mem.lea (data, item_id);
     let val = core.bitcast I32 item_id;
-    let val = core.wrap.add 0 (val, 42I32);
+    let val = val + 42I32;
     let m1 = mem.store (m1, el, val);
     return (m1, m3, m4, m5);
 
@@ -39,9 +41,7 @@ extern fun main (m0: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («�
 
     let m0 = gpu.deinit (m0, m1, m4);
 
-    let idx = core.bitcast (Idx 4) (core.wrap.sub 0 (argc, 1I32));
-    let val_arr = mem.lea (arr, idx);
-    let (m0, val) = mem.load (m0, val_arr);
+    let (m0, val) = mem.load (m0, mem.lea (arr, core.bitcast (Idx 4) (argc - 1I32)));
     let m0 = mem.free (m0, arr);
 
     return (m0, val);

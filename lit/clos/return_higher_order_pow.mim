@@ -7,6 +7,8 @@
 plugin core;
 plugin mem;
 
+use core.ops.u.w;
+
 let PbVec  = Cn [mem.M 0, «2; I32»];    // innermost pullback continuation
 let Pb     = Cn [mem.M 0, I32, PbVec];  // pullback
 let AugRet = Cn [mem.M 0, I32, Pb];     // augmented return continuation
@@ -26,17 +28,14 @@ con aug_f (m: mem.M 0, x: I32, aug_ret: AugRet) =
             con fwd (m: mem.M 0, v: «2; I32») = pb_ret (m, v);
             con comp_cont (m: mem.M 0, ab: [I32, I32]) @tt =
                 let (a, b) = ab;
-                let p = core.wrap.mul 0 (r, s);
-                let q = core.wrap.add 0 (p, a);
-                fwd (m, (q, b));
-            let t = core.wrap.mul 0 (4I32, s);
-            pb (m, t, comp_cont);
-        let u = core.wrap.mul 0 (4I32, r);
+                let p = r * s;
+                fwd (m, (p + a, b));
+            pb (m, 4I32 * s, comp_cont);
+        let u = 4I32 * r;
         aug_ret (m, u, comp_tup_pb);
 
     con aug_pow_else (m: mem.M 0, unused: TupPb) =
-        let y = core.wrap.add 0 (4294967295I32, x);
-        aug_f (m, y, aug_pow_cont);
+        aug_f (m, 4294967295I32 + x, aug_pow_cont);
 
     con aug_pow_then (m: mem.M 0, unused: TupPb) =
         aug_ret (m, 1I32, zero_pb);
@@ -50,11 +49,9 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
     con ret_cont (m: mem.M 0, r: I32, pb: Pb) =
         con pb_ret_cont (m: mem.M 0, prs: [I32, I32]) =
             let (pr_a, pr_b) = prs;
-            let a = core.wrap.mul 0 (10000I32, r);
-            let b = core.wrap.mul 0 (100I32, pr_a);
-            let c = core.wrap.add 0 (pr_b, b);
-            let d = core.wrap.add 0 (a, c);
-            fwd (m, d);
+            let a = 10000I32 * r;
+            let b = 100I32 * pr_a;
+            fwd (m, a + (pr_b + b));
         pb (m, 1I32, pb_ret_cont);
 
     aug_f (m, 3I32, ret_cont);

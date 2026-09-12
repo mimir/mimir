@@ -5,19 +5,15 @@ plugin core;
 plugin cps;
 plugin mem;
 
+use core.ops.u.w;
+
 fun f(a: I32): I32 =
-    let b = core.wrap.add 0 (2I32, a);
-    return b;
+    return (2I32 + a);
 
 fun f2(a: I32): I32 =
-    let b = core.wrap.add 0 (30I32, a);
-    return b;
+    return (30I32 + a);
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
-    let g = cps.cps2ds f;
-    let c1 = g 10I32;
-    let h = cps.cps2ds f2;
-    let c2 = h (c1);
-    return (m, c2);
+    return (m, cps.cps2ds f2 (cps.cps2ds f 10I32));
 
 // CHECK-DAG: return{{.*}}42

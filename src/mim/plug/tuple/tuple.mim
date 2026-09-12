@@ -58,8 +58,8 @@ anx lam prepend  {m: Nat}
 anx lam head {n: Nat}
     {Ts: «n; *»}
     (values: «i: n; Ts#i»)
-  : [Ts#(core.idx n core.mode.US 0)]
-  = values#(core.idx n core.mode.US 0);
+  : [Ts#(core.idx core.mode.US n 0)]
+  = values#(core.idx core.mode.US n 0);
 
 anx lam tail {n: Nat}
     {Ts: «n; *»}

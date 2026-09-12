@@ -5,16 +5,18 @@ plugin core;
 plugin clos;
 plugin mem;
 
+use core.ops.u.w;
+
 
 con f (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
-    return (m, core.wrap.add 0 (x, 42I32));
+    return (m, x + 42I32);
 
 con g (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
     return (m, 1I32);
 
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
-    con h (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) = return (m, core.wrap.add 0 (x, argc));
+    con h (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) = return (m, x + argc);
 
     let pb_type = Cn [mem.M 0, I32, Cn [mem.M 0, I32]];
     let Tas = (pb_type, 0);
@@ -33,8 +35,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
     let lea   = mem.lea (a_arr, 0₄);
     let m   = mem.store (m, lea, 10I32);
 
-    let fn_lea      = mem.lea (pb_arr, 2₄);
-    let (m, func) = mem.load (m, fn_lea);
+    let (m, func) = mem.load (m, mem.lea (pb_arr, 2₄));
     let (m, _)    = mem.load (m, lea);
     func(m, 1I32, callback)
     where

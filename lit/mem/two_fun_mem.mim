@@ -8,6 +8,8 @@
 plugin core;
 plugin mem;
 
+use core.ops.u.w;
+
 let Tas = (I32, 0);
 
 con f(m: mem.M 0, p: mem.Ptr0 I32, return: Cn [mem.M 0, I32]) =
@@ -15,16 +17,16 @@ con f(m: mem.M 0, p: mem.Ptr0 I32, return: Cn [mem.M 0, I32]) =
     g1 (m, cont1)
     where
         con g1 (m: mem.M 0, return: Cn [mem.M 0, I32]) =
-            let b = core.wrap.add 0 (v, 1I32);
+            let b = v + 1I32;
             return (m, b);
         con cont1 (m: mem.M 0, a: I32) =
             g2 (m, cont2)
             where
                 con g2(m: mem.M 0, return: Cn [mem.M 0, I32]) =
-                    let c = core.wrap.add 0 (v, 2I32);
+                    let c = v + 2I32;
                     return (m, c);
                 con cont2 (m: mem.M 0, b: I32) =
-                    let c = core.wrap.add 0 (a, b);
+                    let c = a + b;
                     return (m, c);
             end;
     end;

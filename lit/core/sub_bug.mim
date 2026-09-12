@@ -10,7 +10,7 @@ extern fun f(a: I8): «4; I8» =
             core.wrap.sub core.mode.nuw  (a, 1I8),
             core.wrap.sub core.mode.nsuw (a, 1I8));
 
-// CHECK-DAG: core.wrap.add i8 0 (255I8, a_{{[0-9]+}});
-// CHECK-DAG: core.wrap.sub i8 1 (a_{{[0-9]+}}, 1I8);
-// CHECK-DAG: core.wrap.sub i8 2 (a_{{[0-9]+}}, 1I8);
-// CHECK-DAG: core.wrap.sub i8 3 (a_{{[0-9]+}}, 1I8);
+// CHECK-DAG: core.wrap.add 0 i8 (255I8, a_{{[0-9]+}});
+// CHECK-DAG: core.wrap.sub 1 i8 (a_{{[0-9]+}}, 1I8);
+// CHECK-DAG: core.wrap.sub 2 i8 (a_{{[0-9]+}}, 1I8);
+// CHECK-DAG: core.wrap.sub 3 i8 (a_{{[0-9]+}}, 1I8);

@@ -5,6 +5,8 @@ import "lib.mim";
 import "lib.mim" as l2;
 import "sub/lib2.mim";
 
+use core.ops.u.w;
+
 mod foo {
     pub let bar = 1I32;
 
@@ -13,11 +15,11 @@ mod foo {
     }
 }
 
-extern lam f(): I32 = core.wrap.add 0 (foo.bar, foo.nested.baz);
-extern lam g(): I32 = core.wrap.add 0 (lib.answer, l2.inner.deep);
+extern lam f(): I32 = foo.bar + foo.nested.baz;
+extern lam g(): I32 = lib.answer + l2.inner.deep;
 extern lam h(): I32 = l2.inner.deeper.deepest;
-extern lam i(): I32 = core.wrap.add 0 (lib2.base, lib2.util.deep.leaf);
-extern lam j(): I32 = core.wrap.add 0 (lib2.total, lib2.util.scale);
+extern lam i(): I32 = lib2.base + lib2.util.deep.leaf;
+extern lam j(): I32 = lib2.total + lib2.util.scale;
 
 // A `/` in the directive stays a `/` when dumped - a native Windows `\` would not re-parse.
 // CHECK-DAG: import "{{.*}}/mod/sub/lib2.mim";

@@ -16,8 +16,10 @@ plugin buffer;
 plugin cps;
 plugin btensor;
 
+use core.ops.u.w;
+
 fun mul_add (acc: I32, ab: «2; I32»)@tt =
-    return (core.wrap.add 0 (acc, core.wrap.mul 0 (ab#0₂, ab#1₂)));
+    return (acc + ab#0₂ * ab#1₂);
 
 extern fun gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
     return (tensor.materialize (tensor.interchange (
@@ -41,8 +43,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let a = (‹8; 1I32›, ‹8; 2I32›, ‹8; 3I32›, ‹8; 4I32›);
     let b = ‹8; (1I32, 3I32, 5I32, 7I32)›;
     con done (o: «2, 2, 2, 2; I32») =
-        let v = tensor.get ((0₂, 1₂, 1₂, 0₂), o);
-        return (m, v);
+        return (m, tensor.get ((0₂, 1₂, 1₂, 0₂), o));
     gemm ((a, b), done);
 
 // GONE-NOT: %tensor.

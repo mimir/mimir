@@ -24,7 +24,7 @@ let F32 = math.F32;
 
 let R: tensor.Ring = (F32, 0:F32, math.arith.add 0, math.arith.mul 0);
 
-let add  = math.arith.add @f32 0;
+let add  = math.arith.add 0 @f32;
 let fmax = math.extrema.fmax 0;
 
 lam relu (x: F32): F32 = fmax (0:F32, x);

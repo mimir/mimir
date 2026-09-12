@@ -6,20 +6,22 @@
 plugin mem;
 plugin core;
 
+use core.ops.u.w;
+
 let pb_type = Cn [mem.M 0, Cn [mem.M 0]];
 let size    = 100;
 
 extern con println_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
 
 con recursive (m: mem.M 0, i: I32, last_pullback: pb_type, return: Cn [mem.M 0]) =
-    let condition = core.icmp.ul (i, core.bitcast I32 size);
+    let condition = i < core.bitcast I32 size;
     (exit, loop_body)#condition m
     where
         con loop_body (m: mem.M 0) =
             println_i32( m, i , next )
             where
                 con next (m: mem.M 0) =
-                    recursive( m, core.wrap.add 0 (i, 1I32), pb, return )
+                    recursive( m, i + 1I32, pb, return )
                     where
                         con pb (m: mem.M 0, return: Cn [mem.M 0]) =
                             println_i32( m, i , next )

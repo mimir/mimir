@@ -5,18 +5,20 @@ plugin core;
 plugin compile;
 plugin ll;
 
+use core.ops.n;
+
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 extern fun take_addr[m: mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
 
 let H = Fn [mem.M 0, Nat] →  [mem.M 0, Nat];
 
 fun h (m: mem.M 0, n: Nat): [mem.M 0, Nat] =
-    return (m, core.nat.mul (n, n));
+    return (m, n * n);
 
 fun g (m: mem.M 0, h: H): [mem.M 0, Nat] =
     ret (m, res1) = h $ (m, 23);
     ret (m, res2) = h $ (m, 23);
-    return (m, core.nat.add (res1, res2));
+    return (m, res1 + res2);
 
 extern fun f (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
     ret (m, ph) = mem.slot (H,   0) $ m;
@@ -32,8 +34,8 @@ extern fun f (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
                     let (m, vr) = mem.load (m, pr);
                     ret (m, res1) = g $ (m, vh);
                     ret (m, res2) = g $ (m, vh);
-                    let add = core.nat.add (vr, res1);
-                    let add = core.nat.add (add, res2);
+                    let add = vr + res1;
+                    let add = add + res2;
                     let m = mem.store (m, pr, add);
                     head m;
 

@@ -7,7 +7,7 @@ plugin mem;
 
 lam U (n: Nat): * = Idx n;
 
-con f (n: Nat, return: Cn (Idx n)) = return (core.idx n 0 42);
+con f (n: Nat, return: Cn (Idx n)) = return (core.idx 0 n 42);
 
 extern fun main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [mem.M 0, I32] =
     let c = cps.cps2ds_dep U f i32;
