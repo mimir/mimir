@@ -115,7 +115,7 @@ mod diff {
     /// The comparison pullback exists formally but is not used.
     ///
     anx fun core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
-        return (core.icmp.sle ab, fn [Bool]@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
+        return (core.icmp.sle ab, fn (_: Bool)@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
     ///
     /// #### autodiff.diff.core_wrap_add
     ///

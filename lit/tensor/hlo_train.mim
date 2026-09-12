@@ -34,11 +34,11 @@ let R: tensor.Ring = (F32, 0: F32, math.arith.add 0, math.arith.mul 0);
 let f32_lr = math.conv.f2f (23, 8) (0.001: math.F64); // learning rate
 let f32_c  = math.conv.f2f (23, 8) (0.5: math.F64);   // loss-gradient scale
 
-lam F32_add {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = tensor.binary (math.arith.add 0) is;
-lam F32_sub {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = tensor.binary (math.arith.sub 0) is;
-lam F32_mul {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; F32» = tensor.binary (math.arith.mul 0) is;
-lam F32_tanh {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; F32» = tensor.unary (math.tri.tanh 0) i;
-lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; Bool» = tensor.unary (math.is_finite 0) i;
+lam F32_add {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; F32» = tensor.binary (math.arith.add 0) is;
+lam F32_sub {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; F32» = tensor.binary (math.arith.sub 0) is;
+lam F32_mul {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; F32» = tensor.binary (math.arith.mul 0) is;
+lam F32_tanh {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; F32» = tensor.unary (math.tri.tanh 0) i;
+lam F32_is_finite {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; Bool» = tensor.unary (math.is_finite 0) i;
 
 // out[i] = fold_j g (input[i, j]): reduce along axis 1 (one output loop over n, one reduction over m).
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =

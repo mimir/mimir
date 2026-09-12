@@ -24,17 +24,17 @@ let F32 = math.F32;
 
 let R: Ring = (F32, 0:F32, ma.add 0, ma.mul 0);
 
-lam `+            {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s;  F32» = binary (ma.add 0) is;
-lam `-            {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s;  F32» = binary (ma.sub 0) is;
-lam `*            {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s;  F32» = binary (ma.mul 0) is;
-lam `/            {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s;  F32» = binary (ma.div 0) is;
-lam F32_max       {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s;  F32» = binary (math.extrema.fmax 0) is;
-lam F32_GE        {r: Nat, s: «r; Nat»} [is: [«s; F32», «s; F32»]]: «s; Bool» = binary (math.cmp.ge 0) is;
-lam F32_tanh      {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s;  F32» = unary (math.tri.tanh 0) i;
-lam F32_exp       {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s;  F32» = unary (math.exp.exp 0) i;
-lam F32_abs       {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s;  F32» = unary (math.abs 0) i;
-lam F32_minus     {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s;  F32» = unary (math.minus 0) i;
-lam F32_is_finite {r: Nat, s: «r; Nat»} [i: «s; F32»]: «s; Bool» = unary (math.is_finite 0) i;
+lam `+            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.add 0) is;
+lam `-            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.sub 0) is;
+lam `*            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.mul 0) is;
+lam `/            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.div 0) is;
+lam F32_max       {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (math.extrema.fmax 0) is;
+lam F32_GE        {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; Bool» = binary (math.cmp.ge 0) is;
+lam F32_tanh      {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.tri.tanh 0) i;
+lam F32_exp       {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.exp.exp 0) i;
+lam F32_abs       {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.abs 0) i;
+lam F32_minus     {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.minus 0) i;
+lam F32_is_finite {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; Bool» = unary (math.is_finite 0) i;
 
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1
 // (one output loop over n, one reduction loop over m).

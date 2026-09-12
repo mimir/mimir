@@ -31,7 +31,7 @@ anx lam some {T: *} (v: T) : Opt T = v inj Opt T;
 ///
 /// The empty option.
 ///
-anx lam none [T: *] : Opt T = () inj Opt T;
+anx lam none (T: *) : Opt T = () inj Opt T;
 ///
 /// ### option.some_if
 ///

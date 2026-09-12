@@ -3,7 +3,7 @@
 // Every row a Loc spans is underlined on the columns it covers there.
 plugin core;
 
-let id = λ [T: *] (x: T): T = x;
+let id = λ (T: *) (x: T): T = x;
 let n = id
         3;
 

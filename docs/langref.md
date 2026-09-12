@@ -179,8 +179,8 @@ The main nonterminals used below are:
 |--------|--------------------|
 | `f`    | file               |
 | `d`    | declaration        |
-| `p`    | `()`-style pattern |
-| `b`    | `[]`-style pattern |
+| `p`    | pattern            |
+| `t`    | telescope          |
 | `e`    | expression         |
 
 ### Files and Imports {#module}
@@ -234,7 +234,7 @@ d      ::= "import" (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
-        |  vis? "extern" lam I dom+ (":" e)? ";"
+        |  vis? "extern" lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I (":" e)? "=" e and*
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
@@ -244,6 +244,7 @@ and    ::= "and" I (":" e)? "=" e
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
 dom    ::= p ("@" e)?
+fwd    ::= (p | t) ("@" e)?
 axm    ::= I ":" e tail
         |  (I ".")? "(" (tag ("," tag)* ","?)? ")" ":" e tail
 tag    ::= I ("=" I)*
@@ -276,38 +277,49 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
 
-### Patterns {#ptrn}
+### Patterns and Telescopes {#ptrn}
 
-Patterns decompose values and describe binders.
+A pattern decomposes a value; a telescope describes a type.
 
 ```ebnf
-p   ::= I (":" e)?
-     |  "(" (pg ("," pg)* ","?)? ")"
-     |  b
-     |  p "as" I
+p     ::= I (":" e)?
+       |  "(" plist? ")"
+       |  p "as" I
 
-pg  ::= p
-     |  g
+t     ::= I (":" e)?
+       |  "[" tlist? "]"
+       |  t "as" I
+       |  e
 
-b   ::= I (":" e)?
-     |  "[" (bg ("," bg)* ","?)? "]"
-     |  b "as" I
-     |  e
-
-bg  ::= b
-     |  g
-
-g   ::= I+ ":" e
+plist ::= (p | g) ("," (p | g))* ","?
+tlist ::= (t | g) ("," (t | g))* ","?
+g     ::= I+ ":" e
 ```
 
-There are two pattern families.
+These are two different things, not two spellings of one thing.
 
-- `p` is the ordinary parenthesized binder syntax.
-- `b` is the bracketed syntax used for sigma binders and Pi domains.
-- Roughly speaking, `(a, b, c)` binds tuple components with inferred types, while `[a, b, c]` binds components whose types are described by the bracket entries.
-- When all component types are written explicitly, `(a: A, b: B)` and `[a: A, b: B]` coincide.
-- Tuple patterns support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`; both forms distribute the annotated type over the listed names.
-- Bracket-style patterns may also contain general expressions, which is what makes forms such as `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
+- A **pattern** `p` destructs a value into names that a body uses, so it only appears where a body exists.
+- A **telescope** `t` describes a type and names a component only so that later components or the codomain may depend on it.
+- The two grammars are identical except that a telescope additionally admits a bare `e`.
+  Hence the whole difference: **an unnamed element is a binder in `(...)` and a type in `[...]`**.
+  `(a, b, c)` binds three components with inferred types; `[A, B, C]` describes three unnamed components of those types.
+- A **group** `g` distributes one annotated type over several names, as in `(a b c: Nat, d e: Bool)` or `[a b c: Nat, d e: Bool]`.
+  It is only ever an element of a `plist`/`tlist`, never a `p`/`t` of its own.
+- Only a telescope may contain general expressions, which is what makes `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
+- `[...]` never binds for a body: a declaration or `λ`/`cn`/`fn` **with** a body must spell its domain as a `(...)` pattern, and writes an unnamed component as `_: T`.
+  A bodyless `extern` declaration accepts either, since nothing binds there anyway.
+
+A telescope name is visible only to what stands to its right - later components, and the codomain after a `→`.
+`Cn X` abbreviates `X → ⊥` and so has no codomain at all, which makes every name in `Cn [x y: I32]` erased: it is the very same type as `Cn [I32, I32]`.
+
+A telescope is not a form of its own but the finite end of one construct.
+`[...]` is a [sigma](@ref prod), and a sigma whose components are all the same *is* an [array](@ref prod): `[Nat, Nat, Nat]` and `«3; Nat»` denote one and the same type.
+A sigma names a component so that later components may depend on it; an array names its index so that the element type may depend on that.
+`«i: n; T i»` is therefore the very same dependency, taken over an arity that need not be a literal.
+
+The term level mirrors the type level: `(...)` is a tuple, `‹n; e›` a pack, and a tuple of `n` equal elements *is* that pack - `(0, 0, 0)` and `‹3; 0›` are the same value, while `(23, 42, 66)` stays a tuple.
+`#` extracts from all four alike.
+Hence `[n: Nat, «n; T»]` describes a function whose number of arguments is a runtime value - a telescope of its own could never spell that, since it fixes its length syntactically.
 
 An alias pattern wraps another pattern and additionally binds the whole value:
 
@@ -384,9 +396,9 @@ e   ::= sign? L (":" e)?
 
 ```ebnf
 e   ::= e "→" e
-     |  b "→" e
-     |  "Cn" b
-     |  "Fn" b "→" e
+     |  t "→" e
+     |  "Cn" t
+     |  "Fn" t "→" e
      |  "λ" p+ (":" e)? "=" e
      |  "cn" p+ (":" e)? "=" e
      |  "fn" p+ (":" e)? "=" e
@@ -396,16 +408,16 @@ e   ::= e "→" e
 ```
 
 - `e → e` is the ordinary arrow type.
-- `b → e`, `Cn b`, and `Fn b → e` are dependent function forms whose domain is described by a bracket-style pattern.
+- `t → e`, `Cn t`, and `Fn t → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
 - Application is written by juxtaposition.
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
 
-#### Products
+#### Products {#prod}
 
 ```ebnf
-e     ::= "[" (bg ("," bg)* ","?)? "]"
+e     ::= "[" tlist? "]"
        |  "(" (e ("," e)* ","?)? ")"
        |  "«" arity ("," arity)* ";" e "»"
        |  "‹" arity ("," arity)* ";" e "›"
@@ -492,7 +504,7 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 |  6 | `Add`     | left  | `e + e`, `e - e`                     |                                                                          |
 |  7 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                          |
 |  8 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                          |
-|  9 | `Pi`      |   -   | *pseudo*                             | Bounds the domain of a `λ`/`Fn`/`b → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+|  9 | `Pi`      |   -   | *pseudo*                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
 | 10 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                    |
 | 11 | `Union`   | left  | `e ∪ e`                              |                                                                          |
 | 12 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                    |

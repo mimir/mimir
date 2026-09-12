@@ -391,12 +391,12 @@ anx lam proj_map {n r: Nat} (subs: «r; Nat») (o: «n; affine.Index»): «r; af
 ///
 /// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
 /// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
-fun product_2d_fun [R: Ring] (m: mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [mem.M 0, R#T] =
+fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [mem.M 0, R#T] =
     return (m, R#add (acc, R#mul (ab#0_2, ab#1_2)));
 
 /// The loop vector is `(i, j, k)` and follows the principle `ij ← ik, kj`
 /// (`out[i, j] = Σ_k t1[i, k] · t2[k, j]`), so `k` is the single reduction loop.
-anx lam product_2d [R: Ring] {m k l: Nat}
+anx lam product_2d (R: Ring) {m k l: Nat}
                        (mm: mem.M 0, t1: buffer.Buf (2, (m, k), R#T), t2: buffer.Buf (2, (k, l), R#T))
                      : [mem.M 0, buffer.Buf (2, (m, l), R#T)] =
     map_reduce ((m, l), (m, l, k))
