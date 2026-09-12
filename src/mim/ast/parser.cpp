@@ -251,21 +251,6 @@ Ptr<Expr> Parser::sugar_callee(Tok op) {
     return sym.empty() ? nullptr : path_expr(Dbg(op.loc(), driver().sym(sym)));
 }
 
-Ptr<Expr> Parser::parse_insert_expr() {
-    auto track = tracker();
-    eat(Tag::K_ins);
-    expect(Tag::D_paren_l, "opening paren for insert arguments");
-    auto _     = this->anchor(Tag::D_paren_r);
-    auto tuple = parse_expr("the tuple to insert into");
-    expect(Tag::T_comma, "comma after tuple to insert into");
-    auto index = parse_expr("insert index");
-    expect(Tag::T_comma, "comma after insert index");
-    auto value = parse_expr("insert value");
-    recover("insert arguments");
-    expect(Tag::D_paren_r, "closing paren for insert arguments");
-    return ptr<InsertExpr>(track, std::move(tuple), std::move(index), std::move(value));
-}
-
 Ptr<Expr> Parser::parse_uniq_expr() {
     auto track = tracker();
     expect(Tag::D_curly_l, "opening curly bracket for singleton type");
@@ -305,7 +290,6 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
         case Tag::C_PI:      return parse_pi_expr();
         case Tag::C_LM:      return parse_lam_expr();
         case Tag::C_SEQ:     return parse_seq_expr();
-        case Tag::K_ins:     return parse_insert_expr();
         case Tag::K_ret:     return parse_ret_expr();
         case Tag::D_curly_l: return parse_uniq_expr();
         case Tag::D_brckt_l: return parse_sigma_expr();

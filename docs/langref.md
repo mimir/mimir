@@ -23,6 +23,7 @@ x ("," x)* ","?   comma-separated list of zero or more x, with an optional trail
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
 For example, `>>=` is tokenized as `>>` followed by `=`.
+Note that `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
 
 ### Terminals {#terminals}
 
@@ -35,7 +36,7 @@ For example, `λ` and `lm` are lexically equivalent.
 ```text
 ( ) [ ] { } ⦃ ⦄
 ‹ › « »
-→ => ⊥ ⊤ * □ λ
+→ ← => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
 + - * / % == != < <= > >= << >>
 <eof>
@@ -47,7 +48,7 @@ For example, `λ` and `lm` are lexically equivalent.
 #### Secondary Terminals
 
 ```text
--> bot top lm insert
+-> <- bot top lm
 ```
 
 `⟨`, `⟩`, `⟪`, and `⟫` may be used as alternatives for `‹`, `›`, `«`, and `»`.
@@ -58,7 +59,7 @@ For example, `λ` and `lm` are lexically equivalent.
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
 and anx as axm cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj ins lam let match mod
+i1 i8 i16 i32 i64 import inj lam let match mod
 norm plugin priv pub rec ret rule tt when where with use
 ```
 
@@ -364,7 +365,8 @@ e   ::= "[" ... "]"
      |  "‹" arity ("," arity)* ";" e "›"
      |  e "#" e
      |  e "#" I
-     |  "ins" "(" e "," e "," e ")"
+     |  e "#" e "←" e
+     |  e "←" e
 
 arity ::= e
        |  I ":" e
@@ -376,7 +378,10 @@ arity ::= e
 - `‹ ... ; ... ›` builds a pack.
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
 - `e # i` or `e # e` extracts a component.
-- `ins(tuple, index, value)` inserts a value into a tuple-like aggregate.
+- `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
+- `e ← value` without a `#` leaves the index implicit: `e` is its own sole component, so this is `e#0₁ ← value` and hence `value`.
+  An `e` of arity other than 1 is an error, just as `e#0₁` would be.
+- `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
 
 #### Unions
 
@@ -442,11 +447,12 @@ The current parser uses the following precedence, from strongest to weakest bind
 9.  e == e, e != e         equality operators
 10. e inj e                injection
 11. e → e                  arrow
-12. e where d* end         local declaration block
+12. e#e ← e                insert
+13. e where d* end         local declaration block
 ```
 
 - Extract, union, application, and the infix operators associate left-to-right.
-- `inj` and `→` associate right-to-left.
+- `inj`, `→`, and `←` associate right-to-left.
 - `where` is the loosest surface operator.
 
 ## Summary: Functions and Types

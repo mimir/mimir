@@ -305,12 +305,6 @@ void SeqExpr::bind(Scopes& s) const {
     s.pop();
 }
 
-void InsertExpr::bind(Scopes& s) const {
-    tuple()->bind(s);
-    index()->bind(s);
-    value()->bind(s);
-}
-
 void UniqExpr::bind(Scopes& s) const { inhabitant()->bind(s); }
 
 /*

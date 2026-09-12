@@ -24,6 +24,7 @@ namespace ast {
     m(Err,     N)       \
     m(Bot,     N)       \
     m(Where,   L)       \
+    m(Ins,     R)       \
     m(Arrow,   R)       \
     m(Pi,      N)       \
     m(Inj,     R)       \
@@ -99,7 +100,6 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_i8,     "i8"    )             \
     m(K_import, "import")             \
     m(K_inj,    "inj"   )             \
-    m(K_ins,    "ins"   )             \
     m(K_lam,    "lam"   )             \
     m(K_let,    "let"   )             \
     m(K_match,  "match" )             \
@@ -164,6 +164,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_extract,    "#")               \
     m(T_ge,         ">=")              \
     m(T_gt,         ">")               \
+    m(T_larrow,     "←")               \
     m(T_le,         "<=")              \
     m(T_lm,         "λ")               \
     m(T_lt,         "<")               \
@@ -203,6 +204,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_union,   "∪",   Union  ) \
     m(K_inj,     "inj", Inj    ) \
     m(T_arrow,   "→",   Arrow  ) \
+    m(T_larrow,  "←",   Ins    ) \
     m(T_at,      "@",   App    )
 
 #define MIM_INFIX(m) MIM_INFIX_SUGAR(m) MIM_INFIX_CORE(m)
@@ -212,7 +214,6 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m("lm",     T_lm   )              \
     m("bot",    T_bot  )              \
     m("top",    T_top  )              \
-    m("insert", K_ins  )              \
 
 class Tok {
 public:

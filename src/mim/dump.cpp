@@ -55,6 +55,7 @@ using ast::prec_assoc;
 
 Prec def2prec(const Def* def) {
     if (def->isa<Extract>()) return Prec::Extract;
+    if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
     if (def->isa<Inj>()) return Prec::Inj;
     if (def->isa<Reform>()) return Prec::App;
@@ -296,7 +297,8 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
     } else if (auto ins = d->isa<Insert>()) {
-        return os << std::format("ins({}, {}, {})", Op(ins->tuple()), Op(ins->index()), Op(ins->value()));
+        return os << std::format("{}#{} ← {}", Op::l(ins->tuple(), Prec::Extract), Op::r(ins->index(), Prec::Extract),
+                                 Op::r(ins->value(), Prec::Ins));
     } else if (auto var = d->isa<Var>()) {
         return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {

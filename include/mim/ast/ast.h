@@ -596,6 +596,9 @@ public:
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
+    /// Resolves this `#`'s index against @p tup - a simple path may name a field of tup's Sigma.
+    const Def* emit_index(Emitter&, const Def* tup) const;
+
     const Def* emit_(Emitter&) const override;
     const Def* emit_decl_(Emitter&, const Def* type) const override;
     void emit_body_(Emitter&, const Def* decl) const override;
@@ -841,30 +844,6 @@ private:
     bool is_pack_;
     Ptr<IdPtrn> arity_;
     Ptr<Expr> body_;
-};
-
-/// `ins(tuple, index, value)`
-class InsertExpr : public Expr {
-public:
-    InsertExpr(Loc loc, Ptr<Expr>&& tuple, Ptr<Expr>&& index, Ptr<Expr>&& value)
-        : Expr(loc)
-        , tuple_(std::move(tuple))
-        , index_(std::move(index))
-        , value_(std::move(value)) {}
-
-    const Expr* tuple() const { return tuple_.get(); }
-    const Expr* index() const { return index_.get(); }
-    const Expr* value() const { return value_.get(); }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    const Def* emit_(Emitter&) const override;
-
-    Ptr<Expr> tuple_;
-    Ptr<Expr> index_;
-    Ptr<Expr> value_;
 };
 
 /// `⦃inhabitant⦄`

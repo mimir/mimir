@@ -2,12 +2,12 @@
 
 // Every construct with surface syntax must dump as that syntax - not as the `(Node ops…)`
 // debug fallback - or `--output-mim` does not round-trip.
-extern lam i (t: [I32, I32], v: I32): [I32, I32] = ins(t, 0_2, v);
+extern lam i (t: [I32, I32], v: I32): [I32, I32] = t#0_2 ← v;
 extern lam j (a b: *) (x: a): a ∪ b = x inj a ∪ b;
 extern lam r (): Rule Nat = ⊥:(Rule Nat);
 extern lam u (a: *) (x: ⦃a⦄): ⦃a⦄ = x;
 
-// CHECK:      ins({{.*}}, ff, {{.*}});
+// CHECK:      {{.*}}#ff ← {{.*}};
 // CHECK:      : {{.*}} ∪ {{.*}} =
 // CHECK-NEXT: {{.*}} inj {{.*}} ∪ {{.*}};
 // CHECK:      extern lam r (): Rule Nat =

@@ -185,10 +185,6 @@ void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
-void InsertExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "ins({}, {}, {})", S(tab, tuple()), S(tab, index()), S(tab, value()));
-}
-
 void UniqExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "⦃{}⦄", S(tab, inhabitant())); }
 
 /*

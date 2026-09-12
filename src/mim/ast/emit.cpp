@@ -277,6 +277,23 @@ static void emit_union(Emitter& e, const Expr* expr, DefVec& types) {
     }
 }
 
+const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
+    auto& w = e.world();
+    // A simple path names a field of tup's Sigma before anything the binder resolved it to.
+    if (auto path = rhs()->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
+        auto dbg = path->dbg();
+        if (auto mut = tup->type()->isa_mut<Sigma>()) {
+            if (auto i = e.sigma2sym2idx.find(mut); i != e.sigma2sym2idx.end()) {
+                auto sigma          = i->first->as_mut<Sigma>();
+                const auto& sym2idx = i->second;
+                if (auto i = sym2idx.find(dbg.sym()); i != sym2idx.end()) return w.lit_idx(sigma->num_ops(), i->second);
+            }
+        }
+        if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
+    }
+    return rhs()->emit(e);
+}
+
 const Def* InfixExpr::emit_(Emitter& e) const {
     auto& w = e.world();
 
@@ -288,20 +305,15 @@ const Def* InfixExpr::emit_(Emitter& e) const {
         }
         case Tag::T_extract: {
             auto tup = lhs()->emit(e);
-            // A simple path names a field of tup's Sigma before anything the binder resolved it to.
-            if (auto path = rhs()->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
-                auto dbg = path->dbg();
-                if (auto mut = tup->type()->isa_mut<Sigma>()) {
-                    if (auto i = e.sigma2sym2idx.find(mut); i != e.sigma2sym2idx.end()) {
-                        auto sigma          = i->first->as_mut<Sigma>();
-                        const auto& sym2idx = i->second;
-                        if (auto i = sym2idx.find(dbg.sym()); i != sym2idx.end())
-                            return w.extract(tup, sigma->num_ops(), i->second);
-                    }
-                }
-                if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
-            }
-            return w.extract(tup, rhs()->emit(e));
+            return w.extract(tup, emit_index(e, tup));
+        }
+        case Tag::T_larrow: {
+            // Without a `#` the left-hand side is its own sole component, so the index can only be `0₁`.
+            auto ex  = InfixExpr::isa_op(Tag::T_extract, lhs());
+            auto tup = (ex ? ex->lhs() : lhs())->emit(e);
+            auto idx = ex ? ex->emit_index(e, tup) : w.lit_idx(1, 0);
+            auto val = rhs()->emit(e);
+            return w.insert(tup, idx, val);
         }
         default: break;
     }
@@ -448,13 +460,6 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         if (auto imm = a->immutabilize()) return imm;
         return a;
     }
-}
-
-const Def* InsertExpr::emit_(Emitter& e) const {
-    auto t = tuple()->emit(e);
-    auto i = index()->emit(e);
-    auto v = value()->emit(e);
-    return e.world().insert(t, i, v);
 }
 
 const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant()->emit(e)); }

@@ -120,7 +120,6 @@
     case Tag::C_LM:                     \
     case Tag::K_Type:    /*TypeExpr*/   \
     case Tag::K_Rule:    /*RuleExpr*/   \
-    case Tag::K_ins:     /*InsertExpr*/ \
     case Tag::K_match:   /*MatchExpr*/  \
     case Tag::K_ret:     /*RetExpr*/    \
     case Tag::C_SEQ:     /*SeqExpr*/    \
