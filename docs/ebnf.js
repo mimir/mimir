@@ -40,6 +40,10 @@ class MimEbnf {
         return `<span class="ebnf-terminal"><span class="ebnf-quote">"</span>${body}<span class="ebnf-quote">"</span></span>`
     }
 
+    static klass(text) {
+        return `<span class="ebnf-meta">[</span><span class="ebnf-class">${MimEbnf.escape(text.slice(1, -1))}</span><span class="ebnf-meta">]</span>`
+    }
+
     static terminals(text) {
         return MimEbnf.escape(text).replace(/\S+/g, token => `<span class="ebnf-terminal">${token}</span>`)
     }
@@ -57,7 +61,7 @@ class MimEbnf {
         for (let match; (match = MimEbnf.TOKEN.exec(rest));) {
             const [all, terminal, klass, def, id, meta, space] = match
             if (terminal)        out += MimEbnf.terminal(terminal)
-            else if (klass)      out += `<span class="ebnf-class">${MimEbnf.escape(klass)}</span>`
+            else if (klass)      out += MimEbnf.klass(klass)
             else if (def)        out += `<span class="ebnf-meta">::=</span>`
             else if (id)         out += MimEbnf.symbol(id)
             else if (meta)       out += `<span class="ebnf-meta">${MimEbnf.escape(meta)}</span>`
