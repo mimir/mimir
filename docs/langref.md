@@ -312,6 +312,15 @@ These are two different things, not two spellings of one thing.
 A telescope name is visible only to what stands to its right - later components, and the codomain after a `→`.
 `Cn X` abbreviates `X → ⊥` and so has no codomain at all, which makes every name in `Cn [x y: I32]` erased: it is the very same type as `Cn [I32, I32]`.
 
+A telescope is not a form of its own but the finite end of one construct.
+`[...]` is a [sigma](@ref prod), and a sigma whose components are all the same *is* an [array](@ref prod): `[Nat, Nat, Nat]` and `«3; Nat»` denote one and the same type.
+A sigma names a component so that later components may depend on it; an array names its index so that the element type may depend on that.
+`«i: n; T i»` is therefore the very same dependency, taken over an arity that need not be a literal.
+
+The term level mirrors the type level: `(...)` is a tuple, `‹n; e›` a pack, and a tuple of `n` equal elements *is* that pack - `(0, 0, 0)` and `‹3; 0›` are the same value, while `(23, 42, 66)` stays a tuple.
+`#` extracts from all four alike.
+Hence `[n: Nat, «n; T»]` describes a function whose number of arguments is a runtime value - a telescope of its own could never spell that, since it fixes its length syntactically.
+
 An alias pattern wraps another pattern and additionally binds the whole value:
 
 ```mim
@@ -405,7 +414,7 @@ e   ::= e "→" e
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
 
-#### Products
+#### Products {#prod}
 
 ```ebnf
 e     ::= "[" tlist? "]"
