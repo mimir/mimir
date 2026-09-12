@@ -16,7 +16,9 @@ def test_driver(driver):
 
 
 def test_add_search_path_accepts_pathlib(driver, tmp_path):
-    driver.add_search_path(tmp_path)
+    driver.add_plugin_path(tmp_path)
+    driver.add_import_path(tmp_path)
+    driver.add_prefix_path(tmp_path)
 
 
 def test_load_plugins_core_succeeds(driver):
@@ -24,6 +26,6 @@ def test_load_plugins_core_succeeds(driver):
 
 
 def test_load_plugins_unknown_raises(driver, tmp_path):
-    driver.add_search_path(tmp_path)
+    driver.add_plugin_path(tmp_path)
     with pytest.raises(Exception):
         driver.load_plugins(["this_plugin_does_not_exist_xyzzy"])

@@ -249,7 +249,7 @@ set(_mim_py_stage_plugin_commands
 foreach(_plugin ${MIM_PLUGIN_LIST})
     list(APPEND _mim_py_stage_plugin_commands
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${_plugin}.py"
+                "${CMAKE_BINARY_DIR}/py/plug/${_plugin}.py"
                 "${_mim_py_plugin_stage}/${_plugin}.py"
     )
 endforeach()

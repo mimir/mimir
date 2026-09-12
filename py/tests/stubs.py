@@ -43,7 +43,8 @@ _REQUIRED = {
     "Sym": ("str", "view"),
     "Def": ("proj", "projs", "deps", "free_vars", "local_muts", "world", "driver", "type"),
     "World": ("set", "sym", "driver", "annex", "app", "implicit_app", "optimize", "arr", "tuple", "cn"),
-    "Driver": ("sym", "world", "search_paths", "add_search_path", "load_plugins", "add_import"),
+    "Driver": ("sym", "world", "plugin_paths", "import_paths", "rt_paths", "add_plugin_path",
+               "add_import_path", "add_prefix_path", "load_plugins", "add_import"),
 }
 
 

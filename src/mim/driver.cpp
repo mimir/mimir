@@ -1,5 +1,6 @@
 #include "mim/driver.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -19,33 +20,22 @@ namespace mim {
 
 namespace {
 
-bool has_plugin_dir(const fs::path& libmim_path) {
-    std::error_code ignore;
-    return fs::is_directory(libmim_path.parent_path() / "mim", ignore) && !ignore;
-}
-
-fs::path adjust_libmim_path(const fs::path& libmim_path) {
-    if (has_plugin_dir(libmim_path)) return libmim_path;
-
-    auto dir      = libmim_path.parent_path();
-    auto lib_name = libmim_path.filename();
-    while (!dir.empty()) {
-        if (dir == dir.root_path()) break;
-
+/// Install tree @p libmim_path belongs to, i.e. the directory whose `<MIM_LIBDIR>/mim` holds the plugins.
+std::optional<fs::path> prefix_of(const fs::path& libmim_path) {
+    for (auto dir = libmim_path.parent_path(); !dir.empty(); dir = dir.parent_path()) {
         std::error_code ignore;
-        auto candidate = dir / MIM_LIBDIR / "mim";
-        if (fs::is_directory(candidate, ignore) && !ignore) return candidate.parent_path() / lib_name;
-
-        dir = dir.parent_path();
+        if (fs::is_directory(dir / MIM_LIBDIR / "mim", ignore) && !ignore) return dir;
+        if (dir == dir.root_path()) break;
     }
 
-    return libmim_path;
+    return {};
 }
 
-/// Path of libmim itself, adjusted so that `<parent>/mim` resolves to the default in-tree plugin directory.
-std::optional<fs::path> path_to_libmim() {
-    if (auto path = fe::sys::path_to_lib((const void*)&mim_lib_anchor)) return adjust_libmim_path(*path);
-    return {};
+std::optional<fs::path> path_to_libmim() { return fe::sys::path_to_lib((const void*)&mim_lib_anchor); }
+
+/// A prefix may derive what a plain directory already names, and probing it twice only slows lookup down.
+void push(fe::Vector<fs::path>& paths, fs::path path) {
+    if (std::ranges::find(paths, path) == paths.end()) paths.emplace_back(std::move(path));
 }
 
 } // namespace
@@ -63,28 +53,65 @@ Driver::Driver(std::string name)
     : fe::Driver(std::make_unique<Diag>(*this))
     , version_(MIM_VERSION)
     , world_(this, sym(name)) {
-    // prepend empty path
-    search_paths_.emplace_front(fs::path{});
+    auto from_env = [](const char* var, auto&& add) {
+        if (auto env = std::getenv(var)) {
+            auto stream = std::stringstream{env};
+            auto path   = std::string{};
+            while (std::getline(stream, path, fe::sys::Path_Sep))
+                add(fs::path{path});
+        }
+    };
 
-    // paths from env
-    if (auto env_path = std::getenv("MIM_PLUGIN_PATH")) {
-        std::stringstream env_path_stream{env_path};
-        std::string sub_path;
-        while (std::getline(env_path_stream, sub_path, fe::sys::Path_Sep))
-            add_search_path(sub_path);
+    from_env("MIM_PLUGIN_PATH", [this](fs::path path) { add_plugin_path(std::move(path)); });
+    from_env("MIM_IMPORT_PATH", [this](fs::path path) { add_import_path(std::move(path)); });
+    from_env("MIM_PREFIX_PATH", [this](fs::path path) { add_prefix_path(std::move(path)); });
+
+    if (auto path = path_to_libmim()) {
+        // A layout that keeps the plugins right next to libmim has no prefix to derive them from.
+        add_plugin_path(path->parent_path() / "mim");
+        if (auto prefix = prefix_of(*path)) add_prefix_path(*std::move(prefix));
     }
 
-    // add <path/to/libmim>/mim
-    if (auto path = path_to_libmim()) add_search_path(path->parent_path() / "mim");
+    add_prefix_path(fs::path{MIM_INSTALL_PREFIX});
 
-    // add install path if different from above
-    if (auto install_path = fs::path{MIM_INSTALL_PREFIX} / MIM_LIBDIR / "mim"; fs::exists(install_path)) {
-        if (search_paths().size() < 2 || !fs::equivalent(install_path, search_paths().back()))
-            add_search_path(std::move(install_path));
+    // User paths are added later and must be searched before the environment and derived ones.
+    plugin_dirs_.seal();
+    import_dirs_.seal();
+    prefixes_.seal();
+}
+
+fe::Vector<fs::path> Driver::plugin_paths() const {
+    auto res = fe::Vector<fs::path>();
+    res.emplace_back();
+    for (const auto& dir : plugin_dirs_)
+        push(res, dir);
+    for (const auto& prefix : prefixes_)
+        push(res, prefix / MIM_LIBDIR / "mim");
+    return res;
+}
+
+fe::Vector<fs::path> Driver::import_paths() const {
+    auto res = fe::Vector<fs::path>();
+    res.emplace_back();
+    for (const auto& dir : import_dirs_)
+        push(res, dir);
+    for (const auto& dir : plugin_dirs_)
+        push(res, dir);
+    for (const auto& prefix : prefixes_) {
+        push(res, prefix / MIM_DATADIR / "mim");
+        push(res, prefix / MIM_LIBDIR / "mim");
     }
+    return res;
+}
 
-    // all other user paths are placed just behind the first path (the empty path)
-    insert_ = ++search_paths_.begin();
+fe::Vector<fs::path> Driver::rt_paths() const {
+    auto res = fe::Vector<fs::path>();
+    res.emplace_back("rt");
+    for (const auto& dir : plugin_dirs_)
+        push(res, dir / "rt");
+    for (const auto& prefix : prefixes_)
+        push(res, prefix / MIM_LIBDIR / "mim" / "rt");
+    return res;
 }
 
 void Driver::load(std::string_view name) {
@@ -96,19 +123,22 @@ void Driver::load(std::string_view name) {
     }
 
     auto handle = Plugin::Handle{nullptr, fe::dl::close};
+    auto dir    = fs::path{};
     if (auto path = fs::path{name}; path.is_absolute() && fs::is_regular_file(path)) {
         auto path_str = path.string();
-        handle.reset(fe::dl::open(path_str.c_str()));
+        if (handle.reset(fe::dl::open(path_str.c_str())); handle) dir = path.parent_path();
     }
     if (!handle) {
-        for (const auto& path : search_paths()) {
+        for (const auto& path : plugin_paths()) {
             auto full_path = path / std::format("libmim_{}.{}", name, fe::dl::Ext);
             std::error_code ignore;
             if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
                 auto path_str = full_path.string();
-                if (handle.reset(fe::dl::open(path_str.c_str())); handle) break;
+                if (handle.reset(fe::dl::open(path_str.c_str())); handle) {
+                    dir = path;
+                    break;
+                }
             }
-            if (handle) break;
         }
     }
 
@@ -126,6 +156,7 @@ void Driver::load(std::string_view name) {
                 throw std::logic_error(oss.str());
         }
         fe::assert_emplace(plugins_, std::string(name), std::move(handle));
+        plugin2dir_.emplace(std::string(name), std::move(dir));
         // clang-format off
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
         if (auto reg = plugin.register_phases)      reg(phases_);

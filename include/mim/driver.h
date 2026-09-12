@@ -96,18 +96,40 @@ public:
     Names& names() const { return names_; }
     ///@}
 
+    /// An ordered list of directories.
+    class Paths {
+    public:
+        void add(fs::path path) {
+            if (fs::exists(path) && fs::is_directory(path)) paths_.insert(insert_, std::move(path));
+        }
+
+        /// Later Paths::add calls insert in front of everything added so far.
+        void seal() { insert_ = paths_.begin(); }
+
+        auto begin() const { return paths_.cbegin(); }
+        auto end() const { return paths_.cend(); }
+
+    private:
+        std::list<fs::path> paths_;
+        std::list<fs::path>::iterator insert_ = paths_.end();
+    };
+
     /// @name Manage Search Paths
-    /// Search paths for plugins are in the following order:
-    /// 1. The empty path. Used as prefix to look into current working directory without resorting to an absolute path.
-    /// 2. All further user-specified paths via Driver::add_search_path; paths added first will also be searched first.
-    /// 3. All paths specified in the environment variable `MIM_PLUGIN_PATH`.
-    /// 4. The path derived from the location of `libmim` (`<libmim>/mim`)
-    /// 5. `CMAKE_INSTALL_PREFIX/lib/mim`
+    /// A *plain directory* is probed as-is; a *prefix root* stands for an install tree and derives
+    /// `<root>/<libdir>/mim` (plugins), `<root>/<datadir>/mim` (imports), and `<root>/<libdir>/mim/rt` (runtimes).
+    /// Each lookup starts with the empty path, which probes the current working directory without an absolute path.
+    /// Within a list, paths added first are searched first; CLI paths precede the environment and derived ones.
     ///@{
-    const auto& search_paths() const { return search_paths_; }
-    void add_search_path(fs::path path) {
-        if (fs::exists(path) && fs::is_directory(path)) search_paths_.insert(insert_, std::move(path));
-    }
+    void add_plugin_path(fs::path path) { plugin_dirs_.add(std::move(path)); }
+    void add_import_path(fs::path path) { import_dirs_.add(std::move(path)); }
+    void add_prefix_path(fs::path path) { prefixes_.add(std::move(path)); }
+
+    /// Where Driver::load looks for `libmim_<name>`.
+    fe::Vector<fs::path> plugin_paths() const;
+    /// Where ast::Parser looks for `<name>.mim`; plugin directories are included, as a plugin ships both halves.
+    fe::Vector<fs::path> import_paths() const;
+    /// Where a backend looks for its runtime modules.
+    fe::Vector<fs::path> rt_paths() const;
     ///@}
 
     /// @name Manage Imports
@@ -152,6 +174,8 @@ public:
     ///@{
     void load(std::string_view name);
     bool is_loaded(std::string_view name) const { return fe::lookup(plugins_, name); }
+    /// Directory `libmim_<name>` was loaded from, so that its `<name>.mim` half cannot come from elsewhere.
+    const fs::path* plugin_dir(std::string_view name) const { return fe::lookup(plugin2dir_, name); }
     void* get_fun_ptr(std::string_view plugin, const char* name);
 
     template<class F>
@@ -193,8 +217,8 @@ private:
     mutable Names names_;
     fe::Profiler profiler_;
     World world_;
-    std::list<fs::path> search_paths_;
-    std::list<fs::path>::iterator insert_ = search_paths_.end();
+    Paths plugin_dirs_, import_dirs_, prefixes_;
+    absl::flat_hash_map<std::string, fs::path> plugin2dir_;
     Flags2Phases phases_;
     Normalizers normalizers_;
     absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;

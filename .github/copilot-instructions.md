@@ -25,7 +25,9 @@ Assume a `build/` tree configured with
   It owns `Flags`, `Log`, the current `World`, plugin search paths and handles, and the normalizer/stage/backend registries.
 - The `mim` CLI (`src/mim/cli/main.cpp`) is thin glue around `Driver`: parse Mim → compile into the `World` → `optimize(World&)` → emit whatever `--output-*` asks for.
   Plugins are loaded on demand via `plugin` directives or `-p`/`--plugin`; `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation.
-  Plugin lookup order: current directory, `--plugin-path`, `MIM_PLUGIN_PATH`, the `mim` directory next to `libmim`, `<libdir>/mim`.
+  Plugins, imports, and backend runtimes have three separate lookups (`Driver::plugin_paths`/`import_paths`/`rt_paths`).
+  `-P`/`-I` add plain directories; `--prefix-path`, the install prefix, and the tree `libmim` came from add prefix roots deriving `<root>/<libdir>/mim`, `<root>/<datadir>/mim`, and `<root>/<libdir>/mim/rt`.
+  A `plugin` directive takes its `.mim` from the directory the library was loaded from, so both halves always pair up.
 - A plugin has two halves with the same name that must stay in sync: `<plugin>.mim` declares the public annex/axiom surface (and drives header and doc generation), while `libmim_<plugin>` exports `mim_get_plugin` to register normalizers, stages, and backends.
   In-tree plugins live in `src/mim/plug/*`; plugins under `extra/*/CMakeLists.txt` are auto-discovered at configure time and their `extra/<plugin>/lit/*.mim` tests are staged into `lit`.
   Plugin names may only use letters, digits, and underscores, and are limited to 8 characters.
