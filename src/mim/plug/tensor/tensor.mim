@@ -61,7 +61,6 @@ axm set: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s
 /// explicit lets bufferization select a fill operation without first building
 /// an index lambda or a monolithic nested-array literal.
 ///
-/// Python:
 /// ```python
 /// output = empty(s_out)
 /// for index in ndindex(s_out):
@@ -1065,7 +1064,6 @@ anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», 
 /// s_src#d` is required. `dim: Idx r` and the index element type encode the
 /// axis and indexed-source bounds in the type.
 ///
-/// Python:
 /// ```python
 /// for out_index in ndindex(s_idx):
 ///     selected = index[out_index]
@@ -1096,12 +1094,10 @@ anx lam gather_pointwise_elem_impl {T: *, r: Nat}
 ///
 /// ### scatter
 ///
-/// Starts with `input` and visits `index` in row-major order. Each corresponding
-/// `updates` element is stored at the input coordinate selected by `index` on
-/// `dim`. Duplicate destinations use the last visited update. For `d != dim`,
-/// `s_idx#d <= s_src#d`; on every axis, `s_idx#d <= s_updates#d`.
+/// Starts with `input` and visits `index` in row-major order.
+/// Each corresponding `updates` element is stored at the input coordinate selected by `index` on `dim`.
+/// Duplicate destinations use the last visited update. For `d != dim`, `s_idx#d <= s_src#d`; on every axis, `s_idx#d <= s_updates#d`.
 ///
-/// Python:
 /// ```python
 /// output = input.copy()
 /// for update_coord in ndindex(s_idx):

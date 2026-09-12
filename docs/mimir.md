@@ -28,7 +28,7 @@ Much of it is merely **syntactic sugar** over that graph:
   - Equivalently, `Cn A` is sugar for `A → ⊥`; this matters in the [CPS section](@ref mimir_cps) below.
   - `fun` / `return` is sugar for threading an explicit return continuation, so a CPS function still reads like an ordinary one.
   - `{}` carries implicit arguments — usually types — as in
-    ```
+    ```mim
     lam id {T: *} (x: T): T = x
     ```
     where `T` is inferred at the call site (`id 23`).
@@ -195,10 +195,10 @@ Two classic chores simply vanish:
   In the following example `g` does not depend on `x`.
   Yet, `g` is nested inside `f`.
   For this reason, a naive β-reduction would superfluously duplicate `g` as well.
-  ```ocaml
-  let f x =
-      let g y = y + 1 in
-      g (x + 2)
+  ```mim
+  lam f (x: Nat): Nat =
+      lam g (y: Nat): Nat = y + 1;
+      g (x + 2);
   ```
   Scoped IRs therefore typically *block-float* functions independent from the substitution outward before β-reduction to avoid this problem.
 
@@ -208,14 +208,14 @@ Two classic chores simply vanish:
 - **Specialization.**
 
   In the following example, we want to specialize `f` for `z`.
-  ```ocaml
-  let f x y = x + y in
-  let g z = (f z 1) + (f z 2)
+  ```mim
+  lam f (x y: Nat): Nat = x + y;
+  lam g (z: Nat): Nat = (f z 1) + (f z 2);
   ```
   However, we need to *block-sink* the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:
-  ```ocaml
-  let g z =
-    let fz y = z + y in
+  ```mim
+  lam g (z: Nat) =
+    lam fz (y: Nat): Nat = z + y;
     (fz 1) + (fz 2)
   ```
   MimIR, on the other hand, does not need block-sinking: a binder simply refers to whatever it refers to, wherever it sits.
