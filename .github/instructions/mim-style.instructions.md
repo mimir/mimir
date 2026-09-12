@@ -19,7 +19,8 @@ Use the primary UTF-8 surface syntax.
 - Prefer pattern matching over extractions: `let (a, b) = tup` over `tup#0_1` and `tup#0_2`.
 - Prefer `Cn X`/`Fn X` over `Cn [X]`/`Fn [X]` for a single argument.
   Keep brackets for several arguments (`Cn [X, Y]`) or when the single argument is an application (`Cn [mem.M 0]`).
-- Shadow one name instead of numbering: `let (mem, x) = f (mem, ...); let (mem, y) = g (mem, ...)` rather than `mem0`/`mem1`/`mem2`.
+- Shadow one name instead of numbering: `let (m, x) = f (m, ...); let (m, y) = g (m, ...)` rather than `m0`/`m1`/`m2`.
+  Don't call such a value `mem`: it shadows the module `mem`, so a later `mem.store` no longer resolves.
   Numbered names are fine for distinct sibling parameters of one binder.
 - No generated gid-suffixed identifiers (`x_535733`, `mem_19234`) in checked-in code; name them `x`, `mem`.
 - Comment sparingly; see the *Comments* section in `.github/copilot-instructions.md`.

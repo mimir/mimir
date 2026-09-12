@@ -10,18 +10,20 @@ This document uses a lightweight [EBNF](https://en.wikipedia.org/wiki/Extended_B
 A terminal is shaded, a nonterminal is not, and the [lexical terminals](@ref terminals) `I`, `L`, `X_n`, `C`, and `S` have a colour of their own.
 Clicking a nonterminal or a lexical terminal traces its occurrences across the page.
 The meta-symbols are:
+
 ```ebnf
-x ::= y  // defines the nonterminal `x` as `y`.
-x | y    // is either `x` or `y`.
+x ::= y  // defines the nonterminal x as y
+x | y    // either x or y
 (x y)    // grouping
-x*       // zero or more `x`
-x+       // one or more `x`
-x?       // an optional `x`
-[a-c]    // character range from `a` to `c`
+x*       // zero or more x
+x+       // one or more x
+x?       // an optional x
+[a-c]    // character range from a to c
 [a-cx-z] // combines several ranges
 ```
+
 For example, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
-@note Ranges only occur in the [lexical rules](@ref terminals).
+@note Ranges only occur in the rules of the [lexical terminals](@ref terminals).
 
 ## Lexical Structure {#lex}
 
@@ -83,26 +85,27 @@ norm plugin priv pub rec ret rule tt use when where with
 
 The following names are predefined aliases:
 
-```ebnf
-"tt"   = "1₂"
-"ff"   = "0₂"
-"Bool" = "Idx i1"
-"I1"   = "Idx i1"
-"I8"   = "Idx i8"
-"I16"  = "Idx i16"
-"I32"  = "Idx i32"
-"I64"  = "Idx i64"
+| Alias  | Expansion       |
+|--------|-----------------|
+| `tt`   | `1₂`            |
+| `ff`   | `0₂`            |
+| `Bool` | `Idx i1`        |
+| `I1`   | `Idx i1`        |
+| `I8`   | `Idx i8`        |
+| `I16`  | `Idx i16`       |
+| `I32`  | `Idx i32`       |
+| `I64`  | `Idx i64`       |
+| `i1`   | `2`             |
+| `i8`   | `0x100`         |
+| `i16`  | `0x1'0000`      |
+| `i32`  | `0x1'0000'0000` |
+| `i64`  | `0`             |
 
-"i1"   = "2"
-"i8"   = "0x100"
-"i16"  = "0x1'0000"
-"i32"  = "0x1'0000'0000"
-"i64"  = "0"
-```
+@note 2⁶⁴ doesn't fit into a `Nat`, so `i64` is `0`, which `Idx` reads as 2⁶⁴.
 
-#### Pattern Terminals
+#### Lexical Terminals
 
-The following terminals are defined by lexical patterns.
+The following terminals are defined by lexical rules.
 
 ```ebnf
 I      ::= id
@@ -142,21 +145,24 @@ pP     ::= "p" | "P"
 sign   ::= "+" | "-"
 id     ::= ("_" | [a-zA-Z]) ("_" | [0-9a-zA-Z])*
 op     ::= "+" | "-" | "*" | "/" | "%"
-esc    ::= "\'" | "\"" | "\0" | "\a" | "\\" | "\b"
+        |  "==" | "!=" | "<" | "<=" | ">" | ">="
+        |  "<<" | ">>"
+esc    ::= "\'" | "\\" | "\"" | "\0" | "\a" | "\b"
         |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
-Character and string literals only admit ASCII payload characters plus the escapes listed above.
+`ascii_char` is any ASCII character except `\`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
 
 ### Comments
 
 Supported comments:
+
 ```mim
 /* multi-line comment */
 // single-line comment
 /// doc-comment
 ```
-- `/* ... */` comments are not nested.
+- `/* ... */` comments do not nest.
 - doc-comments are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
   A line of the form `/// text` contributes `text` directly to the Markdown output.
   Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
@@ -207,18 +213,18 @@ path ::= I ("." I)*
 A path resolves its first component lexically and then walks into that module.
 A module is either an imported file or a `mod` declaration.
 
-- A component after a `.` may be spelled like a keyword, as may a tag in an `axm` tag list - both positions are unambiguous.
+- Every component of a path is an identifier; a keyword is not allowed, not even after a `.`.
 - `.` never reads a field out of a value; use `#` for that.
 - An `anx` declaration is an ordinary member of its enclosing module and is found by the same path resolution as any other member; see [Annex](@ref annex) for what additionally makes it an annex.
 
 ### Declarations {#decl}
 
 Mim supports the following declaration families.
-Most of them may be prefixed with any combination of three independent modifiers:
-a visibility (`priv` or `pub`), `extern`, and `anx`.
+Most of them may be prefixed with a visibility (`priv` or `pub`), `extern`, and `anx`.
+These modifiers may be written in any order; the productions below only spell out which of them a declaration accepts at all.
 Visibility is a Mim-only, purely lexical fact - it has no effect on backend linkage or compiler registration.
-`extern` and `anx` are each independent of visibility and of each other;
-either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful, while `extern anx` on the same declaration is a static error.
+`extern` and `anx` are each independent of visibility, but not of each other: `extern anx` on the same declaration is a static error.
+Either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful.
 
 ```ebnf
 d      ::= "import" (I | S) ("as" (I | "*"))? ";"
@@ -243,6 +249,8 @@ axm    ::= I ":" e tail
 tag    ::= I ("=" I)*
 tail   ::= ("," I)? ("," L ("," L)?)?
 ```
+
+@note A declaration may be followed by a `;`, as all examples on this page do; stray semicolons between declarations are skipped.
 
 - `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
@@ -298,9 +306,10 @@ There are two pattern families.
 - `b` is the bracketed syntax used for sigma binders and Pi domains.
 - Roughly speaking, `(a, b, c)` binds tuple components with inferred types, while `[a, b, c]` binds components whose types are described by the bracket entries.
 - When all component types are written explicitly, `(a: A, b: B)` and `[a: A, b: B]` coincide.
-- Tuple patterns support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`.
-- Both forms distribute the annotated type over the listed names.
-- Patterns may be wrapped in an alias pattern.
+- Tuple patterns support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`; both forms distribute the annotated type over the listed names.
+- Bracket-style patterns may also contain general expressions, which is what makes forms such as `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
+
+An alias pattern wraps another pattern and additionally binds the whole value:
 
 ```mim
 let (a, b, c) as abc = (1, 2, 3);
@@ -308,17 +317,15 @@ let (a, b, c) as abc = (1, 2, 3);
 
 This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
-- Bracket-style patterns may also contain general expressions.
-- This is what makes forms such as `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
-- `let` and `ret` allow rebinding of an existing name.
-
-This is especially useful for state-threading style code:
+`let` and `ret` allow rebinding of an existing name, which is especially useful for state-threading style code:
 
 ```mim
-let (mem, ptr) = mem.alloc (I32, 0) mem;
-let mem        = mem.store (mem, ptr, 23:I32);
-let (mem, val) = mem.load (mem, ptr);
+let (m, ptr) = mem.alloc (I32, 0) m;
+let m        = mem.store (m, ptr, 23:I32);
+let (m, val) = mem.load (m, ptr);
 ```
+
+@note Don't name such a value `mem`: it would shadow the module `mem`, and the `mem.store` on the next line would no longer resolve.
 
 ### Expressions {#expr}
 
@@ -416,7 +423,7 @@ arity ::= e
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
-- `e#i` or `e#e` extracts a component.
+- `e#e` extracts a component by index, `e#I` by [field name](@ref field).
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
 - `e ← value` without a `#` leaves the index implicit: `e` is its own sole component, so this is `e#0₁ ← value` and hence `value`.
   An `e` of arity other than 1 is an error, just as `e#0₁` would be.
@@ -458,7 +465,7 @@ e   ::= e "==" e
   let `+ = core.nat.add;
   let x = 2 + 3;
   ```
-- `*` doubles as the abbreviation of `Type (0:Univ)`, which is why `f *` is a multiplication and not an application; write `f (*)` for the latter.
+- `*` doubles as the multiplication operator, so `f *` is a multiplication and not an application of `f` to `Type (0:Univ)`; write `f (*)` for the latter.
 
 #### Local Declaration Blocks
 
@@ -509,12 +516,12 @@ Mim uses different surface syntax for declarations, expressions, and types:
 The following declarations are equivalent:
 
 ```mim
-lam f(T: *)((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-con f(T: *)((x y: T), return: Cn T)        = return x;
-fun f(T: *) (x y: T): T                    = return x;
+lam f (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+con f (T: *) ((x y: T), return: Cn T)        = return x;
+fun f (T: *)  (x y: T): T                    = return x;
 ```
 
-Partial-evaluation filters default to `tt`, except for `con`, `cn`, `fun`, and `fn`.
+A partial-evaluation filter defaults to `tt`, except on the last domain of a `con`, `cn`, `fun`, or `fn`, where it defaults to `ff`.
 
 ### Expressions
 
@@ -523,18 +530,18 @@ Because they are bound by `let`, they behave like the declarations above:
 
 ```mim
 let f =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-let f = lm (T: *) ((x y: T), return: T → ⊥)   : ⊥ = return x;
+let f = lm (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
 let f = cn (T: *) ((x y: T), return: Cn T)        = return x;
 let f = fn (T: *)  (x y: T): T                    = return x;
 ```
 
 ### Applications
 
-The following applications of `f` are equivalent:
+The following applications of `f` are equivalent, where `g` is a continuation that consumes the result:
 
 ```mim
-f Nat ((23, 42), cn res: Nat = use(res))
-ret res = f Nat $ (23, 42); use(res)
+f Nat ((23, 42), cn res: Nat = g res)
+ret res = f Nat $ (23, 42); g res
 ```
 
 ### Function Types
@@ -563,7 +570,7 @@ As a consequence, `_` may appear repeatedly in the same scope without conflict, 
 An `anx` declaration is an ordinary member of its enclosing module, found by the same path resolution as any other member.
 Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
 
-### Field Names of Sigmas
+### Field Names of Sigmas {#field}
 
 Named elements of mutable sigma types are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
