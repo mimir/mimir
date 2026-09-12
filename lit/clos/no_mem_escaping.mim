@@ -11,13 +11,15 @@
 plugin core;
 plugin mem;
 
+use core.ops.u.w;
+
 extern con println_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
 
-con f (x: I32, k: Cn I32) = k (core.wrap.add 0 (x, 42I32));
+con f (x: I32, k: Cn I32) = k (x + 42I32);
 con g (x: I32, k: Cn I32) = k (1I32);
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
-    con h (x: I32, k: Cn I32) = k (core.wrap.add 0 (x, argc));
+    con h (x: I32, k: Cn I32) = k (x + argc);
 
     let pb_type = Cn [I32, Cn I32];
 
@@ -31,12 +33,9 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let lea = mem.lea (pb_arr, core.idx_unsafe 2);
     let m = mem.store (m, lea, h);
 
-    let lea0 = mem.lea (pb_arr, core.idx_unsafe 0);
-    let (m, func0) = mem.load (m, lea0);
-    let lea1 = mem.lea (pb_arr, core.idx_unsafe 1);
-    let (m, func1) = mem.load (m, lea1);
-    let lea2 = mem.lea (pb_arr, core.idx_unsafe 2);
-    let (m, func2) = mem.load (m, lea2);
+    let (m, func0) = mem.load (m, mem.lea (pb_arr, core.idx_unsafe 0));
+    let (m, func1) = mem.load (m, mem.lea (pb_arr, core.idx_unsafe 1));
+    let (m, func2) = mem.load (m, mem.lea (pb_arr, core.idx_unsafe 2));
 
     func0 (1I32, cn (r0: I32) =
         func1 (1I32, cn (r1: I32) =
@@ -44,7 +43,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
                 println_i32 (m, r0, cn (m: mem.M 0) =
                     println_i32 (m, r1, cn (m: mem.M 0) =
                         println_i32 (m, r2, cn (m: mem.M 0) =
-                            return (m, 0I32)))))));
+                            return ((m, 0I32))))))));
 
 // CHECK: 43
 // CHECK: 1

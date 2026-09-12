@@ -2,6 +2,8 @@
 
 plugin core;
 
-rule foo (a: Nat): (core.nat.add (a, a)) => (core.nat.mul (a, 2));
+use core.ops.n;
+
+rule foo (a: Nat): (a + a) => (a * 2);
 
 extern lam rules(): Rule Nat = foo;

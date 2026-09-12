@@ -4,6 +4,8 @@ plugin compile;
 plugin ll;
 plugin mem;
 
+use core.ops.n;
+
 extern fun dont_know[]: Bool;
 
 extern fun f(x: Nat): Nat =
@@ -12,23 +14,23 @@ extern fun f(x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond       = core.ncmp.le (i, j);
+                    let cond       = i <= j;
                     (false, true)#cond ()
                     where
                         con false () =
-                            let i = core.nat.add (i, 2); // unreachable due to GVN
-                            let j = core.nat.add (j, 1);
+                            let i = i + 2; // unreachable due to GVN
+                            let j = j + 1;
                             next (i, j);
 
                         con true() =
-                            let i = core.nat.add (i, 1);
-                            let j = core.nat.add (j, 1);
+                            let i = i + 1;
+                            let j = j + 1;
                             next (i, j);
                         con next (i j: Nat) as ij = head ij;
                     end;
 
                 con exit() =
-                    return (core.nat.add (i, j));
+                    return (i + j);
             end
     end;
 

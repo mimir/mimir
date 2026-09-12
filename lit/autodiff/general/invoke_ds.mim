@@ -6,6 +6,8 @@ plugin cps;
 plugin autodiff;
 plugin mem;
 
+use core.ops.u.w;
+
 con extract_pb1 (s: mem.M 0, ret_cont: Cn [mem.M 0, «2; I32»]) =
     con k arg: [mem.M 0, «2; I32»] = ret_cont arg;
     k (s, ‹2; 0I32›);
@@ -19,9 +21,9 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr ((I8), 0), 0), re
     let b: [mem.M 0, «2; I32»] = cps.cps2ds extract_pb2 1I32;
     let m: mem.M 0 = autodiff.add (a#ff, b#0₂);
     let t: «2; I32» = autodiff.add (a#tt, b#1₂);
-    let x: I32 = core.wrap.mul 0 (100I32, t#0₂);
-    let y: I32 = core.wrap.add 0 (t#1₂, x);
-    let z: I32 = core.wrap.add 0 (430000I32, y);
+    let x: I32 = 100I32 * t#0₂;
+    let y: I32 = t#1₂ + x;
+    let z: I32 = 430000I32 + y;
     return (m, z);
 
 // CHECK-DAG: return{{.*}}430001

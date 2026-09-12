@@ -4,6 +4,8 @@ plugin option as o;
 plugin refly;
 plugin core;
 
+use core.ops.n;
+
 let l = vec.fold.l core.nat.add (0, (1, 2, 3, 4, 5));
 let r = vec.fold.r core.nat.add ((1, 2, 3, 4, 5), 0);
 let _ = refly.equiv.struc_eq (l, 15);
@@ -14,13 +16,13 @@ let r2 = vec.fold.r core.nat.mul («4; 2», 1);
 let _ = refly.equiv.struc_eq (l2, 16);
 let _ = refly.equiv.struc_eq (r2, 16);
 
-let e1 = vec.scan.exists (λ (n: Nat): Bool = core.ncmp.e (n, 3)) (0, 1, 2, 3, 4);
-let e2 = vec.scan.exists (λ (n: Nat): Bool = core.ncmp.e (n, 5)) (0, 1, 2, 3, 4);
+let e1 = vec.scan.exists (λ (n: Nat): Bool = n == 3) (0, 1, 2, 3, 4);
+let e2 = vec.scan.exists (λ (n: Nat): Bool = n == 5) (0, 1, 2, 3, 4);
 let _  = refly.equiv.struc_eq (e1, tt);
 let _  = refly.equiv.struc_eq (e2, ff);
 
-let a1 = vec.scan.for_all (λ (n: Nat): Bool = core.ncmp.ge (n, 0)) (0, 1, 2, 3, 4);
-let a2 = vec.scan.for_all (λ (n: Nat): Bool = core.ncmp.l  (n, 3)) (0, 1, 2, 3, 4);
+let a1 = vec.scan.for_all (λ (n: Nat): Bool = n >= 0) (0, 1, 2, 3, 4);
+let a2 = vec.scan.for_all (λ (n: Nat): Bool = n < 3) (0, 1, 2, 3, 4);
 let _  = refly.equiv.struc_eq (a1, tt);
 let _  = refly.equiv.struc_eq (a2, ff);
 

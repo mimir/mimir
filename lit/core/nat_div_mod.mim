@@ -9,6 +9,8 @@ plugin core;
 plugin mem;
 import compile;
 
+use core.ops.n;
+
 // core.nat.div/rem fold the partial/degenerate cases at normalization time:
 //   a / 0 = 0,   a % 0 = a,   a % a = 0,   plus ordinary constant folding.
 // `x` is a runtime value, so `x / 0` and `x % x` exercise the symbolic rules;
@@ -18,11 +20,11 @@ import compile;
 // OPT-NOT: core.nat
 // OPT: (0, 7, 3, 1, 0)
 extern fun test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
-    let a = core.nat.div (x, 0); // -> 0 (symbolic a / 0 = 0)
-    let b = core.nat.rem (7, 0); // -> 7 (a % 0 = a)
-    let c = core.nat.div (10, 3); // -> 3
-    let d = core.nat.rem (10, 3); // -> 1
-    let e = core.nat.rem (x, x); // -> 0 (symbolic a % a = 0)
+    let a = x / 0; // -> 0 (symbolic a / 0 = 0)
+    let b = 7 % 0; // -> 7 (a % 0 = a)
+    let c = 10 / 3; // -> 3
+    let d = 10 % 3; // -> 1
+    let e = x % x; // -> 0 (symbolic a % a = 0)
     return (a, b, c, d, e);
 
 // For a runtime (non-literal) divisor the axiom survives normalization and must
@@ -40,8 +42,7 @@ extern fun test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
 // MOD: urem i64
 // MOD: select i1
 extern fun test_mod(m: mem.M 0, x y: Nat): [mem.M 0, Nat] =
-    let r = core.nat.rem (x, y);
-    return (m, r);
+    return (m, x % y);
 
 // DIV-LABEL: define{{.*}}@test_div
 // DIV: icmp eq i64
@@ -49,5 +50,4 @@ extern fun test_mod(m: mem.M 0, x y: Nat): [mem.M 0, Nat] =
 // DIV: udiv i64
 // DIV: select i1
 extern fun test_div(m: mem.M 0, x y: Nat): [mem.M 0, Nat] =
-    let q = core.nat.div (x, y);
-    return (m, q);
+    return (m, x / y);

@@ -5,6 +5,8 @@ plugin mem;
 plugin compile;
 plugin ll;
 
+use core.ops.n;
+
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 
 extern fun use_address[m: mem.M 0, ptr: mem.Ptr (Nat, 0)]: [mem.M 0];
@@ -28,7 +30,7 @@ extern fun test(m: mem.M 0): [mem.M 0, Nat] =
                     let (m, x) = mem.load (m, px);
                     let (m, y) = mem.load (m, py);
 
-                    let eq = core.ncmp.e (x, y);
+                    let eq = x == y;
 
                     (false_branch, true_branch)#eq m where
 
@@ -37,10 +39,10 @@ extern fun test(m: mem.M 0): [mem.M 0, Nat] =
                         //     y++;
                         // }
                         con true_branch(m: mem.M 0) =
-                            let x1  = core.nat.add (x, 1);
+                            let x1  = x + 1;
                             let m = mem.store (m, px, x1);
 
-                            let y1  = core.nat.add (y, 1);
+                            let y1  = y + 1;
                             let m = mem.store (m, py, y1);
 
                             head (m, px, py);

@@ -14,12 +14,14 @@ plugin tensor;
 plugin mem;
 plugin buffer;
 
+use core.ops.u.w;
+
 extern fun kernel (t: «3, 4; I32», i: [Idx 3, Idx 4]): I32 =
     let s = tensor.set ((0₃, 0₄), t, 42I32);
     let a = tensor.get ((0₃, 0₄), s);
     let b = tensor.get (i, s);
     let c = tensor.get ((0₃, 0₄), t);
-    return (core.wrap.add 0 (a, core.wrap.add 0 (b, c)));
+    return (a + (b + c));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let t = ((1I32, 2I32, 3I32, 4I32), (5I32, 6I32, 7I32, 8I32), (9I32, 10I32, 11I32, 12I32));

@@ -14,8 +14,10 @@ plugin core;
 plugin opt;
 plugin compile;
 
-lam add1 (x: Nat): Nat = core.nat.add (x, 1);
-lam addp (x y: Nat): Nat = core.nat.add (x, y);
+use core.ops.n;
+
+lam add1 (x: Nat): Nat = x + 1;
+lam addp (x y: Nat): Nat = x + y;
 
 extern con f (a: «2, 3; Nat», b: «4, 3; Nat», bias: «4; Nat», return: Cn «2, 4; Nat») =
     let wt = tensor.transpose_2d b;

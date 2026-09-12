@@ -8,6 +8,8 @@ plugin core;
 plugin affine;
 plugin mem;
 
+use core.ops.u.w;
+
 // f exercises the affine index algebra over two input indices `a`, `b`:
 //   out0 = (a + b) - b = a   (op.add + op.sub)
 //   out1 = a * 3             (semiop.mul)
@@ -20,9 +22,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), ret
     let b = 4I32;
     let (m, (r1, r2, r3)) = affine.map f (a, b) m;
     // sum = a + 3*a + 5 = 4*a + 5
-    let s0 = core.wrap.add 0 (r1, r2);
-    let s  = core.wrap.add 0 (s0, r3);
-    return (m, s);
+    return (m, r1 + r2 + r3);
 
 // The whole affine index algebra must be gone after affine.lower_index.
 // CHECK-NOT: affine.Index

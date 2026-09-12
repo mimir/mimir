@@ -5,15 +5,17 @@ plugin core;
 plugin autodiff;
 plugin mem;
 
+use core.ops.s.w;
+
 fun f(a: I32): I32 =
-    let cmp = core.icmp.sle (a, 5I32);
+    let cmp = a <= 5I32;
     (twice, thrice)#cmp ()
     where
         con twice () =
-            let b = core.wrap.mul 0 (2I32, a);
+            let b = 2I32 * a;
             return b;
         con thrice () =
-            let b = core.wrap.mul 0 (3I32, a);
+            let b = 3I32 * a;
             return b;
     end;
 
@@ -27,9 +29,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
             pb (1I32, pb_ret_cont)
             where
                 con pb_ret_cont (pr: I32) =
-                    let c = core.wrap.mul 0 (100I32, r);
-                    let d = core.wrap.add 0 (c, pr);
-                    return (m, d);
+                    return (m, 100I32 * r + pr);
             end;
     end;
 

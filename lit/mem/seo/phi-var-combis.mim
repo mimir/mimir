@@ -20,6 +20,8 @@ plugin core;
 plugin compile;
 plugin ll;
 
+use core.ops.n;
+
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 extern fun take_addr[m: mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
 
@@ -40,13 +42,13 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                     let (m, va ) = mem.load (m, pa );
                     let (m, vb1) = mem.load (m, pb1);
                     let (m, vb2) = mem.load (m, pb2);
-                    let cond       = core.ncmp.e (vb1, vb2);
+                    let cond       = vb1 == vb2;
                     (ff1, tt1)#cond m
                     where
                         con tt1 (m: mem.M 0) =
-                            let va  = core.nat.add (va , 1);
-                            let vb1 = core.nat.add (vb1, 2);
-                            let vb2 = core.nat.add (vb2, 2);
+                            let va  = va + 1;
+                            let vb1 = vb1 + 2;
+                            let vb2 = vb2 + 2;
                             let m = mem.store (m, pa , va );
                             let m = mem.store (m, pb1, vb2);
                             let m = mem.store (m, pb2, vb1);
@@ -59,28 +61,28 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                             n1 (m, a, b1, b2, c);
 
                         con n1 (m: mem.M 0, a b1 b2 c: Nat) =
-                            let cond = core.ncmp.e (b1, b2);
+                            let cond = b1 == b2;
                             (ff2, tt2)#cond m
                             where
                                 con tt2 (m: mem.M 0) =
-                                    let a  = core.nat.add (a , 1);
-                                    let b1 = core.nat.add (b1, 2);
-                                    let b2 = core.nat.add (b2, 2);
+                                    let a  = a + 1;
+                                    let b1 = b1 + 2;
+                                    let b2 = b2 + 2;
                                     n2 (m, a, b1, b2, c);
 
                                 con ff2 (m: mem.M 0) =
-                                    let b1 = core.nat.add (b1, 23);
-                                    let b2 = core.nat.add (b2, 42);
+                                    let b1 = b1 + 23;
+                                    let b2 = b2 + 42;
                                     n2 (m, a, b1, b2, c);
 
                                 con n2 (m: mem.M 0, a b2 b1 c: Nat) =
                                     let (m, vc) = mem.load (m, pc);
-                                    let cond      = core.ncmp.e (vc, c);
+                                    let cond      = vc == c;
                                     (ff3, tt3)#cond m
                                     where
                                         con tt3 (m: mem.M 0) =
-                                            let vc = core.nat.add (vc, 3);
-                                            let  c = core.nat.add ( c, 3);
+                                            let vc = vc + 3;
+                                            let  c = c + 3;
                                             let m = mem.store (m, pc, c);
                                             n3 (m, a, b2, b1, c);
 
@@ -101,13 +103,13 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                     let (m, vb2) = mem.load (m, pb2);
                     let (m, vc ) = mem.load (m, pc );
                     let res        = va;
-                    let res        = core.nat.add (res, vb1);
-                    let res        = core.nat.add (res, vb2);
-                    let res        = core.nat.add (res, vc );
-                    let res        = core.nat.add (res,  a );
-                    let res        = core.nat.add (res,  b1);
-                    let res        = core.nat.add (res,  b2);
-                    let res        = core.nat.add (res,  c );
+                    let res        = res + vb1;
+                    let res        = res + vb2;
+                    let res        = res + vc;
+                    let res        = res + a;
+                    let res        = res + b1;
+                    let res        = res + b2;
+                    let res        = res + c;
                     return (m, res);
             end
     end;

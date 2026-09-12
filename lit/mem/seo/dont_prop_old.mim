@@ -17,6 +17,8 @@ plugin compile;
 plugin ll;
 plugin mem;
 
+use core.ops.n;
+
 extern fun dont_know[]: Bool;
 
 extern fun f(x: Nat): Nat =
@@ -25,7 +27,7 @@ extern fun f(x: Nat): Nat =
             ret cond = dont_know $ ();
             (exit, body)#cond () where
                 con body() =
-                    let cond       = core.ncmp.e (x, 23);
+                    let cond       = x == 23;
                     (false, true)#cond ()
                     where
                         con true () =
@@ -34,7 +36,7 @@ extern fun f(x: Nat): Nat =
                         con false() =
                             next (i, 4);
                         con next (i j: Nat) as cxt =
-                            let i = core.nat.add (i, 1);
+                            let i = i + 1;
                             head i;
                     end;
 

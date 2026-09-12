@@ -5,6 +5,8 @@ plugin core;
 plugin cps;
 plugin mem;
 
+use core.ops.u.w;
+
 let pb_type = Cn [mem.M 0, Cn [mem.M 0]];
 
 fun end_(m: mem.M 0): mem.M 0 = return m;
@@ -24,7 +26,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
             let (backward_pass_mem, backward_pass) = mem.load (m, lea_pb); // <- begin backward pass
             backward_pass (backward_pass_mem, callback);
 
-        con yield (m: mem.M 0) = loop_head( m, core.wrap.add 0 (i, 1I32) );
+        con yield (m: mem.M 0) = loop_head( m, i + 1I32 );
 
         con body (m: mem.M 0) =
             let (load_pb_mem, last_pb) = mem.load (m, lea_pb);
@@ -37,8 +39,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
 
             printInteger(store_pb_mem, i, yield);
 
-        let condition = core.icmp.ul (i, 19I32);
-        let target = (exit, body)#condition;
-        target ( m );
+        let condition = i < 19I32;
+        (exit, body)#condition ( m );
 
     loop_head ( store_pb, 0I32 ); // <-- start forward pass

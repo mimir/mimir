@@ -10,61 +10,62 @@ plugin core;
 plugin regex;
 plugin cps;
 
+use core.ops.u.nw;
+
 let Top = ⊤:Nat;
 
 // matches (a|b)+a
 
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
-    (exit, match_argument) # (core.icmp.ug (argc, 1I32)) (m, 0I32)
+    (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let arg1             = mem.lea (argv, core.idx_unsafe 1);
-            let (m, to_match) = mem.load (m, arg1);
+            let (m, to_match) = mem.load (m, mem.lea (argv, core.idx_unsafe 1));
             start (m, 0I32)
             where
                 con start(m: mem.M 0, i: I32) =
                     let ptr       = mem.lea (to_match, core.bitcast (Idx ⊤:Nat) i);
                     let (m, c) = mem.load (m, ptr);
-                    let new_i     = core.wrap.add core.mode.nuw (i, 1I32);
-                    let is_end    = core.icmp.e (c, '\0');
+                    let new_i     = i + 1I32;
+                    let is_end    = c == '\0';
                     (not_end, error)#is_end (m, new_i)
                     where
                         con not_end(m: mem.M 0, i: I32) =
-                            let is_match_a_or_b = core.bit2.or_ 2 (core.icmp.e (c, 'a'), core.icmp.e (c, 'b'));
+                            let is_match_a_or_b = core.bit2.or_ 2 (c == 'a', c == 'b');
                             (error, state1)#is_match_a_or_b (m, i)
                             where
                                 con state1(m: mem.M 0, i: I32) =
                                     let ptr       = mem.lea (to_match, core.bitcast (Idx ⊤:Nat) i);
                                     let (m, c) = mem.load (m, ptr);
-                                    let new_i     = core.wrap.add core.mode.nuw (i, 1I32);
-                                    let is_end    = core.icmp.e (c, '\0');
+                                    let new_i     = i + 1I32;
+                                    let is_end    = c == '\0';
                                     (not_end, error)#is_end (m, new_i)
                                     where
                                         con not_end(m: mem.M 0, i: I32) =
-                                            let is_match_a = core.icmp.e (c, 'a');
+                                            let is_match_a = c == 'a';
                                             (not_a, state2)#is_match_a (m, i)
                                             where
                                                 con state2(m: mem.M 0, i: I32) =
                                                     let ptr       = mem.lea (to_match, core.bitcast (Idx ⊤:Nat) i);
                                                     let (m, c)  = mem.load (m, ptr);
-                                                    let new_i     = core.wrap.add core.mode.nuw (i, 1I32);
-                                                    let is_end    = core.icmp.e (c, '\0');
+                                                    let new_i     = i + 1I32;
+                                                    let is_end    = c == '\0';
                                                     (not_end, accept)#is_end (m, new_i)
                                                     where
                                                         con not_end(m: mem.M 0, i: I32) =
-                                                            let is_match_a = core.icmp.e (c, 'a');
+                                                            let is_match_a = c == 'a';
                                                             (not_a, state2)#is_match_a (m, i);
 
                                                         con accept(m: mem.M 0, _: I32) =
                                                             exit (m, 1I32);
 
                                                         con not_a(m: mem.M 0, i: I32) =
-                                                            let is_match_b = core.icmp.e (c, 'b');
+                                                            let is_match_b = c == 'b';
                                                             (error, state1)#is_match_b (m, i);
                                                     end
                                             end;
                                         con not_a(m: mem.M 0, i: I32) =
-                                            let is_match_b = core.icmp.e (c, 'b');
+                                            let is_match_b = c == 'b';
                                             (error, state1)#is_match_b (m, i);
                                     end
                             end

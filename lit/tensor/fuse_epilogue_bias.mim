@@ -9,14 +9,13 @@ plugin core;
 plugin opt;
 plugin compile;
 
-lam add1 (x: Nat): Nat = core.nat.add (x, 1);
-lam addp (x y: Nat): Nat = core.nat.add (x, y);
+use core.ops.n;
+
+lam add1 (x: Nat): Nat = x + 1;
+lam addp (x y: Nat): Nat = x + y;
 
 extern con f (a: «2, 3; Nat», b: «3, 4; Nat», bias: «2, 4; Nat», return: Cn «2, 4; Nat») =
-    let prod   = tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, b);
-    let biased = tensor.binary addp (prod, bias);
-    let out    = tensor.unary add1 biased;
-    return out;
+    return (tensor.unary add1 (tensor.binary addp (tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, b), bias)));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

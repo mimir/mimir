@@ -279,7 +279,7 @@ anx lam sgn (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
 anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m (conv.f2f pe 1.0:(F64), rt.sq m x);
 ///
-/// ### math.ops
+/// ## ops
 ///
 /// Bindings for the infix operators, which are sugar for an application of the escaped name.
 /// `use` the module whose math.mode matches the accuracy you are willing to trade:

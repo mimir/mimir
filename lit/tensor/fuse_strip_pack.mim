@@ -11,8 +11,10 @@ plugin affine;
 plugin opt;
 plugin compile;
 
-fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (core.nat.add (x, y#0₁));
-lam add1 (x: Nat): Nat = core.nat.add (x, 1);
+use core.ops.n;
+
+fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (x + y#0₁);
+lam add1 (x: Nat): Nat = x + 1;
 lam mo (i k: affine.Index): «1; affine.Index» = i;
 lam mi (i k: affine.Index): «2; affine.Index» = (i, k);
 

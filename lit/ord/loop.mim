@@ -23,7 +23,7 @@ uint64_t f(uint64_t x) {
         }
     }
 
-    return map[1];
+    return (map[1]);
 }
 */
 
@@ -31,6 +31,8 @@ plugin mem;
 plugin ord;
 plugin core;
 plugin option;
+
+use core.ops.u.w;
 
 let Key = (I32, core.icmp.ul @i32);
 let Map = ord.Map Key I64;
@@ -61,10 +63,10 @@ extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] =
 
                         con ff1 (m: mem.M 0) = n1 m;
                         con n1 (m: mem.M 0) =
-                            (ff2, tt2)#(core.icmp.e (i, j)) m where
+                            (ff2, tt2)#(i == j) m where
                                 con tt2 (m: mem.M 0) =
-                                    let i = core.wrap.add 0 (i, 1I64);
-                                    let j = core.wrap.add 0 (j, 1I64);
+                                    let i = i + 1I64;
+                                    let j = j + 1I64;
                                     n2 (m, i, j);
                                 con ff2 (m: mem.M 0) =
                                     ret m = take_addr $ (m, ptr);
@@ -76,9 +78,7 @@ extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] =
 
                 con exit(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
-                    let opt_v      = ord.get (map, 1I32);
-                    let val        = option.unwrap_unsafe opt_v;
-                    return (m, val);
+                    return (m, option.unwrap_unsafe (ord.get (map, 1I32)));
             end
     end;
 

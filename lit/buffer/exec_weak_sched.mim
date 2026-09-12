@@ -18,7 +18,9 @@ plugin buffer;
 plugin btensor;
 plugin cps;
 
-fun add (x y: I32)@tt = return (core.wrap.add 0 (x, y));
+use core.ops.u.w;
+
+fun add (x y: I32)@tt = return (x + y);
 lam mo (i j k a: affine.Index): «3; affine.Index» = (i, j, k);
 lam mi (i j k a: affine.Index): «4; affine.Index» = (i, j, k, a);
 
@@ -42,7 +44,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     con done1 (o: «2, 3, 4; I32») =
         let v1 = tensor.get ((1₂, 2₃, 3₄), o);
         con done2 (o: «2, 3, 4; I32») =
-            let v2 = tensor.get ((1₂, 2₃, 3₄), o);
-            return (m, core.wrap.add 0 (v1, v2));
+            return (m, v1 + tensor.get ((1₂, 2₃, 3₄), o));
         sum_over_unroll (t, done2);
     sum_weak_vdim (t, done1);

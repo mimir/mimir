@@ -303,7 +303,7 @@ anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
 ///
 anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
 ///
-/// ### core.ops
+/// ## ops
 ///
 /// Bindings for the infix operators, which are sugar for an application of the escaped name.
 /// `use` the module matching the domain at hand:

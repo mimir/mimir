@@ -8,9 +8,11 @@ plugin core;
 plugin opt;
 plugin compile;
 
-lam add1 (x: Nat): Nat = core.nat.add (x, 1);
+use core.ops.n;
 
-fun sum_reduce (acc x: Nat)@tt: Nat = return (core.nat.add (acc, x));
+lam add1 (x: Nat): Nat = x + 1;
+
+fun sum_reduce (acc x: Nat)@tt: Nat = return (acc + x);
 
 extern con f (v: «3; «2; Nat»», return: Cn «2; Nat») =
     let inner = tensor.unary add1 v;

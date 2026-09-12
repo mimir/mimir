@@ -3,6 +3,8 @@ plugin core;
 plugin math;
 plugin mem;
 
+use core.ops.n;
+
 rec Num = [T: *, add: [T, T] → T];
 lam my_add {pe: «2; Nat»} (a b: math.F pe): math.F pe = math.arith.add 0 (a, b);
 
@@ -16,7 +18,7 @@ extern fun stuff (m: mem.M 0, A: bug.Arr F64): mem.M 0 =
     return m;
 
 lam pow (a b: Nat): Nat =
-    (core.nat.mul (a, pow (a, core.nat.sub (b, 1))), 1)#(core.ncmp.e (b, 0));
+    (a * pow (a, b - 1), 1)#(b == 0);
 
 lam foo (a: «8; Nat»): Bool = tt;
 let _ = foo(‹pow (2, 3); 42›);
