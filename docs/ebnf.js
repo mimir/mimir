@@ -8,7 +8,7 @@ Doxygen discards the language of a fenced code block, so a grammar block is mark
 class MimEbnf {
     static LEXICAL = new Set(["I", "L", "C", "S", "X_n"])
     static HEAD = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*)(::=)/
-    static TOKEN = /("(?:\\.|[^"\\])*")|(\[(?:"[^"]*"|[^\]\s])*\])|(::=)|([A-Za-z_][A-Za-z0-9_]*)|([()|\[\]*+?,])|(\s+)|([^])/gu
+    static TOKEN = /("(?:\\.|[^"\\])*")|(\/\/.*)|(\[(?:"[^"]*"|[^\]\s])*\])|(::=)|([A-Za-z_][A-Za-z0-9_]*)|([()|\[\]*+?,])|(\s+)|([^])/gu
 
     static init() {
         $(function() {
@@ -59,8 +59,9 @@ class MimEbnf {
 
         MimEbnf.TOKEN.lastIndex = 0
         for (let match; (match = MimEbnf.TOKEN.exec(rest));) {
-            const [all, terminal, klass, def, id, meta, space] = match
+            const [all, terminal, comment, klass, def, id, meta, space] = match
             if (terminal)        out += MimEbnf.terminal(terminal)
+            else if (comment)    out += `<span class="comment">${MimEbnf.escape(comment)}</span>`
             else if (klass)      out += MimEbnf.klass(klass)
             else if (def)        out += `<span class="ebnf-meta">::=</span>`
             else if (id)         out += MimEbnf.symbol(id)

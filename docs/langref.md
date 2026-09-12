@@ -7,15 +7,21 @@ This page is the reference for Mim surface syntax.
 ## Notation
 
 This document uses a lightweight [EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)-style notation.
-A terminal is always quoted, a nonterminal never is, and the meta-symbols are:
-
-- `x ::= y` defines the nonterminal `x` as `y`.
-- `x | y` is either `x` or `y`.
-- `(x y)` groups.
-- `x*`, `x+`, and `x?` are zero or more, one or more, and an optional `x`.
-- `[a-c]` is a character range from `a` to `c`, and `[a-cx-z]` combines several; ranges only occur in the [lexical rules](@ref terminals).
-
+A terminal is shaded, a nonterminal is not, and the [lexical terminals](@ref terminals) `I`, `L`, `X_n`, `C`, and `S` have a colour of their own.
+Clicking a nonterminal or a lexical terminal traces its occurrences across the page.
+The meta-symbols are:
+```ebnf
+x ::= y  // defines the nonterminal `x` as `y`.
+x | y    // is either `x` or `y`.
+(x y)    // grouping
+x*       // zero or more `x`
+x+       // one or more `x`
+x?       // an optional `x`
+[a-c]    // character range from `a` to `c`
+[a-cx-z] // combines several ranges
+```
 For example, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
+@note Ranges only occur in the [lexical rules](@ref terminals).
 
 ## Lexical Structure {#lex}
 
@@ -77,21 +83,21 @@ norm plugin priv pub rec ret rule tt use when where with
 
 The following names are predefined aliases:
 
-```text
-tt   = 1₂
-ff   = 0₂
-Bool = Idx i1
-I1   = Idx i1
-I8   = Idx i8
-I16  = Idx i16
-I32  = Idx i32
-I64  = Idx i64
+```ebnf
+"tt"   = "1₂"
+"ff"   = "0₂"
+"Bool" = "Idx i1"
+"I1"   = "Idx i1"
+"I8"   = "Idx i8"
+"I16"  = "Idx i16"
+"I32"  = "Idx i32"
+"I64"  = "Idx i64"
 
-i1   = 2
-i8   = 0x100
-i16  = 0x1'0000
-i32  = 0x1'0000'0000
-i64  = 0
+"i1"   = "2"
+"i8"   = "0x100"
+"i16"  = "0x1'0000"
+"i32"  = "0x1'0000'0000"
+"i64"  = "0"
 ```
 
 #### Pattern Terminals
@@ -144,10 +150,16 @@ Character and string literals only admit ASCII payload characters plus the escap
 
 ### Comments
 
-Mim supports `/* ... */` multi-line comments, `// ...` single-line comments, and `/// ...` comments that are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
-`/* ... */` comments are not nested.
-For `///` comments, a line of the form `/// text` contributes `text` directly to the Markdown output.
-Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
+Supported comments:
+```mim
+/* multi-line comment */
+// single-line comment
+/// doc-comment
+```
+- `/* ... */` comments are not nested.
+- doc-comments are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
+  A line of the form `/// text` contributes `text` directly to the Markdown output.
+  Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
 
 ## Grammar {#grammar}
 
