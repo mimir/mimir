@@ -54,12 +54,8 @@ Tok Lexer::lex() {
         if (accept(U'⦄')) return tok(Tag::D_curly_r);
         if (accept(U'«')) return tok(Tag::D_quote_l);
         if (accept(U'»')) return tok(Tag::D_quote_r);
-        if (accept(U'⟪')) return tok(Tag::D_quote_l);
-        if (accept(U'⟫')) return tok(Tag::D_quote_r);
         if (accept(U'‹')) return tok(Tag::D_angle_l);
         if (accept(U'›')) return tok(Tag::D_angle_r);
-        if (accept(U'⟨')) return tok(Tag::D_angle_l);
-        if (accept(U'⟩')) return tok(Tag::D_angle_r);
         // further tokens
         if (accept( '+')) return tok(Tag::T_add);
         if (accept( '-')) {

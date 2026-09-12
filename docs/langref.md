@@ -65,10 +65,6 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 | `⊥`     | `bot`     |
 | `⊤`     | `top`     |
 | `*`     | `★`       |
-| `‹`     | `⟨`       |
-| `›`     | `⟩`       |
-| `«`     | `⟪`       |
-| `»`     | `⟫`       |
 
 #### Keywords
 
