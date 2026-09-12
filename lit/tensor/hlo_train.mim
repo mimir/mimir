@@ -23,6 +23,7 @@ plugin cps;
 plugin math;
 plugin btensor;
 use tensor;
+use math.ops.none;
 
 let f32 = math.f32;
 let F32 = math.F32;
@@ -74,4 +75,4 @@ extern fun main_hlo (w: «8; «3; F32»», b: «3; F32», x: «4; «8; F32»», 
     let s1 = tensor.get   ((0₃, ), b2);
     let s2 = tensor.get ((0₄, 0₈), dx);
     let s3 = tensor.get   ((0₄, ), sel);
-    return (math.arith.add 0 (math.arith.add 0 (s0, s1), math.arith.add 0 (s2, s3)));
+    return ((s0 + s1) + (s2 + s3));

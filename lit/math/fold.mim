@@ -4,6 +4,8 @@ plugin math;
 plugin core;
 plugin refly;
 
+use math.ops.none;
+
 let f32_1  = math.conv.u2f math.f32 1I32;
 let f32_2  = math.conv.u2f math.f32 2I32;
 let f64_2  = math.conv.u2f math.f64 2I32;
@@ -15,12 +17,12 @@ let f64_42 = math.conv.u2f math.f64 42I32;
 let f64_m1 = math.conv.s2f math.f64 255I8;
 let f64_m15 = math.conv.s2f math.f64 241I8;
 
-let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.arith.add 0 (f32_1, f32_2)), 3I32);
-let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.arith.mul 0 (f64_3, f64_2)), 6I32);
+let _ = refly.equiv.struc_eq (math.conv.f2u i32 (f32_1 + f32_2), 3I32);
+let _ = refly.equiv.struc_eq (math.conv.f2u i32 (f64_3 * f64_2), 6I32);
 let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.pow 0 (f64_2, f64_3)), 8I32);
 let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.abs 0 f64_m1), 1I32);
-let _ = refly.equiv.struc_eq (math.conv.f2s i8 (math.round.t 0 (math.arith.div 0 (f64_m15, f64_4))), 253I8);
+let _ = refly.equiv.struc_eq (math.conv.f2s i8 (math.round.t 0 (f64_m15 / f64_4)), 253I8);
 let _ = refly.equiv.struc_eq (math.conv.f2u i32 f64_42, 42I32);
 let _ = refly.equiv.struc_eq (math.conv.f2s i8 f64_m1, 255I8);
 let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.conv.f2f math.f32 f64_42), 42I32);
-let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.arith.div 0 (math.conv.u2f math.f64 171I32, f64_4)), 42I32);
+let _ = refly.equiv.struc_eq (math.conv.f2u i32 (math.conv.u2f math.f64 171I32 / f64_4), 42I32);
