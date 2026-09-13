@@ -19,7 +19,7 @@ rec Foo = [
         Bar
 ];
 
-rec F: * = Nat → F; // TODO make inference for F work again
+rec F = Nat → F;
 
 extern lam f1 v: Vec1: math.F64 = v#x;
 extern lam F1 v: vec1: math.F64 = v#X;

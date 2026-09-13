@@ -260,10 +260,17 @@ void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, ".rec {}", dbg());
-    if (!type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, type()));
-    std::print(os, " = {};", S(tab, body()));
+    std::print(os, "{}{}", mods(), isa<LamDecl>() ? "" : "rec ");
+    stream_(tab, os);
+    for (auto curr = next(); curr; curr = curr->next()) {
+        std::println(os);
+        std::print(os, "{}and ", tab);
+        curr->stream_(tab, os);
+    }
+    os << ';';
 }
+
+void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} = {}", dbg(), S(tab, body())); }
 
 void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}", is_implicit() ? "." : "", S(tab, ptrn()));
@@ -271,8 +278,8 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     if (ret()) std::print(os, ": {}", S(tab, ret()->type()));
 }
 
-void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{}{} {}", mods(), tag(), dbg());
+void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "{} {}", tag(), dbg());
     if (!doms().front()->ptrn()->isa<TuplePtrn>()) os << ' ';
     std::print(os, "{}", R(tab, doms()));
     if (codom()) std::print(os, ": {}", S(tab, codom()));
@@ -286,7 +293,6 @@ void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
             std::print(os, " = {}", S(tab, body()));
         }
     }
-    os << ';';
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {

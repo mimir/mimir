@@ -6,7 +6,7 @@ axm phase1: Bool         → Phase;
 axm phase2: []            → Phase;
 axm phase3: [Nat, Bool] → Phase;
 
-rec PiPeline: * = Phase → PiPeline; // got the pun? XD
+rec PiPeline = Phase → PiPeline; // got the pun? XD
 
 axm pipe: PiPeline;
 

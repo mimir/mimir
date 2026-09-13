@@ -766,12 +766,11 @@ Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
 Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
     check_no_extern(mods, "recursive declaration");
     eat(first ? Tag::K_rec : Tag::K_and);
-    auto dbg  = parse_id("recursive declaration");
-    auto type = accept(Tag::T_colon) ? parse_expr("type of a recursive declaration") : ptr<HoleExpr>(missing());
+    auto dbg = parse_id("recursive declaration");
     expect(Tag::T_assign, "recursive declaration");
     auto body = parse_expr("body of a recursive declaration");
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
-    return ptr<RecDecl>(track, mods, dbg, std::move(type), std::move(body), std::move(next));
+    return ptr<RecDecl>(track, mods, dbg, std::move(body), std::move(next));
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl() {

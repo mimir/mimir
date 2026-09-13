@@ -339,8 +339,22 @@ bool Checker::check(const Prod* prod, const Def* def) {
     return true;
 }
 
+// A recursive type yields `l = max(ops..., l)` for its level whose least solution is `max(ops...)`.
+static const Def* drop_self(Hole* hole, const Def* def) {
+    auto umax = def->isa<UMax>();
+    if (!umax) return def;
+
+    DefVec ops;
+    for (auto op : umax->ops())
+        if (op->zonk_mut() != hole) ops.emplace_back(op);
+
+    return ops.size() == umax->num_ops() ? def : hole->world().umax<UMax::Univ>(ops);
+}
+
 // A Hole may only be solved with a Def its type accepts; this is what pins `r` down in `s: «r; Nat»`.
 bool Checker::check(Hole* hole, const Def* def) {
+    def = drop_self(hole, def);
+
     if (def->unfold_type()) { // Univ has no type and is assignable to nothing
         if (auto new_def = assignable_(hole->type(), def))
             def = new_def;
