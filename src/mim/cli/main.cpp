@@ -130,8 +130,7 @@ int compile(Driver& driver, Opts& opts) {
 
 int main(int argc, char** argv) {
     fe::term::resolve_mode(); // colors in std::format-ed output depend on Auto being resolved up front
-
-    Driver driver; // outlives the handlers below: an Error's Locs point into its SrcMap
+    Driver driver;            // outlives the handlers below: an Error's Locs point into its SrcMap
 
     try {
         bool show_help         = false;
