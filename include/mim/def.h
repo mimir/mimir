@@ -310,7 +310,7 @@ public:
 
     /// Reports an error that blames *this*; chain Error::n for Note%s and Error::bail to throw.
     template<class... Args>
-    fe::Error& blame(std::format_string<Args...> s, Args&&... args) const {
+    fe::Error& blame(fe::cite_string<Args...> s, Args&&... args) const {
         return error().e(err_loc(), s, std::forward<Args>(args)...);
     }
     ///@}

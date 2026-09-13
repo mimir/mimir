@@ -137,7 +137,7 @@ const File* Parser::import_main(std::string_view input, fe::View<std::string> pl
 Ptr<UseDecl> Parser::parse_import_or_plugin() {
     auto track  = tracker();
     auto tag    = lex().tag();
-    auto entity = tag == Tag::K_import ? "import" : "plugin";
+    auto entity = fe::Cite(tag == Tag::K_import ? "import" : "plugin");
 
     Dbg name;
     Sym path;
@@ -179,13 +179,13 @@ Ptr<UseDecl> Parser::parse_import_or_plugin() {
     return {};
 }
 
-Dbg Parser::parse_id(std::string_view ctxt) {
+Dbg Parser::parse_id(fe::Cite ctxt) {
     if (auto id = accept(Tag::M_id)) return id.dbg();
     syntax_err("identifier", ctxt);
     return {missing(), driver().sym("<error>")};
 }
 
-Path Parser::parse_path(std::string_view ctxt) {
+Path Parser::parse_path(fe::Cite ctxt) {
     auto track = tracker();
     auto dbgs  = Dbgs{parse_id(ctxt)};
     while (accept(Tag::T_dot))
@@ -193,9 +193,9 @@ Path Parser::parse_path(std::string_view ctxt) {
     return Path(track.loc(), std::move(dbgs));
 }
 
-Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {
+Ptr<Expr> Parser::parse_type_ascr(fe::Cite ctxt) {
     if (accept(Tag::T_colon)) return parse_expr(ctxt);
-    if (ctxt.empty()) return nullptr;
+    if (!ctxt) return nullptr;
     syntax_err("`:`", ctxt);
     return ptr<ErrorExpr>(missing());
 }
@@ -204,19 +204,19 @@ Ptr<Expr> Parser::parse_type_ascr(std::string_view ctxt) {
  * exprs
  */
 
-Ptr<Expr> Parser::parse_expr(std::string_view ctxt, Prec curr_prec) {
+Ptr<Expr> Parser::parse_expr(fe::Cite ctxt, Prec curr_prec) {
     // An empty ctxt makes the expression optional, so there is nothing to recover into.
-    if (!ctxt.empty()) recover(ctxt);
+    if (ctxt) recover(ctxt);
     auto track = tracker();
     auto lhs   = parse_primary_expr(ctxt);
     return parse_infix_expr(track, std::move(lhs), curr_prec, ctxt);
 }
 
-Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_prec, std::string_view ctxt) {
+Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr>&& lhs, Prec curr_prec, fe::Cite ctxt) {
     auto prev = Prec::Err; // precedence this loop built last; a non-associative one must not repeat
     while (true) {
         // A closing delimiter nobody is waiting for must not end the expression.
-        recover(ctxt.empty() ? "expression"sv : ctxt);
+        recover(ctxt ? ctxt : fe::Cite("expression"));
 
         if (auto prec = Tok::infix_prec(ahead().tag())) {
             if (should_reduce(curr_prec, *prec)) return lhs;
@@ -294,7 +294,7 @@ Ptr<Expr> Parser::parse_match_expr() {
     return ptr<MatchExpr>(track, std::move(scrutinee), std::move(arms));
 }
 
-Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
+Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
     // clang-format off
     switch (ahead().tag()) {
         case Tag::C_PRIMARY: return ptr<PrimaryExpr>(lex());
@@ -313,7 +313,7 @@ Ptr<Expr> Parser::parse_primary_expr(std::string_view ctxt) {
         case Tag::K_Rule:    return parse_rule_expr();
         case Tag::K_match:   return parse_match_expr();
         default:
-            if (ctxt.empty()) return nullptr;
+            if (!ctxt) return nullptr;
             syntax_err("primary expression", ctxt);
     }
     // clang-format on
@@ -336,14 +336,15 @@ Ptr<Expr> Parser::parse_seq_expr() {
             eat(Tag::T_colon);
         }
 
-        auto expr = parse_expr(is_pack ? "shape of pack" : "shape of a array");
+        auto expr = parse_expr(fe::Cite(is_pack ? "shape of pack" : "shape of a array"));
         arities.emplace_back(IdPtrn::make_id(ast(), dbg, std::move(expr)));
     } while (accept(Tag::T_comma));
 
-    expect(Tag::T_semicolon, is_pack ? "pack" : "array");
-    auto body = parse_expr(is_pack ? "body of a pack" : "body of an array");
-    recover(is_pack ? "pack" : "array");
-    expect(Tok::delim_l2r(delim_l), is_pack ? "closing delimiter of a pack" : "closing delimiter of an array");
+    expect(Tag::T_semicolon, fe::Cite(is_pack ? "pack" : "array"));
+    auto body = parse_expr(fe::Cite(is_pack ? "body of a pack" : "body of an array"));
+    recover(fe::Cite(is_pack ? "pack" : "array"));
+    expect(Tok::delim_l2r(delim_l),
+           fe::Cite(is_pack ? "closing delimiter of a pack" : "closing delimiter of an array"));
 
     // `‹a, b; e›` nests one SeqExpr per arity; only the outermost one covers the delimiters.
     for (auto& ptrn : arities | std::views::reverse) {
@@ -425,9 +426,9 @@ Ptr<Expr> Parser::parse_rule_expr() {
 }
 
 Ptr<Expr> Parser::parse_pi_expr() {
-    auto track              = tracker();
-    auto tag                = ahead().tag();
-    std::string_view entity = "dependent function type";
+    auto track      = tracker();
+    auto tag        = ahead().tag();
+    fe::Cite entity = "dependent function type";
 
     if (accept(Tag::K_Cn))
         entity = "continuation type";
@@ -447,9 +448,9 @@ Ptr<Expr> Parser::parse_pi_expr() {
 }
 
 Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn>&& ptrn) {
-    auto track              = tracker(ptrn->loc());
-    std::string_view entity = "dependent function type";
-    auto dom                = ptr<PiExpr::Dom>(ptrn->loc(), std::move(ptrn));
+    auto track      = tracker(ptrn->loc());
+    fe::Cite entity = "dependent function type";
+    auto dom        = ptr<PiExpr::Dom>(ptrn->loc(), std::move(ptrn));
     expect(Tag::T_arrow_r, entity);
     auto codom = parse_expr(Prec::Arrow, "codomain of a {}", entity);
     return ptr<PiExpr>(track, Tag::Nil, std::move(dom), std::move(codom));
@@ -474,14 +475,14 @@ Ptr<Expr> Parser::parse_ret_expr() {
  * ptrns
  */
 
-Ptr<Ptrn> Parser::parse_ptrn(PtrnStyle style, std::string_view ctxt, Prec prec) {
+Ptr<Ptrn> Parser::parse_ptrn(PtrnStyle style, fe::Cite ctxt, Prec prec) {
     auto track = tracker();
     auto ptrn  = parse_ptrn_(style, ctxt, prec);
     if (accept(Tag::K_as)) return ptr<AliasPtrn>(track, std::move(ptrn), parse_id("alias pattern"));
     return ptrn;
 }
 
-Ptr<Ptrn> Parser::parse_ptrn_(PtrnStyle style, std::string_view ctxt, Prec prec) {
+Ptr<Ptrn> Parser::parse_ptrn_(PtrnStyle style, fe::Cite ctxt, Prec prec) {
     auto track = tracker();
 
     // p -> (p, ..., p)
@@ -613,7 +614,7 @@ Mods Parser::parse_modifiers() {
     }
 }
 
-void Parser::check_no_extern(const Mods& mods, std::string_view entity) {
+void Parser::check_no_extern(const Mods& mods, fe::Cite entity) {
     if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not a {}", entity);
 }
 
@@ -795,7 +796,7 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
     auto prec = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
 
     bool decl;
-    std::string_view entity;
+    fe::Cite entity;
     // clang-format off
     switch (tag) {
         case Tag::T_lm:  decl = false; entity = "function expression";                break;

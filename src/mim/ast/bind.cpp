@@ -70,7 +70,7 @@ public:
             if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;
 
         if (!quiet) {
-            auto& diag = error().e(dbg.loc(), "identifier `{}` not found", cite(dbg.sym()));
+            auto& diag = error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
             // An infix operator only exists as whatever the user bound its escaped name to.
             if (dbg.sym().view().starts_with('`'))
                 diag.n("an infix operator means whatever you bind its escaped name to");
@@ -96,15 +96,13 @@ public:
         } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), decl); !ins) {
             auto prev = i->second;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
-                error()
-                    .e(dbg.loc(), "redeclaration of `{}`", cite(dbg.sym()))
-                    .n(prev->dbg().loc(), "previous declaration here");
+                error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev->dbg().loc(), "previous declaration here");
         } else if (!quiet && !decl->scope()) {
             if (auto mod = find_shadowed_module(dbg.sym()))
                 error()
-                    .w(dbg.loc(), "`{}` shadows a module of the same name", cite(dbg.sym()))
+                    .w(dbg.loc(), "`{}` shadows a module of the same name", dbg)
                     .n(mod->dbg().loc(), "module declared here; a later `{}.member` would fail to resolve it",
-                       cite(dbg.sym()));
+                       dbg.sym());
         }
     }
 
@@ -187,12 +185,12 @@ void Path::bind(Scopes& s, bool quiet) const {
         if (!member) {
             if (!quiet) {
                 if (scope) {
-                    s.error().e(dbg.loc(), "`{}` has no member `{}`", cite(prev.sym()), cite(dbg.sym()));
+                    s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
                 } else {
-                    auto& err = s.error().e(prev.loc(), "`{}` is not a module", cite(prev.sym()));
+                    auto& err = s.error().e(prev.loc(), "`{}` is not a module", prev.sym());
                     if (auto mod = s.find_shadowed_module(prev.sym()))
                         err.n(mod->dbg().loc(), "a module `{}` exists here but is shadowed by the `{}` in scope",
-                              cite(prev.sym()), cite(prev.sym()));
+                              prev.sym(), prev.sym());
                 }
             }
             decl_ = nullptr;
@@ -203,7 +201,7 @@ void Path::bind(Scopes& s, bool quiet) const {
 
         // A dotted path always crosses into decl_'s enclosing mod from outside: `priv` blocks it.
         if (decl_->vis() == Vis::Priv) {
-            if (!quiet) s.error().e(dbg.loc(), "`{}` is private to its enclosing `mod`", cite(dbg.sym()));
+            if (!quiet) s.error().e(dbg.loc(), "`{}` is private to its enclosing `mod`", dbg.sym());
             decl_ = nullptr;
             return;
         }
@@ -322,8 +320,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
 
     auto depth = s.mod_depth();
     if (depth > 1) {
-        error().e(dbg.loc(), "`{}` sits {} `mod` levels deep; an `anx` declaration may nest at most one",
-                  cite(dbg.sym()), depth);
+        error().e(dbg.loc(), "`{}` sits {} `mod` levels deep; an `anx` declaration may nest at most one", dbg, depth);
         return nullptr;
     }
 
@@ -334,12 +331,12 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     auto& sym2annex = plugin2sym2annex_[plugin_s];
     auto tag_id     = sym2annex.size();
 
-    if (plugin_s == sym_error()) error().e(dbg.loc(), "plugin name `{}` is reserved", cite(dbg.sym()));
+    if (plugin_s == sym_error()) error().e(dbg.loc(), "plugin name `{}` is reserved", dbg);
     if (tag_id > std::numeric_limits<tag_t>::max())
         error().e(dbg.loc(), "exceeded maximum number of annexes in current plugin");
 
     if (!Annex::mangle(plugin_s)) {
-        error().e(dbg.loc(), "invalid annex name `{}`", cite(dbg.sym()));
+        error().e(dbg.loc(), "invalid annex name `{}`", dbg);
         plugin_s = sym_error();
     }
 
@@ -352,7 +349,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
             auto& aliases = annex->subs.emplace_back();
             aliases.emplace_back(sub_s);
         } else {
-            error().e(dbg.loc(), "annex `{}` must not have a subtag", cite(dbg.sym()));
+            error().e(dbg.loc(), "annex `{}` must not have a subtag", dbg);
         }
     }
 
@@ -374,13 +371,13 @@ void AxmDecl::bind(Scopes& s) const {
             s.error().e(dbg().loc(),
                         "all declarations of annex `{}` must be function types if one of them is (they share one "
                         "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
-                        cite(dbg().sym()));
+                        dbg().sym());
 
         if (annex_->normalizer.sym() != normalizer().sym()) {
             auto l    = normalizer().loc() ? normalizer().loc() : loc().anew_end();
-            auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", cite(dbg().sym()));
+            auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", dbg());
             if (auto norm = annex_->normalizer)
-                err.n(norm.loc(), "previous normalizer `{}` declared here", cite(norm.sym()));
+                err.n(norm.loc(), "previous normalizer `{}` declared here", norm);
             else
                 err.n("initially no normalizer was specified");
         }
@@ -402,14 +399,14 @@ void AliasDecl::bind(Scopes& s) const {
     if (!target) return;
 
     if (target->isa<AliasDecl>()) {
-        s.error().e(loc(), "`{}` aliases `{}`, which is itself an alias; alias chains are not supported",
-                    cite(dbg().sym()), cite(path()->back().sym()));
+        s.error().e(loc(), "`{}` aliases `{}`, which is itself an alias; alias chains are not supported", dbg(),
+                    path()->back());
         return;
     }
 
     std::tie(annex_, sub_) = target->annex_sub();
     if (!annex_) {
-        s.error().e(loc(), "`{}` must alias a compiler-exposed (`anx`) declaration", cite(dbg().sym()));
+        s.error().e(loc(), "`{}` must alias a compiler-exposed (`anx`) declaration", dbg());
         return;
     }
 
@@ -523,7 +520,7 @@ const Scope* UseDecl::module(Scopes& s) const {
     if (!decl) return nullptr;
 
     auto scope = decl->scope();
-    if (!scope) s.error().e(path()->loc(), "`{}` is not a module", cite(path()->back().sym()));
+    if (!scope) s.error().e(path()->loc(), "`{}` is not a module", path()->back().sym());
     return scope;
 }
 
