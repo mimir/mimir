@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+let x = 5I32 ← 6I32;
+
+// CHECK:      {{.*}}insert_no_index.mim:3:9-3:12: error: expected `#` on the left-hand side of `←`
+// CHECK-NEXT: 3 | let x = 5I32 ← 6I32;
+// CHECK-NEXT:   |         ^^^^
+// CHECK-NEXT:   = note: an update needs a component, as in `tuple#index ← value`
