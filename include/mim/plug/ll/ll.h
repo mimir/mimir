@@ -367,8 +367,8 @@ inline void Emitter::start() {
 }
 
 inline bool Emitter::load_rt_module(std::string_view filename) {
-    for (const auto& dir : world().driver().search_paths()) {
-        auto path = dir / "rt" / std::string(filename);
+    for (const auto& dir : world().driver().rt_paths()) {
+        auto path = dir / std::string(filename);
         std::error_code ec;
         if (!std::filesystem::is_regular_file(path, ec) || ec) continue;
         if (auto ifs = std::ifstream(path)) {

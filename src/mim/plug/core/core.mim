@@ -12,11 +12,11 @@ plugin mem;
 ///
 /// ### nat
 ///
-/// Standard arithmetic operations on `Nat`s. <br>
-/// `core.nat.sub (a, b)` yields `0` if `a < b`. <br>
-/// `core.nat.div (a, b)` yields `0` if `b` is `0`. <br>
-/// `core.nat.rem (a, b)` yields `a` if `b` is `0`. <br>
-/// This holds both statically (literal folding) and dynamically (runtime lowering).
+/// Standard arithmetic operations on `Nat`s:
+/// - `core.nat.sub (a, b)` yields `0` if `a < b`.
+/// - `core.nat.div (a, b)` yields `0` if `b` is `0`.
+/// - `core.nat.rem (a, b)` yields `a` if `b` is `0`.
+///   This holds both statically (literal folding) and dynamically (runtime lowering).
 ///
 axm nat.(add, sub, mul, div, rem): «2; Nat» → Nat, normalize_nat;
 ///
@@ -49,8 +49,8 @@ axm ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
 /// Instead, the operations themselves exhibit signed or unsigned behavior.
 ///
 /// For `Idx s`,
-/// * **unsigned** interpretation is the canonical carrier order on the finite set \f$ \{ 0, \dots, s-1 \} \f$.
-/// * **signed** interpretation is defined by choosing, for each residue class modulo \f$s\f$, its canonical signed representative.
+/// - **unsigned** interpretation is the canonical carrier order on the finite set \f$ \{ 0, \dots, s-1 \} \f$.
+/// - **signed** interpretation is defined by choosing, for each residue class modulo \f$s\f$, its canonical signed representative.
 ///
 /// Concretely, a value \f$x : \mathrm{Idx}\;s\f$ is considered non-negative iff \f$ x \le \lfloor (s-1)/2 \rfloor \f$, and negative otherwise.
 /// Hence the signed range is
@@ -243,8 +243,8 @@ axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
 /// ### extrema
 ///
 /// Minimum and maximum of two integers:
-/// * un`s`igned or `S`igned
-/// * `m`inimum or `M`aximum
+/// - un`s`igned or `S`igned
+/// - `m`inimum or `M`aximum
 ///
 axm extrema.(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
 ///
@@ -261,8 +261,8 @@ axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
 /// ### conv
 ///
 /// Conversion between index types - both signed and unsigned - of different sizes.
-/// * `conv.u` preserves the unsigned representative modulo the destination carrier.
-/// * `conv.s` preserves the signed representative modulo the destination carrier.
+/// - `conv.u` preserves the unsigned representative modulo the destination carrier.
+/// - `conv.s` preserves the signed representative modulo the destination carrier.
 ///
 axm conv.(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
 ///

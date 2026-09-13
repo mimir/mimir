@@ -26,7 +26,7 @@ enum Emit { AST, Dot, H, PY, Md, Mim, NestDot, SExpr, Slotted, Profile, Num_Emit
 /// Everything the command line configures that neither Flags nor fe::CodeDiag already holds.
 struct Opts {
     std::string input;
-    std::vector<std::string> plugins, search_paths, plugin_args;
+    std::vector<std::string> plugins, search_paths, import_paths, prefix_paths, plugin_args;
     std::array<Out, Num_Emits> outs;
     DotConfig dot;
     bool sexpr_include_types = false;
@@ -176,7 +176,9 @@ int main(int argc, char** argv) {
             .opt(show_version              , ""          , "-v", "--version"             , "Displays version info and exits.")
             .opt(list_search_paths         , ""          , "-l", "--list-search-paths"   , "Lists the search paths in order and exits.")
             .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin.")
-            .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins.")
+            .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins; also searched for imports.")
+            .opt(opts.import_paths         , "path"      , "-I", "--import-path"         , "Path to search for imports.")
+            .opt(opts.prefix_paths         , "path"      , ""  , "--prefix-path"         , "Install prefix to derive plugin, import, and runtime directories from.")
             .opt(opts.plugin_args          , "plugin:arg", "-X", "--plugin-arg"          , "Passes an argument to a plugin/phase, e.g. `-X ll:o=output.ll`. Repeatable.")
             .opt(flags.force_load          , ""          , ""  , "--force-load"          , "Loads plugins even on version mismatch.")
             .opt(flags.bootstrap           , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR.")
@@ -226,6 +228,8 @@ int main(int argc, char** argv) {
 #endif
             .section("Environment Variables", "Variable", {
                 {"MIM_PLUGIN_PATH", std::format("{}-separated list of plugin search paths, searched after those given via `-P`.", fe::sys::Path_Sep_Word)},
+                {"MIM_IMPORT_PATH", std::format("{}-separated list of import search paths, searched after those given via `-I`.", fe::sys::Path_Sep_Word)},
+                {"MIM_PREFIX_PATH", std::format("{}-separated list of install prefixes, searched after those given via `--prefix-path`.", fe::sys::Path_Sep_Word)},
                 {"NO_COLOR"       , "Disables colored output if set to a non-empty value; wins over the two below."},
                 {"CLICOLOR_FORCE" , "Forces colored output if set to a non-empty value other than 0."},
                 {"CLICOLOR"       , "Disables colored output if set to 0."},
@@ -241,7 +245,13 @@ int main(int argc, char** argv) {
         if (flags.profile != Flags::Profile::None && profile_file.empty()) profile_file = "-";
 
         for (auto&& path : opts.search_paths)
-            driver.add_search_path(path);
+            driver.add_plugin_path(path);
+
+        for (auto&& path : opts.import_paths)
+            driver.add_import_path(path);
+
+        for (auto&& path : opts.prefix_paths)
+            driver.add_prefix_path(path);
 
         if (show_help || show_help_md) {
             emit_help(cli, driver, opts.plugins, show_help_md);
@@ -261,8 +271,14 @@ int main(int argc, char** argv) {
         }
 
         if (list_search_paths) {
-            for (auto&& path : driver.search_paths() | std::views::drop(1)) // skip first empty path
-                std::cout << path << std::endl;
+            auto list = [](std::string_view kind, const fe::Vector<fs::path>& paths) {
+                std::cout << kind << ':' << std::endl;
+                for (auto&& path : paths | std::views::drop(1)) // skip first empty path
+                    std::cout << "    " << path << std::endl;
+            };
+            list("plugins", driver.plugin_paths());
+            list("imports", driver.import_paths());
+            list("runtimes", driver.rt_paths());
             return EXIT_SUCCESS;
         }
 

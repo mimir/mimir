@@ -11,6 +11,7 @@
 
 #define MIM_INSTALL_PREFIX "@CMAKE_INSTALL_PREFIX@"
 #define MIM_LIBDIR         "@CMAKE_INSTALL_LIBDIR@"
+#define MIM_DATADIR        "@CMAKE_INSTALL_DATADIR@"
 
 #ifdef _MSC_VER
 #    define MIM_EXPORT   __declspec(dllexport)

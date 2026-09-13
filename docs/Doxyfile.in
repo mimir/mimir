@@ -1171,6 +1171,7 @@ EXAMPLE_PATH           = @CMAKE_CURRENT_BINARY_DIR@ \
                          @PROJECT_SOURCE_DIR@/src \
                          @PROJECT_SOURCE_DIR@/examples \
                          @PROJECT_BINARY_DIR@/include \
+                         @PROJECT_BINARY_DIR@/py/mim/_plugins \
                          @PROJECT_BINARY_DIR@/@CMAKE_INSTALL_LIBDIR@/mim
 
 # If the value of the EXAMPLE_PATH tag contains directories, you can use the

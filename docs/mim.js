@@ -6,9 +6,10 @@ Doxygen has no Mim parser and discards the language of a fenced code block, so a
 */
 
 class MimCode {
-    static KEYWORD = new Set(["and", "anx", "axm", "cn", "con", "extern", "fn", "fun", "import", "lam", "let", "lm",
-                              "mod", "norm", "plugin", "priv", "pub", "rec", "rule", "use", "λ"])
-    static FLOW = new Set(["as", "end", "inj", "match", "ret", "when", "where", "with"])
+    static KEYWORD = new Set(["cn", "end", "fn", "inj", "lm", "match", "ret", "when", "where", "with", "λ"])
+    /// `C_DECL` of `src/mim/ast/family.h` plus the modifiers of `Parser::parse_modifiers`.
+    static DECL = new Set(["and", "anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "norm",
+                           "plugin", "priv", "pub", "rec", "rule", "use"])
     static TYPE = new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ",
                            "i1", "i8", "i16", "i32", "i64"])
     static LITERAL = new Set(["bot", "ff", "top", "tt", "⊥", "⊤"])
@@ -36,7 +37,7 @@ class MimCode {
 
     static word(text) {
         if (MimCode.KEYWORD.has(text)) return MimCode.span("keyword", text)
-        if (MimCode.FLOW.has(text)) return MimCode.span("keywordflow", text)
+        if (MimCode.DECL.has(text)) return MimCode.span("keywordflow", text)
         if (MimCode.TYPE.has(text)) return MimCode.span("keywordtype", text)
         if (MimCode.LITERAL.has(text)) return MimCode.span("mim-literal", text)
         if (MimCode.SPECIAL.has(text)) return MimCode.span("mim-special", text)

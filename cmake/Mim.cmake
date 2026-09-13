@@ -98,12 +98,13 @@ function(add_mim_plugin)
     set(OUT_PLUGIN_MIM  ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${PLUGIN}.mim)
     set(PLUGIN_MD       ${CMAKE_BINARY_DIR}/docs/plug/${PLUGIN}.md)
     set(AUTOGEN_H       ${CMAKE_BINARY_DIR}/include/mim/plug/${PLUGIN}/autogen.h)
-    set(AUTOGEN_PY      ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${PLUGIN}.py)
+    set(AUTOGEN_PY      ${CMAKE_BINARY_DIR}/py/mim/_plugins/${PLUGIN}.py)
 
     file(
         MAKE_DIRECTORY
             ${CMAKE_BINARY_DIR}/docs/plug/
             ${CMAKE_BINARY_DIR}/include/mim/plug/${PLUGIN}
+            ${CMAKE_BINARY_DIR}/py/mim/_plugins/
             ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/
     )
 
@@ -115,7 +116,7 @@ function(add_mim_plugin)
             ${AUTOGEN_H}
             ${AUTOGEN_PY}
             ${PLUGIN_MD}
-        COMMAND $<TARGET_FILE:${MIM_TARGET_NAMESPACE}mim> ${PLUGIN_MIM} -P "${CMAKE_SOURCE_DIR}/src/mim/plug" -P "${CMAKE_CURRENT_LIST_DIR}/.." --bootstrap
+        COMMAND $<TARGET_FILE:${MIM_TARGET_NAMESPACE}mim> ${PLUGIN_MIM} -I "${CMAKE_SOURCE_DIR}/src/mim/plug" -I "${CMAKE_CURRENT_LIST_DIR}/.." --bootstrap
             --output-h ${AUTOGEN_H}
             --output-md ${PLUGIN_MD}
             --output-py ${AUTOGEN_PY}

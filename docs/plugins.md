@@ -64,7 +64,7 @@ MimIR's custom CMake command [`add_mim_plugin`](@ref add_mim_plugin_cmake) runs 
 ```sh
 mim demo.mim --bootstrap \
     --output-h  build/include/mim/plug/demo/autogen.h \
-    --output-py build/lib/mim/demo.py \
+    --output-py build/py/mim/_plugins/demo.py \
     --output-md build/docs/plug/demo.md
 ```
 

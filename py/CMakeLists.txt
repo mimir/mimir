@@ -243,16 +243,10 @@ if(WIN32)
     )
 endif()
 set(_mim_py_stage_plugin_commands
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_mim_py_plugin_stage}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_BINARY_DIR}/py/mim/_plugins" "${_mim_py_plugin_stage}"
     COMMAND "${CMAKE_COMMAND}" -E touch "${_mim_py_plugin_stage}/__init__.py"
 )
-foreach(_plugin ${MIM_PLUGIN_LIST})
-    list(APPEND _mim_py_stage_plugin_commands
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/${_plugin}.py"
-                "${_mim_py_plugin_stage}/${_plugin}.py"
-    )
-endforeach()
 add_custom_target(mim_py_main
     # Wipe the source side of the stage so deleted py/src files don't linger.
     # Generated artifacts under src/mim/_plugins are restaged below.

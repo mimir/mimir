@@ -50,8 +50,17 @@ const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md
         if (!is_file(rel_path)) rel_path.clear();
     }
 
+    // A plugin's two halves must be the pair that shipped together, so take the `.mim` from the library's directory.
+    if (rel_path.empty() && !is_path && tag == Tag::K_plugin) {
+        if (auto dir = driver().plugin_dir(name.view())) {
+            rel_path = *dir / filename;
+            if (!is_file(rel_path)) rel_path = *dir / name.view() / filename;
+            if (!is_file(rel_path)) rel_path.clear();
+        }
+    }
+
     if (rel_path.empty()) {
-        for (const auto& path : driver().search_paths()) {
+        for (const auto& path : driver().import_paths()) {
             rel_path = path / filename;
             if (is_file(rel_path)) break;
             if (is_path) continue; // `some/dir/foo.mim` must not also be probed as `some/dir/foo.mim/foo.mim`

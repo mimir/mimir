@@ -25,13 +25,27 @@ Use `--loc-style` to pick how much of a location that header spells out:
 
 ### Search Paths
 
-Mim looks for plugins in this order:
+Mim keeps three separate lookups, because the artifacts they find are different in kind:
+a plugin library is host-native code, a `.mim` is portable source, and a backend runtime belongs to the target.
 
-1. The current working directory.
-2. All paths specified via `-P` / `--plugin-path` (in the given order).
-3. All paths specified in the environment variable `MIM_PLUGIN_PATH` (in the given order).
-4. `path/to/mim.exe/../../lib/mim`
-5. `CMAKE_INSTALL_PREFIX/lib/mim`
+Two kinds of entry feed them.
+A *plain directory* is probed as-is and is what `-P` / `-I` and their environment variables add.
+A *prefix root* stands for an install tree and derives `<root>/lib/mim`, `<root>/share/mim`, and `<root>/lib/mim/rt` from itself;
+`--prefix-path` / `MIM_PREFIX_PATH` add one, as do the install prefix and the tree `libmim` was loaded from.
+
+| Looking for | Order |
+| --- | --- |
+| `libmim_<name>` | cwd, `-P`, `MIM_PLUGIN_PATH`, then each root's `lib/mim` |
+| `<name>.mim` | cwd, `-I`, `MIM_IMPORT_PATH`, `-P`, `MIM_PLUGIN_PATH`, then each root's `share/mim` and `lib/mim` |
+| runtime modules | cwd `rt`, `-P` and `MIM_PLUGIN_PATH` each with `rt`, then each root's `lib/mim/rt` |
+
+Plugin directories are searched for imports too, since a plugin ships both of its halves together.
+`mim -l` prints all three lists fully resolved.
+
+A `plugin <name>;` directive is special: its `<name>.mim` is taken from the directory `libmim_<name>` was actually loaded from,
+so the two halves of a plugin can never be paired up across different directories.
+A bare `import <name>;` has no such anchor and resolves by the table above,
+so spell an import of your own file as `import "<name>.mim"` if the name could collide with an installed plugin.
 
 ### Arguments {#clipluginargs}
 
