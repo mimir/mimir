@@ -65,10 +65,10 @@ target_include_directories(libmim
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include> # for config.h
         $<INSTALL_INTERFACE:include>
 )
-# fe-lib is compiled into libmim rather than propagated, so that the plugins - which all link
-# libmim - resolve fe's non-header-only symbols there instead of each carrying a copy.
+# fe is an OBJECT library: its objects land in libmim - the only target linking it directly - so that
+# the plugins, which all link libmim, resolve fe's symbols there instead of each carrying a copy.
 # libmim *is* that shared library, so its own units export fe's symbols rather than import them.
-set_target_properties(libmim PROPERTIES DEFINE_SYMBOL fe_lib_EXPORTS)
+set_target_properties(libmim PROPERTIES DEFINE_SYMBOL fe_EXPORTS)
 target_link_libraries(libmim
     PUBLIC
         absl::btree
@@ -78,8 +78,6 @@ target_link_libraries(libmim
         absl::node_hash_map absl::node_hash_set
         fe
         ${CMAKE_DL_LIBS}
-    PRIVATE
-        fe-lib
 )
 
 install(
