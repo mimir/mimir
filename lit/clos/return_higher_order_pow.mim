@@ -40,7 +40,7 @@ con aug_f (m: mem.M 0, x: I32, aug_ret: AugRet) =
     con aug_pow_then (m: mem.M 0, unused: TupPb) =
         aug_ret (m, 1I32, zero_pb);
 
-    (aug_pow_else, aug_pow_then)#(x == 0I32)) (m, tup_pb);
+    (aug_pow_else, aug_pow_then)#(x == 0I32) (m, tup_pb);
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
     con fwd (res: [mem.M 0, I32]) = return res;
