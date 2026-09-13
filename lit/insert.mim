@@ -1,22 +1,33 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
 plugin core;
+plugin refly;
 
 let `+ = core.wrap.add 0;
 
 let inner = (1I32, 2I32);
 let outer = (inner, inner);
 
-rec Pair = [fst: I32, snd: I32];
+rec Pair  = [fst: I32, snd: I32];
+rec Pairs = [a: Pair, b: Pair];
 
 extern lam a (): «2; I32»      = inner#0_2 ← 7I32;
 extern lam b (): «2; I32»      = inner#0_2 <- 7I32;             // the ASCII spelling of `←`
 extern lam c (): «2; «2; I32»» = outer#0_2 ← inner#1_2 ← 9I32;  // right associative
 extern lam d (): «2; I32»      = inner#0_2 ← 2I32 + 5I32;       // binds weaker than `+`
 extern lam e (p: Pair): Pair   = p#snd ← 8I32;                  // a named sigma field
-extern lam f (): I32           = 5I32 ← 6I32;                   // an arity-1 value is its own component
+
+extern lam f (p: Pairs): Pairs = p#b#snd ⇐ 8I32;                // a path of named sigma fields
+extern lam g (p: Pairs): Pairs = p#b#snd <== 8I32;              // the ASCII spelling of `⇐`
+extern lam h (p: Pairs): Pair  = p#b#snd ← 8I32;                // `←` updates p#b and yields a Pair
+
+let t1 = ((1, 2), (3, 4, 5));
+let t2 = t1#1_2#0_3 ⇐ 23;
+
+let row = t1#1_2;
+let _ = refly.equiv.struc_eq (t2, t1#1_2 ← row#0_3 ← 23);       // `⇐` is exactly this chain
+let _ = refly.equiv.struc_eq (t2, ((1, 2), (23, 4, 5)));
 
 // CHECK-DAG: (7I32, 2I32)
 // CHECK-DAG: ((1I32, 9I32), (1I32, 2I32))
 // CHECK-DAG: ← 8I32
-// CHECK-DAG: 6I32

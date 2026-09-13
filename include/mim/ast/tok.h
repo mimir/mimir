@@ -168,6 +168,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_ge,         ">=")              \
     m(T_gt,         ">")               \
     m(T_arrow_l,     "←")               \
+    m(T_darrow_l,    "⇐")               \
     m(T_le,         "<=")              \
     m(T_lm,         "λ")               \
     m(T_lt,         "<")               \
@@ -202,13 +203,14 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_rem,  "%",  Mul  )
 
 /// These have a meaning of their own; InfixExpr::emit_ dispatches on the tag.
-#define MIM_INFIX_CORE(m)        \
-    m(T_extract, "#",   Extract) \
-    m(T_union,   "∪",   Union  ) \
-    m(K_inj,     "inj", Inj    ) \
-    m(T_arrow_r, "→",   Arrow  ) \
-    m(T_arrow_l, "←",   Ins    ) \
-    m(T_at,      "@",   App    )
+#define MIM_INFIX_CORE(m)         \
+    m(T_extract,  "#",   Extract) \
+    m(T_union,    "∪",   Union  ) \
+    m(K_inj,      "inj", Inj    ) \
+    m(T_arrow_r,  "→",   Arrow  ) \
+    m(T_arrow_l,  "←",   Ins    ) \
+    m(T_darrow_l, "⇐",   Ins    ) \
+    m(T_at,       "@",   App    )
 
 #define MIM_INFIX(m) MIM_INFIX_SUGAR(m) MIM_INFIX_CORE(m)
 ///@}

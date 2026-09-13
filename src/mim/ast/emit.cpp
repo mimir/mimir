@@ -307,13 +307,35 @@ const Def* InfixExpr::emit_(Emitter& e) const {
             auto tup = lhs()->emit(e);
             return w.extract(tup, emit_index(e, tup));
         }
-        case Tag::T_arrow_l: {
-            // Without a `#` the left-hand side is its own sole component, so the index can only be `0₁`.
-            auto ex  = InfixExpr::isa_op(Tag::T_extract, lhs());
-            auto tup = (ex ? ex->lhs() : lhs())->emit(e);
-            auto idx = ex ? ex->emit_index(e, tup) : w.lit_idx(1, 0);
+        case Tag::T_arrow_l:
+        case Tag::T_darrow_l: {
+            fe::Vector<const InfixExpr*> exs;
+            auto base = lhs();
+            while (auto ex = InfixExpr::isa_op(Tag::T_extract, base)) {
+                exs.emplace_back(ex);
+                base = ex->lhs();
+                if (op().isa(Tag::T_arrow_l)) break; // `←` updates one component, `⇐` the whole `#`-path
+            }
+
+            if (exs.empty())
+                e.error()
+                    .e(lhs()->loc(), "expected `#` on the left-hand side of `{}`", Tok::tag2str(op().tag()))
+                    .n("an update needs a component, as in `tuple#index {} value`", Tok::tag2str(op().tag()))
+                    .bail();
+
+            auto tup = base->emit(e);
+            DefVec tups, idxs;
+            for (auto ex : exs | std::views::reverse) {
+                auto idx = ex->emit_index(e, tup);
+                tups.emplace_back(tup);
+                idxs.emplace_back(idx);
+                tup = w.extract(tup, idx);
+            }
+
             auto val = rhs()->emit(e);
-            return w.insert(tup, idx, val);
+            for (size_t i = tups.size(); i-- != 0;)
+                val = w.insert(tups[i], idxs[i], val);
+            return val;
         }
         default: break;
     }
