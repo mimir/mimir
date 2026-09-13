@@ -261,6 +261,9 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `let` introduces a binding pattern.
 - `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
+  The declared name is already in scope inside its own body, so such a declaration is recursive.
+  `and` extends the group to mutual recursion; a forward reference without `and` does not resolve.
+  The corresponding [expression forms](@ref expr) are anonymous and cannot refer to themselves.
 - `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
   Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
 - The `@` of a `dom` introduces its partial-evaluation filter.
@@ -408,6 +411,7 @@ e   ::= e "→" e
 - `e → e` is the ordinary arrow type.
 - `t → e`, `Cn t`, and `Fn t → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
+  They are anonymous, so they cannot call themselves; use a `lam`/`con`/`fun` [declaration](@ref decl) to recurse.
 - Application is written by juxtaposition.
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
@@ -436,7 +440,9 @@ arity ::= e
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
   A `#` on the left is mandatory: without a component to update there is nothing to insert into.
 - `←` updates the component at the *whole* `#`-path, so `t#i#j#k ← v` denotes the outer aggregate `t`.
-  Parentheses cut the path short: `(t#i)#j ← v` denotes `t#i` instead.
+  The path extends leftward through `#` and stops at the first expression that is not itself a `#`, so `(t#i)#j ← v` denotes `t#i` instead.
+  `( ... )` builds a tuple and does not merely group, so it ends a path even though a one-element tuple denotes its element.
+  A `let` ends a path the same way: `let row = t#i; row#j ← v` also denotes `t#i`.
 - `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
 
 #### Unions
@@ -536,7 +542,7 @@ A partial-evaluation filter defaults to `tt`, except on the last domain of a `co
 ### Expressions
 
 The following expressions are equivalent.
-Because they are bound by `let`, they behave like the declarations above:
+Because they are bound by `let`, they behave like the declarations above - except that `f` is *not* in scope inside the body, so they cannot recurse:
 
 ```mim
 let f =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
