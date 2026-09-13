@@ -231,11 +231,11 @@ d      ::= "import" (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
         |  vis? "extern" lam I fwd+ (":" e)? ";"
-        |  vis? "anx"? "rec" I (":" e)? "=" e and*
+        |  vis? "anx"? "rec" I "=" e and*
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
-and    ::= "and" I (":" e)? "=" e
+and    ::= "and" I "=" e
         |  "and" lam I dom+ (":" e)? "=" e
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
@@ -265,6 +265,8 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
 - The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
+  Its body must be a sigma or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
+  A recursive *function* is declared with `lam`/`con`/`fun` instead.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
 - `axm` declares an axiom.
   A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
@@ -586,7 +588,7 @@ In the example below, `i` refers to the field name of `S`, not the `let`-bound v
 
 ```mim
 let i = 1_2;
-rec S: * = [i: Nat, j: Nat];
+rec S = [i: Nat, j: Nat];
 lam f (x: S): Nat = x#i;
 ```
 
@@ -594,7 +596,7 @@ Use parentheses to force the variable interpretation:
 
 ```mim
 let i = 1_2;
-rec S: * = [i: Nat, j: Nat];
+rec S = [i: Nat, j: Nat];
 lam f (x: S): Nat = x#(i);
 ```
 

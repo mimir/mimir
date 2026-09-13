@@ -1,0 +1,4 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+rec f = λ (x: Nat) = x;
+// CHECK: error: unsupported expression in a recursive declaration
+// CHECK: use `lam`/`con`/`fun` to declare a recursive function

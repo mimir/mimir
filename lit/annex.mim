@@ -5,7 +5,7 @@ plugin math;
 pub mod Vec3 {
     anx let xyz = [x: math.F64, y: math.F64, z: math.F64];
     anx let rgb = [r: math.F64, g: math.F64, w: math.F64];
-    anx rec rpi: □ = xyz → rpi;
+    anx rec rpi = xyz → rpi;
     anx let zero = 0;
     anx lam unit (i: Idx 3): xyz =
         (xyz (1.0:math.F64, 0.0:math.F64, 0.0:math.F64),

@@ -997,18 +997,16 @@ private:
     mutable const Def* mim_type_ = nullptr;
 };
 
-/// `rec dbg: type = body;` with an optional `and` RecDecl::next.
+/// `rec dbg = body;` with an optional `and` RecDecl::next.
 class RecDecl : public ValDecl {
 public:
-    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr>&& type, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
+    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
         : ValDecl(loc, mods)
         , dbg_(dbg)
-        , type_(std::move(type))
         , body_(std::move(body))
         , next_(std::move(next)) {}
 
     Dbg dbg() const override { return dbg_; }
-    const Expr* type() const { return type_.get(); }
     const Expr* body() const { return body_.get(); }
     const RecDecl* next() const { return next_.get(); }
 
@@ -1023,9 +1021,12 @@ public:
     void stream(fe::Tab&, std::ostream&) const override;
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
+protected:
+    /// Streams this declaration alone - without the leading `rec`/`and` and without the trailing `;`.
+    virtual void stream_(fe::Tab&, std::ostream&) const;
+
 private:
     Dbg dbg_;
-    Ptr<Expr> type_;
     Ptr<Expr> body_;
     Ptr<RecDecl> next_;
     mutable AnnexInfo* annex_ = nullptr;
@@ -1064,7 +1065,7 @@ public:
             Ptr<Expr>&& codom,
             Ptr<Expr>&& body,
             Ptr<RecDecl>&& next)
-        : RecDecl(loc, mods, dbg, nullptr, std::move(body), std::move(next))
+        : RecDecl(loc, mods, dbg, std::move(body), std::move(next))
         , tag_(tag)
         , doms_(std::move(doms))
         , codom_(std::move(codom)) {
@@ -1083,8 +1084,10 @@ public:
     void bind_body(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
+
+protected:
+    void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
     Tok::Tag tag_;

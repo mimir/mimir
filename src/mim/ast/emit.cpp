@@ -539,8 +539,7 @@ void RecDecl::emit(Emitter& e) const {
 
 void RecDecl::emit_decl(Emitter& e) const {
     auto _ = e.world().push(loc());
-    auto t = type() ? type()->emit(e) : e.world().type_infer_univ();
-    def_   = body()->emit_decl(e, t);
+    def_   = body()->emit_decl(e, e.world().type_infer_univ());
     def_->set(dbg().sym());
 }
 

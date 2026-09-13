@@ -443,13 +443,10 @@ void RecDecl::bind(Scopes& s) const {
 }
 
 void RecDecl::bind_decl(Scopes& s) const {
-    if (auto t = type()) t->bind(s);
-    if (!type()->isa<HoleExpr>() && body()->isa<LamExpr>())
-        s.error().w(type()->loc(), "type of recursive declaration ignored for function expression");
-
-    if (!body()->isa<LamExpr>() && !body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body())
-        && !body()->isa<SigmaExpr>())
-        s.error().e(body()->loc(), "unsupported expression in a recursive declaration");
+    if (!body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body()) && !body()->isa<SigmaExpr>())
+        s.error()
+            .e(body()->loc(), "unsupported expression in a recursive declaration")
+            .n("must be a sigma or a function type; use `lam`/`con`/`fun` to declare a recursive function");
 
     s.bind(dbg(), this);
     if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
