@@ -44,7 +44,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 ```text
 ( ) [ ] { } ⦃ ⦄
 ‹ › « »
-→ ← ⇐ => ⊥ ⊤ * □ λ
+→ ← => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
 + - / % == != < <= > >= << >>
 <eof>
@@ -61,7 +61,6 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 |---------|-----------|
 | `→`     | `->`      |
 | `←`     | `<-`      |
-| `⇐`     | `<==`     |
 | `λ`     | `lm`      |
 | `⊥`     | `bot`     |
 | `⊤`     | `top`     |
@@ -422,8 +421,7 @@ e     ::= "[" tlist? "]"
        |  "‹" arity ("," arity)* ";" e "›"
        |  e "#" e
        |  e "#" I
-       |  e "#" e "←" e
-       |  e ("#" e)+ "⇐" e
+       |  e ("#" e)+ "←" e
 
 arity ::= e
        |  I ":" e
@@ -437,8 +435,8 @@ arity ::= e
 - `e#e` extracts a component by index, `e#I` by [field name](@ref field).
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
   A `#` on the left is mandatory: without a component to update there is nothing to insert into.
-- `tuple#i#j#k ⇐ value` updates the component at the *whole* path, so it denotes the outer aggregate.
-  It is sugar for the nested `←` chain and coincides with `←` when the path has a single `#`.
+- `←` updates the component at the *whole* `#`-path, so `t#i#j#k ← v` denotes the outer aggregate `t`.
+  Parentheses cut the path short: `(t#i)#j ← v` denotes `t#i` instead.
 - `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
 
 #### Unions
@@ -508,7 +506,7 @@ Parser and dumper share one ladder of precedence levels, listed here from strong
 | 10 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                    |
 | 11 | `Union`   | left  | `e ∪ e`                              |                                                                          |
 | 12 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                    |
-| 13 | `Ins`     | right | `e#e ← e`, `e#e ⇐ e`                 | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`. |
+| 13 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`. |
 | 14 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                            |
 | 15 | `Bot`     |   -   | *pseudo*                             | A complete expression; the default bound, and the only one a trailing `where` fits into. |
 | 16 | `Err`     |   -   | *pseudo*                             | Below everything; the parser's "no operator seen yet" sentinel.          |

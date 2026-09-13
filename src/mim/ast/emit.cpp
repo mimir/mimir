@@ -307,14 +307,12 @@ const Def* InfixExpr::emit_(Emitter& e) const {
             auto tup = lhs()->emit(e);
             return w.extract(tup, emit_index(e, tup));
         }
-        case Tag::T_arrow_l:
-        case Tag::T_darrow_l: {
+        case Tag::T_arrow_l: {
             fe::Vector<const InfixExpr*> exs;
             auto base = lhs();
             while (auto ex = InfixExpr::isa_op(Tag::T_extract, base)) {
                 exs.emplace_back(ex);
                 base = ex->lhs();
-                if (op().isa(Tag::T_arrow_l)) break; // `←` updates one component, `⇐` the whole `#`-path
             }
 
             if (exs.empty())

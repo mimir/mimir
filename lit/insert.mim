@@ -17,16 +17,16 @@ extern lam c (): «2; «2; I32»» = outer#0_2 ← inner#1_2 ← 9I32;  // right
 extern lam d (): «2; I32»      = inner#0_2 ← 2I32 + 5I32;       // binds weaker than `+`
 extern lam e (p: Pair): Pair   = p#snd ← 8I32;                  // a named sigma field
 
-extern lam f (p: Pairs): Pairs = p#b#snd ⇐ 8I32;                // a path of named sigma fields
-extern lam g (p: Pairs): Pairs = p#b#snd <== 8I32;              // the ASCII spelling of `⇐`
-extern lam h (p: Pairs): Pair  = p#b#snd ← 8I32;                // `←` updates p#b and yields a Pair
+extern lam f (p: Pairs): Pairs = p#b#snd ← 8I32;                // a path of named sigma fields
+extern lam g (p: Pairs): Pair  = (p#b)#snd ← 8I32;              // parens cut the path short
 
 let t1 = ((1, 2), (3, 4, 5));
-let t2 = t1#1_2#0_3 ⇐ 23;
+let t2 = t1#1_2#0_3 ← 23;
 
 let row = t1#1_2;
-let _ = refly.equiv.struc_eq (t2, t1#1_2 ← row#0_3 ← 23);       // `⇐` is exactly this chain
+let _ = refly.equiv.struc_eq (t2, t1#1_2 ← row#0_3 ← 23);       // a path is exactly this chain
 let _ = refly.equiv.struc_eq (t2, ((1, 2), (23, 4, 5)));
+let _ = refly.equiv.struc_eq ((t1#1_2)#0_3 ← 23, (23, 4, 5));   // parens denote the inner aggregate
 
 // CHECK-DAG: (7I32, 2I32)
 // CHECK-DAG: ((1I32, 9I32), (1I32, 2I32))

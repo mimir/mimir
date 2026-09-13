@@ -167,8 +167,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_extract,    "#")               \
     m(T_ge,         ">=")              \
     m(T_gt,         ">")               \
-    m(T_arrow_l,     "←")               \
-    m(T_darrow_l,    "⇐")               \
+    m(T_arrow_l,    "←")               \
     m(T_le,         "<=")              \
     m(T_lm,         "λ")               \
     m(T_lt,         "<")               \
@@ -209,7 +208,6 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(K_inj,      "inj", Inj    ) \
     m(T_arrow_r,  "→",   Arrow  ) \
     m(T_arrow_l,  "←",   Ins    ) \
-    m(T_darrow_l, "⇐",   Ins    ) \
     m(T_at,       "@",   App    )
 
 #define MIM_INFIX(m) MIM_INFIX_SUGAR(m) MIM_INFIX_CORE(m)

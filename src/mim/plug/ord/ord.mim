@@ -88,7 +88,6 @@ pub mod contains {
 /// ### insertion
 ///
 /// Inserts a key / key-value pair into the container.
-/// @note Named `insertion`, not `insert`: `insert` is a reserved ASCII spelling of the `ins` keyword.
 ///
 pub mod insertion {
     axm set: {K: Key} →          [Set K  ,  K#T    ] → Set K  , normalize_insert;

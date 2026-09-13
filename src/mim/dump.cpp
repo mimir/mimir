@@ -301,8 +301,13 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
     } else if (auto ins = d->isa<Insert>()) {
-        return os << std::format("{}#{} ← {}", Op::l(ins->tuple(), Prec::Extract), Op::r(ins->index(), Prec::Extract),
-                                 Op::r(ins->value(), Prec::Ins));
+        auto tup = Op::l(ins->tuple(), Prec::Extract);
+        // `←` updates the whole `#`-path, so an Extract target needs parens to re-parse.
+        if (auto ex = ins->tuple()->isa<Extract>(); ex && !(ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()))
+            os << std::format("({})", tup);
+        else
+            os << std::format("{}", tup);
+        return os << std::format("#{} ← {}", Op::r(ins->index(), Prec::Extract), Op::r(ins->value(), Prec::Ins));
     } else if (auto var = d->isa<Var>()) {
         return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {
