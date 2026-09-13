@@ -249,11 +249,6 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 
 @note A declaration may be followed by a `;`, as all examples on this page do; stray semicolons between declarations are skipped.
 
-- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
-- `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
-- `anx` marks a declaration as an [annex](@ref annex).
-  It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
-  `axm` is implicitly `anx` and may not combine with `extern`.
 - `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
 - `mod` groups declarations under a name; its body also sees the enclosing scope.
   Neither `extern` nor `anx` apply to it.
@@ -264,8 +259,6 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   The declared name is already in scope inside its own body, so such a declaration is recursive.
   `and` extends the group to mutual recursion; a forward reference without `and` does not resolve.
   The corresponding [expression forms](@ref expr) are anonymous and cannot refer to themselves.
-- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
-  Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
 - The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
   Its body must be a sigma or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
@@ -277,6 +270,19 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
+
+#### Modifiers
+
+- `anx` marks a declaration as an [annex](@ref annex).
+  It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
+  `axm` is implicitly `anx` and may not combine with `extern`.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
+  Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
+
+##### Visibility
+
+- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
+- `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
 
 ### Patterns and Telescopes {#ptrn}
 
@@ -433,6 +439,9 @@ arity ::= e
 
 - `[ ... ]` is a sigma expression unless it is immediately followed by `as` or `→`, in which case it is parsed as the domain of a dependent function type.
 - `( ... )` is a tuple expression.
+  @note There are no parenthesized/grouping expressions in Mim.
+  Instead, you use a 1-tuple.
+  A 1-tuple always degrades to its sole element, giving the effect of a parenthesized expression.
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
 - An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
@@ -440,10 +449,11 @@ arity ::= e
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
   A `#` on the left is mandatory: without a component to update there is nothing to insert into.
 - `←` updates the component at the *whole* `#`-path, so `t#i#j#k ← v` denotes the outer aggregate `t`.
-  The path extends leftward through `#` and stops at the first expression that is not itself a `#`, so `(t#i)#j ← v` denotes `t#i` instead.
-  `( ... )` builds a tuple and does not merely group, so it ends a path even though a one-element tuple denotes its element.
-  A `let` ends a path the same way: `let row = t#i; row#j ← v` also denotes `t#i`.
-- `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
+  The path extends leftward through `#` and stops at the first expression that is not itself a `#`.
+  - `( ... )` builds a tuple (see above), so it ends a path.
+  Thus, `(t#i)#j ← v` denotes `t#i` instead.
+  - A `let` ends a path the same way: `let row = t#i; row#j ← v` also denotes `t#i`.
+  - `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
 
 #### Unions
 
