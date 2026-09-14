@@ -12,6 +12,7 @@
 #include <fe/log.h>
 #include <fe/restore.h>
 #include <fe/span.h>
+#include <fe/vla.h>
 
 #include "mim/axm.h"
 #include "mim/flags.h"
@@ -849,37 +850,27 @@ private:
         bool operator()(const Def* d1, const Def* d2) const { return d1->equal(d2); }
     };
 
-    class Reduct {
+    class Reduct : public fe::VLA<Reduct> {
     public:
-        constexpr Reduct(size_t size) noexcept
-            : size_(size) {}
+        using VLA_Types = std::tuple<const Def*>;
 
         template<size_t N = std::dynamic_extent>
-        constexpr auto defs() const noexcept {
-            return fe::View<const Def*, N>{defs_, size_};
+        auto defs() const noexcept {
+            return vla<0>().template span<N>();
         }
-
-    private:
-        size_t size_;
-        const Def* defs_[];
-
-        friend class World;
     };
 
-    /// Caches `[var -> arg]` as `f(0), .., f(n-1)`; fills *before* caching, as @p f may recursively reduce.
+    /// Caches `[var -> arg]` as `f(0), .., f(n-1)`; evaluates @p f *before* caching, as it may recursively reduce.
     template<class F>
     const Reduct* cache_reduct(const Var* var, const Def* arg, size_t n, F f) {
-        auto buf    = move_.arena.substs.allocate(sizeof(Reduct) + n * sizeof(const Def*), alignof(const Def*));
-        auto reduct = new (buf) Reduct(n);
-        for (size_t i = 0; i != n; ++i)
-            reduct->defs_[i] = f(i);
-        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
-        return reduct;
+        return cache_reduct(var, arg, DefVec(n, f));
     }
 
     /// As above but for @p defs that have already been computed.
     const Reduct* cache_reduct(const Var* var, const Def* arg, Defs defs) {
-        return cache_reduct(var, arg, defs.size(), [defs](size_t i) { return defs[i]; });
+        auto reduct = move_.arena.substs.ref<Reduct>(defs).get();
+        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+        return reduct;
     }
 
     struct Move {
