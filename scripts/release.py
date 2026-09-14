@@ -5,6 +5,7 @@ import argparse
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -13,6 +14,9 @@ CMAKE_FILE = ROOT / 'CMakeLists.txt'
 PYPROJECT_FILE = ROOT / 'py' / 'pyproject.toml'
 README_FILE = ROOT / 'docs' / 'README.md'
 DOCS_SITE_VERSIONS_URL = 'https://mimir.github.io/versions.json'
+DOXYGEN_WORKFLOW = 'doxygen.yml'
+RUN_POLL_SECONDS = 10
+RUN_POLL_ATTEMPTS = 30
 
 VERSION_RE = re.compile(r'project\(MimIR VERSION (\d+)\.(\d+)\)')
 SUFFIX_RE = re.compile(r'(set\(MIM_VER_SUFFIX ")([^"]*)("\s+CACHE)')
@@ -109,6 +113,35 @@ def update_docs_badge(new_label, dry_run=False):
         README_FILE.write_text(new_text)
 
 
+def find_doxygen_run(sha, ref_name):
+    """Return the id of the doxygen run for `sha` whose head ref is `ref_name`, or '' if there is none yet."""
+    jq = f'[.[] | select(.headBranch == "{ref_name}")] | first | .databaseId // empty'
+    return capture(['gh', 'run', 'list', '--workflow', DOXYGEN_WORKFLOW, '--commit', sha, '--json', 'databaseId,headBranch', '--jq', jq])
+
+
+def watch_doxygen_run(sha, ref_name, dry_run=False):
+    """Wait for the doxygen run of `ref_name` to appear, watch it to completion, and report whether it succeeded."""
+    if dry_run:
+        print(f'+ watch {DOXYGEN_WORKFLOW} run for {ref_name} ({sha[:12]})')
+        return True
+
+    for attempt in range(1, RUN_POLL_ATTEMPTS + 1):
+        run_id = find_doxygen_run(sha, ref_name)
+        if run_id:
+            break
+        print(f'waiting for the doxygen run for {ref_name} to appear ({attempt}/{RUN_POLL_ATTEMPTS})...')
+        time.sleep(RUN_POLL_SECONDS)
+    else:
+        print(f'warning: no doxygen run found for {ref_name} ({sha[:12]})')
+        return False
+
+    print(f'+ gh run watch {run_id} --exit-status')
+    if subprocess.run(['gh', 'run', 'watch', run_id, '--exit-status'], cwd=ROOT, check=False).returncode != 0:
+        print(f'warning: doxygen run {run_id} for {ref_name} did not succeed; inspect it with `gh run view {run_id}` and re-run it with `gh run rerun {run_id}`')
+        return False
+    return True
+
+
 def preflight(require_dev):
     """Sanity-check repo state before mutating anything."""
     status = capture(['git', 'status', '--porcelain'])
@@ -172,6 +205,13 @@ def cmd_cut(args):
 
     run(['git', 'push', '--atomic', 'origin', 'master', tag], args.dry_run)
 
+    # All deploying doxygen runs share one concurrency group and GitHub keeps at most one of them queued,
+    # so pushing again before this one has finished would silently evict the docs snapshot for the tag.
+    print(f'Waiting for the doxygen deploy of {tag} before anything else may push to master...')
+    sha = capture(['git', 'rev-parse', 'HEAD'])
+    if not watch_doxygen_run(sha, tag, args.dry_run):
+        print(f'warning: the {tag} docs snapshot is probably missing from https://mimir.github.io; re-run the doxygen workflow for {tag} before bumping')
+
     if not confirm(f'Publish a GitHub release for {tag} (via gh release create --generate-notes)?', args.yes):
         print(f'skipped GitHub release; run: gh release create {tag} --title "MimIR {major}.{minor}" --generate-notes')
         return
@@ -204,16 +244,20 @@ def cmd_bump(args):
 
 
 def cmd_verify(args):
-    """Poll the doxygen CI run for the current HEAD and check the deployed versions manifest."""
+    """Poll the doxygen CI runs for master and the latest tag, then check the deployed versions manifest."""
+    major, minor, suffix = read_version()
+    tag = f'v{major}.{minor}' if suffix != '-dev' else f'v{major}.{minor - 1}'
+
     sha = capture(['git', 'rev-parse', 'HEAD'])
     print(f'Watching doxygen workflow run(s) for {sha[:12]}...')
-    run(['gh', 'run', 'list', '--workflow', 'doxygen.yml', '--commit', sha], args.dry_run)
+    run(['gh', 'run', 'list', '--workflow', DOXYGEN_WORKFLOW, '--commit', sha], args.dry_run)
+    watch_doxygen_run(sha, 'master', args.dry_run)
 
-    run_id = capture(['gh', 'run', 'list', '--workflow', 'doxygen.yml', '--commit', sha, '--json', 'databaseId', '--jq', '.[0].databaseId'])
-    if not run_id:
-        print('warning: no doxygen run found yet for this commit; it may not have started. Re-run `verify` shortly.')
+    tag_sha = capture(['git', 'rev-list', '-n', '1', tag]) if capture(['git', 'tag', '-l', tag]) else ''
+    if not tag_sha:
+        print(f'warning: no local tag {tag}; skipping its doxygen run')
     else:
-        run(['gh', 'run', 'watch', run_id, '--exit-status'], args.dry_run)
+        watch_doxygen_run(tag_sha, tag, args.dry_run)
 
     if args.dry_run:
         print(f'+ fetch {DOCS_SITE_VERSIONS_URL}')
@@ -226,9 +270,6 @@ def cmd_verify(args):
     print(f'live docs versions: {labels}')
     if 'master' not in labels:
         print('warning: "master" missing from deployed versions.json')
-
-    major, minor, _ = read_version()
-    tag = f'v{major}.{minor}' if _ != '-dev' else f'v{major}.{minor - 1}'
     if tag not in labels:
         print(f'warning: "{tag}" missing from deployed versions.json (CI may still be running)')
 
