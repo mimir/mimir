@@ -180,27 +180,21 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
  * Other
  */
 
-LamExpr::LamExpr(Ptr<LamDecl>&& lam)
+LamExpr::LamExpr(Ptr<LamDecl> lam)
     : Expr(lam->loc())
-    , lam_(std::move(lam)) {}
+    , lam_(lam) {}
 
 /*
- * Ptrn::to_expr/to_ptrn
+ * Ptrn::to_expr
  */
 
-Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn>&& ptrn) {
+Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn> ptrn) {
     if (auto idp = ptrn->isa<IdPtrn>(); idp && !idp->dbg() && idp->type()) {
-        if (auto pe = idp->type()->isa<PathExpr>()) return ast.ptr<PathExpr>(Path(*pe->path()));
+        if (auto pe = idp->type()->isa<PathExpr>())
+            return ast.ptr<PathExpr>(ast.ptr<Path>(pe->path()->loc(), pe->path()->dbgs()));
     } else if (auto tuple = ptrn->isa<TuplePtrn>(); tuple && tuple->is_brckt()) {
-        (void)ptrn.release();
         return ast.ptr<SigmaExpr>(Ptr<TuplePtrn>(tuple));
     }
-    return {};
-}
-
-Ptr<Ptrn> Ptrn::to_ptrn(Ptr<Expr>&& expr) {
-    if (auto sigma = expr->isa<SigmaExpr>())
-        return std::move(const_cast<SigmaExpr*>(sigma)->ptrn_); // TODO get rid off const_cast
     return {};
 }
 
@@ -219,11 +213,11 @@ AST load_plugins(World& world, fe::View<std::string> plugins) {
     if (!plugins.empty()) {
         auto imports = parser.import_plugins(plugins, tag);
         auto decls   = Ptrs<ValDecl>();
-        for (auto& import : imports)
-            decls.emplace_back(std::move(import));
+        for (auto import : imports)
+            decls.emplace_back(import);
 
         // No Loc: this File spans no source, and hulling the imports would mix Loc%s of different files.
-        auto file = ast.ptr<File>(Loc(), std::move(decls));
+        auto file = ast.ptr<File>(Loc(), ast.scope(), ast.copy(decls));
         file->compile(ast);
     }
 

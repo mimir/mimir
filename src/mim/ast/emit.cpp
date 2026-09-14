@@ -50,7 +50,7 @@ void File::emit(Emitter& e) const {
     emitted_ = true;
 
     auto _ = e.world().push(loc());
-    for (const auto& import : implicit_imports())
+    for (auto import : implicit_imports())
         import->emit(e);
     emit_decls(e);
 }
@@ -249,10 +249,10 @@ const Def* LitExpr::emit_(Emitter& e) const {
 
 const Def* DeclExpr::emit_(Emitter& e) const {
     if (is_where())
-        for (const auto& decl : decls() | std::views::reverse)
+        for (auto decl : decls() | std::views::reverse)
             decl->emit(e);
     else
-        for (const auto& decl : decls())
+        for (auto decl : decls())
             decl->emit(e);
     return expr()->emit(e);
 }
@@ -362,7 +362,7 @@ Lam* MatchExpr::Arm::emit(Emitter& e) const {
 const Def* MatchExpr::emit_(Emitter& e) const {
     DefVec res;
     res.emplace_back(scrutinee()->emit(e));
-    for (const auto& arm : arms())
+    for (auto arm : arms())
         res.emplace_back(arm->emit(e));
     return e.world().match(res);
 }
@@ -537,7 +537,7 @@ void AliasDecl::emit(Emitter& e) const {
 }
 
 void ModDecl::emit_decls(Emitter& e) const {
-    for (const auto& decl : decls())
+    for (auto decl : decls())
         decl->emit(e);
 }
 
@@ -592,11 +592,11 @@ void LamDecl::emit_decl(Emitter& e) const {
 
     // Iterate over all doms: Build a Lam for curr dom, by first building a curried Pi for the remaining doms.
     for (size_t i = 0, n = num_doms(); i != n; ++i) {
-        for (const auto& dom : doms() | std::views::drop(i))
+        for (auto dom : doms() | std::views::drop(i))
             dom->emit_type(e);
 
         auto cod = codom() ? codom()->emit(e) : is_cps ? e.world().type_bot() : e.world().mut_hole_type();
-        for (const auto& dom : doms() | std::views::drop(i) | std::views::reverse)
+        for (auto dom : doms() | std::views::drop(i) | std::views::reverse)
             cod = dom->pi_->set_codom(cod);
 
         auto cur = dom(i);
@@ -629,7 +629,7 @@ void LamDecl::emit_body(Emitter& e) const {
         auto rw  = VarRewriter(e.world());
         auto lam = dom(i)->lam_;
         auto pi  = lam->type()->as_mut<Pi>();
-        for (const auto& dom : doms() | std::views::drop(i)) {
+        for (auto dom : doms() | std::views::drop(i)) {
             if (auto var = pi->has_var()) rw.add(dom->lam_->var()->as<Var>(), var);
             auto cod = pi->codom();
             if (!cod || !cod->isa_mut<Pi>()) break;
@@ -639,7 +639,7 @@ void LamDecl::emit_body(Emitter& e) const {
         if (auto cod = pi->codom(); cod && cod->has_dep(Dep::Hole)) pi->set(pi->dom(), rw.rewrite(cod));
     }
 
-    for (const auto& dom : doms() | std::views::reverse) {
+    for (auto dom : doms() | std::views::reverse) {
         if (auto imm = dom->pi_->immutabilize()) {
             auto f = dom->lam_->filter();
             auto b = dom->lam_->body();

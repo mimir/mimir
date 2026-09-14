@@ -2,10 +2,12 @@
 
 #include <deque>
 #include <memory>
+#include <tuple>
 
 #include <fe/arena.h>
 #include <fe/assert.h>
 #include <fe/cast.h>
+#include <fe/trailing.h>
 
 #include "mim/driver.h"
 
@@ -19,11 +21,19 @@ class File;
 class Scopes;
 class Emitter;
 
+/// Nodes live in the AST's Arena and are never destroyed, so this merely points at one.
 template<class T>
-using Ptr = fe::Arena::Ptr<const T>;
+using Ptr = fe::Arena::Ref<const T>;
+
+/// @name Ptrs/Dbgs
+/// Scratch buffers the Parser fills before it creates a node; a node keeps its own lists right
+/// behind itself - see fe::Trailing - and hands them out as a fe::View.
+///@{
 template<class T>
-using Ptrs  = fe::Vector<Ptr<T>>;
-using Dbgs  = fe::Vector<Dbg>;
+using Ptrs = fe::Vector<Ptr<T>>;
+using Dbgs = fe::Vector<Dbg>;
+///@}
+
 using Scope = fe::SymMap<const Decl*>; ///< Maps a name to the Decl introducing it.
 
 /// Visibility tier of a ValDecl.
@@ -103,10 +113,21 @@ public:
     Sym sym_error() { return sym("_error_"); } ///< `"_error_"`.
     ///@}
 
+    /// The trailing ranges of a fe::Trailing node come **last**, in the order its `Trail_Types` declares them.
     template<class T, class... Args>
     auto ptr(Args&&... args) {
-        return arena_.mk<const T>(std::forward<Args>(args)...);
+        return arena_.ref<const T>(std::forward<Args>(args)...);
     }
+
+    /// An Arena-allocated copy of @p range - for the few lists that do not sit behind a node.
+    template<class R, class T = std::ranges::range_value_t<R>>
+    fe::View<T> copy(const R& range) {
+        auto span = arena_.copy(range);
+        return fe::View<T>(span.data(), span.size());
+    }
+
+    /// A fresh Scope for a ModDecl; owned here, as an AST node never runs a destructor.
+    Scope& scope() { return scopes_.emplace_back(); }
 
     /// @name Manage Files
     /// A file is parsed exactly once; AST::file hands out the File every Import of that file shares.
@@ -134,9 +155,10 @@ public:
     friend void swap(AST& a1, AST& a2) noexcept {
         using std::swap;
         // clang-format off
-        swap(a1.world_, a2.world_);
-        swap(a1.arena_, a2.arena_);
-        swap(a1.files_, a2.files_);
+        swap(a1.world_,  a2.world_ );
+        swap(a1.arena_,  a2.arena_ );
+        swap(a1.files_,  a2.files_ );
+        swap(a1.scopes_, a2.scopes_);
         // clang-format on
     }
 
@@ -147,6 +169,7 @@ private:
     World* world_ = nullptr;
     fe::Arena arena_;
     std::unique_ptr<Files> files_;
+    std::deque<Scope> scopes_;
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
@@ -162,7 +185,6 @@ protected:
         assert((!loc || !loc.src || (loc.src->contains(loc.begin) && loc.src->contains(loc.end)))
                && "Loc outside its Src");
     }
-    virtual ~Node() {}
 
 public:
     Loc loc() const { return loc_; }
@@ -263,8 +285,7 @@ public:
     /// projection is blamed on the binder it introduces instead of on the enclosing pattern.
     const Def* emit_proj(Emitter&, const Def* def, size_t n, size_t i) const;
 
-    [[nodiscard]] static Ptr<Expr> to_expr(AST&, Ptr<Ptrn>&&);
-    [[nodiscard]] static Ptr<Ptrn> to_ptrn(Ptr<Expr>&&);
+    [[nodiscard]] static Ptr<Expr> to_expr(AST&, Ptr<Ptrn>);
 };
 
 /// Erroneous pattern.
@@ -282,10 +303,10 @@ public:
 /// `dbg: type`
 class IdPtrn : public Ptrn {
 public:
-    IdPtrn(Loc loc, Dbg dbg, Ptr<Expr>&& type)
+    IdPtrn(Loc loc, Dbg dbg, Ptr<Expr> type)
         : Ptrn(loc)
         , dbg_(dbg)
-        , type_(std::move(type)) {}
+        , type_(type) {}
 
     Dbg dbg() const override { return dbg_; }
     const Expr* type() const { return type_.get(); }
@@ -294,9 +315,9 @@ public:
     Vis vis() const override { return vis_; }
     bool is_anx() const override { return anx_; }
 
-    static Ptr<IdPtrn> make_id(AST& ast, Dbg dbg, Ptr<Expr>&& type) {
+    static Ptr<IdPtrn> make_id(AST& ast, Dbg dbg, Ptr<Expr> type) {
         auto loc = (type && dbg) ? dbg.loc() + type->loc() : type ? type->loc() : dbg.loc();
-        return ast.ptr<IdPtrn>(loc, dbg, std::move(type));
+        return ast.ptr<IdPtrn>(loc, dbg, type);
     }
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
@@ -339,9 +360,9 @@ private:
 /// `ptrn as dbg`
 class AliasPtrn : public Ptrn {
 public:
-    AliasPtrn(Loc loc, Ptr<Ptrn>&& ptrn, Dbg dbg)
+    AliasPtrn(Loc loc, Ptr<Ptrn> ptrn, Dbg dbg)
         : Ptrn(loc)
-        , ptrn_(std::move(ptrn))
+        , ptrn_(ptrn)
         , dbg_(dbg) {}
 
     const Ptrn* ptrn() const { return ptrn_.get(); }
@@ -359,12 +380,13 @@ private:
 };
 
 /// `(ptrn_0, ..., ptrn_n-1)`, `[ptrn_0, ..., ptrn_n-1]`, or `{ptrn_0, ..., ptrn_n-1}`
-class TuplePtrn : public Ptrn {
+class TuplePtrn : public Ptrn, public fe::Trailing<TuplePtrn> {
 public:
-    TuplePtrn(Loc loc, Tok::Tag delim_l, Ptrs<Ptrn>&& ptrns)
+    using Trail_Types = std::tuple<Ptr<Ptrn>>;
+
+    TuplePtrn(Loc loc, Tok::Tag delim_l)
         : Ptrn(loc)
-        , delim_l_(delim_l)
-        , ptrns_(std::move(ptrns)) {}
+        , delim_l_(delim_l) {}
 
     Tok::Tag delim_l() const { return delim_l_; }
     Tok::Tag delim_r() const { return Tok::delim_l2r(delim_l()); }
@@ -372,8 +394,8 @@ public:
     bool is_brckt() const { return delim_l() == Tok::Tag::D_brckt_l; }
     bool is_implicit() const override { return delim_l_ == Tok::Tag::D_brace_l; }
 
-    const auto& ptrns() const { return ptrns_; }
-    const Ptrn* ptrn(size_t i) const { return ptrns_[i].get(); }
+    auto ptrns() const { return trail<0>(); }
+    const Ptrn* ptrn(size_t i) const { return ptrns()[i].get(); }
     size_t num_ptrns() const { return ptrns().size(); }
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
@@ -385,7 +407,6 @@ public:
 
 private:
     Tok::Tag delim_l_;
-    Ptrs<Ptrn> ptrns_;
 };
 
 /*
@@ -419,39 +440,35 @@ private:
 };
 
 /// `dbg_0.....dbg_n-1`.
-class Path : public Node {
+class Path : public Node, public fe::Trailing<Path> {
 public:
-    Path(Loc loc, Dbgs&& dbgs)
-        : Node(loc)
-        , dbgs_(std::move(dbgs)) {}
-    Path(Dbg dbg)
-        : Node(dbg.loc())
-        , dbgs_{dbg} {}
-    Path(const Path&) = default;
+    using Trail_Types = std::tuple<Dbg>;
 
-    const Dbgs& dbgs() const { return dbgs_; }
-    Dbg front() const { return dbgs_.front(); }
-    Dbg back() const { return dbgs_.back(); }
+    Path(Loc loc)
+        : Node(loc) {}
+
+    auto dbgs() const { return trail<0>(); }
+    Dbg front() const { return dbgs().front(); }
+    Dbg back() const { return dbgs().back(); }
     const Decl* decl() const { return decl_; }
 
     void bind(Scopes&, bool quiet = false) const;
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
-    Dbgs dbgs_;
     mutable const Decl* decl_ = nullptr;
 };
 
 /// `path`
 class PathExpr : public Expr {
 public:
-    PathExpr(Path&& path)
-        : Expr(path.loc())
-        , path_(std::move(path)) {}
+    PathExpr(Ptr<Path> path)
+        : Expr(path->loc())
+        , path_(path) {}
 
-    const Path* path() const { return &path_; }
-    Dbg dbg() const { return path_.back(); }
-    const Decl* decl() const { return path_.decl(); }
+    const Path* path() const { return path_.get(); }
+    Dbg dbg() const { return path_->back(); }
+    const Decl* decl() const { return path_->decl(); }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -459,7 +476,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    Path path_;
+    Ptr<Path> path_;
 };
 
 /// `tag`
@@ -485,10 +502,10 @@ private:
 /// `tok:type`
 class LitExpr : public Expr {
 public:
-    LitExpr(Loc loc, Tok tok, Ptr<Expr>&& type)
+    LitExpr(Loc loc, Tok tok, Ptr<Expr> type)
         : Expr(loc)
         , tok_(tok)
-        , type_(std::move(type)) {}
+        , type_(type) {}
 
     Tok tok() const { return tok_; }
     Tok::Tag tag() const { return tok_.tag(); }
@@ -505,15 +522,16 @@ private:
 };
 
 /// `decls expr` or `expr where decls` if DeclExpr::is_where.
-class DeclExpr : public Expr {
+class DeclExpr : public Expr, public fe::Trailing<DeclExpr> {
 public:
-    DeclExpr(Loc loc, Ptrs<ValDecl>&& decls, Ptr<Expr>&& expr, bool is_where)
+    using Trail_Types = std::tuple<Ptr<ValDecl>>;
+
+    DeclExpr(Loc loc, Ptr<Expr> expr, bool is_where)
         : Expr(loc)
-        , decls_(std::move(decls))
-        , expr_(std::move(expr))
+        , expr_(expr)
         , is_where_(is_where) {}
 
-    const auto& decls() const { return decls_; }
+    auto decls() const { return trail<0>(); }
     bool is_where() const { return is_where_; }
     const Expr* expr() const { return expr_.get(); }
 
@@ -523,7 +541,6 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    Ptrs<ValDecl> decls_;
     Ptr<Expr> expr_;
     bool is_where_;
 };
@@ -531,9 +548,9 @@ private:
 /// `Type level`
 class TypeExpr : public Expr {
 public:
-    TypeExpr(Loc loc, Ptr<Expr>&& level)
+    TypeExpr(Loc loc, Ptr<Expr> level)
         : Expr(loc)
-        , level_(std::move(level)) {}
+        , level_(level) {}
 
     const Expr* level() const { return level_.get(); }
 
@@ -549,9 +566,9 @@ private:
 /// `Rule dom`
 class RuleExpr : public Expr {
 public:
-    RuleExpr(Loc loc, Ptr<Expr>&& dom)
+    RuleExpr(Loc loc, Ptr<Expr> dom)
         : Expr(loc)
-        , dom_(std::move(dom)) {}
+        , dom_(dom) {}
 
     const Expr* dom() const { return dom_.get(); }
 
@@ -570,12 +587,12 @@ private:
 class InfixExpr : public Expr {
 public:
     /// @p callee is the `` `op `` a MIM_INFIX_SUGAR operator desugars to and `nullptr` for MIM_INFIX_CORE.
-    InfixExpr(Loc loc, Ptr<Expr>&& lhs, Tok op, Ptr<Expr>&& rhs, Ptr<Expr>&& callee)
+    InfixExpr(Loc loc, Ptr<Expr> lhs, Tok op, Ptr<Expr> rhs, Ptr<Expr> callee)
         : Expr(loc)
-        , lhs_(std::move(lhs))
+        , lhs_(lhs)
         , op_(op)
-        , rhs_(std::move(rhs))
-        , callee_(std::move(callee)) {}
+        , rhs_(rhs)
+        , callee_(callee) {}
 
     const Expr* lhs() const { return lhs_.get(); }
     Tok op() const { return op_; }
@@ -607,15 +624,15 @@ private:
 };
 
 /// `match scrutinee with | arm_0 | ... | arm_n-1`
-class MatchExpr : public Expr {
+class MatchExpr : public Expr, public fe::Trailing<MatchExpr> {
 public:
     /// `ptrn => body` of a MatchExpr.
     class Arm : public Node {
     public:
-        Arm(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& body)
+        Arm(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> body)
             : Node(loc)
-            , ptrn_(std::move(ptrn))
-            , body_(std::move(body)) {}
+            , ptrn_(ptrn)
+            , body_(body) {}
 
         const Ptrn* ptrn() const { return ptrn_.get(); }
         const Expr* body() const { return body_.get(); }
@@ -629,15 +646,16 @@ public:
         Ptr<Expr> body_;
     };
 
-    MatchExpr(Loc loc, Ptr<Expr>&& scrutinee, Ptrs<Arm>&& arms)
+    using Trail_Types = std::tuple<Ptr<Arm>>;
+
+    MatchExpr(Loc loc, Ptr<Expr> scrutinee)
         : Expr(loc)
-        , scrutinee_(std::move(scrutinee))
-        , arms_(std::move(arms)) {}
+        , scrutinee_(scrutinee) {}
 
     const Expr* scrutinee() const { return scrutinee_.get(); }
-    const auto& arms() const { return arms_; }
-    const Arm* arm(size_t i) const { return arms_[i].get(); }
-    size_t num_arms() const { return arms_.size(); }
+    auto arms() const { return trail<0>(); }
+    const Arm* arm(size_t i) const { return arms()[i].get(); }
+    size_t num_arms() const { return arms().size(); }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -646,7 +664,6 @@ private:
     const Def* emit_(Emitter&) const override;
 
     Ptr<Expr> scrutinee_;
-    Ptrs<Arm> arms_;
 };
 
 // lam
@@ -657,17 +674,17 @@ public:
     /// One `dom` of a PiExpr: `ptrn` with an optional `-> ret` type.
     class Dom : public Node {
     public:
-        Dom(Loc loc, Ptr<Ptrn>&& ptrn)
+        Dom(Loc loc, Ptr<Ptrn> ptrn)
             : Node(loc)
-            , ptrn_(std::move(ptrn)) {}
+            , ptrn_(ptrn) {}
 
         bool is_implicit() const { return ptrn_->is_implicit(); }
         const Ptrn* ptrn() const { return ptrn_.get(); }
         const IdPtrn* ret() const { return ret_.get(); }
 
-        void add_ret(AST& ast, Ptr<Expr>&& type) const {
+        void add_ret(AST& ast, Ptr<Expr> type) const {
             auto loc = type->loc();
-            ret_     = ast.ptr<IdPtrn>(loc, Dbg(loc, ast.sym_return()), std::move(type));
+            ret_     = ast.ptr<IdPtrn>(loc, Dbg(loc, ast.sym_return()), type);
         }
 
         virtual void bind(Scopes&, bool quiet = false) const;
@@ -685,11 +702,11 @@ public:
         friend class PiExpr;
     };
 
-    PiExpr(Loc loc, Tok::Tag tag, Ptr<Dom>&& dom, Ptr<Expr>&& codom)
+    PiExpr(Loc loc, Tok::Tag tag, Ptr<Dom> dom, Ptr<Expr> codom)
         : Expr(loc)
         , tag_(tag)
-        , dom_(std::move(dom))
-        , codom_(std::move(codom)) {}
+        , dom_(dom)
+        , codom_(codom) {}
 
 private:
     Tok::Tag tag() const { return tag_; }
@@ -712,7 +729,7 @@ private:
 /// Wraps a LamDecl as Expr.
 class LamExpr : public Expr {
 public:
-    LamExpr(Ptr<LamDecl>&& lam);
+    LamExpr(Ptr<LamDecl> lam);
 
     const LamDecl* lam() const { return lam_.get(); }
 
@@ -730,10 +747,10 @@ private:
 /// `callee arg`
 class AppExpr : public Expr {
 public:
-    AppExpr(Loc loc, Ptr<Expr>&& callee, Ptr<Expr>&& arg)
+    AppExpr(Loc loc, Ptr<Expr> callee, Ptr<Expr> arg)
         : Expr(loc)
-        , callee_(std::move(callee))
-        , arg_(std::move(arg)) {}
+        , callee_(callee)
+        , arg_(arg) {}
 
     const Expr* callee() const { return callee_.get(); }
     const Expr* arg() const { return arg_.get(); }
@@ -751,12 +768,12 @@ private:
 /// `ret ptrn = callee $ arg; body`
 class RetExpr : public Expr {
 public:
-    RetExpr(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& callee, Ptr<Expr>&& arg, Ptr<Expr>&& body)
+    RetExpr(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> callee, Ptr<Expr> arg, Ptr<Expr> body)
         : Expr(loc)
-        , ptrn_(std::move(ptrn))
-        , callee_(std::move(callee))
-        , arg_(std::move(arg))
-        , body_(std::move(body)) {}
+        , ptrn_(ptrn)
+        , callee_(callee)
+        , arg_(arg)
+        , body_(body) {}
 
     const Ptrn* ptrn() const { return ptrn_.get(); }
     const Expr* callee() const { return callee_.get(); }
@@ -779,9 +796,9 @@ private:
 /// Wraps a TuplePtrn as Expr.
 class SigmaExpr : public Expr {
 public:
-    SigmaExpr(Ptr<TuplePtrn>&& ptrn)
+    SigmaExpr(Ptr<TuplePtrn> ptrn)
         : Expr(ptrn->loc())
-        , ptrn_(std::move(ptrn)) {}
+        , ptrn_(ptrn) {}
 
     const TuplePtrn* ptrn() const { return ptrn_.get(); }
 
@@ -794,19 +811,18 @@ private:
     void emit_body_(Emitter&, const Def* decl) const override;
 
     Ptr<TuplePtrn> ptrn_;
-
-    friend Ptr<Ptrn> Ptrn::to_ptrn(Ptr<Expr>&&);
 };
 
 /// `(elem_0, ..., elem_n-1)`
-class TupleExpr : public Expr {
+class TupleExpr : public Expr, public fe::Trailing<TupleExpr> {
 public:
-    TupleExpr(Loc loc, Ptrs<Expr>&& elems)
-        : Expr(loc)
-        , elems_(std::move(elems)) {}
+    using Trail_Types = std::tuple<Ptr<Expr>>;
 
-    const auto& elems() const { return elems_; }
-    const Expr* elem(size_t i) const { return elems_[i].get(); }
+    TupleExpr(Loc loc)
+        : Expr(loc) {}
+
+    auto elems() const { return trail<0>(); }
+    const Expr* elem(size_t i) const { return elems()[i].get(); }
     size_t num_elems() const { return elems().size(); }
 
     void bind(Scopes&) const override;
@@ -814,18 +830,16 @@ public:
 
 private:
     const Def* emit_(Emitter&) const override;
-
-    Ptrs<Expr> elems_;
 };
 
 /// `«arity; body»` or `‹arity; body›` if SeqExpr::is_pack.
 class SeqExpr : public Expr {
 public:
-    SeqExpr(Loc loc, bool is_pack, Ptr<IdPtrn>&& arity, Ptr<Expr>&& body)
+    SeqExpr(Loc loc, bool is_pack, Ptr<IdPtrn> arity, Ptr<Expr> body)
         : Expr(loc)
         , is_pack_(is_pack)
-        , arity_(std::move(arity))
-        , body_(std::move(body)) {}
+        , arity_(arity)
+        , body_(body) {}
 
     bool is_pack() const { return is_pack_; }
     const IdPtrn* arity() const { return arity_.get(); }
@@ -845,9 +859,9 @@ private:
 /// `⦃inhabitant⦄`
 class UniqExpr : public Expr {
 public:
-    UniqExpr(Loc loc, Ptr<Expr>&& expr)
+    UniqExpr(Loc loc, Ptr<Expr> expr)
         : Expr(loc)
-        , inhabitant_(std::move(expr)) {}
+        , inhabitant_(expr) {}
 
     const Expr* inhabitant() const { return inhabitant_.get(); }
 
@@ -871,19 +885,19 @@ private:
 class UseDecl : public ValDecl {
 public:
     /// `use path [as alias|*];`; no @p alias means `as *`.
-    UseDecl(Loc loc, Mods mods, Path&& path, Dbg alias)
+    UseDecl(Loc loc, Mods mods, Ptr<Path> path, Dbg alias)
         : ValDecl(loc, mods)
         , tag_(Tok::Tag::K_use)
-        , path_(std::move(path))
+        , path_(path)
         , alias_(alias)
         , splice_(!alias) {}
 
     /// `import`/`plugin`; @p name is the module name, derived from @p file_path if there is one.
     /// The File itself is owned by the AST and shared by all its importers.
-    UseDecl(Loc loc, Tok::Tag tag, Dbg name, Sym file_path, Dbg alias, bool splice, const File* file)
+    UseDecl(Loc loc, Tok::Tag tag, Ptr<Path> path, Sym file_path, Dbg alias, bool splice, const File* file)
         : ValDecl(loc)
         , tag_(tag)
-        , path_(name)
+        , path_(path)
         , alias_(alias)
         , file_path_(file_path)
         , file_(file)
@@ -891,15 +905,15 @@ public:
 
     Tok::Tag tag() const { return tag_; } ///< `import`, `plugin`, or `use`.
     bool is_import() const { return tag_ != Tok::Tag::K_use; }
-    const Path* path() const { return &path_; }  ///< Module path of a `use`; module name of an `import`/`plugin`.
-    Dbg alias() const { return alias_; }         ///< Empty, unless the source spelled `as I`.
-    Sym file_path() const { return file_path_; } ///< Spelling of an `import "..."`; empty otherwise.
+    const Path* path() const { return path_.get(); } ///< Module path of a `use`; module name of an `import`/`plugin`.
+    Dbg alias() const { return alias_; }             ///< Empty, unless the source spelled `as I`.
+    Sym file_path() const { return file_path_; }     ///< Spelling of an `import "..."`; empty otherwise.
     bool is_file_path() const { return (bool)file_path_; }
     const File* file() const { return file_; }
     bool is_splice() const { return splice_; } ///< `as *`: splice the module's public members, bind no name.
 
     /// The name this decl introduces; anonymous if it splices instead.
-    Dbg dbg() const override { return is_splice() ? Dbg() : alias_ ? alias_ : path_.back(); }
+    Dbg dbg() const override { return is_splice() ? Dbg() : alias_ ? alias_ : path_->back(); }
 
     const Scope* scope() const override { return scope_; }
     void bind(Scopes&) const override;
@@ -911,7 +925,7 @@ private:
     const Scope* module(Scopes&) const;
 
     Tok::Tag tag_;
-    Path path_;
+    Ptr<Path> path_;
     Dbg alias_;
     Sym file_path_;
     const File* file_ = nullptr;
@@ -922,10 +936,10 @@ private:
 /// `let ptrn = value;`
 class LetDecl : public ValDecl {
 public:
-    LetDecl(Loc loc, Mods mods, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& value)
+    LetDecl(Loc loc, Mods mods, Ptr<Ptrn> ptrn, Ptr<Expr> value)
         : ValDecl(loc, mods)
-        , ptrn_(std::move(ptrn))
-        , value_(std::move(value)) {}
+        , ptrn_(ptrn)
+        , value_(value) {}
 
     const Ptrn* ptrn() const { return ptrn_.get(); }
     const Expr* value() const { return value_.get(); }
@@ -967,10 +981,10 @@ public:
         mutable sub_t sub_        = 0;
     };
 
-    AxmDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr>&& type, Dbg normalizer, Tok curry, Tok trip)
+    AxmDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr> type, Dbg normalizer, Tok curry, Tok trip)
         : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
         , dbg_(dbg)
-        , type_(std::move(type))
+        , type_(type)
         , normalizer_(normalizer)
         , curry_(curry)
         , trip_(trip) {}
@@ -1000,11 +1014,11 @@ private:
 /// `rec dbg = body;` with an optional `and` RecDecl::next.
 class RecDecl : public ValDecl {
 public:
-    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr>&& body, Ptr<RecDecl>&& next)
+    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body, Ptr<RecDecl> next)
         : ValDecl(loc, mods)
         , dbg_(dbg)
-        , body_(std::move(body))
-        , next_(std::move(next)) {}
+        , body_(body)
+        , next_(next) {}
 
     Dbg dbg() const override { return dbg_; }
     const Expr* body() const { return body_.get(); }
@@ -1034,14 +1048,14 @@ private:
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
-class LamDecl : public RecDecl {
+class LamDecl : public RecDecl, public fe::Trailing<LamDecl> {
 public:
     /// One `dom` of a LamDecl: `ptrn@(filter)` with an optional `: ret` type.
     class Dom : public PiExpr::Dom {
     public:
-        Dom(Loc loc, Ptr<Ptrn>&& ptrn, Ptr<Expr>&& filter)
-            : PiExpr::Dom(loc, std::move(ptrn))
-            , filter_(std::move(filter)) {}
+        Dom(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> filter)
+            : PiExpr::Dom(loc, ptrn)
+            , filter_(filter) {}
 
         bool is_implicit() const { return ptrn()->is_implicit(); }
         const Expr* filter() const { return filter_.get(); }
@@ -1057,27 +1071,19 @@ public:
         friend class LamDecl;
     };
 
-    LamDecl(Loc loc,
-            Mods mods,
-            Tok::Tag tag,
-            Dbg dbg,
-            Ptrs<Dom>&& doms,
-            Ptr<Expr>&& codom,
-            Ptr<Expr>&& body,
-            Ptr<RecDecl>&& next)
-        : RecDecl(loc, mods, dbg, std::move(body), std::move(next))
+    using Trail_Types = std::tuple<Ptr<Dom>>;
+
+    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, Ptr<RecDecl> next)
+        : RecDecl(loc, mods, dbg, body, next)
         , tag_(tag)
-        , doms_(std::move(doms))
-        , codom_(std::move(codom)) {
-        assert(num_doms() != 0);
-    }
+        , codom_(codom) {}
 
     Tok::Tag tag() const { return tag_; }
     /// `extern` without a body is a forward declaration whose implementation lives in a native translation unit.
     bool is_external() const { return is_extern(); }
-    const Ptrs<Dom>& doms() const { return doms_; }
-    const Dom* dom(size_t i) const { return doms_[i].get(); }
-    size_t num_doms() const { return doms_.size(); }
+    auto doms() const { return trail<0>(); }
+    const Dom* dom(size_t i) const { return doms()[i].get(); }
+    size_t num_doms() const { return doms().size(); }
     const Expr* codom() const { return codom_.get(); }
 
     void bind_decl(Scopes&) const override;
@@ -1091,7 +1097,6 @@ protected:
 
 private:
     Tok::Tag tag_;
-    Ptrs<Dom> doms_;
     Ptr<Expr> codom_;
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
@@ -1100,13 +1105,13 @@ private:
 /// `anx dbg = path;` - a compiler-exposed alias sharing its target's annex slot.
 class AliasDecl : public ValDecl {
 public:
-    AliasDecl(Loc loc, Vis vis, Dbg dbg, Path&& path)
+    AliasDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Path> path)
         : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
         , dbg_(dbg)
-        , path_(std::move(path)) {}
+        , path_(path) {}
 
     Dbg dbg() const override { return dbg_; }
-    const Path* path() const { return &path_; }
+    const Path* path() const { return path_.get(); }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
@@ -1115,7 +1120,7 @@ public:
 
 private:
     Dbg dbg_;
-    Path path_;
+    Ptr<Path> path_;
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
 };
@@ -1123,13 +1128,13 @@ private:
 /// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
 class RuleDecl : public ValDecl {
 public:
-    RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn>&& var, Ptr<Expr>&& lhs, Ptr<Expr>&& rhs, Ptr<Expr>&& guard, bool is_normalizer)
+    RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn> var, Ptr<Expr> lhs, Ptr<Expr> rhs, Ptr<Expr> guard, bool is_normalizer)
         : ValDecl(loc)
         , dbg_(dbg)
-        , var_(std::move(var))
-        , lhs_(std::move(lhs))
-        , rhs_(std::move(rhs))
-        , guard_(std::move(guard))
+        , var_(var)
+        , lhs_(lhs)
+        , rhs_(rhs)
+        , guard_(guard)
         , is_normalizer_(is_normalizer) {}
 
     Dbg dbg() const override { return dbg_; }
@@ -1157,28 +1162,29 @@ private:
 class ModDecl : public ValDecl {
 public:
     // A ModDecl is pure AST grouping - it never represents a single value, so it's never `extern`/`anx`.
-    ModDecl(Loc loc, Vis vis, Dbg dbg, Ptrs<ValDecl>&& decls)
+    ModDecl(Loc loc, Vis vis, Dbg dbg, Scope& members, fe::View<Ptr<ValDecl>> decls)
         : ValDecl(loc, Mods{vis})
         , dbg_(dbg)
-        , decls_(std::move(decls)) {}
+        , decls_(decls)
+        , members_(&members) {}
 
     Dbg dbg() const override { return dbg_; }
-    const auto& decls() const { return decls_; }
+    auto decls() const { return decls_; }
 
-    const Scope* scope() const override { return &members_; }
+    const Scope* scope() const override { return members_; }
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
 protected:
-    Scope& members() const { return members_; }
+    Scope& members() const { return *members_; }
     void bind_decls(Scopes&) const;
     void emit_decls(Emitter&) const;
 
 private:
     Dbg dbg_;
-    Ptrs<ValDecl> decls_;
-    mutable Scope members_;
+    fe::View<Ptr<ValDecl>> decls_;
+    Scope* members_;
 };
 
 /*
@@ -1189,13 +1195,13 @@ private:
 /// Unlike a nested ModDecl, its Scope is a barrier: a file must not see whoever imports it.
 class File : public ModDecl {
 public:
-    File(Loc loc, Ptrs<ValDecl>&& decls)
-        : ModDecl(loc, Vis::Priv, Dbg(loc), std::move(decls)) {}
+    File(Loc loc, Scope& members, fe::View<Ptr<ValDecl>> decls)
+        : ModDecl(loc, Vis::Priv, Dbg(loc), members, decls) {}
 
     /// Imports the driver was told about via `-p`; they precede everything the file itself declares.
-    const auto& implicit_imports() const { return implicit_imports_; }
+    auto implicit_imports() const { return implicit_imports_; }
 
-    void add_implicit_imports(Ptrs<UseDecl>&& imports) const { implicit_imports_ = std::move(imports); }
+    void add_implicit_imports(fe::View<Ptr<UseDecl>> imports) const { implicit_imports_ = imports; }
 
     void compile(AST&) const;
     void bind(AST&) const;
@@ -1205,7 +1211,7 @@ public:
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
-    mutable Ptrs<UseDecl> implicit_imports_;
+    mutable fe::View<Ptr<UseDecl>> implicit_imports_;
     // A file is parsed, bound, and emitted exactly once, no matter how many UseDecls alias it.
     mutable bool bound_ = false, emitted_ = false;
 };

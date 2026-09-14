@@ -218,6 +218,10 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m("bot",    T_bot  )              \
     m("top",    T_top  )              \
 
+#define CODE(str, t) + size_t(1)
+constexpr auto Num_Subst = size_t(0) MIM_SUBST(CODE);
+#undef CODE
+
 class Tok {
 public:
     /// @name Tag
