@@ -22,7 +22,7 @@ class Emitter;
 template<class T>
 using Ptr = fe::Arena::Ptr<const T>;
 template<class T>
-using Ptrs  = std::deque<Ptr<T>>;
+using Ptrs  = fe::Vector<Ptr<T>>;
 using Dbgs  = fe::Vector<Dbg>;
 using Scope = fe::SymMap<const Decl*>; ///< Maps a name to the Decl introducing it.
 
@@ -72,7 +72,7 @@ struct AnnexInfo {
         u8 curry, trip;
     } id;
 
-    std::deque<std::deque<Sym>> subs; ///< List of subs which is a list of aliases.
+    fe::Vector<fe::Vector<Sym>> subs; ///< List of subs which is a list of aliases.
     Dbg normalizer;
     std::optional<bool> pi;
     bool fresh = true;

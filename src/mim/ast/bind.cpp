@@ -414,7 +414,7 @@ void AliasDecl::bind(Scopes& s) const {
     // named after the target itself, so this alias has a slot to share.
     if (sub_ >= annex_->subs.size()) {
         assert(sub_ == annex_->subs.size());
-        annex_->subs.emplace_back(std::deque<Sym>{target->dbg().sym()});
+        annex_->subs.emplace_back(fe::Vector<Sym>{target->dbg().sym()});
     }
     annex_->subs[sub_].emplace_back(dbg().sym());
 }

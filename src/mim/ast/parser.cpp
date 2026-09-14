@@ -690,7 +690,7 @@ void Parser::parse_axm_decl(Tracker track, Mods mods, Ptrs<ValDecl>& decls) {
 }
 
 Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
-    std::deque<Dbgs> members;
+    fe::Vector<Dbgs> members;
     parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
         Dbgs names;
         names.emplace_back(parse_id("tag of an axm"));
