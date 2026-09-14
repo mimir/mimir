@@ -302,6 +302,33 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
     return call;
 }
 
+const Def* LowerMapReduce::lower_generate(const App* app) {
+    auto& w   = new_world();
+    auto c    = rewrite(app->callee())->as<App>();
+    auto body = rewrite(app->arg());
+    auto type = rewrite(app->type());
+
+    auto [meta, s_out] = c->uncurry_args<2>();
+    auto [T, r]        = meta->projs<2>();
+    auto r_l           = Lit::isa<u64>(r);
+    if (!r_l) {
+        log().w("rank {} of {} is not known at lowering time", r, app);
+        return nullptr;
+    }
+    auto rn = *r_l;
+
+    // Nested arrays erase literal singleton axes. If every logical axis is
+    // erased (including rank zero), the sole element is body((0, ..., 0)).
+    if (!type->isa<Arr>()) {
+        DefVec zeros(rn, [&](size_t) { return w.lit_i64(0); });
+        return w.app(body, w.tuple(zeros));
+    }
+
+    auto unit    = w.tuple(Defs{});
+    auto compute = [&](Defs out_iters, const Def*) { return w.call(body, out_iters); };
+    return build_pointwise(unit, type, s_out, rn, compute);
+}
+
 const Def* LowerMapReduce::lower_pad(const App* app) {
     auto& w   = new_world();
     auto c    = rewrite(app->callee())->as<App>();
@@ -494,6 +521,8 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
         if (auto res = lower_broadcast(bc)) return res;
     } else if (auto mr = Axm::isa<tensor::map_reduce_post>(app)) {
         if (auto res = lower_map_reduce(mr)) return res;
+    } else if (auto generate = Axm::isa<tensor::generate>(app)) {
+        if (auto res = lower_generate(generate)) return res;
     } else if (auto pad = Axm::isa<tensor::pad>(app)) {
         if (auto res = lower_pad(pad)) return res;
     } else if (auto cat = Axm::isa<tensor::concat>(app)) {
