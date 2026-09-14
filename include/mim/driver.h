@@ -23,6 +23,9 @@ namespace fs = std::filesystem;
 
 class Driver;
 
+/// The reserved words the ast::Lexer looks up, keyed by the Sym it has just interned.
+using Keys = fe::SymTab<ast::Tok::Tag, ast::Num_Keys + ast::Num_Subst>;
+
 /// Renders Def%s with their plain Def::sym instead of Def::unique_name while alive.
 /// A gid is noise in a diagnostic about the user's source - but it is also the only thing that tells two
 /// same-named Def%s apart, so PlainNames::clashed reports when a message has to be rendered again with gids.
@@ -78,6 +81,7 @@ public:
     const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
     const Version& version() const { return version_; } ///< MimIR Version.
+    const Keys& keys() const { return keys_; }          ///< Interned once here: every ast::Lexer borrows them.
     ///@}
 
     /// @name Diagnostic Naming
@@ -222,6 +226,7 @@ private:
     std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
     std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;
+    Keys keys_;
 };
 
 #define GET_FUN_PTR(plugin, f) get_fun_ptr<decltype(f)>(plugin, #f)

@@ -64,13 +64,15 @@ private:
     ///@{
     Ptr<File> parse_file();
     Dbg parse_id(fe::Cite ctxt = {});
-    Path parse_path(fe::Cite ctxt = {});
+    Ptr<Path> parse_path(fe::Cite ctxt = {});
     Ptr<UseDecl> parse_import_or_plugin();
     Ptr<Expr> parse_type_ascr(fe::Cite ctxt = {});
 
     /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.
     fs::path curr_dir() const { return curr_.src ? curr_.src->path().parent_path() : fs::path(); }
-    Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(Path(dbg)); }
+    /// A Path of a single component.
+    Ptr<Path> path(Dbg dbg) { return ptr<Path>(dbg.loc(), Dbgs{dbg}); }
+    Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(path(dbg)); }
 
     template<class F>
     void parse_list(fe::Cite ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {
@@ -106,7 +108,7 @@ private:
         return parse_expr(fe::format_cite(fmt, std::forward<Args>(args)...), prec);
     }
     Ptr<Expr> parse_primary_expr(fe::Cite ctxt);
-    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr>&& lhs, Prec = Prec::Bot, fe::Cite ctxt = {});
+    Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr> lhs, Prec = Prec::Bot, fe::Cite ctxt = {});
 
     /// The `` `op `` a MIM_INFIX_SUGAR operator desugars to; `nullptr` for a MIM_INFIX_CORE one.
     Ptr<Expr> sugar_callee(Tok op);
@@ -121,7 +123,7 @@ private:
     Ptr<Expr> parse_rule_expr();
     Ptr<Expr> parse_ret_expr();
     Ptr<Expr> parse_pi_expr();
-    Ptr<Expr> parse_pi_expr(Ptr<Ptrn>&&);
+    Ptr<Expr> parse_pi_expr(Ptr<Ptrn>);
     Ptr<Expr> parse_lam_expr();
     Ptr<Expr> parse_seq_expr();
     Ptr<Expr> parse_sigma_expr();
@@ -151,9 +153,7 @@ private:
     Ptr<TuplePtrn> parse_tuple_ptrn(PtrnStyle);
 
     /// The empty Sym - as opposed to `_` - is what lets Ptrn::to_expr turn this binder back into an expression.
-    Ptr<IdPtrn> anon_ptrn(Loc loc, Ptr<Expr>&& type) {
-        return ptr<IdPtrn>(loc, Dbg(loc.anew_begin()), std::move(type));
-    }
+    Ptr<IdPtrn> anon_ptrn(Loc loc, Ptr<Expr> type) { return ptr<IdPtrn>(loc, Dbg(loc.anew_begin()), type); }
     ///@}
 
     /// @name parse decls

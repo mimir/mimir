@@ -29,13 +29,13 @@ namespace mim::ast {
 
 template<class T>
 struct R {
-    R(fe::Tab& tab, const Ptrs<T>& range, std::string_view sep = ", ")
+    R(fe::Tab& tab, fe::View<Ptr<T>> range, std::string_view sep = ", ")
         : tab(tab)
         , range(range)
         , sep(sep) {}
 
     fe::Tab& tab;
-    const Ptrs<T>& range;
+    fe::View<Ptr<T>> range;
     std::string_view sep;
 
     friend std::ostream& operator<<(std::ostream& os, const R& r) {
@@ -58,8 +58,8 @@ struct std::formatter<mim::ast::R<T>> : fe::ostream_formatter {};
 namespace mim::ast {
 
 template<class T>
-static void stream_decls(fe::Tab& tab, std::ostream& os, const Ptrs<T>& decls) {
-    for (const auto& decl : decls)
+static void stream_decls(fe::Tab& tab, std::ostream& os, fe::View<Ptr<T>> decls) {
+    for (auto decl : decls)
         std::println(os, "{}{}", tab, S(tab, decl.get()));
 }
 
@@ -150,7 +150,7 @@ void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
 void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::println(os, "{}match {} with", tab, S(tab, scrutinee()));
     ++tab;
-    for (const auto& arm : arms())
+    for (auto arm : arms())
         std::println(os, "{}| {}", tab, S(tab, arm.get()));
     --tab;
     std::println(os, "{}}}", tab);

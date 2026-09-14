@@ -53,6 +53,15 @@ Driver::Driver(std::string name)
     : fe::Driver(std::make_unique<Diag>(*this))
     , version_(MIM_VERSION)
     , world_(this, sym(name)) {
+#define CODE(t, str) keys_.emplace(sym(str), ast::Tok::Tag::t);
+    MIM_KEY(CODE)
+#undef CODE
+
+#define CODE(str, t) \
+    if (ast::Tok::Tag::t != ast::Tok::Tag::Nil) keys_.emplace(sym(str), ast::Tok::Tag::t);
+    MIM_SUBST(CODE)
+#undef CODE
+
     auto from_env = [](const char* var, auto&& add) {
         if (auto env = std::getenv(var)) {
             auto stream = std::stringstream{env};

@@ -142,7 +142,7 @@ void File::bind(Scopes& s) const {
     bound_ = true;
 
     auto barrier = s.push_barrier(members());
-    for (const auto& import : implicit_imports())
+    for (auto import : implicit_imports())
         import->bind(s);
     bind_decls(s);
     s.pop_barrier(barrier);
@@ -166,7 +166,7 @@ void AliasPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
 }
 
 void TuplePtrn::bind(Scopes& s, bool rebind, bool quiet) const {
-    for (const auto& ptrn : ptrns())
+    for (auto ptrn : ptrns())
         ptrn->bind(s, rebind, quiet);
 }
 
@@ -178,7 +178,7 @@ void Path::bind(Scopes& s, bool quiet) const {
     decl_     = s.find(front(), quiet);
     auto prev = front();
 
-    for (const auto& dbg : dbgs() | std::views::drop(1)) {
+    for (auto dbg : dbgs() | std::views::drop(1)) {
         if (!decl_) return;
         auto scope  = decl_->scope();
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
@@ -228,10 +228,10 @@ void LitExpr::bind(Scopes& s) const {
 
 void DeclExpr::bind(Scopes& s) const {
     if (is_where())
-        for (const auto& decl : decls() | std::views::reverse)
+        for (auto decl : decls() | std::views::reverse)
             decl->bind(s);
     else
-        for (const auto& decl : decls())
+        for (auto decl : decls())
             decl->bind(s);
     expr()->bind(s);
 }
@@ -255,7 +255,7 @@ void MatchExpr::Arm::bind(Scopes& s) const {
 
 void MatchExpr::bind(Scopes& s) const {
     scrutinee()->bind(s);
-    for (const auto& arm : arms())
+    for (auto arm : arms())
         arm->bind(s);
 }
 
@@ -298,7 +298,7 @@ void SigmaExpr::bind(Scopes& s) const {
 }
 
 void TupleExpr::bind(Scopes& s) const {
-    for (const auto& elem : elems())
+    for (auto elem : elems())
         elem->bind(s);
 }
 
@@ -488,14 +488,14 @@ void LamDecl::bind_decl(Scopes& s) const {
 
 void LamDecl::bind_body(Scopes& s) const {
     s.push();
-    for (const auto& dom : doms())
+    for (auto dom : doms())
         dom->bind(s, true);
     if (body()) body()->bind(s);
     s.pop();
 }
 
 void ModDecl::bind_decls(Scopes& s) const {
-    for (const auto& decl : decls())
+    for (auto decl : decls())
         decl->bind(s);
 }
 
