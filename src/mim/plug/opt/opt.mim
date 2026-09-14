@@ -53,7 +53,7 @@ extern lam _default_compile (): compile.Phase =
         // gpu
         compile.named "gpu.mem_checks",
 
-        // autdoiff
+        // autodiff
         compile.named "autodiff.eval",
         compile.named "autodiff.zero_repl",
         compile.unload "autodiff",
