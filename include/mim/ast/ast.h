@@ -7,7 +7,7 @@
 #include <fe/arena.h>
 #include <fe/assert.h>
 #include <fe/cast.h>
-#include <fe/trailing.h>
+#include <fe/vla.h>
 
 #include "mim/driver.h"
 
@@ -27,7 +27,7 @@ using Ptr = fe::Arena::Ref<const T>;
 
 /// @name Ptrs/Dbgs
 /// Scratch buffers the Parser fills before it creates a node; a node keeps its own lists right
-/// behind itself - see fe::Trailing - and hands them out as a fe::View.
+/// behind itself - see fe::VLA - and hands them out as a fe::View.
 ///@{
 template<class T>
 using Ptrs = fe::Vector<Ptr<T>>;
@@ -113,7 +113,7 @@ public:
     Sym sym_error() { return sym("_error_"); } ///< `"_error_"`.
     ///@}
 
-    /// The trailing ranges of a fe::Trailing node come **last**, in the order its `Trail_Types` declares them.
+    /// The VLA ranges of a fe::VLA node come **last**, in the order its `VLA_Types` declares them.
     template<class T, class... Args>
     auto ptr(Args&&... args) {
         return arena_.ref<const T>(std::forward<Args>(args)...);
@@ -380,9 +380,9 @@ private:
 };
 
 /// `(ptrn_0, ..., ptrn_n-1)`, `[ptrn_0, ..., ptrn_n-1]`, or `{ptrn_0, ..., ptrn_n-1}`
-class TuplePtrn : public Ptrn, public fe::Trailing<TuplePtrn> {
+class TuplePtrn : public Ptrn, public fe::VLA<TuplePtrn> {
 public:
-    using Trail_Types = std::tuple<Ptr<Ptrn>>;
+    using VLA_Types = std::tuple<Ptr<Ptrn>>;
 
     TuplePtrn(Loc loc, Tok::Tag delim_l)
         : Ptrn(loc)
@@ -394,7 +394,7 @@ public:
     bool is_brckt() const { return delim_l() == Tok::Tag::D_brckt_l; }
     bool is_implicit() const override { return delim_l_ == Tok::Tag::D_brace_l; }
 
-    auto ptrns() const { return trail<0>(); }
+    auto ptrns() const { return vla<0>(); }
     const Ptrn* ptrn(size_t i) const { return ptrns()[i].get(); }
     size_t num_ptrns() const { return ptrns().size(); }
 
@@ -440,14 +440,14 @@ private:
 };
 
 /// `dbg_0.....dbg_n-1`.
-class Path : public Node, public fe::Trailing<Path> {
+class Path : public Node, public fe::VLA<Path> {
 public:
-    using Trail_Types = std::tuple<Dbg>;
+    using VLA_Types = std::tuple<Dbg>;
 
     Path(Loc loc)
         : Node(loc) {}
 
-    auto dbgs() const { return trail<0>(); }
+    auto dbgs() const { return vla<0>(); }
     Dbg front() const { return dbgs().front(); }
     Dbg back() const { return dbgs().back(); }
     const Decl* decl() const { return decl_; }
@@ -522,16 +522,16 @@ private:
 };
 
 /// `decls expr` or `expr where decls` if DeclExpr::is_where.
-class DeclExpr : public Expr, public fe::Trailing<DeclExpr> {
+class DeclExpr : public Expr, public fe::VLA<DeclExpr> {
 public:
-    using Trail_Types = std::tuple<Ptr<ValDecl>>;
+    using VLA_Types = std::tuple<Ptr<ValDecl>>;
 
     DeclExpr(Loc loc, Ptr<Expr> expr, bool is_where)
         : Expr(loc)
         , expr_(expr)
         , is_where_(is_where) {}
 
-    auto decls() const { return trail<0>(); }
+    auto decls() const { return vla<0>(); }
     bool is_where() const { return is_where_; }
     const Expr* expr() const { return expr_.get(); }
 
@@ -624,7 +624,7 @@ private:
 };
 
 /// `match scrutinee with | arm_0 | ... | arm_n-1`
-class MatchExpr : public Expr, public fe::Trailing<MatchExpr> {
+class MatchExpr : public Expr, public fe::VLA<MatchExpr> {
 public:
     /// `ptrn => body` of a MatchExpr.
     class Arm : public Node {
@@ -646,14 +646,14 @@ public:
         Ptr<Expr> body_;
     };
 
-    using Trail_Types = std::tuple<Ptr<Arm>>;
+    using VLA_Types = std::tuple<Ptr<Arm>>;
 
     MatchExpr(Loc loc, Ptr<Expr> scrutinee)
         : Expr(loc)
         , scrutinee_(scrutinee) {}
 
     const Expr* scrutinee() const { return scrutinee_.get(); }
-    auto arms() const { return trail<0>(); }
+    auto arms() const { return vla<0>(); }
     const Arm* arm(size_t i) const { return arms()[i].get(); }
     size_t num_arms() const { return arms().size(); }
 
@@ -814,14 +814,14 @@ private:
 };
 
 /// `(elem_0, ..., elem_n-1)`
-class TupleExpr : public Expr, public fe::Trailing<TupleExpr> {
+class TupleExpr : public Expr, public fe::VLA<TupleExpr> {
 public:
-    using Trail_Types = std::tuple<Ptr<Expr>>;
+    using VLA_Types = std::tuple<Ptr<Expr>>;
 
     TupleExpr(Loc loc)
         : Expr(loc) {}
 
-    auto elems() const { return trail<0>(); }
+    auto elems() const { return vla<0>(); }
     const Expr* elem(size_t i) const { return elems()[i].get(); }
     size_t num_elems() const { return elems().size(); }
 
@@ -1048,7 +1048,7 @@ private:
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
-class LamDecl : public RecDecl, public fe::Trailing<LamDecl> {
+class LamDecl : public RecDecl, public fe::VLA<LamDecl> {
 public:
     /// One `dom` of a LamDecl: `ptrn@(filter)` with an optional `: ret` type.
     class Dom : public PiExpr::Dom {
@@ -1071,7 +1071,7 @@ public:
         friend class LamDecl;
     };
 
-    using Trail_Types = std::tuple<Ptr<Dom>>;
+    using VLA_Types = std::tuple<Ptr<Dom>>;
 
     LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, Ptr<RecDecl> next)
         : RecDecl(loc, mods, dbg, body, next)
@@ -1081,7 +1081,7 @@ public:
     Tok::Tag tag() const { return tag_; }
     /// `extern` without a body is a forward declaration whose implementation lives in a native translation unit.
     bool is_external() const { return is_extern(); }
-    auto doms() const { return trail<0>(); }
+    auto doms() const { return vla<0>(); }
     const Dom* dom(size_t i) const { return doms()[i].get(); }
     size_t num_doms() const { return doms().size(); }
     const Expr* codom() const { return codom_.get(); }
