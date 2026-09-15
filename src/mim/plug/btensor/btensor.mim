@@ -22,6 +22,7 @@ plugin vec; // for vec.fold
 plugin mem;
 import ll;  // for the ll.vec loop annotation (declarations only — no module load, no emit phase)
 import compile;
+use core.ops.n;
 ///
 /// ## Types
 ///
@@ -87,14 +88,14 @@ lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
             loop lbody lexit (0I32, core.bitcast I32 (Sr#(core.idx 0 r d)), 1I32, (m, acc))
             where
                 con lbody (iv: I32, macc: [mem.M 0, A], yield: Cn [mem.M 0, A]) =
-                    let pref2 = ‹j: r; core.select (core.ncmp.e (core.bitcast Nat j, d), iv, pref#j)›;
+                    let pref2 = ‹j: r; core.select (core.bitcast Nat j == d, iv, pref#j)›;
                     w (pref2, macc#0_2, macc#1_2, yield);
                 con lexit (macc: [mem.M 0, A]) = k macc;
             end;
         level;
-    let m  = core.nat.sub (hi, lo);
-    let ds = ‹i: m; core.nat.add (lo, core.bitcast Nat i)›;
-    vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m wrap (ds, inner);
+    let m = hi - lo;
+    vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
+        wrap (‹i: m; lo + core.bitcast Nat i›, inner);
 
 /// Like `range_nest`, but every dim in the range is fully UNROLLED: the inner continuation is
 /// chained once per iteration point by a right fold over the dim's (compile-time) extent —
@@ -108,26 +109,24 @@ lam range_unroll (r: Nat, Sr: «r; Nat») (A: *) (lo hi: Nat)
         con level (pref: «r; I32», m: mem.M 0, acc: A, k: Cn [mem.M 0, A]) =
             lam step (i: Nat, kk: Cn [mem.M 0, A]): Cn [mem.M 0, A] =
                 con at (m2: mem.M 0, a2: A) =
-                    let pref2 = ‹j: r; core.select (core.ncmp.e (core.bitcast Nat j, d),
-                                                     core.bitcast I32 i, pref#j)›;
+                    let pref2 = ‹j: r; core.select (core.bitcast Nat j == d, core.bitcast I32 i, pref#j)›;
                     w (pref2, m2, a2, kk);
                 at;
-            let t  = Sr#(core.idx 0 r d);
-            let ks = ‹i: t; core.bitcast Nat i›;
-            (vec.fold.r @(Cn [mem.M 0, A], Nat) @t step (ks, k)) (m, acc);
+            let t = Sr#(core.idx 0 r d);
+            (vec.fold.r @(Cn [mem.M 0, A], Nat) @t step (‹i: t; core.bitcast Nat i›, k)) (m, acc);
         level;
-    let m  = core.nat.sub (hi, lo);
-    let ds = ‹i: m; core.nat.add (lo, core.bitcast Nat i)›;
-    vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m wrap (ds, inner);
+    let m = hi - lo;
+    vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
+        wrap (‹i: m; lo + core.bitcast Nat i›, inner);
 
 /// The type of scheduled loop nests for a map_reduce over the domain `Sr` (`ro` leading parallel
 /// dims, `rr` trailing reduction dims, fold element type `To`): given the fold seed `init`, the
 /// per-point fold step `cell` (fold the elements at one loop vector into the accumulator) and the
 /// per-cell write-back `wb` (consume one folded value at its output coordinates), run the nest.
-anx lam NestT (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *): * =
+anx lam NestT (ro rr: Nat, Sr: «ro + rr; Nat», To U: *): * =
       [init: To,
-       cell: Cn [mem.M 0, To, «core.nat.add (ro, rr); I32», Cn [mem.M 0, To]],
-       wb:   Cn [mem.M 0, U, To, «core.nat.add (ro, rr); I32», Cn [mem.M 0, U]]]
+       cell: Cn [mem.M 0, To, «ro + rr; I32», Cn [mem.M 0, To]],
+       wb:   Cn [mem.M 0, U, To, «ro + rr; I32», Cn [mem.M 0, U]]]
     → Cn [mem.M 0, U, Cn [mem.M 0, U]];
 
 /// The scheduled nest builder: `unroll` trailing reduction dims run as compile-time-unrolled
@@ -137,12 +136,12 @@ anx lam NestT (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *): * =
 /// reduction-vectorized nest (see the `redvec` branch below): the contraction runs as the vector
 /// loop with the last parallel dim unroll-and-jammed into its body. Per-cell fold order is
 /// untouched by any of these transforms.
-anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim unroll: Nat)
+anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
                    : NestT (ro, rr, Sr, To, U) =
-    let r    = core.nat.add (ro, rr);
+    let r    = ro + rr;
     // The unroll window must stay within the reduction dims.
-    let u_lo = core.nat.sub (r, unroll);
-    let u_lo = (ro, u_lo)#(core.ncmp.le (ro, u_lo));
+    let u_lo = r - unroll;
+    let u_lo = (ro, u_lo)#(ro <= u_lo);
     lam nest (init: To,
               cell: Cn [mem.M 0, To, «r; I32», Cn [mem.M 0, To]],
               wb:   Cn [mem.M 0, U, To, «r; I32», Cn [mem.M 0, U]])
@@ -153,8 +152,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         let win = range_unroll (r, Sr) To (u_lo, r) cell_at;
         // `vd` is `vdim` clamped through the dispatch condition: the non-selected branch is still
         // ELABORATED, so its body must be type-sane even when `vdim` is the out-of-range sentinel.
-        let vec_ok = core.bit2.and_ 2 (core.ncmp.e (core.nat.add (vdim, 1), ro),
-                                        core.ncmp.ne (Sr#(core.idx 0 r ((0, vdim)#(core.ncmp.l (vdim, r)))), 1));
+        let vec_ok = core.bit2.and_ 2 (vdim + 1 == ro, Sr#(core.idx 0 r ((0, vdim)#(vdim < r))) != 1);
         let vd = (0, vdim)#vec_ok;
 
         // CLASSIC: reduction loops inside all output loops, one accumulator cell at a time; the
@@ -186,12 +184,12 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
                     let (memw1, v) = buffer.read (1, Sv, To) (memw, row, vi_of pref2);
                     wb (memw1, uw, v, pref2, kw);
                 con s2 (memB: mem.M 0, uB: U) =
-                    (range_nest (r, Sr) U (vec_for @U, vd, core.nat.add (vd, 1)) wb_cell) (pref, memB, uB, k);
+                    (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) wb_cell) (pref, memB, uB, k);
                 con s1 (memA: mem.M 0, uA: U) =
                     (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
-                        (range_nest (r, Sr) U (vec_for @U, vd, core.nat.add (vd, 1)) at_point))
+                        (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) at_point))
                         (pref, memA, uA, s2);
-                (range_nest (r, Sr) U (vec_for @U, vd, core.nat.add (vd, 1)) fill) (pref, m, u, s1);
+                (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) fill) (pref, m, u, s1);
             (range_nest (r, Sr) U (affine_for @U, 0, vd) at_row) (‹r; 0I32›, mem1, u0, done);
 
         // BLOCKED (`vdim = ro − 2`): the two trailing parallel dims are sunk inside the reduction
@@ -201,17 +199,16 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         // hoisted out of the vector loop (a conv's window weights) now serve every row of the
         // block, and adjacent rows' overlapping reads sit in the same loop body. Clamps as above:
         // the non-selected branch is still elaborated.
-        let pd_c    = (0, vdim)#(core.ncmp.l (vdim, r));
-        let sd_r    = core.nat.add (vdim, 1);
-        let sd_c    = (0, sd_r)#(core.ncmp.l (sd_r, r));
-        let block_ok = core.bit2.and_ 2 (core.ncmp.e (core.nat.add (vdim, 2), ro),
-                      core.bit2.and_ 2 (core.ncmp.ne (Sr#(core.idx 0 r pd_c), 1),
-                                         core.ncmp.ne (Sr#(core.idx 0 r sd_c), 1)));
+        let pd_c    = (0, vdim)#(vdim < r);
+        let sd_r    = vdim + 1;
+        let sd_c    = (0, sd_r)#(sd_r < r);
+        let block_ok = core.bit2.and_ 2 (vdim + 2 == ro,
+                       core.bit2.and_ 2 (Sr#(core.idx 0 r pd_c) != 1, Sr#(core.idx 0 r sd_c) != 1));
 
         con blocked (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
             let Sp = Sr#(core.idx 0 r pd_c);
             let Sv = Sr#(core.idx 0 r sd_c);
-            let Np = core.nat.mul (Sp, Sv);
+            let Np = Sp * Sv;
             let vi_of = lm (pref: «r; I32»): Idx Np =
                 core.conv.u Np (core.wrap.add 0
                     (core.wrap.mul 0 (pref#(core.idx 0 r pd_c), core.bitcast I32 Sv),
@@ -235,8 +232,8 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
                         (range_nest (r, Sr) U (vec_for @U, sd_c, ro) wb_cell)) (pref, memB, uB, k);
                 con s1 (memA: mem.M 0, uA: U) =
                     (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
-                        (range_nest (r, Sr) U (vec_for @U, sd_c, core.nat.add (sd_c, 1))
-                            (range_unroll (r, Sr) U (pd_c, core.nat.add (pd_c, 1)) at_point)))
+                        (range_nest (r, Sr) U (vec_for @U, sd_c, sd_c + 1)
+                            (range_unroll (r, Sr) U (pd_c, pd_c + 1) at_point)))
                         (pref, memA, uA, s2);
                 (range_nest (r, Sr) U (affine_for @U, pd_c, sd_c)
                     (range_nest (r, Sr) U (vec_for @U, sd_c, ro) fill)) (pref, m, u, s1);
@@ -257,17 +254,14 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
         // reduction chain that gets its own vector accumulator. Clamps as above: the non-selected
         // branch is still elaborated, and the jam extents are additionally clamped to 1 (`Sr_rv`)
         // so the elaborated unrolls stay cheap.
-        let rv_j      = (1, unroll)#(core.ncmp.le (1, unroll));
-        let rv_bd     = (0, core.nat.sub (ro, rv_j))#(core.ncmp.le (rv_j, ro));
-        let rv_vd     = (0, vdim)#(core.ncmp.l (vdim, r));
-        let redvec_ok = core.bit2.and_ 2 (core.ncmp.le (ro, vdim),
-                        core.bit2.and_ 2 (core.ncmp.e (core.nat.add (vdim, 1), r),
-                                           core.ncmp.le (rv_j, ro)));
-        let Sr_rv     = ‹j: r; let jj  = core.bitcast Nat j;
-                               let jam = core.bit2.and_ 2 (core.ncmp.le (rv_bd, jj), core.ncmp.l (jj, ro));
-                               (Sr#j, (1, Sr#j)#redvec_ok)#jam›;
-        lam rv_mul (d: Nat, acc: Nat): Nat = core.nat.mul (acc, Sr_rv#(core.idx 0 r d));
-        let rv_ds = ‹i: rv_j; core.nat.add (rv_bd, core.bitcast Nat i)›;
+        let rv_j      = (1, unroll)#(1 <= unroll);
+        let rv_bd     = (0, ro - rv_j)#(rv_j <= ro);
+        let rv_vd     = (0, vdim)#(vdim < r);
+        let redvec_ok = core.bit2.and_ 2 (ro <= vdim, core.bit2.and_ 2 (vdim + 1 == r, rv_j <= ro));
+        let Sr_rv     = ‹j: r; let jj = core.bitcast Nat j;
+                               (Sr#j, (1, Sr#j)#redvec_ok)#(core.bit2.and_ 2 (rv_bd <= jj, jj < ro))›;
+        lam rv_mul (d: Nat, acc: Nat): Nat = acc * Sr_rv#(core.idx 0 r d);
+        let rv_ds = ‹i: rv_j; rv_bd + core.bitcast Nat i›;
         let Sb    = vec.fold.r @(Nat, Nat) @rv_j rv_mul (rv_ds, 1);
 
         con redvec (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
@@ -297,7 +291,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «core.nat.add (ro, rr); Nat», To U: *) (vdim 
                     (range_unroll (r, Sr_rv) U (rv_bd, ro) wb_cell) (pref, memB, uB, k);
                 con s1 (memA: mem.M 0, uA: U) =
                     (range_nest (r, Sr) U (affine_for @U, ro, rv_vd)
-                        (range_nest (r, Sr) U (vec_for @U, rv_vd, core.nat.add (rv_vd, 1))
+                        (range_nest (r, Sr) U (vec_for @U, rv_vd, rv_vd + 1)
                             (range_unroll (r, Sr_rv) U (rv_bd, ro) at_point)))
                         (pref, memA, uA, s2);
                 (range_unroll (r, Sr_rv) U (rv_bd, ro) fill) (pref, m, u, s1);
