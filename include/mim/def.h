@@ -739,7 +739,6 @@ protected:
     void set_dbg(Dbg) const;                  ///< Interns @p dbg via Driver::dbg and stores the key in Def::dbg_.
     void set_dbg_(Dbg, bool ow) const;        ///< Backs Def::set(Dbg).
     void set_dbg_key_(DbgKey, bool ow) const; ///< Backs Def::set(DbgKey).
-
     ///@}
 
 private:
