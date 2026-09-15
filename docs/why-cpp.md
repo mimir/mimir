@@ -73,17 +73,17 @@ with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
 allocation.
 
-### `PatriciaPtr::Set` — a five-way sum type in one machine word
+### `Patricia::Set` — a four-way sum type in one machine word
 
 `Def::vars_` and `Def::muts_` are sets of `Var*`/`Def*`, hash-consed by
-`fe::PatriciaPtr` (`submodules/fe/include/fe/patricia.h`) so that equal sets are
+`fe::Patricia` (`submodules/fe/include/fe/patricia.h`) so that equal sets are
 pointer-equal.
-A set is a single `uintptr_t` with three tag bits:
+A set is a single `uintptr_t` with two tag bits:
 
-    Null | Uniq (D* inline) | Leaf (one entry) | Arr (arena FAM, ≤ N entries) | Br (branch)
+    Null | Uniq (D* inline) | Arr (arena FAM, ≤ N entries) | Br (branch)
 
-`Patricia::Map` only ever tags the low **two** bits, and every node it points at
-is 8-byte aligned, so `PatriciaPtr::Set` claims bit 2 for the `Uniq` case.
+An **untagged** word *is* the `D*` it holds, which is why every `Def` must be at
+least 4-byte aligned.
 
 Consequences:
 
@@ -93,12 +93,12 @@ Consequences:
   bit-or.
 - Set equality is `ptr_ == ptr_` over the entire set, and so is every
   subtree comparison inside `merge`/`intersect`/`diff`.
-- The flavour follows from the size alone, so one key set has exactly one
+- The flavour follows from the size alone, so one element set has exactly one
   representation — canonicity is what makes that pointer comparison sound, and
-  it is why a one-element result must normalize back to `Uniq` rather than
-  stay a `Leaf`.
+  it is why a one-element result must collapse back to `Uniq` rather than stay
+  a node.
 
-In OCaml a 5-constructor variant with payloads is 4 boxed blocks plus 1
+In OCaml a 4-constructor variant with payloads is 3 boxed blocks plus 1
 immediate; in Haskell the same plus a thunk per constructor; on the JVM four
 classes and a megamorphic call site.
 Pointer tagging is reachable only via `Obj.magic` or `Unsafe`, at which point
@@ -409,9 +409,9 @@ structures pays something:
   header-plus-trailing-elements allocation written in `unsafe`, precisely
   because the language does not provide one.
 - **No tagged pointers.**
-  A `PatriciaPtr::Set` packs a five-way sum into one `uintptr_t` with three tag
+  A `Patricia::Set` packs a four-way sum into one `uintptr_t` with two tag
   bits.
-  A Rust `enum` over four pointer-carrying variants is 16 bytes; niche
+  A Rust `enum` over three pointer-carrying variants is 16 bytes; niche
   optimization does not apply.
   That is `vars_` and `muts_` going 8 → 16 bytes each, +16 per node, unless you
   hand-roll it with `NonNull` and `unsafe`.

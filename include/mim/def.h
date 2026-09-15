@@ -75,7 +75,7 @@ class Def;
 class Driver;
 class World;
 
-/// Grants fe::PatriciaPtr access to Def::gid_.
+/// Grants fe::Patricia access to Def::gid_.
 struct DefKey {
     static u32 key(const Def*) noexcept;
     static std::ostream& stream(std::ostream&, const Def*);
@@ -100,7 +100,7 @@ template<class To>
 using MutMap  = GIDMap<Def*, To>;
 using MutSet  = GIDSet<Def*>;
 using Mut2Mut = MutMap<Def*>;
-using Muts    = fe::PatriciaPtr<Def, DefKey>::Set;
+using Muts    = fe::Patricia<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
@@ -109,7 +109,7 @@ using Muts    = fe::PatriciaPtr<Def, DefKey>::Set;
 template<class To>
 using VarMap  = GIDMap<const Var*, To>;
 using Var2Var = VarMap<const Var*>;
-using Vars    = fe::PatriciaPtr<const Var, DefKey>::Set;
+using Vars    = fe::Patricia<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);

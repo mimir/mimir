@@ -12,9 +12,9 @@
 
 using namespace std::literals;
 
-#ifndef DOXYGEN // fe::PatriciaPtr is not part of the documented input
-template void fe::PatriciaPtr<const mim::Var, mim::DefKey>::Set::dump() const;
-template void fe::PatriciaPtr<mim::Def, mim::DefKey>::Set::dump() const;
+#ifndef DOXYGEN // fe::Patricia is not part of the documented input
+template void fe::Patricia<const mim::Var, mim::DefKey>::Set::dump() const;
+template void fe::Patricia<mim::Def, mim::DefKey>::Set::dump() const;
 #endif
 
 namespace mim {
