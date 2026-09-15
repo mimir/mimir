@@ -125,7 +125,7 @@ public:
     // Add initial mapping from @pvar -> @p arg.
     VarRewriter& add(const Var* var, const Def* arg) {
         map(var, arg);
-        vars_.emplace_back(var);
+        vars_.emplace_back(Vars(var));
         return *this;
     }
     ///@}
