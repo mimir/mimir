@@ -140,6 +140,7 @@ void Analysis::drain() {
         log().d("enter {}", mut);
         for (auto d : mut->deps())
             rewrite(d);
+        leave();
     }
 }
 

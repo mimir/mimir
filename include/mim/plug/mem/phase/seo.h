@@ -79,11 +79,8 @@ private:
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
-
-        /// Collects the open Lam%s reachable from @p def as a *value* into fu_lams_.
-        void find_unknowns(const Def* def);
-
         const Def* rewrite_imm_App(const App*) final;
+        void leave() final;
 
         // post-processing analysis to find sloxies that must be set to top
         void finalize() final;
@@ -93,16 +90,7 @@ private:
         absl::node_hash_map<Lam*, Def2Def, GIDHash<const Def*>> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
-
-        // Scratch for find_unknowns; cleared per query instead of constructing containers per App.
-        // fu_lams_ is a fe::Vector, not a LamSet: find_unknowns pushes each Lam at most once (fu_visited_ gates
-        // before the Lam check), and insertion order follows the structural deps() walk - so it is
-        // deterministic without a sort, and clear() always keeps its capacity.
-        DefSet fu_visited_;
-        fe::Vector<Lam*> fu_lams_;
-
-        // global (kept between iterations)
-        Def2Def sloxy2slot_;
+        Def2Def sloxy2slot_;                                   // global (kept between iterations)
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change

@@ -201,24 +201,6 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-void SEO::Analysis::find_unknowns(const Def* def) {
-    if (def->isa<Proxy>()) return;
-    if (def->local_muts().empty()) return;
-    if (auto [_, ins] = fu_visited_.emplace(def); !ins) return;
-
-    if (auto lam = def->isa_mut<Lam>()) {
-        if (lam->is_open()) fu_lams_.emplace_back(lam);
-        return;
-    }
-
-    if (def->isa_mut()) return;
-
-    for (auto d : def->deps())
-        find_unknowns(d);
-}
-
-// Analysis - Rewrite
-
 const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     auto n = abstr_targs.size();
     assert(n == known->num_tvars());
@@ -326,18 +308,31 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             auto n = known->num_tvars();
             return apply_known(known, DefVec(n, [&](size_t i) { return abstr_arg->proj(n, i); }));
         }
+    }
 
+    // Rewrite the arg before the callee; see Rewriter::rewrite_imm_App.
+    auto new_arg    = rewrite(app->arg());
+    auto new_callee = rewrite(app->callee());
+    return abstract_app(new_callee, new_arg);
+}
+
+void SEO::Analysis::leave() {
+    if (auto src = curr_mut()->isa<Lam>(); src && src->is_set()) {
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
-        fu_visited_.clear();
-        fu_lams_.clear();
-        if (!abstr_callee->isa<Lam>()) find_unknowns(abstr_callee); // an applied Lam is known, not a value
-        find_unknowns(abstr_arg);
 
-        for (auto lam : fu_lams_) {
-            assert(lam != known && lam->is_open());
-            log().d("unknown edge: {} → {}", curr_mut(), lam);
-            propagate_phis(lam, phi_vars, phi_abstr_args);
+        auto propagate_unknowns = [this, &phi_vars, &phi_abstr_args, src](const Def* abstr) {
+            for (auto mut : abstr->local_muts())
+                if (auto dst = mut->isa<Lam>(); dst && dst->is_open()) {
+                    log().d("unknown edge: {} → {}", src, dst);
+                    propagate_phis(dst, phi_vars, phi_abstr_args);
+                }
+        };
+
+        auto abstr = rewrite(src->body());
+        if (auto app = abstr->isa<App>()) {
+            if (!app->callee()->isa<Lam>()) propagate_unknowns(app->callee());
+            propagate_unknowns(app->arg());
         }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
@@ -346,11 +341,6 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             lattice(phi_vars[i], phi_abstr_args[i]);
         }
     }
-
-    // Rewrite the arg before the callee; see Rewriter::rewrite_imm_App.
-    auto new_arg    = rewrite(app->arg());
-    auto new_callee = rewrite(app->callee());
-    return abstract_app(new_callee, new_arg);
 }
 
 /*

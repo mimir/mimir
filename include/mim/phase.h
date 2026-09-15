@@ -289,6 +289,7 @@ protected:
     /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
     /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
     Def* rewrite_mut(Def*) override;
+    virtual void leave() {} ///< Called after curr_mut() has been completely dealt with.
     ///@}
 
 private:
