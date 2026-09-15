@@ -80,6 +80,7 @@ private:
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
         const Def* rewrite_imm_App(const App*) final;
+        void leave() final;
 
         // post-processing analysis to find sloxies that must be set to top
         void finalize() final;

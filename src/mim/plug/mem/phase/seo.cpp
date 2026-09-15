@@ -201,8 +201,6 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-// Analysis - Rewrite
-
 const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     auto n = abstr_targs.size();
     assert(n == known->num_tvars());
@@ -310,20 +308,32 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             auto n = known->num_tvars();
             return apply_known(known, DefVec(n, [&](size_t i) { return abstr_arg->proj(n, i); }));
         }
+    }
 
+    // Rewrite the arg before the callee; see Rewriter::rewrite_imm_App.
+    auto new_arg    = rewrite(app->arg());
+    auto new_callee = rewrite(app->callee());
+    return abstract_app(new_callee, new_arg);
+}
+
+void SEO::Analysis::leave() {
+    if (auto src = curr_mut()->isa<Lam>(); src && src->is_set()) {
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
 
-        auto propagate_unknons = [&](const Def* abstr) {
+        auto propagate_unknons = [this, &phi_vars, &phi_abstr_args, src](const Def* abstr) {
             for (auto mut : abstr->local_muts())
-                if (auto lam = mut->isa<Lam>(); lam && lam->is_open()) {
-                    log().d("unknown edge: {} → {}", curr_mut(), lam);
-                    propagate_phis(lam, phi_vars, phi_abstr_args);
+                if (auto dst = mut->isa<Lam>(); dst && dst->is_open()) {
+                    log().d("unknown edge: {} → {}", src, dst);
+                    propagate_phis(dst, phi_vars, phi_abstr_args);
                 }
         };
 
-        if (!abstr_callee->isa<Lam>()) propagate_unknons(abstr_callee);
-        propagate_unknons(abstr_arg);
+        auto abstr = rewrite(src->body());
+        if (auto app = abstr->isa<App>()) {
+            if (!app->callee()->isa<Lam>()) propagate_unknons(app->callee());
+            propagate_unknons(app->arg());
+        }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
             if (is_top(phi_vars[i])) continue; // ⊤ is final - lattice() must not descend from it
@@ -331,11 +341,6 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             lattice(phi_vars[i], phi_abstr_args[i]);
         }
     }
-
-    // Rewrite the arg before the callee; see Rewriter::rewrite_imm_App.
-    auto new_arg    = rewrite(app->arg());
-    auto new_callee = rewrite(app->callee());
-    return abstract_app(new_callee, new_arg);
 }
 
 /*
