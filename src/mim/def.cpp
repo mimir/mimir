@@ -12,16 +12,14 @@
 
 using namespace std::literals;
 
-#ifndef DOXYGEN // fe::XTrie is not part of the documented input
-template void fe::XTrie<const mim::Var, mim::DefKey>::dot();
-template void fe::XTrie<mim::Def, mim::DefKey>::dot();
+#ifndef DOXYGEN // fe::Patricia is not part of the documented input
+template void fe::Patricia<const mim::Var, mim::DefKey>::Set::dump() const;
+template void fe::Patricia<mim::Def, mim::DefKey>::Set::dump() const;
 #endif
 
 namespace mim {
 
-std::ostream& DefKey::stream(std::ostream& os, const Def* d) {
-    return os << d->sym() << ": " << d->gid() << '/' << d->tid();
-}
+std::ostream& DefKey::stream(std::ostream& os, const Def* d) { return os << d->sym() << ": " << d->gid(); }
 
 /*
  * constructors
@@ -362,7 +360,7 @@ Def* Def::outermost_binder() const {
     auto fvs = free_vars();
     if (fvs.empty()) return isa_mut();
     // Terminates: the binder of a free Var of `this` sits strictly further out than `this`.
-    return (*fvs.begin())->binder()->outermost_binder();
+    return fvs.min()->binder()->outermost_binder();
 }
 
 bool Def::nests(Def* mut, MutSet& checked) {
