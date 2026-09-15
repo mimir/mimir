@@ -314,19 +314,16 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
 
-        if (!abstr_callee->isa<Lam>()) {
-            for (auto mut : abstr_callee->local_muts())
+        auto propagate_unknons = [&](const Def* abstr) {
+            for (auto mut : abstr->local_muts())
                 if (auto lam = mut->isa<Lam>(); lam && lam->is_open()) {
                     log().d("unknown edge: {} → {}", curr_mut(), lam);
                     propagate_phis(lam, phi_vars, phi_abstr_args);
                 }
-        }
+        };
 
-        for (auto mut : abstr_arg->local_muts())
-            if (auto lam = mut->isa<Lam>(); lam && lam->is_open()) {
-                log().d("unknown edge: {} → {}", curr_mut(), lam);
-                propagate_phis(lam, phi_vars, phi_abstr_args);
-            }
+        if (!abstr_callee->isa<Lam>()) propagate_unknons(abstr_callee);
+        propagate_unknons(abstr_arg);
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
             if (is_top(phi_vars[i])) continue; // ⊤ is final - lattice() must not descend from it
