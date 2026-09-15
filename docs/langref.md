@@ -196,6 +196,7 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 - The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
 - `import foo as *;` splices `foo`'s public members into the current scope like a following `use foo;` would - except that `foo` itself is never bound; the same goes for `plugin foo as *;`.
   Since no name is needed, this form also accepts a file name that isn't an identifier.
+- An import is `priv` unless declared `pub`: `import foo;` binds `foo` privately, while `pub import foo;` re-exports it, and `pub import foo as *;` re-exports every spliced member.
 - A file is parsed, bound, and emitted exactly once, no matter how many modules import it.
   Importing a file that is still being parsed is an error.
 - An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
@@ -223,10 +224,10 @@ Visibility is a Mim-only, purely lexical fact - it has no effect on backend link
 Either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful.
 
 ```ebnf
-d      ::= "import" (I | S) ("as" (I | "*"))? ";"
-        |  "plugin" I ("as" (I | "*"))? ";"
+d      ::= vis? "import" (I | S) ("as" (I | "*"))? ";"
+        |  vis? "plugin" I       ("as" (I | "*"))? ";"
+        |  vis? "use" path       ("as" (I | "*"))? ";"
         |  vis? "mod" I "{" d* "}"
-        |  "use" path ("as" (I | "*"))? ";"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
@@ -283,6 +284,7 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 
 - `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
 - `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
+- Visibility belongs to the *binding*, not to the declaration it names: an `import`/`plugin`/`use` that splices `as *` re-binds someone else's declarations under its own visibility, so only a `pub` splice re-exports them, no matter how public they were in their own module.
 
 ### Patterns and Telescopes {#ptrn}
 

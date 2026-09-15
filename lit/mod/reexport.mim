@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s --output-ast - | %FileCheck --check-prefix=AST %s
+
+plugin core;
+import "reexport_lib.mim" as r;
+
+use core.ops.u.w;
+
+extern lam f(): I32 = r.answer + r.inner.deep;
+extern lam g(): I32 = r.lib.inner.deeper.deepest;
+extern lam h(): I32 = r.l.answer;
+
+// CHECK-DAG: extern lam f (): I32 =
+// CHECK-DAG-NEXT: 65I32;
+// CHECK-DAG: extern lam g (): I32 =
+// CHECK-DAG-NEXT: 7I32;
+// CHECK-DAG: extern lam h (): I32 =
+// CHECK-DAG-NEXT: 42I32;
+
+// AST: import "{{.*}}reexport_lib.mim" as r;

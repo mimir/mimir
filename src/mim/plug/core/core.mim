@@ -340,7 +340,7 @@ pub mod ops {
     }
 
     mod signed {
-        use eq;
+        pub use eq;
         pub let `>> = shr.a;
         pub let `<  = icmp.sl;
         pub let `<= = icmp.sle;
@@ -349,7 +349,7 @@ pub mod ops {
     }
 
     mod unsigned {
-        use eq;
+        pub use eq;
         pub let `>> = shr.l;
         pub let `<  = icmp.ul;
         pub let `<= = icmp.ule;
@@ -358,10 +358,10 @@ pub mod ops {
     }
 
     pub mod s {
-        use signed;
+        pub use signed;
 
         pub mod w {
-            use signed;
+            pub use signed;
             pub let `+  = wrap.add mode.us;
             pub let `-  = wrap.sub mode.us;
             pub let `*  = wrap.mul mode.us;
@@ -369,7 +369,7 @@ pub mod ops {
         }
 
         pub mod nw {
-            use signed;
+            pub use signed;
             pub let `+  = wrap.add mode.nsw;
             pub let `-  = wrap.sub mode.nsw;
             pub let `*  = wrap.mul mode.nsw;
@@ -378,10 +378,10 @@ pub mod ops {
     }
 
     pub mod u {
-        use unsigned;
+        pub use unsigned;
 
         pub mod w {
-            use unsigned;
+            pub use unsigned;
             pub let `+  = wrap.add mode.us;
             pub let `-  = wrap.sub mode.us;
             pub let `*  = wrap.mul mode.us;
@@ -389,7 +389,7 @@ pub mod ops {
         }
 
         pub mod nw {
-            use unsigned;
+            pub use unsigned;
             pub let `+  = wrap.add mode.nuw;
             pub let `-  = wrap.sub mode.nuw;
             pub let `*  = wrap.mul mode.nuw;

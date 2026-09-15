@@ -34,13 +34,20 @@ using Ptrs = fe::Vector<Ptr<T>>;
 using Dbgs = fe::Vector<Dbg>;
 ///@}
 
-using Scope = fe::SymMap<const Decl*>; ///< Maps a name to the Decl introducing it.
-
 /// Visibility tier of a ValDecl.
 /// `Priv` is only visible inside its enclosing `mod`; `Pub` is visible via a path/`use` from outside.
 /// Orthogonal to this, a ValDecl may independently be `extern` (Decl::is_extern) and/or `anx` (Decl::is_anx);
 /// either one nudges the default visibility to `Pub` unless `priv` is given explicitly.
 enum class Vis { Priv, Pub };
+
+/// One name in a Scope: the Decl it introduces and the Vis of *this* binding.
+/// A splicing UseDecl re-binds someone else's Decl under its own Vis, so Vis belongs here and not to the Decl.
+struct Bind {
+    const Decl* decl;
+    Vis vis;
+};
+
+using Scope = fe::SymMap<Bind>; ///< Maps a name to the Binding introducing it.
 
 /// Raw, unvalidated combination of `priv`/`pub`/`extern`/`anx` modifiers written before a declaration.
 /// Parser::parse_modifiers only rejects a modifier being repeated (`priv priv`, `extern extern`, ...);
@@ -882,6 +889,7 @@ private:
 /// `as *` splices instead of naming; a `use` without an `as` is sugar for `as *`.
 /// Makes another module available here: `import`/`plugin` pull in a File, `use` walks a Path.
 /// Either that module is bound under UseDecl::dbg, or its public members are spliced into the current scope.
+/// Defaults to `priv`; whatever it binds or splices carries this decl's own Vis, so only `pub` re-exports.
 class UseDecl : public ValDecl {
 public:
     /// `use path [as alias|*];`; no @p alias means `as *`.
@@ -894,8 +902,8 @@ public:
 
     /// `import`/`plugin`; @p name is the module name, derived from @p file_path if there is one.
     /// The File itself is owned by the AST and shared by all its importers.
-    UseDecl(Loc loc, Tok::Tag tag, Ptr<Path> path, Sym file_path, Dbg alias, bool splice, const File* file)
-        : ValDecl(loc)
+    UseDecl(Loc loc, Mods mods, Tok::Tag tag, Ptr<Path> path, Sym file_path, Dbg alias, bool splice, const File* file)
+        : ValDecl(loc, mods)
         , tag_(tag)
         , path_(path)
         , alias_(alias)

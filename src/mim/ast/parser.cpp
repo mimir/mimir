@@ -118,7 +118,7 @@ Ptrs<UseDecl> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag
     for (const auto& name : plugins) {
         auto dbg = Dbg(Loc(), driver().sym(name));
         if (auto file = import(dbg, false, tag))
-            imports.emplace_back(ptr<UseDecl>(Loc(), tag, path(dbg), Sym(), Dbg(), false, file));
+            imports.emplace_back(ptr<UseDecl>(Loc(), Mods{}, tag, path(dbg), Sym(), Dbg(), false, file));
     }
     return imports;
 }
@@ -134,10 +134,12 @@ const File* Parser::import_main(std::string_view input, fe::View<std::string> pl
  * misc
  */
 
-Ptr<UseDecl> Parser::parse_import_or_plugin() {
-    auto track  = tracker();
+Ptr<UseDecl> Parser::parse_import_or_plugin(Tracker track, Mods mods) {
     auto tag    = lex().tag();
     auto entity = fe::Cite(tag == Tag::K_import ? "import" : "plugin");
+    if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not on `{}`", entity);
+    if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to `{}` - it never represents a single value", entity);
+    auto vis = mods.vis.value_or(Vis::Priv);
 
     Dbg name;
     Sym file_path;
@@ -176,7 +178,7 @@ Ptr<UseDecl> Parser::parse_import_or_plugin() {
     }
 
     if (auto file = import(name, (bool)file_path, tag))
-        return ptr<UseDecl>(track, tag, path(mod), file_path, alias, splice, file);
+        return ptr<UseDecl>(track, Mods{vis}, tag, path(mod), file_path, alias, splice, file);
     return {};
 }
 
@@ -632,7 +634,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
             case Tag::C_RULE: decls.emplace_back(parse_rule_decl()); break;
             case Tag::C_IMPORT:
-                if (auto i = parse_import_or_plugin()) decls.emplace_back(i);
+                if (auto i = parse_import_or_plugin(track, mods)) decls.emplace_back(i);
                 break;
             case Tag::M_id:
                 if (mods.is_anx) {

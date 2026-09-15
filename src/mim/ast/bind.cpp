@@ -67,7 +67,7 @@ public:
         }
 
         for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
-            if (auto decl = fe::lookup(frame.scope(), dbg.sym())) return decl;
+            if (auto bind = fe::lookup(frame.scope(), dbg.sym())) return bind->decl;
 
         if (!quiet) {
             auto& diag = error().e(dbg.loc(), "identifier `{}` not found", dbg.sym());
@@ -83,18 +83,23 @@ public:
     /// Only `ModDecl`/`Import` ever yield a non-null Decl::scope, so this never confuses a value for a module.
     const Decl* find_shadowed_module(Sym sym) {
         for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
-            if (auto decl = fe::lookup(frame.scope(), sym); decl && decl->scope()) return decl;
+            if (auto bind = fe::lookup(frame.scope(), sym); bind && bind->decl->scope()) return bind->decl;
         return nullptr;
     }
 
     void bind(Dbg dbg, const Decl* decl, bool rebind = false, bool quiet = false) {
+        bind(dbg, decl, decl->vis(), rebind, quiet);
+    }
+
+    /// Binds @p decl under @p dbg with an explicit @p vis - a splice re-exports under its own visibility.
+    void bind(Dbg dbg, const Decl* decl, Vis vis, bool rebind = false, bool quiet = false) {
         if (dbg.is_anon()) return;
 
         auto& scope = top();
         if (rebind) {
-            scope[dbg.sym()] = decl;
-        } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), decl); !ins) {
-            auto prev = i->second;
+            scope[dbg.sym()] = Bind{decl, vis};
+        } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis}); !ins) {
+            auto prev = i->second.decl;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
                 error().e(dbg.loc(), "redeclaration of `{}`", dbg).n(prev->dbg().loc(), "previous declaration here");
         } else if (!quiet && !decl->scope()) {
@@ -196,11 +201,11 @@ void Path::bind(Scopes& s, bool quiet) const {
             decl_ = nullptr;
             return;
         }
-        decl_ = member;
+        decl_ = member->decl;
         prev  = dbg;
 
         // A dotted path always crosses into decl_'s enclosing mod from outside: `priv` blocks it.
-        if (decl_->vis() == Vis::Priv) {
+        if (member->vis == Vis::Priv) {
             if (!quiet) s.error().e(dbg.loc(), "`{}` is private to its enclosing `mod`", dbg.sym());
             decl_ = nullptr;
             return;
@@ -423,13 +428,15 @@ void LetDecl::bind(Scopes& s) const {
     s.push();
     value()->bind(s);
     s.pop();
-    ptrn()->bind(s, true, false);
 
-    if (auto id = ptrn()->isa<IdPtrn>()) {
+    auto id = ptrn()->isa<IdPtrn>();
+    // Scopes::bind snapshots Decl::vis, so mirror it onto the Ptrn *before* the Ptrn enters a Scope.
+    if (id) {
         id->vis_ = vis();
         id->anx_ = is_anx();
-        if (is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
     }
+    ptrn()->bind(s, true, false);
+    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
 }
 
 void RecDecl::bind(Scopes& s) const {
@@ -530,8 +537,8 @@ void UseDecl::bind(Scopes& s) const {
 
     if (is_splice()) {
         // Quiet: a name already bound here wins, so a splice never shadows and never conflicts.
-        for (const auto& [sym, decl] : *mod)
-            if (decl->vis() == Vis::Pub) s.bind(Dbg(loc(), sym), decl, false, true);
+        for (const auto& [sym, binding] : *mod)
+            if (binding.vis == Vis::Pub) s.bind(Dbg(loc(), sym), binding.decl, vis(), false, true);
         return;
     }
 

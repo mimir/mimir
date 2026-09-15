@@ -65,7 +65,7 @@ private:
     Ptr<File> parse_file();
     Dbg parse_id(fe::Cite ctxt = {});
     Ptr<Path> parse_path(fe::Cite ctxt = {});
-    Ptr<UseDecl> parse_import_or_plugin();
+    Ptr<UseDecl> parse_import_or_plugin(Tracker, Mods);
     Ptr<Expr> parse_type_ascr(fe::Cite ctxt = {});
 
     /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.
