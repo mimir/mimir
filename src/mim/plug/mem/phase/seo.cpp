@@ -322,7 +322,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 }
         }
 
-        for (auto mut : abstr_callee->local_muts())
+        for (auto mut : abstr_arg->local_muts())
             if (auto lam = mut->isa<Lam>(); lam && lam->is_open()) {
                 log().d("unknown edge: {} → {}", curr_mut(), lam);
                 propagate_phis(lam, phi_vars, phi_abstr_args);
