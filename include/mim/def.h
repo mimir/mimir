@@ -504,7 +504,10 @@ public:
     ///@{
 
     /// Mutables reachable by following *immutable* deps(); `mut->local_muts()` is by definition the set `{ mut }`.
-    Muts local_muts() const { return mut_ ? self_ : muts_; }
+    Muts local_muts() const {
+        if (auto mut = isa_mut()) return Muts(mut);
+        return muts_;
+    }
 
     /// Var%s reachable by following *immutable* deps().
     /// @note `var->local_vars()` is by definition the set `{ var }`.
@@ -782,12 +785,11 @@ private:
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
-    Muts self_; // Mutable: the hash-consed `{ this }` that local_muts() hands out.
     /// Handle into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
     /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice.
     mutable DbgKey dbg_;
 #ifndef NDEBUG
-    u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too); fills the hole next to dbg_
+    u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too); shares dbg_'s 8-byte slot
 #endif
     mutable const Def* type_;
 

@@ -106,7 +106,6 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , type_(type) {
     gid_  = world().next_gid();
     hash_ = fe::hash(gid());
-    self_ = world().muts().singleton(this);
     var_  = nullptr;
     std::fill_n(ops_ptr(), num_ops, nullptr);
 }
@@ -123,7 +122,7 @@ Def::Def(Node node, Def* binder)
     , num_ops_(0)
     , type_(nullptr) {
     gid_  = binder->world().next_gid();
-    vars_ = binder->world().vars().singleton(as<Var>());
+    vars_ = Vars(as<Var>());
     hash_ = fe::hash_begin(node_t(Node::Var));
     hash_ = fe::hash_combine(hash_, binder->gid());
 }

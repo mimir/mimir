@@ -73,24 +73,32 @@ with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
 allocation.
 
-### `Patricia::Map` — a four-way sum type in one machine word
+### `PatriciaPtr::Set` — a five-way sum type in one machine word
 
 `Def::vars_` and `Def::muts_` are sets of `Var*`/`Def*`, hash-consed by
 `fe::PatriciaPtr` (`submodules/fe/include/fe/patricia.h`) so that equal sets are
 pointer-equal.
-A set is a single `uintptr_t` with two tag bits:
+A set is a single `uintptr_t` with three tag bits:
 
-    Null | Leaf (one entry) | Arr (arena FAM, ≤ N entries) | Br (branch)
+    Null | Uniq (D* inline) | Leaf (one entry) | Arr (arena FAM, ≤ N entries) | Br (branch)
+
+`Patricia::Map` only ever tags the low **two** bits, and every node it points at
+is 8-byte aligned, so `PatriciaPtr::Set` claims bit 2 for the `Uniq` case.
 
 Consequences:
 
 - `Def::vars_` and `Def::muts_` cost **8 bytes each**.
+- A singleton set *is* the pointer to its element — zero allocation, zero
+  indirection. `mut->local_muts()` is `{ mut }` by definition and costs a
+  bit-or.
 - Set equality is `ptr_ == ptr_` over the entire set, and so is every
   subtree comparison inside `merge`/`intersect`/`diff`.
 - The flavour follows from the size alone, so one key set has exactly one
-  representation — canonicity is what makes that pointer comparison sound.
+  representation — canonicity is what makes that pointer comparison sound, and
+  it is why a one-element result must normalize back to `Uniq` rather than
+  stay a `Leaf`.
 
-In OCaml a 4-constructor variant with payloads is 3 boxed blocks plus 1
+In OCaml a 5-constructor variant with payloads is 4 boxed blocks plus 1
 immediate; in Haskell the same plus a thunk per constructor; on the JVM four
 classes and a megamorphic call site.
 Pointer tagging is reachable only via `Obj.magic` or `Unsafe`, at which point
@@ -111,10 +119,10 @@ flexible array member, and the arena the nodes are bump-allocated into.
 
 ### Arenas, and how `Def`s are placed in them
 
-`sizeof(Def)` is **80 bytes** — measured against `build-release`
+`sizeof(Def)` is **72 bytes** — measured against `build-release`
 (`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`).
 The only slack is the `u32` next to `dbg_`, which the Debug-only `curr_op_`
-occupies — so a Debug build is 80 bytes too:
+occupies — so a Debug build is 72 bytes too:
 
 | off | field | bytes |
 | --- | ----- | ----- |
@@ -129,11 +137,10 @@ occupies — so a Debug build is 80 bytes too:
 | 32 | `hash_` | 8 |
 | 40 | `vars_` | 8 |
 | 48 | `muts_` | 8 |
-| 56 | `self_` | 8 |
-| 64 | `dbg_` | 4 |
-| 68 | `curr_op_` (Debug only) | 4 |
-| 72 | `type_` | 8 |
-| | **total** | **80** |
+| 56 | `dbg_` | 4 |
+| 60 | `curr_op_` (Debug only) | 4 |
+| 64 | `type_` | 8 |
+| | **total** | **72** |
 
 Three deliberate optimizations produce that number, and none of them survives a
 port:
@@ -402,7 +409,7 @@ structures pays something:
   header-plus-trailing-elements allocation written in `unsafe`, precisely
   because the language does not provide one.
 - **No tagged pointers.**
-  A `PatriciaPtr::Set` packs a four-way sum into one `uintptr_t` with two tag
+  A `PatriciaPtr::Set` packs a five-way sum into one `uintptr_t` with three tag
   bits.
   A Rust `enum` over four pointer-carrying variants is 16 bytes; niche
   optimization does not apply.

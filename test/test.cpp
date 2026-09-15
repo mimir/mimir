@@ -266,7 +266,7 @@ TEST_CASE("free vars") {
     auto x   = lx->var()->set("x")->as<Var>();
     auto y   = ly->var()->set("y")->as<Var>();
     lx->set(false, w.tuple({x, y}));
-    CHECK(lx->free_vars() == w.vars().singleton(y));
+    CHECK(lx->free_vars() == Vars(y));
 }
 
 TEST_CASE("free vars: fixed point") {
@@ -302,8 +302,8 @@ TEST_CASE("free vars: fixed point") {
 
     CHECK(a->free_vars() == vt_vf);
     CHECK(b->free_vars() == cond_vt_vf);
-    CHECK(t->free_vars() == w.vars().singleton(vt));
-    CHECK(f->free_vars() == w.vars().singleton(vf));
+    CHECK(t->free_vars() == Vars(vt));
+    CHECK(f->free_vars() == Vars(vf));
 
     auto mark = a->mark();
     CHECK(b->mark() == mark);
@@ -320,9 +320,9 @@ TEST_CASE("free vars: fixed point") {
     CHECK(t->mark() == mark);
     CHECK(n->mark() == mark);
 
-    CHECK(a->free_vars() == w.vars().singleton(vt));
+    CHECK(a->free_vars() == Vars(vt));
     CHECK(b->free_vars() == cond_vt);
-    CHECK(t->free_vars() == w.vars().singleton(vt));
+    CHECK(t->free_vars() == Vars(vt));
     CHECK(f->free_vars() == Vars());
 
     CHECK(a->mark() == mark + 2);
@@ -403,8 +403,8 @@ TEST_CASE("free vars: SSA without dominance, Table 1") {
     CHECK(xi->mark() == run + 2);
     CHECK(xj->mark() == run + 6);
     CHECK(f_->free_vars() == Vars());
-    CHECK(hi->free_vars() == w.vars().singleton(vf));
-    CHECK(hj->free_vars() == w.vars().singleton(vf));
+    CHECK(hi->free_vars() == Vars(vf));
+    CHECK(hj->free_vars() == Vars(vf));
     CHECK(bi->free_vars() == vf_i1);
     CHECK(bj->free_vars() == vf_j1);
     CHECK(xi->free_vars() == vf_i1);
@@ -432,7 +432,7 @@ TEST_CASE("free vars: SSA without dominance, Table 1") {
     CHECK(xj->mark() == run + 10);
     CHECK(xi->mark() == run + 2);
     CHECK(f_->free_vars() == Vars());
-    CHECK(hi->free_vars() == w.vars().singleton(vf));
+    CHECK(hi->free_vars() == Vars(vf));
     CHECK(hj->free_vars() == vf_i1);
     CHECK(bi->free_vars() == vf_i1);
     CHECK(bj->free_vars() == vf_i1_j1);

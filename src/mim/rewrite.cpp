@@ -283,12 +283,6 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
  * VarRewriter
  */
 
-VarRewriter& VarRewriter::add(const Var* var, const Def* arg) {
-    map(var, arg);
-    vars_.emplace_back(world().vars().singleton(var));
-    return *this;
-}
-
 const Def* VarRewriter::rewrite(const Def* old_def) {
     if (auto new_def = lookup(old_def)) return new_def;
 
