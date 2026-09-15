@@ -13,8 +13,8 @@
 #include <fe/cast.h>
 #include <fe/container.h>
 #include <fe/enum.h>
+#include <fe/patricia.h>
 #include <fe/vector.h>
-#include <fe/xtrie.h>
 
 #include "mim/config.h"
 
@@ -75,11 +75,9 @@ class Def;
 class Driver;
 class World;
 
-/// Grants fe::XTrie access to Def::gid_ and Def::tid_.
+/// Grants fe::PatriciaPtr access to Def::gid_.
 struct DefKey {
-    static u32 gid(const Def*) noexcept;
-    static u32 tid(const Def*) noexcept;
-    static void set_tid(const Def*, u32) noexcept;
+    static u32 key(const Def*) noexcept;
     static std::ostream& stream(std::ostream&, const Def*);
 };
 
@@ -102,7 +100,7 @@ template<class To>
 using MutMap  = GIDMap<Def*, To>;
 using MutSet  = GIDSet<Def*>;
 using Mut2Mut = MutMap<Def*>;
-using Muts    = fe::XTrie<Def, DefKey>::Set;
+using Muts    = fe::PatriciaPtr<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
@@ -111,7 +109,7 @@ using Muts    = fe::XTrie<Def, DefKey>::Set;
 template<class To>
 using VarMap  = GIDMap<const Var*, To>;
 using Var2Var = VarMap<const Var*>;
-using Vars    = fe::XTrie<const Var, DefKey>::Set;
+using Vars    = fe::PatriciaPtr<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
@@ -294,7 +292,6 @@ public:
     Driver& driver() const noexcept;
     constexpr flags_t flags() const noexcept { return flags_; }
     constexpr u32 gid() const noexcept { return gid_; }   ///< Global id - *unique* number for this Def.
-    constexpr u32 tid() const noexcept { return tid_; }   ///< Trie id - only used in Trie.
     constexpr u32 mark() const noexcept { return mark_; } ///< Used internally by free_vars().
     constexpr size_t hash() const noexcept { return hash_; }
     constexpr Node node() const noexcept { return node_; }
@@ -507,10 +504,7 @@ public:
     ///@{
 
     /// Mutables reachable by following *immutable* deps(); `mut->local_muts()` is by definition the set `{ mut }`.
-    Muts local_muts() const {
-        if (auto mut = isa_mut()) return Muts(mut);
-        return muts_;
-    }
+    Muts local_muts() const { return mut_ ? self_ : muts_; }
 
     /// Var%s reachable by following *immutable* deps().
     /// @note `var->local_vars()` is by definition the set `{ var }`.
@@ -541,7 +535,7 @@ public:
 
     /// @name free_vars predicates
     /// `free_vars()` of an *immutable* is **not** cached: it merges `free_vars()` of every local_muts() entry on
-    /// every call, and each XTrie::merge allocates, sorts, hashes, and probes the pool.
+    /// every call, and each merge allocates, hashes, and probes the pool.
     /// Since free_vars() is a union, any predicate over it distributes over that union - so these answer the
     /// question without ever materializing the merged set.
     /// Prefer them over `free_vars().contains(...)` / `.empty()` / `has_intersection(...)`.
@@ -783,19 +777,18 @@ private:
     bool dirty_         : 1;
     unsigned dep_       : 4;
     u32 mark_ = 0;
-#ifndef NDEBUG
-    u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too)
-#endif
     u32 gid_;
     u32 num_ops_;
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
+    Muts self_; // Mutable: the hash-consed `{ this }` that local_muts() hands out.
     /// Handle into the Driver's Dbg table rather than a full Dbg: this keeps `sizeof(Def)` down by
     /// 20 bytes on *every* node, and Dbg%s are shared roughly 10:1 in practice.
-    /// @note Deliberately adjacent to Def::tid_ so the two `u32`s share one 8-byte slot.
     mutable DbgKey dbg_;
-    mutable u32 tid_ = 0;
+#ifndef NDEBUG
+    u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too); fills the hole next to dbg_
+#endif
     mutable const Def* type_;
 
     friend struct DefKey;
@@ -804,9 +797,7 @@ private:
     friend std::ostream& operator<<(std::ostream&, const Def*);
 };
 
-inline u32 DefKey::gid(const Def* d) noexcept { return d->gid_; }
-inline u32 DefKey::tid(const Def* d) noexcept { return d->tid_; }
-inline void DefKey::set_tid(const Def* d, u32 tid) noexcept { d->tid_ = tid; }
+inline u32 DefKey::key(const Def* d) noexcept { return d->gid_; }
 
 /// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
 /// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()

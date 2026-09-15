@@ -12,16 +12,14 @@
 
 using namespace std::literals;
 
-#ifndef DOXYGEN // fe::XTrie is not part of the documented input
-template void fe::XTrie<const mim::Var, mim::DefKey>::dot();
-template void fe::XTrie<mim::Def, mim::DefKey>::dot();
+#ifndef DOXYGEN // fe::PatriciaPtr is not part of the documented input
+template void fe::PatriciaPtr<const mim::Var, mim::DefKey>::Set::dump() const;
+template void fe::PatriciaPtr<mim::Def, mim::DefKey>::Set::dump() const;
 #endif
 
 namespace mim {
 
-std::ostream& DefKey::stream(std::ostream& os, const Def* d) {
-    return os << d->sym() << ": " << d->gid() << '/' << d->tid();
-}
+std::ostream& DefKey::stream(std::ostream& os, const Def* d) { return os << d->sym() << ": " << d->gid(); }
 
 /*
  * constructors
@@ -108,6 +106,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , type_(type) {
     gid_  = world().next_gid();
     hash_ = fe::hash(gid());
+    self_ = world().muts().singleton(this);
     var_  = nullptr;
     std::fill_n(ops_ptr(), num_ops, nullptr);
 }
@@ -124,7 +123,7 @@ Def::Def(Node node, Def* binder)
     , num_ops_(0)
     , type_(nullptr) {
     gid_  = binder->world().next_gid();
-    vars_ = Vars(as<Var>());
+    vars_ = binder->world().vars().singleton(as<Var>());
     hash_ = fe::hash_begin(node_t(Node::Var));
     hash_ = fe::hash_combine(hash_, binder->gid());
 }
@@ -362,7 +361,7 @@ Def* Def::outermost_binder() const {
     auto fvs = free_vars();
     if (fvs.empty()) return isa_mut();
     // Terminates: the binder of a free Var of `this` sits strictly further out than `this`.
-    return (*fvs.begin())->binder()->outermost_binder();
+    return fvs.min()->binder()->outermost_binder();
 }
 
 bool Def::nests(Def* mut, MutSet& checked) {

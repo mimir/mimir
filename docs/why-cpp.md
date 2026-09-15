@@ -73,20 +73,22 @@ with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
 allocation.
 
-### `XTrie::Set` — a four-way sum type in one machine word
+### `Patricia::Map` — a four-way sum type in one machine word
 
-`XTrie::Set` (`submodules/fe/include/fe/xtrie.h`) is a single `uintptr_t` with two tag
-bits:
+`Def::vars_` and `Def::muts_` are sets of `Var*`/`Def*`, hash-consed by
+`fe::PatriciaPtr` (`submodules/fe/include/fe/patricia.h`) so that equal sets are
+pointer-equal.
+A set is a single `uintptr_t` with two tag bits:
 
-    Null | Uniq (D* inline) | Data (arena FAM) | Node (trie node)
+    Null | Leaf (one entry) | Arr (arena FAM, ≤ N entries) | Br (branch)
 
 Consequences:
 
 - `Def::vars_` and `Def::muts_` cost **8 bytes each**.
-- A singleton set *is* the pointer to its element — zero allocation, zero
-  indirection, and `contains` is one comparison.
-- Set equality is `ptr_ == ptr_` over the entire set, because everything is
-  hash-consed.
+- Set equality is `ptr_ == ptr_` over the entire set, and so is every
+  subtree comparison inside `merge`/`intersect`/`diff`.
+- The flavour follows from the size alone, so one key set has exactly one
+  representation — canonicity is what makes that pointer comparison sound.
 
 In OCaml a 4-constructor variant with payloads is 3 boxed blocks plus 1
 immediate; in Haskell the same plus a thunk per constructor; on the JVM four
@@ -94,35 +96,25 @@ classes and a megamorphic call site.
 Pointer tagging is reachable only via `Obj.magic` or `Unsafe`, at which point
 you have left the language.
 
-`XTrie::Data` is a **C99 flexible array member**
-(`size_t size; D* elems[];`) placement-`new`ed into `data_arena_` — not even
-portable C++.
+`Patricia::Arr` is a **C99 flexible array member**
+(`size_t hash; uint32_t size; Entry entries[];`) placement-`new`ed into
+`arr_arena_` — not even portable C++.
 Elsewhere it becomes a record plus a separate array object: two allocations, an
 extra hop per element access, and on the JVM a second 16-byte header.
 
-### The link-cut tree mutates in place
-
-`lct::Node` (`submodules/fe/include/fe/lct.h`) is CRTP-intrusive, embedded
-directly into the trie `Node` by inheritance.
-`rotate` is six pointer stores into memory that already exists.
-`splay`, `expose`, `lca`, `is_descendant_of` are pure in-place pointer surgery
-with **zero allocation**.
-
-This is where a functional formulation loses *asymptotically* rather than by a
-constant.
-A splay tree is amortized O(log n) **because it mutates on read**:
-`Set::contains` → `LCT::find` → `expose` → `splay`, so a membership test
-restructures the tree.
-A persistent splay tree allocates O(depth) nodes **per query**, and
-`XTrie::Set::has_intersection` calls `find` inside a loop over two
-node-sets.
+This is also the one structure where a functional formulation does *not* lose:
+a Patricia tree is persistent by construction, and MimIR's is the [Okasaki and
+Gill](https://ku-fpg.github.io/papers/Okasaki-98-IntMap/) formulation an ML
+programmer would write.
+What C++ buys here is the representation, not the algorithm — the tag bits, the
+flexible array member, and the arena the nodes are bump-allocated into.
 
 ### Arenas, and how `Def`s are placed in them
 
-`sizeof(Def)` is **72 bytes** — measured against `build-release`
-(`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`); 80 in a Debug build,
-where `curr_op_` is present.
-The layout has **zero padding**:
+`sizeof(Def)` is **80 bytes** — measured against `build-release`
+(`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`).
+The only slack is the `u32` next to `dbg_`, which the Debug-only `curr_op_`
+occupies — so a Debug build is 80 bytes too:
 
 | off | field | bytes |
 | --- | ----- | ----- |
@@ -137,10 +129,11 @@ The layout has **zero padding**:
 | 32 | `hash_` | 8 |
 | 40 | `vars_` | 8 |
 | 48 | `muts_` | 8 |
-| 56 | `dbg_` | 4 |
-| 60 | `tid_` | 4 |
-| 64 | `type_` | 8 |
-| | **total** | **72** |
+| 56 | `self_` | 8 |
+| 64 | `dbg_` | 4 |
+| 68 | `curr_op_` (Debug only) | 4 |
+| 72 | `type_` | 8 |
+| | **total** | **80** |
 
 Three deliberate optimizations produce that number, and none of them survives a
 port:
@@ -149,8 +142,6 @@ port:
   inline `Dbg` (see `Def`'s data members in `include/mim/def.h`).
   That alone is 20 bytes off *every* node, and `Dbg`s are shared roughly 10:1
   in practice.
-  It is deliberately placed adjacent to `tid_` so the two `u32`s share one
-  8-byte slot.
 - **`Def` is not polymorphic.**
   There is no vtable pointer — verified: `std::is_polymorphic_v<Def>` is
   `false`.
@@ -210,11 +201,9 @@ and the gid counter rolled back.
 In a normalizing hash-consed IR the hit rate is high by construction, so the
 common path costs **zero net allocation and produces zero garbage**.
 
-`XTrie::unify` does the same for `Data`.
-`XTrie::merge` goes further: it allocates the upper bound
-`d1->size + d2->size`, merges into it, then returns the unused tail via
-`unify(data, state, excess)`.
-Shrinking your most recent allocation is a bump-pointer-only move.
+`Patricia::leaf`/`arr`/`br` do the same for set nodes: construct into the
+arena, probe the pool, and rewind on a hit.
+One arena per node kind is what keeps that rollback LIFO.
 
 In fairness, a generational nursery handles short-lived garbage well — copying
 cost is proportional to survivors, so the dead speculative `Def` is nearly free
@@ -222,9 +211,7 @@ to collect.
 The cost is the **compounding**: high nursery churn forces frequent minor
 collections, and each must scan a remembered set that is enormous here, because
 MimIR constantly mutates old-generation `Def`s — `set()`, the users set in
-`muts_`, `mark_` sweeps in `free_vars()`, and lazy `tid_` assignment in
-`XTrie::set_tid`, which writes into a nominally-immutable `Def`
-from inside the trie.
+`muts_`, and `mark_` sweeps in `free_vars()`.
 Every one of those is an old→young pointer write paying `caml_modify` or
 card-marking.
 High churn × large remembered set is the bad quadrant.
@@ -415,7 +402,8 @@ structures pays something:
   header-plus-trailing-elements allocation written in `unsafe`, precisely
   because the language does not provide one.
 - **No tagged pointers.**
-  `XTrie::Set` packs a four-way sum into one `uintptr_t` with two tag bits.
+  A `PatriciaPtr::Set` packs a four-way sum into one `uintptr_t` with two tag
+  bits.
   A Rust `enum` over four pointer-carrying variants is 16 bytes; niche
   optimization does not apply.
   That is `vars_` and `muts_` going 8 → 16 bytes each, +16 per node, unless you

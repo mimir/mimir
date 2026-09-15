@@ -123,11 +123,7 @@ public:
     }
 
     // Add initial mapping from @pvar -> @p arg.
-    VarRewriter& add(const Var* var, const Def* arg) {
-        map(var, arg);
-        vars_.emplace_back(var);
-        return *this;
-    }
+    VarRewriter& add(const Var* var, const Def* arg);
     ///@}
 
     /// @name push / pop
