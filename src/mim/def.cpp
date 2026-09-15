@@ -74,13 +74,21 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
         auto ptr  = ops_ptr();
         gid_      = world->next_gid();
 
-        for (size_t i = 0, e = ops.size(); i != e; ++i) {
-            auto op = ops[i];
-            ptr[i]  = op;
-            dep_ |= op->dep_;
-            vars_ = vars->merge(vars_, op->local_vars());
-            muts_ = muts->merge(muts_, op->local_muts());
-            hash_ = fe::hash_combine(hash_, op->gid());
+        if (node == Node::Proxy) {
+            for (size_t i = 0, e = ops.size(); i != e; ++i) {
+                auto op = ops[i];
+                ptr[i]  = op;
+                hash_   = fe::hash_combine(hash_, op->gid());
+            }
+        } else {
+            for (size_t i = 0, e = ops.size(); i != e; ++i) {
+                auto op = ops[i];
+                ptr[i]  = op;
+                dep_ |= op->dep_;
+                vars_ = vars->merge(vars_, op->local_vars());
+                muts_ = muts->merge(muts_, op->local_muts());
+                hash_ = fe::hash_combine(hash_, op->gid());
+            }
         }
     }
 }
