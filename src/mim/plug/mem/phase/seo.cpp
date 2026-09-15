@@ -42,7 +42,9 @@ void SEO::Analysis::reset() {
 
 // SCCP
 
-const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
+const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) {
+    return world().proxy_shallow(var->type(), {var}, Proxy_SCCP_Top);
+}
 
 const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     log().d("sccp join: {} ⊔ {}", var, def);
@@ -97,7 +99,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
+    return world().proxy_shallow(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, fe::Span<const Def*> abstr_vars) {
@@ -166,7 +168,7 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, fe::Span<const Def*> abstr_ar
 // SSA
 
 static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
+    return w.proxy_shallow(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
@@ -275,8 +277,8 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::slot>(app)) {
         if (!is_top(slot)) {
             if (auto [mem, ret_lam, _, ptr] = split_slot(slot); ret_lam) {
-                auto abstr_mem     = rewrite(mem);
-                auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
+                auto abstr_mem = rewrite(mem);
+                auto sloxy = world().proxy_shallow(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 sloxy2slot_[sloxy] = slot;
                 slots_.emplace(ptr);
                 log().d("slot {} → sloxy {}", ptr, sloxy);

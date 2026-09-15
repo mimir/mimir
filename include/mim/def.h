@@ -1035,15 +1035,16 @@ private:
 
 class Proxy : public Def, public Setters<Proxy> {
 private:
-    Proxy(const Def* type, flags_t tag, Defs ops)
-        : Def(Node, type, ops, tag) {}
+    Proxy(const Def* type, bool shallow, u32 tag, Defs ops)
+        : Def(Node, type, ops, (u64(shallow) << 63_u64) | u64(tag)) {}
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    flags_t tag() const { return flags_; }
+    bool is_shallow() const { return flags_ & 0x8000'0000'0000'0000_u64; }
+    u32 tag() const { return flags_; }
     ///@}
 
     template<flags_t Tag>

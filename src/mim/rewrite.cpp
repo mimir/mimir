@@ -161,7 +161,7 @@ const Def* Rewriter::rewrite_imm_Pi(const Pi* d) {
 const Def* Rewriter::rewrite_imm_Proxy(const Proxy* d) {
     auto new_type = rewrite(d->type());
     auto new_ops  = rewrite(d->ops());
-    return world().proxy(new_type, new_ops, d->tag());
+    return world().proxy(new_type, new_ops, d->is_shallow(), d->tag());
 }
 
 const Def* Rewriter::rewrite_imm_Rule(const Rule* d) {

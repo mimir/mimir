@@ -335,7 +335,11 @@ public:
             return type(lit_univ(level));
     }
     const Def* var(Def* mut);
-    const Proxy* proxy(const Def* type, Defs ops, flags_t tag) { return unify<Proxy>(type, tag, ops); }
+    const Proxy* proxy(const Def* type, Defs ops, bool shallow, u32 tag) {
+        return unify<Proxy>(type, shallow, tag, ops);
+    }
+    const Proxy* proxy_shallow(const Def* type, Defs ops, u32 tag) { return proxy(type, ops, true, tag); }
+    const Proxy* proxy_deep(const Def* type, Defs ops, u32 tag) { return proxy(type, ops, false, tag); }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
     Hole* mut_hole_univ() { return mut_hole(univ()); }
