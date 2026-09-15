@@ -321,7 +321,7 @@ void SEO::Analysis::leave() {
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
 
-        auto propagate_unknons = [this, &phi_vars, &phi_abstr_args, src](const Def* abstr) {
+        auto propagate_unknowns = [this, &phi_vars, &phi_abstr_args, src](const Def* abstr) {
             for (auto mut : abstr->local_muts())
                 if (auto dst = mut->isa<Lam>(); dst && dst->is_open()) {
                     log().d("unknown edge: {} → {}", src, dst);
@@ -331,8 +331,8 @@ void SEO::Analysis::leave() {
 
         auto abstr = rewrite(src->body());
         if (auto app = abstr->isa<App>()) {
-            if (!app->callee()->isa<Lam>()) propagate_unknons(app->callee());
-            propagate_unknons(app->arg());
+            if (!app->callee()->isa<Lam>()) propagate_unknowns(app->callee());
+            propagate_unknowns(app->arg());
         }
 
         for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
