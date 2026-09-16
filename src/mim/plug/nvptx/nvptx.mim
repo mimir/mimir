@@ -20,4 +20,8 @@ anx let Stream = mem.Ptr0 I8;
 ///
 /// ## Phases
 ///
+/// ### stream_impl_repl
+///
+/// Replaces the abstract `gpu.Stream` with this plugin's PTX stream representation `nvptx.Stream`.
+///
 axm stream_impl_repl: compile.Phase;

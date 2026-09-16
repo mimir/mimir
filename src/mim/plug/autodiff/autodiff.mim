@@ -58,8 +58,18 @@ axm sum: [n: Nat, T: *] → «n; T» → T, normalize_sum;
 ///
 /// ## Phases
 ///
+/// ### zero_repl
+///
+/// Replaces `autodiff.zero T` with the zero element of `T`, where one exists.
+///
 axm zero_repl: compile.Phase;
-axm eval:      compile.Phase;
+///
+/// ### eval
+///
+/// The heart of AD: replaces an `autodiff.ad` call with the differentiated function
+/// (mim::plug::autodiff::phase::Eval).
+///
+axm eval: compile.Phase;
 ///
 /// ## Registered translations
 ///

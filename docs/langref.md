@@ -52,8 +52,8 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 </div>
 
-`.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
-`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
+- `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
+- `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
@@ -225,13 +225,13 @@ Either one nudges the default visibility to `pub` (instead of the usual `priv` d
 
 ```ebnf
 d      ::= vis? "import" (I | S) ("as" (I | "*"))? ";"
-        |  vis? "plugin" I       ("as" (I | "*"))? ";"
-        |  vis? "use" path       ("as" (I | "*"))? ";"
+        |  vis? "plugin"  I      ("as" (I | "*"))? ";"
+        |  vis? "use"     path   ("as" (I | "*"))? ";"
         |  vis? "mod" I "{" d* "}"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
-        |  vis? "extern" lam I fwd+ (":" e)? ";"
+        |  vis?  "extern"           lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I "=" e and*
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
@@ -251,9 +251,9 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 @note A declaration may be followed by a `;`, as all examples on this page do; stray semicolons between declarations are skipped.
 
 - `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
+- `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
 - `mod` groups declarations under a name; its body also sees the enclosing scope.
   Neither `extern` nor `anx` apply to it.
-- `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
 - `let` introduces a binding pattern.
 - `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
@@ -462,7 +462,7 @@ arity ::= e
 ```ebnf
 e   ::= e "∪" e
      |  e "inj" e
-     |  "match" e "with" ("|"? p "=>" e)+
+     |  "match" e "with" "|"? p "=>" e ("|" p "=>" e)*
 ```
 
 - `e ∪ e` forms a union type.

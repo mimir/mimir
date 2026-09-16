@@ -238,14 +238,51 @@ anx lam synced_scope (m1: GlobalM, m3: SharedM,
 ///
 /// ## Phases
 ///
-axm check_addr_spaces_repl:    compile.Phase;
+/// ### check_addr_spaces_repl
+///
+/// Rejects address-space misuse: `mem.malloc` / `mem.free` outside the global address space,
+/// `mem.mslot` in the global or const one, and `mem.store` into the const one.
+///
+axm check_addr_spaces_repl: compile.Phase;
+///
+/// ### host_malloc2gpualloc_repl
+///
+/// Rewrites `mem.malloc` / `mem.free` in the global address space into `gpu.alloc` / `gpu.free`.
+///
 axm host_malloc2gpualloc_repl: compile.Phase;
-axm mem_checks:                compile.Phase;
-axm remove_double_syncs:       compile.Phase;
-axm split_apply:               compile.Phase;
-axm lower_btensor_map_reduce:  compile.Phase;
+///
+/// ### mem_checks
+///
+/// Rejects `mem.M` crossing a device boundary — passed to a `gpu.launch` kernel, or taken/returned
+/// by `main` with a non-zero address space.
+///
+axm mem_checks: compile.Phase;
+///
+/// ### remove_double_syncs
+///
+/// Drops a `sync_work_items` whose memories come from the immediately preceding sync or from the
+/// kernel entry.
+///
+axm remove_double_syncs: compile.Phase;
+///
+/// ### split_apply
+///
+/// Splits the kernels off into a device world, then runs `host_specific_phases` on the host world and
+/// `device_specific_phases` on the device world.
+///
+axm split_apply: compile.Phase;
+///
+/// ### lower_btensor_map_reduce
+///
+/// Lowers `btensor.map_reduce_post` to a kernel launch; skipped if the program already contains an
+/// explicit `init`.
+///
+axm lower_btensor_map_reduce: compile.Phase;
 ///
 /// ### Pipelines
+///
+/// The two sub-pipelines `split_apply` runs on the worlds it has just split apart; override them to
+/// plug target-specific phases into either side.
 ///
 anx lam host_specific_phases () = host_malloc2gpualloc_repl;
 anx lam device_specific_phases () = remove_double_syncs;

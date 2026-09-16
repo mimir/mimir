@@ -62,21 +62,43 @@ axm attr.(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, nor
 ///
 /// The `opt` pipeline runs these in the order below, reusing `clos.branch_clos` as a repeated cleanup after
 /// the passes that introduce branch closures.
-/// * `clos_conv_prep`: prepares for closure conversion by wrapping operands with the `clos.attr` markers above
-///   and eta-expanding branches and continuations (mim::plug::clos::phase::ClosConvPrep).
-/// * `clos_conv`: the actual *typed closure conversion* (mim::plug::clos::phase::ClosConv).
-/// * `branch_clos`: flattens a branch over closure literals back into a direct branch over the underlying `Lam`s,
-///   inlining their environments (mim::plug::clos::phase::BranchClosElim).
-/// * `lower_typed_clos_prep`: escape analysis; marks closures whose environment escapes with `clos.attr.esc`
-///   (mim::plug::clos::phase::LowerTypedClosPrep).
-/// * `clos2sjlj`: lowers exception-like basic-block closures to `setjmp`/`longjmp`
-///   (mim::plug::clos::phase::Clos2SJLJ).
-/// * `lower_typed_clos`: lowers *typed* closures to untyped `(code-ptr, env-ptr)` pairs, boxing or unboxing the
-///   environment (mim::plug::clos::phase::LowerTypedClos).
 ///
-axm clos_conv_prep:        compile.Phase;
-axm clos_conv:             compile.Phase;
-axm branch_clos:           compile.Phase;
+/// ### clos_conv_prep
+///
+/// Prepares for closure conversion by wrapping operands with the `clos.attr` markers above and
+/// eta-expanding branches and continuations (mim::plug::clos::phase::ClosConvPrep).
+///
+axm clos_conv_prep: compile.Phase;
+///
+/// ### clos_conv
+///
+/// The actual *typed closure conversion* (mim::plug::clos::phase::ClosConv).
+///
+axm clos_conv: compile.Phase;
+///
+/// ### branch_clos
+///
+/// Flattens a branch over closure literals back into a direct branch over the underlying `Lam`s,
+/// inlining their environments (mim::plug::clos::phase::BranchClosElim).
+///
+axm branch_clos: compile.Phase;
+///
+/// ### lower_typed_clos_prep
+///
+/// Escape analysis; marks closures whose environment escapes with `clos.attr.esc`
+/// (mim::plug::clos::phase::LowerTypedClosPrep).
+///
 axm lower_typed_clos_prep: compile.Phase;
-axm clos2sjlj:             compile.Phase;
-axm lower_typed_clos:      compile.Phase;
+///
+/// ### clos2sjlj
+///
+/// Lowers exception-like basic-block closures to `setjmp`/`longjmp` (mim::plug::clos::phase::Clos2SJLJ).
+///
+axm clos2sjlj: compile.Phase;
+///
+/// ### lower_typed_clos
+///
+/// Lowers *typed* closures to untyped `(code-ptr, env-ptr)` pairs, boxing or unboxing the environment
+/// (mim::plug::clos::phase::LowerTypedClos).
+///
+axm lower_typed_clos: compile.Phase;

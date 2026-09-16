@@ -95,6 +95,8 @@ axm check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
 ///
 /// ## Phases
 ///
+/// ### remove_dbg_repl
+///
 /// Removes the permanent `refly.dbg` markers for code generation.
 ///
 axm remove_dbg_repl: compile.Phase;

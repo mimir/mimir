@@ -17,7 +17,23 @@
 ///
 axm Phase: *;
 ///
-/// ## Utility
+/// ## Operations
+///
+/// ### aggr
+///
+/// Makes a fixed-point flag switchable from the command line.
+/// `compile.aggr fallback` yields `tt` if `-X compile:aggr` was passed, `ff` if `-X compile:no-aggr` was passed,
+/// and otherwise the given `fallback`.
+/// Use it as the Bool of a `compile.phases` to make that pipeline's fixed-point iteration switchable via the CLI.
+///
+axm aggr: Bool → Bool, normalize_aggr;
+///
+/// ### cond
+///
+/// Yields `phase` if the named plugin is loaded, otherwise `compile.null`.
+/// Used to gate whole sub-pipelines on a plugin without importing it.
+///
+axm cond: {n: Nat} → «n; I8» → Phase → Phase, normalize_cond;
 ///
 /// ### is_loaded
 ///
@@ -35,24 +51,6 @@ axm is_loaded: {n: Nat} → «n; I8» → Bool, normalize_is_loaded;
 ///
 axm named: {n: Nat} → «n; I8» → Phase;
 ///
-/// ### cond
-///
-/// Yields `phase` if the named plugin is loaded, otherwise `compile.null`.
-/// Used to gate whole sub-pipelines on a plugin without importing it.
-///
-axm cond: {n: Nat} → «n; I8» → Phase → Phase, normalize_cond;
-///
-/// ### aggr
-///
-/// Makes a fixed-point flag switchable from the command line.
-/// `compile.aggr fallback` yields `tt` if `-X compile:aggr` was passed, `ff` if `-X compile:no-aggr` was passed,
-/// and otherwise the given `fallback`.
-/// Use it as the Bool of a `compile.phases` to make that pipeline's fixed-point iteration switchable via the CLI.
-///
-axm aggr: Bool → Bool, normalize_aggr;
-///
-/// ## Constructors
-///
 /// ### phases
 ///
 /// Bundles `n` phases into one pipeline (a mim::PhaseMan).
@@ -61,26 +59,67 @@ axm aggr: Bool → Bool, normalize_aggr;
 ///
 axm phases: {n: Nat} → Bool → «n; Phase» → Phase;
 ///
-/// ### Registered Phases
+/// ## Phases
 ///
-/// * `beta_red`: β-reduction; inlines Lam%s that occur exactly once in the program (mim::BetaRed).
-/// * `branch_normalize`: η-expands non-Lam branch targets so both sides of a branch are Lam%s (mim::BranchNormalize).
-/// * `cleanup`: removes dead and unreachable code by rebuilding the World (mim::Cleanup).
-/// * `eta_conv`: combined, idempotent η-reduction/η-expansion (mim::EtaConv).
-/// * `lam_spec`: specializes a Lam at its call site by inlining higher-order arguments (mim::LamSpec).
-/// * `null`: does nothing; useful as an elided placeholder.
-/// * `ret_wrap`: prepares return continuations for the backend (mim::RetWrap).
-/// * `scalarize`: flattens function signatures (mim::Scalarize).
-/// * `static_arg_opt`: drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).
-/// * `unload`: unloads a plugin and nukes its annexes on the next World swap.
+/// The phases this plugin itself registers; every other one is contributed by the plugin that
+/// implements it.
 ///
-axm beta_red:         Phase;
+/// ### beta_red
+///
+/// β-reduction; inlines Lam%s that occur exactly once in the program (mim::BetaRed).
+///
+axm beta_red: Phase;
+///
+/// ### branch_normalize
+///
+/// η-expands non-Lam branch targets so both sides of a branch are Lam%s (mim::BranchNormalize).
+///
 axm branch_normalize: Phase;
-axm cleanup:          Phase;
-axm eta_conv:         Phase;
-axm lam_spec:         Phase;
-axm null:             Phase;
-axm ret_wrap:         Phase;
-axm scalarize:        Phase;
-axm static_arg_opt:   Phase;
-axm unload:           {n: Nat} → «n; I8» → Phase;
+///
+/// ### cleanup
+///
+/// Removes dead and unreachable code by rebuilding the World (mim::Cleanup).
+///
+axm cleanup: Phase;
+///
+/// ### eta_conv
+///
+/// Combined, idempotent η-reduction/η-expansion (mim::EtaConv).
+///
+axm eta_conv: Phase;
+///
+/// ### lam_spec
+///
+/// Specializes a Lam at its call site by inlining higher-order arguments (mim::LamSpec).
+///
+axm lam_spec: Phase;
+///
+/// ### null
+///
+/// Does nothing; useful as an elided placeholder.
+///
+axm null: Phase;
+///
+/// ### ret_wrap
+///
+/// Prepares return continuations for the backend (mim::RetWrap).
+///
+axm ret_wrap: Phase;
+///
+/// ### scalarize
+///
+/// Flattens function signatures (mim::Scalarize).
+///
+axm scalarize: Phase;
+///
+/// ### static_arg_opt
+///
+/// Drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).
+///
+axm static_arg_opt: Phase;
+///
+/// ### unload
+///
+/// Unloads a plugin and nukes its annexes on the next World swap.
+///
+axm unload: {n: Nat} → «n; I8» → Phase;
