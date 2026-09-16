@@ -34,15 +34,13 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 #  Bootstrap: import the venv's bundled libclang
 # ---------------------------------------------------------------------------
-# Normally this runs under the build venv's own Python (invoked by CMake), so
-# the `libclang` wheel — which self-locates its native library — is already
-# importable.  When run manually with a system Python, add the repo `.venv`'s
-# site-packages so the same wheel is found.
 
 _SCRIPT_DIR = Path(__file__).resolve().parent  # scripts/
 _REPO_ROOT = _SCRIPT_DIR.parent                # repo root
 
-if sys.prefix == sys.base_prefix:  # not already inside a venv
+# Under the build venv's Python the `libclang` wheel is already importable; a
+# system Python needs the repo `.venv`'s site-packages on the path to find it.
+if sys.prefix == sys.base_prefix:
     _site = _REPO_ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
     if _site.is_dir():
         sys.path.insert(0, str(_site))
@@ -84,13 +82,9 @@ def _type_spelling(t) -> str:
 # ---------------------------------------------------------------------------
 #  Bindability: the types nanobind can actually convert
 # ---------------------------------------------------------------------------
-# Binding a method whose signature mentions a type nanobind has no caster for
-# still *compiles* — the failure only surfaces when Python calls it, and
-# `stubgen` meanwhile spells the raw C++ type into `_mim.pyi`
-# (`std::reverse_iterator<char const*>`, `absl::flat_hash_map<…>`, `mim::Dbg`).
-# Such a binding is dead weight that leaks implementation types into the public
-# stub, so every parameter, return and field type is checked here first and the
-# member is dropped unless nanobind can convert it.
+# A binding whose signature mentions a type nanobind has no caster for still
+# compiles, but fails when Python calls it and leaks the raw C++ spelling into
+# `_mim.pyi`, so every parameter, return and field type is checked here first.
 
 # Implementation-detail namespaces (libstdc++ `__cxx11`, libc++ `__1` and `__fs`,
 # abseil's `lts_<date>`) differ per toolchain and must never reach a name we match
@@ -102,9 +96,8 @@ _INLINE_NS = re.compile(r"\b(?:__[A-Za-z0-9_]+|lts_\d+)::")
 def _canon_spelling(t) -> str:
     """Canonical spelling of *t*, free of typedefs and inline namespaces.
 
-    Dropping the inline namespace keeps the spelling both matchable and valid
-    C++: `std::__cxx11::basic_string<char>` and `std::basic_string<char>` name
-    the same type.
+    Dropping the inline namespace keeps the spelling valid C++:
+    `std::__cxx11::basic_string<char>` names `std::basic_string<char>`.
     """
     return _INLINE_NS.sub("", _type_spelling(t.get_canonical()))
 
@@ -112,13 +105,9 @@ def _canon_spelling(t) -> str:
 def _qualified_name(decl) -> str:
     """The scope-qualified name of *decl*, without template arguments.
 
-    Built from the declaration itself rather than from a printed type spelling,
-    because that spelling is not portable: libclang prints libc++'s `std::string`
-    as the sugared typedef, and libstdc++'s as `std::basic_string<char>`, so a
-    table keyed on the printed form matches on one platform and misses on the
-    other. The declaration always answers `std::basic_string`, and skipping the
-    implementation-detail namespaces keeps `std::filesystem::path` (libc++ nests it
-    in `__fs`) and `fe::Patricia::Set` recognisable everywhere.
+    Built from the declaration rather than from a printed type spelling, which is
+    not portable: libc++ prints `std::string`, libstdc++ `std::basic_string<char>`,
+    while the declaration always answers `std::basic_string`.
     """
     parts = []
     cursor = decl
@@ -135,11 +124,6 @@ _LEADING_CV = re.compile(r"^(?:const|volatile)\s+")
 _TRAILING_CONST = re.compile(r"\s*\bconst$")
 
 
-def _strip_cv(spelling: str) -> str:
-    """*spelling* without its leading cv-qualifiers (`const std::list<…>` → `std::list<…>`)."""
-    return _LEADING_CV.sub("", spelling)
-
-
 def _kinds(*names) -> frozenset:
     """The named `TypeKind`s known to this libclang; older ones lack e.g. `CHAR8`."""
     return frozenset(k for k in (getattr(TypeKind, n, None) for n in names) if k is not None)
@@ -152,13 +136,10 @@ _CHAR_KINDS = _kinds("CHAR_S", "CHAR_U", "SCHAR", "UCHAR", "CHAR8")
 _RECORD_KINDS = (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL)
 _SCOPE_KINDS = (CursorKind.NAMESPACE, CursorKind.ENUM_DECL, *_RECORD_KINDS)
 
-# libclang does not always resolve a type to something concrete, and its view of
-# the standard library is less complete than the compiler's. "Unresolved" must
-# never be read as "unbindable": that would drop the member on whichever toolchain
-# came up short, and nothing else would say so. Such a member is emitted as before
-# — its written spelling is valid C++ by construction — leaving the verdict to the
-# C++ compiler and to `py/tests/stubs.py`, which fails if the type really has no
-# caster.
+# "Unresolved" must never be read as "unbindable": that would silently drop the
+# member on whichever toolchain came up short. Such a member is emitted anyway —
+# its written spelling is valid C++ by construction — leaving the verdict to the
+# compiler and to `py/tests/stubs.py`.
 _OPAQUE_KINDS = _kinds("INVALID", "UNEXPOSED")
 
 # Types nanobind converts out of the box, without any caster header.
@@ -206,25 +187,16 @@ _MAX_REPORTED = 20
 _BOUND_HEADERS: frozenset = frozenset()
 
 
-@lru_cache(maxsize=None)
-def _realpath(path: str) -> str:
-    """`os.path.realpath`, memoised: the same handful of headers is resolved again
-    for every single type that is checked."""
-    return os.path.realpath(path)
+# Memoised: the same handful of headers is resolved again for every type checked.
+_realpath = lru_cache(maxsize=None)(os.path.realpath)
 
 
 def set_bound_headers(paths) -> None:
     """Record the manifest of headers whose classes and enums the *module* binds.
 
-    Only those types may appear in a generated signature: a `const Def*` becomes
-    a bound Python object, whereas a `mim::Dbg` — declared in a header nobody
-    binds — has no Python counterpart at all.
-
-    This is the whole build's manifest, not just the header being generated: each
-    invocation parses one header but must recognise the types registered by its
-    siblings. It is therefore only as accurate as that manifest — a header listed
-    here whose `init_*` never makes it into the module entry point would still be
-    treated as bound.
+    Only those types may appear in a generated signature. This is the whole
+    build's manifest, not just the header being generated: each invocation parses
+    one header but must recognise the types its siblings register.
     """
     global _BOUND_HEADERS
     _BOUND_HEADERS = frozenset(_realpath(p) for p in paths)
@@ -246,13 +218,9 @@ def collect_bound_types(tu) -> None:
 
     Must run before extracting from *tu*, and answers only for that one TU.
 
-    The file of the declaration libclang hands back is not a reliable test on its
-    own: for an incomplete type it is whichever forward declaration came first, so
-    the include order decides the verdict. `Driver` is forward-declared in both
-    `plugin.h` and `world.h`, libclang reports the `plugin.h` one, and `World::driver()`
-    was dropped as "unbound" even though `driver.h` is in the manifest. Matching by
-    name instead makes it independent of which redeclaration is reported — qualified,
-    so that `fe::Driver` cannot pass for `mim::Driver`.
+    Matching by name rather than by declaring file: for an incomplete type that
+    file is whichever forward declaration came first, so the include order would
+    decide the verdict (`Driver` is forward-declared in `plugin.h` and `world.h`).
     """
     global _BOUND_TYPE_NAMES
     names: set = set()
@@ -292,13 +260,10 @@ def _is_bound_class(decl) -> bool:
     return _is_bound_decl(decl)
 
 
-def _casters_for_signature(proto, depth: int) -> set | None:
-    """Casters needed by a `std::function`'s signature, or None if unbindable."""
-    canon = proto.get_canonical()
-    if canon.kind != TypeKind.FUNCTIONPROTO:
-        return None
+def _casters_for_all(types, depth: int) -> set | None:
+    """The casters *types* need together, or None if nanobind cannot convert one."""
     need: set = set()
-    for t in [canon.get_result(), *canon.argument_types()]:
+    for t in types:
         if (sub := _casters_for(t, depth + 1)) is None:
             return None
         need |= sub
@@ -346,21 +311,20 @@ def _casters_for(t, depth: int = 0) -> set | None:
         decl = canon.get_declaration()
         name = _qualified_name(decl)
         if name == "std::function":
-            sub = _casters_for_signature(canon.get_template_argument_type(0), depth)
+            proto = canon.get_template_argument_type(0).get_canonical()
+            if proto.kind != TypeKind.FUNCTIONPROTO:
+                return None
+            sub = _casters_for_all([proto.get_result(), *proto.argument_types()], depth)
             return None if sub is None else sub | {_FUNCTION_CASTER}
         if (entry := _STL_CASTERS.get(name)) is not None:
             header, n_value_args = entry
-            need = {header}
             # -1 template arguments means "not a template" (e.g. `fs::path`).
             total = canon.get_num_template_arguments()
-            for i in range(total if n_value_args < 0 else min(n_value_args, total)):
-                arg = canon.get_template_argument_type(i)
-                if arg.kind == TypeKind.INVALID:
-                    continue  # a non-type argument (e.g. an extent): nothing to bind
-                if (sub := _casters_for(arg, depth + 1)) is None:
-                    return None
-                need |= sub
-            return need
+            args = [canon.get_template_argument_type(i)
+                    for i in range(total if n_value_args < 0 else min(n_value_args, total))]
+            # A non-type argument (e.g. an extent) is INVALID and has nothing to bind.
+            sub = _casters_for_all([a for a in args if a.kind != TypeKind.INVALID], depth)
+            return None if sub is None else sub | {header}
         if canon.get_num_template_arguments() >= 0:
             return None  # some other template: nanobind has no caster for it
         return set() if _is_bound_class(decl) else None
@@ -407,7 +371,7 @@ def _range_value_type(t) -> tuple[str, set] | None:
         # `std::vector` requires a non-const value_type. Only a top-level const
         # is dropped — for a pointer element the const belongs to the pointee
         # (`Span<const Def* const>` → `const Def*`) and must stay.
-        value = _strip_cv(value)
+        value = _LEADING_CV.sub("", value)
     return value, casters | {"vector.h"}
 
 
@@ -425,10 +389,8 @@ def _is_public(cursor) -> bool:
 def _is_deleted(cursor) -> bool:
     """Whether *cursor* declares a `= delete`d function.
 
-    libclang exposes this directly; neither the extent nor the doc comment ever
-    contains the declaration's source text, so they cannot be searched for it.
     `availability` is the fallback for libclang builds predating
-    `is_deleted_method()` — a deleted function is reported as NOT_AVAILABLE.
+    `is_deleted_method()`: they report a deleted function as NOT_AVAILABLE.
     """
     try:
         return bool(cursor.is_deleted_method())
@@ -463,15 +425,11 @@ def _nested_decl(t):
 def _resolve_param_type(p) -> tuple[str, set] | None:
     """``(spelling to emit, casters needed)``, or ``None`` to skip the whole method.
 
-    - a type nanobind cannot convert makes the whole method unbindable → skip
-      (this also covers function pointers, which have no caster);
-    - a MimIR range (`Defs`, `DefVec`) is taken as the corresponding
-      `std::vector`, which converts implicitly at the call site, so Python can
-      pass a plain list;
-    - a param declared through a nested type is spelled unqualified by libclang
-      (`Lam::Filter` → `Filter`), which would not resolve at namespace scope. A
-      nested *enum* is repaired by qualifying it (``Level`` → ``Log::Level``);
-      anything else has to be skipped.
+    A MimIR range (`Defs`, `DefVec`) is taken as the corresponding `std::vector`,
+    which converts implicitly at the call site, so Python can pass a plain list.
+    libclang spells a nested type unqualified (`Lam::Filter` → `Filter`), which
+    would not resolve at namespace scope: a nested enum is repaired by qualifying
+    it, anything else has to be skipped.
     """
     if rng := _range_value_type(p.type):
         value, casters = rng
@@ -498,9 +456,8 @@ _TEMPLATE_PARAM_ARG = re.compile(r"<\s*[A-Z]\s*[,>]")
 def _is_unresolved_return(ret: str) -> bool:
     """True if *ret* is not a concrete, bindable type.
 
-    Catches undeduced `auto`/`decltype(auto)` and dependent template parameters
-    such as `Vector<R>` (a single uppercase-letter template argument), which
-    arise from the MIM_PROJ mixin methods and cannot be bound as written.
+    Catches the undeduced `auto` and dependent `Vector<R>` returns of the MIM_PROJ
+    mixin methods, which cannot be bound as written.
     """
     return bool(_UNDEDUCED.search(ret) or _TEMPLATE_PARAM_ARG.search(ret))
 
@@ -508,8 +465,7 @@ def _is_unresolved_return(ret: str) -> bool:
 def _is_copy_or_move_ctor(cursor, class_name: str) -> bool:
     """True for the copy/move constructors of *class_name*.
 
-    These are never meaningful to expose to Python and are frequently deleted
-    (e.g. `Driver`, `World`), which would make the `nb::init<>` binding ill-formed.
+    Frequently deleted (`Driver`, `World`), which would make `nb::init<>` ill-formed.
     """
     try:
         if cursor.is_copy_constructor() or cursor.is_move_constructor():
@@ -614,23 +570,22 @@ def _extract_params(cursor) -> tuple[list[Param], set] | None:
     """
     params, casters = [], set()
     for p in cursor.get_children():
-        if p.kind == CursorKind.PARM_DECL:
-            if (resolved := _resolve_param_type(p)) is None:
-                return None
-            spelling, needed = resolved
-            params.append(Param(spelling, p.spelling, _param_default(p)))
-            casters |= needed
+        if p.kind != CursorKind.PARM_DECL:
+            continue
+        if (resolved := _resolve_param_type(p)) is None:
+            return None
+        spelling, needed = resolved
+        params.append(Param(spelling, p.spelling, _param_default(p)))
+        casters |= needed
     return params, casters
 
 
 def _no_caster_reason(role: str, t) -> str:
     """Why nanobind cannot convert *t*, including how libclang resolved it.
 
-    The canonical kind and spelling are part of the message on purpose: when a
-    member is bound on one platform but not on another, the difference is always in
-    what libclang made of the type, and that is otherwise invisible — macOS reports
-    libc++'s `std::string` as `RECORD 'std::string'` where Linux says
-    `RECORD 'std::basic_string<char>'`.
+    The canonical kind and spelling are in the message on purpose: when a member is
+    bound on one platform but not on another, the difference is always in what
+    libclang made of the type, and that is otherwise invisible.
     """
     canon = t.get_canonical()
     return f"no caster for {role} type {_type_spelling(t)!r} ({canon.kind.name} {canon.spelling!r})"
@@ -672,40 +627,27 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
     ):
         return None
 
-    if cursor.kind == CursorKind.CONSTRUCTOR:
-        if _is_copy_or_move_ctor(cursor, class_name):
+    is_ctor = cursor.kind == CursorKind.CONSTRUCTOR
+    if is_ctor and _is_copy_or_move_ctor(cursor, class_name):
+        return None
+
+    ret, range_elem, ret_casters = "", None, set()
+    if not is_ctor:
+        ret = _type_spelling(cursor.result_type)
+        # The written spelling catches what the canonical one cannot: the MIM_PROJ
+        # mixin methods return a bare `auto` or a dependent `Vector<R>`, and the
+        # spelling is what picks the emitted return-value policy.
+        if _is_unresolved_return(ret):
+            drops.append(f"{class_name}::{cursor.displayname}: libclang did not resolve the return type {ret!r}")
             return None
-        if (extracted := _extract_params(cursor)) is None:
+        # A MimIR range return is copied into a std::vector so it reaches Python as
+        # a list; anything else must be a type nanobind can convert.
+        if rng := _range_value_type(cursor.result_type):
+            range_elem, ret_casters = rng
+        elif (ret_casters := _casters_for(cursor.result_type)) is None:
             drops.append(_signature(cursor, class_name))
             return None
-        params, casters = extracted
-        return MethodInfo(
-            name=cursor.spelling,
-            return_type="",
-            params=params,
-            class_name=class_name,
-            is_constructor=True,
-            casters=casters,
-        )
 
-    ret = _type_spelling(cursor.result_type)
-    # Skip methods whose return type libclang could not resolve to a concrete
-    # type (the MIM_PROJ mixin methods): either a bare `auto`/`decltype` or a
-    # dependent template parameter such as `Vector<R>`. The bindability check
-    # below rejects those too, but only via their canonical type — this catches
-    # them by their written spelling, which is what the emitted code uses to pick
-    # a return-value policy.
-    if _is_unresolved_return(ret):
-        drops.append(f"{class_name}::{cursor.displayname}: libclang did not resolve the return type {ret!r}")
-        return None
-    # A MimIR range return is copied into a std::vector so it reaches Python as
-    # a list; anything else must be a type nanobind can convert.
-    range_elem = None
-    if rng := _range_value_type(cursor.result_type):
-        range_elem, ret_casters = rng
-    elif (ret_casters := _casters_for(cursor.result_type)) is None:
-        drops.append(_signature(cursor, class_name))
-        return None
     if (extracted := _extract_params(cursor)) is None:
         drops.append(_signature(cursor, class_name))
         return None
@@ -718,6 +660,7 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
         class_name=class_name,
         is_const=cursor.is_const_method(),
         is_static=cursor.is_static_method(),
+        is_constructor=is_ctor,
         casters=casters | ret_casters,
         range_elem=range_elem,
     )
@@ -734,13 +677,9 @@ def _print_capped(lines: list[str], prefix: str) -> None:
 def _report_diagnostics(tu, header_path: str) -> int:
     """Print libclang's *fatal* diagnostics for *tu* to stderr; return their count.
 
-    A fatal (e.g. `'vector' file not found`) aborts the parse and leaves a
-    partial, garbage AST that the generator then turns into uncompilable
-    bindings — the classic symptom being output that only breaks on one
-    toolchain (e.g. a Windows/MSVC tree whose STL/SDK headers libclang cannot
-    locate).  Non-fatal errors are deliberately ignored: libclang lags the
-    bleeding-edge standard libraries it parses, so a clean, fully-compilable run
-    still emits plenty of benign `error`-level noise.
+    A fatal aborts the parse and leaves a partial AST that the generator turns into
+    uncompilable bindings. Non-fatal errors are deliberately ignored: libclang lags
+    the standard libraries it parses, so even a clean run is full of benign noise.
     """
     fatals = [d for d in tu.diagnostics if d.severity >= clang.Diagnostic.Fatal]
     # The first few point at the root cause.
@@ -775,10 +714,8 @@ def _extract_class(cursor, enums: list, drops: list[str]) -> ClassInfo:
             # exception, not as an ordinary class.
             if "exception" in base:
                 info.is_exception = True
-            # Only keep bases that are themselves bindable mim classes. Foreign
-            # (`fe::SymPool`, `std::true_type`) and template mixin bases
-            # (`fe::RuntimeCast<Def>`) are not registered nanobind types, so
-            # binding against them would not compile.
+            # Foreign (`fe::SymPool`) and template mixin bases (`fe::RuntimeCast<Def>`)
+            # are not registered nanobind types, so binding against them would not compile.
             if "::" not in base and "<" not in base:
                 info.bases.append(base)
         elif kind in (CursorKind.CXX_METHOD, CursorKind.CONSTRUCTOR):
@@ -789,7 +726,7 @@ def _extract_class(cursor, enums: list, drops: list[str]) -> ClassInfo:
                 drops.append(
                     f"{cursor.spelling}::{child.spelling}: {_no_caster_reason('field', child.type)}"
                 )
-                continue  # nanobind cannot convert the field's type
+                continue
             info.methods.append(MethodInfo(
                 name=child.spelling, return_type=_type_spelling(child.type), params=[],
                 class_name=cursor.spelling, is_field=True,
@@ -857,16 +794,11 @@ def _returns_lvalue_ref(ret_type: str) -> bool:
     return norm.endswith("&") and not norm.endswith("&&")
 
 
-def _policy_suffix(ret_type: str, static: bool) -> str:
-    """`, nb::rv_policy::…` for a return that must not be copied into Python.
+def _ref_policy(static: bool) -> str:
+    """`, nb::rv_policy::…` making a return reach Python as a non-owning handle.
 
-    A reference or pointer to a bound C++ object has to reach Python as a
-    non-owning handle; `reference_internal` ties its lifetime to `self`, which a
-    static method does not have. Value returns are moved by nanobind's default
-    `automatic` policy and need no annotation.
+    `reference_internal` ties its lifetime to `self`, which a static method has not.
     """
-    if not (_returns_lvalue_ref(ret_type) or "*" in ret_type):
-        return ""
     return f", nb::rv_policy::{'reference' if static else 'reference_internal'}"
 
 
@@ -911,31 +843,16 @@ def _arg_spec(mi: MethodInfo) -> str:
     return ", " + ", ".join(parts)
 
 
-def _lambda_params(mi: MethodInfo) -> tuple[str, str]:
-    """The `(declaration, call)` strings for a method's parameters."""
-    names = _param_names(mi)
-    decls = [f"{p.spelling} {name}" for p, name in zip(mi.params, names)]
-    return ", ".join(decls), ", ".join(names)
-
-
-def _range_copy_lambda(params: str, call: str, elem: str) -> str:
-    """A lambda that copies a MimIR range return into a `std::vector`.
-
-    `Defs`, `DefVec`, `Vars` and `Muts` have no nanobind caster, but a vector of
-    their element type converts to a Python list.
-    """
-    return f'[]({params}) {{ auto _v = {call}; return std::vector<{elem}>(_v.begin(), _v.end()); }}'
-
-
 def _gen_method_lambda(mi: MethodInfo, indent: str = "    ") -> str:
     """Bind a (static) method through a call-site lambda.
 
-    A lambda rather than a pointer-to-member: taking `&Class::method` is
-    ambiguous whenever the method has template or const/non-const overloads, so
-    `overload_cast` fails, whereas a lambda lets ordinary C++ overload resolution
+    A lambda rather than a pointer-to-member: `&Class::method` is ambiguous for a
+    method with overloads, whereas a lambda lets ordinary C++ overload resolution
     pick the right one.
     """
-    decls, args = _lambda_params(mi)
+    names = _param_names(mi)
+    decls = ", ".join(f"{p.spelling} {name}" for p, name in zip(mi.params, names))
+    args = ", ".join(names)
     if mi.is_static:
         params, call = decls, f"{mi.class_name}::{mi.name}({args})"
     else:
@@ -944,17 +861,21 @@ def _gen_method_lambda(mi: MethodInfo, indent: str = "    ") -> str:
         call = f"self.{mi.name}({args})"
 
     if mi.range_elem:
-        body = _range_copy_lambda(params, call, mi.range_elem)
+        # `Defs`, `DefVec`, `Vars` and `Muts` have no caster, but a vector of their
+        # element type converts to a Python list.
+        body = (f"[]({params}) {{ auto _v = {call}; "
+                f"return std::vector<{mi.range_elem}>(_v.begin(), _v.end()); }}")
         # A range is copied by value, but its elements are the bound objects the
         # reference policy is about.
-        policy = f", nb::rv_policy::{'reference' if mi.is_static else 'reference_internal'}"
+        policy = _ref_policy(mi.is_static)
     else:
         # An lvalue-reference return is bound through its address so it reaches
         # Python as a non-owning pointer instead of being copied by value (which
         # fails for non-copyable or forward-declared types such as World/Driver).
-        ret = "&" + call if _returns_lvalue_ref(mi.return_type) else call
-        body = f"[]({params}) {{ return {ret}; }}"
-        policy = _policy_suffix(mi.return_type, static=mi.is_static)
+        by_ref = _returns_lvalue_ref(mi.return_type)
+        body = f"[]({params}) {{ return {'&' if by_ref else ''}{call}; }}"
+        # Value returns are moved by nanobind's default `automatic` policy.
+        policy = _ref_policy(mi.is_static) if by_ref or "*" in mi.return_type else ""
 
     definer = "def_static" if mi.is_static else "def"
     return f'{indent}.{definer}("{mi.py_name}", {body}{policy}{_arg_spec(mi)})'
@@ -990,12 +911,6 @@ def _gen_enum_binding(cursor, indent: str = "    ") -> str:
     # Export enumerators into the enclosing scope to match hand-written bindings.
     lines.append(f'{indent}    .export_values();')
     return "\n".join(lines)
-
-
-def _base_spec(bases: list[str]) -> str:
-    if not bases:
-        return ""
-    return f", {bases[0].split('::')[-1]}"
 
 
 @dataclass
@@ -1076,9 +991,9 @@ class ExtraSectionError(Exception):
 def _check_extra_sections(extra: Extra, classes: dict[str, ClassInfo], header_path: str) -> None:
     """Reject `[class:X]`/`[skip:X]` sections that cannot be applied.
 
-    Both are matched against the C++ class name verbatim, so a typo or a stale
-    name left behind by a rename yields a module that still compiles but is
-    missing every binding the section declared.
+    Both are matched against the C++ class name verbatim, so a typo or a stale name
+    left behind by a rename would yield a module that still compiles but is missing
+    every binding the section declared.
     """
     header = os.path.basename(header_path)
     problems = []
@@ -1119,14 +1034,11 @@ def _bindable_methods(class_name: str, info: ClassInfo, extra: Extra) -> list[Me
     """*info*'s members minus the ones this class must not or cannot expose."""
     methods = info.methods
 
-    # Abstract classes cannot be constructed from Python (placement-new of an
-    # abstract type is ill-formed), so drop their constructor bindings.
+    # Placement-new of an abstract type is ill-formed.
     if info.is_abstract:
         methods = [m for m in methods if not m.is_constructor]
 
-    # Explicit [skip:Class] denylist: drop members the generator can't express
-    # (matched by C++ name or snake_case py_name); a companion [class:Class]
-    # section can substitute a hand-written binding.
+    # [skip:Class] matches a member by C++ name or by snake_case py_name.
     if skip := extra.skips.get(class_name):
         methods = [m for m in methods if m.name not in skip and m.py_name not in skip]
 
@@ -1147,8 +1059,9 @@ def _gen_class_binding(class_name: str, info: ClassInfo, methods: list[MethodInf
     # Def and everything deriving from it is never_destruct — the World owns all
     # Def lifetimes.
     never_destruct = class_name == "Def" or "Def" in info.bases
+    base = f", {info.bases[0].split('::')[-1]}" if info.bases else ""
     head = (
-        f'    nb::class_<{class_name}{_base_spec(info.bases)}>'
+        f'    nb::class_<{class_name}{base}>'
         f'(m, "{class_name}"{", nb::never_destruct()" if never_destruct else ""})'
     )
 
@@ -1170,10 +1083,6 @@ def generate_bindings(
 ) -> str:
     """The complete nanobind translation unit registering *classes* and *enums*."""
     extra = _load_extra(header_path, extra_dir)
-    # An unmatched [class:X]/[skip:X] is almost always a typo or a stale name
-    # after a C++ rename. Silently dropping the section produces a module that
-    # compiles cleanly but is missing every binding the section declared, so fail
-    # loudly here — before emitting anything.
     _check_extra_sections(extra, classes, header_path)
 
     # An exception class is registered without a `.def(...)` chain, so none of its
@@ -1186,10 +1095,8 @@ def generate_bindings(
     lines = []
     if extra.includes:
         lines += [extra.includes, ""]
-    # The two runtime hub types are cross-referenced by most accessors (e.g.
-    # `Def::world()`, `World::driver()`); include their full definitions so
-    # nanobind can cast references/pointers to them (their headers are on the
-    # PUBLIC include path of libmim).
+    # Most accessors cross-reference the two runtime hub types (`Def::world()`,
+    # `World::driver()`), so nanobind needs their full definitions to cast to them.
     lines += [
         f'#include "{os.path.relpath(header_path, os.getcwd())}"',
         "#include <mim/driver.h>",
@@ -1263,15 +1170,10 @@ def _load_compile_commands(build_dir: Path) -> list | None:
         return None
 
 
-@lru_cache(maxsize=None)
-def _anchor_base(anchor: str) -> Path:
-    return (_REPO_ROOT / anchor).resolve()
-
-
 def _rel_under(path, anchor: str) -> Path | None:
     """Path relative to `<repo>/<anchor>`, or None if it does not live there."""
     try:
-        return Path(path).resolve().relative_to(_anchor_base(anchor))
+        return Path(path).resolve().relative_to((_REPO_ROOT / anchor).resolve())
     except ValueError:
         return None
 
@@ -1304,6 +1206,18 @@ def _match_cc_entry(header_path: str, entries: list) -> dict | None:
     return best
 
 
+def _split_flags(value: str) -> list:
+    """Split a command line the way the platform's shell would.
+
+    shlex, not `str.split()`: a quoted define such as `-DNAME="a b"` is one
+    argument. On Windows, POSIX rules would treat the `\\` of a path as an escape,
+    so split without them and drop the surviving quotes instead.
+    """
+    if os.name == "nt":
+        return [t.strip('"') for t in shlex.split(value, posix=False)]
+    return shlex.split(value)
+
+
 def _norm_std(value: str) -> str:
     """Normalize a `-std`/`/std:` value to one libclang accepts."""
     v = value.strip().lower()
@@ -1326,6 +1240,7 @@ def _strip_prefix(s: str, prefixes: tuple) -> str | None:
 # discovery on macOS.
 _GNU_VALUE_FLAGS = ("-I", "-isystem", "-iquote", "-D", "-U", "-include")
 _GNU_GLUED_PREFIXES = ("-I", "-isystem", "-iquote", "-D", "-U", "-std=", "-include")
+_MSVC_SYS_INC = ("-external:I", "/external:I", "-imsvc")
 
 
 def _flags_from_cc_entry(entry: dict) -> list:
@@ -1338,15 +1253,7 @@ def _flags_from_cc_entry(entry: dict) -> list:
     `/D`, `-std:`, `/std:`) are translated to their GNU equivalents so an MSVC
     `compile_commands.json` still yields usable defines and standard flags.
     """
-    if "arguments" in entry:
-        raw = list(entry["arguments"])
-    elif os.name == "nt":
-        # POSIX shlex treats '\' as an escape and would destroy the backslash
-        # paths in a Windows `command` string; split without POSIX rules and
-        # drop the surviving surrounding quotes.
-        raw = [t.strip('"') for t in shlex.split(entry.get("command", ""), posix=False)]
-    else:
-        raw = shlex.split(entry.get("command", ""))
+    raw = list(entry["arguments"]) if "arguments" in entry else _split_flags(entry.get("command", ""))
 
     out: list = []
     i, n = 0, len(raw)
@@ -1367,9 +1274,9 @@ def _flags_from_cc_entry(entry: dict) -> list:
             out += ["-I", nxt]; step = 2
         elif a.startswith("/I") and len(a) > 2:                           # user include (glued)
             out.append(f"-I{a[2:]}")
-        elif a in ("-external:I", "/external:I", "-imsvc") and nxt is not None:
+        elif a in _MSVC_SYS_INC and nxt is not None:
             out += ["-isystem", nxt]; step = 2                            # system include (separate)
-        elif (rest := _strip_prefix(a, ("-external:I", "/external:I", "-imsvc"))) is not None:
+        elif (rest := _strip_prefix(a, _MSVC_SYS_INC)) is not None:
             out += ["-isystem", rest]                                     # system include (glued)
         elif a in ("/D", "/U") and nxt is not None:                       # define/undef (separate)
             out.append(f"-{a[1]}{nxt}"); step = 2
@@ -1401,6 +1308,14 @@ def _clang_exes(env_var: str, names: tuple) -> list:
     return out
 
 
+def _probe(argv: list, timeout: int = 10):
+    """Run a compiler query, or None if it cannot be run at all."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def _parse_search_dirs(stderr: str) -> list:
     """Pull the include directories out of `clang -v` diagnostic output."""
     dirs, capture = [], False
@@ -1421,18 +1336,11 @@ def _compiler_system_includes() -> list:
 
     The pip `libclang` wheel ships no standard library and compile_commands.json
     never lists the toolchain's implicit include dirs, so libclang cannot find
-    `<memory>`, `<cstdint>`, … on a toolchain whose stdlib is outside its own
-    default search — notably macOS/libc++.  Querying the compiler (`clang++ -v`)
-    yields exactly the libc++/libstdc++ and SDK paths it uses, which is portable
-    and always correct.  Returns an empty list if no compiler is reachable.
+    `<memory>` on a toolchain whose stdlib is outside its own default search —
+    notably macOS/libc++. Empty if no compiler is reachable.
     """
     for path in _clang_exes("CXX", ("clang++", "clang")):
-        try:
-            proc = subprocess.run(
-                [path, "-E", "-x", "c++", "-v", os.devnull],
-                capture_output=True, text=True, timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError):
+        if (proc := _probe([path, "-E", "-x", "c++", "-v", os.devnull], timeout=30)) is None:
             continue
         if dirs := _parse_search_dirs(proc.stderr):
             return [f"-isystem{d}" for d in dirs]
@@ -1442,21 +1350,14 @@ def _compiler_system_includes() -> list:
 def _clang_resource_include() -> str | None:
     """Locate libclang's builtin headers (stddef.h et al.) as an `-isystem` flag.
 
-    compile_commands.json never records the resource dir, and the pip `libclang`
-    wheel ships only the shared library — not its builtin headers — so libclang
-    cannot find `stddef.h` on its own.  Ask a real clang where they live
-    (`clang -print-resource-dir`), which is correct on Linux, macOS and Windows
-    alike; fall back to scanning the usual install locations if none is on PATH.
+    compile_commands.json never records the resource dir and the pip `libclang`
+    wheel ships only the shared library, so ask a real clang where they live and
+    fall back to scanning the usual install locations if none is on PATH.
     """
     # Primary, portable: ask a clang executable for its resource dir.
     for path in _clang_exes("CC", ("clang", "clang++")):
-        try:
-            proc = subprocess.run(
-                [path, "-print-resource-dir"], capture_output=True, text=True, timeout=10
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if proc.returncode == 0 and (flag := _resource_include_from(proc.stdout)):
+        proc = _probe([path, "-print-resource-dir"])
+        if proc is not None and proc.returncode == 0 and (flag := _resource_include_from(proc.stdout)):
             return flag
 
     # Fallback: scan the usual per-platform `.../lib/clang/<ver>` roots.
@@ -1485,24 +1386,17 @@ _LIBCLANG = {"darwin": "libclang.dylib", "win32": "libclang.dll"}.get(sys.platfo
 def _toolchain_libclang() -> str | None:
     """The libclang belonging to the toolchain that compiles what we generate.
 
-    The pip `libclang` wheel is stuck at 18 and silently mis-parses a standard
-    library younger than itself: a Homebrew LLVM bump turned every unresolved
-    declaration into `int` and the emitted bindings stopped compiling.  Parsing
-    with the toolchain's own libclang keeps parser and standard library in
-    lock-step; the wheel remains the fallback for toolchains that ship none.
+    The pip `libclang` wheel is stuck at 18 and silently mis-parses a younger
+    standard library, so keep parser and stdlib in lock-step; the wheel remains the
+    fallback for toolchains that ship no libclang.
     """
     cands = [os.environ.get("MIM_LIBCLANG", "")]
     for var in ("LLVM_PREFIX", "LLVM_PATH"):
         if prefix := os.environ.get(var):
             cands.append(str(Path(prefix) / "lib" / _LIBCLANG))
     for exe in _clang_exes("CXX", ("clang++", "clang")):
-        try:
-            proc = subprocess.run(
-                [exe, f"-print-file-name={_LIBCLANG}"], capture_output=True, text=True, timeout=10
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if proc.returncode == 0:
+        proc = _probe([exe, f"-print-file-name={_LIBCLANG}"])
+        if proc is not None and proc.returncode == 0:
             cands.append(proc.stdout.strip())
 
     for cand in cands:
@@ -1602,18 +1496,6 @@ def _write_or_print(code: str, output: str | None) -> None:
         print(code)
 
 
-def _split_flags(value: str) -> list:
-    """Split a command-line string the way the platform's shell would.
-
-    shlex, not `str.split()`: a quoted define such as `-DNAME="a b"` is one
-    argument. On Windows, POSIX rules would treat the `\\` of a path as an escape,
-    so split without them and drop the surviving quotes instead.
-    """
-    if os.name == "nt":
-        return [t.strip('"') for t in shlex.split(value, posix=False)]
-    return shlex.split(value)
-
-
 def _toolchain_includes() -> list:
     """The system include flags libclang needs to find the standard library.
 
@@ -1640,12 +1522,10 @@ def _clang_args(args, cc_entries: list | None, header_path: str) -> list:
     out += _toolchain_includes()
 
     # The header roots libmim, fe and abseil live under, plus the build tree's
-    # generated headers (`mim/config.h`).  These are passed as clean path tokens
-    # on every platform and are the single source of truth for *locating*
-    # headers — compile_commands.json is used only for build-type defines on top.
-    # We deliberately do not trust its own `-I` paths: in the `command`-string
-    # form CMake emits on Windows they are backslash paths that shlex mangles,
-    # which would leave libclang unable to find these headers.
+    # generated headers, are the single source of truth for *locating* headers.
+    # compile_commands.json's own `-I` paths are deliberately not trusted: in the
+    # `command`-string form CMake emits on Windows they are backslash paths that
+    # shlex mangles.
     build_dir = Path(args.build_dir)
     out += [
         f"-I{_REPO_ROOT / 'include'}",
@@ -1669,11 +1549,9 @@ def _clang_args(args, cc_entries: list | None, header_path: str) -> list:
 def _report_drops(header_path: str, drops: list[str]) -> None:
     """Note the members left out of *header_path*'s unit as unbindable.
 
-    Reported on every run, because which members survive depends on what libclang
-    resolves — so the same source can yield a different Python API on another
-    toolchain. That divergence is invisible from the outside (a method is simply
-    absent), which is exactly how a libc++ build once lost every `std::string`
-    member while libstdc++ kept them.
+    Reported on every run: which members survive depends on what libclang resolves,
+    so the same source can yield a different Python API on another toolchain, and
+    that divergence is otherwise invisible — a method is simply absent.
     """
     if not drops:
         return
