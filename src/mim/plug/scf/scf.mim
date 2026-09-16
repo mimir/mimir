@@ -56,42 +56,14 @@ let inc = %scf.inc;
 axm %scf.Token: Path → Step → ★;
 let Token = %scf.Token;
 
-/// A structured function's return continuation: an OPAQUE wrapper around a
-/// continuation, with no introduction rule in the term language and %scf.return
-/// as its only elimination. Semantically it consumes a token at ANY coordinates
-/// first (token-first, like every other axiom), then the payload — return may
-/// exit from any depth, paying whatever token it holds; see %scf.return, which
-/// exposes exactly that interface. The coordinate polymorphism is a type-level
-/// return address: parametric for the callee (which can only supply tokens
-/// from its own thread), instantiated exactly once by `%scf.call` with the
-/// caller's continuation — an ordinary monomorphic block in the caller's own
-/// chain. Opacity is why %scf.call exists at all AND why it is unavoidable:
-/// a caller cannot assemble a Ret value around its own monomorphic
-/// continuation (as a bare pi type it could — by fabricating a wrapper that
-/// simply discards the polymorphic token — but there is no way to construct
-/// the opaque wrapper), so a function taking a Ret is not callable in general
-/// position without the axiom. It doubles as the merge interface of the
-/// nice_* wrappers, so a return continuation passes directly as a merge
-/// target.
 axm %scf.Ret: ★ → ★;
 let Ret = %scf.Ret;
 
-/// The only elimination of %scf.Ret: consumes a token at any coordinates
-/// (token-first, like every other axiom) plus the Ret, then the payload.
-/// Holding a `Ret R` grants exactly one ability — returning through it —
-/// mirroring how merge/break consume their capability.
 axm %scf.return: {R: ★, path: Path, step: Step}
   → [Token path step]
   → [Ret R]
   → Cn R;
 
-/// Region paths are PURE constructor applications over path/step: no token
-/// operand. Instance identity within a function is not a type-system job; it
-/// follows from token linearity (one construct per coordinate, explicit
-/// theorem hypothesis -- see the thesis notes). What types still guarantee is
-/// cross-function/cross-activation separation: every path is built over the
-/// function's own bound `path` parameter, so paths from different activations
-/// can never coincide by parametricity alone.
 axm %scf.arm: Bool → Path → Step → Path;
 axm %scf.case: Nat → Path → Step → Path;
 axm %scf.default: Path → Step → Path;
@@ -185,31 +157,43 @@ axm %scf.if: {T B: ★} → {path: Path, step: Step}
 /// in scope for their types -- which %scf.if's own implicit block supplies
 /// from `token`'s type, hence `token` binds first.
 ///
-/// Examples of what this allows to do:
+/// `merge` is a plain continuation: whatever runs next once the branch is
+/// settled, at the concrete token `path`/`step` the whole `if` leaves behind.
+/// It is not a `Ret` -- a `Ret` is opaque and coordinate-polymorphic, neither
+/// of which this slot needs, and hard-wiring it to `Ret` would force every
+/// `nice_if` to be the last thing a function does. To make an actual
+/// `return` fit, wrap it in a continuation that consumes the token itself:
+///
 /// ```mim
-/// con extern foo (path: %scf.Path, step: %scf.Step, cond: Bool,
-///                 token: %scf.Token path step, return: %scf.Ret Nat) =
-///   // return has the merge interface (%scf.Ret), so it passes directly as
-///   // the merge target; path/step/token are ordinary parameters -- there is
-///   // nothing to enter, the thread starts held
-///   %scf.nice_if return cond () token (else, then) where
+/// fun extern foo {path: Path, step: Step}@ff (token: Token path step)@ff (cond: Bool, return: Ret Nat) =
+///   // make return also consume tokens
+///   let return = %sflow.nice_return return;
+///
+///   // the actual function body
+///   let body = %sflow.nice_if merge (else, then) cond () where
 ///     lam then (merge) () = merge 1;
 ///     lam else (merge) () = merge 0;
+///     lam merge (x: Nat) = return x;
 ///   end;
+///
+///   // pass the root token in so token threading can be wired
+///   body token;
 /// ```
 lam %scf.nice_if
     {T B: ★}
     {path: Path, step: Step}
-    (merge: Ret B)
+    (merge: B → {path: Path, step: Step} → Cn Token path step)
+    (tuple: «arm: 2; [B → {inner: Step} → Cn Token (%scf.arm arm path step) inner] → T → Cn Token (%scf.arm arm path step) %scf.zero»)
     (cond: Bool)
     (arg: T)
     (token: Token path step)
-    (tuple: «arm: 2; [B → {inner: Step} → Cn Token (%scf.arm arm path step) inner] → T → Cn Token (%scf.arm arm path step) zero»)
-  = let merge = (cn (arg: B, token: Token path (inc step)) = %scf.return token merge arg);
-    let tuple = ‹arm: 2; cn (arg: T, struct: If path step B, arm_token: Token (%scf.arm arm path step) zero) =
-      let merge = (cn (v: B) {inner: Step} (t: Token (%scf.arm arm path step) inner)@tt = %scf.merge t struct v);
-      tuple#arm merge arg arm_token›;
+  = let merge = (cn (arg: B, token: Token path (%scf.inc step)) = merge arg token);
+    let tuple = ‹arm: 2; cn (arg: T, struct: If path step B, token: Token (%scf.arm arm path step) %scf.zero) =
+      let merge = (cn (v: B) {inner: Step} (token: Token (%scf.arm arm path step) inner)@tt = %scf.merge token struct v);
+      tuple#arm merge arg token›;
     %scf.if token merge tuple cond arg;
+
+lam %scf.nice_return {T: ★} (return: Ret T) = (cn (v: T) {path: Path, step: Step} (token: Token path step) = %scf.return token return v);
 
 /// Represents a structured switch.
 ///

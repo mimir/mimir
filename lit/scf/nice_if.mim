@@ -11,13 +11,16 @@
 
 plugin scf;
 
-// return is a genuine %scf.Ret continuation: it consumes a token at any
-// coordinates (token-first, like every axiom) plus the payload, so returning
-// from any depth pays a token and no lifting of a raw continuation is needed.
-// %scf.Ret is also the merge interface, so return passes directly as the
-// merge target.
-con extern foo (cond: Bool, path: %scf.Path, step: %scf.Step, token: %scf.Token path step, return: %scf.Ret Nat) =
-  %scf.nice_if return cond () token (else, then) where
+con extern foo {path: Path, step: Step}@ff (token: Token path step)@ff (cond: Bool, return: Ret Nat) =
+  // prepare return for token wiring
+  let return = %scf.nice_return return;
+
+  // the actual function body
+  let body = %scf.nice_if merge (else, then) cond () where
     lam then (merge) () = merge 1;
     lam else (merge) () = merge 0;
+    lam merge (x: Nat) = return x;
   end;
+
+  // pass the root token in so token threading can be wired
+  body token;
