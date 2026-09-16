@@ -55,16 +55,13 @@ axm semiop.(mul,ceildiv,floordiv,rem): [Index, Nat] → Index;
 /// ### semiop(mul,ceildiv,floordiv,rem)
 /// Performs semi-linear operations on affine indices.
 /// The second argument is a natural number that must be constant with regard to the indices.
+/// - affine.op.mul
+///   Performs multiplication of an affine index with a constant natural number.
+///   The second argument must be a *closed* constant - a stronger requirement than affine.semiop imposes - which is enforced via refly.check.
 ///
 pub mod op {
     axm (add, sub): [Index, Index] → Index;
     axm neg: Index → Index;
-
-    ///
-    /// ### affine.op.mul
-    /// Performs multiplication of an affine index with a constant natural number.
-    /// The second argument must be a *closed* constant - a stronger requirement than affine.semiop imposes - which is enforced via refly.check.
-    ///
     anx lam mul (d : Index, c : Nat): Index =
         semiop.mul(d, refly.check (core.pe.is_closed(c), c, "The second argument of affine.op.mul must be a constant."));
 }
@@ -81,7 +78,6 @@ axm map: {m n: Nat}
        → {a: Nat}
        → (mem.M a)
        → [(mem.M a), «i: m; Idx (sout#i)»];
-
 ///
 /// ### id
 /// The identity map on affine indices.
