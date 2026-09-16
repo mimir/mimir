@@ -4,6 +4,10 @@
 
 All `sizeof`/offset figures were measured against `build-release`
 (`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`, gcc).
+Timing figures appear in exactly two places — *`Patricia::Set` measured against
+OCaml's `patricia-tree`* and the container note under `absl::flat_hash_*` — and
+are marked as measurements; everything else in this document is an estimate and
+is marked as one.
 Code is referenced by file and symbol name rather than line number, so the
 references do not rot.
 
@@ -31,6 +35,15 @@ hash tables throughout — i.e. writing C++ with a garbage collector.
 That concedes the entire premise of switching: you pay the full syntactic and
 tooling cost and collect none of the benefit.
 The *idiomatic* column is the honest comparison, and it is much worse.
+
+Exactly one of these numbers has an anchor under it.
+`Patricia::Set` has been run head-to-head against a real OCaml implementation of
+the same structure, and on the operation MimIR actually leans on — `merge`, in
+the `free_vars` inner loop — it came out **2.6–8.6×**, inside the OCaml row
+above.
+Other operations on that structure range far wider, up to 46×.
+One structure is not a port, so the table stays an estimate; it is simply no
+longer an unsupported one.
 
 ## What the C++ implementation actually relies on
 
@@ -66,6 +79,19 @@ What the alternatives offer:
   payload.
 
 Call it **2–4× on the hash-cons probe alone**.
+
+One measurement isolates that container, same language and same workload:
+building `fe::Patricia`'s node pools out of `std::unordered_set` — separate
+chaining over heap-allocated nodes, structurally what OCaml's `Hashtbl` is —
+instead of `absl::flat_hash_set` costs **1.8–3.1×** at 65,536 elements, on
+construction, `merge` and `diff` alike.
+Nothing else differs between the two builds, so that factor is the table and
+only the table.
+One case regressed — sparse `intersect`, whose result is small enough that pool
+traffic barely registers, came out 1.1× *slower* — which is the expected shape:
+the win is proportional to how much of the work is probing.
+It lands at the bottom of the 2–4× estimated above, which is the honest reading:
+take the low end.
 
 Also lost: `fe::Vector = absl::InlinedVector<T, N>`
 (`submodules/fe/include/fe/vector.h`), which keeps small op-vectors in the object
@@ -116,6 +142,77 @@ Gill](https://ku-fpg.github.io/papers/Okasaki-98-IntMap/) formulation an ML
 programmer would write.
 What C++ buys here is the representation, not the algorithm — the tag bits, the
 flexible array member, and the arena the nodes are bump-allocated into.
+
+### `Patricia::Set` measured against OCaml's `patricia-tree`
+
+That last claim is testable, because the structure exists in OCaml.
+[`patricia-tree`](https://ocaml.org/p/patricia-tree/) (Lemerre and Lesbre) is
+the same Okasaki-Gill Patricia tree, and its `MakeHashconsedSet` functor
+hash-conses it so that equal sets are physically equal — the same guarantee
+`fe::Patricia` provides.
+It is a careful implementation by people who care about this structure, which is
+what makes it worth measuring against.
+
+Both sides run the identical workload: the same splitmix64 stream and the same
+Fisher-Yates shuffle, so the id sets are bit-identical, and an element is a
+pointer to a heap object carrying the id on both sides.
+Four set sizes (16 to 65,536) over dense and sparse ids, steady state.
+The C++ side is built `-DFE_ABSL` throughout — the configuration MimIR actually
+ships, and the one the container note above is about.
+
+Ordered by how much MimIR leans on each, since that matters more than the
+headline number:
+
+| Operation | Where MimIR uses it | vs `MakeHashconsedSet` |
+| --------- | ------------------- | ---------------------- |
+| `merge` | the `free_vars` inner loop — by far the dominant call | **2.6–8.6×** faster |
+| `insert`/`erase` | `free_vars` (user registration, `FV(λx.e) = FV(e) \ {x}`), `Nest` | **2.2–46×** faster |
+| `has_intersection` | `Def::has_free_vars_in` | **3.5–23×** faster |
+| iteration | walking `local_muts()` | **8.3–29×** faster |
+| `contains` | scattered | **1.8–16×** faster |
+| `intersect`/`diff`/`subset_of` | not on any hot path | **2.1–19×** faster |
+| bulk `create` | **never called** | *(12–173×, and irrelevant)* |
+| peak RSS at n=65,536 | | **3.8–6.1×** smaller |
+
+The honest headline is therefore the **2.6–8.6× on `merge`**, not the
+eye-catching `create` figure: `Def::free_vars` unions its operands' free-var
+sets in a loop, and that single call dominates every other use of the structure.
+It also sits squarely inside the 5–10× the ballpark table estimates for
+idiomatic OCaml, which is mild corroboration that the table is not wild.
+
+The gap tracks the representation, exactly as the section above predicts.
+`Arr` packing up to `N`=8 entries into one contiguous node flattens the bottom
+three levels of the trie — that is where the iteration and lookup numbers come
+from, since `patricia-tree` carries one leaf per element all the way down.
+`Entry` caching the id beside the `D*` removes a pointer chase per comparison.
+`Uniq` means a singleton allocates nothing at all.
+
+**Where the OCaml gap comes from is the load-bearing part.**
+It is not the trie.
+`patricia-tree`'s own *non*-hash-consed `MakeSet` builds **5.8–48× faster** than
+its hash-consed one, so almost the whole gap sits in the hash-cons layer rather
+than in the Okasaki-Gill algorithm the two implementations share.
+That layer is `Weak.Make`: every node creation is a weak-hashtable merge, and
+the GC must scan those buckets.
+
+A port does not get to opt out of it.
+Hash-consing is what makes `Def::vars_` comparable in O(1), and `World::unify`
+is the same bet at the scale of the whole sea of nodes — so a set library
+without physical equality is not implementing the same thing, which is why the
+table above is against `MakeHashconsedSet`.
+The weak table is therefore not an unlucky choice by that library; it is what
+hash-consing costs when dead nodes have to be reclaimed by a garbage collector.
+MimIR's arena declines to reclaim them and rewinds the bump pointer instead —
+*Speculative construction with arena rollback*, turning up as a measurement
+rather than an argument.
+
+**The one caveat that genuinely weakens the numbers:** they are *pessimistic*
+for OCaml against the ballpark table above, which assumes flambda.
+The switch measured was `ocaml-base-compiler.5.4.0` without it.
+
+The scope is one structure against one library.
+It says nothing about Haskell or Scala, nothing about the 72-byte `Def` layout,
+and nothing about a full port — it is one anchor under one row of one table.
 
 ### Arenas, and how `Def`s are placed in them
 
