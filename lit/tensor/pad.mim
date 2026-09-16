@@ -7,7 +7,7 @@
 // Checked on the lowered Mim IR (no codegen), as for slice / flip.
 // GONE-NOT: tensor.pad
 // GONE-NOT: map_reduce
-// GONE-NOT: %affine
+// GONE-NOT: affine\.
 
 plugin core;
 plugin tensor;

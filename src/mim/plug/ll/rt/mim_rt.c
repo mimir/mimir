@@ -12,7 +12,7 @@
 #include <setjmp.h>
 #include <stdint.h>
 
-/// Size in bytes of a `jmp_buf`, used by `%clos.alloc_jmpbuf` to reserve stack space.
+/// Size in bytes of a `jmp_buf`, used by `clos.alloc_jmpbuf` to reserve stack space.
 /// The size is platform- and libc-dependent, so we let the C compiler compute it rather than
 /// hard-coding it in the backend.
 int64_t mim_jmpbuf_size(void) { return (int64_t)sizeof(jmp_buf); }

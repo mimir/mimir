@@ -6,7 +6,7 @@
 // tensor.map_reduce. Checked on the lowered Mim IR (no codegen), as for hlo.mim / reshape.
 // GONE-NOT: tensor.slice
 // GONE-NOT: map_reduce
-// GONE-NOT: %affine
+// GONE-NOT: affine\.
 
 plugin core;
 plugin tensor;

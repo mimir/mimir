@@ -3,8 +3,8 @@
 
 // Size-1 dimension folding: «3,1;I32» is stored as «3;I32», so get/set indices must drop the folded
 // (size-1) dimension. The bufferized signature uses a rank-1 mem.Ptr.
-// GONE-NOT: %tensor.
-// GONE-NOT: %buffer.
+// GONE-NOT: tensor.
+// GONE-NOT: buffer.
 plugin core;
 plugin tensor;
 plugin mem;

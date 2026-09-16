@@ -155,7 +155,7 @@ void HostEmitter::find_kernels(const Def* def) {
 
     if (auto launch = Axm::isa<gpu::launch>(def)) {
         auto kernel     = launch->decurry()->decurry()->arg();
-        auto kernel_lam = kernel->expect_mut<Lam>("the kernel passed to `%gpu.launch` to be a mutable lambda");
+        auto kernel_lam = kernel->expect_mut<Lam>("the kernel passed to `gpu.launch` to be a mutable lambda");
         if (kernel_ids_.contains(kernel_lam)) return;
         auto kid                = kernel_ids_.size();
         kernel_ids_[kernel_lam] = kid;
@@ -276,7 +276,7 @@ std::string HostEmitter::prepare() {
 }
 
 void HostEmitter::emit_epilogue(Lam* lam) {
-    // Must run first to force emission of the return value's own dependencies (e.g. %gpu.free) into bb.body().
+    // Must run first to force emission of the return value's own dependencies (e.g. gpu.free) into bb.body().
     Super::emit_epilogue(lam);
     if (gpu_externals_.contains(root())) {
         // lam, not root(): a function can have several return blocks, and LLVM names are function-scoped.
@@ -314,7 +314,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
     } else if (auto auto_init = Axm::isa<gpu::auto_init>(def)) {
         return emit_unsafe(auto_init->arg());
     } else if (auto auto_deinit = Axm::isa<gpu::auto_deinit>(def)) {
-        // emit_unsafe on `global` keeps any %gpu.free threaded through it reachable.
+        // emit_unsafe on `global` keeps any gpu.free threaded through it reachable.
         emit_unsafe(auto_deinit->arg(1));
         emit_unsafe(auto_deinit->arg(2));
         return emit_unsafe(auto_deinit->arg(0));
@@ -353,7 +353,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (alloc.id()) {
             case gpu::alloc::block: is_async = false; break;
             case gpu::alloc::asyn: is_async = true; break;
-            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.alloc` id in `{}`", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.alloc` id in `{}`", def);
         }
 
         if (is_async)
@@ -367,7 +367,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto type_size  = w.call(core::trait::size, alloc_t);
         auto alloc_size = emit(type_size);
 
-        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a `%mem.Ptr`"));
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a `mem.Ptr`"));
 
         auto alloc_ptr = bb.assign(name + "ptr", "alloca {}", ptr_t);
         std::string alloc_res;
@@ -385,7 +385,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (free.id()) {
             case gpu::free::block: is_async = false; break;
             case gpu::free::asyn: is_async = true; break;
-            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.free` id in `{}`", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.free` id in `{}`", def);
         }
 
         if (is_async)
@@ -410,7 +410,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (copy_to_device.id()) {
             case gpu::copy_to_device::block: is_async = false; break;
             case gpu::copy_to_device::asyn: is_async = true; break;
-            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.copy_to_device` id in `{}`", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.copy_to_device` id in `{}`", def);
         }
 
         if (is_async)
@@ -444,7 +444,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         switch (copy_to_host.id()) {
             case gpu::copy_to_host::block: is_async = false; break;
             case gpu::copy_to_host::asyn: is_async = true; break;
-            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `%gpu.copy_to_host` id in `{}`", def);
+            default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.copy_to_host` id in `{}`", def);
         }
         if (is_async)
             declare("i32 @{}(ptr, i64, i64, ptr)", Cu_Memcpy_Dtoh_Async);

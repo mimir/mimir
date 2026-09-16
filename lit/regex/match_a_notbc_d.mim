@@ -23,4 +23,4 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
             exit (m, core.conv.u i32 matched);
     end;
 
-// CHECK-NOT: %regex.
+// CHECK-NOT: regex.

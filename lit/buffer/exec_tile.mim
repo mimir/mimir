@@ -46,6 +46,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
         return (m, tensor.get ((0₂, 1₂, 1₂, 0₂), o));
     gemm ((a, b), done);
 
-// GONE-NOT: %tensor.
-// GONE-NOT: %buffer.
+// GONE-NOT: tensor.
+// GONE-NOT: buffer.
 // GONE-NOT: %btensor.

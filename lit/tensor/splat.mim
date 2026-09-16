@@ -1,4 +1,4 @@
-// RUN: %mim %s -p opt -o - | %FileCheck %s --implicit-check-not=%%tensor.splat
+// RUN: %mim %s -p opt -o - | %FileCheck %s --implicit-check-not=%tensor.splat
 
 // Static and symbolic non-scalar splats become buffer fills. A tensor whose
 // singleton axes fully fold to physical rank zero is represented by its scalar

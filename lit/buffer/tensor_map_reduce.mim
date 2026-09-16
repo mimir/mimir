@@ -3,12 +3,12 @@
 
 // Bufferization of tensor.map_reduce: reduction, transpose (Rr=0) and strided access.
 // tensor.lower_to_mem maps it onto the buffer-world btensor.map_reduce_post, btensor.lower_map_reduce generates
-// the loops over %buffer ops, and buffer.lower_ptr lowers to %mem. After the full pipeline, all tensor/btensor/
-// buffer/affine axioms are gone and only %mem.* + loops remain.
-// GONE-NOT: %tensor.
+// the loops over buffer ops, and buffer.lower_ptr lowers to mem. After the full pipeline, all tensor/btensor/
+// buffer/affine axioms are gone and only mem.* + loops remain.
+// GONE-NOT: tensor.
 // GONE-NOT: %btensor.
-// GONE-NOT: %buffer.
-// GONE-NOT: %affine.
+// GONE-NOT: buffer.
+// GONE-NOT: affine.
 plugin core;
 plugin tensor;
 plugin affine;
@@ -39,7 +39,7 @@ extern fun row_sum (input: «3, 4; I32»): «3; I32» =
 extern fun transpose (input: «2, 3; I32»): «3, 2; I32» =
     return (tensor.map_reduce ((3, 2), (2, 3)) (copy, ⊥:I32) tr id2 input);
 
-// out[i] = input[3*i + 2]; the affine read index lowers to %core arithmetic.
+// out[i] = input[3*i + 2]; the affine read index lowers to core arithmetic.
 // CHECK-DAG: extern fun strided
 // CHECK-DAG: core.wrap.mul {{.*}}(3I64
 // CHECK-DAG: core.wrap.add {{.*}}(2I64
@@ -56,10 +56,10 @@ extern lam _compile (): compile.Phase =
         compile.named "tensor.lower_tensor",       // high-level ops -> tensor.map_reduce (+ broadcast)
         compile.named "tensor.fuse_tensor",        // fuse map_reduce chains
         compile.named "tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast onto
-                                                           // %buffer/%btensor (hard error if not bufferizable)
+                                                           // buffer/%btensor (hard error if not bufferizable)
         mem.add_mem,
-        compile.named "btensor.lower_map_reduce",  // btensor.map_reduce_post/broadcast -> affine.For over %buffer
-        compile.named "buffer.lower_ptr",          // %buffer.* -> mem.Ptr / lea / load / store
-        compile.named "affine.lower_index",  // affine.map -> %core arithmetic
+        compile.named "btensor.lower_map_reduce",  // btensor.map_reduce_post/broadcast -> affine.For over buffer
+        compile.named "buffer.lower_ptr",          // buffer.* -> mem.Ptr / lea / load / store
+        compile.named "affine.lower_index",  // affine.map -> core arithmetic
         compile.named "affine.lower_for",    // affine.For -> CPS loops
     );

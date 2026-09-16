@@ -25,4 +25,4 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
         con exiting(m: mem.M 0, return: Bool) = exit (m, core.conv.u i32 return)
     end
 
-// CHECK-NOT: %regex.
+// CHECK-NOT: regex.

@@ -31,7 +31,7 @@ constexpr u64 Max_vec = 1024;
 u64 lanes(u64 n, u64 vec) { return (n + vec - 1) / vec * vec; }
 
 /// Is @p mat read with its contraction unit-stride?
-/// `Lower` answers `%tensor.fastest_axis` 0 for a transposed operand - the read-through absorbs the
+/// `Lower` answers `tensor.fastest_axis` 0 for a transposed operand - the read-through absorbs the
 /// transpose into the access map - which selects `dot_schedule_kvec`.
 bool is_kvec(const Def* mat) {
     auto app = Axm::isa<tensor::transpose>(mat);

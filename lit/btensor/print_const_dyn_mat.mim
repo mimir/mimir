@@ -48,4 +48,4 @@ extern con main (mm: mem.M 0,
             end;
     end;
 
-// CHECK-NOT: %btensor.
+// CHECK-NOT: btensor.

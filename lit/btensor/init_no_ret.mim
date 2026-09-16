@@ -10,4 +10,4 @@ extern con f (m: mem.M 0, (k l: Nat), return: Cn [mem.M 0]) =
     let (m, M) = buffer.alloc (2, (k, l), I32) m;
     return m;
 
-// CHECK-NOT: %btensor.
+// CHECK-NOT: btensor.

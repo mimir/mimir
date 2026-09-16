@@ -27,4 +27,4 @@ extern con f (m: mem.M 0,
         (m, (M, M));
     return (m, MT);
 
-// CHECK-NOT: %btensor.
+// CHECK-NOT: btensor.

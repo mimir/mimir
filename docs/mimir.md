@@ -58,11 +58,11 @@ A plugin has two halves that share one name:
 - a **`.mim` file** that declares the plugin's **annexes**, and
 - a shared library that registers their runtime behavior: normalizers and plugin-specific compiler [phases](@ref phases).
 
-The examples below use the [`%core`](@ref core) plugin throughout, hence the `plugin core;` at the top of each file.
+The examples below use the [`core`](@ref core) plugin throughout, hence the `plugin core;` at the top of each file.
 
 ### Annexes
 
-An **annex** is any entity a plugin exports; you reference it with the `plugin.path` syntax, such as `core.wrap.add` or `core.select` from the [`%core`](@ref core) plugin.
+An **annex** is any entity a plugin exports; you reference it with the `plugin.path` syntax, such as `core.wrap.add` or `core.select` from the [`core`](@ref core) plugin.
 Annexes come in two flavors: Axioms and other definitions.
 
 #### Axioms
@@ -290,7 +290,7 @@ Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat
 
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.
-This is the foundation the [`%tensor`](@ref tensor) plugin builds on: array shapes live in the types and are checked — and optimized — by the very same normalization you have already seen.
+This is the foundation the [`tensor`](@ref tensor) plugin builds on: array shapes live in the types and are checked — and optimized — by the very same normalization you have already seen.
 
 <div class="section_buttons">
 

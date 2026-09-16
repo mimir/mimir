@@ -10,7 +10,7 @@
 // GONE-NOT: tensor.pool
 // GONE-NOT: tensor.pad
 // GONE-NOT: map_reduce
-// GONE-NOT: %affine
+// GONE-NOT: affine\.
 
 plugin core;
 plugin tensor;
@@ -21,7 +21,7 @@ plugin mem;
 lam nat_max (a b: Nat): Nat = core.select (core.ncmp.ge (a, b), a, b);
 
 // 2x2 max-pool, stride 2, no padding: «2,2,4,4» -> «2,2,2,2». The reduction is the `nat_max` comparison; the strided
-// window read lowers to %core arithmetic.
+// window read lowers to core arithmetic.
 // CHECK-DAG: extern fun maxpool
 // CHECK-DAG: core.ncmp
 // CHECK-DAG: core.wrap.mul {{.*}}(2I64

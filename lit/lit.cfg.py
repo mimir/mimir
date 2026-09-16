@@ -28,7 +28,7 @@ config.available_features.add("always")
 if getattr(config, 'build_type', '').lower() in ('release', 'relwithdebinfo', 'minsizerel'):
     config.available_features.add("release")
 # 16-bit floating-point support (needs std::float16_t) is detected once by CMake and passed in via
-# lit.site.cfg.py. Tests emitting %math.F16 literals gate on this via `// REQUIRES: fp16`.
+# lit.site.cfg.py. Tests emitting math.F16 literals gate on this via `// REQUIRES: fp16`.
 if getattr(config, 'fp16', False):
     config.available_features.add("fp16")
 # operating system is detected using sys.platform (see https://docs.python.org/3/library/sys.html#sys.platform)

@@ -57,7 +57,7 @@ foreach(MIM_LIT_STAGE_FILE IN LISTS MIM_LIT_STAGE_FILES)
 endforeach()
 
 # Detect 16-bit floating-point support once at configure time; mim's fp16 path needs `std::float16_t`.
-# Exposed to lit as the `fp16` feature so tests emitting %math.F16 literals can gate via `// REQUIRES: fp16`.
+# Exposed to lit as the `fp16` feature so tests emitting math.F16 literals can gate via `// REQUIRES: fp16`.
 include(CheckCXXSourceCompiles)
 check_cxx_source_compiles(
     "#include <stdfloat>

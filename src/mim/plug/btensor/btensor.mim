@@ -25,6 +25,7 @@ plugin vec; // for vec.fold
 plugin mem;
 import ll;  // for the ll.vec loop annotation (declarations only — no module load, no emit phase)
 import compile;
+
 use core.ops.n;
 ///
 /// ## Types

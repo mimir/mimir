@@ -8,11 +8,11 @@
 // max-pools, then flatten and three fully-connected layers. Conv biases are broadcast NCHW-style via
 // tensor.reshape + tensor.broadcast, FC biases tiled via tensor.reshape + tensor.repeat, exactly as the
 // importer emits them. Lowered through the DEFAULT pipeline on the Mim IR level (no codegen), checking that
-// no %tensor / map_reduce / %affine residue remains.
+// no tensor / map_reduce / affine residue remains.
 // CHECK: extern fun vgg16
-// GONE-NOT: %tensor.
+// GONE-NOT: tensor.
 // GONE-NOT: map_reduce
-// GONE-NOT: %affine.
+// GONE-NOT: affine.
 
 plugin tensor;
 plugin refly;

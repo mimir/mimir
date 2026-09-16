@@ -165,7 +165,7 @@ void LowerToMem::collect_tensor_types() {
                 auto [Tr, shapes, dim] = app->callee()->as<App>()->uncurry_args<3>();
                 auto [T, r]            = Tr->projs<2>();
                 elem(T);
-                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(dim)) gate("non-literal rank/axis of `%tensor.gather`", app);
+                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(dim)) gate("non-literal rank/axis of `tensor.gather`", app);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(2, 0)->type());
                 add_tensor_ty(app->arg()->proj(2, 1)->type());
@@ -173,7 +173,7 @@ void LowerToMem::collect_tensor_types() {
                 auto [Tr, shapes, dim] = app->callee()->as<App>()->uncurry_args<3>();
                 auto [T, r]            = Tr->projs<2>();
                 elem(T);
-                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(dim)) gate("non-literal rank/axis of `%tensor.scatter`", app);
+                if (!Lit::isa<u64>(r) || !Lit::isa<u64>(dim)) gate("non-literal rank/axis of `tensor.scatter`", app);
                 add_tensor_ty(app->type());
                 add_tensor_ty(app->arg()->proj(3, 0)->type());
                 add_tensor_ty(app->arg()->proj(3, 1)->type());
@@ -570,8 +570,8 @@ const Def* LowerToMem::lower_generate(const App* app) {
     auto result_ty          = w.sigma({mem_ty, out_ty});
     auto unit               = w.tuple(Defs{});
     auto fun                = w.mut_fun(w.sigma({mem_ty, unit->type()}), result_ty)->set("tensor_generate");
-    auto call = w.app(cps::op_cps2ds_dep(fun), w.tuple({fresh_mem(), unit}));
-    auto [args, cont] = fun->vars<2>();
+    auto call               = w.app(cps::op_cps2ds_dep(fun), w.tuple({fresh_mem(), unit}));
+    auto [args, cont]       = fun->vars<2>();
     auto [fun_mem, ignored] = args->projs<2>();
 
     auto [alloc_mem, out] = buffer::op_alloc(br, bs, bT, fun_mem)->projs<2>();

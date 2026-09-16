@@ -18,4 +18,4 @@ extern fun f(m: mem.M 0, k l: Nat, M: buffer.Buf (2, (k, l), I32)): [mem.M 0, bu
         (m, M);
     return MT;
 
-// CHECK-NOT: %btensor.
+// CHECK-NOT: btensor.

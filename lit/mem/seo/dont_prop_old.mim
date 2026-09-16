@@ -10,7 +10,7 @@
 // The genuine phi for `j` survives (`x` on the true edge, `4` on the false edge):
 // CHECK-DAG: = phi i64 [ %x_{{[0-9]+}}, %true{{[0-9_]*}} ], [ 4, %false{{[0-9_]*}} ]
 // No redundant phi whose two incoming values are identical:
-// CHECK-NOT: = phi i64 [ [[V:%i_[0-9]+]], {{[^],]+}} ], [ [[V]], {{[^],]+}} ]
+// CHECK-NOT: = phi i64 [ [[V:i_[0-9]+]], {{[^],]+}} ], [ [[V]], {{[^],]+}} ]
 
 plugin core;
 plugin compile;

@@ -11,7 +11,7 @@
 // GONE-NOT: tensor.conv
 // GONE-NOT: tensor.pad
 // GONE-NOT: map_reduce
-// GONE-NOT: %affine
+// GONE-NOT: affine\.
 
 plugin core;
 plugin tensor;

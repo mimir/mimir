@@ -20,4 +20,4 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
             let (m, matched, pos) = re (m, to_match, 0:(Idx Top));
             exit (m, core.conv.u i32 matched);
     end;
-// CHECK-NOT: %regex.
+// CHECK-NOT: regex.

@@ -2,7 +2,7 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
 // Isolated check of the buffer plugin's lower_ptr phase: a hand-written
-// alloc/write/read program must lower to mem.alloc/lea/load/store, with no %buffer.* left.
+// alloc/write/read program must lower to mem.alloc/lea/load/store, with no buffer.* left.
 plugin core;
 plugin mem;
 plugin buffer;
@@ -28,4 +28,4 @@ extern lam _compile (): compile.Phase =
 // CHECK-DAG: mem.lea
 // CHECK-DAG: mem.load
 // CHECK-DAG: mem.store
-// GONE-NOT: %buffer.
+// GONE-NOT: buffer.

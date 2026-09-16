@@ -197,7 +197,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     }
 
     // Builds `affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
-    // mem). The emitted `affine.map` is lowered to %core arithmetic by the subsequent affine.lower_index. We
+    // mem). The emitted `affine.map` is lowered to core arithmetic by the subsequent affine.lower_index. We
     // invent a fresh `⊥ : mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
     auto mem0       = w.app(w.annex<mem::M>(), w.lit_nat(0));
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {

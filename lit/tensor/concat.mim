@@ -7,7 +7,7 @@
 // lowered Mim IR (no codegen), as for slice / flip.
 // GONE-NOT: tensor.concat
 // GONE-NOT: map_reduce
-// GONE-NOT: %affine
+// GONE-NOT: affine\.
 
 plugin core;
 plugin tensor;

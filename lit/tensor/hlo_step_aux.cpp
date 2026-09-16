@@ -19,7 +19,7 @@ float main_hlo(float* arg0, float* arg1, float* arg2, float* arg3, float* arg4, 
 
 using Vec = std::vector<float>;
 
-// C = A (M×K) · B (K×N), row-major, ascending-k accumulation like the lowered %tensor.product_2d.
+// C = A (M×K) · B (K×N), row-major, ascending-k accumulation like the lowered tensor.product_2d.
 static void matmul(const Vec& A, const Vec& B, Vec& C, size_t M, size_t K, size_t N) {
     for (size_t i = 0; i < M; ++i)
         for (size_t j = 0; j < N; ++j) {
@@ -32,7 +32,7 @@ static void matmul(const Vec& A, const Vec& B, Vec& C, size_t M, size_t K, size_
 
 int main() {
     constexpr size_t B = 128, I = 784, H = 1024, O = 10;
-    constexpr float lr = 0.001f;      // %math.conv.f2f (23, 8) 0.001:F64 == 0.001f
+    constexpr float lr = 0.001f;      // math.conv.f2f (23, 8) 0.001:F64 == 0.001f
     constexpr float c  = -0.0078125f; // v_34 = (-1)/128, constant-folded exactly
 
     // Small, zero-mean-ish weights keep tanh in its non-saturated regime.

@@ -188,7 +188,7 @@ public:
 
         auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
         auto setup_phase
-            = split_apply_phase.get()->expect<RWPhase>("the phase for `%gpu.split_apply` to be an `RWPhase`");
+            = split_apply_phase.get()->expect<RWPhase>("the phase for `gpu.split_apply` to be an `RWPhase`");
         setup_phase->run();
 
         DeviceEmitFlags device_flags;
