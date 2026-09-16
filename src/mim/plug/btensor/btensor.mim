@@ -173,15 +173,17 @@ axm pad: {T: *, r: Nat}
        → [mem.M 0, input: buffer.Buf (r, s_in, T), value: T]
        → [mem.M 0, buffer.Buf (r, s_out, T)];
 ///
+/// ### btensor_copy
+///
+/// Ignores the (⊥) accumulator and just returns the read value — the mem-threaded counterpart of `tensor_copy`.
+///
+fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: «1; T»)@tt: [mem.M 0, T] = return (m, y#0_1);
+///
 /// ### transpose_2d
 ///
 /// Permutes the dimensions of a 2-dimensional matrix.
 /// As there, the shape is a single `«2; Nat»` vector instead of two separate `Nat`s and `{T}` precedes
 /// `{s}`; like `product_2d` this is a `lam` over `map_reduce` rather than an `axm`.
-///
-/// Ignores the (⊥) accumulator and just returns the read value — the mem-threaded counterpart of `tensor_copy`.
-///
-fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: «1; T»)@tt: [mem.M 0, T] = return (m, y#0_1);
 ///
 /// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
 ///
@@ -199,6 +201,13 @@ anx lam transpose_2d {T: *} {s: «2; Nat»}
 ///
 /// Operations that fold a reduction dim away.
 ///
+/// ### product_2d_fun
+///
+/// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
+/// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
+fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [mem.M 0, R#T] =
+    return (m, R#add (acc, R#mul (ab#0_2, ab#1_2)));
+///
 /// ### product_2d
 ///
 /// Computes the matrix product of two 2-dimensional matrices in the ring `R`.
@@ -209,14 +218,9 @@ anx lam transpose_2d {T: *} {s: «2; Nat»}
 /// an `_impl` annex and a lowering phase: nothing in this plugin inspects the high-level form — no
 /// fusion phase over `*`, and the normalizer was a no-op — so the extra staging bought nothing.
 /// `transpose_2d` follows the same pattern.
-///
-/// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
-/// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
-fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [mem.M 0, R#T] =
-    return (m, R#add (acc, R#mul (ab#0_2, ab#1_2)));
 
 /// The loop vector is `(i, j, k)` and follows the principle `ij ← ik, kj`
-/// (`out[i, j] = Σ_k t1[i, k] · t2[k, j]`), so `k` is the single reduction loop.
+/// (\f$\mathit{out}_{i,j} = \sum_k \mathit{t1}_{i,k} \cdot \mathit{t2}_{k,j}\f$), so `k` is the single reduction loop.
 anx lam product_2d (R: Ring) {m k l: Nat}
                        (mm: mem.M 0, t1: buffer.Buf (2, (m, k), R#T), t2: buffer.Buf (2, (k, l), R#T))
                      : [mem.M 0, buffer.Buf (2, (m, l), R#T)] =
@@ -275,13 +279,17 @@ lam ForT (A: *): * =
       [Cn [I32, [mem.M 0, A], Cn [mem.M 0, A]]]
     → [Cn [mem.M 0, A]]
     → Cn [I32, I32, I32, [mem.M 0, A]];
-
+///
+/// #### affine_for
+///
 /// The default loop implementation: affine.For itself, eta-wrapped.
 con affine_for {A: *} (body: Cn [I32, [mem.M 0, A], Cn [mem.M 0, A]])
                (exit: Cn [mem.M 0, A])
                (begin stop step: I32, init: [mem.M 0, A])@tt =
     affine.For body exit (begin, stop, step, init);
-
+///
+/// #### vec_for
+///
 /// The loop implementation for a schedule's **vector** dim: the same `affine.For`, its body wrapped
 /// in the identity annotation `ll.vec` — the nomination to run this loop as the innermost
 /// unit-stride vectorized loop. `affine.lower_for` moves the wrapper onto the loop's exit
@@ -294,7 +302,7 @@ con vec_for {A: *} (body: Cn [I32, [mem.M 0, A], Cn [mem.M 0, A]])
 /// ### range_nest
 ///
 /// One nest of `loop`-implemented loops over the dim range `[lo, hi)` of the bounds `Sr`, threading
-/// an accumulator `A` and the shared «r; I32» loop-vector prefix; calls `inner` at the bottom with
+/// an accumulator `A` and the shared `«r; I32»` loop-vector prefix; calls `inner` at the bottom with
 /// the prefix updated at the range's positions. Composed by a right fold — no recursion, and the
 /// flat I32 prefix avoids dependently-typed loop-variable tuples.
 lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
@@ -314,7 +322,9 @@ lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
     let m = hi - lo;
     vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
         wrap (‹i: m; lo + core.bitcast Nat i›, inner);
-
+///
+/// #### range_unroll
+///
 /// Like `range_nest`, but every dim in the range is fully **unrolled**: the inner continuation is
 /// chained once per iteration point by a right fold over the dim's (compile-time) extent —
 /// straight-line code with constant coordinates, no loops, and structurally terminating (no
@@ -337,7 +347,7 @@ lam range_unroll (r: Nat, Sr: «r; Nat») (A: *) (lo hi: Nat)
     vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
         wrap (‹i: m; lo + core.bitcast Nat i›, inner);
 
-/// ### mr_nest
+/// ### NestT
 ///
 /// The type of scheduled loop nests for a `map_reduce` over the domain `Sr` (`ro` leading parallel
 /// dims, `rr` trailing reduction dims, fold element type `To`): given the fold seed `init`, the
@@ -349,6 +359,8 @@ anx lam NestT (ro rr: Nat, Sr: «ro + rr; Nat», To U: *): * =
        wb:   Cn [mem.M 0, U, To, «ro + rr; I32», Cn [mem.M 0, U]]]
     → Cn [mem.M 0, U, Cn [mem.M 0, U]];
 
+/// ### mr_nest
+///
 /// The scheduled nest builder, selecting one of the four nests below from the schedule:
 /// * `unroll` trailing reduction dims always run as compile-time-unrolled straight-line code.
 /// * a `vdim` naming a parallel dim (currently the last one) of extent ≠ 1 runs it as the innermost

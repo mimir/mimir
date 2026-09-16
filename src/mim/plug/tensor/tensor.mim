@@ -163,12 +163,14 @@ axm map_reduce_post: {nis nps: Nat}
                    → [is: «i: nis; «Sis#i; Tis#i»», post_is: «j: nps; «Sps#j; Tps#j»»]
                    → «So; Tp»;
 ///
-/// ### mk_sched
+/// ### SchedT
 ///
 /// The type of a **schedule** value: a chooser over the target's loop-nest builder — for whatever nest
 /// type `N` the lowering instantiates, it is handed the target's builder `mk` and returns the nest
 /// to run.
 let SchedT = [N: *] → ([vdim unroll: Nat] → N) → N;
+///
+/// ### mk_sched
 ///
 /// The canonical schedule, picking
 /// * `vdim`, the dim to run innermost as the unit-stride vector loop — a parallel dim runs over a row
@@ -230,6 +232,20 @@ axm broadcast_in_dim: {T: *, r_in r_out: Nat}
                     → [s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»]
                     → «s_out; T», normalize_broadcast_in_dim;
 ///
+/// ### concat_acc
+///
+/// Accumulator for the axis-sum: adds `row#ax` to the running total.
+lam concat_acc {r: Nat} (ax: Idx r) (acc: Nat, row: «r; Nat»): Nat = acc + row#ax;
+///
+/// ### concat_shape
+///
+/// `(ax, Sis) ↦ s_out`: sums the inputs' extents along `ax`, keeps the shared extents on every other
+/// axis.
+lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» =
+    let sum_ax = vec.fold.l (concat_acc ax) (0, Sis);
+    let row_0  = Sis#(core.idx 0 nis 0);
+    ‹d: r; core.select (core.icmp.e (d, ax), sum_ax, row_0#d)›;
+///
 /// ### concat
 ///
 /// Joins `nis` inputs along axis `ax`. All inputs share rank `r` and agree on every axis except `ax`;
@@ -239,15 +255,6 @@ axm broadcast_in_dim: {T: *, r_in r_out: Nat}
 ///
 /// The output shape is deduced from `ax` and the per-input shapes `Sis` (see `concat_shape`), so it is
 /// not passed explicitly.
-
-// Accumulator for the axis-sum: adds `row#ax` to the running total.
-lam concat_acc {r: Nat} (ax: Idx r) (acc: Nat, row: «r; Nat»): Nat = acc + row#ax;
-
-// `(ax, Sis) ↦ s_out`: sums the inputs' extents along `ax`, keeps the shared extents on every other axis.
-lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» =
-    let sum_ax = vec.fold.l (concat_acc ax) (0, Sis);
-    let row_0  = Sis#(core.idx 0 nis 0);
-    ‹d: r; core.select (core.icmp.e (d, ax), sum_ax, row_0#d)›;
 
 axm concat: {T: *, nis r: Nat}
           → [ax: Idx r]
@@ -264,6 +271,11 @@ axm flip: {T: *, r: Nat}
         → [input: «s_in; T»]
         → «s_in; T», normalize_flip;
 ///
+/// ### pad_shape
+///
+lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
+    ‹d: r; lo#d + s_in#d + hi#d›;
+///
 /// ### pad
 ///
 /// Pads each axis: `s_out#d = lo#d + s_in#d + hi#d`, rank preserved.
@@ -277,8 +289,6 @@ axm flip: {T: *, r: Nat}
 /// The output shape is deduced from `lo`, `s_in` and `hi` (see `pad_shape`), so it is not passed explicitly.
 
 // `(lo, s_in, hi) ↦ ‹d; lo#d + s_in#d + hi#d›`: the padded shape.
-lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
-    ‹d: r; lo#d + s_in#d + hi#d›;
 
 axm pad: {T: *, r: Nat}
        → [s_in: «r; Nat»]
@@ -320,14 +330,17 @@ axm slice: {T: *, r: Nat}
          → [input: «s_in; T»]
          → «s_out; T», normalize_slice;
 ///
+/// ### transpose_shape
+///
+/// `(s, permutation) ↦ ‹i; s#(permutation⁻¹#i)›`: the permuted shape.
+lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
+  let shape_permutation = ‹i: r; option.unwrap_unsafe (vec.first core.icmp.e (permutation, i))›;
+  ‹i: r; s#(shape_permutation#i)›;
+///
 /// ### transpose
 ///
 /// Permutes the dimensions of `input` according to `permutation`.
 ///
-lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
-  let shape_permutation = ‹i: r; option.unwrap_unsafe (vec.first core.icmp.e (permutation, i))›;
-  ‹i: r; s#(shape_permutation#i)›;
-
 /// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
 /// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created — with the
 /// now-literal type `«r; Nat»`, which lets `input: «s; T»` peel off exactly `r` levels of its nested array type.
@@ -373,7 +386,7 @@ axm map: {T: *, ni: Nat, Is: «ni; *»}
 ///
 /// ### select
 ///
-/// Maps core.select over tensors.
+/// Maps `core.select` over tensors.
 ///
 axm select: {T: *}
           → {r: Nat, s: «r; Nat»}
@@ -403,10 +416,23 @@ axm bmm: [R: Ring]
        → [t1: «B, M, K; R#T», t2: «B, K, N; R#T»]
        → «B, M, N; R#T»;
 ///
+/// ### conv_shape
+///
+/// `(n, cout, (H, W), (KH, KW), stride, dilation, padding) ↦ (n, cout, OH, OW)`, where
+/// \f$O_d = (s_d + 2 \cdot \mathit{padding}_d - (\mathit{dilation}_d \cdot (k_d - 1) + 1)) / \mathit{stride}_d + 1\f$:
+/// the NCHW output shape.
+pub lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; Nat» =
+    let hw = ‹d: 2; (s#d + 2 * padding#d - (dilation#d * (k#d - 1) + 1)) / stride#d + 1›;
+    (n, cout, hw#0_2, hw#1_2);
+///
 /// ### conv
 ///
 /// 2-D convolution (cross-correlation) in the ring `R`, `groups = 1`, no bias:
-/// `out[n,co,oh,ow] = Σ_{ci,kh,kw} padded[n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw] · weight[co,ci,kh,kw]`
+/// \f[
+///     \mathit{out}_{n,co,oh,ow} = \sum_{ci,kh,kw} \mathit{padded}_{n,ci,ih,iw} \cdot \mathit{weight}_{co,ci,kh,kw},
+///     \qquad ih = \mathit{stride}_0 \cdot oh + \mathit{dilation}_0 \cdot kh,
+///     \qquad iw = \mathit{stride}_1 \cdot ow + \mathit{dilation}_1 \cdot kw
+/// \f]
 ///
 /// * Layout: `input: «N, Cin, H, W; R#T»`, `weight: «Cout, Cin, KH, KW; R#T»`,
 ///   `output: «N, Cout, OH, OW; R#T»`.
@@ -415,29 +441,16 @@ axm bmm: [R: Ring]
 /// * The output shape follows from the extents and window parameters (see `conv_shape`) and is not
 ///   passed explicitly.
 
-// `(n, cout, (H, W), (KH, KW), stride, dilation, padding) ↦ (n, cout, OH, OW)`, where
-// `O#d = (s#d + 2·padding#d − (dilation#d·(k#d − 1) + 1)) / stride#d + 1`: the NCHW output shape.
-pub lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; Nat» =
-    let hw = ‹d: 2; (s#d + 2 * padding#d - (dilation#d * (k#d - 1) + 1)) / stride#d + 1›;
-    (n, cout, hw#0_2, hw#1_2);
-
 axm conv: [R: Ring]
         → {n cin cout h w kh kw: Nat}
         → [stride dilation padding: «2; Nat»]
         → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
         → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
 ///
-/// ### dot_product
+/// ### dot_general_shape
 ///
-/// Returns the [generalized dot product](https://openxla.org/stablehlo/spec#dot_general) of `a` and `b`:
-/// * `R`: the ring in which the dot product is performed
-/// * `r1`/`r2`: the ranks of the two inputs
-/// * `nc`/`nb`: the number of contracting/batching dimensions
-/// * `c1`/`c2`: the contracting dimensions of the left/right input
-/// * `b1`/`b2`: the batching dimensions of the left/right input
-/// * `s1`/`s2`: the shape of the left/right input
-/// * `a`/`b`: the left/right input
-///
+/// The result shape: the batching extents, then the left operand's free extents, then the right
+/// operand's; the batching and contracting extents are checked to agree.
 lam dot_general_shape {r1 r2: Nat} {nc nb: Nat}
   (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
   (s1: «r1; Nat», s2: «r2; Nat») =
@@ -451,6 +464,18 @@ lam dot_general_shape {r1 r2: Nat} {nc nb: Nat}
       let s12_res  = vec.cat (s1_res, s2_res);
       let s_out    = vec.cat (bs, s12_res);
       s_out;
+///
+/// ### dot_product
+///
+/// Returns the [generalized dot product](https://openxla.org/stablehlo/spec#dot_general) of `a` and `b`:
+/// * `R`: the ring in which the dot product is performed
+/// * `r1`/`r2`: the ranks of the two inputs
+/// * `nc`/`nb`: the number of contracting/batching dimensions
+/// * `c1`/`c2`: the contracting dimensions of the left/right input
+/// * `b1`/`b2`: the batching dimensions of the left/right input
+/// * `s1`/`s2`: the shape of the left/right input
+/// * `a`/`b`: the left/right input
+///
 axm dot_product: [R: Ring]
                → {r1 r2: Nat}
                → {nc nb: Nat}
@@ -598,15 +623,18 @@ let Tileable = [
              omega: [«Ro; affine.Index», «Ro_n + Rr_n; affine.Index»] → «Ro_n; affine.Index»]
           → Out (Ro_n, So_n),
 ];
-
+///
+/// #### comp_map
+///
 /// Composition helper for access maps: (m ∘ g).
+///
 lam comp_map {A B C: *} (m: B → C, g: A → B) (o: A): C = m (g o);
 ///
 /// #### interchange
 ///
-/// Permute the loop dims — new loop j iterates old dim perm#j. Loop order and write
+/// Permute the loop dims — new loop `j` iterates old dim `perm#j`. Loop order and write
 /// position are decoupled by the write map, so So is untouched. The permutation must keep parallel
-/// dims parallel (perm#j < Ro iff j < Ro), enforced at compile time; the schedule's `vdim` moves to
+/// dims parallel (`perm#j < Ro` iff `j < Ro`), enforced at compile time; the schedule's `vdim` moves to
 /// its new position.
 anx lam interchange (t: Tileable, perm: «t#Ro + t#Rr; Nat»): Tileable =
     let r = t#Ro + t#Rr;
@@ -693,7 +721,7 @@ lam unroll_trailing (t: Tileable, d: Nat): Tileable =
 /// innermost reduction dim as `d` selects `btensor.mr_nest`'s reduction-vectorized nest instead.
 lam vectorize (t: Tileable, d: Nat): Tileable =
     (t#Out, t#Ro, t#Rr, t#So, t#oax, t#Sr, d, t#unroll, t#retile);
-
+///
 /// ### Strip-Mining
 ///
 /// Strip-mining is a pure **domain** transform (cf. TilingInterface's `op[N] → op[N/ts, ts]`) that
@@ -703,20 +731,32 @@ lam vectorize (t: Tileable, d: Nat): Tileable =
 /// schedule operand and lowering untouched.
 /// Classic cache tiling is composition: strip-mine, then `interchange` the tile loops outward.
 ///
+/// #### check_div
+///
+/// Checks that `ts` exactly divides the extent `sd` (discharges symbolically for factored extents).
+lam check_div (sd ts: Nat): Nat =
+    refly.check (sd / ts * ts == sd, sd, "strip_mine: tile size must divide the extent");
+///
+/// #### shift_ax
+///
 /// Axis renumbering after inserting a new axis at position `a`.
 lam shift_ax (a x: Nat): Nat = core.select (x < a, x, x + 1);
-
-/// Split bounds vector `v` (length n) at dim `d` into (nt, ts); the result arity `m` (= n+1) is
+///
+/// #### split_bounds
+///
+/// Split bounds vector `v` (length `n`) at dim `d` into `(nt, ts)`; the result arity `m` (`= n+1`) is
 /// passed explicitly, in the syntactic form the call site's types require (the checker does not
-/// re-associate core.nat.add symbolically).
+/// re-associate `core.nat.add` symbolically).
 lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
     ‹i: m; let ii = core.bitcast Nat i;
            core.select (ii < d, v#(core.idx 0 n ii),
            core.select (ii == d, nt,
            core.select (ii == d + 1, ts,
            v#(core.idx 0 n (ii - 1)))))›;
-
-/// Recombine a split loop vector (m = n+1): old#d = new#d · ts + new#(d+1).
+///
+/// #### split_iota
+///
+/// Recombine a split loop vector (`m = n+1`): `old#d = new#d · ts + new#(d+1)`.
 lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
     ‹j: n; let jj = core.bitcast Nat j;
            core.select (jj < d, o#(core.idx 0 m jj),
@@ -724,24 +764,22 @@ lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
                          affine.op.add (affine.semiop.mul (o#(core.idx 0 m d), ts),
                                          o#(core.idx 0 m (d + 1))),
            o#(core.idx 0 m (jj + 1))))›;
-
-/// Split an output coordinate vector (m = n+1): new#a = old#a ⌊/⌋ ts, new#(a+1) = old#a mod ts.
+///
+/// #### split_omega
+///
+/// Split an output coordinate vector (`m = n+1`): `new#a = old#a ⌊/⌋ ts`, `new#(a+1) = old#a mod ts`.
 lam split_omega (m n a ts: Nat) (oc: «n; affine.Index»): «m; affine.Index» =
     ‹j: m; let jj = core.bitcast Nat j;
            core.select (jj < a, oc#(core.idx 0 n jj),
            core.select (jj == a, affine.semiop.floordiv (oc#(core.idx 0 n a), ts),
            core.select (jj == a + 1, affine.semiop.rem (oc#(core.idx 0 n a), ts),
            oc#(core.idx 0 n (jj - 1)))))›;
-
-/// Checks that `ts` exactly divides the extent `sd` (discharges symbolically for factored extents).
-lam check_div (sd ts: Nat): Nat =
-    refly.check (sd / ts * ts == sd, sd, "strip_mine: tile size must divide the extent");
 ///
 /// #### strip_mine_par
 ///
 /// Split parallel dim `d` (d < Ro) into two adjacent parallel dims. The result
 /// shape splits along the output axis `d` writes (`oax#d`), so the materialized tensor is *packed*
-/// («…, N/ts, ts, …» along that axis); a row-major `reshape` restores the original shape — and in a
+/// (`«…, N/ts, ts, …»` along that axis); a row-major `reshape` restores the original shape — and in a
 /// fused graph `fuse_tensor`'s read-through absorbs it into the consumers' access maps.
 anx lam strip_mine_par (t: Tileable, d ts: Nat): Tileable =
     let r    = t#Ro + t#Rr;
@@ -803,10 +841,18 @@ anx lam strip_mine_red (t: Tileable, d ts: Nat): Tileable =
 /// thunks so that partial evaluation resolves it entirely.
 /// This is where "when is a transformation appropriate" lives: in the IR next to the op, not in a
 /// lowering heuristic.
+///
+/// #### Schedule
+///
+/// A transformer of `Tileable`s.
 let Schedule = Tileable → Tileable;
-
+///
+/// #### sched_id
+///
 lam sched_id (t: Tileable): Tileable = t;
-
+///
+/// #### unroll_budget
+///
 /// The greedy trailing-suffix unroll scan (the old lowering's budget scan): the number of trailing
 /// reduction dims whose tap product stays within `budget`. Folded innermost-first over the
 /// reduction dims with state (count, taps, alive); a dim whose extent is still open at lowering
@@ -818,7 +864,9 @@ lam unroll_budget (t: Tileable, budget: Nat): Nat =
         let alive = st#2_3 * if_static (taps, (0, 1)#(taps <= budget), 0);
         (st#0_3 + alive, core.select (alive == 1, taps, st#1_3), alive);
     (vec.fold.r @(«3; Nat», Nat) @(t#Rr) step (‹i: t#Rr; t#Ro + core.bitcast Nat i›, (0, 1, 1)))#0_3;
-
+///
+/// #### vectorize_if
+///
 /// Vectorize the parallel dim `d` only when `cond` holds; otherwise the sentinel "no vector dim".
 lam vectorize_if (t: Tileable, cond: Bool, d: Nat): Tileable =
     vectorize (t, (t#Ro + t#Rr, d)#cond);
@@ -858,7 +906,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 /// #### dot_schedule
 ///
 /// The dot-product schedule for a contraction whose right operand stores the last output dim
-/// unit-stride (A·B): that dim is invariant in the left operand, so it runs innermost over a row of
+/// unit-stride (\f$A \cdot B\f$): that dim is invariant in the left operand, so it runs innermost over a row of
 /// accumulators (GEMM-style vectorization) and the innermost contraction is register-blocked —
 /// strip-mined by 4, the tile unrolled.
 /// * Blocking only needs the **divisibility** decided, which is weaker than a literal extent: a
@@ -879,7 +927,7 @@ lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
 /// #### dot_schedule_kvec
 ///
 /// The dot-product schedule for a contraction whose right operand stores the **contraction**
-/// unit-stride per output cell (x·Wᵀ — the fc/linear layout, where `fuse_tensor`'s read-through
+/// unit-stride per output cell (\f$x \cdot W^T\f$ — the fc/linear layout, where `fuse_tensor`'s read-through
 /// absorbs the weight transpose into the access map).
 /// Vectorizing the last output dim would read a different weight row per lane (gathers), so instead
 /// * the contraction itself runs as the vector loop — unit-stride in both the input row and each
@@ -931,12 +979,16 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let vec   = if_static (stride#1_2 * dilation#1_2 * ow, s_red < s_ow, ff);
     unroll_trailing (vectorize_if (t, vec, 3), u);
 ///
-
 /// ## Implementations
 ///
 /// The `_impl` annexes `lower_tensor` re-applies to expand the derived operations above, together
 /// with the fold steps and access maps they read through.
 /// Most are a single `map_reduce` over a copy step — the operation itself lives in the access map.
+///
+/// The declaration order is load-bearing beyond the usual definition-before-use: `lower_tensor`
+/// resolves an `_impl` in the world it is *building*, so an impl must be declared before any annex
+/// whose body applies the axiom it implements — `reshape_impl` before `conv_impl` and
+/// `dot_product_impl`, which reshape their packed results.
 ///
 /// ### tensor_copy
 ///
@@ -944,24 +996,28 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 /// re-indexing operation below.
 fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
 ///
-/// ### broadcast_in_dim_impl
+/// ### bid_map
 ///
 /// `o ↦ (o#(index#i) · [s_in#i ≠ 1])_i`: input axis `i` reads output-loop var `o#(index#i)` (the transpose), unless
 /// it is a broadcast axis (`s_in#i = 1`), which reads index 0.
 lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
             (o: «r_out; affine.Index»): «r_in; affine.Index» =
     ‹i: r_in; affine.semiop.mul (o#(index#i), core.select (s_in#i == 1, 0, 1))›;
+///
+/// ### broadcast_in_dim_impl
 
 anx lam broadcast_in_dim_impl {T: *, r_in r_out: Nat}
     (s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (bid_map (s_in, index),) input;
 ///
-/// ### flip_impl
+/// ### flip_map
 ///
 /// `o ↦ ((s_in#d − 1) − o#d)_d`: the reverse read map.
 lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine.Index» =
     ‹d: r; affine.op.sub (affine.lit (s_in#d - 1), o#d)›;
+///
+/// ### flip_impl
 
 anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
     map_reduce (s_in, s_in) (tensor_copy, ⊥: T)
@@ -1000,17 +1056,21 @@ anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
       // element; `affine.id` needs its rank here.
       affine.id ‹ni; affine.id @r› is;
 ///
-/// ### pool_impl
+/// ### pool_fun
 ///
 /// Wraps a binary fold `g` as a `map_reduce` reduction `Fn [T, «1; T»] → T`.
 pub fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (acc, y#0_1));
-
+///
+/// ### pool2d_in_map
+///
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
 /// `(n, c, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
 lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; affine.Index»): «4; affine.Index» =
     (o#0_6, o#1_6,
      affine.op.add (affine.semiop.mul (o#2_6, stride#0_2), affine.semiop.mul (o#4_6, dilation#0_2)),
      affine.op.add (affine.semiop.mul (o#3_6, stride#1_2), affine.semiop.mul (o#5_6, dilation#1_2)));
+///
+/// ### pool_impl
 
 anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
                       (kernel stride dilation padding s_out: «2; Nat»)
@@ -1031,33 +1091,39 @@ anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
             (pool2d_in_map (stride, dilation),)
             padded));
 ///
-/// ### repeat_impl
+/// ### repeat_map
 ///
 /// `o ↦ (o#d mod s_in#d)_d`: the wrap-around (tiling) read map.
 lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine.Index» =
     ‹d: r; affine.semiop.rem (o#d, s_in#d)›;
+///
+/// ### repeat_impl
 
 anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (repeat_map s_in,) input;
 ///
-/// ### reshape_impl
+/// ### reshape_map
 ///
 /// `o ↦ delinearize(linearize(o, s_out), s_in)`: the row-major output→input index map.
 anx lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat»)
                 (o: «r_out; affine.Index»): «r_in; affine.Index» =
     affine.delinearize (affine.linearize (o, s_out), s_in);
+///
+/// ### reshape_impl
 
 anx lam reshape_impl {T: *, r_in r_out: Nat}
                          (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (reshape_map (s_in, s_out),) input;
 ///
-/// ### conv_impl
+/// ### conv_fun
 ///
 /// Fused multiply-add over the ring `R`; `ab#0` is the padded-input element, `ab#1` the weight.
 fun conv_fun (R: Ring) (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
-
+///
+/// ### conv2d_in_map
+///
 /// The `«7; affine.Index»` loop vector is `o = (n, co, oh, ow, ci, kh, kw)`, so the weight read map
 /// `(co, ci, kh, kw)` and the output write map `(n, co, oh, ow)` are `proj_map` projections of it;
 /// only this padded-input read needs arithmetic:
@@ -1066,6 +1132,8 @@ lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; affine.Index»): «4; a
     (o#0_7, o#4_7,
      affine.op.add (affine.semiop.mul (o#2_7, stride#0_2), affine.semiop.mul (o#5_7, dilation#0_2)),
      affine.op.add (affine.semiop.mul (o#3_7, stride#1_2), affine.semiop.mul (o#6_7, dilation#1_2)));
+///
+/// ### conv_impl
 
 anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
                       (stride dilation padding: «2; Nat»)
@@ -1098,6 +1166,24 @@ anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
     // `sched#3_9` is the scheduled Tileable's (possibly packed) output shape `So`.
     reshape (sched#3_9) s_out (materialize sched);
 ///
+/// ### dot_general_fun
+///
+/// The fold step: a fused multiply-add in the ring `R`.
+pub fun dot_general_fun (R: Ring) (x: R#T, (y z: R#T))@tt: R#T = return (R#add (x, (R#mul (y, z))));
+///
+/// ### dot_general_pick
+///
+/// Sends input axis `i` to the loop id it reads — batching dims first, then the contractions, then
+/// the remaining free axes.
+pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
+  match vec.first core.icmp.e (b, i) with
+      | bi: Idx nb => core.bitcast Nat bi
+      | _:  []     => match vec.first core.icmp.e (c, i) with
+          | ci: Idx nc => off_2 + core.bitcast Nat ci
+          | _:  []     => match vec.first core.icmp.e (a, i) with
+              | ai: Idx na => off_1 + core.bitcast Nat ai
+              | _:  []     => 0;
+///
 /// ### dot_product_impl
 ///
 /// `r1`/`r2` are an *explicit* group here, unlike in the `dot_product` axiom: they must be literals
@@ -1110,24 +1196,12 @@ anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
 /// except for the leading `fastest_2`, which has no axiom counterpart: it is `fastest_axis` of the
 /// right operand, pre-applied by `Lower` where that operand is concrete.
 /// The schedule **decision** built on it lives in the body:
-/// * a contracted fastest axis (x·Wᵀ, e.g. behind a weight transpose the read-through absorbs) selects
+/// * a contracted fastest axis (\f$x \cdot W^T\f$, e.g. behind a weight transpose the read-through absorbs) selects
 ///   `dot_schedule_kvec`, anything else `dot_schedule`;
 /// * the selected schedule may strip-mine an output dim (row/output-cell blocking), packing the
 ///   materialized tensor along that axis, whereupon the row-major `reshape` restores `s_out` — the
 ///   identity for the neutral split, and absorbed into the consumers' access maps by `fuse_tensor`'s
 ///   read-through in a fused graph.
-///
-/// `dot_general_fun` is the fold step; `dot_general_pick` sends input axis `i` to the loop id it reads
-/// — batching dims first, then the contractions, then the remaining free axes.
-pub fun dot_general_fun (R: Ring) (x: R#T, (y z: R#T))@tt: R#T = return (R#add (x, (R#mul (y, z))));
-pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
-  match vec.first core.icmp.e (b, i) with
-      | bi: Idx nb => core.bitcast Nat bi
-      | _:  []     => match vec.first core.icmp.e (c, i) with
-          | ci: Idx nc => off_2 + core.bitcast Nat ci
-          | _:  []     => match vec.first core.icmp.e (a, i) with
-              | ai: Idx na => off_1 + core.bitcast Nat ai
-              | _:  []     => 0;
 
 anx lam dot_product_impl
   (fastest_2: Nat)
@@ -1212,21 +1286,25 @@ anx lam scatter_step_impl {T: *, r: Nat}
         core.conv.u (s_src#d) coordinate›;
     set (destination_coords, acc, update);
 ///
-/// ### slice_impl
+/// ### slice_map
 ///
 /// `o ↦ (start#d + step#d · o#d)_d`: the strided read map.
 lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; affine.Index»): «r; affine.Index» =
     ‹d: r; affine.op.add (affine.semiop.mul (o#d, step#d), affine.lit (start#d))›;
+///
+/// ### slice_impl
 
 anx lam slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
                        (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (slice_map (start, step),) input;
 ///
-/// ### transpose_impl
+/// ### transpose_map
 ///
 /// `o ↦ (o#(perm#0), …, o#(perm#(r−1)))`: input axis `j` reads output-loop var `o#(perm#j)`.
 lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; affine.Index»): «r; affine.Index» = ‹j: r; o#(perm#j)›;
+///
+/// ### transpose_impl
 
 anx lam transpose_impl {T: *, r: Nat}
                            (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
@@ -1241,17 +1319,23 @@ anx lam transpose_impl {T: *, r: Nat}
 anx lam transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
   transpose_impl (tt, ff) input;
 ///
-/// ### unary_impl / binary_impl / select_impl
+/// ### binary_impl
 ///
-/// `map_impl` over one, two, and three tensors.
-anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
-  map_impl app i;
-
+/// `map_impl` over two tensors.
 anx lam binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [«s; Ti1», «s; Ti2»]): «s; To» =
   map_impl app is;
-
+///
+/// ### select_impl
+///
+/// `map_impl` of `core.select` over three tensors.
 anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
   map_impl core.select is;
+///
+/// ### unary_impl
+///
+/// `map_impl` over one tensor.
+anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
+  map_impl app i;
 ///
 /// ## Phases
 ///
@@ -1272,7 +1356,7 @@ anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», 
 ///   emitted side by side behind a run-time comparison of their costs, so only the winner's thunk
 ///   runs; a longer chain is only reassociated where one bracketing provably wins for every extent.
 /// * Common sub-products are hash-consed across the alternatives, so the code growth stays well below
-///   `Catalan(n − 1)`.
+///   \f$\mathit{Catalan}(n-1)\f$.
 /// * A product with more than one consumer stays a chain boundary, as pulling it apart would leave it
 ///   materialized for its other consumers as well.
 /// * Reassociation is only exact for an associative ring; on floating-point rings it changes the
