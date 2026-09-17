@@ -11,24 +11,34 @@ namespace mim::plug::tensor::phase {
 
 namespace {
 
-/// Peels an `Extract` chain over array types down to its base, collecting one index per axis - a fused
-/// multi-dimensional index contributes all of its components. A Sigma projection ends the chain.
-std::pair<const Def*, DefVec> peel_extracts(const Def* d) {
-    auto index = DefVec(); // collected innermost-axis-first and reversed once at the end
-    while (auto ex = d->isa<Extract>()) {
-        if (!ex->tuple()->type()->isa<Arr>()) break;
+/// One step down an `Extract` chain over array types; `nullptr` at the base. A Sigma projection ends the chain.
+const Extract* array_extract(const Def* d) {
+    auto ex = d->isa<Extract>();
+    if (!ex || !ex->tuple()->type()->isa<Arr>()) return nullptr;
+    auto ty = ex->index()->unfold_type();
+    return Idx::isa(ty) || Lit::isa(ty->arity()) ? ex : nullptr;
+}
+
+const Def* base_of(const Def* d) {
+    while (auto ex = array_extract(d))
+        d = ex->tuple();
+    return d;
+}
+
+/// The chain's index components, one per axis and outermost first - a fused index contributes all of its own.
+DefVec axes_of(const Def* d) {
+    auto axes = DefVec(); // collected innermost-axis-first and reversed once at the end
+    for (auto ex = array_extract(d); ex; ex = array_extract(d)) {
         auto idx = ex->index();
-        if (Idx::isa(idx->unfold_type()))
-            index.emplace_back(idx);
-        else if (auto r = Lit::isa(idx->unfold_type()->arity()))
+        if (auto r = Lit::isa(idx->unfold_type()->arity()); r && !Idx::isa(idx->unfold_type()))
             for (nat_t i = *r; i-- != 0;)
-                index.emplace_back(idx->proj(*r, i));
+                axes.emplace_back(idx->proj(*r, i));
         else
-            break;
+            axes.emplace_back(idx);
         d = ex->tuple();
     }
-    std::ranges::reverse(index);
-    return {d, index};
+    std::ranges::reverse(axes);
+    return axes;
 }
 
 } // namespace
@@ -47,7 +57,8 @@ const Def* Lower::read_through(const Def* base, Defs index) {
         input = rep->arg(), s_in = in, s_out = out, rank = Tr->proj(2, 1), wraps = true;
     } else if (auto bc = Axm::isa<tensor::broadcast>(base)) {
         auto [in, out, i] = bc->args<3>();
-        input = i, s_in = in, s_out = out, rank = bc->callee()->as<App>()->arg()->proj(2, 1), wraps = false;
+        auto [_, r]       = bc->callee()->as<App>()->args<2>();
+        input = i, s_in = in, s_out = out, rank = r, wraps = false;
     } else {
         return nullptr;
     }
@@ -78,9 +89,9 @@ const Def* Lower::read_through(const Def* base, Defs index) {
 }
 
 const Def* Lower::rewrite_imm_Extract(const Extract* extract) {
-    auto [base, index] = peel_extracts(extract);
-    if (!index.empty())
-        if (auto res = read_through(base, index)) return res;
+    // Only a repeat/broadcast base reads through, so find it before collecting any indices.
+    if (auto base = base_of(extract); Axm::isa<tensor::repeat>(base) || Axm::isa<tensor::broadcast>(base))
+        if (auto res = read_through(base, axes_of(extract))) return res;
     return RWPhase::rewrite_imm_Extract(extract);
 }
 

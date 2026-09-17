@@ -12,67 +12,67 @@ const Def* callee_of(const Def* def) {
     auto app = def->isa<App>();
     return app ? app->callee() : nullptr;
 }
+
+/// @p d without the projections @p drop rejects; @p d itself if it keeps all of them.
+const Def* filter_projs(const Def* d, nat_t r, auto drop) {
+    auto kept = DefVec();
+    kept.reserve(r);
+    for (nat_t i = 0; i != r; ++i)
+        if (auto p = d->proj(r, i); !drop(i, p)) kept.emplace_back(p);
+    // Rebuilding an unchanged @p d would eta-reduce back to it - but only after World::tuple's pack
+    // normalization has alpha-compared the projections, walking @p d's whole coordinate chain per pair.
+    return kept.size() == r ? d : d->world().tuple(kept);
+}
+
+bool is_lit_1(const Def* def) {
+    auto l = Lit::isa(def);
+    return l && *l == 1;
+}
 } // namespace
 
 bool is_dim(const Def* shape) {
     auto t = shape->unfold_type();
-    return t && t->zonk_mut()->isa<Nat>();
+    if (!t) return false;
+    return t->isa<Nat>() || t->zonk_mut()->isa<Nat>(); // only a Hole needs the zonk
 }
 
 const Def* first_extent(const Def* shape) {
     if (is_dim(shape)) return shape;
-    auto& w = shape->world();
+    if (auto r = Lit::isa(shape->arity())) return shape->proj(*r, 0);
+
+    auto& w = shape->world(); // a dynamic rank cannot be projected
     return w.extract(shape, w.lit(w.type_idx(shape->arity()), 0));
 }
 
 const Def* fold_shape(const Def* shape) {
-    auto& w   = shape->world();
-    auto is_1 = [](const Def* e) {
-        auto l = Lit::isa(e);
-        return l && *l == 1;
-    };
-    if (is_dim(shape)) return is_1(shape) ? w.tuple() : shape;
-
+    if (is_dim(shape)) return is_lit_1(shape) ? shape->world().tuple() : shape;
     auto r = Lit::isa(shape->arity());
     if (!r) return shape;
-
-    auto axes = DefVec();
-    for (size_t i = 0; i != *r; ++i)
-        if (auto e = shape->proj(*r, i); !is_1(e)) axes.emplace_back(e);
-    return axes.size() == *r ? shape : w.tuple(axes);
+    return filter_projs(shape, *r, [](nat_t, const Def* e) { return is_lit_1(e); });
 }
 
 const Def* fold_index(const Def* index) {
-    auto& w   = index->world();
     auto is_1 = [](const Def* i) {
         auto l = Idx::isa_lit(i->unfold_type());
         return l && *l == 1;
     };
-    if (Idx::isa(index->unfold_type())) return is_1(index) ? w.tuple() : index;
-
+    if (Idx::isa(index->unfold_type())) return is_1(index) ? index->world().tuple() : index;
     auto r = Lit::isa(index->arity());
     if (!r) return index;
-
-    auto comps = DefVec();
-    for (size_t i = 0; i != *r; ++i)
-        if (auto c = index->proj(*r, i); !is_1(c)) comps.emplace_back(c);
-    return comps.size() == *r ? index : w.tuple(comps);
+    return filter_projs(index, *r, [&](nat_t, const Def* c) { return is_1(c); });
 }
 
 const Def* fold_index(const Def* shape, const Def* index) {
-    auto& w    = shape->world();
-    auto r     = shape->num_projs();
-    auto comps = DefVec();
-    for (size_t i = 0; i != r; ++i)
-        if (auto l = Lit::isa<u64>(shape->proj(r, i)); !(l && *l == 1)) comps.emplace_back(index->proj(r, i));
-
-    // Rebuilding an unchanged @p index would eta-reduce back to it - but only after World::tuple's pack
-    // normalization has alpha-compared the projections, walking @p index's whole coordinate chain per pair.
-    if (comps.size() == r) return index;
-    return w.tuple(comps);
+    auto r = shape->num_projs();
+    return filter_projs(index, r, [&](nat_t i, const Def*) { return is_lit_1(shape->proj(r, i)); });
 }
 
-const Def* Seq::shape() const { return op(0); }
+const Def* slice_tuple(const Def* d, nat_t r, nat_t begin, nat_t end) {
+    if (begin == 0 && end == r) return d;
+    return d->world().tuple(DefVec(end - begin, [&](size_t i) { return d->proj(r, begin + i); }));
+}
+
+const Def* Seq::elem() const { return is_fused() ? world().drop(this, 1) : body(); }
 
 Select::Select(const Def* def) {
     if (!def) return;
@@ -160,8 +160,7 @@ const Def* tuple_of_types(const Def* t) {
     if (auto sigma = t->isa<Sigma>()) return world.tuple(sigma->ops());
     if (auto arr = t->isa<Arr>()) {
         // One entry per *top-level* element, so a fused Arr contributes its sub-arrays, not its elements.
-        auto sub = arr->is_fused() ? world.drop(arr, 1) : arr->body();
-        if (sub) return world.pack(arr->arity(), sub);
+        if (auto elem = arr->elem()) return world.pack(arr->arity(), elem);
     }
     return t;
 }

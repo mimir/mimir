@@ -419,17 +419,9 @@ const Def* LowerToMem::rewrite_imm_App(const App* app) {
     // a recorded tensor type) — keep value ABI.
     if (auto pi = Pi::isa_cn(app->callee()->type()); pi && mentions_tensor(pi->dom())) {
         auto elementwise = [&](const Def* callee) {
-            if (auto lam = callee->isa_mut<Lam>()) return op_args_.contains(lam);
-            for (auto d = callee; d;) {
-                if (auto ex = d->isa<Extract>()) {
-                    d = ex->tuple();
-                    continue;
-                }
-                if (auto var = d->isa<Var>())
-                    if (auto lam = var->binder()->isa_mut<Lam>()) return op_args_.contains(lam);
-                break;
-            }
-            return false;
+            auto lam = callee->isa_mut<Lam>();
+            if (!lam) lam = param_of(callee);
+            return lam && op_args_.contains(lam);
         };
         if (elementwise(app->callee())) return RWPhase::rewrite_imm_App(app);
         auto& w = new_world();

@@ -369,8 +369,7 @@ bool Checker::check(Hole* hole, const Def* def) {
 // alpha(«?s; body», «(e₀, …, e_{r-1}); def»): the fused shape spells out every axis, so the rank follows from
 // what `body` still claims - all of them while it is unknown, all but its own while it is a Seq itself.
 bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
-    auto other = def->zonk_mut()->isa<Seq>();
-    auto r     = known_rank(def);
+    auto r = known_rank(def);
     if (!r) return fail<Check>();
 
     auto n    = *r;

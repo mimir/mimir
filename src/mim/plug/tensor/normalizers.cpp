@@ -4,9 +4,6 @@
 #include <mim/world.h>
 
 #include <mim/plug/affine/affine.h>
-#include <mim/plug/core/core.h>
-#include <mim/plug/cps/cps.h>
-#include <mim/plug/vec/vec.h>
 
 #include "mim/plug/tensor/tensor.h"
 
@@ -130,7 +127,7 @@ const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
     auto rank = Lit::isa(arr->rank());
     if (!rank || *rank < *r) return nullptr; // `arr` is not (statically) at least rank `r`
     if (*rank == *r) return arr->shape();
-    return w.tuple(DefVec(*r, [&](size_t i) { return arr->shape()->proj(*rank, i); }));
+    return slice_tuple(arr->shape(), *rank, 0, *r);
 }
 
 MIM_tensor_NORMALIZER_IMPL

@@ -86,7 +86,9 @@ public:
 
     /// The extents of all axes this Seq fuses: a `Nat` for a one-dimensional Seq, an aggregate of `Nat`s otherwise.
     /// Def::arity is the *first* extent; `«(2, 3); T»` still projects into two `«3; T»`.
-    const Def* shape() const;
+    const Def* shape() const { return op(0); }
+    /// The element one axis down: Seq::body for an unfused Seq, the Seq of the remaining axes otherwise.
+    const Def* elem() const;
     const Def* rank() const { return shape()->arity(); } ///< Number of fused axes; `1` for a one-dimensional Seq.
     /// Whether this Seq fuses more than one axis; `false` also for a *dynamic* rank that may yet turn out to be 1.
     bool is_fused() const {
@@ -316,6 +318,9 @@ inline DefVec cat(const Def* a, Defs bs) { return cat(Defs{a}, bs); }
 inline DefVec cat(Defs as, const Def* b) { return cat(as, Defs{b}); }
 
 DefVec cat(nat_t n, nat_t m, const Def* a, const Def* b);
+
+/// @p d's projections `[begin, end)` of @p r as a Tuple; the counterpart of cat_tuple.
+const Def* slice_tuple(const Def* d, nat_t r, nat_t begin, nat_t end);
 
 const Def* cat_tuple(nat_t n, nat_t m, const Def* a, const Def* b);
 const Def* cat_sigma(nat_t n, nat_t m, const Def* a, const Def* b);

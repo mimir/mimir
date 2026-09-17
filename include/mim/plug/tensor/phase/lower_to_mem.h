@@ -95,10 +95,6 @@ private:
     /// so that grouped parameters like `[«s; T», Idx s]` are converted as well; anything else is `rewrite`d.
     const Def* conv_boundary(const Def* t);
 
-    /// Drops, from the (unfolded) index `idx`, the components of size-1 dimensions of `shape`.
-    /// MimIR folds size-1 dimensions out of array/buffer types (`«3,1;T»` ≡ `«3;T»`), so an index addressing a
-    /// buffer must match the folded shape.
-
     /// A `⊥: mem.M 0` placeholder consumed by emitted buffer operations; AddMem replaces it with the
     /// scheduler-placed current memory.
     /// Shared by every op whose result is a pure function of its value operands, so that genuinely equal

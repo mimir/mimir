@@ -171,10 +171,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto nloops = *rn_l;             // length of the full loop vector (= length of Sr)
     auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
 
-    // ranks of each input must be literal so that we know how many `extract`s to emit
-    auto ris_nat = lit_projs(Ris, nis_nat);
-    auto rps_nat = lit_projs(Rps, nps_nat);
-    if (!ris_nat || !rps_nat) {
+    // the affine maps below take each input's rank as their domain length, so it must be literal
+    if (!lit_projs(Ris, nis_nat) || !lit_projs(Rps, nps_nat)) {
         log().w("the input ranks of {} are not known at lowering time", app);
         return nullptr;
     }

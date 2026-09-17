@@ -982,7 +982,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
         }
     } else if (auto arr = type->isa_imm<Arr>()) {
         // One axis at a time, so a fused Arr multiplies in every extent: `«(a, b); T»` is `a * size «b; T»`.
-        auto elem = arr->is_fused() ? world.drop(arr, 1) : arr->body();
+        auto elem = arr->elem();
         if (!elem) return {};
         auto align = op(trait::align, elem);
         if constexpr (id == trait::align) return align;

@@ -879,10 +879,9 @@ private:
     /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
     /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
     Reduct* reduct(const Var* var, const Def* arg, size_t n) {
-        if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second;
-        auto reduct = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
-        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
-        return reduct;
+        auto [i, ins] = move_.substs.try_emplace(std::pair{var, arg}, nullptr);
+        if (ins) i->second = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
+        return i->second;
     }
 
     /// Caches `[var -> arg]` as @p defs that have already been computed.
