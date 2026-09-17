@@ -70,23 +70,7 @@ TEST_CASE("World: dependent projection with a mutable op") {
     Driver driver;
     World& w = driver.world();
     auto a   = w.axm(dep_sigma(w))->set("a");
-
-<<<<<<< HEAD
-    // `a#2`'s element type is `[sigma_var -> a]«j: n; Idx (s#j)»`. Substituting into a *mutable* goes through
-    // Rewriter::rewrite_mut_Seq -> rewrite_stub, which mints a fresh mutable every time, so World::extract is
-    // not idempotent: `unify` hash-conses on `(node, type, ops)` and the type is new on each call.
-    // That is what makes InplaceRWPhase::rewrite_mut re-`set` an otherwise unchanged mutable and invalidate,
-    // and what keeps the phase pipeline from reaching a fixed point (see lit/bug/dep_mut_arr_fp.mim).
-    auto e1 = w.extract(a, 3, 2);
-    auto e2 = w.extract(a, 3, 2);
-
-    CHECK(Checker::alpha<Checker::Test>(e1->type(), e2->type())); // alpha-equivalent ...
-    CHECK(e1 == e2);                                              // ... but not the same Def: this is the defect
-=======
-    // `a#2`'s element type is `[sigma_var -> a]«j: n; Idx (s#j)»`; rewriting into a *mutable* mints a fresh stub
-    // every time, so only the Reduct cache keeps this Extract hash-consed across calls.
     CHECK(w.extract(a, 3, 2) == w.extract(a, 3, 2));
->>>>>>> master
 }
 
 TEST_CASE("Annex") {
