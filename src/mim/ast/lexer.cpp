@@ -238,17 +238,17 @@ Tok Lexer::lex_lit() {
     }
 
     // Everything the prefix does not cover; std::from_chars wants a hexadecimal float without its `0x`.
-    auto begin = loc_.end.offset;
+    auto begin = loc_.end.off;
     auto body  = [&](uint32_t end) { return buf_.substr(begin, end - begin); };
 
     lex_digits(base);
-    auto end = loc_.end.offset;
+    auto end = loc_.end.off;
 
     if (accept(utf8::any('i', 'I'))) {
         auto val   = to_u64(body(end), base);
-        auto i     = loc_.end.offset;
+        auto i     = loc_.end.off;
         lex_digits();
-        auto width = to_u64(buf_.substr(i, loc_.end.offset - i), 10);
+        auto width = to_u64(buf_.substr(i, loc_.end.off - i), 10);
         return Tok{loc_, Idx::bitwidth2size(width), val};
     }
 
@@ -260,10 +260,10 @@ Tok Lexer::lex_lit() {
             return idx_tok(loc_, to_u64(mod, 10), i);
         } else if (accept('_')) {
             auto i = to_u64(body(end), 10);
-            auto m = loc_.end.offset;
+            auto m = loc_.end.off;
             if (accept(utf8::isdigit)) {
                 lex_digits(10);
-                return idx_tok(loc_, to_u64(buf_.substr(m, loc_.end.offset - m), 10), i);
+                return idx_tok(loc_, to_u64(buf_.substr(m, loc_.end.off - m), 10), i);
             } else {
                 error().e(loc_, "stray underscore in Idx literal; size is missing");
                 return Tok{loc_, i};
@@ -284,8 +284,8 @@ Tok Lexer::lex_lit() {
         is_float |= has_exp;
     }
 
-    if (is_float) return Tok{loc_, to_f64(body(loc_.end.offset), base)};
-    else          return Tok{loc_, to_u64(body(end),             base)};
+    if (is_float) return Tok{loc_, to_f64(body(loc_.end.off), base)};
+    else          return Tok{loc_, to_u64(body(end),          base)};
 }
 
 void Lexer::lex_digits(int base /*= 10*/) {
@@ -341,15 +341,15 @@ char8_t Lexer::lex_char() {
 
 /// The body is a slice of Lexer::buf_ unless an escape made it diverge - see Lexer::unquote.
 Tok Lexer::lex_str() {
-    auto begin = loc_.end.offset; // just past the opening `"`
+    auto begin = loc_.end.off; // just past the opening `"`
     bool esc   = false;
 
     while (true) {
-        if (accept('\"')) return {loc_, Tag::L_str, sym_str(begin, loc_.end.offset - 1, esc)};
+        if (accept('\"')) return {loc_, Tag::L_str, sym_str(begin, loc_.end.off - 1, esc)};
 
         if (ahead() == utf8::EoF) {
             error().e(loc_, "unterminated string literal");
-            return {loc_, Tag::L_str, sym_str(begin, loc_.end.offset, esc)};
+            return {loc_, Tag::L_str, sym_str(begin, loc_.end.off, esc)};
         }
 
         if (accept('\\')) {

@@ -55,7 +55,7 @@ private:
     ///@{
     bool start_md() const { return ahead(0) == '/' && ahead(1) == '/' && ahead(2) == '/'; }
     void emit_md(bool start_of_file = false);
-    size_t pos() const { return peek().begin.offset; } ///< First byte not yet consumed.
+    size_t pos() const { return peek().begin.off; } ///< First byte not yet consumed.
     void md_flush() {
         if (md_) *md_ << buf_.substr(md_pos_, pos() - md_pos_);
         md_pos_ = pos();
