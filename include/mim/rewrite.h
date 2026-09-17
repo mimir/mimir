@@ -126,10 +126,6 @@ public:
     VarRewriter& add(const Var* var, const Def* arg) {
         map(var, arg);
         vars_.emplace_back(Vars(var));
-        if (subst_) // only a *single* substitution is memoizable
-            var_ = nullptr, arg_ = nullptr;
-        else
-            subst_ = true, var_ = var, arg_ = arg;
         return *this;
     }
     ///@}
@@ -161,9 +157,6 @@ private:
     }
 
     fe::Vector<Vars> vars_;
-    const Var* var_ = nullptr; ///< The sole substituted Var, or `nullptr` if there is not exactly one.
-    const Def* arg_ = nullptr;
-    bool subst_     = false;
 };
 
 class Zonker : public Rewriter {
