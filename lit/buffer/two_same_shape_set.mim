@@ -21,10 +21,10 @@ plugin btensor;
 plugin buffer;
 
 extern fun kernel (t: «3, 4; I32», i j: [Idx 3, Idx 4]): I32 =
-    let a  = tensor.set (i, t, 2I32);
-    let b  = tensor.set (j, t, 40I32);
-    let ga = tensor.get (j, a);
-    let gb = tensor.get (i, b);
+    let a  = t#i ← 2I32;
+    let b  = t#j ← 40I32;
+    let ga = a#j;
+    let gb = b#i;
     return (core.wrap.add 0 (ga, gb));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =

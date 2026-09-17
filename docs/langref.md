@@ -231,7 +231,7 @@ d      ::= vis? "import" (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
-        |  vis?  "extern"           lam I fwd+ (":" e)? ";"
+        |  vis?  "extern"          lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I "=" e and*
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e

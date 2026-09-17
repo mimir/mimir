@@ -13,8 +13,8 @@ plugin opt;
 plugin compile;
 
 extern fun f (input: «3, 4; I32»): «3, 4; I32» =
-    let v = tensor.get ((1₃, 2₄), input);
-    return (tensor.set ((0₃, 0₄), input, v));
+    let v = input#(1₃, 2₄);
+    return (input#(0₃, 0₄) ← v);
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

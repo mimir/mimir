@@ -38,7 +38,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let t = ((1I32, 5I32, 9I32), (2I32, 6I32, 10I32), (3I32, 7I32, 11I32), (4I32, 8I32, 12I32));
     let bias = (1I32, 2I32, 3I32);
     con done (o: «3; I32») =
-        return (m, tensor.get ((2₃, ), o));
+        return (m, o#(2₃, ));
     row_sum1 ((t, bias), done);
 
 // CHECK-DAG: mem.load

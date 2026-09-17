@@ -14,6 +14,6 @@ extern con main (m: mem.M 0, argc: I32,
                  argv: mem.Ptr (mem.Ptr (I8, 0), 0),
                  return: Cn [mem.M 0, I32]) =
     let generated = tensor.generate (2, 3) row_value;
-    let first = tensor.get ((0_2, 2_3), generated);
-    let second = tensor.get ((1_2, 1_3), generated);
+    let first = generated#(0_2, 2_3);
+    let second = generated#(1_2, 1_3);
     return (m, core.wrap.add 0 (first, second));

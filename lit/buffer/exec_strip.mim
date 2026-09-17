@@ -30,7 +30,7 @@ extern fun sum_all (input: «2, 8, 3; I32»): «2; I32» =
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let t = ‹2; ‹8; ‹3; 1I32›››;
     con done (o: «2; I32») =
-        let v = tensor.get ((1₂, ), o);
+        let v = o#(1₂, );
         return (m, v);
     sum_all (t, done);
 

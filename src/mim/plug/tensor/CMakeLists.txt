@@ -3,7 +3,6 @@ add_mim_plugin(tensor
         tensor.cpp
         normalizers.cpp
         phase/lower.cpp
-        phase/lower_get_set.cpp
         phase/constraints.cpp
         phase/lower_map_reduce.cpp
         phase/lower_to_mem.cpp

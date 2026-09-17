@@ -36,6 +36,23 @@ bool isa_indices(const Def* def) {
     return false;
 }
 
+/// Checks the *fused* form of the multi-dimensional @p index against @p d and yields the element type it peels to.
+/// Only a dynamic rank gets here; a known rank unfolds into one Extract / Insert per axis instead.
+const Def* nary_elem_type(const Def* d, const Def* index, const Def* index_ty) {
+    auto type = d->unfold_type();
+    auto arr  = type->isa<Arr>();
+    if (!arr) index->blame("multi-dimensional index `{}` expects an array but got `{}`", index, type).bail();
+
+    auto rank = arr->arity()->arity();
+    if (!Checker::alpha<Checker::Check>(index_ty->arity(), rank))
+        index
+            ->blame("index `{}` of rank `{}` does not fit arity `{}` of rank `{}`", index, index_ty->arity(),
+                    arr->arity(), rank)
+            .bail();
+
+    return arr->reduce(index);
+}
+
 /// Sorts by gid and drops duplicates; Def%s are hash-consed, so pointer identity *is* structural identity.
 void sort_unique(DefVec& defs) {
     std::ranges::sort(defs, GIDLt<const Def*>());
@@ -382,18 +399,18 @@ const Def* World::extract(const Def* d, const Def* index) {
     if (!size && !isa_indices(index_ty))
         index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
 
-    if (auto tuple = index->isa<Tuple>()) {
-        for (auto op : tuple->ops())
-            d = extract(d, op);
-        return d;
-    } else if (auto pack = index->isa<Pack>()) {
-        if (auto a = Lit::isa(index->arity())) {
-            for (nat_t i = 0, e = *a; i != e; ++i) {
-                auto idx = pack->has_var() ? pack->reduce(lit_idx(*a, i)) : pack->body();
-                d        = extract(d, idx);
-            }
+    // `d#(i, j, k)` peels one level per index component.
+    // Like World::seq, which unfolds `«(a, b, c); T»` into `«a; «b; «c; T»»»` only for a known rank, a dynamic rank
+    // stays fused - and so does this Extract.
+    if (!size) {
+        if (auto r = Lit::isa(index_ty->arity())) {
+            for (nat_t i = 0, e = *r; i != e; ++i)
+                d = extract(d, index->proj(*r, i));
             return d;
         }
+        // d#is ← val then #is -> val; cf. the same rule on the scalar path below
+        if (auto insert = d->isa<Insert>(); insert && insert->index() == index) return insert->value();
+        return unify<Extract>(nary_elem_type(d, index, index_ty), d, index);
     }
 
     auto type = d->unfold_type();
@@ -488,7 +505,38 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
     auto size = Idx::isa(index->unfold_type());
     auto lidx = Lit::isa(index);
 
-    if (!size) index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
+    // `d#(i, j, k) ← val` reads down to the innermost sub-aggregate and writes the levels back out; cf. World::extract.
+    if (!size) {
+        auto index_ty = index->unfold_type();
+        if (!isa_indices(index_ty))
+            index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
+
+        if (auto r = Lit::isa(index_ty->arity())) {
+            auto nested = DefVec(*r, d); // nested[i] is the sub-aggregate level i inserts into
+            for (nat_t i = 1, e = *r; i < e; ++i)
+                nested[i] = extract(nested[i - 1], index->proj(*r, i - 1));
+            for (nat_t i = *r; i-- != 0;)
+                val = insert(nested[i], index->proj(*r, i), val);
+            return val;
+        }
+
+        auto elem_type = nary_elem_type(d, index, index_ty);
+        auto new_val   = Checker::assignable(elem_type, val);
+        if (!new_val)
+            val->blame("value is not assignable to element type")
+                .n("expected `{}`, got `{}`", elem_type, type_of(val))
+                .n("value: `{}`", val)
+                .bail();
+        return unify<Insert>(d, index, new_val);
+    }
+
+    if (auto l = Lit::isa(size); l && *l == 1) {
+        if (!lidx || *lidx != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
+        // A size-1 axis folds out of the type, so `d#index` is `d` itself (cf. World::extract) and the insert
+        // replaces all of it. A *mutable* Sigma may be a genuine 1-tuple and is handled below.
+        auto sigma = type->isa_mut<Sigma>();
+        if (!sigma || sigma->num_ops() != 1) return val;
+    }
 
     if (!Checker::alpha<Checker::Check>(type->arity(), size))
         index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
@@ -506,7 +554,7 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
     }
 
     if (auto l = Lit::isa(size); l && *l == 1)
-        return tuple(d, {val}); // d could be mut - that's why the tuple ctor is needed
+        return tuple(d, {val}); // a mutable 1-tuple: d could be mut - that's why the tuple ctor is needed
 
     // insert((a, b, c, d), 2, x) -> (a, b, x, d)
     if (auto t = d->isa<Tuple>(); t && lidx) {
@@ -523,6 +571,10 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
             return tuple(type, new_ops);
         }
     }
+
+    // insert(d, index, d#index) -> d
+    if (auto extract = val->isa<Extract>())
+        if (extract->tuple() == d && extract->index() == index) return d;
 
     // insert(insert(x, index, y), index, val) -> insert(x, index, val)
     if (auto insert = d->isa<Insert>()) {

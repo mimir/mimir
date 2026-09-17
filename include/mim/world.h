@@ -696,6 +696,9 @@ public:
     [[nodiscard]] const auto& vars() const { return move_.vars; }
     [[nodiscard]] const auto& muts() const { return move_.muts; }
 
+    /// Memoizes `[var -> arg]mut` for VarRewriter; keyed `(var, arg, mut)`.
+    [[nodiscard]] auto& subst_muts() { return move_.subst_muts; }
+
     /// Yields the new body of `[mut->var() -> arg]mut`.
     /// The new body may have fewer elements as `mut->num_ops()` according to Def::reduction_offset.
     /// E.g. a Pi has a Pi::reduction_offset of 1, and only Pi::dom will be reduced - *not* Pi::codom.
@@ -887,6 +890,7 @@ private:
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
         absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
+        absl::flat_hash_map<std::tuple<const Var*, const Def*, const Def*>, const Def*> subst_muts;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;
@@ -895,6 +899,7 @@ private:
             swap(m1.arena.substs, m2.arena.substs);
             swap(m1.sea,          m2.sea);
             swap(m1.substs,       m2.substs);
+            swap(m1.subst_muts,   m2.subst_muts);
             swap(m1.vars,         m2.vars);
             swap(m1.muts,         m2.muts);
             swap(m1.externals,    m2.externals);

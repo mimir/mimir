@@ -60,18 +60,6 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
                     sole(in_tys, 6, 2)};
 }
 
-/// @note `index` comes *before* `arr` in the operand tuple, see tensor.get.
-inline const Def* op_get(const Def* T, const Def* r, const Def* s, const Def* arr, const Def* index) {
-    auto& w = arr->world();
-    return w.app(w.app(w.annex<tensor::get>(), {T, r, s}), {index, arr});
-}
-
-/// @note `index` comes *before* `arr` in the operand tuple, see tensor.get.
-inline const Def* op_set(const Def* T, const Def* r, const Def* s, const Def* arr, const Def* index, const Def* x) {
-    auto& w = arr->world();
-    return w.app(w.app(w.annex<tensor::set>(), {T, r, s}), {index, arr, x});
-}
-
 /// Counts the consumers of every def of @p world matched by @p pred.
 /// Tuples and packs are transparent argument wrappers, so a wrapped def is charged to the enclosing
 /// non-tuple consumer - a shared argument tuple charges each of its users, and a def used twice in one

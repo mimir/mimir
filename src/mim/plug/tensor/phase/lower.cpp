@@ -9,6 +9,74 @@
 
 namespace mim::plug::tensor::phase {
 
+namespace {
+
+/// Peels an `Extract` chain over array types down to its base, collecting one scalar index per level.
+/// Anything else - a Sigma projection, a fused multi-dimensional index - ends the chain.
+std::pair<const Def*, DefVec> peel_extracts(const Def* d) {
+    auto index = DefVec();
+    while (auto ex = d->isa<Extract>()) {
+        if (!ex->tuple()->type()->isa<Arr>() || !Idx::isa(ex->index()->type())) break;
+        index.emplace_back(ex->index());
+        d = ex->tuple();
+    }
+    std::ranges::reverse(index);
+    return {d, index};
+}
+
+} // namespace
+
+const Def* Lower::read_through(const Def* base, Defs index) {
+    auto& w = new_world();
+
+    const Def* input;
+    const Def* s_in;
+    const Def* s_out;
+    const Def* rank;
+    bool wraps; // a repeat reads `idx mod s_in` per axis, a broadcast only ever reads a size-1 axis at 0
+
+    if (auto rep = Axm::isa<tensor::repeat>(base)) {
+        auto [Tr, in, out] = rep->callee()->as<App>()->uncurry_args<3>();
+        input = rep->arg(), s_in = in, s_out = out, rank = Tr->proj(2, 1), wraps = true;
+    } else if (auto bc = Axm::isa<tensor::broadcast>(base)) {
+        auto [in, out, i] = bc->args<3>();
+        input = i, s_in = in, s_out = out, rank = bc->callee()->as<App>()->arg()->proj(2, 1), wraps = false;
+    } else {
+        return nullptr;
+    }
+
+    auto r = Lit::isa<u64>(rank);
+    if (!r) return nullptr;
+
+    auto new_index = DefVec(*r);
+    for (u64 d = 0, i = 0; d != *r; ++d) {
+        auto in_d  = s_in->proj(*r, d);
+        auto out_d = s_out->proj(*r, d);
+        // A size-1 output axis folds out of the array type, so the chain carries no index for it.
+        auto l_out = Lit::isa<u64>(out_d);
+        auto idx_d = l_out && *l_out == 1 ? w.lit_idx(1, 0) : (i < index.size() ? rewrite(index[i++]) : nullptr);
+        if (!idx_d) return nullptr;
+
+        if (in_d == out_d)
+            new_index[d] = idx_d;
+        else if (auto l = Lit::isa<u64>(in_d); l && *l == 1)
+            new_index[d] = w.lit_idx(1, 0);
+        else if (auto e = Lit::isa<u64>(in_d), x = Lit::isa<u64>(idx_d); wraps && e && x)
+            new_index[d] = w.lit_idx(*e, *x % *e);
+        else
+            return nullptr;
+    }
+
+    return w.extract(rewrite(input), w.tuple(new_index));
+}
+
+const Def* Lower::rewrite_imm_Extract(const Extract* extract) {
+    auto [base, index] = peel_extracts(extract);
+    if (!index.empty())
+        if (auto res = read_through(base, index)) return res;
+    return RWPhase::rewrite_imm_Extract(extract);
+}
+
 const Def* Lower::fastest_axis_2(const App* app, const Def* rank) {
     auto& w = new_world();
     auto b  = rewrite(app->arg()->proj(2, 1));

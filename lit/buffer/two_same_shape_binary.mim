@@ -34,8 +34,8 @@ extern fun kernel (x y: «3, 4; I32», i j: [Idx 6, Idx 4]): I32 =
     let a  = tensor.binary i32_add (x, y);
     let b  = tensor.binary i32_sub (x, y);
     let c  = tensor.concat 0₂ (a, b);
-    let ga = tensor.get (i, c);
-    let gb = tensor.get (j, c);
+    let ga = c#i;
+    let gb = c#j;
     return (ga + gb);
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =

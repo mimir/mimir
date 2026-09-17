@@ -7,7 +7,7 @@
 namespace mim::plug::tensor::phase {
 
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
-/// `get` / `set` become `buffer.read` / `buffer.write`, `generate` becomes an allocating fill loop,
+/// `Extract` / `Insert` become `buffer.read` / `buffer.write`, `generate` becomes an allocating fill loop,
 /// `map_reduce` / `broadcast` / `pad` / `concat` /
 /// `gather` / `scatter` become their buffer-world `btensor.*` counterparts,
 /// and tensor array values `«s; T»` become `buffer.Buf (r, s, T)` handles.
@@ -35,13 +35,18 @@ private:
     const Def* rewrite(const Def*) override;
     const Def* rewrite_mut_Lam(Lam*) override;
     const Def* rewrite_imm_App(const App*) override;
+    const Def* rewrite_imm_Extract(const Extract*) override;
+    const Def* rewrite_imm_Insert(const Insert*) override;
 
     /// The conversion part of LowerToMem::rewrite_mut_Lam (boundary conversion, local continuations, or the
     /// generic RWPhase rewrite); the override itself only scopes the fresh-memory bookkeeping around it.
     const Def* conv_mut_Lam(Lam*);
 
-    const Def* lower_get(const App*);
-    const Def* lower_set(const App*);
+    /// Peels the `Extract` chain @p d down to the recorded tensor it reads, collecting one *rewritten* index per
+    /// level, outermost axis first.
+    /// A size-1 axis folds out of the array type, so the chain already carries the folded index `buffer` expects.
+    /// Yields a null base if @p d does not bottom out in a tensor.
+    std::pair<const Def*, DefVec> peel_tensor(const Def*);
     const Def* lower_splat(const App*);
     const Def* lower_generate(const App*);
     const Def* lower_broadcast(const App*);
@@ -76,7 +81,7 @@ private:
 
     /// Buffer-reuse policy. `false` (the initial *always-allocate-and-copy* policy) is always sound.
     /// A future liveness-based policy may return `true` to write into the source buffer in place.
-    bool reuse_in_place(const App*) const { return false; }
+    bool reuse_in_place(const Def*) const { return false; }
 
     /// Pre-pass: records every array type used as a tensor operand/result and the set of bufferized
     /// functions; hard-errors on program shapes the conversion cannot handle (there is no value-semantics

@@ -300,7 +300,17 @@ const Def* VarRewriter::rewrite_mut(Def* mut) {
         vars       = world().vars().insert(vars, var);
     }
 
-    return Rewriter::rewrite_mut(mut);
+    // Rebuilding a binder mints a *fresh* mutable, so `[var -> arg]mut` would hand out a new identity on every call and
+    // nothing hash-consed on top of it - a dependent Sigma's projection type, say - would ever stabilize.
+    // Only the root scope is memoizable: a scope pushed by rewrite_mut_Seq's scalarization maps further Vars.
+    if (!var_ || old2news_.size() != 1) return Rewriter::rewrite_mut(mut);
+
+    auto key = std::tuple{var_, arg_, (const Def*)mut};
+    if (auto i = world().subst_muts().find(key); i != world().subst_muts().end()) return i->second;
+
+    auto new_def = Rewriter::rewrite_mut(mut);
+    world().subst_muts().emplace(key, new_def); // after the rewrite: it adds entries of its own
+    return new_def;
 }
 
 /*
