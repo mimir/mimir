@@ -756,8 +756,10 @@ const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
     auto& slot  = reduct->ops()[i];
     assert(slot != Filling && "op requires its own reduction");
     if (!slot) {
+        auto op = mut->op(i + off);
+        if (!op->has_free_vars_in(Vars(var))) return slot = op; // no occurrence: don't even build a VarRewriter
         slot = Filling;
-        slot = VarRewriter(var, arg).rewrite(mut->op(i + off));
+        slot = VarRewriter(var, arg).rewrite(op);
     }
 
     return slot;
