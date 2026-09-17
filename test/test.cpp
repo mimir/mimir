@@ -50,7 +50,7 @@ static Sigma* dep_sigma(World& w) {
     sig->set(1, w.arr(n, w.type_nat()));
     auto s  = sig->var(3, 1);
     auto is = w.mut_arr(w.type());
-    is->set_arity(n);
+    is->set_shape(n);
     is->set_body(w.type_idx(w.extract(s, is->var())));
     sig->set(2, is);
     return sig;

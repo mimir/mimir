@@ -490,13 +490,20 @@ public:
     ///@{
     const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
     Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
-    const Def* seq(bool is_pack, const Def* arity, const Def* body);
+    const Def* seq(bool is_pack, const Def* shape, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
     const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
         return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
+
+    /// @p s without its leading @p k axes - its body once @p k covers all of them; `nullptr` if that isn't a type.
+    const Def* drop(const Seq* s, nat_t k);
+    /// @p seq with the axes covered by @p index peeled off - the element itself once @p index covers all of them.
+    const Def* peel(const Seq* seq, const Def* index);
+    /// The type of an index into @p shape: `Idx n`, a Sigma of those, or `«i: r; Idx (s#i)»` for a dynamic rank.
+    const Def* type_indices(const Def* shape);
     ///@}
 
     /// @name Tuple
@@ -514,7 +521,6 @@ public:
     const Def* extract(const Def* d, const Def* i);
     const Def* extract(const Def* d, u64 a, u64 i) { return extract(d, lit_idx(a, i)); }
     const Def* extract(const Def* d, u64 i) { return extract(d, Lit::as(d->arity()), i); }
-
     /// Builds `(f, t)#cond`.
     /// @note Expects @p cond as first, @p t as second, and @p f as third argument.
     const Def* select(const Def* cond, const Def* t, const Def* f) { return extract(tuple({f, t}), cond); }
@@ -745,6 +751,9 @@ public:
     ///@}
 
 private:
+    const Def* extract1(const Def* d, const Def* i);      ///< World::extract for a *scalar* @p i.
+    const Def* extract_fused(const Def* d, const Def* i); ///< World::extract for an @p i that no longer folds.
+
     /// @name Put into Sea of Nodes
     ///@{
     /// Common tail of World::unify \& World::insert, right after World::allocate.

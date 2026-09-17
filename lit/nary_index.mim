@@ -1,7 +1,7 @@
 // RUN: %mim -p opt %s
 
-// A multi-dimensional index peels one level per component: `t#(i, j, k)` ≡ `t#i#j#k`.
-// A known rank unfolds into one Extract/Insert per axis, a dynamic one stays fused.
+// A multi-dimensional index is one fused Extract/Insert: `t#i#j#k` ≡ `t#(i, j, k)`, mirroring the fused
+// shape of `«2, 3, 4; T»`. Components still peel off one by one wherever that folds something away.
 
 plugin refly;
 
@@ -73,7 +73,7 @@ extern lam distinct (t: «2, 3; Nat»): Nat =
 
 // ## Dynamic rank
 
-// `«s; Nat»` and the index stay fused, since neither unfolds without a known rank
+// a dynamic rank works the same way - nothing about it is special any more
 extern lam dynamic_read_back (n: Nat, s: «n; Nat», is: «j: n; Idx (s#j)», v: Nat, t: «s; Nat»): Nat =
     refly.equiv.struc_eq ((t#is ← v)#is, v);
 

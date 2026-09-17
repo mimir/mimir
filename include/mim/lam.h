@@ -43,8 +43,9 @@ public:
     /// Checks certain properties of @p d regarding continuations.
     ///@{
     /// Is this a continuation - i.e. is the Pi::codom mim::Bot%tom?
+    /// @note A `nullptr` @p d - which a projection yields in a frozen World - simply is not one.
     static const Pi* isa_cn(const Def* d) {
-        auto pi = d->isa<Pi>();
+        auto pi = d ? d->isa<Pi>() : nullptr;
         return pi && pi->codom()->node() == Node::Bot ? pi : nullptr;
     }
     /// Is this a continuation (Pi::isa_cn) which has a Pi::ret_pi?

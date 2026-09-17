@@ -981,9 +981,12 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             case trait::size: return world.lit_nat(size);
         }
     } else if (auto arr = type->isa_imm<Arr>()) {
-        auto align = op(trait::align, arr->body());
+        // One axis at a time, so a fused Arr multiplies in every extent: `«(a, b); T»` is `a * size «b; T»`.
+        auto elem = arr->is_fused() ? world.drop(arr, 1) : arr->body();
+        if (!elem) return {};
+        auto align = op(trait::align, elem);
         if constexpr (id == trait::align) return align;
-        auto b = op(trait::size, arr->body());
+        auto b = op(trait::size, elem);
         if (b->isa<Lit>()) return world.call(nat::mul, Defs{arr->arity(), b});
     } else if (auto join = type->isa<Join>()) {
         if (auto sigma = convert(join)) return core::op(id, sigma);

@@ -323,6 +323,8 @@ A telescope name is visible only to what stands to its right - later components,
 
 A telescope is not a form of its own but the finite end of one construct.
 `[...]` is a [sigma](@ref prod), and a sigma whose components are all the same *is* an [array](@ref prod): `[Nat, Nat, Nat]` and `«3; Nat»` denote one and the same type.
+The same compression applies once more to a nest of arrays: `«2; «3; T»»` and `«2, 3; T»` denote one and the same type, and an array carries all of its axes as one *shape*.
+`#` follows suit - `t#i#j` and `t#(i, j)` are the same Extract - so an index has exactly as many components as the shape it indexes into.
 A sigma names a component so that later components may depend on it; an array names its index so that the element type may depend on that.
 `«i: n; T i»` is therefore the very same dependency, taken over an arity that need not be a literal.
 

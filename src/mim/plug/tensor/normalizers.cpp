@@ -119,20 +119,18 @@ const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
 }
 
 const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
-    // `tensor.shape r arr` reads the shape off `arr`'s (nested array) type by peeling `r` levels.
+    // `tensor.shape r arr` is the first `r` axes of `arr`'s (fused) array type.
     auto& w = c->world();
     auto r  = Lit::isa<u64>(c->as<App>()->arg()); // the explicit rank `r`
     if (!r) return nullptr;
+    if (*r == 0) return w.tuple();
 
-    DefVec dims;
-    auto ty = arg->type();
-    for (u64 i = 0; i != *r; ++i)
-        if (auto a = ty->isa<Seq>()) {
-            dims.emplace_back(a->arity());
-            ty = a->body();
-        } else
-            return nullptr; // `arr` is not (statically) a rank-`r` array
-    return w.tuple(dims);   // the per-axis sizes; for a rectangular tensor each `arity()` is a plain Nat
+    auto arr = arg->type()->isa<Arr>();
+    if (!arr) return nullptr;
+    auto rank = Lit::isa(arr->rank());
+    if (!rank || *rank < *r) return nullptr; // `arr` is not (statically) at least rank `r`
+    if (*rank == *r) return arr->shape();
+    return w.tuple(DefVec(*r, [&](size_t i) { return arr->shape()->proj(*rank, i); }));
 }
 
 MIM_tensor_NORMALIZER_IMPL

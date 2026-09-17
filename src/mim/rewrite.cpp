@@ -230,9 +230,9 @@ const Def* Rewriter::rewrite_mut_Hole(Hole* hole) {
 #endif
 
 const Def* Rewriter::rewrite_imm_Seq(const Seq* seq) {
-    auto new_arity = rewrite(seq->arity());
-    if (auto l = Lit::isa(new_arity); l && *l == 0) return world().prod(seq->is_intro());
-    return world().seq(seq->is_intro(), new_arity, rewrite(seq->body()));
+    auto new_shape = rewrite(seq->shape());
+    if (auto l = Lit::isa(new_shape); l && *l == 0) return world().prod(seq->is_intro());
+    return world().seq(seq->is_intro(), new_shape, rewrite(seq->body()));
 }
 
 const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
@@ -243,8 +243,8 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
         return map(seq, new_seq);
     }
 
-    auto new_arity = rewrite(seq->arity())->zonk();
-    auto l         = Lit::isa(new_arity);
+    auto new_shape = rewrite(seq->shape())->zonk();
+    auto l         = seq->is_fused() ? std::nullopt : Lit::isa(new_shape);
     if (l && *l == 0) return world().prod(seq->is_intro());
 
     if (auto var = seq->has_var(); var && l && *l <= world().flags().scalarize_threshold) {
@@ -258,7 +258,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
         return map(seq, world().prod(seq->is_intro(), new_ops));
     }
 
-    if (!seq->has_var()) return map(seq, world().seq(seq->is_intro(), new_arity, rewrite(seq->body())));
+    if (!seq->has_var()) return map(seq, world().seq(seq->is_intro(), new_shape, rewrite(seq->body())));
     return rewrite_stub(seq, world().mut_seq(seq->is_intro(), rewrite(seq->type())));
 }
 

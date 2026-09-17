@@ -9,7 +9,7 @@ extern con main(i: (Idx 2), r: Cn [«(4, 4); Nat»]) = (f (2:(Idx 4), ‹4, 4, 4
 
 // `t` is Extract%ed with the non-constant index `i`, so it must NOT be scalarized -
 // splitting it would only force the body to reassemble the tuple.
-// Hence `f` keeps its nested array parameter regardless of the threshold and the packs
-// stay nested at the call sites.
-// CHECK-DAG: ‹4; ‹4; ‹4; 20›››
-// CHECK-DAG: ‹4; ‹4; ‹4; 19›››
+// Hence `f` keeps its array parameter regardless of the threshold and the packs stay whole
+// at the call sites. The shape `(4, 4, 4)` is uniform, so it prints as the pack `‹3; 4›`.
+// CHECK-DAG: ‹‹3; 4›; 20›
+// CHECK-DAG: ‹‹3; 4›; 19›

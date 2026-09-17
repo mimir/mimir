@@ -14,6 +14,66 @@ const Def* callee_of(const Def* def) {
 }
 } // namespace
 
+bool is_dim(const Def* shape) {
+    auto t = shape->unfold_type();
+    return t && t->zonk_mut()->isa<Nat>();
+}
+
+const Def* first_extent(const Def* shape) {
+    if (is_dim(shape)) return shape;
+    auto& w = shape->world();
+    return w.extract(shape, w.lit(w.type_idx(shape->arity()), 0));
+}
+
+const Def* fold_shape(const Def* shape) {
+    auto& w   = shape->world();
+    auto is_1 = [](const Def* e) {
+        auto l = Lit::isa(e);
+        return l && *l == 1;
+    };
+    if (is_dim(shape)) return is_1(shape) ? w.tuple() : shape;
+
+    auto r = Lit::isa(shape->arity());
+    if (!r) return shape;
+
+    auto axes = DefVec();
+    for (size_t i = 0; i != *r; ++i)
+        if (auto e = shape->proj(*r, i); !is_1(e)) axes.emplace_back(e);
+    return axes.size() == *r ? shape : w.tuple(axes);
+}
+
+const Def* fold_index(const Def* index) {
+    auto& w   = index->world();
+    auto is_1 = [](const Def* i) {
+        auto l = Idx::isa_lit(i->unfold_type());
+        return l && *l == 1;
+    };
+    if (Idx::isa(index->unfold_type())) return is_1(index) ? w.tuple() : index;
+
+    auto r = Lit::isa(index->arity());
+    if (!r) return index;
+
+    auto comps = DefVec();
+    for (size_t i = 0; i != *r; ++i)
+        if (auto c = index->proj(*r, i); !is_1(c)) comps.emplace_back(c);
+    return comps.size() == *r ? index : w.tuple(comps);
+}
+
+const Def* fold_index(const Def* shape, const Def* index) {
+    auto& w    = shape->world();
+    auto r     = shape->num_projs();
+    auto comps = DefVec();
+    for (size_t i = 0; i != r; ++i)
+        if (auto l = Lit::isa<u64>(shape->proj(r, i)); !(l && *l == 1)) comps.emplace_back(index->proj(r, i));
+
+    // Rebuilding an unchanged @p index would eta-reduce back to it - but only after World::tuple's pack
+    // normalization has alpha-compared the projections, walking @p index's whole coordinate chain per pair.
+    if (comps.size() == r) return index;
+    return w.tuple(comps);
+}
+
+const Def* Seq::shape() const { return op(0); }
+
 Select::Select(const Def* def) {
     if (!def) return;
     auto extract = def->isa<Extract>();
@@ -98,7 +158,11 @@ const Def* cat_sigma(World& world, Defs a, Defs b) { return world.sigma(cat(a, b
 const Def* tuple_of_types(const Def* t) {
     auto& world = t->world();
     if (auto sigma = t->isa<Sigma>()) return world.tuple(sigma->ops());
-    if (auto arr = t->isa<Arr>()) return world.pack(arr->arity(), arr->body());
+    if (auto arr = t->isa<Arr>()) {
+        // One entry per *top-level* element, so a fused Arr contributes its sub-arrays, not its elements.
+        auto sub = arr->is_fused() ? world.drop(arr, 1) : arr->body();
+        if (sub) return world.pack(arr->arity(), sub);
+    }
     return t;
 }
 

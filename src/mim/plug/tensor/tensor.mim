@@ -81,8 +81,7 @@ axm splat: {T: *, r: Nat}
 ///
 /// Returns the shape of `arr` as a rank-`r` array of Nats: `(s#0, …, s#(r-1))`.
 ///
-/// The rank `r` is explicit: `normalize_shape` peels `r` levels off the nested array type, which
-/// inference cannot do backwards since `«s; T»` does not reverse-unify.
+/// The rank `r` is explicit: it selects the first `r` axes of `arr`'s fused shape.
 /// Size-1 axes collapse out of the type, so `arr` must have no literal-1 dims among the first `r`.
 ///
 axm shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_shape;
@@ -324,7 +323,7 @@ lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Na
 ///
 /// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
 /// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created — with the
-/// now-literal type `«r; Nat»`, which lets `input: «s; T»` peel off exactly `r` levels of its nested array type.
+/// now-literal type `«r; Nat»`, which lets `input: «s; T»` read off exactly the first `r` axes of its shape.
 /// Merging the two groups would not do: the domain `«s; T»` is built once, while `r` is still unknown.
 axm transpose: {T: *, r: Nat}
              → [permutation: «r; Idx r»]

@@ -1,7 +1,5 @@
 #include "mim/plug/tensor/phase/lower_to_mem.h"
 
-#include <ranges>
-
 #include <fe/worklist.h>
 
 #include <mim/axm.h>
@@ -275,23 +273,11 @@ void LowerToMem::start() {
 }
 
 const Def* LowerToMem::buf_of(const Def* arr_ty) {
-    auto& w = new_world();
-    DefVec dims;
-    auto cur = arr_ty;
-    while (auto arr = cur->isa<Arr>()) {
-        dims.push_back(rewrite(arr->arity()));
-        cur = arr->body();
-    }
-    return buffer::type_buf(w.lit_nat(dims.size()), w.tuple(dims), rewrite(cur));
-}
-
-const Def* LowerToMem::fold_index(const Def* shape, const Def* idx) {
-    auto& w = new_world();
-    auto r  = shape->num_projs();
-    DefVec out;
-    for (size_t i = 0; i != r; ++i)
-        if (auto l = Lit::isa<u64>(shape->proj(r, i)); !(l && *l == 1)) out.push_back(idx->proj(r, i));
-    return w.tuple(out);
+    auto& w  = new_world();
+    auto arr = arr_ty->isa<Arr>();
+    if (!arr) return buffer::type_buf(w.lit_nat_0(), w.tuple(), rewrite(arr_ty));
+    auto shape = rewrite(arr->shape());
+    return buffer::type_buf(shape->arity(), shape, rewrite(arr->body()));
 }
 
 const Def* LowerToMem::bot_mem() {
@@ -516,26 +502,15 @@ const Def* LowerToMem::buffer_list(const Def* list, const Def* old_list, const D
 }
 
 std::pair<const Def*, DefVec> LowerToMem::peel_tensor(const Def* d) {
-    auto index      = DefVec();
-    const Def* base = nullptr;
-    auto depth      = 0_u64;
+    // One Extract carries every axis, so there is no chain to walk back up and no sub-tensor to mistake the
+    // base for: an index that stops short of the element yields an array type, which the caller rejects.
+    auto ex = d->isa<Extract>();
+    if (!ex || !tensor_ty_.contains(ex->tuple()->type())) return {nullptr, {}};
 
-    // The *deepest* recorded type along the chain is the tensor: a sub-tensor's type can coincide with some
-    // other tensor's, so stopping at the first hit would read a whole row where an element was meant.
-    for (auto cur = d;;) {
-        if (tensor_ty_.contains(cur->type())) base = cur, depth = index.size();
-        auto ex = cur->isa<Extract>();
-        if (!ex || !ex->tuple()->type()->isa<Arr>()) break;
-        index.emplace_back(ex->index());
-        cur = ex->tuple();
-    }
-    if (!base) return {nullptr, {}};
-
-    index.resize(depth);
-    std::ranges::reverse(index);
-    for (auto& i : index)
-        i = rewrite(i);
-    return {base, index};
+    auto idx = ex->index();
+    auto r   = Lit::isa(idx->unfold_type()->arity());
+    if (!r) return {nullptr, {}};
+    return {ex->tuple(), DefVec(*r, [&](size_t i) { return rewrite(idx->proj(*r, i)); })};
 }
 
 const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
@@ -559,24 +534,12 @@ const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
 const Def* LowerToMem::rewrite_imm_Insert(const Insert* insert) {
     if (is_bootstrapping() || !tensor_ty_.contains(insert->tuple()->type())) return RWPhase::rewrite_imm_Insert(insert);
 
-    // Collapse the read-modify-write chain World::insert builds for a multi-dimensional index back into one write.
-    auto index = DefVec();
-    auto cur   = insert;
-    for (;;) {
-        index.emplace_back(rewrite(cur->index()));
-        auto inner = cur->value()->isa<Insert>();
-        if (!inner) break;
-        auto ex = inner->tuple()->isa<Extract>();
-        if (!ex || ex->tuple() != cur->tuple() || ex->index() != cur->index()) break;
-        cur = inner;
-    }
-
     auto arr = rewrite(insert->tuple()); // cf. rewrite_imm_Extract: no materialization here
     auto buf = Axm::isa<buffer::Buf>(arr->type());
     if (!buf) return RWPhase::rewrite_imm_Insert(insert);
     auto [br, bs, bT] = buf->args<3>(); // actual (folded) buffer metadata
-    auto x            = rewrite(cur->value());
-    auto idx          = new_world().tuple(index);
+    auto x            = rewrite(insert->value());
+    auto idx          = rewrite(insert->index()); // one write, every axis
 
     if (reuse_in_place(insert)) {
         auto [m, buf2] = buffer::op_write(br, bs, bT, fresh_mem(), arr, idx, x)->projs<2>();
@@ -649,7 +612,8 @@ const Def* LowerToMem::lower_generate(const App* app) {
     for (u64 d = 0; d < rn; ++d)
         coords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
     auto [write_mem, written]
-        = buffer::op_write(br, bs, bT, loop_mem, loop_out, fold_index(s_out, w.tuple(coords)), element)->projs<2>();
+        = buffer::op_write(br, bs, bT, loop_mem, loop_out, mim::fold_index(s_out, w.tuple(coords)), element)
+              ->projs<2>();
     current->app(true, cont, w.tuple({write_mem, written}));
     auto [call_mem, call_out] = call->projs<2>();
     return call_out;

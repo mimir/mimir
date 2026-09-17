@@ -333,15 +333,13 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto mode_nat = *mode_l;
     auto i64      = w.type_i64();
 
-    // Deduce the output shape: s_out#d = lo#d + s_in#d + hi#d.
-    DefVec so(rn);
-    auto inner_type = type;
-    for (u64 d = 0; d < rn; ++d) {
-        auto inner_type_seq = inner_type->as<Seq>();
-        so[d]               = inner_type_seq->arity();
-        inner_type          = inner_type_seq->body();
+    // The output shape `s_out#d = lo#d + s_in#d + hi#d` is what `type` already carries.
+    auto out_arr = type->isa<Arr>();
+    if (!out_arr || Lit::isa(out_arr->rank()) != rn) {
+        log().w("padded shape of {} is not a statically known rank-{} array", app, rn);
+        return nullptr;
     }
-    auto s_out = w.tuple(so);
+    auto s_out = out_arr->shape();
 
     auto compute = [&](Defs out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value] = new_inputs->projs<2>();

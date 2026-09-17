@@ -250,12 +250,12 @@ const Def* Eval::augment_pack(const Pack* pack, Lam* f, Lam* f_diff) {
     auto pb      = world().mut_lam(pb_type)->set("pack_pb");
 
     auto f_arg_ty_diff = tangent_type_fun(f->dom(2, 0));
-    auto app_pb        = world().mut_pack(world().arr(aug_arity, f_arg_ty_diff));
+    auto app_pb        = world().mut_pack(world().arr(aug_arity, f_arg_ty_diff))->set_shape(aug_arity);
 
     // TODO: special case for const width (special tuple)
 
     // <i:n, cps2ds body_pb (s#i)>
-    app_pb->set(world().app(cps::op_cps2ds_dep(body_pb), world().extract(pb->var((nat_t)0), app_pb->var())));
+    app_pb->set_body(world().app(cps::op_cps2ds_dep(body_pb), world().extract(pb->var((nat_t)0), app_pb->var())));
 
     auto sumup = world().app(world().annex<sum>(), {aug_arity, f_arg_ty_diff});
 

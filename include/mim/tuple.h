@@ -83,6 +83,16 @@ public:
     /// @name ops
     ///@{
     const Def* body() const { return ops().back(); }
+
+    /// The extents of all axes this Seq fuses: a `Nat` for a one-dimensional Seq, an aggregate of `Nat`s otherwise.
+    /// Def::arity is the *first* extent; `«(2, 3); T»` still projects into two `«3; T»`.
+    const Def* shape() const;
+    const Def* rank() const { return shape()->arity(); } ///< Number of fused axes; `1` for a one-dimensional Seq.
+    /// Whether this Seq fuses more than one axis; `false` also for a *dynamic* rank that may yet turn out to be 1.
+    bool is_fused() const {
+        auto r = Lit::isa(rank());
+        return !r || *r != 1;
+    }
     ///@}
 
     /// @name Setters
@@ -91,10 +101,7 @@ public:
     using Setters<Seq>::set;
 
     /// Common setter for Pack%s and Arr%ays.
-    /// @p arity will be ignored, if it's a Pack.
-    Seq* set(const Def* arity, const Def* body) {
-        return (node() == Node::Arr ? Def::set({arity, body}) : Def::set({body}))->as<Seq>();
-    }
+    Seq* set(const Def* shape, const Def* body) { return Def::set({shape, body})->as<Seq>(); }
     Seq* unset() { return Def::unset()->as<Seq>(); }
     ///@}
 
@@ -119,9 +126,9 @@ public:
     /// @see @ref set_ops "Setting Ops"
     ///@{
     using Setters<Arr>::set;
-    Arr* set_arity(const Def* arity) { return Def::set(0, arity)->as<Arr>(); }
+    Arr* set_shape(const Def* shape) { return Def::set(0, shape)->as<Arr>(); }
     Arr* set_body(const Def* body) { return Def::set(1, body)->as<Arr>(); }
-    Arr* set(const Def* arity, const Def* body) { return set_arity(arity)->set_body(body); }
+    Arr* set(const Def* shape, const Def* body) { return set_shape(shape)->set_body(body); }
     Arr* unset() { return Def::unset()->as<Arr>(); }
     ///@}
 
@@ -136,22 +143,26 @@ private:
 /// @see Sigma, Tuple, Arr
 class Pack : public Seq, public Setters<Pack> {
 private:
-    Pack(const Def* type, const Def* body)
-        : Seq(Node, type, {body}, 0) {} ///< Constructor for an *immutable* Pack.
+    Pack(const Def* type, const Def* shape, const Def* body)
+        : Seq(Node, type, {shape, body}, 0) {} ///< Constructor for an *immutable* Pack.
     Pack(const Def* type)
-        : Seq(Node, type, 1, 0) {} ///< Constructor for a *mutable* Pack.
+        : Seq(Node, type, 2, 0) {} ///< Constructor for a *mutable* Pack.
 
 public:
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{
     using Setters<Pack>::set;
-    Pack* set(const Def* body) { return Def::set({body})->as<Pack>(); }
+    /// @note A Pack carries its own Seq::shape: its type fuses *every* axis down to a non-array element,
+    /// which is more than the Pack itself supplies whenever its body is an aggregate - `‹2; v›` for `v: «3; T»`.
+    Pack* set_shape(const Def* shape) { return Def::set(0, shape)->as<Pack>(); }
+    Pack* set_body(const Def* body) { return Def::set(1, body)->as<Pack>(); }
+    Pack* set(const Def* shape, const Def* body) { return set_shape(shape)->set_body(body); }
     Pack* unset() { return Def::unset()->as<Pack>(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pack;
-    static constexpr size_t Num_Ops = 1;
+    static constexpr size_t Num_Ops = 2;
 
 private:
     friend class World;
@@ -280,6 +291,21 @@ bool is_unit(const Def*);
 std::string tuple2str(const Def*);
 
 const Def* tuple_of_types(const Def* t);
+///@}
+
+/// @name Shapes
+/// A *shape* is the extent of one axis (a `Nat`) or an aggregate of such extents, one per fused axis.
+///@{
+bool is_dim(const Def* shape);             ///< Does @p shape describe a single axis, i.e. is it a plain `Nat`?
+const Def* first_extent(const Def* shape); ///< `shape#0` - the extent of the outermost axis.
+/// Drops every literal-`1` axis, mirroring `«1; T»` ≡ `T`; a rank the Seq folds away entirely yields `()`.
+/// Returns @p shape unchanged if its rank isn't a Lit.
+const Def* fold_shape(const Def* shape);
+/// Drops every `Idx 1` component of a multi-dimensional @p index, so that it lines up with fold_shape.
+const Def* fold_index(const Def* index);
+/// As above but driven by @p shape: drops the components of its literal size-1 axes, whatever the component's
+/// own `Idx` size is - a broadcast reads a size-1 input axis at the *output*'s loop index.
+const Def* fold_index(const Def* shape, const Def* index);
 ///@}
 
 /// @name Concatenation

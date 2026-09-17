@@ -146,13 +146,19 @@ void Scalarize::Analysis::inspect(const Def* def) {
     }
 
     // A parameter that is Extract%ed / Insert%ed via a non-constant index must not be split.
+    // Only the *outermost* axis decides: a fused `t#(0₂, i)` still splits into two halves.
     const Def* idx_tuple = nullptr;
     const Def* idx       = nullptr;
     if (auto ex = def->isa<Extract>())
         idx_tuple = ex->tuple(), idx = ex->index();
     else if (auto in = def->isa<Insert>())
         idx_tuple = in->tuple(), idx = in->index();
-    if (!idx_tuple || Lit::isa(idx)) return;
+    if (!idx_tuple) return;
+    if (Idx::isa(idx->unfold_type())) {
+        if (Lit::isa(idx)) return;
+    } else if (auto r = Lit::isa(idx->unfold_type()->arity()); r && *r != 0 && Lit::isa(idx->proj(*r, 0))) {
+        return;
+    }
 
     if (auto var = idx_tuple->isa<Var>()) {
         if (auto pi = isa_flattenable(var->binder()->type())) pin(pi); // whole var indexed dynamically

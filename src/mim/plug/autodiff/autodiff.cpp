@@ -110,7 +110,7 @@ const Def* autodiff_type_fun(const Def* ty) {
     if (Idx::isa(ty)) return ty;
     if (ty == world.type_nat()) return ty;
     if (auto arr = ty->isa<Arr>()) {
-        auto shape   = arr->arity();
+        auto shape   = arr->shape();
         auto body    = arr->body();
         auto body_ad = autodiff_type_fun(body);
         if (!body_ad) return nullptr;
@@ -132,10 +132,10 @@ const Def* zero_def(const Def* T) {
     // zero [A,B,C] -> [zero A, zero B, zero C]
     auto& world = T->world();
     if (auto arr = T->isa<Arr>()) {
-        auto arity      = arr->arity();
+        auto shape      = arr->shape();
         auto body       = arr->body();
         auto inner_zero = world.app(world.annex<zero>(), body);
-        auto zero_arr   = world.pack(arity, inner_zero);
+        auto zero_arr   = world.pack(shape, inner_zero);
         return zero_arr;
     } else if (Idx::isa(T)) {
         // TODO: real

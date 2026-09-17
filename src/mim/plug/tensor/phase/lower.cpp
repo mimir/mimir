@@ -11,13 +11,20 @@ namespace mim::plug::tensor::phase {
 
 namespace {
 
-/// Peels an `Extract` chain over array types down to its base, collecting one scalar index per level.
-/// Anything else - a Sigma projection, a fused multi-dimensional index - ends the chain.
+/// Peels an `Extract` chain over array types down to its base, collecting one index per axis - a fused
+/// multi-dimensional index contributes all of its components. A Sigma projection ends the chain.
 std::pair<const Def*, DefVec> peel_extracts(const Def* d) {
-    auto index = DefVec();
+    auto index = DefVec(); // collected innermost-axis-first and reversed once at the end
     while (auto ex = d->isa<Extract>()) {
-        if (!ex->tuple()->type()->isa<Arr>() || !Idx::isa(ex->index()->type())) break;
-        index.emplace_back(ex->index());
+        if (!ex->tuple()->type()->isa<Arr>()) break;
+        auto idx = ex->index();
+        if (Idx::isa(idx->unfold_type()))
+            index.emplace_back(idx);
+        else if (auto r = Lit::isa(idx->unfold_type()->arity()))
+            for (nat_t i = *r; i-- != 0;)
+                index.emplace_back(idx->proj(*r, i));
+        else
+            break;
         d = ex->tuple();
     }
     std::ranges::reverse(index);
