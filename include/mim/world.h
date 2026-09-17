@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -700,6 +701,11 @@ public:
     /// The new body may have fewer elements as `mut->num_ops()` according to Def::reduction_offset.
     /// E.g. a Pi has a Pi::reduction_offset of 1, and only Pi::dom will be reduced - *not* Pi::codom.
     Defs reduce(const Var* var, const Def* arg);
+
+    /// As above but reduces *only* the @p i th op.
+    /// A dependent Sigma is projected while it is still being built - its later ops do not exist yet - so reducing
+    /// all of them is not an option there.
+    const Def* reduce(const Var* var, const Def* arg, size_t i);
     ///@}
 
     /// @name for_each
@@ -850,27 +856,31 @@ private:
         bool operator()(const Def* d1, const Def* d2) const { return d1->equal(d2); }
     };
 
+    /// The slots of `[var -> arg]mut`, one per reduced Def::op, filled on demand by World::reduce.
     class Reduct : public fe::VLA<Reduct> {
     public:
         using VLA_Types = std::tuple<const Def*>;
 
-        template<size_t N = std::dynamic_extent>
-        auto defs() const noexcept {
-            return vla<0>().template span<N>();
-        }
+        // clang-format off
+        template<size_t N = std::dynamic_extent> auto ops() const noexcept { return vla<0, N>(); }
+        template<size_t N = std::dynamic_extent> auto ops()       noexcept { return vla<0, N>(); }
+        // clang-format on
     };
 
-    /// Caches `[var -> arg]` as `f(0), .., f(n-1)`; evaluates @p f *before* caching, as it may recursively reduce.
-    template<class F>
-    const Reduct* cache_reduct(const Var* var, const Def* arg, size_t n, F f) {
-        return cache_reduct(var, arg, DefVec(n, f));
-    }
-
-    /// As above but for @p defs that have already been computed.
-    const Reduct* cache_reduct(const Var* var, const Def* arg, Defs defs) {
-        auto reduct = move_.arena.substs.ref<Reduct>(defs).get();
+    /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
+    /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
+    Reduct* reduct(const Var* var, const Def* arg, size_t n) {
+        if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second;
+        auto reduct = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
         fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
         return reduct;
+    }
+
+    /// Caches `[var -> arg]` as @p defs that have already been computed.
+    void cache_reduct(const Var* var, const Def* arg, Defs defs) {
+        auto reduct = this->reduct(var, arg, defs.size());
+        for (size_t i = 0, e = defs.size(); i != e; ++i)
+            reduct->ops()[i] = defs[i];
     }
 
     struct Move {
@@ -886,7 +896,7 @@ private:
         absl::flat_hash_set<const Def*, SeaHash, SeaEq> sea;
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
-        absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
+        absl::flat_hash_map<std::pair<const Var*, const Def*>, Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;

@@ -36,6 +36,9 @@ bool isa_indices(const Def* def) {
     return false;
 }
 
+/// Marks a World::Reduct slot while it is being computed: seeing it again means the op requires its own reduction.
+const Def* const Filling = (const Def*)1;
+
 /// Sorts by gid and drops duplicates; Def%s are hash-consed, so pointer identity *is* structural identity.
 void sort_unique(DefVec& defs) {
     std::ranges::sort(defs, GIDLt<const Def*>());
@@ -273,7 +276,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
                 if (lam->filter() == lit_tt()) return lam->body();
             } else if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) {
                 // Reuse the cached reduct if its filter held.
-                auto [filter, body] = i->second->defs<2>();
+                auto [filter, body] = i->second->ops<2>();
                 if (filter == lit_tt()) return body;
             } else {
                 // Evaluate the filter; if it holds, reduce the body and cache the reduct.
@@ -435,8 +438,7 @@ const Def* World::extract(const Def* d, const Def* index) {
         if (auto sigma = type->isa<Sigma>()) {
             if (auto var = sigma->has_var()) {
                 if (is_frozen()) return nullptr; // if frozen, we don't risk rewriting
-                auto t = VarRewriter(var, d).rewrite(sigma->op(*lidx));
-                return unify<Extract>(t, d, index);
+                return unify<Extract>(reduce(var, d, *lidx), d, index);
             }
 
             return unify<Extract>(sigma->op(*lidx), d, index);
@@ -727,13 +729,40 @@ Sym World::append_suffix(Sym symbol, std::string suffix) {
 }
 
 Defs World::reduce(const Var* var, const Def* arg) {
-    if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second->defs();
+    auto mut = var->binder();
+    auto off = mut->reduction_offset();
+    auto n   = mut->num_ops() - off;
+    if (var == arg) return {mut->ops().begin() + off, n}; // `[var -> var]` is the identity
 
-    auto mut     = var->binder();
-    auto offset  = mut->reduction_offset();
-    auto rw      = VarRewriter(var, arg);
-    auto rewrite = [&](size_t i) { return rw.rewrite(mut->op(i + offset)); };
-    return cache_reduct(var, arg, mut->num_ops() - offset, rewrite)->defs();
+    auto reduct = this->reduct(var, arg, n);
+    auto rw     = VarRewriter(var, arg); // one rewriter for all slots: they share their sub-rewrites
+    for (size_t i = 0; i != n; ++i) {
+        auto& slot = reduct->ops()[i];
+        if (slot) continue;
+        assert(slot != Filling && "op requires its own reduction");
+        slot = Filling;
+        slot = rw.rewrite(mut->op(i + off));
+    }
+
+    return reduct->ops();
+}
+
+const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
+    auto mut = var->binder();
+    auto off = mut->reduction_offset();
+    if (var == arg) return mut->op(i + off); // `[var -> var]` is the identity
+
+    auto reduct = this->reduct(var, arg, mut->num_ops() - off);
+    auto& slot  = reduct->ops()[i];
+    assert(slot != Filling && "op requires its own reduction");
+    if (!slot) {
+        auto op = mut->op(i + off);
+        if (!op->has_free_vars_in(Vars(var))) return slot = op; // no occurrence: don't even build a VarRewriter
+        slot = Filling;
+        slot = VarRewriter(var, arg).rewrite(op);
+    }
+
+    return slot;
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
