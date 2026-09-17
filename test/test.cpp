@@ -71,6 +71,7 @@ TEST_CASE("World: dependent projection with a mutable op") {
     World& w = driver.world();
     auto a   = w.axm(dep_sigma(w))->set("a");
 
+<<<<<<< HEAD
     // `a#2`'s element type is `[sigma_var -> a]«j: n; Idx (s#j)»`. Substituting into a *mutable* goes through
     // Rewriter::rewrite_mut_Seq -> rewrite_stub, which mints a fresh mutable every time, so World::extract is
     // not idempotent: `unify` hash-conses on `(node, type, ops)` and the type is new on each call.
@@ -81,6 +82,11 @@ TEST_CASE("World: dependent projection with a mutable op") {
 
     CHECK(Checker::alpha<Checker::Test>(e1->type(), e2->type())); // alpha-equivalent ...
     CHECK(e1 == e2);                                              // ... but not the same Def: this is the defect
+=======
+    // `a#2`'s element type is `[sigma_var -> a]«j: n; Idx (s#j)»`; rewriting into a *mutable* mints a fresh stub
+    // every time, so only the Reduct cache keeps this Extract hash-consed across calls.
+    CHECK(w.extract(a, 3, 2) == w.extract(a, 3, 2));
+>>>>>>> master
 }
 
 TEST_CASE("Annex") {
