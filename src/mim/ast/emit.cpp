@@ -472,14 +472,12 @@ const Def* SeqExpr::emit_(Emitter& e) const {
             // Use array var in array body instead of pack var
             arr_b = VarRewriter(pvar, a->var()).rewrite(arr_b);
         a->set_body(arr_b);
-        if (auto imm = p->immutabilize()) return imm;
-        return p;
+        return e.world().fuse(p);
     } else {
         auto var = a->var();
         arity()->emit_value(e, var);
         a->set_body(body()->emit(e));
-        if (auto imm = a->immutabilize()) return imm;
-        return a;
+        return e.world().fuse(a);
     }
 }
 

@@ -500,6 +500,10 @@ public:
 
     /// @p s without its leading @p k axes - its body once @p k covers all of them; `nullptr` if that isn't a type.
     const Def* drop(const Seq* s, nat_t k);
+    /// `«i: a; «j: b; T»»` -> `«(i, j): (a, b); T»` - the inverse of World::peel, for a nest that World::seq
+    /// cannot fuse on construction because its body still binds an index. Yields a Def::zonk_mut @p seq if the
+    /// nest is ragged, i.e. if the inner extents depend on the outer index.
+    const Def* fuse(Seq* seq);
     /// @p seq with the axes covered by @p index peeled off - the element itself once @p index covers all of them.
     const Def* peel(const Seq* seq, const Def* index);
     /// The type of an index into @p shape: `Idx n`, a Sigma of those, or `«i: r; Idx (s#i)»` for a dynamic rank.

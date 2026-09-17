@@ -487,6 +487,29 @@ const Def* World::peel(const Seq* seq, const Def* index) {
     return res->Def::set(1, rest(res))->zonk_mut();
 }
 
+const Def* World::fuse(Seq* seq) {
+    auto inner = seq->body() ? seq->body()->zonk()->isa<Seq>() : nullptr;
+    auto var   = seq->has_var();
+    // A ragged nest - one whose inner extents depend on the outer index - has no fused shape to spell them in.
+    if (!inner || inner->node() != seq->node() || (var && inner->shape()->has_free_var(var))) return seq->zonk_mut();
+
+    auto ro    = Lit::isa(seq->rank());
+    auto ri    = Lit::isa(inner->rank());
+    auto shape = cat_shape(seq->shape(), inner->shape());
+    if (!ro || !ri || !shape) return seq->zonk_mut();
+
+    // The fused index supplies both levels: its leading @p ro components replace the outer one, the rest the inner.
+    auto is_pack = seq->node() == Node::Pack;
+    auto res     = mut_seq(is_pack, is_pack ? arr(shape, inner->body()->unfold_type()) : seq->type());
+    res->Def::set(0, shape);
+
+    auto n    = *ro + *ri;
+    auto v    = res->var();
+    auto head = tuple(DefVec(*ro, [&](size_t i) { return v->proj(n, i); }));
+    auto tail = tuple(DefVec(*ri, [&](size_t i) { return v->proj(n, *ro + i); }));
+    return res->Def::set(1, seq->reduce(head)->as<Seq>()->reduce(tail))->zonk_mut();
+}
+
 const Def* World::type_indices(const Def* shape) {
     if (is_dim(shape)) return type_idx(shape);
     if (auto r = Lit::isa(shape->arity())) return sigma(shape->projs(*r, [this](const Def* e) { return type_idx(e); }));

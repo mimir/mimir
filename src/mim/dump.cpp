@@ -179,6 +179,21 @@ nat_t num_binders(const Def* type) {
     return type->num_tprojs();
 }
 
+/// A Seq's shape the way the surface syntax spells it: one axis per dimension, `2, 3` for a fused `(2, 3)`.
+std::string shape(const Seq* seq) {
+    auto s = seq->shape();
+    auto r = Lit::isa(s->arity());
+    if (!r || *r <= 1) return std::format("{}", Op(s));
+
+    auto res = std::string();
+    for (auto sep = ""; auto i : std::views::iota(u64(0), *r)) {
+        res += sep;
+        res += std::format("{}", Op(s->proj(*r, i)));
+        sep = ", ";
+    }
+    return res;
+}
+
 std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
     if (!def) return os << std::format("_: {}", Op(type));
 
@@ -365,11 +380,11 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto [arr, var] = d->isa_binder<Arr>(); arr) {
         return os << std::format("{}{}: {}; {}{}", al, var, Op(arr->shape()), Op(arr->body()), ar);
     } else if (auto arr = d->isa<Arr>()) {
-        return os << std::format("{}{}; {}{}", al, Op(arr->shape()), Op(arr->body()), ar);
+        return os << std::format("{}{}; {}{}", al, shape(arr), Op(arr->body()), ar);
     } else if (auto [pack, var] = d->isa_binder<Pack>(); pack) {
         return os << std::format("{}{}: {}; {}{}", pl, pack->var(), Op(pack->shape()), Op(pack->body()), pr);
     } else if (auto pack = d->isa<Pack>()) {
-        return os << std::format("{}{}; {}{}", pl, Op(pack->shape()), Op(pack->body()), pr);
+        return os << std::format("{}{}; {}{}", pl, shape(pack), Op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
         return os << std::format("(proxy#{} {})", proxy->tag(), Op::map(proxy->ops()));
     } else if (auto bound = d->isa<Bound>()) {

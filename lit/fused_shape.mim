@@ -1,0 +1,35 @@
+// RUN: %mim -p opt %s
+
+// `«i: m, j: n; body»` is *one* array of shape `(m, n)` whose index binds every axis at once - not a nest.
+// A dimension whose extent depends on an earlier index has no such shape and stays nested.
+
+plugin refly;
+
+// the rank of an array, read off its shape in one step
+lam rank {r: Nat, s: «r; Nat», T: *} (_: «s; T»): Nat = r;
+
+// ## Fused
+
+// anonymous dimensions fuse, named ones do too - the index binds every axis at once
+extern lam anon  (m n: Nat, t: «m, n; Nat»)      : Nat = refly.equiv.struc_eq (rank t, 2);
+extern lam named (m n: Nat, t: «i: m, j: n; Nat»): Nat = refly.equiv.struc_eq (rank t, 2);
+extern lam deep  (m n o: Nat, t: «m, n, o; Nat») : Nat = refly.equiv.struc_eq (rank t, 3);
+
+// `t#(x, y)` and `t#x#y` are the same Extract either way
+extern lam fused (m n: Nat, t: «i: m, j: n; Nat», x: Idx m, y: Idx n): Nat =
+    refly.equiv.struc_eq (t#(x, y), t#x#y);
+
+// a pack fuses alongside its type, and reduces at the whole index at once
+extern lam packed (m n: Nat, v: Nat, x: Idx m, y: Idx n): Nat =
+    refly.equiv.struc_eq (‹m, n; v›#(x, y), v);
+
+extern lam packed_dep (m n: Nat, f: [Idx m, Idx n] → Nat, x: Idx m, y: Idx n): Nat =
+    refly.equiv.struc_eq (‹i: m, j: n; f (i, j)›#(x, y), f (x, y));
+
+// ## Ragged
+
+// `s#i` bounds the inner axis by the outer index, so this keeps one array per axis - and `rank` does not
+// even apply to it, since its element type mentions the very index it would have to abstract over.
+// Indexing still reads the same; the Extract just splits at the boundary.
+extern lam ragged (n: Nat, s: «n; Nat», t: «i: n, j: s#i; Nat», x: Idx n, y: Idx (s#x)): Nat =
+    refly.equiv.struc_eq (t#(x, y), t#x#y);
