@@ -39,6 +39,43 @@ TEST_CASE("World: dependent extract") {
     CHECK(a->proj(2, 1)->type() == a->proj(2, 0_u64)); // type_of(a#1_2) == a#0_1
 }
 
+/// `[n: Nat, s: «n; Nat», is: «j: n; Idx (s#j)»]`.
+/// The third op is a *mutable* `Arr` on two counts: its body uses the binder `j`, so it is not
+/// immutabilizable, and `n` is not a literal, so World::seq does not unfold it either.
+/// The ops must be set one at a time - each one projects the ones before it out of the Sigma's own Var.
+static Sigma* dep_sigma(World& w) {
+    auto sig = w.mut_sigma(w.type(), 3);
+    sig->set(0, w.type_nat());
+    auto n = sig->var(3, 0);
+    sig->set(1, w.arr(n, w.type_nat()));
+    auto s  = sig->var(3, 1);
+    auto is = w.mut_arr(w.type());
+    is->set_arity(n);
+    is->set_body(w.type_idx(w.extract(s, is->var())));
+    sig->set(2, is);
+    return sig;
+}
+
+TEST_CASE("World: dependent projection with an immutable op") {
+    Driver driver;
+    World& w = driver.world();
+    auto a   = w.axm(dep_sigma(w))->set("a");
+
+    // `a#1`'s element type is `[sigma_var -> a]«n; Nat»`, an *immutable* Arr, so re-deriving it yields the very
+    // same Def and the Extract hash-conses.
+    CHECK(w.extract(a, 3, 1) == w.extract(a, 3, 1));
+}
+
+TEST_CASE("World: dependent projection with a mutable op") {
+    Driver driver;
+    World& w = driver.world();
+    auto a   = w.axm(dep_sigma(w))->set("a");
+
+    // `a#2`'s element type is `[sigma_var -> a]«j: n; Idx (s#j)»`; rewriting into a *mutable* mints a fresh stub
+    // every time, so only the Reduct cache keeps this Extract hash-consed across calls.
+    CHECK(w.extract(a, 3, 2) == w.extract(a, 3, 2));
+}
+
 TEST_CASE("Annex") {
     SUBCASE("mangle") {
         CHECK(Annex::demangle(*Annex::mangle("test")) == "test");
