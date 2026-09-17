@@ -1,0 +1,10 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A fused shape spells out every axis, so `«s; T»` reads the whole rank off `«(2, 3); Nat»` in one step:
+// `r` is 2, `s` is `(2, 3)` and `T` is `Nat`. Under the old nested form `«2; «3; Nat»»` matched at every
+// depth while `T` was unknown, and the call site had to supply `{r, s}` with `@`.
+lam rank {r: Nat, s: «r; Nat», T: *} (i: «s; T»): Nat = r;
+extern lam f (a: «2, 3; Nat»): Nat = rank a;
+
+// CHECK: extern lam f
+// CHECK-NEXT: 2;
