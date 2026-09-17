@@ -366,7 +366,7 @@ bool Checker::check(Hole* hole, const Def* def) {
     return hole->set(def), true;
 }
 
-// alpha(«?s; body», «(e₀, …, e_{r-1}); def»): the fused shape spells out every axis, so the rank follows from
+// alpha(«?s; body», «e₀, …, e_{r-1}; def»): the fused shape spells out every axis, so the rank follows from
 // what `body` still claims - all of them while it is unknown, all but its own while it is a Seq itself.
 bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
     auto r = known_rank(def);
@@ -385,7 +385,7 @@ bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
 }
 
 // alpha(«s₁; b₁», «s₂; b₂»): the two shapes may fuse a different number of axes, so compare the leading
-// ones they share and the remainders - `«(2, 3); T»` against `«2; X»` binds `X` to `«3; T»`.
+// ones they share and the remainders - `«2, 3; T»` against `«2; X»` binds `X` to `«3; T»`.
 template<Checker::Mode mode>
 bool Checker::check(const Seq* seq1, const Seq* seq2) {
     auto r1 = seq1->shape().rank();
@@ -415,7 +415,7 @@ bool Checker::check1(const Seq* seq, const Def* def) {
 // as holes might have been filled in the meantime.
 bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
     // `mut_seq` binds only its own axes, so a *fused* `imm_seq` keeps the remaining ones in a sub-Seq:
-    // `«i: n; Ts#i»` against `«(n, c, h); T»` matches `Ts#⊤` with `«(c, h); T»`, not with `T`.
+    // `«i: n; Ts#i»` against `«n, c, h; T»` matches `Ts#⊤` with `«c, h; T»`, not with `T`.
     auto r    = mut_seq->shape().rank();
     auto rest = r ? world().drop(imm_seq, *r) : nullptr;
 

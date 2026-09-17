@@ -981,7 +981,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             case trait::size: return world.lit_nat(size);
         }
     } else if (auto arr = type->isa_imm<Arr>()) {
-        // One axis at a time, so a fused Arr multiplies in every extent: `«(a, b); T»` is `a * size «b; T»`.
+        // One axis at a time, so a fused Arr multiplies in every extent: `«a, b; T»` is `a * size «b; T»`.
         auto elem = arr->elem();
         if (!elem) return {};
         auto align = op(trait::align, elem);
