@@ -48,7 +48,7 @@ const Def* normalize_add(const Def* type, const Def* callee, const Def* arg) {
         return world.tuple(ops);
     } else if (auto arr = T->isa<Arr>()) {
         // TODO: is this working for non-lit (non-tuple) or do we need a loop?
-        auto pack      = world.mut_pack(T)->set_shape(arr->shape());
+        auto pack      = world.mut_pack(T)->set_shape(*arr->shape());
         auto body_type = arr->body();
         pack->set_body(world.app(world.app(world.annex<add>(), body_type),
                                  {world.extract(a, pack->var()), world.extract(b, pack->var())}));

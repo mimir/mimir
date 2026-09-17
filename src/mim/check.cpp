@@ -186,7 +186,7 @@ std::pair<Checker::Binders::iterator, bool> Checker::bind(Def* mut, const Def* d
 
 /// The statically known rank of @p def: `0` if it isn't a Seq at all, `nullopt` if its own rank is dynamic.
 static std::optional<nat_t> known_rank(const Def* def) {
-    if (auto seq = def->zonk_mut()->isa<Seq>()) return Lit::isa(seq->rank());
+    if (auto seq = def->zonk_mut()->isa<Seq>()) return seq->shape().rank();
     return 0;
 }
 
@@ -305,8 +305,8 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         if (auto umax = d1->isa<UMax>(); umax && !d2->isa<UMax>()) return check(umax, d2);
         if (auto umax = d2->isa<UMax>(); umax && !d1->isa<UMax>()) return check(umax, d1);
 
-        if (seq1 && !seq1->is_fused() && seq1->arity() == world().lit_nat_1() && !seq2) return check1(seq1, d2);
-        if (seq2 && !seq2->is_fused() && seq2->arity() == world().lit_nat_1() && !seq1) return check1(seq2, d1);
+        if (seq1 && !seq1->shape().is_fused() && seq1->arity() == world().lit_nat_1() && !seq2) return check1(seq1, d2);
+        if (seq2 && !seq2->shape().is_fused() && seq2->arity() == world().lit_nat_1() && !seq1) return check1(seq2, d1);
 
         if (seq1 && seq2) {
             if (auto mut_seq = seq1->isa_mut<Seq>(); mut_seq && seq2->isa_imm()) return check(mut_seq, seq2);
@@ -376,7 +376,7 @@ bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
     auto body = seq->body()->zonk_mut();
     if (!Hole::isa_unset(body))
         if (auto bseq = body->isa<Seq>())
-            if (auto q = Lit::isa(bseq->rank()); q && *q <= *r) n = *r - *q;
+            if (auto q = bseq->shape().rank(); q && *q <= *r) n = *r - *q;
     if (n == 0) return fail<Check>();
 
     rank->set(world().lit_nat(n));
@@ -388,19 +388,19 @@ bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
 // ones they share and the remainders - `«(2, 3); T»` against `«2; X»` binds `X` to `«3; T»`.
 template<Checker::Mode mode>
 bool Checker::check(const Seq* seq1, const Seq* seq2) {
-    auto r1 = Lit::isa(seq1->rank());
-    auto r2 = Lit::isa(seq2->rank());
+    auto r1 = seq1->shape().rank();
+    auto r2 = seq2->shape().rank();
     if (r1 && r2 && *r1 != *r2) {
         auto k     = std::min(*r1, *r2);
         auto rest1 = world().drop(seq1, k);
         auto rest2 = world().drop(seq2, k);
         if (!rest1 || !rest2) return fail<mode>();
         for (size_t i = 0; i != k; ++i)
-            if (!alpha_<mode>(seq1->shape()->proj(*r1, i), seq2->shape()->proj(*r2, i))) return fail<mode>();
+            if (!alpha_<mode>(seq1->shape()[i], seq2->shape()[i])) return fail<mode>();
         return alpha_<mode>(rest1, rest2);
     }
 
-    return alpha_<mode>(seq1->shape(), seq2->shape()) && alpha_<mode>(seq1->body(), seq2->body());
+    return alpha_<mode>(*seq1->shape(), *seq2->shape()) && alpha_<mode>(seq1->body(), seq2->body());
 }
 
 // alpha(«1; body», def) -> alpha(body, def);
@@ -416,7 +416,7 @@ bool Checker::check1(const Seq* seq, const Def* def) {
 bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
     // `mut_seq` binds only its own axes, so a *fused* `imm_seq` keeps the remaining ones in a sub-Seq:
     // `«i: n; Ts#i»` against `«(n, c, h); T»` matches `Ts#⊤` with `«(c, h); T»`, not with `T`.
-    auto r    = Lit::isa(mut_seq->rank());
+    auto r    = mut_seq->shape().rank();
     auto rest = r ? world().drop(imm_seq, *r) : nullptr;
 
     if (!rest) return fail<Check>();
@@ -424,7 +424,7 @@ bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
     auto mut_body = mut_seq->reduce(world().top(world().type_indices(mut_seq->shape())));
     if (!alpha_<Check>(mut_body, rest)) return fail<Check>();
 
-    mut_seq->set(mut_seq->shape(), mut_body->zonk());
+    mut_seq->set(*mut_seq->shape(), mut_body->zonk());
     return true;
 }
 

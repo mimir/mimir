@@ -124,10 +124,10 @@ const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {
 
     auto arr = arg->type()->isa<Arr>();
     if (!arr) return nullptr;
-    auto rank = Lit::isa(arr->rank());
+    auto shape = arr->shape();
+    auto rank  = shape.rank();
     if (!rank || *rank < *r) return nullptr; // `arr` is not (statically) at least rank `r`
-    if (*rank == *r) return arr->shape();
-    return slice_tuple(arr->shape(), *rank, 0, *r);
+    return *shape.take(*r);
 }
 
 MIM_tensor_NORMALIZER_IMPL

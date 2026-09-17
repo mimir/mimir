@@ -623,7 +623,7 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
             bool suppress_annotations = types_enabled();
             if (suppress_annotations) toggle_types();
             if (!in_term) toggle_bindings();
-            arity_val = flatten(emit_bb(bb, arr->shape()));
+            arity_val = flatten(emit_bb(bb, *arr->shape()));
             if (suppress_annotations) toggle_types();
             if (!in_term) toggle_bindings();
         }
@@ -776,7 +776,7 @@ std::string Emitter::emit_node(BB& bb, const Def* def, std::string node_name, bo
             std::string var_val = slotted() ? " $dummy (scope" : " dummy";
             op_vals.push_back(var_val);
         }
-        if (auto arity_val = emit_bb(bb, pack->shape()); !arity_val.empty()) op_vals.push_back(arity_val);
+        if (auto arity_val = emit_bb(bb, *pack->shape()); !arity_val.empty()) op_vals.push_back(arity_val);
     }
 
     if (auto proxy = def->isa<Proxy>()) {

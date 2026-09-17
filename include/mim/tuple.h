@@ -71,6 +71,58 @@ private:
     friend class World;
 };
 
+/// The extents of a Seq's axes: a plain `Nat` for a single axis, an aggregate of them for several.
+/// A multi-dimensional *index* into a Seq has the very same structure - one component per axis, `Idx` instead of
+/// `Nat` - so it uses this view as well.
+/// @note A Shape is a non-owning view over a Def and may be null; Shape::operator* hands the Def back.
+class Shape {
+public:
+    constexpr Shape() noexcept = default;
+    constexpr Shape(const Def* def) noexcept
+        : def_(def) {}
+
+    /// @name Getters
+    ///@{
+    constexpr const Def* operator*() const noexcept { return def_; }
+    constexpr const Def* operator->() const noexcept { return def_; }
+    constexpr explicit operator bool() const noexcept { return def_ != nullptr; }
+    ///@}
+
+    /// @name Axes
+    ///@{
+    bool is_dim() const; ///< Is this a *single* axis - a `Nat`/`Idx` rather than an aggregate of them?
+    bool is_fused() const { return !is_dim(); } ///< Does this span several axes? Also `true` for a dynamic rank.
+    std::optional<nat_t> rank() const;          ///< Number of axes; `std::nullopt` if not statically known.
+    const Def* operator[](nat_t i) const { return def_->proj(i); } ///< The @p i th axis.
+    const Def* front() const; ///< The outermost axis - the Def::arity of the Seq this shape describes.
+    /// The extent of @p axis: the axis itself for a shape, its `Idx` size for an index.
+    static std::optional<nat_t> extent(const Def* axis);
+    ///@}
+
+    /// @name Type Checking
+    ///@{
+    static bool isa_extents(const Def*); ///< Is @p type `Nat` - or an aggregate of `Nat`s, i.e. a shape?
+    static bool isa_indices(const Def*); ///< Is @p type `Idx` - or an aggregate of `Idx`%s, i.e. a fused index?
+    ///@}
+
+    /// @name Transform
+    /// Each of these needs Shape::rank and yields a null Shape without it.
+    ///@{
+    Shape slice(nat_t begin, nat_t end) const;        ///< The axes `[begin, end)`.
+    Shape take(nat_t n) const { return slice(0, n); } ///< The leading @p n axes.
+    Shape drop(nat_t n) const;                        ///< All but the leading @p n axes.
+    Shape operator+(Shape) const;                     ///< Concatenation - what fuses `«a; «b; T»»` into `«a, b; T»`.
+    /// Drops every literal size-1 axis, mirroring `«1; T»` ≡ `T`; all of them folded away leaves rank `0`.
+    Shape fold() const;
+    /// As above but driven by @p shape: drops the axes *it* has as literal `1`, whatever this one's own extents
+    /// are - a broadcast reads a size-1 input axis at the *output*'s loop index.
+    Shape fold_by(Shape shape) const;
+    ///@}
+
+private:
+    const Def* def_ = nullptr;
+};
+
 /// Base class for Arr and Pack.
 class Seq : public Def, public Setters<Seq> {
 protected:
@@ -84,17 +136,11 @@ public:
     ///@{
     const Def* body() const { return ops().back(); }
 
-    /// The extents of all axes this Seq fuses: a `Nat` for a one-dimensional Seq, an aggregate of `Nat`s otherwise.
-    /// Def::arity is the *first* extent; `«(2, 3); T»` still projects into two `«3; T»`.
-    const Def* shape() const { return op(0); }
-    /// The element one axis down: Seq::body for an unfused Seq, the Seq of the remaining axes otherwise.
+    /// The extents of all axes this Seq fuses.
+    /// Def::arity is the *first* of them; `«2, 3; T»` still projects into two `«3; T»`.
+    Shape shape() const { return op(0); }
+    /// The element one axis down: Seq::body for a one-dimensional Seq, the Seq of the remaining axes otherwise.
     const Def* elem() const;
-    const Def* rank() const { return shape()->arity(); } ///< Number of fused axes; `1` for a one-dimensional Seq.
-    /// Whether this Seq fuses more than one axis; `false` also for a *dynamic* rank that may yet turn out to be 1.
-    bool is_fused() const {
-        auto r = Lit::isa(rank());
-        return !r || *r != 1;
-    }
     ///@}
 
     /// @name Setters
@@ -295,21 +341,6 @@ std::string tuple2str(const Def*);
 const Def* tuple_of_types(const Def* t);
 ///@}
 
-/// @name Shapes
-/// A *shape* is the extent of one axis (a `Nat`) or an aggregate of such extents, one per fused axis.
-///@{
-bool is_dim(const Def* shape);             ///< Does @p shape describe a single axis, i.e. is it a plain `Nat`?
-const Def* first_extent(const Def* shape); ///< `shape#0` - the extent of the outermost axis.
-/// Drops every literal-`1` axis, mirroring `«1; T»` ≡ `T`; a rank the Seq folds away entirely yields `()`.
-/// Returns @p shape unchanged if its rank isn't a Lit.
-const Def* fold_shape(const Def* shape);
-/// Drops every `Idx 1` component of a multi-dimensional @p index, so that it lines up with fold_shape.
-const Def* fold_index(const Def* index);
-/// As above but driven by @p shape: drops the components of its literal size-1 axes, whatever the component's
-/// own `Idx` size is - a broadcast reads a size-1 input axis at the *output*'s loop index.
-const Def* fold_index(const Def* shape, const Def* index);
-///@}
-
 /// @name Concatenation
 /// Works for Tuple%s, Pack%s, Sigma%s, and Arr%ays alike.
 ///@{
@@ -318,9 +349,6 @@ inline DefVec cat(const Def* a, Defs bs) { return cat(Defs{a}, bs); }
 inline DefVec cat(Defs as, const Def* b) { return cat(as, Defs{b}); }
 
 DefVec cat(nat_t n, nat_t m, const Def* a, const Def* b);
-
-/// @p d's projections `[begin, end)` of @p r as a Tuple; the counterpart of cat_tuple.
-const Def* slice_tuple(const Def* d, nat_t r, nat_t begin, nat_t end);
 
 const Def* cat_tuple(nat_t n, nat_t m, const Def* a, const Def* b);
 const Def* cat_sigma(nat_t n, nat_t m, const Def* a, const Def* b);

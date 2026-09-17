@@ -71,7 +71,7 @@ const Def* build_pointwise(World& w,
     for (u64 d = 0; d < rn; ++d)
         wcoords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
     auto [wr_mem, wr_buf]
-        = buffer::op_write(obr, obs, obT, el_mem, loop_buf, mim::fold_index(s_out, w.tuple(wcoords)), elem)->projs<2>();
+        = buffer::op_write(obr, obs, obT, el_mem, loop_buf, *Shape(w.tuple(wcoords)).fold_by(s_out), elem)->projs<2>();
     current_mut->app(true, cont, w.tuple({wr_mem, loop_buf}));
     return call;
 }
@@ -226,7 +226,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
             cur                = mc_mem;
             auto [ir, is_, iT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
             auto [rd_mem, rd_val]
-                = buffer::op_read(ir, is_, iT, cur, in_buf, mim::fold_index(Sis->proj(nis_nat, i), coords))->projs<2>();
+                = buffer::op_read(ir, is_, iT, cur, in_buf, *Shape(coords).fold_by(Sis->proj(nis_nat, i)))->projs<2>();
             cur            = rd_mem;
             input_elems[i] = rd_val;
         }
@@ -263,13 +263,13 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
             auto p_buf         = new_post_is->proj(nps_nat, j);
             auto [pr, ps_, pT] = Axm::isa<buffer::Buf>(p_buf->type())->args<3>();
             auto [prd_mem, p_val]
-                = buffer::op_read(pr, ps_, pT, pcur, p_buf, mim::fold_index(sps_j, pcoords))->projs<2>();
+                = buffer::op_read(pr, ps_, pT, pcur, p_buf, *Shape(pcoords).fold_by(sps_j))->projs<2>();
             pcur          = prd_mem;
             post_elems[j] = p_val;
         }
         auto after_post            = mem::mut_con(Tp)->set("afterPost");
         auto [post_mem, elem_post] = after_post->vars<2>();
-        auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, mim::fold_index(So, write_coords), elem_post);
+        auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, *Shape(write_coords).fold_by(So), elem_post);
         after_post->app(true, wk, w.tuple({stored->proj(0), stored->proj(1)}));
         apply_cps(wb, post, {pcur, wv, w.tuple(post_elems)}, after_post);
     }
@@ -320,9 +320,9 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     // Non-size-1 input dims mirror the matching output index; size-1 dims are dropped from each buffer index.
     auto iters = w.tuple(out_iters);
     auto [rd_mem, rd_val]
-        = buffer::op_read(in_r, in_s, in_T, loop_mem, in_buf, mim::fold_index(s_in, iters))->projs<2>();
+        = buffer::op_read(in_r, in_s, in_T, loop_mem, in_buf, *Shape(iters).fold_by(s_in))->projs<2>();
     auto [wr_mem, wr_buf]
-        = buffer::op_write(out_r, out_s, out_T, rd_mem, loop_buf, mim::fold_index(s_out, iters), rd_val)->projs<2>();
+        = buffer::op_write(out_r, out_s, out_T, rd_mem, loop_buf, *Shape(iters).fold_by(s_out), rd_val)->projs<2>();
     current_mut->app(true, cont, w.tuple({wr_mem, loop_buf}));
 
     return call;
@@ -374,7 +374,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
             clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
         }
         auto [rd_mem, elem]
-            = buffer::op_read(ibr, ibs, ibT, mem, in_buf, mim::fold_index(s_in, w.tuple(clamped)))->projs<2>();
+            = buffer::op_read(ibr, ibs, ibT, mem, in_buf, *Shape(w.tuple(clamped)).fold_by(s_in))->projs<2>();
         if (mode_nat != 0) return {rd_mem, elem}; // replicate: always a (clamped) read
         auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
         for (u64 d = 1; d < valid.size(); ++d)
@@ -440,7 +440,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
                 coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
             }
             auto [rd_mem, rd_val]
-                = buffer::op_read(ibr, ibs, ibT, cur, in_buf, mim::fold_index(Sis_i, w.tuple(coords)))->projs<2>();
+                = buffer::op_read(ibr, ibs, ibT, cur, in_buf, *Shape(w.tuple(coords)).fold_by(Sis_i))->projs<2>();
             cur = rd_mem;
             return rd_val;
         };
@@ -483,7 +483,7 @@ const Def* LowerMapReduce::lower_gather(const App* app) {
         for (u64 d = 0; d < rn; ++d)
             index_coords[d] = w.call(core::conv::u, s_idx->proj(rn, d), iters[d]);
         auto [index_mem, selected]
-            = buffer::op_read(xbr, xbs, xbT, mem, index_buf, mim::fold_index(s_idx, w.tuple(index_coords)))->projs<2>();
+            = buffer::op_read(xbr, xbs, xbT, mem, index_buf, *Shape(w.tuple(index_coords)).fold_by(s_idx))->projs<2>();
         auto selected_i64 = w.call<core::bitcast>(w.type_i64(), selected);
 
         DefVec source_coords(rn);
@@ -492,7 +492,7 @@ const Def* LowerMapReduce::lower_gather(const App* app) {
             source_coords[d] = w.call(core::conv::u, s_src->proj(rn, d), coordinate);
         }
         auto [read_mem, value]
-            = buffer::op_read(ibr, ibs, ibT, index_mem, in_buf, mim::fold_index(s_src, w.tuple(source_coords)))
+            = buffer::op_read(ibr, ibs, ibT, index_mem, in_buf, *Shape(w.tuple(source_coords)).fold_by(s_src))
                   ->projs<2>();
         return {read_mem, value};
     };
@@ -547,13 +547,13 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     DefVec index_coords(rn);
     for (u64 d = 0; d < rn; ++d)
         index_coords[d] = w.call(core::conv::u, s_idx->proj(rn, d), iters[d]);
-    auto folded_index = mim::fold_index(s_idx, w.tuple(index_coords));
+    auto folded_index = *Shape(w.tuple(index_coords)).fold_by(s_idx);
     DefVec update_coords(rn);
     for (u64 d = 0; d < rn; ++d)
         update_coords[d] = w.call(core::conv::u, s_updates->proj(rn, d), iters[d]);
     auto [index_mem, selected] = buffer::op_read(xbr, xbs, xbT, loop_mem, index_buf, folded_index)->projs<2>();
     auto [update_mem, update]
-        = buffer::op_read(ubr, ubs, ubT, index_mem, update_buf, mim::fold_index(s_updates, w.tuple(update_coords)))
+        = buffer::op_read(ubr, ubs, ubT, index_mem, update_buf, *Shape(w.tuple(update_coords)).fold_by(s_updates))
               ->projs<2>();
     auto selected_i64 = w.call<core::bitcast>(w.type_i64(), selected);
 
@@ -563,7 +563,7 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
         destination_coords[d] = w.call(core::conv::u, s_src->proj(rn, d), coordinate);
     }
     auto [write_mem, written] = buffer::op_write(obr, obs, obT, update_mem, loop_buf,
-                                                 mim::fold_index(s_src, w.tuple(destination_coords)), update)
+                                                 *Shape(w.tuple(destination_coords)).fold_by(s_src), update)
                                     ->projs<2>();
     current->app(true, cont, w.tuple({write_mem, loop_buf}));
     return call;

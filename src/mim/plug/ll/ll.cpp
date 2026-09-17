@@ -83,9 +83,8 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         } else {
             u64 size = 0;
             if (auto arity = Lit::isa(arr->arity())) size = *arity;
-            // One LLVM array level per axis, so a fused Arr nests: `«(3, 4); i32»` is `[3 x [4 x i32]]`.
-            auto elem = arr->is_fused() ? arr->world().drop(arr, 1) : nullptr;
-            std::print(s, "[{} x {}]", size, convert(elem ? elem : arr->body(), false));
+            // One LLVM array level per axis, so a fused Arr nests: `«3, 4; i32»` is `[3 x [4 x i32]]`.
+            std::print(s, "[{} x {}]", size, convert(arr->elem(), false));
         }
     } else if (auto pi = type->isa<Pi>()) {
         if (!Pi::isa_returning(pi)) fe::throwf(MIM_LL_BE "cannot convert the type of a basic block: `{}`", pi);

@@ -175,20 +175,20 @@ namespace {
 /// Def::num_tprojs, except that a *fused* Seq stays one binder: dumping freezes the World and its sub-Seqs
 /// need not exist as Def%s.
 nat_t num_binders(const Def* type) {
-    if (auto seq = type->isa<Seq>(); seq && seq->is_fused()) return 1;
+    if (auto seq = type->isa<Seq>(); seq && seq->shape().is_fused()) return 1;
     return type->num_tprojs();
 }
 
 /// A Seq's shape the way the surface syntax spells it: one axis per dimension, `2, 3` for a fused `(2, 3)`.
 std::string shape(const Seq* seq) {
     auto s = seq->shape();
-    auto r = Lit::isa(s->arity());
-    if (!r || *r <= 1) return std::format("{}", Op(s));
+    auto r = s.rank();
+    if (!r || *r <= 1) return std::format("{}", Op(*s));
 
     auto res = std::string();
     for (auto sep = ""; auto i : std::views::iota(u64(0), *r)) {
         res += sep;
-        res += std::format("{}", Op(s->proj(*r, i)));
+        res += std::format("{}", Op(s[i]));
         sep = ", ";
     }
     return res;
@@ -378,11 +378,11 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto tuple = d->isa<Tuple>()) {
         return os << std::format("({})", Op::map(tuple->ops()));
     } else if (auto [arr, var] = d->isa_binder<Arr>(); arr) {
-        return os << std::format("{}{}: {}; {}{}", al, var, Op(arr->shape()), Op(arr->body()), ar);
+        return os << std::format("{}{}: {}; {}{}", al, var, Op(*arr->shape()), Op(arr->body()), ar);
     } else if (auto arr = d->isa<Arr>()) {
         return os << std::format("{}{}; {}{}", al, shape(arr), Op(arr->body()), ar);
     } else if (auto [pack, var] = d->isa_binder<Pack>(); pack) {
-        return os << std::format("{}{}: {}; {}{}", pl, pack->var(), Op(pack->shape()), Op(pack->body()), pr);
+        return os << std::format("{}{}: {}; {}{}", pl, pack->var(), Op(*pack->shape()), Op(pack->body()), pr);
     } else if (auto pack = d->isa<Pack>()) {
         return os << std::format("{}{}; {}{}", pl, shape(pack), Op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
@@ -449,8 +449,8 @@ void Dumper::dump(Def* mut) {
 
     auto mut_op0 = [&](const Def* def) -> std::ostream& {
         if (auto sig = def->isa<Sigma>()) return os << std::format(", {}", sig->num_ops());
-        if (auto arr = def->isa<Arr>()) return os << std::format(", {}", arr->shape());
-        if (auto pack = def->isa<Pack>()) return os << std::format(", {}", pack->shape());
+        if (auto arr = def->isa<Arr>()) return os << std::format(", {}", *arr->shape());
+        if (auto pack = def->isa<Pack>()) return os << std::format(", {}", *pack->shape());
         if (auto pi = def->isa<Pi>()) return os << std::format(", {}", pi->dom());
         if (auto hole = def->isa_mut<Hole>())
             return hole->is_set() ? (os << std::format(", {}", hole->op())) : (os << ", ??");

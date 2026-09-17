@@ -468,8 +468,8 @@ public:
     }
     Arr * mut_arr (const Def* type) { return mut_seq(false, type)->as<Arr >(); }
     Pack* mut_pack(const Def* type) { return mut_seq(true , type)->as<Pack>(); }
-    const Def* arr (const Def* arity, const Def* body) { return seq(false, arity, body); }
-    const Def* pack(const Def* arity, const Def* body) { return seq(true , arity, body); }
+    const Def* arr (Shape shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(Shape shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (Defs       shape, const Def* body) { return seq(false, shape, body); }
     const Def* pack(Defs       shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (u64            n, const Def* body) { return seq(false,     n, body); }
@@ -490,7 +490,7 @@ public:
     ///@{
     const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
     Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
-    const Def* seq(bool is_pack, const Def* shape, const Def* body);
+    const Def* seq(bool is_pack, Shape shape, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
     const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
@@ -507,7 +507,7 @@ public:
     /// @p seq with the axes covered by @p index peeled off - the element itself once @p index covers all of them.
     const Def* peel(const Seq* seq, const Def* index);
     /// The type of an index into @p shape: `Idx n`, a Sigma of those, or `«i: r; Idx (s#i)»` for a dynamic rank.
-    const Def* type_indices(const Def* shape);
+    const Def* type_indices(Shape shape);
     ///@}
 
     /// @name Tuple
@@ -755,8 +755,13 @@ public:
     ///@}
 
 private:
-    const Def* extract1(const Def* d, const Def* i);      ///< World::extract for a *scalar* @p i.
-    const Def* extract_fused(const Def* d, const Def* i); ///< World::extract for an @p i that no longer folds.
+    Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
+    /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
+    bool is_folded_axis(const Def* type, const Def* index, const Def* size);
+    const Def* extract1(const Def* d, const Def* i); ///< World::extract for a *scalar* @p i.
+    const Def* extract_fused(const Def* d, Shape i); ///< World::extract for an @p i that no longer folds.
+    /// A fresh mutable Seq of @p seq's kind holding @p elem at @p shape; @p rest builds its body from its own var.
+    const Def* mut_shaped(const Seq* seq, Shape shape, const Def* elem, std::function<const Def*(Seq*)> rest);
 
     /// @name Put into Sea of Nodes
     ///@{

@@ -276,7 +276,7 @@ const Def* LowerToMem::buf_of(const Def* arr_ty) {
     auto& w  = new_world();
     auto arr = arr_ty->isa<Arr>();
     if (!arr) return buffer::type_buf(w.lit_nat_0(), w.tuple(), rewrite(arr_ty));
-    auto shape = rewrite(arr->shape());
+    auto shape = rewrite(*arr->shape());
     return buffer::type_buf(shape->arity(), shape, rewrite(arr->body()));
 }
 
@@ -604,8 +604,7 @@ const Def* LowerToMem::lower_generate(const App* app) {
     for (u64 d = 0; d < rn; ++d)
         coords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
     auto [write_mem, written]
-        = buffer::op_write(br, bs, bT, loop_mem, loop_out, mim::fold_index(s_out, w.tuple(coords)), element)
-              ->projs<2>();
+        = buffer::op_write(br, bs, bT, loop_mem, loop_out, *Shape(w.tuple(coords)).fold_by(s_out), element)->projs<2>();
     current->app(true, cont, w.tuple({write_mem, written}));
     auto [call_mem, call_out] = call->projs<2>();
     return call_out;

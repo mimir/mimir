@@ -333,11 +333,11 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
 
     // The output shape `s_out#d = lo#d + s_in#d + hi#d` is what `type` already carries.
     auto out_arr = type->isa<Arr>();
-    if (!out_arr || Lit::isa(out_arr->rank()) != rn) {
+    if (!out_arr || out_arr->shape().rank() != rn) {
         log().w("padded shape of {} is not a statically known rank-{} array", app, rn);
         return nullptr;
     }
-    auto s_out = out_arr->shape();
+    auto s_out = *out_arr->shape();
 
     auto compute = [&](Defs out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value] = new_inputs->projs<2>();

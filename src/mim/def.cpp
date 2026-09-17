@@ -565,7 +565,7 @@ const Def* Def::immutabilize() {
             if (is_immutabilizable())
                 return arr ? w.arr(seq->shape(), seq->body()) : w.pack(seq->shape(), seq->body());
             // below the threshold an unrollable Seq becomes an explicit Sigma/Tuple
-            if (auto n = seq->is_fused() ? std::nullopt : Lit::isa(seq->arity());
+            if (auto n = seq->shape().is_fused() ? std::nullopt : Lit::isa(seq->arity());
                 n && *n < w.flags().scalarize_threshold) {
                 auto elems = DefVec(*n, [&](size_t i) { return seq->reduce(w.lit_idx(*n, i)); });
                 return arr ? w.sigma(elems) : w.tuple(elems);
@@ -592,9 +592,9 @@ size_t Def::reduction_offset() const noexcept {
 
 const Def* Def::arity() const {
     switch (node()) {
-        case Node::Arr:   return first_extent(op(0));
+        case Node::Arr:   return Shape(op(0)).front();
         case Node::Sigma: return num_ops() != 1 || isa_mut() ? world().lit_nat(num_ops()) : op(0)->arity();
-        case Node::Pack:  return first_extent(op(0));
+        case Node::Pack:  return Shape(op(0)).front();
         default:
             if (auto t = type(); t && !t->isa<Type>()) return t->arity();
             return world().lit_nat_1();
@@ -629,7 +629,7 @@ const Def* Def::proj(nat_t a, nat_t i) const {
 
     if (auto seq = isa<Seq>()) {
         auto& w = world();
-        if (seq->is_fused()) return w.peel(seq, w.lit_idx(a, i)); // one axis off a fused shape yields a sub-Seq
+        if (seq->shape().is_fused()) return w.peel(seq, w.lit_idx(a, i)); // one axis off a fused shape yields a sub-Seq
         if (seq->has_var()) return seq->reduce(w.lit_idx(a, i));
         return seq->body();
     }

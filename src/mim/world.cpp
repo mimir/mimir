@@ -18,45 +18,31 @@ namespace mim {
 
 namespace {
 
-bool is_shape(const Def* s) {
-    if (s->isa<Nat>()) return true;
-    if (auto arr = s->isa<Arr>()) return arr->body()->zonk()->isa<Nat>();
-    if (auto sig = s->isa_imm<Sigma>())
-        return std::ranges::all_of(sig->ops(), [](const Def* op) { return op->isa<Nat>(); });
-
-    return false;
-}
-
-/// Is @p def an `Idx` - or an aggregate of `Idx`%s, i.e. a multi-dimensional index?
-bool isa_indices(const Def* def) {
-    if (!def) return false; // Univ has no type
-    if (Idx::isa(def)) return true;
-    if (auto sigma = def->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), [](auto op) { return Idx::isa(op); });
-    if (auto arr = def->isa<Arr>()) return Idx::isa(arr->body());
-    return false;
-}
-
 /// Does `d#index \u2190 val` rebuild an aggregate right away? Mirrors the two folding rules in World::insert.
 bool insert_rebuilds(const Def* d, const Def* index, u64 threshold) {
     if (!Lit::isa(index)) return false;
     if (d->isa<Tuple>()) return true;
-    if (auto pack = d->isa<Pack>(); pack && !pack->is_fused())
+    if (auto pack = d->isa<Pack>(); pack && !pack->shape().is_fused())
         if (auto a = Lit::isa(pack->arity())) return *a < threshold;
     return false;
 }
 
-/// `(a, b)` from shapes @p a and @p b; `nullptr` unless both ranks are known.
-const Def* cat_shape(const Def* a, const Def* b) {
-    auto ra = Lit::isa(a->arity());
-    auto rb = Lit::isa(b->arity());
-    if (!ra || !rb) return nullptr;
-    return cat_tuple(*ra, *rb, a, b);
-}
-
 /// How many axes @p type indexes in one go; `1` for anything that isn't an Arr, `std::nullopt` for a dynamic rank.
 std::optional<nat_t> own_rank(const Def* type) {
-    if (auto arr = type->isa<Arr>()) return Lit::isa(arr->rank());
+    if (auto arr = type->isa<Arr>()) return arr->shape().rank();
     return 1;
+}
+
+/// `(t#is)#js` as *one* index into @p t; `nullptr` unless @p t's own shape has room for both ranks.
+/// The Extract and the Insert rule are duals and share this check.
+Shape fused_index(const Def* t, Shape is, Shape js) {
+    auto arr = t->unfold_type()->isa<Arr>();
+    if (!arr) return {};
+    auto ri = is.rank();
+    auto rj = js.rank();
+    auto rt = arr->shape().rank();
+    if (!ri || !rj || !rt || *ri + *rj > *rt) return {};
+    return is + js;
 }
 
 /// Coerces @p val to @p elem_type or bails out with the "not assignable" diagnostic.
@@ -71,22 +57,23 @@ const Def* assign_or_bail(const Def* elem_type, const Def* val) {
 }
 
 /// Checks the multi-dimensional @p index against @p d and yields the type it peels to.
-const Def* nary_elem_type(const Def* d, const Def* index, const Def* index_ty) {
+const Def* nary_elem_type(const Def* d, Shape index) {
     auto type = d->unfold_type();
     auto arr  = type->isa<Arr>();
-    if (!arr) index->blame("multi-dimensional index `{}` expects an array but got `{}`", index, type).bail();
+    if (!arr) index->blame("multi-dimensional index `{}` expects an array but got `{}`", *index, type).bail();
 
-    auto ri  = Lit::isa(index_ty->arity());
-    auto rt  = Lit::isa(arr->rank());
-    auto fit = ri && rt ? *ri <= *rt // a *partial* index peels only its own axes and yields a sub-array
-                        : Checker::alpha<Checker::Check>(index_ty->arity(), arr->rank());
+    auto shape = arr->shape();
+    auto ri    = index.rank();
+    auto rt    = shape.rank();
+    // A *partial* index peels only its own axes and yields a sub-array.
+    auto fit = ri && rt ? *ri <= *rt : Checker::alpha<Checker::Check>(index->arity(), shape->arity());
     if (!fit)
         index
-            ->blame("index `{}` of rank `{}` does not fit shape `{}` of rank `{}`", index, index_ty->arity(),
-                    arr->shape(), arr->rank())
+            ->blame("index `{}` of rank `{}` does not fit shape `{}` of rank `{}`", *index, index->arity(), *shape,
+                    shape->arity())
             .bail();
 
-    return d->world().peel(arr, index);
+    return d->world().peel(arr, *index);
 }
 
 /// Marks a World::Reduct slot while it is being computed: seeing it again means the op requires its own reduction.
@@ -426,114 +413,127 @@ const Def* World::tuple(Sym sym) {
     return tuple(DefVec(sym, [this](char c) { return lit_i8(c); }));
 }
 
-const Def* World::extract(const Def* d, const Def* index) {
-    if (!d || !index) return nullptr; // can happen if frozen
-    d     = d->zonk();
-    index = index->zonk();
+const Def* World::extract(const Def* d, const Def* index_) {
+    if (!d || !index_) return nullptr; // can happen if frozen
+    d = d->zonk();
 
-    auto index_ty = index->unfold_type();
-    // The scalar case is by far the most common one, so probe it first and only fall back to the aggregate check.
-    if (!Idx::isa(index_ty) && !isa_indices(index_ty))
-        index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
+    auto index = check_index(index_->zonk());
+    if (index.is_dim()) return extract1(d, *index);
 
-    // A *scalar* index keeps its `Idx 1` carve-out for mutable 1-tuples; only a multi-dimensional one drops
-    // those components, mirroring the size-1 axes World::seq folds out of `d`'s shape: `d#(i, 0₁, k)` ≡ `d#(i, k)`.
-    if (Idx::isa(index_ty)) return extract1(d, index);
-    index    = fold_index(index);
-    index_ty = index->unfold_type();
-    if (Idx::isa(index_ty)) return extract1(d, index);
+    auto r = index.rank();
+    if (!r) return extract_fused(d, index); // a dynamic rank has no axes to fold one by one
+    if (*r == 0) return d;                  // the index folded away entirely, i.e. `d` is its own only element
 
-    auto r = Lit::isa(index_ty->arity());
-    if (r && *r == 0) return d; // the index folded away entirely, i.e. `d` is its own only element
-
-    // Fold from the left as far as `d` allows; whatever is left stays *fused*, mirroring `«(a, b); T»`.
-    for (nat_t i = 0; r && i != *r; ++i) {
-        auto c    = index->proj(*r, i);
+    // Fold from the left as far as `d` allows; whatever is left stays *fused*, mirroring `«a, b; T»`.
+    for (nat_t i = 0; i != *r; ++i) {
+        auto c    = index[i];
         auto next = extract1(d, c);
-        if (auto ex = next->isa<Extract>(); ex && ex->tuple() == d && ex->index() == c) {
-            index = slice_tuple(index, *r, i, *r);
-            return extract_fused(d, index);
-        }
+        if (auto ex = next->isa<Extract>(); ex && ex->tuple() == d && ex->index() == c)
+            return extract_fused(d, index.drop(i));
         d = next;
     }
-    if (r) return d;
 
-    return extract_fused(d, index);
+    return d;
+}
+
+/// Validates @p index and folds its literal size-1 axes away, mirroring the ones World::seq folds out of a shape:
+/// `d#(i, 0₁, k)` ≡ `d#(i, k)`. A *scalar* index is left alone - its `Idx 1` carve-out for mutable 1-tuples still
+/// applies - and so is a dynamic rank, which has no axes to inspect.
+Shape World::check_index(const Def* index) {
+    auto type = index->unfold_type();
+    if (Idx::isa(type)) return index;
+    if (!Shape::isa_indices(type))
+        index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
+    return Shape(index).fold();
 }
 
 const Def* World::drop(const Seq* s, nat_t k) {
-    auto r = Lit::isa(s->rank());
+    auto shape = s->shape();
+    auto r     = shape.rank();
     if (!r || k > *r || s->has_var()) return nullptr; // a dependent shape needs an index; cf. World::peel
     if (k == *r) return s->body();
     if (is_frozen()) return nullptr; // splitting a fused shape builds the sub-Seq
-    return seq(s->is_intro(), slice_tuple(s->shape(), *r, k, *r), s->body());
+    return seq(s->is_intro(), shape.drop(k), s->body());
 }
 
 const Def* World::peel(const Seq* seq, const Def* index) {
     if (!index) return nullptr; // can happen if frozen
-    auto rank = Lit::isa(seq->rank());
-    auto k    = Lit::isa(index->unfold_type()->arity());
+    auto shape = seq->shape();
+    auto rank  = shape.rank();
+    auto k     = Shape(index).rank();
     if (!rank || !k || *k >= *rank) return seq->reduce(index); // the index covers every axis
-
     if (!seq->has_var()) return drop(seq, *k);
     if (is_frozen()) return nullptr; // splitting a fused shape builds the sub-Seq
 
     // Dependent: the leading axes come from @p index, the trailing ones from the result's own index.
-    auto is_pack = seq->is_intro();
-    auto tail    = slice_tuple(seq->shape(), *rank, *k, *rank);
-    auto rest    = [&](Seq* res) { return seq->reduce(cat_tuple(*k, *rank - *k, index, res->var())); };
-    auto res     = mut_seq(is_pack, is_pack ? arr(tail, seq->body()->unfold_type()) : seq->type());
-    res->Def::set(0, tail);
-    return res->Def::set(1, rest(res))->zonk_mut();
+    return mut_shaped(seq, shape.drop(*k), seq->body()->unfold_type(),
+                      [&](Seq* res) { return seq->reduce(*(Shape(index) + res->var())); });
 }
 
 const Def* World::fuse(Seq* seq) {
+    auto outer = seq->shape();
     auto inner = seq->body() ? seq->body()->zonk()->isa<Seq>() : nullptr;
     auto var   = seq->has_var();
     // A ragged nest - one whose inner extents depend on the outer index - has no fused shape to spell them in.
     if (!inner || inner->node() != seq->node() || (var && inner->shape()->has_free_var(var))) return seq->zonk_mut();
 
-    auto ro    = Lit::isa(seq->rank());
-    auto ri    = Lit::isa(inner->rank());
-    auto shape = cat_shape(seq->shape(), inner->shape());
-    if (!ro || !ri || !shape) return seq->zonk_mut();
+    auto ro    = outer.rank();
+    auto shape = outer + inner->shape();
+    if (!ro || !shape) return seq->zonk_mut();
 
-    // The fused index supplies both levels: its leading @p ro components replace the outer one, the rest the inner.
-    auto is_pack = seq->node() == Node::Pack;
-    auto res     = mut_seq(is_pack, is_pack ? arr(shape, inner->body()->unfold_type()) : seq->type());
-    res->Def::set(0, shape);
-
-    auto n    = *ro + *ri;
-    auto v    = res->var();
-    auto head = tuple(DefVec(*ro, [&](size_t i) { return v->proj(n, i); }));
-    auto tail = tuple(DefVec(*ri, [&](size_t i) { return v->proj(n, *ro + i); }));
-    return res->Def::set(1, seq->reduce(head)->as<Seq>()->reduce(tail))->zonk_mut();
+    // The fused index supplies both levels: its leading `ro` axes replace the outer one, the rest the inner.
+    return mut_shaped(seq, shape, inner->body()->unfold_type(), [&](Seq* res) {
+        auto v = Shape(res->var());
+        return seq->reduce(*v.take(*ro))->as<Seq>()->reduce(*v.drop(*ro));
+    });
 }
 
-const Def* World::type_indices(const Def* shape) {
-    if (is_dim(shape)) return type_idx(shape);
-    if (auto r = Lit::isa(shape->arity())) return sigma(shape->projs(*r, [this](const Def* e) { return type_idx(e); }));
+/// A fresh mutable Seq of @p seq's kind holding @p elem at @p shape, whose body @p rest computes from its own var.
+const Def* World::mut_shaped(const Seq* seq, Shape shape, const Def* elem, std::function<const Def*(Seq*)> rest) {
+    auto is_pack = seq->is_intro();
+    auto res     = mut_seq(is_pack, is_pack ? arr(shape, elem) : seq->type());
+    res->Def::set(0, *shape);
+    return res->Def::set(1, rest(res))->zonk_mut();
+}
+
+const Def* World::type_indices(Shape shape) {
+    if (shape.is_dim()) return type_idx(*shape);
+    if (auto r = shape.rank()) return sigma(shape->projs(*r, [this](const Def* e) { return type_idx(e); }));
 
     // `«i: r; Idx (s#i)»` - a dynamic rank cannot spell out its axes.
     auto res = mut_arr(type())->set_shape(shape->arity());
-    return res->set_body(type_idx(extract(shape, res->var())))->zonk_mut();
+    return res->set_body(type_idx(extract(*shape, res->var())))->zonk_mut();
 }
 
 /// Builds `d#index` for a multi-dimensional @p index that does not fold any further.
-const Def* World::extract_fused(const Def* d, const Def* index) {
-    auto index_ty = index->unfold_type();
-    if (Idx::isa(index_ty)) return extract1(d, index);
+const Def* World::extract_fused(const Def* d, Shape index) {
+    if (index.is_dim()) return extract1(d, *index);
 
     // An index reaching past `d`'s own shape continues through the element type - `«2; [Nat, Bool]»` is rank 1,
     // yet `t#(i, j)` is still `t#i#j`. Split it at the boundary, so each Extract matches the shape it indexes.
-    auto ri = Lit::isa(index_ty->arity());
+    auto ri = index.rank();
     auto rt = own_rank(d->unfold_type());
-    if (ri && rt && *ri > *rt && !is_frozen())
-        return extract(extract_fused(d, slice_tuple(index, *ri, 0, *rt)), slice_tuple(index, *ri, *rt, *ri));
+    if (ri && rt && *ri > *rt && !is_frozen()) return extract(extract_fused(d, index.take(*rt)), *index.drop(*rt));
 
     // `d#is ← val` then `#is` -> `val`; cf. the same rule in World::extract1
-    if (auto insert = d->isa<Insert>(); insert && insert->index() == index) return insert->value();
-    return unify<Extract>(nary_elem_type(d, index, index_ty), d, index);
+    if (auto insert = d->isa<Insert>(); insert && insert->index() == *index) return insert->value();
+    return unify<Extract>(nary_elem_type(d, index), d, *index);
+}
+
+/// Type-checks a *scalar* @p index of `Idx size` against @p type.
+/// @returns `true` if the axis has folded out of @p type - `«1; T»` ≡ `T` - so that `d#index` *is* `d` and
+/// `d#index ← val` replaces all of it.
+bool World::is_folded_axis(const Def* type, const Def* index, const Def* size) {
+    if (Lit::isa(size) == 1) {
+        if (Lit::isa(index) != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
+        // A *mutable* Sigma may be a genuine 1-tuple and still needs a real Extract/Insert; TODO mutable Arr?
+        auto sigma = type->isa_mut<Sigma>();
+        if (!sigma || sigma->num_ops() != 1) return true;
+    }
+
+    if (!Checker::alpha<Checker::Check>(type->arity(), size))
+        index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
+    return false;
 }
 
 const Def* World::extract1(const Def* d, const Def* index) {
@@ -542,18 +542,10 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto lidx     = Lit::isa(index);
     auto type     = d->unfold_type();
 
-    if (auto l = Lit::isa(size); l && *l == 1) {
-        if (!lidx || *lidx != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
-        // A *mutable* Sigma may be a 1-tuple and still needs a real Extract; TODO mutable Arr?
-        auto sigma = type->isa_mut<Sigma>();
-        if (!sigma || sigma->num_ops() != 1) return d;
-    }
-
-    if (!Checker::alpha<Checker::Check>(type->arity(), size))
-        index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
+    if (is_folded_axis(type, index, size)) return d;
 
     if (auto pack = d->isa<Pack>()) {
-        if (pack->is_fused()) return peel(pack, index); // one axis off a fused Pack yields a sub-Pack
+        if (pack->shape().is_fused()) return peel(pack, index); // one axis off a fused Pack yields a sub-Pack
         if (pack->has_var())
             return pack->reduce(index);
         else
@@ -566,14 +558,8 @@ const Def* World::extract1(const Def* d, const Def* index) {
     }
 
     // `(t#is)#j` -> `t#(is, j)`: the maximal-rank Extract into one fused Arr is the normal form.
-    if (auto ex = is_frozen() ? nullptr : d->isa<Extract>()) {
-        auto t = ex->tuple();
-        if (auto arr = t->unfold_type()->isa<Arr>()) {
-            auto ri = Lit::isa(ex->index()->unfold_type()->arity());
-            auto rt = Lit::isa(arr->rank());
-            if (ri && rt && *ri + 1 <= *rt) return extract_fused(t, cat_tuple(*ri, 1, ex->index(), index));
-        }
-    }
+    if (auto ex = is_frozen() ? nullptr : d->isa<Extract>())
+        if (auto is = fused_index(ex->tuple(), ex->index(), index)) return extract_fused(ex->tuple(), is);
 
     if (lidx) {
         // A Hole only tuplefies into a known number of components; a dynamic rank leaves a symbolic Extract.
@@ -613,7 +599,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
                     break;
                 }
                 body = op_arr->body()->zonk();
-                extents.emplace_back(op_arr->shape());
+                extents.emplace_back(*op_arr->shape());
             }
             if (!extents.empty()) elem_t = this->arr(extract(tuple(extents), index), body);
         }
@@ -632,66 +618,44 @@ const Def* World::extract1(const Def* d, const Def* index) {
     return unify<Extract>(elem_t, d, index);
 }
 
-const Def* World::insert(const Def* d, const Def* index, const Def* val) {
-    d     = d->zonk();
-    index = index->zonk();
-    val   = val->zonk();
+const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
+    d   = d->zonk();
+    val = val->zonk();
 
-    auto type = d->unfold_type();
-    auto size = Idx::isa(index->unfold_type());
-    auto lidx = Lit::isa(index);
-
-    // `d#(i, 0₁, k) ← val` ≡ `d#(i, k) ← val`: mirrors the size-1 axis World::seq folds out of `d`'s shape.
-    // A *scalar* index is left alone; cf. World::extract.
-    if (!size) {
-        if (!isa_indices(index->unfold_type()))
-            index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
-        index = fold_index(index);
-        size  = Idx::isa(index->unfold_type());
-        lidx  = Lit::isa(index);
-    }
+    auto type  = d->unfold_type();
+    auto index = check_index(index_->zonk());
 
     // `d#(i, j, k) ← val` stays *fused* unless the outermost write rebuilds an aggregate on the spot.
-    if (!size) {
-        auto index_ty = index->unfold_type();
-        auto r        = Lit::isa(index_ty->arity());
+    if (!index.is_dim()) {
+        auto r = index.rank();
         if (r && *r == 0) return val; // the index folded away entirely, so the write replaces all of `d`
 
         // A write deeper than `d`'s own shape reads down to the boundary and writes the levels back out;
-        // cf. World::extract_fused. So does one the outermost write can rebuild an aggregate for.
+        // cf. World::extract_fused. So does one whose outermost write rebuilds an aggregate.
         auto rt  = own_rank(type);
-        auto cut = r && rt && *r > *rt                                                      ? std::optional<nat_t>(*rt)
-                 : r && insert_rebuilds(d, index->proj(*r, 0), flags().scalarize_threshold) ? std::optional<nat_t>(1)
-                                                                                            : std::nullopt;
+        auto cut = r && rt && *r > *rt                                            ? rt
+                 : r && insert_rebuilds(d, index[0], flags().scalarize_threshold) ? std::optional<nat_t>(1)
+                                                                                  : std::nullopt;
         if (cut) {
-            auto head = slice_tuple(index, *r, 0, *cut);
-            return insert(d, head, insert(extract(d, head), slice_tuple(index, *r, *cut, *r), val));
+            auto head = *index.take(*cut);
+            return insert(d, head, insert(extract(d, head), *index.drop(*cut), val));
         }
 
-        auto new_val = assign_or_bail(nary_elem_type(d, index, index_ty), val);
+        auto new_val = assign_or_bail(nary_elem_type(d, index), val);
 
         // `d#is ← d#is` -> `d` and `(d#is ← y)#is ← val` -> `d#is ← val`; cf. the scalar path below
-        if (auto extract = new_val->isa<Extract>(); extract && extract->tuple() == d && extract->index() == index)
-            return d;
-        if (auto insert = d->isa<Insert>(); insert && insert->index() == index) d = insert->tuple();
-        return unify<Insert>(d, index, new_val);
+        if (auto ex = new_val->isa<Extract>(); ex && ex->tuple() == d && ex->index() == *index) return d;
+        if (auto insert = d->isa<Insert>(); insert && insert->index() == *index) d = insert->tuple();
+        return unify<Insert>(d, *index, new_val);
     }
 
-    if (auto l = Lit::isa(size); l && *l == 1) {
-        if (!lidx || *lidx != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
-        // A size-1 axis folds out of the type, so `d#index` is `d` itself (cf. World::extract) and the insert
-        // replaces all of it. A *mutable* Sigma may be a genuine 1-tuple and is handled below.
-        auto sigma = type->isa_mut<Sigma>();
-        if (!sigma || sigma->num_ops() != 1) return val;
-    }
+    auto size = Idx::isa(index->unfold_type());
+    auto lidx = Lit::isa(*index);
 
-    if (!Checker::alpha<Checker::Check>(type->arity(), size))
-        index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
-
+    if (is_folded_axis(type, *index, size)) return val;
     if (lidx) val = assign_or_bail(type->proj(*lidx), val);
-
-    if (auto l = Lit::isa(size); l && *l == 1)
-        return tuple(d, {val}); // a mutable 1-tuple: d could be mut - that's why the tuple ctor is needed
+    // The only `Idx 1` left is a mutable 1-tuple; d could be mut - that's why the tuple ctor is needed.
+    if (Lit::isa(size) == 1) return tuple(d, {val});
 
     // insert((a, b, c, d), 2, x) -> (a, b, x, d)
     if (auto t = d->isa<Tuple>(); t && lidx) {
@@ -712,51 +676,46 @@ const Def* World::insert(const Def* d, const Def* index, const Def* val) {
     // `d#i ← (d#i)#js ← val` -> `d#(i, js) ← val`: the dual of the Extract fusion in World::extract1, and what
     // keeps the read-modify-write chain a *single* write. The aggregate-rebuilding rules above win over it.
     if (auto inner = is_frozen() ? nullptr : val->isa<Insert>())
-        if (auto ex = inner->tuple()->isa<Extract>(); ex && ex->tuple() == d && ex->index() == index)
-            if (auto arr = type->isa<Arr>()) {
-                auto rj = Lit::isa(inner->index()->unfold_type()->arity());
-                auto rt = Lit::isa(arr->rank());
-                if (rj && rt && 1 + *rj <= *rt)
-                    return insert(d, cat_tuple(1, *rj, index, inner->index()), inner->value());
-            }
+        if (auto ex = inner->tuple()->isa<Extract>(); ex && ex->tuple() == d && ex->index() == *index)
+            if (auto is = fused_index(d, *index, inner->index())) return insert(d, *is, inner->value());
 
     // insert(d, index, d#index) -> d
-    if (auto extract = val->isa<Extract>())
-        if (extract->tuple() == d && extract->index() == index) return d;
+    if (auto ex = val->isa<Extract>())
+        if (ex->tuple() == d && ex->index() == *index) return d;
 
     // insert(insert(x, index, y), index, val) -> insert(x, index, val)
     if (auto insert = d->isa<Insert>()) {
-        if (insert->index() == index) d = insert->tuple();
+        if (insert->index() == *index) d = insert->tuple();
     }
 
-    return unify<Insert>(d, index, val);
+    return unify<Insert>(d, *index, val);
 }
 
-const Def* World::seq(bool is_pack, const Def* shape, const Def* body) {
-    shape = shape->zonk();
-    body  = body->zonk();
+const Def* World::seq(bool is_pack, Shape shape_, const Def* body) {
+    auto shape = Shape(shape_->zonk());
+    body       = body->zonk();
 
     auto shape_ty = shape->unfold_type();
-    if (!is_shape(shape_ty)) shape->blame("expected shape but got `{}` of type `{}`", shape, shape_ty).bail();
+    if (!Shape::isa_extents(shape_ty))
+        shape->blame("expected shape but got `{}` of type `{}`", *shape, shape_ty).bail();
 
     // `«1; T»` ≡ `T`, mirroring `[T]` ≡ `T`, so a literal size-1 axis folds out of the shape.
-    shape  = fold_shape(shape);
-    auto r = Lit::isa(shape->arity());
+    shape  = shape.fold();
+    auto r = shape.rank();
     if (r) {
         if (*r == 0) return body;
-        // A literal-`0` extent empties everything below it: `«(2, 0, 3); T»` is `«2; []»`, not `[]`.
-        for (size_t i = 0; i != *r; ++i)
-            if (auto e = Lit::isa(shape->proj(*r, i)); e && *e == 0)
-                return seq(is_pack, slice_tuple(shape, *r, 0, i), unit(is_pack));
+        // A literal-`0` extent empties everything below it: `«2, 0, 3; T»` is `«2; []»`, not `[]`.
+        for (nat_t i = 0; i != *r; ++i)
+            if (Shape::extent(shape[i]) == 0) return seq(is_pack, shape.take(i), unit(is_pack));
     }
 
-    // `«a; «b; T»»` ≡ `«(a, b); T»` - the very compression that already makes `«3; T»` out of `[T, T, T]`,
+    // `«a; «b; T»»` ≡ `«a, b; T»` - the very compression that already makes `«3; T»` out of `[T, T, T]`,
     // one level up. A *mutable* body binds an index the fused shape could not express, so it stops fusion.
     if (auto inner = body->isa_imm<Seq>(); inner && inner->is_intro() == is_pack)
-        if (auto fused = cat_shape(shape, inner->shape())) return seq(is_pack, fused, inner->body());
+        if (auto fused = shape + inner->shape()) return seq(is_pack, fused, inner->body());
 
-    if (is_pack) return unify<Pack>(arr(shape, body->unfold_type()), shape, body);
-    return unify<Arr>(body->unfold_type(), shape, body);
+    if (is_pack) return unify<Pack>(arr(shape, body->unfold_type()), *shape, body);
+    return unify<Arr>(body->unfold_type(), *shape, body);
 }
 
 const Def* World::seq(bool is_pack, Defs shape, const Def* body) {
