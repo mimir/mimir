@@ -293,7 +293,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
                 if (lam->filter() == lit_tt()) return lam->body();
             } else if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) {
                 // Reuse the cached reduct if its filter held.
-                auto [filter, body] = i->second->defs<2>();
+                auto [filter, body] = i->second->ops<2>();
                 if (filter == lit_tt()) return body;
             } else {
                 // Evaluate the filter; if it holds, reduce the body and cache the reduct.
@@ -789,14 +789,14 @@ Defs World::reduce(const Var* var, const Def* arg) {
     auto reduct = this->reduct(var, arg, n);
     auto rw     = VarRewriter(var, arg); // one rewriter for all slots: they share their sub-rewrites
     for (size_t i = 0; i != n; ++i) {
-        auto& slot = reduct->slot(i);
+        auto& slot = reduct->ops()[i];
         if (slot) continue;
         assert(slot != Filling && "op requires its own reduction");
         slot = Filling;
         slot = rw.rewrite(mut->op(i + off));
     }
 
-    return reduct->defs();
+    return reduct->ops();
 }
 
 const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
@@ -805,7 +805,7 @@ const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
     if (var == arg) return mut->op(i + off); // `[var -> var]` is the identity
 
     auto reduct = this->reduct(var, arg, mut->num_ops() - off);
-    auto& slot  = reduct->slot(i);
+    auto& slot  = reduct->ops()[i];
     assert(slot != Filling && "op requires its own reduction");
     if (!slot) {
         slot = Filling;

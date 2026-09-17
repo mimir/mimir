@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -860,19 +861,15 @@ private:
     public:
         using VLA_Types = std::tuple<const Def*>;
 
-        template<size_t N = std::dynamic_extent>
-        auto defs() const noexcept {
-            return vla<0>().template span<N>();
-        }
-
-        /// Slot @p i; `nullptr` until World::reduce fills it.
-        /// Mutable through a `const Reduct*`: the slots *are* the cache.
-        const Def*& slot(size_t i) const noexcept { return const_cast<const Def**>(defs().data())[i]; }
+        // clang-format off
+        template<size_t N = std::dynamic_extent> auto ops() const noexcept { return vla<0, N>(); }
+        template<size_t N = std::dynamic_extent> auto ops()       noexcept { return vla<0, N>(); }
+        // clang-format on
     };
 
     /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
     /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
-    const Reduct* reduct(const Var* var, const Def* arg, size_t n) {
+    Reduct* reduct(const Var* var, const Def* arg, size_t n) {
         if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second;
         auto reduct = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
         fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
@@ -880,11 +877,10 @@ private:
     }
 
     /// Caches `[var -> arg]` as @p defs that have already been computed.
-    const Reduct* cache_reduct(const Var* var, const Def* arg, Defs defs) {
+    void cache_reduct(const Var* var, const Def* arg, Defs defs) {
         auto reduct = this->reduct(var, arg, defs.size());
         for (size_t i = 0, e = defs.size(); i != e; ++i)
-            reduct->slot(i) = defs[i];
-        return reduct;
+            reduct->ops()[i] = defs[i];
     }
 
     struct Move {
@@ -900,7 +896,7 @@ private:
         absl::flat_hash_set<const Def*, SeaHash, SeaEq> sea;
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
-        absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
+        absl::flat_hash_map<std::pair<const Var*, const Def*>, Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;
