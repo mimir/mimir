@@ -651,6 +651,70 @@ rec S = [i: Nat, j: Nat];
 lam f (x: S): Nat = x#(i);
 ```
 
+## Normalizations {#normalization}
+
+Mim nodes are hash-consed and normalized while they are built, so the left-hand sides below never reach the IR - `mim --output-mim` prints the right-hand side.
+Every argument is [zonked](@ref mim::Zonker) first, so a resolved `Hole` normalizes like the term it stands for.
+A *mutable* node is built empty and filled in afterwards and is therefore never normalized; only its body is.
+While the `World` is frozen, a rule that would have to build a new node bails out instead.
+
+### Aggregates
+
+- `(e)` -> `e`, `[T]` -> `T` - a one-element aggregate degrades to its element; the sole exception is a [dependent tuple type](@ref mutsigma) of one component
+- `(e, e, e)` -> `‹3; e›`, `[T, T, T]` -> `«3; T»` - uniform elements compress into a pack/array
+- `(t#0, t#1, t#2)` -> `t` - η for tuples, provided `t` has the ascribed type
+- `⊥:[T, U]` -> `(⊥:T, ⊥:U)`, `⊥:«n; T»` -> `‹n; ⊥:T›` - `⊥`/`⊤` are pushed into aggregates
+
+### Shapes
+
+- `«1; T»` -> `T` - a literal size-1 axis folds out of a shape
+- `«2, 0, 3; T»` -> `«2; []»` - a literal `0` extent empties everything below it
+- `«a; «b; T»»` -> `«a, b; T»` - a nest of the same kind fuses into one shape, unless the inner extents depend on the outer index
+
+### Extract
+
+- `d#(i, 0₁, k)` -> `d#(i, k)` - a literal size-1 axis folds out of an index, mirroring the shape rule
+- `d#i` -> `d` if `i: Idx 1` and `d` is not a dependent tuple type of one component
+- `d#()` -> `d` - an index that folded away entirely
+- `‹i: n; e›#j` -> `[i ↦ j]e`, `(a, b, c)#1` -> `b`
+- `t#i#j` -> `t#(i, j)` - the maximal-rank fused Extract is the normal form, as far as `t`'s own shape reaches
+- `t#(i, j)` -> `t#i#j` - conversely, for an index reaching past `t`'s own shape into its element type
+- `(d#i ← v)#i` -> `v`
+- `(d#j ← v)#i` -> `d#i` for literal `i ≠ j`
+
+### Insert
+
+- `d#() ← v` -> `v`, and likewise for an index of `Idx 1` - the write replaces all of `d`
+- `(a, b, c)#1 ← x` -> `(a, x, c)`
+- `‹4; x›#2 ← y` -> `(x, x, y, x)` - only for a literal arity below `--scalarize-threshold`
+- `d#(i, j) ← v` -> `d#i ← ((d#i)#j ← v)` - if the outer write rebuilds an aggregate by the two rules above, or if the index reaches past `d`'s own shape
+- `d#i ← ((d#i)#j ← v)` -> `d#(i, j) ← v` - otherwise, the dual of Extract fusion: a read-modify-write chain stays a *single* write
+- `d#i ← d#i` -> `d`
+- `(d#i ← y)#i ← v` -> `d#i ← v`
+
+### Application
+
+- `(λ (_: T) = e) a` -> `e` - an immutable `λ` binds no var, so it always β-reduces
+- `f x` -> body of `f` if `x` is `f`'s own var - substituting a var by itself is the identity
+- `f x` -> `[var ↦ x]`body of `f` if `f`'s [filter](@ref decl) evaluates to `tt` for `x`; nothing is reduced if the filter is `ff`
+- an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
+- an application of a `[T: *] → e` with implicit domains inserts a `Hole` per implicit argument
+
+### Lattices
+
+- `T ∪ ⊥` -> `T`, `T ∩ ⊤` -> `T` - the unit of a join/meet is dropped
+- `T ∪ ⊤` -> `⊤`, `T ∩ ⊥` -> `⊥`
+- `A ∪ A` -> `A`; the operands are sorted, so `∪`/`∩` are commutative, associative, and idempotent
+- an empty join is `⊥`, an empty meet is `⊤`, and a one-element one is its operand
+- `x inj T` -> `x` if `T` is not a union type
+- `match (T inj x) with ...` -> the arm whose domain is `T` - a constructor fixes the active case
+- the arms of a `match` are sorted by their domain
+
+### Universes
+
+- `Type` levels: `l + 1` folds for a literal `l`, and a `UMax` flattens nested maxima, folds their literals into one, and sorts and deduplicates the rest
+- the var of a mutable whose var type is `Idx 1` -> `0₁`, and one whose var type is `[]` -> `()`
+
 <div class="section_buttons">
 
 | Previous |     Next |
