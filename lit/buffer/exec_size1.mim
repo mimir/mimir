@@ -28,8 +28,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let a = (7I32, 8I32, 9I32);
     let b = ((10I32, 20I32, 30I32), (4I32, 5I32, 6I32));
     con done1 (p: «5; I32») =
-        con done2 (c: «3, 3; I32») =
-            return (m, c#(1₃, 2₃) + p#1₅+ p#0₅);
+        con done2 (c: «3, 3; I32») = return (m, c#(1₃, 2₃) + p#1₅ + p#0₅);
         cat_one ((a, b), done2);
     pad_one (a, done1);
 

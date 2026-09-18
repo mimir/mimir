@@ -15,7 +15,9 @@ plugin buffer;
 plugin cps;
 plugin btensor;
 
-fun add (x: I32, y: «1; I32»)@tt = return (core.wrap.add 0 (x, y#0₁));
+use core.ops.u.w;
+
+fun add (x: I32, y: «1; I32»)@tt = return (x + y#0₁);
 lam mo (i _ _: affine.Index): «1; affine.Index» = i;
 lam mi (i j k: affine.Index): «3; affine.Index» = (i, j, k);
 

@@ -15,8 +15,7 @@ plugin compile;
 
 extern fun f (input: «3, 4; I32»): «3, 4; I32» =
     let input = tensor.buf input;
-    let v     = input#(1₃, 2₄);
-    return (input#(0₃, 0₄) ← v);
+    return (input#(0₃, 0₄) ← input#(1₃, 2₄));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

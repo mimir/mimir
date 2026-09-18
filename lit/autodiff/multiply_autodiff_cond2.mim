@@ -7,7 +7,6 @@ plugin mem;
 
 use core.ops.s.w;
 
-
 fun f(a: I32): I32 =
     let cmp = a <= 5I32;
     (twice, thrice)#cmp ()
@@ -19,10 +18,8 @@ fun f(a: I32): I32 =
     end;
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
-    let f_diff      = autodiff.ad f;
-    let f_diff_cast = f_diff;
-    let c           = 7I32; // 42
-    f_diff_cast (c, ret_cont)
+    let f_diff = autodiff.ad f;
+    f_diff (7I32, ret_cont) // 42
     where
         con ret_cont (r: I32, pb: Fn I32 → I32) =
             pb(1I32, pb_ret_cont)
