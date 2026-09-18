@@ -6,4 +6,4 @@ plugin refly;
 // `r` is 2, `s` is `(2, 3)` and `T` is `Nat`. Under the old nested form `«2; «3; Nat»»` matched at every
 // depth while `T` was unknown, and the call site had to supply `{r, s}` with `@`.
 lam rank {r: Nat, s: «r; Nat», T: *} (i: «s; T»): Nat = r;
-lam f (a: «2, 3; Nat»): Nat = refly.equiv.struc_eq (rank a, 2);
+lam f (a: «2, 3; Nat»): Nat = refly.struc.e (rank a, 2);

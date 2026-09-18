@@ -7,8 +7,8 @@ plugin refly;
 // Companion to lit_float.mim for the 16-bit path; only run where std::float16_t is available.
 // A decimal literal must be encoded with the bit width of its annotated math.F16 type.
 
-let _ = refly.equiv.struc_eq (1.0:(math.F16), 15360:(math.F16));
-let _ = refly.equiv.struc_eq (0.5:(math.F16), 14336:(math.F16));
+let _ = refly.struc.e (1.0:(math.F16), 15360:(math.F16));
+let _ = refly.struc.e (0.5:(math.F16), 14336:(math.F16));
 
 // LLVM-DAG: ret half 0xH3c00
 extern con f16_one(return: Cn math.F16) = return 1.0:(math.F16);

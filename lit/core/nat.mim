@@ -3,4 +3,4 @@
 plugin core;
 plugin refly;
 
-lam f (a b: Nat): Nat = refly.equiv.struc_eq (core.nat.add (b, 0), b);
+lam f (a b: Nat): Nat = refly.struc.e (core.nat.add (b, 0), b);

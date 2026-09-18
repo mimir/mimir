@@ -11,25 +11,25 @@ let outer = (inner, inner);
 rec Pair  = [fst: I32, snd: I32];
 rec Pairs = [a: Pair, b: Pair];
 
-let _ = refly.equiv.struc_eq (inner#0_2 ← 7I32, (7I32, 2I32));
-let _ = refly.equiv.struc_eq (inner#0_2 <- 7I32, (7I32, 2I32));                 // the ASCII spelling of `←`
-let _ = refly.equiv.struc_eq (outer#0_2 ← inner#1_2 ← 9I32,                     // right associative
+let _ = refly.struc.e (inner#0_2 ← 7I32, (7I32, 2I32));
+let _ = refly.struc.e (inner#0_2 <- 7I32, (7I32, 2I32));                 // the ASCII spelling of `←`
+let _ = refly.struc.e (outer#0_2 ← inner#1_2 ← 9I32,                     // right associative
                               ((1I32, 9I32), (1I32, 2I32)));
-let _ = refly.equiv.struc_eq (inner#0_2 ← 2I32 + 5I32, (7I32, 2I32));           // binds weaker than `+`
+let _ = refly.struc.e (inner#0_2 ← 2I32 + 5I32, (7I32, 2I32));           // binds weaker than `+`
 
 // a named sigma field, and a path of them
-lam e (p: Pair): Pair   = refly.equiv.struc_eq (p#snd ← 8I32, p#1_2 ← 8I32);
-lam f (p: Pairs): Pairs = refly.equiv.struc_eq (p#b#snd ← 8I32, p#(1_2, 1_2) ← 8I32);
+lam e (p: Pair): Pair   = refly.struc.e (p#snd ← 8I32, p#1_2 ← 8I32);
+lam f (p: Pairs): Pairs = refly.struc.e (p#b#snd ← 8I32, p#(1_2, 1_2) ← 8I32);
 
 // parens cut the path short
 lam g (p: Pairs): Pair =
     let q = p#b;
-    refly.equiv.struc_eq ((p#b)#snd ← 8I32, q#1_2 ← 8I32);
+    refly.struc.e ((p#b)#snd ← 8I32, q#1_2 ← 8I32);
 
 let t1 = ((1, 2), (3, 4, 5));
 let t2 = t1#1_2#0_3 ← 23;
 
 let row = t1#1_2;
-let _ = refly.equiv.struc_eq (t2, t1#1_2 ← row#0_3 ← 23);       // a path is exactly this chain
-let _ = refly.equiv.struc_eq (t2, ((1, 2), (23, 4, 5)));
-let _ = refly.equiv.struc_eq ((t1#1_2)#0_3 ← 23, (23, 4, 5));   // parens denote the inner aggregate
+let _ = refly.struc.e (t2, t1#1_2 ← row#0_3 ← 23);       // a path is exactly this chain
+let _ = refly.struc.e (t2, ((1, 2), (23, 4, 5)));
+let _ = refly.struc.e ((t1#1_2)#0_3 ← 23, (23, 4, 5));   // parens denote the inner aggregate

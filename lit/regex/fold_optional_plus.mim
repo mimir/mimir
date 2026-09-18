@@ -3,4 +3,4 @@
 plugin regex;
 plugin refly;
 
-let _ = refly.equiv.struc_eq (regex.quant.optional (regex.quant.plus regex.cls.d), regex.quant.star regex.cls.d);
+let _ = refly.struc.e (regex.quant.optional (regex.quant.plus regex.cls.d), regex.quant.star regex.cls.d);

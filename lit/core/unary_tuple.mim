@@ -5,4 +5,4 @@ plugin refly;
 
 lam g (n: Nat, i: Idx n, t: «n; [I32, I32]»): I32 = t#i#(tt);
 
-let _ = refly.equiv.struc_eq (g (1, 0_1, ((42I32, 43I32))), 43I32);
+let _ = refly.struc.e (g (1, 0_1, ((42I32, 43I32))), 43I32);

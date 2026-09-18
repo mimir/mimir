@@ -6,9 +6,9 @@ plugin refly;
 use math.ops.fast;
 
 // `f - 0` folds, `0 - f` must not
-lam minus (f: math.F32): math.F32 = refly.equiv.struc_ne (math.minus math.mode.fast f, f);
-lam sub0  (f: math.F32): math.F32 = refly.equiv.struc_eq (f - 0:(math.F32), f);
-lam add0  (f: math.F32): math.F32 = refly.equiv.struc_eq (f + 0:(math.F32), f);
-lam add0f (f: math.F32): math.F32 = refly.equiv.struc_eq (0:(math.F32) + f, f);
-lam mul0  (f: math.F32): math.F32 = refly.equiv.struc_eq (f * 0:(math.F32), 0:(math.F32));
-lam mul0f (f: math.F32): math.F32 = refly.equiv.struc_eq (0:(math.F32) * f, 0:(math.F32));
+lam minus (f: math.F32): math.F32 = refly.struc.ne (math.minus math.mode.fast f, f);
+lam sub0  (f: math.F32): math.F32 = refly.struc.e (f - 0:(math.F32), f);
+lam add0  (f: math.F32): math.F32 = refly.struc.e (f + 0:(math.F32), f);
+lam add0f (f: math.F32): math.F32 = refly.struc.e (0:(math.F32) + f, f);
+lam mul0  (f: math.F32): math.F32 = refly.struc.e (f * 0:(math.F32), 0:(math.F32));
+lam mul0f (f: math.F32): math.F32 = refly.struc.e (0:(math.F32) * f, 0:(math.F32));

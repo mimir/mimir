@@ -16,11 +16,11 @@ mod foo {
     }
 }
 
-let _ = refly.equiv.struc_eq (foo.bar + foo.nested.baz,        3I32);
-let _ = refly.equiv.struc_eq (lib.answer + l2.inner.deep,     65I32);
-let _ = refly.equiv.struc_eq (l2.inner.deeper.deepest,         7I32);
-let _ = refly.equiv.struc_eq (lib2.base + lib2.util.deep.leaf, 109I32);
-let _ = refly.equiv.struc_eq (lib2.total + lib2.util.scale,    45I32);
+let _ = refly.struc.e (foo.bar + foo.nested.baz,        3I32);
+let _ = refly.struc.e (lib.answer + l2.inner.deep,     65I32);
+let _ = refly.struc.e (l2.inner.deeper.deepest,         7I32);
+let _ = refly.struc.e (lib2.base + lib2.util.deep.leaf, 109I32);
+let _ = refly.struc.e (lib2.total + lib2.util.scale,    45I32);
 
 // A `/` in the directive stays a `/` when dumped - a native Windows `\` would not re-parse.
 // CHECK-DAG: import "{{.*}}/mod/sub/lib2.mim";

@@ -18,23 +18,23 @@ let g2 = m0#(1₂, 0₂);
 let g4 = m2#(1₂, 0₂);
 let g5 = g4#(1₂, 2₃);
 let g6 = m2#(1₂, 0₂, 1₂, 2₃);
-let _ = refly.equiv.struc_eq (g5, g6);
+let _ = refly.struc.e (g5, g6);
 
 let s2 = m0#(1₂, 0₂) ← 12;
 let s3 = m1#(1₂, 2₃) ← 24;
 
 let sg2 = s2#(1₂, 0₂);
 let sg3 = s3#(1₂, 2₃);
-let _ = refly.equiv.struc_eq (sg2, 12);
-let _ = refly.equiv.struc_eq (sg3, 24);
+let _ = refly.struc.e (sg2, 12);
+let _ = refly.struc.e (sg3, 24);
 
 let gs2 = m0#(1₂, 0₂) ← g2;
-let _ = refly.equiv.struc_eq (gs2, m0);
+let _ = refly.struc.e (gs2, m0);
 
 let s4 = g4#(1₂, 2₃) ← 42;
 let s5 = m2#(1₂, 0₂) ← s4;
 let s6 = m2#(1₂, 0₂, 1₂, 2₃) ← 42;
-let _ = refly.equiv.struc_eq (s5, s6);
+let _ = refly.struc.e (s5, s6);
 
 fun f1 (n m: Nat): Nat = return m;
 
@@ -59,39 +59,39 @@ let s1 = (m, k);
 let s2 = (k, l);
 
 let bs = ‹i: nb; s1#(b#i)›;
-let _ = refly.equiv.struc_eq (bs, ());
+let _ = refly.struc.e (bs, ());
 
 let bc_1     = vec.cat (b, c1);
-let _ = refly.equiv.struc_eq (bc_1, 1₂);
+let _ = refly.struc.e (bc_1, 1₂);
 
 let s1_res   = vec.diff (s1, bc_1);
-let _ = refly.equiv.struc_eq (s1_res, m);
+let _ = refly.struc.e (s1_res, m);
 
 let n_s1_res = vec.len s1_res;
-let _ = refly.equiv.struc_eq (n_s1_res, 1);
+let _ = refly.struc.e (n_s1_res, 1);
 
 let bc_2     = vec.cat (b, c2);
-let _ = refly.equiv.struc_eq (bc_2, 0₂);
+let _ = refly.struc.e (bc_2, 0₂);
 
 let s2_res   = vec.diff (s2, bc_2);
-let _ = refly.equiv.struc_eq (s2_res, l);
+let _ = refly.struc.e (s2_res, l);
 
 let n_s2_res = vec.len s1_res;
-let _ = refly.equiv.struc_eq (n_s2_res, 1);
+let _ = refly.struc.e (n_s2_res, 1);
 
 let s12_res  = vec.cat (s1_res, s2_res);
-let _ = refly.equiv.struc_eq (s12_res, (m, l));
+let _ = refly.struc.e (s12_res, (m, l));
 
 let s_out    = vec.cat (bs, s12_res);
-let _ = refly.equiv.struc_eq (s_out, (m, l));
+let _ = refly.struc.e (s_out, (m, l));
 
 let f        = dot_general_fun R;
 let r_out    = vec.len s_out;
 
 let a1       = vec.diff (‹i: r; i›, bc_1);
 let a2       = vec.diff (‹i: r; i›, bc_2);
-let _ = refly.equiv.struc_eq (a1, 0₂);
-let _ = refly.equiv.struc_eq (a2, 1₂);
+let _ = refly.struc.e (a1, 0₂);
+let _ = refly.struc.e (a2, 1₂);
 
 let subs_1    = ‹i: r; dot_general_pick (a1, b, c1) (0, r_out) i›;
 let subs_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
@@ -99,11 +99,11 @@ let subs_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
 let a_opt = vec.first core.icmp.e (a2, 1₂);
 let b_opt = vec.first core.icmp.e (b,  1₂);
 let c_opt = vec.first core.icmp.e (c2, 1₂);
-let _ = refly.equiv.struc_eq (a_opt, option.some 0₁);
-let _ = refly.equiv.struc_eq (b_opt, option.none (Idx 0));
-let _ = refly.equiv.struc_eq (c_opt, option.none (Idx 1));
+let _ = refly.struc.e (a_opt, option.some 0₁);
+let _ = refly.struc.e (b_opt, option.none (Idx 0));
+let _ = refly.struc.e (c_opt, option.none (Idx 1));
 
-let _ = refly.equiv.struc_eq (subs_2, (2, 1));
+let _ = refly.struc.e (subs_2, (2, 1));
 
 // The matrix product built from the pieces verified above, as tensor.dot_product_impl builds it.
 let s_red   = ‹i: nc; s1#(c1#i)›;
@@ -115,13 +115,13 @@ let dot = tensor.map_reduce (s_out, s_full) (f, 0)
 
 // Identity shape ops normalize away to their input (m1 : «2, 3; Nat»).
 // A reshape to the same shape is the identity.
-let _ = refly.equiv.struc_eq (tensor.reshape (2, 3) (2, 3) m1, m1);
+let _ = refly.struc.e (tensor.reshape (2, 3) (2, 3) m1, m1);
 // A repeat to the same shape is the identity.
-let _ = refly.equiv.struc_eq (tensor.repeat (2, 3) (2, 3) m1, m1);
+let _ = refly.struc.e (tensor.repeat (2, 3) (2, 3) m1, m1);
 // A slice that starts at 0 with unit step and keeps the full extent is the identity.
-let _ = refly.equiv.struc_eq (tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1, m1);
+let _ = refly.struc.e (tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1, m1);
 // A pad with lo == hi == 0 on every axis is the identity (the fill value is irrelevant).
-let _ = refly.equiv.struc_eq (tensor.pad (2, 3) (0, (0, 0), (0, 0)) (m1, 0), m1);
+let _ = refly.struc.e (tensor.pad (2, 3) (0, (0, 0), (0, 0)) (m1, 0), m1);
 
 // Reading *through* a broadcast / repeat is `tensor.lower_tensor`'s job; see read_through.mim.
 

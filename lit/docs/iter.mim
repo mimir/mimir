@@ -18,4 +18,4 @@ lam succ (x: Nat): Nat = x + 1;
 lam add  (x: Nat) (y: Nat): Nat = iter succ (x, y);
 lam mul  (x: Nat) (y: Nat): Nat = iter (add x) (y, 0);
 lam pow  (x: Nat) (y: Nat): Nat = iter (mul x) (y, 1);
-let _ = refly.equiv.struc_eq (pow 3 5, 243);
+let _ = refly.struc.e (pow 3 5, 243);

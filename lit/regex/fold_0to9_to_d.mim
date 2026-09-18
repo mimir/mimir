@@ -3,7 +3,7 @@
 plugin regex;
 plugin refly;
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (regex.disj (regex.lit 49I8, regex.cls.d, regex.cls.d, regex.lit 48I8, regex.lit 50I8, regex.lit 51I8,
                  regex.lit 52I8, regex.lit 53I8, regex.lit 54I8, regex.lit 55I8, regex.lit 56I8, regex.lit 57I8),
      regex.cls.d);

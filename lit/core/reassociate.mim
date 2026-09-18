@@ -8,4 +8,4 @@ use core.ops.u.w;
 lam add (w: I32): I32 =
     let xy = 23I32;
     let z  = 42I32;
-    refly.equiv.struc_eq (xy + (z + w), 65I32 + w);
+    refly.struc.e (xy + (z + w), 65I32 + w);

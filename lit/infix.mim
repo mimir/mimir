@@ -17,7 +17,7 @@ let `>= = core.ncmp.ge;
 
 lam id (n: Nat): Nat = n;
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (( 2 + 3 * 4                 // 14: `*` binds tighter than `+`
      , (2 + 3) * 4               // 20
      , 10 - 2 - 3                //  5: left associative
@@ -27,7 +27,7 @@ let _ = refly.equiv.struc_eq
      ),
      (14, 20, 5, 2, 12, 3));
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (( 1 + 1 == 2                // tt: `+` binds tighter than `==`
      , 2 * 3 != 6                // ff
      , `== (3, 3)                // tt: the escape hatch
@@ -39,7 +39,7 @@ let _ = refly.equiv.struc_eq
      ),
      (tt, ff, tt, tt, tt, tt, tt, ff));
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (( 1I32 << 3I32              //  8
      , 1I32 << 1I32 + 2I32       //  4: `<<` binds tighter than `+`
      , 32I32 >> 1I32 >> 2I32     //  4: left associative
@@ -52,7 +52,7 @@ let _ = refly.equiv.struc_eq
      end,
      (8I32, 4I32, 4I32, 2I32));
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (( 1I32 << 2I32 < 5I32       // tt: `<<` binds tighter than `<`
      , 1I32 < 2I32 == tt         // tt: `<` binds tighter than `==`
      )

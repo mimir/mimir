@@ -3,6 +3,6 @@
 plugin regex;
 plugin refly;
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (regex.disj (regex.range ('4', '5'), regex.range ('0', '2'), regex.range ('1', '6'), regex.range ('7', '8'), regex.lit '9'),
      regex.cls.d);

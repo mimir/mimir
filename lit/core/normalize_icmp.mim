@@ -3,4 +3,4 @@
 plugin core;
 plugin refly;
 
-let _ = refly.equiv.struc_eq (core.icmp.e (core.icmp.uge (tt, ff), core.icmp.ug (tt, ff)), tt);
+let _ = refly.struc.e (core.icmp.e (core.icmp.uge (tt, ff), core.icmp.ug (tt, ff)), tt);

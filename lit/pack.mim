@@ -5,8 +5,8 @@ plugin refly;
 
 use core.ops.n;
 
-let _ = refly.equiv.struc_eq (‹i: 3; 1 + core.bitcast Nat i›, (1, 2, 3));
-let _ = refly.equiv.struc_eq (‹i: 2; i›, (0₂, 1₂));
-let _ = refly.equiv.struc_eq (‹i: 1; i›, 0₁);
-let _ = refly.equiv.struc_eq (‹i: 0; i›, ());
-let _ = refly.equiv.struc_eq (‹‹3; 5›; 42›, ‹5; ‹5; ‹5; 42›››);
+let _ = refly.struc.e (‹i: 3; 1 + core.bitcast Nat i›, (1, 2, 3));
+let _ = refly.struc.e (‹i: 2; i›, (0₂, 1₂));
+let _ = refly.struc.e (‹i: 1; i›, 0₁);
+let _ = refly.struc.e (‹i: 0; i›, ());
+let _ = refly.struc.e (‹‹3; 5›; 42›, ‹5; ‹5; ‹5; 42›››);

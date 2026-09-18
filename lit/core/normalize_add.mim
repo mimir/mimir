@@ -5,6 +5,6 @@ plugin refly;
 
 use core.ops.u.w;
 
-lam add0 (i: I8): I8 = refly.equiv.struc_eq (i + 0I8, i);
+lam add0 (i: I8): I8 = refly.struc.e (i + 0I8, i);
 
-let _ = refly.equiv.struc_eq (6I8 + 0I8, 6I8);
+let _ = refly.struc.e (6I8 + 0I8, 6I8);

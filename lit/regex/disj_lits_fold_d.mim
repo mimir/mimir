@@ -3,4 +3,4 @@
 plugin regex;
 plugin refly;
 
-let _ = refly.equiv.struc_eq (regex.disj (regex.cls.d, regex.lit '0', regex.lit '5', regex.lit '9'), regex.cls.d);
+let _ = refly.struc.e (regex.disj (regex.cls.d, regex.lit '0', regex.lit '5', regex.lit '9'), regex.cls.d);

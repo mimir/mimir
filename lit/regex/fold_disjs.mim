@@ -3,6 +3,6 @@
 plugin regex;
 plugin refly;
 
-let _ = refly.equiv.struc_eq
+let _ = refly.struc.e
     (regex.conj (regex.disj (regex.cls.d, regex.cls.D), regex.disj (regex.cls.w, regex.cls.W), regex.disj (regex.cls.s, regex.cls.S)),
      regex.conj (regex.any, regex.any, regex.any));

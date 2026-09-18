@@ -3,4 +3,4 @@
 plugin core;
 plugin refly;
 
-let _ = refly.equiv.struc_eq (core.bit2.and_ 0 (ff, tt), ff);
+let _ = refly.struc.e (core.bit2.and_ 0 (ff, tt), ff);

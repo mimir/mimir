@@ -3,10 +3,10 @@
 plugin core;
 plugin refly;
 
-lam a (x: Idx 23): Bool = refly.equiv.struc_eq (core.icmp.e   (x, x), tt);
-lam b (x: Idx 23): Bool = refly.equiv.struc_eq (core.icmp.ule (x, x), tt);
-lam d (x: Idx 23): Bool = refly.equiv.struc_eq (core.icmp.ne  (x, x), ff);
+lam a (x: Idx 23): Bool = refly.struc.e (core.icmp.e   (x, x), tt);
+lam b (x: Idx 23): Bool = refly.struc.e (core.icmp.ule (x, x), tt);
+lam d (x: Idx 23): Bool = refly.struc.e (core.icmp.ne  (x, x), ff);
 
 // these are not folded and stay comparisons
-lam c (x: Idx 23): Bool = refly.equiv.struc_ne (core.icmp.ul (x, x  ), ff);
-lam e (x: Idx 23): Bool = refly.equiv.struc_ne (core.icmp.ne (x, 7₂₃), ff);
+lam c (x: Idx 23): Bool = refly.struc.ne (core.icmp.ul (x, x  ), ff);
+lam e (x: Idx 23): Bool = refly.struc.ne (core.icmp.ne (x, 7₂₃), ff);

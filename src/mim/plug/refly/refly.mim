@@ -63,23 +63,17 @@ axm dbg.(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 ///
 /// ## Testing
 ///
-/// ### equiv
+/// ### struc
 ///
-/// Checks for structural / alpha-equivalence.
-/// Two bits select the check:
-/// * `A`lpha: check α-equivalence instead of structural identity
-/// * `E`qual: assert equivalence instead of inequivalence
+/// Asserts structural identity (`e`) or non-identity (`ne`) of both arguments.
 ///
-/// | Subtag | Alias      | A | E | Meaning                                    |
-/// |--------|------------|---|---|--------------------------------------------|
-/// | `ae`   | `struc_ne` | o | o | assert **not** structurally equivalent     |
-/// | `aE`   | `struc_eq` | o | x | assert structurally equivalent             |
-/// | `Ae`   | `alpha_ne` | x | o | assert **not** alpha-equivalent            |
-/// | `AE`   | `alpha_eq` | x | x | assert alpha-equivalent                    |
+axm struc.(ne, e): {T: *} → [T, T] → T, normalize_struc;
 ///
-axm equiv.(ae = struc_ne, aE = struc_eq,
-           Ae = alpha_ne, AE = alpha_eq):
-    {T: *} → [T, T] → T, normalize_equiv;
+/// ### alpha
+///
+/// Asserts α-equivalence (`e`) or α-inequivalence (`ne`) of both arguments.
+///
+axm alpha.(ne, e): {T: *} → [T, T] → T, normalize_alpha;
 ///
 /// ### check_bot
 ///

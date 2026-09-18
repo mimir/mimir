@@ -3,5 +3,5 @@
 plugin regex;
 plugin refly;
 
-let _ = refly.equiv.struc_eq (regex.disj (regex.lit '0', regex.lit '5', regex.lit '9'),
+let _ = refly.struc.e (regex.disj (regex.lit '0', regex.lit '5', regex.lit '9'),
                               regex.disj (regex.range ('0', '0'), regex.range ('5', '5'), regex.range ('9', '9')));

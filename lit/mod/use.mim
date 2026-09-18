@@ -6,5 +6,5 @@ import "lib.mim";
 use lib;              // sugar for `use lib as *;`
 use lib.inner as *;
 
-let _ = refly.equiv.struc_eq (core.wrap.add 0 (answer, deep), 65I32);
-let _ = refly.equiv.struc_eq (deeper.deepest, 7I32);
+let _ = refly.struc.e (core.wrap.add 0 (answer, deep), 65I32);
+let _ = refly.struc.e (deeper.deepest, 7I32);
