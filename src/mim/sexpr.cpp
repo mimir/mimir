@@ -491,7 +491,7 @@ std::string Emitter::emit_var(BB& bb, const Def* var, const Def* type, bool meta
             std::print(os, "\n{}(metavar {}", tab, id(var));
             size_t i = 0;
             for (auto proj : projs)
-                std::print(os, "{}", emit_var(bb, proj, type->proj(i++), meta_var));
+                std::print(os, "{}", emit_var(bb, proj, type->proj(projs.size(), i++), meta_var));
             std::print(os, ")");
         }
     } else {

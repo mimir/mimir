@@ -176,7 +176,6 @@ namespace mim {
     nat_t num_##NAME##s() CONST noexcept { return ((const Def*)NAME())->num_projs(); }            \
     nat_t num_t##NAME##s() CONST noexcept { return ((const Def*)NAME())->num_tprojs(); }          \
     const Def* NAME(nat_t a, nat_t i) CONST noexcept { return ((const Def*)NAME())->proj(a, i); } \
-    const Def* NAME(nat_t i) CONST noexcept { return ((const Def*)NAME())->proj(i); }             \
     const Def* t##NAME(nat_t i) CONST noexcept { return ((const Def*)NAME())->tproj(i); }         \
     template<nat_t A = std::dynamic_extent, class F>                                              \
     auto NAME##s(F f) CONST noexcept {                                                            \
@@ -431,8 +430,10 @@ public:
 
     /// Similar to World::extract while assuming an arity of @p a, but also works on Sigma%s and Arr%ays.
     const Def* proj(nat_t a, nat_t i) const;
-    const Def* proj(nat_t i) const { return proj(num_projs(), i); }   ///< As above but takes Def::num_projs as arity.
-    const Def* tproj(nat_t i) const { return proj(num_tprojs(), i); } ///< As above but takes Def::num_tprojs.
+    /// As above but takes Def::num_tprojs.
+    /// @note Keeps the one-arg form Def::proj lost: it only ever indexes a Pi domain, an App argument or a Lam
+    /// var, where peeling a 1-tuple is the calling convention (`Cn [X]` ≡ `Cn X`) rather than an accident.
+    const Def* tproj(nat_t i) const { return proj(num_tprojs(), i); }
 
     /// Splits this Def via Def::proj%ections into an Array (if `A == std::dynamic_extent`) or `std::array` (otherwise).
     /// Applies @p f to each element.

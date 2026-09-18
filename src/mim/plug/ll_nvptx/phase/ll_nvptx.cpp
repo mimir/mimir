@@ -307,23 +307,23 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         emit_gpu_setup(bb, name);
         return mem_val;
     } else if (auto deinit = Axm::isa<gpu::deinit>(def)) {
-        emit_unsafe(deinit->arg(0));
-        emit_unsafe(deinit->arg(1));
+        emit_unsafe(deinit->arg(3, 0));
+        emit_unsafe(deinit->arg(3, 1));
         emit_gpu_teardown(bb, name);
         return ""s;
     } else if (auto auto_init = Axm::isa<gpu::auto_init>(def)) {
         return emit_unsafe(auto_init->arg());
     } else if (auto auto_deinit = Axm::isa<gpu::auto_deinit>(def)) {
         // emit_unsafe on `global` keeps any gpu.free threaded through it reachable.
-        emit_unsafe(auto_deinit->arg(1));
-        emit_unsafe(auto_deinit->arg(2));
-        return emit_unsafe(auto_deinit->arg(0));
+        emit_unsafe(auto_deinit->arg(3, 1));
+        emit_unsafe(auto_deinit->arg(3, 2));
+        return emit_unsafe(auto_deinit->arg(3, 0));
     } else if (auto stream_init = Axm::isa<gpu::stream_init>(def)) {
         declare("i32 @{}(ptr, i32)", Cu_Stream_Create);
 
-        emit_unsafe(stream_init->arg(0));
-        emit_unsafe(stream_init->arg(1));
-        auto stream_ptr = emit(stream_init->arg(2));
+        emit_unsafe(stream_init->arg(3, 0));
+        emit_unsafe(stream_init->arg(3, 1));
+        auto stream_ptr = emit(stream_init->arg(3, 2));
 
         auto res = bb.assign(name, "call i32 @{}(ptr {}, i32 0)", Cu_Stream_Create, stream_ptr);
         emit_cu_error_handling(bb, res);
@@ -331,9 +331,9 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
     } else if (auto stream_deinit = Axm::isa<gpu::stream_deinit>(def)) {
         declare("i32 @{}(ptr)", Cu_Stream_Destroy);
 
-        emit_unsafe(stream_deinit->arg(0));
-        emit_unsafe(stream_deinit->arg(1));
-        auto stream = emit(stream_deinit->arg(2));
+        emit_unsafe(stream_deinit->arg(3, 0));
+        emit_unsafe(stream_deinit->arg(3, 1));
+        auto stream = emit(stream_deinit->arg(3, 2));
 
         auto res = bb.assign(name, "call i32 @{}(ptr {})", Cu_Stream_Destroy, stream);
         emit_cu_error_handling(bb, res);
@@ -341,9 +341,9 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
     } else if (auto stream_sync = Axm::isa<gpu::stream_sync>(def)) {
         declare("i32 @{}(ptr)", Cu_Stream_Sync);
 
-        emit_unsafe(stream_sync->arg(0));
-        emit_unsafe(stream_sync->arg(1));
-        auto stream = emit(stream_sync->arg(2));
+        emit_unsafe(stream_sync->arg(3, 0));
+        emit_unsafe(stream_sync->arg(3, 1));
+        auto stream = emit(stream_sync->arg(3, 2));
 
         auto res = bb.assign(name, "call i32 @{}(ptr {})", Cu_Stream_Sync, stream);
         emit_cu_error_handling(bb, res);
@@ -356,23 +356,26 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
             default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.alloc` id in `{}`", def);
         }
 
+        // `.block` and `.asyn` differ in arity, so the count has to follow the variant.
+        auto n = is_async ? 2_n : 1_n;
+
         if (is_async)
             declare("i32 @{}(ptr, i64, ptr)", Cu_Mem_Alloc_Async);
         else
             declare("i32 @{}(ptr, i64)", Cu_Mem_Alloc);
 
-        emit_unsafe(alloc->arg(0));
+        emit_unsafe(alloc->arg(n, 0));
         auto alloc_t    = alloc->decurry()->arg();
         World& w        = alloc_t->world();
         auto type_size  = w.call(core::trait::size, alloc_t);
         auto alloc_size = emit(type_size);
 
-        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a `mem.Ptr`"));
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(def->proj(2, 1)->type(), "a `mem.Ptr`"));
 
         auto alloc_ptr = bb.assign(name + "ptr", "alloca {}", ptr_t);
         std::string alloc_res;
         if (is_async) {
-            auto stream = emit(alloc->arg(1));
+            auto stream = emit(alloc->arg(n, 1));
             alloc_res   = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, ptr {})", Cu_Mem_Alloc_Async, alloc_ptr,
                                     alloc_size, stream);
         } else
@@ -388,17 +391,20 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
             default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.free` id in `{}`", def);
         }
 
+        // `.block` and `.asyn` differ in arity, so the count has to follow the variant.
+        auto n = is_async ? 3_n : 2_n;
+
         if (is_async)
             declare("i32 @{}(i64)", Cu_Mem_Free_Async);
         else
             declare("i32 @{}(i64)", Cu_Mem_Free);
 
-        emit_unsafe(free->arg(0));
-        auto ptr = emit(free->arg(1));
+        emit_unsafe(free->arg(n, 0));
+        auto ptr = emit(free->arg(n, 1));
 
         std::string free_res;
         if (is_async) {
-            auto stream = emit(free->arg(2));
+            auto stream = emit(free->arg(n, 2));
             free_res    = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {})", Cu_Mem_Free_Async, ptr, stream);
         } else
             free_res = bb.assign(name + "res", "call i32 @{}(i64 {})", Cu_Mem_Free, ptr);
@@ -413,6 +419,9 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
             default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.copy_to_device` id in `{}`", def);
         }
 
+        // `.block` and `.asyn` differ in arity, so the count has to follow the variant.
+        auto n = is_async ? 5_n : 4_n;
+
         if (is_async)
             declare("i32 @{}(i64, ptr, i64, ptr)", Cu_Memcpy_Htod_Async);
         else
@@ -422,15 +431,15 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         World& w       = type->world();
         auto type_size = w.call(core::trait::size, type);
 
-        emit_unsafe(copy_to_device->arg(0));
-        emit_unsafe(copy_to_device->arg(1));
-        auto host_ptr = emit(copy_to_device->arg(2));
-        auto dev_ptr  = emit(copy_to_device->arg(3));
+        emit_unsafe(copy_to_device->arg(n, 0));
+        emit_unsafe(copy_to_device->arg(n, 1));
+        auto host_ptr = emit(copy_to_device->arg(n, 2));
+        auto dev_ptr  = emit(copy_to_device->arg(n, 3));
         auto size     = emit(type_size);
 
         std::string copy_res;
         if (is_async) {
-            auto stream = emit(copy_to_device->arg(4));
+            auto stream = emit(copy_to_device->arg(n, 4));
             copy_res    = bb.assign(name + "res", "call i32 @{}(i64 {}, ptr {}, i64 {}, ptr {})", Cu_Memcpy_Htod_Async,
                                     dev_ptr, host_ptr, size, stream);
         } else
@@ -446,6 +455,9 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
             case gpu::copy_to_host::asyn: is_async = true; break;
             default: fe::throwf(MIM_LL_NVPTX_BE "unhandled `gpu.copy_to_host` id in `{}`", def);
         }
+
+        // `.block` and `.asyn` differ in arity, so the count has to follow the variant.
+        auto n = is_async ? 5_n : 4_n;
         if (is_async)
             declare("i32 @{}(ptr, i64, i64, ptr)", Cu_Memcpy_Dtoh_Async);
         else
@@ -455,15 +467,15 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         World& w       = type->world();
         auto type_size = w.call(core::trait::size, type);
 
-        emit_unsafe(copy_to_host->arg(0));
-        emit_unsafe(copy_to_host->arg(1));
-        auto dev_ptr  = emit(copy_to_host->arg(2));
-        auto host_ptr = emit(copy_to_host->arg(3));
+        emit_unsafe(copy_to_host->arg(n, 0));
+        emit_unsafe(copy_to_host->arg(n, 1));
+        auto dev_ptr  = emit(copy_to_host->arg(n, 2));
+        auto host_ptr = emit(copy_to_host->arg(n, 3));
         auto size     = emit(type_size);
 
         std::string copy_res;
         if (is_async) {
-            auto stream = emit(copy_to_host->arg(4));
+            auto stream = emit(copy_to_host->arg(n, 4));
             copy_res    = bb.assign(name + "res", "call i32 @{}(ptr {}, i64 {}, i64 {}, ptr {})", Cu_Memcpy_Dtoh_Async,
                                     host_ptr, dev_ptr, size, stream);
         } else
@@ -595,8 +607,8 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
     if (auto sync_work_items = Axm::isa<gpu::sync_work_items>(def)) {
         declare("void @llvm.nvvm.barrier0()");
 
-        emit_unsafe(sync_work_items->arg(0));
-        emit_unsafe(sync_work_items->arg(1));
+        emit_unsafe(sync_work_items->arg(2, 0));
+        emit_unsafe(sync_work_items->arg(2, 1));
         std::print(bb.body().emplace_back(), "call void @llvm.nvvm.barrier0()");
         return name;
     } else if (auto tri = Axm::isa<math::tri>(def)) {

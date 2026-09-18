@@ -42,10 +42,10 @@ const Def* build_pointwise(World& w,
     auto mem_ty         = w.call<mem::M>(0);
     auto fun            = w.mut_fun(w.sigma({mem_ty, op_ins->type()}), result_ty)->set(name);
     auto call           = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_ins}));
-    auto [fun_mem, ins] = fun->var(0_n)->projs<2>();
-    auto cont           = fun->var(1);
+    auto [fun_mem, ins] = fun->var(2, 0)->projs<2>();
+    auto cont           = fun->var(2, 1);
 
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
+    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
     auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
     const Def* acc        = w.tuple({a_mem, out_buf});
     auto current_mut      = fun;
@@ -154,8 +154,8 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     // `[mem, is, post_is] → [mem, Buf]`, spliced via cps.cps2ds and applied to the op's (mem, is, post_is).
     auto fun  = w.mut_fun(w.sigma({mem_ty, op_is->type(), op_post_is->type()}), result_ty)->set("mapRedAff");
     auto call = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_is, op_post_is}));
-    auto [fun_mem, new_inputs, new_post_is] = fun->var(0_n)->projs<3>();
-    auto cont                               = fun->var(1);
+    auto [fun_mem, new_inputs, new_post_is] = fun->var(2, 0)->projs<3>();
+    auto cont                               = fun->var(2, 1);
 
     // The op's SCHEDULE `sched` is a target-agnostic chooser over a loop-nest builder (canonically
     // a `tensor.mk_sched` value, selected in the frontend). This is the tensor→btensor boundary,
@@ -167,10 +167,10 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto i32 = w.type_i32();
 
     // Allocate the output buffer.
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
+    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
     auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
 
-    auto nest_args = w.tuple({Ro, w.lit_nat(rr), Sr, To, result_ty->proj(1)});
+    auto nest_args = w.tuple({Ro, w.lit_nat(rr), Sr, To, result_ty->proj(2, 1)});
     auto nest      = w.app(w.app(sched, w.app(w.annex<btensor::NestT>(), nest_args)),
                            w.app(w.annex<btensor::mr_nest>(), nest_args));
 
@@ -270,7 +270,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
         auto after_post            = mem::mut_con(Tp)->set("afterPost");
         auto [post_mem, elem_post] = after_post->vars<2>();
         auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, *Shape(write_coords).fold_by(So), elem_post);
-        after_post->app(true, wk, w.tuple({stored->proj(0), stored->proj(1)}));
+        after_post->app(true, wk, w.tuple({stored->proj(2, 0), stored->proj(2, 1)}));
         apply_cps(wb, post, {pcur, wv, w.tuple(post_elems)}, after_post);
     }
 
@@ -293,11 +293,11 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     auto mem_ty            = w.call<mem::M>(0);
     auto fun               = w.mut_fun(w.sigma({mem_ty, input->type()}), result_ty)->set("broadcast");
     auto call              = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, input}));
-    auto [fun_mem, in_buf] = fun->var(0_n)->projs<2>();
-    auto cont              = fun->var(1);
+    auto [fun_mem, in_buf] = fun->var(2, 0)->projs<2>();
+    auto cont              = fun->var(2, 1);
 
     auto [in_r, in_s, in_T]    = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
+    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
 
     auto [a_mem, out_buf] = buffer::op_alloc(out_r, out_s, out_T, fun_mem)->projs<2>();
     const Def* acc        = w.tuple({a_mem, out_buf});
@@ -520,10 +520,10 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto mem_ty = w.call<mem::M>(0);
     auto fun    = w.mut_fun(w.sigma({mem_ty, input->type(), idx->type(), updates->type()}), result_ty)->set("scatter");
     auto call   = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, input, idx, updates}));
-    auto [fun_mem, in_buf, index_buf, update_buf] = fun->var(0_n)->projs<4>();
-    auto cont                                     = fun->var(1);
+    auto [fun_mem, in_buf, index_buf, update_buf] = fun->var(2, 0)->projs<4>();
+    auto cont                                     = fun->var(2, 1);
 
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(1))->args<3>();
+    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
     auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
     auto copy_mem         = buffer::op_copy(obr, obs, obT, a_mem, out_buf, in_buf);
     const Def* acc        = w.tuple({copy_mem, out_buf});

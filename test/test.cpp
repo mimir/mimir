@@ -34,7 +34,7 @@ TEST_CASE("World: dependent extract") {
 
     auto sig = w.mut_sigma(w.type<1>(), 2); // sig = [T: *, T]
     sig->set(0, w.type<0>());
-    sig->set(1, sig->var(0_u64));
+    sig->set(1, sig->var(2, 0));
     auto a = w.axm(sig);
     CHECK(a->proj(2, 1)->type() == a->proj(2, 0_u64)); // type_of(a#1_2) == a#0_1
 }

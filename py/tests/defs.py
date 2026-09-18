@@ -19,7 +19,7 @@ def test_world(world):
     assert len(parts) == 3
     for p in parts:
         assert isinstance(p, mim.Def)
-    assert isinstance(m2.var().proj(0), mim.Def)
+    # `proj` takes the arity explicitly; `def[i]` is the bounds-checked shorthand.
     assert isinstance(m2.var().proj(2, 0), mim.Def)
     assert isinstance(m2.var()[0], mim.Def)
     assert isinstance(m2.var()[2, 0], mim.Def)

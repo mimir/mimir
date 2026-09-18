@@ -198,7 +198,7 @@ std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
     os << '(';
     for (auto sep = ""; auto proj : projs) {
         os << sep;
-        ptrn(os, proj, type->proj(i++));
+        ptrn(os, proj, type->proj(projs.size(), i++));
         sep = ", ";
     }
     return os << std::format(") as {}", name(def));
@@ -356,7 +356,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
             auto sep = "";
             for (auto op : sigma->ops()) {
                 os << sep;
-                if (auto v = sigma->var(i++))
+                if (auto v = sigma->var(sigma->num_ops(), i++))
                     os << std::format("{}: {}", v, Op(op));
                 else
                     os << Op(op);

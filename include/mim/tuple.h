@@ -93,7 +93,13 @@ public:
     bool is_dim() const; ///< Is this a *single* axis - a `Nat`/`Idx` rather than an aggregate of them?
     bool is_fused() const { return !is_dim(); } ///< Does this span several axes? Also `true` for a dynamic rank.
     std::optional<nat_t> rank() const;          ///< Number of axes; `std::nullopt` if not statically known.
-    const Def* operator[](nat_t i) const { return def_->proj(i); } ///< The @p i th axis.
+    /// The @p i th axis.
+    /// @note Needs Shape::rank: Def::num_projs would silently read a dynamic rank as `1` and hand back the Shape.
+    const Def* operator[](nat_t i) const {
+        auto r = rank();
+        assert(r && "a dynamic rank has no statically indexable axes");
+        return def_->proj(*r, i);
+    }
     const Def* front() const; ///< The outermost axis - the Def::arity of the Seq this shape describes.
     /// The extent of @p axis: the axis itself for a shape, its `Idx` size for an index.
     static std::optional<nat_t> extent(const Def* axis);
@@ -117,6 +123,7 @@ public:
     /// As above but driven by @p shape: drops the axes *it* has as literal `1`, whatever this one's own extents
     /// are - a broadcast reads a size-1 input axis at the *output*'s loop index.
     Shape fold_by(Shape shape) const;
+    Shape zonk() const { return {def_->zonk()}; }
     ///@}
 
 private:
@@ -326,7 +333,7 @@ public:
     const Def* index() const { return extract()->index(); }
 
     size_t num_targets() const { return Lit::as(extract()->tuple()->arity()); }
-    const Def* target(size_t i) const { return tuple()->proj(i); }
+    const Def* target(size_t i) const { return tuple()->proj(num_targets(), i); }
 
 private:
     const App* app_         = nullptr;

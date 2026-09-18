@@ -13,7 +13,7 @@
     // so a missing bounds check lets `list(def)` walk off the end and abort the interpreter.
     .def("__getitem__", [](const Def& self, nat_t i) {
         if (i >= self.num_projs()) throw nb::index_error();
-        return self.proj(i);
+        return self.proj(self.num_projs(), i);
     }, nb::rv_policy::reference_internal)
     .def("__getitem__", [](const Def& self, std::pair<nat_t, nat_t> ai) {
         if (ai.second >= ai.first) throw nb::index_error();

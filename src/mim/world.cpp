@@ -672,7 +672,7 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
     if (auto arr = type->isa<Arr>()) {
         if (auto elem = peel(arr, *index)) val = assign_or_bail(elem, val);
     } else if (lidx) {
-        val = assign_or_bail(type->proj(*lidx), val);
+        val = assign_or_bail(type->proj(Lit::as(size), *lidx), val);
     }
     // The only `Idx 1` left is a mutable 1-tuple; d could be mut - that's why the tuple ctor is needed.
     if (Lit::isa(size) == 1) return tuple(d, {val});
@@ -711,9 +711,9 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
     return unify<Insert>(d, *index, val);
 }
 
-const Def* World::seq(bool is_pack, Shape shape_, const Def* body) {
-    auto shape = Shape(shape_->zonk());
-    body       = body->zonk();
+const Def* World::seq(bool is_pack, Shape shape, const Def* body) {
+    shape = shape.zonk();
+    body  = body->zonk();
 
     auto shape_ty = shape->unfold_type();
     if (!Shape::isa_extents(shape_ty))

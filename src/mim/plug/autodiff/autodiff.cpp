@@ -31,9 +31,8 @@ const Def* id_pullback(const Def* A) {
     auto& world       = A->world();
     auto arg_pb_ty    = pullback_type(A, A);
     auto id_pb        = world.mut_lam(arg_pb_ty)->set("id_pb");
-    auto id_pb_scalar = id_pb->var(0uz)->set("s");
-    id_pb->app(true,
-               id_pb->var(1), // can not use ret_var as the result might be higher order
+    auto id_pb_scalar = id_pb->var(2, 0)->set("s");
+    id_pb->app(true, id_pb->var(2, 1), // can not use ret_var as the result might be higher order
                id_pb_scalar);
 
     return id_pb;
@@ -44,7 +43,7 @@ const Def* zero_pullback(const Def* E, const Def* A) {
     auto A_tangent = tangent_type_fun(A);
     auto pb_ty     = pullback_type(E, A);
     auto pb        = world.mut_lam(pb_ty)->set("zero_pb");
-    pb->app(true, pb->var(1), world.call<zero>(A_tangent));
+    pb->app(true, pb->var(2, 1), world.call<zero>(A_tangent));
     return pb;
 }
 

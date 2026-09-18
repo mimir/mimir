@@ -32,7 +32,7 @@ inline const App* isa_mem(const Def* def) {
 /// component of the first parameter (e.g. the `Fn [mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
 inline bool has_leading_mem(const Pi* pi) {
     if (pi->num_doms() == 0) return false;
-    auto dom0 = pi->dom(0uz);
+    auto dom0 = pi->dom(pi->num_doms(), 0);
     if (Axm::isa<mem::M>(dom0)) return true;
     if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<mem::M>(sig->op(0))) return true;
     return false;
@@ -118,7 +118,7 @@ inline const Def* op_lea(const Def* ptr, const Def* index) {
 
 inline const Def* op_lea_unsafe(const Def* ptr, const Def* i) {
     World& w = ptr->world();
-    return op_lea(ptr, w.call(core::conv::u, Axm::as<Ptr>(ptr->type())->arg(0)->arity(), i));
+    return op_lea(ptr, w.call(core::conv::u, Axm::as<Ptr>(ptr->type())->arg(2, 0)->arity(), i));
 }
 
 inline const Def* op_lea_unsafe(const Def* ptr, u64 i) { return op_lea_unsafe(ptr, ptr->world().lit_i64(i)); }

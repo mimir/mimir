@@ -468,20 +468,25 @@ public:
     }
     Arr * mut_arr (const Def* type) { return mut_seq(false, type)->as<Arr >(); }
     Pack* mut_pack(const Def* type) { return mut_seq(true , type)->as<Pack>(); }
-    const Def* arr (Shape shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(Shape shape, const Def* body) { return seq(true , shape, body); }
-    const Def* arr (Defs       shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(Defs       shape, const Def* body) { return seq(true , shape, body); }
-    const Def* arr (u64            n, const Def* body) { return seq(false,     n, body); }
-    const Def* pack(u64            n, const Def* body) { return seq(true ,     n, body); }
-    const Def* arr (fe::View<u64>  shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(fe::View<u64>  shape, const Def* body) { return seq(true , shape, body); }
-    const Def*  arr_unsafe(           const Def* body) { return seq_unsafe(false, body); }
-    const Def* pack_unsafe(           const Def* body) { return seq_unsafe(true , body); }
-
-    const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
-    const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); }
+    const Def* arr (Shape         shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(Shape         shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (Defs          shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(Defs          shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (fe::View<u64> shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(fe::View<u64> shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (u64               n, const Def* body) { return seq(false,     n, body); }
+    const Def* pack(u64               n, const Def* body) { return seq(true ,     n, body); }
+    const Def*  arr_unsafe(              const Def* body) { return seq_unsafe(false, body); }
+    const Def* pack_unsafe(              const Def* body) { return seq_unsafe(true , body); }
     // clang-format on
+    ///@}
+
+    /// @name prod
+    /// Generic constructor for tuple or sigma.
+    ///@{
+    // clang-format off
+    const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
+    const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); } ///< `()` or `[]`.
     ///@}
 
     /// @name Seq

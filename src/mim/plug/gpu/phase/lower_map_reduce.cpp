@@ -66,12 +66,13 @@ Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
     auto global_ty = w.annex<gpu::GlobalM>();
 
     Lam* new_lam;
-    if (lam->num_vars() == 2) {
-        auto [_, Tin, extra_ty] = lam->var(0)->type()->projs<3>();
+    auto nv = lam->num_vars();
+    if (nv == 2) {
+        auto [_, Tin, extra_ty] = lam->var(nv, 0)->type()->projs<3>();
         new_lam = w.mut_con(Defs{w.sigma({global_ty, Tin, extra_ty}), w.cn({global_ty, Tout})})->set(name);
     } else {
-        auto Tin      = lam->var(1)->type();
-        auto extra_ty = lam->var(2)->type();
+        auto Tin      = lam->var(nv, 1)->type();
+        auto extra_ty = lam->var(nv, 2)->type();
         new_lam       = w.mut_con(Defs{global_ty, Tin, extra_ty, w.cn({global_ty, Tout})})->set(name);
     }
     new_lam->set(true, lam->reduce_body(new_lam->var()));
@@ -404,8 +405,8 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto fun = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
                    ->set("mapReduceAffGpu");
     auto call                                = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
-    auto [fun_mem, new_inputs, new_post_ins] = fun->var(0_n)->projs<3>();
-    auto cont                                = fun->var(1);
+    auto [fun_mem, new_inputs, new_post_ins] = fun->var(2, 0)->projs<3>();
+    auto cont                                = fun->var(2, 1);
 
     auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
 

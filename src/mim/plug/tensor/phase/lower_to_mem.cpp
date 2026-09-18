@@ -795,7 +795,7 @@ const Def* LowerToMem::lower_gather(const App* app) {
     auto [out_mem, out_buf] = w.call(op, Defs{s_src, s_idx}, dim, Defs{fresh_mem(), input, index})->projs<2>();
     if (app->type()->isa<Arr>()) return out_buf;
     auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out_buf->type())->args<3>();
-    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(1);
+    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(2, 1);
 }
 
 const Def* LowerToMem::lower_scatter(const App* app) {
@@ -822,7 +822,7 @@ const Def* LowerToMem::lower_scatter(const App* app) {
         = w.call(op, Defs{s_src, s_idx, s_updates}, dim, Defs{fresh_mem(), input, index, updates})->projs<2>();
     if (app->type()->isa<Arr>()) return out_buf;
     auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out_buf->type())->args<3>();
-    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(1);
+    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(2, 1);
 }
 
 } // namespace mim::plug::tensor::phase

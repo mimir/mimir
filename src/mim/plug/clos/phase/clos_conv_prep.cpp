@@ -79,8 +79,9 @@ const Def* ClosConvPrep::eta_wrap(const Def* old_op, attr a) {
 const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
     auto arg = app->arg();
     auto i   = 0u;
-    for (; i < arg->num_projs(); i++)
-        if (arg->proj(i) == old_op) break;
+    auto n   = arg->num_projs();
+    for (; i < n; i++)
+        if (arg->proj(n, i) == old_op) break;
 
     if (auto lam = isa_retvar(old_op); lam && from_outer_scope(lam)) {
         log().d("return var from an enclosing scope: {}", old_op);
@@ -157,7 +158,8 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
     if (arg->isa<Var>()) {
         new_arg = rewrite(arg);
     } else {
-        auto new_args = DefVec(arg->num_projs(), [&](size_t i) { return rewrite_arg(app, arg->proj(i)); });
+        auto new_args = DefVec(arg->num_projs(),
+                               [&, n = arg->num_projs()](size_t i) { return rewrite_arg(app, arg->proj(n, i)); });
         new_arg       = arg->num_projs() == 1 ? new_args[0] : w.tuple(new_args);
     }
 

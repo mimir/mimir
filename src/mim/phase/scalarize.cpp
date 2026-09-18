@@ -246,16 +246,17 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     map(old, sca);
 
     // reassemble the old var one level from the fresh scalar vars
-    auto n      = old->num_tvars();
-    auto params = DefVec();
+    auto n       = old->num_tvars();
+    auto num_sca = sca->num_vars();
+    auto params  = DefVec();
     params.reserve(n);
     for (size_t i = 0, v = 0; i != n; ++i) {
         auto t = rewrite(old->tvar(i)->type());
         if (mask[i]) {
-            auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(v++); });
+            auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(num_sca, v++); });
             params.emplace_back(w.tuple(t, pieces));
         } else {
-            params.emplace_back(sca->var(v++));
+            params.emplace_back(sca->var(num_sca, v++));
         }
     }
     map(old->var(), w.tuple(params));

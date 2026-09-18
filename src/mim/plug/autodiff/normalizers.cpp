@@ -43,7 +43,7 @@ const Def* normalize_add(const Def* type, const Def* callee, const Def* arg) {
     if (auto sig = T->isa<Sigma>()) {
         auto p   = sig->num_ops(); // TODO: or num_projs
         auto ops = DefVec(p, [&](size_t i) {
-            return world.app(world.app(world.annex<add>(), sig->op(i)), {a->proj(i), b->proj(i)});
+            return world.app(world.app(world.annex<add>(), sig->op(i)), {a->proj(p, i), b->proj(p, i)});
         });
         return world.tuple(ops);
     } else if (auto arr = T->isa<Arr>()) {

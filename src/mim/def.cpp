@@ -668,6 +668,6 @@ std::optional<nat_t> Idx::size2bitwidth(const Def* size) {
  */
 
 const App* Global::type() const { return Def::type()->as<App>(); }
-const Def* Global::alloced_type() const { return type()->arg(0); }
+const Def* Global::alloced_type() const { return type()->arg(2, 0); }
 
 } // namespace mim

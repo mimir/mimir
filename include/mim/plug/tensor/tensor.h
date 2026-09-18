@@ -16,14 +16,14 @@ namespace mim::plug::tensor {
 /// single input element, so a map_reduce built on it is a pure re-indexed read of that input.
 inline bool is_copy_comb(const Def* comb) {
     auto ret = Lam::isa_ret_arg(comb);
-    return ret && ret == comb->as_mut<Lam>()->var(0)->proj(2, 1)->proj(1, 0);
+    return ret && ret == comb->as_mut<Lam>()->var(2, 0)->proj(2, 1)->proj(1, 0);
 }
 
 /// Is `post` the (rebuilt) CPS identity `tensor.id`, i.e. a lam `(x, extras) ↦ x` that returns its
 /// first argument (and hence has no epilogue inputs)?
 inline bool is_identity_post(const Def* post) {
     auto ret = Lam::isa_ret_arg(post);
-    return ret && ret == post->as_mut<Lam>()->var(0)->proj(2, 0);
+    return ret && ret == post->as_mut<Lam>()->var(2, 0)->proj(2, 0);
 }
 
 /// A pure re-indexed read: the source tensor, the access map into it (over the read's output

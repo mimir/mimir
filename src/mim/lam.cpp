@@ -84,10 +84,10 @@ const Def* compose_cn(const Def* f, const Def* g) {
     auto h     = world.mut_fun(A, C)->set(name);
     auto hcont = world.mut_con(B)->set(name + "_cont");
 
-    h->app(true, g, {h->var((nat_t)0), hcont});
+    h->app(true, g, {h->var(2, 0), hcont});
 
     auto hcont_var = hcont->var(); // Warning: not var(0) => only one var => normalization flattens tuples down here.
-    hcont->app(true, f, {hcont_var, h->var(1) /* ret_var */});
+    hcont->app(true, f, {hcont_var, h->var(2, 1) /* ret_var */});
 
     return h;
 }

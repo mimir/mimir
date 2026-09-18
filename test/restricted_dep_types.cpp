@@ -41,11 +41,11 @@ TEST_CASE("restricted dependent types") {
         auto exp_sig = w.mut_sigma(4);
         exp_sig->set(0, w.type());
         exp_sig->set(1, w.type());
-        exp_sig->set(2, exp(exp_sig->var(0uz), exp_sig->var(1uz)));
-        exp_sig->set(3, w.cn(exp_sig->var(0uz)));
+        exp_sig->set(2, exp(exp_sig->var(4, 0), exp_sig->var(4, 1)));
+        exp_sig->set(3, w.cn(exp_sig->var(4, 0)));
 
         auto exp_lam = w.mut_con(exp_sig);
-        exp_lam->app(false, exp_lam->var(3), w.call<core::bitcast>(exp_lam->var(0uz), exp_lam->var(2uz)));
+        exp_lam->app(false, exp_lam->var(4, 3), w.call<core::bitcast>(exp_lam->var(4, 0), exp_lam->var(4, 2)));
 
         auto app = [&](const Def* dt, const Def* rw, const Def* lit_t) {
             return w.app(exp_lam, {dt, rw, w.call<core::bitcast>(exp(dt, rw), w.lit(lit_t, 1000)), w.mut_con(dt)});
@@ -66,11 +66,11 @@ TEST_CASE("restricted dependent types") {
     SUBCASE("the mode is fixed to R") {
         auto exp_sig = w.mut_sigma(3);
         exp_sig->set(0, w.type());
-        exp_sig->set(1, exp(exp_sig->var(0uz), R));
-        exp_sig->set(2, w.cn(exp_sig->var(0uz)));
+        exp_sig->set(1, exp(exp_sig->var(3, 0), R));
+        exp_sig->set(2, w.cn(exp_sig->var(3, 0)));
 
         auto exp_lam = w.mut_con(exp_sig);
-        exp_lam->app(false, exp_lam->var(2uz), w.call<core::bitcast>(exp_lam->var(0uz), exp_lam->var(1uz)));
+        exp_lam->app(false, exp_lam->var(3, 2), w.call<core::bitcast>(exp_lam->var(3, 0), exp_lam->var(3, 1)));
 
         auto app = [&](const Def* dt, const Def* rw, const Def* lit_t) {
             return w.app(exp_lam, {dt, w.call<core::bitcast>(exp(dt, rw), w.lit(lit_t, 1000)), w.mut_con(dt)});
@@ -119,14 +119,15 @@ TEST_CASE("restricted dependent types: ll") {
     exp_sig->set(0, mem_t);
     exp_sig->set(1, w.type());
     exp_sig->set(2, w.type());
-    exp_sig->set(3, w.app(Exp, {w.inj(DT, exp_sig->var(1uz)), w.inj(RW, exp_sig->var(2uz))}));
+    exp_sig->set(3, w.app(Exp, {w.inj(DT, exp_sig->var(5, 1)), w.inj(RW, exp_sig->var(5, 2))}));
     exp_sig->set(4, w.cn({mem_t, i32_t}));
 
     auto exp_lam = w.mut_con(exp_sig);
-    auto bc      = w.call<core::bitcast>(i32_t, exp_lam->var(3uz));
-    exp_lam->app(false, exp_lam->var(4), {exp_lam->var(0uz), bc});
+    auto bc      = w.call<core::bitcast>(i32_t, exp_lam->var(5, 3));
+    exp_lam->app(false, exp_lam->var(5, 4), {exp_lam->var(5, 0), bc});
 
-    main->app(false, exp_lam, {main->var(0uz), i32_t, R, w.call<core::bitcast>(app_exp, main->var(1)), main->var(3)});
+    main->app(false, exp_lam,
+              {main->var(4, 0), i32_t, R, w.call<core::bitcast>(app_exp, main->var(4, 1)), main->var(4, 3)});
 
     // the `ll` plugin's emit phase writes `restricted_dep_types.ll` as part of `optimize`
     optimize(w);
