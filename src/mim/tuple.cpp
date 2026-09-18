@@ -84,9 +84,8 @@ Shape Shape::drop(nat_t n) const {
 }
 
 Shape Shape::operator+(Shape other) const {
-    auto ra = rank(), rb = other.rank();
-    if (!ra || !rb) return {};
-    return cat_tuple(*ra, *rb, def_, *other);
+    if (!def_ || !other) return {};
+    return Tuple::cat(def_, *other);
 }
 
 Shape Shape::fold() const {
@@ -160,7 +159,7 @@ std::string tuple2str(const Def* def) {
  * cat
  */
 
-DefVec cat(Defs a, Defs b) {
+DefVec Def::cat(Defs a, Defs b) {
     auto res = DefVec();
     res.reserve(a.size() + b.size());
     res.append_range(a);
@@ -168,22 +167,26 @@ DefVec cat(Defs a, Defs b) {
     return res;
 }
 
-DefVec cat(nat_t n, nat_t m, const Def* a, const Def* b) {
-    auto res = DefVec();
-    res.reserve(n + m);
-    for (nat_t i = 0; i != n; ++i)
-        res.emplace_back(a->proj(n, i));
-    for (nat_t i = 0; i != m; ++i)
-        res.emplace_back(b->proj(m, i));
-
-    return res;
+DefVec Prod::cat_projs(nat_t n, nat_t m, const Def* a, const Def* b) {
+    return DefVec(n + m, [=](size_t i) { return i < n ? a->proj(n, i) : b->proj(m, i - n); });
 }
 
-const Def* cat_tuple(nat_t n, nat_t m, const Def* a, const Def* b) { return a->world().tuple(cat(n, m, a, b)); }
-const Def* cat_sigma(nat_t n, nat_t m, const Def* a, const Def* b) { return a->world().sigma(cat(n, m, a, b)); }
+const Def* Prod::cat(bool term, nat_t n, nat_t m, const Def* a, const Def* b) {
+    auto& w = a->world();
+    // Two *fully* spliced Seq%s of the same element concatenate without materializing their n + m projections.
+    if (auto sa = a->isa_imm<Seq>(), sb = b->isa_imm<Seq>(); sa && sb && Lit::isa(a->arity()) == n
+                                                             && Lit::isa(b->arity()) == m && sa->is_intro() == term
+                                                             && sb->is_intro() == term && sa->elem() == sb->elem())
+        return w.seq(term, n + m, sa->elem());
 
-const Def* cat_tuple(World& world, Defs a, Defs b) { return world.tuple(cat(a, b)); }
-const Def* cat_sigma(World& world, Defs a, Defs b) { return world.sigma(cat(a, b)); }
+    return w.prod(term, cat_projs(n, m, a, b));
+}
+
+const Def* Prod::cat(bool term, const Def* a, const Def* b) {
+    auto n = Lit::isa(a->arity());
+    auto m = Lit::isa(b->arity());
+    return n && m ? cat(term, *n, *m, a, b) : nullptr;
+}
 
 const Def* tuple_of_types(const Def* t) {
     auto& world = t->world();

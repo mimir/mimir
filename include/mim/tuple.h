@@ -15,6 +15,19 @@ public:
     /// Prod groups Sigma and Tuple; see fe::NodeSetable.
     static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Sigma || n == mim::Node::Tuple; }
 
+    /// @name Concatenation
+    /// Splices @p a as @p n and @p b as @p m components into one flat Prod.
+    /// @note @p n / @p m are *not* necessarily Def::arity: `n == 1` leaves @p a a single component,
+    /// which is exactly what `tuple.append` / `tuple.prepend` instantiate `tuple.cat` with.
+    ///@{
+    static const Def* cat(bool term, nat_t n, nat_t m, const Def* a, const Def* b);
+    /// Splices @p a and @p b *completely*, with @p n / @p m from Def::arity.
+    /// @returns `nullptr`, if they are not statically known.
+    static const Def* cat(bool term, const Def* a, const Def* b);
+    /// The spliced components themselves - for when you want to build something other than a Prod from them.
+    static DefVec cat_projs(nat_t n, nat_t m, const Def* a, const Def* b);
+    ///@}
+
     static constexpr size_t Num_Ops = std::dynamic_extent;
 };
 
@@ -50,6 +63,13 @@ public:
     static const Def* infer(World&, Defs);
     ///@}
 
+    /// @name Concatenation
+    /// @see Prod::cat
+    ///@{
+    static const Def* cat(nat_t n, nat_t m, const Def* a, const Def* b) { return Prod::cat(false, n, m, a, b); }
+    static const Def* cat(const Def* a, const Def* b) { return Prod::cat(false, a, b); }
+    ///@}
+
     static constexpr auto Node = mim::Node::Sigma;
 
 private:
@@ -62,6 +82,14 @@ class Tuple : public Prod, public Setters<Tuple> {
 public:
     using Setters<Tuple>::set;
     static const Def* infer(World&, Defs);
+
+    /// @name Concatenation
+    /// @see Prod::cat
+    ///@{
+    static const Def* cat(nat_t n, nat_t m, const Def* a, const Def* b) { return Prod::cat(true, n, m, a, b); }
+    static const Def* cat(const Def* a, const Def* b) { return Prod::cat(true, a, b); }
+    ///@}
+
     static constexpr auto Node = mim::Node::Tuple;
 
 private:
@@ -347,27 +375,6 @@ bool is_unit(const Def*);
 std::string tuple2str(const Def*);
 
 const Def* tuple_of_types(const Def* t);
-///@}
-
-/// @name Concatenation
-/// Works for Tuple%s, Pack%s, Sigma%s, and Arr%ays alike.
-///@{
-DefVec cat(Defs, Defs);
-inline DefVec cat(const Def* a, Defs bs) { return cat(Defs{a}, bs); }
-inline DefVec cat(Defs as, const Def* b) { return cat(as, Defs{b}); }
-
-DefVec cat(nat_t n, nat_t m, const Def* a, const Def* b);
-
-const Def* cat_tuple(nat_t n, nat_t m, const Def* a, const Def* b);
-const Def* cat_sigma(nat_t n, nat_t m, const Def* a, const Def* b);
-
-const Def* cat_tuple(World&, Defs, Defs);
-const Def* cat_sigma(World&, Defs, Defs);
-
-inline const Def* cat_tuple(const Def* a, Defs bs) { return cat_tuple(a->world(), Defs{a}, bs); }
-inline const Def* cat_tuple(Defs as, const Def* b) { return cat_tuple(b->world(), as, Defs{b}); }
-inline const Def* cat_sigma(const Def* a, Defs bs) { return cat_sigma(a->world(), Defs{a}, bs); }
-inline const Def* cat_sigma(Defs as, const Def* b) { return cat_sigma(b->world(), as, Defs{b}); }
 ///@}
 
 } // namespace mim

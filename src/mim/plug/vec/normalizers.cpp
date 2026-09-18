@@ -118,8 +118,7 @@ const Def* normalize_cat(const Def*, const Def* callee, const Def* arg) {
     auto [n, m] = callee->as<App>()->decurry()->args<2>([](auto def) { return Lit::isa(def); });
     if (n && *n == 0) return b;
     if (m && *m == 0) return a;
-    if (n && m) return mim::cat_tuple(*n, *m, a, b);
-    return nullptr;
+    return n && m ? Tuple::cat(*n, *m, a, b) : nullptr;
 }
 
 const Def* normalize_diff(const Def* type, const Def* c, const Def* arg) {

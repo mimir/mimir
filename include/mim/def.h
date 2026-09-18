@@ -696,6 +696,13 @@ public:
     /// zonk%s all @p defs and returns a new DefVec.
     static DefVec zonk(Defs defs);
 
+    /// @name Concatenation
+    ///@{
+    static DefVec cat(Defs a, Defs b);
+    static DefVec cat(const Def* a, Defs bs) { return cat(Defs{a}, bs); }
+    static DefVec cat(Defs as, const Def* b) { return cat(as, Defs{b}); }
+    ///@}
+
     /// @name dump
     /// @note While this output uses Mim syntax, it does usually **not** produce programs that can be read back.
     /// It uses an unscheduled visiting algorithm, and is only meant for debugging purposes.
