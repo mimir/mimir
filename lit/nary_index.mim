@@ -65,8 +65,7 @@ extern lam insert_read_modify_write (m n: Nat, t: «m, n; Nat», x: Idx m, y: Id
     refly.equiv.struc_eq (t#x ← (s#y ← v), t#(x, y) ← v);
 
 // as above, but the outer write is itself a *fused* index
-extern lam insert_read_modify_write_fused (m n o: Nat, t: «m, n, o; Nat», x: Idx m, y: Idx n, z: Idx o, v: Nat)
-: «m, n, o; Nat» =
+extern lam insert_read_modify_write_fused (m n o: Nat, t: «m, n, o; Nat», x: Idx m, y: Idx n, z: Idx o, v: Nat) : «m, n, o; Nat» =
     let s = t#(x, y);
     refly.equiv.struc_eq (t#(x, y) ← (s#z ← v), t#(x, y, z) ← v);
 
