@@ -325,6 +325,7 @@ A telescope is not a form of its own but the finite end of one construct.
 `[...]` is a [sigma](@ref prod), and a sigma whose components are all the same *is* an [array](@ref prod): `[Nat, Nat, Nat]` and `«3; Nat»` denote one and the same type.
 The same compression applies once more to a nest of arrays: `«2; «3; T»»` and `«2, 3; T»` denote one and the same type, and an array carries all of its axes as one *shape*.
 `#` follows suit - `t#i#j` and `t#(i, j)` are the same Extract - so an index has exactly as many components as the shape it indexes into.
+The sole exception is a [dependent tuple type](@ref mutsigma) of one component.
 A sigma names a component so that later components may depend on it; an array names its index so that the element type may depend on that.
 `«i: n; T i»` is therefore the very same dependency, taken over an arity that need not be a literal.
 
@@ -431,12 +432,13 @@ e   ::= e "→" e
 ```ebnf
 e     ::= "[" tlist? "]"
        |  "(" (e ("," e)* ","?)? ")"
-       |  "«" arity ("," arity)* ";" e "»"
-       |  "‹" arity ("," arity)* ";" e "›"
+       |  "«" shape ";" e "»"
+       |  "‹" shape ";" e "›"
        |  e "#" e
        |  e "#" I
        |  e ("#" e)+ "←" e
 
+shape ::= arity ("," arity)*
 arity ::= e
        |  I ":" e
 ```
@@ -448,8 +450,8 @@ arity ::= e
   A 1-tuple always degrades to its sole element, giving the effect of a parenthesized expression.
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
-- An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
-  All of them fuse into **one** array of shape `(m, n)`, whose index binds every axis at once, so `t#i#j` and `t#(i, j)` are the same Extract.
+- A `shape` lists one or more comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
+  All of them fuse into **one** array of shape `(m, n)`, whose index binds every axis at once, so `t#i#j` and `t#(i, j)` are the same Extract - except through a [dependent tuple type](@ref mutsigma) of one component.
   The exception is a dimension whose extent depends on an earlier index, as in `«i: n, j: s#i; body»`: a shape lists extents, not functions of preceding indices, so such a nest stays one array per axis.
 - `e#e` extracts a component by index, `e#I` by [field name](@ref field).
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
@@ -460,6 +462,33 @@ arity ::= e
   Thus, `(t#i)#j ← v` denotes `t#i` instead.
   - A `let` ends a path the same way: `let row = t#i; row#j ← v` also denotes `t#i`.
   - `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
+
+#### Dependent Tuple Types {#mutsigma}
+
+A `rec` declaration whose body is a sigma introduces a **dependent tuple type**: a later component may mention the ones before it, and the declared name is already in scope inside the body.
+
+```mim
+rec S = [n: Nat, «n; Nat»];
+```
+
+@note The IR calls this a *mutable* sigma, because it is built empty and filled in afterwards - that is what puts `S` in scope inside its own body.
+The two words name the same thing; "mutable" says how it is constructed, not that anything about it may be changed later.
+
+Unlike the structural `[...]` of a [telescope](@ref ptrn), such a type is *nominal*: it is the declaration, not its layout.
+Two things follow for the surface language.
+
+- Its components may be addressed by [field name](@ref field), which a structural sigma has no room for.
+- One of exactly one component stays a genuine 1-tuple.
+  Everywhere else a one-element aggregate degrades to its sole element - `[T]` and `«1; T»` are `T`, and `(x)` is `x` - which makes `#0₁` a no-op.
+  Here it is a real Extract, and that is the one exception to `t#i#j` ≡ `t#(i, j)`: a fused index folds its size-1 axes away, while the `#`-chain keeps them.
+
+  ```mim
+  rec One = [x: Nat];
+  lam f (t: «2; One»): Nat = t#1₂#0₁;    // a real Extract: reads `x` out of the 1-tuple
+  lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so this is just `t#1₂`
+  ```
+
+  `←` is unaffected: writing the component rebuilds the whole 1-tuple either way, so `t#(1₂, 0₁) ← v` and `t#1₂#0₁ ← v` do agree.
 
 #### Unions
 
@@ -604,7 +633,7 @@ Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` 
 
 ### Field Names of Sigmas {#field}
 
-Named elements of mutable sigma types are available for extracts and inserts.
+Named elements of a [dependent tuple type](@ref mutsigma) - a *mutable* sigma in IR terms - are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
 In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 

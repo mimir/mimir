@@ -83,6 +83,24 @@ extern lam hetero (t: «2; [Nat, Bool]»): Bool =
 extern lam distinct (t: «2, 3; Nat»): Nat =
     refly.equiv.struc_ne (t#(0₂, 0₃), t#(0₂, 1₃));
 
+// ## Dependent tuple types (*mutable* sigmas in IR terms)
+
+// A `rec`-declared sigma is nominal, so a one-component one stays a genuine 1-tuple instead of degrading to
+// its sole element. `#0₁` is therefore a real Extract - and a fused index still folds that axis away, which
+// makes this the one place where `t#(i, j)` and `t#i#j` part ways.
+rec One = [x: Nat];
+
+extern lam one_fused (t: «2; One»): One = refly.equiv.struc_eq (t#(1₂, 0₁), t#1₂);
+extern lam one_chain (t: «2; One»): Nat = refly.equiv.struc_ne (t#1₂#0₁, t#1₂);
+extern lam one_differs (t: «2; One»): Nat = refly.equiv.struc_ne (t#(1₂, 0₁), t#1₂#0₁);
+
+// the insert side still agrees: writing the field rebuilds the whole 1-tuple either way
+extern lam one_insert (t: «2; One», v: Nat): «2; One» =
+    refly.equiv.struc_eq (t#(1₂, 0₁) ← v, t#1₂#0₁ ← v);
+
+// an *immutable* one-component sigma is no 1-tuple at all, so both spellings agree
+extern lam imm_agrees (t: «2; [Nat]»): Nat = refly.equiv.struc_eq (t#(1₂, 0₁), t#1₂#0₁);
+
 // ## Dynamic rank
 
 // a dynamic rank works the same way - nothing about it is special any more
