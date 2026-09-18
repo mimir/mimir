@@ -63,7 +63,7 @@ const Def* Lower::read_through(const Def* base, Defs index) {
         return nullptr;
     }
 
-    auto r = Lit::isa<u64>(rank);
+    auto r = Lit::isa(rank);
     if (!r) return nullptr;
 
     auto new_index = DefVec(*r);
@@ -71,15 +71,14 @@ const Def* Lower::read_through(const Def* base, Defs index) {
         auto in_d  = s_in->proj(*r, d);
         auto out_d = s_out->proj(*r, d);
         // A size-1 output axis folds out of the array type, so the chain carries no index for it.
-        auto l_out = Lit::isa<u64>(out_d);
-        auto idx_d = l_out && *l_out == 1 ? w.lit_idx(1, 0) : (i < index.size() ? rewrite(index[i++]) : nullptr);
+        auto idx_d = Lit::isa(out_d) == 1 ? w.lit_idx(1, 0) : (i < index.size() ? rewrite(index[i++]) : nullptr);
         if (!idx_d) return nullptr;
 
         if (in_d == out_d)
             new_index[d] = idx_d;
-        else if (auto l = Lit::isa<u64>(in_d); l && *l == 1)
+        else if (Lit::isa(in_d) == 1)
             new_index[d] = w.lit_idx(1, 0);
-        else if (auto e = Lit::isa<u64>(in_d), x = Lit::isa<u64>(idx_d); wraps && e && x)
+        else if (auto e = Lit::isa(in_d), x = Lit::isa(idx_d); wraps && e && x)
             new_index[d] = w.lit_idx(*e, *x % *e);
         else
             return nullptr;

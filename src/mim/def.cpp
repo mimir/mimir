@@ -592,9 +592,9 @@ size_t Def::reduction_offset() const noexcept {
 
 const Def* Def::arity() const {
     switch (node()) {
-        case Node::Arr:   return Shape(op(0)).front();
-        case Node::Sigma: return num_ops() != 1 || isa_mut() ? world().lit_nat(num_ops()) : op(0)->arity();
+        case Node::Arr:
         case Node::Pack:  return Shape(op(0)).front();
+        case Node::Sigma: return num_ops() != 1 || isa_mut() ? world().lit_nat(num_ops()) : op(0)->arity();
         default:
             if (auto t = type(); t && !t->isa<Type>()) return t->arity();
             return world().lit_nat_1();

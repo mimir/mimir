@@ -32,8 +32,7 @@ extern fun conv_dyn_strided {n cin cout h w kh kw: Nat}
 : «conv_shape (n, cout, (h, w), (kh, kw), (2, 2), (1, 1), (0, 0)); Nat» =
     return (tensor.conv (nat_ring ()) ((2, 2), (1, 1), (0, 0)) (input, weight));
 
-// Custom pipeline that stops before tensor.lower_get_set: the get/set unrolling is expensive and the
-// remaining tensor.get / tensor.set are irrelevant to the checks below, so skipping it keeps the test fast.
+// Custom pipeline that stops before tensor.lower_to_mem: the checks below only need the shape computation.
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,

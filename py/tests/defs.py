@@ -24,6 +24,24 @@ def test_world(world):
     assert isinstance(m2.var()[0], mim.Def)
     assert isinstance(m2.var()[2, 0], mim.Def)
 
+
+def test_sequence_protocol(world):
+    """`Def` must end an iteration with IndexError rather than assert in Def::proj.
+
+    Without it the sequence protocol runs off the end, which aborts the interpreter in
+    Debug and hangs it in Release - and nanobind reaches for the protocol on its own
+    whenever a `Def` is offered to an overload taking a list.
+    """
+    var = world.mut_con([world.type_bool(), world.type_i8()]).var()
+    projs = list(var)  # iteration terminates instead of running off the end
+    assert len(projs) == 2
+    assert all(isinstance(p, mim.Def) for p in projs)
+    with pytest.raises(IndexError):
+        var[2]
+    with pytest.raises(IndexError):
+        var[2, 2]
+
+
 def test_driver(driver):
     d = driver.world().lit_i8(0).driver()
     assert d is not None

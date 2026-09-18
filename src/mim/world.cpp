@@ -73,7 +73,23 @@ const Def* nary_elem_type(const Def* d, Shape index) {
                     shape->arity())
             .bail();
 
+    // Only the axes World::extract folds away reach World::extract1's check, so the ones staying fused
+    // need it here. A fused shape never binds the Arr's own var, so its extents compare as they stand.
+    if (ri && rt)
+        for (nat_t i = 0; i != *ri; ++i)
+            if (auto size = Idx::isa(index[i]->unfold_type()); size && !Checker::alpha<Checker::Check>(shape[i], size))
+                index[i]->blame("index `{}` does not fit within arity `{}`", index[i], shape[i]).bail();
+
     return d->world().peel(arr, *index);
+}
+
+/// A fresh mutable Seq of @p seq's kind holding @p elem at @p shape, whose body @p rest computes from its own var.
+const Def* mut_shaped(const Seq* seq, Shape shape, const Def* elem, auto rest) {
+    auto& w      = seq->world();
+    auto is_pack = seq->is_intro();
+    auto res     = w.mut_seq(is_pack, is_pack ? w.arr(shape, elem) : seq->type());
+    res->Def::set(0, *shape);
+    return res->Def::set(1, rest(res))->zonk_mut();
 }
 
 /// Marks a World::Reduct slot while it is being computed: seeing it again means the op requires its own reduction.
@@ -488,14 +504,6 @@ const Def* World::fuse(Seq* seq) {
     });
 }
 
-/// A fresh mutable Seq of @p seq's kind holding @p elem at @p shape, whose body @p rest computes from its own var.
-const Def* World::mut_shaped(const Seq* seq, Shape shape, const Def* elem, std::function<const Def*(Seq*)> rest) {
-    auto is_pack = seq->is_intro();
-    auto res     = mut_seq(is_pack, is_pack ? arr(shape, elem) : seq->type());
-    res->Def::set(0, *shape);
-    return res->Def::set(1, rest(res))->zonk_mut();
-}
-
 const Def* World::type_indices(Shape shape) {
     if (shape.is_dim()) return type_idx(*shape);
     if (auto r = shape.rank()) return sigma(shape->projs(*r, [this](const Def* e) { return type_idx(e); }));
@@ -628,7 +636,8 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
     // `d#(i, j, k) ← val` stays *fused* unless the outermost write rebuilds an aggregate on the spot.
     if (!index.is_dim()) {
         auto r = index.rank();
-        if (r && *r == 0) return val; // the index folded away entirely, so the write replaces all of `d`
+        // The index folded away entirely, so the write replaces all of `d`.
+        if (r && *r == 0) return assign_or_bail(type, val);
 
         // A write deeper than `d`'s own shape reads down to the boundary and writes the levels back out;
         // cf. World::extract_fused. So does one whose outermost write rebuilds an aggregate.
@@ -643,6 +652,12 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
 
         auto new_val = assign_or_bail(nary_elem_type(d, index), val);
 
+        // `d#is ← (d#is)#js ← val` -> `d#(is, js) ← val`; cf. the scalar path below, which reaches this
+        // through World::extract's per-axis loop - the fused path has none, so it needs the rule itself.
+        if (auto inner = is_frozen() ? nullptr : new_val->isa<Insert>())
+            if (auto ex = inner->tuple()->isa<Extract>(); ex && ex->tuple() == d && ex->index() == *index)
+                if (auto is = fused_index(d, *index, inner->index())) return insert(d, *is, inner->value());
+
         // `d#is ← d#is` -> `d` and `(d#is ← y)#is ← val` -> `d#is ← val`; cf. the scalar path below
         if (auto ex = new_val->isa<Extract>(); ex && ex->tuple() == d && ex->index() == *index) return d;
         if (auto insert = d->isa<Insert>(); insert && insert->index() == *index) d = insert->tuple();
@@ -652,8 +667,13 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
     auto size = Idx::isa(index->unfold_type());
     auto lidx = Lit::isa(*index);
 
-    if (is_folded_axis(type, *index, size)) return val;
-    if (lidx) val = assign_or_bail(type->proj(*lidx), val);
+    if (is_folded_axis(type, *index, size)) return assign_or_bail(type, val); // the write replaces all of `d`
+    // A Sigma needs a literal index to name the component; an Arr peels to an element type at any index.
+    if (auto arr = type->isa<Arr>()) {
+        if (auto elem = peel(arr, *index)) val = assign_or_bail(elem, val);
+    } else if (lidx) {
+        val = assign_or_bail(type->proj(*lidx), val);
+    }
     // The only `Idx 1` left is a mutable 1-tuple; d could be mut - that's why the tuple ctor is needed.
     if (Lit::isa(size) == 1) return tuple(d, {val});
 

@@ -2,15 +2,15 @@
 // RUN: %FileCheck %s < %t.out
 // RUN: %FileCheck %s --check-prefix=GONE < %t.out
 
-// Regression: two `tensor.set`s that agree on shape AND element type must get DISTINCT buffers.
+// Regression: two writes that agree on shape AND element type must get DISTINCT buffers.
 // `buffer.alloc`'s identity is `(r, s, T, mem)` and it has no normalizer, so when both allocations shared
 // one `⊥: mem.M 0` placeholder they were hash-consed into a single allocation: `a` and `b` aliased one
 // buffer, and `b`'s copy-then-write clobbered what `a` had written (see LowerToMem::fresh_mem).
 //
-// Each result is read at the index the *other* one wrote, for two reasons: a `get` at the very index a
-// `set` just wrote folds to the stored value (so the tensor would never reach a buffer at all), and the
+// Each result is read at the index the *other* one wrote, for two reasons: a read at the very index a
+// write just wrote folds to the stored value (so the tensor would never reach a buffer at all), and the
 // cross-read is what makes the aliasing observable. The dynamic index parameters keep `i`/`j` opaque, so
-// neither `get` can be resolved statically.
+// neither read can be resolved statically.
 // ga = a[j] = t[j] = 30, gb = b[i] = t[i] = 12  =>  kernel returns 42.
 // Aliased, `b`'s copy of `t` overwrites `a`'s write, so ga reads b's 40 instead -> 52.
 // two_same_shape_set_run.mim compiles this to an executable and asserts the exit code.

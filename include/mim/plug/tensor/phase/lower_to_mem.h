@@ -42,11 +42,10 @@ private:
     /// generic RWPhase rewrite); the override itself only scopes the fresh-memory bookkeeping around it.
     const Def* conv_mut_Lam(Lam*);
 
-    /// Peels the `Extract` chain @p d down to the recorded tensor it reads, collecting one *rewritten* index per
-    /// level, outermost axis first.
-    /// A size-1 axis folds out of the array type, so the chain already carries the folded index `buffer` expects.
-    /// Yields a null base if @p d does not bottom out in a tensor.
-    std::pair<const Def*, DefVec> peel_tensor(const Def*);
+    /// Splits the Extract @p d into the recorded tensor it reads and its *rewritten* index.
+    /// A size-1 axis folds out of the array type, so the index is already the folded one `buffer` expects.
+    /// Yields a null base if @p d does not read a tensor.
+    std::pair<const Def*, const Def*> peel_tensor(const Def*);
     const Def* lower_splat(const App*);
     const Def* lower_generate(const App*);
     const Def* lower_broadcast(const App*);

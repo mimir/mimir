@@ -760,8 +760,6 @@ private:
     bool is_folded_axis(const Def* type, const Def* index, const Def* size);
     const Def* extract1(const Def* d, const Def* i); ///< World::extract for a *scalar* @p i.
     const Def* extract_fused(const Def* d, Shape i); ///< World::extract for an @p i that no longer folds.
-    /// A fresh mutable Seq of @p seq's kind holding @p elem at @p shape; @p rest builds its body from its own var.
-    const Def* mut_shaped(const Seq* seq, Shape shape, const Def* elem, std::function<const Def*(Seq*)> rest);
 
     /// @name Put into Sea of Nodes
     ///@{

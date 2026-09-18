@@ -184,14 +184,7 @@ std::string shape(const Seq* seq) {
     auto s = seq->shape();
     auto r = s.rank();
     if (!r || *r <= 1) return std::format("{}", Op(*s));
-
-    auto res = std::string();
-    for (auto sep = ""; auto i : std::views::iota(u64(0), *r)) {
-        res += sep;
-        res += std::format("{}", Op(s[i]));
-        sep = ", ";
-    }
-    return res;
+    return std::format("{}", Op::map(s->projs(*r)));
 }
 
 std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {

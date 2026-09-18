@@ -134,11 +134,11 @@ public:
 
     /// @name ops
     ///@{
-    const Def* body() const { return ops().back(); }
-
     /// The extents of all axes this Seq fuses.
     /// Def::arity is the *first* of them; `«2, 3; T»` still projects into two `«3; T»`.
     Shape shape() const { return op(0); }
+    const Def* body() const { return op(1); }
+
     /// The element one axis down: Seq::body for a one-dimensional Seq, the Seq of the remaining axes otherwise.
     const Def* elem() const;
     ///@}

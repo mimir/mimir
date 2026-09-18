@@ -493,16 +493,16 @@ const Def* LowerToMem::buffer_list(const Def* list, const Def* old_list, const D
     return new_world().tuple(ins);
 }
 
-std::pair<const Def*, DefVec> LowerToMem::peel_tensor(const Def* d) {
+std::pair<const Def*, const Def*> LowerToMem::peel_tensor(const Def* d) {
     // One Extract carries every axis, so there is no chain to walk back up and no sub-tensor to mistake the
     // base for: an index that stops short of the element yields an array type, which the caller rejects.
     auto ex = d->isa<Extract>();
-    if (!ex || !tensor_ty_.contains(ex->tuple()->type())) return {nullptr, {}};
+    if (!ex || !tensor_ty_.contains(ex->tuple()->type())) return {nullptr, nullptr};
 
     auto idx = ex->index();
     auto r   = Lit::isa(idx->unfold_type()->arity());
-    if (!r) return {nullptr, {}};
-    return {ex->tuple(), DefVec(*r, [&](size_t i) { return rewrite(idx->proj(*r, i)); })};
+    if (!r) return {nullptr, nullptr};
+    return {ex->tuple(), new_world().tuple(DefVec(*r, [&](size_t i) { return rewrite(idx->proj(*r, i)); }))};
 }
 
 const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
@@ -519,7 +519,7 @@ const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
     if (!buf) return RWPhase::rewrite_imm_Extract(extract);
     auto [br, bs, bT] = buf->args<3>(); // actual (folded) buffer metadata
 
-    auto [m, v] = buffer::op_read(br, bs, bT, bot_mem(), arr, new_world().tuple(index))->projs<2>();
+    auto [m, v] = buffer::op_read(br, bs, bT, bot_mem(), arr, index)->projs<2>();
     return v; // the loaded value
 }
 

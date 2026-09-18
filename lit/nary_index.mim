@@ -25,7 +25,7 @@ let _ = refly.equiv.struc_eq (sq#‹2; 1₂›, 4);
 
 let _ = refly.equiv.struc_eq (m#(1₂, 2₃) ← 99, m#1₂#2₃ ← 99);
 let _ = refly.equiv.struc_eq (m#(1₂, 2₃) ← 99, ((1, 2, 3), (4, 5, 99)));
-let _ = refly.equiv.struc_eq (m#() ← 7, 7);
+let _ = refly.equiv.struc_eq (m#() ← ((7, 8, 9), (10, 11, 12)), ((7, 8, 9), (10, 11, 12)));
 
 // ## Opaque index, known rank
 
@@ -57,6 +57,18 @@ extern lam insert_read_back (is: [Idx 2, Idx 3], v: Nat, t: «2, 3; Nat»): Nat 
 
 extern lam insert_twice (a b: Nat, t: «2, 3; Nat»): «2, 3; Nat» =
     refly.equiv.struc_eq ((t#(0₂, 0₃) ← a)#(0₂, 1₃) ← b, (t#0₂#0₃ ← a)#0₂#1₃ ← b);
+
+// Writing back a sub-array that was read out collapses into one maximal-rank Insert.
+// The `let` is load-bearing: it keeps the frontend from fusing the `#`-path before World::insert sees it.
+extern lam insert_read_modify_write (m n: Nat, t: «m, n; Nat», x: Idx m, y: Idx n, v: Nat): «m, n; Nat» =
+    let s = t#x;
+    refly.equiv.struc_eq (t#x ← (s#y ← v), t#(x, y) ← v);
+
+// as above, but the outer write is itself a *fused* index
+extern lam insert_read_modify_write_fused (m n o: Nat, t: «m, n, o; Nat», x: Idx m, y: Idx n, z: Idx o, v: Nat)
+: «m, n, o; Nat» =
+    let s = t#(x, y);
+    refly.equiv.struc_eq (t#(x, y) ← (s#z ← v), t#(x, y, z) ← v);
 
 // ## Type-level corner cases
 
