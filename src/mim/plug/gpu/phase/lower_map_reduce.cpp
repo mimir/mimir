@@ -248,7 +248,7 @@ Lam* build_kernel(World& w,
             = affine_map(post_ins.accs[j], post_ins.rs[j], Ro, So, post_ins.ss[j], write_coords, pcur);
         pcur = pc_mem;
         auto [rd_mem, rd_val]
-            = w.call<mem::load>(Defs{pcur, op_lea_tuple(k_post_dptrs[j], *Shape(pcoords).fold_by(post_ins.ss[j]))})
+            = w.call<mem::load>(Defs{pcur, op_lea_tuple(k_post_dptrs[j], *Shape(pcoords).fold(post_ins.ss[j]))})
                   ->projs<2>();
         pcur          = rd_mem;
         post_elems[j] = rd_val;
@@ -257,7 +257,7 @@ Lam* build_kernel(World& w,
     auto after_post            = w.mut_con(Defs{global_ty, Tp})->set("afterPost");
     auto [post_mem, elem_post] = after_post->vars<2>();
     auto final_mem
-        = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, *Shape(write_coords).fold_by(So)), elem_post});
+        = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, *Shape(write_coords).fold(So)), elem_post});
     after_post->app(true, k_ret, Defs{final_mem, k_shared, k_const, k_local});
     apply_cps(w, write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
 
@@ -290,7 +290,7 @@ Lam* build_kernel(World& w,
         auto [mc_mem, coords] = affine_map(ins.accs[i], ins.rs[i], n, Sr, ins.ss[i], iters, cur);
         cur                   = mc_mem;
         auto [rd_mem, rd_val]
-            = w.call<mem::load>(Defs{cur, op_lea_tuple(k_dptrs[i], *Shape(coords).fold_by(ins.ss[i]))})->projs<2>();
+            = w.call<mem::load>(Defs{cur, op_lea_tuple(k_dptrs[i], *Shape(coords).fold(ins.ss[i]))})->projs<2>();
         cur            = rd_mem;
         input_elems[i] = rd_val;
     }

@@ -80,6 +80,7 @@ public:
     constexpr Shape() noexcept = default;
     constexpr Shape(const Def* def) noexcept
         : def_(def) {}
+    Shape(World&, Defs shape);
 
     /// @name Getters
     ///@{
@@ -122,7 +123,7 @@ public:
     Shape fold() const;
     /// As above but driven by @p shape: drops the axes *it* has as literal `1`, whatever this one's own extents
     /// are - a broadcast reads a size-1 input axis at the *output*'s loop index.
-    Shape fold_by(Shape shape) const;
+    Shape fold(Shape shape) const;
     Shape zonk() const { return {def_->zonk()}; }
     ///@}
 

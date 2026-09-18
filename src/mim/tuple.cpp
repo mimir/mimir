@@ -38,6 +38,9 @@ bool isa_axes(const Def* type, auto leaf) {
  * Shape
  */
 
+Shape::Shape(World& w, Defs shape)
+    : Shape(w.tuple(shape)) {}
+
 bool Shape::is_dim() const {
     auto t = def_ ? def_->unfold_type() : nullptr;
     if (!t) return false;
@@ -93,7 +96,7 @@ Shape Shape::fold() const {
     return filter_axes(def_, *r, [](nat_t, const Def* a) { return extent(a) == 1; });
 }
 
-Shape Shape::fold_by(Shape shape) const {
+Shape Shape::fold(Shape shape) const {
     auto r = shape.rank();
     if (!r) return *this;
     return filter_axes(def_, *r, [&](nat_t i, const Def*) { return extent(shape[i]) == 1; });

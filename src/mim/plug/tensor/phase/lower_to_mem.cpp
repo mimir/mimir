@@ -599,12 +599,12 @@ const Def* LowerToMem::lower_generate(const App* app) {
     }
 
     auto [loop_mem, loop_out] = acc->projs<2>();
-    auto element              = w.call(body, w.tuple(iters));
+    auto elem                 = w.call(body, w.tuple(iters));
     DefVec coords(rn);
     for (u64 d = 0; d < rn; ++d)
         coords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
-    auto [write_mem, written]
-        = buffer::op_write(br, bs, bT, loop_mem, loop_out, *Shape(w.tuple(coords)).fold_by(s_out), element)->projs<2>();
+    auto folded               = *Shape(w, coords).fold(s_out);
+    auto [write_mem, written] = buffer::op_write(br, bs, bT, loop_mem, loop_out, folded, elem)->projs<2>();
     current->app(true, cont, w.tuple({write_mem, written}));
     auto [call_mem, call_out] = call->projs<2>();
     return call_out;
