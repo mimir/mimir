@@ -17,7 +17,7 @@ plugin btensor;
 
 use core.ops.u.w;
 
-fun add (x: I32, y: «1; I32»)@tt = return (x + y#0₁);
+fun add (x y: I32)@tt = return (x + y#0₁);
 lam mo (i _ _: affine.Index): «1; affine.Index» = i;
 lam mi (i j k: affine.Index): «3; affine.Index» = (i, j, k);
 
