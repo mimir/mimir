@@ -57,18 +57,19 @@ const Def* normalize_reflect(const Def*, const Def*, const Def* arg) { return do
 const Def* normalize_type(const Def*, const Def*, const Def* arg) { return arg->type(); }
 const Def* normalize_gid(const Def*, const Def*, const Def* arg) { return arg->world().lit_nat(arg->gid()); }
 
-template<equiv id>
-const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
-    auto [a, b]       = arg->projs<2>();
-    constexpr bool eq = id == equiv::aE || id == equiv::AE;
+template<struc id>
+const Def* normalize_struc(const Def*, const Def*, const Def* arg) {
+    auto [a, b] = arg->projs<2>();
+    auto res    = a == b;
+    if (res ^ (id == struc::e)) arg->blame("'{}' and '{}' {}structural-equivalent", a, b, !res ? "not " : "").bail();
+    return a;
+}
 
-    if constexpr (id == equiv::Ae || id == equiv::AE) {
-        auto res = Checker::alpha<Checker::Test>(a, b);
-        if (res ^ eq) arg->blame("'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "").bail();
-    } else {
-        auto res = a == b;
-        if (res ^ eq) arg->blame("'{}' and '{}' {}structural-equivalent", a, b, !res ? "not " : "").bail();
-    }
+template<alpha id>
+const Def* normalize_alpha(const Def*, const Def*, const Def* arg) {
+    auto [a, b] = arg->projs<2>();
+    auto res    = Checker::alpha<Checker::Test>(a, b);
+    if (res ^ (id == alpha::e)) arg->blame("'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "").bail();
     return a;
 }
 

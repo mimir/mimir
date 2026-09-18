@@ -18,4 +18,4 @@ extern con main (m: mem.M 0, argc: I32,
     let gathered = tensor.gather ((2, 3), (2, 2)) 1_2 (input, index);
     let scattered = tensor.scatter ((2, 3), (2, 2), (2, 2)) 1_2
         (input, index, updates);
-    return (m, tensor.get ((0_2, 0_2), gathered) + tensor.get ((1_2, 0_2), gathered) + (tensor.get ((0_2, 0_3), scattered) + tensor.get ((1_2, 1_3), scattered)));
+    return (m, gathered#(0_2, 0_2) + gathered#(1_2, 0_2) + (scattered#(0_2, 0_3) + scattered#(1_2, 1_3)));

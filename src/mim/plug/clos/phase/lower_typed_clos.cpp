@@ -6,7 +6,8 @@ namespace mim::plug::clos::phase {
 
 namespace {
 const Def* insert_ret(const Def* def, const Def* ret) {
-    auto new_ops = DefVec(def->num_projs() + 1, [&](auto i) { return (i == def->num_projs()) ? ret : def->proj(i); });
+    auto n       = def->num_projs();
+    auto new_ops = DefVec(n + 1, [&](auto i) { return (i == n) ? ret : def->proj(n, i); });
     auto& w      = def->world();
     return def->is_intro() ? w.tuple(new_ops) : w.sigma(new_ops);
 }
@@ -36,8 +37,9 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
 
     auto& w      = new_world();
     auto ep      = env_param(lam->type()->as<Pi>());
-    auto new_dom = w.sigma(DefVec(lam->num_doms(), [&](auto i) -> const Def* {
-        auto new_dom = rewrite(lam->dom(i));
+    auto nd      = lam->num_doms();
+    auto new_dom = w.sigma(DefVec(nd, [&](auto i) -> const Def* {
+        auto new_dom = rewrite(lam->dom(nd, i));
         if (i == ep) {
             if (mode == Unbox) return env_type();
             if (mode == Box) return w.call<mem::Ptr0>(new_dom);
@@ -53,7 +55,8 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     // The environment always lives in slot `ep`; a single-parameter lam has an atomic var (no projection),
     // so use the whole var there. This selection is independent of `mode` -- the mode only governs how the
     // environment is subsequently consumed (loaded, bitcast, or passed through), not where it sits.
-    auto env = new_lam->num_vars() < 2 ? new_lam->var() : new_lam->var(ep);
+    auto nv  = new_lam->num_vars();
+    auto env = nv < 2 ? new_lam->var() : new_lam->var(nv, ep);
     if (mode == Box) {
         // A mem-free closure still has to unbox its heap-allocated environment via a mem.load; if it has no mem of
         // its own, a throw-away witness is fine here -- if it actually closes over a real mem, that one is recovered
@@ -63,10 +66,11 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
         lcm         = m->set("mem");
         env         = e->set("closure_env");
     } else if (mode == Unbox) {
-        env = w.call<core::bitcast>(rewrite(lam->dom(ep)), env)->set("unboxed_env");
+        env = w.call<core::bitcast>(rewrite(lam->dom(nd, ep)), env)->set("unboxed_env");
     }
-    auto new_args = w.tuple(DefVec(lam->num_doms(), [&](auto i) {
-        return (i == ep) ? env : (lam->var(i) == mem::mem_var(lam)) ? lcm : new_lam->var(i);
+    auto nvo      = lam->num_vars();
+    auto new_args = w.tuple(DefVec(nd, [&](auto i) {
+        return (i == ep) ? env : (lam->var(nvo, i) == mem::mem_var(lam)) ? lcm : new_lam->var(nv, i);
     }));
     assert(new_args->num_projs() == lam->num_doms());
     assert(lam->num_doms() <= new_lam->num_doms());
@@ -81,15 +85,15 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     // mem from, and `lam->var(ep)` would be an out-of-bounds projection reading past the operand array.
     // Mirrors the `num_vars() < 2` guard applied to `new_lam` above.
     if (!lvm && ep < lam->num_vars()) {
-        auto old_env = lam->var(ep);
+        auto old_env = lam->var(lam->num_vars(), ep);
         if (Axm::isa<mem::M>(old_env->type())) {
             lvm = old_env;
             lcm = env;
         } else if (auto sig = old_env->type()->isa<Sigma>()) {
             for (size_t i = 0, e = sig->num_ops(); i != e; ++i)
                 if (Axm::isa<mem::M>(sig->op(i))) {
-                    lvm = old_env->proj(i);
-                    lcm = env->proj(i);
+                    lvm = old_env->proj(e, i);
+                    lcm = env->proj(e, i);
                     break;
                 }
         }
@@ -119,7 +123,7 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
     if (auto proj = def->isa<Extract>(); proj && isa_clos_type(proj->tuple()->type())) {
         auto idx = Lit::isa(proj->index());
         assert(idx && *idx <= 2 && "unknown proj from closure tuple");
-        return map(def, *idx == 0 ? env_type() : rewrite(proj->tuple())->proj(*idx - 1));
+        return map(def, *idx == 0 ? env_type() : rewrite(proj->tuple())->proj(2, *idx - 1));
     }
 
     // Lower a closure literal to an untyped `(code-ptr, env-ptr)` pair, boxing/unboxing the environment.

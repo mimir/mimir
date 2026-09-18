@@ -1,9 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin core;
+plugin refly;
 
-extern con icmp_lit(return: Cn Bool) =
-    return (core.icmp.e (core.icmp.uge (tt, ff), core.icmp.ug (tt, ff)));
-
-// CHECK-DAG: return{{.*}}tt
+let _ = refly.struc.e (core.icmp.e (core.icmp.uge (tt, ff), core.icmp.ug (tt, ff)), tt);

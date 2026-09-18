@@ -1,0 +1,12 @@
+// RUN: %mim -p opt %s
+
+plugin core;
+plugin refly;
+
+use core.ops.n;
+
+let n = 3 + 4;
+let _ = refly.alpha.e (n, 7);
+let _ = refly.struc.e (n, 7);
+let _ = refly.alpha.ne (n, 8);
+let _ = refly.struc.ne (n, 8);

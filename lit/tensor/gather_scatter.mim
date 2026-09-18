@@ -1,11 +1,11 @@
 // RUN: %mim %s -p opt -o - | %FileCheck %s --implicit-check-not=tensor.gather --implicit-check-not=tensor.scatter
 
 // Gather lowers to indexed reads; scatter lowers to an ordered sequence of
-// reads and writes. Their element formulas remain visible as tensor get/set.
+// reads and writes. Their element formulas remain visible as plain extracts and inserts.
 // CHECK-DAG: extern fun gather2d
 // CHECK-DAG: extern fun scatter2d
-// CHECK: tensor.get
-// CHECK: tensor.set
+// CHECK-DAG: core.bitcast (Idx 3) I64
+// CHECK-DAG: ←
 
 plugin core;
 plugin tensor;

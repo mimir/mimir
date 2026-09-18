@@ -5,7 +5,7 @@
 // it reads the reduction through a broadcast (its access map ignores the j loop), so composing it
 // into the inner's epilogue would rerun the whole reduction once per broadcast copy — the epilogue
 // direction must not fire either. Both map_reduces remain.
-plugin tensor;
+plugin tensor as *;
 plugin core;
 plugin opt;
 plugin affine;
@@ -14,27 +14,20 @@ plugin compile;
 use core.ops.n;
 
 fun sum_reduce (acc x: Nat)@tt: Nat = return (acc + x);
-
 fun add1_of (acc: Nat, y: «1; Nat»)@tt: Nat = return (y#0_1 + 1);
 
 extern con f (v: «2; «3; Nat»», return: Cn «2, 2; Nat») =
     // inner[i] = Σ_j v[i, j]: one output loop (bound 2), one reduction loop (bound 3)
-    let inner = tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
-        (tensor.proj_map 0)
-        (tensor.proj_map (0, 1), )
-        v;
+    let inner = map_reduce (2, (2, 3)) (sum_reduce, 0) (proj_map 0) (proj_map (0, 1)) v;
     // outer[i, j] = inner[i] + 1    (pure map, broadcast read)
-    let outer = tensor.map_reduce ((2, 2), (2, 2)) (add1_of, 0)
-        (affine.id)
-        (lm (i j: affine.Index) = (i), )
-        inner;
+    let outer = map_reduce ((2, 2), (2, 2)) (add1_of, 0) (affine.id) (lm (i j: affine.Index) = i) inner;
     return outer;
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.fuse_tensor,
+        lower_tensor,
+        fuse_tensor,
         compile.cleanup,
     );
 

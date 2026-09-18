@@ -19,8 +19,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
         // pb((1I32,0I32,pb_ret_cont)
         pb_ret_cont 1I32;
 
-    let f_diff = f;
-    let c = 42I32;
-    f_diff (c, ret_cont);
+    f (42I32, ret_cont);
 
 // CHECK-DAG: return{{.*}}8401

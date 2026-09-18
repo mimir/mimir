@@ -9,4 +9,4 @@ extern lam Vec (n: Nat): * = «n; Nat»;
 extern lam zeros (n: Nat): Vec n = ‹n; 0›;
 
 // `zeros 3` is partial-evaluated to `‹3; 0›` during graph construction; assert it statically.
-let _ = refly.equiv.struc_eq (zeros 3, ‹3; 0›);
+let _ = refly.struc.e (zeros 3, ‹3; 0›);

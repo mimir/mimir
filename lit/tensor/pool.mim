@@ -17,8 +17,10 @@ plugin tensor;
 plugin affine;
 plugin mem;
 
+use core.ops.n;
+
 // max over two Nats (no -inf needed when there is no padding: 0 seeds the max for non-negative inputs).
-lam nat_max (a b: Nat): Nat = core.select (core.ncmp.ge (a, b), a, b);
+lam nat_max (a b: Nat): Nat = core.select (a >= b, a, b);
 
 // 2x2 max-pool, stride 2, no padding: «2,2,4,4» -> «2,2,2,2». The reduction is the `nat_max` comparison; the strided
 // window read lowers to core arithmetic.

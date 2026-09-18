@@ -5,6 +5,8 @@ plugin compile;
 plugin ll;
 plugin mem;
 
+use core.ops.n;
+
 extern fun test1(m: mem.M 0): [mem.M 0, Nat] =
     ret (m, ptr) = mem.slot (Nat, 0) $ m;
     let m        = mem.store (m, ptr, 1);
@@ -12,7 +14,7 @@ extern fun test1(m: mem.M 0): [mem.M 0, Nat] =
     let m        = mem.store (m, ptr, 2);
     let (m, b)   = mem.load (m, ptr);
     let (m, c)   = mem.load (m, ptr);
-    return (m, core.nat.add (a, c));
+    return (m, a + c);
 
 extern lam _compile(): compile.Phase =
     compile.phases tt (

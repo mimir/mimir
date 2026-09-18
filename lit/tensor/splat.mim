@@ -28,7 +28,7 @@ extern fun splat_physical_rank0(): I32 =
 
 extern fun splat_dynamic {n: Nat} (index: Idx n, value: I32): I32 =
     let t = tensor.splat ((n, 2), value);
-    return (tensor.get ((index, 0_2), t));
+    return (t#(index, 0_2));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

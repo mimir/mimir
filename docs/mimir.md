@@ -250,10 +250,10 @@ Each step hands a *partially applied* function — `add x`, `mul x` — to `iter
 The final line is a **compile-time assertion**:
 
 ```mim
-let _ = refly.equiv.struc_eq (pow 3 5, 243);
+let _ = refly.struc.e (pow 3 5, 243);
 ```
 
-Because `iter` carries the `@(core.pe.is_closed n)` [partial-evaluation](https://en.wikipedia.org/wiki/Partial_evaluation) filter — and every function in the tower is direct-style with the default `tt` filter — MimIR evaluates `pow 3 5` **completely during graph construction**: the whole tower unrolls to the literal `243`, and `refly.equiv.struc_eq` statically checks it.
+Because `iter` carries the `@(core.pe.is_closed n)` [partial-evaluation](https://en.wikipedia.org/wiki/Partial_evaluation) filter — and every function in the tower is direct-style with the default `tt` filter — MimIR evaluates `pow 3 5` **completely during graph construction**: the whole tower unrolls to the literal `243`, and `refly.struc.e` statically checks it.
 A mismatch would fail the build.
 
 Now notice what *survives*.
@@ -284,7 +284,7 @@ Watch a *type* come out of an ordinary function:
 
 `Vec` is just a `lam` — but it returns `*`, the type of types, so it is a function `Nat → *`: a [type constructor](https://en.wikipedia.org/wiki/Type_constructor).
 `zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the *value* `n` of its argument.
-Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `core.select` above, even though the result is a *type* — and `refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
+Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `core.select` above, even though the result is a *type* — and `refly.struc.e` statically checks that `zeros 3` evaluates to `‹3; 0›`.
 
 @image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown (type edges are dashed)"
 

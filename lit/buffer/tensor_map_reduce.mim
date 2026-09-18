@@ -27,7 +27,7 @@ lam id1 (i: affine.Index): «1; affine.Index» = i;
 lam id1i(i, j: affine.Index): «1; affine.Index» = i;
 lam id2 (i, j: affine.Index): «2; affine.Index» = (i, j);
 lam tr  (i, j: affine.Index): «2; affine.Index» = (j, i);
-lam sl  (i: affine.Index): «1; affine.Index» = (affine.op.add (affine.semiop.mul (i, 3), affine.lit 2), );
+lam sl  (i:    affine.Index): «1; affine.Index» = affine.op.add (affine.semiop.mul (i, 3), affine.lit 2);
 
 // out[i] = sum_j input[i][j]
 // CHECK-DAG: extern fun row_sum
@@ -55,7 +55,7 @@ extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.named "tensor.lower_tensor",       // high-level ops -> tensor.map_reduce (+ broadcast)
         compile.named "tensor.fuse_tensor",        // fuse map_reduce chains
-        compile.named "tensor.lower_to_mem",       // bufferize get/set/map_reduce/broadcast onto
+        compile.named "tensor.lower_to_mem",       // bufferize map_reduce/broadcast onto
                                                            // buffer/%btensor (hard error if not bufferizable)
         mem.add_mem,
         compile.named "btensor.lower_map_reduce",  // btensor.map_reduce_post/broadcast -> affine.For over buffer

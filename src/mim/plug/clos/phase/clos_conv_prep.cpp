@@ -65,7 +65,7 @@ bool ClosConvPrep::analyze() {
     return false;
 }
 
-const Def* ClosConvPrep::eta_wrap(const Def* old_op, attr a) {
+const Def* ClosConvPrep::eta_wrap(const Def* old_op, anno a) {
     auto [entry, inserted] = old2wrapper_.emplace(old_op, nullptr);
     auto& wrapper          = entry->second;
     if (inserted) {
@@ -79,24 +79,25 @@ const Def* ClosConvPrep::eta_wrap(const Def* old_op, attr a) {
 const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
     auto arg = app->arg();
     auto i   = 0u;
-    for (; i < arg->num_projs(); i++)
-        if (arg->proj(i) == old_op) break;
+    auto n   = arg->num_projs();
+    for (; i < n; i++)
+        if (arg->proj(n, i) == old_op) break;
 
     if (auto lam = isa_retvar(old_op); lam && from_outer_scope(lam)) {
         log().d("return var from an enclosing scope: {}", old_op);
-        return eta_wrap(old_op, attr::free_bb)->set("free_ret");
+        return eta_wrap(old_op, anno::free_bb)->set("free_ret");
     }
     if (auto bb_lam = Lam::isa_mut_basicblock(old_op); bb_lam && from_outer_scope(bb_lam)) {
         log().d("BB from an enclosing scope: {}", old_op);
-        return new_world().call(attr::free_bb, rewrite(old_op));
+        return new_world().call(anno::free_bb, rewrite(old_op));
     }
     if (isa_cnt(app, arg, i)) {
-        if (Axm::isa<attr>(attr::returning, old_op) || isa_retvar(old_op)) {
+        if (Axm::isa<anno>(anno::returning, old_op) || isa_retvar(old_op)) {
             return rewrite(old_op);
         } else if (auto contlam = old_op->isa_mut<Lam>()) {
-            return new_world().call(attr::returning, rewrite(contlam));
+            return new_world().call(anno::returning, rewrite(contlam));
         } else {
-            auto wrapper = eta_wrap(old_op, attr::returning)->set("eta_cont");
+            auto wrapper = eta_wrap(old_op, anno::returning)->set("eta_cont");
             log().d("eta-expand return continuation: {} → {}", old_op, wrapper);
             return wrapper;
         }
@@ -105,13 +106,13 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
     if (!isa_callee_br(app, arg, i)) {
         if (auto bb_lam = Lam::isa_mut_basicblock(old_op)) {
             log().d("first-class use of BB: {}", bb_lam);
-            return new_world().call(attr::fstclass_bb, rewrite(bb_lam));
+            return new_world().call(anno::fstclass_bb, rewrite(bb_lam));
         }
         // @note This relies on branches staying in `Extract`-of-`Tuple` form; if eta-reduction were to collapse
         // a branch back into a bare continuation, it would have to be re-wrapped here.
         if (isa_retvar(old_op)) {
             log().d("first-class use of return var: {}", old_op);
-            return eta_wrap(old_op, attr::fstclass_bb)->set("fstclass_ret");
+            return eta_wrap(old_op, anno::fstclass_bb)->set("fstclass_ret");
         }
     }
 
@@ -120,7 +121,7 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
 
 const Def* ClosConvPrep::rewrite_callee_op(const Def* old_op) {
     if (!old_op->isa_mut<Lam>()) {
-        auto wrapper = eta_wrap(old_op, attr::bottom)->set("eta_br");
+        auto wrapper = eta_wrap(old_op, anno::bottom)->set("eta_br");
         log().d("eta-wrap branch: {} → {}", old_op, wrapper);
         return wrapper;
     }
@@ -128,7 +129,7 @@ const Def* ClosConvPrep::rewrite_callee_op(const Def* old_op) {
 }
 
 const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping() || Axm::isa<attr>(app)) return RWPhase::rewrite_imm_App(app);
+    if (is_bootstrapping() || Axm::isa<anno>(app)) return RWPhase::rewrite_imm_App(app);
 
     // Skip if the surrounding mutable is no Lam with a continuation call as body.
     auto mut  = curr_mut() ? curr_mut()->isa_mut<Lam>() : nullptr;
@@ -157,7 +158,8 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
     if (arg->isa<Var>()) {
         new_arg = rewrite(arg);
     } else {
-        auto new_args = DefVec(arg->num_projs(), [&](size_t i) { return rewrite_arg(app, arg->proj(i)); });
+        auto new_args = DefVec(arg->num_projs(),
+                               [&, n = arg->num_projs()](size_t i) { return rewrite_arg(app, arg->proj(n, i)); });
         new_arg       = arg->num_projs() == 1 ? new_args[0] : w.tuple(new_args);
     }
 

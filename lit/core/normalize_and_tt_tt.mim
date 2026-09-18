@@ -1,9 +1,6 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin core;
+plugin refly;
 
-extern con and_lit_tt_tt (return: Cn Bool) =
-    return (core.bit2.and_ 0 (tt, tt));
-
-// CHECK-DAG: return{{.*}}tt
+let _ = refly.struc.e (core.bit2.and_ 0 (tt, tt), tt);
