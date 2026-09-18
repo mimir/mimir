@@ -9,40 +9,6 @@
 
 namespace mim::plug::tensor::phase {
 
-namespace {
-
-/// One step down an `Extract` chain over array types; `nullptr` at the base. A Sigma projection ends the chain.
-const Extract* array_extract(const Def* d) {
-    auto ex = d->isa<Extract>();
-    if (!ex || !ex->tuple()->type()->isa<Arr>()) return nullptr;
-    auto ty = ex->index()->unfold_type();
-    return Idx::isa(ty) || Lit::isa(ty->arity()) ? ex : nullptr;
-}
-
-const Def* base_of(const Def* d) {
-    while (auto ex = array_extract(d))
-        d = ex->tuple();
-    return d;
-}
-
-/// The chain's index components, one per axis and outermost first - a fused index contributes all of its own.
-DefVec axes_of(const Def* d) {
-    auto axes = DefVec(); // collected innermost-axis-first and reversed once at the end
-    for (auto ex = array_extract(d); ex; ex = array_extract(d)) {
-        auto idx = ex->index();
-        if (auto r = Lit::isa(idx->unfold_type()->arity()); r && !Idx::isa(idx->unfold_type()))
-            for (nat_t i = *r; i-- != 0;)
-                axes.emplace_back(idx->proj(*r, i));
-        else
-            axes.emplace_back(idx);
-        d = ex->tuple();
-    }
-    std::ranges::reverse(axes);
-    return axes;
-}
-
-} // namespace
-
 const Def* Lower::read_through(const Def* base, Defs index) {
     auto& w = new_world();
 
@@ -64,7 +30,8 @@ const Def* Lower::read_through(const Def* base, Defs index) {
     }
 
     auto r = Lit::isa(rank);
-    if (!r) return nullptr;
+    // An index reaching past the shape op's own axes continues into an array element type - not ours to answer.
+    if (!r || index.size() > *r) return nullptr;
 
     auto new_index = DefVec(*r);
     for (u64 d = 0, i = 0; d != *r; ++d) {
@@ -88,9 +55,12 @@ const Def* Lower::read_through(const Def* base, Defs index) {
 }
 
 const Def* Lower::rewrite_imm_Extract(const Extract* extract) {
-    // Only a repeat/broadcast base reads through, so find it before collecting any indices.
-    if (auto base = base_of(extract); Axm::isa<tensor::repeat>(base) || Axm::isa<tensor::broadcast>(base))
-        if (auto res = read_through(base, axes_of(extract))) return res;
+    auto base = extract->tuple();
+    if (Axm::isa<tensor::repeat>(base) || Axm::isa<tensor::broadcast>(base)) {
+        auto index = Shape(extract->index());
+        if (auto r = index.rank())
+            if (auto res = read_through(base, DefVec(*r, [&](size_t i) { return index[i]; }))) return res;
+    }
     return RWPhase::rewrite_imm_Extract(extract);
 }
 

@@ -65,6 +65,13 @@ Lam* param_of(const Def* d) {
     return nullptr;
 }
 
+/// The aggregate @p d reads from or writes into; `nullptr` if it is neither.
+const Def* accessed(const Def* d) {
+    if (auto ex = d->isa<Extract>()) return ex->tuple();
+    if (auto in = d->isa<Insert>()) return in->tuple();
+    return nullptr;
+}
+
 } // namespace
 
 // If we need a marker, what we consider a "Tensor", we would have to add it here.
@@ -95,14 +102,10 @@ void LowerToMem::collect_tensor_types() {
         // An array an external function *takes* and only ever reads or writes is a tensor: without the old
         // `tensor.get` / `tensor.set` axioms this is the last evidence left for one that no other tensor op
         // mentions. Any other aggregate stays a plain tuple - `core.select` alone desugars to an array extract.
-        if (auto access = def->isa<Extract>() ? def->as<Extract>()->tuple()
-                        : def->isa<Insert>()  ? def->as<Insert>()->tuple()
-                                              : nullptr) {
-            for (auto ex = access->isa<Extract>(); ex && ex->tuple()->type()->isa<Arr>(); ex = access->isa<Extract>())
-                access = ex->tuple();
+        // One Extract carries every axis, so the accessed array is the operand itself, never a sub-array read.
+        if (auto access = accessed(def))
             if (auto arr = access->type()->isa<Arr>())
                 if (auto lam = param_of(access); lam && lam->is_external()) add_tensor_ty(arr);
-        }
 
         if (auto app = def->isa<App>()) {
             if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0 && axm->plugin() == tensor::Plugin_Id)
@@ -498,11 +501,7 @@ std::pair<const Def*, const Def*> LowerToMem::peel_tensor(const Def* d) {
     // base for: an index that stops short of the element yields an array type, which the caller rejects.
     auto ex = d->isa<Extract>();
     if (!ex || !tensor_ty_.contains(ex->tuple()->type())) return {nullptr, nullptr};
-
-    auto idx = ex->index();
-    auto r   = Lit::isa(idx->unfold_type()->arity());
-    if (!r) return {nullptr, nullptr};
-    return {ex->tuple(), new_world().tuple(DefVec(*r, [&](size_t i) { return rewrite(idx->proj(*r, i)); }))};
+    return {ex->tuple(), rewrite(ex->index())};
 }
 
 const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {

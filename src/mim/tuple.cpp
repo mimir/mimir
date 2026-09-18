@@ -76,6 +76,7 @@ Shape Shape::fold() const {
 
 Shape Shape::fold(Shape shape) const {
     if (!shape.rank()) return *this;
+    assert(rank() == shape.rank() && "an index folds against the shape of the very Seq it indexes");
     return filter([&](nat_t i, const Def*) { return extent(shape[i]) != 1; });
 }
 

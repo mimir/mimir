@@ -437,8 +437,8 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
                 auto idx_i64 = (d == axn) ? clamp : iters[d];
                 coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
             }
-            auto coors_folded     = *Shape(w, coords).fold(Sis_i);
-            auto [rd_mem, rd_val] = buffer::op_read(ibr, ibs, ibT, cur, in_buf, coors_folded)->projs<2>();
+            auto coords_folded    = *Shape(w, coords).fold(Sis_i);
+            auto [rd_mem, rd_val] = buffer::op_read(ibr, ibs, ibT, cur, in_buf, coords_folded)->projs<2>();
             cur                   = rd_mem;
             return rd_val;
         };
@@ -550,9 +550,9 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     DefVec update_coords(rn);
     for (u64 d = 0; d < rn; ++d)
         update_coords[d] = w.call(core::conv::u, s_updates->proj(rn, d), iters[d]);
-    auto update_foled         = *Shape(w, update_coords).fold(s_updates);
+    auto update_folded        = *Shape(w, update_coords).fold(s_updates);
     auto [idx_mem, selected]  = buffer::op_read(xbr, xbs, xbT, loop_mem, idx_buf, folded_idx)->projs<2>();
-    auto [update_mem, update] = buffer::op_read(ubr, ubs, ubT, idx_mem, update_buf, update_foled)->projs<2>();
+    auto [update_mem, update] = buffer::op_read(ubr, ubs, ubT, idx_mem, update_buf, update_folded)->projs<2>();
     auto selected_i64         = w.call<core::bitcast>(w.type_i64(), selected);
 
     DefVec dst_coords(rn);
