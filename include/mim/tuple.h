@@ -147,12 +147,27 @@ public:
     Shape take(nat_t n) const { return slice(0, n); } ///< The leading @p n axes.
     Shape drop(nat_t n) const;                        ///< All but the leading @p n axes.
     Shape operator+(Shape) const;                     ///< Concatenation - what fuses `«a; «b; T»»` into `«a, b; T»`.
+    Shape zonk() const { return {def_->zonk()}; }     ///< Wraps Def::zonk();
+
+    /// This Shape with only the axes @p keep accepts; `*this`, if it accepts all of them or the rank is dynamic.
+    Shape filter(auto keep) const {
+        if (auto r = rank()) {
+            auto kept = DefVec();
+            kept.reserve(*r);
+            for (nat_t i = 0; i != *r; ++i)
+                if (auto a = def_->proj(*r, i); keep(i, a)) kept.emplace_back(a);
+
+            return kept.size() == *r ? *this : Shape(def_->world(), kept);
+        }
+        return *this;
+    }
+
     /// Drops every literal size-1 axis, mirroring `«1; T»` ≡ `T`; all of them folded away leaves rank `0`.
     Shape fold() const;
+
     /// As above but driven by @p shape: drops the axes *it* has as literal `1`, whatever this one's own extents
     /// are - a broadcast reads a size-1 input axis at the *output*'s loop index.
     Shape fold(Shape shape) const;
-    Shape zonk() const { return {def_->zonk()}; }
     ///@}
 
 private:

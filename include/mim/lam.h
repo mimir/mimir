@@ -334,6 +334,12 @@ public:
     static constexpr auto Node      = mim::Node::App;
     static constexpr size_t Num_Ops = 2;
 
+    /// The App::callee of @p def - or `nullptr`, if @p def isn't an App at all.
+    static const Def* callee_of(const Def* def) {
+        auto app = def->isa<App>();
+        return app ? app->callee() : nullptr;
+    }
+
 private:
     friend class World;
 };

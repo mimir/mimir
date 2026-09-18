@@ -6,34 +6,6 @@
 
 namespace mim {
 
-namespace {
-/// The App::callee of @p def - or `nullptr`, if @p def isn't an App at all.
-const Def* callee_of(const Def* def) {
-    auto app = def->isa<App>();
-    return app ? app->callee() : nullptr;
-}
-
-/// @p d without the axes @p drop rejects; @p d itself if it keeps all of them.
-Shape filter_axes(const Def* d, nat_t r, auto drop) {
-    auto kept = DefVec();
-    kept.reserve(r);
-    for (nat_t i = 0; i != r; ++i)
-        if (auto a = d->proj(r, i); !drop(i, a)) kept.emplace_back(a);
-    // Rebuilding an unchanged @p d would eta-reduce back to it - but only after World::tuple's pack
-    // normalization has alpha-compared the projections, walking @p d's whole coordinate chain per pair.
-    return kept.size() == r ? d : d->world().tuple(kept);
-}
-
-/// Is @p type a @p leaf - or an aggregate of them? This is what makes a shape a shape and an index an index.
-bool isa_axes(const Def* type, auto leaf) {
-    if (!type) return false; // Univ has no type
-    if (leaf(type)) return true;
-    if (auto sigma = type->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), leaf);
-    if (auto arr = type->isa<Arr>()) return leaf(arr->body()->zonk());
-    return false;
-}
-} // namespace
-
 /*
  * Shape
  */
@@ -63,6 +35,15 @@ std::optional<nat_t> Shape::extent(const Def* axis) {
     return Lit::isa(axis);
 }
 
+/// Is @p type a @p leaf - or an aggregate of them? This is what makes a shape a shape and an index an index.
+static bool isa_axes(const Def* type, auto leaf) {
+    if (!type) return false; // Univ has no type
+    if (leaf(type)) return true;
+    if (auto sigma = type->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), leaf);
+    if (auto arr = type->isa<Arr>()) return leaf(arr->body()->zonk());
+    return false;
+}
+
 bool Shape::isa_extents(const Def* type) {
     return isa_axes(type, [](const Def* l) { return l->isa<Nat>() != nullptr; });
 }
@@ -90,15 +71,12 @@ Shape Shape::operator+(Shape other) const {
 
 Shape Shape::fold() const {
     if (is_dim()) return extent(def_) == 1 ? Shape(def_->world().tuple()) : *this;
-    auto r = rank();
-    if (!r) return *this;
-    return filter_axes(def_, *r, [](nat_t, const Def* a) { return extent(a) == 1; });
+    return filter([](nat_t, const Def* a) { return extent(a) != 1; });
 }
 
 Shape Shape::fold(Shape shape) const {
-    auto r = shape.rank();
-    if (!r) return *this;
-    return filter_axes(def_, *r, [&](nat_t i, const Def*) { return extent(shape[i]) == 1; });
+    if (!shape.rank()) return *this;
+    return filter([&](nat_t i, const Def*) { return extent(shape[i]) != 1; });
 }
 
 const Def* Seq::elem() const { return shape().is_fused() ? world().drop(this, 1) : body(); }
@@ -111,7 +89,7 @@ Select::Select(const Def* def) {
 }
 
 Branch::Branch(const Def* def)
-    : Select(callee_of(def)) {
+    : Select(App::callee_of(def)) {
     if (extract()) app_ = def->as<App>();
 }
 
