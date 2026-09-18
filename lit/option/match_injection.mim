@@ -1,29 +1,23 @@
-// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=Match
+// RUN: %mim %s
 
 plugin option as o;
+plugin refly;
 
-// CHECK-LABEL: extern fun unwrap_none
-// CHECK: return_{{[0-9]+}} 7;
-extern fun unwrap_none(): Nat =
-    return (match (o.none Nat) with
+let _ = refly.equiv.struc_eq
+    (match (o.none Nat) with
         | value: Nat => value
-        | _: [] => 7);
+        | _: [] => 7,
+     7);
 
 // The option library is a client of the same generic reduction: its lambda
 // unfolds to a Match, which then dispatches on the known injection.
-// CHECK-LABEL: extern fun unwrap_or_none
-// CHECK: return_{{[0-9]+}} 7;
-extern fun unwrap_or_none(): Nat =
-    return (o.unwrap_or (o.none Nat) 7);
+let _ = refly.equiv.struc_eq (o.unwrap_or (o.none Nat) 7, 7);
 
-// CHECK-LABEL: extern fun unwrap_or_some
-// CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
-extern fun unwrap_or_some(x: Nat): Nat =
-    return (o.unwrap_or (o.some x) 7);
+lam unwrap_or_some (x: Nat): Nat = refly.equiv.struc_eq (o.unwrap_or (o.some x) 7, x);
 
-// CHECK-LABEL: extern fun unwrap_some
-// CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
-extern fun unwrap_some(x: Nat): Nat =
-    return (match (o.some x) with
-        | value: Nat => value
-        | _: [] => 7);
+lam unwrap_some (x: Nat): Nat =
+    refly.equiv.struc_eq
+        (match (o.some x) with
+            | value: Nat => value
+            | _: [] => 7,
+         x);

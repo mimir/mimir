@@ -1,16 +1,12 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
+
 plugin core;
 plugin refly;
 
 use core.ops.n;
 
-extern lam f(): «3; Nat» = ‹i: 3; 1 + core.bitcast Nat i›;
-let p1 = ‹i: 2; i›;
-let p2 = ‹i: 1; i›;
-let p3 = ‹i: 0; i›;
-extern lam g(): [Idx 1, []] = (p2, p3);
-
+let _ = refly.equiv.struc_eq (‹i: 3; 1 + core.bitcast Nat i›, (1, 2, 3));
+let _ = refly.equiv.struc_eq (‹i: 2; i›, (0₂, 1₂));
+let _ = refly.equiv.struc_eq (‹i: 1; i›, 0₁);
+let _ = refly.equiv.struc_eq (‹i: 0; i›, ());
 let _ = refly.equiv.struc_eq (‹‹3; 5›; 42›, ‹5; ‹5; ‹5; 42›››);
-
-// CHECK-DAG: (1, 2, 3)
-// CHECK-DAG: (0₁, ())

@@ -1,16 +1,10 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin core;
+plugin refly;
 
 use core.ops.u.w;
 
-extern con add0 (i: I8, return: Cn I8) =
-    return (i + 0I8);
+lam add0 (i: I8): I8 = refly.equiv.struc_eq (i + 0I8, i);
 
-// CHECK-DAG: return_{{[0-9]+}} i_{{[0-9]+}}
-
-extern con add_lit (return: Cn I8) =
-    return (6I8 + 0I8);
-
-// CHECK-DAG: return_{{[0-9]+}} 6I8
+let _ = refly.equiv.struc_eq (6I8 + 0I8, 6I8);

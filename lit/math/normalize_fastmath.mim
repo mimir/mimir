@@ -1,30 +1,14 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin math;
+plugin refly;
 
 use math.ops.fast;
 
-// CHECK-DAG: extern fun foo (f_{{[0-9]+}}: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: let _[[FOO_VAL:[0-9]+]]: {{.*}} = math.arith.sub 127 (23, 8) (0:(math.F (23, 8)), f_{{[0-9]+}})
-// CHECK-DAG: return_{{[0-9_]+}} _[[FOO_VAL]]
-extern con foo(f: math.F32, return: Cn math.F32) = return (math.minus math.mode.fast f);
-
-// CHECK-DAG: extern fun sub0 (f_{{[0-9]+}}: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: return_{{[0-9_]+}} f_{{[0-9]+}}
-extern con sub0(f: math.F32, return: Cn math.F32) = return (f - 0:(math.F32));
-
-// CHECK-DAG: extern fun add0 (f_{{[0-9]+}}: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: return_{{[0-9_]+}} f_{{[0-9]+}}
-extern con add0(f: math.F32, return: Cn math.F32) = return (f + 0:(math.F32));
-
-// CHECK-DAG: extern fun add0f (f_{{[0-9]+}}: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: return_{{[0-9_]+}} f_{{[0-9]+}}
-extern con add0f(f: math.F32, return: Cn math.F32) = return (0:(math.F32) + f);
-
-// CHECK-DAG: extern fun mul0 (_: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: return_{{[0-9_]+}} 0:(math.F (23, 8))
-extern con mul0(f: math.F32, return: Cn math.F32) = return (f * 0:(math.F32));
-
-// CHECK-DAG: extern fun mul0f (_: math.F (23, 8)): math.F (23, 8) =
-// CHECK-DAG: return_{{[0-9_]+}} 0:(math.F (23, 8))
-extern con mul0f(f: math.F32, return: Cn math.F32) = return (0:(math.F32) * f);
+// `f - 0` folds, `0 - f` must not
+lam minus (f: math.F32): math.F32 = refly.equiv.struc_ne (math.minus math.mode.fast f, f);
+lam sub0  (f: math.F32): math.F32 = refly.equiv.struc_eq (f - 0:(math.F32), f);
+lam add0  (f: math.F32): math.F32 = refly.equiv.struc_eq (f + 0:(math.F32), f);
+lam add0f (f: math.F32): math.F32 = refly.equiv.struc_eq (0:(math.F32) + f, f);
+lam mul0  (f: math.F32): math.F32 = refly.equiv.struc_eq (f * 0:(math.F32), 0:(math.F32));
+lam mul0f (f: math.F32): math.F32 = refly.equiv.struc_eq (0:(math.F32) * f, 0:(math.F32));

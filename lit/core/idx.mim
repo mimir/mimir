@@ -1,16 +1,12 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin core;
+plugin refly;
 
-lam f0(s i: Nat): Idx s = core.idx 0 s i;
-lam f1(s i: Nat): Idx s = core.idx 1 s i;
+lam f0 (s i: Nat): Idx s = core.idx 0 s i;
+lam f1 (s i: Nat): Idx s = core.idx 1 s i;
 
-extern lam g0() = f0(42, 23);
-extern lam g1() = f1(42, 23);
-extern lam h0() = f0(23, 42);
-extern lam h1() = f1(23, 42);
-
-// CHECK-DAG: 23₄₂
-// CHECK-DAG: 23₄₂
-// CHECK-DAG: 19₂₃
-// CHECK-DAG:  ⊥:(Idx 23)
+let _ = refly.equiv.struc_eq (f0 (42, 23), 23₄₂);
+let _ = refly.equiv.struc_eq (f1 (42, 23), 23₄₂);
+let _ = refly.equiv.struc_eq (f0 (23, 42), 19₂₃); // mode 0 wraps
+let _ = refly.check_bot      (f1 (23, 42));       // mode 1 traps

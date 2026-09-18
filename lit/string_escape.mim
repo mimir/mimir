@@ -1,7 +1,7 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s
+
+plugin refly;
 
 // An escaped `\"` must not terminate the string literal: `s` is the 3 chars `a`, `"`, `b`.
 let s = "a\"b";
-extern lam f (): I8 = s#(2_3);
-
-// CHECK: 98I8
+let _ = refly.equiv.struc_eq (s, ('a', '"', 'b'));

@@ -1,13 +1,11 @@
 // RUN: rm -f %{s:stem}.ll
-// RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
+// RUN: %mim -p opt %s -p ll
 
 plugin core;
 plugin demo;
 plugin mem;
+plugin refly;
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
-    con ret_cont r: I32 = return (m, r);
-    let c = demo.const_idx i32;
-    ret_cont c;
-
-// CHECK-DAG: return_{{[0-9]+}} (m_{{[0-9]+}}, 42I32)
+    let c = refly.equiv.struc_eq (demo.const_idx i32, 42I32);
+    return (m, c);
