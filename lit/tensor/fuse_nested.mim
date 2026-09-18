@@ -19,9 +19,7 @@ extern con f (v: «2; «3; Nat»», return: Cn «2; Nat») =
     let inner1 = tensor.unary add1 v;
     let inner2 = tensor.unary mul2 inner1;
     let outer  = tensor.map_reduce (2, (2, 3)) (sum_reduce, 0)
-        (tensor.proj_map 0)
-        (tensor.proj_map (0, 1), )
-        inner2;
+        (tensor.proj_map 0) (tensor.proj_map (0, 1) ) inner2;
     return outer;
 
 extern lam _compile (): compile.Phase =

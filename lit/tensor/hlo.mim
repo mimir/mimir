@@ -39,10 +39,10 @@ lam F32_is_finite {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; Bool» = unary (
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1
 // (one output loop over n, one reduction loop over m).
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
-    map_reduce (n, (n, m)) (pool_fun g, init) (proj_map 0) (proj_map (0, 1), ) input;
+    map_reduce (n, (n, m)) (pool_fun g, init) (proj_map 0) (proj_map (0, 1)) input;
 // out[j] = fold_i g (input[i, j]): reduce along axis 0 (the output loop runs over m, the reduction over n).
 lam reduce_ax0 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «m; F32» =
-    map_reduce (m, (m, n)) (pool_fun g, init) (proj_map 0) (proj_map (1, 0), ) input;
+    map_reduce (m, (m, n)) (pool_fun g, init) (proj_map 0) (proj_map (1, 0)) input;
 
 extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»») : F32 =
     let v_cst = math.conv.f2f (23, 8) (1.0:math.F64);

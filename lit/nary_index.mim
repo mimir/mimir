@@ -12,7 +12,7 @@ let sq = ((1, 2), (3, 4));
 
 // rank 0 and rank 1 are the degenerate ends
 let _ = refly.equiv.struc_eq (m#(), m);
-let _ = refly.equiv.struc_eq (m#(1₂, ), m#1₂);
+let _ = refly.equiv.struc_eq (m#(1₂), m#1₂);
 
 // a tuple index and the `#`-chain it stands for agree - and both fold
 let _ = refly.equiv.struc_eq (m#(1₂, 2₃), m#1₂#2₃);
@@ -42,7 +42,7 @@ extern lam rank_4 (is: «4; Idx 2», t: «2, 2, 2, 2; Nat»): Nat =
 
 // a 1-tuple index is the index itself, so it splices into a longer path
 extern lam splice (i: Idx 2, j: Idx 3, t: «2, 3; Nat»): Nat =
-    refly.equiv.struc_eq (t#(i, )#j, t#(i, j));
+    refly.equiv.struc_eq (t#(i)#j, t#(i, j));
 
 extern lam pack_index (i: Idx 2, t: «2, 2; Nat»): Nat =
     refly.equiv.struc_eq (t#‹2; i›, t#i#i);
