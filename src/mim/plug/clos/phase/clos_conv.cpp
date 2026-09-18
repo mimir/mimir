@@ -50,7 +50,7 @@ void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQue
 
     if (auto [var, lam] = isa_var_proj<Lam>(fd); var && lam) {
         if (var != lam->ret_var()) node->add_fvs(fd);
-    } else if (auto free_bb = Axm::isa(attr::free_bb, fd)) {
+    } else if (auto free_bb = Axm::isa(anno::free_bb, fd)) {
         node->add_fvs(free_bb);
     } else if (auto pred = fd->isa_mut()) {
         // A referenced nested mutable contributes its own free defs (once it is closure-converted).
@@ -167,8 +167,8 @@ const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
 const Def* ClosConv::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
 
-    if (auto a = Axm::isa<attr>(app))
-        if (auto handled = rewrite_attr(a)) return handled;
+    if (auto a = Axm::isa<anno>(app))
+        if (auto handled = rewrite_anno(a)) return handled;
 
     auto new_callee = rewrite(app->callee());
     auto new_arg    = rewrite(app->arg());
@@ -176,10 +176,10 @@ const Def* ClosConv::rewrite_imm_App(const App* app) {
     return new_world().app(new_callee, new_arg);
 }
 
-const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
+const Def* ClosConv::rewrite_anno(Axm::IsA<anno, App> a) {
     auto& w = new_world();
     switch (a.id()) {
-        case attr::returning:
+        case anno::returning:
             // A return continuation is *not* closure converted; it stays a plain Cn sharing the enclosing scope.
             // After η-expansion this should be its only occurrence, so mapping it into the current scope suffices.
             if (auto ret_lam = a->arg()->isa_mut<Lam>()) {
@@ -191,8 +191,8 @@ const Def* ClosConv::rewrite_attr(Axm::IsA<attr, App> a) {
                 return new_lam;
             }
             return nullptr;
-        case attr::fstclass_bb:
-        case attr::free_bb: {
+        case anno::fstclass_bb:
+        case anno::free_bb: {
             // A free/first-class basic block captures nothing: it gets an empty environment and its body is
             // rewritten right here, sharing the enclosing scope (same η-conversion remark as above).
             auto bb_lam = a->arg()->isa_mut<Lam>();

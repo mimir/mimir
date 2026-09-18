@@ -23,8 +23,9 @@ namespace mim::plug::tensor::phase {
 /// uniformly.
 ///
 /// Which array types denote tensors (as opposed to index/shape arrays that share the `Arr` structure) is
-/// determined by *role*: a pre-pass collects the array operand/result types of the tensor operations, and only
-/// those types are rewritten to `Buf` — and only at function boundaries, never as a global type rewrite.
+/// determined by *role*: a pre-pass collects the array operand/result types of the tensor operations plus the
+/// values a `tensor.buf` annotation nominates, and only those types are rewritten to `Buf` — and only at
+/// function boundaries, never as a global type rewrite.
 class LowerToMem : public RWPhase {
 public:
     LowerToMem(World& world, flags_t annex)

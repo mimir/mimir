@@ -17,6 +17,7 @@ plugin buffer;
 use core.ops.u.w;
 
 extern fun kernel (t: «3, 4; I32», i: [Idx 3, Idx 4]): I32 =
+    let t = tensor.buf t;
     let s = t#(0₃, 0₄) ← 42I32;
     let a = s#(0₃, 0₄);
     let b = s#i;

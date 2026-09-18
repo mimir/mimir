@@ -1007,11 +1007,7 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
 }
 
 std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, const Def* def) {
-    if (auto v = Axm::isa<ll::vec>(def)) {
-        // `ll.vec` annotates a loop's exit condition; as a value it is the identity — the
-        // metadata it requests is attached at the branches into the loop's header.
-        return emit(v->arg());
-    } else if (auto zip = Axm::isa<vecp::zip>(def)) {
+    if (auto zip = Axm::isa<vecp::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();
         auto nat_ni = Lit::expect(ni_n->proj(2, 0), "the `vec.zip` inputs count");
         auto nat_n  = Lit::expect(ni_n->proj(2, 1), "the `vec.zip` lane count");
@@ -1120,6 +1116,10 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
 
 std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     if (auto lam = def->isa<Lam>()) return id(lam);
+
+    // An identity annotation carries intent, not meaning: `ll.vec`'s `!llvm.loop` metadata is attached at the
+    // branches into the annotated loop's header, and any other one is simply not ours.
+    if (auto annotated = Anno::isa(def)) return emit(annotated);
 
     auto name = id(def);
     if (auto res = isa_targetspecific_intrinsic(bb, def)) return *std::move(res);

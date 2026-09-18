@@ -65,16 +65,8 @@ Lam* param_of(const Def* d) {
     return nullptr;
 }
 
-/// The aggregate @p d reads from or writes into; `nullptr` if it is neither.
-const Def* accessed(const Def* d) {
-    if (auto ex = d->isa<Extract>()) return ex->tuple();
-    if (auto in = d->isa<Insert>()) return in->tuple();
-    return nullptr;
-}
-
 } // namespace
 
-// If we need a marker, what we consider a "Tensor", we would have to add it here.
 void LowerToMem::collect_tensor_types() {
     // The default pipeline lowers tensors exclusively through buffers — there is no value-semantics
     // fallback. A program shape the conversion cannot handle is a hard error, not silent residue.
@@ -99,18 +91,14 @@ void LowerToMem::collect_tensor_types() {
     while (!wl.empty()) {
         auto def = wl.pop();
 
-        // An array an external function *takes* and only ever reads or writes is a tensor: without the old
-        // `tensor.get` / `tensor.set` axioms this is the last evidence left for one that no other tensor op
-        // mentions. Any other aggregate stays a plain tuple - `core.select` alone desugars to an array extract.
-        // One Extract carries every axis, so the accessed array is the operand itself, never a sub-array read.
-        if (auto access = accessed(def))
-            if (auto arr = access->type()->isa<Arr>())
-                if (auto lam = param_of(access); lam && lam->is_external()) add_tensor_ty(arr);
-
         if (auto app = def->isa<App>()) {
             if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0 && axm->plugin() == tensor::Plugin_Id)
                 ops_seen_ = true;
-            if (Axm::isa<tensor::splat>(app)) {
+            if (Axm::isa<tensor::buf>(app)) {
+                // What an array value *is* cannot be read off its type - an `(x y: I32)` group *is* a
+                // `«2; I32»` - so a tensor no other tensor op mentions says so itself.
+                add_tensor_ty(app->type());
+            } else if (Axm::isa<tensor::splat>(app)) {
                 auto [T, r] = app->callee()->as<App>()->args<2>();
                 elem(T);
                 add_tensor_ty(app->type());
@@ -400,6 +388,7 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
 
 const Def* LowerToMem::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
+    if (Axm::isa<tensor::buf>(app)) return rewrite(app->arg()); // consumed: the buffer *is* the tensor now
     // A `tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
     // its dynamic branch.
     if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));

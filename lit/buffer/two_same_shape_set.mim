@@ -21,6 +21,7 @@ plugin btensor;
 plugin buffer;
 
 extern fun kernel (t: «3, 4; I32», i j: [Idx 3, Idx 4]): I32 =
+    let t  = tensor.buf t;
     let a  = t#i ← 2I32;
     let b  = t#j ← 40I32;
     let ga = a#j;

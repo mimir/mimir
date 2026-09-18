@@ -28,8 +28,8 @@ void split(DefSet& out, const Def* def, bool as_callee) {
         if (var->type()->isa<Pi>() || interesting_type(var)) out.insert(var);
     } else if (auto c = isa_clos_lit(def, false)) {
         split(out, c.fnc(), as_callee);
-    } else if (auto a = Axm::isa<attr>(def)) {
-        split(out, a->arg(), as_callee);
+    } else if (auto annotated = Anno::isa(def)) {
+        split(out, annotated, as_callee);
     } else if (auto proj = def->isa<Extract>()) {
         split(out, proj->tuple(), as_callee);
     } else if (auto pack = def->isa<Pack>()) {
@@ -107,8 +107,8 @@ const Def* LowerTypedClosPrep::rewrite_imm_Tuple(const Tuple* tuple) {
     if (!is_bootstrapping()) {
         if (auto closure = isa_clos_lit(tuple, false)) {
             auto fnc = closure.fnc();
-            if (!Axm::isa<attr>(fnc)) {
-                auto new_fnc = new_world().call(esc_.contains(fnc) ? attr::esc : attr::bottom, rewrite(fnc));
+            if (!Axm::isa<anno>(fnc)) {
+                auto new_fnc = new_world().call(esc_.contains(fnc) ? anno::esc : anno::bottom, rewrite(fnc));
                 return clos_pack(rewrite(closure.env()), new_fnc, rewrite(closure->type()));
             }
         }

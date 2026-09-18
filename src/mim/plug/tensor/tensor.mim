@@ -73,6 +73,22 @@ axm splat: {T: *, r: Nat}
          → [s_out: «r; Nat», value: T]
          → «s_out; T»;
 ///
+/// ## Annotations
+///
+/// ### buf
+///
+/// A mim::Anno%tation nominating an array value as a *tensor*: one that lives in a buffer and is passed by
+/// handle, rather than an SSA aggregate that merely shares the `Arr` structure - an `(x y: I32)` group *is*
+/// a `«2; I32»`.
+/// The result type is the argument's, so an annotated tensor extracts, inserts and folds exactly like any
+/// other array and no tensor operation has to reimplement what MimIR's arrays already do.
+///
+/// Annotate *boundary* values only - an external function's array parameters.
+/// Everything a tensor operation produces is self-identifying, and `lower_to_mem` propagates tensor-ness
+/// from there; it consumes the annotation and every array type it reaches becomes a `buffer.Buf`.
+/// Losing one before that silently leaves a tensor with value semantics.
+axm buf: {T: *} → T → T;
+///
 /// ## Accessors
 ///
 /// Element access is a plain `Extract` / `Insert`: `arr#(a, b, c)` ≡ `arr#a#b#c`.
@@ -1374,6 +1390,8 @@ axm fuse_tensor: compile.Phase;
 /// Bufferizes the core operations onto the `buffer` layer: tensor values become `buffer.Buf` handles,
 /// `extract` / `insert` / `generate` / `map_reduce` become `buffer.read` / `buffer.write` / `buffer.alloc`
 /// threading `mem.M`.
+/// This is where a `buf` annotation is consumed: it seeds the set of array types that denote tensors, next to
+/// the operand and result types of the operations above.
 /// `mem.add_mem` (scheduled next in the pipeline) threads the memory; run `buffer.lower_ptr`
 /// afterwards to reach `mem.Ptr`.
 ///
