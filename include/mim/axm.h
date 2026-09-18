@@ -14,7 +14,7 @@ public:
     using Setters<Axm>::set;
 
     /// @name Normalization
-    /// @anchor normalization
+    /// @anchor curry_trip
     /// For a curried App of an Axm, you only want to trigger normalization at specific spots.
     /// For this reason, MimIR maintains a Def::curry_ counter that each App decrements.
     /// The Axm::normalizer() will be triggered when Axm::curry() becomes `0`.
