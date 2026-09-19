@@ -4,6 +4,7 @@
 
 The playground is MimIR in the browser: the `mim` CLI compiled to WebAssembly by [Emscripten](https://emscripten.org/), plus a small page that feeds it a buffer and renders what comes back.
 Its sources live in `web/`; a build stages them next to the Emscripten artifacts in `${CMAKE_BINARY_DIR}/playground`, so serving that directory over HTTP is all it takes to run it.
+A build of the current `master` is live at <https://mimir.github.io/playground/>.
 
 | File                 | Role                                                                                              |
 | -------------------- | ------------------------------------------------------------------------------------------------- |
@@ -93,3 +94,7 @@ Layout happens on the page, so a graph beyond 512 KB of DOT is refused rather th
 ## CI
 
 `.github/workflows/playground.yml` does all of the above on every push, compiles a program with the binary it just built — a wasm-only regression such as the one behind `Def::ops_ptr` fails there instead of silently shipping — and uploads `build-wasm/playground/` as an artifact.
+
+A push to `master` also deploys that directory into `playground/` of the [site repository](https://github.com/mimir/mimir.github.io), next to the Doxygen output, via `docs/deploy.py --subdir playground`.
+The docs deploy sweeps the site root, so `playground/` only survives by being listed in that script's `FOREIGN_DIRS`.
+Both workflows push to the same repository from their own concurrency group and rely on the script's rebase retry; they never write the same paths.

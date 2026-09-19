@@ -5,6 +5,17 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  # Deploying runs share one group so they queue instead of racing on mimir.github.io; every other
+  # run gets its own group via run_id and is therefore never cancelled nor queued.
+  # Sharing `doxygen.yml`'s group would let its deploys evict these: only one run per group queues.
+  # `env` is unavailable here, so the DEPLOY condition below is spelled out again.
+  group: ${{github.workflow}}-${{(github.event_name == 'push' && github.ref == 'refs/heads/master') && 'deploy' || github.run_id}}
+  cancel-in-progress: false
+
+env:
+  DEPLOY: ${{github.event_name == 'push' && github.ref == 'refs/heads/master'}}
+
 jobs:
   build:
     name: Build the WASM playground
@@ -92,3 +103,17 @@ jobs:
           name: playground
           path: build-wasm/playground/
           if-no-files-found: error
+
+      - name: Checkout docs repository
+        if: env.DEPLOY == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: mimir/mimir.github.io
+          ref: master
+          path: site
+          ssh-key: ${{secrets.ACTIONS_DEPLOY_KEY}}
+
+      # `docs/deploy.py` keeps `playground/` out of the docs deploy's sweep; see its FOREIGN_DIRS.
+      - name: Deploy
+        if: env.DEPLOY == 'true'
+        run: python3 docs/deploy.py --build-dir build-wasm/playground --subdir playground

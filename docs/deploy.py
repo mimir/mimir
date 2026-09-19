@@ -13,6 +13,9 @@ from pathlib import Path
 
 VERSION_RE = re.compile(r'v[0-9][A-Za-z0-9.+-]*')
 
+# Deployed by other workflows into the docs root; a docs deploy must not sweep them away.
+FOREIGN_DIRS = {'playground'}
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -22,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--site-dir', type=Path, default=workspace / 'site', help='Checked out site repository')
     parser.add_argument('--git-ref', default=os.environ.get('GITHUB_REF'), help='Git ref being deployed')
     parser.add_argument('--ref-name', default=os.environ.get('GITHUB_REF_NAME'), help='Short git ref name being deployed')
+    parser.add_argument('--subdir', help='Deploy into this subdirectory instead of the versioned docs layout')
     return parser.parse_args()
 
 
@@ -45,7 +49,7 @@ def copy_children(source_dir: Path, target_dir: Path) -> None:
 
 def deploy_root(build_dir: Path, site_dir: Path) -> None:
     """Deploy docs to the site root while preserving versioned subdirectories."""
-    preserved_names = {'.git'}
+    preserved_names = {'.git', *FOREIGN_DIRS}
     preserved_names.update(path.name for path in site_dir.iterdir() if path.is_dir() and VERSION_RE.fullmatch(path.name))
 
     for child in site_dir.iterdir():
@@ -55,9 +59,9 @@ def deploy_root(build_dir: Path, site_dir: Path) -> None:
     copy_children(build_dir, site_dir)
 
 
-def deploy_version(build_dir: Path, site_dir: Path, version: str) -> None:
-    """Deploy docs to a versioned subdirectory."""
-    target_dir = site_dir / version
+def deploy_subdir(build_dir: Path, site_dir: Path, name: str) -> None:
+    """Deploy to a subdirectory of the site, replacing whatever is there."""
+    target_dir = site_dir / name
     if target_dir.exists():
         remove_path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -99,7 +103,7 @@ def git(site_dir: Path, *args: str, check: bool = True) -> subprocess.CompletedP
     )
 
 
-def commit_and_push(site_dir: Path, label: str) -> None:
+def commit_and_push(site_dir: Path, what: str) -> None:
     """Commit site changes and push with a small rebase retry loop."""
     git(site_dir, 'add', '-A')
     if git(site_dir, 'diff', '--cached', '--quiet', check=False).returncode == 0:
@@ -107,7 +111,7 @@ def commit_and_push(site_dir: Path, label: str) -> None:
 
     git(site_dir, 'config', 'user.name', 'github-actions[bot]')
     git(site_dir, 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
-    git(site_dir, 'commit', '-m', f'Deploy docs for {label}')
+    git(site_dir, 'commit', '-m', f'Deploy {what}')
 
     for attempt in range(3):
         if git(site_dir, 'push', 'origin', 'master', check=False).returncode == 0:
@@ -119,7 +123,7 @@ def commit_and_push(site_dir: Path, label: str) -> None:
     raise RuntimeError('failed to push deployed docs after 3 attempts')
 
 
-def deploy(build_dir: Path, site_dir: Path, git_ref: str, ref_name: str) -> None:
+def deploy(build_dir: Path, site_dir: Path, git_ref: str, ref_name: str, subdir: str | None) -> None:
     """Deploy docs to the correct location based on the ref."""
     if not build_dir.is_dir():
         raise FileNotFoundError(f'Build directory does not exist: {build_dir}')
@@ -130,22 +134,29 @@ def deploy(build_dir: Path, site_dir: Path, git_ref: str, ref_name: str) -> None
     if not ref_name:
         raise ValueError('Missing ref name')
 
-    if git_ref == 'refs/heads/master':
-        deploy_root(build_dir, site_dir)
-        label = 'master'
+    if subdir:
+        if subdir not in FOREIGN_DIRS:
+            raise ValueError(f'A docs deploy would sweep away: {subdir}')
+        deploy_subdir(build_dir, site_dir, subdir)
+        what = f'{subdir} for {ref_name}'
     else:
-        deploy_version(build_dir, site_dir, ref_name)
-        label = ref_name
+        if git_ref == 'refs/heads/master':
+            deploy_root(build_dir, site_dir)
+            label = 'master'
+        else:
+            deploy_subdir(build_dir, site_dir, ref_name)
+            label = ref_name
+        update_versions(site_dir)
+        what = f'docs for {label}'
 
-    update_versions(site_dir)
     (site_dir / '.nojekyll').touch()
-    commit_and_push(site_dir, label)
+    commit_and_push(site_dir, what)
 
 
 def main() -> int:
     """Program entry point."""
     args = parse_args()
-    deploy(args.build_dir.resolve(), args.site_dir.resolve(), args.git_ref, args.ref_name)
+    deploy(args.build_dir.resolve(), args.site_dir.resolve(), args.git_ref, args.ref_name, args.subdir)
     return 0
 
 
