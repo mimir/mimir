@@ -123,8 +123,16 @@ fe::Vector<fs::path> Driver::rt_paths() const {
     return res;
 }
 
-void Driver::load(std::string_view name) {
-    log().i("💾 load plugin `{}`", name);
+std::string Driver::plugin_name(std::string_view name) {
+    constexpr auto prefix = std::string_view("libmim_");
+    auto stem             = fs::path(name).stem().string();
+    if (stem.starts_with(prefix)) stem.erase(0, prefix.size());
+    return stem;
+}
+
+void Driver::load(std::string_view spec) {
+    auto name = plugin_name(spec);
+    log().i("💾 load plugin `{}`", spec);
 
     if (is_loaded(name)) {
         log().w("plugin `{}` already loaded", name);
@@ -133,25 +141,32 @@ void Driver::load(std::string_view name) {
 
     auto handle = Plugin::Handle{nullptr, fe::dl::close};
     auto dir    = fs::path{};
-    if (auto path = fs::path{name}; path.is_absolute() && fs::is_regular_file(path)) {
+    auto path   = fs::path{spec};
+    auto ext    = std::format(".{}", fe::dl::Ext);
+
+    // Only a spec naming the shared object itself is opened as-is; `foo/bar.mim` still wants `foo/libmim_bar`.
+    if (path.is_absolute() && path.extension() == ext && fs::is_regular_file(path)) {
         auto path_str = path.string();
         if (handle.reset(fe::dl::open(path_str.c_str())); handle) dir = path.parent_path();
     }
     if (!handle) {
-        for (const auto& path : plugin_paths()) {
-            auto full_path = path / std::format("libmim_{}.{}", name, fe::dl::Ext);
+        // `foo/bar` is `libmim_bar` below the `foo` of each search path, so that both halves stay together.
+        auto sub  = path.parent_path();
+        auto file = std::format("libmim_{}{}", name, ext);
+        for (const auto& search : plugin_paths()) {
+            auto full_path = search / sub / file;
             std::error_code ignore;
             if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
                 auto path_str = full_path.string();
                 if (handle.reset(fe::dl::open(path_str.c_str())); handle) {
-                    dir = path;
+                    dir = search / sub;
                     break;
                 }
             }
         }
     }
 
-    if (!handle) fe::throwf("cannot open plugin `{}`", name);
+    if (!handle) fe::throwf("cannot open plugin `{}`", spec);
 
     if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"))) {
         auto plugin = get_info();
@@ -164,8 +179,8 @@ void Driver::load(std::string_view name) {
             else
                 throw std::logic_error(oss.str());
         }
-        fe::assert_emplace(plugins_, std::string(name), std::move(handle));
-        plugin2dir_.emplace(std::string(name), std::move(dir));
+        fe::assert_emplace(plugins_, name, std::move(handle));
+        plugin2dir_.emplace(name, std::move(dir));
         // clang-format off
         if (auto reg = plugin.register_normalizers) reg(normalizers_);
         if (auto reg = plugin.register_phases)      reg(phases_);
