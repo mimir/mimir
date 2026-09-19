@@ -21,7 +21,7 @@ plugin buffer;
 
 use core.ops.u.w;
 
-fun add (x y: I32)@tt = return (x + y#0₁);
+fun add (x y: I32)@tt = return (x + y);
 lam fst (i j: affine.Index): affine.Index = i;
 lam id  (i j: affine.Index): «2; affine.Index» = (i, j);
 

@@ -17,7 +17,6 @@ plugin btensor;
 
 use core.ops.u.w;
 
-fun add (x y: I32)@tt = return (x + y#0₁);
 lam mo (i _ _: affine.Index): «1; affine.Index» = i;
 lam mi (i j k: affine.Index): «3; affine.Index» = (i, j, k);
 
@@ -25,7 +24,7 @@ lam mi (i j k: affine.Index): «3; affine.Index» = (i, j, k);
 extern fun sum_all (input: «2, 8, 3; I32»): «2; I32» =
     return (tensor.materialize (tensor.strip_mine_red (
         tensor.mr_tileable @1 @(1, 2) (2, 0, (2, 8, 3))
-            (add, 0I32, tensor.id)
+            (fn (x y: I32)@tt = return (x + y), 0I32, tensor.id)
             mo mi input,
         1, 4)));
 

@@ -177,7 +177,7 @@ axm pad: {T: *, r: Nat}
 ///
 /// Ignores the (⊥) accumulator and just returns the read value — the mem-threaded counterpart of `tensor_copy`.
 ///
-fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: «1; T»)@tt: [mem.M 0, T] = return (m, y#0_1);
+fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: T)@tt: [mem.M 0, T] = return (m, y);
 ///
 /// ### transpose_2d
 ///
@@ -188,8 +188,8 @@ fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: «1; T»)@tt: [mem.M 0, T] = ret
 /// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
 ///
 anx lam transpose_2d {T: *} {s: «2; Nat»}
-                         (m: mem.M 0, input: buffer.Buf (2, s, T))
-                       : [mem.M 0, buffer.Buf (2, (s#tt, s#ff), T)] =
+                     (m: mem.M 0, input: buffer.Buf (2, s, T))
+                   : [mem.M 0, buffer.Buf (2, (s#tt, s#ff), T)] =
     let s_out = (s#tt, s#ff);
     map_reduce (s_out, s_out)
         (btensor_copy, ⊥:T)

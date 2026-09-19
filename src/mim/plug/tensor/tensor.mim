@@ -990,7 +990,7 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 ///
 /// Ignores the (⊥) accumulator and returns the read element — the fold step of every pure
 /// re-indexing operation below.
-fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
+fun tensor_copy {T: *} (acc: T, y: T)@tt: T = return y;
 ///
 /// ### bid_map
 ///
@@ -1055,7 +1055,7 @@ anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
 /// ### pool_fun
 ///
 /// Wraps a binary fold `g` as a `map_reduce` reduction `Fn [T, «1; T»] → T`.
-pub fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (acc, y#0_1));
+pub fun pool_fun {T: *} (g: [T, T] → T) (acc y: T)@tt: T = return (g (acc, y));
 ///
 /// ### pool2d_in_map
 ///
