@@ -4,6 +4,7 @@
 
 #include <fe/assert.h>
 #include <fe/hash.h>
+#include <fe/term.h>
 #include <fe/worklist.h>
 
 #include "mim/driver.h"
