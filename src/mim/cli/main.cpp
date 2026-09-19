@@ -174,7 +174,7 @@ int main(int argc, char** argv) {
             .opt(show_help_md              , ""          , ""  , "--help-md"             , "Displays this help as Markdown and exits.")
             .opt(show_version              , ""          , "-v", "--version"             , "Displays version info and exits.")
             .opt(list_search_paths         , ""          , "-l", "--list-search-paths"   , "Lists the search paths in order and exits.")
-            .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin.")
+            .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin; `foo/bar` finds `libmim_bar` in each search path's `foo`.")
             .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins; also searched for imports.")
             .opt(opts.import_paths         , "path"      , "-I", "--import-path"         , "Path to search for imports.")
             .opt(opts.prefix_paths         , "path"      , "-R", "--prefix-path"         , "Install prefix/root to derive plugin, import, and runtime directories from.")

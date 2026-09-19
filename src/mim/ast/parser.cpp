@@ -29,53 +29,46 @@ Ptr<File> Parser::parse_file() {
 }
 
 const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md, bool record) {
-    auto name = dbg.sym();
-    if (tag == Tag::K_plugin && !driver().is_loaded(name) && !driver().flags().bootstrap) driver().load(name);
+    auto name   = dbg.sym();
+    auto plugin = tag == Tag::K_plugin ? Driver::plugin_name(name.view()) : std::string();
+    if (tag == Tag::K_plugin && !driver().is_loaded(plugin) && !driver().flags().bootstrap) driver().load(name.view());
 
-    auto filename = fs::path(name.view());
     driver().log().v("📥 import `{}`", name);
 
-    if (!filename.has_extension()) filename.replace_extension("mim"); // TODO error cases
+    auto file = fs::path(name.view());
+    if (!file.has_extension()) file.replace_extension("mim"); // TODO error cases
 
-    fs::path rel_path;
-    auto is_file = [](const fs::path& p) {
+    auto path  = fs::path();
+    auto probe = [&path](fs::path p) {
         std::error_code ignore;
-        bool reg_file = fs::is_regular_file(p, ignore);
-        return reg_file && !ignore;
+        if (bool reg_file = fs::is_regular_file(p, ignore); !reg_file || ignore) return false;
+        path = std::move(p);
+        return true;
     };
 
-    // A path is relative to the importing file first; a bare name is only ever looked up in the search paths.
-    if (is_path && !filename.is_absolute()) {
-        rel_path = curr_dir() / filename;
-        if (!is_file(rel_path)) rel_path.clear();
-    }
-
     // A plugin's two halves must be the pair that shipped together, so take the `.mim` from the library's directory.
-    if (rel_path.empty() && !is_path && tag == Tag::K_plugin) {
-        if (auto dir = driver().plugin_dir(name.view())) {
-            rel_path = *dir / filename;
-            if (!is_file(rel_path)) rel_path = *dir / name.view() / filename;
-            if (!is_file(rel_path)) rel_path.clear();
-        }
+    if (auto dir = plugin.empty() ? nullptr : driver().plugin_dir(plugin)) {
+        auto mim = fs::path(plugin).replace_extension("mim");
+        if (!probe(*dir / mim)) probe(*dir / plugin / mim);
     }
 
-    if (rel_path.empty()) {
-        for (const auto& path : driver().import_paths()) {
-            rel_path = path / filename;
-            if (is_file(rel_path)) break;
-            if (is_path) continue; // `some/dir/foo.mim` must not also be probed as `some/dir/foo.mim/foo.mim`
-            rel_path = path / name.view() / filename;
-            if (is_file(rel_path)) break;
-        }
+    // A path is relative to the importing file first; a bare name is only ever looked up in the search paths.
+    if (path.empty() && is_path && !file.is_absolute()) probe(curr_dir() / file);
+
+    if (path.empty()) {
+        for (const auto& dir : driver().import_paths())
+            // `some/dir/foo.mim` must not also be probed as `some/dir/foo.mim/foo.mim`.
+            if (probe(dir / file) || (!is_path && probe(dir / name.view() / file))) break;
     }
 
-    auto [src, _] = driver().src().add(rel_path);
+    if (path.empty()) {
+        error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
+        return {};
+    }
+
+    auto [src, _] = driver().src().add(path);
     if (!src) {
-        // rel_path is whatever candidate the search loop tried last, so it only names a real file here.
-        if (fs::exists(rel_path))
-            error().e(dbg.loc(), "cannot read file `{}`", rel_path.string());
-        else
-            error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
+        error().e(dbg.loc(), "cannot read file `{}`", path.string());
         return {};
     }
 
@@ -116,8 +109,9 @@ const File* Parser::import(const fe::Src& src, std::ostream* md, Loc loc) {
 Ptrs<UseDecl> Parser::import_plugins(fe::View<std::string> plugins, Tok::Tag tag) {
     Ptrs<UseDecl> imports;
     for (const auto& name : plugins) {
-        auto dbg = Dbg(Loc(), driver().sym(name));
-        if (auto file = import(dbg, false, tag))
+        auto dbg     = Dbg(Loc(), driver().sym(name));
+        bool is_path = fs::path(name).has_parent_path();
+        if (auto file = import(dbg, is_path, tag))
             imports.emplace_back(ptr<UseDecl>(Loc(), Mods{}, tag, path(dbg), Sym(), Dbg(), false, file));
     }
     return imports;
@@ -143,11 +137,10 @@ Ptr<UseDecl> Parser::parse_import_or_plugin(Tracker track, Mods mods) {
 
     Dbg name;
     Sym file_path;
-    if (tag == Tag::K_import && ahead().isa(Tag::L_str)) {
+    if (ahead().isa(Tag::L_str)) {
         name      = lex().dbg();
         file_path = name.sym();
     } else {
-        // Only `plugin` needs a bare name: it is also the key for the shared object and the annex prefix.
         auto tok = expect(Tag::M_id, "{} name", entity);
         if (!tok) return {};
         name = tok.dbg();

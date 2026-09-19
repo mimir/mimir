@@ -18,6 +18,8 @@ config.test_exec_root = os.path.join(config.my_obj_root, 'test')
 
 config.substitutions.append(('%mim', config.mim))
 config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
+# Parent of the plugin directory, so that a test can spell a plugin as the path `mim/<plugin>`.
+config.substitutions.append(('%libdir', os.path.join(config.my_obj_root, 'lib')))
 
 # inherit env vars
 config.environment = os.environ

@@ -44,6 +44,7 @@ Plugin directories are searched for imports too, since a plugin ships both of it
 
 A `plugin <name>;` directive is special: its `<name>.mim` is taken from the directory `libmim_<name>` was actually loaded from,
 so the two halves of a plugin can never be paired up across different directories.
+A plugin may also be spelled as a path - `plugin "foo/bar";` or `-p foo/bar` - which looks for `libmim_bar` in the `foo` below each entry of the table above.
 A bare `import <name>;` has no such anchor and resolves by the table above,
 so spell an import of your own file as `import "<name>.mim"` if the name could collide with an installed plugin.
 
