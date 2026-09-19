@@ -78,7 +78,7 @@ else()
 endif()
 
 if(EMSCRIPTEN)
-    # Emscripten's default (JS-based) exceptions cannot unwind the frontend's throws; both halves need the flag.
+    # Emscripten's default JS exceptions cannot unwind the frontend's throws.
     add_compile_options(-fwasm-exceptions)
     add_link_options(-fwasm-exceptions)
 endif()

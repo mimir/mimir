@@ -1,5 +1,4 @@
-// Compiles a program with the freshly built wasm `mim`, so that a wasm-only regression
-// (see `Def::ops_ptr`) fails here instead of silently shipping.
+// Compiles a program with the freshly built wasm `mim` to catch a wasm-only regression.
 // usage: node smoke.js <dir holding mim.js> <source.mim>
 
 const fs   = require('node:fs');
@@ -12,7 +11,7 @@ async function main([dir, src]) {
 
     const createMim = require(path.resolve(dir, 'mim.js'));
     const log = [];
-    // mim.wasm and mim.data sit next to mim.js, not in the current directory.
+    // mim.wasm and mim.data sit next to mim.js, not in the cwd.
     const M = await createMim({
         print: s => log.push(s),
         printErr: s => log.push(s),

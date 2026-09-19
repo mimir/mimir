@@ -2,7 +2,7 @@
 
 Lexes Mim and highlights the snippets in the documentation.
 Doxygen has no Mim parser and discards the language of a fenced code block, so a snippet is marked up with a `mim-code` wrapper and coloured here.
-The playground stages this file as `mim-code.js` and drives `next` with its own kind-to-style map.
+The playground stages this file as `mim-code.js` and maps the kinds of `next` itself.
 
 */
 
@@ -48,7 +48,7 @@ class MimCode {
         return "name"
     }
 
-    /// Ends the token starting at `pos`; `state.comment` carries an unterminated `/*` into the following lines.
+    /// Ends the token at `pos`; `state.comment` carries an unterminated `/*` into the following lines.
     static next(text, pos, state) {
         if (!state.comment) {
             MimCode.TOKEN.lastIndex = pos

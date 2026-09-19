@@ -165,7 +165,7 @@ void Driver::load(std::string_view spec) {
 
     if (auto get = fe::lookup(static_plugins(), name)) {
         get_info = *get;
-        // No shared object pins the directory, so the `<name>.mim` half is searched for just like an import.
+        // No shared object pins the directory, so search the `<name>.mim` half like an import.
         dir = find(std::format("{}.mim", name), [](const fs::path&) { return true; });
     } else {
         auto ext  = std::format(".{}", fe::dl::Ext);

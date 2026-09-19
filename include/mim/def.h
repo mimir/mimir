@@ -788,7 +788,7 @@ private:
 #ifndef NDEBUG
     u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too); shares dbg_'s 8-byte slot
 #endif
-    mutable const Def* type_; ///< Must stay last: Def::ops_ptr places the operands right behind it.
+    mutable const Def* type_; ///< Must stay last: Def::ops_ptr places the operands behind it.
 
     friend struct DefKey;
     friend class World;
@@ -798,9 +798,8 @@ private:
 
 inline u32 DefKey::key(const Def* d) noexcept { return d->gid_; }
 
-/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World.
-/// It would also shift Def::type_, which Def::ops_ptr places the operands behind.
-/// Def carries its own Def::node() tag and dispatches on it instead - see the `dispatch` section in `def.cpp`.
+/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World and would shift Def::type_.
+/// Def dispatches on its own Def::node() tag instead - see the `dispatch` section in `def.cpp`.
 /// @note A *subclass* growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)` assert in World::allocate.
 static_assert(!std::is_polymorphic_v<Def>, "Def must not have a vtable; dispatch on Def::node() instead");
 

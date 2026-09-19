@@ -28,7 +28,7 @@ function(add_mim_test)
             ${PARSED_PRIVATE}
             doctest::doctest
             libmim
-            # There is no shared object to load, so a test reaches its plugins only by linking them in.
+            # No shared object to load, so a test only reaches its plugins by linking them in.
             $<$<BOOL:${MIM_STATIC_PLUGINS}>:mim_static_plugins>
     )
     add_dependencies(${TEST} mim_all_plugins)

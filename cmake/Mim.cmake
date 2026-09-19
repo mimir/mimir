@@ -6,11 +6,11 @@ cmake_dependent_option(
     "Link the plugins into the binary instead of loading them from shared objects."
     OFF "NOT EMSCRIPTEN" ON # a wasm build has no dlopen
 )
-# A cross build cannot run the mim it just built; point this at a native one to bootstrap the plugins.
+# A cross build cannot run the mim it just built.
 set(MIM_NATIVE_MIM "" CACHE FILEPATH "Native mim executable that bootstraps the plugins.")
-# Where a plugin's `.mim` half is staged, so that a built tree can load it without being installed.
+# Where a plugin's `.mim` half is staged, so an uninstalled tree can load it.
 set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")
-# The tour examples of `lit/docs`; the docs render their graphs and the playground offers them.
+# The tour examples of `lit/docs`; used by the docs and the playground.
 set(MIM_DOC_EXAMPLES sq count dep iter) # order is the playground picker's
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
@@ -174,7 +174,7 @@ function(add_mim_plugin)
 
     if(MIM_STATIC_PLUGINS)
         add_library(mim_${PLUGIN} STATIC)
-        # Makes MIM_PLUGIN_ENTRY name the entry point after the plugin, as one binary holds them all.
+        # One binary holds them all, so MIM_PLUGIN_ENTRY names each entry point after its plugin.
         target_compile_definitions(mim_${PLUGIN} PRIVATE MIM_STATIC_PLUGINS)
     else()
         add_library(mim_${PLUGIN} MODULE)
@@ -240,9 +240,8 @@ endfunction()
 ## mim_static_plugin_registry(<target> <plugin>...)
 ## \endcode
 ##
-## `MIM_STATIC_PLUGINS` builds have no shared object to `dlopen`, so `<target>` holds a generated
-## translation unit whose static initializer hands every `<plugin>` to `mim::Driver::add_static_plugin`.
-## Linking `<target>` into an executable pulls the plugin archives in and makes `plugin` directives work.
+## `MIM_STATIC_PLUGINS` builds have no shared object to `dlopen`, so `<target>` holds a generated static
+## initializer that hands every `<plugin>` to `mim::Driver::add_static_plugin`.
 ## It must be an object library: nothing references the registrations, so an archive member would be dropped.
 function(mim_static_plugin_registry TARGET)
     set(DECLS "")

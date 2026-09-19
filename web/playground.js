@@ -3,17 +3,13 @@ import { Graphviz } from 'https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@1/
 const $ = id => document.getElementById(id);
 const status = $('status');
 
-// Written by web/CMakeLists.txt from the list that stages the files, which are `lit/docs`'.
+// Written by web/CMakeLists.txt from the list that stages the examples.
 const EXAMPLES = await fetch('examples/index.json').then(r => r.json());
 
-// A `RUN:` line is what makes these lit tests; it is noise in the editor.
+// The `RUN:` line makes these lit tests; it is noise in the editor.
 const example = name => fetch(`examples/${name}.mim`)
     .then(r => r.text())
     .then(text => text.replace(/^\/\/ RUN:.*\n/gm, ''));
-
-/*
- * compiler
- */
 
 // Only terminate() stops a wasm loop that never returns, and only a Worker can be terminated.
 const LOAD_TIMEOUT = 60_000; // the first run also pays for the 2.4MB download
@@ -46,7 +42,7 @@ function wait(ms, why) {
     inflight.timer = setTimeout(() => abort(why), ms);
 }
 
-// A hung worker stays hung, so drop it; the next run spawns a fresh one.
+// A hung worker stays hung; the next run spawns a fresh one.
 function abort(why) {
     worker?.terminate();
     worker = null;
@@ -61,11 +57,7 @@ function settle(f) {
     f(cur);
 }
 
-/*
- * run
- */
-
-// Downloading Graphviz overlaps the first compile instead of following it.
+// Overlaps the Graphviz download with the first compile.
 const graphvizReady = Graphviz.load();
 let running = false;
 let queued = false;
@@ -115,8 +107,7 @@ function show(pane, text) {
     $(`pane-${pane}`).querySelector('pre').textContent = text ?? '';
 }
 
-// mim colours its diagnostics with SGR escapes; a foreground colour replaces the previous one
-// rather than nesting, so every escape closes the open span before opening the next.
+// An SGR colour replaces the previous one rather than nesting, so every escape closes the open span.
 function showLog(text) {
     let html = '';
     let open = false;
@@ -135,10 +126,10 @@ function showLog(text) {
         = html + MimCode.escape(text.slice(last)) + (open ? '</span>' : '');
 }
 
-// Layout runs on the page, so a graph big enough to freeze it is refused rather than attempted.
+// Layout runs on the page, so a graph big enough to freeze it is refused.
 const MAX_DOT = 512 * 1024;
 
-let dot = null;  // laid out only while the Graph tab is up, since layout blocks the editor
+let dot = null;  // laid out only while the Graph tab is up: layout blocks the editor
 let laidOut;     // the `dot` the pane already shows
 
 async function showGraph(latest) {
@@ -159,7 +150,7 @@ async function layoutGraph() {
     if (dot !== laidOut) return; // superseded while Graphviz was still loading
     pane.innerHTML = graphviz.layout(dot, 'svg', 'dot');
 
-    // Graphviz sizes the SVG in points; drop that so the viewBox scales it to whatever the pane is.
+    // Graphviz sizes the SVG in points; drop that so the viewBox scales it to the pane.
     const svg = pane.querySelector('svg');
     svg?.removeAttribute('width');
     svg?.removeAttribute('height');
@@ -174,10 +165,6 @@ function select(pane) {
     if (pane === 'graph') layoutGraph();
 }
 
-/*
- * editor
- */
-
 let editor = null; // CodeMirror, if it loads; the <textarea> is the fallback
 const getSource = () => editor ? editor.state.doc.toString() : $('source').value;
 
@@ -186,9 +173,8 @@ function setSource(text) {
     else $('source').value = text;
 }
 
-// One copy of @codemirror/state must back every extension, so the packages are imported
-// individually from a CDN that shares their dependencies rather than as pre-bundled `+esm` blobs,
-// which ship a private copy each and fail CodeMirror's instanceof checks.
+// One copy of @codemirror/state must back every extension, so import the packages individually from
+// a CDN that shares dependencies; `+esm` bundles ship a private copy each and break instanceof.
 async function setupEditor(initial) {
     $('source').value = initial;
     try {
@@ -217,7 +203,7 @@ async function setupEditor(initial) {
     }
 }
 
-// The docs' lexer (mim-code.js) does the classifying, so both stay in step with `ast/family.h`.
+// mim-code.js does the classifying, so both stay in step with `ast/family.h`.
 const TAG = { comment: 'comment', string: 'string', number: 'number', keyword: 'keyword', decl: 'keyword',
               type: 'typeName', literal: 'atom', special: 'keyword', operator: 'operator' };
 
@@ -241,10 +227,6 @@ function schedule() {
     timer = setTimeout(run, 500);
 }
 
-/*
- * boot
- */
-
 const picker = $('examples');
 for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
 picker.onchange = async () => { setSource(await example(picker.value)); run(); };
@@ -253,6 +235,6 @@ $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
 
-// setupEditor fills the textarea before it awaits, so the first compile can start alongside it.
+// setupEditor fills the textarea before it awaits, so the first compile starts alongside.
 const initial = await example(EXAMPLES[0]);
 await Promise.all([setupEditor(initial), run()]);

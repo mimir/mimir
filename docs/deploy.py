@@ -13,7 +13,7 @@ from pathlib import Path
 
 VERSION_RE = re.compile(r'v[0-9][A-Za-z0-9.+-]*')
 
-# Deployed by other workflows into the docs root; a docs deploy must not sweep them away.
+# Deployed by other workflows; a docs deploy must not sweep them away.
 FOREIGN_DIRS = {'playground'}
 
 

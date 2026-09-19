@@ -1,8 +1,8 @@
-// mim runs here, not on the page: a program that loops forever or traps must not take the UI with it.
+// mim runs here so that a program looping forever cannot take the UI with it.
 importScripts('mim.js');
 
 let compiled = null; // compiling the 2.4MB wasm once makes every later run cost milliseconds
-let next = null;     // booted ahead of time, so a run waits for the compiler instead of its startup
+let next = null;     // booted ahead of time, so a run waits for the compiler, not its startup
 
 // A fresh instance per run keeps each compile in a pristine World.
 function instantiate(log) {
@@ -22,11 +22,11 @@ function instantiate(log) {
     });
 }
 
-// The log of a pre-warmed instance belongs to the run that claims it, not to the one that booted it.
+// The log belongs to the run that claims the instance, not to the one that booted it.
 function boot() {
     const log = [];
     const module = instantiate(s => log.push(s));
-    module.catch(() => {}); // nobody awaits a pre-warmed boot until a run claims it
+    module.catch(() => {}); // nobody awaits the boot until a run claims it
     return { log, module };
 }
 
@@ -48,7 +48,7 @@ self.onmessage = async ({ data }) => {
 
     try {
         const M = await pending.module;
-        self.postMessage({ ready: true }); // the page's run clock starts here, not at page load
+        self.postMessage({ ready: true }); // the page's run clock starts here
         M.FS.writeFile('/in.mim', data.src);
         const code = M.callMain(data.args);
         const out = { mim: read(M, '/out.mim'), ll: read(M, '/out.ll'), dot: read(M, '/out.dot') };
