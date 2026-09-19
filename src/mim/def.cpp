@@ -154,6 +154,7 @@ bool Def::is_immutabilizable() {
  */
 
 Defs Def::reduce_(const Def* arg) const {
+    if (!is_set()) fe::throwf("cannot reduce `{}`: it is not set", this);
     if (auto var = has_var()) return world().reduce(var, arg);
     auto off = reduction_offset();
     return {ops().begin() + off, num_ops() - off};

@@ -6,6 +6,8 @@
     --border:  #d8d8d2;
     --accent:  #1a6feb;
     --err:     #c0392b;
+    --fg30: #1c1c1c; --fg31: #c0392b; --fg32: #2e7d32; --fg33: #8a6d00;
+    --fg34: #1a6feb; --fg35: #8e24aa; --fg36: #00737d; --fg37: #57606a; --fg90: #6b7280;
     --mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
@@ -17,6 +19,8 @@
         --border: #343841;
         --accent: #62a0ff;
         --err:    #ff7b6b;
+        --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
+        --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg37: #c9d1d9; --fg90: #8b949e;
     }
 }
 
@@ -142,4 +146,9 @@ main {
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
 #pane-graph svg { display: block; width: 100%; height: 100%; }
-#pane-log pre { color: var(--err); white-space: pre-wrap; }
+#pane-log pre { white-space: pre-wrap; }
+
+/* mim's terminal colours, mapped onto the pane; see showLog. */
+.fg30 { color: var(--fg30); } .fg31 { color: var(--fg31); } .fg32 { color: var(--fg32); }
+.fg33 { color: var(--fg33); } .fg34 { color: var(--fg34); } .fg35 { color: var(--fg35); }
+.fg36 { color: var(--fg36); } .fg37 { color: var(--fg37); } .fg90 { color: var(--fg90); }

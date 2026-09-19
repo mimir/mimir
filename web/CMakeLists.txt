@@ -6,6 +6,7 @@ set(PLAYGROUND_SOURCES
     index.html
     playground.css
     playground.js
+    mim-worker.js
 )
 
 set(PLAYGROUND_STAGED "")

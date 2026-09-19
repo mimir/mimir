@@ -300,8 +300,7 @@ public:
     /// Lookup annex by flags.
     const Def* annex(flags_t flags) {
         if (auto e = fe::lookup(annexes().flags2entry(), flags)) return e->def;
-        log().e("no Axm with ID {}; demangled plugin name is `{}`", flags, Annex::demangle(flags));
-        return nullptr;
+        fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
     }
     /// Lookup annex by Axm::id
     template<class Id>
