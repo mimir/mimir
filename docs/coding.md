@@ -283,9 +283,9 @@ private:
 
 ### Syntax Highlighting
 
-[This](https://github.com/AnyDSL/vim-mim) Vim plugin provides syntax highlighting for Mim files.
-
-There is also a [tree-sitter grammar](https://gitlab.com/amaeble/tree-sitter-mim) for Mim files and a [Helix fork](https://github.com/amaebel/helix) with highlight and injection queries.
+- [Mim (Neo)Vim Plugin](https://github.com/mimir/vim-mim): Vim syntax highlighting and abbreviations for Unicode chars.
+- [Tree Sitter Mim](https://github.com/mimir/tree-sitter-mim): Neovim syntax highlighting (can be used in combination with the Vim plugin).
+- [Helix fork](https://github.com/amaebel/helix) of the tree sitter repo above.
 
 ## Debugging
 
