@@ -63,6 +63,8 @@ jobs:
           emcmake cmake -B build-wasm                                              \
                 -G Ninja                                                           \
                 -DCMAKE_BUILD_TYPE=Release                                         \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache                                 \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                               \
                 -DBUILD_SHARED_LIBS=OFF                                            \
                 -DBUILD_TESTING=OFF                                                \
                 -DMIM_BUILD_PYTHON=OFF                                             \

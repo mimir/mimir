@@ -1,64 +1,20 @@
 import { Graphviz } from 'https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@1/dist/index.js';
 
-const EXAMPLES = {
-    'sq.mim': `plugin core as *;
-
-lam sq {T: *} (\`*: [T, T] → T) (x: T): T = x * x;
-
-extern fun f(x: Nat): Nat =
-    return (sq nat.mul x);
-`,
-    'count.mim': `plugin core;
-
-use core.ops.u.w;
-
-extern fun count(n: I32): I32 =
-    loop (0I32, 0I32)
-    where
-        con loop (i acc: I32) = core.select (i < n, body, exit) ()
-            where
-                con body() = loop (i + 1I32, acc + i);
-                con exit() = return acc;
-            end;
-    end;
-`,
-    'dep.mim': `plugin refly;
-
-// \`Vec\` is an ordinary \`lam\` - but it returns a *type*: it is a function \`Nat → *\`.
-extern lam Vec (n: Nat): * = «n; Nat»;
-
-// \`zeros n\` builds a length-\`n\` array of zeros.
-// Its return *type* \`Vec n\` mentions the *value* \`n\`: a dependent function type.
-extern lam zeros (n: Nat): Vec n = ‹n; 0›;
-
-// \`zeros 3\` is partial-evaluated to \`‹3; 0›\` during graph construction; assert it statically.
-let _ = refly.equiv.struc_eq (zeros 3, ‹3; 0›);
-`,
-    'iter.mim': `plugin core;
-plugin refly;
-
-use core.ops.n;
-
-extern lam iter {T: *} (f: T → T) (n: Nat, x: T)@(core.pe.is_closed n): T =
-    (core.select ((n <= 0), cons, alt)) () where
-        lam cons(): T =
-            x;
-        lam alt(): T =
-            let m = n - 1;
-            let y = f x;
-            iter @T f (m, y);
-    end;
-
-lam succ (x: Nat): Nat = x + 1;
-lam add  (x: Nat) (y: Nat): Nat = iter succ (x, y);
-lam mul  (x: Nat) (y: Nat): Nat = iter (add x) (y, 0);
-lam pow  (x: Nat) (y: Nat): Nat = iter (mul x) (y, 1);
-let _ = refly.equiv.struc_eq (pow 3 5, 243);
-`,
-};
+// Staged from `lit/docs` by web/CMakeLists.txt, so the examples are the ones the lit suite covers.
+const EXAMPLES = ['sq.mim', 'count.mim', 'dep.mim', 'iter.mim'];
 
 const $ = id => document.getElementById(id);
 const status = $('status');
+
+const sources = new Map();
+
+async function example(name) {
+    if (!sources.has(name)) {
+        const text = await fetch(`examples/${name}`).then(r => r.text());
+        sources.set(name, text.replace(/^\/\/ RUN:.*\n/gm, ''));
+    }
+    return sources.get(name);
+}
 
 /*
  * compiler
@@ -114,7 +70,8 @@ function settle(f) {
  * run
  */
 
-let graphviz = null;
+// Downloading Graphviz overlaps the first compile instead of following it.
+const graphvizReady = Graphviz.load();
 let running = false;
 let queued = false;
 
@@ -162,8 +119,6 @@ function show(pane, text) {
     $(`pane-${pane}`).querySelector('pre').textContent = text ?? '';
 }
 
-const escape = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-
 // mim colours its diagnostics with SGR escapes; a foreground colour replaces the previous one
 // rather than nesting, so every escape closes the open span before opening the next.
 function showLog(text) {
@@ -172,28 +127,36 @@ function showLog(text) {
     let last = 0;
 
     for (const m of text.matchAll(/\x1b\[([0-9;]*)m/g)) {
-        html += escape(text.slice(last, m.index));
+        html += MimCode.escape(text.slice(last, m.index));
         last  = m.index + m[0].length;
         if (open) html += '</span>';
         const code = Number(m[1].split(';').pop() || 0);
-        open = (code >= 30 && code <= 37) || code === 90;
+        open = (code >= 30 && code <= 36) || code === 90;
         if (open) html += `<span class="fg${code}">`;
     }
 
-    $('pane-log').querySelector('pre').innerHTML = html + escape(text.slice(last)) + (open ? '</span>' : '');
+    $('pane-log').querySelector('pre').innerHTML
+        = html + MimCode.escape(text.slice(last)) + (open ? '</span>' : '');
 }
 
 // Layout runs on the page, so a graph big enough to freeze it is refused rather than attempted.
 const MAX_DOT = 512 * 1024;
 
-async function showGraph(dot) {
+let dot = null; // laid out only while the Graph tab is up, since layout blocks the editor
+
+async function showGraph(latest) {
+    dot = latest;
+    if (!$('pane-graph').hidden) await layoutGraph();
+}
+
+async function layoutGraph() {
     const pane = $('graph');
     if (!dot) { pane.textContent = '(no graph)'; return; }
     if (dot.length > MAX_DOT) {
         pane.textContent = `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`;
         return;
     }
-    graphviz ??= await Graphviz.load();
+    const graphviz = await graphvizReady;
     pane.innerHTML = graphviz.layout(dot, 'svg', 'dot');
 
     // Graphviz sizes the SVG in points; drop that so the viewBox scales it to whatever the pane is.
@@ -208,6 +171,7 @@ function select(pane) {
         tab.setAttribute('aria-selected', String(on));
         $(`pane-${tab.dataset.pane}`).hidden = !on;
     }
+    if (pane === 'graph') layoutGraph();
 }
 
 /*
@@ -253,10 +217,8 @@ async function setupEditor(initial) {
     }
 }
 
-// Enough of Mim to colour a snippet; the real grammar lives in the compiler.
+// Classifies against the docs' word lists (mim-code.js), so both stay in step with `ast/family.h`.
 function mimMode() {
-    const keywords = new Set(['plugin', 'import', 'use', 'let', 'lam', 'con', 'fun', 'cn', 'fn', 'axm',
-                              'extern', 'where', 'end', 'return', 'rec', 'ret', 'as', 'Nat', 'Idx', 'Bool']);
     return {
         token(stream) {
             if (stream.match(/^\/\/.*/)) return 'comment';
@@ -265,7 +227,10 @@ function mimMode() {
             if (stream.match(/^[0-9][0-9_]*(?:\.[0-9]*)?(?:[IiUuFf][0-9]+)?/)) return 'number';
             if (stream.match(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*/)) {
                 const w = stream.current().split('.')[0];
-                return keywords.has(w) ? 'keyword' : /^[A-Z]/.test(w) ? 'typeName' : 'variableName';
+                if (MimCode.KEYWORD.has(w) || MimCode.DECL.has(w) || MimCode.SPECIAL.has(w)) return 'keyword';
+                if (MimCode.TYPE.has(w)) return 'typeName';
+                if (MimCode.LITERAL.has(w)) return 'atom';
+                return /^[A-Z]/.test(w) ? 'typeName' : 'variableName';
             }
             if (stream.match(/^[⊤⊥«»‹›→←λΠ∀]/)) return 'operator';
             stream.next();
@@ -286,12 +251,13 @@ function schedule() {
  */
 
 const picker = $('examples');
-for (const name of Object.keys(EXAMPLES)) picker.add(new Option(name, name));
-picker.onchange = () => { setSource(EXAMPLES[picker.value]); run(); };
+for (const name of EXAMPLES) picker.add(new Option(name, name));
+picker.onchange = async () => { setSource(await example(picker.value)); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
 
-await setupEditor(EXAMPLES['sq.mim']);
-await run();
+// setupEditor fills the textarea before it awaits, so the first compile can start alongside it.
+const initial = await example(EXAMPLES[0]);
+await Promise.all([setupEditor(initial), run()]);

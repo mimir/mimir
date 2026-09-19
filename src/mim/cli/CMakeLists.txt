@@ -14,7 +14,7 @@ if(EMSCRIPTEN)
     # The plugins are linked in, but their `.mim` halves and the ll runtime still have to be found at runtime.
     target_link_options(mim
         PRIVATE
-            --preload-file "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim@/mim"
+            --preload-file "${MIM_PLUGIN_DIR}@/mim"
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=16MB # a recursive frontend on the default 64KB stack overflows
             -sFORCE_FILESYSTEM=1

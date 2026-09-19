@@ -12,6 +12,8 @@ A build of the current `master` is live at <https://mimir.github.io/playground/>
 | `playground.css`     | Styling, including the light/dark palette and the log's terminal colors.                          |
 | `playground.js`      | Editor, tabs, run loop, Graphviz layout.                                                          |
 | `mim-worker.js`      | Runs `mim` in a Worker, so a program that never terminates can be killed.                         |
+| `mim-code.js`        | `docs/mim.js`, staged; the page colours Mim with the very word lists the docs use.                |
+| `examples/*.mim`     | `lit/docs/*.mim`, staged; the examples are the ones the lit suite covers.                         |
 | `mim.{js,wasm,data}` | Emscripten's output; `mim.data` carries the plugins' `.mim` halves and the [ll](@ref ll) runtime. |
 
 ## Building
@@ -56,7 +58,7 @@ emcmake cmake -B build-wasm                     \
 cmake --build build-wasm --target mim_playground -j16
 ```
 
-`mim_playground` also copies the four files from `web/`, so a change to the page alone is a second's rebuild — no need to touch the compiler.
+`mim_playground` also stages the page, so a change to it alone is a second's rebuild — no need to touch the compiler.
 
 ## Running
 

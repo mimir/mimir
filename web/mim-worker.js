@@ -2,6 +2,7 @@
 importScripts('mim.js');
 
 let compiled = null; // compiling the 2.4MB wasm once makes every later run cost milliseconds
+let next = null;     // booted ahead of time, so a run waits for the compiler instead of its startup
 
 // A fresh instance per run keeps each compile in a pristine World.
 function instantiate(log) {
@@ -11,18 +12,22 @@ function instantiate(log) {
         noExitRuntime: true,
         locateFile: file => new URL(file, self.location.href).href,
         instantiateWasm: (imports, receive) => {
-            const done = (module, instance) => {
-                compiled = module;
-                receive(instance, module);
-            };
             if (compiled)
-                WebAssembly.instantiate(compiled, imports).then(instance => done(compiled, instance));
+                WebAssembly.instantiate(compiled, imports).then(instance => receive(instance, compiled));
             else
                 WebAssembly.instantiateStreaming(fetch('mim.wasm'), imports)
-                    .then(({ module, instance }) => done(module, instance));
+                    .then(({ module, instance }) => receive(instance, compiled = module));
             return {};
         },
     });
+}
+
+// The log of a pre-warmed instance belongs to the run that claims it, not to the one that booted it.
+function boot() {
+    const log = [];
+    const module = instantiate(s => log.push(s));
+    module.catch(() => {}); // nobody awaits a pre-warmed boot until a run claims it
+    return { log, module };
 }
 
 function read(M, path) {
@@ -37,19 +42,13 @@ function diagnose(e) {
 }
 
 self.onmessage = async ({ data }) => {
-    const log = [];
-    let M;
+    const pending = next ?? boot();
+    next = null;
+    const log = pending.log;
 
     try {
-        M = await instantiate(s => log.push(s));
-    } catch (e) {
-        self.postMessage({ code: -1, log, error: diagnose(e) });
-        return;
-    }
-
-    self.postMessage({ ready: true }); // the page's run clock starts here, not at page load
-
-    try {
+        const M = await pending.module;
+        self.postMessage({ ready: true }); // the page's run clock starts here, not at page load
         M.FS.writeFile('/in.mim', data.src);
         const code = M.callMain(data.args);
         const out = { mim: read(M, '/out.mim'), ll: read(M, '/out.ll'), dot: read(M, '/out.dot') };
@@ -57,4 +56,6 @@ self.onmessage = async ({ data }) => {
     } catch (e) {
         self.postMessage({ code: -1, log, error: diagnose(e) });
     }
+
+    next = boot();
 };

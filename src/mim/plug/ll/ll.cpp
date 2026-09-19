@@ -1152,13 +1152,13 @@ static constexpr PluginArg known_args[] = {
 };
 // clang-format on
 
-#define MIM_LL_SYM(f) \
-    PluginSym { #f, (void*)&plug::ll::f }
+// MIM_PLUGIN_SYM stringifies its argument, so these names must stay unqualified.
+using namespace mim::plug::ll;
 static const PluginSym known_syms[] = {
-    MIM_LL_SYM(mim_ll_convert),
-    MIM_LL_SYM(mim_ll_finalize),
-    MIM_LL_SYM(mim_ll_emit_epilogue),
-    MIM_LL_SYM(mim_ll_emit_bb),
+    MIM_PLUGIN_SYM(mim_ll_convert),
+    MIM_PLUGIN_SYM(mim_ll_finalize),
+    MIM_PLUGIN_SYM(mim_ll_emit_epilogue),
+    MIM_PLUGIN_SYM(mim_ll_emit_bb),
 };
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {

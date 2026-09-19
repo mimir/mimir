@@ -468,9 +468,6 @@ std::string_view Def::node_name() const {
 }
 
 Defs Def::deps() const noexcept {
-    // deps() hands out `[type_, op0, op1, ...]` as one contiguous array by stepping back from ops_ptr(),
-    // which is `&type_ + 1`; a member appended after type_ would silently corrupt every deps() walk.
-
     // Univ, Type, and Var are the only nodes built without a type - and none of them has deps.
     if (!type_) {
         assert(isa<Univ>() || isa<Type>() || isa<Var>());

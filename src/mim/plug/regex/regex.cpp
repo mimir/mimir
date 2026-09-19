@@ -13,8 +13,8 @@ using namespace mim::plug;
 static void reg_phases(Flags2Phases& phases) { Phase::hook<regex::lower_regex, regex::LowerRegex>(phases); }
 
 static const PluginSym known_syms[] = {
-    {  "regex2nfa",   (void*)&regex2nfa},
-    {"dfa2matcher", (void*)&dfa2matcher},
+    MIM_PLUGIN_SYM(regex2nfa),
+    MIM_PLUGIN_SYM(dfa2matcher),
 };
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {

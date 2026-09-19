@@ -25,7 +25,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--site-dir', type=Path, default=workspace / 'site', help='Checked out site repository')
     parser.add_argument('--git-ref', default=os.environ.get('GITHUB_REF'), help='Git ref being deployed')
     parser.add_argument('--ref-name', default=os.environ.get('GITHUB_REF_NAME'), help='Short git ref name being deployed')
-    parser.add_argument('--subdir', help='Deploy into this subdirectory instead of the versioned docs layout')
+    parser.add_argument('--subdir', choices=sorted(FOREIGN_DIRS),
+                        help='Deploy into this subdirectory instead of the versioned docs layout')
     return parser.parse_args()
 
 
@@ -135,8 +136,6 @@ def deploy(build_dir: Path, site_dir: Path, git_ref: str, ref_name: str, subdir:
         raise ValueError('Missing ref name')
 
     if subdir:
-        if subdir not in FOREIGN_DIRS:
-            raise ValueError(f'A docs deploy would sweep away: {subdir}')
         deploy_subdir(build_dir, site_dir, subdir)
         what = f'{subdir} for {ref_name}'
     else:

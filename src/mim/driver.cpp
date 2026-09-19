@@ -152,12 +152,12 @@ void Driver::load(std::string_view spec) {
     auto handle   = Plugin::Handle{nullptr, fe::dl::close};
     auto dir      = fs::path{};
     auto path     = fs::path{spec};
+    auto sub      = path.parent_path();
     auto get_info = decltype(&mim_get_plugin){};
 
     if (auto get = fe::lookup(static_plugins(), name)) {
         get_info = *get;
         // No shared object pins the directory, so the `<name>.mim` half is searched for just like an import.
-        auto sub  = path.parent_path();
         auto file = std::format("{}.mim", name);
         for (const auto& search : plugin_paths()) {
             std::error_code ignore;
@@ -176,7 +176,6 @@ void Driver::load(std::string_view spec) {
         }
         if (!handle) {
             // `foo/bar` is `libmim_bar` below the `foo` of each search path, so that both halves stay together.
-            auto sub  = path.parent_path();
             auto file = std::format("libmim_{}{}", name, ext);
             for (const auto& search : plugin_paths()) {
                 auto full_path = search / sub / file;
@@ -193,31 +192,28 @@ void Driver::load(std::string_view spec) {
 
         if (!handle) fe::throwf("cannot open plugin `{}`", spec);
         get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"));
+        if (!get_info) fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
     }
 
-    if (get_info) {
-        auto plugin = get_info();
-        if (version() != plugin.version) {
-            std::ostringstream oss;
-            std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version,
-                       version());
-            if (flags().force_load)
-                std::cerr << "warning: " << oss.str() << '\n';
-            else
-                throw std::logic_error(oss.str());
-        }
-        fe::assert_emplace(plugins_, name, std::move(handle));
-        plugin2dir_.emplace(name, std::move(dir));
-        // clang-format off
-        if (auto reg = plugin.register_normalizers) reg(normalizers_);
-        if (auto reg = plugin.register_phases)      reg(phases_);
-        // clang-format on
-        if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
-        if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
-        if (plugin.syms) plugin2syms_.emplace(name, fe::View<PluginSym>(plugin.syms, plugin.num_syms));
-    } else {
-        fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
+    auto plugin = get_info();
+    if (version() != plugin.version) {
+        std::ostringstream oss;
+        std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version, version());
+        if (flags().force_load)
+            std::cerr << "warning: " << oss.str() << '\n';
+        else
+            throw std::logic_error(oss.str());
     }
+    fe::assert_emplace(plugins_, name, std::move(handle));
+    // An unpinned directory would make Parser::import probe the cwd; leave it unset so it searches normally.
+    if (!dir.empty()) plugin2dir_.emplace(name, std::move(dir));
+    // clang-format off
+    if (auto reg = plugin.register_normalizers) reg(normalizers_);
+    if (auto reg = plugin.register_phases)      reg(phases_);
+    // clang-format on
+    if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
+    if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
+    if (plugin.syms) plugin2syms_.emplace(name, fe::View<PluginSym>(plugin.syms, plugin.num_syms));
 }
 
 void* Driver::get_fun_ptr(std::string_view plugin, const char* name) {

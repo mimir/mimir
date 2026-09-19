@@ -49,6 +49,10 @@ struct PluginSym {
     const char* name; ///< Name of the symbol, e.g. `"mim_ll_convert"`.
     void* ptr;        ///< Address of the symbol.
 };
+
+/// Builds a PluginSym for @p f, so that its name and its address cannot drift apart.
+#define MIM_PLUGIN_SYM(f) \
+    PluginSym { #f, (void*)&f }
 ///@}
 
 /// @name Plugin Argument Lookup
@@ -169,7 +173,8 @@ struct Plugin {
     /// Callback for registering the Plugin's callbacks for Phase%s.
     void (*register_phases)(Flags2Phases&);
 
-    // No default member initializers: only a POD is C-compatible as an `extern "C"` return type.
+    // No default member initializers, and hence no designated ones either: clang's
+    // -Wreturn-type-c-linkage only accepts a POD as an `extern "C"` return type.
     const PluginArg* args; ///< The `-X` arguments this Plugin understands; see PluginArg.
     size_t num_args;       ///< Number of Plugin::args.
     const PluginEnv* envs; ///< The environment variables this Plugin reads; see PluginEnv.
