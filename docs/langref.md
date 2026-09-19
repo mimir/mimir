@@ -329,7 +329,7 @@ A telescope is not a form of its own but the finite end of one construct.
 `[...]` is a [sigma](@ref prod), and a sigma whose components are all the same _is_ an [array](@ref prod): `[Nat, Nat, Nat]` and `«3; Nat»` denote one and the same type.
 The same compression applies once more to a nest of arrays: `«2; «3; T»»` and `«2, 3; T»` denote one and the same type, and an array carries all of its axes as one _shape_.
 `#` follows suit - `t#i#j` and `t#(i, j)` are the same Extract - so an index has exactly as many components as the shape it indexes into.
-The sole exception is a [dependent tuple type](@ref mutsigma) of one component.
+The sole exception is a [mutable sigma](@ref mutsigma) of one component.
 A sigma names a component so that later components may depend on it; an array names its index so that the element type may depend on that.
 `«i: n; T i»` is therefore the very same dependency, taken over an arity that need not be a literal.
 
@@ -455,7 +455,7 @@ arity ::= e
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
 - A `shape` lists one or more comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
-  All of them fuse into **one** array of shape `(m, n)`, whose index binds every axis at once, so `t#i#j` and `t#(i, j)` are the same Extract - except through a [dependent tuple type](@ref mutsigma) of one component.
+  All of them fuse into **one** array of shape `(m, n)`, whose index binds every axis at once, so `t#i#j` and `t#(i, j)` are the same Extract - except through a [mutable sigma](@ref mutsigma) of one component.
   The exception is a dimension whose extent depends on an earlier index, as in `«i: n, j: s#i; body»`: a shape lists extents, not functions of preceding indices, so such a nest stays one array per axis.
 - `e#e` extracts a component by index, `e#I` by [field name](@ref field).
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
@@ -469,20 +469,30 @@ arity ::= e
 
 #### Dependent Tuple Types {#mutsigma}
 
-A `rec` declaration whose body is a sigma introduces a **dependent tuple type**: a later component may mention the ones before it, and the declared name is already in scope inside the body.
+A sigma is a **dependent tuple type** as soon as one of its components mentions a name to its left:
 
 ```mim
-rec S = [n: Nat, «n; Nat»];
+[n: Nat, «n; Nat»]
 ```
 
-@note The IR calls this a _mutable_ sigma, because it is built empty and filled in afterwards - that is what puts `S` in scope inside its own body.
-The two words name the same thing; "mutable" says how it is constructed, not that anything about it may be changed later.
+The components refer to that name through a var of the sigma itself, so such a sigma is a _mutable_: it is built empty and filled in afterwards.
+Where no component uses that var, the sigma is the structural one after all and its names are erased - `[i: Nat, j: Nat]` is the very same type as `«2; Nat»`.
 
-Unlike the structural `[...]` of a [telescope](@ref ptrn), such a type is _nominal_: it is the declaration, not its layout.
+A `rec` declaration additionally puts the declared name in scope inside the body, which is the only way for a type to mention itself:
+
+```mim
+rec Node = [val: I32, next: mem.Ptr0 Node];
+```
+
+`rec` also keeps the sigma mutable unconditionally, so it is how a layout that nothing depends on keeps its component names.
+
+@note "mutable" says how such a sigma is constructed, not that anything about it may be changed later.
+A mutable is not hash-consed, so every occurrence is a node of its own, but it is still checked structurally: a second declaration of the same layout is alpha-equivalent to the first, and the two are interchangeable.
+
 Two things follow for the surface language.
 
 - Its components may be addressed by [field name](@ref field), which a structural sigma has no room for.
-- One of exactly one component stays a genuine 1-tuple.
+- A mutable sigma of exactly one component stays a genuine 1-tuple; only `rec` builds one, since a lone component has nothing to its left to depend on.
   Everywhere else a one-element aggregate degrades to its sole element - `[T]` and `«1; T»` are `T`, and `(x)` is `x` - which makes `#0₁` a no-op.
   Here it is a real Extract, and that is the one exception to `t#i#j` ≡ `t#(i, j)`: a fused index folds its size-1 axes away, while the `#`-chain keeps them.
 
@@ -639,7 +649,7 @@ Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` 
 
 ### Field Names of Sigmas {#field}
 
-Named elements of a [dependent tuple type](@ref mutsigma) - a _mutable_ sigma in IR terms - are available for extracts and inserts.
+Named elements of a [mutable sigma](@ref mutsigma) - a dependent tuple type, or any sigma declared with `rec` - are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
 In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 
@@ -666,7 +676,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 ### Aggregates
 
-- `(e)` -> `e`, `[T]` -> `T` - a one-element aggregate degrades to its element; the sole exception is a [dependent tuple type](@ref mutsigma) of one component
+- `(e)` -> `e`, `[T]` -> `T` - a one-element aggregate degrades to its element; the sole exception is a [mutable sigma](@ref mutsigma) of one component
 - `(e, e, e)` -> `‹3; e›`, `[T, T, T]` -> `«3; T»` - uniform elements compress into a pack/array
 - `(t#0, t#1, t#2)` -> `t` - η for tuples, provided `t` has the ascribed type
 - `⊥:[T, U]` -> `(⊥:T, ⊥:U)`, `⊥:«n; T»` -> `‹n; ⊥:T›` - `⊥`/`⊤` are pushed into aggregates
@@ -680,7 +690,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 ### Extract
 
 - `d#(i, 0₁, k)` -> `d#(i, k)` - a literal size-1 axis folds out of an index, mirroring the shape rule
-- `d#i` -> `d` if `i: Idx 1` and `d` is not a dependent tuple type of one component
+- `d#i` -> `d` if `i: Idx 1` and `d`'s type is not a mutable sigma of one component
 - `d#()` -> `d` - an index that folded away entirely
 - `‹i: n; e›#j` -> `[i ↦ j]e`, `(a, b, c)#1` -> `b`
 - `t#i#j` -> `t#(i, j)` - the maximal-rank fused Extract is the normal form, as far as `t`'s own shape reaches
