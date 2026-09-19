@@ -183,7 +183,7 @@ axm er.(f, fc): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_er;
 /// [Gamma function](https://en.wikipedia.org/wiki/Gamma_function) and its natural [logarithm](https://en.wikipedia.org/wiki/Gamma_function#The_log-gamma_function).
 ///
 /// | Name              | Meaning                             | Semantics                                                        |
-/// |-------------------|--------------------------------------|------------------------------------------------------------------|
+/// |-------------------|-------------------------------------|------------------------------------------------------------------|
 /// | `math.gamma.t`    | gamma function                      | \f$\Gamma(x) = \int_0^\infty t^{x-1} e^{-t}\,dt\f$               |
 /// | `math.gamma.l`    | natural logarithm of gamma function | \f$\ln \mid \int_0^\infty t^{x-1} e^{-t}\,dt \mid\f$ |
 ///
@@ -204,7 +204,7 @@ axm abs: Nat → {pe: «2; Nat»} → F pe → F pe, normalize_abs;
 /// - `t`runcate
 ///
 /// | Name             | Meaning                                                                                            | Semantics                |
-/// |------------------|-----------------------------------------------------------------------------------------------------|--------------------------|
+/// |------------------|-----------------------------------------------------------------------------------------------------|-------------------------|
 /// | `math.round.f`   | [round down](https://en.wikipedia.org/wiki/Rounding#Rounding_down)                                 | \f$\lfloor x \rfloor \f$ |
 /// | `math.round.c`   | [round up](https://en.wikipedia.org/wiki/Rounding#Rounding_up)                                     | \f$\lceil x \rceil \f$   |
 /// | `math.round.r`   | [round to nearest integer](https://en.wikipedia.org/wiki/Rounding#Rounding_to_the_nearest_integer) | \f$round (x)\f$          |
