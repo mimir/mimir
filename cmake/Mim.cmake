@@ -11,7 +11,7 @@ set(MIM_NATIVE_MIM "" CACHE FILEPATH "Native mim executable that bootstraps the 
 # Where a plugin's `.mim` half is staged, so that a built tree can load it without being installed.
 set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")
 # The tour examples of `lit/docs`; the docs render their graphs and the playground offers them.
-set(MIM_DOC_EXAMPLES count dep iter sq)
+set(MIM_DOC_EXAMPLES sq count dep iter) # order is the playground picker's
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
     message(STATUS
