@@ -52,6 +52,7 @@ add_dependencies(mim_all mim_all_plugins)
 
 # `--bootstrap` never loads the plugin libraries, so it cannot exercise the normalizers an annex
 # relies on: a type error in a .mim only surfaces once something imports it for real.
+# `--no-opt` stops after elaboration, since a backend plugin drags in `opt`'s `_default_compile`.
 # Elaborating every plugin takes ~1s in total, so do it on every build.
 option(MIM_VERIFY_PLUGINS "If ON, elaborate every plugin's .mim with its plugin library loaded." ON)
 
@@ -69,7 +70,7 @@ if(MIM_VERIFY_PLUGINS)
         file(GENERATE OUTPUT "${MIM_VERIFY_MAIN}" CONTENT "plugin ${PLUGIN};\n")
         add_custom_command(
             OUTPUT "${MIM_VERIFY_STAMP}"
-            COMMAND $<TARGET_FILE:mim> "${MIM_VERIFY_MAIN}" -P "${MIM_PLUGIN_DIR}"
+            COMMAND $<TARGET_FILE:mim> "${MIM_VERIFY_MAIN}" -P "${MIM_PLUGIN_DIR}" --no-opt
             COMMAND ${CMAKE_COMMAND} -E touch "${MIM_VERIFY_STAMP}"
             DEPENDS mim mim_all_plugins ${MIM_STAGED_MIMS}
             COMMENT "Verifying MimIR plugin '${PLUGIN}'"

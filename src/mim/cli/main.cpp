@@ -30,6 +30,7 @@ struct Opts {
     std::array<Out, Num_Emits> outs;
     DotConfig dot;
     bool sexpr_include_types = false;
+    bool no_opt              = false;
 };
 
 void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool md) {
@@ -109,7 +110,7 @@ int compile(Driver& driver, Opts& opts) {
         }
 
         file->compile(ast);
-        optimize(world);
+        if (!opts.no_opt) optimize(world);
 
         auto types = opts.sexpr_include_types;
         if (auto s = outs[Dot].os()) world.dot(*s, opts.dot);
@@ -214,6 +215,7 @@ int main(int argc, char** argv) {
             .grp("Optimization")
             .opt(flags.aggressive_lam_spec , ""          , ""  , "--aggr-lam-spec"       , "Overrides LamSpec behavior to follow recursive calls.")
             .opt(flags.max_fp_iters        , "num"       , ""  , "--max-fp-iters"        , "Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
+            .opt(opts.no_opt               , ""          , ""  , "--no-opt"              , "Elaborates the input but skips the optimization pipeline, so no backend runs; `--output-*` still works.")
             .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
 #ifdef MIM_ENABLE_CHECKS
             .grp("Developer Options")
