@@ -378,7 +378,8 @@ void foo(const Def* def) {
 
 The following table summarizes the most important casts:
 
-A method beginning with `expect` behaves like the `as` in the same row, but throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting; it takes a description (a plain string or a format string plus arguments) of what was expected.
+A method beginning with `expect` behaves like the `as` in the same row, but throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting; it takes a description (a plain string or a `fe::cite_string` plus arguments) of what was expected;
+its `` `citations` `` are markup, while the arguments spliced into it are escaped as data.
 
 | `dynamic_cast` <br> `static_cast` <br> throwing                                       | Returns                                                                                                                             | If `def` is a ...                    |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
