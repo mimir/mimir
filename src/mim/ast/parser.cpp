@@ -341,7 +341,7 @@ Ptr<Expr> Parser::parse_seq_expr() {
 
         auto expr = parse_expr(fe::Cite(is_pack ? "shape of pack" : "shape of a array"));
         arities.emplace_back(IdPtrn::make_id(ast(), dbg, expr));
-    } while (accept(Tag::T_comma));
+    } while (accept(Tag::T_comma) && !ahead().isa(Tag::T_semicolon));
 
     expect(Tag::T_semicolon, fe::Cite(is_pack ? "pack" : "array"));
     auto body = parse_expr(fe::Cite(is_pack ? "body of a pack" : "body of an array"));

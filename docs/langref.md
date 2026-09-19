@@ -22,8 +22,10 @@ x?       // an optional x
 [a-cx-z] // combines several ranges
 ```
 
-For example, `x ("," x)* ","?` is a comma-separated list of one or more `x` with an optional trailing comma.
+For example, `x ("," x)*` is a comma-separated list of one or more `x`.
 @note Ranges only occur in the rules of the [lexical terminals](@ref terminals).
+@note Every comma-separated list additionally accepts a trailing `,`, as in `(e, e, e,)`.
+The rules below don't spell this out.
 
 ## Lexical Structure {#lex}
 
@@ -243,7 +245,7 @@ lam    ::= "lam" | "con" | "fun"
 dom    ::= p ("@" e)?
 fwd    ::= (p | t) ("@" e)?
 axm    ::= I ":" e tail
-        |  (I ".")? "(" (tag ("," tag)* ","?)? ")" ":" e tail
+        |  (I ".")? "(" (tag ("," tag)*)? ")" ":" e tail
 tag    ::= I ("=" I)*
 tail   ::= ("," I)? ("," L ("," L)?)?
 ```
@@ -300,8 +302,8 @@ t     ::= I (":" e)?
        |  t "as" I
        |  e
 
-plist ::= (p | g) ("," (p | g))* ","?
-tlist ::= (t | g) ("," (t | g))* ","?
+plist ::= (p | g) ("," (p | g))*
+tlist ::= (t | g) ("," (t | g))*
 g     ::= I+ ":" e
 ```
 
@@ -428,7 +430,7 @@ e   ::= e "→" e
 
 ```ebnf
 e     ::= "[" tlist? "]"
-       |  "(" (e ("," e)* ","?)? ")"
+       |  "(" (e ("," e)*)? ")"
        |  "«" arity ("," arity)* ";" e "»"
        |  "‹" arity ("," arity)* ";" e "›"
        |  e "#" e
