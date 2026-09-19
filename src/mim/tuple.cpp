@@ -6,13 +6,81 @@
 
 namespace mim {
 
-namespace {
-/// The App::callee of @p def - or `nullptr`, if @p def isn't an App at all.
-const Def* callee_of(const Def* def) {
-    auto app = def->isa<App>();
-    return app ? app->callee() : nullptr;
+/*
+ * Shape
+ */
+
+Shape::Shape(World& w, Defs shape)
+    : Shape(w.tuple(shape)) {}
+
+bool Shape::is_dim() const {
+    auto t = def_ ? def_->unfold_type() : nullptr;
+    if (!t) return false;
+    if (t->isa<Nat>() || Idx::isa(t)) return true;
+    return t->zonk_mut()->isa<Nat>(); // only a Hole needs the zonk
 }
-} // namespace
+
+std::optional<nat_t> Shape::rank() const { return def_ ? Lit::isa(def_->arity()) : std::nullopt; }
+
+const Def* Shape::front() const {
+    if (is_dim()) return def_;
+    if (auto r = rank()) return def_->proj(*r, 0);
+
+    auto& w = def_->world(); // a dynamic rank cannot be projected
+    return w.extract(def_, w.lit(w.type_idx(def_->arity()), 0));
+}
+
+std::optional<nat_t> Shape::extent(const Def* axis) {
+    if (auto size = Idx::isa(axis->unfold_type())) return Lit::isa(size);
+    return Lit::isa(axis);
+}
+
+/// Is @p type a @p leaf - or an aggregate of them? This is what makes a shape a shape and an index an index.
+static bool isa_axes(const Def* type, auto leaf) {
+    if (!type) return false; // Univ has no type
+    if (leaf(type)) return true;
+    if (auto sigma = type->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), leaf);
+    if (auto arr = type->isa<Arr>()) return leaf(arr->body()->zonk());
+    return false;
+}
+
+bool Shape::isa_extents(const Def* type) {
+    return isa_axes(type, [](const Def* l) { return l->isa<Nat>() != nullptr; });
+}
+
+bool Shape::isa_indices(const Def* type) {
+    return isa_axes(type, [](const Def* l) { return Idx::isa(l) != nullptr; });
+}
+
+Shape Shape::slice(nat_t begin, nat_t end) const {
+    auto r = rank();
+    if (!r) return {};
+    if (begin == 0 && end == *r) return *this;
+    return def_->world().tuple(DefVec(end - begin, [&](size_t i) { return def_->proj(*r, begin + i); }));
+}
+
+Shape Shape::drop(nat_t n) const {
+    auto r = rank();
+    return r ? slice(n, *r) : Shape();
+}
+
+Shape Shape::operator+(Shape other) const {
+    if (!def_ || !other) return {};
+    return Tuple::cat(def_, *other);
+}
+
+Shape Shape::fold() const {
+    if (is_dim()) return extent(def_) == 1 ? Shape(def_->world().tuple()) : *this;
+    return filter([](nat_t, const Def* a) { return extent(a) != 1; });
+}
+
+Shape Shape::fold(Shape shape) const {
+    if (!shape.rank()) return *this;
+    assert(rank() == shape.rank() && "an index folds against the shape of the very Seq it indexes");
+    return filter([&](nat_t i, const Def*) { return extent(shape[i]) != 1; });
+}
+
+const Def* Seq::elem() const { return shape().is_fused() ? world().drop(this, 1) : body(); }
 
 Select::Select(const Def* def) {
     if (!def) return;
@@ -22,7 +90,7 @@ Select::Select(const Def* def) {
 }
 
 Branch::Branch(const Def* def)
-    : Select(callee_of(def)) {
+    : Select(App::callee_of(def)) {
     if (extract()) app_ = def->as<App>();
 }
 
@@ -70,7 +138,7 @@ std::string tuple2str(const Def* def) {
  * cat
  */
 
-DefVec cat(Defs a, Defs b) {
+DefVec Def::cat(Defs a, Defs b) {
     auto res = DefVec();
     res.reserve(a.size() + b.size());
     res.append_range(a);
@@ -78,27 +146,34 @@ DefVec cat(Defs a, Defs b) {
     return res;
 }
 
-DefVec cat(nat_t n, nat_t m, const Def* a, const Def* b) {
-    auto res = DefVec();
-    res.reserve(n + m);
-    for (nat_t i = 0; i != n; ++i)
-        res.emplace_back(a->proj(n, i));
-    for (nat_t i = 0; i != m; ++i)
-        res.emplace_back(b->proj(m, i));
-
-    return res;
+DefVec Prod::cat_projs(nat_t n, nat_t m, const Def* a, const Def* b) {
+    return DefVec(n + m, [=](size_t i) { return i < n ? a->proj(n, i) : b->proj(m, i - n); });
 }
 
-const Def* cat_tuple(nat_t n, nat_t m, const Def* a, const Def* b) { return a->world().tuple(cat(n, m, a, b)); }
-const Def* cat_sigma(nat_t n, nat_t m, const Def* a, const Def* b) { return a->world().sigma(cat(n, m, a, b)); }
+const Def* Prod::cat(bool term, nat_t n, nat_t m, const Def* a, const Def* b) {
+    auto& w = a->world();
+    // Two *fully* spliced Seq%s of the same element concatenate without materializing their n + m projections.
+    if (auto sa = a->isa_imm<Seq>(), sb = b->isa_imm<Seq>(); sa && sb && Lit::isa(a->arity()) == n
+                                                             && Lit::isa(b->arity()) == m && sa->is_intro() == term
+                                                             && sb->is_intro() == term && sa->elem() == sb->elem())
+        return w.seq(term, n + m, sa->elem());
 
-const Def* cat_tuple(World& world, Defs a, Defs b) { return world.tuple(cat(a, b)); }
-const Def* cat_sigma(World& world, Defs a, Defs b) { return world.sigma(cat(a, b)); }
+    return w.prod(term, cat_projs(n, m, a, b));
+}
+
+const Def* Prod::cat(bool term, const Def* a, const Def* b) {
+    auto n = Lit::isa(a->arity());
+    auto m = Lit::isa(b->arity());
+    return n && m ? cat(term, *n, *m, a, b) : nullptr;
+}
 
 const Def* tuple_of_types(const Def* t) {
     auto& world = t->world();
     if (auto sigma = t->isa<Sigma>()) return world.tuple(sigma->ops());
-    if (auto arr = t->isa<Arr>()) return world.pack(arr->arity(), arr->body());
+    if (auto arr = t->isa<Arr>()) {
+        // One entry per *top-level* element, so a fused Arr contributes its sub-arrays, not its elements.
+        if (auto elem = arr->elem()) return world.pack(arr->arity(), elem);
+    }
     return t;
 }
 

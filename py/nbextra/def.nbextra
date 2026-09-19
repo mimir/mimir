@@ -9,8 +9,16 @@
 
 [class:Def]
     // Pythonic projection: def[i] -> proj(i); def[a, i] -> proj(a, i).
-    .def("__getitem__", [](const Def& self, nat_t i) { return self.proj(i); }, nb::rv_policy::reference_internal)
-    .def("__getitem__", [](const Def& self, std::pair<nat_t, nat_t> ai) { return self.proj(ai.first, ai.second); }, nb::rv_policy::reference_internal)
+    // An IndexError is what ends an iteration over `__getitem__`; Def::proj instead asserts,
+    // so a missing bounds check lets `list(def)` walk off the end and abort the interpreter.
+    .def("__getitem__", [](const Def& self, nat_t i) {
+        if (i >= self.num_projs()) throw nb::index_error();
+        return self.proj(self.num_projs(), i);
+    }, nb::rv_policy::reference_internal)
+    .def("__getitem__", [](const Def& self, std::pair<nat_t, nat_t> ai) {
+        if (ai.second >= ai.first) throw nb::index_error();
+        return self.proj(ai.first, ai.second);
+    }, nb::rv_policy::reference_internal)
     // The name-setting Def::set overloads are template methods (template<bool Ow>),
     // so the generator skips them; expose the std::string instantiation used to
     // name mutables from Python (e.g. `lam.set("foo")`).

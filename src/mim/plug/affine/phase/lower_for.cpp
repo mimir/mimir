@@ -13,22 +13,10 @@ namespace mim::plug::affine::phase {
 
 namespace {
 
-const Def* merge_s(const Def* elem, const Def* sigma, const Def* mem) {
+const Def* merge(bool term, const Def* elem, const Def* prod, const Def* mem) {
     auto& w = elem->world();
-    if (mem) {
-        auto elems = sigma->projs();
-        return cat_sigma(elem, elems);
-    }
-    return w.sigma({elem, sigma});
-}
-
-const Def* merge_t(const Def* elem, const Def* tuple, const Def* mem) {
-    auto& w = elem->world();
-    if (mem) {
-        auto elems = tuple->projs();
-        return cat_tuple(elem, elems);
-    }
-    return w.tuple({elem, tuple});
+    if (mem) return w.prod(term, Def::cat(elem, prod->projs()));
+    return w.prod(term, {elem, prod});
 }
 
 } // namespace
@@ -53,7 +41,8 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         if (!old_exit_lam) old_exit_lam = Lam::eta_expand(old_exit);
 
         auto new_mem      = mem::mem_def(new_init);
-        auto new_head_lam = new_world().mut_con(merge_s(new_begin->type(), new_init->type(), new_mem))->set("head");
+        auto new_head_dom = merge(false, new_begin->type(), new_init->type(), new_mem);
+        auto new_head_lam = new_world().mut_con(new_head_dom)->set("head");
         auto new_phis     = new_head_lam->vars();
         auto new_iter     = new_phis.front();
         auto new_acc      = new_world().tuple(new_phis.view().subspan(1));
@@ -69,7 +58,7 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         if (vec_axm) new_cmp = new_world().app(new_world().app(rewrite(vec_axm), new_cmp->type()), new_cmp);
 
         new_head_lam->branch(false, new_cmp, new_body, new_exit, new_mem);
-        new_yield->app(false, new_head_lam, merge_t(new_inc, new_yield->var(), new_mem));
+        new_yield->app(false, new_head_lam, merge(true, new_inc, new_yield->var(), new_mem));
 
         // `new_acc` references the head's phis, including the head's mem var.
         // Each new bb receives its own mem, so re-thread the acc's mem through the bb's own mem var.
@@ -96,7 +85,7 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         new_exit->set({new_exit_filter, new_exit_value});
         pop();
 
-        return new_world().app(new_head_lam, merge_t(new_begin, new_init, new_mem));
+        return new_world().app(new_head_lam, merge(true, new_begin, new_init, new_mem));
     }
 
     return RWPhase::rewrite_imm_App(app);

@@ -34,7 +34,7 @@ TEST_CASE("World: dependent extract") {
 
     auto sig = w.mut_sigma(w.type<1>(), 2); // sig = [T: *, T]
     sig->set(0, w.type<0>());
-    sig->set(1, sig->var(0_u64));
+    sig->set(1, sig->var(2, 0));
     auto a = w.axm(sig);
     CHECK(a->proj(2, 1)->type() == a->proj(2, 0_u64)); // type_of(a#1_2) == a#0_1
 }
@@ -50,7 +50,7 @@ static Sigma* dep_sigma(World& w) {
     sig->set(1, w.arr(n, w.type_nat()));
     auto s  = sig->var(3, 1);
     auto is = w.mut_arr(w.type());
-    is->set_arity(n);
+    is->set_shape(n);
     is->set_body(w.type_idx(w.extract(s, is->var())));
     sig->set(2, is);
     return sig;
@@ -70,9 +70,6 @@ TEST_CASE("World: dependent projection with a mutable op") {
     Driver driver;
     World& w = driver.world();
     auto a   = w.axm(dep_sigma(w))->set("a");
-
-    // `a#2`'s element type is `[sigma_var -> a]«j: n; Idx (s#j)»`; rewriting into a *mutable* mints a fresh stub
-    // every time, so only the Reduct cache keeps this Extract hash-consed across calls.
     CHECK(w.extract(a, 3, 2) == w.extract(a, 3, 2));
 }
 

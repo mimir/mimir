@@ -18,6 +18,12 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
+    const Def* rewrite_imm_Extract(const Extract*) final;
+
+    /// Reads straight through a `broadcast` / `repeat` at @p index instead of materializing it.
+    /// Per axis the shape op either passes the index through, reads a size-1 input axis at 0, or (for `repeat`)
+    /// wraps it; an axis that is none of these decidably keeps the shape op.
+    const Def* read_through(const Def* base, Defs index);
 
     const Def* lower_via_impl(const App*, const Def* impl_annex);
     /// `tensor.fastest_axis` applied to the dot family's right operand (of the given rank):

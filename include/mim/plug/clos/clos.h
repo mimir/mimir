@@ -114,7 +114,7 @@ const Def* ctype(World& w, Defs doms, const Def* env_type = nullptr);
 
 const Def* clos_insert_env(size_t ep, size_t i, const Def* env, std::function<const Def*(size_t)> f);
 inline const Def* clos_insert_env(size_t ep, size_t i, const Def* env, const Def* a) {
-    return clos_insert_env(ep, i, env, [&](auto i) { return a->proj(i); });
+    return clos_insert_env(ep, i, env, [&, n = a->num_projs()](auto i) { return a->proj(n, i); });
 }
 
 inline const Def* clos_insert_env(size_t ep, const Def* env, const Def* tup_or_sig) {
@@ -125,7 +125,7 @@ inline const Def* clos_insert_env(size_t ep, const Def* env, const Def* tup_or_s
 
 const Def* clos_remove_env(size_t ep, size_t i, std::function<const Def*(size_t)> f);
 inline const Def* clos_remove_env(size_t ep, size_t i, const Def* def) {
-    return clos_remove_env(ep, i, [&](auto i) { return def->proj(i); });
+    return clos_remove_env(ep, i, [&, n = def->num_projs()](auto i) { return def->proj(n, i); });
 }
 inline const Def* clos_remove_env(size_t ep, const Def* tup_or_sig) {
     auto& w      = tup_or_sig->world();
@@ -135,7 +135,8 @@ inline const Def* clos_remove_env(size_t ep, const Def* tup_or_sig) {
 
 inline const Def* clos_sub_env(size_t ep, const Def* tup_or_sig, const Def* new_env) {
     auto& w      = tup_or_sig->world();
-    auto new_ops = DefVec(tup_or_sig->num_projs(), [&](auto i) { return i == ep ? new_env : tup_or_sig->proj(i); });
+    auto n       = tup_or_sig->num_projs();
+    auto new_ops = DefVec(n, [&](auto i) { return i == ep ? new_env : tup_or_sig->proj(n, i); });
     return (tup_or_sig->isa<Sigma>()) ? w.sigma(new_ops) : w.tuple(new_ops);
 }
 ///@}

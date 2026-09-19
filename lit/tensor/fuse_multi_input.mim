@@ -12,7 +12,7 @@ use core.ops.n;
 
 lam add1 (x: Nat): Nat = x + 1;
 lam mul2 (x: Nat): Nat = x * 2;
-lam add  (xs: [Nat, Nat]): Nat = core.nat.add xs;
+lam add  (x y: Nat): Nat = x + y;
 
 extern con f (v1 v2: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
     let inner1 = tensor.unary add1 v1;

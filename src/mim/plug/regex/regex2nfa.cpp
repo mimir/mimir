@@ -29,8 +29,8 @@ std::vector<std::pair<std::uint8_t, std::uint8_t>> gather_ranges(const Def* rege
                    && "as per normalizer, if we're in a 'not_' argument, we must only have disjs, not_ and ranges!");
 
             auto rng_match = Axm::isa<regex::range, false>(arg);
-            inner_ranges.emplace_back(Lit::as<std::uint8_t>(rng_match->arg(0)),
-                                      Lit::as<std::uint8_t>(rng_match->arg(1)));
+            inner_ranges.emplace_back(Lit::as<std::uint8_t>(rng_match->arg(2, 0)),
+                                      Lit::as<std::uint8_t>(rng_match->arg(2, 1)));
         }
     }
     std::sort(inner_ranges.begin(), inner_ranges.end());
@@ -64,12 +64,12 @@ struct Regex2NfaConverter {
     convert(const Def* regex, automaton::NFANode* start, automaton::NFANode* end, automaton::NFANode* error = nullptr) {
         if (auto conj = Axm::isa<regex::conj>(regex)) {
             auto middle = nfa_->add_state();
-            convert(conj->arg(0), start, middle, error);
-            convert(conj->arg(1), middle, end, error);
+            convert(conj->arg(2, 0), start, middle, error);
+            convert(conj->arg(2, 1), middle, end, error);
         } else if (auto any = Axm::isa<regex::any>(regex)) {
             add_range_transitions(start, end, 0_u16, 255);
         } else if (auto range = Axm::isa<regex::range>(regex)) {
-            add_range_transitions(start, end, range->arg(0), range->arg(1));
+            add_range_transitions(start, end, range->arg(2, 0), range->arg(2, 1));
             if (error) add_range_transitions(start, error, 0, 255);
         } else if (auto not_ = Axm::isa<regex::not_>(regex)) {
             auto first = nfa_->add_state();
@@ -89,8 +89,8 @@ struct Regex2NfaConverter {
             convert(neg->arg(), first, error, end);
             first->add_transition(end, automaton::NFA::SpecialTransitons::EPSILON);
         } else if (auto disj = Axm::isa<regex::disj>(regex)) {
-            convert(disj->arg(0), start, end, error);
-            convert(disj->arg(1), start, end, error);
+            convert(disj->arg(2, 0), start, end, error);
+            convert(disj->arg(2, 1), start, end, error);
         } else if (auto opt = Axm::isa(quant::optional, regex)) {
             start->add_transition(end, automaton::NFA::SpecialTransitons::EPSILON);
             convert(opt->arg(), start, end);

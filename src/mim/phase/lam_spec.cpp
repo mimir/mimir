@@ -41,7 +41,7 @@ const Def* LamSpec::rewrite_imm_App(const App* old_app) {
 
     for (size_t arg_i = 0, var_i = 0, n = num_old - skip; arg_i != n; ++arg_i) {
         auto arg = rewrite(old_app->arg(num_old, arg_i));
-        if (lam->dom(arg_i)->isa<Pi>()) {
+        if (lam->dom(lam->num_doms(), arg_i)->isa<Pi>()) {
             new_vars.emplace_back(arg);
         } else {
             new_vars.emplace_back(new_lam->var(num_new, var_i++));

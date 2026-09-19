@@ -3,14 +3,14 @@
 plugin tuple;
 plugin refly;
 
-con f (t: «(2, 2); Nat», r: Cn Nat) = r t#(0:(Idx 2))#(1:(Idx 2));
+con f (t: «2, 2; Nat», r: Cn Nat) = r t#(0:(Idx 2))#(1:(Idx 2));
 
 extern con main(i: Idx 2, r: Cn Nat) =
     (f (((10, 20), (30, 40)), r), f (((50, 60), (70, 80)), r))#i;
 
 // `t` is only Extract%ed with constant indices, so it may be scalarized.
 // Scalarize peels one level per run; the surrounding fixed-point pipeline re-runs it until
-// the nested «(2, 2); Nat» is fully flattened into 4 scalar arguments.
+// the fused «2, 2; Nat» is fully flattened into 4 scalar arguments.
 // CHECK-DAG: f_{{[0-9]+}} (10, 20, 30, 40)
 // CHECK-DAG: f_{{[0-9]+}} (50, 60, 70, 80)
 

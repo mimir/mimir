@@ -21,24 +21,20 @@ plugin buffer;
 
 use core.ops.u.w;
 
-fun add (x: I32, y: «1; I32»)@tt = return (x + y#0₁);
-lam addb (x y: I32): I32 = x + y;
-lam add1 (x: I32): I32 = x + 1I32;
-lam id1i (i j: affine.Index): «1; affine.Index» = i;
-lam id2  (i j: affine.Index): «2; affine.Index» = (i, j);
+fun add (x y: I32)@tt = return (x + y);
+lam fst (i j: affine.Index): affine.Index = i;
+lam id  (i j: affine.Index): «2; affine.Index» = (i, j);
 
 // out[i] = (sum_j input[j][i]) + bias[i] + 1
 extern fun row_sum1 (input: «4, 3; I32», bias: «3; I32»): «3; I32» =
     let t      = tensor.transpose_2d input;
-    let sums   = tensor.map_reduce (3, (3, 4))
-                     (add, 0I32) id1i id2 t;
-    return (tensor.unary add1 (tensor.binary addb (sums, bias)));
+    let sums   = tensor.map_reduce (3, (3, 4)) (add, 0I32) fst id t;
+    return (tensor.unary (λ x = x + 1I32) (tensor.binary `+ (sums, bias)));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     let t = ((1I32, 5I32, 9I32), (2I32, 6I32, 10I32), (3I32, 7I32, 11I32), (4I32, 8I32, 12I32));
     let bias = (1I32, 2I32, 3I32);
-    con done (o: «3; I32») =
-        return (m, tensor.get ((2₃, ), o));
+    con done (o: «3; I32») = return (m, o#2₃);
     row_sum1 ((t, bias), done);
 
 // CHECK-DAG: mem.load

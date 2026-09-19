@@ -43,11 +43,11 @@ axm setjmp: [mem.M 0, BufPtr] → [mem.M 0, I32];
 /// it yield the given tag (like C `longjmp`).
 axm longjmp: Cn [mem.M 0, BufPtr, I32];
 ///
-/// ## Closure Attribute
+/// ## Closure Annotations
 ///
-/// ### attr
+/// ### anno
 ///
-/// A marker wrapped around a `Lam` (or a use of it) that classifies how it is used.
+/// A family of mim::Anno%tations wrapped around a `Lam` (or a use of it) that classifies how it is used.
 /// mim::plug::clos::phase::ClosConvPrep introduces these so that mim::plug::clos::phase::ClosConv sees a canonical
 /// program and can treat each kind of continuation appropriately:
 /// * `returning`: a *returning continuation* ("function"); fully closure converted.
@@ -55,8 +55,11 @@ axm longjmp: Cn [mem.M 0, BufPtr, I32];
 /// * `fstclass_bb`: a basic block used as a first-class value (passed around) rather than only called.
 /// * `esc`: a closure whose environment escapes its parent scope, so it is heap- instead of stack-allocated
 ///   (introduced by mim::plug::clos::phase::LowerTypedClosPrep).
-/// * `bottom`: no special use; this is the identity marker and is normalized away by `normalize_clos`.
-axm attr.(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, normalize_clos;
+/// * `bottom`: no special use; it carries no intent and `normalize_clos` removes it right away.
+///
+/// The `clos` phases are the only consumers; until the last of them has run, dropping one of these annotations
+/// loses the classification and closure conversion picks the wrong treatment.
+axm anno.(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, normalize_clos;
 ///
 /// ## Phases
 ///
@@ -65,7 +68,7 @@ axm attr.(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, nor
 ///
 /// ### clos_conv_prep
 ///
-/// Prepares for closure conversion by wrapping operands with the `clos.attr` markers above and
+/// Prepares for closure conversion by wrapping operands with the `clos.anno` annotations above and
 /// eta-expanding branches and continuations (mim::plug::clos::phase::ClosConvPrep).
 ///
 axm clos_conv_prep: compile.Phase;
@@ -85,7 +88,7 @@ axm branch_clos: compile.Phase;
 ///
 /// ### lower_typed_clos_prep
 ///
-/// Escape analysis; marks closures whose environment escapes with `clos.attr.esc`
+/// Escape analysis; marks closures whose environment escapes with `clos.anno.esc`
 /// (mim::plug::clos::phase::LowerTypedClosPrep).
 ///
 axm lower_typed_clos_prep: compile.Phase;

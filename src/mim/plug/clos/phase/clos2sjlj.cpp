@@ -16,8 +16,8 @@ std::array<const Def*, 3> split(const Def* def) {
     const Def* mem = nullptr;
     const Def* env = nullptr;
     auto j         = 0;
-    for (size_t i = 0; i < def->num_projs(); i++) {
-        auto op = def->proj(i);
+    for (size_t i = 0, n = def->num_projs(); i < n; i++) {
+        auto op = def->proj(n, i);
         if (op == w.call<mem::M>(0) || op->type() == w.call<mem::M>(0))
             mem = op;
         else if (i == Sjlj_Env_Param)
@@ -149,7 +149,8 @@ void Clos2SJLJ::convert(Lam* lam) {
         auto env             = w.tuple(body->args().view().subspan(1));
         auto new_callee      = mem::mut_con(env->type())->set("sjlj_wrap");
         auto [m, env_var, _] = split(new_callee->var());
-        auto new_args = DefVec(env->num_projs() + 1, [&](size_t i) { return (i == 0) ? m : env_var->proj(i - 1); });
+        auto ne              = env->num_projs();
+        auto new_args        = DefVec(ne + 1, [&](size_t i) { return (i == 0) ? m : env_var->proj(ne, i - 1); });
         new_callee->app(false, body->callee(), new_args);
         branches[0] = clos_pack(env, new_callee, branch_type);
     }
@@ -159,7 +160,7 @@ void Clos2SJLJ::convert(Lam* lam) {
         branches[i]   = clos_pack(env, get_lpad(exn_lam, cur_rbuf_), branch_type);
     }
 
-    auto m0 = body->arg(0);
+    auto m0 = body->arg(body->num_args(), 0);
     assert(m0->type() == w.call<mem::M>(0));
     auto [m1, tag] = w.call<setjmp>(Defs{m0, cur_jbuf_})->projs<2>();
     tag            = w.call(core::conv::s, branches.size(), tag);

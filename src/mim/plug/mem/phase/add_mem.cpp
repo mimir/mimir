@@ -96,7 +96,7 @@ const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
         auto new_dom = DefVec();
         new_dom.emplace_back(mem);
         for (size_t i = 0, e = new_pi->num_doms(); i != e; ++i)
-            new_dom.emplace_back(new_pi->dom(i));
+            new_dom.emplace_back(new_pi->dom(e, i));
         return w.cn(new_dom);
     }
     return new_pi;
@@ -117,11 +117,13 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
     // Map the parameters, accounting for a possibly inserted leading mem var.
     if (auto n = old_lam->num_vars(); n != 0) {
         auto offset = new_lam->num_doms() - old_lam->num_doms(); // 1 iff we prepended a mem var
+        auto new_n  = new_lam->num_vars();
         for (size_t i = 0; i != n; ++i)
-            map(old_lam->var(i), new_lam->var(i + offset)->set(old_lam->var(i)->dbg_key()));
+            map(old_lam->var(n, i), new_lam->var(new_n, i + offset)->set(old_lam->var(n, i)->dbg_key()));
         // A use of the whole parameter tuple is reconstructed from the new (shifted) components.
         if (n > 1)
-            map(old_lam->var(), new_world().tuple(DefVec(n, [&](size_t i) { return new_lam->var(i + offset); })));
+            map(old_lam->var(),
+                new_world().tuple(DefVec(n, [&](size_t i) { return new_lam->var(new_n, i + offset); })));
     }
 
     if (!old_lam->is_set()) return new_lam;

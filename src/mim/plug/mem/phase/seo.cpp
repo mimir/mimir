@@ -97,7 +97,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
+    return world().proxy(var->type(), Def::cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, fe::Span<const Def*> abstr_vars) {

@@ -78,7 +78,7 @@ bool compare_re(const Def* lhs, const Def* rhs) {
     auto lhs_range = Axm::isa<range>(lhs);
     auto rhs_range = Axm::isa<range>(rhs);
     // sort ranges by increasing lower bound
-    if (lhs_range && rhs_range) return Lit::as(lhs_range->arg()->proj(0)) < Lit::as(rhs_range->arg()->proj(0));
+    if (lhs_range && rhs_range) return Lit::as(lhs_range->arg()->proj(2, 0)) < Lit::as(rhs_range->arg()->proj(2, 0));
     // ranges to the end
     if (lhs_range) return false;
     if (rhs_range) return true;
@@ -98,7 +98,7 @@ bool is_in_range(Range range, nat_t needle) { return needle >= range.first && ne
 
 auto get_range(const Def* rng) -> Range {
     auto rng_match = Axm::isa<range, false>(rng);
-    return {Lit::as<std::uint8_t>(rng_match->arg(0)), Lit::as<std::uint8_t>(rng_match->arg(1))};
+    return {Lit::as<std::uint8_t>(rng_match->arg(2, 0)), Lit::as<std::uint8_t>(rng_match->arg(2, 1))};
 }
 
 struct app_range {

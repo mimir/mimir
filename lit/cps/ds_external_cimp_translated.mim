@@ -8,6 +8,8 @@ plugin core;
 plugin cps;
 plugin mem;
 
+use core.ops.u.w;
+
 extern con atoi[mem.M 0, mem.Ptr («⊤:Nat; I8», 0), Cn [mem.M 0, I32]];
 
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
@@ -29,6 +31,6 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
             wrapped_atoi2 (m, atoi_cont_b)
             where
                 con atoi_cont_b (m: mem.M 0, b: I32) =
-                    return (m, core.wrap.add 0 (a, b));
+                    return (m, a + b);
             end;
     end;

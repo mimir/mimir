@@ -106,23 +106,6 @@ DefVec build_loops(World& w, Lam*& cur, const Def*& exit, const Def*& acc, Defs 
     return iters;
 }
 
-const Def* elem_type(const Def* type, u64 r) {
-    for (u64 i = 0; i != r; ++i)
-        if (auto seq = type->isa<Seq>())
-            type = seq->body();
-        else
-            break;
-    return type;
-}
-
-const Def* nested_extract(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r) {
-    return op_get(elem_type(matrix->type(), r), w.lit_nat(r), shape, matrix, coords);
-}
-
-const Def* nested_insert(World& w, const Def* matrix, const Def* coords, const Def* shape, u64 r, const Def* elem) {
-    return op_set(elem_type(matrix->type(), r), w.lit_nat(r), shape, matrix, coords, elem);
-}
-
 /// The literal values of @p def's @p n projections, or nothing if one of them is not a literal.
 std::optional<fe::Vector<u64>> lit_projs(const Def* def, u64 n) {
     auto res = fe::Vector<u64>(n);
@@ -188,10 +171,8 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     auto nloops = *rn_l;             // length of the full loop vector (= length of Sr)
     auto n      = w.lit_nat(nloops); // passed as the affine maps' domain length
 
-    // ranks of each input must be literal so that we know how many `extract`s to emit
-    auto ris_nat = lit_projs(Ris, nis_nat);
-    auto rps_nat = lit_projs(Rps, nps_nat);
-    if (!ris_nat || !rps_nat) {
+    // the affine maps below take each input's rank as their domain length, so it must be literal
+    if (!lit_projs(Ris, nis_nat) || !lit_projs(Rps, nps_nat)) {
         log().w("the input ranks of {} are not known at lowering time", app);
         return nullptr;
     }
@@ -240,11 +221,11 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         DefVec post_elements(nps_nat, [&](size_t j) {
             auto sps_j  = Sps->proj(nps_nat, j);
             auto coords = affine_map(post_accs->proj(nps_nat, j), Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords);
-            return nested_extract(w, new_post_is->proj(nps_nat, j), coords, sps_j, (*rps_nat)[j]);
+            return w.extract(new_post_is->proj(nps_nat, j), coords);
         });
 
         auto after_post = w.mut_con(Tp)->set("afterPost");
-        after_post->app(true, cont, nested_insert(w, wb_matrix, write_coords, So, ro, after_post->var()));
+        after_post->app(true, cont, w.insert(wb_matrix, write_coords, after_post->var()));
         write_back->app(true, post, {w.tuple({element_final, w.tuple(post_elements)}), after_post});
 
         // Inner (reduction) loops over the trailing `Rr` bounds of `Sr`, collecting the reduction iteration
@@ -264,7 +245,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         DefVec input_elements(nis_nat, [&](size_t i) {
             auto sis_i  = Sis->proj(nis_nat, i);
             auto coords = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
-            return nested_extract(w, new_is->proj(nis_nat, i), coords, sis_i, (*ris_nat)[i]);
+            return w.extract(new_is->proj(nis_nat, i), coords);
         });
 
         comb->set("comb");
@@ -298,7 +279,7 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
     // Write the computed element at the (identity) output coordinates; convert the i64 counters to `Idx (So#k)`.
     DefVec write_coords(ro, [&](size_t i) { return w.call(core::conv::u, so[i], out_iters[i]); });
     auto element = compute(out_iters, new_inputs);
-    current_mut->app(true, cont, nested_insert(w, wb_matrix, w.tuple(write_coords), So, ro, element));
+    current_mut->app(true, cont, w.insert(wb_matrix, w.tuple(write_coords), element));
     return call;
 }
 
@@ -350,15 +331,13 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto mode_nat = *mode_l;
     auto i64      = w.type_i64();
 
-    // Deduce the output shape: s_out#d = lo#d + s_in#d + hi#d.
-    DefVec so(rn);
-    auto inner_type = type;
-    for (u64 d = 0; d < rn; ++d) {
-        auto inner_type_seq = inner_type->as<Seq>();
-        so[d]               = inner_type_seq->arity();
-        inner_type          = inner_type_seq->body();
+    // The output shape `s_out#d = lo#d + s_in#d + hi#d` is what `type` already carries.
+    auto out_arr = type->isa<Arr>();
+    if (!out_arr || out_arr->shape().rank() != rn) {
+        log().w("padded shape of {} is not a statically known rank-{} array", app, rn);
+        return nullptr;
     }
-    auto s_out = w.tuple(so);
+    auto s_out = *out_arr->shape();
 
     auto compute = [&](Defs out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value] = new_inputs->projs<2>();
@@ -378,7 +357,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
             }
             clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
         }
-        auto elem = nested_extract(w, input, w.tuple(clamped), s_in, rn);
+        auto elem = w.extract(input, w.tuple(clamped));
         if (mode_nat != 0) return elem; // replicate: always a (clamped) read
         auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
         for (u64 d = 1; d < valid.size(); ++d)
@@ -439,7 +418,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
             DefVec coords(rn, [&](size_t d) {
                 return w.call(core::conv::u, Sis_i->proj(rn, d), d == axn ? in_ax : out_iters[d]);
             });
-            return nested_extract(w, new_inputs->proj(nisn, i), w.tuple(coords), Sis_i, rn);
+            return w.extract(new_inputs->proj(nisn, i), w.tuple(coords));
         };
         // Select chain: the highest `i` with off#i ≤ o_ax owns the cell (offsets increase, later wins).
         auto result = read_i(0);
