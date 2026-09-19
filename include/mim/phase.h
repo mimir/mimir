@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include <fe/assert.h>
 #include <fe/cast.h>
+#include <fe/term.h>
 
 #include "mim/def.h"
 #include "mim/nest.h"

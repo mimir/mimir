@@ -1,6 +1,6 @@
 #pragma once
 
-#include <fe/assert.h>
+#include <fe/term.h>
 
 #include "mim/def.h"
 #include "mim/phase.h"
