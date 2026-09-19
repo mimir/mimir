@@ -286,7 +286,7 @@ void foo(const Def* def) {
 
 #### Downcast to Immutables
 
-[`mim::Def::isa_imm`](@ref mim::Def::isa*imm) / [`mim::Def::as_imm`](@ref mim::Def::as_imm) only match \_immutables*:
+[`mim::Def::isa_imm`](@ref mim::Def::isa_imm) / [`mim::Def::as_imm`](@ref mim::Def::as_imm) only match **immutables**:
 
 ```cpp
 void foo(const Def* def) {
@@ -306,7 +306,7 @@ void foo(const Def* def) {
 
 #### Downcast to Mutables
 
-[`mim::Def::isa_mut`](@ref mim::Def::isa*mut) / [`mim::Def::as_mut`](@ref mim::Def::as_mut) only match \_mutables*.
+[`mim::Def::isa_mut`](@ref mim::Def::isa_mut) / [`mim::Def::as_mut`](@ref mim::Def::as_mut) only match **mutables**.
 They also remove the `const` qualifier, which gives you access to the non-`const` methods that only make sense for mutables:
 
 ```cpp

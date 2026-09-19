@@ -129,8 +129,8 @@ Rewriting those dependencies schedules any further mutables it reaches, so the w
 The `mut -> mut` entry recorded in step 2 doubles as the per-round _"already scheduled"_ marker: it lives in the rewriter map (see [`lookup()`](@ref mim::Rewriter::lookup)), which [`reset()`](@ref mim::Analysis::reset) clears at the start of every round.
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
 
-@warning Because [`rewrite_mut()`](@ref mim::Analysis::rewrite*mut) enqueues instead of dispatching by node, the node-specific `rewrite_mut*_`hooks (e.g.`rewrite*mut_Lam`) are **never invoked** for an [`Analysis`](@ref mim::Analysis).
-Override [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) itself (or the `rewrite_imm*_` hooks, which dispatch as usual) instead.
+@warning Because [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) enqueues instead of dispatching by node, the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) are **never invoked** for an [`Analysis`](@ref mim::Analysis).
+Override [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) itself (or the `rewrite_imm_*` hooks, which dispatch as usual) instead.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then [`rewrite()`](@ref mim::Rewriter::rewrite) the callee.
 This schedules the callee (or does nothing if it is already scheduled), so its body is walked later during the drain, after the seeded facts — and any joins from sibling call sites — are in place.
