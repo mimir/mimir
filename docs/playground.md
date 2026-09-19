@@ -29,6 +29,15 @@ source ~/emsdk/emsdk_env.sh
 ### A native `mim` first
 
 A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one, so point `MIM_NATIVE_MIM` at a native binary — an ordinary `build/bin/mim` does.
+Bring it up to date first:
+
+```sh
+cmake --build build -j16
+```
+
+@note Nothing checks that the binary matches the sources.
+A `build/bin/mim` left over from an earlier state of the tree may abort on startup (`free(): invalid pointer`), and every plugin bootstrap fails with it.
+Rebuild the native tree and try again.
 
 ### Configure and build
 
