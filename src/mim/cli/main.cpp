@@ -30,6 +30,7 @@ struct Opts {
     std::array<Out, Num_Emits> outs;
     DotConfig dot;
     bool sexpr_include_types = false;
+    bool no_opt              = false;
 };
 
 void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool md) {
@@ -109,7 +110,7 @@ int compile(Driver& driver, Opts& opts) {
         }
 
         file->compile(ast);
-        optimize(world);
+        if (!opts.no_opt) optimize(world);
 
         auto types = opts.sexpr_include_types;
         if (auto s = outs[Dot].os()) world.dot(*s, opts.dot);
@@ -174,7 +175,7 @@ int main(int argc, char** argv) {
             .opt(show_help_md              , ""          , ""  , "--help-md"             , "Displays this help as Markdown and exits.")
             .opt(show_version              , ""          , "-v", "--version"             , "Displays version info and exits.")
             .opt(list_search_paths         , ""          , "-l", "--list-search-paths"   , "Lists the search paths in order and exits.")
-            .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin.")
+            .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin; `foo/bar` finds `libmim_bar` in each search path's `foo`.")
             .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins; also searched for imports.")
             .opt(opts.import_paths         , "path"      , "-I", "--import-path"         , "Path to search for imports.")
             .opt(opts.prefix_paths         , "path"      , "-R", "--prefix-path"         , "Install prefix/root to derive plugin, import, and runtime directories from.")
@@ -214,6 +215,7 @@ int main(int argc, char** argv) {
             .grp("Optimization")
             .opt(flags.aggressive_lam_spec , ""          , ""  , "--aggr-lam-spec"       , "Overrides LamSpec behavior to follow recursive calls.")
             .opt(flags.max_fp_iters        , "num"       , ""  , "--max-fp-iters"        , "Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
+            .opt(opts.no_opt               , ""          , ""  , "--no-opt"              , "Elaborates the input but skips the optimization pipeline, so no backend runs; `--output-*` still works.")
             .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
 #ifdef MIM_ENABLE_CHECKS
             .grp("Developer Options")

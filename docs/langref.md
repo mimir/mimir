@@ -195,6 +195,7 @@ Each file forms a [module](@ref path) of its own that an import binds under a na
 - If the resolved file name has no extension, `.mim` is appended.
 - `plugin foo;` first loads the plugin `foo` and then imports the module with the same name.
   Only `plugin` loads a shared object; `import` never does.
+- `plugin "some/dir/foo";` looks for `libmim_foo` in `some/dir` below each plugin search path and takes `foo.mim` from wherever that library was found.
 - The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
 - `import foo as *;` splices `foo`'s public members into the current scope like a following `use foo;` would - except that `foo` itself is never bound; the same goes for `plugin foo as *;`.
   Since no name is needed, this form also accepts a file name that isn't an identifier.
@@ -226,9 +227,8 @@ Visibility is a Mim-only, purely lexical fact - it has no effect on backend link
 Either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful.
 
 ```ebnf
-d      ::= vis? "import" (I | S) ("as" (I | "*"))? ";"
-        |  vis? "plugin"  I      ("as" (I | "*"))? ";"
-        |  vis? "use"     path   ("as" (I | "*"))? ";"
+d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
+        |  vis? "use"  path    ("as" (I | "*"))? ";"
         |  vis? "mod" I "{" d* "}"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
@@ -238,6 +238,7 @@ d      ::= vis? "import" (I | S) ("as" (I | "*"))? ";"
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
+import ::= "import" | "plugin"
 and    ::= "and" I "=" e
         |  "and" lam I dom+ (":" e)? "=" e
 vis    ::= "priv" | "pub"

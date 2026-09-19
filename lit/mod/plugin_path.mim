@@ -1,0 +1,13 @@
+// RUN: %mim -P %libdir %s -o - | %FileCheck %s
+// RUN: %mim -P %libdir %s --output-ast - | %FileCheck --check-prefix=AST %s
+
+plugin core;
+plugin "mim/demo";
+
+extern lam f(): I32 = demo.const_idx i32;
+
+// CHECK: extern lam f (): I32 =
+// CHECK-NEXT: 42I32;
+
+// AST: plugin core;
+// AST-NEXT: plugin "mim/demo";
