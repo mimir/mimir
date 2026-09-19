@@ -23,7 +23,7 @@
 
 plugin mem;
 plugin ord;
-plugin option;
+plugin option as o;
 plugin core;
 
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
@@ -33,7 +33,7 @@ let Key = (I32, core.icmp.ul @i32);
 let Ord = [
     Map:      ord.Key → * → *,
     init:     [K: ord.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
-    get:      {K: ord.Key} → {V: *} → [Map K V, K#T     ] → option.Opt V,
+    get:      {K: ord.Key} → {V: *} → [Map K V, K#T     ] → o.Opt V,
     insert:   {K: ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
     contains: {K: ord.Key} → {V: *} → [Map K V, K#T     ] → Bool,
 ];
@@ -55,7 +55,7 @@ fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
                     where
                         con true (m: mem.M 0) =
                             let (m, map) = mem.load (m, ptr);
-                            let map        = ord#insert (map, (1I32, x)); // 1 → x
+                            let map      = ord#insert (map, (1I32, x)); // 1 → x
                             let m        = mem.store (m, ptr, map);
                             next m;
 
@@ -66,7 +66,7 @@ fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
                 con exit(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
                     let opt_v      = ord#get (map, 1I32);
-                    let val        = option.unwrap_unsafe opt_v;
+                    let val        = o.unwrap_unsafe opt_v;
                     return (m, val);
             end
     end;
