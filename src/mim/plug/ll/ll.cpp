@@ -1162,6 +1162,9 @@ static const PluginSym known_syms[] = {
 };
 
 MIM_PLUGIN_ENTRY(ll) {
-    return {"ll", MIM_VERSION, {},         reg_phases,           known_args, std::size(known_args),
-            {},   {},          known_syms, std::size(known_syms)};
+    plugin.register_phases = reg_phases;
+    plugin.args            = known_args;
+    plugin.num_args        = std::size(known_args);
+    plugin.syms            = known_syms;
+    plugin.num_syms        = std::size(known_syms);
 }

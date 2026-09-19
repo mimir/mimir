@@ -5,4 +5,4 @@
 
 using namespace mim;
 
-MIM_PLUGIN_ENTRY(ord) { return {"ord", MIM_VERSION, plug::ord::register_normalizers, {}, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(ord) { plugin.register_normalizers = plug::ord::register_normalizers; }

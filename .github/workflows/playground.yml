@@ -74,10 +74,9 @@ jobs:
       - name: Build
         run: cmake --build build-wasm --target mim_playground
 
-      # A wasm-only regression (see `Def::ops_ptr`) fails here instead of silently shipping;
-      # `cmake --build build-wasm --target mim_playground_smoke` runs the very same check locally.
+      # A wasm-only regression (see `Def::ops_ptr`) fails here instead of silently shipping.
       - name: Smoke test
-        run: node web/smoke.js build-wasm/bin lit/docs/count.mim
+        run: cmake --build build-wasm --target mim_playground_smoke
 
       - name: Upload the playground
         uses: actions/upload-artifact@v4

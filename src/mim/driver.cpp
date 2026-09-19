@@ -155,40 +155,29 @@ void Driver::load(std::string_view spec) {
     auto sub      = path.parent_path();
     auto get_info = decltype(&mim_get_plugin){};
 
+    // `foo/bar` looks below the `foo` of each search path, so that both halves stay together.
+    auto find = [&, this](const std::string& file, auto&& accept) {
+        for (const auto& search : plugin_paths())
+            if (std::error_code ec; fs::is_regular_file(search / sub / file, ec) && accept(search / sub / file))
+                return search / sub;
+        return fs::path{};
+    };
+
     if (auto get = fe::lookup(static_plugins(), name)) {
         get_info = *get;
         // No shared object pins the directory, so the `<name>.mim` half is searched for just like an import.
-        auto file = std::format("{}.mim", name);
-        for (const auto& search : plugin_paths()) {
-            std::error_code ignore;
-            if (bool reg_file = fs::is_regular_file(search / sub / file, ignore); reg_file && !ignore) {
-                dir = search / sub;
-                break;
-            }
-        }
+        dir = find(std::format("{}.mim", name), [](const fs::path&) { return true; });
     } else {
-        auto ext = std::format(".{}", fe::dl::Ext);
+        auto ext  = std::format(".{}", fe::dl::Ext);
+        auto open = [&handle](const fs::path& p) {
+            auto str = p.string();
+            return handle.reset(fe::dl::open(str.c_str())), bool(handle);
+        };
 
         // Only a spec naming the shared object itself is opened as-is; `foo/bar.mim` still wants `foo/libmim_bar`.
-        if (path.is_absolute() && path.extension() == ext && fs::is_regular_file(path)) {
-            auto path_str = path.string();
-            if (handle.reset(fe::dl::open(path_str.c_str())); handle) dir = path.parent_path();
-        }
-        if (!handle) {
-            // `foo/bar` is `libmim_bar` below the `foo` of each search path, so that both halves stay together.
-            auto file = std::format("libmim_{}{}", name, ext);
-            for (const auto& search : plugin_paths()) {
-                auto full_path = search / sub / file;
-                std::error_code ignore;
-                if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
-                    auto path_str = full_path.string();
-                    if (handle.reset(fe::dl::open(path_str.c_str())); handle) {
-                        dir = search / sub;
-                        break;
-                    }
-                }
-            }
-        }
+        if (path.is_absolute() && path.extension() == ext && fs::is_regular_file(path) && open(path))
+            dir = path.parent_path();
+        if (!handle) dir = find(std::format("libmim_{}{}", name, ext), open);
 
         if (!handle) fe::throwf("cannot open plugin `{}`", spec);
         get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"));

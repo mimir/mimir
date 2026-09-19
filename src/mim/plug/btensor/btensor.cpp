@@ -14,5 +14,6 @@ static void reg_phases(Flags2Phases& phases) {
 }
 
 MIM_PLUGIN_ENTRY(btensor) {
-    return {"btensor", MIM_VERSION, btensor::register_normalizers, reg_phases, {}, {}, {}, {}, {}, {}};
+    plugin.register_normalizers = btensor::register_normalizers;
+    plugin.register_phases      = reg_phases;
 }

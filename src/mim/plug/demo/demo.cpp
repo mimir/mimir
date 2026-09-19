@@ -6,4 +6,4 @@
 using namespace mim;
 
 /// Registers normalizers as well as Phase%s and Pass%es for the Axm%s of this Plugin.
-MIM_PLUGIN_ENTRY(demo) { return {"demo", MIM_VERSION, plug::demo::register_normalizers, {}, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(demo) { plugin.register_normalizers = plug::demo::register_normalizers; }

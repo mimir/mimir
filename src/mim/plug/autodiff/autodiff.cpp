@@ -23,7 +23,8 @@ static void reg_phases(Flags2Phases& phases) {
 }
 
 MIM_PLUGIN_ENTRY(autodiff) {
-    return {"autodiff", MIM_VERSION, autodiff::register_normalizers, reg_phases, {}, {}, {}, {}, {}, {}};
+    plugin.register_normalizers = autodiff::register_normalizers;
+    plugin.register_phases      = reg_phases;
 }
 
 namespace mim::plug::autodiff {

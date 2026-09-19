@@ -5,4 +5,4 @@
 
 using namespace mim;
 
-MIM_PLUGIN_ENTRY(vec) { return {"vec", MIM_VERSION, plug::vec::register_normalizers, {}, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(vec) { plugin.register_normalizers = plug::vec::register_normalizers; }

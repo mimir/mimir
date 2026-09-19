@@ -10,22 +10,6 @@ if(MIM_STATIC_PLUGINS)
     endif()
 endif()
 
-if(EMSCRIPTEN)
-    # The plugins are linked in, but their `.mim` halves and the ll runtime still have to be found at runtime.
-    target_link_options(mim
-        PRIVATE
-            --preload-file "${MIM_PLUGIN_DIR}@/mim"
-            -sALLOW_MEMORY_GROWTH=1
-            -sSTACK_SIZE=16MB # a recursive frontend on the default 64KB stack overflows
-            -sFORCE_FILESYSTEM=1
-            -sINVOKE_RUN=0 # the embedder calls main once per run, with its own argv
-            -sMODULARIZE=1
-            -sEXPORT_NAME=createMim
-            -sEXPORTED_RUNTIME_METHODS=callMain,FS
-    )
-    add_dependencies(mim mim_all_plugins)
-endif()
-
 # Relative to the executable, so `cmake --install --prefix` yields a working binary;
 # a baked-in CMAKE_INSTALL_PREFIX would only ever point at the configure-time prefix.
 if(APPLE)

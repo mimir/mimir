@@ -1,20 +1,15 @@
 import { Graphviz } from 'https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@1/dist/index.js';
 
-// Staged from `lit/docs` by web/CMakeLists.txt, so the examples are the ones the lit suite covers.
-const EXAMPLES = ['sq.mim', 'count.mim', 'dep.mim', 'iter.mim'];
-
 const $ = id => document.getElementById(id);
 const status = $('status');
 
-const sources = new Map();
+// Written by web/CMakeLists.txt from the list that stages the files, which are `lit/docs`'.
+const EXAMPLES = await fetch('examples/index.json').then(r => r.json());
 
-async function example(name) {
-    if (!sources.has(name)) {
-        const text = await fetch(`examples/${name}`).then(r => r.text());
-        sources.set(name, text.replace(/^\/\/ RUN:.*\n/gm, ''));
-    }
-    return sources.get(name);
-}
+// A `RUN:` line is what makes these lit tests; it is noise in the editor.
+const example = name => fetch(`examples/${name}.mim`)
+    .then(r => r.text())
+    .then(text => text.replace(/^\/\/ RUN:.*\n/gm, ''));
 
 /*
  * compiler
@@ -76,6 +71,7 @@ let running = false;
 let queued = false;
 
 async function run() {
+    clearTimeout(timer);
     if (running) { queued = true; return; }
     running = true;
     $('run').textContent = 'Stop';
@@ -142,7 +138,8 @@ function showLog(text) {
 // Layout runs on the page, so a graph big enough to freeze it is refused rather than attempted.
 const MAX_DOT = 512 * 1024;
 
-let dot = null; // laid out only while the Graph tab is up, since layout blocks the editor
+let dot = null;  // laid out only while the Graph tab is up, since layout blocks the editor
+let laidOut;     // the `dot` the pane already shows
 
 async function showGraph(latest) {
     dot = latest;
@@ -151,12 +148,15 @@ async function showGraph(latest) {
 
 async function layoutGraph() {
     const pane = $('graph');
+    if (dot === laidOut) return;
+    laidOut = dot;
     if (!dot) { pane.textContent = '(no graph)'; return; }
     if (dot.length > MAX_DOT) {
         pane.textContent = `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`;
         return;
     }
     const graphviz = await graphvizReady;
+    if (dot !== laidOut) return; // superseded while Graphviz was still loading
     pane.innerHTML = graphviz.layout(dot, 'svg', 'dot');
 
     // Graphviz sizes the SVG in points; drop that so the viewBox scales it to whatever the pane is.
@@ -217,24 +217,19 @@ async function setupEditor(initial) {
     }
 }
 
-// Classifies against the docs' word lists (mim-code.js), so both stay in step with `ast/family.h`.
+// The docs' lexer (mim-code.js) does the classifying, so both stay in step with `ast/family.h`.
+const TAG = { comment: 'comment', string: 'string', number: 'number', keyword: 'keyword', decl: 'keyword',
+              type: 'typeName', literal: 'atom', special: 'keyword', operator: 'operator' };
+
 function mimMode() {
     return {
-        token(stream) {
-            if (stream.match(/^\/\/.*/)) return 'comment';
-            if (stream.match(/^\/\*/)) { stream.skipTo('*/') && stream.match(/^\*\//); return 'comment'; }
-            if (stream.match(/^"(?:[^"\\]|\\.)*"?/)) return 'string';
-            if (stream.match(/^[0-9][0-9_]*(?:\.[0-9]*)?(?:[IiUuFf][0-9]+)?/)) return 'number';
-            if (stream.match(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*/)) {
-                const w = stream.current().split('.')[0];
-                if (MimCode.KEYWORD.has(w) || MimCode.DECL.has(w) || MimCode.SPECIAL.has(w)) return 'keyword';
-                if (MimCode.TYPE.has(w)) return 'typeName';
-                if (MimCode.LITERAL.has(w)) return 'atom';
-                return /^[A-Z]/.test(w) ? 'typeName' : 'variableName';
-            }
-            if (stream.match(/^[⊤⊥«»‹›→←λΠ∀]/)) return 'operator';
-            stream.next();
-            return null;
+        startState: () => ({ comment: false }),
+        token(stream, state) {
+            const first = stream.string[stream.pos];
+            const { end, kind } = MimCode.next(stream.string, stream.pos, state);
+            stream.pos = end;
+            if (kind === 'name') return /[A-Z]/.test(first) ? 'typeName' : 'variableName';
+            return TAG[kind] ?? null;
         },
         languageData: { commentTokens: { line: '//', block: { open: '/*', close: '*/' } } },
     };
@@ -251,7 +246,7 @@ function schedule() {
  */
 
 const picker = $('examples');
-for (const name of EXAMPLES) picker.add(new Option(name, name));
+for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
 picker.onchange = async () => { setSource(await example(picker.value)); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
 $('optimize').onchange = run;

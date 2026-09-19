@@ -10,6 +10,8 @@ cmake_dependent_option(
 set(MIM_NATIVE_MIM "" CACHE FILEPATH "Native mim executable that bootstraps the plugins.")
 # Where a plugin's `.mim` half is staged, so that a built tree can load it without being installed.
 set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")
+# The tour examples of `lit/docs`; the docs render their graphs and the playground offers them.
+set(MIM_DOC_EXAMPLES count dep iter sq)
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
     message(STATUS
@@ -246,8 +248,8 @@ function(mim_static_plugin_registry TARGET)
     set(DECLS "")
     set(CALLS "")
     foreach(PLUGIN IN LISTS ARGN)
-        string(APPEND DECLS "Plugin mim_get_plugin_${PLUGIN}();\n")
-        string(APPEND CALLS "        Driver::add_static_plugin(\"${PLUGIN}\", mim_get_plugin_${PLUGIN});\n")
+        string(APPEND DECLS "Plugin MIM_PLUGIN_ENTRY_NAME(${PLUGIN})();\n")
+        string(APPEND CALLS "        Driver::add_static_plugin(\"${PLUGIN}\", MIM_PLUGIN_ENTRY_NAME(${PLUGIN}));\n")
     endforeach()
 
     set(GENERATED ${CMAKE_BINARY_DIR}/src/mim/${TARGET}.cpp)
@@ -274,6 +276,7 @@ ${CALLS}    }
     list(TRANSFORM PLUGIN_TARGETS PREPEND "mim_")
 
     add_library(${TARGET} OBJECT ${GENERATED})
+    target_compile_definitions(${TARGET} PRIVATE MIM_STATIC_PLUGINS)
     target_link_libraries(${TARGET} PUBLIC ${MIM_TARGET_NAMESPACE}libmim ${PLUGIN_TARGETS})
 endfunction()
 

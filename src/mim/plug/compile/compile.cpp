@@ -76,7 +76,8 @@ static constexpr PluginArg known_args[] = {
 // clang-format on
 
 MIM_PLUGIN_ENTRY(compile) {
-    return {
-        "compile", MIM_VERSION, compile::register_normalizers, reg_phases, known_args, std::size(known_args), {}, {},
-        {},        {}};
+    plugin.register_normalizers = compile::register_normalizers;
+    plugin.register_phases      = reg_phases;
+    plugin.args                 = known_args;
+    plugin.num_args             = std::size(known_args);
 }

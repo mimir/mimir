@@ -12,5 +12,6 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<lower_ptr, LowerPtr>(
 } // namespace mim::plug::buffer
 
 MIM_PLUGIN_ENTRY(buffer) {
-    return {"buffer", MIM_VERSION, buffer::register_normalizers, buffer::reg_phases, {}, {}, {}, {}, {}, {}};
+    plugin.register_normalizers = buffer::register_normalizers;
+    plugin.register_phases      = buffer::reg_phases;
 }

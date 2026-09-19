@@ -30,4 +30,7 @@ static void reg_phases(Flags2Phases& phases) {
     // clang-format on
 }
 
-MIM_PLUGIN_ENTRY(mem) { return {"mem", MIM_VERSION, mem::register_normalizers, reg_phases, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(mem) {
+    plugin.register_normalizers = mem::register_normalizers;
+    plugin.register_phases      = reg_phases;
+}

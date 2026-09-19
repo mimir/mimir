@@ -18,6 +18,8 @@ static const PluginSym known_syms[] = {
 };
 
 MIM_PLUGIN_ENTRY(regex) {
-    return {"regex", MIM_VERSION, regex::register_normalizers, reg_phases, {}, {}, {},
-            {},      known_syms,  std::size(known_syms)};
+    plugin.register_normalizers = regex::register_normalizers;
+    plugin.register_phases      = reg_phases;
+    plugin.syms                 = known_syms;
+    plugin.num_syms             = std::size(known_syms);
 }

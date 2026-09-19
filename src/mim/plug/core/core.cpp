@@ -6,7 +6,7 @@
 using namespace mim;
 using namespace mim::plug;
 
-MIM_PLUGIN_ENTRY(core) { return {"core", MIM_VERSION, core::register_normalizers, {}, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(core) { plugin.register_normalizers = core::register_normalizers; }
 
 namespace mim::plug::core {
 

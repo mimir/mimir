@@ -9,4 +9,4 @@ using namespace mim::plug;
 
 static void reg_phases(Flags2Phases& phases) { Phase::hook<cps::conv, cps::Conv>(phases); }
 
-MIM_PLUGIN_ENTRY(cps) { return {"cps", MIM_VERSION, {}, reg_phases, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(cps) { plugin.register_phases = reg_phases; }

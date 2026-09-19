@@ -1,8 +1,4 @@
-if(EMSCRIPTEN)
-    add_library(libmim STATIC) # wasm knows no shared objects
-else()
-    add_library(libmim SHARED)
-endif()
+add_library(libmim) # BUILD_SHARED_LIBS picks the type; a wasm build turns it off, as it has no dlopen.
 add_library(mim::libmim ALIAS libmim)
 target_sources(libmim
     PRIVATE
@@ -44,8 +40,8 @@ target_sources(libmim
 set_target_properties(libmim PROPERTIES PREFIX "")
 target_compile_features(libmim PUBLIC cxx_std_23)
 
-# libmim is always a shared object, so by default every intra-library call to an exported function
-# goes through the PLT and is opaque to the optimizer.
+# In a shared libmim every intra-library call to an exported function goes through the PLT by
+# default and is opaque to the optimizer.
 # Binding those calls locally enables inlining and const-propagation across the whole library.
 target_compile_options(libmim
     PRIVATE

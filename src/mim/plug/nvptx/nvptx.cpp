@@ -16,4 +16,4 @@ static void reg_phases(Flags2Phases& phases) {
     });
 }
 
-MIM_PLUGIN_ENTRY(nvptx) { return {"nvptx", MIM_VERSION, {}, reg_phases, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(nvptx) { plugin.register_phases = reg_phases; }

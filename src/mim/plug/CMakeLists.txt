@@ -50,7 +50,6 @@ endforeach()
 
 if(MIM_STATIC_PLUGINS)
     mim_static_plugin_registry(mim_static_plugins ${MIM_PLUGIN_LIST})
-    add_dependencies(mim_static_plugins mim_all_plugins)
 endif()
 
 add_dependencies(mim_all mim_all_plugins)

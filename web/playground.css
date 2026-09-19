@@ -5,7 +5,6 @@
     --panel:   #f6f6f4;
     --border:  #d8d8d2;
     --accent:  #1a6feb;
-    --err:     #c0392b;
     --fg30: #1c1c1c; --fg31: #c0392b; --fg32: #2e7d32; --fg33: #8a6d00;
     --fg34: #1a6feb; --fg35: #8e24aa; --fg36: #00737d; --fg90: #6b7280;
     --mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -18,7 +17,6 @@
         --panel:  #1f2229;
         --border: #343841;
         --accent: #62a0ff;
-        --err:    #ff7b6b;
         --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
         --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg90: #8b949e;
     }
@@ -67,7 +65,7 @@ button, select {
 button:hover { border-color: var(--accent); }
 
 #status { font-variant-numeric: tabular-nums; opacity: .7; }
-#status.error { color: var(--err); opacity: 1; }
+#status.error { color: var(--fg31); opacity: 1; }
 
 main {
     flex: 1;

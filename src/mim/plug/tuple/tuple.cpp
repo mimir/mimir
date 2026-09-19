@@ -5,6 +5,4 @@
 
 using namespace mim;
 
-MIM_PLUGIN_ENTRY(tuple) {
-    return {"tuple", MIM_VERSION, plug::tuple::register_normalizers, {}, {}, {}, {}, {}, {}, {}};
-}
+MIM_PLUGIN_ENTRY(tuple) { plugin.register_normalizers = plug::tuple::register_normalizers; }

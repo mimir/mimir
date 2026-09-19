@@ -21,7 +21,7 @@ add_custom_command(
 set(DOC_GRAPH_FLAGS --dot-inline-consts --dot-show-hidden)
 
 set(DOC_GRAPH_SVGS "")
-foreach(graph IN ITEMS count iter sq dep)
+foreach(graph IN LISTS MIM_DOC_EXAMPLES)
     set(dot "${CMAKE_CURRENT_BINARY_DIR}/${graph}.dot")
     set(svg "${CMAKE_CURRENT_BINARY_DIR}/${graph}.svg")
     set(flags ${DOC_GRAPH_FLAGS})

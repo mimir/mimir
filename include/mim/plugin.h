@@ -175,6 +175,7 @@ struct Plugin {
 
     // No default member initializers, and hence no designated ones either: clang's
     // -Wreturn-type-c-linkage only accepts a POD as an `extern "C"` return type.
+    // MIM_PLUGIN_ENTRY hands out a zeroed Plugin instead, so a plugin only names the fields it sets.
     const PluginArg* args; ///< The `-X` arguments this Plugin understands; see PluginArg.
     size_t num_args;       ///< Number of Plugin::args.
     const PluginEnv* envs; ///< The environment variables this Plugin reads; see PluginEnv.
@@ -198,10 +199,21 @@ MIM_EXPORT mim::Plugin mim_get_plugin();
 #    define MIM_PLUGIN_ENTRY_NAME(p) mim_get_plugin
 #endif
 
-/// Defines a Plugin's entry point, as in `MIM_PLUGIN_ENTRY(demo) { return {"demo", MIM_VERSION}; }`.
+/// Defines a Plugin's entry point; the body fills in the `plugin` handed to it, as in
+/// `MIM_PLUGIN_ENTRY(demo) { plugin.register_normalizers = demo::register_normalizers; }`.
+/// Plugin::name and Plugin::version are already set, and every other field is zeroed.
 /// @p p must be the Plugin's name: a `MIM_STATIC_PLUGINS` build links every Plugin into one binary,
 /// so each needs its own symbol; `mim_static_plugin_registry` declares the names this yields.
-#define MIM_PLUGIN_ENTRY(p) extern "C" MIM_EXPORT mim::Plugin MIM_PLUGIN_ENTRY_NAME(p)()
+#define MIM_PLUGIN_ENTRY(p)                                        \
+    static void mim_plugin_##p(mim::Plugin&);                      \
+    extern "C" MIM_EXPORT mim::Plugin MIM_PLUGIN_ENTRY_NAME(p)() { \
+        auto plugin    = mim::Plugin{};                            \
+        plugin.name    = #p;                                       \
+        plugin.version = MIM_VERSION;                              \
+        mim_plugin_##p(plugin);                                    \
+        return plugin;                                             \
+    }                                                              \
+    static void mim_plugin_##p([[maybe_unused]] mim::Plugin& plugin)
 
 /// Holds info about an entity defined within a Plugin (called *Annex*).
 struct Annex {

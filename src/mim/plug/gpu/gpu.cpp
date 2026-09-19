@@ -69,4 +69,4 @@ static void reg_phases(Flags2Phases& phases) {
     // clang-format on
 }
 
-MIM_PLUGIN_ENTRY(gpu) { return {"gpu", MIM_VERSION, {}, reg_phases, {}, {}, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(gpu) { plugin.register_phases = reg_phases; }

@@ -14,8 +14,4 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<affine::lower_index, affine::phase::LowerIndex>(phases);
 }
 
-MIM_PLUGIN_ENTRY(affine) {
-    return {
-        "affine", MIM_VERSION, {}, reg_phases, {}, {}, {}, {}, {}, {},
-    };
-}
+MIM_PLUGIN_ENTRY(affine) { plugin.register_phases = reg_phases; }
