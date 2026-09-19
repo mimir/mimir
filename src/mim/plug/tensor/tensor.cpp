@@ -13,7 +13,7 @@ using namespace mim;
 using namespace mim::plug;
 
 namespace mim::plug::tensor {
-void reg_phases(Flags2Phases& phases) {
+static void reg_phases(Flags2Phases& phases) {
     Phase::hook<reassoc, phase::Reassoc>(phases);
     Phase::hook<lower_tensor, phase::Lower>(phases);
     Phase::hook<lower_map_reduce, phase::LowerMapReduce>(phases);
@@ -30,7 +30,9 @@ static constexpr PluginArg known_args[] = {
 };
 // clang-format on
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"tensor", MIM_VERSION, tensor::register_normalizers, tensor::reg_phases, known_args, std::size(known_args),
-            {},       {}};
+MIM_PLUGIN_ENTRY(tensor) {
+    plugin.register_normalizers = tensor::register_normalizers;
+    plugin.register_phases      = tensor::reg_phases;
+    plugin.args                 = known_args;
+    plugin.num_args             = std::size(known_args);
 }

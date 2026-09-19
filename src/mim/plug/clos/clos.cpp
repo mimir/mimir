@@ -13,7 +13,7 @@
 using namespace mim;
 using namespace mim::plug;
 
-void reg_phases(Flags2Phases& phases) {
+static void reg_phases(Flags2Phases& phases) {
     // clang-format off
     Phase::hook<clos::clos_conv_prep,        clos::phase::ClosConvPrep      >(phases);
     Phase::hook<clos::clos_conv,             clos::phase::ClosConv          >(phases);
@@ -24,8 +24,9 @@ void reg_phases(Flags2Phases& phases) {
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"clos", MIM_VERSION, clos::register_normalizers, reg_phases, {}, {}, {}, {}};
+MIM_PLUGIN_ENTRY(clos) {
+    plugin.register_normalizers = clos::register_normalizers;
+    plugin.register_phases      = reg_phases;
 }
 
 namespace mim::plug::clos {

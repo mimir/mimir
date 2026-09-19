@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MimIR Playground</title>
+<link rel="stylesheet" href="playground.css">
+</head>
+<body>
+<header>
+    <h1>MimIR Playground</h1>
+    <select id="examples" title="Load an example"></select>
+    <label><input type="checkbox" id="optimize" checked> optimize</label>
+    <button id="run">Run</button>
+    <span class="spacer"></span>
+    <span id="status">loading…</span>
+</header>
+
+<main>
+    <div id="editor"><textarea id="source" spellcheck="false"></textarea></div>
+
+    <div id="right">
+        <div id="tabs" role="tablist">
+            <button role="tab" data-pane="graph" aria-selected="true">Graph</button>
+            <button role="tab" data-pane="ll"    aria-selected="false">LLVM</button>
+            <button role="tab" data-pane="mim"   aria-selected="false">Mim</button>
+            <button role="tab" data-pane="log"   aria-selected="false">Log</button>
+        </div>
+        <div id="panes">
+            <div class="pane" id="pane-graph">
+                <div id="dot-opts">
+                    <label title="Emits all annexes - even unused ones."><input type="checkbox" data-dot="all-annexes"> all annexes</label>
+                    <label title="Always shows a lambda's filter - even if it is the default one (`ff` for continuations, `tt` for direct-style functions)."><input type="checkbox" data-dot="default-filter"> default filter</label>
+                    <label title="Follows type dependencies."><input type="checkbox" data-dot="follow-types"> type edges</label>
+                    <label title="Wires up literals, axioms, etc. with normal edges instead of detaching them into a separate row; useful for small graphs."><input type="checkbox" data-dot="inline-consts"> inline consts</label>
+                    <label title="Renders otherwise-transparent detached edges - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray."><input type="checkbox" data-dot="show-hidden"> hidden edges</label>
+                </div>
+                <div id="graph"></div>
+            </div>
+            <div class="pane" id="pane-ll"   hidden><pre></pre></div>
+            <div class="pane" id="pane-mim"  hidden><pre></pre></div>
+            <div class="pane" id="pane-log"  hidden><pre></pre></div>
+        </div>
+    </div>
+</main>
+
+<!-- Defines the MimCode lexer the docs colour their snippets with; its init() is not used here. -->
+<script src="mim-code.js"></script>
+<script type="module" src="playground.js"></script>
+</body>
+</html>

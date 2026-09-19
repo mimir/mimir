@@ -1,0 +1,168 @@
+:root {
+    color-scheme: light dark;
+    --bg:      #ffffff;
+    --fg:      #1c1c1c;
+    --panel:   #f6f6f4;
+    --border:  #d8d8d2;
+    --accent:  #1a6feb;
+    --fg30: #1c1c1c; --fg31: #c0392b; --fg32: #2e7d32; --fg33: #8a6d00;
+    --fg34: #1a6feb; --fg35: #8e24aa; --fg36: #00737d; --fg90: #6b7280;
+    --mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg:     #16181c;
+        --fg:     #e6e6e6;
+        --panel:  #1f2229;
+        --border: #343841;
+        --accent: #62a0ff;
+        --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
+        --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg90: #8b949e;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.5 system-ui, sans-serif;
+}
+
+header {
+    display: flex;
+    gap: .75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: .5rem .75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+header h1 {
+    margin: 0 .5rem 0 0;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
+header .spacer { flex: 1; }
+
+button, select {
+    font: inherit;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: .25rem .6rem;
+}
+
+button:hover { border-color: var(--accent); }
+
+#status { font-variant-numeric: tabular-nums; opacity: .7; }
+#status.error { color: var(--fg31); opacity: 1; }
+
+main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
+}
+
+@media (max-width: 800px) {
+    main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }
+}
+
+#editor, #right {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#editor { border-right: 1px solid var(--border); }
+
+#editor .cm-editor { height: 100%; }
+
+#editor textarea {
+    flex: 1;
+    border: 0;
+    resize: none;
+    padding: .75rem;
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+#tabs {
+    display: flex;
+    gap: .25rem;
+    padding: .4rem .5rem 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+#tabs button {
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    padding: .3rem .7rem;
+    opacity: .7;
+}
+
+#tabs button[aria-selected="true"] {
+    opacity: 1;
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+}
+
+#panes { flex: 1; min-height: 0; position: relative; }
+
+/* `#pane-graph`'s `display` outranks the UA's `[hidden]`, so hiding needs an id, too. */
+#panes [hidden] { display: none; }
+
+.pane {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    padding: .75rem;
+}
+
+.pane pre {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    white-space: pre;
+}
+
+#pane-graph { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+#dot-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .9rem;
+    padding: .4rem .75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 12.5px;
+}
+
+#dot-opts label { white-space: nowrap; }
+
+#graph { flex: 1; min-height: 0; overflow: hidden; padding: .75rem; }
+
+/* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
+#graph svg { display: block; width: 100%; height: 100%; }
+#pane-log pre { white-space: pre-wrap; }
+
+/* mim's terminal colours, mapped onto the pane; see showLog. */
+.fg30 { color: var(--fg30); } .fg31 { color: var(--fg31); } .fg32 { color: var(--fg32); }
+.fg33 { color: var(--fg33); } .fg34 { color: var(--fg34); } .fg35 { color: var(--fg35); }
+.fg36 { color: var(--fg36); } .fg90 { color: var(--fg90); }

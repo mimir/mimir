@@ -15,7 +15,7 @@
 using namespace mim;
 using namespace mim::plug;
 
-void reg_phases(Flags2Phases& phases) {
+static void reg_phases(Flags2Phases& phases) {
     MIM_REPL(phases, gpu::check_addr_spaces_repl, {
         auto global_as = Lit::as(world().annex<gpu::addr_space_global>());
         auto shared_as = Lit::as(world().annex<gpu::addr_space_shared>());
@@ -69,4 +69,4 @@ void reg_phases(Flags2Phases& phases) {
     // clang-format on
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"gpu", MIM_VERSION, {}, reg_phases, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(gpu) { plugin.register_phases = reg_phases; }

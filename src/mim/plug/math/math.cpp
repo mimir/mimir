@@ -5,6 +5,4 @@
 
 using namespace mim;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"math", MIM_VERSION, plug::math::register_normalizers, {}, {}, {}, {}, {}};
-}
+MIM_PLUGIN_ENTRY(math) { plugin.register_normalizers = plug::math::register_normalizers; }

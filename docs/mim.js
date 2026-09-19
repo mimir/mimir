@@ -1,7 +1,8 @@
 /**
 
-Highlights the Mim snippets in the documentation.
+Lexes Mim and highlights the snippets in the documentation.
 Doxygen has no Mim parser and discards the language of a fenced code block, so a snippet is marked up with a `mim-code` wrapper and coloured here.
+The playground stages this file as `mim-code.js` and maps the kinds of `next` itself.
 
 */
 
@@ -14,7 +15,10 @@ class MimCode {
                            "i1", "i8", "i16", "i32", "i64"])
     static LITERAL = new Set(["bot", "ff", "top", "tt", "⊥", "⊤"])
     static SPECIAL = new Set(["_", "return"])
-    static TOKEN = /^(\/\/.*)|^(\/\*)|^("(?:\\.|[^"\\])*")|^('(?:\\.|[^'\\])*')|^([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|^(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|^(\s+)|^([^])/u
+    static TOKEN = /(\/\/.*)|(\/\*)|("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|([«»‹›→←Π∀])|(\s+|[^])/uy
+    /// Doxygen's own token classes; a kind without one is left unhighlighted.
+    static CLASS = {comment: "comment", string: "stringliteral", number: "mim-literal", keyword: "keyword",
+                    decl: "keywordflow", type: "keywordtype", literal: "mim-literal", special: "mim-special"}
 
     static init() {
         $(function() {
@@ -36,37 +40,41 @@ class MimCode {
     }
 
     static word(text) {
-        if (MimCode.KEYWORD.has(text)) return MimCode.span("keyword", text)
-        if (MimCode.DECL.has(text)) return MimCode.span("keywordflow", text)
-        if (MimCode.TYPE.has(text)) return MimCode.span("keywordtype", text)
-        if (MimCode.LITERAL.has(text)) return MimCode.span("mim-literal", text)
-        if (MimCode.SPECIAL.has(text)) return MimCode.span("mim-special", text)
-        return MimCode.escape(text)
+        if (MimCode.KEYWORD.has(text)) return "keyword"
+        if (MimCode.DECL.has(text)) return "decl"
+        if (MimCode.TYPE.has(text)) return "type"
+        if (MimCode.LITERAL.has(text)) return "literal"
+        if (MimCode.SPECIAL.has(text)) return "special"
+        return "name"
     }
 
-    /// `state.comment` carries an unterminated `/*` into the following lines of the same snippet.
+    /// Ends the token at `pos`; `state.comment` carries an unterminated `/*` into the following lines.
+    static next(text, pos, state) {
+        if (!state.comment) {
+            MimCode.TOKEN.lastIndex = pos
+            const [all, comment, open, string, char, word, number, op] = MimCode.TOKEN.exec(text)
+            if (!open) return {end: pos + all.length, kind: comment ? "comment"
+                                                          : string || char ? "string"
+                                                          : word ? MimCode.word(word)
+                                                          : number ? "number"
+                                                          : op ? "operator" : null}
+            state.comment = true
+        }
+
+        const end = text.indexOf("*/", pos)
+        state.comment = end < 0
+        return {end: end < 0 ? text.length : end + 2, kind: "comment"}
+    }
+
     static code(text, state) {
-        let out = "", rest = text
+        let out = "", pos = 0
 
-        while (rest) {
-            if (state.comment) {
-                const end = rest.indexOf("*/")
-                out += MimCode.span("comment", end < 0 ? rest : rest.slice(0, end + 2))
-                rest = end < 0 ? "" : rest.slice(end + 2)
-                state.comment = end < 0
-                continue
-            }
-
-            const [all, comment, open, string, char, word, number, space] = MimCode.TOKEN.exec(rest)
-            if (comment)      out += MimCode.span("comment", comment)
-            else if (open)    { state.comment = true; continue }
-            else if (string)  out += MimCode.span("stringliteral", string)
-            else if (char)    out += MimCode.span("stringliteral", char)
-            else if (word)    out += MimCode.word(word)
-            else if (number)  out += MimCode.span("mim-literal", number)
-            else if (space)   out += space
-            else              out += MimCode.escape(all)
-            rest = rest.slice(all.length)
+        while (pos < text.length) {
+            const {end, kind} = MimCode.next(text, pos, state)
+            const cls = MimCode.CLASS[kind]
+            const token = text.slice(pos, end)
+            out += cls ? MimCode.span(cls, token) : MimCode.escape(token)
+            pos = end
         }
         return out
     }
