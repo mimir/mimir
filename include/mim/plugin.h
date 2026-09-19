@@ -42,6 +42,13 @@ struct PluginEnv {
     const char* name;  ///< Name of the variable, e.g. `"CUDA_HOME"`.
     const char* descr; ///< What it does; one sentence, Markdown.
 };
+
+/// One symbol a Plugin offers to other Plugin%s; see Driver::get_fun_ptr.
+/// A statically linked Plugin has no shared object to look the symbol up in, so it must be listed here.
+struct PluginSym {
+    const char* name; ///< Name of the symbol, e.g. `"mim_ll_convert"`.
+    void* ptr;        ///< Address of the symbol.
+};
 ///@}
 
 /// @name Plugin Argument Lookup
@@ -167,6 +174,8 @@ struct Plugin {
     size_t num_args;       ///< Number of Plugin::args.
     const PluginEnv* envs; ///< The environment variables this Plugin reads; see PluginEnv.
     size_t num_envs;       ///< Number of Plugin::envs.
+    const PluginSym* syms; ///< The symbols other Plugin%s may look up; see PluginSym.
+    size_t num_syms;       ///< Number of Plugin::syms.
 };
 
 /// @name Plugin Interface

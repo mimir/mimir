@@ -1,6 +1,30 @@
 add_executable(mim main.cpp)
 add_executable(mim::mim ALIAS mim)
 target_link_libraries(mim PRIVATE libmim)
+if(MIM_STATIC_PLUGINS)
+    target_link_libraries(mim PRIVATE mim_static_plugins)
+    if(NOT MIM_NATIVE_MIM)
+        # Bootstrapping a plugin must not depend on the plugins mim links in.
+        add_executable(mim_bootstrap main.cpp)
+        target_link_libraries(mim_bootstrap PRIVATE libmim)
+    endif()
+endif()
+
+if(EMSCRIPTEN)
+    # The plugins are linked in, but their `.mim` halves and the ll runtime still have to be found at runtime.
+    target_link_options(mim
+        PRIVATE
+            --preload-file "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim@/mim"
+            -sALLOW_MEMORY_GROWTH=1
+            -sSTACK_SIZE=16MB # a recursive frontend on the default 64KB stack overflows
+            -sFORCE_FILESYSTEM=1
+            -sINVOKE_RUN=0 # the embedder calls main once per run, with its own argv
+            -sMODULARIZE=1
+            -sEXPORT_NAME=createMim
+            -sEXPORTED_RUNTIME_METHODS=callMain,FS
+    )
+    add_dependencies(mim mim_all_plugins)
+endif()
 
 # Relative to the executable, so `cmake --install --prefix` yields a working binary;
 # a baked-in CMAKE_INSTALL_PREFIX would only ever point at the configure-time prefix.

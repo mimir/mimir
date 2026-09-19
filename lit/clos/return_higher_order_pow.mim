@@ -26,10 +26,8 @@ con aug_f (m: mem.M 0, x: I32, aug_ret: AugRet) =
     con aug_pow_cont (m: mem.M 0, r: I32, pb: Pb) =
         con comp_tup_pb (m: mem.M 0, s: I32, pb_ret: PbVec) @tt =
             con fwd (m: mem.M 0, v: «2; I32») = pb_ret (m, v);
-            con comp_cont (m: mem.M 0, ab: [I32, I32]) @tt =
-                let (a, b) = ab;
-                let p = r * s;
-                fwd (m, (p + a, b));
+            con comp_cont (m: mem.M 0, (a b: I32) @tt =
+                fwd (m, (r * s + a, b));
             pb (m, 4I32 * s, comp_cont);
         let u = 4I32 * r;
         aug_ret (m, u, comp_tup_pb);
