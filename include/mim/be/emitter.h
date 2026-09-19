@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fe/assert.h>
+
 #include "mim/def.h"
 #include "mim/phase.h"
 #include "mim/schedule.h"
@@ -64,7 +66,10 @@ protected:
             if (auto lam = mut->isa<Lam>()) lam2bb_.try_emplace(lam, BB());
         auto old_size = lam2bb_.size();
 
-        if (!child().direct_style()) assert(root()->ret_var());
+        if (!child().direct_style()) {
+            if (!(root()->ret_var()))
+                fe::throwf("backend: top-level function `{}` not a continuation with a return contiuation", root());
+        }
 
         auto fct = child().prepare();
 
