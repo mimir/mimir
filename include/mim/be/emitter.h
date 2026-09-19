@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fe/assert.h>
+
 #include "mim/def.h"
 #include "mim/phase.h"
 #include "mim/schedule.h"
@@ -64,7 +66,10 @@ protected:
             if (auto lam = mut->isa<Lam>()) lam2bb_.try_emplace(lam, BB());
         auto old_size = lam2bb_.size();
 
-        if (!child().direct_style()) assert(root()->ret_var());
+        if (!child().direct_style()) {
+            if (!(root()->ret_var()))
+                fe::throwf("backend: top-level function `{}` not a continuation with a return continuation", root());
+        }
 
         auto fct = child().prepare();
 
@@ -74,7 +79,10 @@ protected:
         for (auto mut : muts) {
             if (auto lam = mut->isa<Lam>()) {
                 curr_lam_ = lam;
-                if (!child().direct_style()) assert(lam == root() || Lam::isa_basicblock(lam));
+                if (!child().direct_style() && lam != root() && !Lam::isa_basicblock(lam))
+                    fe::throwf("backend: `{}` is neither the entry nor a basic block of `{}`; it needs a phase that "
+                               "removes higher-order functions first",
+                               lam, root());
                 child().emit_epilogue(lam);
             }
         }
