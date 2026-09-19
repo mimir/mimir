@@ -128,6 +128,9 @@ main {
 
 #panes { flex: 1; min-height: 0; position: relative; }
 
+/* `#pane-graph`'s `display` outranks the UA's `[hidden]`, so hiding needs an id in the selector too. */
+#panes [hidden] { display: none; }
+
 .pane {
     position: absolute;
     inset: 0;
