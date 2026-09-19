@@ -27,7 +27,16 @@
             <button role="tab" data-pane="log"   aria-selected="false">Log</button>
         </div>
         <div id="panes">
-            <div class="pane" id="pane-graph"></div>
+            <div class="pane" id="pane-graph">
+                <div id="dot-opts">
+                    <label title="Emits all annexes - even unused ones."><input type="checkbox" data-dot="all-annexes"> all annexes</label>
+                    <label title="Always shows a lambda's filter - even if it is the default one (`ff` for continuations, `tt` for direct-style functions)."><input type="checkbox" data-dot="default-filter"> default filter</label>
+                    <label title="Follows type dependencies."><input type="checkbox" data-dot="follow-types"> type edges</label>
+                    <label title="Wires up literals, axioms, etc. with normal edges instead of detaching them into a separate row; useful for small graphs."><input type="checkbox" data-dot="inline-consts"> inline consts</label>
+                    <label title="Renders otherwise-transparent detached edges - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray."><input type="checkbox" data-dot="show-hidden"> hidden edges</label>
+                </div>
+                <div id="graph"></div>
+            </div>
             <div class="pane" id="pane-ll"   hidden><pre></pre></div>
             <div class="pane" id="pane-mim"  hidden><pre></pre></div>
             <div class="pane" id="pane-log"  hidden><pre></pre></div>

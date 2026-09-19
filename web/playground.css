@@ -142,10 +142,24 @@ main {
     white-space: pre;
 }
 
-#pane-graph { padding: 0; overflow: hidden; }
+#pane-graph { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+#dot-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .9rem;
+    padding: .4rem .75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 12.5px;
+}
+
+#dot-opts label { white-space: nowrap; }
+
+#graph { flex: 1; min-height: 0; overflow: hidden; padding: .75rem; }
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
-#pane-graph svg { display: block; width: 100%; height: 100%; }
+#graph svg { display: block; width: 100%; height: 100%; }
 #pane-log pre { white-space: pre-wrap; }
 
 /* mim's terminal colours, mapped onto the pane; see showLog. */

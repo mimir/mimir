@@ -126,6 +126,7 @@ async function run() {
     status.textContent = 'running…';
 
     const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '-o', '/out.mim'];
+    for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
     if ($('optimize').checked) args.push('-p', 'opt', '-p', 'll', '-X', 'll:o=/out.ll');
     else args.push('--no-opt');
 
@@ -186,7 +187,7 @@ function showLog(text) {
 const MAX_DOT = 512 * 1024;
 
 async function showGraph(dot) {
-    const pane = $('pane-graph');
+    const pane = $('graph');
     if (!dot) { pane.textContent = '(no graph)'; return; }
     if (dot.length > MAX_DOT) {
         pane.textContent = `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`;
@@ -289,6 +290,7 @@ for (const name of Object.keys(EXAMPLES)) picker.add(new Option(name, name));
 picker.onchange = () => { setSource(EXAMPLES[picker.value]); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
 $('optimize').onchange = run;
+$('dot-opts').onchange = run;
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
 
 await setupEditor(EXAMPLES['sq.mim']);
