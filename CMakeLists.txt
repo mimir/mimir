@@ -114,6 +114,10 @@ add_subdirectory(submodules/abseil-cpp)
 add_subdirectory(submodules/fe)
 add_subdirectory(src)
 
+if(EMSCRIPTEN)
+    add_subdirectory(web)
+endif()
+
 if(MIM_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()

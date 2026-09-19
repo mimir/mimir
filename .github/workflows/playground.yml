@@ -1,0 +1,94 @@
+name: playground
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build the WASM playground
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone recursively
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-14 ninja-build
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.9
+          actions-cache-folder: emsdk-cache
+
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          update_packager_index: false
+          ccache_options: max_size=2G
+          override_cache_key: ${{runner.os}}-ccache-wasm
+
+      # A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one;
+      # only the CLI itself is required, so skip the plugins, tests, and Python bindings here.
+      - name: Build the native bootstrap compiler
+        run: |
+          CC=gcc-14 CXX=g++-14                \
+          cmake -B build-native               \
+                -G Ninja                      \
+                -DCMAKE_BUILD_TYPE=Release    \
+                -DBUILD_TESTING=OFF           \
+                -DMIM_BUILD_PYTHON=OFF        \
+                -DMIM_VERIFY_PLUGINS=OFF
+          cmake --build build-native --target mim
+
+      - name: Configure
+        run: |
+          emcmake cmake -B build-wasm                                              \
+                -G Ninja                                                           \
+                -DCMAKE_BUILD_TYPE=Release                                         \
+                -DBUILD_SHARED_LIBS=OFF                                            \
+                -DBUILD_TESTING=OFF                                                \
+                -DMIM_BUILD_PYTHON=OFF                                             \
+                -DMIM_VERIFY_PLUGINS=OFF                                           \
+                -DMIM_NATIVE_MIM=${{github.workspace}}/build-native/bin/mim        \
+                -DCMAKE_CXX_FLAGS="-fwasm-exceptions"                              \
+                -DCMAKE_EXE_LINKER_FLAGS="-fwasm-exceptions"
+
+      - name: Build
+        run: cmake --build build-wasm --target mim_playground
+
+      # Compiles a program with the very binary that was just built, so a wasm-only regression
+      # (see `Def::ops_ptr`) fails here instead of silently shipping.
+      - name: Smoke test
+        run: |
+          cd build-wasm/bin
+          node -e '
+            const fs = require("fs");
+            const createMim = require("./mim.js");
+            (async () => {
+                const log = [];
+                const M = await createMim({print: s => log.push(s), printErr: s => log.push(s)});
+                M.FS.writeFile("/in.mim", fs.readFileSync("../../lit/docs/count.mim", "utf8"));
+                const code = M.callMain(["/in.mim", "-P", "/mim", "-p", "opt", "-p", "ll",
+                                         "-X", "ll:o=/out.ll", "--output-dot", "/out.dot", "-o", "/out.mim"]);
+                if (code !== 0) { console.error(log.join("\n")); throw new Error(`mim exited with ${code}`); }
+                for (const f of ["/out.mim", "/out.ll", "/out.dot"]) {
+                    const size = M.FS.readFile(f, {encoding: "utf8"}).length;
+                    if (size === 0) throw new Error(`${f} is empty`);
+                    console.log(`${f}: ${size} bytes`);
+                }
+            })();
+          '
+
+      - name: Upload the playground
+        uses: actions/upload-artifact@v4
+        with:
+          name: playground
+          path: build-wasm/playground/
+          if-no-files-found: error
