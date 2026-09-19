@@ -176,6 +176,7 @@ Convertible are: built-in types and `const char*`; the standard containers with 
 
 Everything else — `std::ostream`, abseil containers, iterators, nested classes such as `World::State`, and any class from a header nobody wraps — makes its member disappear.
 To get such a member into Python, either add its type's header to the manifest, or write a `[class:Name]` binding that translates the type into a Python-friendly one (`py/nbextra/driver.nbextra` does this for `Imports::add`, which reports a `const fs::path*`).
+Every build lists the members it dropped in `build/py/log/<header-stem>.log`.
 
 `py/tests/stubs.py` fails `test-py` if any C++ type still reaches `_mim.pyi`, e.g. from a hand-written `.nbextra` fragment or on a standard library that spells a type differently.
 

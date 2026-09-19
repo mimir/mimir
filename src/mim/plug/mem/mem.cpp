@@ -11,11 +11,6 @@ using namespace mim;
 using namespace mim::plug;
 
 void reg_phases(Flags2Phases& phases) {
-    MIM_REPL(phases, mem::remem_repl, {
-        if (auto remem = Axm::isa<mem::remem>(def)) return remem->arg();
-        return {};
-    });
-
     MIM_REPL(phases, mem::alloc2malloc_repl, {
         if (auto alloc = Axm::isa<mem::alloc>(def)) {
             auto [pointee, addr_space] = alloc->decurry()->args<2>();
@@ -26,7 +21,6 @@ void reg_phases(Flags2Phases& phases) {
             auto [mem, ret]            = mr->projs<2>();
             return mem::op_mslot(pointee, addr_space, mem, ret);
         }
-        if (auto remem = Axm::isa<mem::remem>(def)) return remem->arg();
         return {};
     });
 

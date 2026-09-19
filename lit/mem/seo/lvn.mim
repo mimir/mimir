@@ -26,7 +26,6 @@ extern lam _compile(): compile.Phase =
             ),
             mem.seo,
         ),
-        mem.remem_repl,
         mem.alloc2malloc_repl,
         compile.named "ll.emit",
     );
