@@ -1,25 +1,25 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 
-/*
- * a hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
-bool dont_know();
-
-template<template <class, class, class> class Map>
-uint64_t poly(uint64_t x) {
-    Map<uint32_t, uint64_t, std::less<uint32_t>> map;
-    map[0] = 23;
-    map[1] = x;
-
-    while (dont_know()) {
-        map[1] = 42;
-        if (map.contains(1)) map[1] = x;
-    }
-
-    return map[1];
-}
-
-int f(uint64_t x) { return poly<std::map>(x); }
-*/
+/// A hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
+/// ```cpp
+/// bool dont_know();
+///
+/// template<template <class, class, class> class Map>
+/// uint64_t poly(uint64_t x) {
+///     Map<uint32_t, uint64_t, std::less<uint32_t>> map;
+///     map[0] = 23;
+///     map[1] = x;
+///
+///     while (dont_know()) {
+///         map[1] = 42;
+///         if (map.contains(1)) map[1] = x;
+///     }
+///
+///     return map[1];
+/// }
+///
+/// int f(uint64_t x) { return poly<std::map>(x); }
+/// ```
 
 plugin mem;
 plugin ord;

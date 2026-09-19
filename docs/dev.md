@@ -15,7 +15,7 @@ Let's jump straight into an example.
 It owns a few global facilities such as [`Flags`](@ref mim::Flags), the [`Log`](https://leissa.github.io/fe/classfe_1_1Log.html), and the current [`World`](@ref mim::World).
 In this example, the log is configured to write debug output to `std::cerr`; see also @ref logging.
 
-@warning Note how the [`Driver`](@ref mim::Driver) is created *outside* the `try` block.
+@warning Note how the [`Driver`](@ref mim::Driver) is created _outside_ the `try` block.
 It also owns the [`fe::SrcMap`](https://leissa.github.io/fe/classfe_1_1SrcMap.html) that holds the text of every file you lex, and an [`Error`](https://leissa.github.io/fe/classfe_1_1Error.html) only renders its `Loc`s - and their source snippets - through it.
 So the [`Driver`](@ref mim::Driver) must outlive everything that may still print a diagnostic, in particular your `catch` handlers.
 
@@ -103,7 +103,7 @@ So the rule of thumb is:
 #### Calling Annexes
 
 `Id` (e.g. `mem::alloc`, `mem::M`, `mem::Ptr0` above) is one of the `enum class <tag> : flags_t` types that `--output-h` generates per annex tag into a plugin's `autogen.h`; see [Generated Interfaces](@ref plugin_codegen) for how that header comes to be.
-Each enumerator's value already *is* the axiom's full mangled id — 48 bits plugin, 8 bits tag, 8 bits sub — composed by [`mim::Annex::flags`](@ref mim::Annex::flags).
+Each enumerator's value already _is_ the axiom's full mangled id — 48 bits plugin, 8 bits tag, 8 bits sub — composed by [`mim::Annex::flags`](@ref mim::Annex::flags).
 `w.annex(id)` just casts `id` to that `flags_t` and looks it up in the `World`'s flags-to-axiom registry.
 The tag-less form used above, `w.annex<mem::alloc>()`, instead reads the id from the `Annex::Base<Id>` specialization that `autogen.h` also emits, so no plugin-specific value has to appear at the call site at all.
 `w.call<Id>(...)` resolves the axiom the same way and then applies the remaining arguments one at a time; currying is driven by the axiom's own curry/trip counters, not by `Id`.
@@ -206,7 +206,7 @@ Recall that the operand graph is a [DAG](https://en.wikipedia.org/wiki/Directed_
 MimIR exploits this by splitting the analysis at the mutable boundary:
 
 - [`mim::Def::local_vars`](@ref mim::Def::local_vars) / [`mim::Def::local_muts`](@ref mim::Def::local_muts) only follow **immutable** [`deps`](@ref mim::Def::deps).
-  They stop as soon as they hit a mutable and record *that* mutable instead of descending into it.
+  They stop as soon as they hit a mutable and record _that_ mutable instead of descending into it.
   Because immutables are [hash-consed](https://en.wikipedia.org/wiki/Hash_consing), these sets are computed once at construction time, cached, and shared.
   By definition, `var->local_vars()` is `{var}` and `mut->local_muts()` is `{mut}`.
 - [`mim::Def::free_vars`](@ref mim::Def::free_vars) gives the actual set of free [`Var`s](@ref mim::Var).
@@ -233,11 +233,11 @@ Free variables also underpin MimIR's scopeless nesting queries:
 
 - [`mim::Def::outermost_binder`](@ref mim::Def::outermost_binder) walks up `free_vars()` until the outermost enclosing binder is reached.
 - [`mim::Def::nests`](@ref mim::Def::nests) answers whether a mutable statically nests another [`Def`](@ref mim::Def).
-  The relation is **strict**: `f->nests(f)` is `false`, and a `def` that only uses `f`'s own [`Var`](@ref mim::Var) sits at `f`'s level and is likewise *not* nested.
+  The relation is **strict**: `f->nests(f)` is `false`, and a `def` that only uses `f`'s own [`Var`](@ref mim::Var) sits at `f`'s level and is likewise _not_ nested.
 
 ##### `Dep`
 
-When you only need a yes/no answer — *does this subtree contain **any** [`Var`](@ref mim::Var), [`Hole`](@ref mim::Hole), mutable, or [`Proxy`](@ref mim::Proxy)?* — [`mim::Def::has_dep`](@ref mim::Def::has_dep) is far cheaper than materializing `free_vars()`.
+When you only need a yes/no answer — _does this subtree contain **any** [`Var`](@ref mim::Var), [`Hole`](@ref mim::Hole), mutable, or [`Proxy`](@ref mim::Proxy)?_ — [`mim::Def::has_dep`](@ref mim::Def::has_dep) is far cheaper than materializing `free_vars()`.
 Like `local_vars()`, it is a per-node bitset (see [`mim::Dep`](@ref mim::Dep)) that only looks up to the next mutable:
 
 ```cpp
@@ -256,7 +256,7 @@ Methods beginning with
 
 - `isa` behave like `dynamic_cast`: they perform a runtime check and return `nullptr` if the cast fails;
 - `as` behave more like `static_cast`: in `Debug` builds they assert, via the corresponding `isa`, that the cast is valid.
-- `expect` behave like `as`, but - instead of merely asserting in `Debug` builds and being silently unchecked in `Release` - they *always* check via the corresponding `isa` and throw a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) when the cast fails.
+- `expect` behave like `as`, but - instead of merely asserting in `Debug` builds and being silently unchecked in `Release` - they _always_ check via the corresponding `isa` and throw a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) when the cast fails.
   Reach for `expect` (over `as`) whenever the assumption is really a claim about the incoming IR that should surface as a proper error message rather than a `Debug`-only assertion or Release-mode undefined behavior - e.g. in backends that validate an already-lowered program.
 
 #### General Downcast
@@ -286,7 +286,7 @@ void foo(const Def* def) {
 
 #### Downcast to Immutables
 
-[`mim::Def::isa_imm`](@ref mim::Def::isa_imm) / [`mim::Def::as_imm`](@ref mim::Def::as_imm) only match _immutables_:
+[`mim::Def::isa_imm`](@ref mim::Def::isa_imm) / [`mim::Def::as_imm`](@ref mim::Def::as_imm) only match **immutables**:
 
 ```cpp
 void foo(const Def* def) {
@@ -306,7 +306,7 @@ void foo(const Def* def) {
 
 #### Downcast to Mutables
 
-[`mim::Def::isa_mut`](@ref mim::Def::isa_mut) / [`mim::Def::as_mut`](@ref mim::Def::as_mut) only match _mutables_.
+[`mim::Def::isa_mut`](@ref mim::Def::isa_mut) / [`mim::Def::as_mut`](@ref mim::Def::as_mut) only match **mutables**.
 They also remove the `const` qualifier, which gives you access to the non-`const` methods that only make sense for mutables:
 
 ```cpp
@@ -380,13 +380,13 @@ The following table summarizes the most important casts:
 
 A method beginning with `expect` behaves like the `as` in the same row, but throws a formatted exception (via [`fe::throwf`](https://leissa.github.io/fe/namespacefe.html#a90e0f8ec6bf736dde22be99a5cfde6ca)) instead of asserting; it takes a description (a plain string or a format string plus arguments) of what was expected.
 
-| `dynamic_cast` <br> `static_cast` <br> throwing                                     | Returns                                                                                                                             | If `def` is a ...                    |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `def->isa<Lam>()` <br> `def->as<Lam>()` <br> `def->expect<Lam>(fmt, ...)`           | `const Lam*`                                                                                                                        | [`Lam`](@ref mim::Lam)               |
-| `def->isa_imm<Lam>()` <br> `def->as_imm<Lam>()`                                     | `const Lam*`                                                                                                                        | **immutable** [`Lam`](@ref mim::Lam) |
-| `def->isa_mut<Lam>()` <br> `def->as_mut<Lam>()` <br> `def->expect_mut<Lam>(fmt, ...)` | `Lam*`                                                                                                                            | **mutable** [`Lam`](@ref mim::Lam)   |
-| `Lit::isa(def)` <br> `Lit::as(def)` <br> `Lit::expect(def, fmt, ...)`               | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`nat_t`](@ref mim::nat_t)`>` <br> [`nat_t`](@ref mim::nat_t) | [`Lit`](@ref mim::Lit)               |
-| `Lit::isa<f32>(def)` <br> `Lit::as<f32>(def)` <br> `Lit::expect<f32>(def, fmt, ...)` | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`f32`](@ref mim::f32)`>` <br> [`f32`](@ref mim::f32)         | [`Lit`](@ref mim::Lit)               |
+| `dynamic_cast` <br> `static_cast` <br> throwing                                       | Returns                                                                                                                             | If `def` is a ...                    |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `def->isa<Lam>()` <br> `def->as<Lam>()` <br> `def->expect<Lam>(fmt, ...)`             | `const Lam*`                                                                                                                        | [`Lam`](@ref mim::Lam)               |
+| `def->isa_imm<Lam>()` <br> `def->as_imm<Lam>()`                                       | `const Lam*`                                                                                                                        | **immutable** [`Lam`](@ref mim::Lam) |
+| `def->isa_mut<Lam>()` <br> `def->as_mut<Lam>()` <br> `def->expect_mut<Lam>(fmt, ...)` | `Lam*`                                                                                                                              | **mutable** [`Lam`](@ref mim::Lam)   |
+| `Lit::isa(def)` <br> `Lit::as(def)` <br> `Lit::expect(def, fmt, ...)`                 | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`nat_t`](@ref mim::nat_t)`>` <br> [`nat_t`](@ref mim::nat_t) | [`Lit`](@ref mim::Lit)               |
+| `Lit::isa<f32>(def)` <br> `Lit::as<f32>(def)` <br> `Lit::expect<f32>(def, fmt, ...)`  | [std::optional](https://en.cppreference.com/w/cpp/utility/optional)`<`[`f32`](@ref mim::f32)`>` <br> [`f32`](@ref mim::f32)         | [`Lit`](@ref mim::Lit)               |
 
 #### Further Casts
 
@@ -505,8 +505,8 @@ void foo(const Def* def) {
 
 The following table summarizes the most important axiom matches:
 
-| `dynamic_cast` <br> `static_cast`                           | Returns                                                                                                                     | If `def` is a ...                           |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `dynamic_cast` <br> `static_cast`                           | Returns                                                                                                                     | If `def` is a ...                         |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | `isa<mem::load>(def)` <br> `as<mem::load>(def)`             | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`mem::load`](@ref mim::plug::mem::load) and [`App`](@ref mim::App)   | final curried `mem.load` application      |
 | `isa<core::wrap>(def)` <br> `as<core::wrap>(def)`           | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`core::wrap`](@ref mim::plug::core::wrap) and [`App`](@ref mim::App) | final curried `core.wrap` application     |
 | `isa(core::wrap::add, def)` <br> `as(core::wrap::add, def)` | [`mim::Axm::isa`](@ref mim::Axm::isa) specialized for [`core::wrap`](@ref mim::plug::core::wrap) and [`App`](@ref mim::App) | final curried `core.wrap.add` application |
@@ -555,16 +555,16 @@ TODO
 
 ### Summary
 
-| Expression         | Class                    | [arity](@ref mim::Def::arity) | [`num_projs`](@ref mim::Def::num_projs) | [`num_tprojs`](@ref mim::Def::num_tprojs) |
-| ------------------ | ------------------------ | ----------------------------- | ------------------------------------- | --------------------------------------- |
-| `(0, 1, 2)`        | [`Tuple`](@ref mim::Tuple) | `3`                           | `3`                                   | `3`                                     |
-| `‹3; 0›`           | [`Pack`](@ref mim::Pack)   | `3`                           | `3`                                   | `3`                                     |
-| `‹n; 0›`           | [`Pack`](@ref mim::Pack)   | `n`                           | `1`                                   | `1`                                     |
-| `[Nat, Bool, Nat]` | [`Sigma`](@ref mim::Sigma) | `3`                           | `3`                                   | `3`                                     |
-| `«3; Nat»`         | [`Arr`](@ref mim::Arr)     | `3`                           | `3`                                   | `3`                                     |
-| `«n; Nat»`         | [`Arr`](@ref mim::Arr)     | `n`                           | `1`                                   | `1`                                     |
-| `x: [Nat, Bool]`   | [`Var`](@ref mim::Var)     | `2`                           | `2`                                   | `2`                                     |
-| `‹32; 0›`          | [`Pack`](@ref mim::Pack)   | `32`                          | `32`                                  | `1`                                     |
+| Expression         | Class                      | [arity](@ref mim::Def::arity) | [`num_projs`](@ref mim::Def::num_projs) | [`num_tprojs`](@ref mim::Def::num_tprojs) |
+| ------------------ | -------------------------- | ----------------------------- | --------------------------------------- | ----------------------------------------- |
+| `(0, 1, 2)`        | [`Tuple`](@ref mim::Tuple) | `3`                           | `3`                                     | `3`                                       |
+| `‹3; 0›`           | [`Pack`](@ref mim::Pack)   | `3`                           | `3`                                     | `3`                                       |
+| `‹n; 0›`           | [`Pack`](@ref mim::Pack)   | `n`                           | `1`                                     | `1`                                       |
+| `[Nat, Bool, Nat]` | [`Sigma`](@ref mim::Sigma) | `3`                           | `3`                                     | `3`                                       |
+| `«3; Nat»`         | [`Arr`](@ref mim::Arr)     | `3`                           | `3`                                     | `3`                                       |
+| `«n; Nat»`         | [`Arr`](@ref mim::Arr)     | `n`                           | `1`                                     | `1`                                       |
+| `x: [Nat, Bool]`   | [`Var`](@ref mim::Var)     | `2`                           | `2`                                     | `2`                                       |
+| `‹32; 0›`          | [`Pack`](@ref mim::Pack)   | `32`                          | `32`                                    | `1`                                       |
 
 The last line assumes `mim::Flags::scalarize_threshold = 32`.
 
@@ -598,8 +598,8 @@ In practice, though, you will usually want to use the [phase](@ref phases) infra
 
 <div class="section_buttons">
 
-| Previous |     Next |
-|:---------|---------:|
+| Previous                |                        Next |
+| :---------------------- | --------------------------: |
 | [Plugins](@ref plugins) | [Rewriting](@ref rewriting) |
 
 </div>

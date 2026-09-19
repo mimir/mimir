@@ -11,7 +11,7 @@ These are compiled by the `mim` [CLI](@ref cli) and the graphs shown are generat
 
 Under the hood, MimIR is not a list of instructions but a **graph**.
 The `let` bindings in the examples below are pure surface sugar — they only name subexpressions.
-Inlining them or adding more yields the **exact same graph**, because in MimIR the graph *is* the program.
+Inlining them or adding more yields the **exact same graph**, because in MimIR the graph _is_ the program.
 
 ## Syntax
 
@@ -20,7 +20,7 @@ Much of it is merely **syntactic sugar** over that graph:
 
 - **Naming and grouping**
   - `let` names a subexpression.
-  - `where` is an upside-down `let`: it attaches a block of declarations — `let`s, but also whole `lam`s/`con`s — *after* the expression that uses them.
+  - `where` is an upside-down `let`: it attaches a block of declarations — `let`s, but also whole `lam`s/`con`s — _after_ the expression that uses them.
 
 - **Functions**
   - `lam` is a direct-style function that returns a value.
@@ -28,9 +28,11 @@ Much of it is merely **syntactic sugar** over that graph:
   - Equivalently, `Cn A` is sugar for `A → ⊥`; this matters in the [CPS section](@ref mimir_cps) below.
   - `fun` / `return` is sugar for threading an explicit return continuation, so a CPS function still reads like an ordinary one.
   - `{}` carries implicit arguments — usually types — as in
+
     ```mim
     lam id {T: *} (x: T): T = x
     ```
+
     where `T` is inferred at the call site (`id 23`).
 
 - **Tuples**
@@ -67,11 +69,11 @@ Annexes come in two flavors: Axioms and other definitions.
 
 #### Axioms
 
-These are opaque primitives with *no* Mim definition.
+These are opaque primitives with _no_ Mim definition.
 Their meaning comes from the plugin's C++ side (see below), not from any Mim code.
 `core.wrap.add` (machine addition) and `core.pe.is_closed` (which checks whether an expression contains no free variables) are treated as axioms.
 
-Axioms get their behavior from **normalizers**: small C++ functions that live *inside* the plugin's shared library, each attached to an axiom.
+Axioms get their behavior from **normalizers**: small C++ functions that live _inside_ the plugin's shared library, each attached to an axiom.
 Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, on the fly** — so the simplified node is the only one that ever exists.
 [Constant folding](https://en.wikipedia.org/wiki/Constant_folding) and [peephole](https://en.wikipedia.org/wiki/Peephole_optimization) rewrites such as `x + 0 → x` are implemented exactly this way: you never build `core.wrap.add (x, 0)` and optimize it away later — it collapses to `x` at construction time.
 
@@ -79,9 +81,11 @@ Whenever a node is constructed, MimIR fires the matching normalizer **eagerly, o
 
 These are ordinary Mim values, written as plain Mim.
 `core.select`, for instance, is just
+
 ```mim
 lam core.select {T: *} (cond, t, f): T = (f, t)#cond;
 ```
+
 Being a direct-style function, it carries the default `tt` [`filter`](@ref mim::Lam::filter), which tells MimIR to **β-reduce its applications eagerly during graph construction**.
 So a call `core.select (a, b, c)` is inlined on the spot, collapsing to the indexed read `(c, b)#a` — the `select` itself never appears in the graph.
 
@@ -134,24 +138,24 @@ Correspondence between SSA form and CPS in MimIR:
 | SSA                                  | MimIR / CPS                                                              |
 | ------------------------------------ | ------------------------------------------------------------------------ |
 | basic block                          | continuation `con`                                                       |
-| φ-function at a block head           | continuation parameter (a *block argument*), e.g. `loop (i acc: I32)`    |
+| φ-function at a block head           | continuation parameter (a _block argument_), e.g. `loop (i acc: I32)`    |
 | φ-argument `[ v, %pred ]`            | the value passed at a call site: `loop (0I32, 0I32)`, `loop (next, sum)` |
 | `br label %loop` (goto)              | tail call `loop (next, sum)`                                             |
-| `br i1 %cond, %body, %exit` (branch) | `core.select (cond, body, exit) ()` — pick the target, then apply       |
+| `br i1 %cond, %body, %exit` (branch) | `core.select (cond, body, exit) ()` — pick the target, then apply        |
 | `ret i32 %acc` (return)              | `return acc` — call the function's return continuation                   |
 
 The function `count` itself is written with `fun` / `return`: sugar that threads an explicit return continuation through, so it reads like an ordinary function even though it is CPS underneath.
-As explained in the [Plugins](@ref mimir_plugins) section above, the *annex* `core.select` is an ordinary direct-style lambda, so its `tt` filter makes the branch `core.select (cond, body, exit)` collapse to the indexed read `(exit, body)#cond` during construction — no `select` node survives.
+As explained in the [Plugins](@ref mimir_plugins) section above, the _annex_ `core.select` is an ordinary direct-style lambda, so its `tt` filter makes the branch `core.select (cond, body, exit)` collapse to the indexed read `(exit, body)#cond` during construction — no `select` node survives.
 That is what the graph below actually shows.
 
 CPS makes three pieces of SSA folklore explicit:
 
-- **φ-uses live at the *end* of a block, not its head.**
+- **φ-uses live at the _end_ of a block, not its head.**
 
-  An SSA φ pretends to read its inputs at the top of its block, but each input is actually produced by a *predecessor's* terminator — φs "happen on the edge".
-  In CPS the incoming values are simply the arguments passed by the tail call that *ends* each predecessor — exactly where they are computed.
+  An SSA φ pretends to read its inputs at the top of its block, but each input is actually produced by a _predecessor's_ terminator — φs "happen on the edge".
+  In CPS the incoming values are simply the arguments passed by the tail call that _ends_ each predecessor — exactly where they are computed.
 
-- **A whole group of φs at a block head is really a [*parallel copy*](https://en.wikipedia.org/wiki/Static_single-assignment_form#Converting_out_of_SSA_form).**
+- **A whole group of φs at a block head is really a [_parallel copy_](https://en.wikipedia.org/wiki/Static_single-assignment_form#Converting_out_of_SSA_form).**
 
   With block arguments that is plainly one argument tuple per edge, not a pile of pseudo-instructions to sequentialize.
 
@@ -171,7 +175,7 @@ This is the graph MimIR builds for `count`:
 
 @note **Reading the graphs.**
 Each box is a [`Def`](@ref mim::Def) — one node of the program graph — labelled with its kind.
-Boxes drawn with a clipped, **diagonal corner** are *mutable* binders (functions and other recursive nodes); plain boxes are *immutable*, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) expressions.
+Boxes drawn with a clipped, **diagonal corner** are _mutable_ binders (functions and other recursive nodes); plain boxes are _immutable_, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) expressions.
 Edges run from a node to its operands.
 
 @note `extern` marks `count` as a root of the program graph.
@@ -180,7 +184,7 @@ Without it, MimIR's sea-of-nodes cleanup would prune the unused function away.
 ### Scopeless Binders {#mimir_scopeless}
 
 And here is MimIR's twist.
-Like traditional basic blocks — which float in the CFG, reached by label rather than by lexical position — **every** MimIR binder is *floating* and *scopeless*.
+Like traditional basic blocks — which float in the CFG, reached by label rather than by lexical position — **every** MimIR binder is _floating_ and _scopeless_.
 The Mim source nests `body` and `exit` inside `loop` with `where`, but that nesting exists **only in the surface syntax**:
 in the graph there is no containment — `body` and `exit` are ordinary nodes the branch indexes into, and `loop`'s back-edge is just an edge from `loop` to itself.
 That cycle is well-formed because binders like `loop` are **mutable** nodes (drawn with the diagonal corner); everything else stays an acyclic, [hash-consed](https://en.wikipedia.org/wiki/Hash_consing) DAG — the [sweet spot](@ref mut) MimIR hits between a fully mutable and a fully immutable IR.
@@ -195,12 +199,14 @@ Two classic chores simply vanish:
   In the following example `g` does not depend on `x`.
   Yet, `g` is nested inside `f`.
   For this reason, a naive β-reduction would superfluously duplicate `g` as well.
+
   ```mim
   lam f (x: Nat): Nat =
       lam g (y: Nat): Nat = y + 1;
       g (x + 2);
   ```
-  Scoped IRs therefore typically *block-float* functions independent from the substitution outward before β-reduction to avoid this problem.
+
+  Scoped IRs therefore typically _block-float_ functions independent from the substitution outward before β-reduction to avoid this problem.
 
   MimIR, on the other hand, just β-reduces on the spot.
   And this is not special to β-reduction: substitution in MimIR is a graph traversal that automatically skips any subgraph not depending on the substituted variables — unrelated binders are left untouched and shared — with no scopes to keep consistent.
@@ -208,24 +214,28 @@ Two classic chores simply vanish:
 - **Specialization.**
 
   In the following example, we want to specialize `f` for `z`.
+
   ```mim
   lam f (x y: Nat): Nat = x + y;
   lam g (z: Nat): Nat = (f z 1) + (f z 2);
   ```
-  However, we need to *block-sink* the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:
+
+  However, we need to _block-sink_ the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:
+
   ```mim
   lam g (z: Nat) =
     lam fz (y: Nat): Nat = z + y;
     (fz 1) + (fz 2)
   ```
+
   MimIR, on the other hand, does not need block-sinking: a binder simply refers to whatever it refers to, wherever it sits.
 
 And this is not limited to continuations: in MimIR **every** binder is scopeless — direct-style functions, dependent tuple types, and the rest.
 
 What is more, there is **no control-flow graph and no dominator tree**.
-The natural worry is *then how do you run any analysis?* — SSA leans on dominance for φ-placement, GVN, code motion, etc.
+The natural worry is _then how do you run any analysis?_ — SSA leans on dominance for φ-placement, GVN, code motion, etc.
 MimIR replaces the dominator tree with the **nesting tree** induced by free variables, and answers liveness/scoping questions by querying a `Def`'s free-variable set directly — computed lazily and memoized.
-These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction, its complexity bounds, and its metatheory are spelled out in [*SSA without Dominance for Higher-Order Programs*](https://doi.org/10.48550/arXiv.2604.09961).
+These queries are always correct, even for higher-order code, and the standard SSA optimizations carry over; the construction, its complexity bounds, and its metatheory are spelled out in [_SSA without Dominance for Higher-Order Programs_](https://doi.org/10.48550/arXiv.2604.09961).
 
 ## Polymorphic Iteration {#mimir_iter}
 
@@ -246,7 +256,7 @@ The rest of the file puts `iter` to work, building a small tower of arithmetic p
 - `mul x y` iterates `add x` — `y` times, starting from `0`;
 - `pow x y` iterates `mul x` — `y` times, starting from `1`.
 
-Each step hands a *partially applied* function — `add x`, `mul x` — to `iter`'s higher-order parameter `f`.
+Each step hands a _partially applied_ function — `add x`, `mul x` — to `iter`'s higher-order parameter `f`.
 The final line is a **compile-time assertion**:
 
 ```mim
@@ -256,7 +266,7 @@ let _ = refly.equiv.struc_eq (pow 3 5, 243);
 Because `iter` carries the `@(core.pe.is_closed n)` [partial-evaluation](https://en.wikipedia.org/wiki/Partial_evaluation) filter — and every function in the tower is direct-style with the default `tt` filter — MimIR evaluates `pow 3 5` **completely during graph construction**: the whole tower unrolls to the literal `243`, and `refly.equiv.struc_eq` statically checks it.
 A mismatch would fail the build.
 
-Now notice what *survives*.
+Now notice what _survives_.
 Only `iter` is `extern`, hence the sole [root](@ref mim::World::roots).
 `succ`, `add`, `mul`, `pow`, and the assertion are all unreachable from the roots, so [`Cleanup`](@ref mim::Cleanup) prunes them.
 The graph MimIR keeps is therefore just `iter` itself:
@@ -266,8 +276,8 @@ The graph MimIR keeps is therefore just `iter` itself:
 The two branches `alt` and `cons` are **floating functions**: MimIR references them as ordinary nodes selected by `cond` instead of nesting them inside `iter`, and the recursive call simply points straight back at the `iter` node.
 This is MimIR's sea-of-nodes representation in action — the same machinery that expressed the counting loop above, now carrying a higher-order, polymorphic, direct-style function.
 
-You **cannot** represent this program directly in [LLVM](https://en.wikipedia.org/wiki/LLVM) or [MLIR](https://en.wikipedia.org/wiki/MLIR_(software)): `iter` is polymorphic over `T` *and* takes a first-class function as an argument, neither of which those IRs model natively.
-Getting there requires *at least partially lowering* the program first — [closure conversion](https://en.wikipedia.org/wiki/Closure_(computer_programming)) for the higher-order arguments, [type erasure](https://en.wikipedia.org/wiki/Type_erasure) or monomorphization for the polymorphism, and so on.
+You **cannot** represent this program directly in [LLVM](https://en.wikipedia.org/wiki/LLVM) or [MLIR](<https://en.wikipedia.org/wiki/MLIR_(software)>): `iter` is polymorphic over `T` _and_ takes a first-class function as an argument, neither of which those IRs model natively.
+Getting there requires _at least partially lowering_ the program first — [closure conversion](<https://en.wikipedia.org/wiki/Closure_(computer_programming)>) for the higher-order arguments, [type erasure](https://en.wikipedia.org/wiki/Type_erasure) or monomorphization for the polymorphism, and so on.
 MimIR represents — and here even partially evaluates — it as written.
 
 @note Unlike `count`, `iter` is a `lam` in **direct style**: it returns a `T` directly instead of threading a return continuation.
@@ -278,13 +288,13 @@ The same graph substrate represents both styles uniformly.
 So far you have seen higher-order, polymorphic, partially evaluated code in both CPS and direct style.
 MimIR's defining feature ties all of that together: **types live in the same graph as terms**, built and normalized by the same machinery.
 So a type can be computed by an ordinary function, depend on a runtime value, and be partially evaluated — all for free.
-Watch a *type* come out of an ordinary function:
+Watch a _type_ come out of an ordinary function:
 
 \include "dep.mim"
 
 `Vec` is just a `lam` — but it returns `*`, the type of types, so it is a function `Nat → *`: a [type constructor](https://en.wikipedia.org/wiki/Type_constructor).
-`zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the *value* `n` of its argument.
-Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `core.select` above, even though the result is a *type* — and `refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
+`zeros` then has a [**dependent function type**](https://en.wikipedia.org/wiki/Dependent_type): its return type `Vec n` mentions the _value_ `n` of its argument.
+Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `core.select` above, even though the result is a _type_ — and `refly.equiv.struc_eq` statically checks that `zeros 3` evaluates to `‹3; 0›`.
 
 @image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown (type edges are dashed)"
 
@@ -294,8 +304,8 @@ This is the foundation the [`tensor`](@ref tensor) plugin builds on: array shape
 
 <div class="section_buttons">
 
-| Previous |     Next |
-|:---------|---------:|
+| Previous           |                               Next |
+| :----------------- | ---------------------------------: |
 | [Home](@ref index) | [Command-Line Reference](@ref cli) |
 
 </div>

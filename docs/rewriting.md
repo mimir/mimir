@@ -136,6 +136,7 @@ Conceptually, this rewrites only those parts of `def` whose free variables inter
   - support scoped mappings
 
   If you just want to rebuild IR, use [`Rewriter`](@ref mim::Rewriter):
+
   > What is the corresponding version of this IR in another rewriting context?
 
 - [`VarRewriter`](@ref mim::VarRewriter) adds substitution-specific behavior:
@@ -144,12 +145,13 @@ Conceptually, this rewrites only those parts of `def` whose free variables inter
   - skip unaffected subgraphs using free-variable information
 
   If you want to substitute variables while rebuilding, use [`VarRewriter`](@ref mim::VarRewriter):
+
   > What do I get if I substitute these variables and rebuild only where necessary?
 
 <div class="section_buttons">
 
-| Previous |     Next |
-|:---------|---------:|
+| Previous                    |                  Next |
+| :-------------------------- | --------------------: |
 | [Developer Guide](@ref dev) | [Phases](@ref phases) |
 
 </div>

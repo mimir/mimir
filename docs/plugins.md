@@ -153,6 +153,7 @@ This creates `extra/<plugin>/` with:
 - `.github/workflows/{linux,macos,windows}.yml` — GitHub Actions CI/CD workflows
 
 In `--extra` mode, the script also:
+
 - Initializes a new Git repository for the plugin
 - Generates GitHub Actions workflows that automatically build and test the plugin against the main MimIR repository
 - Patches workflow configurations to clone the main repository as the parent and the plugin as a submodule in `extra/<plugin>`
@@ -219,7 +220,7 @@ The authoritative reference for `add_mim_plugin` itself lives in [`cmake/Mim.cma
 ## Runtime Wrappers {#plugin_runtime}
 
 Backends such as [`ll`](@ref ll) sometimes need to emit calls to functionality that is awkward or brittle to express as hand-written LLVM IR — for example libc helpers, or complex argument setup for vendor APIs.
-Instead of emitting the implementation inline, a backend can offload it to a small C *wrapper* that is compiled to LLVM IR by `clang` and pulled into the output.
+Instead of emitting the implementation inline, a backend can offload it to a small C _wrapper_ that is compiled to LLVM IR by `clang` and pulled into the output.
 This keeps the backend focused on emitting LLVM and lets `clang` deal with platform- and version-specific details.
 
 The [`add_mim_runtime`](@ref add_mim_runtime_cmake) CMake command compiles a plugin's C wrapper sources to textual LLVM IR:
@@ -248,8 +249,8 @@ The authoritative reference for `add_mim_runtime` lives in [`cmake/Mim.cmake`](@
 
 <div class="section_buttons">
 
-| Previous |     Next |
-|:---------|---------:|
+| Previous                                 |                        Next |
+| :--------------------------------------- | --------------------------: |
 | [Contributing \& Debugging](@ref coding) | [Developer Guide](@ref dev) |
 
 </div>

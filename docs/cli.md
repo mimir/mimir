@@ -29,8 +29,8 @@ Mim keeps three separate lookups, because the artifacts they find are different 
 a plugin library is host-native code, a `.mim` is portable source, and a backend runtime belongs to the target.
 
 Two kinds of entry feed them.
-A *plain directory* is probed as-is and is what `-P` / `-I` and their environment variables add.
-A *prefix root* stands for an install tree and derives `<root>/lib/mim`, `<root>/share/mim`, and `<root>/lib/mim/rt` from itself;
+A _plain directory_ is probed as-is and is what `-P` / `-I` and their environment variables add.
+A _prefix root_ stands for an install tree and derives `<root>/lib/mim`, `<root>/share/mim`, and `<root>/lib/mim/rt` from itself;
 `--prefix-path` / `MIM_PREFIX_PATH` add one, as do the install prefix and the tree `libmim` was loaded from.
 
 | Looking for | Order |
@@ -54,7 +54,7 @@ Plugins - and in particular backends - often need to be configured from the comm
 For example, a backend that invokes an external tool may want to forward optimization levels, a target triple for cross-compilation, or library paths.
 Use `-X` / `--plugin-arg` for this:
 
-```
+```sh
 mim foo.mim -p ll -X ll:o=out.ll -X compile:aggr
 ```
 
@@ -70,7 +70,7 @@ Each plugin declares the arguments it understands right next to the code that re
 ### Environment Variables {#clipluginenv}
 
 A plugin may also read environment variables - typically to locate an external toolchain it shells out to.
-It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the *Plugin Environment Variables* tables under [Usage](@ref cliusage) are generated from those declarations, just like the `-X` tables above.
+It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the _Plugin Environment Variables_ tables under [Usage](@ref cliusage) are generated from those declarations, just like the `-X` tables above.
 Since a plugin only announces them once it is loaded, `mim -p <plugin> --help` lists the ones belonging to `<plugin>`.
 
 <div class="section_buttons">

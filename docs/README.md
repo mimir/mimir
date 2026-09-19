@@ -32,6 +32,7 @@ It has both at once, by extending sea-of-nodes to the Calculus of Constructions.
 And it pays off in practice: the [regex](@ref regex) plugin is the fastest engine in our evaluation (see the [POPL'25 paper](https://doi.org/10.1145/3704840)).
 
 @note 🆕 **New here?**
+
 - 🧭 Read the [**Tour of MimIR**](@ref mimir) — it walks through Mim's syntax and MimIR's plugin architecture.
 - 📚 Then, read the rest of the [documentation](https://mimir.github.io/usergroup0.html).
 
@@ -48,7 +49,7 @@ Its type `[T, T] → T` mentions `T`, which makes `sq` a [**dependent function**
 In MimIR, types are ordinary [**first-class values**](https://en.wikipedia.org/wiki/First-class_citizen): `T` and `` `* `` are just arguments, so polymorphism, [type operators](https://en.wikipedia.org/wiki/Type_constructor), and dependent types all fall out of the same mechanism.
 (`plugin core as *` splices `core`'s annexes into the top-level scope, which is why `nat.mul` needs no `core.` prefix.)
 
-And under the hood, MimIR is not a list of instructions but a **graph** — and that graph *is* the program.
+And under the hood, MimIR is not a list of instructions but a **graph** — and that graph _is_ the program.
 The graph is also **complete**: it holds everything needed to make sense of the program, with no auxiliary side structure.
 Contrast a traditional instruction list, which is meaningless on its own and only becomes intelligible once you pair it with a separately maintained [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph).
 
@@ -220,8 +221,8 @@ MimIR is licensed under the [MIT License](https://github.com/mimir/mimir/blob/ma
 
 <div class="section_buttons">
 
-|         Next |
-|-------------:|
+|                          Next |
+| ----------------------------: |
 | [A Tour of MimIR](@ref mimir) |
 
 </div>
