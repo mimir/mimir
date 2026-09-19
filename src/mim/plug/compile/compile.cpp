@@ -75,7 +75,7 @@ static constexpr PluginArg known_args[] = {
 };
 // clang-format on
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(compile) {
     return {
         "compile", MIM_VERSION, compile::register_normalizers, reg_phases, known_args, std::size(known_args), {}, {},
         {},        {}};

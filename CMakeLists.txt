@@ -77,6 +77,12 @@ else()
     add_compile_options(-Wall -Wextra)
 endif()
 
+if(EMSCRIPTEN)
+    # Emscripten's default (JS-based) exceptions cannot unwind the frontend's throws; both halves need the flag.
+    add_compile_options(-fwasm-exceptions)
+    add_link_options(-fwasm-exceptions)
+endif()
+
 # -O0 makes Debug roughly 6x slower than it needs to be while adding little over -Og for most debugging.
 # Assertions and MIM_ENABLE_CHECKS are unaffected - only the optimizer changes.
 # Switch this OFF when stepping through code, as -Og optimizes away some locals.

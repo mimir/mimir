@@ -192,6 +192,17 @@ MIM_EXPORT mim::Plugin mim_get_plugin();
 ///@}
 }
 
+#ifdef MIM_STATIC_PLUGINS
+#    define MIM_PLUGIN_ENTRY_NAME(p) mim_get_plugin_##p
+#else
+#    define MIM_PLUGIN_ENTRY_NAME(p) mim_get_plugin
+#endif
+
+/// Defines a Plugin's entry point, as in `MIM_PLUGIN_ENTRY(demo) { return {"demo", MIM_VERSION}; }`.
+/// @p p must be the Plugin's name: a `MIM_STATIC_PLUGINS` build links every Plugin into one binary,
+/// so each needs its own symbol; `mim_static_plugin_registry` declares the names this yields.
+#define MIM_PLUGIN_ENTRY(p) extern "C" MIM_EXPORT mim::Plugin MIM_PLUGIN_ENTRY_NAME(p)()
+
 /// Holds info about an entity defined within a Plugin (called *Annex*).
 struct Annex {
     Annex() = delete;

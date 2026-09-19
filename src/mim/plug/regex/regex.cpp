@@ -17,7 +17,7 @@ static const PluginSym known_syms[] = {
     MIM_PLUGIN_SYM(dfa2matcher),
 };
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(regex) {
     return {"regex", MIM_VERSION, regex::register_normalizers, reg_phases, {}, {}, {},
             {},      known_syms,  std::size(known_syms)};
 }

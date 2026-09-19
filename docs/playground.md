@@ -52,9 +52,7 @@ emcmake cmake -B build-wasm                     \
     -DBUILD_TESTING=OFF                         \
     -DMIM_BUILD_PYTHON=OFF                      \
     -DMIM_VERIFY_PLUGINS=OFF                    \
-    -DMIM_NATIVE_MIM=$PWD/build/bin/mim         \
-    -DCMAKE_CXX_FLAGS=-fwasm-exceptions         \
-    -DCMAKE_EXE_LINKER_FLAGS=-fwasm-exceptions
+    -DMIM_NATIVE_MIM=$PWD/build/bin/mim
 cmake --build build-wasm --target mim_playground -j16
 ```
 

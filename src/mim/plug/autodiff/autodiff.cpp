@@ -22,7 +22,7 @@ static void reg_phases(Flags2Phases& phases) {
     });
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(autodiff) {
     return {"autodiff", MIM_VERSION, autodiff::register_normalizers, reg_phases, {}, {}, {}, {}, {}, {}};
 }
 

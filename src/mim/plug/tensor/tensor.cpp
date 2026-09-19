@@ -30,7 +30,7 @@ static constexpr PluginArg known_args[] = {
 };
 // clang-format on
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(tensor) {
     return {"tensor",
             MIM_VERSION,
             tensor::register_normalizers,

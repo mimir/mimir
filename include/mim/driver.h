@@ -181,7 +181,11 @@ public:
     static std::string plugin_name(std::string_view name);
     bool is_loaded(std::string_view name) const { return fe::lookup(plugins_, name); }
     /// Directory the Plugin was loaded from, so that its `<name>.mim` half cannot come from elsewhere.
-    const fs::path* plugin_dir(std::string_view name) const { return fe::lookup(plugin2dir_, name); }
+    /// `nullptr` if nothing pins it - a statically linked Plugin whose `.mim` half was not found.
+    const fs::path* plugin_dir(std::string_view name) const {
+        auto loaded = fe::lookup(plugins_, name);
+        return loaded && !loaded->dir.empty() ? &loaded->dir : nullptr;
+    }
     void* get_fun_ptr(std::string_view plugin, const char* name);
 
     template<class F>
@@ -215,8 +219,15 @@ public:
     ///@}
 
 private:
+    /// What Driver::load remembers about a Plugin; Plugin::Handle is null for a statically linked one.
+    struct Loaded {
+        Plugin::Handle handle;
+        fs::path dir;
+        fe::View<PluginSym> syms;
+    };
+
     // This must go *first* so plugins will be unloaded *last* in the d'tor; otherwise funny things might happen ...
-    absl::node_hash_map<std::string, Plugin::Handle> plugins_;
+    absl::node_hash_map<std::string, Loaded> plugins_;
     Version version_;
     Flags flags_;
     fe::Log log_;
@@ -224,8 +235,6 @@ private:
     fe::Profiler profiler_;
     World world_;
     Paths plugin_dirs_, import_dirs_, prefixes_;
-    absl::flat_hash_map<std::string, fs::path> plugin2dir_;
-    absl::flat_hash_map<std::string, fe::View<PluginSym>> plugin2syms_;
     Flags2Phases phases_;
     Normalizers normalizers_;
     absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;

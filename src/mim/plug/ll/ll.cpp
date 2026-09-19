@@ -1161,7 +1161,7 @@ static const PluginSym known_syms[] = {
     MIM_PLUGIN_SYM(mim_ll_emit_bb),
 };
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(ll) {
     return {"ll", MIM_VERSION, {},         reg_phases,           known_args, std::size(known_args),
             {},   {},          known_syms, std::size(known_syms)};
 }

@@ -69,35 +69,15 @@ jobs:
                 -DBUILD_TESTING=OFF                                                \
                 -DMIM_BUILD_PYTHON=OFF                                             \
                 -DMIM_VERIFY_PLUGINS=OFF                                           \
-                -DMIM_NATIVE_MIM=${{github.workspace}}/build-native/bin/mim        \
-                -DCMAKE_CXX_FLAGS="-fwasm-exceptions"                              \
-                -DCMAKE_EXE_LINKER_FLAGS="-fwasm-exceptions"
+                -DMIM_NATIVE_MIM=${{github.workspace}}/build-native/bin/mim
 
       - name: Build
         run: cmake --build build-wasm --target mim_playground
 
-      # Compiles a program with the very binary that was just built, so a wasm-only regression
-      # (see `Def::ops_ptr`) fails here instead of silently shipping.
+      # A wasm-only regression (see `Def::ops_ptr`) fails here instead of silently shipping;
+      # `cmake --build build-wasm --target mim_playground_smoke` runs the very same check locally.
       - name: Smoke test
-        run: |
-          cd build-wasm/bin
-          node -e '
-            const fs = require("fs");
-            const createMim = require("./mim.js");
-            (async () => {
-                const log = [];
-                const M = await createMim({print: s => log.push(s), printErr: s => log.push(s)});
-                M.FS.writeFile("/in.mim", fs.readFileSync("../../lit/docs/count.mim", "utf8"));
-                const code = M.callMain(["/in.mim", "-P", "/mim", "-p", "opt", "-p", "ll",
-                                         "-X", "ll:o=/out.ll", "--output-dot", "/out.dot", "-o", "/out.mim"]);
-                if (code !== 0) { console.error(log.join("\n")); throw new Error(`mim exited with ${code}`); }
-                for (const f of ["/out.mim", "/out.ll", "/out.dot"]) {
-                    const size = M.FS.readFile(f, {encoding: "utf8"}).length;
-                    if (size === 0) throw new Error(`${f} is empty`);
-                    console.log(`${f}: ${size} bytes`);
-                }
-            })();
-          '
+        run: node web/smoke.js build-wasm/bin lit/docs/count.mim
 
       - name: Upload the playground
         uses: actions/upload-artifact@v4

@@ -172,8 +172,8 @@ function(add_mim_plugin)
 
     if(MIM_STATIC_PLUGINS)
         add_library(mim_${PLUGIN} STATIC)
-        # Every plugin exports the same entry point, so static linking needs one name per plugin.
-        target_compile_definitions(mim_${PLUGIN} PRIVATE mim_get_plugin=mim_get_plugin_${PLUGIN})
+        # Makes MIM_PLUGIN_ENTRY name the entry point after the plugin, as one binary holds them all.
+        target_compile_definitions(mim_${PLUGIN} PRIVATE MIM_STATIC_PLUGINS)
     else()
         add_library(mim_${PLUGIN} MODULE)
     endif()

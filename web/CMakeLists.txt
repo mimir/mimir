@@ -36,3 +36,16 @@ foreach(ARTIFACT IN ITEMS mim.js mim.wasm mim.data)
 endforeach()
 
 add_custom_target(mim_playground ALL DEPENDS ${PLAYGROUND_STAGED})
+
+# The same check CI runs; see web/smoke.js.
+find_program(MIM_NODE NAMES node)
+if(MIM_NODE)
+    add_custom_target(mim_playground_smoke
+        COMMAND
+            ${MIM_NODE} ${CMAKE_CURRENT_LIST_DIR}/smoke.js
+            $<TARGET_FILE_DIR:mim> ${PROJECT_SOURCE_DIR}/lit/docs/count.mim
+        DEPENDS mim_playground
+        COMMENT "Smoke-testing the wasm mim"
+        VERBATIM
+    )
+endif()

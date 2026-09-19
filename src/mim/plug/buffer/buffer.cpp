@@ -11,6 +11,6 @@ namespace mim::plug::buffer {
 static void reg_phases(Flags2Phases& phases) { Phase::hook<lower_ptr, LowerPtr>(phases); }
 } // namespace mim::plug::buffer
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(buffer) {
     return {"buffer", MIM_VERSION, buffer::register_normalizers, buffer::reg_phases, {}, {}, {}, {}, {}, {}};
 }

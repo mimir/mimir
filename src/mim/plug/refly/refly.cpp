@@ -18,6 +18,6 @@ static void reg_phases(Flags2Phases& phases) {
     });
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(refly) {
     return {"refly", MIM_VERSION, refly::register_normalizers, reg_phases, {}, {}, {}, {}, {}, {}};
 }

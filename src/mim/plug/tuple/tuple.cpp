@@ -5,6 +5,6 @@
 
 using namespace mim;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
+MIM_PLUGIN_ENTRY(tuple) {
     return {"tuple", MIM_VERSION, plug::tuple::register_normalizers, {}, {}, {}, {}, {}, {}, {}};
 }

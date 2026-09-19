@@ -204,24 +204,22 @@ void Driver::load(std::string_view spec) {
         else
             throw std::logic_error(oss.str());
     }
-    fe::assert_emplace(plugins_, name, std::move(handle));
-    // An unpinned directory would make Parser::import probe the cwd; leave it unset so it searches normally.
-    if (!dir.empty()) plugin2dir_.emplace(name, std::move(dir));
+    fe::assert_emplace(plugins_, name,
+                       Loaded{std::move(handle), std::move(dir), fe::View<PluginSym>(plugin.syms, plugin.num_syms)});
     // clang-format off
     if (auto reg = plugin.register_normalizers) reg(normalizers_);
     if (auto reg = plugin.register_phases)      reg(phases_);
     // clang-format on
     if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
     if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
-    if (plugin.syms) plugin2syms_.emplace(name, fe::View<PluginSym>(plugin.syms, plugin.num_syms));
 }
 
 void* Driver::get_fun_ptr(std::string_view plugin, const char* name) {
-    if (auto syms = fe::lookup(plugin2syms_, plugin))
-        for (const auto& sym : *syms)
-            if (std::strcmp(sym.name, name) == 0) return sym.ptr;
-    if (auto handle = fe::lookup(plugins_, plugin); handle && handle->get()) return fe::dl::get(handle->get(), name);
-    return nullptr;
+    auto loaded = fe::lookup(plugins_, plugin);
+    if (!loaded) return nullptr;
+    for (const auto& sym : loaded->syms)
+        if (std::strcmp(sym.name, name) == 0) return sym.ptr;
+    return loaded->handle ? fe::dl::get(loaded->handle.get(), name) : nullptr;
 }
 
 const fe::Vector<std::string>& Driver::args(std::string_view plugin) const {
