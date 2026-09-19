@@ -80,7 +80,7 @@ target_link_libraries(libmim
         absl::inlined_vector
         absl::flat_hash_map absl::flat_hash_set
         absl::node_hash_map absl::node_hash_set
-        fe
+        $<BUILD_INTERFACE:fe>
         ${CMAKE_DL_LIBS}
 )
 
