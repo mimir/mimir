@@ -34,7 +34,7 @@ let Ord = [
     Map:      ord.Key → * → *,
     init:     [K: ord.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
     get:      {K: ord.Key} → {V: *} → [Map K V, K#T     ] → option.Opt V,
-    insert_:  {K: ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
+    insert:   {K: ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
     contains: {K: ord.Key} → {V: *} → [Map K V, K#T     ] → Bool,
 ];
 
@@ -48,14 +48,14 @@ fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
             (exit, body)#cond m where
                 con body(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
-                    let map        = ord#insert_ (map, (1I32, 42I64)); // 1 → 42
+                    let map        = ord#insert (map, (1I32, 42I64)); // 1 → 42
                     let m          = mem.store (m, ptr, map);
                     let cond       = ord#contains (map, 1I32);
                     (false, true)#cond m
                     where
                         con true (m: mem.M 0) =
                             let (m, map) = mem.load (m, ptr);
-                            let map        = ord#insert_ (map, (1I32, x)); // 1 → x
+                            let map        = ord#insert (map, (1I32, x)); // 1 → x
                             let m        = mem.store (m, ptr, map);
                             next m;
 
@@ -71,7 +71,7 @@ fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
             end
     end;
 
-let map = (ord.Map, ord.init.map, ord.get, ord.insertion.map, ord.contains.map);
+let map = (ord.Map, ord.init.map, ord.get, ord.insert.map, ord.contains.map);
 
 // I can't have a polymorphic function as extern at the moment, so I instantiate here:
 extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] = poly map ((m, x), return);
