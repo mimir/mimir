@@ -23,7 +23,7 @@
 
 plugin mem;
 plugin ord;
-plugin option as o;
+plugin option as opt;
 plugin core;
 
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
@@ -33,29 +33,29 @@ let Key = (I32, core.icmp.ul @i32);
 let Ord = [
     Map:      ord.Key → * → *,
     init:     [K: ord.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
-    get:      {K: ord.Key} → {V: *} → [Map K V, K#T     ] → o.Opt V,
+    get:      {K: ord.Key} → {V: *} → [Map K V, K#T     ] → opt.Opt V,
     insert:   {K: ord.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
     contains: {K: ord.Key} → {V: *} → [Map K V, K#T     ] → Bool,
 ];
 
-fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
+fun poly (o: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
     // stack-alloc dictionary and init with: 0 → 23, 1 → x
-    ret (m, ptr) = mem.slot (ord#Map Key I64, 0) $ m;
-    let  m       = mem.store (m, ptr, ord#init Key ((0I32, 23I64), (1I32, x)));
+    ret (m, ptr) = mem.slot (o#Map Key I64, 0) $ m;
+    let  m       = mem.store (m, ptr, o#init Key ((0I32, 23I64), (1I32, x)));
     head m where
         con head(m: mem.M 0) =
             ret (m, cond) = dont_know $ m;
             (exit, body)#cond m where
                 con body(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
-                    let map        = ord#insert (map, (1I32, 42I64)); // 1 → 42
+                    let map        = o#insert (map, (1I32, 42I64)); // 1 → 42
                     let m          = mem.store (m, ptr, map);
-                    let cond       = ord#contains (map, 1I32);
+                    let cond       = o#contains (map, 1I32);
                     (false, true)#cond m
                     where
                         con true (m: mem.M 0) =
                             let (m, map) = mem.load (m, ptr);
-                            let map      = ord#insert (map, (1I32, x)); // 1 → x
+                            let map      = o#insert (map, (1I32, x)); // 1 → x
                             let m        = mem.store (m, ptr, map);
                             next m;
 
@@ -65,8 +65,8 @@ fun poly (ord: Ord) (m: mem.M 0, x: I64): [mem.M 0, I64] =
 
                 con exit(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
-                    let opt_v      = ord#get (map, 1I32);
-                    let val        = o.unwrap_unsafe opt_v;
+                    let opt_v      = o#get (map, 1I32);
+                    let val        = opt.unwrap_unsafe opt_v;
                     return (m, val);
             end
     end;
