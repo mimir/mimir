@@ -48,6 +48,11 @@ foreach(PLUGIN IN LISTS MIM_PLUGIN_LIST)
     add_dependencies(mim_${PLUGIN} ${MIM_INTERNAL_PLUGINS})
 endforeach()
 
+if(MIM_STATIC_PLUGINS)
+    mim_static_plugin_registry(mim_static_plugins ${MIM_PLUGIN_LIST})
+    add_dependencies(mim_static_plugins mim_all_plugins)
+endif()
+
 add_dependencies(mim_all mim_all_plugins)
 
 # `--bootstrap` never loads the plugin libraries, so it cannot exercise the normalizers an annex

@@ -256,6 +256,6 @@ static constexpr PluginEnv known_envs[] = {
 // clang-format on
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"ll_nvptx", MIM_VERSION,           {},         reg_phases,
-            known_args, std::size(known_args), known_envs, std::size(known_envs)};
+    return {"ll_nvptx", MIM_VERSION,           {}, reg_phases, known_args, std::size(known_args),
+            known_envs, std::size(known_envs), {}, {}};
 }

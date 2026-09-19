@@ -51,7 +51,7 @@ private:
     std::unique_ptr<Phase> resolved_;
 };
 
-void reg_phases(Flags2Phases& phases) {
+static void reg_phases(Flags2Phases& phases) {
     // clang-format off
     fe::assert_emplace(phases, Annex::base<compile::null>(), [](World&) { return std::unique_ptr<Phase>{}; });
     Phase::hook<compile::beta_red,         BetaRed        >(phases);
@@ -76,6 +76,7 @@ static constexpr PluginArg known_args[] = {
 // clang-format on
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"compile", MIM_VERSION, compile::register_normalizers, reg_phases, known_args, std::size(known_args),
-            {},        {}};
+    return {
+        "compile", MIM_VERSION, compile::register_normalizers, reg_phases, known_args, std::size(known_args), {}, {},
+        {},        {}};
 }

@@ -3,13 +3,21 @@
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
+#include "mim/plug/regex/dfa2matcher.h"
 #include "mim/plug/regex/phase/lower_regex.h"
+#include "mim/plug/regex/regex2nfa.h"
 
 using namespace mim;
 using namespace mim::plug;
 
-void reg_phases(Flags2Phases& phases) { Phase::hook<regex::lower_regex, regex::LowerRegex>(phases); }
+static void reg_phases(Flags2Phases& phases) { Phase::hook<regex::lower_regex, regex::LowerRegex>(phases); }
+
+static const PluginSym known_syms[] = {
+    {  "regex2nfa",   (void*)&regex2nfa},
+    {"dfa2matcher", (void*)&dfa2matcher},
+};
 
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"regex", MIM_VERSION, regex::register_normalizers, reg_phases, {}, {}, {}, {}};
+    return {"regex", MIM_VERSION, regex::register_normalizers, reg_phases, {}, {}, {},
+            {},      known_syms,  std::size(known_syms)};
 }

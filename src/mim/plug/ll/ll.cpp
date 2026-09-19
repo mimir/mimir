@@ -1152,6 +1152,16 @@ static constexpr PluginArg known_args[] = {
 };
 // clang-format on
 
+#define MIM_LL_SYM(f) \
+    PluginSym { #f, (void*)&plug::ll::f }
+static const PluginSym known_syms[] = {
+    MIM_LL_SYM(mim_ll_convert),
+    MIM_LL_SYM(mim_ll_finalize),
+    MIM_LL_SYM(mim_ll_emit_epilogue),
+    MIM_LL_SYM(mim_ll_emit_bb),
+};
+
 extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"ll", MIM_VERSION, {}, reg_phases, known_args, std::size(known_args), {}, {}};
+    return {"ll", MIM_VERSION, {},         reg_phases,           known_args, std::size(known_args),
+            {},   {},          known_syms, std::size(known_syms)};
 }

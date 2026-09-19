@@ -174,10 +174,13 @@ public:
     /// where `libmim_<bar>.so` (Linux, Mac) / `mim_<bar>.dll` (Win) is searched for.
     ///@{
     void load(std::string_view name);
+    /// Makes a Plugin linked into this binary available to Driver::load under @p name.
+    /// `MIM_STATIC_PLUGINS` builds generate one call per Plugin; see `cmake/Mim.cmake`.
+    static void add_static_plugin(const char* name, Plugin (*get_plugin)());
     /// Bare plugin name of a possibly path-qualified @p name: `foo/libmim_bar.so` &rarr; `bar`.
     static std::string plugin_name(std::string_view name);
     bool is_loaded(std::string_view name) const { return fe::lookup(plugins_, name); }
-    /// Directory `libmim_<name>` was loaded from, so that its `<name>.mim` half cannot come from elsewhere.
+    /// Directory the Plugin was loaded from, so that its `<name>.mim` half cannot come from elsewhere.
     const fs::path* plugin_dir(std::string_view name) const { return fe::lookup(plugin2dir_, name); }
     void* get_fun_ptr(std::string_view plugin, const char* name);
 
@@ -222,6 +225,7 @@ private:
     World world_;
     Paths plugin_dirs_, import_dirs_, prefixes_;
     absl::flat_hash_map<std::string, fs::path> plugin2dir_;
+    absl::flat_hash_map<std::string, fe::View<PluginSym>> plugin2syms_;
     Flags2Phases phases_;
     Normalizers normalizers_;
     absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;

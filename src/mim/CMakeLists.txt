@@ -1,4 +1,8 @@
-add_library(libmim SHARED)
+if(EMSCRIPTEN)
+    add_library(libmim STATIC) # wasm knows no shared objects
+else()
+    add_library(libmim SHARED)
+endif()
 add_library(mim::libmim ALIAS libmim)
 target_sources(libmim
     PRIVATE
