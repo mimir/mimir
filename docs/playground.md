@@ -80,6 +80,7 @@ _optimize_ runs the [opt](@ref opt) pipeline and the [ll](@ref ll) backend; with
 A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/?src=plugin%20core%3B%0Ause%20core.ops.u.w%3B%0A%0Aextern%20fun%20inc%20(x%3A%20I32)%3A%20I32%20%3D%20return%20(x%20%2B%201I32)%3B%0A) increments an `I32`.
 Percent-encode it — `encodeURIComponent` in the browser's console produces exactly what the page expects; a `+` stands for itself and is *not* a space.
 The picker keeps such a program under _(custom)_, so loading an example does not lose it.
+Every Mim snippet in these docs is a link of that kind: hover it and the ▶ button next to the copy button opens it here.
 
 The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/), and its checkboxes are exactly the CLI's `--dot-*` switches:
 

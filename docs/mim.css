@@ -6,3 +6,45 @@ div.fragment span.mim-literal {
 div.fragment span.mim-special {
     color: var(--fragment-preprocessor);
 }
+
+/* The run button mirrors doxygen-awesome's copy button and, where there is one, sits left of it. */
+a.mim-run {
+    --mim-run-right: calc(var(--spacing-large) - (var(--spacing-large) / 2.5));
+    opacity: 0;
+    background: var(--fragment-background);
+    width: 28px;
+    height: 28px;
+    position: absolute;
+    right: var(--mim-run-right);
+    top: calc(var(--spacing-large) - (var(--spacing-large) / 2.5));
+    border: 1px solid var(--fragment-foreground);
+    border-radius: var(--border-radius-small);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+}
+
+.doxygen-awesome-fragment-wrapper:has(doxygen-awesome-fragment-copy-button) a.mim-run {
+    right: calc(var(--mim-run-right) + 34px);
+}
+
+.doxygen-awesome-fragment-wrapper:hover a.mim-run {
+    opacity: .28;
+}
+
+a.mim-run:hover {
+    opacity: 1 !important;
+}
+
+a.mim-run svg {
+    fill: var(--fragment-foreground);
+    width: 18px;
+    height: 18px;
+}
+
+@media screen and (max-width: 767px) {
+    a.mim-run {
+        --mim-run-right: 0px;
+    }
+}

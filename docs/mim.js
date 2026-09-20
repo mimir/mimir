@@ -2,6 +2,7 @@
 
 Lexes Mim and highlights the snippets in the documentation.
 Doxygen has no Mim parser and discards the language of a fenced code block, so a snippet is marked up with a `mim-code` wrapper and coloured here.
+Each such snippet also gets a button that opens it in the playground via its `?src=` parameter.
 The playground stages this file as `mim-code.js` and maps the kinds of `next` itself.
 
 */
@@ -15,6 +16,9 @@ class MimCode {
                            "i1", "i8", "i16", "i32", "i64"])
     static LITERAL = new Set(["bot", "ff", "top", "tt", "⊥", "⊤"])
     static SPECIAL = new Set(["_", "return"])
+    static PLAYGROUND = "https://mimir.github.io/playground/"
+    static RUN_TITLE = "Run in the playground"
+    static RUN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M5.5 3.5 20.5 12 5.5 20.5Z"/></svg>`
     static TOKEN = /(\/\/.*)|(\/\*)|("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|([«»‹›→←Π∀])|(\s+|[^])/uy
     /// Doxygen's own token classes; a kind without one is left unhighlighted.
     static CLASS = {comment: "comment", string: "stringliteral", number: "mim-literal", keyword: "keyword",
@@ -23,12 +27,41 @@ class MimCode {
     static init() {
         $(function() {
             for (const fragment of document.querySelectorAll(".mim-code div.fragment")) {
+                MimCode.run(fragment)
                 if (fragment.querySelector("span")) continue // Doxygen highlighted this one itself.
 
                 const state = {comment: false}
                 for (const line of fragment.querySelectorAll("div.line")) line.innerHTML = MimCode.code(line.textContent, state)
             }
         })
+    }
+
+    /// Doxygen renders a blank line as a lone space.
+    static source(fragment) {
+        return [...fragment.querySelectorAll("div.line")].map(line => line.textContent.replace(/\s+$/, "")).join("\n")
+    }
+
+    /// The copy button already wraps every fragment — but only in a browser that has a clipboard.
+    static wrapper(fragment) {
+        const parent = fragment.parentNode
+        if (parent.classList.contains("doxygen-awesome-fragment-wrapper")) return parent
+
+        const wrapper = document.createElement("div")
+        wrapper.className = "doxygen-awesome-fragment-wrapper"
+        parent.replaceChild(wrapper, fragment)
+        wrapper.appendChild(fragment)
+        return wrapper
+    }
+
+    static run(fragment) {
+        const button = document.createElement("a")
+        button.className = "mim-run"
+        button.href = `${MimCode.PLAYGROUND}?src=${encodeURIComponent(MimCode.source(fragment))}`
+        button.target = "_blank"
+        button.rel = "noopener"
+        button.title = MimCode.RUN_TITLE
+        button.innerHTML = MimCode.RUN_ICON
+        MimCode.wrapper(fragment).appendChild(button)
     }
 
     static escape(text) {
