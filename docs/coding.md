@@ -320,8 +320,7 @@ In particular, note the different output levels of [`mim::Def::dump`](@ref mim::
 You can also tweak the output behavior directly from within GDB by changing [`mim::World::flags`](@ref mim::World::flags) or [`mim::World::log`](@ref mim::World::log):
 
 ```gdb
-(gdb) call world().flags().dump_gid = 1
-(gdb) call world().flags().dump_recursive = 1
+(gdb) call world().flags().dump_local = 1
 (gdb) call world().log.max_level_ = 4
 ```
 
