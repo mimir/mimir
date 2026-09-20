@@ -237,7 +237,7 @@ const Def* Def::var_type() {
         case Node::Pi:     return as<Pi  >()->dom();
         case Node::Rule:   return as<Rule>()->dom();
         case Node::Arr:
-        case Node::Pack:   return world().type_idx(arity()); // TODO shapes like (2, 3)
+        case Node::Pack:   return world().type_indices(as<Seq>()->shape());
         case Node::Sigma:
         case Node::Join:
         case Node::Meet:   return this;
@@ -559,9 +559,10 @@ const Def* Def::immutabilize() {
             auto seq = as<Seq>();
             auto arr = node() == Node::Arr;
             if (is_immutabilizable())
-                return arr ? w.arr(seq->arity(), seq->body()) : w.pack(seq->arity(), seq->body());
+                return arr ? w.arr(seq->shape(), seq->body()) : w.pack(seq->shape(), seq->body());
             // below the threshold an unrollable Seq becomes an explicit Sigma/Tuple
-            if (auto n = Lit::isa(seq->arity()); n && *n < w.flags().scalarize_threshold) {
+            if (auto n = seq->shape().is_fused() ? std::nullopt : Lit::isa(seq->arity());
+                n && *n < w.flags().scalarize_threshold) {
                 auto elems = DefVec(*n, [&](size_t i) { return seq->reduce(w.lit_idx(*n, i)); });
                 return arr ? w.sigma(elems) : w.tuple(elems);
             }
@@ -576,9 +577,9 @@ size_t Def::reduction_offset() const noexcept {
         case Node::Join:
         case Node::Lam:
         case Node::Meet:
-        case Node::Pack:
         case Node::Sigma: return 0;
         case Node::Arr:
+        case Node::Pack:
         case Node::Pi:
         case Node::Rule:  return 1;
         default:          return size_t(-1);
@@ -587,11 +588,9 @@ size_t Def::reduction_offset() const noexcept {
 
 const Def* Def::arity() const {
     switch (node()) {
-        case Node::Arr:   return op(0);
+        case Node::Arr:
+        case Node::Pack:  return Shape(op(0)).front();
         case Node::Sigma: return num_ops() != 1 || isa_mut() ? world().lit_nat(num_ops()) : op(0)->arity();
-        case Node::Pack:
-            if (auto arr = type()->isa<Arr>()) return arr->arity();
-            return type() == world().sigma() ? world().lit_nat_0() : world().lit_nat_1();
         default:
             if (auto t = type(); t && !t->isa<Type>()) return t->arity();
             return world().lit_nat_1();
@@ -625,7 +624,9 @@ const Def* Def::proj(nat_t a, nat_t i) const {
     }
 
     if (auto seq = isa<Seq>()) {
-        if (seq->has_var()) return seq->reduce(world().lit_idx(a, i));
+        auto& w = world();
+        if (seq->shape().is_fused()) return w.peel(seq, w.lit_idx(a, i)); // one axis off a fused shape yields a sub-Seq
+        if (seq->has_var()) return seq->reduce(w.lit_idx(a, i));
         return seq->body();
     }
 
@@ -663,6 +664,6 @@ std::optional<nat_t> Idx::size2bitwidth(const Def* size) {
  */
 
 const App* Global::type() const { return Def::type()->as<App>(); }
-const Def* Global::alloced_type() const { return type()->arg(0); }
+const Def* Global::alloced_type() const { return type()->arg(2, 0); }
 
 } // namespace mim

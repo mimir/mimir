@@ -14,7 +14,7 @@ public:
     using Setters<Axm>::set;
 
     /// @name Normalization
-    /// @anchor normalization
+    /// @anchor curry_trip
     /// For a curried App of an Axm, you only want to trigger normalization at specific spots.
     /// For this reason, MimIR maintains a Def::curry_ counter that each App decrements.
     /// The Axm::normalizer() will be triggered when Axm::curry() becomes `0`.
@@ -151,6 +151,31 @@ public:
 
 private:
     friend class World;
+};
+
+/// An *identity annotation*: a fully applied Axm of type `{T: *} → T → T`.
+/// By parametricity such an axm can only be the identity, so its type alone certifies that it carries intent
+/// rather than meaning: it is a no-op to everyone but the consumer that looks for it by name.
+/// Examples are `ll.vec` (nominates a loop as a schedule's vector loop), `tensor.buf` (nominates an array value
+/// as a buffer-resident tensor) and the `clos.anno` family (classifies how a `Lam` is used).
+///
+/// The contract every phase owes an annotation it does not consume:
+/// * **transparent to matching** - peel it before testing what the annotated Def *is* (Anno::peel), and
+/// * **preserved by rewriting** - never drop it just because it means nothing here.
+///
+/// Whether an annotation may be *dropped*, moved or duplicated is its own consumer's business and is documented
+/// on the axm: `ll.vec` is dropped when the `ll` module is not loaded, while losing a `tensor.buf` silently
+/// changes a function's ABI.
+class Anno {
+public:
+    /// The annotated Def if @p def is an identity annotation, `nullptr` otherwise.
+    static const Def* isa(const Def* def);
+    /// @p def with *all* identity annotations stripped; the identity on anything else.
+    static const Def* peel(const Def* def) {
+        while (auto annotated = isa(def))
+            def = annotated;
+        return def;
+    }
 };
 
 // clang-format off

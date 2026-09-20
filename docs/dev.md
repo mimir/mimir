@@ -451,7 +451,7 @@ In this example, the wrapped [`App`](@ref mim::App) refers to the final applicat
 Use [`mim::App::decurry`](@ref mim::App::decurry) if you want direct access to the preceding application.
 See the examples below.
 
-If you design an [axiom](@ref mim::Axm) that returns a function, you can [fine-tune the trigger point](@ref normalization) of [`mim::Axm::isa`](@ref mim::Axm::isa) / [`mim::Axm::as`](@ref mim::Axm::as).
+If you design an [axiom](@ref mim::Axm) that returns a function, you can [fine-tune the trigger point](@ref curry_trip) of [`mim::Axm::isa`](@ref mim::Axm::isa) / [`mim::Axm::as`](@ref mim::Axm::as).
 
 #### Without Subtags
 

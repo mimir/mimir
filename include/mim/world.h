@@ -467,20 +467,25 @@ public:
     }
     Arr * mut_arr (const Def* type) { return mut_seq(false, type)->as<Arr >(); }
     Pack* mut_pack(const Def* type) { return mut_seq(true , type)->as<Pack>(); }
-    const Def* arr (const Def* arity, const Def* body) { return seq(false, arity, body); }
-    const Def* pack(const Def* arity, const Def* body) { return seq(true , arity, body); }
-    const Def* arr (Defs       shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(Defs       shape, const Def* body) { return seq(true , shape, body); }
-    const Def* arr (u64            n, const Def* body) { return seq(false,     n, body); }
-    const Def* pack(u64            n, const Def* body) { return seq(true ,     n, body); }
-    const Def* arr (fe::View<u64>  shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(fe::View<u64>  shape, const Def* body) { return seq(true , shape, body); }
-    const Def*  arr_unsafe(           const Def* body) { return seq_unsafe(false, body); }
-    const Def* pack_unsafe(           const Def* body) { return seq_unsafe(true , body); }
-
-    const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
-    const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); }
+    const Def* arr (Shape         shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(Shape         shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (Defs          shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(Defs          shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (fe::View<u64> shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(fe::View<u64> shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (u64               n, const Def* body) { return seq(false,     n, body); }
+    const Def* pack(u64               n, const Def* body) { return seq(true ,     n, body); }
+    const Def*  arr_unsafe(              const Def* body) { return seq_unsafe(false, body); }
+    const Def* pack_unsafe(              const Def* body) { return seq_unsafe(true , body); }
     // clang-format on
+    ///@}
+
+    /// @name prod
+    /// Generic constructor for tuple or sigma.
+    ///@{
+    // clang-format off
+    const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
+    const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); } ///< `()` or `[]`.
     ///@}
 
     /// @name Seq
@@ -489,13 +494,24 @@ public:
     ///@{
     const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
     Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
-    const Def* seq(bool is_pack, const Def* arity, const Def* body);
+    const Def* seq(bool is_pack, Shape shape, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
     const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
         return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
+
+    /// @p s without its leading @p k axes - its body once @p k covers all of them; `nullptr` if that isn't a type.
+    const Def* drop(const Seq* s, nat_t k);
+    /// `«i: a; «j: b; T»»` -> `«v: (a, b); T»` - the inverse of World::peel, for a nest that World::seq
+    /// cannot fuse on construction because its body still binds an index. Yields a Def::zonk_mut @p seq if the
+    /// nest is ragged, i.e. if the inner extents depend on the outer index.
+    const Def* fuse(Seq* seq);
+    /// @p seq with the axes covered by @p index peeled off - the element itself once @p index covers all of them.
+    const Def* peel(const Seq* seq, const Def* index);
+    /// The type of an index into @p shape: `Idx n`, a Sigma of those, or `«i: r; Idx (s#i)»` for a dynamic rank.
+    const Def* type_indices(Shape shape);
     ///@}
 
     /// @name Tuple
@@ -513,7 +529,6 @@ public:
     const Def* extract(const Def* d, const Def* i);
     const Def* extract(const Def* d, u64 a, u64 i) { return extract(d, lit_idx(a, i)); }
     const Def* extract(const Def* d, u64 i) { return extract(d, Lit::as(d->arity()), i); }
-
     /// Builds `(f, t)#cond`.
     /// @note Expects @p cond as first, @p t as second, and @p f as third argument.
     const Def* select(const Def* cond, const Def* t, const Def* f) { return extract(tuple({f, t}), cond); }
@@ -744,6 +759,12 @@ public:
     ///@}
 
 private:
+    Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
+    /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
+    bool is_folded_axis(const Def* type, const Def* index, const Def* size);
+    const Def* extract1(const Def* d, const Def* i); ///< World::extract for a *scalar* @p i.
+    const Def* extract_fused(const Def* d, Shape i); ///< World::extract for an @p i that no longer folds.
+
     /// @name Put into Sea of Nodes
     ///@{
     /// Common tail of World::unify \& World::insert, right after World::allocate.
@@ -869,10 +890,9 @@ private:
     /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
     /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
     Reduct* reduct(const Var* var, const Def* arg, size_t n) {
-        if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second;
-        auto reduct = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
-        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
-        return reduct;
+        auto [i, ins] = move_.substs.try_emplace(std::pair{var, arg}, nullptr);
+        if (ins) i->second = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
+        return i->second;
     }
 
     /// Caches `[var -> arg]` as @p defs that have already been computed.

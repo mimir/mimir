@@ -272,7 +272,7 @@ private:
  */
 
 inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* type) {
-    if (auto arr = type->isa<Arr>()) {
+    if (auto arr = type->isa<Arr>(); arr && !arr->shape().is_fused()) {
         if (auto l = Lit::isa(arr->arity())) {
             if (arr->body()->isa<Nat>() || Idx::isa(arr->body()) || Axm::isa<math::F>(arr->body()))
                 return std::pair{*l, arr->body()};

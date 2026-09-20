@@ -12,7 +12,9 @@
 
 plugin core;
 
-extern lam f(): «3; Nat» = ‹i: 3; core.nat.add (1, core.bitcast Nat i)›;
+use core.ops.n;
+
+extern lam f(): «3; Nat» = ‹i: 3; 1 + core.bitcast Nat i›;
 
 // FLAT:      Profile (flat):
 // FLAT-NEXT: {{.*}}total{{.*}}self{{.*}}name

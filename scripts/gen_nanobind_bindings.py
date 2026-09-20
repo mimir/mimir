@@ -181,6 +181,12 @@ _FUNCTION_CASTER = "function.h"
 _MIM_RANGES = ("fe::Span", "fe::Vector")
 _MIM_SET = "fe::Patricia::Set"  # `Vars`/`Muts`: a forward range of `D*`
 
+# Non-owning views over a bound pointer: bound as that pointer rather than as a
+# Python class of their own, so Python passes and receives the viewed type. A
+# class listed here is *not* registered, and a signature mentioning it renders
+# with the mapped spelling (a returned view is dereferenced at the call site).
+_VIEW_TYPES = {"mim::Shape": "const mim::Def*"}
+
 # How many entries a note spells out before summarising the rest.
 _MAX_REPORTED = 20
 
@@ -327,6 +333,8 @@ def _casters_for(t, depth: int = 0) -> set | None:
             return None if sub is None else sub | {header}
         if canon.get_num_template_arguments() >= 0:
             return None  # some other template: nanobind has no caster for it
+        if name in _VIEW_TYPES:
+            return set()
         return set() if _is_bound_class(decl) else None
 
     return None
@@ -373,6 +381,16 @@ def _range_value_type(t) -> tuple[str, set] | None:
         # (`Span<const Def* const>` → `const Def*`) and must stay.
         value = _LEADING_CV.sub("", value)
     return value, casters | {"vector.h"}
+
+
+def _view_target(t) -> str | None:
+    """The spelling to emit for *t* if it is a `_VIEW_TYPES` view, else None."""
+    canon = t.get_canonical()
+    if canon.kind in (TypeKind.LVALUEREFERENCE, TypeKind.RVALUEREFERENCE):
+        canon = canon.get_pointee().get_canonical()
+    if canon.kind != TypeKind.RECORD:
+        return None
+    return _VIEW_TYPES.get(_qualified_name(canon.get_declaration()))
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +452,8 @@ def _resolve_param_type(p) -> tuple[str, set] | None:
     if rng := _range_value_type(p.type):
         value, casters = rng
         return f"const std::vector<{value}>&", casters
+    if target := _view_target(p.type):
+        return target, set()
     if (casters := _casters_for(p.type)) is None:
         return None
     spelling = _type_spelling(p.type)
@@ -544,6 +564,8 @@ class MethodInfo:
     casters: set = field(default_factory=set)
     # Element type if the return is a MimIR range copied into a std::vector.
     range_elem: str | None = None
+    # Whether the return is a `_VIEW_TYPES` view, handed back as the viewed type.
+    view_return: bool = False
 
     @property
     def py_name(self) -> str:
@@ -631,7 +653,7 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
     if is_ctor and _is_copy_or_move_ctor(cursor, class_name):
         return None
 
-    ret, range_elem, ret_casters = "", None, set()
+    ret, range_elem, ret_casters, view_return = "", None, set(), False
     if not is_ctor:
         ret = _type_spelling(cursor.result_type)
         # The written spelling catches what the canonical one cannot: the MIM_PROJ
@@ -644,6 +666,8 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
         # a list; anything else must be a type nanobind can convert.
         if rng := _range_value_type(cursor.result_type):
             range_elem, ret_casters = rng
+        elif target := _view_target(cursor.result_type):
+            ret, view_return = target, True
         elif (ret_casters := _casters_for(cursor.result_type)) is None:
             drops.append(_signature(cursor, class_name))
             return None
@@ -663,6 +687,7 @@ def _extract_method(cursor, class_name: str, drops: list[str]) -> MethodInfo | N
         is_constructor=is_ctor,
         casters=casters | ret_casters,
         range_elem=range_elem,
+        view_return=view_return,
     )
 
 
@@ -693,6 +718,8 @@ def _is_bindable_record(cursor) -> bool:
         return False  # a forward/opaque declaration has nothing to bind
     name = cursor.spelling
     if not name or name.startswith("__") or name.startswith("("):
+        return False
+    if _qualified_name(cursor) in _VIEW_TYPES:
         return False
     # Skip template specializations (e.g. `template<> struct fe::is_bit_enum<mim::Dep>`
     # or `formatter<...>`): they are not real, bindable classes.
@@ -867,6 +894,9 @@ def _gen_method_lambda(mi: MethodInfo, indent: str = "    ") -> str:
                 f"return std::vector<{mi.range_elem}>(_v.begin(), _v.end()); }}")
         # A range is copied by value, but its elements are the bound objects the
         # reference policy is about.
+        policy = _ref_policy(mi.is_static)
+    elif mi.view_return:
+        body = f"[]({params}) {{ return *{call}; }}"
         policy = _ref_policy(mi.is_static)
     else:
         # An lvalue-reference return is bound through its address so it reaches

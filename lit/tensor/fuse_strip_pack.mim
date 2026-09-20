@@ -13,7 +13,7 @@ plugin compile;
 
 use core.ops.n;
 
-fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (x + y#0₁);
+fun addf (x y: Nat)@tt: Nat = return (x + y);
 lam add1 (x: Nat): Nat = x + 1;
 lam mo (i k: affine.Index): «1; affine.Index» = i;
 lam mi (i k: affine.Index): «2; affine.Index» = (i, k);

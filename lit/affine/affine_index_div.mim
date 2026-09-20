@@ -11,6 +11,8 @@ plugin core;
 plugin affine;
 plugin mem;
 
+use core.ops.u.w;
+
 lam f (i j: affine.Index): «2; affine.Index» =
     (affine.semiop.floordiv (i, 3), affine.semiop.rem (j, 3));
 
@@ -18,8 +20,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), ret
     let a = argc;
     let (m, (r1, r2)) = affine.map f (a, a) m;
     // s = argc / 3 + argc % 3
-    let s = core.wrap.add 0 (r1, r2);
-    return (m, s);
+    return (m, r1 + r2);
 
 // CHECK-DAG: core.div.udiv
 // CHECK-DAG: core.div.urem

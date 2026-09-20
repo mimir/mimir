@@ -2,9 +2,9 @@
 
 namespace mim::plug::clos {
 
-template<attr o>
+template<anno o>
 const Def* normalize_clos(const Def*, const Def*, const Def* arg) {
-    return o == attr::bottom ? arg : nullptr;
+    return o == anno::bottom ? arg : nullptr;
 }
 
 MIM_clos_NORMALIZER_IMPL

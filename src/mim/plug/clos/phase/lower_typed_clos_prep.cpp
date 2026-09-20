@@ -28,8 +28,8 @@ void split(DefSet& out, const Def* def, bool as_callee) {
         if (var->type()->isa<Pi>() || interesting_type(var)) out.insert(var);
     } else if (auto c = isa_clos_lit(def, false)) {
         split(out, c.fnc(), as_callee);
-    } else if (auto a = Axm::isa<attr>(def)) {
-        split(out, a->arg(), as_callee);
+    } else if (auto annotated = Anno::isa(def)) {
+        split(out, annotated, as_callee);
     } else if (auto proj = def->isa<Extract>()) {
         split(out, proj->tuple(), as_callee);
     } else if (auto pack = def->isa<Pack>()) {
@@ -72,18 +72,18 @@ bool LowerTypedClosPrep::analyze() {
             log().d("closure (env = {}, fnc = {})", c.env(), c.fnc());
             if (!c.fnc_as_lam() || is_esc(c.fnc_as_lam()) || is_esc(c.env_var())) changed |= set_esc(c.env());
         } else if (auto store = Axm::isa<mem::store>(def)) {
-            log().d("store: {}", store->arg(2));
-            changed |= set_esc(store->arg(2));
+            log().d("store: {}", store->arg(3, 2));
+            changed |= set_esc(store->arg(3, 2));
         } else if (auto app = def->isa<App>(); app && Pi::isa_cn(app->callee_type())) {
             log().d("app: {}", def);
             auto callees = split(app->callee(), true);
-            for (auto i = 0_u64; i < app->num_args(); i++) {
-                if (!interesting_type(app->arg(i))) continue;
+            for (auto i = 0_u64, na = app->num_args(); i < na; i++) {
+                if (!interesting_type(app->arg(na, i))) continue;
                 if (std::ranges::any_of(callees, [&](const Def* callee) {
-                        if (auto lam = callee->isa_mut<Lam>()) return is_esc(lam->var(i));
+                        if (auto lam = callee->isa_mut<Lam>()) return is_esc(lam->var(lam->num_vars(), i));
                         return true;
                     }))
-                    changed |= set_esc(app->arg(i));
+                    changed |= set_esc(app->arg(na, i));
             }
         }
 
@@ -107,8 +107,8 @@ const Def* LowerTypedClosPrep::rewrite_imm_Tuple(const Tuple* tuple) {
     if (!is_bootstrapping()) {
         if (auto closure = isa_clos_lit(tuple, false)) {
             auto fnc = closure.fnc();
-            if (!Axm::isa<attr>(fnc)) {
-                auto new_fnc = new_world().call(esc_.contains(fnc) ? attr::esc : attr::bottom, rewrite(fnc));
+            if (!Axm::isa<anno>(fnc)) {
+                auto new_fnc = new_world().call(esc_.contains(fnc) ? anno::esc : anno::bottom, rewrite(fnc));
                 return clos_pack(rewrite(closure.env()), new_fnc, rewrite(closure->type()));
             }
         }

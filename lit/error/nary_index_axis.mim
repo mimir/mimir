@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+// Only the axes that fold away reach the scalar check, so a *trailing* axis needs one of its own.
+extern lam f (i: Idx 2, j: Idx 99, t: «2, 3; Nat»): Nat = t#(i, j);
+
+// CHECK: {{.*}}nary_index_axis.mim:4:59-4:66: error: index `j` does not fit within arity `3`
+// CHECK-NEXT: 4 | extern lam f (i: Idx 2, j: Idx 99, t: «2, 3; Nat»): Nat = t#(i, j);
+// CHECK-NEXT:   |                                                           ^^^^^^^^

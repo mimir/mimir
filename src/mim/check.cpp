@@ -184,17 +184,17 @@ std::pair<Checker::Binders::iterator, bool> Checker::bind(Def* mut, const Def* d
     return res;
 }
 
-/// Is @p def a Seq that spans exactly one dimension, i.e. one that a rank can be peeled off?
-static bool isa_dim(const Def* def) {
-    auto seq = def->isa<Seq>();
-    return seq && seq->arity()->unfold_type()->zonk_mut()->isa<Nat>();
+/// The statically known rank of @p def: `0` if it isn't a Seq at all, `nullopt` if its own rank is dynamic.
+static std::optional<nat_t> known_rank(const Def* def) {
+    if (auto seq = def->zonk_mut()->isa<Seq>()) return seq->shape().rank();
+    return 0;
 }
 
-/// The rank of `«s; T»` with `s: «r; Nat»` is unknown as long as `r` is: World::seq cannot un-nest it yet.
+/// The rank of `«s; T»` with `s: «r; Nat»` is unknown as long as `r` is, and so is Def::arity.
 /// @returns the unset Hole standing for `r`, or `nullptr`.
 static Hole* isa_flex_rank(const Def* def) {
     if (auto seq = def->isa_imm<Seq>()) {
-        if (auto shape = Hole::isa_unset(seq->arity()->zonk_mut())) {
+        if (auto shape = Hole::isa_unset(seq->shape()->zonk_mut())) {
             if (auto arr = shape->type()->zonk_mut()->isa<Arr>()) return Hole::isa_unset(arr->arity()->zonk_mut());
         }
     }
@@ -271,14 +271,16 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         auto t2 = d2->type();
         if (t1 && t2 && !alpha_<mode>(t1, t2)) return fail<mode>();
 
-        // The arity of a flex-rank Seq is the entire shape vector, so its rank must be pinned down first.
+        // Def::arity of a flex-rank Seq is its first extent, which needs the rank pinned down first.
         if constexpr (mode == Check) {
-            if (auto rank = isa_flex_rank(d1); rank && isa_dim(d2)) {
+            // Only a statically known rank on the *other* side pins it down; two dynamic ranks unify
+            // their shapes structurally further below.
+            if (auto rank = isa_flex_rank(d1); rank && known_rank(d2)) {
                 if (!check_rank(d1->as<Seq>(), rank, d2)) return fail<Check>();
                 todo = true;
                 continue;
             }
-            if (auto rank = isa_flex_rank(d2); rank && isa_dim(d1)) {
+            if (auto rank = isa_flex_rank(d2); rank && known_rank(d1)) {
                 if (!check_rank(d2->as<Seq>(), rank, d1)) return fail<Check>();
                 todo = true;
                 continue;
@@ -303,8 +305,8 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         if (auto umax = d1->isa<UMax>(); umax && !d2->isa<UMax>()) return check(umax, d2);
         if (auto umax = d2->isa<UMax>(); umax && !d1->isa<UMax>()) return check(umax, d1);
 
-        if (seq1 && seq1->arity() == world().lit_nat_1() && !seq2) return check1(seq1, d2);
-        if (seq2 && seq2->arity() == world().lit_nat_1() && !seq1) return check1(seq2, d1);
+        if (seq1 && !seq1->shape().is_fused() && seq1->arity() == world().lit_nat_1() && !seq2) return check1(seq1, d2);
+        if (seq2 && !seq2->shape().is_fused() && seq2->arity() == world().lit_nat_1() && !seq1) return check1(seq2, d1);
 
         if (seq1 && seq2) {
             if (auto mut_seq = seq1->isa_mut<Seq>(); mut_seq && seq2->isa_imm()) return check(mut_seq, seq2);
@@ -314,7 +316,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
 
     if (auto prod = d1->isa<Prod>()) return check<mode>(prod, d2);
     if (auto prod = d2->isa<Prod>()) return check<mode>(prod, d1);
-    if (seq1 && seq2) return alpha_<mode>(seq1->body(), seq2->body());
+    if (seq1 && seq2) return check<mode>(seq1, seq2);
 
     if (d1->node() != d2->node() || d1->flags() != d2->flags()) return fail<mode>();
 
@@ -364,23 +366,41 @@ bool Checker::check(Hole* hole, const Def* def) {
     return hole->set(def), true;
 }
 
-// alpha(«?s; body», «e₀; «e₁; … «e_{n-1}; def»…»): peel dimensions until the remainder matches body.
-// This determines the rank; Hole::tuplefy then hands the extents to the regular structural comparison.
+// alpha(«?s; body», «e₀, …, e_{r-1}; def»): the fused shape spells out every axis, so the rank follows from
+// what `body` still claims - all of them while it is unknown, all but its own while it is a Seq itself.
 bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
-    auto body  = seq->body();
-    size_t n   = 0;
-    size_t num = 0;
+    auto r = known_rank(def);
+    if (!r) return fail<Check>();
 
-    for (size_t i = 1; isa_dim(def); ++i) {
-        def = def->as<Seq>()->body();
-        if (alpha_<Test>(body, def)) n = i, ++num; // Test mode: probing must not solve any Hole
-    }
-
-    if (num != 1) return fail<Check>(); // no rank fits, or several do and the call site needs an explicit `@`
+    auto n    = *r;
+    auto body = seq->body()->zonk_mut();
+    if (!Hole::isa_unset(body))
+        if (auto bseq = body->isa<Seq>())
+            if (auto q = bseq->shape().rank(); q && *q <= *r) n = *r - *q;
+    if (n == 0) return fail<Check>();
 
     rank->set(world().lit_nat(n));
-    Hole::isa_unset(seq->arity()->zonk_mut())->tuplefy(n);
+    Hole::isa_unset(seq->shape()->zonk_mut())->tuplefy(n);
     return true;
+}
+
+// alpha(«s₁; b₁», «s₂; b₂»): the two shapes may fuse a different number of axes, so compare the leading
+// ones they share and the remainders - `«2, 3; T»` against `«2; X»` binds `X` to `«3; T»`.
+template<Checker::Mode mode>
+bool Checker::check(const Seq* seq1, const Seq* seq2) {
+    auto r1 = seq1->shape().rank();
+    auto r2 = seq2->shape().rank();
+    if (r1 && r2 && *r1 != *r2) {
+        auto k     = std::min(*r1, *r2);
+        auto rest1 = world().drop(seq1, k);
+        auto rest2 = world().drop(seq2, k);
+        if (!rest1 || !rest2) return fail<mode>();
+        for (size_t i = 0; i != k; ++i)
+            if (!alpha_<mode>(seq1->shape()[i], seq2->shape()[i])) return fail<mode>();
+        return alpha_<mode>(rest1, rest2);
+    }
+
+    return alpha_<mode>(*seq1->shape(), *seq2->shape()) && alpha_<mode>(seq1->body(), seq2->body());
 }
 
 // alpha(«1; body», def) -> alpha(body, def);
@@ -394,10 +414,17 @@ bool Checker::check1(const Seq* seq, const Def* def) {
 // Try to get rid of mut_seq's var: it may occur in its body and vanish after reduction
 // as holes might have been filled in the meantime.
 bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
-    auto mut_body = mut_seq->reduce(world().top(world().type_idx(mut_seq->arity())));
-    if (!alpha_<Check>(mut_body, imm_seq->body())) return fail<Check>();
+    // `mut_seq` binds only its own axes, so a *fused* `imm_seq` keeps the remaining ones in a sub-Seq:
+    // `«i: n; Ts#i»` against `«n, c, h; T»` matches `Ts#⊤` with `«c, h; T»`, not with `T`.
+    auto r    = mut_seq->shape().rank();
+    auto rest = r ? world().drop(imm_seq, *r) : nullptr;
 
-    mut_seq->set(mut_seq->arity(), mut_body->zonk());
+    if (!rest) return fail<Check>();
+
+    auto mut_body = mut_seq->reduce(world().top(world().type_indices(mut_seq->shape())));
+    if (!alpha_<Check>(mut_body, rest)) return fail<Check>();
+
+    mut_seq->set(*mut_seq->shape(), mut_body->zonk());
     return true;
 }
 

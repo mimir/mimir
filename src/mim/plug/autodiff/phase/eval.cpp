@@ -62,7 +62,7 @@ const Def* Eval::derive_(const Def* def) {
 
     auto [arg_ty, ret_pi] = lam->type()->doms<2>();
     auto deriv_all_args   = deriv->var();
-    const Def* deriv_arg  = deriv->var(0uz)->set("arg");
+    const Def* deriv_arg  = deriv->var(2, 0)->set("arg");
 
     // We generate the shadow pullbacks dynamically to save work and avoid code duplication.
     // Only the toplevel pullback for arguments and return continuation is special cased.
@@ -72,8 +72,8 @@ const Def* Eval::derive_(const Def* def) {
     auto arg_id_pb              = id_pullback(arg_ty);
     partial_pullback[deriv_arg] = arg_id_pb;
     // The return continuation has to formally exist but should never be directly accessed.
-    auto ret_var              = deriv->var(1);
-    auto ret_pb               = zero_pullback(lam->var(1)->type(), arg_ty);
+    auto ret_var              = deriv->var(2, 1);
+    auto ret_pb               = zero_pullback(lam->var(2, 1)->type(), arg_ty);
     partial_pullback[ret_var] = ret_pb;
 
     shadow_pullback[deriv_all_args] = world().tuple({arg_id_pb, ret_pb});
@@ -144,11 +144,11 @@ const Def* Eval::augment_lam(Lam* lam, Lam* f, Lam* f_diff) {
         auto pb_ty                = pullback_type(cont_dom, f->dom(2, 0));
         auto aug_dom              = autodiff_type_fun(cont_dom);
         auto aug_lam              = world().mut_con({aug_dom, pb_ty})->set("aug_"s + lam->sym().str());
-        auto aug_var              = aug_lam->var((nat_t)0);
+        auto aug_var              = aug_lam->var(2, 0);
         augmented[lam->var()]     = aug_var;
         augmented[lam]            = aug_lam; // TODO: only one of these two
         derived[lam]              = aug_lam;
-        auto pb                   = aug_lam->var(1);
+        auto pb                   = aug_lam->var(2, 1);
         partial_pullback[aug_var] = pb;
         // We are still in same closed function.
         auto new_body = augment(lam->body(), f, f_diff);
@@ -189,9 +189,9 @@ const Def* Eval::augment_extract(const Extract* ext, Lam* f, Lam* f_diff) {
         auto tuple_pb   = partial_pullback[aug_tuple];
         auto pb_ty      = pullback_type(ext->type(), f->dom(2, 0));
         auto pb_fun     = world().mut_lam(pb_ty)->set("extract_pb");
-        auto pb_tangent = pb_fun->var(0uz)->set("s");
+        auto pb_tangent = pb_fun->var(2, 0)->set("s");
         auto tuple_tan  = world().insert(world().call<zero>(aug_tuple->type()), aug_index, pb_tangent)->set("tup_s");
-        pb_fun->app(true, tuple_pb, {tuple_tan, pb_fun->var(1) /* ret_var but make sure to select correct one */});
+        pb_fun->app(true, tuple_pb, {tuple_tan, pb_fun->var(2, 1) /* ret_var but make sure to select correct one */});
         pb = pb_fun;
     }
 
@@ -219,11 +219,11 @@ const Def* Eval::augment_tuple(const Tuple* tup, Lam* f, Lam* f_diff) {
     auto pb_ty = pullback_type(tup->type(), f->dom(2, 0));
     auto pb    = world().mut_lam(pb_ty)->set("tup_pb");
 
-    auto pb_tangent = pb->var(0uz)->set("tup_s");
+    auto pb_tangent = pb->var(2, 0)->set("tup_s");
 
     auto tangents = DefVec(
         pbs.size(), [&](nat_t i) { return world().app(cps::op_cps2ds_dep(pbs[i]), world().extract(pb_tangent, i)); });
-    pb->app(true, pb->var(1),
+    pb->app(true, pb->var(2, 1),
             // summed up tangents
             op_sum(tangent_type_fun(f->dom(2, 0)), tangents));
     partial_pullback[aug_tup] = pb;
@@ -250,16 +250,16 @@ const Def* Eval::augment_pack(const Pack* pack, Lam* f, Lam* f_diff) {
     auto pb      = world().mut_lam(pb_type)->set("pack_pb");
 
     auto f_arg_ty_diff = tangent_type_fun(f->dom(2, 0));
-    auto app_pb        = world().mut_pack(world().arr(aug_arity, f_arg_ty_diff));
+    auto app_pb        = world().mut_pack(world().arr(aug_arity, f_arg_ty_diff))->set_shape(aug_arity);
 
     // TODO: special case for const width (special tuple)
 
     // <i:n, cps2ds body_pb (s#i)>
-    app_pb->set(world().app(cps::op_cps2ds_dep(body_pb), world().extract(pb->var((nat_t)0), app_pb->var())));
+    app_pb->set_body(world().app(cps::op_cps2ds_dep(body_pb), world().extract(pb->var(2, 0), app_pb->var())));
 
     auto sumup = world().app(world().annex<sum>(), {aug_arity, f_arg_ty_diff});
 
-    pb->app(true, pb->var(1), world().app(sumup, app_pb));
+    pb->app(true, pb->var(2, 1), world().app(sumup, app_pb));
 
     partial_pullback[aug_pack] = pb;
 
@@ -330,11 +330,11 @@ const Def* Eval::augment_app(const App* app, Lam* f, Lam* f_diff) {
         auto e_pb                      = partial_pullback[real_aug_args];
 
         // TODO: better debug names
-        auto ret_g_deriv_ty = g_deriv->type()->as<Pi>()->dom(1);
+        auto ret_g_deriv_ty = g_deriv->type()->as<Pi>()->dom(2, 1);
         auto c1_ty          = ret_g_deriv_ty->as<Pi>();
         auto c1             = world().mut_lam(c1_ty)->set("c1");
-        auto res            = c1->var((nat_t)0);
-        auto r_pb           = c1->var(1);
+        auto res            = c1->var(2, 0);
+        auto r_pb           = c1->var(2, 1);
         c1->app(true, aug_cont, {res, compose_cn(e_pb, r_pb)});
 
         auto aug_app = world().app(aug_callee, {real_aug_args, c1});

@@ -73,35 +73,31 @@ axm splat: {T: *, r: Nat}
          → [s_out: «r; Nat», value: T]
          → «s_out; T»;
 ///
+/// ## Annotations
+///
+/// ### buf
+///
+/// A mim::Anno%tation nominating an array value as a *tensor*: one that lives in a buffer and is passed by
+/// handle, rather than an SSA aggregate that merely shares the `Arr` structure - an `(x y: I32)` group *is*
+/// a `«2; I32»`.
+/// The result type is the argument's, so an annotated tensor extracts, inserts and folds exactly like any
+/// other array and no tensor operation has to reimplement what MimIR's arrays already do.
+///
+/// Annotate *boundary* values only - an external function's array parameters.
+/// Everything a tensor operation produces is self-identifying, and `lower_to_mem` propagates tensor-ness
+/// from there; it consumes the annotation and every array type it reaches becomes a `buffer.Buf`.
+/// Losing one before that silently leaves a tensor with value semantics.
+axm buf: {T: *} → T → T;
+///
 /// ## Accessors
 ///
-/// Element access and shape reflection.
-///
-/// ### get
-///
-/// Extracts the element at `index` from `arr`: `get ((a, b, c), arr)` ≡ `arr#a#b#c`.
-///
-/// `index` precedes `arr` so that `{r, s}` can be inferred: `index: «i: r; Idx (s#i)»` pins the rank
-/// *and* every extent, after which `arr: «s; T»` peels off exactly that many levels of its nested
-/// array type.
-/// The other way round `arr` would be checked while `r` is still unknown and the peeling depth would
-/// be ambiguous.
-axm get: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T»] → T, normalize_get;
-///
-/// ### set
-///
-/// Inserts the element `x` in `arr` at `index`:
-/// `set ((a, b, c), arr, x)` ≡ `Insert arr a (Insert (arr#a) b (Insert (arr#a#b) c x))`.
-///
-/// `index` precedes `arr` for the same reason as in get.
-axm set: {T: *, r: Nat, s: «r; Nat»} → [index: «i: r; Idx (s#i)», arr: «s; T», x: T] → «s; T», normalize_set;
+/// Element access is a plain `Extract` / `Insert`: `arr#(a, b, c)` ≡ `arr#a#b#c`.
 ///
 /// ### shape
 ///
 /// Returns the shape of `arr` as a rank-`r` array of Nats: `(s#0, …, s#(r-1))`.
 ///
-/// The rank `r` is explicit: `normalize_shape` peels `r` levels off the nested array type, which
-/// inference cannot do backwards since `«s; T»` does not reverse-unify.
+/// The rank `r` is explicit: it selects the first `r` axes of `arr`'s fused shape.
 /// Size-1 axes collapse out of the type, so `arr` must have no literal-1 dims among the first `r`.
 ///
 axm shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_shape;
@@ -343,7 +339,7 @@ lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Na
 ///
 /// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
 /// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created — with the
-/// now-literal type `«r; Nat»`, which lets `input: «s; T»` peel off exactly `r` levels of its nested array type.
+/// now-literal type `«r; Nat»`, which lets `input: «s; T»` read off exactly the first `r` axes of its shape.
 /// Merging the two groups would not do: the domain `«s; T»` is built once, while `r` is still unknown.
 axm transpose: {T: *, r: Nat}
              → [permutation: «r; Idx r»]
@@ -994,7 +990,7 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 ///
 /// Ignores the (⊥) accumulator and returns the read element — the fold step of every pure
 /// re-indexing operation below.
-fun tensor_copy {T: *} (acc: T, y: «1; T»)@tt: T = return (y#0_1);
+fun tensor_copy {T: *} (acc: T, y: T)@tt: T = return y;
 ///
 /// ### bid_map
 ///
@@ -1033,11 +1029,11 @@ anx lam gather_pointwise_elem_impl {T: *, r: Nat}
                                    (out_indices: «r; I64»)
                                    (input: «s_src; T», index: «s_idx; Idx (s_src#dim)»): T =
     let index_coords = ‹d: r; core.conv.u (s_idx#d) (out_indices#d)›;
-    let source_axis_index = core.bitcast I64 (get (index_coords, index));
+    let source_axis_index = core.bitcast I64 (index#index_coords);
     let source_coords = ‹d: r;
         let coordinate = core.select (core.icmp.e @r (d, dim), source_axis_index, out_indices#d);
         core.conv.u (s_src#d) coordinate›;
-    get (source_coords, input);
+    input#source_coords;
 ///
 /// ### map_impl
 ///
@@ -1059,7 +1055,7 @@ anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
 /// ### pool_fun
 ///
 /// Wraps a binary fold `g` as a `map_reduce` reduction `Fn [T, «1; T»] → T`.
-pub fun pool_fun {T: *} (g: [T, T] → T) (acc: T, y: «1; T»)@tt: T = return (g (acc, y#0_1));
+pub fun pool_fun {T: *} (g: [T, T] → T) (acc y: T)@tt: T = return (g (acc, y));
 ///
 /// ### pool2d_in_map
 ///
@@ -1270,7 +1266,7 @@ anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T
 ///
 /// ### scatter_step_impl
 ///
-/// One update: reads `index` and `updates` at the visited coordinate and `set`s the element into the
+/// One update: reads `index` and `updates` at the visited coordinate and inserts the element into the
 /// accumulated tensor at the destination it selects.
 anx lam scatter_step_impl {T: *, r: Nat}
                           (s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»)
@@ -1279,12 +1275,12 @@ anx lam scatter_step_impl {T: *, r: Nat}
                           (acc: «s_src; T», index: «s_idx; Idx (s_src#dim)», updates: «s_updates; T»): «s_src; T» =
     let index_coords = ‹d: r; core.conv.u (s_idx#d) (visit_indices#d)›;
     let update_coords = ‹d: r; core.conv.u (s_updates#d) (visit_indices#d)›;
-    let destination_axis_index = core.bitcast I64 (get (index_coords, index));
-    let update = get (update_coords, updates);
+    let destination_axis_index = core.bitcast I64 (index#index_coords);
+    let update = updates#update_coords;
     let destination_coords = ‹d: r;
         let coordinate = core.select (core.icmp.e @r (d, dim), destination_axis_index, visit_indices#d);
         core.conv.u (s_src#d) coordinate›;
-    set (destination_coords, acc, update);
+    acc#destination_coords ← update;
 ///
 /// ### slice_map
 ///
@@ -1377,12 +1373,6 @@ axm lower_tensor: compile.Phase;
 ///
 axm lower_map_reduce: compile.Phase;
 ///
-/// ### lower_get_set
-///
-/// Lowers `get` / `set` to `extract` / `insert`.
-///
-axm lower_get_set: compile.Phase;
-///
 /// ### fuse_tensor
 ///
 /// Fuses pure producer `map_reduce`s into their consumers' access maps.
@@ -1398,8 +1388,10 @@ axm fuse_tensor: compile.Phase;
 /// ### lower_to_mem
 ///
 /// Bufferizes the core operations onto the `buffer` layer: tensor values become `buffer.Buf` handles,
-/// `get` / `set` / `generate` / `map_reduce` become `buffer.read` / `buffer.write` / `buffer.alloc`
+/// `extract` / `insert` / `generate` / `map_reduce` become `buffer.read` / `buffer.write` / `buffer.alloc`
 /// threading `mem.M`.
+/// This is where a `buf` annotation is consumed: it seeds the set of array types that denote tensors, next to
+/// the operand and result types of the operations above.
 /// `mem.add_mem` (scheduled next in the pipeline) threads the memory; run `buffer.lower_ptr`
 /// afterwards to reach `mem.Ptr`.
 ///

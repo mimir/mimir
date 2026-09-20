@@ -51,23 +51,6 @@ affine_map(const Def* f, const Def* m, const Def* n, const Def* sin, const Def* 
     return w.app(a, mem)->projs<2>();
 }
 
-const Def* fold_index(const Def* shape, const Def* idx) {
-    auto& w = shape->world();
-    auto r  = shape->num_projs();
-    DefVec out;
-    bool dropped = false;
-    for (size_t i = 0; i != r; ++i)
-        if (auto l = Lit::isa<nat_t>(shape->proj(r, i)); l && *l == 1)
-            dropped = true;
-        else
-            out.push_back(idx->proj(r, i));
-    // Without dropped axes the tuple below would just eta-reduce back to `idx` — but only after
-    // World::tuple's pack normalization has alpha-compared the projections, which walks `idx`'s whole
-    // (mem-threaded, Var-dependent) coordinate chain per elem pair — exponentially. Return `idx` directly.
-    if (!dropped) return idx;
-    return w.tuple(out);
-}
-
 /// Chained `mem.lea` over a coordinate tuple.
 const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
     auto n       = tuple->num_projs();
@@ -83,12 +66,13 @@ Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
     auto global_ty = w.annex<gpu::GlobalM>();
 
     Lam* new_lam;
-    if (lam->num_vars() == 2) {
-        auto [_, Tin, extra_ty] = lam->var(0)->type()->projs<3>();
+    auto nv = lam->num_vars();
+    if (nv == 2) {
+        auto [_, Tin, extra_ty] = lam->var(nv, 0)->type()->projs<3>();
         new_lam = w.mut_con(Defs{w.sigma({global_ty, Tin, extra_ty}), w.cn({global_ty, Tout})})->set(name);
     } else {
-        auto Tin      = lam->var(1)->type();
-        auto extra_ty = lam->var(2)->type();
+        auto Tin      = lam->var(nv, 1)->type();
+        auto extra_ty = lam->var(nv, 2)->type();
         new_lam       = w.mut_con(Defs{global_ty, Tin, extra_ty, w.cn({global_ty, Tout})})->set(name);
     }
     new_lam->set(true, lam->reduce_body(new_lam->var()));
@@ -264,7 +248,7 @@ Lam* build_kernel(World& w,
             = affine_map(post_ins.accs[j], post_ins.rs[j], Ro, So, post_ins.ss[j], write_coords, pcur);
         pcur = pc_mem;
         auto [rd_mem, rd_val]
-            = w.call<mem::load>(Defs{pcur, op_lea_tuple(k_post_dptrs[j], fold_index(post_ins.ss[j], pcoords))})
+            = w.call<mem::load>(Defs{pcur, op_lea_tuple(k_post_dptrs[j], *Shape(pcoords).fold(post_ins.ss[j]))})
                   ->projs<2>();
         pcur          = rd_mem;
         post_elems[j] = rd_val;
@@ -273,7 +257,7 @@ Lam* build_kernel(World& w,
     auto after_post            = w.mut_con(Defs{global_ty, Tp})->set("afterPost");
     auto [post_mem, elem_post] = after_post->vars<2>();
     auto final_mem
-        = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, fold_index(So, write_coords)), elem_post});
+        = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, *Shape(write_coords).fold(So)), elem_post});
     after_post->app(true, k_ret, Defs{final_mem, k_shared, k_const, k_local});
     apply_cps(w, write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
 
@@ -306,7 +290,7 @@ Lam* build_kernel(World& w,
         auto [mc_mem, coords] = affine_map(ins.accs[i], ins.rs[i], n, Sr, ins.ss[i], iters, cur);
         cur                   = mc_mem;
         auto [rd_mem, rd_val]
-            = w.call<mem::load>(Defs{cur, op_lea_tuple(k_dptrs[i], fold_index(ins.ss[i], coords))})->projs<2>();
+            = w.call<mem::load>(Defs{cur, op_lea_tuple(k_dptrs[i], *Shape(coords).fold(ins.ss[i]))})->projs<2>();
         cur            = rd_mem;
         input_elems[i] = rd_val;
     }
@@ -421,8 +405,8 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto fun = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
                    ->set("mapReduceAffGpu");
     auto call                                = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
-    auto [fun_mem, new_inputs, new_post_ins] = fun->var(0_n)->projs<3>();
-    auto cont                                = fun->var(1);
+    auto [fun_mem, new_inputs, new_post_ins] = fun->var(2, 0)->projs<3>();
+    auto cont                                = fun->var(2, 1);
 
     auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
 

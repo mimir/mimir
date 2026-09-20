@@ -458,27 +458,26 @@ const Def* SeqExpr::emit_(Emitter& e) const {
 
     auto t = e.world().type_infer_univ();
     auto a = e.world().mut_arr(t);
-    a->set_arity(s);
+    a->set_shape(s);
 
     if (is_pack()) {
-        auto p   = e.world().mut_pack(a);
+        auto p = e.world().mut_pack(a);
+        p->set_shape(s);
         auto var = p->var();
         arity()->emit_value(e, var);
         auto b = body()->emit(e);
-        p->set(b);
+        p->set_body(b);
         auto arr_b = b->type();
         if (auto pvar = var->isa<Var>())
             // Use array var in array body instead of pack var
             arr_b = VarRewriter(pvar, a->var()).rewrite(arr_b);
         a->set_body(arr_b);
-        if (auto imm = p->immutabilize()) return imm;
-        return p;
+        return e.world().fuse(p);
     } else {
         auto var = a->var();
         arity()->emit_value(e, var);
         a->set_body(body()->emit(e));
-        if (auto imm = a->immutabilize()) return imm;
-        return a;
+        return e.world().fuse(a);
     }
 }
 

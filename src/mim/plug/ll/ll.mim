@@ -28,7 +28,7 @@ axm emit: compile.Phase;
 ///
 /// ### vec
 ///
-/// The identity, used as a vectorization annotation on loops; it has no normalizer and is an
+/// A mim::Anno%tation nominating a loop for vectorization; it has no normalizer and is an
 /// opaque op to every phase.
 /// At the surface, wrapping a `affine.For`'s **body** nominates that loop as a schedule's vector
 /// loop while keeping the `For` application's shape intact for every matcher (see `vec_for` in

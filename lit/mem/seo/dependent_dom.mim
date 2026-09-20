@@ -8,10 +8,12 @@ plugin core;
 plugin mem;
 plugin compile;
 
+use core.ops.n;
+
 extern fun test(m: mem.M 0, n: Nat, v: «n; Nat»): [mem.M 0, Nat] =
     work (m, n, v, 7, return) where
         con work (m: mem.M 0, n: Nat, v: «n; Nat», k: Nat, cont: Cn [mem.M 0, Nat]) =
-            cont (m, core.nat.add (k, n));
+            cont (m, k + n);
     end;
 
 extern lam _compile(): compile.Phase =

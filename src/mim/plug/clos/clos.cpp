@@ -39,21 +39,16 @@ const Def* ClosLit::env() const { return std::get<2>(clos_unpack(def_)); }
 
 const Def* ClosLit::fnc() const { return std::get<1>(clos_unpack(def_)); }
 
-Lam* ClosLit::fnc_as_lam() const {
-    auto f = fnc();
-    if (auto a = Axm::isa<attr>(f)) f = a->arg();
-    return f->isa_mut<Lam>();
-}
+Lam* ClosLit::fnc_as_lam() const { return Anno::peel(fnc())->isa_mut<Lam>(); }
 
 const Def* ClosLit::env_var() const {
     auto lam = fnc_as_lam();
-    return lam->var(env_param(lam->type()->as<Pi>()));
+    return lam->var(lam->num_vars(), env_param(lam->type()->as<Pi>()));
 }
 
 ClosLit isa_clos_lit(const Def* def, bool fn_isa_lam) {
     if (auto tpl = def->isa<Tuple>(); tpl && isa_clos_type(def->type())) {
-        auto fnc = std::get<1>(clos_unpack(tpl));
-        if (auto fa = Axm::isa<attr>(fnc)) fnc = fa->arg();
+        auto fnc = Anno::peel(std::get<1>(clos_unpack(tpl)));
         if (!fn_isa_lam || fnc->isa<Lam>()) return ClosLit(tpl);
     }
     return ClosLit(nullptr);
@@ -65,7 +60,7 @@ const Def* clos_pack(const Def* env, const Def* fn, const Def* ct) {
     auto& w = env->world();
     auto pi = fn->type()->as<Pi>();
     auto ep = env_param(pi);
-    assert(env->type() == pi->dom(ep));
+    assert(env->type() == pi->dom(pi->num_doms(), ep));
     ct = ct ? ct : clos_type(w.cn(clos_remove_env(ep, pi->dom())));
     return w.tuple(ct, {env->type(), fn, env})->as<Tuple>();
 }
@@ -92,11 +87,11 @@ const Sigma* isa_clos_type(const Def* def) {
     auto& w  = def->world();
     auto sig = def->isa_mut<Sigma>();
     if (!sig || sig->num_ops() < 3 || sig->op(0_u64) != w.type()) return nullptr;
-    auto var = sig->var(0_u64);
+    auto var = sig->var(sig->num_ops(), 0);
     if (sig->op(2_u64) != var) return nullptr;
     auto pi = sig->op(1_u64)->isa<Pi>();
     if (!pi || !Pi::isa_cn(pi) || pi->num_ops() <= 1_u64) return nullptr;
-    return (pi->dom(env_param(pi)) == var) ? sig : nullptr;
+    return (pi->dom(pi->num_doms(), env_param(pi)) == var) ? sig : nullptr;
 }
 
 Sigma* clos_type(const Pi* pi) {
@@ -129,8 +124,8 @@ const Def* ctype(World& w, Defs doms, const Def* env_type) {
     if (!env_type) {
         auto sigma = w.mut_sigma(w.type(), 3_u64)->set("Clos");
         sigma->set(0_u64, w.type());
-        sigma->set(1_u64, ctype(w, doms, sigma->var(0_u64)));
-        sigma->set(2_u64, sigma->var(0_u64));
+        sigma->set(1_u64, ctype(w, doms, sigma->var(3, 0)));
+        sigma->set(2_u64, sigma->var(3, 0));
         return sigma;
     }
     return w.cn(DefVec(doms.size() + 1,
