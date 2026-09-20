@@ -1,5 +1,5 @@
 :root {
-    color-scheme: light dark;
+    color-scheme: light;
     --bg:      #ffffff;
     --fg:      #1c1c1c;
     --panel:   #f6f6f4;
@@ -10,17 +10,29 @@
     --mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg:     #16181c;
-        --fg:     #e6e6e6;
-        --panel:  #1f2229;
-        --border: #343841;
-        --accent: #62a0ff;
-        --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
-        --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg90: #8b949e;
-    }
+/* `darkmode-toggle.js` always stamps one of these before the first paint, so no media query is needed. */
+html.dark-mode {
+    color-scheme: dark;
+    --bg:     #16181c;
+    --fg:     #e6e6e6;
+    --panel:  #1f2229;
+    --border: #343841;
+    --accent: #62a0ff;
+    --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
+    --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg90: #8b949e;
 }
+
+#theme {
+    display: flex;
+    align-items: center;
+    padding: .2rem;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+
+#theme:hover { background: rgba(127, 127, 127, .2); }
+#theme svg { display: block; width: 20px; height: 20px; }
 
 * { box-sizing: border-box; }
 
@@ -209,6 +221,16 @@ main {
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
 #graph svg { display: block; width: 100%; height: 100%; }
+
+#graph svg :is(.node, .edge) { transition: opacity .1s ease; }
+#graph svg.focus :is(.node, .edge) { opacity: .1; }
+#graph svg.focus :is(.node, .edge).on { opacity: 1; }
+
+/* A detached edge carries `stroke="none"`, and a presentation attribute loses to a rule - so lighting
+   one up reveals exactly what `hidden edges` would otherwise need a recompile to show. */
+#graph svg .edge.on path { stroke: var(--accent); stroke-width: 2; }
+#graph svg .edge.on polygon { stroke: var(--accent); fill: var(--accent); }
+#graph svg .node.hub :is(polygon, polyline) { stroke: var(--accent); stroke-width: 3; }
 #pane-log pre { white-space: pre-wrap; }
 
 /* mim's terminal colours, mapped onto the pane; see showLog. */

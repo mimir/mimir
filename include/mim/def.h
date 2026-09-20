@@ -234,6 +234,7 @@ struct DotConfig {
     bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
     bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
                                  ///< shared literals/axioms, type edges) with a visible color.
+    bool dark = false;           ///< Drop the white background and lighten the edges for a dark backdrop.
 };
 
 /// Base class for all Def%s.

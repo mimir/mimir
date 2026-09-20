@@ -72,6 +72,7 @@ async function run() {
 
     const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '-o', '/out.mim'];
     for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
+    if (dark) args.push('--dot-dark');
     if ($('optimize').checked) args.push('-p', 'opt', '-p', 'll', '-X', 'll:o=/out.ll');
     else args.push('--no-opt');
 
@@ -196,6 +197,7 @@ function attach(svg) {
     view.append(...svg.childNodes);
     svg.append(view);
     fresh ? fit() : apply();
+    index(svg);
 }
 
 function fit() {
@@ -232,8 +234,11 @@ function pan(e) {
     const graph = $('graph');
     const scale = view.ownerSVGElement.getScreenCTM().a;
     let { clientX: x, clientY: y } = e;
+    dragging = true;
+    dragged = false;
 
     const move = e => {
+        dragged ||= Math.abs(e.clientX - x) + Math.abs(e.clientY - y) > 2;
         tx += (e.clientX - x) / scale;
         ty += (e.clientY - y) / scale;
         [x, y] = [e.clientX, e.clientY];
@@ -242,6 +247,7 @@ function pan(e) {
     const drop = () => {
         graph.removeEventListener('pointermove', move);
         graph.classList.remove('grabbing');
+        dragging = false;
     };
 
     graph.setPointerCapture(e.pointerId);
@@ -263,9 +269,64 @@ function key(e) {
     if (e.key === '+' || e.key === '=') zoomCenter(ZOOM_STEP);
     else if (e.key === '-') zoomCenter(1 / ZOOM_STEP);
     else if (e.key === '0') fit();
+    else if (e.key === 'Escape') pin(null);
     else return;
     e.preventDefault();
 }
+
+// A node's <title> is its dot id; an edge's is `<tail>:<port>-><head>`.
+const nid = g => g.querySelector('title')?.textContent ?? '';
+
+let adj = new Map();  // id -> {g, edges: [{g, other}]}
+let focused = null;   // the id the highlight is on, pinned or merely hovered
+let pinned = null;
+let dragging = false;
+let dragged = false;
+
+function index(svg) {
+    adj = new Map();
+    const node = id => adj.get(id) ?? adj.set(id, { g: null, edges: [] }).get(id);
+
+    for (const g of svg.querySelectorAll('g.node')) node(nid(g)).g = g;
+    for (const g of svg.querySelectorAll('g.edge')) {
+        const [from, to] = nid(g).split('->').map(s => s.replace(/:.*$/, ''));
+        node(from).edges.push({ g, other: to });
+        node(to).edges.push({ g, other: from });
+    }
+
+    focused = null;
+    if (pinned && !adj.has(pinned)) pinned = null; // a recompile may have renumbered it away
+    show(pinned);
+}
+
+// Dims all but a node, its direct neighbours, and the edges between. The highlight outranks the
+// `stroke="none"` of a detached edge, so hovering reveals what `hidden edges` would have to recompile for.
+function show(id) {
+    const svg = view?.ownerSVGElement;
+    if (!svg || focused === id) return;
+    focused = id;
+
+    for (const g of svg.querySelectorAll('.on, .hub')) g.classList.remove('on', 'hub');
+    svg.classList.toggle('focus', id !== null);
+    if (id === null) return;
+
+    const hub = adj.get(id);
+    hub?.g?.classList.add('on', 'hub');
+    for (const { g, other } of hub?.edges ?? []) {
+        g.classList.add('on');
+        adj.get(other)?.g?.classList.add('on');
+    }
+}
+
+function pin(id) {
+    pinned = id;
+    show(id);
+}
+
+const nodeAt = e => {
+    const g = e.target.closest?.('g.node');
+    return g ? nid(g) : null;
+};
 
 function select(pane) {
     for (const tab of document.querySelectorAll('#tabs button')) {
@@ -393,10 +454,28 @@ $('graph-nav').onclick = e => {
     else zoomCenter(how === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP);
 };
 $('graph').addEventListener('pointerdown', pan);
+$('graph').addEventListener('mousemove', e => { if (!pinned && !dragging) show(nodeAt(e)); });
+$('graph').addEventListener('mouseleave', () => { if (!pinned) show(null); });
+$('graph').addEventListener('click', e => {
+    if (dragged) return;
+    const id = nodeAt(e);
+    pin(id && id !== pinned ? id : null);
+});
 $('graph').addEventListener('wheel', wheel, { passive: false });
 $('graph').addEventListener('dblclick', () => view && fit());
 $('graph').addEventListener('keydown', key);
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
+
+// darkmode-toggle.js owns the preference and the <html> class; the graph is baked by the compiler, so a
+// theme change - by click or by the system flipping underneath us - has to recompile.
+let dark = document.documentElement.classList.contains('dark-mode');
+$('theme').updateIcon();
+
+new MutationObserver(() => {
+    $('theme').updateIcon();
+    const now = document.documentElement.classList.contains('dark-mode');
+    if (now !== dark) { dark = now; run(); }
+}).observe(document.documentElement, { attributeFilter: ['class'] });
 
 // setupEditor fills the textarea before it awaits, so the first compile starts alongside.
 const initial = custom ?? await example(EXAMPLES[0]);

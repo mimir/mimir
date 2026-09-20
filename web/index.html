@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MimIR Playground</title>
 <link rel="stylesheet" href="playground.css">
+<!-- Stamps `dark-mode`/`light-mode` on <html> before the first paint, so load it here rather than at the end. -->
+<script src="darkmode-toggle.js"></script>
 </head>
 <body>
 <header>
@@ -14,6 +16,7 @@
     <button id="run">Run</button>
     <span class="spacer"></span>
     <span id="status">loading…</span>
+    <doxygen-awesome-dark-mode-toggle id="theme" title="Toggle Light/Dark Mode"></doxygen-awesome-dark-mode-toggle>
 </header>
 
 <main>

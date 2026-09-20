@@ -15,6 +15,7 @@ A build of the current `master` is live at <https://mimir.github.io/playground/>
 | `code.js`            | `docs/code.js`, staged; the lexer machinery the page and the docs share.                          |
 | `mim-code.js`        | `docs/mim.js`, staged; the Mim lexer, renamed out of Emscripten's `mim.js` way.                   |
 | `llvm-code.js`       | `docs/llvm.js`, staged; the LLVM lexer of the **LLVM** tab.                                       |
+| `darkmode-toggle.js` | `doxygen-awesome-darkmode-toggle.js`, staged; the very toggle these docs use.                     |
 | `examples/*.mim`     | `lit/docs/*.mim`, staged; the examples are the ones the lit suite covers.                         |
 | `mim.{js,wasm,data}` | Emscripten's output; `mim.data` carries the plugins' `.mim` halves and the [ll](@ref ll) runtime. |
 
@@ -97,6 +98,19 @@ The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/)
 See @ref cli for what each one does.
 Since they are compile-time flags, toggling one re-runs the compiler.
 Layout happens on the page, so a graph beyond 512 KB of DOT is refused rather than attempted — `--dot-all-annexes` reaches that on anything but a small program.
+
+### Navigating
+
+Drag to pan and turn the wheel to zoom at the pointer; **Fit**, a double-click, or `0` frames the whole graph again, and `+`/`-` zoom from the keyboard.
+A re-run keeps the current view: the editor recompiles on every pause in typing, so re-framing each time would leave no way to stay zoomed in on one spot.
+
+Hovering a node dims everything but that node, its direct neighbours and the edges between them; a click pins that focus, and a click elsewhere or `Esc` releases it.
+The highlight paints detached edges too, so it shows per node what _hidden edges_ shows for the whole graph — without a recompile.
+
+### Dark mode
+
+The toggle in the header is the [doxygen-awesome](https://github.com/jothepro/doxygen-awesome-css) one these docs use, staged from the submodule, so both offer the same control and — served from one origin — share the stored preference.
+The graph's colors are baked by the compiler rather than applied by CSS, so flipping the theme re-runs it with `--dot-dark`, which drops the white backdrop and lightens the edges.
 
 ## CI
 

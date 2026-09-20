@@ -202,6 +202,7 @@ int main(int argc, char** argv) {
             .opt(opts.dot.follow_types     , ""          , ""  , "--dot-follow-types"    , "Follows type dependencies in DOT output.")
             .opt(opts.dot.inline_consts    , ""          , ""  , "--dot-inline-consts"   , "Wires up literals, axioms, etc. with normal edges in DOT output instead of detaching them into a separate row; useful for small graphs.")
             .opt(opts.dot.show_hidden      , ""          , ""  , "--dot-show-hidden"     , "Renders otherwise-transparent detached edges in DOT output - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray.")
+            .opt(opts.dot.dark             , ""          , ""  , "--dot-dark"            , "Drops the white background of the DOT output and lightens its edges, so that it embeds into a dark backdrop.")
             .grp("Diagnostics")
             .opt(diag.gutter               , "width"     , ""  , "--gutter"              , "Width of a diagnostic's line-number column.")
             .opt(loc_style                 , "style"     , ""  , "--loc-style"           , "How a diagnostic spells out a source location: `full` (`path:row:col-row:col`), `rowcol` (`path:row:col`), `row` (`path:row`), or `msvc` (`path(row,col)`).")
