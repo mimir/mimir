@@ -87,7 +87,27 @@ main {
 
 #editor { border-right: 1px solid var(--border); }
 
-#editor .cm-editor { height: 100%; }
+#editor .cm-editor { flex: 1; min-height: 0; }
+
+/* Mirrors `#tabs` so both columns start at the same height. */
+#editor-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding: .4rem .5rem 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+#editor-bar button {
+    border: 0;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    padding: .3rem .7rem;
+    opacity: .7;
+}
+
+#editor-bar button:hover { opacity: 1; }
 
 #editor textarea {
     flex: 1;

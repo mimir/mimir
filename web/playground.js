@@ -258,12 +258,44 @@ function urlSource() {
     try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
+function shareLink() {
+    const url = new URL(location.href);
+    url.search = 'src=' + encodeURIComponent(getSource());
+    return url.href;
+}
+
+// navigator.clipboard needs a secure context, which a plain http:// page is not.
+async function copy(text) {
+    try {
+        return await navigator.clipboard.writeText(text);
+    } catch {}
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('could not copy');
+}
+
+async function share() {
+    const btn = $('share');
+    try {
+        await copy(shareLink());
+        btn.textContent = 'Link copied!';
+    } catch {
+        btn.textContent = 'Copy failed';
+    }
+    setTimeout(() => (btn.textContent = 'Share'), 1500);
+}
+
 const custom = urlSource();
 const picker = $('examples');
 if (custom !== null) picker.add(new Option('(custom)', ''));
 for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
 picker.onchange = async () => { setSource(picker.value ? await example(picker.value) : custom); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
+$('share').onclick = share;
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
