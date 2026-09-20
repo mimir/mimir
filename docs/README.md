@@ -31,6 +31,8 @@ MimIR brings two worlds together: typed functional IRs supply the abstractions �
 It has both at once, by extending sea-of-nodes to the Calculus of Constructions.
 And it pays off in practice: the [regex](@ref regex) plugin is the fastest engine in our evaluation (see the [POPL'25 paper](https://doi.org/10.1145/3704840)).
 
+<div class="big-button"><a href="https://mimir.github.io/playground/">▶ Try MimIR in your Browser</a></div>
+
 @note 🆕 **New here?**
 - 🧭 Read the [**Tour of MimIR**](@ref mimir) — it walks through Mim's syntax and MimIR's plugin architecture.
 - 📚 Then, read the rest of the [documentation](https://mimir.github.io/usergroup0.html).

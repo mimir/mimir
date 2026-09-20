@@ -58,6 +58,7 @@ set(DOXY_STYLESHEETS
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/button.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/code.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/mim.css"
