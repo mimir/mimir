@@ -29,7 +29,7 @@ bool check_gather_shape_constraints(const Def* rank, const Def* dim, const Def* 
         if (d != *dim_l) {
             auto lhs = idx_shape->proj(*rank_l, d);
             auto rhs = src_shape->proj(*rank_l, d);
-            if (statically_violates(lhs, rhs)) fe::throwf("gather idx shape exceeds input shape at axis {}", d);
+            if (statically_violates(lhs, rhs)) fe::throwf("gather index shape exceeds input shape at axis {}", d);
             proven &= statically_le(lhs, rhs);
         }
     return proven;
