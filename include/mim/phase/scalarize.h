@@ -29,8 +29,7 @@ namespace mim {
 ///   plus a *bare* function argument's type (`autodiff.ad f`) - except for subtrees that are
 ///   merely substituted in via (type) arguments (`T` in `mem.store T`), which stay flattenable,
 /// * it occurs inside an *interface* Lam's signature (external, annex, or unset declaration) -
-///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values;
-///   rewrite_mut_Lam() preserves the interface's top level by hand),
+///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values),
 /// * it types a value inside a dependently-typed aggregate (a typed closure),
 /// * an App connects a dom and an arg whose types are alpha-equivalent yet *distinct* defs, or
 /// * one of its parameters is Extract%ed / Insert%ed via a **non-constant** index

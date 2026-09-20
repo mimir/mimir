@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+plugin mem;
+
+extern fun store_pair(m: mem.M 0, p: [I32, I8], q: mem.Ptr0 [I32, I8]): [mem.M 0, I32] =
+    let m = mem.store (m, q, p);
+    return (m, p#0_2);
+
+extern fun ends(v w: «3; I32»): I32 =
+    return (core.wrap.add 0 (v#0_3, w#2_3));
+
+extern fun pick(v w: «3; I32», i: Idx 3): I32 =
+    return (core.wrap.add 0 (v#i, w#i));
+
+// An interface spreads its argument list into individual parameters - nested tuples and arrays alike -
+// and a parameter is reassembled where it is used as a whole.
+// CHECK-DAG: extern fun store_pair ({{[a-z0-9_]+}}: mem.M 0, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I8, {{[a-z0-9_]+}}: mem.Ptr ([I32, I8], 0)): [mem.M 0, I32]
+// CHECK-DAG: mem.store ([I32, I8], 0) ({{[a-z0-9_]+}}, {{[a-z0-9_]+}}, ({{[a-z0-9_]+}}, {{[a-z0-9_]+}}))
+// CHECK-DAG: extern fun ends ({{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32): I32
+
+// Except where a non-constant index forbids it - splitting would only force the body to reassemble.
+// CHECK-DAG: extern fun pick ({{[a-z0-9_]+}}: «3; I32», {{[a-z0-9_]+}}: «3; I32», {{[a-z0-9_]+}}: Idx 3): I32

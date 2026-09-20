@@ -119,8 +119,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
     // An interface Lam (external, annex, or unset declaration) keeps its whole signature:
     // pin everything its type mentions (its ret Pi, callback params, a polymorphic Lam's inner Cn, ...) -
     // other code (plugin phases, foreign callers) builds against these shapes.
-    // Only the interface's own (top-level) Pi stays flattenable: it may be shared with internal values
-    // (Scalarize::rewrite_mut_Lam preserves the interface's top level by hand).
+    // Only the interface's own (top-level) Pi stays flattenable: it may be shared with internal values.
     if (auto lam = def->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
         auto visited = DefSet();
         visited.emplace(lam->type());
@@ -226,18 +225,11 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     auto mask = is_bootstrapping() ? fe::Bitset() : analysis_.plan(old->type());
     if (mask.none()) return RWPhase::rewrite_mut_Lam(old);
 
-    if (!isa_optimizable(old)) {
-        // An interface Lam's signature is ABI: rebuild its Pi via the generic hook -
-        // top-level shape preserved, inner types still flattened - instead of rewrite(),
-        // which would hand back the flattened Pi.
-        auto pi = RWPhase::rewrite_imm_Pi(old->type())->as<Pi>();
-        return rewrite_stub(old, new_world().mut_lam(pi));
-    }
-
     auto& w  = new_world();
     auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
     log().d("scalarize {}: {} → {}: {}", old, old->type(), sca, sca->type());
     map(old, sca);
+    if (!old->is_set()) return sca; // a foreign declaration has no var uses to rewire
 
     // reassemble the old var one level from the fresh scalar vars
     auto n      = old->num_tvars();
@@ -273,13 +265,9 @@ DefVec Scalarize::flatten_args(const App* app, const fe::Bitset& mask) {
 }
 
 const Def* Scalarize::rewrite_imm_App(const App* app) {
-    if (!is_bootstrapping()) {
-        // A direct call to an interface Lam keeps its argument shape - the callee's signature stays put.
-        auto lam = app->callee()->isa_mut<Lam>();
-        if (!lam || isa_optimizable(lam))
-            if (auto mask = analysis_.plan(app->callee_type()); mask.any())
-                return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
-    }
+    if (!is_bootstrapping())
+        if (auto mask = analysis_.plan(app->callee_type()); mask.any())
+            return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
 
     return RWPhase::rewrite_imm_App(app);
 }
