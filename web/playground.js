@@ -227,14 +227,23 @@ function schedule() {
     timer = setTimeout(run, 500);
 }
 
+// Read raw: URLSearchParams would turn a `+` operator into a space.
+function urlSource() {
+    const m = /[?&]src=([^&]*)/.exec(location.search);
+    if (!m) return null;
+    try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
+const custom = urlSource();
 const picker = $('examples');
+if (custom !== null) picker.add(new Option('(custom)', ''));
 for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
-picker.onchange = async () => { setSource(await example(picker.value)); run(); };
+picker.onchange = async () => { setSource(picker.value ? await example(picker.value) : custom); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
 
 // setupEditor fills the textarea before it awaits, so the first compile starts alongside.
-const initial = await example(EXAMPLES[0]);
+const initial = custom ?? await example(EXAMPLES[0]);
 await Promise.all([setupEditor(initial), run()]);
