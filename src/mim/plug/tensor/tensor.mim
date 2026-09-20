@@ -422,8 +422,8 @@ axm bmm: [R: Ring]
 /// \f$O_d = (s_d + 2 \cdot \mathit{padding}_d - (\mathit{dilation}_d \cdot (k_d - 1) + 1)) / \mathit{stride}_d + 1\f$:
 /// the NCHW output shape.
 pub lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; Nat» =
-    let hw = ‹d: 2; (s#d + 2 * padding#d - (dilation#d * (k#d - 1) + 1)) / stride#d + 1›;
-    (n, cout, hw#0_2, hw#1_2);
+    let (hwx, hwy) = ‹d: 2; (s#d + 2 * padding#d - (dilation#d * (k#d - 1) + 1)) / stride#d + 1›;
+    (n, cout, hwx, hwy);
 ///
 /// ### conv
 ///
@@ -499,7 +499,7 @@ axm pool: {T: *}
         → {n c h w: Nat}
         → [kernel stride dilation padding s_out: «2; Nat»]
         → [input: «n, c, h, w; T»]
-        → «n, c, s_out#0_2, s_out#1_2; T»;
+        → «n, c, s_out#0₂, s_out#1₂; T»;
 ///
 /// ### product_2d
 ///
