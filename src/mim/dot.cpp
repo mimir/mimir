@@ -170,6 +170,8 @@ public:
         return os_ << std::format("fillcolor=\"{} 0.5 0.75\"", hue);
     }
 
+    /// Streaming a Def is Def::Dump::Expr - one line, no analysis.
+    /// Keep it that way: this output is the fallback for when a Nest-based dump dies on a broken World.
     std::ostream& tooltip(const Def* def) {
         static constexpr auto NL = "&#13;&#10;"; // newline
 

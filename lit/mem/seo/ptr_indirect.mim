@@ -1,12 +1,10 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
-
 plugin core;
 plugin mem;
 
 use core.ops.n;
 
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
-
 extern fun use_address[m: mem.M 0, ptr: mem.Ptr (Nat, 0)]: [mem.M 0];
 
 extern fun test(m: mem.M 0): [mem.M 0, Nat] =

@@ -9,6 +9,8 @@ namespace mim {
 
 Scheduler::Scheduler(const Nest& nest)
     : nest_(&nest) {
+    // Scheduling only makes sense within one scope: a *virtual* root has no scope to place anything in.
+    assert(nest.root()->mut() && "Scheduler needs the Nest of a single mutable");
     auto queue = fe::BFSWorklist<DefSet>();
 
     auto enqueue = [&](const Def* def, size_t i, const Def* op) {

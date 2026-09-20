@@ -15,6 +15,7 @@ set(MIM_DOC_EXAMPLES sq count dep iter)
 # The playground picker's examples, relative to `lit/`; order is the picker's.
 # Only `-p opt -p ll` is available, so an example must not need further plugins.
 set(MIM_PLAYGROUND_EXAMPLES
+    docs/tutorial
     docs/sq
     docs/count
     docs/dep

@@ -1,5 +1,4 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
-
 /// A hypothetical C++-to-MimIR compiler would produce the output below from this C++ program:
 /// ```cpp
 /// uint64_t f(uint64_t x) {

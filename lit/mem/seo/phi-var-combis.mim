@@ -1,5 +1,4 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
-
 //      incoming  loop          |       incoming  loop
 // -----------------------------|---------------------
 // pa :       10  +1, take_addr |  a :       100    +1
@@ -96,15 +95,7 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                     let (m, vb1) = mem.load (m, pb1);
                     let (m, vb2) = mem.load (m, pb2);
                     let (m, vc ) = mem.load (m, pc );
-                    let res        = va;
-                    let res        = res + vb1;
-                    let res        = res + vb2;
-                    let res        = res + vc;
-                    let res        = res + a;
-                    let res        = res + b1;
-                    let res        = res + b2;
-                    let res        = res + c;
-                    return (m, res);
+                    return (m, va + vb1 + vb2 + vc + a + b1 + b2 + c);
             end
     end;
 
