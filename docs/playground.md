@@ -79,6 +79,7 @@ If a freshly built compiler seems to behave like the old one, reload while bypas
 
 The editor compiles on every keystroke, half a second after you stop typing; **Run** turns into **Stop** while a run is in flight and kills a program that does not terminate.
 _optimize_ runs the [opt](@ref opt) pipeline and the [ll](@ref ll) backend; without it the program is only parsed and emitted again.
+The **Mim** tab's _ASCII_ box is `-a`, which is a global flag rather than a Mim-only one: it swaps the UTF-8 spellings out of every output, the graph's labels included.
 
 A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/?src=plugin%20core%3B%0Ause%20core.ops.u.w%3B%0A%0Aextern%20fun%20inc%20(x%3A%20I32)%3A%20I32%20%3D%20return%20(x%20%2B%201I32)%3B%0A) increments an `I32`.
 Percent-encode it — `encodeURIComponent` in the browser's console produces exactly what the page expects; a `+` stands for itself and is *not* a space.
@@ -89,15 +90,20 @@ The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/)
 
 | Checkbox       | Flag                   |
 | -------------- | ---------------------- |
-| all annexes    | `--dot-all-annexes`    |
 | default filter | `--dot-default-filter` |
 | type edges     | `--dot-follow-types`   |
 | inline consts  | `--dot-inline-consts`  |
 | hidden edges   | `--dot-show-hidden`    |
+| no tooltips    | `--dot-no-tooltip`     |
+| lean labels    | `--dot-lean-labels`    |
 
 See @ref cli for what each one does.
 Since they are compile-time flags, toggling one re-runs the compiler.
-Layout happens on the page, so a graph beyond 512 KB of DOT is refused rather than attempted — `--dot-all-annexes` reaches that on anything but a small program.
+`--dot-all-annexes` has no checkbox: it buries any program of this size in the annexes it pulls in.
+
+Layout happens on the page, so a graph beyond 512 KB of DOT is refused rather than attempted.
+The last two checkboxes are the ones that buy room — on an optimized `ackermann.mim` the tooltips are two fifths of the file and the labels another third, and the two together take it from 30 KB to 7 KB.
+They are what a refused graph needs; the price is the hover text and the ports an edge docks at.
 
 ### Navigating
 

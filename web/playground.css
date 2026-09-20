@@ -174,9 +174,11 @@ main {
     white-space: pre;
 }
 
-#pane-graph { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* A pane with an options bar scrolls in its body, not as a whole. */
+#pane-graph, #pane-mim { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+#pane-mim pre { flex: 1; min-height: 0; overflow: auto; padding: .75rem; }
 
-#dot-opts {
+.opts {
     display: flex;
     flex-wrap: wrap;
     gap: .25rem .9rem;
@@ -186,7 +188,7 @@ main {
     font-size: 12.5px;
 }
 
-#dot-opts label { white-space: nowrap; }
+.opts label { white-space: nowrap; }
 
 #graph {
     flex: 1;

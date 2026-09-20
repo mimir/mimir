@@ -36,12 +36,13 @@
         </div>
         <div id="panes">
             <div class="pane" id="pane-graph">
-                <div id="dot-opts">
-                    <label title="Emits all annexes - even unused ones."><input type="checkbox" data-dot="all-annexes"> all annexes</label>
+                <div class="opts" id="dot-opts">
                     <label title="Always shows a lambda's filter - even if it is the default one (`ff` for continuations, `tt` for direct-style functions)."><input type="checkbox" data-dot="default-filter"> default filter</label>
                     <label title="Follows type dependencies."><input type="checkbox" data-dot="follow-types"> type edges</label>
                     <label title="Wires up literals, axioms, etc. with normal edges instead of detaching them into a separate row; useful for small graphs."><input type="checkbox" data-dot="inline-consts"> inline consts</label>
                     <label title="Renders otherwise-transparent detached edges - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray."><input type="checkbox" data-dot="show-hidden"> hidden edges</label>
+                    <label title="Drops the tooltip a node shows on hover - two fifths of the DOT."><input type="checkbox" data-dot="no-tooltip"> no tooltips</label>
+                    <label title="Labels a node `Node name_gid` instead of the boxed two-line label. Another third off the DOT, at the cost of the ports an edge docks at."><input type="checkbox" data-dot="lean-labels"> lean labels</label>
                 </div>
                 <div id="graph" tabindex="0"></div>
                 <div id="graph-nav">
@@ -51,7 +52,12 @@
                 </div>
             </div>
             <div class="pane" id="pane-ll"   hidden><pre></pre></div>
-            <div class="pane" id="pane-mim"  hidden><pre></pre></div>
+            <div class="pane" id="pane-mim"  hidden>
+                <div class="opts" id="mim-opts">
+                    <label title="Uses ASCII alternatives instead of UTF-8 throughout the output."><input type="checkbox" id="ascii"> ASCII</label>
+                </div>
+                <pre></pre>
+            </div>
             <div class="pane" id="pane-log"  hidden><pre></pre></div>
         </div>
     </div>

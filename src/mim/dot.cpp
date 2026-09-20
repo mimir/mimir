@@ -128,7 +128,7 @@ public:
                 if (cfg_.inline_consts && (op->isa<Lit>() || op->isa<Axm>())) {
                     auto dup = std::format("_{}_{}", def->gid(), i);
                     emit_node(dup, op);
-                    std::println(os_, "{}_{}:{} -> {};", tab_, def->gid(), i, dup);
+                    std::println(os_, "{}{} -> {};", tab_, tail(def, i), dup);
                     type_edge(dup, op, max - 1);
                 } else {
                     recurse(op, max - 1);
@@ -139,10 +139,10 @@ public:
                         // Detached edges are transparent by default to keep the layout readable (xdot still
                         // highlights them on hover). With show_hidden we render them statically in a subtle gray.
                         auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
-                        std::println(os_, "{}_{}:{} -> _{}[color=\"{}\",constraint=false];", tab_, def->gid(), i,
-                                     op->gid(), edge_color);
+                        std::println(os_, "{}{} -> _{}[color=\"{}\",constraint=false];", tab_, tail(def, i), op->gid(),
+                                     edge_color);
                     } else
-                        std::println(os_, "{}_{}:{} -> _{};", tab_, def->gid(), i, op->gid());
+                        std::println(os_, "{}{} -> _{};", tab_, tail(def, i), op->gid());
                 }
             }
         }
@@ -163,6 +163,11 @@ public:
 
     /// One port per op, so an edge docks under the very op it stands for.
     void label(const Def* def) {
+        if (cfg_.lean_labels) {
+            std::print(os_, "label=\"{}\",", quote(std::format("{} {}", caption(def), def->unique_name())));
+            return;
+        }
+
         auto n = def->is_set() ? def->num_ops() : size_t(0);
         if (n > 0) {
             std::print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">",
@@ -170,7 +175,7 @@ public:
             emit_name(def);
             std::print(os_, "</td></tr><tr>");
             for (size_t i = 0; i < n; ++i)
-                std::print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
+                std::print(os_, "<td port=\"{}\" height=\"1\" width=\"8\"></td>", i);
             std::print(os_, "</tr></table>>,");
         } else {
             std::print(os_, "label=<");
@@ -179,10 +184,20 @@ public:
         }
     }
 
+    /// A Lit shows its value where every other Def shows its node name.
+    std::string caption(const Def* def) {
+        auto lit = def->isa<Lit>();
+        return lit ? std::format("{}", lit) : std::string(def->node_name());
+    }
+
     void emit_name(const Def* def) {
-        auto lit  = def->isa<Lit>();
-        auto name = lit ? html("{}", lit) : html("{}", def->node_name());
-        std::print(os_, "{}<br/><font point-size=\"9\">{}</font>", name, html("{}", def->unique_name()));
+        std::print(os_, "{}<br/><font point-size=\"9\">{}</font>", html("{}", caption(def)),
+                   html("{}", def->unique_name()));
+    }
+
+    /// Without the port cells of a full label there is nothing to dock at but the node itself.
+    std::string tail(const Def* def, size_t i) {
+        return cfg_.lean_labels ? std::format("_{}", def->gid()) : std::format("_{}:{}", def->gid(), i);
     }
 
     void color(const Def* def) {
@@ -199,6 +214,8 @@ public:
 
     /// A tooltip is plain text - markup would show up verbatim in xdot and in the browser alike.
     void tooltip(const Def* def) {
+        if (cfg_.no_tooltip) return;
+
         std::string s;
         auto add = [&, sep = ""](std::string_view key, const auto& val) mutable {
             s += std::format("{}{}: {}", sep, key, val);
