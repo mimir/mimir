@@ -10,8 +10,27 @@ cmake_dependent_option(
 set(MIM_NATIVE_MIM "" CACHE FILEPATH "Native mim executable that bootstraps the plugins.")
 # Where a plugin's `.mim` half is staged, so an uninstalled tree can load it.
 set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")
-# The tour examples of `lit/docs`; used by the docs and the playground.
-set(MIM_DOC_EXAMPLES sq count dep iter) # order is the playground picker's
+# The tour examples of `lit/docs`; used by the docs.
+set(MIM_DOC_EXAMPLES sq count dep iter)
+# The playground picker's examples, relative to `lit/`; order is the picker's.
+# Only `-p opt -p ll` is available, so an example must not need further plugins.
+set(MIM_PLAYGROUND_EXAMPLES
+    docs/sq
+    docs/count
+    docs/dep
+    docs/iter
+    fib
+    ackermann
+    main_loop
+    ord/fold
+    ord/loop
+    ord/poly
+    mem/seo/gvn
+    mem/seo/click
+    mem/seo/phi-var-combis
+    mem/seo/higher-order
+    mem/seo/ptr_indirect
+)
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
     message(STATUS

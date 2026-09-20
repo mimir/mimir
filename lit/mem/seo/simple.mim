@@ -1,6 +1,5 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 plugin core;
-plugin compile;
 plugin mem;
 
 use core.ops.n;
@@ -12,12 +11,6 @@ extern lam lf(a: Nat): Nat =
     f (42, a, 23) + f (42, a, 3);
 
 extern lam lg(a: Nat): Nat = g (23, 1) - g (23, a);
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        mem.seo,
-    );
 
 // CHECK: extern lam lf ({{[[:alnum:]_]+}}: Nat): Nat =
 // CHECK: lam f_{{[0-9]+}} ({{[[:alnum:]_]+}}: Nat): Nat =

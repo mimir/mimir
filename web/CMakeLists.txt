@@ -44,12 +44,12 @@ mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/mim.js mim-code.js)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/llvm.js llvm-code.js)
 
 # The examples are the lit suite's, so they cannot rot.
-foreach(EXAMPLE IN LISTS MIM_DOC_EXAMPLES)
-    mim_stage_playground(${PROJECT_SOURCE_DIR}/lit/docs/${EXAMPLE}.mim examples/${EXAMPLE}.mim)
+foreach(EXAMPLE IN LISTS MIM_PLAYGROUND_EXAMPLES)
+    mim_stage_playground(${PROJECT_SOURCE_DIR}/lit/${EXAMPLE}.mim examples/${EXAMPLE}.mim)
 endforeach()
 
 # The picker reads the very list that stages the files.
-string(JOIN "\", \"" EXAMPLE_NAMES ${MIM_DOC_EXAMPLES})
+string(JOIN "\", \"" EXAMPLE_NAMES ${MIM_PLAYGROUND_EXAMPLES})
 file(GENERATE OUTPUT ${PLAYGROUND_DIR}/examples/index.json CONTENT "[\"${EXAMPLE_NAMES}\"]")
 
 # mim.js loads its two siblings by name.

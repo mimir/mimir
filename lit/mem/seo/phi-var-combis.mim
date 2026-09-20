@@ -16,8 +16,6 @@
 
 plugin mem;
 plugin core;
-plugin compile;
-plugin ll;
 
 use core.ops.n;
 
@@ -109,22 +107,6 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                     return (m, res);
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        compile.phases tt (
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-        compile.branch_normalize,
-        compile.ret_wrap,
-        compile.named "mem.alloc2malloc_repl",
-        compile.named "ll.emit",
-    );
 
 // pa remains a slot because its address escapes.
 // CHECK-LABEL: define i64 @f() {

@@ -1,8 +1,6 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 
 plugin core;
-plugin compile;
-plugin ll;
 plugin mem;
 
 extern fun test1(m: mem.M 0): [mem.M 0, Nat] =
@@ -13,20 +11,6 @@ extern fun test1(m: mem.M 0): [mem.M 0, Nat] =
     let (m, b)   = mem.load (m, ptr);
     let (m, c)   = mem.load (m, ptr);
     return (m, core.nat.add (a, c));
-
-extern lam _compile(): compile.Phase =
-    compile.phases tt (
-        compile.cleanup,
-        compile.phases tt (
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-        mem.alloc2malloc_repl,
-        compile.named "ll.emit",
-    );
 
 // CHECK: define i64 @test1()
 // CHECK-NOT: alloca

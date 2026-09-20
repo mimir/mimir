@@ -1,6 +1,5 @@
 // RUN: %mim %s -p opt -o - | %FileCheck %s
 plugin mem;
-plugin compile;
 
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 
@@ -26,17 +25,5 @@ extern fun test1(m: mem.M 0): [mem.M 0, I64] =
                     return (m, v);
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases tt (
-        compile.cleanup,
-        compile.phases tt (
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-    );
 
 // CHECK: test1

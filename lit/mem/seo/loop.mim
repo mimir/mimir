@@ -1,7 +1,5 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
 plugin core;
-plugin compile;
-plugin ll;
 plugin mem;
 
 use core.ops.n;
@@ -32,19 +30,6 @@ extern fun f(x: Nat): Nat =
                     return s;
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        compile.phases tt (
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-        compile.named "ll.emit",
-    );
 
 // CHECK: define i64 @f(i64 [[X:%x_[0-9]+]])
 // CHECK: [[T:%t_[0-9]+]] = phi i64 [ 3, {{.*}} ], [ 4, {{.*}} ]

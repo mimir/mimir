@@ -2,8 +2,6 @@
 
 plugin mem;
 plugin core;
-plugin compile;
-plugin ll;
 
 use core.ops.n;
 
@@ -44,22 +42,5 @@ extern fun f (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
                     return (m, vr);
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        compile.phases tt (
-            compile.scalarize,
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-        compile.branch_normalize,
-        compile.ret_wrap,
-        compile.named "mem.alloc2malloc_repl",
-        compile.named "ll.emit",
-    );
 
 // CHECK: ret i64 529
