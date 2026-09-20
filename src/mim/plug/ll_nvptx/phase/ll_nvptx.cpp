@@ -88,7 +88,7 @@ private:
     /// Device slots live in a module-scope global in their requested address space, not on the stack.
     std::string emit_slot(ll::BB&, const App* app, const Def* pointee, const Def* addr_space) override {
         auto v_ptr = "@" + app->unique_name() + ".slot";
-        std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", v_ptr, addr_space, convert(pointee));
+        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", v_ptr, addr_space, convert(pointee));
         return v_ptr;
     }
 
@@ -120,11 +120,11 @@ void HostEmitter::start() {
 
     for (auto [kernel, kid] : kernel_ids_) {
         auto name = id(kernel).substr(1);
-        std::print(vars_decls_, "{}{} = private constant [{} x i8] c\"{}\\00\"\n", kernel_name_prefix, kid,
-                   name.size() + 1, name);
+        std::println(vars_decls_, "{}{} = private constant [{} x i8] c\"{}\\00\"", kernel_name_prefix, kid,
+                     name.size() + 1, name);
     }
-    std::print(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer\n", kernel_array_name_,
-               kernel_ids_.size());
+    std::println(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer", kernel_array_name_,
+                 kernel_ids_.size());
 
     LamSet gpu_touching;
     for (auto mut : world().externals().muts()) {
@@ -203,7 +203,7 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
     emit_cu_error_handling(bb, dev_get_res);
 
     declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
-    if (!cu_globals_declared_) std::print(vars_decls_, "{} = global ptr null\n", ctx_name_);
+    if (!cu_globals_declared_) std::println(vars_decls_, "{} = global ptr null", ctx_name_);
     auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
     auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
                              ctx_name_, ctx_flags, dev);
@@ -211,7 +211,7 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
 
     declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
     if (!cu_globals_declared_) {
-        std::print(vars_decls_, "{} = global ptr null\n", mod_name_);
+        std::println(vars_decls_, "{} = global ptr null", mod_name_);
         if (device_fatbin_file_.has_value()) {
             std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
             if (!fatbin_file)
@@ -231,12 +231,12 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
                     std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
                 }
             }
-            std::print(vars_decls_, "\"\n");
+            std::println(vars_decls_, "\"");
         } else {
-            std::print(vars_decls_, "; Add the bytes of your compiled nvptx fatbin binary here:\n");
-            std::print(vars_decls_,
-                       "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE\n",
-                       fatbin_name_);
+            std::println(vars_decls_, "; Add the bytes of your compiled nvptx fatbin binary here:");
+            std::println(vars_decls_,
+                         "{} = private constant [YOUR_FATBIN_DATA_SIZE_GOES_HERE x i8] YOUR_FATBIN_DATA_GOES_HERE",
+                         fatbin_name_);
         }
         cu_globals_declared_ = true;
     }
@@ -543,7 +543,7 @@ std::string DeviceEmitter::prepare() {
 
     auto arg_name = id(arg);
     locals_[arg]  = arg_name;
-    std::print(func_impls_, "{} {}) {{\n", convert(arg->type()), arg_name);
+    std::println(func_impls_, "{} {}) {{", convert(arg->type()), arg_name);
 
     auto& bb = lam2bb_[kernel];
 
@@ -583,7 +583,7 @@ std::string DeviceEmitter::prepare() {
                        smem->type());
         auto name     = "@" + smem->unique_name();
         locals_[smem] = name;
-        std::print(vars_decls_, "{} = internal addrspace({}) global {} undef\n", name, a, convert(T));
+        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", name, a, convert(T));
     }
 
     return kernel->unique_name();
