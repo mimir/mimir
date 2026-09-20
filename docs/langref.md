@@ -41,7 +41,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 #### Primary Terminals
 
-<div class="ebnf-terminals">
+<div class="terminals-code">
 
 ```text
 ( ) [ ] { } ⦃ ⦄
@@ -70,7 +70,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 #### Keywords
 
-<div class="ebnf-terminals">
+<div class="terminals-code">
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ

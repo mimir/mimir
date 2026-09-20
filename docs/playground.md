@@ -12,7 +12,9 @@ A build of the current `master` is live at <https://mimir.github.io/playground/>
 | `playground.css`     | Styling, including the light/dark palette and the log's terminal colors.                          |
 | `playground.js`      | Editor, tabs, run loop, Graphviz layout.                                                          |
 | `mim-worker.js`      | Runs `mim` in a Worker, so a program that never terminates can be killed.                         |
-| `mim-code.js`        | `docs/mim.js`, staged; the page and the docs colour Mim with the very same lexer.                 |
+| `code.js`            | `docs/code.js`, staged; the lexer machinery the page and the docs share.                          |
+| `mim-code.js`        | `docs/mim.js`, staged; the Mim lexer, renamed out of Emscripten's `mim.js` way.                   |
+| `llvm-code.js`       | `docs/llvm.js`, staged; the LLVM lexer of the **LLVM** tab.                                       |
 | `examples/*.mim`     | `lit/docs/*.mim`, staged; the examples are the ones the lit suite covers.                         |
 | `mim.{js,wasm,data}` | Emscripten's output; `mim.data` carries the plugins' `.mim` halves and the [ll](@ref ll) runtime. |
 

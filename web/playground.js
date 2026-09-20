@@ -84,8 +84,9 @@ async function run() {
         const res = await compile(getSource(), args);
         ({ code, log } = res);
         if (res.error) log.push((why = res.error));
-        showMim(res.out?.mim);
-        show('ll', res.out?.ll ?? '(enable "optimize" to run the ll backend)');
+        showCode('mim', MimCode, res.out?.mim);
+        if (res.out?.ll) showCode('ll', LlvmCode, res.out.ll);
+        else showCode('ll', null, '(enable "optimize" to run the ll backend)');
         await showGraph(res.out?.dot);
     } catch (e) {
         log.push((why = String(e?.message ?? e)));
@@ -103,32 +104,30 @@ async function run() {
     if (queued) { queued = false; run(); }
 }
 
-function show(pane, text) {
-    $(`pane-${pane}`).querySelector('pre').textContent = text ?? '';
-}
-
-// The output is Mim again, so mim-code.js colours it just like the editor.
-const MIM_CLASS = { comment: 'tok-comment', string: 'tok-string', number: 'tok-number', keyword: 'tok-keyword',
-                    decl: 'tok-keyword', type: 'tok-type', literal: 'tok-literal', special: 'tok-special' };
+// The docs' lexers colour these panes, too - but onto the palette of this page.
+const CLASS = { comment: 'tok-comment', meta: 'tok-comment', string: 'tok-string', number: 'tok-number',
+                keyword: 'tok-keyword', decl: 'tok-keyword', type: 'tok-type', literal: 'tok-literal',
+                special: 'tok-special', global: 'tok-special', label: 'tok-special' };
+MimCode.CLASS = LlvmCode.CLASS = CLASS;
 
 // Above this the lexer costs more than the colours are worth.
-const MAX_MIM = 256 * 1024;
+const MAX_CODE = 256 * 1024;
 
-function showMim(text) {
-    const pre = $('pane-mim').querySelector('pre');
-    if (!text || text.length > MAX_MIM) { pre.textContent = text ?? ''; return; }
+const pending = {}; // pane -> the {lexer, text} it should show; lexed only while up: a big dump blocks the editor
+const shown = {};   // pane -> the `text` the pane already shows
 
-    const state = { comment: false };
-    let html = '';
+function showCode(pane, lexer, text) {
+    pending[pane] = { lexer, text: text ?? '' };
+    if (!$(`pane-${pane}`).hidden) renderCode(pane);
+}
 
-    for (let pos = 0; pos < text.length;) {
-        const { end, kind } = MimCode.next(text, pos, state);
-        const cls = MIM_CLASS[kind];
-        const token = MimCode.escape(text.slice(pos, end));
-        html += cls ? `<span class="${cls}">${token}</span>` : token;
-        pos = end;
-    }
-    pre.innerHTML = html;
+function renderCode(pane) {
+    const { lexer, text } = pending[pane];
+    if (shown[pane] === text) return;
+    shown[pane] = text;
+    const pre = $(`pane-${pane}`).querySelector('pre');
+    if (lexer && text && text.length <= MAX_CODE) pre.innerHTML = lexer.code(text);
+    else pre.textContent = text;
 }
 
 // An SGR colour replaces the previous one rather than nesting, so every escape closes the open span.
@@ -138,7 +137,7 @@ function showLog(text) {
     let last = 0;
 
     for (const m of text.matchAll(/\x1b\[([0-9;]*)m/g)) {
-        html += MimCode.escape(text.slice(last, m.index));
+        html += Code.escape(text.slice(last, m.index));
         last  = m.index + m[0].length;
         if (open) html += '</span>';
         const code = Number(m[1].split(';').pop() || 0);
@@ -147,7 +146,7 @@ function showLog(text) {
     }
 
     $('pane-log').querySelector('pre').innerHTML
-        = html + MimCode.escape(text.slice(last)) + (open ? '</span>' : '');
+        = html + Code.escape(text.slice(last)) + (open ? '</span>' : '');
 }
 
 // Layout runs on the page, so a graph big enough to freeze it is refused.
@@ -187,6 +186,7 @@ function select(pane) {
         $(`pane-${tab.dataset.pane}`).hidden = !on;
     }
     if (pane === 'graph') layoutGraph();
+    else if (pending[pane]) renderCode(pane);
 }
 
 let editor = null; // CodeMirror, if it loads; the <textarea> is the fallback

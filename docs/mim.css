@@ -1,12 +1,3 @@
-/* The Mim snippets reuse Doxygen's own token classes; these two have no counterpart in C++. */
-div.fragment span.mim-literal {
-    color: var(--fragment-token);
-}
-
-div.fragment span.mim-special {
-    color: var(--fragment-preprocessor);
-}
-
 /* The run button mirrors doxygen-awesome's copy button and, where there is one, sits left of it. */
 a.mim-run {
     --mim-run-right: calc(var(--spacing-large) - (var(--spacing-large) / 2.5));

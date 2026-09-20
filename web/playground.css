@@ -167,7 +167,7 @@ main {
 .fg33 { color: var(--fg33); } .fg34 { color: var(--fg34); } .fg35 { color: var(--fg35); }
 .fg36 { color: var(--fg36); } .fg90 { color: var(--fg90); }
 
-/* The Mim pane's tokens, drawn from the same palette; see showMim. */
+/* The code panes' tokens, drawn from the same palette; see renderCode. */
 .tok-comment { color: var(--fg90); }
 .tok-string  { color: var(--fg32); }
 .tok-number,
