@@ -77,9 +77,8 @@ If a freshly built compiler seems to behave like the old one, reload while bypas
 The editor compiles on every keystroke, half a second after you stop typing; **Run** turns into **Stop** while a run is in flight and kills a program that does not terminate.
 _optimize_ runs the [opt](@ref opt) pipeline and the [ll](@ref ll) backend; without it the program is only parsed and emitted again.
 
-A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program:
-<https://mimir.github.io/playground/?src=extern%20lam%20id%20%7BT%3A%20*%7D%20(x%3A%20T)%3A%20T%20%3D%20x%3B>.
-Percent-encode it — `encodeURIComponent` in the browser's console does exactly what the page expects; note that a `+` stands for itself and is *not* a space.
+A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/?src=plugin%20core%3B%0Ause%20core.ops.u.w%3B%0A%0Aextern%20fun%20inc%20(x%3A%20I32)%3A%20I32%20%3D%20return%20(x%20%2B%201I32)%3B%0A) increments an `I32`.
+Percent-encode it — `encodeURIComponent` in the browser's console produces exactly what the page expects; a `+` stands for itself and is *not* a space.
 The picker keeps such a program under _(custom)_, so loading an example does not lose it.
 
 The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/), and its checkboxes are exactly the CLI's `--dot-*` switches:
