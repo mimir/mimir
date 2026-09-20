@@ -551,7 +551,8 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 const Def* Def::immutabilize() {
     auto& w = world();
     switch (node()) {
-        case Node::Pi:    return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom()) : nullptr;
+        case Node::Pi:
+            return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom(), as<Pi>()->is_implicit()) : nullptr;
         case Node::Sigma: return is_immutabilizable() ? w.sigma(ops()) : nullptr;
         case Node::Rule:  return nullptr; // TODO should we ever immutabilize Rules?
         case Node::Arr:

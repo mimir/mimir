@@ -142,6 +142,8 @@ public:
 
     /// @name Freeze
     /// In frozen state the World does not create any nodes.
+    /// Dumping freezes: a dump that allocated gids would perturb the very program you are debugging.
+    /// So whatever a frozen query cannot answer from what is already there comes back as `nullptr`.
     ///@{
     bool is_frozen() const { return state_.pod.frozen; }
 
@@ -894,6 +896,10 @@ private:
         if (ins) i->second = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
         return i->second;
     }
+
+    /// The @p i th slot of an *existing* `[var -> arg]` cache entry; `nullptr` if it has not been computed yet.
+    /// Unlike reduct() this never allocates and hence works on a frozen World.
+    const Def* cached_reduct(const Var* var, const Def* arg, size_t i);
 
     /// Caches `[var -> arg]` as @p defs that have already been computed.
     void cache_reduct(const Var* var, const Def* arg, Defs defs) {

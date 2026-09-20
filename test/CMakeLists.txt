@@ -44,6 +44,7 @@ set(MIM_TEST_TARGETS "" CACHE INTERNAL "MIM_TEST_TARGETS" FORCE)
 add_mim_test(mim-test
     SOURCES
         cast.cpp
+        dump.cpp
         lexer.cpp
         restricted_dep_types.cpp
         test.cpp

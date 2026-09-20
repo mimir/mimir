@@ -54,12 +54,15 @@ using ast::Prec;
 using ast::prec_assoc;
 
 Prec def2prec(const Def* def) {
-    if (def->isa<Extract>()) return Prec::Extract;
+    // A Var's projection prints as its name and hence is atomic; see the Extract case in operator<<.
+    if (auto ex = def->isa<Extract>())
+        return ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
     if (def->isa<Inj>()) return Prec::Inj;
     if (def->isa<Reform>()) return Prec::App;
-    if (auto pi = def->isa<Pi>(); pi && !Pi::isa_cn(pi)) return Prec::Arrow;
+    // `Cn e` parses its domain at Prec::Bot, so it swallows whatever follows and only ever fits a closed context.
+    if (auto pi = def->isa<Pi>()) return Pi::isa_cn(pi) ? Prec::Bot : Prec::Arrow;
     if (auto app = def->isa<App>()) {
         if (auto size = Idx::isa(app)) {
             if (auto l = Lit::isa(size)) {
@@ -180,14 +183,37 @@ nat_t num_binders(const Def* type) {
 }
 
 /// A Seq's shape the way the surface syntax spells it: one axis per dimension, `2, 3` for a fused `(2, 3)`.
+/// Falls back to the shape as a whole - also a legal spelling - if an axis does not exist as a Def.
 std::string shape(const Seq* seq) {
     auto s = seq->shape();
     auto r = s.rank();
     if (!r || *r <= 1) return std::format("{}", Op(*s));
-    return std::format("{}", Op::map(s->projs(*r)));
+
+    auto axes = s->projs(*r);
+    if (std::ranges::any_of(axes, [](auto a) { return !a; })) return std::format("{}", Op(*s));
+    return std::format("{}", Op::map(axes));
 }
 
-std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
+/// As above but each axis binds its index - `i: 2, j: 3`; a fused Seq binds one Var per axis.
+std::string shape(const Seq* seq, const Def* var) {
+    auto s = seq->shape();
+    auto r = s.rank();
+    if (!r || *r <= 1) return std::format("{}: {}", Op(var), Op(*s));
+
+    auto res = std::string();
+    for (auto sep = ""; auto i : std::views::iota(nat_t(0), *r)) {
+        auto axis   = var->proj(*r, i);
+        auto extent = s[i];
+        if (!extent) return std::format("{}: {}", Op(var), Op(*s));
+        // A projection the body never mentions does not exist as a Def and hence has no name of its own.
+        res += std::format("{}{}: {}", sep, axis ? std::format("{}", Op(axis)) : "_"s, Op(extent));
+        sep = ", ";
+    }
+    return res;
+}
+
+/// @p brckt selects the `[]` sub-patterns of a type over the `()` sub-patterns of a Lam's parameter list.
+std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type, bool brckt = false) {
     if (!def) return os << std::format("_: {}", Op(type));
 
     auto projs = def->tprojs();
@@ -195,17 +221,38 @@ std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
         return os << std::format("{}: {}", name(def), Op(type));
 
     size_t i = 0;
-    os << '(';
+    os << (brckt ? '[' : '(');
     for (auto sep = ""; auto proj : projs) {
         os << sep;
-        ptrn(os, proj, type->proj(projs.size(), i++));
+        // A projection's own type is the one where the binder has already been substituted for this Var.
+        ptrn(os, proj, proj ? proj->type() : type->proj(projs.size(), i), brckt);
+        ++i;
         sep = ", ";
     }
-    return os << std::format(") as {}", name(def));
+    return os << std::format("{} as {}", brckt ? ']' : ')', name(def));
+}
+
+/// A Pi's domain the way the surface syntax binds it - a pattern, once the Var's projections are in use.
+std::ostream& dom_ptrn(std::ostream& os, const Def* var, const Def* type, bool implicit) {
+    auto l     = implicit ? '{' : '[';
+    auto r     = implicit ? '}' : ']';
+    auto projs = var->tprojs();
+    if (projs.size() == 1 || std::ranges::all_of(projs, [](auto d) { return !d; }))
+        return os << std::format("{}{}: {}{}", l, name(var), Op(type), r);
+
+    size_t i = 0;
+    os << l;
+    for (auto sep = ""; auto proj : projs) {
+        os << sep;
+        ptrn(os, proj, proj ? proj->type() : type->proj(projs.size(), i), true);
+        ++i;
+        sep = ", ";
+    }
+    return os << std::format("{} as {}", r, name(var));
 }
 
 std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
-    if (def) return ptrn(os, def, type);
+    if (def) return ptrn(os, def, def->type());
     return os << std::format("_: {}", Op(type));
 }
 
@@ -323,12 +370,12 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto var = d->isa<Var>()) {
         return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {
-        auto l = pi->is_implicit() ? '{' : '[';
-        auto r = pi->is_implicit() ? '}' : ']';
-        return os << std::format("{}{}: {}{} {} {}", l, Op(var), Op(pi->dom()), r, arw,
-                                 Op::r(pi->codom(), Prec::Arrow));
+        dom_ptrn(os, var, pi->dom(), pi->is_implicit());
+        return os << std::format(" {} {}", arw, Op::r(pi->codom(), Prec::Arrow));
     } else if (auto pi = d->isa<Pi>()) {
         if (Pi::isa_cn(pi)) return os << std::format("Cn {}", Op(pi->dom()));
+        if (pi->is_implicit())
+            return os << std::format("{{_: {}}} {} {}", Op(pi->dom()), arw, Op::r(pi->codom(), Prec::Arrow));
         return os << std::format("{} {} {}", Op::l(pi->dom(), Prec::Arrow), arw, Op::r(pi->codom(), Prec::Arrow));
     } else if (auto lam = d->isa<Lam>()) {
         // TODO this output is really confuinsg
@@ -349,7 +396,9 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
             }
         }
 
-        return os << std::format("{} {}", Op::l(app->callee(), Prec::App), Op::r(app->arg(), Prec::App));
+        // The parser fills an implicit domain with a Hole, so spelling one out needs `@` to re-parse.
+        auto at = Pi::isa_implicit(app->callee()->unfold_type()) ? "@ " : "";
+        return os << std::format("{} {}{}", Op::l(app->callee(), Prec::App), at, Op::r(app->arg(), Prec::App));
     } else if (auto [sigma, var] = d->isa_binder<Sigma>(); sigma) {
         size_t i  = 0;
         auto elem = fe::StreamFn{[&](std::ostream& os) -> std::ostream& {
@@ -371,11 +420,11 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto tuple = d->isa<Tuple>()) {
         return os << std::format("({})", Op::map(tuple->ops()));
     } else if (auto [arr, var] = d->isa_binder<Arr>(); arr) {
-        return os << std::format("{}{}: {}; {}{}", al, var, Op(*arr->shape()), Op(arr->body()), ar);
+        return os << std::format("{}{}; {}{}", al, shape(arr, var), Op(arr->body()), ar);
     } else if (auto arr = d->isa<Arr>()) {
         return os << std::format("{}{}; {}{}", al, shape(arr), Op(arr->body()), ar);
     } else if (auto [pack, var] = d->isa_binder<Pack>(); pack) {
-        return os << std::format("{}{}: {}; {}{}", pl, pack->var(), Op(*pack->shape()), Op(pack->body()), pr);
+        return os << std::format("{}{}; {}{}", pl, shape(pack, var), Op(pack->body()), pr);
     } else if (auto pack = d->isa<Pack>()) {
         return os << std::format("{}{}; {}{}", pl, shape(pack), Op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {

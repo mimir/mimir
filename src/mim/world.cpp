@@ -582,7 +582,12 @@ const Def* World::extract1(const Def* d, const Def* index) {
 
         if (auto sigma = type->isa<Sigma>()) {
             if (auto var = sigma->has_var()) {
-                if (is_frozen()) return nullptr; // if frozen, we don't risk rewriting
+                if (d == var) return unify<Extract>(sigma->op(*lidx), d, index); // `var -> var` is the identity
+                // Frozen, only an already cached reduct can be replayed - rewriting would create nodes.
+                if (is_frozen()) {
+                    auto t = cached_reduct(var, d, *lidx);
+                    return t ? unify<Extract>(t, d, index) : nullptr;
+                }
                 return unify<Extract>(reduce(var, d, *lidx), d, index);
             }
 
@@ -925,6 +930,12 @@ Defs World::reduce(const Var* var, const Def* arg) {
     }
 
     return reduct->ops();
+}
+
+const Def* World::cached_reduct(const Var* var, const Def* arg, size_t i) {
+    if (auto it = move_.substs.find(std::pair{var, arg}); it != move_.substs.end())
+        if (auto slot = it->second->ops()[i]; slot != Filling) return slot;
+    return nullptr;
 }
 
 const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
