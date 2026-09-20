@@ -3,7 +3,6 @@
 #include <ranges>
 
 #include <fe/assert.h>
-#include <fe/worklist.h>
 
 #include "mim/driver.h"
 #include "mim/nest.h"
@@ -34,25 +33,24 @@ Def* isa_decl(const Def* def) {
     return nullptr;
 }
 
-/// Names the running dump binds itself: a `fun` calls its `ret` continuation `return`, whatever its Def::sym.
-/// Keyed by Var and index, because the projection itself need not exist as a Def while the World is frozen.
-struct Renames {
-    DefMap<std::string> defs;
+/// What the running dump decided about the Def%s it emits; `nullptr` where a diagnostic formats a bare Def.
+struct Ctx {
+    /// Names the dump binds itself: a `fun` calls its `ret` continuation `return`, whatever its Def::sym.
+    /// Keyed by Var and index, because the projection itself need not exist as a Def while the World is frozen.
+    DefMap<std::string> names;
     DefMap<nat_t> ret_projs; ///< Var -> index of the `ret` component within it.
     DefSet opaque;           ///< Def%s no pattern took apart, so their components have no name of their own.
+    DefSet inlined;          ///< Def%s inside a binder the dump prints *inline* - they have no block to `let` them.
 };
 
-thread_local Renames* renames = nullptr;
-
-/// Def%s that live inside a binder the dump prints *inline* - they have no block to be a `let` of.
-thread_local const DefSet* inlined = nullptr;
+thread_local Ctx* ctx = nullptr;
 
 /// Def::unique_name - or the plain Def::sym while a diagnostic is being formatted, where a gid is noise.
 std::string name(const Def* def) {
-    if (renames) {
-        if (auto i = renames->defs.find(def); i != renames->defs.end()) return i->second;
+    if (ctx) {
+        if (auto i = ctx->names.find(def); i != ctx->names.end()) return i->second;
         if (auto ex = def->isa<Extract>())
-            if (auto i = renames->ret_projs.find(ex->tuple()); i != renames->ret_projs.end())
+            if (auto i = ctx->ret_projs.find(ex->tuple()); i != ctx->ret_projs.end())
                 if (Lit::isa(ex->index()) == i->second) return "return"s;
     }
     if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
@@ -152,7 +150,7 @@ public:
     explicit operator bool() const { return is_inline(); }
 
     bool is_inline() const {
-        if (inlined && inlined->contains(def())) return true;
+        if (ctx && ctx->inlined.contains(def())) return true;
         if (auto mut = def()->isa_mut()) {
             if (isa_decl(mut)) return false;
             return true;
@@ -248,7 +246,7 @@ bool destructible(const Def* def, const Def* type, size_t n) {
         if (def->proj(n, i)) continue; // it exists and hence brings its own name and type
         auto t = type->proj(n, i);
         if (!t || (var && t->has_free_var(var))) {
-            if (renames) renames->opaque.emplace(def);
+            if (ctx) ctx->opaque.emplace(def);
             return false;
         }
     }
@@ -324,6 +322,25 @@ void curry(std::ostream& os, const Def* def, const Def* type, bool implicit, siz
 bool isa_fun(const Lam* lam) {
     auto pi = lam->type();
     return Lam::isa_returning(lam) && num_binders(pi->dom()) == 2 && Pi::isa_basicblock(pi->dom(2, 1));
+}
+
+/// A Lam's parameter list, plus its filter where that is not the default for its position.
+/// @p last marks a curried chain's final Lam: only that one hides a `fun`'s `ret` and defaults its filter to `ff`.
+void lam_ptrn(std::ostream& os, Lam* lam, bool fun, bool con, bool last, bool alias) {
+    auto num   = num_binders(lam->type()->dom());
+    auto limit = fun && last ? num - 1 : num;
+    curry(os, lam->has_var(), lam->type()->dom(), lam->type()->is_implicit(), num, limit, alias);
+    auto& w = lam->world();
+    if (auto dflt = last && (fun || con) ? w.lit_ff() : w.lit_tt(); lam->filter() != dflt)
+        std::print(os, "@({})", Op(lam->filter()));
+}
+
+/// A Lam's result type; a `con` has none and a `fun` ascribes the domain of its `ret` continuation.
+void lam_codom(std::ostream& os, Lam* lam, bool fun, bool con) {
+    if (fun)
+        std::print(os, ": {}", Op(lam->ret_dom()));
+    else if (!con)
+        std::print(os, ": {}", Op(lam->type()->codom()));
 }
 
 std::ostream& operator<<(std::ostream& os, Op op) {
@@ -405,7 +422,7 @@ std::ostream& operator<<(std::ostream& os, Full d) {
         return os << std::format("{}:{}", lit->get(), Op::r(lit->type(), Prec::Lit));
     } else if (auto ex = d->isa<Extract>()) {
         // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
-        auto opaque = renames && renames->opaque.contains(ex->tuple());
+        auto opaque = ctx && ctx->opaque.contains(ex->tuple());
         if (!opaque && ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
     } else if (auto ins = d->isa<Insert>()) {
@@ -431,16 +448,9 @@ std::ostream& operator<<(std::ostream& os, Full d) {
         // A Lam that has no declaration of its own is a λ-expression.
         auto fun = isa_fun(lam);
         auto con = Lam::isa_cn(lam) && !fun;
-        auto num = num_binders(lam->type()->dom());
-        auto& w  = lam->world();
         os << (fun ? "fn " : con ? "cn " : "λ ");
-        curry(os, lam->has_var(), lam->type()->dom(), lam->type()->is_implicit(), num, fun ? num - 1 : num, true);
-        if (auto dflt = fun || con ? w.lit_ff() : w.lit_tt(); lam->filter() != dflt)
-            std::print(os, "@({})", Op(lam->filter()));
-        if (fun)
-            std::print(os, ": {}", Op(lam->ret_dom()));
-        else if (!con)
-            std::print(os, ": {}", Op(lam->type()->codom()));
+        lam_ptrn(os, lam, fun, con, true, true);
+        lam_codom(os, lam, fun, con);
         // Like any tail, the body is spelled out - there is no block here that could `let`-bind it.
         if (isa_decl(lam->body()))
             std::print(os, " = {}", Op(lam->body()));
@@ -554,8 +564,7 @@ public:
     ///@{
     /// @p def and whatever Dumper::mode_ reaches from it.
     void dump(const Def* def) {
-        auto curr_renames = fe::Restore(renames, &renames_);
-        auto curr_inlined = fe::Restore(inlined, (const DefSet*)&inlined_);
+        auto curr_ctx = fe::Restore(ctx, &ctx_);
 
         if (auto mut = isa_decl(def)) return dump_muts(mut);
 
@@ -563,10 +572,8 @@ public:
             for (auto mut : def->local_muts())
                 if (isa_decl(mut)) dump_muts(mut);
 
-        block_ = def; // Dump::Local has a single block and no Nest to place anything in
-        schedule_(def, nullptr);
-        bucket();
-        emit(nullptr);
+        block_ = nullptr; // a non-decl opens no block, so nothing can be entered or placed into one
+        emit_block(def);
         emit_tail(def, "");
     }
 
@@ -574,7 +581,8 @@ public:
 
 private:
     /// One scope: the Nest of a single closed mutable - which is the only thing a Scheduler can place into.
-    void visit_scope(Def* root, const Nest& nest) {
+    void visit_scope(const Nest& nest) {
+        auto root = nest.root()->mut();
         // An `import` re-declares what it *exports* - but a plain `let` in that file stays local to it, so the
         // dump has to spell that one out or nothing binds the name it refers to.
         if (root->is_external() && srcs_.contains(root->loc().src)) return;
@@ -583,6 +591,11 @@ private:
         auto curr_nest  = fe::Restore(nest_, &nest);
         auto curr_sched = fe::Restore(sched_, &sched);
         block_          = root;
+        emit_block(root);
+    }
+
+    /// Schedules @p root into the current Dumper::block_ and emits whatever landed there.
+    void emit_block(const Def* root) {
         schedule_(root, nullptr);
         bucket();
         emit(nullptr);
@@ -600,14 +613,9 @@ private:
         for (auto curr : todo) {
             if (mode_ == Dump::Local) {
                 block_ = curr;
-                schedule_(curr, nullptr);
-                bucket();
-                emit(nullptr);
-                while (!muts_.empty())
-                    roots(muts_.pop(), todo); // what Dump::Local would not enter
+                emit_block(curr);
             } else {
-                const auto nest = Nest(curr); // NestPhase hands out exactly this - one scope per closed mutable
-                visit_scope(curr, nest);
+                visit_scope(Nest(curr)); // NestPhase hands out exactly this - one scope per closed mutable
             }
         }
     }
@@ -629,15 +637,12 @@ private:
         if (!done_.emplace(def).second) return;
         for (auto op : def->deps())
             schedule_(op, curr);
-        if (!Full(def)) order(def, curr);
+        if (!Full(def)) order_.emplace_back(def, curr);
     }
 
     void schedule_mut(Def* mut, Def* curr) {
         if (open_.contains(mut)) recursive_.emplace(mut);
-        if (!enter(mut)) {
-            if (mode_ == Dump::Local) muts_.push(mut);
-            return;
-        }
+        if (!enter(mut)) return;
         if (!done_.emplace(mut).second) return;
 
         auto chain = mut->isa_mut<Lam>() ? curry_chain(mut->as_mut<Lam>()) : fe::Vector<Lam*>();
@@ -657,7 +662,7 @@ private:
         }
 
         open_.erase(mut);
-        order(mut, curr);
+        order_.emplace_back(mut, curr);
     }
 
     /// A Lam's body is the tail of its block, so it is emitted there instead of as a `let` of its own.
@@ -666,10 +671,6 @@ private:
         if (!done_.emplace(def).second) return;
         for (auto op : def->deps())
             schedule_(op, curr);
-    }
-
-    void order(const Def* def, Def* curr) {
-        if (placed_.emplace(def).second) order_.emplace_back(def, curr);
     }
 
     /// Is @p mut ours to emit - or does it only get referenced by name?
@@ -682,13 +683,13 @@ private:
             auto key = curr; // Dump::Local has one block per root and asks no analysis where anything belongs
             if (nest_) {
                 // Nest::idom, not Nest::inest: a mutable only one sibling reaches belongs into *its* block.
-                auto in = curr ? curr : const_cast<Def*>(block_)->as_mut();
+                auto in = curr ? curr : block_;
                 key     = mut ? owner((*nest_)[mut]->idom()) : owner(sched_->smart(in, def));
-            }
-            // A binder that prints inline has no block of its own, so whatever belongs into it is inlined as well.
-            if (key && inlines(key) && !(mut && recursive_.contains(mut))) {
-                inlined_.emplace(def);
-                continue;
+                // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
+                if (key && inlines(key) && !(mut && recursive_.contains(mut))) {
+                    ctx_.inlined.emplace(def);
+                    continue;
+                }
             }
             (key ? bucket_[key] : top_).emplace_back(def);
         }
@@ -747,9 +748,9 @@ private:
         if (fun) {
             if (auto var = last->has_var()) {
                 if (auto num = num_binders(last->type()->dom()); num == 1)
-                    renames_.defs.emplace(var, "return");
+                    ctx_.names.emplace(var, "return");
                 else
-                    renames_.ret_projs.emplace(var, num - 1);
+                    ctx_.ret_projs.emplace(var, num - 1);
             }
         }
         // A Lam without a body forward-declares what a native translation unit provides - and only an `extern`
@@ -759,22 +760,11 @@ private:
         std::print(os_, "{}{}{} {}", tab_, external(lam), fun ? "fun" : con ? "con" : "lam", id(lam));
         for (auto* c : chain) {
             os_ << ' ';
-            auto num   = num_binders(c->type()->dom());
-            auto limit = fun && c == last ? num - 1 : num;
-            curry(os_, c->has_var(), c->type()->dom(), c->type()->is_implicit(), num, limit, !fun || c != last);
-            auto& w = c->world();
-            // A CPS Lam's last domain defaults to `ff`, every other one to `tt`; only spell out the rest.
-            if (auto dflt = c == last && (fun || con) ? w.lit_ff() : w.lit_tt(); c->filter() != dflt)
-                std::print(os_, "@({})", Op(c->filter()));
+            lam_ptrn(os_, c, fun, con, c == last, !fun || c != last);
         }
 
-        if (fun)
-            std::print(os_, ": {} =", Op(last->ret_dom()));
-        else if (!con)
-            std::print(os_, ": {} =", Op(last->type()->codom()));
-        else
-            os_ << " =";
-        os_ << '\n';
+        lam_codom(os_, last, fun, con);
+        os_ << " =\n";
 
         ++tab_;
         rets_.emplace_back(fun ? last->has_var() : nullptr);
@@ -824,7 +814,7 @@ private:
     Dump mode_;
     const Nest* nest_ = nullptr; ///< Nests the mutables of the scope being emitted.
     Scheduler* sched_ = nullptr; ///< Places everything else in it.
-    const Def* block_ = nullptr; ///< The mutable whose block we are filling; the only one in Dump::Local.
+    Def* block_       = nullptr; ///< The mutable whose block we are filling; the only one in Dump::Local.
     fe::Tab tab_      = fe::Tab::spaces();
     fe::Vector<const Var*> rets_;
     fe::Vector<std::pair<const Def*, Def*>> order_; ///< What to emit, in dependency order, with its block's mutable.
@@ -832,15 +822,11 @@ private:
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    DefSet placed_;
-    DefSet roots_;
     MutSet open_; ///< On the schedule stack - a Def reaching one of these is recursive.
     MutSet recursive_;
-    Renames renames_;
-    DefSet inlined_;
+    Ctx ctx_;
     absl::flat_hash_set<const fe::Src*> srcs_;
     MutSet scheduled_;
-    fe::BFSWorklist<MutSet> muts_;
 };
 
 } // namespace

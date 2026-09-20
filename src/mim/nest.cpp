@@ -12,8 +12,8 @@ Nest::Nest(Def* r)
     populate();
 }
 
-Nest::Nest(fe::View<Def*> muts)
-    : world_(muts.front()->world())
+Nest::Nest(World& world, fe::View<Def*> muts)
+    : world_(world)
     , root_(make_node(nullptr)) {
     for (auto mut : muts)
         make_node(mut, root_);

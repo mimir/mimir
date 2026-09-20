@@ -974,8 +974,8 @@ void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedul
 
     // Schedules the mutables in post-order to ensure that they
     // are emitted in the correct order of dependencies.
-    if (schedule && !muts.empty()) { // Nest takes its World from the first mutable, so it needs one
-        const auto mut_nest = Nest(muts);
+    if (schedule) {
+        const auto mut_nest = Nest(*this, muts);
         auto schedule       = Scheduler::schedule(mut_nest) | std::views::reverse | std::views::filter([&](Def* mut) {
                             return mut->is_closed() && (!elide_empty || mut->is_set());
                         });
