@@ -835,15 +835,11 @@ private:
  * Def
  */
 
-/// This will stream @p def as an operand.
-/// This is usually `id(def)` unless it can be displayed Inline.
+/// Def::Dump::Expr: one Def, one line, no analysis - and the backend of `std::formatter` for every Def pointer.
 std::ostream& operator<<(std::ostream& os, const Def* def) {
     if (def == nullptr) return os << "<nullptr>";
-    if (auto d = Full(def)) {
-        auto _ = def->world().freeze();
-        return os << d;
-    }
-    return os << id(def);
+    auto _ = def->world().freeze();
+    return os << Op(def);
 }
 
 std::ostream& Def::stream(std::ostream& os, Dump mode) const {
