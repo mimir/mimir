@@ -3,7 +3,7 @@
 plugin option as o;
 
 // CHECK-LABEL: extern fun unwrap_none
-// CHECK: return_{{[0-9]+}} 7;
+// CHECK: return 7;
 extern fun unwrap_none(): Nat =
     return (match (o.none Nat) with
         | value: Nat => value
@@ -12,17 +12,17 @@ extern fun unwrap_none(): Nat =
 // The option library is a client of the same generic reduction: its lambda
 // unfolds to a Match, which then dispatches on the known injection.
 // CHECK-LABEL: extern fun unwrap_or_none
-// CHECK: return_{{[0-9]+}} 7;
+// CHECK: return 7;
 extern fun unwrap_or_none(): Nat =
     return (o.unwrap_or (o.none Nat) 7);
 
 // CHECK-LABEL: extern fun unwrap_or_some
-// CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
+// CHECK: return x_{{[0-9]+}};
 extern fun unwrap_or_some(x: Nat): Nat =
     return (o.unwrap_or (o.some x) 7);
 
 // CHECK-LABEL: extern fun unwrap_some
-// CHECK: return_{{[0-9]+}} x_{{[0-9]+}};
+// CHECK: return x_{{[0-9]+}};
 extern fun unwrap_some(x: Nat): Nat =
     return (match (o.some x) with
         | value: Nat => value

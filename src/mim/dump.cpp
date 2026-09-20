@@ -6,7 +6,6 @@
 #include <fe/worklist.h>
 
 #include "mim/driver.h"
-#include "mim/nest.h"
 
 #include "mim/ast/lexer.h"
 #include "mim/ast/tok.h"
@@ -27,13 +26,30 @@ namespace {
 
 Def* isa_decl(const Def* def) {
     if (auto mut = def->isa_mut()) {
+        if (mut->isa<Hole>()) return nullptr; // a Hole stands for what it was set to, or for `?`
         if (mut->is_external() || mut->isa<Lam>() || (mut->sym() && mut->sym() != '_')) return mut;
     }
     return nullptr;
 }
 
+/// Names the running dump binds itself: a `fun` calls its `ret` continuation `return`, whatever its Def::sym.
+/// Keyed by Var and index, because the projection itself need not exist as a Def while the World is frozen.
+struct Renames {
+    DefMap<std::string> defs;
+    DefMap<nat_t> ret_projs; ///< Var -> index of the `ret` component within it.
+    DefSet opaque;           ///< Def%s no pattern took apart, so their components have no name of their own.
+};
+
+thread_local Renames* renames = nullptr;
+
 /// Def::unique_name - or the plain Def::sym while a diagnostic is being formatted, where a gid is noise.
 std::string name(const Def* def) {
+    if (renames) {
+        if (auto i = renames->defs.find(def); i != renames->defs.end()) return i->second;
+        if (auto ex = def->isa<Extract>())
+            if (auto i = renames->ret_projs.find(ex->tuple()); i != renames->ret_projs.end())
+                if (Lit::isa(ex->index()) == i->second) return "return"s;
+    }
     if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
         return sym.str();
     return def->unique_name();
@@ -49,6 +65,7 @@ std::string_view external(const Def* def) {
     return ""sv;
 }
 
+using Dump = Def::Dump;
 using ast::Assoc;
 using ast::Prec;
 using ast::prec_assoc;
@@ -119,12 +136,12 @@ private:
 };
 
 /// This is a wrapper to dump a Def "inline" and print it with all of its operands.
-class Dump : public Op {
+class Full : public Op {
 public:
-    Dump(const Def* def, Prec prec = Prec::Bot, bool is_left = false)
+    Full(const Def* def, Prec prec = Prec::Bot, bool is_left = false)
         : Op(def, prec, is_left) {}
-    Dump(Op op)
-        : Dump(op.def(), op.prec(), op.is_left()) {}
+    Full(Op op)
+        : Full(op.def(), op.prec(), op.is_left()) {}
 
     explicit operator bool() const { return is_inline(); }
 
@@ -161,7 +178,7 @@ public:
         fe::unreachable();
     }
 
-    friend std::ostream& operator<<(std::ostream&, Dump);
+    friend std::ostream& operator<<(std::ostream&, Full);
 };
 
 } // namespace
@@ -169,7 +186,7 @@ public:
 
 #ifndef DOXYGEN // clang-format off
 template<> struct std::formatter<mim::Op  > : fe::ostream_formatter {};
-template<> struct std::formatter<mim::Dump> : fe::ostream_formatter {};
+template<> struct std::formatter<mim::Full> : fe::ostream_formatter {};
 #endif // clang-format on
 
 namespace mim {
@@ -212,83 +229,99 @@ std::string shape(const Seq* seq, const Def* var) {
     return res;
 }
 
+/// May @p def of @p type be taken apart into @p n components?
+/// A component the frozen World does not hand out has no name, so it has to fall back to @p type - and that
+/// spells a *dependent* component with the domain's binders instead of this pattern's. That is where
+/// destructuring stops: @p def stays opaque and its components print as `def#i` rather than by a dangling name.
+bool destructible(const Def* def, const Def* type, size_t n) {
+    if (!def || n <= 1) return false;
+    auto var = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
+
+    for (size_t i = 0; i != n; ++i) {
+        if (def->proj(n, i)) continue; // it exists and hence brings its own name and type
+        auto t = type->proj(n, i);
+        if (!t || (var && t->has_free_var(var))) {
+            if (renames) renames->opaque.emplace(def);
+            return false;
+        }
+    }
+    return true;
+}
+
 /// @p brckt selects the `[]` sub-patterns of a type over the `()` sub-patterns of a Lam's parameter list.
-std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type, bool brckt = false) {
-    if (!def) return os << std::format("_: {}", Op(type));
+void ptrn(std::ostream& os, const Def* def, const Def* type, bool brckt = false) {
+    if (!def) return std::print(os, "_: {}", Op(type));
 
-    auto projs = def->tprojs();
-    if (projs.size() == 1 || std::ranges::all_of(projs, [](auto d) { return !d; }))
-        return os << std::format("{}: {}", name(def), Op(type));
+    auto n = def->num_tprojs();
+    if (!destructible(def, type, n)) return std::print(os, "{}: {}", name(def), Op(type));
 
-    size_t i = 0;
     os << (brckt ? '[' : '(');
-    for (auto sep = ""; auto proj : projs) {
+    for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
+        auto proj = def->proj(n, i);
         os << sep;
         // A projection's own type is the one where the binder has already been substituted for this Var.
-        ptrn(os, proj, proj ? proj->type() : type->proj(projs.size(), i), brckt);
-        ++i;
+        ptrn(os, proj, proj ? proj->type() : type->proj(n, i), brckt);
         sep = ", ";
     }
-    return os << std::format("{} as {}", brckt ? ']' : ')', name(def));
+    // The alias keeps a name for the entity as a whole - which the body may well refer to.
+    std::print(os, "{} as {}", brckt ? ']' : ')', name(def));
 }
 
 /// A Pi's domain the way the surface syntax binds it - a pattern, once the Var's projections are in use.
-std::ostream& dom_ptrn(std::ostream& os, const Def* var, const Def* type, bool implicit) {
-    auto l     = implicit ? '{' : '[';
-    auto r     = implicit ? '}' : ']';
-    auto projs = var->tprojs();
-    if (projs.size() == 1 || std::ranges::all_of(projs, [](auto d) { return !d; }))
-        return os << std::format("{}{}: {}{}", l, name(var), Op(type), r);
+void dom_ptrn(std::ostream& os, const Def* var, const Def* type, bool implicit) {
+    auto l = implicit ? '{' : '[';
+    auto r = implicit ? '}' : ']';
+    auto n = var->num_tprojs();
+    if (!destructible(var, type, n)) return std::print(os, "{}{}: {}{}", l, name(var), Op(type), r);
 
-    size_t i = 0;
     os << l;
-    for (auto sep = ""; auto proj : projs) {
+    for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
         os << sep;
-        ptrn(os, proj, proj ? proj->type() : type->proj(projs.size(), i), true);
-        ++i;
+        auto proj = var->proj(n, i);
+        ptrn(os, proj, proj ? proj->type() : type->proj(n, i), true);
         sep = ", ";
     }
-    return os << std::format("{} as {}", r, name(var));
+    std::print(os, "{} as {}", r, name(var));
 }
 
-std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
+void bndr(std::ostream& os, const Def* def, const Def* type) {
     if (def) return ptrn(os, def, def->type());
-    return os << std::format("_: {}", Op(type));
+    std::print(os, "_: {}", Op(type));
 }
 
-// @p num is how many binders the domain has; @p limit how many of them to print - a returning Lam hides its last.
-std::ostream&
-curry(std::ostream& os, const Def* def, const Def* type, bool implicit, size_t num, size_t limit, bool alias) {
+/// @p num is how many binders the domain has; @p limit how many of them to print - a returning Lam hides its last.
+void curry(std::ostream& os, const Def* def, const Def* type, bool implicit, size_t num, size_t limit, bool alias) {
     auto l = implicit ? '{' : '(';
     auto r = implicit ? '}' : ')';
 
-    if (limit == 0) return os << l << r;
-    if (limit == 1) {
-        os << l;
-        bndr(os, def ? def->proj(num, 0) : nullptr, type->proj(num, 0));
-        return os << r;
+    if (limit == 0) return (void)(os << l << r);
+    // Same as in ptrn: a parameter list only comes apart if every parameter is there to be named.
+    if (limit == num && !destructible(def, type, num)) {
+        if (def) return std::print(os, "{}{}: {}{}", l, name(def), Op(type), r);
+        return std::print(os, "{}_: {}{}", l, Op(type), r);
     }
 
     os << l;
     for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
         os << sep;
-        bndr(os, def ? def->proj(num, i) : nullptr, type->proj(num, i));
+        auto proj = def ? def->proj(num, i) : nullptr;
+        bndr(os, proj, proj ? proj->type() : type->proj(num, i));
         sep = ", ";
     }
     os << r;
-    if (alias && def) os << std::format(" as {}", name(def));
-    return os;
+    if (alias && def) std::print(os, " as {}", name(def));
 }
 
 std::ostream& operator<<(std::ostream& os, Op op) {
     if (*op == nullptr) return os << "<nullptr>";
-    if (auto d = Dump(op)) return os << d;
+    if (auto d = Full(op)) return os << d;
     return os << id(*op);
 }
 
-std::ostream& operator<<(std::ostream& os, Dump d) {
+std::ostream& operator<<(std::ostream& os, Full d) {
+    if (auto hole = d->isa_mut<Hole>()) return hole->is_set() ? os << Op(hole->op()) : os << "?";
     if (auto mut = d->isa_mut(); mut && !mut->is_set()) return os << "unset";
-    if (d.needs_parens()) return os << std::format("({})", Dump(*d));
+    if (d.needs_parens()) return os << std::format("({})", Full(*d));
 
     bool ascii = d->world().flags().ascii;
     auto arw   = ascii ? "->" : "→";
@@ -357,7 +390,9 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         }
         return os << std::format("{}:{}", lit->get(), Op::r(lit->type(), Prec::Lit));
     } else if (auto ex = d->isa<Extract>()) {
-        if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
+        // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
+        auto opaque = renames && renames->opaque.contains(ex->tuple());
+        if (!opaque && ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
     } else if (auto ins = d->isa<Insert>()) {
         auto tup = Op::l(ins->tuple(), Prec::Extract);
@@ -371,7 +406,8 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {
         dom_ptrn(os, var, pi->dom(), pi->is_implicit());
-        return os << std::format(" {} {}", arw, Op::r(pi->codom(), Prec::Arrow));
+        std::print(os, " {} {}", arw, Op::r(pi->codom(), Prec::Arrow));
+        return os;
     } else if (auto pi = d->isa<Pi>()) {
         if (Pi::isa_cn(pi)) return os << std::format("Cn {}", Op(pi->dom()));
         if (pi->is_implicit())
@@ -396,9 +432,13 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
             }
         }
 
-        // The parser fills an implicit domain with a Hole, so spelling one out needs `@` to re-parse.
-        auto at = Pi::isa_implicit(app->callee()->unfold_type()) ? "@ " : "";
-        return os << std::format("{} {}{}", Op::l(app->callee(), Prec::App), at, Op::r(app->arg(), Prec::App));
+        if (Pi::isa_implicit(app->callee()->unfold_type())) {
+            // An argument that is still a Hole is what the parser inserts anyway - and `?` has no spelling.
+            if (app->arg()->has_dep(Dep::Hole)) return os << Op(app->callee(), d.prec(), d.is_left());
+            // Spelling out an implicit argument needs `@`; juxtaposition would insert a Hole in front of it.
+            return os << std::format("{} @ {}", Op::l(app->callee(), Prec::App), Op::r(app->arg(), Prec::App));
+        }
+        return os << std::format("{} {}", Op::l(app->callee(), Prec::App), Op::r(app->arg(), Prec::App));
     } else if (auto [sigma, var] = d->isa_binder<Sigma>(); sigma) {
         size_t i  = 0;
         auto elem = fe::StreamFn{[&](std::ostream& os) -> std::ostream& {
@@ -450,158 +490,286 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
  * Dumper
  */
 
-/// This thing operates in two modes:
-/// 1. The output of decls is driven by the Nest.
-/// 2. Alternatively, decls are output as soon as they appear somewhere during recurse%ing.
-///     Then, they are pushed to Dumper::muts.
-class Dumper {
-public:
-    Dumper(std::ostream& os, const Nest* nest = nullptr)
-        : os(os)
-        , nest(nest) {}
-
-    void dump(Def*);
-    void dump_lam(Lam*);
-    void dump_let(const Def*);
-    void recurse(const Nest::Node*);
-    void recurse(const Def*, bool first = false);
-
-    std::ostream& os;
-    const Nest* nest;
-    fe::Tab tab = fe::Tab::spaces();
-    fe::BFSWorklist<MutSet> muts;
-    DefSet defs;
-};
-
-void Dumper::dump(Def* mut) {
-    if (auto lam = mut->isa<Lam>()) {
-        dump_lam(lam);
-        return;
-    }
-
-    auto mut_prefix = [&](const Def* def) {
-        if (def->isa<Sigma>()) return "Sigma";
-        if (def->isa<Arr>()) return "Arr";
-        if (def->isa<Pack>()) return "pack";
-        if (def->isa<Pi>()) return "Pi";
-        if (def->isa<Hole>()) return "Hole";
-        if (def->isa<Rule>()) return "Rule";
-        fe::unreachable();
-    };
-
-    auto mut_op0 = [&](const Def* def) -> std::ostream& {
-        if (auto sig = def->isa<Sigma>()) return os << std::format(", {}", sig->num_ops());
-        if (auto arr = def->isa<Arr>()) return os << std::format(", {}", *arr->shape());
-        if (auto pack = def->isa<Pack>()) return os << std::format(", {}", *pack->shape());
-        if (auto pi = def->isa<Pi>()) return os << std::format(", {}", pi->dom());
-        if (auto hole = def->isa_mut<Hole>())
-            return hole->is_set() ? (os << std::format(", {}", hole->op())) : (os << ", ??");
-        if (auto rule = def->isa<Rule>()) return os << std::format("{} => {}", rule->lhs(), rule->rhs());
-        fe::unreachable();
-    };
-
-    if (!mut->is_set()) {
-        std::print(os, "{}{}: {} = {{ <unset> }};", tab, id(mut), mut->type());
-        return;
-    }
-
-    std::print(os, "{}{} {}{}: {}", tab, mut_prefix(mut), external(mut), id(mut), mut->type());
-    mut_op0(mut);
-    if (mut->var()) { // TODO rewrite with dedicated methods
-        if (auto e = mut->num_vars(); e != 1) {
-            for (auto sep = ""; auto def : mut->vars()) {
-                os << sep;
-                if (def)
-                    os << def->unique_name();
-                else
-                    os << "<TODO>";
-                sep = ", ";
-            }
-        } else {
-            std::print(os, ", @{}", mut->var()->unique_name());
-        }
-    }
-    std::println(os, "{} = {{", tab);
-    ++tab;
-    if (nest) recurse((*nest)[mut]);
-    recurse(mut);
-    std::println(os, "{}{}", tab, fe::Join(mut->ops()));
-    --tab;
-    std::println(os, "{}}};", tab);
+/// Is @p lam sugar for a `fun`?
+/// That sugar folds the domain into `[<params>, Cn <ret>]`, so a *flat* domain with a trailing Cn stays a `con`.
+bool isa_fun(const Lam* lam) {
+    auto pi = lam->type();
+    return Lam::isa_returning(lam) && num_binders(pi->dom()) == 2 && Pi::isa_basicblock(pi->dom(2, 1));
 }
 
-void Dumper::dump_lam(Lam* lam) {
-    std::vector<Lam*> currys;
-    for (Lam* curr = lam;;) {
-        currys.emplace_back(curr);
+/// The Lam%s a curried declaration folds into one: `lam f (a) (b) = e`.
+fe::Vector<Lam*> curry_chain(Lam* lam) {
+    auto chain = fe::Vector<Lam*>();
+    for (auto* curr = lam;;) {
+        chain.emplace_back(curr);
         if (auto body = curr->body())
-            if (auto next = body->isa_mut<Lam>()) {
+            if (auto next = body->isa_mut<Lam>(); next && !next->is_external()) {
                 curr = next;
                 continue;
             }
         break;
     }
+    return chain;
+}
 
-    auto last   = currys.back();
-    auto is_fun = Lam::isa_returning(last);
-    auto is_con = Lam::isa_cn(last) && !is_fun;
+/// Emits Def%s as Mim declarations.
+///
+/// A Def belongs into the innermost binder whose Var it mentions - and to the top level, if it mentions none.
+/// Free Var%s are all it takes to place it: no Nest, no dominance, no fixed point.
+/// That matters because Def::dump is what you reach for in a debugger, where the World is usually half-built:
+/// every analysis a dump runs is one more way for it to die on the very program you want to look at.
+class Dumper {
+public:
+    Dumper(std::ostream& os, Dump mode)
+        : os_(os)
+        , mode_(mode) {}
 
-    std::print(os, "{}{}{} {}", tab, external(lam), is_fun ? "fun" : is_con ? "con" : "lam", id(lam));
-    for (auto* c : currys) {
-        os << ' ';
-        auto num_doms = num_binders(c->type()->dom());
-        auto limit    = is_fun && c == last ? num_doms - 1 : num_doms;
-        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), num_doms, limit, !is_fun || c != last);
-        if (is_con && c == last) std::print(os, "@({})", c->filter());
+    /// @name schedule
+    ///@{
+    /// Assigns @p def - and whatever Dumper::mode_ reaches from it - to the scope it belongs to.
+    void schedule(const Def* def) {
+        roots_.emplace(def);
+        done_.erase(def);
+        schedule_(def);
+    }
+    ///@}
+
+    /// @name emit
+    ///@{
+    void emit_top() {
+        auto _ = fe::Restore(renames, &renames_);
+        emit(nullptr);
+    }
+    void emit_expr(const Def* def) { emit_tail(def, ""); }
+    /// Dump::Local hands the mutables it did not enter back, so a caller can dump them as roots of their own.
+    void drain() {
+        while (!muts_.empty()) {
+            schedule(muts_.pop());
+            emit_top();
+        }
+    }
+    ///@}
+
+private:
+    /// One open binder: @p key is the mutable whose body absorbs it - a curried Lam chain shares one.
+    struct Frame {
+        Def* key;
+        Vars vars;
+    };
+
+    static constexpr size_t Top = size_t(-1);
+
+    /// @name schedule
+    ///@{
+    void schedule_(const Def* def) {
+        if (!def) return;
+        if (auto mut = isa_decl(def); mut && open_.contains(mut)) recursive_.emplace(mut);
+        if (!done_.emplace(def).second) return;
+        if (auto mut = isa_decl(def)) return schedule_mut(mut);
+        for (auto op : def->deps())
+            schedule_(op);
+        if (!Full(def)) place_here(def);
     }
 
-    if (is_fun)
-        std::print(os, ": {} =", last->ret_dom());
-    else if (!is_con)
-        std::print(os, ": {} =", last->type()->codom());
-    else
-        std::print(os, " =");
-    os << '\n';
-
-    ++tab;
-    if (last->is_set()) {
-        if (nest && currys.size() == 1) recurse((*nest)[lam]);
-        for (auto* curry : currys)
-            recurse(curry->filter());
-        recurse(last->body(), true);
-        if (last->body()->isa_mut())
-            std::println(os, "{}{};", tab, last->body());
+    /// Places @p def - unless its Var%s belong to a scope this path is not inside of; then it waits for one that is.
+    void place_here(const Def* def) {
+        if (auto lvl = level(def); lvl != Top || !def->has_free_vars())
+            place(def, lvl);
         else
-            std::println(os, "{}{};", tab, Dump(last->body()));
-    } else {
-        std::println(os, "{}<unset>;", tab);
-    }
-    --tab;
-    std::println(os, "{}", tab);
-}
-
-void Dumper::dump_let(const Def* def) {
-    std::println(os, "{}let {}: {} = {};", tab, def->unique_name(), Op(def->type()), Dump(def));
-}
-
-void Dumper::recurse(const Nest::Node* node) {
-    for (auto child : node->children().muts())
-        if (auto mut = isa_decl(child)) dump(mut);
-}
-
-void Dumper::recurse(const Def* def, bool first /*= false*/) {
-    if (auto mut = isa_decl(def)) {
-        if (!nest) muts.push(mut);
-        return;
+            done_.erase(def);
     }
 
-    if (!defs.emplace(def).second) return;
+    void schedule_mut(Def* mut) {
+        auto lvl = level(mut);
+        if (lvl == Top && mut->has_free_vars()) return (void)done_.erase(mut); // not this path's scope
+        if (!enter(mut, lvl)) {
+            if (mode_ == Dump::Local) muts_.push(mut);
+            return;
+        }
 
-    for (auto op : def->deps())
-        recurse(op);
+        auto chain = mut->isa_mut<Lam>() ? curry_chain(mut->as_mut<Lam>()) : fe::Vector<Lam*>();
+        auto n     = stack_.size();
+        open_.emplace(mut);
 
-    if (!first && !Dump(def)) dump_let(def);
-}
+        if (chain.empty()) {
+            if (auto var = mut->has_var()) stack_.emplace_back(mut, Vars(var));
+            for (auto op : mut->deps())
+                schedule_(op);
+        } else {
+            for (auto* lam : chain) {
+                done_.emplace(lam);
+                if (auto var = lam->has_var()) stack_.emplace_back(mut, Vars(var));
+            }
+            for (auto* lam : chain) {
+                schedule_(lam->type());
+                schedule_(lam->filter());
+                if (lam == chain.back()) schedule_tail(lam->body());
+            }
+        }
+
+        stack_.resize(n);
+        open_.erase(mut);
+        place(mut, lvl); // after its ops: a decl this one needs comes first
+    }
+
+    /// A Lam's body is the tail of its block, so it is emitted there instead of as a `let` of its own.
+    void schedule_tail(const Def* def) {
+        if (!def || isa_decl(def)) return schedule_(def);
+        if (!done_.emplace(def).second) return;
+        for (auto op : def->deps())
+            schedule_(op);
+    }
+
+    /// The innermost Frame whose Var%s @p def mentions; Top, if it mentions none.
+    size_t level(const Def* def) const {
+        if (stack_.empty()) return Top;
+        if (mode_ == Dump::Local) return stack_.size() - 1; // no free-var analysis in the mode meant for debugging
+        for (size_t i = stack_.size(); i-- != 0;)
+            if (def->has_free_vars_in(stack_[i].vars)) return i;
+        return Top;
+    }
+
+    void place(const Def* def, size_t lvl) {
+        if (!placed_.emplace(def).second) return; // a root that is also reachable from another one
+        (lvl == Top ? top_ : bucket_[stack_[lvl].key]).emplace_back(def);
+    }
+
+    bool enter(Def* mut, size_t lvl) const {
+        switch (mode_) {
+            case Dump::Expr:
+            case Dump::Local: return roots_.contains(mut);
+            case Dump::Scope: return lvl != Top || roots_.contains(mut);
+            case Dump::All: return true;
+        }
+        fe::unreachable();
+    }
+    ///@}
+
+    /// @name emit
+    ///@{
+    void emit(Def* key) {
+        auto defs = key ? std::move(bucket_[key]) : std::move(top_);
+        for (auto def : defs)
+            if (auto mut = isa_decl(def))
+                emit_decl(mut);
+            else
+                emit_let(def);
+    }
+
+    void emit_let(const Def* def) {
+        std::println(os_, "{}let {}: {} = {};", tab_, name(def), Op(def->type()), Full(def));
+    }
+
+    void emit_decl(Def* mut) {
+        if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam);
+        if (!mut->is_set()) return emit_unset(mut);
+        // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
+        std::println(os_, "{}{} {} = {};", tab_, recursive_.contains(mut) ? "rec" : "let", id(mut), Full(mut));
+    }
+
+    /// Nothing declares a mutable that was never set, so leave a trace instead of an unreadable dump.
+    void emit_unset(Def* mut) { std::println(os_, "{}// `{}: {}` is unset", tab_, id(mut), Op(mut->type())); }
+
+    void emit_lam(Lam* lam) {
+        auto chain = curry_chain(lam);
+        auto last  = chain.back();
+        auto fun   = isa_fun(last) && !shadows_ret(last);
+        auto con   = Lam::isa_cn(last) && !fun;
+
+        // A `fun` binds its `ret` continuation as `return`, so that is the name its Var has to print with.
+        // A `fun` binds its `ret` continuation as `return`, so that is the name its Var has to print with.
+        if (fun) {
+            if (auto var = last->has_var()) {
+                if (auto num = num_binders(last->type()->dom()); num == 1)
+                    renames_.defs.emplace(var, "return");
+                else
+                    renames_.ret_projs.emplace(var, num - 1);
+            }
+        }
+        // Only an `extern` may go without a body - that is what forward-declares a native function.
+        // A Lam without a body forward-declares what a native translation unit provides - there is nothing else
+        // it could be, and only an `extern` may go without a body.
+        if (!last->is_set()) return emit_bodyless(lam, chain, fun, con);
+
+        std::print(os_, "{}{}{} {}", tab_, external(lam), fun ? "fun" : con ? "con" : "lam", id(lam));
+        for (auto* c : chain) {
+            os_ << ' ';
+            auto num   = num_binders(c->type()->dom());
+            auto limit = fun && c == last ? num - 1 : num;
+            curry(os_, c->has_var(), c->type()->dom(), c->type()->is_implicit(), num, limit, !fun || c != last);
+            auto& w = c->world();
+            // A CPS Lam's last domain defaults to `ff`, every other one to `tt`; only spell out the rest.
+            if (auto dflt = c == last && (fun || con) ? w.lit_ff() : w.lit_tt(); c->filter() != dflt)
+                std::print(os_, "@({})", Op(c->filter()));
+        }
+
+        if (fun)
+            std::print(os_, ": {} =", Op(last->ret_dom()));
+        else if (!con)
+            std::print(os_, ": {} =", Op(last->type()->codom()));
+        else
+            os_ << " =";
+        os_ << '\n';
+
+        ++tab_;
+        rets_.emplace_back(fun ? last->has_var() : nullptr);
+        emit(lam);
+        emit_tail(last->body(), ";");
+        rets_.pop_back();
+        --tab_;
+    }
+
+    /// A Lam without a body only ever declares what some backend provides: `extern con f [mem.M 0, I32];`.
+    void emit_bodyless(Lam* lam, const fe::Vector<Lam*>& chain, bool fun, bool con) {
+        auto last = chain.back();
+        auto dom  = last->type()->dom();
+        std::print(os_, "{}extern {} {}", tab_, fun ? "fun" : con ? "con" : "lam", id(lam));
+        auto num = num_binders(dom);
+        if (fun) {
+            os_ << '[';
+            for (auto sep = ""; auto i : std::views::iota(size_t(0), num - 1)) {
+                std::print(os_, "{}{}", sep, Op(dom->proj(num, i)));
+                sep = ", ";
+            }
+            std::println(os_, "]: {};", Op(last->ret_dom()));
+        } else {
+            std::println(os_, "[{}]{};", Op::map(dom->projs(num)),
+                         con ? std::string() : std::format(": {}", Op(last->type()->codom())));
+        }
+    }
+
+    /// Tail position: what a block ends with is spelled out - it has no `let` of its own.
+    void emit_tail(const Def* def, std::string_view end) {
+        if (isa_decl(def))
+            std::println(os_, "{}{}{}", tab_, Op(def), end);
+        else
+            std::println(os_, "{}{}{}", tab_, Full(def), end);
+    }
+
+    /// Would a `fun` here hide the `return` of an enclosing one @p lam might still refer to?
+    /// The `return` is a projection of its Lam's Var, so capturing that Var at all is as precise as this gets.
+    bool shadows_ret(Lam* lam) const {
+        for (auto* var : rets_)
+            if (var && lam->has_free_var(var)) return true;
+        return false;
+    }
+    ///@}
+
+    std::ostream& os_;
+    Dump mode_;
+    fe::Tab tab_ = fe::Tab::spaces();
+    fe::Vector<Frame> stack_;
+    fe::Vector<const Var*> rets_;
+    DefVec top_;
+    MutMap<DefVec> bucket_;
+    DefSet done_;
+    DefSet placed_;
+    DefSet roots_;
+    MutSet open_; ///< On the schedule stack - a Def reaching one of these is recursive.
+    MutSet recursive_;
+    Renames renames_;
+    fe::BFSWorklist<MutSet> muts_;
+};
 
 } // namespace
 
@@ -613,44 +781,35 @@ void Dumper::recurse(const Def* def, bool first /*= false*/) {
 /// This is usually `id(def)` unless it can be displayed Inline.
 std::ostream& operator<<(std::ostream& os, const Def* def) {
     if (def == nullptr) return os << "<nullptr>";
-    if (auto d = Dump(def)) {
+    if (auto d = Full(def)) {
         auto _ = def->world().freeze();
         return os << d;
     }
     return os << id(def);
 }
 
-std::ostream& Def::stream(std::ostream& os, int max) const {
-    auto _      = world().freeze();
-    auto dumper = Dumper(os);
+std::ostream& Def::stream(std::ostream& os, Dump mode) const {
+    auto _ = world().freeze();
+    if (mode == Dump::Expr) return os << this << std::endl;
 
-    if (max == 0) {
-        os << this << std::endl;
-    } else if (auto mut = isa_decl(this)) {
-        dumper.muts.push(mut);
-    } else {
-        dumper.recurse(this);
-        std::println(os, "{}{}", dumper.tab, Dump(this));
-        --max;
-    }
-
-    for (; !dumper.muts.empty() && max > 0; --max)
-        dumper.dump(dumper.muts.pop());
-
+    auto dumper = Dumper(os, mode);
+    dumper.schedule(this);
+    dumper.emit_top();
+    if (!isa_decl(this)) dumper.emit_expr(this);
     return os;
 }
 
 void Def::dump() const { std::cout << this << std::endl; }
-void Def::dump(int max) const { stream(std::cout, max) << std::endl; }
+void Def::dump(Dump mode) const { stream(std::cout, mode); }
 
-void Def::write(int max, const char* file) const {
+void Def::write(Dump mode, const char* file) const {
     auto ofs = std::ofstream(file);
-    stream(ofs, max);
+    stream(ofs, mode);
 }
 
-void Def::write(int max) const {
+void Def::write(Dump mode) const {
     auto file = id(this) + ".mim"s;
-    write(max, file.c_str());
+    write(mode, file.c_str());
 }
 
 /*
@@ -660,28 +819,28 @@ void Def::write(int max) const {
 void World::dump(std::ostream& os) {
     auto _       = freeze();
     auto old_gid = curr_gid();
+    auto srcs    = absl::flat_hash_set<const fe::Src*>();
+    for (const auto& import : driver().imports())
+        srcs.emplace(import.src);
+    // An `import` re-declares whatever it declared the first time around, so dumping it again is a redefinition.
+    auto imported = [&srcs](const Def* def) { return srcs.contains(def->loc().src); };
 
-    if (flags().dump_recursive) {
-        auto dumper = Dumper(os);
-        for (auto mut : externals().muts())
-            dumper.muts.push(mut);
-        while (!dumper.muts.empty())
-            dumper.dump(dumper.muts.pop());
-    } else {
-        auto nest   = Nest(*this);
-        auto dumper = Dumper(os, &nest);
-
-        for (const auto& import : driver().imports()) {
-            auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
-            // The spelling was relative to the importing file; only the resolved path re-parses from here.
-            // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
-            if (import.path)
-                std::print(os, "{} \"{}\";\n", kw, ast::Lexer::escape(import.src->path().generic_string()));
-            else
-                std::print(os, "{} {};\n", kw, import.sym);
-        }
-        dumper.recurse(nest.root());
+    for (const auto& import : driver().imports()) {
+        auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
+        // The spelling was relative to the importing file; only the resolved path re-parses from here.
+        // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
+        if (import.path)
+            std::print(os, "{} \"{}\";\n", kw, ast::Lexer::escape(import.src->path().generic_string()));
+        else
+            std::print(os, "{} {};\n", kw, import.sym);
     }
+
+    // The recursive dump keeps every mutable to itself: no free-var analysis that a broken program could trip.
+    auto dumper = Dumper(os, flags().dump_recursive ? Def::Dump::Local : Def::Dump::All);
+    for (auto mut : externals().muts())
+        if (!imported(mut)) dumper.schedule(mut);
+    dumper.emit_top();
+    dumper.drain();
 
     assertf(old_gid == curr_gid(), "new nodes created during dump. old_gid: {}; curr_gid: {}", old_gid, curr_gid());
 }

@@ -28,6 +28,6 @@ extern lam _compile (): compile.Phase =
     );
 
 // CHECK-DAG: extern fun broadcast_read
-// CHECK-DAG: return_{{[0-9]+}} 2;
+// CHECK-DAG: return 2;
 // CHECK-DAG: extern fun repeat_read
-// CHECK-DAG: return_{{[0-9]+}} 5;
+// CHECK-DAG: return 5;

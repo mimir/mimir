@@ -161,7 +161,7 @@ TEST_CASE("regex2nfa") {
 
     auto lit = [&w](char c) { return w.call<regex::lit>(w.lit_i8(c)); };
     auto nfa = [&driver](const Def* pattern) {
-        pattern->dump(10);
+        pattern->dump(Def::Dump::All);
         return regex::regex2nfa(driver.GET_FUN_PTR("regex", regex2nfa), pattern);
     };
 
@@ -208,7 +208,7 @@ TEST_CASE("regex2nfa") {
         std::cout << *dfa;
         auto min_dfa = minimize_dfa(*dfa);
         std::cout << *min_dfa;
-        driver.GET_FUN_PTR("regex", dfa2matcher)(w, *min_dfa, w.lit_nat(200))->dump(100);
+        driver.GET_FUN_PTR("regex", dfa2matcher)(w, *min_dfa, w.lit_nat(200))->dump(Def::Dump::All);
     }
 }
 

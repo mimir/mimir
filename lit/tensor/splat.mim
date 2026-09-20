@@ -4,9 +4,9 @@
 // singleton axes fully fold to physical rank zero is represented by its scalar
 // value and disappears during lowering.
 // CHECK-LABEL: extern fun splat_dynamic
-// CHECK: return_{{[0-9]+}} {{.*}}#tt;
+// CHECK: return {{.*}}#tt;
 // CHECK-LABEL: extern fun splat_physical_rank0
-// CHECK: return_{{[0-9]+}} 11I32;
+// CHECK: return 11I32;
 // CHECK-LABEL: extern fun splat_static
 // CHECK: buffer.lit
 // CHECK-LABEL: extern fun splat_static_f32
