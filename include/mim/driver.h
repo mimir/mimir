@@ -169,11 +169,13 @@ public:
 
     /// @name Load Plugin
     /// Finds and loads a shared object file that implements the MimIR Plugin @p name.
-    /// If \a name is an absolute path to a `.so`/`.dll` file, this is used.
-    /// Otherwise, "name", "libmim_name.so" (Linux, Mac), "mim_name.dll" (Win)
-    /// are searched for in Driver::search_paths().
+    /// @p name may be a bare name (`bar`), a path (`foo/bar`), or a path to the shared object itself.
+    /// Its directory part - if any - is prepended to every Driver::plugin_paths() entry,
+    /// where `libmim_<bar>.so` (Linux, Mac) / `mim_<bar>.dll` (Win) is searched for.
     ///@{
     void load(std::string_view name);
+    /// Bare plugin name of a possibly path-qualified @p name: `foo/libmim_bar.so` &rarr; `bar`.
+    static std::string plugin_name(std::string_view name);
     bool is_loaded(std::string_view name) const { return fe::lookup(plugins_, name); }
     /// Directory `libmim_<name>` was loaded from, so that its `<name>.mim` half cannot come from elsewhere.
     const fs::path* plugin_dir(std::string_view name) const { return fe::lookup(plugin2dir_, name); }

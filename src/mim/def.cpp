@@ -4,6 +4,7 @@
 
 #include <fe/assert.h>
 #include <fe/hash.h>
+#include <fe/term.h>
 #include <fe/worklist.h>
 
 #include "mim/driver.h"
@@ -154,6 +155,7 @@ bool Def::is_immutabilizable() {
  */
 
 Defs Def::reduce_(const Def* arg) const {
+    if (!is_set()) fe::throwf("cannot reduce `{}`: it is not set", this);
     if (auto var = has_var()) return world().reduce(var, arg);
     auto off = reduction_offset();
     return {ops().begin() + off, num_ops() - off};

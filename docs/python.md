@@ -169,13 +169,14 @@ A handful of units are still fully hand-written under `py/bindings/` (listed in 
 
 ### Bindable Types {#python_bindable}
 
-A member is only generated if nanobind can convert *every* type in its signature; otherwise it is dropped.
+A member is only generated if nanobind can convert _every_ type in its signature; otherwise it is dropped.
 This matters because nanobind does not complain about the ones it cannot: the binding compiles, fails only when Python eventually calls it, and `stubgen` spells the raw C++ type into `_mim.pyi` (`std::reverse_iterator<char const*>`, `absl::flat_hash_map<…>`, `fe::Dbg`) in the meantime.
 
 Convertible are: built-in types and `const char*`; the standard containers with a nanobind caster (`std::pair`, `std::tuple`, `std::optional`, `std::function`, `std::filesystem::path`, …, for which the generator emits the matching `nanobind/stl/*.h` include); every top-level class or enum declared in a header of the manifest — those are the ones registered as Python types, so a pointer or reference to one becomes a Python object; and MimIR's own ranges (`Defs`, `DefVec`, `Vars`, `Muts`, `Span<const nat_t>`), which are copied into a `std::vector` so they arrive as a list and can be passed as one.
 
 Everything else — `std::ostream`, abseil containers, iterators, nested classes such as `World::State`, and any class from a header nobody wraps — makes its member disappear.
 To get such a member into Python, either add its type's header to the manifest, or write a `[class:Name]` binding that translates the type into a Python-friendly one (`py/nbextra/driver.nbextra` does this for `Imports::add`, which reports a `const fs::path*`).
+Every build lists the members it dropped in `build/py/log/<header-stem>.log`.
 
 `py/tests/stubs.py` fails `test-py` if any C++ type still reaches `_mim.pyi`, e.g. from a hand-written `.nbextra` fragment or on a standard library that spells a type differently.
 
@@ -190,8 +191,8 @@ It builds MimIR through overloaded operators, runs optimization, emits LLVM IR, 
 
 <div class="section_buttons">
 
-| Previous |
-|:---------|
+| Previous              |
+| :-------------------- |
 | [Phases](@ref phases) |
 
 </div>

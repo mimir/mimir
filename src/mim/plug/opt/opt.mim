@@ -95,7 +95,6 @@ extern lam _default_compile (): compile.Phase =
         optimize,
         compile.branch_normalize,
         compile.ret_wrap,
-        compile.named "mem.remem_repl",
         compile.named "nvptx.stream_impl_repl",
         compile.named "mem.alloc2malloc_repl",
         compile.named "refly.remove_dbg_repl",

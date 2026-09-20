@@ -48,7 +48,7 @@ Its type `[T, T] → T` mentions `T`, which makes `sq` a [**dependent function**
 In MimIR, types are ordinary [**first-class values**](https://en.wikipedia.org/wiki/First-class_citizen): `T` and `` `* `` are just arguments, so polymorphism, [type operators](https://en.wikipedia.org/wiki/Type_constructor), and dependent types all fall out of the same mechanism.
 (`plugin core as *` splices `core`'s annexes into the top-level scope, which is why `nat.mul` needs no `core.` prefix.)
 
-And under the hood, MimIR is not a list of instructions but a **graph** — and that graph *is* the program.
+And under the hood, MimIR is not a list of instructions but a **graph** — and that graph _is_ the program.
 The graph is also **complete**: it holds everything needed to make sense of the program, with no auxiliary side structure.
 Contrast a traditional instruction list, which is meaningless on its own and only becomes intelligible once you pair it with a separately maintained [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph).
 
@@ -220,8 +220,8 @@ MimIR is licensed under the [MIT License](https://github.com/mimir/mimir/blob/ma
 
 <div class="section_buttons">
 
-|         Next |
-|-------------:|
+|                          Next |
+| ----------------------------: |
 | [A Tour of MimIR](@ref mimir) |
 
 </div>

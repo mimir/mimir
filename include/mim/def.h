@@ -9,11 +9,11 @@
 #include <utility>
 
 #include <fe/algo.h>
-#include <fe/assert.h>
 #include <fe/cast.h>
 #include <fe/container.h>
 #include <fe/enum.h>
 #include <fe/patricia.h>
+#include <fe/term.h>
 #include <fe/vector.h>
 
 #include "mim/config.h"
@@ -597,11 +597,11 @@ public:
 
     /// Like Def::as_mut but - instead of merely asserting in `Debug` builds - throws via fe::throwf when the cast
     /// fails; the mutable counterpart of fe::RuntimeCast::expect (which Def inherits for the general case).
-    /// @p fmt / @p args describe what was expected; a plain string works, as does a format string plus arguments.
+    /// @p fmt / @p args describe what was expected; a plain string works, as does a fe::cite_string plus arguments.
     template<class T = Def, class... Args>
-    T* expect_mut(std::format_string<Args...> fmt, Args&&... args) const {
+    T* expect_mut(fe::cite_string<Args...> fmt, Args&&... args) const {
         if (auto res = isa_mut<T>()) return res;
-        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), this);
+        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), this);
     }
     ///@}
 
@@ -951,11 +951,11 @@ public:
     static T as(const Def* def) {
         return def->as<Lit>()->get<T>();
     }
-    /// Like Lit::as but throws a formatted mim::error instead of merely asserting in `Debug`; see Def::expect.
+    /// Like Lit::as but throws via fe::throwf instead of merely asserting in `Debug`; see Def::expect.
     template<class T = nat_t, class... Args>
-    static T expect(const Def* def, std::format_string<Args...> fmt, Args&&... args) {
+    static T expect(const Def* def, fe::cite_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<T>(def)) return *res;
-        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), def);
+        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), def);
     }
     ///@}
 
@@ -1015,14 +1015,14 @@ public:
     // clang-format on
     static std::optional<nat_t> size2bitwidth(const Def* size);
 
-    /// Yields the bit width of the `Idx` @p type or throws a formatted mim::error - instead of yielding
+    /// Yields the bit width of the `Idx` @p type or throws via fe::throwf - instead of yielding
     /// std::nullopt or dereferencing an unchecked std::optional - if @p type is not an `Idx` of statically known
     /// size; see Def::expect.
     template<class... Args>
-    static nat_t expect_bitwidth(const Def* type, std::format_string<Args...> fmt, Args&&... args) {
+    static nat_t expect_bitwidth(const Def* type, fe::cite_string<Args...> fmt, Args&&... args) {
         if (auto size = isa(type))
             if (auto w = size2bitwidth(size)) return *w;
-        fe::throwf("expected {}, but got `{}`", std::format(fmt, std::forward<Args>(args)...), type);
+        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), type);
     }
     ///@}
 

@@ -85,11 +85,11 @@ pub mod contains {
 ///
 /// ## Modifiers
 ///
-/// ### insertion
+/// ### insert
 ///
 /// Inserts a key / key-value pair into the container.
 ///
-pub mod insertion {
+pub mod insert {
     axm set: {K: Key} →          [Set K  ,  K#T    ] → Set K  , normalize_insert;
     axm map: {K: Key} → {V: *} → [Map K V, [K#T, V]] → Map K V, normalize_insert;
 }

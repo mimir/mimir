@@ -109,6 +109,7 @@ endif()
 set(ABSL_PROPAGATE_CXX_STD ON)
 set(ABSL_ENABLE_INSTALL ON)
 set(FE_ABSL ON)
+set(FE_INSTALL ON) # mim-config.cmake.in includes fe-config, so fe must install alongside mim.
 
 add_subdirectory(submodules/abseil-cpp)
 add_subdirectory(submodules/fe)

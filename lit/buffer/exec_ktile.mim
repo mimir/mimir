@@ -16,9 +16,7 @@ plugin btensor;
 
 use core.ops.u.w;
 
-lam iadd (a b: I32): I32 = a + b;
-lam imul (a b: I32): I32 = a * b;
-let R: tensor.Ring = (I32, 0I32, iadd, imul);
+let R: tensor.Ring = (I32, 0I32, `+, `*);
 
 extern fun mm (a: «2, 4; I32», b: «4, 2; I32»): «2, 2; I32» =
     return (tensor.product_2d_impl 1 R (a, b));

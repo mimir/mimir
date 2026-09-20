@@ -18,8 +18,7 @@ plugin btensor;
 
 use core.ops.u.w;
 
-fun mul_add (acc: I32, ab: «2; I32»)@tt =
-    return (acc + ab#0₂ * ab#1₂);
+fun mul_add (acc: I32, (a b: I32))@tt = return (acc + a * b);
 
 extern fun gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
     return (tensor.materialize (tensor.interchange (

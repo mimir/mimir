@@ -1,0 +1,14 @@
+// RUN: %mim %s -o -
+// Every comma-separated list accepts a trailing comma.
+
+axm comma.(bar, baz,): Nat → Nat;
+
+let tup = (1, 2, 3,);
+let sig = [Nat, Nat,];
+let arr = «2, 3,; Nat»;
+let pck = ‹i: 2, j: 3,; 0›;
+
+rec S = [i: Nat, j: Nat,];
+
+lam f(a: Nat, b: Nat,): Nat = a;
+extern con g[Nat, Nat,];
