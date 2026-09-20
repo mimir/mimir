@@ -100,30 +100,19 @@ const Nest::Node* Scheduler::smart(Def* curr_mut, const Def* def) {
     return smart_[def] = s;
 }
 
-static void post_order(const Nest& nest, const Nest::Node* node, Scheduler::Schedule& res, MutSet& done) {
-    // The mut of a virtual root is a nullptr
-    if (!node->mut()) {
-        for (auto child : node->children().nodes())
-            post_order(nest, child, res, done);
-        return;
-    }
-
-    if (!node->mut()->isa<Lam>()) return;
-    if (auto [_, ins] = done.emplace(node->mut()); !ins) return;
-
-    for (auto op : node->mut()->deps()) {
-        for (auto mut : op->local_muts())
-            if (auto next = nest[mut]) post_order(nest, next, res, done);
-    }
-
-    res.emplace_back(node->mut());
-}
-
 // until we have sth better ...
 Scheduler::Schedule Scheduler::schedule(const Nest& nest) {
-    Schedule schedule;
-    MutSet done;
-    post_order(nest, nest.root(), schedule, done);
+    auto in_nest  = [&nest](Def* mut) { return nest[mut] != nullptr; };
+    auto done     = MutSet();
+    auto schedule = Schedule();
+
+    // The mut of a virtual root is a nullptr.
+    if (auto root = nest.root()->mut())
+        post_order(root, done, schedule, in_nest, in_nest);
+    else
+        for (auto mut : nest.root()->children().muts())
+            post_order(mut, done, schedule, in_nest, in_nest);
+
     std::ranges::reverse(schedule); // post-order → reverse post-order
     return schedule;
 }

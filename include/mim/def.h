@@ -1154,6 +1154,22 @@ inline auto type_of(const Def* def) {
     }};
 }
 
+/// Appends the mutables reachable from @p mut via Def::deps / Def::local_muts to @p res in post-order: callees
+/// first, so a name is always bound before its uses.
+/// @p descend picks the mutables to walk through, @p collect those that land in @p res.
+/// @p done is passed in so that several roots share one traversal.
+template<class Descend, class Collect>
+void post_order(Def* mut, MutSet& done, fe::Vector<Def*>& res, Descend descend, Collect collect) {
+    if (!done.emplace(mut).second) return;
+
+    if (descend(mut))
+        for (auto op : mut->deps())
+            for (auto local_mut : op->local_muts())
+                post_order(local_mut, done, res, descend, collect);
+
+    if (collect(mut)) res.emplace_back(mut);
+}
+
 } // namespace mim
 
 #ifndef DOXYGEN // clang-format off

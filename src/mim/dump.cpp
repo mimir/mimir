@@ -624,29 +624,20 @@ private:
     /// @name schedule
     ///@{
     /// The closed mutables @p mut reaches, callees first: Mim binds a name before its uses.
-    /// This is ClosedMutPhase's walk - but its Scheduler::schedule only ever yields Lam%s, and a dump also has
-    /// type-level declarations to order.
     void dump_muts(Def* mut) {
-        auto todo = fe::Vector<Def*>();
-        roots(mut, todo);
+        auto descend = [this](Def*) { return mode_ == Dump::All || mode_ == Dump::Local; };
+        auto collect = [this](Def* mut) { return mut->is_closed() || mode_ == Dump::Local; };
+        auto todo    = fe::Vector<Def*>();
+        post_order(mut, scheduled_, todo, descend, collect);
 
         for (auto curr : todo) {
             if (mode_ == Dump::Local) {
                 block_ = curr;
                 emit_block(curr);
             } else {
-                visit_scope(Nest(curr)); // NestPhase hands out exactly this - one scope per closed mutable
+                visit_scope(Nest(curr));
             }
         }
-    }
-
-    void roots(Def* mut, fe::Vector<Def*>& todo) {
-        if (!scheduled_.emplace(mut).second) return;
-        if (mode_ == Dump::All || mode_ == Dump::Local)
-            for (auto op : mut->deps())
-                for (auto local_mut : op->local_muts())
-                    roots(local_mut, todo);
-        if (mut->is_closed() || mode_ == Dump::Local) todo.emplace_back(mut);
     }
 
     /// @name schedule

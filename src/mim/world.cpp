@@ -9,7 +9,6 @@
 #include "mim/def.h"
 #include "mim/driver.h"
 #include "mim/rewrite.h"
-#include "mim/schedule.h"
 #include "mim/tuple.h"
 
 #include "mim/util/gid.h"
@@ -958,33 +957,30 @@ const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
-    fe::BFSWorklist<MutSet> queue;
-    for (auto mut : externals().muts())
-        queue.push(mut);
-
+    auto keep = [elide_empty](Def* mut) { return mut->is_closed() && (!elide_empty || mut->is_set()); };
     auto muts = fe::Vector<Def*>();
-    while (!queue.empty()) {
-        auto mut = queue.pop();
-        if (mut->is_closed() && (!elide_empty || mut->is_set())) muts.emplace_back(mut);
 
-        for (auto op : mut->deps())
-            for (auto local_mut : op->local_muts())
-                queue.push(local_mut);
-    }
-
-    // Schedules the mutables in post-order to ensure that they
-    // are emitted in the correct order of dependencies.
     if (schedule) {
-        const auto mut_nest = Nest(*this, muts);
-        auto schedule       = Scheduler::schedule(mut_nest) | std::views::reverse | std::views::filter([&](Def* mut) {
-                            return mut->is_closed() && (!elide_empty || mut->is_set());
-                        });
-        for (auto* mut : schedule)
-            f(mut);
+        auto done = MutSet();
+        for (auto mut : externals().muts())
+            post_order(mut, done, muts, [](Def*) { return true; }, keep);
     } else {
-        for (auto* mut : muts)
-            f(mut);
+        auto queue = fe::BFSWorklist<MutSet>();
+        for (auto mut : externals().muts())
+            queue.push(mut);
+
+        while (!queue.empty()) {
+            auto mut = queue.pop();
+            if (keep(mut)) muts.emplace_back(mut);
+
+            for (auto op : mut->deps())
+                for (auto local_mut : op->local_muts())
+                    queue.push(local_mut);
+        }
     }
+
+    for (auto mut : muts)
+        f(mut);
 }
 
 /*
