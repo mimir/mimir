@@ -250,11 +250,11 @@ function pan(e) {
         dragging = false;
     };
 
-    graph.setPointerCapture(e.pointerId);
     graph.classList.add('grabbing');
     graph.addEventListener('pointermove', move);
     graph.addEventListener('pointerup', drop, { once: true });
     graph.addEventListener('pointercancel', drop, { once: true });
+    graph.setPointerCapture(e.pointerId); // last: it only extends the drag past the pane's edge
 }
 
 // A notch is 120 px; Firefox reports lines instead, where 3 lines are that same notch.
