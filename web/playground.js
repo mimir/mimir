@@ -84,7 +84,7 @@ async function run() {
         const res = await compile(getSource(), args);
         ({ code, log } = res);
         if (res.error) log.push((why = res.error));
-        show('mim', res.out?.mim);
+        showMim(res.out?.mim);
         show('ll', res.out?.ll ?? '(enable "optimize" to run the ll backend)');
         await showGraph(res.out?.dot);
     } catch (e) {
@@ -105,6 +105,30 @@ async function run() {
 
 function show(pane, text) {
     $(`pane-${pane}`).querySelector('pre').textContent = text ?? '';
+}
+
+// The output is Mim again, so mim-code.js colours it just like the editor.
+const MIM_CLASS = { comment: 'tok-comment', string: 'tok-string', number: 'tok-number', keyword: 'tok-keyword',
+                    decl: 'tok-keyword', type: 'tok-type', literal: 'tok-literal', special: 'tok-special' };
+
+// Above this the lexer costs more than the colours are worth.
+const MAX_MIM = 256 * 1024;
+
+function showMim(text) {
+    const pre = $('pane-mim').querySelector('pre');
+    if (!text || text.length > MAX_MIM) { pre.textContent = text ?? ''; return; }
+
+    const state = { comment: false };
+    let html = '';
+
+    for (let pos = 0; pos < text.length;) {
+        const { end, kind } = MimCode.next(text, pos, state);
+        const cls = MIM_CLASS[kind];
+        const token = MimCode.escape(text.slice(pos, end));
+        html += cls ? `<span class="${cls}">${token}</span>` : token;
+        pos = end;
+    }
+    pre.innerHTML = html;
 }
 
 // An SGR colour replaces the previous one rather than nesting, so every escape closes the open span.
