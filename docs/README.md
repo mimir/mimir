@@ -44,6 +44,8 @@ Then, `f` instantiates `sq` for `Nat`:
 
 \include "sq.mim"
 
+@note ▶ Every Mim snippet in these docs comes with a run button that opens it in the [playground](https://mimir.github.io/playground/) — hit it to play around with the code right away.
+
 The type `T` sits in `{}` and is therefore an **implicit** argument: `f` just writes `sq nat.mul`, and MimIR infers `T = Nat` from the type of `nat.mul`.
 The remaining parameter is named `` `* `` — the [infix operator](@ref infix) `*` escaped into an ordinary identifier — so the body's `x * x` is nothing but an application of that very parameter.
 Its type `[T, T] → T` mentions `T`, which makes `sq` a [**dependent function**](https://en.wikipedia.org/wiki/Dependent_type#%CE%A0_type).
