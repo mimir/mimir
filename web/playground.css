@@ -176,7 +176,36 @@ main {
 
 #dot-opts label { white-space: nowrap; }
 
-#graph { flex: 1; min-height: 0; overflow: hidden; padding: .75rem; }
+#graph {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: .75rem;
+    cursor: grab;
+    outline: none;
+    user-select: none;
+    touch-action: none; /* otherwise a touch drag scrolls instead of panning */
+}
+
+#graph.grabbing { cursor: grabbing; }
+
+#graph-nav {
+    position: absolute;
+    right: .75rem;
+    bottom: .75rem;
+    display: flex;
+    gap: .25rem;
+}
+
+#graph-nav button {
+    min-width: 1.9rem;
+    padding: .15rem .4rem;
+    line-height: 1.3;
+    background: var(--panel);
+    opacity: .7;
+}
+
+#graph-nav button:hover { opacity: 1; }
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
 #graph svg { display: block; width: 100%; height: 100%; }

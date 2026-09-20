@@ -40,7 +40,12 @@
                     <label title="Wires up literals, axioms, etc. with normal edges instead of detaching them into a separate row; useful for small graphs."><input type="checkbox" data-dot="inline-consts"> inline consts</label>
                     <label title="Renders otherwise-transparent detached edges - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray."><input type="checkbox" data-dot="show-hidden"> hidden edges</label>
                 </div>
-                <div id="graph"></div>
+                <div id="graph" tabindex="0"></div>
+                <div id="graph-nav">
+                    <button data-zoom="out" title="Zoom out (-)">&#8722;</button>
+                    <button data-zoom="in"  title="Zoom in (+)">+</button>
+                    <button data-zoom="fit" title="Fit to pane (0, or double-click)">Fit</button>
+                </div>
             </div>
             <div class="pane" id="pane-ll"   hidden><pre></pre></div>
             <div class="pane" id="pane-mim"  hidden><pre></pre></div>

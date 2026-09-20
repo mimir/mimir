@@ -164,10 +164,10 @@ async function layoutGraph() {
     const pane = $('graph');
     if (dot === laidOut) return;
     laidOut = dot;
-    if (!dot) { pane.textContent = '(no graph)'; return; }
+    if (!dot) { pane.textContent = '(no graph)'; return attach(null); }
     if (dot.length > MAX_DOT) {
         pane.textContent = `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`;
-        return;
+        return attach(null);
     }
     const graphviz = await graphvizReady;
     if (dot !== laidOut) return; // superseded while Graphviz was still loading
@@ -177,6 +177,94 @@ async function layoutGraph() {
     const svg = pane.querySelector('svg');
     svg?.removeAttribute('width');
     svg?.removeAttribute('height');
+    attach(svg);
+}
+
+// The viewBox already fits the graph to the pane, so identity is "fit" and pan/zoom rides on top of it.
+const ZOOM_MIN = 0.2, ZOOM_MAX = 50, ZOOM_STEP = 1.25;
+
+let view = null; // the <g> carrying the pan/zoom transform, or null while no graph is up
+let tx, ty, k;
+
+// A re-run keeps the current view: the editor recompiles on every pause in typing, and snapping back
+// to fit each time would make zooming pointless.
+function attach(svg) {
+    const fresh = !view;
+    view = null;
+    if (!svg) return;
+    view = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    view.append(...svg.childNodes);
+    svg.append(view);
+    fresh ? fit() : apply();
+}
+
+function fit() {
+    tx = ty = 0;
+    k = 1;
+    apply();
+}
+
+function apply() {
+    view.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`);
+}
+
+// getScreenCTM maps the SVG's own coordinates - the ones tx/ty/k live in - onto the screen.
+const toGraph = (x, y) => new DOMPoint(x, y).matrixTransform(view.ownerSVGElement.getScreenCTM().inverse());
+
+function zoom(factor, x, y) {
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k * factor));
+    const p = toGraph(x, y);
+    factor = next / k;
+    tx = p.x - (p.x - tx) * factor;
+    ty = p.y - (p.y - ty) * factor;
+    k = next;
+    apply();
+}
+
+// Keeps the point under the pointer put; the buttons and keys zoom around the pane's centre instead.
+function zoomCenter(factor) {
+    const r = $('graph').getBoundingClientRect();
+    zoom(factor, r.left + r.width / 2, r.top + r.height / 2);
+}
+
+function pan(e) {
+    if (!view || e.button !== 0) return;
+    const graph = $('graph');
+    const scale = view.ownerSVGElement.getScreenCTM().a;
+    let { clientX: x, clientY: y } = e;
+
+    const move = e => {
+        tx += (e.clientX - x) / scale;
+        ty += (e.clientY - y) / scale;
+        [x, y] = [e.clientX, e.clientY];
+        apply();
+    };
+    const drop = () => {
+        graph.removeEventListener('pointermove', move);
+        graph.classList.remove('grabbing');
+    };
+
+    graph.setPointerCapture(e.pointerId);
+    graph.classList.add('grabbing');
+    graph.addEventListener('pointermove', move);
+    graph.addEventListener('pointerup', drop, { once: true });
+    graph.addEventListener('pointercancel', drop, { once: true });
+}
+
+// A notch is 120 px; Firefox reports lines instead, where 3 lines are that same notch.
+function wheel(e) {
+    if (!view) return;
+    e.preventDefault();
+    zoom(ZOOM_STEP ** (-(e.deltaMode ? e.deltaY * 40 : e.deltaY) / 120), e.clientX, e.clientY);
+}
+
+function key(e) {
+    if (!view) return;
+    if (e.key === '+' || e.key === '=') zoomCenter(ZOOM_STEP);
+    else if (e.key === '-') zoomCenter(1 / ZOOM_STEP);
+    else if (e.key === '0') fit();
+    else return;
+    e.preventDefault();
 }
 
 function select(pane) {
@@ -298,6 +386,16 @@ $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } el
 $('share').onclick = share;
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
+$('graph-nav').onclick = e => {
+    const how = e.target.dataset.zoom;
+    if (!view || !how) return;
+    if (how === 'fit') fit();
+    else zoomCenter(how === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP);
+};
+$('graph').addEventListener('pointerdown', pan);
+$('graph').addEventListener('wheel', wheel, { passive: false });
+$('graph').addEventListener('dblclick', () => view && fit());
+$('graph').addEventListener('keydown', key);
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
 
 // setupEditor fills the textarea before it awaits, so the first compile starts alongside.
