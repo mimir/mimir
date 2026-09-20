@@ -41,7 +41,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 #### Primary Terminals
 
-<div class="ebnf-terminals">
+<div class="terminals-code">
 
 ```text
 ( ) [ ] { } ⦃ ⦄
@@ -70,7 +70,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 #### Keywords
 
-<div class="ebnf-terminals">
+<div class="terminals-code">
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
@@ -617,7 +617,7 @@ let f = fn (T: *)  (x y: T): T                    = return x;
 The following applications of `f` are equivalent, where `g` is a continuation that consumes the result:
 
 ```mim
-f Nat ((23, 42), cn res: Nat = g res)
+let _   = f Nat ((23, 42), cn res: Nat = g res)
 ret res = f Nat $ (23, 42); g res
 ```
 
@@ -626,9 +626,9 @@ ret res = f Nat $ (23, 42); g res
 The following types are equivalent and describe the type of `f` above:
 
 ```mim
-[T: *] →    [[T, T], T → ⊥] → ⊥
-[T: *] → Cn [[T, T], Cn T]
-[T: *] → Fn  [T, T] → T
+let _ = [T: *] →    [[T, T], T → ⊥] → ⊥
+let _ = [T: *] → Cn [[T, T], Cn T]
+let _ = [T: *] → Fn  [T, T] → T
 ```
 
 ## Scoping
@@ -654,16 +654,16 @@ Named elements of a [mutable sigma](@ref mutsigma) - a dependent tuple type, or 
 In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 
 ```mim
-let i = 1_2;
-rec S = [i: Nat, j: Nat];
+let i = 1₂;
+rec S = [i j: Nat];
 lam f (x: S): Nat = x#i;
 ```
 
 Use parentheses to force the variable interpretation:
 
 ```mim
-let i = 1_2;
-rec S = [i: Nat, j: Nat];
+let i = 1₂;
+rec S = [i j: Nat];
 lam f (x: S): Nat = x#(i);
 ```
 

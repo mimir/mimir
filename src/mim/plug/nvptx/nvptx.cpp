@@ -8,7 +8,7 @@
 using namespace mim;
 using namespace mim::plug;
 
-void reg_phases(Flags2Phases& phases) {
+static void reg_phases(Flags2Phases& phases) {
     MIM_REPL(phases, nvptx::stream_impl_repl, {
         auto stream_flags = Annex::base<gpu::Stream>();
         if (def->flags() == stream_flags) return world().annex<nvptx::Stream>();
@@ -16,4 +16,4 @@ void reg_phases(Flags2Phases& phases) {
     });
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"nvptx", MIM_VERSION, {}, reg_phases, {}, {}, {}, {}}; }
+MIM_PLUGIN_ENTRY(nvptx) { plugin.register_phases = reg_phases; }

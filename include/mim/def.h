@@ -758,9 +758,7 @@ private:
     template<bool init>
     Vars free_vars(World&, bool&, u32);
     void invalidate();
-    const Def** ops_ptr() const {
-        return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
-    }
+    const Def** ops_ptr() const { return &type_ + 1; }
     bool equal(const Def* other) const;
     bool nests(Def*, MutSet&);
 
@@ -798,7 +796,7 @@ private:
 #ifndef NDEBUG
     u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too); shares dbg_'s 8-byte slot
 #endif
-    mutable const Def* type_;
+    mutable const Def* type_; ///< Must stay last: Def::ops_ptr places the operands behind it.
 
     friend struct DefKey;
     friend class World;
@@ -808,9 +806,8 @@ private:
 
 inline u32 DefKey::key(const Def* d) noexcept { return d->gid_; }
 
-/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
-/// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()
-/// tag and dispatches on it instead - see the `dispatch` section in `def.cpp`.
+/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World and would shift Def::type_.
+/// Def dispatches on its own Def::node() tag instead - see the `dispatch` section in `def.cpp`.
 /// @note A *subclass* growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)` assert in World::allocate.
 static_assert(!std::is_polymorphic_v<Def>, "Def must not have a vtable; dispatch on Def::node() instead");
 

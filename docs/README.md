@@ -31,6 +31,8 @@ MimIR brings two worlds together: typed functional IRs supply the abstractions �
 It has both at once, by extending sea-of-nodes to the Calculus of Constructions.
 And it pays off in practice: the [regex](@ref regex) plugin is the fastest engine in our evaluation (see the [POPL'25 paper](https://doi.org/10.1145/3704840)).
 
+<div class="big-button"><a href="https://mimir.github.io/playground/">▶ Try MimIR in your Browser</a></div>
+
 @note 🆕 **New here?**
 - 🧭 Read the [**Tour of MimIR**](@ref mimir) — it walks through Mim's syntax and MimIR's plugin architecture.
 - 📚 Then, read the rest of the [documentation](https://mimir.github.io/usergroup0.html).
@@ -41,6 +43,8 @@ The following function `sq` squares `x` — for **any** type `T`, as long as you
 Then, `f` instantiates `sq` for `Nat`:
 
 \include "sq.mim"
+
+@note ▶ Every Mim snippet in these docs comes with a run button that opens it in the [playground](https://mimir.github.io/playground/) — hit it to play around with the code right away.
 
 The type `T` sits in `{}` and is therefore an **implicit** argument: `f` just writes `sq nat.mul`, and MimIR infers `T = Nat` from the type of `nat.mul`.
 The remaining parameter is named `` `* `` — the [infix operator](@ref infix) `*` escaped into an ordinary identifier — so the body's `x * x` is nothing but an application of that very parameter.

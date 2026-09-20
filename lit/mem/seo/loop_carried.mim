@@ -11,8 +11,6 @@
 
 plugin core;
 plugin mem;
-plugin compile;
-plugin ll;
 
 use core.ops.n;
 
@@ -38,18 +36,6 @@ extern fun test(m: mem.M 0): [mem.M 0, Nat] =
                     return (m, x);
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        compile.phases tt (
-            compile.beta_red,
-            compile.eta_conv,
-        ),
-        mem.seo,
-        compile.named "mem.alloc2malloc_repl",
-        compile.named "ll.emit",
-    );
 
 // The slot is promoted (no alloca) and the loop-carried return value is threaded through the header phi,
 // never frozen to the entry constant 42.

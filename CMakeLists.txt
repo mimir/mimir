@@ -77,6 +77,12 @@ else()
     add_compile_options(-Wall -Wextra)
 endif()
 
+if(EMSCRIPTEN)
+    # Emscripten's default JS exceptions cannot unwind the frontend's throws.
+    add_compile_options(-fwasm-exceptions)
+    add_link_options(-fwasm-exceptions)
+endif()
+
 # -O0 makes Debug roughly 6x slower than it needs to be while adding little over -Og for most debugging.
 # Assertions and MIM_ENABLE_CHECKS are unaffected - only the optimizer changes.
 # Switch this OFF when stepping through code, as -Og optimizes away some locals.
@@ -114,6 +120,10 @@ set(FE_INSTALL ON) # mim-config.cmake.in includes fe-config, so fe must install 
 add_subdirectory(submodules/abseil-cpp)
 add_subdirectory(submodules/fe)
 add_subdirectory(src)
+
+if(EMSCRIPTEN)
+    add_subdirectory(web)
+endif()
 
 if(MIM_BUILD_EXAMPLES)
     add_subdirectory(examples)

@@ -9,7 +9,6 @@ div.groupHeader {
 }
 
 /* Doxygen emits stray siblings for the wrappers of docs/fences.py; only the one holding the listing is real. */
-div.mim-code:not(:has(div.fragment)),
-div.ebnf-code:not(:has(div.fragment)) {
+div[class$="-code"]:not(:has(div.fragment)) {
     display: none;
 }

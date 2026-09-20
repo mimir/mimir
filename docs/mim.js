@@ -1,73 +1,73 @@
 /**
 
-Highlights the Mim snippets in the documentation.
-Doxygen has no Mim parser and discards the language of a fenced code block, so a snippet is marked up with a `mim-code` wrapper and coloured here.
+Lexes Mim; see `docs/code.js` for the machinery.
+Each snippet also gets a button that opens it in the playground via its `?src=` parameter.
 
 */
 
-class MimCode {
-    static KEYWORD = new Set(["cn", "end", "fn", "inj", "lm", "match", "ret", "when", "where", "with", "λ"])
-    /// `C_DECL` of `src/mim/ast/family.h` plus the modifiers of `Parser::parse_modifiers`.
-    static DECL = new Set(["and", "anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "norm",
-                           "plugin", "priv", "pub", "rec", "rule", "use"])
-    static TYPE = new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ",
-                           "i1", "i8", "i16", "i32", "i64"])
-    static LITERAL = new Set(["bot", "ff", "top", "tt", "⊥", "⊤"])
-    static SPECIAL = new Set(["_", "return"])
-    static TOKEN = /^(\/\/.*)|^(\/\*)|^("(?:\\.|[^"\\])*")|^('(?:\\.|[^'\\])*')|^([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|^(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|^(\s+)|^([^])/u
-
-    static init() {
-        $(function() {
-            for (const fragment of document.querySelectorAll(".mim-code div.fragment")) {
-                if (fragment.querySelector("span")) continue // Doxygen highlighted this one itself.
-
-                const state = {comment: false}
-                for (const line of fragment.querySelectorAll("div.line")) line.innerHTML = MimCode.code(line.textContent, state)
-            }
-        })
+class MimCode extends Code {
+    static WORDS = {
+        keyword: new Set(["cn", "end", "fn", "inj", "lm", "match", "ret", "when", "where", "with", "λ"]),
+        /// `C_DECL` of `src/mim/ast/family.h` plus the modifiers of `Parser::parse_modifiers`.
+        decl: new Set(["and", "anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "norm",
+                       "plugin", "priv", "pub", "rec", "rule", "use"]),
+        type: new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ",
+                       "i1", "i8", "i16", "i32", "i64"]),
+        literal: new Set(["bot", "ff", "top", "tt", "⊥", "⊤"]),
+        special: new Set(["_", "return"])
     }
+    static PLAYGROUND = "https://mimir.github.io/playground/"
+    static RUN_TITLE = "Run in the playground"
+    static RUN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M5.5 3.5 20.5 12 5.5 20.5Z"/></svg>`
+    static TOKEN = /(\/\/.*)|(\/\*)|("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|([«»‹›→←Π∀])|(\s+|[^])/uy
+    static KINDS = ["comment", "open", "string", "string", "word", "number", "operator", null]
+    static CLASS = {...Code.CLASS, special: "code-special"}
 
-    static escape(text) {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    }
-
-    static span(cls, text) {
-        return `<span class="${cls}">${MimCode.escape(text)}</span>`
-    }
-
-    static word(text) {
-        if (MimCode.KEYWORD.has(text)) return MimCode.span("keyword", text)
-        if (MimCode.DECL.has(text)) return MimCode.span("keywordflow", text)
-        if (MimCode.TYPE.has(text)) return MimCode.span("keywordtype", text)
-        if (MimCode.LITERAL.has(text)) return MimCode.span("mim-literal", text)
-        if (MimCode.SPECIAL.has(text)) return MimCode.span("mim-special", text)
-        return MimCode.escape(text)
-    }
-
-    /// `state.comment` carries an unterminated `/*` into the following lines of the same snippet.
-    static code(text, state) {
-        let out = "", rest = text
-
-        while (rest) {
-            if (state.comment) {
-                const end = rest.indexOf("*/")
-                out += MimCode.span("comment", end < 0 ? rest : rest.slice(0, end + 2))
-                rest = end < 0 ? "" : rest.slice(end + 2)
-                state.comment = end < 0
-                continue
-            }
-
-            const [all, comment, open, string, char, word, number, space] = MimCode.TOKEN.exec(rest)
-            if (comment)      out += MimCode.span("comment", comment)
-            else if (open)    { state.comment = true; continue }
-            else if (string)  out += MimCode.span("stringliteral", string)
-            else if (char)    out += MimCode.span("stringliteral", char)
-            else if (word)    out += MimCode.word(word)
-            else if (number)  out += MimCode.span("mim-literal", number)
-            else if (space)   out += space
-            else              out += MimCode.escape(all)
-            rest = rest.slice(all.length)
+    /// `state.comment` carries an unterminated `/*` into the following lines.
+    static next(text, pos, state) {
+        if (!state.comment) {
+            const token = super.next(text, pos, state)
+            if (token.kind !== "open") return token
+            state.comment = true
         }
-        return out
+
+        const end = text.indexOf("*/", pos)
+        state.comment = end < 0
+        return {end: end < 0 ? text.length : end + 2, kind: "comment"}
+    }
+
+    static decorate(fragment) {
+        this.run(fragment)
+        super.decorate(fragment)
+    }
+
+    /// Doxygen renders a blank line as a lone space.
+    static source(fragment) {
+        return [...fragment.querySelectorAll("div.line")].map(line => line.textContent.replace(/\s+$/, "")).join("\n")
+    }
+
+    /// The copy button already wraps every fragment — but only in a browser that has a clipboard.
+    static wrapper(fragment) {
+        const parent = fragment.parentNode
+        if (parent.classList.contains("doxygen-awesome-fragment-wrapper")) return parent
+
+        const wrapper = document.createElement("div")
+        wrapper.className = "doxygen-awesome-fragment-wrapper"
+        parent.replaceChild(wrapper, fragment)
+        wrapper.appendChild(fragment)
+        return wrapper
+    }
+
+    static run(fragment) {
+        const button = document.createElement("a")
+        button.className = "mim-run"
+        button.href = `${this.PLAYGROUND}?src=${encodeURIComponent(this.source(fragment))}`
+        button.target = "_blank"
+        button.rel = "noopener"
+        button.title = this.RUN_TITLE
+        button.innerHTML = this.RUN_ICON
+        this.wrapper(fragment).appendChild(button)
     }
 }
+
+MimCode.register("mim")

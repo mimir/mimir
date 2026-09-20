@@ -1,6 +1,5 @@
 #include "mim/plug/ll/ll.h"
 
-#include <iomanip>
 #include <ranges>
 #include <string>
 
@@ -91,16 +90,16 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         std::print(s, "{} (", convert_ret_pi(pi->ret_pi()));
 
         if (auto t = detail::isa_mem_sigma_2(pi->dom()))
-            s << convert(t);
+            std::print(s, "{}", convert(t));
         else {
             auto doms = pi->doms();
             for (auto sep = ""; auto dom : doms.view().rsubspan(1)) {
                 if (Axm::isa<mem::M>(dom)) continue;
-                s << sep << convert(dom);
+                std::print(s, "{}{}", sep, convert(dom));
                 sep = ", ";
             }
         }
-        s << ")*";
+        std::print(s, ")*");
     } else if (auto t = detail::isa_mem_sigma_2(type)) {
         return convert(t);
     } else if (auto sigma = type->isa<Sigma>()) {
@@ -113,7 +112,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         std::print(s, "{{");
         for (auto sep = ""; auto t : sigma->ops()) {
             if (Axm::isa<mem::M>(t)) continue;
-            s << sep << convert(t);
+            std::print(s, "{}{}", sep, convert(t));
             sep = ", ";
         }
         std::print(s, "}}");
@@ -124,7 +123,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
     if (name.empty()) return types_[type] = s.str();
 
     if (s.str().empty()) fe::throwf(MIM_LL_BE "empty type declaration for `{}`", type);
-    type_decls_ << s.str() << '\n';
+    std::println(type_decls_, "{}", s.str());
     return types_[type] = name;
 }
 
@@ -139,22 +138,22 @@ void Emitter::finalize_impl() {
         }
     }
 
-    for (auto mut : schedule()) { // cached by Emitter::visit - recomputing it here doubled the work
+    for (auto sep = ""; auto mut : schedule()) { // cached by Emitter::visit - recomputing it here doubled the work
         if (auto lam = mut->isa_mut<Lam>()) {
             if (!lam2bb_.contains(lam)) fe::throwf(MIM_LL_BE "no basic block was emitted for `{}`", lam);
             auto& bb = lam2bb_[lam];
-            std::print(func_impls_, "{}:\n", lam->unique_name());
+            std::println(func_impls_, "{}{}:", sep, lam->unique_name());
+            sep = "\n";
 
             ++tab;
             for (const auto& part : bb.parts)
                 for (const auto& line : part)
                     std::println(func_impls_, "{}{}", tab, line.str());
             --tab;
-            func_impls_ << std::endl;
         }
     }
 
-    std::print(func_impls_, "}}\n\n");
+    std::println(func_impls_, "}}\n"); // the blank line separates this function from the next
 }
 
 /*
@@ -401,23 +400,16 @@ std::string Emitter::emit_lit(const Def* def) {
         if (lit->type()->isa<Nat>() || Idx::isa(lit->type())) {
             return std::to_string(lit->get());
         } else if (auto w = math::isa_f(lit->type())) {
-            std::stringstream s;
             u64 hex;
 
             switch (*w) {
-                case 16:
-                    s << "0xH" << std::setfill('0') << std::setw(4) << std::right << std::hex << lit->get<u16>();
-                    return s.str();
-                case 32: {
-                    hex = std::bit_cast<u64>(f64(lit->get<f32>()));
-                    break;
-                }
+                case 16: return std::format("0xH{:04x}", lit->get<u16>());
+                case 32: hex = std::bit_cast<u64>(f64(lit->get<f32>())); break;
                 case 64: hex = lit->get<u64>(); break;
                 default: fe::throwf(MIM_LL_BE "unsupported floating-point width {} for literal `{}`", *w, def);
             }
 
-            s << "0x" << std::setfill('0') << std::setw(16) << std::right << std::hex << hex;
-            return s.str();
+            return std::format("0x{:016x}", hex);
         }
         fe::throwf(MIM_LL_BE "cannot emit literal `{}` of type `{}`", def, def->type());
     }
@@ -521,7 +513,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
     } else if (auto global = def->isa<Global>()) {
         auto v_init                = emit(global->init());
         auto [pointee, addr_space] = Axm::expect<mem::Ptr>(global->type(), "a `mem.Ptr`")->args<2>();
-        std::print(vars_decls_, "{} = global {} {}\n", name, convert(pointee), v_init);
+        std::println(vars_decls_, "{} = global {} {}", name, convert(pointee), v_init);
         return globals_[global] = name;
     }
     return std::nullopt;
@@ -1153,6 +1145,19 @@ static constexpr PluginArg known_args[] = {
 };
 // clang-format on
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"ll", MIM_VERSION, {}, reg_phases, known_args, std::size(known_args), {}, {}};
+// MIM_PLUGIN_SYM stringifies its argument, so these names must stay unqualified.
+using namespace mim::plug::ll;
+static const PluginSym known_syms[] = {
+    MIM_PLUGIN_SYM(mim_ll_convert),
+    MIM_PLUGIN_SYM(mim_ll_finalize),
+    MIM_PLUGIN_SYM(mim_ll_emit_epilogue),
+    MIM_PLUGIN_SYM(mim_ll_emit_bb),
+};
+
+MIM_PLUGIN_ENTRY(ll) {
+    plugin.register_phases = reg_phases;
+    plugin.args            = known_args;
+    plugin.num_args        = std::size(known_args);
+    plugin.syms            = known_syms;
+    plugin.num_syms        = std::size(known_syms);
 }

@@ -8,9 +8,10 @@ using namespace mim;
 using namespace mim::plug;
 
 namespace mim::plug::buffer {
-void reg_phases(Flags2Phases& phases) { Phase::hook<lower_ptr, LowerPtr>(phases); }
+static void reg_phases(Flags2Phases& phases) { Phase::hook<lower_ptr, LowerPtr>(phases); }
 } // namespace mim::plug::buffer
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"buffer", MIM_VERSION, buffer::register_normalizers, buffer::reg_phases, {}, {}, {}, {}};
+MIM_PLUGIN_ENTRY(buffer) {
+    plugin.register_normalizers = buffer::register_normalizers;
+    plugin.register_phases      = buffer::reg_phases;
 }

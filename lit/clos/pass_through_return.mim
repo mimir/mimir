@@ -11,7 +11,7 @@ let pb_type = Cn [mem.M 0, Cn [mem.M 0]];
 
 fun end_(m: mem.M 0): mem.M 0 = return m;
 
-extern con printInteger [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con print_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
     con callback (m: mem.M 0) = return (m, 1I32);
@@ -32,12 +32,12 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
             let (load_pb_mem, last_pb) = mem.load (m, lea_pb);
             con pb (m: mem.M 0, end_: Cn [mem.M 0]) =
                 con inner_yield (m: mem.M 0) = last_pb (m, end_);
-                printInteger(m, i, inner_yield);
+                print_i32(m, i, inner_yield);
                 //last_pb (mem, end_)  // << call previous backward pass block
 
             let store_pb_mem = mem.store (load_pb_mem, lea_pb, pb); // << stack backward pass block
 
-            printInteger(store_pb_mem, i, yield);
+            print_i32(store_pb_mem, i, yield);
 
         (exit, body)#(i < 19I32) ( m );
 

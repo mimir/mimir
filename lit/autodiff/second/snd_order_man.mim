@@ -8,12 +8,8 @@ plugin mem;
 use core.ops.u.w;
 
 fun g_diff(a: I32): [I32, Fn I32 → I32] =
-    let b = 3I32 + a;
-    let c = a * b;
-    return (c, fn (s: I32): I32 =
-        let b = 2I32 * a;
-        let c = 3I32 + b;
-        return ((c)));
+    return (a * (3I32 + a),
+            fn (s: I32): I32 = return (3I32 + 2I32 * a));
 
 fun f(a: I32): I32 =
     con ret_cont (r: I32, pb: Fn I32 → I32) =
@@ -26,8 +22,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
         con pb_ret_cont (pr: I32) =
             return (m, 100I32 * r + pr);
         pb(1I32, pb_ret_cont);
-
-    let f_diff = autodiff.ad f;
-    f_diff (42I32, ret_cont);
+    (autodiff.ad f) (42I32, ret_cont);
 
 // CHECK-DAG: return{{.*}}8702

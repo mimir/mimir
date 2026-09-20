@@ -9,9 +9,9 @@ use core.ops.u.w;
 
 let pb_type = Cn [mem.M 0, Cn [mem.M 0]];
 
-extern con printInteger [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
-extern con printIntegerNL [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
-extern con printNL [m: mem.M 0, return: Cn [mem.M 0]];
+extern con print_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con println_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con printnl [m: mem.M 0, return: Cn [mem.M 0]];
 
 let size = 10;
 
@@ -20,12 +20,12 @@ con recursive (m: mem.M 0, i: I32, last_pullback: pb_type, return: Cn [mem.M 0])
     where
         con loop_body (m: mem.M 0) =
             con pb (m: mem.M 0, return: Cn [mem.M 0]) =
-                printIntegerNL( m, i , next )
+                println_i32( m, i , next )
                 where
                     con next (m: mem.M 0) = last_pullback (m, return);
                 end;
 
-            printIntegerNL (m, i , next)
+            println_i32 (m, i , next)
             where
                 con next (m: mem.M 0) = recursive( m, i + 1I32, pb, return );
             end;

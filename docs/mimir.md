@@ -83,7 +83,8 @@ These are ordinary Mim values, written as plain Mim.
 `core.select`, for instance, is just
 
 ```mim
-lam core.select {T: *} (cond, t, f): T = (f, t)#cond;
+// inside core.mim
+anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
 ```
 
 Being a direct-style function, it carries the default `tt` [`filter`](@ref mim::Lam::filter), which tells MimIR to **β-reduce its applications eagerly during graph construction**.
@@ -201,6 +202,9 @@ Two classic chores simply vanish:
   For this reason, a naive β-reduction would superfluously duplicate `g` as well.
 
   ```mim
+  plugin core;
+  use core.ops.n;
+
   lam f (x: Nat): Nat =
       lam g (y: Nat): Nat = y + 1;
       g (x + 2);
@@ -216,6 +220,9 @@ Two classic chores simply vanish:
   In the following example, we want to specialize `f` for `z`.
 
   ```mim
+  plugin core;
+  use core.ops.n;
+
   lam f (x y: Nat): Nat = x + y;
   lam g (z: Nat): Nat = (f z 1) + (f z 2);
   ```
@@ -223,6 +230,9 @@ Two classic chores simply vanish:
   However, we need to _block-sink_ the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:
 
   ```mim
+  plugin core;
+  use core.ops.n;
+
   lam g (z: Nat) =
     lam fz (y: Nat): Nat = z + y;
     (fz 1) + (fz 2)
