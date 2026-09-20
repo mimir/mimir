@@ -6,9 +6,6 @@
 
 namespace mim {
 
-/// Number of params a single `u64` keep-bitmask can represent; wider doms fall back to the ⊤ sentinel.
-static constexpr auto BitmaskWidth = sizeof(u64) * 8;
-
 /// The only Pi%s we ever reshape: immutable (non-dependent) continuations.
 static const Pi* isa_flattenable(const Def* def) {
     if (auto pi = Pi::isa_cn(def); pi && pi->isa_imm()) return pi;
@@ -20,32 +17,21 @@ static const Pi* isa_flattenable(const Def* def) {
  */
 
 bool Scalarize::Analysis::kept(const Pi* pi, size_t dom) const {
-    auto abstr = lattice(pi);
-    if (!abstr) return false;
-    // Too wide for the u64 bitmask: keep() pins the whole Pi for dom >= 64, so a param this wide
-    // can only survive as a u64 entry if it was never recorded - conservatively treat it as kept.
-    if (dom >= BitmaskWidth) return true;
-    if (auto mask = Lit::isa<u64>(abstr)) return (*mask >> dom) & 1; // per-param bitmask
-    return true;                                                     // ⊤ sentinel: whole Pi pinned
+    if (is_top(pi)) return true; // whole Pi pinned
+    auto i = keeps_.find(pi);
+    return i != keeps_.end() && i->second.test(dom);
 }
 
 void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
     // Out of the thresholded arity: plan() only iterates [0, num_tdoms), so such a parameter is never a
     // split candidate anyway - nothing to record.
     if (dom >= pi->num_tdoms()) return;
-    auto cur = lattice(pi);
-    if (cur && !Lit::isa<u64>(cur)) return; // already ⊤ - monotone, do not downgrade
-    // Too wide for the u64 bitmask (only with an unusually large scalarize threshold): conservatively pin
-    // the whole Pi rather than risk splitting a dynamically-indexed parameter.
-    if (dom >= BitmaskWidth) {
-        pin(pi);
-    } else {
-        auto mask = cur ? Lit::as<u64>(cur) : u64(0);
-        auto next = mask | (u64(1) << dom);
-        if (next == mask) return;
-        lattice_force(pi, world().lit_nat(next));
-        log().d("keep {}#{}", pi, dom);
-    }
+    if (is_top(pi)) return; // already ⊤ - monotone, do not downgrade
+    auto& mask = keeps_[pi];
+    if (mask.test(dom)) return;
+    mask.set(dom);
+    log().d("keep {}#{}", pi, dom);
+    touch();
 }
 
 /// Collects @p def%'s immutable subtree into @p set; stops at mutables.
