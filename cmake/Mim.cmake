@@ -19,6 +19,7 @@ set(MIM_PLAYGROUND_EXAMPLES
     docs/count
     docs/dep
     docs/iter
+    hello_world
     fib
     ackermann
     main_loop
