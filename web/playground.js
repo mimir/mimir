@@ -1,4 +1,5 @@
 import { Graphviz } from 'https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@1/dist/index.js';
+import { GraphView } from './graphview.js';
 
 const $ = id => document.getElementById(id);
 const status = $('status');
@@ -6,10 +7,10 @@ const status = $('status');
 // Written by web/CMakeLists.txt from the list that stages the examples.
 const EXAMPLES = await fetch('examples/index.json').then(r => r.json());
 
-// The `RUN:` line makes these lit tests; it is noise in the editor.
+// The `RUN:`/`CHECK:` lines make these lit tests; they are noise in the editor.
 const example = name => fetch(`examples/${name}.mim`)
     .then(r => r.text())
-    .then(text => text.replace(/^\/\/ RUN:.*\n/gm, ''));
+    .then(text => text.replace(/^\/\/ (RUN|CHECK[\w-]*):.*\n/gm, '').trim() + '\n');
 
 // Only terminate() stops a wasm loop that never returns, and only a Worker can be terminated.
 const LOAD_TIMEOUT = 60_000; // the first run also pays for the 2.4MB download
@@ -72,6 +73,8 @@ async function run() {
 
     const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '-o', '/out.mim'];
     for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
+    if (dark) args.push('--dot-dark');
+    if ($('ascii').checked) args.push('-a');
     if ($('optimize').checked) args.push('-p', 'opt', '-p', 'll', '-X', 'll:o=/out.ll');
     else args.push('--no-opt');
 
@@ -152,32 +155,49 @@ function showLog(text) {
 // Layout runs on the page, so a graph big enough to freeze it is refused.
 const MAX_DOT = 512 * 1024;
 
-let dot = null;  // laid out only while the Graph tab is up: layout blocks the editor
+const graph = new GraphView($('graph'), $('graph-nav'));
+
+let dot = null;  // laid out only while the Graph tab is up or a pop-out is watching: layout blocks the editor
 let laidOut;     // the `dot` the pane already shows
+let svg = null;  // what came out of the layout, or null with `msg` saying why there is none
+let msg = '';
 
 async function showGraph(latest) {
     dot = latest;
-    if (!$('pane-graph').hidden) await layoutGraph();
+    if (!$('pane-graph').hidden || poppedOut()) await layoutGraph();
 }
 
 async function layoutGraph() {
-    const pane = $('graph');
-    if (dot === laidOut) return;
+    if (dot === laidOut) return post();
     laidOut = dot;
-    if (!dot) { pane.textContent = '(no graph)'; return; }
-    if (dot.length > MAX_DOT) {
-        pane.textContent = `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`;
-        return;
-    }
+    if (!dot) return render(null, '(no graph)');
+    if (dot.length > MAX_DOT) return render(null, `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`);
     const graphviz = await graphvizReady;
     if (dot !== laidOut) return; // superseded while Graphviz was still loading
-    pane.innerHTML = graphviz.layout(dot, 'svg', 'dot');
-
-    // Graphviz sizes the SVG in points; drop that so the viewBox scales it to the pane.
-    const svg = pane.querySelector('svg');
-    svg?.removeAttribute('width');
-    svg?.removeAttribute('height');
+    render(graphviz.layout(dot, 'svg', 'dot'));
 }
+
+function render(latest, why) {
+    svg = latest;
+    msg = why;
+    svg ? graph.render(svg) : graph.message(msg);
+    post();
+}
+
+// The pop-out shows the very SVG this page laid out, so it needs neither Graphviz nor the compiler.
+let popout = null;
+const poppedOut = () => popout && !popout.closed;
+
+function post() {
+    if (poppedOut()) popout.postMessage({ svg, msg, dark }, '*');
+}
+
+function popOut() {
+    if (poppedOut()) return popout.focus();
+    popout = window.open('graph.html', 'mim-graph', 'popup,width=1000,height=800');
+}
+
+window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layoutGraph(); });
 
 function select(pane) {
     for (const tab of document.querySelectorAll('#tabs button')) {
@@ -190,6 +210,7 @@ function select(pane) {
 }
 
 let editor = null; // CodeMirror, if it loads; the <textarea> is the fallback
+let viSlot = null; // the compartment the vi keymap is swapped in and out of
 const getSource = () => editor ? editor.state.doc.toString() : $('source').value;
 
 function setSource(text) {
@@ -203,12 +224,14 @@ async function setupEditor(initial) {
     $('source').value = initial;
     try {
         const cdn = 'https://esm.sh/@codemirror/';
-        const [view, language, commands] = await Promise.all(
-            ['view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg)));
+        const [state, view, language, commands] = await Promise.all(
+            ['state@6', 'view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg)));
 
+        viSlot = new state.Compartment();
         editor = new view.EditorView({
             doc: initial,
             extensions: [
+                viSlot.of([]), // vi rebinds Esc and the printable keys, so it has to outrank the keymaps below
                 view.lineNumbers(),
                 view.highlightActiveLine(),
                 view.drawSelection(),
@@ -224,6 +247,27 @@ async function setupEditor(initial) {
     } catch (e) {
         console.warn('CodeMirror unavailable, falling back to a plain textarea:', e);
         $('source').addEventListener('input', schedule);
+        $('vi').closest('label').remove();
+    }
+}
+
+const VI_KEY = 'mim-playground-vi';
+let vi = null; // @replit/codemirror-vim, fetched when the box is first ticked
+
+async function toggleVi() {
+    const on = $('vi').checked;
+    localStorage.setItem(VI_KEY, on ? '1' : '');
+    if (!viSlot) return;
+    try {
+        if (on && !vi) {
+            vi = await import('https://esm.sh/@replit/codemirror-vim@6');
+            vi.Vim.defineEx('write', 'w', run);
+        }
+        editor.dispatch({ effects: viSlot.reconfigure(on ? vi.vim({ status: true }) : []) });
+        editor.focus();
+    } catch (e) {
+        console.warn('vi mode unavailable:', e);
+        $('vi').checked = false;
     }
 }
 
@@ -296,10 +340,26 @@ for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
 picker.onchange = async () => { setSource(picker.value ? await example(picker.value) : custom); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
 $('share').onclick = share;
+$('vi').checked = localStorage.getItem(VI_KEY) === '1';
+$('vi').onchange = toggleVi;
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
+$('mim-opts').onchange = run;
+$('popout').onclick = popOut;
 for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
+
+// darkmode-toggle.js owns the preference and the <html> class; the graph is baked by the compiler, so a
+// theme change - by click or by the system flipping underneath us - has to recompile.
+let dark = document.documentElement.classList.contains('dark-mode');
+$('theme').updateIcon();
+
+new MutationObserver(() => {
+    $('theme').updateIcon();
+    const now = document.documentElement.classList.contains('dark-mode');
+    if (now !== dark) { dark = now; run(); }
+}).observe(document.documentElement, { attributeFilter: ['class'] });
 
 // setupEditor fills the textarea before it awaits, so the first compile starts alongside.
 const initial = custom ?? await example(EXAMPLES[0]);
 await Promise.all([setupEditor(initial), run()]);
+if (editor && $('vi').checked) await toggleVi();

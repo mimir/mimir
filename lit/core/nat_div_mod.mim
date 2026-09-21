@@ -32,9 +32,7 @@ extern fun test_fold(x: Nat): [Nat, Nat, Nat, Nat, Nat] =
 // zero immediate UB, so the backend guards the divisor (replace 0 by 1) and
 // selects the defined result for the zero case: `a / 0 = 0`, `a % 0 = a`.
 //
-// The `mem` keeps the domain a heterogeneous sigma so the two `Nat`s stay scalar
-// `i64`s instead of folding into a `«2; Nat»` SIMD vector. DIV and MOD use
-// independent prefixes because the two functions' emission order is not stable.
+// DIV and MOD use independent prefixes because the two functions' emission order is not stable.
 
 // MOD-LABEL: define{{.*}}@test_mod
 // MOD: icmp eq i64

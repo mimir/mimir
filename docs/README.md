@@ -63,6 +63,7 @@ What remains is the bare `x * x`, with **no trace** of `sq` or its abstraction o
 The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
 
 @image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
+@image html sq-dark.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
 
 For the full picture, with more examples and the graphs MimIR builds for them, read the [Tour of MimIR](@ref mimir).
 With MimIR's Python bindings, you can write full-blown DSL compilers embedded in Python; see the [embedded Python DSL](@ref python) for a complete end-to-end example.

@@ -233,6 +233,10 @@ struct DotConfig {
     bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
     bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
                                  ///< shared literals/axioms, type edges) with a visible color.
+    bool dark        = false;    ///< Drop the white background and lighten the edges for a dark backdrop.
+    bool no_tooltip  = false;    ///< Omit the per-node tooltip; it is by far the bulkiest part of the output.
+    bool lean_labels = false;    ///< Label a node `<node_name> <unique_name>` instead of the HTML table.
+                                 ///< This drops the per-op ports, so its edges dock at the node itself.
 };
 
 /// Base class for all Def%s.

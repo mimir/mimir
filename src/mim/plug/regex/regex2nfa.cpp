@@ -1,8 +1,7 @@
 #include "mim/plug/regex/regex2nfa.h"
 
-#include <algorithm>
-
 #include <automaton/nfa.h>
+#include <fe/bitset.h>
 
 #include <mim/lam.h>
 #include <mim/world.h>
@@ -15,34 +14,29 @@ namespace mim::plug::regex {
 
 namespace {
 
-std::vector<std::pair<std::uint8_t, std::uint8_t>> gather_ranges(const Def* regex) {
-    auto args = detail::flatten_in_arg<regex::disj>(regex);
-    std::vector<std::pair<std::uint8_t, std::uint8_t>> inner_ranges;
-    for (auto& arg : args) {
+/// Every byte a transition can carry.
+const auto All_Chars = fe::Bitset(256, true);
+
+/// The bytes @p regex matches.
+fe::Bitset gather_chars(const Def* regex) {
+    auto res = fe::Bitset();
+    for (auto arg : detail::flatten_in_arg<regex::disj>(regex)) {
         if (auto not_ = Axm::isa<regex::not_>(arg)) {
-            auto not_ranges = gather_ranges(not_->arg());
-            inner_ranges.insert(inner_ranges.end(), not_ranges.begin(), not_ranges.end());
-        } else if (auto any = Axm::isa<regex::any>(arg)) {
-            inner_ranges.emplace_back(0, 255);
+            res |= All_Chars - gather_chars(not_->arg());
+        } else if (Axm::isa<regex::any>(arg)) {
+            res |= All_Chars;
         } else {
-            assert(Axm::isa<regex::range>(arg)
+            auto rng_match = Axm::isa<regex::range, false>(arg);
+            assert(rng_match
                    && "as per normalizer, if we're in a 'not_' argument, we must only have disjs, not_ and ranges!");
 
-            auto rng_match = Axm::isa<regex::range, false>(arg);
-            inner_ranges.emplace_back(Lit::as<std::uint8_t>(rng_match->arg(2, 0)),
-                                      Lit::as<std::uint8_t>(rng_match->arg(2, 1)));
+            auto lb = Lit::as<std::uint8_t>(rng_match->arg(2, 0));
+            auto ub = Lit::as<std::uint8_t>(rng_match->arg(2, 1));
+            for (std::uint16_t c = lb; c <= ub; ++c)
+                res.set(c);
         }
     }
-    std::sort(inner_ranges.begin(), inner_ranges.end());
-    std::uint8_t last{0};
-    std::vector<std::pair<std::uint8_t, std::uint8_t>> ranges;
-    for (auto rng : inner_ranges) {
-        if (rng.first > last) ranges.push_back({last, static_cast<std::uint8_t>(rng.first - 1)});
-        // ranges.push_back({rng.first, rng.second});
-        last = std::min(rng.second + 1_u16, 255);
-    }
-    if (last < 255) ranges.push_back({last, 255});
-    return ranges;
+    return res;
 }
 
 struct Regex2NfaConverter {
@@ -75,10 +69,9 @@ struct Regex2NfaConverter {
             auto first = nfa_->add_state();
 
             start->add_transition(first, automaton::NFA::SpecialTransitons::EPSILON);
-            auto ranges = gather_ranges(not_->arg());
 
-            for (auto rng : ranges)
-                add_range_transitions(first, end, rng.first, rng.second);
+            for (auto c : All_Chars - gather_chars(not_->arg()))
+                first->add_transition(end, std::uint16_t(c));
         } else if (auto neg = Axm::isa<regex::neg_lookahead>(regex)) {
             auto first = nfa_->add_state();
             auto error = nfa_->add_state();

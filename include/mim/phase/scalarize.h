@@ -29,8 +29,7 @@ namespace mim {
 ///   plus a *bare* function argument's type (`autodiff.ad f`) - except for subtrees that are
 ///   merely substituted in via (type) arguments (`T` in `mem.store T`), which stay flattenable,
 /// * it occurs inside an *interface* Lam's signature (external, annex, or unset declaration) -
-///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values;
-///   rewrite_mut_Lam() preserves the interface's top level by hand),
+///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values),
 /// * it types a value inside a dependently-typed aggregate (a typed closure),
 /// * an App connects a dom and an arg whose types are alpha-equivalent yet *distinct* defs, or
 /// * one of its parameters is Extract%ed / Insert%ed via a **non-constant** index
@@ -63,20 +62,17 @@ private:
         const Def* rewrite(const Def* old) final;
 
         void inspect(const Def* def);
-        /// Marks parameter @p dom of @p pi as *keep whole* by OR-ing bit @p dom into a per-Pi bitmask stored
-        /// in lattice() under @p pi.
-        /// We store the fact via lattice_force() - **not** via lattice(concr, abstr)/pin():
-        /// growing the mask swaps one Nat literal for another - non-monotone in terms of Def%s.
-        /// As with any lattice write, the bitmask also lands in the rewriter map(),
-        /// short-circuiting later rewrite(pi) calls to the Nat.
-        /// That is harmless for this same-World Analysis:
-        /// drain() discards rewrite results, and inspect() always receives the old def.
-        /// A fresh bit invalidate()s.
+        /// Marks parameter @p dom of @p pi as *keep whole*; a fresh bit invalidate()s.
         void keep(const Pi* pi, size_t dom);
         void pin_tree(const Def* def); ///< pin%s every flattenable Pi nested in @p def%'s type tree.
         /// As above, but skips defs already in @p visited - seed it to exempt subtrees from pinning.
         void pin_tree(const Def* def, DefSet& visited);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
+
+        /// Which parameters of a Pi must not be split.
+        /// Kept out of lattice(), as a lattice write would also map() the Pi to its abstract value -
+        /// which breaks as soon as that Pi occurs in a type argument (`mem.slot (H, 0)`).
+        DefMap<fe::Bitset> keeps_;
     };
 
 public:
