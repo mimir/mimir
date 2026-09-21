@@ -257,19 +257,16 @@ Ptr<Expr> Parser::parse_infix_expr(Tracker track, Ptr<Expr> lhs, Prec curr_prec,
     }
 }
 
+Ptr<Expr> Parser::parse_prefix_expr() {
+    auto track = tracker();
+    auto op    = lex();
+    auto rhs   = parse_expr(Prec::Prefix, "operand of the prefix `{}` operator", op);
+    return ptr<PrefixExpr>(track, op, rhs);
+}
+
 Ptr<Expr> Parser::sugar_callee(Tok op) {
     auto sym = Tok::infix_sym(op.tag());
     return sym.empty() ? nullptr : path_expr(Dbg(op.loc(), driver().sym(sym)));
-}
-
-Ptr<Expr> Parser::parse_uniq_expr() {
-    auto track = tracker();
-    expect(Tag::D_curly_l, "opening curly bracket for singleton type");
-    auto _          = this->anchor(Tag::D_curly_r);
-    auto inhabitant = parse_expr("singleton type");
-    recover("singleton type");
-    expect(Tag::D_curly_r, "closing curly bracket for singleton type");
-    return ptr<UniqExpr>(track, inhabitant);
 }
 
 Ptr<Expr> Parser::parse_match_expr() {
@@ -291,6 +288,7 @@ Ptr<Expr> Parser::parse_match_expr() {
 }
 
 Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
+    if (Tok::is_prefix(ahead().tag())) return parse_prefix_expr();
     // clang-format off
     switch (ahead().tag()) {
         case Tag::C_PRIMARY: return ptr<PrimaryExpr>(lex());
@@ -300,9 +298,8 @@ Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
         case Tag::C_DECL:    return parse_decl_expr();
         case Tag::C_PI:      return parse_pi_expr();
         case Tag::C_LM:      return parse_lam_expr();
-        case Tag::C_SEQ:     return parse_seq_expr();
+        case Tag::C_SEQ:     return parse_seq_or_single_expr();
         case Tag::K_ret:     return parse_ret_expr();
-        case Tag::D_curly_l: return parse_uniq_expr();
         case Tag::D_brckt_l: return parse_sigma_expr();
         case Tag::D_paren_l: return parse_tuple_expr();
         case Tag::K_Type:    return parse_type_expr();
@@ -316,13 +313,16 @@ Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
     return ptr<ErrorExpr>(missing());
 }
 
-Ptr<Expr> Parser::parse_seq_expr() {
+Ptr<Expr> Parser::parse_seq_or_single_expr() {
     auto track   = tracker();
     bool is_pack = ahead().isa(Tag::D_angle_l);
     auto delim_l = is_pack ? Tag::D_angle_l : Tag::D_quote_l;
+    auto delim_r = Tok::delim_l2r(delim_l);
     eat(delim_l);
     auto arities = Ptrs<IdPtrn>();
-    auto _       = this->anchor(Tok::delim_l2r(delim_l));
+    auto _       = this->anchor(delim_r);
+    auto ctxt    = fe::Cite(is_pack ? "shape of a pack or a singleton term introduction"
+                                    : "shape of an array or a singleton type formation");
 
     do {
         Dbg dbg;
@@ -331,15 +331,20 @@ Ptr<Expr> Parser::parse_seq_expr() {
             eat(Tag::T_colon);
         }
 
-        auto expr = parse_expr(fe::Cite(is_pack ? "shape of pack" : "shape of a array"));
+        auto expr = parse_expr(ctxt);
+        // The `;` is what tells a shape from a singleton, so `«e»`/`‹e›` is the latter.
+        if (arities.empty() && !dbg && ahead().isa(delim_r)) {
+            eat(delim_r);
+            return ptr<SingleExpr>(track, is_pack, expr);
+        }
         arities.emplace_back(IdPtrn::make_id(ast(), dbg, expr));
+        ctxt = fe::Cite(is_pack ? "shape of a pack" : "shape of an array");
     } while (accept(Tag::T_comma) && !ahead().isa(Tag::T_semicolon));
 
     expect(Tag::T_semicolon, fe::Cite(is_pack ? "pack" : "array"));
     auto body = parse_expr(fe::Cite(is_pack ? "body of a pack" : "body of an array"));
     recover(fe::Cite(is_pack ? "pack" : "array"));
-    expect(Tok::delim_l2r(delim_l),
-           fe::Cite(is_pack ? "closing delimiter of a pack" : "closing delimiter of an array"));
+    expect(delim_r, fe::Cite(is_pack ? "closing delimiter of a pack" : "closing delimiter of an array"));
 
     // `‹a, b; e›` nests one SeqExpr per arity; only the outermost one covers the delimiters.
     for (auto& ptrn : arities | std::views::reverse) {

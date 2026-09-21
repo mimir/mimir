@@ -18,7 +18,7 @@ namespace ast {
 /// @name Precedence Table
 /// X-macro listing all expression precedences from lowest to highest as `m(name, assoc)`.
 /// @p assoc is `L`eft-, `R`ight-, or `N`on-associative; `a op b op c` is an error for an `N` level.
-/// Only a level named by MIM_INFIX or by an entry below is an actual operator:
+/// Only a level named by MIM_PREFIX, MIM_INFIX, or by an entry below is an actual operator:
 /// `Err`, `Bot`, `Pi`, and `Lit` merely serve as a `curr_prec` bound while parsing.
 /// Application binds tighter than every operator - only `Extract` and `Lit` bind tighter still.
 ///@{
@@ -37,6 +37,7 @@ namespace ast {
     m(Add,     L)       \
     m(Mul,     L)       \
     m(Shift,   L)       \
+    m(Prefix,  N)       \
     m(App,     L)       \
     m(Extract, L)       \
     m(Lit,     N)
@@ -143,8 +144,6 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(D_brace_r,    "}")               \
     m(D_brckt_l,    "[")               \
     m(D_brckt_r,    "]")               \
-    m(D_curly_l,    "⦃")               \
-    m(D_curly_r,    "⦄")               \
     m(D_paren_l,    "(")               \
     m(D_paren_r,    ")")               \
     m(D_quote_l,    "«")               \
@@ -180,6 +179,16 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_sub,        "-")               \
     m(T_union,      "∪")               \
     m(T_pipe,       "|")               \
+
+/// @name Prefix Operator Table
+/// X-macro listing all prefix operators as `m(tag, str)`; they all live at Prec::Prefix.
+/// PrefixExpr::emit_ dispatches on the tag.
+///@{
+
+/// `#` is a prefix operator *and* an infix one; which one it is depends on the position it occurs in.
+#define MIM_PREFIX(m)         \
+    m(T_extract,  "#")
+///@}
 
 /// @name Infix Operator Table
 /// X-macros listing all infix operators as `m(tag, str, prec)`.
@@ -241,6 +250,16 @@ public:
         switch (tag) {
 #define CODE(str, t) case Tag::t:
             MIM_SUBST(CODE)
+#undef CODE
+            return true;
+            default: return false;
+        }
+    }
+    /// Is @p tag a prefix operator? @see MIM_PREFIX.
+    static constexpr bool is_prefix(Tag tag) {
+        switch (tag) {
+#define CODE(t, str) case Tag::t:
+            MIM_PREFIX(CODE)
 #undef CODE
             return true;
             default: return false;

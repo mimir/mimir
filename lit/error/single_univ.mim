@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+extern lam f (): □ = «Univ»;
+
+// CHECK: {{.*}}single_univ.mim:3:22-3:27: error: operand is too high in the universe hierarchy to inhabit a singleton type
+// CHECK-NEXT: 3 | extern lam f (): □ = «Univ»;
+// CHECK-NEXT:   |                      ^^^^^^
+// CHECK-NEXT: = note: a singleton type sits one level above its inhabitant, and nothing sits above `Univ`
