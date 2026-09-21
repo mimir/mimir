@@ -163,12 +163,6 @@ lam erased (f: Cn [x y: I32]): Cn [I32, I32] = f;
 lam ident {T: *} (x: T): T = x;
 let _ = refly.struc.e (ident 23, ident @Nat 23);
 
-// `«e»` is the singleton type whose sole inhabitant is `e`, `‹e›` introduces it,
-// and the prefix `#` eliminates it again.
-lam only  (T: *) (x: «T»): «T» = x;
-lam intro (T: *) (x: T): «x» = ‹x›;
-let _ = refly.struc.e (#‹23›, 23);
-
 // `and` extends a declaration group to mutual recursion, and `ret p = f $ a; body`
 // binds the result of a continuation-style call.
 fun even (n: I32): Bool = core.select (n == 0I32, yes, no) () where
@@ -189,6 +183,27 @@ lam elim (A B: *) (x: A) (y: B): Nat =
     match x inj A ∪ B with
     | p: A => 0
     | q: B => 1;
+
+//------------------------------------------------------------------------------
+// Singletons
+//------------------------------------------------------------------------------
+
+// `«e»` is the singleton type whose sole inhabitant is `e` and sits one level above it.
+lam ty   (T: *) (x: T): * = «x»;    // so `«23»` is a type …
+lam kind (T: *)       : □ = «T»;    // … and `«Nat»` a kind
+
+// `‹e›` introduces such a value and the prefix `#` eliminates it again.
+lam intro (T: *) (x: T): «x» = ‹x›;
+let _ = refly.struc.e (#‹23›, 23);
+
+// `#` recovers the inhabitant from the type alone.
+lam only (T: *) (x: «T»): * = #x;
+
+// The `;` is what tells an array or pack from a singleton.
+lam not_single (x: «2; Nat»): Nat = x#0₂;
+
+// `#` is a prefix only where an expression starts, so `f #x` extracts instead of applying.
+let _ = refly.struc.e (#‹2› + 3, 5) where use core.ops.n; end;
 
 //------------------------------------------------------------------------------
 // Infix operators

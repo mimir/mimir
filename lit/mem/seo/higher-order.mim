@@ -31,9 +31,7 @@ extern fun f (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
                     let (m, vr) = mem.load (m, pr);
                     ret (m, res1) = g $ (m, vh);
                     ret (m, res2) = g $ (m, vh);
-                    let add = vr + res1;
-                    let add = add + res2;
-                    let m = mem.store (m, pr, add);
+                    let m = mem.store (m, pr, vr + res1 + res2);
                     head m;
 
                 con exit(m: mem.M 0) =
