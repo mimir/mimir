@@ -10,8 +10,10 @@ plugin affine;
 plugin opt;
 plugin compile;
 
-fun add (x: Nat, y: «1; Nat»)@tt: Nat = return (core.nat.add (x, y#0₁));
-lam mo (o: «3; affine.Index»): «2; affine.Index» = (o#0_3, o#1_3);
+use core.ops.n;
+
+fun add (x y: Nat)@tt: Nat = return (x + y);
+lam mo (a b _: affine.Index): «2; affine.Index» = (a, b);
 lam mi (o: «3; affine.Index»): «3; affine.Index» = o;
 
 // out[i, j] = Σ_k in[i, j, k] over «2, 4, 8» with the reduction dim strip-mined by 2:

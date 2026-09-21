@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+extern lam f (n: Nat, is: «n; Idx 2», t: [Nat, Bool]): Nat = t#is;
+
+// CHECK: {{.*}}nary_index_no_arr.mim:3:62-3:65: error: multi-dimensional index `is` expects an array but got `[Nat, Bool]`
+// CHECK-NEXT: 3 | extern lam f (n: Nat, is: «n; Idx 2», t: [Nat, Bool]): Nat = t#is;
+// CHECK-NEXT:   |                                                              ^^^^

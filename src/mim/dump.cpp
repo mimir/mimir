@@ -172,6 +172,21 @@ template<> struct std::formatter<mim::Dump> : fe::ostream_formatter {};
 namespace mim {
 namespace {
 
+/// Def::num_tprojs, except that a *fused* Seq stays one binder: dumping freezes the World and its sub-Seqs
+/// need not exist as Def%s.
+nat_t num_binders(const Def* type) {
+    if (auto seq = type->isa<Seq>(); seq && seq->shape().is_fused()) return 1;
+    return type->num_tprojs();
+}
+
+/// A Seq's shape the way the surface syntax spells it: one axis per dimension, `2, 3` for a fused `(2, 3)`.
+std::string shape(const Seq* seq) {
+    auto s = seq->shape();
+    auto r = s.rank();
+    if (!r || *r <= 1) return std::format("{}", Op(*s));
+    return std::format("{}", Op::map(s->projs(*r)));
+}
+
 std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
     if (!def) return os << std::format("_: {}", Op(type));
 
@@ -183,7 +198,7 @@ std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
     os << '(';
     for (auto sep = ""; auto proj : projs) {
         os << sep;
-        ptrn(os, proj, type->proj(i++));
+        ptrn(os, proj, type->proj(projs.size(), i++));
         sep = ", ";
     }
     return os << std::format(") as {}", name(def));
@@ -194,21 +209,23 @@ std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
     return os << std::format("_: {}", Op(type));
 }
 
-std::ostream& curry(std::ostream& os, const Def* def, const Def* type, bool implicit, size_t limit, bool alias) {
+// @p num is how many binders the domain has; @p limit how many of them to print - a returning Lam hides its last.
+std::ostream&
+curry(std::ostream& os, const Def* def, const Def* type, bool implicit, size_t num, size_t limit, bool alias) {
     auto l = implicit ? '{' : '(';
     auto r = implicit ? '}' : ')';
 
     if (limit == 0) return os << l << r;
     if (limit == 1) {
         os << l;
-        bndr(os, def ? def->tproj(0) : nullptr, type->tproj(0));
+        bndr(os, def ? def->proj(num, 0) : nullptr, type->proj(num, 0));
         return os << r;
     }
 
     os << l;
     for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
         os << sep;
-        bndr(os, def ? def->tproj(i) : nullptr, type->tproj(i));
+        bndr(os, def ? def->proj(num, i) : nullptr, type->proj(num, i));
         sep = ", ";
     }
     os << r;
@@ -339,7 +356,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
             auto sep = "";
             for (auto op : sigma->ops()) {
                 os << sep;
-                if (auto v = sigma->var(i++))
+                if (auto v = sigma->var(sigma->num_ops(), i++))
                     os << std::format("{}: {}", v, Op(op));
                 else
                     os << Op(op);
@@ -354,13 +371,13 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto tuple = d->isa<Tuple>()) {
         return os << std::format("({})", Op::map(tuple->ops()));
     } else if (auto [arr, var] = d->isa_binder<Arr>(); arr) {
-        return os << std::format("{}{}: {}; {}{}", al, var, Op(arr->arity()), Op(arr->body()), ar);
+        return os << std::format("{}{}: {}; {}{}", al, var, Op(*arr->shape()), Op(arr->body()), ar);
     } else if (auto arr = d->isa<Arr>()) {
-        return os << std::format("{}{}; {}{}", al, Op(arr->arity()), Op(arr->body()), ar);
+        return os << std::format("{}{}; {}{}", al, shape(arr), Op(arr->body()), ar);
     } else if (auto [pack, var] = d->isa_binder<Pack>(); pack) {
-        return os << std::format("{}{}: {}; {}{}", pl, pack->var(), Op(pack->arity()), Op(pack->body()), pr);
+        return os << std::format("{}{}: {}; {}{}", pl, pack->var(), Op(*pack->shape()), Op(pack->body()), pr);
     } else if (auto pack = d->isa<Pack>()) {
-        return os << std::format("{}{}; {}{}", pl, Op(pack->arity()), Op(pack->body()), pr);
+        return os << std::format("{}{}; {}{}", pl, shape(pack), Op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
         return os << std::format("(proxy#{} {})", proxy->tag(), Op::map(proxy->ops()));
     } else if (auto bound = d->isa<Bound>()) {
@@ -425,8 +442,8 @@ void Dumper::dump(Def* mut) {
 
     auto mut_op0 = [&](const Def* def) -> std::ostream& {
         if (auto sig = def->isa<Sigma>()) return os << std::format(", {}", sig->num_ops());
-        if (auto arr = def->isa<Arr>()) return os << std::format(", {}", arr->arity());
-        if (auto pack = def->isa<Pack>()) return os << std::format(", {}", pack->arity());
+        if (auto arr = def->isa<Arr>()) return os << std::format(", {}", *arr->shape());
+        if (auto pack = def->isa<Pack>()) return os << std::format(", {}", *pack->shape());
         if (auto pi = def->isa<Pi>()) return os << std::format(", {}", pi->dom());
         if (auto hole = def->isa_mut<Hole>())
             return hole->is_set() ? (os << std::format(", {}", hole->op())) : (os << ", ??");
@@ -483,9 +500,9 @@ void Dumper::dump_lam(Lam* lam) {
     std::print(os, "{}{}{} {}", tab, external(lam), is_fun ? "fun" : is_con ? "con" : "lam", id(lam));
     for (auto* c : currys) {
         os << ' ';
-        auto num_doms = c->var() ? c->var()->num_tprojs() : c->type()->dom()->num_tprojs();
+        auto num_doms = num_binders(c->type()->dom());
         auto limit    = is_fun && c == last ? num_doms - 1 : num_doms;
-        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), limit, !is_fun || c != last);
+        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), num_doms, limit, !is_fun || c != last);
         if (is_con && c == last) std::print(os, "@({})", c->filter());
     }
 

@@ -43,15 +43,15 @@ const Def* normalize_add(const Def* type, const Def* callee, const Def* arg) {
     if (auto sig = T->isa<Sigma>()) {
         auto p   = sig->num_ops(); // TODO: or num_projs
         auto ops = DefVec(p, [&](size_t i) {
-            return world.app(world.app(world.annex<add>(), sig->op(i)), {a->proj(i), b->proj(i)});
+            return world.app(world.app(world.annex<add>(), sig->op(i)), {a->proj(p, i), b->proj(p, i)});
         });
         return world.tuple(ops);
     } else if (auto arr = T->isa<Arr>()) {
         // TODO: is this working for non-lit (non-tuple) or do we need a loop?
-        auto pack      = world.mut_pack(T);
+        auto pack      = world.mut_pack(T)->set_shape(*arr->shape());
         auto body_type = arr->body();
-        pack->set(world.app(world.app(world.annex<add>(), body_type),
-                            {world.extract(a, pack->var()), world.extract(b, pack->var())}));
+        pack->set_body(world.app(world.app(world.annex<add>(), body_type),
+                                 {world.extract(a, pack->var()), world.extract(b, pack->var())}));
         return pack;
     } else if (Idx::isa(type)) {
         return world.call(core::wrap::add, 0_n, Defs{a, b});

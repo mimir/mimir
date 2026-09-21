@@ -18,7 +18,7 @@ lam ex_internal_mapRed_matrix_transpose((k l: Nat), T: *)@tt: Cn [[mem.M 0, buff
             btensor.map_reduce ((l, k), (l, k))
                 (transpose_comb, zero)
                 affine.id
-                (btensor.proj_map (1, 0),)
+                (btensor.proj_map (1, 0))
                 (m, M)
         );
     inner_matrix_transpose;

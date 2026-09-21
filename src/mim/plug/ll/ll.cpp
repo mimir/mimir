@@ -82,7 +82,8 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         } else {
             u64 size = 0;
             if (auto arity = Lit::isa(arr->arity())) size = *arity;
-            std::print(s, "[{} x {}]", size, convert(arr->body(), false));
+            // One LLVM array level per axis, so a fused Arr nests: `«3, 4; i32»` is `[3 x [4 x i32]]`.
+            std::print(s, "[{} x {}]", size, convert(arr->elem(), false));
         }
     } else if (auto pi = type->isa<Pi>()) {
         if (!Pi::isa_returning(pi)) fe::throwf(MIM_LL_BE "cannot convert the type of a basic block: `{}`", pi);
@@ -234,8 +235,8 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
 
     } else if (auto dispatch = Dispatch(app)) {
         for (auto callee : dispatch.tuple()->projs([](const Def* def) { return def->isa_mut<Lam>(); }))
-            if (size_t n = callee->num_tvars(); n == 1 && is_simd(callee->var(0)->type()))
-                emit_phi(callee, callee->var(0), emit(app->arg(n, 0)), lam);
+            if (size_t n = callee->num_tvars(); n == 1 && is_simd(callee->var(n, 0)->type()))
+                emit_phi(callee, callee->var(n, 0), emit(app->arg(n, 0)), lam);
             else
                 emit_phi_args(callee, app, lam);
 
@@ -295,7 +296,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         auto [Ta, rest]            = mslot->uncurry_args<2>();
         auto [pointee, addr_space] = Ta->projs<2>();
         auto [msize, ret]          = rest->projs<2>();
-        emit_unsafe(msize->proj(0)); // mem
+        emit_unsafe(msize->proj(2, 0)); // mem
         // TODO array with size
         auto ret_lam = ret->expect_mut<Lam>("a mem.slot continuation");
         auto ptr     = ret_lam->var(2, 1);
@@ -475,7 +476,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
                    t_tup, t_tup, name, t_i, v_i);
         return bb.assign(name, "load {}, {}* {}.gep", t_elem, t_elem, name);
     } else if (auto insert = def->isa<Insert>()) {
-        if (Axm::isa<mem::M>(insert->tuple()->proj(0)->type()))
+        if (Axm::isa<mem::M>(insert->tuple()->proj(insert->tuple()->num_projs(), 0)->type()))
             fe::throwf(MIM_LL_BE "cannot insert into a tuple with a `mem.M` element: `{}`", insert);
         auto t_tup = convert(insert->tuple()->type());
         auto t_val = convert(insert->value()->type());
@@ -640,7 +641,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto icmp = Axm::isa<core::icmp>(def)) {
         auto [a, b] = icmp->args<2>([this](auto def) { return emit(def); });
-        auto t      = convert(icmp->arg(0)->type());
+        auto t      = convert(icmp->arg(2, 0)->type());
         op          = "icmp ";
 
         switch (icmp.id()) {
@@ -734,7 +735,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
 std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, const Def* def) {
     if (auto lea = Axm::isa<mem::lea>(def)) {
         auto [ptr, i]  = lea->args<2>();
-        auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(0);
+        auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0);
         auto v_ptr     = emit(ptr);
         auto t_pointee = convert(pointee);
         auto t_ptr     = convert(ptr->type());
@@ -747,12 +748,12 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
-        auto address_space = malloc->decurry()->arg(1);
+        auto address_space = malloc->decurry()->arg(2, 1);
         declare("i8* @malloc(i64)");
 
-        emit_unsafe(malloc->arg(0));
-        auto size           = emit(malloc->arg(1));
-        auto ptr_t          = convert(Axm::expect<mem::Ptr>(def->proj(1)->type(), "a `mem.Ptr`"));
+        emit_unsafe(malloc->arg(2, 0));
+        auto size           = emit(malloc->arg(2, 1));
+        auto ptr_t          = convert(Axm::expect<mem::Ptr>(def->proj(2, 1)->type(), "a `mem.Ptr`"));
         auto i8ptr          = bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
         std::string i8ptr_t = "i8*";
         if (Lit::expect(address_space, "an address space") != 0) {
@@ -761,11 +762,11 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         }
         return bb.assign(name, "bitcast {} {} to {}", i8ptr_t, i8ptr, ptr_t);
     } else if (auto free = Axm::isa<mem::free>(def)) {
-        auto address_space = free->decurry()->arg(1);
+        auto address_space = free->decurry()->arg(2, 1);
         declare("void @free(i8*)");
-        emit_unsafe(free->arg(0));
-        auto ptr   = emit(free->arg(1));
-        auto ptr_t = convert(Axm::expect<mem::Ptr>(free->arg(1)->type(), "a `mem.Ptr`"));
+        emit_unsafe(free->arg(2, 0));
+        auto ptr   = emit(free->arg(2, 1));
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(free->arg(2, 1)->type(), "a `mem.Ptr`"));
 
         auto i8ptr = bb.assign(name + "i8", "bitcast {} {} to i8 addrspace({})*", ptr_t, ptr, address_space);
         if (Lit::expect(address_space, "an address space") != 0)
@@ -773,17 +774,17 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         bb.tail("call void @free(i8* {})", i8ptr);
         return std::string();
     } else if (auto load = Axm::isa<mem::load>(def)) {
-        emit_unsafe(load->arg(0));
-        auto v_ptr     = emit(load->arg(1));
-        auto t_ptr     = convert(load->arg(1)->type());
-        auto t_pointee = convert(Axm::expect<mem::Ptr>(load->arg(1)->type(), "a `mem.Ptr`")->arg(0), false);
+        emit_unsafe(load->arg(2, 0));
+        auto v_ptr     = emit(load->arg(2, 1));
+        auto t_ptr     = convert(load->arg(2, 1)->type());
+        auto t_pointee = convert(Axm::expect<mem::Ptr>(load->arg(2, 1)->type(), "a `mem.Ptr`")->arg(2, 0), false);
         return bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr);
     } else if (auto store = Axm::isa<mem::store>(def)) {
-        emit_unsafe(store->arg(0));
-        auto v_ptr = emit(store->arg(1));
-        auto v_val = emit(store->arg(2));
-        auto t_ptr = convert(store->arg(1)->type());
-        auto t_val = convert(store->arg(2)->type(), false);
+        emit_unsafe(store->arg(3, 0));
+        auto v_ptr = emit(store->arg(3, 1));
+        auto v_val = emit(store->arg(3, 2));
+        auto t_ptr = convert(store->arg(3, 1)->type());
+        auto t_val = convert(store->arg(3, 2)->type(), false);
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
         return std::string();
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {
@@ -921,7 +922,7 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
         return bb.assign(name, "tail call {} @{}({} {})", t, f, t, a);
     } else if (auto cmp = Axm::isa<math::cmp>(def)) {
         auto [a, b] = cmp->args<2>([this](auto def) { return emit(def); });
-        auto t      = convert(cmp->arg(0)->type());
+        auto t      = convert(cmp->arg(2, 0)->type());
         op          = "fcmp ";
 
         switch (cmp.id()) {
@@ -998,9 +999,9 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
 }
 
 std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, const Def* def) {
+    // `ll.vec` annotates a loop's exit condition; as a value it is the identity — the
+    // metadata it requests is attached at the branches into the loop's header.
     if (auto v = Axm::isa<ll::vec>(def)) {
-        // `ll.vec` annotates a loop's exit condition; as a value it is the identity — the
-        // metadata it requests is attached at the branches into the loop's header.
         return emit(v->arg());
     } else if (auto zip = Axm::isa<vecp::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();

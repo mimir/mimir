@@ -13,6 +13,13 @@ General C++ guidelines for this repository.
 - Unpack a fixed number of projections with a single `projs<N>()` plus a structured binding — `auto [x, y] = def->projs<2>();`, not repeated `def->proj(2, i)`.
   Use the typed `projs<N>(...)` overload when a conversion lambda is needed.
 - Prefer the `MIM_PROJ`-generated helpers over extracting an intermediate `Def*` first: `app->args<N>()` instead of `app->arg()->projs<N>()`, `def->vars<N>()`, etc.
+- Prefer a nested `if (auto x = ...)` chain over early-return guards when the whole function is one structural test:
+  ```cpp
+  if (auto outer = type->isa<Pi>())
+      if (auto inner = outer->codom()->isa<Pi>()) return inner->dom() == inner->codom();
+  return false;
+  ```
+  not a sequence of `auto x = ...; if (!x) return false;`.
 - In Doxygen comments (`///`, `/** ... */`), prefer one sentence per line over column-filling wraps, so diffs stay readable.
   Deliberate exceptions are fine where a sentence would fragment awkwardly.
 - Comment sparingly; see the *Comments* section in `.github/copilot-instructions.md`.

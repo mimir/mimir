@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+extern lam f (n: Nat, s: «n; Nat», is: «j: n; Idx (s#j)», v: Bool, t: «s; Nat»): «s; Nat» = t#is ← v;
+
+// CHECK: {{.*}}nary_insert_value.mim:3:93-3:100: error: value is not assignable to element type
+// CHECK-NEXT: 3 | extern lam f (n: Nat, s: «n; Nat», is: «j: n; Idx (s#j)», v: Bool, t: «s; Nat»): «s; Nat» = t#is ← v;
+// CHECK-NEXT:   |                                                                                             ^^^^^^^^
+// CHECK-NEXT:   = note: expected `Nat`, got `Bool`
+// CHECK-NEXT:   = note: value: `v`

@@ -14,7 +14,7 @@ public:
     using Setters<Axm>::set;
 
     /// @name Normalization
-    /// @anchor normalization
+    /// @anchor curry_trip
     /// For a curried App of an Axm, you only want to trigger normalization at specific spots.
     /// For this reason, MimIR maintains a Def::curry_ counter that each App decrements.
     /// The Axm::normalizer() will be triggered when Axm::curry() becomes `0`.
@@ -105,7 +105,7 @@ public:
     };
     ///@}
 
-    /// @name isa/as
+    /// @name Matching
     ///@{
     /// @see @ref cast_axm
     template<class Id, u8 Curry = 0, bool DynCast = true>
@@ -142,6 +142,14 @@ public:
     static auto expect(const Def* def, fe::cite_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<Id, Curry>(def)) return res;
         fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), def);
+    }
+
+    /// Peel off all @p Id Axm%s from @p def.
+    template<class Id>
+    static const Def* peel(const Def* def) {
+        while (auto anno = isa<Id>(def))
+            def = anno->arg();
+        return def;
     }
     ///@}
 

@@ -135,7 +135,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         Lam* rw_idx_lam  = nullptr;
         if (auto idx_lam = lookup(f_lam)) {
             if (auto idx_lam_mut = idx_lam->isa_mut<Lam>();
-                idx_lam_mut && idx_lam_mut->num_vars() == 2 && idx_lam_mut->var(0)->type() == mem->type())
+                idx_lam_mut && idx_lam_mut->num_vars() == 2 && idx_lam_mut->var(2, 0)->type() == mem->type())
                 // completely rewritten, great!
                 idx_map_lam = idx_lam->as_mut<Lam>();
             else
@@ -149,13 +149,13 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
             map(f_lam, idx_map_lam);
 
             push();
-            map(f_lam->var(), idx_map_lam->var(1));
+            map(f_lam->var(), idx_map_lam->var(2, 1));
             for (size_t i = 0; i != f_lam->num_vars(); ++i)
-                map(f_lam->var(i), idx_map_lam->var(1)->proj(f_lam->num_vars(), i));
-            mem_ = idx_map_lam->var(0);
+                map(f_lam->var(f_lam->num_vars(), i), idx_map_lam->var(2, 1)->proj(f_lam->num_vars(), i));
+            mem_ = idx_map_lam->var(2, 0);
 
             auto get_body = [&]() -> const Def* {
-                if (rw_idx_lam) return rw_idx_lam->reduce_body(idx_map_lam->var(1));
+                if (rw_idx_lam) return rw_idx_lam->reduce_body(idx_map_lam->var(2, 1));
                 return rewrite(f_lam->body());
             };
             idx_map_lam->set(true, w.tuple({mem_, get_body()}))->set(f_lam->dbg_key());
@@ -165,11 +165,12 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto outs = w.app(idx_map_lam, {mem, lifted});
 
         auto sout_n   = rewrite(sout);
-        auto narrowed = w.tuple(DefVec(sout_n->num_projs(), [&](size_t j) {
-            return w.call(core::conv::u, sout_n->proj(j), outs->proj(2, 1)->proj(j));
+        auto n_out    = sout_n->num_projs();
+        auto narrowed = w.tuple(DefVec(n_out, [&](size_t j) {
+            return w.call(core::conv::u, sout_n->proj(n_out, j), outs->proj(2, 1)->proj(n_out, j));
         }));
 
-        return w.tuple({outs->proj(0), narrowed});
+        return w.tuple({outs->proj(2, 0), narrowed});
     }
 
     return RWPhase::rewrite_imm_App(app);

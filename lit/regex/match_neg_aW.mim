@@ -11,11 +11,13 @@ plugin core;
 plugin regex;
 plugin cps;
 
+use core.ops.u;
+
 let Top = ⊤:Nat;
 let re  = regex.not_ (regex.disj (regex.lit('a'), regex.cls.W));
 
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
-    (exit, match_argument) # (core.icmp.ug (argc, 1I32)) (m, 0I32)
+    (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
             let arg1 = mem.lea (argv, core.idx_unsafe 1);

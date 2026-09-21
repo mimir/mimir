@@ -10,8 +10,9 @@ plugin tensor;
 plugin affine;
 plugin compile;
 
-lam row_value(indices: «2; I64»): I32 =
-    core.select (core.icmp.e (indices#0_2, 0I64), 10I32, 20I32);
+use core.ops.u;
+
+lam row_value(indices: «2; I64»): I32 = core.select (indices#0_2 == 0I64, 10I32, 20I32);
 
 lam singleton_value(indices: «2; I64»): I32 = 7I32;
 

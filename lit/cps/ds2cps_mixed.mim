@@ -5,8 +5,9 @@ plugin core;
 plugin cps;
 plugin mem;
 
+use core.ops.u.w;
 
-lam f(a: I32): I32 = core.wrap.add 0 (2I32, a);
+lam f(a: I32): I32 = 2I32 + a;
 
 fun h(m: mem.M 0, a: I32): [mem.M 0, I32] =
     return (m, f a);

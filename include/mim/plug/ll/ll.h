@@ -273,7 +273,7 @@ private:
  */
 
 inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* type) {
-    if (auto arr = type->isa<Arr>()) {
+    if (auto arr = type->isa<Arr>(); arr && !arr->shape().is_fused()) {
         // LLVM rounds a vector's store size up to a power of two, so only then does `<n x T>` occupy the
         // `n * sizeof(T)` bytes that `mem`'s size arithmetic assumes.
         if (auto l = Lit::isa(arr->arity()); l && std::has_single_bit(*l)) {

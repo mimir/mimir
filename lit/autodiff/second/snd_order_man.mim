@@ -22,6 +22,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
         con pb_ret_cont (pr: I32) =
             return (m, 100I32 * r + pr);
         pb(1I32, pb_ret_cont);
-    (autodiff.ad f) ( 42I32, ret_cont);
+    (autodiff.ad f) (42I32, ret_cont);
 
 // CHECK-DAG: return{{.*}}8702

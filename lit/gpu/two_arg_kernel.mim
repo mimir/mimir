@@ -5,6 +5,8 @@ plugin core;
 plugin gpu;
 plugin mem;
 
+use core.ops.u.w;
+
 con kernel (m1: gpu.GlobalM, m3: gpu.SharedM, m4: gpu.ConstM, m5: gpu.LocalM,
             group_id item_id: Idx 4, (), (data1 data2: gpu.GlobalPtr I32),
             return: Cn [gpu.GlobalM, gpu.SharedM, gpu.ConstM, gpu.LocalM]) =
@@ -41,5 +43,5 @@ extern fun main (m0: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («�
     let m0 = mem.free (m0, ptr1);
     let m0 = mem.free (m0, ptr2);
 
-    let val = core.wrap.add 0 (val1, val2);
+    let val = val1 + val2;
     return (m0, val);

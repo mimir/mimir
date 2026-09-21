@@ -2,7 +2,9 @@
 plugin core;
 plugin refly;
 
-extern lam f(): «3; Nat» = ‹i: 3; core.nat.add (1, core.bitcast Nat i)›;
+use core.ops.n;
+
+extern lam f(): «3; Nat» = ‹i: 3; 1 + core.bitcast Nat i›;
 let p1 = ‹i: 2; i›;
 let p2 = ‹i: 1; i›;
 let p3 = ‹i: 0; i›;

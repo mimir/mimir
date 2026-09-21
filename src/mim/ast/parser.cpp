@@ -321,9 +321,8 @@ Ptr<Expr> Parser::parse_seq_expr() {
     bool is_pack = ahead().isa(Tag::D_angle_l);
     auto delim_l = is_pack ? Tag::D_angle_l : Tag::D_quote_l;
     eat(delim_l);
-    auto _ = this->anchor(Tok::delim_l2r(delim_l));
-
-    Ptrs<IdPtrn> arities;
+    auto arities = Ptrs<IdPtrn>();
+    auto _       = this->anchor(Tok::delim_l2r(delim_l));
 
     do {
         Dbg dbg;

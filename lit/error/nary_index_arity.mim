@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+extern lam f (is: «2; Idx 7», t: «2, 2; Nat»): Nat = t#is;
+
+// CHECK: {{.*}}nary_index_arity.mim:3:54-3:57: error: index `is#ff` does not fit within arity `2`
+// CHECK-NEXT: 3 | extern lam f (is: «2; Idx 7», t: «2, 2; Nat»): Nat = t#is;
+// CHECK-NEXT:   |                                                      ^^^^
