@@ -201,8 +201,8 @@ public:
     ///@{
     static Lam* eta_expand(Filter, const Def* f);
     static Lam* eta_expand(const Def* f) { return eta_expand(true, f); } ///< Use `true` Filter.
-    /// Yields body(), if eta-convertible and `nullptr` otherwise.
-    /// η-convertible means: `lm x = body x` where `x` ∉ `body`.
+    /// Yields the callee of body(), if eta-convertible and `nullptr` otherwise.
+    /// η-convertible means: `lm x = f x` where `x` ∉ `f`.
     const Def* eta_reduce() const;
     ///@}
 

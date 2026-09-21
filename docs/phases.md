@@ -250,6 +250,8 @@ Because an [`RWPhase`](@ref mim::RWPhase) reconstructs only what is reachable fr
 A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriting) in the Rewriting Guide.
 [`SingleErasure`](@ref mim::SingleErasure) is the canonical user.
 
+[`Sieve`](@ref mim::Sieve) is useful on its own, though: dropping the parameters of a [`Lam`](@ref mim::Lam) changes its *type* rather than its ops, so the SCCP transformation below only uses [`gather`](@ref mim::Sieve::gather) and [`operator[]`](@ref mim::Sieve::operator[]).
+
 ### Typical Shape
 
 ```cpp
@@ -536,6 +538,9 @@ When it sees an application of a lambda whose parameters have propagated values,
 - the lambda body is rewritten with the propagated values substituted,
 - the call site is rebuilt with only the remaining arguments.
 
+Which parameters survive is stated once as a [`Sieve`](@ref mim::Sieve) over the old [`Var`s](@ref mim::Var), and all three rebuilds read it back:
+[`gather`](@ref mim::Sieve::gather) picks the surviving domains and arguments, while [`operator[]`](@ref mim::Sieve::operator[]) maps each old parameter either to its new [`Var`](@ref mim::Var) or - on [`Gone`](@ref mim::Sieve::Gone) - to its propagated value.
+
 So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
 
 1. analyze the old world,
@@ -554,7 +559,7 @@ Separating SCCP into analysis and rewrite keeps both parts simple:
 This separation is the main design pattern to follow for nontrivial optimizations.
 
 @note
-The complete SCCP example is roughly 150 lines of C++ source code.
+The complete SCCP example is roughly 130 lines of C++ source code.
 Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
 
 ## Choosing the Right Base Class

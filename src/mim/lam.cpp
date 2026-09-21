@@ -46,6 +46,7 @@ const Def* Lam::isa_ret_arg(const Def* d) {
 }
 
 const Def* Lam::eta_reduce() const {
+    if (!is_set()) return nullptr;
     if (auto var = has_var()) {
         if (auto app = body()->isa<App>())
             if (app->arg() == var && !app->callee()->has_free_var(var)) return app->callee();

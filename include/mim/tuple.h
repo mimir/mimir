@@ -103,13 +103,13 @@ private:
 };
 
 /// Filters the components of an aggregate and keeps track of where the survivors end up.
-/// This is what a Phase needs that *drops* components of a Sigma:
+/// This is what a Phase needs that *drops* components of a Sigma - or the parameters of a Lam:
 /// * Sieve::gather rebuilds an immutable aggregate,
 /// * Sieve::new2old rebuilds a mutable one via Rewriter::rewrite_stub, and
 /// * Sieve::operator[] adjusts the index of every Extract / Insert into it.
 ///
-/// @note Only a Sigma ever needs this: an Arr's components all share one type - so it is dropped as a whole - and
-/// World::extract_fused splits a fused index at the Arr boundary, which leaves a Sigma's index scalar.
+/// @note Only a Sigma ever needs that last adjustment: an Arr's components all share one type - so it is dropped as a
+/// whole - and World::extract_fused splits a fused index at the Arr boundary, which leaves a Sigma's index scalar.
 class Sieve {
 public:
     static constexpr size_t Gone = size_t(-1); ///< @see Sieve::operator[]
