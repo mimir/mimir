@@ -59,6 +59,8 @@
             <div class="pane" id="pane-mim"  hidden>
                 <div class="opts" id="mim-opts">
                     <label title="Uses ASCII alternatives instead of UTF-8 throughout the output."><input type="checkbox" id="ascii"> ASCII</label>
+                    <label title="Ascribes the type of each `let`-bound name; it is inferable from the right-hand side and hence elided by default."><input type="checkbox" data-mim="typed-let"> typed lets</label>
+                    <label title="Dumps each mutable as its own flat block without scheduling; the result does not read back but works for broken programs."><input type="checkbox" data-mim="local"> local blocks</label>
                 </div>
                 <pre></pre>
             </div>

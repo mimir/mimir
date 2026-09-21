@@ -21,7 +21,8 @@ struct Flags {
     uint32_t max_fp_iters        = 1024; // max number of fixed-point iterations before a Phase errors out
 
     bool ascii               = false;
-    bool dump_local          = false;
+    bool mim_local           = false;
+    bool mim_typed_let       = false;
     bool bootstrap           = false;
     bool force_load          = false;
     Profile profile          = Profile::None; // how to report Phase runtimes

@@ -74,6 +74,7 @@ async function run() {
     const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '-o', '/out.mim'];
     for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
     if (dark) args.push('--dot-dark');
+    for (const box of document.querySelectorAll('#mim-opts input[data-mim]:checked')) args.push(`--mim-${box.dataset.mim}`);
     if ($('ascii').checked) args.push('-a');
     if ($('optimize').checked) args.push('-p', 'opt', '-p', 'll', '-X', 'll:o=/out.ll');
     else args.push('--no-opt');
