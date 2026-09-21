@@ -15,11 +15,18 @@ plugin option;
 plugin core;
 
 let Key = (I32, core.icmp.ul @i32);
+let Map = ord.Map Key I64;
 
 extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] =
-    let map = ord.init.map Key ((23I32, 42I64), (123I32, 456I64)); // 23 → 42, 123 → 456
+    ret (m, ptr) = mem.slot  (Map, 0) $ m;
+    let  m       = mem.store (m, ptr, ord.init.map Key ((23I32, 42I64), (123I32, 456I64))); // 23 → 42, 123 → 456
+    let (m, map) = mem.load  (m, ptr);
     let map = ord.insert.map (map, (0I32, x));                     // 0 → x
+    let  m       = mem.store (m, ptr, map);
+    let (m, map) = mem.load  (m, ptr);
     let map = ord.insert.map (map, (1I32, 11I64));                 // 1 → 11
+    let  m       = mem.store (m, ptr, map);
+    let (m, map) = mem.load  (m, ptr);
     let val = option.unwrap_unsafe (ord.get (map, 0I32));          // some x
     return (m, val);                                               // return x
 
