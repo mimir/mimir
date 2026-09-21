@@ -245,6 +245,11 @@ After the final swap, the rewritten world becomes the current one.
 [`Cleanup`](@ref mim::Cleanup) is simply an [`RWPhase`](@ref mim::RWPhase) with no custom rewrites.
 Because an [`RWPhase`](@ref mim::RWPhase) reconstructs only what is reachable from the world roots, rebuilding automatically eliminates dead and unreachable code.
 
+### Reshaping Aggregates
+
+A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriting) in the Rewriting Guide.
+[`SingleErasure`](@ref mim::SingleErasure) is the canonical user.
+
 ### Typical Shape
 
 ```cpp

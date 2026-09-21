@@ -92,7 +92,7 @@ extern lam _default_compile (): compile.Phase =
         compile.lam_spec, // replace with lam-lifting
 
         // CodeGenPrep
-        compile.single_elim,
+        compile.single_erasure,
         optimize,
         compile.branch_normalize,
         compile.ret_wrap,

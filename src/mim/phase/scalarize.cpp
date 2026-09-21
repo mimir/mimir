@@ -221,26 +221,26 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
     log().d("scalarize {}: {} → {}: {}", old, old->type(), sca, sca->type());
     map(old, sca);
-    if (!old->is_set()) return sca; // a foreign declaration has no var uses to rewire
 
-    // reassemble the old var one level from the fresh scalar vars
-    auto n       = old->num_tvars();
-    auto num_sca = sca->num_vars();
-    auto params  = DefVec();
-    params.reserve(n);
-    for (size_t i = 0, v = 0; i != n; ++i) {
-        auto t = rewrite(old->tvar(i)->type());
-        if (mask[i]) {
-            auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(num_sca, v++); });
-            params.emplace_back(w.tuple(t, pieces));
-        } else {
-            params.emplace_back(sca->var(num_sca, v++));
+    if (old->is_set()) { // a foreign declaration has no var uses to rewire
+        // reassemble the old var one level from the fresh scalar vars
+        auto n       = old->num_tvars();
+        auto num_sca = sca->num_vars();
+        auto params  = DefVec();
+        params.reserve(n);
+        for (size_t i = 0, v = 0; i != n; ++i) {
+            auto t = rewrite(old->tvar(i)->type());
+            if (mask[i]) {
+                auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(num_sca, v++); });
+                params.emplace_back(w.tuple(t, pieces));
+            } else {
+                params.emplace_back(sca->var(num_sca, v++));
+            }
         }
+        map(old->var(), w.tuple(params));
     }
-    map(old->var(), w.tuple(params));
 
-    sca->set(rewrite(old->filter()), rewrite(old->body()));
-    return sca;
+    return rewrite_stub(old, sca);
 }
 
 DefVec Scalarize::flatten_args(const App* app, const fe::Bitset& mask) {

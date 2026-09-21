@@ -1,5 +1,8 @@
 #pragma once
 
+#include <concepts>
+
+#include <algorithm>
 #include <span>
 
 #include "mim/def.h"
@@ -97,6 +100,58 @@ private:
         : Prod(Node, type, args, 0) {}
 
     friend class World;
+};
+
+/// Filters the components of an aggregate and keeps track of where the survivors end up.
+/// This is what a Phase needs that *drops* components of a Sigma:
+/// * Sieve::gather rebuilds an immutable aggregate,
+/// * Sieve::new2old rebuilds a mutable one via Rewriter::rewrite_stub, and
+/// * Sieve::operator[] adjusts the index of every Extract / Insert into it.
+///
+/// @note Only a Sigma ever needs this: an Arr's components all share one type - so it is dropped as a whole - and
+/// World::extract_fused splits a fused index at the Arr boundary, which leaves a Sigma's index scalar.
+class Sieve {
+public:
+    static constexpr size_t Gone = size_t(-1); ///< @see Sieve::operator[]
+
+    /// @name Construction
+    ///@{
+    /// Keeps all @p num components.
+    explicit Sieve(size_t num)
+        : num_(num)
+        , new2old_(num, [](size_t i) { return i; }) {}
+
+    /// Keeps those @p ops that satisfy @p pred.
+    Sieve(Defs ops, std::predicate<const Def*> auto pred)
+        : num_(ops.size()) {
+        new2old_.reserve(num_);
+        for (size_t i = 0; i != num_; ++i)
+            if (pred(ops[i])) new2old_.emplace_back(i);
+    }
+    ///@}
+
+    /// @name Getters
+    ///@{
+    size_t num() const { return num_; }             ///< Number of old components.
+    size_t size() const { return new2old_.size(); } ///< Number of survivors.
+    bool all() const { return size() == num_; }     ///< Does everything survive?
+    /// The old index of the @p i th survivor; this is what Rewriter::rewrite_stub expects.
+    fe::View<size_t> new2old() const { return new2old_; }
+    /// The new index of the old component @p i - or Sieve::Gone, if it didn't survive.
+    size_t operator[](size_t i) const {
+        auto j = std::ranges::lower_bound(new2old_, i);
+        return j != new2old_.end() && *j == i ? size_t(j - new2old_.begin()) : Gone;
+    }
+    /// The surviving components of @p ops.
+    DefVec gather(Defs ops) const {
+        assert(ops.size() == num_);
+        return DefVec(size(), [this, ops](size_t i) { return ops[new2old_[i]]; });
+    }
+    ///@}
+
+private:
+    size_t num_;
+    fe::Vector<size_t> new2old_;
 };
 
 /// The extents of a Seq's axes: a plain `Nat` for a single axis, an aggregate of them for several.
