@@ -552,7 +552,34 @@ Similarly, [`mim::Def::tproj`](@ref mim::Def::tproj), [`mim::Def::tprojs`](@ref 
 
 ### Shape
 
-TODO
+An [array](@ref mim::Arr) or [pack](@ref mim::Pack) - jointly a [`Seq`](@ref mim::Seq) - may fuse several axes into **one** node: `«2, 3; Nat»` is a single [`Arr`](@ref mim::Arr) of six elements rather than a nested `«2; «3; Nat»»`.
+[`mim::Shape`](@ref mim::Shape) is the view over the extents of those axes:
+
+```cpp
+auto arr = w.arr({w.lit_nat(2), w.lit_nat(3)}, w.type_nat())->as<Arr>();
+auto s   = arr->shape(); // a Shape over the tuple `(2, 3)`
+auto n   = *s;           // the Def it views; Shape::operator-> reaches through
+auto r   = s.rank();     // std::optional<nat_t>: 2 here, std::nullopt for a dynamic rank
+auto a0  = s[0];         // the outermost axis, i.e. the literal `2`
+```
+
+A shape is a plain `Nat` for a single axis and an aggregate of `Nat`s for several, which is what [`mim::Shape::is_dim`](@ref mim::Shape::is_dim) / [`mim::Shape::is_fused`](@ref mim::Shape::is_fused) tell apart.
+A multi-dimensional **index** into such a [`Seq`](@ref mim::Seq) has the very same structure - one component per axis, `Idx` instead of `Nat` - and hence uses the same view.
+[`mim::Shape::extent`](@ref mim::Shape::extent) reads an axis either way, and [`mim::Shape::isa_extents`](@ref mim::Shape::isa_extents) / [`mim::Shape::isa_indices`](@ref mim::Shape::isa_indices) check which of the two a type is.
+
+@note The [arity](@ref mim::Def::arity) of a [`Seq`](@ref mim::Seq) is only its [`front`](@ref mim::Shape::front) axis, so `«2, 3; Nat»` still projects into two `«3; Nat»`.
+Everything else in this chapter counts one axis; a `Shape` is what talks about all of them.
+[`mim::Seq::elem`](@ref mim::Seq::elem) goes one axis down - the [`body`](@ref mim::Seq::body) for a single axis, the [`Seq`](@ref mim::Seq) of the remaining ones otherwise.
+
+A `Shape` is a non-owning view and may be null, and [`mim::Shape::rank`](@ref mim::Shape::rank) is what you check before indexing into it: [`mim::Def::num_projs`](@ref mim::Def::num_projs) would read a dynamic rank as `1` and hand the whole shape back as its sole projection.
+The transformations follow suit and yield a null `Shape` without a statically known rank:
+
+- [`slice`](@ref mim::Shape::slice) / [`take`](@ref mim::Shape::take) / [`drop`](@ref mim::Shape::drop) pick a range of axes and [`filter`](@ref mim::Shape::filter) keeps whichever ones a predicate accepts.
+- [`operator+`](@ref mim::Shape::operator+) concatenates two shapes, which is what fuses `«a; «b; T»»` into `«a, b; T»`.
+- [`fold`](@ref mim::Shape::fold) drops every literal size-1 axis, mirroring `«1; T»` ≡ `T`; all of them folded away leaves rank `0`.
+  The overload taking a `Shape` folds an *index* against the shape of the very [`Seq`](@ref mim::Seq) it indexes, because a broadcast reads a size-1 input axis at the *output*'s loop index.
+
+[`mim::World::arr`](@ref mim::World::arr) / [`mim::World::pack`](@ref mim::World::pack) take a `Shape`, a `Defs` of axes, or a `fe::View<u64>` of literal extents, and [`mim::World::type_indices`](@ref mim::World::type_indices) yields the type of an index into a given shape.
 
 ### Summary
 
@@ -564,10 +591,13 @@ TODO
 | `[Nat, Bool, Nat]` | [`Sigma`](@ref mim::Sigma) | `3`                           | `3`                                     | `3`                                       |
 | `«3; Nat»`         | [`Arr`](@ref mim::Arr)     | `3`                           | `3`                                     | `3`                                       |
 | `«n; Nat»`         | [`Arr`](@ref mim::Arr)     | `n`                           | `1`                                     | `1`                                       |
+| `«2, 3; Nat»`      | [`Arr`](@ref mim::Arr)     | `2`                           | `2`                                     | `2`                                       |
+| `‹2, n; 0›`        | [`Pack`](@ref mim::Pack)   | `2`                           | `2`                                     | `2`                                       |
 | `x: [Nat, Bool]`   | [`Var`](@ref mim::Var)     | `2`                           | `2`                                     | `2`                                       |
 | `‹32; 0›`          | [`Pack`](@ref mim::Pack)   | `32`                          | `32`                                    | `1`                                       |
 
 The last line assumes `mim::Flags::scalarize_threshold = 32`.
+The two fused rows only ever count their outermost axis; a [`Shape`](@ref mim::Shape) is what accounts for the rest.
 
 ## Iterating over the Program
 

@@ -579,9 +579,10 @@ fe::Vector<Lam*> curry_chain(Lam* lam) {
 class Dumper {
 public:
     /// @p srcs are the files an `import` pulls in: they declare their own content, so a dump must not repeat it.
-    Dumper(std::ostream& os, Dump mode, absl::flat_hash_set<const fe::Src*> srcs = {})
+    Dumper(std::ostream& os, Dump mode, bool typed_let = false, absl::flat_hash_set<const fe::Src*> srcs = {})
         : os_(os)
         , mode_(mode)
+        , typed_let_(typed_let)
         , srcs_(std::move(srcs)) {}
 
     /// @name dump
@@ -596,12 +597,16 @@ public:
 
         block_ = nullptr; // a non-decl opens no block, so nothing can be entered or placed into one
         emit_block(def);
+        sep(Prev::Let);
         emit_tail(def, "");
     }
 
     ///@}
 
 private:
+    /// What the current block emitted last; only a declaration is worth setting apart.
+    enum class Prev { None, Let, Decl };
+
     /// One scope: the Nest of a single closed mutable - which is the only thing a Scheduler can place into.
     void visit_scope(const Nest& nest) {
         auto root = nest.root()->mut();
@@ -730,15 +735,25 @@ private:
     ///@{
     void emit(Def* key) {
         auto defs = key ? std::move(bucket_[key]) : std::move(top_);
-        for (auto def : defs)
-            if (auto mut = isa_decl(def))
+        for (auto def : defs) {
+            auto mut = isa_decl(def);
+            sep(mut ? Prev::Decl : Prev::Let);
+            if (mut)
                 emit_decl(mut);
             else
                 emit_let(def);
+        }
+    }
+
+    /// A declaration spans several lines, so a blank line sets it apart from its neighbors within the same block.
+    void sep(Prev curr) {
+        if (prev_ == Prev::Decl || (prev_ == Prev::Let && curr == Prev::Decl)) os_ << '\n';
+        prev_ = curr;
     }
 
     void emit_let(const Def* def) {
-        std::println(os_, "{}let {}: {} = {};", tab_, name(&ctx_, def), Op(&ctx_, def->type()), Full(&ctx_, def));
+        auto type = typed_let_ ? std::format(": {}", Op(&ctx_, def->type())) : std::string();
+        std::println(os_, "{}let {}{} = {};", tab_, name(&ctx_, def), type, Full(&ctx_, def));
     }
 
     void emit_decl(Def* mut) {
@@ -784,7 +799,9 @@ private:
 
         ++tab_;
         rets_.emplace_back(fun ? last->has_var() : nullptr);
+        auto _ = fe::Restore(prev_, Prev::None);
         emit(lam);
+        sep(Prev::Let);
         emit_tail(last->body(), ";");
         rets_.pop_back();
         --tab_;
@@ -828,9 +845,11 @@ private:
 
     std::ostream& os_;
     Dump mode_;
+    bool typed_let_;
     const Nest* nest_ = nullptr; ///< Nests the mutables of the scope being emitted.
     Scheduler* sched_ = nullptr; ///< Places everything else in it.
     Def* block_       = nullptr; ///< The mutable whose block we are filling; the only one in Dump::Local.
+    Prev prev_        = Prev::None;
     fe::Tab tab_      = fe::Tab::spaces();
     fe::Vector<const Var*> rets_;
     fe::Vector<std::pair<const Def*, Def*>> order_; ///< What to emit, in dependency order, with its block's mutable.
@@ -861,7 +880,7 @@ std::ostream& operator<<(std::ostream& os, const Def* def) {
 std::ostream& Def::stream(std::ostream& os, Dump mode) const {
     auto _ = world().freeze();
     if (mode == Dump::Expr) return os << this << std::endl;
-    Dumper(os, mode).dump(this);
+    Dumper(os, mode, world().flags().mim_typed_let).dump(this);
     return os;
 }
 
@@ -898,8 +917,11 @@ void World::dump(std::ostream& os) {
             std::print(os, "{} {};\n", kw, import.sym);
     }
 
+    if (!driver().imports().entries().empty() && externals().size() != 0) os << '\n';
+
     // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
-    auto dumper = Dumper(os, flags().dump_local ? Def::Dump::Local : Def::Dump::All, std::move(srcs));
+    auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
+    auto dumper = Dumper(os, mode, flags().mim_typed_let, std::move(srcs));
     for (auto mut : externals().muts())
         dumper.dump(mut);
 
