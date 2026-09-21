@@ -81,6 +81,10 @@ The editor compiles on every keystroke, half a second after you stop typing; **R
 _optimize_ runs the [opt](@ref opt) pipeline and the [ll](@ref ll) backend; without it the program is only parsed and emitted again.
 The **Mim** tab's _ASCII_ box is `-a`, which is a global flag rather than a Mim-only one: it swaps the UTF-8 spellings out of every output, the graph's labels included.
 
+The _vi_ box in the editor bar switches the editor to vi keybindings — [@replit/codemirror-vim](https://github.com/replit/codemirror-vim), fetched from a CDN the first time you tick it.
+The bar below the editor shows the mode and takes `:` commands; `:w` runs the program, which is the only thing there is to write to.
+The box is remembered across reloads, and it is gone altogether when the editor falls back to a plain textarea because CodeMirror did not load.
+
 A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/?src=plugin%20core%3B%0Ause%20core.ops.u.w%3B%0A%0Aextern%20fun%20inc%20(x%3A%20I32)%3A%20I32%20%3D%20return%20(x%20%2B%201I32)%3B%0A) increments an `I32`.
 Percent-encode it — `encodeURIComponent` in the browser's console produces exactly what the page expects; a `+` stands for itself and is *not* a space.
 The picker keeps such a program under _(custom)_, so loading an example does not lose it.

@@ -149,6 +149,7 @@ main {
 
 #editor .cm-vim-panel {
     font-family: var(--mono);
+    border-top: 1px solid var(--border);
     font-size: 12.5px;
     background: var(--panel);
     color: var(--fg);
