@@ -132,9 +132,9 @@ public:
 
     /// @name Getters
     ///@{
-    size_t num() const { return num_; }             ///< Number of old components.
-    size_t size() const { return new2old_.size(); } ///< Number of survivors.
-    bool all() const { return size() == num_; }     ///< Does everything survive?
+    size_t num_old() const { return num_; }            ///< Number of old components.
+    size_t num_new() const { return new2old_.size(); } ///< Number of survivors.
+    bool all() const { return num_new() == num_; }     ///< Does everything survive?
     /// The old index of the @p i th survivor; this is what Rewriter::rewrite_stub expects.
     fe::View<size_t> new2old() const { return new2old_; }
     /// The new index of the old component @p i - or Sieve::Gone, if it didn't survive.
@@ -145,7 +145,7 @@ public:
     /// The surviving components of @p ops.
     DefVec gather(Defs ops) const {
         assert(ops.size() == num_);
-        return DefVec(size(), [this, ops](size_t i) { return ops[new2old_[i]]; });
+        return DefVec(num_new(), [this, ops](size_t i) { return ops[new2old_[i]]; });
     }
     ///@}
 

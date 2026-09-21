@@ -120,7 +120,7 @@ const Def* SingleErasure::rewrite_mut_Sigma(Sigma* old_sigma) {
     auto keep = sieve(old_sigma);
     if (keep.all()) return RWPhase::rewrite_mut_Sigma(old_sigma);
 
-    auto new_sigma = new_world().mut_sigma(rewrite(old_sigma->type()), keep.size());
+    auto new_sigma = new_world().mut_sigma(rewrite(old_sigma->type()), keep.num_new());
     return rewrite_stub(old_sigma, new_sigma, keep.new2old());
 }
 
