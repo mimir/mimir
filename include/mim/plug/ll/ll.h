@@ -257,6 +257,9 @@ private:
     MIM_NOINLINE std::optional<std::string> emit_math(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_vec(BB&, const std::string& name, const Def*);
 
+    /// An `extractelement`/`insertelement` lane index; LLVM wants a plain `i32`, not the `Idx` carrier.
+    std::string emit_simd_index(BB&, const std::string& name, const Def* index);
+
     decltype(&mim_ll_convert) convert_             = nullptr;
     decltype(&mim_ll_finalize) finalize_           = nullptr;
     decltype(&mim_ll_emit_epilogue) emit_epilogue_ = nullptr;
