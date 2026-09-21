@@ -1,0 +1,11 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin mem;
+
+// A partial write targets a sub-tensor, which has no buffer of its own.
+extern fun write_row (t: «4, 8; I32», row: «8; I32»): «4, 8; I32» =
+    let t = tensor.buf t;
+    return (t#1₄ ← row);
+
+// CHECK: {{.*}}tensor_partial_write.mim:9:13-9:22: error: cannot bufferize: partial tensor write targets a sub-tensor

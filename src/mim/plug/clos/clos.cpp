@@ -39,7 +39,7 @@ const Def* ClosLit::env() const { return std::get<2>(clos_unpack(def_)); }
 
 const Def* ClosLit::fnc() const { return std::get<1>(clos_unpack(def_)); }
 
-Lam* ClosLit::fnc_as_lam() const { return Anno::peel(fnc())->isa_mut<Lam>(); }
+Lam* ClosLit::fnc_as_lam() const { return Axm::peel<anno>(fnc())->isa_mut<Lam>(); }
 
 const Def* ClosLit::env_var() const {
     auto lam = fnc_as_lam();
@@ -48,7 +48,7 @@ const Def* ClosLit::env_var() const {
 
 ClosLit isa_clos_lit(const Def* def, bool fn_isa_lam) {
     if (auto tpl = def->isa<Tuple>(); tpl && isa_clos_type(def->type())) {
-        auto fnc = Anno::peel(std::get<1>(clos_unpack(tpl)));
+        auto fnc = Axm::peel<anno>(std::get<1>(clos_unpack(tpl)));
         if (!fn_isa_lam || fnc->isa<Lam>()) return ClosLit(tpl);
     }
     return ClosLit(nullptr);

@@ -1,0 +1,11 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin mem;
+
+// A partial read denotes a sub-tensor, which has no buffer of its own.
+extern fun read_row (t: «4, 8; I32»): «8; I32» =
+    let t = tensor.buf t;
+    return (t#1₄);
+
+// CHECK: {{.*}}tensor_partial_read.mim:9:13-9:16: error: cannot bufferize: partial tensor read yields a sub-tensor
