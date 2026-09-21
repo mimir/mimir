@@ -55,7 +55,7 @@ const Def* Lower::read_through(const Def* base, Defs index) {
 }
 
 const Def* Lower::rewrite_imm_Extract(const Extract* extract) {
-    auto base = Anno::peel(extract->tuple());
+    auto base = Axm::peel<tensor::buf>(extract->tuple());
     if (Axm::isa<tensor::repeat>(base) || Axm::isa<tensor::broadcast>(base)) {
         auto index = Shape(extract->index());
         if (auto r = index.rank())

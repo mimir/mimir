@@ -23,7 +23,7 @@ bool Shape::is_dim() const {
 std::optional<nat_t> Shape::rank() const { return def_ ? Lit::isa(def_->arity()) : std::nullopt; }
 
 const Def* Shape::front() const {
-    if (is_dim()) return def_;
+    if (!def_ || is_dim()) return def_; // an unset mutable Seq has no shape yet
     if (auto r = rank()) return def_->proj(*r, 0);
 
     auto& w = def_->world(); // a dynamic rank cannot be projected

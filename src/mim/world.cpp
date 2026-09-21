@@ -17,13 +17,19 @@ namespace mim {
 
 namespace {
 
-/// Does `d#index \u2190 val` rebuild an aggregate right away? Mirrors the two folding rules in World::insert.
-bool insert_rebuilds(const Def* d, const Def* index, u64 threshold) {
-    if (!Lit::isa(index)) return false;
-    if (d->isa<Tuple>()) return true;
+/// Arity `d#index ← val` unrolls a Pack @p d into; `std::nullopt` if the Pack rule in World::insert doesn't fire.
+/// A fused Pack is off limits: its Def::arity is only the front axis, while Pack::body is still the scalar.
+std::optional<nat_t> pack_unrolls(const Def* d, const Def* index, u64 threshold) {
+    if (!Lit::isa(index)) return {};
     if (auto pack = d->isa<Pack>(); pack && !pack->shape().is_fused())
-        if (auto a = Lit::isa(pack->arity())) return *a < threshold;
-    return false;
+        if (auto a = Lit::isa(pack->arity()); a && *a < threshold) return a;
+    return {};
+}
+
+/// Does `d#index ← val` rebuild an aggregate right away? Mirrors the two folding rules in World::insert.
+bool insert_rebuilds(const Def* d, const Def* index, u64 threshold) {
+    if (d->isa<Tuple>()) return bool(Lit::isa(index));
+    return bool(pack_unrolls(d, index, threshold));
 }
 
 /// How many axes @p type indexes in one go; `1` for anything that isn't an Arr, `std::nullopt` for a dynamic rank.
@@ -689,12 +695,10 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
     }
 
     // insert(‹4; x›, 2, y) -> (x, x, y, x)
-    if (auto pack = d->isa<Pack>(); pack && lidx) {
-        if (auto a = Lit::isa(pack->arity()); a && *a < flags().scalarize_threshold) {
-            auto new_ops   = DefVec(*a, pack->body());
-            new_ops[*lidx] = val;
-            return tuple(type, new_ops);
-        }
+    if (auto a = pack_unrolls(d, *index, flags().scalarize_threshold)) {
+        auto new_ops   = DefVec(*a, d->as<Pack>()->body());
+        new_ops[*lidx] = val;
+        return tuple(type, new_ops);
     }
 
     // `d#i ← (d#i)#js ← val` -> `d#(i, js) ← val`: the dual of the Extract fusion in World::extract1, and what

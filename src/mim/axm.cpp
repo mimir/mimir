@@ -11,20 +11,6 @@ Axm::Axm(NormalizeFn normalizer, u8 curry, u8 trip, const Def* type, plugin_t pl
     trip_       = trip;
 }
 
-/// Is @p type the polymorphic identity `{T: *} → T → T`?
-static bool is_identity(const Def* type) {
-    if (auto outer = type->isa<Pi>())
-        if (auto inner = outer->codom()->isa<Pi>())
-            if (auto var = inner->dom()->isa<Var>()) return var->binder() == outer && inner->codom() == var;
-    return false;
-}
-
-const Def* Anno::isa(const Def* def) {
-    if (auto app = def->isa<App>())
-        if (auto [axm, curry, _] = Axm::get(def); axm && curry == 0 && is_identity(axm->type())) return app->arg();
-    return nullptr;
-}
-
 std::pair<u8, u8> Axm::infer_curry_and_trip(const Def* type) {
     u8 curry = 0;
     u8 trip  = 0;

@@ -1,6 +1,6 @@
 #include <fstream>
 #include <ostream>
-#include <sstream>
+#include <print>
 
 #include "mim/def.h"
 #include "mim/driver.h"
@@ -14,15 +14,38 @@ namespace mim {
 
 namespace {
 
-template<class T>
-std::string escape(const T& val) {
-    std::ostringstream oss;
-    oss << val;
-    auto str = oss.str();
-    fe::find_and_replace(str, "<", "&lt;");
-    fe::find_and_replace(str, ">", "&gt;");
-    return str;
+/// Formats and escapes for a Graphviz HTML-like label (`label=<...>`).
+template<class... Args>
+std::string html(std::format_string<Args...> fmt, Args&&... args) {
+    std::string res;
+    for (auto c : std::format(fmt, std::forward<Args>(args)...)) {
+        switch (c) {
+            case '&': res += "&amp;"; break;
+            case '<': res += "&lt;"; break;
+            case '>': res += "&gt;"; break;
+            default: res += c;
+        }
+    }
+    return res;
 }
+
+/// Escapes @p s for a double-quoted Graphviz string such as `tooltip`.
+/// Graphviz turns `\n` back into a newline, so a tooltip may span several lines.
+std::string quote(std::string_view s) {
+    std::string res;
+    for (auto c : s) {
+        switch (c) {
+            case '\\': res += "\\\\"; break;
+            case '"': res += "\\\""; break;
+            case '\n': res += "\\n"; break;
+            default: res += c;
+        }
+    }
+    return res;
+}
+
+// Edges and arrowheads are black by default, which vanishes on a dark backdrop.
+constexpr auto DARK_FG = "#c9d1d9";
 
 class Dot {
 public:
@@ -34,6 +57,11 @@ public:
     void prologue() {
         std::println(os_, "{}digraph {{", tab_);
         ++tab_;
+        // The embedder paints the backdrop; only what is drawn on it has to change.
+        if (cfg_.dark) {
+            std::println(os_, "{}bgcolor=\"transparent\";", tab_);
+            std::println(os_, "{}edge [color=\"{}\"];", tab_, DARK_FG);
+        }
         std::println(os_, "{}ordering=out;", tab_);
         std::println(os_, "{}splines=ortho;", tab_);
         std::println(os_, "{}newrank=true;", tab_);
@@ -62,19 +90,20 @@ public:
 
         if (def->isa_mut())
             if (def == root_)
-                os_ << "style=\"filled,diagonals,bold\",";
+                std::print(os_, "style=\"filled,diagonals,bold\",");
             else
-                os_ << "style=\"filled,diagonals\",penwidth=2,";
+                std::print(os_, "style=\"filled,diagonals\",penwidth=2,");
         else if (def == root_)
-            os_ << "style=\"filled,bold\",";
+            std::print(os_, "style=\"filled,bold\",");
 
-        label(def) << ',';
-        color(def) << ',';
+        label(def);
+        color(def);
         // Pin closed defs to the top row.
         // In inline mode only mutables are pinned, so shared leaves flow next to their users instead of piling up in a
         // detached row.
-        if (def->is_closed() && (!cfg_.inline_consts || def->isa_mut())) os_ << "rank=min,";
-        tooltip(def) << "];\n";
+        if (def->is_closed() && (!cfg_.inline_consts || def->isa_mut())) std::print(os_, "rank=min,");
+        tooltip(def);
+        std::println(os_, "];");
     }
 
     void recurse(const Def* def, int max) {
@@ -99,7 +128,7 @@ public:
                 if (cfg_.inline_consts && (op->isa<Lit>() || op->isa<Axm>())) {
                     auto dup = std::format("_{}_{}", def->gid(), i);
                     emit_node(dup, op);
-                    std::println(os_, "{}_{}:{} -> {};", tab_, def->gid(), i, dup);
+                    std::println(os_, "{}{} -> {};", tab_, tail(def, i), dup);
                     type_edge(dup, op, max - 1);
                 } else {
                     recurse(op, max - 1);
@@ -110,10 +139,10 @@ public:
                         // Detached edges are transparent by default to keep the layout readable (xdot still
                         // highlights them on hover). With show_hidden we render them statically in a subtle gray.
                         auto edge_color = cfg_.show_hidden ? "gray" : "#00000000";
-                        std::println(os_, "{}_{}:{} -> _{}[color=\"{}\",constraint=false];", tab_, def->gid(), i,
-                                     op->gid(), edge_color);
+                        std::println(os_, "{}{} -> _{}[color=\"{}\",constraint=false];", tab_, tail(def, i), op->gid(),
+                                     edge_color);
                     } else
-                        std::println(os_, "{}_{}:{} -> _{};", tab_, def->gid(), i, op->gid());
+                        std::println(os_, "{}{} -> _{};", tab_, tail(def, i), op->gid());
                 }
             }
         }
@@ -132,33 +161,46 @@ public:
         }
     }
 
-    std::ostream& label(const Def* def) {
+    /// One port per op, so an edge docks under the very op it stands for.
+    void label(const Def* def) {
+        if (cfg_.lean_labels) {
+            std::print(os_, "label=\"{}\",", quote(std::format("{} {}", caption(def), def->unique_name())));
+            return;
+        }
+
         auto n = def->is_set() ? def->num_ops() : size_t(0);
         if (n > 0) {
             std::print(os_, "label=<<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\"><tr><td colspan=\"{}\">",
                        n);
             emit_name(def);
-            os_ << "</td></tr><tr>";
+            std::print(os_, "</td></tr><tr>");
             for (size_t i = 0; i < n; ++i)
-                std::print(os_, "<td port=\"{}\" cellpadding=\"0\" height=\"1\" width=\"8\"></td>", i);
-            os_ << "</tr></table>>";
+                std::print(os_, "<td port=\"{}\" height=\"1\" width=\"8\"></td>", i);
+            std::print(os_, "</tr></table>>,");
         } else {
-            os_ << "label=<";
+            std::print(os_, "label=<");
             emit_name(def);
-            os_ << ">";
+            std::print(os_, ">,");
         }
-        return os_;
+    }
+
+    /// A Lit shows its value where every other Def shows its node name.
+    std::string caption(const Def* def) {
+        auto lit = def->isa<Lit>();
+        return lit ? std::format("{}", lit) : std::string(def->node_name());
     }
 
     void emit_name(const Def* def) {
-        if (auto lit = def->isa<Lit>())
-            os_ << lit;
-        else
-            os_ << def->node_name();
-        std::print(os_, "<br/><font point-size=\"9\">{}</font>", escape(def->unique_name()));
+        std::print(os_, "{}<br/><font point-size=\"9\">{}</font>", html("{}", caption(def)),
+                   html("{}", def->unique_name()));
     }
 
-    std::ostream& color(const Def* def) {
+    /// Without the port cells of a full label there is nothing to dock at but the node itself.
+    std::string tail(const Def* def, size_t i) {
+        return cfg_.lean_labels ? std::format("_{}", def->gid()) : std::format("_{}:{}", def->gid(), i);
+    }
+
+    void color(const Def* def) {
         float hue;
         // clang-format off
         if      (def->is_form())  hue = 0.60f; // blue   - type formation
@@ -167,29 +209,34 @@ public:
         else if (def->is_meta())  hue = 0.15f; // yellow - universe/meta
         else                      hue = 0.80f; // purple - Hole
         // clang-format on
-        return os_ << std::format("fillcolor=\"{} 0.5 0.75\"", hue);
+        std::print(os_, "fillcolor=\"{} 0.5 0.75\",", hue);
     }
 
+    /// A tooltip is plain text - markup would show up verbatim in xdot and in the browser alike.
     /// Streaming a Def is Def::Dump::Expr - one line, no analysis.
     /// Keep it that way: this output is the fallback for when a Nest-based dump dies on a broken World.
-    std::ostream& tooltip(const Def* def) {
-        static constexpr auto NL = "&#13;&#10;"; // newline
+    void tooltip(const Def* def) {
+        if (cfg_.no_tooltip) return;
 
-        auto loc  = escape(def->loc());
-        auto type = escape(def->type());
-        std::print(os_, "tooltip=\"");
-        std::print(os_, "<b>expr:</b> {}{}", def, NL);
-        std::print(os_, "<b>type:</b> {}{}", type, NL);
-        std::print(os_, "<b>name:</b> {}{}", def->sym(), NL);
-        std::print(os_, "<b>gid:</b> {}{}", def->gid(), NL);
-        std::print(os_, "<b>flags:</b> 0x{:x}{}", def->flags(), NL);
-        std::print(os_, "<b>mark:</b> 0x{:x}{}", def->mark(), NL);
-        std::print(os_, "<b>local_muts:</b> {}{}", fe::Join(def->local_muts()), NL);
-        std::print(os_, "<b>local_vars:</b> {}{}", fe::Join(def->local_vars()), NL);
-        std::print(os_, "<b>free_vars:</b> {}{}", fe::Join(def->free_vars()), NL);
-        if (auto mut = def->isa_mut()) std::print(os_, "<b>users:</b> {{{}}}{}", fe::Join(mut->users()), NL);
-        std::print(os_, "<b>loc:</b> {}", loc);
-        return os_ << std::format("\"");
+        std::string s;
+        auto add = [&, sep = ""](std::string_view key, const auto& val) mutable {
+            s += std::format("{}{}: {}", sep, key, val);
+            sep = "\n";
+        };
+
+        add("expr", def);
+        add("type", def->type());
+        add("name", def->sym());
+        add("gid", def->gid());
+        add("flags", std::format("0x{:x}", def->flags()));
+        add("mark", std::format("0x{:x}", def->mark()));
+        add("local_muts", fe::Join(def->local_muts()));
+        add("local_vars", fe::Join(def->local_vars()));
+        add("free_vars", fe::Join(def->free_vars()));
+        if (auto mut = def->isa_mut()) add("users", std::format("{{{}}}", fe::Join(mut->users())));
+        add("loc", def->loc());
+
+        std::print(os_, "tooltip=\"{}\",", quote(s));
     }
 
 private:
@@ -272,11 +319,11 @@ void Nest::Node::dot(fe::Tab tab, std::ostream& os) const {
         std::println(os, "{}\"{}\":s -> \"{}\":s [style=dashed,constraint=false,splines=true]", tab, name(),
                      sibl->name());
 
-    auto rec  = is_mutually_recursive() ? "rec*" : (is_directly_recursive() ? "rec" : "");
-    auto html = "<b>" + name() + "</b>";
-    if (*rec) html += "<br/><i>"s + rec + "</i>";
-    html += "<br/><font point-size=\"8\">depth " + std::to_string(loop_depth()) + "</font>";
-    std::println(os, "{}\"{}\" [label=<{}>,tooltip=\"{}\"]", tab, name(), html, s);
+    auto rec   = is_mutually_recursive() ? "rec*" : (is_directly_recursive() ? "rec" : "");
+    auto label = std::format("<b>{}</b>", html("{}", name()));
+    if (*rec) label += std::format("<br/><i>{}</i>", rec);
+    label += std::format("<br/><font point-size=\"8\">depth {}</font>", loop_depth());
+    std::println(os, "{}\"{}\" [label=<{}>,tooltip=\"{}\"]", tab, name(), label, quote(s));
     for (auto child : children().nodes()) {
         std::println(os, "{}\"{}\" -> \"{}\" [splines=false]", tab, name(), child->name());
         child->dot(tab, os);

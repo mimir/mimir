@@ -6,3 +6,26 @@
     display: block;
     margin-inline: auto;
 }
+
+/* Each graph ships as a light and a `--dot-dark` rendering; show the one matching the theme. */
+.image:has(object[data$="-dark.svg"]) {
+    display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) .image:has(object[data$="-dark.svg"]) {
+        display: block;
+    }
+
+    html:not(.light-mode) .image:has(object[data$=".svg"]:not([data$="-dark.svg"])) {
+        display: none;
+    }
+}
+
+html.dark-mode .image:has(object[data$="-dark.svg"]) {
+    display: block;
+}
+
+html.dark-mode .image:has(object[data$=".svg"]:not([data$="-dark.svg"])) {
+    display: none;
+}

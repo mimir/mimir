@@ -34,9 +34,15 @@ function(mim_stage_playground SRC DST)
     set(PLAYGROUND_STAGED ${PLAYGROUND_STAGED} ${PLAYGROUND_DIR}/${DST} PARENT_SCOPE)
 endfunction()
 
-foreach(FILE IN ITEMS index.html playground.css playground.js mim-worker.js)
+foreach(FILE IN ITEMS index.html graph.html playground.css playground.js graphview.js popout.js mim-worker.js)
     mim_stage_playground(${CMAKE_CURRENT_LIST_DIR}/${FILE} ${FILE})
 endforeach()
+
+# The docs' dark-mode toggle, so the manual and the playground share one control and one stored preference.
+mim_stage_playground(
+    ${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js
+    darkmode-toggle.js
+)
 
 # The docs own the lexers; the page uses the very same ones. `mim.js` is Emscripten's, hence the rename.
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/code.js code.js)

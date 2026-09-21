@@ -4,4 +4,4 @@ plugin core;
 
 extern fun f(a b: Nat): Nat = return (core.nat.add (b, 0));
 
-// CHECK-DAG: return {{[0-9_]+}}#tt
+// CHECK: return_{{[0-9]+}} b_{{[0-9]+}}

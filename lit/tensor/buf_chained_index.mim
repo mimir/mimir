@@ -1,0 +1,13 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+
+// `t#i#j` fuses into one full-rank Extract, so a chained access bufferizes like `t#(i, j)` does -
+// only an index that stops *short* of the element is rejected; cf. error/tensor_partial_read.mim.
+// CHECK-NOT: tensor.
+
+plugin tensor;
+plugin mem;
+
+extern fun f (t: «64, 32; I32»): «64, 32; I32» =
+    let t = tensor.buf t;
+    let x = t#1₆₄#2₃₂;
+    return (t#0₆₄#0₃₂ ← x);
