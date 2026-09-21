@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+extern lam f (): Nat = #23;
+
+// CHECK: {{.*}}unwrap_no_single.mim:3:24-3:26: error: operand of a singleton elimination is of type `Nat` but must be of singleton type
+// CHECK-NEXT: 3 | extern lam f (): Nat = #23;
+// CHECK-NEXT:   |                        ^^^

@@ -70,8 +70,6 @@ Tok Lexer::lex() {
         if (accept( ']')) return tok(Tag::D_brckt_r);
         if (accept( '{')) return tok(Tag::D_brace_l);
         if (accept( '}')) return tok(Tag::D_brace_r);
-        if (accept(U'⦃')) return tok(Tag::D_curly_l);
-        if (accept(U'⦄')) return tok(Tag::D_curly_r);
         if (accept(U'«')) return tok(Tag::D_quote_l);
         if (accept(U'»')) return tok(Tag::D_quote_r);
         if (accept(U'‹')) return tok(Tag::D_angle_l);

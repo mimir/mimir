@@ -139,6 +139,10 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
 void TypeExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(Type {})", S(tab, level())); }
 void RuleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(Rule {})", S(tab, dom())); }
 
+void PrefixExpr::stream(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "({} {})", Tok::tag2str(op().tag()), S(tab, rhs()));
+}
+
 void InfixExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "({} {} {})", S(tab, lhs()), Tok::tag2str(op().tag()), S(tab, rhs()));
 }
@@ -185,7 +189,9 @@ void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
-void UniqExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "⦃{}⦄", S(tab, inhabitant())); }
+void SingleExpr::stream(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "{}{}{}", is_wrap() ? "‹" : "«", S(tab, body()), is_wrap() ? "›" : "»");
+}
 
 /*
  * Decl

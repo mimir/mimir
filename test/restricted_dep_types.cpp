@@ -28,8 +28,8 @@ TEST_CASE("restricted dependent types") {
     auto R = w.axm(w.type())->set("R");
     auto W = w.axm(w.type())->set("W");
 
-    auto RW = w.join({w.uniq(R), w.uniq(W)})->set("RW");
-    auto DT = w.join({w.uniq(i32_t), w.uniq(i64_t)})->set("DT");
+    auto RW = w.join({w.single(R), w.single(W)})->set("RW");
+    auto DT = w.join({w.single(i32_t), w.single(i64_t)})->set("DT");
 
     auto exp_pi = w.mut_pi(w.type<1>())->set_dom({DT, RW});
     exp_pi->set_codom(w.type());
@@ -105,9 +105,9 @@ TEST_CASE("restricted dependent types: ll") {
     auto R = w.axm(w.type())->set("R");
     auto W = w.axm(w.type())->set("W");
 
-    auto RW = w.join({w.uniq(R), w.uniq(W)})->set("RW");
+    auto RW = w.join({w.single(R), w.single(W)})->set("RW");
 
-    auto DT     = w.join({w.uniq(i32_t), w.uniq(w.annex<math::F32>())})->set("DT");
+    auto DT     = w.join({w.single(i32_t), w.single(w.annex<math::F32>())})->set("DT");
     auto exp_pi = w.mut_pi(w.type<1>())->set_dom({DT, RW});
     exp_pi->set_codom(w.type());
 

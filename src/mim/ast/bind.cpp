@@ -241,6 +241,8 @@ void DeclExpr::bind(Scopes& s) const {
     expr()->bind(s);
 }
 
+void PrefixExpr::bind(Scopes& s) const { rhs()->bind(s); }
+
 void InfixExpr::bind(Scopes& s) const {
     if (callee()) callee()->bind(s);
     lhs()->bind(s);
@@ -314,7 +316,7 @@ void SeqExpr::bind(Scopes& s) const {
     s.pop();
 }
 
-void UniqExpr::bind(Scopes& s) const { inhabitant()->bind(s); }
+void SingleExpr::bind(Scopes& s) const { body()->bind(s); }
 
 /*
  * Decl

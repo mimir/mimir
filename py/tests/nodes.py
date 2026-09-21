@@ -5,9 +5,10 @@ invokes a method or two, so a broken or missing binding surfaces immediately.
 
 Deliberately not exercised: nodes that need rewrite/lattice/plugin state beyond
 a smoke test (`Axm`, `Proxy`, `Merge`, `Match`, `Reform`, `Rule`, `UMax`,
-`UInc`) and the abstract bases reached only via their subclasses (`Def`, `Prod`,
-`Seq`, `Bound`, `Ext`).
+`UInc`), and the abstract bases reached only via their subclasses (`Def`, `Prod`, `Seq`,
+`Bound`, `Ext`).
 """
+
 from __future__ import annotations
 
 import mim
@@ -40,7 +41,8 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.bot(i8), mim.Bot),
         (w.top(i8), mim.Top),
         (w.mut_hole(i8), mim.Hole),
-        (w.uniq(i8v), mim.Uniq),
+        (w.single(i8v), mim.Single),
+        (w.wrap(i8v), mim.Wrap),
         (w.inj(join, tt), mim.Inj),
         (w.split(meet, tt), mim.Split),
     ]
@@ -48,7 +50,9 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
 
 def test_every_node_constructs(world):
     for node, cls in _every_node(world):
-        assert isinstance(node, cls), f"expected {cls.__name__}, got {type(node).__name__}"
+        assert isinstance(node, cls), (
+            f"expected {cls.__name__}, got {type(node).__name__}"
+        )
         assert isinstance(node, mim.Def)
         assert isinstance(node.world(), mim.World)  # a bound method round-trips
 

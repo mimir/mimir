@@ -112,6 +112,13 @@ axm ret_wrap: Phase;
 ///
 axm scalarize: Phase;
 ///
+/// ### single_elim
+///
+/// Eliminates all singleton types so that none reaches a backend (mim::SingleElim).
+/// Within a Sigma the component is dropped; elsewhere `«e»` degrades to `[]` and `‹e›` to `()`.
+///
+axm single_elim: Phase;
+///
 /// ### static_arg_opt
 ///
 /// Drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).

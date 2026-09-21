@@ -888,12 +888,21 @@ const Def* World::match(Defs ops_) {
     return unify<Match>(type, ops);
 }
 
-const Def* World::uniq(const Def* inhabitant) {
-    inhabitant = inhabitant->zonk();
-    // A singleton type sits one level above its inhabitant, so the top of the hierarchy has none.
-    auto t = inhabitant->unfold_type();
-    if (auto tt = t ? t->unfold_type() : nullptr) return unify<Uniq>(tt, inhabitant);
-    inhabitant->blame("`{}` is too high in the universe hierarchy to inhabit a singleton type", inhabitant).bail();
+const Def* World::single(const Def* op) {
+    op = op->zonk();
+    if (auto t = op->unfold_type())
+        if (auto tt = t->unfold_type()) return unify<Single>(tt, op);
+    op->blame("operand is too high in the universe hierarchy to inhabit a singleton type")
+        .n("a singleton type sits one level above its inhabitant, and nothing sits above `Univ`")
+        .bail();
+}
+
+const Def* World::wrap(const Def* op) { return unify<Wrap>(single(op), op); }
+
+const Def* World::unwrap(const Def* op) {
+    op = op->zonk();
+    if (auto single = op->isa_type<Single>()) return single->op();
+    op->blame("operand of a singleton elimination is of type `{}` but must be of singleton type", type_of(op)).bail();
 }
 
 Sym World::append_suffix(Sym symbol, std::string suffix) {
