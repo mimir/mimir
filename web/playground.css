@@ -100,6 +100,20 @@ main {
 #editor { border-right: 1px solid var(--border); }
 
 #editor .cm-editor { flex: 1; min-height: 0; }
+#editor .cm-editor.cm-focused { outline: none; }
+
+/* CodeMirror's base theme is light-only, so the page's palette has to override it. */
+#editor .cm-gutters {
+    background: var(--panel);
+    color: var(--fg90);
+    border-right: 1px solid var(--border);
+}
+
+#editor .cm-activeLineGutter { background: rgba(127, 127, 127, .18); color: var(--fg); }
+#editor .cm-activeLine { background: rgba(127, 127, 127, .08); }
+#editor .cm-cursor { border-left-color: var(--fg); }
+#editor .cm-selectionBackground,
+#editor .cm-content ::selection { background: rgba(127, 127, 127, .35); }
 
 /* Mirrors `#tabs` so both columns start at the same height. */
 #editor-bar {
