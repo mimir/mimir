@@ -1,12 +1,15 @@
 // RUN: %mim %s
 // RUN: %mim -p ll %s
-
-/// A guided tour of Mim's surface syntax; the sections follow @ref langref.
-/*
-    Every `refly.struc.e` below is a *static* assertion, checked while the graph is
-    built - so this file compiling at all is what tests it.
-*/
-
+//------------------------------------------------------------------------------
+// Tutorial
+//------------------------------------------------------------------------------
+// A guided tour of Mim's syntax; the sections follow [Mim language Reference](https://mimir.github.io/langref.html).
+//
+// @note:
+// - MimIR is a compiler intermediate representation.
+//   Mim is a lightweight textual interface for MimIR and not a full-featured programming language.
+// - Every `refly.struc.e` below is a *static* assertion, checked while the graph is built.
+//   So this file compiling at all is what tests it.
 //------------------------------------------------------------------------------
 // Files, imports, and modules
 //------------------------------------------------------------------------------
@@ -228,13 +231,14 @@ mod rewrites {
     rule dbl (a: Nat): (a + a) => (a * 2);              // a rewrite rule
     norm zro (a: Nat): (a * 0) when (a == a) => 0;      // its normalizing variant
 }
+// @note first-class rules are WIP and you can't really do anything useful with them yet.
 
 //------------------------------------------------------------------------------
 // The finale: `extern` declarations the ll backend can emit
 //------------------------------------------------------------------------------
 
 // A bodyless `extern` forward-declares a function living in a native translation unit.
-extern con println_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con println_i32 [mem.M 0, I32, Cn [mem.M 0]];
 
 // `let` rebinding is what keeps state-threading code readable.
 // Don't name such a value `mem`: it would shadow the module, and `mem.load` would not resolve.
