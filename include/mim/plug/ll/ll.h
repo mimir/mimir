@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <deque>
 #include <format>
 #include <fstream>
@@ -273,7 +274,9 @@ private:
 
 inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* type) {
     if (auto arr = type->isa<Arr>()) {
-        if (auto l = Lit::isa(arr->arity())) {
+        // LLVM rounds a vector's store size up to a power of two, so only then does `<n x T>` occupy the
+        // `n * sizeof(T)` bytes that `mem`'s size arithmetic assumes.
+        if (auto l = Lit::isa(arr->arity()); l && std::has_single_bit(*l)) {
             if (arr->body()->isa<Nat>() || Idx::isa(arr->body()) || Axm::isa<math::F>(arr->body()))
                 return std::pair{*l, arr->body()};
         }
@@ -282,6 +285,7 @@ inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* typ
 }
 
 inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(Defs types) {
+    if (!std::has_single_bit(types.size())) return {};
     if (std::ranges::all_of(types, [&](auto i) { return i == types[0]; })) {
         if (types[0]->isa<Nat>() || Idx::isa(types[0]) || Axm::isa<math::F>(types[0]))
             return std::pair{types.size(), types[0]};

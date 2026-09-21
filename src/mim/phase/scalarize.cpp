@@ -6,9 +6,6 @@
 
 namespace mim {
 
-/// Number of params a single `u64` keep-bitmask can represent; wider doms fall back to the ⊤ sentinel.
-static constexpr auto BitmaskWidth = sizeof(u64) * 8;
-
 /// The only Pi%s we ever reshape: immutable (non-dependent) continuations.
 static const Pi* isa_flattenable(const Def* def) {
     if (auto pi = Pi::isa_cn(def); pi && pi->isa_imm()) return pi;
@@ -20,32 +17,21 @@ static const Pi* isa_flattenable(const Def* def) {
  */
 
 bool Scalarize::Analysis::kept(const Pi* pi, size_t dom) const {
-    auto abstr = lattice(pi);
-    if (!abstr) return false;
-    // Too wide for the u64 bitmask: keep() pins the whole Pi for dom >= 64, so a param this wide
-    // can only survive as a u64 entry if it was never recorded - conservatively treat it as kept.
-    if (dom >= BitmaskWidth) return true;
-    if (auto mask = Lit::isa<u64>(abstr)) return (*mask >> dom) & 1; // per-param bitmask
-    return true;                                                     // ⊤ sentinel: whole Pi pinned
+    if (is_top(pi)) return true; // whole Pi pinned
+    auto i = keeps_.find(pi);
+    return i != keeps_.end() && i->second.test(dom);
 }
 
 void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
     // Out of the thresholded arity: plan() only iterates [0, num_tdoms), so such a parameter is never a
     // split candidate anyway - nothing to record.
     if (dom >= pi->num_tdoms()) return;
-    auto cur = lattice(pi);
-    if (cur && !Lit::isa<u64>(cur)) return; // already ⊤ - monotone, do not downgrade
-    // Too wide for the u64 bitmask (only with an unusually large scalarize threshold): conservatively pin
-    // the whole Pi rather than risk splitting a dynamically-indexed parameter.
-    if (dom >= BitmaskWidth) {
-        pin(pi);
-    } else {
-        auto mask = cur ? Lit::as<u64>(cur) : u64(0);
-        auto next = mask | (u64(1) << dom);
-        if (next == mask) return;
-        lattice_force(pi, world().lit_nat(next));
-        log().d("keep {}#{}", pi, dom);
-    }
+    if (is_top(pi)) return; // already ⊤ - monotone, do not downgrade
+    auto& mask = keeps_[pi];
+    if (mask.test(dom)) return;
+    mask.set(dom);
+    log().d("keep {}#{}", pi, dom);
+    touch();
 }
 
 /// Collects @p def%'s immutable subtree into @p set; stops at mutables.
@@ -119,8 +105,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
     // An interface Lam (external, annex, or unset declaration) keeps its whole signature:
     // pin everything its type mentions (its ret Pi, callback params, a polymorphic Lam's inner Cn, ...) -
     // other code (plugin phases, foreign callers) builds against these shapes.
-    // Only the interface's own (top-level) Pi stays flattenable: it may be shared with internal values
-    // (Scalarize::rewrite_mut_Lam preserves the interface's top level by hand).
+    // Only the interface's own (top-level) Pi stays flattenable: it may be shared with internal values.
     if (auto lam = def->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
         auto visited = DefSet();
         visited.emplace(lam->type());
@@ -226,18 +211,11 @@ const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     auto mask = is_bootstrapping() ? fe::Bitset() : analysis_.plan(old->type());
     if (mask.none()) return RWPhase::rewrite_mut_Lam(old);
 
-    if (!isa_optimizable(old)) {
-        // An interface Lam's signature is ABI: rebuild its Pi via the generic hook -
-        // top-level shape preserved, inner types still flattened - instead of rewrite(),
-        // which would hand back the flattened Pi.
-        auto pi = RWPhase::rewrite_imm_Pi(old->type())->as<Pi>();
-        return rewrite_stub(old, new_world().mut_lam(pi));
-    }
-
     auto& w  = new_world();
     auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
     log().d("scalarize {}: {} → {}: {}", old, old->type(), sca, sca->type());
     map(old, sca);
+    if (!old->is_set()) return sca; // a foreign declaration has no var uses to rewire
 
     // reassemble the old var one level from the fresh scalar vars
     auto n      = old->num_tvars();
@@ -273,13 +251,9 @@ DefVec Scalarize::flatten_args(const App* app, const fe::Bitset& mask) {
 }
 
 const Def* Scalarize::rewrite_imm_App(const App* app) {
-    if (!is_bootstrapping()) {
-        // A direct call to an interface Lam keeps its argument shape - the callee's signature stays put.
-        auto lam = app->callee()->isa_mut<Lam>();
-        if (!lam || isa_optimizable(lam))
-            if (auto mask = analysis_.plan(app->callee_type()); mask.any())
-                return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
-    }
+    if (!is_bootstrapping())
+        if (auto mask = analysis_.plan(app->callee_type()); mask.any())
+            return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
 
     return RWPhase::rewrite_imm_App(app);
 }

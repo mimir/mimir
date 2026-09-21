@@ -264,6 +264,19 @@ protected:
     /// Use this when a lattice change must re-visit *other* mutables than curr_mut() -
     /// e.g. all call sites of a Lam whose var's abstract value changed.
     void taint(Def* mut) { dirty_.emplace(mut); }
+
+    /// Observable analysis information changed: records curr_mut() as *dirty* - the seed set of the next sparse
+    /// round - and invalidate()s. Outside of any mutable (annex walk, finalize()) the change cannot be
+    /// attributed to a mutable; then the next round falls back to a full one.
+    /// The lattice writes above do this for you; call it directly when a subclass keeps facts of its own.
+    void touch() {
+        ++version_;
+        if (auto mut = curr_mut())
+            dirty_.emplace(mut);
+        else
+            nonlocal_ = true;
+        invalidate();
+    }
     ///@}
 
     /// @name Rewrite
@@ -302,18 +315,6 @@ private:
     /// The tail of repr() past its first two links: chases @p slow and @p fast until the chain ends or they
     /// meet in a cycle, whose minimum-gid member is its (entry-independent) representative.
     const Def* repr_(const Def* slow, const Def* fast) const;
-
-    /// Observable lattice information changed: records curr_mut() as *dirty* - the seed set of the next sparse
-    /// round - and invalidate()s. Outside of any mutable (annex walk, finalize()) the change cannot be
-    /// attributed to a mutable; then the next round falls back to a full one.
-    void touch() {
-        ++version_;
-        if (auto mut = curr_mut())
-            dirty_.emplace(mut);
-        else
-            nonlocal_ = true;
-        invalidate();
-    }
 
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
