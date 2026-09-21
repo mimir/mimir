@@ -708,14 +708,23 @@ public:
     ///@}
 
     /// @name dump
-    /// @note While this output uses Mim syntax, it does usually **not** produce programs that can be read back.
-    /// It uses an unscheduled visiting algorithm, and is only meant for debugging purposes.
+    /// The output uses Mim syntax and - decls aside - reads back again.
     ///@{
-    void dump() const;
-    void dump(int max) const;
-    void write(int max) const;
-    void write(int max, const char* file) const;
-    std::ostream& stream(std::ostream&, int max) const;
+    /// How much of a Def's context a dump reproduces.
+    /// Def::dump is what you reach for in a debugger, so the cheap modes come first: Dump::Expr and Dump::Local
+    /// only walk Def::deps, while the others ask for free Var%s to find out where a Def belongs.
+    enum class Dump {
+        Expr,  ///< Only this Def; whatever does not inline is referenced by its name.
+        Local, ///< Its operands as `let`s as well - but stops at every other mutable.
+        Scope, ///< Plus the mutables that live in this Def's scope.
+        All,   ///< Plus everything else that is reachable.
+    };
+
+    void dump() const; ///< Dump::Expr - one line, no analysis.
+    void dump(Dump) const;
+    void write(Dump) const;
+    void write(Dump, const char* file) const;
+    std::ostream& stream(std::ostream&, Dump) const;
     ///@}
 
     /// @name Syntactic Comparison
@@ -1147,6 +1156,22 @@ inline auto type_of(const Def* def) {
         if (auto t = def->unfold_type()) return os << t;
         return os << "<no type>";
     }};
+}
+
+/// Appends the mutables reachable from @p mut via Def::deps / Def::local_muts to @p res in post-order: callees
+/// first, so a name is always bound before its uses.
+/// @p descend picks the mutables to walk through, @p collect those that land in @p res.
+/// @p done is passed in so that several roots share one traversal.
+template<class Descend, class Collect>
+void post_order(Def* mut, MutSet& done, fe::Vector<Def*>& res, Descend descend, Collect collect) {
+    if (!done.emplace(mut).second) return;
+
+    if (descend(mut))
+        for (auto op : mut->deps())
+            for (auto local_mut : op->local_muts())
+                post_order(local_mut, done, res, descend, collect);
+
+    if (collect(mut)) res.emplace_back(mut);
 }
 
 } // namespace mim

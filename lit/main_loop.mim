@@ -3,7 +3,6 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 0
 // RUN: %t 1 2 3 ; test $? -eq 6
-
 plugin core;
 plugin mem;
 

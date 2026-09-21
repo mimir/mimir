@@ -6,4 +6,4 @@ plugin core;
 extern con and_ff (i: Bool, return: Cn Bool) =
     return (core.bit2.and_ 0 (i, ff));
 
-// CHECK-DAG: return_{{[0-9_]+}} ff
+// CHECK-DAG: return ff

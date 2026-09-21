@@ -3,6 +3,8 @@
 [TOC]
 
 This page is the reference for Mim surface syntax.
+Every construct it defines also appears in `lit/docs/tutorial.mim`, one annotated file that tours the whole surface syntax and asserts what it shows with [refly](@ref refly), so the test suite keeps it honest.
+It is the [playground](@ref playground)'s landing example - open it there to run and edit the tour in the browser.
 
 ## Notation
 

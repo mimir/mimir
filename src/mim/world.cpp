@@ -9,7 +9,6 @@
 #include "mim/def.h"
 #include "mim/driver.h"
 #include "mim/rewrite.h"
-#include "mim/schedule.h"
 #include "mim/tuple.h"
 
 #include "mim/util/gid.h"
@@ -588,7 +587,12 @@ const Def* World::extract1(const Def* d, const Def* index) {
 
         if (auto sigma = type->isa<Sigma>()) {
             if (auto var = sigma->has_var()) {
-                if (is_frozen()) return nullptr; // if frozen, we don't risk rewriting
+                if (d == var) return unify<Extract>(sigma->op(*lidx), d, index); // `var -> var` is the identity
+                // Frozen, only an already cached reduct can be replayed - rewriting would create nodes.
+                if (is_frozen()) {
+                    auto t = cached_reduct(var, d, *lidx);
+                    return t ? unify<Extract>(t, d, index) : nullptr;
+                }
                 return unify<Extract>(reduce(var, d, *lidx), d, index);
             }
 
@@ -931,6 +935,12 @@ Defs World::reduce(const Var* var, const Def* arg) {
     return reduct->ops();
 }
 
+const Def* World::cached_reduct(const Var* var, const Def* arg, size_t i) {
+    if (auto it = move_.substs.find(std::pair{var, arg}); it != move_.substs.end())
+        if (auto slot = it->second->ops()[i]; slot != Filling) return slot;
+    return nullptr;
+}
+
 const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
     auto mut = var->binder();
     auto off = mut->reduction_offset();
@@ -951,33 +961,30 @@ const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
 }
 
 void World::for_each(bool elide_empty, std::function<void(Def*)> f, bool schedule /* = false */) {
-    fe::BFSWorklist<MutSet> queue;
-    for (auto mut : externals().muts())
-        queue.push(mut);
-
+    auto keep = [elide_empty](Def* mut) { return mut->is_closed() && (!elide_empty || mut->is_set()); };
     auto muts = fe::Vector<Def*>();
-    while (!queue.empty()) {
-        auto mut = queue.pop();
-        if (mut->is_closed() && (!elide_empty || mut->is_set())) muts.emplace_back(mut);
 
-        for (auto op : mut->deps())
-            for (auto local_mut : op->local_muts())
-                queue.push(local_mut);
-    }
-
-    // Schedules the mutables in post-order to ensure that they
-    // are emitted in the correct order of dependencies.
     if (schedule) {
-        const auto mut_nest = Nest(muts);
-        auto schedule       = Scheduler::schedule(mut_nest) | std::views::reverse | std::views::filter([&](Def* mut) {
-                            return mut->is_closed() && (!elide_empty || mut->is_set());
-                        });
-        for (auto* mut : schedule)
-            f(mut);
+        auto done = MutSet();
+        for (auto mut : externals().muts())
+            post_order(mut, done, muts, [](Def*) { return true; }, keep);
     } else {
-        for (auto* mut : muts)
-            f(mut);
+        auto queue = fe::BFSWorklist<MutSet>();
+        for (auto mut : externals().muts())
+            queue.push(mut);
+
+        while (!queue.empty()) {
+            auto mut = queue.pop();
+            if (keep(mut)) muts.emplace_back(mut);
+
+            for (auto op : mut->deps())
+                for (auto local_mut : op->local_muts())
+                    queue.push(local_mut);
+        }
     }
+
+    for (auto mut : muts)
+        f(mut);
 }
 
 /*

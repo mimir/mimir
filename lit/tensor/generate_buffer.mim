@@ -2,10 +2,10 @@
 
 // Generate allocates one output buffer and fills it in place inside
 // the generated loop nest.
-// CHECK-LABEL: extern fun generate2d
-// CHECK-COUNT-1: buffer.alloc
-// CHECK: affine.For
-// CHECK: buffer.write
+// CHECK-DAG: extern con generate2d
+// CHECK-DAG: buffer.alloc
+// CHECK-DAG: affine.For
+// CHECK-DAG: buffer.write
 
 plugin mem;
 plugin core;

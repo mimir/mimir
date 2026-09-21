@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
             .opt(opts.outs[H].name()       , "file"      , ""  , "--output-h"            , "Emits a header file to be used to interface with a plugin in C++.")
             .opt(opts.outs[Md].name()      , "file"      , ""  , "--output-md"           , "Emits the input formatted as Markdown.")
             .opt(opts.outs[Mim].name()     , "file"      , "-o", "--output-mim"          , "Emits the Mim program again.")
-            .opt(flags.dump_recursive      , ""          , ""  , "--dump-recursive"      , "Dumps the Mim program with a simple recursive algorithm; the result is not readable again but works for broken programs.")
+            .opt(flags.dump_local          , ""          , ""  , "--dump-local"          , "Dumps each mutable as its own flat block without scheduling; the result does not read back but works for broken programs.")
             .opt(opts.outs[NestDot].name() , "file"      , ""  , "--output-nest"         , "Emits the program's nesting tree using Graphviz' DOT language.")
             .opt(opts.outs[PY].name()      , "file"      , ""  , "--output-py"           , "Emits a Python enum to be used to interface with a plugin in Python.")
             .opt(opts.outs[SExpr].name()   , "file"      , ""  , "--output-sexpr"        , "Emits the program as symbolic expression.")

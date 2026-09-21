@@ -145,7 +145,7 @@ TEST_CASE("Axm: curry and trip") {
         CHECK(a3->as<App>()->curry() == 0);
 
         std::ostringstream os;
-        a3->stream(os, 0);
+        a3->stream(os, Def::Dump::Expr);
         CHECK(os.str() == "test_5_3 0 1 2 3 42 5 6 42 8 9 42\n");
     }
 
@@ -167,7 +167,7 @@ TEST_CASE("Axm: curry and trip") {
         CHECK(a3->as<App>()->curry() == 0);
 
         std::ostringstream os;
-        a3->stream(os, 0);
+        a3->stream(os, Def::Dump::Expr);
         CHECK(os.str() == "test_1_1 42 42 42\n");
     }
 
@@ -185,7 +185,7 @@ TEST_CASE("Axm: curry and trip") {
         CHECK(a2->as<App>()->curry() == Axm::Trip_End);
 
         std::ostringstream os;
-        a2->stream(os, 0);
+        a2->stream(os, Def::Dump::Expr);
         CHECK(os.str() == "test_3_0 0 1 42 3\n");
     }
 }

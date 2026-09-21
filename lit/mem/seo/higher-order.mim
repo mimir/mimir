@@ -1,5 +1,4 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
-
 plugin mem;
 plugin core;
 
@@ -8,7 +7,7 @@ use core.ops.n;
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 extern fun take_addr[m: mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
 
-let H = Fn [mem.M 0, Nat] →  [mem.M 0, Nat];
+let H = Fn [mem.M 0, Nat] → [mem.M 0, Nat];
 
 fun h (m: mem.M 0, n: Nat): [mem.M 0, Nat] =
     return (m, n * n);

@@ -213,6 +213,8 @@ public:
     }
 
     /// A tooltip is plain text - markup would show up verbatim in xdot and in the browser alike.
+    /// Streaming a Def is Def::Dump::Expr - one line, no analysis.
+    /// Keep it that way: this output is the fallback for when a Nest-based dump dies on a broken World.
     void tooltip(const Def* def) {
         if (cfg_.no_tooltip) return;
 

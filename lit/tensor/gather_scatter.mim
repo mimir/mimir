@@ -4,7 +4,7 @@
 // reads and writes. Their element formulas remain visible as plain extracts and inserts.
 // CHECK-DAG: extern fun gather2d
 // CHECK-DAG: extern fun scatter2d
-// CHECK-DAG: core.bitcast (Idx 3) I64
+// CHECK-DAG: core.bitcast @ (Idx 3) I64
 // CHECK-DAG: ←
 
 plugin core;
