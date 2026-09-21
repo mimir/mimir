@@ -6,10 +6,10 @@ const status = $('status');
 // Written by web/CMakeLists.txt from the list that stages the examples.
 const EXAMPLES = await fetch('examples/index.json').then(r => r.json());
 
-// The `RUN:` line makes these lit tests; it is noise in the editor.
+// The `RUN:`/`CHECK:` lines make these lit tests; they are noise in the editor.
 const example = name => fetch(`examples/${name}.mim`)
     .then(r => r.text())
-    .then(text => text.replace(/^\/\/ RUN:.*\n/gm, ''));
+    .then(text => text.replace(/^\/\/ (RUN|CHECK[\w-]*):.*\n/gm, '').trim() + '\n');
 
 // Only terminate() stops a wasm loop that never returns, and only a Worker can be terminated.
 const LOAD_TIMEOUT = 60_000; // the first run also pays for the 2.4MB download
