@@ -91,8 +91,10 @@ extern lam _default_compile (): compile.Phase =
 
         compile.lam_spec, // replace with lam-lifting
 
-        // CodeGenPrep
-        compile.single_elim,
+        // type legalization
+        compile.single_erasure,
+
+        //  prepare codegen
         optimize,
         compile.branch_normalize,
         compile.ret_wrap,

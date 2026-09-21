@@ -8,9 +8,9 @@ plugin mem;
 
 use core.ops.u.w;
 
-// The singleton vanishes from the domain, so `c` arrives one index further left.
-extern fun pick ((_: I32, _: «23», c: I32, _: I8)): I32 = return c;
+// Every component without information vanishes from the domain, so `c` arrives further left.
+extern fun pick ((_: I32, _: «23», _: [], _: Idx 1, c: I32, _: I8)): I32 = return c;
 // CHECK: define i32 @pick(i32 %{{.*}}, i32 %{{.*}}, i8 %{{.*}})
 
 extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
-    pick ((13I32, ‹23›, argc + 41I32, 0I8), return);
+    pick ((13I32, ‹23›, (), 0₁, argc + 41I32, 0I8), return);

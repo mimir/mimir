@@ -112,12 +112,13 @@ axm ret_wrap: Phase;
 ///
 axm scalarize: Phase;
 ///
-/// ### single_elim
+/// ### single_erasure
 ///
-/// Eliminates all singleton types so that none reaches a backend (mim::SingleElim).
-/// Within a Sigma the component is dropped; elsewhere `«e»` degrades to `[]` and `‹e›` to `()`.
+/// Eliminates all types with exactly one inhabitant so that none reaches a backend (mim::SingleErasure).
+/// Within an aggregate the component is dropped; elsewhere `«e»` degrades to `[]` and `‹e›` to `()`.
+/// Besides `«e»` this also catches `[]` and `Idx 1`.
 ///
-axm single_elim: Phase;
+axm single_erasure: Phase;
 ///
 /// ### static_arg_opt
 ///

@@ -265,18 +265,31 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
 
 const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     map(old_mut, new_mut);
+    if (!old_mut->is_set()) return new_mut;
 
-    if (old_mut->is_set()) {
-        auto _ = enter(old_mut);
-        for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
-            new_mut->set(i, rewrite(old_mut->op(i)));
+    auto _ = enter(old_mut);
+    for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
+        new_mut->set(i, rewrite(old_mut->op(i)));
 
-        // Immutabilize the *new* binder in hindsight:
-        // even when the old binder was not immutabilizable, rewriting may have made it vacuous.
-        if (new_mut->is_immutabilizable())
-            if (auto new_imm = new_mut->immutabilize()) return map(old_mut, new_imm);
-    }
+    return seal_stub(old_mut, new_mut);
+}
 
+const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut, fe::View<size_t> new2old) {
+    assert(new_mut->num_ops() == new2old.size());
+    map(old_mut, new_mut);
+    if (!old_mut->is_set()) return new_mut;
+
+    auto _ = enter(old_mut);
+    for (size_t i = 0, e = new2old.size(); i != e; ++i)
+        new_mut->set(i, rewrite(old_mut->op(new2old[i])));
+
+    return seal_stub(old_mut, new_mut);
+}
+
+const Def* Rewriter::seal_stub(Def* old_mut, Def* new_mut) {
+    // Even when the old binder was not immutabilizable, rewriting may have made the new one vacuous.
+    if (new_mut->is_immutabilizable())
+        if (auto new_imm = new_mut->immutabilize()) return map(old_mut, new_imm);
     return new_mut;
 }
 

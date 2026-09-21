@@ -63,6 +63,38 @@ This is the common pattern when rewriting dependent codomains under fresh variab
 
 If a rewrite replaces an external mutable with a fresh one, preserve the root explicitly by calling [`mim::Def::transfer_external`](@ref mim::Def::transfer_external) or re-externalizing the replacement node.
 
+### Reshaping Aggregates
+
+A rewrite that changes a mutable's *number* of ops - dropping components of a [`Sigma`](@ref mim::Sigma), say - cannot use the plain [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub): that one rewrites `old->op(i)` into `new->op(i)` for every `i`.
+The overload [`rewrite_stub(old, new, new2old)`](@ref mim::Rewriter::rewrite_stub) spells out the op indices instead: `new->op(i)` is rewritten from `old->op(new2old[i])`.
+Everything else stays the same - mapping the stub before descending into it, entering its scope, and immutabilizing the result in hindsight.
+If you fill a stub entirely by hand, [`seal_stub`](@ref mim::Rewriter::seal_stub) is that last step on its own.
+
+[`Sieve`](@ref mim::Sieve) computes such an index list from a predicate over the old components:
+
+```cpp
+auto keep = mim::Sieve(old_sigma->ops(), [](const Def* op) { return !is_gone(op); });
+if (keep.all()) return RWPhase::rewrite_mut_Sigma(old_sigma);
+
+auto new_sigma = new_world().mut_sigma(rewrite(old_sigma->type()), keep.size());
+return rewrite_stub(old_sigma, new_sigma, keep.new2old());
+```
+
+For an immutable aggregate, [`Sieve::gather`](@ref mim::Sieve::gather) picks the surviving ops directly.
+
+Dropping a component shifts the indices of its successors, so every [`Extract`](@ref mim::Extract) and [`Insert`](@ref mim::Insert) into that aggregate needs its index adjusted.
+This is what `keep[i]` answers - or [`Sieve::Gone`](@ref mim::Sieve::Gone), if that component did not survive:
+
+```cpp
+auto new_index = keep[mim::Lit::as(extract->index())];
+```
+
+@note Only a [`Sigma`](@ref mim::Sigma) ever needs this.
+An [`Arr`](@ref mim::Arr)'s components all share one type, so it is dropped as a whole, and `World::extract_fused` splits a fused index at the `Arr` boundary - which leaves a `Sigma`'s index scalar.
+
+@warning Dropping decides *per type def*, so it must not tear apart an edge where two distinct defs meet: an [`App`](@ref mim::App) connecting a dependent dom with its instance (`[n: Nat, «n; *»]` vs `[Nat, []]`), or an [`Axm`](@ref mim::Axm) application, whose shapes are re-derived from the `Axm`'s generic type instead of being rewritten.
+Pin such aggregates in an [`Analysis`](@ref mim::Analysis) first; [`SingleErasure`](@ref mim::SingleErasure) does exactly that.
+
 ### Preserving Metadata
 
 Most rebuilds preserve debug metadata explicitly.

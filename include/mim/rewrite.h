@@ -73,6 +73,10 @@ public:
     virtual const Def* rewrite_imm(const Def*);
     virtual const Def* rewrite_mut(Def*);
     virtual const Def* rewrite_stub(Def*, Def*);
+    /// Like above, but @p new_mut may have a *different* number of ops than @p old_mut:
+    /// `new_mut->op(i)` is rewritten from `old_mut->op(new2old[i])`.
+    /// This is what a Phase needs that reshapes an aggregate; @see Sieve.
+    const Def* rewrite_stub(Def* old_mut, Def* new_mut, fe::View<size_t> new2old);
     virtual DefVec rewrite(Defs);
 
 #define CODE_IMM(N) virtual const Def* rewrite_imm_##N(const N*);
@@ -107,6 +111,10 @@ protected:
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
+
+    /// The tail of rewrite_stub: immutabilizes @p new_mut in hindsight, as rewriting may have made it vacuous.
+    /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
+    const Def* seal_stub(Def* old_mut, Def* new_mut);
 };
 
 /// Extends Rewriter for variable substitution.
