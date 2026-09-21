@@ -385,6 +385,8 @@ public:
         return l && l != def ? l : nullptr;
     }
 
+    bool is_top(const Def* def) const { return analysis_->is_top(def); }
+
     /// Runs the optional pre-analysis on Phase::world, typically to a fixed point, before rewriting begins.
     ///
     /// If analysis() is set, this is the natural place to iterate until Phase::todo() becomes `false`.

@@ -8,7 +8,7 @@ const Def* SCCP::rewrite_imm_App(const App* old_app) {
             invalidate();
 
             auto old_vars = old_lam->tvars();
-            auto keep     = Sieve(old_vars, [this](const Def* var) { return lattice(var) == var; });
+            auto keep     = Sieve(old_vars, [this](const Def* var) { return is_top(var); });
 
             Lam* new_lam;
             if (auto i = lam2lam_.find(old_lam); i != lam2lam_.end())
