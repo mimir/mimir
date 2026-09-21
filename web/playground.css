@@ -256,6 +256,10 @@ main {
 }
 
 #graph-nav button:hover { opacity: 1; }
+#graph-nav button svg { display: block; width: 14px; height: 14px; fill: currentColor; }
+
+/* `graph.html` is the graph pane alone, so the body is what `#graph-nav` anchors to. */
+body.popout { position: relative; }
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
 #graph svg { display: block; width: 100%; height: 100%; }

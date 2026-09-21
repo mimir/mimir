@@ -34,7 +34,7 @@ function(mim_stage_playground SRC DST)
     set(PLAYGROUND_STAGED ${PLAYGROUND_STAGED} ${PLAYGROUND_DIR}/${DST} PARENT_SCOPE)
 endfunction()
 
-foreach(FILE IN ITEMS index.html playground.css playground.js mim-worker.js)
+foreach(FILE IN ITEMS index.html graph.html playground.css playground.js graphview.js popout.js mim-worker.js)
     mim_stage_playground(${CMAKE_CURRENT_LIST_DIR}/${FILE} ${FILE})
 endforeach()
 

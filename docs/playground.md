@@ -9,8 +9,11 @@ A build of the current `master` is live at <https://mimir.github.io/playground/>
 | File                 | Role                                                                                              |
 | -------------------- | ------------------------------------------------------------------------------------------------- |
 | `index.html`         | The page: editor on the left, tabbed output on the right.                                         |
+| `graph.html`         | The pop-out window: the graph, and nothing else.                                                  |
 | `playground.css`     | Styling, including the light/dark palette and the log's terminal colors.                          |
 | `playground.js`      | Editor, tabs, run loop, Graphviz layout.                                                          |
+| `graphview.js`       | Pan, zoom and highlight over a laid-out graph; the **Graph** tab and the pop-out share one.        |
+| `popout.js`          | The pop-out's glue: it renders the SVG the page sends over.                                       |
 | `mim-worker.js`      | Runs `mim` in a Worker, so a program that never terminates can be killed.                         |
 | `code.js`            | `docs/code.js`, staged; the lexer machinery the page and the docs share.                          |
 | `mim-code.js`        | `docs/mim.js`, staged; the Mim lexer, renamed out of Emscripten's `mim.js` way.                   |
@@ -116,6 +119,9 @@ A re-run keeps the current view: the editor recompiles on every pause in typing,
 
 Hovering a node dims everything but that node, its direct neighbours and the edges between them; a click pins that focus, and a click elsewhere or `Esc` releases it.
 The highlight paints detached edges too, so it shows per node what _hidden edges_ shows for the whole graph — without a recompile.
+
+The button left of the zoom controls opens the graph in a window of its own, with the same controls and nothing else.
+The page lays the DOT out and sends the SVG over, so the pop-out needs neither Graphviz nor the compiler and follows every re-run — including while the **Graph** tab itself is down, which leaves the whole page for the editor and the other tabs.
 
 ### Dark mode
 
