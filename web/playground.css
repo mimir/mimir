@@ -121,6 +121,27 @@ main {
 
 #editor-bar button:hover { opacity: 1; }
 
+#editor-bar label {
+    display: flex;
+    gap: .3rem;
+    align-items: center;
+    margin-right: auto;
+    padding: .3rem 0;
+    opacity: .7;
+    font-size: 12.5px;
+}
+
+#editor-bar label:hover { opacity: 1; }
+
+#editor .cm-vim-panel {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--panel);
+    color: var(--fg);
+}
+
+#editor .cm-vim-panel input { color: var(--fg); }
+
 #editor textarea {
     flex: 1;
     border: 0;

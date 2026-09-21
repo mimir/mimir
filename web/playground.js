@@ -340,6 +340,7 @@ function select(pane) {
 }
 
 let editor = null; // CodeMirror, if it loads; the <textarea> is the fallback
+let viSlot = null; // the compartment the vi keymap is swapped in and out of
 const getSource = () => editor ? editor.state.doc.toString() : $('source').value;
 
 function setSource(text) {
@@ -353,12 +354,14 @@ async function setupEditor(initial) {
     $('source').value = initial;
     try {
         const cdn = 'https://esm.sh/@codemirror/';
-        const [view, language, commands] = await Promise.all(
-            ['view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg)));
+        const [state, view, language, commands] = await Promise.all(
+            ['state@6', 'view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg)));
 
+        viSlot = new state.Compartment();
         editor = new view.EditorView({
             doc: initial,
             extensions: [
+                viSlot.of([]), // vi rebinds Esc and the printable keys, so it has to outrank the keymaps below
                 view.lineNumbers(),
                 view.highlightActiveLine(),
                 view.drawSelection(),
@@ -374,6 +377,27 @@ async function setupEditor(initial) {
     } catch (e) {
         console.warn('CodeMirror unavailable, falling back to a plain textarea:', e);
         $('source').addEventListener('input', schedule);
+        $('vi').closest('label').remove();
+    }
+}
+
+const VI_KEY = 'mim-playground-vi';
+let vi = null; // @replit/codemirror-vim, fetched when the box is first ticked
+
+async function toggleVi() {
+    const on = $('vi').checked;
+    localStorage.setItem(VI_KEY, on ? '1' : '');
+    if (!viSlot) return;
+    try {
+        if (on && !vi) {
+            vi = await import('https://esm.sh/@replit/codemirror-vim@6');
+            vi.Vim.defineEx('write', 'w', run);
+        }
+        editor.dispatch({ effects: viSlot.reconfigure(on ? vi.vim({ status: true }) : []) });
+        editor.focus();
+    } catch (e) {
+        console.warn('vi mode unavailable:', e);
+        $('vi').checked = false;
     }
 }
 
@@ -446,6 +470,8 @@ for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
 picker.onchange = async () => { setSource(picker.value ? await example(picker.value) : custom); run(); };
 $('run').onclick = () => { if (running) { queued = false; abort('stopped'); } else run(); };
 $('share').onclick = share;
+$('vi').checked = localStorage.getItem(VI_KEY) === '1';
+$('vi').onchange = toggleVi;
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 $('mim-opts').onchange = run;
@@ -482,3 +508,4 @@ new MutationObserver(() => {
 // setupEditor fills the textarea before it awaits, so the first compile starts alongside.
 const initial = custom ?? await example(EXAMPLES[0]);
 await Promise.all([setupEditor(initial), run()]);
+if (editor && $('vi').checked) await toggleVi();
