@@ -2,14 +2,14 @@
 ///
 /// @see mim::plug::demo
 ///
-/// A minimal demo plugin
+/// A minimal demo plugin.
 ///
 /// [TOC]
 ///
 /// ## Operations
 ///
-/// ### %%demo.const_idx
+/// ### const_idx
 ///
-/// The 42 constant, evaluated using a normalizer
+/// The constant `42`, evaluated by a normalizer.
 ///
-axm %demo.const_idx: [n: Nat] → Idx n, normalize_const;
+axm const_idx: [n: Nat] → Idx n, normalize_const;

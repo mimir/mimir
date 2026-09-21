@@ -1,0 +1,44 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+// Minimal SEO promotion test that is independent of any escape/post-analysis handling: a single stack slot
+// is initialized to 42 and incremented once per loop iteration; `exit` returns it. The returned value is
+// loop-carried (42, 43, 44, ...), so it must be threaded through the loop-header phi and NOT collapsed to
+// the entry constant 42.
+//
+// Regression: the loop-header slot correctly bundles into a phi, but that phi crosses the `#cond` mux (an
+// unknown edge) into `body`/`exit`. This exercises the unknown-edge phi propagation that upgrades a value
+// seen in an earlier fixed-point iteration (42) to a phi living in another block.
+
+plugin core;
+plugin mem;
+
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+
+extern fun test(m: mem.M 0): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot (Nat, 0) $ m;
+    let m      = mem.store (m, p, 42);
+
+    head (m, p) where
+        con head(m: mem.M 0, p: mem.Ptr0 Nat) =
+            ret (m, cond) = dont_know $ m;
+
+            (exit, body)#cond m where
+
+                con body(m: mem.M 0) =
+                    let (m, x) = mem.load (m, p);
+                    let x1       = core.nat.add (x, 1);
+                    let m      = mem.store (m, p, x1);
+                    head (m, p);
+
+                con exit(m: mem.M 0) =
+                    let (m, x) = mem.load (m, p);
+                    return (m, x);
+            end
+    end;
+
+// The slot is promoted (no alloca) and the loop-carried return value is threaded through the header phi,
+// never frozen to the entry constant 42.
+// CHECK: define i64 @test()
+// CHECK-NOT: alloca
+// CHECK-NOT: ret i64 42
+// CHECK: ret i64 %

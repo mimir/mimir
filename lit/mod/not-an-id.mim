@@ -1,0 +1,5 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by import_use.mim - not a test of its own.
+
+pub let seven = 7I32;

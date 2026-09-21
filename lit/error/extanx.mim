@@ -1,0 +1,5 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+extern anx lam f (x: Nat): Nat = x;
+
+// CHECK: {{.*}}extanx.mim:3:8-3:10: error: `extern` and `anx` cannot be combined on a function declaration

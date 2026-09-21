@@ -1,6 +1,7 @@
 #include "mim/schedule.h"
 
-#include <queue>
+#include <fe/container.h>
+#include <fe/worklist.h>
 
 #include "mim/world.h"
 
@@ -8,24 +9,19 @@ namespace mim {
 
 Scheduler::Scheduler(const Nest& nest)
     : nest_(&nest) {
-    std::queue<const Def*> queue;
-    DefSet done;
+    auto queue = fe::BFSWorklist<DefSet>();
 
     auto enqueue = [&](const Def* def, size_t i, const Def* op) {
         if (nest.contains(op)) {
-            assert_emplace(def2uses_[op], def, i);
-            if (auto [_, ins] = done.emplace(op); ins) queue.push(op);
+            fe::assert_emplace(def2uses_[op], def, i);
+            queue.push(op);
         }
     };
 
-    for (auto mut : nest.muts()) {
-        queue.push(mut);
-        assert_emplace(done, mut);
-    }
+    queue.push(nest.muts());
 
     while (!queue.empty()) {
-        auto def = queue.front();
-        queue.pop();
+        auto def = queue.pop();
 
         if (!def->is_set()) continue;
 
@@ -42,7 +38,7 @@ Scheduler::Scheduler(const Nest& nest)
 const Nest::Node* Scheduler::early(const Def* def) {
     if (auto i = early_.find(def); i != early_.end()) return i->second;
     if (def->is_closed() || !nest().contains(def)) return early_[def] = nest().root();
-    if (auto var = def->isa<Var>()) return early_[def] = nest()[var->mut()];
+    if (auto var = def->isa<Var>()) return early_[def] = nest()[var->binder()];
 
     auto result = nest().root();
     for (auto op : def->deps()) {
@@ -63,7 +59,7 @@ const Nest::Node* Scheduler::late(Def* curr_mut, const Def* def) {
     if (auto mut = def->isa_mut()) {
         result = nest()[mut];
     } else if (auto var = def->isa<Var>()) {
-        result = nest()[var->mut()];
+        result = nest()[var->binder()];
     } else {
         for (auto use : uses(def)) {
             auto mut = late(curr_mut, use);
@@ -88,7 +84,7 @@ const Nest::Node* Scheduler::smart(Def* curr_mut, const Def* def) {
         i = i->inest();
 
         if (i == nullptr) {
-            world().ELOG("this should never occur - don't know where to put {}", def);
+            world().log().e("no place found for {}", def);
             s = l;
             break;
         }

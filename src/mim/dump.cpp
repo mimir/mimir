@@ -3,12 +3,13 @@
 #include <ranges>
 
 #include <fe/assert.h>
+#include <fe/worklist.h>
 
 #include "mim/driver.h"
 #include "mim/nest.h"
 
+#include "mim/ast/lexer.h"
 #include "mim/ast/tok.h"
-#include "mim/util/util.h"
 
 using namespace std::literals;
 
@@ -31,9 +32,16 @@ Def* isa_decl(const Def* def) {
     return nullptr;
 }
 
+/// Def::unique_name - or the plain Def::sym while a diagnostic is being formatted, where a gid is noise.
+std::string name(const Def* def) {
+    if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
+        return sym.str();
+    return def->unique_name();
+}
+
 std::string id(const Def* def) {
     if (def->is_external() || (!def->is_set() && def->isa<Lam>())) return def->sym().str();
-    return def->unique_name();
+    return name(def);
 }
 
 std::string_view external(const Def* def) {
@@ -47,6 +55,10 @@ using ast::prec_assoc;
 
 Prec def2prec(const Def* def) {
     if (def->isa<Extract>()) return Prec::Extract;
+    if (def->isa<Insert>()) return Prec::Ins;
+    if (def->isa<Join>()) return Prec::Union;
+    if (def->isa<Inj>()) return Prec::Inj;
+    if (def->isa<Reform>()) return Prec::App;
     if (auto pi = def->isa<Pi>(); pi && !Pi::isa_cn(pi)) return Prec::Arrow;
     if (auto app = def->isa<App>()) {
         if (auto size = Idx::isa(app)) {
@@ -79,8 +91,8 @@ public:
     static Op l(const Def* def, Prec prec = Prec::Bot) { return {def, prec, true}; }
     static Op r(const Def* def, Prec prec = Prec::Bot) { return {def, prec, false}; }
 
-    static auto map(const auto& range) {
-        return fe::Join(range | std::views::transform([](auto op) { return Op(op); }));
+    static auto map(const auto& range, const char* sep = ", ", Prec prec = Prec::Bot) {
+        return fe::Join(range | std::views::transform([prec](auto op) { return Op(op, prec); }), sep);
     }
 
     /// @name Getters
@@ -152,20 +164,20 @@ public:
 } // namespace
 } // namespace mim
 
-// clang-format off
+#ifndef DOXYGEN // clang-format off
 template<> struct std::formatter<mim::Op  > : fe::ostream_formatter {};
 template<> struct std::formatter<mim::Dump> : fe::ostream_formatter {};
-// clang-format on
+#endif // clang-format on
 
 namespace mim {
 namespace {
 
 std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
-    if (!def) return os << Op(type);
+    if (!def) return os << std::format("_: {}", Op(type));
 
     auto projs = def->tprojs();
     if (projs.size() == 1 || std::ranges::all_of(projs, [](auto d) { return !d; }))
-        return os << std::format("{}: {}", def->unique_name(), Op(type));
+        return os << std::format("{}: {}", name(def), Op(type));
 
     size_t i = 0;
     os << '(';
@@ -174,7 +186,7 @@ std::ostream& ptrn(std::ostream& os, const Def* def, const Def* type) {
         ptrn(os, proj, type->proj(i++));
         sep = ", ";
     }
-    return os << std::format(") as {}", def->unique_name());
+    return os << std::format(") as {}", name(def));
 }
 
 std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
@@ -182,10 +194,9 @@ std::ostream& bndr(std::ostream& os, const Def* def, const Def* type) {
     return os << std::format("_: {}", Op(type));
 }
 
-std::ostream&
-curry(std::ostream& os, const Def* def, const Def* type, bool implicit, bool paren_style, size_t limit, bool alias) {
-    auto l = implicit ? '{' : paren_style ? '(' : '[';
-    auto r = implicit ? '}' : paren_style ? ')' : ']';
+std::ostream& curry(std::ostream& os, const Def* def, const Def* type, bool implicit, size_t limit, bool alias) {
+    auto l = implicit ? '{' : '(';
+    auto r = implicit ? '}' : ')';
 
     if (limit == 0) return os << l << r;
     if (limit == 1) {
@@ -201,7 +212,7 @@ curry(std::ostream& os, const Def* def, const Def* type, bool implicit, bool par
         sep = ", ";
     }
     os << r;
-    if (alias && def) os << std::format(" as {}", def->unique_name());
+    if (alias && def) os << std::format(" as {}", name(def));
     return os;
 }
 
@@ -230,6 +241,10 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
             if (level == 1) return os << "□";
         }
         return os << std::format("Type {}", Op::r(type->level(), Prec::App));
+    } else if (auto reform = d->isa<Reform>()) {
+        return os << std::format("Rule {}", Op::r(reform->dom(), Prec::App));
+    } else if (d->isa<Univ>()) {
+        return os << "Univ";
     } else if (d->isa<Nat>()) {
         return os << "Nat";
     } else if (d->isa<Idx>()) {
@@ -237,8 +252,7 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto ext = d->isa<Ext>()) {
         return os << std::format("{}:{}", ext->isa<Bot>() ? bot : top, Op::r(ext->type(), Prec::Lit));
     } else if (auto axm = d->isa<Axm>()) {
-        const auto name = axm->sym();
-        return os << std::format("{}{}", name[0] == '%' ? "" : "%", name);
+        return os << axm->sym();
     } else if (auto lit = d->isa<Lit>()) {
         if (lit->type()->isa<Nat>()) {
             // clang-format off
@@ -279,10 +293,18 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
         }
         return os << std::format("{}:{}", lit->get(), Op::r(lit->type(), Prec::Lit));
     } else if (auto ex = d->isa<Extract>()) {
-        if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << ex->unique_name();
+        if (ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()) return os << name(ex);
         return os << std::format("{}#{}", Op::l(ex->tuple(), Prec::Extract), Op::r(ex->index(), Prec::Extract));
+    } else if (auto ins = d->isa<Insert>()) {
+        auto tup = Op::l(ins->tuple(), Prec::Extract);
+        // `←` updates the whole `#`-path, so an Extract target needs parens to re-parse.
+        if (auto ex = ins->tuple()->isa<Extract>(); ex && !(ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()))
+            os << std::format("({})", tup);
+        else
+            os << std::format("{}", tup);
+        return os << std::format("#{} ← {}", Op::r(ins->index(), Prec::Extract), Op::r(ins->value(), Prec::Ins));
     } else if (auto var = d->isa<Var>()) {
-        return os << var->unique_name();
+        return os << name(var);
     } else if (auto [pi, var] = d->isa_binder<Pi>(); pi) {
         auto l = pi->is_implicit() ? '{' : '[';
         auto r = pi->is_implicit() ? '}' : ']';
@@ -340,16 +362,22 @@ std::ostream& operator<<(std::ostream& os, Dump d) {
     } else if (auto pack = d->isa<Pack>()) {
         return os << std::format("{}{}; {}{}", pl, Op(pack->arity()), Op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
-        return os << std::format(".proxy#{}#{} {}", proxy->pass(), proxy->tag(), Op::map(proxy->ops()));
+        return os << std::format("(proxy#{} {})", proxy->tag(), Op::map(proxy->ops()));
     } else if (auto bound = d->isa<Bound>()) {
         auto op = bound->isa<Join>() ? "∪" : "∩"; // TODO ascii
-        if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, mut->unique_name(), Op(mut->type()));
-        return os << std::format("{}({})", op, Op::map(bound->ops()));
+        if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, name(mut), Op(mut->type()));
+        if (!bound->isa<Join>()) return os << std::format("{}({})", op, Op::map(bound->ops()));
+        return os << Op::map(bound->ops(), " ∪ ", Prec::Union);
+    } else if (auto inj = d->isa<Inj>()) {
+        return os << std::format("{} inj {}", Op::l(inj->value(), Prec::Inj), Op::r(inj->type(), Prec::Inj));
+    } else if (auto uniq = d->isa<Uniq>()) {
+        return os << std::format("⦃{}⦄", Op(uniq->op())); // TODO ascii
     }
 
     // other
-    if (d->flags() == 0) return os << std::format("({} {})", d->node_name(), fe::Join(d->ops()));
-    return os << std::format("({}#{} {})", d->node_name(), d->flags(), Op::map(d->ops()));
+    auto tag = d->flags() == 0 ? std::string(d->node_name()) : std::format("{}#{}", d->node_name(), d->flags());
+    if (d->ops().empty()) return os << std::format("({})", tag);
+    return os << std::format("({} {})", tag, Op::map(d->ops(), " "));
 }
 
 /*
@@ -375,7 +403,7 @@ public:
     std::ostream& os;
     const Nest* nest;
     fe::Tab tab = fe::Tab::spaces();
-    unique_queue<MutSet> muts;
+    fe::BFSWorklist<MutSet> muts;
     DefSet defs;
 };
 
@@ -452,12 +480,12 @@ void Dumper::dump_lam(Lam* lam) {
     auto is_fun = Lam::isa_returning(last);
     auto is_con = Lam::isa_cn(last) && !is_fun;
 
-    std::print(os, "{}{} {}{}", tab, is_fun ? "fun" : is_con ? "con" : "lam", external(lam), id(lam));
+    std::print(os, "{}{}{} {}", tab, external(lam), is_fun ? "fun" : is_con ? "con" : "lam", id(lam));
     for (auto* c : currys) {
         os << ' ';
         auto num_doms = c->var() ? c->var()->num_tprojs() : c->type()->dom()->num_tprojs();
         auto limit    = is_fun && c == last ? num_doms - 1 : num_doms;
-        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), !is_con, limit, !is_fun || c != last);
+        curry(os, c->var(), c->type()->dom(), c->type()->is_implicit(), limit, !is_fun || c != last);
         if (is_con && c == last) std::print(os, "@({})", c->filter());
     }
 
@@ -564,7 +592,7 @@ void Def::write(int max) const {
  */
 
 void World::dump(std::ostream& os) {
-    auto freezer = World::Freezer(*this);
+    auto _       = freeze();
     auto old_gid = curr_gid();
 
     if (flags().dump_recursive) {
@@ -577,8 +605,15 @@ void World::dump(std::ostream& os) {
         auto nest   = Nest(*this);
         auto dumper = Dumper(os, &nest);
 
-        for (const auto& import : driver().imports())
-            std::print(os, "{} {};\n", import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import", import.sym);
+        for (const auto& import : driver().imports()) {
+            auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
+            // The spelling was relative to the importing file; only the resolved path re-parses from here.
+            // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
+            if (import.path)
+                std::print(os, "{} \"{}\";\n", kw, ast::Lexer::escape(import.src->path().generic_string()));
+            else
+                std::print(os, "{} {};\n", kw, import.sym);
+        }
         dumper.recurse(nest.root());
     }
 
@@ -588,7 +623,7 @@ void World::dump(std::ostream& os) {
 void World::dump() { dump(std::cout); }
 
 void World::debug_dump() {
-    if (log().level() >= Log::Level::Debug) dump(log().ostream());
+    if (log().level() >= fe::Log::Level::Debug) dump(log().ostream());
 }
 
 void World::write(const char* file) {

@@ -1,16 +1,21 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 
+#include <map>
+#include <set>
 #include <vector>
-
-#include <absl/container/flat_hash_map.h>
 
 #include "automaton/automaton.h"
 
 namespace automaton {
 class NFANode {
 public:
+    struct Lt {
+        constexpr bool operator()(const NFANode* n, const NFANode* m) const noexcept { return n->id() < m->id(); }
+    };
+
     NFANode(int id)
         : id_(id) {}
 
@@ -19,17 +24,21 @@ public:
     std::vector<const NFANode*> get_transitions(std::uint16_t c) const;
 
     // F: void(const NFANode*)
-    template<class F> void for_transitions(F&& f, std::uint16_t c) const {
+    template<class F>
+    void for_transitions(F&& f, std::uint16_t c) const {
         if (erroring_) return;
         if (auto it = transitions_.find(c); it != transitions_.end())
-            for (const auto& to : it->second) std::forward<F>(f)(to);
+            for (const auto& to : it->second)
+                std::forward<F>(f)(to);
     }
 
     // F: void(std::uint16_t, const NFANode*)
-    template<class F> void for_transitions(F&& f) const {
+    template<class F>
+    void for_transitions(F&& f) const {
         if (erroring_) return;
         for (auto& [c, tos] : transitions_)
-            for (const auto& to : tos) std::forward<F>(f)(c, to);
+            for (const auto& to : tos)
+                std::forward<F>(f)(c, to);
     }
 
     bool is_accepting() const { return accepting_; }
@@ -48,12 +57,15 @@ public:
 
 private:
     int id_;
-    absl::flat_hash_map<std::uint16_t, std::vector<const NFANode*>> transitions_;
+    // ordered map keeps for_transitions() iteration in char order - and hence deterministic
+    std::map<std::uint16_t, std::vector<const NFANode*>> transitions_;
     bool accepting_ = false;
     bool erroring_  = false;
 };
 
 extern template class AutomatonBase<NFANode>;
+
+using NFASet = std::set<const NFANode*, NFANode::Lt>;
 
 class NFA : public AutomatonBase<NFANode> {
 public:

@@ -1,0 +1,9 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The backticks of an argument are data: they must not delimit a citation of their own.
+extern lam f (x: Nat): Nat = x + x;
+
+// CHECK:      {{.*}}cite_op.mim:4:32: error: identifier ``+` not found
+// CHECK-NEXT: 4 | extern lam f (x: Nat): Nat = x + x;
+// CHECK-NEXT:   |                                ^
+// CHECK-NEXT:   = note: an infix operator means whatever you bind its escaped name to

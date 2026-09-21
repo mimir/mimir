@@ -2,35 +2,35 @@
 plugin tuple;
 plugin refly;
 
-lam f1 (a: [Nat, Bool], b: [Bool, Nat, Nat]): [ Nat, Bool ,  Bool, Nat, Nat ] = %tuple.cat     (a, b);
-lam f2 (a: [Nat, Bool], b: [Bool, Nat, Nat]): [ Nat, Bool , [Bool, Nat, Nat]] = %tuple.append  (a, b);
-lam f3 (a: [Nat, Bool], b: [Bool, Nat, Nat]): [[Nat, Bool],  Bool, Nat, Nat ] = %tuple.prepend (a, b);
+lam f1 (a: [Nat, Bool], b: [Bool, Nat, Nat]): [ Nat, Bool ,  Bool, Nat, Nat ] = tuple.cat     (a, b);
+lam f2 (a: [Nat, Bool], b: [Bool, Nat, Nat]): [ Nat, Bool , [Bool, Nat, Nat]] = tuple.append  (a, b);
+lam f3 (a: [Nat, Bool], b: [Bool, Nat, Nat]): [[Nat, Bool],  Bool, Nat, Nat ] = tuple.prepend (a, b);
 
-lam g1 (a: «2; Nat», b: [Bool, Nat, Nat]): [Nat, Nat,  Bool, Nat, Nat ] = %tuple.cat     (a, b);
-lam g2 (a: «2; Nat», b: [Bool, Nat, Nat]): [Nat, Nat, [Bool, Nat, Nat]] = %tuple.append  (a, b);
-lam g3 (a: «2; Nat», b: [Bool, Nat, Nat]): [«2; Nat» , Bool, Nat, Nat ] = %tuple.prepend (a, b);
+lam g1 (a: «2; Nat», b: [Bool, Nat, Nat]): [Nat, Nat,  Bool, Nat, Nat ] = tuple.cat     (a, b);
+lam g2 (a: «2; Nat», b: [Bool, Nat, Nat]): [Nat, Nat, [Bool, Nat, Nat]] = tuple.append  (a, b);
+lam g3 (a: «2; Nat», b: [Bool, Nat, Nat]): [«2; Nat» , Bool, Nat, Nat ] = tuple.prepend (a, b);
 
-lam h1 (a: [Nat, Bool], b: «3; Nat»): [ Nat, Bool , Nat, Nat, Nat] = %tuple.cat     (a, b);
-lam h2 (a: [Nat, Bool], b: «3; Nat»): [ Nat, Bool , «3; Nat»     ] = %tuple.append  (a, b);
-lam h3 (a: [Nat, Bool], b: «3; Nat»): [[Nat, Bool], Nat, Nat, Nat] = %tuple.prepend (a, b);
+lam h1 (a: [Nat, Bool], b: «3; Nat»): [ Nat, Bool , Nat, Nat, Nat] = tuple.cat     (a, b);
+lam h2 (a: [Nat, Bool], b: «3; Nat»): [ Nat, Bool , «3; Nat»     ] = tuple.append  (a, b);
+lam h3 (a: [Nat, Bool], b: «3; Nat»): [[Nat, Bool], Nat, Nat, Nat] = tuple.prepend (a, b);
 
-lam t1 (n: Nat) (a: «n; Nat», b: []): «n; Nat» = %tuple.cat (a, b);
-lam t2 (n: Nat) (a: [], b: «n; Nat»): «n; Nat» = %tuple.cat (a, b);
+lam t1 (n: Nat) (a: «n; Nat», b: []): «n; Nat» = tuple.cat (a, b);
+lam t2 (n: Nat) (a: [], b: «n; Nat»): «n; Nat» = tuple.cat (a, b);
 
 let x = (1, tt);
 let y = (ff, 23, 42);
-let z = %tuple.cat (x, y);
+let z = tuple.cat (x, y);
 let tup = (1, tt, ff, 23, 42);
 
-let _ = %refly.equiv.struc_eq (tup, z);
-let _ = %refly.equiv.struc_eq (tt, %tuple.contains (tup, 23));
-let _ = %refly.equiv.struc_eq (ff, %tuple.contains (tup, 24));
+let _ = refly.equiv.struc_eq (tup, z);
+let _ = refly.equiv.struc_eq (tt, tuple.contains (tup, 23));
+let _ = refly.equiv.struc_eq (ff, tuple.contains (tup, 24));
 
 lam foo (x: Nat): [] =
     let tup = (tt, x);
-    let _ = %refly.equiv.struc_ne (tt, %tuple.contains (tup, 23));
-    let _ = %refly.equiv.struc_ne (ff, %tuple.contains (tup, 24));
+    let _ = refly.equiv.struc_ne (tt, tuple.contains (tup, 23));
+    let _ = refly.equiv.struc_ne (ff, tuple.contains (tup, 24));
     ();
 
-let _ = %tuple.cat ((1, 2, ff), ());
-let _ = %tuple.cat ((), (1, 2, ff));
+let _ = tuple.cat ((1, 2, ff), ());
+let _ = tuple.cat ((), (1, 2, ff));

@@ -1,8 +1,13 @@
 #include "mim/phase.h"
 
+#include <algorithm>
 #include <memory>
+#include <utility>
+
+#include <fe/bitset.h>
 
 #include "mim/driver.h"
+#include "mim/flags.h"
 
 namespace mim {
 
@@ -10,10 +15,31 @@ namespace mim {
  * Phase
  */
 
+Phase::Phase(World& world, flags_t annex)
+    : world_(world)
+    , annex_(annex)
+    , name_(world.annex(annex)->sym()) {}
+
+const fe::Vector<std::string>& Phase::args() { return driver().args(Annex::demangle(Annex::flags2plugin(annex_))); }
+
+std::unique_ptr<Phase> Phase::recreate() {
+    auto ctor = driver().phase(annex());
+    auto ptr  = (*ctor)(world());
+    ptr->apply(*this);
+    return ptr;
+}
+
 void Phase::run() {
-    world().verify().ILOG("🚀 Phase launch: `{}`", name());
+    auto profiling = driver().flags().profile != Flags::Profile::None;
+    if (profiling) driver().profiler().start(name());
+    world().verify().log().i("🚀 launch phase `{}`", name());
     start();
-    world().verify().ILOG("🏁 Phase finish: `{}`", name());
+    world().verify().log().i("🏁 finish phase `{}`", name());
+    if (profiling) driver().profiler().stop();
+}
+
+void Phase::profile_count(std::string_view key, uint64_t n) {
+    if (driver().flags().profile != Flags::Profile::None) driver().profiler().count(key, n);
 }
 
 /*
@@ -22,72 +48,135 @@ void Phase::run() {
 
 void Analysis::reset() {
     old2news_.clear();
+    worklist_.clear();
     push();
-    todo_ = false;
+    todo_          = false;
+    bootstrapping_ = true; // every full round walks the annexes again - and that walk *is* the bootstrapping half
 }
 
 void Analysis::start() {
-    for (const auto& [flags, e] : world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
+    curr_sparse_ = !dense_ && !nonlocal_ && !dirty_.empty();
+    nonlocal_    = false;
+    auto seeds   = fe::Vector<Def*>(dirty_.begin(), dirty_.end());
+    dirty_.clear();
 
-    bootstrapping_ = false;
+    prepare();
 
-    for (auto mut : world().externals().muts())
-        rewrite_external(mut);
+    if (curr_sparse_) {
+        bootstrapping_ = false; // a sparse round re-drains program muts - it has no annex half
+        log().v("sparse round: re-drain {} dirty muts", seeds.size());
+        std::ranges::sort(seeds, GIDLt<Def*>()); // MutSet iteration order is nondeterministic
+
+        // Pre-install what earlier rounds substituted, so this round prunes everything they already settled -
+        // except for mutables, whose map entry doubles as the per-round "already scheduled" marker and would
+        // suppress their drain. Pruning skips rewrite hooks, which is why only a sparse round does it: the
+        // full round that certifies the fixed point always re-derives from the program.
+        for (auto [concr, abstr] : lattice_)
+            if (!concr->isa_mut()) map(concr, abstr);
+
+        for (auto mut : seeds)
+            rewrite(mut);
+        drain();
+    } else {
+        for (const auto& [flags, e] : world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+        drain();
+
+        bootstrapping_ = false;
+
+        for (auto mut : world().externals().muts())
+            rewrite_external(mut);
+        drain();
+
+        finalize();
+    }
+
+    profile_count(curr_sparse_ ? "rounds.sparse" : "rounds.full");
+    profile_count("muts.drained", std::exchange(num_drained_, size_t(0)));
+
+    // A quiet sparse round only certifies the muts it visited:
+    // force one full round; the fixed point counts only if that one stays quiet, too.
+    if (curr_sparse_ && !todo()) invalidate();
 }
 
 void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 
-Def* Analysis::rewrite_deps(Def* mut) {
-    auto _ = enter(mut);
+const Def* Analysis::repr_(const Def* slow, const Def* fast) const {
+    while (slow != fast) {
+        auto next = follow(fast);
+        if (!next) return fast;
+        fast = follow(next);
+        if (!fast) return next;
+        slow = follow(slow);
+        assert(slow && "slow lags fast, so fast already traversed slow's successor");
+    }
 
-    for (auto d : mut->deps())
-        rewrite(d);
+    auto res = slow;
+    for (auto def = follow(slow); def != slow; def = follow(def))
+        if (def->gid() < res->gid()) res = def;
+    return res;
+}
 
-    return mut;
+const Def* Analysis::rewrite(const Def* def) {
+    if (def->isa_mut()) return Rewriter::rewrite(def);
+    return repr(Rewriter::rewrite(def));
 }
 
 Def* Analysis::rewrite_mut(Def* mut) {
+    if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
+    worklist_.emplace_back(mut);
+    return mut;
+}
 
-    if (auto [lam, var] = mut->isa_binder<Lam>(); lam)
-        for (auto v : var->tprojs()) {
-            map(v, v);
-            if (auto [i, ins] = lattice_.emplace(v, v); !ins && i->second != v) {
-                // var was mapped to sth else beforehand so we need another fixed-point round
-                invalidate();
-                i->second = v;
-            }
-        }
+void Analysis::drain() {
+    while (!worklist_.empty()) {
+        auto mut = worklist_.front();
+        worklist_.pop_front();
+        ++num_drained_;
 
-    return rewrite_deps(mut);
+        auto _ = enter(mut);
+        log().d("enter {}", mut);
+        for (auto d : mut->deps())
+            rewrite(d);
+        leave();
+    }
 }
 
 /*
- * RWPhase
+ * RWBase
  */
 
-void RWPhase::start() {
-    int i = 0;
-    for (bool todo = true; todo;) {
-        VLOG("iteration: {}", i++);
-        todo = false;
-        todo |= analyze();
+void RWBase::start() {
+    auto max_iters = driver().flags().max_fp_iters;
+    bool todo      = true;
+    for (uint32_t i = 0; todo; ++i) {
+        if (i >= max_iters) fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        log().v("iteration {}", i);
+        todo = analyze();
     }
 
-    for (const auto& [flags, e] : old_world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
+    // Count the Def%s each half of the walk creates.
+    // For an RWPhase the annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the
+    // program - which is exactly why an InplaceRWPhase skips it by default.
+    auto gid = Rewriter::world().curr_gid();
+    if (rewrite_annexes())
+        for (const auto& [flags, e] : Phase::world().annexes())
+            rewrite_annex(flags, e.sym, e.def);
+    profile_count("rw.defs.annex", Rewriter::world().curr_gid() - gid);
 
     bootstrapping_ = false;
 
-    for (auto mut : old_world().externals().muts())
+    gid = Rewriter::world().curr_gid();
+    // mutate(): an in-place rewrite_external may re-externalize, which would invalidate a live iterator.
+    for (auto mut : Phase::world().externals().mutate())
         rewrite_external(mut);
-
-    swap(old_world(), new_world());
+    finalize(); // inside the span: work deferred by the root walk belongs to the root walk
+    profile_count("rw.defs.external", Rewriter::world().curr_gid() - gid);
 }
 
-bool RWPhase::analyze() {
+bool RWBase::analyze() {
     if (analysis_) {
         analysis_->reset();
         analysis_->run();
@@ -97,68 +186,71 @@ bool RWPhase::analyze() {
     return false;
 }
 
-void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) { new_world().annexes().attach(f, sym, rewrite(def)); }
+/*
+ * RWPhase
+ */
+
+void RWPhase::start() {
+    RWBase::start();
+    swap(old_world(), new_world());
+}
+
+void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
+    new_world().annexes().attach(f, sym, rewrite_root(def));
+}
 
 void RWPhase::rewrite_external(Def* old_mut) {
-    auto new_mut = rewrite(old_mut)->as_mut();
+    auto new_mut = rewrite_root(old_mut)->as_mut();
     if (old_mut->is_external()) new_mut->externalize();
 }
 
 /*
- * ReplMan
+ * InplaceRWPhase
  */
 
-void ReplMan::apply(Repls&& repls) {
-    for (auto&& repl : repls)
-        if (auto&& man = repl->isa<ReplMan>())
-            apply(std::move(man->repls_));
-        else
-            add(std::move(repl));
+void InplaceRWPhase::rewrite_annex(flags_t flags, Sym, const Def* def) {
+    if (auto new_def = rewrite_root(def); new_def != def) {
+        world().annexes().reattach(flags, new_def);
+        invalidate();
+    }
 }
 
-void ReplMan::apply(const App* app) {
-    auto repls = Repls();
-    for (auto arg : app->args())
-        if (auto stage = Stage::create(driver().stages(), arg))
-            repls.emplace_back(std::unique_ptr<Repl>(static_cast<Repl*>(stage.release())));
+void InplaceRWPhase::rewrite_external(Def* old_mut) {
+    auto new_def = rewrite_root(old_mut);
+    if (new_def == old_mut) return;
 
-    apply(std::move(repls));
+    // The rewrite replaced the external itself; carry the external flag over.
+    old_mut->internalize();
+    new_def->as_mut()->externalize();
+    invalidate();
 }
 
-/*
- * ReplManPhase
- */
-
-void ReplManPhase::apply(const App* app) {
-    man_       = std::make_unique<ReplMan>(old_world(), annex());
-    auto repls = Repls();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            repls.emplace_back(std::unique_ptr<Repl>(static_cast<Repl*>(stage.release())));
-    man_->apply(std::move(repls));
-}
-
-void ReplManPhase::apply(Stage& stage) {
-    auto& rmp = static_cast<ReplManPhase&>(stage);
-    swap(man_, rmp.man_);
-}
-
-void ReplManPhase::start() {
-    old_world().verify().ILOG("🔥 run");
-    for (auto&& repl : man().repls())
-        ILOG(" 🔹 `{}`", repl->name());
-    old_world().debug_dump();
-    RWPhase::start();
-}
-
-const Def* ReplManPhase::rewrite(const Def* def) {
-    for (bool todo = true; todo;) {
-        todo = false;
-        for (auto&& repl : man().repls())
-            if (auto subst = repl->replace(def)) todo = true, def = subst;
+const Def* InplaceRWPhase::rewrite_mut(Def* mut) {
+    if (auto hole = mut->isa<Hole>()) {
+        auto [last, op] = hole->find();
+        return op ? rewrite(op) : last; // an unresolved Hole stays as is
     }
 
-    return Rewriter::rewrite(def);
+    // A mutable's identity is tied to its type, so if the rewrite changes the type, we cannot keep it: fall back to
+    // an RWPhase-style rebuild - Rewriter::rewrite_mut stubs a fresh mutable (in this very World) and maps onto it.
+    if (auto type = mut->type(); type && rewrite(type) != type) {
+        profile_count("inplace.muts.rebuilt");
+        invalidate();
+        return Rewriter::rewrite_mut(mut);
+    }
+
+    map(mut, mut); // keep the identity; doubles as the cycle breaker for recursive mutables
+    if (!mut->is_set()) return mut;
+
+    auto _       = enter(mut);
+    auto new_ops = rewrite(mut->ops());
+    if (!std::ranges::equal(new_ops, mut->ops())) {
+        mut->unset()->set(new_ops);
+        profile_count("inplace.muts.reset");
+        invalidate();
+    }
+
+    return mut;
 }
 
 /*
@@ -176,19 +268,13 @@ void PhaseMan::apply(const App* app) {
 
     auto phases = Phases();
     for (auto arg : args->projs())
-        if (auto stage = create(driver().stages(), arg)) {
-            // clang-format off
-            if (auto pm = stage->isa<PassManPhase>(); pm && pm->  man().empty()) continue;
-            if (auto rp = stage->isa<ReplMan     >(); rp && rp->repls().empty()) continue;
-            // clang-format on
-            phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(stage.release())));
-        }
+        if (auto phase = create(driver().phases(), arg)) phases.emplace_back(std::move(phase));
 
     apply(Lit::as<bool>(fp), std::move(phases));
 }
 
-void PhaseMan::apply(Stage& stage) {
-    auto& man = static_cast<PhaseMan&>(stage);
+void PhaseMan::apply(Phase& phase) {
+    auto& man = static_cast<PhaseMan&>(phase);
     Phases new_phases;
     for (auto& old_phase : man.phases())
         new_phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release())));
@@ -196,47 +282,48 @@ void PhaseMan::apply(Stage& stage) {
 }
 
 void PhaseMan::start() {
-    int iter = 0;
-    for (bool todo = true; todo; ++iter) {
-        todo = false;
+    auto max_iters = driver().flags().max_fp_iters;
+    auto n         = phases().size();
+    // A phase's run is a deterministic function of the World's content.
+    // So a phase only needs to run (again) if the World (may have) changed since its last quiet run.
+    auto all   = fe::Bitset(n, true);
+    auto stale = all;
+    auto ran   = fe::Bitset(n, false);
 
-        if (fixed_point()) VLOG("🔄 fixed-point iteration: {}", iter);
+    for (uint32_t iter = 0; stale.any(); ++iter) {
+        if (iter >= max_iters)
+            fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
+        if (fixed_point()) log().v("🔄 fixed-point iteration {}", iter);
 
-        for (auto& phase : phases()) {
+        bool todo = false;
+        for (size_t i = 0; i != n; ++i) {
+            auto& phase = phases()[i];
+            if (!stale.test(i)) {
+                log().v("skip `{}`: World unchanged since its last quiet run", phase->name());
+                profile_count("phases.skipped");
+                continue;
+            }
+
+            if (ran.test(i)) { // re-runs need a fresh instance
+                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(phase->recreate().release()));
+                swap(new_phase, phase);
+            }
+
             phase->run();
-            todo |= phase->todo();
-        }
+            ran.set(i);
+            stale.clear(i);
 
-        todo &= fixed_point();
-
-        if (todo) {
-            for (auto& old_phase : phases()) {
-                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release()));
-                swap(new_phase, old_phase);
+            if (phase->todo()) {
+                todo = true;
+                // The World changed: everyone - including this phase itself - gets another look.
+                stale = all;
             }
         }
 
+        todo &= fixed_point();
         invalidate(todo);
+        if (!fixed_point()) break;
     }
-}
-
-/*
- * PassManPhase
- */
-
-void PassManPhase::apply(const App* app) {
-    man_        = std::make_unique<PassMan>(world(), annex());
-    auto passes = Passes();
-    for (auto arg : app->args())
-        if (auto stage = Phase::create(driver().stages(), arg))
-            passes.emplace_back(std::unique_ptr<Pass>(static_cast<Pass*>(stage.release())));
-
-    man_->apply(std::move(passes));
-}
-
-void PassManPhase::apply(Stage& stage) {
-    auto& pmp = static_cast<PassManPhase&>(stage);
-    swap(man_, pmp.man_);
 }
 
 } // namespace mim

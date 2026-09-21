@@ -1,4 +1,4 @@
-# Doxyfile 1.16.1
+# Doxyfile 1.18.0
 
 # This file describes the settings to be used by the documentation system
 # Doxygen (www.doxygen.org) for a project.
@@ -11,7 +11,7 @@
 # TAG = value [value, ...]
 # For lists, items can also be appended using:
 # TAG += value [value, ...]
-# Values that contain spaces should be placed between quotes (\" \").
+# Values that contain spaces should be placed between quotes (" ").
 #
 # Note:
 #
@@ -81,7 +81,7 @@ OUTPUT_DIRECTORY       = @PROJECT_BINARY_DIR@
 # and will distribute the generated files over these directories. Enabling this
 # option can be useful when feeding Doxygen a huge amount of source files, where
 # putting all generated files in the same directory would otherwise cause
-# performance problems for the file system. Adapt CREATE_SUBDIRS_LEVEL to
+# performance problems for the file system. Adjust CREATE_SUBDIRS_LEVEL to
 # control the number of sub-directories.
 # The default value is: NO.
 
@@ -802,7 +802,7 @@ GENERATE_REQUIREMENTS  = YES
 
 # The REQ_TRACEABILITY_INFO tag controls if traceability information is shown on
 # the requirements page (only relevant when using \requirement comment blocks).
-# The setting NO will disable the traceablility information altogether. The
+# The setting NO will disable the traceability information altogether. The
 # setting UNSATISFIED_ONLY will show a list of requirements that are missing a
 # satisfies relation (through the command: \satisfies). Similarly the setting
 # UNVERIFIED_ONLY will show a list of requirements that are missing a verifies
@@ -855,8 +855,8 @@ SHOW_NAMESPACES        = YES
 # The FILE_VERSION_FILTER tag can be used to specify a program or script that
 # Doxygen should invoke to get the current version for each file (typically from
 # the version control system). Doxygen will invoke the program by executing (via
-# popen()) the command command input-file, where command is the value of the
-# FILE_VERSION_FILTER tag, and input-file is the name of an input file provided
+# popen()) the command command input_file, where command is the value of the
+# FILE_VERSION_FILTER tag, and input_file is the name of an input file provided
 # by Doxygen. Whatever the program writes to standard output is used as the file
 # version. For an example see the documentation.
 
@@ -1166,9 +1166,13 @@ EXCLUDE_SYMBOLS        = detail::* \
 # command).
 
 EXAMPLE_PATH           = @CMAKE_CURRENT_BINARY_DIR@ \
+                         @PROJECT_SOURCE_DIR@/lit/docs \
                          @PROJECT_SOURCE_DIR@/include \
                          @PROJECT_SOURCE_DIR@/src \
-                         @PROJECT_SOURCE_DIR@/examples
+                         @PROJECT_SOURCE_DIR@/examples \
+                         @PROJECT_BINARY_DIR@/include \
+                         @PROJECT_BINARY_DIR@/py/mim/_plugins \
+                         @PROJECT_BINARY_DIR@/@CMAKE_INSTALL_LIBDIR@/mim
 
 # If the value of the EXAMPLE_PATH tag contains directories, you can use the
 # EXAMPLE_PATTERNS tag to specify one or more wildcard pattern (like *.cpp and
@@ -1188,7 +1192,8 @@ EXAMPLE_RECURSIVE      = YES
 # that contain images that are to be included in the documentation (see the
 # \image command).
 
-IMAGE_PATH             = @PROJECT_SOURCE_DIR@/docs
+IMAGE_PATH             = @PROJECT_SOURCE_DIR@/docs \
+                         @CMAKE_CURRENT_BINARY_DIR@
 
 # The INPUT_FILTER tag can be used to specify a program that Doxygen should
 # invoke to filter for each input file. Doxygen will invoke the filter program
@@ -1227,7 +1232,7 @@ INPUT_FILTER           =
 # need to set EXTENSION_MAPPING for the extension otherwise the files are not
 # properly processed by Doxygen.
 
-FILTER_PATTERNS        =
+FILTER_PATTERNS        = *.md=@DOXY_FILTER@
 
 # If the FILTER_SOURCE_FILES tag is set to YES, the input filter (if set using
 # INPUT_FILTER) will also be used to filter the input files that are used for
@@ -1498,12 +1503,7 @@ HTML_STYLESHEET        =
 # documentation.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_EXTRA_STYLESHEET  = submodules/doxygen-awesome-css/doxygen-awesome.css \
-                         submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only.css \
-                         submodules/doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css \
-                         submodules/doxygen-awesome-css/doxygen-awesome-interactive-toc.js \
-                         submodules/doxygen-awesome-css/doxygen-custom/custom.css \
-                         docs/version-switcher.css
+HTML_EXTRA_STYLESHEET  = @DOXY_STYLESHEETS_CONFIG@
 
 # The HTML_EXTRA_FILES tag can be used to specify one or more extra images or
 # other source files which should be copied to the HTML output directory. Note
@@ -1513,10 +1513,7 @@ HTML_EXTRA_STYLESHEET  = submodules/doxygen-awesome-css/doxygen-awesome.css \
 # files will be copied as-is; there are no commands or markers available.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_EXTRA_FILES       = submodules/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js \
-                         submodules/doxygen-awesome-css/doxygen-awesome-fragment-copy-button.js \
-                         submodules/doxygen-awesome-css/doxygen-awesome-paragraph-link.js \
-                         docs/version-switcher.js
+HTML_EXTRA_FILES       = @DOXY_ASSETS_CONFIG@
 
 # The HTML_COLORSTYLE tag can be used to specify if the generated HTML output
 # should be rendered with a dark or light theme.
@@ -1529,7 +1526,7 @@ HTML_EXTRA_FILES       = submodules/doxygen-awesome-css/doxygen-awesome-darkmode
 # The default value is: AUTO_LIGHT.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_COLORSTYLE        = AUTO_LIGHT
+HTML_COLORSTYLE        = LIGHT
 
 # The HTML_COLORSTYLE_HUE tag controls the color of the HTML output. Doxygen
 # will adjust the colors in the style sheet and background images according to
@@ -1679,8 +1676,8 @@ DOCSET_PUBLISHER_NAME  = Publisher
 # a.o. the download links, offline (the HTML help workshop was already many
 # years in maintenance mode). You can download the HTML help workshop from the
 # web archives at Installation executable (see:
-# http://web.archive.org/web/20160201063255/http://download.microsoft.com/downlo
-# ad/0/A/9/0A939EF6-E31C-430F-A3DF-DFAE7960D564/htmlhelp.exe).
+# http://web.archive.org/web/20160201063255/https://download.microsoft.com/downl
+# oad/0/A/9/0A939EF6-E31C-430F-A3DF-DFAE7960D564/htmlhelp.exe).
 #
 # The HTML Help Workshop contains a compiler that can convert all HTML output
 # generated by Doxygen into a single compiled HTML file (.chm). Compiled HTML
@@ -1867,7 +1864,7 @@ GENERATE_TREEVIEW      = YES
 # The default value is: YES.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-PAGE_OUTLINE_PANEL     = NO
+PAGE_OUTLINE_PANEL     = YES
 
 # When GENERATE_TREEVIEW is set to YES, the FULL_SIDEBAR option determines if
 # the side bar is limited to only the treeview area (value NO) or if it should
@@ -1901,7 +1898,7 @@ SHOW_ENUM_VALUES       = NO
 # Minimum value: 0, maximum value: 1500, default value: 250.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-TREEVIEW_WIDTH         = 250
+TREEVIEW_WIDTH         = 335
 
 # If the EXT_LINKS_IN_WINDOW option is set to YES, Doxygen will open links to
 # external symbols imported via tag files in a separate window.
@@ -1952,7 +1949,7 @@ FORMULA_MACROFILE      =
 # The default value is: NO.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-USE_MATHJAX            = NO
+USE_MATHJAX            = YES
 
 # With MATHJAX_VERSION it is possible to specify the MathJax version to be used.
 # Note that the different versions of MathJax have different requirements with
@@ -1963,7 +1960,7 @@ USE_MATHJAX            = NO
 # The default value is: MathJax_2.
 # This tag requires that the tag USE_MATHJAX is set to YES.
 
-MATHJAX_VERSION        = MathJax_2
+MATHJAX_VERSION        = MathJax_3
 
 # When MathJax is enabled you can set the default output format to be used for
 # the MathJax output. For more details about the output format see MathJax
@@ -1987,7 +1984,7 @@ MATHJAX_FORMAT         = HTML-CSS
 # output directory using the MATHJAX_RELPATH option. For Mathjax version 2 the
 # destination directory should contain the MathJax.js script. For instance, if
 # the mathjax directory is located at the same level as the HTML output
-# directory, then MATHJAX_RELPATH should be ../mathjax.s For Mathjax versions 3
+# directory, then MATHJAX_RELPATH should be ../mathjax. For Mathjax versions 3
 # and 4 the destination directory should contain the tex-<format>.js script
 # (where <format> is either chtml or svg). The default value points to the
 # MathJax Content Delivery Network so you can quickly see the result without
@@ -2017,7 +2014,7 @@ MATHJAX_RELPATH        =
 # -textmacros)
 # This tag requires that the tag USE_MATHJAX is set to YES.
 
-MATHJAX_EXTENSIONS     =
+MATHJAX_EXTENSIONS     = ams
 
 # The MATHJAX_CODEFILE tag can be used to specify a file with JavaScript pieces
 # of code that will be used on startup of the MathJax code. See the Mathjax site
@@ -2208,9 +2205,8 @@ EXTRA_PACKAGES         =
 #
 # Note: Only use a user-defined header if you know what you are doing!
 # Note: The header is subject to change so you typically have to regenerate the
-# default header when upgrading to a newer version of Doxygen. The following
-# commands have a special meaning inside the header (and footer): For a
-# description of the possible markers and block names see the documentation.
+# default header when upgrading to a newer version of Doxygen. For a description
+# of the possible markers and block names see the documentation.
 # This tag requires that the tag GENERATE_LATEX is set to YES.
 
 LATEX_HEADER           =
@@ -2710,6 +2706,19 @@ HAVE_DOT               = YES
 
 DOT_NUM_THREADS        = 0
 
+# The DOT_BATCH_SIZE specifies the number of dot graphs Doxygen is allowed to
+# compile in a single invocation of dot. When set to 1 Doxygen will invoke dot
+# for each graph separately, which can cause significant process creation
+# overhead especially on systems with many CPU cores. Together with
+# DOT_NUM_THREADS this setting can be used to optimise the dot processing speed
+# for a particular system. Doxygen will try to give each thread a balanced batch
+# of work. If the total number of graphs to process exceeds DOT_NUM_THREADS *
+# DOT_BATCH_SIZE then additional batches will be created for dot to process.
+# Minimum value: 1, maximum value: 1000, default value: 50.
+# This tag requires that the tag HAVE_DOT is set to YES.
+
+DOT_BATCH_SIZE         = 50
+
 # DOT_COMMON_ATTR is common attributes for nodes, edges and labels of
 # subgraphs. When you want a differently looking font in the dot files that
 # Doxygen generates you can specify fontname, fontcolor and fontsize attributes.
@@ -2962,7 +2971,7 @@ DOT_PATH               =
 # command).
 # This tag requires that the tag HAVE_DOT is set to YES.
 
-DOTFILE_DIRS           =
+DOTFILE_DIRS           = @CMAKE_CURRENT_BINARY_DIR@
 
 # You can include diagrams made with dia in Doxygen documentation. Doxygen will
 # then run dia to produce the diagram and insert it in the documentation. The
@@ -3001,6 +3010,58 @@ PLANTUML_INCLUDE_PATH  =
 
 PLANTUMLFILE_DIRS      =
 
+# When using Mermaid diagrams with CLI rendering, the MERMAID_PATH tag should be
+# used to specify the directory where the mmdc (Mermaid CLI) executable can be
+# found. If left blank, CLI-based rendering is disabled. For HTML output,
+# client-side rendering via JavaScript is used by default and does not require
+# mmdc. For LaTeX/PDF output, mmdc is required to pre-generate images. Doxygen
+# will generate a warning when CLI rendering is needed but mmdc is not
+# available.
+
+MERMAID_PATH           =
+
+# When using Mermaid diagrams, the MERMAID_CONFIG_FILE tag can be used to
+# specify a JSON configuration file for the Mermaid CLI tool (mmdc). This file
+# can contain theme settings and other Mermaid configuration options.
+
+MERMAID_CONFIG_FILE    =
+
+# The MERMAID_RENDER_MODE tag selects how Mermaid diagrams are rendered.
+# Possible values are: AUTO (use client-side rendering for HTML and mmdc for
+# LaTeX/PDF and other formats. If MERMAID_PATH is not set, non-HTML diagrams
+# will produce a warning), CLI (use the mmdc tool to pre-generate images
+# (requires Node.js and mermaid-js/mermaid-cli). Works for all output formats)
+# and CLIENT_SIDE (embed mermaid.js in HTML output for client-side rendering.
+# Does not require mmdc but only works for HTML output).
+# The default value is: AUTO.
+
+MERMAID_RENDER_MODE    = AUTO
+
+# The MERMAID_JS_URL tag specifies the URL to load mermaid.js from when using
+# client-side rendering (MERMAID_RENDER_MODE is CLIENT_SIDE or AUTO). The
+# default points to the latest Mermaid v11 release on the jsDelivr CDN.
+#
+# The default CDN URL requires internet access when viewing the generated
+# documentation. For offline use, download mermaid.esm.min.mjs and set this to a
+# relative path, or use MERMAID_RENDER_MODE=CLI to pre-generate images instead.
+# Examples:
+# - Latest v11 (default):
+# https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs
+# - Pinned version:
+# https://cdn.jsdelivr.net/npm/mermaid@11.3.0/dist/mermaid.esm.min.mjs
+# - Local copy: ./mermaid.esm.min.mjs (user must place file in HTML output
+# directory)
+# The default value is:
+# https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs.
+
+MERMAID_JS_URL         = https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs
+
+# The MERMAIDFILE_DIRS tag can be used to specify one or more directories that
+# contain Mermaid files that are included in the documentation (see the
+# \mermaidfile command).
+
+MERMAIDFILE_DIRS       =
+
 # The DOT_GRAPH_MAX_NODES tag can be used to set the maximum number of nodes
 # that will be shown in the graph. If the number of nodes in a graph becomes
 # larger than this value, Doxygen will truncate the graph, which is visualized
@@ -3024,15 +3085,6 @@ DOT_GRAPH_MAX_NODES    = 100
 # This tag requires that the tag HAVE_DOT is set to YES.
 
 MAX_DOT_GRAPH_DEPTH    = 0
-
-# Set the DOT_MULTI_TARGETS tag to YES to allow dot to generate multiple output
-# files in one run (i.e. multiple -o and -T options on the command line). This
-# makes dot run faster, but since only newer versions of dot (>1.8.10) support
-# this, this feature is disabled by default.
-# The default value is: NO.
-# This tag requires that the tag HAVE_DOT is set to YES.
-
-DOT_MULTI_TARGETS      = NO
 
 # If the GENERATE_LEGEND tag is set to YES Doxygen will generate a legend page
 # explaining the meaning of the various boxes and arrows in the dot generated

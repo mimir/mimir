@@ -1,0 +1,7 @@
+// RUN: rm -f exec_ktile.ll
+// RUN: FILE=%s;%mim -p opt -o - ${FILE%_run.mim}.mim -p ll
+// RUN: clang exec_ktile.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 8
+// The extent-1 tile loop's index must not reach LLVM as a zero-width integer.
+// RUN: %FileCheck %s --check-prefix=I0 < exec_ktile.ll
+// I0-NOT: {{i0[^0-9]}}

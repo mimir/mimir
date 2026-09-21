@@ -2,62 +2,27 @@
 
 #include <cassert>
 
-#include "mim/tuple.h"
 #include "mim/world.h"
 
 namespace mim {
 
 namespace {
-bool should_flatten(const Def* def) {
-    auto type = (def->is_term() ? def->type() : def);
-    if (type->isa<Sigma>()) return true;
-    if (auto arr = type->isa<Arr>()) {
-        if (auto a = Lit::isa(arr->arity()); a && *a > def->world().flags().scalarize_threshold) return false;
-        return true;
-    }
-    return false;
-}
-
-bool mut_val_or_typ(const Def* def) {
-    auto typ = def->is_term() ? def->type() : def;
-    return typ->isa_mut();
-}
-
-const Def* unflatten(Defs defs, const Def* type, size_t& j, bool flatten_muts) {
-    if (!defs.empty() && defs[0]->type() == type) return defs[j++];
-    if (auto a = Lit::isa(type->arity());
-        flatten_muts == mut_val_or_typ(type) && a && *a != 1 && a <= type->world().flags().scalarize_threshold) {
-        auto& world = type->world();
-        auto ops    = DefVec(*a, [&](size_t i) { return unflatten(defs, type->proj(*a, i), j, flatten_muts); });
-        return world.tuple(type, ops);
-    }
-
-    return defs[j++];
+/// The App::callee of @p def - or `nullptr`, if @p def isn't an App at all.
+const Def* callee_of(const Def* def) {
+    auto app = def->isa<App>();
+    return app ? app->callee() : nullptr;
 }
 } // namespace
 
-const Def* Sigma::arity() const {
-    auto n = num_ops();
-    if (n != 1 || isa_mut()) return world().lit_nat(n);
-    return op(0)->arity();
-}
-
-const Def* Pack::arity() const {
-    if (auto arr = type()->isa<Arr>()) return arr->arity();
-    if (type() == world().sigma()) return world().lit_nat_0();
-    return world().lit_nat_1();
-}
-
 Select::Select(const Def* def) {
-    if (def) {
-        if (auto extract = def->isa<Extract>(); extract && !Lit::isa(extract->index())) {
-            if (auto a = Lit::isa(extract->tuple()->arity()); a && a == 2) extract_ = extract;
-        }
-    }
+    if (!def) return;
+    auto extract = def->isa<Extract>();
+    if (!extract || Lit::isa(extract->index())) return;
+    if (auto a = Lit::isa(extract->tuple()->arity()); a && *a == 2) extract_ = extract;
 }
 
 Branch::Branch(const Def* def)
-    : Select(def->isa<App>() ? def->as<App>()->callee() : nullptr) {
+    : Select(callee_of(def)) {
     if (extract()) app_ = def->as<App>();
 }
 
@@ -65,13 +30,13 @@ const Def* Branch::callee() const { return app()->callee(); }
 const Def* Branch::arg() const { return app()->arg(); }
 
 Dispatch::Dispatch(const Def* def) {
-    if (auto app = def->isa<App>()) {
-        if (auto extract = app->callee()->isa<Extract>(); extract && !Lit::isa(extract->index())) {
-            if (auto a = Lit::isa(extract->tuple()->arity())) {
-                app_     = app;
-                extract_ = extract;
-            }
-        }
+    auto app = def->isa<App>();
+    if (!app) return;
+    auto extract = app->callee()->isa<Extract>();
+    if (!extract || Lit::isa(extract->index())) return;
+    if (Lit::isa(extract->tuple()->arity())) {
+        app_     = app;
+        extract_ = extract;
     }
 }
 
@@ -86,6 +51,7 @@ std::string tuple2str(const Def* def) {
     auto& w  = def->world();
     auto res = std::string();
     if (auto n = Lit::isa(def->arity())) {
+        res.reserve(*n);
         for (size_t i = 0; i != *n; ++i) {
             auto elem = def->proj(*n, i);
             if (elem->type() == w.type_i8()) {
@@ -100,36 +66,6 @@ std::string tuple2str(const Def* def) {
     return res;
 }
 
-// TODO flatten/unflatten needs to be rewritten
-
-size_t flatten(DefVec& ops, const Def* def, bool flatten_muts) {
-    if (auto a = Lit::isa(def->arity()); a && *a != 1 && should_flatten(def) && flatten_muts == mut_val_or_typ(def)) {
-        auto n = 0;
-        for (size_t i = 0; i != *a; ++i)
-            n += flatten(ops, def->proj(*a, i), flatten_muts);
-        return n;
-    } else {
-        ops.emplace_back(def);
-        return 1;
-    }
-}
-
-const Def* flatten(const Def* def) {
-    if (!should_flatten(def)) return def;
-    DefVec ops;
-    flatten(ops, def);
-    return def->is_intro() ? def->world().tuple(def->type(), ops) : def->world().sigma(ops);
-}
-
-const Def* unflatten(Defs defs, const Def* type, bool flatten_muts) {
-    size_t j = 0;
-    auto def = unflatten(defs, type, j, flatten_muts);
-    assert(j == defs.size());
-    return def;
-}
-
-const Def* unflatten(const Def* def, const Def* type) { return unflatten(def->projs(Lit::as(def->arity())), type); }
-
 /*
  * cat
  */
@@ -137,20 +73,20 @@ const Def* unflatten(const Def* def, const Def* type) { return unflatten(def->pr
 DefVec cat(Defs a, Defs b) {
     auto res = DefVec();
     res.reserve(a.size() + b.size());
-    res.insert(res.end(), a.begin(), a.end());
-    res.insert(res.end(), b.begin(), b.end());
+    res.append_range(a);
+    res.append_range(b);
     return res;
 }
 
 DefVec cat(nat_t n, nat_t m, const Def* a, const Def* b) {
-    auto defs = DefVec();
-    defs.reserve(n + m);
-    for (size_t i = 0, e = n; i != e; ++i)
-        defs.emplace_back(a->proj(e, i));
-    for (size_t i = 0, e = m; i != e; ++i)
-        defs.emplace_back(b->proj(e, i));
+    auto res = DefVec();
+    res.reserve(n + m);
+    for (nat_t i = 0; i != n; ++i)
+        res.emplace_back(a->proj(n, i));
+    for (nat_t i = 0; i != m; ++i)
+        res.emplace_back(b->proj(m, i));
 
-    return defs;
+    return res;
 }
 
 const Def* cat_tuple(nat_t n, nat_t m, const Def* a, const Def* b) { return a->world().tuple(cat(n, m, a, b)); }

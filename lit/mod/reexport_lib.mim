@@ -1,0 +1,7 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by reexport.mim - not a test of its own.
+
+pub import "lib.mim";
+pub import "lib.mim" as *;
+pub use lib as l;

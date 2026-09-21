@@ -1,8 +1,10 @@
 #include "mim/plug/affine/phase/lower_for.h"
 
+#include <mim/driver.h>
 #include <mim/lam.h>
 #include <mim/tuple.h>
 
+#include <mim/plug/ll/ll.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/affine/affine.h"
@@ -35,9 +37,15 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
 
     if (auto for_ax = Axm::isa<affine::For>(app)) {
-        DLOG("rewriting for axm: `{}`", for_ax);
+        log().d("lower for: {}", for_ax);
         auto [old_body, old_exit, args]               = for_ax->uncurry_args<3>();
         auto [new_begin, new_end, new_step, new_init] = args->projs<4>([this](const Def* def) { return rewrite(def); });
+
+        const Def* vec_axm = nullptr;
+        if (auto ll_vec = Axm::isa<ll::vec>(old_body)) {
+            old_body = ll_vec->arg();
+            if (old_world().driver().is_loaded("ll")) vec_axm = ll_vec->axm();
+        }
 
         auto old_body_lam = old_body->isa_mut<Lam>();
         auto old_exit_lam = old_exit->isa_mut<Lam>();
@@ -58,18 +66,31 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         auto new_cmp   = new_world().call(core::icmp::ul, Defs{new_iter, new_end});
         auto new_inc   = new_world().call(core::wrap::add, core::Mode::nsuw, Defs{new_iter, new_step});
 
+        if (vec_axm) new_cmp = new_world().app(new_world().app(rewrite(vec_axm), new_cmp->type()), new_cmp);
+
         new_head_lam->branch(false, new_cmp, new_body, new_exit, new_mem);
         new_yield->app(false, new_head_lam, merge_t(new_inc, new_yield->var(), new_mem));
 
+        // `new_acc` references the head's phis, including the head's mem var.
+        // Each new bb receives its own mem, so re-thread the acc's mem through the bb's own mem var.
+        auto acc_for = [&](Lam* bb) -> const Def* {
+            if (!new_mem) return new_acc;
+            auto bb_mem = mem::mem_var(bb);
+            auto elems  = DefVec();
+            for (auto phi : new_phis.view().subspan(1))
+                elems.emplace_back(Axm::isa<mem::M>(phi->type()) ? bb_mem : phi);
+            return new_world().tuple(elems);
+        };
+
         push();
-        map(old_body_lam->var(), {new_iter, new_acc, new_yield});
+        map(old_body_lam->var(), {new_iter, acc_for(new_body), new_yield});
         auto new_body_filter = rewrite(old_body_lam->filter());
         auto new_body_value  = rewrite(old_body_lam->body());
         new_body->set({new_body_filter, new_body_value});
         pop();
 
         push();
-        map(old_exit_lam->var(), new_acc);
+        map(old_exit_lam->var(), acc_for(new_exit));
         auto new_exit_filter = rewrite(old_exit_lam->filter());
         auto new_exit_value  = rewrite(old_exit_lam->body());
         new_exit->set({new_exit_filter, new_exit_value});

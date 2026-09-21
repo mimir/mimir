@@ -2,6 +2,7 @@
 // RUN: %mim -p opt %s -p ll
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module -c
 plugin core;
+plugin mem;
 
-fun extern foo(mem: %mem.M 0, p: %mem.Ptr0 «23; I32»): [%mem.M 0, %mem.Ptr0 I32] =
-    return (mem, %core.bitcast (%mem.Ptr0 I32) p);
+extern fun foo(m: mem.M 0, p: mem.Ptr0 «23; I32»): [mem.M 0, mem.Ptr0 I32] =
+    return (m, core.bitcast (mem.Ptr0 I32) p);

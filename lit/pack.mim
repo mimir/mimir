@@ -2,13 +2,13 @@
 plugin core;
 plugin refly;
 
-lam extern f(): «3; Nat» = ‹i: 3; %core.nat.add (1, %core.bitcast Nat i)›;
+extern lam f(): «3; Nat» = ‹i: 3; core.nat.add (1, core.bitcast Nat i)›;
 let p1 = ‹i: 2; i›;
 let p2 = ‹i: 1; i›;
 let p3 = ‹i: 0; i›;
-lam extern g(): [Idx 1, []] = (p2, p3);
+extern lam g(): [Idx 1, []] = (p2, p3);
 
-let _ = %refly.equiv.struc_eq (‹‹3; 5›; 42›, ‹5; ‹5; ‹5; 42›››);
+let _ = refly.equiv.struc_eq (‹‹3; 5›; 42›, ‹5; ‹5; ‹5; 42›››);
 
 // CHECK-DAG: (1, 2, 3)
 // CHECK-DAG: (0₁, ())

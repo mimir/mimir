@@ -1,0 +1,35 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+plugin core;
+import "lib.mim";
+import "lib.mim" as l2;
+import "sub/lib2.mim";
+
+use core.ops.u.w;
+
+mod foo {
+    pub let bar = 1I32;
+
+    pub mod nested {
+        pub let baz = 2I32;
+    }
+}
+
+extern lam f(): I32 = foo.bar + foo.nested.baz;
+extern lam g(): I32 = lib.answer + l2.inner.deep;
+extern lam h(): I32 = l2.inner.deeper.deepest;
+extern lam i(): I32 = lib2.base + lib2.util.deep.leaf;
+extern lam j(): I32 = lib2.total + lib2.util.scale;
+
+// A `/` in the directive stays a `/` when dumped - a native Windows `\` would not re-parse.
+// CHECK-DAG: import "{{.*}}/mod/sub/lib2.mim";
+// CHECK-DAG: extern lam f (): I32 =
+// CHECK-DAG-NEXT: 3I32;
+// CHECK-DAG: extern lam g (): I32 =
+// CHECK-DAG-NEXT: 65I32;
+// CHECK-DAG: extern lam h (): I32 =
+// CHECK-DAG-NEXT: 7I32;
+// CHECK-DAG: extern lam i (): I32 =
+// CHECK-DAG-NEXT: 109I32;
+// CHECK-DAG: extern lam j (): I32 =
+// CHECK-DAG-NEXT: 45I32;

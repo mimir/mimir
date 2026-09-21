@@ -1,0 +1,28 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll -o -
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t 1 2 ; test $? -eq 3
+// RUN: %t 4 5 ; test $? -eq 9
+
+plugin core;
+plugin cps;
+plugin mem;
+
+extern con atoi[mem.M 0, mem.Ptr («⊤:Nat; I8», 0), Cn [mem.M 0, I32]];
+
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+    let argv_ptr_a = mem.lea (argv, 1I32);
+    let (m, val) = mem.load (m, argv_ptr_a);
+
+    con wrapped_atoi (mem_1: mem.M 0, yield: Cn [mem.M 0, I32]) =
+            atoi (mem_1, val, yield);
+    let (m, a) = cps.cps2ds wrapped_atoi (m);
+
+    let argv_ptr_b = mem.lea (argv, 2I32);
+    let (m, val) = mem.load (m, argv_ptr_b);
+
+    con wrapped_atoi2 (mem_2: mem.M 0, yield: Cn [mem.M 0, I32]) =
+        atoi (mem_2, val, yield);
+    let (m, b) = cps.cps2ds wrapped_atoi2 (m);
+
+    return (m, core.wrap.add 0 (a, b));

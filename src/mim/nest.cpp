@@ -1,5 +1,7 @@
 #include "mim/nest.h"
 
+#include <queue>
+
 #include "mim/world.h"
 
 namespace mim {
@@ -10,7 +12,7 @@ Nest::Nest(Def* r)
     populate();
 }
 
-Nest::Nest(View<Def*> muts)
+Nest::Nest(fe::View<Def*> muts)
     : world_(muts.front()->world())
     , root_(make_node(nullptr)) {
     for (auto mut : muts)
@@ -35,7 +37,7 @@ void Nest::populate() {
             queue.push(child);
 
     while (!queue.empty()) {
-        auto curr_node = pop(queue);
+        auto curr_node = fe::pop(queue);
         for (auto op : curr_node->mut()->deps()) {
             for (auto local_mut : op->local_muts()) {
                 if ((*this)[local_mut] || !contains(local_mut)) continue;
@@ -53,7 +55,7 @@ void Nest::populate() {
                     uint32_t max = 0;
                     auto inest   = root_;
                     for (auto var : local_mut->free_vars()) {
-                        if (auto node = (*this)[var->mut()]; node && node->level() > max) {
+                        if (auto node = (*this)[var->binder()]; node && node->level() > max) {
                             max   = node->level();
                             inest = node;
                         }
@@ -76,13 +78,13 @@ Nest::Node* Nest::make_node(Def* mut, Node* inest) {
 }
 
 void Nest::assign_postorder_numbers() const {
-    if (root()->postorder_number_.has_value()) return;
+    if (root()->postorder_number_) return;
 
     auto number = 0;
 
     std::function<void(const Nest::Node*)> visit = [&](const Nest::Node* node) {
-        if (node->postorder_number_.has_value()) return; // already visited
-        node->postorder_number_ = 0;                     // mark in progress
+        if (node->postorder_number_) return; // already visited
+        node->postorder_number_ = 0;         // mark in progress
         for (auto op : node->mut()->deps()) {
             for (auto mut : op->local_muts())
                 if (auto succ = node->nest()[mut]) visit(succ);
@@ -173,7 +175,7 @@ uint32_t Nest::Node::tarjan(uint32_t i, Node* inest, Stack& stack) {
         Node* node;
         int num = 0;
         do {
-            node             = pop(stack);
+            node             = fe::pop(stack);
             node->on_stack_  = false;
             node->recursive_ = true;
             node->low_       = this->idx_;
@@ -201,7 +203,7 @@ const Nest::Node* Nest::Node::calc_dominance() const {
 
     // Holds all siblings in reverse post-order coming from the parent
     absl::flat_hash_set<const Node*> visited;
-    Vector<const Node*> nodes;
+    fe::Vector<const Node*> nodes;
 
     // Initialize entry nodes directly referenced by the parent
     for (auto op : inest()->mut()->deps()) {

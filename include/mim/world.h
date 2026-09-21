@@ -1,6 +1,8 @@
 #pragma once
 
+#include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -8,13 +10,16 @@
 
 #include <absl/container/btree_map.h>
 #include <fe/arena.h>
+#include <fe/log.h>
+#include <fe/restore.h>
+#include <fe/span.h>
+#include <fe/vla.h>
 
 #include "mim/axm.h"
+#include "mim/flags.h"
 #include "mim/rewrite.h"
 
 #include "mim/util/dbg.h"
-#include "mim/util/log.h"
-#include "mim/util/span.h"
 
 namespace mim {
 
@@ -35,6 +40,12 @@ struct Flags;
 /// Note that types are also just Def%s and will be hashed as well.
 class World {
 public:
+    /// World::get_loc together with its interned DbgKey, so pushing/popping a Loc never re-interns it.
+    struct CurrLoc {
+        Loc loc    = {};
+        DbgKey key = {};
+    };
+
     /// @name State
     ///@{
     struct State {
@@ -44,9 +55,9 @@ public:
 
         /// [Plain Old Data](https://en.cppreference.com/w/cpp/named_req/PODType)
         struct POD {
-            u32 curr_gid = 0;
-            u32 curr_sub = 0;
-            Loc loc      = {};
+            u32 curr_gid     = 0;
+            u32 curr_sub     = 0;
+            CurrLoc curr_loc = {};
             Sym name;
             mutable bool frozen = false;
         } pod;
@@ -57,7 +68,7 @@ public:
 #endif
         friend void swap(State& s1, State& s2) noexcept {
             using std::swap;
-            assert((!s1.pod.loc || !s2.pod.loc) && "Why is get_loc() still set?");
+            assert((!s1.pod.curr_loc.loc || !s2.pod.curr_loc.loc) && "Why is get_loc() still set?");
             swap(s1.pod, s2.pod);
 #ifdef MIM_ENABLE_CHECKS
             swap(s1.breakpoints, s2.breakpoints);
@@ -82,7 +93,7 @@ public:
     /// World::curr_gid will be offset to not collide with the original World.
     std::unique_ptr<World> inherit() {
         auto s = state();
-        s.pod.curr_gid += move_.defs.size();
+        s.pod.curr_gid += move_.sea.size();
         return std::make_unique<World>(&driver(), s);
     }
     ///@}
@@ -90,8 +101,10 @@ public:
     /// @name Getters/Setters
     ///@{
     const State& state() const { return state_; }
-    const Driver& driver() const { return *driver_; }
     Driver& driver() { return *driver_; }
+    const Driver& driver() const { return *driver_; }
+    fe::Error& error();
+    const fe::Error& error() const;
     Zonker& zonker() { return zonker_; }
 
     Sym name() const { return state_.pod.name; }
@@ -110,26 +123,12 @@ public:
     Flags& flags();
     ///@}
 
+    using ScopedLoc = fe::Restore<CurrLoc>;
     /// @name Loc
     ///@{
-    struct ScopedLoc {
-        ScopedLoc(World& world, Loc old_loc)
-            : world_(world)
-            , old_loc_(old_loc) {}
-        ~ScopedLoc() { world_.set_loc(old_loc_); }
-
-    private:
-        World& world_;
-        Loc old_loc_;
-    };
-
-    Loc get_loc() const { return state_.pod.loc; }
-    void set_loc(Loc loc = {}) { state_.pod.loc = loc; }
-    ScopedLoc push(Loc loc) {
-        auto sl = ScopedLoc(*this, get_loc());
-        set_loc(loc);
-        return sl;
-    }
+    Loc get_loc() const { return state_.pod.curr_loc.loc; }
+    DbgKey dbg_key() const { return state_.pod.curr_loc.key; } ///< World::get_loc, already interned.
+    [[nodiscard]] ScopedLoc push(Loc);
     ///@}
 
     /// @name Sym
@@ -146,32 +145,14 @@ public:
     ///@{
     bool is_frozen() const { return state_.pod.frozen; }
 
-    /// Use to World::freeze and automatically unfreeze at the end of scope.
-    struct Freezer {
-        Freezer(const World& world)
-            : world(world)
-            , old(world.do_freeze(true)) {}
-        ~Freezer() { world.do_freeze(old); }
-
-        const World& world;
-        bool old;
-    };
-
-    /// Yields old frozen state.
-    bool do_freeze(bool on = true) const {
-        bool old          = state_.pod.frozen;
-        state_.pod.frozen = on;
-        return old;
-    }
-
-    /// Use like this to freeze and automatically unfreeze:
+    /// Freezes the World until the end of the scope and restores the previous frozen state afterwards:
     /// ```
     /// {
     ///     auto _ = world.freeze();
     ///     // do stuff
     /// }
     /// ```
-    Freezer freeze() { return Freezer(*this); }
+    [[nodiscard]] auto freeze() const { return fe::Restore(state_.pod.frozen, true); }
     ///@}
 
     /// @name Debugging Features
@@ -197,10 +178,10 @@ public:
         const auto& sym2mut() const { return sym2mut_; }
         auto syms() const { return sym2mut_ | std::views::keys; }
         auto muts() const { return sym2mut_ | std::views::values; }
-        /// Returns a copy of @p muts() in a Vector; this allows you to modify the Externals while iterating.
+        /// Returns a copy of @p muts() in a fe::Vector; this allows you to modify the Externals while iterating.
         /// @note The iteration will see all old externals, of course.
-        Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
-        Def* operator[](Sym name) const { return mim::lookup(sym2mut_, name); } ///< Lookup by @p name.
+        fe::Vector<Def*> mutate() const { return {muts().begin(), muts().end()}; }
+        Def* operator[](Sym name) const { return fe::lookup(sym2mut_, name); } ///< Lookup by @p name.
         size_t size() const { return sym2mut_.size(); }
         ///@}
 
@@ -222,7 +203,7 @@ public:
         }
 
     private:
-        fe::SymMap<Def*> sym2mut_;
+        absl::btree_map<Sym, Def*> sym2mut_;
     };
 
     class Annexes {
@@ -239,11 +220,13 @@ public:
         ///@{
         Driver& driver() { return *driver_; }
         /// An annex's flags map to its full name and its Def.
+        auto& flags2entry() { return flags2entry_; }
         const auto& flags2entry() const { return flags2entry_; }
         auto entries() const { return flags2entry_ | std::views::values; }
         auto defs() const {
-            return entries() | std::views::transform([](Entry e) { return e.def; });
+            return entries() | std::views::transform([](const Entry& e) { return e.def; });
         }
+        auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
         size_t size() const { return flags2entry_.size(); }
         ///@}
@@ -253,6 +236,20 @@ public:
         const Def* attach(flags_t, Sym, const Def*);
         const Def* attach(plugin_t p, tag_t t, sub_t s, Sym sym, const Def* def) {
             return attach(Annex::flags(p, t, s), sym, def);
+        }
+
+        /// Registers a further Sym for an *already* attach()ed annex, sharing its flags_t; @see mim::ast::AliasDecl.
+        void attach_alias(flags_t, Sym);
+        void attach_alias(plugin_t p, tag_t t, sub_t s, Sym sym) { attach_alias(Annex::flags(p, t, s), sym); }
+
+        /// Overwrites the Def of an *already* attach()ed annex, keeping its Sym.
+        /// Unlike attach(), this expects @p flags to be present; @see InplaceRWPhase.
+        const Def* reattach(flags_t flags, const Def* def) {
+            auto i = flags2entry_.find(flags);
+            assert(i != flags2entry_.end() && "cannot reattach an annex that was never attached");
+            i->second.def = def;
+            def->annex_   = true;
+            return def;
         }
         ///@}
 
@@ -274,7 +271,7 @@ public:
     private:
         Driver* driver_;
         absl::btree_map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
-        fe::SymMap<flags_t> sym2flags_;               ///< Reverse index: an annex's full name to its flags.
+        absl::btree_map<Sym, flags_t> sym2flags_;     ///< Reverse index: an annex's full name to its flags.
     };
 
     /// @name Externals & Annexes
@@ -287,7 +284,7 @@ public:
 
     /// annexes() + externals().muts() in this order.
     auto roots() const {
-        auto res = Vector<const Def*>(); // TODO use std::views::concat - once we have C++26
+        auto res = DefVec(); // TODO use std::views::concat - once we have C++26
         res.reserve(annexes().size() + externals().size());
         res.append_range(annexes().defs());
         res.append_range(externals().muts());
@@ -302,9 +299,8 @@ public:
 
     /// Lookup annex by flags.
     const Def* annex(flags_t flags) {
-        if (auto e = lookup(annexes().flags2entry(), flags)) return e->def;
-        ELOG("Axm with ID `{}` not found; demangled plugin name is `{}`", flags, Annex::demangle(driver(), flags));
-        return nullptr;
+        if (auto e = fe::lookup(annexes().flags2entry(), flags)) return e->def;
+        fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
     }
     /// Lookup annex by Axm::id
     template<class Id>
@@ -314,7 +310,7 @@ public:
 
     /// Get Axm from a plugin.
     /// Can be used to get an Axm without sub-tags.
-    /// E.g. use `w.annex<mem::M>();` to get the `%mem.M` Axm.
+    /// E.g. use `w.annex<mem::M>();` to get the `mem.M` Axm.
     template<annex_without_subs id>
     const Def* annex() {
         return annex(Annex::base<id>());
@@ -339,7 +335,7 @@ public:
             return type(lit_univ(level));
     }
     const Def* var(Def* mut);
-    const Proxy* proxy(const Def* type, Defs ops, u32 index, u32 tag) { return unify<Proxy>(type, index, tag, ops); }
+    const Proxy* proxy(const Def* type, Defs ops, flags_t tag) { return unify<Proxy>(type, tag, ops); }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
     Hole* mut_hole_univ() { return mut_hole(univ()); }
@@ -477,8 +473,8 @@ public:
     const Def* pack(Defs       shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (u64            n, const Def* body) { return seq(false,     n, body); }
     const Def* pack(u64            n, const Def* body) { return seq(true ,     n, body); }
-    const Def* arr (View<u64>  shape, const Def* body) { return seq(false, shape, body); }
-    const Def* pack(View<u64>  shape, const Def* body) { return seq(true , shape, body); }
+    const Def* arr (fe::View<u64>  shape, const Def* body) { return seq(false, shape, body); }
+    const Def* pack(fe::View<u64>  shape, const Def* body) { return seq(true , shape, body); }
     const Def*  arr_unsafe(           const Def* body) { return seq_unsafe(false, body); }
     const Def* pack_unsafe(           const Def* body) { return seq_unsafe(true , body); }
 
@@ -496,8 +492,8 @@ public:
     const Def* seq(bool is_pack, const Def* arity, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
     const Def* seq(bool is_pack, u64 n, const Def* body) { return seq(is_pack, lit_nat(n), body); }
-    const Def* seq(bool is_pack, View<u64> shape, const Def* body) {
-        return seq(is_pack, DefVec(shape.size(), [&](size_t i) { return lit_nat(shape[i]); }), body);
+    const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
+        return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
     const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
     ///@}
@@ -537,17 +533,25 @@ public:
     const Lit* lit_univ(u64 level) { return lit(univ(), level); }
     const Lit* lit_univ_0() { return data_.lit_univ_0; }
     const Lit* lit_univ_1() { return data_.lit_univ_1; }
-    const Lit* lit_nat(nat_t a) { return lit(type_nat(), a); }
+    /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs reads it straight back out, so a plain
+    /// World::lit would hash-cons a Lit just to launder an integer. Worth ~4% of an `-Og` Debug compile.
+    static constexpr nat_t Num_Lit_Nats = 64;
+
+    const Lit* lit_nat(nat_t a) {
+        if (a >= Num_Lit_Nats) return lit(type_nat(), a);
+        if (auto cached = data_.lit_nats[a]) return cached;
+        return data_.lit_nats[a] = lit(type_nat(), a); // stays null while frozen - then we simply retry
+    }
     const Lit* lit_nat_0() { return data_.lit_nat_0; }
     const Lit* lit_nat_1() { return data_.lit_nat_1; }
     const Lit* lit_nat_max() { return data_.lit_nat_max; }
     const Lit* lit_idx_1_0() { return data_.lit_idx_1_0; }
     // clang-format off
-    const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); };
-    const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); };
-    const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); };
-    const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); };
-    const Lit* lit_i64() { return lit_nat(Idx::bitwidth2size(64)); };
+    const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); }
+    const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); }
+    const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); }
+    const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); }
+    const Lit* lit_i64() { return lit_nat(Idx::bitwidth2size(64)); }
     /// Constructs a Lit of type Idx of size @p size.
     /// @note `size = 0` means `2^64`.
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
@@ -622,12 +626,12 @@ public:
     // clang-format off
     const Def* type_bool() { return data_.type_bool; }
     const Def* type_i1()   { return data_.type_bool; }
-    const Def* type_i2()   { return type_int( 2);    };
-    const Def* type_i4()   { return type_int( 4);    };
-    const Def* type_i8()   { return type_int( 8);    };
-    const Def* type_i16()  { return type_int(16);    };
-    const Def* type_i32()  { return type_int(32);    };
-    const Def* type_i64()  { return type_int(64);    };
+    const Def* type_i2()   { return type_int( 2);    }
+    const Def* type_i4()   { return type_int( 4);    }
+    const Def* type_i8()   { return type_int( 8);    }
+    const Def* type_i16()  { return type_int(16);    }
+    const Def* type_i32()  { return type_int(32);    }
+    const Def* type_i64()  { return type_int(64);    }
     // clang-format on
     ///@}
 
@@ -646,8 +650,7 @@ public:
     }
     template<bool Normalize = true, class E>
     const Def* implicit_app(const Def* callee, E arg)
-        requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t>
-    {
+        requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t> {
         return implicit_app<Normalize>(callee, lit_nat(std::to_underlying(arg)));
     }
     ///@}
@@ -674,8 +677,7 @@ public:
 
     /// Annex overload with enum tempalte argument @p Id for annexes w/o subtag.
     template<class Id, bool Normalize = true, class... Args>
-    requires std::is_enum_v<Id>
-    const Def* call(Args&&... args) {
+    requires std::is_enum_v<Id> const Def* call(Args&&... args) {
         return call<Normalize>(annex<Id>(), std::forward<Args>(args)...);
     }
 
@@ -698,6 +700,11 @@ public:
     /// The new body may have fewer elements as `mut->num_ops()` according to Def::reduction_offset.
     /// E.g. a Pi has a Pi::reduction_offset of 1, and only Pi::dom will be reduced - *not* Pi::codom.
     Defs reduce(const Var* var, const Def* arg);
+
+    /// As above but reduces *only* the @p i th op.
+    /// A dependent Sigma is projected while it is still being built - its later ops do not exist yet - so reducing
+    /// all of them is not an option there.
+    const Def* reduce(const Var* var, const Def* arg, size_t i);
     ///@}
 
     /// @name for_each
@@ -718,10 +725,10 @@ public:
 
     /// @name dump/log
     ///@{
-    Log& log() const;
+    const fe::Log& log() const;   ///< Log via `log().e("...", args)` etc.; owned by the Driver.
     void dump(std::ostream& os);  ///< Dump to @p os.
     void dump();                  ///< Dump to `std::cout`.
-    void debug_dump();            ///< Dump in Debug build if World::log::level is Log::Level::Debug.
+    void debug_dump();            ///< Dump in Debug build if World::log::level is fe::Log::Level::Debug.
     void write(const char* file); ///< Write to a file named @p file.
     void write();                 ///< Same above but file name defaults to World::name.
     ///@}
@@ -730,18 +737,24 @@ public:
     /// GraphViz output.
     ///@{
 
-    /// Dumps DOT to @p os.
-    /// @param os Output stream
-    /// @param annexes If `true`, include all annexes - even if unused.
-    /// @param types Follow type dependencies?
-    void dot(std::ostream& os, bool annexes = false, bool types = false) const;
+    /// Dumps DOT to @p os, configured via @p cfg (see DotConfig).
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
     /// Same as above but write to @p file or `std::cout` if @p file is `nullptr`.
-    void dot(const char* file = nullptr, bool annexes = false, bool types = false) const;
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
     ///@}
 
 private:
     /// @name Put into Sea of Nodes
     ///@{
+    /// Common tail of World::unify \& World::insert, right after World::allocate.
+    template<class T>
+    void stamp(T* def) {
+        if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
+#ifdef MIM_ENABLE_CHECKS
+        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
+#endif
+    }
+
     template<class T, class... Args>
     const T* unify(Args&&... args) {
         auto num_ops = T::Num_Ops;
@@ -753,11 +766,9 @@ private:
         auto state = move_.arena.defs.state();
         auto def   = allocate<T>(num_ops, std::forward<Args>(args)...);
         assert(!def->isa_mut());
-
-        if (auto loc = get_loc()) def->set(loc);
+        stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
         for (auto op : def->ops())
             assert(&op->world() == this && "op of new Def belongs to a different World");
@@ -765,13 +776,13 @@ private:
 #endif
 
         if (is_frozen()) {
-            auto i = move_.defs.find(def);
+            auto i = move_.sea.find(def);
             deallocate<T>(state, def);
-            if (i != move_.defs.end()) return static_cast<const T*>(*i);
+            if (i != move_.sea.end()) return static_cast<const T*>(*i);
             return nullptr;
         }
 
-        if (auto [i, ins] = move_.defs.emplace(def); !ins) {
+        if (auto [i, ins] = move_.sea.emplace(def); !ins) {
             deallocate<T>(state, def);
             return static_cast<const T*>(*i);
         }
@@ -798,13 +809,12 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
-        if (auto loc = get_loc()) def->set(loc);
+        stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
-        if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
-        assert_emplace(move_.defs, def);
+        fe::assert_emplace(move_.sea, def);
         return def;
     }
 
@@ -845,22 +855,32 @@ private:
         bool operator()(const Def* d1, const Def* d2) const { return d1->equal(d2); }
     };
 
-    class Reduct {
+    /// The slots of `[var -> arg]mut`, one per reduced Def::op, filled on demand by World::reduce.
+    class Reduct : public fe::VLA<Reduct> {
     public:
-        constexpr Reduct(size_t size) noexcept
-            : size_(size) {}
+        using VLA_Types = std::tuple<const Def*>;
 
-        template<size_t N = std::dynamic_extent>
-        constexpr auto defs() const noexcept {
-            return View<const Def*, N>{defs_, size_};
-        }
-
-    private:
-        size_t size_;
-        const Def* defs_[];
-
-        friend class World;
+        // clang-format off
+        template<size_t N = std::dynamic_extent> auto ops() const noexcept { return vla<0, N>(); }
+        template<size_t N = std::dynamic_extent> auto ops()       noexcept { return vla<0, N>(); }
+        // clang-format on
     };
+
+    /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
+    /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
+    Reduct* reduct(const Var* var, const Def* arg, size_t n) {
+        if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) return i->second;
+        auto reduct = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
+        fe::assert_emplace(move_.substs, std::pair{var, arg}, reduct);
+        return reduct;
+    }
+
+    /// Caches `[var -> arg]` as @p defs that have already been computed.
+    void cache_reduct(const Var* var, const Def* arg, Defs defs) {
+        auto reduct = this->reduct(var, arg, defs.size());
+        for (size_t i = 0, e = defs.size(); i != e; ++i)
+            reduct->ops()[i] = defs[i];
+    }
 
     struct Move {
         Move(Driver* driver)
@@ -872,17 +892,17 @@ private:
 
         Externals externals;
         Annexes annexes;
-        absl::flat_hash_set<const Def*, SeaHash, SeaEq> defs;
-        Sets<Def> muts;
-        Sets<const Var> vars;
-        absl::flat_hash_map<std::pair<const Var*, const Def*>, const Reduct*> substs;
+        absl::flat_hash_set<const Def*, SeaHash, SeaEq> sea;
+        fe::Patricia<Def, DefKey> muts;
+        fe::Patricia<const Var, DefKey> vars;
+        absl::flat_hash_map<std::pair<const Var*, const Def*>, Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;
             // clang-format off
             swap(m1.arena.defs,   m2.arena.defs);
             swap(m1.arena.substs, m2.arena.substs);
-            swap(m1.defs,         m2.defs);
+            swap(m1.sea,          m2.sea);
             swap(m1.substs,       m2.substs);
             swap(m1.vars,         m2.vars);
             swap(m1.muts,         m2.muts);
@@ -904,8 +924,6 @@ private:
         const Tuple* tuple;
         const Nat* type_nat;
         const Idx* type_idx;
-        const Def* table_id;
-        const Def* table_not;
         const Lit* lit_univ_0;
         const Lit* lit_univ_1;
         const Lit* lit_nat_0;
@@ -913,7 +931,8 @@ private:
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
-        u32 curr_run = 0;
+        std::array<const Lit*, Num_Lit_Nats> lit_nats = {}; ///< @see World::lit_nat
+        u32 curr_run                                  = 0;
     } data_;
 
     friend void swap(World& w1, World& w2) noexcept {

@@ -1,0 +1,7 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by priv_import.mim - not a test of its own.
+
+import "../mod/lib.mim";
+import "../mod/lib.mim" as *;
+use lib as l;

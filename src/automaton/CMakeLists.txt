@@ -11,10 +11,6 @@ target_include_directories(automaton
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 target_compile_features(automaton PUBLIC cxx_std_23)
-target_link_libraries(automaton
-    PUBLIC
-        absl::flat_hash_map absl::flat_hash_set
-)
 
 install(
     TARGETS automaton

@@ -1,18 +1,17 @@
-#include <absl/container/btree_set.h>
+#include <absl/container/fixed_array.h>
+#include <fe/bitset.h>
+
+#include <mim/tuple.h>
+#include <mim/world.h>
 
 #include <mim/plug/core/core.h>
 
-#include "mim/tuple.h"
-#include "mim/world.h"
-
 #include "mim/plug/vec/vec.h"
-
-#include "absl/container/fixed_array.h"
 
 namespace mim::plug::vec {
 
 template<fold id>
-const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
+const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
     auto& w     = c->world();
     auto callee = c->as<App>();
     auto f      = callee->arg();
@@ -30,7 +29,18 @@ const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
         return acc;
     }
 
-    if (auto pack = vec->isa_imm<Pack>()) w.WLOG("packs not yet implemented: {}", pack);
+    if (auto seq = vec->isa<Seq>()) {
+        if (auto n = Lit::isa<u64>(seq->arity()); n && type->isa<Nat>()) {
+            if constexpr (id == fold::l)
+                for (auto proj : seq->projs(*n))
+                    acc = w.app(f, {acc, proj});
+            else // fold::r
+                for (auto proj : seq->projs(*n) | std::views::reverse)
+                    acc = w.app(f, {proj, acc});
+            return acc;
+        }
+        w.log().w("Pack of non-literal arity not yet implemented: {}", seq);
+    }
 
     if (auto l = vec->isa<Lit>()) {
         if constexpr (id == fold::l)
@@ -77,7 +87,7 @@ const Def* normalize_scan(const Def*, const Def* c, const Def* vec) {
         return acc;
     }
 
-    if (auto pack = vec->isa_imm<Pack>()) w.WLOG("packs not yet implemented: {}", pack);
+    if (auto pack = vec->isa_imm<Pack>()) w.log().w("Pack not yet implemented: {}", pack);
 
     return nullptr;
 }
@@ -128,12 +138,12 @@ const Def* normalize_diff(const Def* type, const Def* c, const Def* arg) {
     if (auto tup_vec = vec->isa<Tuple>()) {
         if (auto tup_is = is->isa<Tuple>(); tup_is && tup_is->is_closed()) {
             auto defs = DefVec();
-            auto set  = absl::btree_set<nat_t>();
+            auto drop = fe::Bitset();
             for (auto opi : tup_is->ops())
-                set.emplace(Lit::as(opi));
+                drop.set(Lit::as(opi));
 
             for (size_t i = 0, e = tup_vec->num_ops(); i != e; ++i)
-                if (!set.contains(i)) defs.emplace_back(tup_vec->op(i));
+                if (!drop.test(i)) defs.emplace_back(tup_vec->op(i));
             return w.tuple(defs);
         }
         if (auto lit_is = Lit::isa(is)) {

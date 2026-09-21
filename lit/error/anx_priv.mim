@@ -1,0 +1,9 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+pub mod foo {
+    priv anx lam bar (x: Nat): Nat = x;
+}
+
+let x = foo.bar;
+
+// CHECK: {{.*}}anx_priv.mim:7:13-7:15: error: `bar` is private to its enclosing `mod`

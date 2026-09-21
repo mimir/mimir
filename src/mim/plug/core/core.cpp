@@ -1,12 +1,12 @@
 #include "mim/plug/core/core.h"
 
 #include <mim/config.h>
-#include <mim/pass.h>
+#include <mim/phase.h>
 
 using namespace mim;
 using namespace mim::plug;
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() { return {"core", MIM_VERSION, core::register_normalizers, nullptr}; }
+MIM_PLUGIN_ENTRY(core) { plugin.register_normalizers = core::register_normalizers; }
 
 namespace mim::plug::core {
 

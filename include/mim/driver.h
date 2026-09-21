@@ -1,28 +1,70 @@
 #pragma once
 
+#include <filesystem>
 #include <list>
+#include <string>
 #include <utility>
 
+#include <absl/container/flat_hash_map.h>
 #include <absl/container/node_hash_map.h>
+#include <fe/driver.h>
+#include <fe/log.h>
+#include <fe/profile.h>
 
 #include "mim/flags.h"
 #include "mim/plugin.h"
 #include "mim/world.h"
 
 #include "mim/ast/tok.h"
-#include "mim/util/log.h"
 
 namespace mim {
 
+namespace fs = std::filesystem;
+
+class Driver;
+
+/// The reserved words the ast::Lexer looks up, keyed by the Sym it has just interned.
+using Keys = fe::SymTab<ast::Tok::Tag, ast::Num_Keys + ast::Num_Subst>;
+
+/// Renders Def%s with their plain Def::sym instead of Def::unique_name while alive.
+/// A gid is noise in a diagnostic about the user's source - but it is also the only thing that tells two
+/// same-named Def%s apart, so PlainNames::clashed reports when a message has to be rendered again with gids.
+/// The state lives in Driver::names, so two Driver%s formatting at once never share it.
+class PlainNames {
+public:
+    /// Activates plain naming on @p driver until this guard dies; a null @p driver leaves it off.
+    explicit PlainNames(const Driver* driver);
+    ~PlainNames();
+
+    bool clashed() const;
+
+    /// Registers that @p gid renders as @p sym and reports whether the plain @p sym may be used.
+    /// Sets the clash flag - but still answers `true` - if another gid already claimed @p sym.
+    static bool claim(const Driver&, Sym sym, uint32_t gid);
+
+private:
+    const Driver* driver_;
+};
+
+/// Renders a diagnostic through PlainNames and - if that turned out ambiguous - once more with Def::unique_name.
+class Diag : public fe::CodeDiag {
+public:
+    explicit Diag(const Driver& driver)
+        : driver_(driver) {}
+
+    std::string render(const std::function<std::string()>&) const override;
+
+private:
+    const Driver& driver_;
+};
+
 /// Some "global" variables needed all over the place.
 /// Well, there are not really global - that's the point of this class.
-class Driver : public fe::SymPool {
+class Driver : public fe::Driver {
 public:
     /// @name Construction
     ///@{
-    Driver(std::string name);
-    Driver()
-        : Driver(std::string{}) {}
+    Driver(std::string name = {});
 
     Driver(const Driver&)     = delete;
     Driver(Driver&&)          = delete;
@@ -33,40 +75,75 @@ public:
     ///@{
     Flags& flags() { return flags_; }
     const Flags& flags() const { return flags_; }
-    Log& log() const { return log_; }
+    fe::Log& log() { return log_; }
+    const fe::Log& log() const { return log_; }
+    fe::Profiler& profiler() { return profiler_; }
+    const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
     const Version& version() const { return version_; } ///< MimIR Version.
+    const Keys& keys() const { return keys_; }          ///< Interned once here: every ast::Lexer borrows them.
     ///@}
 
-    /// @name Manage Search Paths
-    /// Search paths for plugins are in the following order:
-    /// 1. The empty path. Used as prefix to look into current working directory without resorting to an absolute path.
-    /// 2. All further user-specified paths via Driver::add_search_path; paths added first will also be searched first.
-    /// 3. All paths specified in the environment variable `MIM_PLUGIN_PATH`.
-    /// 4. The path derived from the location of `libmim` (`<libmim>/mim`)
-    /// 5. `CMAKE_INSTALL_PREFIX/lib/mim`
+    /// @name Diagnostic Naming
+    /// Scratch state for PlainNames: which plain Def::sym each gid claimed while one message is formatted.
+    /// It lives here - not in a global - so that concurrent Driver%s never share it.
     ///@{
-    const auto& search_paths() const { return search_paths_; }
-    void add_search_path(fs::path path) {
-        if (fs::exists(path) && fs::is_directory(path)) search_paths_.insert(insert_, std::move(path));
-    }
+    struct Names {
+        size_t depth = 0;
+        bool clashed = false;
+        absl::flat_hash_map<Sym, u32> sym2gid;
+    };
+
+    Names& names() const { return names_; }
+    ///@}
+
+    /// An ordered list of directories.
+    class Paths {
+    public:
+        void add(fs::path path) {
+            if (fs::exists(path) && fs::is_directory(path)) paths_.insert(insert_, std::move(path));
+        }
+
+        /// Later Paths::add calls insert in front of everything added so far.
+        void seal() { insert_ = paths_.begin(); }
+
+        auto begin() const { return paths_.cbegin(); }
+        auto end() const { return paths_.cend(); }
+
+    private:
+        std::list<fs::path> paths_;
+        std::list<fs::path>::iterator insert_ = paths_.end();
+    };
+
+    /// @name Manage Search Paths
+    /// A *plain directory* is probed as-is; a *prefix root* stands for an install tree and derives
+    /// `<root>/<libdir>/mim` (plugins), `<root>/<datadir>/mim` (imports), and `<root>/<libdir>/mim/rt` (runtimes).
+    /// Each lookup starts with the empty path, which probes the current working directory without an absolute path.
+    /// Within a list, paths added first are searched first; CLI paths precede the environment and derived ones.
+    ///@{
+    void add_plugin_path(fs::path path) { plugin_dirs_.add(std::move(path)); }
+    void add_import_path(fs::path path) { import_dirs_.add(std::move(path)); }
+    void add_prefix_path(fs::path path) { prefixes_.add(std::move(path)); }
+
+    /// Where Driver::load looks for `libmim_<name>`.
+    fe::Vector<fs::path> plugin_paths() const;
+    /// Where ast::Parser looks for `<name>.mim`; plugin directories are included, as a plugin ships both halves.
+    fe::Vector<fs::path> import_paths() const;
+    /// Where a backend looks for its runtime modules.
+    fe::Vector<fs::path> rt_paths() const;
     ///@}
 
     /// @name Manage Imports
-    /// This tracks:
-    /// 1. The distinct files that have already been parsed to avoid reparsing them,
-    /// 2. The distinct import or plugin directives that should be emitted again later.
+    /// Tracks the distinct import or plugin directives that World::dump should emit again later.
     ///@{
     class Imports {
     public:
         struct Entry {
-            fs::path path;
+            const fe::Src* src;
             Sym sym;
             ast::Tok::Tag tag;
+            bool path; ///< The directive spelled a path (`import "a/b.mim"`) rather than a name.
         };
-
-        Imports(Driver& driver)
-            : driver_(driver) {}
 
         /// @name Get imports
         ///@{
@@ -79,13 +156,11 @@ public:
         auto end() const { return entries_.cend(); }
         ///@}
 
-        /// Remembers an import or plugin directive and reports whether the resolved file is new.
-        std::pair<const fs::path*, bool> add(fs::path, Sym, ast::Tok::Tag);
+        /// Remembers the directive that pulled in @p src; a repeated import of the same file adds nothing.
+        void add(const fe::Src* src, Sym, ast::Tok::Tag, bool path);
 
     private:
-        Driver& driver_;
         std::deque<Entry> entries_;
-        std::deque<fs::path> parsed_paths_;
     };
 
     const Imports& imports() const { return imports_; }
@@ -94,47 +169,78 @@ public:
 
     /// @name Load Plugin
     /// Finds and loads a shared object file that implements the MimIR Plugin @p name.
-    /// If \a name is an absolute path to a `.so`/`.dll` file, this is used.
-    /// Otherwise, "name", "libmim_name.so" (Linux, Mac), "mim_name.dll" (Win)
-    /// are searched for in Driver::search_paths().
+    /// @p name may be a bare name (`bar`), a path (`foo/bar`), or a path to the shared object itself.
+    /// Its directory part - if any - is prepended to every Driver::plugin_paths() entry,
+    /// where `libmim_<bar>.so` (Linux, Mac) / `mim_<bar>.dll` (Win) is searched for.
     ///@{
-    void load(Sym name);
-    void load(const std::string& name) { return load(sym(name)); }
-    bool is_loaded(Sym sym) const { return lookup(plugins_, sym); }
-    void* get_fun_ptr(Sym plugin, const char* name);
-
-    template<class F>
-    auto get_fun_ptr(Sym plugin, const char* name) {
-        return reinterpret_cast<F*>(get_fun_ptr(plugin, name));
+    void load(std::string_view name);
+    /// Makes a Plugin linked into this binary available to Driver::load under @p name; see `cmake/Mim.cmake`.
+    static void add_static_plugin(const char* name, Plugin (*get_plugin)());
+    /// Bare plugin name of a possibly path-qualified @p name: `foo/libmim_bar.so` &rarr; `bar`.
+    static std::string plugin_name(std::string_view name);
+    bool is_loaded(std::string_view name) const { return fe::lookup(plugins_, name); }
+    /// Directory the Plugin was loaded from, so that its `<name>.mim` half cannot come from elsewhere.
+    /// `nullptr` if nothing pins it.
+    const fs::path* plugin_dir(std::string_view name) const {
+        auto loaded = fe::lookup(plugins_, name);
+        return loaded && !loaded->dir.empty() ? &loaded->dir : nullptr;
     }
+    void* get_fun_ptr(std::string_view plugin, const char* name);
 
     template<class F>
-    auto get_fun_ptr(const char* plugin, const char* name) {
-        return get_fun_ptr<F>(sym(plugin), name);
+    auto get_fun_ptr(std::string_view plugin, const char* name) {
+        return reinterpret_cast<F*>(get_fun_ptr(plugin, name));
     }
     ///@}
 
     /// @name Manage Plugins
     /// All these lookups yield `nullptr` if the key has not been found.
     ///@{
-    auto stage(flags_t flags) { return lookup(stages_, flags); }
-    const auto& stages() const { return stages_; }
-    auto normalizer(flags_t flags) const { return lookup(normalizers_, flags); }
+    auto phase(flags_t flags) { return fe::lookup(phases_, flags); }
+    const auto& phases() const { return phases_; }
+    auto normalizer(flags_t flags) const { return fe::lookup(normalizers_, flags); }
     auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(Annex::flags(d, t, s)); }
     ///@}
 
+    /// @name Plugin/Phase Arguments
+    /// Freeform command-line arguments addressed to a plugin/phase (`-X <plugin>:<arg>`).
+    /// A Phase reads its own arguments via Phase::args().
+    ///@{
+    void add_arg(std::string_view plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
+    /// Yields an empty fe::Vector if @p plugin has none.
+    const fe::Vector<std::string>& args(std::string_view plugin) const;
+
+    /// The PluginArg%s each loaded Plugin declares, in load order; only for listing them, see PluginArg.
+    const auto& known_args() const { return known_args_; }
+
+    /// The PluginEnv%s each loaded Plugin declares, in load order; only for listing them, see PluginEnv.
+    const auto& known_envs() const { return known_envs_; }
+    ///@}
+
 private:
+    /// Loaded::handle is null for a statically linked Plugin.
+    struct Loaded {
+        Plugin::Handle handle;
+        fs::path dir;
+        fe::View<PluginSym> syms;
+    };
+
     // This must go *first* so plugins will be unloaded *last* in the d'tor; otherwise funny things might happen ...
-    absl::node_hash_map<Sym, Plugin::Handle> plugins_;
+    absl::node_hash_map<std::string, Loaded> plugins_;
     Version version_;
     Flags flags_;
-    mutable Log log_;
+    fe::Log log_;
+    mutable Names names_;
+    fe::Profiler profiler_;
     World world_;
-    std::list<fs::path> search_paths_;
-    std::list<fs::path>::iterator insert_ = search_paths_.end();
-    Flags2Stages stages_;
+    Paths plugin_dirs_, import_dirs_, prefixes_;
+    Flags2Phases phases_;
     Normalizers normalizers_;
+    absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;
+    std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
+    std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;
+    Keys keys_;
 };
 
 #define GET_FUN_PTR(plugin, f) get_fun_ptr<decltype(f)>(plugin, #f)

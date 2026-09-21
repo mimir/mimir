@@ -21,8 +21,6 @@ class RegBuilder(MimPlugin):
         self.lvl = log_level
         self.world = self.driver.world()
         if initialize:
-            # `ll` must be loaded in the same pass as `compile` so that `ll.mim`'s
-            # `import compile` resolves `%compile.Phase`; its emit phase produces `<libname>.ll`.
             driver.load_plugins(["regex", "ll"])
 
     def _char_lit(self, lit) -> Def:

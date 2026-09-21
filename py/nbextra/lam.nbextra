@@ -1,0 +1,10 @@
+[class:Lam]
+    // Lam defines its own set(Defs), which in Python shadows the base
+    // Def::set(std::string). Re-expose the string overload so `lam.set("name")`
+    // still names the mutable.
+    .def("set", [](Lam& self, std::string s) { return self.set(s); }, nb::rv_policy::reference_internal)
+    // Lam::app takes a nested Lam::Filter (std::variant<bool, const Def*>), which
+    // the generator skips. Expose the (bool filter, callee, list-of-args) form.
+    .def("app", [](Lam& self, bool filter, const Def* callee, std::vector<const Def*> args) {
+        return self.app(filter, callee, Defs(args));
+    }, nb::rv_policy::reference_internal)

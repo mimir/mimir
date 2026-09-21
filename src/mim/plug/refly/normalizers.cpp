@@ -13,7 +13,7 @@ static_assert(sizeof(void*) <= sizeof(u64), "pointer doesn't fit into Lit");
 
 namespace {
 
-// The trick is that we simply "box" the pointer of @p def inside a Lit of type `%refly.Code`.
+// The trick is that we simply "box" the pointer of @p def inside a Lit of type `refly.Code`.
 const Def* do_reify(const Def* def) {
     auto& world = def->world();
     return world.lit(world.call<Code>(def->type()), reinterpret_cast<u64>(def));
@@ -24,13 +24,14 @@ const Def* do_reflect(const Def* def) { return reinterpret_cast<const Def*>(def-
 
 void debug_print(const Def* lvl, const Def* def) {
     auto& world = def->world();
-    auto level  = Log::Level::Debug;
+    auto level  = fe::Log::Level::Debug;
     if (auto l = Lit::isa(lvl)) {
-        level = std::to_underlying(Log::Level::Error) <= int(*l) && int(*l) <= std::to_underlying(Log::Level::Debug)
-                  ? static_cast<Log::Level>(*l)
-                  : Log::Level::Debug;
+        level = std::to_underlying(fe::Log::Level::Error) <= int(*l)
+                     && int(*l) <= std::to_underlying(fe::Log::Level::Debug)
+                  ? static_cast<fe::Log::Level>(*l)
+                  : fe::Log::Level::Debug;
     }
-    world.log().log(level, __FILE__, __LINE__, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
+    world.log().log(level, "{}debug_print: {}{}", fe::term::FG::Yellow, def, fe::term::FG::Reset);
     world.log().log(level, def->loc(), "def : {}", def);
     world.log().log(level, def->loc(), "id  : {}", def->unique_name());
     world.log().log(level, def->type()->loc(), "type: {}", def->type());
@@ -53,16 +54,6 @@ const Def* normalize_reify(const Def*, const Def*, const Def* arg) { return do_r
 
 const Def* normalize_reflect(const Def*, const Def*, const Def* arg) { return do_reflect(arg); }
 
-const Def* normalize_refine(const Def*, const Def*, const Def* arg) {
-    auto [code, i, x] = arg->projs<3>();
-    if (auto l = Lit::isa(i)) {
-        auto def = do_reflect(code);
-        return do_reify(def->refine(*l, do_reflect(x)));
-    }
-
-    return {};
-}
-
 const Def* normalize_type(const Def*, const Def*, const Def* arg) { return arg->type(); }
 const Def* normalize_gid(const Def*, const Def*, const Def* arg) { return arg->world().lit_nat(arg->gid()); }
 
@@ -73,16 +64,16 @@ const Def* normalize_equiv(const Def*, const Def*, const Def* arg) {
 
     if constexpr (id == equiv::Ae || id == equiv::AE) {
         auto res = Checker::alpha<Checker::Test>(a, b);
-        if (res ^ eq) mim::error(arg->loc(), "'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "");
+        if (res ^ eq) arg->blame("'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "").bail();
     } else {
         auto res = a == b;
-        if (res ^ eq) mim::error(arg->loc(), "'{}' and '{}' {}structural-equivalent", a, b, !res ? "not " : "");
+        if (res ^ eq) arg->blame("'{}' and '{}' {}structural-equivalent", a, b, !res ? "not " : "").bail();
     }
     return a;
 }
 
 const Def* normalize_check_bot(const Def*, const Def* c, const Def* arg) {
-    if (!arg->isa<Bot>()) mim::error(c->loc(), "'{}' is not bottom", arg);
+    if (!arg->isa<Bot>()) c->blame("'{}' is not bottom", arg).bail();
     return arg;
 }
 
@@ -94,7 +85,7 @@ const Def* normalize_check(const Def* type, const Def*, const Def* arg) {
     if (cond == w.lit_ff()) {
         auto s = tuple2str(msg);
         if (s.empty()) s = "unknown error"s;
-        w.ELOG("{}", s);
+        w.log().e("{}", s);
     }
 
     return nullptr;

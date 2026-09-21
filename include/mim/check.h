@@ -1,5 +1,7 @@
 #pragma once
 
+#include <absl/container/flat_hash_set.h>
+
 #include "mim/def.h"
 
 namespace mim {
@@ -37,8 +39,6 @@ public:
     Hole* unset() { return Def::unset()->as<Hole>(); }
     ///@}
 
-    Hole* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-
     /// If unset, explode to Tuple.
     /// @returns the new Tuple, or `this` if unsuccessful.
     const Def* tuplefy(nat_t);
@@ -69,9 +69,6 @@ public:
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Hole* stub_(World&, const Def*) final;
-
     friend class World;
     friend class Checker;
 };
@@ -125,17 +122,37 @@ private:
     template<Mode>
     [[nodiscard]] bool alpha_(const Def* d1, const Def* d2);
     template<Mode>
+    [[nodiscard]] bool alpha_impl_(const Def* d1, const Def* d2);
+
+    /// Fast path for alpha_ that needs neither binders_ nor memo_ and hence doesn't allocate.
+    /// @returns `std::nullopt`, if the full alpha_impl_ machinery is needed.
+    template<Mode>
+    [[nodiscard]] std::optional<bool> try_alpha_(const Def* d1, const Def* d2);
+
+    template<Mode>
     [[nodiscard]] bool check(const Prod*, const Def*);
     template<Mode>
     [[nodiscard]] bool check(const Seq*, const Def*);
+    [[nodiscard]] bool check(Hole*, const Def*);
+    [[nodiscard]] bool check_rank(const Seq*, Hole* rank, const Def*);
     [[nodiscard]] bool check1(const Seq*, const Def*);
     [[nodiscard]] bool check(Seq*, const Seq*);
     [[nodiscard]] bool check(const UMax*, const Def*);
 
-    auto bind(Def* mut, const Def* d) { return mut ? binders_.emplace(mut, d) : std::pair(binders_.end(), true); }
+    /// Symmetric key for the alpha_ memo: the two gids packed into one u64, smaller first.
+    /// Canonicalizing by gid is what lets alpha_ get away with a single probe.
+    static constexpr u64 memo_key(const Def* d1, const Def* d2) noexcept {
+        auto g1 = u64(d1->gid()), g2 = u64(d2->gid());
+        return g1 < g2 ? g1 << 32 | g2 : g2 << 32 | g1;
+    }
+
+    using Binders = MutMap<const Def*>;
+    std::pair<Binders::iterator, bool> bind(Def* mut, const Def* d);
+
     World& world_;
-    MutMap<const Def*> binders_;
-    fe::Arena arena_;
+    Binders binders_;
+    Vars bound_; ///< Var%s of all binders_; these are the Var%s subject to renaming.
+    std::array<absl::flat_hash_set<u64>, 2> memo_;
 };
 
 } // namespace mim

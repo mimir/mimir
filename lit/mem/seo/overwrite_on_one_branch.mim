@@ -1,0 +1,31 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+plugin mem;
+
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+
+extern fun test1(m: mem.M 0): [mem.M 0, I64] =
+    ret (m, ptr) = mem.slot (I64, 0) $ m;
+    let m        = mem.store (m, ptr, 0I64);
+    ret (m, ptr2) = mem.slot (I64, 0) $ m;
+    let m        = mem.store (m, ptr2, 0I64);
+    head m where
+        con head(m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (a, b)#cond m where
+
+                // store different values on two branches
+                con a(m: mem.M 0) =
+                    let m = mem.store (m, ptr, 1I64);
+                    join m;
+
+                con b(m: mem.M 0) =
+                    let m = mem.store (m, ptr2, 0I64);
+                    join m;
+
+                con join(m: mem.M 0) =
+                    let (m, v) = mem.load (m, ptr);
+                    return (m, v);
+            end
+    end;
+
+// CHECK: test1

@@ -1,0 +1,32 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
+
+// MVP for tensor bufferization: get/set lowered onto the buffer layer, then to mem.*.
+// `f` reads input[1][2] and returns a copy of `input` with [0][0] set to that value.
+// Under the always-allocate-and-copy policy the `set` allocates a fresh buffer, copies the
+// source in, then writes the single element — so `input` is never mutated.
+plugin core;
+plugin tensor;
+plugin mem;
+plugin buffer;
+plugin opt;
+plugin compile;
+
+extern fun f (input: «3, 4; I32»): «3, 4; I32» =
+    let v = tensor.get ((1₃, 2₄), input);
+    return (tensor.set ((0₃, 0₄), input, v));
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_to_mem,
+        mem.add_mem,
+        buffer.lower_ptr,
+        compile.cleanup,
+    );
+
+// CHECK-DAG: mem.alloc
+// CHECK-DAG: mem.load
+// CHECK-DAG: mem.store
+// GONE-NOT: tensor.
+// GONE-NOT: buffer.

@@ -1,6 +1,7 @@
 #include <ostream>
 
 #include "mim/ast/ast.h"
+#include "mim/ast/lexer.h"
 
 namespace mim::ast {
 
@@ -19,20 +20,22 @@ struct S {
 
 } // namespace mim::ast
 
+#ifndef DOXYGEN
 template<>
 struct std::formatter<mim::ast::S> : fe::ostream_formatter {};
+#endif
 
 namespace mim::ast {
 
 template<class T>
 struct R {
-    R(fe::Tab& tab, const Ptrs<T>& range, std::string_view sep = ", ")
+    R(fe::Tab& tab, fe::View<Ptr<T>> range, std::string_view sep = ", ")
         : tab(tab)
         , range(range)
         , sep(sep) {}
 
     fe::Tab& tab;
-    const Ptrs<T>& range;
+    fe::View<Ptr<T>> range;
     std::string_view sep;
 
     friend std::ostream& operator<<(std::ostream& os, const R& r) {
@@ -47,10 +50,18 @@ struct R {
 
 } // namespace mim::ast
 
+#ifndef DOXYGEN
 template<class T>
 struct std::formatter<mim::ast::R<T>> : fe::ostream_formatter {};
+#endif
 
 namespace mim::ast {
+
+template<class T>
+static void stream_decls(fe::Tab& tab, std::ostream& os, fe::View<Ptr<T>> decls) {
+    for (auto decl : decls)
+        std::println(os, "{}{}", tab, S(tab, decl.get()));
+}
 
 void Node::dump() const {
     auto tab = fe::Tab::spaces();
@@ -59,17 +70,10 @@ void Node::dump() const {
 }
 
 /*
- * Module
+ * File
  */
 
-void Import::stream(fe::Tab& tab, std::ostream& os) const { std::println(os, "{}{} '{}';", tab, tag(), "TODO"); }
-
-void Module::stream(fe::Tab& tab, std::ostream& os) const {
-    for (const auto& import : imports())
-        import->stream(tab, os);
-    for (const auto& decl : decls())
-        std::println(os, "{}{}", tab, S(tab, decl.get()));
-}
+void File::stream(fe::Tab& tab, std::ostream& os) const { stream_decls(tab, os, decls()); }
 
 /*
  * Ptrn
@@ -96,14 +100,20 @@ void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
  * Expr
  */
 
-void IdExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", dbg()); }
+void Path::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", fe::Join(dbgs(), ".")); }
+
+void PathExpr::stream(fe::Tab& tab, std::ostream& os) const { path()->stream(tab, os); }
 void ErrorExpr::stream(fe::Tab&, std::ostream& os) const { os << "<error expression>"; }
 void HoleExpr::stream(fe::Tab&, std::ostream& os) const { os << "?"; }
 void PrimaryExpr::stream(fe::Tab&, std::ostream& os) const { std::print(os, "{}", tag()); }
 
 void LitExpr::stream(fe::Tab& tab, std::ostream& os) const {
     switch (tag()) {
-        case Tag::L_i: std::print(os, "{}", tok().lit_i()); return;
+        case Tag::L_i: {
+            auto [size, val] = tok().lit_i();
+            std::print(os, "{}_{}", val, size); // the `_` form spells out every size, 2^64 included
+            return;
+        }
         case Tag::L_f: os << std::bit_cast<double>(tok().lit_u()); return;
         case Tag::L_s:
         case Tag::L_u:
@@ -118,12 +128,10 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
     if (is_where()) {
         std::println(os, "{}{} where", tab, S(tab, expr()));
         ++tab;
-        for (const auto& decl : decls())
-            std::println(os, "{}{}", tab, S(tab, decl.get()));
+        stream_decls(tab, os, decls());
         --tab;
     } else {
-        for (const auto& decl : decls())
-            std::println(os, "{}{}", tab, S(tab, decl.get()));
+        stream_decls(tab, os, decls());
         std::print(os, "{}", S(tab, expr()));
     }
 }
@@ -131,14 +139,8 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
 void TypeExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(Type {})", S(tab, level())); }
 void RuleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "(Rule {})", S(tab, dom())); }
 
-void ArrowExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} -> {}", S(tab, dom()), S(tab, codom()));
-}
-
-void UnionExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "({})", R(tab, types(), "∪ ")); }
-
-void InjExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} inj {}", S(tab, value()), S(tab, type()));
+void InfixExpr::stream(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "({} {} {})", S(tab, lhs()), Tok::tag2str(op().tag()), S(tab, rhs()));
 }
 
 void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
@@ -148,7 +150,7 @@ void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
 void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::println(os, "{}match {} with", tab, S(tab, scrutinee()));
     ++tab;
-    for (const auto& arm : arms())
+    for (auto arm : arms())
         std::println(os, "{}| {}", tab, S(tab, arm.get()));
     --tab;
     std::println(os, "{}}}", tab);
@@ -168,7 +170,7 @@ void PiExpr::stream(fe::Tab& tab, std::ostream& os) const {
 void LamExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "{};", S(tab, lam())); }
 
 void AppExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}", S(tab, callee()), is_explicit() ? "@" : "", S(tab, arg()));
+    std::print(os, "({} {})", S(tab, callee()), S(tab, arg()));
 }
 
 void RetExpr::stream(fe::Tab& tab, std::ostream& os) const {
@@ -183,51 +185,92 @@ void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
-void ExtractExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    if (auto expr = std::get_if<Ptr<Expr>>(&index()))
-        std::print(os, "{}#{}", S(tab, tuple()), S(tab, expr->get()));
-    else
-        std::print(os, "{}#{}", S(tab, tuple()), std::get<Dbg>(index()));
-}
-
-void InsertExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "ins({}, {}, {})", S(tab, tuple()), S(tab, index()), S(tab, value()));
-}
-
 void UniqExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "⦃{}⦄", S(tab, inhabitant())); }
 
 /*
  * Decl
  */
 
-void AxmDecl::Alias::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
+static std::string_view vis2str(Vis vis) {
+    switch (vis) {
+        case Vis::Priv: return "priv";
+        case Vis::Pub: return "pub";
+    }
+    fe::unreachable();
+}
+
+/// Prints `vis`/`extern`/`anx`, skipping `vis` if it's the modifier-nudged Mods::default_vis.
+static std::ostream& operator<<(std::ostream& os, const Mods& mods) {
+    if (auto vis = mods.resolved_vis(); vis != mods.default_vis()) std::print(os, "{} ", vis2str(vis));
+    if (mods.is_extern) std::print(os, "extern ");
+    if (mods.is_anx) std::print(os, "anx ");
+    return os;
+}
+
+} // namespace mim::ast
+
+#ifndef DOXYGEN
+template<>
+struct std::formatter<mim::ast::Mods> : fe::ostream_formatter {};
+#endif
+
+namespace mim::ast {
 
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "axm {}", dbg());
-    if (num_subs() != 0) {
-        os << '(';
-        for (auto sep = ""; const auto& aliases : subs()) {
-            std::print(os, "{}{}", sep, R(tab, aliases, " = "));
-            sep = ", ";
-        }
-        os << ')';
-    }
-    std::print(os, ": {}", S(tab, type()));
+    if (vis() == Vis::Priv) std::print(os, "priv "); // `axm` is always anx, so it's never printed here
+    std::print(os, "axm {}: {}", dbg(), S(tab, type()));
     if (normalizer()) std::print(os, ", {}", normalizer());
     if (curry()) std::print(os, ", {}", curry());
     if (trip()) std::print(os, ", {}", trip());
     os << ";";
 }
 
+void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() == Vis::Priv) std::print(os, "priv "); // `axm` is always anx, so it's never printed here
+    std::print(os, "axm {}: {}", dbg(), S(tab, owner()->type()));
+    if (owner()->normalizer()) std::print(os, ", {}", owner()->normalizer());
+    os << ";";
+}
+
+void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() == Vis::Priv) std::print(os, "priv ");
+    std::print(os, "anx {} = {};", dbg(), S(tab, path()));
+}
+
+void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    std::println(os, "{}mod {} {{", mods(), dbg());
+    ++tab;
+    stream_decls(tab, os, decls());
+    --tab;
+    std::print(os, "{}}}", tab);
+}
+
+void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (is_file_path())
+        std::print(os, "{}{} \"{}\"", mods(), tag(), Lexer::escape(file_path().view()));
+    else
+        std::print(os, "{}{} {}", mods(), tag(), S(tab, path()));
+    if (alias()) std::print(os, " as {}", alias());
+    if (is_splice() && is_import()) std::print(os, " as {}", Tag::T_star);
+    os << ';';
+}
+
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "let {} = {};", S(tab, ptrn()), S(tab, value()));
+    std::print(os, "{}let {} = {};", mods(), S(tab, ptrn()), S(tab, value()));
 }
 
 void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, ".rec {}", dbg());
-    if (!type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, type()));
-    std::print(os, " = {};", S(tab, body()));
+    std::print(os, "{}{}", mods(), isa<LamDecl>() ? "" : "rec ");
+    stream_(tab, os);
+    for (auto curr = next(); curr; curr = curr->next()) {
+        std::println(os);
+        std::print(os, "{}and ", tab);
+        curr->stream_(tab, os);
+    }
+    os << ';';
 }
+
+void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} = {}", dbg(), S(tab, body())); }
 
 void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}", is_implicit() ? "." : "", S(tab, ptrn()));
@@ -235,7 +278,7 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     if (ret()) std::print(os, ": {}", S(tab, ret()->type()));
 }
 
-void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
+void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{} {}", tag(), dbg());
     if (!doms().front()->ptrn()->isa<TuplePtrn>()) os << ' ';
     std::print(os, "{}", R(tab, doms()));
@@ -250,12 +293,6 @@ void LamDecl::stream(fe::Tab& tab, std::ostream& os) const {
             std::print(os, " = {}", S(tab, body()));
         }
     }
-    os << ';';
-}
-
-void CDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}", dbg(), tag(), S(tab, dom()), S(tab, codom()));
-    if (tag() == Tag::K_cfun) std::print(os, ": {}", S(tab, codom()));
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {

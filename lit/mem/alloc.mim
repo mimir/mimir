@@ -3,15 +3,16 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 
 plugin core;
+plugin mem;
 
-con extern main(mem: %mem.M 0, argc: I32, argv: %mem.Ptr («⊤:Nat; %mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [%mem.M 0, I32]) =
-    let a = %core.bitcast Nat argc;
-    (%core.select (%core.icmp.e (argc, 0I32), t, f)) mem where
-        con t(mem: %mem.M 0) =
-            let (mem, ptr) = %mem.alloc («a; I32», 0) mem; // hidden %core.nat.mul (a, 4)) will pop up here causing poptential probls in schedule
-            n (mem, 23);
-        con f(mem: %mem.M 0) =
-            n (mem, %core.nat.mul (a, 4));
-        con n(mem: %mem.M 0, a: Nat) =
-            return (mem, %core.bitcast I32 a);
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+    let a = core.bitcast Nat argc;
+    (core.select (core.icmp.e (argc, 0I32), t, f)) m where
+        con t(m: mem.M 0) =
+            let (m, ptr) = mem.alloc («a; I32», 0) m; // hidden core.nat.mul (a, 4)) will pop up here causing poptential probls in schedule
+            n (m, 23);
+        con f(m: mem.M 0) =
+            n (m, core.nat.mul (a, 4));
+        con n(m: mem.M 0, a: Nat) =
+            return (m, core.bitcast I32 a);
         end;

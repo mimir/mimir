@@ -1,0 +1,36 @@
+[include]
+#include <mim/ast/ast.h>
+#include <nanobind/stl/optional.h>
+#include <nanobind/stl/pair.h>
+
+[class:Driver]
+    // Driver::sym is a template method (fe::SymPool), so the generator skips it;
+    // expose the std::string instantiation.
+    .def("sym", [](Driver& self, const std::string& s) { return self.sym(s); })
+    // Reading the file and remembering the directive are two steps; Python wants them as one.
+    // The resolved file is a `const fe::Src*` in the Driver's own store — not a Python type — so
+    // hand out its path instead (None if it did not resolve), paired with "this file is new".
+    .def("add_import", [](Driver& d, std::string path, std::string sym) {
+        auto [src, fresh] = d.src().add(fs::path(path));
+        std::optional<std::string> resolved;
+        if (src) {
+            resolved = src->path().string();
+            d.imports().add(src, d.sym(sym), ast::Tok::Tag::K_import, false);
+        }
+        return std::pair{resolved, fresh};
+    })
+    .def("add_plugin", [](Driver& d, std::string path, std::string sym) {
+        auto [src, fresh] = d.src().add(fs::path(path));
+        std::optional<std::string> resolved;
+        if (src) {
+            resolved = src->path().string();
+            d.imports().add(src, d.sym(sym), ast::Tok::Tag::K_plugin, false);
+        }
+        return std::pair{resolved, fresh};
+    })
+    .def("load_plugin", [](Driver& d, std::string plugin) {
+        ast::load_plugin(d.world(), plugin);
+    })
+    .def("load_plugins", [](Driver& d, std::vector<std::string> plugins) {
+        ast::load_plugins(d.world(), plugins);
+    })

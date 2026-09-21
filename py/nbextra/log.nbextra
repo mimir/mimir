@@ -1,0 +1,6 @@
+[include]
+#include <iostream>          // std::cout (set_stdout)
+
+[class:Log]
+    // Convenience wrapper around Log::set(std::ostream*) for the common case.
+    .def("set_stdout", [](Log& self) -> Log& { return self.set(&std::cout); }, nb::rv_policy::reference)

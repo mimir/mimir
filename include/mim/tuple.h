@@ -12,6 +12,9 @@ protected:
     using Def::Def;
 
 public:
+    /// Prod groups Sigma and Tuple; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Sigma || n == mim::Node::Tuple; }
+
     static constexpr size_t Num_Ops = std::dynamic_extent;
 };
 
@@ -36,30 +39,20 @@ public:
 
     /// @name Rebuild
     ///@{
-    const Def* immutabilize() final;
-    Sigma* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-
     /// @note Technically, it would make sense to have an offset of 1 as the first element can't be reduced.
     /// For example, in `[n: Nat, F n]` `n` only occurs free in the second element.
     /// However, this would cause a lot of confusion and special code to cope with the first element,
     /// So we just keep it.
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
     ///@}
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
     static const Def* infer(World&, Defs);
-    const Def* arity() const final;
     ///@}
 
     static constexpr auto Node = mim::Node::Sigma;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Sigma* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -75,8 +68,6 @@ private:
     Tuple(const Def* type, Defs args)
         : Prod(Node, type, args, 0) {}
 
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -86,6 +77,9 @@ protected:
     using Def::Def;
 
 public:
+    /// Seq groups Arr and Pack; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Arr || n == mim::Node::Pack; }
+
     /// @name ops
     ///@{
     const Def* body() const { return ops().back(); }
@@ -106,8 +100,7 @@ public:
 
     /// @name Rebuild
     ///@{
-    Seq* stub(World& w, const Def* type) { return Def::stub(w, type)->as<Seq>(); }
-    virtual const Def* reduce(const Def* arg) const = 0;
+    const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 };
 
@@ -122,11 +115,6 @@ private:
         : Seq(Node, type, 2, 0) {} ///< Constructor for a *mutable* Arr.
 
 public:
-    /// @name ops
-    ///@{
-    const Def* arity() const final { return op(0); }
-    ///@}
-
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{
@@ -137,27 +125,10 @@ public:
     Arr* unset() { return Def::unset()->as<Arr>(); }
     ///@}
 
-    /// @name Rebuild
-    ///@{
-    Arr* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize() final;
-    const Def* reduce(const Def* arg) const final { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 1; }
-    ///@}
-
-    /// @name Type Checking
-    ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
-    ///@}
-
     static constexpr auto Node      = mim::Node::Arr;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Arr* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -171,11 +142,6 @@ private:
         : Seq(Node, type, 1, 0) {} ///< Constructor for a *mutable* Pack.
 
 public:
-    /// @name ops
-    ///@{
-    const Def* arity() const final;
-    ///@}
-
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"
     ///@{
@@ -184,21 +150,10 @@ public:
     Pack* unset() { return Def::unset()->as<Pack>(); }
     ///@}
 
-    /// @name Rebuild
-    ///@{
-    Pack* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Def* immutabilize() final;
-    const Def* reduce(const Def* arg) const final { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
-    ///@}
-
     static constexpr auto Node      = mim::Node::Pack;
     static constexpr size_t Num_Ops = 1;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Pack* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -221,8 +176,6 @@ public:
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -249,8 +202,6 @@ public:
     static constexpr size_t Num_Ops = 3;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 
@@ -327,16 +278,6 @@ private:
 ///@{
 bool is_unit(const Def*);
 std::string tuple2str(const Def*);
-
-/// Flattens a sigma/array/pack/tuple.
-const Def* flatten(const Def* def);
-/// Same as unflatten, but uses the operands of a flattened Pack / Tuple directly.
-size_t flatten(DefVec& ops, const Def* def, bool flatten_sigmas = true);
-
-/// Applies the reverse transformation on a Pack / Tuple, given the original type.
-const Def* unflatten(const Def* def, const Def* type);
-/// Same as unflatten, but uses the operands of a flattened Pack / Tuple directly.
-const Def* unflatten(Defs ops, const Def* type, bool flatten_muts = true);
 
 const Def* tuple_of_types(const Def* t);
 ///@}

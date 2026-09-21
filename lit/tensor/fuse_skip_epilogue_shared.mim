@@ -1,0 +1,29 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// The matrix product feeds TWO trailing pure maps. Composing either map into the product's `post`
+// epilogue would leave the product materialized for the other consumer AND run it fused — the
+// whole reduction loop nest twice. The single-consumer guard must keep all three ops separate.
+plugin tensor;
+plugin core;
+plugin opt;
+plugin compile;
+
+use core.ops.n;
+
+lam add1 (x: Nat): Nat = x + 1;
+lam dbl (x: Nat): Nat = x * 2;
+
+extern con f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«2, 4; Nat», «2, 4; Nat»]) =
+    let prod = tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, b);
+    return (tensor.unary add1 prod, tensor.unary dbl prod);
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
+    );
+
+// CHECK-COUNT-3: tensor.map_reduce
+// CHECK-NOT: tensor.map_reduce

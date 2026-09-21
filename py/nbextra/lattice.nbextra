@@ -1,0 +1,9 @@
+[standalone]
+    // Meet/Join and Bot/Top are the concrete instantiations of the TBound/TExt
+    // class templates, which the generator cannot bind directly. Register them
+    // explicitly (after their Bound/Ext bases above) so every Def subclass is
+    // reachable from Python. They are Defs, so — like Def — never_destruct.
+    nb::class_<Meet, Bound>(m, "Meet", nb::never_destruct());
+    nb::class_<Join, Bound>(m, "Join", nb::never_destruct());
+    nb::class_<Bot, Ext>(m, "Bot", nb::never_destruct());
+    nb::class_<Top, Ext>(m, "Top", nb::never_destruct());

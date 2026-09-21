@@ -1,0 +1,98 @@
+name: playground
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+concurrency:
+  # Only one run per group queues, so deploying runs share a group instead of racing on
+  # mimir.github.io, all others are keyed by run_id, and `doxygen.yml` needs a group of its own.
+  # `env` is unavailable here, hence the repeated DEPLOY condition.
+  group: ${{github.workflow}}-${{(github.event_name == 'push' && github.ref == 'refs/heads/master') && 'deploy' || github.run_id}}
+  cancel-in-progress: false
+
+env:
+  DEPLOY: ${{github.event_name == 'push' && github.ref == 'refs/heads/master'}}
+
+jobs:
+  build:
+    name: Build the WASM playground
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone recursively
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-14 ninja-build
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.9
+          actions-cache-folder: emsdk-cache
+
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          update_packager_index: false
+          ccache_options: max_size=2G
+          override_cache_key: ${{runner.os}}-ccache-wasm
+
+      # A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one.
+      - name: Build the native bootstrap compiler
+        run: |
+          CC=gcc-14 CXX=g++-14                \
+          cmake -B build-native               \
+                -G Ninja                      \
+                -DCMAKE_BUILD_TYPE=Release    \
+                -DBUILD_TESTING=OFF           \
+                -DMIM_BUILD_PYTHON=OFF        \
+                -DMIM_VERIFY_PLUGINS=OFF
+          cmake --build build-native --target mim
+
+      - name: Configure
+        run: |
+          emcmake cmake -B build-wasm                                              \
+                -G Ninja                                                           \
+                -DCMAKE_BUILD_TYPE=Release                                         \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache                                 \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                               \
+                -DBUILD_SHARED_LIBS=OFF                                            \
+                -DBUILD_TESTING=OFF                                                \
+                -DMIM_BUILD_PYTHON=OFF                                             \
+                -DMIM_VERIFY_PLUGINS=OFF                                           \
+                -DMIM_NATIVE_MIM=${{github.workspace}}/build-native/bin/mim
+
+      - name: Build
+        run: cmake --build build-wasm --target mim_playground
+
+      # Catches a wasm-only regression such as `Def::ops_ptr`'s.
+      - name: Smoke test
+        run: cmake --build build-wasm --target mim_playground_smoke
+
+      - name: Upload the playground
+        uses: actions/upload-artifact@v4
+        with:
+          name: playground
+          path: build-wasm/playground/
+          if-no-files-found: error
+
+      - name: Checkout docs repository
+        if: env.DEPLOY == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: mimir/mimir.github.io
+          ref: master
+          path: site
+          ssh-key: ${{secrets.ACTIONS_DEPLOY_KEY}}
+
+      # `playground/` survives the docs deploy's sweep via `docs/deploy.py`'s FOREIGN_DIRS.
+      - name: Deploy
+        if: env.DEPLOY == 'true'
+        run: python3 docs/deploy.py --build-dir build-wasm/playground --subdir playground

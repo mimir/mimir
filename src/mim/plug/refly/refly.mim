@@ -2,7 +2,7 @@
 ///
 /// @see mim::plug::refly
 ///
-/// The refly plugin allows to [reify](https://en.wikipedia.org/wiki/Reification_(computer_science)) and [reflect](https://en.wikipedia.org/wiki/Reflective_programming) MimIR's own representation.
+/// The refly plugin allows you to [reify](https://en.wikipedia.org/wiki/Reification_(computer_science)) and [reflect](https://en.wikipedia.org/wiki/Reflective_programming) MimIR's own representation.
 ///
 /// [TOC]
 ///
@@ -12,93 +12,91 @@ import compile;
 ///
 /// ## Types
 ///
-axm %refly.Code: * → *;
+/// ### Code
+///
+/// The reified internal representation of a Mim expression of type `T`.
+///
+axm Code: * → *;
 ///
 /// ## Reify / Reflect
 ///
-/// ### %%refly.reify
+/// ### reify
 ///
-/// Yields the internal MimIR representation of a Mim expression as `%%refly.Code`.
+/// Yields the internal MimIR representation of a Mim expression as `refly.Code`.
 ///
-axm %refly.reify: {T: *} → T → [%refly.Code T], normalize_reify;
+axm reify: {T: *} → T → [Code T], normalize_reify;
 ///
-/// ### %%refly.reflect
+/// ### reflect
 ///
-/// Converts a `%%refly.Code` back to a Mim expression.
+/// Converts a `refly.Code` back to a Mim expression.
 ///
-axm %refly.reflect: {T: *} → [%refly.Code T] → T, normalize_reflect;
+axm reflect: {T: *} → [Code T] → T, normalize_reflect;
 ///
 /// ## Inspect
 ///
-/// ### %%refly.type
+/// ### type
 ///
-/// Retuns type of an expression.
+/// Returns the type of an expression.
 ///
-axm %refly.type: {T: *} → T → *, normalize_type;
+axm type: {T: *} → T → *, normalize_type;
 ///
-/// ### %%refly.gid
+/// ### gid
 ///
-/// Retuns the internal mim::Def::gid of the argument.
+/// Returns the internal mim::Def::gid of the argument.
 ///
-axm %refly.gid: {T: *} → T → Nat, normalize_gid;
+axm gid: {T: *} → T → Nat, normalize_gid;
 ///
-/// ### %%refly.dbg
+/// ### dbg
 ///
 /// Debugs a given expression.
 /// * `tmp`: Prints debug information of a given expression at construction time and vanishes afterwards.
 /// * `perm`: Permanently debugs at every construction.
 ///   Gets removed at codegen preparation in mim::plug::refly::RemoveDbgPerm.
 ///
-let %refly.error   = 0;
-let %refly.warn    = 1;
-let %refly.info    = 2;
-let %refly.verbose = 3;
-let %refly.debug   = 4;
+anx let error   = 0;
+anx let warn    = 1;
+anx let info    = 2;
+anx let verbose = 3;
+anx let debug   = 4;
 
-axm %refly.dbg(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
+axm dbg.(tmp, perm): {T: *} → [Nat, T] → T, normalize_dbg;
 ///
 /// ## Testing
 ///
-/// ### %%refly.equiv
+/// ### equiv
 ///
-/// Checks for structurual / alpha-equivalence.
-/// We are using two disjoint relations:
-///     * `A`lpha
-///     * `E`qual
+/// Checks for structural / alpha-equivalence.
+/// Two bits select the check:
+/// * `A`lpha: check α-equivalence instead of structural identity
+/// * `E`qual: assert equivalence instead of inequivalence
 ///
-/// | Subtag | Alias | A | E | Meaning                               |
-/// |--------|-------|---|---|---------------------------------------|
-/// | `ae`   | `f`   | o | o | assert strucutrual equivalent         |
-/// | `aE`   | `e`   | o | x | assert **not** structurual equivalent |
-/// | `Ae`   | `l`   | x | o | assert alpha equivalent               |
-/// | `AE`   | `le`  | x | x | assert **not** alpha equivalent       |
+/// | Subtag | Alias      | A | E | Meaning                                    |
+/// |--------|------------|---|---|--------------------------------------------|
+/// | `ae`   | `struc_ne` | o | o | assert **not** structurally equivalent     |
+/// | `aE`   | `struc_eq` | o | x | assert structurally equivalent             |
+/// | `Ae`   | `alpha_ne` | x | o | assert **not** alpha-equivalent            |
+/// | `AE`   | `alpha_eq` | x | x | assert alpha-equivalent                    |
 ///
-axm %refly.equiv(ae = struc_ne, aE = struc_eq,
-                 Ae = alpha_ne, AE = alpha_eq):
+axm equiv.(ae = struc_ne, aE = struc_eq,
+           Ae = alpha_ne, AE = alpha_eq):
     {T: *} → [T, T] → T, normalize_equiv;
 ///
-/// ### %%refly.check_bot
+/// ### check_bot
 ///
-/// Checks whether argument is bottom.
+/// Checks whether the argument is `⊥`.
 ///
-axm %refly.check_bot: {T: *} → T → T, normalize_check_bot;
+axm check_bot: {T: *} → T → T, normalize_check_bot;
 ///
-/// ### %%refly.check
+/// ### check
 ///
-/// Checks the given condition and emits the error message, if false.
+/// Checks the given condition and emits the error message if it is `ff`.
 ///
-axm %refly.check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
+axm check: {T: *} → {n: Nat} → [Bool, T, «n; I8»] → T, normalize_check;
 ///
-/// ## Manipulate
+/// ## Phases
 ///
-/// ### %%refly.refine
+/// ### remove_dbg_repl
 ///
-/// Sets the `i`th operand of the reified Code `e` to `x`.
+/// Removes the permanent `refly.dbg` markers for code generation.
 ///
-axm %refly.refine: {E X: *} → [e: %refly.Code E, i: Nat, x: %refly.Code X] → %refly.Code E, normalize_refine;
-///
-/// ## Stages
-///
-/// ### Repls
-///
-axm %refly.remove_dbg_repl: %compile.Repl;
+axm remove_dbg_repl: compile.Phase;

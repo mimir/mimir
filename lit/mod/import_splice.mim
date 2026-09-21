@@ -1,0 +1,23 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s --output-ast - | %FileCheck --check-prefix=AST %s
+
+plugin core as *;
+import "lib.mim" as *;
+import "sub/lib2.mim" as *;
+
+// A splicing import needs no module name, so a file name that isn't an identifier is fine.
+import "not-an-id.mim" as *;
+
+extern lam f(): I32 = wrap.add 0 (answer, inner.deep);
+extern lam g(): I32 = wrap.add 0 (base, util.deep.leaf);
+extern lam h(): I32 = seven;
+
+// CHECK-DAG: extern lam f (): I32 =
+// CHECK-DAG-NEXT: 65I32;
+// CHECK-DAG: extern lam g (): I32 =
+// CHECK-DAG-NEXT: 109I32;
+// CHECK-DAG: extern lam h (): I32 =
+// CHECK-DAG-NEXT: 7I32;
+
+// AST: plugin core as *;
+// AST-NEXT: import "{{.*}}lib.mim" as *;

@@ -1,0 +1,597 @@
+# Why is MimIR implemented in C++?
+
+_A note on the cost of reimplementing MimIR in OCaml, Scala, or Haskell._
+
+All `sizeof`/offset figures were measured against `build-release`
+(`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`, gcc).
+Timing figures appear in exactly two places — _`Patricia::Set` measured against
+OCaml's `patricia-tree`_ and the container note under `absl::flat_hash_*` — and
+are marked as measurements; everything else in this document is an estimate and
+is marked as one.
+Code is referenced by file and symbol name rather than line number, so the
+references do not rot.
+
+This document answers a recurring question: Why not use an academically more
+acclaimed language?
+
+The short answer is that MimIR's core data structure is a mutable,
+hash-consed, cyclic graph of hand-packed 72-byte nodes, and none of those
+languages has an idiomatic form of that structure.
+
+## Ballpark estimates
+
+Slowdown and memory growth relative to the current C++ implementation, for a
+faithful reimplementation of the same architecture.
+Treat these as ±50%; the ordering is far more robust than the magnitudes.
+
+| Language        | Imperative subset                                | Idiomatic              | Memory   |
+| --------------- | ------------------------------------------------ | ---------------------- | -------- |
+| OCaml (flambda) | 2.5–3.5×                                         | 5–10×                  | 2.5–3.5× |
+| Scala/JVM       | 2.5–3.5× steady state<br>3–10× on short CLI runs | 5–12×                  | 3.5–5×   |
+| Haskell (GHC)   | 3.5–6×                                           | 8–20×, wide error bars | 3.5–5×   |
+
+The _imperative subset_ column assumes mutable records, `IORef`s, and mutable
+hash tables throughout — i.e. writing C++ with a garbage collector.
+That concedes the entire premise of switching: you pay the full syntactic and
+tooling cost and collect none of the benefit.
+The _idiomatic_ column is the honest comparison, and it is much worse.
+
+Exactly one of these numbers has an anchor under it.
+`Patricia::Set` has been run head-to-head against a real OCaml implementation of
+the same structure, and on the operation MimIR actually leans on — `merge`, in
+the `free_vars` inner loop — it came out **2.6–8.6×**, inside the OCaml row
+above.
+Other operations on that structure range far wider, up to 46×.
+One structure is not a port, so the table stays an estimate; it is simply no
+longer an unsupported one.
+
+## What the C++ implementation actually relies on
+
+### `absl::flat_hash_*`
+
+`World::unify` (`include/mim/world.h`) probes the sea of nodes on **every**
+`Def` construction.
+This is _the_ hot path of the whole compiler.
+
+`absl::flat_hash_set` is a SwissTable: one control byte per slot holding 7 hash
+bits, probed 16-at-a-time with SSE2/NEON, payload stored inline in a flat
+array.
+A lookup is typically **one cache miss**.
+`GIDHash` (`include/mim/util/gid.h`) makes it cheaper still — the hash is
+the already-computed dense `u32` gid, so hashing costs nothing.
+
+What the alternatives offer:
+
+- **OCaml** — `Hashtbl` is separate chaining over heap-allocated cons cells.
+  Each probe is a dependent pointer chase: 2–4 cache misses instead of one, no
+  SIMD, one allocation per insert.
+  The idiomatic `Map`/`Set` are balanced trees: O(log n) with a chase per
+  level, 5–10 misses at MimIR's node counts.
+  No open-addressing table in the stdlib.
+- **Haskell** — `Data.HashMap` is a HAMT: persistent, 32-way branching, and
+  every insert allocates the whole path (5–7 fresh nodes).
+  On a sea of nodes doing millions of inserts this becomes the dominant cost,
+  not a constant factor.
+  The escape (`hashtables`) drags all of `World` into `IO`/`ST`.
+- **Scala** — `java.util.HashMap` and `mutable.HashMap` are chained with a
+  boxed entry object per insert.
+  `AnyRefMap` is the closest analogue but has no SIMD probe and no inline
+  payload.
+
+Call it **2–4× on the hash-cons probe alone**.
+
+One measurement isolates that container, same language and same workload:
+building `fe::Patricia`'s node pools out of `std::unordered_set` — separate
+chaining over heap-allocated nodes, structurally what OCaml's `Hashtbl` is —
+instead of `absl::flat_hash_set` costs **1.8–3.1×** at 65,536 elements, on
+construction, `merge` and `diff` alike.
+Nothing else differs between the two builds, so that factor is the table and
+only the table.
+One case regressed — sparse `intersect`, whose result is small enough that pool
+traffic barely registers, came out 1.1× _slower_ — which is the expected shape:
+the win is proportional to how much of the work is probing.
+It lands at the bottom of the 2–4× estimated above, which is the honest reading:
+take the low end.
+
+Also lost: `fe::Vector = absl::InlinedVector<T, N>`
+(`submodules/fe/include/fe/vector.h`), which keeps small op-vectors in the object
+with zero heap traffic.
+None of the three has an equivalent, so every temporary `DefVec` becomes a heap
+allocation.
+
+### `Patricia::Set` — a four-way sum type in one machine word
+
+`Def::vars_` and `Def::muts_` are sets of `Var*`/`Def*`, hash-consed by
+`fe::Patricia` (`submodules/fe/include/fe/patricia.h`) so that equal sets are
+pointer-equal.
+A set is a single `uintptr_t` with two tag bits:
+
+    Null | Uniq (D* inline) | Arr (arena FAM, ≤ N entries) | Br (branch)
+
+An **untagged** word _is_ the `D*` it holds, which is why every `Def` must be at
+least 4-byte aligned.
+
+Consequences:
+
+- `Def::vars_` and `Def::muts_` cost **8 bytes each**.
+- A singleton set _is_ the pointer to its element — zero allocation, zero
+  indirection. `mut->local_muts()` is `{ mut }` by definition and costs a
+  bit-or.
+- Set equality is `ptr_ == ptr_` over the entire set, and so is every
+  subtree comparison inside `merge`/`intersect`/`diff`.
+- The flavour follows from the size alone, so one element set has exactly one
+  representation — canonicity is what makes that pointer comparison sound, and
+  it is why a one-element result must collapse back to `Uniq` rather than stay
+  a node.
+
+In OCaml a 4-constructor variant with payloads is 3 boxed blocks plus 1
+immediate; in Haskell the same plus a thunk per constructor; on the JVM four
+classes and a megamorphic call site.
+Pointer tagging is reachable only via `Obj.magic` or `Unsafe`, at which point
+you have left the language.
+
+`Patricia::Arr` is a **C99 flexible array member**
+(`size_t hash; uint32_t size; Entry entries[];`) placement-`new`ed into
+`arr_arena_` — not even portable C++.
+Elsewhere it becomes a record plus a separate array object: two allocations, an
+extra hop per element access, and on the JVM a second 16-byte header.
+
+This is also the one structure where a functional formulation does _not_ lose:
+a Patricia tree is persistent by construction, and MimIR's is the [Okasaki and
+Gill](https://ku-fpg.github.io/papers/Okasaki-98-IntMap/) formulation an ML
+programmer would write.
+What C++ buys here is the representation, not the algorithm — the tag bits, the
+flexible array member, and the arena the nodes are bump-allocated into.
+
+### `Patricia::Set` measured against OCaml's `patricia-tree`
+
+That last claim is testable, because the structure exists in OCaml.
+[`patricia-tree`](https://ocaml.org/p/patricia-tree/) (Lemerre and Lesbre) is
+the same Okasaki-Gill Patricia tree, and its `MakeHashconsedSet` functor
+hash-conses it so that equal sets are physically equal — the same guarantee
+`fe::Patricia` provides.
+It is a careful implementation by people who care about this structure, which is
+what makes it worth measuring against.
+
+Both sides run the identical workload: the same splitmix64 stream and the same
+Fisher-Yates shuffle, so the id sets are bit-identical, and an element is a
+pointer to a heap object carrying the id on both sides.
+Four set sizes (16 to 65,536) over dense and sparse ids, steady state.
+The C++ side is built `-DFE_ABSL` throughout — the configuration MimIR actually
+ships, and the one the container note above is about.
+
+Ordered by how much MimIR leans on each, since that matters more than the
+headline number:
+
+| Operation                      | Where MimIR uses it                                               | vs `MakeHashconsedSet`      |
+| ------------------------------ | ----------------------------------------------------------------- | --------------------------- |
+| `merge`                        | the `free_vars` inner loop — by far the dominant call             | **2.6–8.6×** faster         |
+| `insert`/`erase`               | `free_vars` (user registration, `FV(λx.e) = FV(e) \ {x}`), `Nest` | **2.2–46×** faster          |
+| `has_intersection`             | `Def::has_free_vars_in`                                           | **3.5–23×** faster          |
+| iteration                      | walking `local_muts()`                                            | **8.3–29×** faster          |
+| `contains`                     | scattered                                                         | **1.8–16×** faster          |
+| `intersect`/`diff`/`subset_of` | not on any hot path                                               | **2.1–19×** faster          |
+| bulk `create`                  | **never called**                                                  | _(12–173×, and irrelevant)_ |
+| peak RSS at n=65,536           |                                                                   | **3.8–6.1×** smaller        |
+
+The honest headline is therefore the **2.6–8.6× on `merge`**, not the
+eye-catching `create` figure: `Def::free_vars` unions its operands' free-var
+sets in a loop, and that single call dominates every other use of the structure.
+It also sits squarely inside the 5–10× the ballpark table estimates for
+idiomatic OCaml, which is mild corroboration that the table is not wild.
+
+The gap tracks the representation, exactly as the section above predicts.
+`Arr` packing up to `N`=8 entries into one contiguous node flattens the bottom
+three levels of the trie — that is where the iteration and lookup numbers come
+from, since `patricia-tree` carries one leaf per element all the way down.
+`Entry` caching the id beside the `D*` removes a pointer chase per comparison.
+`Uniq` means a singleton allocates nothing at all.
+
+**Where the OCaml gap comes from is the load-bearing part.**
+It is not the trie.
+`patricia-tree`'s own _non_-hash-consed `MakeSet` builds **5.8–48× faster** than
+its hash-consed one, so almost the whole gap sits in the hash-cons layer rather
+than in the Okasaki-Gill algorithm the two implementations share.
+That layer is `Weak.Make`: every node creation is a weak-hashtable merge, and
+the GC must scan those buckets.
+
+A port does not get to opt out of it.
+Hash-consing is what makes `Def::vars_` comparable in O(1), and `World::unify`
+is the same bet at the scale of the whole sea of nodes — so a set library
+without physical equality is not implementing the same thing, which is why the
+table above is against `MakeHashconsedSet`.
+The weak table is therefore not an unlucky choice by that library; it is what
+hash-consing costs when dead nodes have to be reclaimed by a garbage collector.
+MimIR's arena declines to reclaim them and rewinds the bump pointer instead —
+_Speculative construction with arena rollback_, turning up as a measurement
+rather than an argument.
+
+**The one caveat that genuinely weakens the numbers:** they are _pessimistic_
+for OCaml against the ballpark table above, which assumes flambda.
+The switch measured was `ocaml-base-compiler.5.4.0` without it.
+
+The scope is one structure against one library.
+It says nothing about Haskell or Scala, nothing about the 72-byte `Def` layout,
+and nothing about a full port — it is one anchor under one row of one table.
+
+### Arenas, and how `Def`s are placed in them
+
+`sizeof(Def)` is **72 bytes** — measured against `build-release`
+(`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`).
+The only slack is the `u32` next to `dbg_`, which the Debug-only `curr_op_`
+occupies — so a Debug build is 72 bytes too:
+
+| off | field                                                          | bytes  |
+| --- | -------------------------------------------------------------- | ------ |
+| 0   | `normalizer_` / `axm_` / `var_` / `binder_` / `world_` (union) | 8      |
+| 8   | `flags_`                                                       | 8      |
+| 16  | `curry_`, `trip_`                                              | 1 + 1  |
+| 18  | `node_`                                                        | 1      |
+| 19  | `mut_:1  external_:1  annex_:1  dirty_:1  dep_:4`              | 1      |
+| 20  | `mark_`                                                        | 4      |
+| 24  | `gid_`                                                         | 4      |
+| 28  | `num_ops_`                                                     | 4      |
+| 32  | `hash_`                                                        | 8      |
+| 40  | `vars_`                                                        | 8      |
+| 48  | `muts_`                                                        | 8      |
+| 56  | `dbg_`                                                         | 4      |
+| 60  | `curr_op_` (Debug only)                                        | 4      |
+| 64  | `type_`                                                        | 8      |
+|     | **total**                                                      | **72** |
+
+Three deliberate optimizations produce that number, and none of them survives a
+port:
+
+- **`dbg_` is a `u32` index** into the Driver's `Dbg` table rather than an
+  inline `Dbg` (see `Def`'s data members in `include/mim/def.h`).
+  That alone is 20 bytes off _every_ node, and `Dbg`s are shared roughly 10:1
+  in practice.
+- **`Def` is not polymorphic.**
+  There is no vtable pointer — verified: `std::is_polymorphic_v<Def>` is
+  `false`.
+  `immutabilize` and `arity` are ordinary member functions that `switch` on the
+  1-byte `node_` tag (`src/mim/def.cpp`), and a subclass
+  accidentally growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)`
+  assert in `World::allocate`.
+- **Sub-word packing.**
+  `u32` gids rather than `size_t`, a five-way union, and five flags sharing the
+  single byte left over by the `u8` `node_` tag.
+
+`World::allocate` (`include/mim/world.h`):
+
+```cpp
+static_assert(sizeof(Def) == sizeof(T),
+              "you are not allowed to introduce any additional data in subclasses of Def");
+auto num_bytes = sizeof(Def) + sizeof(uintptr_t) * num_ops;
+auto ptr       = move_.arena.defs.allocate(num_bytes, alignof(T));
+auto res       = new (ptr) T(std::forward<Args>(args)...);
+```
+
+So every subclass is layout-identical — `App`, `Lam`, `Sigma` add methods,
+never data — and one bump-pointer allocation covers header _and_ operands.
+`op(i)` indexes off `this + 1`: no second object, no header, no indirection.
+
+In OCaml every field is a tagged word and bitfields do not exist; on the JVM
+sub-word fields cannot be packed at all, and the object header alone is 12–16
+bytes before a single field.
+A faithful port lands around 120–140 bytes per node _plus_ a separate operand
+array with its own header — roughly 2–2.5× on the node before any allocator or
+GC effect.
+
+**One place where the gap narrows, in fairness.**
+Dispatching by `switch` on a 1-byte tag is precisely what an ML pattern match
+compiles to.
+By dropping virtual dispatch, MimIR has converged on the functional languages'
+dispatch strategy rather than C++'s, so this particular optimization is roughly
+neutral in a port — OCaml and Haskell would get it for free and more legibly.
+The saving is the _vptr_, not the dispatch.
+
+### Speculative construction with arena rollback
+
+This one has no counterpart anywhere — `World::unify`:
+
+```cpp
+auto state = move_.arena.defs.state();
+auto def   = allocate<T>(num_ops, ...);          // speculatively construct
+if (auto [i, ins] = move_.defs.emplace(def); !ins) {
+    deallocate<T>(state, def);                    // ~T(), rewind bump ptr, --curr_gid
+    return static_cast<const T*>(*i);
+}
+```
+
+The node is constructed speculatively — normalizer run, hash computed, free
+vars computed — then probed against the sea, and on a hit it is _un-allocated_
+and the gid counter rolled back.
+In a normalizing hash-consed IR the hit rate is high by construction, so the
+common path costs **zero net allocation and produces zero garbage**.
+
+`Patricia::leaf`/`arr`/`br` do the same for set nodes: construct into the
+arena, probe the pool, and rewind on a hit.
+One arena per node kind is what keeps that rollback LIFO.
+
+In fairness, a generational nursery handles short-lived garbage well — copying
+cost is proportional to survivors, so the dead speculative `Def` is nearly free
+to collect.
+The cost is the **compounding**: high nursery churn forces frequent minor
+collections, and each must scan a remembered set that is enormous here, because
+MimIR constantly mutates old-generation `Def`s — `set()`, the users set in
+`muts_`, and `mark_` sweeps in `free_vars()`.
+Every one of those is an old→young pointer write paying `caml_modify` or
+card-marking.
+High churn × large remembered set is the bad quadrant.
+
+`RWPhase`'s world-swap is the same trick at macro scale: drop the whole old
+`World` and its arenas in O(1), with no tracing.
+A GC has to _prove_ the old world is dead by walking it.
+
+## Why idiomatic style is much worse
+
+### Pointers become map lookups
+
+An immutable graph cannot have back-edges, and MimIR's IR is cyclic by
+construction — mutables reference themselves for recursion, and `muts_` doubles
+as the users set.
+Idiomatic functional style has two answers, both bad here:
+
+- _Knot-tying_ (`let rec` / laziness) builds the cycle but leaves sharing
+  unobservable: no `gid`, no hash-consing, no users set.
+  Fatal for a sea of nodes.
+- _Explicit ids into a store_ (`IntMap Node`) is what real functional compilers
+  do.
+  Now `def->op(0)` is a Patricia-trie lookup instead of a pointer dereference:
+  ~5–10 dependent loads replacing 1, on the most executed operation in the
+  compiler.
+  Structural, not tunable.
+
+And since the store is persistent, every rewrite path-copies it.
+`RWPhase` currently drops an arena in O(1); idiomatically it allocates a new
+HAMT spine per touched node.
+
+### Hash-consing is inherently impure
+
+The sea of nodes _is_ a mutable global table.
+The pure alternatives are a `State World` monad threaded through every
+constructor — so `Def` construction returns a new world and the HAMT insert
+cost lands on every node — or `unsafePerformIO` over a global `IORef`, which is
+what actual Haskell hash-consing does and is not idiomatic.
+
+### Caches must move out of the node
+
+`vars_`, `muts_`, `mark_`, `dirty_`, and `tid_` are mutable memo fields on
+nominally-immutable `Def`s.
+Idiomatically they become separate memo maps keyed by id — another lookup per
+access — and the invalidation currently free from `dirty_` has to be threaded
+explicitly.
+
+### Haskell specifically
+
+Laziness and hash-consing are directly opposed: hash-consing requires forcing
+at construction, so `Def` ends up `!`-annotated throughout.
+You would be writing strict Haskell with lazy Haskell's tooling and space-leak
+failure modes.
+
+## The empirical argument
+
+Every serious compiler written in these languages **breaks idiom at exactly the
+point where MimIR is most demanding**:
+
+- **GHC** is written in Haskell, and Core is a **tree**, not a hash-consed DAG.
+  No global uniqueness table; `Unique`s come from `UniqSupply`, a splitting
+  counter that is famously impure and famously a wart.
+  GHC did not choose a tree IR because trees are better — it chose one because
+  a mutable, hash-consed, back-edged graph is not something you write in
+  Haskell.
+- **Coq's kernel** does hash-cons — with imperative `Hashtbl` and mutable
+  state, in OCaml.
+- **The OCaml compiler** uses mutable `Ident` stamps from a global counter.
+- **scalac** has a pervasively mutable `Symbol` table, and is still slow.
+
+The pattern is a revealed preference: as soon as a real compiler in these
+languages needs what MimIR needs, it either abandons idiom or abandons the
+design.
+
+## The idiomatic dividend does not apply here
+
+The ADT-plus-exhaustive-matching payoff is largest for a **tree-shaped,
+closed-ADT, non-hash-consed** IR.
+MimIR is a **graph-shaped, open-node-set, hash-consed** IR whose node set is
+extensible at runtime by `dlopen`'d plugins, with terms and types in one graph
+because dependent types make a closed ADT impossible in the first place.
+`match d with App (f, a) -> ...` buys almost nothing over
+`if (auto app = d->isa<App>())` when the node set is open anyway.
+Those are nearly opposite design points: you would pay the full idiomatic tax
+on a design that collects almost none of the idiomatic dividend.
+
+## Non-performance costs
+
+1. **Plugins.**
+   The architecture is `dlopen`'d modules exporting `mim_get_plugin`, with
+   normalizers stored as raw function pointers _inside the `Def` union_.
+   JVM classloaders do this well.
+   OCaml's `Dynlink` works but is brittle across compiler versions and awkward
+   under flambda.
+   Haskell dynamic loading is painful (ABI tied to exact package hashes); you
+   would realistically abandon `dlopen` for static-link-all-plugins, killing
+   the auto-discovered `extra/*` third-party story.
+2. **LLVM.**
+   Neutral today since the `ll` backend emits text, but the C++ API is out of
+   reach behind perpetually-stale FFI bindings in all three.
+
+## Two honest caveats
+
+**MimIR's current performance problems are not constant-factor problems.**
+`RWPhase` rebuilds the entire world per phase, `PhaseMan` iterates to fixpoint,
+free vars are re-derived via `mark_` sweeps.
+Those are algorithmic, and a 2× language penalty is noise beside traversing the
+world N times.
+This is _not_ an argument that the language does not matter — the penalty is
+multiplicative on top of the algorithmic cost, not an alternative explanation
+for it.
+The sharper point is that a tracing GC **removes entire classes of fix from the
+toolbox**: when you profile and decide to stop allocating, the fixes you reach
+for are rollback-on-hit, in-place mutation, and arena-scoped scratch — exactly
+the three things OCaml, Haskell, and Scala cannot express.
+
+**At the idiomatic end the question is arguably ill-posed.**
+Nobody would write _MimIR's_ IR that way; they would write a different IR —
+tree-structured Core with a `Map`-based store — and then the comparison is
+about IR design, not language throughput.
+A persistent world does buy real things: free structural sharing across phases,
+trivially correct speculative rewriting, `RWPhase` as a no-op.
+MimIR obtains those from arena-drop and world-swap instead, at a fraction of
+the cost.
+
+## The escape hatch, and why it defeats the purpose
+
+Everything above is recoverable: `Bigarray` plus `Obj.magic` in OCaml,
+`MutableByteArray#` plus manual offset arithmetic in `IO` for Haskell,
+`sun.misc.Unsafe` or Panama `MemorySegment` on the JVM.
+That lands somewhere around **1.3–1.5×**.
+
+But look at what you would be writing: manual offset arithmetic into a byte
+array, hand-rolled pointer tagging, an unsafe-cast class hierarchy, a mutable
+splay tree in `IO`.
+That is strictly worse ergonomics than the current C++, and you have given up
+ADTs, exhaustive matching, and type safety — the entire reason to switch.
+
+MimIR's core is not idiomatic C++ either.
+It is written in the systems-programming subset: flexible array members,
+placement new, tag bits, intrusive CRTP, arena rollback, hand-packed layout.
+Those languages do not have a worse version of that subset; they do not have it
+at all.
+
+## What about Rust?
+
+Rust is the only language on the list that offers the same systems-programming
+subset, so it deserves a separate answer.
+
+**The honest reason is historic.**
+MimIR descends from Thorin, which was C++ from the outset, years before Rust
+1.0 was a plausible choice for a compiler framework — and the surrounding
+ecosystem (LLVM, and the C++ literacy of everyone in a compilers group) pointed
+the same way.
+That is a perfectly good reason for how we got here.
+The interesting question is whether the technical case would justify moving,
+and it does not: the gain is close to zero and the losses are concrete.
+
+### Rust would land at roughly performance parity
+
+Estimate: **1.0–1.3×**, i.e. within noise of the C++ — but only via a design
+that gives up most of what makes the current implementation tight.
+
+A mutable, cyclic, aliased graph is the one area Rust is _known_ to be
+awkward at, and the standard advice for graphs in Rust is exactly the
+workaround: **stop using pointers and use arena indices**.
+That advice is not folklore; it is what Rust compilers actually do.
+`rustc` interns types into arenas and threads `&'tcx` references and
+`rustc_index::IndexVec` indices everywhere.
+Cranelift indexes everything through `cranelift-entity`.
+`egg` hash-conses e-nodes behind `u32` ids and a union-find.
+None of them builds a pointer-linked mutable graph.
+
+Index-based arena Rust is a legitimate design and would perform fine — an
+index is a bounds-checked load, not a hash lookup, so unlike the OCaml/Haskell
+case there is no asymptotic loss.
+But it is a _different_ implementation, and each of MimIR's five load-bearing
+structures pays something:
+
+- **No flexible array members.**
+  `sizeof(Def) + 8 * num_ops` in a single bump allocation with
+  `ops_ptr() == this + 1` has no safe Rust equivalent; custom DSTs are still
+  unstable.
+  Either `ops: &'a [&'a Def]` — a 16-byte fat pointer replacing the inline
+  `u32 num_ops_`, plus a second allocation and an extra indirection — or manual
+  `Layout` arithmetic in `unsafe`.
+  `rustc` chose the latter: `rustc_middle::ty::List<T>` is a hand-rolled
+  header-plus-trailing-elements allocation written in `unsafe`, precisely
+  because the language does not provide one.
+- **No tagged pointers.**
+  A `Patricia::Set` packs a four-way sum into one `uintptr_t` with two tag
+  bits.
+  A Rust `enum` over three pointer-carrying variants is 16 bytes; niche
+  optimization does not apply.
+  That is `vars_` and `muts_` going 8 → 16 bytes each, +16 per node, unless you
+  hand-roll it with `NonNull` and `unsafe`.
+- **The rollback trick is the most anti-Rust pattern in the codebase.**
+  Rewinding a bump allocator past objects whose references may have escaped is
+  exactly what the borrow checker exists to prevent, and `bumpalo` offers no
+  checkpoint/rewind in its safe API — only a full `reset()`.
+  The C++ already guards this by comment and assertion (`create_trie` must draw
+  only from `node_arena_`); Rust would want
+  that invariant in the type system and cannot express it, so it becomes
+  `unsafe` with a `'a` lifetime that is a lie.
+- **The intrusive link-cut tree** is the textbook "you will write this with
+  indices or `unsafe`" structure: parent pointers plus `rotate` re-parenting
+  arbitrarily.
+  Worse, `splay` mutates during `contains` — a logically-`&self` operation that
+  restructures the tree.
+  In Rust that is `&mut self` (viral, and unusable while other borrows into the
+  same arena are live) or interior mutability over indices.
+- **`mutable` fields are fine, in fairness.**
+  `Cell<u32>` for `dbg_`, `tid_`, `mark_` and `Cell<Option<&'a Def>>` for
+  `type_` are genuinely zero-cost.
+  This one is syntactic noise, not a performance cost, and it would be
+  churlish to claim otherwise.
+
+The `Rc<RefCell<Def>>` design that a newcomer would reach for first is the one
+option that is clearly worse: refcount cycles leak by construction — and in a
+sea of nodes with `muts_` holding back-edges there is no spanning tree to make
+`Weak`, so there is no principled place to break them — plus a runtime borrow
+check on every access, whose failure mode is a panic rather than a compile
+error.
+
+### Where Rust genuinely wins
+
+Not nothing, and worth stating plainly:
+
+- **Cargo instead of CMake.** A real, daily quality-of-life improvement.
+- **Thread safety.** MimIR is single-threaded today.
+  If parallelising phases ever becomes a goal, `Send`/`Sync` is a far better
+  foundation than anything C++ offers, and this is the one argument that could
+  actually change the verdict later.
+- **Miri**, which would check exactly the `unsafe` core that a port would
+  produce.
+- **`enum` plus exhaustive `match`** for the genuinely closed parts, and
+  tooling (rust-analyzer, built-in test harness) that is simply better.
+
+### The plugin story is worse, not better
+
+This is the decisive practical point, because plugins are core architecture,
+not a peripheral feature.
+
+MimIR loads `dlopen`'d modules exporting `mim_get_plugin`, which register
+normalizers as raw function pointers stored inside the `Def` union.
+**Rust has no stable ABI.**
+Every plugin would have to be compiled with the exact same rustc version as
+`libmim`, or the entire interface reduced to `extern "C"` shims with
+`#[repr(C)]` types on both sides — losing the very type safety that motivated
+the move.
+C++ already has friction here (`absl` containers must not appear in types that
+cross the `dlopen` boundary), but "keep `absl` out of the interface" is a much
+smaller constraint than "no stable ABI exists".
+
+### Verdict
+
+Roughly performance parity, in exchange for an `unsafe` core that reimplements
+the flexible array member and the tagged pointer by hand, a rollback pattern
+the borrow checker is specifically designed to reject, and a materially worse
+plugin ABI story — against real wins in build tooling, future parallelism, and
+`unsafe`-checking.
+
+For a _new_ project with these requirements the choice would be genuinely
+close, and the thread-safety argument might well decide it.
+For an existing, working, tuned implementation, that is not a trade that pays
+for itself.
+
+## Summary
+
+> MimIR's IR is a mutable, hash-consed, cyclic graph of hand-packed 72-byte
+> nodes with zero padding and no vtable pointer.
+> That is not a data structure those languages have an idiomatic form of — and
+> every compiler written in them that needed one wrote imperative code to get
+> it.
+
+Rust is the only entry on the list that offers the same subset, and there the
+answer is parity rather than a win — see _What about Rust?_ above.
+The reason MimIR is in C++ is historic; the reason it stays there is that
+nothing on offer would pay for the move.

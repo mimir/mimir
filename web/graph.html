@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MimIR Graph</title>
+<link rel="stylesheet" href="playground.css">
+<!-- Stamps `dark-mode`/`light-mode` on <html> before the first paint, so load it here rather than at the end. -->
+<script src="darkmode-toggle.js"></script>
+</head>
+<body class="popout">
+<div id="graph" tabindex="0">(waiting for the playground…)</div>
+<div id="graph-nav">
+    <button data-zoom="out" title="Zoom out (-)">&#8722;</button>
+    <button data-zoom="in"  title="Zoom in (+)">+</button>
+    <button data-zoom="fit" title="Fit to window (0, or double-click)">Fit</button>
+</div>
+<script type="module" src="popout.js"></script>
+</body>
+</html>

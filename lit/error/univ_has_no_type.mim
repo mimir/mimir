@@ -1,0 +1,9 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// `Univ` is the one Def without a type at all; asking for it must report, not crash.
+let x = Univ 3;
+
+// CHECK:      {{.*}}univ_has_no_type.mim:4:9-4:14: error: callee is not of function type
+// CHECK-NEXT: 4 | let x = Univ 3;
+// CHECK-NEXT:   |         ^^^^^^
+// CHECK-NEXT:   = note: callee `Univ` has type `<no type>`

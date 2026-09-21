@@ -1,0 +1,10 @@
+// RUN: (! %mim -p opt %s -o - 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin compile;
+
+// CHECK: scatter index shape exceeds updates shape at axis 1
+extern fun invalid(input: «2, 4; I32»,
+                  index: «2, 4; Idx 2»,
+                  updates: «2, 3; I32»): «2, 4; I32» =
+    return (tensor.scatter ((2, 4), (2, 4), (2, 3)) 0_2 (input, index, updates));

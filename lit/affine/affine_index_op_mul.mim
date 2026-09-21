@@ -1,0 +1,32 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim %s -p opt -p ll -o - | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t       ; test $? -eq 9
+// RUN: %t 1 2 3 ; test $? -eq 21
+
+plugin core;
+plugin affine;
+plugin mem;
+
+use core.ops.u.w;
+
+// f exercises the affine index algebra over two input indices `a`, `b`:
+//   out0 = (a + b) - b = a   (op.add + op.sub)
+//   out1 = a * 3             (op.mul)
+//   out2 = 5                 (constant)
+lam f (i j: affine.Index): «3; affine.Index» =
+    (affine.op.sub (affine.op.add (i, j), j) , affine.op.mul (i, 3) , affine.lit 5);
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+    let a = argc;
+    let b = 4I32;
+    let (m, r) = affine.map f (a, b) m;
+    // sum = a + 3*a + 5 = 4*a + 5
+    return (m, r#0₃ + r#1₃ + r#2₃);
+
+// The whole affine index algebra must be gone after affine.lower_index.
+// CHECK-NOT: affine.Index
+// CHECK-NOT: affine.lit
+// CHECK-NOT: affine.op
+// CHECK-NOT: affine.semiop
+// CHECK-NOT: affine.map

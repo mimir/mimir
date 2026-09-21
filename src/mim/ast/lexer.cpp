@@ -1,43 +1,66 @@
 #include "mim/ast/lexer.h"
 
-#include "mim/ast/ast.h"
+#include <charconv>
 
-using namespace std::literals;
+#include <limits>
+
+#include "mim/def.h" // Idx::bitwidth2size is all the IR a lexer needs
 
 namespace mim::ast {
 
 namespace utf8 = fe::utf8;
 using Tag      = Tok::Tag;
 
-Lexer::Lexer(AST& ast, std::istream& istream, const fs::path* path /*= nullptr*/, std::ostream* md /*= nullptr*/)
-    : Super(istream, path)
-    , ast_(ast)
-    , md_(md) {
-#define CODE(t, str) keywords_[ast.sym(str)] = Tag::t;
-    MIM_KEY(CODE)
-#undef CODE
+namespace {
 
-#define CODE(str, t) \
-    if (Tag::t != Tag::Nil) keywords_[ast.sym(str)] = Tag::t;
-    MIM_SUBST(CODE)
-#undef CODE
+/// As World::lit_idx_mod but at token level: a @p mod of `0` means 2^64 and wraps nothing.
+Tok idx_tok(Loc loc, u64 mod, u64 val) { return {loc, mod, mod == 0 ? val : val % mod}; }
+
+bool is_id_head(char32_t c) { return c == '_' || utf8::isalpha(c); }
+bool is_id_tail(char32_t c) { return c == '_' || utf8::isalnum(c); }
+
+/// std::from_chars leaves @p res alone on overflow, where the widest literal is what Mim means.
+u64 to_u64(std::string_view sv, int base) {
+    u64 res = 0;
+    auto ec = std::from_chars(sv.data(), sv.data() + sv.size(), res, base).ec;
+    return ec == std::errc::result_out_of_range ? std::numeric_limits<u64>::max() : res;
+}
+
+f64 to_f64(std::string_view sv, int base) {
+    f64 res = 0.;
+    std::from_chars(sv.data(), sv.data() + sv.size(), res,
+                    base == 16 ? std::chars_format::hex : std::chars_format::general);
+    return res;
+}
+
+} // namespace
+
+Lexer::Lexer(Driver& driver, std::string_view buf, const fe::Src* src, std::ostream* md)
+    : Super(buf, src)
+    , driver_(driver)
+    , md_(md) {
+    md_pos_ = pos();
 
     if (start_md())
         emit_md(true);
     else
-        md_fence();
+        md_open();
 }
 
 Tok Lexer::lex() {
     while (true) {
         start();
 
-        if (accept(utf8::EoF)) return tok(Tag::EoF);
-        if (accept(utf8::isspace)) continue;
-        if (accept(utf8::Invalid)) {
-            ast().error(loc_, "invalid UTF-8 character");
-            continue;
+        if (accept(utf8::EoF)) {
+            if (fenced_) {
+                md_flush();
+                *md_ << '\n';
+                md_close();
+            }
+            return tok(Tag::EoF);
         }
+        if (accept(utf8::isspace)) continue;
+        if (recover_utf8()) continue;
 
         // clang-format off
         // delimiters
@@ -51,26 +74,37 @@ Tok Lexer::lex() {
         if (accept(U'⦄')) return tok(Tag::D_curly_r);
         if (accept(U'«')) return tok(Tag::D_quote_l);
         if (accept(U'»')) return tok(Tag::D_quote_r);
-        if (accept(U'⟪')) return tok(Tag::D_quote_l);
-        if (accept(U'⟫')) return tok(Tag::D_quote_r);
         if (accept(U'‹')) return tok(Tag::D_angle_l);
         if (accept(U'›')) return tok(Tag::D_angle_r);
-        if (accept(U'⟨')) return tok(Tag::D_angle_l);
-        if (accept(U'⟩')) return tok(Tag::D_angle_r);
-        if (accept( '<')) {
-            if (accept( '<')) return tok(Tag::D_quote_l);
-            return tok(Tag::D_angle_l);
-        }
-        if (accept( '>')) {
-            if (accept( '>')) return tok(Tag::D_quote_r);
-            return tok(Tag::D_angle_r);
-        }
         // further tokens
-        if (accept(U'→')) return tok(Tag::T_arrow);
+        if (accept( '+')) return tok(Tag::T_add);
+        if (accept( '-')) {
+            if (accept('>')) return tok(Tag::T_arrow_r);
+            return tok(Tag::T_sub);
+        }
+        if (accept(U'→')) return tok(Tag::T_arrow_r);
+        if (accept(U'←')) return tok(Tag::T_arrow_l);
         if (accept( '@')) return tok(Tag::T_at);
         if (accept( '=')) {
             if (accept('>')) return tok(Tag::T_fat_arrow);
+            if (accept('=')) return tok(Tag::T_eq);
             return tok(Tag::T_assign);
+        }
+        if (accept( '!')) {
+            if (accept('=')) return tok(Tag::T_ne);
+            error().e(loc_, "expected `=` after `!`");
+            continue;
+        }
+        if (accept( '<')) {
+            if (accept('<')) return tok(Tag::T_shl);
+            if (accept('=')) return tok(Tag::T_le);
+            if (accept('-')) return tok(Tag::T_arrow_l);
+            return tok(Tag::T_lt);
+        }
+        if (accept( '>')) {
+            if (accept('>')) return tok(Tag::T_shr);
+            if (accept('=')) return tok(Tag::T_ge);
+            return tok(Tag::T_gt);
         }
         if (accept(U'⊥')) return tok(Tag::T_bot);
         if (accept(U'⊤')) return tok(Tag::T_top);
@@ -79,6 +113,7 @@ Tok Lexer::lex() {
         if (accept( '$')) return tok(Tag::T_dollar);
         if (accept( '#')) return tok(Tag::T_extract);
         if (accept(U'λ')) return tok(Tag::T_lm);
+        if (accept( '%')) return tok(Tag::T_rem);
         if (accept( '|')) return tok(Tag::T_pipe);
         if (accept( ';')) return tok(Tag::T_semicolon);
         if (accept(U'★')) return tok(Tag::T_star);
@@ -87,44 +122,48 @@ Tok Lexer::lex() {
         if (accept(U'∪')) return tok(Tag::T_union);
         // clang-format on
 
-        if (accept('%')) {
-            if (lex_id()) return {loc_, Tag::M_anx, sym()};
-            ast().error(loc_, "invalid axm name '{}'", str_);
-            continue;
-        }
-
         if (accept('.')) {
             if (accept(utf8::isdigit)) {
-                parse_digits();
-                parse_exp();
-                return {loc_, f64(std::strtod(str_.c_str(), nullptr))};
+                lex_digits();
+                lex_exp();
+                return {loc_, to_f64(view(), 10)};
             }
 
             return tok(Tag::T_dot);
         }
 
+        if (accept('`')) {
+            if (accept(utf8::any('+', '-', '*', '/', '%'))) return {loc_, Tag::M_id, sym()};
+            if (accept('<')) {
+                accept(utf8::any('<', '='));
+                return {loc_, Tag::M_id, sym()};
+            }
+            if (accept('>')) {
+                accept(utf8::any('>', '='));
+                return {loc_, Tag::M_id, sym()};
+            }
+            if (accept(utf8::any('=', '!')) && accept('=')) return {loc_, Tag::M_id, sym()};
+            error().e(loc_, "expected one of `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, `>>` "
+                            "after the escape hatch");
+            continue;
+        }
+
         if (accept('\'')) {
             auto c = lex_char();
             if (accept('\'')) return {loc_, c};
-            ast().error(loc_, "invalid character literal {}", str_);
+            error().e(loc_, "invalid character literal `{}`", view());
             continue;
         }
 
-        if (accept<Append::Off>('\"')) {
-            while (lex_char() != '"') {}
-            str_.pop_back(); // remove final '"'
-            return {loc_, Tag::L_str, sym()};
-        }
+        if (accept('\"')) return lex_str();
 
         if (lex_id()) {
-            if (auto i = keywords_.find(sym()); i != keywords_.end()) return tok(i->second);
-            return {loc_, Tag::M_id, sym()};
+            auto s = sym();
+            if (auto tag = driver().keys().find(s)) return {loc_, *tag};
+            return {loc_, Tag::M_id, s};
         }
 
-        if (utf8::isdigit(ahead()) || utf8::any('+', '-')(ahead())) {
-            if (auto lit = parse_lit()) return *lit;
-            continue;
-        }
+        if (utf8::isdigit(ahead())) return lex_lit();
 
         if (start_md()) {
             emit_md();
@@ -138,79 +177,96 @@ Tok Lexer::lex() {
                 continue;
             }
             if (accept('/')) {
-                while (ahead() != utf8::EoF && ahead() != '\n')
-                    next();
+                accept_while([](char32_t c) { return c != '\n'; });
                 continue;
             }
 
-            ast().error({loc_.path, peek_}, "invalid input char '/'; maybe you wanted to start a comment?");
-            continue;
+            return tok(Tag::T_div);
         }
 
-        ast().error({loc_.path, peek_}, "invalid input char '{}'", utf8::Char32(ahead()));
-        next();
+        recover_char();
     }
 }
 
 bool Lexer::lex_id() {
-    if (accept([](char32_t c) { return c == '_' || utf8::isalpha(c); })) {
-        while (accept([](char32_t c) { return c == '_' || c == '.' || utf8::isalnum(c); })) {}
+    if (accept(is_id_head)) {
+        accept_while(is_id_tail);
         return true;
     }
     return false;
 }
 
-// clang-format off
-std::optional<Tok> Lexer::parse_lit() {
-    int base = 10;
-    std::optional<bool> sign;
-
-    if (accept<Append::Off>('+')) {
-        sign = false;
-    } else if (accept<Append::Off>('-')) {
-        if (accept('>')) return tok(Tag::T_arrow);
-        sign = true;
+std::string Lexer::escape(std::string_view str) {
+    std::string res;
+    for (auto c : str) {
+        // clang-format off
+        switch (c) {
+            case '\\': res += "\\\\"; break;
+            case '\"': res += "\\\""; break;
+            case '\0': res += "\\0";  break;
+            case '\a': res += "\\a";  break;
+            case '\b': res += "\\b";  break;
+            case '\f': res += "\\f";  break;
+            case '\n': res += "\\n";  break;
+            case '\r': res += "\\r";  break;
+            case '\t': res += "\\t";  break;
+            case '\v': res += "\\v";  break;
+            default:   res += c;
+        }
+        // clang-format on
     }
+    return res;
+}
+
+bool Lexer::is_id(std::string_view str) {
+    size_t i = 0;
+    if (!is_id_head(utf8::decode(str, i))) return false;
+    while (i != str.size())
+        if (!is_id_tail(utf8::decode(str, i))) return false;
+    return true;
+}
+
+// clang-format off
+Tok Lexer::lex_lit() {
+    int base = 10;
 
     // prefix starting with '0'
-    if (accept<Append::Off>('0')) {
-        if      (accept<Append::Off>('b')) base =  2;
-        else if (accept<Append::Off>('B')) base =  2;
-        else if (accept<Append::Off>('o')) base =  8;
-        else if (accept<Append::Off>('O')) base =  8;
-        else if (accept<Append::Off>('x')) base = 16;
-        else if (accept<Append::Off>('X')) base = 16;
+    if (accept('0')) {
+        if      (accept(utf8::any('b', 'B'))) base =  2;
+        else if (accept(utf8::any('o', 'O'))) base =  8;
+        else if (accept(utf8::any('x', 'X'))) base = 16;
     }
 
-    parse_digits(base);
+    // Everything the prefix does not cover; std::from_chars wants a hexadecimal float without its `0x`.
+    auto begin = loc_.end.off;
+    auto body  = [&](uint32_t end) { return buf_.substr(begin, end - begin); };
+
+    lex_digits(base);
+    auto end = loc_.end.off;
 
     if (accept(utf8::any('i', 'I'))) {
-        if (sign) str_.insert(0, "-"sv);
-        auto val = std::strtoull(str_.c_str(), nullptr, base);
-        str_.clear();
-        parse_digits();
-        auto width = std::strtoull(str_.c_str(), nullptr, 10);
-        return Tok{loc_, ast().world().lit_int(width, val)};
+        auto val   = to_u64(body(end), base);
+        auto i     = loc_.end.off;
+        lex_digits();
+        auto width = to_u64(buf_.substr(i, loc_.end.off - i), 10);
+        return Tok{loc_, Idx::bitwidth2size(width), val};
     }
 
-    if (!sign && base == 10) {
+    if (base == 10) {
         if (utf8::isrange(ahead(), U'₀', U'₉')) {
-            auto i = std::strtoull(str_.c_str(), nullptr, 10);
+            auto i = to_u64(body(end), 10);
             std::string mod;
-            while (utf8::isrange(ahead(), U'₀', U'₉')) mod += next() - U'₀' + '0';
-            auto m = std::strtoull(mod.c_str(), nullptr, 10);
-            return Tok{loc_, ast().world().lit_idx_mod(m, i)};
-        } else if (accept<Append::Off>('_')) {
-            auto i = std::strtoull(str_.c_str(), nullptr, 10);
-            str_.clear();
+            while (utf8::isrange(ahead(), U'₀', U'₉')) mod += char(next() - U'₀' + '0');
+            return idx_tok(loc_, to_u64(mod, 10), i);
+        } else if (accept('_')) {
+            auto i = to_u64(body(end), 10);
+            auto m = loc_.end.off;
             if (accept(utf8::isdigit)) {
-                parse_digits(10);
-                auto m = std::strtoull(str_.c_str(), nullptr, 10);
-                return Tok{loc_, ast().world().lit_idx_mod(m, i)};
+                lex_digits(10);
+                return idx_tok(loc_, to_u64(buf_.substr(m, loc_.end.off - m), 10), i);
             } else {
-                ast().error(loc_, "stray underscore in Idx literal; size is missing");
-                auto i = std::strtoull(str_.c_str(), nullptr, 10);
-                return Tok{loc_, u64(i)};
+                error().e(loc_, "stray underscore in Idx literal; size is missing");
+                return Tok{loc_, i};
             }
         }
     }
@@ -220,44 +276,35 @@ std::optional<Tok> Lexer::parse_lit() {
         // parse fractional part
         if (accept('.')) {
             is_float = true;
-            parse_digits(base);
+            lex_digits(base);
         }
 
-        bool has_exp = parse_exp(base);
-        if (base == 16 && is_float && !has_exp) ast().error(loc_, "hexadecimal floating constants require an exponent");
+        bool has_exp = lex_exp(base);
+        if (base == 16 && is_float && !has_exp) error().e(loc_, "hexadecimal floating constants require an exponent");
         is_float |= has_exp;
     }
 
-    if (sign && str_.empty()) {
-        ast().error(loc_, "stray '{}'", *sign ? "-" : "+");
-        return {};
-    }
-
-    if (is_float && base == 16) str_.insert(0, "0x"sv);
-    if (sign && *sign) str_.insert(0, "-"sv);
-
-    if (is_float) return Tok{loc_, f64(std::strtod  (str_.c_str(), nullptr      ))};
-    if (sign)     return Tok{loc_, u64(std::strtoll (str_.c_str(), nullptr, base))};
-    else          return Tok{loc_, u64(std::strtoull(str_.c_str(), nullptr, base))};
+    if (is_float) return Tok{loc_, to_f64(body(loc_.end.off), base)};
+    else          return Tok{loc_, to_u64(body(end),          base)};
 }
 
-void Lexer::parse_digits(int base /*= 10*/) {
+void Lexer::lex_digits(int base /*= 10*/) {
     switch (base) {
         // clang-format off
-        case  2: while (accept(utf8::isbdigit)) {} break;
-        case  8: while (accept(utf8::isodigit)) {} break;
-        case 10: while (accept(utf8::isdigit))  {} break;
-        case 16: while (accept(utf8::isxdigit)) {} break;
+        case  2: accept_while(utf8::isbdigit); break;
+        case  8: accept_while(utf8::isodigit); break;
+        case 10: accept_while(utf8::isdigit);  break;
+        case 16: accept_while(utf8::isxdigit); break;
         // clang-format on
         default: fe::unreachable();
     }
 }
 
-bool Lexer::parse_exp(int base /*= 10*/) {
+bool Lexer::lex_exp(int base /*= 10*/) {
     if (accept(base == 10 ? utf8::any('e', 'E') : utf8::any('p', 'P'))) {
         accept(utf8::any('+', '-'));
-        if (!utf8::isdigit(ahead())) ast().error(loc_, "exponent has no digits");
-        parse_digits();
+        if (!utf8::isdigit(ahead())) error().e(loc_, "exponent has no digits");
+        lex_digits();
         return true;
     }
     return false;
@@ -265,37 +312,98 @@ bool Lexer::parse_exp(int base /*= 10*/) {
 // clang-format on
 
 char8_t Lexer::lex_char() {
-    if (accept<Append::Off>('\\')) {
+    if (accept('\\')) {
         // clang-format off
-        if (false) {}
-        else if (accept<Append::Off>('\'')) str_ += '\'';
-        else if (accept<Append::Off>('\\')) str_ += '\\';
-        else if (accept<Append::Off>( '"')) str_ += '\"';
-        else if (accept<Append::Off>( '0')) str_ += '\0';
-        else if (accept<Append::Off>( 'a')) str_ += '\a';
-        else if (accept<Append::Off>( 'b')) str_ += '\b';
-        else if (accept<Append::Off>( 'f')) str_ += '\f';
-        else if (accept<Append::Off>( 'n')) str_ += '\n';
-        else if (accept<Append::Off>( 'r')) str_ += '\r';
-        else if (accept<Append::Off>( 't')) str_ += '\t';
-        else if (accept<Append::Off>( 'v')) str_ += '\v';
-        else ast().error(loc_.anew_finis(), "invalid escape character '\\{}'", (char)ahead());
+        switch (auto c = ahead()) {
+            case '\'': next(); return '\'';
+            case '\\': next(); return '\\';
+            case  '"': next(); return '\"';
+            case  '0': next(); return '\0';
+            case  'a': next(); return '\a';
+            case  'b': next(); return '\b';
+            case  'f': next(); return '\f';
+            case  'n': next(); return '\n';
+            case  'r': next(); return '\r';
+            case  't': next(); return '\t';
+            case  'v': next(); return '\v';
+            default:
+                if (c != utf8::EoF) error().e(loc_.anew_end(), "invalid escape character `\\{}`", (char)c);
+                return '\0';
+        }
         // clang-format on
-        return str_.back();
     }
+
     auto c = next();
-    str_ += c;
     if (utf8::isascii(c)) return char8_t(c);
-    ast().error(loc_, "invalid character '{}'", (char)c);
+    error().e(loc_, "invalid character `{}`", utf8::Char32(c));
     return '\0';
+}
+
+/// The body is a slice of Lexer::buf_ unless an escape made it diverge - see Lexer::unquote.
+Tok Lexer::lex_str() {
+    auto begin = loc_.end.off; // just past the opening `"`
+    bool esc   = false;
+
+    while (true) {
+        if (accept('\"')) return {loc_, Tag::L_str, sym_str(begin, loc_.end.off - 1, esc)};
+
+        if (ahead() == utf8::EoF) {
+            error().e(loc_, "unterminated string literal");
+            return {loc_, Tag::L_str, sym_str(begin, loc_.end.off, esc)};
+        }
+
+        if (accept('\\')) {
+            esc = true;
+            if (ahead() != utf8::EoF) next();
+        } else if (auto c = next(); !utf8::isascii(c)) {
+            error().e(loc_, "invalid character `{}`", utf8::Char32(c));
+        }
+    }
+}
+
+Sym Lexer::sym_str(uint32_t begin, uint32_t end, bool esc) {
+    auto body = buf_.substr(begin, end - begin);
+    return driver().sym(esc ? std::string_view(unquote(body, begin)) : body);
+}
+
+std::string Lexer::unquote(std::string_view body, uint32_t begin) {
+    std::string res;
+    res.reserve(body.size());
+
+    for (size_t i = 0, e = body.size(); i != e; ++i) {
+        auto c = body[i];
+        if (c == '\\' && i + 1 != e) {
+            // clang-format off
+            switch (body[++i]) {
+                case '\'': res += '\''; break;
+                case '\\': res += '\\'; break;
+                case  '"': res += '\"'; break;
+                case  '0': res += '\0'; break;
+                case  'a': res += '\a'; break;
+                case  'b': res += '\b'; break;
+                case  'f': res += '\f'; break;
+                case  'n': res += '\n'; break;
+                case  'r': res += '\r'; break;
+                case  't': res += '\t'; break;
+                case  'v': res += '\v'; break;
+                // clang-format on
+                default:
+                    auto loc = Loc(src_, Pos(begin + u32(i) - 1), Pos(begin + u32(i) + 1));
+                    error().e(loc, "invalid escape character `\\{}`", body[i]);
+            }
+        } else {
+            res += c;
+        }
+    }
+
+    return res;
 }
 
 void Lexer::eat_comments() {
     while (true) {
-        while (ahead() != utf8::EoF && ahead() != '*')
-            next();
+        accept_while([](char32_t c) { return c != '*'; });
         if (accept(utf8::EoF)) {
-            ast().error(loc_, "non-terminated multiline comment");
+            error().e(loc_, "unterminated multi-line comment");
             return;
         }
         next();
@@ -304,26 +412,23 @@ void Lexer::eat_comments() {
 }
 
 void Lexer::emit_md(bool start_of_file) {
-    if (!start_of_file) md_fence();
+    if (!start_of_file) {
+        md_flush();
+        md_close();
+    }
 
     do {
-        out_ = false;
-        for (int i = 0; i < 3; ++i)
+        for (int i = 0; i != 3; ++i)
             next();
         accept(' ');
-        out_ = true;
+        md_skip();
 
-        while (ahead() != utf8::EoF && ahead() != '\n')
-            next();
+        accept_while([](char32_t c) { return c != '\n'; });
         accept('\n');
+        md_flush();
     } while (start_md());
 
-    if (ahead() == utf8::EoF)
-        out_ = false;
-    else
-        md_fence();
+    if (ahead() != utf8::EoF) md_open();
 }
-
-Sym Lexer::sym() { return ast().sym(str_); }
 
 } // namespace mim::ast

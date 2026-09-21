@@ -10,19 +10,22 @@ plugin mem;
 ///
 /// ## Nat Operations
 ///
-/// ### %%core.nat
+/// ### nat
 ///
-/// Standard arithmetic operations on `Nat`s. <br>
-/// `%%core.nat.sub (a, b)` yields `0`, if `a` < `b`.
+/// Standard arithmetic operations on `Nat`s:
+/// - `core.nat.sub (a, b)` yields `0` if `a < b`.
+/// - `core.nat.div (a, b)` yields `0` if `b` is `0`.
+/// - `core.nat.rem (a, b)` yields `a` if `b` is `0`.
+///   This holds both statically (literal folding) and dynamically (runtime lowering).
 ///
-axm %core.nat(add, sub, mul): «2; Nat» → Nat, normalize_nat;
+axm nat.(add, sub, mul, div, rem): «2; Nat» → Nat, normalize_nat;
 ///
-/// ### %%core.ncmp
+/// ### ncmp
 ///
-/// Nat comparison is made of 3 disjoint relations:
-///     * `G`reater
-///     * `L`ess
-///     * `E`qual
+/// Nat comparison is composed of 3 disjoint relations:
+/// * `G`reater
+/// * `L`ess
+/// * `E`qual
 ///
 /// | Subtag | Alias | G | L | E | Meaning          |
 /// |--------|-------|---|---|---|------------------|
@@ -35,8 +38,8 @@ axm %core.nat(add, sub, mul): «2; Nat» → Nat, normalize_nat;
 /// | `GLe`  | `ne`  | x | x | o | not equal        |
 /// | `GLE`  | `t`   | x | x | x | always true      |
 ///
-axm %core.ncmp(gle = f, glE =  e, gLe =  l, gLE = le,
-               Gle = g, GlE = ge, GLe = ne, GLE =  t):
+axm ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
+          Gle = g, GlE = ge, GLe = ne, GLE =  t):
     «2; Nat» → Bool, normalize_ncmp;
 ///
 /// ## Integer Operations
@@ -46,10 +49,10 @@ axm %core.ncmp(gle = f, glE =  e, gLe =  l, gLE = le,
 /// Instead, the operations themselves exhibit signed or unsigned behavior.
 ///
 /// For `Idx s`,
-/// * **unsigned** interpretation is the canonical carrier order on the finite set / \f$ \{ 0, \dots, s-1 \} \f$.
-/// * **signed** interpretation is defined by choosing, for each residue class modulo \f$s\f$, / its canonical signed representative.
+/// - **unsigned** interpretation is the canonical carrier order on the finite set \f$ \{ 0, \dots, s-1 \} \f$.
+/// - **signed** interpretation is defined by choosing, for each residue class modulo \f$s\f$, its canonical signed representative.
 ///
-/// Concretely, a value \f$x : \mathrm{Idx}\;s\f$ is considered non-negative iff / \f$ x \le \lfloor (s-1)/2 \rfloor \f$, and negative otherwise.
+/// Concretely, a value \f$x : \mathrm{Idx}\;s\f$ is considered non-negative iff \f$ x \le \lfloor (s-1)/2 \rfloor \f$, and negative otherwise.
 /// Hence the signed range is
 /// \f$ \big[ -\lfloor s/2 \rfloor,\; \lceil s/2 \rceil - 1 \big] \f$.
 /// For powers of two, i.e. \f$ s = 2^w \f$, this coincides exactly with the usual
@@ -58,29 +61,34 @@ axm %core.ncmp(gle = f, glE =  e, gLe =  l, gLE = le,
 /// ### Mode
 ///
 /// A common problem when dealing with integer operations is [overflow](https://en.wikipedia.org/wiki/Integer_overflow).
-/// All operations that may overflow have an additional parameter `m` - [mode](@ref mim::plug::core::Mode) - of type `Nat` that determines the exact desired behavior in the case of an overflow.
+/// All operations that may overflow take a leading parameter `m` - [mode](@ref mim::plug::core::Mode) - of type `Nat` that determines the exact desired behavior in the case of an overflow.
+/// It comes first so that currying it - `core.wrap.add 0` - still yields a value polymorphic in `s`.
 ///
-let %core.mode.us = 0b00; // wrap around - both signed and unsigned
-let %core.mode.uS = 0b01; // no   signed wrap around
-let %core.mode.Us = 0b10; // no unsigned wrap around
-let %core.mode.US = 0b11; // no signed and unsigned wrap around
-let %core.mode.nsw  = %core.mode.uS;
-let %core.mode.nuw  = %core.mode.Us;
-let %core.mode.nsuw = %core.mode.US;
+pub mod mode {
+    anx let us = 0b00; // wrap around - both signed and unsigned
+    anx let uS = 0b01; // no   signed wrap around
+    anx let Us = 0b10; // no unsigned wrap around
+    anx let US = 0b11; // neither signed nor unsigned wrap around
+    anx nsw  = uS;
+    anx nuw  = Us;
+    anx nsuw = US;
+}
 ///
-/// ### %%core.idx
+/// ### idx
 ///
 /// Creates a literal of type `Idx s` from `l` while obeying mode `m`.
 ///
-axm %core.idx: [s: Nat] → [m: Nat] → [l: Nat] → Idx s, normalize_idx;
+axm idx: [m: Nat] → [s: Nat] → [l: Nat] → Idx s, normalize_idx;
+///
+/// ### idx_unsafe
 ///
 /// Creates a literal of type `Idx ⊤`.
 ///
-axm %core.idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
+axm idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
 ///
-/// ### %%core.bit1
+/// ### bit1
 ///
-/// This *unary* bitwise operations offers all [4 possible operations](https://en.wikipedia.org/wiki/Truth_table#Unary_operations) as summarized in the following table:
+/// These *unary* bitwise operations offer all [4 possible operations](https://en.wikipedia.org/wiki/Truth_table#Unary_operations) as summarized in the following table:
 ///
 /// | Subtag | A | a | Comment                      |
 /// |--------|---|---|------------------------------|
@@ -91,11 +99,11 @@ axm %core.idx_unsafe: Nat → Idx ⊤:Nat, normalize_idx_unsafe;
 ///
 /// @todo Add type constraint that `bit1` is only allowed for powers of two.
 ///
-axm %core.bit1(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normalize_bit1;
+axm bit1.(f, neg, id, t): [m: Nat] → {s: Nat} → Idx s → Idx s, normalize_bit1;
 ///
-/// ### %%core.bit2
+/// ### bit2
 ///
-/// This *binary* bitwise operations offers all [16 possible operations](https://en.wikipedia.org/wiki/Truth_table#Truth_table_for_all_binary_logical_operators) as summarized in the following table:
+/// These *binary* bitwise operations offer all [16 possible operations](https://en.wikipedia.org/wiki/Truth_table#Truth_table_for_all_binary_logical_operators) as summarized in the following table:
 ///
 /// | Subtag | AB | Ab | aB | ab | Comment                      |
 /// |--------|----|----|----|----|------------------------------|
@@ -118,11 +126,11 @@ axm %core.bit1(f, neg, id, t): {s: Nat} → [m: Nat] → Idx s → Idx s, normal
 ///
 /// @todo Add type constraint that `bit2` is only allowed for powers of two.
 ///
-axm %core.bit2( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
-                and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
-    {s: Nat} → [m: Nat] → «2; Idx s» → Idx s , normalize_bit2;
+axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
+           and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
+    [m: Nat] → {s: Nat} → «2; Idx s» → Idx s , normalize_bit2;
 ///
-/// ### %%core.shr
+/// ### shr
 ///
 /// Shift right:
 /// * [`a`rithmetic shift right](https://en.wikipedia.org/wiki/Arithmetic_shift)
@@ -134,40 +142,41 @@ axm %core.bit2( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
 /// * `shr.l` divides the unsigned representative by `2^b`.
 /// * `shr.a` divides the signed representative by `2^b`, rounding toward `-∞`.
 ///
-axm %core.shr(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
+axm shr.(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 ///
-/// ### %%core.wrap
+/// ### wrap
 ///
 /// Integer operations that may overflow.
-/// You can specify the desired behavior in the case of an overflow with the curried argument just in front of the actual argument by providing a mim::plug::core::Mode as `Nat`.
+/// You can specify the desired behavior in the case of an overflow with the leading curried argument by providing a mim::plug::core::Mode as `Nat`.
 ///
-/// `shl` uses the same shift-count rule as `%%core.shr`.
+/// `shl` uses the same shift-count rule as `core.shr`.
 /// It multiplies the unsigned representative by `2^b` and then wraps modulo `s`.
 /// `nuw` and `nsw` check the unwrapped unsigned and signed results, respectively.
-axm %core.wrap(add, sub, mul, shl): {s: Nat} → [m: Nat] → «2; Idx s» → Idx s, normalize_wrap;
+///
+axm wrap.(add, sub, mul, shl): [m: Nat] → {s: Nat} → «2; Idx s» → Idx s, normalize_wrap;
 
-lam %core.minus {s: Nat} (m: Nat) (a: Idx s): Idx s = %core.wrap.sub m (0:(Idx s), a);
+anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (0:(Idx s), a);
 ///
-/// ### %%core.div
+/// ### div
 ///
-/// Signed and unsigned Integer division/remainder.
+/// Signed and unsigned integer division/remainder.
 ///
 /// @warning Division by zero is *undefined behavior* and a visible side effect.
-/// For this reason, these axioms expect a `%%mem.M`.
+/// For this reason, these axioms expect a `mem.M`.
 ///
-axm %core.div(sdiv, udiv, srem, urem):
-    {s: Nat} → [%mem.M 0, «2; Idx s»] → [%mem.M 0, Idx s], normalize_div;
+axm div.(sdiv, udiv, srem, urem):
+    {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], normalize_div;
 ///
-/// ### %%core.icmp
+/// ### icmp
 ///
-/// Integer comparison is made of 5 disjoint relations:
-///     * `X`: first operand plus, second minus
-///     * `Y`: first operand minus, second plus
-///     * `G`: greater with same sign
-///     * `L`: less with same sign
-///     * `E`: equal
+/// Integer comparison is composed of 5 disjoint relations:
+/// * `X`: first operand plus, second minus
+/// * `Y`: first operand minus, second plus
+/// * `G`: greater with same sign
+/// * `L`: less with same sign
+/// * `E`: equal
 ///
-/// Here is the complete picture for `%%core.icmp.xygle x, y` for 3 bit wide integers:
+/// Here is the complete picture for `core.icmp.xygle x, y` for 3 bit wide integers:
 ///
 /// |        | x        |        |       |       |       | y     |       |       |       |       |
 /// |--------|----------|--------|-------|-------|-------|-------|-------|-------|-------|-------|
@@ -184,14 +193,14 @@ axm %core.div(sdiv, udiv, srem, urem):
 /// |  111   |  7       |  -1    | `Y`   | `Y`   | `Y`   | `Y`   | `G`   | `G`   |  `G`  |  `E`  |
 ///
 /// And here is the overview of all possible combinations of relations.
-/// Note the aliases you can use for the common integer comparisions front-ends typically want to use:
+/// Note the aliases you can use for the common integer comparisons front-ends typically want to use:
 ///
 /// | Subtag  | Alias  | X | Y | G | L | E | Meaning                                         |
 /// |---------|--------|---|---|---|---|---|-------------------------------------------------|
 /// | `xygle` |  `f`   | o | o | o | o | o | always false                                    |
 /// | `xyglE` |  `e`   | o | o | o | o | x | equal                                           |
 /// | `xygLe` |        | o | o | o | x | o | less (same sign)                                |
-/// | `xyglE` |        | o | o | o | x | x | less or equal                                   |
+/// | `xygLE` |        | o | o | o | x | x | less or equal                                   |
 /// | `xyGle` |        | o | o | x | o | o | greater (same sign)                             |
 /// | `xyGlE` |        | o | o | x | o | x | greater or equal                                |
 /// | `xyGLe` |        | o | o | x | x | o | greater or less                                 |
@@ -199,7 +208,7 @@ axm %core.div(sdiv, udiv, srem, urem):
 /// | `xYgle` |        | o | x | o | o | o | minus plus                                      |
 /// | `xYglE` |        | o | x | o | o | x | minus plus or equal                             |
 /// | `xYgLe` |  `sl`  | o | x | o | x | o | signed less                                     |
-/// | `xYglE` |  `sle` | o | x | o | x | x | signed less or equal                            |
+/// | `xYgLE` |  `sle` | o | x | o | x | x | signed less or equal                            |
 /// | `xYGle` |  `ug`  | o | x | x | o | o | unsigned greater                                |
 /// | `xYGlE` |  `uge` | o | x | x | o | x | unsigned greater or equal                       |
 /// | `xYGLe` |        | o | x | x | x | o | minus plus or greater or less                   |
@@ -207,7 +216,7 @@ axm %core.div(sdiv, udiv, srem, urem):
 /// | `Xygle` |        | x | o | o | o | o | plus minus                                      |
 /// | `XyglE` |        | x | o | o | o | x | plus minus or equal                             |
 /// | `XygLe` |  `ul`  | x | o | o | x | o | unsigned less                                   |
-/// | `XyglE` |  `ule` | x | o | o | x | x | unsigned less or equal                          |
+/// | `XygLE` |  `ule` | x | o | o | x | x | unsigned less or equal                          |
 /// | `XyGle` |  `sg`  | x | o | x | o | o | signed greater                                  |
 /// | `XyGlE` |  `sge` | x | o | x | o | x | signed greater or equal                         |
 /// | `XyGLe` |        | x | o | x | x | o | greater or less or plus minus                   |
@@ -215,72 +224,176 @@ axm %core.div(sdiv, udiv, srem, urem):
 /// | `XYgle` |        | x | x | o | o | o | different sign                                  |
 /// | `XYglE` |        | x | x | o | o | x | different sign or equal                         |
 /// | `XYgLe` |        | x | x | o | x | o | signed or unsigned less                         |
-/// | `XYglE` |        | x | x | o | x | x | signed or unsigned less or equal == not greater |
+/// | `XYgLE` |        | x | x | o | x | x | signed or unsigned less or equal == not greater |
 /// | `XYGle` |        | x | x | x | o | o | signed or unsigned greater                      |
 /// | `XYGlE` |        | x | x | x | o | x | signed or unsigned greater or equal == not less |
 /// | `XYGLe` |  `ne`  | x | x | x | x | o | not equal                                       |
 /// | `XYGLE` |  `t`   | x | x | x | x | x | always true                                     |
 ///
-axm %core.icmp(xygle = f,  xyglE = e,   xygLe,      xygLE,
-               xyGle,      xyGlE,       xyGLe,      xyGLE,
-               xYgle,      xYglE,       xYgLe = sl, xYgLE = sle,
-               xYGle = ug, xYGlE = uge, xYGLe,      xYGLE,
-               Xygle,      XyglE,       XygLe = ul, XygLE = ule,
-               XyGle = sg, XyGlE = sge, XyGLe,      XyGLE,
-               XYgle,      XYglE,       XYgLe,      XYgLE,
-               XYGle,      XYGlE,       XYGLe = ne, XYGLE = t):
+axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
+          xyGle,      xyGlE,       xyGLe,      xyGLE,
+          xYgle,      xYglE,       xYgLe = sl, xYgLE = sle,
+          xYGle = ug, xYGlE = uge, xYGLe,      xYGLE,
+          Xygle,      XyglE,       XygLe = ul, XygLE = ule,
+          XyGle = sg, XyGlE = sge, XyGLe,      XyGLE,
+          XYgle,      XYglE,       XYgLe,      XYgLE,
+          XYGle,      XYGlE,       XYGLe = ne, XYGLE = t):
     {s: Nat} → «2; Idx s» → Bool , normalize_icmp;
 ///
-/// ### %%core.extrema
+/// ### extrema
 ///
-/// Minimum and Maximum of two Integers
-///     * un`s`igned or `S`igned
-///     * `m`inimum or `M`aximum
+/// Minimum and maximum of two integers:
+/// - un`s`igned or `S`igned
+/// - `m`inimum or `M`aximum
 ///
-axm %core.extrema(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
+axm extrema.(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
 ///
-/// ### %%core.abs
+/// ### abs
 ///
-/// Absolute value of an int
+/// Absolute value of an integer.
 ///
-/// @warning Computing the absolute value of an Integer with the lowest possible value leads to *undefined behavior*, which is why this axiom expects a `%%mem.M`
+/// @warning Computing the absolute value of the lowest possible value leads to *undefined behavior*, which is why this axiom expects a `mem.M`.
 ///
-axm %core.abs: {s: Nat} → [%mem.M 0, Idx s] → [%mem.M 0, Idx s], normalize_abs;
+axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
 ///
 /// ## Conversions
 ///
-/// ### %%core.conv
+/// ### conv
 ///
 /// Conversion between index types - both signed and unsigned - of different sizes.
-/// * `conv.u` preserves the unsigned representative modulo the destination carrier.
-/// * `conv.s` preserves the signed representative modulo the destination carrier.
+/// - `conv.u` preserves the unsigned representative modulo the destination carrier.
+/// - `conv.s` preserves the signed representative modulo the destination carrier.
 ///
-axm %core.conv(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
+axm conv.(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
 ///
-/// ### %%core.bitcast
+/// ### bitcast
 ///
 /// Bitcast to reinterpret a value as another type.
 /// Can be used for pointer / integer conversions as well as integer / nat conversions.
 ///
-axm %core.bitcast: {S: *} → [D: *] → S → D, normalize_bitcast;
+axm bitcast: {S: *} → [D: *] → S → D, normalize_bitcast;
 ///
 /// ## Other Operations
 ///
-/// ### %%core.trait
+/// ### trait
 ///
 /// Yields the size or align of a type.
 ///
-axm %core.trait(size, align): * → Nat, normalize_trait;
+axm trait.(size, align): * → Nat, normalize_trait;
 ///
-/// ### %%core.pe
+/// ### pe
 ///
 /// Steers the partial evaluator.
 ///
-axm %core.pe(hlt, run):  {T: *} → T → T, normalize_pe;
-axm %core.pe(is_closed): {T: *} → T → Bool, normalize_pe;
+pub mod pe {
+    axm hlt:       {T: *} → T → T, normalize_pe;
+    axm run:       {T: *} → T → T, normalize_pe;
+    axm is_closed: {T: *} → T → Bool, normalize_pe;
+}
 ///
-/// ## %%core.select
+/// ### select
 ///
 /// More readable shorthand to create a select/if:
 ///
-lam %core.select {T: *} (cond: Bool, t: T, f: T): T = (f, t)#cond;
+anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
+///
+/// ### Select
+///
+/// core.select one level up, to select between types.
+///
+anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
+///
+/// ## Operators
+///
+/// Bindings for the infix operators, which are sugar for an application of the escaped name.
+/// `use` the module matching the domain at hand:
+///
+/// | Module          | Domain                                     |
+/// |-----------------|--------------------------------------------|
+/// | `core.ops.n`    | `Nat`                                      |
+/// | `core.ops.s.w`  | signed `Idx s`, wrap around                |
+/// | `core.ops.s.nw` | signed `Idx s`, `core.mode.nsw`            |
+/// | `core.ops.u.w`  | unsigned `Idx s`, wrap around              |
+/// | `core.ops.u.nw` | unsigned `Idx s`, `core.mode.nuw`          |
+///
+/// `core.ops.s`/`core.ops.u` offer only those operators that don't depend on the mode.
+/// `Idx s` has no `/` and `%`, since core.div expects a `mem.M`.
+///
+pub mod ops {
+    pub mod n {
+        pub let `+  =  nat.add;
+        pub let `-  =  nat.sub;
+        pub let `*  =  nat.mul;
+        pub let `/  =  nat.div;
+        pub let `%  =  nat.rem;
+        pub let `== = ncmp.e;
+        pub let `!= = ncmp.ne;
+        pub let `<  = ncmp.l;
+        pub let `<= = ncmp.le;
+        pub let `>  = ncmp.g;
+        pub let `>= = ncmp.ge;
+    }
+
+    mod eq {
+        pub let `== = icmp.e;
+        pub let `!= = icmp.ne;
+    }
+
+    mod signed {
+        pub use eq;
+        pub let `>> = shr.a;
+        pub let `<  = icmp.sl;
+        pub let `<= = icmp.sle;
+        pub let `>  = icmp.sg;
+        pub let `>= = icmp.sge;
+    }
+
+    mod unsigned {
+        pub use eq;
+        pub let `>> = shr.l;
+        pub let `<  = icmp.ul;
+        pub let `<= = icmp.ule;
+        pub let `>  = icmp.ug;
+        pub let `>= = icmp.uge;
+    }
+
+    pub mod s {
+        pub use signed;
+
+        pub mod w {
+            pub use signed;
+            pub let `+  = wrap.add mode.us;
+            pub let `-  = wrap.sub mode.us;
+            pub let `*  = wrap.mul mode.us;
+            pub let `<< = wrap.shl mode.us;
+        }
+
+        pub mod nw {
+            pub use signed;
+            pub let `+  = wrap.add mode.nsw;
+            pub let `-  = wrap.sub mode.nsw;
+            pub let `*  = wrap.mul mode.nsw;
+            pub let `<< = wrap.shl mode.nsw;
+        }
+    }
+
+    pub mod u {
+        pub use unsigned;
+
+        pub mod w {
+            pub use unsigned;
+            pub let `+  = wrap.add mode.us;
+            pub let `-  = wrap.sub mode.us;
+            pub let `*  = wrap.mul mode.us;
+            pub let `<< = wrap.shl mode.us;
+        }
+
+        pub mod nw {
+            pub use unsigned;
+            pub let `+  = wrap.add mode.nuw;
+            pub let `-  = wrap.sub mode.nuw;
+            pub let `*  = wrap.mul mode.nuw;
+            pub let `<< = wrap.shl mode.nuw;
+        }
+    }
+}

@@ -1,0 +1,10 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// A keyword is an ordinary name after a `.`, but `λ`/`⊥`/`⊤` have no `id` spelling.
+mod foo {
+    let bar = 42;
+}
+
+let a = foo.λ;
+
+// CHECK: {{.*}}path_member.mim:8:13: error: expected identifier, got `λ` while parsing component of a path

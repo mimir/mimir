@@ -1,23 +1,23 @@
 #include "mim/plug/regex/dfa2matcher.h"
 
 #include <algorithm>
-#include <sstream>
 
-#include <absl/container/flat_hash_map.h>
 #include <automaton/dfa.h>
 #include <automaton/range_helper.h>
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
+#ifndef DOXYGEN
 template<>
 struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
+#endif
 
 using namespace mim;
 using namespace automaton;
 
 using Range  = automaton::Range;
-using Ranges = Vector<Range>;
+using Ranges = fe::Vector<Range>;
 
 // nomenclature:
 // c is the character from the string we want to match
@@ -37,11 +37,8 @@ namespace {
 namespace core = plug::core;
 namespace mem  = plug::mem;
 
-std::string state_to_name(const DFANode* state) {
-    std::stringstream ss;
-    ss << "state_" << state;
-    return ss.str();
-}
+// Name states by their stable id - never by pointer value, which would change from run to run.
+std::string state_to_name(const DFANode* state) { return "state_" + std::to_string(state->id()); }
 
 DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
     DFAMap<Ranges> state2ranges;
@@ -61,7 +58,7 @@ DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
         }
 
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
-        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.DLOG("{}", msg); });
+        ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.log().d("{}", msg); });
     }
     return state2ranges;
 }
@@ -70,7 +67,7 @@ const Def* match_range(const Def* c, nat_t lo, nat_t hi) {
     World& w = c->world();
     if (lo == 0 && hi == 255) return w.lit_tt();
 
-    // let in_range     = %core.bit2.and_ 0 (%core.icmp.uge (char, lower),  %core.icmp.ule (char, upper));
+    // let in_range     = core.bit2.and_ 0 (core.icmp.uge (char, lower),  core.icmp.ule (char, upper));
     auto below_hi = w.call(core::icmp::ule, w.tuple({c, w.lit_i8(hi)}));
     auto above_lo = w.call(core::icmp::uge, w.tuple({c, w.lit_i8(lo)}));
     return w.call(core::bit2::and_, w.lit_nat(2), w.tuple({below_hi, above_lo}));
@@ -96,12 +93,12 @@ DFAMap<const Def*> create_check_match_transitions_from(const Def* c, const DFANo
 } // namespace
 
 extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
-    w.DLOG("dfa to match: {}", dfa);
+    w.log().d("DFA to match: {}", dfa);
 
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;
 
-    // ((mem: %mem.M 0, string: Str n, pos: Idx n), Cn [%mem.M 0, Bool, Idx n])
+    // ((mem: mem.M 0, string: Str n, pos: Idx n), Cn [mem.M 0, Bool, Idx n])
     auto matcher = w.mut_fun({w.call<mem::M>(0), w.call<mem::Ptr0>(w.arr(n, w.type_i8())), w.type_idx(n)},
                              {w.call<mem::M>(0), w.type_bool(), w.type_idx(n)});
     matcher->debug_prefix(std::string("match_regex"));

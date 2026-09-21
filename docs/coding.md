@@ -5,7 +5,6 @@
 Start here if you want to work on MimIR itself.
 This page is the contributor entry point for build, test, style, and debugging workflow.
 For API and IR usage patterns, continue with the [Developer Guide](@ref dev).
-For subsystem-specific material, see [Plugins](@ref plugins), [Rewriting](@ref rewriting), and [Phases](@ref phases).
 
 ## Contributor Quick Start {#building}
 
@@ -33,17 +32,25 @@ pre-commit run --all-files
 
 The following CMake switches are available:
 
-| CMake Switch            | Options                                  | Default      | Comment                                                                                         |
-| ----------------------- | ---------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| `CMAKE_BUILD_TYPE`      | `Debug` \| `Release` \| `RelWithDebInfo` | `Debug`      | Build type.                                                                                     |
-| `CMAKE_INSTALL_PREFIX`  |                                          | `/usr/local` | Install prefix.                                                                                 |
-| `MIM_BUILD_DOCS`        | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the documentation <br> (requires Doxygen).                                       |
-| `MIM_BUILD_EXAMPLES`    | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the examples.                                                                    |
-| `MIM_BUILD_PYTHON`      | `ON` \| `OFF`                            | `ON`         | If `ON`, build Python bindings.                                                                 |
-| `MIM_ENABLE_CHECKS`     | `ON` \| `OFF`                            | `ON`         | If `ON`, enable expensive runtime checks <br> (requires `CMAKE_BUILD_TYPE=Debug`).              |
-| `BUILD_TESTING`         | `ON` \| `OFF`                            | `OFF`        | If `ON`, build all unit tests and `lit` tests.                                                  |
-| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `20`         | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                    |
-| `MIM_LIT_WITH_VALGRIND` | `ON` \| `OFF`                            | `OFF`        | If `ON`, run the Mim CLI in the `lit` tests under Valgrind. <br> (requires `BUILD_TESTING=ON`). |
+| CMake Switch            | Options                                  | Default      | Comment                                                                                                                                                                                             |
+| ----------------------- | ---------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CMAKE_BUILD_TYPE`      | `Debug` \| `Release` \| `RelWithDebInfo` | `Debug`      | Build type.                                                                                                                                                                                         |
+| `CMAKE_INSTALL_PREFIX`  |                                          | `/usr/local` | Install prefix.                                                                                                                                                                                     |
+| `BUILD_SHARED_LIBS`     | `ON` \| `OFF`                            | `ON`         | If `ON`, build shared libraries.                                                                                                                                                                    |
+| `MIM_BUILD_DOCS`        | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the documentation <br> (requires Doxygen).                                                                                                                                           |
+| `MIM_BUILD_EXAMPLES`    | `ON` \| `OFF`                            | `OFF`        | If `ON`, build the examples.                                                                                                                                                                        |
+| `MIM_BUILD_LL_RUNTIME`  | `ON` \| `OFF`                            | `ON`         | If `ON`, compile the `ll` backend's C runtime wrappers to LLVM IR <br> (requires `clang`).                                                                                                          |
+| `MIM_BUILD_PYTHON`      | `ON` \| `OFF`                            | `ON`         | If `ON`, build Python bindings.                                                                                                                                                                     |
+| `MIM_CLANG`             | `<path/to/clang>`                        | autodetected | `clang` used to compile the `ll` backend's C runtime wrappers.                                                                                                                                      |
+| `MIM_DEBUG_OPTIMIZE`    | `ON` \| `OFF`                            | `ON`         | If `ON`, compile `Debug` builds with `-Og` instead of `-O0`: same assertions and checks, but roughly 6x faster. <br> Switch `OFF` when stepping through code, as `-Og` optimizes away some locals.  |
+| `MIM_ENABLE_CHECKS`     | `ON` \| `OFF`                            | `ON`         | If `ON`, enable expensive runtime checks <br> (requires `CMAKE_BUILD_TYPE=Debug`).                                                                                                                  |
+| `MIM_LLVM_LINK`         | `<path/to/llvm-link>`                    | autodetected | `llvm-link` used to link C runtime wrappers consisting of several files.                                                                                                                            |
+| `MIM_VER_SUFFIX`        | `<suffix>`                               | `-dev`       | Suffix appended to the version string; use `""` for a release.                                                                                                                                      |
+| `MIM_VERIFY_PLUGINS`    | `ON` \| `OFF`                            | `ON`         | If `ON`, elaborate every plugin's `.mim` with its plugin library loaded after building it. <br> `--bootstrap` alone never loads the libraries, so it cannot catch errors that need the normalizers. |
+| `BUILD_TESTING`         | `ON` \| `OFF`                            | `OFF`        | If `ON`, build all unit tests and `lit` tests.                                                                                                                                                      |
+| `MIM_FILECHECK`         | `<filecheck_cmd>`                        | autodetected | `FileCheck` command used by the `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                    |
+| `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `120`        | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                                        |
+| `MIM_LIT_WITH_VALGRIND` | `ON` \| `OFF`                            | `OFF`        | If `ON`, run the Mim CLI in the `lit` tests under Valgrind. <br> (requires `BUILD_TESTING=ON`).                                                                                                     |
 
 ### Dependencies
 
@@ -64,6 +71,9 @@ Run every in-tree test suite with:
 ```sh
 cmake --build build --target test-all
 ```
+
+@see [Third-Party Plugin Discovery](@ref extra_plugins)
+@note A third-party plugin in `extra/` contributes to both suites automatically.
 
 ### lit Tests
 
@@ -93,9 +103,10 @@ cd lit
 ./scripts/make_lit_error.sh foo.mim
 ```
 
-### GoogleTest
+### Unit Tests
 
-Run the [GoogleTest](https://google.github.io/googletest/) unit tests with:
+`test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test` and `mim-regex-test`.
+Run them - and every other CTest test - with:
 
 ```sh
 ctest --test-dir build --output-on-failure
@@ -107,29 +118,21 @@ You can additionally enable [Valgrind](https://valgrind.org/) via:
 ctest --test-dir build -T memcheck --output-on-failure
 ```
 
-During debugging, you will usually want to run only a specific test case.
-You can [filter](https://github.com/google/googletest/blob/main/docs/advanced.md#running-a-subset-of-the-tests) tests like this:
+During debugging, you will usually want to run only a specific test case or subcase.
+Both filters accept `*` wildcards:
 
 ```sh
-build/bin/mim-gtest --gtest_filter="*Loc*"
+build/bin/mim-test --list-test-cases              # list all test cases
+build/bin/mim-test -tc="*free vars*"              # run matching test cases
+build/bin/mim-test -tc="Hole" -sc="*zonk*"        # narrow down to matching subcases
 ```
 
-This command lists all available tests:
+doctest breaks into an attached debugger on a failing assertion; pass `-nb` to suppress that.
+
+@note To generate a one-line reproducer for the current checkout and a specific unit-test failure, use:
 
 ```sh
-build/bin/mim-gtest --gtest_list_tests
-```
-
-It can also be useful to turn assertion failures into debugger breakpoints:
-
-```sh
-build/bin/mim-gtest --gtest_break_on_failure
-```
-
-@note To generate a one-line reproducer for the current checkout and a specific GoogleTest failure, use:
-
-```sh
-./scripts/make_gtest_error.sh "mim.World.dependent_extract"
+./scripts/make_test_error.sh "World: dependent extract"
 ```
 
 ## Coding Style
@@ -154,6 +157,55 @@ Use the following coding conventions:
   1. `public`
   2. `protected`
   3. `private`
+
+#### Include Style {#includes}
+
+Use `#include "..."` for headers that belong to the artifact you are currently building and `#include <...>` for everything you link against - including external dependencies such as [Abseil](https://abseil.io/), [fe](https://github.com/leissa/fe), and the standard library.
+
+The artifact a file belongs to - and hence the prefix of its own headers - follows from its path:
+
+| Path                                           | Artifact               | Own headers        |
+| ---------------------------------------------- | ---------------------- | ------------------ |
+| `src/mim/...`, `include/mim/...`               | `libmim`               | `"mim/..."`        |
+| `src/automaton/...`, `include/automaton/...`   | `libautomaton`         | `"automaton/..."`  |
+| `src/mim/plug/X/...`, `include/mim/plug/X/...` | plugin `X`             | `"mim/plug/X/..."` |
+| `extra/X/...`                                  | out-of-tree plugin `X` | `"mim/plug/X/..."` |
+| `src/mim/cli/...`                              | the `mim` CLI          | -                  |
+| `test/...`                                     | the unit tests         | -                  |
+| `py/bindings/...`                              | the Python bindings    | -                  |
+
+The last three link against `libmim` but do not ship headers of their own, so they use `<...>` throughout.
+A plugin is a separate build artifact as well, so for a plugin `X`:
+
+```cpp
+#include <cstdlib> // standard library
+
+#include <absl/container/flat_hash_map.h> // other external dependencies
+#include <fe/assert.h>
+
+#include <mim/world.h> // libmim
+
+#include <mim/plug/mem/mem.h> // another plugin
+
+#include "mim/plug/X/autogen.h" // the plugin itself
+#include "mim/plug/X/X.h"
+```
+
+The generated `autogen.h` counts as part of the plugin, while another plugin's `autogen.h` does not.
+
+The main upshot is that in-tree plugins in `src/mim/plug/X` and out-of-tree plugins in `extra/X` spell their includes in exactly the same way.
+Hence, `scripts/extract_plugin.py` can move a plugin out of the tree without touching a single `#include`, and an in-tree plugin exercises the same public header surface that an external plugin sees.
+
+This is checked by `scripts/check_includes.py`, which is also wired up as a [pre-commit](https://pre-commit.com/) hook:
+
+```sh
+./scripts/check_includes.py          # check all sources
+./scripts/check_includes.py --fix    # rewrite offending includes in place
+```
+
+@note `--fix` only changes `"..."` to `<...>` and vice versa.
+Since the two forms belong to different include groups, run `pre-commit run clang-format --files <fixed files>` afterwards to regroup them.
+Only path-qualified includes are checked, so a plain `#include "foo.h"` next to the including file is always fine.
 
 #### Doxygen Style
 
@@ -231,9 +283,9 @@ private:
 
 ### Syntax Highlighting
 
-[This](https://github.com/AnyDSL/vim-mim) Vim plugin provides syntax highlighting for Mim files.
-
-There is also a [tree-sitter grammar](https://gitlab.com/amaeble/tree-sitter-mim) for Mim files and a [Helix fork](https://github.com/amaebel/helix) with highlight and injection queries.
+- [Mim (Neo)Vim Plugin](https://github.com/mimir/vim-mim): Vim syntax highlighting and abbreviations for Unicode chars.
+- [Tree Sitter Mim](https://github.com/mimir/tree-sitter-mim): Neovim syntax highlighting (can be used in combination with the Vim plugin).
+- [Helix fork](https://github.com/amaebel/helix) of the tree sitter repo above.
 
 ## Debugging
 
@@ -242,7 +294,7 @@ This section has more information about this topic.
 
 **See also:**
 
-- [Command-Line Reference](@ref clidebug)
+- [Command-Line Reference](@ref cli)
 - [GDB: A quick guide to make your debugging easier](https://johnnysswlab.com/gdb-a-quick-guide-to-make-your-debugging-easier/)
 - [Advanced GDB Usage](https://interrupt.memfault.com/blog/advanced-gdb)
 - [Debugging with GDB](https://sourceware.org/gdb/current/onlinedocs/gdb.html/)
@@ -251,10 +303,10 @@ This section has more information about this topic.
 
 You can directly invoke several MimIR dump helpers from within GDB, for example:
 
-- [mim::Def::dump](@ref mim::Def::dump),
-- [mim::Def::write](@ref mim::Def::write),
-- [mim::World::dump](@ref mim::World::dump),
-- [mim::World::write](@ref mim::World::write), ...
+- [`mim::Def::dump`](@ref mim::Def::dump),
+- [`mim::Def::write`](@ref mim::Def::write),
+- [`mim::World::dump`](@ref mim::World::dump),
+- [`mim::World::write`](@ref mim::World::write), ...
 
 ```gdb
 (gdb) call def->dump()
@@ -263,17 +315,17 @@ You can directly invoke several MimIR dump helpers from within GDB, for example:
 (gdb) call world().write("out.mim")
 ```
 
-In particular, note the different output levels of [mim::Def::dump](@ref mim::Def::dump).
+In particular, note the different output levels of [`mim::Def::dump`](@ref mim::Def::dump).
 
-You can also tweak the output behavior directly from within GDB by changing [mim::World::flags](@ref mim::World::flags) or [mim::World::log](@ref mim::World::log):
+You can also tweak the output behavior directly from within GDB by changing [`mim::World::flags`](@ref mim::World::flags) or [`mim::World::log`](@ref mim::World::log):
 
 ```gdb
 (gdb) call world().flags().dump_gid = 1
 (gdb) call world().flags().dump_recursive = 1
-(gdb) call world().log().max_level_ = 4
+(gdb) call world().log.max_level_ = 4
 ```
 
-Another useful trick is to recover a `Def*` from a [mim::Def::gid](@ref mim::Def::gid) via [mim::World::gid2def](@ref mim::World::gid2def):
+Another useful trick is to recover a `Def*` from a [`mim::Def::gid`](@ref mim::Def::gid) via [`mim::World::gid2def`](@ref mim::World::gid2def):
 
 ```gdb
 (gdb) p world().gid2def(123)
@@ -299,10 +351,10 @@ Here is the `xdot` GDB command in action:
 
 ### Conditional Breakpoints
 
-Often, you will want to inspect a specific [mim::Def](@ref mim::Def) at a particular point in the program.
+Often, you will want to inspect a specific [`mim::Def`](@ref mim::Def) at a particular point in the program.
 [Conditional breakpoints](https://ftp.gnu.org/old-gnu/Manuals/gdb/html_node/gdb_33.html) are very handy for this.
 
-For example, the following command breaks if the [mim::Def::gid](@ref mim::Def::gid) of variable `def` is `42` at source location `foo.cpp:23`:
+For example, the following command breaks if the [`mim::Def::gid`](@ref mim::Def::gid) of variable `def` is `42` at source location `foo.cpp:23`:
 
 ```gdb
 break foo.cpp:23 if def->gid() == 42
@@ -324,10 +376,25 @@ If you run into memory-related problems, it can be useful to run the program wit
 Launch the test binary like this:
 
 ```sh
-valgrind --vgdb=yes --vgdb-error=0 build/bin/mim-gtest
+valgrind --vgdb=yes --vgdb-error=0 build/bin/mim-test
 ```
 
 and then follow the instructions printed by Valgrind.
+
+### Logging {#logging}
+
+Each `-V` raises the log level by one; MimIR logs to `stderr`:
+
+| Flag     | `fe::Log::Level` |
+| -------- | ---------------- |
+| _none_   | `Error`          |
+| `-V`     | `Warn`           |
+| `-VV`    | `Info`           |
+| `-VVV`   | `Verbose`        |
+| `-VVVV`  | `Debug`          |
+| `-VVVVV` | `Trace`          |
+
+`Debug` and `Trace` output only exists in a `Debug` build.
 
 ### Triggering Breakpoints
 
@@ -340,3 +407,30 @@ mim test.mim --break-on-alpha   # Break if a check for alpha-equivalence fails.
 ```
 
 See the [Command-Line Reference](@ref cli) for the full list of flags.
+
+### Profiling {#profiling}
+
+If a compilation is taking longer than expected, use `--profile` to find out which [`mim::Phase`](@ref mim::Phase) is responsible.
+It measures wall-clock time spent in each phase and reports it via `--output-profile <file>` (or `-` for stdout) in one of three formats:
+
+```sh
+mim test.mim --profile summary                      # Flat table aggregated by phase name, sorted by total time.
+mim test.mim --profile tree                         # Indented tree that preserves phase nesting/order.
+mim test.mim --profile trace --output-profile trace.json
+```
+
+Once `--profile` has enabled profiling, `--output-profile` defaults to `-`; conversely, `--output-profile <file>` alone implies `--profile trace`.
+An unknown `<mode>` is an error.
+
+The `trace` format dumps [Chrome Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU) JSON.
+Load the resulting file into `chrome://tracing` (see the [official guide](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/)), into [Perfetto](https://ui.perfetto.dev/), or into [speedscope](https://www.speedscope.app/) to inspect it as a timeline.
+
+See `fe::Profiler` in the `fe` submodule for implementation details.
+
+<div class="section_buttons">
+
+| Previous                               |                    Next |
+| :------------------------------------- | ----------------------: |
+| [Mim Language Reference](@ref langref) | [Plugins](@ref plugins) |
+
+</div>

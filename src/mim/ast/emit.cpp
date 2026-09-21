@@ -3,6 +3,8 @@
 
 #include "mim/ast/ast.h"
 
+#include "family.h"
+
 using namespace std::literals;
 
 namespace mim::ast {
@@ -17,12 +19,15 @@ public:
     AST& ast() const { return ast_; }
     World& world() { return ast().world(); }
     Driver& driver() { return world().driver(); }
+    fe::Error& error() { return driver().error(); }
 
-    /// @p name is the full syntactic name of *this* registration (`%plugin.tag` or `%plugin.tag.sub`).
-    /// We must take it from the declaration rather than from Def::sym, since hash-consing can make several
-    /// annexes share a single Def (e.g. `let %foo.bar = 23; let %foo.baz = 23;`).
+    /// @p name is *this* registration's own (unqualified) Dbg::sym; AnnexInfo::qualified turns it into the
+    /// full `plugin.tag[.sub]` name. We must take it from the declaration rather than from Def::sym, since
+    /// hash-consing can make several annexes share a single Def (e.g. `mod foo { anx let bar = 23; anx let baz = 23;
+    /// }`).
     void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
-        if (annex) world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, name, def);
+        if (annex)
+            world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
     }
 
     absl::node_hash_map<Sigma*, fe::SymMap<size_t>, GIDHash<const Def*>> sigma2sym2idx;
@@ -32,25 +37,27 @@ private:
 };
 
 /*
- * Module
+ * File
  */
 
-void Module::emit(AST& ast) const {
+void File::emit(AST& ast) const {
     auto emitter = Emitter(ast);
     emit(emitter);
 }
 
-void Module::emit(Emitter& e) const {
+void File::emit(Emitter& e) const {
+    if (emitted_) return;
+    emitted_ = true;
+
     auto _ = e.world().push(loc());
-    for (const auto& import : implicit_imports())
+    for (auto import : implicit_imports())
         import->emit(e);
-    for (const auto& import : imports())
-        import->emit(e);
-    for (const auto& decl : decls())
-        decl->emit(e);
+    emit_decls(e);
 }
 
-void Import::emit(Emitter& e) const { module()->emit(e); }
+void UseDecl::emit(Emitter& e) const {
+    if (file()) file()->emit(e);
+}
 
 /*
  * Ptrn::emit_value
@@ -69,11 +76,16 @@ const Def* AliasPtrn::emit_value(Emitter& e, const Def* def) const {
     return def_ = ptrn()->emit_value(e, def)->set(dbg());
 }
 
+const Def* Ptrn::emit_proj(Emitter& e, const Def* def, size_t n, size_t i) const {
+    auto _ = e.world().push(loc());
+    return emit_value(e, def->proj(n, i));
+}
+
 const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
     auto _ = e.world().push(loc());
     emit_type(e);
     for (size_t i = 0, n = num_ptrns(); i != n; ++i)
-        ptrn(i)->emit_value(e, def->proj(n, i));
+        ptrn(i)->emit_proj(e, def, n, i);
     return def_ = def;
 }
 
@@ -109,8 +121,8 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
 
     for (size_t i = 0; i != n; ++i) {
         sigma->set(i, ptrn(i)->emit_type(e));
-        ptrn(i)->emit_value(e, var->proj(n, i));
-        if (auto id = ptrn(i)->isa<IdPtrn>()) sym2idx[id->dbg().sym()] = i;
+        ptrn(i)->emit_proj(e, var, n, i);
+        if (auto id = ptrn(i)->isa<IdPtrn>(); id && !id->dbg().is_anon()) sym2idx[id->dbg().sym()] = i;
     }
 
     if (auto imm = sigma->immutabilize()) return imm;
@@ -132,12 +144,23 @@ const Def* Expr::emit(Emitter& e) const {
     return emit_(e);
 }
 
+const Def* Expr::emit_decl(Emitter& e, const Def* type) const {
+    auto _ = e.world().push(loc());
+    return emit_decl_(e, type);
+}
+
+void Expr::emit_body(Emitter& e, const Def* decl) const {
+    auto _ = e.world().push(loc());
+    emit_body_(e, decl);
+}
+
 const Def* ErrorExpr::emit_(Emitter&) const { fe::unreachable(); }
 const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type(); }
 
-const Def* IdExpr::emit_(Emitter&) const {
+const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
-    return decl()->def();
+    if (auto def = decl()->def()) return def;
+    e.error().e(loc(), "`{}` is a module and not a value", dbg().sym()).bail();
 }
 
 const Def* TypeExpr::emit_(Emitter& e) const {
@@ -176,14 +199,45 @@ const Def* PrimaryExpr ::emit_(Emitter& e) const {
     // clang-format on
 }
 
+/// If @p type is a `math.F` type of known precision/exponent, yields its bit width.
+/// Note that libmim must not depend on the generated math plugin header, so lookup the Axm at runtime instead.
+static std::optional<nat_t> isa_math_f(Emitter& e, const Def* type) {
+    auto math_f = e.world().annex(e.world().sym("math.F"));
+    if (auto app = type->zonk()->isa<App>(); math_f && app && app->callee() == math_f) {
+        if (auto [p, ex] = app->arg()->projs<2>([](auto op) { return Lit::isa(op); }); p && ex) {
+            if (*p == 10 && *ex == 5) return 16;
+            if (*p == 23 && *ex == 8) return 32;
+            if (*p == 52 && *ex == 11) return 64;
+        }
+    }
+    return {};
+}
+
+/// A float Tok stores its value as mim::f64 bits; re-encode them for the width of the annotated type @p t.
+static u64 encode_f(Emitter& e, [[maybe_unused]] Loc loc, const Def* t, u64 bits) {
+    if (auto width = isa_math_f(e, t)) {
+        auto val = std::bit_cast<f64>(bits);
+        switch (*width) {
+#if defined(__STDCPP_FLOAT16_T__)
+            case 16: return std::bit_cast<u16>(f16(val));
+#else
+            case 16: e.error().e(loc, "16-bit floating-point literals are not supported on this platform").bail();
+#endif
+            case 32: return std::bit_cast<u32>(f32(val));
+            default: break;
+        }
+    }
+    return bits;
+}
+
 const Def* LitExpr::emit_(Emitter& e) const {
     auto t = type() ? type()->emit(e) : nullptr;
     // clang-format off
     switch (tag()) {
-        case Tag::L_f:
+        case Tag::L_f:   return t ? e.world().lit(t, encode_f(e, loc(), t, tok().lit_u())) : e.world().lit_nat(tok().lit_u());
         case Tag::L_s:
         case Tag::L_u:   return t ? e.world().lit(t, tok().lit_u()) : e.world().lit_nat(tok().lit_u());
-        case Tag::L_i:   return tok().lit_i();
+        case Tag::L_i:   { auto [size, val] = tok().lit_i(); return e.world().lit_idx(size, val); }
         case Tag::L_c:   return e.world().lit_i8(tok().lit_c());
         case Tag::L_str: return e.world().tuple(tok().sym());
         case Tag::T_bot: return t ? e.world().bot(t) : e.world().type_bot();
@@ -195,40 +249,105 @@ const Def* LitExpr::emit_(Emitter& e) const {
 
 const Def* DeclExpr::emit_(Emitter& e) const {
     if (is_where())
-        for (const auto& decl : decls() | std::views::reverse)
+        for (auto decl : decls() | std::views::reverse)
             decl->emit(e);
     else
-        for (const auto& decl : decls())
+        for (auto decl : decls())
             decl->emit(e);
     return expr()->emit(e);
 }
 
-const Def* ArrowExpr::emit_decl(Emitter& e, const Def* type) const {
-    return decl_ = e.world().mut_pi(type, false)->set(loc());
+const Def* InfixExpr::emit_decl_(Emitter& e, const Def* type) const {
+    assert(op().isa(Tag::T_arrow_r));
+    return pi_ = e.world().mut_pi(type, false);
 }
 
-void ArrowExpr::emit_body(Emitter& e, const Def*) const {
-    decl_->set_dom(dom()->emit(e));
-    decl_->set_codom(codom()->emit(e)); // TODO try to immutabilize
+void InfixExpr::emit_body_(Emitter& e, const Def*) const {
+    pi_->set_dom(lhs()->emit(e));
+    pi_->set_codom(rhs()->emit(e)); // TODO try to immutabilize
 }
 
-const Def* ArrowExpr::emit_(Emitter& e) const {
-    auto d = dom()->emit(e);
-    auto c = codom()->emit(e);
-    return e.world().pi(d, c);
+/// `a ∪ b ∪ c` is one n-ary Join, so flatten the left spine the left-associative parse built.
+static void emit_union(Emitter& e, const Expr* expr, DefVec& types) {
+    if (auto infix = InfixExpr::isa_op(Tag::T_union, expr)) {
+        emit_union(e, infix->lhs(), types);
+        types.emplace_back(infix->rhs()->emit(e));
+    } else {
+        types.emplace_back(expr->emit(e));
+    }
 }
 
-const Def* UnionExpr::emit_(Emitter& e) const {
-    DefVec etypes;
-    for (auto& t : types())
-        etypes.emplace_back(t->emit(e));
-    return e.world().join(etypes);
+const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
+    auto& w = e.world();
+    // A simple path names a field of tup's Sigma before anything the binder resolved it to.
+    if (auto path = rhs()->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
+        auto dbg = path->dbg();
+        if (auto mut = tup->type()->isa_mut<Sigma>()) {
+            if (auto i = e.sigma2sym2idx.find(mut); i != e.sigma2sym2idx.end()) {
+                auto sigma          = i->first->as_mut<Sigma>();
+                const auto& sym2idx = i->second;
+                if (auto i = sym2idx.find(dbg.sym()); i != sym2idx.end()) return w.lit_idx(sigma->num_ops(), i->second);
+            }
+        }
+        if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
+    }
+    return rhs()->emit(e);
 }
 
-const Def* InjExpr::emit_(Emitter& e) const {
-    auto v = value()->emit(e);
-    auto t = type()->emit(e);
-    return e.world().inj(t, v);
+const Def* InfixExpr::emit_(Emitter& e) const {
+    auto& w = e.world();
+
+    switch (op().tag()) {
+        case Tag::T_union: {
+            DefVec types;
+            emit_union(e, this, types);
+            return w.join(types);
+        }
+        case Tag::T_extract: {
+            auto tup = lhs()->emit(e);
+            return w.extract(tup, emit_index(e, tup));
+        }
+        case Tag::T_arrow_l: {
+            fe::Vector<const InfixExpr*> exs;
+            auto base = lhs();
+            while (auto ex = InfixExpr::isa_op(Tag::T_extract, base)) {
+                exs.emplace_back(ex);
+                base = ex->lhs();
+            }
+
+            if (exs.empty())
+                e.error()
+                    .e(lhs()->loc(), "expected `#` on the left-hand side of `{}`", Tok::tag2str(op().tag()))
+                    .n("an update needs a component, as in `tuple#index {} value`", Tok::tag2str(op().tag()))
+                    .bail();
+
+            auto tup = base->emit(e);
+            DefVec tups, idxs;
+            for (auto ex : exs | std::views::reverse) {
+                auto idx = ex->emit_index(e, tup);
+                tups.emplace_back(tup);
+                idxs.emplace_back(idx);
+                tup = w.extract(tup, idx);
+            }
+
+            auto val = rhs()->emit(e);
+            for (size_t i = tups.size(); i-- != 0;)
+                val = w.insert(tups[i], idxs[i], val);
+            return val;
+        }
+        default: break;
+    }
+
+    auto c = callee() ? callee()->emit(e) : nullptr;
+    auto l = lhs()->emit(e);
+    auto r = rhs()->emit(e);
+
+    switch (op().tag()) {
+        case Tag::T_arrow_r: return w.pi(l, r);
+        case Tag::T_at: return w.app(l, r);
+        case Tag::K_inj: return w.inj(r, l);
+        default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR
+    }
 }
 
 Lam* MatchExpr::Arm::emit(Emitter& e) const {
@@ -243,20 +362,22 @@ Lam* MatchExpr::Arm::emit(Emitter& e) const {
 const Def* MatchExpr::emit_(Emitter& e) const {
     DefVec res;
     res.emplace_back(scrutinee()->emit(e));
-    for (const auto& arm : arms())
+    for (auto arm : arms())
         res.emplace_back(arm->emit(e));
     return e.world().match(res);
 }
 
 void PiExpr::Dom::emit_type(Emitter& e) const {
+    // Created before the push: the Pi belongs to the whole function type, not just to this Dom.
     pi_        = decl_ ? decl_ : e.world().mut_pi(e.world().type_infer_univ(), is_implicit());
+    auto _     = e.world().push(loc());
     auto dom_t = ptrn()->emit_type(e);
 
     if (ret()) {
-        auto sigma = e.world().mut_sigma(2)->set(loc());
-        auto var   = sigma->var()->set(ret()->loc().anew_begin());
+        auto sigma = e.world().mut_sigma(2);
+        auto var   = sigma->var();
         sigma->set(0, dom_t);
-        ptrn()->emit_value(e, var->proj(2, 0));
+        ptrn()->emit_proj(e, var, 2, 0);
         auto ret_t = e.world().cn(ret()->emit_type(e));
         sigma->set(1, ret_t);
 
@@ -271,20 +392,22 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
     }
 }
 
-const Def* PiExpr::emit_decl(Emitter& e, const Def* type) const {
-    return dom()->decl_ = e.world().mut_pi(type, dom()->is_implicit())->set(loc());
+const Def* PiExpr::emit_decl_(Emitter& e, const Def* type) const {
+    return dom()->decl_ = e.world().mut_pi(type, dom()->is_implicit());
 }
 
-void PiExpr::emit_body(Emitter& e, const Def*) const { emit(e); }
+void PiExpr::emit_body_(Emitter& e, const Def*) const { emit(e); }
 
 const Def* PiExpr::emit_(Emitter& e) const {
     dom()->emit_type(e);
     auto cod = codom() ? codom()->emit(e) : e.world().type_bot();
-    return dom()->pi_->set_codom(cod);
+    auto pi  = dom()->pi_->set_codom(cod);
+    if (auto imm = pi->immutabilize()) return imm;
+    return pi;
 }
 
-const Def* LamExpr::emit_decl(Emitter& e, const Def*) const { return lam()->emit_decl(e), lam()->def(); }
-void LamExpr::emit_body(Emitter& e, const Def*) const { lam()->emit_body(e); }
+const Def* LamExpr::emit_decl_(Emitter& e, const Def*) const { return lam()->emit_decl(e), lam()->def(); }
+void LamExpr::emit_body_(Emitter& e, const Def*) const { lam()->emit_body(e); }
 
 const Def* LamExpr::emit_(Emitter& e) const {
     auto res = emit_decl(e, {});
@@ -295,7 +418,7 @@ const Def* LamExpr::emit_(Emitter& e) const {
 const Def* AppExpr::emit_(Emitter& e) const {
     auto c = callee()->emit(e);
     auto a = arg()->emit(e);
-    return is_explicit() ? e.world().app(c, a) : e.world().implicit_app(c, a);
+    return e.world().implicit_app(c, a);
 }
 
 const Def* RetExpr::emit_(Emitter& e) const {
@@ -303,18 +426,20 @@ const Def* RetExpr::emit_(Emitter& e) const {
     if (auto cn = Pi::has_ret_pi(c->type())) {
         auto con  = e.world().mut_lam(cn);
         auto pair = e.world().tuple({arg()->emit(e), con});
-        auto app  = e.world().app(c, pair)->set(c->loc() + arg()->loc());
+        auto app  = e.world().app(c, pair);
         ptrn()->emit_value(e, con->var());
         con->set(false, body()->emit(e));
         return app;
     }
 
-    error(c->loc(), "callee of a ret expression must type as a returning continuation but got '{}' of type '{}'", c,
-          c->type());
+    e.error()
+        .e(callee()->loc(), "callee of a `ret` expression must be a returning continuation, but `{}` has type `{}`", c,
+           c->type())
+        .bail();
 }
 
-const Def* SigmaExpr::emit_decl(Emitter& e, const Def* type) const { return ptrn()->emit_decl(e, type); }
-void SigmaExpr::emit_body(Emitter& e, const Def* decl) const { ptrn()->emit_body(e, decl); }
+const Def* SigmaExpr::emit_decl_(Emitter& e, const Def* type) const { return ptrn()->emit_decl(e, type); }
+void SigmaExpr::emit_body_(Emitter& e, const Def* decl) const { ptrn()->emit_body(e, decl); }
 const Def* SigmaExpr::emit_(Emitter& e) const { return ptrn()->emit_type(e); }
 
 const Def* TupleExpr::emit_(Emitter& e) const {
@@ -357,34 +482,6 @@ const Def* SeqExpr::emit_(Emitter& e) const {
     }
 }
 
-const Def* ExtractExpr::emit_(Emitter& e) const {
-    auto tup = tuple()->emit(e);
-    if (auto dbg = std::get_if<Dbg>(&index())) {
-        if (auto sigma = tup->type()->isa_mut<Sigma>()) {
-            if (auto i = e.sigma2sym2idx.find(sigma); i != e.sigma2sym2idx.end()) {
-                auto sigma          = i->first->as_mut<Sigma>();
-                const auto& sym2idx = i->second;
-                if (auto i = sym2idx.find(dbg->sym()); i != sym2idx.end())
-                    return e.world().extract(tup, sigma->num_ops(), i->second);
-            }
-        }
-
-        if (decl()) return e.world().extract(tup, decl()->def());
-        error(dbg->loc(), "cannot resolve index '{}' for extraction", *dbg);
-    }
-
-    auto expr = std::get<Ptr<Expr>>(index()).get();
-    auto i    = expr->emit(e);
-    return e.world().extract(tup, i);
-}
-
-const Def* InsertExpr::emit_(Emitter& e) const {
-    auto t = tuple()->emit(e);
-    auto i = index()->emit(e);
-    auto v = value()->emit(e);
-    return e.world().insert(t, i, v);
-}
-
 const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant()->emit(e)); }
 
 /*
@@ -393,6 +490,7 @@ const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant(
 
 void AxmDecl::emit(Emitter& e) const {
     if (!annex_) return; // Skip emit if binding failed
+    auto _      = e.world().push(loc());
     mim_type_   = type()->emit(e);
     auto& id    = annex_->id;
     auto plugin = annex_->plugin_id();
@@ -400,41 +498,56 @@ void AxmDecl::emit(Emitter& e) const {
     std::tie(id.curry, id.trip) = Axm::infer_curry_and_trip(mim_type_);
     if (curry_) {
         if (curry_.lit_u() > id.curry)
-            error(curry_.loc(), "curry counter cannot be greater than {}", id.curry);
+            e.error().e(curry_.loc(), "curry counter cannot be greater than {}", id.curry).bail();
         else
             id.curry = curry_.lit_u();
     }
 
     if (trip_) {
         if (trip_.lit_u() > id.curry)
-            error(trip_.loc(), "trip counter cannot be greater than curry counter '{}'", (int)id.curry);
+            e.error().e(trip_.loc(), "trip counter cannot be greater than curry counter {}", (int)id.curry).bail();
         else
             id.trip = trip_.lit_u();
     }
 
-    if (num_subs() == 0) {
-        auto norm = e.driver().normalizer(plugin, id.tag, 0);
-        auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, 0)->set(dbg());
-        def_      = axm;
-        e.world().annexes().attach(plugin, id.tag, 0, dbg().sym(), axm);
-    } else {
-        for (sub_t i = 0, n = num_subs(); i != n; ++i) {
-            sub_t s   = i + offset_;
-            auto norm = e.driver().normalizer(plugin, id.tag, s);
-            auto name = e.world().sym(dbg().sym().str() + "."s + sub(i).front()->dbg().sym().str());
-            auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, s)->set(name);
-            e.world().annexes().attach(plugin, id.tag, s, name, axm);
-
-            for (const auto& alias : sub(i))
-                alias->def_ = axm;
-        }
-    }
+    auto norm = e.driver().normalizer(plugin, id.tag, sub_);
+    auto name = annex_->qualified(e.driver(), dbg().sym());
+    auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, sub_)->set(name);
+    def_      = axm;
+    e.world().annexes().attach(plugin, id.tag, sub_, name, axm);
 }
 
+void AxmDecl::Sibling::emit(Emitter& e) const {
+    if (!annex_) return; // skip emit if binding failed
+    auto& id    = annex_->id;
+    auto plugin = annex_->plugin_id();
+    auto norm   = e.driver().normalizer(plugin, id.tag, sub_);
+    auto name   = annex_->qualified(e.driver(), dbg().sym());
+    auto axm    = e.world().axm(norm, id.curry, id.trip, owner()->mim_type(), plugin, id.tag, sub_)->set(name);
+    def_        = axm;
+    e.world().annexes().attach(plugin, id.tag, sub_, name, axm);
+}
+
+void AliasDecl::emit(Emitter& e) const {
+    if (!annex_) return; // skip emit if binding failed
+    auto target = path()->decl();
+    def_        = target->def();
+    auto name   = annex_->qualified(e.driver(), dbg().sym());
+    e.world().annexes().attach_alias(annex_->plugin_id(), annex_->id.tag, sub_, name);
+}
+
+void ModDecl::emit_decls(Emitter& e) const {
+    for (auto decl : decls())
+        decl->emit(e);
+}
+
+void ModDecl::emit(Emitter& e) const { emit_decls(e); }
+
 void LetDecl::emit(Emitter& e) const {
+    auto _ = e.world().push(loc());
     auto v = value()->emit(e);
     def_   = ptrn()->emit_value(e, v);
-    if (auto id = ptrn()->isa<IdPtrn>()) e.attach(annex_, sub_, id->dbg().sym(), def_);
+    if (auto id = ptrn()->isa<IdPtrn>()) e.attach(id->annex_, id->sub_, id->dbg().sym(), def_);
 }
 
 void RecDecl::emit(Emitter& e) const {
@@ -445,24 +558,27 @@ void RecDecl::emit(Emitter& e) const {
 }
 
 void RecDecl::emit_decl(Emitter& e) const {
-    auto t = type() ? type()->emit(e) : e.world().type_infer_univ();
-    def_   = body()->emit_decl(e, t);
-    def_->set(dbg());
+    auto _ = e.world().push(loc());
+    def_   = body()->emit_decl(e, e.world().type_infer_univ());
+    def_->set(dbg().sym());
 }
 
 void RecDecl::emit_body(Emitter& e) const {
+    auto _ = e.world().push(loc());
     body()->emit_body(e, def_);
     // TODO immutabilize?
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
 Lam* LamDecl::Dom::emit_value(Emitter& e) const {
+    // Created before the push: the Lam belongs to the whole declaration, not just to this Dom.
     lam_     = e.world().mut_lam(pi_);
+    auto _   = e.world().push(loc());
     auto var = lam_->var();
 
     if (ret()) {
-        ptrn()->emit_value(e, var->proj(2, 0));
-        ret()->emit_value(e, var->proj(2, 1));
+        ptrn()->emit_proj(e, var, 2, 0);
+        ret()->emit_proj(e, var, 2, 1);
     } else {
         ptrn()->emit_value(e, var);
     }
@@ -472,23 +588,25 @@ Lam* LamDecl::Dom::emit_value(Emitter& e) const {
 
 void LamDecl::emit_decl(Emitter& e) const {
     auto _      = e.world().push(loc());
-    bool is_cps = tag_ == Tag::K_cn || tag_ == Tag::K_con || tag_ == Tag::K_fn || tag_ == Tag::K_fun;
+    bool is_cps = !ISA(tag_, C_DS);
 
     // Iterate over all doms: Build a Lam for curr dom, by first building a curried Pi for the remaining doms.
     for (size_t i = 0, n = num_doms(); i != n; ++i) {
-        for (const auto& dom : doms() | std::views::drop(i))
+        for (auto dom : doms() | std::views::drop(i))
             dom->emit_type(e);
 
         auto cod = codom() ? codom()->emit(e) : is_cps ? e.world().type_bot() : e.world().mut_hole_type();
-        for (const auto& dom : doms() | std::views::drop(i) | std::views::reverse)
+        for (auto dom : doms() | std::views::drop(i) | std::views::reverse)
             cod = dom->pi_->set_codom(cod);
 
-        auto cur    = dom(i);
-        auto lam    = cur->emit_value(e);
-        auto filter = cur->filter()        ? cur->filter()->emit(e)
-                    : i + 1 == n && is_cps ? e.world().lit_ff()
-                                           : e.world().lit_tt();
-        lam->set_filter(filter);
+        auto cur = dom(i);
+        auto lam = cur->emit_value(e);
+        if (auto filter = cur->filter()) {
+            auto _filter = e.world().push(filter->loc());
+            lam->set_filter(filter->emit(e));
+        } else {
+            lam->set_filter(i + 1 == n && is_cps ? e.world().lit_ff() : e.world().lit_tt());
+        }
 
         if (i == 0)
             def_ = lam->set(dbg().sym());
@@ -498,15 +616,20 @@ void LamDecl::emit_decl(Emitter& e) const {
 }
 
 void LamDecl::emit_body(Emitter& e) const {
-    auto b = body()->emit(e);
-    doms().back()->lam_->set_body(b);
+    if (!body()) return; // extern forward declaration: the implementation lives in a native translation unit
+
+    auto _ = e.world().push(loc());
+    {
+        auto _body = e.world().push(body()->loc());
+        doms().back()->lam_->set_body(body()->emit(e));
+    }
 
     // rewrite holes
     for (size_t i = 0, n = num_doms(); i != n; ++i) {
         auto rw  = VarRewriter(e.world());
         auto lam = dom(i)->lam_;
         auto pi  = lam->type()->as_mut<Pi>();
-        for (const auto& dom : doms() | std::views::drop(i)) {
+        for (auto dom : doms() | std::views::drop(i)) {
             if (auto var = pi->has_var()) rw.add(dom->lam_->var()->as<Var>(), var);
             auto cod = pi->codom();
             if (!cod || !cod->isa_mut<Pi>()) break;
@@ -516,7 +639,7 @@ void LamDecl::emit_body(Emitter& e) const {
         if (auto cod = pi->codom(); cod && cod->has_dep(Dep::Hole)) pi->set(pi->dom(), rw.rewrite(cod));
     }
 
-    for (const auto& dom : doms() | std::views::reverse) {
+    for (auto dom : doms() | std::views::reverse) {
         if (auto imm = dom->pi_->immutabilize()) {
             auto f = dom->lam_->filter();
             auto b = dom->lam_->body();
@@ -524,18 +647,19 @@ void LamDecl::emit_body(Emitter& e) const {
         }
     }
 
-    if (is_external()) doms().front()->lam_->externalize();
-    e.attach(annex_, sub_, dbg().sym(), def_);
-}
-
-void CDecl::emit(Emitter& e) const {
-    auto dom_t = dom()->emit_type(e);
-    if (tag() == Tag::K_cfun) {
-        auto ret_t = codom()->emit(e);
-        def_       = e.world().mut_fun(dom_t, ret_t)->set(dbg());
-    } else {
-        def_ = e.world().mut_con(dom_t)->set(dbg());
+    if (is_external()) {
+        auto lam = doms().front()->lam_;
+        if (!lam->is_closed())
+            e.error()
+                .e(loc(),
+                   "external function `{}` is not closed: its inferred type escapes into the scope of `{}`. This "
+                   "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
+                   "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
+                   dbg().sym(), lam->free_vars().min()->binder()->sym())
+                .bail();
+        lam->externalize();
     }
+    e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
 void RuleDecl::emit(Emitter& e) const {

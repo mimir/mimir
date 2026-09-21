@@ -1,0 +1,35 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[]: Bool;
+
+extern fun f(x: Nat): Nat =
+    head (0, 0) where
+        con head(i j: Nat) =
+            ret cond = dont_know $ ();
+            (exit, body)#cond () where
+                con body() =
+                    (false, true)#(i <= j) ()
+                    where
+                        con false () =
+                            let i = i + 2; // unreachable due to GVN
+                            let j = j + 1;
+                            next (i, j);
+
+                        con true() =
+                            let i = i + 1;
+                            let j = j + 1;
+                            next (i, j);
+                        con next (i j: Nat) as ij = head ij;
+                    end;
+
+                con exit() =
+                    return (i + j);
+            end
+    end;
+
+// CHECK: phi i64
+// CHECK-NOT: phi i64

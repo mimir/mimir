@@ -6,52 +6,23 @@ using namespace std::literals;
 
 namespace mim::ast {
 
-AST::~AST() {
-    assert(error().num_errors() == 0 && error().num_warnings() == 0
-           && "please encounter any errors before destroying this class");
+// Node map: Parser::import holds the slot across the nested parses that may insert further entries.
+struct AST::Files : absl::node_hash_map<const fe::Src*, Ptr<File>> {};
+
+AST::AST(World& world)
+    : world_(&world)
+    , files_(std::make_unique<Files>()) {}
+
+AST::AST(AST&& other)
+    : AST(other.world()) {
+    swap(*this, other);
 }
 
-Import::Import(Loc loc, Tok::Tag tag, Dbg dbg, Ptr<Module>&& module)
-    : Node(loc)
-    , dbg_(dbg)
-    , tag_(tag)
-    , module_(std::move(module)) {}
+AST::~AST() = default;
 
-Import::~Import() = default;
-
-AnnexInfo* AST::name2annex(Dbg dbg, sub_t* sub_id) {
-    if (!dbg || dbg.sym()[0] != '%') return nullptr;
-
-    auto [plugin_s, tag_s, sub_s] = Annex::split(driver(), dbg.sym());
-    auto plugin_tag               = driver().sym("%"s + plugin_s.str() + "."s + tag_s.str());
-    auto& sym2annex               = plugin2sym2annex_[plugin_s];
-    auto tag_id                   = sym2annex.size();
-
-    if (plugin_s == sym_error()) error(dbg.loc(), "plugin name '{}' is reserved", dbg);
-    if (tag_id > std::numeric_limits<tag_t>::max())
-        error(dbg.loc(), "exceeded maxinum number of annexes in current plugin");
-
-    if (!Annex::mangle(plugin_s)) {
-        error(dbg.loc(), "invalid annex name '{}'", dbg);
-        plugin_s = sym_error();
-    }
-
-    auto sub        = (tag_t)sym2annex.size();
-    auto [i, fresh] = sym2annex.try_emplace(plugin_tag, AnnexInfo{plugin_s, tag_s, sub});
-    auto annex      = &i->second;
-
-    if (sub_s) {
-        if (sub_id) {
-            *sub_id       = annex->subs.size();
-            auto& aliases = annex->subs.emplace_back();
-            aliases.emplace_back(sub_s);
-        } else {
-            error(dbg.loc(), "annex '{}' must not have a subtag", dbg);
-        }
-    }
-
-    if (!fresh) annex->fresh = false;
-    return annex;
+std::pair<Ptr<File>&, bool> AST::file(const fe::Src* src) {
+    auto [i, fresh] = files_->try_emplace(src);
+    return {i->second, fresh};
 }
 
 void AST::bootstrap(Sym plugin, std::ostream& h) {
@@ -59,7 +30,7 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     std::println(h, "{}#pragma once\n", tab);
     std::println(h, "{}#include <mim/axm.h>", tab);
     std::println(h, "#include <mim/plugin.h>\n", tab);
-    std::println(h, "{}/// @namespace mim::plug::{} @ref {} ", tab, plugin, plugin);
+    std::println(h, "{}/// @namespace mim::plug::{} @ref {}", tab, plugin, plugin);
     std::println(h, "{}namespace mim {{", tab);
     std::println(h, "{}namespace plug::{} {{\n", tab, plugin);
 
@@ -209,50 +180,45 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
  * Other
  */
 
-LamExpr::LamExpr(Ptr<LamDecl>&& lam)
+LamExpr::LamExpr(Ptr<LamDecl> lam)
     : Expr(lam->loc())
-    , lam_(std::move(lam)) {}
+    , lam_(lam) {}
 
 /*
- * Ptrn::to_expr/to_ptrn
+ * Ptrn::to_expr
  */
 
-Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn>&& ptrn) {
+Ptr<Expr> Ptrn::to_expr(AST& ast, Ptr<Ptrn> ptrn) {
     if (auto idp = ptrn->isa<IdPtrn>(); idp && !idp->dbg() && idp->type()) {
-        if (auto ide = idp->type()->isa<IdExpr>()) return ast.ptr<IdExpr>(ide->dbg());
+        if (auto pe = idp->type()->isa<PathExpr>())
+            return ast.ptr<PathExpr>(ast.ptr<Path>(pe->path()->loc(), pe->path()->dbgs()));
     } else if (auto tuple = ptrn->isa<TuplePtrn>(); tuple && tuple->is_brckt()) {
-        (void)ptrn.release();
         return ast.ptr<SigmaExpr>(Ptr<TuplePtrn>(tuple));
     }
     return {};
 }
 
-Ptr<Ptrn> Ptrn::to_ptrn(Ptr<Expr>&& expr) {
-    if (auto sigma = expr->isa<SigmaExpr>())
-        return std::move(const_cast<SigmaExpr*>(sigma)->ptrn_); // TODO get rid off const_cast
-    return {};
-}
-
-void Module::compile(AST& ast) const {
+void File::compile(AST& ast) const {
     bind(ast);
     ast.error().ack();
     emit(ast);
-    if (ast.error().num_warnings() != 0) std::cerr << ast.error();
+    ast.error().report();
 }
 
-AST load_plugins(World& world, View<Sym> plugins) {
-    auto tag     = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
-    auto ast     = AST(world);
-    auto parser  = Parser(ast);
-    auto imports = Ptrs<Import>();
-
-    for (auto plugin : plugins)
-        if (auto mod = parser.import(plugin.view(), tag))
-            imports.emplace_back(ast.ptr<Import>(mod->loc(), tag, Dbg(plugin), std::move(mod)));
+AST load_plugins(World& world, fe::View<std::string> plugins) {
+    auto tag    = world.driver().flags().bootstrap ? Tok::Tag::K_import : Tok::Tag::K_plugin;
+    auto ast    = AST(world);
+    auto parser = Parser(ast);
 
     if (!plugins.empty()) {
-        auto mod = ast.ptr<Module>(imports.front()->loc() + imports.back()->loc(), std::move(imports), Ptrs<ValDecl>());
-        mod->compile(ast);
+        auto imports = parser.import_plugins(plugins, tag);
+        auto decls   = Ptrs<ValDecl>();
+        for (auto import : imports)
+            decls.emplace_back(import);
+
+        // No Loc: this File spans no source, and hulling the imports would mix Loc%s of different files.
+        auto file = ast.ptr<File>(Loc(), ast.scope(), ast.copy(decls));
+        file->compile(ast);
     }
 
     return ast;

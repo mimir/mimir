@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 
-#include <absl/container/btree_map.h>
+#include <map>
+#include <set>
 
 #include "automaton/automaton.h"
 
@@ -22,15 +24,18 @@ public:
     const DFANode* get_transition(std::uint16_t c) const;
 
     // F: void(const DFANode*)
-    template<class F> void for_transitions(F&& f, std::uint16_t c) const {
+    template<class F>
+    void for_transitions(F&& f, std::uint16_t c) const {
         if (erroring_) return;
         if (auto it = transitions_.find(c); it != transitions_.end()) f(it->second);
     }
 
     // F: void(std::uint16_t, const DFANode*)
-    template<class F> void for_transitions(F&& f) const {
+    template<class F>
+    void for_transitions(F&& f) const {
         if (erroring_) return;
-        for (auto& [c, to] : transitions_) f(c, to);
+        for (auto& [c, to] : transitions_)
+            f(c, to);
     }
 
     bool is_accepting() const noexcept { return accepting_; }
@@ -49,7 +54,8 @@ public:
 
 private:
     int id_;
-    absl::flat_hash_map<std::uint16_t, const DFANode*> transitions_;
+    // ordered map keeps for_transitions() iteration in char order - and hence deterministic
+    std::map<std::uint16_t, const DFANode*> transitions_;
     bool accepting_ = false;
     bool erroring_  = false;
 };
@@ -65,6 +71,8 @@ public:
     enum SpecialTransitons : std::uint16_t {};
 };
 
-template<class To> using DFAMap = absl::btree_map<const DFANode*, To, DFANode::Lt>;
+template<class To>
+using DFAMap = std::map<const DFANode*, To, DFANode::Lt>;
+using DFASet = std::set<const DFANode*, DFANode::Lt>;
 
 } // namespace automaton

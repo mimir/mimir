@@ -1,0 +1,35 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s --output-ast - | %FileCheck --check-prefix=AST %s
+
+plugin core;
+
+use core.ops.u.w;
+
+extern lam f(): I32 =
+    import "lib.mim";
+    mod m { pub let two = 2I32; }
+    use m;
+    lib.answer + two;
+
+extern lam g(): I32 = lib.answer + l.inner.deep where
+    import "lib.mim";
+    import "lib.mim" as l;
+end;
+
+mod outer {
+    import "lib.mim";
+    pub let x = lib.inner.deep;
+}
+
+extern lam h(): I32 = outer.x;
+
+// CHECK-DAG: extern lam f (): I32 =
+// CHECK-DAG-NEXT: 44I32;
+// CHECK-DAG: extern lam g (): I32 =
+// CHECK-DAG-NEXT: 65I32;
+// CHECK-DAG: extern lam h (): I32 =
+// CHECK-DAG-NEXT: 23I32;
+
+// An import is an ordinary declaration and stays where it was written.
+// AST: lam f(): I32 =
+// AST-NEXT: import "lib.mim";

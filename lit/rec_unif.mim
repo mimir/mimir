@@ -1,0 +1,8 @@
+// RUN: %mim -p opt %s -o -
+let Triple = [T U V: *];
+
+pub mod bug {
+    axm Box: Triple → *;
+    axm test: [n: Nat] → [Ss: «n; Triple», X: Triple] → Box X;
+}
+lam l3 (S: Triple): bug.Box S = bug.test 3 ((S, S, S), S);

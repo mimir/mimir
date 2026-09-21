@@ -1,0 +1,37 @@
+// Combining analyses, combining optimizations, Fig. 10
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[]: Bool;
+extern fun read[]: Nat;
+
+extern fun foo(x: Nat): Nat =
+    let x = 1;
+    ret z = read $ ();
+    let y = z;
+    head (x, y) where
+        con head(x y: Nat) =
+            ret cond = dont_know $ ();
+            (exit, body)#cond () where
+                con body() =
+                    (f1, t1)#(y != z) ()
+                    where
+                        con f1() = n1 x;
+                        con t1() = n1 2;
+                        con n1(x: Nat) =
+                            let x    = 2 - x;
+                            (f2, t2)#(x != 1) ()
+                            where
+                                con f2() = n2 y;
+                                con t2() = n2 2;
+                                con n2(y: Nat) = head (x, y);
+                            end;
+                    end;
+                con exit() = return x;
+            end
+    end;
+
+// CHECK: ret i64 1

@@ -1,0 +1,12 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+import "priv_import_lib.mim" as p;
+
+let a = p.lib;
+let b = p.answer;
+let c = p.l;
+
+// An `import`/`use` defaults to `priv`, and a splice re-binds under its own visibility - `pub` opts out.
+// CHECK: {{.*}}priv_import.mim:5:11-5:13: error: `lib` is private to its enclosing `mod`
+// CHECK: {{.*}}priv_import.mim:6:11-6:16: error: `answer` is private to its enclosing `mod`
+// CHECK: {{.*}}priv_import.mim:7:11: error: `l` is private to its enclosing `mod`

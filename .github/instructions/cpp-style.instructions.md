@@ -2,17 +2,17 @@
 applyTo: "**/*.h,**/*.hh,**/*.hpp,**/*.hxx,**/*.c,**/*.cc,**/*.cpp,**/*.cxx"
 ---
 
-When reviewing C++ changes in this repository, treat the following as coding-style requirements:
+General C++ guidelines for this repository.
 
-- The repository already has a `.clang-format`; treat it as the source of truth for C++ formatting details such as indentation, spacing, alignment, wrapping, and brace layout.
-- Do not leave review comments for formatting that is already governed by `.clang-format`; focus on the project-specific style rules below and on cases where code clearly does not follow the repository formatter.
-- Prefer MimIR container types and aliases first, such as `mim::Vector`, `DefVec`, `GIDMap`, `GIDSet`, `GIDNodeMap`, `GIDNodeSet`, `LamMap`, `LamSet`, `DefMap`, `DefSet`, `MutMap`, `MutSet`, `VarMap`, `VarSet`, `Muts`, and `Vars`, plus similar aliases already defined near the code being changed.
-- If there is no fitting MimIR container or alias, prefer Abseil containers over `std::vector`, `std::map`, `std::set`, `std::unordered_map`, `std::unordered_set`, and similar STL containers.
-- Only accept `std::*` containers when neither a MimIR container nor an Abseil container is appropriate, or when the code specifically needs standard-library types such as `std::array`, `std::span`, `std::string`, `std::tuple`, or `std::pair`.
-- Prefer structured bindings together with `projs<N>()` when unpacking a fixed number of projections. For example, prefer `auto [x, y] = def->projs<2>();` over separate `auto x = def->proj(2, 0);` and `auto y = def->proj(2, 1);`.
-- Prefer the repo-specific projection helpers generated via `MIM_PROJ` when they exist, such as `app->args<N>()`, `def->vars<N>()`, and similar `...s<N>()` helpers, instead of first extracting an intermediate `Def*` and then calling `projs<N>()` on it.
-- In particular, prefer `app->args<N>()` over `app->arg()->projs<N>()` when unpacking the fixed arguments of an `App`.
-- Flag repeated `proj(arity, index)` calls that can be replaced by a single `projs<N>()` call, including typed `projs<N>(...)` overloads when a conversion lambda is needed.
-- Flag cases where a `MIM_PROJ`-generated helper would express the same unpacking more directly than raw `proj(...)` or `...()->projs<N>()` chains.
-- In Doxygen comments (`///` or `/** ... */`), prefer one sentence per line where reasonable, instead of wrapping prose to fill a column width. Hard line breaks per sentence make diffs and reviews easier to read; do not flag deliberate exceptions where a sentence would become awkwardly fragmented.
-- Call out violations of these rules in review comments even when the code is otherwise correct.
+- `.clang-format` is the source of truth for formatting (indentation, spacing, alignment, wrapping, braces).
+  Don't hand-format what it already governs.
+- Containers, in order of preference:
+  1. MimIR types/aliases (`mim::Vector`, `DefVec`, `GIDMap`, `GIDSet`, `GIDNodeMap`, `GIDNodeSet`, `LamMap`, `LamSet`, `DefMap`, `DefSet`, `MutMap`, `MutSet`, `VarMap`, `VarSet`, `Muts`, `Vars`, plus aliases defined near the code at hand),
+  2. Abseil containers,
+  3. `std::*` only when nothing above fits, or for value types like `std::array`, `std::span`, `std::string`, `std::tuple`, `std::pair`.
+- Unpack a fixed number of projections with a single `projs<N>()` plus a structured binding — `auto [x, y] = def->projs<2>();`, not repeated `def->proj(2, i)`.
+  Use the typed `projs<N>(...)` overload when a conversion lambda is needed.
+- Prefer the `MIM_PROJ`-generated helpers over extracting an intermediate `Def*` first: `app->args<N>()` instead of `app->arg()->projs<N>()`, `def->vars<N>()`, etc.
+- In Doxygen comments (`///`, `/** ... */`), prefer one sentence per line over column-filling wraps, so diffs stay readable.
+  Deliberate exceptions are fine where a sentence would fragment awkwardly.
+- Comment sparingly; see the *Comments* section in `.github/copilot-instructions.md`.

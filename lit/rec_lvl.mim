@@ -1,0 +1,17 @@
+// RUN: %mim -p opt %s -o -
+// RUN: %mim %s --output-ast - | %FileCheck %s
+
+axm Phase: *;
+axm Kind: □;
+
+rec Pi     = Phase → Pi;
+rec Higher = Kind → Higher;
+rec Sigma  = [head: Phase, tail: Sigma];
+rec Mutual = Phase → Friend
+and Friend = Phase → Mutual;
+
+// CHECK:      rec Pi = (Phase → Pi);
+// CHECK-NEXT: rec Higher = (Kind → Higher);
+// CHECK-NEXT: rec Sigma = [head: Phase, tail: Sigma];
+// CHECK-NEXT: rec Mutual = (Phase → Friend)
+// CHECK-NEXT: and Friend = (Phase → Mutual);

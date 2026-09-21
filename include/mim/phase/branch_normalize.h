@@ -4,10 +4,11 @@
 
 namespace mim {
 
-/// Inlines in post-order all Lam%s that occur exactly *once* in the program.
-class BranchNormalizePhase : public RWPhase {
+/// Normalizes branches: η-expands non-Lam branch targets so that both sides of a `(f, t)#cond`
+/// branch are Lam%s, as later phases and the backends expect.
+class BranchNormalize : public RWPhase {
 public:
-    BranchNormalizePhase(World& world, flags_t annex)
+    BranchNormalize(World& world, flags_t annex)
         : RWPhase(world, annex) {}
 
 private:

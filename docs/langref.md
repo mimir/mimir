@@ -2,112 +2,133 @@
 
 [TOC]
 
+This page is the reference for Mim surface syntax.
+
 ## Notation
 
 This document uses a lightweight [EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)-style notation.
+A terminal is shaded, a nonterminal is not, and the [lexical terminals](@ref terminals) `I`, `L`, `X_n`, `C`, and `S` have a colour of their own.
+Clicking a nonterminal or a lexical terminal traces its occurrences across the page.
+The meta-symbols are:
 
 ```ebnf
-"a"        literal terminal token a
-[a b]      one of a or b
-[a-c]      character range from a to c
-x*         zero or more repetitions of x
-x+         one or more repetitions of x
-x?         optional x
-x ("," x)* ","?
-           comma-separated list of zero or more x, with optional trailing comma
+x ::= y  // defines the nonterminal x as y
+x | y    // either x or y
+(x y)    // grouping
+x*       // zero or more x
+x+       // one or more x
+x?       // an optional x
+[a-c]    // character range from a to c
+[a-cx-z] // combines several ranges
 ```
+
+For example, `x ("," x)*` is a comma-separated list of one or more `x`.
+@note Ranges only occur in the rules of the [lexical terminals](@ref terminals).
+@note Every comma-separated list additionally accepts a trailing `,`, as in `(e, e, e,)`.
+The rules below don't spell this out.
 
 ## Lexical Structure {#lex}
 
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
-For example, `<<<` is tokenized as `<<` followed by `<`.
+For example, `>>=` is tokenized as `>>` followed by `=`.
+@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
 
 ### Terminals {#terminals}
 
-The grammar refers to *primary terminals*.
-Some tokens also have ASCII-only spellings, called *secondary terminals*, that denote the same lexical token.
-For example, `λ` and `lm` are lexically equivalent.
+The grammar refers to _primary terminals_.
+Some tokens have a second spelling - an ASCII-only one or a Unicode variant - that denotes the very same lexical token; these are the _secondary terminals_.
 
 #### Primary Terminals
+
+<div class="terminals-code">
 
 ```text
 ( ) [ ] { } ⦃ ⦄
 ‹ › « »
-→ => ⊥ ⊤ * □ λ
+→ ← => ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ∪
++ - / % == != < <= > >= << >>
 <eof>
 ```
 
-`%` is only part of annex names and is not a standalone token.
+</div>
+
+- `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
+- `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
 
 #### Secondary Terminals
 
-```text
-< > << >>
--> bot top lm insert
-```
-
-`⟨`, `⟩`, `⟪`, and `⟫` may be used as alternatives for `‹`, `›`, `«`, and `»`.
+| Primary | Secondary |
+| ------- | --------- |
+| `→`     | `->`      |
+| `←`     | `<-`      |
+| `λ`     | `lm`      |
+| `⊥`     | `bot`     |
+| `⊤`     | `top`     |
+| `*`     | `★`       |
 
 #### Keywords
 
+<div class="terminals-code">
+
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
-and as axm ccon cfun cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj ins lam let match module
-norm plugin rec ret rule tt when where with
+and anx as axm cn con end extern ff fn fun
+i1 i8 i16 i32 i64 import inj lam let match mod
+norm plugin priv pub rec ret rule tt use when where with
 ```
 
-`module` is currently reserved by the lexer even though it does not introduce a surface construct in the grammar below.
+</div>
 
 The following names are predefined aliases:
 
-```text
-tt   = 1₂
-ff   = 0₂
-Bool = Idx i1
-I1   = Idx i1
-I8   = Idx i8
-I16  = Idx i16
-I32  = Idx i32
-I64  = Idx i64
+| Alias  | Expansion       |
+| ------ | --------------- |
+| `tt`   | `1₂`            |
+| `ff`   | `0₂`            |
+| `Bool` | `Idx i1`        |
+| `I1`   | `Idx i1`        |
+| `I8`   | `Idx i8`        |
+| `I16`  | `Idx i16`       |
+| `I32`  | `Idx i32`       |
+| `I64`  | `Idx i64`       |
+| `i1`   | `2`             |
+| `i8`   | `0x100`         |
+| `i16`  | `0x1'0000`      |
+| `i32`  | `0x1'0000'0000` |
+| `i64`  | `0`             |
 
-i1   = 2
-i8   = 0x100
-i16  = 0x1'0000
-i32  = 0x1'0000'0000
-i64  = 0
-```
+@note 2⁶⁴ doesn't fit into a `Nat`, so `i64` is `0`, which `Idx` reads as 2⁶⁴.
 
-#### Pattern Terminals
+#### Lexical Terminals
 
-The following terminals are defined by lexical patterns.
+The following terminals are defined by lexical rules.
 
 ```ebnf
-I      ::= sym
-A      ::= "%" sym "." sym ("." sym)?
+I      ::= id
+        |  "`" op
 L      ::= dec+
-         |  "0" ["bB"] bin+
-         |  "0" ["oO"] oct+
-         |  "0" ["xX"] hex+
-         |  sign dec+
-         |  sign "0" ["bB"] bin+
-         |  sign "0" ["oO"] oct+
-         |  sign "0" ["xX"] hex+
-         |  sign? dec+ eE sign dec+
-         |  sign? dec+ "." dec* (eE sign dec+)?
-         |  sign? dec* "." dec+ (eE sign dec+)?
-         |  sign? "0" ["xX"] hex+ pP sign dec+
-         |  sign? "0" ["xX"] hex+ "." hex* pP sign dec+
-         |  sign? "0" ["xX"] hex* "." hex+ pP sign dec+
+        |  "0" ("b" | "B") bin+
+        |  "0" ("o" | "O") oct+
+        |  "0" ("x" | "X") hex+
+        |  dec+ eE sign? dec+
+        |  dec+ "." dec* (eE sign? dec+)?
+        |  dec* "." dec+ (eE sign? dec+)?
+        |  "0" ("x" | "X") hex+ pP sign? dec+
+        |  "0" ("x" | "X") hex+ "." hex* pP sign? dec+
+        |  "0" ("x" | "X") hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
-         |  dec+ "_" dec+
+        |  dec+ "_" dec+
+        |  dec+ ("i" | "I") dec+
 C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
-Here `I` is an identifier, `A` is an [annex](@ref mim::Annex) name, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
+The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`.
+A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
+`` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
 The shorthand symbols used above are:
 
@@ -117,118 +138,203 @@ oct    ::= [0-7]
 dec    ::= [0-9]
 sub    ::= [₀-₉]
 hex    ::= [0-9a-fA-F]
-eE     ::= ["eE"]
-pP     ::= ["pP"]
-sign   ::= ["+-"]
-sym    ::= [_a-zA-Z] [._0-9a-zA-Z]*
-esc    ::= one of: \' \" \0 \a \\ \b \f \n \r \t \v
+eE     ::= "e" | "E"
+pP     ::= "p" | "P"
+sign   ::= "+" | "-"
+id     ::= ("_" | [a-zA-Z]) ("_" | [0-9a-zA-Z])*
+op     ::= "+" | "-" | "*" | "/" | "%"
+        |  "==" | "!=" | "<" | "<=" | ">" | ">="
+        |  "<<" | ">>"
+esc    ::= "\'" | "\\" | "\"" | "\0" | "\a" | "\b"
+        |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
-Character and string literals only admit ASCII payload characters plus the escapes listed above.
+`ascii_char` is any ASCII character except `\`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
 
-## Comments
+### Comments
 
-Mim supports `/* ... */` multi-line comments, `// ...` single-line comments, and `/// ...` comments that are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
-`/* ... */` comments are not nested.
-For `///` comments, a line of the form `/// text` contributes `text` directly to the Markdown output.
-Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
+Supported comments:
+
+```mim
+/* multi-line comment */
+// single-line comment
+/// doc-comment
+```
+
+- `/* ... */` comments do not nest.
+- doc-comments are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
+  A line of the form `/// text` contributes `text` directly to the Markdown output.
+  Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
 
 ## Grammar {#grammar}
 
 Mim is defined by a [context-free grammar](https://en.wikipedia.org/wiki/Context-free_grammar).
 Its terminals are the lexical elements defined above.
-The start symbol is `m` for *module*.
+The start symbol is `f` for _file_.
 
 The main nonterminals used below are:
 
-```text
-m   module
-d   declaration
-p   ()-style pattern
-b   []-style pattern
-e   expression
-```
+| Symbol | Meaning     |
+| ------ | ----------- |
+| `f`    | file        |
+| `d`    | declaration |
+| `p`    | pattern     |
+| `t`    | telescope   |
+| `e`    | expression  |
 
-### Module {#module}
+### Files and Imports {#module}
 
 ```ebnf
-m   ::= dep* d*
-dep ::= "import" I ";"
-     |  "plugin" I ";"
+f ::= d*
 ```
 
-A module consists of zero or more imports or plugins followed by zero or more declarations.
+A file is a sequence of declarations.
+Each file forms a [module](@ref path) of its own that an import binds under a name.
 
 - `import foo;` resolves the module name `foo` through the search path.
+- `import "some/dir/foo.mim";` resolves the path relative to the importing file first, then through the search path.
 - If the resolved file name has no extension, `.mim` is appended.
 - `plugin foo;` first loads the plugin `foo` and then imports the module with the same name.
+  Only `plugin` loads a shared object; `import` never does.
+- `plugin "some/dir/foo";` looks for `libmim_foo` in `some/dir` below each plugin search path and takes `foo.mim` from wherever that library was found.
+- The bound name defaults to the file name without its extension and must be an identifier; `as` overrides it.
+- `import foo as *;` splices `foo`'s public members into the current scope like a following `use foo;` would - except that `foo` itself is never bound; the same goes for `plugin foo as *;`.
+  Since no name is needed, this form also accepts a file name that isn't an identifier.
+- An import is `priv` unless declared `pub`: `import foo;` binds `foo` privately, while `pub import foo;` re-exports it, and `pub import foo as *;` re-exports every spliced member.
+- A file is parsed, bound, and emitted exactly once, no matter how many modules import it.
+  Importing a file that is still being parsed is an error.
+- An import is an ordinary declaration, so it may sit wherever declarations may - inside a `mod`, a `where` block, or a function body - and binds its name in exactly that scope.
+
+### Paths and Modules {#path}
+
+```ebnf
+path ::= I ("." I)*
+```
+
+A path resolves its first component lexically and then walks into that module.
+A module is either an imported file or a `mod` declaration.
+
+- Every component of a path is an identifier; a keyword is not allowed, not even after a `.`.
+- `.` never reads a field out of a value; use `#` for that.
+- An `anx` declaration is an ordinary member of its enclosing module and is found by the same path resolution as any other member; see [Annex](@ref annex) for what additionally makes it an annex.
 
 ### Declarations {#decl}
 
-Mim accepts the following declaration families.
+Mim supports the following declaration families.
+Most of them may be prefixed with a visibility (`priv` or `pub`), `extern`, and `anx`.
+These modifiers may be written in any order; the productions below only spell out which of them a declaration accepts at all.
+Visibility is a Mim-only, purely lexical fact - it has no effect on backend linkage or compiler registration.
+`extern` and `anx` are each independent of visibility, but not of each other: `extern anx` on the same declaration is a static error.
+Either one nudges the default visibility to `pub` (instead of the usual `priv` default) unless `priv`/`pub` is given explicitly, so e.g. `priv anx` and `priv extern` are legal and meaningful.
 
-```text
-let p = e
-let A = e
+```ebnf
+d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
+        |  vis? "use"  path    ("as" (I | "*"))? ";"
+        |  vis? "mod" I "{" d* "}"
+        |  vis? "anx"? "let" p "=" e
+        |  vis? "anx" I "=" path
+        |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
+        |  vis?  "extern"           lam I fwd+ (":" e)? ";"
+        |  vis? "anx"? "rec" I "=" e and*
+        |  vis? "axm" axm
+        |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
-lam|con|fun [extern] n dom* [: e] = e
-ccon|cfun I b [: e]
-
-rec n [: e] = e
-and n [: e] = e
-and lam|con|fun [extern] n dom* [: e] = e
-
-axm A [(tag (= alias)*)*] : e [, normalizer] [, curry] [, trip]
-
-rule|norm n p : e [when e] => e
+import ::= "import" | "plugin"
+and    ::= "and" I "=" e
+        |  "and" lam I dom+ (":" e)? "=" e
+vis    ::= "priv" | "pub"
+lam    ::= "lam" | "con" | "fun"
+dom    ::= p ("@" e)?
+fwd    ::= (p | t) ("@" e)?
+axm    ::= I ":" e tail
+        |  (I ".")? "(" (tag ("," tag)*)? ")" ":" e tail
+tag    ::= I ("=" I)*
+tail   ::= ("," I)? ("," L ("," L)?)?
 ```
 
-Here `n` is either an identifier or an annex name.
+@note A declaration may be followed by a `;`, as all examples on this page do; stray semicolons between declarations are skipped.
 
+- `import` and `plugin` bind a file as a module, or splice its public members into the current scope; see [Files and Imports](@ref module).
+- `use path as I` introduces `I` as another name for the module `path` denotes; `use path as *` splices that module's public members into the current scope instead, and a plain `use path` is sugar for the latter.
+- `mod` groups declarations under a name; its body also sees the enclosing scope.
+  Neither `extern` nor `anx` apply to it.
 - `let` introduces a binding pattern.
+- `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
-- `extern` may appear on `lam`, `con`, and `fun` declarations.
-- Each domain in a `lam`-style declaration may be followed by a filter introduced with `@`.
-- `ccon` and `cfun` declare external C continuations and C functions.
+  The declared name is already in scope inside its own body, so such a declaration is recursive.
+  `and` extends the group to mutual recursion; a forward reference without `and` does not resolve.
+  The corresponding [expression forms](@ref expr) are anonymous and cannot refer to themselves.
+- The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
-- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration.
-- `axm` declares an axiom and may carry tag aliases, a normalizer, and curry or trip metadata.
+  Its body must be a sigma or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
+  A recursive _function_ is declared with `lam`/`con`/`fun` instead.
+- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
+- `axm` declares an axiom.
+  A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
+  Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
+- An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
 - `rule` and `norm` declare rewrite rules.
 - `norm` is the normalizing variant of `rule`.
 
-### Patterns {#ptrn}
+#### Modifiers
 
-Patterns decompose values and describe binders.
+- `anx` marks a declaration as an [annex](@ref annex).
+  It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
+  `axm` is implicitly `anx` and may not combine with `extern`.
+- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
+  Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
+
+##### Visibility
+
+- `priv` restricts a declaration to its lexical scope: a path may not cross into it from outside its enclosing `mod`; it is the default visibility unless `extern` or `anx` nudges it to `pub`.
+- `pub` lifts that restriction, so a path from outside the enclosing `mod` may reach the declaration.
+- Visibility belongs to the _binding_, not to the declaration it names: an `import`/`plugin`/`use` that splices `as *` re-binds someone else's declarations under its own visibility, so only a `pub` splice re-exports them, no matter how public they were in their own module.
+
+### Patterns and Telescopes {#ptrn}
+
+A pattern decomposes a value; a telescope describes a type.
 
 ```ebnf
-p   ::= I (":" e)?
-     |  "(" (pg ("," pg)* ","?)? ")"
-     |  b
-     |  p "as" I
+p     ::= I (":" e)?
+       |  "(" plist? ")"
+       |  p "as" I
 
-pg  ::= p
-     |  g
+t     ::= I (":" e)?
+       |  "[" tlist? "]"
+       |  t "as" I
+       |  e
 
-b   ::= I (":" e)?
-     |  "[" (bg ("," bg)* ","?)? "]"
-     |  b "as" I
-     |  e
-
-bg  ::= b
-     |  g
-
-g   ::= I+ ":" e
+plist ::= (p | g) ("," (p | g))*
+tlist ::= (t | g) ("," (t | g))*
+g     ::= I+ ":" e
 ```
 
-There are two pattern families.
+These are two different things, not two spellings of one thing.
 
-- `p` is the ordinary parenthesized binder syntax.
-- `b` is the bracketed syntax used for sigma binders and Pi domains.
-- Roughly speaking, `(a, b, c)` binds tuple components with inferred types, while `[a, b, c]` binds components whose types are described by the bracket entries.
-- When all component types are written explicitly, `(a: A, b: B)` and `[a: A, b: B]` coincide.
-- Tuple patterns support grouped bindings such as `(a b c: Nat, d e: Bool)` and `[a b c: Nat, d e: Bool]`.
-- Both forms distribute the annotated type over the listed names.
-- Patterns may be wrapped in an alias pattern.
+- A **pattern** `p` destructs a value into names that a body uses, so it only appears where a body exists.
+- A **telescope** `t` describes a type and names a component only so that later components or the codomain may depend on it.
+- The two grammars are identical except that a telescope additionally admits a bare `e`.
+  Hence the whole difference: **an unnamed element is a binder in `(...)` and a type in `[...]`**.
+  `(a, b, c)` binds three components with inferred types; `[A, B, C]` describes three unnamed components of those types.
+- A **group** `g` distributes one annotated type over several names, as in `(a b c: Nat, d e: Bool)` or `[a b c: Nat, d e: Bool]`.
+  It is only ever an element of a `plist`/`tlist`, never a `p`/`t` of its own.
+- Only a telescope may contain general expressions, which is what makes `[T: *] → T` and `Cn [mem: mem.M 0, I32]` legal.
+- `[...]` never binds for a body: a declaration or `λ`/`cn`/`fn` **with** a body must spell its domain as a `(...)` pattern, and writes an unnamed component as `_: T`.
+  A bodyless `extern` declaration accepts either, since nothing binds there anyway.
+
+A telescope name is visible only to what stands to its right - later components, and the codomain after a `→`.
+`Cn X` abbreviates `X → ⊥` and so has no codomain at all, which makes every name in `Cn [x y: I32]` erased: it is the very same type as `Cn [I32, I32]`.
+
+A telescope is not a form of its own but the finite end of one construct.
+`[...]` is a [sigma](@ref prod), and a sigma whose components are all the same _is_ an [array](@ref prod): `[Nat, Nat, Nat]` and `«3; Nat»` denote one and the same type.
+A sigma names a component so that later components may depend on it; an array names its index so that the element type may depend on that.
+`«i: n; T i»` is therefore the very same dependency, taken over an arity that need not be a literal.
+
+The term level mirrors the type level: `(...)` is a tuple, `‹n; e›` a pack, and a tuple of `n` equal elements _is_ that pack - `(0, 0, 0)` and `‹3; 0›` are the same value, while `(23, 42, 66)` stays a tuple.
+`#` extracts from all four alike.
+Hence `[n: Nat, «n; T»]` describes a function whose number of arguments is a runtime value - a telescope of its own could never spell that, since it fixes its length syntactically.
+
+An alias pattern wraps another pattern and additionally binds the whole value:
 
 ```mim
 let (a, b, c) as abc = (1, 2, 3);
@@ -236,31 +342,33 @@ let (a, b, c) as abc = (1, 2, 3);
 
 This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
-- Bracket-style patterns may also contain general expressions.
-- This is what makes forms such as `[T: *] → T` and `Cn [mem: %mem.M 0, I32]` legal.
-- `let` and `ret` allow rebinding of an existing name.
-
-This is especially useful for state-threading style code:
+`let` and `ret` allow rebinding of an existing name, which is especially useful for state-threading style code:
 
 ```mim
-let (mem, ptr) = %mem.alloc (I32, 0) mem;
-let mem        = %mem.store (mem, ptr, 23:I32);
-let (mem, val) = %mem.load (mem, ptr);
+let (m, ptr) = mem.alloc (I32, 0) m;
+let m        = mem.store (m, ptr, 23:I32);
+let (m, val) = mem.load (m, ptr);
 ```
+
+@note Don't name such a value `mem`: it would shadow the module `mem`, and the `mem.store` on the next line would no longer resolve.
 
 ### Expressions {#expr}
 
 #### Kinds and Builtin Types
 
 ```ebnf
-e   ::= "Univ"
-     |  "Type" e
-     |  "*"
-     |  "□"
-     |  "Nat"
-     |  "Idx"
-     |  "Bool"
-     |  "Rule" e
+e     ::= "Univ"
+       |  "Type" e
+       |  "*"
+       |  "□"
+       |  "Nat"
+       |  "Idx"
+       |  "Rule" e
+       |  alias
+
+alias ::= "Bool"
+       |  "I1" | "I8" | "I16" | "I32" | "I64"
+       |  "i1" | "i8" | "i16" | "i32" | "i64"
 ```
 
 - `Univ` is the universe of type levels.
@@ -269,38 +377,41 @@ e   ::= "Univ"
 - `□` abbreviates `Type (1:Univ)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
-- `Bool` abbreviates `Idx i1`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
+- `alias` is one of the [predefined aliases](@ref terminals), so `Bool` abbreviates `Idx i1` and `I32` abbreviates `Idx i32`.
 
-#### Literals and Basic Forms
+#### Literals and Basic Forms {#lit}
 
 ```ebnf
-e   ::= L (":" e)?
-     |  X_n
+e   ::= sign? L (":" e)?
+     |  sign? X_n
      |  "ff"
      |  "tt"
      |  C
      |  S
      |  "⊥" (":" e)?
      |  "⊤" (":" e)?
-     |  n
-     |  "{" d* e "}"
+     |  path
+     |  d+ e
      |  "⦃" e "⦄"
 ```
 
 - A numeric, character, string, `⊥`, or `⊤` literal may carry an explicit type ascription.
+- A `+`/`-` sign is part of the literal expression, not of the literal token, and only a numeric literal accepts one.
+  Because `+` and `-` are [infix operators](@ref infix) everywhere else, `f -23` subtracts; pass a negative argument as `f (-23)`.
 - Without an explicit type, numeric literals default to `Nat`.
 - Without an explicit type, `⊥` and `⊤` default to `*`.
-- `{ d* e }` is a declaration expression whose result is the final expression `e`.
+- `d+ e` is a declaration expression: one or more declarations followed by a final expression `e`, which is the result.
+  It is not delimited by any brackets; it simply starts with a declaration keyword such as `let`.
 - `⦃ e ⦄` is a singleton type.
 
 #### Functions and Continuations
 
 ```ebnf
 e   ::= e "→" e
-     |  b "→" e
-     |  "Cn" b
-     |  "Fn" b "→" e
+     |  t "→" e
+     |  "Cn" t
+     |  "Fn" t "→" e
      |  "λ" p+ (":" e)? "=" e
      |  "cn" p+ (":" e)? "=" e
      |  "fn" p+ (":" e)? "=" e
@@ -310,25 +421,23 @@ e   ::= e "→" e
 ```
 
 - `e → e` is the ordinary arrow type.
-- `b → e`, `Cn b`, and `Fn b → e` are dependent function forms whose domain is described by a bracket-style pattern.
+- `t → e`, `Cn t`, and `Fn t → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
+  They are anonymous, so they cannot call themselves; use a `lam`/`con`/`fun` [declaration](@ref decl) to recurse.
 - Application is written by juxtaposition.
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
 
-#### Products, Sequences, Unions, and Matching
+#### Products {#prod}
 
 ```ebnf
-e   ::= "[" ... "]"
-     |  "(" (e ("," e)* ","?)? ")"
-     |  "«" arity (";" e) "»"
-     |  "‹" arity (";" e) "›"
-     |  e "#" e
-     |  e "#" I
-     |  "ins" "(" e "," e "," e ")"
-     |  e "∪" e
-     |  e "inj" e
-     |  "match" e "with" ("|"? p "=>" e)+
+e     ::= "[" tlist? "]"
+       |  "(" (e ("," e)*)? ")"
+       |  "«" arity ("," arity)* ";" e "»"
+       |  "‹" arity ("," arity)* ";" e "›"
+       |  e "#" e
+       |  e "#" I
+       |  e ("#" e)+ "←" e
 
 arity ::= e
        |  I ":" e
@@ -336,14 +445,61 @@ arity ::= e
 
 - `[ ... ]` is a sigma expression unless it is immediately followed by `as` or `→`, in which case it is parsed as the domain of a dependent function type.
 - `( ... )` is a tuple expression.
+  @note There are no parenthesized/grouping expressions in Mim.
+  Instead, you use a 1-tuple.
+  A 1-tuple always degrades to its sole element, giving the effect of a parenthesized expression.
 - `« ... ; ... »` builds an array.
 - `‹ ... ; ... ›` builds a pack.
-- Each array or pack dimension may optionally be named, as in `«n: len; body»`.
-- `e # i` or `e # e` extracts a component.
-- `ins(tuple, index, value)` inserts a value into a tuple-like aggregate.
-- `e ∪ t` forms a union type.
-- `e inj t` injects a value into a union type.
+- An array or pack may have several comma-separated dimensions, as in `«i: m, j: n; body»`, and each dimension may optionally be named.
+- `e#e` extracts a component by index, `e#I` by [field name](@ref field).
+- `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
+  A `#` on the left is mandatory: without a component to update there is nothing to insert into.
+- `←` updates the component at the _whole_ `#`-path, so `t#i#j#k ← v` denotes the outer aggregate `t`.
+  The path extends leftward through `#` and stops at the first expression that is not itself a `#`.
+  - `( ... )` builds a tuple (see above), so it ends a path.
+    Thus, `(t#i)#j ← v` denotes `t#i` instead.
+  - A `let` ends a path the same way: `let row = t#i; row#j ← v` also denotes `t#i`.
+  - `←` binds weaker than application, so `f t#i ← v` is `(f t#i) ← v` - write `f (t#i ← v)`.
+
+#### Unions
+
+```ebnf
+e   ::= e "∪" e
+     |  e "inj" e
+     |  "match" e "with" "|"? p "=>" e ("|" p "=>" e)*
+```
+
+- `e ∪ e` forms a union type.
+- `e inj e` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
+
+#### Infix Operators {#infix}
+
+```ebnf
+e   ::= e "==" e
+     |  e "!=" e
+     |  e "<" e
+     |  e "<=" e
+     |  e ">" e
+     |  e ">=" e
+     |  e "<<" e
+     |  e ">>" e
+     |  e "+" e
+     |  e "-" e
+     |  e "*" e
+     |  e "/" e
+     |  e "%" e
+```
+
+- `a op b` is sugar for `` `op (a, b) ``, so `a + b` is `` `+ (a, b) ``.
+- Mim doesn't give the operators a meaning of their own; whatever `` `op `` is bound to is what they mean:
+
+  ```mim
+  let `+ = core.nat.add;
+  let x = 2 + 3;
+  ```
+
+- `*` doubles as the multiplication operator, so `f *` is a multiplication and not an application of `f` to `Type (0:Univ)`; write `f (*)` for the latter.
 
 #### Local Declaration Blocks
 
@@ -354,66 +510,72 @@ e   ::= e "where" d* "end"
 `where` attaches a local declaration block to an already parsed expression.
 `where` blocks bind more weakly than the other infix expression forms.
 
-### Precedence
+### Precedence {#prec}
 
-The current parser uses the following precedence, from strongest to weakest binding:
+Parser and dumper share one ladder of precedence levels, listed here from strongest to weakest binding.
+_Assoc_ is left-, right-, or non-associative; chaining a non-associative operator, as in `a == b == c`, is an error - parenthesize one side.
+`Pi`, `Bot`, and `Err` are _pseudo levels_: they name no syntax at all and only ever bound how far a nested expression may extend.
 
-```text
-1.  L : e                  literal and token-local type ascription
-2.  e # e                  extract
-3.  e ∪ e                  union
-4.  e e, e @ e             application
-5.  e inj e                injection
-6.  e → e                  arrow
-7.  e where d* end         local declaration block
-```
-
-- Extract, union, and application associate left-to-right.
-- `inj` and `→` associate right-to-left.
-- `where` is the loosest surface operator.
+|   # | Level     | Assoc | Operators                            | Notes                                                                                                                             |
+| --: | --------- | :---: | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+|   1 | `Lit`     |   -   | `L:e`                                | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here.                   |
+|   2 | `Extract` | left  | `e#e`, `e#I`                         |                                                                                                                                   |
+|   3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`.                                      |
+|   4 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.                                                                      |
+|   5 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                                                                                   |
+|   6 | `Add`     | left  | `e + e`, `e - e`                     |                                                                                                                                   |
+|   7 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                                                                                   |
+|   8 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                                                                                   |
+|   9 | `Pi`      |   -   | _pseudo_                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+|  10 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                                                                             |
+|  11 | `Union`   | left  | `e ∪ e`                              |                                                                                                                                   |
+|  12 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                                                                             |
+|  13 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`.                         |
+|  14 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                                                                                     |
+|  15 | `Bot`     |   -   | _pseudo_                             | A complete expression; the default bound, and the only one a trailing `where` fits into.                                          |
+|  16 | `Err`     |   -   | _pseudo_                             | Below everything; the parser's "no operator seen yet" sentinel.                                                                   |
 
 ## Summary: Functions and Types
 
 Mim uses different surface syntax for declarations, expressions, and types:
 
-```text
-Declaration   Expression   Type
-lam           λ / lm       ->
-con           cn           Cn
-fun           fn           Fn
-```
+| Declaration | Expression | Type |
+| ----------- | ---------- | ---- |
+| `lam`       | `λ` / `lm` | `→`  |
+| `con`       | `cn`       | `Cn` |
+| `fun`       | `fn`       | `Fn` |
 
 ### Declarations
 
 The following declarations are equivalent:
 
 ```mim
-lam f(T: *)((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-con f(T: *)((x y: T), return: Cn T)        = return x;
-fun f(T: *) (x y: T): T                    = return x;
+lam f (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+con f (T: *) ((x y: T), return: Cn T)        = return x;
+fun f (T: *)  (x y: T): T                    = return x;
 ```
 
-Partial-evaluation filters default to `tt`, except for `con`, `cn`, `fun`, and `fn`.
+A partial-evaluation filter defaults to `tt`, except on the last domain of a `con`, `cn`, `fun`, or `fn`, where it defaults to `ff`.
 
 ### Expressions
 
 The following expressions are equivalent.
-Because they are bound by `let`, they behave like the declarations above:
+Because they are bound by `let`, they behave like the declarations above - except that `f` is _not_ in scope inside the body, so they cannot recurse:
 
 ```mim
 let f =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-let f = lm (T: *) ((x y: T), return: T → ⊥)   : ⊥ = return x;
+let f = lm (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
 let f = cn (T: *) ((x y: T), return: Cn T)        = return x;
 let f = fn (T: *)  (x y: T): T                    = return x;
 ```
 
 ### Applications
 
-The following applications of `f` are equivalent:
+The following applications of `f` are equivalent, where `g` is a continuation that consumes the result:
 
 ```mim
-f Nat ((23, 42), cn res: Nat = use(res))
-ret res = f Nat $ (23, 42); use(res)
+let _   = f Nat ((23, 42), cn res: Nat = g res)
+ret res = f Nat $ (23, 42); g res
 ```
 
 ### Function Types
@@ -421,39 +583,51 @@ ret res = f Nat $ (23, 42); use(res)
 The following types are equivalent and describe the type of `f` above:
 
 ```mim
-[T: *] →    [[T, T], T → ⊥] → ⊥
-[T: *] → Cn [[T, T], Cn T]
-[T: *] → Fn  [T, T] → T
+let _ = [T: *] →    [[T, T], T → ⊥] → ⊥
+let _ = [T: *] → Cn [[T, T], Cn T]
+let _ = [T: *] → Fn  [T, T] → T
 ```
 
 ## Scoping
 
 Mim uses [lexical scoping](<https://en.wikipedia.org/wiki/Scope_(computer_science)#Lexical_scope>).
-Unless noted otherwise, all names live in the same namespace.
+Unless noted otherwise, all names live in the same scope.
+A file is bound in isolation: it never sees the scope of whoever imports it.
 
 ### Underscore
 
 The symbol `_` is special: it never binds an entity.
 As a consequence, `_` may appear repeatedly in the same scope without conflict, but any use of `_` as a reference is a scoping error.
 
-### Annex
+### Annex {#annex}
 
-Annex names live in a separate global namespace.
+An `anx` declaration is an ordinary member of its enclosing module, found by the same path resolution as any other member.
+Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` nesting) is additionally registered in a global by-name table (@ref mim::Annex) that tools such as `compile.named` and plugin bootstrap use to look an annex up directly by that name, independent of the surrounding modules.
 
-### Field Names of Sigmas
+### Field Names of Sigmas {#field}
 
 Named elements of mutable sigma types are available for extracts and inserts.
 @note These names take precedence over ordinary lexical names.
-In the example below, `i` refers to the field name of `X`, not the `let`-bound variable:
+In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 
 ```mim
-let i = 1_2;
-[i: Nat, j: Nat]::X → f X#i;
+let i = 1₂;
+rec S = [i j: Nat];
+lam f (x: S): Nat = x#i;
 ```
 
 Use parentheses to force the variable interpretation:
 
 ```mim
-let i = 1_2;
-[i: Nat, j: Nat]::X → f X#(i);
+let i = 1₂;
+rec S = [i j: Nat];
+lam f (x: S): Nat = x#(i);
 ```
+
+<div class="section_buttons">
+
+| Previous                           |                                     Next |
+| :--------------------------------- | ---------------------------------------: |
+| [Command-Line Reference](@ref cli) | [Contributing \& Debugging](@ref coding) |
+
+</div>

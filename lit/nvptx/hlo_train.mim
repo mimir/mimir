@@ -1,0 +1,4 @@
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
+// RUN: %mim -p opt -p gpu %S/../tensor/%{s:stem}.mim -p ll_nvptx
+// RUN: %if system-linux && cuda %{ clang++ -std=c++23 %S/../tensor/hlo_train_aux.cpp %{s:stem}.ll -lcuda -o %t -Wno-override-module %}
+// RUN: %if system-linux && cuda %{ %t %}

@@ -42,21 +42,32 @@ public:
     /// @anchor continuations
     /// Checks certain properties of @p d regarding continuations.
     ///@{
-    // clang-format off
     /// Is this a continuation - i.e. is the Pi::codom mim::Bot%tom?
-    static const Pi* isa_cn(const Def* d) { return d->isa<Pi>() && d->as<Pi>()->codom()->node() == Node::Bot ? d->as<Pi>() : nullptr; }
+    static const Pi* isa_cn(const Def* d) {
+        auto pi = d->isa<Pi>();
+        return pi && pi->codom()->node() == Node::Bot ? pi : nullptr;
+    }
     /// Is this a continuation (Pi::isa_cn) which has a Pi::ret_pi?
-    static const Pi* isa_returning(const Def* d)  { return isa_cn(d) &&  d->as<Pi>()->ret_pi() ? d->as<Pi>() : nullptr; }
+    static const Pi* isa_returning(const Def* d) {
+        auto pi = isa_cn(d);
+        return pi && pi->ret_pi() ? pi : nullptr;
+    }
     /// Is this a continuation (Pi::isa_cn) that is **not** Pi::isa_returning?
-    static const Pi* isa_basicblock(const Def* d) { return isa_cn(d) && !d->as<Pi>()->ret_pi() ? d->as<Pi>() : nullptr; }
-    // clang-format on
+    static const Pi* isa_basicblock(const Def* d) {
+        auto pi = isa_cn(d);
+        return pi && !pi->ret_pi() ? pi : nullptr;
+    }
     /// Is @p d an Pi::is_implicit (mutable) Pi?
+    /// @note A `nullptr` @p d - Def::unfold_type of Univ - simply is not one.
     static Pi* isa_implicit(const Def* d) {
-        if (auto pi = d->isa_mut<Pi>(); pi && pi->is_implicit()) return pi;
+        if (auto pi = d ? d->isa_mut<Pi>() : nullptr; pi && pi->is_implicit()) return pi;
         return nullptr;
     }
     /// Yields the Pi::ret_pi() of @p d, if it is in fact a Pi.
-    static const Pi* has_ret_pi(const Def* d) { return d->isa<Pi>() ? d->as<Pi>()->ret_pi() : nullptr; }
+    static const Pi* has_ret_pi(const Def* d) {
+        auto pi = d->isa<Pi>();
+        return pi ? pi->ret_pi() : nullptr;
+    }
     ///@}
 
     /// @name Return Continuation
@@ -82,26 +93,18 @@ public:
 
     /// @name Type Checking
     ///@{
-    const Def* check(size_t, const Def*) final;
-    const Def* check() final;
     static const Def* infer(const Def* dom, const Def* codom);
     ///@}
 
     /// @name Rebuild
     ///@{
-    Pi* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
-    const Pi* immutabilize() final;
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
-    constexpr size_t reduction_offset() const noexcept final { return 1; }
     ///@}
 
     static constexpr auto Node      = mim::Node::Pi;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Pi* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -153,7 +156,14 @@ public:
     const Pi* ret_pi() const { return type()->ret_pi(); }
     const Def* ret_dom() const { return ret_pi()->dom(); }
     /// Yields the Lam::var of the Lam::ret_pi.
-    const Def* ret_var() { return type()->ret_pi() ? var(num_vars() - 1) : nullptr; }
+    const Def* ret_var() {
+        if (!type()->ret_pi()) return nullptr;
+        auto n = num_vars(); // compute the arity once and hand it to the (a, i) projection
+        return var(n, n - 1);
+    }
+    /// Yields the `y` of `lm (x, ret) = ret y` - the argument @p d's body hands to its Lam::ret_var.
+    /// `nullptr` if @p d is not a set, mutable Lam with such a body.
+    static const Def* isa_ret_arg(const Def* d);
     ///@}
 
     /// @name Setters
@@ -181,11 +191,9 @@ public:
 
     /// @name Rebuild
     ///@{
-    Lam* stub(const Def* type) { return stub_(world(), type)->set(dbg()); }
     using Def::reduce;
     Defs reduce(Defs) const;
     const Def* reduce_body(const Def* arg) const { return reduce(arg).back(); }
-    constexpr size_t reduction_offset() const noexcept final { return 0; }
     ///@}
 
     /// @name Eta-Conversion
@@ -197,18 +205,10 @@ public:
     const Def* eta_reduce() const;
     ///@}
 
-    /// @name Type Checking
-    ///@{
-    const Def* check(size_t, const Def*) final;
-    ///@}
-
     static constexpr auto Node      = mim::Node::Lam;
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-    Lam* stub_(World&, const Def*) final;
-
     friend class World;
 };
 
@@ -239,15 +239,14 @@ private:
                 callee = app->callee();
             }
 
-            if constexpr (Callee && Args) {
-                std::ranges::reverse(args);
+            if constexpr (Args) std::ranges::reverse(args);
+
+            if constexpr (Callee && Args)
                 return std::pair{callee, args};
-            } else if constexpr (Args) {
-                std::ranges::reverse(args);
+            else if constexpr (Args)
                 return args;
-            } else {
+            else
                 return callee;
-            }
         } else {
             auto args = std::array<const Def*, N>();
             for (size_t i = N; i-- != 0;) {
@@ -335,8 +334,6 @@ public:
     static constexpr size_t Num_Ops = 2;
 
 private:
-    const Def* rebuild_(World&, const Def*, Defs) const final;
-
     friend class World;
 };
 

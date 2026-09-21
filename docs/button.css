@@ -1,0 +1,62 @@
+/* The landing page's call to action. */
+html {
+    --big-button-from: #2b8fd8;
+    --big-button-to: #14568f;
+    --big-button-shadow: rgba(20, 86, 143, .35);
+    --big-button-shadow-hover: rgba(20, 86, 143, .5);
+}
+
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) {
+        --big-button-shadow: rgba(0, 0, 0, .5);
+        --big-button-shadow-hover: rgba(43, 143, 216, .45);
+    }
+}
+
+/* Dark mode variables are defined twice, to support it with and without doxygen-awesome-darkmode-toggle.js. */
+html.dark-mode {
+    --big-button-shadow: rgba(0, 0, 0, .5);
+    --big-button-shadow-hover: rgba(43, 143, 216, .45);
+}
+
+.big-button {
+    text-align: center;
+    margin: var(--spacing-large) 0;
+}
+
+.big-button a:link,
+.big-button a:visited {
+    display: inline-block;
+    padding: .7em 1.8em;
+    background: linear-gradient(135deg, var(--big-button-from), var(--big-button-to));
+    border-radius: var(--border-radius-large);
+    box-shadow: 0 4px 14px var(--big-button-shadow);
+    /* doxygen-awesome's `a:link` paints `var(--link-color)` with `!important`, so the colour has to come from the variable. */
+    --link-color: #fff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.big-button a:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px var(--big-button-shadow-hover);
+}
+
+.big-button a:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px var(--big-button-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .big-button a:link,
+    .big-button a:visited {
+        transition: none;
+    }
+
+    .big-button a:hover,
+    .big-button a:active {
+        transform: none;
+    }
+}

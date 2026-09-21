@@ -3,10 +3,12 @@
 
 import core;
 
-lam add (a: Nat) (b: Nat) = %core.nat.add (a, b);
-lam le (a: Nat) (b: Nat) = %core.ncmp.le (a, b);
+use core.ops.n;
 
-fun extern f (n: Nat): Nat =
+lam add (a: Nat) (b: Nat) = a + b;
+lam le (a: Nat) (b: Nat) = a <= b;
+
+extern fun f (n: Nat): Nat =
     con hi (i: Nat) =
         con hj (j: Nat) =
             let j2 = add j 1;

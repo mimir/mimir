@@ -270,8 +270,7 @@ constexpr bool fold_icmp_idx(u64 size, u64 a, u64 b) {
 
     flags_t rel = 0;
     // clang-format off
-    if (false) {}
-    else if (a == b)     rel = icmp_mask & flags_t(icmp::xyglE); // equal
+    if      (a == b)     rel = icmp_mask & flags_t(icmp::xyglE); // equal
     else if (!su &&  sv) rel = icmp_mask & flags_t(icmp::Xygle); // plus, minus
     else if ( su && !sv) rel = icmp_mask & flags_t(icmp::xYgle); // minus, plus
     else if (a > b)      rel = icmp_mask & flags_t(icmp::xyGle); // greater (same sign)
@@ -472,7 +471,7 @@ const Def* merge_cmps(std::array<std::array<u64, 2>, 2> tab, const Def* a, const
         res >>= (7_u8 - u8(num_bits));
 
         if constexpr (std::is_same_v<Id, math::cmp>)
-            return world.call(math::cmp(res), /*mode*/ a_cmp->decurry()->arg(), a_cmp->arg());
+            return world.call(math::cmp(res), /*mode*/ a_cmp->decurry()->decurry()->arg(), a_cmp->arg());
         else
             return world.call(icmp(Annex::base<icmp>() | res), a_cmp->arg());
     }
@@ -496,27 +495,61 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
                 case nat::add: return world.lit_nat(*la + *lb);
                 case nat::sub: return *la < *lb ? world.lit_nat_0() : world.lit_nat(*la - *lb);
                 case nat::mul: return world.lit_nat(*la * *lb);
+                case nat::div: return *lb == 0 ? world.lit_nat_0() : world.lit_nat(*la / *lb);
+                case nat::rem: return *lb == 0 ? a : world.lit_nat(*la % *lb);
             }
         }
 
         if (*la == 0) {
             switch (id) {
                 case nat::add: return b;
-                case nat::sub: return a; // 0 - b = 0
-                case nat::mul: return a; // 0 * b = 0
+                case nat::sub: return a;                 // 0 - b = 0
+                case nat::mul: return a;                 // 0 * b = 0
+                case nat::div: return world.lit_nat_0(); // 0 / b = 0
+                case nat::rem: return world.lit_nat_0(); // 0 % b = 0
             }
         }
 
         if (*la == 1 && id == nat::mul) return b; // 1 * b = b
     }
 
-    if (lb && *lb == 0 && id == nat::sub) return a; // a - 0 = a
+    if (lb) {
+        if (*lb == 0) {
+            switch (id) {
+                case nat::sub: return a;                 // a - 0 = a
+                case nat::div: return world.lit_nat_0(); // a / 0 = 0
+                case nat::rem: return a;                 // a % 0 = a
+                default: break;
+            }
+        }
+        if (*lb == 1) {
+            switch (id) {
+                case nat::div: return a;                 // a / 1 = a
+                case nat::rem: return world.lit_nat_0(); // a % 1 = 0
+                default: break;
+            }
+        }
+    }
+
+    // (c * x) / b = (c / b) * x and (c * x) % b = 0 if c % b == 0
+    if (lb && *lb != 0 && (id == nat::div || id == nat::rem)) {
+        if (auto m = Axm::isa(nat::mul, a)) {
+            const Def* marg = m->arg();
+            auto [c, x]     = marg->projs<2>();
+            if (auto lc = Lit::isa(c); lc && *lc != 0 && *lc % *lb == 0) {
+                if (id == nat::rem) return world.lit_nat_0();
+                return world.call(nat::mul, Defs{world.lit_nat(*lc / *lb), x});
+            }
+        }
+    }
 
     if (a == b) {
         switch (id) {
             case nat::add: return world.call(nat::mul, Defs{world.lit_nat(2), a}); // a + a = 2 * a
             case nat::sub: return world.lit_nat(0);                                // a - a = 0
             case nat::mul: break;
+            case nat::div: break;                    // 0 / 0 = 0, so we cannot fold a / a = 1 symbolically
+            case nat::rem: return world.lit_nat_0(); // a % a = 0 (even for a = 0, since 0 % 0 = 0)
         }
     }
 
@@ -599,7 +632,7 @@ template<bit1 id>
 const Def* normalize_bit1(const Def* type, const Def* c, const Def* a) {
     auto& world = type->world();
     auto callee = c->as<App>();
-    auto s      = callee->decurry()->arg();
+    auto s      = callee->arg();
     // TODO cope with wrap around
 
     if constexpr (id == bit1::id) return a;
@@ -624,7 +657,8 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     auto [a, b] = arg->projs<2>();
-    auto s      = callee->decurry()->arg();
+    auto mode   = callee->decurry()->arg();
+    auto s      = callee->arg();
     auto ls     = Lit::isa(s);
     // TODO cope with wrap around
 
@@ -643,10 +677,10 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
         case bit2::    t: if (ls) return world.lit(type, *ls-1_u64); break;
         case bit2::  fst: return a;
         case bit2::  snd: return b;
-        case bit2:: nfst: return world.call(bit1::neg,  s, a);
-        case bit2:: nsnd: return world.call(bit1::neg,  s, b);
-        case bit2:: ciff: return world.call(bit2:: iff, s, Defs{b, a});
-        case bit2::nciff: return world.call(bit2::niff, s, Defs{b, a});
+        case bit2:: nfst: return world.call(bit1::neg,  mode, a);
+        case bit2:: nsnd: return world.call(bit1::neg,  mode, b);
+        case bit2:: ciff: return world.call(bit2:: iff, mode, Defs{b, a});
+        case bit2::nciff: return world.call(bit2::niff, mode, Defs{b, a});
         default:         break;
     }
 
@@ -669,7 +703,7 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
         if (!x && !y) return world.lit(type, 0);
         if ( x &&  y) return ls ? world.lit(type, *ls-1_u64) : nullptr;
         if (!x &&  y) return a;
-        if ( x && !y && id != bit2::xor_) return world.call(bit1::neg, s, a);
+        if ( x && !y && id != bit2::xor_) return world.call(bit1::neg, mode, a);
         return nullptr;
     };
     // clang-format on
@@ -705,7 +739,7 @@ const Def* normalize_idx(const Def* type, const Def* c, const Def* arg) {
     if (auto i = Lit::isa(arg)) {
         if (auto s = Lit::isa(Idx::isa(type))) {
             if (*i < *s) return world.lit_idx(*s, *i);
-            if (auto m = Lit::isa(callee->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);
+            if (auto m = Lit::isa(callee->decurry()->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);
         }
     }
 
@@ -755,7 +789,7 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     auto [a, b] = arg->projs<2>();
-    auto mode   = callee->arg();
+    auto mode   = callee->decurry()->arg();
     auto s      = Idx::isa(a->type());
     auto ls     = Lit::isa(s);
     auto width  = ls.transform(idx_shift_width);
@@ -864,6 +898,11 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
     if (s_t == d_t) return x;
     if (x->isa<Bot>()) return world.bot(d_t);
 
+    // `Idx 1` has exactly one inhabitant: any conversion into it is the literal 0₁. This also keeps
+    // its zero-width arithmetic out of the backend (a 1-extent loop dim would otherwise emit i0).
+    if (ld && *ld == 1) return world.lit(d_t, 0);
+    if (ls && *ls == 1) return world.lit(d_t, 0);
+
     if (auto l = Lit::isa(x); l && ls && ld) {
         if constexpr (id == conv::u) {
             if (*ld == 0) return world.lit(d_t, *l); // I64
@@ -931,10 +970,10 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             if (!a || !s) return {};
 
             align  = std::max(align, *a);
-            offset = pad(offset, *a) + *s;
+            offset = fe::pad(offset, *a) + *s;
         }
 
-        offset   = pad(offset, align);
+        offset   = fe::pad(offset, align);
         u64 size = std::max(1_u64, offset);
 
         switch (id) {

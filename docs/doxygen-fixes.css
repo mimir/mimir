@@ -1,0 +1,14 @@
+/* doxygen-awesome themes h2.groupheader but not div.groupHeader, whose hard-coded white box-shadow bleeds through in dark mode. */
+div.groupHeader {
+    box-shadow:
+         13px 0   var(--page-background-color),
+        -13px 0   var(--page-background-color),
+         13px 1px var(--separator-color),
+        -13px 1px var(--separator-color);
+    color: var(--page-foreground-color);
+}
+
+/* Doxygen emits stray siblings for the wrappers of docs/fences.py; only the one holding the listing is real. */
+div[class$="-code"]:not(:has(div.fragment)) {
+    display: none;
+}

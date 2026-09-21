@@ -1,0 +1,13 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt -o - %s | %FileCheck %s
+
+plugin core;
+plugin btensor;
+plugin buffer;
+plugin mem;
+
+extern con f (m: mem.M 0, (k l: Nat), return: Cn [mem.M 0]) =
+    let (m, M) = buffer.lit (2, (k, l), I32) (m, 0I32);
+    return m;
+
+// CHECK-NOT: btensor.

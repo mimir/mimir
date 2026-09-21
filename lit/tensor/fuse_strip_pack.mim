@@ -1,0 +1,39 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// strip_mine_par packs the row sum's output («4» → «2, 2»); the trailing reshape restores the
+// flat shape, and a unary consumes it. The reshape lowers to a copy map_reduce, which the fusion
+// read-through absorbs into the unary's access map — so the consumer reads the PACKED buffer
+// directly through the composed (unflatten) coordinates and the unpacking copy never
+// materializes. Exactly two ops remain: the packed reduction and the repacking-read unary.
+plugin core;
+plugin tensor;
+plugin affine;
+plugin opt;
+plugin compile;
+
+use core.ops.n;
+
+fun addf (x: Nat, y: «1; Nat»)@tt: Nat = return (x + y#0₁);
+lam add1 (x: Nat): Nat = x + 1;
+lam mo (i k: affine.Index): «1; affine.Index» = i;
+lam mi (i k: affine.Index): «2; affine.Index» = (i, k);
+
+extern con f (input: «4, 8; Nat», return: Cn «4; Nat») =
+    let packed = tensor.materialize (tensor.strip_mine_par (
+        tensor.mr_tileable @1 @(1, 1) (4, 0, (4, 8))
+            (addf, 0, tensor.id)
+            mo mi input,
+        0, 2));
+    let flat = tensor.reshape (2, 2) 4 packed;
+    return (tensor.unary add1 flat);
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        tensor.fuse_tensor,
+        compile.cleanup,
+    );
+
+// CHECK-COUNT-2: tensor.map_reduce_post
+// CHECK-NOT: tensor.map_reduce

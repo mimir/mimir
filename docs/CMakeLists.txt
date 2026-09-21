@@ -1,13 +1,54 @@
-set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.sh")
+set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.md")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
+set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
+set(SVG_COLOR_SCHEME "${CMAKE_CURRENT_SOURCE_DIR}/svg-color-scheme.cmake")
+
+# A plugin declares its -X arguments in its shared library, so all of them have to be loaded to be listed.
+set(CLI_HELP_PLUGINS "")
+foreach(PLUGIN IN LISTS MIM_PLUGIN_LIST)
+    list(APPEND CLI_HELP_PLUGINS -p ${PLUGIN})
+endforeach()
 
 add_custom_command(
     OUTPUT ${CLI_HELP}
-    COMMAND mim --help > ${CLI_HELP}
-    DEPENDS mim
+    COMMAND mim ${CLI_HELP_PLUGINS} --help-md > ${CLI_HELP}
+    DEPENDS mim mim_all_plugins
     COMMENT "Generating help text of Mim's CLI"
 )
+
+# The tour graphs are small and fit on the page, so we render them to *static* SVGs
+# (embedded via @image html) for tight margins.
+set(DOC_GRAPH_FLAGS --dot-inline-consts --dot-show-hidden)
+
+# A graph's colors are baked by the compiler, so each one needs its own dark rendering; `dotgraph.css` picks.
+set(DOC_GRAPH_SVGS "")
+foreach(graph IN LISTS MIM_DOC_EXAMPLES)
+    set(flags ${DOC_GRAPH_FLAGS})
+    if(graph STREQUAL dep)
+        list(APPEND flags --dot-follow-types)
+    endif()
+    foreach(theme IN ITEMS light dark)
+        set(name "${graph}")
+        set(theme_flags "")
+        if(theme STREQUAL dark)
+            set(name "${graph}-dark")
+            set(theme_flags --dot-dark)
+        endif()
+        set(dot "${CMAKE_CURRENT_BINARY_DIR}/${name}.dot")
+        set(svg "${CMAKE_CURRENT_BINARY_DIR}/${name}.svg")
+        add_custom_command(
+            OUTPUT ${svg}
+            COMMAND mim lit/docs/${graph}.mim ${flags} ${theme_flags} --output-dot ${dot}
+            COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${dot} -o ${svg}
+            COMMAND ${CMAKE_COMMAND} -DSVG=${svg} -P ${SVG_COLOR_SCHEME}
+            DEPENDS mim mim_all_plugins "${LIT_DOCS}/${graph}.mim" ${SVG_COLOR_SCHEME}
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            COMMENT "Generating ${theme} MimIR graph for the ${graph} example"
+        )
+        list(APPEND DOC_GRAPH_SVGS ${svg})
+    endforeach()
+endforeach()
 
 add_custom_command(
     OUTPUT ${XDOT_HELP}
@@ -17,27 +58,55 @@ add_custom_command(
     COMMENT "Generating GDB xdot help text"
 )
 
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../assets/logo.svg"
-    "${MIM_LOGO}"
-    COPYONLY)
+configure_file("${PROJECT_SOURCE_DIR}/assets/logo.svg" "${MIM_LOGO}" COPYONLY)
 
+set(DOXY_AWESOME    "${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css")
+set(DOXY_STYLESHEETS
+    "${DOXY_AWESOME}/doxygen-awesome.css"
+    "${DOXY_AWESOME}/doxygen-awesome-sidebar-only.css"
+    "${DOXY_AWESOME}/doxygen-awesome-sidebar-only-darkmode-toggle.css"
+    "${DOXY_AWESOME}/doxygen-custom/custom.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/button.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/code.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mim.css"
+)
+set(DOXY_ASSETS
+    "${DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js"
+    "${DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
+    "${DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/code.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/llvm.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mim.js"
+)
+set(DOXY_FILTER     "${CMAKE_CURRENT_SOURCE_DIR}/fences.py")
+set(DOXY_HEADER     "${CMAKE_CURRENT_SOURCE_DIR}/header.html")
 set(DOXYFILE        "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 set(DOXY_LAYOUT     "${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml")
-set(DOXY_INDEX_HTML "${CMAKE_CURRENT_BINARY_DIR}/html/index.html")
+set(DOXY_INDEX_HTML "${PROJECT_BINARY_DIR}/html/index.html") # Doxyfile.in sets OUTPUT_DIRECTORY to PROJECT_BINARY_DIR.
 set(DOXY_EXTRA_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/cli.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/coding.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dev.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/langref.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/python.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/plugins.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rewriting.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/phases.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+    mimir.md
+    cli.md
+    coding.md
+    dev.md
+    langref.md
+    python.md
+    plugins.md
+    rewriting.md
+    phases.md
+    README.md
 )
+list(TRANSFORM DOXY_EXTRA_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
+# Doxyfile.in wants space-separated lists.
 string(REPLACE ";" " " DOXY_EXTRA_FILES_CONFIG "${DOXY_EXTRA_FILES}")
+string(REPLACE ";" " " DOXY_STYLESHEETS_CONFIG "${DOXY_STYLESHEETS}")
+string(REPLACE ";" " " DOXY_ASSETS_CONFIG      "${DOXY_ASSETS}")
 
 configure_file(Doxyfile.in ${DOXYFILE} @ONLY)
 configure_file(DoxygenLayout.xml.in ${DOXY_LAYOUT} @ONLY)
@@ -46,7 +115,18 @@ add_custom_command(
     OUTPUT ${DOXY_INDEX_HTML}
     COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
     MAIN_DEPENDENCY ${DOXYFILE}
-    DEPENDS mim ${CLI_HELP} ${XDOT_HELP} ${DOXY_EXTRA_FILES} ${DOXY_LAYOUT} ${MIM_LOGO}
+    DEPENDS
+        mim
+        ${CLI_HELP}
+        ${XDOT_HELP}
+        ${DOC_GRAPH_SVGS}
+        ${DOXY_EXTRA_FILES}
+        ${DOXY_STYLESHEETS}
+        ${DOXY_ASSETS}
+        ${DOXY_FILTER}
+        ${DOXY_HEADER}
+        ${DOXY_LAYOUT}
+        ${MIM_LOGO}
     COMMENT "Generating Doxygen HTML documentation"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )

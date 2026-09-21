@@ -1,0 +1,69 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+
+extern fun use_address[m: mem.M 0, ptr: mem.Ptr (Nat, 0)]: [mem.M 0];
+
+extern fun test(m: mem.M 0): [mem.M 0, Nat] =
+    // int x = 42;
+    ret (m, px) = mem.slot (Nat, 0) $ m;
+    let m       = mem.store (m, px, 42);
+
+    // int y = 42;
+    ret (m, py) = mem.slot (Nat, 0) $ m;
+    let m       = mem.store (m, py, 42);
+
+    head (m, px, py) where
+        con head(m: mem.M 0, px py: mem.Ptr0 Nat) =
+            ret (m, cond) = dont_know $ m;
+
+            (exit, body)#cond m where
+
+                con body(m: mem.M 0) =
+                    let (m, x) = mem.load (m, px);
+                    let (m, y) = mem.load (m, py);
+
+                    let eq = x == y;
+
+                    (false_branch, true_branch)#eq m where
+
+                        // if (x == y) {
+                        //     x++;
+                        //     y++;
+                        // }
+                        con true_branch(m: mem.M 0) =
+                            let x1  = x + 1;
+                            let m = mem.store (m, px, x1);
+
+                            let y1  = y + 1;
+                            let m = mem.store (m, py, y1);
+
+                            head (m, px, py);
+
+                        // else {
+                        //     use_address(x);
+                        //     use_address(y);
+                        // }
+                        con false_branch(m: mem.M 0) =
+                            ret m = use_address $ (m, px);
+                            ret m = use_address $ (m, py);
+                            head (m, px, py);
+                    end;
+
+                con exit(m: mem.M 0) =
+                    let (m, x) = mem.load (m, px);
+                    return (m, x);
+            end
+    end;
+
+// x and y are provably always equal, so the else-branch taking their addresses is dead:
+// both slots are promoted and GVN merges x and y into a single phi.
+// CHECK: define i64 @test()
+// CHECK-NOT: alloca
+// CHECK-NOT: use_address
+// CHECK: ret i64

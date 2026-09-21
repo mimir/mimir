@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include <fe/restore.h>
+
 #include "mim/check.h"
 #include "mim/def.h"
 #include "mim/lam.h"
@@ -44,6 +46,11 @@ public:
     ///@{
     virtual const Def* map(const Def* old_def, const Def* new_def) { return old2news_.back()[old_def] = new_def; }
 
+    /// Like map() but records into the *root* map, so the entry outlives the current push()/pop() scope.
+    /// Use this for a context-free mapping - e.g. a Var of a rebuilt binder - that must stay valid after a
+    /// scope opened by rewrite_mut_Seq's scalarization is popped again.
+    const Def* map_root(const Def* old_def, const Def* new_def) { return old2news_.front()[old_def] = new_def; }
+
     // clang-format off
     const Def* map(const Def* old_def ,       Defs new_defs);
     const Def* map(Defs       old_defs, const Def* new_def );
@@ -85,12 +92,21 @@ public:
         // Do NOT swap ptr_ and world_: they are back pointers!
     }
 
+    template<class D = Def>
+    D* curr_mut() const {
+        return curr_mut_ ? curr_mut_->template isa<D>() : nullptr;
+    }
+
 private:
     std::unique_ptr<World> ptr_;
     World* world_;
+    Def* curr_mut_ = nullptr;
 
 protected:
     std::deque<Def2Def> old2news_;
+
+    /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
+    auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 };
 
 /// Extends Rewriter for variable substitution.
@@ -109,7 +125,7 @@ public:
     // Add initial mapping from @pvar -> @p arg.
     VarRewriter& add(const Var* var, const Def* arg) {
         map(var, arg);
-        vars_.emplace_back(var);
+        vars_.emplace_back(Vars(var));
         return *this;
     }
     ///@}
@@ -134,12 +150,13 @@ public:
 
 private:
     bool has_intersection(const Def* old_def) {
+        // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
         for (const auto& vars : vars_ | std::views::reverse)
-            if (vars.has_intersection(old_def->free_vars())) return true;
+            if (old_def->has_free_vars_in(vars)) return true;
         return false;
     }
 
-    Vector<Vars> vars_;
+    fe::Vector<Vars> vars_;
 };
 
 class Zonker : public Rewriter {

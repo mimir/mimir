@@ -1,0 +1,38 @@
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[]: Bool;
+
+extern fun f(x: Nat): Nat =
+    head (23, x, 3) where
+        con head(c x t: Nat) =
+            ret cond = dont_know $ ();
+            (exit, body)#cond () where
+                con body() =
+                    (false, true)#(c == 23) ()
+                    where
+                        con true () =
+                            next (c, x, 4);
+
+                        con false() =
+                            let c = c + 1;
+                            let x = x + 1;
+                            next (c, x, t);
+                        con next (c x t: Nat) as cxt = head cxt;
+                    end;
+
+                con exit() =
+                    let r = c + x;
+                    let s = r + t;
+                    return s;
+            end
+    end;
+
+// CHECK: define i64 @f(i64 [[X:%x_[0-9]+]])
+// CHECK: [[T:%t_[0-9]+]] = phi i64 [ 3, {{.*}} ], [ 4, {{.*}} ]
+// CHECK: [[R:%r_[0-9]+]] = add nsw nuw i64 23, [[X]]
+// CHECK: [[S:%s_[0-9]+]] = add nsw nuw i64 [[T]], [[R]]
+// CHECK: ret i64 [[S]]

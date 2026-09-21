@@ -29,9 +29,9 @@ private:
 struct UseHash {
     inline size_t operator()(Use use) const {
         if constexpr (sizeof(size_t) == 8)
-            return hash((u64(use.index())) << 32_u64 | u64(use->gid()));
+            return fe::hash((u64(use.index())) << 32_u64 | u64(use->gid()));
         else
-            return hash_combine(hash_begin(u16(use.index())), use->gid());
+            return fe::hash_combine(fe::hash_begin(u16(use.index())), use->gid());
     }
 };
 
@@ -76,7 +76,7 @@ public:
     /// @name Schedule Mutabales
     /// Order of Mutables within a Scope.
     ///@{
-    using Schedule = Vector<Def*>;
+    using Schedule = fe::Vector<Def*>;
     static Schedule schedule(const Nest&);
     ///@}
 

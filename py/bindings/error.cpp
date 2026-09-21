@@ -6,6 +6,6 @@ namespace nb = nanobind;
 
 namespace mim {
 
-void register_error(nb::module_& m) { nb::exception<Error>(m, "MIM_Error"); }
+void register_error(nb::module_& m) { nb::exception<Error::Bail>(m, "MIM_Error"); }
 
 } // namespace mim

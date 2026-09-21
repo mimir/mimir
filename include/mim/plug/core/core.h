@@ -30,7 +30,7 @@ inline const Def* mode(World& w, VMode m) {
 }
 ///@}
 
-/// @name %%core.trait
+/// @name core.trait
 ///@{
 inline const Def* op(trait o, const Def* type) {
     World& w = type->world();
@@ -38,7 +38,7 @@ inline const Def* op(trait o, const Def* type) {
 }
 ///@}
 
-/// @name %%core.pe
+/// @name core.pe
 ///@{
 inline const Def* op(pe o, const Def* def) {
     World& w = def->world();
@@ -46,7 +46,7 @@ inline const Def* op(pe o, const Def* def) {
 }
 ///@}
 
-/// @name %%core.bit2
+/// @name core.bit2
 ///@{
 /// Use like this: `a op b = tab[a][b]`
 constexpr std::array<std::array<u64, 2>, 2> make_truth_table(bit2 id) {

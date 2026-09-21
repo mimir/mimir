@@ -1,12 +1,8 @@
 #include "mim/plugin.h"
 
-#include "mim/driver.h"
-
-using namespace std::literals;
-
 namespace mim {
 
-std::optional<plugin_t> Annex::mangle(Sym plugin) {
+std::optional<plugin_t> Annex::mangle(std::string_view plugin) {
     auto n = plugin.size();
     if (n > Max_Plugin_Size) return {};
 
@@ -34,12 +30,12 @@ std::optional<plugin_t> Annex::mangle(Sym plugin) {
     return result << 16_u64;
 }
 
-Sym Annex::demangle(Driver& driver, plugin_t plugin) {
+std::string Annex::demangle(plugin_t plugin) {
     std::string result;
     for (size_t i = 0; i != Max_Plugin_Size; ++i) {
         u64 c = (plugin & 0xfc00000000000000_u64) >> 58_u64;
         if (c == 0)
-            return driver.sym(result);
+            return result;
         else if (c == 1)
             result += '_';
         else if (2 <= c && c < 28)
@@ -52,28 +48,7 @@ Sym Annex::demangle(Driver& driver, plugin_t plugin) {
         plugin <<= 6_u64;
     }
 
-    return driver.sym(result);
-}
-
-std::tuple<Sym, Sym, Sym> Annex::split(Driver& driver, Sym s) {
-    if (!s) return {};
-    if (s[0] != '%') return {};
-    auto sv = subview(s, 1);
-
-    auto dot = sv.find('.');
-    if (dot == std::string_view::npos) return {};
-
-    auto plugin = driver.sym(subview(sv, 0, dot));
-    if (!mangle(plugin)) return {};
-
-    auto tag = subview(sv, dot + 1);
-    if (auto dot = tag.find('.'); dot != std::string_view::npos) {
-        auto sub = driver.sym(subview(tag, dot + 1));
-        tag      = subview(tag, 0, dot);
-        return {plugin, driver.sym(tag), sub};
-    }
-
-    return {plugin, driver.sym(tag), {}};
+    return result;
 }
 
 } // namespace mim

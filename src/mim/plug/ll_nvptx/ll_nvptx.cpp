@@ -1,0 +1,264 @@
+#include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
+
+#include <fe/sys.h>
+
+#include <mim/driver.h>
+#include <mim/plugin.h>
+
+#include <mim/plug/gpu/gpu.h>
+
+#include "mim/plug/ll_nvptx/ll_nvptx.h"
+
+using namespace std::string_literals;
+using namespace std::string_view_literals;
+
+namespace mim::plug::ll_nvptx {
+
+namespace {
+
+struct NvptxCompileArgs {
+    std::string host_ll_name, dev_ll_name, dev_ptx_name, dev_cubin_name, dev_fatbin_name, dev_bc_raw_name,
+        dev_bc_opt_name;
+#ifdef __linux__
+    bool embed_device_code = true;
+#else
+    bool embed_device_code = false;
+#endif
+    bool embed_ptx   = true;
+    bool embed_cubin = true;
+    std::string compute_cap, libdevice_path;
+    std::string link_llvm_args, opt_args = R"(-passes="default<O2>,nvvm-reflect")", llc_args, ptxas_args,
+                                fatbinary_args;
+};
+
+constexpr auto Default_Compute_Cap = "75";
+
+std::string get_compute_capability() {
+    auto nvidia_smi = fe::sys::require_cmd("nvidia-smi");
+    auto out        = fe::sys::exec(std::format("{} --query-gpu=compute_cap --format=csv,noheader", nvidia_smi));
+    std::erase_if(out, ::isspace);
+    // out should now have form "7.5" referencing the compute capability "sm_75"
+
+    auto dot_pos = out.find('.');
+    if (dot_pos == std::string::npos) {
+        std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
+                     Default_Compute_Cap);
+        return Default_Compute_Cap;
+    }
+
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (i == dot_pos) continue;
+        if (!std::isdigit(out[i])) {
+            std::println(std::cerr, "Could not determine compute capability, continuing with default: '{}'.",
+                         Default_Compute_Cap);
+            return Default_Compute_Cap;
+        }
+    }
+
+    auto compute_cap = std::format("{}{}", out.substr(0, dot_pos), out.substr(dot_pos + 1));
+    std::println(std::cout, "Determined compute capability to be '{}'", compute_cap);
+    return compute_cap;
+}
+
+constexpr auto Libdevice_Name = "libdevice.10.bc"sv;
+
+std::optional<std::filesystem::path> parse_nvcc_profile(const std::filesystem::path& cuda_bin_path) {
+    auto profile_path = cuda_bin_path / "nvcc.profile";
+    if (!std::filesystem::exists(profile_path)) return std::nullopt;
+
+    std::ifstream file(profile_path);
+    if (!file.is_open()) return std::nullopt;
+
+    std::string line, top_dir, lib_dir;
+
+    while (std::getline(file, line)) {
+        std::erase_if(line, ::isspace);
+        if (line.starts_with("TOP=")) {
+            auto macro_pos = line.find("$(_HERE_)/");
+            if (macro_pos == std::string::npos) break;
+            top_dir = line.substr(macro_pos + 10);
+        }
+        if (line.starts_with("NVVMIR_LIBRARY_DIR=")) {
+            auto macro_pos = line.find("$(TOP)/");
+            if (macro_pos == std::string::npos) break;
+            lib_dir = line.substr(macro_pos + 7);
+        }
+    }
+    if (top_dir.empty() || lib_dir.empty()) return std::nullopt;
+    auto path          = cuda_bin_path / top_dir / lib_dir / Libdevice_Name;
+    auto resolved_path = path.lexically_normal();
+    if (!std::filesystem::exists(resolved_path)) return std::nullopt;
+    return resolved_path;
+}
+
+std::string find_libdevice() {
+    auto nvcc = fe::sys::find_cmd("nvcc");
+    if (std::filesystem::exists(nvcc)) {
+        auto nvcc_path     = std::filesystem::canonical(nvcc);
+        auto cuda_bin_path = nvcc_path.parent_path();
+        if (auto libdevice_path = parse_nvcc_profile(cuda_bin_path)) return libdevice_path->string();
+    }
+    if (const char* cuda_home_env = std::getenv("CUDA_HOME")) {
+        auto libdevice_path = std::filesystem::path(cuda_home_env) / "nvvm" / "libdevice" / Libdevice_Name;
+        if (std::filesystem::exists(libdevice_path)) return libdevice_path.string();
+    }
+    auto debian_fallback = std::filesystem::path("/usr/lib/nvidia-cuda-toolkit/libdevice/") / Libdevice_Name;
+    if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
+
+    fe::throwf<fe::sys::CmdNotFound>(
+        MIM_LL_NVPTX_BE "unable to find `{}`; try setting the `CUDA_HOME` environment variable", Libdevice_Name);
+}
+
+void link_libdevice(const NvptxCompileArgs& c) {
+    if (!std::filesystem::exists(c.libdevice_path))
+        fe::throwf(MIM_LL_NVPTX_BE "libdevice path does not exist: `{}`", c.libdevice_path);
+    auto llvm_link = fe::sys::require_cmd("llvm-link");
+    fe::sys::require_run(std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
+                                     c.dev_bc_raw_name));
+}
+
+void optimize_bytecode(const NvptxCompileArgs& c) {
+    auto opt = fe::sys::require_cmd("opt");
+    fe::sys::require_run(std::format("{} {} {} -o {}", opt, c.opt_args, c.dev_bc_raw_name, c.dev_bc_opt_name));
+}
+
+void compile2ptx(const NvptxCompileArgs& c, bool uses_libdevice) {
+    auto compile_input = uses_libdevice ? c.dev_bc_opt_name : c.dev_ll_name;
+    auto llc           = fe::sys::require_cmd("llc");
+    fe::sys::require_run(std::format("{} -march=nvptx64 -mcpu=sm_{} {} {} -o {}", llc, c.compute_cap, c.llc_args,
+                                     compile_input, c.dev_ptx_name));
+}
+
+void compile2cubin(const NvptxCompileArgs& c) {
+    auto ptxas = fe::sys::require_cmd("ptxas");
+    fe::sys::require_run(std::format("{} -arch=sm_{} {} {} -o {}", ptxas, c.compute_cap, c.ptxas_args, c.dev_ptx_name,
+                                     c.dev_cubin_name));
+}
+
+void compile2fatbin(const NvptxCompileArgs& c) {
+    auto fatbinary = fe::sys::require_cmd("fatbinary");
+    auto ptx_args  = ""s;
+    if (c.embed_ptx) {
+        ptx_args = std::format("--image3=kind=ptx,sm={},file={}", c.compute_cap, c.dev_ptx_name);
+        if (!c.ptxas_args.empty()) ptx_args += std::format(" --cmdline={}", c.ptxas_args);
+    }
+    auto cubin_args = ""s;
+    if (c.embed_cubin) cubin_args = std::format("--image3=kind=elf,sm={},file={}", c.compute_cap, c.dev_cubin_name);
+    fe::sys::require_run(std::format("{} --create={} -64 {} {} {}", fatbinary, c.dev_fatbin_name, c.fatbinary_args,
+                                     ptx_args, cubin_args));
+}
+
+} // namespace
+
+class Emit : public Phase {
+public:
+    Emit(World& world, flags_t annex)
+        : Phase(world, annex) {}
+
+    void start() override {
+        auto name = world().name() ? world().name().str() : "a"s;
+
+        auto c            = NvptxCompileArgs{};
+        c.host_ll_name    = name + ".ll"s;
+        c.dev_ll_name     = name + "_dev.ll"s;
+        c.dev_ptx_name    = name + "_dev.ptx"s;
+        c.dev_cubin_name  = name + "_dev.cubin"s;
+        c.dev_fatbin_name = name + "_dev.fatbin"s;
+        c.dev_bc_raw_name = name + "_dev_raw.bc"s;
+        c.dev_bc_opt_name = name + "_dev_opt.bc"s;
+
+        world().log().d("ll_nvptx backend args: {}", fe::Join(args()));
+
+        // clang-format off
+        if (auto v = arg_value(args(), "o", "output"))          c.host_ll_name   = *v;
+        if (auto v = arg_value(args(), "o-dev", "output-dev"))  c.dev_ll_name    = *v;
+        if (auto v = arg_value(args(), "sm"))                   c.compute_cap    = *v;
+        if (auto v = arg_value(args(), "libdevice"))            c.libdevice_path = *v;
+        if (auto v = arg_value(args(), "Xlink_llvm"))           c.link_llvm_args = *v;
+        if (auto v = arg_value(args(), "Xopt"))                 c.opt_args       = *v;
+        if (auto v = arg_value(args(), "Xllc"))                 c.llc_args       = *v;
+        if (auto v = arg_value(args(), "Xptxas"))               c.ptxas_args     = *v;
+        if (auto v = arg_value(args(), "Xfatbinary"))           c.fatbinary_args = *v;
+        if (auto b = arg_bool(args(), {"embed"}, {"no-embed"})) c.embed_device_code = *b;
+        if (arg_flag(args(), "no-ptx-embed"))                   c.embed_ptx         = false;
+        if (arg_flag(args(), "no-cubin-embed"))                 c.embed_cubin       = false;
+        // clang-format on
+
+        auto rt = arg_value(args(), "rt") == "extern" ? ll::Emitter::Rt::ext : ll::Emitter::Rt::embed;
+
+        auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
+        auto setup_phase
+            = split_apply_phase.get()->expect<RWPhase>("the phase for `gpu.split_apply` to be an `RWPhase`");
+        setup_phase->run();
+
+        DeviceEmitFlags device_flags;
+        {
+            auto dev_out = Out(c.dev_ll_name);
+            device_flags = emit_device(setup_phase->new_world(), *dev_out.os());
+        }
+        if (c.embed_device_code) {
+            if (!c.embed_ptx && !c.embed_cubin)
+                fe::throwf(MIM_LL_NVPTX_BE "embedding requested with no images (neither PTX nor CUBIN)");
+            try {
+                if (c.compute_cap.empty()) c.compute_cap = get_compute_capability();
+                if (device_flags.uses_libdevice) {
+                    if (c.libdevice_path.empty()) c.libdevice_path = find_libdevice();
+                    link_libdevice(c);
+                    optimize_bytecode(c);
+                }
+                compile2ptx(c, device_flags.uses_libdevice);
+                compile2cubin(c);
+                compile2fatbin(c);
+            } catch (const fe::sys::CmdNotFound& e) {
+                log().w("{}; not embedding device code", e.what());
+                c.embed_device_code = false;
+            }
+        }
+        auto device_fatbin_file = c.embed_device_code ? std::optional(c.dev_fatbin_name) : std::nullopt;
+        auto host_out           = Out(c.host_ll_name);
+        emit_host(setup_phase->old_world(), *host_out.os(), device_fatbin_file, rt);
+
+        if (c.embed_device_code) {
+            std::println(std::cout, "Unified (Fat) LLVM IR written to {}", c.host_ll_name);
+        } else {
+            std::println(std::cout, "Host-only LLVM IR written to {}", c.host_ll_name);
+            std::println(std::cout, "Device-only LLVM IR written to {}", c.dev_ll_name);
+        }
+    }
+};
+
+} // namespace mim::plug::ll_nvptx
+
+using namespace mim;
+
+static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit, plug::ll_nvptx::Emit>(phases); }
+
+// clang-format off
+static constexpr PluginArg known_args[] = {
+    {"o=<file>, output=<file>",         "Writes the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`; `<file>` may be `-` for stdout."},
+    {"o-dev=<file>, output-dev=<file>", "Writes the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`; `<file>` may be `-` for stdout."},
+    {"rt=embed, rt=extern",             "Like `ll`'s `rt`, but for the host module's C [runtime wrappers](@ref plugin_runtime) such as `@mim_cu_check`."},
+    {"embed, no-embed",                 "Embeds the compiled device binary into the host LLVM IR, or doesn't; the default is `embed` on Linux and `no-embed` elsewhere."},
+    {"no-ptx-embed",                    "When embedding: omits the PTX image from the fat binary (default: both PTX and CUBIN)."},
+    {"no-cubin-embed",                  "When embedding: omits the CUBIN image from the fat binary (default: both PTX and CUBIN)."},
+    {"sm=<SM>",                         "When embedding: compiles the device binary for compute capability `sm_<SM>`."},
+    {"libdevice=<path>",                "When embedding and linking libdevice: uses the NVVM library at `<path>` instead of locating it via the CUDA paths."},
+    {"Xlink_llvm=<args>",               "When embedding and linking libdevice: passes `<args>` to `link_llvm` (default: none)."},
+    {"Xopt=<args>",                     "When embedding and linking libdevice: passes `<args>` to `opt` (default: `-passes=\"default<O2>,nvvm-reflect\"`)."},
+    {"Xllc=<args>",                     "When embedding: passes `<args>` to `llc` (default: none)."},
+    {"Xptxas=<args>",                   "When embedding: passes `<args>` to `ptxas` (default: none); also passed to `fatbinary` via `--cmdline` when the PTX image is embedded."},
+    {"Xfatbinary=<args>",               "When embedding: passes `<args>` to `fatbinary` (default: none)."},
+};
+
+static constexpr PluginEnv known_envs[] = {
+    {"CUDA_HOME", "Root of the CUDA installation to locate `libdevice` in, if the CUDA paths do not yield one."},
+};
+// clang-format on
+
+MIM_PLUGIN_ENTRY(ll_nvptx) {
+    plugin.register_phases = reg_phases;
+    plugin.args            = known_args;
+    plugin.num_args        = std::size(known_args);
+    plugin.envs            = known_envs;
+    plugin.num_envs        = std::size(known_envs);
+}

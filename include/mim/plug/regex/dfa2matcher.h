@@ -4,5 +4,5 @@
 
 #include "mim/plug/regex/regex.h"
 
-/// You can dl::get this function.
+/// You can fe::dl::get this function.
 extern "C" MIM_EXPORT const mim::Def* dfa2matcher(mim::World&, const automaton::DFA&, const mim::Def*);

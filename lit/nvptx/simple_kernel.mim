@@ -1,0 +1,30 @@
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
+// RUN: %mim %S/../gpu/%{s:stem}.mim -p ll_nvptx -o -
+// RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+// RUN: %FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
+// RUN: %if system-linux && cuda %{ clang %{s:stem}.ll -o %t -lcuda -Wno-override-module %}
+// RUN: %if system-linux && cuda %{ %t; test $? -eq 42 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3; test $? -eq 42 %}
+// RUN: %if system-linux && cuda %{ %t 1 2 3 4 5; test $? -eq 42 %}
+
+// The CUresult error handling is offloaded to the C runtime wrapper `@mim_cu_check` (rt/mim_cuda_rt.c);
+// in the default `embed` mode its definition is spliced into the host module (issue #486).
+// HOST: define{{.*}}@mim_cu_check
+// HOST: define i32 @main(
+// HOST-DAG: call i8* @malloc(i64 4)
+// HOST-DAG: call i32 @cuInit(i32 0)
+// HOST-DAG: call i32 @cuCtxCreate
+// HOST-DAG: call i32 @cuModuleLoad
+// HOST-DAG: call i32 @cuMemAlloc
+// HOST-DAG: call void @mim_cu_check(
+// HOST: call i32 @cuMemcpyHtoD
+// HOST: call i32 @cuLaunchKernel
+// HOST: call i32 @cuMemcpyDtoH
+// HOST: call i32 @cuMemFree
+// HOST-DAG: call void @free
+// HOST-DAG: call i32 @cuModuleUnload
+// HOST-DAG: call i32 @cuCtxDestroy
+// HOST: ret i32
+
+// DEVICE: define ptx_kernel void @kernel{{.*}}([[GL_PTR_T:.*]] addrspace(1)* %[[GL_PTR:[0-9_a-zA-Z]+]])
+// DEVICE: store i32 42, [[GL_PTR_T]] addrspace(1)* %[[GL_PTR]]
