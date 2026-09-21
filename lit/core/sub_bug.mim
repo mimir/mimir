@@ -1,16 +1,13 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 // see https://github.com/mimir/mimir/issues/253
 
 plugin core;
+plugin refly;
 
-extern fun f(a: I8): «4; I8» =
-    return (core.wrap.sub 0               (a, 1I8),
-            core.wrap.sub core.mode.nsw  (a, 1I8),
-            core.wrap.sub core.mode.nuw  (a, 1I8),
-            core.wrap.sub core.mode.nsuw (a, 1I8));
-
-// CHECK-DAG: core.wrap.add 0 @ i8 (255I8, a_{{[0-9]+}});
-// CHECK-DAG: core.wrap.sub 1 @ i8 (a_{{[0-9]+}}, 1I8);
-// CHECK-DAG: core.wrap.sub 2 @ i8 (a_{{[0-9]+}}, 1I8);
-// CHECK-DAG: core.wrap.sub 3 @ i8 (a_{{[0-9]+}}, 1I8);
+// only the wrapping mode may turn `a - 1` into `a + 255`
+lam f (a: I8): «4; I8» =
+    ( refly.struc.e (core.wrap.sub 0              (a, 1I8), core.wrap.add 0              (255I8, a))
+    , refly.struc.ne (core.wrap.sub core.mode.nsw  (a, 1I8), core.wrap.add core.mode.nsw  (255I8, a))
+    , refly.struc.ne (core.wrap.sub core.mode.nuw  (a, 1I8), core.wrap.add core.mode.nuw  (255I8, a))
+    , refly.struc.ne (core.wrap.sub core.mode.nsuw (a, 1I8), core.wrap.add core.mode.nsuw (255I8, a))
+    );

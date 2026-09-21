@@ -1,15 +1,12 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin core;
+plugin refly;
 
-extern lam a(x: Idx 23) = core.icmp.e   (x, x);
-extern lam b(x: Idx 23) = core.icmp.ule (x, x);
-extern lam c(x: Idx 23) = core.icmp.ul  (x, x);
-extern lam d(x: Idx 23) = core.icmp.ne  (x, x);
-extern lam e(x: Idx 23) = core.icmp.ne  (x, 7₂₃);
+lam a (x: Idx 23): Bool = refly.struc.e (core.icmp.e   (x, x), tt);
+lam b (x: Idx 23): Bool = refly.struc.e (core.icmp.ule (x, x), tt);
+lam d (x: Idx 23): Bool = refly.struc.e (core.icmp.ne  (x, x), ff);
 
-// CHECK-DAG: tt
-// CHECK-DAG: tt
-// CHECK-DAG: icmp
-// CHECK-DAG: ff
-// CHECK-DAG: icmp
+// these are not folded and stay comparisons
+lam c (x: Idx 23): Bool = refly.struc.ne (core.icmp.ul (x, x  ), ff);
+lam e (x: Idx 23): Bool = refly.struc.ne (core.icmp.ne (x, 7₂₃), ff);

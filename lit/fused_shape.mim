@@ -11,20 +11,20 @@ lam rank {r: Nat, s: «r; Nat», T: *} (_: «s; T»): Nat = r;
 // ## Fused
 
 // anonymous dimensions fuse, named ones do too - the index binds every axis at once
-extern lam anon  (m n: Nat, t: «m, n; Nat»)      : Nat = refly.equiv.struc_eq (rank t, 2);
-extern lam named (m n: Nat, t: «i: m, j: n; Nat»): Nat = refly.equiv.struc_eq (rank t, 2);
-extern lam deep  (m n o: Nat, t: «m, n, o; Nat») : Nat = refly.equiv.struc_eq (rank t, 3);
+extern lam anon  (m n: Nat, t: «m, n; Nat»)      : Nat = refly.struc.e (rank t, 2);
+extern lam named (m n: Nat, t: «i: m, j: n; Nat»): Nat = refly.struc.e (rank t, 2);
+extern lam deep  (m n o: Nat, t: «m, n, o; Nat») : Nat = refly.struc.e (rank t, 3);
 
 // `t#(x, y)` and `t#x#y` are the same Extract either way
 extern lam fused (m n: Nat, t: «i: m, j: n; Nat», x: Idx m, y: Idx n): Nat =
-    refly.equiv.struc_eq (t#(x, y), t#x#y);
+    refly.struc.e (t#(x, y), t#x#y);
 
 // a pack fuses alongside its type, and reduces at the whole index at once
 extern lam packed (m n: Nat, v: Nat, x: Idx m, y: Idx n): Nat =
-    refly.equiv.struc_eq (‹m, n; v›#(x, y), v);
+    refly.struc.e (‹m, n; v›#(x, y), v);
 
 extern lam packed_dep (m n: Nat, f: [Idx m, Idx n] → Nat, x: Idx m, y: Idx n): Nat =
-    refly.equiv.struc_eq (‹i: m, j: n; f (i, j)›#(x, y), f (x, y));
+    refly.struc.e (‹i: m, j: n; f (i, j)›#(x, y), f (x, y));
 
 // ## Ragged
 
@@ -32,23 +32,23 @@ extern lam packed_dep (m n: Nat, f: [Idx m, Idx n] → Nat, x: Idx m, y: Idx n):
 // even apply to it, since its element type mentions the very index it would have to abstract over.
 // Indexing still reads the same; the Extract just splits at the boundary.
 extern lam ragged (n: Nat, s: «n; Nat», t: «i: n, j: s#i; Nat», x: Idx n, y: Idx (s#x)): Nat =
-    refly.equiv.struc_eq (t#(x, y), t#x#y);
+    refly.struc.e (t#(x, y), t#x#y);
 
 // ## Insert
 
 // an insert into a fused Pack cannot unroll: its Def::arity is the front axis, its body still the scalar
 extern lam ins_fused (x: I32, row: «3; I32»): «3; I32» =
-    refly.equiv.struc_eq ((‹2, 3; x›#0₂ ← row)#0₂, row);
+    refly.struc.e ((‹2, 3; x›#0₂ ← row)#0₂, row);
 
 extern lam ins_fused_rest (x: I32, row: «3; I32»): «3; I32» =
-    refly.equiv.struc_eq ((‹2, 3; x›#0₂ ← row)#1₂, ‹3; x›);
+    refly.struc.e ((‹2, 3; x›#0₂ ← row)#1₂, ‹3; x›);
 
 extern lam ins_nested (x: I32, row: «3; I32»): «3; I32» =
-    refly.equiv.struc_eq ((‹2; ‹3; x››#1₂ ← row)#0₂, ‹3; x›);
+    refly.struc.e ((‹2; ‹3; x››#1₂ ← row)#0₂, ‹3; x›);
 
 extern lam ins_slab (x: I32, slab: «3, 4; I32»): «3, 4; I32» =
-    refly.equiv.struc_eq ((‹2, 3, 4; x›#0₂ ← slab)#1₂, ‹3, 4; x›);
+    refly.struc.e ((‹2, 3, 4; x›#0₂ ← slab)#1₂, ‹3, 4; x›);
 
 // an unfused Pack still unrolls
 extern lam ins_flat (x y: I32): «3; I32» =
-    refly.equiv.struc_eq (‹3; x›#1₃ ← y, (x, y, x));
+    refly.struc.e (‹3; x›#1₃ ← y, (x, y, x));

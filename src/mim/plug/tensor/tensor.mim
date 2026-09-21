@@ -1259,7 +1259,7 @@ anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; R#T»
 /// With the ranks still unsolved Holes the `vec.diff`/`vec.fold.l` subscript machinery is built over
 /// non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the Hole%s
 /// are resolved: the result type-checks but carries the whole `vec.*` scaffolding inside its access
-/// maps (`refly.equiv.struc_eq` in `lit/tensor/dot_product.mim` pins this down).
+/// maps (`refly.struc.e` in `lit/tensor/dot_product.mim` pins this down).
 /// Passing literals up front folds it away.
 anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
         = dot_product_impl fastest_2 R (2, 2) (1_2, 0_2, (), ()) (t1, t2);

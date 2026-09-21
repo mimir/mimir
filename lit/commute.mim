@@ -13,7 +13,7 @@ lam f2 (ab: «2; Nat»): Nat =
 lam g1 (a: Nat) (b: Nat): Nat = a + b;
 lam g2 (a: Nat) (b: Nat): Nat = a + b;
 
-let _ = refly.equiv.struc_eq (f1, f2);
-let _ = refly.equiv.alpha_eq (f1, f2);
-let _ = refly.equiv.struc_eq (g1, g2);
-let _ = refly.equiv.alpha_eq (g1, g2);
+let _ = refly.struc.e (f1, f2);
+let _ = refly.alpha.e (f1, f2);
+let _ = refly.struc.e (g1, g2);
+let _ = refly.alpha.e (g1, g2);

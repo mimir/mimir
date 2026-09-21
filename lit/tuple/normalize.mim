@@ -22,14 +22,14 @@ let y = (ff, 23, 42);
 let z = tuple.cat (x, y);
 let tup = (1, tt, ff, 23, 42);
 
-let _ = refly.equiv.struc_eq (tup, z);
-let _ = refly.equiv.struc_eq (tt, tuple.contains (tup, 23));
-let _ = refly.equiv.struc_eq (ff, tuple.contains (tup, 24));
+let _ = refly.struc.e (tup, z);
+let _ = refly.struc.e (tt, tuple.contains (tup, 23));
+let _ = refly.struc.e (ff, tuple.contains (tup, 24));
 
 lam foo (x: Nat): [] =
     let tup = (tt, x);
-    let _ = refly.equiv.struc_ne (tt, tuple.contains (tup, 23));
-    let _ = refly.equiv.struc_ne (ff, tuple.contains (tup, 24));
+    let _ = refly.struc.ne (tt, tuple.contains (tup, 23));
+    let _ = refly.struc.ne (ff, tuple.contains (tup, 24));
     ();
 
 let _ = tuple.cat ((1, 2, ff), ());

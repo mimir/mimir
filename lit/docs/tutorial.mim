@@ -3,7 +3,7 @@
 
 /// A guided tour of Mim's surface syntax; the sections follow @ref langref.
 /*
-    Every `refly.equiv.struc_eq` below is a *static* assertion, checked while the graph is
+    Every `refly.struc.e` below is a *static* assertion, checked while the graph is
     built - so this file compiling at all is what tests it.
 */
 
@@ -36,18 +36,18 @@ let neg = -42;              // the sign belongs to the expression, not to the to
 let nothing = ⊥;            // `bot`; defaults to `*`
 let anything = ⊤:Nat;       // `top`, ascribed
 
-let _ = refly.equiv.struc_eq (⊥:[Nat, Bool], (⊥:Nat, ⊥:Bool)); // pushed into aggregates
+let _ = refly.struc.e (⊥:[Nat, Bool], (⊥:Nat, ⊥:Bool)); // pushed into aggregates
 
-let _ = refly.equiv.struc_eq (dec, bin);
-let _ = refly.equiv.struc_eq (oct, hex);
+let _ = refly.struc.e (dec, bin);
+let _ = refly.struc.e (oct, hex);
 
 let tru = 1₂;               // an index literal spells its arity as a subscript …
 let alt = 1_2;              // … or after an `_`
 let wid = 23I32;            // or as a bit width - the very same as `23:I32`
 
-let _ = refly.equiv.struc_eq (tru, tt);
-let _ = refly.equiv.struc_eq (alt, tt);
-let _ = refly.equiv.struc_eq (wid, 23:I32);
+let _ = refly.struc.e (tru, tt);
+let _ = refly.struc.e (alt, tt);
+let _ = refly.struc.e (wid, 23:I32);
 
 //------------------------------------------------------------------------------
 // Kinds and builtin types
@@ -77,7 +77,7 @@ lam group (a b: Nat, c d: Bool): Nat = a + b where use core.ops.n; end;
 
 // An alias pattern binds the components *and* the whole value.
 let (a, b, c) as abc = (23, 42, 66);
-let _ = refly.equiv.struc_eq (abc, (23, 42, 66));
+let _ = refly.struc.e (abc, (23, 42, 66));
 
 //------------------------------------------------------------------------------
 // Aggregates
@@ -88,19 +88,19 @@ let pck = ‹3; 7›;           // a pack - and a tuple of equal elements *is* o
 let sig = [Nat, Bool];      // a sigma
 let arr = «3; Nat»;         // an array - and a sigma of equal components *is* one
 
-let _ = refly.equiv.struc_eq ((7, 7, 7), pck);
+let _ = refly.struc.e ((7, 7, 7), pck);
 lam sigma_is_array (x: [Nat, Nat, Nat]): «3; Nat» = x;
 
 let fst = tup#0_3;          // extract
 let upd = tup#1_3 ← 0;      // insert: a *new* tuple, nothing is mutated
 
-let _ = refly.equiv.struc_eq (fst, 23);
-let _ = refly.equiv.struc_eq (upd, (23, 0, 66));
+let _ = refly.struc.e (fst, 23);
+let _ = refly.struc.e (upd, (23, 0, 66));
 
 // A nest of arrays fuses into one shape, and `#` follows suit.
 lam fuse (m: «2; «3; Nat»»): «2, 3; Nat» = m;
 lam fused (t: «2, 3; Nat», i: Idx 2, j: Idx 3): Nat =
-    refly.equiv.struc_eq (t#i#j, t#(i, j));
+    refly.struc.e (t#i#j, t#(i, j));
 
 // Unless an extent depends on an earlier index - then the nest stays one array per axis.
 let jagged = «i: 3, j: (1, 2, 3)#i; Nat»;
@@ -158,7 +158,7 @@ lam erased (f: Cn [x y: I32]): Cn [I32, I32] = f;
 
 // An implicit domain is written `{...}`; `@` passes one explicitly.
 lam ident {T: *} (x: T): T = x;
-let _ = refly.equiv.struc_eq (ident 23, ident @Nat 23);
+let _ = refly.struc.e (ident 23, ident @Nat 23);
 
 // A singleton type.
 lam only (T: *) (x: ⦃T⦄): ⦃T⦄ = x;
@@ -195,7 +195,7 @@ let shift = (1I32 << 2I32, 8I32 >> 1I32);             // `core.ops.u.w`, in scop
 
 // Rebind one and the arithmetic changes with it.
 let surprise = 2 + 3 where let `+ = core.nat.mul; end;
-let _ = refly.equiv.struc_eq (surprise, 6);
+let _ = refly.struc.e (surprise, 6);
 
 //------------------------------------------------------------------------------
 // Modules, visibility, annexes, axioms, and rules
@@ -210,8 +210,8 @@ pub mod geo {
 
 use geo.deep as *;                      // splices `leaf` into this scope - a plain `use` is sugar for this …
 use geo.deep as dp;                     // … or binds another name for the module
-let _ = refly.equiv.struc_eq (leaf, dp.leaf);
-let _ = refly.equiv.struc_eq (leaf, geo.deep.leaf);
+let _ = refly.struc.e (leaf, dp.leaf);
+let _ = refly.struc.e (leaf, geo.deep.leaf);
 
 anx let answer = 42;                    // an annex is additionally registered by its qualified name
 anx Answer = answer;                    // an alias for an annex
