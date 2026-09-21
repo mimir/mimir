@@ -26,9 +26,11 @@ plugin ord as o;
 plugin option;
 plugin core;
 
+use core.ops.u.w;
+
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
 
-let Key = (I32, core.icmp.ul @i32);
+let Key = (I32, `<);
 
 let Ord = [
     Map:      o.Key → * → *,

@@ -225,7 +225,7 @@ Two classic chores simply vanish:
   use core.ops.n;
 
   lam f (x y: Nat): Nat = x + y;
-  lam g (z: Nat): Nat = (f z 1) + (f z 2);
+  lam g (z: Nat): Nat = f (z, 1) + f (z, 2);
   ```
 
   However, we need to _block-sink_ the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:

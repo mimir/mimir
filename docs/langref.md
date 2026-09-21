@@ -474,7 +474,7 @@ arity ::= e
 A sigma is a **dependent tuple type** as soon as one of its components mentions a name to its left:
 
 ```mim
-[n: Nat, «n; Nat»]
+let sigma = [n: Nat, «n; Nat»];
 ```
 
 The components refer to that name through a var of the sigma itself, so such a sigma is a _mutable_: it is built empty and filled in afterwards.
@@ -556,6 +556,8 @@ e   ::= e "==" e
 - Mim doesn't give the operators a meaning of their own; whatever `` `op `` is bound to is what they mean:
 
   ```mim
+  plugin core;
+
   let `+ = core.nat.add;
   let x = 2 + 3;
   ```
@@ -613,9 +615,9 @@ Mim uses different surface syntax for declarations, expressions, and types:
 The following declarations are equivalent:
 
 ```mim
-lam f (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-con f (T: *) ((x y: T), return: Cn T)        = return x;
-fun f (T: *)  (x y: T): T                    = return x;
+lam f1 (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+con f2 (T: *) ((x y: T), return: Cn T)        = return x;
+fun f3 (T: *)  (x y: T): T                    = return x;
 ```
 
 A partial-evaluation filter defaults to `tt`, except on the last domain of a `con`, `cn`, `fun`, or `fn`, where it defaults to `ff`.
@@ -626,10 +628,10 @@ The following expressions are equivalent.
 Because they are bound by `let`, they behave like the declarations above - except that `f` is _not_ in scope inside the body, so they cannot recurse:
 
 ```mim
-let f =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-let f = lm (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
-let f = cn (T: *) ((x y: T), return: Cn T)        = return x;
-let f = fn (T: *)  (x y: T): T                    = return x;
+let f1 =  λ (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+let _  = lm (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+let f2 = cn (T: *) ((x y: T), return: Cn T)        = return x;
+let f3 = fn (T: *)  (x y: T): T                    = return x;
 ```
 
 ### Applications
@@ -637,8 +639,14 @@ let f = fn (T: *)  (x y: T): T                    = return x;
 The following applications of `f` are equivalent, where `g` is a continuation that consumes the result:
 
 ```mim
-let _   = f Nat ((23, 42), cn res: Nat = g res)
-ret res = f Nat $ (23, 42); g res
+fun f (T: *)  (x y: T): T = return x;
+
+fun test1 (): Nat =
+    f Nat ((23, 42), cn res: Nat = return res);
+
+fun test2 (): Nat =
+    ret res = f Nat $ (23, 42);
+    return res;
 ```
 
 ### Function Types

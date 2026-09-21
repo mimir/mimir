@@ -14,7 +14,9 @@ plugin ord;
 plugin option;
 plugin core;
 
-let Key = (I32, core.icmp.ul @i32);
+use core.ops.u.w;
+
+let Key = (I32, `<);
 let Map = ord.Map Key I64;
 
 extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] =

@@ -34,7 +34,7 @@ plugin option;
 
 use core.ops.u.w;
 
-let Key = (I32, core.icmp.ul @i32);
+let Key = (I32, `<);
 let Map = ord.Map Key I64;
 
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
@@ -50,9 +50,9 @@ extern fun f(m: mem.M 0, x: I64): [mem.M 0, I64] =
             (exit, body)#cond m where
                 con body(m: mem.M 0) =
                     let (m, map) = mem.load (m, ptr);
-                    let map      = ord.insert.map (map, (1I32, i)); // 1 -> 42
+                    let map      = ord.insert.map (map, (1I32, i)); // 1 -> i
                     let m        = mem.store (m, ptr, map);
-                    let cond       = ord.contains.map (map, 1I32);
+                    let cond     = ord.contains.map (map, 1I32);
                     (ff1, tt1)#cond m
                     where
                         con tt1 (m: mem.M 0) =
