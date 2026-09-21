@@ -104,8 +104,10 @@ const Def* Rewriter::rewrite_imm_Sigma (const Sigma*  d) { return world().sigma 
 const Def* Rewriter::rewrite_imm_Type  (const Type*   d) { return world().type  (rewrite(d->level()));               }
 const Def* Rewriter::rewrite_imm_UInc  (const UInc*   d) { return world().uinc  (rewrite(d->op()),     d->offset()); }
 const Def* Rewriter::rewrite_imm_UMax  (const UMax*   d) { return world().umax  (rewrite(d->ops()));                 }
-const Def* Rewriter::rewrite_imm_Uniq  (const Uniq*   d) { return world().uniq  (rewrite(d->op()));                  }
-const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->binder())->as_mut());       }
+const Def* Rewriter::rewrite_imm_Single(const Single* d) { return world().single(rewrite(d->op()));                  }
+const Def* Rewriter::rewrite_imm_Wrap  (const Wrap*   d) { return world().wrap  (rewrite(d->op())); }
+const Def* Rewriter::rewrite_imm_Unwrap(const Unwrap* d) { return world().unwrap(rewrite(d->op())); }
+const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->binder())->as_mut());    }
 const Def* Rewriter::rewrite_imm_Top   (const Top*    d) { return world().top   (rewrite(d->type()));                }
 const Def* Rewriter::rewrite_imm_Bot   (const Bot*    d) { return world().bot   (rewrite(d->type()));                }
 const Def* Rewriter::rewrite_imm_Meet  (const Meet*   d) { return world().meet  (rewrite(d->ops()));                 }

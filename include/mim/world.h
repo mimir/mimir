@@ -619,7 +619,6 @@ public:
     const Def* inj(const Def* type, const Def* value);
     const Def* split(const Def* type, const Def* value);
     const Def* match(Defs);
-    const Def* uniq(const Def* inhabitant);
     ///@}
 
     /// @name Globals
@@ -703,6 +702,13 @@ public:
     const Def* call(flags_t id, Args&&... args) {
         return call<Normalize>(annex(id), std::forward<Args>(args)...);
     }
+    ///@}
+
+    /// @name Singletons
+    ///@{
+    const Def* single(const Def* op);
+    const Def* wrap(const Def* op);
+    const Def* unwrap(const Def* op);
     ///@}
 
     /// @name Vars & Muts

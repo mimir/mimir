@@ -534,7 +534,7 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{}", Op::map(d.ctx(), bound->ops(), " ∪ ", Prec::Union));
     } else if (auto inj = d->isa<Inj>()) {
         return std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
-    } else if (auto uniq = d->isa<Uniq>()) {
+    } else if (auto uniq = d->isa<Single>()) {
         return std::print(os, "⦃{}⦄", d.op(uniq->op())); // TODO ascii
     }
 

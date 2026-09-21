@@ -481,7 +481,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
     }
 }
 
-const Def* UniqExpr::emit_(Emitter& e) const { return e.world().uniq(inhabitant()->emit(e)); }
+const Def* UniqExpr::emit_(Emitter& e) const { return e.world().single(inhabitant()->emit(e)); }
 
 /*
  * Decl

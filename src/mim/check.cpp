@@ -161,11 +161,6 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
         return w.tuple(new_ops);
     }
 
-    if (auto uniq = val_ty->isa<Uniq>()) {
-        if (auto new_val = assignable(type, uniq->op())) return new_val;
-        return fail();
-    }
-
     return alpha_<Check>(type, val_ty) ? val : fail();
 }
 
