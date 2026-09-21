@@ -92,6 +92,19 @@ auto new_index = keep[mim::Lit::as(extract->index())];
 @note Only a [`Sigma`](@ref mim::Sigma) ever needs this.
 An [`Arr`](@ref mim::Arr)'s components all share one type, so it is dropped as a whole, and `World::extract_fused` splits a fused index at the `Arr` boundary - which leaves a `Sigma`'s index scalar.
 
+#### Adding Components
+
+A rewrite that also *adds* components - [`mem::SEO`](@ref mim::plug::mem::phase::SEO) threads a fresh φ parameter through a [`Lam`](@ref mim::Lam) for every promoted slot - [`cat`](@ref mim::Sieve::cat)s them as further candidates behind the old ones:
+
+```cpp
+auto keep = mim::Sieve(old_lam->tvars(), [&](const Def* var) { return is_kept(var); });
+keep.cat(phis.size(), [&](size_t i) { return is_kept(phis[i]); });
+```
+
+They extend the very same index space, so one `Sieve` still answers the whole new layout: [`num_new`](@ref mim::Sieve::num_new) is the new arity, `keep[i]` the new index of an old component, and [`keep.cat(i)`](@ref mim::Sieve::cat) the new index of an concat'ed one.
+[`all`](@ref mim::Sieve::all) then means _the new aggregate is the old one_ - nothing dropped **and** nothing appended.
+Since an appended component has no old op to rewrite from, [`new2old`](@ref mim::Sieve::new2old) - and hence `rewrite_stub` - is unavailable once you append.
+
 @warning Dropping decides *per type def*, so it must not tear apart an edge where two distinct defs meet: an [`App`](@ref mim::App) connecting a dependent dom with its instance (`[n: Nat, «n; *»]` vs `[Nat, []]`), or an [`Axm`](@ref mim::Axm) application, whose shapes are re-derived from the `Axm`'s generic type instead of being rewritten.
 Pin such aggregates in an [`Analysis`](@ref mim::Analysis) first; [`SingleErasure`](@ref mim::SingleErasure) does exactly that.
 

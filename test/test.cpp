@@ -12,6 +12,11 @@
 #include <mim/plug/core/core.h>
 
 using namespace mim;
+
+// An integer that is not *exactly* nat_t - `size_t` on macOS arm64, `unsigned` everywhere - must still select
+// Def::projs(nat_t): an unconstrained Projector overload is an exact match for it and would hijack the call.
+static_assert(std::same_as<decltype(std::declval<const Def*>()->projs(0u)), DefVec>);
+static_assert(std::same_as<decltype(std::declval<const Lam*>()->doms(size_t(0))), DefVec>);
 using namespace mim::plug;
 
 TEST_CASE("World: one-tuples fold away") {

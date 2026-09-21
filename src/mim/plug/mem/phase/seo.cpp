@@ -439,13 +439,10 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
     auto& sig     = i->second;
     if (!ins) return sig;
 
-    size_t n = old_lam->num_tvars();
     auto var = old_lam->has_var();
 
-    for (size_t j = 0; j != n; ++j) {
-        auto old_var = old_lam->var(n, j);
-        if (keep(old_lam, old_var, lattice(old_var))) sig.keeps.set(j);
-    }
+    sig.sieve = Sieve(old_lam->tvars(),
+                      [this, old_lam](const Def* old_var) { return keep(old_lam, old_var, lattice(old_var)); });
 
     for (auto sloxy : sloxies_) {
         auto phi = mk_phi(old_world(), old_lam, sloxy);
@@ -453,16 +450,15 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
         auto val = lattice(phi);
         if (!val || Proxy::isa<Proxy_SCCP_Top>(val)) continue;
         // build_args() needs an argument at *every* call site; else the slot has to survive.
-        if (analysis_.can_supply(old_lam, sloxy)) sig.phis.emplace_back(sloxy, phi, val, keep(old_lam, phi, val));
+        if (analysis_.can_supply(old_lam, sloxy)) sig.phis.emplace_back(sloxy, phi, val);
     }
+
+    sig.sieve.cat(sig.phis.size(),
+                  [this, old_lam, &sig](size_t i) { return keep(old_lam, sig.phis[i].phi, sig.phis[i].val); });
 
     // A new signature is needed iff some var is dropped/propagated/merged or some phi has to be threaded in -
     // except for an unknown lam, which is used as a value somewhere and hence must keep its signature as is.
-    sig.num_vars = sig.keeps.count();
-    auto todo    = sig.num_vars != n;
-    for (const auto& p : sig.phis)
-        if (p.keep) ++sig.num_vars, todo = true;
-    sig.todo = todo && !analysis_.unknowns().contains(old_lam);
+    sig.todo = !sig.sieve.all() && !analysis_.unknowns().contains(old_lam);
 
     return sig;
 }
@@ -542,12 +538,12 @@ const Def* SEO::rewrite_imm_Var(const Var* var) {
 const Def* SEO::var_of(Lam* old_lam) {
     auto new_lam    = build_lam(old_lam);
     const auto& sig = sig_of(old_lam);
-    size_t n = old_lam->num_tvars(), j = 0;
-    auto elems = DefVec(n);
+    size_t n        = old_lam->num_tvars();
+    auto elems      = DefVec(n);
 
     for (size_t i = 0; i != n; ++i)
-        if (sig.keeps[i])
-            elems[i] = new_lam->var(sig.num_vars, j++);
+        if (auto j = sig.sieve[i]; j != Sieve::Gone)
+            elems[i] = new_lam->var(sig.sieve.num_new(), j);
         else if (auto abstr = lattice(old_lam->var(n, i)); Proxy::isa<Proxy_Sloxy>(abstr))
             elems[i] = new_world().bot(rewrite(old_lam->dom(n, i))); // a promoted slot carries no value
         else
@@ -567,14 +563,14 @@ Lam* SEO::build_lam(Lam* old_lam) {
     auto new_doms   = DefVec();
 
     for (size_t i = 0; i != n; ++i)
-        if (sig.keeps[i])
+        if (sig.sieve[i] != Sieve::Gone)
             new_doms.emplace_back(rewrite(old_lam->dom(n, i)));
         else if (auto abstr = lattice(old_lam->var(n, i)); isa_bundle(abstr, old_lam))
             profile_count("seo.gvn.vars_merged");
         else if (!Proxy::isa<Proxy_Sloxy>(abstr))
             profile_count("seo.sccp.vars_eliminated");
-    for (const auto& p : sig.phis)
-        if (p.keep) new_doms.emplace_back(rewrite(p.phi->type()));
+    for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
+        if (sig.sieve.cat(i) != Sieve::Gone) new_doms.emplace_back(rewrite(sig.phis[i].phi->type()));
 
     auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     lam_old2new_[old_lam] = new_lam;
@@ -583,18 +579,18 @@ Lam* SEO::build_lam(Lam* old_lam) {
     // Map all *kept* vars/phis before rewriting any propagated value below: that rewrite may recursively
     // re-enter old_lam and must be able to resolve them - see var_of().
     // map_root(), because a Var mapping is context-free and must outlive a scalarization scope.
-    size_t j = 0;
     for (size_t i = 0; i != n; ++i)
-        if (sig.keeps[i]) {
+        if (auto j = sig.sieve[i]; j != Sieve::Gone) {
             auto old_var = old_lam->var(n, i);
-            auto v       = new_lam->var(sig.num_vars, j++)->set(old_var->dbg_key());
+            auto v       = new_lam->var(sig.sieve.num_new(), j)->set(old_var->dbg_key());
             map_root(old_var, v);
             if (auto bundle = isa_bundle(lattice(old_var), old_lam)) map_root(bundle, v); // GVN bundle
         }
 
-    for (const auto& p : sig.phis)
-        if (p.keep) {
-            auto v = new_lam->var(sig.num_vars, j++);
+    for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
+        if (auto j = sig.sieve.cat(i); j != Sieve::Gone) {
+            const auto& p = sig.phis[i];
+            auto v        = new_lam->var(sig.sieve.num_new(), j);
             profile_count("phis.materialized");
             log().d("map phi {} → {}", p.phi, v);
             map_root(p.phi, v);
@@ -605,8 +601,9 @@ Lam* SEO::build_lam(Lam* old_lam) {
     // var of old_lam (e.g. its now-removed empty closure env), which only the whole var resolves.
     map_root(old_lam->var(), var_of(old_lam));
 
-    for (const auto& p : sig.phis)
-        if (!p.keep) {
+    for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
+        if (sig.sieve.cat(i) == Sieve::Gone) {
+            const auto& p = sig.phis[i];
             log().d("map phi {} → its propagated value {}", p.phi, p.val);
             map_root(p.phi, rewrite(p.val));
         }
@@ -623,13 +620,14 @@ DefVec SEO::build_args(Lam* old_lam, Defs old_targs) {
     auto new_args = DefVec();
 
     for (size_t i = 0; i != n; ++i)
-        if (sig.keeps[i]) new_args.emplace_back(rewrite(old_targs[i]));
+        if (sig.sieve[i] != Sieve::Gone) new_args.emplace_back(rewrite(old_targs[i]));
 
-    for (const auto& p : sig.phis)
-        if (p.keep) {
-            auto arg = analysis_.lam2sloxy2val(curr_mut<Lam>(), p.sloxy);
+    for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
+        if (sig.sieve.cat(i) != Sieve::Gone) {
+            auto sloxy = sig.phis[i].sloxy;
+            auto arg   = analysis_.lam2sloxy2val(curr_mut<Lam>(), sloxy);
             assert(arg);
-            log().d("wire up phi argument {} for sloxy {}", arg, p.sloxy);
+            log().d("wire up phi argument {} for sloxy {}", arg, sloxy);
             new_args.emplace_back(rewrite(arg));
         }
 

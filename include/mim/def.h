@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+
 #include <algorithm>
 #include <format>
 #include <limits>
@@ -171,29 +173,29 @@ template<> struct fe::is_bit_enum<mim::Mut>   : std::true_type {};
 
 namespace mim {
 
+/// What Def::projs and friends map over each projection.
+template<class F>
+concept Projector = std::invocable<F, const Def*>;
+
 /// Use as mixin to wrap all kind of Def::proj and Def::projs variants.
-#define MIM_PROJ(NAME, CONST)                                                                     \
-    nat_t num_##NAME##s() CONST noexcept { return ((const Def*)NAME())->num_projs(); }            \
-    nat_t num_t##NAME##s() CONST noexcept { return ((const Def*)NAME())->num_tprojs(); }          \
-    const Def* NAME(nat_t a, nat_t i) CONST noexcept { return ((const Def*)NAME())->proj(a, i); } \
-    const Def* t##NAME(nat_t i) CONST noexcept { return ((const Def*)NAME())->tproj(i); }         \
-    template<nat_t A = std::dynamic_extent, class F>                                              \
-    auto NAME##s(F f) CONST noexcept {                                                            \
-        return ((const Def*)NAME())->projs<A, F>(f);                                              \
-    }                                                                                             \
-    template<class F>                                                                             \
-    auto t##NAME##s(F f) CONST noexcept {                                                         \
-        return ((const Def*)NAME())->tprojs<F>(f);                                                \
-    }                                                                                             \
-    template<nat_t A = std::dynamic_extent>                                                       \
-    auto NAME##s() CONST noexcept {                                                               \
-        return ((const Def*)NAME())->projs<A>();                                                  \
-    }                                                                                             \
-    auto t##NAME##s() CONST noexcept { return ((const Def*)NAME())->tprojs(); }                   \
-    template<class F>                                                                             \
-    auto NAME##s(nat_t a, F f) CONST noexcept {                                                   \
-        return ((const Def*)NAME())->projs<F>(a, f);                                              \
-    }                                                                                             \
+/// @note The Projector overloads must stay constrained: an unconstrained one is an *exact* match for an integer
+/// argument and would hijack `NAME##s(nat_t)` wherever `size_t` is not `nat_t` - as on macOS arm64.
+#define MIM_PROJ(NAME, CONST)                                                                            \
+    nat_t num_##NAME##s() CONST noexcept { return ((const Def*)NAME())->num_projs(); }                   \
+    nat_t num_t##NAME##s() CONST noexcept { return ((const Def*)NAME())->num_tprojs(); }                 \
+    const Def* NAME(nat_t a, nat_t i) CONST noexcept { return ((const Def*)NAME())->proj(a, i); }        \
+    const Def* t##NAME(nat_t i) CONST noexcept { return ((const Def*)NAME())->tproj(i); }                \
+    template<nat_t A = std::dynamic_extent>                                                              \
+    auto NAME##s(Projector auto f) CONST noexcept {                                                      \
+        return ((const Def*)NAME())->projs<A>(f);                                                        \
+    }                                                                                                    \
+    auto t##NAME##s(Projector auto f) CONST noexcept { return ((const Def*)NAME())->tprojs(f); }         \
+    template<nat_t A = std::dynamic_extent>                                                              \
+    auto NAME##s() CONST noexcept {                                                                      \
+        return ((const Def*)NAME())->projs<A>();                                                         \
+    }                                                                                                    \
+    auto t##NAME##s() CONST noexcept { return ((const Def*)NAME())->tprojs(); }                          \
+    auto NAME##s(nat_t a, Projector auto f) CONST noexcept { return ((const Def*)NAME())->projs(a, f); } \
     auto NAME##s(nat_t a) CONST noexcept { return ((const Def*)NAME())->projs(a); }
 
 /// CRTP-based mixin to declare setters for Def::loc \& Def::name using a *covariant* return type.
@@ -441,8 +443,8 @@ public:
 
     /// Splits this Def via Def::proj%ections into an Array (if `A == std::dynamic_extent`) or `std::array` (otherwise).
     /// Applies @p f to each element.
-    template<nat_t A = std::dynamic_extent, class F>
-    auto projs(F f) const {
+    template<nat_t A = std::dynamic_extent>
+    auto projs(Projector auto f) const {
         using R = std::decay_t<decltype(f(this))>;
         if constexpr (A == std::dynamic_extent) {
             return projs(num_projs(), f);
@@ -454,13 +456,9 @@ public:
         }
     }
 
-    template<class F>
-    auto tprojs(F f) const {
-        return projs(num_tprojs(), f);
-    }
+    auto tprojs(Projector auto f) const { return projs(num_tprojs(), f); }
 
-    template<class F>
-    auto projs(nat_t a, F f) const {
+    auto projs(nat_t a, Projector auto f) const {
         using R = std::decay_t<decltype(f(this))>;
         return fe::Vector<R>(a, [&](nat_t i) { return f(proj(a, i)); });
     }

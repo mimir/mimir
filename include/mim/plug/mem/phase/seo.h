@@ -1,10 +1,10 @@
 #pragma once
 
 #include <absl/container/btree_set.h>
-#include <fe/bitset.h>
 
 #include <mim/def.h>
 #include <mim/phase.h>
+#include <mim/tuple.h>
 
 #include <mim/util/gid.h>
 
@@ -106,21 +106,20 @@ private:
     const Def* rewrite_imm_Var(const Var*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
 
-    /// A live phi for a Lam: the @p sloxy it stands for, the @p phi proxy, its abstract @p val,
-    /// and whether the new signature keeps it as a var.
+    /// A live phi for a Lam: the @p sloxy it stands for, the @p phi proxy, and its abstract @p val.
     struct Phi {
         const Def* sloxy;
         const Def* phi;
         const Def* val;
-        bool keep;
     };
 
-    /// The new signature of an old Lam.
+    /// The new signature of an old Lam: the old Lam's tvars sieved, with Sig::phis appended as further candidates.
+    /// So Sieve::num_new is the new Lam's arity, Sieve::operator[] the new index of an old tvar,
+    /// and Sieve::app the new index of a phi.
     struct Sig {
-        fe::Vector<Phi> phis;    ///< Its live phis.
-        fe::Bitset keeps;        ///< Which tvars of the old Lam are kept as is?
-        size_t num_vars = 0;     ///< Vars of the new Lam: the kept old ones plus the kept phis.
-        bool todo       = false; ///< Does the old Lam need a new signature at all?
+        fe::Vector<Phi> phis; ///< Its live phis.
+        Sieve sieve{0};       ///< @see Sig
+        bool todo = false;    ///< Does the old Lam need a new signature at all?
     };
 
     bool analyze() final;

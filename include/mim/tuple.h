@@ -110,6 +110,9 @@ private:
 ///
 /// @note Only a Sigma ever needs that last adjustment: an Arr's components all share one type - so it is dropped as a
 /// whole - and World::extract_fused splits a fused index at the Arr boundary, which leaves a Sigma's index scalar.
+///
+/// A rewrite that also *adds* components - `mem::SEO` threads fresh φs through a Lam - Sieve::cat%s them as further
+/// candidates: they extend the very same index space, so one Sieve still answers the whole new layout.
 class Sieve {
 public:
     static constexpr size_t Gone = size_t(-1); ///< @see Sieve::operator[]
@@ -121,28 +124,56 @@ public:
         : num_(num)
         , new2old_(num, [](size_t i) { return i; }) {}
 
+    /// Keeps those of @p num candidates that satisfy @p pred.
+    Sieve(size_t num, std::predicate<size_t> auto pred)
+        : num_(num) {
+        new2old_.reserve(num);
+        for (size_t i = 0; i != num; ++i)
+            if (pred(i)) new2old_.emplace_back(i);
+    }
+
     /// Keeps those @p ops that satisfy @p pred.
     Sieve(Defs ops, std::predicate<const Def*> auto pred)
-        : num_(ops.size()) {
-        new2old_.reserve(num_);
-        for (size_t i = 0; i != num_; ++i)
-            if (pred(ops[i])) new2old_.emplace_back(i);
+        : Sieve(ops.size(), [ops, pred](size_t i) { return pred(ops[i]); }) {}
+    ///@}
+
+    /// @name Concat
+    /// Candidates the rewrite *adds*; they have no old counterpart and simply continue the candidate indices.
+    ///@{
+    /// Concats @p num candidates behind the old ones and keeps those that satisfy @p pred.
+    /// @note A concat'ed component has no old op to rewrite from, so this rules out Sieve::new2old.
+    void cat(size_t num, std::predicate<size_t> auto pred) {
+        new2old_.reserve(new2old_.size() + num);
+        for (size_t i = 0; i != num; ++i)
+            if (pred(i)) {
+                new2old_.emplace_back(num_ + i);
+                ++num_cat_new_;
+            }
+        num_ += num;
+        num_cat_ += num;
     }
+
+    size_t num_cat() const { return num_cat_; }                   ///< Number of concat'ed candidates.
+    size_t cat(size_t i) const { return (*this)[num_old() + i]; } ///< As Sieve::operator[] but for concat'ed @p i.
     ///@}
 
     /// @name Getters
     ///@{
-    size_t num_old() const { return num_; }            ///< Number of old components.
+    size_t num_old() const { return num_ - num_cat_; } ///< Number of old components.
     size_t num_new() const { return new2old_.size(); } ///< Number of survivors.
-    bool all() const { return num_new() == num_; }     ///< Does everything survive?
+    /// Is the new aggregate the old one - nothing dropped and nothing concat'ed?
+    bool all() const { return num_new() == num_old() && num_cat_new_ == 0; }
     /// The old index of the @p i th survivor; this is what Rewriter::rewrite_stub expects.
-    fe::View<size_t> new2old() const { return new2old_; }
-    /// The new index of the old component @p i - or Sieve::Gone, if it didn't survive.
+    fe::View<size_t> new2old() const {
+        assert(num_cat_ == 0 && "rewrite_stub cannot rewrite a concat'ed component from an old op");
+        return new2old_;
+    }
+    /// The new index of the candidate @p i - or Sieve::Gone, if it didn't survive.
     size_t operator[](size_t i) const {
         auto j = std::ranges::lower_bound(new2old_, i);
         return j != new2old_.end() && *j == i ? size_t(j - new2old_.begin()) : Gone;
     }
-    /// The surviving components of @p ops.
+    /// The surviving components of @p ops - one per candidate, concat'ed ones included.
     DefVec gather(Defs ops) const {
         assert(ops.size() == num_);
         return DefVec(num_new(), [this, ops](size_t i) { return ops[new2old_[i]]; });
@@ -150,7 +181,9 @@ public:
     ///@}
 
 private:
-    size_t num_;
+    size_t num_; ///< Candidates - old ones followed by concat'ed ones.
+    size_t num_cat_     = 0;
+    size_t num_cat_new_ = 0; ///< Survivors among the concat'ed candidates.
     fe::Vector<size_t> new2old_;
 };
 
