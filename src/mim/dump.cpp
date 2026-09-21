@@ -607,10 +607,10 @@ private:
         // dump has to spell that one out or nothing binds the name it refers to.
         if (root->is_external() && srcs_.contains(root->loc().src)) return;
 
-        auto sched      = Scheduler(nest);
-        auto curr_nest  = fe::Restore(nest_, &nest);
-        auto curr_sched = fe::Restore(sched_, &sched);
-        block_          = root;
+        auto sched = Scheduler(nest);
+        auto _     = fe::Restore(nest_, &nest);
+        auto __    = fe::Restore(sched_, &sched);
+        block_     = root;
         emit_block(root);
     }
 

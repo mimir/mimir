@@ -106,7 +106,7 @@ protected:
     std::deque<Def2Def> old2news_;
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
-    auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
+    [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 };
 
 /// Extends Rewriter for variable substitution.
