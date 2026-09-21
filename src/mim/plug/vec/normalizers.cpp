@@ -1,5 +1,5 @@
-#include <absl/container/btree_set.h>
 #include <absl/container/fixed_array.h>
+#include <fe/bitset.h>
 
 #include <mim/tuple.h>
 #include <mim/world.h>
@@ -138,12 +138,12 @@ const Def* normalize_diff(const Def* type, const Def* c, const Def* arg) {
     if (auto tup_vec = vec->isa<Tuple>()) {
         if (auto tup_is = is->isa<Tuple>(); tup_is && tup_is->is_closed()) {
             auto defs = DefVec();
-            auto set  = absl::btree_set<nat_t>();
+            auto drop = fe::Bitset();
             for (auto opi : tup_is->ops())
-                set.emplace(Lit::as(opi));
+                drop.set(Lit::as(opi));
 
             for (size_t i = 0, e = tup_vec->num_ops(); i != e; ++i)
-                if (!set.contains(i)) defs.emplace_back(tup_vec->op(i));
+                if (!drop.test(i)) defs.emplace_back(tup_vec->op(i));
             return w.tuple(defs);
         }
         if (auto lit_is = Lit::isa(is)) {

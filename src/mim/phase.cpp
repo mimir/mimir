@@ -4,7 +4,7 @@
 #include <memory>
 #include <utility>
 
-#include <absl/container/fixed_array.h>
+#include <fe/bitset.h>
 
 #include "mim/driver.h"
 #include "mim/flags.h"
@@ -286,12 +286,11 @@ void PhaseMan::start() {
     auto n         = phases().size();
     // A phase's run is a deterministic function of the World's content.
     // So a phase only needs to run (again) if the World (may have) changed since its last quiet run.
-    auto stale = absl::FixedArray<bool>(n, true);
-    auto ran   = absl::FixedArray<bool>(n, false);
+    auto all   = fe::Bitset(n, true);
+    auto stale = all;
+    auto ran   = fe::Bitset(n, false);
 
-    auto any_stale = [&stale]() { return std::ranges::any_of(stale, [](bool b) { return b; }); };
-
-    for (uint32_t iter = 0; any_stale(); ++iter) {
+    for (uint32_t iter = 0; stale.any(); ++iter) {
         if (iter >= max_iters)
             fe::throwf("phase `{}` did not reach a fixed point after {} iterations", name(), max_iters);
         if (fixed_point()) log().v("🔄 fixed-point iteration {}", iter);
@@ -299,25 +298,25 @@ void PhaseMan::start() {
         bool todo = false;
         for (size_t i = 0; i != n; ++i) {
             auto& phase = phases()[i];
-            if (!stale[i]) {
+            if (!stale.test(i)) {
                 log().v("skip `{}`: World unchanged since its last quiet run", phase->name());
                 profile_count("phases.skipped");
                 continue;
             }
 
-            if (ran[i]) { // re-runs need a fresh instance
+            if (ran.test(i)) { // re-runs need a fresh instance
                 auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(phase->recreate().release()));
                 swap(new_phase, phase);
             }
 
             phase->run();
-            ran[i]   = true;
-            stale[i] = false;
+            ran.set(i);
+            stale.clear(i);
 
             if (phase->todo()) {
                 todo = true;
                 // The World changed: everyone - including this phase itself - gets another look.
-                std::ranges::fill(stale, true);
+                stale = all;
             }
         }
 
