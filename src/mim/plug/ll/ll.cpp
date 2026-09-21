@@ -180,6 +180,13 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
     // yields the continuation to branch to.
     if (auto ret = isa_targetspecific_intrinsic(bb, app)) return bb.tail("br label {}", *ret);
     if (app->callee() == root()->ret_var()) { // return
+        // Decide this before emitting the args: their lane Extracts would all be dead.
+        if (auto common_src = find_common_simd_src(app)) {
+            for (auto arg : app->args())
+                if (Axm::isa<mem::M>(arg->type())) emit_unsafe(arg);
+            return bb.tail("ret {} {}", convert(common_src->type()), emit(common_src));
+        }
+
         fe::Vector<std::string> values;
         DefVec types;
         for (auto arg : app->args()) {
@@ -199,12 +206,6 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                 std::string prev;
 
                 if (auto se = is_simd_aggregate(types)) {
-                    auto common_src = find_common_simd_src(app);
-                    if (common_src) {
-                        auto v_src = emit(common_src);
-                        auto t     = convert(common_src->type());
-                        return bb.tail("ret {} {}", t, v_src);
-                    }
                     auto [size, elem] = *se;
                     auto val_t        = convert(elem);
 
@@ -395,6 +396,16 @@ std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::s
     return std::pair(v_i, t_i);
 }
 
+std::string Emitter::emit_simd_index(BB& bb, const std::string& name, const Def* index) {
+    auto v_i = emit(index);
+    if (Lit::isa(index)) return v_i;
+
+    auto t_i = convert(index->type());
+    if (t_i == "i32") return v_i;
+    auto w = Idx::expect_bitwidth(index->type(), "a vector lane index of known width");
+    return bb.assign(name + ".idx", "{} {} {} to i32", w < 32 ? "zext" : "trunc", t_i, v_i);
+}
+
 std::string Emitter::emit_lit(const Def* def) {
     if (auto lit = def->isa<Lit>()) {
         if (lit->type()->isa<Nat>() || Idx::isa(lit->type())) {
@@ -446,7 +457,6 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto tuple = extract->tuple();
         auto index = extract->index();
         auto v_tup = emit_unsafe(tuple);
-        if (is_simd(tuple->type()) && !Axm::isa<mem::M>(tuple->type())) return v_tup;
 
         // this exact location is important: after emitting the tuple -> ordering of mem ops
         // before emitting the index, as it might be a weird value for mem vars.
@@ -454,6 +464,9 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return std::string();
 
         auto t_tup = convert(tuple->type());
+        if (is_simd(tuple->type()))
+            return bb.assign(name, "extractelement {} {}, i32 {}", t_tup, v_tup, emit_simd_index(bb, name, index));
+
         if (auto li = Lit::isa(index)) {
             if (detail::isa_mem_sigma_2(tuple->type())) return v_tup;
             // Adjust index: convert() drops mem.M elements from sigmas,
@@ -482,34 +495,22 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
         auto v_val = emit(insert->value());
-        if (auto idx = Lit::isa(insert->index())) {
-            auto v_idx = emit(insert->index());
-            if (is_simd(insert->tuple()->type()))
+        if (is_simd(insert->tuple()->type()))
+            return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val,
+                             emit_simd_index(bb, name, insert->index()));
 
-                return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val, v_idx);
-            else
+        if (auto idx = Lit::isa(insert->index()))
+            return bb.assign(name, "insertvalue {} {}, {} {}, {}", t_tup, v_tup, t_val, v_val, *idx);
 
-                return bb.assign(name, " insertvalue {} {}, {} {}, {}", t_tup, v_tup, t_val, v_val, v_idx);
-        } else {
-            if (is_simd(insert->tuple()->type())) {
-                auto v_i = emit(insert->index());
-                auto t_i = convert(insert->index()->type());
-                if (t_i != "i32") {
-                    auto w_src = Idx::expect_bitwidth(insert->index()->type(), "an `%insert` index of known width");
-                    v_i        = bb.assign(name + ".idx", "{} {} {} to i32", w_src < 32 ? "zext" : "trunc", t_i, v_i);
-                }
-                return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val, v_i);
-            }
-            auto t_elem     = convert(insert->value()->type());
-            auto [v_i, t_i] = emit_gep_index(bb, name, insert->index());
-            std::print(lam2bb_[root()].body().emplace_front(),
-                       "{}.alloca = alloca {} ; copy to alloca to emulate insert with store + gep + load", name, t_tup);
-            std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
-            std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {} {}",
-                       name, t_tup, t_tup, name, t_i, v_i);
-            std::print(bb.body().emplace_back(), "store {} {}, {}* {}.gep", t_val, v_val, t_val, name);
-            return bb.assign(name, "load {}, {}* {}.alloca", t_tup, t_tup, name);
-        }
+        auto t_elem     = convert(insert->value()->type());
+        auto [v_i, t_i] = emit_gep_index(bb, name, insert->index());
+        std::print(lam2bb_[root()].body().emplace_front(),
+                   "{}.alloca = alloca {} ; copy to alloca to emulate insert with store + gep + load", name, t_tup);
+        std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
+        std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {} {}", name,
+                   t_tup, t_tup, name, t_i, v_i);
+        std::print(bb.body().emplace_back(), "store {} {}, {}* {}.gep", t_val, v_val, t_val, name);
+        return bb.assign(name, "load {}, {}* {}.alloca", t_tup, t_tup, name);
     } else if (auto global = def->isa<Global>()) {
         auto v_init                = emit(global->init());
         auto [pointee, addr_space] = Axm::expect<mem::Ptr>(global->type(), "a `mem.Ptr`")->args<2>();

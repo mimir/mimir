@@ -1,0 +1,29 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt %s -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 42
+plugin core;
+plugin mem;
+plugin vec;
+
+use core.ops.n;
+
+fun dbl {n: Nat} (A: «n; Nat»): «n; Nat» = return (vec.zip `+ (A, A));
+
+// Reading one lane out of a vector is an `extractelement` - not the whole vector.
+extern fun lane (a: «4; Nat»): Nat =
+    ret b = dbl @4 $ a;
+    return b#2₄;
+// CHECK-DAG: extractelement <4 x i64> %{{.*}}, i32 2
+
+// Dito for a lane picked at runtime, which lowers to a select over all of them.
+extern fun dyn (a: «2; I32», i: I32): I32 = return a#(core.conv.u 2 i);
+// CHECK-DAG: extractelement <2 x i32> %{{.*}}, i32 0
+// CHECK-DAG: extractelement <2 x i32> %{{.*}}, i32 1
+
+extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+    ret r = lane $ (1, 2, 20, 4);
+    ret s = dyn $ ((7I32, 2I32), argc);
+    use core.ops.u.w;
+    return (core.bitcast I32 r + s);
