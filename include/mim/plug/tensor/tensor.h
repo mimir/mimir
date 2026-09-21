@@ -65,8 +65,7 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
 /// non-tuple consumer - a shared argument tuple charges each of its users, and a def used twice in one
 /// argument list counts twice.
 /// A phase whose world does not track uses needs this up front.
-template<class Pred>
-DefMap<u64> count_consumers(const World& world, Pred pred) {
+DefMap<u64> count_consumers(const World& world, std::predicate<const Def*> auto pred) {
     auto counts = DefMap<u64>();
     auto charge = [&](this auto&& charge, const Def* d) -> void {
         if (pred(d))

@@ -58,8 +58,8 @@ struct BB {
         return name;
     }
 
-    template<class Fn>
-    std::string assign(fe::Tab tab, bool slotted, std::string name, Fn&& print_term) {
+    std::string
+    assign(fe::Tab tab, bool slotted, std::string name, std::invocable<fe::Tab, std::ostringstream&> auto print_term) {
         if (!is_assigned(name)) {
             assign(name);
             auto& os = body().emplace_back();

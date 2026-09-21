@@ -100,8 +100,7 @@ private:
 };
 
 namespace {
-template<class Pred>
-bool reaches_if(const Def* def, DefSet& seen, Pred&& pred) {
+bool reaches_if(const Def* def, DefSet& seen, std::predicate<const Def*> auto pred) {
     if (auto [_, ins] = seen.emplace(def); !ins) return false;
     if (pred(def)) return true;
     for (auto d : def->deps())

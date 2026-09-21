@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <cstdint>
 
 #include <format>
@@ -25,8 +26,8 @@ inline std::optional<Range> merge_ranges(Range a, Range b) noexcept {
 }
 
 // precondition: ranges are sorted by increasing lower bound
-template<class Vec, class LogF>
-Vec merge_ranges(const Vec& old_ranges, LogF&& log) {
+template<class Vec>
+Vec merge_ranges(const Vec& old_ranges, std::invocable<std::string_view> auto log) {
     Vec new_ranges;
     for (auto it = old_ranges.begin(); it != old_ranges.end(); ++it) {
         auto current_range = *it;

@@ -16,12 +16,12 @@ const DFANode* DFANode::get_transition(std::uint16_t c) const {
 
 template class AutomatonBase<DFANode>;
 
-std::ostream& operator<<(std::ostream& os, const DFANode& node) {
+void DFANode::print(std::ostream& os) const {
     auto print_char = [](std::uint16_t c) -> std::string {
         if (c >= 48 && c <= 122) return {static_cast<char>(c)};
         return std::to_string(c);
     };
-    return print_node(os, node, print_char);
+    print_node(os, *this, print_char);
 }
 
 } // namespace automaton

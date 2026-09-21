@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 #include <cstdint>
 
 #include <map>
@@ -23,22 +24,18 @@ public:
     void add_transition(const NFANode* to, std::uint16_t c);
     std::vector<const NFANode*> get_transitions(std::uint16_t c) const;
 
-    // F: void(const NFANode*)
-    template<class F>
-    void for_transitions(F&& f, std::uint16_t c) const {
+    void for_transitions(std::invocable<const NFANode*> auto f, std::uint16_t c) const {
         if (erroring_) return;
         if (auto it = transitions_.find(c); it != transitions_.end())
             for (const auto& to : it->second)
-                std::forward<F>(f)(to);
+                f(to);
     }
 
-    // F: void(std::uint16_t, const NFANode*)
-    template<class F>
-    void for_transitions(F&& f) const {
+    void for_transitions(std::invocable<std::uint16_t, const NFANode*> auto f) const {
         if (erroring_) return;
         for (auto& [c, tos] : transitions_)
             for (const auto& to : tos)
-                std::forward<F>(f)(c, to);
+                f(c, to);
     }
 
     bool is_accepting() const { return accepting_; }
@@ -53,7 +50,7 @@ public:
         erroring_ = erroring;
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const NFANode& node);
+    void print(std::ostream& os) const;
 
 private:
     int id_;

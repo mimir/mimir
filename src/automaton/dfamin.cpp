@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <print>
 #include <set>
 
 #include "automaton/dfa.h"
@@ -11,9 +12,12 @@ using namespace automaton;
 namespace {
 #if 0
 void print_set(const DFASet& set) {
-    std::cout << "{";
-    for (auto state : set) std::cout << state->id() << ", ";
-    std::cout << "}\n";
+    std::print("{{");
+    for (auto sep = ""; auto state : set) {
+        std::print("{}{}", sep, state->id());
+        sep = ", ";
+    }
+    std::println("}}");
 }
 #endif
 
@@ -65,9 +69,9 @@ std::vector<DFASet> hopcroft(const DFASet& reachableStates) {
     std::vector<DFASet> newP;
     while (!W.empty()) {
 #if 0
-        std::cout << "P: ";
+        std::print("P: ");
         for (const auto& S : P) print_set(S);
-        std::cout << "W: ";
+        std::print("W: ");
         for (const auto& S : W) print_set(S);
 #endif
         auto A = W.back();

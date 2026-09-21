@@ -261,8 +261,7 @@ Vars Def::free_vars() const {
 
 // free_vars() is a union, so any predicate over it distributes over that union: ask f for the local Vars and
 // then for each local mutable's free_vars() - instead of merging them all into one throw-away Set.
-template<class F>
-static bool any_free_vars(const Def* def, F f) {
+static bool any_free_vars(const Def* def, std::predicate<Vars> auto f) {
     if (auto mut = def->isa_mut()) return f(mut->free_vars());
 
     if (f(def->local_vars())) return true;

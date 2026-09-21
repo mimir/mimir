@@ -4,8 +4,7 @@ namespace mim::plug::math {
 
 namespace {
 
-template<class F>
-std::optional<u64> dispatch_float_width(nat_t width, F&& f) {
+std::optional<u64> dispatch_float_width(nat_t width, auto f) {
     switch (width) {
 #define CODE(i) \
     case i: return f.template operator()<i>();
@@ -15,8 +14,7 @@ std::optional<u64> dispatch_float_width(nat_t width, F&& f) {
     }
 }
 
-template<class F>
-std::optional<u64> dispatch_int_width(nat_t width, F&& f) {
+std::optional<u64> dispatch_int_width(nat_t width, auto f) {
     switch (width) {
 #define CODE(i) \
     case i: return f.template operator()<i>();
@@ -26,15 +24,15 @@ std::optional<u64> dispatch_int_width(nat_t width, F&& f) {
     }
 }
 
-template<nat_t w, class F>
-std::optional<u64> fold_float_unary_bits(u64 a, F&& f) {
+template<nat_t w>
+std::optional<u64> fold_float_unary_bits(u64 a, std::invocable<w2f<w>> auto f) {
     using T = w2f<w>;
     auto x  = fe::bitcast_resize<T>(a);
     return fe::bitcast_resize<u64>(static_cast<T>(f(x)));
 }
 
-template<nat_t w, class F>
-std::optional<u64> fold_float_binary_bits(u64 a, u64 b, F&& f) {
+template<nat_t w>
+std::optional<u64> fold_float_binary_bits(u64 a, u64 b, std::invocable<w2f<w>, w2f<w>> auto f) {
     using T = w2f<w>;
     auto x  = fe::bitcast_resize<T>(a);
     auto y  = fe::bitcast_resize<T>(b);
@@ -91,8 +89,8 @@ long double decode_unsigned(u64 a) {
     return static_cast<long double>(fe::bitcast_resize<w2u<w>>(a));
 }
 
-template<nat_t w, class F>
-std::optional<u64> fold_float_to_signed_bits(F x) {
+template<nat_t w>
+std::optional<u64> fold_float_to_signed_bits(std::floating_point auto x) {
     if (!std::isfinite(x)) return {};
 
     auto truncated = std::trunc(static_cast<long double>(x));
@@ -100,8 +98,8 @@ std::optional<u64> fold_float_to_signed_bits(F x) {
     return encode_signed<w>(truncated);
 }
 
-template<nat_t w, class F>
-std::optional<u64> fold_float_to_unsigned_bits(F x) {
+template<nat_t w>
+std::optional<u64> fold_float_to_unsigned_bits(std::floating_point auto x) {
     if (!std::isfinite(x)) return {};
 
     auto truncated = std::trunc(static_cast<long double>(x));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 #include <cstdint>
 
 #include <map>
@@ -23,16 +24,12 @@ public:
     void add_transition(const DFANode* to, std::uint16_t c);
     const DFANode* get_transition(std::uint16_t c) const;
 
-    // F: void(const DFANode*)
-    template<class F>
-    void for_transitions(F&& f, std::uint16_t c) const {
+    void for_transitions(std::invocable<const DFANode*> auto f, std::uint16_t c) const {
         if (erroring_) return;
         if (auto it = transitions_.find(c); it != transitions_.end()) f(it->second);
     }
 
-    // F: void(std::uint16_t, const DFANode*)
-    template<class F>
-    void for_transitions(F&& f) const {
+    void for_transitions(std::invocable<std::uint16_t, const DFANode*> auto f) const {
         if (erroring_) return;
         for (auto& [c, to] : transitions_)
             f(c, to);
@@ -50,7 +47,7 @@ public:
         erroring_ = erroring;
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const DFANode& node);
+    void print(std::ostream& os) const;
 
 private:
     int id_;

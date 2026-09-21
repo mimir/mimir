@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+
 #include <functional>
 #include <memory>
 #include <span>
@@ -305,10 +307,7 @@ public:
         fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
     }
     /// Lookup annex by Axm::id
-    template<class Id>
-    const Def* annex(Id id) {
-        return annex(static_cast<flags_t>(id));
-    }
+    const Def* annex(Enum auto id) { return annex(static_cast<flags_t>(id)); }
 
     /// Get Axm from a plugin.
     /// Can be used to get an Axm without sub-tags.
@@ -574,10 +573,7 @@ public:
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
     const Lit* lit_idx_unsafe(u64 val) { return lit(type_idx(top(type_nat())), val); }
 
-    template<class I> const Lit* lit_idx(I val) {
-        static_assert(std::is_integral<I>());
-        return lit_idx(Idx::bitwidth2size(sizeof(I) * 8), val);
-    }
+    const Lit* lit_idx(std::integral auto val) { return lit_idx(Idx::bitwidth2size(sizeof(val) * 8), val); }
 
     /// Constructs a Lit @p of type Idx of size 2^width.
     /// `val = 64` will be automatically converted to size `0` - the encoding for 2^64.
@@ -664,9 +660,9 @@ public:
     const Def* implicit_app(const Def* callee, nat_t arg) {
         return implicit_app<Normalize>(callee, lit_nat(arg));
     }
-    template<bool Normalize = true, class E>
-    const Def* implicit_app(const Def* callee, E arg)
-        requires std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, nat_t> {
+    template<bool Normalize = true>
+    const Def* implicit_app(const Def* callee, Enum auto arg)
+        requires std::is_same_v<std::underlying_type_t<decltype(arg)>, nat_t> {
         return implicit_app<Normalize>(callee, lit_nat(std::to_underlying(arg)));
     }
     ///@}
@@ -674,15 +670,16 @@ public:
     /// @name call
     /// Complete curried call of @p callee obeying implicits.
     ///@{
-    template<bool Normalize = true, class T, class... Args>
-    const Def* call(const Def* callee, T&& arg, Args&&... args) {
-        return call<Normalize>(implicit_app<Normalize>(callee, std::forward<T>(arg)), std::forward<Args>(args)...);
+    template<bool Normalize = true, class... Args>
+    const Def* call(const Def* callee, auto&& arg, Args&&... args) {
+        return call<Normalize>(implicit_app<Normalize>(callee, std::forward<decltype(arg)>(arg)),
+                               std::forward<Args>(args)...);
     }
 
     /// Base case.
-    template<bool Normalize = true, class T>
-    const Def* call(const Def* callee, T&& arg) {
-        return implicit_app<Normalize>(callee, std::forward<T>(arg));
+    template<bool Normalize = true>
+    const Def* call(const Def* callee, auto&& arg) {
+        return implicit_app<Normalize>(callee, std::forward<decltype(arg)>(arg));
     }
 
     /// Annex overload with enum instance as first argument.
@@ -736,7 +733,7 @@ public:
     void for_each(bool elide_empty, std::function<void(Def*)>, bool schedule = false);
 
     template<class M>
-    void for_each(bool elide_empty, std::function<void(M*)> f, bool schedule = false) {
+    void for_each(bool elide_empty, std::invocable<M*> auto f, bool schedule = false) {
         for_each(
             elide_empty,
             [f](Def* m) {
@@ -776,8 +773,7 @@ private:
     /// @name Put into Sea of Nodes
     ///@{
     /// Common tail of World::unify \& World::insert, right after World::allocate.
-    template<class T>
-    void stamp(T* def) {
+    void stamp(auto* def) {
         if (get_loc()) def->set(dbg_key()); // pre-interned: no Driver lookup inside this window
 #ifdef MIM_ENABLE_CHECKS
         if (flags().trace_gids) std::println("{}: {} - {}", def->node_name(), def->gid(), def->flags());

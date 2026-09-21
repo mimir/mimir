@@ -1,9 +1,12 @@
 #pragma once
 
+#include <concepts>
+
 #include <algorithm>
-#include <iostream>
 #include <list>
 #include <map>
+#include <ostream>
+#include <print>
 #include <set>
 #include <vector>
 
@@ -46,18 +49,22 @@ public:
         return reachableStates;
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const AutomatonBase& automaton) {
+    void print(std::ostream& os) const {
         if constexpr (std::is_same_v<NodeType, DFANode>)
-            os << "digraph dfa {\n";
+            std::println(os, "digraph dfa {{");
         else if constexpr (std::is_same_v<NodeType, NFANode>)
-            os << "digraph nfa {\n";
+            std::println(os, "digraph nfa {{");
         else
-            os << "digraph automaton {\n";
-        os << "  start -> \"" << automaton.start_->id() << "\";\n";
+            std::println(os, "digraph automaton {{");
+        std::println(os, "  start -> \"{}\";", start_->id());
 
-        for (auto& node : automaton.nodes_)
-            os << node;
-        os << "}\n";
+        for (const auto& node : nodes_)
+            node.print(os);
+        std::println(os, "}}");
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const AutomatonBase& automaton) {
+        automaton.print(os);
         return os;
     }
 
@@ -67,10 +74,10 @@ private:
     int id_                = 0;
 };
 
-template<class NodeType, class PrintCharF>
-std::ostream& print_node(std::ostream& os, const NodeType& node, PrintCharF&& print_char) {
-    if (node.is_accepting()) os << "  \"" << node.id() << "\" [shape=doublecircle];\n";
-    if (node.is_erroring()) os << "  \"" << node.id() << "\" [shape=square];\n";
+template<class NodeType>
+void print_node(std::ostream& os, const NodeType& node, std::invocable<std::uint64_t> auto print_char) {
+    if (node.is_accepting()) std::println(os, "  \"{}\" [shape=doublecircle];", node.id());
+    if (node.is_erroring()) std::println(os, "  \"{}\" [shape=square];", node.id());
 
     std::map<const NodeType*, std::vector<Range>, typename NodeType::Lt> node2transitions;
     node.for_transitions([&](auto c, auto to) {
@@ -86,16 +93,11 @@ std::ostream& print_node(std::ostream& os, const NodeType& node, PrintCharF&& pr
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
         ranges = merge_ranges(ranges);
         for (auto& [lo, hi] : ranges) {
-            os << "  \"" << node.id() << "\" -> \"" << to->id() << "\" [label=\""
-               << std::forward<PrintCharF>(print_char)(lo);
-            if (lo != hi) os << "-" << std::forward<PrintCharF>(print_char)(hi);
-            os << " (" << lo;
-            if (lo != hi) os << "-" << hi;
-            os << ")\"];\n";
+            auto chars = lo == hi ? print_char(lo) : std::format("{}-{}", print_char(lo), print_char(hi));
+            auto nums  = lo == hi ? std::format("{}", lo) : std::format("{}-{}", lo, hi);
+            std::println(os, "  \"{}\" -> \"{}\" [label=\"{} ({})\"];", node.id(), to->id(), chars, nums);
         }
     }
-
-    return os;
 }
 
 } // namespace automaton

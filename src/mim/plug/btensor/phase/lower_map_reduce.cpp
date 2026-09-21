@@ -30,7 +30,6 @@ std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const
 /// `compute`'s elem at the (identity) output coordinates.
 /// `compute(iters, ins, mem)` receives the raw i64 loop counters, the fun's inputs var, and the current
 /// mem; it returns `(mem', elem)`.
-template<class Compute>
 const Def* build_pointwise(World& w,
                            const Def* result_ty, // [mem.M 0, buffer.Buf (r, s_out, T)]
                            const Def* op_mem,
@@ -38,7 +37,7 @@ const Def* build_pointwise(World& w,
                            const Def* s_out,
                            u64 rn,
                            const std::string& name,
-                           Compute&& compute) {
+                           auto compute) {
     auto mem_ty         = w.call<mem::M>(0);
     auto fun            = w.mut_fun(w.sigma({mem_ty, op_ins->type()}), result_ty)->set(name);
     auto call           = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_ins}));

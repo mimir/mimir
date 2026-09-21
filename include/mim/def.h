@@ -177,6 +177,10 @@ namespace mim {
 template<class F>
 concept Projector = std::invocable<F, const Def*>;
 
+/// What post_order and friends ask about each mutable they encounter.
+template<class F>
+concept MutPred = std::predicate<F, Def*>;
+
 /// Use as mixin to wrap all kind of Def::proj and Def::projs variants.
 /// @note The Projector overloads must stay constrained: an unconstrained one is an *exact* match for an integer
 /// argument and would hijack `NAME##s(nat_t)` wherever `size_t` is not `nat_t` - as on macOS arm64.
@@ -1160,8 +1164,7 @@ inline auto type_of(const Def* def) {
 /// first, so a name is always bound before its uses.
 /// @p descend picks the mutables to walk through, @p collect those that land in @p res.
 /// @p done is passed in so that several roots share one traversal.
-template<class Descend, class Collect>
-void post_order(Def* mut, MutSet& done, fe::Vector<Def*>& res, Descend descend, Collect collect) {
+void post_order(Def* mut, MutSet& done, fe::Vector<Def*>& res, MutPred auto descend, MutPred auto collect) {
     if (!done.emplace(mut).second) return;
 
     if (descend(mut))

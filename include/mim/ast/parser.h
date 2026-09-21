@@ -74,8 +74,7 @@ private:
     Ptr<Path> path(Dbg dbg) { return ptr<Path>(dbg.loc(), Dbgs{dbg}); }
     Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(path(dbg)); }
 
-    template<class F>
-    void parse_list(fe::Cite ctxt, Tok::Tag delim_l, F f, Tok::Tag sep = Tok::Tag::T_comma) {
+    void parse_list(fe::Cite ctxt, Tok::Tag delim_l, std::invocable auto f, Tok::Tag sep = Tok::Tag::T_comma) {
         expect(delim_l, ctxt);
         auto delim_r = Tok::delim_l2r(delim_l);
         auto _       = this->anchor(delim_r);
