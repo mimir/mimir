@@ -108,6 +108,7 @@ private:
         return parse_expr(fe::format_cite(fmt, std::forward<Args>(args)...), prec);
     }
     Ptr<Expr> parse_primary_expr(fe::Cite ctxt);
+    Ptr<Expr> parse_prefix_expr();
     Ptr<Expr> parse_infix_expr(Tracker, Ptr<Expr> lhs, Prec = Prec::Bot, fe::Cite ctxt = {});
 
     /// The `` `op `` a MIM_INFIX_SUGAR operator desugars to; `nullptr` for a MIM_INFIX_CORE one.
@@ -125,10 +126,9 @@ private:
     Ptr<Expr> parse_pi_expr();
     Ptr<Expr> parse_pi_expr(Ptr<Ptrn>);
     Ptr<Expr> parse_lam_expr();
-    Ptr<Expr> parse_seq_expr();
+    Ptr<Expr> parse_seq_or_single_expr();
     Ptr<Expr> parse_sigma_expr();
     Ptr<Expr> parse_tuple_expr();
-    Ptr<Expr> parse_uniq_expr();
     Ptr<Expr> parse_match_expr();
     ///@}
 

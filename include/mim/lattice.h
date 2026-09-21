@@ -186,7 +186,8 @@ private:
     friend class World;
 };
 
-/// A Single%ton term introduction.
+/// Single%ton term introduction.
+/// @note We never build a singleton term elimantoin as World::unwrap immediately normalizes to Single::op.
 class Wrap : public Def, public Setters<Wrap> {
 private:
     Wrap(const Def* type, const Def* op)
@@ -201,28 +202,6 @@ public:
     ///@}
 
     static constexpr auto Node      = mim::Node::Wrap;
-    static constexpr size_t Num_Ops = 1;
-
-private:
-    friend class World;
-};
-
-/// A Single%ton term elimination.
-/// @note We never really buid this node, as World::unwrap immediatly normalized to Single::op();
-class Unwrap : public Def, public Setters<Unwrap> {
-private:
-    Unwrap(const Def* type, const Def* op)
-        : Def(Node, type, {op}, 0) {}
-
-public:
-    using Setters<Unwrap>::set;
-
-    /// @name ops
-    ///@{
-    const Def* op() const { return Def::op(0); }
-    ///@}
-
-    static constexpr auto Node      = mim::Node::Unwrap;
     static constexpr size_t Num_Ops = 1;
 
 private:

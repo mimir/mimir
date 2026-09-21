@@ -106,7 +106,6 @@ const Def* Rewriter::rewrite_imm_UInc  (const UInc*   d) { return world().uinc  
 const Def* Rewriter::rewrite_imm_UMax  (const UMax*   d) { return world().umax  (rewrite(d->ops()));                 }
 const Def* Rewriter::rewrite_imm_Single(const Single* d) { return world().single(rewrite(d->op()));                  }
 const Def* Rewriter::rewrite_imm_Wrap  (const Wrap*   d) { return world().wrap  (rewrite(d->op())); }
-const Def* Rewriter::rewrite_imm_Unwrap(const Unwrap* d) { return world().unwrap(rewrite(d->op())); }
 const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->binder())->as_mut());    }
 const Def* Rewriter::rewrite_imm_Top   (const Top*    d) { return world().top   (rewrite(d->type()));                }
 const Def* Rewriter::rewrite_imm_Bot   (const Bot*    d) { return world().bot   (rewrite(d->type()));                }

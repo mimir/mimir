@@ -213,6 +213,8 @@ TEST_CASE("dump: bounds") {
     CHECK_RT(w.join({nat, i32, w.type_i8()}));
     CHECK_RT(w.single(nat));
     CHECK_RT(w.single(j));
+    CHECK_RT(w.wrap(nat));
+    CHECK_RT(w.wrap(w.lit_nat(23)));
     CHECK_RT(w.inj(j, w.lit_nat(23)));
     CHECK_RT(w.join({w.single(nat), w.single(i32)}));
 
@@ -269,7 +271,8 @@ TEST_CASE("dump: precedence") {
         CHECK(std::format("{}", w.inj(w.join({nat, i32}), w.lit_nat(23))) == "23 inj Nat ∪ I32");
         CHECK(std::format("{}", w.arr(3, w.pi(nat, i32)))     == "«3; Nat → I32»");
         CHECK(std::format("{}", add)                          == "core.wrap.add 0 @ i8 (255I8, ⊤:I8)");
-        CHECK(std::format("{}", w.single(w.pi(nat, i32)))     == "⦃Nat → I32⦄");
+        CHECK(std::format("{}", w.single(w.pi(nat, i32)))     == "«Nat → I32»");
+        CHECK(std::format("{}", w.wrap(w.lit_nat(23)))        == "‹23›");
         // clang-format on
     }
 
@@ -279,6 +282,7 @@ TEST_CASE("dump: precedence") {
         CHECK_RT(w.arr(3, w.pi(nat, i32)));
         CHECK_RT(w.pi(w.arr(3, nat), w.arr(3, i32)));
         CHECK_RT(w.single(w.pi(nat, i32)));
+        CHECK_RT(w.wrap(w.pi(nat, i32)));
         CHECK_RT(w.join({w.single(nat), w.single(i32)}));
         CHECK_RT(w.inj(w.join({nat, i32}), w.lit_nat(23)));
         CHECK_RT(w.extract(t, i0));

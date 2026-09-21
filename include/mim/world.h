@@ -706,9 +706,9 @@ public:
 
     /// @name Singletons
     ///@{
-    const Def* single(const Def* op);
-    const Def* wrap(const Def* op);
-    const Def* unwrap(const Def* op);
+    const Def* single(const Def*); ///< Singleton type formation.
+    const Def* wrap(const Def*);   ///< Singleton term introduction.
+    const Def* unwrap(const Def*); ///< Singleton term elimination. @note There is no explicite Unwrap node.
     ///@}
 
     /// @name Vars & Muts

@@ -37,7 +37,7 @@
     X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim) X(Top,    (Judge::Intro              )) \
     X(Meet,   Judge::Form ) X(Merge, Judge::Intro) X(Split,   Judge::Elim) X(Bot,    (Judge::Intro              )) \
     X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
-    X(Single, Judge::Form ) X(Wrap,  Judge::Intro) X(Unwrap,  Judge::Elim)                                         \
+    X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
     X(Nat,    Judge::Form )                                                                                        \
     X(Idx,    Judge::Intro)
 
@@ -53,7 +53,7 @@
     X(Join)   X(Inj)   X(Match)   X(Top)                                                                           \
     X(Meet)   X(Merge) X(Split)   X(Bot)                                                                           \
     X(Reform) X(Rule)                                                                                              \
-    X(Single) X(Wrap)  X(Unwrap)                                                                                   \
+    X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
     X(Idx)
 
@@ -247,7 +247,7 @@ struct DotConfig {
 /// | Pi                | Lam               | App               |
 /// | Sigma / Arr       | Tuple / Pack      | Extract           |
 /// |                   | Insert            | Insert            |
-/// | Single            | Wrap              | Unwrap            |
+/// | Single            | Wrap              |                   |
 /// | Join              | Inj               | Match             |
 /// | Meet              | Merge             | Split             |
 /// | Reform            | Rule              |                   |

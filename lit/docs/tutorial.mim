@@ -160,8 +160,11 @@ lam erased (f: Cn [x y: I32]): Cn [I32, I32] = f;
 lam ident {T: *} (x: T): T = x;
 let _ = refly.struc.e (ident 23, ident @Nat 23);
 
-// A singleton type.
-lam only (T: *) (x: ⦃T⦄): ⦃T⦄ = x;
+// `«e»` is the singleton type whose sole inhabitant is `e`, `‹e›` introduces it,
+// and the prefix `#` eliminates it again.
+lam only  (T: *) (x: «T»): «T» = x;
+lam intro (T: *) (x: T): «x» = ‹x›;
+let _ = refly.struc.e (#‹23›, 23);
 
 // `and` extends a declaration group to mutual recursion, and `ret p = f $ a; body`
 // binds the result of a continuation-style call.

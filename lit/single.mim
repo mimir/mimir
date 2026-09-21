@@ -1,0 +1,29 @@
+// RUN: %mim %s
+
+plugin core;
+plugin refly;
+
+use core.ops.n;
+
+// `«e»` forms the singleton type whose sole inhabitant is `e` and sits one level above it.
+lam ty   (T: *) (x: T): * = «x»;
+lam kind (T: *)       : □ = «T»;
+
+// `‹e›` introduces such a value, and the prefix `#` eliminates it again.
+lam intro (T: *) (x: T): «x» = ‹x›;
+lam elim  (T: *) (x: T): T   = #‹x›;
+
+let _ = refly.struc.e (#‹23›, 23);
+let _ = refly.struc.e (elim Nat 23, 23);
+
+// `#` recovers the inhabitant from the type alone.
+lam only (T: *) (x: «T»): * = #x;
+
+// A `;` in the brackets makes it an array/pack instead.
+lam arr (x: «2; Nat»): Nat = x#0₂;
+let _ = refly.struc.e (‹2; 7›, (7, 7));
+
+// A prefix `#` binds tighter than `+` but looser than an application.
+lam wrapped (n: Nat): «n» = ‹n›;
+let _ = refly.struc.e (#‹2› + 3, 5);
+let _ = refly.struc.e (#wrapped 23, 23);

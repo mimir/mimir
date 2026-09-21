@@ -294,6 +294,14 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     return rhs()->emit(e);
 }
 
+const Def* PrefixExpr::emit_(Emitter& e) const {
+    auto def = rhs()->emit(e);
+    switch (op().tag()) {
+        case Tag::T_extract: return e.world().unwrap(def);
+        default: fe::unreachable();
+    }
+}
+
 const Def* InfixExpr::emit_(Emitter& e) const {
     auto& w = e.world();
 
@@ -481,7 +489,10 @@ const Def* SeqExpr::emit_(Emitter& e) const {
     }
 }
 
-const Def* UniqExpr::emit_(Emitter& e) const { return e.world().single(inhabitant()->emit(e)); }
+const Def* SingleExpr::emit_(Emitter& e) const {
+    auto def = body()->emit(e);
+    return is_wrap() ? e.world().wrap(def) : e.world().single(def);
+}
 
 /*
  * Decl

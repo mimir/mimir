@@ -892,15 +892,17 @@ const Def* World::single(const Def* op) {
     op = op->zonk();
     if (auto t = op->unfold_type())
         if (auto tt = t->unfold_type()) return unify<Single>(tt, op);
-    op->blame("operand of singleton former is too high in the universe hierarchy to inhabit a singleton type", op)
+    op->blame("operand is too high in the universe hierarchy to inhabit a singleton type")
+        .n("a singleton type sits one level above its inhabitant, and nothing sits above `Univ`")
         .bail();
 }
 
 const Def* World::wrap(const Def* op) { return unify<Wrap>(single(op), op); }
 
 const Def* World::unwrap(const Def* op) {
-    if (auto single = op->type()->isa<Single>()) return single->op();
-    op->blame("trying to unwrap which is not a singleton type").bail();
+    op = op->zonk();
+    if (auto single = op->isa_type<Single>()) return single->op();
+    op->blame("operand of a singleton elimination is of type `{}` but must be of singleton type", type_of(op)).bail();
 }
 
 Sym World::append_suffix(Sym symbol, std::string suffix) {

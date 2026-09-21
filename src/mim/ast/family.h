@@ -111,20 +111,19 @@
     case Tag::K_cn: \
     case Tag::K_fn
 
-#define C_EXPR                          \
-              C_PRIMARY:                \
-    case Tag::C_ID:                     \
-    case Tag::C_LIT:                    \
-    case Tag::C_DECL:                   \
-    case Tag::C_PI:                     \
-    case Tag::C_LM:                     \
-    case Tag::K_Type:    /*TypeExpr*/   \
-    case Tag::K_Rule:    /*RuleExpr*/   \
-    case Tag::K_match:   /*MatchExpr*/  \
-    case Tag::K_ret:     /*RetExpr*/    \
-    case Tag::C_SEQ:     /*SeqExpr*/    \
-    case Tag::D_brckt_l: /*SigmaExpr*/  \
-    case Tag::D_curly_l: /*UniqExpr*/   \
+#define C_EXPR                                   \
+              C_PRIMARY:                         \
+    case Tag::C_ID:                              \
+    case Tag::C_LIT:                             \
+    case Tag::C_DECL:                            \
+    case Tag::C_PI:                              \
+    case Tag::C_LM:                              \
+    case Tag::K_Type:    /*TypeExpr*/            \
+    case Tag::K_Rule:    /*RuleExpr*/            \
+    case Tag::K_match:   /*MatchExpr*/           \
+    case Tag::K_ret:     /*RetExpr*/             \
+    case Tag::C_SEQ:     /*SeqExpr, SingleExpr*/ \
+    case Tag::D_brckt_l: /*SigmaExpr*/           \
     case Tag::D_paren_l  /*TupleExpr*/
 
 #define C_CURRIED_B       \

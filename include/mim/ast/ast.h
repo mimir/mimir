@@ -588,7 +588,28 @@ private:
     Ptr<Expr> dom_;
 };
 
-// infix
+// prefix/infix
+
+/// `op rhs`; PrefixExpr::op picks the meaning - see MIM_PREFIX.
+class PrefixExpr : public Expr {
+public:
+    PrefixExpr(Loc loc, Tok op, Ptr<Expr> rhs)
+        : Expr(loc)
+        , op_(op)
+        , rhs_(rhs) {}
+
+    Tok op() const { return op_; }
+    const Expr* rhs() const { return rhs_.get(); }
+
+    void bind(Scopes&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    const Def* emit_(Emitter&) const override;
+
+    Tok op_;
+    Ptr<Expr> rhs_;
+};
 
 /// `lhs op rhs`; InfixExpr::op picks the meaning - see MIM_INFIX.
 class InfixExpr : public Expr {
@@ -863,14 +884,16 @@ private:
     Ptr<Expr> body_;
 };
 
-/// `⦃inhabitant⦄`
-class UniqExpr : public Expr {
+/// `«body»` or `‹body›` if SingleExpr::is_wrap.
+class SingleExpr : public Expr {
 public:
-    UniqExpr(Loc loc, Ptr<Expr> expr)
+    SingleExpr(Loc loc, bool is_wrap, Ptr<Expr> body)
         : Expr(loc)
-        , inhabitant_(expr) {}
+        , is_wrap_(is_wrap)
+        , body_(body) {}
 
-    const Expr* inhabitant() const { return inhabitant_.get(); }
+    bool is_wrap() const { return is_wrap_; }
+    const Expr* body() const { return body_.get(); }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -878,7 +901,8 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    Ptr<Expr> inhabitant_;
+    bool is_wrap_;
+    Ptr<Expr> body_;
 };
 
 /*
