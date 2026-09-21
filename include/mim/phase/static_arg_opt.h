@@ -26,13 +26,13 @@ private:
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_mut_Lam(Lam*) final;
 
-    /// Which of @p lam's doms do the self-calls selected for the loop forward unchanged?
-    /// An empty Mask means: leave @p lam alone.
-    fe::Bitset statics(Lam* lam);
+    /// Which of @p lam's doms does the loop keep - those the selected self-calls do *not* forward unchanged?
+    /// A Sieve that keeps *all* of them means: leave @p lam alone.
+    Sieve sieve(Lam* lam);
 
     DefSet analyzed_;
     LamMap<fe::Vector<fe::Bitset>> lam2sites_;
-    LamMap<fe::Bitset> lam2statics_;
+    LamMap<Sieve> lam2sieve_;
     LamMap<std::pair<Lam*, Lam*>> old2wrap_loop_;
 };
 

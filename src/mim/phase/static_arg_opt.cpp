@@ -25,16 +25,17 @@ void StaticArgOpt::visit(const App* app, Lam* lam) {
     if (mask.any()) lam2sites_[lam].emplace_back(std::move(mask)); // only lam's own body can mention lam's vars
 }
 
-fe::Bitset StaticArgOpt::statics(Lam* lam) {
-    if (auto i = lam2statics_.find(lam); i != lam2statics_.end()) return i->second;
+Sieve StaticArgOpt::sieve(Lam* lam) {
+    if (auto i = lam2sieve_.find(lam); i != lam2sieve_.end()) return i->second;
+
+    auto n = lam->num_tdoms();
 
     // A *mutable* Pi is a dependent one; splitting it would require loop's doms to refer to wrap's vars.
     auto i = lam2sites_.find(lam);
     if (i == lam2sites_.end() || !lam->is_set() || !lam->is_closed() || lam->type()->isa_mut<Pi>())
-        return lam2statics_[lam] = fe::Bitset();
+        return lam2sieve_.emplace(lam, Sieve(n)).first->second;
 
     const auto& sites = i->second;
-    auto n            = lam->num_tdoms();
 
     // A static *function* arg is what SAT is after, as it exposes the loop's free var to inlining (Santos §7).
     // So seed the split with the rightmost Pi-typed dom and keep only the sites forwarding it; ∀ if there is none.
@@ -52,25 +53,23 @@ fe::Bitset StaticArgOpt::statics(Lam* lam) {
         break;
     }
 
-    auto res = fe::Bitset();
+    auto statics = fe::Bitset();
     for (size_t d = 0; d != n; ++d)
-        res.set(d);
+        statics.set(d);
     for (size_t s = 0, e = sites.size(); s != e; ++s)
-        if (pool[s]) res &= sites[s];
-    if (res.none()) return lam2statics_[lam] = fe::Bitset();
+        if (pool[s]) statics &= sites[s];
+    if (statics.none()) return lam2sieve_.emplace(lam, Sieve(n)).first->second;
 
-    log().d("statics of {}: {}", lam, res);
-    return lam2statics_[lam] = res;
+    log().d("statics of {}: {}", lam, statics);
+    return lam2sieve_.emplace(lam, Sieve(n, [&statics](size_t d) { return !statics[d]; })).first->second;
 }
 
 const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
     if (!is_bootstrapping()) {
-        if (auto statics = this->statics(old_lam); statics.any()) {
+        if (auto sieve = this->sieve(old_lam); !sieve.all()) {
             auto& w        = new_world();
             auto n         = old_lam->num_tdoms();
-            auto loop_doms = DefVec();
-            for (size_t i = 0; i != n; ++i)
-                if (!statics[i]) loop_doms.emplace_back(rewrite(old_lam->tdom(i)));
+            auto loop_doms = rewrite(sieve.gather(old_lam->tdoms()));
 
             auto wrap = w.mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
             auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
@@ -79,20 +78,15 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
             old2wrap_loop_[old_lam] = {wrap, loop};
 
             // The body lives in loop; the static vars stay wrap's and are free in loop.
-            DefVec vars(n), args;
-            for (size_t i = 0, j = 0; i != n; ++i) {
-                if (statics[i]) {
-                    vars[i] = wrap->tvar(i);
-                } else {
-                    vars[i] = loop->var(loop_doms.size(), j++);
-                    args.emplace_back(wrap->tvar(i));
-                }
-            }
+            auto vars = DefVec(n, [&](size_t d) {
+                auto j = sieve[d];
+                return j == Sieve::Gone ? wrap->tvar(d) : loop->var(sieve.num_new(), j);
+            });
 
             map(old_lam, wrap);
             map(old_lam->var(), vars);
             loop->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
-            wrap->app(false, loop, args);
+            wrap->app(false, loop, sieve.gather(wrap->tvars()));
             return wrap;
         }
     }
@@ -102,21 +96,15 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
 
 const Def* StaticArgOpt::rewrite_imm_App(const App* old_app) {
     if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !is_bootstrapping()) {
-        if (auto statics = this->statics(old_lam); statics.any()) {
+        if (auto sieve = this->sieve(old_lam); !sieve.all()) {
             rewrite(old_lam); // make sure wrap/loop exist
             if (auto i = old2wrap_loop_.find(old_lam); i != old2wrap_loop_.end()) {
                 auto loop = i->second.second;
-                auto n    = old_lam->num_tdoms();
-                auto args = DefVec();
-                for (size_t i = 0; i != n; ++i) {
-                    auto old_arg = old_app->targ(i);
-                    if (!statics[i])
-                        args.emplace_back(rewrite(old_arg));
-                    else if (old_arg != old_lam->tvar(i))
+                for (size_t d = 0, n = old_lam->num_tdoms(); d != n; ++d)
+                    if (sieve[d] == Sieve::Gone && old_app->targ(d) != old_lam->tvar(d))
                         return RWPhase::rewrite_imm_App(old_app); // not our class: go through wrap
-                }
                 invalidate();
-                return new_world().app(loop, args);
+                return new_world().app(loop, rewrite(sieve.gather(old_app->targs())));
             }
         }
     }
