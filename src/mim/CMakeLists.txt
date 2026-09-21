@@ -33,6 +33,7 @@ target_sources(libmim
         phase/beta_red.cpp
         phase/eta_conv.cpp
         phase/branch_normalize.cpp
+        phase/single_elim.cpp
         phase/ret_wrap.cpp
         phase/unload.cpp
 )
