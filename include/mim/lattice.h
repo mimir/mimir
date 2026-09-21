@@ -48,7 +48,6 @@ private:
 };
 
 /// Constructs a [Meet](@ref mim::Meet) **value**.
-/// @remark [Ac](https://en.wikipedia.org/wiki/Wedge_(symbol)) is Latin and means *and*.
 class Merge : public Def, public Setters<Merge> {
 public:
     using Setters<Merge>::set;
@@ -63,7 +62,6 @@ private:
 };
 
 /// Constructs a [Join](@ref mim::Join) **value**.
-/// @remark [Inj](https://en.wikipedia.org/wiki/Wedge_(symbol)) is Latin and means *or*.
 class Inj : public Def, public Setters<Inj> {
 private:
     Inj(const Def* type, const Def* value)

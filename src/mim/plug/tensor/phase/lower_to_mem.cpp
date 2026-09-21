@@ -225,12 +225,27 @@ void LowerToMem::collect_tensor_types() {
                 return gate("higher-order bufferized function", old_fn);
     }
 
+    // A partial access - an index that stops short of the element - denotes a sub-tensor, which has no buffer
+    // of its own; `tensor.get`/`set` used to reject this by construction.
+    auto covers_every_axis = [this](const Def* agg, const Def* index) {
+        auto arr = agg->type()->isa<Arr>();
+        if (!arr || !tensor_ty_.contains(arr)) return true;
+        auto r = arr->shape().rank();
+        auto k = Shape(index).rank();
+        return !r || !k || *k >= *r;
+    };
+
     // Second sweep: shapes the conversion cannot adapt — the value-semantics path lowers everything instead.
     fe::BFSWorklist<DefSet> wl2;
     for (auto mut : old_world().externals().muts())
         wl2.push(mut);
     while (!wl2.empty()) {
         auto def = wl2.pop();
+
+        if (auto ex = def->isa<Extract>(); ex && !covers_every_axis(ex->tuple(), ex->index()))
+            ex->blame("cannot bufferize: partial tensor read yields a sub-tensor").bail();
+        if (auto in = def->isa<Insert>(); in && !covers_every_axis(in->tuple(), in->index()))
+            in->blame("cannot bufferize: partial tensor write targets a sub-tensor").bail();
 
         for (auto op : def->ops()) {
             if (!op) continue;
@@ -494,7 +509,7 @@ std::pair<const Def*, const Def*> LowerToMem::peel_tensor(const Def* d) {
 }
 
 const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
-    // A partial read yields a sub-tensor, which has no buffer of its own; `collect_tensor_types` gates on it.
+    // A partial read yields a sub-tensor, which has no buffer of its own; `collect_tensor_types` rejects it.
     if (is_bootstrapping() || extract->type()->isa<Arr>()) return RWPhase::rewrite_imm_Extract(extract);
 
     auto [old_arr, index] = peel_tensor(extract);

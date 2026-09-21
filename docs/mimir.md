@@ -83,7 +83,8 @@ These are ordinary Mim values, written as plain Mim.
 `core.select`, for instance, is just
 
 ```mim
-lam core.select {T: *} (cond, t, f): T = (f, t)#cond;
+// inside core.mim
+anx lam select {T: *} (cond: Bool, t f: T): T = (f, t)#cond;
 ```
 
 Being a direct-style function, it carries the default `tt` [`filter`](@ref mim::Lam::filter), which tells MimIR to **β-reduce its applications eagerly during graph construction**.
@@ -172,6 +173,7 @@ CPS makes three pieces of SSA folklore explicit:
 This is the graph MimIR builds for `count`:
 
 @image html count.svg "The MimIR graph of `count` (type edges elided)"
+@image html count-dark.svg "The MimIR graph of `count` (type edges elided)"
 
 @note **Reading the graphs.**
 Each box is a [`Def`](@ref mim::Def) — one node of the program graph — labelled with its kind.
@@ -201,6 +203,9 @@ Two classic chores simply vanish:
   For this reason, a naive β-reduction would superfluously duplicate `g` as well.
 
   ```mim
+  plugin core;
+  use core.ops.n;
+
   lam f (x: Nat): Nat =
       lam g (y: Nat): Nat = y + 1;
       g (x + 2);
@@ -216,6 +221,9 @@ Two classic chores simply vanish:
   In the following example, we want to specialize `f` for `z`.
 
   ```mim
+  plugin core;
+  use core.ops.n;
+
   lam f (x y: Nat): Nat = x + y;
   lam g (z: Nat): Nat = (f z 1) + (f z 2);
   ```
@@ -223,6 +231,9 @@ Two classic chores simply vanish:
   However, we need to _block-sink_ the specialization `fz` inside `g` such that `fz`'s free variable `z` is now properly scoped:
 
   ```mim
+  plugin core;
+  use core.ops.n;
+
   lam g (z: Nat) =
     lam fz (y: Nat): Nat = z + y;
     (fz 1) + (fz 2)
@@ -272,6 +283,7 @@ Only `iter` is `extern`, hence the sole [root](@ref mim::World::roots).
 The graph MimIR keeps is therefore just `iter` itself:
 
 @image html iter.svg "The MimIR graph of `iter` — only the `extern` root survives (type edges elided)"
+@image html iter-dark.svg "The MimIR graph of `iter` — only the `extern` root survives (type edges elided)"
 
 The two branches `alt` and `cons` are **floating functions**: MimIR references them as ordinary nodes selected by `cond` instead of nesting them inside `iter`, and the recursive call simply points straight back at the `iter` node.
 This is MimIR's sea-of-nodes representation in action — the same machinery that expressed the counting loop above, now carrying a higher-order, polymorphic, direct-style function.
@@ -297,6 +309,7 @@ Watch a _type_ come out of an ordinary function:
 Nothing special happens to make this work — `Vec n` is β-reduced to `«n; Nat»` during construction exactly like `core.select` above, even though the result is a _type_ — and `refly.struc.e` statically checks that `zeros 3` evaluates to `‹3; 0›`.
 
 @image html dep.svg "The MimIR graph of `Vec` and `zeros` with type edges shown (type edges are dashed)"
+@image html dep-dark.svg "The MimIR graph of `Vec` and `zeros` with type edges shown (type edges are dashed)"
 
 The same variable node `n` feeds both the array **type** `«n; Nat»` and the array **value** `‹n; 0›` — a type pointing straight at a term.
 Types are not an earlier, separate phase that has been erased before the IR begins; they are ordinary nodes, hash-consed, normalized, and partially evaluated alongside everything else.

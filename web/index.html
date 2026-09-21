@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MimIR Playground</title>
+<link rel="stylesheet" href="playground.css">
+<!-- Stamps `dark-mode`/`light-mode` on <html> before the first paint, so load it here rather than at the end. -->
+<script src="darkmode-toggle.js"></script>
+</head>
+<body>
+<header>
+    <h1>MimIR Playground</h1>
+    <select id="examples" title="Load an example"></select>
+    <label><input type="checkbox" id="optimize" checked> optimize</label>
+    <button id="run">Run</button>
+    <span class="spacer"></span>
+    <span id="status">loading…</span>
+    <doxygen-awesome-dark-mode-toggle id="theme" title="Toggle Light/Dark Mode"></doxygen-awesome-dark-mode-toggle>
+</header>
+
+<main>
+    <div id="editor">
+        <div id="editor-bar">
+            <label title="vi keybindings; `:w` runs."><input type="checkbox" id="vi"> vi</label>
+            <button id="share" title="Copies a link to this program to your clipboard.">Share</button>
+        </div>
+        <textarea id="source" spellcheck="false"></textarea>
+    </div>
+
+    <div id="right">
+        <div id="tabs" role="tablist">
+            <button role="tab" data-pane="graph" aria-selected="true">Graph</button>
+            <button role="tab" data-pane="ll"    aria-selected="false">LLVM</button>
+            <button role="tab" data-pane="mim"   aria-selected="false">Mim</button>
+            <button role="tab" data-pane="log"   aria-selected="false">Log</button>
+        </div>
+        <div id="panes">
+            <div class="pane" id="pane-graph">
+                <div class="opts" id="dot-opts">
+                    <label title="Always shows a lambda's filter - even if it is the default one (`ff` for continuations, `tt` for direct-style functions)."><input type="checkbox" data-dot="default-filter"> default filter</label>
+                    <label title="Follows type dependencies."><input type="checkbox" data-dot="follow-types"> type edges</label>
+                    <label title="Wires up literals, axioms, etc. with normal edges instead of detaching them into a separate row; useful for small graphs."><input type="checkbox" data-dot="inline-consts"> inline consts</label>
+                    <label title="Renders otherwise-transparent detached edges - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray."><input type="checkbox" data-dot="show-hidden"> hidden edges</label>
+                    <label title="Drops the tooltip a node shows on hover - two fifths of the DOT."><input type="checkbox" data-dot="no-tooltip"> no tooltips</label>
+                    <label title="Labels a node `Node name_gid` instead of the boxed two-line label. Another third off the DOT, at the cost of the ports an edge docks at."><input type="checkbox" data-dot="lean-labels"> lean labels</label>
+                </div>
+                <div id="graph" tabindex="0"></div>
+                <div id="graph-nav">
+                    <button id="popout" title="Show this graph in a window of its own.">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                    </button>
+                    <button data-zoom="out" title="Zoom out (-)">&#8722;</button>
+                    <button data-zoom="in"  title="Zoom in (+)">+</button>
+                    <button data-zoom="fit" title="Fit to pane (0, or double-click)">Fit</button>
+                </div>
+            </div>
+            <div class="pane" id="pane-ll"   hidden><pre></pre></div>
+            <div class="pane" id="pane-mim"  hidden>
+                <div class="opts" id="mim-opts">
+                    <label title="Uses ASCII alternatives instead of UTF-8 throughout the output."><input type="checkbox" id="ascii"> ASCII</label>
+                </div>
+                <pre></pre>
+            </div>
+            <div class="pane" id="pane-log"  hidden><pre></pre></div>
+        </div>
+    </div>
+</main>
+
+<!-- Defines the lexers the docs colour their snippets with; Code.init() is not used here. -->
+<script src="code.js"></script>
+<script src="mim-code.js"></script>
+<script src="llvm-code.js"></script>
+<script type="module" src="playground.js"></script>
+</body>
+</html>

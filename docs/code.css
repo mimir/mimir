@@ -1,0 +1,8 @@
+/* The snippets reuse Doxygen's own token classes; these two have no counterpart in C++. */
+div.fragment span.code-literal {
+    color: var(--fragment-token);
+}
+
+div.fragment span.code-special {
+    color: var(--fragment-preprocessor);
+}

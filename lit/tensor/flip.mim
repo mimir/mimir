@@ -14,12 +14,12 @@ plugin affine;
 plugin mem;
 
 // 1-D reverse of a length-4 vector: out[i] = input[3 - i].
-// CHECK-DAG: extern fun flip1d
+// CHECK-DAG: extern con flip1d
 // CHECK-DAG: core.wrap.sub {{.*}}(3I64
 extern fun flip1d (input: «4; I32»): «4; I32» =
     return (tensor.flip 4 input);
 
 // 2-D reverse: out[i][j] = input[1 - i][2 - j].
-// CHECK-DAG: extern fun flip2d
+// CHECK-DAG: extern con flip2d
 extern fun flip2d (input: «2, 3; I32»): «2, 3; I32» =
     return (tensor.flip (2, 3) input);

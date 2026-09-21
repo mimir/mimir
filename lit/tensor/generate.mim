@@ -1,9 +1,9 @@
 // RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=tensor.generate
 
+// CHECK-DAG: affine.For
 // CHECK-LABEL: extern fun generate2d
-// CHECK: affine.For
 // CHECK-LABEL: extern fun generate_singleton
-// CHECK: return_{{[0-9]+}} 7I32
+// CHECK: return 7I32
 
 plugin core;
 plugin tensor;

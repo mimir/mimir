@@ -2,6 +2,7 @@ set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.md")
 set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
 set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
 set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
+set(SVG_COLOR_SCHEME "${CMAKE_CURRENT_SOURCE_DIR}/svg-color-scheme.cmake")
 
 # A plugin declares its -X arguments in its shared library, so all of them have to be loaded to be listed.
 set(CLI_HELP_PLUGINS "")
@@ -20,23 +21,33 @@ add_custom_command(
 # (embedded via @image html) for tight margins.
 set(DOC_GRAPH_FLAGS --dot-inline-consts --dot-show-hidden)
 
+# A graph's colors are baked by the compiler, so each one needs its own dark rendering; `dotgraph.css` picks.
 set(DOC_GRAPH_SVGS "")
-foreach(graph IN ITEMS count iter sq dep)
-    set(dot "${CMAKE_CURRENT_BINARY_DIR}/${graph}.dot")
-    set(svg "${CMAKE_CURRENT_BINARY_DIR}/${graph}.svg")
+foreach(graph IN LISTS MIM_DOC_EXAMPLES)
     set(flags ${DOC_GRAPH_FLAGS})
     if(graph STREQUAL dep)
         list(APPEND flags --dot-follow-types)
     endif()
-    add_custom_command(
-        OUTPUT ${svg}
-        COMMAND mim lit/docs/${graph}.mim ${flags} --output-dot ${dot}
-        COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${dot} -o ${svg}
-        DEPENDS mim mim_all_plugins "${LIT_DOCS}/${graph}.mim"
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-        COMMENT "Generating MimIR graph for the ${graph} example"
-    )
-    list(APPEND DOC_GRAPH_SVGS ${svg})
+    foreach(theme IN ITEMS light dark)
+        set(name "${graph}")
+        set(theme_flags "")
+        if(theme STREQUAL dark)
+            set(name "${graph}-dark")
+            set(theme_flags --dot-dark)
+        endif()
+        set(dot "${CMAKE_CURRENT_BINARY_DIR}/${name}.dot")
+        set(svg "${CMAKE_CURRENT_BINARY_DIR}/${name}.svg")
+        add_custom_command(
+            OUTPUT ${svg}
+            COMMAND mim lit/docs/${graph}.mim ${flags} ${theme_flags} --output-dot ${dot}
+            COMMAND ${DOXYGEN_DOT_EXECUTABLE} -Tsvg ${dot} -o ${svg}
+            COMMAND ${CMAKE_COMMAND} -DSVG=${svg} -P ${SVG_COLOR_SCHEME}
+            DEPENDS mim mim_all_plugins "${LIT_DOCS}/${graph}.mim" ${SVG_COLOR_SCHEME}
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            COMMENT "Generating ${theme} MimIR graph for the ${graph} example"
+        )
+        list(APPEND DOC_GRAPH_SVGS ${svg})
+    endforeach()
 endforeach()
 
 add_custom_command(
@@ -58,6 +69,8 @@ set(DOXY_STYLESHEETS
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/button.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/code.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/mim.css"
 )
@@ -66,7 +79,9 @@ set(DOXY_ASSETS
     "${DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
     "${DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/code.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/llvm.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/mim.js"
 )
 set(DOXY_FILTER     "${CMAKE_CURRENT_SOURCE_DIR}/fences.py")

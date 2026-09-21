@@ -43,8 +43,9 @@ See [Generated Header](@ref plugin_h) below for why it is just this two-line ind
 
 \include "src/mim/plug/demo/demo.cpp"
 
-The function `mim_get_plugin` is the single entry point [`Driver`](@ref mim::Driver) looks up (via `dlopen`/`dlsym`) when a `plugin demo;` directive or `-p demo` loads the shared module.
-It returns a [`mim::Plugin`](@ref mim::Plugin) record: the plugin's name, the `MIM_VERSION` it was built against (checked against the loading `mim` binary), the `register_normalizers` function that `normalizers.cpp` defined via `MIM_demo_NORMALIZER_IMPL`, an optional phase-registration callback (`{}` here, since `demo` defines no phases), and the [`-X` arguments](@ref mim::PluginArg) it understands (none here).
+`MIM_PLUGIN_ENTRY` defines the single entry point [`Driver`](@ref mim::Driver) looks up when a `plugin demo;` directive or `-p demo` loads the plugin - via `dlopen`/`dlsym`, or from a table of the plugins linked in when `MIM_STATIC_PLUGINS` is set.
+It takes the plugin's name because a static build gives each plugin its own symbol; a shared one always yields `mim_get_plugin`.
+It returns a [`mim::Plugin`](@ref mim::Plugin) record: the plugin's name, the `MIM_VERSION` it was built against (checked against the loading `mim` binary), the `register_normalizers` function that `normalizers.cpp` defined via `MIM_demo_NORMALIZER_IMPL`, an optional phase-registration callback, the [`-X` arguments](@ref mim::PluginArg) and [environment variables](@ref mim::PluginEnv) it reads, and the [symbols](@ref mim::PluginSym) it offers to other plugins.
 It is a POD, so every field must be spelled out - `{}` for the ones a Plugin does not use.
 
 **`normalizers.cpp`**:

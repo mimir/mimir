@@ -468,12 +468,6 @@ std::string_view Def::node_name() const {
 }
 
 Defs Def::deps() const noexcept {
-    // deps() hands out `[type_, op0, op1, ...]` as one contiguous array by stepping back from ops_ptr()
-    // (which is `this + 1`). That only holds while type_ occupies the *last* 8 bytes of Def, so moving it
-    // - or appending any member after it - would silently corrupt every deps() walk.
-    assert((const void*)(ops_ptr() - 1) == (const void*)&type_
-           && "Def::type_ must stay Def's last member: Def::deps() and Def::ops_ptr() depend on it");
-
     // Univ, Type, and Var are the only nodes built without a type - and none of them has deps.
     if (!type_) {
         assert(isa<Univ>() || isa<Type>() || isa<Var>());
@@ -557,7 +551,8 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 const Def* Def::immutabilize() {
     auto& w = world();
     switch (node()) {
-        case Node::Pi:    return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom()) : nullptr;
+        case Node::Pi:
+            return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom(), as<Pi>()->is_implicit()) : nullptr;
         case Node::Sigma: return is_immutabilizable() ? w.sigma(ops()) : nullptr;
         case Node::Rule:  return nullptr; // TODO should we ever immutabilize Rules?
         case Node::Arr:

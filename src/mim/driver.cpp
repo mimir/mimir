@@ -1,5 +1,7 @@
 #include "mim/driver.h"
 
+#include <cstring>
+
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
@@ -32,6 +34,12 @@ std::optional<fs::path> prefix_of(const fs::path& libmim_path) {
 }
 
 std::optional<fs::path> path_to_libmim() { return fe::sys::path_to_lib((const void*)&mim_lib_anchor); }
+
+/// Function-local so that Driver::add_static_plugin works during static initialization.
+absl::flat_hash_map<std::string, Plugin (*)()>& static_plugins() {
+    static auto map = absl::flat_hash_map<std::string, Plugin (*)()>();
+    return map;
+}
 
 /// A prefix may derive what a plain directory already names, and probing it twice only slows lookup down.
 void push(fe::Vector<fs::path>& paths, fs::path path) {
@@ -130,6 +138,8 @@ std::string Driver::plugin_name(std::string_view name) {
     return stem;
 }
 
+void Driver::add_static_plugin(const char* name, Plugin (*get_plugin)()) { static_plugins()[name] = get_plugin; }
+
 void Driver::load(std::string_view spec) {
     auto name = plugin_name(spec);
     log().i("💾 load plugin `{}`", spec);
@@ -139,62 +149,66 @@ void Driver::load(std::string_view spec) {
         return;
     }
 
-    auto handle = Plugin::Handle{nullptr, fe::dl::close};
-    auto dir    = fs::path{};
-    auto path   = fs::path{spec};
-    auto ext    = std::format(".{}", fe::dl::Ext);
+    auto handle   = Plugin::Handle{nullptr, fe::dl::close};
+    auto dir      = fs::path{};
+    auto path     = fs::path{spec};
+    auto sub      = path.parent_path();
+    auto get_info = decltype(&mim_get_plugin){};
 
-    // Only a spec naming the shared object itself is opened as-is; `foo/bar.mim` still wants `foo/libmim_bar`.
-    if (path.is_absolute() && path.extension() == ext && fs::is_regular_file(path)) {
-        auto path_str = path.string();
-        if (handle.reset(fe::dl::open(path_str.c_str())); handle) dir = path.parent_path();
-    }
-    if (!handle) {
-        // `foo/bar` is `libmim_bar` below the `foo` of each search path, so that both halves stay together.
-        auto sub  = path.parent_path();
-        auto file = std::format("libmim_{}{}", name, ext);
-        for (const auto& search : plugin_paths()) {
-            auto full_path = search / sub / file;
-            std::error_code ignore;
-            if (bool reg_file = fs::is_regular_file(full_path, ignore); reg_file && !ignore) {
-                auto path_str = full_path.string();
-                if (handle.reset(fe::dl::open(path_str.c_str())); handle) {
-                    dir = search / sub;
-                    break;
-                }
-            }
-        }
-    }
+    // `foo/bar` looks below the `foo` of each search path, so that both halves stay together.
+    auto find = [&, this](const std::string& file, auto&& accept) {
+        for (const auto& search : plugin_paths())
+            if (std::error_code ec; fs::is_regular_file(search / sub / file, ec) && accept(search / sub / file))
+                return search / sub;
+        return fs::path{};
+    };
 
-    if (!handle) fe::throwf("cannot open plugin `{}`", spec);
-
-    if (auto get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"))) {
-        auto plugin = get_info();
-        if (version() != plugin.version) {
-            std::ostringstream oss;
-            std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version,
-                       version());
-            if (flags().force_load)
-                std::cerr << "warning: " << oss.str() << '\n';
-            else
-                throw std::logic_error(oss.str());
-        }
-        fe::assert_emplace(plugins_, name, std::move(handle));
-        plugin2dir_.emplace(name, std::move(dir));
-        // clang-format off
-        if (auto reg = plugin.register_normalizers) reg(normalizers_);
-        if (auto reg = plugin.register_phases)      reg(phases_);
-        // clang-format on
-        if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
-        if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
+    if (auto get = fe::lookup(static_plugins(), name)) {
+        get_info = *get;
+        // No shared object pins the directory, so search the `<name>.mim` half like an import.
+        dir = find(std::format("{}.mim", name), [](const fs::path&) { return true; });
     } else {
-        fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
+        auto ext  = std::format(".{}", fe::dl::Ext);
+        auto open = [&handle](const fs::path& p) {
+            auto str = p.string();
+            return handle.reset(fe::dl::open(str.c_str())), bool(handle);
+        };
+
+        // Only a spec naming the shared object itself is opened as-is; `foo/bar.mim` still wants `foo/libmim_bar`.
+        if (path.is_absolute() && path.extension() == ext && fs::is_regular_file(path) && open(path))
+            dir = path.parent_path();
+        if (!handle) dir = find(std::format("libmim_{}{}", name, ext), open);
+
+        if (!handle) fe::throwf("cannot open plugin `{}`", spec);
+        get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"));
+        if (!get_info) fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
     }
+
+    auto plugin = get_info();
+    if (version() != plugin.version) {
+        std::ostringstream oss;
+        std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version, version());
+        if (flags().force_load)
+            std::cerr << "warning: " << oss.str() << '\n';
+        else
+            throw std::logic_error(oss.str());
+    }
+    fe::assert_emplace(plugins_, name,
+                       Loaded{std::move(handle), std::move(dir), fe::View<PluginSym>(plugin.syms, plugin.num_syms)});
+    // clang-format off
+    if (auto reg = plugin.register_normalizers) reg(normalizers_);
+    if (auto reg = plugin.register_phases)      reg(phases_);
+    // clang-format on
+    if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
+    if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
 }
 
 void* Driver::get_fun_ptr(std::string_view plugin, const char* name) {
-    if (auto handle = fe::lookup(plugins_, plugin)) return fe::dl::get(handle->get(), name);
-    return nullptr;
+    auto loaded = fe::lookup(plugins_, plugin);
+    if (!loaded) return nullptr;
+    for (const auto& sym : loaded->syms)
+        if (std::strcmp(sym.name, name) == 0) return sym.ptr;
+    return loaded->handle ? fe::dl::get(loaded->handle.get(), name) : nullptr;
 }
 
 const fe::Vector<std::string>& Driver::args(std::string_view plugin) const {

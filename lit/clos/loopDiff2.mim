@@ -8,24 +8,24 @@ use core.ops.u.w;
 
 let void_ptr = mem.Ptr («⊤:Nat; []», 0);
 
-extern con printInteger [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
-extern con printNL [m: mem.M 0, return: Cn [mem.M 0]];
+extern con print_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con printnl [m: mem.M 0, return: Cn [mem.M 0]];
 extern con time [m: mem.M 0, return: Cn [mem.M 0, void_ptr]];
 extern con print_time_diff [m: mem.M 0, t1 t2: void_ptr, return: Cn [mem.M 0]];
 
 let arr_size = ⊤:Nat;
 let size = 100000;
 
-con printArr (m: mem.M 0, arr: mem.Ptr («size; I32», 0), return: Cn [mem.M 0]) =
+con print_arr (m: mem.M 0, arr: mem.Ptr («size; I32», 0), return: Cn [mem.M 0]) =
     con loop_body (m: mem.M 0, i: I32, continue: Cn mem.M 0) =
         let lea = mem.lea (arr, core.bitcast (Idx arr_size) i);
         let (load_mem, val) = mem.load (m, lea);
-        printInteger(load_mem, val, continue);
+        print_i32(load_mem, val, continue);
 
     con loop_head (m: mem.M 0, i: I32) =
         con yield (m: mem.M 0) = loop_head( m, i + 1I32);
         con enter (m: mem.M 0) = loop_body ( m, i, yield );
-        con exit (m: mem.M 0) = printNL (m, return);
+        con exit (m: mem.M 0) = printnl (m, return);
         (exit, enter)#(i < core.bitcast I32 size) m;
     loop_head ( m, 0I32 );
 
@@ -105,12 +105,12 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0]) =
 
         return(store_pb_mem);
 
-    con print_c (m: mem.M 0) = printArr(m, c_arr, return);
-    con print_b (m: mem.M 0) = printArr(m, b_arr, print_c);
-    con print_a (m: mem.M 0) = printArr(m, a_arr, print_b);
-    con print_cd(m: mem.M 0) = printArr(m, cd_arr, print_a);
-    con print_bd(m: mem.M 0) = printArr(m, bd_arr, print_cd);
-    con print_ad(m: mem.M 0) = printArr(m, ad_arr, print_bd);
+    con print_c (m: mem.M 0) = print_arr(m, c_arr, return);
+    con print_b (m: mem.M 0) = print_arr(m, b_arr, print_c);
+    con print_a (m: mem.M 0) = print_arr(m, a_arr, print_b);
+    con print_cd(m: mem.M 0) = print_arr(m, cd_arr, print_a);
+    con print_bd(m: mem.M 0) = print_arr(m, bd_arr, print_cd);
+    con print_ad(m: mem.M 0) = print_arr(m, ad_arr, print_bd);
 
     con time_start_cont (m: mem.M 0, start_time: void_ptr) =
         con timer (m: mem.M 0) =

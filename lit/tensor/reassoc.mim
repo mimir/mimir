@@ -54,8 +54,8 @@ extern fun shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d:
 // bottleneck does: x·(U·V) costs 768·8·768 + 589824·m, (x·U)·V costs 12288·m, and 12288 ≤ 589824
 // with nothing left over - so the reassociation is provable without knowing m.
 // CHECK-DAG: extern fun low_rank
-// CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 768, 8)
-// CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 8, 768)
+// CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 768, 8)
+// CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 8, 768)
 extern fun low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 768; Nat»): «m, 768; Nat» =
     let R = nat_ring ();
     return (tensor.product_2d R (x, tensor.product_2d R (u, v)));
@@ -72,9 +72,9 @@ extern fun low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 76
 // CHECK-DAG: ({{.*}})#{{.*}} ();
 // Capped at 2 the chain falls back to the static dynamic program, which cannot decide it either, so
 // it survives as written and no cost is computed at run time.
-// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 784, 300)
-// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 300, 120)
-// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) ({{.*}}, 120, 10)
+// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 784, 300)
+// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 300, 120)
+// NODISP-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 120, 10)
 // NOCMP-NOT: core.ncmp
 extern fun batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w2: «300, 120; Nat»,
                                     w3: «120, 10; Nat»): «m, 10; Nat» =

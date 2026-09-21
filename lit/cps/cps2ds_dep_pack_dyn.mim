@@ -15,5 +15,5 @@ extern fun main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [me
     let xs = cps.cps2ds_dep U f n;
     return (m, core.bitcast I32 (xs#(core.idx 0 n 0)));
 
-// CHECK: extern fun main
+// CHECK: extern con main
 // CHECK: return

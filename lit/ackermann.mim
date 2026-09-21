@@ -3,7 +3,6 @@
 // RUN: %FileCheck %s < %t.ll
 // RUN: clang %t.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 9
-
 plugin core;
 plugin compile;
 plugin mem;

@@ -16,7 +16,7 @@ use core.ops.u.w;
 
 let pb_type = Cn [mem.M 0];
 
-extern con printInteger [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+extern con print_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
     con end_ (m: mem.M 0) = return (m, 99I32);
@@ -38,13 +38,13 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤
                 let (load_pb_mem, last_pb) = mem.load (m, lea_pb);
                 con pb (m: mem.M 0) =
                     //last_pb (mem)  // << call previous backward pass block
-                    printInteger(m, i, last_pb);
+                    print_i32(m, i, last_pb);
 
                 let store_pb_mem = mem.store (load_pb_mem, lea_pb, pb);  // << stack backward pass block
-                printInteger(store_pb_mem, i, yield);
+                print_i32(store_pb_mem, i, yield);
 
             (exit, body)#(i < 19I32) ( m );
 
         loop_head ( store_pb, 0I32 ); // <-- start forward pass
 
-    printInteger(m, 42I32, init22);
+    print_i32(m, 42I32, init22);

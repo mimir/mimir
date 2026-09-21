@@ -11,7 +11,7 @@ using namespace std::literals;
 using namespace mim;
 using namespace mim::plug;
 
-void reg_phases(Flags2Phases& phases) {
+static void reg_phases(Flags2Phases& phases) {
     Phase::hook<autodiff::eval, autodiff::phase::Eval>(phases);
 
     MIM_REPL(phases, autodiff::zero_repl, {
@@ -22,8 +22,9 @@ void reg_phases(Flags2Phases& phases) {
     });
 }
 
-extern "C" MIM_EXPORT Plugin mim_get_plugin() {
-    return {"autodiff", MIM_VERSION, autodiff::register_normalizers, reg_phases, {}, {}, {}, {}};
+MIM_PLUGIN_ENTRY(autodiff) {
+    plugin.register_normalizers = autodiff::register_normalizers;
+    plugin.register_phases      = reg_phases;
 }
 
 namespace mim::plug::autodiff {

@@ -1,4 +1,4 @@
-/* Token colours for the EBNF blocks of the language reference; MimEbnf in ebnf.js emits these classes. */
+/* Token colours for the EBNF blocks of the language reference; EbnfCode in ebnf.js emits these classes. */
 html {
     --ebnf-rule: #5383d6;
     --ebnf-token: #8258b3;
@@ -71,8 +71,4 @@ html.dark-mode {
 .ebnf-trace {
     background: var(--ebnf-trace);
     border-radius: 3px;
-}
-
-div.ebnf-terminals:empty {
-    display: none;
 }

@@ -28,6 +28,8 @@ function(add_mim_test)
             ${PARSED_PRIVATE}
             doctest::doctest
             libmim
+            # No shared object to load, so a test only reaches its plugins by linking them in.
+            $<$<BOOL:${MIM_STATIC_PLUGINS}>:mim_static_plugins>
     )
     add_dependencies(${TEST} mim_all_plugins)
     add_dependencies(mim_all ${TEST})
@@ -42,6 +44,7 @@ set(MIM_TEST_TARGETS "" CACHE INTERNAL "MIM_TEST_TARGETS" FORCE)
 add_mim_test(mim-test
     SOURCES
         cast.cpp
+        dump.cpp
         lexer.cpp
         restricted_dep_types.cpp
         test.cpp

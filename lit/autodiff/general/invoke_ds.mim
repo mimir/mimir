@@ -17,13 +17,10 @@ con extract_pb2 (s: I32, ret_cont: Cn [mem.M 0, «2; I32»]) =
     k (autodiff.zero (mem.M 0), (0I32, s));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr ((I8), 0), 0), return: Cn [mem.M 0, I32]) =
-    let a: [mem.M 0, «2; I32»] = cps.cps2ds extract_pb1 m;
-    let b: [mem.M 0, «2; I32»] = cps.cps2ds extract_pb2 1I32;
-    let m: mem.M 0 = autodiff.add (a#ff, b#0₂);
-    let t: «2; I32» = autodiff.add (a#tt, b#1₂);
-    let x: I32 = 100I32 * t#0₂;
-    let y: I32 = t#1₂ + x;
-    let z: I32 = 430000I32 + y;
-    return (m, z);
+    let a = cps.cps2ds extract_pb1 m;
+    let b = cps.cps2ds extract_pb2 1I32;
+    let m = autodiff.add (a#ff, b#0₂);
+    let (tx, ty) = autodiff.add (a#tt, b#1₂);
+    return (m, 430000I32 + ty + 100I32 * tx);
 
 // CHECK-DAG: return{{.*}}430001

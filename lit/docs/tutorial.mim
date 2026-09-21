@@ -1,0 +1,253 @@
+// RUN: %mim %s
+// RUN: %mim -p ll %s
+
+/// A guided tour of Mim's surface syntax; the sections follow @ref langref.
+/*
+    Every `refly.struc.e` below is a *static* assertion, checked while the graph is
+    built - so this file compiling at all is what tests it.
+*/
+
+//------------------------------------------------------------------------------
+// Files, imports, and modules
+//------------------------------------------------------------------------------
+
+// `import foo;`, `import "some/dir/foo.mim" as bar;`, and `pub import foo as *;` bind a file
+// the same way - only `plugin` additionally loads a shared object.
+plugin core;        // loads `libmim_core` and imports `core.mim` under the name `core`
+plugin core as *;   // … and once more, splicing its public members into this scope instead
+plugin math;
+plugin mem;
+plugin refly;
+
+use core.ops.u.w;   // `+`, `<`, `<<`, … bound for unsigned `Idx s`, wrapping around
+
+//------------------------------------------------------------------------------
+// Lexical structure
+//------------------------------------------------------------------------------
+
+let dec = 42;               // decimal
+let bin = 0b101010;         // binary
+let oct = 0o52;             // octal
+let hex = 0x2A;             // hexadecimal
+let flt = 4.2e1:math.F64;   // a floating-point literal needs its type
+let chr = 'A';              // I8
+let str = "Mim";            // «3; I8»
+let neg = -42;              // the sign belongs to the expression, not to the token
+let nothing = ⊥;            // `bot`; defaults to `*`
+let anything = ⊤:Nat;       // `top`, ascribed
+
+let _ = refly.struc.e (⊥:[Nat, Bool], (⊥:Nat, ⊥:Bool)); // pushed into aggregates
+
+let _ = refly.struc.e (dec, bin);
+let _ = refly.struc.e (oct, hex);
+
+let tru = 1₂;               // an index literal spells its arity as a subscript …
+let alt = 1_2;              // … or after an `_`
+let wid = 23I32;            // or as a bit width - the very same as `23:I32`
+
+let _ = refly.struc.e (tru, tt);
+let _ = refly.struc.e (alt, tt);
+let _ = refly.struc.e (wid, 23:I32);
+
+//------------------------------------------------------------------------------
+// Kinds and builtin types
+//------------------------------------------------------------------------------
+
+let univ = Univ;            // the universe of type levels
+let lvl0 = Type (0:Univ);   // the type at level 0 …
+let star = *;               // … which `*` abbreviates
+let boxx = □;               // and `Type (1:Univ)`, which `□` abbreviates
+let nat  = Nat;
+let idx  = Idx;             // the builtin of type `Nat → *`
+let rul  = Rule Nat;        // the type of rewrite rules over `Nat`
+
+lam bool_is_idx (b: Bool): Idx 2 = b;   // `Bool` abbreviates `Idx i1`; likewise I8 … I64
+
+//------------------------------------------------------------------------------
+// Patterns and telescopes
+//------------------------------------------------------------------------------
+
+// `(...)` is a pattern and `[...]` a telescope: an unnamed element *binds* in the one
+// and is a *type* in the other. Position decides which one you need.
+lam ptrn (a: Nat, _: Bool): Nat = a;
+let tele = [Nat, Bool];
+
+// A group distributes one annotated type over several names.
+lam group (a b: Nat, c d: Bool): Nat = a + b where use core.ops.n; end;
+
+// An alias pattern binds the components *and* the whole value.
+let (a, b, c) as abc = (23, 42, 66);
+let _ = refly.struc.e (abc, (23, 42, 66));
+
+//------------------------------------------------------------------------------
+// Aggregates
+//------------------------------------------------------------------------------
+
+let tup = (23, 42, 66);     // a tuple
+let pck = ‹3; 7›;           // a pack - and a tuple of equal elements *is* one
+let sig = [Nat, Bool];      // a sigma
+let arr = «3; Nat»;         // an array - and a sigma of equal components *is* one
+
+let _ = refly.struc.e ((7, 7, 7), pck);
+lam sigma_is_array (x: [Nat, Nat, Nat]): «3; Nat» = x;
+
+let fst = tup#0_3;          // extract
+let upd = tup#1_3 ← 0;      // insert: a *new* tuple, nothing is mutated
+
+let _ = refly.struc.e (fst, 23);
+let _ = refly.struc.e (upd, (23, 0, 66));
+
+// A nest of arrays fuses into one shape, and `#` follows suit.
+lam fuse (m: «2; «3; Nat»»): «2, 3; Nat» = m;
+lam fused (t: «2, 3; Nat», i: Idx 2, j: Idx 3): Nat =
+    refly.struc.e (t#i#j, t#(i, j));
+
+// Unless an extent depends on an earlier index - then the nest stays one array per axis.
+let jagged = «i: 3, j: (1, 2, 3)#i; Nat»;
+
+//------------------------------------------------------------------------------
+// Dependent tuple types
+//------------------------------------------------------------------------------
+
+let dyn = [n: Nat, «n; Nat»];   // a component mentions a name to its left: a *mutable* sigma
+
+// `rec` puts the declared name in scope inside the body - the only way for a type to
+// mention itself - and keeps the sigma mutable even where nothing depends on it.
+rec List = [head: I32, tail: mem.Ptr0 List];
+
+// `and` extends the group, so two types may refer to each other.
+rec Tree   = [val: I32, kids: mem.Ptr0 Forest]
+and Forest = [car: mem.Ptr0 Tree, cdr: mem.Ptr0 Forest];
+
+// A mutable sigma's components carry field names, which beat lexical names of the same spelling.
+let tail = 1₂;
+lam by_field (l: List): mem.Ptr0 List = l#tail;
+lam by_var   (p: «2; Nat»): Nat       = p#(tail);   // parentheses force the variable
+
+// `rec` is also the only way to keep a genuine one-element aggregate.
+rec One = [x: Nat];
+lam real_extract (t: «2; One»): Nat = t#1₂#0₁;    // a real Extract into the 1-tuple
+lam axis_folds   (t: «2; One»): One = t#(1₂, 0₁); // the size-1 axis folds away: just `t#1₂`
+
+//------------------------------------------------------------------------------
+// Functions and continuations
+//------------------------------------------------------------------------------
+
+// | Declaration | Expression | Type |
+// | lam         | λ / lm     | →    |
+// | con         | cn         | Cn   |
+// | fun         | fn         | Fn   |
+
+// These three declare one and the same function; `@ff` is the partial-evaluation filter.
+lam pick_lam (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+con pick_con (T: *) ((x y: T), return: Cn T)        = return x;
+fun pick_fun (T: *)  (x y: T): T                    = return x;
+
+// The expression forms are anonymous, so they cannot call themselves.
+let anon_lam = λ  (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+let anon_lm  = lm (T: *) ((x y: T), return: T → ⊥)@ff: ⊥ = return x;
+let anon_cn  = cn (T: *) ((x y: T), return: Cn T)        = return x;
+let anon_fn  = fn (T: *)  (x y: T): T                    = return x;
+
+// And these three spell one and the same type.
+lam fn_ty1 (f: [T: *] →    [[T, T], T → ⊥] → ⊥): [T: *] → Cn [[T, T], Cn T] = f;
+lam fn_ty2 (f: [T: *] → Cn [[T, T], Cn T]):      [T: *] → Fn  [T, T] → T    = f;
+
+// `Cn X` has no codomain, so every name in its domain is erased.
+lam erased (f: Cn [x y: I32]): Cn [I32, I32] = f;
+
+// An implicit domain is written `{...}`; `@` passes one explicitly.
+lam ident {T: *} (x: T): T = x;
+let _ = refly.struc.e (ident 23, ident @Nat 23);
+
+// A singleton type.
+lam only (T: *) (x: ⦃T⦄): ⦃T⦄ = x;
+
+// `and` extends a declaration group to mutual recursion, and `ret p = f $ a; body`
+// binds the result of a continuation-style call.
+fun even (n: I32): Bool = core.select (n == 0I32, yes, no) () where
+    con yes() = return tt;
+    con no () = ret r = odd $ (n - 1I32); return r;
+end
+and fun odd (n: I32): Bool = core.select (n == 0I32, yes, no) () where
+    con yes() = return ff;
+    con no () = ret r = even $ (n - 1I32); return r;
+end;
+
+//------------------------------------------------------------------------------
+// Unions
+//------------------------------------------------------------------------------
+
+lam inject (A B: *) (x: A): A ∪ B = x inj A ∪ B;
+lam elim (A B: *) (x: A) (y: B): Nat =
+    match x inj A ∪ B with
+    | p: A => 0
+    | q: B => 1;
+
+//------------------------------------------------------------------------------
+// Infix operators
+//------------------------------------------------------------------------------
+
+// `a op b` is sugar for `` `op (a, b) `` - Mim gives the operators no meaning of their own.
+let arith = (1 + 2, 5 - 3, 2 * 3, 7 / 2, 7 % 2)       where use core.ops.n; end;
+let compa = (1 == 1, 1 != 2, 1 < 2, 1 <= 2, 2 > 1)    where use core.ops.n; end;
+let shift = (1I32 << 2I32, 8I32 >> 1I32);             // `core.ops.u.w`, in scope above
+
+// Rebind one and the arithmetic changes with it.
+let surprise = 2 + 3 where let `+ = core.nat.mul; end;
+let _ = refly.struc.e (surprise, 6);
+
+//------------------------------------------------------------------------------
+// Modules, visibility, annexes, axioms, and rules
+//------------------------------------------------------------------------------
+
+pub mod geo {
+    pub let dim = 3;
+    priv let hidden = 0;                // no path from outside may reach this
+
+    pub mod deep { pub let leaf = 7; }
+}
+
+use geo.deep as *;                      // splices `leaf` into this scope - a plain `use` is sugar for this …
+use geo.deep as dp;                     // … or binds another name for the module
+let _ = refly.struc.e (leaf, dp.leaf);
+let _ = refly.struc.e (leaf, geo.deep.leaf);
+
+anx let answer = 42;                    // an annex is additionally registered by its qualified name
+anx Answer = answer;                    // an alias for an annex
+
+axm Set: * → *;                                                 // an axiom
+axm set.(union = join, inter): {T: *} → [Set T, Set T] → Set T; // several at once, with an alias
+axm Curried: [Nat, Nat] → *, 1;                                 // … and a curry counter
+
+mod rewrites {
+    use core.ops.n;
+    rule dbl (a: Nat): (a + a) => (a * 2);              // a rewrite rule
+    norm zro (a: Nat): (a * 0) when (a == a) => 0;      // its normalizing variant
+}
+
+//------------------------------------------------------------------------------
+// The finale: `extern` declarations the ll backend can emit
+//------------------------------------------------------------------------------
+
+// A bodyless `extern` forward-declares a function living in a native translation unit.
+extern con println_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
+
+// `let` rebinding is what keeps state-threading code readable.
+// Don't name such a value `mem`: it would shadow the module, and `mem.load` would not resolve.
+extern fun roundtrip (m: mem.M 0, v: I32): [mem.M 0, I32] =
+    let (m, ptr) = mem.alloc (I32, 0) m;
+    let m        = mem.store (m, ptr, v);
+    let (m, val) = mem.load (m, ptr);
+    return (m, val);
+
+// Tick *optimize* in the playground to see this one as LLVM IR.
+extern fun fact (n: I32): I32 =
+    loop (1I32, n)
+    where
+        con loop (acc i: I32) = core.select (i > 0I32, body, exit) ()
+            where
+                con body() = loop (acc * i, i - 1I32);
+                con exit() = return acc;
+            end;
+    end;

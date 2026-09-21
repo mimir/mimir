@@ -233,6 +233,10 @@ struct DotConfig {
     bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
     bool show_hidden    = false; ///< Render otherwise-transparent detached edges (Var→binder back-edges,
                                  ///< shared literals/axioms, type edges) with a visible color.
+    bool dark        = false;    ///< Drop the white background and lighten the edges for a dark backdrop.
+    bool no_tooltip  = false;    ///< Omit the per-node tooltip; it is by far the bulkiest part of the output.
+    bool lean_labels = false;    ///< Label a node `<node_name> <unique_name>` instead of the HTML table.
+                                 ///< This drops the per-op ports, so its edges dock at the node itself.
 };
 
 /// Base class for all Def%s.
@@ -704,14 +708,23 @@ public:
     ///@}
 
     /// @name dump
-    /// @note While this output uses Mim syntax, it does usually **not** produce programs that can be read back.
-    /// It uses an unscheduled visiting algorithm, and is only meant for debugging purposes.
+    /// The output uses Mim syntax and - decls aside - reads back again.
     ///@{
-    void dump() const;
-    void dump(int max) const;
-    void write(int max) const;
-    void write(int max, const char* file) const;
-    std::ostream& stream(std::ostream&, int max) const;
+    /// How much of a Def's context a dump reproduces.
+    /// Def::dump is what you reach for in a debugger, so the cheap modes come first: Dump::Expr and Dump::Local
+    /// only walk Def::deps, while the others ask for free Var%s to find out where a Def belongs.
+    enum class Dump {
+        Expr,  ///< Only this Def; whatever does not inline is referenced by its name.
+        Local, ///< Its operands as `let`s as well - but stops at every other mutable.
+        Scope, ///< Plus the mutables that live in this Def's scope.
+        All,   ///< Plus everything else that is reachable.
+    };
+
+    void dump() const; ///< Dump::Expr - one line, no analysis.
+    void dump(Dump) const;
+    void write(Dump) const;
+    void write(Dump, const char* file) const;
+    std::ostream& stream(std::ostream&, Dump) const;
     ///@}
 
     /// @name Syntactic Comparison
@@ -758,9 +771,7 @@ private:
     template<bool init>
     Vars free_vars(World&, bool&, u32);
     void invalidate();
-    const Def** ops_ptr() const {
-        return reinterpret_cast<const Def**>(reinterpret_cast<char*>(const_cast<Def*>(this + 1)));
-    }
+    const Def** ops_ptr() const { return &type_ + 1; }
     bool equal(const Def* other) const;
     bool nests(Def*, MutSet&);
 
@@ -798,7 +809,7 @@ private:
 #ifndef NDEBUG
     u32 curr_op_ = 0; // an operand index, so u32 suffices (num_ops_ is u32 too); shares dbg_'s 8-byte slot
 #endif
-    mutable const Def* type_;
+    mutable const Def* type_; ///< Must stay last: Def::ops_ptr places the operands behind it.
 
     friend struct DefKey;
     friend class World;
@@ -808,9 +819,8 @@ private:
 
 inline u32 DefKey::key(const Def* d) noexcept { return d->gid_; }
 
-/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World, and Def::ops_ptr
-/// hands out the operands at `this + 1`, so the vptr would also shift them. Def carries its own Def::node()
-/// tag and dispatches on it instead - see the `dispatch` section in `def.cpp`.
+/// Def must never become polymorphic: a vptr costs 8 bytes on *every* node in the World and would shift Def::type_.
+/// Def dispatches on its own Def::node() tag instead - see the `dispatch` section in `def.cpp`.
 /// @note A *subclass* growing a `virtual` is caught by the `sizeof(Def) == sizeof(T)` assert in World::allocate.
 static_assert(!std::is_polymorphic_v<Def>, "Def must not have a vtable; dispatch on Def::node() instead");
 
@@ -1146,6 +1156,22 @@ inline auto type_of(const Def* def) {
         if (auto t = def->unfold_type()) return os << t;
         return os << "<no type>";
     }};
+}
+
+/// Appends the mutables reachable from @p mut via Def::deps / Def::local_muts to @p res in post-order: callees
+/// first, so a name is always bound before its uses.
+/// @p descend picks the mutables to walk through, @p collect those that land in @p res.
+/// @p done is passed in so that several roots share one traversal.
+template<class Descend, class Collect>
+void post_order(Def* mut, MutSet& done, fe::Vector<Def*>& res, Descend descend, Collect collect) {
+    if (!done.emplace(mut).second) return;
+
+    if (descend(mut))
+        for (auto op : mut->deps())
+            for (auto local_mut : op->local_muts())
+                post_order(local_mut, done, res, descend, collect);
+
+    if (collect(mut)) res.emplace_back(mut);
 }
 
 } // namespace mim

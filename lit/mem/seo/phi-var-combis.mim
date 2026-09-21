@@ -1,5 +1,4 @@
 // RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
-
 //      incoming  loop          |       incoming  loop
 // -----------------------------|---------------------
 // pa :       10  +1, take_addr |  a :       100    +1
@@ -14,11 +13,8 @@
 // -  b1 +  b2: one merged var
 // - pc  +  c : one merged var
 
-
 plugin mem;
 plugin core;
-plugin compile;
-plugin ll;
 
 use core.ops.n;
 
@@ -99,33 +95,9 @@ extern fun f (m: mem.M 0): [mem.M 0, Nat] =
                     let (m, vb1) = mem.load (m, pb1);
                     let (m, vb2) = mem.load (m, pb2);
                     let (m, vc ) = mem.load (m, pc );
-                    let res        = va;
-                    let res        = res + vb1;
-                    let res        = res + vb2;
-                    let res        = res + vc;
-                    let res        = res + a;
-                    let res        = res + b1;
-                    let res        = res + b2;
-                    let res        = res + c;
-                    return (m, res);
+                    return (m, va + vb1 + vb2 + vc + a + b1 + b2 + c);
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        compile.phases tt (
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-        compile.branch_normalize,
-        compile.ret_wrap,
-        compile.named "mem.alloc2malloc_repl",
-        compile.named "ll.emit",
-    );
 
 // pa remains a slot because its address escapes.
 // CHECK-LABEL: define i64 @f() {

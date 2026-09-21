@@ -48,6 +48,10 @@ foreach(PLUGIN IN LISTS MIM_PLUGIN_LIST)
     add_dependencies(mim_${PLUGIN} ${MIM_INTERNAL_PLUGINS})
 endforeach()
 
+if(MIM_STATIC_PLUGINS)
+    mim_static_plugin_registry(mim_static_plugins ${MIM_PLUGIN_LIST})
+endif()
+
 add_dependencies(mim_all mim_all_plugins)
 
 # `--bootstrap` never loads the plugin libraries, so it cannot exercise the normalizers an annex
@@ -57,7 +61,6 @@ add_dependencies(mim_all mim_all_plugins)
 option(MIM_VERIFY_PLUGINS "If ON, elaborate every plugin's .mim with its plugin library loaded." ON)
 
 if(MIM_VERIFY_PLUGINS)
-    set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")
     set(MIM_STAGED_MIMS ${MIM_PLUGIN_LIST})
     list(TRANSFORM MIM_STAGED_MIMS PREPEND "${MIM_PLUGIN_DIR}/")
     list(TRANSFORM MIM_STAGED_MIMS APPEND ".mim")

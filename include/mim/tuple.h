@@ -129,7 +129,8 @@ public:
         assert(r && "a dynamic rank has no statically indexable axes");
         return def_->proj(*r, i);
     }
-    const Def* front() const; ///< The outermost axis - the Def::arity of the Seq this shape describes.
+    /// The outermost axis - the Def::arity of the Seq this shape describes; null for a null Shape.
+    const Def* front() const;
     /// The extent of @p axis: the axis itself for a shape, its `Idx` size for an index.
     static std::optional<nat_t> extent(const Def* axis);
     ///@}

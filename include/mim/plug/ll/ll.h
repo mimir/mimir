@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <deque>
 #include <format>
 #include <fstream>
@@ -155,10 +156,7 @@ public:
 
     template<class... Args>
     void declare(std::format_string<Args...> s, Args&&... args) {
-        std::ostringstream decl;
-        decl << "declare ";
-        std::print(decl, s, std::forward<Args>(args)...);
-        decls_.emplace(decl.str());
+        decls_.emplace("declare " + std::format(s, std::forward<Args>(args)...));
     }
 
     /// How the C runtime wrappers (compiled to a `<name>.ll` via `add_mim_runtime`) reach the output.
@@ -276,7 +274,9 @@ private:
 
 inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* type) {
     if (auto arr = type->isa<Arr>(); arr && !arr->shape().is_fused()) {
-        if (auto l = Lit::isa(arr->arity())) {
+        // LLVM rounds a vector's store size up to a power of two, so only then does `<n x T>` occupy the
+        // `n * sizeof(T)` bytes that `mem`'s size arithmetic assumes.
+        if (auto l = Lit::isa(arr->arity()); l && std::has_single_bit(*l)) {
             if (arr->body()->isa<Nat>() || Idx::isa(arr->body()) || Axm::isa<math::F>(arr->body()))
                 return std::pair{*l, arr->body()};
         }
@@ -285,6 +285,7 @@ inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* typ
 }
 
 inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(Defs types) {
+    if (!std::has_single_bit(types.size())) return {};
     if (std::ranges::all_of(types, [&](auto i) { return i == types[0]; })) {
         if (types[0]->isa<Nat>() || Idx::isa(types[0]) || Axm::isa<math::F>(types[0]))
             return std::pair{types.size(), types[0]};
@@ -342,27 +343,42 @@ inline std::string Emitter::convert_ret_pi(const Pi* pi) {
 inline void Emitter::start() {
     Super::start();
 
+    auto sep     = "";
+    auto section = [this, &sep](std::string_view s) {
+        while (s.ends_with('\n'))
+            s.remove_suffix(1);
+        if (s.empty()) return;
+        std::println(ostream(), "{}{}", sep, s);
+        sep = "\n";
+    };
+
     // Splice the runtime wrapper module first (it carries the module's target triple/datalayout).
     if (rt_used_ && rt_ == Rt::embed) {
         if (rt_module_.empty())
             fe::throwf(MIM_LL_BE
                        "`-X ll:rt=embed` needs the runtime module `mim_rt.ll`, but it "
                        "was not found (build with clang / `MIM_BUILD_LL_RUNTIME=ON`, or use `-X ll:rt=extern`)");
-        ostream() << rt_module_ << '\n';
+        section(rt_module_);
     }
 
-    ostream() << type_decls_.str() << '\n';
+    section(type_decls_.str());
+
+    std::ostringstream decls;
     for (auto&& decl : decls_)
-        ostream() << decl << '\n';
-    ostream() << func_decls_.str() << '\n';
-    ostream() << vars_decls_.str() << '\n';
-    ostream() << func_impls_.str() << '\n';
+        std::println(decls, "{}", decl);
+    section(decls.str());
+
+    section(func_decls_.str());
+    section(vars_decls_.str());
+    section(func_impls_.str());
 
     // One distinct `!llvm.loop` node per hinted loop header, sharing the vectorize-enable hint.
     if (!loop_md_.empty()) {
-        std::println(ostream(), "!{} = !{{!\"llvm.loop.vectorize.enable\", i1 true}}", LoopMdBase);
+        std::ostringstream md_decls;
+        std::println(md_decls, "!{} = !{{!\"llvm.loop.vectorize.enable\", i1 true}}", LoopMdBase);
         for (const auto& [_, md] : loop_md_)
-            std::println(ostream(), "!{} = distinct !{{!{}, !{}}}", md, md, LoopMdBase);
+            std::println(md_decls, "!{} = distinct !{{!{}, !{}}}", md, md, LoopMdBase);
+        section(md_decls.str());
     }
 }
 
@@ -391,13 +407,13 @@ inline void Emitter::emit_imported(Lam* lam) {
         sep = ", ";
     }
 
-    std::print(func_decls_, ")\n");
+    std::println(func_decls_, ")");
 }
 
 inline std::string Emitter::prepare() {
     auto internal = root()->is_external() ? "" : "internal ";
     auto ret_t    = convert_ret_pi(root()->type()->ret_pi());
-    std::print(func_impls_, "define {} {} {}(", internal, ret_t, id(root()));
+    std::print(func_impls_, "define {}{} {}(", internal, ret_t, id(root()));
 
     auto vars = root()->vars();
     for (auto sep = ""; auto var : vars.view().rsubspan(1)) {
@@ -411,7 +427,7 @@ inline std::string Emitter::prepare() {
         sep = ", ";
     }
 
-    std::print(func_impls_, ") {{\n");
+    std::println(func_impls_, ") {{");
     return root()->unique_name();
 }
 

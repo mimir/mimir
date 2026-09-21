@@ -13,8 +13,6 @@
 // CHECK-NOT: = phi i64 [ [[V:i_[0-9]+]], {{[^],]+}} ], [ [[V]], {{[^],]+}} ]
 
 plugin core;
-plugin compile;
-plugin ll;
 plugin mem;
 
 use core.ops.n;
@@ -43,16 +41,3 @@ extern fun f(x: Nat): Nat =
                     return i;
             end
     end;
-
-extern lam _compile(): compile.Phase =
-    compile.phases ff (
-        compile.cleanup,
-        compile.phases tt (
-            compile.phases tt (
-                compile.beta_red,
-                compile.eta_conv,
-            ),
-            mem.seo,
-        ),
-        compile.named "ll.emit",
-    );

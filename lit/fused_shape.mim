@@ -33,3 +33,22 @@ extern lam packed_dep (m n: Nat, f: [Idx m, Idx n] → Nat, x: Idx m, y: Idx n):
 // Indexing still reads the same; the Extract just splits at the boundary.
 extern lam ragged (n: Nat, s: «n; Nat», t: «i: n, j: s#i; Nat», x: Idx n, y: Idx (s#x)): Nat =
     refly.struc.e (t#(x, y), t#x#y);
+
+// ## Insert
+
+// an insert into a fused Pack cannot unroll: its Def::arity is the front axis, its body still the scalar
+extern lam ins_fused (x: I32, row: «3; I32»): «3; I32» =
+    refly.struc.e ((‹2, 3; x›#0₂ ← row)#0₂, row);
+
+extern lam ins_fused_rest (x: I32, row: «3; I32»): «3; I32» =
+    refly.struc.e ((‹2, 3; x›#0₂ ← row)#1₂, ‹3; x›);
+
+extern lam ins_nested (x: I32, row: «3; I32»): «3; I32» =
+    refly.struc.e ((‹2; ‹3; x››#1₂ ← row)#0₂, ‹3; x›);
+
+extern lam ins_slab (x: I32, slab: «3, 4; I32»): «3, 4; I32» =
+    refly.struc.e ((‹2, 3, 4; x›#0₂ ← slab)#1₂, ‹3, 4; x›);
+
+// an unfused Pack still unrolls
+extern lam ins_flat (x y: I32): «3; I32» =
+    refly.struc.e (‹3; x›#1₃ ← y, (x, y, x));

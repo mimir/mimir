@@ -28,8 +28,8 @@ void split(DefSet& out, const Def* def, bool as_callee) {
         if (var->type()->isa<Pi>() || interesting_type(var)) out.insert(var);
     } else if (auto c = isa_clos_lit(def, false)) {
         split(out, c.fnc(), as_callee);
-    } else if (auto annotated = Anno::isa(def)) {
-        split(out, annotated, as_callee);
+    } else if (auto anno = Axm::isa<clos::anno>(def)) {
+        split(out, anno->arg(), as_callee);
     } else if (auto proj = def->isa<Extract>()) {
         split(out, proj->tuple(), as_callee);
     } else if (auto pack = def->isa<Pack>()) {
