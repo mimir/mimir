@@ -3,7 +3,8 @@
 [TOC]
 
 This page is the reference for Mim surface syntax.
-Every construct it defines also appears in `lit/docs/tutorial.mim`, one annotated file that tours the whole surface syntax and asserts what it shows with [refly](@ref refly), so the test suite keeps it honest.
+
+@note Every construct it defines also appears in `lit/docs/tutorial.mim`, one annotated file that tours the whole surface syntax and asserts what it shows with [refly](@ref refly), so the test suite keeps it honest.
 It is the [playground](@ref playground)'s landing example - open it there to run and edit the tour in the browser.
 
 ## Notation
@@ -355,8 +356,6 @@ let (m, ptr) = mem.alloc (I32, 0) m;
 let m        = mem.store (m, ptr, 23:I32);
 let (m, val) = mem.load (m, ptr);
 ```
-
-@note Don't name such a value `mem`: it would shadow the module `mem`, and the `mem.store` on the next line would no longer resolve.
 
 ### Expressions {#expr}
 
@@ -753,6 +752,11 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `x inj T` -> `x` if `T` is not a union type
 - `match (T inj x) with ...` -> the arm whose domain is `T` - a constructor fixes the active case
 - the arms of a `match` are sorted by their domain
+
+### Singletons
+
+- `#x` -> `e` for every `x: «e»` - the inhabitant is read off the *type*, so the var of a `λ (x: «e»)` never occurs in the body
+- `#‹e›` -> `e` - a special case of the above; a singleton elimination is therefore never built
 
 ### Universes
 

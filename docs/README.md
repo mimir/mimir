@@ -39,12 +39,12 @@ And it pays off in practice: the [regex](@ref regex) plugin is the fastest engin
 
 ## ✨ A Taste of Mim
 
-The following function `sq` squares `x` — for **any** type `T`, as long as you hand it a multiplication on `T`.
+The following function `sq` squares `x` for **any** type `T`, as long as you hand it a multiplication on `T`.
 Then, `f` instantiates `sq` for `Nat`:
 
 \include "sq.mim"
 
-@note ▶ Every Mim snippet in these docs comes with a run button that opens it in the [playground](https://mimir.github.io/playground/) — hit it to play around with the code right away.
+@note ▶ Every Mim snippet in these docs comes with a run button that opens it in the [playground](https://mimir.github.io/playground/): hit it to play around with the code right away.
 
 The type `T` sits in `{}` and is therefore an **implicit** argument: `f` just writes `sq nat.mul`, and MimIR infers `T = Nat` from the type of `nat.mul`.
 The remaining parameter is named `` `* `` — the [infix operator](@ref infix) `*` escaped into an ordinary identifier — so the body's `x * x` is nothing but an application of that very parameter.
