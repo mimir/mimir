@@ -132,6 +132,35 @@ enum class Node : node_t {
 static constexpr size_t Num_Nodes = size_t(0) MIM_NODE(CODE);
 #undef CODE
 
+/// The Node%s that may be *mutable*, with the same values as their Node.
+/// A switch over Def::mut_node without a `default` must handle each of them, so a new one breaks the build there.
+enum class MutNode : node_t {
+#define CODE(node) node = node_t(Node::node),
+    MIM_MUT_NODE(CODE)
+#undef CODE
+};
+
+constexpr bool is_mut_node(Node node) noexcept {
+    switch (node) {
+#define CODE(node) case Node::node:
+        MIM_MUT_NODE(CODE)
+#undef CODE
+        return true;
+        default: return false;
+    }
+}
+
+static_assert(
+    [] {
+        bool buildable[Num_Nodes] = {};
+#define CODE(node) buildable[node_t(Node::node)] = true;
+        MIM_IMM_NODE(CODE)
+        MIM_MUT_NODE(CODE)
+#undef CODE
+        return std::ranges::all_of(buildable, std::identity());
+    }(),
+    "every Node must be in MIM_IMM_NODE, MIM_MUT_NODE, or both");
+
 /// Tracks whether a Def transitively depends - through its Def::deps() but only up to (and excluding) the next
 /// *mutable* - on certain kinds of Def%s.
 /// @see Def::has_dep
@@ -308,6 +337,11 @@ public:
     constexpr u32 mark() const noexcept { return mark_; } ///< Used internally by free_vars().
     constexpr size_t hash() const noexcept { return hash_; }
     constexpr Node node() const noexcept { return node_; }
+    /// node() of a Def whose Node *may* be mutable, whether this one is or not; see MutNode.
+    constexpr MutNode mut_node() const noexcept {
+        assert(is_mut_node(node_));
+        return MutNode(node_);
+    }
     std::string_view node_name() const;
     ///@}
 

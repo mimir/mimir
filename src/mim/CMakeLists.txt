@@ -47,6 +47,8 @@ target_compile_features(libmim PUBLIC cxx_std_23)
 target_compile_options(libmim
     PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang>:-fno-semantic-interposition>
+        # A switch over MutNode without a `default` must handle every mutable node.
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Werror=switch>
 )
 
 if(MSVC)
