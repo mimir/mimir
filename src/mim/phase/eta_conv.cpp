@@ -2,6 +2,31 @@
 
 namespace mim {
 
+const Def* EtaConv::eta_reduce(const Lam* lam) {
+    if (auto i = eta_.find(lam); i != eta_.end()) return i->second;
+
+    fe::Vector<std::pair<const Lam*, const Def*>> chain;
+    GIDMap<const Lam*, size_t> index;
+
+    for (auto cur = lam;;) {
+        if (auto [i, ins] = index.emplace(cur, chain.size()); !ins) {
+            for (auto j = i->second, e = chain.size(); j != e; ++j)
+                eta_[chain[j].first] = nullptr;
+            chain.resize(i->second);
+            break;
+        }
+        auto f = cur->eta_reduce();
+        chain.emplace_back(cur, f);
+        auto next = f ? f->isa_mut<Lam>() : nullptr;
+        if (!next || eta_.contains(next)) break;
+        cur = next;
+    }
+
+    for (auto [l, f] : chain)
+        eta_[l] = f;
+    return eta_[lam];
+}
+
 bool EtaConv::analyze() {
     for (auto def : world().roots())
         visit(def, Lattice::Known);
@@ -25,7 +50,7 @@ void EtaConv::visit(const Def* def, Lattice l) {
     if (auto lam = def->isa_mut<Lam>()) {
         // Wrapper-transparency: a use of `λx.f x` counts as a use of `f` at the same lattice `l`.
         // Do *not* descend into the wrapper's body (which would classify `f` as Known).
-        if (auto f = lam->eta_reduce()) {
+        if (auto f = eta_reduce(lam)) {
             ++wrapper_uses_[lam]; // a wrapper serving several occurrences must be split into one per occurrence
             return visit(f, l);
         }
@@ -38,7 +63,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
     if (old_def->is_ground()) return old_def;
 
     if (auto lam = old_def->isa<Lam>()) {
-        if (auto f = lam->eta_reduce()) {
+        if (auto f = eta_reduce(lam)) {
             // η-redex `λx.f x`: reduce unless `f` wants to stay expanded.
             if (!keep_wrapper(f)) {
                 profile_count("η-reduction");
@@ -67,7 +92,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
 
 const Def* EtaConv::rewrite_no_exp(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>())
-        if (auto f = lam->eta_reduce(); f && !keep_wrapper(f)) {
+        if (auto f = eta_reduce(lam); f && !keep_wrapper(f)) {
             log().d("eta-reduce {} → {}", lam, f);
             invalidate();
             return rewrite_no_exp(f);

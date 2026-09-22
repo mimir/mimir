@@ -24,15 +24,19 @@ void BetaRed::visit(const Def* def, bool candidate) {
 
 const Def* BetaRed::rewrite_imm_App(const App* app) {
     if (auto old_lam = app->callee()->isa_mut<Lam>(); old_lam && old_lam->is_set() && is_candidate(old_lam)) {
-        profile_count("β-reduction");
-        log().d("β-reduction `{}`", old_lam);
         if (auto var = old_lam->has_var()) {
             auto new_arg = rewrite(app->arg());
             map(var, new_arg);
             // if we want to reduce more than once, we need to push/pop
         }
-        invalidate();
-        return rewrite(old_lam->body());
+        auto new_def = rewrite(old_lam->body());
+        // Mutually η-equivalent Lams unify, so the reduct may be the very App we started from: that is no progress.
+        if (new_def != app) {
+            profile_count("β-reduction");
+            log().d("β-reduction `{}`", old_lam);
+            invalidate();
+        }
+        return new_def;
     }
 
     return Rewriter::rewrite_imm_App(app);

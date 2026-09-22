@@ -74,6 +74,9 @@ private:
         if (auto [i, ins] = lam2lattice_.emplace(lam, l); !ins) i->second = join(i->second, l);
     }
 
+    /// Like Lam::eta_reduce but `nullptr` for a wrapper sitting on a cyclic η-chain (`f = λx.g x, g = λx.f x`).
+    const Def* eta_reduce(const Lam*);
+
     bool analyze() final;
     void analyze(const Def*);
     void visit(const Def*, Lattice);
@@ -89,6 +92,7 @@ private:
     const Def* rewrite_no_eta(const Def* old_def) { return Rewriter::rewrite(old_def); }
 
     DefSet analyzed_;
+    GIDMap<const Lam*, const Def*> eta_;
     GIDMap<const Lam*, Lattice> lam2lattice_;
     GIDMap<const Lam*, u32> wrapper_uses_; ///< How many occurrences does a wrapper `λx.f x` serve?
 };

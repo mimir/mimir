@@ -1,0 +1,9 @@
+// RUN: %mim %s -p opt -o - | %FileCheck %s
+
+// `id1` and `id2` η-reduce to each other, so both the η-chain and the β-reduct cycle.
+extern lam id1 (x: Nat)@ff: Nat = id2 x
+and
+lam id2 (x: Nat)@ff: Nat = id1 x;
+
+// CHECK-DAG: extern lam id1 ([[X:[[:alnum:]_]+]]: Nat)@(ff): Nat =
+// CHECK-DAG: id2_{{[0-9]+}} [[X]]
