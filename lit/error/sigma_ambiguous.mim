@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// Both sigmas are `«2; Nat»`, so they share one Def - and disagree on where `x` sits.
+let P = [x: Nat, y: Nat];
+let Q = [y: Nat, x: Nat];
+lam f (p: P): Nat = p#x;
+// CHECK: error: field `x` is ambiguous in `«2; Nat»`
+// CHECK: select the field by index instead, as in `t#0_2`
