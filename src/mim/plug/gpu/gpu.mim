@@ -17,8 +17,9 @@ import compile;
 ///
 /// Address space numbers correlate to the ones used by LLVM.
 /// @see
-/// * [User Guide for NVPTX Back-end](https://llvm.org/docs/NVPTXUsage.html#address-spaces)
-/// * [User Guide for AMDGPU Backend](https://llvm.org/docs/AMDGPUUsage.html#address-spaces)
+///
+/// - [User Guide for NVPTX Back-end](https://llvm.org/docs/NVPTXUsage.html#address-spaces)
+/// - [User Guide for AMDGPU Backend](https://llvm.org/docs/AMDGPUUsage.html#address-spaces)
 ///
 anx let addr_space_global = 1;
 anx let addr_space_shared = 3;
@@ -39,7 +40,7 @@ anx lam SharedPtr(T: *): * = mem.Ptr (T, addr_space_shared);
 anx lam ConstPtr(T: *): *  = mem.Ptr (T, addr_space_const);
 anx lam LocalPtr(T: *): *  = mem.Ptr (T, addr_space_local);
 ///
-/// ### Streams
+/// ### Stream Types
 ///
 axm Stream: *;
 axm default_stream: Stream;

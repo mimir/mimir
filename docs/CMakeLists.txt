@@ -1,7 +1,8 @@
-set(CLI_HELP   "${CMAKE_CURRENT_BINARY_DIR}/cli-help.md")
-set(XDOT_HELP  "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
-set(MIM_LOGO   "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
-set(LIT_DOCS   "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
+set(CLI_HELP    "${CMAKE_CURRENT_BINARY_DIR}/cli-help.md")
+set(TUTORIAL_MD "${CMAKE_CURRENT_BINARY_DIR}/tutorial.md")
+set(XDOT_HELP   "${CMAKE_CURRENT_BINARY_DIR}/xdot-help.gdb")
+set(MIM_LOGO    "${CMAKE_CURRENT_BINARY_DIR}/logo.svg")
+set(LIT_DOCS    "${PROJECT_SOURCE_DIR}/lit/docs") # the docs include them and render their graphs.
 set(SVG_COLOR_SCHEME "${CMAKE_CURRENT_SOURCE_DIR}/svg-color-scheme.cmake")
 
 # A plugin declares its -X arguments in its shared library, so all of them have to be loaded to be listed.
@@ -15,6 +16,14 @@ add_custom_command(
     COMMAND mim ${CLI_HELP_PLUGINS} --help-md > ${CLI_HELP}
     DEPENDS mim mim_all_plugins
     COMMENT "Generating help text of Mim's CLI"
+)
+
+add_custom_command(
+    OUTPUT ${TUTORIAL_MD}
+    COMMAND mim lit/docs/tutorial.mim --output-md ${TUTORIAL_MD}
+    DEPENDS mim mim_all_plugins "${LIT_DOCS}/tutorial.mim"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Generating the tutorial page from lit/docs/tutorial.mim"
 )
 
 # The tour graphs are small and fit on the page, so we render them to *static* SVGs
@@ -102,6 +111,7 @@ set(DOXY_EXTRA_FILES
     README.md
 )
 list(TRANSFORM DOXY_EXTRA_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+list(APPEND DOXY_EXTRA_FILES "${TUTORIAL_MD}")
 
 # Doxyfile.in wants space-separated lists.
 string(REPLACE ";" " " DOXY_EXTRA_FILES_CONFIG "${DOXY_EXTRA_FILES}")

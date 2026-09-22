@@ -23,8 +23,9 @@ anx let Key = [T: *, lt: [T, T] → Bool];
 /// ### Set / Map
 ///
 /// Type constructors for set / map.
-/// * First argument must be of type `ord.Key`.
-/// * `ord.Map` needs a second argument: the value type.
+///
+/// - First argument must be of type `ord.Key`.
+/// - `ord.Map` needs a second argument: the value type.
 ///
 axm Set: Key     → *;
 axm Map: Key → * → *;

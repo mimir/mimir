@@ -237,7 +237,7 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit,
 static constexpr PluginArg known_args[] = {
     {"o=<file>, output=<file>",         "Writes the host LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`; `<file>` may be `-` for stdout."},
     {"o-dev=<file>, output-dev=<file>", "Writes the device LLVM IR to `<file>` instead of the default `<world>_dev.ll`/`a_dev.ll`; `<file>` may be `-` for stdout."},
-    {"rt=embed, rt=extern",             "Like `ll`'s `rt`, but for the host module's C [runtime wrappers](@ref plugin_runtime) such as `@mim_cu_check`."},
+    {"rt=embed, rt=extern",             "Like `ll`'s `rt`, but for the host module's C runtime wrappers such as `@mim_cu_check`."},
     {"embed, no-embed",                 "Embeds the compiled device binary into the host LLVM IR, or doesn't; the default is `embed` on Linux and `no-embed` elsewhere."},
     {"no-ptx-embed",                    "When embedding: omits the PTX image from the fat binary (default: both PTX and CUBIN)."},
     {"no-cubin-embed",                  "When embedding: omits the CUBIN image from the fat binary (default: both PTX and CUBIN)."},

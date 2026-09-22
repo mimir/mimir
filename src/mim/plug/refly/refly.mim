@@ -49,8 +49,9 @@ axm gid: {T: *} → T → Nat, normalize_gid;
 /// ### dbg
 ///
 /// Debugs a given expression.
-/// * `tmp`: Prints debug information of a given expression at construction time and vanishes afterwards.
-/// * `perm`: Permanently debugs at every construction.
+///
+/// - `tmp`: Prints debug information of a given expression at construction time and vanishes afterwards.
+/// - `perm`: Permanently debugs at every construction.
 ///   Gets removed at codegen preparation in mim::plug::refly::RemoveDbgPerm.
 ///
 anx let error   = 0;

@@ -13,6 +13,7 @@ plugin mem;
 /// ### nat
 ///
 /// Standard arithmetic operations on `Nat`s:
+///
 /// - `core.nat.sub (a, b)` yields `0` if `a < b`.
 /// - `core.nat.div (a, b)` yields `0` if `b` is `0`.
 /// - `core.nat.rem (a, b)` yields `a` if `b` is `0`.
@@ -23,9 +24,10 @@ axm nat.(add, sub, mul, div, rem): «2; Nat» → Nat, normalize_nat;
 /// ### ncmp
 ///
 /// Nat comparison is composed of 3 disjoint relations:
-/// * `G`reater
-/// * `L`ess
-/// * `E`qual
+///
+/// - `G`reater
+/// - `L`ess
+/// - `E`qual
 ///
 /// | Subtag | Alias | G | L | E | Meaning          |
 /// |--------|-------|---|---|---|------------------|
@@ -49,6 +51,7 @@ axm ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
 /// Instead, the operations themselves exhibit signed or unsigned behavior.
 ///
 /// For `Idx s`,
+///
 /// - **unsigned** interpretation is the canonical carrier order on the finite set \f$ \{ 0, \dots, s-1 \} \f$.
 /// - **signed** interpretation is defined by choosing, for each residue class modulo \f$s\f$, its canonical signed representative.
 ///
@@ -133,14 +136,16 @@ axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
 /// ### shr
 ///
 /// Shift right:
-/// * [`a`rithmetic shift right](https://en.wikipedia.org/wiki/Arithmetic_shift)
-/// * [`l`ogical shift right](https://en.wikipedia.org/wiki/Logical_shift)
+///
+/// - [`a`rithmetic shift right](https://en.wikipedia.org/wiki/Arithmetic_shift)
+/// - [`l`ogical shift right](https://en.wikipedia.org/wiki/Logical_shift)
 ///
 /// For `Idx s`, the shift count must be smaller than the minimal bit width needed to encode the carrier.
 /// For `Idx ⊤`, this width is `64`; otherwise it is `max(1, ceil(log2(s)))`.
 /// Larger counts are undefined behavior.
-/// * `shr.l` divides the unsigned representative by `2^b`.
-/// * `shr.a` divides the signed representative by `2^b`, rounding toward `-∞`.
+///
+/// - `shr.l` divides the unsigned representative by `2^b`.
+/// - `shr.a` divides the signed representative by `2^b`, rounding toward `-∞`.
 ///
 axm shr.(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 ///
@@ -170,11 +175,12 @@ axm div.(sdiv, udiv, srem, urem):
 /// ### icmp
 ///
 /// Integer comparison is composed of 5 disjoint relations:
-/// * `X`: first operand plus, second minus
-/// * `Y`: first operand minus, second plus
-/// * `G`: greater with same sign
-/// * `L`: less with same sign
-/// * `E`: equal
+///
+/// - `X`: first operand plus, second minus
+/// - `Y`: first operand minus, second plus
+/// - `G`: greater with same sign
+/// - `L`: less with same sign
+/// - `E`: equal
 ///
 /// Here is the complete picture for `core.icmp.xygle x, y` for 3 bit wide integers:
 ///
@@ -243,6 +249,7 @@ axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
 /// ### extrema
 ///
 /// Minimum and maximum of two integers:
+///
 /// - un`s`igned or `S`igned
 /// - `m`inimum or `M`aximum
 ///
@@ -261,6 +268,7 @@ axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
 /// ### conv
 ///
 /// Conversion between index types - both signed and unsigned - of different sizes.
+///
 /// - `conv.u` preserves the unsigned representative modulo the destination carrier.
 /// - `conv.s` preserves the signed representative modulo the destination carrier.
 ///

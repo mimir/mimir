@@ -38,26 +38,26 @@ void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plu
         driver.load(plugin);
 
     if (!driver.known_args().empty()) {
-        cli.section("Plugin Arguments");
+        cli.section(md ? "Plugin Arguments {#xargs}" : "Plugin Arguments");
 
         for (const auto& [plugin, args] : driver.known_args()) {
             auto rows = fe::Cli::Rows();
             for (const auto& arg : args)
                 rows.emplace_back(arg.syntax, arg.descr);
-            // The Markdown gets an anchor, so that a plugin's own page can link to its table.
-            auto title = md ? std::format("{0} {{#xarg_{0}}}", plugin) : plugin;
+            // The Markdown links back to the plugin's page and carries the anchor that page links to.
+            auto title = md ? std::format("[{0}](@ref {0}) {{#xarg_{0}}}", plugin) : plugin;
             cli.section(std::move(title), "Argument", std::move(rows));
         }
     }
     if (!driver.known_envs().empty()) {
-        cli.section("Plugin Environment Variables");
+        cli.section(md ? "Plugin Environment Variables {#envs}" : "Plugin Environment Variables");
 
         for (const auto& [plugin, envs] : driver.known_envs()) {
             auto rows = fe::Cli::Rows();
             for (const auto& env : envs)
                 rows.emplace_back(env.name, env.descr);
-            // The Markdown gets an anchor, so that a plugin's own page can link to its table.
-            auto title = md ? std::format("{0} {{#env_{0}}}", plugin) : std::string(plugin);
+            // Ditto.
+            auto title = md ? std::format("[{0}](@ref {0}) {{#env_{0}}}", plugin) : std::string(plugin);
             cli.section(std::move(title), "Variable", std::move(rows));
         }
     }

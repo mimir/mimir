@@ -1,12 +1,15 @@
 /// # The ll_nvptx Plugin {#ll_nvptx}
 ///
 /// @see [`-X ll_nvptx:<arg>`](@ref xarg_ll_nvptx)
+/// @see [`$CUDA_HOME`](@ref env_ll_nvptx)
 /// @see mim::plug::ll_nvptx
 ///
 /// An LLVM backend that targets NVIDIA GPUs.
 /// Loading this plugin (`mim foo.mim -p ll_nvptx`) appends an emission phase to the compilation pipeline that splits the fully lowered program into a host world and a device world.
 /// It writes the host LLVM IR to `<world>.ll` and the device LLVM IR (with PTX intrinsics) to `<world>_dev.ll`, and — on Linux by default — compiles and embeds the device binary into the host LLVM IR.
 /// The output paths and the embedding behavior can be overridden via [`-X ll_nvptx:<arg>`](@ref xarg_ll_nvptx).
+/// Its `rt` argument selects how the host module reaches the C [runtime wrappers](@ref plugin_runtime), just like [ll](@ref ll)'s.
+/// Embedding needs `libdevice`, which it looks for in the CUDA paths and, failing that, under [`$CUDA_HOME`](@ref env_ll_nvptx).
 ///
 /// [TOC]
 ///

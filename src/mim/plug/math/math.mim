@@ -72,14 +72,15 @@ anx lam minus (m: Nat) {pe: «2; Nat»} (a: F pe): F pe =
 /// ### extrema
 ///
 /// Minimum and maximum:
-/// * `m`in or `M`ax
-/// * `i`:
+///
+/// - `m`in or `M`ax
+/// - `i`:
 ///   Follows the behavior of libm's fmin/fmax.
 ///   If either operand is a NaN, returns the other non-NaN operand.
 ///   Returns NaN only if both operands are NaN; the returned NaN is always quiet.
 ///   If the operands compare equal, returns a value that compares equal to both operands.
 ///   This means that `fmin(+/-0.0, +/-0.0)` could return either `-0.0` or `0.0`.
-/// * `I`:
+/// - `I`:
 ///   Follows the semantics of `minNum`/`maxNum` specified in the draft of IEEE 754-2018.
 ///   If either operand is a NaN, returns NaN.
 ///   Otherwise, returns the lesser of the two arguments.
@@ -100,9 +101,9 @@ axm extrema.(im = fmin,       iM = fmax,
 ///
 /// [Trigonometric](https://en.wikipedia.org/wiki/Trigonometric_functions) and [hypberbolic](https://en.wikipedia.org/wiki/Hyperbolic_functions) functions.
 ///
-/// * `FF`: sine, cosine, tangent, *unused*
-/// * `H`yperbolic counterpart
-/// * `A`rcus/`A`rea counterpart (inverse)
+/// - `FF`: sine, cosine, tangent, *unused*
+/// - `H`yperbolic counterpart
+/// - `A`rcus/`A`rea counterpart (inverse)
 ///
 /// | Subtag | Alias        | A | H | FF | Meaning                   | Semantics               |
 /// |--------|--------------|---|---|----|---------------------------|-------------------------|
@@ -149,8 +150,9 @@ axm rt.(sq, cb): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_rt;
 /// ### exp
 ///
 /// [Exponential function](https://en.wikipedia.org/wiki/Exponential_function) and [logarithm](https://en.wikipedia.org/wiki/Logarithm):
-/// * `L`ogarithm
-/// * `BB`: natural, binary, decimal, *unused*
+///
+/// - `L`ogarithm
+/// - `BB`: natural, binary, decimal, *unused*
 ///
 /// | Subtag | Alias          | L | BB | Meaning                  | Semantics         |
 /// |--------|----------------|---|----|--------------------------|-------------------|
@@ -182,10 +184,10 @@ axm er.(f, fc): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_er;
 ///
 /// [Gamma function](https://en.wikipedia.org/wiki/Gamma_function) and its natural [logarithm](https://en.wikipedia.org/wiki/Gamma_function#The_log-gamma_function).
 ///
-/// | Name              | Meaning                             | Semantics                                                        |
-/// |-------------------|-------------------------------------|------------------------------------------------------------------|
-/// | `math.gamma.t`    | gamma function                      | \f$\Gamma(x) = \int_0^\infty t^{x-1} e^{-t}\,dt\f$               |
-/// | `math.gamma.l`    | natural logarithm of gamma function | \f$\ln \mid \int_0^\infty t^{x-1} e^{-t}\,dt \mid\f$ |
+/// | Name           | Meaning                             | Semantics                                            |
+/// |----------------|-------------------------------------|------------------------------------------------------|
+/// | `math.gamma.t` | gamma function                      | \f$\Gamma(x) = \int_0^\infty t^{x-1} e^{-t}\,dt\f$   |
+/// | `math.gamma.l` | natural logarithm of gamma function | \f$\ln \mid \int_0^\infty t^{x-1} e^{-t}\,dt \mid\f$ |
 ///
 axm gamma.(t, l): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_gamma;
 ///
@@ -198,17 +200,18 @@ axm abs: Nat → {pe: «2; Nat»} → F pe → F pe, normalize_abs;
 /// ### round
 ///
 /// Common rounding operations for floating-point numbers:
+///
 /// - `f`loor
 /// - `c`eil
 /// - `r`ound
 /// - `t`runcate
 ///
-/// | Name             | Meaning                                                                                            | Semantics                |
-/// |------------------|-----------------------------------------------------------------------------------------------------|-------------------------|
-/// | `math.round.f`   | [round down](https://en.wikipedia.org/wiki/Rounding#Rounding_down)                                 | \f$\lfloor x \rfloor \f$ |
-/// | `math.round.c`   | [round up](https://en.wikipedia.org/wiki/Rounding#Rounding_up)                                     | \f$\lceil x \rceil \f$   |
-/// | `math.round.r`   | [round to nearest integer](https://en.wikipedia.org/wiki/Rounding#Rounding_to_the_nearest_integer) | \f$round (x)\f$          |
-/// | `math.round.t`   | [round towards zero](https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero)                  | \f$trunc (x)\f$          |
+/// | Name           | Meaning                                                                                            | Semantics                |
+/// |----------------|----------------------------------------------------------------------------------------------------|--------------------------|
+/// | `math.round.f` | [round down](https://en.wikipedia.org/wiki/Rounding#Rounding_down)                                 | \f$\lfloor x \rfloor \f$ |
+/// | `math.round.c` | [round up](https://en.wikipedia.org/wiki/Rounding#Rounding_up)                                     | \f$\lceil x \rceil \f$   |
+/// | `math.round.r` | [round to nearest integer](https://en.wikipedia.org/wiki/Rounding#Rounding_to_the_nearest_integer) | \f$round (x)\f$          |
+/// | `math.round.t` | [round towards zero](https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero)                  | \f$trunc (x)\f$          |
 ///
 axm round.(f,c,r,t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round;
 ///
@@ -217,29 +220,30 @@ axm round.(f,c,r,t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round
 /// ### cmp
 ///
 /// Floating-point comparison is composed of 4 disjoint relations:
+///
 /// - `U`nordered (yields true if either operand is a QNaN)
 /// - `G`reater
 /// - `L`ess
 /// - `E`qual
 ///
-/// | Subtag | Alias | U | G | L | E | Meaning                      |
-/// |--------|-------|---|---|---|---|------------------------------|
-/// | `ugle` |   `f` | o | o | o | o | always false                 |
-/// | `uglE` |   `e` | o | o | o | x | ordered and equal            |
-/// | `ugLe` |   `l` | o | o | x | o | ordered and less             |
-/// | `ugLE` |  `le` | o | o | x | x | ordered and less or equal    |
-/// | `uGle` |   `g` | o | x | o | o | ordered and greater          |
-/// | `uGlE` |  `ge` | o | x | o | x | ordered and greater or equal |
-/// | `uGLe` |  `ne` | o | x | x | o | ordered and not equal        |
-/// | `uGLE` |   `o` | o | x | x | x | ordered (no NaNs)            |
-/// | `Ugle` |   `u` | x | o | o | o | unordered (either is NaN)   |
-/// | `UglE` |  `ue` | x | o | o | x | unordered or equal           |
-/// | `UgLe` |  `ul` | x | o | x | o | unordered or less            |
-/// | `UgLE` | `ule` | x | o | x | x | unordered or less or equal   |
-/// | `UGle` |  `ug` | x | x | o | o | unordered or greater         |
+/// | Subtag | Alias | U | G | L | E | Meaning                       |
+/// |--------|-------|---|---|---|---|-------------------------------|
+/// | `ugle` |   `f` | o | o | o | o | always false                  |
+/// | `uglE` |   `e` | o | o | o | x | ordered and equal             |
+/// | `ugLe` |   `l` | o | o | x | o | ordered and less              |
+/// | `ugLE` |  `le` | o | o | x | x | ordered and less or equal     |
+/// | `uGle` |   `g` | o | x | o | o | ordered and greater           |
+/// | `uGlE` |  `ge` | o | x | o | x | ordered and greater or equal  |
+/// | `uGLe` |  `ne` | o | x | x | o | ordered and not equal         |
+/// | `uGLE` |   `o` | o | x | x | x | ordered (no NaNs)             |
+/// | `Ugle` |   `u` | x | o | o | o | unordered (either is NaN)     |
+/// | `UglE` |  `ue` | x | o | o | x | unordered or equal            |
+/// | `UgLe` |  `ul` | x | o | x | o | unordered or less             |
+/// | `UgLE` | `ule` | x | o | x | x | unordered or less or equal    |
+/// | `UGle` |  `ug` | x | x | o | o | unordered or greater          |
 /// | `UGlE` | `uge` | x | x | o | x | unordered or greater or equal |
-/// | `UGLe` | `une` | x | x | x | o | unordered or not equal       |
-/// | `UGLE` |   `t` | x | x | x | x | always true                  |
+/// | `UGLe` | `une` | x | x | x | o | unordered or not equal        |
+/// | `UGLE` |   `t` | x | x | x | x | always true                   |
 ///
 axm cmp.(ugle =   f, uglE =   e, ugLe =   l, ugLE =  le,
          uGle =   g, uGlE =  ge, uGLe =  ne, uGLE =   o,
@@ -266,17 +270,20 @@ pub mod conv {
 }
 ///
 /// ### slf
+///
 /// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)
 ///
 anx lam slf (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m ((conv.f2f pe 1.0:(F64)), arith.add m ((conv.f2f pe 1.0:(F64)), exp.exp m (minus m x)));
 ///
 /// ### sgn
+///
 /// [Sign function](https://en.wikipedia.org/wiki/Sign_function)
 anx lam sgn (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     ((conv.f2f pe (-1.0:(F64))), ((conv.f2f pe 0.0:(F64)), (conv.f2f pe 1.0:(F64)))#(cmp.g m (x,(conv.f2f pe 0.0:(F64)))))#(cmp.ge m (x, (conv.f2f pe 0.0:(F64))));
 ///
 /// ### rrt
+///
 /// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)
 anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
     arith.div m (conv.f2f pe 1.0:(F64), rt.sq m x);

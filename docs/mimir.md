@@ -317,8 +317,8 @@ This is the foundation the [`tensor`](@ref tensor) plugin builds on: array shape
 
 <div class="section_buttons">
 
-| Previous           |                               Next |
-| :----------------- | ---------------------------------: |
-| [Home](@ref index) | [Command-Line Reference](@ref cli) |
+| Previous           |                      Next |
+| :----------------- | ------------------------: |
+| [Home](@ref index) | [Tutorial](@ref tutorial) |
 
 </div>

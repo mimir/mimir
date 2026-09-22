@@ -54,7 +54,7 @@ Tok Lexer::lex() {
         if (accept(utf8::EoF)) {
             if (fenced_) {
                 md_flush();
-                *md_ << '\n';
+                if (md_nls_ == 0) md_emit("\n"); // the buffer may end without one
                 md_close();
             }
             return tok(Tag::EoF);
@@ -413,6 +413,7 @@ void Lexer::emit_md(bool start_of_file) {
     if (!start_of_file) {
         md_flush();
         md_close();
+        md_blank();
     }
 
     do {

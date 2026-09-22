@@ -17,10 +17,11 @@ plugin refly;
 /// ### fold
 ///
 /// [Fold aka Reduction](https://en.wikipedia.org/wiki/Fold_(higher-order_function)) of the vector with `f`:
-/// * `vec.fold.l f (init, (e1, ..., en))` is `f (... (f (f (init, e1), e2)) ..., en)`.
-/// * `vec.fold.r f ((e1, ..., en), init)` is `f (e1, f (e2, ... (f (en, init) ...)))`.
 ///
-/// | `vec.fold.l`                                                                                   | `vec.fold.r`                                                                                      |
+/// - `vec.fold.l f (init, (e1, ..., en))` is `f (... (f (f (init, e1), e2)) ..., en)`.
+/// - `vec.fold.r f ((e1, ..., en), init)` is `f (e1, f (e2, ... (f (en, init) ...)))`.
+///
+/// | `vec.fold.l`                                                                                   | `vec.fold.r`                                                                                     |
 /// |------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
 /// | ![Left Fold](https://upload.wikimedia.org/wikipedia/commons/5/5a/Left-fold-transformation.png) | ![Right Fold](https://upload.wikimedia.org/wikipedia/commons/3/3e/Right-fold-transformation.png) |
 ///

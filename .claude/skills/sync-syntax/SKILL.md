@@ -60,14 +60,17 @@ The normative reference; the other four follow it, so do this one first.
 ### `lit/docs/tutorial.mim`
 
 The tour: **every construct langref defines must show up here**, in a section following langref's own order.
-It is a lit test, not prose - each claim is a static `refly` assertion, so the file compiling at all is what tests it - and it is the playground's landing example, so it is also the first Mim anyone reads.
+It is a lit test, not prose - each claim is a static `refly` assertion, so the file compiling at all is what tests it - and `mim --output-md` renders it into the docs as the Tutorial page, which is also the playground's landing example, so it is the first Mim anyone reads.
 
+- A `///` line becomes Markdown prose and interrupts the surrounding `mim` code fence; a `//` comment stays inside it.
+  So a section heading (`/// ## …`) and the sentence introducing a construct are `///`, while a remark on a single line of code is a trailing `//`.
 - Show the new construct where it belongs, with a one-line `//` comment saying what it demonstrates.
   Match the surrounding density: one or two lines per construct, not a paragraph.
 - Assert wherever there is something to assert.
   `refly.struc.e (a, b)` states that two *terms* are the same node; where two *types* coincide, a `lam` whose parameter type and return type differ is the assertion - as in `sigma_is_array`, `erased`, and `fuse`.
   A construct with nothing to compare against just has to typecheck.
 - Both RUN lines matter: the second is `%mim -p ll %s`, so new code must also survive the ll backend.
+  They live in an HTML comment at the top, so the docs page doesn't show them.
   Keep anything the backend chokes on - a runtime-size pack, say - out of an `extern` the emitter reaches.
 - Renaming or removing a construct breaks this file; fix it here rather than deleting the line, or the tour loses a section.
 

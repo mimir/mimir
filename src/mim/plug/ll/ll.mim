@@ -7,7 +7,7 @@
 ///
 /// The LLVM backend.
 /// Loading this plugin (`mim foo.mim -p ll`) appends an emission phase to the compilation pipeline that writes the LLVM IR of the fully lowered program to `<world>.ll` (or `a.ll` if the world is unnamed).
-/// The output path can be overridden via the `-X ll:o=<file>` command-line argument.
+/// The output path can be overridden via [`-X ll:o=<file>`](@ref xarg_ll).
 /// Some intrinsics are lowered to calls into a small C [runtime](@ref plugin_runtime) (`rt/mim_rt.c`) whose LLVM IR is embedded into or linked with the output, controlled via `-X ll:rt=embed`/`extern`.
 ///
 /// ## Dependencies

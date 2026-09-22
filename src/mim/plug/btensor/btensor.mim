@@ -88,11 +88,12 @@ axm map_reduce: {nis: Nat}
 /// below: the affine-indexed generalisation of `map_reduce` on `buffer.Buf` operands, threading
 /// `mem.M`.
 /// Same groups in the same order as there, so only the differences:
-/// * `f` and the `post` epilogue are mem-threaded.
-/// * `sched` **is** the op's schedule — a chooser over the target's loop-nest builder (canonically a
+///
+/// - `f` and the `post` epilogue are mem-threaded.
+/// - `sched` **is** the op's schedule — a chooser over the target's loop-nest builder (canonically a
 ///   `tensor.mk_sched` value) selected in the frontend; `lower_map_reduce` binds it to `mr_nest` and
 ///   merely **applies** the result to the op's decision-free fold step and write-back.
-/// * `So`/`Sr` are the *logical* output shape and loop bounds, while the `buffer.Buf` handles may have
+/// - `So`/`Sr` are the *logical* output shape and loop bounds, while the `buffer.Buf` handles may have
 ///   size-1 axes folded away.
 axm map_reduce_post: {nis nps: Nat}
                    → {To Tp: *, Ro Rn: Nat, TSched: □}
@@ -111,10 +112,11 @@ axm map_reduce_post: {nis nps: Nat}
 /// ### mk_sched
 ///
 /// The canonical **schedule** value: a chooser over the target's loop-nest builder, picking
-/// * `vdim`, the dim to run innermost as the unit-stride vector loop — a parallel dim runs over a row
+///
+/// - `vdim`, the dim to run innermost as the unit-stride vector loop — a parallel dim runs over a row
 ///   of accumulators, the innermost **reduction** dim selects the reduction-vectorized nest (see
 ///   `mr_nest`), and `vdim ≥ Rn` means "none";
-/// * `unroll`, the number of trailing reduction dims to unroll into straight-line code.
+/// - `unroll`, the number of trailing reduction dims to unroll into straight-line code.
 ///
 /// `tensor.mk_sched` is an alias for this lam: `btensor` owns it for the same reason it owns `Ring`.
 anx lam mk_sched (vdim unroll: Nat) (N: *) (mk: [vdim unroll: Nat] → N): N = mk (vdim, unroll);
@@ -362,11 +364,12 @@ anx lam NestT (ro rr: Nat, Sr: «ro + rr; Nat», To U: *): * =
 /// ### mr_nest
 ///
 /// The scheduled nest builder, selecting one of the four nests below from the schedule:
-/// * `unroll` trailing reduction dims always run as compile-time-unrolled straight-line code.
-/// * a `vdim` naming a parallel dim (currently the last one) of extent ≠ 1 runs it as the innermost
+///
+/// - `unroll` trailing reduction dims always run as compile-time-unrolled straight-line code.
+/// - a `vdim` naming a parallel dim (currently the last one) of extent ≠ 1 runs it as the innermost
 ///   loop, inside the reduction loops, over a row-accumulator buffer — the unit-stride vectorization
 ///   dim.
-/// * a `vdim` naming the innermost **reduction** dim selects the reduction-vectorized nest (`redvec`
+/// - a `vdim` naming the innermost **reduction** dim selects the reduction-vectorized nest (`redvec`
 ///   below): the contraction runs as the vector loop with the last parallel dim unroll-and-jammed
 ///   into its body.
 ///

@@ -50,12 +50,13 @@ axm longjmp: Cn [mem.M 0, BufPtr, I32];
 /// A family of mim::Anno%tations wrapped around a `Lam` (or a use of it) that classifies how it is used.
 /// mim::plug::clos::phase::ClosConvPrep introduces these so that mim::plug::clos::phase::ClosConv sees a canonical
 /// program and can treat each kind of continuation appropriately:
-/// * `returning`: a *returning continuation* ("function"); fully closure converted.
-/// * `free_bb`: an ordinary basic block referenced from an enclosing scope (see mim::Lam::isa_basicblock).
-/// * `fstclass_bb`: a basic block used as a first-class value (passed around) rather than only called.
-/// * `esc`: a closure whose environment escapes its parent scope, so it is heap- instead of stack-allocated
+///
+/// - `returning`: a *returning continuation* ("function"); fully closure converted.
+/// - `free_bb`: an ordinary basic block referenced from an enclosing scope (see mim::Lam::isa_basicblock).
+/// - `fstclass_bb`: a basic block used as a first-class value (passed around) rather than only called.
+/// - `esc`: a closure whose environment escapes its parent scope, so it is heap- instead of stack-allocated
 ///   (introduced by mim::plug::clos::phase::LowerTypedClosPrep).
-/// * `bottom`: no special use; it carries no intent and `normalize_clos` removes it right away.
+/// - `bottom`: no special use; it carries no intent and `normalize_clos` removes it right away.
 ///
 /// The `clos` phases are the only consumers; until the last of them has run, dropping one of these annotations
 /// loses the classification and closure conversion picks the wrong treatment.

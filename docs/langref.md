@@ -4,8 +4,9 @@
 
 This page is the reference for Mim surface syntax.
 
-@note Every construct it defines also appears in `lit/docs/tutorial.mim`, one annotated file that tours the whole surface syntax and asserts what it shows with [refly](@ref refly), so the test suite keeps it honest.
-It is the [playground](@ref playground)'s landing example - open it there to run and edit the tour in the browser.
+@note The [Tutorial](@ref tutorial) shows every construct defined here in one annotated file.
+That page is `lit/docs/tutorial.mim` rendered by `mim --output-md`, and the file asserts what it shows with [refly](@ref refly), so the test suite keeps the tour honest.
+It is also the [playground](@ref playground)'s landing example - open it there to run and edit the tour in the browser.
 
 ## Notation
 

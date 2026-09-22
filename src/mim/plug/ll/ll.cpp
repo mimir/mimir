@@ -21,8 +21,9 @@ namespace vecp = mim::plug::vec;
 
 /// Pipeline phase for `ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
-/// The output path can be overridden on the command line via `-X ll:o=<file>` or `-X ll:output=<file>`; `<file>` may be
-/// `-` for stdout. The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
+/// The output path can be overridden via [`-X ll:o=<file>`](@ref xarg_ll) or `-X ll:output=<file>`.
+/// `<file>` may be `-` for stdout.
+/// The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
 class Emit : public Phase {
 public:
     Emit(World& world, flags_t annex)
@@ -1142,7 +1143,7 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll::emit, plug:
 // clang-format off
 static constexpr PluginArg known_args[] = {
     {"o=<file>, output=<file>", "Writes the LLVM IR to `<file>` instead of the default `<world>.ll`/`a.ll`; `<file>` may be `-` for stdout."},
-    {"rt=embed, rt=extern",     "How the C [runtime wrappers](@ref plugin_runtime) reach the output: `embed` (default) splices their LLVM IR into the module; `extern` only `declare`s them and leaves linking to you."},
+    {"rt=embed, rt=extern",     "How the C runtime wrappers reach the output: `embed` (default) splices their LLVM IR into the module; `extern` only `declare`s them and leaves linking to you."},
 };
 // clang-format on
 

@@ -35,6 +35,7 @@ And it pays off in practice: the [regex](@ref regex) plugin is the fastest engin
 
 @note 🆕 **New here?**
 - 🧭 Read the [**Tour of MimIR**](@ref mimir) — it walks through Mim's syntax and MimIR's plugin architecture.
+- 🎓 Take the [**Tutorial**](@ref tutorial) — every Mim construct in one annotated file, runnable in the [playground](https://mimir.github.io/playground/).
 - 📚 Then, read the rest of the [documentation](https://mimir.github.io/usergroup0.html).
 
 ## ✨ A Taste of Mim

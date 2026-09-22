@@ -5,6 +5,7 @@
 /// [TOC]
 ///
 /// This plugin has three jobs:
+///
 /// 1. Convert direct-style calls (and the functions they call) to CPS.
 /// 2. Wrap direct-style functions as CPS functions using an axiom.
 /// 3. Call CPS functions in direct style using an axiom.

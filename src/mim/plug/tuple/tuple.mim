@@ -78,14 +78,15 @@ axm contains: {n: Nat} → {Ts: «n; *», U: *} → [«i: n; Ts#i», U] → Bool
 ///
 /// [Zips](https://en.wikipedia.org/wiki/Zipping_(computer_science)) several tensors.
 /// The signature will likely change in the future:
-/// * `r`: rank of the tensors to zip
-/// * `s`: shape of the tensors to zip
-/// * `n_i`: number of inputs
-/// * `n_o`: number of outputs
-/// * `Is`: tuple with `n_i` many elements that describe the element types of the inputs
-/// * `Os`: tuple with `n_o` many elements that describe the element types of the outputs
-/// * `f`: zipping function that expects an `n_i`-tuple whose elements correspond to `Is` and yields an `n_o`-tuple whose element types correspond to `Os`
-/// * `is`: the actual input tensors
+///
+/// - `r`: rank of the tensors to zip
+/// - `s`: shape of the tensors to zip
+/// - `n_i`: number of inputs
+/// - `n_o`: number of outputs
+/// - `Is`: tuple with `n_i` many elements that describe the element types of the inputs
+/// - `Os`: tuple with `n_o` many elements that describe the element types of the outputs
+/// - `f`: zipping function that expects an `n_i`-tuple whose elements correspond to `Is` and yields an `n_o`-tuple whose element types correspond to `Os`
+/// - `is`: the actual input tensors
 ///
 axm zip: [r: Nat, s: «r; Nat»]
        → [n_i: Nat, Is: «n_i; *», n_o: Nat, Os: «n_o; *», f: «i: n_i; Is#i» → «o: n_o; Os#o»]

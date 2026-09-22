@@ -56,18 +56,30 @@ private:
     bool start_md() const { return ahead(0) == '/' && ahead(1) == '/' && ahead(2) == '/'; }
     void emit_md(bool start_of_file = false);
     size_t pos() const { return peek().begin.off; } ///< First byte not yet consumed.
+    /// Writes @p str to Lexer::md_ while tracking the newlines the output ends with.
+    /// Outside a fence a run of empty lines collapses into one, as a Markdown linter wants.
+    void md_emit(std::string_view str) {
+        if (!md_) return;
+        for (auto c : str) {
+            if (c == '\n' && !fenced_ && md_nls_ >= 2) continue;
+            *md_ << c;
+            md_nls_ = c == '\n' ? md_nls_ + 1 : 0;
+        }
+    }
+    void md_blank() { md_emit("\n\n"); } ///< Makes the output end with an empty line, as a fence needs on either side.
     void md_flush() {
-        if (md_) *md_ << buf_.substr(md_pos_, pos() - md_pos_);
+        md_emit(buf_.substr(md_pos_, pos() - md_pos_));
         md_pos_ = pos();
     }
     void md_skip() { md_pos_ = pos(); }
     /// The language tag switches on Mim syntax highlighting in the generated documentation.
     void md_open() {
-        if (md_) *md_ << "```mim\n";
+        md_blank();
+        md_emit("```mim\n");
         fenced_ = md_ != nullptr;
     }
     void md_close() {
-        if (md_) *md_ << "```\n";
+        md_emit("```\n");
         fenced_ = false;
     }
     ///@}
@@ -75,6 +87,7 @@ private:
     Driver& driver_;
     std::ostream* md_;
     size_t md_pos_ = 0;
+    size_t md_nls_ = 2; ///< Newlines the Markdown output ends with; starts at 2, so it never begins with an empty line.
     bool fenced_   = false; ///< Is a code fence currently open?
 
     friend class fe::Lexer<3, Lexer>;

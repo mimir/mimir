@@ -65,18 +65,19 @@ The syntax is `-X <plugin>:<arg>`:
 - Arguments are keyed by plugin name and collected on the [`mim::Driver`](@ref mim::Driver).
   A [`mim::Phase`](@ref mim::Phase) reads the arguments addressed to its own plugin via [`mim::Phase::args`](@ref mim::Phase::args); the interpretation of each `<arg>` is up to the plugin.
 
-Each plugin declares the arguments it understands right next to the code that reads them, so the `-X <plugin>:<arg>` tables under [Usage](@ref cliusage) are generated from those declarations.
+Each plugin declares the arguments it understands as [`mim::PluginArg`](@ref mim::PluginArg)s right next to the code that reads them, so the [`-X <plugin>:<arg>` tables](@ref xargs) under [Usage](@ref cliusage) are generated from those declarations.
+A table is titled with a link to the plugin it belongs to - [ll](@ref xarg_ll), say - and that plugin's page links back to it.
 
 ### Environment Variables {#clipluginenv}
 
 A plugin may also read environment variables - typically to locate an external toolchain it shells out to.
-It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the _Plugin Environment Variables_ tables under [Usage](@ref cliusage) are generated from those declarations, just like the `-X` tables above.
+It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the [_Plugin Environment Variables_ tables](@ref envs) under [Usage](@ref cliusage) are generated - and cross-linked with the plugin pages - just like the `-X` tables above; [ll_nvptx](@ref env_ll_nvptx) is one.
 Since a plugin only announces them once it is loaded, `mim -p <plugin> --help` lists the ones belonging to `<plugin>`.
 
 <div class="section_buttons">
 
-| Previous                      |                                   Next |
-| :---------------------------- | -------------------------------------: |
-| [A Tour of MimIR](@ref mimir) | [Mim Language Reference](@ref langref) |
+| Previous                  |                                   Next |
+| :------------------------ | -------------------------------------: |
+| [Tutorial](@ref tutorial) | [Mim Language Reference](@ref langref) |
 
 </div>

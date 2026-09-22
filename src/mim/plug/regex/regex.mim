@@ -103,9 +103,10 @@ axm empty: RE, 0;
 /// ### quant.*
 ///
 /// The usual quantifiers:
-/// * `optional`: `?` - zero or one
-/// * `star`: `*` - zero or more
-/// * `plus`: `+` - one or more
+///
+/// - `optional`: `?` - zero or one
+/// - `star`: `*` - zero or more
+/// - `plus`: `+` - one or more
 ///
 axm quant.(optional,star,plus): RE → RE, normalize_quant, 1;
 ///

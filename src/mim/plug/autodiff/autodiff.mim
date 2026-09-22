@@ -80,19 +80,24 @@ axm eval: compile.Phase;
 /// The augmented axiom needs a wrapper for meta arguments (a higher-order function).
 /// Appropriate cps2ds wrappers are introduced to handle that the augmented axioms are in CPS whereas the original axioms are in direct style.
 /// Example:
-/// ```
+///
+/// ```text
 /// mul' => args → result*pullback
 /// call: r    = mul  (m,w) (a,b)
 /// res : r,r* = mul' (m,w) (a,b)
 /// ```
+///
 /// The types (with `Int` for `(Int w)`) are:
-/// ```
+///
+/// ```text
 /// mul : [m:Nat,w:Nat] → [a:Int,b:Int] → Int
 /// r   : Int
 /// r*  : cn[Int,cn[Int,Int]]
 /// ```
+///
 /// The pullback has to be in cps for compliance.
-/// ```
+///
+/// ```text
 /// mul* := λ s. (s*b,s*a)
 /// mul'_cps : [m:Nat,w:Nat] → cn[[Int,Int],cn[Int,   cn[Int,cn[Int,Int]]]]
 /// r,r* = (cps2ds (mul'_cps (m,w))) (a,b)

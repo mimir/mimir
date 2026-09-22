@@ -47,6 +47,7 @@ See [Generated Header](@ref plugin_h) below for why it is just this two-line ind
 It takes the plugin's name because a static build gives each plugin its own symbol; a shared one always yields `mim_get_plugin`.
 It returns a [`mim::Plugin`](@ref mim::Plugin) record: the plugin's name, the `MIM_VERSION` it was built against (checked against the loading `mim` binary), the `register_normalizers` function that `normalizers.cpp` defined via `MIM_demo_NORMALIZER_IMPL`, an optional phase-registration callback, the [`-X` arguments](@ref mim::PluginArg) and [environment variables](@ref mim::PluginEnv) it reads, and the [symbols](@ref mim::PluginSym) it offers to other plugins.
 It is a POD, so every field must be spelled out - `{}` for the ones a Plugin does not use.
+The [CLI reference](@ref cli) generates a table per plugin from those two lists - [arguments](@ref clipluginargs) and [environment variables](@ref clipluginenv) - and links it with the plugin's page.
 
 **`normalizers.cpp`**:
 
@@ -242,7 +243,7 @@ add_mim_runtime(foo
 All sources are merged into a single module `<libdir>/mim/rt/<plugin>_rt.ll` (next to the plugins) and, with `INSTALL`, installed alongside them — one runtime module per plugin, addressable by a well-known name no matter how many `.c` files it is split into.
 This step is optional: it requires `clang` (discovered as `MIM_CLANG`; merging multiple sources additionally needs `llvm-link`) and is skipped when `clang` is unavailable or `MIM_BUILD_LL_RUNTIME` is `OFF`.
 
-The [`ll`](@ref ll) backend locates such a runtime module via the driver's [search paths](@ref cli) and either embeds it into or links it with its emitted module, selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`; see the [CLI reference](@ref cli).
+The [`ll`](@ref ll) backend locates such a runtime module via the driver's [search paths](@ref cli) and either embeds it into or links it with its emitted module, selected via [`-X ll:rt=embed`](@ref xarg_ll) (default) or `-X ll:rt=extern`.
 The in-tree examples are `src/mim/plug/ll/rt/mim_rt.c`, which provides `@mim_jmpbuf_size` for `clos.alloc_jmpbuf`, and `src/mim/plug/ll_nvptx/rt/mim_cuda_rt.c`, whose `@mim_cu_check` performs the `ll_nvptx` backend's CUDA driver-API error handling.
 The `ll_nvptx` backend reuses the very same [`load_rt_module`](@ref mim::plug::ll::Emitter::load_rt_module) helper as `ll`, differing only in the runtime module it names.
 
