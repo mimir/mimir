@@ -822,6 +822,11 @@ void LamDecl::emit_body(Emitter& e) const {
                    "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
                    dbg().sym(), lam->free_vars().min()->binder()->sym())
                 .bail();
+        if (auto prev = e.world().externals()[dbg().sym()])
+            e.error()
+                .e(loc(), "external function `{}` is already defined", dbg().sym())
+                .n(prev->loc(), "previous definition here")
+                .bail();
         lam->externalize();
     }
     e.attach(annex_, sub_, dbg().sym(), def_);
