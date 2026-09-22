@@ -778,9 +778,18 @@ template<bool Up>
 const Def* World::bound(Defs ops_) {
     auto ops = DefVec();
     ops.reserve(ops_.size());
+    auto push = [&ops](const Def* op) {
+        if (!op->isa<TExt<!Up>>()) ops.emplace_back(op); // ignore: ext<!Up>
+    };
+
     for (auto op_ : ops_) {
         auto op = op_->zonk();
-        if (!op->isa<TExt<!Up>>()) ops.emplace_back(op); // ignore: ext<!Up>
+        // A nested bound is already flat, so one level suffices to keep the operation associative.
+        if (auto bound = op->isa_imm<TBound<Up>>())
+            for (auto o : bound->ops())
+                push(o);
+        else
+            push(op);
     }
 
     auto kind = umax<UMax::Type>(ops);
@@ -836,45 +845,59 @@ const Def* World::match(Defs ops_) {
 
     auto scrutinee = ops.front();
     auto arms      = ops.span().subspan(1);
-    auto join      = scrutinee->isa_type<Join>();
-
-    if (!join)
-        scrutinee->blame("scrutinee of a test expression must be of union type but has type `{}`", type_of(scrutinee))
-            .bail();
-
-    if (arms.size() != join->num_ops())
-        scrutinee->blame("test expression has {} arms but union type has {} cases", arms.size(), join->num_ops())
-            .bail();
 
     for (auto arm : arms)
         if (!arm->isa_type<Pi>())
             arm->blame("arm of a test expression does not have a function type but has type `{}`", type_of(arm)).bail();
 
-    std::ranges::sort(arms, GIDLt<const Def*>(), [](const Def* arm) { return arm->isa_type<Pi>()->dom(); });
+    auto scrut_t = scrutinee->unfold_type();
+    if (!scrut_t) scrutinee->blame("scrutinee of a test expression has no type").bail();
+    auto join = scrut_t->isa<Join>();
 
-    const Def* type = nullptr;
-    for (size_t i = 0, e = arms.size(); i != e; ++i) {
-        auto arm = arms[i];
-        auto pi  = arm->isa_type<Pi>();
-        if (!Checker::alpha<Checker::Check>(pi->dom(), join->op(i)))
-            arm->blame("domain type `{}` of test-expression arm does not match union case type `{}`", pi->dom(),
-                       join->op(i))
-                .bail();
-        type = type ? this->join({type, pi->codom()}) : pi->codom();
+    // A scrutinee that is not a union is the degenerate one-case union; cf. `d#i` for `i: Idx 1`.
+    auto cases = Match::cases(scrutinee);
+
+    // The first accepting arm handles a case, any later one is dead; arms are *not* sorted, their order is the
+    // tie-break.
+    auto sel = DefVec(cases.size());
+    for (size_t i = 0, e = cases.size(); i != e; ++i) {
+        auto c = cases[i];
+        auto j = std::ranges::find_if(arms, [c](const Def* arm) { return Match::accepts(arm, c); });
+        // Hole%s are resolved only once no arm matches outright, so a mere search never commits to one.
+        if (j == arms.end())
+            j = std::ranges::find_if(arms, [c](const Def* arm) { return Match::accepts(arm, c, true); });
+        if (j == arms.end()) scrutinee->blame("test expression has no arm for union case `{}`", c).bail();
+        sel[i] = *j;
     }
+
+    // Keep the arms actually selected, in the order written; a dead arm is dropped.
+    auto res        = DefVec();
+    const Def* type = nullptr;
+    res.emplace_back(scrutinee);
+    for (auto arm : arms) {
+        if (!std::ranges::contains(sel, arm)) continue;
+        auto codom = arm->isa_type<Pi>()->codom();
+        type       = type ? this->join({type, codom}) : codom;
+        res.emplace_back(arm);
+    }
+
+    // An arm covering several cases expects the wider union, so narrow values are injected back into it.
+    auto dispatch
+        = [this](const Def* arm, const Def* value) { return app(arm, inj(arm->isa_type<Pi>()->dom(), value)); };
+
+    if (!join) return dispatch(sel[0], scrutinee);
 
     // A constructor fixes the active union case. Dispatch before the Match can
     // escape into later lowering phases, where the payload representation may
     // already have changed (for example, a tensor may have become a buffer).
     if (auto inj = scrutinee->isa<Inj>()) {
-        for (size_t i = 0, e = arms.size(); i != e; ++i)
-            if (Checker::alpha<Checker::Check>(inj->value()->unfold_type(), join->op(i)))
-                return app(arms[i], inj->value());
-        scrutinee->blame("injected value type `{}` is not a case of union type `{}`", type_of(inj->value()), join)
-            .bail();
+        auto value = inj->value();
+        for (size_t i = 0, e = cases.size(); i != e; ++i)
+            if (Checker::alpha<Checker::Check>(value->unfold_type(), cases[i])) return dispatch(sel[i], value);
+        scrutinee->blame("injected value type `{}` is not a case of union type `{}`", type_of(value), join).bail();
     }
 
-    return unify<Match>(type, ops);
+    return unify<Match>(type, res);
 }
 
 const Def* World::single(const Def* op) {

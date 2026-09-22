@@ -8,10 +8,10 @@
 /// [TOC]
 ///
 /// A guided tour of Mim's syntax; the sections follow the [Mim Language Reference](@ref langref).
-/// This page *is* `lit/docs/tutorial.mim`, rendered by `mim --output-md`.
-/// Open it in the [playground](https://mimir.github.io/playground/) to run and edit the tour in the browser.
 ///
 /// @remark
+/// - This page *is* `lit/docs/tutorial.mim`, rendered by `mim --output-md`.
+/// - Open it in the [playground](https://mimir.github.io/playground/) to run and edit the tour in the browser.
 /// - MimIR is a compiler intermediate representation.
 ///   Mim is a lightweight textual interface for MimIR and not a full-featured programming language.
 /// - Every `refly.struc.e` below is a *static* assertion, checked while the graph is built.

@@ -122,7 +122,16 @@ public:
         return ops().subspan<1, N>();
     }
     const Def* arm(size_t i) const { return arms()[i]; }
-    size_t num_arms() const { return arms().size(); }
+    size_t num_arms() const { return arms().size(); } ///< @warning Can undercut Join::num_ops!
+    ///@}
+
+    /// @name Dispatch
+    ///@{
+    /// The cases @p scrutinee dispatches on: the Join's ops, or - for the degenerate one-case union - its type.
+    static DefVec cases(const Def* scrutinee);
+    /// Does @p arm handle @p c? An arm accepts the case that *is* its domain, or that its domain contains.
+    /// @p infer resolves Hole%s, so a mere search should leave it `false`.
+    static bool accepts(const Def* arm, const Def* c, bool infer = false);
     ///@}
 
 private:

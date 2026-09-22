@@ -368,11 +368,20 @@ Lam* MatchExpr::Arm::emit(Emitter& e) const {
 }
 
 const Def* MatchExpr::emit_(Emitter& e) const {
-    DefVec res;
-    res.emplace_back(scrutinee()->emit(e));
+    DefVec ops;
+    ops.emplace_back(scrutinee()->emit(e));
     for (auto arm : arms())
-        res.emplace_back(arm->emit(e));
-    return e.world().match(res);
+        ops.emplace_back(arm->emit(e));
+    auto res = e.world().match(ops);
+
+    // Only a *source* arm is unreachable by mistake; substitution legitimately kills arms of a polymorphic match.
+    auto cases = Match::cases(ops.front());
+    for (size_t i = 0, n = num_arms(); i != n; ++i)
+        if (std::ranges::none_of(cases, [&](const Def* c) { return Match::accepts(ops[i + 1], c); }))
+            e.error().w(arm(i)->loc(), "this arm is unreachable: no case of `{}` matches `{}`", type_of(ops.front()),
+                        ops[i + 1]->isa_type<Pi>()->dom());
+
+    return res;
 }
 
 void PiExpr::Dom::emit_type(Emitter& e) const {

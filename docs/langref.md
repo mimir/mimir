@@ -751,11 +751,13 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 - `T ∪ ⊥` -> `T`, `T ∩ ⊤` -> `T` - the unit of a join/meet is dropped
 - `T ∪ ⊤` -> `⊤`, `T ∩ ⊥` -> `⊥`
-- `A ∪ A` -> `A`; the operands are sorted, so `∪`/`∩` are commutative, associative, and idempotent
+- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪`/`∩` are commutative, associative, and idempotent
 - an empty join is `⊥`, an empty meet is `⊤`, and a one-element one is its operand
 - `x inj T` -> `x` if `T` is not a union type
-- `match (T inj x) with ...` -> the arm whose domain is `T` - a constructor fixes the active case
-- the arms of a `match` are sorted by their domain
+- `match (T inj x) with ...` -> the arm handling `T` - a constructor fixes the active case
+- each case is handled by the **first** arm accepting it, so the arms are *not* sorted; an arm accepts a case if its domain is that case, or a union containing it
+- a `match` whose scrutinee is not a union is the degenerate one-case union and reduces right away
+- an arm handling no case is dropped; a case handled by no arm is an error
 
 ### Singletons
 

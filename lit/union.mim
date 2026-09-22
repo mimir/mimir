@@ -1,4 +1,8 @@
 // RUN: %mim -p opt %s -o -
+// RUN: %mim -p opt %s 2>&1 | %FileCheck %s
+
+plugin core;
+plugin refly;
 
 lam combine (t1 t2: *): * =
     t1 ∪ t2;
@@ -26,3 +30,60 @@ lam minject2 (t1 t2 t3: *) (x: t3): t3 =
         | (i, x) => x;
 
 lam tuple2union(i: Idx 3, tup: [I32, Bool, I64]): I32 ∪ Bool ∪ I64 = tup#i;
+
+// A union whose cases coincide under substitution collapses; the first arm accepting a case wins, later ones are dead.
+lam pick_first (t1 t2: *) (u: t1 ∪ t2) (x y: t2): t2 =
+    match u with
+        | a: t1 => x
+        | b: t2 => y;
+
+let _ = refly.struc.e (pick_first (I32, I32) 0I32 (1I32, 2I32), 1I32);
+
+// A scrutinee that is not a union is the degenerate one-case union.
+lam degenerate (u: I32 ∪ I32): I32 =
+    match u with a: I32 => a;
+
+let _ = refly.struc.e (degenerate 23I32, 23I32);
+
+// `∪` stays associative where substitution nests one union inside another.
+lam nested (t1 t2: *) (_: t1 ∪ t2): Nat = 0;
+lam nested_app (u: I32 ∪ Bool ∪ I64): Nat = nested (I32 ∪ Bool, I64) u;
+
+// A union arriving as a parameter leaves a residual Match: nothing folds it away.
+extern lam residual (u: I32 ∪ Bool): Bool =
+    match u with
+        | a: I32  => ff
+        | b: Bool => b;
+
+// An arm whose domain is itself a union covers every case it contains.
+extern lam wide (u: I32 ∪ Bool ∪ I64): Nat =
+    match u with
+        | a: I32 ∪ Bool => 0
+        | b: I64        => 1;
+
+// Dispatching a narrow value to a covering arm re-injects it into that arm's wider domain first.
+lam wide_inj (x: I32): Nat =
+    match x inj I32 ∪ Bool ∪ I64 with
+        | a: I32 ∪ Bool => 0
+        | b: I64        => 1;
+
+let _ = refly.struc.e (wide_inj 23I32, 0);
+
+// The same, but the scrutinee is not a union at all.
+lam degen_cov (x: I32): Nat =
+    match x with a: I32 ∪ Bool => 7;
+
+let _ = refly.struc.e (degen_cov 23I32, 7);
+
+// An arm handling no case at all is dropped - but that is a mistake in *source*, so it warns.
+lam unreachable (u: I32 ∪ Bool): Nat =
+    match u with
+        | a: I32  => 0
+        | b: Bool => 1
+        | c: I64  => 2;
+
+// The Loc spans the whole arm; line numbers stay loose so the check survives edits above it.
+// CHECK:      {{.*}}union.mim:{{[0-9]+}}:11-{{[0-9]+}}:22: warning: this arm is unreachable: no case of `Bool ∪ I32` matches `I64`
+// CHECK-NEXT: {{[0-9]+}} | | c: I64  => 2;
+// CHECK-NEXT: | ^^^^^^^^^^^^
+// CHECK-NEXT: 1 warning(s) encountered
