@@ -319,6 +319,9 @@ public:
     fe::Error& blame(fe::cite_string<Args...> s, Args&&... args) const {
         return error().e(err_loc(), s, std::forward<Args>(args)...);
     }
+
+    /// Blames *this* for not being @p what and bails; where Def::expect and friends funnel their diagnostic.
+    [[noreturn]] void bail_expected(fe::Cite what) const;
     ///@}
 
     /// @name Judgement
@@ -601,13 +604,26 @@ public:
             return const_cast<Def*>(this)->template as<T>();
     }
 
-    /// Like Def::as_mut but - instead of merely asserting in `Debug` builds - throws via fe::throwf when the cast
-    /// fails; the mutable counterpart of fe::RuntimeCast::expect (which Def inherits for the general case).
+    /// Like Def::as but - instead of merely asserting in `Debug` builds - bails via Def::bail_expected when the
+    /// cast fails; hides fe::RuntimeCast::expect, as a Def can blame itself with a Loc.
     /// @p fmt / @p args describe what was expected; a plain string works, as does a fe::cite_string plus arguments.
+    template<class T, class... Args>
+    T* expect(fe::cite_string<Args...> fmt, Args&&... args) {
+        if (auto res = isa<T>()) return res;
+        bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
+    }
+
+    /// `const` version.
+    template<class T, class... Args>
+    const T* expect(fe::cite_string<Args...> fmt, Args&&... args) const {
+        return const_cast<Def*>(this)->template expect<T>(fmt, std::forward<Args>(args)...);
+    }
+
+    /// The mutable counterpart of Def::expect.
     template<class T = Def, class... Args>
     T* expect_mut(fe::cite_string<Args...> fmt, Args&&... args) const {
         if (auto res = isa_mut<T>()) return res;
-        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), this);
+        bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
     }
     ///@}
 
@@ -963,11 +979,11 @@ public:
     static T as(const Def* def) {
         return def->as<Lit>()->get<T>();
     }
-    /// Like Lit::as but throws via fe::throwf instead of merely asserting in `Debug`; see Def::expect.
+    /// Like Lit::as but bails via Def::bail_expected instead of merely asserting in `Debug`; see Def::expect.
     template<class T = nat_t, class... Args>
     static T expect(const Def* def, fe::cite_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<T>(def)) return *res;
-        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), def);
+        def->bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
     }
     ///@}
 
@@ -1027,14 +1043,13 @@ public:
     // clang-format on
     static std::optional<nat_t> size2bitwidth(const Def* size);
 
-    /// Yields the bit width of the `Idx` @p type or throws via fe::throwf - instead of yielding
-    /// std::nullopt or dereferencing an unchecked std::optional - if @p type is not an `Idx` of statically known
-    /// size; see Def::expect.
+    /// Yields the bit width of the `Idx` @p type or bails - instead of yielding std::nullopt or dereferencing
+    /// an unchecked std::optional - if @p type is not an `Idx` of statically known size; see Def::expect.
     template<class... Args>
     static nat_t expect_bitwidth(const Def* type, fe::cite_string<Args...> fmt, Args&&... args) {
         if (auto size = isa(type))
             if (auto w = size2bitwidth(size)) return *w;
-        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), type);
+        type->bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
     }
     ///@}
 

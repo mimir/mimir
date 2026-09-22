@@ -56,7 +56,6 @@ const Def* assign_or_bail(const Def* elem_type, const Def* val) {
     if (!res)
         val->blame("value is not assignable to element type")
             .n("expected `{}`, got `{}`", elem_type, type_of(val))
-            .n("value: `{}`", val)
             .bail();
     return res;
 }
@@ -65,7 +64,7 @@ const Def* assign_or_bail(const Def* elem_type, const Def* val) {
 const Def* nary_elem_type(const Def* d, Shape index) {
     auto type = d->unfold_type();
     auto arr  = type->isa<Arr>();
-    if (!arr) index->blame("multi-dimensional index `{}` expects an array but got `{}`", *index, type).bail();
+    if (!arr) index->blame("multi-dimensional index expects an array but got `{}`", type).bail();
 
     auto shape = arr->shape();
     auto ri    = index.rank();
@@ -73,9 +72,7 @@ const Def* nary_elem_type(const Def* d, Shape index) {
     // A *partial* index peels only its own axes and yields a sub-array.
     auto fit = ri && rt ? *ri <= *rt : Checker::alpha<Checker::Check>(index->arity(), shape->arity());
     if (!fit)
-        index
-            ->blame("index `{}` of rank `{}` does not fit shape `{}` of rank `{}`", *index, index->arity(), *shape,
-                    shape->arity())
+        index->blame("index of rank `{}` does not fit shape `{}` of rank `{}`", index->arity(), *shape, shape->arity())
             .bail();
 
     // Only the axes World::extract folds away reach World::extract1's check, so the ones staying fused
@@ -83,7 +80,7 @@ const Def* nary_elem_type(const Def* d, Shape index) {
     if (ri && rt)
         for (nat_t i = 0; i != *ri; ++i)
             if (auto size = Idx::isa(index[i]->unfold_type()); size && !Checker::alpha<Checker::Check>(shape[i], size))
-                index[i]->blame("index `{}` does not fit within arity `{}`", index[i], shape[i]).bail();
+                index[i]->blame("index does not fit within arity `{}`", shape[i]).bail();
 
     return d->world().peel(arr, *index);
 }
@@ -206,8 +203,7 @@ const Type* World::type(const Def* level) {
     level = level->zonk();
 
     if (!level->isa_type<Univ>())
-        level->blame("argument `{}` to `Type` must be of type `Univ` but is of type `{}`", level, type_of(level))
-            .bail();
+        level->blame("argument to `Type` must be of type `Univ` but is of type `{}`", type_of(level)).bail();
 
     return unify<Type>(level)->as<Type>();
 }
@@ -216,8 +212,7 @@ const Def* World::uinc(const Def* op, level_t offset) {
     op = op->zonk();
 
     if (!op->isa_type<Univ>())
-        op->blame("operand `{}` of a universe increment must be of type `Univ` but is of type `{}`", op, type_of(op))
-            .bail();
+        op->blame("operand of a universe increment must be of type `Univ` but is of type `{}`", type_of(op)).bail();
 
     if (auto l = Lit::isa(op)) return lit_univ(*l + 1);
     return unify<UInc>(op, offset);
@@ -246,7 +241,7 @@ const Def* World::umax(Defs ops_) {
             if (auto type = op->isa<Type>())
                 op = type->level();
             else
-                op->blame("operand `{}` must be a `Type` of some universe level", op).bail();
+                op->blame("operand must be a `Type` of some universe level").bail();
         }
 
         flatten_umax(ops, op);
@@ -257,8 +252,7 @@ const Def* World::umax(Defs ops_) {
     res.reserve(ops.size());
     for (auto op : ops) {
         if (!op->isa_type<Univ>())
-            op->blame("operand `{}` of a universe max must be of type `Univ` but is of type `{}`", op, type_of(op))
-                .bail();
+            op->blame("operand of a universe max must be of type `Univ` but is of type `{}`", type_of(op)).bail();
 
         if (auto l = Lit::isa(op))
             lvl = std::max(lvl, *l);
@@ -396,8 +390,7 @@ const Def* World::tuple(Defs ops) {
     auto sigma = Tuple::infer(*this, zops);
     auto t     = tuple(sigma, zops);
     auto new_t = Checker::assignable(sigma, t);
-    if (!new_t)
-        t->blame("tuple `{}` of type `{}` is not assignable to inferred type `{}`", t, type_of(t), sigma).bail();
+    if (!new_t) t->blame("tuple of type `{}` is not assignable to inferred type `{}`", type_of(t), sigma).bail();
 
     return new_t;
 }
@@ -464,7 +457,7 @@ Shape World::check_index(const Def* index) {
     auto type = index->unfold_type();
     if (Idx::isa(type)) return index;
     if (!Shape::isa_indices(type))
-        index->blame("index `{}` must be of `Idx` type but is of type `{}`", index, type_of(index)).bail();
+        index->blame("index must be of `Idx` type but is of type `{}`", type_of(index)).bail();
     return Shape(index).fold();
 }
 
@@ -545,7 +538,7 @@ bool World::is_folded_axis(const Def* type, const Def* index, const Def* size) {
     }
 
     if (!Checker::alpha<Checker::Check>(type->arity(), size))
-        index->blame("index `{}` does not fit within arity `{}`", index, type->arity()).bail();
+        index->blame("index does not fit within arity `{}`", type->arity()).bail();
     return false;
 }
 
@@ -724,8 +717,7 @@ const Def* World::seq(bool is_pack, Shape shape, const Def* body) {
     body  = body->zonk();
 
     auto shape_ty = shape->unfold_type();
-    if (!Shape::isa_extents(shape_ty))
-        shape->blame("expected shape but got `{}` of type `{}`", *shape, shape_ty).bail();
+    if (!Shape::isa_extents(shape_ty)) shape->blame("expected a shape but got a value of type `{}`", shape_ty).bail();
 
     // `«1; T»` ≡ `T`, mirroring `[T]` ≡ `T`, so a literal size-1 axis folds out of the shape.
     shape  = shape.fold();
@@ -847,9 +839,7 @@ const Def* World::match(Defs ops_) {
     auto join      = scrutinee->isa_type<Join>();
 
     if (!join)
-        scrutinee
-            ->blame("scrutinee `{}` of a test expression must be of union type but has type `{}`", scrutinee,
-                    type_of(scrutinee))
+        scrutinee->blame("scrutinee of a test expression must be of union type but has type `{}`", type_of(scrutinee))
             .bail();
 
     if (arms.size() != join->num_ops())
@@ -858,8 +848,7 @@ const Def* World::match(Defs ops_) {
 
     for (auto arm : arms)
         if (!arm->isa_type<Pi>())
-            arm->blame("arm `{}` of test expression does not have a function type but has type `{}`", arm, type_of(arm))
-                .bail();
+            arm->blame("arm of a test expression does not have a function type but has type `{}`", type_of(arm)).bail();
 
     std::ranges::sort(arms, GIDLt<const Def*>(), [](const Def* arm) { return arm->isa_type<Pi>()->dom(); });
 

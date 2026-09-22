@@ -87,7 +87,7 @@ const Def* SingleErasure::inhabitant(const Def* type) {
 size_t SingleErasure::remap(const Sieve& keep, const Def* index) {
     auto i = Lit::isa(index);
     if (!i)
-        index->blame("index `{}` is not a literal", index)
+        index->blame("index is not a literal")
             .n("dropping an information-free component shifts the indices of its successors")
             .bail();
 

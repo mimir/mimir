@@ -4,6 +4,6 @@
 extern lam g (a: [Nat, Bool]) =
 	a#1;
 
-// CHECK:      {{.*}}snippet_tab.mim:5:2-5:4: error: index `1` must be of `Idx` type
+// CHECK:      {{.*}}snippet_tab.mim:5:2-5:4: error: index must be of `Idx` type
 // CHECK-NEXT: 5 | 	a#1;
 // CHECK-NEXT:   | 	^^^

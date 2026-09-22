@@ -463,7 +463,7 @@ const Def* Def::check(size_t i, const Def* def) {
 
     if (i == 0) {
         if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
-        def->blame("filter `{}` of lambda is of type `{}` but must be of type `Bool`", def, type_of(def)).bail();
+        def->blame("filter of a lambda is of type `{}` but must be of type `Bool`", type_of(def)).bail();
     }
     assert(i == 1);
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
@@ -481,21 +481,19 @@ const Def* Def::check() {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                type()
-                    ->blame("declared sort `{}` of function type does not match inferred sort `{}`", type(), t)
-                    .bail();
+                type()->blame("declared sort of function type does not match inferred sort `{}`", t).bail();
             return t;
         }
         case Node::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t, type()))
-                type()->blame("declared sort `{}` of array does not match inferred sort `{}`", type(), t).bail();
+                type()->blame("declared sort of array does not match inferred sort `{}`", t).bail();
             return t;
         }
         case Node::Reform: {
             auto t = Reform::infer(as<Reform>()->dom());
             if (!Checker::alpha<Checker::Check>(t, type()))
-                type()->blame("declared sort `{}` of rule type does not match inferred sort `{}`", type(), t).bail();
+                type()->blame("declared sort of rule type does not match inferred sort `{}`", t).bail();
             return t;
         }
         case Node::Sigma: {
@@ -514,7 +512,7 @@ const Def* Def::check() {
                     .bail();
             if (!Checker::assignable(w.type_bool(), rule->guard()))
                 rule->guard()
-                    ->blame("condition `{}` of rewrite rule is of type `{}` but must be of type `Bool`", rule->guard(),
+                    ->blame("condition of a rewrite rule is of type `{}` but must be of type `Bool`",
                             type_of(rule->guard()))
                     .bail();
             return type();

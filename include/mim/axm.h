@@ -135,13 +135,13 @@ public:
     template<class Id, u8 Curry=0> static auto as(Id id, const Def* def) { return isa<Id, Curry, false>(id, def); }
     // clang-format on
 
-    /// Like Axm::as but - instead of merely asserting in `Debug` builds - throws via fe::throwf when @p def
-    /// is not the expected axm.
+    /// Like Axm::as but - instead of merely asserting in `Debug` builds - bails via Def::bail_expected when
+    /// @p def is not the expected axm.
     /// @p fmt / @p args describe what was expected; a plain string works, as does a fe::cite_string plus arguments.
     template<class Id, u8 Curry = 0, class... Args>
     static auto expect(const Def* def, fe::cite_string<Args...> fmt, Args&&... args) {
         if (auto res = isa<Id, Curry>(def)) return res;
-        fe::throwf("expected {}, but got `{}`", fe::format_cite(fmt, std::forward<Args>(args)...), def);
+        def->bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
     }
 
     /// Peel off all @p Id Axm%s from @p def.

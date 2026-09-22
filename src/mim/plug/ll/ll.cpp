@@ -54,7 +54,7 @@ public:
 std::string Emitter::convert_impl(const Def* type, bool simd) {
     if (auto i = types_.find(type); i != types_.end()) return i->second;
 
-    if (Axm::isa<mem::M>(type)) fe::throwf(MIM_LL_BE "cannot convert `mem.M` type `{}`", type);
+    if (Axm::isa<mem::M>(type)) type->blame(MIM_LL_BE "cannot convert a `mem.M` type").bail();
     std::ostringstream s;
     std::string name;
 
@@ -70,7 +70,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
             case 16: return types_[type] = "half";
             case 32: return types_[type] = "float";
             case 64: return types_[type] = "double";
-            default: fe::throwf(MIM_LL_BE "unsupported floating-point width {} in type `{}`", *w, type);
+            default: type->blame(MIM_LL_BE "unsupported floating-point width {}", *w).bail();
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [pointee, addr_space] = ptr->args<2>();
@@ -86,7 +86,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
             std::print(s, "[{} x {}]", size, convert(arr->elem(), false));
         }
     } else if (auto pi = type->isa<Pi>()) {
-        if (!Pi::isa_returning(pi)) fe::throwf(MIM_LL_BE "cannot convert the type of a basic block: `{}`", pi);
+        if (!Pi::isa_returning(pi)) pi->blame(MIM_LL_BE "cannot convert the type of a basic block").bail();
         std::print(s, "{} (", convert_ret_pi(pi->ret_pi()));
 
         if (auto t = detail::isa_mem_sigma_2(pi->dom()))
@@ -117,12 +117,12 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         }
         std::print(s, "}}");
     } else {
-        fe::throwf(MIM_LL_BE "cannot convert type `{}` to LLVM", type);
+        type->blame(MIM_LL_BE "cannot convert this type to LLVM").bail();
     }
 
     if (name.empty()) return types_[type] = s.str();
 
-    if (s.str().empty()) fe::throwf(MIM_LL_BE "empty type declaration for `{}`", type);
+    if (s.str().empty()) type->blame(MIM_LL_BE "empty type declaration").bail();
     std::println(type_decls_, "{}", s.str());
     return types_[type] = name;
 }
@@ -140,7 +140,7 @@ void Emitter::finalize_impl() {
 
     for (auto sep = ""; auto mut : schedule()) { // cached by Emitter::visit - recomputing it here doubled the work
         if (auto lam = mut->isa_mut<Lam>()) {
-            if (!lam2bb_.contains(lam)) fe::throwf(MIM_LL_BE "no basic block was emitted for `{}`", lam);
+            if (!lam2bb_.contains(lam)) lam->blame(MIM_LL_BE "no basic block was emitted").bail();
             auto& bb = lam2bb_[lam];
             std::println(func_impls_, "{}{}:", sep, lam->unique_name());
             sep = "\n";
@@ -315,7 +315,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         if (app->args().back()->isa<Bot>()) {
             // TODO: Perhaps it'd be better to simply η-wrap this prior to the BE...
             if (convert_ret_pi(app->callee_type()->ret_pi()) != "void")
-                fe::throwf(MIM_LL_BE "call with a ⊥ return continuation must return void, but `{}` does not", app);
+                app->blame(MIM_LL_BE "call with a ⊥ return continuation must return void").bail();
             bb.tail("call void {}({})", v_callee, fe::Join(args));
             return bb.tail("unreachable");
         }
@@ -417,12 +417,12 @@ std::string Emitter::emit_lit(const Def* def) {
                 case 16: return std::format("0xH{:04x}", lit->get<u16>());
                 case 32: hex = std::bit_cast<u64>(f64(lit->get<f32>())); break;
                 case 64: hex = lit->get<u64>(); break;
-                default: fe::throwf(MIM_LL_BE "unsupported floating-point width {} for literal `{}`", *w, def);
+                default: def->blame(MIM_LL_BE "unsupported floating-point width {} for a literal", *w).bail();
             }
 
             return std::format("0x{:016x}", hex);
         }
-        fe::throwf(MIM_LL_BE "cannot emit literal `{}` of type `{}`", def, def->type());
+        def->blame(MIM_LL_BE "cannot emit a literal of type `{}`", def->type()).bail();
     }
     fe::unreachable();
 }
@@ -490,7 +490,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         return bb.assign(name, "load {}, {}* {}.gep", t_elem, t_elem, name);
     } else if (auto insert = def->isa<Insert>()) {
         if (Axm::isa<mem::M>(insert->tuple()->proj(insert->tuple()->num_projs(), 0)->type()))
-            fe::throwf(MIM_LL_BE "cannot insert into a tuple with a `mem.M` element: `{}`", insert);
+            insert->blame(MIM_LL_BE "cannot insert into a tuple with a `mem.M` element").bail();
         auto t_tup = convert(insert->tuple()->type());
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
@@ -563,7 +563,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
             case core::ncmp::l:  op += "ult"; break;
             case core::ncmp::le: op += "ule"; break;
             // clang-format on
-            default: fe::throwf(MIM_LL_BE "unhandled `core.ncmp` id in `{}`", def);
+            default: def->blame(MIM_LL_BE "unhandled `core.ncmp` id").bail();
         }
 
         return bb.assign(name, "{} i64 {}, {}", op, a, b);
@@ -574,7 +574,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         if (s < 64) return bb.assign(name, "trunc i64 {} to {}", x, t);
         return x;
     } else if (auto bit1 = Axm::isa<core::bit1>(def)) {
-        if (bit1.id() != core::bit1::neg) fe::throwf(MIM_LL_BE "unhandled `core.bit1` id in `{}`", def);
+        if (bit1.id() != core::bit1::neg) def->blame(MIM_LL_BE "unhandled `core.bit1` id").bail();
         auto x = emit(bit1->arg());
         auto t = convert(bit1->type());
         return bb.assign(name, "xor {} -1, {}", t, x);
@@ -595,7 +595,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
             case core::bit2:: iff: return bb.assign(name, "and {} {}, {}", t, neg(a), b);
             case core::bit2::niff: return bb.assign(name, "or  {} {}, {}", t, neg(a), b);
             // clang-format on
-            default: fe::throwf(MIM_LL_BE "unhandled `core.bit2` id in `{}`", def);
+            default: def->blame(MIM_LL_BE "unhandled `core.bit2` id").bail();
         }
     } else if (auto shr = Axm::isa<core::shr>(def)) {
         auto [a, b] = shr->args<2>([this](auto def) { return emit(def); });
@@ -658,7 +658,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
             case core::icmp::ul:  op += "ult"; break;
             case core::icmp::ule: op += "ule"; break;
             // clang-format on
-            default: fe::throwf(MIM_LL_BE "unhandled `core.icmp` id in `{}`", def);
+            default: def->blame(MIM_LL_BE "unhandled `core.icmp` id").bail();
         }
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
@@ -744,7 +744,7 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
             return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, i32 {}", t_pointee, t_ptr, v_ptr,
                              Lit::expect(i, "a struct-field index"));
 
-        if (!pointee->isa<Arr>()) fe::throwf(MIM_LL_BE "`mem.lea` on a pointer to a non-aggregate `{}`", pointee);
+        pointee->expect<Arr>("an array as `mem.lea` pointee");
         auto [v_i, t_i] = emit_gep_index(bb, name, i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
@@ -856,8 +856,8 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
                 case math::tri::sin: f += "sin"; break;
                 case math::tri::cos: f += "cos"; break;
                 case math::tri::tan: f += "tan"; break;
-                case math::tri::ahFF: fe::throwf(MIM_LL_BE "axm `{}` is not supposed to occur", def);
-                default: fe::throwf(MIM_LL_BE "unhandled `math.tri` id in `{}`", def);
+                case math::tri::ahFF: def->blame(MIM_LL_BE "this axm is not supposed to occur").bail();
+                default: def->blame(MIM_LL_BE "unhandled `math.tri` id").bail();
             }
 
             if (tri.sub() & sub_t(math::tri::h)) f += "h";
@@ -943,7 +943,7 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
             case math::cmp::uge: op += "uge"; break;
             case math::cmp::une: op += "une"; break;
             // clang-format on
-            default: fe::throwf(MIM_LL_BE "unhandled `math.cmp` id in `{}`", def);
+            default: def->blame(MIM_LL_BE "unhandled `math.cmp` id").bail();
         }
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
@@ -1063,7 +1063,7 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
                 case core::ncmp::ge: op += "uge"; break;
                 case core::ncmp::l: op += "ult"; break;
                 case core::ncmp::le: op += "ule"; break;
-                default: fe::throwf(MIM_LL_BE "unhandled zipped `core.ncmp` id in `{}`", def);
+                default: def->blame(MIM_LL_BE "unhandled zipped `core.ncmp` id").bail();
             }
         } else if (auto icmp_op = Axm::isa<core::icmp, 1>(f)) {
             op = "icmp ";
@@ -1078,7 +1078,7 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
                 case core::icmp::uge: op += "uge"; break;
                 case core::icmp::ul: op += "ult"; break;
                 case core::icmp::ule: op += "ule"; break;
-                default: fe::throwf(MIM_LL_BE "unhandled zipped `core.icmp` id in `{}`", def);
+                default: def->blame(MIM_LL_BE "unhandled zipped `core.icmp` id").bail();
             }
         } else if (auto mcmp_op = Axm::isa<math::cmp, 1>(f)) {
             op = "fcmp ";
@@ -1097,10 +1097,10 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
                 case math::cmp::ug: op += "ugt"; break;
                 case math::cmp::uge: op += "uge"; break;
                 case math::cmp::une: op += "une"; break;
-                default: fe::throwf(MIM_LL_BE "unhandled zipped `math.cmp` id in `{}`", def);
+                default: def->blame(MIM_LL_BE "unhandled zipped `math.cmp` id").bail();
             }
         } else {
-            fe::throwf(MIM_LL_BE "unhandled `vec.zip` operation `{}`", f);
+            f->blame(MIM_LL_BE "unhandled `vec.zip` operation").bail();
         }
 
         auto v1 = emit(inputs->proj(nat_ni, 0));
@@ -1121,7 +1121,7 @@ std::string Emitter::emit_bb_impl(BB& bb, const Def* def) {
     if (auto res = emit_mem(bb, name, def)) return *std::move(res);
     if (auto res = emit_math(bb, name, def)) return *std::move(res);
     if (auto res = emit_vec(bb, name, def)) return *std::move(res);
-    fe::throwf(MIM_LL_BE "unhandled def `{}` of type `{}`", def, def->type());
+    def->blame(MIM_LL_BE "unhandled def of type `{}`", def->type()).bail();
 }
 
 extern "C" {

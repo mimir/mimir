@@ -400,6 +400,13 @@ bool Def::nests(const Def* def) {
 Driver& Def::driver() const noexcept { return world().driver(); }
 fe::Error& Def::error() const noexcept { return driver().error(); }
 
+void Def::bail_expected(fe::Cite what) const {
+    auto loc = err_loc();
+    auto& e  = error().e(loc, "expected {}", what);
+    if (!loc) e.n("got `{}`", this); // no Loc means no snippet showing the offender
+    e.bail();
+}
+
 Loc Def::err_loc() const {
     auto& w = world();
     if (auto loc = w.get_loc()) return loc;

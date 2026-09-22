@@ -2,6 +2,6 @@
 
 extern lam f (m n: Nat, s: «n; Nat», is: «j: m; Idx 2», t: «s; Nat»): Nat = t#is;
 
-// CHECK: {{.*}}nary_index_rank.mim:3:77-3:80: error: index `is` of rank `m` does not fit shape `s` of rank `n`
+// CHECK: {{.*}}nary_index_rank.mim:3:77-3:80: error: index of rank `m` does not fit shape `s` of rank `n`
 // CHECK-NEXT: 3 | extern lam f (m n: Nat, s: «n; Nat», is: «j: m; Idx 2», t: «s; Nat»): Nat = t#is;
 // CHECK-NEXT:   |                                                                             ^^^^

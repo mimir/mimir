@@ -7,4 +7,3 @@ extern lam f (n: Nat, t: «n; Nat», x: Idx n, v: Bool): «n; Nat» = t#x ← v;
 // CHECK-NEXT: 4 | extern lam f (n: Nat, t: «n; Nat», x: Idx n, v: Bool): «n; Nat» = t#x ← v;
 // CHECK-NEXT:   |                                                                  ^^^^^^^
 // CHECK-NEXT:   = note: expected `Nat`, got `Bool`
-// CHECK-NEXT:   = note: value: `v`
