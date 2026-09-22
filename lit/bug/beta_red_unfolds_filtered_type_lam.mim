@@ -1,0 +1,25 @@
+// RUN: %mim -O2 %s -o -
+
+// BetaRed inlines applications of mut lams without consulting their filter
+// (beta_red.cpp: `lam->reduce_body(app->arg())`). For a *type-level* lam the
+// filter is the normalization strategy: `@(ff)` means "keep applications
+// stuck". Unfolding such an app inside a type desyncs it from Var types:
+// PassMan rewrites a mut lam's ops (filter, body) but never its *type*, so
+// G's binder type `x: F n` keeps the stuck App while the solved implicit
+// `T = F n` inside `%X.k @(F n) x` in G's body is unfolded to `«n; Nat»`.
+// Rebuilding the app re-runs `Checker::assignable`; alpha has no
+// beta-conversion, so `«n; Nat»` vs `F n` fails with
+// "cannot apply argument to callee".
+//
+// Mirrors the spirv access_chain failure (make_Ts ~ F, make_Compound ~ G,
+// %admit.extract.k ~ %X.k).
+
+plugin core;
+
+lam F (n: Nat)@(ff): ★ = «n; Nat»;
+
+axm %X.k: {T: ★} → T → ★;
+
+lam G (n: Nat, x: F n)@(ff): ★ = %X.k @(F n) x;
+
+lam extern keep () = G;
