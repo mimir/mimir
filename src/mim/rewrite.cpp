@@ -109,7 +109,6 @@ const Def* Rewriter::rewrite_imm_Wrap  (const Wrap*   d) { return world().wrap  
 const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->binder())->as_mut());    }
 const Def* Rewriter::rewrite_imm_Top   (const Top*    d) { return world().top   (rewrite(d->type()));                }
 const Def* Rewriter::rewrite_imm_Bot   (const Bot*    d) { return world().bot   (rewrite(d->type()));                }
-const Def* Rewriter::rewrite_imm_Meet  (const Meet*   d) { return world().meet  (rewrite(d->ops()));                 }
 const Def* Rewriter::rewrite_imm_Join  (const Join*   d) { return world().join  (rewrite(d->ops()));                 }
 const Def* Rewriter::rewrite_imm_Variant(const Variant* d) { return world().variant(rewrite(d->ops()));              }
 
@@ -149,12 +148,6 @@ const Def* Rewriter::rewrite_imm_Lam(const Lam* d) {
     return world().lam(new_type, new_filter, new_body);
 }
 
-const Def* Rewriter::rewrite_imm_Merge(const Merge* d) {
-    auto new_type = rewrite(d->type());
-    auto new_ops  = rewrite(d->ops());
-    return world().merge(new_type, new_ops);
-}
-
 const Def* Rewriter::rewrite_imm_Pi(const Pi* d) {
     auto new_dom   = rewrite(d->dom());
     auto new_codom = rewrite(d->codom());
@@ -173,12 +166,6 @@ const Def* Rewriter::rewrite_imm_Rule(const Rule* d) {
     auto new_rhs   = rewrite(d->rhs());
     auto new_guard = rewrite(d->guard());
     return world().rule(new_type, new_lhs, new_rhs, new_guard);
-}
-
-const Def* Rewriter::rewrite_imm_Split(const Split* d) {
-    auto new_type  = rewrite(d->type());
-    auto new_value = rewrite(d->value());
-    return world().split(new_type, new_value);
 }
 
 const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {

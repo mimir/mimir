@@ -1,0 +1,5 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+mod a { extern lam f (x: Nat): Nat = x; }
+mod b { extern lam f (x: Nat): Nat = x; }
+// CHECK: error: external function `f` is already defined
+// CHECK: note: previous definition here

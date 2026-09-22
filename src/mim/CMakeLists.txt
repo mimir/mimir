@@ -9,7 +9,6 @@ target_sources(libmim
         driver.cpp
         dump.cpp
         lam.cpp
-        lattice.cpp
         nest.cpp
         phase.cpp
         plugin.cpp
@@ -18,6 +17,7 @@ target_sources(libmim
         schedule.cpp
         sexpr.cpp
         tuple.cpp
+        union.cpp
         world.cpp
         ast/ast.cpp
         ast/bind.cpp

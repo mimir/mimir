@@ -36,9 +36,9 @@
     X(Pi,     Judge::Form ) X(Lam,   Judge::Intro) X(App,     Judge::Elim)                                         \
     X(Sigma,  Judge::Form ) X(Tuple, Judge::Intro) X(Extract, Judge::Elim) X(Insert, (Judge::Intro | Judge::Elim)) \
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
-    X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim) X(Top,    (Judge::Intro              )) \
-    X(Meet,   Judge::Form ) X(Merge, Judge::Intro) X(Split,   Judge::Elim) X(Bot,    (Judge::Intro              )) \
+    X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim)                                         \
     X(Variant, Judge::Form)                                                                                        \
+    X(Top,    Judge::Intro) X(Bot,   Judge::Intro)                                                                 \
     X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
     X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
     X(Nat,    Judge::Form )                                                                                        \
@@ -53,9 +53,9 @@
     X(Pi)     X(Lam)   X(App)                                                                                      \
     X(Sigma)  X(Tuple) X(Extract) X(Insert)                                                                        \
     X(Arr)    X(Pack)                                                                                              \
-    X(Join)   X(Inj)   X(Match)   X(Top)                                                                           \
-    X(Meet)   X(Merge) X(Split)   X(Bot)                                                                           \
+    X(Join)   X(Inj)   X(Match)                                                                                    \
     X(Variant)                                                                                                     \
+    X(Top)    X(Bot)                                                                                               \
     X(Reform) X(Rule)                                                                                              \
     X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
@@ -287,7 +287,6 @@ struct DotConfig {
 /// |                   | Insert            | Insert            |
 /// | Single            | Wrap              |                   |
 /// | Join              | Inj               | Match             |
-/// | Meet              | Merge             | Split             |
 /// | Variant           | Inj               | Match             |
 /// | Reform            | Rule              |                   |
 /// | Nat               | Lit               |                   |

@@ -532,11 +532,8 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{}{}; {}{}", pl, shape(d.ctx(), pack), d.op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
         return std::print(os, "(proxy#{} {})", proxy->tag(), Op::map(d.ctx(), proxy->ops()));
-    } else if (auto bound = d->isa<Bound>()) {
-        auto op = bound->isa<Join>() ? "∪" : "∩"; // TODO ascii
-        if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, name(d.ctx(), mut), d.op(mut->type()));
-        if (!bound->isa<Join>()) return std::print(os, "{}({})", op, Op::map(d.ctx(), bound->ops()));
-        return std::print(os, "{}", Op::map(d.ctx(), bound->ops(), " ∪ ", Prec::Union));
+    } else if (auto join = d->isa<Join>()) {
+        return std::print(os, "{}", Op::map(d.ctx(), join->ops(), " ∪ ", Prec::Union));
     } else if (auto variant = d->isa<Variant>()) {
         // The names of the constructors live in the frontend, so print each case under its index.
         if (variant->num_ops() == 0) return std::print(os, "(|)");

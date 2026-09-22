@@ -217,9 +217,6 @@ TEST_CASE("dump: bounds") {
     CHECK_RT(w.wrap(w.lit_nat(23)));
     CHECK_RT(w.inj(j, w.lit_nat(23)));
     CHECK_RT(w.join({w.single(nat), w.single(i32)}));
-
-    // `∩` has no surface syntax, so a Meet cannot round-trip; see `∪` in docs/langref.md.
-    CHECK(std::format("{}", w.meet({nat, i32})) == "∩(Nat, I32)");
 }
 
 TEST_CASE("dump: variants") {

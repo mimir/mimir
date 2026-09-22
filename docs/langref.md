@@ -780,12 +780,12 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
 - an application of a `[T: *] → e` with implicit domains inserts a `Hole` per implicit argument
 
-### Lattices
+### Unions
 
-- `T ∪ ⊥` -> `T`, `T ∩ ⊤` -> `T` - the unit of a join/meet is dropped
-- `T ∪ ⊤` -> `⊤`, `T ∩ ⊥` -> `⊥`
-- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪`/`∩` are commutative, associative, and idempotent
-- an empty join is `⊥`, an empty meet is `⊤`, and a one-element one is its operand
+- `T ∪ ⊥` -> `T` - the unit of a join is dropped
+- `T ∪ ⊤` -> `⊤`
+- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪` is commutative, associative, and idempotent
+- an empty join is `⊥`, and a one-element one is its operand
 - `x inj T` -> `x` if `T` is not a union type
 - `match (T inj x) with ...` -> the arm handling `T` - a constructor fixes the active case
 - each case is handled by the **first** arm accepting it, so the arms are *not* sorted; an arm accepts a case if its domain is that case, or a union containing it

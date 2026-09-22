@@ -961,7 +961,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             case 64: return world.lit_nat(8);
             default: fe::unreachable();
         }
-    } else if (type->isa<Sigma>() || type->isa<Meet>()) {
+    } else if (type->isa<Sigma>()) {
         u64 offset = 0;
         u64 align  = 1;
         for (auto t : type->ops()) {
@@ -988,8 +988,6 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
         if constexpr (id == trait::align) return align;
         auto b = op(trait::size, elem);
         if (b->isa<Lit>()) return world.call(nat::mul, Defs{arr->arity(), b});
-    } else if (auto join = type->isa<Join>()) {
-        if (auto sigma = convert(join)) return core::op(id, sigma);
     }
 
     return {};
