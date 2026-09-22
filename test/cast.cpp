@@ -23,8 +23,9 @@ TEST_CASE("Cast: node sets") {
     World& w = driver.world();
 
     SUBCASE("each union groups exactly its own nodes") {
-        for (auto node : {Node::Sigma, Node::Tuple, Node::Arr, Node::Pack, Node::Join, Node::Meet, Node::Top, Node::Bot,
-                          Node::Lit, Node::Var, Node::App, Node::Lam, Node::Pi, Node::Nat, Node::Idx, Node::Extract}) {
+        for (auto node :
+             {Node::Sigma, Node::Tuple, Node::Arr, Node::Pack, Node::Join, Node::Meet, Node::Top, Node::Bot, Node::Lit,
+              Node::Var, Node::App, Node::Lam, Node::Pi, Node::Nat, Node::Idx, Node::Extract, Node::Variant}) {
             CHECK(Prod::isa_node(node) == (node == Node::Sigma || node == Node::Tuple));
             CHECK(Seq::isa_node(node) == (node == Node::Arr || node == Node::Pack));
             CHECK(Bound::isa_node(node) == (node == Node::Join || node == Node::Meet));

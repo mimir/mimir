@@ -129,6 +129,7 @@ private:
     Ptr<Expr> parse_sigma_expr();
     Ptr<Expr> parse_tuple_expr();
     Ptr<Expr> parse_match_expr();
+    Ptr<Expr> parse_variant_expr();
     ///@}
 
     /// @name parse ptrns

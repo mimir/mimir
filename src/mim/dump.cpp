@@ -78,7 +78,12 @@ Prec def2prec(const Def* def) {
         return ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
-    if (def->isa<Inj>()) return Prec::Inj;
+    if (auto inj = def->isa<Inj>()) {
+        if (auto variant = inj->type()->isa<Variant>())
+            return variant->op(inj->index()) == def->world().sigma() ? Prec::Extract : Prec::App;
+        return Prec::Inj;
+    }
+    if (def->isa<Variant>()) return Prec::Lit; // always parenthesized
     if (def->isa<Reform>()) return Prec::App;
     // `Cn e` parses its domain at Prec::Bot, so it swallows whatever follows and only ever fits a closed context.
     if (auto pi = def->isa<Pi>()) return Pi::isa_cn(pi) ? Prec::Bot : Prec::Arrow;
@@ -532,7 +537,22 @@ void full(std::ostream& os, Full d) {
         if (auto mut = d->isa_mut()) std::print(os, "{}{}: {}", op, name(d.ctx(), mut), d.op(mut->type()));
         if (!bound->isa<Join>()) return std::print(os, "{}({})", op, Op::map(d.ctx(), bound->ops()));
         return std::print(os, "{}", Op::map(d.ctx(), bound->ops(), " ∪ ", Prec::Union));
+    } else if (auto variant = d->isa<Variant>()) {
+        // The names of the constructors live in the frontend, so print each case under its index.
+        if (variant->num_ops() == 0) return std::print(os, "(|)");
+        os << '(';
+        for (auto sep = ""; auto i : std::views::iota(size_t(0), variant->num_ops())) {
+            std::print(os, "{}| _{}", sep, i);
+            if (auto op = variant->op(i); op != d->world().sigma()) std::print(os, ": {}", d.op(op));
+            sep = " ";
+        }
+        return std::print(os, ")");
     } else if (auto inj = d->isa<Inj>()) {
+        if (auto variant = inj->type()->isa<Variant>()) {
+            auto ctor = std::format("{}#{}", d.l(variant, Prec::Extract), inj->index());
+            if (variant->op(inj->index()) == d->world().sigma()) return std::print(os, "{}", ctor);
+            return std::print(os, "{} {}", ctor, d.r(inj->value(), Prec::App));
+        }
         return std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
     } else if (auto single = d->isa<Single>()) {
         return std::print(os, "{}{}{}", al, d.op(single->op()), ar);

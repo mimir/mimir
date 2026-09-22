@@ -1,0 +1,5 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+// Both variants are `(| _0 | _1)`, so they share one Def - and disagree on where `A` sits.
+lam f (x: | A | B) (_: | B | A): Nat = match x with | A => 0 | B => 1;
+// CHECK: error: constructor `A` is ambiguous in variant `(| _0 | _1)`
+// CHECK: select the case by index instead, as in `T#0`

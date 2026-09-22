@@ -828,8 +828,30 @@ const Def* World::inj(const Def* type, const Def* value) {
     type  = type->zonk();
     value = value->zonk();
 
-    if (type->isa<Join>()) return unify<Inj>(type, value);
+    if (type->isa<Variant>())
+        value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
+    if (type->isa<Join>()) return unify<Inj>(type, value, flags_t(0));
     return value;
+}
+
+const Def* World::inj(const Def* type, nat_t index, const Def* value) {
+    type  = type->zonk();
+    value = value->zonk();
+
+    auto variant = type->isa<Variant>();
+    if (!variant) value->blame("cannot inject into case {} of non-variant type `{}`", index, type).bail();
+    if (index >= variant->num_ops())
+        value->blame("variant type `{}` has {} cases but case {} was requested", type, variant->num_ops(), index)
+            .bail();
+    if (auto v = Checker::assignable(variant->op(index), value)) return unify<Inj>(type, v, flags_t(index));
+    value->blame("value is not assignable to case {} of variant type `{}`", index, type)
+        .n("expected `{}`, got `{}`", variant->op(index), type_of(value))
+        .bail();
+}
+
+const Def* World::variant(Defs ops) {
+    auto zops = Def::zonk(ops);
+    return unify<Variant>(Variant::infer(*this, zops), zops);
 }
 
 const Def* World::split(const Def* type, const Def* value) {
@@ -848,10 +870,33 @@ const Def* World::match(Defs ops_) {
 
     for (auto arm : arms)
         if (!arm->isa_type<Pi>())
-            arm->blame("arm of a test expression does not have a function type but has type `{}`", type_of(arm)).bail();
+            arm->blame("arm of a match expression does not have a function type but has type `{}`", type_of(arm))
+                .bail();
 
     auto scrut_t = scrutinee->unfold_type();
-    if (!scrut_t) scrutinee->blame("scrutinee of a test expression has no type").bail();
+    if (!scrut_t) scrutinee->blame("scrutinee of a match expression has no type").bail();
+
+    if (auto variant = scrut_t->isa<Variant>()) {
+        if (arms.size() != variant->num_ops())
+            scrutinee
+                ->blame("match expression has {} arms but variant type has {} cases", arms.size(), variant->num_ops())
+                .bail();
+
+        const Def* type = nullptr;
+        for (size_t i = 0, e = arms.size(); i != e; ++i) {
+            auto pi = arms[i]->isa_type<Pi>();
+            if (!Checker::alpha<Checker::Check>(pi->dom(), variant->op(i)))
+                arms[i]
+                    ->blame("domain type `{}` of match-expression arm does not match variant case `{}`", pi->dom(),
+                            variant->op(i))
+                    .bail();
+            type = type ? this->join({type, pi->codom()}) : pi->codom();
+        }
+
+        if (auto inj = scrutinee->isa<Inj>()) return app(arms[inj->index()], inj->value());
+        return unify<Match>(type, ops);
+    }
+
     auto join = scrut_t->isa<Join>();
 
     // A scrutinee that is not a union is the degenerate one-case union; cf. `d#i` for `i: Idx 1`.
@@ -866,7 +911,7 @@ const Def* World::match(Defs ops_) {
         // Hole%s are resolved only once no arm matches outright, so a mere search never commits to one.
         if (j == arms.end())
             j = std::ranges::find_if(arms, [c](const Def* arm) { return Match::accepts(arm, c, true); });
-        if (j == arms.end()) scrutinee->blame("test expression has no arm for union case `{}`", c).bail();
+        if (j == arms.end()) scrutinee->blame("match expression has no arm for union case `{}`", c).bail();
         sel[i] = *j;
     }
 

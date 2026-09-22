@@ -1,0 +1,4 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+rec Color = | Red | Green;
+let c = Color#Blue;
+// CHECK: error: variant `Color` has no constructor `Blue`

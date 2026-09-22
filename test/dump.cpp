@@ -222,6 +222,23 @@ TEST_CASE("dump: bounds") {
     CHECK(std::format("{}", w.meet({nat, i32})) == "∩(Nat, I32)");
 }
 
+TEST_CASE("dump: variants") {
+    auto rt  = RoundTrip();
+    auto& w  = rt.world();
+    auto nat = w.type_nat();
+    auto v   = w.variant({w.sigma(), nat});
+
+    // Constructor names live in the frontend, so each case prints under its index.
+    CHECK(std::format("{}", v) == "(| _0 | _1: Nat)");
+    CHECK_RT(v);
+    CHECK_RT(w.variant({}));
+    CHECK_RT(w.variant({nat, nat}));
+    CHECK_RT(w.variant({w.sigma({nat, nat}), w.arr(3, nat)}));
+    CHECK_RT(w.inj(v, 0, w.tuple()));
+    CHECK_RT(w.inj(v, 1, w.lit_nat(23)));
+    CHECK_RT(w.pi(v, v));
+}
+
 TEST_CASE("dump: apps") {
     auto rt  = RoundTrip({"core"s});
     auto& w  = rt.world();

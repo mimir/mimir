@@ -654,23 +654,30 @@ private:
 /// `match scrutinee with | arm_0 | ... | arm_n-1`
 class MatchExpr : public Expr, public fe::VLA<MatchExpr> {
 public:
-    /// `ptrn => body` of a MatchExpr.
+    /// `ptrn => body` of a MatchExpr, or `ctor payload => body` for a constructor with a payload.
     class Arm : public Node {
     public:
-        Arm(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> body)
+        Arm(Loc loc, Ptr<Ptrn> ptrn, Ptr<Ptrn> payload, Ptr<Expr> body)
             : Node(loc)
             , ptrn_(ptrn)
+            , payload_(payload)
             , body_(body) {}
 
         const Ptrn* ptrn() const { return ptrn_.get(); }
+        /// The pattern after a constructor, as in `Cons (h, t)`; `nullptr` otherwise.
+        const Ptrn* payload() const { return payload_.get(); }
         const Expr* body() const { return body_.get(); }
+        /// The constructor this arm names if it may name one: an unannotated identifier.
+        const IdPtrn* ctor() const;
 
         virtual void bind(Scopes&) const;
-        Lam* emit(Emitter&) const;
+        /// @p dom is the case's payload type if the scrutinee is a Variant; otherwise ptrn() determines the domain.
+        Lam* emit(Emitter&, const Def* dom = nullptr) const;
         void stream(fe::Tab&, std::ostream&) const override;
 
     private:
         Ptr<Ptrn> ptrn_;
+        Ptr<Ptrn> payload_;
         Ptr<Expr> body_;
     };
 
@@ -690,8 +697,49 @@ public:
 
 private:
     const Def* emit_(Emitter&) const override;
+    const Def* emit_variant(Emitter&, const Def* scrutinee, const Variant*) const;
 
     Ptr<Expr> scrutinee_;
+};
+
+/// `| ctor_0: type_0 | ... | ctor_n-1: type_n-1`; a constructor without a type carries `[]`.
+class VariantExpr : public Expr, public fe::VLA<VariantExpr> {
+public:
+    /// `dbg: type` of a VariantExpr.
+    class Ctor : public Node {
+    public:
+        Ctor(Loc loc, Dbg dbg, Ptr<Expr> type)
+            : Node(loc)
+            , dbg_(dbg)
+            , type_(type) {}
+
+        Dbg dbg() const { return dbg_; }
+        const Expr* type() const { return type_.get(); } ///< `nullptr` if omitted.
+
+        void stream(fe::Tab&, std::ostream&) const override;
+
+    private:
+        Dbg dbg_;
+        Ptr<Expr> type_;
+    };
+
+    using VLA_Types = std::tuple<Ptr<Ctor>>;
+
+    VariantExpr(Loc loc)
+        : Expr(loc) {}
+
+    auto ctors() const { return vla<0>(); }
+    const Ctor* ctor(size_t i) const { return ctors()[i].get(); }
+    size_t num_ctors() const { return ctors().size(); }
+
+    void bind(Scopes&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    const Def* emit_(Emitter&) const override;
+    const Def* emit_decl_(Emitter&, const Def* type) const override;
+    void emit_body_(Emitter&, const Def* decl) const override;
+    DefVec emit_payloads(Emitter&) const;
 };
 
 // lam

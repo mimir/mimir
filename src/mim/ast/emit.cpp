@@ -32,8 +32,55 @@ public:
 
     absl::node_hash_map<Sigma*, fe::SymMap<size_t>, GIDHash<const Def*>> sigma2sym2idx;
 
+    /// @name Variant Constructors
+    /// Names live on the Def, so same-shaped VariantExpr%s share one table.
+    ///@{
+    void add_ctors(const Def* variant, const VariantExpr* expr) {
+        auto& sym2idx = variant2sym2idx_[variant];
+        auto seen     = fe::SymSet();
+        for (size_t i = 0, n = expr->num_ctors(); i != n; ++i) {
+            auto dbg = expr->ctor(i)->dbg();
+            if (!seen.emplace(dbg.sym()).second) error().e(dbg.loc(), "constructor `{}` declared twice", dbg);
+            if (auto [j, ins] = sym2idx.emplace(dbg.sym(), i); !ins && j->second != i) j->second = Ambiguous;
+        }
+    }
+
+    std::optional<size_t> find_ctor(const Def* variant, Dbg dbg) {
+        auto i = variant2sym2idx_.find(variant);
+        if (i == variant2sym2idx_.end()) return {};
+        auto j = i->second.find(dbg.sym());
+        if (j == i->second.end()) return {};
+        if (j->second == Ambiguous)
+            error()
+                .e(dbg.loc(), "constructor `{}` is ambiguous in variant `{}`", dbg, variant)
+                .n("variants of the same shape name it at different positions")
+                .n("select the case by index instead, as in `T#0`")
+                .bail();
+        return j->second;
+    }
+
+    size_t ctor(const Def* variant, Dbg dbg) {
+        if (auto i = find_ctor(variant, dbg)) return *i;
+        error().e(dbg.loc(), "variant `{}` has no constructor `{}`", variant, dbg).bail();
+    }
+
+    /// Every name case @p i goes by, sorted for a deterministic diagnostic; `#i` if it has none.
+    std::string ctor_names(const Def* variant, size_t i) {
+        auto names = std::vector<std::string>();
+        if (auto j = variant2sym2idx_.find(variant); j != variant2sym2idx_.end())
+            for (const auto& [sym, k] : j->second)
+                if (k == i) names.emplace_back(std::format("`{}`", sym));
+        if (names.empty()) return std::format("`#{}`", i);
+        std::ranges::sort(names);
+        return std::format("{}", fe::Join(names, " / "));
+    }
+    ///@}
+
 private:
+    static constexpr size_t Ambiguous = size_t(-1);
+
     AST& ast_;
+    absl::node_hash_map<const Def*, fe::SymMap<size_t>, GIDHash<const Def*>> variant2sym2idx_;
 };
 
 /*
@@ -302,6 +349,29 @@ const Def* PrefixExpr::emit_(Emitter& e) const {
     }
 }
 
+/// `T#C` or `T#i` selects case `C` or `i` of the Variant `T`: a constructor function - or its value for a `[]` payload.
+static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* index) {
+    auto& w = e.world();
+    auto i  = std::optional<nat_t>();
+
+    if (auto path = index->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
+        i = e.find_ctor(variant, path->dbg());
+        if (!i && !path->decl())
+            e.error().e(path->dbg().loc(), "variant `{}` has no constructor `{}`", variant, path->dbg()).bail();
+    }
+    if (!i) i = Lit::isa(index->emit(e));
+    if (!i) e.error().e(index->loc(), "a case of a variant must be selected by name or by literal index").bail();
+    if (*i >= variant->num_ops())
+        e.error()
+            .e(index->loc(), "variant `{}` has {} cases but case {} was requested", variant, variant->num_ops(), *i)
+            .bail();
+
+    auto payload = variant->op(*i);
+    if (payload == w.sigma()) return w.inj(variant, *i, w.tuple());
+    auto ctor = w.mut_lam(w.pi(payload, variant));
+    return ctor->set(true, w.inj(variant, *i, ctor->var()));
+}
+
 const Def* InfixExpr::emit_(Emitter& e) const {
     auto& w = e.world();
 
@@ -313,6 +383,7 @@ const Def* InfixExpr::emit_(Emitter& e) const {
         }
         case Tag::T_extract: {
             auto tup = lhs()->emit(e);
+            if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
             return w.extract(tup, emit_index(e, tup));
         }
         case Tag::T_arrow_l: {
@@ -358,20 +429,64 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     }
 }
 
-Lam* MatchExpr::Arm::emit(Emitter& e) const {
-    auto _     = e.world().push(loc());
-    auto dom_t = ptrn()->emit_type(e);
-    auto pi    = e.world().pi(dom_t, e.world().mut_hole_type());
-    auto lam   = e.world().mut_lam(pi);
-    ptrn()->emit_value(e, lam->var());
+const IdPtrn* MatchExpr::Arm::ctor() const {
+    auto id = ptrn()->isa<IdPtrn>();
+    return id && !id->type() ? id : nullptr;
+}
+
+Lam* MatchExpr::Arm::emit(Emitter& e, const Def* dom) const {
+    auto _      = e.world().push(loc());
+    auto binder = dom && payload() ? payload() : ptrn();
+    auto dom_t  = binder->emit_type(e);
+    if (dom && !Checker::alpha<Checker::Check>(dom_t, dom))
+        e.error()
+            .e(binder->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
+            .bail();
+    auto pi  = e.world().pi(dom ? dom : dom_t, e.world().mut_hole_type());
+    auto lam = e.world().mut_lam(pi);
+    binder->emit_value(e, lam->var());
     return lam->set(true, body()->emit(e));
+}
+
+const Def* MatchExpr::emit_variant(Emitter& e, const Def* scrutinee, const Variant* variant) const {
+    auto sel = DefVec(variant->num_ops());
+    for (auto arm : arms()) {
+        auto id = arm->ctor();
+        if (!id)
+            e.error()
+                .e(arm->ptrn()->loc(), "an arm of a match on variant `{}` must name a constructor", variant)
+                .bail();
+        auto i = e.ctor(variant, id->dbg());
+        if (sel[i]) {
+            e.error().w(arm->loc(), "this arm is unreachable: constructor `{}` is already handled", id->dbg());
+            continue;
+        }
+        sel[i] = arm->emit(e, variant->op(i));
+    }
+
+    auto missing = std::vector<std::string>();
+    for (size_t i = 0, n = sel.size(); i != n; ++i)
+        if (!sel[i]) missing.emplace_back(e.ctor_names(variant, i));
+    if (!missing.empty()) e.error().e(loc(), "match expression has no arm for {}", fe::Join(missing, ", ")).bail();
+
+    auto ops = DefVec{scrutinee};
+    ops.append_range(sel);
+    return e.world().match(ops);
 }
 
 const Def* MatchExpr::emit_(Emitter& e) const {
     DefVec ops;
     ops.emplace_back(scrutinee()->emit(e));
-    for (auto arm : arms())
+    if (auto variant = ops.front()->isa_type<Variant>()) return emit_variant(e, ops.front(), variant);
+
+    for (auto arm : arms()) {
+        if (arm->payload())
+            e.error()
+                .e(arm->loc(), "a constructor pattern needs a variant scrutinee")
+                .n("but the scrutinee has type `{}`", type_of(ops.front()))
+                .bail();
         ops.emplace_back(arm->emit(e));
+    }
     auto res = e.world().match(ops);
 
     // Only a *source* arm is unreachable by mistake; substitution legitimately kills arms of a polymorphic match.
@@ -458,6 +573,29 @@ const Def* RetExpr::emit_(Emitter& e) const {
 const Def* SigmaExpr::emit_decl_(Emitter& e, const Def* type) const { return ptrn()->emit_decl(e, type); }
 void SigmaExpr::emit_body_(Emitter& e, const Def* decl) const { ptrn()->emit_body(e, decl); }
 const Def* SigmaExpr::emit_(Emitter& e) const { return ptrn()->emit_type(e); }
+
+DefVec VariantExpr::emit_payloads(Emitter& e) const {
+    return DefVec(num_ctors(), [&](size_t i) -> const Def* {
+        auto type = ctor(i)->type();
+        return type ? type->emit(e) : e.world().sigma();
+    });
+}
+
+const Def* VariantExpr::emit_(Emitter& e) const {
+    auto variant = e.world().variant(emit_payloads(e));
+    e.add_ctors(variant, this);
+    return variant;
+}
+
+const Def* VariantExpr::emit_decl_(Emitter& e, const Def* type) const {
+    return e.world().mut_variant(type, num_ctors());
+}
+
+void VariantExpr::emit_body_(Emitter& e, const Def* decl) const {
+    auto variant = decl->as_mut<Variant>();
+    variant->set(emit_payloads(e));
+    e.add_ctors(variant, this);
+}
 
 const Def* TupleExpr::emit_(Emitter& e) const {
     DefVec elems(num_elems(), [&](size_t i) { return elem(i)->emit(e); });

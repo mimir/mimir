@@ -147,6 +147,26 @@ lam elim (A B: *) (ab: A ∪ B): Nat =
     match ab with
     | _: A => 0
     | _: B => 1;
+/// ## Variants
+/// A variant's cases are positional and never merged: these three `[]` cases stay three, where `∪` would collapse them.
+rec Color = | Red | Green | Blue;
+lam hue (c: Color): Nat =
+    match c with
+    | Red   => 0
+    | Green => 1
+    | Blue  => 2;
+let _ = refly.struc.e (hue Color#Green, 1); // `T#C` selects a case by name ...
+let _ = refly.struc.e (hue Color#2, 2);     // ... or by index, from 0
+/// With a payload, `T#C` is a function, and the arm binds the payload with a pattern; `rec` makes a variant recursive.
+rec Nats = | Nil | Cons: [Nat, Nats];
+lam first (l: Nats): Nat =
+    match l with
+    | Nil         => 0
+    | Cons (h, _) => h;
+let _ = refly.struc.e (first (Nats#Cons (23, Nats#Nil)), 23);
+/// A variant is a type like any other, so it may just as well be anonymous.
+lam get (x: | None | Some: Nat): Nat = match x with | None => 0 | Some n => n;
+let _ = refly.struc.e (get ((| None | Some: Nat)#Some 42), 42);
 /// ## Singletons
 ///
 /// `«e»` is the singleton type whose sole inhabitant is `e` and sits one level above it.

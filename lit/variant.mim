@@ -1,0 +1,97 @@
+// RUN: %mim -p opt %s -o -
+// RUN: %mim -p opt %s 2>&1 | %FileCheck %s
+
+plugin core;
+plugin refly;
+
+// Unlike `[] ∪ [] ∪ []`, which collapses to `[]`, every case is kept.
+rec Color = | Red | Green | Blue;
+
+lam code (c: Color): Nat =
+    match c with
+        | Red   => 0
+        | Green => 1
+        | Blue  => 2;
+
+let _ = refly.struc.e (code Color#Red, 0);
+let _ = refly.struc.e (code Color#Green, 1);
+let _ = refly.struc.e (code Color#2, 2);
+
+// Two arms forwarding to the same function must not keep the optimizer from converging.
+lam handler (_: []): Nat = 42;
+
+extern lam forward (c: Color): Nat =
+    match c with
+        | Red   => handler ()
+        | Green => handler ()
+        | Blue  => 0;
+
+// Cases are positional, so neither order nor duplicates are normalized away.
+lam first (x: | L: Nat | R: Nat): Nat =
+    match x with
+        | L n => n
+        | R _ => 0;
+
+let _ = refly.struc.e (first ((| L: Nat | R: Nat)#L 23), 23);
+let _ = refly.struc.e (first ((| L: Nat | R: Nat)#1 23), 0);
+
+// Recursion.
+rec List = | Nil | Cons: [Nat, List];
+
+lam len (l: List): Nat =
+    match l with
+        | Nil         => 0
+        | Cons (_, t) => core.nat.add (1, len t);
+
+let xs = List#Cons (1, List#Cons (2, List#Cons (3, List#Nil)));
+let _  = refly.struc.e (len xs, 3);
+
+// Mutual recursion.
+rec Expr = | Lit: Nat | Neg: Expr | Block: Stmt
+and Stmt = | Skip | Eval: Expr;
+
+lam depth (e: Expr): Nat =
+    match e with
+        | Lit _   => 0
+        | Neg x   => core.nat.add (1, depth x)
+        | Block s => core.nat.add (1, sdepth s)
+where
+    lam sdepth (s: Stmt): Nat =
+        match s with
+            | Skip   => 0
+            | Eval x => depth x;
+end;
+
+let _ = refly.struc.e (depth (Expr#Neg (Expr#Block (Stmt#Eval (Expr#Lit 23)))), 2);
+
+// A scrutinee that is not an annotated variable still finds its constructors via its type.
+lam some (x: Nat): | None | Some: Nat = (| None | Some: Nat)#Some x;
+
+lam unwrap (x: Nat): Nat =
+    match some x with
+        | None   => 0
+        | Some n => n;
+
+let _ = refly.struc.e (unwrap 23, 23);
+
+// A variant that arrives as a parameter leaves a residual Match.
+extern lam residual (l: List): Nat =
+    match l with
+        | Nil         => 0
+        | Cons (h, _) => h;
+
+// The empty variant.
+lam absurd (_: |): Nat = 0;
+
+// An arm naming a constructor that is already handled is dropped - but that is a mistake in *source*, so it warns.
+lam twice (c: Color): Nat =
+    match c with
+        | Red   => 0
+        | Green => 1
+        | Blue  => 2
+        | Red   => 3;
+
+// CHECK:      {{.*}}variant.mim:{{[0-9]+}}:11-{{[0-9]+}}:20: warning: this arm is unreachable: constructor `Red` is already handled
+// CHECK-NEXT: {{[0-9]+}} | | Red => 3;
+// CHECK-NEXT: | ^^^^^^^^^^
+// CHECK-NEXT: 1 warning(s) encountered

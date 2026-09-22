@@ -38,6 +38,7 @@
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
     X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim) X(Top,    (Judge::Intro              )) \
     X(Meet,   Judge::Form ) X(Merge, Judge::Intro) X(Split,   Judge::Elim) X(Bot,    (Judge::Intro              )) \
+    X(Variant, Judge::Form)                                                                                        \
     X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
     X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
     X(Nat,    Judge::Form )                                                                                        \
@@ -54,6 +55,7 @@
     X(Arr)    X(Pack)                                                                                              \
     X(Join)   X(Inj)   X(Match)   X(Top)                                                                           \
     X(Meet)   X(Merge) X(Split)   X(Bot)                                                                           \
+    X(Variant)                                                                                                     \
     X(Reform) X(Rule)                                                                                              \
     X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
@@ -65,6 +67,7 @@
     X(Pi)    X(Lam)                                                                                                \
     X(Sigma)                                                                                                       \
     X(Arr)   X(Pack)                                                                                               \
+    X(Variant)                                                                                                     \
     X(Rule)
 // clang-format on
 
@@ -256,6 +259,7 @@ struct DotConfig {
 /// | Single            | Wrap              |                   |
 /// | Join              | Inj               | Match             |
 /// | Meet              | Merge             | Split             |
+/// | Variant           | Inj               | Match             |
 /// | Reform            | Rule              |                   |
 /// | Nat               | Lit               |                   |
 /// | Idx               | Lit               |                   |
