@@ -1111,8 +1111,6 @@ public:
         , codom_(codom) {}
 
     Tok::Tag tag() const { return tag_; }
-    /// `extern` without a body is a forward declaration whose implementation lives in a native translation unit.
-    bool is_external() const { return is_extern(); }
     auto doms() const { return vla<0>(); }
     const Dom* dom(size_t i) const { return doms()[i].get(); }
     size_t num_doms() const { return doms().size(); }

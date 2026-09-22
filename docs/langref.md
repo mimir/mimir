@@ -286,8 +286,11 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `anx` marks a declaration as an [annex](@ref annex).
   It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
   `axm` is implicitly `anx` and may not combine with `extern`.
-- `extern` makes a `lam`/`con`/`fun` declaration a root of the `World` that stays reachable through `Cleanup` and is visible to backends; with the body omitted (just `;`), its implementation lives in a native translation unit instead.
-  Currently, `extern` is only meaningful on a `lam`/`con`/`fun` declaration.
+- `extern` is currently only meaningful on a `lam`/`con`/`fun` declaration and makes it
+  - **with a body** a root of the `World` that stays reachable through `Cleanup`.
+    Backends emit it under its source name with external linkage, so other translation units can call it, whereas a non-`extern` function gets a mangled name and internal linkage.
+  - **without a body** (just `;`) a declaration for another translation unit.
+    Contrary to its `extern` annotation, such a stub is not [external](@ref mim::Def::is_external) in the IR sense and, if unused, is removed like any other unreachable `Def`.
 
 ##### Visibility
 

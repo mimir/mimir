@@ -657,7 +657,7 @@ void LamDecl::emit_body(Emitter& e) const {
         }
     }
 
-    if (is_external()) {
+    if (is_extern()) {
         auto lam = doms().front()->lam_;
         if (!lam->is_closed())
             e.error()

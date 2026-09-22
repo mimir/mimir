@@ -27,7 +27,7 @@ plugin mem;
 plugin refly;
 
 use core.ops.u.w;   // `+`, `<`, `<<`, … bound for unsigned `Idx s`, wrapping around
-/// ## Lexical structure
+/// ## Lexical Structure
 let dec = 42;               // decimal
 let bin = 0b101010;         // binary
 let oct = 0o52;             // octal
@@ -51,7 +51,7 @@ let wid = 23I32;            // or as a bit width - the very same as `23:I32`
 let _ = refly.struc.e (tru, tt);
 let _ = refly.struc.e (alt, tt);
 let _ = refly.struc.e (wid, 23:I32);
-/// ## Kinds and builtin types
+/// ## Kinds and Builtin Types
 let univ = Univ;            // the universe of type levels
 let lvl0 = Type (0:Univ);   // the type at level 0 …
 let star = *;               // … which `*` abbreviates
