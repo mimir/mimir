@@ -48,6 +48,7 @@ add_mim_test(mim-test
         lexer.cpp
         restricted_dep_types.cpp
         test.cpp
+        variant.cpp
 )
 
 add_mim_test(mim-regex-test

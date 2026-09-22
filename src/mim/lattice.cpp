@@ -22,6 +22,7 @@ DefVec Match::cases(const Def* scrutinee) {
     auto type = scrutinee->unfold_type();
     if (!type) return {};
     if (auto join = type->isa<Join>()) return DefVec(join->ops().begin(), join->ops().end());
+    if (auto variant = type->isa<Variant>()) return DefVec(variant->ops().begin(), variant->ops().end());
     return DefVec{type};
 }
 

@@ -242,7 +242,8 @@ const Def* Def::var_type() {
         case Node::Join:
         case Node::Meet:   return this;
         case Node::Global:
-        case Node::Hole:   return nullptr;
+        case Node::Hole:
+        case Node::Variant: return nullptr;
         default:           fe::unreachable();
     }
 }
@@ -559,7 +560,8 @@ const Def* Def::immutabilize() {
     switch (node()) {
         case Node::Pi:
             return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom(), as<Pi>()->is_implicit()) : nullptr;
-        case Node::Sigma: return is_immutabilizable() ? w.sigma(ops()) : nullptr;
+        case Node::Sigma:   return is_immutabilizable() ? w.sigma(ops()) : nullptr;
+        case Node::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
         case Node::Rule:  return nullptr; // TODO should we ever immutabilize Rules?
         case Node::Arr:
         case Node::Pack: {

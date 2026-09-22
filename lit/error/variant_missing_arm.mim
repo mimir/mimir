@@ -1,0 +1,4 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+rec Color = | Red | Green | Blue;
+lam f (c: Color): Nat = match c with | Red => 0 | Blue => 2;
+// CHECK: error: match expression has no arm for `Green`

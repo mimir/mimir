@@ -277,14 +277,33 @@ Ptr<Expr> Parser::parse_match_expr() {
     Ptrs<MatchExpr::Arm> arms;
     accept(Tag::T_pipe);
     do {
-        auto track = tracker();
-        auto ptrn  = parse_ptrn({}, "right-hand side of a match-arm", Prec::Bot);
+        auto track   = tracker();
+        auto ptrn    = parse_ptrn({}, "right-hand side of a match-arm", Prec::Bot);
+        auto id      = ptrn->isa<IdPtrn>();
+        auto is_ctor = id && !id->type() && !ahead().isa(Tag::T_fat_arrow);
+        auto payload = is_ctor ? parse_ptrn({}, "payload of a constructor in a match-arm", Prec::Bot) : nullptr;
         expect(Tag::T_fat_arrow, "arm of a match-expression");
         auto body = parse_expr("arm of a match-expression");
-        arms.emplace_back(ptr<MatchExpr::Arm>(track, ptrn, body));
+        arms.emplace_back(ptr<MatchExpr::Arm>(track, ptrn, payload, body));
     } while (accept(Tag::T_pipe));
 
     return ptr<MatchExpr>(track, scrutinee, arms);
+}
+
+Ptr<Expr> Parser::parse_variant_expr() {
+    auto track = tracker();
+    Ptrs<VariantExpr::Ctor> ctors;
+    eat(Tag::T_pipe);
+    // A `|` without any constructor is the empty variant, as in OCaml.
+    if (ahead().isa(Tag::M_id)) {
+        do {
+            auto track = tracker();
+            auto dbg   = parse_id("constructor of a variant");
+            auto type  = accept(Tag::T_colon) ? parse_expr("payload of a variant constructor") : nullptr;
+            ctors.emplace_back(ptr<VariantExpr::Ctor>(track, dbg, type));
+        } while (accept(Tag::T_pipe));
+    }
+    return ptr<VariantExpr>(track, ctors);
 }
 
 Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
@@ -305,6 +324,7 @@ Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
         case Tag::K_Type:    return parse_type_expr();
         case Tag::K_Rule:    return parse_rule_expr();
         case Tag::K_match:   return parse_match_expr();
+        case Tag::T_pipe:    return parse_variant_expr();
         default:
             if (!ctxt) return nullptr;
             syntax_err("primary expression", ctxt);

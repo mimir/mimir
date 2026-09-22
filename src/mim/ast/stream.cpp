@@ -148,7 +148,23 @@ void InfixExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
+    if (payload()) return std::print(os, "{} {} => {}", S(tab, ptrn()), S(tab, payload()), S(tab, body()));
     std::print(os, "{} => {}", S(tab, ptrn()), S(tab, body()));
+}
+
+void VariantExpr::Ctor::stream(fe::Tab& tab, std::ostream& os) const {
+    if (type()) return std::print(os, "{}: {}", dbg(), S(tab, type()));
+    std::print(os, "{}", dbg());
+}
+
+void VariantExpr::stream(fe::Tab& tab, std::ostream& os) const {
+    if (num_ctors() == 0) return std::print(os, "(|)");
+    os << '(';
+    for (auto sep = ""; auto ctor : ctors()) {
+        std::print(os, "{}| {}", sep, S(tab, ctor.get()));
+        sep = " ";
+    }
+    os << ')';
 }
 
 void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {

@@ -446,6 +446,10 @@ const Def* Sigma::infer(World& w, Defs ops) {
     return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
+const Def* Variant::infer(World& w, Defs ops) {
+    return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
+}
+
 const Def* Pi::infer(const Def* dom, const Def* codom) {
     auto& w = dom->world();
     return w.umax<UMax::Kind>({dom->unfold_type(), codom->unfold_type()});
@@ -501,6 +505,12 @@ const Def* Def::check() {
             if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
             w.log().w("expected type {} for {} but keeping the declared {} due to clos-conv bugs", t, this, type());
             return type();
+        }
+        case Node::Variant: {
+            auto t = Variant::infer(w, ops());
+            if (!Checker::alpha<Checker::Check>(t, type()))
+                type()->blame("declared sort of variant does not match inferred sort `{}`", t).bail();
+            return t;
         }
         case Node::Rule: {
             auto rule = as<Rule>();

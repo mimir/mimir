@@ -255,9 +255,15 @@ void InfixExpr::bind(Scopes& s) const {
 
 void MatchExpr::Arm::bind(Scopes& s) const {
     s.push();
-    ptrn()->bind(s, false, false);
+    // The constructor of `Cons (h, t)` is resolved against the scrutinee's type, not bound.
+    (payload() ? payload() : ptrn())->bind(s, false, false);
     body()->bind(s);
     s.pop();
+}
+
+void VariantExpr::bind(Scopes& s) const {
+    for (auto ctor : ctors())
+        if (ctor->type()) ctor->type()->bind(s);
 }
 
 void MatchExpr::bind(Scopes& s) const {
@@ -449,10 +455,11 @@ void RecDecl::bind(Scopes& s) const {
 }
 
 void RecDecl::bind_decl(Scopes& s) const {
-    if (!body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body()) && !body()->isa<SigmaExpr>())
+    if (!body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body()) && !body()->isa<SigmaExpr>()
+        && !body()->isa<VariantExpr>())
         s.error()
             .e(body()->loc(), "unsupported expression in a recursive declaration")
-            .n("must be a sigma or a function type; use `lam`/`con`/`fun` to declare a recursive function");
+            .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
 
     s.bind(dbg(), this);
     if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);

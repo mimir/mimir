@@ -271,7 +271,7 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   The corresponding [expression forms](@ref expr) are anonymous and cannot refer to themselves.
 - The `@` of a `dom` introduces its partial-evaluation filter.
 - `rec` starts a recursive declaration group, and `and` extends the same group.
-  Its body must be a sigma or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
+  Its body must be a sigma, a [variant](@ref variant), or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
 - `axm` declares an axiom.
@@ -521,6 +521,37 @@ e   ::= e "∪" e
 - `e inj e` injects a value into a union type.
 - `match e with | p => e | ...` eliminates a union value.
 
+#### Variants {#variant}
+
+```ebnf
+e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
+arm ::= I p? "=>" e
+```
+
+- `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
+  A constructor without `: e` carries `[]`, and a lone `|` is the empty variant.
+- Unlike `∪`, nothing is sorted, deduplicated, or flattened: `| A | B | C` has three cases where `[] ∪ [] ∪ []` is just `[]`, and `| A: Nat | B: Nat` keeps both.
+- A variant is a type like any other and may be anonymous; `rec` makes it recursive, and `and` mutually recursive.
+- Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
+- `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
+  That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
+- In a `match` on a variant, each arm names a constructor, optionally followed by a pattern for its payload.
+  Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
+- Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
+  Variants are structural, so two of the same shape are the same type; where they put a name at different positions, it is ambiguous and needs an index.
+
+```mim
+rec List = | Nil | Cons: [Nat, List];
+
+lam len (l: List): Nat =
+    match l with
+        | Nil         => 0
+        | Cons (_, t) => core.nat.add (1, len t);
+
+let xs = List#Cons (1, List#Nil);
+let ys = List#1 (2, xs); // the same constructor, by index
+```
+
 #### Singletons {#single}
 
 ```ebnf
@@ -698,6 +729,9 @@ rec S = [i j: Nat];
 lam f (x: S): Nat = x#(i);
 ```
 
+The constructor names of a [variant](@ref variant) behave the same way after `#`, as in `T#Red`.
+Unlike field names, they also work for an immutable - that is, anonymous and non-recursive - variant.
+
 ## Normalizations {#normalization}
 
 Mim nodes are hash-consed and normalized while they are built, so the left-hand sides below never reach the IR - `mim --output-mim` prints the right-hand side.
@@ -758,6 +792,12 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - each case is handled by the **first** arm accepting it, so the arms are *not* sorted; an arm accepts a case if its domain is that case, or a union containing it
 - a `match` whose scrutinee is not a union is the degenerate one-case union and reduces right away
 - an arm handling no case is dropped; a case handled by no arm is an error
+
+### Variants
+
+- a variant is never sorted, deduplicated, or flattened; an empty or one-case variant stays a variant
+- `match (T#i x) with ...` -> the arm for case `i`
+- the arms of a `match` on a variant are in the order of its cases, one each
 
 ### Singletons
 
