@@ -32,6 +32,7 @@ set(MIM_PLAYGROUND_EXAMPLES
     mem/seo/phi-var-combis
     mem/seo/higher-order
     mem/seo/ptr_indirect
+    mem/seo/contify_fluet_weeks
 )
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)

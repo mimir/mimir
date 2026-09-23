@@ -16,6 +16,7 @@ namespace mim::plug::mem::phase {
 /// * propagates whole expressions - not just constants
 /// * optimistically combines φs/Vars that are already present with those being constructed through SSA translation
 /// * since abstract domain is a MimIR expression, stack slots themselves can be propagated etc.
+/// * contifies for free: a continuation parameter that all call sites agree on is propagated away
 ///
 /// Additional papers worth reading:
 /// * [Constant propagation with conditional branches](https://dl.acm.org/doi/pdf/10.1145/103135.103136)
@@ -23,6 +24,7 @@ namespace mim::plug::mem::phase {
 /// * [Combining analyses, combining optimizations](https://dl.acm.org/doi/pdf/10.1145/201059.201061)
 /// * [Simple and efficient construction of static single assignment
 /// form](https://dl.acm.org/doi/10.1007/978-3-642-37051-9_6)
+/// * [Contification using dominators](https://dl.acm.org/doi/10.1145/507635.507639)
 ///
 /// Due to MimIR's sea of node structure a number of other optimizations kick in such as arithmetic simplifications and
 /// code motion.
