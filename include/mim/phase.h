@@ -260,6 +260,38 @@ protected:
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool pin(const Def* def) { return lattice(def, def); }
 
+    /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
+    /// Mutables are visited but not descended into; defs already in @p visited are skipped - seed it to exempt them.
+    template<class F>
+    void pin_imm(const Def* def, F pinnable, DefSet& visited) {
+        if (!visited.emplace(def).second) return;
+        if (pinnable(def)) pin(def);
+        if (def->isa_mut()) return;
+        for (auto d : def->deps())
+            pin_imm(d, pinnable, visited);
+    }
+
+    template<class F>
+    void pin_imm(const Def* def, F pinnable) {
+        auto visited = DefSet();
+        pin_imm(def, pinnable, visited);
+    }
+
+    /// If @p app applies an Axm, pin_imm%s the shapes its signature dictates: what the Axm consumes and produces.
+    /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
+    /// Subgraphs merely substituted in via (type) arguments impose no shape, though, and are exempt.
+    /// @returns whether @p app applies an Axm.
+    template<class F>
+    bool pin_axm(const App* app, F pinnable) {
+        if (!app->uncurry_callee()->isa<Axm>()) return false;
+        auto skips = DefSet();
+        for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
+            pin_imm(a->arg(), [](const Def*) { return false; }, skips);
+        pin_imm(app->callee_type()->dom(), pinnable, skips);
+        pin_imm(app->type(), pinnable, skips);
+        return true;
+    }
+
     /// Additionally schedules @p mut for the next sparse round.
     /// Use this when a lattice change must re-visit *other* mutables than curr_mut() -
     /// e.g. all call sites of a Lam whose var's abstract value changed.

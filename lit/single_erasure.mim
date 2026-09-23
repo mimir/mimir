@@ -22,3 +22,20 @@ extern lam pck (): «4; «23»» = ‹4; ‹23››;
 // Writing the sole inhabitant back is a no-op; a later index shifts down.
 extern lam ins (t: [I32, «23», I32], v: I32): [I32, «23», I32] = t#2₃ ← v;
 // CHECK-DAG: {{.*}}#tt ← v
+
+// A lone case is isomorphic to its payload.
+rec Box = | Box: Nat;
+extern lam unbox (b: Box): Nat = match b with | Box n => n;
+// CHECK-DAG: extern lam unbox (b: Nat): Nat =
+extern lam mkbox (n: Nat): Box = Box#Box n;
+// CHECK-DAG: extern lam mkbox (n: Nat): Nat =
+
+// Without a payload the case carries no information and is dropped altogether.
+extern lam tag (t: [I32, | Tag]): I32 = t#0₂;
+// CHECK-DAG: extern lam tag (t{{.*}}: I32): I32 =
+
+// A recursive lone case has no payload to erase to.
+rec Loop = | Next: [Nat, Loop];
+extern lam loop (l: Loop): Loop = l;
+// CHECK-DAG: rec Loop = | _0: [Nat, Loop];
+// CHECK-DAG: extern lam loop (l: Loop): Loop =
