@@ -479,7 +479,8 @@ void full(std::ostream& os, Full d) {
     } else if (auto ext = d->isa<Ext>()) {
         return std::print(os, "{}:{}", ext->isa<Bot>() ? bot : top, d.r(ext->type(), Prec::Lit));
     } else if (auto axm = d->isa<Axm>()) {
-        auto sym = axm->sym().view();
+        auto axm_sym = axm->sym(); // a short Sym is stored inline, so its view must not outlive it
+        auto sym     = axm_sym.view();
         if (auto ctx = d.ctx(); ctx && !ctx->self.empty() && sym.starts_with(ctx->self)) {
             sym.remove_prefix(ctx->self.size());
             if (!ctx->mod.empty() && sym.starts_with(ctx->mod)) sym.remove_prefix(ctx->mod.size());
