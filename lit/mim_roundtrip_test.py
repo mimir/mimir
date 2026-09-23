@@ -15,9 +15,11 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
     def __init__(self, *flags):
         self.flags = list(flags)
 
-    def run(self, cmd, cwd, litConfig):
+    def run(self, cmd, cwd, test, litConfig):
+        # lit 23 moved the per-test timeout to the suite config; see lit.site.cfg.py.in.
+        timeout = getattr(test.config, "maxIndividualTestTime", None) or litConfig.maxIndividualTestTime or 0
         try:
-            return lit.util.executeCommand(cmd, cwd=cwd, timeout=litConfig.maxIndividualTestTime)
+            return lit.util.executeCommand(cmd, cwd=cwd, timeout=timeout)
         except lit.util.ExecuteCommandTimeoutException as e:
             return e.out, e.err + "\nreached timeout", -1
 
@@ -36,12 +38,12 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
             if os.path.exists(out):
                 os.remove(out)
 
-        _, err, code = self.run(mim + [src] + self.flags + [outs[0]], os.path.dirname(src), litConfig)
+        _, err, code = self.run(mim + [src] + self.flags + [outs[0]], os.path.dirname(src), test, litConfig)
         if code != 0:
             return lit.Test.Result(lit.Test.UNSUPPORTED, "input does not compile on its own:\n" + err)
 
         # The copy lives elsewhere, so relative imports must still resolve against the input's directory.
-        _, err, code = self.run(mim + ["-I", os.path.dirname(src), outs[0]] + self.flags + [outs[1]], base, litConfig)
+        _, err, code = self.run(mim + ["-I", os.path.dirname(src), outs[0]] + self.flags + [outs[1]], base, test, litConfig)
         if code != 0:
             return lit.Test.Result(lit.Test.FAIL, f"re-reading {outs[0]} failed:\n{err}")
 
