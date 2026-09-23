@@ -22,8 +22,8 @@ const Def* SingleErasure::Analysis::rewrite(const Def* old) {
         // which would tear such an edge apart: the instance loses what the dependent dom still expects.
         if (auto dom = app->callee_type()->dom(); dom != app->arg()->type()) {
             auto visited = DefSet();
-            pin_imm(dom, is_shaped, visited);
-            pin_imm(app->arg()->type(), is_shaped, visited);
+            pin_imm(visited, dom, is_shaped);
+            pin_imm(visited, app->arg()->type(), is_shaped);
         }
     }
 

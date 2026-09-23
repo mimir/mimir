@@ -81,13 +81,13 @@ void Scalarize::Analysis::inspect(const Def* def) {
         auto visited = DefSet();
         visited.emplace(lam->type());
         for (auto d : lam->type()->deps())
-            pin_imm(d, isa_flattenable, visited);
+            pin_imm(visited, d, isa_flattenable);
         // A curried interface (e.g. `fun extern f {s: Nat} (ab: ...)`) reduces to its inner Lam%s
         // upon application; their types are the interface's *instantiated* codomains - distinct defs
         // from the Pi-side codomains pinned above (Lam var vs Pi var) - so pin them whole, too.
         if (lam->is_set())
             for (auto inner = lam->body()->isa_mut<Lam>(); inner;) {
-                pin_imm(inner->type(), isa_flattenable, visited);
+                pin_imm(visited, inner->type(), isa_flattenable);
                 inner = inner->is_set() ? inner->body()->isa_mut<Lam>() : nullptr;
             }
     }

@@ -262,30 +262,30 @@ protected:
 
     /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
     /// Mutables are visited but not descended into; defs already in @p visited are skipped - seed it to exempt them.
-    void pin_imm(const Def* def, std::predicate<const Def*> auto pinnable, DefSet& visited) {
+    void pin_imm(DefSet& visited, const Def* def, DefPred auto pinnable) {
         if (!visited.emplace(def).second) return;
         if (pinnable(def)) pin(def);
         if (def->isa_mut()) return;
         for (auto d : def->deps())
-            pin_imm(d, pinnable, visited);
+            pin_imm(visited, d, pinnable);
     }
 
-    void pin_imm(const Def* def, std::predicate<const Def*> auto pinnable) {
+    void pin_imm(const Def* def, DefPred auto pinnable) {
         auto visited = DefSet();
-        pin_imm(def, pinnable, visited);
+        pin_imm(visited, def, pinnable);
     }
 
     /// If @p app applies an Axm, pin_imm%s the shapes its signature dictates: what the Axm consumes and produces.
     /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
     /// Subgraphs merely substituted in via (type) arguments impose no shape, though, and are exempt.
     /// @returns whether @p app applies an Axm.
-    bool pin_axm(const App* app, std::predicate<const Def*> auto pinnable) {
+    bool pin_axm(const App* app, DefPred auto pinnable) {
         if (!app->uncurry_callee()->isa<Axm>()) return false;
-        auto skips = DefSet();
+        auto visited = DefSet();
         for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-            pin_imm(a->arg(), [](const Def*) { return false; }, skips);
-        pin_imm(app->callee_type()->dom(), pinnable, skips);
-        pin_imm(app->type(), pinnable, skips);
+            pin_imm(visited, a->arg(), [](const Def*) { return false; });
+        pin_imm(visited, app->callee_type()->dom(), pinnable);
+        pin_imm(visited, app->type(), pinnable);
         return true;
     }
 
