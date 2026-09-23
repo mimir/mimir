@@ -1,3 +1,4 @@
+#include <bit>
 #include <ostream>
 
 #include "mim/ast/ast.h"
@@ -115,7 +116,10 @@ void LitExpr::stream(fe::Tab& tab, std::ostream& os) const {
     switch (tag()) {
         case Tag::L_i: {
             auto [size, val] = tok().lit_i();
-            std::print(os, "{}_{}", val, size); // the `_` form spells out every size, 2^64 included
+            if (size == 0 || (size > 1 && std::has_single_bit(size)))
+                std::print(os, "{}I{}", val, Idx::size2bitwidth(size));
+            else
+                std::print(os, "{}_{}", val, size);
             break;
         }
         case Tag::L_s: os << std::bit_cast<s64>(tok().lit_u()); break;
