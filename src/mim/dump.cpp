@@ -13,13 +13,10 @@
 
 using namespace std::literals;
 
-// During dumping, we classify Defs according to the following logic:
-// * Inline: These Defs are *always* displayed with all of its operands "inline".
-//   E.g.: (1, 2, 3).
-// * All other Defs are referenced by its name/unique_name (see id) when they appear as an operand.
-// * Mutables are either classifed as "decl" (see isa_decl).
-//   In this case, recursing through the Defs' operands stops and this particular Decl is dumped as its own thing.
-// * Or - if they are not a "decl" - they are basicallally handled like immutables.
+// A dump prints a Def that appears as an operand in one of two ways:
+// * Full: spelled out with all of its operands, e.g. `(1, 2, 3)`; see Full::is_full.
+// * By name (see id): everything else; a `let` - or, for a decl (see isa_decl), a declaration of its own - binds it.
+// A mutable that is no decl is printed like an immutable.
 
 namespace mim {
 
@@ -191,12 +188,11 @@ private:
     Prec prec_;
     bool is_left_;
 
-    /// This will stream @p def as an operand.
-    /// This is usually `id(def)` unless it can be displayed Inline.
+    /// Streams @p def as an operand: Full if Full::is_full, and by its id otherwise.
     friend std::ostream& operator<<(std::ostream&, Op);
 };
 
-/// This is a wrapper to dump a Def "inline" and print it with all of its operands.
+/// A wrapper that streams a Def with all of its operands.
 class Full : public Op {
 public:
     Full(Ctx* ctx, const Def* def, Prec prec = Prec::Bot, bool is_left = false)
@@ -204,9 +200,10 @@ public:
     Full(Op op)
         : Full(op.ctx(), op.def(), op.prec(), op.is_left()) {}
 
-    explicit operator bool() const { return is_inline(); }
+    explicit operator bool() const { return is_full(); }
 
-    bool is_inline() const {
+    /// Does the Def always print Full - instead of by name?
+    bool is_full() const {
         if (auto ctx = this->ctx()) {
             if (ctx->inlined.contains(def())) return true;
             if (ctx->in_header && ctx->header.contains(def())) return true;
@@ -219,7 +216,7 @@ public:
         if (def()->is_closed()) return true;
 
         if (auto app = def()->isa<App>()) {
-            if (app->type()->isa<Pi>()) return true; // curried apps are printed inline
+            if (app->type()->isa<Pi>()) return true; // a curried App prints Full
             if (app->type()->isa<Type>()) return true;
             if (app->callee()->isa<Axm>()) return app->callee_type()->num_doms() <= 1;
             return false;
@@ -229,7 +226,7 @@ public:
     }
 
     bool needs_parens() const {
-        if (!is_inline()) return false;
+        if (!is_full()) return false;
 
         auto child_prec = def2prec(def());
         if (child_prec < prec()) return true;
@@ -450,7 +447,7 @@ std::ostream& operator<<(std::ostream& os, Op op) {
     return os << id(op.ctx(), *op);
 }
 
-/// Streams @p d with all of its operands; Full::is_inline decides who gets here.
+/// Streams @p d with all of its operands; Full::is_full decides who gets here.
 void full(std::ostream& os, Full d) {
     if (auto hole = d->isa_mut<Hole>()) {
         if (hole->is_set()) return std::print(os, "{}", d.op(hole->op()));
