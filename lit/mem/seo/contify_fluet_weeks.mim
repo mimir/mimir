@@ -12,7 +12,7 @@ extern fun f (b: Bool): Nat =
     (l2, l1)#b () where
         con l1 () = g (13, k);
         con l2 () = g (15, k);
-        con g (y: Nat, r: Cn Nat) = r (y - 1);
+        fun g (y: Nat): Nat = return (y - 1);
         con k (x: Nat) = return (x + 1);
     end;
 

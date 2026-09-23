@@ -4,7 +4,7 @@ plugin mem;
 
 use core.ops.n;
 
-extern fun dont_know[]: Bool;
+extern fun dont_know (): Bool;
 
 // Both call sites of `g` hand it the same continuation `k`, so SCCP propagates `k` and drops the parameter.
 // EtaConv splits `k` into one wrapper per occurrence first, which SEO has to see through.
@@ -13,7 +13,7 @@ extern fun f (x: Nat): Nat =
     (a, b)#c () where
         con a () = g (x, k);
         con b () = g (x + 2, k);
-        con g (y: Nat, r: Cn Nat) = r (y + 1);
+        fun g (y: Nat): Nat = return (y + 1);
         con k (r: Nat) = return (r + r);
     end;
 
