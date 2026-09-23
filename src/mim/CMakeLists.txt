@@ -15,7 +15,6 @@ target_sources(libmim
         rewrite.cpp
         rule.cpp
         schedule.cpp
-        sexpr.cpp
         tuple.cpp
         union.cpp
         world.cpp
