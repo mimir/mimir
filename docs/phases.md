@@ -524,6 +524,47 @@ There are no lexical scoping brackets that a `Lam` opens over its body; instead,
 [`Def::nests`](@ref mim::Def::nests) reads availability straight off that implicit nesting — `L` nests `def` iff `def` transitively depends on a variable bound below `L` — so the containment a lexical language would spell out with explicit brackets is recovered purely from the free-variable structure MimIR maintains anyway.
 The query is structural and commits to no schedule, so MimIR gets a compelling, schedule-free answer to the availability question that dominance-based and sea-of-nodes IRs can only reconstruct by (partially) scheduling first.
 
+#### A second dominance: contification
+
+The availability guard is not the only place where a classical dominance computation fails to materialize.
+
+[Contification](https://dl.acm.org/doi/10.1145/507635.507639) turns a function that always returns to the same place into a continuation.
+Here is the canonical example of Fluet & Weeks, transcribed into Mim with their original in the comment.
+
+```mim
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+// fun g y = y - 1
+// fun f b = (if b then g 13 else g 15) + 1
+extern fun f (b: Bool): Nat =
+    (l2, l1)#b () where
+        con l1 () = g (13, k);
+        con l2 () = g (15, k);
+        fun g (y: Nat): Nat = return (y - 1);
+        con k (x: Nat) = return (x + 1);
+    end;
+```
+
+Both calls to `g` return to the same continuation `k`, so `g` can become a continuation inside `f`.
+Their algorithm computes _where_ the contified function goes from the dominator tree of the program's call graph, and proves that choice optimal within their framework.
+That placement is a real decision with a wrong answer: a continuation may only be jumped to from within its scope, so putting `g` too far in hides it from some of its call sites, and too far out is not expressible at all.
+
+MimIR never makes the decision.
+A return continuation is an ordinary parameter, so the join described above already covers it: once every call site passes the same continuation, that parameter is propagated away and `g`'s body transfers control straight to it.
+Contification is not a separate transformation here — it is what expression propagation looks like when the propagated expression happens to be a [`Cn`](@ref mim::Pi::isa_cn).
+
+Placement then takes care of itself, because where a [`Lam`](@ref mim::Lam) sits is a function of its free variables and not of anything a phase decides.
+Before propagation `g` is closed, so it belongs to the top level even when it was written inside `f`.
+After propagation `g` mentions `f`'s continuation, so it belongs inside `f`.
+Neither move is carried out by anything; both are readings of the very free-variable structure that [`Def::nests`](@ref mim::Def::nests) already queries for availability.
+
+The contrast with a scoped compiler is sharp.
+MLton runs contification _after_ closure conversion, and Fluet & Weeks describe their own loop example as moving `loop` back inside `sum` after closure conversion took it out — a dominator analysis reconstructing a nesting that an earlier phase destroyed.
+A scopeless IR never loses that nesting, so there is no hoisting-versus-contification phase ordering to get right and no oracle to consult.
+
 ### Transformation
 
 \include "examples/sccp_transform.cpp"

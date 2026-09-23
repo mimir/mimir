@@ -7,12 +7,14 @@ use core.ops.n;
 // The canonical example of Fluet & Weeks, "Contification Using Dominators", §1:
 //     fun g y = y - 1
 //     fun f b = (if b then g 13 else g 15) + 1
-// Both call sites of `g` return to `k`, so `g` becomes a continuation within `f`.
-extern fun f (b: Bool): Nat =
+// with `1` replaced by `f`'s `n`, so `g` captures it and genuinely has to live inside `f`.
+// Both call sites of `g` return to `k`, so SCCP propagates it and the continuation parameter vanishes.
+// Where `g` sits falls out of its free vars, so nothing has to compute a placement for it.
+extern fun f (b: Bool, n: Nat): Nat =
     (l2, l1)#b () where
         con l1 () = g (13, k);
         con l2 () = g (15, k);
-        fun g (y: Nat): Nat = return (y - 1);
+        fun g (y: Nat): Nat = return (y - n);
         con k (x: Nat) = return (x + 1);
     end;
 
