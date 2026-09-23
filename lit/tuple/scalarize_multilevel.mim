@@ -11,8 +11,8 @@ extern con main(i: Idx 2, r: Cn Nat) =
 // `t` is only Extract%ed with constant indices, so it may be scalarized.
 // Scalarize peels one level per run; the surrounding fixed-point pipeline re-runs it until
 // the fused «2, 2; Nat» is fully flattened into 4 scalar arguments.
-// CHECK-DAG: f_{{[0-9]+}} (10, 20, 30, 40)
-// CHECK-DAG: f_{{[0-9]+}} (50, 60, 70, 80)
+// CHECK-DAG: f (10, 20, 30, 40)
+// CHECK-DAG: f (50, 60, 70, 80)
 
 // With the threshold at the arity (2), num_tprojs yields 1, so nothing is scalarized and the
 // nested tuple is kept.

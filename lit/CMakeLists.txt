@@ -143,9 +143,18 @@ add_custom_target(lit
     USES_TERMINAL
 )
 
+set(MIM_ROUNDTRIP_COMMANDS "")
+if(MIM_TEST_ROUNDTRIP)
+    set(MIM_ROUNDTRIP_COMMANDS
+        COMMAND ${MIM_LIT_COMMAND} --param roundtrip=mim
+        COMMAND ${MIM_LIT_COMMAND} --param roundtrip=ast
+    )
+endif()
+
 add_custom_target(test-all
     COMMAND ${MIM_CTEST_COMMAND}
     COMMAND ${MIM_LIT_COMMAND}
+    ${MIM_ROUNDTRIP_COMMANDS}
     DEPENDS
         ${MIM_TEST_TARGETS}
         mim

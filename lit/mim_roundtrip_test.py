@@ -8,10 +8,10 @@ import lit.util
 
 
 class MimRoundTripTest(lit.formats.FileBasedTest):
-    """Checks that re-emitting an input's `mim --<flag>` output reproduces it byte for byte."""
+    """Checks that re-emitting an input's `mim <flags>` output reproduces it byte for byte."""
 
-    def __init__(self, flag):
-        self.flag = flag
+    def __init__(self, *flags):
+        self.flags = list(flags)
 
     def run(self, cmd, cwd, litConfig):
         try:
@@ -34,12 +34,12 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
             if os.path.exists(out):
                 os.remove(out)
 
-        _, err, code = self.run(mim + [src, self.flag, outs[0]], os.path.dirname(src), litConfig)
+        _, err, code = self.run(mim + [src] + self.flags + [outs[0]], os.path.dirname(src), litConfig)
         if code != 0:
             return lit.Test.Result(lit.Test.UNSUPPORTED, "input does not compile on its own:\n" + err)
 
         # The copy lives elsewhere, so relative imports must still resolve against the input's directory.
-        _, err, code = self.run(mim + ["-I", os.path.dirname(src), outs[0], self.flag, outs[1]], base, litConfig)
+        _, err, code = self.run(mim + ["-I", os.path.dirname(src), outs[0]] + self.flags + [outs[1]], base, litConfig)
         if code != 0:
             return lit.Test.Result(lit.Test.FAIL, f"re-reading {outs[0]} failed:\n{err}")
 

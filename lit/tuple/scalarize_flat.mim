@@ -14,5 +14,5 @@ extern con main(i: (Idx 2), r: Cn [«32; Nat»]) = (f (‹32; 20›, r), f (‹3
 
 // At threshold 64 the arity is below the threshold, so `t` is scalarized and the constant
 // is propagated, collapsing the homogeneous pack to a single argument.
-// SCALAR-DAG: f_{{[0-9]+}} 20
-// SCALAR-DAG: f_{{[0-9]+}} 19
+// SCALAR-DAG: f 20
+// SCALAR-DAG: f 19

@@ -120,7 +120,10 @@ int compile(Driver& driver, Opts& opts) {
         }
 
         file->compile(ast);
-        if (!opts.no_opt) optimize(world);
+        if (opts.no_opt)
+            Cleanup(world).run(); // resolves the Hole%s elaboration solved, as optimize would first
+        else
+            optimize(world);
 
         auto types = opts.sexpr_include_types;
         if (auto s = outs[Dot].os()) world.dot(*s, opts.dot);

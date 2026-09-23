@@ -79,6 +79,7 @@ jobs:
                 -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=${{matrix.build-type == 'Debug' && 'Embedded' || ''}} ^
                 -DBUILD_TESTING=ON                        ^
                 -DMIM_BUILD_EXAMPLES=ON                   ^
+                -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} ^
                 -DPython3_EXECUTABLE=%PYTHON_EXE%         ^
                 -DPython_EXECUTABLE=%PYTHON_EXE%          ^
                 -DPYTHON_EXECUTABLE=%PYTHON_EXE%          ^

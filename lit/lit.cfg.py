@@ -20,11 +20,12 @@ config.test_exec_root = os.path.join(config.my_obj_root, 'test')
 # `--param roundtrip=mim|ast` ignores the RUN lines and checks instead that each input's `-o`/`--output-ast` output round-trips.
 roundtrip = lit_config.params.get('roundtrip')
 if roundtrip:
-    flags = {'mim': '--output-mim', 'ast': '--output-ast'}
+    # Optimizing twice is not idempotent - but the dump has to be.
+    flags = {'mim': ['--no-opt', '--output-mim'], 'ast': ['--output-ast']}
     if roundtrip not in flags:
         lit_config.fatal(f"unknown roundtrip mode '{roundtrip}'; expected one of: {', '.join(flags)}")
     config.name = f'mim roundtrip-{roundtrip}'
-    config.test_format = MimRoundTripTest(flags[roundtrip])
+    config.test_format = MimRoundTripTest(*flags[roundtrip])
     config.test_exec_root = os.path.join(config.my_obj_root, 'roundtrip', roundtrip)
 
 config.substitutions.append(('%mim', config.mim))
