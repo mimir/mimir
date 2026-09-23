@@ -56,7 +56,7 @@ private:
 static void reg_phases(Flags2Phases& phases) {
     // clang-format off
     fe::assert_emplace(phases, Annex::base<compile::null>(), [](World&) { return std::unique_ptr<Phase>{}; });
-    Phase::hook<compile::adce,             ACDE           >(phases);
+    Phase::hook<compile::adce,             ADCE           >(phases);
     Phase::hook<compile::beta_red,         BetaRed        >(phases);
     Phase::hook<compile::branch_normalize, BranchNormalize>(phases);
     Phase::hook<compile::cleanup,          Cleanup        >(phases);

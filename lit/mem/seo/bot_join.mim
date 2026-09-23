@@ -1,0 +1,45 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin mem;
+plugin compile;
+
+extern fun dont_know[]: Bool;
+
+// A site passing ⊥ contributes no value: `⊥ ⊔ x` is `x`.
+// Restarting the join on ⊥ used to descend every round only to climb back to `x` - SEO never converged.
+extern fun f(x: Nat): Nat =
+    head ⊥:Nat where
+        con head(acc: Nat) =
+            ret c = dont_know $ ();
+            (exit, body)#c () where
+                con body() = head x;
+                con exit() = return acc;
+            end
+    end;
+
+// Like mem/seo/scope.mim, but `head_b` does not refer to `head_a`'s var, so `head_a` does not nest it.
+// Still, `acc_b` is invisible at `g`'s ⊥-site of `head_a` and must not be propagated.
+extern fun g(x: Nat): Nat =
+    head_a ⊥:Nat where
+        con head_a(acc_a: Nat) =
+            ret ca = dont_know $ ();
+            (exit_a, body_a)#ca () where
+                con body_a() =
+                    head_b x where
+                        con head_b(acc_b: Nat) =
+                            ret cb = dont_know $ ();
+                            (body_b, exit_b)#cb () where
+                                con body_b() = head_b 7;
+                                con exit_b() = head_a acc_b;
+                            end;
+                    end;
+                con exit_a() = return acc_a;
+            end
+    end;
+
+extern lam _compile(): compile.Phase = compile.phases ff (compile.named "mem.seo",);
+
+// CHECK-DAG: con head () =
+// CHECK-DAG: return x;
+// CHECK-DAG: con head_a (acc_a: Nat) =
+// CHECK-DAG: return acc_a;

@@ -66,7 +66,7 @@ axm phases: {n: Nat} → Bool → «n; Phase» → Phase;
 ///
 /// ### adce
 ///
-/// Agressive dead cdoe elimination; removes variables nobody needs.
+/// Aggressive dead code elimination; removes Lam params nobody needs (mim::ADCE).
 ///
 axm adce: Phase;
 ///

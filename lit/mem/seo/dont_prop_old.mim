@@ -5,7 +5,7 @@
 // `next` that merges `i` with itself.
 
 // CHECK-LABEL: define{{.*}}@f(i64
-// The induction variable is a single loop phi in `head` (init 23, incremented on the back edge):
+// The induction variable is a single loop phi in `head` (init 23, incremented by `j` on the back edge):
 // CHECK-DAG: = phi i64 [ 23, %f
 // The genuine phi for `j` survives (`x` on the true edge, `4` on the false edge):
 // CHECK-DAG: = phi i64 [ %x_{{[0-9]+}}, %true{{[0-9_]*}} ], [ 4, %false{{[0-9_]*}} ]
@@ -33,7 +33,7 @@ extern fun f(x: Nat): Nat =
                         con false() =
                             next (i, 4);
                         con next (i j: Nat) as cxt =
-                            let i = i + 1;
+                            let i = i + j;
                             head i;
                     end;
 

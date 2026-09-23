@@ -2,103 +2,82 @@
 
 namespace mim {
 
-enum { Proxy_Dead; };
+enum {
+    Proxy_Dead, // proxy(var) <- var is optimistically assumed dead
+};
 
-const Proxy* ADCE::Analysis::mk_proxy(const Def* var) { return world().proxy(var->type(), {var}, Proxy_Dead); }
+/// Does @p lam's signature refer to its own binder's Var?
+/// Such a signature cannot be narrowed: dropping a component would tear its siblings off the binder.
+static bool is_dependent(Lam* lam) { return lam->type()->isa_mut() || lam->type()->dom()->isa_mut(); }
 
-const Def* ADCE::rewrite_mut_Lam(Lam* old_lam) {
-    if (!is_bootstrapping()) {
-        if (auto statics = this->statics(old_lam); !statics.empty()) {
-            auto& w        = new_world();
-            auto n         = statics.size();
-            auto loop_doms = DefVec();
-            for (size_t i = 0; i != n; ++i)
-                if (!statics[i]) loop_doms.emplace_back(rewrite(old_lam->tdom(i)));
-
-            auto wrap = w.mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
-            auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
-            loop->debug_suffix("_loop");
-            DLOG("old {} -> (wrap: {}, loop: {})", old_lam, wrap, loop);
-            old2wrap_loop_[old_lam] = {wrap, loop};
-
-            // The body lives in loop; the static vars stay wrap's and are free in loop.
-            DefVec vars(n), args;
-            for (size_t i = 0, j = 0; i != n; ++i) {
-                if (statics[i]) {
-                    vars[i] = wrap->tvar(i);
-                } else {
-                    vars[i] = loop->var(loop_doms.size(), j++);
-                    args.emplace_back(wrap->tvar(i));
-                }
-            }
-
-            map(old_lam, wrap);
-            map(old_lam->var(), vars);
-            loop->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
-            wrap->app(false, loop, args);
-            return wrap;
-        }
-    }
-
-    return RWPhase::rewrite_mut_Lam(old_lam);
-}
 /*
- * Post-Analysis:
- * Finds sloxies that are still present + unknown lambdas
+ * Analysis
  */
 
-void ACDE::Analysis::finalize() {
+void ADCE::Analysis::reset() {
+    Super::reset();
+    visited_.clear();
+}
+
+bool ADCE::Analysis::is_dead(const Def* var) const {
+    auto l = lattice(var);
+    return l && Proxy::isa<Proxy_Dead>(l);
+}
+
+const Def* ADCE::Analysis::rewrite_imm_App(const App* app) {
+    auto abstr_arg    = rewrite(app->arg());
+    auto abstr_callee = rewrite(app->callee());
+
+    if (auto lam = isa_optimizable(abstr_callee->isa_mut<Lam>())) {
+        auto n          = lam->num_tvars();
+        auto dependent  = is_dependent(lam);
+        auto abstr_vars = DefVec(n, [&](size_t i) -> const Def* {
+            auto var = lam->tvar(i);
+            if (dependent) return pin(var), var;
+            if (auto l = lattice(var)) return l;
+            auto dead = world().proxy(var->type(), {var}, Proxy_Dead)->set(var->dbg_key());
+            return lattice(var, dead), dead;
+        });
+
+        if (n > 1) lattice(lam->var(), world().tuple(abstr_vars));
+        // raw_app: World::app would β-reduce or partially evaluate lam.
+        return world().raw_app(rewrite(app->type()), lam, abstr_arg);
+    }
+
+    return Super::rewrite_imm_App(app);
+}
+
+void ADCE::Analysis::finalize() {
     for (auto def : world().roots())
         analyze(def);
 }
 
-void ACDE::Analysis::analyze(const Def* def) {
-    if (def->isa<Var>()) return; // do not run escape analysis through a Var (would remap it via lookup)
+void ADCE::Analysis::analyze(const Def* def) {
+    // A Var's lattice spells all of its projections; the live ones already reach us via their Extract.
+    if (def->isa<Var>()) return;
     if (auto [_, ins] = visited_.emplace(def); !ins) return;
-    if (auto l = lookup(def)) def = l; // get abstracted value of def
+    if (auto l = lookup(def); l && l != def) return analyze(l);
 
-    if (auto proxy = def->isa<Proxy>()) {
-        if (proxy->tag() == Proxy_Sloxy) {
-            auto ptr  = proxy->op(1); // the continuation's slot var; see rewrite_imm_App
-            auto slot = sloxy2slot_[proxy];
-            assert(slot);
-            pin(slot);
-            pin(ptr);
-            DLOG("sloxy {} survived; setting slot to top: {}", proxy, slot);
-        }
-        return; // never walk a proxy's deps (would drag in meta info)
+    if (auto dead = def->isa<Proxy>()) {
+        if (dead->tag() == Proxy_Dead && pin(dead->op(0))) log().d("live: {}", dead->op(0));
+        return; // never walk a proxy's deps: its var would look live
     }
 
-    // A Lam is unknown (and hence its vars must go to top) iff it is reached as a *value*.
     if (auto app = def->isa<App>()) {
-        if (auto slot = Axm::isa<mem::slot>(app)) {
-            // The slot jump applies its continuation, so `ret_lam` is known - not reached as a value.
-            auto [mem, ret_lam, _, __] = split_slot(slot);
-            analyze(app->type());
-            analyze(mem); // the ptr var has no argument - the slot itself defines it
-            for (auto d : ret_lam->deps())
-                analyze(d);
-            return;
-        }
-        if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
-            // lam is applied here, it's known: traverse its body without pinning its vars to top
+        if (auto lam = isa_optimizable(app->callee()->isa_mut<Lam>())) {
             analyze(app->type());
 
-            // only analyze args that we keep
-            for (size_t i = 0, e = lam->num_tdoms(); i != e; ++i) {
-                auto old_var = lam->var(e, i);
-                if (keep(lam, old_var, lattice(old_var))) analyze(app->arg(e, i));
-            }
+            auto n = lam->num_tvars();
+            for (size_t i = 0; i != n; ++i)
+                if (!is_dead(lam->tvar(i))) analyze(app->arg(n, i));
 
             for (auto d : lam->deps())
                 analyze(d);
-
             return;
         }
-    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
-        DLOG("lam {} unknown", lam);
-        unknowns_.emplace(lam);
-        for (auto v : var->tprojs())
+    } else if (auto [lam, var] = def->isa_binder<Lam>(); isa_optimizable(lam)) {
+        log().d("unknown lam: {}", lam); // reached as a value, so its signature must stay untouched
+        for (auto v : lam->tvars())
             pin(v);
     }
 
@@ -106,28 +85,63 @@ void ACDE::Analysis::analyze(const Def* def) {
         analyze(d);
 }
 
-const Def* ADCE::rewrite_imm_App(const App* old_app) {
-    if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !is_bootstrapping()) {
-        if (auto statics = this->statics(old_lam); !statics.empty()) {
-            rewrite(old_lam); // make sure wrap/loop exist
-            if (auto i = old2wrap_loop_.find(old_lam); i != old2wrap_loop_.end()) {
-                auto loop = i->second.second;
-                auto n    = statics.size();
-                auto args = DefVec();
-                for (size_t i = 0; i != n; ++i) {
-                    auto old_arg = old_app->targ(i);
-                    if (!statics[i])
-                        args.emplace_back(rewrite(old_arg));
-                    else if (old_arg != old_lam->tvar(i))
-                        return RWPhase::rewrite_imm_App(old_app); // not our class: go through wrap
-                }
-                invalidate();
-                return new_world().app(loop, args);
-            }
-        }
-    }
+/*
+ * Transformation
+ */
 
-    return RWPhase::rewrite_imm_App(old_app);
+Sieve ADCE::sieve(Lam* lam) {
+    if (auto i = lam2sieve_.find(lam); i != lam2sieve_.end()) return i->second;
+
+    auto n = lam->num_tvars();
+    if (!isa_optimizable(lam) || !lam->has_var()) return lam2sieve_.emplace(lam, Sieve(n)).first->second;
+
+    auto keep = Sieve(lam->tvars(), [this](const Def* var) { return !analysis_.is_dead(var); });
+    return lam2sieve_.emplace(lam, std::move(keep)).first->second;
+}
+
+Lam* ADCE::build_lam(Lam* old_lam) {
+    if (auto new_lam = fe::lookup(lam_old2new_, old_lam)) return new_lam;
+
+    invalidate();
+    auto keep     = sieve(old_lam);
+    auto n        = keep.num_old();
+    auto new_doms = rewrite(keep.gather(old_lam->doms(n)));
+    auto new_lam  = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
+    log().d("{} → {}: {} of {} vars dead", old_lam, new_lam, n - keep.num_new(), n);
+    profile_count("adce.vars.eliminated", n - keep.num_new());
+    lam_old2new_[old_lam] = new_lam;
+    lam_new2old_[new_lam] = old_lam;
+
+    auto old_vars = old_lam->tvars();
+    auto new_vars = DefVec(n, [&](size_t i) -> const Def* {
+        if (auto j = keep[i]; j != Sieve::Gone) return new_lam->var(keep.num_new(), j)->set(old_vars[i]->dbg());
+        return new_world().bot(rewrite(old_lam->dom(n, i)));
+    });
+
+    map(old_lam->var(), new_vars);
+    auto _ = enter(old_lam);
+    new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    return new_lam;
+}
+
+const Def* ADCE::rewrite_imm_App(const App* old_app) {
+    auto old_lam = old_app->callee()->isa_mut<Lam>();
+    // The callee may only fold to a rebuilt Lam in the new World, e.g. a branch whose condition becomes constant.
+    if (!old_lam)
+        if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>()) old_lam = fe::lookup(lam_new2old_, new_lam);
+
+    if (old_lam)
+        if (auto keep = sieve(old_lam); !keep.all()) {
+            auto new_lam = build_lam(old_lam);
+            return map(old_app, new_world().app(new_lam, rewrite(keep.gather(old_app->targs()))));
+        }
+
+    return Super::rewrite_imm_App(old_app);
+}
+
+const Def* ADCE::rewrite_mut_Lam(Lam* old_lam) {
+    if (!sieve(old_lam).all()) return build_lam(old_lam);
+    return Super::rewrite_mut_Lam(old_lam);
 }
 
 } // namespace mim

@@ -92,6 +92,7 @@ private:
         absl::node_hash_map<Lam*, Def2Def, GIDHash<const Def*>> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
+        DefMap<fe::Vector<Def*>> bot_callers_;                 // muts that passed ⊥ to a var this round
         Def2Def sloxy2slot_;                                   // global (kept between iterations)
         absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched

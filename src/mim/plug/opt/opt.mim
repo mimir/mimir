@@ -27,6 +27,7 @@ extern lam _default_compile (): compile.Phase =
                 compile.eta_conv,
             ),
             compile.named "mem.seo",
+            compile.adce,
             compile.static_arg_opt,
         );
 

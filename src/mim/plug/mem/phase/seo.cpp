@@ -35,6 +35,13 @@ static const Def* eta_canon(const Def* def) {
 
 static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
+/// Is every free Var of @p def bound by @p mut or by a mutable that nests @p mut?
+static bool is_visible(const Def* def, Def* mut) {
+    for (auto fv : def->free_vars())
+        if (auto binder = fv->binder(); binder != mut && !binder->nests(mut)) return false;
+    return true;
+}
+
 /// Does @p lam's signature refer to its own binder's Var?
 /// Such a signature cannot be narrowed: dropping a component would tear its siblings off the binder.
 static bool is_dependent(Lam* lam) { return lam->type()->isa_mut() || lam->type()->dom()->isa_mut(); }
@@ -44,6 +51,7 @@ void SEO::Analysis::reset() {
     visited_.clear();
     lam2sloxy2val_.clear();
     first_.clear();
+    bot_callers_.clear();
 }
 
 /*
@@ -67,6 +75,19 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // nothing: the other call sites alone determine the value.
     if (def == var) return cur ? cur : var;
 
+    // Likewise, a site passing ⊥ contributes no value; restarting on it would descend every round only to climb back.
+    // But it constrains the scope: whatever var becomes must be visible at that site, too.
+    if (def->isa<Bot>()) {
+        auto caller = curr_mut();
+        if (caller) bot_callers_[var].emplace_back(caller);
+        if (!cur) return lattice(var, def), def;
+        if (caller && !is_visible(cur, caller)) {
+            log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, cur, caller);
+            return pin(var), var;
+        }
+        return cur;
+    }
+
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
     // A closed def can never be nested, and Def::nests allocates a fresh MutSet per call - so skip it.
     if (!def->isa<Proxy>() && !def->is_closed() && lam->nests(def)) {
@@ -74,12 +95,18 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
         return pin(var), var;
     }
 
+    if (auto callers = fe::lookup(bot_callers_, var))
+        for (auto caller : *callers)
+            if (!is_visible(def, caller)) {
+                log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, def, caller);
+                return pin(var), var;
+            }
+
     // Frozen: a ⊤ / this-lam's bundle wins and is kept across rounds (needs cur to exist).
     if (cur && Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
     if (cur && isa_bundle(cur, lam)) return cur;
 
-    // First touch of `var` this round, including `cur == ⊥`: restart the join here.
-    // `⊥` must set `first_`, or the next site would discard this value and let a later one win instead of reaching ⊤.
+    // First touch of `var` this round: restart the join here.
     // Discarding what earlier sites contributed requires a round that revisits *every* `lam` call site;
     // apply_known() taints all of lam2callers_ whenever the abstract vars change, so the next round does.
     if (auto [_, ins] = first_.emplace(var); ins) {
@@ -91,7 +118,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // Every first_ insertion also writes the lattice, so past the first touch `cur` exists;
     // and it cannot be ⊤, as the `cur == var` check bailed out on entry.
     assert(cur && cur != var);
-    if (def->isa<Bot>() || cur == def) return cur;      // cur ⊔ ⊥ = cur; def ⊔ def = def
+    if (cur == def) return cur;                         // def ⊔ def = def
     if (cur->isa<Bot>()) return lattice(var, def), def; // ⊥ ⊔ def = def
 
     log().d("cannot propagate {} → {}; cur = {}; try GVN", var, def, cur);
