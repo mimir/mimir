@@ -1,9 +1,11 @@
 import difflib
+import itertools
 import os
 import shlex
 
 import lit.formats
 import lit.Test
+import lit.TestRunner
 import lit.util
 
 
@@ -27,7 +29,7 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
         src = test.getSourcePath()
         name = os.path.basename(src)
         # The file stem is the module name, so each emitted file keeps the input's basename.
-        base = os.path.join(os.path.dirname(test.getExecPath()), "Output", name + ".rt")
+        base = lit.TestRunner.getTempPaths(test)[1] + ".rt"
         outs = [os.path.join(base, str(i), name) for i in (1, 2)]
         for out in outs:
             os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -50,8 +52,8 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
 
         l1 = b1.decode("utf-8", "replace").splitlines(keepends=True)
         l2 = b2.decode("utf-8", "replace").splitlines(keepends=True)
-        diff = list(difflib.unified_diff(l1, l2, outs[0], outs[1]))
         limit = 100
+        diff = list(itertools.islice(difflib.unified_diff(l1, l2, outs[0], outs[1]), limit + 1))
         if len(diff) > limit:
-            diff = diff[:limit] + [f"... {len(diff) - limit} more diff lines\n"]
+            diff[limit:] = ["... more diff lines\n"]
         return lit.Test.Result(lit.Test.FAIL, "".join(diff))

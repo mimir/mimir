@@ -110,6 +110,7 @@ set(MIM_LIT_COMMAND
     -v
 )
 
+set(MIM_ROUNDTRIP_COMMANDS "")
 foreach(MODE IN ITEMS mim ast)
     add_custom_target(test-roundtrip-${MODE}
         COMMAND ${MIM_LIT_COMMAND} --param roundtrip=${MODE}
@@ -117,11 +118,11 @@ foreach(MODE IN ITEMS mim ast)
         COMMAND_EXPAND_LISTS
         USES_TERMINAL
     )
+    list(APPEND MIM_ROUNDTRIP_COMMANDS COMMAND ${MIM_LIT_COMMAND} --param roundtrip=${MODE})
 endforeach()
 
 add_custom_target(test-roundtrip
-    COMMAND ${MIM_LIT_COMMAND} --param roundtrip=mim
-    COMMAND ${MIM_LIT_COMMAND} --param roundtrip=ast
+    ${MIM_ROUNDTRIP_COMMANDS}
     DEPENDS mim mim_all_plugins mim_lit_tests
     COMMAND_EXPAND_LISTS
     USES_TERMINAL
@@ -143,12 +144,8 @@ add_custom_target(lit
     USES_TERMINAL
 )
 
-set(MIM_ROUNDTRIP_COMMANDS "")
-if(MIM_TEST_ROUNDTRIP)
-    set(MIM_ROUNDTRIP_COMMANDS
-        COMMAND ${MIM_LIT_COMMAND} --param roundtrip=mim
-        COMMAND ${MIM_LIT_COMMAND} --param roundtrip=ast
-    )
+if(NOT MIM_TEST_ROUNDTRIP)
+    set(MIM_ROUNDTRIP_COMMANDS "")
 endif()
 
 add_custom_target(test-all

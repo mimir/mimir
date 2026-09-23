@@ -255,18 +255,18 @@ namespace mim::ast {
 
 /// The members of an `axm` group in @p decls, starting at @p i with its owning AxmDecl; see Parser::parse_axm_group.
 static size_t axm_group_end(fe::View<Ptr<ValDecl>> decls, size_t i) {
-    auto owner = decls[i]->as<AxmDecl>();
-    auto prev  = owner->dbg().sym();
-    for (++i; i != decls.size(); ++i) {
-        if (auto sibling = decls[i]->isa<AxmDecl::Sibling>(); sibling && sibling->owner() == owner) {
+    auto owner    = decls[i]->as<AxmDecl>();
+    auto prev     = owner->dbg().sym();
+    auto is_alias = [&](const ValDecl* decl) {
+        auto alias = decl->isa<AliasDecl>();
+        return alias && alias->vis() == Vis::Pub && alias->path()->dbgs().size() == 1
+            && alias->path()->front().sym() == prev;
+    };
+    for (++i; i != decls.size(); ++i)
+        if (auto sibling = decls[i]->isa<AxmDecl::Sibling>(); sibling && sibling->owner() == owner)
             prev = sibling->dbg().sym();
-        } else if (auto alias = decls[i]->isa<AliasDecl>(); alias && alias->vis() == Vis::Pub
-                                                            && alias->path()->dbgs().size() == 1
-                                                            && alias->path()->front().sym() == prev) {
-        } else {
+        else if (!is_alias(decls[i].get()))
             break;
-        }
-    }
     return i;
 }
 
@@ -278,8 +278,12 @@ static void stream_axm_tail(fe::Tab& tab, std::ostream& os, const AxmDecl* axm) 
     os << ';';
 }
 
-/// `(tag_0 = alias, ..., tag_n-1)` of the `axm` group `decls[begin, end)`.
-static void stream_axm_group(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls, size_t begin, size_t end) {
+/// `axm [mod.](tag_0 = alias, ..., tag_n-1): ...;` of the `axm` group `decls[begin, end)`.
+static void
+stream_axm_group(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls, size_t begin, size_t end, Dbg mod = {}) {
+    if (decls[begin]->vis() == Vis::Priv) os << "priv ";
+    os << "axm ";
+    if (mod) std::print(os, "{}.", mod);
     os << '(';
     for (auto i = begin; i != end; ++i)
         if (decls[i]->isa<AliasDecl>())
@@ -293,11 +297,9 @@ static void stream_axm_group(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDec
 static void stream_decls(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls) {
     for (size_t i = 0; i != decls.size();) {
         os << tab;
-        if (auto axm = decls[i]->isa<AxmDecl>()) {
+        if (decls[i]->isa<AxmDecl>()) {
             // Siblings share their owner's type, so they must stay in the group that introduces them.
             if (auto end = axm_group_end(decls, i); end != i + 1) {
-                if (axm->vis() == Vis::Priv) os << "priv ";
-                os << "axm ";
                 stream_axm_group(tab, os, decls, i, end);
                 os << std::endl;
                 i = end;
@@ -309,17 +311,15 @@ static void stream_decls(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> 
     }
 }
 
-void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    if (vis() == Vis::Priv) std::print(os, "priv "); // `axm` is always anx, so it's never printed here
-    std::print(os, "axm {}", dbg());
-    stream_axm_tail(tab, os, this);
+/// `axm` is always anx, so only `priv` is ever printed.
+static void stream_axm(fe::Tab& tab, std::ostream& os, const ValDecl* decl, const AxmDecl* owner) {
+    if (decl->vis() == Vis::Priv) os << "priv ";
+    std::print(os, "axm {}", decl->dbg());
+    stream_axm_tail(tab, os, owner);
 }
 
-void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const {
-    if (vis() == Vis::Priv) std::print(os, "priv ");
-    std::print(os, "axm {}", dbg());
-    stream_axm_tail(tab, os, owner());
-}
+void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const { stream_axm(tab, os, this, this); }
+void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const { stream_axm(tab, os, this, owner()); }
 
 void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const {
     if (vis() == Vis::Priv) std::print(os, "priv ");
@@ -328,12 +328,9 @@ void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const {
 
 void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
     // `axm tag.(sub_0, ..., sub_n-1): ...;` desugars to exactly such a `pub mod`.
-    if (auto axm = decls().empty() ? nullptr : decls().front()->isa<AxmDecl>();
-        axm && vis() == Vis::Pub && axm_group_end(decls(), 0) == decls().size()) {
-        if (axm->vis() == Vis::Priv) os << "priv ";
-        std::print(os, "axm {}.", dbg());
-        return stream_axm_group(tab, os, decls(), 0, decls().size());
-    }
+    if (!decls().empty() && decls().front()->isa<AxmDecl>() && vis() == Vis::Pub
+        && axm_group_end(decls(), 0) == decls().size())
+        return stream_axm_group(tab, os, decls(), 0, decls().size(), dbg());
 
     std::println(os, "{}mod {} {{", mods(), dbg());
     ++tab;
