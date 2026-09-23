@@ -34,26 +34,6 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
     touch();
 }
 
-/// Collects @p def%'s immutable subtree into @p set; stops at mutables.
-static void collect(DefSet& set, const Def* def) {
-    if (!set.emplace(def).second) return;
-    if (def->isa_mut()) return;
-    for (auto d : def->deps())
-        collect(set, d);
-}
-
-void Scalarize::Analysis::pin_tree(const Def* def) {
-    auto visited = DefSet();
-    pin_tree(def, visited);
-}
-
-void Scalarize::Analysis::pin_tree(const Def* def, DefSet& visited) {
-    if (!visited.emplace(def).second) return;
-    if (auto pi = isa_flattenable(def)) pin(pi);
-    for (auto d : def->deps())
-        pin_tree(d, visited);
-}
-
 void Scalarize::Analysis::inspect(const Def* def) {
     // Everything reachable from an annex is interface: normalizers and backends rely on its exact shape.
     if (is_bootstrapping()) {
@@ -62,25 +42,16 @@ void Scalarize::Analysis::inspect(const Def* def) {
     }
 
     if (auto app = def->isa<App>()) {
-        // The shapes an Axm's signature *itself* dictates are interface - never reshape them
-        // (e.g. `affine.For`'s body): normalizers and plugin phases match on their exact shape,
-        // and rebuilding the App re-derives them from the Axm's generic type.
-        // Subtrees merely *substituted* in via earlier (type) arguments impose no shape, though -
-        // they rewrite consistently with the rest of the World (e.g. `T` in `mem.store T`):
-        // seed the walk's visited set with them so they stay flattenable.
-        if (app->uncurry_callee()->isa<Axm>()) {
+        // The shapes an Axm's signature dictates are interface (e.g. `affine.For`'s body or `autodiff.ad f`):
+        // normalizers and plugin phases match on their exact shape.
+        if (pin_axm(app, isa_flattenable)) {
             if (auto pi = isa_flattenable(app->callee_type())) pin(pi); // this very application's shape
-            auto skips = DefSet();
-            for (auto d = def; auto a = d->isa<App>(); d = a->callee())
-                collect(skips, a->arg());
-            pin_tree(app->callee_type()->dom(), skips); // what the Axm consumes (e.g. `affine.For`'s body)
-            pin_tree(app->type(), skips);               // what the Axm produces (e.g. `autodiff.ad f`)
 
             // An Axm taking a *bare* function argument (`autodiff.ad f`) is higher-order machinery that
             // will inspect and call that function by its own convention - keep the function's shape even
             // where the Axm's signature is fully polymorphic (`{T: *} → T → ...`).
             // A function buried inside a tuple argument (`mem.store (mem, ptr, f)`) is just data, though.
-            if (auto lam = app->arg()->isa_mut<Lam>()) pin_tree(lam->type());
+            if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
         }
 
         // Assignability is alpha-equivalence, so an App may connect a dom and an arg whose types are
@@ -88,8 +59,8 @@ void Scalarize::Analysis::inspect(const Def* def) {
         // which would tear such an edge apart - pin both sides.
         // Only for immutable Pis: a dependent dom legitimately differs from the instantiated arg type.
         if (auto pi = app->callee_type(); pi->isa_imm() && pi->dom() != app->arg()->type()) {
-            pin_tree(pi->dom());
-            pin_tree(app->arg()->type());
+            pin_imm(pi->dom(), isa_flattenable);
+            pin_imm(app->arg()->type(), isa_flattenable);
         }
     }
 
@@ -100,7 +71,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
     // reshaping it would tear the aggregate's typing apart (and clos machinery rebuilds against it).
     if (auto tuple = def->isa<Tuple>(); tuple && tuple->type()->isa_mut())
         for (auto op : tuple->ops())
-            pin_tree(op->type());
+            pin_imm(op->type(), isa_flattenable);
 
     // An interface Lam (external, annex, or unset declaration) keeps its whole signature:
     // pin everything its type mentions (its ret Pi, callback params, a polymorphic Lam's inner Cn, ...) -
@@ -110,13 +81,13 @@ void Scalarize::Analysis::inspect(const Def* def) {
         auto visited = DefSet();
         visited.emplace(lam->type());
         for (auto d : lam->type()->deps())
-            pin_tree(d, visited);
+            pin_imm(visited, d, isa_flattenable);
         // A curried interface (e.g. `fun extern f {s: Nat} (ab: ...)`) reduces to its inner Lam%s
         // upon application; their types are the interface's *instantiated* codomains - distinct defs
         // from the Pi-side codomains pinned above (Lam var vs Pi var) - so pin them whole, too.
         if (lam->is_set())
             for (auto inner = lam->body()->isa_mut<Lam>(); inner;) {
-                pin_tree(inner->type(), visited);
+                pin_imm(visited, inner->type(), isa_flattenable);
                 inner = inner->is_set() ? inner->body()->isa_mut<Lam>() : nullptr;
             }
     }

@@ -205,13 +205,11 @@ template<> struct fe::is_bit_enum<mim::Mut>   : std::true_type {};
 
 namespace mim {
 
-/// What Def::projs and friends map over each projection.
-template<class F>
-concept Projector = std::invocable<F, const Def*>;
-
-/// What post_order and friends ask about each mutable they encounter.
-template<class F>
-concept MutPred = std::predicate<F, Def*>;
+// clang-format off
+template<class F> concept Projector = std::invocable<F, const Def*>; /// Used by Def::proj & friends.
+template<class F> concept DefPred   = std::predicate<F, const Def*>;
+template<class F> concept MutPred   = std::predicate<F, Def*>;
+// clang-format on
 
 /// Use as mixin to wrap all kind of Def::proj and Def::projs variants.
 /// @note The Projector overloads must stay constrained: an unconstrained one is an *exact* match for an integer

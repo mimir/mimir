@@ -2,17 +2,11 @@
 
 namespace mim {
 
+static bool is_shaped(const Def* def) { return def->isa<Sigma>() || def->isa<Arr>() || def->isa<Variant>(); }
+
 /*
  * Analysis
  */
-
-/// Collects @p def%'s immutable subtree into @p set; stops at mutables.
-static void collect(DefSet& set, const Def* def) {
-    if (!set.emplace(def).second) return;
-    if (def->isa_mut()) return;
-    for (auto d : def->deps())
-        collect(set, d);
-}
 
 const Def* SingleErasure::Analysis::rewrite(const Def* old) {
     // Visit the subtree *before* inspecting: pin() seeds `def ↦ def` into the rewriter map, which would
@@ -20,36 +14,20 @@ const Def* SingleErasure::Analysis::rewrite(const Def* old) {
     auto res = mim::Analysis::rewrite(old);
 
     if (auto app = old->isa<App>()) {
-        // Rebuilding an Axm application re-derives its shapes from the Axm's generic type instead of rewriting
-        // them (`Idx n_groups` becomes `Idx 1` all over again), so whatever its signature dictates must keep its
-        // arity. Subtrees merely *substituted* in via earlier (type) arguments impose no shape, though - they
-        // rewrite consistently with the rest of the World: seed the walk's visited set with them.
-        if (app->uncurry_callee()->isa<Axm>()) {
-            auto skips = DefSet();
-            for (auto d = old; auto a = d->isa<App>(); d = a->callee())
-                collect(skips, a->arg());
-            pin_tree(app->callee_type()->dom(), skips);
-            pin_tree(app->type(), skips);
-        }
+        // An Axm's signature dictates arities (`Idx n_groups` becomes `Idx 1` all over again).
+        pin_axm(app, is_shaped);
 
         // Assignability is alpha-equivalence, so an App may connect a dom and an arg whose types are *distinct*
         // defs - a dependent dom and its instance (`[n: Nat, «n; *»]` vs `[Nat, []]`). Dropping decides per def,
         // which would tear such an edge apart: the instance loses what the dependent dom still expects.
         if (auto dom = app->callee_type()->dom(); dom != app->arg()->type()) {
             auto visited = DefSet();
-            pin_tree(dom, visited);
-            pin_tree(app->arg()->type(), visited);
+            pin_imm(visited, dom, is_shaped);
+            pin_imm(visited, app->arg()->type(), is_shaped);
         }
     }
 
     return res;
-}
-
-void SingleErasure::Analysis::pin_tree(const Def* def, DefSet& visited) {
-    if (!visited.emplace(def).second) return;
-    if (def->isa<Sigma>() || def->isa<Arr>()) pin(def);
-    for (auto d : def->deps())
-        pin_tree(d, visited);
 }
 
 /*
@@ -60,11 +38,18 @@ bool SingleErasure::is_gone(const Def* type) {
     if (type->isa<Single>()) return true;
     if (Idx::isa_lit(type) == 1) return true;
     if (analysis_.pinned(type)) return false;
+    if (auto variant = lone(type)) return is_gone(variant->op(0));
     // An immutable aggregate is information-free iff all of its components are; this also covers `[]`.
     if (auto sigma = type->isa_imm<Sigma>())
         return std::ranges::all_of(sigma->ops(), [this](const Def* op) { return is_gone(op); });
     if (auto arr = type->isa_imm<Arr>()) return is_gone(arr->body());
     return false;
+}
+
+const Variant* SingleErasure::lone(const Def* type) {
+    if (auto variant = type->isa<Variant>(); variant && variant->num_ops() == 1 && !analysis_.pinned(variant))
+        if (variant->isa_imm() || variant->as_mut()->is_immutabilizable()) return variant;
+    return nullptr;
 }
 
 Sieve SingleErasure::sieve(const Sigma* sigma) {
@@ -106,6 +91,22 @@ const Def* SingleErasure::rewrite_imm_Single(const Single* single) {
 const Def* SingleErasure::rewrite_imm_Wrap(const Wrap* wrap) {
     profile_count("singletons eliminated");
     return inhabitant(wrap->type());
+}
+
+const Def* SingleErasure::rewrite_imm_Variant(const Variant* variant) {
+    if (lone(variant)) return rewrite(variant->op(0));
+    return RWPhase::rewrite_imm_Variant(variant);
+}
+
+const Def* SingleErasure::rewrite_imm_Inj(const Inj* inj) {
+    if (lone(inj->type())) return rewrite(inj->value());
+    return RWPhase::rewrite_imm_Inj(inj);
+}
+
+const Def* SingleErasure::rewrite_imm_Match(const Match* match) {
+    if (lone(match->scrutinee()->unfold_type()))
+        return new_world().app(rewrite(match->arm(0)), rewrite(match->scrutinee()));
+    return RWPhase::rewrite_imm_Match(match);
 }
 
 const Def* SingleErasure::rewrite_imm_Sigma(const Sigma* sigma) {

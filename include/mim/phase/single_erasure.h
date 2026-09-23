@@ -8,6 +8,7 @@ namespace mim {
 /// Such a type carries no information, so its erasure is the unit: `«e»` becomes `[]` and `‹e›` becomes `()`.
 /// Within an aggregate the component is dropped altogether, which shifts the indices of its successors.
 /// Besides Single this also catches the unit `[]` and `Idx 1` - and any aggregate built from those.
+/// A Variant with a single case `| A` is isomorphic to `A` and erased to it.
 /// A singleton above `*` has no unit to erase to and degrades to the type of its inhabitant instead.
 /// An aggregate whose arity another def relies upon keeps all of its components; only the erasure is mandatory.
 class SingleErasure : public RWPhase {
@@ -22,7 +23,6 @@ private:
 
     private:
         const Def* rewrite(const Def* old) final;
-        void pin_tree(const Def* def, DefSet& visited); ///< pin%s every Sigma / Arr nested in @p def.
     };
 
 public:
@@ -41,6 +41,7 @@ private:
     const Def* erase(const Single*);        ///< The erasure of the singleton *type* itself.
     const Def* inhabitant(const Def* type); ///< The sole inhabitant of the information-free @p type.
     bool is_gone(const Def* type);          ///< Does @p type have exactly one inhabitant?
+    const Variant* lone(const Def* type);   ///< @p type as a Variant with a single case that may be erased.
     Sieve sieve(const Sigma*);              ///< The components of @p sigma that survive.
     /// The literal @p index into a Sigma, adjusted for the components @p keep dropped.
     size_t remap(const Sieve& keep, const Def* index);
@@ -48,6 +49,9 @@ private:
 
     const Def* rewrite_imm_Single(const Single*) final;
     const Def* rewrite_imm_Wrap(const Wrap*) final;
+    const Def* rewrite_imm_Variant(const Variant*) final;
+    const Def* rewrite_imm_Inj(const Inj*) final;
+    const Def* rewrite_imm_Match(const Match*) final;
     const Def* rewrite_imm_Sigma(const Sigma*) final;
     const Def* rewrite_mut_Sigma(Sigma*) final;
     const Def* rewrite_imm_Tuple(const Tuple*) final;

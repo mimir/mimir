@@ -64,9 +64,6 @@ private:
         void inspect(const Def* def);
         /// Marks parameter @p dom of @p pi as *keep whole*; a fresh bit invalidate()s.
         void keep(const Pi* pi, size_t dom);
-        void pin_tree(const Def* def); ///< pin%s every flattenable Pi nested in @p def%'s type tree.
-        /// As above, but skips defs already in @p visited - seed it to exempt subtrees from pinning.
-        void pin_tree(const Def* def, DefSet& visited);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
 
         /// Which parameters of a Pi must not be split.
