@@ -71,7 +71,7 @@ async function run() {
     status.className = '';
     status.textContent = 'running…';
 
-    const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '-o', '/out.mim'];
+    const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '--output-ast', '/out.ast', '-o', '/out.mim'];
     for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
     if (dark) args.push('--dot-dark');
     for (const box of document.querySelectorAll('#mim-opts input[data-mim]:checked')) args.push(`--mim-${box.dataset.mim}`);
@@ -89,6 +89,7 @@ async function run() {
         ({ code, log } = res);
         if (res.error) log.push((why = res.error));
         showCode('mim', MimCode, res.out?.mim);
+        showCode('ast', MimCode, res.out?.ast);
         if (res.out?.ll) showCode('ll', LlvmCode, res.out.ll);
         else showCode('ll', null, '(enable "optimize" to run the ll backend)');
         await showGraph(res.out?.dot);
