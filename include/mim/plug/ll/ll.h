@@ -10,10 +10,11 @@
 #include <string>
 
 #include <absl/container/btree_set.h>
+#include <fe/term.h>
 
 #include <mim/driver.h>
-
-#include <mim/be/emitter.h>
+#include <mim/phase.h>
+#include <mim/schedule.h>
 
 #include <mim/plug/clos/clos.h>
 #include <mim/plug/math/math.h>
@@ -122,12 +123,13 @@ MIM_EXPORT void mim_ll_emit_epilogue(Emitter&, Lam*);
 MIM_EXPORT void mim_ll_emit_bb(Emitter&, BB&, const Def*, std::string& res);
 }
 
-class Emitter : public mim::Emitter<std::string, std::string, BB, Emitter> {
+class Emitter : public NestPhase<Lam> {
 public:
-    using Super = mim::Emitter<std::string, std::string, BB, Emitter>;
+    using Super = NestPhase<Lam>;
 
     Emitter(World& world, std::string name, std::ostream& ostream)
-        : Super(world, name, ostream) {
+        : Super(world, std::move(name), false)
+        , ostream_(ostream) {
         auto& driver = world.driver();
         // Ensure libmim_ll is loaded so the shims below resolve (e.g. when a derived backend like
         // ll_nvptx uses us). Loading merely registers ll.emit; it does not run it.
@@ -138,8 +140,10 @@ public:
         emit_bb_       = driver.GET_FUN_PTR("ll", mim_ll_emit_bb);
     }
 
-    bool is_valid(std::string_view s) { return !s.empty(); }
+    fe::Tab tab = fe::Tab::spaces();
+
     void start() override;
+    void visit(const Nest&) override;
     void emit_imported(Lam*);
     virtual std::string prepare();
 
@@ -188,6 +192,30 @@ public:
     }
 
 protected:
+    std::ostream& ostream() const { return ostream_; }
+
+    /// Recursively emits code.
+    /// `mem`-typed @p def%s yield an empty string, which this variant asserts against.
+    std::string emit(const Def* def) {
+        auto res = emit_unsafe(def);
+        assert(!res.empty());
+        return res;
+    }
+
+    /// As above but yielding an empty string is permitted.
+    std::string emit_unsafe(const Def* def) {
+        if (auto i = globals_.find(def); i != globals_.end()) return i->second;
+        if (auto i = locals_.find(def); i != locals_.end()) return i->second;
+
+        auto place          = scheduler_.smart(curr_lam_, def);
+        auto& bb            = lam2bb_[place->mut()->as<Lam>()];
+        auto val            = emit_bb(bb, def);
+        return locals_[def] = val;
+    }
+
+    /// The Scheduler::schedule of the function currently being emitted; see Emitter::visit.
+    const Scheduler::Schedule& schedule() const { return schedule_; }
+
     std::string id(const Def*, bool force_bb = false) const;
     virtual std::string convert(const Def* type, bool simd = true) {
         std::string res;
@@ -222,6 +250,15 @@ protected:
         std::print(bb.body().emplace_back(), "{} = alloca {}", v_ptr, convert(pointee, false));
         return v_ptr;
     }
+
+    Lam* curr_lam_ = nullptr;
+    std::ostream& ostream_;
+    Scheduler scheduler_;
+    Scheduler::Schedule schedule_;
+    DefMap<std::string> locals_;
+    DefMap<std::string> globals_;
+    DefMap<std::string> types_;
+    LamMap<BB> lam2bb_;
 
     absl::btree_set<std::string> decls_;
     std::ostringstream type_decls_;
@@ -383,6 +420,47 @@ inline void Emitter::start() {
             std::println(md_decls, "!{} = distinct !{{!{}, !{}}}", md, md, LoopMdBase);
         section(md_decls.str());
     }
+}
+
+inline void Emitter::visit(const Nest& nest) {
+    if (!root()->is_set()) return emit_imported(root());
+
+    schedule_        = Scheduler::schedule(nest); // cached; finalize needs the very same schedule
+    const auto& muts = schedule_;
+
+    // make sure that we don't need to rehash later on
+    for (auto mut : muts)
+        if (auto lam = mut->isa<Lam>()) lam2bb_.try_emplace(lam, BB());
+    auto old_size = lam2bb_.size();
+
+    if (!root()->ret_var())
+        fe::throwf(MIM_LL_BE "top-level function `{}` not a continuation with a return continuation", root());
+
+    prepare();
+
+    Scheduler new_scheduler(nest);
+    swap(scheduler_, new_scheduler);
+
+    for (auto mut : muts) {
+        if (auto lam = mut->isa<Lam>()) {
+            curr_lam_ = lam;
+            if (lam != root() && !Lam::isa_basicblock(lam))
+                fe::throwf(MIM_LL_BE "`{}` is neither the entry nor a basic block of `{}`; it needs a phase that "
+                                     "removes higher-order functions first",
+                           lam, root());
+            emit_epilogue(lam);
+        }
+    }
+
+    finalize();
+    locals_.clear();
+    assert_unused(lam2bb_.size() == old_size && "really make sure we didn't trigger a rehash");
+    // A BB never crosses a function boundary: Nest::contains is `def->has_free_vars_in(vars())`,
+    // so a *closed* Lam is never a member of another Lam's Nest - and it cannot belong to two Nests either,
+    // since a Lam free in the vars of two closed Lams would make the outer one open.
+    // Every `BB&` handed out by emit_unsafe died with the calls above, so clearing here is safe.
+    // Without it, finalize re-walks the BBs of all previously emitted functions - O(n²) in program size.
+    lam2bb_.clear();
 }
 
 inline bool Emitter::load_rt_module(std::string_view filename) {

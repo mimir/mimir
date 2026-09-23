@@ -11,7 +11,6 @@
 #include <mim/flags.h>
 #include <mim/phase.h>
 #include <mim/plugin.h>
-#include <mim/sexpr.h>
 
 #include <mim/ast/parser.h>
 #include <mim/phase/optimize.h>
@@ -21,7 +20,7 @@ using namespace std::literals;
 
 namespace {
 
-enum Emit { AST, Dot, H, PY, Md, Mim, NestDot, SExpr, Slotted, Profile, Num_Emits };
+enum Emit { AST, Dot, H, PY, Md, Mim, NestDot, Profile, Num_Emits };
 
 /// Everything the command line configures that neither Flags nor fe::CodeDiag already holds.
 struct Opts {
@@ -29,8 +28,7 @@ struct Opts {
     std::vector<std::string> plugins, search_paths, import_paths, prefix_paths, plugin_args;
     std::array<Out, Num_Emits> outs;
     DotConfig dot;
-    bool sexpr_include_types = false;
-    bool no_opt              = false;
+    bool no_opt = false;
 };
 
 void emit_help(fe::Cli& cli, Driver& driver, const std::vector<std::string>& plugins, bool md) {
@@ -125,12 +123,9 @@ int compile(Driver& driver, Opts& opts) {
         else
             optimize(world);
 
-        auto types = opts.sexpr_include_types;
         if (auto s = outs[Dot].os()) world.dot(*s, opts.dot);
         if (auto s = outs[Mim].os()) world.dump(*s);
         if (auto s = outs[NestDot].os()) mim::Nest(world).dot(*s);
-        if (auto s = outs[SExpr].os()) (types ? sexpr::emit_typed : sexpr::emit)(world, *s);
-        if (auto s = outs[Slotted].os()) (types ? sexpr::emit_slotted_typed : sexpr::emit_slotted)(world, *s);
         if (auto s = outs[Profile].os()) emit_profile(driver, *s);
     } catch (const Error::Bail& e) {
         std::cerr << e;
@@ -207,9 +202,6 @@ int main(int argc, char** argv) {
             .opt(flags.mim_typed_let       , ""          , ""  , "--mim-typed-let"       , "Ascribes the type of each `let`-bound name; it is inferable from the right-hand side and hence elided by default.")
             .opt(opts.outs[NestDot].name() , "file"      , ""  , "--output-nest"         , "Emits the program's nesting tree using Graphviz' DOT language.")
             .opt(opts.outs[PY].name()      , "file"      , ""  , "--output-py"           , "Emits a Python enum to be used to interface with a plugin in Python.")
-            .opt(opts.outs[SExpr].name()   , "file"      , ""  , "--output-sexpr"        , "Emits the program as symbolic expression.")
-            .opt(opts.outs[Slotted].name() , "file"      , ""  , "--output-sexpr-slotted", "Emits the program as symbolic expression that follows the format required by slotted-egraphs.")
-            .opt(opts.sexpr_include_types  , ""          , ""  , "--sexpr-include-types" , "Wraps each term of a symbolic expression in a type annotation; types themselves stay unwrapped.")
             .grp("DOT Output")
             .opt(opts.dot.all_annexes      , ""          , ""  , "--dot-all-annexes"     , "Emits all annexes in DOT output - even unused ones.")
             .opt(opts.dot.dark             , ""          , ""  , "--dot-dark"            , "Drops the white background of the DOT output and lightens its edges, so that it embeds into a dark backdrop.")
