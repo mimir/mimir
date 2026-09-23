@@ -30,13 +30,23 @@
 
     <div id="right">
         <div id="tabs" role="tablist">
+            <button role="tab" data-pane="log"   aria-selected="false">Log</button>
+            <button role="tab" data-pane="ast"   aria-selected="false">AST</button>
+            <button role="tab" data-pane="mim"   aria-selected="false">Mim</button>
             <button role="tab" data-pane="graph" aria-selected="true">Graph</button>
             <button role="tab" data-pane="ll"    aria-selected="false">LLVM</button>
-            <button role="tab" data-pane="mim"   aria-selected="false">Mim</button>
-            <button role="tab" data-pane="ast"   aria-selected="false">AST</button>
-            <button role="tab" data-pane="log"   aria-selected="false">Log</button>
         </div>
         <div id="panes">
+            <div class="pane" id="pane-log"  hidden><pre></pre></div>
+            <div class="pane" id="pane-ast"  hidden><pre></pre></div>
+            <div class="pane" id="pane-mim"  hidden>
+                <div class="opts" id="mim-opts">
+                    <label title="Uses ASCII alternatives instead of UTF-8 throughout the output."><input type="checkbox" id="ascii"> ASCII</label>
+                    <label title="Ascribes the type of each `let`-bound name; it is inferable from the right-hand side and hence elided by default."><input type="checkbox" data-mim="typed-let"> typed lets</label>
+                    <label title="Dumps each mutable as its own flat block without scheduling; the result does not read back but works for broken programs."><input type="checkbox" data-mim="local"> local blocks</label>
+                </div>
+                <pre></pre>
+            </div>
             <div class="pane" id="pane-graph">
                 <div class="opts" id="dot-opts">
                     <label title="Always shows a lambda's filter - even if it is the default one (`ff` for continuations, `tt` for direct-style functions)."><input type="checkbox" data-dot="default-filter"> default filter</label>
@@ -57,16 +67,6 @@
                 </div>
             </div>
             <div class="pane" id="pane-ll"   hidden><pre></pre></div>
-            <div class="pane" id="pane-mim"  hidden>
-                <div class="opts" id="mim-opts">
-                    <label title="Uses ASCII alternatives instead of UTF-8 throughout the output."><input type="checkbox" id="ascii"> ASCII</label>
-                    <label title="Ascribes the type of each `let`-bound name; it is inferable from the right-hand side and hence elided by default."><input type="checkbox" data-mim="typed-let"> typed lets</label>
-                    <label title="Dumps each mutable as its own flat block without scheduling; the result does not read back but works for broken programs."><input type="checkbox" data-mim="local"> local blocks</label>
-                </div>
-                <pre></pre>
-            </div>
-            <div class="pane" id="pane-ast"  hidden><pre></pre></div>
-            <div class="pane" id="pane-log"  hidden><pre></pre></div>
         </div>
     </div>
 </main>

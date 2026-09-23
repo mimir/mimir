@@ -226,8 +226,10 @@ async function setupEditor(initial) {
     $('source').value = initial;
     try {
         const cdn = 'https://esm.sh/@codemirror/';
-        const [state, view, language, commands] = await Promise.all(
-            ['state@6', 'view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg)));
+        const [state, view, language, commands, { Tag }] = await Promise.all(
+            ['state@6', 'view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg))
+                .concat(import('https://esm.sh/@lezer/highlight@1')));
+        const tokens = Object.fromEntries(Object.keys(CLASS).map(kind => [kind, Tag.define()]));
 
         viSlot = new state.Compartment();
         editor = new view.EditorView({
@@ -239,8 +241,9 @@ async function setupEditor(initial) {
                 view.drawSelection(),
                 commands.history(),
                 view.keymap.of([...commands.defaultKeymap, ...commands.historyKeymap]),
-                language.syntaxHighlighting(language.defaultHighlightStyle, { fallback: true }),
-                language.StreamLanguage.define(mimMode()),
+                language.syntaxHighlighting(language.HighlightStyle.define(
+                    Object.entries(CLASS).map(([kind, cls]) => ({ tag: tokens[kind], class: cls })))),
+                language.StreamLanguage.define(mimMode(tokens)),
                 view.EditorView.updateListener.of(u => u.docChanged && schedule()),
             ],
             parent: $('editor'),
@@ -273,20 +276,16 @@ async function toggleVi() {
     }
 }
 
-// mim-code.js does the classifying, so both stay in step with `ast/family.h`.
-const TAG = { comment: 'comment', string: 'string', number: 'number', keyword: 'keyword', decl: 'keyword',
-              type: 'typeName', literal: 'atom', special: 'keyword', operator: 'operator' };
-
-function mimMode() {
+// mim-code.js does the classifying and CLASS the colouring, so the editor matches the code panes.
+function mimMode(tokens) {
     return {
         startState: () => ({ comment: false }),
         token(stream, state) {
-            const first = stream.string[stream.pos];
             const { end, kind } = MimCode.next(stream.string, stream.pos, state);
             stream.pos = end;
-            if (kind === 'name') return /[A-Z]/.test(first) ? 'typeName' : 'variableName';
-            return TAG[kind] ?? null;
+            return kind in tokens ? kind : null;
         },
+        tokenTable: tokens,
         languageData: { commentTokens: { line: '//', block: { open: '/*', close: '*/' } } },
     };
 }

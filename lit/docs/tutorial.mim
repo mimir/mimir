@@ -195,7 +195,7 @@ let shift = (1I32 << 2I32, 8I32 >> 1I32);             // `core.ops.u.w`, in scop
 /// Rebind one and the arithmetic changes with it.
 let surprise = 2 + 3 where let `+ = core.nat.mul; end;
 let _ = refly.struc.e (surprise, 6);
-/// ## Modules, Visibility, Annexes, Axioms, and Rules
+/// ## Modules and Visibility
 pub mod geo {
     pub let dim = 3;
     priv let hidden = 0;                // no path from outside may reach this
@@ -207,14 +207,14 @@ use geo.deep as *;                      // splices `leaf` into this scope - a pl
 use geo.deep as dp;                     // … or binds another name for the module
 let _ = refly.struc.e (leaf, dp.leaf);
 let _ = refly.struc.e (leaf, geo.deep.leaf);
-
+/// ## Annexes and Axioms
 anx let answer = 42;                    // an annex is additionally registered by its qualified name
 anx Answer = answer;                    // an alias for an annex
 
 axm Set: * → *;                                                 // an axiom
 axm set.(union = join, inter): {T: *} → [Set T, Set T] → Set T; // several at once, with an alias
 axm Curried: [Nat, Nat] → *, 1;                                 // … and a curry counter
-
+/// ## Rules
 mod rewrites {
     use core.ops.n;
     rule dbl (a: Nat): (a + a) => (a * 2);              // a rewrite rule
