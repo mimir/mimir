@@ -64,6 +64,12 @@ axm phases: {n: Nat} → Bool → «n; Phase» → Phase;
 /// The phases this plugin itself registers; every other one is contributed by the plugin that
 /// implements it.
 ///
+/// ### adce
+///
+/// Agressive dead cdoe elimination; removes variables nobody needs.
+///
+axm adce: Phase;
+///
 /// ### beta_red
 ///
 /// β-reduction; inlines Lam%s that occur exactly once in the program (mim::BetaRed).
