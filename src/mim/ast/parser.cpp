@@ -278,13 +278,22 @@ Ptr<Expr> Parser::parse_match_expr() {
     accept(Tag::T_pipe);
     do {
         auto track   = tracker();
-        auto ptrn    = parse_ptrn({}, "right-hand side of a match-arm", Prec::Bot);
-        auto id      = ptrn->isa<IdPtrn>();
-        auto is_ctor = id && !id->type() && !ahead().isa(Tag::T_fat_arrow);
+        auto index   = std::optional<nat_t>();
+        auto ptrn    = Ptr<Ptrn>();
+        auto is_ctor = false;
+        if (auto lit = accept(Tag::L_u)) {
+            index   = lit.lit_u();
+            ptrn    = ptr<IdPtrn>(lit.loc(), Dbg(lit.loc(), ast().sym_anon()), nullptr);
+            is_ctor = !ahead().isa(Tag::T_fat_arrow);
+        } else {
+            ptrn    = parse_ptrn({}, "right-hand side of a match-arm", Prec::Bot);
+            auto id = ptrn->isa<IdPtrn>();
+            is_ctor = id && !id->type() && !ahead().isa(Tag::T_fat_arrow);
+        }
         auto payload = is_ctor ? parse_ptrn({}, "payload of a constructor in a match-arm", Prec::Bot) : nullptr;
         expect(Tag::T_fat_arrow, "arm of a match-expression");
         auto body = parse_expr("arm of a match-expression");
-        arms.emplace_back(ptr<MatchExpr::Arm>(track, ptrn, payload, body));
+        arms.emplace_back(ptr<MatchExpr::Arm>(track, index, ptrn, payload, body));
     } while (accept(Tag::T_pipe));
 
     return ptr<MatchExpr>(track, scrutinee, arms);

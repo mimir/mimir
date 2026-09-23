@@ -166,6 +166,9 @@ lam first (l: Nats): Nat =
     | Nil         => 0
     | Cons (h, _) => h;
 let _ = refly.struc.e (first (Nats#Cons (23, Nats#Nil)), 23);
+/// An arm selects its case by index just as well, exactly like `T#n` does.
+lam first_by_index (l: Nats): Nat = match l with | 0 => 0 | 1 (h, _) => h;
+let _ = refly.struc.e (first_by_index (Nats#Cons (23, Nats#Nil)), 23);
 /// A variant is a type like any other, so it may just as well be anonymous.
 lam get (x: | None | Some: Nat): Nat = match x with | None => 0 | Some n => n;
 let _ = refly.struc.e (get ((| None | Some: Nat)#Some 42), 42);

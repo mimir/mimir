@@ -522,7 +522,7 @@ e   ::= e "∪" e
 
 ```ebnf
 e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
-arm ::= I p? "=>" e
+arm ::= (I | L) p? "=>" e
 ```
 
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
@@ -532,10 +532,12 @@ arm ::= I p? "=>" e
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
-- In a `match` on a variant, each arm names a constructor, optionally followed by a pattern for its payload.
+- In a `match` on a variant, each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
+  `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
 - Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
   Variants are structural, so two of the same shape are the same type; where they put a name at different positions, it is ambiguous and needs an index.
+  A name reaches only the type it was declared on, so an instance of a polymorphic variant such as `V T` carries none and its cases are selected by index.
 
 ```mim
 rec List = | Nil | Cons: [Nat, List];

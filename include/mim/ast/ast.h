@@ -657,8 +657,9 @@ public:
     /// `ptrn => body` of a MatchExpr, or `ctor payload => body` for a constructor with a payload.
     class Arm : public Node {
     public:
-        Arm(Loc loc, Ptr<Ptrn> ptrn, Ptr<Ptrn> payload, Ptr<Expr> body)
+        Arm(Loc loc, std::optional<nat_t> index, Ptr<Ptrn> ptrn, Ptr<Ptrn> payload, Ptr<Expr> body)
             : Node(loc)
+            , index_(index)
             , ptrn_(ptrn)
             , payload_(payload)
             , body_(body) {}
@@ -667,6 +668,8 @@ public:
         /// The pattern after a constructor, as in `Cons (h, t)`; `nullptr` otherwise.
         const Ptrn* payload() const { return payload_.get(); }
         const Expr* body() const { return body_.get(); }
+        /// The case this arm selects by literal index, as in `1 (h, t)`; `{}` if it names a constructor instead.
+        std::optional<nat_t> index() const { return index_; }
         /// The constructor this arm names if it may name one: an unannotated identifier.
         const IdPtrn* ctor() const;
 
@@ -676,6 +679,7 @@ public:
         void stream(fe::Tab&, std::ostream&) const override;
 
     private:
+        std::optional<nat_t> index_;
         Ptr<Ptrn> ptrn_;
         Ptr<Ptrn> payload_;
         Ptr<Expr> body_;

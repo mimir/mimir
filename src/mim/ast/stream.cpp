@@ -168,8 +168,9 @@ void InfixExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
-    if (payload()) return std::print(os, "{} {} => {}", S(tab, ptrn()), S(tab, payload()), S(tab, body()));
-    std::print(os, "{} => {}", S(tab, ptrn()), S(tab, body()));
+    auto sel = index() ? std::format("{}", *index()) : std::format("{}", S(tab, ptrn()));
+    if (payload()) return std::print(os, "{} {} => {}", sel, S(tab, payload()), S(tab, body()));
+    std::print(os, "{} => {}", sel, S(tab, body()));
 }
 
 void VariantExpr::Ctor::stream(fe::Tab& tab, std::ostream& os) const {
