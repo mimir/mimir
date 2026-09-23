@@ -1,0 +1,21 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not=eta_
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+// The canonical example of Fluet & Weeks, "Contification Using Dominators", §1:
+//     fun g y = y - 1
+//     fun f b = (if b then g 13 else g 15) + 1
+// Both call sites of `g` return to `k`, so `g` becomes a continuation within `f`.
+extern fun f (b: Bool): Nat =
+    (l2, l1)#b () where
+        con l1 () = g (13, k);
+        con l2 () = g (15, k);
+        con g (y: Nat, r: Cn Nat) = r (y - 1);
+        con k (x: Nat) = return (x + 1);
+    end;
+
+// CHECK: con g (y: Nat) =
+// CHECK-DAG: g 15;
+// CHECK-DAG: g 13;

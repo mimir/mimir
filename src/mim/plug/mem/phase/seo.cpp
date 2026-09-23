@@ -23,6 +23,16 @@ static size_t idx_of(Defs vars, const Def* p) {
     return i - vars.begin();
 }
 
+/// Strips EtaConv's per-occurrence wrappers so that call sites passing the same continuation still agree.
+static const Def* eta_canon(const Def* def) {
+    while (auto lam = def->isa_mut<Lam>()) {
+        auto f = lam->eta_reduce();
+        if (!f) break;
+        def = f;
+    }
+    return def;
+}
+
 static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
 /// Does @p lam's signature refer to its own binder's Var?
@@ -218,7 +228,11 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     auto v = version();
 
     DefVec all_vars(n, [&](size_t i) { return known->var(n, i); });
-    DefVec all_abstr_args(abstr_targs.begin(), abstr_targs.end());
+    DefVec all_abstr_args(n, [&](size_t i) {
+        auto arg = eta_canon(abstr_targs[i]);
+        if (arg != abstr_targs[i]) profile_count("seo.eta.canonicalized");
+        return arg;
+    });
 
     propagate_phis(known, all_vars, all_abstr_args);
 

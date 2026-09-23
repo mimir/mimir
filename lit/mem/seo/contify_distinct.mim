@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[]: Bool;
+
+// The two call sites of `g` disagree on the continuation, so it must stay a parameter.
+extern fun f (x: Nat): Nat =
+    ret c = dont_know $ ();
+    (a, b)#c () where
+        con a () = g (x, k1);
+        con b () = g (x + 2, k2);
+        con g (y: Nat, r: Cn Nat) = r (y + 1);
+        con k1 (r: Nat) = return (r + r);
+        con k2 (r: Nat) = return (r * 3);
+    end;
+
+// CHECK: fun g (y: Nat): Nat =
+// CHECK: g (x, k1);
+// CHECK: g ({{.*}}, k2);
