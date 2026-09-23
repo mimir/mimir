@@ -373,6 +373,12 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     if (ret() && !ret()->type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, ret()->type()));
 }
 
+/// Does @p expr span several statements and hence deserve an indented block of its own?
+static bool is_block(const Expr* expr) {
+    if (auto decl = expr->isa<DeclExpr>()) return !decl->is_where();
+    return expr->isa<RetExpr>();
+}
+
 void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", tag());
     if (dbg()) std::print(os, " {}", dbg());
@@ -380,7 +386,7 @@ void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
         std::print(os, " {}", S(tab, dom.get()));
     if (codom()) std::print(os, ": {}", S(tab, codom()));
     if (body()) {
-        if (auto decl = body()->isa<DeclExpr>(); decl && !decl->is_where()) {
+        if (is_block(body())) {
             ++tab;
             std::print(os, " =\n{}{}", tab, S(tab, body()));
             --tab;

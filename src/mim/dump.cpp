@@ -47,6 +47,7 @@ struct Ctx {
     /// Distinct identifiers picked instead of Def::unique_name, so a re-read dump keeps them as its Def::sym%s.
     absl::flat_hash_set<std::string> taken;
     absl::flat_hash_map<std::string, size_t> counters; ///< Next numbered variant to try per base name.
+    fe::Tab tab    = fe::Tab::spaces();                ///< Indentation of the line being printed.
     bool plain     = false;
     bool in_header = false;
     std::string self; ///< `<world name>.`: the dumped file's own annexes are spelled without it.
@@ -637,9 +638,11 @@ void full(std::ostream& os, Full d) {
                match && d.ctx() && match->num_arms() != 0 && d.ctx()->arms.contains(match->arm(0))) {
         std::print(os, "match {} with", d.op(match->scrutinee()));
         auto variant = match->scrutinee()->type()->isa<Variant>();
+        auto& tab    = d.ctx()->tab;
+        ++tab;
         for (size_t i = 0; auto arm : match->arms()) {
             auto lam = arm->as_mut<Lam>();
-            os << " | ";
+            std::print(os, "\n{}| ", tab);
             // A variant's arms are its constructors, in order; a constructor without payload binds nothing.
             if (variant) std::print(os, "_{}", i++);
             if (!variant || lam->dom() != d->world().sigma()) {
@@ -649,6 +652,7 @@ void full(std::ostream& os, Full d) {
             // Another `match` would swallow the arms that follow.
             std::print(os, " => {}", d.op(lam->body(), Prec::Where));
         }
+        --tab;
         return;
     }
 
@@ -733,18 +737,19 @@ public:
             auto dot  = view.find('.');
             auto mod  = dot == std::string_view::npos ? std::string_view() : view.substr(0, dot);
             if (mod != curr_mod) {
-                if (!curr_mod.empty()) std::println(os_, "{}}}", --tab_);
-                if (!mod.empty()) std::println(os_, "{}mod {} {{", tab_, mod), ++tab_;
+                if (!curr_mod.empty()) std::println(os_, "{}}}", --ctx_.tab);
+                if (!mod.empty()) std::println(os_, "{}mod {} {{", ctx_.tab, mod), ++ctx_.tab;
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
-            std::print(os_, "{}axm {}: {}", tab_, mod.empty() ? view : view.substr(dot + 1), Op(&ctx_, axm->type()));
+            std::print(os_, "{}axm {}: {}", ctx_.tab, mod.empty() ? view : view.substr(dot + 1),
+                       Op(&ctx_, axm->type()));
             auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
             if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
             if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
             std::println(os_, ";");
         }
-        if (!curr_mod.empty()) std::println(os_, "{}}}", --tab_);
+        if (!curr_mod.empty()) std::println(os_, "{}}}", --ctx_.tab);
         ctx_.mod.clear();
     }
 
@@ -978,7 +983,7 @@ private:
 
     void emit_let(const Def* def) {
         auto type = typed_let_ ? std::format(": {}", Op(&ctx_, def->type())) : std::string();
-        std::println(os_, "{}let {}{} = {};", tab_, name(&ctx_, def), type, Full(&ctx_, def));
+        std::println(os_, "{}let {}{} = {};", ctx_.tab, name(&ctx_, def), type, Full(&ctx_, def));
     }
 
     void emit_decl(Def* mut) {
@@ -989,14 +994,14 @@ private:
         auto kw = recursive_.contains(mut) ? "rec" : "let";
         // A `rec` only takes a bare variant.
         if (auto variant = mut->isa<Variant>())
-            return std::println(os_, "{}{} {} = {};", tab_, kw, id(&ctx_, mut), ctors(&ctx_, variant));
-        std::println(os_, "{}{} {} = {};", tab_, kw, id(&ctx_, mut), Full(&ctx_, mut));
+            return std::println(os_, "{}{} {} = {};", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant));
+        std::println(os_, "{}{} {} = {};", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut));
     }
 
     void emit_rule(Rule* rule) {
         auto dom = rule->dom();
         auto num = num_binders(dom);
-        std::print(os_, "{}rule {} ", tab_, id(&ctx_, rule));
+        std::print(os_, "{}rule {} ", ctx_.tab, id(&ctx_, rule));
         curry(os_, &ctx_, rule->has_var(), dom, false, num, num, false);
         std::print(os_, ": {}", Full(&ctx_, rule->lhs()));
         if (rule->guard() != rule->world().lit_tt()) std::print(os_, " when {}", Full(&ctx_, rule->guard()));
@@ -1005,7 +1010,7 @@ private:
 
     /// Nothing declares a mutable that was never set, so leave a trace instead of an unreadable dump.
     void emit_unset(Def* mut) {
-        std::println(os_, "{}// `{}: {}` is unset", tab_, id(&ctx_, mut), Op(&ctx_, mut->type()));
+        std::println(os_, "{}// `{}: {}` is unset", ctx_.tab, id(&ctx_, mut), Op(&ctx_, mut->type()));
     }
 
     void emit_lam(Lam* lam) {
@@ -1036,7 +1041,7 @@ private:
             ctx_.names.emplace(chain[i], std::format("({})", ref));
         }
 
-        std::print(os_, "{}{}{} {}", tab_, external(lam), fun ? "fun" : con ? "con" : "lam", id(&ctx_, lam));
+        std::print(os_, "{}{}{} {}", ctx_.tab, external(lam), fun ? "fun" : con ? "con" : "lam", id(&ctx_, lam));
         {
             auto _ = fe::Restore(ctx_.in_header, true);
             for (auto* c : chain) {
@@ -1047,21 +1052,21 @@ private:
         }
         os_ << " =\n";
 
-        ++tab_;
+        ++ctx_.tab;
         rets_.emplace_back(fun ? last->has_var() : nullptr);
         auto _ = fe::Restore(prev_, Prev::None);
         emit(lam);
         sep(Prev::Let);
         emit_tail(last->body(), ";");
         rets_.pop_back();
-        --tab_;
+        --ctx_.tab;
     }
 
     /// A Lam without a body only ever declares what some backend provides: `extern con f [mem.M 0, I32];`.
     void emit_bodyless(Lam* lam, const fe::Vector<Lam*>& chain, bool fun, bool con) {
         auto last = chain.back();
         auto dom  = last->type()->dom();
-        std::print(os_, "{}extern {} {}", tab_, fun ? "fun" : con ? "con" : "lam", id(&ctx_, lam));
+        std::print(os_, "{}extern {} {}", ctx_.tab, fun ? "fun" : con ? "con" : "lam", id(&ctx_, lam));
         auto num = num_binders(dom);
         if (fun) {
             os_ << '[';
@@ -1079,9 +1084,9 @@ private:
     /// Tail position: what a block ends with is spelled out - it has no `let` of its own.
     void emit_tail(const Def* def, std::string_view end) {
         if (isa_decl(def))
-            std::println(os_, "{}{}{}", tab_, Op(&ctx_, def), end);
+            std::println(os_, "{}{}{}", ctx_.tab, Op(&ctx_, def), end);
         else
-            std::println(os_, "{}{}{}", tab_, Full(&ctx_, def), end);
+            std::println(os_, "{}{}{}", ctx_.tab, Full(&ctx_, def), end);
     }
 
     /// Would a `fun` here hide the `return` of an enclosing one @p lam might still refer to?
@@ -1100,7 +1105,6 @@ private:
     Scheduler* sched_ = nullptr; ///< Places everything else in it.
     Def* block_       = nullptr; ///< The mutable whose block we are filling; the only one in Dump::Local.
     Prev prev_        = Prev::None;
-    fe::Tab tab_      = fe::Tab::spaces();
     fe::Vector<const Var*> rets_;
     fe::Vector<std::pair<const Def*, Def*>> order_; ///< What to emit, in dependency order, with its block's mutable.
     DefVec top_;
