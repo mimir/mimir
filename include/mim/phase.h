@@ -262,8 +262,7 @@ protected:
 
     /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
     /// Mutables are visited but not descended into; defs already in @p visited are skipped - seed it to exempt them.
-    template<class F>
-    void pin_imm(const Def* def, F pinnable, DefSet& visited) {
+    void pin_imm(const Def* def, std::predicate<const Def*> auto pinnable, DefSet& visited) {
         if (!visited.emplace(def).second) return;
         if (pinnable(def)) pin(def);
         if (def->isa_mut()) return;
@@ -271,8 +270,7 @@ protected:
             pin_imm(d, pinnable, visited);
     }
 
-    template<class F>
-    void pin_imm(const Def* def, F pinnable) {
+    void pin_imm(const Def* def, std::predicate<const Def*> auto pinnable) {
         auto visited = DefSet();
         pin_imm(def, pinnable, visited);
     }
@@ -281,8 +279,7 @@ protected:
     /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
     /// Subgraphs merely substituted in via (type) arguments impose no shape, though, and are exempt.
     /// @returns whether @p app applies an Axm.
-    template<class F>
-    bool pin_axm(const App* app, F pinnable) {
+    bool pin_axm(const App* app, std::predicate<const Def*> auto pinnable) {
         if (!app->uncurry_callee()->isa<Axm>()) return false;
         auto skips = DefSet();
         for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
