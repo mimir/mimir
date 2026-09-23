@@ -31,5 +31,5 @@ extern lam h(): I32 = outer.x;
 // CHECK-DAG-NEXT: 23I32;
 
 // An import is an ordinary declaration and stays where it was written.
-// AST: lam f(): I32 =
+// AST: lam f (): I32 =
 // AST-NEXT: import "lib.mim";
