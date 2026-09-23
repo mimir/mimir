@@ -774,54 +774,31 @@ const Def* World::ext(const Def* type) {
     return unify<TExt<Up>>(type);
 }
 
-template<bool Up>
-const Def* World::bound(Defs ops_) {
+const Def* World::join(Defs ops_) {
     auto ops = DefVec();
     ops.reserve(ops_.size());
     auto push = [&ops](const Def* op) {
-        if (!op->isa<TExt<!Up>>()) ops.emplace_back(op); // ignore: ext<!Up>
+        if (!op->isa<Bot>()) ops.emplace_back(op);
     };
 
     for (auto op_ : ops_) {
         auto op = op_->zonk();
-        // A nested bound is already flat, so one level suffices to keep the operation associative.
-        if (auto bound = op->isa_imm<TBound<Up>>())
-            for (auto o : bound->ops())
+        // A nested Join is already flat, so one level suffices to keep the operation associative.
+        if (auto join = op->isa_imm<Join>())
+            for (auto o : join->ops())
                 push(o);
         else
             push(op);
     }
 
     auto kind = umax<UMax::Type>(ops);
-
-    // has ext<Up> value?
-    if (std::ranges::any_of(ops, [](const Def* op) { return op->isa<TExt<Up>>(); })) return ext<Up>(kind);
+    if (std::ranges::any_of(ops, [](const Def* op) { return op->isa<Top>(); })) return top(kind);
 
     sort_unique(ops);
 
-    if (ops.empty()) return ext<!Up>(kind);
+    if (ops.empty()) return bot(kind);
     if (ops.size() == 1) return ops[0];
-
-    // TODO simplify mixed terms with joins and meets?
-    return unify<TBound<Up>>(kind, ops);
-}
-
-const Def* World::merge(const Def* type, Defs ops_) {
-    type     = type->zonk();
-    auto ops = Def::zonk(ops_);
-
-    if (type->isa<Meet>()) {
-        auto types = DefVec(ops.size(), [&](size_t i) { return ops[i]->unfold_type(); });
-        return unify<Merge>(meet(types), ops);
-    }
-
-    assert(ops.size() == 1);
-    return ops[0];
-}
-
-const Def* World::merge(Defs ops_) {
-    auto ops = Def::zonk(ops_);
-    return merge(umax<UMax::Term>(ops), ops);
+    return unify<Join>(kind, ops);
 }
 
 const Def* World::inj(const Def* type, const Def* value) {
@@ -852,13 +829,6 @@ const Def* World::inj(const Def* type, nat_t index, const Def* value) {
 const Def* World::variant(Defs ops) {
     auto zops = Def::zonk(ops);
     return unify<Variant>(Variant::infer(*this, zops), zops);
-}
-
-const Def* World::split(const Def* type, const Def* value) {
-    type  = type->zonk();
-    value = value->zonk();
-
-    return unify<Split>(type, value);
 }
 
 const Def* World::match(Defs ops_) {
@@ -1085,8 +1055,6 @@ template const Def* World::umax<UMax::Kind>(Defs);
 template const Def* World::umax<UMax::Univ>(Defs);
 template const Def* World::ext<true>(const Def*);
 template const Def* World::ext<false>(const Def*);
-template const Def* World::bound<true>(Defs);
-template const Def* World::bound<false>(Defs);
 template const Def* World::app<true>(const Def*, const Def*);
 template const Def* World::app<false>(const Def*, const Def*);
 template const Def* World::implicit_app<true>(const Def*, const Def*);

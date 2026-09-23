@@ -158,6 +158,7 @@ Defs Def::reduce_(const Def* arg) const {
     if (!is_set()) fe::throwf("cannot reduce `{}`: it is not set", this);
     if (auto var = has_var()) return world().reduce(var, arg);
     auto off = reduction_offset();
+    assert(off != size_t(-1) && "not a binder");
     return {ops().begin() + off, num_ops() - off};
 }
 
@@ -232,20 +233,18 @@ const Def* Def::var() {
 
 // clang-format off
 const Def* Def::var_type() {
-    switch (node()) {
-        case Node::Lam:    return as<Lam >()->dom();
-        case Node::Pi:     return as<Pi  >()->dom();
-        case Node::Rule:   return as<Rule>()->dom();
-        case Node::Arr:
-        case Node::Pack:   return world().type_indices(as<Seq>()->shape());
-        case Node::Sigma:
-        case Node::Join:
-        case Node::Meet:   return this;
-        case Node::Global:
-        case Node::Hole:
-        case Node::Variant: return nullptr;
-        default:           fe::unreachable();
+    switch (mut_node()) {
+        case MutNode::Lam:     return as<Lam >()->dom();
+        case MutNode::Pi:      return as<Pi  >()->dom();
+        case MutNode::Rule:    return as<Rule>()->dom();
+        case MutNode::Arr:
+        case MutNode::Pack:    return world().type_indices(as<Seq>()->shape());
+        case MutNode::Sigma:   return this;
+        case MutNode::Global:
+        case MutNode::Hole:
+        case MutNode::Variant: return nullptr;
     }
+    fe::unreachable();
 }
 // clang-format on
 
@@ -557,14 +556,17 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 
 const Def* Def::immutabilize() {
     auto& w = world();
-    switch (node()) {
-        case Node::Pi:
+    switch (mut_node()) {
+        case MutNode::Pi:
             return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom(), as<Pi>()->is_implicit()) : nullptr;
-        case Node::Sigma:   return is_immutabilizable() ? w.sigma(ops()) : nullptr;
-        case Node::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
-        case Node::Rule:  return nullptr; // TODO should we ever immutabilize Rules?
-        case Node::Arr:
-        case Node::Pack: {
+        case MutNode::Sigma:   return is_immutabilizable() ? w.sigma(ops()) : nullptr;
+        case MutNode::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
+        case MutNode::Rule:    return nullptr; // TODO should we ever immutabilize Rules?
+        case MutNode::Lam:
+        case MutNode::Global:
+        case MutNode::Hole:    return nullptr;
+        case MutNode::Arr:
+        case MutNode::Pack: {
             auto seq = as<Seq>();
             auto arr = node() == Node::Arr;
             if (is_immutabilizable())
@@ -577,22 +579,24 @@ const Def* Def::immutabilize() {
             }
             return nullptr;
         }
-        default: return nullptr;
     }
+    fe::unreachable();
 }
 
 size_t Def::reduction_offset() const noexcept {
-    switch (node()) {
-        case Node::Join:
-        case Node::Lam:
-        case Node::Meet:
-        case Node::Sigma: return 0;
-        case Node::Arr:
-        case Node::Pack:
-        case Node::Pi:
-        case Node::Rule:  return 1;
-        default:          return size_t(-1);
+    if (!is_mut_node(node())) return size_t(-1); // only a mutable can bind a Var
+    switch (mut_node()) {
+        case MutNode::Lam:
+        case MutNode::Sigma:   return 0;
+        case MutNode::Arr:
+        case MutNode::Pack:
+        case MutNode::Pi:
+        case MutNode::Rule:    return 1;
+        case MutNode::Global:
+        case MutNode::Hole:
+        case MutNode::Variant: return size_t(-1);
     }
+    fe::unreachable();
 }
 
 const Def* Def::arity() const {

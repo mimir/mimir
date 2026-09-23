@@ -168,12 +168,11 @@ void VariantExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::println(os, "{}match {} with", tab, S(tab, scrutinee()));
+    std::print(os, "match {} with", S(tab, scrutinee()));
     ++tab;
     for (auto arm : arms())
-        std::println(os, "{}| {}", tab, S(tab, arm.get()));
+        std::print(os, "\n{}| {}", tab, S(tab, arm.get()));
     --tab;
-    std::println(os, "{}}}", tab);
 }
 
 void PiExpr::Dom::stream(fe::Tab& tab, std::ostream& os) const {

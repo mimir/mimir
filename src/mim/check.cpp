@@ -480,39 +480,33 @@ const Def* Def::check(size_t i, const Def* def) {
 const Def* Def::check() {
     auto& w = world();
 
-    switch (node()) {
-        case Node::Pi: {
+    switch (mut_node()) {
+        case MutNode::Pi: {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
             if (!Checker::alpha<Checker::Check>(t, type()))
                 type()->blame("declared sort of function type does not match inferred sort `{}`", t).bail();
             return t;
         }
-        case Node::Arr: {
+        case MutNode::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
             if (!Checker::alpha<Checker::Check>(t, type()))
                 type()->blame("declared sort of array does not match inferred sort `{}`", t).bail();
             return t;
         }
-        case Node::Reform: {
-            auto t = Reform::infer(as<Reform>()->dom());
-            if (!Checker::alpha<Checker::Check>(t, type()))
-                type()->blame("declared sort of rule type does not match inferred sort `{}`", t).bail();
-            return t;
-        }
-        case Node::Sigma: {
+        case MutNode::Sigma: {
             auto t = Sigma::infer(w, ops());
             if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
             w.log().w("expected type {} for {} but keeping the declared {} due to clos-conv bugs", t, this, type());
             return type();
         }
-        case Node::Variant: {
+        case MutNode::Variant: {
             auto t = Variant::infer(w, ops());
             if (!Checker::alpha<Checker::Check>(t, type()))
                 type()->blame("declared sort of variant does not match inferred sort `{}`", t).bail();
             return t;
         }
-        case Node::Rule: {
+        case MutNode::Rule: {
             auto rule = as<Rule>();
             auto t1   = rule->lhs()->unfold_type();
             auto t2   = rule->rhs()->unfold_type();
@@ -527,8 +521,13 @@ const Def* Def::check() {
                     .bail();
             return type();
         }
-        default: return type();
+        // A Lam's ops are checked one by one in Def::check(size_t, const Def*).
+        case MutNode::Lam:
+        case MutNode::Pack:
+        case MutNode::Global:
+        case MutNode::Hole: return type();
     }
+    fe::unreachable();
 }
 
 } // namespace mim

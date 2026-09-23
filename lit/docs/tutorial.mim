@@ -99,10 +99,12 @@ rec List = [head: I32, tail: mem.Ptr0 List];
 /// `and` extends the group, so two types may refer to each other.
 rec Tree   = [val: I32, kids: mem.Ptr0 Forest]
 and Forest = [car: mem.Ptr0 Tree, cdr: mem.Ptr0 Forest];
-/// A mutable sigma's components carry field names, which beat lexical names of the same spelling.
+/// Components carry field names, which beat lexical names of the same spelling.
 let tail = 1₂;
 lam by_field (l: List): mem.Ptr0 List = l#tail;
 lam by_var   (p: «2; Nat»): Nat       = p#(tail);   // parentheses force the variable
+let Size = [w h: Nat];                               // just `«2; Nat»`: the names belong to the shape
+lam width (s: Size): Nat = s#w;
 /// `rec` is also the only way to keep a genuine one-element aggregate.
 rec One = [x: Nat];
 lam real_extract (t: «2; One»): Nat = t#1₂#0₁;    // a real Extract into the 1-tuple

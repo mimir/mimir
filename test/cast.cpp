@@ -3,20 +3,20 @@
 #include <mim/driver.h>
 #include <mim/lattice.h>
 #include <mim/tuple.h>
+#include <mim/union.h>
 
 using namespace mim;
 
-// Prod/Seq/Bound/Ext group several Node kinds each, so they cannot use fe::Nodeable's single `T::Node`.
+// Prod/Seq/Ext group several Node kinds each, so they cannot use fe::Nodeable's single `T::Node`.
 // Without fe::NodeSetable, `isa<T>()` would fall back to a `dynamic_cast` - on Def::proj and
 // Checker::alpha_impl_, i.e. the hottest paths in the compiler.
 static_assert(!fe::Nodeable<Prod> && fe::NodeSetable<Prod>);
 static_assert(!fe::Nodeable<Seq> && fe::NodeSetable<Seq>);
-static_assert(!fe::Nodeable<Bound> && fe::NodeSetable<Bound>);
 static_assert(!fe::Nodeable<Ext> && fe::NodeSetable<Ext>);
 
 // The concrete leaves keep the exact-node path: fe::Nodeable is checked first.
 static_assert(fe::Nodeable<Sigma> && fe::Nodeable<Tuple> && fe::Nodeable<Arr> && fe::Nodeable<Pack>);
-static_assert(fe::Nodeable<Join> && fe::Nodeable<Meet> && fe::Nodeable<Top> && fe::Nodeable<Bot>);
+static_assert(fe::Nodeable<Join> && fe::Nodeable<Top> && fe::Nodeable<Bot>);
 
 TEST_CASE("Cast: node sets") {
     Driver driver;
@@ -24,11 +24,10 @@ TEST_CASE("Cast: node sets") {
 
     SUBCASE("each union groups exactly its own nodes") {
         for (auto node :
-             {Node::Sigma, Node::Tuple, Node::Arr, Node::Pack, Node::Join, Node::Meet, Node::Top, Node::Bot, Node::Lit,
-              Node::Var, Node::App, Node::Lam, Node::Pi, Node::Nat, Node::Idx, Node::Extract, Node::Variant}) {
+             {Node::Sigma, Node::Tuple, Node::Arr, Node::Pack, Node::Join, Node::Top, Node::Bot, Node::Lit, Node::Var,
+              Node::App, Node::Lam, Node::Pi, Node::Nat, Node::Idx, Node::Extract, Node::Variant}) {
             CHECK(Prod::isa_node(node) == (node == Node::Sigma || node == Node::Tuple));
             CHECK(Seq::isa_node(node) == (node == Node::Arr || node == Node::Pack));
-            CHECK(Bound::isa_node(node) == (node == Node::Join || node == Node::Meet));
             CHECK(Ext::isa_node(node) == (node == Node::Top || node == Node::Bot));
         }
     }
@@ -56,8 +55,6 @@ TEST_CASE("Cast: node sets") {
         CHECK(top->isa<Ext>());
         CHECK_FALSE(sigma->isa<Ext>());
         CHECK_FALSE(arr->isa<Ext>());
-        CHECK_FALSE(bot->isa<Bound>());
-        CHECK_FALSE(sigma->isa<Bound>());
 
         // A cast that succeeds must yield the same pointer the static_cast would.
         CHECK(sigma->isa<Prod>() == static_cast<const Prod*>(sigma));

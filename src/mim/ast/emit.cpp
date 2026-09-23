@@ -30,44 +30,54 @@ public:
             world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
     }
 
-    absl::node_hash_map<Sigma*, fe::SymMap<size_t>, GIDHash<const Def*>> sigma2sym2idx;
-
-    /// @name Variant Constructors
-    /// Names live on the Def, so same-shaped VariantExpr%s share one table.
+    /// @name Names
+    /// Field and constructor names live on the Def, so same-shaped types share one table.
     ///@{
-    void add_ctors(const Def* variant, const VariantExpr* expr) {
-        auto& sym2idx = variant2sym2idx_[variant];
-        auto seen     = fe::SymSet();
-        for (size_t i = 0, n = expr->num_ctors(); i != n; ++i) {
-            auto dbg = expr->ctor(i)->dbg();
-            if (!seen.emplace(dbg.sym()).second) error().e(dbg.loc(), "constructor `{}` declared twice", dbg);
-            if (auto [j, ins] = sym2idx.emplace(dbg.sym(), i); !ins && j->second != i) j->second = Ambiguous;
-        }
+    void add_names(const Def* def, const fe::SymMap<size_t>& sym2idx) {
+        auto& names = def2sym2idx_[def];
+        for (auto [sym, i] : sym2idx)
+            if (auto [j, ins] = names.emplace(sym, i); !ins && j->second != i) j->second = Ambiguous;
     }
 
-    std::optional<size_t> find_ctor(const Def* variant, Dbg dbg) {
-        auto i = variant2sym2idx_.find(variant);
-        if (i == variant2sym2idx_.end()) return {};
+    std::optional<size_t> find_name(const Def* def, Dbg dbg) {
+        auto i = def2sym2idx_.find(def);
+        if (i == def2sym2idx_.end()) return {};
         auto j = i->second.find(dbg.sym());
         if (j == i->second.end()) return {};
-        if (j->second == Ambiguous)
+        if (j->second == Ambiguous) {
+            if (def->isa<Variant>())
+                error()
+                    .e(dbg.loc(), "constructor `{}` is ambiguous in variant `{}`", dbg, def)
+                    .n("variants of the same shape name it at different positions")
+                    .n("select the case by index instead, as in `T#0`")
+                    .bail();
             error()
-                .e(dbg.loc(), "constructor `{}` is ambiguous in variant `{}`", dbg, variant)
-                .n("variants of the same shape name it at different positions")
-                .n("select the case by index instead, as in `T#0`")
+                .e(dbg.loc(), "field `{}` is ambiguous in `{}`", dbg, def)
+                .n("sigmas of the same shape name it at different positions")
+                .n("select the field by index instead, as in `t#0_2`")
                 .bail();
+        }
         return j->second;
     }
 
+    void add_ctors(const Def* variant, const VariantExpr* expr) {
+        auto sym2idx = fe::SymMap<size_t>();
+        for (size_t i = 0, n = expr->num_ctors(); i != n; ++i) {
+            auto dbg = expr->ctor(i)->dbg();
+            if (!sym2idx.emplace(dbg.sym(), i).second) error().e(dbg.loc(), "constructor `{}` declared twice", dbg);
+        }
+        add_names(variant, sym2idx);
+    }
+
     size_t ctor(const Def* variant, Dbg dbg) {
-        if (auto i = find_ctor(variant, dbg)) return *i;
+        if (auto i = find_name(variant, dbg)) return *i;
         error().e(dbg.loc(), "variant `{}` has no constructor `{}`", variant, dbg).bail();
     }
 
     /// Every name case @p i goes by, sorted for a deterministic diagnostic; `#i` if it has none.
     std::string ctor_names(const Def* variant, size_t i) {
         auto names = std::vector<std::string>();
-        if (auto j = variant2sym2idx_.find(variant); j != variant2sym2idx_.end())
+        if (auto j = def2sym2idx_.find(variant); j != def2sym2idx_.end())
             for (const auto& [sym, k] : j->second)
                 if (k == i) names.emplace_back(std::format("`{}`", sym));
         if (names.empty()) return std::format("`#{}`", i);
@@ -80,7 +90,7 @@ private:
     static constexpr size_t Ambiguous = size_t(-1);
 
     AST& ast_;
-    absl::node_hash_map<const Def*, fe::SymMap<size_t>, GIDHash<const Def*>> variant2sym2idx_;
+    absl::node_hash_map<const Def*, fe::SymMap<size_t>, GIDHash<const Def*>> def2sym2idx_;
 };
 
 /*
@@ -163,17 +173,21 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
         auto type = e.world().type_infer_univ();
         sigma     = e.world().mut_sigma(type, n);
     }
-    auto var      = sigma->var();
-    auto& sym2idx = e.sigma2sym2idx[sigma];
+    auto var     = sigma->var();
+    auto sym2idx = fe::SymMap<size_t>();
 
     for (size_t i = 0; i != n; ++i) {
         sigma->set(i, ptrn(i)->emit_type(e));
         ptrn(i)->emit_proj(e, var, n, i);
-        if (auto id = ptrn(i)->isa<IdPtrn>(); id && !id->dbg().is_anon()) sym2idx[id->dbg().sym()] = i;
+        if (auto p = ptrn(i); (p->isa<IdPtrn>() || p->isa<GrpPtrn>()) && !p->dbg().is_anon())
+            sym2idx[p->dbg().sym()] = i;
     }
 
-    if (auto imm = sigma->immutabilize()) return imm;
-    return sigma;
+    e.add_names(sigma, sym2idx);
+    auto imm = sigma->immutabilize();
+    // A 1-Sigma collapses to its field's type, which must not inherit the name.
+    if (imm && n > 1) e.add_names(imm, sym2idx);
+    return imm ? imm : sigma;
 }
 
 const Def* TuplePtrn::emit_decl(Emitter& e, const Def* type) const {
@@ -329,13 +343,7 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     // A simple path names a field of tup's Sigma before anything the binder resolved it to.
     if (auto path = rhs()->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
         auto dbg = path->dbg();
-        if (auto mut = tup->type()->isa_mut<Sigma>()) {
-            if (auto i = e.sigma2sym2idx.find(mut); i != e.sigma2sym2idx.end()) {
-                auto sigma          = i->first->as_mut<Sigma>();
-                const auto& sym2idx = i->second;
-                if (auto i = sym2idx.find(dbg.sym()); i != sym2idx.end()) return w.lit_idx(sigma->num_ops(), i->second);
-            }
-        }
+        if (auto i = e.find_name(tup->type(), dbg)) return w.lit(w.type_idx(tup->type()->arity()), *i);
         if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
     }
     return rhs()->emit(e);
@@ -355,7 +363,7 @@ static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* inde
     auto i  = std::optional<nat_t>();
 
     if (auto path = index->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
-        i = e.find_ctor(variant, path->dbg());
+        i = e.find_name(variant, path->dbg());
         if (!i && !path->decl())
             e.error().e(path->dbg().loc(), "variant `{}` has no constructor `{}`", variant, path->dbg()).bail();
     }
@@ -813,6 +821,11 @@ void LamDecl::emit_body(Emitter& e) const {
                    "usually means an unannotated parameter's type could only be inferred to depend on a variable bound "
                    "in an inner/sibling scope; add an explicit type annotation to the offending parameter.",
                    dbg().sym(), lam->free_vars().min()->binder()->sym())
+                .bail();
+        if (auto prev = e.world().externals()[dbg().sym()])
+            e.error()
+                .e(loc(), "external function `{}` is already defined", dbg().sym())
+                .n(prev->loc(), "previous definition here")
                 .bail();
         lam->externalize();
     }

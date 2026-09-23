@@ -9,7 +9,6 @@ target_sources(libmim
         driver.cpp
         dump.cpp
         lam.cpp
-        lattice.cpp
         nest.cpp
         phase.cpp
         plugin.cpp
@@ -18,6 +17,7 @@ target_sources(libmim
         schedule.cpp
         sexpr.cpp
         tuple.cpp
+        union.cpp
         world.cpp
         ast/ast.cpp
         ast/bind.cpp
@@ -47,6 +47,8 @@ target_compile_features(libmim PUBLIC cxx_std_23)
 target_compile_options(libmim
     PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang>:-fno-semantic-interposition>
+        # A switch over MutNode without a `default` must handle every mutable node.
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Werror=switch>
 )
 
 if(MSVC)

@@ -714,14 +714,6 @@ std::string Emitter::emit_type(BB& bb, const Def* type, bool in_term /* = false*
                 os, "(variant {})",
                 fe::Join(variant->ops() | std::views::transform([&](auto op) { return emit_type(bb, op, in_term); }),
                          " "));
-    } else if (auto meet = type->isa<Meet>()) {
-        if (slotted())
-            std::print(os, "(meet {})", emit_cons_type(bb, meet->ops()));
-        else
-            std::print(
-                os, "(meet {})",
-                fe::Join(meet->ops() | std::views::transform([&](auto op) { return emit_type(bb, op, in_term); }),
-                         " "));
     } else if (auto bot = type->isa<Bot>()) {
         std::print(os, "(bot {})", emit_type(bb, bot->type(), in_term));
     } else if (auto top = type->isa<Top>()) {
@@ -930,8 +922,6 @@ std::string Emitter::emit_bb(BB& bb, const Def* def) {
     } else if (auto inj = def->isa<Inj>()) {
         auto name = inj->type()->isa<Variant>() ? std::format("inj {}", inj->index()) : std::string("inj");
         std::print(os, "{}", emit_node(bb, inj, name, false, true));
-    } else if (auto merge = def->isa<Merge>()) {
-        std::print(os, "{}", emit_node(bb, merge, "merge", true, true));
     } else if (auto match = def->isa<Match>()) {
         std::print(os, "{}", emit_node(bb, match, "match", true));
     } else if (auto proxy = def->isa<Proxy>()) {

@@ -481,7 +481,7 @@ let sigma = [n: Nat, «n; Nat»];
 ```
 
 The components refer to that name through a var of the sigma itself, so such a sigma is a _mutable_: it is built empty and filled in afterwards.
-Where no component uses that var, the sigma is the structural one after all and its names are erased - `[i: Nat, j: Nat]` is the very same type as `«2; Nat»`.
+Where no component uses that var, the sigma is the structural one after all - `[i: Nat, j: Nat]` is the very same type as `«2; Nat»`.
 
 A `rec` declaration additionally puts the declared name in scope inside the body, which is the only way for a type to mention itself:
 
@@ -489,25 +489,22 @@ A `rec` declaration additionally puts the declared name in scope inside the body
 rec Node = [val: I32, next: mem.Ptr0 Node];
 ```
 
-`rec` also keeps the sigma mutable unconditionally, so it is how a layout that nothing depends on keeps its component names.
+`rec` also keeps the sigma mutable unconditionally.
 
 @note "mutable" says how such a sigma is constructed, not that anything about it may be changed later.
 A mutable is not hash-consed, so every occurrence is a node of its own, but it is still checked structurally: a second declaration of the same layout is alpha-equivalent to the first, and the two are interchangeable.
 
-Two things follow for the surface language.
+A mutable sigma of exactly one component stays a genuine 1-tuple; only `rec` builds one, since a lone component has nothing to its left to depend on.
+Everywhere else a one-element aggregate degrades to its sole element - `[T]` and `«1; T»` are `T`, and `(x)` is `x` - which makes `#0₁` a no-op.
+Here it is a real Extract, and that is the one exception to `t#i#j` ≡ `t#(i, j)`: a fused index folds its size-1 axes away, while the `#`-chain keeps them.
 
-- Its components may be addressed by [field name](@ref field), which a structural sigma has no room for.
-- A mutable sigma of exactly one component stays a genuine 1-tuple; only `rec` builds one, since a lone component has nothing to its left to depend on.
-  Everywhere else a one-element aggregate degrades to its sole element - `[T]` and `«1; T»` are `T`, and `(x)` is `x` - which makes `#0₁` a no-op.
-  Here it is a real Extract, and that is the one exception to `t#i#j` ≡ `t#(i, j)`: a fused index folds its size-1 axes away, while the `#`-chain keeps them.
+```mim
+rec One = [x: Nat];
+lam f (t: «2; One»): Nat = t#1₂#0₁;    // a real Extract: reads `x` out of the 1-tuple
+lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so this is just `t#1₂`
+```
 
-  ```mim
-  rec One = [x: Nat];
-  lam f (t: «2; One»): Nat = t#1₂#0₁;    // a real Extract: reads `x` out of the 1-tuple
-  lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so this is just `t#1₂`
-  ```
-
-  `←` is unaffected: writing the component rebuilds the whole 1-tuple either way, so `t#(1₂, 0₁) ← v` and `t#1₂#0₁ ← v` do agree.
+`←` is unaffected: writing the component rebuilds the whole 1-tuple either way, so `t#(1₂, 0₁) ← v` and `t#1₂#0₁ ← v` do agree.
 
 #### Unions
 
@@ -711,7 +708,10 @@ Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` 
 
 ### Field Names of Sigmas {#field}
 
-Named elements of a [mutable sigma](@ref mutsigma) - a dependent tuple type, or any sigma declared with `rec` - are available for extracts and inserts.
+Named components of a sigma are available for extracts and inserts.
+A structural sigma keeps no names in the IR, so the frontend records them per shape: once `[i: Nat, j: Nat]` is declared, every `«2; Nat»` answers to `i` and `j`.
+A name that another sigma of the same shape puts at a different position is ambiguous there; select the component by index instead.
+A [mutable sigma](@ref mutsigma) is a node of its own, so its names are never ambiguous.
 @note These names take precedence over ordinary lexical names.
 In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 
@@ -730,7 +730,6 @@ lam f (x: S): Nat = x#(i);
 ```
 
 The constructor names of a [variant](@ref variant) behave the same way after `#`, as in `T#Red`.
-Unlike field names, they also work for an immutable - that is, anonymous and non-recursive - variant.
 
 ## Normalizations {#normalization}
 
@@ -781,12 +780,12 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
 - an application of a `[T: *] → e` with implicit domains inserts a `Hole` per implicit argument
 
-### Lattices
+### Unions
 
-- `T ∪ ⊥` -> `T`, `T ∩ ⊤` -> `T` - the unit of a join/meet is dropped
-- `T ∪ ⊤` -> `⊤`, `T ∩ ⊥` -> `⊥`
-- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪`/`∩` are commutative, associative, and idempotent
-- an empty join is `⊥`, an empty meet is `⊤`, and a one-element one is its operand
+- `T ∪ ⊥` -> `T` - the unit of a join is dropped
+- `T ∪ ⊤` -> `⊤`
+- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪` is commutative, associative, and idempotent
+- an empty join is `⊥`, and a one-element one is its operand
 - `x inj T` -> `x` if `T` is not a union type
 - `match (T inj x) with ...` -> the arm handling `T` - a constructor fixes the active case
 - each case is handled by the **first** arm accepting it, so the arms are *not* sorted; an arm accepts a case if its domain is that case, or a union containing it

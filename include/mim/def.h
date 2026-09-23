@@ -36,9 +36,9 @@
     X(Pi,     Judge::Form ) X(Lam,   Judge::Intro) X(App,     Judge::Elim)                                         \
     X(Sigma,  Judge::Form ) X(Tuple, Judge::Intro) X(Extract, Judge::Elim) X(Insert, (Judge::Intro | Judge::Elim)) \
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
-    X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim) X(Top,    (Judge::Intro              )) \
-    X(Meet,   Judge::Form ) X(Merge, Judge::Intro) X(Split,   Judge::Elim) X(Bot,    (Judge::Intro              )) \
+    X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim)                                         \
     X(Variant, Judge::Form)                                                                                        \
+    X(Top,    Judge::Intro) X(Bot,   Judge::Intro)                                                                 \
     X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
     X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
     X(Nat,    Judge::Form )                                                                                        \
@@ -53,9 +53,9 @@
     X(Pi)     X(Lam)   X(App)                                                                                      \
     X(Sigma)  X(Tuple) X(Extract) X(Insert)                                                                        \
     X(Arr)    X(Pack)                                                                                              \
-    X(Join)   X(Inj)   X(Match)   X(Top)                                                                           \
-    X(Meet)   X(Merge) X(Split)   X(Bot)                                                                           \
+    X(Join)   X(Inj)   X(Match)                                                                                    \
     X(Variant)                                                                                                     \
+    X(Top)    X(Bot)                                                                                               \
     X(Reform) X(Rule)                                                                                              \
     X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
@@ -131,6 +131,35 @@ enum class Node : node_t {
 #define CODE(node, _) +size_t(1)
 static constexpr size_t Num_Nodes = size_t(0) MIM_NODE(CODE);
 #undef CODE
+
+/// The Node%s that may be *mutable*, with the same values as their Node.
+/// A switch over Def::mut_node without a `default` must handle each of them, so a new one breaks the build there.
+enum class MutNode : node_t {
+#define CODE(node) node = node_t(Node::node),
+    MIM_MUT_NODE(CODE)
+#undef CODE
+};
+
+constexpr bool is_mut_node(Node node) noexcept {
+    switch (node) {
+#define CODE(node) case Node::node:
+        MIM_MUT_NODE(CODE)
+#undef CODE
+        return true;
+        default: return false;
+    }
+}
+
+static_assert(
+    [] {
+        bool buildable[Num_Nodes] = {};
+#define CODE(node) buildable[node_t(Node::node)] = true;
+        MIM_IMM_NODE(CODE)
+        MIM_MUT_NODE(CODE)
+#undef CODE
+        return std::ranges::all_of(buildable, std::identity());
+    }(),
+    "every Node must be in MIM_IMM_NODE, MIM_MUT_NODE, or both");
 
 /// Tracks whether a Def transitively depends - through its Def::deps() but only up to (and excluding) the next
 /// *mutable* - on certain kinds of Def%s.
@@ -258,7 +287,6 @@ struct DotConfig {
 /// |                   | Insert            | Insert            |
 /// | Single            | Wrap              |                   |
 /// | Join              | Inj               | Match             |
-/// | Meet              | Merge             | Split             |
 /// | Variant           | Inj               | Match             |
 /// | Reform            | Rule              |                   |
 /// | Nat               | Lit               |                   |
@@ -308,6 +336,11 @@ public:
     constexpr u32 mark() const noexcept { return mark_; } ///< Used internally by free_vars().
     constexpr size_t hash() const noexcept { return hash_; }
     constexpr Node node() const noexcept { return node_; }
+    /// node() of a Def whose Node *may* be mutable, whether this one is or not; see MutNode.
+    constexpr MutNode mut_node() const noexcept {
+        assert(is_mut_node(node_));
+        return MutNode(node_);
+    }
     std::string_view node_name() const;
     ///@}
 

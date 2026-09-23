@@ -4,9 +4,9 @@ Constructs one instance of every core node reachable from a bare `World` and
 invokes a method or two, so a broken or missing binding surfaces immediately.
 
 Deliberately not exercised: nodes that need rewrite/lattice/plugin state beyond
-a smoke test (`Axm`, `Proxy`, `Merge`, `Match`, `Reform`, `Rule`, `UMax`,
+a smoke test (`Axm`, `Proxy`, `Match`, `Reform`, `Rule`, `UMax`,
 `UInc`), and the abstract bases reached only via their subclasses (`Def`, `Prod`, `Seq`,
-`Bound`, `Ext`).
+`Ext`).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
     i8v, tt, n4 = w.lit_i8(7), w.lit_tt(), w.lit_nat(4)
     lam = w.mut_con([b, i8])
     var = lam.var()
-    meet, join = w.meet([b, i8]), w.join([b, i8])
+    join = w.join([b, i8])
     return [
         (w.univ(), mim.Univ),
         (w.type(w.lit_univ_0()), mim.Type),
@@ -36,7 +36,6 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.extract(var, 0), mim.Extract),
         (w.insert(var, 1, i8v), mim.Insert),
         (getattr(w, "global")(i8, False), mim.Global),
-        (meet, mim.Meet),
         (join, mim.Join),
         (w.bot(i8), mim.Bot),
         (w.top(i8), mim.Top),
@@ -44,7 +43,7 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.single(i8v), mim.Single),
         (w.wrap(i8v), mim.Wrap),
         (w.inj(join, tt), mim.Inj),
-        (w.split(meet, tt), mim.Split),
+        (w.variant([b, i8]), mim.Variant),
     ]
 
 

@@ -81,14 +81,6 @@ inline const Def* insert_unsafe(const Def* d, u64 i, const Def* val) {
 }
 ///@}
 
-/// @name Convert TBound to Sigma
-/// This is WIP.
-///@{
-template<bool up>
-const Sigma* convert(const TBound<up>* b);
-inline const Sigma* convert(const Bound* b) { return b->isa<Join>() ? convert(b->as<Join>()) : convert(b->as<Meet>()); }
-///@}
-
 } // namespace mim::plug::core
 
 namespace mim {

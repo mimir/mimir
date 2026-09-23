@@ -9,6 +9,7 @@
 #include "mim/lattice.h"
 #include "mim/rule.h"
 #include "mim/tuple.h"
+#include "mim/union.h"
 
 namespace nanobind::detail {
 

@@ -606,22 +606,16 @@ public:
     const Def* type_bot() { return data_.type_bot; }
     const Def* type_top() { return data_.type_top; }
     const Def* top_nat() { return data_.top_nat; }
-    template<bool Up>
-    const Def* bound(Defs ops);
-    const Def* join(Defs ops) { return bound<true>(ops); }
-    const Def* meet(Defs ops) { return bound<false>(ops); }
-    const Def* merge(const Def* type, Defs ops);
-    const Def* merge(Defs ops); ///< Infers the type using a Meet.
-    const Def* inj(const Def* type, const Def* value);
-    const Def* inj(const Def* type, nat_t index, const Def* value); ///< Injects @p value as case @p index of a Variant.
-    const Def* split(const Def* type, const Def* value);
-    const Def* match(Defs);
     ///@}
 
-    /// @name Variant
+    /// @name Join & Variant
     ///@{
+    const Def* join(Defs ops);
     Variant* mut_variant(const Def* type, size_t size) { return insert<Variant>(type, size); }
     const Def* variant(Defs ops);
+    const Def* inj(const Def* type, const Def* value);
+    const Def* inj(const Def* type, nat_t index, const Def* value); ///< Injects @p value as case @p index of a Variant.
+    const Def* match(Defs);
     ///@}
 
     /// @name Globals

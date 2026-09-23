@@ -4,6 +4,8 @@
 plugin core;
 plugin refly;
 
+use core.ops.n;
+
 // Unlike `[] ∪ [] ∪ []`, which collapses to `[]`, every case is kept.
 rec Color = | Red | Green | Blue;
 
@@ -41,7 +43,7 @@ rec List = | Nil | Cons: [Nat, List];
 lam len (l: List): Nat =
     match l with
         | Nil         => 0
-        | Cons (_, t) => core.nat.add (1, len t);
+        | Cons (_, t) => 1 + len t;
 
 let xs = List#Cons (1, List#Cons (2, List#Cons (3, List#Nil)));
 let _  = refly.struc.e (len xs, 3);
@@ -53,8 +55,8 @@ and Stmt = | Skip | Eval: Expr;
 lam depth (e: Expr): Nat =
     match e with
         | Lit _   => 0
-        | Neg x   => core.nat.add (1, depth x)
-        | Block s => core.nat.add (1, sdepth s)
+        | Neg x   => 1 + depth x
+        | Block s => 1 + sdepth s
 where
     lam sdepth (s: Stmt): Nat =
         match s with
