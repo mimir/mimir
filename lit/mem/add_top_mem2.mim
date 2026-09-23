@@ -18,4 +18,4 @@ extern lam _compile(): compile.Phase =
         mem.add_mem, /* optimization phase */
     );
 
-// CHECK: f (_{{[0-9]+}}, argc_{{[0-9]+}}, return_{{[0-9]+}})
+// CHECK: f (_{{[0-9]+}}, argc, return_{{[0-9]+}})

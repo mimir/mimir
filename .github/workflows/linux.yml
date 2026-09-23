@@ -23,12 +23,13 @@ jobs:
             test-target: test-all
             cmake-args: >-
               -DMIM_BUILD_PYTHON=OFF
+              -DMIM_TEST_ROUNDTRIP=OFF
               -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr"
           - build-type: Release
             cc: gcc-14
             cxx: g++-14
             packages: g++-14 valgrind
-            test-target: lit
+            test-target: lit test-roundtrip
             cmake-args: -DMIM_LIT_WITH_VALGRIND=ON
     env:
       ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:exitcode=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1"

@@ -23,12 +23,12 @@ extern lam _compile(): compile.Phase =
 
 // CHECK-NOT:  eta_f_known
 // CHECK-NOT:  eta_f_unknown_1
-// CHECK-DAG:  (f_known_{{[0-9]+}} 42, take1_{{[0-9]+}} f_unknown_1_{{[0-9]+}}, take1_{{[0-9]+}} {{(eta_)?}}f_unknown_2_[[ETA1:[0-9]+]], take2_{{[0-9]+}} {{(eta_)?}}f_unknown_2_[[ETA2:[0-9]+]], f_both_[[FBOTH:[0-9]+]] 42, take1_{{[0-9]+}} {{(eta_)?}}f_both_[[ETAB:[0-9]+]]);
-// CHECK-DAG:  lam {{(eta_)?}}f_unknown_2_[[ETA1]] ([[V1:[[:alnum:]_]+]]: Nat): Nat =
-// CHECK-DAG:  f_unknown_2_{{[0-9]+}} [[V1]];
-// CHECK-DAG:  lam {{(eta_)?}}f_unknown_2_[[ETA2]] ([[V2:[[:alnum:]_]+]]: Nat): Nat =
-// CHECK-DAG:  f_unknown_2_{{[0-9]+}} [[V2]];
-// CHECK-DAG:  lam {{(eta_)?}}f_both_[[ETAB]] ([[V3:[[:alnum:]_]+]]: Nat): Nat =
-// CHECK-DAG:  f_both_[[FBOTH]] [[V3]];
+// CHECK-DAG:  (f_known 42, take1 f_unknown_1, take1 [[ETA1:[[:alnum:]_]+]], take2 [[ETA2:[[:alnum:]_]+]], [[FBOTH:[[:alnum:]_]+]] 42, take1 [[ETAB:[[:alnum:]_]+]]);
+// CHECK-DAG:  lam [[ETA1]] ([[V1:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG:  f_unknown_2 [[V1]];
+// CHECK-DAG:  lam [[ETA2]] ([[V2:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG:  f_unknown_2 [[V2]];
+// CHECK-DAG:  lam [[ETAB]] ([[V3:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG:  [[FBOTH]] [[V3]];
 // CHECK-NOT:  eta_f_known
 // CHECK-NOT:  eta_f_unknown_1

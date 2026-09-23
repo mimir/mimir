@@ -120,6 +120,14 @@ void UseDecl::emit(Emitter& e) const {
  * Ptrn::emit_value
  */
 
+/// A wildcard binds nothing, so the Def it would name need not exist - and a dump would then have to name it.
+static bool is_wildcard(const Ptrn* ptrn) {
+    if (auto id = ptrn->isa<IdPtrn>()) return id->dbg().is_anon();
+    if (auto tuple = ptrn->isa<TuplePtrn>())
+        return std::ranges::all_of(tuple->ptrns(), [](auto p) { return is_wildcard(p.get()); });
+    return false;
+}
+
 const Def* ErrorPtrn::emit_value(Emitter&, const Def* def) const { return def; }
 
 const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
@@ -135,7 +143,16 @@ const Def* AliasPtrn::emit_value(Emitter& e, const Def* def) const {
 
 const Def* Ptrn::emit_proj(Emitter& e, const Def* def, size_t n, size_t i) const {
     auto _ = e.world().push(loc());
+    if (is_wildcard(this)) return emit_type(e), nullptr;
     return emit_value(e, def->proj(n, i));
+}
+
+/// Binds @p ptrn to the Var of @p mut - which a wildcard does not create.
+static void emit_var(Emitter& e, const Ptrn* ptrn, Def* mut) {
+    if (is_wildcard(ptrn))
+        ptrn->emit_type(e);
+    else
+        ptrn->emit_value(e, mut->var());
 }
 
 const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
@@ -528,7 +545,7 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
         pi_->set_dom(dom_t);
     } else {
         pi_->set_dom(dom_t);
-        ptrn()->emit_value(e, pi_->var());
+        emit_var(e, ptrn(), pi_);
     }
 }
 
@@ -737,15 +754,15 @@ void RecDecl::emit_body(Emitter& e) const {
 
 Lam* LamDecl::Dom::emit_value(Emitter& e) const {
     // Created before the push: the Lam belongs to the whole declaration, not just to this Dom.
-    lam_     = e.world().mut_lam(pi_);
-    auto _   = e.world().push(loc());
-    auto var = lam_->var();
+    lam_   = e.world().mut_lam(pi_);
+    auto _ = e.world().push(loc());
 
     if (ret()) {
+        auto var = lam_->var();
         ptrn()->emit_proj(e, var, 2, 0);
         ret()->emit_proj(e, var, 2, 1);
     } else {
-        ptrn()->emit_value(e, var);
+        emit_var(e, ptrn(), lam_);
     }
 
     return lam_;
@@ -795,7 +812,9 @@ void LamDecl::emit_body(Emitter& e) const {
         auto lam = dom(i)->lam_;
         auto pi  = lam->type()->as_mut<Pi>();
         for (auto dom : doms() | std::views::drop(i)) {
-            if (auto var = pi->has_var()) rw.add(dom->lam_->var()->as<Var>(), var);
+            // A Lam's Var that was never created cannot occur in the codomain.
+            if (auto var = pi->has_var())
+                if (auto lam_var = dom->lam_->has_var()) rw.add(lam_var, var);
             auto cod = pi->codom();
             if (!cod || !cod->isa_mut<Pi>()) break;
             pi = cod->as_mut<Pi>();

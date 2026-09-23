@@ -4,7 +4,7 @@ plugin core;
 // A singleton is dropped from a sigma, which shifts the indices of its successors;
 // the dependent reference to `x` must survive that shift.
 extern lam dep (d: [x: Nat, s: «23», a: «x; I32»]): «(d#0₃); I32» = d#2₃;
-// CHECK-DAG: extern lam dep (x_{{[0-9]+}}: Nat, _{{[0-9]+}}: «x_{{[0-9]+}}; I32»)
+// CHECK-DAG: extern lam dep (x: Nat, _{{[0-9]+}}: «x; I32»)
 
 // A lone singleton has no sigma to vanish from and degrades to the unit type instead.
 extern lam solo (s: «23»): Nat = #s;
@@ -12,7 +12,7 @@ extern lam solo (s: «23»): Nat = #s;
 
 // `«T»` sits at kind level, where there is no unit to degrade to.
 extern lam only (T: *) (x: «T»): * = #x;
-// CHECK-DAG: extern lam only (T_{{[0-9]+}}: *) (_: *): *
+// CHECK-DAG: extern lam only (T: *) (_: *): *
 
 // A whole pack of singletons collapses to the unit value.
 extern lam pck (): «4; «23»» = ‹4; ‹23››;
@@ -21,4 +21,4 @@ extern lam pck (): «4; «23»» = ‹4; ‹23››;
 
 // Writing the sole inhabitant back is a no-op; a later index shifts down.
 extern lam ins (t: [I32, «23», I32], v: I32): [I32, «23», I32] = t#2₃ ← v;
-// CHECK-DAG: {{.*}}#tt ← v_{{[0-9]+}}
+// CHECK-DAG: {{.*}}#tt ← v

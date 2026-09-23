@@ -51,6 +51,7 @@ The following CMake switches are available:
 | `MIM_FILECHECK`         | `<filecheck_cmd>`                        | autodetected | `FileCheck` command used by the `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                    |
 | `MIM_LIT_TIMEOUT`       | `<timeout_in_sec>`                       | `120`        | Timeout for `lit` tests. <br> (requires `BUILD_TESTING=ON`).                                                                                                                                        |
 | `MIM_LIT_WITH_VALGRIND` | `ON` \| `OFF`                            | `OFF`        | If `ON`, run the Mim CLI in the `lit` tests under Valgrind. <br> (requires `BUILD_TESTING=ON`).                                                                                                     |
+| `MIM_TEST_ROUNDTRIP`    | `ON` \| `OFF`                            | `ON`         | If `ON`, `test-all` also checks that `-o` and `--output-ast` round-trip. <br> (requires `BUILD_TESTING=ON`). |
 
 ### Dependencies
 
@@ -102,6 +103,18 @@ cd lit
 ```sh
 ./scripts/make_lit_error.sh foo.mim
 ```
+
+### Round-Trip Tests
+
+These check that re-reading the output of `mim -o` and `mim --output-ast` for each `lit` input reproduces it byte for byte:
+
+```sh
+cmake --build build --target test-roundtrip   # or test-roundtrip-mim / test-roundtrip-ast
+cd lit
+./lit ../build/lit --param roundtrip=mim -a --filter foo.mim
+```
+
+`test-all` includes them unless `MIM_TEST_ROUNDTRIP=OFF`.
 
 ### Unit Tests
 

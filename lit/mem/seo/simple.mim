@@ -13,5 +13,5 @@ extern lam lf(a: Nat): Nat =
 extern lam lg(a: Nat): Nat = g (23, 1) - g (23, a);
 
 // CHECK: extern lam lf ({{[[:alnum:]_]+}}: Nat): Nat =
-// CHECK: lam f_{{[0-9]+}} ({{[[:alnum:]_]+}}: Nat)@(ff): Nat =
+// CHECK: lam f ({{[[:alnum:]_]+}}: Nat)@(ff): Nat =
 // CHECK: core.nat.add ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}})

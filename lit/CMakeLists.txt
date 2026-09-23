@@ -110,6 +110,24 @@ set(MIM_LIT_COMMAND
     -v
 )
 
+set(MIM_ROUNDTRIP_COMMANDS "")
+foreach(MODE IN ITEMS mim ast)
+    add_custom_target(test-roundtrip-${MODE}
+        COMMAND ${MIM_LIT_COMMAND} --param roundtrip=${MODE}
+        DEPENDS mim mim_all_plugins mim_lit_tests
+        COMMAND_EXPAND_LISTS
+        USES_TERMINAL
+    )
+    list(APPEND MIM_ROUNDTRIP_COMMANDS COMMAND ${MIM_LIT_COMMAND} --param roundtrip=${MODE})
+endforeach()
+
+add_custom_target(test-roundtrip
+    ${MIM_ROUNDTRIP_COMMANDS}
+    DEPENDS mim mim_all_plugins mim_lit_tests
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
+)
+
 set(MIM_CTEST_COMMAND
     ${CMAKE_CTEST_COMMAND}
     --test-dir "${CMAKE_BINARY_DIR}"
@@ -126,9 +144,14 @@ add_custom_target(lit
     USES_TERMINAL
 )
 
+if(NOT MIM_TEST_ROUNDTRIP)
+    set(MIM_ROUNDTRIP_COMMANDS "")
+endif()
+
 add_custom_target(test-all
     COMMAND ${MIM_CTEST_COMMAND}
     COMMAND ${MIM_LIT_COMMAND}
+    ${MIM_ROUNDTRIP_COMMANDS}
     DEPENDS
         ${MIM_TEST_TARGETS}
         mim

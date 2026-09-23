@@ -133,7 +133,7 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
 ///
 /// Allocates memory on the device (in global address space), synchronously (`block`) or asynchronously
 /// against a stream (`asyn`).
-mod alloc {
+pub mod alloc {
     axm block: [T: *] → GlobalM → [GlobalM, GlobalPtr T];
     axm asyn:  [T: *] → [GlobalM, Stream] → [GlobalM, GlobalPtr T];
 }

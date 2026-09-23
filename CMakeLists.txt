@@ -99,6 +99,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     include(CTest)
     cmake_dependent_option(MIM_LIT_WITH_VALGRIND "If ON, the Mim CLI in the lit tests will be run under valgrind." OFF "BUILD_TESTING" OFF)
     set(MIM_LIT_TIMEOUT 120 CACHE STRING "Timeout for lit tests.")
+    cmake_dependent_option(MIM_TEST_ROUNDTRIP "If ON, test-all also checks that `-o` and `--output-ast` round-trip." ON "BUILD_TESTING" OFF)
     if(BUILD_TESTING)
         # doctest lives inside fe, which pulls it in only for its own standalone build.
         set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)

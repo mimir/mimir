@@ -12,6 +12,7 @@ Assume a `build/` tree configured with
 | All tests       | `cmake --build build --target test-all`                                                     |
 | `lit` suite     | `cmake --build build --target lit`                                                          |
 | One `lit` test  | `cd lit && ../scripts/probe.sh type_infer.mim` or `./lit ../build/lit -a --filter type_infer.mim` |
+| Round-trip      | `cmake --build build --target test-roundtrip` (or `test-roundtrip-mim` / `test-roundtrip-ast`); one file: `./lit ../build/lit --param roundtrip=mim -a --filter fib.mim` |
 | All unit tests  | `ctest --test-dir build --output-on-failure`                                                |
 | One unit test   | `build/bin/mim-test -tc='World: dependent extract'`                                         |
 | Format/lint     | `pre-commit run --all-files` (or `pre-commit run clang-format --all-files`)                  |

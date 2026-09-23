@@ -9,4 +9,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let c = refly.dbg.tmp (refly.info, 42I32);
     return (m, c);
 
-// CHECK-DAG: return_{{[0-9]+}} (m_{{[0-9]+}}, 42I32)
+// CHECK-DAG: return_1 (m, 42I32)

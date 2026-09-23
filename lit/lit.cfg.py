@@ -1,6 +1,7 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from mim_sh_test import MimShTest
+from mim_roundtrip_test import MimRoundTripTest
 
 config.name = 'mim regression'
 # lit 23 deprecates the external shell, but our RUN lines rely on `$?` and `VAR=`, which the
@@ -15,6 +16,17 @@ config.suffixes = ['.mim']
 if not getattr(config, 'test_source_root', None):
     config.test_source_root = os.path.dirname(__file__)
 config.test_exec_root = os.path.join(config.my_obj_root, 'test')
+
+# `--param roundtrip=mim|ast` ignores the RUN lines and checks instead that each input's `-o`/`--output-ast` output round-trips.
+roundtrip = lit_config.params.get('roundtrip')
+if roundtrip:
+    # Optimizing twice is not idempotent - but the dump has to be.
+    flags = {'mim': ['--no-opt', '--output-mim'], 'ast': ['--output-ast']}
+    if roundtrip not in flags:
+        lit_config.fatal(f"unknown roundtrip mode '{roundtrip}'; expected one of: {', '.join(flags)}")
+    config.name = f'mim roundtrip-{roundtrip}'
+    config.test_format = MimRoundTripTest(*flags[roundtrip])
+    config.test_exec_root = os.path.join(config.my_obj_root, 'roundtrip', roundtrip)
 
 config.substitutions.append(('%mim', config.mim))
 config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))

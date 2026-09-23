@@ -16,7 +16,6 @@ extern lam _compile(): compile.Phase =
     compile.phases tt (compile.eta_conv);
 
 // `f` still called directly with 42, and η-expanded for the `take` occurrence.
-// CHECK-DAG: f_[[FB:[0-9]+]] 42
-// CHECK-DAG: take_{{[0-9]+}} {{(eta_)?}}f_[[ETA:[0-9]+]]
-// CHECK-DAG: lam {{(eta_)?}}f_[[ETA]] ([[V:[[:alnum:]_]+]]: Nat): Nat =
-// CHECK-DAG: f_{{[0-9]+}} [[V]]
+// CHECK-DAG: ([[F:[[:alnum:]_]+]] 42, take [[ETA:[[:alnum:]_]+]]);
+// CHECK-DAG: lam [[ETA]] ([[V:[[:alnum:]_]+]]: Nat): Nat =
+// CHECK-DAG: [[F]] [[V]]

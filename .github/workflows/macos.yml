@@ -49,6 +49,7 @@ jobs:
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                        \
                 -DBUILD_TESTING=ON                                          \
                 -DMIM_BUILD_EXAMPLES=ON                                     \
+                -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} \
                 -DMIM_FILECHECK=${LLVM_PREFIX}/bin/FileCheck                \
                 -DMIM_LIT_TIMEOUT=300                                       \
                 -DPython3_EXECUTABLE=${{github.workspace}}/.venv/bin/python3
