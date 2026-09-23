@@ -41,17 +41,17 @@ struct Ctx {
     DefMap<nat_t> ret_projs; ///< Var -> index of the `ret` component within it.
     DefSet opaque;           ///< Def%s no pattern took apart, so their components have no name of their own.
     DefSet destructured;     ///< Def%s a pattern took apart, so their components print by name.
-    DefSet whole_vars;       ///< Var%s used as a whole, which a `fun` - binding only its parameters - cannot name.
+    DefSet whole_vars;       ///< Var%s used as a whole; see isa_fun.
     DefSet arms;             ///< Lam%s a `match` spells out as its arms instead of declaring them.
     DefSet header;           ///< Def%s a Lam's header prints inline, as it precedes the block that `let`s them.
-    bool in_header = false;
-    DefSet inlined; ///< Def%s inside a binder the dump prints *inline* - they have no block to `let` them.
+    DefSet inlined;          ///< Def%s inside a binder the dump prints *inline* - they have no block to `let` them.
     /// A Lam's codomain refers to its Pi's Var - or its dependent domain's - but only the Lam's Var is bound by name.
     DefMap<const Def*> aliases;
     /// Distinct identifiers picked instead of Def::unique_name, so a re-read dump keeps them as its Def::sym%s.
     absl::flat_hash_set<std::string> taken;
     absl::flat_hash_map<std::string, size_t> counters; ///< Next numbered variant to try per base name.
-    bool plain = false;
+    bool plain     = false;
+    bool in_header = false;
     std::string self; ///< `<world name>.`: the dumped file's own annexes are spelled without it.
     std::string mod;  ///< `<mod>.` while declaring the Axm%s of that `mod`, which does not see its own name.
 };
@@ -398,6 +398,12 @@ bool isa_fun(const Lam* lam) {
     return Lam::isa_returning(lam) && num_binders(pi->dom()) == 2 && Pi::isa_basicblock(pi->dom(2, 1));
 }
 
+/// A `fun` binds only its parameters, so a Var used as a whole needs the `con` spelling.
+bool isa_fun(Ctx* ctx, const Lam* lam) {
+    auto var = lam->has_var();
+    return isa_fun(lam) && !(ctx && var && ctx->whole_vars.contains(var));
+}
+
 /// A Lam's parameter list, plus its filter where that is not the default for its position.
 /// @p last marks a curried chain's final Lam: only that one hides a `fun`'s `ret` and defaults its filter to `ff`.
 void lam_ptrn(std::ostream& os, Ctx* ctx, Lam* lam, bool fun, bool con, bool last, bool alias) {
@@ -554,9 +560,8 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{} {} {}", d.l(pi->dom(), Prec::Arrow), arw, d.r(pi->codom(), Prec::Arrow));
     } else if (auto lam = d->isa_mut<Lam>()) {
         // A Lam that has no declaration of its own is a λ-expression.
-        auto whole = d.ctx() && lam->has_var() && d.ctx()->whole_vars.contains(lam->has_var());
-        auto fun   = isa_fun(lam) && !whole;
-        auto con   = Lam::isa_cn(lam) && !fun;
+        auto fun = isa_fun(d.ctx(), lam);
+        auto con = Lam::isa_cn(lam) && !fun;
         std::print(os, "{}", fun ? "fn " : con ? "cn " : "λ ");
         lam_ptrn(os, d.ctx(), lam, fun, con, true, true);
         lam_codom(os, d.ctx(), lam, fun, con);
@@ -744,7 +749,6 @@ public:
         }
         if (!curr_mod.empty()) std::println(os_, "{}}}", --tab_);
         ctx_.mod.clear();
-        prev_ = Prev::Decl;
     }
 
     /// @name dump
@@ -870,20 +874,14 @@ private:
         if (!enter(mut)) return;
         if (!done_.emplace(mut).second) return;
 
-        // The surface syntax has no block for a rule's parts, so whatever depends on its meta variable is inlined.
-        if (auto rule = mut->isa_mut<Rule>()) {
-            open_.emplace(mut);
-            printed_deps(rule->type(), typed_let_, [&](const Def* op) { schedule_inline(op, mut, ctx_.inlined); });
-            printed_deps(rule, typed_let_, [&](const Def* op) { schedule_inline(op, mut, ctx_.inlined); });
-            open_.erase(mut);
-            order_.emplace_back(mut, curr);
-            return;
-        }
-
         auto chain = mut->isa_mut<Lam>() ? curry_chain(mut->as_mut<Lam>()) : fe::Vector<Lam*>();
         open_.emplace(mut);
 
-        if (chain.empty()) {
+        if (auto rule = mut->isa_mut<Rule>()) {
+            // The surface syntax has no block for a rule's parts, so whatever depends on its meta variable is inlined.
+            printed_deps(rule->type(), typed_let_, [&](const Def* op) { schedule_inline(op, mut, ctx_.inlined); });
+            printed_deps(rule, typed_let_, [&](const Def* op) { schedule_inline(op, mut, ctx_.inlined); });
+        } else if (chain.empty()) {
             for (auto op : mut->deps())
                 schedule_(op, mut);
         } else {
@@ -1016,8 +1014,7 @@ private:
     void emit_lam(Lam* lam) {
         auto chain = curry_chain(lam);
         auto last  = chain.back();
-        auto whole = last->has_var() && ctx_.whole_vars.contains(last->has_var());
-        auto fun   = isa_fun(last) && !shadows_ret(last) && !whole;
+        auto fun   = isa_fun(&ctx_, last) && !shadows_ret(last);
         auto con   = Lam::isa_cn(last) && !fun;
 
         // A `fun` binds its `ret` continuation as `return`, so that is the name its Var has to print with.
@@ -1157,53 +1154,56 @@ void Def::write(Dump mode) const {
  * World
  */
 
+/// The name of the file a World is dumped to - and hence the module its own annexes live in.
+static std::string file_stem(World& world) { return (world.name() ? world.name() : world.sym("_default")).str(); }
+
 void World::dump(std::ostream& os) {
     auto _       = freeze();
     auto old_gid = curr_gid();
     auto srcs    = absl::flat_hash_set<const fe::Src*>();
     for (const auto& import : driver().imports())
         srcs.emplace(import.src);
+    auto reserved = fe::Vector<std::string>{"return"};
     for (const auto& import : driver().imports()) {
-        auto kw = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
+        auto kw     = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
+        auto module = import.src->path().stem().string();
+        // A stem that is no identifier names no module, so the file has to be spliced instead.
+        auto is_mod = ast::Lexer::is_id(module);
+        if (is_mod) reserved.emplace_back(std::move(module));
         // The spelling was relative to the importing file; only the resolved path re-parses from here.
         // Generic format: a native Windows `\` would lex as an escape sequence inside the string literal.
-        // A stem that is no identifier names no module, so the file has to be spliced instead.
         if (import.path)
             std::print(os, "{} \"{}\"{};\n", kw, ast::Lexer::escape(import.src->path().generic_string()),
-                       ast::Lexer::is_id(import.src->path().stem().string()) ? "" : " as *");
+                       is_mod ? "" : " as *");
         else
             std::print(os, "{} {};\n", kw, import.sym);
     }
 
     if (!driver().imports().entries().empty() && externals().size() != 0) os << '\n';
 
-    // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
-    auto reserved = std::vector<std::string>{"return"};
-    for (const auto& import : driver().imports())
-        reserved.emplace_back(fs::path(import.sym.view()).stem().string());
     for (auto mut : externals().muts())
         reserved.emplace_back(mut->sym().str());
 
     // An `import` declares its own annexes; those of the dumped file itself only exist if the dump declares them.
-    auto self = (name() ? name() : sym("_default")).str() + ".";
+    auto self = file_stem(*this) + ".";
     // Only a loaded plugin registers its annexes, so find them by what the externals reach.
-    auto axms = std::vector<std::pair<std::string, const Axm*>>();
-    auto seen = DefSet();
+    auto axms = fe::Vector<std::pair<std::string, const Axm*>>();
     auto todo = DefVec(externals().muts().begin(), externals().muts().end());
+    auto seen = DefSet(todo.begin(), todo.end());
     while (!todo.empty()) {
         auto def = todo.back();
         todo.pop_back();
-        if (!def || !seen.emplace(def).second) continue;
         if (auto axm = def->isa<Axm>(); axm && axm->sym().view().starts_with(self)) {
             auto name = axm->sym().str().substr(self.size());
             reserved.emplace_back(name.substr(0, name.find('.')));
             axms.emplace_back(std::move(name), axm);
         }
         for (auto dep : def->deps())
-            todo.emplace_back(dep);
+            if (dep && seen.emplace(dep).second) todo.emplace_back(dep);
     }
     std::ranges::sort(axms, {}, [](const auto& p) { return p.second->flags(); });
 
+    // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
     auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
     auto dumper = Dumper(os, mode, flags().mim_typed_let, std::move(srcs));
     dumper.plain(reserved);
@@ -1226,7 +1226,7 @@ void World::write(const char* file) {
 }
 
 void World::write() {
-    auto file = (name() ? name() : sym("_default")).str() + ".mim"s;
+    auto file = file_stem(*this) + ".mim"s;
     write(file.c_str());
 }
 

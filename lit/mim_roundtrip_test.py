@@ -35,8 +35,6 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
         outs = [os.path.join(base, str(i), name) for i in (1, 2)]
         for out in outs:
             os.makedirs(os.path.dirname(out), exist_ok=True)
-            if os.path.exists(out):
-                os.remove(out)
 
         _, err, code = self.run(mim + [src] + self.flags + [outs[0]], os.path.dirname(src), timeout)
         if code != 0:

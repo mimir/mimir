@@ -295,19 +295,14 @@ stream_axm_group(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls, s
 }
 
 static void stream_decls(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls) {
-    for (size_t i = 0; i != decls.size();) {
+    for (size_t i = 0, end; i != decls.size(); i = end) {
+        // Siblings share their owner's type, so they must stay in the group that introduces them.
+        end = decls[i]->isa<AxmDecl>() ? axm_group_end(decls, i) : i + 1;
         os << tab;
-        if (decls[i]->isa<AxmDecl>()) {
-            // Siblings share their owner's type, so they must stay in the group that introduces them.
-            if (auto end = axm_group_end(decls, i); end != i + 1) {
-                stream_axm_group(tab, os, decls, i, end);
-                os << std::endl;
-                i = end;
-                continue;
-            }
-        }
-        std::println(os, "{}", S(tab, decls[i].get()));
-        ++i;
+        if (end != i + 1)
+            stream_axm_group(tab, os, decls, i, end), os << '\n';
+        else
+            std::println(os, "{}", S(tab, decls[i].get()));
     }
 }
 
