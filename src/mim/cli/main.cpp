@@ -98,6 +98,16 @@ int compile(Driver& driver, Opts& opts) {
         if (auto s = outs[AST].os()) {
             auto tab = fe::Tab::spaces();
             file->stream(tab, *s);
+
+            // Md is emitted while parsing, so nothing else needs a World; binding still catches scoping errors.
+            auto only_parse = opts.plugin_args.empty()
+                           && std::ranges::none_of(std::views::iota(0, int(Num_Emits)),
+                                                   [&](int i) { return i != AST && i != Md && outs[i].os(); });
+            if (only_parse) {
+                file->bind(ast);
+                ast.error().ack();
+                return EXIT_SUCCESS;
+            }
         }
 
         if (auto h = outs[H].os(), py = outs[PY].os(); h || py) {

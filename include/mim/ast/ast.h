@@ -1113,6 +1113,8 @@ public:
     virtual void emit_body(Emitter&) const;
 
     void stream(fe::Tab&, std::ostream&) const override;
+    /// Streams this declaration and its `and` chain - without modifiers and without the trailing `;`.
+    void stream_chain(fe::Tab&, std::ostream&) const;
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 protected:
