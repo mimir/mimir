@@ -57,11 +57,16 @@ header {
 }
 
 header h1 {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
     margin: 0 .5rem 0 0;
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: .02em;
 }
+
+header h1 img { height: 1.75rem; }
 
 header .spacer { flex: 1; }
 

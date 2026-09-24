@@ -2,14 +2,20 @@
 
 \begin{document}
 
-\definecolor{GAUBlue}{HTML}{123069}
-\tikzstyle{d} = [line width=4pt,draw=GAUBlue, rounded corners, line cap=round]
+% https://www.uni-goettingen.de/storage/pictures/184865.png
+\definecolor{Uniblau}{HTML}{153268}
+\definecolor{Logomittelblau}{HTML}{0091C8}
+\definecolor{Logohellblau}{HTML}{50A5D2}
+\tikzstyle{d} = [line width=4pt, line cap=round]
 
 \begin{tikzpicture}
-    \draw [d] (0, 1) -- (0.50, 0.0);
-    \draw [d] (0, 0) -- (0.25, 0.5);
-    \draw [d] (1, 1) -- (0.50, 0.0);
-    \draw [d] (1, 0) -- (0.75, 0.5);
+    \fill [Uniblau, rounded corners=9pt] (-0.35, -0.35) rectangle (1.35, 1.35);
+    \begin{scope}[scale=0.8, shift={(0.125, 0.125)}]
+        \draw [d, draw=Logomittelblau] (1, 1) -- (0.50, 0.0);
+        \draw [d, draw=Logomittelblau] (1, 0) -- (0.75, 0.5);
+        \draw [d, draw=Logohellblau]   (0, 1) -- (0.50, 0.0);
+        \draw [d, draw=Logohellblau]   (0, 0) -- (0.25, 0.5);
+    \end{scope}
 \end{tikzpicture}
 
 \end{document}

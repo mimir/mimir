@@ -38,6 +38,8 @@ foreach(FILE IN ITEMS index.html graph.html playground.css playground.js graphvi
     mim_stage_playground(${CMAKE_CURRENT_LIST_DIR}/${FILE} ${FILE})
 endforeach()
 
+mim_stage_playground(${PROJECT_SOURCE_DIR}/assets/logo.svg logo.svg)
+
 # The docs' dark-mode toggle, so the manual and the playground share one control and one stored preference.
 mim_stage_playground(
     ${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js
