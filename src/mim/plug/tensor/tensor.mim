@@ -991,6 +991,8 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 /// The `_impl` annexes `lower_tensor` re-applies to expand the derived operations above, together
 /// with the fold steps and access maps they read through.
 /// Most are a single `map_reduce` over a copy step — the operation itself lives in the access map.
+/// They are `priv`: the phase resolves them through the annex table, so no path from outside this
+/// plugin reaches them and the axioms above stay the only public spelling of these operations.
 ///
 /// The declaration order is load-bearing beyond the usual definition-before-use: `lower_tensor`
 /// resolves an `_impl` in the world it is *building*, so an impl must be declared before any annex
@@ -1271,7 +1273,7 @@ priv anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; 
 /// With the ranks still unsolved Holes the `vec.diff`/`vec.fold.l` subscript machinery is built over
 /// non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the Hole%s
 /// are resolved: the result type-checks but carries the whole `vec.*` scaffolding inside its access
-/// maps (`refly.struc.e` in `lit/tensor/dot_product.mim` pins this down).
+/// maps (`lit/tensor/dot_product.mim` pins this down).
 /// Passing literals up front folds it away.
 priv anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
         = dot_product_impl fastest_2 R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
