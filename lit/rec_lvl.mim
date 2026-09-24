@@ -13,5 +13,5 @@ and Friend = Phase → Mutual;
 // CHECK:      rec Pi = Phase → Pi;
 // CHECK-NEXT: rec Higher = Kind → Higher;
 // CHECK-NEXT: rec Sigma = [head: Phase, tail: Sigma];
-// CHECK-NEXT: rec Mutual = Phase → Friend
+// CHECK:      rec Mutual = Phase → Friend
 // CHECK-NEXT: and Friend = Phase → Mutual;

@@ -1,0 +1,9 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// An inner Lam of a curried chain that does not use the outer parameter is closed - and still part of the chain.
+extern lam f (T: *) (x: Nat): Nat = x;
+
+// CHECK-NOT: lam _
+// CHECK:     extern lam f (_: *) (x: Nat): Nat =
+// CHECK-NEXT:    x;
+// CHECK-NOT: lam _

@@ -226,7 +226,7 @@ TEST_CASE("dump: variants") {
     auto v   = w.variant({w.sigma(), nat});
 
     // Constructor names live in the frontend, so each case prints under its index.
-    CHECK(std::format("{}", v) == "(| _0 | _1: Nat)");
+    CHECK(std::format("{}", v) == "| _0 | _1: Nat");
     CHECK_RT(v);
     CHECK_RT(w.variant({}));
     CHECK_RT(w.variant({nat, nat}));

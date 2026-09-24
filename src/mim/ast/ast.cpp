@@ -9,8 +9,9 @@ namespace mim::ast {
 // Node map: Parser::import holds the slot across the nested parses that may insert further entries.
 struct AST::Files : absl::node_hash_map<const fe::Src*, Ptr<File>> {};
 
-AST::AST(World& world)
+AST::AST(World& world, size_t page_size)
     : world_(&world)
+    , arena_(page_size)
     , files_(std::make_unique<Files>()) {}
 
 AST::AST(AST&& other)

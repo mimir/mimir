@@ -1,0 +1,10 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// Sibling declarations bind in order, so mutually recursive ones only read back as one `and` chain.
+extern con ping (n: Nat, return: Cn Nat) = pong (n, return)
+and con pong (n: Nat, return: Cn Nat) = ping (n, return);
+
+// CHECK:      extern con ping ({{[_a-z0-9]+}}: [Nat, Cn Nat]) =
+// CHECK-NEXT:     pong {{[_a-z0-9]+}}
+// CHECK-NEXT: and con pong ({{[_a-z0-9]+}}: [Nat, Cn Nat]) =
+// CHECK-NEXT:     ping {{[_a-z0-9]+}};

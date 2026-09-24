@@ -1,0 +1,11 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// A declaration a header refers to is declared before that header - wherever its uses would have placed it.
+extern con outer (n: Nat, k: Cn Nat) =
+    let S = [a: Nat, v: «n; Nat», w: «a; Nat»];
+    con inner (p: S) = k p#0_3;
+    inner (n, ‹n; n›, ‹n; n›);
+
+// A field nothing refers to has no projection left after cleanup - and hence no name to print.
+// CHECK: let S = [a: Nat, «n; Nat», «a; Nat»];
+// CHECK: con inner (p: S) =

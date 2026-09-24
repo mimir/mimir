@@ -36,6 +36,8 @@ Assume a `build/` tree configured with
   `optimize(World&)` looks for an entry point (`_compile`, `_default_compile`, or any nullary external returning `compile.Phase`), resolves stages from the plugin registry, and runs a `Phase`/`RWPhase`/`PhaseMan` pipeline; without an entry point optimization is skipped.
   `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end; `Analysis` and `PhaseMan` provide the fixed-point machinery.
   Use these instead of ad hoc whole-program traversals — the old `Pass`/`PassMan` machinery is gone.
+- `mim --output-mim` (`src/mim/dump.cpp`, `src/mim/dump/*`) is the dual of the AST emitter: `Layout` decides on the frozen `World` what is declared where, which Def gets a `let`, how each binder is spelled, and what everything is called; `Unparser` builds `ast::` nodes from that; `ast::stream` prints them.
+  `Dump::Expr` (diagnostics, `Def::dump()`) runs no analysis. Never ask the frozen `World` for a node that need not exist (`Def::arity`, `World::app`, ...).
 - `src/automaton/` is a separate static library backing the regex subsystem.
 - Tests come in two layers: `lit/` drives the CLI end-to-end with `RUN:` lines plus `FileCheck`, and `test/*.cpp` exercises library APIs with [doctest](https://github.com/doctest/doctest) (`mim-test`, `mim-regex-test`).
   A third-party plugin's `extra/<plugin>/test/*.cpp` are auto-discovered into `mim-<plugin>-test` the same way its `lit/` tests are staged.

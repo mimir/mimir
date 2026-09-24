@@ -99,7 +99,7 @@ struct AnnexInfo {
 class AST {
 public:
     AST(const AST&) = delete;
-    AST(World&);
+    AST(World&, size_t page_size = fe::Arena::Default_Page_Size);
     AST(AST&&);
     ~AST();
 
@@ -219,6 +219,8 @@ public:
     ///@}
 
     virtual void bind(Scopes&) const = 0;
+    /// The level Parser::parse_expr has to run at to build this whole Expr; the printer parenthesizes below it.
+    virtual Prec prec() const { return Prec::Lit; }
 
 private:
     virtual const Def* emit_(Emitter&) const = 0;
@@ -288,6 +290,10 @@ public:
     virtual const Def* emit_value(Emitter&, const Def*) const = 0;
     virtual const Def* emit_type(Emitter&) const              = 0;
 
+    /// A bare identifier pattern's type sits in a slot the parser reads at @p type_prec; see Parser::parse_ptrn.
+    virtual void stream(fe::Tab&, std::ostream&, Prec type_prec) const = 0;
+    void stream(fe::Tab& tab, std::ostream& os) const override { stream(tab, os, Prec::Bot); }
+
     /// Ptrn::emit_value on @p def's @p i-th of @p n projections - with this Ptrn's Loc, so the
     /// projection is blamed on the binder it introduces instead of on the enclosing pattern.
     const Def* emit_proj(Emitter&, const Def* def, size_t n, size_t i) const;
@@ -304,7 +310,8 @@ public:
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
     const Def* emit_type(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
+    using Ptrn::stream;
+    void stream(fe::Tab&, std::ostream&, Prec) const override;
 };
 
 /// `dbg: type`
@@ -330,7 +337,8 @@ public:
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
     const Def* emit_type(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
+    using Ptrn::stream;
+    void stream(fe::Tab&, std::ostream&, Prec) const override;
 
 private:
     Dbg dbg_;
@@ -357,7 +365,8 @@ public:
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
     const Def* emit_type(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
+    using Ptrn::stream;
+    void stream(fe::Tab&, std::ostream&, Prec) const override;
 
 private:
     Dbg dbg_;
@@ -379,7 +388,8 @@ public:
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
     const Def* emit_type(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
+    using Ptrn::stream;
+    void stream(fe::Tab&, std::ostream&, Prec) const override;
 
 private:
     Ptr<Ptrn> ptrn_;
@@ -410,7 +420,8 @@ public:
     const Def* emit_type(Emitter&) const override;
     const Def* emit_decl(Emitter&, const Def* type) const;
     const Def* emit_body(Emitter&, const Def* decl) const;
-    void stream(fe::Tab&, std::ostream&) const override;
+    using Ptrn::stream;
+    void stream(fe::Tab&, std::ostream&, Prec) const override;
 
 private:
     Tok::Tag delim_l_;
@@ -444,6 +455,24 @@ public:
 
 private:
     const Def* emit_(Emitter&) const override;
+};
+
+/// Text without surface syntax - a dump's `unset`, `Proxy#3`, `<nullptr>`; never parsed, bound, or emitted.
+class RawExpr : public Expr {
+public:
+    RawExpr(Loc loc, Sym text)
+        : Expr(loc)
+        , text_(text) {}
+
+    Sym text() const { return text_; }
+
+    void bind(Scopes&) const override {}
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    const Def* emit_(Emitter&) const override { fe::unreachable(); }
+
+    Sym text_;
 };
 
 /// `dbg_0.....dbg_n-1`.
@@ -543,6 +572,7 @@ public:
     const Expr* expr() const { return expr_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return is_where() ? Prec::Where : Prec::Bot; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -562,6 +592,7 @@ public:
     const Expr* level() const { return level_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::App; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -580,6 +611,7 @@ public:
     const Expr* dom() const { return dom_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::App; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -602,6 +634,7 @@ public:
     const Expr* rhs() const { return rhs_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::Prefix; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -634,6 +667,7 @@ public:
     }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return *Tok::infix_prec(op().tag()); }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -697,6 +731,7 @@ public:
     size_t num_arms() const { return arms().size(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::Bot; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -737,6 +772,7 @@ public:
     size_t num_ctors() const { return ctors().size(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::Bot; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -769,7 +805,9 @@ public:
 
         virtual void bind(Scopes&, bool quiet = false) const;
         virtual void emit_type(Emitter&) const;
-        void stream(fe::Tab&, std::ostream&) const override;
+        /// @p ptrn_prec is the level the parser reads a bare domain pattern's type at: `Bot` for `Cn`, `Pi` otherwise.
+        virtual void stream(fe::Tab&, std::ostream&, Prec ptrn_prec) const;
+        void stream(fe::Tab& tab, std::ostream& os) const override { stream(tab, os, Prec::Bot); }
 
     protected:
         mutable Pi* decl_ = nullptr;
@@ -794,6 +832,7 @@ private:
     const Expr* codom() const { return codom_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return tag() == Tok::Tag::K_Cn ? Prec::Bot : Prec::Arrow; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -814,6 +853,7 @@ public:
     const LamDecl* lam() const { return lam_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::Bot; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -836,6 +876,7 @@ public:
     const Expr* arg() const { return arg_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::App; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -861,6 +902,7 @@ public:
     const Expr* body() const { return body_.get(); }
 
     void bind(Scopes&) const override;
+    Prec prec() const override { return Prec::Bot; }
     void stream(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -1148,7 +1190,8 @@ public:
 
         void bind(Scopes&, bool quiet = false) const override;
         Lam* emit_value(Emitter&) const;
-        void stream(fe::Tab&, std::ostream&) const override;
+        using PiExpr::Dom::stream;
+        void stream(fe::Tab&, std::ostream&, Prec) const override;
 
     private:
         Ptr<Expr> filter_;

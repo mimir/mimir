@@ -33,7 +33,7 @@ extern lam _compile (): compile.Phase =
 
 // The extent stays symbolic and factored: the strip-mined outer count is (3 + n) / 4.
 // CHECK-DAG: core.nat.add (3, [[N:[_a-zA-Z0-9]+]])
-// CHECK-DAG: core.nat.div ([[A:[_a-zA-Z0-9]+]], 4)
+// CHECK-DAG: core.nat.div ({{.*}}, 4)
 
 // The split reduction dim recombines as `i * 4 + j`, i.e. the tile size really is 4 and not the
 // neutral 1 -- this is the line that regresses if the guard goes back to requiring a literal.

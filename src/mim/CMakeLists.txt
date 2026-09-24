@@ -8,6 +8,10 @@ target_sources(libmim
         dot.cpp
         driver.cpp
         dump.cpp
+        dump/ascii.cpp
+        dump/layout.cpp
+        dump/names.cpp
+        dump/unparse.cpp
         lam.cpp
         nest.cpp
         phase.cpp
