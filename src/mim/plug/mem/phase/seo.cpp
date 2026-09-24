@@ -51,7 +51,6 @@ void SEO::Analysis::reset() {
     visited_.clear();
     lam2sloxy2val_.clear();
     first_.clear();
-    bot_callers_.clear();
 }
 
 /*
@@ -67,6 +66,17 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     auto cur = lattice(var);
     if (cur == var) return var; // ⊤ is final
 
+    // cur ⊔ ⊥ = cur, but a ⊥-site must see what var propagates.
+    // As ⊥ never restarts the join, cur is at worst last round's value; a quiet round thus checks the final one.
+    if (def->isa<Bot>()) {
+        if (!cur) return lattice(var, def), def;
+        if (auto caller = curr_mut(); caller && !is_visible(cur, caller)) {
+            log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, cur, caller);
+            return pin(var), var;
+        }
+        return cur;
+    }
+
     // Pin mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
@@ -75,32 +85,12 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // nothing: the other call sites alone determine the value.
     if (def == var) return cur ? cur : var;
 
-    // Likewise, a site passing ⊥ contributes no value; restarting on it would descend every round only to climb back.
-    // But it constrains the scope: whatever var becomes must be visible at that site, too.
-    if (def->isa<Bot>()) {
-        auto caller = curr_mut();
-        if (caller) bot_callers_[var].emplace_back(caller);
-        if (!cur) return lattice(var, def), def;
-        if (caller && !is_visible(cur, caller)) {
-            log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, cur, caller);
-            return pin(var), var;
-        }
-        return cur;
-    }
-
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
     // A closed def can never be nested, and Def::nests allocates a fresh MutSet per call - so skip it.
     if (!def->isa<Proxy>() && !def->is_closed() && lam->nests(def)) {
         log().d("cannot propagate {} → {}: out of scope", var, def);
         return pin(var), var;
     }
-
-    if (auto callers = fe::lookup(bot_callers_, var))
-        for (auto caller : *callers)
-            if (!is_visible(def, caller)) {
-                log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, def, caller);
-                return pin(var), var;
-            }
 
     // Frozen: a ⊤ / this-lam's bundle wins and is kept across rounds (needs cur to exist).
     if (cur && Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
@@ -306,6 +296,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 // The slot is ptr's *defining* site: mark first_ so the ⊥ joined below cannot restart it away.
                 fe::assert_emplace(first_, ptr);
                 lattice(ptr, sloxy);
+                sloxy2val(sloxy, world().bot(pointee(sloxy))); // a load before any store yields undef
                 // Treat the slot jump like an app of `ret_lam` so mem and existing phis flow across the edge.
                 // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
                 // this keeps the sloxy out of the abstract body, so it only survives if an unresolved
@@ -391,10 +382,11 @@ void SEO::Analysis::leave() {
 
 static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     if (!abstr) return true;                            // no info -> keep
-    if (old_var == abstr) return true;                  // top
+    if (old_var == abstr) return true;                  // ⊤       -> keep
+    if (abstr->isa<Bot>()) return false;                // ⊥       -> nuke
     if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
     if (auto bundle = isa_bundle(abstr, lam)) return bundle->op(1) == old_var; // use first in GVN bundle
-    return false;
+    return false;                                                              // normal var -> keep
 }
 
 void SEO::Analysis::finalize() {
