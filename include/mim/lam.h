@@ -208,6 +208,14 @@ public:
     const Def* eta_reduce() const;
     ///@}
 
+    /// Is `this` neither is_external() nor is_annex() but is_set()?
+    bool is_rewritable() { return !is_external() && !is_annex() && is_set(); }
+    /// Yields @p def as a mutable Lam, if it is_rewritable() and `nullptr` otherwise.
+    static Lam* isa_rewritable(const Def* def) {
+        if (auto lam = def->isa_mut<Lam>(); lam && lam->is_rewritable()) return lam;
+        return nullptr;
+    }
+
     static constexpr auto Node      = mim::Node::Lam;
     static constexpr size_t Num_Ops = 2;
 
@@ -345,43 +353,5 @@ public:
 private:
     friend class World;
 };
-
-/// @name Helpers to work with Functions
-///@{
-inline const App* isa_callee(const Def* def, size_t i) { return i == 0 ? def->isa<App>() : nullptr; }
-
-/// These are Lam%s that are
-/// * neither `nullptr`,
-/// * nor Lam::is_external,
-/// * nor Lam::is_annex,
-/// * nor Lam::is_unset.
-inline Lam* isa_optimizable(Lam* lam) {
-    if (!lam || lam->is_external() || lam->is_annex() || !lam->is_set()) return nullptr;
-    return lam;
-}
-
-inline std::pair<const App*, Lam*> isa_apped_mut_lam(const Def* def) {
-    if (auto app = def->isa<App>()) return {app, app->callee()->isa_mut<Lam>()};
-    return {nullptr, nullptr};
-}
-
-/// The high level view is:
-/// ```
-/// f: B -> C
-/// g: A -> B
-/// f o g := λ x. f(g(x)) : A -> C
-/// ```
-/// In CPS the types look like:
-/// ```
-/// f:  Cn[B, Cn C]
-/// g:  Cn[A, Cn B]
-/// h = f o g
-/// h:  Cn[A, cn C]
-/// h = λ (a ret_h) = g (a, h')
-/// h': Cn B
-/// h'= λ b = f (b, ret_h)
-/// ```
-const Def* compose_cn(const Def* f, const Def* g);
-///@}
 
 } // namespace mim

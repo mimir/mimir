@@ -331,8 +331,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
-        auto known        = abstr_callee->isa_mut<Lam>();
-        if (isa_optimizable(known)) {
+        if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();
             return apply_known(known, DefVec(n, [&](size_t i) { return abstr_arg->proj(n, i); }));
         }
@@ -418,7 +417,8 @@ void SEO::Analysis::analyze(const Def* def) {
                 analyze(d);
             return;
         }
-        if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
+
+        if (auto lam = Lam::isa_rewritable(app->callee())) {
             // lam is applied here, it's known: traverse its body without pinning its vars to top
             analyze(app->type());
 

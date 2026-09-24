@@ -10,8 +10,8 @@ const Def* LamSpec::rewrite_imm_App(const App* old_app) {
     if (is_bootstrapping()) return RWPhase::rewrite_imm_App(old_app);
     if (auto i = old2new_.find(old_app); i != old2new_.end()) return i->second;
 
-    auto old_lam = old_app->callee()->isa_mut<Lam>();
-    if (!isa_optimizable(old_lam)) return RWPhase::rewrite_imm_App(old_app);
+    auto old_lam = Lam::isa_rewritable(old_app->callee());
+    if (!old_lam) return RWPhase::rewrite_imm_App(old_app);
 
     // Skip recursion to avoid infinite inlining if not "aggressive_lam_spec".
     // This is a hack - but we want to get rid off this stage anyway.

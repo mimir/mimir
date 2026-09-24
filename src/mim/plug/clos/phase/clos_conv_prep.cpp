@@ -8,6 +8,8 @@ namespace mim::plug::clos::phase {
 
 namespace {
 
+const App* isa_callee(const Def* def, size_t i) { return i == 0 ? def->isa<App>() : nullptr; }
+
 bool isa_cnt(const App* body, const Def* def, size_t i) {
     return Pi::isa_returning(body->callee_type()) && body->arg() == def && i == def->num_ops() - 1;
 }

@@ -77,7 +77,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
     // pin everything its type mentions (its ret Pi, callback params, a polymorphic Lam's inner Cn, ...) -
     // other code (plugin phases, foreign callers) builds against these shapes.
     // Only the interface's own (top-level) Pi stays flattenable: it may be shared with internal values.
-    if (auto lam = def->isa_mut<Lam>(); lam && !isa_optimizable(lam)) {
+    if (auto lam = def->isa_mut<Lam>(); lam && !lam->is_rewritable()) {
         auto visited = DefSet();
         visited.emplace(lam->type());
         for (auto d : lam->type()->deps())
@@ -97,7 +97,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
     for (size_t i = 0, e = def->num_ops(); i != e; ++i) {
         auto op  = def->op(i);
         auto lam = op ? op->isa_mut<Lam>() : nullptr;
-        if (!lam || isa_optimizable(lam)) continue;
+        if (!lam || lam->is_rewritable()) continue;
         if (auto pi = isa_flattenable(lam->type()); pi && !(def->isa<App>() && i == 0)) pin(pi);
     }
 

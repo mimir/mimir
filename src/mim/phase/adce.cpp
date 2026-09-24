@@ -24,7 +24,7 @@ const Def* ADCE::Analysis::rewrite_imm_App(const App* app) {
     auto abstr_arg    = rewrite(app->arg());
     auto abstr_callee = rewrite(app->callee());
 
-    if (auto lam = isa_optimizable(abstr_callee->isa_mut<Lam>())) {
+    if (auto lam = Lam::isa_rewritable(abstr_callee)) {
         auto n          = lam->num_tvars();
         auto abstr_vars = DefVec(n, [&](size_t i) -> const Def* {
             auto var = lam->tvar(i);
@@ -59,7 +59,7 @@ void ADCE::Analysis::analyze(const Def* def) {
     }
 
     if (auto app = def->isa<App>()) {
-        if (auto lam = isa_optimizable(app->callee()->isa_mut<Lam>())) {
+        if (auto lam = Lam::isa_rewritable(app->callee())) {
             analyze(app->type());
 
             auto n = lam->num_tvars();
@@ -70,7 +70,7 @@ void ADCE::Analysis::analyze(const Def* def) {
                 analyze(d);
             return;
         }
-    } else if (auto [lam, var] = def->isa_binder<Lam>(); isa_optimizable(lam)) {
+    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam && lam->is_rewritable()) {
         log().d("unknown lam: {}", lam); // reached as a value, so its signature must stay untouched
         for (auto v : lam->tvars())
             pin(v);
@@ -88,7 +88,7 @@ Sieve ADCE::sieve(Lam* lam) {
     if (auto i = lam2sieve_.find(lam); i != lam2sieve_.end()) return i->second;
 
     auto n = lam->num_tvars();
-    if (!isa_optimizable(lam) || !lam->has_var()) return lam2sieve_.emplace(lam, Sieve(n)).first->second;
+    if (!lam->is_rewritable() || !lam->has_var()) return lam2sieve_.emplace(lam, Sieve(n)).first->second;
 
     auto keep = Sieve(lam->tvars(), [this](const Def* var) { return !analysis_.is_dead(var); });
     return lam2sieve_.emplace(lam, std::move(keep)).first->second;
