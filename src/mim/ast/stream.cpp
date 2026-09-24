@@ -222,7 +222,7 @@ void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void SingleExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{}{}{}", is_wrap() ? "‹" : "«", S(tab, body()), is_wrap() ? "›" : "»");
+    std::print(os, "{}{}{}", is_narrow() ? "‹" : "«", S(tab, body()), is_narrow() ? "›" : "»");
 }
 
 /*

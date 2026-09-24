@@ -397,7 +397,7 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
 const Def* PrefixExpr::emit_(Emitter& e) const {
     auto def = rhs()->emit(e);
     switch (op().tag()) {
-        case Tag::T_extract: return e.world().unwrap(def);
+        case Tag::T_extract: return e.world().widen(def);
         default: fe::unreachable();
     }
 }
@@ -705,7 +705,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
 
 const Def* SingleExpr::emit_(Emitter& e) const {
     auto def = body()->emit(e);
-    return is_wrap() ? e.world().wrap(def) : e.world().single(def);
+    return is_narrow() ? e.world().narrow(def) : e.world().single(def);
 }
 
 /*

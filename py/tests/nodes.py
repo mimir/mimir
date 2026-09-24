@@ -41,7 +41,7 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.top(i8), mim.Top),
         (w.mut_hole(i8), mim.Hole),
         (w.single(i8v), mim.Single),
-        (w.wrap(i8v), mim.Wrap),
+        (w.narrow(i8v), mim.Narrow),
         (w.inj(join, tt), mim.Inj),
         (w.variant([b, i8]), mim.Variant),
     ]

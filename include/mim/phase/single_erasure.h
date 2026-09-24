@@ -4,7 +4,7 @@
 
 namespace mim {
 
-/// Eliminates all types that have exactly one inhabitant, so that no Single/Wrap ever reaches a backend.
+/// Eliminates all types that have exactly one inhabitant, so that no Single/Narrow ever reaches a backend.
 /// Such a type carries no information, so its erasure is the unit: `«e»` becomes `[]` and `‹e›` becomes `()`.
 /// Within an aggregate the component is dropped altogether, which shifts the indices of its successors.
 /// Besides Single this also catches the unit `[]` and `Idx 1` - and any aggregate built from those.
@@ -48,7 +48,7 @@ private:
     ///@}
 
     const Def* rewrite_imm_Single(const Single*) final;
-    const Def* rewrite_imm_Wrap(const Wrap*) final;
+    const Def* rewrite_imm_Narrow(const Narrow*) final;
     const Def* rewrite_imm_Variant(const Variant*) final;
     const Def* rewrite_imm_Inj(const Inj*) final;
     const Def* rewrite_imm_Match(const Match*) final;

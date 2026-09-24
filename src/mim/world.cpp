@@ -924,9 +924,9 @@ const Def* World::single(const Def* op) {
         .bail();
 }
 
-const Def* World::wrap(const Def* op) { return unify<Wrap>(single(op), op); }
+const Def* World::narrow(const Def* op) { return unify<Narrow>(single(op), op); }
 
-const Def* World::unwrap(const Def* op) {
+const Def* World::widen(const Def* op) {
     op = op->zonk();
     if (auto single = op->isa_type<Single>()) return single->op();
     op->blame("operand of a singleton elimination is of type `{}` but must be of singleton type", type_of(op)).bail();

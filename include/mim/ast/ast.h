@@ -936,15 +936,15 @@ private:
     Ptr<Expr> body_;
 };
 
-/// `«body»` or `‹body›` if SingleExpr::is_wrap.
+/// `«body»` or `‹body›` if SingleExpr::is_narrow.
 class SingleExpr : public Expr {
 public:
-    SingleExpr(Loc loc, bool is_wrap, Ptr<Expr> body)
+    SingleExpr(Loc loc, bool is_narrow, Ptr<Expr> body)
         : Expr(loc)
-        , is_wrap_(is_wrap)
+        , is_narrow_(is_narrow)
         , body_(body) {}
 
-    bool is_wrap() const { return is_wrap_; }
+    bool is_narrow() const { return is_narrow_; }
     const Expr* body() const { return body_.get(); }
 
     void bind(Scopes&) const override;
@@ -953,7 +953,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    bool is_wrap_;
+    bool is_narrow_;
     Ptr<Expr> body_;
 };
 

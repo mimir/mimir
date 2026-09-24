@@ -632,8 +632,8 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
     } else if (auto single = d->isa<Single>()) {
         return std::print(os, "{}{}{}", al, d.op(single->op()), ar);
-    } else if (auto wrap = d->isa<Wrap>()) {
-        return std::print(os, "{}{}{}", pl, d.op(wrap->op()), pr);
+    } else if (auto narrow = d->isa<Narrow>()) {
+        return std::print(os, "{}{}{}", pl, d.op(narrow->op()), pr);
     } else if (auto match = d->isa<Match>();
                match && d.ctx() && match->num_arms() != 0 && d.ctx()->arms.contains(match->arm(0))) {
         std::print(os, "match {} with", d.op(match->scrutinee()));

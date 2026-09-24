@@ -88,9 +88,9 @@ const Def* SingleErasure::rewrite_imm_Single(const Single* single) {
     return type;
 }
 
-const Def* SingleErasure::rewrite_imm_Wrap(const Wrap* wrap) {
+const Def* SingleErasure::rewrite_imm_Narrow(const Narrow* narrow) {
     profile_count("singletons eliminated");
-    return inhabitant(wrap->type());
+    return inhabitant(narrow->type());
 }
 
 const Def* SingleErasure::rewrite_imm_Variant(const Variant* variant) {
