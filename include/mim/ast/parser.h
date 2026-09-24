@@ -183,7 +183,7 @@ private:
     Ptr<ValDecl> parse_let_decl(Tracker, Mods);
     Ptr<ValDecl> parse_mod_decl(Tracker, Mods);
     Ptr<ValDecl> parse_use_decl(Tracker, Mods);
-    Ptr<ValDecl> parse_rule_decl();
+    Ptr<ValDecl> parse_rule_decl(Tracker, Mods);
     Ptr<LamDecl> parse_lam_decl(Tracker, Mods);
     Ptr<RecDecl> parse_rec_decl(Tracker, bool first, Mods);
     Ptr<RecDecl> parse_and_decl();

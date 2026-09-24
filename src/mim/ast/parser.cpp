@@ -625,7 +625,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
-            case Tag::C_RULE: decls.emplace_back(parse_rule_decl()); break;
+            case Tag::C_RULE: decls.emplace_back(parse_rule_decl(track, mods)); break;
             case Tag::C_IMPORT:
                 if (auto i = parse_import_or_plugin(track, mods)) decls.emplace_back(i);
                 break;
@@ -768,8 +768,7 @@ Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
     return ptr<RecDecl>(track, mods, dbg, body, next);
 }
 
-Ptr<ValDecl> Parser::parse_rule_decl() {
-    auto track   = tracker();
+Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
     auto is_norm = lex().tag() == Tag::K_norm;
     auto dbg     = parse_id("rewrite rule");
     auto ptrn    = parse_ptrn({}, "meta variables in rewrite rule");
@@ -779,7 +778,7 @@ Ptr<ValDecl> Parser::parse_rule_decl() {
                                           : ptr<PrimaryExpr>(missing(), Tag::K_tt);
     expect(Tag::T_fat_arrow, "rewrite rule declaration");
     auto rhs = parse_expr("rewrite result");
-    return ptr<RuleDecl>(track, dbg, ptrn, lhs, rhs, guard, is_norm);
+    return ptr<RuleDecl>(track, mods, dbg, ptrn, lhs, rhs, guard, is_norm);
 }
 
 Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
