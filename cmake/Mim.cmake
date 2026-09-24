@@ -227,18 +227,8 @@ function(add_mim_plugin)
             VISIBILITY_INLINES_HIDDEN 1
             WINDOWS_EXPORT_ALL_SYMBOLS OFF
             PREFIX "lib" # always use "lib" as prefix regardless of OS/compiler
-
-            LIBRARY_OUTPUT_DIRECTORY "${MIM_PLUGIN_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY "${MIM_PLUGIN_DIR}"
-
-            LIBRARY_OUTPUT_DIRECTORY_DEBUG "${MIM_PLUGIN_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_DEBUG "${MIM_PLUGIN_DIR}"
-            LIBRARY_OUTPUT_DIRECTORY_RELEASE "${MIM_PLUGIN_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_RELEASE "${MIM_PLUGIN_DIR}"
-            LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${MIM_PLUGIN_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${MIM_PLUGIN_DIR}"
-            LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${MIM_PLUGIN_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${MIM_PLUGIN_DIR}"
+            # The genex suppresses the per-config subdir a multi-config generator would append.
+            LIBRARY_OUTPUT_DIRECTORY "${MIM_PLUGIN_DIR}$<0:>"
     )
 
     install(
