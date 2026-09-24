@@ -118,6 +118,12 @@ axm ret_wrap: Phase;
 ///
 axm scalarize: Phase;
 ///
+/// ### sccp
+///
+/// Sparse Conditional Constant Propagation; propagates arbitrary expressions, not just constants (mim::SCCP).
+///
+axm sccp: Phase;
+///
 /// ### single_erasure
 ///
 /// Eliminates all types with exactly one inhabitant so that none reaches a backend (mim::SingleErasure).

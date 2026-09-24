@@ -13,6 +13,7 @@
 #include <mim/phase/lam_spec.h>
 #include <mim/phase/ret_wrap.h>
 #include <mim/phase/scalarize.h>
+#include <mim/phase/sccp.h>
 #include <mim/phase/single_erasure.h>
 #include <mim/phase/static_arg_opt.h>
 #include <mim/phase/unload.h>
@@ -67,6 +68,7 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<compile::unload,           Unload         >(phases);
     Phase::hook<compile::ret_wrap,         RetWrap        >(phases);
     Phase::hook<compile::scalarize,        Scalarize      >(phases);
+    Phase::hook<compile::sccp,             SCCP           >(phases);
     Phase::hook<compile::single_erasure,   SingleErasure  >(phases);
     Phase::hook<compile::static_arg_opt,   StaticArgOpt   >(phases);
     // clang-format on

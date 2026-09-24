@@ -35,6 +35,8 @@ target_sources(libmim
         phase/branch_normalize.cpp
         phase/single_erasure.cpp
         phase/ret_wrap.cpp
+        phase/sccp_analysis.cpp
+        phase/sccp_transform.cpp
         phase/unload.cpp
 )
 
