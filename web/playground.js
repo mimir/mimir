@@ -93,6 +93,7 @@ async function run() {
         showCode('mim', MimCode, res.out?.mim);
         showCode('ast', MimCode, res.out?.ast);
         if (res.out?.ll) showCode('ll', LlvmCode, res.out.ll);
+        else if ($('optimize').checked) showCode('ll', null, '(the ll backend failed - see Log)');
         else showCode('ll', null, '(enable "optimize" to run the ll backend)');
         await showGraph(res.out?.dot);
     } catch (e) {
