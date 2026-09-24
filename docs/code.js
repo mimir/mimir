@@ -12,9 +12,9 @@ class Code {
     static KINDS = null
     /// Probed in order for a `word`; the name of the set holding it becomes its kind.
     static WORDS = {}
-    /// Doxygen's own token classes; a kind without one is left unhighlighted.
-    static CLASS = {comment: "comment", string: "stringliteral", number: "code-literal", keyword: "keyword",
-                    decl: "keywordflow", type: "keywordtype", literal: "code-literal"}
+    /// `docs/code.css` colours these; a kind without one is left unhighlighted.
+    static CLASS = {comment: "token-comment", string: "token-string", number: "token-literal", keyword: "token-keyword",
+                    decl: "token-decl", type: "token-type", literal: "token-literal"}
     static LANGS = new Map()
 
     static register(lang) {

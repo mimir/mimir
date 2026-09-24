@@ -112,12 +112,6 @@ async function run() {
     if (queued) { queued = false; run(); }
 }
 
-// The docs' lexers colour these panes, too - but onto the palette of this page.
-const CLASS = { comment: 'tok-comment', meta: 'tok-comment', string: 'tok-string', number: 'tok-number',
-                keyword: 'tok-keyword', decl: 'tok-keyword', type: 'tok-type', literal: 'tok-literal',
-                special: 'tok-special', global: 'tok-special', label: 'tok-special' };
-MimCode.CLASS = LlvmCode.CLASS = CLASS;
-
 // Above this the lexer costs more than the colours are worth.
 const MAX_CODE = 256 * 1024;
 
@@ -250,7 +244,7 @@ async function setupEditor(initial) {
         const [state, view, language, commands, { Tag }] = await Promise.all(
             ['state@6', 'view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg))
                 .concat(import('https://esm.sh/@lezer/highlight@1')));
-        const tokens = Object.fromEntries(Object.keys(CLASS).map(kind => [kind, Tag.define()]));
+        const tokens = Object.fromEntries(Object.keys(MimCode.CLASS).map(kind => [kind, Tag.define()]));
 
         viSlot = new state.Compartment();
         editor = new view.EditorView({
@@ -265,7 +259,7 @@ async function setupEditor(initial) {
                 // Tab moves the focus unless it is bound; Esc first still lets a keyboard user out.
                 view.keymap.of([...commands.defaultKeymap, ...commands.historyKeymap, commands.indentWithTab]),
                 language.syntaxHighlighting(language.HighlightStyle.define(
-                    Object.entries(CLASS).map(([kind, cls]) => ({ tag: tokens[kind], class: cls })))),
+                    Object.entries(MimCode.CLASS).map(([kind, cls]) => ({ tag: tokens[kind], class: cls })))),
                 language.StreamLanguage.define(mimMode(tokens)),
                 view.EditorView.updateListener.of(u => u.docChanged && schedule()),
             ],
@@ -299,16 +293,17 @@ async function toggleVi() {
     }
 }
 
-// mim-code.js does the classifying and CLASS the colouring, so the editor matches the code panes.
+// mim-code.js does the classifying and code.css the colouring, so the editor matches the code panes and the docs.
 function mimMode(tokens) {
     return {
         startState: () => ({ comment: false }),
         token(stream, state) {
             const { end, kind } = MimCode.next(stream.string, stream.pos, state);
             stream.pos = end;
-            return kind in tokens ? kind : null;
+            return kind in tokens ? `mim-${kind}` : null;
         },
-        tokenTable: tokens,
+        // StreamLanguage claims legacy names such as `type` before it consults the table.
+        tokenTable: Object.fromEntries(Object.entries(tokens).map(([kind, tag]) => [`mim-${kind}`, tag])),
         languageData: { commentTokens: { line: '//', block: { open: '/*', close: '*/' } } },
     };
 }

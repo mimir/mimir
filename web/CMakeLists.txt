@@ -46,6 +46,7 @@ mim_stage_playground(
 
 # The docs own the lexers; the page uses the very same ones. `mim.js` is Emscripten's, hence the rename.
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/code.js code.js)
+mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/code.css code.css)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/mim.js mim-code.js)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/llvm.js llvm-code.js)
 

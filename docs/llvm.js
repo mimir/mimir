@@ -29,7 +29,7 @@ class LlvmCode extends Code {
     }
     static TOKEN = /(;.*)|("(?:\\.|[^"\\])*")|(@(?:"(?:\\.|[^"\\])*"|[-\w$.]+))|(%(?:"(?:\\.|[^"\\])*"|[-\w$.]+))|([!#][-\w$.]*)|((?<![^\n])[-\w$.]+:)|([A-Za-z_][\w.]*)|(-?\d[\w.]*)|(\s+|[^])/uy
     static KINDS = ["comment", "string", "global", "local", "meta", "label", "word", "number", null]
-    static CLASS = {...Code.CLASS, global: "code-special", label: "code-special", meta: "comment"}
+    static CLASS = {...Code.CLASS, global: "token-special", label: "token-special", meta: "token-comment"}
 
     static kind(kind, text) {
         if (kind === "word" && /^i\d+$/.test(text)) return "type"

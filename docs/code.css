@@ -1,8 +1,41 @@
-/* The snippets reuse Doxygen's own token classes; these two have no counterpart in C++. */
-div.fragment span.code-literal {
-    color: var(--fragment-token);
+/* Token colours of the lexers in code.js; the playground stages this file, too. */
+html {
+    --token-comment: #969696;
+    --token-string: #438a59;
+    --token-literal: #438a59;
+    --token-keyword: #bb6bb2;
+    --token-decl: #d67c3b;
+    --token-type: #8258b3;
+    --token-special: #46aaa5;
 }
 
-div.fragment span.code-special {
-    color: var(--fragment-preprocessor);
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) {
+        --token-comment: #999999;
+        --token-string: #7ec699;
+        --token-literal: #7ec699;
+        --token-keyword: #cc99cd;
+        --token-decl: #e08000;
+        --token-type: #ab99cd;
+        --token-special: #65cabe;
+    }
 }
+
+/* Dark mode variables are defined twice, to support it with and without doxygen-awesome-darkmode-toggle.js. */
+html.dark-mode {
+    --token-comment: #999999;
+    --token-string: #7ec699;
+    --token-literal: #7ec699;
+    --token-keyword: #cc99cd;
+    --token-decl: #e08000;
+    --token-type: #ab99cd;
+    --token-special: #65cabe;
+}
+
+.token-comment { color: var(--token-comment); }
+.token-string  { color: var(--token-string); }
+.token-literal { color: var(--token-literal); }
+.token-keyword { color: var(--token-keyword); }
+.token-decl    { color: var(--token-decl); }
+.token-type    { color: var(--token-type); }
+.token-special { color: var(--token-special); }
