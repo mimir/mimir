@@ -134,6 +134,8 @@ public:
     const Pi* type() const { return Def::type()->as<Pi>(); }
     const Def* dom() const { return type()->dom(); }
     const Def* codom() const { return type()->codom(); }
+    /// Does this type() itself or dom() has a Var?
+    bool is_dependent() const { return type()->has_var() || dom()->has_var(); }
     MIM_PROJ(dom, const)
     MIM_PROJ(codom, const)
     ///@}
@@ -190,7 +192,7 @@ public:
     Lam* unset() { return Def::unset()->as<Lam>(); }
     ///@}
 
-    /// @name Rebuild
+    /// @name Reduce
     ///@{
     using Def::reduce;
     Defs reduce(Defs) const;

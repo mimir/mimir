@@ -42,10 +42,6 @@ static bool is_visible(const Def* def, Def* mut) {
     return true;
 }
 
-/// Does @p lam's signature refer to its own binder's Var?
-/// Such a signature cannot be narrowed: dropping a component would tear its siblings off the binder.
-static bool is_dependent(Lam* lam) { return lam->type()->isa_mut() || lam->type()->dom()->isa_mut(); }
-
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
@@ -235,7 +231,7 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     if (auto mut = curr_mut()) lam2callers_[known].emplace(mut);
     rewrite(known); // enqueue so its body is drained this round; a no-op if already scheduled
 
-    if (is_dependent(known)) {
+    if (known->is_dependent()) {
         log().d("dependent signature; keeping all vars: {}", known);
         for (auto var : known->tvars())
             pin(var);
@@ -586,7 +582,7 @@ const Def* SEO::var_of(Lam* old_lam) {
 }
 
 Lam* SEO::build_lam(Lam* old_lam) {
-    assert(!is_dependent(old_lam) && "apply_known pins a dependent signature to \u22a4");
+    assert(!old_lam->is_dependent() && "apply_known pins a dependent signature to \u22a4");
     if (auto memo = fe::lookup(lam_old2new_, old_lam)) return memo;
 
     log().d("build new lam for {}", old_lam);

@@ -6,10 +6,6 @@ enum {
     Proxy_Dead, // proxy(var) <- var is optimistically assumed dead
 };
 
-/// Does @p lam's signature refer to its own binder's Var?
-/// Such a signature cannot be narrowed: dropping a component would tear its siblings off the binder.
-static bool is_dependent(Lam* lam) { return lam->type()->isa_mut() || lam->type()->dom()->isa_mut(); }
-
 /*
  * Analysis
  */
@@ -30,10 +26,9 @@ const Def* ADCE::Analysis::rewrite_imm_App(const App* app) {
 
     if (auto lam = isa_optimizable(abstr_callee->isa_mut<Lam>())) {
         auto n          = lam->num_tvars();
-        auto dependent  = is_dependent(lam);
         auto abstr_vars = DefVec(n, [&](size_t i) -> const Def* {
             auto var = lam->tvar(i);
-            if (dependent) return pin(var), var;
+            if (lam->is_dependent()) return pin(var), var;
             if (auto l = lattice(var)) return l;
             auto dead = world().proxy(var->type(), {var}, Proxy_Dead)->set(var->dbg_key());
             return lattice(var, dead), dead;
