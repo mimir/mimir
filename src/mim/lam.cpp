@@ -13,7 +13,8 @@ namespace mim {
 const Pi* Pi::ret_pi() const {
     // num_doms() has to materialize a Lit for the arity of a Sigma dom - which means a full hash-cons round trip.
     // So compute it *once* and feed it to the (a, i) projection instead of letting dom(i) re-derive it.
-    if (auto n = num_doms(); n != 0) return Pi::isa_basicblock(dom(n, n - 1));
+    if (auto n = num_doms(); n != 0)
+        if (auto last = dom(n, n - 1)) return Pi::isa_basicblock(last); // a frozen World yields no projection
     return nullptr;
 }
 

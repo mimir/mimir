@@ -27,7 +27,6 @@ public:
     Pi* make_implicit() { return flags_ = (flags_t) true, this; }
     Pi* make_explicit() { return flags_ = (flags_t) false, this; }
     /// Is @p d an Pi::is_implicit (mutable) Pi?
-    /// @note A `nullptr` @p d - Def::unfold_type of Univ - simply is not one.
     static Pi* isa_implicit(const Def* d) {
         if (auto pi = d->isa_mut<Pi>(); pi && pi->is_implicit()) return pi;
         return nullptr;
@@ -48,10 +47,9 @@ public:
     /// @anchor continuations
     /// A *continuation* is a Pi whose Pi::codom is mim::Bot%tom.
     /// It is *returning*, if it has a Pi::ret_pi, and a *basic block* otherwise.
-    /// @note A `nullptr` @p d - which a projection yields in a frozen World - simply is not one.
     ///@{
     // clang-format off
-    static const Pi* isa_cn        (const Def* d) { auto pi = d ? d->isa<Pi>() : nullptr; return pi && pi->codom()->node() == Node::Bot ? pi : nullptr; }
+    static const Pi* isa_cn        (const Def* d) { auto pi = d->isa<Pi>(); return pi && pi->codom()->node() == Node::Bot ? pi : nullptr; }
     static const Pi* isa_returning (const Def* d) { auto pi = isa_cn(d); return pi &&  pi->ret_pi() ? pi : nullptr; }
     static const Pi* isa_basicblock(const Def* d) { auto pi = isa_cn(d); return pi && !pi->ret_pi() ? pi : nullptr; }
     // clang-format on
