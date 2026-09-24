@@ -3,6 +3,8 @@
 #include <mim/driver.h>
 #include <mim/rewrite.h>
 
+#include <mim/phase/nom_erasure.h>
+
 using namespace mim;
 
 TEST_CASE("Nom: distinct flags give distinct types") {
@@ -53,4 +55,22 @@ TEST_CASE("Nom: rewriting keeps the identity") {
 
     CHECK(rw.rewrite(meter) == meter);
     CHECK(rw.rewrite(w.wrap(meter, w.lit_i32(23))) == w.wrap(meter, w.lit_i32(23)));
+}
+
+TEST_CASE("NomErasure: nominals erase to what they wrap") {
+    Driver driver;
+    World& w = driver.world();
+
+    auto i32   = w.type_i32();
+    auto meter = w.nominal(0x1000, i32);
+    auto lam   = w.mut_lam(w.pi(meter, meter))->set("id");
+    lam->set(false, w.wrap(meter, w.unwrap(lam->var())));
+    w.externals().externalize(lam);
+
+    Phase::run<NomErasure>(w, "nom_erasure");
+
+    auto new_lam = w.externals()[w.sym("id")];
+    REQUIRE(new_lam);
+    CHECK(new_lam->type() == w.pi(w.type_i32(), w.type_i32()));
+    CHECK(new_lam->as<Lam>()->body() == new_lam->as<Lam>()->var());
 }

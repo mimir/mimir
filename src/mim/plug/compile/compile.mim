@@ -100,6 +100,13 @@ axm eta_conv: Phase;
 ///
 axm lam_spec: Phase;
 ///
+/// ### nom_erasure
+///
+/// Eliminates all nominal newtypes so that none reaches a backend (mim::NomErasure).
+/// `nom N = T` degrades to `T`, and both `v inj N` and `#v` to `v`.
+///
+axm nom_erasure: Phase;
+///
 /// ### null
 ///
 /// Does nothing; useful as an elided placeholder.
