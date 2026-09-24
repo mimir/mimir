@@ -317,6 +317,12 @@ static void stream_axm(fe::Tab& tab, std::ostream& os, const ValDecl* decl, cons
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const { stream_axm(tab, os, this, this); }
 void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const { stream_axm(tab, os, this, owner()); }
 
+/// `nom` is always anx, so only `priv` is ever printed.
+void NomDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (vis() == Vis::Priv) os << "priv ";
+    std::print(os, "nom {} = {};", dbg(), S(tab, type()));
+}
+
 void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const {
     if (vis() == Vis::Priv) std::print(os, "priv ");
     std::print(os, "anx {} = {};", dbg(), S(tab, path()));

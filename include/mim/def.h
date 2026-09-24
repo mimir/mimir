@@ -42,7 +42,8 @@
     X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
     X(Single, Judge::Form ) X(Narrow, Judge::Intro)                                                                \
     X(Nat,    Judge::Form )                                                                                        \
-    X(Idx,    Judge::Intro)
+    X(Idx,    Judge::Intro)                                                                                        \
+    X(Nom,    Judge::Form ) X(Wrap,  Judge::Intro) X(Unwrap,  Judge::Elim)
 
 #define MIM_IMM_NODE(X)                                                                                            \
     X(Lit)                                                                                                         \
@@ -59,7 +60,8 @@
     X(Reform) X(Rule)                                                                                              \
     X(Single) X(Narrow)                                                                                            \
     X(Nat)                                                                                                         \
-    X(Idx)
+    X(Idx)                                                                                                         \
+    X(Nom)    X(Wrap)  X(Unwrap)
 
 #define MIM_MUT_NODE(X)                                                                                            \
     X(Global)                                                                                                      \
@@ -284,6 +286,7 @@ struct DotConfig {
 /// | Sigma / Arr       | Tuple / Pack      | Extract           |
 /// |                   | Insert            | Insert            |
 /// | Single            | Narrow            |                   |
+/// | Nom               | Wrap              | Unwrap            |
 /// | Join              | Inj               | Match             |
 /// | Variant           | Inj               | Match             |
 /// | Reform            | Rule              |                   |

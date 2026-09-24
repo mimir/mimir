@@ -1037,6 +1037,29 @@ private:
     Ptr<Expr> value_;
 };
 
+/// `nom dbg = type;` - a nominal newtype; always `anx`.
+class NomDecl : public ValDecl {
+public:
+    NomDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr> type)
+        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
+        , dbg_(dbg)
+        , type_(type) {}
+
+    Dbg dbg() const override { return dbg_; }
+    const Expr* type() const { return type_.get(); }
+
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
+
+private:
+    Dbg dbg_;
+    Ptr<Expr> type_;
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
+};
+
 /// `axm dbg: type, normalizer, curry, trip;`
 class AxmDecl : public ValDecl {
 public:

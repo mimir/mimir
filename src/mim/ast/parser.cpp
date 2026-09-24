@@ -655,6 +655,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
+            case Tag::K_nom: decls.emplace_back(parse_nom_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
@@ -777,6 +778,16 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     recover("module");
     expect(Tag::D_brace_r, "closing brace of a module");
     return ptr<ModDecl>(track, vis, dbg, ast().scope(), ast().copy(decls));
+}
+
+Ptr<ValDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
+    if (mods.is_extern) error().e(curr_, "`nom` is implicitly `anx`; cannot combine with `extern`");
+    auto vis = mods.vis.value_or(Vis::Pub); // nom is always anx, so it always gets the pub nudge
+    eat(Tag::K_nom);
+    auto dbg = parse_id("name of a nominal type");
+    expect(Tag::T_assign, "nominal type declaration");
+    auto type = parse_expr("underlying type of a nominal type declaration");
+    return ptr<NomDecl>(track, vis, dbg, type);
 }
 
 Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {

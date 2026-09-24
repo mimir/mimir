@@ -394,10 +394,24 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     return rhs()->emit(e);
 }
 
+/// A `nom`'s intro and elim are private to the file that declared it; the type itself is not.
+static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom) {
+    if (!nom->loc().src || nom->loc().src == loc.src) return;
+    e.error()
+        .e(loc, "`{}` is a nominal type of another module, which alone may wrap and unwrap its values", nom)
+        .n(nom->loc(), "declared here")
+        .bail();
+}
+
 const Def* PrefixExpr::emit_(Emitter& e) const {
     auto def = rhs()->emit(e);
     switch (op().tag()) {
-        case Tag::T_extract: return e.world().widen(def);
+        case Tag::T_extract:
+            if (auto nom = def->isa_type<Nom>()) {
+                check_nom_scope(e, loc(), nom);
+                return e.world().unwrap(def);
+            }
+            return e.world().widen(def);
         default: fe::unreachable();
     }
 }
@@ -480,7 +494,9 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     switch (op().tag()) {
         case Tag::T_arrow_r: return w.pi(l, r);
         case Tag::T_at: return w.app(l, r);
-        case Tag::K_inj: return w.inj(r, l);
+        case Tag::K_inj:
+            if (auto nom = r->isa<Nom>()) check_nom_scope(e, loc(), nom);
+            return w.inj(r, l);
         default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR
     }
 }
@@ -711,6 +727,15 @@ const Def* SingleExpr::emit_(Emitter& e) const {
 /*
  * Decl
  */
+
+void NomDecl::emit(Emitter& e) const {
+    if (!annex_) return; // skip emit if binding failed
+    auto _      = e.world().push(loc());
+    auto plugin = annex_->plugin_id();
+    auto name   = annex_->qualified(e.driver(), dbg().sym());
+    def_        = e.world().nominal(Annex::flags(plugin, annex_->id.tag, sub_), type()->emit(e))->set(name);
+    e.world().annexes().attach(plugin, annex_->id.tag, sub_, name, def_);
+}
 
 void AxmDecl::emit(Emitter& e) const {
     if (!annex_) return; // Skip emit if binding failed

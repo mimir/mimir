@@ -186,6 +186,15 @@ lam only (T: *) (x: «T»): * = #x;
 lam not_single (x: «2; Nat»): Nat = x#0₂;
 /// `#` is a prefix only where an expression starts, so `f #x` extracts instead of applying.
 let _ = refly.struc.e (#‹2› + 3, 5) where use core.ops.n; end;
+/// ## Nominal Newtypes
+///
+/// `nom` wraps a type into a fresh one; two `nom`s over the same type stay distinct.
+nom Meter = I32;
+nom Foot  = I32;
+/// `inj` wraps a value and the prefix `#` unwraps it again - both only in the file that declared the `nom`,
+/// so an importer sees the type as abstract.
+lam to_foot (m: Meter): Foot = #m inj Foot;
+let _ = refly.struc.e (#(23I32 inj Meter), 23I32);
 /// ## Infix Operators
 ///
 /// `a op b` is sugar for `` `op (a, b) `` - Mim gives the operators no meaning of their own.

@@ -1,0 +1,10 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The type crosses the module boundary; wrapping and unwrapping do not.
+import "nomlib.mim" as units;
+
+extern lam ok (m: units.Meter): I32 = units.to_i32 m;
+extern lam bad (x: I32): units.Meter = x inj units.Meter;
+
+// CHECK: {{.*}}nomuse.mim:7:40-7:56: error: `nomlib.Meter` is a nominal type of another module, which alone may wrap and unwrap its values
+// CHECK: {{.*}}nomlib.mim:5:1-5:15: note: declared here

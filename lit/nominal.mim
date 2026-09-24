@@ -1,0 +1,26 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+
+nom Meter = I32;
+nom Foot  = I32;
+
+mod units {
+    nom Second = I32;
+}
+
+// A `nom` is opaque: only `inj`/`#` cross between it and its underlying type.
+extern lam add (a b: Meter): Meter = (core.wrap.add 0 (#a, #b)) inj Meter;
+
+// Distinct `nom`s over the same type do not unify.
+extern lam convert (f: Foot): Meter = #f inj Meter;
+
+extern lam tick (s: units.Second): I32 = #s;
+
+// CHECK-DAG: nom Meter = I32;
+// CHECK-DAG: nom Foot = I32;
+// CHECK-DAG:     nom Second = I32;
+// CHECK-DAG: extern lam add (a: Meter, b: Meter){{.*}}: Meter =
+// CHECK-DAG: extern lam convert (f: Foot): Meter =
+// CHECK-DAG:     #f inj Meter;
+// CHECK-DAG: extern lam tick (s: units.Second): I32 =
+// CHECK-DAG:     #s;
