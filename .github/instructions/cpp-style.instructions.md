@@ -20,6 +20,10 @@ General C++ guidelines for this repository.
   return false;
   ```
   not a sequence of `auto x = ...; if (!x) return false;`.
+- Never check a `Def*` argument for `nullptr` inside a helper; that is the caller's responsibility.
+  A helper such as `Pi::isa_cn` or `Idx::isa` dereferences its argument, and the caller guards wherever a
+  `nullptr` can actually arise - `Def::unfold_type` of `Univ`, or a projection in a frozen `World`.
+  `Lit::isa` is the one deliberate exception, documented at its declaration.
 - In Doxygen comments (`///`, `/** ... */`), prefer one sentence per line over column-filling wraps, so diffs stay readable.
   Deliberate exceptions are fine where a sentence would fragment awkwardly.
 - Comment sparingly; see the *Comments* section in `.github/copilot-instructions.md`.

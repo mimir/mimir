@@ -61,7 +61,8 @@ const Def* AddMem::rewrite(const Def* old_def) {
     auto new_def = Rewriter::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : mem.M 0`) are thereby spliced into the chain.
-    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && isa_mem(old_def)) return curr_mem_;
+    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && old_def->type() && isa_mem(old_def))
+        return curr_mem_;
     return new_def;
 }
 
@@ -181,7 +182,10 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
     //   2. memory operands next - now resolving to the up-to-date current memory;
     //   3. continuation values last - their bodies run later, so a shared memory operation they capture must
     //      already have been anchored (threaded) in this scope by the memory operands above.
-    auto rank = [](const Def* op) { return isa_mem(op) ? 1 : (op->type() && Pi::isa_cn(op->type()) ? 2 : 0); };
+    auto rank = [](const Def* op) {
+        if (!op->type()) return 0; // Univ has no type and is neither memory nor a continuation
+        return isa_mem(op) ? 1 : (Pi::isa_cn(op->type()) ? 2 : 0);
+    };
 
     auto& w      = new_world();
     auto n       = tuple->num_ops();

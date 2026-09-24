@@ -286,8 +286,11 @@ const Def* World::var(Def* mut) {
 
 template<bool Normalize>
 const Def* World::implicit_app(const Def* callee, const Def* arg) {
-    while (auto pi = Pi::isa_implicit(callee->unfold_type()))
-        callee = app(callee, mut_hole(pi->dom()));
+    while (auto type = callee->unfold_type()) // Univ has no type at all and takes no implicit arguments
+        if (auto pi = Pi::isa_implicit(type))
+            callee = app(callee, mut_hole(pi->dom()));
+        else
+            break;
     return app<Normalize>(callee, arg);
 }
 
@@ -454,9 +457,9 @@ const Def* World::extract(const Def* d, const Def* index_) {
 /// `d#(i, 0₁, k)` ≡ `d#(i, k)`. A *scalar* index is left alone - its `Idx 1` carve-out for mutable 1-tuples still
 /// applies - and so is a dynamic rank, which has no axes to inspect.
 Shape World::check_index(const Def* index) {
-    auto type = index->unfold_type();
-    if (Idx::isa(type)) return index;
-    if (!Shape::isa_indices(type))
+    auto type = index->unfold_type(); // nullptr for Univ, which the diagnostic below reports
+    if (type && Idx::isa(type)) return index;
+    if (!type || !Shape::isa_indices(type))
         index->blame("index must be of `Idx` type but is of type `{}`", type_of(index)).bail();
     return Shape(index).fold();
 }
@@ -716,8 +719,9 @@ const Def* World::seq(bool is_pack, Shape shape, const Def* body) {
     shape = shape.zonk();
     body  = body->zonk();
 
-    auto shape_ty = shape->unfold_type();
-    if (!Shape::isa_extents(shape_ty)) shape->blame("expected a shape but got a value of type `{}`", shape_ty).bail();
+    auto shape_ty = shape->unfold_type(); // nullptr for Univ, which the diagnostic below reports
+    if (!shape_ty || !Shape::isa_extents(shape_ty))
+        shape->blame("expected a shape but got a value of type `{}`", type_of(*shape)).bail();
 
     // `«1; T»` ≡ `T`, mirroring `[T]` ≡ `T`, so a literal size-1 axis folds out of the shape.
     shape  = shape.fold();

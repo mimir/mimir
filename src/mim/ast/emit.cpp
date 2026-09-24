@@ -622,14 +622,15 @@ const Def* AppExpr::emit_(Emitter& e) const {
 
 const Def* RetExpr::emit_(Emitter& e) const {
     auto c = callee()->emit(e);
-    if (auto cn = Pi::has_ret_pi(c->type())) {
-        auto con  = e.world().mut_lam(cn);
-        auto pair = e.world().tuple({arg()->emit(e), con});
-        auto app  = e.world().app(c, pair);
-        ptrn()->emit_value(e, con->var());
-        con->set(false, body()->emit(e));
-        return app;
-    }
+    if (auto pi = c->type()->isa<Pi>())
+        if (auto cn = pi->ret_pi()) {
+            auto con  = e.world().mut_lam(cn);
+            auto pair = e.world().tuple({arg()->emit(e), con});
+            auto app  = e.world().app(c, pair);
+            ptrn()->emit_value(e, con->var());
+            con->set(false, body()->emit(e));
+            return app;
+        }
 
     e.error()
         .e(callee()->loc(), "callee of a `ret` expression must be a returning continuation, but `{}` has type `{}`", c,

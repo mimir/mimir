@@ -1004,6 +1004,10 @@ public:
     /// @name Casts
     ///@{
     /// @see @ref cast_lit
+    /// @note Unlike every other `isa` helper, this one accepts a `nullptr` @p def and yields `std::nullopt`.
+    /// A `nullptr` means "no match" in a chain like `Lit::isa(Idx::isa(x))` or a pattern that did not apply,
+    /// so folding that case in here keeps the normalizers - the hottest code in the compiler - free of
+    /// intermediate checks.
     template<class T = nat_t>
     static std::optional<T> isa(const Def* def) {
         if (!def) return {};

@@ -393,7 +393,9 @@ void curry(std::ostream& os,
 /// That sugar folds the domain into `[<params>, Cn <ret>]`, so a *flat* domain with a trailing Cn stays a `con`.
 bool isa_fun(const Lam* lam) {
     auto pi = lam->type();
-    return Lam::isa_returning(lam) && num_binders(pi->dom()) == 2 && Pi::isa_basicblock(pi->dom(2, 1));
+    if (Lam::isa_returning(lam) && num_binders(pi->dom()) == 2)
+        if (auto ret = pi->dom(2, 1)) return Pi::isa_basicblock(ret) != nullptr; // a frozen World yields no projection
+    return false;
 }
 
 /// A `fun` binds only its parameters, so a Var used as a whole needs the `con` spelling.

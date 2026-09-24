@@ -1,6 +1,6 @@
 #pragma once
 
-#include <span>
+#include <array>
 #include <variant>
 
 #include "mim/def.h"
@@ -26,6 +26,11 @@ public:
     bool is_implicit() const { return flags(); }
     Pi* make_implicit() { return flags_ = (flags_t) true, this; }
     Pi* make_explicit() { return flags_ = (flags_t) false, this; }
+    /// Is @p d an Pi::is_implicit (mutable) Pi?
+    static Pi* isa_implicit(const Def* d) {
+        if (auto pi = d->isa_mut<Pi>(); pi && pi->is_implicit()) return pi;
+        return nullptr;
+    }
     ///@}
 
     /// @name dom & codom
@@ -40,40 +45,14 @@ public:
 
     /// @name Continuations
     /// @anchor continuations
-    /// Checks certain properties of @p d regarding continuations.
+    /// A *continuation* is a Pi whose Pi::codom is mim::Bot%tom.
+    /// It is *returning*, if it has a Pi::ret_pi, and a *basic block* otherwise.
     ///@{
-    /// Is this a continuation - i.e. is the Pi::codom mim::Bot%tom?
-    /// @note A `nullptr` @p d - which a projection yields in a frozen World - simply is not one.
-    static const Pi* isa_cn(const Def* d) {
-        auto pi = d ? d->isa<Pi>() : nullptr;
-        return pi && pi->codom()->node() == Node::Bot ? pi : nullptr;
-    }
-    /// Is this a continuation (Pi::isa_cn) which has a Pi::ret_pi?
-    static const Pi* isa_returning(const Def* d) {
-        auto pi = isa_cn(d);
-        return pi && pi->ret_pi() ? pi : nullptr;
-    }
-    /// Is this a continuation (Pi::isa_cn) that is **not** Pi::isa_returning?
-    static const Pi* isa_basicblock(const Def* d) {
-        auto pi = isa_cn(d);
-        return pi && !pi->ret_pi() ? pi : nullptr;
-    }
-    /// Is @p d an Pi::is_implicit (mutable) Pi?
-    /// @note A `nullptr` @p d - Def::unfold_type of Univ - simply is not one.
-    static Pi* isa_implicit(const Def* d) {
-        if (auto pi = d ? d->isa_mut<Pi>() : nullptr; pi && pi->is_implicit()) return pi;
-        return nullptr;
-    }
-    /// Yields the Pi::ret_pi() of @p d, if it is in fact a Pi.
-    static const Pi* has_ret_pi(const Def* d) {
-        auto pi = d->isa<Pi>();
-        return pi ? pi->ret_pi() : nullptr;
-    }
-    ///@}
-
-    /// @name Return Continuation
-    /// @anchor return_continuation
-    ///@{
+    // clang-format off
+    static const Pi* isa_cn        (const Def* d) { auto pi = d->isa<Pi>(); return pi && pi->codom()->node() == Node::Bot ? pi : nullptr; }
+    static const Pi* isa_returning (const Def* d) { auto pi = isa_cn(d); return pi &&  pi->ret_pi() ? pi : nullptr; }
+    static const Pi* isa_basicblock(const Def* d) { auto pi = isa_cn(d); return pi && !pi->ret_pi() ? pi : nullptr; }
+    // clang-format on
 
     /// Yields the last Pi::dom, if Pi::isa_basicblock.
     const Pi* ret_pi() const;
@@ -97,7 +76,7 @@ public:
     static const Def* infer(const Def* dom, const Def* codom);
     ///@}
 
-    /// @name Rebuild
+    /// @name Reduce
     ///@{
     const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
@@ -144,23 +123,19 @@ public:
     /// @see @ref continuations "Pi: Continuations"
     ///@{
     // clang-format off
-    static const Lam* isa_cn(const Def* d) { return Pi::isa_cn(d->type()) ? d->isa<Lam>() : nullptr; }
-    static const Lam* isa_basicblock(const Def* d) { return Pi::isa_basicblock(d->type()) ? d->isa<Lam>() : nullptr; }
-    static const Lam* isa_returning(const Def* d)  { return Pi::isa_returning (d->type()) ? d->isa<Lam>() : nullptr; }
-    static Lam* isa_mut_cn(const Def* d) { return isa_cn(d) ? d->isa_mut<Lam>() : nullptr; }                ///< Only for mutables.
-    static Lam* isa_mut_basicblock(const Def* d) { return isa_basicblock(d) ? d->isa_mut<Lam>(): nullptr; } ///< Only for mutables.
-    static Lam* isa_mut_returning(const Def* d)  { return isa_returning (d) ? d->isa_mut<Lam>(): nullptr; } ///< Only for mutables.
+    static const Lam* isa_cn            (const Def* d) { auto lam = d->isa    <Lam>(); return lam && Pi::isa_cn        (lam->type()) ? lam : nullptr; }
+    static const Lam* isa_returning     (const Def* d) { auto lam = d->isa    <Lam>(); return lam && Pi::isa_returning (lam->type()) ? lam : nullptr; }
+    static const Lam* isa_basicblock    (const Def* d) { auto lam = d->isa    <Lam>(); return lam && Pi::isa_basicblock(lam->type()) ? lam : nullptr; }
+    static       Lam* isa_mut_cn        (const Def* d) { auto lam = d->isa_mut<Lam>(); return lam && Pi::isa_cn        (lam->type()) ? lam : nullptr; }
+    static       Lam* isa_mut_returning (const Def* d) { auto lam = d->isa_mut<Lam>(); return lam && Pi::isa_returning (lam->type()) ? lam : nullptr; }
+    static       Lam* isa_mut_basicblock(const Def* d) { auto lam = d->isa_mut<Lam>(); return lam && Pi::isa_basicblock(lam->type()) ? lam : nullptr; }
     // clang-format on
-    ///@}
 
-    /// @name Return Continuation
-    /// @see @ref return_continuation "Pi: Return Continuation"
-    ///@{
     const Pi* ret_pi() const { return type()->ret_pi(); }
     const Def* ret_dom() const { return ret_pi()->dom(); }
     /// Yields the Lam::var of the Lam::ret_pi.
     const Def* ret_var() {
-        if (!type()->ret_pi()) return nullptr;
+        if (!ret_pi()) return nullptr;
         auto n = num_vars(); // compute the arity once and hand it to the (a, i) projection
         return var(n, n - 1);
     }
@@ -208,6 +183,8 @@ public:
     const Def* eta_reduce() const;
     ///@}
 
+    /// @name Rewritable
+    ///@{
     /// Is `this` neither is_external() nor is_annex() but is_set()?
     bool is_rewritable() { return !is_external() && !is_annex() && is_set(); }
     /// Yields @p def as a mutable Lam, if it is_rewritable() and `nullptr` otherwise.
@@ -215,6 +192,7 @@ public:
         if (auto lam = def->isa_mut<Lam>(); lam && lam->is_rewritable()) return lam;
         return nullptr;
     }
+    ///@}
 
     static constexpr auto Node      = mim::Node::Lam;
     static constexpr size_t Num_Ops = 2;
@@ -241,41 +219,12 @@ private:
         trip_  = trip;
     }
 
-    template<size_t N, bool Callee, bool Args>
-    static auto uncurry_(const Def* callee) {
-        if constexpr (N == std::dynamic_extent) {
-            auto args = DefVec();
-            while (auto app = callee->isa<App>()) {
-                if constexpr (Args) args.emplace_back(app->arg());
-                callee = app->callee();
-            }
-
-            if constexpr (Args) std::ranges::reverse(args);
-
-            if constexpr (Callee && Args)
-                return std::pair{callee, args};
-            else if constexpr (Args)
-                return args;
-            else
-                return callee;
-        } else {
-            auto args = std::array<const Def*, N>();
-            for (size_t i = N; i-- != 0;) {
-                if (auto app = callee->isa<App>()) {
-                    if constexpr (Args) args[i] = app->arg();
-                    callee = app->callee();
-                } else {
-                    if constexpr (Args) args[i] = nullptr;
-                }
-            }
-
-            if constexpr (Callee && Args)
-                return std::pair{callee, args};
-            else if constexpr (Args)
-                return args;
-            else
-                return callee;
-        }
+    template<size_t N>
+    static auto uncurry_args_(const Def* def) {
+        auto args = std::array<const Def*, N>();
+        for (size_t i = N; i-- != 0;)
+            if (auto app = def->isa<App>()) args[i] = app->arg(), def = app->callee();
+        return args;
     }
 
 public:
@@ -286,6 +235,11 @@ public:
     const Def* callee() const { return op(0); }
     const App* decurry() const { return callee()->as<App>(); } ///< Returns App::callee again as App.
     const Pi* callee_type() const { return callee()->type()->as<Pi>(); }
+    /// The App::callee of @p def - or `nullptr`, if @p def isn't an App at all.
+    static const Def* callee_of(const Def* def) {
+        auto app = def->isa<App>();
+        return app ? app->callee() : nullptr;
+    }
     ///@}
 
     /// @name arg
@@ -304,51 +258,28 @@ public:
     ///@}
 
     /// @name Uncurry
-    /// Retrieve all App::arg%s of a curried App.
+    /// Peel off the @p N innermost App%s of a curried App.
     /// Use like this:
     /// ```
-    /// // 1. Variant:
-    /// auto [abc, de] = app->uncurry<2>();
-    /// auto [a, b, c] = abc->projs<3>();
-    /// auto [d, e]    = de->projs<2>();
-    ///
-    /// // 2. Variant:
-    /// auto [callee, args] = App::uncurry(def);
-    ///
+    /// auto [abc, de]  = app->uncurry_args<2>();
+    /// auto [a, b, c]  = abc->projs<3>();
+    /// auto [d, e]     = de->projs<2>();
+    /// auto axm        = app->uncurry_callee();
     /// ```
-    /// @returns
-    /// 1. Variant: <br>
-    ///    *only* the arguments in a `std::array<const Def*, N>`.
-    ///    You will *not* retrieve the initial callee because if you know the number of curried App%s,
-    ///    you probably also know the callee anyway.
-    ///    Also, if you "overshoot" the number of curried App%s, the superflous args on the left will be set to
-    ///    `nullptr`.
-    /// 2. Variant: <br>
-    ///    A pair that contains:
-    ///     1. The initial callee.
-    ///     2. A DefVec of all curried App::arg%s.
-    /// You can enforce variant 1 / variant 2 by with the template argument @p Callee.
+    /// If you "overshoot" the number of curried App%s, the superflous args on the left will be `nullptr`.
     ///@{
     // clang-format off
-    template<size_t N = std::dynamic_extent> static auto uncurry(const Def* def) { return uncurry_<N, true, true >(def ); }
-    template<size_t N = std::dynamic_extent>        auto uncurry() const         { return uncurry_<N, true, true >(this); }
+    template<size_t N> static auto uncurry_args(const Def* def) { return uncurry_args_<N>(def ); }
+    template<size_t N>        auto uncurry_args() const         { return uncurry_args_<N>(this); }
 
-    static const Def* uncurry_callee(const Def* def) { return uncurry_<std::dynamic_extent, true, false>(def ); }
-           const Def* uncurry_callee() const         { return uncurry_<std::dynamic_extent, true, false>(this); }
-
-    template<size_t N = std::dynamic_extent> static auto uncurry_args(const Def* def) { return uncurry_<N, false, true>(def ); }
-    template<size_t N = std::dynamic_extent>        auto uncurry_args() const         { return uncurry_<N, false, true>(this); }
+    /// The innermost App::callee - the one that isn't an App itself.
+    static const Def* uncurry_callee(const Def* def) { while (auto app = def->isa<App>()) def = app->callee(); return def; }
+           const Def* uncurry_callee() const         { return uncurry_callee(this); }
     // clang-format on
     ///@}
 
     static constexpr auto Node      = mim::Node::App;
     static constexpr size_t Num_Ops = 2;
-
-    /// The App::callee of @p def - or `nullptr`, if @p def isn't an App at all.
-    static const Def* callee_of(const Def* def) {
-        auto app = def->isa<App>();
-        return app ? app->callee() : nullptr;
-    }
 
 private:
     friend class World;
