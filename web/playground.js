@@ -102,7 +102,7 @@ async function run() {
     const failed = code !== 0;
     status.className = failed ? 'error' : '';
     status.textContent = failed ? `${why} (${ms} ms)` : `ok (${ms} ms)`;
-    if (failed) select('log');
+    select(failed ? 'log' : userPane);
 
     running = false;
     $('run').textContent = 'Run';
@@ -201,6 +201,8 @@ function popOut() {
 
 window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layoutGraph(); });
 
+let userPane = 'graph'; // the tab that was picked by hand; showing the Log of a failing run does not count
+
 function select(pane) {
     for (const tab of document.querySelectorAll('#tabs button')) {
         const on = tab.dataset.pane === pane;
@@ -240,7 +242,9 @@ async function setupEditor(initial) {
                 view.highlightActiveLine(),
                 view.drawSelection(),
                 commands.history(),
-                view.keymap.of([...commands.defaultKeymap, ...commands.historyKeymap]),
+                language.indentUnit.of('    '),
+                // Tab moves the focus unless it is bound; Esc first still lets a keyboard user out.
+                view.keymap.of([...commands.defaultKeymap, ...commands.historyKeymap, commands.indentWithTab]),
                 language.syntaxHighlighting(language.HighlightStyle.define(
                     Object.entries(CLASS).map(([kind, cls]) => ({ tag: tokens[kind], class: cls })))),
                 language.StreamLanguage.define(mimMode(tokens)),
@@ -347,7 +351,8 @@ $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 $('mim-opts').onchange = run;
 $('popout').onclick = popOut;
-for (const tab of document.querySelectorAll('#tabs button')) tab.onclick = () => select(tab.dataset.pane);
+for (const tab of document.querySelectorAll('#tabs button'))
+    tab.onclick = () => select(userPane = tab.dataset.pane);
 
 // darkmode-toggle.js owns the preference and the <html> class; the graph is baked by the compiler, so a
 // theme change - by click or by the system flipping underneath us - has to recompile.
