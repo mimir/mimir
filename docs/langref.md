@@ -242,7 +242,7 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I "=" e and*
         |  vis? "axm" axm
-        |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
+        |  vis? ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
 import ::= "import" | "plugin"
 and    ::= "and" I "=" e

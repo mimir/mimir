@@ -991,6 +991,8 @@ lam pool_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
 /// The `_impl` annexes `lower_tensor` re-applies to expand the derived operations above, together
 /// with the fold steps and access maps they read through.
 /// Most are a single `map_reduce` over a copy step — the operation itself lives in the access map.
+/// They are `priv`: the phase resolves them through the annex table, so no path from outside this
+/// plugin reaches them and the axioms above stay the only public spelling of these operations.
 ///
 /// The declaration order is load-bearing beyond the usual definition-before-use: `lower_tensor`
 /// resolves an `_impl` in the world it is *building*, so an impl must be declared before any annex
@@ -1013,7 +1015,7 @@ lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
 ///
 /// ### broadcast_in_dim_impl
 
-anx lam broadcast_in_dim_impl {T: *, r_in r_out: Nat}
+priv anx lam broadcast_in_dim_impl {T: *, r_in r_out: Nat}
     (s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (bid_map (s_in, index),) input;
@@ -1026,7 +1028,7 @@ lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine.I
 ///
 /// ### flip_impl
 
-anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
+priv anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
     map_reduce (s_in, s_in) (tensor_copy, ⊥: T)
         affine.id (flip_map s_in,) input;
 ///
@@ -1034,7 +1036,7 @@ anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in
 ///
 /// One output element: reads `index` at the output coordinate, then the source at that coordinate
 /// with axis `dim` replaced by the loaded value.
-anx lam gather_pointwise_elem_impl {T: *, r: Nat}
+priv anx lam gather_pointwise_elem_impl {T: *, r: Nat}
                                    (s_src: «r; Nat», s_idx: «r; Nat»)
                                    (dim: Idx r)
                                    (out_indices: «r; I64»)
@@ -1049,7 +1051,7 @@ anx lam gather_pointwise_elem_impl {T: *, r: Nat}
 /// ### map_impl
 ///
 /// A `map_reduce` whose fold step drops the accumulator and applies `app` to the element tuple.
-anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
+priv anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
                      (app: «i: ni; Is#i» → T)
                      {r: Nat, s: «r; Nat»}
                      (is: «i: ni; «s; Is#i» »)
@@ -1079,7 +1081,7 @@ lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; affine.Index»): «4; a
 ///
 /// ### pool_impl
 
-anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
+priv anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
                       (kernel stride dilation padding s_out: «2; Nat»)
                       (input: «n, c, h, w; T»)
                     : «n, c, s_out#0_2, s_out#1_2; T» =
@@ -1106,7 +1108,7 @@ lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine
 ///
 /// ### repeat_impl
 
-anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+priv anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (repeat_map s_in,) input;
 ///
@@ -1119,7 +1121,7 @@ anx lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat�
 ///
 /// ### reshape_impl
 
-anx lam reshape_impl {T: *, r_in r_out: Nat}
+priv anx lam reshape_impl {T: *, r_in r_out: Nat}
                          (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (reshape_map (s_in, s_out),) input;
@@ -1142,7 +1144,7 @@ lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; affine.Index»): «4; a
 ///
 /// ### conv_impl
 
-anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
+priv anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
                       (stride dilation padding: «2; Nat»)
                       (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
                     : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
@@ -1211,7 +1213,7 @@ pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Id
 ///   identity for the neutral split, and absorbed into the consumers' access maps by `fuse_tensor`'s
 ///   read-through in a fused graph.
 
-anx lam dot_product_impl
+priv anx lam dot_product_impl
   (fastest_2: Nat)
   (R: Ring) (r1 r2: Nat) {nc nb: Nat}
   (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
@@ -1260,7 +1262,7 @@ anx lam dot_product_impl
 /// ### bmm_impl
 ///
 /// The `{r1 r2}`/`{s1 s2}` groups are explicit for the same reason as in `product_2d_impl`.
-anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
+priv anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
         = dot_product_impl fastest_2 R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
 ///
 /// ### product_2d_impl
@@ -1271,16 +1273,16 @@ anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; R#T»
 /// With the ranks still unsolved Holes the `vec.diff`/`vec.fold.l` subscript machinery is built over
 /// non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the Hole%s
 /// are resolved: the result type-checks but carries the whole `vec.*` scaffolding inside its access
-/// maps (`refly.struc.e` in `lit/tensor/dot_product.mim` pins this down).
+/// maps (`lit/tensor/dot_product.mim` pins this down).
 /// Passing literals up front folds it away.
-anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
+priv anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
         = dot_product_impl fastest_2 R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
 ///
 /// ### scatter_step_impl
 ///
 /// One update: reads `index` and `updates` at the visited coordinate and inserts the element into the
 /// accumulated tensor at the destination it selects.
-anx lam scatter_step_impl {T: *, r: Nat}
+priv anx lam scatter_step_impl {T: *, r: Nat}
                           (s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»)
                           (dim: Idx r)
                           (visit_indices: «r; I64»)
@@ -1302,7 +1304,7 @@ lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; affine.Index»): «r; a
 ///
 /// ### slice_impl
 
-anx lam slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
+priv anx lam slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
                        (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
     map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
         affine.id (slice_map (start, step),) input;
@@ -1314,7 +1316,7 @@ lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; affine.Index»): «r; a
 ///
 /// ### transpose_impl
 
-anx lam transpose_impl {T: *, r: Nat}
+priv anx lam transpose_impl {T: *, r: Nat}
                            (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
                          : «transpose_shape (s, permutation); T»
                          = let out_s = transpose_shape (s, permutation);
@@ -1324,25 +1326,25 @@ anx lam transpose_impl {T: *, r: Nat}
 /// ### transpose_2d_impl
 ///
 /// `transpose_impl` at the swap permutation.
-anx lam transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
+priv anx lam transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
   transpose_impl (tt, ff) input;
 ///
 /// ### binary_impl
 ///
 /// `map_impl` over two tensors.
-anx lam binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [«s; Ti1», «s; Ti2»]): «s; To» =
+priv anx lam binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [«s; Ti1», «s; Ti2»]): «s; To» =
   map_impl app is;
 ///
 /// ### select_impl
 ///
 /// `map_impl` of `core.select` over three tensors.
-anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
+priv anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
   map_impl core.select is;
 ///
 /// ### unary_impl
 ///
 /// `map_impl` over one tensor.
-anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
+priv anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
   map_impl app i;
 ///
 /// ## Phases

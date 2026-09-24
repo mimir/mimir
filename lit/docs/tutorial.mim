@@ -217,8 +217,8 @@ axm Curried: [Nat, Nat] → *, 1;                                 // … and a c
 /// ## Rules
 mod rewrites {
     use core.ops.n;
-    rule dbl (a: Nat): (a + a) => (a * 2);              // a rewrite rule
-    norm zro (a: Nat): (a * 0) when (a == a) => 0;      // its normalizing variant
+    pub rule dbl (a: Nat): (a + a) => (a * 2);          // a rewrite rule, visible outside `rewrites`
+    norm zro (a: Nat): (a * 0) when (a == a) => 0;      // its normalizing variant, `priv` by default
 }
 /// @todo First-class rules are WIP and you can't really do anything useful with them yet.
 ///
