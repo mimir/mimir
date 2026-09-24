@@ -42,11 +42,10 @@ def patch_workflow(workflow_file: Path, output_file: Path, plugin: str) -> None:
         content
     )
 
-    # Fix working directories and cmake paths
-    content = content.replace('${{github.workspace}}/build', 'mimir/build')
-    content = content.replace('${{github.workspace}}', 'mimir')
-    content = re.sub(r'-B mimir(?!/)', '-B build', content)
-    content = content.replace('cmake -B build/build', 'cmake -B build')
+    # Run every step inside the mimir checkout and anchor absolute paths there as well.
+    content = re.sub(r'^(    steps:)$', r'    defaults:\n      run:\n        working-directory: mimir\n\n\1', content, count=1, flags=re.MULTILINE)
+    content = content.replace('${{github.workspace}}', '${{github.workspace}}/mimir')
+    content = content.replace('$GITHUB_WORKSPACE', '$GITHUB_WORKSPACE/mimir')
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(content)
