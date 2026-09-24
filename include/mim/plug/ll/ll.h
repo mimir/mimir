@@ -40,7 +40,7 @@ class World;
 
 namespace plug::ll {
 
-/// Prefix for this backend's fe::throwf messages; concatenate it with the format literal.
+/// Prefix for this backend's diagnostics; concatenate it with the format literal.
 /// @note Not usable with the Def::expect family: those take the *inner* "what was expected" description.
 #define MIM_LL_BE "ll backend: "
 
@@ -55,7 +55,7 @@ inline const char* math_suffix(const Def* type) {
             case 64: return "";
         }
     }
-    fe::throwf(MIM_LL_BE "unsupported floating-point type `{}`", type);
+    type->blame(MIM_LL_BE "unsupported floating-point type `{}`", type).bail();
 }
 
 inline const char* llvm_suffix(const Def* type) {
@@ -66,7 +66,7 @@ inline const char* llvm_suffix(const Def* type) {
             case 64: return ".f64";
         }
     }
-    fe::throwf(MIM_LL_BE "unsupported floating-point type `{}`", type);
+    type->blame(MIM_LL_BE "unsupported floating-point type `{}`", type).bail();
 }
 
 // [mem.M 0, T] => T
@@ -434,7 +434,7 @@ inline void Emitter::visit(const Nest& nest) {
     auto old_size = lam2bb_.size();
 
     if (!root()->ret_var())
-        fe::throwf(MIM_LL_BE "top-level function `{}` not a continuation with a return continuation", root());
+        root()->blame(MIM_LL_BE "top-level function is not a continuation with a return continuation").bail();
 
     prepare();
 
@@ -445,9 +445,10 @@ inline void Emitter::visit(const Nest& nest) {
         if (auto lam = mut->isa<Lam>()) {
             curr_lam_ = lam;
             if (lam != root() && !Lam::isa_basicblock(lam))
-                fe::throwf(MIM_LL_BE "`{}` is neither the entry nor a basic block of `{}`; it needs a phase that "
+                lam->blame(MIM_LL_BE "neither the entry nor a basic block of `{}`; it needs a phase that "
                                      "removes higher-order functions first",
-                           lam, root());
+                           root())
+                    .bail();
             emit_epilogue(lam);
         }
     }
