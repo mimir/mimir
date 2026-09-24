@@ -118,15 +118,21 @@ int compile(Driver& driver, Opts& opts) {
         }
 
         file->compile(ast);
+        std::exception_ptr opt_error;
         if (opts.no_opt)
             Cleanup(world).run(); // resolves the Hole%s elaboration solved, as optimize would first
         else
-            optimize(world);
+            try {
+                optimize(world);
+            } catch (...) {
+                opt_error = std::current_exception(); // still emit the world the failing phase saw
+            }
 
         if (auto s = outs[Dot].os()) world.dot(*s, opts.dot);
         if (auto s = outs[Mim].os()) world.dump(*s);
         if (auto s = outs[NestDot].os()) mim::Nest(world).dot(*s);
         if (auto s = outs[Profile].os()) emit_profile(driver, *s);
+        if (opt_error) std::rethrow_exception(opt_error);
     } catch (const Error::Bail& e) {
         std::cerr << e;
         return EXIT_FAILURE;
