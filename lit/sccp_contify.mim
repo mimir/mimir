@@ -1,0 +1,30 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin compile;
+
+use core.ops.n;
+
+// Both calls to `g` return to `k`, so the ret var is propagated away and `g` becomes a continuation inside `f`.
+// fun g y = y - 1
+// fun f b = (if b then g 13 else g 15) + 1
+extern fun f (b: Bool): Nat =
+    (l2, l1)#b () where
+        con l1 () = g (13, k);
+        con l2 () = g (15, k);
+        fun g (y: Nat): Nat = return (y - 1);
+        con k (x: Nat) = return (x + 1);
+    end;
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.beta_red,
+        compile.sccp,
+    );
+
+// CHECK-NOT:  fun g
+// CHECK:      extern fun f (b: Bool): Nat =
+// CHECK-DAG:  con g ({{[[:alnum:]_]+}}: Nat) =
+// CHECK-DAG:  con k ({{[[:alnum:]_]+}}: Nat) =
+// CHECK-DAG:  g 13;
+// CHECK-DAG:  g 15;
+// CHECK-NOT:  fun g

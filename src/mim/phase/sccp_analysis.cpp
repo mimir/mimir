@@ -1,4 +1,4 @@
-#include "sccp.h"
+#include "mim/phase/sccp.h"
 
 namespace mim {
 
