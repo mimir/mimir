@@ -398,7 +398,8 @@ void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}: {}", is_norm() ? Tag::K_norm : Tag::K_rule, dbg(), S(tab, var()), S(tab, lhs()));
+    std::print(os, "{}{} {} {}: {}", mods(), is_norm() ? Tag::K_norm : Tag::K_rule, dbg(), S(tab, var()),
+               S(tab, lhs()));
     if (auto tt = guard()->isa<PrimaryExpr>(); !tt || tt->tag() != Tag::K_tt)
         std::print(os, " when {}", S(tab, guard()));
     std::print(os, " => {};", S(tab, rhs()));

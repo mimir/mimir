@@ -802,6 +802,8 @@ Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "rewrite rule");
+    if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a rewrite rule");
     auto is_norm = lex().tag() == Tag::K_norm;
     auto dbg     = parse_id("rewrite rule");
     auto ptrn    = parse_ptrn({}, "meta variables in rewrite rule");
