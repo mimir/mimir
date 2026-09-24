@@ -1212,8 +1212,15 @@ private:
 /// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
 class RuleDecl : public ValDecl {
 public:
-    RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn> var, Ptr<Expr> lhs, Ptr<Expr> rhs, Ptr<Expr> guard, bool is_normalizer)
-        : ValDecl(loc)
+    RuleDecl(Loc loc,
+             Mods mods,
+             Dbg dbg,
+             Ptr<Ptrn> var,
+             Ptr<Expr> lhs,
+             Ptr<Expr> rhs,
+             Ptr<Expr> guard,
+             bool is_normalizer)
+        : ValDecl(loc, mods)
         , dbg_(dbg)
         , var_(var)
         , lhs_(lhs)
