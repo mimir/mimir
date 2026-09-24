@@ -88,10 +88,12 @@ _ASCII_ is `-a`, which is a global flag rather than a Mim-only one: it swaps the
 The _vi_ box in the editor bar switches the editor to vi keybindings — [@replit/codemirror-vim](https://github.com/replit/codemirror-vim), fetched from a CDN the first time you tick it.
 The bar below the editor shows the mode and takes `:` commands; `:w` runs the program, which is the only thing there is to write to.
 The box is remembered across reloads, and it is gone altogether when the editor falls back to a plain textarea because CodeMirror did not load.
+`Ctrl-W` is not among the insert-mode keys that reach the editor: the browser reserves it for closing the tab, and no page can take it back.
 
 A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/?src=plugin%20core%3B%0Ause%20core.ops.u.w%3B%0A%0Aextern%20fun%20inc%20(x%3A%20I32)%3A%20I32%20%3D%20return%20(x%20%2B%201I32)%3B%0A) increments an `I32`.
 Percent-encode it — `encodeURIComponent` in the browser's console produces exactly what the page expects; a `+` stands for itself and is *not* a space.
 The picker keeps such a program under _(custom)_, so loading an example does not lose it.
+The buffer itself is kept in `localStorage` on every pause in typing and comes back under _(custom)_ on the next visit, with a `?src=` link taking precedence; leaving the page with a buffer that is not an example asks for confirmation first.
 Every Mim snippet in these docs is a link of that kind: hover it and the ▶ button next to the copy button opens it here.
 
 The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/), and its checkboxes are exactly the CLI's `--dot-*` switches:

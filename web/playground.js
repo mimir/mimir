@@ -7,10 +7,12 @@ const status = $('status');
 // Written by web/CMakeLists.txt from the list that stages the examples.
 const EXAMPLES = await fetch('examples/index.json').then(r => r.json());
 
+let loaded = ''; // the example the editor shows; a link or a restored draft is the user's own program
+
 // The `RUN:`/`CHECK:` lines make these lit tests; they are noise in the editor.
 const example = name => fetch(`examples/${name}.mim`)
     .then(r => r.text())
-    .then(text => text.replace(/^\/\/ (RUN|CHECK[\w-]*):.*\n/gm, '').trim() + '\n');
+    .then(text => loaded = text.replace(/^\/\/ (RUN|CHECK[\w-]*):.*\n/gm, '').trim() + '\n');
 
 // Only terminate() stops a wasm loop that never returns, and only a Worker can be terminated.
 const LOAD_TIMEOUT = 60_000; // the first run also pays for the 2.4MB download
@@ -222,6 +224,22 @@ function setSource(text) {
     else $('source').value = text;
 }
 
+// Ctrl+W is a reserved browser shortcut - an accidental one cannot be intercepted, only survived.
+const DRAFT_KEY = 'mim-playground-draft';
+const dirty = () => getSource() !== loaded;
+
+function save() {
+    if (dirty()) localStorage.setItem(DRAFT_KEY, getSource());
+    else localStorage.removeItem(DRAFT_KEY);
+}
+
+window.addEventListener('beforeunload', e => {
+    save();
+    if (!dirty()) return;
+    e.preventDefault();
+    e.returnValue = true; // Chrome/Edge < 119 ignore preventDefault here.
+});
+
 // One copy of @codemirror/state must back every extension, so import the packages individually from
 // a CDN that shares dependencies; `+esm` bundles ship a private copy each and break instanceof.
 async function setupEditor(initial) {
@@ -297,7 +315,7 @@ function mimMode(tokens) {
 let timer = 0;
 function schedule() {
     clearTimeout(timer);
-    timer = setTimeout(run, 500);
+    timer = setTimeout(() => { save(); run(); }, 500);
 }
 
 // Read raw: URLSearchParams would turn a `+` operator into a space.
@@ -338,7 +356,7 @@ async function share() {
     setTimeout(() => (btn.textContent = 'Share'), 1500);
 }
 
-const custom = urlSource();
+const custom = urlSource() ?? localStorage.getItem(DRAFT_KEY);
 const picker = $('examples');
 if (custom !== null) picker.add(new Option('(custom)', ''));
 for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
