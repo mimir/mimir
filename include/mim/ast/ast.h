@@ -936,15 +936,15 @@ private:
     Ptr<Expr> body_;
 };
 
-/// `«body»` or `‹body›` if SingleExpr::is_wrap.
+/// `«body»` or `‹body›` if SingleExpr::is_narrow.
 class SingleExpr : public Expr {
 public:
-    SingleExpr(Loc loc, bool is_wrap, Ptr<Expr> body)
+    SingleExpr(Loc loc, bool is_narrow, Ptr<Expr> body)
         : Expr(loc)
-        , is_wrap_(is_wrap)
+        , is_narrow_(is_narrow)
         , body_(body) {}
 
-    bool is_wrap() const { return is_wrap_; }
+    bool is_narrow() const { return is_narrow_; }
     const Expr* body() const { return body_.get(); }
 
     void bind(Scopes&) const override;
@@ -953,7 +953,7 @@ public:
 private:
     const Def* emit_(Emitter&) const override;
 
-    bool is_wrap_;
+    bool is_narrow_;
     Ptr<Expr> body_;
 };
 
@@ -1035,6 +1035,29 @@ public:
 private:
     Ptr<Ptrn> ptrn_;
     Ptr<Expr> value_;
+};
+
+/// `nom dbg = type;` - a nominal newtype; always `anx`.
+class NomDecl : public ValDecl {
+public:
+    NomDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr> type)
+        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
+        , dbg_(dbg)
+        , type_(type) {}
+
+    Dbg dbg() const override { return dbg_; }
+    const Expr* type() const { return type_.get(); }
+
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
+
+private:
+    Dbg dbg_;
+    Ptr<Expr> type_;
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
 };
 
 /// `axm dbg: type, normalizer, curry, trip;`

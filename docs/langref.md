@@ -60,7 +60,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 - `.` is the separator of a [path](@ref path), e.g. `affine.Idx` or `core.nat.rem`.
 - `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `<<`, and `>>` are [infix operators](@ref infix).
-- `#` is an infix operator after an expression and a prefix one everywhere else; see [Singletons](@ref single).
+- `#` is an infix operator after an expression and a prefix one everywhere else; see [Singletons](@ref single) and [Nominal Newtypes](@ref nominal).
 
 #### Secondary Terminals
 
@@ -81,7 +81,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
 and anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod
-norm plugin priv pub rec ret rule tt use when where with
+nom norm plugin priv pub rec ret rule tt use when where with
 ```
 
 </div>
@@ -241,6 +241,7 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I "=" e and*
+        |  vis? "nom" I "=" e
         |  vis? "axm" axm
         |  ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
@@ -274,6 +275,7 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   Its body must be a sigma, a [variant](@ref variant), or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
 - After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
+- `nom` declares a [nominal newtype](@ref nominal).
 - `axm` declares an axiom.
   A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
   Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
@@ -285,7 +287,7 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 
 - `anx` marks a declaration as an [annex](@ref annex).
   It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
-  `axm` is implicitly `anx` and may not combine with `extern`.
+  `axm` and `nom` are implicitly `anx` and may not combine with `extern`.
 - `extern` is currently only meaningful on a `lam`/`con`/`fun` declaration and makes it
   - **with a body** a root of the `World` that stays reachable through `Cleanup`.
     Backends emit it under its source name with external linkage, so other translation units can call it, whereas a non-`extern` function gets a mangled name and internal linkage.
@@ -567,6 +569,23 @@ e   ::= "«" e "»"
 - Because `#` is also the [Extract](@ref prod) operator, it is a prefix only where an expression starts:
   `f #x` extracts rather than applies, so pass a singleton as `f (#x)`.
 
+#### Nominal Newtypes {#nominal}
+
+A `nom` declaration is the one place where Mim is not structurally typed: two `nom`s over the same underlying type are still distinct types.
+
+- `nom I = e` declares `I` as a fresh type that wraps `e`; it is implicitly `anx`, and it is that [annex](@ref annex) identity - not the shape of `e` - that tells two `nom`s apart.
+- `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
+- Wrapping and unwrapping are private to the file that declares the `nom`, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
+
+```mim
+nom Meter = I32;
+nom Foot  = I32;
+
+lam to_foot (m: Meter): Foot = #m inj Foot; // Meter and Foot do not unify
+```
+
+@note A `--output-mim` dump flattens a program into one file, so a wrapping that an inliner carried across a module boundary lands in a dump that no longer re-parses.
+
 #### Infix Operators {#infix}
 
 ```ebnf
@@ -804,6 +823,10 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 - `#x` -> `e` for every `x: «e»` - the inhabitant is read off the *type*, so the var of a `λ (x: «e»)` never occurs in the body
 - `#‹e›` -> `e` - a special case of the above; a singleton elimination is therefore never built
+
+### Nominal Newtypes
+
+- `#(e inj T)` -> `e`; on an opaque value the unwrapping stays
 
 ### Universes
 

@@ -370,6 +370,12 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     return annex;
 }
 
+void NomDecl::bind(Scopes& s) const {
+    type()->bind(s);
+    annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    s.bind(dbg(), this);
+}
+
 void AxmDecl::bind(Scopes& s) const {
     type()->bind(s);
 

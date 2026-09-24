@@ -54,6 +54,17 @@ struct Ctx {
     std::string mod;  ///< `<mod>.` while declaring the Axm%s of that `mod`, which does not see its own name.
 };
 
+/// The name an annex prints by: the dumped file's own annexes drop the `<file>.` - and the `<mod>.` - prefix.
+std::string annex_sym(Ctx* ctx, const Def* def) {
+    auto def_sym = def->sym(); // a short Sym is stored inline, so its view must not outlive it
+    auto sym     = def_sym.view();
+    if (ctx && !ctx->self.empty() && sym.starts_with(ctx->self)) {
+        sym.remove_prefix(ctx->self.size());
+        if (!ctx->mod.empty() && sym.starts_with(ctx->mod)) sym.remove_prefix(ctx->mod.size());
+    }
+    return std::string(sym);
+}
+
 std::string pick_name(Ctx* ctx, const Def* def) {
     auto sym  = def->sym();
     auto base = sym && sym != '_' && ast::Lexer::is_id(sym.view()) ? sym.str() : "_"s;
@@ -124,6 +135,8 @@ Prec def2prec(const Def* def) {
             return variant->op(inj->index()) == def->world().sigma() ? Prec::Extract : Prec::App;
         return Prec::Inj;
     }
+    if (def->isa<Wrap>()) return Prec::Inj;
+    if (def->isa<Unwrap>()) return Prec::Prefix;
     if (def->isa<Variant>()) return Prec::Lit; // always parenthesized
     if (def->isa<Reform>()) return Prec::App;
     // `Cn e` parses its domain at Prec::Bot, so it swallows whatever follows and only ever fits a closed context.
@@ -482,14 +495,8 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "Idx");
     } else if (auto ext = d->isa<Ext>()) {
         return std::print(os, "{}:{}", ext->isa<Bot>() ? bot : top, d.r(ext->type(), Prec::Lit));
-    } else if (auto axm = d->isa<Axm>()) {
-        auto axm_sym = axm->sym(); // a short Sym is stored inline, so its view must not outlive it
-        auto sym     = axm_sym.view();
-        if (auto ctx = d.ctx(); ctx && !ctx->self.empty() && sym.starts_with(ctx->self)) {
-            sym.remove_prefix(ctx->self.size());
-            if (!ctx->mod.empty() && sym.starts_with(ctx->mod)) sym.remove_prefix(ctx->mod.size());
-        }
-        return std::print(os, "{}", sym);
+    } else if ((d->isa<Axm>() || d->isa<Nom>()) && d->sym()) {
+        return std::print(os, "{}", annex_sym(d.ctx(), *d));
     } else if (auto lit = d->isa<Lit>()) {
         if (lit->type()->isa<Nat>()) {
             // clang-format off
@@ -630,10 +637,14 @@ void full(std::ostream& os, Full d) {
             return std::print(os, "{} {}", ctor, d.r(inj->value(), Prec::App));
         }
         return std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
+    } else if (auto wrap = d->isa<Wrap>()) {
+        return std::print(os, "{} inj {}", d.l(wrap->value(), Prec::Inj), d.r(wrap->nom(), Prec::Inj));
+    } else if (auto unwrap = d->isa<Unwrap>()) {
+        return std::print(os, "#{}", d.r(unwrap->value(), Prec::Prefix));
     } else if (auto single = d->isa<Single>()) {
         return std::print(os, "{}{}{}", al, d.op(single->op()), ar);
-    } else if (auto wrap = d->isa<Wrap>()) {
-        return std::print(os, "{}{}{}", pl, d.op(wrap->op()), pr);
+    } else if (auto narrow = d->isa<Narrow>()) {
+        return std::print(os, "{}{}{}", pl, d.op(narrow->op()), pr);
     } else if (auto match = d->isa<Match>();
                match && d.ctx() && match->num_arms() != 0 && d.ctx()->arms.contains(match->arm(0))) {
         std::print(os, "match {} with", d.op(match->scrutinee()));
@@ -723,16 +734,20 @@ public:
         ctx_.taken.insert(reserved.begin(), reserved.end());
     }
 
-    /// Declares the Axm%s of the dumped file itself as `axm`s, grouped into the `mod` their @p names nest them in.
-    void dump_axms(std::string self, std::span<const std::pair<std::string, const Axm*>> axms) {
-        ctx_.self = std::move(self);
-        for (auto [_, axm] : axms)
-            for (auto mut : axm->type()->local_muts())
+    /// `<world name>.`: the prefix the dumped file's own annexes are spelled without.
+    void self(std::string self) { ctx_.self = std::move(self); }
+
+    /// Declares the annexes of the dumped file itself - Axm%s as `axm`s, Nom%s as `nom`s - grouped into the
+    /// `mod` their @p names nest them in.
+    void dump_annexes(std::span<const std::pair<std::string, const Def*>> annexes) {
+        auto content = [](const Def* def) { return def->isa<Axm>() ? def->type() : def->as<Nom>()->op(); };
+        for (auto [_, annex] : annexes)
+            for (auto mut : content(annex)->local_muts())
                 if (isa_decl(mut)) dump_muts(mut);
 
         sep(Prev::Decl);
         std::string_view curr_mod;
-        for (auto [name, axm] : axms) {
+        for (auto [name, annex] : annexes) {
             auto view = std::string_view(name);
             auto dot  = view.find('.');
             auto mod  = dot == std::string_view::npos ? std::string_view() : view.substr(0, dot);
@@ -742,8 +757,13 @@ public:
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
-            std::print(os_, "{}axm {}: {}", ctx_.tab, mod.empty() ? view : view.substr(dot + 1),
-                       Op(&ctx_, axm->type()));
+            auto id = mod.empty() ? view : view.substr(dot + 1);
+            if (auto nom = annex->isa<Nom>()) {
+                std::println(os_, "{}nom {} = {};", ctx_.tab, id, Op(&ctx_, nom->op()));
+                continue;
+            }
+            auto axm = annex->as<Axm>();
+            std::print(os_, "{}axm {}: {}", ctx_.tab, id, Op(&ctx_, axm->type()));
             auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
             if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
             if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
@@ -1188,27 +1208,28 @@ void World::dump(std::ostream& os) {
     // An `import` declares its own annexes; those of the dumped file itself only exist if the dump declares them.
     auto self = file_stem(*this) + ".";
     // Only a loaded plugin registers its annexes, so find them by what the externals reach.
-    auto axms = fe::Vector<std::pair<std::string, const Axm*>>();
-    auto todo = DefVec(externals().muts().begin(), externals().muts().end());
-    auto seen = DefSet(todo.begin(), todo.end());
+    auto annexes = fe::Vector<std::pair<std::string, const Def*>>();
+    auto todo    = DefVec(externals().muts().begin(), externals().muts().end());
+    auto seen    = DefSet(todo.begin(), todo.end());
     while (!todo.empty()) {
         auto def = todo.back();
         todo.pop_back();
-        if (auto axm = def->isa<Axm>(); axm && axm->sym().view().starts_with(self)) {
-            auto name = axm->sym().str().substr(self.size());
+        if ((def->isa<Axm>() || def->isa<Nom>()) && def->sym().view().starts_with(self)) {
+            auto name = def->sym().str().substr(self.size());
             reserved.emplace_back(name.substr(0, name.find('.')));
-            axms.emplace_back(std::move(name), axm);
+            annexes.emplace_back(std::move(name), def);
         }
         for (auto dep : def->deps())
             if (dep && seen.emplace(dep).second) todo.emplace_back(dep);
     }
-    std::ranges::sort(axms, {}, [](const auto& p) { return p.second->flags(); });
+    std::ranges::sort(annexes, {}, [](const auto& p) { return p.second->flags(); });
 
     // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
     auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
     auto dumper = Dumper(os, mode, flags().mim_typed_let, std::move(srcs));
     dumper.plain(reserved);
-    if (!axms.empty()) dumper.dump_axms(std::move(self), axms);
+    dumper.self(std::move(self));
+    if (!annexes.empty()) dumper.dump_annexes(annexes);
     for (auto mut : externals().muts())
         dumper.dump(mut);
 

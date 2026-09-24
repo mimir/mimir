@@ -1,0 +1,8 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by nomuse.mim - not a test of its own.
+
+nom Meter = I32;
+
+pub lam of_i32 (x: I32): Meter = x inj Meter;
+pub lam to_i32 (m: Meter): I32 = #m;

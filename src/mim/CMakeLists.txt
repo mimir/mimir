@@ -34,6 +34,7 @@ target_sources(libmim
         phase/eta_conv.cpp
         phase/branch_normalize.cpp
         phase/single_erasure.cpp
+        phase/nom_erasure.cpp
         phase/ret_wrap.cpp
         phase/unload.cpp
 )

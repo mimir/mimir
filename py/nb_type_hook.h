@@ -7,6 +7,7 @@
 #include "mim/def.h"
 #include "mim/lam.h"
 #include "mim/lattice.h"
+#include "mim/nominal.h"
 #include "mim/rule.h"
 #include "mim/tuple.h"
 #include "mim/union.h"

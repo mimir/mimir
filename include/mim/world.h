@@ -648,6 +648,13 @@ public:
     // clang-format on
     ///@}
 
+    /// @name Nominal Newtypes
+    ///@{
+    const Def* nominal(flags_t, const Def* type);      ///< Nominal newtype formation; @p flags are its annex flags.
+    const Def* wrap(const Def* nom, const Def* value); ///< Nominal newtype term introduction.
+    const Def* unwrap(const Def* value);               ///< Nominal newtype term elimination.
+    ///@}
+
     /// @name implicit_app - Cope with implicit Arguments
     /// Places Hole%s as demanded by Pi::is_implicit() and then apps @p arg.
     ///@{
@@ -705,8 +712,8 @@ public:
     /// @name Singletons
     ///@{
     const Def* single(const Def*); ///< Singleton type formation.
-    const Def* wrap(const Def*);   ///< Singleton term introduction.
-    const Def* unwrap(const Def*); ///< Singleton term elimination. @note There is no explicite Unwrap node.
+    const Def* narrow(const Def*); ///< Singleton term introduction.
+    const Def* widen(const Def*);  ///< Singleton term elimination. @note There is no explicite Widen node.
     ///@}
 
     /// @name Vars & Muts

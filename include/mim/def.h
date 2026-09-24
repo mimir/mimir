@@ -40,9 +40,10 @@
     X(Variant, Judge::Form)                                                                                        \
     X(Top,    Judge::Intro) X(Bot,   Judge::Intro)                                                                 \
     X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
-    X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
+    X(Single, Judge::Form ) X(Narrow, Judge::Intro)                                                                \
     X(Nat,    Judge::Form )                                                                                        \
-    X(Idx,    Judge::Intro)
+    X(Idx,    Judge::Intro)                                                                                        \
+    X(Nom,    Judge::Form ) X(Wrap,  Judge::Intro) X(Unwrap,  Judge::Elim)
 
 #define MIM_IMM_NODE(X)                                                                                            \
     X(Lit)                                                                                                         \
@@ -57,9 +58,10 @@
     X(Variant)                                                                                                     \
     X(Top)    X(Bot)                                                                                               \
     X(Reform) X(Rule)                                                                                              \
-    X(Single) X(Wrap)                                                                                              \
+    X(Single) X(Narrow)                                                                                            \
     X(Nat)                                                                                                         \
-    X(Idx)
+    X(Idx)                                                                                                         \
+    X(Nom)    X(Wrap)  X(Unwrap)
 
 #define MIM_MUT_NODE(X)                                                                                            \
     X(Global)                                                                                                      \
@@ -283,7 +285,8 @@ struct DotConfig {
 /// | Pi                | Lam               | App               |
 /// | Sigma / Arr       | Tuple / Pack      | Extract           |
 /// |                   | Insert            | Insert            |
-/// | Single            | Wrap              |                   |
+/// | Single            | Narrow            |                   |
+/// | Nom               | Wrap              | Unwrap            |
 /// | Join              | Inj               | Match             |
 /// | Variant           | Inj               | Match             |
 /// | Reform            | Rule              |                   |

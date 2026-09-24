@@ -20,6 +20,8 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
     lam = w.mut_con([b, i8])
     var = lam.var()
     join = w.join([b, i8])
+    nom = w.nominal(0x1000, i8)
+    nom_var = w.mut_con(nom).var() # an opaque value, so `unwrap` does not cancel a `wrap`
     return [
         (w.univ(), mim.Univ),
         (w.type(w.lit_univ_0()), mim.Type),
@@ -41,9 +43,12 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.top(i8), mim.Top),
         (w.mut_hole(i8), mim.Hole),
         (w.single(i8v), mim.Single),
-        (w.wrap(i8v), mim.Wrap),
+        (w.narrow(i8v), mim.Narrow),
         (w.inj(join, tt), mim.Inj),
         (w.variant([b, i8]), mim.Variant),
+        (nom, mim.Nom),
+        (w.wrap(nom, i8v), mim.Wrap),
+        (w.unwrap(nom_var), mim.Unwrap),
     ]
 
 
