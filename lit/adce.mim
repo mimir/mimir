@@ -1,0 +1,33 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin compile;
+
+use core.ops.n;
+
+extern fun dont_know []: Bool;
+extern fun take [Cn Nat]: [];
+
+// `d` and `e` only ever feed themselves and each other: dead.
+// `z`'s only use folds away: dead.
+// `unknown` escapes into `take` and hence keeps its unused param.
+extern fun f (x u: Nat): Nat =
+    head (x, 0, 0, u) where
+        con head (x d e z: Nat) =
+            ret c = dont_know $ ();
+            (exit, body)#c () where
+                con body () = next (x + 1, d + 1, e * d, z);
+                con next (x d e z: Nat) as xdez = back xdez;
+                con back (x d e z: Nat) = head (x, e, d, z);
+                con exit () =
+                    ret _ = take $ unknown;
+                    return (x + z * 0);
+            end;
+        con unknown (_: Nat) = return u;
+    end;
+
+extern lam _compile(): compile.Phase = compile.adce;
+
+// CHECK-DAG: con head ({{[[:alnum:]_]+}}: Nat) =
+// CHECK-DAG: con next ({{[[:alnum:]_]+}}: Nat) =
+// CHECK-DAG: con back ({{[[:alnum:]_]+}}: Nat) =
+// CHECK-DAG: con unknown (_: Nat) =

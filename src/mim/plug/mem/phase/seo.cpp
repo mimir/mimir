@@ -35,6 +35,13 @@ static const Def* eta_canon(const Def* def) {
 
 static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
+/// Is every free Var of @p def bound by @p mut or by a mutable that nests @p mut?
+static bool is_visible(const Def* def, Def* mut) {
+    for (auto fv : def->free_vars())
+        if (auto binder = fv->binder(); binder != mut && !binder->nests(mut)) return false;
+    return true;
+}
+
 /// Does @p lam's signature refer to its own binder's Var?
 /// Such a signature cannot be narrowed: dropping a component would tear its siblings off the binder.
 static bool is_dependent(Lam* lam) { return lam->type()->isa_mut() || lam->type()->dom()->isa_mut(); }
@@ -59,6 +66,17 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     auto cur = lattice(var);
     if (cur == var) return var; // ⊤ is final
 
+    // cur ⊔ ⊥ = cur, but a ⊥-site must see what var propagates.
+    // As ⊥ never restarts the join, cur is at worst last round's value; a quiet round thus checks the final one.
+    if (def->isa<Bot>()) {
+        if (!cur) return lattice(var, def), def;
+        if (auto caller = curr_mut(); caller && !is_visible(cur, caller)) {
+            log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, cur, caller);
+            return pin(var), var;
+        }
+        return cur;
+    }
+
     // Pin mem.M-typed vars to top: mem must stay threaded through every lam,
     // as later stages (clos conversion, ll backend) rely on each lam having its own mem var.
     if (Axm::isa<mem::M>(var->type())) return pin(var), var;
@@ -78,8 +96,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     if (cur && Proxy::isa<Proxy_SCCP_Top>(cur)) return cur;
     if (cur && isa_bundle(cur, lam)) return cur;
 
-    // First touch of `var` this round, including `cur == ⊥`: restart the join here.
-    // `⊥` must set `first_`, or the next site would discard this value and let a later one win instead of reaching ⊤.
+    // First touch of `var` this round: restart the join here.
     // Discarding what earlier sites contributed requires a round that revisits *every* `lam` call site;
     // apply_known() taints all of lam2callers_ whenever the abstract vars change, so the next round does.
     if (auto [_, ins] = first_.emplace(var); ins) {
@@ -91,7 +108,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // Every first_ insertion also writes the lattice, so past the first touch `cur` exists;
     // and it cannot be ⊤, as the `cur == var` check bailed out on entry.
     assert(cur && cur != var);
-    if (def->isa<Bot>() || cur == def) return cur;      // cur ⊔ ⊥ = cur; def ⊔ def = def
+    if (cur == def) return cur;                         // def ⊔ def = def
     if (cur->isa<Bot>()) return lattice(var, def), def; // ⊥ ⊔ def = def
 
     log().d("cannot propagate {} → {}; cur = {}; try GVN", var, def, cur);
@@ -279,6 +296,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 // The slot is ptr's *defining* site: mark first_ so the ⊥ joined below cannot restart it away.
                 fe::assert_emplace(first_, ptr);
                 lattice(ptr, sloxy);
+                sloxy2val(sloxy, world().bot(pointee(sloxy))); // a load before any store yields undef
                 // Treat the slot jump like an app of `ret_lam` so mem and existing phis flow across the edge.
                 // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
                 // this keeps the sloxy out of the abstract body, so it only survives if an unresolved
@@ -364,10 +382,11 @@ void SEO::Analysis::leave() {
 
 static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     if (!abstr) return true;                            // no info -> keep
-    if (old_var == abstr) return true;                  // top
+    if (old_var == abstr) return true;                  // ⊤       -> keep
+    if (abstr->isa<Bot>()) return false;                // ⊥       -> nuke
     if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
     if (auto bundle = isa_bundle(abstr, lam)) return bundle->op(1) == old_var; // use first in GVN bundle
-    return false;
+    return false;                                                              // normal var -> keep
 }
 
 void SEO::Analysis::finalize() {

@@ -1,9 +1,14 @@
 // RUN: %mim -p opt %s -o - --scalarize-threshold 8 | %FileCheck %s
 // RUN: %mim -p opt %s -o - --scalarize-threshold 2 | %FileCheck %s --check-prefix=KEEP
+plugin core;
 plugin tuple;
 plugin refly;
 
-con f (t: «2, 2; Nat», r: Cn Nat) = r t#(0:(Idx 2))#(1:(Idx 2));
+use core.ops.n;
+
+con f (t: «2, 2; Nat», r: Cn Nat) =
+    let ((a, b), (c, d)) = t;
+    r (a + b + c + d);
 
 extern con main(i: Idx 2, r: Cn Nat) =
     (f (((10, 20), (30, 40)), r), f (((50, 60), (70, 80)), r))#i;

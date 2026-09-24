@@ -25,6 +25,7 @@ target_sources(libmim
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp
+        phase/adce.cpp
         phase/lam_spec.cpp
         phase/optimize.cpp
         phase/scalarize.cpp
