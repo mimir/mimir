@@ -1,11 +1,12 @@
 #!/bin/sh
 # Diffs the keyword and terminal tables of `include/mim/ast/tok.h` against the downstream targets.
-# usage: check.sh [mimir-root]   (siblings: $VIM_MIM, $TS_MIM, default ../vim-mim, ../tree-sitter-mim)
+# usage: check.sh [mimir-root]   (siblings: $VIM_MIM, $TS_MIM, $VSC_MIM, default ../vim-mim, ../tree-sitter-mim, ../tree-sitter-mim-vscode)
 
 set -uf # `*` is a terminal, not a glob
 MIMIR=${1:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}
 VIM_MIM=${VIM_MIM:-$MIMIR/../vim-mim}
 TS_MIM=${TS_MIM:-$MIMIR/../tree-sitter-mim}
+VSC_MIM=${VSC_MIM:-$MIMIR/../tree-sitter-mim-vscode}
 
 TOK=$MIMIR/include/mim/ast/tok.h
 tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT
@@ -49,3 +50,11 @@ REF=$tmp/toks
 sed -n '/^#### Primary Terminals/,/^#### /p' "$MIMIR/docs/langref.md" | sed -n '/```text/,/```/p' \
     | grep -v '```' | tr -s ' \t' '\n' | grep . | grep -vx '<eof>' | sort -u > "$tmp/prim"
 report 'docs/langref.md - Primary Terminals' "$tmp/prim" both
+
+# a mapped capture that highlights.scm no longer emits is dead config
+grep -oP '@\K[\w.]+' "$TS_MIM/queries/highlights.scm" | sort -u > "$tmp/caps"
+python3 -c 'import json,sys; [print(k) for c in json.load(open(sys.argv[1])) if c["lang"] == "mim" for k in c.get("semanticTokenTypeMappings", {})]' \
+    "$VSC_MIM/language-configs.json" | sort -u > "$tmp/mapped"
+printf '\n== tree-sitter-mim-vscode/language-configs.json - mim captures ==\n'
+comm -13 "$tmp/caps" "$tmp/mapped" > "$tmp/new"
+[ -s "$tmp/new" ] && printf 'stale:   %s\n' "$(tr '\n' ' ' < "$tmp/new")" || printf 'in sync\n'
