@@ -66,6 +66,7 @@ header h1 {
     letter-spacing: .02em;
 }
 
+header h1 a { display: flex; }
 header h1 img { height: 1.75rem; }
 
 header .spacer { flex: 1; }
