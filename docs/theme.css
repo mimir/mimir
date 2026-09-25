@@ -1,0 +1,152 @@
+/* Farbwelt der Universität Göttingen: https://www.uni-goettingen.de/de/corporate+design/ */
+html {
+    --primary-color: #005f9b;
+    --primary-dark-color: #153268;
+    --primary-light-color: #50a5d2;
+    --primary-lightest-color: #d2e6fa;
+
+    --page-foreground-color: #3c3c3b;
+    --page-secondary-foreground-color: #575756;
+    --separator-color: #dadada;
+    --side-nav-background: #f6f5f1;
+
+    --code-background: #ededed;
+    --tablehead-background: #e7e1d8;
+    --blockquote-background: #f6f5f1;
+    --blockquote-foreground: #575756;
+
+    --warning-color: #fcf0d4;
+    --warning-color-dark: #eeb32a;
+    --warning-color-darker: #6b4c05;
+    --note-color: #d2e6fa;
+    --note-color-dark: #005f9b;
+    --note-color-darker: #153268;
+    --todo-color: #e9ddef;
+    --todo-color-dark: #45195c;
+    --todo-color-darker: #2b0f3a;
+    --deprecated-color: #ededed;
+    --deprecated-color-dark: #878787;
+    --deprecated-color-darker: #3c3c3b;
+    --bug-color: #f7d2d8;
+    --bug-color-dark: #c70d2d;
+    --bug-color-darker: #6b0718;
+    --invariant-color: #d5eae2;
+    --invariant-color-dark: #25795d;
+    --invariant-color-darker: #164a39;
+
+    --fragment-background: #f6f5f1;
+    --fragment-foreground: #3c3c3b;
+    --fragment-keyword: #b52141;
+    --fragment-keywordtype: #45195c;
+    --fragment-keywordflow: #c9692c;
+    --fragment-token: #25795d;
+    --fragment-comment: #878787;
+    --fragment-link: #2b7ab3;
+    --fragment-preprocessor: #0091c8;
+    --fragment-linenumber-color: #878787;
+    --fragment-linenumber-background: #ededed;
+    --fragment-linenumber-border: #dadada;
+}
+
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) {
+        --primary-color: #50a5d2;
+        --primary-dark-color: #d2e6fa;
+        --primary-light-color: #005f9b;
+        --primary-lightest-color: #153268;
+
+        --page-background-color: #1c1c1b;
+        --page-foreground-color: #ededed;
+        --page-secondary-foreground-color: #a3a3a3;
+        --separator-color: #3c3c3b;
+        --side-nav-background: #262625;
+
+        --code-background: #2e2e2d;
+        --tablehead-background: #2e2e2d;
+        --blockquote-background: #262625;
+        --blockquote-foreground: #a3a3a3;
+
+        --warning-color: #3a2d0a;
+        --warning-color-dark: #eeb32a;
+        --warning-color-darker: #f7dca0;
+        --note-color: #153268;
+        --note-color-dark: #50a5d2;
+        --note-color-darker: #d2e6fa;
+        --todo-color: #2a1238;
+        --todo-color-dark: #9b6fb5;
+        --todo-color-darker: #dcc8e8;
+        --deprecated-color: #3c3c3b;
+        --deprecated-color-dark: #878787;
+        --deprecated-color-darker: #dadada;
+        --bug-color: #3a0d17;
+        --bug-color-dark: #e0435f;
+        --bug-color-darker: #f5b3be;
+        --invariant-color: #11302a;
+        --invariant-color-dark: #4fae8a;
+        --invariant-color-darker: #c9eadc;
+
+        --fragment-background: #262625;
+        --fragment-foreground: #ededed;
+        --fragment-keyword: #f07e93;
+        --fragment-keywordtype: #c49be0;
+        --fragment-keywordflow: #fda642;
+        --fragment-token: #5fc49c;
+        --fragment-comment: #878787;
+        --fragment-link: #50a5d2;
+        --fragment-preprocessor: #7fcdea;
+        --fragment-linenumber-color: #a3a3a3;
+        --fragment-linenumber-background: #3c3c3b;
+        --fragment-linenumber-border: #1c1c1b;
+    }
+}
+
+/* Dark mode variables are defined twice, to support it with and without doxygen-awesome-darkmode-toggle.js. */
+html.dark-mode {
+    --primary-color: #50a5d2;
+    --primary-dark-color: #d2e6fa;
+    --primary-light-color: #005f9b;
+    --primary-lightest-color: #153268;
+
+    --page-background-color: #1c1c1b;
+    --page-foreground-color: #ededed;
+    --page-secondary-foreground-color: #a3a3a3;
+    --separator-color: #3c3c3b;
+    --side-nav-background: #262625;
+
+    --code-background: #2e2e2d;
+    --tablehead-background: #2e2e2d;
+    --blockquote-background: #262625;
+    --blockquote-foreground: #a3a3a3;
+
+    --warning-color: #3a2d0a;
+    --warning-color-dark: #eeb32a;
+    --warning-color-darker: #f7dca0;
+    --note-color: #153268;
+    --note-color-dark: #50a5d2;
+    --note-color-darker: #d2e6fa;
+    --todo-color: #2a1238;
+    --todo-color-dark: #9b6fb5;
+    --todo-color-darker: #dcc8e8;
+    --deprecated-color: #3c3c3b;
+    --deprecated-color-dark: #878787;
+    --deprecated-color-darker: #dadada;
+    --bug-color: #3a0d17;
+    --bug-color-dark: #e0435f;
+    --bug-color-darker: #f5b3be;
+    --invariant-color: #11302a;
+    --invariant-color-dark: #4fae8a;
+    --invariant-color-darker: #c9eadc;
+
+    --fragment-background: #262625;
+    --fragment-foreground: #ededed;
+    --fragment-keyword: #f07e93;
+    --fragment-keywordtype: #c49be0;
+    --fragment-keywordflow: #fda642;
+    --fragment-token: #5fc49c;
+    --fragment-comment: #878787;
+    --fragment-link: #50a5d2;
+    --fragment-preprocessor: #7fcdea;
+    --fragment-linenumber-color: #a3a3a3;
+    --fragment-linenumber-background: #3c3c3b;
+    --fragment-linenumber-border: #1c1c1b;
+}
