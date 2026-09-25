@@ -4,7 +4,7 @@
 const fs   = require('node:fs');
 const path = require('node:path');
 
-const OUTPUTS = ['/out.mim', '/out.ll', '/out.dot'];
+const OUTPUTS = ['/out.mim', '/out.ll', '/out.dot', '/out.nest'];
 
 async function main([dir, src]) {
     if (!dir || !src) throw new Error('usage: node smoke.js <dir holding mim.js> <source.mim>');
@@ -20,7 +20,8 @@ async function main([dir, src]) {
 
     M.FS.writeFile('/in.mim', fs.readFileSync(src, 'utf8'));
     const code = M.callMain(['/in.mim', '-P', '/mim', '-p', 'opt', '-p', 'll',
-                             '-X', 'll:o=/out.ll', '--output-dot', '/out.dot', '-o', '/out.mim']);
+                             '-X', 'll:o=/out.ll', '--output-dot', '/out.dot',
+                             '--output-nest', '/out.nest', '-o', '/out.mim']);
     if (code !== 0) {
         console.error(log.join('\n'));
         throw new Error(`mim exited with ${code}`);

@@ -284,19 +284,23 @@ void World::dot(std::ostream& os, DotConfig cfg) const {
  * Nest
  */
 
-void Nest::dot(const char* file) const {
+void Nest::dot(const char* file, DotConfig cfg) const {
     if (!file) {
-        dot(std::cout);
+        dot(std::cout, cfg);
     } else {
         auto of = std::ofstream(file);
-        dot(of);
+        dot(of, cfg);
     }
 }
 
-void Nest::dot(std::ostream& os) const {
+void Nest::dot(std::ostream& os, DotConfig cfg) const {
     auto tab = fe::Tab::spaces();
     std::println(os, "{}digraph {{", tab);
     ++tab;
+    if (cfg.dark) {
+        std::println(os, "{}bgcolor=\"transparent\";", tab);
+        std::println(os, "{}edge [color=\"{}\"];", tab, DARK_FG);
+    }
     std::println(os, "{}ordering=out;", tab);
     std::println(os, "{}node [shape=box,style=filled];", tab);
     root()->dot(tab, os);

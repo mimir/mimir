@@ -259,8 +259,9 @@ public:
     // clang-format on
 };
 
-/// Options for Def::dot and World::dot.
+/// Options for Def::dot, World::dot, and Nest::dot.
 /// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+/// Nest::dot only honors DotConfig::dark.
 struct DotConfig {
     int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
     bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).

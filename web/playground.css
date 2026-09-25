@@ -235,7 +235,7 @@ main {
 }
 
 /* A pane with an options bar scrolls in its body, not as a whole. */
-#pane-graph, #pane-mim { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+#pane-graph, #pane-nest, #pane-mim { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 #pane-mim pre { flex: 1; min-height: 0; overflow: auto; padding: .75rem; }
 
 .opts {
@@ -250,7 +250,7 @@ main {
 
 .opts label { white-space: nowrap; }
 
-#graph {
+.graph {
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -261,9 +261,9 @@ main {
     touch-action: none; /* otherwise a touch drag scrolls instead of panning */
 }
 
-#graph.grabbing { cursor: grabbing; }
+.graph.grabbing { cursor: grabbing; }
 
-#graph-nav {
+.graph-nav {
     position: absolute;
     right: .75rem;
     bottom: .75rem;
@@ -271,7 +271,7 @@ main {
     gap: .25rem;
 }
 
-#graph-nav button {
+.graph-nav button {
     min-width: 1.9rem;
     padding: .15rem .4rem;
     line-height: 1.3;
@@ -279,24 +279,24 @@ main {
     opacity: .7;
 }
 
-#graph-nav button:hover { opacity: 1; }
-#graph-nav button svg { display: block; width: 14px; height: 14px; fill: currentColor; }
+.graph-nav button:hover { opacity: 1; }
+.graph-nav button svg { display: block; width: 14px; height: 14px; fill: currentColor; }
 
-/* `graph.html` is the graph pane alone, so the body is what `#graph-nav` anchors to. */
+/* `graph.html` is the graph pane alone, so the body is what `.graph-nav` anchors to. */
 body.popout { position: relative; }
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
-#graph svg { display: block; width: 100%; height: 100%; }
+.graph svg { display: block; width: 100%; height: 100%; }
 
-#graph svg :is(.node, .edge) { transition: opacity .1s ease; }
-#graph svg.focus :is(.node, .edge) { opacity: .1; }
-#graph svg.focus :is(.node, .edge).on { opacity: 1; }
+.graph svg :is(.node, .edge) { transition: opacity .1s ease; }
+.graph svg.focus :is(.node, .edge) { opacity: .1; }
+.graph svg.focus :is(.node, .edge).on { opacity: 1; }
 
 /* A detached edge carries `stroke="none"`, and a presentation attribute loses to a rule - so lighting
    one up reveals exactly what `hidden edges` would otherwise need a recompile to show. */
-#graph svg .edge.on path { stroke: var(--accent); stroke-width: 2; }
-#graph svg .edge.on polygon { stroke: var(--accent); fill: var(--accent); }
-#graph svg .node.hub :is(polygon, polyline) { stroke: var(--accent); stroke-width: 3; }
+.graph svg .edge.on path { stroke: var(--accent); stroke-width: 2; }
+.graph svg .edge.on polygon { stroke: var(--accent); fill: var(--accent); }
+.graph svg .node.hub :is(polygon, polyline) { stroke: var(--accent); stroke-width: 3; }
 #pane-log pre { white-space: pre-wrap; }
 
 /* mim's terminal colours, mapped onto the pane; see showLog. */

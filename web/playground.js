@@ -74,7 +74,7 @@ async function run() {
     status.className = '';
     status.textContent = 'running…';
 
-    const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '--output-ast', '/out.ast', '-o', '/out.mim'];
+    const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '--output-nest', '/out.nest', '--output-ast', '/out.ast', '-o', '/out.mim'];
     for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
     if (dark) args.push('--dot-dark');
     for (const box of document.querySelectorAll('#mim-opts input[data-mim]:checked')) args.push(`--mim-${box.dataset.mim}`);
@@ -96,7 +96,7 @@ async function run() {
         if (res.out?.ll) showCode('ll', LlvmCode, res.out.ll);
         else if ($('optimize').checked) showCode('ll', null, '(the ll backend failed - see Log)');
         else showCode('ll', null, '(enable "optimize" to run the ll backend)');
-        await showGraph(res.out?.dot);
+        await Promise.all([layouts.graph.show(res.out?.dot), layouts.nest.show(res.out?.nest)]);
     } catch (e) {
         log.push((why = String(e?.message ?? e)));
     }
@@ -156,40 +156,59 @@ function showLog(text) {
 // Layout runs on the page, so a graph big enough to freeze it is refused.
 const MAX_DOT = 512 * 1024;
 
-const graph = new GraphView($('graph'), $('graph-nav'));
+// Laid out only while its pane is up or a pop-out is watching: layout blocks the editor.
+class Layout {
+    #pane;
+    #view;
+    #post;
+    #watched;
+    #dot = null;
+    #laidOut;          // the `dot` the pane already shows
+    svg = null;        // what came out of the layout, or null with `msg` saying why there is none
+    msg = '';
 
-let dot = null;  // laid out only while the Graph tab is up or a pop-out is watching: layout blocks the editor
-let laidOut;     // the `dot` the pane already shows
-let svg = null;  // what came out of the layout, or null with `msg` saying why there is none
-let msg = '';
+    constructor(pane, view, post = () => {}, watched = () => false) {
+        this.#pane = pane;
+        this.#view = view;
+        this.#post = post;
+        this.#watched = watched;
+    }
 
-async function showGraph(latest) {
-    dot = latest;
-    if (!$('pane-graph').hidden || poppedOut()) await layoutGraph();
-}
+    async show(latest) {
+        this.#dot = latest;
+        if (!this.#pane.hidden || this.#watched()) await this.layout();
+    }
 
-async function layoutGraph() {
-    if (dot === laidOut) return post();
-    laidOut = dot;
-    if (!dot) return render(null, '(no graph)');
-    if (dot.length > MAX_DOT) return render(null, `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`);
-    const graphviz = await graphvizReady;
-    if (dot !== laidOut) return; // superseded while Graphviz was still loading
-    render(graphviz.layout(dot, 'svg', 'dot'));
-}
+    async layout() {
+        const dot = this.#dot;
+        if (dot === this.#laidOut) return this.#post();
+        this.#laidOut = dot;
+        if (!dot) return this.#render(null, '(no graph)');
+        if (dot.length > MAX_DOT) return this.#render(null, `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`);
+        const graphviz = await graphvizReady;
+        if (dot !== this.#laidOut) return; // superseded while Graphviz was still loading
+        this.#render(graphviz.layout(dot, 'svg', 'dot'));
+    }
 
-function render(latest, why) {
-    svg = latest;
-    msg = why;
-    svg ? graph.render(svg) : graph.message(msg);
-    post();
+    #render(svg, msg) {
+        this.svg = svg;
+        this.msg = msg;
+        svg ? this.#view.render(svg) : this.#view.message(msg);
+        this.#post();
+    }
 }
 
 // The pop-out shows the very SVG this page laid out, so it needs neither Graphviz nor the compiler.
 let popout = null;
 const poppedOut = () => popout && !popout.closed;
 
+const layouts = {
+    graph: new Layout($('pane-graph'), new GraphView($('graph'), $('graph-nav')), post, poppedOut),
+    nest:  new Layout($('pane-nest'),  new GraphView($('nest'),  $('nest-nav'))),
+};
+
 function post() {
+    const { svg, msg } = layouts.graph;
     if (poppedOut()) popout.postMessage({ svg, msg, dark }, '*');
 }
 
@@ -198,7 +217,7 @@ function popOut() {
     popout = window.open('graph.html', 'mim-graph', 'popup,width=1000,height=800');
 }
 
-window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layoutGraph(); });
+window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layouts.graph.layout(); });
 
 let userPane = 'graph'; // the tab that was picked by hand; showing the Log of a failing run does not count
 
@@ -208,7 +227,7 @@ function select(pane) {
         tab.setAttribute('aria-selected', String(on));
         $(`pane-${tab.dataset.pane}`).hidden = !on;
     }
-    if (pane === 'graph') layoutGraph();
+    if (layouts[pane]) layouts[pane].layout();
     else if (pending[pane]) renderCode(pane);
 }
 

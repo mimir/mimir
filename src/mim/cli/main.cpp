@@ -130,7 +130,7 @@ int compile(Driver& driver, Opts& opts) {
 
         if (auto s = outs[Dot].os()) world.dot(*s, opts.dot);
         if (auto s = outs[Mim].os()) world.dump(*s);
-        if (auto s = outs[NestDot].os()) mim::Nest(world).dot(*s);
+        if (auto s = outs[NestDot].os()) mim::Nest(world).dot(*s, opts.dot);
         if (auto s = outs[Profile].os()) emit_profile(driver, *s);
         if (opt_error) std::rethrow_exception(opt_error);
     } catch (const Error::Bail& e) {

@@ -253,9 +253,9 @@ public:
     /// @name dot
     /// GraphViz output.
     ///@{
-    void dot(std::ostream& os) const;
-    void dot(const char* file = nullptr) const;
-    void dot(std::string s) const { dot(s.c_str()); }
+    void dot(std::ostream& os, DotConfig cfg = {}) const;
+    void dot(const char* file = nullptr, DotConfig cfg = {}) const;
+    void dot(std::string s, DotConfig cfg = {}) const { dot(s.c_str(), cfg); }
     ///@}
 
 private:
