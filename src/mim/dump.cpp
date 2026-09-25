@@ -45,9 +45,9 @@ struct Ctx {
     /// A Lam's codomain refers to its Pi's Var - or its dependent domain's - but only the Lam's Var is bound by name.
     DefMap<const Def*> aliases;
     /// Distinct identifiers picked instead of Def::unique_name, so a re-read dump keeps them as its Def::sym%s.
-    absl::flat_hash_set<std::string> taken;
-    absl::flat_hash_map<std::string, size_t> counters; ///< Next numbered variant to try per base name.
-    fe::Tab tab    = fe::Tab::spaces();                ///< Indentation of the line being printed.
+    ankerl::unordered_dense::set<std::string> taken;
+    ankerl::unordered_dense::map<std::string, size_t> counters; ///< Next numbered variant to try per base name.
+    fe::Tab tab    = fe::Tab::spaces();                         ///< Indentation of the line being printed.
     bool plain     = false;
     bool in_header = false;
     std::string self; ///< `<world name>.`: the dumped file's own annexes are spelled without it.
@@ -713,7 +713,7 @@ fe::Vector<Lam*> curry_chain(Lam* lam) {
 class Dumper {
 public:
     /// @p srcs are the files an `import` pulls in: they declare their own content, so a dump must not repeat it.
-    Dumper(std::ostream& os, Dump mode, bool typed_let = false, absl::flat_hash_set<const fe::Src*> srcs = {})
+    Dumper(std::ostream& os, Dump mode, bool typed_let = false, ankerl::unordered_dense::set<const fe::Src*> srcs = {})
         : os_(os)
         , mode_(mode)
         , typed_let_(typed_let)
@@ -1116,7 +1116,7 @@ private:
     MutSet open_; ///< On the schedule stack - a Def reaching one of these is recursive.
     MutSet recursive_;
     Ctx ctx_;
-    absl::flat_hash_set<const fe::Src*> srcs_;
+    ankerl::unordered_dense::set<const fe::Src*> srcs_;
     MutSet scheduled_;
 };
 
@@ -1163,7 +1163,7 @@ static std::string file_stem(World& world) { return (world.name() ? world.name()
 void World::dump(std::ostream& os) {
     auto _       = freeze();
     auto old_gid = curr_gid();
-    auto srcs    = absl::flat_hash_set<const fe::Src*>();
+    auto srcs    = ankerl::unordered_dense::set<const fe::Src*>();
     for (const auto& import : driver().imports())
         srcs.emplace(import.src);
     auto reserved = fe::Vector<std::string>{"return"};

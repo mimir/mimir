@@ -36,8 +36,8 @@ std::optional<fs::path> prefix_of(const fs::path& libmim_path) {
 std::optional<fs::path> path_to_libmim() { return fe::sys::path_to_lib((const void*)&mim_lib_anchor); }
 
 /// Function-local so that Driver::add_static_plugin works during static initialization.
-absl::flat_hash_map<std::string, Plugin (*)()>& static_plugins() {
-    static auto map = absl::flat_hash_map<std::string, Plugin (*)()>();
+fe::StrMap<Plugin (*)()>& static_plugins() {
+    static auto map = fe::StrMap<Plugin (*)()>();
     return map;
 }
 

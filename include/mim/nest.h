@@ -1,12 +1,11 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <stack>
-
-#include <absl/container/btree_map.h>
-#include <absl/container/btree_set.h>
 
 #include "mim/def.h"
 
@@ -87,7 +86,7 @@ public:
             auto end() { return mut2node_.end(); }
             Node* operator[](Def* mut) { return fe::lookup(mut2node_, mut); }
 
-            absl::btree_map<Def*, Node*, GIDLt<Def*>> mut2node_;
+            std::map<Def*, Node*, GIDLt<Def*>> mut2node_;
 
             friend class Nest;
         };
@@ -122,7 +121,7 @@ public:
             auto begin() { return nodes_.begin(); }
             auto end() { return nodes_.end(); }
 
-            absl::btree_set<Node*, GIDLt<Node*>> nodes_;
+            std::set<Node*, GIDLt<Node*>> nodes_;
 
             friend class Nest;
         };
@@ -147,7 +146,7 @@ public:
         ///@}
 
         /// Strongly Connected Component.
-        using SCC = absl::btree_set<const Node*, GIDLt<const Node*>>;
+        using SCC = std::set<const Node*, GIDLt<const Node*>>;
         /// @name SCCs
         /// [SCCs](https://en.wikipedia.org/wiki/Strongly_connected_component) for all children dependencies.
         /// @note The Nest::root() cannot be is_mutually_recursive() by definition.
@@ -192,7 +191,7 @@ public:
         SiblDeps<false> sibl_rev_deps_;
         Children children_;
         std::deque<std::unique_ptr<SCC>> topo_;
-        absl::btree_map<const Node*, const SCC*, GIDLt<const Node*>> SCCs_;
+        std::map<const Node*, const SCC*, GIDLt<const Node*>> SCCs_;
         mutable const Node* idom_ = nullptr;
         // Nodes higher up in dominator tree within same sibling layer have higher postorder numbers.
         // This property is used to efficiently find the correct node for late code placement via [Nest::lca].
@@ -285,7 +284,7 @@ private:
     }
 
     World& world_;
-    absl::btree_map<Def*, std::unique_ptr<Node>, detail::NullSafeDefGIDLt> mut2node_;
+    std::map<Def*, std::unique_ptr<Node>, detail::NullSafeDefGIDLt> mut2node_;
     Vars vars_;
     Node* root_;
     mutable bool siblings_ = false;

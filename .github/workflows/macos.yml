@@ -31,7 +31,7 @@ jobs:
 
       # The action hooks the compiler by prepending its symlink dir (cc, c++, clang, ...) to PATH,
       # but Configure below passes *absolute* paths into ${LLVM_PREFIX}/bin, which sidesteps those
-      # symlinks: ccache saw 2 calls and a 40 KB cache, i.e. every build here -- abseil included --
+      # symlinks: ccache saw 2 calls and a 40 KB cache, i.e. every build here
       # was compiled from scratch. CMAKE_{C,CXX}_COMPILER_LAUNCHER hooks it however it is spelled.
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1

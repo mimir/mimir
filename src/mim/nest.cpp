@@ -202,7 +202,7 @@ const Nest::Node* Nest::Node::calc_dominance() const {
     if (!inest()->mut()) idom_ = inest();
 
     // Holds all siblings in reverse post-order coming from the parent
-    absl::flat_hash_set<const Node*> visited;
+    ankerl::unordered_dense::set<const Node*> visited;
     fe::Vector<const Node*> nodes;
 
     // Initialize entry nodes directly referenced by the parent

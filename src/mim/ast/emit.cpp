@@ -118,7 +118,7 @@ private:
     }
 
     AST& ast_;
-    absl::node_hash_map<const Def*, fe::SymMap<size_t>, GIDHash<const Def*>> def2sym2idx_;
+    DefMap<fe::SymMap<size_t>> def2sym2idx_;
 };
 
 /*

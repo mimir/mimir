@@ -92,7 +92,7 @@ private:
         return v_ptr;
     }
 
-    absl::btree_map<std::string, int> symbols_;
+    std::map<std::string, int> symbols_;
     LamSet kernels_;
 
     bool uses_libdevice = false;

@@ -244,7 +244,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
 
         auto v_index = emit(dispatch.index());
         size_t n     = dispatch.num_targets();
-        auto bbs     = absl::FixedArray<std::string>(n);
+        auto bbs     = fe::Vector<std::string>(n);
         for (size_t i = 0; i != n; ++i)
             bbs[i] = emit(dispatch.target(i));
 

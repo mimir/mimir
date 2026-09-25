@@ -87,10 +87,10 @@ def _type_spelling(t) -> str:
 # `_mim.pyi`, so every parameter, return and field type is checked here first.
 
 # Implementation-detail namespaces (libstdc++ `__cxx11`, libc++ `__1` and `__fs`,
-# abseil's `lts_<date>`) differ per toolchain and must never reach a name we match
+# ankerl's `v<major>_<minor>_<patch>`) differ per toolchain and must never reach a name we match
 # on — nor an emitted one, where they would also pin the output to one library.
-_IMPL_NS = re.compile(r"^(?:__[A-Za-z0-9_]+|lts_\d+)$")
-_INLINE_NS = re.compile(r"\b(?:__[A-Za-z0-9_]+|lts_\d+)::")
+_IMPL_NS = re.compile(r"^(?:__[A-Za-z0-9_]+|v\d+_\d+_\d+)$")
+_INLINE_NS = re.compile(r"\b(?:__[A-Za-z0-9_]+|v\d+_\d+_\d+)::")
 
 
 def _canon_spelling(t) -> str:
@@ -235,7 +235,7 @@ def collect_bound_types(tu) -> None:
         for child in cursor.get_children():
             # A namespace or class cursor is one *reopening*, so it lies in a
             # single file: if that file is not bound, neither is anything it
-            # contains — which prunes all of `std::` and `absl::` right here.
+            # contains — which prunes all of `std::` and `ankerl::` right here.
             if child.kind not in _SCOPE_KINDS or not _decl_in_bound_header(child):
                 continue
             if child.kind != CursorKind.NAMESPACE and child.spelling:
@@ -1551,7 +1551,7 @@ def _clang_args(args, cc_entries: list | None, header_path: str) -> list:
     out += [f"-I{inc}" for inc in args.includes]
     out += _toolchain_includes()
 
-    # The header roots libmim, fe and abseil live under, plus the build tree's
+    # The header roots libmim, fe and ankerl live under, plus the build tree's
     # generated headers, are the single source of truth for *locating* headers.
     # compile_commands.json's own `-I` paths are deliberately not trusted: in the
     # `command`-string form CMake emits on Windows they are backslash paths that
@@ -1560,11 +1560,12 @@ def _clang_args(args, cc_entries: list | None, header_path: str) -> list:
     out += [
         f"-I{_REPO_ROOT / 'include'}",
         f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'include'}",
-        f"-I{_REPO_ROOT / 'submodules' / 'abseil-cpp'}",
+        f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'submodules' / 'svector' / 'include'}",
+        f"-I{_REPO_ROOT / 'submodules' / 'fe' / 'submodules' / 'unordered_dense' / 'include'}",
         f"-I{build_dir / 'include'}",
         f"-I{build_dir}",
     ]
-    # Adds build-type defines (NDEBUG, ABSL_*, …) on top of the include roots.
+    # Adds build-type defines (NDEBUG, …) on top of the include roots.
     if cc_entries and (entry := _match_cc_entry(header_path, cc_entries)):
         cc_flags = _flags_from_cc_entry(entry)
         # Our own -std wins. A header outside <repo>/include matches no entry and falls
