@@ -7,9 +7,9 @@
 #include <iterator>
 #include <optional>
 #include <ostream>
+#include <set>
 #include <string>
 
-#include <absl/container/btree_set.h>
 #include <fe/term.h>
 
 #include <mim/driver.h>
@@ -260,7 +260,7 @@ protected:
     DefMap<std::string> types_;
     LamMap<BB> lam2bb_;
 
-    absl::btree_set<std::string> decls_;
+    std::set<std::string> decls_;
     std::ostringstream type_decls_;
     std::ostringstream vars_decls_;
     std::ostringstream func_decls_;

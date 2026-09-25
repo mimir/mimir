@@ -1,6 +1,3 @@
-[submodule "abseil-cpp"]
-	path = submodules/abseil-cpp
-	url = ../../abseil/abseil-cpp
 [submodule "doxygen-awesome-css"]
 	path = submodules/doxygen-awesome-css
 	url = ../../jothepro/doxygen-awesome-css.git

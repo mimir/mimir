@@ -3,6 +3,7 @@
 #include <concepts>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
@@ -10,7 +11,6 @@
 #include <type_traits>
 #include <utility>
 
-#include <absl/container/btree_map.h>
 #include <fe/arena.h>
 #include <fe/log.h>
 #include <fe/restore.h>
@@ -65,8 +65,8 @@ public:
         } pod;
 
 #ifdef MIM_ENABLE_CHECKS
-        absl::flat_hash_set<uint32_t> breakpoints;
-        absl::flat_hash_set<uint32_t> watchpoints;
+        ankerl::unordered_dense::set<uint32_t> breakpoints;
+        ankerl::unordered_dense::set<uint32_t> watchpoints;
 #endif
         friend void swap(State& s1, State& s2) noexcept {
             using std::swap;
@@ -207,7 +207,7 @@ public:
         }
 
     private:
-        absl::btree_map<Sym, Def*> sym2mut_;
+        std::map<Sym, Def*> sym2mut_;
     };
 
     class Annexes {
@@ -274,8 +274,8 @@ public:
 
     private:
         Driver* driver_;
-        absl::btree_map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
-        absl::btree_map<Sym, flags_t> sym2flags_;     ///< Reverse index: an annex's full name to its flags.
+        std::map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
+        std::map<Sym, flags_t> sym2flags_;     ///< Reverse index: an annex's full name to its flags.
     };
 
     /// @name Externals & Annexes
@@ -874,6 +874,8 @@ private:
     State state_;
 
     struct SeaHash {
+        using is_avalanching = void;
+
         size_t operator()(const Def* def) const { return def->hash(); }
     };
 
@@ -921,10 +923,10 @@ private:
 
         Externals externals;
         Annexes annexes;
-        absl::flat_hash_set<const Def*, SeaHash, SeaEq> sea;
+        ankerl::unordered_dense::set<const Def*, SeaHash, SeaEq> sea;
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
-        absl::flat_hash_map<std::pair<const Var*, const Def*>, Reduct*> substs;
+        ankerl::unordered_dense::map<std::pair<const Var*, const Def*>, Reduct*> substs;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;

@@ -179,7 +179,7 @@ private:
     std::deque<Scope> scopes_;
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
-    absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
+    std::unordered_map<fe::Sym, std::unordered_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
 };
 
 /// Base class of all AST nodes.

@@ -1,4 +1,3 @@
-#include <absl/container/fixed_array.h>
 #include <fe/bitset.h>
 
 #include <mim/tuple.h>
@@ -61,8 +60,8 @@ const Def* normalize_zip(const Def* type, const Def* c, const Def* arg) {
     if (!ni || !n) return {};
     if (ni >= w.flags().scalarize_threshold || n >= w.flags().scalarize_threshold) return {};
 
-    auto res = absl::FixedArray<const Def*>(*n);
-    auto tup = absl::FixedArray<const Def*>(*ni);
+    auto res = fe::Vector<const Def*, 32>(*n);
+    auto tup = fe::Vector<const Def*, 32>(*ni);
 
     for (size_t j = 0; j != n; ++j) {
         for (size_t i = 0; i != ni; ++i)

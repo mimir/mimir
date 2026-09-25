@@ -12,7 +12,7 @@
 #include <string_view>
 #include <tuple>
 
-#include <absl/container/flat_hash_map.h>
+#include <ankerl/unordered_dense.h>
 
 #include "mim/config.h"
 #include "mim/def.h"
@@ -24,10 +24,10 @@ class Phase;
 
 /// @name Plugin Interface
 ///@{
-using Normalizers = absl::flat_hash_map<flags_t, NormalizeFn>;
+using Normalizers = ankerl::unordered_dense::map<flags_t, NormalizeFn>;
 
 /// Maps an axiom of a Phase to a function that creates one.
-using Flags2Phases = absl::flat_hash_map<flags_t, std::function<std::unique_ptr<Phase>(World&)>>;
+using Flags2Phases = ankerl::unordered_dense::map<flags_t, std::function<std::unique_ptr<Phase>(World&)>>;
 
 /// One `-X <plugin>:<arg>` a Plugin understands; see @ref clipluginargs.
 /// A Plugin declares these next to the code that picks them apart, so that `mim -p <plugin> -h` can list them.

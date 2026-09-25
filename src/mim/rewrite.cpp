@@ -1,6 +1,5 @@
 #include "mim/rewrite.h"
 
-#include <absl/container/fixed_array.h>
 #include <fe/assert.h>
 
 #include "mim/world.h"
@@ -243,7 +242,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     if (l && *l == 0) return world().prod(seq->is_intro());
 
     if (auto var = seq->has_var(); var && l && *l <= world().flags().scalarize_threshold) {
-        auto new_ops = absl::FixedArray<const Def*>(*l);
+        auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
             push();
             map(var, world().lit_idx(e, i));
@@ -361,7 +360,7 @@ const Def* Zonker::rewire_mut(Def* mut) {
     map(mut, mut);
 
     auto old_type = mut->type();
-    auto old_ops  = absl::FixedArray<const Def*>(mut->ops().begin(), mut->ops().end());
+    auto old_ops  = DefVec(mut->ops().begin(), mut->ops().end());
 
     mut->unset()->set_type(rewrite(old_type));
 

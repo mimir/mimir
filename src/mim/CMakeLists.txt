@@ -55,9 +55,6 @@ target_compile_options(libmim
 
 if(MSVC)
     target_compile_options(libmim PUBLIC /utf-8 /wd4146 /wd4245)
-    if(BUILD_SHARED_LIBS)
-        target_compile_definitions(libmim PUBLIC ABSL_CONSUME_DLL)
-    endif()
 endif()
 
 configure_file(
@@ -76,11 +73,6 @@ target_include_directories(libmim
 set_target_properties(libmim PROPERTIES DEFINE_SYMBOL fe_EXPORTS)
 target_link_libraries(libmim
     PUBLIC
-        absl::btree
-        absl::fixed_array
-        absl::inlined_vector
-        absl::flat_hash_map absl::flat_hash_set
-        absl::node_hash_map absl::node_hash_set
         fe::fe
         ${CMAKE_DL_LIBS}
 )

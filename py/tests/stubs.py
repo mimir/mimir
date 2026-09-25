@@ -3,7 +3,7 @@
 nanobind happily binds a method whose signature mentions a type it has no caster
 for: nothing fails until Python actually calls it, and `stubgen` meanwhile writes
 the raw C++ spelling into the stub (`std::reverse_iterator<char const*>`, an
-`absl::flat_hash_map<…>`, `mim::Dbg`). The API tests never touch such a method,
+`ankerl::unordered_dense::map<…>`, `mim::Dbg`). The API tests never touch such a method,
 so inspect the stub itself — it is the one artifact that sees every binding.
 
 The generator drops unbindable members on its own (see `_casters_for` in
@@ -26,7 +26,7 @@ _ANNOTATION = re.compile(r'(?:->|:)\s*"([^"\n]+)"')
 _PY_NAME = re.compile(r"^[A-Za-z_][\w.]*(?:\[[\w.,\[\] |]*\])?$")
 
 # Namespaces that must never appear anywhere in the stub, quoted or not.
-_CPP_NAMESPACES = ("std::", "mim::", "fe::", "absl::")
+_CPP_NAMESPACES = ("std::", "mim::", "fe::", "ankerl::")
 
 _FIX = (
     "Fix by including the matching nanobind caster header (`nanobind/stl/*.h`), "

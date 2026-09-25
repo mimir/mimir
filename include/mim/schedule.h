@@ -27,6 +27,8 @@ private:
 };
 
 struct UseHash {
+    using is_avalanching = void;
+
     inline size_t operator()(Use use) const {
         if constexpr (sizeof(size_t) == 8)
             return fe::hash((u64(use.index())) << 32_u64 | u64(use->gid()));
@@ -39,7 +41,7 @@ struct UseEq {
     bool operator()(Use u1, Use u2) const { return u1 == u2; }
 };
 
-using Uses = absl::flat_hash_set<Use, UseHash, UseEq>;
+using Uses = ankerl::unordered_dense::set<Use, UseHash, UseEq>;
 
 class Scheduler {
 public:

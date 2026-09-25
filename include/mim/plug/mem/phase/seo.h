@@ -1,6 +1,6 @@
 #pragma once
 
-#include <absl/container/btree_set.h>
+#include <set>
 
 #include <mim/def.h>
 #include <mim/phase.h>
@@ -89,11 +89,11 @@ private:
         void analyze(const Def*);
 
         // local (reset between iterations)
-        absl::node_hash_map<Lam*, Def2Def, GIDHash<const Def*>> lam2sloxy2val_;
+        LamMap<Def2Def> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
-        Def2Def sloxy2slot_;                                   // global (kept between iterations)
-        absl::btree_set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
+        Def2Def sloxy2slot_;                            // global (kept between iterations)
+        std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
@@ -143,8 +143,8 @@ private:
     Analysis analysis_;
     Lam2Lam lam_old2new_;
     Lam2Lam lam_new2old_;
-    absl::node_hash_map<Lam*, Sig, GIDHash<Lam*>> lam2sig_; // node_hash_map: a Sig& outlives nested rewrites
-    DefVec sloxies_;                                        // the eliminated sloxies; every Lam's phi candidates
+    GIDNodeMap<Lam*, Sig> lam2sig_; // a Sig& outlives nested rewrites
+    DefVec sloxies_;                // the eliminated sloxies; every Lam's phi candidates
 };
 
 } // namespace mim::plug::mem::phase
