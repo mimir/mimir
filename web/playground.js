@@ -69,7 +69,8 @@ async function run() {
     clearTimeout(timer);
     if (running) { queued = true; return; }
     running = true;
-    $('run').textContent = 'Stop';
+    $('run').classList.add('running');
+    $('run').lastChild.textContent = 'Stop';
     status.className = '';
     status.textContent = 'running…';
 
@@ -108,7 +109,8 @@ async function run() {
     select(failed ? 'log' : userPane);
 
     running = false;
-    $('run').textContent = 'Run';
+    $('run').classList.remove('running');
+    $('run').lastChild.textContent = 'Run';
     if (queued) { queued = false; run(); }
 }
 
@@ -342,7 +344,7 @@ async function copy(text) {
 }
 
 async function share() {
-    const btn = $('share');
+    const btn = $('share').lastChild;
     try {
         await copy(shareLink());
         btn.textContent = 'Link copied!';

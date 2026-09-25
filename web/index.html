@@ -15,7 +15,7 @@
     <h1><a href="https://mimir.github.io/" title="MimIR"><img src="logo.svg" alt="MimIR"></a>MimIR Playground</h1>
     <select id="examples" title="Load an example"></select>
     <label><input type="checkbox" id="optimize" checked> optimize</label>
-    <button id="run">Run</button>
+    <button id="run"><svg class="icon fill" viewBox="0 0 24 24" aria-hidden="true"><path class="play" d="M7 4v16l13-8z"/><rect class="stop" x="6" y="6" width="12" height="12" rx="1.5"/></svg><span>Run</span></button>
     <span class="spacer"></span>
     <span id="status">loading…</span>
     <doxygen-awesome-dark-mode-toggle id="theme" title="Toggle Light/Dark Mode"></doxygen-awesome-dark-mode-toggle>
@@ -25,18 +25,18 @@
     <div id="editor">
         <div id="editor-bar">
             <label title="vi keybindings; `:w` runs."><input type="checkbox" id="vi"> vi</label>
-            <button id="share" title="Copies a link to this program to your clipboard.">Share</button>
+            <button id="share" title="Copies a link to this program to your clipboard."><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>Share</span></button>
         </div>
         <textarea id="source" spellcheck="false"></textarea>
     </div>
 
     <div id="right">
         <div id="tabs" role="tablist">
-            <button role="tab" data-pane="log"   aria-selected="false">Log</button>
-            <button role="tab" data-pane="ast"   aria-selected="false">AST</button>
-            <button role="tab" data-pane="mim"   aria-selected="false">Mim</button>
-            <button role="tab" data-pane="graph" aria-selected="true">Graph</button>
-            <button role="tab" data-pane="ll"    aria-selected="false">LLVM</button>
+            <button role="tab" data-pane="log"   aria-selected="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-5-6-5M12 19h8"/></svg>Log</button>
+            <button role="tab" data-pane="ast"   aria-selected="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 6H8M21 12h-8M21 18h-8M3 6v4a2 2 0 0 0 2 2h3M3 10v6a2 2 0 0 0 2 2h3"/></svg>AST</button>
+            <button role="tab" data-pane="mim"   aria-selected="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h3l10 16M12.5 11.5 6 20"/></svg>Mim</button>
+            <button role="tab" data-pane="graph" aria-selected="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 6h7M7.2 8.2l3.6 7.6M16.8 8.2l-3.6 7.6"/></svg>Graph</button>
+            <button role="tab" data-pane="ll"    aria-selected="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>LLVM</button>
         </div>
         <div id="panes">
             <div class="pane" id="pane-log"  hidden><pre></pre></div>
