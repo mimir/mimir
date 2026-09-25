@@ -82,7 +82,7 @@ button, select {
 
 button:hover { border-color: var(--accent); }
 
-button:has(.icon) { display: inline-flex; align-items: center; gap: .35rem; }
+button:has(.icon), header label:has(.icon) { display: inline-flex; align-items: center; gap: .35rem; }
 
 .icon {
     width: 14px;
