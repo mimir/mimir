@@ -22,6 +22,8 @@ namespace mim {
 
 namespace {
 
+using Srcs = ankerl::unordered_dense::set<const fe::Src*>;
+
 Def* isa_decl(const Def* def) {
     if (auto mut = def->isa_mut()) {
         if (mut->isa<Hole>()) return nullptr; // a Hole stands for what it was set to, or for `?`
@@ -713,7 +715,7 @@ fe::Vector<Lam*> curry_chain(Lam* lam) {
 class Dumper {
 public:
     /// @p srcs are the files an `import` pulls in: they declare their own content, so a dump must not repeat it.
-    Dumper(std::ostream& os, Dump mode, bool typed_let = false, ankerl::unordered_dense::set<const fe::Src*> srcs = {})
+    Dumper(std::ostream& os, Dump mode, bool typed_let = false, Srcs srcs = {})
         : os_(os)
         , mode_(mode)
         , typed_let_(typed_let)
@@ -1116,7 +1118,7 @@ private:
     MutSet open_; ///< On the schedule stack - a Def reaching one of these is recursive.
     MutSet recursive_;
     Ctx ctx_;
-    ankerl::unordered_dense::set<const fe::Src*> srcs_;
+    Srcs srcs_;
     MutSet scheduled_;
 };
 
@@ -1163,7 +1165,7 @@ static std::string file_stem(World& world) { return (world.name() ? world.name()
 void World::dump(std::ostream& os) {
     auto _       = freeze();
     auto old_gid = curr_gid();
-    auto srcs    = ankerl::unordered_dense::set<const fe::Src*>();
+    auto srcs    = Srcs();
     for (const auto& import : driver().imports())
         srcs.emplace(import.src);
     auto reserved = fe::Vector<std::string>{"return"};

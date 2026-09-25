@@ -87,7 +87,7 @@ def _type_spelling(t) -> str:
 # `_mim.pyi`, so every parameter, return and field type is checked here first.
 
 # Implementation-detail namespaces (libstdc++ `__cxx11`, libc++ `__1` and `__fs`,
-# ankerl's `v<major>_<minor>_<patch>`) differ per toolchain and must never reach a name we match
+# ankerl's `v<major>_<minor>_<patch>`) differ per toolchain or library version and must never reach a name we match
 # on — nor an emitted one, where they would also pin the output to one library.
 _IMPL_NS = re.compile(r"^(?:__[A-Za-z0-9_]+|v\d+_\d+_\d+)$")
 _INLINE_NS = re.compile(r"\b(?:__[A-Za-z0-9_]+|v\d+_\d+_\d+)::")

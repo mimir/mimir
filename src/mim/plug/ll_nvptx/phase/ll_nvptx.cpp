@@ -92,7 +92,6 @@ private:
         return v_ptr;
     }
 
-    std::map<std::string, int> symbols_;
     LamSet kernels_;
 
     bool uses_libdevice = false;

@@ -8,13 +8,12 @@ on:
 jobs:
   build-and-test:
     name: Build and test ${{matrix.build-type}}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-24.04 already ships gcc-14, clang-18, cmake, and ninja, so `packages` lists only
-        # what each configuration is actually missing. The `RUN: clang ...` lines in lit/ and
-        # `find_program(NAMES clang)` in cmake/Mim.cmake resolve to the preinstalled clang-18.
+        # svector's C++23 range members need gcc-15's libstdc++, which ubuntu-24.04 lacks.
+        # The `RUN: clang ...` lines in lit/ and `find_program(NAMES clang)` in cmake/Mim.cmake resolve to the `clang` package.
         include:
           - build-type: Debug
             cc: clang-20
@@ -26,9 +25,9 @@ jobs:
               -DMIM_TEST_ROUNDTRIP=OFF
               -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr"
           - build-type: Release
-            cc: gcc-14
-            cxx: g++-14
-            packages: g++-14 valgrind
+            cc: gcc-15
+            cxx: g++-15
+            packages: g++-15 valgrind
             test-target: lit test-roundtrip
             cmake-args: -DMIM_LIT_WITH_VALGRIND=ON
     env:
@@ -44,13 +43,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-20-tools ${{matrix.packages}}
+          sudo apt-get install -y clang llvm-20-tools ninja-build ${{matrix.packages}}
           sudo pip install lit psutil
 
       # ccache hooks the compiler through its /usr/lib/ccache/<name> symlinks, which the action
       # prepends to PATH -- so CC/CXX below must stay *bare names*; an absolute path would bypass
       # them (see macos.yml, where it did). Keep this after the compiler install so the symlinks
-      # cover clang-20/g++-14. max_size is only a cap: 500M left the sanitizer build's cache at
+      # cover clang-20/g++-15. max_size is only a cap: 500M left the sanitizer build's cache at
       # 99.84% with 6 eviction sweeps per run, evicting objects that then had to be recompiled.
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1

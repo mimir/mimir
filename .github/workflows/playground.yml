@@ -18,7 +18,7 @@ env:
 jobs:
   build:
     name: Build the WASM playground
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Clone recursively
@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-14 ninja-build
+          sudo apt-get install -y g++-15 ninja-build
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -47,7 +47,7 @@ jobs:
       # A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one.
       - name: Build the native bootstrap compiler
         run: |
-          CC=gcc-14 CXX=g++-14                \
+          CC=gcc-15 CXX=g++-15                \
           cmake -B build-native               \
                 -G Ninja                      \
                 -DCMAKE_BUILD_TYPE=Release    \
