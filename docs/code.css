@@ -1,35 +1,35 @@
 /* Token colours of the lexers in code.js; the playground stages this file, too. */
 html {
-    --token-comment: #969696;
-    --token-string: #438a59;
-    --token-literal: #438a59;
-    --token-keyword: #bb6bb2;
-    --token-decl: #d67c3b;
-    --token-type: #8258b3;
-    --token-special: #46aaa5;
+    --token-comment: #878787;
+    --token-string: #25795d;
+    --token-literal: #25795d;
+    --token-keyword: #b52141;
+    --token-decl: #c9692c;
+    --token-type: #45195c;
+    --token-special: #0091c8;
 }
 
 @media (prefers-color-scheme: dark) {
     html:not(.light-mode) {
-        --token-comment: #999999;
-        --token-string: #7ec699;
-        --token-literal: #7ec699;
-        --token-keyword: #cc99cd;
-        --token-decl: #e08000;
-        --token-type: #ab99cd;
-        --token-special: #65cabe;
+        --token-comment: #878787;
+        --token-string: #5fc49c;
+        --token-literal: #5fc49c;
+        --token-keyword: #f07e93;
+        --token-decl: #fda642;
+        --token-type: #c49be0;
+        --token-special: #7fcdea;
     }
 }
 
 /* Dark mode variables are defined twice, to support it with and without doxygen-awesome-darkmode-toggle.js. */
 html.dark-mode {
-    --token-comment: #999999;
-    --token-string: #7ec699;
-    --token-literal: #7ec699;
-    --token-keyword: #cc99cd;
-    --token-decl: #e08000;
-    --token-type: #ab99cd;
-    --token-special: #65cabe;
+    --token-comment: #878787;
+    --token-string: #5fc49c;
+    --token-literal: #5fc49c;
+    --token-keyword: #f07e93;
+    --token-decl: #fda642;
+    --token-type: #c49be0;
+    --token-special: #7fcdea;
 }
 
 .token-comment { color: var(--token-comment); }

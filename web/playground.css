@@ -1,25 +1,25 @@
 :root {
     color-scheme: light;
     --bg:      #ffffff;
-    --fg:      #1c1c1c;
-    --panel:   #f6f6f4;
-    --border:  #d8d8d2;
-    --accent:  #1a6feb;
-    --fg30: #1c1c1c; --fg31: #c0392b; --fg32: #2e7d32; --fg33: #8a6d00;
-    --fg34: #1a6feb; --fg35: #8e24aa; --fg36: #00737d; --fg90: #6b7280;
+    --fg:      #3c3c3b;
+    --panel:   #f6f5f1;
+    --border:  #dadada;
+    --accent:  #005f9b;
+    --fg30: #3c3c3b; --fg31: #c70d2d; --fg32: #25795d; --fg33: #9c6d0f;
+    --fg34: #005f9b; --fg35: #45195c; --fg36: #0091c8; --fg90: #878787;
     --mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
 /* `darkmode-toggle.js` always stamps one of these before the first paint, so no media query is needed. */
 html.dark-mode {
     color-scheme: dark;
-    --bg:     #16181c;
-    --fg:     #e6e6e6;
-    --panel:  #1f2229;
-    --border: #343841;
-    --accent: #62a0ff;
-    --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
-    --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg90: #8b949e;
+    --bg:     #1c1c1b;
+    --fg:     #ededed;
+    --panel:  #262625;
+    --border: #3c3c3b;
+    --accent: #50a5d2;
+    --fg30: #dadada; --fg31: #f07e93; --fg32: #5fc49c; --fg33: #eeb32a;
+    --fg34: #50a5d2; --fg35: #c49be0; --fg36: #7fcdea; --fg90: #878787;
 }
 
 #theme {

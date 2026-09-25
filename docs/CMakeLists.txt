@@ -75,6 +75,7 @@ set(DOXY_STYLESHEETS
     "${DOXY_AWESOME}/doxygen-awesome-sidebar-only.css"
     "${DOXY_AWESOME}/doxygen-awesome-sidebar-only-darkmode-toggle.css"
     "${DOXY_AWESOME}/doxygen-custom/custom.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/theme.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"

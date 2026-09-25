@@ -1,32 +1,32 @@
 /* Token colours for the EBNF blocks of the language reference; EbnfCode in ebnf.js emits these classes. */
 html {
-    --ebnf-rule: #5383d6;
-    --ebnf-token: #8258b3;
-    --ebnf-terminal: #a75b1c;
-    --ebnf-terminal-background: rgba(214, 124, 59, .12);
-    --ebnf-meta: #969696;
-    --ebnf-trace: rgba(83, 131, 214, .22);
+    --ebnf-rule: #2b7ab3;
+    --ebnf-token: #45195c;
+    --ebnf-terminal: #ac5b53;
+    --ebnf-terminal-background: rgba(224, 127, 65, .12);
+    --ebnf-meta: #878787;
+    --ebnf-trace: rgba(0, 145, 200, .22);
 }
 
 @media (prefers-color-scheme: dark) {
     html:not(.light-mode) {
-        --ebnf-rule: #98c0e3;
-        --ebnf-token: #cb9df0;
-        --ebnf-terminal: #e6a76a;
-        --ebnf-terminal-background: rgba(230, 167, 106, .14);
-        --ebnf-meta: #999999;
-        --ebnf-trace: rgba(152, 192, 227, .22);
+        --ebnf-rule: #50a5d2;
+        --ebnf-token: #c49be0;
+        --ebnf-terminal: #fda642;
+        --ebnf-terminal-background: rgba(253, 166, 66, .14);
+        --ebnf-meta: #878787;
+        --ebnf-trace: rgba(80, 165, 210, .22);
     }
 }
 
 /* Dark mode variables are defined twice, to support it with and without doxygen-awesome-darkmode-toggle.js. */
 html.dark-mode {
-    --ebnf-rule: #98c0e3;
-    --ebnf-token: #cb9df0;
-    --ebnf-terminal: #e6a76a;
-    --ebnf-terminal-background: rgba(230, 167, 106, .14);
-    --ebnf-meta: #999999;
-    --ebnf-trace: rgba(152, 192, 227, .22);
+    --ebnf-rule: #50a5d2;
+    --ebnf-token: #c49be0;
+    --ebnf-terminal: #fda642;
+    --ebnf-terminal-background: rgba(253, 166, 66, .14);
+    --ebnf-meta: #878787;
+    --ebnf-trace: rgba(80, 165, 210, .22);
 }
 
 .ebnf-rule {
