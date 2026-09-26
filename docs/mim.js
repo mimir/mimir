@@ -11,9 +11,8 @@ class MimCode extends Code {
         /// `C_DECL` of `src/mim/ast/family.h` plus the modifiers of `Parser::parse_modifiers`.
         decl: new Set(["and", "anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "norm",
                        "nom", "plugin", "priv", "pub", "rec", "rule", "use"]),
-        type: new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ",
-                       "i1", "i8", "i16", "i32", "i64"]),
-        literal: new Set(["bot", "ff", "top", "tt", "⊥", "⊤"]),
+        type: new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ"]),
+        literal: new Set(["bot", "ff", "i1", "i8", "i16", "i32", "i64", "top", "tt", "⊥", "⊤"]),
         special: new Set(["_", "return"])
     }
     static PLAYGROUND = "https://mimir.github.io/playground/"
@@ -21,7 +20,7 @@ class MimCode extends Code {
     static RUN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M5.5 3.5 20.5 12 5.5 20.5Z"/></svg>`
     static TOKEN = /(\/\/.*)|(\/\*)|("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|([«»‹›→←Π∀])|(\s+|[^])/uy
     static KINDS = ["comment", "open", "string", "string", "word", "number", "operator", null]
-    static CLASS = {...Code.CLASS, special: "code-special"}
+    static CLASS = {...Code.CLASS, special: "token-special"}
 
     /// `state.comment` carries an unterminated `/*` into the following lines.
     static next(text, pos, state) {

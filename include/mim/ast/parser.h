@@ -36,6 +36,7 @@ public:
 
     AST& ast() { return ast_; }
     Driver& driver() { return ast().driver(); } ///< fe::Parser's default diagnostics go to its Driver::error.
+    Lexer& lexer() { return *lexer_; }          ///< fe::Parser::lex pulls the next Tok%en from here.
     const File* import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
         return import({Loc(), driver().sym(sv)}, false, tag, nullptr);
     }
@@ -58,7 +59,6 @@ private:
 
     /// Empty Loc right after the last consumed token - where a node sits that is *missing* rather than wrong.
     Loc missing() const { return curr_.anew_end(); }
-    Lexer& lexer() { return *lexer_; }
 
     /// @name parse misc
     ///@{
@@ -75,9 +75,8 @@ private:
     Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(path(dbg)); }
 
     void parse_list(fe::Cite ctxt, Tok::Tag delim_l, std::invocable auto f, Tok::Tag sep = Tok::Tag::T_comma) {
-        expect(delim_l, ctxt);
         auto delim_r = Tok::delim_l2r(delim_l);
-        auto _       = this->anchor(delim_r);
+        auto _       = anchor(expect(delim_l, ctxt), delim_r);
         do {
             recover(ctxt);
             if (ahead().isa(delim_r)) break;
@@ -184,7 +183,7 @@ private:
     Ptr<ValDecl> parse_mod_decl(Tracker, Mods);
     Ptr<ValDecl> parse_nom_decl(Tracker, Mods);
     Ptr<ValDecl> parse_use_decl(Tracker, Mods);
-    Ptr<ValDecl> parse_rule_decl();
+    Ptr<ValDecl> parse_rule_decl(Tracker, Mods);
     Ptr<LamDecl> parse_lam_decl(Tracker, Mods);
     Ptr<RecDecl> parse_rec_decl(Tracker, bool first, Mods);
     Ptr<RecDecl> parse_and_decl();

@@ -413,7 +413,7 @@ This is convenient for analyses that reason about nesting, dominance-like struct
 
 ## Example: SCCP
 
-\include "examples/sccp.h"
+\include "mim/phase/sccp.h"
 
 The provided [Sparse Conditional Constant Propagation (SCCP)](https://en.wikipedia.org/wiki/Sparse_conditional_constant_propagation) implementation is a good example of the intended phase structure.
 Its architecture is:
@@ -425,7 +425,7 @@ Its architecture is:
 
 ### Analysis
 
-\include "examples/sccp_analysis.cpp"
+\include "mim/phase/sccp_analysis.cpp"
 
 The SCCP analysis associates each lambda variable with a lattice value:
 
@@ -567,7 +567,7 @@ A scopeless IR never loses that nesting, so there is no hoisting-versus-contific
 
 ### Transformation
 
-\include "examples/sccp_transform.cpp"
+\include "mim/phase/sccp_transform.cpp"
 
 Once the lattice is stable, the outer SCCP phase starts rewriting.
 During rewriting, it can query abstract values for old-world definitions through [`RWBase::lattice()`](@ref mim::RWBase::lattice).

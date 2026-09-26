@@ -1,0 +1,28 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin compile;
+
+use core.ops.n;
+
+extern fun dont_know []: Bool;
+
+// Both call sites agree on `x * x` for `p`, so that whole expression is propagated; they disagree on `q`.
+extern fun f (x: Nat): Nat =
+    ret c = dont_know $ ();
+    (l2, l1)#c () where
+        con l1 () = join (x * x, 1);
+        con l2 () = join (x * x, 2);
+        con join (p q: Nat) = return (p + q);
+    end;
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.beta_red,
+        compile.eta_conv,
+        compile.sccp,
+    );
+
+// CHECK:      con join ({{[[:alnum:]_]+}}: Nat) =
+// CHECK:      core.nat.mul
+// CHECK-DAG:  join 1;
+// CHECK-DAG:  join 2;

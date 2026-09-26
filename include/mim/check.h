@@ -1,6 +1,6 @@
 #pragma once
 
-#include <absl/container/flat_hash_set.h>
+#include <ankerl/unordered_dense.h>
 
 #include "mim/def.h"
 
@@ -152,7 +152,7 @@ private:
     World& world_;
     Binders binders_;
     Vars bound_; ///< Var%s of all binders_; these are the Var%s subject to renaming.
-    std::array<absl::flat_hash_set<u64>, 2> memo_;
+    std::array<ankerl::unordered_dense::set<u64>, 2> memo_;
 };
 
 } // namespace mim

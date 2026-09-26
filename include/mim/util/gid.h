@@ -1,15 +1,17 @@
 #pragma once
 
-#include <absl/container/flat_hash_map.h>
-#include <absl/container/flat_hash_set.h>
-#include <absl/container/node_hash_map.h>
-#include <absl/container/node_hash_set.h>
+#include <unordered_map>
+#include <unordered_set>
+
+#include <ankerl/unordered_dense.h>
 #include <fe/hash.h>
 
 namespace mim {
 
 template<class T>
 struct GIDHash {
+    using is_avalanching = void;
+
     constexpr size_t operator()(T p) const noexcept { return fe::hash(p->gid()); }
 };
 
@@ -21,10 +23,10 @@ struct GIDLt {
 // clang-format off
 /// @name GID
 ///@{
-template<class K, class V> using GIDMap     = absl::flat_hash_map<K, V, GIDHash<K>>;
-template<class K>          using GIDSet     = absl::flat_hash_set<K,    GIDHash<K>>;
-template<class K, class V> using GIDNodeMap = absl::node_hash_map<K, V, GIDHash<K>>;
-template<class K>          using GIDNodeSet = absl::node_hash_set<K,    GIDHash<K>>;
+template<class K, class V> using GIDMap     = ankerl::unordered_dense::map<K, V, GIDHash<K>>;
+template<class K>          using GIDSet     = ankerl::unordered_dense::set<K,    GIDHash<K>>;
+template<class K, class V> using GIDNodeMap = std::unordered_map<K, V, GIDHash<K>>;
+template<class K>          using GIDNodeSet = std::unordered_set<K,    GIDHash<K>>;
 ///@}
 // clang-format on
 

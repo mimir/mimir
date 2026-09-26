@@ -22,11 +22,7 @@ inline Lam* mut_con(const Def* dom) {
 }
 
 /// If @p def is a `mem.M`-typed value, yields its memory type `mem.M a`; otherwise `nullptr`.
-/// Null-safe: type-level Def%s (e.g. mim::Univ) have no type and hence are not memory.
-inline const App* isa_mem(const Def* def) {
-    if (auto type = def->type()) return Axm::isa<mem::M>(type);
-    return nullptr;
-}
+inline const App* isa_mem(const Def* def) { return Axm::isa<mem::M>(def->type()); }
 
 /// Does @p pi already thread memory - a leading `mem.M`, either directly or grouped as the first
 /// component of the first parameter (e.g. the `Fn [mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?

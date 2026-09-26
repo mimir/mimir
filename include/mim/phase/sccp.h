@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mim/phase.h>
+#include "mim/phase.h"
 
 namespace mim {
 
@@ -28,8 +28,8 @@ private:
     };
 
 public:
-    SCCP(World& world)
-        : RWPhase(world, "SCCP", &analysis_)
+    SCCP(World& world, flags_t annex)
+        : RWPhase(world, annex, &analysis_)
         , analysis_(world) {}
 
 private:

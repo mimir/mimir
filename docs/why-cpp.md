@@ -3,11 +3,12 @@
 _A note on the cost of reimplementing MimIR in OCaml, Scala, or Haskell._
 
 All `sizeof`/offset figures were measured against `build-release`
-(`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`, gcc).
+(`-march=native -O3 -DNDEBUG -std=gnu++23`, gcc).
 Timing figures appear in exactly two places — _`Patricia::Set` measured against
-OCaml's `patricia-tree`_ and the container note under `absl::flat_hash_*` — and
-are marked as measurements; everything else in this document is an estimate and
-is marked as one.
+OCaml's `patricia-tree`_ and the container note under `ankerl::unordered_dense` —
+and are marked as measurements; both were taken while fe still built on abseil
+(`-DFE_ABSL`), before it switched to ankerl.
+Everything else in this document is an estimate and is marked as one.
 Code is referenced by file and symbol name rather than line number, so the
 references do not rot.
 
@@ -47,18 +48,20 @@ longer an unsupported one.
 
 ## What the C++ implementation actually relies on
 
-### `absl::flat_hash_*`
+### `ankerl::unordered_dense`
 
 `World::unify` (`include/mim/world.h`) probes the sea of nodes on **every**
 `Def` construction.
 This is _the_ hot path of the whole compiler.
 
-`absl::flat_hash_set` is a SwissTable: one control byte per slot holding 7 hash
-bits, probed 16-at-a-time with SSE2/NEON, payload stored inline in a flat
-array.
-A lookup is typically **one cache miss**.
-`GIDHash` (`include/mim/util/gid.h`) makes it cheaper still — the hash is
-the already-computed dense `u32` gid, so hashing costs nothing.
+`ankerl::unordered_dense::set` stores its payload densely in one flat array and
+indexes it by open addressing: groups of sixteen one-byte fingerprints, probed
+16-at-a-time with SSE2/NEON, with the value indices in the same block.
+A lookup touches one index block and one slot of the payload array — no chase
+through per-entry nodes.
+The hashers make it cheaper still — `World::SeaHash` returns the hash each `Def`
+caches at construction, and `GIDHash` (`include/mim/util/gid.h`) mixes the dense
+`u32` gid with a single splitmix64.
 
 What the alternatives offer:
 
@@ -83,8 +86,9 @@ Call it **2–4× on the hash-cons probe alone**.
 One measurement isolates that container, same language and same workload:
 building `fe::Patricia`'s node pools out of `std::unordered_set` — separate
 chaining over heap-allocated nodes, structurally what OCaml's `Hashtbl` is —
-instead of `absl::flat_hash_set` costs **1.8–3.1×** at 65,536 elements, on
-construction, `merge` and `diff` alike.
+instead of `absl::flat_hash_set` — the flat table fe used then, of the same
+SIMD-probed open-addressing kind as ankerl's — costs **1.8–3.1×** at 65,536
+elements, on construction, `merge` and `diff` alike.
 Nothing else differs between the two builds, so that factor is the table and
 only the table.
 One case regressed — sparse `intersect`, whose result is small enough that pool
@@ -93,7 +97,7 @@ the win is proportional to how much of the work is probing.
 It lands at the bottom of the 2–4× estimated above, which is the honest reading:
 take the low end.
 
-Also lost: `fe::Vector = absl::InlinedVector<T, N>`
+Also lost: `fe::Vector = ankerl::svector<T, N>`
 (`submodules/fe/include/fe/vector.h`), which keeps small op-vectors in the object
 with zero heap traffic.
 None of the three has an equivalent, so every temporary `DefVec` becomes a heap
@@ -157,8 +161,8 @@ Both sides run the identical workload: the same splitmix64 stream and the same
 Fisher-Yates shuffle, so the id sets are bit-identical, and an element is a
 pointer to a heap object carrying the id on both sides.
 Four set sizes (16 to 65,536) over dense and sparse ids, steady state.
-The C++ side is built `-DFE_ABSL` throughout — the configuration MimIR actually
-ships, and the one the container note above is about.
+The C++ side was built `-DFE_ABSL` throughout — the configuration MimIR shipped
+at the time, and the one the container note above is about.
 
 Ordered by how much MimIR leans on each, since that matters more than the
 headline number:
@@ -217,7 +221,7 @@ and nothing about a full port — it is one anchor under one row of one table.
 ### Arenas, and how `Def`s are placed in them
 
 `sizeof(Def)` is **72 bytes** — measured against `build-release`
-(`-march=native -O3 -DNDEBUG -std=gnu++23 -DFE_ABSL`).
+(`-march=native -O3 -DNDEBUG -std=gnu++23`).
 The only slack is the `u32` next to `dbg_`, which the Debug-only `curr_op_`
 occupies — so a Debug build is 72 bytes too:
 
@@ -566,9 +570,9 @@ Every plugin would have to be compiled with the exact same rustc version as
 `libmim`, or the entire interface reduced to `extern "C"` shims with
 `#[repr(C)]` types on both sides — losing the very type safety that motivated
 the move.
-C++ already has friction here (`absl` containers must not appear in types that
-cross the `dlopen` boundary), but "keep `absl` out of the interface" is a much
-smaller constraint than "no stable ABI exists".
+C++ already has friction here (MimIR once had to keep `absl` containers out of
+types that cross the `dlopen` boundary), but "keep one library out of the
+interface" is a much smaller constraint than "no stable ABI exists".
 
 ### Verdict
 

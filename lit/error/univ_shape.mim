@@ -1,0 +1,8 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// `Univ` has no type at all, so it is no shape; asking must report, not crash.
+let x = «Univ; I32»;
+
+// CHECK:      {{.*}}univ_shape.mim:4:9-4:19: error: expected a shape but got a value of type `<no type>`
+// CHECK-NEXT: 4 | let x = «Univ; I32»;
+// CHECK-NEXT:   |         ^^^^^^^^^^^

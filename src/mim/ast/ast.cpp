@@ -7,7 +7,7 @@ using namespace std::literals;
 namespace mim::ast {
 
 // Node map: Parser::import holds the slot across the nested parses that may insert further entries.
-struct AST::Files : absl::node_hash_map<const fe::Src*, Ptr<File>> {};
+struct AST::Files : std::unordered_map<const fe::Src*, Ptr<File>> {};
 
 AST::AST(World& world)
     : world_(&world)

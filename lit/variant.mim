@@ -85,6 +85,14 @@ extern lam residual (l: List): Nat =
 // The empty variant.
 lam absurd (_: |): Nat = 0;
 
+// A stray `:` turns the remaining constructors into a nested variant payload, so it warns; parentheses silence it.
+rec Stray =
+    | X:
+    | Y: [Nat, Bool]
+    | Z: Nat;
+
+rec Nested = | X: (| Y | Z);
+
 // An arm naming a constructor that is already handled is dropped - but that is a mistake in *source*, so it warns.
 lam twice (c: Color): Nat =
     match c with
@@ -93,6 +101,10 @@ lam twice (c: Color): Nat =
         | Blue  => 2
         | Red   => 3;
 
+// CHECK:      {{.*}}variant.mim:{{[0-9]+}}:8: warning: payload of constructor `X` swallows the remaining constructors
+// CHECK:      note: drop the `:` if `X` carries no payload
+// CHECK-NEXT: note: parenthesize the payload if a nested variant is intended
+// CHECK-NEXT: 1 warning(s) encountered
 // CHECK:      {{.*}}variant.mim:{{[0-9]+}}:11-{{[0-9]+}}:20: warning: this arm is unreachable: constructor `Red` is already handled
 // CHECK-NEXT: {{[0-9]+}} | | Red => 3;
 // CHECK-NEXT: | ^^^^^^^^^^

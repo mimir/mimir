@@ -15,7 +15,7 @@ The artifact a file belongs to - and hence the prefix of its own headers - is de
 The last three link against `libmim` but do not ship headers of their own, so they use `<...>` throughout.
 For a plugin `X`, this means:
 
-    #include <absl/container/flat_hash_map.h>   // external dependency
+    #include <ankerl/unordered_dense.h>         // external dependency
     #include <mim/world.h>                      // libmim
     #include <mim/plug/mem/mem.h>               // another plugin
     #include "mim/plug/X/autogen.h"             // the plugin itself

@@ -261,8 +261,9 @@ public:
     // clang-format on
 };
 
-/// Options for Def::dot and World::dot.
+/// Options for Def::dot, World::dot, and Nest::dot.
 /// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+/// Nest::dot only honors DotConfig::dark.
 struct DotConfig {
     int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
     bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
@@ -1007,6 +1008,10 @@ public:
     /// @name Casts
     ///@{
     /// @see @ref cast_lit
+    /// @note Unlike every other `isa` helper, this one accepts a `nullptr` @p def and yields `std::nullopt`.
+    /// A `nullptr` means "no match" in a chain like `Lit::isa(Idx::isa(x))` or a pattern that did not apply,
+    /// so folding that case in here keeps the normalizers - the hottest code in the compiler - free of
+    /// intermediate checks.
     template<class T = nat_t>
     static std::optional<T> isa(const Def* def) {
         if (!def) return {};

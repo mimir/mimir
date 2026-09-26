@@ -20,7 +20,7 @@ env:
 jobs:
   build-and-deploy:
     name: Build and deploy documentation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Clone recursively
@@ -28,15 +28,13 @@ jobs:
         with:
           submodules: recursive
 
-      # ubuntu-24.04 already ships gcc-14, cmake, and ninja; g++-14 is re-listed only so the job
-      # does not silently depend on the image shipping it. gdb drives docs/generate_xdot_help.gdb
-      # and graphviz renders the .dot graphs. This used to also pull ghostscript and four texlive
-      # packages -- ~80 min of install time on its own -- to rasterise the formulas in core.mim and
-      # math.mim; docs/Doxyfile.in renders them with MathJax now, so no LaTeX is involved.
+      # svector's C++23 range members need gcc-15's libstdc++, hence ubuntu-26.04.
+      # gdb drives docs/generate_xdot_help.gdb and graphviz renders the .dot graphs.
+      # This used to also pull ghostscript and four texlive packages -- ~80 min of install time on its own -- to rasterise the formulas in core.mim and math.mim; docs/Doxyfile.in renders them with MathJax now, so no LaTeX is involved.
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-14 gdb graphviz
+          sudo apt-get install -y g++-15 gdb graphviz ninja-build
 
       - name: Restore Doxygen cache
         id: cache-doxygen
@@ -69,7 +67,7 @@ jobs:
 
       - name: Configure
         run: |
-          CC=gcc-14 CXX=g++-14                                    \
+          CC=gcc-15 CXX=g++-15                                    \
           cmake -B build                                          \
                 -G Ninja                                          \
                 -DCMAKE_BUILD_TYPE=Debug                          \

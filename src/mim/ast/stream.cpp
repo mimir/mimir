@@ -296,7 +296,12 @@ stream_axm_group(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls, s
 }
 
 static void stream_decls(fe::Tab& tab, std::ostream& os, fe::View<Ptr<ValDecl>> decls) {
+    auto grouped = [](const ValDecl* prev, const ValDecl* curr) {
+        return (prev->isa<UseDecl>() && curr->isa<UseDecl>()) || (prev->isa<LetDecl>() && curr->isa<LetDecl>());
+    };
+
     for (size_t i = 0, end; i != decls.size(); i = end) {
+        if (i != 0 && !grouped(decls[i - 1].get(), decls[i].get())) os << '\n';
         // Siblings share their owner's type, so they must stay in the group that introduces them.
         end = decls[i]->isa<AxmDecl>() ? axm_group_end(decls, i) : i + 1;
         os << tab;
@@ -404,7 +409,8 @@ void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {}: {}", is_normalizer() ? Tag::K_norm : Tag::K_rule, dbg(), S(tab, var()), S(tab, lhs()));
+    std::print(os, "{}{} {} {}: {}", mods(), is_norm() ? Tag::K_norm : Tag::K_rule, dbg(), S(tab, var()),
+               S(tab, lhs()));
     if (auto tt = guard()->isa<PrimaryExpr>(); !tt || tt->tag() != Tag::K_tt)
         std::print(os, " when {}", S(tab, guard()));
     std::print(os, " => {};", S(tab, rhs()));

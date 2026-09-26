@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <memory>
 
 #include <fe/restore.h>

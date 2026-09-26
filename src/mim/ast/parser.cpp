@@ -308,7 +308,15 @@ Ptr<Expr> Parser::parse_variant_expr() {
         do {
             auto track = tracker();
             auto dbg   = parse_id("constructor of a variant");
-            auto type  = accept(Tag::T_colon) ? parse_expr("payload of a variant constructor") : nullptr;
+            auto type  = Ptr<Expr>();
+            if (auto colon = accept(Tag::T_colon)) {
+                if (ahead().isa(Tag::T_pipe))
+                    error()
+                        .w(colon.loc(), "payload of constructor `{}` swallows the remaining constructors", dbg.sym())
+                        .n("drop the `:` if `{}` carries no payload", dbg.sym())
+                        .n("parenthesize the payload if a nested variant is intended");
+                type = parse_expr("payload of a variant constructor");
+            }
             ctors.emplace_back(ptr<VariantExpr::Ctor>(track, dbg, type));
         } while (accept(Tag::T_pipe));
     }
@@ -347,9 +355,8 @@ Ptr<Expr> Parser::parse_seq_or_single_expr() {
     bool is_pack = ahead().isa(Tag::D_angle_l);
     auto delim_l = is_pack ? Tag::D_angle_l : Tag::D_quote_l;
     auto delim_r = Tok::delim_l2r(delim_l);
-    eat(delim_l);
     auto arities = Ptrs<IdPtrn>();
-    auto _       = this->anchor(delim_r);
+    auto _       = anchor(eat(delim_l), delim_r);
     auto ctxt    = fe::Cite(is_pack ? "shape of a pack or a singleton term introduction"
                                     : "shape of an array or a singleton type formation");
 
@@ -659,7 +666,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
-            case Tag::C_RULE: decls.emplace_back(parse_rule_decl()); break;
+            case Tag::C_RULE: decls.emplace_back(parse_rule_decl(track, mods)); break;
             case Tag::C_IMPORT:
                 if (auto i = parse_import_or_plugin(track, mods)) decls.emplace_back(i);
                 break;
@@ -771,9 +778,8 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a module - it groups declarations, not a single value");
     auto vis = mods.vis.value_or(Vis::Priv);
     eat(Tag::K_mod);
-    auto dbg = parse_id("name of a module");
-    expect(Tag::D_brace_l, "opening brace of a module");
-    auto _     = this->anchor(Tag::D_brace_r);
+    auto dbg   = parse_id("name of a module");
+    auto _     = anchor(expect(Tag::D_brace_l, "opening brace of a module"), Tag::D_brace_r);
     auto decls = parse_decls();
     recover("module");
     expect(Tag::D_brace_r, "closing brace of a module");
@@ -812,8 +818,9 @@ Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
     return ptr<RecDecl>(track, mods, dbg, body, next);
 }
 
-Ptr<ValDecl> Parser::parse_rule_decl() {
-    auto track   = tracker();
+Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "rewrite rule");
+    if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a rewrite rule");
     auto is_norm = lex().tag() == Tag::K_norm;
     auto dbg     = parse_id("rewrite rule");
     auto ptrn    = parse_ptrn({}, "meta variables in rewrite rule");
@@ -823,7 +830,7 @@ Ptr<ValDecl> Parser::parse_rule_decl() {
                                           : ptr<PrimaryExpr>(missing(), Tag::K_tt);
     expect(Tag::T_fat_arrow, "rewrite rule declaration");
     auto rhs = parse_expr("rewrite result");
-    return ptr<RuleDecl>(track, dbg, ptrn, lhs, rhs, guard, is_norm);
+    return ptr<RuleDecl>(track, mods, dbg, ptrn, lhs, rhs, guard, is_norm);
 }
 
 Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {

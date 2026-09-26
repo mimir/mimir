@@ -256,16 +256,15 @@ const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {
 
 ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
     auto& w = new_world();
-    // Sort by gid: fv_vec's order *is* the closure environment layout (see rewrite_body's env_val->proj(i)),
-    // and iterating a DefSet (absl::flat_hash_set) leaves it at the mercy of hash-table insertion order -
-    // so unrelated changes elsewhere silently permuted the env slots.
+    // Sort by gid: fv_vec's order *is* the closure environment layout (see rewrite_body's env_val->proj(i)).
+    // A DefSet iterates in insertion order, which unrelated changes elsewhere silently perturb.
     auto fv_vec = DefVec(fvs.begin(), fvs.end());
     std::ranges::sort(fv_vec, GIDLt<const Def*>());
     auto env_type    = rewrite(old_world().tuple(fv_vec)->type());
     auto new_fn_type = clos_type_of(old_lam->type(), env_type)->as<Pi>();
     auto new_fn      = w.mut_lam(new_fn_type)->set(old_lam->dbg_key());
 
-    if (!isa_optimizable(old_lam)) {
+    if (!old_lam->is_rewritable()) {
         // External or imported (unset) Lam%s get an η-wrapper that hides the environment.
         auto ep           = env_param(new_fn_type);
         auto new_ext_type = w.cn(clos_remove_env(ep, new_fn_type->dom()));

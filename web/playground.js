@@ -69,11 +69,12 @@ async function run() {
     clearTimeout(timer);
     if (running) { queued = true; return; }
     running = true;
-    $('run').textContent = 'Stop';
+    $('run').classList.add('running');
+    $('run').lastChild.textContent = 'Stop';
     status.className = '';
     status.textContent = 'running…';
 
-    const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '--output-ast', '/out.ast', '-o', '/out.mim'];
+    const args = ['/in.mim', '-P', '/mim', '--output-dot', '/out.dot', '--output-nest', '/out.nest', '--output-ast', '/out.ast', '-o', '/out.mim'];
     for (const box of document.querySelectorAll('#dot-opts input:checked')) args.push(`--dot-${box.dataset.dot}`);
     if (dark) args.push('--dot-dark');
     for (const box of document.querySelectorAll('#mim-opts input[data-mim]:checked')) args.push(`--mim-${box.dataset.mim}`);
@@ -93,8 +94,9 @@ async function run() {
         showCode('mim', MimCode, res.out?.mim);
         showCode('ast', MimCode, res.out?.ast);
         if (res.out?.ll) showCode('ll', LlvmCode, res.out.ll);
+        else if ($('optimize').checked) showCode('ll', null, '(the ll backend failed - see Log)');
         else showCode('ll', null, '(enable "optimize" to run the ll backend)');
-        await showGraph(res.out?.dot);
+        await Promise.all([layouts.graph.show(res.out?.dot), layouts.nest.show(res.out?.nest)]);
     } catch (e) {
         log.push((why = String(e?.message ?? e)));
     }
@@ -107,15 +109,10 @@ async function run() {
     select(failed ? 'log' : userPane);
 
     running = false;
-    $('run').textContent = 'Run';
+    $('run').classList.remove('running');
+    $('run').lastChild.textContent = 'Run';
     if (queued) { queued = false; run(); }
 }
-
-// The docs' lexers colour these panes, too - but onto the palette of this page.
-const CLASS = { comment: 'tok-comment', meta: 'tok-comment', string: 'tok-string', number: 'tok-number',
-                keyword: 'tok-keyword', decl: 'tok-keyword', type: 'tok-type', literal: 'tok-literal',
-                special: 'tok-special', global: 'tok-special', label: 'tok-special' };
-MimCode.CLASS = LlvmCode.CLASS = CLASS;
 
 // Above this the lexer costs more than the colours are worth.
 const MAX_CODE = 256 * 1024;
@@ -159,40 +156,59 @@ function showLog(text) {
 // Layout runs on the page, so a graph big enough to freeze it is refused.
 const MAX_DOT = 512 * 1024;
 
-const graph = new GraphView($('graph'), $('graph-nav'));
+// Laid out only while its pane is up or a pop-out is watching: layout blocks the editor.
+class Layout {
+    #pane;
+    #view;
+    #post;
+    #watched;
+    #dot = null;
+    #laidOut;          // the `dot` the pane already shows
+    svg = null;        // what came out of the layout, or null with `msg` saying why there is none
+    msg = '';
 
-let dot = null;  // laid out only while the Graph tab is up or a pop-out is watching: layout blocks the editor
-let laidOut;     // the `dot` the pane already shows
-let svg = null;  // what came out of the layout, or null with `msg` saying why there is none
-let msg = '';
+    constructor(pane, view, post = () => {}, watched = () => false) {
+        this.#pane = pane;
+        this.#view = view;
+        this.#post = post;
+        this.#watched = watched;
+    }
 
-async function showGraph(latest) {
-    dot = latest;
-    if (!$('pane-graph').hidden || poppedOut()) await layoutGraph();
-}
+    async show(latest) {
+        this.#dot = latest;
+        if (!this.#pane.hidden || this.#watched()) await this.layout();
+    }
 
-async function layoutGraph() {
-    if (dot === laidOut) return post();
-    laidOut = dot;
-    if (!dot) return render(null, '(no graph)');
-    if (dot.length > MAX_DOT) return render(null, `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`);
-    const graphviz = await graphvizReady;
-    if (dot !== laidOut) return; // superseded while Graphviz was still loading
-    render(graphviz.layout(dot, 'svg', 'dot'));
-}
+    async layout() {
+        const dot = this.#dot;
+        if (dot === this.#laidOut) return this.#post();
+        this.#laidOut = dot;
+        if (!dot) return this.#render(null, '(no graph)');
+        if (dot.length > MAX_DOT) return this.#render(null, `(${Math.round(dot.length / 1024)} KB of DOT - too large to lay out here)`);
+        const graphviz = await graphvizReady;
+        if (dot !== this.#laidOut) return; // superseded while Graphviz was still loading
+        this.#render(graphviz.layout(dot, 'svg', 'dot'));
+    }
 
-function render(latest, why) {
-    svg = latest;
-    msg = why;
-    svg ? graph.render(svg) : graph.message(msg);
-    post();
+    #render(svg, msg) {
+        this.svg = svg;
+        this.msg = msg;
+        svg ? this.#view.render(svg) : this.#view.message(msg);
+        this.#post();
+    }
 }
 
 // The pop-out shows the very SVG this page laid out, so it needs neither Graphviz nor the compiler.
 let popout = null;
 const poppedOut = () => popout && !popout.closed;
 
+const layouts = {
+    graph: new Layout($('pane-graph'), new GraphView($('graph'), $('graph-nav')), post, poppedOut),
+    nest:  new Layout($('pane-nest'),  new GraphView($('nest'),  $('nest-nav'))),
+};
+
 function post() {
+    const { svg, msg } = layouts.graph;
     if (poppedOut()) popout.postMessage({ svg, msg, dark }, '*');
 }
 
@@ -201,7 +217,7 @@ function popOut() {
     popout = window.open('graph.html', 'mim-graph', 'popup,width=1000,height=800');
 }
 
-window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layoutGraph(); });
+window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layouts.graph.layout(); });
 
 let userPane = 'graph'; // the tab that was picked by hand; showing the Log of a failing run does not count
 
@@ -211,7 +227,7 @@ function select(pane) {
         tab.setAttribute('aria-selected', String(on));
         $(`pane-${tab.dataset.pane}`).hidden = !on;
     }
-    if (pane === 'graph') layoutGraph();
+    if (layouts[pane]) layouts[pane].layout();
     else if (pending[pane]) renderCode(pane);
 }
 
@@ -249,7 +265,7 @@ async function setupEditor(initial) {
         const [state, view, language, commands, { Tag }] = await Promise.all(
             ['state@6', 'view@6', 'language@6', 'commands@6'].map(pkg => import(cdn + pkg))
                 .concat(import('https://esm.sh/@lezer/highlight@1')));
-        const tokens = Object.fromEntries(Object.keys(CLASS).map(kind => [kind, Tag.define()]));
+        const tokens = Object.fromEntries(Object.keys(MimCode.CLASS).map(kind => [kind, Tag.define()]));
 
         viSlot = new state.Compartment();
         editor = new view.EditorView({
@@ -264,7 +280,7 @@ async function setupEditor(initial) {
                 // Tab moves the focus unless it is bound; Esc first still lets a keyboard user out.
                 view.keymap.of([...commands.defaultKeymap, ...commands.historyKeymap, commands.indentWithTab]),
                 language.syntaxHighlighting(language.HighlightStyle.define(
-                    Object.entries(CLASS).map(([kind, cls]) => ({ tag: tokens[kind], class: cls })))),
+                    Object.entries(MimCode.CLASS).map(([kind, cls]) => ({ tag: tokens[kind], class: cls })))),
                 language.StreamLanguage.define(mimMode(tokens)),
                 view.EditorView.updateListener.of(u => u.docChanged && schedule()),
             ],
@@ -298,16 +314,17 @@ async function toggleVi() {
     }
 }
 
-// mim-code.js does the classifying and CLASS the colouring, so the editor matches the code panes.
+// mim-code.js does the classifying and code.css the colouring, so the editor matches the code panes and the docs.
 function mimMode(tokens) {
     return {
         startState: () => ({ comment: false }),
         token(stream, state) {
             const { end, kind } = MimCode.next(stream.string, stream.pos, state);
             stream.pos = end;
-            return kind in tokens ? kind : null;
+            return kind in tokens ? `mim-${kind}` : null;
         },
-        tokenTable: tokens,
+        // StreamLanguage claims legacy names such as `type` before it consults the table.
+        tokenTable: Object.fromEntries(Object.entries(tokens).map(([kind, tag]) => [`mim-${kind}`, tag])),
         languageData: { commentTokens: { line: '//', block: { open: '/*', close: '*/' } } },
     };
 }
@@ -346,7 +363,7 @@ async function copy(text) {
 }
 
 async function share() {
-    const btn = $('share');
+    const btn = $('share').lastChild;
     try {
         await copy(shareLink());
         btn.textContent = 'Link copied!';

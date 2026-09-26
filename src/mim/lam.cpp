@@ -13,7 +13,8 @@ namespace mim {
 const Pi* Pi::ret_pi() const {
     // num_doms() has to materialize a Lit for the arity of a Sigma dom - which means a full hash-cons round trip.
     // So compute it *once* and feed it to the (a, i) projection instead of letting dom(i) re-derive it.
-    if (auto n = num_doms(); n != 0) return Pi::isa_basicblock(dom(n, n - 1));
+    if (auto n = num_doms(); n != 0)
+        if (auto last = dom(n, n - 1)) return Pi::isa_basicblock(last); // a frozen World yields no projection
     return nullptr;
 }
 
@@ -59,38 +60,6 @@ Lam* Lam::eta_expand(Filter filter, const Def* f) {
     auto eta = w.mut_lam(f->type()->as<Pi>());
     eta->set(f->dbg_key())->debug_prefix("eta_"s);
     return eta->app(filter, f, eta->var());
-}
-
-/*
- * Helpers
- */
-
-const Def* compose_cn(const Def* f, const Def* g) {
-    auto& world = f->world();
-    auto F      = f->type()->as<Pi>();
-    auto G      = g->type()->as<Pi>();
-
-    assert(Pi::isa_returning(F));
-    assert(Pi::isa_returning(G));
-
-    auto A = G->dom(2, 0);
-    auto B = G->ret_dom();
-    auto C = F->ret_dom();
-    // The type check of codom G = dom F is better handled by the application type checking
-
-    world.log().d("compose f: {}: {}, g: {}: {}", f, F, g, G);
-    world.log().d("    A = {}, B = {}, C = {}", A, B, C);
-
-    auto name  = "comp_"s + f->sym().str() + "_" + g->sym().str();
-    auto h     = world.mut_fun(A, C)->set(name);
-    auto hcont = world.mut_con(B)->set(name + "_cont");
-
-    h->app(true, g, {h->var(2, 0), hcont});
-
-    auto hcont_var = hcont->var(); // Warning: not var(0) => only one var => normalization flattens tuples down here.
-    hcont->app(true, f, {hcont_var, h->var(2, 1) /* ret_var */});
-
-    return h;
 }
 
 } // namespace mim

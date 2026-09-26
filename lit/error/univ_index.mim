@@ -1,0 +1,8 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// `Univ` has no type at all, so it is no index; asking must report, not crash.
+let x = (1I32, 2I32)#Univ;
+
+// CHECK:      {{.*}}univ_index.mim:4:9-4:25: error: index must be of `Idx` type but is of type `<no type>`
+// CHECK-NEXT: 4 | let x = (1I32, 2I32)#Univ;
+// CHECK-NEXT:   |         ^^^^^^^^^^^^^^^^^

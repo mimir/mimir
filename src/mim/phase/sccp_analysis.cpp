@@ -1,4 +1,4 @@
-#include "sccp.h"
+#include "mim/phase/sccp.h"
 
 namespace mim {
 
@@ -30,10 +30,10 @@ const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
 }
 
 const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
-    if (auto lam = app->callee()->isa_mut<Lam>(); isa_optimizable(lam)) {
+    if (auto lam = Lam::isa_rewritable(app->callee())) {
         auto n          = app->num_targs();
-        auto abstr_args = absl::FixedArray<const Def*>(n);
-        auto abstr_vars = absl::FixedArray<const Def*>(n);
+        auto abstr_args = DefVec(n);
+        auto abstr_vars = DefVec(n);
 
         // propagate
         for (size_t i = 0; i != n; ++i) {

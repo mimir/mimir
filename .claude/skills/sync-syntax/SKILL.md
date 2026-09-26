@@ -1,11 +1,11 @@
 ---
 name: sync-syntax
-description: Propagate a change to Mim's surface syntax from the lexer/parser to the five downstream consumers - docs/langref.md, lit/docs/tutorial.mim, docs/mim.js, the vim-mim plugin, and the tree-sitter-mim grammar. Use after touching include/mim/ast/{tok,lexer,parser}.h or src/mim/ast/{lexer,parser}.cpp or src/mim/ast/family.h, and whenever asked to check or re-sync those targets.
+description: Propagate a change to Mim's surface syntax from the lexer/parser to the six downstream consumers - docs/langref.md, lit/docs/tutorial.mim, docs/mim.js, the vim-mim plugin, the tree-sitter-mim grammar, and the tree-sitter-mim-vscode extension. Use after touching include/mim/ast/{tok,lexer,parser}.h or src/mim/ast/{lexer,parser}.cpp or src/mim/ast/family.h, and whenever asked to check or re-sync those targets.
 ---
 
 # sync-syntax
 
-The lexer and the parser define Mim's surface syntax; five other places merely describe it and silently rot when they are not updated in the same breath.
+The lexer and the parser define Mim's surface syntax; six other places merely describe it and silently rot when they are not updated in the same breath.
 
 ## Ground truth
 
@@ -16,7 +16,7 @@ The lexer and the parser define Mim's surface syntax; five other places merely d
 | `src/mim/ast/parser.cpp` | the productions and the `Prec` bound each `parse_expr`/`parse_ptrn` passes |
 | `src/mim/ast/family.h` | which tags start which production (`C_EXPR`, `C_DECL`, `C_LAM`, …) |
 
-Start from `git diff` over those files - the diff, not the current state, is what tells you which of the five targets are in play.
+Start from `git diff` over those files - the diff, not the current state, is what tells you which of the six targets are in play.
 
 ## Step 1: run the checker
 
@@ -27,19 +27,23 @@ Start from `git diff` over those files - the diff, not the current state, is wha
 It diffs the keyword and terminal tables of `tok.h` against the four targets that carry a flat word list and reports what is `missing` (in `tok.h`, not in the target) or `stale` (the other way round).
 It has nothing to say about `lit/docs/tutorial.mim`, and it only sees flat word lists - a new *production*, a changed *precedence*, or a new *literal form* passes it silently too.
 All of that needs the manual pass below.
-`VIM_MIM` and `TS_MIM` override the sibling checkouts (`../vim-mim`, `../tree-sitter-mim`).
+It also flags capture names that `language-configs.json` of the vscode extension maps but `tree-sitter-mim/queries/highlights.scm` no longer emits.
+`VIM_MIM`, `TS_MIM`, and `VSC_MIM` override the sibling checkouts (`../vim-mim`, `../tree-sitter-mim`, `../tree-sitter-mim-vscode`).
 
 ## Step 2: what a change touches
 
-| Change | langref | tutorial | mim.js | vim-mim | tree-sitter-mim |
-| ------ | :-----: | :------: | :----: | :-----: | :-------------: |
-| keyword added/removed/renamed | ✓ | ✓ | ✓ | ✓ | ✓ |
-| new punctuation token or Unicode spelling | ✓ | ✓ | ✓ | ✓ | ✓ |
-| literal syntax | ✓ | ✓ | ✓ | ✓ | ✓ |
-| new/changed production | ✓ | ✓ | - | - | ✓ |
-| comment syntax | ✓ | ✓ | ✓ | ✓ | ✓ |
-| precedence or associativity | ✓ | - | - | - | ✓ |
-| error message or diagnostic only | - | - | - | - | - |
+| Change | langref | tutorial | mim.js | vim-mim | tree-sitter-mim | vscode |
+| ------ | :-----: | :------: | :----: | :-----: | :-------------: | :----: |
+| keyword added/removed/renamed | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| new punctuation token or Unicode spelling | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| literal syntax | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| new/changed production | ✓ | ✓ | - | - | ✓ | ✓ |
+| comment syntax | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| precedence or associativity | ✓ | - | - | - | ✓ | ✓ |
+| error message or diagnostic only | - | - | - | - | - | - |
+
+The vscode column only means *bump the submodule*: the extension ships `tree-sitter-mim` verbatim, so anything that reaches the grammar reaches it.
+Its own files change only for brackets, comment markers, and renamed captures.
 
 A construct that was *removed or renamed* reaches the tutorial no matter which row it sits in: the file is a lit test, so a stale line breaks the build rather than going unnoticed.
 
@@ -98,6 +102,25 @@ Read `../tree-sitter-mim/CLAUDE.md` first - it is the authority for that repo an
 - `queries/highlights.scm` (plus `injections.scm`, `folds.scm`) are the Neovim queries; renaming a grammar node breaks them and the external Helix ones.
 - The corpus under `test/corpus/` is small - the real regression suite is this repo's `.mim` files.
 
+### `../tree-sitter-mim-vscode`
+
+A fork of `AlecGhost/tree-sitter-vscode` that bundles two grammars as submodules and builds them to WASM with `generate_wasm.sh`; `src/extension.ts` is upstream's generic tree-sitter host.
+A sync is four jobs, in this order:
+
+1. **Own repo.** `git pull --ff-only` from `origin` (`mimir/tree-sitter-mim-vscode`) first, so nothing below lands on a stale base.
+2. **Upstream.** Add the remote once (`git remote add upstream https://github.com/AlecGhost/tree-sitter-vscode.git`), then `git fetch upstream && git merge upstream/master`.
+   Conflicts concentrate in `package.json` (name, publisher, version, repository, the `tree-sitter-mim-vscode.*` configuration keys) and `README.md`: keep ours for identity, take theirs for dependencies, scripts, and `engines`.
+   Upstream's `tree-sitter-vscode.*` setting and command ids must stay renamed to `tree-sitter-mim-vscode.*` in both `package.json` and `src/extension.ts`.
+   Beyond the renames, `src/extension.ts` carries four Mim additions to re-apply when upstream rewrites the file: the bundled `language-configs.json` with its `${extension_dir}` placeholder and per-language user overrides, last-match-wins among equal-range tokens, sorting tokens before `splitToken`, and the `#lua-match?` translation.
+   `package.json` also keeps our `languages` contribution and runs `./generate_wasm.sh` in its `package` script.
+   A new upstream config key (e.g. a query file like `folds`) is only live once `language-configs.json` passes it for `mim`, and the `.scm` file is copied by `generate_wasm.sh`.
+3. **`tree-sitter-mim` submodule.** It must point at `mimir/tree-sitter-mim`, not the old `fodinabor/tree-sitter-mim` fork (whose history is unrelated): `git submodule set-url tree-sitter-mim https://github.com/mimir/tree-sitter-mim`, `git submodule sync`, then check out the commit the sibling `../tree-sitter-mim` was just synced to.
+   Then reconcile what the extension layers over the grammar:
+   - `language-configs.json`: every `semanticTokenTypeMappings` key of the `mim` entry must be a capture `queries/highlights.scm` emits - `check.sh` lists the ones that are not; an unmapped capture falls back to VS Code's defaults, a stale key is dead.
+   - `mim-language-configuration.json`: `brackets`/`autoClosingPairs`/`surroundingPairs` mirror the `D_*` delimiters of `tok.h` (`<`, `>`, `<<`, `>>` are operators, not brackets); `comments` mirrors the lexer's comment forms.
+4. **`tree-sitter-markdown` submodule.** Move it to the newest release tag of `tree-sitter-grammars/tree-sitter-markdown` (`git -C tree-sitter-markdown fetch --tags`, check out the highest `v*`); it only renders `///` doc comments via `queries/mim/injections.scm`, so rename checks there are all it needs.
+   The `markdown`/`markdown-inline` mappings in `language-configs.json` follow its `queries/highlights.scm` the same way.
+
 ## Step 4: verify
 
 ```sh
@@ -117,10 +140,23 @@ tree-sitter parse -q $(find ../mimir/lit ../mimir/src/mim/plug -name '*.mim')
 #           unanchored_delim,unterminated_string,where_semicolon}.mim report an ERROR
 ```
 
+```sh
+cd ../tree-sitter-mim-vscode
+npm install && npm run build       # tsc + webpack + prettier + eslint; `prebuild` stages web-tree-sitter.wasm into dist/
+npx vsce package --no-dependencies # prepublish reruns the build and generate_wasm.sh (both grammars at ABI 15)
+git -C tree-sitter-mim checkout -- .   # generate_wasm.sh leaves the submodule dirty
+```
+
+`src/extension.ts` rewrites Neovim's `#lua-match?`/`#not-lua-match?` into `#match?` before compiling `highlights.scm`; web-tree-sitter silently ignores unknown predicates, which would turn every identifier into `@type` and `@constant`.
+A new Lua character class in a query needs an entry in `LUA_CLASSES` there.
+Headless check without VS Code: load `node_modules/web-tree-sitter/web-tree-sitter.cjs` in node, parse the `.mim` files, run the translated query, and look at which capture wins per node.
+
+Install the `.vsix` (`code --install-extension …`) and open `lit/docs/tutorial.mim`: keywords, literals, parameters, and the Markdown inside `///` must all be coloured.
+
 For `vim-mim` there is no test suite: open a `.mim` file and check with `:syn list` / `:Inspect`, or eyeball `lit/docs/tutorial.mim`.
 
 ## Step 5: hand off
 
-Three repos are involved, so this is three commits.
+Four repos are involved, so this is up to four commits; in the vscode repo, keep the upstream merge a commit of its own, separate from the submodule bumps.
 Do **not** commit or push - report per repo what changed and what remains, and let Roland commit.
 Say explicitly if a target was left alone because the change did not reach it.

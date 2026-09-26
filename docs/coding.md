@@ -173,7 +173,7 @@ Use the following coding conventions:
 
 #### Include Style {#includes}
 
-Use `#include "..."` for headers that belong to the artifact you are currently building and `#include <...>` for everything you link against - including external dependencies such as [Abseil](https://abseil.io/), [fe](https://github.com/leissa/fe), and the standard library.
+Use `#include "..."` for headers that belong to the artifact you are currently building and `#include <...>` for everything you link against - including external dependencies such as [ankerl](https://github.com/martinus/unordered_dense), [fe](https://github.com/leissa/fe), and the standard library.
 
 The artifact a file belongs to - and hence the prefix of its own headers - follows from its path:
 
@@ -193,7 +193,7 @@ A plugin is a separate build artifact as well, so for a plugin `X`:
 ```cpp
 #include <cstdlib> // standard library
 
-#include <absl/container/flat_hash_map.h> // other external dependencies
+#include <ankerl/unordered_dense.h> // other external dependencies
 #include <fe/assert.h>
 
 #include <mim/world.h> // libmim

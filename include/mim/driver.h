@@ -1,12 +1,12 @@
 #pragma once
 
+#include <deque>
 #include <filesystem>
 #include <list>
 #include <string>
 #include <utility>
 
-#include <absl/container/flat_hash_map.h>
-#include <absl/container/node_hash_map.h>
+#include <fe/container.h>
 #include <fe/driver.h>
 #include <fe/log.h>
 #include <fe/profile.h>
@@ -91,7 +91,7 @@ public:
     struct Names {
         size_t depth = 0;
         bool clashed = false;
-        absl::flat_hash_map<Sym, u32> sym2gid;
+        fe::SymMap<u32> sym2gid;
     };
 
     Names& names() const { return names_; }
@@ -226,7 +226,7 @@ private:
     };
 
     // This must go *first* so plugins will be unloaded *last* in the d'tor; otherwise funny things might happen ...
-    absl::node_hash_map<std::string, Loaded> plugins_;
+    fe::StrMap<Loaded> plugins_;
     Version version_;
     Flags flags_;
     fe::Log log_;
@@ -236,7 +236,7 @@ private:
     Paths plugin_dirs_, import_dirs_, prefixes_;
     Flags2Phases phases_;
     Normalizers normalizers_;
-    absl::flat_hash_map<std::string, fe::Vector<std::string>> plugin_args_;
+    fe::StrMap<fe::Vector<std::string>> plugin_args_;
     std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
     std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;

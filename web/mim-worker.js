@@ -51,7 +51,8 @@ self.onmessage = async ({ data }) => {
         self.postMessage({ ready: true }); // the page's run clock starts here
         M.FS.writeFile('/in.mim', data.src);
         const code = M.callMain(data.args);
-        const out = { mim: read(M, '/out.mim'), ast: read(M, '/out.ast'), ll: read(M, '/out.ll'), dot: read(M, '/out.dot') };
+        const out = {};
+        for (const kind of ['mim', 'ast', 'll', 'dot', 'nest']) out[kind] = read(M, `/out.${kind}`);
         self.postMessage({ code, log, out });
     } catch (e) {
         self.postMessage({ code: -1, log, error: diagnose(e) });

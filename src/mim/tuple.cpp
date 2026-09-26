@@ -37,7 +37,6 @@ std::optional<nat_t> Shape::extent(const Def* axis) {
 
 /// Is @p type a @p leaf - or an aggregate of them? This is what makes a shape a shape and an index an index.
 static bool isa_axes(const Def* type, auto leaf) {
-    if (!type) return false; // Univ has no type
     if (leaf(type)) return true;
     if (auto sigma = type->isa<Sigma>()) return std::ranges::all_of(sigma->ops(), leaf);
     if (auto arr = type->isa<Arr>()) return leaf(arr->body()->zonk());
@@ -114,8 +113,6 @@ const Def* Dispatch::arg() const { return app()->arg(); }
 bool is_unit(const Def* def) { return def->type() == def->world().sigma(); }
 
 std::string tuple2str(const Def* def) {
-    if (def == nullptr) return {};
-
     auto& w  = def->world();
     auto res = std::string();
     if (auto n = Lit::isa(def->arity())) {

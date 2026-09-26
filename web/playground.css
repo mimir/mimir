@@ -1,25 +1,25 @@
 :root {
     color-scheme: light;
     --bg:      #ffffff;
-    --fg:      #1c1c1c;
-    --panel:   #f6f6f4;
-    --border:  #d8d8d2;
-    --accent:  #1a6feb;
-    --fg30: #1c1c1c; --fg31: #c0392b; --fg32: #2e7d32; --fg33: #8a6d00;
-    --fg34: #1a6feb; --fg35: #8e24aa; --fg36: #00737d; --fg90: #6b7280;
+    --fg:      #3c3c3b;
+    --panel:   #f6f5f1;
+    --border:  #dadada;
+    --accent:  #005f9b;
+    --fg30: #3c3c3b; --fg31: #c70d2d; --fg32: #25795d; --fg33: #9c6d0f;
+    --fg34: #005f9b; --fg35: #45195c; --fg36: #0091c8; --fg90: #878787;
     --mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
 /* `darkmode-toggle.js` always stamps one of these before the first paint, so no media query is needed. */
 html.dark-mode {
     color-scheme: dark;
-    --bg:     #16181c;
-    --fg:     #e6e6e6;
-    --panel:  #1f2229;
-    --border: #343841;
-    --accent: #62a0ff;
-    --fg30: #9aa0a6; --fg31: #ff7b6b; --fg32: #7ee787; --fg33: #e3b341;
-    --fg34: #62a0ff; --fg35: #d2a8ff; --fg36: #56d4dd; --fg90: #8b949e;
+    --bg:     #1c1c1b;
+    --fg:     #ededed;
+    --panel:  #262625;
+    --border: #3c3c3b;
+    --accent: #50a5d2;
+    --fg30: #dadada; --fg31: #f07e93; --fg32: #5fc49c; --fg33: #eeb32a;
+    --fg34: #50a5d2; --fg35: #c49be0; --fg36: #7fcdea; --fg90: #878787;
 }
 
 #theme {
@@ -57,11 +57,17 @@ header {
 }
 
 header h1 {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
     margin: 0 .5rem 0 0;
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: .02em;
 }
+
+header h1 a { display: flex; }
+header h1 img { height: 1.75rem; }
 
 header .spacer { flex: 1; }
 
@@ -75,6 +81,24 @@ button, select {
 }
 
 button:hover { border-color: var(--accent); }
+
+button:has(.icon), header label:has(.icon) { display: inline-flex; align-items: center; gap: .35rem; }
+
+.icon {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.icon.fill { fill: currentColor; stroke: none; }
+
+#run .stop, #run.running .play { display: none; }
+#run.running .stop { display: inline; }
 
 #status { font-variant-numeric: tabular-nums; opacity: .7; }
 #status.error { color: var(--fg31); opacity: 1; }
@@ -211,7 +235,7 @@ main {
 }
 
 /* A pane with an options bar scrolls in its body, not as a whole. */
-#pane-graph, #pane-mim { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+#pane-graph, #pane-nest, #pane-mim { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 #pane-mim pre { flex: 1; min-height: 0; overflow: auto; padding: .75rem; }
 
 .opts {
@@ -226,7 +250,7 @@ main {
 
 .opts label { white-space: nowrap; }
 
-#graph {
+.graph {
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -237,9 +261,9 @@ main {
     touch-action: none; /* otherwise a touch drag scrolls instead of panning */
 }
 
-#graph.grabbing { cursor: grabbing; }
+.graph.grabbing { cursor: grabbing; }
 
-#graph-nav {
+.graph-nav {
     position: absolute;
     right: .75rem;
     bottom: .75rem;
@@ -247,7 +271,7 @@ main {
     gap: .25rem;
 }
 
-#graph-nav button {
+.graph-nav button {
     min-width: 1.9rem;
     padding: .15rem .4rem;
     line-height: 1.3;
@@ -255,36 +279,27 @@ main {
     opacity: .7;
 }
 
-#graph-nav button:hover { opacity: 1; }
-#graph-nav button svg { display: block; width: 14px; height: 14px; fill: currentColor; }
+.graph-nav button:hover { opacity: 1; }
+.graph-nav button svg { display: block; width: 14px; height: 14px; fill: currentColor; }
 
-/* `graph.html` is the graph pane alone, so the body is what `#graph-nav` anchors to. */
+/* `graph.html` is the graph pane alone, so the body is what `.graph-nav` anchors to. */
 body.popout { position: relative; }
 
 /* The generated `width`/`height` are stripped, so the viewBox scales the graph to the pane. */
-#graph svg { display: block; width: 100%; height: 100%; }
+.graph svg { display: block; width: 100%; height: 100%; }
 
-#graph svg :is(.node, .edge) { transition: opacity .1s ease; }
-#graph svg.focus :is(.node, .edge) { opacity: .1; }
-#graph svg.focus :is(.node, .edge).on { opacity: 1; }
+.graph svg :is(.node, .edge) { transition: opacity .1s ease; }
+.graph svg.focus :is(.node, .edge) { opacity: .1; }
+.graph svg.focus :is(.node, .edge).on { opacity: 1; }
 
 /* A detached edge carries `stroke="none"`, and a presentation attribute loses to a rule - so lighting
    one up reveals exactly what `hidden edges` would otherwise need a recompile to show. */
-#graph svg .edge.on path { stroke: var(--accent); stroke-width: 2; }
-#graph svg .edge.on polygon { stroke: var(--accent); fill: var(--accent); }
-#graph svg .node.hub :is(polygon, polyline) { stroke: var(--accent); stroke-width: 3; }
+.graph svg .edge.on path { stroke: var(--accent); stroke-width: 2; }
+.graph svg .edge.on polygon { stroke: var(--accent); fill: var(--accent); }
+.graph svg .node.hub :is(polygon, polyline) { stroke: var(--accent); stroke-width: 3; }
 #pane-log pre { white-space: pre-wrap; }
 
 /* mim's terminal colours, mapped onto the pane; see showLog. */
 .fg30 { color: var(--fg30); } .fg31 { color: var(--fg31); } .fg32 { color: var(--fg32); }
 .fg33 { color: var(--fg33); } .fg34 { color: var(--fg34); } .fg35 { color: var(--fg35); }
 .fg36 { color: var(--fg36); } .fg90 { color: var(--fg90); }
-
-/* The code panes' tokens, drawn from the same palette; see renderCode. */
-.tok-comment { color: var(--fg90); }
-.tok-string  { color: var(--fg32); }
-.tok-number,
-.tok-literal { color: var(--fg35); }
-.tok-keyword { color: var(--fg34); }
-.tok-type    { color: var(--fg36); }
-.tok-special { color: var(--fg33); }

@@ -179,7 +179,7 @@ private:
     std::deque<Scope> scopes_;
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
-    absl::node_hash_map<fe::Sym, absl::node_hash_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
+    std::unordered_map<fe::Sym, std::unordered_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
 };
 
 /// Base class of all AST nodes.
@@ -1235,21 +1235,21 @@ private:
 /// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
 class RuleDecl : public ValDecl {
 public:
-    RuleDecl(Loc loc, Dbg dbg, Ptr<Ptrn> var, Ptr<Expr> lhs, Ptr<Expr> rhs, Ptr<Expr> guard, bool is_normalizer)
-        : ValDecl(loc)
+    RuleDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Ptrn> var, Ptr<Expr> lhs, Ptr<Expr> rhs, Ptr<Expr> guard, bool is_norm)
+        : ValDecl(loc, mods)
         , dbg_(dbg)
         , var_(var)
         , lhs_(lhs)
         , rhs_(rhs)
         , guard_(guard)
-        , is_normalizer_(is_normalizer) {}
+        , is_norm_(is_norm) {}
 
     Dbg dbg() const override { return dbg_; }
     const Ptrn* var() const { return var_.get(); }
     const Expr* lhs() const { return lhs_.get(); }
     const Expr* rhs() const { return rhs_.get(); }
     const Expr* guard() const { return guard_.get(); }
-    bool is_normalizer() const { return is_normalizer_; }
+    bool is_norm() const { return is_norm_; }
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -1262,7 +1262,7 @@ private:
     Ptr<Expr> lhs_;
     Ptr<Expr> rhs_;
     Ptr<Expr> guard_;
-    bool is_normalizer_;
+    bool is_norm_;
 };
 
 /// `mod dbg { decls }`; also the base of the anonymous File.
