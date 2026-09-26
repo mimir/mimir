@@ -308,7 +308,15 @@ Ptr<Expr> Parser::parse_variant_expr() {
         do {
             auto track = tracker();
             auto dbg   = parse_id("constructor of a variant");
-            auto type  = accept(Tag::T_colon) ? parse_expr("payload of a variant constructor") : nullptr;
+            auto type  = Ptr<Expr>();
+            if (auto colon = accept(Tag::T_colon)) {
+                if (ahead().isa(Tag::T_pipe))
+                    error()
+                        .w(colon.loc(), "payload of constructor `{}` swallows the remaining constructors", dbg.sym())
+                        .n("drop the `:` if `{}` carries no payload", dbg.sym())
+                        .n("parenthesize the payload if a nested variant is intended");
+                type = parse_expr("payload of a variant constructor");
+            }
             ctors.emplace_back(ptr<VariantExpr::Ctor>(track, dbg, type));
         } while (accept(Tag::T_pipe));
     }

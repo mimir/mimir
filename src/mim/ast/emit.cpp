@@ -61,24 +61,26 @@ public:
     }
 
     std::optional<size_t> find_name(const Def* def, Dbg dbg) {
-        auto i = def2sym2idx_.find(def);
-        if (i == def2sym2idx_.end()) return {};
-        auto j = i->second.find(dbg.sym());
-        if (j == i->second.end()) return {};
-        if (j->second == Ambiguous) {
-            if (def->isa<Variant>())
-                error()
-                    .e(dbg.loc(), "constructor `{}` is ambiguous in variant `{}`", dbg, variant_str(def))
-                    .n("variants of the same shape name it at different positions")
-                    .n("select the case by index instead, as in `T#0`")
-                    .bail();
-            error()
-                .e(dbg.loc(), "field `{}` is ambiguous in `{}`", dbg, def)
-                .n("sigmas of the same shape name it at different positions")
-                .n("select the field by index instead, as in `t#0_2`")
-                .bail();
+        if (auto i = def2sym2idx_.find(def); i != def2sym2idx_.end()) {
+            if (auto j = i->second.find(dbg.sym()); j != i->second.end()) {
+                if (j->second == Ambiguous) {
+                    if (def->isa<Variant>())
+                        error()
+                            .e(dbg.loc(), "constructor `{}` is ambiguous in variant `{}`", dbg, variant_str(def))
+                            .n("variants of the same shape name it at different positions")
+                            .n("select the case by index instead, as in `T#0`")
+                            .bail();
+                    error()
+                        .e(dbg.loc(), "field `{}` is ambiguous in `{}`", dbg, def)
+                        .n("sigmas of the same shape name it at different positions")
+                        .n("select the field by index instead, as in `t#0_2`")
+                        .bail();
+                }
+                return j->second;
+            }
         }
-        return j->second;
+
+        return {};
     }
 
     void add_ctors(const Def* variant, const VariantExpr* expr) {
