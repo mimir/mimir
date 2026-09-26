@@ -9,13 +9,16 @@ let y = (1, 0_1, [2, 3);
 // A stray delimiter must not end the expression either: `3 + 4 + 5` still parses as one expression.
 let z = 3 + 4) + 5;
 
-// CHECK:      {{.*}}unanchored_delim.mim:4:14: error: ignoring unmatched `]` while parsing tuple element
+// CHECK:      {{.*}}unanchored_delim.mim:4:14: error: ignoring stray `]` while parsing tuple element
 // CHECK-NEXT: 4 | let x = (1, 2], 3);
 // CHECK-NEXT:   |              ^
 // CHECK-NEXT: {{.*}}unanchored_delim.mim:7:23: error: expected `]`, got `)` while parsing closing delimiter of a tuple pattern
 // CHECK-NEXT: 7 | let y = (1, 0_1, [2, 3);
 // CHECK-NEXT:   |                       ^
-// CHECK-NEXT: {{.*}}unanchored_delim.mim:10:14: error: ignoring unmatched `)` while parsing right-hand side of the `+` operator
+// CHECK-NEXT: {{.*}}unanchored_delim.mim:7:18: note: to match this `[`
+// CHECK-NEXT: 7 | let y = (1, 0_1, [2, 3);
+// CHECK-NEXT:   |                  ^
+// CHECK-NEXT: {{.*}}unanchored_delim.mim:10:14: error: ignoring stray `)` while parsing right-hand side of the `+` operator
 // CHECK-NEXT: 10 | let z = 3 + 4) + 5;
 // CHECK-NEXT:    |              ^
 // CHECK-NEXT: {{.*}}unanchored_delim.mim:10:16: error: identifier ``+` not found

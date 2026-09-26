@@ -347,9 +347,8 @@ Ptr<Expr> Parser::parse_seq_or_single_expr() {
     bool is_pack = ahead().isa(Tag::D_angle_l);
     auto delim_l = is_pack ? Tag::D_angle_l : Tag::D_quote_l;
     auto delim_r = Tok::delim_l2r(delim_l);
-    eat(delim_l);
     auto arities = Ptrs<IdPtrn>();
-    auto _       = this->anchor(delim_r);
+    auto _       = anchor(eat(delim_l), delim_r);
     auto ctxt    = fe::Cite(is_pack ? "shape of a pack or a singleton term introduction"
                                     : "shape of an array or a singleton type formation");
 
@@ -770,9 +769,8 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a module - it groups declarations, not a single value");
     auto vis = mods.vis.value_or(Vis::Priv);
     eat(Tag::K_mod);
-    auto dbg = parse_id("name of a module");
-    expect(Tag::D_brace_l, "opening brace of a module");
-    auto _     = this->anchor(Tag::D_brace_r);
+    auto dbg   = parse_id("name of a module");
+    auto _     = anchor(expect(Tag::D_brace_l, "opening brace of a module"), Tag::D_brace_r);
     auto decls = parse_decls();
     recover("module");
     expect(Tag::D_brace_r, "closing brace of a module");

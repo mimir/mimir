@@ -75,9 +75,8 @@ private:
     Ptr<Expr> path_expr(Dbg dbg) { return ptr<PathExpr>(path(dbg)); }
 
     void parse_list(fe::Cite ctxt, Tok::Tag delim_l, std::invocable auto f, Tok::Tag sep = Tok::Tag::T_comma) {
-        expect(delim_l, ctxt);
         auto delim_r = Tok::delim_l2r(delim_l);
-        auto _       = this->anchor(delim_r);
+        auto _       = anchor(expect(delim_l, ctxt), delim_r);
         do {
             recover(ctxt);
             if (ahead().isa(delim_r)) break;
