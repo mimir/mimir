@@ -1,6 +1,3 @@
-[submodule "doxygen-awesome-css"]
-	path = submodules/doxygen-awesome-css
-	url = ../../jothepro/doxygen-awesome-css.git
 [submodule "fe"]
 	path = submodules/fe
 	url = ../../leissa/fe.git

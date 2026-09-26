@@ -69,25 +69,26 @@ add_custom_command(
 
 configure_file("${PROJECT_SOURCE_DIR}/assets/logo.svg" "${MIM_LOGO}" COPYONLY)
 
-set(DOXY_AWESOME    "${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css")
+# FE's theme and the doxygen-awesome-css it pulls in; both manuals wear the same colors.
 set(DOXY_STYLESHEETS
-    "${DOXY_AWESOME}/doxygen-awesome.css"
-    "${DOXY_AWESOME}/doxygen-awesome-sidebar-only.css"
-    "${DOXY_AWESOME}/doxygen-awesome-sidebar-only-darkmode-toggle.css"
-    "${DOXY_AWESOME}/doxygen-custom/custom.css"
-    "${CMAKE_CURRENT_SOURCE_DIR}/theme.css"
+    "${FE_DOXY_AWESOME}/doxygen-awesome.css"
+    "${FE_DOXY_AWESOME}/doxygen-awesome-sidebar-only.css"
+    "${FE_DOXY_AWESOME}/doxygen-awesome-sidebar-only-darkmode-toggle.css"
+    "${FE_DOXY_AWESOME}/doxygen-custom/custom.css"
+    "${FE_DOXY_DIR}/theme.css"
+    "${FE_DOXY_DIR}/doxygen-fixes.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/dotgraph.css"
-    "${CMAKE_CURRENT_SOURCE_DIR}/doxygen-fixes.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fences.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/button.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/code.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.css"
     "${CMAKE_CURRENT_SOURCE_DIR}/mim.css"
 )
 set(DOXY_ASSETS
-    "${DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js"
-    "${DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
-    "${DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
+    "${FE_DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js"
+    "${FE_DOXY_AWESOME}/doxygen-awesome-fragment-copy-button.js"
+    "${FE_DOXY_AWESOME}/doxygen-awesome-paragraph-link.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/version-switcher.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/code.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"

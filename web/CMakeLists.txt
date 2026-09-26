@@ -42,7 +42,7 @@ mim_stage_playground(${PROJECT_SOURCE_DIR}/assets/logo.svg logo.svg)
 
 # The docs' dark-mode toggle, so the manual and the playground share one control and one stored preference.
 mim_stage_playground(
-    ${PROJECT_SOURCE_DIR}/submodules/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js
+    ${FE_DOXY_AWESOME}/doxygen-awesome-darkmode-toggle.js
     darkmode-toggle.js
 )
 
