@@ -36,6 +36,7 @@ public:
 
     AST& ast() { return ast_; }
     Driver& driver() { return ast().driver(); } ///< fe::Parser's default diagnostics go to its Driver::error.
+    Lexer& lexer() { return *lexer_; }          ///< fe::Parser::lex pulls the next Tok%en from here.
     const File* import(std::string_view sv, Tok::Tag tag = Tok::Tag::K_import) {
         return import({Loc(), driver().sym(sv)}, false, tag, nullptr);
     }
@@ -58,7 +59,6 @@ private:
 
     /// Empty Loc right after the last consumed token - where a node sits that is *missing* rather than wrong.
     Loc missing() const { return curr_.anew_end(); }
-    Lexer& lexer() { return *lexer_; }
 
     /// @name parse misc
     ///@{
