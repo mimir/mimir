@@ -361,7 +361,7 @@ void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream_chain(fe::Tab& tab, std::ostream& os) const {
-    if (!isa<LamDecl>()) os << "rec ";
+    if (!isa<LamDecl>() && !isa<NomDecl>()) os << "rec ";
     stream_(tab, os);
     for (auto curr = next(); curr; curr = curr->next()) {
         std::println(os);
@@ -371,6 +371,7 @@ void RecDecl::stream_chain(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} = {}", dbg(), S(tab, body())); }
+void NomDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "nom {} = {}", dbg(), S(tab, body())); }
 
 void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));

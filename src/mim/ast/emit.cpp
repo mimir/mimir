@@ -107,6 +107,24 @@ public:
     }
     ///@}
 
+    /// @name Nominal scope
+    /// Only the `mod` declaring a `nom` - or one nested in it - may use `inj` and `#` on it.
+    ///@{
+    void push_mod(const ModDecl* mod) { mods_.emplace_back(mod); }
+    void pop_mod() { mods_.pop_back(); }
+    fe::Vector<const ModDecl*> reset_mods() { return std::exchange(mods_, {}); }
+    void restore_mods(fe::Vector<const ModDecl*> mods) { mods_ = std::move(mods); }
+
+    void set_nom_owner(const Nom* nom) { nom2mod_[nom] = mods_.back(); }
+
+    const ModDecl* nom_owner(const Nom* nom) const {
+        auto i = nom2mod_.find(nom);
+        return i != nom2mod_.end() ? i->second : nullptr;
+    }
+
+    bool within(const ModDecl* mod) const { return std::ranges::find(mods_, mod) != mods_.end(); }
+    ///@}
+
 private:
     static constexpr size_t Ambiguous = size_t(-1);
 
@@ -121,6 +139,8 @@ private:
 
     AST& ast_;
     DefMap<fe::SymMap<size_t>> def2sym2idx_;
+    fe::Vector<const ModDecl*> mods_;
+    DefMap<const ModDecl*> nom2mod_;
 };
 
 /*
@@ -136,10 +156,14 @@ void File::emit(Emitter& e) const {
     if (emitted_) return;
     emitted_ = true;
 
+    // An imported file is emitted from within its importer's mods, but it is not nested in them.
+    auto mods = e.reset_mods();
+    e.push_mod(this);
     auto _ = e.world().push(loc());
     for (auto import : implicit_imports())
         import->emit(e);
     emit_decls(e);
+    e.restore_mods(std::move(mods));
 }
 
 void UseDecl::emit(Emitter& e) const {
@@ -396,10 +420,32 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     return rhs()->emit(e);
 }
 
+/// A `nom`'s intro and elim are private to the `mod` that declared it; the type itself is not.
+static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom) {
+    auto owner = e.nom_owner(nom);
+    if (!owner || e.within(owner)) return;
+    auto where = owner->isa<File>() ? fe::format_cite("file `{}`", owner->loc().src->path().filename().string())
+                                    : fe::format_cite("module `{}`", owner->dbg());
+    e.error()
+        .e(loc, "`inj` and `#` on nominal type `{}` are only allowed within {}", nom, where)
+        .n(nom->loc(), "declared here")
+        .bail();
+}
+
 const Def* PrefixExpr::emit_(Emitter& e) const {
     auto def = rhs()->emit(e);
     switch (op().tag()) {
-        case Tag::T_extract: return e.world().unwrap(def);
+        case Tag::T_extract:
+            if (auto nom = def->isa_type<Nom>()) {
+                check_nom_scope(e, loc(), nom);
+                return e.world().struc(def);
+            }
+            if (!def->zonk()->isa_type<Single>())
+                e.error()
+                    .e(loc(), "operand of prefix `#` is of type `{}` but must be of nominal or singleton type",
+                       type_of(def))
+                    .bail();
+            return e.world().unwrap(def);
         default: fe::unreachable();
     }
 }
@@ -482,7 +528,9 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     switch (op().tag()) {
         case Tag::T_arrow_r: return w.pi(l, r);
         case Tag::T_at: return w.app(l, r);
-        case Tag::K_inj: return w.inj(r, l);
+        case Tag::K_inj:
+            if (auto nom = r->isa<Nom>()) check_nom_scope(e, loc(), nom);
+            return w.inj(r, l);
         default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR
     }
 }
@@ -768,7 +816,11 @@ void ModDecl::emit_decls(Emitter& e) const {
         decl->emit(e);
 }
 
-void ModDecl::emit(Emitter& e) const { emit_decls(e); }
+void ModDecl::emit(Emitter& e) const {
+    e.push_mod(this);
+    emit_decls(e);
+    e.pop_mod();
+}
 
 void LetDecl::emit(Emitter& e) const {
     auto _ = e.world().push(loc());
@@ -794,6 +846,20 @@ void RecDecl::emit_body(Emitter& e) const {
     auto _ = e.world().push(loc());
     body()->emit_body(e, def_);
     // TODO immutabilize?
+    e.attach(annex_, sub_, dbg().sym(), def_);
+}
+
+void NomDecl::emit_decl(Emitter& e) const {
+    auto _ = e.world().push(loc());
+    // World::dump finds a file's annexes by their qualified sym.
+    auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
+    def_     = e.world().mut_nom(e.world().type_infer_univ())->set(sym);
+    e.set_nom_owner(def_->as<Nom>());
+}
+
+void NomDecl::emit_body(Emitter& e) const {
+    auto _ = e.world().push(loc());
+    def_->as_mut<Nom>()->set(body()->emit(e));
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 

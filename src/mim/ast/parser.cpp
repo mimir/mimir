@@ -662,6 +662,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
             case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
+            case Tag::K_nom: decls.emplace_back(parse_nom_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
@@ -807,6 +808,16 @@ Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
     return ptr<RecDecl>(track, mods, dbg, body, next);
 }
 
+Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "nominal type declaration");
+    eat(Tag::K_nom);
+    auto dbg = parse_id("nominal type declaration");
+    expect(Tag::T_assign, "nominal type declaration");
+    auto body = parse_expr("underlying type of a nominal type declaration");
+    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
+    return ptr<NomDecl>(track, mods, dbg, body, next);
+}
+
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "rewrite rule");
     if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a rewrite rule");
@@ -888,6 +899,10 @@ Ptr<RecDecl> Parser::parse_and_decl() {
         lex();
         auto track = tracker();
         return parse_lam_decl(track, {});
+    }
+    if (ahead(1).isa(Tag::K_nom)) {
+        lex();
+        return parse_nom_decl(tracker(), {});
     }
     return parse_rec_decl(tracker(), false, {});
 }

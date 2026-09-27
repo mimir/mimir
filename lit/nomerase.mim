@@ -1,0 +1,18 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not='nom' --implicit-check-not='inj'
+plugin core;
+
+nom Meter = I32;
+nom Foot  = I32;
+
+// The wrapper vanishes, so `inj`/`#` become the identity and the arithmetic stays as is.
+extern lam add (a b: Meter): Meter = (core.wrap.add 0 (#a, #b)) inj Meter;
+// CHECK-DAG: extern lam add ({{.*}}: I32, {{.*}}: I32){{.*}}: I32 =
+
+// Distinct `nom`s over the same type erase to the very same type.
+extern lam convert (f: Foot): Meter = #f inj Meter;
+// CHECK-DAG: extern lam convert (f: I32): I32 =
+
+// A `nom` over a singleton has no information left for single_erasure to keep.
+nom Marker = «23»;
+extern lam mark (m: Marker): Nat = #(#m);
+// CHECK-DAG: extern lam mark (): Nat =

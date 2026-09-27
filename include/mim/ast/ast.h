@@ -1125,12 +1125,27 @@ protected:
     /// Streams this declaration alone - without the leading `rec`/`and` and without the trailing `;`.
     virtual void stream_(fe::Tab&, std::ostream&) const;
 
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
+
 private:
     Dbg dbg_;
     Ptr<Expr> body_;
     Ptr<RecDecl> next_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
+};
+
+/// `nom dbg = body;` - a nominal newtype.
+class NomDecl : public RecDecl {
+public:
+    NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body, Ptr<RecDecl> next)
+        : RecDecl(loc, mods, dbg, body, next) {}
+
+    void bind_decl(Scopes&) const override;
+    void emit_decl(Emitter&) const override;
+    void emit_body(Emitter&) const override;
+
+private:
+    void stream_(fe::Tab&, std::ostream&) const override;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.

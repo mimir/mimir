@@ -242,6 +242,7 @@ const Def* Def::var_type() {
         case MutNode::Sigma:   return this;
         case MutNode::Global:
         case MutNode::Hole:
+        case MutNode::Nom:
         case MutNode::Variant: return nullptr;
     }
     fe::unreachable();
@@ -564,7 +565,8 @@ const Def* Def::immutabilize() {
         case MutNode::Rule:    return nullptr; // TODO should we ever immutabilize Rules?
         case MutNode::Lam:
         case MutNode::Global:
-        case MutNode::Hole:    return nullptr;
+        case MutNode::Hole:
+        case MutNode::Nom:     return nullptr;
         case MutNode::Arr:
         case MutNode::Pack: {
             auto seq = as<Seq>();
@@ -594,6 +596,7 @@ size_t Def::reduction_offset() const noexcept {
         case MutNode::Rule:    return 1;
         case MutNode::Global:
         case MutNode::Hole:
+        case MutNode::Nom:
         case MutNode::Variant: return size_t(-1);
     }
     fe::unreachable();
