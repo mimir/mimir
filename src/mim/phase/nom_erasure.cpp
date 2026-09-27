@@ -2,21 +2,21 @@
 
 namespace mim {
 
-const Def* NomErasure::rewrite_imm_Nom(const Nom* nom) {
+const Def* NomErasure::rewrite_mut_Nom(Nom* nom) {
     auto type = rewrite(nom->op());
     log().d("nom-erasure `{}` → `{}`", nom, type);
     profile_count("nominals eliminated");
     return type;
 }
 
-const Def* NomErasure::rewrite_imm_Wrap(const Wrap* wrap) {
+const Def* NomErasure::rewrite_imm_Name(const Name* name) {
     profile_count("nominals eliminated");
-    return rewrite(wrap->value());
+    return rewrite(name->op());
 }
 
-const Def* NomErasure::rewrite_imm_Unwrap(const Unwrap* unwrap) {
+const Def* NomErasure::rewrite_imm_Struc(const Struc* struc) {
     profile_count("nominals eliminated");
-    return rewrite(unwrap->value());
+    return rewrite(struc->op());
 }
 
 } // namespace mim

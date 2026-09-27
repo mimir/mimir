@@ -93,26 +93,25 @@ DefVec Rewriter::rewrite(Defs ops) {
 
 #ifndef DOXYGEN
 // clang-format off
-const Def* Rewriter::rewrite_imm_Idx   (const Idx*     ) { return world().type_idx(); }
-const Def* Rewriter::rewrite_imm_Nat   (const Nat*     ) { return world().type_nat(); }
-const Def* Rewriter::rewrite_imm_Univ  (const Univ*    ) { return world().univ();     }
-const Def* Rewriter::rewrite_imm_Lit   (const Lit*    d) { return world().lit   (rewrite(d->type()),   d->get());    }
-const Def* Rewriter::rewrite_imm_Match (const Match*  d) { return world().match (rewrite(d->ops()));                 }
-const Def* Rewriter::rewrite_imm_Reform(const Reform* d) { return world().reform(rewrite(d->dom()));                 }
-const Def* Rewriter::rewrite_imm_Sigma (const Sigma*  d) { return world().sigma (rewrite(d->ops()));                 }
-const Def* Rewriter::rewrite_imm_Type  (const Type*   d) { return world().type  (rewrite(d->level()));               }
-const Def* Rewriter::rewrite_imm_UInc  (const UInc*   d) { return world().uinc  (rewrite(d->op()),     d->offset()); }
-const Def* Rewriter::rewrite_imm_UMax  (const UMax*   d) { return world().umax  (rewrite(d->ops()));                 }
-const Def* Rewriter::rewrite_imm_Single(const Single* d) { return world().single(rewrite(d->op()));                  }
-const Def* Rewriter::rewrite_imm_Narrow(const Narrow* d) { return world().narrow(rewrite(d->op()));                  }
-const Def* Rewriter::rewrite_imm_Nom   (const Nom*    d) { return world().nominal(d->flags(), rewrite(d->op()));    }
-const Def* Rewriter::rewrite_imm_Wrap(const Wrap* d) { return world().wrap(rewrite(d->nom()), rewrite(d->value())); }
-const Def* Rewriter::rewrite_imm_Unwrap(const Unwrap* d) { return world().unwrap(rewrite(d->value()));               }
-const Def* Rewriter::rewrite_imm_Var   (const Var*    d) { return world().var   (rewrite(d->binder())->as_mut());    }
-const Def* Rewriter::rewrite_imm_Top   (const Top*    d) { return world().top   (rewrite(d->type()));                }
-const Def* Rewriter::rewrite_imm_Bot   (const Bot*    d) { return world().bot   (rewrite(d->type()));                }
-const Def* Rewriter::rewrite_imm_Join  (const Join*   d) { return world().join  (rewrite(d->ops()));                 }
-const Def* Rewriter::rewrite_imm_Variant(const Variant* d) { return world().variant(rewrite(d->ops()));              }
+const Def* Rewriter::rewrite_imm_Idx    (const Idx*      ) { return world().type_idx();                                   }
+const Def* Rewriter::rewrite_imm_Nat    (const Nat*      ) { return world().type_nat();                                   }
+const Def* Rewriter::rewrite_imm_Univ   (const Univ*     ) { return world().univ();                                       }
+const Def* Rewriter::rewrite_imm_Lit    (const Lit*     d) { return world().lit    (rewrite(d->type()),   d->get());      }
+const Def* Rewriter::rewrite_imm_Match  (const Match*   d) { return world().match  (rewrite(d->ops()));                   }
+const Def* Rewriter::rewrite_imm_Reform (const Reform*  d) { return world().reform (rewrite(d->dom()));                   }
+const Def* Rewriter::rewrite_imm_Sigma  (const Sigma*   d) { return world().sigma  (rewrite(d->ops()));                   }
+const Def* Rewriter::rewrite_imm_Type   (const Type*    d) { return world().type   (rewrite(d->level()));                 }
+const Def* Rewriter::rewrite_imm_UInc   (const UInc*    d) { return world().uinc   (rewrite(d->op()),     d->offset());   }
+const Def* Rewriter::rewrite_imm_UMax   (const UMax*    d) { return world().umax   (rewrite(d->ops()));                   }
+const Def* Rewriter::rewrite_imm_Single (const Single*  d) { return world().single (rewrite(d->op()));                    }
+const Def* Rewriter::rewrite_imm_Wrap   (const Wrap*    d) { return world().wrap   (rewrite(d->op()));                    }
+const Def* Rewriter::rewrite_imm_Name   (const Name*    d) { return world().name   (rewrite(d->nom()), rewrite(d->op())); }
+const Def* Rewriter::rewrite_imm_Struc  (const Struc*   d) { return world().struc  (rewrite(d->op()));                    }
+const Def* Rewriter::rewrite_imm_Var    (const Var*     d) { return world().var    (rewrite(d->binder())->as_mut());      }
+const Def* Rewriter::rewrite_imm_Top    (const Top*     d) { return world().top    (rewrite(d->type()));                  }
+const Def* Rewriter::rewrite_imm_Bot    (const Bot*     d) { return world().bot    (rewrite(d->type()));                  }
+const Def* Rewriter::rewrite_imm_Join   (const Join*    d) { return world().join   (rewrite(d->ops()));                   }
+const Def* Rewriter::rewrite_imm_Variant(const Variant* d) { return world().variant(rewrite(d->ops()));                   }
 
 const Def* Rewriter::rewrite_imm_Arr (const Arr*  d) { return rewrite_imm_Seq(d); }
 const Def* Rewriter::rewrite_imm_Pack(const Pack* d) { return rewrite_imm_Seq(d); }
@@ -179,6 +178,7 @@ const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
 const Def* Rewriter::rewrite_mut_Global(Global* d) {
     return rewrite_stub(d, world().global(rewrite(d->type()), d->is_mutable()));
 }
+const Def* Rewriter::rewrite_mut_Nom(Nom* d) { return rewrite_stub(d, world().mut_nom(rewrite(d->type()))); }
 const Def* Rewriter::rewrite_mut_Lam(Lam* d) { return rewrite_stub(d, world().mut_lam(rewrite(d->type())->as<Pi>())); }
 const Def* Rewriter::rewrite_mut_Rule(Rule* d) {
     return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Reform>()));

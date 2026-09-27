@@ -575,7 +575,7 @@ A `nom` declaration is the one place where Mim is not structurally typed: two `n
 
 - `nom I = e` declares `I` as a fresh type that wraps `e`; it is implicitly `anx`, and it is that [annex](@ref annex) identity - not the shape of `e` - that tells two `nom`s apart.
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
-- Wrapping and unwrapping are private to the file that declares the `nom`, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
+- `inj` and `#` on a `nom` are private to the file that declares the `nom`, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
 
 ```mim
 nom Meter = I32;

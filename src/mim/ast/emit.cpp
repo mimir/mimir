@@ -400,7 +400,7 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
 static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom) {
     if (!nom->loc().src || nom->loc().src == loc.src) return;
     e.error()
-        .e(loc, "`{}` is a nominal type of another module, which alone may wrap and unwrap its values", nom)
+        .e(loc, "`{}` is a nominal type of another module, and only that module may use `inj` and `#` on it", nom)
         .n(nom->loc(), "declared here")
         .bail();
 }
@@ -411,9 +411,9 @@ const Def* PrefixExpr::emit_(Emitter& e) const {
         case Tag::T_extract:
             if (auto nom = def->isa_type<Nom>()) {
                 check_nom_scope(e, loc(), nom);
-                return e.world().unwrap(def);
+                return e.world().struc(def);
             }
-            return e.world().widen(def);
+            return e.world().unwrap(def);
         default: fe::unreachable();
     }
 }
@@ -724,7 +724,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
 
 const Def* SingleExpr::emit_(Emitter& e) const {
     auto def = body()->emit(e);
-    return is_narrow() ? e.world().narrow(def) : e.world().single(def);
+    return is_wrap() ? e.world().wrap(def) : e.world().single(def);
 }
 
 /*
@@ -736,7 +736,7 @@ void NomDecl::emit(Emitter& e) const {
     auto _      = e.world().push(loc());
     auto plugin = annex_->plugin_id();
     auto name   = annex_->qualified(e.driver(), dbg().sym());
-    def_        = e.world().nominal(Annex::flags(plugin, annex_->id.tag, sub_), type()->emit(e))->set(name);
+    def_        = e.world().nom(type()->emit(e))->set(name);
     e.world().annexes().attach(plugin, annex_->id.tag, sub_, name, def_);
 }
 

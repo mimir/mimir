@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include <mim/driver.h>
-#include <mim/lattice.h>
+#include <mim/single.h>
 #include <mim/tuple.h>
 #include <mim/union.h>
 

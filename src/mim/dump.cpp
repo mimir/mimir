@@ -27,6 +27,7 @@ using Srcs = ankerl::unordered_dense::set<const fe::Src*>;
 Def* isa_decl(const Def* def) {
     if (auto mut = def->isa_mut()) {
         if (mut->isa<Hole>()) return nullptr; // a Hole stands for what it was set to, or for `?`
+        if (mut->isa<Nom>()) return nullptr;  // a `nom` is declared as an annex
         if (mut->is_external() || mut->isa<Lam>() || (mut->sym() && mut->sym() != '_')) return mut;
     }
     return nullptr;
@@ -137,8 +138,8 @@ Prec def2prec(const Def* def) {
             return variant->op(inj->index()) == def->world().sigma() ? Prec::Extract : Prec::App;
         return Prec::Inj;
     }
-    if (def->isa<Wrap>()) return Prec::Inj;
-    if (def->isa<Unwrap>()) return Prec::Prefix;
+    if (def->isa<Name>()) return Prec::Inj;
+    if (def->isa<Struc>()) return Prec::Prefix;
     if (def->isa<Variant>()) return Prec::Lit; // always parenthesized
     if (def->isa<Reform>()) return Prec::App;
     // `Cn e` parses its domain at Prec::Bot, so it swallows whatever follows and only ever fits a closed context.
@@ -641,14 +642,14 @@ void full(std::ostream& os, Full d) {
             return std::print(os, "{} {}", ctor, d.r(inj->value(), Prec::App));
         }
         return std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
-    } else if (auto wrap = d->isa<Wrap>()) {
-        return std::print(os, "{} inj {}", d.l(wrap->value(), Prec::Inj), d.r(wrap->nom(), Prec::Inj));
-    } else if (auto unwrap = d->isa<Unwrap>()) {
-        return std::print(os, "#{}", d.r(unwrap->value(), Prec::Prefix));
+    } else if (auto name = d->isa<Name>()) {
+        return std::print(os, "{} inj {}", d.l(name->op(), Prec::Inj), d.r(name->nom(), Prec::Inj));
+    } else if (auto struc = d->isa<Struc>()) {
+        return std::print(os, "#{}", d.r(struc->op(), Prec::Prefix));
     } else if (auto single = d->isa<Single>()) {
         return std::print(os, "{}{}{}", al, d.op(single->op()), ar);
-    } else if (auto narrow = d->isa<Narrow>()) {
-        return std::print(os, "{}{}{}", pl, d.op(narrow->op()), pr);
+    } else if (auto wrap = d->isa<Wrap>()) {
+        return std::print(os, "{}{}{}", pl, d.op(wrap->op()), pr);
     } else if (auto match = d->isa<Match>();
                match && d.ctx() && match->num_arms() != 0 && d.ctx()->arms.contains(match->arm(0))) {
         std::print(os, "match {} with", d.op(match->scrutinee()));

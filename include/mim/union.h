@@ -6,6 +6,40 @@
 
 namespace mim {
 
+/// Common base for TExt%remum.
+class Ext : public Def {
+protected:
+    Ext(Node node, const Def* type)
+        : Def(node, type, Defs{}, 0) {}
+
+public:
+    /// Ext groups Top and Bot; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Top || n == mim::Node::Bot; }
+};
+
+/// Ext%remum. Either Top (@p Up) or Bot%tom.
+template<bool Up>
+class TExt : public Ext, public Setters<TExt<Up>> {
+private:
+    TExt(const Def* type)
+        : Ext(Node, type) {}
+
+public:
+    using Setters<TExt<Up>>::set;
+
+    static constexpr auto Node      = Up ? mim::Node::Top : mim::Node::Bot;
+    static constexpr size_t Num_Ops = 0;
+
+private:
+    friend class World;
+};
+
+/// @name Lattice
+///@{
+using Bot = TExt<false>;
+using Top = TExt<true>;
+/// @}
+
 /// A union type whose ops are sorted and deduplicated: `T ∪ T` is `T`.
 class Join : public Def, public Setters<Join> {
 private:

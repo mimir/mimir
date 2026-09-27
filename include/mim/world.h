@@ -650,9 +650,10 @@ public:
 
     /// @name Nominal Newtypes
     ///@{
-    const Def* nominal(flags_t, const Def* type);      ///< Nominal newtype formation; @p flags are its annex flags.
-    const Def* wrap(const Def* nom, const Def* value); ///< Nominal newtype term introduction.
-    const Def* unwrap(const Def* value);               ///< Nominal newtype term elimination.
+    Nom* mut_nom(const Def* type) { return insert<Nom>(type); }
+    Nom* nom(const Def* type);                         ///< Make @p type Nom%inal.
+    const Def* name(const Def* nom, const Def* struc); ///< Name a @p struc%tural to make it @p nom%inaml.
+    const Def* struc(const Def* nom);                  ///< Get the structural part a @p nom%inal.
     ///@}
 
     /// @name implicit_app - Cope with implicit Arguments
@@ -712,8 +713,8 @@ public:
     /// @name Singletons
     ///@{
     const Def* single(const Def*); ///< Singleton type formation.
-    const Def* narrow(const Def*); ///< Singleton term introduction.
-    const Def* widen(const Def*);  ///< Singleton term elimination. @note There is no explicite Widen node.
+    const Def* wrap(const Def*);   ///< Singleton term introduction.
+    const Def* unwrap(const Def*); ///< Singleton term elimination. @note There is no explicite Unwrap node.
     ///@}
 
     /// @name Vars & Muts

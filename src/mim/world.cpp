@@ -811,7 +811,7 @@ const Def* World::inj(const Def* type, const Def* value) {
 
     if (type->isa<Variant>())
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
-    if (type->isa<Nom>()) return wrap(type, value);
+    if (type->isa<Nom>()) return name(type, value);
     if (type->isa<Join>()) return unify<Inj>(type, value, flags_t(0));
     return value;
 }
@@ -929,34 +929,34 @@ const Def* World::single(const Def* op) {
         .bail();
 }
 
-const Def* World::narrow(const Def* op) { return unify<Narrow>(single(op), op); }
+const Def* World::wrap(const Def* op) { return unify<Wrap>(single(op), op); }
 
-const Def* World::widen(const Def* op) {
+const Def* World::unwrap(const Def* op) {
     op = op->zonk();
     if (auto single = op->isa_type<Single>()) return single->op();
     op->blame("operand of a singleton elimination is of type `{}` but must be of singleton type", type_of(op)).bail();
 }
 
-const Def* World::nominal(flags_t flags, const Def* type) {
+Nom* World::nom(const Def* type) {
     type = type->zonk();
-    if (auto t = type->unfold_type()) return unify<Nom>(t, type, flags);
+    if (auto t = type->unfold_type()) return mut_nom(t)->set(type);
     type->blame("`Univ` cannot be wrapped in a nominal newtype").bail();
 }
 
-const Def* World::wrap(const Def* n, const Def* value) {
+const Def* World::name(const Def* n, const Def* value) {
     auto nom = n->zonk()->isa<Nom>();
     value    = value->zonk();
     if (!nom) value->blame("cannot inject into non-nominal type `{}`", n).bail();
-    if (auto v = Checker::assignable(nom->op(), value)) return unify<Wrap>(nom, v);
+    if (auto v = Checker::assignable(nom->op(), value)) return unify<Name>(nom, v);
     value->blame("value is not assignable to nominal type `{}`", nom)
         .n("expected `{}`, got `{}`", nom->op(), type_of(value))
         .bail();
 }
 
-const Def* World::unwrap(const Def* value) {
+const Def* World::struc(const Def* value) {
     value = value->zonk();
-    if (auto wrap = value->isa<Wrap>()) return wrap->value();
-    if (auto nom = value->isa_type<Nom>()) return unify<Unwrap>(nom->op(), value);
+    if (auto name = value->isa<Name>()) return name->op();
+    if (auto nom = value->isa_type<Nom>()) return unify<Struc>(nom->op(), value);
     value->blame("operand of a nominal elimination is of type `{}` but must be of nominal type", type_of(value)).bail();
 }
 
