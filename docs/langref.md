@@ -809,7 +809,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - an empty join is `⊥`, and a one-element one is its operand
 - `x inj T` -> `x` if `T` is not a union type
 - `match (T inj x) with ...` -> the arm handling `T` - a constructor fixes the active case
-- each case is handled by the **first** arm accepting it, so the arms are *not* sorted; an arm accepts a case if its domain is that case, or a union containing it
+- each case is handled by the **first** arm accepting it, so the arms are _not_ sorted; an arm accepts a case if its domain is that case, or a union containing it
 - a `match` whose scrutinee is not a union is the degenerate one-case union and reduces right away
 - an arm handling no case is dropped; a case handled by no arm is an error
 
@@ -821,7 +821,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 ### Singletons
 
-- `#x` -> `e` for every `x: «e»` - the inhabitant is read off the *type*, so the var of a `λ (x: «e»)` never occurs in the body
+- `#x` -> `e` for every `x: «e»` - the inhabitant is read off the _type_, so the var of a `λ (x: «e»)` never occurs in the body
 - `#‹e›` -> `e` - a special case of the above; a singleton elimination is therefore never built
 
 ### Nominal Newtypes
