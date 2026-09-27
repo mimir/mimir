@@ -1,0 +1,14 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// The type crosses the module boundary; `#` does not.
+mod units {
+    pub nom Meter = I32;
+
+    pub lam to_i32 (m: Meter): I32 = #m;
+}
+
+extern lam ok (m: units.Meter): I32 = units.to_i32 m;
+extern lam bad (m: units.Meter): I32 = #m;
+
+// CHECK: {{.*}}nom_elim.mim:11:40-11:41: error: `inj` and `#` on nominal type `Meter` are only allowed within module `units`
+// CHECK: {{.*}}nom_elim.mim:5:5-5:23: note: declared here

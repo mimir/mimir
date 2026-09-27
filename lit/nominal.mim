@@ -7,6 +7,8 @@ anx nom Kelvin = I32;
 
 mod units {
     pub nom Second = I32;
+
+    extern lam tick (s: Second): I32 = #s;
 }
 
 nom List = | Nil | Cons: [I32, List];
@@ -20,7 +22,6 @@ extern lam add (a b: Meter): Meter = (core.wrap.add 0 (#a, #b)) inj Meter;
 // Distinct `nom`s over the same type do not unify.
 extern lam convert (f: Foot): Meter = #f inj Meter;
 
-extern lam tick (s: units.Second): I32 = #s;
 extern lam kelvin (x: I32): Kelvin = x inj Kelvin;
 extern lam list (l: List): List = l;
 
