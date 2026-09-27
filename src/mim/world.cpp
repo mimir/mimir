@@ -813,7 +813,11 @@ const Def* World::inj(const Def* type, const Def* value) {
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
     if (type->isa<Nom>()) return name(type, value);
     if (type->isa<Join>()) return unify<Inj>(type, value, flags_t(0));
-    return value;
+    if (auto v = Checker::assignable(type, value)) return v;
+    value->blame("value is not assignable to `{}`", type)
+        .n("`{}` is neither a union nor a nominal type, so `inj` into it is the identity", type)
+        .n("expected `{}`, got `{}`", type, type_of(value))
+        .bail();
 }
 
 const Def* World::inj(const Def* type, nat_t index, const Def* value) {

@@ -786,16 +786,6 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     return ptr<ModDecl>(track, vis, dbg, ast().scope(), ast().copy(decls));
 }
 
-Ptr<ValDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
-    if (mods.is_extern) error().e(curr_, "`nom` is implicitly `anx`; cannot combine with `extern`");
-    auto vis = mods.vis.value_or(Vis::Pub); // nom is always anx, so it always gets the pub nudge
-    eat(Tag::K_nom);
-    auto dbg = parse_id("name of a nominal type");
-    expect(Tag::T_assign, "nominal type declaration");
-    auto type = parse_expr("underlying type of a nominal type declaration");
-    return ptr<NomDecl>(track, vis, dbg, type);
-}
-
 Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "use declaration");
     if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a use declaration - it never represents a single value");
@@ -816,6 +806,16 @@ Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
     auto body = parse_expr("body of a recursive declaration");
     auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
     return ptr<RecDecl>(track, mods, dbg, body, next);
+}
+
+Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "nominal type declaration");
+    eat(Tag::K_nom);
+    auto dbg = parse_id("nominal type declaration");
+    expect(Tag::T_assign, "nominal type declaration");
+    auto body = parse_expr("underlying type of a nominal type declaration");
+    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
+    return ptr<NomDecl>(track, mods, dbg, body, next);
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
@@ -899,6 +899,10 @@ Ptr<RecDecl> Parser::parse_and_decl() {
         lex();
         auto track = tracker();
         return parse_lam_decl(track, {});
+    }
+    if (ahead(1).isa(Tag::K_nom)) {
+        lex();
+        return parse_nom_decl(tracker(), {});
     }
     return parse_rec_decl(tracker(), false, {});
 }

@@ -322,12 +322,6 @@ static void stream_axm(fe::Tab& tab, std::ostream& os, const ValDecl* decl, cons
 void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const { stream_axm(tab, os, this, this); }
 void AxmDecl::Sibling::stream(fe::Tab& tab, std::ostream& os) const { stream_axm(tab, os, this, owner()); }
 
-/// `nom` is always anx, so only `priv` is ever printed.
-void NomDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    if (vis() == Vis::Priv) os << "priv ";
-    std::print(os, "nom {} = {};", dbg(), S(tab, type()));
-}
-
 void AliasDecl::stream(fe::Tab& tab, std::ostream& os) const {
     if (vis() == Vis::Priv) std::print(os, "priv ");
     std::print(os, "anx {} = {};", dbg(), S(tab, path()));
@@ -367,7 +361,7 @@ void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream_chain(fe::Tab& tab, std::ostream& os) const {
-    if (!isa<LamDecl>()) os << "rec ";
+    if (!isa<LamDecl>() && !isa<NomDecl>()) os << "rec ";
     stream_(tab, os);
     for (auto curr = next(); curr; curr = curr->next()) {
         std::println(os);
@@ -377,6 +371,7 @@ void RecDecl::stream_chain(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} = {}", dbg(), S(tab, body())); }
+void NomDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "nom {} = {}", dbg(), S(tab, body())); }
 
 void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));

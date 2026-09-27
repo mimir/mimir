@@ -241,13 +241,14 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I "=" e and*
-        |  vis? "nom" I "=" e
+        |  vis? "anx"? "nom" I "=" e and*
         |  vis? "axm" axm
         |  vis? ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
 import ::= "import" | "plugin"
 and    ::= "and" I "=" e
         |  "and" lam I dom+ (":" e)? "=" e
+        |  "and" "nom" I "=" e
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
 dom    ::= p ("@" e)?
@@ -274,8 +275,8 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `rec` starts a recursive declaration group, and `and` extends the same group.
   Its body must be a sigma, a [variant](@ref variant), or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
-- After `and`, the next declaration may be another `rec`-style binding or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
-- `nom` declares a [nominal newtype](@ref nominal).
+- After `and`, the next declaration may be another `rec`-style binding, a `nom`, or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
+- `nom` declares a [nominal newtype](@ref nominal); like `rec`, it starts a recursive declaration group, but its body may be any type.
 - `axm` declares an axiom.
   A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
   Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
@@ -287,7 +288,7 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 
 - `anx` marks a declaration as an [annex](@ref annex).
   It doesn't apply to `mod`, since a module is pure AST grouping, not a single value.
-  `axm` and `nom` are implicitly `anx` and may not combine with `extern`.
+  `axm` is implicitly `anx` and may not combine with `extern`.
 - `extern` is currently only meaningful on a `lam`/`con`/`fun` declaration and makes it
   - **with a body** a root of the `World` that stays reachable through `Cleanup`.
     Backends emit it under its source name with external linkage, so other translation units can call it, whereas a non-`extern` function gets a mangled name and internal linkage.
@@ -573,7 +574,9 @@ e   ::= "«" e "»"
 
 A `nom` declaration is the one place where Mim is not structurally typed: two `nom`s over the same underlying type are still distinct types.
 
-- `nom I = e` declares `I` as a fresh type that wraps `e`; it is implicitly `anx`, and it is that [annex](@ref annex) identity - not the shape of `e` - that tells two `nom`s apart.
+- `nom I = e` declares `I` as a fresh type that wraps `e`; it is the declaration - not the shape of `e` - that tells two `nom`s apart.
+- `I` is already in scope inside `e`, so a `nom` may be recursive, and `and nom` makes a group of them mutually recursive.
+- `anx nom` additionally makes `I` an [annex](@ref annex).
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
 - `inj` and `#` on a `nom` are private to the file that declares the `nom`, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
 
@@ -582,6 +585,8 @@ nom Meter = I32;
 nom Foot  = I32;
 
 lam to_foot (m: Meter): Foot = #m inj Foot; // Meter and Foot do not unify
+
+nom List = | Nil | Cons: [I32, List];
 ```
 
 @note A `--output-mim` dump flattens a program into one file, so a wrapping that an inliner carried across a module boundary lands in a dump that no longer re-parses.

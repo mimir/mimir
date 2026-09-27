@@ -195,6 +195,8 @@ nom Foot  = I32;
 /// so an importer sees the type as abstract.
 lam to_foot (m: Meter): Foot = #m inj Foot;
 let _ = refly.struc.e (#(23I32 inj Meter), 23I32);
+/// Like `rec`, a `nom` is in scope in its own body, and `anx nom` makes it an annex.
+nom Chain = | End | Link: [I32, Chain];
 /// ## Infix Operators
 ///
 /// `a op b` is sugar for `` `op (a, b) `` - Mim gives the operators no meaning of their own.

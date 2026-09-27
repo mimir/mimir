@@ -413,6 +413,11 @@ const Def* PrefixExpr::emit_(Emitter& e) const {
                 check_nom_scope(e, loc(), nom);
                 return e.world().struc(def);
             }
+            if (!def->zonk()->isa_type<Single>())
+                e.error()
+                    .e(loc(), "operand of prefix `#` is of type `{}` but must be of nominal or singleton type",
+                       type_of(def))
+                    .bail();
             return e.world().unwrap(def);
         default: fe::unreachable();
     }
@@ -731,15 +736,6 @@ const Def* SingleExpr::emit_(Emitter& e) const {
  * Decl
  */
 
-void NomDecl::emit(Emitter& e) const {
-    if (!annex_) return; // skip emit if binding failed
-    auto _      = e.world().push(loc());
-    auto plugin = annex_->plugin_id();
-    auto name   = annex_->qualified(e.driver(), dbg().sym());
-    def_        = e.world().nom(type()->emit(e))->set(name);
-    e.world().annexes().attach(plugin, annex_->id.tag, sub_, name, def_);
-}
-
 void AxmDecl::emit(Emitter& e) const {
     if (!annex_) return; // Skip emit if binding failed
     auto _      = e.world().push(loc());
@@ -819,6 +815,19 @@ void RecDecl::emit_body(Emitter& e) const {
     auto _ = e.world().push(loc());
     body()->emit_body(e, def_);
     // TODO immutabilize?
+    e.attach(annex_, sub_, dbg().sym(), def_);
+}
+
+void NomDecl::emit_decl(Emitter& e) const {
+    auto _ = e.world().push(loc());
+    // World::dump finds a file's annexes by their qualified sym.
+    auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
+    def_     = e.world().mut_nom(e.world().type_infer_univ())->set(sym);
+}
+
+void NomDecl::emit_body(Emitter& e) const {
+    auto _ = e.world().push(loc());
+    def_->as_mut<Nom>()->set(body()->emit(e));
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 

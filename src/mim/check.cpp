@@ -526,8 +526,14 @@ const Def* Def::check() {
         case MutNode::Lam:
         case MutNode::Pack:
         case MutNode::Global:
-        case MutNode::Hole:
-        case MutNode::Nom: return type();
+        case MutNode::Hole: return type();
+        case MutNode::Nom: {
+            auto t = as<Nom>()->op()->unfold_type();
+            if (!t) type()->blame("`Univ` cannot be wrapped in a nominal newtype").bail();
+            if (!Checker::alpha<Checker::Check>(t, type()))
+                type()->blame("declared sort of nominal type does not match inferred sort `{}`", t).bail();
+            return t;
+        }
     }
     fe::unreachable();
 }

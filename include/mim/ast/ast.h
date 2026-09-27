@@ -1037,29 +1037,6 @@ private:
     Ptr<Expr> value_;
 };
 
-/// `nom dbg = type;` - a nominal newtype; always `anx`.
-class NomDecl : public ValDecl {
-public:
-    NomDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr> type)
-        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
-        , dbg_(dbg)
-        , type_(type) {}
-
-    Dbg dbg() const override { return dbg_; }
-    const Expr* type() const { return type_.get(); }
-
-    void bind(Scopes&) const override;
-    void emit(Emitter&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
-
-private:
-    Dbg dbg_;
-    Ptr<Expr> type_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
-};
-
 /// `axm dbg: type, normalizer, curry, trip;`
 class AxmDecl : public ValDecl {
 public:
@@ -1148,12 +1125,27 @@ protected:
     /// Streams this declaration alone - without the leading `rec`/`and` and without the trailing `;`.
     virtual void stream_(fe::Tab&, std::ostream&) const;
 
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
+
 private:
     Dbg dbg_;
     Ptr<Expr> body_;
     Ptr<RecDecl> next_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
+};
+
+/// `nom dbg = body;` - a nominal newtype.
+class NomDecl : public RecDecl {
+public:
+    NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body, Ptr<RecDecl> next)
+        : RecDecl(loc, mods, dbg, body, next) {}
+
+    void bind_decl(Scopes&) const override;
+    void emit_decl(Emitter&) const override;
+    void emit_body(Emitter&) const override;
+
+private:
+    void stream_(fe::Tab&, std::ostream&) const override;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.

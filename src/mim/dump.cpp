@@ -24,10 +24,13 @@ namespace {
 
 using Srcs = ankerl::unordered_dense::set<const fe::Src*>;
 
+/// An `anx nom` carries its qualified `<file>.<name>` sym, which no identifier can spell; see Annexes::attach.
+bool is_anx_nom(const Def* def) { return def->isa<Nom>() && def->sym().view().contains('.'); }
+
 Def* isa_decl(const Def* def) {
     if (auto mut = def->isa_mut()) {
         if (mut->isa<Hole>()) return nullptr; // a Hole stands for what it was set to, or for `?`
-        if (mut->isa<Nom>()) return nullptr;  // a `nom` is declared as an annex
+        if (is_anx_nom(mut)) return nullptr;  // declared by World::dump's own annex pass
         if (mut->is_external() || mut->isa<Lam>() || (mut->sym() && mut->sym() != '_')) return mut;
     }
     return nullptr;
@@ -500,7 +503,7 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "Idx");
     } else if (auto ext = d->isa<Ext>()) {
         return std::print(os, "{}:{}", ext->isa<Bot>() ? bot : top, d.r(ext->type(), Prec::Lit));
-    } else if ((d->isa<Axm>() || d->isa<Nom>()) && d->sym()) {
+    } else if ((d->isa<Axm>() || is_anx_nom(*d)) && d->sym()) {
         return std::print(os, "{}", annex_sym(d.ctx(), *d));
     } else if (auto lit = d->isa<Lit>()) {
         if (lit->type()->isa<Nat>()) {
@@ -764,7 +767,7 @@ public:
             }
             auto id = mod.empty() ? view : view.substr(dot + 1);
             if (auto nom = annex->isa<Nom>()) {
-                std::println(os_, "{}nom {} = {};", ctx_.tab, id, Op(&ctx_, nom->op()));
+                std::println(os_, "{}anx nom {} = {};", ctx_.tab, id, Op(&ctx_, nom->op()));
                 continue;
             }
             auto axm = annex->as<Axm>();
@@ -1015,6 +1018,8 @@ private:
         if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam);
         if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
         if (!mut->is_set()) return emit_unset(mut);
+        if (auto nom = mut->isa<Nom>())
+            return std::println(os_, "{}nom {} = {};", ctx_.tab, id(&ctx_, nom), Op(&ctx_, nom->op()));
         // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
         auto kw = recursive_.contains(mut) ? "rec" : "let";
         // A `rec` only takes a bare variant.
@@ -1219,7 +1224,7 @@ void World::dump(std::ostream& os) {
     while (!todo.empty()) {
         auto def = todo.back();
         todo.pop_back();
-        if ((def->isa<Axm>() || def->isa<Nom>()) && def->sym().view().starts_with(self)) {
+        if ((def->isa<Axm>() || is_anx_nom(def)) && def->sym().view().starts_with(self)) {
             auto name = def->sym().str().substr(self.size());
             reserved.emplace_back(name.substr(0, name.find('.')));
             annexes.emplace_back(std::move(name), def);
