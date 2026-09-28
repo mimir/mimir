@@ -9,19 +9,19 @@
 plugin core;
 plugin tensor;
 plugin affine;
-plugin mem;
 plugin compile;
+
 use tensor;
 
 // A ring over Nat so the multiply-accumulate stays in core.nat.
-lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // Fully symbolic conv, no padding, unit stride/dilation: OH = h − kh + 1, OW = w − kw + 1.
 // CHECK-DAG: extern fun conv_dyn_valid
 extern fun conv_dyn_valid {n cin cout h w kh kw: Nat}
                           (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
 : «conv_shape (n, cout, (h, w), (kh, kw), (1, 1), (1, 1), (0, 0)); Nat» =
-    return (tensor.conv (nat_ring ()) ((1, 1), (1, 1), (0, 0)) (input, weight));
+    return (conv Ring ((1, 1), (1, 1), (0, 0)) (input, weight));
 
 // Symbolic extents with stride 2: the output dim keeps a `core.nat.div (_, 2)`, proving the shape is *computed*
 // (not passed in) and survives symbolically.
@@ -30,7 +30,7 @@ extern fun conv_dyn_valid {n cin cout h w kh kw: Nat}
 extern fun conv_dyn_strided {n cin cout h w kh kw: Nat}
                             (input: «n, cin, h, w; Nat», weight: «cout, cin, kh, kw; Nat»)
 : «conv_shape (n, cout, (h, w), (kh, kw), (2, 2), (1, 1), (0, 0)); Nat» =
-    return (tensor.conv (nat_ring ()) ((2, 2), (1, 1), (0, 0)) (input, weight));
+    return (conv Ring ((2, 2), (1, 1), (0, 0)) (input, weight));
 
 // Custom pipeline that stops before tensor.lower_to_mem: the checks below only need the shape computation.
 extern lam _compile (): compile.Phase =

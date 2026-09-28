@@ -16,18 +16,19 @@
 plugin core;
 plugin tensor;
 plugin affine;
-plugin mem;
 plugin compile;
 
+use tensor;
+
 // A ring over Nat so the multiply-accumulate lowers to core.nat.mul / core.nat.add.
-lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // "same" conv: 3x3 kernel, stride 1, dilation 1, pad 1 -> output keeps the 5x5 spatial size.
 // CHECK-DAG: extern fun conv_same
 // CHECK-DAG: core.nat.mul
 // CHECK-DAG: core.nat.add
 extern fun conv_same (input: «2, 2, 5, 5; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 5, 5; Nat» =
-    return (tensor.conv (nat_ring ()) ((1, 1), (1, 1), (1, 1)) (input, weight));
+    return (conv Ring ((1, 1), (1, 1), (1, 1)) (buf input, buf weight));
 
 // Custom pipeline that stops before tensor.lower_to_mem: the checks below only need the shape computation.
 extern lam _compile (): compile.Phase =

@@ -26,11 +26,11 @@ let `* = product_2d Ring;
 lam relu (x: F32): F32 = math.extrema.fmax math.mode.fast (0:F32, x);
 
 lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», b: «c_out; F32»): «n, c_out; F32» =
-    let b = broadcast ((1, c_out), (n, c_out), reshape c_out (1, c_out) b);
+    let b = broadcast ((1, c_out), (n, c_out), b);
     unary relu (x * transpose_2d w + b);
 
 extern fun fc_t (x: «6, 40; F32», w: «8, 40; F32», b: «8; F32»): «6, 8; F32» =
-    return (linear (6, 40, 8) (x, w, b));
+    return (linear (6, 40, 8) (buf x, buf w, buf b));
 
 extern fun fc_odd (x: «5, 33; F32», w: «7, 33; F32», b: «7; F32»): «5, 7; F32» =
-    return (linear (5, 33, 7) (x, w, b));
+    return (linear (5, 33, 7) (buf x, buf w, buf b));

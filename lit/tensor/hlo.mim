@@ -10,67 +10,59 @@
 // the update delta (old − new = lr·grad) of one element of each, so every forward and backward chain stays
 // live and the driver can check the backward pass numerically. hlo_train.mim is the compact one-layer
 // variant of this test; hlo_exec.mim covers the forward pass only.
-plugin tensor as *;
-plugin refly;
+plugin tensor;
 plugin core;
-plugin cps;
-plugin affine;
 plugin math;
 
+use tensor;
 use math.arith as ma;
 
-let f32 = math.f32;
-let F32 = math.F32;
+let F32     = math.F32;
+let fast    = math.mode.fast;
+let one     = math.conv.f2f math.f32 (1.0:math.F64);
+let neg_inf = math.neg_inf math.f32;
+let Ring    = (F32, 0:F32, ma.add fast, ma.mul fast);
 
-let R: Ring = (F32, 0:F32, ma.add 0, ma.mul 0);
+let `+ = binary (ma.add fast);
+let `- = binary (ma.sub fast);
+let `* = binary (ma.mul fast);
+let `/ = binary (ma.div fast);
 
-lam `+            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.add 0) is;
-lam `-            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.sub 0) is;
-lam `*            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.mul 0) is;
-lam `/            {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (ma.div 0) is;
-lam F32_max       {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (math.extrema.fmax 0) is;
-lam F32_GE        {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; Bool» = binary (math.cmp.ge 0) is;
-lam F32_tanh      {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.tri.tanh 0) i;
-lam F32_exp       {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.exp.exp 0) i;
-lam F32_abs       {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.abs 0) i;
-lam F32_minus     {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.minus 0) i;
-lam F32_is_finite {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; Bool» = unary (math.is_finite 0) i;
-
-// out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1
-// (one output loop over n, one reduction loop over m).
-lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
-    map_reduce (n, (n, m)) (pool_fun g, init) (proj_map 0) (proj_map (0, 1)) input;
-// out[j] = fold_i g (input[i, j]): reduce along axis 0 (the output loop runs over m, the reduction over n).
-lam reduce_ax0 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «m; F32» =
-    map_reduce (m, (m, n)) (pool_fun g, init) (proj_map 0) (proj_map (1, 0)) input;
+lam max       {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s;  F32» = binary (math.extrema.fmax fast) is;
+lam ge        {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; Bool» = binary (math.cmp.ge fast) is;
+lam tanh      {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.tri.tanh fast) i;
+lam exp       {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.exp.exp fast) i;
+lam abs       {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.abs fast) i;
+lam minus     {r: Nat, s: «r; Nat»} (i: «s; F32»): «s;  F32» = unary (math.minus fast) i;
+lam is_finite {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; Bool» = unary (math.is_finite fast) i;
 
 extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg5: «10; F32», arg6: «128; «784; F32»», arg7: «128; «10; F32»») : F32 =
-    let v_cst = math.conv.f2f (23, 8) (1.0:math.F64);
-    let v_4  = F32_tanh (product_2d R (arg6, arg0) + broadcast ((1, 1024), (128, 1024), arg1));
-    let v_11 = F32_tanh (product_2d R (v_4, arg2) + broadcast ((1, 1024), (128, 1024), arg3));
-    let v_17 = product_2d R (v_11, arg4) + broadcast ((1, 10), (128, 10), arg5);
-    let v_20 = F32_max (‹128; 0xFF800000:F32›, reduce_ax1 ((math.extrema.fmax 0), 0xFF800000:F32) v_17);
-    let v_27 = F32_exp (v_17 - broadcast ((128, 1), (128, 10), select (F32_is_finite v_20, v_20, ‹128; 0:F32›)));
-    let v_28 = reduce_ax1 ((ma.add 0), 0:F32) v_27;
-    let v_32 = F32_GE (v_28, ‹128, 1; 0:F32›);
-    let v_37 = broadcast ((1, 1), (128, 10), ma.div 0 (math.minus 0 v_cst, math.conv.f2f (23, 8) (128.0:math.F64))) * arg7;
-    let v_41 = reduce_ax1 ((ma.add 0), 0:F32) (F32_minus v_37) / F32_abs v_28;
+    let (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) = (buf arg0, buf arg1, buf arg2, buf arg3, buf arg4, buf arg5, buf arg6, buf arg7);
+    let v_4  = tanh (product_2d Ring (arg6, arg0) + broadcast ((1, 1024), (128, 1024), arg1));
+    let v_11 = tanh (product_2d Ring (v_4, arg2) + broadcast ((1, 1024), (128, 1024), arg3));
+    let v_17 = product_2d Ring (v_11, arg4) + broadcast ((1, 10), (128, 10), arg5);
+    let v_20 = max (‹128; neg_inf›, reduce (math.extrema.fmax fast, neg_inf) 1₂ v_17);
+    let v_27 = exp (v_17 - broadcast ((128, 1), (128, 10), select (is_finite v_20, v_20, ‹128; 0:F32›)));
+    let v_28 = reduce (ma.add fast, 0:F32) 1₂ v_27;
+    let v_32 = ge (v_28, ‹128, 1; 0:F32›);
+    let v_37 = broadcast ((1, 1), (128, 10), ma.div fast (math.minus fast one, math.conv.f2f math.f32 (128.0:math.F64))) * arg7;
+    let v_41 = reduce (ma.add fast, 0:F32) 1₂ (minus v_37) / abs v_28;
     let v_42 = ‹128, 1; 0:F32›;
-    let v_50 = v_37 + broadcast ((128, 1), (128, 10), select (v_32, v_41, v_42) + F32_minus (select (v_32, v_42, v_41))) * v_27;
-    let v_56 = dot_product R (1₂, 1₂, (), ()) (v_50, arg4);
-    let v_59 = v_56 * (‹128; ‹1024; v_cst›› - v_11) + v_56 * v_11;
-    let v_66 = dot_product R (1₂, 1₂, (), ()) (v_59, arg2) * (‹128, 1024; v_cst› - v_4);
+    let v_50 = v_37 + broadcast ((128, 1), (128, 10), select (v_32, v_41, v_42) + minus (select (v_32, v_42, v_41))) * v_27;
+    let v_56 = dot_product Ring (1₂, 1₂, (), ()) (v_50, arg4);
+    let v_59 = v_56 * (‹128; ‹1024; one›› - v_11) + v_56 * v_11;
+    let v_66 = dot_product Ring (1₂, 1₂, (), ()) (v_59, arg2) * (‹128, 1024; one› - v_4);
     let v_68 = v_66 + v_66 * v_4;
-    let lr = math.conv.f2f (23, 8) (0.001:math.F64);
+    let lr = math.conv.f2f math.f32 (0.001:math.F64);
     // Return the SGD update delta (old − new = lr·grad) of one element of each of the six results,
     // so every gradient chain stays live and the driver can check the backward pass numerically.
-    let g0 = ma.sub 0 (arg0#(3₇₈₄, 5₁₀₂₄), (arg0 - ‹784, 1024; lr› * transpose_2d (dot_product R (0₂, 0₂, (), ()) (v_68, arg6)))#(3₇₈₄, 5₁₀₂₄));
-    let g1 = ma.sub 0 (arg1#(7₁₀₂₄), (arg1 - ‹1024; lr› * reduce_ax0 ((ma.add 0), 0:F32) v_68)#(7₁₀₂₄));
-    let g2 = ma.sub 0 (arg2#(11₁₀₂₄, 13₁₀₂₄), (arg2 - ‹1024, 1024; lr› * transpose_2d (dot_product R (0₂, 0₂, (), ()) (v_59, v_4)))#(11₁₀₂₄, 13₁₀₂₄));
-    let g3 = ma.sub 0 (arg3#(17₁₀₂₄), (arg3 - ‹1024; lr› * reduce_ax0 ((ma.add 0), 0:F32) v_59)#(17₁₀₂₄));
-    let g4 = ma.sub 0 (arg4#(19₁₀₂₄, 2₁₀), (arg4 - ‹1024, 10; lr› * transpose_2d (dot_product R (0₂, 0₂, (), ()) (v_50, v_11)))#(19₁₀₂₄, 2₁₀));
-    let g5 = ma.sub 0 (arg5#(3₁₀), (arg5 - ‹10; lr› * reduce_ax0 ((ma.add 0), 0:F32) v_50)#(3₁₀));
-    let g6 = ma.add 0 (g0, ma.add 0 (g1, ma.add 0 (g2, ma.add 0 (g3, ma.add 0 (g4, g5)))));
+    let g0 = ma.sub fast (arg0#(3₇₈₄, 5₁₀₂₄), (arg0 - ‹784, 1024; lr› * transpose_2d (dot_product Ring (0₂, 0₂, (), ()) (v_68, arg6)))#(3₇₈₄, 5₁₀₂₄));
+    let g1 = ma.sub fast (arg1#(7₁₀₂₄), (arg1 - ‹1024; lr› * reduce (ma.add fast, 0:F32) 0₂ v_68)#(7₁₀₂₄));
+    let g2 = ma.sub fast (arg2#(11₁₀₂₄, 13₁₀₂₄), (arg2 - ‹1024, 1024; lr› * transpose_2d (dot_product Ring (0₂, 0₂, (), ()) (v_59, v_4)))#(11₁₀₂₄, 13₁₀₂₄));
+    let g3 = ma.sub fast (arg3#(17₁₀₂₄), (arg3 - ‹1024; lr› * reduce (ma.add fast, 0:F32) 0₂ v_59)#(17₁₀₂₄));
+    let g4 = ma.sub fast (arg4#(19₁₀₂₄, 2₁₀), (arg4 - ‹1024, 10; lr› * transpose_2d (dot_product Ring (0₂, 0₂, (), ()) (v_50, v_11)))#(19₁₀₂₄, 2₁₀));
+    let g5 = ma.sub fast (arg5#(3₁₀), (arg5 - ‹10; lr› * reduce (ma.add fast, 0:F32) 0₂ v_50)#(3₁₀));
+    let g6 = ma.add fast (g0, ma.add fast (g1, ma.add fast (g2, ma.add fast (g3, ma.add fast (g4, g5)))));
     return g6;
 
 // CHECK-NOT: tensor.map_reduce

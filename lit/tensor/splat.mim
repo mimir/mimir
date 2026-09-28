@@ -15,19 +15,22 @@
 plugin tensor;
 plugin compile;
 plugin math;
-plugin buffer;
+
+use tensor;
+
+let F32 = math.F32;
 
 extern fun splat_static(): «2, 3; I32» =
-    return (tensor.splat ((2, 3), 7I32));
+    return (splat ((2, 3), 7I32));
 
-extern fun splat_static_f32(): «2, 3; math.F32» =
-    return (tensor.splat ((2, 3), 1.0:math.F32));
+extern fun splat_static_f32(): «2, 3; F32» =
+    return (splat ((2, 3), 1.0:F32));
 
 extern fun splat_physical_rank0(): I32 =
-    return (tensor.splat ((1, 1), 11I32));
+    return (splat ((1, 1), 11I32));
 
 extern fun splat_dynamic {n: Nat} (index: Idx n, value: I32): I32 =
-    let t = tensor.splat ((n, 2), value);
+    let t = splat ((n, 2), value);
     return (t#(index, 0_2));
 
 extern lam _compile (): compile.Phase =

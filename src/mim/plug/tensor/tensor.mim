@@ -21,6 +21,7 @@ plugin cps;
 plugin affine;
 plugin buffer;
 plugin btensor;
+plugin math;
 
 use core.ops.n;
 ///
@@ -77,7 +78,7 @@ axm splat: {T: *, r: Nat}
 ///
 /// ### buf
 ///
-/// A mim::Anno%tation nominating an array value as a *tensor*: one that lives in a buffer and is passed by
+/// Nominates an array value as a *tensor*: one that lives in a buffer and is passed by
 /// handle, rather than an SSA aggregate that merely shares the `Arr` structure - an `(x y: I32)` group *is*
 /// a `«2; I32»`.
 /// The result type is the argument's, so an annotated tensor extracts, inserts and folds exactly like any
@@ -346,16 +347,13 @@ axm transpose: {T: *, r: Nat}
              → [permutation: «r; Idx r»]
              → {s: «r; Nat»}
              → [input: «s; T»]
-             → «transpose_shape (s, permutation); T»;
+             → «transpose_shape (s, permutation); T», normalize_transpose;
 ///
 /// ### transpose_2d
 ///
 /// Permutes the dimensions of a 2-dimensional tensor.
 ///
-axm transpose_2d: {T: *}
-                → {s: «2; Nat»}
-                → [input: «s; T»]
-                → «s#tt, s#ff; T»;
+anx lam transpose_2d {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» = transpose (tt, ff) input;
 ///
 /// ## Element-wise Operations
 ///
@@ -1070,6 +1068,43 @@ priv anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
 /// Wraps a binary fold `g` as a `map_reduce` reduction `Fn [T, «1; T»] → T`.
 pub fun pool_fun {T: *} (g: [T, T] → T) (acc y: T)@tt: T = return (g (acc, y));
 ///
+/// ### reduce_shape
+///
+/// `s` without axis `ax`.
+pub lam reduce_shape {r: Nat} (ax: Idx r, s: «r; Nat»): «r - 1; Nat» =
+    ‹i: r - 1; s#(core.idx 0 r (shift_ax (core.bitcast Nat ax, core.bitcast Nat i)))›;
+///
+/// ### reduce
+///
+/// Folds `input` along axis `ax` with `g`, seeded with `init`; the result drops that axis.
+/// The output axes run as the leading loops, `ax` as the trailing reduction loop.
+pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: «s; T»): «reduce_shape (ax, s); T» =
+    let a = core.bitcast Nat ax;
+    map_reduce (reduce_shape (ax, s), ‹i: r; let ii = core.bitcast Nat i; s#(core.idx 0 r (core.select (ii < r - 1, shift_ax (a, ii), a)))›)
+        (pool_fun g, init)
+        (proj_map ‹i: r - 1; core.bitcast Nat i›)
+        (proj_map ‹j: r; let jj = core.bitcast Nat j; core.select (jj < a, jj, core.select (jj == a, r - 1, jj - 1))›)
+        input;
+///
+/// ### binary_ax
+///
+/// `binary app (x, y)` where `y` lacks axis `ax` of `x` and is broadcast along it.
+pub lam binary_ax {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat} (ax: Idx r) {s: «r; Nat»}
+                  (x: «s; Ti1», y: «reduce_shape (ax, s); Ti2»): «s; To» =
+    fun app_mr (_: To, (u: Ti1, v: Ti2))@tt: To = return (app (u, v));
+    let a = core.bitcast Nat ax;
+    map_reduce (s, s) @((Ti1, Ti2), (r, r - 1), (s, reduce_shape (ax, s))) (app_mr, ⊥: To)
+        affine.id (affine.id @r, proj_map ‹i: r - 1; shift_ax (a, core.bitcast Nat i)›) (x, y);
+///
+/// ### softmax
+///
+/// Numerically stable softmax along axis `ax`: `exp (x - max) / Σ exp (x - max)`.
+pub lam softmax (m: Nat) {pe: «2; Nat»} {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: «s; math.F pe»): «s; math.F pe» =
+    let F  = math.F pe;
+    let mx = reduce (math.extrema.fmax m, math.neg_inf pe) ax input;
+    let e  = binary_ax (λ (x y: F): F = math.exp.exp m (math.arith.sub m (x, y))) ax (input, mx);
+    binary_ax (math.arith.div m) ax (e, reduce (math.arith.add m, 0:F) ax e);
+///
 /// ### pool2d_in_map
 ///
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
@@ -1323,12 +1358,6 @@ priv anx lam transpose_impl {T: *, r: Nat}
                            map_reduce (out_s, out_s) (tensor_copy, ⊥: T)
                                affine.id (transpose_map permutation,) input;
 ///
-/// ### transpose_2d_impl
-///
-/// `transpose_impl` at the swap permutation.
-priv anx lam transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
-  transpose_impl (tt, ff) input;
-///
 /// ### binary_impl
 ///
 /// `map_impl` over two tensors.
@@ -1370,6 +1399,8 @@ priv anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i:
 ///   \f$\mathit{Catalan}(n-1)\f$.
 /// - A product with more than one consumer stays a chain boundary, as pulling it apart would leave it
 ///   materialized for its other consumers as well.
+/// - A transposed product is part of the chain, as `(A · B)ᵀ = Bᵀ · Aᵀ`; so `Q · Kᵀ` with `Q = x · wq` and
+///   `K = x · wk` is the chain `x · wq · wkᵀ · xᵀ`.
 /// - Reassociation is only exact for an associative ring; on floating-point rings it changes the
 ///   rounding, just like `-ffast-math`.
 ///

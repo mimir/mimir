@@ -269,6 +269,14 @@ pub mod conv {
     axm f2f: {spe: «2; Nat»} → [dpe: «2; Nat»] → F spe → F dpe,     normalize_conv;
 }
 ///
+/// ### inf, neg_inf, nan
+///
+/// Positive and negative infinity and a quiet NaN of the floating-point format `pe`, e.g. `math.neg_inf math.f32`.
+///
+anx lam inf     (pe: «2; Nat»): F pe = conv.f2f pe 0x7FF0000000000000:F64;
+anx lam neg_inf (pe: «2; Nat»): F pe = conv.f2f pe 0xFFF0000000000000:F64;
+anx lam nan     (pe: «2; Nat»): F pe = conv.f2f pe 0x7FF8000000000000:F64;
+///
 /// ### slf
 ///
 /// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)

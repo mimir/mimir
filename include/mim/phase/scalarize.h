@@ -33,7 +33,8 @@ namespace mim {
 /// * it types a value inside a dependently-typed aggregate (a typed closure),
 /// * an App connects a dom and an arg whose types are alpha-equivalent yet *distinct* defs, or
 /// * one of its parameters is Extract%ed / Insert%ed via a **non-constant** index
-///   (splitting would only force the body to reassemble the tuple);
+///   (splitting would only force the body to reassemble the tuple),
+///   or an Axm consumes it as a whole through one of its type variables (`tensor.buf x` nominates `x` as a tensor);
 ///   this is tracked per parameter via a keep-bitmask.
 ///
 /// The phase flattens **one level** of a Pi's (thresholded) domain per run.
@@ -64,6 +65,8 @@ private:
         void inspect(const Def* def);
         /// Marks parameter @p dom of @p pi as *keep whole*; a fresh bit invalidate()s.
         void keep(const Pi* pi, size_t dom);
+        /// Keeps @p def whole if it is a Lam's Var or one of its parameters.
+        void keep_param(const Def* def);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
 
         /// Which parameters of a Pi must not be split.

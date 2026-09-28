@@ -54,7 +54,16 @@ struct Ctx {
     bool in_header = false;
     std::string self; ///< `<world name>.`: the dumped file's own annexes are spelled without it.
     std::string mod;  ///< `<mod>.` while declaring the Axm%s of that `mod`, which does not see its own name.
+    /// What the dumped roots reach; `nullptr` dumps whatever exists.
+    /// A dead projection left behind by normalization must not bind a name a re-read dump would not bind.
+    const DefSet* live = nullptr;
 };
+
+/// @p def's @p i-th of @p n projections, if it exists and the dump reaches it.
+const Def* live_proj(Ctx* ctx, const Def* def, nat_t n, nat_t i) {
+    auto proj = def->proj(n, i);
+    return proj && ctx && ctx->live && !ctx->live->contains(proj) ? nullptr : proj;
+}
 
 std::string pick_name(Ctx* ctx, const Def* def) {
     auto sym  = def->sym();
@@ -76,7 +85,7 @@ std::string pick_name(Ctx* ctx, const Def* def) {
 const Def* alias_proj(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>())
         if (auto i = ctx->aliases.find(ex->tuple()); i != ctx->aliases.end() && !ctx->opaque.contains(i->second))
-            if (auto l = Lit::isa(ex->index())) return i->second->proj(ex->tuple()->num_tprojs(), *l);
+            if (auto l = Lit::isa(ex->index())) return live_proj(ctx, i->second, ex->tuple()->num_tprojs(), *l);
     return nullptr;
 }
 
@@ -284,7 +293,7 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
 
     auto res = std::string();
     for (auto sep = ""; auto i : std::views::iota(nat_t(0), *r)) {
-        auto axis   = var->proj(*r, i);
+        auto axis   = live_proj(ctx, var, *r, i);
         auto extent = s[i];
         if (!extent) return std::format("{}: {}", Op(ctx, var), Op(ctx, *s));
         // A projection the body never mentions does not exist as a Def and hence has no name of its own.
@@ -303,7 +312,7 @@ bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
     auto var = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
 
     for (size_t i = 0; i != n; ++i) {
-        if (def->proj(n, i)) continue; // it exists and hence brings its own name and type
+        if (live_proj(ctx, def, n, i)) continue; // it exists and hence brings its own name and type
         auto t = type->proj(n, i);
         if (!t || (var && t->has_free_var(var))) {
             if (ctx) ctx->opaque.emplace(def);
@@ -319,7 +328,8 @@ void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brck
 
     auto n = def->num_tprojs();
     // Unless some component exists, nothing refers to one and the whole reads back the same.
-    auto used = std::ranges::any_of(std::views::iota(size_t(0), n), [&](size_t i) { return def->proj(n, i); });
+    auto used
+        = std::ranges::any_of(std::views::iota(size_t(0), n), [&](size_t i) { return live_proj(ctx, def, n, i); });
     if (!used || !destructible(ctx, def, type, n)) return std::print(os, "{}: {}", name(ctx, def), Op(ctx, type));
     if (ctx) {
         ctx->destructured.emplace(def);
@@ -329,7 +339,7 @@ void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brck
 
     os << (brckt ? '[' : '(');
     for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
-        auto proj = def->proj(n, i);
+        auto proj = live_proj(ctx, def, n, i);
         os << sep;
         // A projection's own type is the one where the binder has already been substituted for this Var.
         ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), brckt);
@@ -349,7 +359,7 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
     os << l;
     for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
         os << sep;
-        auto proj = var->proj(n, i);
+        auto proj = live_proj(ctx, var, n, i);
         ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), true);
         sep = ", ";
     }
@@ -383,7 +393,7 @@ void curry(std::ostream& os,
     os << l;
     for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
         os << sep;
-        auto proj = def ? def->proj(num, i) : nullptr;
+        auto proj = def ? live_proj(ctx, def, num, i) : nullptr;
         bndr(os, ctx, proj, proj ? proj->type() : type->proj(num, i));
         sep = ", ";
     }
@@ -720,6 +730,9 @@ public:
         , mode_(mode)
         , typed_let_(typed_let)
         , srcs_(std::move(srcs)) {}
+
+    /// Only @p live Def%s - what the dumped roots reach - count as existing.
+    void live(const DefSet& live) { ctx_.live = &live; }
 
     /// Switches to plain names; @p reserved are names the dump refers to verbatim and hence must not pick.
     void plain(std::span<const std::string> reserved) {
@@ -1212,6 +1225,7 @@ void World::dump(std::ostream& os) {
     auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
     auto dumper = Dumper(os, mode, flags().mim_typed_let, std::move(srcs));
     dumper.plain(reserved);
+    dumper.live(seen);
     if (!axms.empty()) dumper.dump_axms(std::move(self), axms);
     for (auto mut : externals().muts())
         dumper.dump(mut);

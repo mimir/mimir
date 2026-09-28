@@ -33,20 +33,11 @@ u64 lanes(u64 n, u64 vec) { return (n + vec - 1) / vec * vec; }
 /// Is @p mat read with its contraction unit-stride?
 /// `Lower` answers `tensor.fastest_axis` 0 for a transposed operand - the read-through absorbs the
 /// transpose into the access map - which selects `dot_schedule_kvec`.
-bool is_kvec(const Def* mat) {
-    auto app = Axm::isa<tensor::transpose>(mat);
-    if (!app) return false;
-
-    auto perm = app->callee()->as<App>()->callee()->as<App>()->arg();
-    if (Lit::isa(perm->arity()) != 2) return false;
-
-    auto [p0, p1] = perm->projs<2>();
-    return Lit::isa(p0) == 1 && Lit::isa(p1) == 0;
-}
+bool is_kvec(Leaf mat) { return mat.t != (isa_transpose_2d(mat.def) != nullptr); }
 
 /// Does `i … s … j` vectorize its contraction instead of its trailing extent?
 /// Only a leaf can: a subchain's result is materialized row-major.
-bool kvec_split(Defs mats, u64 s, u64 j) { return s + 1 == j && is_kvec(mats[j]); }
+bool kvec_split(fe::View<Leaf> mats, u64 s, u64 j) { return s + 1 == j && is_kvec(mats[j]); }
 
 /// The symbolic extents of one `dims[i] · dims[s + 1] · dims[j + 1]` cost term, sorted by Def::gid and
 /// padded with `nullptr`; literal extents fold into the coefficient instead.
@@ -127,10 +118,17 @@ Poly mul_cost(const Def* x, const Def* y, const Def* z, u64 vec, bool kvec) {
     return poly;
 }
 
-Poly cost_of(fe::View<Split> splits, Defs mats, Defs dims, u64 vec) {
+Poly cost_of(fe::View<Split> splits, fe::View<Leaf> mats, Defs dims, u64 vec) {
+    // An operand is read transposed iff its orientation differs from its consumer's; a subchain's is its node's.
+    auto kvec = [&](u64 i, u64 j, bool t) {
+        if (i == j) return is_kvec(mats[i]) != t;
+        return std::ranges::find_if(splits, [&](const Split& n) { return n.i == i && n.j == j; })->t != t;
+    };
+
     auto poly = Poly();
-    for (auto [i, s, j] : splits)
-        poly.add(mul_cost(dims[i], dims[s + 1], dims[j + 1], vec, kvec_split(mats, s, j)));
+    for (auto [i, s, j, t] : splits)
+        poly.add(t ? mul_cost(dims[j + 1], dims[s + 1], dims[i], vec, kvec(i, s, t))
+                   : mul_cost(dims[i], dims[s + 1], dims[j + 1], vec, kvec(s + 1, j, t)));
     return poly;
 }
 
@@ -153,7 +151,7 @@ fe::Vector<Splits> bracketings(u64 lo, u64 hi) {
 /// Drops every bracketing that another one provably beats; equal costs keep the first.
 /// A single survivor is hence the optimum under *every* instantiation of the symbolic extents.
 /// Several survivors need not each win for some instantiation - domination is only sufficient for `≤`.
-fe::Vector<Splits> pareto(fe::View<Splits> cands, Defs mats, Defs dims, u64 vec) {
+fe::Vector<Splits> pareto(fe::View<Splits> cands, fe::View<Leaf> mats, Defs dims, u64 vec) {
     auto keep  = fe::Vector<Splits>();
     auto costs = fe::Vector<Poly>();
 
@@ -171,7 +169,7 @@ fe::Vector<Splits> pareto(fe::View<Splits> cands, Defs mats, Defs dims, u64 vec)
 
 fe::Vector<u64> split_table(const Splits& splits, u64 n) {
     auto table = fe::Vector<u64>(n * n, 0);
-    for (auto [i, s, j] : splits)
+    for (auto [i, s, j, _] : splits)
         table[i * n + j] = s;
     return table;
 }
@@ -180,7 +178,7 @@ fe::Vector<u64> split_table(const Splits& splits, u64 n) {
 /// @returns the split table - `split[i * n + j]` is the last matrix of the left factor of the cheapest
 /// parenthesization of `i … j` - together with that parenthesization's cost, or nothing at all if some
 /// subchain has no candidate that provably beats all the others.
-std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(Defs mats, Defs dims, u64 vec) {
+std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(fe::View<Leaf> mats, Defs dims, u64 vec) {
     auto n     = dims.size() - 1;
     auto cost  = fe::Vector<Poly>(n * n);
     auto split = fe::Vector<u64>(n * n, 0);
@@ -242,7 +240,8 @@ void Reassoc::start() {
 
     // flatten() may only pull a product apart where doing so cannot leave it materialized for another
     // consumer as well.
-    consumers_ = count_consumers(old_world(), [](const Def* d) { return Axm::isa<tensor::product_2d>(d) != nullptr; });
+    consumers_ = count_consumers(old_world(),
+                                 [](const Def* d) { return Axm::isa<tensor::product_2d>(d) || isa_transpose_2d(d); });
 
     RWPhase::start();
 }
@@ -259,27 +258,44 @@ std::optional<Reassoc::Link> Reassoc::isa_link(const Def* def, const Def* ring) 
     return Link{app, m, k, l};
 }
 
-void Reassoc::flatten(const Def* def, const Def* ring, const Def* rows, DefVec& mats, DefVec& dims, Splits& orig) {
-    auto lo = mats.size();
+void Reassoc::flatten(const Def* def,
+                      const Def* ring,
+                      const Def* rows,
+                      bool t,
+                      Leaves& mats,
+                      DefVec& dims,
+                      Splits& orig) {
+    auto i = consumers_.find(def);
+    if (i != consumers_.end() && i->second == 1) {
+        // `(A · B)ᵀ = Bᵀ · Aᵀ`, so a transposed chain flattens reversed with each leaf transposed.
+        if (auto in = isa_transpose_2d(def)) return flatten(in, ring, rows, !t, mats, dims, orig);
 
-    if (auto i = consumers_.find(def); i != consumers_.end() && i->second == 1)
         if (auto link = isa_link(def, ring)) {
+            auto lo       = mats.size();
             auto [t1, t2] = link->app->args<2>();
-            flatten(t1, ring, link->m, mats, dims, orig);
+            if (t) std::swap(t1, t2);
+            flatten(t1, ring, t ? link->l : link->m, t, mats, dims, orig);
             auto mid = mats.size();
-            flatten(t2, ring, link->k, mats, dims, orig);
-            orig.emplace_back(Split{lo, mid - 1, mats.size() - 1});
+            flatten(t2, ring, link->k, t, mats, dims, orig);
+            orig.emplace_back(Split{lo, mid - 1, mats.size() - 1, t});
             return;
         }
+    }
 
-    mats.emplace_back(def);
+    mats.emplace_back(Leaf{def, t});
     dims.emplace_back(rows);
 }
 
-const Def* Reassoc::build(const Def* head, Defs mats, Defs dims, fe::View<u64> split, u64 i, u64 j) {
-    if (i == j) return rewrite(mats[i]);
+const Def* Reassoc::build(const Def* head, fe::View<Leaf> mats, Defs dims, fe::View<u64> split, u64 i, u64 j) {
+    auto& w = new_world();
+    if (i == j) {
+        auto mat = rewrite(mats[i].def);
+        if (!mats[i].t) return mat;
+        auto T = head->as<App>()->arg()->proj(4, 0);
+        auto s = w.tuple({rewrite(dims[i + 1]), rewrite(dims[i])});
+        return w.app(w.app(w.app(w.annex<tensor::transpose_2d>(), T), s), mat);
+    }
 
-    auto& w  = new_world();
     auto s   = split[i * mats.size() + j];
     auto t1  = build(head, mats, dims, split, i, s);
     auto t2  = build(head, mats, dims, split, s + 1, j);
@@ -287,7 +303,7 @@ const Def* Reassoc::build(const Def* head, Defs mats, Defs dims, fe::View<u64> s
     return w.app(w.app(head, mkl), {t1, t2});
 }
 
-const Def* Reassoc::cost_expr(Defs mats, Defs dims, const Splits& splits) {
+const Def* Reassoc::cost_expr(fe::View<Leaf> mats, Defs dims, const Splits& splits) {
     auto& w        = new_world();
     const Def* sum = nullptr;
 
@@ -297,7 +313,7 @@ const Def* Reassoc::cost_expr(Defs mats, Defs dims, const Splits& splits) {
         return rewrite(d);
     };
 
-    for (auto [i, s, j] : splits) {
+    for (auto [i, s, j, _] : splits) {
         auto kvec = kvec_split(mats, s, j);
         auto p    = w.app(w.annex(core::nat::mul), {rewrite(dims[i]), extent(dims[s + 1], kvec ? vec_ : 1)});
         p         = w.app(w.annex(core::nat::mul), {p, extent(dims[j + 1], kvec ? 1 : vec_)});
@@ -307,7 +323,8 @@ const Def* Reassoc::cost_expr(Defs mats, Defs dims, const Splits& splits) {
     return sum;
 }
 
-const Def* Reassoc::dispatch(const Def* head, const Def* res_ty, Defs mats, Defs dims, fe::View<Splits> cands) {
+const Def*
+Reassoc::dispatch(const Def* head, const Def* res_ty, fe::View<Leaf> mats, Defs dims, fe::View<Splits> cands) {
     auto& w = new_world();
     auto n  = mats.size();
     auto pi = w.pi(w.sigma(), res_ty);
@@ -339,12 +356,12 @@ const Def* Reassoc::reassoc(const App* app) {
     if (!link) return nullptr;
 
     auto [t1, t2] = app->args<2>();
-    auto mats     = DefVec();
+    auto mats     = Leaves();
     auto dims     = DefVec();
     auto orig     = Splits();
-    flatten(t1, head->arg(), link->m, mats, dims, orig);
+    flatten(t1, head->arg(), link->m, false, mats, dims, orig);
     auto mid = mats.size();
-    flatten(t2, head->arg(), link->k, mats, dims, orig);
+    flatten(t2, head->arg(), link->k, false, mats, dims, orig);
     dims.emplace_back(link->l);
     orig.emplace_back(Split{0_u64, mid - 1, mats.size() - 1});
 
