@@ -78,11 +78,12 @@ inline std::optional<fe::Vector<u64>> lit_perm(const Def* perm) {
 }
 
 /// The permutation of a `transpose` app, if it is literal.
-inline std::optional<fe::Vector<u64>> transpose_perm(const App* app) { return lit_perm(app->decurry()->decurry()->arg()); }
+inline std::optional<fe::Vector<u64>> transpose_perm(const App* app) {
+    return lit_perm(app->decurry()->decurry()->arg());
+}
 
-/// The input of a 2-D transpose - `transpose_2d` or `transpose (1, 0)` -, or `nullptr`.
+/// The input of a 2-D transpose `transpose (1, 0)`, or `nullptr`.
 inline const Def* isa_transpose_2d(const Def* def) {
-    if (auto app = Axm::isa<tensor::transpose_2d>(def)) return app->arg();
     if (auto app = Axm::isa<tensor::transpose>(def)) {
         auto perm = app->decurry()->decurry()->arg();
         if (Lit::isa(perm->arity()) == 2) {

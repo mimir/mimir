@@ -1,6 +1,6 @@
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt -p clos -p ll %s
-// RUN: clang %{s:stem}.ll -o %t -lm -Wno-override-module
+// RUN: clang++ %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t
 
 // tensor.reduce along each axis of a rank-3 tensor, all the way down to a scalar, and tensor.softmax along its middle axis.

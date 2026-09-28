@@ -291,9 +291,10 @@ const Def* Reassoc::build(const Def* head, fe::View<Leaf> mats, Defs dims, fe::V
     if (i == j) {
         auto mat = rewrite(mats[i].def);
         if (!mats[i].t) return mat;
-        auto T = head->as<App>()->arg()->proj(4, 0);
-        auto s = w.tuple({rewrite(dims[i + 1]), rewrite(dims[i])});
-        return w.app(w.app(w.app(w.annex<tensor::transpose_2d>(), T), s), mat);
+        auto T    = head->as<App>()->arg()->proj(4, 0);
+        auto perm = w.tuple({w.lit_idx(2, 1), w.lit_idx(2, 0)});
+        auto s    = w.tuple({rewrite(dims[i + 1]), rewrite(dims[i])});
+        return w.app(w.app(w.app(w.app(w.annex<tensor::transpose>(), {T, w.lit_nat(2)}), perm), s), mat);
     }
 
     auto s   = split[i * mats.size() + j];

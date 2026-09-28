@@ -92,7 +92,6 @@ const Def* Lower::rewrite_imm_App(const App* app) {
 
     if (Axm::isa<tensor::broadcast_in_dim>(app)) return lower_via_impl(app, w.annex<tensor::broadcast_in_dim_impl>());
     if (Axm::isa<tensor::transpose>(app)) return lower_via_impl(app, w.annex<tensor::transpose_impl>());
-    if (Axm::isa<tensor::transpose_2d>(app)) return lower_via_impl(app, w.annex<tensor::transpose_2d_impl>());
     if (Axm::isa<tensor::map>(app)) return lower_via_impl(app, w.annex<tensor::map_impl>());
     if (Axm::isa<tensor::unary>(app)) return lower_via_impl(app, w.annex<tensor::unary_impl>());
     if (Axm::isa<tensor::binary>(app)) return lower_via_impl(app, w.annex<tensor::binary_impl>());

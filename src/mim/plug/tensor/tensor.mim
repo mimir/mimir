@@ -353,10 +353,7 @@ axm transpose: {T: *, r: Nat}
 ///
 /// Permutes the dimensions of a 2-dimensional tensor.
 ///
-axm transpose_2d: {T: *}
-                → {s: «2; Nat»}
-                → [input: «s; T»]
-                → «s#tt, s#ff; T», normalize_transpose_2d;
+pub lam transpose_2d {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» = transpose (tt, ff) input;
 ///
 /// ## Element-wise Operations
 ///
@@ -1360,12 +1357,6 @@ priv anx lam transpose_impl {T: *, r: Nat}
                          = let out_s = transpose_shape (s, permutation);
                            map_reduce (out_s, out_s) (tensor_copy, ⊥: T)
                                affine.id (transpose_map permutation,) input;
-///
-/// ### transpose_2d_impl
-///
-/// `transpose_impl` at the swap permutation.
-priv anx lam transpose_2d_impl {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» =
-  transpose_impl (tt, ff) input;
 ///
 /// ### binary_impl
 ///

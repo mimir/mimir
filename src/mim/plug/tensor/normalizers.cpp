@@ -52,22 +52,16 @@ const Def* normalize_transpose(const Def*, const Def* c, const Def* arg) {
     auto r = perm->size();
     if (std::ranges::equal(*perm, std::views::iota(u64(0), u64(r)))) return arg;
 
-    auto inner = fe::Vector<u64>();
-    if (auto app = Axm::isa<tensor::transpose>(arg)) {
-        if (auto p = transpose_perm(app)) inner = std::move(*p);
-    } else if (Axm::isa<tensor::transpose_2d>(arg)) {
-        inner = {1, 0};
-    }
-    if (inner.size() != r) return nullptr;
+    auto app = Axm::isa<tensor::transpose>(arg);
+    if (!app) return nullptr;
+    auto inner = transpose_perm(app);
+    if (!inner || inner->size() != r) return nullptr;
 
     // Axis `j` of the inner input ends up at `perm#(inner#j)`; an identity composite collapses in the rebuilt app.
-    auto& w    = c->world();
-    auto input = arg->as<App>();
-    auto comp  = DefVec(r, [&](size_t j) { return w.lit_idx(r, (*perm)[inner[j]]); });
-    return w.app(w.app(w.app(callee->callee(), w.tuple(comp)), input->decurry()->arg()), input->arg());
+    auto& w   = c->world();
+    auto comp = DefVec(r, [&](size_t j) { return w.lit_idx(r, (*perm)[(*inner)[j]]); });
+    return w.app(w.app(w.app(callee->callee(), w.tuple(comp)), app->decurry()->arg()), app->arg());
 }
-
-const Def* normalize_transpose_2d(const Def*, const Def*, const Def* arg) { return isa_transpose_2d(arg); }
 
 const Def* normalize_slice(const Def*, const Def* c, const Def* arg) {
     // Identity slice: every axis starts at 0 with step 1 and keeps its full extent (s_out == s_in) -> the input itself.
