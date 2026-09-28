@@ -4,7 +4,6 @@
 #include <unordered_set>
 
 #include <ankerl/unordered_dense.h>
-#include <fe/hash.h>
 
 namespace mim {
 
@@ -12,7 +11,7 @@ template<class T>
 struct GIDHash {
     using is_avalanching = void;
 
-    constexpr size_t operator()(T p) const noexcept { return fe::hash(p->gid()); }
+    size_t operator()(T p) const noexcept { return ankerl::unordered_dense::hash<decltype(p->gid())>{}(p->gid()); }
 };
 
 template<class T>

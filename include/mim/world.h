@@ -835,6 +835,7 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
+        if (def->mut_) def->hash_ = fe::hash_combine(0, def->gid());
         stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
@@ -864,6 +865,7 @@ private:
         auto num_bytes = sizeof(Def) + sizeof(uintptr_t) * num_ops;
         auto ptr       = move_.arena.defs.allocate(num_bytes, alignof(T));
         auto res       = new (ptr) T(std::forward<Args>(args)...);
+        res->gid_      = next_gid(); // here, so Def's ctors need not walk the type chain to find this World
         assert(res->num_ops() == num_ops);
         return res;
     }
