@@ -431,7 +431,7 @@ public:
     virtual void rewrite_external(Def*)                  = 0;
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).
-    /// While bootstrapping, you have to skip rewrites that refer to other annexes, as they might not yet be available.
+    /// While bootstrapping, an RWPhase must look up other annexes via RWPhase::annex, as they might not yet exist.
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -482,6 +482,13 @@ public:
     World& world() = delete;                         ///< Hides both and forbids direct access.
     World& old_world() { return Phase::world(); }    ///< Get **old** Def%s from here.
     World& new_world() { return Rewriter::world(); } ///< Create **new** Def%s into this.
+
+    /// The annex @p flags in new_world(), rewritten on demand if the annex walk has not reached it yet.
+    const Def* annex(flags_t flags);
+    template<annex_without_subs Id>
+    const Def* annex() {
+        return annex(Annex::base<Id>());
+    }
     ///@}
 
 protected:

@@ -353,7 +353,7 @@ axm transpose: {T: *, r: Nat}
 ///
 /// Permutes the dimensions of a 2-dimensional tensor.
 ///
-pub lam transpose_2d {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» = transpose (tt, ff) input;
+anx lam transpose_2d {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» = transpose (tt, ff) input;
 ///
 /// ## Element-wise Operations
 ///

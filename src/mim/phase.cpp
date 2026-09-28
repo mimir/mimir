@@ -195,8 +195,15 @@ void RWPhase::start() {
     swap(old_world(), new_world());
 }
 
+const Def* RWPhase::annex(flags_t flags) {
+    if (auto e = fe::lookup(new_world().annexes().flags2entry(), flags)) return e->def;
+    auto& e = old_world().annexes().flags2entry().at(flags);
+    return new_world().annexes().attach(flags, e.sym, rewrite_root(e.def));
+}
+
 void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
-    new_world().annexes().attach(f, sym, rewrite_root(def));
+    auto new_def = rewrite_root(def);
+    if (!new_world().annexes().flags2entry().contains(f)) new_world().annexes().attach(f, sym, new_def);
 }
 
 void RWPhase::rewrite_external(Def* old_mut) {
