@@ -1,0 +1,26 @@
+// RUN: %mim -p opt %s 2>&1 | %FileCheck %s
+
+// Field names attach to the hash-consed Sigma, so `P` also names the components of every `«2; Nat»`.
+plugin refly;
+
+let P = [x: Nat, d: Nat];
+
+lam f (s: «2; Nat»): Nat =
+    let d = 0₂;
+    s#d;
+
+lam g (s: «2; Nat»): Nat =
+    let d = 0₂;
+    s#(d);
+
+let _ = refly.struc.e (f (7, 8), 8);
+let _ = refly.struc.e (g (7, 8), 7);
+
+// CHECK:      {{.*}}warn_extract_field.mim:10:7: warning: `d` names both field 1 of `«2; Nat»` and a declaration in scope; using the field
+// CHECK-NEXT: 10 |     s#d;
+// CHECK-NEXT:    |       ^
+// CHECK-NEXT:    {{.*}}warn_extract_field.mim:9:9: note: declaration here
+// CHECK-NEXT:  9 |     let d = 0₂;
+// CHECK-NEXT:    |         ^
+// CHECK-NEXT:    = note: parenthesize it, as in `#(d)`, to extract by the declaration instead
+// CHECK-NEXT: 1 warning(s) encountered

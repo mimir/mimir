@@ -99,7 +99,7 @@ rec List = [head: I32, tail: mem.Ptr0 List];
 /// `and` extends the group, so two types may refer to each other.
 rec Tree   = [val: I32, kids: mem.Ptr0 Forest]
 and Forest = [car: mem.Ptr0 Tree, cdr: mem.Ptr0 Forest];
-/// Components carry field names, which beat lexical names of the same spelling.
+/// Components carry field names, which beat lexical names of the same spelling - with a warning, as here.
 let tail = 1₂;
 lam by_field (l: List): mem.Ptr0 List = l#tail;
 lam by_var   (p: «2; Nat»): Nat       = p#(tail);   // parentheses force the variable

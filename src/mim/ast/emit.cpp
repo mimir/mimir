@@ -390,7 +390,15 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     // A simple path names a field of tup's Sigma before anything the binder resolved it to.
     if (auto path = rhs()->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
         auto dbg = path->dbg();
-        if (auto i = e.find_name(tup->type(), dbg)) return w.lit(w.type_idx(tup->type()->arity()), *i);
+        if (auto i = e.find_name(tup->type(), dbg)) {
+            if (auto decl = path->decl())
+                e.error()
+                    .w(dbg.loc(), "`{}` names both field {} of `{}` and a declaration in scope; using the field", dbg,
+                       *i, tup->type())
+                    .n(decl->loc(), "declaration here")
+                    .n("parenthesize it, as in `#({})`, to extract by the declaration instead", dbg);
+            return w.lit(w.type_idx(tup->type()->arity()), *i);
+        }
         if (!path->decl()) e.error().e(dbg.loc(), "cannot resolve field `{}` for extraction", dbg).bail();
     }
     return rhs()->emit(e);
