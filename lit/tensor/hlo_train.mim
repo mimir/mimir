@@ -26,10 +26,8 @@ let fast    = math.mode.fast;
 let neg_inf = math.neg_inf math.f32;
 let Ring    = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
 
-// NB: a decimal literal `x.y: math.F32` currently lowers to 0.0 — only F64 decimal literals parse
-// correctly — so F32 constants are built by converting an F64 literal with math.conv.f2f.
-let lr = math.conv.f2f math.f32 (0.001: math.F64);
-let c  = math.conv.f2f math.f32 (0.5: math.F64); // loss-gradient scale
+let lr = 0.001:F32;
+let c  = 0.5:F32; // loss-gradient scale
 
 let `+ = binary (math.arith.add fast);
 let `- = binary (math.arith.sub fast);

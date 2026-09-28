@@ -19,7 +19,7 @@ use math.arith as ma;
 
 let F32     = math.F32;
 let fast    = math.mode.fast;
-let one     = math.conv.f2f math.f32 (1.0:math.F64);
+let one     = 1.0:F32;
 let neg_inf = math.neg_inf math.f32;
 let Ring    = (F32, 0:F32, ma.add fast, ma.mul fast);
 
@@ -45,7 +45,7 @@ extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_27 = exp (v_17 - broadcast ((128, 1), (128, 10), select (is_finite v_20, v_20, ‹128; 0:F32›)));
     let v_28 = reduce (ma.add fast, 0:F32) 1₂ v_27;
     let v_32 = ge (v_28, ‹128, 1; 0:F32›);
-    let v_37 = broadcast ((1, 1), (128, 10), ma.div fast (math.minus fast one, math.conv.f2f math.f32 (128.0:math.F64))) * arg7;
+    let v_37 = broadcast ((1, 1), (128, 10), ma.div fast (math.minus fast one, 128.0:F32)) * arg7;
     let v_41 = reduce (ma.add fast, 0:F32) 1₂ (minus v_37) / abs v_28;
     let v_42 = ‹128, 1; 0:F32›;
     let v_50 = v_37 + broadcast ((128, 1), (128, 10), select (v_32, v_41, v_42) + minus (select (v_32, v_42, v_41))) * v_27;
@@ -53,7 +53,7 @@ extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «
     let v_59 = v_56 * (‹128; ‹1024; one›› - v_11) + v_56 * v_11;
     let v_66 = dot_product Ring (1₂, 1₂, (), ()) (v_59, arg2) * (‹128, 1024; one› - v_4);
     let v_68 = v_66 + v_66 * v_4;
-    let lr = math.conv.f2f math.f32 (0.001:math.F64);
+    let lr = 0.001:F32;
     // Return the SGD update delta (old − new = lr·grad) of one element of each of the six results,
     // so every gradient chain stays live and the driver can check the backward pass numerically.
     let g0 = ma.sub fast (arg0#(3₇₈₄, 5₁₀₂₄), (arg0 - ‹784, 1024; lr› * transpose_2d (dot_product Ring (0₂, 0₂, (), ()) (v_68, arg6)))#(3₇₈₄, 5₁₀₂₄));
