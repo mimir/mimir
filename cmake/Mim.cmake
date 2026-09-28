@@ -33,6 +33,7 @@ set(MIM_PLAYGROUND_EXAMPLES
     ord/fold
     ord/loop
     ord/poly
+    tensor/attn_exec
     tensor/fc_exec
 )
 find_program(MIM_CLANG NAMES clang)
