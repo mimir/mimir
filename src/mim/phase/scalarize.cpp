@@ -85,7 +85,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
             // A function buried inside a tuple argument (`mem.store (mem, ptr, f)`) is just data, though.
             if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
 
-            // `tensor.buf x` nominates `x` itself as a tensor passed by handle.
+            // An Axm polymorphic in its argument's type sees it whole, e.g. `tensor.buf x` nominates `x` itself.
             if (is_polymorphic_arg(app)) keep_param(app->arg());
         }
 

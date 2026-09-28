@@ -23,7 +23,7 @@ let F32     = math.F32;
 let fast    = math.mode.fast;
 let Ring    = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
 let fmax    = math.extrema.fmax fast;
-let neg_inf = 0xFF800000:F32;
+let neg_inf = math.neg_inf math.f32;
 
 let `+ = binary (math.arith.add fast);
 let `* = product_2d Ring;

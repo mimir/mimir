@@ -72,6 +72,13 @@ bool holds_buf(const Def* d) {
     return false;
 }
 
+/// @p buf, or its sole element if @p app's result has been folded to a scalar.
+const Def* scalar_result(const App* app, const Def* mem, const Def* buf) {
+    if (app->type()->isa<Arr>()) return buf;
+    auto [r, s, T] = Axm::isa<buffer::Buf>(buf->type())->args<3>();
+    return buffer::op_read(r, s, T, mem, buf, buf->world().tuple())->proj(2, 1);
+}
+
 } // namespace
 
 void LowerToMem::collect_tensor_types() {
@@ -479,8 +486,9 @@ const Def* LowerToMem::materialize(const Def* old_ty, const Def* old_arg) {
         auto v = rewrite(old_arg);
         if (Axm::isa<buffer::Buf>(v->type())) return v; // already a buffer
         if (holds_buf(v)) {
-            auto lam     = old_arg->num_ops() != 0 ? param_of(old_arg->op(0)) : nullptr;
-            auto culprit = lam ? (const Def*)lam : old_arg;
+            const Def* culprit = old_arg;
+            if (old_arg->num_ops() != 0)
+                if (auto lam = param_of(old_arg->op(0))) culprit = lam;
             culprit->blame("cannot bufferize: tensor parameter was split into parts; annotate it with `tensor.buf`")
                 .bail();
         }
@@ -714,9 +722,7 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     op            = w.app(op, acc_out);
     op            = w.app(op, accs);
     auto [m, out] = w.app(op, w.tuple({fresh_mem(), is, post_is}))->projs<2>();
-    if (app->type()->isa<Arr>()) return out;
-    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out->type())->args<3>();
-    return buffer::op_read(out_r, out_s, out_T, m, out, w.tuple(Defs{}))->proj(2, 1);
+    return scalar_result(app, m, out);
 }
 
 const Def* LowerToMem::lower_pad(const App* app) {
@@ -811,9 +817,7 @@ const Def* LowerToMem::lower_gather(const App* app) {
 
     auto op                 = w.app(w.annex<btensor::gather>(), {T, r});
     auto [out_mem, out_buf] = w.call(op, Defs{s_src, s_idx}, dim, Defs{fresh_mem(), input, index})->projs<2>();
-    if (app->type()->isa<Arr>()) return out_buf;
-    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out_buf->type())->args<3>();
-    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(2, 1);
+    return scalar_result(app, out_mem, out_buf);
 }
 
 const Def* LowerToMem::lower_scatter(const App* app) {
@@ -838,9 +842,7 @@ const Def* LowerToMem::lower_scatter(const App* app) {
     auto op = w.app(w.annex<btensor::scatter>(), {T, r});
     auto [out_mem, out_buf]
         = w.call(op, Defs{s_src, s_idx, s_updates}, dim, Defs{fresh_mem(), input, index, updates})->projs<2>();
-    if (app->type()->isa<Arr>()) return out_buf;
-    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out_buf->type())->args<3>();
-    return buffer::op_read(out_r, out_s, out_T, out_mem, out_buf, w.tuple(Defs{}))->proj(2, 1);
+    return scalar_result(app, out_mem, out_buf);
 }
 
 } // namespace mim::plug::tensor::phase

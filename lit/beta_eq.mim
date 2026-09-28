@@ -6,7 +6,7 @@ plugin mem;
 use core.ops.n;
 
 rec Num = [T: *, add: [T, T] → T];
-lam my_add {pe: «2; Nat»} (a b: math.F pe): math.F pe = math.arith.add 0 (a, b);
+lam my_add {pe: «2; Nat»} (a b: math.F pe): math.F pe = math.arith.add math.mode.none (a, b);
 
 let F64 = (math.F64, my_add @math.f64);
 pub mod bug { axm Arr: Num → *; }

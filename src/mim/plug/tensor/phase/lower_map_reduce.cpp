@@ -106,17 +106,6 @@ DefVec build_loops(World& w, Lam*& cur, const Def*& exit, const Def*& acc, Defs 
     return iters;
 }
 
-/// The literal values of @p def's @p n projections, or nothing if one of them is not a literal.
-std::optional<fe::Vector<u64>> lit_projs(const Def* def, u64 n) {
-    auto res = fe::Vector<u64>(n);
-    for (u64 i = 0; i != n; ++i)
-        if (auto l = Lit::isa<u64>(def->proj(n, i)))
-            res[i] = *l;
-        else
-            return {};
-    return res;
-}
-
 /// `select(cond, t, f)` as `(f, t)#cond` (cf. core.select); `cond: Bool`.
 const Def* select(World& w, const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); }
 

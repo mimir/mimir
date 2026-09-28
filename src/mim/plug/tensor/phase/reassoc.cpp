@@ -265,17 +265,13 @@ void Reassoc::flatten(const Def* def,
                       Leaves& mats,
                       DefVec& dims,
                       Splits& orig) {
-    auto lo     = mats.size();
-    auto single = [&](const Def* d) {
-        auto i = consumers_.find(d);
-        return i != consumers_.end() && i->second == 1;
-    };
+    auto i = consumers_.find(def);
+    if (i != consumers_.end() && i->second == 1) {
+        // `(A · B)ᵀ = Bᵀ · Aᵀ`, so a transposed chain flattens reversed with each leaf transposed.
+        if (auto in = isa_transpose_2d(def)) return flatten(in, ring, rows, !t, mats, dims, orig);
 
-    // `(A · B)ᵀ = Bᵀ · Aᵀ`, so a transposed chain flattens reversed with each leaf transposed.
-    if (auto in = isa_transpose_2d(def); in && single(def)) return flatten(in, ring, rows, !t, mats, dims, orig);
-
-    if (single(def))
         if (auto link = isa_link(def, ring)) {
+            auto lo       = mats.size();
             auto [t1, t2] = link->app->args<2>();
             if (t) std::swap(t1, t2);
             flatten(t1, ring, t ? link->l : link->m, t, mats, dims, orig);
@@ -284,6 +280,7 @@ void Reassoc::flatten(const Def* def,
             orig.emplace_back(Split{lo, mid - 1, mats.size() - 1, t});
             return;
         }
+    }
 
     mats.emplace_back(Leaf{def, t});
     dims.emplace_back(rows);

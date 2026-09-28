@@ -60,30 +60,36 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
                     sole(in_tys, 6, 2)};
 }
 
-/// @p perm as literals, if it is literal.
-inline std::optional<fe::Vector<u64>> lit_perm(const Def* perm) {
-    auto r = Lit::isa(perm->arity());
-    if (!r) return {};
-
-    auto res = fe::Vector<u64>(*r);
-    for (u64 i = 0; i != *r; ++i)
-        if (auto p = Lit::isa(perm->proj(*r, i)))
-            res[i] = *p;
+/// The literal values of @p def's @p n projections, or nothing if one of them is not a literal.
+inline std::optional<fe::Vector<u64>> lit_projs(const Def* def, u64 n) {
+    auto res = fe::Vector<u64>(n);
+    for (u64 i = 0; i != n; ++i)
+        if (auto l = Lit::isa<u64>(def->proj(n, i)))
+            res[i] = *l;
         else
             return {};
     return res;
 }
 
-/// The permutation of a `transpose` app, if it is literal.
-inline std::optional<fe::Vector<u64>> transpose_perm(const App* app) {
-    return lit_perm(app->callee()->as<App>()->callee()->as<App>()->arg());
+/// @p perm as literals, if it is literal.
+inline std::optional<fe::Vector<u64>> lit_perm(const Def* perm) {
+    if (auto r = Lit::isa(perm->arity())) return lit_projs(perm, *r);
+    return {};
 }
+
+/// The permutation of a `transpose` app, if it is literal.
+inline std::optional<fe::Vector<u64>> transpose_perm(const App* app) { return lit_perm(app->decurry()->decurry()->arg()); }
 
 /// The input of a 2-D transpose - `transpose_2d` or `transpose (1, 0)` -, or `nullptr`.
 inline const Def* isa_transpose_2d(const Def* def) {
     if (auto app = Axm::isa<tensor::transpose_2d>(def)) return app->arg();
-    if (auto app = Axm::isa<tensor::transpose>(def))
-        if (auto perm = transpose_perm(app); perm && *perm == fe::Vector<u64>{1, 0}) return app->arg();
+    if (auto app = Axm::isa<tensor::transpose>(def)) {
+        auto perm = app->decurry()->decurry()->arg();
+        if (Lit::isa(perm->arity()) == 2) {
+            auto [p0, p1] = perm->projs<2>();
+            if (Lit::isa(p0) == 1 && Lit::isa(p1) == 0) return app->arg();
+        }
+    }
     return nullptr;
 }
 

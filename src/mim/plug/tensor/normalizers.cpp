@@ -46,8 +46,7 @@ const Def* normalize_reshape(const Def* type, const Def* c, const Def* arg) {
 }
 
 const Def* normalize_transpose(const Def*, const Def* c, const Def* arg) {
-    auto& w     = c->world();
-    auto callee = c->as<App>()->callee()->as<App>();
+    auto callee = c->as<App>()->decurry();
     auto perm   = lit_perm(callee->arg());
     if (!perm) return nullptr;
     auto r = perm->size();
@@ -55,19 +54,17 @@ const Def* normalize_transpose(const Def*, const Def* c, const Def* arg) {
 
     auto inner = fe::Vector<u64>();
     if (auto app = Axm::isa<tensor::transpose>(arg)) {
-        if (auto p = transpose_perm(app)) inner = *p;
+        if (auto p = transpose_perm(app)) inner = std::move(*p);
     } else if (Axm::isa<tensor::transpose_2d>(arg)) {
         inner = {1, 0};
     }
     if (inner.size() != r) return nullptr;
 
-    // Axis `j` of the inner input ends up at `perm#(inner#j)`.
+    // Axis `j` of the inner input ends up at `perm#(inner#j)`; an identity composite collapses in the rebuilt app.
+    auto& w    = c->world();
     auto input = arg->as<App>();
     auto comp  = DefVec(r, [&](size_t j) { return w.lit_idx(r, (*perm)[inner[j]]); });
-    if (std::ranges::all_of(std::views::iota(size_t(0), r), [&](size_t j) { return (*perm)[inner[j]] == j; }))
-        return input->arg();
-    auto s = input->callee()->as<App>()->arg();
-    return w.app(w.app(w.app(callee->callee(), w.tuple(comp)), s), input->arg());
+    return w.app(w.app(w.app(callee->callee(), w.tuple(comp)), input->decurry()->arg()), input->arg());
 }
 
 const Def* normalize_transpose_2d(const Def*, const Def*, const Def* arg) { return isa_transpose_2d(arg); }
