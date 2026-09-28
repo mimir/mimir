@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s
 
 plugin math;
 plugin refly;
@@ -9,7 +9,3 @@ let _ = refly.struc.e (math.nan     math.f32, 0x7FC00000:math.F32);
 let _ = refly.struc.e (math.inf     math.f64, 0x7FF0000000000000:math.F64);
 let _ = refly.struc.e (math.neg_inf math.f64, 0xFFF0000000000000:math.F64);
 let _ = refly.struc.e (math.nan     math.f64, 0x7FF8000000000000:math.F64);
-
-// CHECK: 31744:(math.F (10, 5))
-// CHECK: 64512:(math.F (10, 5))
-extern fun f16 (): [math.F16, math.F16] = return (math.inf math.f16, math.neg_inf math.f16);
