@@ -3,8 +3,7 @@
 // RUN: clang %{s:stem}.ll -o %t -lm -Wno-override-module
 // RUN: %t
 
-// tensor.reduce along each axis of a rank-3 tensor and tensor.softmax along its middle axis.
-// A reduction down to a scalar is not checked: lower_to_mem keeps a rank-0 result as a buffer.
+// tensor.reduce along each axis of a rank-3 tensor, all the way down to a scalar, and tensor.softmax along its middle axis.
 plugin tensor;
 plugin core;
 plugin math;
@@ -35,9 +34,10 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let e3 = rows (err (reduce (add, 0:F32) 1₃ p, ‹2, 4; one›));
     let peak = math.arith.div fast (one, add (one, add (math.exp.exp fast (f (-4I64)), math.exp.exp fast (f (-8I64)))));
     let e4 = math.abs fast (sub (p#(1_2, 2_3, 3_4), peak));
+    let e5 = math.abs fast (sub (reduce (add, 0:F32) 0₁ (reduce (add, 0:F32) 0₂ (reduce (add, 0:F32) 0₃ x)), f 276I64));
     let tol = math.arith.div fast (one, f 100000I64);
     let lt  = λ e: F32: Bool = math.cmp.l fast (e, tol);
     let ok  = core.bit2.and_ 0 (core.bit2.and_ 0 (lt e0#0_3, lt e0#1_3), core.bit2.and_ 0 (lt e0#2_3,
               core.bit2.and_ 0 (core.bit2.and_ 0 (lt e1#0_2, lt e1#1_2), core.bit2.and_ 0 (core.bit2.and_ 0 (lt e2#0_2, lt e2#1_2),
-              core.bit2.and_ 0 (core.bit2.and_ 0 (lt e3#0_2, lt e3#1_2), lt e4)))));
+              core.bit2.and_ 0 (core.bit2.and_ 0 (lt e3#0_2, lt e3#1_2), core.bit2.and_ 0 (lt e4, lt e5))))));
     return (m, core.select (ok, 0I32, 1I32));

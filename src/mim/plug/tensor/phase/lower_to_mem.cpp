@@ -714,7 +714,9 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     op            = w.app(op, acc_out);
     op            = w.app(op, accs);
     auto [m, out] = w.app(op, w.tuple({fresh_mem(), is, post_is}))->projs<2>();
-    return out;
+    if (app->type()->isa<Arr>()) return out;
+    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(out->type())->args<3>();
+    return buffer::op_read(out_r, out_s, out_T, m, out, w.tuple(Defs{}))->proj(2, 1);
 }
 
 const Def* LowerToMem::lower_pad(const App* app) {
