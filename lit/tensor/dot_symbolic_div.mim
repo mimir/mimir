@@ -10,24 +10,23 @@
 plugin compile;
 plugin core;
 plugin tensor;
-plugin affine;
-plugin mem;
 
 use core.ops.n;
+use tensor;
 
-lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // CHECK-DAG: extern fun mm_pad
 extern fun mm_pad {m n l: Nat} (
         a: «m, (n + 3) / 4 * 4; Nat»,
         b: «(n + 3) / 4 * 4, l; Nat»): «m, l; Nat» =
-    return (tensor.product_2d (nat_ring ()) (a, b));
+    return (product_2d Ring (a, b));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.lower_map_reduce,
+        lower_tensor,
+        lower_map_reduce,
         compile.cleanup,
     );
 

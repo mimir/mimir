@@ -12,6 +12,23 @@ static const Pi* isa_flattenable(const Def* def) {
     return nullptr;
 }
 
+/// Is the argument of @p app - an Axm's last curried application - typed by one of the Axm's type variables?
+/// Such an Axm imposes no shape on it, so what it can care about is the argument's identity.
+static bool is_polymorphic_arg(const App* app) {
+    auto n = 0;
+    for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
+        ++n;
+
+    auto pi = app->uncurry_callee()->type()->isa<Pi>();
+    for (; pi && --n != 0;)
+        pi = pi->codom()->isa<Pi>();
+    if (!pi) return false;
+
+    auto dom = pi->dom();
+    if (auto ex = dom->isa<Extract>()) dom = ex->tuple();
+    return dom->isa<Var>();
+}
+
 /*
  * Analysis - optimistic: every immutable Cn is flattenable until proven otherwise.
  */
@@ -34,6 +51,21 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
     touch();
 }
 
+void Scalarize::Analysis::keep_param(const Def* def) {
+    if (auto var = def->isa<Var>()) {
+        if (auto pi = isa_flattenable(var->binder()->type())) pin(pi);
+    } else if (auto proj = def->isa<Extract>()) {
+        if (auto var = proj->tuple()->isa<Var>()) {
+            if (auto pi = isa_flattenable(var->binder()->type())) {
+                if (auto i = Lit::isa(proj->index()))
+                    keep(pi, *i);
+                else
+                    pin(pi);
+            }
+        }
+    }
+}
+
 void Scalarize::Analysis::inspect(const Def* def) {
     // Everything reachable from an annex is interface: normalizers and backends rely on its exact shape.
     if (is_bootstrapping()) {
@@ -52,6 +84,9 @@ void Scalarize::Analysis::inspect(const Def* def) {
             // where the Axm's signature is fully polymorphic (`{T: *} → T → ...`).
             // A function buried inside a tuple argument (`mem.store (mem, ptr, f)`) is just data, though.
             if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
+
+            // `tensor.buf x` nominates `x` itself as a tensor passed by handle.
+            if (is_polymorphic_arg(app)) keep_param(app->arg());
         }
 
         // Assignability is alpha-equivalence, so an App may connect a dom and an arg whose types are
@@ -116,18 +151,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
         return;
     }
 
-    if (auto var = idx_tuple->isa<Var>()) {
-        if (auto pi = isa_flattenable(var->binder()->type())) pin(pi); // whole var indexed dynamically
-    } else if (auto proj = idx_tuple->isa<Extract>()) {
-        if (auto var = proj->tuple()->isa<Var>()) {
-            if (auto pi = isa_flattenable(var->binder()->type())) {
-                if (auto i = Lit::isa(proj->index()))
-                    keep(pi, *i);
-                else
-                    pin(pi);
-            }
-        }
-    }
+    keep_param(idx_tuple);
 }
 
 const Def* Scalarize::Analysis::rewrite(const Def* old) {

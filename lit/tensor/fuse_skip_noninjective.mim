@@ -3,24 +3,28 @@
 // A matrix product reads its first input at (i, k), ignoring the j loop: fusing the pure map
 // producer would recompute add1 for every j. The fuse phase must keep the producer materialized,
 // so both map_reduces survive.
-plugin tensor;
 plugin core;
-plugin opt;
+plugin tensor;
 plugin compile;
 
 use core.ops.n;
+use tensor;
 
 lam add1 (x: Nat): Nat = x + 1;
 
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
+
+let `* = product_2d Ring;
+
 extern con f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn «2, 4; Nat») =
-    let a1 = tensor.unary add1 a;
-    return (tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a1, b));
+    let (a, b) = (buf a, buf b);
+    return (unary add1 a * b);
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.fuse_tensor,
+        lower_tensor,
+        fuse_tensor,
         compile.cleanup,
     );
 

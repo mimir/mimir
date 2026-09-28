@@ -16,16 +16,17 @@
 plugin core;
 plugin tensor;
 plugin affine;
-plugin mem;
 plugin compile;
 
+use tensor;
+
 // A ring over Nat so the multiply-accumulate lowers to core.nat.mul / core.nat.add.
-lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // strided, no padding: 7x7 input, 3x3 kernel, stride 2 -> 3x3 output.
 // CHECK-DAG: extern fun conv_stride
 extern fun conv_stride (input: «2, 2, 7, 7; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 3, 3; Nat» =
-    return (tensor.conv (nat_ring ()) ((2, 2), (1, 1), (0, 0)) (input, weight));
+    return (conv Ring ((2, 2), (1, 1), (0, 0)) (buf input, buf weight));
 
 // Custom pipeline that stops before tensor.lower_to_mem: the checks below only need the shape computation.
 extern lam _compile (): compile.Phase =

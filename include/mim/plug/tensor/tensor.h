@@ -60,6 +60,33 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
                     sole(in_tys, 6, 2)};
 }
 
+/// @p perm as literals, if it is literal.
+inline std::optional<fe::Vector<u64>> lit_perm(const Def* perm) {
+    auto r = Lit::isa(perm->arity());
+    if (!r) return {};
+
+    auto res = fe::Vector<u64>(*r);
+    for (u64 i = 0; i != *r; ++i)
+        if (auto p = Lit::isa(perm->proj(*r, i)))
+            res[i] = *p;
+        else
+            return {};
+    return res;
+}
+
+/// The permutation of a `transpose` app, if it is literal.
+inline std::optional<fe::Vector<u64>> transpose_perm(const App* app) {
+    return lit_perm(app->callee()->as<App>()->callee()->as<App>()->arg());
+}
+
+/// The input of a 2-D transpose - `transpose_2d` or `transpose (1, 0)` -, or `nullptr`.
+inline const Def* isa_transpose_2d(const Def* def) {
+    if (auto app = Axm::isa<tensor::transpose_2d>(def)) return app->arg();
+    if (auto app = Axm::isa<tensor::transpose>(def))
+        if (auto perm = transpose_perm(app); perm && *perm == fe::Vector<u64>{1, 0}) return app->arg();
+    return nullptr;
+}
+
 /// Counts the consumers of every def of @p world matched by @p pred.
 /// Tuples and packs are transparent argument wrappers, so a wrapped def is charged to the enclosing
 /// non-tuple consumer - a shared argument tuple charges each of its users, and a def used twice in one

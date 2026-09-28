@@ -8,21 +8,21 @@
 
 plugin core;
 plugin tensor;
-plugin affine;
-plugin mem;
 plugin compile;
 
-lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+use tensor;
+
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // CHECK-DAG: extern fun mm_dyn
 extern fun mm_dyn {m k l: Nat} (a: «m, k; Nat», b: «k, l; Nat»): «m, l; Nat» =
-    return (tensor.product_2d (nat_ring ()) (a, b));
+    return (product_2d Ring (buf a, buf b));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.lower_map_reduce,
+        lower_tensor,
+        lower_map_reduce,
         compile.cleanup,
     );
 

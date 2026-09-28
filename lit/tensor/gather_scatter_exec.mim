@@ -13,9 +13,8 @@ extern con main (m: mem.M 0, argc: I32,
                  argv: mem.Ptr (mem.Ptr (I8, 0), 0),
                  return: Cn [mem.M 0, I32]) =
     let input = ((10I32, 11I32, 12I32), (20I32, 21I32, 22I32));
-    let index = ((2_3, 0_3), (1_3, 1_3));
+    let index = ((2₃, 0₃), (1₃, 1₃));
     let updates = ((10I32, 20I32), (30I32, 40I32));
-    let gathered = tensor.gather ((2, 3), (2, 2)) 1_2 (input, index);
-    let scattered = tensor.scatter ((2, 3), (2, 2), (2, 2)) 1_2
-        (input, index, updates);
-    return (m, gathered#(0_2, 0_2) + gathered#(1_2, 0_2) + (scattered#(0_2, 0_3) + scattered#(1_2, 1_3)));
+    let gathered = tensor.gather ((2, 3), (2, 2)) 1₂ (input, index);
+    let scattered = tensor.scatter ((2, 3), (2, 2), (2, 2)) 1₂ (input, index, updates);
+    return (m, gathered#(0₂, 0₂) + gathered#(1₂, 0₂) + (scattered#(0₂, 0₃) + scattered#(1₂, 1₃)));

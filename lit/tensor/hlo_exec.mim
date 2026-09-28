@@ -17,38 +17,28 @@
 // full training step (forward + backward), which is likewise executed and checked against a reference.
 plugin tensor;
 plugin core;
-plugin affine;
-plugin mem;
-plugin cps;
 plugin math;
+
 use tensor;
 
-let f32 = math.f32;
-let F32 = math.F32;
+let F32     = math.F32;
+let fast    = math.mode.fast;
+let neg_inf = 0xFF800000:F32;
+let Ring    = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
 
-let R: tensor.Ring = (F32, 0: F32, math.arith.add 0, math.arith.mul 0);
+let `+ = binary (math.arith.add fast);
+let `* = product_2d Ring;
 
-lam F32_add {r: Nat, s: «r; Nat»} (is: [«s; F32», «s; F32»]): «s; F32» = tensor.binary (math.arith.add 0) is;
-lam F32_tanh {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; F32» = tensor.unary (math.tri.tanh 0) i;
+lam tanh {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; F32» = unary (math.tri.tanh fast) i;
 
 // out[i] = fold_j g (input[i, j]): reduce a «n, m; F32» tensor along axis 1.
 lam reduce_ax1 (g: [F32, F32] → F32, init: F32) {n m: Nat} (input: «n, m; F32»): «n; F32» =
-    tensor.map_reduce (n, (n, m)) (pool_fun g, init)
-        (tensor.proj_map 0) (tensor.proj_map (0, 1)) input;
+    map_reduce (n, (n, m)) (pool_fun g, init) (proj_map 0) (proj_map (0, 1)) input;
 
 extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg6: «128; «784; F32»», arg7: «128; «10; F32»», arg5: «10; F32»)
 : «128; F32» =
-    let v_0  = tensor.product_2d R (arg6, arg0);
-    let v_2  = tensor.broadcast ((1, 1024), (128, 1024), arg1);
-    let v_3  = F32_add (v_0, v_2);
-    let v_4  = F32_tanh v_3;
-    let v_7  = tensor.product_2d R (v_4, arg2);
-    let v_9  = tensor.broadcast ((1, 1024), (128, 1024), arg3);
-    let v_10 = F32_add (v_7, v_9);
-    let v_11 = F32_tanh v_10;
-    let v_14 = tensor.product_2d R (v_11, arg4);
-    let v_16 = tensor.broadcast ((1, 10), (128, 10), arg5);
-    let v_17 = F32_add (v_14, v_16);
-    let v_ninf = 0xFF800000: F32;
-    let v_18 = reduce_ax1 ((math.extrema.fmax 0), v_ninf) v_17;
-    return v_18;
+    let (arg0, arg1, arg2, arg3, arg4, arg6, arg7, arg5) = (buf arg0, buf arg1, buf arg2, buf arg3, buf arg4, buf arg6, buf arg7, buf arg5);
+    let h0     = tanh (arg6 * arg0 + broadcast ((1, 1024), (128, 1024), arg1));
+    let h1     = tanh (h0 * arg2 + broadcast ((1, 1024), (128, 1024), arg3));
+    let logits = h1 * arg4 + broadcast ((1, 10), (128, 10), arg5);
+    return (reduce_ax1 (math.extrema.fmax fast, neg_inf) logits);

@@ -5,26 +5,30 @@
 // old-world count sees one consumer, so the guard must track multiplicity through the bypassed
 // shared read — otherwise each map sinks into the product and the reduction runs twice. Expected:
 // the copy dies, both maps read the product directly, all three ops stay separate.
-plugin tensor;
 plugin core;
-plugin opt;
+plugin tensor;
 plugin compile;
 
 use core.ops.n;
+use tensor;
 
 lam add1 (x: Nat): Nat = x + 1;
 lam dbl (x: Nat): Nat = x * 2;
 
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
+
+let `* = product_2d Ring;
+
 extern con f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«8; Nat», «8; Nat»]) =
-    let prod = tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, b);
-    let flat = tensor.reshape (2, 4) 8 prod;
-    return (tensor.unary add1 flat, tensor.unary dbl flat);
+    let (a, b) = (buf a, buf b);
+    let flat = reshape (2, 4) 8 (a * b);
+    return (unary add1 flat, unary dbl flat);
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.fuse_tensor,
+        lower_tensor,
+        fuse_tensor,
         compile.cleanup,
     );
 

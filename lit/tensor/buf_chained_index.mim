@@ -5,7 +5,6 @@
 // CHECK-NOT: tensor.
 
 plugin tensor;
-plugin mem;
 
 extern fun f (t: «64, 32; I32»): «64, 32; I32» =
     let t = tensor.buf t;

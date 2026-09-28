@@ -9,7 +9,7 @@
 
 namespace mim::plug::tensor {
 
-const Def* normalize_broadcast(const Def*, const Def* c, const Def* arg) {
+const Def* normalize_broadcast(const Def* type, const Def* c, const Def* arg) {
     auto& w = c->world();
 
     auto [s_in, s_out, input] = arg->projs<3>();
@@ -18,7 +18,7 @@ const Def* normalize_broadcast(const Def*, const Def* c, const Def* arg) {
     w.log().d("broadcast: input = {}: {}, T = {}, r = {}, s_in = {}, s_out = {}", input, input->type(), T, r, s_in,
               s_out);
 
-    if (s_in == s_out) return input;
+    if (s_in == s_out || input->type() == type) return input;
 
     auto r_nat = Lit::isa<u64>(r);
     if (!r_nat) return nullptr;
@@ -29,19 +29,48 @@ const Def* normalize_broadcast(const Def*, const Def* c, const Def* arg) {
 
 const Def* normalize_broadcast_in_dim(const Def*, const Def*, const Def*) { return nullptr; }
 
-const Def* normalize_repeat(const Def*, const Def* c, const Def* arg) {
+const Def* normalize_repeat(const Def* type, const Def* c, const Def* arg) {
     // Identity repeat: if the input and output shapes agree, the repeat is a no-op.
+    // Size-1 axes collapse out of the type, so equal types suffice.
     auto [Tr, s_in, s_out] = c->as<App>()->uncurry_args<3>();
-    if (s_in == s_out) return arg;
+    if (s_in == s_out || arg->type() == type) return arg;
     return nullptr;
 }
 
-const Def* normalize_reshape(const Def*, const Def* c, const Def* arg) {
+const Def* normalize_reshape(const Def* type, const Def* c, const Def* arg) {
     // Identity reshape: if the input and output shapes agree, the reshape is a no-op.
+    // Size-1 axes collapse out of the type, so equal types suffice.
     auto [Trr, s_in, s_out] = c->as<App>()->uncurry_args<3>();
-    if (s_in == s_out) return arg;
+    if (s_in == s_out || arg->type() == type) return arg;
     return nullptr;
 }
+
+const Def* normalize_transpose(const Def*, const Def* c, const Def* arg) {
+    auto& w     = c->world();
+    auto callee = c->as<App>()->callee()->as<App>();
+    auto perm   = lit_perm(callee->arg());
+    if (!perm) return nullptr;
+    auto r = perm->size();
+    if (std::ranges::equal(*perm, std::views::iota(u64(0), u64(r)))) return arg;
+
+    auto inner = fe::Vector<u64>();
+    if (auto app = Axm::isa<tensor::transpose>(arg)) {
+        if (auto p = transpose_perm(app)) inner = *p;
+    } else if (Axm::isa<tensor::transpose_2d>(arg)) {
+        inner = {1, 0};
+    }
+    if (inner.size() != r) return nullptr;
+
+    // Axis `j` of the inner input ends up at `perm#(inner#j)`.
+    auto input = arg->as<App>();
+    auto comp  = DefVec(r, [&](size_t j) { return w.lit_idx(r, (*perm)[inner[j]]); });
+    if (std::ranges::all_of(std::views::iota(size_t(0), r), [&](size_t j) { return (*perm)[inner[j]] == j; }))
+        return input->arg();
+    auto s = input->callee()->as<App>()->arg();
+    return w.app(w.app(w.app(callee->callee(), w.tuple(comp)), s), input->arg());
+}
+
+const Def* normalize_transpose_2d(const Def*, const Def*, const Def* arg) { return isa_transpose_2d(arg); }
 
 const Def* normalize_slice(const Def*, const Def* c, const Def* arg) {
     // Identity slice: every axis starts at 0 with step 1 and keeps its full extent (s_out == s_in) -> the input itself.

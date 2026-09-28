@@ -2,24 +2,25 @@
 
 // Two chained pure tensor maps (no reductions): the fuse phase should collapse
 // them into a single tensor.map_reduce.
-plugin tensor;
 plugin core;
-plugin opt;
+plugin tensor;
 plugin compile;
 
 use core.ops.n;
+use tensor;
 
 lam add1 (x: Nat): Nat = x + 1;
 lam mul2 (x: Nat): Nat = x * 2;
 
 extern con f (v: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
-    return (tensor.unary mul2 (tensor.unary add1 v));
+    let v = buf v;
+    return (unary mul2 (unary add1 v));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.fuse_tensor,
+        lower_tensor,
+        fuse_tensor,
         compile.cleanup,
     );
 

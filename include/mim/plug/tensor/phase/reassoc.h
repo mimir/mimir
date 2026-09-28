@@ -8,12 +8,22 @@ namespace mim::plug::tensor::phase {
 
 /// One node of a bracketing: `i … j` splits after `s`.
 /// Spelling the fields out keeps `size_t` out of the type - it is *not* mim::u64 everywhere.
+/// A transposed node @p t is computed as the product of its operands' transposes, `(Rᵀ · Lᵀ)ᵀ`.
 struct Split {
     u64 i, s, j;
+    bool t = false;
 };
 
 /// A bracketing of a matrix chain, innermost node first.
 using Splits = fe::Vector<Split>;
+
+/// A chain operand; the chain reads its transpose if @p t.
+struct Leaf {
+    const Def* def;
+    bool t;
+};
+
+using Leaves = fe::Vector<Leaf>;
 
 /// Reassociates chains of tensor.product_2d with the classic matrix-chain-order dynamic program,
 /// so that a chain is evaluated with the least number of vector-lane slots.
@@ -50,19 +60,19 @@ private:
 
     /// Appends the chain's leaves to @p mats, each leaf's *row* extent to @p dims, and the bracketing as
     /// written to @p orig; the caller appends the chain's trailing column extent and its own split.
-    void flatten(const Def* def, const Def* ring, const Def* rows, DefVec& mats, DefVec& dims, Splits& orig);
+    void flatten(const Def* def, const Def* ring, const Def* rows, bool t, Leaves& mats, DefVec& dims, Splits& orig);
 
     /// Rebuilds `mats[i … j]` in the new world, parenthesized according to @p split (indexed `i * n + j`).
-    const Def* build(const Def* head, Defs mats, Defs dims, fe::View<u64> split, u64 i, u64 j);
+    const Def* build(const Def* head, fe::View<Leaf> mats, Defs dims, fe::View<u64> split, u64 i, u64 j);
 
     /// Emits every bracketing in @p cands as a thunk and selects the cheapest one by comparing their costs
     /// at run time.
-    const Def* dispatch(const Def* head, const Def* res_ty, Defs mats, Defs dims, fe::View<Splits> cands);
+    const Def* dispatch(const Def* head, const Def* res_ty, fe::View<Leaf> mats, Defs dims, fe::View<Splits> cands);
 
     /// The number of lane slots @p splits costs, as a `Nat` expression in the new world.
-    const Def* cost_expr(Defs mats, Defs dims, const Splits& splits);
+    const Def* cost_expr(fe::View<Leaf> mats, Defs dims, const Splits& splits);
 
-    /// Old-world consumer count per `product_2d` app, attributed through tuple wrappers.
+    /// Old-world consumer count per `product_2d` and 2-D transpose app, attributed through tuple wrappers.
     DefMap<u64> consumers_;
 
     /// Longest chain whose bracketings are enumerated - and, failing a unique winner, dispatched over.
