@@ -12,30 +12,25 @@
 // * `fc_t`:   6×40 · (8×40)ᵀ — both jam dims split (2 rows × 4 neurons).
 // * `fc_odd`: 5×33 · (7×33)ᵀ — indivisible extents take the neutral splits (size-1 jam dims).
 plugin tensor;
-plugin refly;
 plugin core;
-plugin cps;
-plugin affine;
-plugin mem;
 plugin math;
 
-let f32 = math.f32;
+use tensor;
+
 let F32 = math.F32;
+let R = (F32, 0:F32, math.arith.add 0, math.arith.mul 0);
 
-let R: tensor.Ring = (F32, 0:F32, math.arith.add 0, math.arith.mul 0);
+let `+ = binary (math.arith.add 0);
+let `* = product_2d R;
 
-let add  = math.arith.add 0 @f32;
-let fmax = math.extrema.fmax 0;
+lam relu (x: F32): F32 = math.extrema.fmax 0 (0:F32, x);
 
-lam relu (x: F32): F32 = fmax (0:F32, x);
+lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», b: «c_out; F32»): «n, c_out; F32» =
+    let b = broadcast ((1, c_out), (n, c_out), reshape c_out (1, c_out) b);
+    unary relu (x * transpose_2d w + b);
 
-lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», bias: «c_out; F32»): «n, c_out; F32» =
-    let z  = tensor.product_2d R (x, tensor.transpose_2d w);
-    let b2 = tensor.repeat (1, c_out) (n, c_out) (tensor.reshape c_out (1, c_out) bias);
-    tensor.binary add (z, b2);
+extern fun fc_t (x: «6, 40; F32», w: «8, 40; F32», b: «8; F32»): «6, 8; F32» =
+    return (linear (6, 40, 8) (x, w, b));
 
-extern fun fc_t (x: «6, 40; F32», w: «8, 40; F32», bias: «8; F32»): «6, 8; F32» =
-    return (tensor.unary relu (linear (6, 40, 8) (x, w, bias)));
-
-extern fun fc_odd (x: «5, 33; F32», w: «7, 33; F32», bias: «7; F32»): «5, 7; F32» =
-    return (tensor.unary relu (linear (5, 33, 7) (x, w, bias)));
+extern fun fc_odd (x: «5, 33; F32», w: «7, 33; F32», b: «7; F32»): «5, 7; F32» =
+    return (linear (5, 33, 7) (x, w, b));
