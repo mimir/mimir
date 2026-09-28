@@ -8,6 +8,7 @@
 
 #include <fe/container.h>
 #include <fe/driver.h>
+#include <fe/hash.h>
 #include <fe/log.h>
 #include <fe/profile.h>
 
