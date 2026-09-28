@@ -65,6 +65,13 @@ Lam* param_of(const Def* d) {
     return nullptr;
 }
 
+/// Does @p d - a value or an aggregate of them - contain a `buffer.Buf`?
+bool holds_buf(const Def* d) {
+    if (Axm::isa<buffer::Buf>(d->type())) return true;
+    if (auto tuple = d->isa<Tuple>()) return std::ranges::any_of(tuple->ops(), holds_buf);
+    return false;
+}
+
 } // namespace
 
 void LowerToMem::collect_tensor_types() {
@@ -471,6 +478,12 @@ const Def* LowerToMem::materialize(const Def* old_ty, const Def* old_arg) {
         if (auto c = splat_scalar(old_arg)) return splat_buffer(old_ty, rewrite(c));
         auto v = rewrite(old_arg);
         if (Axm::isa<buffer::Buf>(v->type())) return v; // already a buffer
+        if (holds_buf(v)) {
+            auto lam     = old_arg->num_ops() != 0 ? param_of(old_arg->op(0)) : nullptr;
+            auto culprit = lam ? (const Def*)lam : old_arg;
+            culprit->blame("cannot bufferize: tensor parameter was split into parts; annotate it with `tensor.buf`")
+                .bail();
+        }
         auto [br, bs, bT] = Axm::isa<buffer::Buf>(buf_of(old_ty))->args<3>();
         auto [m, buf]     = buffer::op_init(br, bs, bT, bot_mem(), v)->projs<2>();
         return buf;

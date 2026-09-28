@@ -1,0 +1,12 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin math;
+
+use tensor;
+
+// Without `tensor.buf`, `compile.scalarize` splits `x` into its 20 rows, which have no common buffer.
+extern fun r0 (x: «20, 30, 40; math.F32»): «30, 40; math.F32» =
+    return (reduce (math.arith.add math.mode.fast, 0:math.F32) 0₃ x);
+
+// CHECK: {{.*}}tensor_split_param.mim:9:1-{{.*}}: error: cannot bufferize: tensor parameter was split into parts; annotate it with `tensor.buf`
