@@ -18,12 +18,13 @@ plugin math;
 use tensor;
 
 let F32  = math.F32;
-let Ring = (F32, 0:F32, math.arith.add math.mode.fast, math.arith.mul math.mode.fast);
+let fast = math.mode.fast;
+let Ring = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
 
-let `+ = binary (math.arith.add math.mode.fast);
+let `+ = binary (math.arith.add fast);
 let `* = product_2d Ring;
 
-lam relu (x: F32): F32 = math.extrema.fmax math.mode.fast (0:F32, x);
+lam relu (x: F32): F32 = math.extrema.fmax fast (0:F32, x);
 
 lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», b: «c_out; F32»): «n, c_out; F32» =
     let b = broadcast ((1, c_out), (n, c_out), b);
