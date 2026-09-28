@@ -27,6 +27,12 @@ lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
 extern fun conv_stride (input: «2, 2, 7, 7; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 3, 3; Nat» =
     return (tensor.conv (nat_ring ()) ((2, 2), (1, 1), (0, 0)) (input, weight));
 
+// Different extents and parameters per spatial axis: 6x5 input, 3x2 kernel, stride (2, 1), dilation (1, 2),
+// padding 1 -> 3x5 output. Each axis must use its own components in conv_shape.
+// CHECK-DAG: extern fun conv_stride_asym
+extern fun conv_stride_asym (input: «2, 2, 6, 5; Nat», weight: «3, 2, 3, 2; Nat»): «2, 3, 3, 5; Nat» =
+    return (tensor.conv (nat_ring ()) ((2, 1), (1, 2), (1, 1)) (input, weight));
+
 // Custom pipeline that stops before tensor.lower_to_mem: the checks below only need the shape computation.
 extern lam _compile (): compile.Phase =
     compile.phases ff (
