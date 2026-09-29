@@ -20,7 +20,7 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
     lam = w.mut_con([b, i8])
     var = lam.var()
     join = w.join([b, i8])
-    nom = w.nom(i8)
+    nom = w.nom(1, i8)
     nom_var = w.mut_con(nom).var() # an opaque value, so `struc` does not cancel a `name`
     return [
         (w.univ(), mim.Univ),
