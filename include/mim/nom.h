@@ -5,12 +5,13 @@
 namespace mim {
 
 /// Nominal newtype formation.
-/// A Nom is a mutable without Var that never immutabilizes, so two Nom%s over the same Nom::op are still distinct
-/// types - this is the one place where MimIR is not structurally typed.
+/// Two Nom%s are only equal if their Nom::key%s are, so two Nom%s over the same Nom::op may still be distinct types.
+/// It is up to the frontend to hand out a fresh Nom::key per declaration; Def::sym is mere debug info.
+/// A recursive Nom refers to itself through a mutable Nom::op.
 class Nom : public Def, public Setters<Nom> {
 private:
-    Nom(const Def* type)
-        : Def(Node, type, 1, 0) {}
+    Nom(const Def* type, const Def* op, flags_t key)
+        : Def(Node, type, {op}, key) {}
 
 public:
     using Setters<Nom>::set;
@@ -18,8 +19,9 @@ public:
     /// @name ops
     ///@{
     const Def* op() const { return Def::op(0); } ///< The wrapped type.
-    Nom* set(const Def* op) { return Def::set(0, op)->as<Nom>(); }
     ///@}
+
+    flags_t key() const { return flags(); } ///< What tells this Nom apart from one over the same Nom::op.
 
     static constexpr auto Node      = mim::Node::Nom;
     static constexpr size_t Num_Ops = 1;

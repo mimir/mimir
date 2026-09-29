@@ -30,7 +30,6 @@ bool is_anx_nom(const Def* def) { return def->isa<Nom>() && def->sym().view().co
 Def* isa_decl(const Def* def) {
     if (auto mut = def->isa_mut()) {
         if (mut->isa<Hole>()) return nullptr; // a Hole stands for what it was set to, or for `?`
-        if (is_anx_nom(mut)) return nullptr;  // declared by World::dump's own annex pass
         if (mut->is_external() || mut->isa<Lam>() || (mut->sym() && mut->sym() != '_')) return mut;
     }
     return nullptr;
@@ -224,6 +223,8 @@ public:
 
     /// Does the Def always print Full - instead of by name?
     bool is_full() const {
+        // Only a `nom` declaration spells out a Nom; World::dump declares the annex ones.
+        if (def()->isa<Nom>()) return is_anx_nom(def());
         if (auto ctx = this->ctx()) {
             if (ctx->inlined.contains(def())) return true;
             if (ctx->in_header && ctx->header.contains(def())) return true;
@@ -961,6 +962,16 @@ private:
                 // Nest::idom, not Nest::inest: a mutable only one sibling reaches belongs into *its* block.
                 auto in = curr ? curr : block_;
                 key     = mut ? owner((*nest_)[mut]->idom()) : owner(sched_->smart(in, def));
+                // A Nom is the one immutable with a declaration of its own: it goes where its body would, never inline.
+                if (auto nom = def->isa<Nom>()) {
+                    // A header may already refer to it, so a closed Nom goes to the top level.
+                    if (nom->is_closed())
+                        key = nullptr;
+                    else if (auto body = nom->op()->isa_mut(); body && (*nest_)[body])
+                        key = owner((*nest_)[body]->idom());
+                    while (key && inlines(key))
+                        key = owner((*nest_)[key]->inest());
+                }
                 // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
                 if (key && inlines(key) && !(mut && recursive_.contains(mut))) {
                     ctx_.inlined.emplace(def);
@@ -1010,6 +1021,12 @@ private:
     }
 
     void emit_let(const Def* def) {
+        if (auto nom = def->isa<Nom>()) {
+            // Only a bare variant may refer back to the `nom`.
+            if (auto variant = nom->op()->isa<Variant>())
+                return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), ctors(&ctx_, variant));
+            return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), Full(&ctx_, nom->op()));
+        }
         auto type = typed_let_ ? std::format(": {}", Op(&ctx_, def->type())) : std::string();
         std::println(os_, "{}let {}{} = {};", ctx_.tab, name(&ctx_, def), type, Full(&ctx_, def));
     }
@@ -1018,8 +1035,6 @@ private:
         if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam);
         if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
         if (!mut->is_set()) return emit_unset(mut);
-        if (auto nom = mut->isa<Nom>())
-            return std::println(os_, "{}nom {} = {};", ctx_.tab, id(&ctx_, nom), Op(&ctx_, nom->op()));
         // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
         auto kw = recursive_.contains(mut) ? "rec" : "let";
         // A `rec` only takes a bare variant.

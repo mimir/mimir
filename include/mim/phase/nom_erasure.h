@@ -15,7 +15,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    const Def* rewrite_mut_Nom(Nom*) final;
+    const Def* rewrite_imm_Nom(const Nom*) final;
     const Def* rewrite_imm_Name(const Name*) final;
     const Def* rewrite_imm_Struc(const Struc*) final;
 };

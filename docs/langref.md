@@ -575,7 +575,7 @@ e   ::= "«" e "»"
 A `nom` declaration is the one place where Mim is not structurally typed: two `nom`s over the same underlying type are still distinct types.
 
 - `nom I = e` declares `I` as a fresh type that wraps `e`; it is the declaration - not the shape of `e` - that tells two `nom`s apart.
-- `I` is already in scope inside `e`, so a `nom` may be recursive, and `and nom` makes a group of them mutually recursive.
+- If `e` is a sigma, a [variant](@ref variant), or a function type, `I` is already in scope inside `e`, so such a `nom` may be recursive, and `and nom` makes a group of them mutually recursive.
 - `anx nom` additionally makes `I` an [annex](@ref annex).
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
 - `inj` and `#` on a `nom` are private to the file that declares the `nom`, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.

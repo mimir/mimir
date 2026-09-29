@@ -105,6 +105,7 @@ const Def* Rewriter::rewrite_imm_UInc   (const UInc*    d) { return world().uinc
 const Def* Rewriter::rewrite_imm_UMax   (const UMax*    d) { return world().umax   (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Single (const Single*  d) { return world().single (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Wrap   (const Wrap*    d) { return world().wrap   (rewrite(d->op()));                    }
+const Def* Rewriter::rewrite_imm_Nom    (const Nom*     d) { return world().nom    (d->key(),             rewrite(d->op())); }
 const Def* Rewriter::rewrite_imm_Name   (const Name*    d) { return world().name   (rewrite(d->nom()), rewrite(d->op())); }
 const Def* Rewriter::rewrite_imm_Struc  (const Struc*   d) { return world().struc  (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Var    (const Var*     d) { return world().var    (rewrite(d->binder())->as_mut());      }
@@ -178,7 +179,6 @@ const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
 const Def* Rewriter::rewrite_mut_Global(Global* d) {
     return rewrite_stub(d, world().global(rewrite(d->type()), d->is_mutable()));
 }
-const Def* Rewriter::rewrite_mut_Nom(Nom* d) { return rewrite_stub(d, world().mut_nom(rewrite(d->type()))); }
 const Def* Rewriter::rewrite_mut_Lam(Lam* d) { return rewrite_stub(d, world().mut_lam(rewrite(d->type())->as<Pi>())); }
 const Def* Rewriter::rewrite_mut_Rule(Rule* d) {
     return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Reform>()));

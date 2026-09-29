@@ -61,7 +61,7 @@
     X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
     X(Idx)                                                                                                         \
-              X(Name)  X(Struc)
+    X(Nom)    X(Name)  X(Struc)
 
 #define MIM_MUT_NODE(X)                                                                                            \
     X(Global)                                                                                                      \
@@ -70,8 +70,7 @@
     X(Sigma)                                                                                                       \
     X(Arr)   X(Pack)                                                                                               \
     X(Variant)                                                                                                     \
-    X(Rule)                                                                                                        \
-    X(Nom)
+    X(Rule)
 // clang-format on
 
 namespace mim {

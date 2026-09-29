@@ -1145,6 +1145,7 @@ public:
     void emit_body(Emitter&) const override;
 
 private:
+    void emit_nom(Emitter&, const Def* body) const;
     void stream_(fe::Tab&, std::ostream&) const override;
 };
 

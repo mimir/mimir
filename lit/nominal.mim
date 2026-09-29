@@ -25,14 +25,47 @@ extern lam convert (f: Foot): Meter = #f inj Meter;
 extern lam kelvin (x: I32): Kelvin = x inj Kelvin;
 extern lam list (l: List): List = l;
 
+// An instance of a `nom` keeps the names of its declaration.
+lam Opt (T: *) =
+    nom O = | None | Some: T;
+    O;
+lam Pt (T: *) =
+    nom P = [x: T, y: T];
+    P;
+
+extern lam get (o: Opt I32, p: Pt I32): I32 =
+    match #o with
+        | None   => (#p)#y
+        | Some n => n;
+
+// A `nom` over a variant has constructors; nested names survive the instantiation, too.
+lam Seq (T: *) =
+    nom S = | Nil | Cons: [head: T, tail: S];
+    S;
+lam Box (T: *) =
+    nom B = [inner: [a: T, b: Bool], tag: Nat];
+    B;
+
+let SN = Seq Nat;
+
+extern lam seq (): Nat =
+    match #(SN#Cons (1, SN#Cons (2, SN#Nil))) with
+        | Nil    => 0
+        | Cons c => c#head;
+
+extern lam unbox (x: Box Nat): Bool = ((#x)#inner)#b;
+
 // CHECK-DAG: anx nom Kelvin = I32;
 // CHECK-DAG: nom Meter = I32;
 // CHECK-DAG: nom Foot = I32;
 // CHECK-DAG: nom Second = I32;
-// CHECK-DAG: nom List = (| {{.*}}: [I32, List]);
+// CHECK-DAG: nom List = | {{.*}}: [I32, List];
 // CHECK-DAG: extern lam add (a: Meter, b: Meter){{.*}}: Meter =
 // CHECK-DAG: extern lam convert (f: Foot): Meter =
 // CHECK-DAG:     #f inj Meter;
 // CHECK-DAG: extern lam tick (s: Second): I32 =
 // CHECK-DAG:     #s;
 // CHECK-DAG: extern lam kelvin (x: I32): Kelvin =
+// CHECK-DAG: extern lam get (o: O, p: P){{.*}}: I32 =
+// CHECK-DAG: extern lam seq (): Nat =
+// CHECK-DAG: extern lam unbox ({{.*}}: B): Bool =

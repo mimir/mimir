@@ -650,8 +650,7 @@ public:
 
     /// @name Nominal Newtypes
     ///@{
-    Nom* mut_nom(const Def* type) { return insert<Nom>(type); }
-    Nom* nom(const Def* type);                         ///< Make @p type Nom%inal.
+    const Nom* nom(flags_t key, const Def* type);      ///< Make @p type Nom%inal under @p key.
     const Def* name(const Def* nom, const Def* struc); ///< Name a @p struc%tural to make it @p nom%inaml.
     const Def* struc(const Def* nom);                  ///< Get the structural part a @p nom%inal.
     ///@}

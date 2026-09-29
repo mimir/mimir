@@ -12,12 +12,12 @@ TEST_CASE("Nom: each nom is a distinct type") {
     World& w = driver.world();
 
     auto i32   = w.type_i32();
-    auto meter = w.nom(i32);
-    auto foot  = w.nom(i32);
+    auto meter = w.nom(1, i32);
+    auto foot  = w.nom(2, i32);
 
     CHECK(meter->op() == i32);
     CHECK(meter->type() == i32->type());
-    CHECK(!meter->immutabilize());
+    CHECK(meter == w.nom(1, i32));
     CHECK(meter != i32);
     CHECK(meter != foot);
     CHECK(Checker::alpha<Checker::Check>(meter, meter));
@@ -30,7 +30,7 @@ TEST_CASE("Nom: name and struc") {
     World& w = driver.world();
 
     auto i32   = w.type_i32();
-    auto meter = w.nom(i32);
+    auto meter = w.nom(1, i32);
     auto v     = w.lit_i32(23);
 
     auto named = w.name(meter, v);
@@ -46,20 +46,32 @@ TEST_CASE("Nom: name and struc") {
     CHECK(w.name(meter, struc)->isa<Name>());
 }
 
-TEST_CASE("Nom: rewriting stubs a new nom") {
+TEST_CASE("Nom: rewriting keeps the key") {
     Driver driver;
     World& w = driver.world();
 
-    auto i32   = w.type_i32();
-    auto meter = w.nom(i32);
+    auto meter = w.nom(1, w.type_i32());
     auto rw    = Rewriter(w);
 
-    auto new_meter = rw.rewrite(meter);
-    REQUIRE(new_meter->isa_mut<Nom>());
-    CHECK(new_meter != meter);
-    CHECK(new_meter->as<Nom>()->op() == i32);
-    CHECK(rw.rewrite(meter) == new_meter);
-    CHECK(rw.rewrite(w.name(meter, w.lit_i32(23))) == w.name(new_meter, w.lit_i32(23)));
+    CHECK(rw.rewrite(meter) == meter);
+    CHECK(rw.rewrite(w.name(meter, w.lit_i32(23))) == w.name(meter, w.lit_i32(23)));
+}
+
+TEST_CASE("Nom: instances of a generic nom") {
+    Driver driver;
+    World& w = driver.world();
+
+    // Π T: *. L T - bound twice, so the two instances only agree up to renaming.
+    auto mk = [&](flags_t key) {
+        auto pi = w.mut_pi(w.type<1>())->set_dom(w.type<0>());
+        return pi->set_codom(w.nom(key, pi->var()));
+    };
+
+    auto pi = mk(1);
+    CHECK(pi->reduce(w.type_nat()) == w.nom(1, w.type_nat()));
+    CHECK(Checker::alpha<Checker::Check>(pi, mk(1)));
+    CHECK(!Checker::alpha<Checker::Check>(pi, mk(2)));
+    CHECK(!Checker::alpha<Checker::Check>(w.nom(1, w.type_nat()), w.nom(1, w.type_bool())));
 }
 
 TEST_CASE("NomErasure: nominals erase to what they wrap") {
@@ -67,7 +79,7 @@ TEST_CASE("NomErasure: nominals erase to what they wrap") {
     World& w = driver.world();
 
     auto i32   = w.type_i32();
-    auto meter = w.nom(i32);
+    auto meter = w.nom(1, i32);
     auto lam   = w.mut_lam(w.pi(meter, meter))->set("id");
     lam->set(false, w.name(meter, w.struc(lam->var())));
     w.externals().externalize(lam);

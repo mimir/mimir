@@ -256,7 +256,6 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         // Globals are HACKs and require additionaly HACKs:
         // Unless they are pointer equal (above) always consider them unequal.
         if (d1->isa<Global>() || d2->isa<Global>()) return false;
-        if (d1->isa<Nom>() || d2->isa<Nom>()) return fail<mode>();
 
         if (auto [i, ins] = bind(mut1, d2); !ins) return i->second == d2;
         if (auto [i, ins] = bind(mut2, d1); !ins) return i->second == d1;
@@ -527,13 +526,6 @@ const Def* Def::check() {
         case MutNode::Pack:
         case MutNode::Global:
         case MutNode::Hole: return type();
-        case MutNode::Nom: {
-            auto t = as<Nom>()->op()->unfold_type();
-            if (!t) type()->blame("`Univ` cannot be wrapped in a nominal newtype").bail();
-            if (!Checker::alpha<Checker::Check>(t, type()))
-                type()->blame("declared sort of nominal type does not match inferred sort `{}`", t).bail();
-            return t;
-        }
     }
     fe::unreachable();
 }

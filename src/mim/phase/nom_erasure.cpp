@@ -2,7 +2,7 @@
 
 namespace mim {
 
-const Def* NomErasure::rewrite_mut_Nom(Nom* nom) {
+const Def* NomErasure::rewrite_imm_Nom(const Nom* nom) {
     auto type = rewrite(nom->op());
     log().d("nom-erasure `{}` → `{}`", nom, type);
     profile_count("nominals eliminated");

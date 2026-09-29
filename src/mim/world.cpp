@@ -941,9 +941,9 @@ const Def* World::unwrap(const Def* op) {
     op->blame("operand of a singleton elimination is of type `{}` but must be of singleton type", type_of(op)).bail();
 }
 
-Nom* World::nom(const Def* type) {
+const Nom* World::nom(flags_t key, const Def* type) {
     type = type->zonk();
-    if (auto t = type->unfold_type()) return mut_nom(t)->set(type);
+    if (auto t = type->unfold_type()) return unify<Nom>(t, type, key);
     type->blame("`Univ` cannot be wrapped in a nominal newtype").bail();
 }
 
