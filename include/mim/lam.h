@@ -104,6 +104,9 @@ public:
     ///@{
     const Def* filter() const { return op(0); }
     const Def* body() const { return op(1); }
+    /// Yields the body of the innermost Lam along the curried spine `lm x = lm y = ... = body`; `nullptr` if still
+    /// unset.
+    const Def* curried_body() const;
     ///@}
 
     /// @name type

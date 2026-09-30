@@ -35,6 +35,13 @@ Lam* Lam::branch(Filter filter, const Def* cond, const Def* t, const Def* f, con
     return app(filter, world().select(cond, t, f), arg ? arg : world().tuple());
 }
 
+const Def* Lam::curried_body() const {
+    auto body = this->body();
+    while (auto lam = body ? body->isa<Lam>() : nullptr)
+        body = lam->body();
+    return body;
+}
+
 Defs Lam::reduce(Defs args) const { return Def::reduce(world().tuple(args)); }
 
 // TODO maybe we can eta-reduce immutable Lams in some edge casess like: lm _: [] = f ();

@@ -1,0 +1,44 @@
+// RUN: %mim %s
+plugin refly;
+plugin core;
+
+use core.ops.n;
+
+lam Foo (T: *) =
+    nom V =
+        | X
+        | Y: T
+        | Z: [T, T];
+    V;
+
+lam bar (x: Foo Nat) =
+    match #x with
+        | X        => 23
+        | Y n      => n
+        | Z (_, n) => n;
+
+lam List (T: *) =
+    nom L =
+        | Nil
+        | Cons: [T, L];
+    L;
+
+let LN = List Nat;
+
+let l0 = LN#Nil;
+let l1 = LN#Cons (0, LN#Nil);
+let l2 = LN#Cons (1, LN#Cons (0, LN#Nil));
+let l3 = LN#Cons (2, LN#Cons (1, LN#Cons (0, LN#Nil)));
+
+let _ = refly.struc.e (l2, LN#Cons(1, l1));
+let _ = refly.struc.e (l3, LN#Cons(2, l2));
+
+lam len {T: *} (l: List T): Nat =
+    match #l with
+        | Nil          => 0
+        | Cons (_, l)  => 1 + (len l);
+
+let _ = refly.struc.e (len l0, 0);
+let _ = refly.struc.e (len l1, 1);
+let _ = refly.struc.e (len l2, 2);
+let _ = refly.struc.e (len l3, 3);

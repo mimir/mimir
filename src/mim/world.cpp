@@ -329,7 +329,8 @@ const Def* World::app(const Def* callee, const Def* arg) {
         if (var && arg == var) return lam->body();
 
         // β-reduce or partially evaluate a set, mutable Lam.
-        if (lam->filter() != lit_ff()) {
+        // A curried declaration under construction has an unset curried body; its copy would stay unset forever.
+        if (lam->filter() != lit_ff() && lam->curried_body()) {
             if (!var) {
                 if (lam->filter() == lit_tt()) return lam->body();
             } else if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) {
