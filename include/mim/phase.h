@@ -389,12 +389,14 @@ protected:
     /// Rewrite the World of Phase::world **into** @p new_world.
     RWBase(World& world, std::string name, Analysis* analysis, std::unique_ptr<World>&& new_world)
         : Phase(world, std::move(name))
-        , Rewriter(std::move(new_world))
-        , analysis_(analysis) {}
+        , Rewriter(*new_world)
+        , analysis_(analysis)
+        , new_world_(std::move(new_world)) {}
     RWBase(World& world, flags_t annex, Analysis* analysis, std::unique_ptr<World>&& new_world)
         : Phase(world, annex)
-        , Rewriter(std::move(new_world))
-        , analysis_(analysis) {}
+        , Rewriter(*new_world)
+        , analysis_(analysis)
+        , new_world_(std::move(new_world)) {}
     ///@}
 
 public:
@@ -449,6 +451,7 @@ protected:
 private:
     Analysis* analysis_;
     bool bootstrapping_ = true;
+    std::unique_ptr<World> new_world_; ///< Owns Rewriter::world, if it is not Phase::world.
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.

@@ -1,8 +1,5 @@
 #pragma once
 
-#include <deque>
-#include <memory>
-
 #include <fe/restore.h>
 
 #include "mim/check.h"
@@ -24,11 +21,9 @@ class Rewriter {
 public:
     /// @name Construction & Destruction
     ///@{
-    Rewriter(std::unique_ptr<World>&& ptr);
     Rewriter(World& world);
     virtual ~Rewriter();
 
-    void reset(std::unique_ptr<World>&& ptr);
     void reset();
     ///@}
 
@@ -95,7 +90,7 @@ public:
     friend void swap(Rewriter& rw1, Rewriter& rw2) noexcept {
         using std::swap;
         swap(rw1.old2news_, rw2.old2news_);
-        // Do NOT swap ptr_ and world_: they are back pointers!
+        // Do NOT swap world_: it is a back pointer!
     }
 
     template<class D = Def>
@@ -104,12 +99,11 @@ public:
     }
 
 private:
-    std::unique_ptr<World> ptr_;
     World* world_;
     Def* curr_mut_ = nullptr;
 
 protected:
-    std::deque<Def2Def> old2news_;
+    fe::Vector<Def2Def> old2news_;
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
