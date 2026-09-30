@@ -102,8 +102,6 @@ private:
     World* world_;
     Def* curr_mut_ = nullptr;
 
-    friend class World; // re-points World::Move::rewriters on swap
-
 protected:
     fe::Vector<Def2Def> old2news_;
 

@@ -2,7 +2,6 @@
 
 #include <concepts>
 
-#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -891,24 +890,19 @@ private:
     public:
         using VLA_Types = std::tuple<const Def*>;
 
-        explicit Reduct(u32 rw)
-            : rw(rw) {}
-
-        u32 rw; ///< Index into World::Move::rewriters; one for all slots, so they share sub-rewrites.
-
         // clang-format off
         template<size_t N = std::dynamic_extent> auto ops() const noexcept { return vla<0, N>(); }
         template<size_t N = std::dynamic_extent> auto ops()       noexcept { return vla<0, N>(); }
         // clang-format on
     };
 
-    /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
+    /// The cache entry for `[var -> arg]`, created with empty slots if it does not exist yet.
     /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
-    Reduct* reduct(const Var* var, const Def* arg, size_t n) {
+    Reduct* reduct(const Var* var, const Def* arg) {
         auto [i, ins] = move_.substs.try_emplace(std::pair{var, arg}, nullptr);
         if (ins) {
-            i->second = move_.arena.substs.ref<Reduct>(u32(move_.rewriters.size()), DefVec(n, nullptr)).get();
-            move_.rewriters.emplace_back(var, arg);
+            auto n    = var->binder()->num_ops() - var->binder()->reduction_offset();
+            i->second = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
         }
         return i->second;
     }
@@ -931,7 +925,6 @@ private:
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
         ankerl::unordered_dense::map<std::pair<const Var*, const Def*>, Reduct*> substs;
-        std::deque<VarRewriter> rewriters; ///< A deque, as a reduction may add one while another is running.
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;
@@ -940,7 +933,6 @@ private:
             swap(m1.arena.substs, m2.arena.substs);
             swap(m1.sea,          m2.sea);
             swap(m1.substs,       m2.substs);
-            swap(m1.rewriters,    m2.rewriters);
             swap(m1.vars,         m2.vars);
             swap(m1.muts,         m2.muts);
             swap(m1.externals,    m2.externals);
@@ -983,10 +975,6 @@ private:
         // clang-format on
 
         swap(w1.data_.univ->world_, w2.data_.univ->world_);
-        for (auto& rw : w1.move_.rewriters)
-            rw.world_ = &w1;
-        for (auto& rw : w2.move_.rewriters)
-            rw.world_ = &w2;
         assert(&w1.univ()->world() == &w1);
         assert(&w2.univ()->world() == &w2);
     }

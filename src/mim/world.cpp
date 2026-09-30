@@ -1,5 +1,7 @@
 #include "mim/world.h"
 
+#include <algorithm>
+
 #include <fe/container.h>
 #include <fe/worklist.h>
 
@@ -957,11 +959,10 @@ Defs World::reduce(const Var* var, const Def* arg) {
     auto n   = mut->num_ops() - off;
     auto ops = Defs(mut->ops().begin() + off, n);
     // `[var -> var]` is the identity and so is a substitution without an occurrence.
-    if (var == arg || std::ranges::none_of(ops, [var](const Def* op) { return op->has_free_vars_in(Vars(var)); }))
-        return ops;
+    if (var == arg || std::ranges::none_of(ops, [var](const Def* op) { return op->has_free_var(var); })) return ops;
 
-    auto reduct = this->reduct(var, arg, n);
-    auto& rw    = move_.rewriters[reduct->rw];
+    auto reduct = this->reduct(var, arg);
+    auto rw     = VarRewriter(var, arg); // one rewriter for all slots: they share their sub-rewrites
     for (size_t i = 0; i != n; ++i) {
         auto& slot = reduct->ops()[i];
         if (slot) continue;
@@ -976,7 +977,7 @@ Defs World::reduce(const Var* var, const Def* arg) {
 const Def* World::cached_reduct(const Var* var, const Def* arg, size_t i) {
     auto mut = var->binder();
     auto op  = mut->op(i + mut->reduction_offset());
-    if (var == arg || (op && !op->has_free_vars_in(Vars(var)))) return op;
+    if (var == arg || (op && !op->has_free_var(var))) return op;
 
     if (auto it = move_.substs.find(std::pair{var, arg}); it != move_.substs.end())
         if (auto slot = it->second->ops()[i]; slot != Filling) return slot;
@@ -989,14 +990,14 @@ const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
     auto op  = mut->op(i + off);
     if (var == arg) return op; // `[var -> var]` is the identity
     if (!op) fe::throwf("cannot reduce `{}`: operand {} is not set", mut, i + off);
-    if (!op->has_free_vars_in(Vars(var))) return op; // no occurrence: no Reduct, no VarRewriter
+    if (!op->has_free_var(var)) return op; // no occurrence: no Reduct, no VarRewriter
 
-    auto reduct = this->reduct(var, arg, mut->num_ops() - off);
-    auto& slot  = reduct->ops()[i];
+    auto& slot = reduct(var, arg)->ops()[i];
     assert(slot != Filling && "op requires its own reduction");
     if (!slot) {
         slot = Filling;
-        slot = move_.rewriters[reduct->rw].rewrite(op);
+        // If this ever bites performance, share one VarRewriter per Reduct and free it once all its slots are filled.
+        slot = VarRewriter(var, arg).rewrite(op);
     }
 
     return slot;
