@@ -37,5 +37,5 @@ extern lam _compile (): compile.Phase =
 // CHECK-DAG:  con head ({{[[:alnum:]_]+}}: Nat) =
 // CHECK-DAG:  head 3;
 // CHECK-DAG:  head 4;
-// CHECK-DAG:  core.nat.add (23, x);
+// CHECK-DAG:  core.nat.add (23, {{[[:alnum:]_]+}});
 // CHECK-NOT:  con false
