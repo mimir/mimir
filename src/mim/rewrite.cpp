@@ -12,24 +12,12 @@ namespace mim {
  * Rewriter
  */
 
-Rewriter::Rewriter(std::unique_ptr<World>&& ptr)
-    : ptr_(std::move(ptr))
-    , world_(ptr_.get()) {
-    push(); // create root map
-}
-
 Rewriter::Rewriter(World& world)
     : world_(&world) {
     push(); // create root map
 }
 
 Rewriter::~Rewriter() = default;
-
-void Rewriter::reset(std::unique_ptr<World>&& ptr) {
-    ptr_   = std::move(ptr);
-    world_ = ptr_.get();
-    reset();
-}
 
 void Rewriter::reset() {
     pop();

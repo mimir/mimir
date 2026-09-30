@@ -1,7 +1,5 @@
 #include "mim/world.h"
 
-#include <ranges>
-
 #include <fe/container.h>
 #include <fe/worklist.h>
 
@@ -332,19 +330,16 @@ const Def* World::app(const Def* callee, const Def* arg) {
         if (lam->filter() != lit_ff()) {
             if (!var) {
                 if (lam->filter() == lit_tt()) return lam->body();
-            } else if (auto i = move_.substs.find({var, arg}); i != move_.substs.end()) {
-                // Reuse the cached reduct if its filter held.
-                auto [filter, body] = i->second->ops<2>();
-                if (filter == lit_tt()) return body;
-            } else {
-                // Evaluate the filter; if it holds, reduce the body and cache the reduct.
-                auto rw     = VarRewriter(var, arg);
-                auto filter = rw.rewrite(lam->filter());
-                if (filter == lit_tt()) {
-                    log().d("partially evaluate {} ({})", lam, arg);
-                    auto body = rw.rewrite(lam->body());
-                    cache_reduct(var, arg, {filter, body});
-                    return body;
+            } else if (is_frozen()) {
+                if (cached_reduct(var, arg, 0) == lit_tt())
+                    if (auto body = cached_reduct(var, arg, 1)) return body;
+            } else if (reduce(var, arg, 0) == lit_tt()) {
+                // Re-entering a body that is still being reduced for this very arg would not terminate.
+                auto i    = move_.substs.find({var, arg});
+                auto body = i != move_.substs.end() ? i->second->ops()[1] : nullptr;
+                if (body != Filling) {
+                    if (!body) log().d("partially evaluate {} ({})", lam, arg);
+                    return reduce(var, arg, 1);
                 }
             }
         }
@@ -960,22 +955,29 @@ Defs World::reduce(const Var* var, const Def* arg) {
     auto mut = var->binder();
     auto off = mut->reduction_offset();
     auto n   = mut->num_ops() - off;
-    if (var == arg) return {mut->ops().begin() + off, n}; // `[var -> var]` is the identity
+    auto ops = Defs(mut->ops().begin() + off, n);
+    // `[var -> var]` is the identity and so is a substitution without an occurrence.
+    if (var == arg || std::ranges::none_of(ops, [var](const Def* op) { return op->has_free_vars_in(Vars(var)); }))
+        return ops;
 
     auto reduct = this->reduct(var, arg, n);
-    auto rw     = VarRewriter(var, arg); // one rewriter for all slots: they share their sub-rewrites
+    auto& rw    = move_.rewriters[reduct->rw];
     for (size_t i = 0; i != n; ++i) {
         auto& slot = reduct->ops()[i];
         if (slot) continue;
         assert(slot != Filling && "op requires its own reduction");
         slot = Filling;
-        slot = rw.rewrite(mut->op(i + off));
+        slot = rw.rewrite(ops[i]);
     }
 
     return reduct->ops();
 }
 
 const Def* World::cached_reduct(const Var* var, const Def* arg, size_t i) {
+    auto mut = var->binder();
+    auto op  = mut->op(i + mut->reduction_offset());
+    if (var == arg || (op && !op->has_free_vars_in(Vars(var)))) return op;
+
     if (auto it = move_.substs.find(std::pair{var, arg}); it != move_.substs.end())
         if (auto slot = it->second->ops()[i]; slot != Filling) return slot;
     return nullptr;
@@ -984,17 +986,17 @@ const Def* World::cached_reduct(const Var* var, const Def* arg, size_t i) {
 const Def* World::reduce(const Var* var, const Def* arg, size_t i) {
     auto mut = var->binder();
     auto off = mut->reduction_offset();
-    if (var == arg) return mut->op(i + off); // `[var -> var]` is the identity
+    auto op  = mut->op(i + off);
+    if (var == arg) return op; // `[var -> var]` is the identity
+    if (!op) fe::throwf("cannot reduce `{}`: operand {} is not set", mut, i + off);
+    if (!op->has_free_vars_in(Vars(var))) return op; // no occurrence: no Reduct, no VarRewriter
 
     auto reduct = this->reduct(var, arg, mut->num_ops() - off);
     auto& slot  = reduct->ops()[i];
     assert(slot != Filling && "op requires its own reduction");
     if (!slot) {
-        auto op = mut->op(i + off);
-        if (!op) fe::throwf("cannot reduce `{}`: operand {} is not set", mut, i + off);
-        if (!op->has_free_vars_in(Vars(var))) return slot = op; // no occurrence: don't even build a VarRewriter
         slot = Filling;
-        slot = VarRewriter(var, arg).rewrite(op);
+        slot = move_.rewriters[reduct->rw].rewrite(op);
     }
 
     return slot;
