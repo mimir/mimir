@@ -124,10 +124,12 @@ using ast::Assoc;
 using ast::Prec;
 using ast::prec_assoc;
 
-Prec def2prec(const Def* def) {
+Prec def2prec(Ctx* ctx, const Def* def) {
     // A Var's projection prints as its name and hence is atomic; see the Extract case in operator<<.
-    if (auto ex = def->isa<Extract>())
-        return ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
+    if (auto ex = def->isa<Extract>()) {
+        auto opaque = ctx && ctx->opaque.contains(ex->tuple());
+        return !opaque && ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
+    }
     if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
     if (auto inj = def->isa<Inj>()) {
@@ -240,7 +242,7 @@ public:
     bool needs_parens() const {
         if (!is_full()) return false;
 
-        auto child_prec = def2prec(def());
+        auto child_prec = def2prec(ctx(), def());
         if (child_prec < prec()) return true;
         if (child_prec > prec()) return false;
 
@@ -308,7 +310,12 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
 /// spells a *dependent* component with the domain's binders instead of this pattern's. That is where
 /// destructuring stops: @p def stays opaque and its components print as `def#i` rather than by a dangling name.
 bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
-    if (!def || n <= 1) return false;
+    if (!def) return false;
+    if (n <= 1) {
+        // Def::num_tprojs keeps a def above Flags::scalarize_threshold whole, so its components have no name either.
+        if (ctx && def->num_projs() > 1) ctx->opaque.emplace(def);
+        return false;
+    }
     auto var = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
 
     for (size_t i = 0; i != n; ++i) {
